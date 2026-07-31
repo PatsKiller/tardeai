@@ -46,15 +46,31 @@ def _conn():
 
 
 def _weights():
+    """Load factor weights. Default = main_setup (live hermes_score_weights.yaml).
+
+    Profiles: scalp | research | research_intel | coverage | main | main_setup
+    Env HERMES_WEIGHTS_PROFILE selects alternate profiles; Main stays locked file.
+    """
     try:
         import yaml
         profile = (os.getenv("HERMES_WEIGHTS_PROFILE") or "").strip().lower()
-        path = SCALP_WEIGHTS_FILE if profile == "scalp" and SCALP_WEIGHTS_FILE.exists() else WEIGHTS_FILE
+        if profile == "scalp" and SCALP_WEIGHTS_FILE.exists():
+            path = SCALP_WEIGHTS_FILE
+        elif profile in ("research", "research_intel"):
+            path = PROJECT_ROOT / "config" / "hermes_score_weights_research.yaml"
+            if not path.exists():
+                path = WEIGHTS_FILE
+        elif profile == "coverage":
+            profiles = yaml.safe_load((PROJECT_ROOT / "config" / "hermes_score_profiles.yaml").read_text()) or {}
+            w = ((profiles.get("profiles") or {}).get("coverage") or {}).get("weights") or {}
+            return {k: float(v) for k, v in w.items()} if w else {}
+        else:
+            path = WEIGHTS_FILE  # main_setup locked live file
         w = (yaml.safe_load(path.read_text()) or {}).get("weights", {})
         return {k: float(v) for k, v in w.items()} if w else {}
     except Exception:
-        return {"technical_momentum": .2, "setup_quality": .18, "analyst": .16,
-                "social_sentiment": .12, "sector_strength": .12, "news_catalyst": .12, "risk_reward": .1}
+        return {"technical_momentum": .25, "setup_quality": .30, "analyst": .10,
+                "social_sentiment": .03, "sector_strength": .02, "news_catalyst": .05, "risk_reward": .25}
 
 
 def _clamp(x):

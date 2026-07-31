@@ -9,6 +9,7 @@ import BrokerProposalCardV4 from './BrokerProposalCardV4'
 import ProtectionProposalCard from './ProtectionProposalCard'
 import QueueHealthPanel from './QueueHealthPanel'
 import ProposalQueueSummaryBar from './ProposalQueueSummaryBar'
+import ProposalBlockerCtaStrip from './ProposalBlockerCtaStrip'
 import GradingAuditMethodology from './GradingAuditMethodology'
 import DeskAutomationBar from './DeskAutomationBar'
 import { brokerOf, formatCloudRanAt, pickFreshOversight } from '../lib/brokerThesis'
@@ -70,7 +71,8 @@ const DEFAULT_FILTERS: ListFilters = {
   page: 1,
   pageSize: 15,
   sort: 'priority',
-  kind: 'broker',
+  // Entry proposals by default — protection (stops) is a separate chip so MU etc. don't crowd the entry desk
+  kind: 'proposal',
   source: '',
   zone: '',
   account: '',
@@ -237,6 +239,9 @@ export default function BrokerProposals({
   const [bulkActionMsg, setBulkActionMsg] = useState('')
   const [cardActionBusy, setCardActionBusy] = useState<Record<number, boolean>>({})
   const [resizeBusy, setResizeBusy] = useState<Record<number, boolean>>({})
+  // Blocker CTA strip focus (oversight / sizing / thesis / ready / blocked)
+  const [focusBlocker, setFocusBlocker] = useState<string | null>(null)
+  const [focusIdSet, setFocusIdSet] = useState<Set<number> | null>(null)
   const detailLoadedRef = useRef<Set<number>>(new Set())
   const detailInflightRef = useRef<Set<number>>(new Set())
   const cloudPollRef = useRef<Record<number, ReturnType<typeof setInterval>>>({})
@@ -408,6 +413,10 @@ export default function BrokerProposals({
   } else if (focus && proposals.some(p => String(p.symbol).toUpperCase() === focus)) {
     shown = shown.filter(p => String(p.symbol).toUpperCase() === focus)
   }
+  // CTA strip focus: subset of proposal ids (oversight / sizing / ready walls)
+  if (focusIdSet && focusIdSet.size > 0) {
+    shown = shown.filter(p => focusIdSet.has(Number(p.id)))
+  }
   shown = dedupeEntryProposals(shown)
 
   useEffect(() => {
@@ -465,8 +474,44 @@ export default function BrokerProposals({
   const queueAgentBatch = async () => {
     setAgentBatchBusy(true)
     try {
-      await postJson('/api/v2/broker-proposals/queue-agent-batch', {})
+      const res = await postJson('/api/v2/broker-proposals/queue-agent-batch', {})
+      setBulkActionMsg(res.ok
+        ? `✅ ${res.message || 'Agent batch queued'}`
+        : `⚠ agent batch failed: ${res.error || res.message || 'error'}`)
       afterQueueMutation()
+    } finally {
+      setAgentBatchBusy(false)
+    }
+  }
+
+  /** One-click: queue Steph only on oversight-blocked proposal IDs (CTA strip). */
+  const queueStephOnIds = async (ids: number[]) => {
+    const fromArg = (ids || []).filter(id => typeof id === 'number' && id > 0)
+    const fromSummary = (data?.queue_summary?.oversight_ids || []).filter((id: number) => id > 0)
+    const pids = fromArg.length ? fromArg : fromSummary
+    if (!pids.length) {
+      setBulkActionMsg('⚠ No oversight proposal IDs yet — wait for queue summary refresh, then retry')
+      return
+    }
+    setAgentBatchBusy(true)
+    try {
+      const res = await postJson('/api/v2/broker-proposals/queue-agent-batch', {
+        agents: ['steph'],
+        proposal_ids: pids,
+      })
+      if (res.ok) {
+        const n = res.jobs_queued ?? res.reviews_created ?? 0
+        setBulkActionMsg(
+          `✅ Queued steph · ${n} new job(s)`
+          + (res.skipped_existing ? ` · ${res.skipped_existing} already pending` : '')
+          + ` · ${pids.length} proposal ID(s)`,
+        )
+      } else {
+        setBulkActionMsg(`⚠ steph queue failed: ${res.error || res.message || res.stderr_tail || 'error'}`)
+      }
+      afterQueueMutation()
+    } catch (e: any) {
+      setBulkActionMsg(`⚠ steph queue: ${String(e).slice(0, 80)}`)
     } finally {
       setAgentBatchBusy(false)
     }
@@ -933,6 +978,14 @@ export default function BrokerProposals({
   const blockedN = qs?.blocked ?? 0
   const unrouted48 = execReady?.broker_unrouted_48h ?? 0
   const lowLink = (execReady?.link_rate_pct ?? 100) < (execReady?.target_link_rate_pct ?? 15)
+  // Entry vs Protection counts from current page payload + pagination total as fallback
+  const entryCountOnPage = proposals.filter(p => !isProtectionProposal(p)).length
+  const protectionCountOnPage = proposals.filter(p => isProtectionProposal(p)).length
+  // When kind filter is active, pagination.total is that lane's size
+  const entryCountHint = listFilters.kind === 'protection' ? null
+    : (listFilters.kind === 'proposal' || listFilters.kind === 'broker' ? queueTotal : entryCountOnPage)
+  const protectionCountHint = listFilters.kind === 'protection' ? queueTotal
+    : (listFilters.kind === 'all' ? protectionCountOnPage : null)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, width: '100%', maxWidth: 1180, marginInline: 'auto' }}>
@@ -993,8 +1046,54 @@ export default function BrokerProposals({
         reconcileBusy={reconcileBusy}
         llmBusy={llmMatureBusy}
       />
+      <ProposalBlockerCtaStrip
+        summary={data?.queue_summary}
+        busy={bulkActionBusy || agentBatchBusy}
+        focusBlocker={focusBlocker}
+        onFocusBlocker={(b) => {
+          setFocusBlocker(b)
+          if (!b) setFocusIdSet(null)
+        }}
+        onQueueAgents={queueAgentBatch}
+        onQueueSteph={queueStephOnIds}
+        onResizeIds={(ids) => {
+          if (!ids.length) return
+          bulkAction('resize_to_cap', ids)
+        }}
+        onRejectIds={(ids, reason) => {
+          if (!ids.length) return
+          bulkAction('reject', ids, reason)
+        }}
+        onFocusIds={(ids, _label) => {
+          setFocusIdSet(ids.length ? new Set(ids) : null)
+          if (ids.length === 1) setFocusPid(ids[0])
+        }}
+        onOpenAgents={() => { window.location.href = '/v3/agents' }}
+        queueKind={(listFilters.kind as 'broker' | 'proposal' | 'protection' | 'all') || 'broker'}
+        entryCount={entryCountHint}
+        protectionCount={protectionCountHint}
+        onQueueKind={(kind) => {
+          // Entry = proposals only (no protection). Protection = protection only.
+          // "broker" remains available via Type select for dual-lane hide.
+          patchFilters({ kind: kind === 'proposal' ? 'proposal' : kind })
+          setFocusIdSet(null)
+          setFocusBlocker(null)
+          setFocusPid(null)
+        }}
+        toast={bulkActionMsg || null}
+      />
       {bulkActionMsg && (
-        <div style={{ fontSize: 11, marginBottom: 8, color: bulkActionMsg.startsWith('✅') ? GREEN : AMBER }}>{bulkActionMsg}</div>
+        <div style={{ fontSize: 11, marginBottom: 8, color: bulkActionMsg.startsWith('✅') || bulkActionMsg.startsWith('Queued') ? GREEN : AMBER }}>{bulkActionMsg}</div>
+      )}
+      {focusIdSet && focusIdSet.size > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 8, fontSize: 11, background: desk.blueDim, border: `1px solid ${desk.blue}`, color: desk.blue, marginBottom: 8 }}>
+          <span>CTA focus · {focusIdSet.size} proposal(s){focusBlocker ? ` · ${focusBlocker}` : ''}</span>
+          <button
+            type="button"
+            onClick={() => { setFocusIdSet(null); setFocusBlocker(null); setFocusPid(null) }}
+            style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 6, border: `1px solid ${desk.border}`, background: desk.bgInset, color: desk.textMuted, cursor: 'pointer' }}
+          >show all</button>
+        </div>
       )}
 
       {pullbackTriggers.length > 0 && (
@@ -1139,10 +1238,33 @@ export default function BrokerProposals({
           <div style={{ fontSize: 13, fontWeight: 800, color: TEXT0 }}>
             {/* Scope label: this total = broker queue (active entries + protection rows),
                 a DIFFERENT population from the "pending proposals" count (PENDING+AFPT). */}
-            Proposals ({shown.length}{heldOnly ? ` on page` : ''}
-            {queueTotal ? ` · ${queueTotal} in broker queue (entries + protection)` : ''}
+            {listFilters.kind === 'protection' ? 'Protection' : listFilters.kind === 'proposal' ? 'Entry' : 'Proposals'}
+            {' '}({shown.length}{heldOnly ? ` on page` : ''}
+            {queueTotal ? ` · ${queueTotal} in ${listFilters.kind === 'protection' ? 'protection' : listFilters.kind === 'proposal' ? 'entry' : 'broker'} queue` : ''}
             {hasQueuePages ? ` · page ${queuePage}/${queueTotalPages}` : ''})
           </div>
+          <button
+            type="button"
+            aria-pressed={listFilters.kind === 'proposal' || listFilters.kind === 'broker'}
+            onClick={() => patchFilters({ kind: 'proposal' })}
+            style={{
+              fontSize: 11, fontWeight: 800, padding: '5px 11px', borderRadius: 6, cursor: 'pointer',
+              border: `1px solid ${(listFilters.kind === 'proposal' || listFilters.kind === 'broker') ? GREEN : 'var(--border)'}`,
+              background: (listFilters.kind === 'proposal' || listFilters.kind === 'broker') ? 'rgba(34,197,94,.12)' : 'transparent',
+              color: (listFilters.kind === 'proposal' || listFilters.kind === 'broker') ? GREEN : MUTED,
+            }}
+          >Entry</button>
+          <button
+            type="button"
+            aria-pressed={listFilters.kind === 'protection'}
+            onClick={() => patchFilters({ kind: 'protection' })}
+            style={{
+              fontSize: 11, fontWeight: 800, padding: '5px 11px', borderRadius: 6, cursor: 'pointer',
+              border: `1px solid ${listFilters.kind === 'protection' ? AMBER : 'var(--border)'}`,
+              background: listFilters.kind === 'protection' ? 'rgba(245,158,11,.14)' : 'transparent',
+              color: listFilters.kind === 'protection' ? AMBER : MUTED,
+            }}
+          >Protection</button>
           <button onClick={() => setHeldOnly(h => !h)} aria-pressed={heldOnly} aria-label="Show held-symbol proposals only" style={{
             fontSize: 10.5, fontWeight: 800, padding: '5px 11px', borderRadius: 6, cursor: 'pointer',
             border: `1px solid ${heldOnly ? BLUE : 'var(--border)'}`, background: heldOnly ? 'rgba(96,165,250,.14)' : 'transparent', color: heldOnly ? BLUE : MUTED,

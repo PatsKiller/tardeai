@@ -1,0 +1,43 @@
+# Hermes score profiles — scoped critics (Watch quality plan 2026-07-31).
+# main_setup sorts MAIN; research_intel / coverage never auto-promote to MAIN.
+# Outcome auto-graft may only rewrite research_intel (see hermes_autonomous_self_tune).
+version: 1
+profiles:
+  main_setup:
+    description: Setup command desk — technical + RR dominate; analyst is a weak tie-break only
+    locked: true
+    weights:
+      setup_quality: 0.30
+      technical_momentum: 0.25
+      risk_reward: 0.25
+      analyst: 0.10
+      news_catalyst: 0.05
+      social_sentiment: 0.03
+      sector_strength: 0.02
+  research_intel:
+    description: Research warehouse rank — discovery + coverage signals allowed
+    locked: false
+    weights:
+      setup_quality: 0.15
+      technical_momentum: 0.15
+      risk_reward: 0.15
+      analyst: 0.25
+      news_catalyst: 0.15
+      social_sentiment: 0.10
+      sector_strength: 0.05
+  coverage:
+    description: Analyst coverage / rating-delta lane only — never default Main sort
+    locked: false
+    weights:
+      analyst: 0.60
+      news_catalyst: 0.15
+      risk_reward: 0.10
+      technical_momentum: 0.05
+      setup_quality: 0.05
+      social_sentiment: 0.03
+      sector_strength: 0.02
+default_profile: main_setup
+# Live scorer (hermes_watchlist_scorer) reads hermes_score_weights.yaml which must
+# mirror main_setup while locked. Graft target for outcome ledger:
+graft_profile: research_intel
+graft_target_file: config/hermes_score_weights_research.yaml

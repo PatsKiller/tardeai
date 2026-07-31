@@ -1,0 +1,15 @@
+# Outcome-ledger graft target (research_intel profile). Does NOT sort MAIN.
+# Graft writes here; main_setup lives in hermes_score_weights.yaml and is locked.
+version: 1
+profile: research_intel
+weights:
+  technical_momentum: 0.0783
+  setup_quality: 0.0102
+  analyst: 0.5264
+  social_sentiment: 0.117
+  sector_strength: 0.0448
+  news_catalyst: 0.117
+  risk_reward: 0.1063
+auto_grafted_at: '2026-07-17T21:00:01.613271+00:00'
+graft_source: outcome_ledger
+note: Preserved analyst-majority graft for RESEARCH ranking only — not Main.

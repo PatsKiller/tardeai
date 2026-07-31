@@ -13,8 +13,10 @@ import ToSWatchlists from '../components/ToSWatchlists'
 import { useAnalystReportMap } from '../hooks/useAnalystReportMap'
 import WatchlistCardV4 from '../components/WatchlistCardV4'
 import WatchlistProposeModal, { type WatchlistProposeSeed } from '../components/WatchlistProposeModal'
+import WatchCommandTriage, { type WatchLane, type WatchNow } from '../components/WatchCommandTriage'
 import { exitLadder } from '../lib/exitLadder'
 import { parseProposalAccounts, parseSizingPolicy, type RiskPct } from '../lib/watchlistProposeSizing'
+import { useSearchParams } from 'react-router-dom'
 
 interface Props { onDrill: (ctx: DrillContext) => void; embedded?: boolean; lane?: 'screener_finds' }
 
@@ -52,9 +54,32 @@ const ORIGIN_OPTS = [['all', 'All'], ['screener_finds', 'Screener Finds (buy-sid
 export default function WatchlistHub({ onDrill, embedded, lane }: Props) {
   // CIO-view filter is pushed server-side (cio=) so it searches the FULL universe before the
   // 200-row window — client-side alone missed verdicts on names ranked below the load size
+  const [searchParams, setSearchParams] = useSearchParams()
   const [fCio, setFCio] = useState('all')
   const [fOrigin, setFOrigin] = useState('all')
   const [search, setSearch] = useState('')
+  // Quality-first default: MAIN setup desk (not legacy Hermes top-200).
+  const rawLane = (searchParams.get('lane') || 'main').toLowerCase()
+  const watchLane: WatchLane =
+    rawLane === 'research' || rawLane === 'coverage' || rawLane === 'legacy_hermes' || rawLane === 'main'
+      ? rawLane
+      : 'main'
+  const rawNow = (searchParams.get('now') || 'all').toUpperCase()
+  const watchNow: WatchNow =
+    rawNow === 'GO' || rawNow === 'WAIT' || rawNow === 'NOGO' ? rawNow : 'all'
+  const setWatchLane = (next: WatchLane) => {
+    const p = new URLSearchParams(searchParams)
+    p.set('lane', next)
+    if (next !== 'main') p.delete('now')
+    setSearchParams(p, { replace: true })
+  }
+  const setWatchNow = (next: WatchNow) => {
+    const p = new URLSearchParams(searchParams)
+    if (next === 'all') p.delete('now')
+    else p.set('now', next)
+    if (!p.get('lane')) p.set('lane', 'main')
+    setSearchParams(p, { replace: true })
+  }
   const symLookup = useMemo(() => {
     const q = search.trim().toUpperCase()
     return /^[A-Z]{1,5}$/.test(q) ? q : ''
@@ -66,9 +91,12 @@ export default function WatchlistHub({ onDrill, embedded, lane }: Props) {
     ? `/api/v2/watchlist/items?symbol=${encodeURIComponent(symLookup)}`
     : screenerLane
     ? '/api/v2/watchlist/items?lane=screener_finds'
-    : `/api/v2/watchlist/items?sort=hermes${fCio !== 'all' ? `&cio=${encodeURIComponent(fCio)}` : ''}`
+    : `/api/v2/watchlist/items?sort=hermes&lane=${encodeURIComponent(watchLane)}${
+        watchLane === 'main' && watchNow !== 'all' ? `&now=${watchNow}` : ''
+      }${fCio !== 'all' ? `&cio=${encodeURIComponent(fCio)}` : ''}`
   const { data: wl, loading: wlLoading, refetch: refetchWl } = useApi<any>(wlPath, 60_000)
   const { data: summary } = useApi<any>('/api/v2/watchlist/summary', 120_000)
+  const { data: qualityBoard } = useApi<any>('/api/v2/watchlist/quality-board', 120_000)
   const { data: adv } = useApi<any>('/api/v2/setup-advisory/candidates?entity=watchlist', 120_000)
   const { data: wd, refetch: refetchWd } = useApi<any>('/api/v2/watch-directives', 60_000)
   const { data: ext, refetch: refetchExt } = useApi<any>('/api/v2/hermes/external-intel-map', 60_000)
@@ -519,9 +547,21 @@ export default function WatchlistHub({ onDrill, embedded, lane }: Props) {
         </div>
       </div>
 
+      {!screenerLane && (
+        <WatchCommandTriage
+          lane={watchLane}
+          now={watchNow}
+          quality={wl?.quality || qualityBoard?.main_lane || qualityBoard?.legacy_hermes_top}
+          weights={summary?.hermes_weights || qualityBoard?.hermes_weights}
+          universeCount={wl?.universe_count ?? summary?.total_active}
+          onLane={setWatchLane}
+          onNow={setWatchNow}
+        />
+      )}
+
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10, marginBottom: 14 }}>
         {[
-          { label: `Top ${items.length} of ${wl?.universe_count ?? '…'} · Hermes rank`, value: items.length, color: TEXT0, tip: `top ${items.length} by Hermes rank (not the full ${(byStatus.active ?? 0) + (byStatus.researched ?? 0)}-name universe) — click to clear all filters`, onClick: () => { setFBand('all'); setFStatus('all'); setFOrigin('all'); setFRating('all'); setFCio('all'); setFList('all'); setFKind('all'); setFDir('all'); setFHeld(false); setFSector('all'); setFAnalyst('all'); setFVol('all'); setSearch('') } },
+          { label: watchLane === 'main' ? `MAIN ${items.length}/${wl?.main_cap ?? 60} · setup desk` : `Top ${items.length} of ${wl?.universe_count ?? '…'} · ${wl?.rank_name || 'Hermes'}`, value: items.length, color: TEXT0, tip: watchLane === 'main' ? 'MAIN admission lane — GO/WAIT/NOGO setups only; analyst coverage stays in COVERAGE' : `window by ${wl?.rank_name || 'Hermes rank'} — click to clear filters`, onClick: () => { setFBand('all'); setFStatus('all'); setFOrigin('all'); setFRating('all'); setFCio('all'); setFList('all'); setFKind('all'); setFDir('all'); setFHeld(false); setFSector('all'); setFAnalyst('all'); setFVol('all'); setSearch(''); setWatchLane('main'); setWatchNow('all') } },
           { label: 'Extreme vol · ATR₂₀', value: extremeVolN, color: RED, tip: 'filter to extreme volatility (ATR₂₀ ≥10%) — Maria/Telegram period', onClick: () => setFVol(v => v === 'extreme' ? 'all' : 'extreme') },
           { label: 'Tight stop · <1× ATR₂₀', value: tightStopN, color: AMBER, tip: 'filter to entry plans with stop inside 1× ATR₂₀', onClick: () => setFVol(v => v === 'tight_stop' ? 'all' : 'tight_stop') },
           { label: 'With setup advisory', value: advisories.length, color: BLUE, tip: 'filter to names that have a setup advisory', onClick: () => setFBand('any') },
@@ -753,8 +793,8 @@ export default function WatchlistHub({ onDrill, embedded, lane }: Props) {
           return <div style={{ color: MUTED, fontSize: 12, padding: 16 }}>
             {symLookup
               ? screenerLane
-                ? <><b style={{ color: TEXT0 }}>{symLookup}</b> is not in the watchlist DB (or was removed). If it was auto-researched, check <span onClick={() => window.location.href = '/v3/intelligence?tab=research'} style={{ color: BLUE, cursor: 'pointer', fontWeight: 700 }}>Intelligence → Research</span>. Active Screener Finds require buy-side CIO. {link(BLUE, 'Clear search', () => setSearch(''))}</>
-                : <><b style={{ color: TEXT0 }}>{symLookup}</b> is not on the watchlist (or was removed). Check <span onClick={() => window.location.href = '/v3/intelligence?tab=research'} style={{ color: BLUE, cursor: 'pointer', fontWeight: 700 }}>Intelligence → Research</span> for auto-research briefs. {link(BLUE, 'Clear search', () => setSearch(''))}</>
+                ? <><b style={{ color: TEXT0 }}>{symLookup}</b> is not in the watchlist DB (or was removed). If it was auto-researched, check <span onClick={() => window.location.href = '/v3/research-intelligence'} style={{ color: BLUE, cursor: 'pointer', fontWeight: 700 }}>Research Intel</span>. Active Screener Finds require buy-side CIO. {link(BLUE, 'Clear search', () => setSearch(''))}</>
+                : <><b style={{ color: TEXT0 }}>{symLookup}</b> is not on the watchlist (or was removed). Check <span onClick={() => window.location.href = '/v3/research-intelligence'} style={{ color: BLUE, cursor: 'pointer', fontWeight: 700 }}>Research Intel</span> for auto-research briefs. {link(BLUE, 'Clear search', () => setSearch(''))}</>
               : sd
               ? <>Directive <b style={{ color: TEXT0 }}>{sd.label}</b> has surfaced <b style={{ color: TEXT0 }}>{nh}</b> watchlist item{nh === 1 ? '' : 's'}{nh === 0 ? ` (no hits${sd.status !== 'active' ? `; directive is ${sd.status}` : ''})` : ''}. {link(PURPLE, 'Clear directive filter', () => setFDir('all'))}</>
               : <>No items match the filters. {link(BLUE, 'Reset all filters', resetAll)}</>}

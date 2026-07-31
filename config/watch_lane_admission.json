@@ -1,0 +1,58 @@
+{
+  "version": "watch-lane-admission-v1",
+  "mandate": "MAIN is a setup command desk, not a research warehouse. Coverage and raw discovery stay off MAIN unless operator-promoted.",
+  "main_cap": 60,
+  "lanes": ["main", "research", "coverage", "legacy_hermes"],
+  "default_lane": "main",
+  "main_source_allowlist": [
+    "operator",
+    "personal_watchlist",
+    "pullback_macd",
+    "trade_ai_go",
+    "hermes",
+    "portfolio",
+    "prev_traded"
+  ],
+  "coverage_sources": [
+    "analyst",
+    "analyst_coverage",
+    "analyst_signal",
+    "pro_analyst"
+  ],
+  "coverage_source_substrings": [
+    "analyst",
+    "coverage"
+  ],
+  "setup_shaped_types": [
+    "pullback entry",
+    "trend continuation",
+    "range / mean-reversion",
+    "reversal / mean-reversion watch",
+    "support bounce",
+    "breakout",
+    "momentum continuation (extended)"
+  ],
+  "no_trade_type_substrings": [
+    "no-trade",
+    "downtrend"
+  ],
+  "rules": {
+    "M1_source_or_star_or_promote": true,
+    "M2_setup_shaped_or_override": true,
+    "M3_actionable_or_entry_plan": true,
+    "M4_not_quarantined": true,
+    "M5_analyst_does_not_grant_main": true,
+    "M6_soft_cap": true
+  },
+  "proposal_bridge": {
+    "require_main_go": true,
+    "note": "watchlist_proposal_bridge only emits from MAIN GO when enabled"
+  },
+  "authority": {
+    "deterministic": true,
+    "models_may_override_main": false,
+    "operator_star_grants_m1": true,
+    "screener_pin_grants_m1": true,
+    "directive_watch_grants_m1": false
+  }
+}

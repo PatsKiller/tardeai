@@ -6411,13 +6411,29 @@ def _wl_items(query: dict = None):
     params = []
     _sym_lookup = None
     _sym_list = None
-    _lane = str((q.get("lane") or [""])[0] if isinstance(q.get("lane"), list) else (q.get("lane") or "")).strip()
+    _lane = str((q.get("lane") or [""])[0] if isinstance(q.get("lane"), list) else (q.get("lane") or "")).strip().lower()
+    _now_filter = str((q.get("now") or [""])[0] if isinstance(q.get("now"), list) else (q.get("now") or "")).strip().upper()
     if _lane == "screener_finds":
         _ensure_screener_find_pins_table()
         _sync_all_screener_find_pins()
         _sym_list = [r["symbol"] for r in (_db_query(
             "SELECT symbol FROM screener_find_pins WHERE active = true ORDER BY auto_research_at DESC NULLS LAST"
         ) or [])]
+    elif _lane == "main":
+        # Pre-filter M1-ish identity so the 200-window is not pure ai_discovered rank.
+        try:
+            from watch_lane_admission import main_sql_source_clause, load_policy as _lane_pol
+            _main_sql, _main_params = main_sql_source_clause(_lane_pol())
+            conditions.append(_main_sql)
+            params.extend(_main_params)
+        except Exception:
+            conditions.append("""(
+                wi.source = ANY(%s)
+                OR EXISTS (SELECT 1 FROM operator_starred_symbols s WHERE upper(s.symbol) = upper(wi.symbol))
+                OR COALESCE(wi.in_directive_watch, false) = true
+            )""")
+            params.append(["operator", "personal_watchlist", "pullback_macd", "trade_ai_go",
+                           "hermes", "portfolio", "prev_traded"])
     elif q.get("symbols"):
         raw = q["symbols"][0] if isinstance(q["symbols"], list) else q["symbols"]
         _sym_list = [s.strip().upper() for s in str(raw or "").split(",") if s.strip()]
@@ -6884,10 +6900,45 @@ def _wl_items(query: dict = None):
         for _it in _items:
             _it.setdefault("action_policy", None)
 
+    # Watch quality plan 2026-07-31: lane annotation + MAIN cap / filters
+    _lane_meta = {"lane": _lane or "legacy_hermes", "now": _now_filter or None}
+    try:
+        from watch_lane_admission import (
+            annotate_item as _lane_ann,
+            apply_main_cap as _lane_cap,
+            load_policy as _lane_pol,
+            quality_board_from_items as _lane_qb,
+        )
+        _pol = _lane_pol()
+        _items = [_lane_ann(it, _pol) for it in _items]
+        if _lane == "main":
+            _items = [it for it in _items if it.get("lane") == "main"]
+            _items = _lane_cap(_items, _pol)
+            _items = [it for it in _items if it.get("lane") == "main"]
+            if _now_filter in ("GO", "WAIT", "NOGO"):
+                _items = [it for it in _items if (it.get("now_status") or "").upper() == _now_filter]
+            _lane_meta["main_cap"] = int(_pol.get("main_cap") or 60)
+            _lane_meta["rank_name"] = "MAIN setup admission · GO/WAIT first"
+        elif _lane == "research":
+            _items = [it for it in _items if it.get("lane") == "research"]
+            _lane_meta["rank_name"] = "RESEARCH warehouse"
+        elif _lane == "coverage":
+            _items = [it for it in _items if it.get("lane") == "coverage"]
+            _lane_meta["rank_name"] = "COVERAGE (analyst) — not Main"
+        else:
+            _lane_meta["rank_name"] = "Hermes rank (composite score order)"
+        _lane_meta["quality"] = _lane_qb(_items, _pol)
+    except Exception as _lane_err:
+        _lane_meta["lane_error"] = str(_lane_err)[:160]
+
     return {"count": len(_items), "items": _items,
             "facets": dict(sorted(_facets.items(), key=lambda x: -x[1])),
             "universe_count": _universe_n,
-            "rank_name": "Hermes rank (composite score order)",
+            "rank_name": _lane_meta.get("rank_name") or "Hermes rank (composite score order)",
+            "lane": _lane_meta.get("lane"),
+            "now": _lane_meta.get("now"),
+            "main_cap": _lane_meta.get("main_cap"),
+            "quality": _lane_meta.get("quality"),
             "facet_note": ("setup_advisory is descriptive text from the enrichment pipeline "
                            "(RSI band), not a favorable/advisory/caution rating engine")}
 
@@ -6906,6 +6957,65 @@ def _wl_summary():
         "total_active": sum(r["cnt"] for r in by_source),
         "research_cards": cards.get("cnt", 0),
         "needs_iteration": needs_iter.get("cnt", 0),
+    }
+    try:
+        from watch_lane_admission import live_weights_meta, load_policy
+        pol = load_policy()
+        out["lane_policy"] = {
+            "version": pol.get("version"),
+            "default_lane": pol.get("default_lane"),
+            "main_cap": pol.get("main_cap"),
+            "main_source_allowlist": pol.get("main_source_allowlist"),
+        }
+        out["hermes_weights"] = live_weights_meta()
+    except Exception as e:
+        out["lane_policy_error"] = str(e)[:120]
+    return out
+
+
+def _wl_quality_board(query: dict = None):
+    """GET /api/v2/watchlist/quality-board — shadow MAIN admission metrics (W0).
+
+    Samples the Hermes top window + MAIN pre-filter window without mutating storage.
+    """
+    q = query or {}
+    try:
+        from watch_lane_admission import (
+            annotate_item, apply_main_cap, load_policy, live_weights_meta, quality_board_from_items,
+        )
+    except Exception as e:
+        return {"ok": False, "error": f"admission_ liber unavailable: {e}"}
+    pol = load_policy()
+    # Legacy top-200 hermes (quantity baseline)
+    legacy = _wl_items({"sort": ["hermes"], "lane": ["legacy_hermes"]})
+    legacy_items = legacy.get("items") or []
+    # MAIN admission window
+    main = _wl_items({"sort": ["hermes"], "lane": ["main"]})
+    main_items = main.get("items") or []
+    legacy_ann = [annotate_item(dict(it), pol) for it in legacy_items]
+    return {
+        "ok": True,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "policy": {
+            "version": pol.get("version"),
+            "default_lane": pol.get("default_lane"),
+            "main_cap": pol.get("main_cap"),
+            "main_source_allowlist": pol.get("main_source_allowlist"),
+        },
+        "hermes_weights": live_weights_meta(),
+        "legacy_hermes_top": quality_board_from_items(legacy_ann, pol),
+        "main_lane": quality_board_from_items(main_items, pol),
+        "delta": {
+            "legacy_n": len(legacy_items),
+            "main_n": len(main_items),
+            "note": "MAIN excludes raw ai_discovered without setup/ticket identity",
+        },
+        "ctas": [
+            {"id": "review_go", "label": "Review GO", "href": "/watch?tab=watchlist&lane=main&now=GO"},
+            {"id": "fix_wait", "label": "Fix WAIT", "href": "/watch?tab=watchlist&lane=main&now=WAIT"},
+            {"id": "coverage", "label": "Coverage only", "href": "/watch?tab=watchlist&lane=coverage"},
+            {"id": "legacy", "label": "Legacy Hermes top-200", "href": "/watch?tab=watchlist&lane=legacy_hermes"},
+        ],
     }
 
 
@@ -20412,19 +20522,82 @@ def _broker_mature_llm_stage_2b(body: dict):
 
 
 def _broker_queue_agent_batch(body: dict):
-    """Queue steph/maria/risk agent reviews for proposal symbols."""
+    """Queue steph/maria/risk agent reviews for proposal symbols.
+
+    Body:
+      symbol?: str
+      proposal_ids?: int[]   — CTA strip path (oversight wall)
+      agents?: str[] | str   — e.g. ["steph"] or "steph"
+    """
     import subprocess
     b = body or {}
     sym = str(b.get("symbol") or "").strip().upper()
+    raw_agents = b.get("agents") or b.get("agent") or []
+    if isinstance(raw_agents, str):
+        agents = [a.strip() for a in raw_agents.split(",") if a.strip()]
+    else:
+        agents = [str(a).strip() for a in (raw_agents or []) if str(a).strip()]
+    raw_ids = b.get("proposal_ids") or b.get("ids") or []
+    if isinstance(raw_ids, (int, float, str)) and str(raw_ids).strip():
+        raw_ids = [raw_ids]
+    pids = []
+    for x in raw_ids:
+        try:
+            pids.append(int(x))
+        except (TypeError, ValueError):
+            pass
+    # Prefer in-process call when targeting specific IDs (faster, structured stats)
+    if pids or agents:
+        try:
+            import queue_proposal_agent_reviews as qpar
+            stats = qpar.run(
+                symbol=sym or None,
+                dry_run=False,
+                agents=agents or None,
+                proposal_ids=pids or None,
+            )
+            return {
+                "ok": True,
+                "mode": "in_process",
+                "agents": stats.get("agents") or agents,
+                "proposal_ids": pids,
+                "jobs_queued": stats.get("jobs_queued", 0),
+                "reviews_created": stats.get("reviews_created", 0),
+                "skipped_existing": stats.get("skipped_existing", 0),
+                "symbols": stats.get("symbols", 0),
+                "message": (
+                    f"Queued {stats.get('jobs_queued', 0)} job(s) · "
+                    f"{stats.get('reviews_created', 0)} review row(s) · "
+                    f"agents={','.join(stats.get('agents') or agents or ['all'])}"
+                ),
+            }
+        except Exception as e:
+            # fall through to subprocess
+            fallback_err = str(e)[:160]
+    else:
+        fallback_err = None
     cmd = [str(PROJECT_ROOT / ".venv" / "bin" / "python"), "scripts/queue_proposal_agent_reviews.py", "--apply"]
     if sym:
         cmd.extend(["--symbol", sym])
+    if pids:
+        cmd.extend(["--proposal-ids", ",".join(str(x) for x in pids)])
+    if agents:
+        cmd.extend(["--agents", ",".join(agents)])
     proc = subprocess.run(cmd, cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=120)
     return {
         "ok": proc.returncode == 0,
+        "mode": "subprocess",
         "exit_code": proc.returncode,
-        "stdout_tail": (proc.stdout or "")[-400:],
+        "agents": agents,
+        "proposal_ids": pids,
+        "stdout_tail": (proc.stdout or "")[-500:],
         "stderr_tail": (proc.stderr or "")[-400:],
+        "fallback_error": fallback_err,
+        "message": (
+            f"Agent batch exit={proc.returncode}"
+            + (f" · agents={','.join(agents)}" if agents else "")
+            + (f" · {len(pids)} proposal(s)" if pids else "")
+        ),
     }
 
 
@@ -33555,6 +33728,7 @@ ROUTES = {
     "/api/v2/aegis/evidence": lambda: _aegis_evidence(),
     "/api/v2/john/decisions": lambda: _john_decisions(),
     "/api/v2/watchlist/summary": _wl_summary,
+    "/api/v2/watchlist/quality-board": _wl_quality_board,
     "/api/v2/watchlist/jobs": _wl_jobs,
     "/api/v2/watchlist/results": _wl_results,
     "/api/v2/watchlist/debug": _wl_debug,

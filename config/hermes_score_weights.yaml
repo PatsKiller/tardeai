@@ -1,11 +1,15 @@
-version: 5
+# LIVE Main sort profile (main_setup). LOCKED — outcome auto-graft must not rewrite.
+# Prior analyst-majority graft preserved in hermes_score_weights_research.yaml.
+version: 6
+profile: main_setup
+locked: true
+lock_reason: "Watch quality plan 2026-07-31 — Main is setup desk, not analyst coverage rank"
 weights:
-  technical_momentum: 0.0783
-  setup_quality: 0.0102
-  analyst: 0.5264
-  social_sentiment: 0.117
-  sector_strength: 0.0448
-  news_catalyst: 0.117
-  risk_reward: 0.1063
-auto_grafted_at: '2026-07-17T21:00:01.613271+00:00'
-graft_source: outcome_ledger
+  setup_quality: 0.30
+  technical_momentum: 0.25
+  risk_reward: 0.25
+  analyst: 0.10
+  news_catalyst: 0.05
+  social_sentiment: 0.03
+  sector_strength: 0.02
+graft_forbidden: true

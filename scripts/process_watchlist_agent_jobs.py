@@ -1018,19 +1018,49 @@ def _build_prompt(agent: str, symbol: str, context_text: str, note: str = "") ->
     if note:
         base_instruction += f"Additional note: {note}\n"
 
+    # W6 — lane-scoped critique contracts (config/watch_agent_scope_contracts.json)
+    _scope_maria = (
+        "SCOPE CONTRACT (lane=research): Judge research quality for admission. "
+        "Do NOT recommend MAIN solely for analyst coverage/consensus. "
+        "If coverage-only, answer lane=coverage and stop.\n"
+    )
+    _scope_steph = (
+        "SCOPE CONTRACT (lane=proposals): Judge RISK / income fit and blockers "
+        "(sizing, account, stop). Name the single top blocker code when blocking. "
+        "Do not invent setups; coverage ratings are not MAIN admission.\n"
+    )
+    try:
+        import json as _json_scope
+        from pathlib import Path as _P_scope
+        _sc = _json_scope.loads(
+            (_P_scope(__file__).resolve().parent.parent / "config" / "watch_agent_scope_contracts.json").read_text()
+        )
+        _scope_maria = ((_sc.get("personas") or {}).get("maria") or {}).get("prompt_prefix") or _scope_maria
+        _scope_steph = ((_sc.get("personas") or {}).get("steph") or {}).get("prompt_prefix") or _scope_steph
+        if _scope_maria and not _scope_maria.endswith("\n"):
+            _scope_maria += "\n"
+        if _scope_steph and not _scope_steph.endswith("\n"):
+            _scope_steph += "\n"
+    except Exception:
+        pass
+
     prompts = {
         "maria": f"""/no_think You are Maria, a senior research analyst covering equities. Your job is to provide a thorough fundamental and catalyst analysis.
 
+{_scope_maria}
 Analyze {symbol}. Cover:
 1. Business quality and competitive position
 2. Valuation relative to peers and history
 3. Upcoming catalysts (earnings, product launches, regulation)
 4. News sentiment and analyst consensus
 5. Key risks to the thesis
+6. Recommended watch LANE: main | research | coverage (never main for coverage-only)
 
 {base_instruction}""",
 
         "steph": f"""/no_think You are Steph, the income guardian for John's ~$1.2M multi-account portfolio. Your question: "Does this position support the $55K income target? Does the allocation make sense across all four accounts?"
+
+{_scope_steph}
 
 INCOME ANALYSIS FRAMEWORK:
 - Portfolio income target: $55,000/yr from investments

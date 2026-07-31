@@ -56,32 +56,117 @@ def compute_queue_summary(*, force: bool = False) -> dict:
     blocker_counts: dict[str, int] = {}
     agent_backlog: dict[str, int] = {}
     symbols: list[str] = []
+    # Actionable id lists for Proposals CTA strip (cap lists for payload size)
+    oversized_ids: list[int] = []
+    oversight_ids: list[int] = []
+    sizing_ids: list[int] = []
+    thesis_ids: list[int] = []
+    ready_ids: list[int] = []
+    id_symbols: dict[int, str] = {}
 
     for r in rows:
-        symbols.append(str(r.get("symbol") or ""))
+        sym = str(r.get("symbol") or "")
+        symbols.append(sym)
         pid = int(r["id"])
+        id_symbols[pid] = sym
         try:
             ev = _evaluate_row(r)
         except Exception:
             ev = {"route_ready": False, "blockers": ["evaluation_error"]}
-        if ev.get("route_ready"):
-            route_ready += 1
-        else:
-            blocked += 1
+        cats = set()
         for b in ev.get("blockers") or []:
             key = _blocker_category(b)
+            cats.add(key)
             blocker_counts[key] = blocker_counts.get(key, 0) + 1
+        if ev.get("route_ready"):
+            route_ready += 1
+            if len(ready_ids) < 40:
+                ready_ids.append(pid)
+        else:
+            blocked += 1
         if ev.get("oversized"):
             oversized += 1
+            if len(oversized_ids) < 40:
+                oversized_ids.append(pid)
+            cats.add("sizing")
         if ev.get("invalid_thesis"):
             invalid_thesis += 1
+            if len(thesis_ids) < 40:
+                thesis_ids.append(pid)
+        if "oversight" in cats and len(oversight_ids) < 40:
+            oversight_ids.append(pid)
+        if "sizing" in cats and pid not in oversized_ids and len(sizing_ids) < 40:
+            sizing_ids.append(pid)
+        elif "sizing" in cats and len(sizing_ids) < 40 and pid not in sizing_ids:
+            sizing_ids.append(pid)
         pending_agents = pending_by_pid.get(pid) or []
         if pending_agents:
             agent_pending += 1
             for a in pending_agents:
                 agent_backlog[a] = agent_backlog.get(a, 0) + 1
+            if pid not in oversight_ids and len(oversight_ids) < 40:
+                oversight_ids.append(pid)
 
     total = len(rows)
+    # Primary CTA ranking for the desk strip
+    ctas = []
+    steph_pending = int(agent_backlog.get("steph") or 0)
+    if oversight_ids or steph_pending or (blocker_counts.get("oversight") or 0) > 0 or agent_pending:
+        # One-click steph on oversight IDs first (operator desk primary)
+        ctas.append({
+            "id": "queue_steph",
+            "label": "Queue steph",
+            "count": max(steph_pending, len(oversight_ids), 0) or len(oversight_ids),
+            "action": "queue_steph",
+            "proposal_ids": oversight_ids[:30],
+            "tone": "amber",
+        })
+        ctas.append({
+            "id": "clear_oversight",
+            "label": "Clear oversight (all agents)",
+            "count": max(len(oversight_ids), agent_pending, blocker_counts.get("oversight") or 0),
+            "action": "queue_agents",
+            "proposal_ids": oversight_ids[:30],
+            "tone": "amber",
+            "href": "/v3/agents",
+        })
+    if oversized_ids or (blocker_counts.get("sizing") or 0) > 0:
+        ctas.append({
+            "id": "fix_size",
+            "label": "Fix size → cap",
+            "count": max(len(oversized_ids), blocker_counts.get("sizing") or 0),
+            "action": "resize_to_cap",
+            "proposal_ids": list(dict.fromkeys(oversized_ids + sizing_ids))[:30],
+            "tone": "blue",
+        })
+    if thesis_ids or invalid_thesis:
+        ctas.append({
+            "id": "reject_thesis",
+            "label": "Reject bad thesis",
+            "count": max(len(thesis_ids), invalid_thesis),
+            "action": "reject_invalid_thesis",
+            "proposal_ids": thesis_ids[:30],
+            "tone": "red",
+        })
+    if ready_ids:
+        ctas.append({
+            "id": "route_ready",
+            "label": "Review route-ready",
+            "count": route_ready,
+            "action": "filter_ready",
+            "proposal_ids": ready_ids[:30],
+            "tone": "green",
+        })
+    elif blocked and total:
+        ctas.append({
+            "id": "blocked_wall",
+            "label": "0% route-ready — unblock first",
+            "count": blocked,
+            "action": "focus_blocked",
+            "proposal_ids": (oversight_ids + oversized_ids)[:30],
+            "tone": "red",
+        })
+
     result = {
         "ok": True,
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -95,6 +180,15 @@ def compute_queue_summary(*, force: bool = False) -> dict:
         "agent_backlog": agent_backlog,
         "symbols": sorted(set(s for s in symbols if s)),
         "route_ready_pct": round(100.0 * route_ready / total, 1) if total else 0.0,
+        # CTA strip payload
+        "ctas": ctas,
+        "oversized_ids": oversized_ids,
+        "oversight_ids": oversight_ids,
+        "sizing_ids": sizing_ids,
+        "thesis_ids": thesis_ids,
+        "ready_ids": ready_ids,
+        "id_symbols": {str(k): v for k, v in list(id_symbols.items())[:80]},
+        "primary_cta": ctas[0] if ctas else None,
     }
     _QUEUE_SUMMARY_CACHE = (now, result)
     return result

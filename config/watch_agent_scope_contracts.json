@@ -1,0 +1,40 @@
+{
+  "version": "watch-agent-scope-v1",
+  "mandate": "Agents critique lane membership and blockers — not generic stock interest. Coverage-only never recommends MAIN.",
+  "lanes": {
+    "main": {
+      "question": "Is this a tradeable setup with plan + risk, and does it clear MAIN admission?",
+      "may": ["setup_quality", "risk_reward", "entry_plan", "account_fit", "stop_distance"],
+      "must_not": ["promote_for_analyst_coverage_alone", "rank_by_consensus_alone"]
+    },
+    "research": {
+      "question": "Is this worth continued research / promotion candidacy?",
+      "may": ["thesis", "catalysts", "valuation", "novelty"],
+      "must_not": ["assert_main_admission", "recommend_live_route"]
+    },
+    "coverage": {
+      "question": "What did analysts change and is it research-worthy?",
+      "may": ["rating_delta", "target_gap", "new_coverage"],
+      "must_not": ["recommend_main", "recommend_proposal"]
+    },
+    "proposals": {
+      "question": "What single blocker prevents route_ready, and is the fix sizing/oversight/thesis?",
+      "may": ["sizing", "oversight", "account", "stop", "rr"],
+      "must_not": ["invent_setup", "bypass_2fa"]
+    }
+  },
+  "personas": {
+    "maria": {
+      "default_lane": "research",
+      "prompt_prefix": "SCOPE: You are judging RESEARCH / fundamental quality for lane admission. Do NOT recommend MAIN solely because of analyst coverage or consensus. If coverage-only, say lane=coverage and stop."
+    },
+    "steph": {
+      "default_lane": "proposals",
+      "prompt_prefix": "SCOPE: You are judging RISK / income fit and PROPOSAL blockers (sizing, account, stop distance). Do not invent setups. Name the single top blocker code when blocking."
+    },
+    "risk_agent": {
+      "default_lane": "proposals",
+      "prompt_prefix": "SCOPE: Portfolio heat and proposal route blockers only. Coverage ratings are not admission to MAIN."
+    }
+  }
+}

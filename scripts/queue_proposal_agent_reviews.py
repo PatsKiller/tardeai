@@ -32,6 +32,19 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message
 AGENTS = ["maria", "risk_agent", "steph"]
 
 
+def _normalize_agents(agents=None) -> list[str]:
+    if not agents:
+        return list(AGENTS)
+    out = []
+    for a in agents:
+        name = str(a or "").strip().lower()
+        if name in ("risk", "risk-agent"):
+            name = "risk_agent"
+        if name in AGENTS and name not in out:
+            out.append(name)
+    return out or list(AGENTS)
+
+
 def get_conn():
     import psycopg2
     password = os.getenv("DB_PASSWORD")
@@ -71,6 +84,22 @@ def get_target_symbols(conn, symbol=None):
         ORDER BY symbol
     """)
     return [{"symbol": r[0], "source": r[1]} for r in cur.fetchall()]
+
+
+def get_proposals_by_ids(conn, proposal_ids: list[int]) -> list[dict]:
+    """Lookup active/any proposals by id → {id, symbol, strategy_id}."""
+    if not proposal_ids:
+        return []
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT id, symbol, strategy_id FROM paper_trade_proposals
+        WHERE id = ANY(%s)
+        ORDER BY id
+        """,
+        ([int(x) for x in proposal_ids],),
+    )
+    return [{"id": r[0], "symbol": r[1], "strategy_id": r[2]} for r in cur.fetchall()]
 
 
 def get_pending_proposals_for_symbol(conn, symbol):
@@ -175,13 +204,61 @@ def create_pending_review(conn, proposal_id, symbol, strategy_id, agent_name, dr
     return {"created": True}
 
 
-def run(symbol=None, dry_run=True):
+def run(symbol=None, dry_run=True, agents=None, proposal_ids=None):
+    """Queue agent reviews.
+
+    agents: subset of maria/risk_agent/steph (default all)
+    proposal_ids: when set, only those proposals are targeted (CTA strip path)
+    """
+    agent_list = _normalize_agents(agents)
     conn = get_conn()
     try:
-        targets = get_target_symbols(conn, symbol)
-        log.info(f"Found {len(targets)} target symbols")
+        stats = {
+            "symbols": 0,
+            "jobs_queued": 0,
+            "reviews_created": 0,
+            "skipped_existing": 0,
+            "details": [],
+            "agents": agent_list,
+            "proposal_ids": list(proposal_ids or []),
+        }
 
-        stats = {"symbols": 0, "jobs_queued": 0, "reviews_created": 0, "skipped_existing": 0, "details": []}
+        # ── CTA path: explicit proposal IDs (e.g. oversight wall → steph only) ──
+        if proposal_ids:
+            rows = get_proposals_by_ids(conn, list(proposal_ids))
+            log.info(f"Targeting {len(rows)} proposal(s) · agents={agent_list}")
+            for prop in rows:
+                pid = int(prop["id"])
+                sym = str(prop["symbol"] or "").upper()
+                sid = prop.get("strategy_id") or "momentum_scalp"
+                if not sym:
+                    continue
+                stats["symbols"] += 1
+                ensure_watchlist_item(conn, sym, "paper_proposal", dry_run)
+                for agent in agent_list:
+                    if check_existing_review(conn, pid, agent):
+                        stats["skipped_existing"] += 1
+                        continue
+                    if check_existing_job(conn, sym, agent, proposal_id=pid):
+                        stats["skipped_existing"] += 1
+                        continue
+                    create_pending_review(conn, pid, sym, sid, agent, dry_run)
+                    stats["reviews_created"] += 1
+                    result = queue_agent_job(conn, sym, agent, pid, sid, dry_run)
+                    if result.get("queued"):
+                        stats["jobs_queued"] += 1
+                stats["details"].append({"symbol": sym, "proposal_id": pid, "strategy_id": sid})
+            if not dry_run:
+                conn.commit()
+            log.info(
+                f"\nQueue summary (by-id): symbols={stats['symbols']} "
+                f"jobs_queued={stats['jobs_queued']} reviews_created={stats['reviews_created']} "
+                f"skipped={stats['skipped_existing']} agents={agent_list}"
+            )
+            return stats
+
+        targets = get_target_symbols(conn, symbol)
+        log.info(f"Found {len(targets)} target symbols · agents={agent_list}")
 
         for t in targets:
             sym = t["symbol"]
@@ -189,13 +266,13 @@ def run(symbol=None, dry_run=True):
             stats["symbols"] += 1
 
             # Ensure watchlist item exists
-            wl_result = ensure_watchlist_item(conn, sym, source, dry_run)
+            ensure_watchlist_item(conn, sym, source, dry_run)
 
             # Get pending proposals for this symbol
             proposals = get_pending_proposals_for_symbol(conn, sym)
             if not proposals:
                 # Symbol has GO signal but no proposal yet — queue for watchlist agent framework
-                for agent in AGENTS:
+                for agent in agent_list:
                     if check_existing_job(conn, sym, agent):
                         stats["skipped_existing"] += 1
                         continue
@@ -219,7 +296,7 @@ def run(symbol=None, dry_run=True):
                 pid = prop["id"]
                 sid = prop["strategy_id"]
 
-                for agent in AGENTS:
+                for agent in agent_list:
                     # Skip if review already exists
                     if check_existing_review(conn, pid, agent):
                         stats["skipped_existing"] += 1
@@ -247,7 +324,7 @@ def run(symbol=None, dry_run=True):
 
         log.info(f"\nQueue summary: symbols={stats['symbols']} "
                  f"jobs_queued={stats['jobs_queued']} reviews_created={stats['reviews_created']} "
-                 f"skipped={stats['skipped_existing']}")
+                 f"skipped={stats['skipped_existing']} agents={agent_list}")
         return stats
     finally:
         conn.close()
@@ -259,11 +336,33 @@ if __name__ == "__main__":
     parser.add_argument("--apply", action="store_true", help="Actually queue jobs")
     parser.add_argument("--symbol", type=str, help="Single symbol to queue")
     parser.add_argument("--proposal-id", type=int, default=None, help="Queue reviews for specific proposal ID")
+    parser.add_argument(
+        "--proposal-ids",
+        type=str,
+        default="",
+        help="Comma-separated proposal IDs (CTA strip bulk path)",
+    )
+    parser.add_argument(
+        "--agents",
+        type=str,
+        default="",
+        help="Comma-separated agents: maria,risk_agent,steph (default all)",
+    )
     args = parser.parse_args()
+
+    agents_arg = [a.strip() for a in str(args.agents or "").split(",") if a.strip()] or None
+    pids_arg = []
+    if args.proposal_ids:
+        for part in str(args.proposal_ids).split(","):
+            part = part.strip()
+            if part.isdigit() or (part.startswith("-") and part[1:].isdigit()):
+                pids_arg.append(int(part))
+    if args.proposal_id:
+        pids_arg.append(int(args.proposal_id))
 
     # If --proposal-id given, look up the symbol
     symbol = args.symbol
-    if args.proposal_id and not symbol:
+    if args.proposal_id and not symbol and not pids_arg:
         conn = get_conn()
         try:
             cur = conn.cursor()
@@ -279,5 +378,10 @@ if __name__ == "__main__":
             conn.close()
 
     dry = not args.apply
-    result = run(symbol=symbol, dry_run=dry)
+    result = run(
+        symbol=symbol,
+        dry_run=dry,
+        agents=agents_arg,
+        proposal_ids=pids_arg or None,
+    )
     print(json.dumps({k: v for k, v in result.items() if k != "details"}, indent=2))

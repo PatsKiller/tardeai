@@ -29,11 +29,39 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
 
 from dotenv import load_dotenv
 from proposal_routing_lanes import entry_routing_lanes, risk_gate_for_lane
 
 load_dotenv(PROJECT_ROOT / ".env")
+
+
+def _main_go_gate_enabled() -> bool:
+    """When true, only MAIN GO-shaped candidates may create new watchlist proposals."""
+    try:
+        from watch_lane_admission import load_policy, classify_lane, now_status, annotate_item
+        pol = load_policy()
+        return bool((pol.get("proposal_bridge") or {}).get("require_main_go", True))
+    except Exception:
+        return True
+
+
+def _passes_main_go_bridge(row: dict) -> bool:
+    """Allow bridge when MAIN GO (or starred/screener with setup). Fail closed on import error."""
+    try:
+        from watch_lane_admission import load_policy, annotate_item
+        pol = load_policy()
+        if not bool((pol.get("proposal_bridge") or {}).get("require_main_go", True)):
+            return True
+        it = annotate_item(dict(row), pol)
+        if it.get("lane") == "main" and it.get("now_status") in ("GO", "WAIT"):
+            # WAIT still blocked for *new* proposals — only GO creates
+            return it.get("now_status") == "GO" or bool(it.get("starred"))
+        return False
+    except Exception:
+        # Fail open only if env explicitly disables gate
+        return os.getenv("WATCHLIST_BRIDGE_MAIN_GO", "1") not in ("1", "true", "TRUE", "yes")
 
 log = logging.getLogger("watchlist_proposal_bridge")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s")
@@ -375,6 +403,10 @@ def sync_watchlist_proposals(*, dry_run: bool = False, max_new: int | None = Non
     except Exception:
         pass
     candidates = _fetch_buy_candidates(cur)
+    if _main_go_gate_enabled():
+        before = len(candidates)
+        candidates = [c for c in candidates if _passes_main_go_bridge(c)]
+        log.info("main_go_gate: %d → %d candidates", before, len(candidates))
     valid_syms = {c["symbol"].upper() for c in candidates}
     reconciled = _reconcile_sleeve_strategy_ids(cur, dry_run=dry_run)
     deduped = _dedupe_watchlist_proposals(cur, dry_run=dry_run)
@@ -538,6 +570,24 @@ def sync_watchlist_proposals(*, dry_run: bool = False, max_new: int | None = Non
         rr = round((target - entry) / (entry - stop), 2) if entry > stop else 0
         expires = datetime.now(timezone.utc) + timedelta(days=7)
         resolve_meta = exit_rationale.get("resolve") or {}
+        # W7 — source keys for journal / outcome attribution (lane + discovery)
+        _src_keys = {
+            "watch_lane": "main",
+            "now_status": "GO",
+            "discovery_source": "watchlist",
+            "wl_source": c.get("wl_source") or c.get("source"),
+            "hermes_rank": c.get("hermes_rank"),
+            "rating_source": c.get("rating_source"),
+            "bridge_gate": "main_go",
+        }
+        try:
+            from watch_lane_admission import annotate_item
+            _ann = annotate_item(dict(c))
+            _src_keys["watch_lane"] = _ann.get("lane") or "main"
+            _src_keys["now_status"] = _ann.get("now_status") or "GO"
+            _src_keys["lane_blockers"] = _ann.get("lane_blockers") or []
+        except Exception:
+            pass
         basis = {
             "engine": "watchlist_proposal_bridge",
             "plan_source": plan_source,
@@ -545,6 +595,7 @@ def sync_watchlist_proposals(*, dry_run: bool = False, max_new: int | None = Non
             "rating_source": c["rating_source"],
             "wl_status": c.get("wl_status"),
             "watchlist_sleeve": resolve_meta.get("watchlist_sleeve") or c.get("wl_strategy"),
+            "source_keys": _src_keys,  # journal hop: proposal → fill attribution
             "strategy_resolve_source": resolve_meta.get("resolve_source"),
             "classified_strategy": resolve_meta.get("classified_strategy"),
             "exit_rationale": exit_rationale,

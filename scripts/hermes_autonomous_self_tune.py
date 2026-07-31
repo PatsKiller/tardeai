@@ -26,7 +26,11 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+# Live Main weights (hermes_score_weights.yaml) are LOCKED for the setup desk.
+# Outcome auto-graft writes only to the research profile file.
 WEIGHTS_FILE = PROJECT_ROOT / "config" / "hermes_score_weights.yaml"
+RESEARCH_WEIGHTS_FILE = PROJECT_ROOT / "config" / "hermes_score_weights_research.yaml"
+PROFILES_FILE = PROJECT_ROOT / "config" / "hermes_score_profiles.yaml"
 
 # retention windows (days) — env override
 SCORE_HISTORY_DAYS = int(os.getenv("HERMES_SCORE_HISTORY_RETENTION_DAYS", "30"))
@@ -66,9 +70,39 @@ GRAFT_ELIGIBLE_DAYS = int(os.getenv("HERMES_GRAFT_ELIGIBLE_DAYS", "5"))
 GRAFT_ELIGIBLE_WINDOW_DAYS = int(os.getenv("HERMES_GRAFT_ELIGIBLE_WINDOW_DAYS", "14"))
 
 
-def auto_graft_weights(cur, apply: bool) -> dict:
-    """Graft outcome-gated calibration suggestions into the live weights yaml — clamped."""
+def _graft_target_path() -> Path:
+    """Main weights stay locked; graft research_intel only (Watch quality plan 2026-07-31)."""
     import yaml
+    try:
+        live = yaml.safe_load(WEIGHTS_FILE.read_text()) or {}
+        if live.get("locked") or live.get("graft_forbidden"):
+            return RESEARCH_WEIGHTS_FILE
+    except Exception:
+        pass
+    try:
+        profiles = yaml.safe_load(PROFILES_FILE.read_text()) or {}
+        rel = (profiles.get("graft_target_file") or "").strip()
+        if rel:
+            return PROJECT_ROOT / rel
+    except Exception:
+        pass
+    return RESEARCH_WEIGHTS_FILE
+
+
+def auto_graft_weights(cur, apply: bool) -> dict:
+    """Graft outcome-gated calibration into RESEARCH weights only — Main is locked."""
+    import yaml
+    target = _graft_target_path()
+    try:
+        live = yaml.safe_load(WEIGHTS_FILE.read_text()) or {}
+        if live.get("locked") or live.get("graft_forbidden"):
+            # Never rewrite main_setup live file
+            pass
+        elif target.resolve() == WEIGHTS_FILE.resolve():
+            return {"status": "gated_main_locked",
+                    "note": "main_setup weights locked; refusing graft onto hermes_score_weights.yaml"}
+    except Exception:
+        pass
     # persistence gate: eligible outcome suggestions on >= N distinct days in the window
     cur.execute("""SELECT count(DISTINCT created_at::date) FROM hermes_weight_calibration
                    WHERE rationale LIKE 'OUTCOME_LEDGER|eligible=1%%'
@@ -95,8 +129,13 @@ def auto_graft_weights(cur, apply: bool) -> dict:
     rows = cur.fetchall()
     if not rows:
         return {"status": "no_outcome_suggestions"}
-    doc = yaml.safe_load(WEIGHTS_FILE.read_text()) or {}
+    if not target.exists():
+        # seed research file from live if missing
+        target.write_text(WEIGHTS_FILE.read_text() if WEIGHTS_FILE.exists() else "weights: {}\n")
+    doc = yaml.safe_load(target.read_text()) or {}
     cur_w = dict(doc.get("weights") or {})
+    if not cur_w:
+        return {"status": "no_base_weights", "target": str(target)}
     new_w = dict(cur_w)
     changes = []
     for factor, sug, pred in rows:
@@ -111,20 +150,23 @@ def auto_graft_weights(cur, apply: bool) -> dict:
                         "predictiveness": float(pred) if pred is not None else None})
         new_w[factor] = float(new_w[factor]) + delta
     if not changes:
-        return {"status": "no_change", "eligible_days": eligible_days}
+        return {"status": "no_change", "eligible_days": eligible_days, "target": str(target)}
     tot = sum(new_w.values()) or 1.0
     new_w = {k: round(v / tot, 4) for k, v in new_w.items()}
     if apply:
         doc["weights"] = new_w
         doc["version"] = int(doc.get("version") or 1) + 1
+        doc["profile"] = doc.get("profile") or "research_intel"
         doc["auto_grafted_at"] = datetime.now(timezone.utc).isoformat()
         doc["graft_source"] = "outcome_ledger"
-        WEIGHTS_FILE.write_text(yaml.safe_dump(doc, sort_keys=False))
+        doc["note"] = "Research-only graft; Main hermes_score_weights.yaml is locked"
+        target.write_text(yaml.safe_dump(doc, sort_keys=False))
         _audit(cur, "auto_graft_weights_outcome",
                {"changes": changes, "new_weights": new_w, "eligible_days": eligible_days,
-                "drift_7d_before": float(drift_7d or 0)}, len(changes))
+                "drift_7d_before": float(drift_7d or 0), "target": str(target),
+                "main_locked": True}, len(changes))
     return {"status": "applied" if apply else "dry", "changes": changes,
-            "eligible_days": eligible_days}
+            "eligible_days": eligible_days, "target": str(target), "main_locked": True}
 
 
 # ───────────────────── self-purge ─────────────────────
