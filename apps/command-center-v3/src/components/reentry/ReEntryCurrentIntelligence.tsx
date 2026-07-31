@@ -37,6 +37,7 @@ import {
 import { HelpTip } from './ReEntryHelpGuide'
 import ReEntryCommandHeader, { type ReEntryLaneCounts } from './ReEntryCommandHeader'
 import ReEntryMiniChart from './ReEntryMiniChart'
+import ReEntryAlertArmModal from './ReEntryAlertArmModal'
 
 const COMPOSITE_ALERT_KEY = 'portfolio.reentry.composite-alerts.v1'
 
@@ -246,6 +247,8 @@ export default function ReEntryCurrentIntelligence({
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [watchReload, setWatchReload] = useState(0)
   const [lane, setLane] = useState<ReEntryLane>(laneProp ?? 'NOW')
+  const [armSymbol, setArmSymbol] = useState<string | null>(null)
+  const [toast, setToast] = useState('')
 
   useEffect(() => { if (laneProp) setLane(laneProp) }, [laneProp])
 
@@ -472,6 +475,12 @@ export default function ReEntryCurrentIntelligence({
   }
   const shareCoverage = evidence.sources.map(source => `${source.label} shares ${evidence.sourceFieldCoverage[source.key]?.quantity ?? 0}`).join(' · ')
   const refreshing = evidence.loading || evidence.refreshing
+  const activeAlerts = alertRows.filter(row => !['disabled', 'expired', 'resolved'].includes(String(row.status || '').toLowerCase()) && (row.active === undefined || row.active))
+  const reentryArmed = activeAlerts.filter(row => {
+    const sym = String(row.symbol || '').toUpperCase()
+    return sym && rows.some(r => r.symbol === sym)
+  })
+  const armRow = armSymbol ? rows.find(r => r.symbol === armSymbol) : null
 
   return (
     <div style={{ ...panel, padding: 10 }}>
@@ -483,6 +492,39 @@ export default function ReEntryCurrentIntelligence({
         onRefresh={refresh}
         refreshing={refreshing}
       />
+
+      <div
+        data-testid="reentry-alert-center"
+        style={{ ...panel, marginTop: 8, padding: 8, background: 'var(--bg2)', fontSize: 11, color: BB.text2 }}
+      >
+        <b style={{ color: 'var(--text0)' }}>ALERT CENTER</b>
+        {' · '}
+        {reentryArmed.length} armed Watch alerts on exited symbols
+        {' · '}
+        {Object.values(compositeMap ?? {}).filter((item: any) => item?.armed).length} rotation six-gate monitors
+        {' · '}
+        <span style={{ color: BB.text3 }}>advisory only — arm zone/RSI from any row · six-gate arms in Rotation workspace</span>
+        {reentryArmed.length > 0 && (
+          <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {reentryArmed.slice(0, 12).map((row: any) => (
+              <span
+                key={String(row.id ?? `${row.symbol}-${row.condition_type}-${row.threshold}`)}
+                style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, border: '1px solid var(--border)', color: BB.text2 }}
+                title={row.note || ''}
+              >
+                {String(row.symbol || '').toUpperCase()} {String(row.condition_type || '').replace(/_/g, ' ')} {row.threshold ?? ''}
+                {row.last_fired_at ? ` · fired ${String(row.last_fired_at).slice(0, 10)}` : ''}
+              </span>
+            ))}
+            {reentryArmed.length > 12 && <span style={{ fontSize: 10, color: BB.text3 }}>+{reentryArmed.length - 12} more</span>}
+          </div>
+        )}
+      </div>
+      {toast && (
+        <div style={{ marginTop: 8, padding: '6px 10px', borderRadius: 4, border: `1px solid ${BB.green}`, color: BB.green, fontSize: 11 }}>
+          {toast}
+        </div>
+      )}
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 8 }}>
         <div>
@@ -610,13 +652,13 @@ export default function ReEntryCurrentIntelligence({
                   </div>
                   <div>
                     <span style={{ color: tone, fontWeight: 900 }}>{row.intel.state}</span>
-                    <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 800, color: BB.text3 }}>{score.lane}</span>
+                    <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 800, color: BB.text3 }}>{score.lane}</span>
                     <div style={{ marginTop: 3, fontWeight: 800 }}>{row.intel.action}</div>
                     <div style={{ color: BB.text2, marginTop: 2, lineHeight: 1.4 }} title={row.intel.reason}>{row.intel.reason}</div>
                     {row.intel.highlights.length > 0 && (
                       <div style={{ marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                         {row.intel.highlights.map(h => (
-                          <span key={h} style={{ fontSize: 9, fontWeight: 750, padding: '1px 5px', borderRadius: 3, border: '1px solid var(--border)', color: BB.text3, background: 'var(--bg1)' }}>{h}</span>
+                          <span key={h} style={{ fontSize: 10, fontWeight: 750, padding: '1px 5px', borderRadius: 3, border: '1px solid var(--border)', color: BB.text3, background: 'var(--bg1)' }}>{h}</span>
                         ))}
                       </div>
                     )}
@@ -676,6 +718,9 @@ export default function ReEntryCurrentIntelligence({
                   </div>
                   <div onClick={event => event.stopPropagation()}>
                     <button type="button" onClick={() => setExpanded(value => ({ ...value, [row.symbol]: true }))} style={button(true)}>OPEN GATES</button>
+                    <button type="button" onClick={() => setArmSymbol(row.symbol)} style={{ ...button(false), marginTop: 5 }} data-testid={`reentry-arm-${row.symbol}`}>
+                      ARM ALERT{row.alertCount ? ` (${row.alertCount})` : ''}
+                    </button>
                     <button type="button" onClick={() => classify([row.symbol])} style={{ ...button(false), marginTop: 5 }}>CLASSIFY</button>
                     <button type="button" onClick={() => openWatch(row.symbol)} style={{ ...button(false), marginTop: 5 }}>OPEN WATCH</button>
                   </div>
@@ -705,7 +750,7 @@ export default function ReEntryCurrentIntelligence({
                           }}
                         >
                           <b style={{ color: gateColor(gate.state) }}>{gate.state}</b>
-                          <span style={{ color: BB.text3, fontSize: 9 }}>{gate.kind}</span>
+                          <span style={{ color: BB.text3, fontSize: 10 }}>{gate.kind}</span>
                           <b>{gate.label}</b>
                           <span style={{ color: BB.text3 }}>
                             {gate.current}
@@ -762,6 +807,7 @@ export default function ReEntryCurrentIntelligence({
                       </div>
                       <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
                         <button type="button" onClick={() => classify([row.symbol])} style={button(true)}>EDIT CLASSIFICATION</button>
+                        <button type="button" onClick={() => setArmSymbol(row.symbol)} style={button(false)}>ARM ZONE / RSI ALERT</button>
                         <button type="button" onClick={() => openWatch(row.symbol)} style={button(false)}>OPEN {row.symbol} IN WATCH</button>
                         <button type="button" onClick={() => openRotation(row.symbol)} style={button(false)}>OPEN ROTATION</button>
                       </div>
@@ -791,6 +837,25 @@ export default function ReEntryCurrentIntelligence({
             </>
           )}
         </div>
+      )}
+      {armRow && (
+        <ReEntryAlertArmModal
+          symbol={armRow.symbol}
+          short={Boolean(armRow.mandate.flags.short)}
+          intel={{
+            entryLow: armRow.intel.entryLow,
+            entryHigh: armRow.intel.entryHigh,
+            price: armRow.intel.price,
+            rsi: armRow.intel.rsi,
+          }}
+          onClose={() => setArmSymbol(null)}
+          onArmed={summary => {
+            setArmSymbol(null)
+            setToast(`${armRow.symbol} alerts armed: ${summary}`)
+            alerts.refetch()
+            window.setTimeout(() => setToast(''), 6000)
+          }}
+        />
       )}
     </div>
   )
