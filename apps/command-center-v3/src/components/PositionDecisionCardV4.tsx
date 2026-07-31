@@ -13,6 +13,7 @@ import { useTerminalUi } from '../lib/terminalUi'
 import { cardShell, modRow, modLabel, ctxLine, ctxKey, statusStrip } from '../lib/terminalCardTheme'
 import { BB, terminalRail, terminalVerdictColor, terminalVerdictBg, terminalButton } from '../lib/watchlistTerminalTokens'
 import CloudLlmRunButtons from './CloudLlmRunButtons'
+import TradingSymbolChart from './TradingSymbolChart'
 
 // Position Decision Card v4 — open-trades surface joins the v4 card family (2026-07-04).
 // Same props + behavior as PositionDecisionCard (v3 untouched; global cc.cards.v4 toggle
@@ -896,13 +897,19 @@ export default function PositionDecisionCardV4({ p, paMap, expanded, onToggle, o
         <Expander open={!!expanded} onToggle={onToggle} label={expanded ? 'less' : 'more'} />
       </div>
       {expanded && <>
+        <TradingSymbolChart
+          symbol={String(p.symbol || '')}
+          entry={p.basis ?? p.avg_cost ?? p.entry_price ?? null}
+          stop={p.live_stop_price ?? p.stop_price ?? p.protection?.stop_price ?? null}
+          target={p.target_price ?? p.protection?.target ?? null}
+        />
         {news.length === 0 && <div style={{ fontSize: 10.5, color: WL.text.dim }}>No recent research surfaced.</div>}
         {news.map((n: any, i: number) => {
           const stale = (n.age_hours ?? 0) > 48
           return <div key={i} style={{ fontSize: 11, marginBottom: 7, opacity: stale ? 0.75 : 1, lineHeight: 1.45 }}>
             <div style={{ display: 'flex', gap: 6, alignItems: 'baseline' }}>
               <span style={chip('rgba(148,163,184,.08)', WL.text.secondary)}>{n.source}</span>
-              {n.age_hours != null && <span style={{ fontSize: 9.5, color: stale ? WL.signal.amber : WL.text.dim }}>{Math.round(n.age_hours)}h{stale ? ' stale' : ''}</span>}
+              {n.age_hours != null && <span style={{ fontSize: 10, color: stale ? WL.signal.amber : WL.text.dim }}>{Math.round(n.age_hours)}h{stale ? ' stale' : ''}</span>}
             </div>
             {n.url
               ? <a href={n.url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="wlc4-link" style={{ display: 'inline-block', marginTop: 3, fontWeight: 650 }}>{n.title || ''}</a>

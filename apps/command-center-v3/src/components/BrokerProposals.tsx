@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
+import { downloadBrokerProposalsCsv } from '../lib/exportBrokerProposalsCsv'
+import {
+  parseProposalQueueLink,
+  writeProposalQueueParams,
+} from '../lib/tradingDeepLink'
 import ManualExecutionModal, { type ManualExecSeed } from './ManualExecutionModal'
 import BrokerPromoteModal, { type BrokerPromoteSeed } from './BrokerPromoteModal'
 import BrokerRouteConfirmModal from './BrokerRouteConfirmModal'
@@ -138,13 +144,27 @@ export default function BrokerProposals({
 }: { focusSymbol?: string; focusProposalId?: number } = {}) {
   // Global card-family v4 evaluation toggle (switch UI lives on the Watch hub).
   const ProposalCard = BrokerProposalCardV4
-  const [listFilters, setListFilters] = useState<ListFilters>(DEFAULT_FILTERS)
+  const [searchParams, setSearchParams] = useSearchParams()
+  // WP-T5: seed filters from URL (pq_* + symbol/account)
+  const pq0 = parseProposalQueueLink(searchParams)
+  const [listFilters, setListFilters] = useState<ListFilters>(() => ({
+    ...DEFAULT_FILTERS,
+    sort: pq0.sort,
+    kind: pq0.kind,
+    source: pq0.source,
+    zone: pq0.zone,
+    rrPreset: pq0.rr,
+    account: searchParams.get('account') || '',
+    symbol: (searchParams.get('symbol') || '').toUpperCase(),
+    page: pq0.page,
+  }))
   const [bypassCache, setBypassCache] = useState(false)
-  const [view, setView] = useState<'active' | 'expired'>('active')
-  const [focus, setFocus] = useState((focusSymbol || '').toUpperCase())
+  const [view, setView] = useState<'active' | 'expired'>(pq0.view)
+  const [focus, setFocus] = useState((focusSymbol || searchParams.get('symbol') || '').toUpperCase())
   const [focusPid, setFocusPid] = useState<number | null>(
     focusProposalId != null && Number.isFinite(focusProposalId) ? focusProposalId : null,
   )
+  const [heldOnly, setHeldOnly] = useState(pq0.held)
   const focusScrollRef = useRef<HTMLDivElement | null>(null)
   const listPath = useMemo(() => {
     const p = new URLSearchParams()
@@ -211,7 +231,6 @@ export default function BrokerProposals({
   const [routeApproveTk, setRouteApproveTk] = useState<Record<number, string>>({})
   const [routeApproveCode, setRouteApproveCode] = useState<Record<number, string>>({})
   const [routeBusy, setRouteBusy] = useState<Record<number, boolean>>({})
-  const [heldOnly, setHeldOnly] = useState(false)
   const [modalSeed, setModalSeed] = useState<ManualExecSeed | null>(null)
   const [adjustSeed, setAdjustSeed] = useState<BrokerPromoteSeed | null>(null)
   const [destAccount, setDestAccount] = useState<Record<number, string>>({})
@@ -256,11 +275,36 @@ export default function BrokerProposals({
       if (patch.page === undefined && Object.keys(patch).some(k => k !== 'page')) {
         next.page = 1
       }
+      // WP-T5: URL-sync shareable queue filters
+      syncQueueUrl(next, { held: heldOnly, view })
       return next
     })
     detailLoadedRef.current.clear()
     setDetailMap({})
   }
+
+  const syncQueueUrl = (filters: ListFilters, opts: { held: boolean; view: 'active' | 'expired' }) => {
+    setSearchParams(prev => {
+      let sp = writeProposalQueueParams(prev, {
+        sort: filters.sort,
+        kind: filters.kind,
+        source: filters.source,
+        zone: filters.zone,
+        rrPreset: filters.rrPreset,
+        page: filters.page,
+      }, { held: opts.held, view: opts.view })
+      if (filters.symbol) sp.set('symbol', filters.symbol)
+      else sp.delete('symbol')
+      if (filters.account) sp.set('account', filters.account)
+      else sp.delete('account')
+      if (!sp.get('tab')) sp.set('tab', 'Proposals')
+      return sp
+    }, { replace: true })
+  }
+
+  useEffect(() => {
+    if (focusSymbol) setFocus(String(focusSymbol).toUpperCase())
+  }, [focusSymbol])
 
   const fetchProposalDetail = useCallback(async (pid: number, opts?: { force?: boolean }) => {
     if (!opts?.force && (detailLoadedRef.current.has(pid) || detailInflightRef.current.has(pid))) return
@@ -1064,20 +1108,33 @@ export default function BrokerProposals({
           <div style={{ fontSize: 15, fontWeight: 700, color: desk.text, letterSpacing: '-.01em' }}>
             Path B · Broker proposals
           </div>
-          <div style={{ fontSize: 10, color: desk.textDim, marginTop: 3, maxWidth: 520, lineHeight: 1.45 }}>
+          <div style={{ fontSize: 10, color: desk.textDim, marginTop: 3, maxWidth: 560, lineHeight: 1.45 }}>
             Live-route queue with thesis validation, agent consensus, and Litmus pre-check before 2FA.
             P0 validation caps are advisory — oversight BLOCK still hard-stops auto-route.
+            {' '}<b style={{ color: desk.text }}>Auto live blocked</b> · live capital only via <b style={{ color: desk.text }}>per-order 2FA</b>.
+            Queue filters are URL-synced (<code style={{ fontSize: 10 }}>pq_*</code>) for shareable state.
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <div style={{ display: 'inline-flex', borderRadius: desk.radius, overflow: 'hidden', border: `1px solid ${desk.border}` }}>
             {(['active', 'expired'] as const).map(v => (
-              <button key={v} onClick={() => { setView(v); setListFilters(f => ({ ...f, page: 1 })) }}
+              <button
+                key={v}
+                type="button"
+                onClick={() => {
+                  setView(v)
+                  setListFilters(f => {
+                    const next = { ...f, page: 1 }
+                    syncQueueUrl(next, { held: heldOnly, view: v })
+                    return next
+                  })
+                }}
                 style={{
                   padding: '5px 14px', fontSize: 11, fontWeight: 700, cursor: 'pointer', border: 'none',
                   background: view === v ? desk.bgInset : 'transparent',
                   color: view === v ? desk.text : desk.textDim, textTransform: 'capitalize',
-                }}>
+                }}
+              >
                 {v}
               </button>
             ))}
@@ -1143,10 +1200,35 @@ export default function BrokerProposals({
             {queueTotal ? ` · ${queueTotal} in broker queue (entries + protection)` : ''}
             {hasQueuePages ? ` · page ${queuePage}/${queueTotalPages}` : ''})
           </div>
-          <button onClick={() => setHeldOnly(h => !h)} aria-pressed={heldOnly} aria-label="Show held-symbol proposals only" style={{
-            fontSize: 10.5, fontWeight: 800, padding: '5px 11px', borderRadius: 6, cursor: 'pointer',
-            border: `1px solid ${heldOnly ? BLUE : 'var(--border)'}`, background: heldOnly ? 'rgba(96,165,250,.14)' : 'transparent', color: heldOnly ? BLUE : MUTED,
-          }}>● Held only{heldN ? ` (${heldN})` : ''}</button>
+          <button
+            onClick={() => {
+              setHeldOnly(h => {
+                const next = !h
+                syncQueueUrl(listFilters, { held: next, view })
+                return next
+              })
+            }}
+            aria-pressed={heldOnly}
+            aria-label="Show held-symbol proposals only"
+            style={{
+              fontSize: 10.5, fontWeight: 800, padding: '5px 11px', borderRadius: 6, cursor: 'pointer',
+              border: `1px solid ${heldOnly ? BLUE : 'var(--border)'}`, background: heldOnly ? 'rgba(96,165,250,.14)' : 'transparent', color: heldOnly ? BLUE : MUTED,
+            }}
+          >● Held only{heldN ? ` (${heldN})` : ''}</button>
+          <button
+            type="button"
+            data-testid="proposals-export-csv"
+            disabled={!shown.length}
+            title="Download currently shown proposals as CSV (client-side; no broker write)."
+            onClick={() => downloadBrokerProposalsCsv(shown)}
+            style={{
+              fontSize: 10.5, fontWeight: 800, padding: '5px 11px', borderRadius: 6,
+              cursor: shown.length ? 'pointer' : 'not-allowed', opacity: shown.length ? 1 : 0.45,
+              border: '1px solid var(--border)', background: 'var(--bg2)', color: MUTED,
+            }}
+          >
+            Export CSV ({shown.length})
+          </button>
           {shown.length > 0 && (
             <button
               onClick={() => selectMode ? exitSelectMode() : enterSelectMode()}

@@ -1,10 +1,12 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { fmt$ } from '../lib/format'
 import type { DrillContext } from './DetailDrawer'
 import { useProAnalystMap } from './ProAnalystPill'
 import PositionDecisionCardV4 from './PositionDecisionCardV4'
 import { formatReviewStamp } from '../lib/stopReviewTooltip'
+import { downloadOpenTradesCsv } from '../lib/exportOpenTradesCsv'
 
 const panel = { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 12, padding: 14 } as const
 const sel = { fontSize: 11, padding: '6px 9px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 6, color: '#f8fafc' } as const
@@ -15,6 +17,9 @@ export default function OpenTradesIntelligence({ onDrill, focusSymbol }: { onDri
   // Deep-link from a Reports stop action: ?symbol=XXX focuses JUST that position's decision card (with the
   // Stage 2c protective-stop ARM + Ignore-1-week controls), with a banner to clear back to all.
   const [focus, setFocus] = useState((focusSymbol || '').toUpperCase())
+  useEffect(() => {
+    if (focusSymbol) setFocus(String(focusSymbol).toUpperCase())
+  }, [focusSymbol])
   const CardComponent = PositionDecisionCardV4
   const { data: llmCov } = useApi<any>('/api/v2/portfolio/llm-coverage', 300_000)
   const { data: scards } = useApi<any>('/api/v2/symbol-cards', 300_000)
@@ -83,16 +88,61 @@ export default function OpenTradesIntelligence({ onDrill, focusSymbol }: { onDri
 
   const Dd = ({ label, v, onPick }: any) => <label style={{ fontSize: 10, color: MUTED, display: 'flex', flexDirection: 'column', gap: 3 }}>{label}<select style={sel} value={f[v]} onChange={e => onPick(e.target.value)}><option value="all">all</option>{(flt[label === 'RSI' ? 'technical_buckets' : label === 'Protection' ? 'protection_states' : label.toLowerCase() + 's'] ?? []).map((o: string) => <option key={o} value={o}>{o}</option>)}</select></label>
 
+  const journalHref = focus
+    ? `/journal?symbol=${encodeURIComponent(focus)}`
+    : '/journal'
+  const stopDeskHref = focus
+    ? `/portfolio?tab=${encodeURIComponent('Stop Management')}&symbol=${encodeURIComponent(focus)}`
+    : `/portfolio?tab=${encodeURIComponent('Stop Management')}`
+  const linkBtn: CSSProperties = {
+    fontSize: 10, fontWeight: 800, padding: '4px 10px', borderRadius: 6, cursor: 'pointer',
+    border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text1)',
+    textDecoration: 'none', display: 'inline-flex', alignItems: 'center',
+  }
+
   return <div style={{ display: 'flex', flexDirection: 'column', gap: 13 }}>
     <div style={{ ...panel, display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'center' }}>
-      <div><div style={{ fontSize: 22, fontWeight: 900, color: TEXT0 }}>{visible.length}<span style={{ fontSize: 12, color: MUTED }}> / {summary.total_positions} positions</span></div><div style={{ fontSize: 9, color: MUTED, textTransform: 'uppercase' }}>shown / total</div></div>
+      <div><div style={{ fontSize: 22, fontWeight: 900, color: TEXT0 }}>{visible.length}<span style={{ fontSize: 12, color: MUTED }}> / {summary.total_positions} positions</span></div><div style={{ fontSize: 10, color: MUTED, textTransform: 'uppercase' }}>shown / total</div></div>
       <Stat label="Unrealized P&L" v={fmt$(summary.total_unrealized_pnl ?? 0)} c={(summary.total_unrealized_pnl ?? 0) >= 0 ? GREEN : RED} />
       <Stat label="Near stop" v={summary.risk_counts?.near_stop ?? 0} c={summary.risk_counts?.near_stop ? RED : TEXT2} />
       <Stat label="TP missing" v={summary.risk_counts?.tp_missing ?? 0} c={AMBER} />
       <Stat label="Below entry" v={summary.risk_counts?.below_entry ?? 0} c={AMBER} />
       <Stat label="Big gain unprot." v={summary.risk_counts?.large_gain_unprotected ?? 0} c={AMBER} />
       <Stat label="Hermes findings" v={summary.risk_counts?.hermes_findings ?? 0} c="#a855f7" />
-      <div style={{ marginLeft: 'auto', fontSize: 9, color: MUTED, textAlign: 'right' }}>{Object.entries(summary.by_account ?? {}).map(([k, n]: any) => <div key={k}>{k}: {n}</div>)}<div style={{ marginTop: 3 }}>source: {summary.source_of_truth ?? '—'}</div></div>
+      <div style={{ marginLeft: 'auto', display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, justifyContent: 'flex-end' }}>
+          <button
+            type="button"
+            data-testid="open-trades-export-csv"
+            disabled={!shown.length}
+            title="Download currently filtered/shown positions as CSV (client-side; no broker write)."
+            onClick={() => downloadOpenTradesCsv(shown)}
+            style={{ ...linkBtn, opacity: shown.length ? 1 : 0.45, cursor: shown.length ? 'pointer' : 'not-allowed' }}
+          >
+            Export CSV ({shown.length})
+          </button>
+          <Link
+            to={journalHref}
+            data-testid="open-trades-journal-link"
+            title={focus ? `Open Journal filtered to ${focus}` : 'Open Journal (closed trades / tags)'}
+            style={linkBtn}
+          >
+            Journal{focus ? ` · ${focus}` : ''}
+          </Link>
+          <Link
+            to={stopDeskHref}
+            data-testid="open-trades-stop-desk-link"
+            title="Full stop truth desk lives on Portfolio → Stop Management (placement + verification)."
+            style={linkBtn}
+          >
+            Stop Management{focus ? ` · ${focus}` : ''}
+          </Link>
+        </div>
+        <div style={{ fontSize: 10, color: MUTED, textAlign: 'right' }}>
+          {Object.entries(summary.by_account ?? {}).map(([k, n]: any) => <div key={k}>{k}: {n}</div>)}
+          <div style={{ marginTop: 3 }}>source: {summary.source_of_truth ?? '—'}</div>
+        </div>
+      </div>
     </div>
 
     {(summary.excluded_stale_trade_rows > 0 || summary.excluded_zero_share_rows > 0 || summary.excluded_non_ticker_rows > 0) && <details style={{ ...panel, padding: 9 }}><summary style={{ fontSize: 11, color: AMBER, cursor: 'pointer' }}>Excluded stale/invalid rows: {summary.excluded_stale_trade_rows ?? 0} · zero-share: {summary.excluded_zero_share_rows ?? 0} · non-ticker: {summary.excluded_non_ticker_rows ?? 0}</summary><div style={{ marginTop: 8, maxHeight: 220, overflow: 'auto' }}>{excluded.slice(0, 60).map((e: any, i: number) => <div key={i} style={{ fontSize: 10, color: TEXT2, padding: '2px 0' }}><span style={{ color: MUTED }}>{e.account ?? '—'}</span> · <b>{e.symbol ?? '—'}</b> · {e.reason}<span style={{ color: MUTED }}> · {e.source}</span></div>)}</div></details>}
@@ -104,7 +154,19 @@ export default function OpenTradesIntelligence({ onDrill, focusSymbol }: { onDri
     </div>
 
     <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', alignItems: 'center' }}><span style={{ fontSize: 10, color: MUTED }}>account:</span>{['all', ...(flt.accounts ?? [])].map((a: string) => { const paper = String(a).toLowerCase().includes('paper'), on = f.account === a; return <button key={a} onClick={() => set('account', a)} style={{ fontSize: 10, padding: '4px 11px', borderRadius: 6, cursor: 'pointer', border: '1px solid var(--border)', background: on ? (a === 'all' || paper ? 'rgba(96,165,250,.18)' : 'rgba(255,167,38,.18)') : 'var(--bg2)', color: on ? (a === 'all' || paper ? BLUE : '#ffa726') : MUTED, fontWeight: on ? 800 : 500 }}>{a === 'all' ? 'All accounts' : `${paper ? 'PAPER' : 'REAL'} ${a.replace(/_/g, ' ')}`}{a !== 'all' && summary.by_account?.[a] != null ? ` (${summary.by_account[a]})` : ''}</button> })}</div>
-    <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>{[['all', 'All'], ['needs_protection', 'Needs protection'], ['high_priority', 'High priority'], ['watchlist', 'Watchlist/directive'], ['data_stale', 'Data stale'], ['basis_issue', 'Basis issue'], ['news_fresh', 'News fresh'], ['trailing', 'Trailing candidate'], ['large_gain', 'Large gain'], ['underperforming', 'Underperforming']].map(([k, lbl]) => <button key={k} onClick={() => set('quick', k)} style={{ fontSize: 10, padding: '4px 10px', borderRadius: 6, cursor: 'pointer', border: '1px solid var(--border)', background: f.quick === k ? 'rgba(96,165,250,.18)' : 'var(--bg2)', color: f.quick === k ? BLUE : MUTED, fontWeight: f.quick === k ? 800 : 500 }}>{lbl}</button>)}</div>
+    <div role="group" aria-label="Quick position filters" style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
+      {[['all', 'All'], ['needs_protection', 'Needs protection'], ['high_priority', 'High priority'], ['watchlist', 'Watchlist/directive'], ['data_stale', 'Data stale'], ['basis_issue', 'Basis issue'], ['news_fresh', 'News fresh'], ['trailing', 'Trailing candidate'], ['large_gain', 'Large gain'], ['underperforming', 'Underperforming']].map(([k, lbl]) => (
+        <button
+          key={k}
+          type="button"
+          aria-pressed={f.quick === k}
+          onClick={() => set('quick', k)}
+          style={{ fontSize: 10, padding: '4px 10px', borderRadius: 6, cursor: 'pointer', border: '1px solid var(--border)', background: f.quick === k ? 'rgba(96,165,250,.18)' : 'var(--bg2)', color: f.quick === k ? BLUE : MUTED, fontWeight: f.quick === k ? 800 : 500 }}
+        >
+          {lbl}
+        </button>
+      ))}
+    </div>
 
     {focus && (
       <div style={{ ...panel, padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 10, fontSize: 11.5, borderColor: 'rgba(96,165,250,.35)', background: 'rgba(96,165,250,.08)', color: '#93c5fd' }}>
@@ -116,8 +178,11 @@ export default function OpenTradesIntelligence({ onDrill, focusSymbol }: { onDri
       {shown.map(p => { const key = `${p.account}:${p.symbol}:${p.trade_id}`; return <CardComponent key={key} p={p} paMap={paMap} expanded={expanded[key] !== false} llmCov={coverage[(p.symbol || '').toUpperCase()]} protectionRec={protection[(p.symbol || '').toUpperCase()]} symCard={cardMap[(p.symbol || '').toUpperCase()]} onToggle={() => setExpanded({ ...expanded, [key]: expanded[key] === false })} onDrill={onDrill} onAction={(a: string, pos: any) => onDrill({ title: `${pos.symbol} — ${a}`, subtitle: `${pos.operator_decision} · read-only review`, endpoint: '/api/v2/open-trades/intelligence', rows: [pos], subjectType: 'position', subjectKey: pos.symbol } as any)} /> })}
     </div>
     {shown.length === 0 && <div style={{ ...panel, color: MUTED, textAlign: 'center' }}>No positions match the current filters.</div>}
-    <div style={{ fontSize: 9, color: MUTED }}>Source: /api/v2/open-trades/intelligence (read-only, 60s) · price {summary.last_price_update ?? '—'} · broker stops {formatReviewStamp(summary.broker_stops_fetched_at) ?? '—'} · Hermes {summary.last_hermes_update ? String(summary.last_hermes_update).slice(0, 10) : '—'} · technicals {summary.last_technical_update ?? '—'}</div>
+    <div style={{ fontSize: 10, color: MUTED }}>
+      Source: /api/v2/open-trades/intelligence (read-only, 60s) · price {summary.last_price_update ?? '—'} · broker stops {formatReviewStamp(summary.broker_stops_fetched_at) ?? '—'} · Hermes {summary.last_hermes_update ? String(summary.last_hermes_update).slice(0, 10) : '—'} · technicals {summary.last_technical_update ?? '—'}
+      {' · '}Stage 2c protective stops on cards · full stop truth on Portfolio Stop Management · Journal for closed-loop tags
+    </div>
   </div>
 }
 
-function Stat({ label, v, c }: any) { return <div><div style={{ fontSize: 17, fontWeight: 900, color: c }}>{v}</div><div style={{ fontSize: 9, color: MUTED, textTransform: 'uppercase' }}>{label}</div></div> }
+function Stat({ label, v, c }: any) { return <div><div style={{ fontSize: 17, fontWeight: 900, color: c }}>{v}</div><div style={{ fontSize: 10, color: MUTED, textTransform: 'uppercase' }}>{label}</div></div> }
