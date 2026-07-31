@@ -1,33 +1,17 @@
 {
-  "date": "2026-07-29",
-  "timestamp": "2026-07-29T08:15:52.344395+00:00",
+  "date": "2026-07-30",
+  "timestamp": "2026-07-30T08:15:52.352415+00:00",
   "embedding_recommendations": [
     {
-      "id": 12225,
-      "symbol": "AIRJ",
-      "type": "momentum_catalyst",
-      "confidence": 0.7,
-      "has_url": true,
+      "id": 13573,
+      "symbol": "AAAC",
+      "type": "options_desk",
+      "confidence": 0.95,
+      "has_url": false,
       "reason": "staged, has evidence, not embedded"
     },
     {
-      "id": 13227,
-      "symbol": "DFNS",
-      "type": "momentum_catalyst",
-      "confidence": 0.7,
-      "has_url": true,
-      "reason": "staged, has evidence, not embedded"
-    },
-    {
-      "id": 12838,
-      "symbol": "KSCP",
-      "type": "momentum_catalyst",
-      "confidence": 0.7,
-      "has_url": true,
-      "reason": "staged, has evidence, not embedded"
-    },
-    {
-      "id": 13226,
+      "id": 13502,
       "symbol": "BIYA",
       "type": "momentum_catalyst",
       "confidence": 0.7,
@@ -35,8 +19,24 @@
       "reason": "staged, has evidence, not embedded"
     },
     {
-      "id": 12227,
-      "symbol": "CRNT",
+      "id": 13500,
+      "symbol": "AVTR",
+      "type": "momentum_catalyst",
+      "confidence": 0.7,
+      "has_url": true,
+      "reason": "staged, has evidence, not embedded"
+    },
+    {
+      "id": 13411,
+      "symbol": "DFNS",
+      "type": "momentum_catalyst",
+      "confidence": 0.7,
+      "has_url": true,
+      "reason": "staged, has evidence, not embedded"
+    },
+    {
+      "id": 12835,
+      "symbol": "ADVB",
       "type": "momentum_catalyst",
       "confidence": 0.7,
       "has_url": true,
@@ -45,31 +45,15 @@
   ],
   "promotion_recommendations": [
     {
-      "id": 12225,
-      "symbol": "AIRJ",
-      "type": "momentum_catalyst",
-      "confidence": 0.7,
-      "has_url": true,
+      "id": 13573,
+      "symbol": "AAAC",
+      "type": "options_desk",
+      "confidence": 0.95,
+      "has_url": false,
       "reason": "staged, high conf, has evidence"
     },
     {
-      "id": 13227,
-      "symbol": "DFNS",
-      "type": "momentum_catalyst",
-      "confidence": 0.7,
-      "has_url": true,
-      "reason": "staged, high conf, has evidence"
-    },
-    {
-      "id": 12838,
-      "symbol": "KSCP",
-      "type": "momentum_catalyst",
-      "confidence": 0.7,
-      "has_url": true,
-      "reason": "staged, high conf, has evidence"
-    },
-    {
-      "id": 13226,
+      "id": 13502,
       "symbol": "BIYA",
       "type": "momentum_catalyst",
       "confidence": 0.7,
@@ -77,8 +61,24 @@
       "reason": "staged, high conf, has evidence"
     },
     {
-      "id": 12227,
-      "symbol": "CRNT",
+      "id": 13500,
+      "symbol": "AVTR",
+      "type": "momentum_catalyst",
+      "confidence": 0.7,
+      "has_url": true,
+      "reason": "staged, high conf, has evidence"
+    },
+    {
+      "id": 13411,
+      "symbol": "DFNS",
+      "type": "momentum_catalyst",
+      "confidence": 0.7,
+      "has_url": true,
+      "reason": "staged, high conf, has evidence"
+    },
+    {
+      "id": 12835,
+      "symbol": "ADVB",
       "type": "momentum_catalyst",
       "confidence": 0.7,
       "has_url": true,
@@ -86,7 +86,7 @@
     }
   ],
   "rejected": [],
-  "total_staged_non_backlog": 203,
+  "total_staged_non_backlog": 223,
   "embeddings_created": 0,
   "promotions_created": 0
 }
