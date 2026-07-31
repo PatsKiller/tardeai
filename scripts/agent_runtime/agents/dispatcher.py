@@ -30,6 +30,8 @@ class JobRequest:
     enqueued_at: str  # ISO-8601
     dedup_value: str
     trigger_kind: str = ""
+    intake_id: str | None = None
+    payload: Mapping[str, Any] | None = None
 
     def enqueued_dt(self) -> datetime:
         value = datetime.fromisoformat(self.enqueued_at)

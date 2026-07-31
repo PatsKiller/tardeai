@@ -30,9 +30,12 @@ from .base import (
     assert_no_self_governance,
 )
 from .definitions import (
+    CATALOG_SHADOW_AGENT_IDS,
+    ENABLED_SHADOW_AGENT_IDS,
     FLEET,
     INITIAL_SHADOW_AGENT_IDS,
     SECOND_WAVE_AGENT_IDS,
+    enabled_shadow_agents,
     fleet,
     initial_agents,
     reviewer_scorer_matrix,

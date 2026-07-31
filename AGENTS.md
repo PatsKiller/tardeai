@@ -52,3 +52,48 @@ testing, and demoing the app.
 - **Node e2e** (`tests/e2e/*.mjs`, root `package.json`) need Playwright/Puppeteer/`canvas` and a running
   server; the root `npm install` (with `canvas` native build deps) is intentionally left out of the update
   script — install it on demand if you need those e2e tests.
+
+## Live host (ms01-openclaw) deployment gotchas
+
+The live `portfolio-server` runs from a **SHA-pinned release directory**, not this working tree:
+`~/trade-ai-releases/portfolio-server/<sha>-<label>/` (find the current one with
+`readlink -f /proc/$(pgrep -f portfolio_server.py | head -1)/cwd`). Editing files in the repo has **zero
+effect on the live server** until they're copied into that release dir and the service is restarted —
+hot-reload covers only `api_v2.py`/`reports_portal.py`; every other module (`operations.py`,
+`agent_runtime_dispatch_boot.py`, `trigger_intake.py`, etc.) needs
+`systemctl --user restart portfolio-server.service`.
+
+### Bitwarden secret naming vs. code expectations
+
+- The rendered tmpfs env is at `/run/user/$(id -u)/tradeai/env` (`render_env.py --now` refreshes it; this
+  repo's `.venv` doesn't exist — that command must run from `trade-ai-v12-rebuild`'s venv or wherever the
+  real one lives).
+- The **LAB migrator** Bitwarden secret is named `LAB_DSN`, not `TRADE_AI_LAB_DSN`. But
+  `migrations/agentic_runtime/apply.sh` reads `$TRADE_AI_LAB_DSN` — export it explicitly:
+  `export TRADE_AI_LAB_DSN="$LAB_DSN"`. Other real secret names on this host: `LAB_DSN_ALLOWLIST`,
+  `SHADOW_DSN` (writer role, `agentic_runtime_shadow_rw`), `SHADOW_READER_DSN`.
+- To find a secret's key name **without ever printing its value**:
+  `awk -F= '{print $1}' /run/user/$(id -u)/tradeai/env | grep -i DSN` or
+  `env | cut -d= -f1 | grep -i '^PG'`. Use `${#VAR}` to sanity-check a value is non-empty. Never `echo
+  $SECRET` or paste a resolved DSN/password into a chat/transcript — if one leaks, rotate it immediately
+  (mirrors `scripts/secrets/ensure_shadow_rw_dsn.py --rotate`'s pattern).
+
+### `psql` alias trap on this host
+
+`~/.bashrc` aliases `psql` to `psql -h 127.0.0.1 -U trade_ai -d trade_ai`. That pre-fills **both**
+positional connection slots (dbname + username) before your own arguments are parsed, so *any* DSN you
+pass — positional or via `-d` — gets silently reported as an "extra command-line argument ... ignored"
+and it falls back to the hardcoded `trade_ai@127.0.0.1:5432` default (which then fails auth because
+`~/.bashrc` also hardcodes a plaintext, likely-stale `PGPASSWORD=...`). **Always bypass with `command
+psql -d "$DSN" ...`** on this host when you need a specific connection target. If a `psql` invocation
+mysteriously ignores your DSN, run `type psql` first.
+
+### Migration chain is not idempotent — don't replay it
+
+`migrations/agentic_runtime/apply.sh --apply up` chains **every** `NNNN_*.up.sql` file in order
+(0001 → 0002 → 0003 → ...). `0001_mvl.up.sql`'s `CREATE TABLE` statements have no `IF NOT EXISTS`, so
+re-running the full chain once 0001/0002 already exist fails with "relation already exists." When adding
+a new migration (e.g. `0003_trigger_intake.up.sql`) to an already-provisioned LAB schema, apply **only the
+new file** directly: `command psql -d "$LAB_DSN" -v ON_ERROR_STOP=1 -f
+migrations/agentic_runtime/000N_name.up.sql`. Also note `agentic_runtime_lab_rw`/`_shadow_rw` have
+`CREATE` revoked on the schema (`0002_roles.up.sql`) — only the migrator role (`LAB_DSN`) can run DDL.

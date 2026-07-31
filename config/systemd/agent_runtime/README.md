@@ -16,13 +16,21 @@ Each agent has exactly one queue and one templated unit instance:
 | `tradeai-agent-runtime@iris`       | Iris (curation)        | 1 | SHADOW |
 | `tradeai-agent-runtime@reflection` | Nightly Reflection     | 1 | SHADOW |
 | `tradeai-agent-runtime@argus`      | Argus (population scan) | 1 | SHADOW |
-| `tradeai-agent-runtime@maria`      | Maria (research)       | 2 | DISABLED |
-| `tradeai-agent-runtime@vega`       | Vega (technical)       | 2 | DISABLED |
-| `tradeai-agent-runtime@risk_agent` | Guardian Risk          | 2 | DISABLED |
-| `tradeai-agent-runtime@aegis`      | Aegis (incidents)      | 2 | DISABLED |
+| `tradeai-agent-runtime@maria`      | Maria (research)       | 2 | SHADOW |
+| `tradeai-agent-runtime@vega`       | Vega (technical)       | 2 | SHADOW |
+| `tradeai-agent-runtime@risk_agent` | Guardian Risk          | 2 | SHADOW |
+| `tradeai-agent-runtime@aegis`      | Aegis (incidents)      | 2 | SHADOW |
+| `tradeai-agent-runtime@alex`       | Alex (synthesis)       | catalog | SHADOW |
+| `tradeai-agent-runtime@atlas`      | Atlas (orchestration)  | catalog | SHADOW |
+| `tradeai-agent-runtime@concierge`  | Concierge (operator UI)| catalog | SHADOW |
+| `tradeai-agent-runtime@hermes`       | Hermes (hypotheses)    | catalog | SHADOW |
+| `tradeai-agent-runtime@pulse`      | Pulse (microstructure) | catalog | SHADOW |
+| `tradeai-agent-runtime@steph`      | Steph (allocation)     | catalog | SHADOW |
+| `tradeai-agent-runtime@tax_agent`  | Ledger Tax             | catalog | SHADOW |
 
-Second-wave instances remain refused by the runner even if a timer is created,
-because the agent definition is `enabled=false` / `DESIGNED`.
+All 16 catalog agents are SHADOW-enabled when dispatch env + kill switch are wired.
+Provider module: `agent_runtime.providers.lab_watch_provider`.
+See `docs/agent_runtime/DISPATCH_ENV_TEMPLATE.md`.
 
 ## Deterministic controls (enforced in code, not by the model)
 

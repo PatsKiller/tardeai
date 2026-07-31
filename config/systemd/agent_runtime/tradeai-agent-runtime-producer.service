@@ -1,0 +1,22 @@
+# tradeai-agent-runtime-producer.service — deterministic trigger producer (prepare-only)
+
+[Unit]
+Description=Trade AI governed SHADOW trigger producer
+ConditionPathExists=/etc/tradeai/agent_runtime_enabled
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+Environment=AGENT_RUNTIME_OPERATOR_AUTH=0
+ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.agent_runtime.trigger_producer --json
+TimeoutStartSec=120
+Nice=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.local/state/tradeai
+StandardOutput=append:/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/agent_runtime_producer.log
+StandardError=append:/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/agent_runtime_producer.log

@@ -106,11 +106,11 @@ def test_run_once_refuses_without_operator_auth(monkeypatch: pytest.MonkeyPatch)
     assert rc == run_once.EX_NOPERM
 
 
-def test_run_once_refuses_disabled_agent_even_with_auth(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_run_once_refuses_unknown_agent_even_with_auth(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("AGENT_RUNTIME_OPERATOR_AUTH", "1")
     monkeypatch.setenv("AGENT_RUNTIME_QUEUE_MODULE", "some.module")
-    rc = run_once.main(["--agent", SECOND_WAVE_AGENT_IDS[0], "--once"])
-    assert rc == run_once.EX_NOPERM
+    rc = run_once.main(["--agent", "not_an_agent", "--once"])
+    assert rc == run_once.EX_CONFIG
 
 
 def test_run_once_refuses_without_queue_backend(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -120,11 +120,11 @@ def test_run_once_refuses_without_queue_backend(monkeypatch: pytest.MonkeyPatch)
     assert rc == run_once.EX_CONFIG
 
 
-def test_run_once_never_dispatches_in_this_build(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_run_once_refuses_invalid_queue_backend(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("AGENT_RUNTIME_OPERATOR_AUTH", "1")
     monkeypatch.setenv("AGENT_RUNTIME_QUEUE_MODULE", "some.module")
     rc = run_once.main(["--agent", "sentinel", "--once"])
-    assert rc == run_once.EX_CONFIG  # named but dispatch disabled
+    assert rc == run_once.EX_CONFIG  # backend import/refusal
 
 
 # ---- systemd units: disabled + gated ---------------------------------------

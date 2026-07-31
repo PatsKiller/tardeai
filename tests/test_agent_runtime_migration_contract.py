@@ -46,3 +46,12 @@ def test_embedding_rows_require_versioned_provenance() -> None:
 def test_migration_has_one_step_rollback() -> None:
     down = DOWN.read_text(encoding="utf-8")
     assert "DROP SCHEMA IF EXISTS agentic_runtime CASCADE" in down
+
+
+def test_trigger_intake_migration_adds_queue_tables() -> None:
+    up = (ROOT / "migrations" / "agentic_runtime" / "0003_trigger_intake.up.sql").read_text(encoding="utf-8")
+    assert "CREATE TABLE agentic_runtime.trigger_intake" in up
+    assert "CREATE TABLE agentic_runtime.trigger_source_cursors" in up
+    assert "UNIQUE (agent_id, trigger_kind, dedup_key)" in up
+    down = (ROOT / "migrations" / "agentic_runtime" / "0003_trigger_intake.down.sql").read_text(encoding="utf-8")
+    assert "DROP TABLE IF EXISTS agentic_runtime.trigger_intake" in down

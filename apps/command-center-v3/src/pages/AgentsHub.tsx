@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react'
-import { Link } from 'react-router-dom'
+import { useState, useMemo, useEffect } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import ReactFlow, { Background, Controls, MarkerType } from 'reactflow'
 import 'reactflow/dist/style.css'
@@ -158,7 +158,17 @@ function CalWindowCard({ w, symbolsByAgent, onDrill }: { w: any; symbolsByAgent:
 
 export default function AgentsHub({ onDrill }: Props) {
   const [terminalUi] = useTerminalUi()
-  const [tab, setTab] = useState<typeof TABS[number]>('Roster')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const tabParam = (searchParams.get('tab') || '').toLowerCase()
+  const tabFromUrl = TABS.find(t => t.toLowerCase().replace(/\s+/g, '_') === tabParam || t.toLowerCase().replace(/\s+/g, '') === tabParam.replace(/_/g, ''))
+  const [tab, setTab] = useState<typeof TABS[number]>(tabFromUrl ?? 'Roster')
+  useEffect(() => {
+    if (tabFromUrl && tabFromUrl !== tab) setTab(tabFromUrl)
+  }, [tabFromUrl, tab])
+  const selectTab = (t: typeof TABS[number]) => {
+    setTab(t)
+    setSearchParams({ tab: t.toLowerCase().replace(/\s+/g, '_') }, { replace: true })
+  }
   const [showCalHistory, setShowCalHistory] = useState(false)
   const { data: summary } = useApi<any>('/api/v2/agents/summary', 120_000)
   const { data: calStatus } = useApi<any>('/api/v2/agent-calibration/status', 120_000)
@@ -262,7 +272,7 @@ export default function AgentsHub({ onDrill }: Props) {
         </div>
         <div className="hub-tabs" style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
           {TABS.map(t => (
-            <button key={t} onClick={() => setTab(t)} style={hubTab(tab === t, terminalUi)}>{t}</button>
+            <button key={t} onClick={() => selectTab(t)} style={hubTab(tab === t, terminalUi)}>{t}</button>
           ))}
         </div>
       </div>

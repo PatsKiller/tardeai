@@ -452,3 +452,25 @@ def test_bridge_would_populate_eligible_only_when_gates_measured():
     row2 = _find(build_observations(ROOT, observed_at=OBS, review_records=reviews,
                                     runtime_evidence=overlay), "sentinel")
     assert row2["promotion_eligibility"] != "ELIGIBLE_FOR_HUMAN_REVIEW"
+
+
+def test_mvl_unknown_review_health_uses_actionable_hint_not_non_mvl():
+    from agent_runtime.maturity_observability import _next_step_hint
+
+    hint = _next_step_hint(
+        lifecycle="SHADOW",
+        environment="SHADOW",
+        has_runtime_spec=True,
+        source_class="RUNTIME_EVIDENCE",
+        sample_size=130,
+        required=100,
+        review_health="UNKNOWN",
+        eligibility="HUMAN_REVIEW_REQUIRED",
+        framework_gates_complete=False,
+        framework="agent-runtime-mvl",
+    )
+    assert "non-MVL" not in hint
+    assert "Review health unknown" in hint
+
+    gate_state, _, eligibility = _gate_state(130, 100, ReviewEvidence(review_health="UNKNOWN"))
+    assert eligibility == "HUMAN_REVIEW_REQUIRED"

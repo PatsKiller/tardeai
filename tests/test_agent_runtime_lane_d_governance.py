@@ -173,8 +173,12 @@ def test_dispatcher_refuses_stale_input() -> None:
 
 
 def test_dispatcher_refuses_disabled_second_wave_agent() -> None:
+    from dataclasses import replace
+
     now = datetime(2026, 7, 26, 12, 0, tzinfo=timezone.utc)
-    d = BoundedDispatcher(spec("maria"), processor=lambda job: {}, clock=lambda: now)
+    maria = spec("maria")
+    disabled = replace(maria, definition=replace(maria.definition, enabled=False))
+    d = BoundedDispatcher(disabled, processor=lambda job: {}, clock=lambda: now)
     results = d.process_batch([_job("maria", "x", now)])
     assert results[0].outcome is JobOutcome.REFUSED_DISABLED
 

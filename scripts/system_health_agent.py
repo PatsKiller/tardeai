@@ -114,6 +114,11 @@ MONITORED_COMPONENTS = [
      "downstream": "technical indicators"},
 
     # ── Agents ──
+    {"component": "agent_runtime_health", "display": "Governed Agent Runtime Health",
+     "schedule": "*/5 * * * *", "log_file": "agent_runtime_health.log",
+     "max_age_min": 15, "max_runtime_sec": 60, "critical": True,
+     "downstream": "Command Center agent readiness, scheduler truth, SHADOW run observability",
+     "success_signatures": ["agent-runtime-health-v1"]},
     {"component": "aegis_morning_brief", "display": "Aegis Morning Brief",
      "schedule": "5 8 * * 1-5", "log_file": "aegis_brief.log",
      "max_age_min": 1500, "max_runtime_sec": 300, "critical": False,

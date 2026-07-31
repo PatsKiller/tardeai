@@ -1,0 +1,12 @@
+[Unit]
+Description=Poll governed trigger sources every two minutes
+
+[Timer]
+OnCalendar=*:0/2
+RandomizedDelaySec=30
+AccuracySec=30s
+Persistent=false
+Unit=tradeai-agent-runtime-producer.service
+
+[Install]
+WantedBy=timers.target

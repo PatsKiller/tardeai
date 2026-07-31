@@ -14,6 +14,19 @@ import {
 } from '../lib/agentRuntimeMonitoring'
 import { resolveAgentRuntimeView, readApiBaseFromEnv, type ResolvedRuntimeView } from '../lib/agentRuntimeReadAdapter'
 import { resolveAgentRuntimeDetail, type AgentDetailView } from '../lib/agentRuntimeDetailAdapter'
+import { buildAgentRunRollup, buildFleetRunPulse, fetchAgentRuntimeRuns, type AgentRunRollupEntry } from '../lib/agentRuntimeRunRollup'
+import { resolveAgentRuntimeOperations, operationsByAgent, type AgentOperationsEntry } from '../lib/agentRuntimeOperations'
+import { fmtDeskAge, fmtDeskTimestamp } from '../lib/fmtTimestamp'
+import {
+  FleetOperationsBar,
+  ReadinessFallbackBanner,
+  ColumnHeaderTip,
+  RunAgeCell,
+  RunOutcomeCell,
+  ScheduleCell,
+  OperatorActionCell,
+  OperatorGlossary,
+} from '../components/AgentRuntimeOperatorPanels'
 import {
   maturityHealthLabel,
   resolveAgentMaturityView,
@@ -29,6 +42,14 @@ import {
   type ResolvedAgentMaturityView,
   type AgentMaturityObservation,
 } from '../lib/agentMaturityObservability'
+import {
+  resolveAgentRuntimeReadiness,
+  manualRunCommand,
+  resolvePromotionGates,
+  catalogFromMaturity,
+  type ResolvedReadinessView,
+  type PromotionGatesPayload,
+} from '../lib/agentRuntimeReadiness'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 type View = 'Runtime' | 'Legacy analytics'
@@ -82,7 +103,13 @@ function MetricCard({ value, title, detail, tone }: { value: string | number; ti
   </div>
 }
 
-function AgentDetail({ agent }: { agent: AgentRuntimeDefinition }) {
+function AgentDetail({ agent, liveConnected }: { agent: AgentRuntimeDefinition; liveConnected?: boolean }) {
+  const limitations = liveConnected
+    ? agent.limitations.map(item =>
+      item.includes('No production persistence connected')
+        ? 'SHADOW persistence connected (read-only via agent-runtime read API)'
+        : item)
+    : agent.limitations
   const details: Array<[string, string]> = [
     ['Owner', agent.owner],
     ['Trigger', agent.trigger],
@@ -106,7 +133,7 @@ function AgentDetail({ agent }: { agent: AgentRuntimeDefinition }) {
     </div>)}
     <div style={{ marginTop: 12 }}>
       <div style={label}>Current limitations</div>
-      {agent.limitations.map(item => <div key={item} style={{ marginTop: 5, fontSize: TYPE.xs, color: BB.amber }}>• {item}</div>)}
+      {limitations.map(item => <div key={item} style={{ marginTop: 5, fontSize: TYPE.xs, color: BB.amber }}>• {item}</div>)}
     </div>
     <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--border-subtle)' }}>
       <div style={label}>Disable / rollback</div>
@@ -142,13 +169,22 @@ function LiveDesk({ title, badge, children }: { title: string; badge: string; ch
 }
 
 function RunTimelineDesk({ d }: { d: AgentDetailView }) {
+  const sorted = [...d.runs].sort((a, b) => Date.parse(b.startedAt || b.updatedAt) - Date.parse(a.startedAt || a.updatedAt))
   return <LiveDesk title="Run queue and timeline" badge={`${d.runs.length} RUN${d.runs.length === 1 ? '' : 'S'}`}>
     <div style={{ fontSize: TYPE.xs, color: 'var(--text2)' }}>Role <b>{d.role.toUpperCase()}</b> · produced {d.counts.produced} · reviewed {d.counts.reviewed} · scored {d.counts.scored}</div>
-    <div style={{ marginTop: 8, display: 'grid', gap: 5 }}>
-      {d.runs.slice(0, 6).map(r => <div key={r.runId} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '5px 8px', borderRadius: 6, background: 'var(--bg2)', fontSize: TYPE.xs }}>
-        <span style={{ fontFamily: 'var(--mono)', color: 'var(--text3)' }}>{r.runId.slice(0, 14)}</span>
-        <span><StatusBadge tone={r.status === 'COMPLETED' ? 'green' : r.status === 'FAILED' ? 'red' : 'slate'}>{r.status || 'UNKNOWN'}</StatusBadge></span>
-      </div>)}
+    <div style={{ marginTop: 8, display: 'grid', gap: 5, maxHeight: 220, overflowY: 'auto' }}>
+      {sorted.slice(0, 12).map(r => {
+        const abs = fmtDeskTimestamp(r.startedAt)
+        const rel = fmtDeskAge(r.startedAt)
+        const dur = r.completedAt && r.startedAt
+          ? Math.max(0, Math.round((Date.parse(r.completedAt) - Date.parse(r.startedAt)) / 1000))
+          : null
+        return <div key={r.runId} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 8, padding: '5px 8px', borderRadius: 6, background: 'var(--bg2)', fontSize: TYPE.xs, alignItems: 'center' }}>
+          <span style={{ fontFamily: 'var(--mono)', color: 'var(--text3)' }} title={r.runId}>{r.runId.slice(0, 14)}</span>
+          <span style={{ color: 'var(--text2)', whiteSpace: 'nowrap' }} title={abs ?? undefined}>{rel ?? abs ?? '—'}{dur != null ? ` · ${dur}s` : ''}</span>
+          <StatusBadge tone={r.status === 'COMPLETED' ? 'green' : r.status === 'FAILED' ? 'red' : 'slate'}>{r.status || 'UNKNOWN'}</StatusBadge>
+        </div>
+      })}
       {d.runs.length === 0 && <div style={{ fontSize: TYPE.xs, color: 'var(--text3)' }}>No runs attributed to this agent yet (it has not produced/reviewed/scored).</div>}
     </div>
   </LiveDesk>
@@ -199,9 +235,51 @@ function DetailField({ name, value, tone }: { name: string; value: ReactNode; to
   </div>
 }
 
-function MaturityDetail({ row }: { row: AgentMaturityObservation }) {
+function MaturityDetail({ row, runTemplate, ops, rollup }: {
+  row: AgentMaturityObservation
+  runTemplate?: string
+  ops?: AgentOperationsEntry
+  rollup?: AgentRunRollupEntry
+}) {
+  const [gates, setGates] = useState<PromotionGatesPayload | null>(null)
+  const [copied, setCopied] = useState(false)
+  useEffect(() => {
+    let active = true
+    if (row.promotion_eligibility === 'ELIGIBLE_FOR_HUMAN_REVIEW' || row.promotion_eligibility === 'HUMAN_REVIEW_REQUIRED') {
+      resolvePromotionGates(row.agent_id).then(g => { if (active) setGates(g) })
+    }
+    return () => { active = false }
+  }, [row.agent_id, row.promotion_eligibility])
   const alerts = [...row.warnings, ...row.operator_checks_required]
-  return <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 12, padding: '10px 14px 14px 26px', background: 'var(--bg2)' }}>
+  const cmd = manualRunCommand(row.agent_id, runTemplate)
+  return <div style={{ padding: '10px 14px 14px 26px', background: 'var(--bg2)' }}>
+    {row.next_step_hint && <div style={{ marginBottom: 10, padding: '8px 10px', borderRadius: 6, border: `1px solid ${BB.amber}`, background: BB.amberDim, fontSize: TYPE.xs, color: 'var(--text1)', lineHeight: 1.5 }}>
+      <b>Next step:</b> {row.next_step_hint}
+    </div>}
+    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+      {ops?.manual_run_command && <button type="button" onClick={e => { e.stopPropagation(); void navigator.clipboard.writeText(cmd).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000) }) }}
+        style={{ fontSize: TYPE.xs, fontWeight: 750, padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg1)', cursor: 'pointer', color: T.link }}>
+        {copied ? 'Copied LAB run command' : 'Copy LAB run command'}
+      </button>}
+      <a href="/v3/" onClick={e => e.stopPropagation()} style={{ fontSize: TYPE.xs, fontWeight: 750, padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', color: T.link, textDecoration: 'none' }}>Home Inbox</a>
+      <span style={{ fontSize: TYPE.xs, color: 'var(--text3)', alignSelf: 'center' }}>Runbook: docs/agent_runtime/SHADOW_ACTIVATION_RUNBOOK.md</span>
+    </div>
+    {gates && gates.gates.length > 0 && <div style={{ marginBottom: 10 }}>
+      <div style={{ ...label, marginBottom: 6 }}>Promotion checklist ({gates.promotable ? 'PROMOTABLE' : 'BLOCKED'})</div>
+      {gates.gates.map(g => <div key={g.gate_id} style={{ display: 'grid', gridTemplateColumns: '1fr 80px 100px', gap: 8, padding: '4px 0', borderBottom: '1px solid var(--border-subtle)', fontSize: TYPE.xs }}>
+        <span>{g.description}</span>
+        <span style={{ ...numStyle, textAlign: 'right' }}>{g.status.replace(/_/g, ' ')}</span>
+        <span style={{ ...numStyle, textAlign: 'right', color: 'var(--text3)' }}>{g.measured_value ?? '—'}</span>
+      </div>)}
+      {gates.blockers.length > 0 && <div style={{ marginTop: 6, fontSize: TYPE.xs, color: BB.amber }}>{gates.blockers.join(' · ')}</div>}
+    </div>}
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 12 }}>
+    <DetailField name="Last dispatch" value={ops?.last_dispatch_at ? `${fmtDeskTimestamp(ops.last_dispatch_at) ?? ops.last_dispatch_at} · ${ops.last_dispatch_outcome ?? '—'}` : rollup?.lastStartedAt ? `${fmtDeskTimestamp(rollup.lastStartedAt) ?? rollup.lastStartedAt} · ${rollup.lastStatus ?? '—'}` : 'NOT RUN'} />
+    <DetailField name="Execution mode" value={ops?.autonomy.execution.replace(/_/g, ' ') ?? 'NOT RUNNABLE'} />
+    <DetailField name="Schedule contract" value={ops?.designed_schedule ?? '—'} />
+    <DetailField name="Installed timer" value={ops
+      ? `${ops.timer_unit ?? 'none'} · ${ops.timer_state.replace(/_/g, ' ')}${ops.next_timer_at ? ` · next ${fmtDeskTimestamp(ops.next_timer_at) ?? ops.next_timer_at}` : ' · next NOT SCHEDULED'}`
+      : '—'} />
     <DetailField name="Subsystem" value={row.subsystem} />
     <DetailField name="Environment" value={row.environment} />
     <DetailField name="Authority" value={row.effective_authority_state.replace(/_/g, ' ')} />
@@ -219,10 +297,64 @@ function MaturityDetail({ row }: { row: AgentMaturityObservation }) {
       <div style={label}>Warnings and operator checks</div>
       {alerts.map(a => <div key={a} style={{ marginTop: 4, fontSize: TYPE.xs, color: BB.amber, lineHeight: 1.45 }}>• {a}</div>)}
     </div>}
+    </div>
   </div>
 }
 
-function MaturityScoreboard({ view }: { view: ResolvedAgentMaturityView }) {
+function OperatorWiringPanel({ readiness, runtimeState, asOf, lastRefresh }: {
+  readiness: ResolvedReadinessView
+  runtimeState: string
+  asOf: string
+  lastRefresh: string
+}) {
+  const w = readiness.payload?.wiring
+  if (!w) return null
+  const readTone: BadgeTone = w.read_api.state === 'CONNECTED' ? 'green' : w.read_api.state === 'GATE_OFF' ? 'slate' : 'amber'
+  const dispatchTone: BadgeTone = w.dispatch.state === 'WIRED' ? 'green' : 'amber'
+  return <div style={{ ...panel, padding: '12px 14px' }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+      <div style={{ fontSize: TYPE.md, fontWeight: 800 }}>Operator wiring</div>
+      <span style={{ fontSize: TYPE.xs, color: 'var(--text3)', fontFamily: 'var(--mono)' }}>refreshed {lastRefresh} · runtime {runtimeState} · as_of {asOf}</span>
+    </div>
+    <div style={{ marginTop: 10, display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: 10 }}>
+      <div style={{ padding: 10, borderRadius: 8, background: 'var(--bg2)' }}>
+        <div style={{ fontSize: TYPE.xs, color: 'var(--text3)', marginBottom: 6 }}>Read API</div>
+        <StatusBadge tone={readTone}>{w.read_api.state.replace(/_/g, ' ')}</StatusBadge>
+        <div style={{ marginTop: 6, fontSize: TYPE.xs, color: 'var(--text2)' }}>gate {w.read_api.gate_enabled ? 'ON' : 'OFF'} · DSN {w.read_api.dsn_configured ? 'set' : 'missing'}</div>
+      </div>
+      <div style={{ padding: 10, borderRadius: 8, background: 'var(--bg2)' }}>
+        <div style={{ fontSize: TYPE.xs, color: 'var(--text3)', marginBottom: 6 }}>Dispatch</div>
+        <StatusBadge tone={dispatchTone}>{w.dispatch.state.replace(/_/g, ' ')}</StatusBadge>
+        <div style={{ marginTop: 6, fontSize: TYPE.xs, color: 'var(--text2)' }}>
+          kill switch {w.dispatch.kill_switch_present ? 'ON' : 'OFF'} · provider {w.dispatch.provider_module_configured ? 'set' : 'missing'}
+        </div>
+      </div>
+      {readiness.payload?.fleet_summary && <div style={{ padding: 10, borderRadius: 8, background: 'var(--bg2)' }}>
+        <div style={{ fontSize: TYPE.xs, color: 'var(--text3)', marginBottom: 6 }}>Fleet evidence</div>
+        <div style={{ ...numStyle, fontSize: TYPE.sm, fontWeight: 800 }}>{readiness.payload.fleet_summary.runtime_evidence_agents} / {readiness.payload.fleet_summary.total_agents}</div>
+        <div style={{ marginTop: 4, fontSize: TYPE.xs, color: 'var(--text2)' }}>RUNTIME_EVIDENCE agents</div>
+      </div>}
+    </div>
+  </div>
+}
+
+function MaturityScoreboard({
+  view,
+  runTemplate,
+  runRollup,
+  operationsMap,
+  dispatchWired,
+  dispatchOperableMap,
+  onDispatched,
+}: {
+  view: ResolvedAgentMaturityView
+  runTemplate?: string
+  runRollup: Map<string, AgentRunRollupEntry>
+  operationsMap: Map<string, AgentOperationsEntry>
+  dispatchWired: boolean
+  dispatchOperableMap: Map<string, boolean>
+  onDispatched: () => void
+}) {
   const [preview, setPreview] = useState(false)
   const [filter, setFilter] = useState<'all' | 'shadow' | 'designed' | 'attention'>('all')
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
@@ -249,7 +381,19 @@ function MaturityScoreboard({ view }: { view: ResolvedAgentMaturityView }) {
   const attentionCount = allRows.filter(needsAttention).length
   const showUnverifiedBanner = !!summary && !preview && total > 0 && eligible === 0 && capped === 0 && unverified >= total
 
-  const headers = ['Agent', 'Lifecycle', 'Sample gate', 'Review health', 'Next gate', 'Eligibility', '']
+  const headers = [
+    'Agent',
+    'Lifecycle',
+    'Last run',
+    'Outcome',
+    'Automation',
+    'Sample gate',
+    'Review health',
+    'Next step',
+    'Eligibility',
+    'Actions',
+    '',
+  ]
   const filters: Array<{ key: typeof filter; label: string; count: number }> = [
     { key: 'all', label: 'All', count: allRows.length },
     { key: 'shadow', label: 'Shadow', count: allRows.filter(r => r.declared_lifecycle_state === 'SHADOW').length },
@@ -317,12 +461,23 @@ function MaturityScoreboard({ view }: { view: ResolvedAgentMaturityView }) {
     </div>}
 
     {/* Ranked board */}
-    <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720 }}>
-      <thead><tr style={{ borderBottom: '1px solid var(--border)' }}>{headers.map((header, i) => <th key={header || `h${i}`} style={{ ...label, textAlign: header === 'Agent' || header === 'Next gate' ? 'left' : header === '' ? 'center' : 'left', padding: '8px 10px' }}>{header}</th>)}</tr></thead>
+    <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 960 }}>
+      <thead><tr style={{ borderBottom: '1px solid var(--border)' }}>{headers.map((header, i) => <th key={header || `h${i}`} style={{ ...label, textAlign: header === 'Agent' || header === 'Next step' || header === 'Actions' ? 'left' : 'left', padding: '8px 10px' }}>
+        {header === 'Last run' ? <ColumnHeaderTip label="Last run" tip="Newest started_at for this agent from GET /api/v3/agent-runtime/runs." /> :
+          header === 'Outcome' ? <ColumnHeaderTip label="Outcome" tip="Status of the most recent run for this agent." /> :
+            header === 'Automation' ? <ColumnHeaderTip label="Automation" tip="Designed systemd timer cadence (every 15m) when tradeai-agent-runtime@.timer is installed." /> :
+              header === 'Review health' ? <ColumnHeaderTip label="Review health" tip="Independent peer review health — NOT RUN means no reviewer has scored this agent's own output yet." /> :
+                header}
+      </th>)}</tr></thead>
       <tbody>{rows.map(row => {
         const open = !!expanded[row.agent_id]
         return <FragmentRow key={row.agent_id}
-          row={row} open={open}
+          row={row} open={open} runTemplate={runTemplate}
+          rollup={runRollup.get(row.agent_id)}
+          ops={operationsMap.get(row.agent_id)}
+          dispatchWired={dispatchWired}
+          dispatchOperable={dispatchOperableMap.get(row.agent_id) ?? false}
+          onDispatched={onDispatched}
           onToggle={() => setExpanded(e => ({ ...e, [row.agent_id]: !e[row.agent_id] }))} />
       })}
       {payload && rows.length === 0 && <tr><td colSpan={headers.length} style={{ padding: 16, textAlign: 'center', fontSize: TYPE.xs, color: 'var(--text3)' }}>No agents match this filter.</td></tr>}
@@ -330,6 +485,7 @@ function MaturityScoreboard({ view }: { view: ResolvedAgentMaturityView }) {
     </table></div>
     {!payload && <div style={{ padding: 14, fontSize: TYPE.xs, color: BB.amber }}>RUNTIME STATUS UNVERIFIED · no maturity payload is available.</div>}
     {payload && <MaturityLegend />}
+    {payload && <OperatorGlossary />}
   </div>
 }
 
@@ -381,28 +537,46 @@ function MaturityLegend() {
   </div>
 }
 
-function FragmentRow({ row, open, onToggle }: { row: AgentMaturityObservation; open: boolean; onToggle: () => void }) {
+function FragmentRow({
+  row, open, onToggle, runTemplate, rollup, ops, dispatchWired, dispatchOperable, onDispatched,
+}: {
+  row: AgentMaturityObservation
+  open: boolean
+  onToggle: () => void
+  runTemplate?: string
+  rollup?: AgentRunRollupEntry
+  ops?: AgentOperationsEntry
+  dispatchWired: boolean
+  dispatchOperable: boolean
+  onDispatched: () => void
+}) {
   const nextGate = row.next_gate_state === 'PASSED' ? 'gate passed' : (row.next_gate_id ?? row.next_gate_state.replace(/_/g, ' ').toLowerCase())
+  const nextStep = row.next_step_hint || row.next_gate_description || nextGate
   return <>
-    <tr onClick={onToggle} title={row.next_step_hint ? `Next step: ${row.next_step_hint}` : undefined} style={{ borderBottom: open ? 'none' : '1px solid var(--border-subtle)', cursor: 'pointer', background: open ? 'var(--bg2)' : undefined }}>
+    <tr onClick={onToggle} style={{ borderBottom: open ? 'none' : '1px solid var(--border-subtle)', cursor: 'pointer', background: open ? 'var(--bg2)' : undefined }}>
       <td style={{ padding: '9px 10px', ...rowRail(maturityRail(row)), paddingLeft: 12 }}>
         <div style={{ fontSize: TYPE.sm, fontWeight: 750 }}>{row.display_name}</div>
         <div style={{ ...numStyle, fontSize: TYPE.xs, color: 'var(--text3)' }}>{row.agent_id}</div>
       </td>
       <td style={{ padding: '9px 10px' }}><Chip kind="state" tone={maturityLifecycleTone(row.declared_lifecycle_state)}>{row.declared_lifecycle_state}</Chip></td>
+      <td style={{ padding: '9px 10px' }}><RunAgeCell rollup={rollup} /></td>
+      <td style={{ padding: '9px 10px' }}><RunOutcomeCell rollup={rollup} /></td>
+      <td style={{ padding: '9px 10px' }}><ScheduleCell ops={ops} /></td>
       <td style={{ padding: '9px 10px' }}><SampleBar row={row} /></td>
       <td style={{ padding: '9px 10px' }}>
         <Chip kind="state" tone={maturityHealthTone(row.review_health)}>{healthLabelText(row.review_health)}</Chip>
         <div style={{ marginTop: 3, fontSize: TYPE.xs, color: 'var(--text3)' }}>{row.review_provenance.replace(/_/g, ' ')}</div>
       </td>
-      <td style={{ padding: '9px 10px', fontSize: TYPE.xs, color: 'var(--text2)', maxWidth: 220 }} title={row.next_step_hint || row.next_gate_description || undefined}>
-        <span style={{ color: BB.amber }}>&rarr;</span> {nextGate}
-        {row.next_step_hint && <div style={{ marginTop: 2, fontSize: TYPE.xs, color: 'var(--text3)', lineHeight: 1.35 }}>{row.next_step_hint}</div>}
+      <td style={{ padding: '9px 10px', fontSize: TYPE.xs, color: 'var(--text2)', maxWidth: 220, lineHeight: 1.4 }}>
+        <span style={{ color: BB.amber }}>&rarr;</span> {nextStep}
       </td>
       <td style={{ padding: '9px 10px' }}><Chip kind="state" tone={eligibilityTone(row.promotion_eligibility)}>{eligibilityLabel(row.promotion_eligibility)}</Chip></td>
+      <td style={{ padding: '9px 10px' }}>
+        <OperatorActionCell agentId={row.agent_id} dispatchOperable={dispatchOperable} operations={ops} runTemplate={runTemplate} dispatchWired={dispatchWired} onDispatched={onDispatched} />
+      </td>
       <td style={{ padding: '9px 10px', textAlign: 'center', color: 'var(--text3)', fontSize: TYPE.sm }}>{open ? '\u25be' : '\u25b8'}</td>
     </tr>
-    {open && <tr style={{ borderBottom: '1px solid var(--border-subtle)' }}><td colSpan={7} style={{ padding: 0 }}><MaturityDetail row={row} /></td></tr>}
+    {open && <tr style={{ borderBottom: '1px solid var(--border-subtle)' }}><td colSpan={11} style={{ padding: 0 }}><MaturityDetail row={row} runTemplate={runTemplate} ops={ops} rollup={rollup} /></td></tr>}
   </>
 }
 
@@ -429,24 +603,63 @@ function filterTabStyle(active: boolean): CSSProperties {
 function RuntimeView() {
   const summary = useMemo(() => summarizeAgentRuntime(), [])
   const [selectedId, setSelectedId] = useState('sentinel')
-  // Replace the fixture snapshot only when the read API is available; otherwise keep the explicit
-  // fallback state (FIXTURE / NOT CONNECTED / UNAVAILABLE / STALE / SHADOW). Env unset => FIXTURE.
+  const [lastRefresh, setLastRefresh] = useState(() => new Date().toISOString())
   const [runtimeView, setRuntimeView] = useState<ResolvedRuntimeView>(() => ({
     state: 'FIXTURE', snapshot: AGENT_RUNTIME_SNAPSHOT, detail: 'Resolving read API…', live: false,
   }))
   const [maturityView, setMaturityView] = useState<ResolvedAgentMaturityView>(() => ({
     state: 'UNAVAILABLE', payload: null, detail: 'Resolving maturity read API…',
   }))
+  const [readinessView, setReadinessView] = useState<ResolvedReadinessView>(() => ({
+    state: 'UNAVAILABLE', payload: null, detail: 'Resolving readiness…',
+  }))
+  const [runRollup, setRunRollup] = useState<Map<string, AgentRunRollupEntry>>(() => new Map())
+  const [fleetPulse, setFleetPulse] = useState<ReturnType<typeof buildFleetRunPulse> | null>(null)
+  const [operationsMap, setOperationsMap] = useState<Map<string, AgentOperationsEntry>>(() => new Map())
+  const [operationsHealth, setOperationsHealth] = useState<{
+    state: string
+    last_checked_at: string | null
+    detail: string
+  } | null>(null)
+  const [operationsObservedAt, setOperationsObservedAt] = useState<string | null>(null)
   const [detail, setDetail] = useState<AgentDetailView | null>(null)
-  useEffect(() => {
-    let active = true
-    resolveAgentRuntimeView({ baseUrl: readApiBaseFromEnv() })
-      .then(view => { if (active) setRuntimeView(view) })
-      .catch(() => { if (active) setRuntimeView({ state: 'UNAVAILABLE', snapshot: AGENT_RUNTIME_SNAPSHOT, detail: 'Adapter error', live: false }) })
+
+  const refreshAll = () => {
+    const base = readApiBaseFromEnv()
+    resolveAgentRuntimeView({ baseUrl: base })
+      .then(view => setRuntimeView(view))
+      .catch(() => setRuntimeView({ state: 'UNAVAILABLE', snapshot: AGENT_RUNTIME_SNAPSHOT, detail: 'Adapter error', live: false }))
     resolveAgentMaturityView()
-      .then(view => { if (active) setMaturityView(view) })
-      .catch(() => { if (active) setMaturityView({ state: 'UNAVAILABLE', payload: null, detail: 'Maturity adapter error' }) })
-    return () => { active = false }
+      .then(view => setMaturityView(view))
+      .catch(() => setMaturityView({ state: 'UNAVAILABLE', payload: null, detail: 'Maturity adapter error' }))
+    resolveAgentRuntimeReadiness()
+      .then(view => setReadinessView(view))
+      .catch(() => setReadinessView({ state: 'UNAVAILABLE', payload: null, detail: 'Readiness error' }))
+    resolveAgentRuntimeOperations()
+      .then(view => {
+        setOperationsMap(operationsByAgent(view.payload))
+        setOperationsHealth(view.payload?.health_monitor ?? null)
+        setOperationsObservedAt(view.payload?.observed_at ?? null)
+      })
+      .catch(() => { setOperationsMap(new Map()); setOperationsHealth(null); setOperationsObservedAt(null) })
+    fetchAgentRuntimeRuns(base)
+      .then(rows => {
+        if (!rows) {
+          setRunRollup(new Map())
+          setFleetPulse(null)
+          return
+        }
+        setRunRollup(buildAgentRunRollup(rows))
+        setFleetPulse(buildFleetRunPulse(rows))
+      })
+      .catch(() => { setRunRollup(new Map()); setFleetPulse(null) })
+    setLastRefresh(new Date().toISOString())
+  }
+
+  useEffect(() => {
+    refreshAll()
+    const id = window.setInterval(refreshAll, 60_000)
+    return () => window.clearInterval(id)
   }, [])
   // Per-agent live detail for the desks (Run timeline / Artifact desk / Knowledge),
   // refetched when the selected agent changes. Fail-closed: null => honest empty desks.
@@ -459,7 +672,22 @@ function RuntimeView() {
     return () => { active = false }
   }, [selectedId])
   const snapshot = runtimeView.snapshot
-  const selected = AGENT_RUNTIME_CATALOG.find(agent => agent.agentId === selectedId) || AGENT_RUNTIME_CATALOG[0]
+  const displayAsOf = operationsObservedAt ?? fleetPulse?.newestStartedAt ?? snapshot.asOf
+  const catalogRows = maturityView.payload?.data?.length
+    ? catalogFromMaturity(maturityView.payload.data)
+    : AGENT_RUNTIME_CATALOG.map(a => ({ agentId: a.agentId, displayName: a.displayName, role: a.role, lifecycle: a.lifecycle, enabled: a.enabled, retrievalRequired: a.retrievalRequired, deadlineSeconds: a.budget.deadlineSeconds }))
+  const selectedStatic = AGENT_RUNTIME_CATALOG.find(agent => agent.agentId === selectedId)
+  const selectedCatalog = catalogRows.find(a => a.agentId === selectedId)
+  const selected = selectedStatic ?? (selectedCatalog ? { ...AGENT_RUNTIME_CATALOG[0], agentId: selectedCatalog.agentId, displayName: selectedCatalog.displayName, role: selectedCatalog.role, lifecycle: selectedCatalog.lifecycle as AgentLifecycle, enabled: selectedCatalog.enabled, retrievalRequired: selectedCatalog.retrievalRequired, budget: { ...AGENT_RUNTIME_CATALOG[0].budget, deadlineSeconds: selectedCatalog.deadlineSeconds } } : AGENT_RUNTIME_CATALOG[0])
+  const runTemplate = readinessView.payload?.manual_run_command_template
+  const dispatchWired = readinessView.payload?.wiring?.dispatch?.state === 'WIRED'
+  const dispatchOperableMap = useMemo(() => {
+    const map = new Map<string, boolean>()
+    for (const row of readinessView.payload?.agents ?? []) {
+      if (row.agent_id) map.set(row.agent_id, row.dispatch_operable === true)
+    }
+    return map
+  }, [readinessView.payload?.agents])
   const acceptance: Array<[string, string, string]> = detail?.live
     ? [
       ['Reviewed Watch artifacts', `${detail.counts.reviewed} / 100`, detail.counts.reviewed >= 100 ? 'MET' : detail.counts.reviewed > 0 ? 'IN PROGRESS' : 'NOT RUN'],
@@ -492,12 +720,17 @@ function RuntimeView() {
           : 'This workspace renders the approved monitoring contract before the authoritative persistence read adapter is integrated. It does not claim live runs, artifacts, reviews, scores, cases, lessons, or operational agents.'}
       </div>
       <div style={{ marginTop: 6, fontSize: TYPE.xs, color: 'var(--text3)', fontFamily: 'var(--mono)' }}>
-        {AGENT_RUNTIME_CONTRACT} · source={snapshot.source} · adapter={snapshot.adapterState} · as_of={snapshot.asOf} · state={runtimeView.state}
+        {AGENT_RUNTIME_CONTRACT} · source={snapshot.source} · adapter={snapshot.adapterState} · as_of={displayAsOf} · state={runtimeView.state}
       </div>
       {summary.catalogIssues.length > 0 && <div style={{ marginTop: 8, color: BB.red, fontSize: TYPE.xs }}>BLOCKED CONTRACT: {summary.catalogIssues.join(' · ')}</div>}
     </div>
 
-    <MaturityScoreboard view={maturityView} />
+    <OperatorWiringPanel readiness={readinessView} runtimeState={runtimeView.state} asOf={displayAsOf} lastRefresh={lastRefresh} />
+    {readinessView.state !== 'CONNECTED' && <ReadinessFallbackBanner detail={readinessView.detail} />}
+
+    <FleetOperationsBar pulse={fleetPulse} readiness={readinessView} healthMonitor={operationsHealth} runtimeLive={runtimeView.live} asOf={displayAsOf} lastRefresh={lastRefresh} />
+
+    <MaturityScoreboard view={maturityView} runTemplate={runTemplate} runRollup={runRollup} operationsMap={operationsMap} dispatchWired={dispatchWired} dispatchOperableMap={dispatchOperableMap} onDispatched={refreshAll} />
 
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 10 }}>
       <MetricCard value={summary.total} title="Canonical agents" detail="Stable IDs in the maturity catalog" />
@@ -512,21 +745,21 @@ function RuntimeView() {
       <div style={{ ...panel, padding: 0, overflow: 'hidden' }}>
         <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between' }}>
           <div><div style={{ fontSize: TYPE.md, fontWeight: 800 }}>Agent catalog</div><div style={{ marginTop: 2, fontSize: TYPE.xs, color: 'var(--text3)' }}>Click an agent to inspect its bounded contract.</div></div>
-          <StatusBadge tone="slate">{summary.total} DEFINITIONS</StatusBadge>
+          <StatusBadge tone="slate">{catalogRows.length} DEFINITIONS</StatusBadge>
         </div>
         <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 760 }}>
           <thead><tr style={{ borderBottom: '1px solid var(--border)' }}>{['Agent', 'Role', 'Lifecycle', 'Enabled', 'Retrieval', 'Deadline'].map(header => <th key={header} style={{ ...label, textAlign: header === 'Agent' || header === 'Role' ? 'left' : 'right', padding: '8px 10px' }}>{header}</th>)}</tr></thead>
-          <tbody>{AGENT_RUNTIME_CATALOG.map(agent => <tr key={agent.agentId} onClick={() => setSelectedId(agent.agentId)} style={{ borderBottom: '1px solid var(--border-subtle)', cursor: 'pointer', background: selectedId === agent.agentId ? 'rgba(96,165,250,.07)' : undefined }}>
+          <tbody>{catalogRows.map(agent => <tr key={agent.agentId} onClick={() => setSelectedId(agent.agentId)} style={{ borderBottom: '1px solid var(--border-subtle)', cursor: 'pointer', background: selectedId === agent.agentId ? 'rgba(96,165,250,.07)' : undefined }}>
             <td style={{ padding: '9px 10px' }}><div style={{ fontSize: TYPE.sm, fontWeight: 750 }}>{agent.displayName}</div><div style={{ fontSize: TYPE.xs, color: 'var(--text3)', fontFamily: 'var(--mono)' }}>{agent.agentId}</div></td>
             <td style={{ padding: '9px 10px', fontSize: TYPE.xs, color: 'var(--text2)' }}>{agent.role}</td>
-            <td style={{ padding: '9px 10px', textAlign: 'right' }}><StatusBadge tone={lifecycleTone[agent.lifecycle]}>{agent.lifecycle}</StatusBadge></td>
+            <td style={{ padding: '9px 10px', textAlign: 'right' }}><StatusBadge tone={lifecycleTone[agent.lifecycle as AgentLifecycle] ?? 'slate'}>{agent.lifecycle}</StatusBadge></td>
             <td style={{ padding: '9px 10px', textAlign: 'right', fontSize: TYPE.xs, color: agent.enabled ? T.link : 'var(--text3)' }}>{agent.enabled ? 'SHADOW' : 'NO'}</td>
             <td style={{ padding: '9px 10px', textAlign: 'right', fontSize: TYPE.xs }}>{agent.retrievalRequired ? 'REQUIRED' : 'N/A'}</td>
-            <td style={{ padding: '9px 10px', textAlign: 'right', fontSize: TYPE.xs, fontFamily: 'var(--mono)' }}>{agent.budget.deadlineSeconds}s</td>
+            <td style={{ padding: '9px 10px', textAlign: 'right', fontSize: TYPE.xs, fontFamily: 'var(--mono)' }}>{agent.deadlineSeconds}s</td>
           </tr>)}</tbody>
         </table></div>
       </div>
-      <AgentDetail agent={selected} />
+      <AgentDetail agent={selected} liveConnected={runtimeView.live} />
     </div>
 
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))', gap: 12 }}>

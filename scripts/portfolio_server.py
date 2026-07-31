@@ -735,6 +735,7 @@ def json_response(handler, status: int, data: dict) -> None:
 
 
 _AGENT_RUNTIME_READ_PREFIX = "/api/v3/agent-runtime"
+_AGENT_RUNTIME_DISPATCH_PATH = "/api/v3/agent-runtime/dispatch"
 _AGENT_MATURITY_READ_PREFIX = "/api/v3/agent-maturity"
 _ACTIVE_TRADER_READ_PREFIX = "/api/v3/active-trader"
 
@@ -780,6 +781,23 @@ def _agent_runtime_read_handle(method: str, path: str, raw_query):
                 "schedule_change": False, "financial_action": False,
             },
             "detail": "agent-runtime read API is unavailable",
+        }
+
+
+def _agent_runtime_dispatch_handle(body):
+    """Bounded SHADOW dispatch — separate from the read-only surface."""
+    try:
+        _scripts_dir = str(PROJECT_ROOT / "scripts")
+        if _scripts_dir not in sys.path:
+            sys.path.insert(0, _scripts_dir)
+        from agent_runtime.operator_dispatch_http import dispatch_post
+
+        return dispatch_post(body or {}, root=PROJECT_ROOT)
+    except Exception as exc:
+        return 500, {
+            "contract": "agent-runtime-operator-dispatch-v1",
+            "detail": str(exc),
+            "authority": {"mutation": True, "financial_action": False, "schedule_change": False},
         }
 
 
@@ -2075,8 +2093,24 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path
 
-        # Agent-runtime read surface is GET-only: any POST here is 405, never a write.
+        # Bounded SHADOW dispatch (POST only) — checked before read-only 405.
         _ar_path = path.rstrip("/") or "/"
+        if _ar_path == _AGENT_RUNTIME_DISPATCH_PATH:
+            _slen = int(self.headers.get("Content-Length", 0))
+            _sraw = self.rfile.read(_slen) if _slen > 0 else b"{}"
+            try:
+                _dbody = json.loads(_sraw or b"{}")
+            except Exception:
+                _send_agent_runtime_json(self, 400, {
+                    "contract": "agent-runtime-operator-dispatch-v1",
+                    "detail": "invalid JSON body",
+                })
+                return
+            _dst = _agent_runtime_dispatch_handle(_dbody)
+            _send_agent_runtime_json(self, _dst[0], _dst[1])
+            return
+
+        # Agent-runtime read surface is GET-only: any POST here is 405, never a write.
         if _is_agent_runtime_read_path(_ar_path):
             _ar = _agent_runtime_read_handle("POST", _ar_path, None)
             if _ar is not None:

@@ -60,6 +60,7 @@ class SentinelShadowPipeline:
         model_provider: ModelProvider,
         review_provider: ReviewProvider | None = None,
         score_provider: ScoreProvider | None = None,
+        persistence: Any | None = None,
         prompt_version: str = "sentinel-reflective-v1",
         provider_family: str = "injected-shadow-provider",
         model: str = "injected-shadow-model",
@@ -80,6 +81,7 @@ class SentinelShadowPipeline:
             journal=journal,
             retrieval_provider=self._retrieval_provider,
             model_provider=model_provider,
+            persistence=persistence,
         )
 
     def run(self, raw_watch: Mapping[str, Any], *, now: datetime | None = None) -> SentinelPipelineResult:

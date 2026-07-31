@@ -6,8 +6,8 @@
 # --apply it refuses a production-looking DSN and requires an isolated LAB/SHADOW DSN.
 #
 # It has no broker, order, approval, 2FA, secret, or production-config authority. It
-# only creates the isolated agentic_runtime schema (0001) and its least-privilege
-# roles (0002), or rolls them back.
+# only creates the isolated agentic_runtime schema (0001), its least-privilege
+# roles (0002), and the governed trigger intake queue (0003), or rolls them back.
 #
 # Usage:
 #   ./apply.sh                      # prepare-only: print plan, exit 3
@@ -30,9 +30,9 @@ for arg in "$@"; do
 done
 
 if [ "$DIRECTION" = "up" ]; then
-    FILES=("0001_mvl.up.sql" "0002_roles.up.sql")
+    FILES=("0001_mvl.up.sql" "0002_roles.up.sql" "0003_trigger_intake.up.sql")
 else
-    FILES=("0002_roles.down.sql" "0001_mvl.down.sql")
+    FILES=("0003_trigger_intake.down.sql" "0002_roles.down.sql" "0001_mvl.down.sql")
 fi
 
 echo "=============================================================="

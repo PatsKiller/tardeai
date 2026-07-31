@@ -21,7 +21,7 @@ export interface AgentDetailView {
   live: boolean
   agentId: string
   role: 'producer' | 'reviewer' | 'scorer' | 'mixed' | 'none'
-  runs: Array<{ runId: string; status: string; updatedAt: string }>
+  runs: Array<{ runId: string; status: string; startedAt: string; completedAt: string | null; updatedAt: string }>
   artifacts: JoinedArtifact[]
   counts: { produced: number; reviewed: number; scored: number; byVerdict: Record<string, number> }
   lessons: { total: number; byLifecycle: Record<string, number> }
@@ -107,7 +107,13 @@ export async function resolveAgentRuntimeDetail(
       if (j) j.scorer = scorer
       if (scorer === agentId) { engaged.add(aid); touched = true }
     }
-    if (touched) runInfo.push({ runId, status: String(run.status ?? ''), updatedAt: String(run.updated_at ?? run.started_at ?? '') })
+    if (touched) runInfo.push({
+      runId,
+      status: String(run.status ?? ''),
+      startedAt: String(run.started_at ?? run.updated_at ?? ''),
+      completedAt: run.completed_at ? String(run.completed_at) : null,
+      updatedAt: String(run.updated_at ?? run.started_at ?? ''),
+    })
   }
 
   const mine: JoinedArtifact[] = []

@@ -15,6 +15,8 @@ from scripts.agent_runtime.agents.base import (
     assert_no_self_governance,
 )
 from scripts.agent_runtime.agents.definitions import (
+    CATALOG_SHADOW_AGENT_IDS,
+    ENABLED_SHADOW_AGENT_IDS,
     FLEET,
     INITIAL_SHADOW_AGENT_IDS,
     SECOND_WAVE_AGENT_IDS,
@@ -26,12 +28,11 @@ from scripts.agent_runtime.agents.definitions import (
 
 
 def test_fleet_roster_matches_wave_partitions() -> None:
-    # The fleet is exactly the union of the enabled-SHADOW set and the disabled
-    # second wave. argus was authored + enabled after the original four, so it
-    # joins the enabled INITIAL set.
-    assert set(FLEET) == set(INITIAL_SHADOW_AGENT_IDS) | set(SECOND_WAVE_AGENT_IDS)
+    assert set(FLEET) == set(ENABLED_SHADOW_AGENT_IDS)
     assert set(INITIAL_SHADOW_AGENT_IDS) == {"sentinel", "darwin", "iris", "reflection", "argus"}
     assert set(SECOND_WAVE_AGENT_IDS) == {"maria", "vega", "risk_agent", "aegis"}
+    assert set(CATALOG_SHADOW_AGENT_IDS) == {"alex", "atlas", "concierge", "hermes", "pulse", "steph", "tax_agent"}
+    assert len(FLEET) == 16
 
 
 def test_whole_fleet_validates_and_separation_holds() -> None:
@@ -47,13 +48,21 @@ def test_initial_agents_are_enabled_in_shadow() -> None:
         assert s.wave == "INITIAL"
 
 
-def test_second_wave_agents_are_disabled_and_designed_only() -> None:
+def test_second_wave_agents_are_enabled_in_shadow() -> None:
     for agent_id in SECOND_WAVE_AGENT_IDS:
         s = spec(agent_id)
-        assert s.definition.enabled is False
-        assert s.definition.deployment_state is DeploymentState.DESIGNED
-        assert s.is_operable_now is False
+        assert s.definition.enabled is True
+        assert s.definition.deployment_state is DeploymentState.SHADOW
+        assert s.is_operable_now is True
         assert s.wave == "SECOND"
+
+
+def test_catalog_agents_are_enabled_in_shadow() -> None:
+    for agent_id in CATALOG_SHADOW_AGENT_IDS:
+        s = spec(agent_id)
+        assert s.definition.enabled is True
+        assert s.definition.deployment_state is DeploymentState.SHADOW
+        assert s.is_operable_now is True
 
 
 def test_reviewer_and_scorer_are_always_different_agents() -> None:

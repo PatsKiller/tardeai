@@ -182,14 +182,13 @@ _MARIA = ShadowAgentSpec(
         allowed_tools=("kb.search", "kb.get_lesson", "filing.read", "catalyst.read", "fundamentals.read", "artifact.write"),
         denied_tools=("proposal.authorize", "config.promote", "ticket.write"),
         retrieval_required=True,
-        enabled=False,
-        state=DeploymentState.DESIGNED,
+        enabled=True,
+        state=DeploymentState.SHADOW,
         budget=BudgetPolicy(max_model_calls=3, max_tool_calls=16, max_cost_usd=0.0, deadline_seconds=600),
     ),
     summary=(
         "Evidence-bound fundamental/catalyst research review. Every claim must cite "
-        "immutable evidence; invented structure is rejected. Advisory only. DISABLED "
-        "pending wave-1 maturity acceptance."
+        "immutable evidence; invented structure is rejected. Advisory only."
     ),
     triggers=(
         Trigger(TriggerKind.WATCH_ARTIFACT_CHANGED, "A research-eligible artifact is published"),
@@ -211,13 +210,13 @@ _VEGA = ShadowAgentSpec(
         allowed_tools=("kb.search", "chart.read", "indicator.read", "level.read", "artifact.write"),
         denied_tools=("proposal.authorize", "config.promote", "ticket.write"),
         retrieval_required=True,
-        enabled=False,
-        state=DeploymentState.DESIGNED,
+        enabled=True,
+        state=DeploymentState.SHADOW,
         budget=BudgetPolicy(max_model_calls=3, max_tool_calls=14, max_cost_usd=0.0, deadline_seconds=600),
     ),
     summary=(
         "Reviews technical structure (levels, indicators, regime) against immutable "
-        "market evidence. Advisory only. DISABLED pending wave-1 maturity acceptance."
+        "market evidence. Advisory only."
     ),
     triggers=(
         Trigger(TriggerKind.WATCH_ARTIFACT_CHANGED, "A technical-structure-eligible artifact is published"),
@@ -239,14 +238,13 @@ _RISK_AGENT = ShadowAgentSpec(
         allowed_tools=("kb.search", "risk_evidence.read", "exposure.read", "artifact.write"),
         denied_tools=("risk_policy.write", "position.close", "config.promote", "limit.write"),
         retrieval_required=True,
-        enabled=False,
-        state=DeploymentState.DESIGNED,
+        enabled=True,
+        state=DeploymentState.SHADOW,
         budget=BudgetPolicy(max_model_calls=2, max_tool_calls=12, max_cost_usd=0.0, deadline_seconds=600),
     ),
     summary=(
         "Critiques deterministic risk evidence (exposure, concentration, stop "
-        "coverage) without any position or limit authority. Advisory only. DISABLED "
-        "pending wave-1 maturity acceptance."
+        "coverage) without any position or limit authority. Advisory only."
     ),
     triggers=(
         Trigger(TriggerKind.QUALITY_EXCEPTION, "A risk-evidence quality exception is raised"),
@@ -268,15 +266,14 @@ _AEGIS = ShadowAgentSpec(
         allowed_tools=("kb.search", "incident.read", "log.read", "remediation_proposal.write"),
         denied_tools=("service.restart", "config.promote", "remediation.apply", "systemd.enable"),
         retrieval_required=True,
-        enabled=False,
-        state=DeploymentState.DESIGNED,
+        enabled=True,
+        state=DeploymentState.SHADOW,
         budget=BudgetPolicy(max_model_calls=3, max_tool_calls=16, max_cost_usd=0.0, deadline_seconds=900),
     ),
     summary=(
         "Reviews incidents and drafts remediation proposals from immutable logs and "
         "incident evidence. Proposals are advisory drafts; Aegis cannot restart a "
-        "service, apply a fix or change configuration. DISABLED pending wave-1 "
-        "maturity acceptance."
+        "service, apply a fix or change configuration."
     ),
     triggers=(
         Trigger(TriggerKind.INCIDENT_OPENED, "An incident is opened"),
@@ -326,6 +323,165 @@ _ARGUS = ShadowAgentSpec(
 )
 
 
+# ---------------------------------------------------------------------------
+# Catalog wave — specs for remaining maturity-catalog agents (SHADOW-enabled)
+# ---------------------------------------------------------------------------
+
+_ALEX = ShadowAgentSpec(
+    definition=_def(
+        "alex",
+        "Alex",
+        "CIO synthesis for unresolved trade-offs",
+        allowed_job_types=("cio_synthesis", "exception_synthesis"),
+        allowed_tools=("artifact.read", "review.read", "score.read", "synthesis.write"),
+        denied_tools=("risk.override", "ticket.release", "broker.submit", "config.promote"),
+        retrieval_required=True,
+        enabled=True,
+        state=DeploymentState.SHADOW,
+        budget=BudgetPolicy(max_model_calls=2, max_tool_calls=12, max_cost_usd=0.0, deadline_seconds=900),
+    ),
+    summary="Synthesizes unresolved trade-offs after lower-layer evidence is complete. Advisory only.",
+    triggers=(Trigger(TriggerKind.RESEARCH_REQUEST, "Unresolved trade-off batch ready for synthesis"),),
+    allowed_output_kinds=(OutputKind.IMPROVEMENT_PROPOSAL,),
+    reviewer_agent_id="sentinel",
+    scorer_agent_id="darwin",
+    maturity_target="Catalog shadow synthesis critic",
+    wave="SECOND",
+)
+
+_ATLAS = ShadowAgentSpec(
+    definition=_def(
+        "atlas",
+        "Atlas",
+        "Durable workflow orchestration critic",
+        allowed_job_types=("durable_workflow_orchestration",),
+        allowed_tools=("run.create", "run.status", "handoff.write", "checkpoint.write"),
+        denied_tools=("broker.submit", "config.promote", "approval.write", "2fa.request"),
+        retrieval_required=True,
+        enabled=True,
+        state=DeploymentState.SHADOW,
+        budget=BudgetPolicy(max_model_calls=0, max_tool_calls=20, max_cost_usd=0.0, deadline_seconds=1200),
+    ),
+    summary="Coordinates bounded multi-step workflows without broker or approval authority.",
+    triggers=(Trigger(TriggerKind.SCHEDULED_SWEEP, "Bounded workflow batch ready"),),
+    allowed_output_kinds=(OutputKind.RESEARCH_TASK,),
+    reviewer_agent_id="sentinel",
+    scorer_agent_id="darwin",
+    maturity_target="Catalog shadow orchestration critic",
+    wave="SECOND",
+)
+
+_CONCIERGE = ShadowAgentSpec(
+    definition=_def(
+        "concierge",
+        "Concierge",
+        "Governed OpenClaw operator interface",
+        allowed_job_types=("operator_status", "operator_cancel", "operator_resume", "operator_explain"),
+        allowed_tools=("run.status", "run.cancel", "run.resume", "artifact.explain"),
+        denied_tools=("shell.exec", "prod_db.write", "broker.submit", "config.promote"),
+        retrieval_required=False,
+        enabled=True,
+        state=DeploymentState.SHADOW,
+        budget=BudgetPolicy(max_model_calls=0, max_tool_calls=8, max_cost_usd=0.0, deadline_seconds=60),
+    ),
+    summary="Read-only operator status/explain surface for governed runs. No shell or secret access.",
+    triggers=(Trigger(TriggerKind.SCHEDULED_SWEEP, "Operator status poll"),),
+    allowed_output_kinds=(OutputKind.IMPROVEMENT_PROPOSAL,),
+    reviewer_agent_id="sentinel",
+    scorer_agent_id="darwin",
+    maturity_target="Catalog shadow operator interface",
+    wave="SECOND",
+)
+
+_HERMES = ShadowAgentSpec(
+    definition=_def(
+        "hermes",
+        "Hermes",
+        "Hypothesis discovery and experiment design",
+        allowed_job_types=("hypothesis_discovery", "experiment_design"),
+        allowed_tools=("kb.search", "case.read", "score.read", "hypothesis.register", "experiment_plan.write"),
+        denied_tools=("hypothesis.promote", "config.promote", "config.activate"),
+        retrieval_required=True,
+        enabled=True,
+        state=DeploymentState.SHADOW,
+        budget=BudgetPolicy(max_model_calls=3, max_tool_calls=20, max_cost_usd=0.0, deadline_seconds=1200),
+    ),
+    summary="Discovers hypotheses and drafts experiment plans without promotion authority.",
+    triggers=(Trigger(TriggerKind.RESEARCH_REQUEST, "Research hypothesis batch ready"),),
+    allowed_output_kinds=(OutputKind.CANDIDATE_HYPOTHESIS, OutputKind.RESEARCH_TASK),
+    reviewer_agent_id="iris",
+    scorer_agent_id="darwin",
+    maturity_target="Catalog shadow research critic",
+    wave="SECOND",
+)
+
+_PULSE = ShadowAgentSpec(
+    definition=_def(
+        "pulse",
+        "Pulse",
+        "Moomoo microstructure interpretation critic",
+        allowed_job_types=("microstructure_review",),
+        allowed_tools=("kb.search", "microstructure.read", "artifact.write"),
+        denied_tools=("broker.submit", "order.submit", "config.promote"),
+        retrieval_required=True,
+        enabled=True,
+        state=DeploymentState.SHADOW,
+        budget=BudgetPolicy(max_model_calls=2, max_tool_calls=12, max_cost_usd=0.0, deadline_seconds=300),
+    ),
+    summary="Interprets microstructure evidence without order or broker authority.",
+    triggers=(Trigger(TriggerKind.WATCH_ARTIFACT_CHANGED, "Microstructure-eligible artifact published"),),
+    allowed_output_kinds=(OutputKind.TECHNICAL_STRUCTURE_REVIEW,),
+    reviewer_agent_id="sentinel",
+    scorer_agent_id="darwin",
+    maturity_target="Catalog shadow microstructure critic",
+    wave="SECOND",
+)
+
+_STEPH = ShadowAgentSpec(
+    definition=_def(
+        "steph",
+        "Steph",
+        "Portfolio and account allocation critic",
+        allowed_job_types=("allocation_review",),
+        allowed_tools=("kb.search", "allocation.read", "artifact.write"),
+        denied_tools=("position.write", "broker.submit", "config.promote"),
+        retrieval_required=True,
+        enabled=True,
+        state=DeploymentState.SHADOW,
+        budget=BudgetPolicy(max_model_calls=2, max_tool_calls=14, max_cost_usd=0.0, deadline_seconds=900),
+    ),
+    summary="Reviews allocation evidence without position or broker writes.",
+    triggers=(Trigger(TriggerKind.SCHEDULED_SWEEP, "Allocation review batch ready"),),
+    allowed_output_kinds=(OutputKind.RISK_EVIDENCE_CRITIQUE,),
+    reviewer_agent_id="iris",
+    scorer_agent_id="darwin",
+    maturity_target="Catalog shadow allocation critic",
+    wave="SECOND",
+)
+
+_TAX_AGENT = ShadowAgentSpec(
+    definition=_def(
+        "tax_agent",
+        "Ledger Tax",
+        "Tax, wash-sale, and account constraint critic",
+        allowed_job_types=("tax_constraint_review",),
+        allowed_tools=("kb.search", "tax.read", "artifact.write"),
+        denied_tools=("position.write", "broker.submit", "config.promote"),
+        retrieval_required=True,
+        enabled=True,
+        state=DeploymentState.SHADOW,
+        budget=BudgetPolicy(max_model_calls=2, max_tool_calls=12, max_cost_usd=0.0, deadline_seconds=900),
+    ),
+    summary="Reviews tax and wash-sale constraints without account writes.",
+    triggers=(Trigger(TriggerKind.SCHEDULED_SWEEP, "Tax constraint review batch ready"),),
+    allowed_output_kinds=(OutputKind.RISK_EVIDENCE_CRITIQUE,),
+    reviewer_agent_id="sentinel",
+    scorer_agent_id="darwin",
+    maturity_target="Catalog shadow tax critic",
+    wave="SECOND",
+)
+
+
 FLEET: dict[str, ShadowAgentSpec] = {
     spec.agent_id: spec
     for spec in (
@@ -338,6 +494,13 @@ FLEET: dict[str, ShadowAgentSpec] = {
         _VEGA,
         _RISK_AGENT,
         _AEGIS,
+        _ALEX,
+        _ATLAS,
+        _CONCIERGE,
+        _HERMES,
+        _PULSE,
+        _STEPH,
+        _TAX_AGENT,
     )
 }
 
@@ -345,6 +508,8 @@ FLEET: dict[str, ShadowAgentSpec] = {
 # after the original four; being enabled, it belongs here (not the disabled 2nd wave).
 INITIAL_SHADOW_AGENT_IDS: tuple[str, ...] = ("sentinel", "darwin", "iris", "reflection", "argus")
 SECOND_WAVE_AGENT_IDS: tuple[str, ...] = ("maria", "vega", "risk_agent", "aegis")
+CATALOG_SHADOW_AGENT_IDS: tuple[str, ...] = ("alex", "atlas", "concierge", "hermes", "pulse", "steph", "tax_agent")
+ENABLED_SHADOW_AGENT_IDS: tuple[str, ...] = INITIAL_SHADOW_AGENT_IDS + SECOND_WAVE_AGENT_IDS + CATALOG_SHADOW_AGENT_IDS
 
 # Fail-closed at import time: the entire fleet must satisfy the separation and
 # authority invariants, or the module cannot be imported.
@@ -363,6 +528,10 @@ def spec(agent_id: str) -> ShadowAgentSpec:
 
 def initial_agents() -> dict[str, ShadowAgentSpec]:
     return {agent_id: FLEET[agent_id] for agent_id in INITIAL_SHADOW_AGENT_IDS}
+
+
+def enabled_shadow_agents() -> dict[str, ShadowAgentSpec]:
+    return {agent_id: FLEET[agent_id] for agent_id in ENABLED_SHADOW_AGENT_IDS}
 
 
 def second_wave_agents() -> dict[str, ShadowAgentSpec]:

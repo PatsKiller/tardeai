@@ -1,0 +1,35 @@
+{
+  "contract": "agent-runtime-schedules-v1",
+  "producer": {
+    "unit": "tradeai-agent-runtime-producer.service",
+    "timer": "tradeai-agent-runtime-producer.timer",
+    "on_calendar": "*:0/2",
+    "randomized_delay_sec": 30,
+    "sources": [
+      "watch:artifacts",
+      "watch:refresh_jobs",
+      "outcomes:recommendations",
+      "kb:candidate_lessons",
+      "incidents:alert",
+      "research:hermes"
+    ]
+  },
+  "agents": {
+    "sentinel": {"drain_minutes": 5, "mode": "EVENT_PRIMARY"},
+    "iris": {"drain_minutes": 5, "mode": "EVENT_PRIMARY"},
+    "maria": {"drain_minutes": 5, "mode": "EVENT_PRIMARY"},
+    "vega": {"drain_minutes": 5, "mode": "EVENT_PRIMARY"},
+    "pulse": {"drain_minutes": 5, "mode": "EVENT_PRIMARY"},
+    "aegis": {"drain_minutes": 5, "mode": "EVENT_PRIMARY"},
+    "alex": {"drain_minutes": 5, "mode": "EVENT_PRIMARY"},
+    "hermes": {"drain_minutes": 5, "mode": "EVENT_PRIMARY"},
+    "darwin": {"drain_minutes": 60, "mode": "SWEEP", "source": "sweep:darwin"},
+    "argus": {"drain_minutes": 30, "mode": "SWEEP", "source": "sweep:argus"},
+    "risk_agent": {"drain_minutes": 30, "mode": "SWEEP", "source": "sweep:risk"},
+    "atlas": {"drain_minutes": 15, "mode": "SWEEP", "source": "sweep:atlas"},
+    "concierge": {"drain_minutes": 5, "mode": "SWEEP", "source": "sweep:concierge"},
+    "reflection": {"on_calendar": "30 21 * * 1-5", "mode": "NIGHTLY", "source": "nightly:reflection"},
+    "steph": {"on_calendar": "45 16 * * 1-5", "mode": "WEEKDAY_SWEEP", "source": "sweep:steph"},
+    "tax_agent": {"on_calendar": "0 17 * * 1-5", "mode": "WEEKDAY_SWEEP", "source": "sweep:tax"}
+  }
+}

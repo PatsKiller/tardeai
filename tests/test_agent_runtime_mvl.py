@@ -74,7 +74,7 @@ def test_registry_matches_canonical_shadow_contract() -> None:
     assert {"sentinel", "darwin", "reflection", "iris", "hermes", "concierge"} <= set(registry)
     assert registry["sentinel"].deployment_state is DeploymentState.SHADOW
     assert registry["sentinel"].retrieval_required is True
-    assert registry["hermes"].enabled is False
+    assert registry["hermes"].enabled is True
     assert "hypothesis.promote" in registry["hermes"].denied_tools
 
 

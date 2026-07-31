@@ -43,7 +43,7 @@ _PKG = Path(__file__).resolve().parent
 if str(_PKG) not in sys.path:
     sys.path.insert(0, str(_PKG))
 
-from agent_runtime.agents.dispatcher import BoundedDispatcher, JobRequest, batch_summary  # noqa: E402
+from agent_runtime.agents.dispatcher import BoundedDispatcher, JobOutcome, JobRequest, JobResult, batch_summary  # noqa: E402
 from agent_runtime.agents.definitions import FLEET  # noqa: E402
 
 DISPATCH_DSN_ENV = "AGENT_RUNTIME_DISPATCH_DSN"      # LAB shadow_rw writer DSN
@@ -134,8 +134,57 @@ def run_bounded_batch(agent_id: str, max_batch: int = 8) -> dict[str, Any]:
     provider_mod = _load_provider_module()
     persistence = build_persistence(dsn)
     providers = provider_mod.build_providers(agent_id)
+    store = getattr(providers, "store", None)
     processor = providers.make_processor(persistence)
     jobs: Sequence[JobRequest] = list(provider_mod.job_source(agent_id, max_batch))
-    dispatcher = build_dispatcher(agent_id, processor=processor, max_batch=max_batch)
+
+    run_ids: dict[str, str] = {}
+
+    def _tracking_processor(job: JobRequest) -> Mapping[str, Any]:
+        result = processor(job)
+        run_id = str(result.get("run_id") or "")
+        if run_id:
+            run_ids[job.input_hash] = run_id
+        return result
+
+    dispatcher = build_dispatcher(agent_id, processor=_tracking_processor, max_batch=max_batch)
     results = dispatcher.process_batch(jobs)
-    return batch_summary(results)
+    summary = batch_summary(results)
+    summary["intake_acks"] = _ack_intake_outcomes(store, jobs, results, run_ids)
+    summary["leased_run_ids"] = [run_ids[h] for h in run_ids]
+    return summary
+
+
+def _ack_intake_outcomes(
+    store: Any,
+    jobs: Sequence[JobRequest],
+    results: list[JobResult],
+    run_ids: Mapping[str, str],
+) -> list[dict[str, Any]]:
+    """Ack leased trigger-intake rows when the provider uses the governed queue."""
+    if store is None:
+        return []
+    by_hash = {job.input_hash: job for job in jobs}
+    acks: list[dict[str, Any]] = []
+    for result in results:
+        job = by_hash.get(result.input_hash)
+        if job is None or not job.intake_id:
+            continue
+        detail = {"intake_id": job.intake_id, "outcome": result.outcome.value}
+        try:
+            if result.outcome == JobOutcome.COMPLETED:
+                run_id = run_ids.get(result.input_hash, "")
+                store.ack_completed(job.intake_id, run_id=run_id)
+                detail["state"] = "COMPLETED"
+                detail["run_id"] = run_id
+            elif result.outcome == JobOutcome.REFUSED_STALE:
+                store.ack_refused_stale(job.intake_id, detail=result.detail)
+                detail["state"] = "REFUSED_STALE"
+            else:
+                store.ack_failed(job.intake_id, detail=result.detail or result.outcome.value)
+                detail["state"] = "FAILED"
+        except Exception as exc:
+            detail["state"] = "ACK_ERROR"
+            detail["error"] = str(exc)
+        acks.append(detail)
+    return acks

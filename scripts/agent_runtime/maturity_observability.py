@@ -270,7 +270,7 @@ def _gate_state(
     if health == "NOT_RUN":
         return "NOT_RUN", "review has not run", "NOT_ELIGIBLE"
     if health == "UNKNOWN":
-        return "UNKNOWN", "review health is unknown", "UNKNOWN"
+        return "UNKNOWN", "review health is unknown", "HUMAN_REVIEW_REQUIRED"
     if health == "STALE_CACHE":
         return "STALE", "review evidence is a stale cached result", "HUMAN_REVIEW_REQUIRED"
     if health in {"DEGRADED_FALLBACK", "MISSING_REVIEWER", "INCOMPLETE_CONSENSUS", "PROVIDER_UNAVAILABLE"}:
@@ -293,12 +293,16 @@ _DEGRADED_REVIEW = {"DEGRADED_FALLBACK", "STALE_CACHE", "TIMEOUT", "INVALID_OUTP
 def _next_step_hint(*, lifecycle: str, environment: str, has_runtime_spec: bool,
                     source_class: str, sample_size: int | None, required: int | None,
                     review_health: str, eligibility: str,
-                    framework_gates_complete: bool) -> str:
+                    framework_gates_complete: bool, framework: str = "") -> str:
     """One line: what this agent needs to reach its NEXT lifecycle step."""
     if eligibility == "ELIGIBLE_FOR_HUMAN_REVIEW":
         return "Ready — awaiting a human promotion decision."
-    if eligibility == "UNKNOWN":
+    if eligibility == "UNKNOWN" and framework != "agent-runtime-mvl":
         return "Read-visible observability row (non-MVL framework); no MVL promotion step applies."
+    if framework == "agent-runtime-mvl" and review_health == "UNKNOWN":
+        return "Review health unknown — inspect last run reviews or re-run with reviewer wired."
+    if eligibility == "UNKNOWN":
+        return "Gate state unknown — connect runtime evidence or inspect review health."
     if not (lifecycle == "SHADOW" or environment == "SHADOW"):  # DESIGNED
         if not has_runtime_spec:
             return "Author a governed runtime spec (definitions.py), then enable it in SHADOW."
@@ -361,7 +365,7 @@ def _observation(
         lifecycle=lifecycle, environment=environment, has_runtime_spec=has_runtime_spec,
         source_class=source_class, sample_size=sample_size, required=required_sample_size,
         review_health=review.review_health, eligibility=eligibility,
-        framework_gates_complete=framework_gates_complete,
+        framework_gates_complete=framework_gates_complete, framework=framework,
     )
     effective_authority = "NO_FINANCIAL_AUTHORITY"
     if lifecycle == "RESTRICTED":
