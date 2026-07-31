@@ -2,16 +2,16 @@
   "version": 1,
   "hooks": {
     "beforeShellExecution": [
-      { "command": ".cursor/hooks/guard-shell.sh", "failClosed": true, "timeout": 10 },
-      { "command": ".cursor/hooks/audit.sh" }
+      { "command": "/home/johnclaw/tradeai-wt-cursor-guardrails/.cursor/hooks/guard-shell.sh", "failClosed": true, "timeout": 10 },
+      { "command": "/home/johnclaw/tradeai-wt-cursor-guardrails/.cursor/hooks/audit.sh" }
     ],
     "beforeReadFile": [
-      { "command": ".cursor/hooks/guard-read.sh", "failClosed": true }
+      { "command": "/home/johnclaw/tradeai-wt-cursor-guardrails/.cursor/hooks/guard-read.sh", "failClosed": true }
     ],
     "preToolUse": [
-      { "command": ".cursor/hooks/guard-write.sh", "matcher": "Write|Delete", "failClosed": true }
+      { "command": "/home/johnclaw/tradeai-wt-cursor-guardrails/.cursor/hooks/guard-write.sh", "matcher": "Write|Delete", "failClosed": true }
     ],
-    "afterShellExecution": [ { "command": ".cursor/hooks/audit.sh" } ],
-    "afterFileEdit":       [ { "command": ".cursor/hooks/audit.sh" } ]
+    "afterShellExecution": [ { "command": "/home/johnclaw/tradeai-wt-cursor-guardrails/.cursor/hooks/audit.sh" } ],
+    "afterFileEdit":       [ { "command": "/home/johnclaw/tradeai-wt-cursor-guardrails/.cursor/hooks/audit.sh" } ]
   }
 }
