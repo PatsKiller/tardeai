@@ -186,6 +186,17 @@ export default function WatchlistHub({ onDrill, embedded, lane }: Props) {
   const [fSector, setFSector] = useState('all')
   const [fAnalyst, setFAnalyst] = useState('all')   // analyst catalyst: upgrade / downgrade
   const [fVol, setFVol] = useState<'all' | 'extreme' | 'tight_stop'>('all')
+  // Card wall / filters / decision desk — optional depth. MAIN command desk lives above (WatchTruthAuditPanel).
+  const [cardDeskOpen, setCardDeskOpen] = useState(() => {
+    try { return localStorage.getItem('watch.card_desk.open') === '1' } catch { return false }
+  })
+  const toggleCardDesk = () => {
+    setCardDeskOpen(v => {
+      const next = !v
+      try { localStorage.setItem('watch.card_desk.open', next ? '1' : '0') } catch { /* ignore */ }
+      return next
+    })
+  }
 
   // v4 (B1): saved views — named filter presets, SERVER-side (ui_prefs) because the
   // operator works desktop+phone over Tailscale; localStorage doesn't travel. Max 8.
@@ -547,7 +558,41 @@ export default function WatchlistHub({ onDrill, embedded, lane }: Props) {
         </div>
       </div>
 
+      {/* Card desk collapsed by default — MAIN command desk above is the redesign surface */}
       {!screenerLane && (
+        <div style={{
+          marginBottom: 14,
+          padding: '12px 14px',
+          borderRadius: 8,
+          border: `1px solid ${BB.border}`,
+          background: 'var(--bg1)',
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: 10,
+          alignItems: 'center',
+        }}>
+          <div style={{ flex: 1, minWidth: 220 }}>
+            <div style={{ fontSize: 13, fontWeight: 900, color: TEXT0 }}>Card desk · optional depth</div>
+            <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>
+              Decision Desk cards, filters, discovery, directives — collapsed so they do not bury MAIN GO/WAIT/NOGO.
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={toggleCardDesk}
+            style={{
+              fontSize: 12, fontWeight: 800, padding: '8px 14px', borderRadius: 6, cursor: 'pointer',
+              border: `1px solid ${cardDeskOpen ? GREEN : 'var(--border)'}`,
+              background: cardDeskOpen ? 'rgba(34,197,94,.12)' : 'var(--bg2)',
+              color: cardDeskOpen ? GREEN : TEXT1,
+            }}
+          >
+            {cardDeskOpen ? '▾ Hide card desk' : '▸ Expand card desk'}
+          </button>
+        </div>
+      )}
+
+      {(screenerLane || cardDeskOpen) && !screenerLane && (
         <WatchCommandTriage
           lane={watchLane}
           now={watchNow}
@@ -559,6 +604,8 @@ export default function WatchlistHub({ onDrill, embedded, lane }: Props) {
         />
       )}
 
+      {(screenerLane || cardDeskOpen) && (
+      <>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10, marginBottom: 14 }}>
         {[
           { label: watchLane === 'main' ? `MAIN ${items.length}/${wl?.main_cap ?? 60} · setup desk` : `Top ${items.length} of ${wl?.universe_count ?? '…'} · ${wl?.rank_name || 'Hermes'}`, value: items.length, color: TEXT0, tip: watchLane === 'main' ? 'MAIN admission lane — GO/WAIT/NOGO setups only; analyst coverage stays in COVERAGE' : `window by ${wl?.rank_name || 'Hermes rank'} — click to clear filters`, onClick: () => { setFBand('all'); setFStatus('all'); setFOrigin('all'); setFRating('all'); setFCio('all'); setFList('all'); setFKind('all'); setFDir('all'); setFHeld(false); setFSector('all'); setFAnalyst('all'); setFVol('all'); setSearch(''); setWatchLane('main'); setWatchNow('all') } },
@@ -880,6 +927,8 @@ export default function WatchlistHub({ onDrill, embedded, lane }: Props) {
         )}
         <div style={{ fontSize: 10, color: MUTED, marginTop: 10 }}>Decision-first cards — CIO view, confidence, R:R, L/S/target, model, data-quality flags, and reasoning visible by default. Street analyst shown with divergence when CIO disagrees. Advisory-only — never places trades.</div>
       </div>
+      </>
+      )}
 
       {showAdd && <AddWatchModal onClose={() => setShowAdd(false)} onCreated={() => { refetchWd(); refetchWl() }} paMap={paMap} lists={listOpts} />}
       {proposeSeed && (

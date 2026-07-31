@@ -47,7 +47,7 @@ export default function WatchHub({ onDrill }: Props) {
       <div className="hub-title-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
         <div>
           <div style={hubTitle()}>Watch <span style={{ color: BB.text3 }}>›</span> {tab}</div>
-          <div style={hubSubtitle(terminalUi)}>Watchlist is the default workspace · other tabs are explicit research lenses</div>
+          <div style={hubSubtitle(terminalUi)}>MAIN setup desk first · GO/WAIT/NOGO · card wall is optional depth below</div>
         </div>
         <div className="hub-tabs" style={{ display: 'flex', gap: terminalUi ? 4 : 6, flexWrap: 'wrap', alignItems: 'center' }}>
           {TABS.map(candidate => (
