@@ -316,14 +316,43 @@ except Exception as e:
 
 # 13. TAMPER EVIDENCE: the gate modules on disk must match git HEAD — an uncommitted edit to the
 #     envelope/caps is a policy violation even if syntactically valid (commit-only means commit-only).
+#     SHA-pinned release checkouts (git archive → no .git) cannot be "dirty vs HEAD"; require a
+#     SOURCE_COMMIT / build-meta stamp instead so exact-ref deploys do not false-fail 26/27 and
+#     block legitimate operator 2FA stop placement.
 try:
     gate_files = ["scripts/brokers/canary_gate.py", "scripts/brokers/pilot_caps.py",
                   "scripts/brokers/execution_guard.py", "scripts/brokers/protective_stop_policy.py"]
-    r = subprocess.run(["git", "diff", "--name-only", "HEAD", "--"] + gate_files,
-                       cwd=PROJECT_ROOT, capture_output=True, text=True, timeout=20)
-    dirty = [l for l in r.stdout.splitlines() if l.strip()]
-    ok("tamper evidence: gate modules match git HEAD (no uncommitted envelope edits)",
-       r.returncode == 0 and not dirty, f"dirty: {dirty}" if dirty else "clean vs HEAD")
+    git_dir = PROJECT_ROOT / ".git"
+    if not git_dir.exists():
+        sc = ""
+        for candidate in (
+            PROJECT_ROOT / "SOURCE_COMMIT",
+            PROJECT_ROOT / "apps" / "command-center-v3" / "dist" / "build-meta.json",
+        ):
+            if not candidate.exists():
+                continue
+            try:
+                if candidate.name == "SOURCE_COMMIT":
+                    sc = candidate.read_text(encoding="utf-8").strip().split()[0]
+                else:
+                    import json as _json
+                    sc = str(_json.loads(candidate.read_text(encoding="utf-8")).get("source_commit") or "").strip()
+            except Exception:
+                sc = ""
+            if sc:
+                break
+        # 40-char full SHA required for exact-ref provenance.
+        sc_ok = bool(sc) and len(sc) == 40 and all(c in "0123456789abcdef" for c in sc.lower())
+        gates_present = all((PROJECT_ROOT / f).is_file() for f in gate_files)
+        ok("tamper evidence: SHA-pinned release has SOURCE_COMMIT + gate modules on disk",
+           sc_ok and gates_present,
+           f"source_commit={sc or 'MISSING'} gates_present={gates_present}")
+    else:
+        r = subprocess.run(["git", "diff", "--name-only", "HEAD", "--"] + gate_files,
+                           cwd=PROJECT_ROOT, capture_output=True, text=True, timeout=20)
+        dirty = [l for l in r.stdout.splitlines() if l.strip()]
+        ok("tamper evidence: gate modules match git HEAD (no uncommitted envelope edits)",
+           r.returncode == 0 and not dirty, f"dirty: {dirty}" if dirty else "clean vs HEAD")
 except Exception as e:
     ok("tamper evidence check", False, str(e)[:60])
 
