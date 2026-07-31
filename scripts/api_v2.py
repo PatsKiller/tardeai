@@ -30981,7 +30981,48 @@ def _holdings_live_stops(query=None):
             "note": "Live broker protective stops — Schwab API + Fidelity manual_broker_stops (SnapTrade does not sync open GTC stops).",
         })
     except Exception as e:
-        return {"by_key": {}, "fetched_at": None, "error": str(e)[:160]}
+        # Fail closed: never return a bare empty by_key that can be misread as verified NO_STOP.
+        # PortfolioHub falls back to llm-coverage read-ok only when live-stops omits the field —
+        # always emit explicit empty read-ok + degraded so UNVERIFIABLE wins.
+        _err = str(e)[:160]
+        return {
+            "by_key": {},
+            "fetched_at": None,
+            "cache_ttl_sec": 60,
+            "degraded": True,
+            "unverified_accounts": ["*"],
+            "broker_stop_read_ok_accounts": [],
+            "broker_stop_read_status": {
+                "read_ok_accounts": [],
+                "read_attempted_accounts": [],
+                "read_error_accounts": [],
+                "read_errors": {"*": "live_stops_exception"},
+                "accounts_read_ok": 0,
+                "accounts_attempted": 0,
+                "accounts_failed": 1,
+            },
+            "broker_read_result": {
+                "attempted": True,
+                "degraded": True,
+                "complete": False,
+                "capability_available": False,
+                "safe_error_code": "live_stops_exception",
+                "safe_error_summary": _err,
+            },
+            "attempted": True,
+            "capability_available": False,
+            "complete": False,
+            "successful_accounts": [],
+            "failed_accounts": ["*"],
+            "expected_accounts": [],
+            "broker_stop_count": 0,
+            "safe_error_code": "live_stops_exception",
+            "safe_error_summary": _err,
+            "source": "schwab_api+manual_broker_stops",
+            "cache_status": "error",
+            "error": _err,
+            "note": "Live broker protective stops — read failed closed (do not treat empty as verified NO_STOP).",
+        }
 
 
 def _fidelity_monitored_stops_list(query=None):

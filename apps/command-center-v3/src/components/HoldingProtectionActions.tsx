@@ -176,10 +176,12 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
   // Schwab orders lane health: if this account's live-stop read did NOT succeed, 'none' is a lie —
   // the state is UNVERIFIABLE (e.g. degraded login token; operator-placed stops invisible to the API).
   const _acctNorm = String(h?.account || '').replace(/_ira$/, '')
+  // Fail closed: missing brokerStopReadOk is UNVERIFIABLE for Schwab (aligns with holdingsRowModel).
+  const _brokerOkList = Array.isArray(brokerStopReadOk) ? brokerStopReadOk : null
   const brokerReadDegraded = String(h?.account || '').startsWith('schwab')
-    && Array.isArray(brokerStopReadOk)
-    && !brokerStopReadOk.some(a => String(a).replace(/_ira$/, '') === _acctNorm)
     && logic.liveStop == null && !logic.liveStopIsTrailing
+    && (_brokerOkList === null
+      || !_brokerOkList.some(a => String(a).replace(/_ira$/, '') === _acctNorm))
 
   /** Submission + preview use floor-reconciled advisory stop (logic.advisoryStop), not raw pr.stop_price.
    * Operator override fields (ovStop/ovLimit/ovTrail) overlay the advisory when non-empty; the pure

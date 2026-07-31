@@ -287,8 +287,23 @@ export default function PortfolioHub({ onDrill }: Props) {
   const confirmedByKey: Record<string, any> = (llmCov as any)?.confirmed_stops ?? {}
   const liveStopsByKey: Record<string, any> = (liveStops as any)?.by_key ?? {}
   const brokerStopsFetchedAt = (liveStops as any)?.fetched_at ?? (llmCov as any)?.broker_stops_fetched_at ?? null
-  // accounts whose live broker-stop read succeeded — anything else is UNVERIFIABLE, not 'none'
-  const brokerStopReadOk: string[] = (liveStops as any)?.broker_stop_read_ok_accounts ?? (llmCov as any)?.broker_stop_read_ok_accounts ?? []
+  // accounts whose live broker-stop read succeeded — anything else is UNVERIFIABLE, not 'none'.
+  // If live-stops is degraded / errored / missing, do NOT fall back to a stale llm-coverage
+  // read-ok list (that reintroduces false-empty NO_STOP when by_key is empty).
+  const liveStopsDegraded = Boolean(
+    (liveStops as any)?.degraded
+    || (liveStops as any)?.error
+    || (liveStops as any)?.safe_error_code
+    || ((liveStops as any)?.complete === false && Array.isArray((liveStops as any)?.broker_stop_read_ok_accounts)
+      && (liveStops as any).broker_stop_read_ok_accounts.length === 0
+      && Array.isArray((liveStops as any)?.unverified_accounts)
+      && (liveStops as any).unverified_accounts.length > 0),
+  )
+  const brokerStopReadOk: string[] = liveStopsDegraded
+    ? []
+    : ((liveStops as any)?.broker_stop_read_ok_accounts
+      ?? (llmCov as any)?.broker_stop_read_ok_accounts
+      ?? [])
   // Header total + day P/L follow the active filter (account + signal). Unfiltered → equals the global
   // portfolio figures; filtered → that account's own value + day change (fixes "10 holdings · $1.25M").
   const viewTotal = holdingsList.reduce((s: number, h: any) => s + (h.market_value ?? 0), 0)

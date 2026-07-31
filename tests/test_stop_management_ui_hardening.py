@@ -235,3 +235,10 @@ def test_31_cash_rows_excluded_from_stop_placement_ui():
     assert "protectionState: 'CASH'" in row or "protectionState: 'PROTECTED' | 'NO_STOP' | 'UNVERIFIABLE' | 'CASH'" in row
     assert "CASH — no protective stop" in protect
     assert "CASH:" in pill
+
+
+def test_32_live_stops_degraded_does_not_fall_back_to_llm_read_ok():
+    src = read(PORTFOLIO) + read(UI) + read(API)
+    assert "liveStopsDegraded" in src
+    assert "live_stops_exception" in src
+    assert "_brokerOkList" in src or "brokerOkList" in src or "Array.isArray(brokerStopReadOk) ? brokerStopReadOk : null" in src

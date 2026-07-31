@@ -404,3 +404,24 @@ def test_reconcile_dry_run_keeps_duplicate_symbols_account_aware(monkeypatch, tm
     assert "XLB:schwab_rollover_ira" in report["account_aware_keys"]
     assert "V" in report["kept_manual"]
     assert json.loads(rec.STOPS_JSON.read_text()) == {"V": {"source": "manual", "stop": 1}}
+
+
+def test_live_stops_exception_envelope_is_fail_closed(monkeypatch):
+    """Exception path must not look like verified empty (false-empty regression)."""
+    import importlib
+    import api_v2
+    api_v2 = importlib.reload(api_v2)
+
+    def boom(*a, **k):
+        raise RuntimeError("simulated live-stops failure")
+
+    monkeypatch.setattr(api_v2, "_load_json", boom)
+    out = api_v2._holdings_live_stops()
+    assert out.get("by_key") == {}
+    assert out.get("degraded") is True
+    assert out.get("broker_stop_read_ok_accounts") == []
+    assert out.get("unverified_accounts")
+    assert out.get("complete") is False
+    assert out.get("capability_available") is False
+    assert out.get("safe_error_code") == "live_stops_exception"
+    assert "error" in out
