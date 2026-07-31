@@ -14,6 +14,8 @@ export interface PortfolioDeskHealthProps {
   placementCount: number
   verificationCount: number
   priceStamp?: string | null
+  onExportCsv?: () => void
+  onOpenStopAudit?: () => void
 }
 
 interface BuildMeta {
@@ -33,6 +35,7 @@ export default function PortfolioDeskHealth(props: PortfolioDeskHealthProps) {
   const {
     holdingsCount, viewTotalLabel, brokerStopReadOk, unverifiedAccounts,
     liveStopsDegraded, brokerStopsFetchedAt, placementCount, verificationCount, priceStamp,
+    onExportCsv, onOpenStopAudit,
   } = props
   const [meta, setMeta] = useState<BuildMeta | null>(null)
   const [metaErr, setMetaErr] = useState(false)
@@ -123,6 +126,34 @@ export default function PortfolioDeskHealth(props: PortfolioDeskHealthProps) {
       >
         {sha ? `${uiVer} · ${sha}` : uiVer}
       </span>
+      {onExportCsv && (
+        <button
+          type="button"
+          data-testid="desk-health-export-csv"
+          onClick={onExportCsv}
+          title="Download filtered holdings as CSV (client-side; no broker write)."
+          style={{
+            fontSize: 10, fontWeight: 800, padding: '3px 10px', borderRadius: 4, cursor: 'pointer',
+            border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text1)',
+          }}
+        >
+          Export CSV
+        </button>
+      )}
+      {onOpenStopAudit && (
+        <button
+          type="button"
+          data-testid="desk-health-stop-audit"
+          onClick={onOpenStopAudit}
+          title="Open Stop Management desk (audit / re-entry watch surfaces live there)."
+          style={{
+            fontSize: 10, fontWeight: 800, padding: '3px 10px', borderRadius: 4, cursor: 'pointer',
+            border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text1)',
+          }}
+        >
+          Stop audit
+        </button>
+      )}
       <button
         type="button"
         data-testid="desk-health-reload-ui"
