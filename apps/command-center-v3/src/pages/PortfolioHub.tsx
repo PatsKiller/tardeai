@@ -5,20 +5,14 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
 import { fmt$ } from '../lib/format'
 import { pricingStampLine } from '../lib/pricingStamp'
 import type { DrillContext } from '../components/DetailDrawer'
-import ProAnalystPill, { useProAnalystMap } from '../components/ProAnalystPill'
-import AnalystReviews, { useAnalystMap } from '../components/AnalystReviews'
 import AskAgents from '../components/AskAgents'
-import HoldingProtectionActions from '../components/HoldingProtectionActions'
-import { mergeLiveStop, stopReviewTooltip } from '../lib/stopReviewTooltip'
-import HoldingReportLinks from '../components/HoldingReportLinks'
+import { mergeLiveStop } from '../lib/stopReviewTooltip'
 import { useAnalystReportMap } from '../hooks/useAnalystReportMap'
-import { holdingReportEligible } from '../lib/reportLinks'
 import StopManagement from '../components/StopManagement'
 import RedeployPanel from '../components/RedeployPanel'
 import AllocationPanel from '../components/AllocationPanel'
 import ReturnsPanel from '../components/ReturnsPanel'
 import DividendsPanel from '../components/DividendsPanel'
-import { EvidenceBlock } from '../components/EvidenceBlock'
 import HoldingsTableView, { type HoldingsTableRowContext } from '../components/HoldingsTableView'
 import HoldingsSideDrawer from '../components/HoldingsSideDrawer'
 import ShareReconciliationModal, { type ShareDriftItem } from '../components/ShareReconciliationModal'
@@ -28,12 +22,15 @@ import { accountFullName, buildHoldingsRowModel, isCashHolding } from '../lib/ho
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubTab, hubPanel } from '../lib/terminalHubChrome'
 import PortfolioDeskHealth from '../components/PortfolioDeskHealth'
+import ForecastPanel from '../components/ForecastPanel'
+import TaxPanel from '../components/TaxPanel'
 import {
   parsePortfolioDeepLink,
   pickHoldingForDeepLink,
   resolvePortfolioSig,
   type PortfolioSignalTab,
 } from '../lib/portfolioDeepLink'
+import { downloadHoldingsCsv } from '../lib/exportHoldingsCsv'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 const TABS = ['Holdings', 'Allocation', 'Look-through', 'Returns', 'Dividends', 'Forecast', 'Tax', 'Redeploy', 'Stop Management'] as const
@@ -249,30 +246,37 @@ export default function PortfolioHub({ onDrill }: Props) {
       setGapPropose(p => ({ ...p, [symbol]: j?.ok ? (j.already_exists ? 'exists' : 'proposed ✓') : 'error' }))
     } catch { setGapPropose(p => ({ ...p, [symbol]: 'error' })) }
   }
-  const { data: overview } = useApi<any>('/api/v2/overview', 60_000)
+  // WP-D: tab-scoped fetches — Holdings default stays rich; secondary tabs load on demand.
+  const needHoldingsDesk = tab === 'Holdings' || tab === 'Stop Management'
+  const needAllocation = tab === 'Allocation'
+  const needLookthrough = tab === 'Look-through'
+  const needReturns = tab === 'Returns'
+  const needDividends = tab === 'Dividends'
+  const needForecast = tab === 'Forecast'
+  const needTax = tab === 'Tax'
+
+  const { data: overview } = useApi<any>('/api/v2/overview', 60_000, { enabled: needAllocation || needHoldingsDesk })
   const { data: holdings, loading: holdingsLoading, error: holdingsError, stale: holdingsStale } = useApi<any>('/api/v2/portfolio/holdings', 60_000)
-  const { data: shareDriftRaw, refetch: refetchShareDrift } = useApi<any>('/api/v2/holdings/share-drift', 60_000)
+  const { data: shareDriftRaw, refetch: refetchShareDrift } = useApi<any>('/api/v2/holdings/share-drift', 60_000, { enabled: needHoldingsDesk })
   const shareDriftItems: ShareDriftItem[] = (shareDriftRaw?.items || shareDriftRaw?.data?.items || []) as ShareDriftItem[]
   const [shareDriftModal, setShareDriftModal] = useState<ShareDriftItem | null>(null)
-  const { data: llmCov } = useApi<any>('/api/v2/portfolio/llm-coverage', 120_000)
+  const { data: llmCov } = useApi<any>('/api/v2/portfolio/llm-coverage', 120_000, { enabled: needHoldingsDesk })
   const { data: liveStops } = useApi<any>('/api/v2/holdings/live-stops', 60_000)
-  const { data: monitoredStops, refetch: refetchMonitored } = useApi<any>('/api/v2/holdings/monitored-stops', 60_000)
-  const { data: scards } = useApi<any>('/api/v2/symbol-cards', 300_000)
+  const { data: monitoredStops, refetch: refetchMonitored } = useApi<any>('/api/v2/holdings/monitored-stops', 60_000, { enabled: needHoldingsDesk })
+  const { data: scards } = useApi<any>('/api/v2/symbol-cards', 300_000, { enabled: needHoldingsDesk })
   // Closed-session resistance, same cache the Re-Entry desk reads, so the level shown
   // beside a holding is the level the rotation gates use — not a second opinion.
-  const { data: resistancePref } = useApi<any>('/api/v2/ui/prefs/get?key=portfolio.reentry.resistance.v1', 300_000)
+  const { data: resistancePref } = useApi<any>('/api/v2/ui/prefs/get?key=portfolio.reentry.resistance.v1', 300_000, { enabled: needHoldingsDesk })
   const cardMap: Record<string, any> = (scards as any)?.cards ?? {}
-  const paMap = useProAnalystMap()
-  const aMap = useAnalystMap()
-  const { data: fvStrip } = useApi<any>('/api/v2/finviz-strip-map', 300_000)
+  const { data: fvStrip } = useApi<any>('/api/v2/finviz-strip-map', 300_000, { enabled: needHoldingsDesk })
   const fvMap: Record<string, any> = fvStrip?.map ?? {}
-  const { data: divs } = useApi<any>('/api/v2/dividends', 120_000)
-  const { data: taxLots } = useApi<any>('/api/v2/tax-lots', 120_000)
-  const { data: perfData } = useApi<any>('/api/v2/portfolio/performance', 120_000)
-  const { data: riskData } = useApi<any>('/api/v2/risk', 120_000)
-  const { data: forecast } = useApi<any>('/api/v2/forecast', 300_000)
-  const { data: lookthrough } = useApi<any>('/api/v2/portfolio/lookthrough', 300_000)
-  const { data: rotation } = useApi<any>('/api/v2/rotation/summary', 300_000)
+  const { data: divs } = useApi<any>('/api/v2/dividends', 120_000, { enabled: needDividends })
+  const { data: taxLots, loading: taxLoading, error: taxError } = useApi<any>('/api/v2/tax-lots', 120_000, { enabled: needTax })
+  const { data: perfData } = useApi<any>('/api/v2/portfolio/performance', 120_000, { enabled: needReturns })
+  const { data: riskData } = useApi<any>('/api/v2/risk', 120_000, { enabled: needReturns })
+  const { data: forecast, loading: forecastLoading, error: forecastError } = useApi<any>('/api/v2/forecast', 300_000, { enabled: needForecast })
+  const { data: lookthrough, loading: lookthroughLoading } = useApi<any>('/api/v2/portfolio/lookthrough', 300_000, { enabled: needLookthrough })
+  const { data: rotation } = useApi<any>('/api/v2/rotation/summary', 300_000, { enabled: needHoldingsDesk })
   const reportMap = useAnalystReportMap()
 
   // Allocation follows the account filter: per-account look-through when an account is selected, else global.
@@ -501,6 +505,8 @@ export default function PortfolioHub({ onDrill }: Props) {
         placementCount={deskCounts.placement}
         verificationCount={deskCounts.verification}
         priceStamp={priceStamp}
+        onExportCsv={() => downloadHoldingsCsv(holdingsList)}
+        onOpenStopAudit={() => selectTab('Stop Management')}
       />
 
       {tab === 'Redeploy' && <RedeployPanel />}
@@ -704,9 +710,9 @@ export default function PortfolioHub({ onDrill }: Props) {
           {holdingsUnavailable && <div style={{ padding: 20, color: '#f59e0b', fontSize: 12, textAlign: 'center', background: 'var(--bg1)', border: '1px solid rgba(245,158,11,.35)', borderRadius: 10 }}>Holdings request is still retrying: {holdingsError}</div>}
           {!holdingsPending && !holdingsUnavailable && holdingsList.length === 0 && <div style={{ padding: 20, color: 'var(--text3)', fontSize: 11, textAlign: 'center', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10 }}>No holdings match this filter.</div>}
 
-          <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 8, lineHeight: 1.45 }}>
-            Row click → full ticker drawer (75%, tabbed). Symbol / Stop / Action → Stop Management tab.
-            Allocation & portfolio Stop Management desk: separate tabs.
+          <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 8, lineHeight: 1.45 }}>
+            Row click / Enter → full ticker drawer. <b>S</b> on focused row → Stop Management panel.
+            Symbol / Stop / Action cells also open stops. Export CSV from desk strip (filtered lots).
           </div>
         </div>
       )}
@@ -741,7 +747,21 @@ export default function PortfolioHub({ onDrill }: Props) {
         const maxThemePct = Math.max(1, ...themes.map((t: any) => t.pct))
         const maxStockPct = Math.max(1, ...top.map((s: any) => s.pct))
         const sevColor = (s: string) => s === 'high' ? '#ef4444' : s === 'medium' ? '#f59e0b' : '#22c55e'
-        if (!themes.length) return <div style={{ color: 'var(--text3)', fontSize: 12, padding: 20 }}>No look-through computed yet — run <code>scripts/portfolio_lookthrough_themes.py --grok</code>.</div>
+        if (lookthroughLoading && !lookthrough) {
+          return <div data-testid="lookthrough-panel" style={{ color: 'var(--text3)', fontSize: 12, padding: 20 }}>Loading look-through…</div>
+        }
+        if (!themes.length) {
+          return (
+            <div data-testid="lookthrough-panel" style={{ color: 'var(--text3)', fontSize: 12, padding: 20, border: '1px solid var(--border)', borderRadius: 8, lineHeight: 1.55 }}>
+              <div style={{ fontWeight: 800, color: 'var(--text1)', marginBottom: 6 }}>No look-through snapshot yet</div>
+              <div>Fund→underlying resolution has not been published to <code>/api/v2/portfolio/lookthrough</code>.</div>
+              <div style={{ marginTop: 8 }}>
+                Ops: schedule or run the look-through job (historically <code>scripts/portfolio_lookthrough_themes.py</code>), then refresh this tab.
+                Pipeline status: <Link to="/system?tab=pipeline" style={{ color: 'var(--text1)', fontWeight: 700 }}>System → Pipeline</Link>.
+              </div>
+            </div>
+          )
+        }
         const ltAccts = Object.keys(acctDetail)
         return (
           <div>
@@ -926,104 +946,12 @@ export default function PortfolioHub({ onDrill }: Props) {
         />
       )}
       {tab === 'Returns' && !perfData && <div style={{ color: 'var(--text3)', fontSize: 11, padding: 20 }}>Loading performance data...</div>}
-      {tab === 'Forecast' && (() => {
-        const f = forecast?.data ?? forecast ?? {}
-        const proj = f.projections ?? {}
-        const payers = f.top_dividend_payers ?? []
-        return (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}>
-              {[
-                { k: 'Annual dividend income', v: fmt$(f.annual_dividend_income ?? 0, 0), c: '#22c55e' },
-                { k: 'Monthly avg', v: fmt$(f.monthly_dividend_avg ?? 0, 0), c: 'var(--text0)' },
-                { k: 'Portfolio yield', v: `${(f.portfolio_yield_pct ?? 0).toFixed(2)}%`, c: '#60a5fa' },
-                { k: 'Retirement age', v: f.retirement_age ?? '—', c: '#a855f7' },
-              ].map(s => (
-                <div key={s.k} style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 8px', textAlign: 'center' }}>
-                  <div style={{ fontSize: 17, fontWeight: 700, color: s.c }}>{s.v}</div>
-                  <div style={{ fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase' }}>{s.k}</div>
-                </div>
-              ))}
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-              <div className={terminalUi ? 'cc-panel' : undefined} style={terminalUi ? hubPanel(terminalUi) : { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Projections (10y)</div>
-                {Object.entries(proj).map(([k, v]: any) => (
-                  <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid var(--border)', fontSize: 11 }}>
-                    <span style={{ color: 'var(--text3)', textTransform: 'capitalize' }}>{k}</span>
-                    <span style={{ color: 'var(--text0)', fontWeight: 600 }}>{typeof v === 'object' ? fmt$(v.value ?? v.projected_value ?? v.total ?? 0, 0) : (typeof v === 'number' ? fmt$(v, 0) : String(v))}</span>
-                  </div>
-                ))}
-              </div>
-              <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14, maxHeight: 240, overflowY: 'auto' }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Top Dividend Payers</div>
-                {payers.slice(0, 10).map((p: any, i: number) => (
-                  <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 8, padding: '3px 0', borderBottom: '1px solid var(--border)', fontSize: 10, alignItems: 'center' }}>
-                    <span style={{ fontFamily: 'monospace', color: 'var(--text1)' }}>{p.symbol} <ProAnalystPill symbol={p.symbol} map={paMap} compact /></span>
-                    <span style={{ color: '#22c55e' }}>{Number(p.yield_pct ?? 0).toFixed(1)}%</span>
-                    <span style={{ color: 'var(--text2)' }}>{fmt$(p.annual_income ?? 0, 0)}/y</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div style={{ fontSize: 8, color: 'var(--text3)' }}>Source: /api/v2/forecast — {f.assumptions?.basis ?? 'dividend-income projection'}. {f.assumptions?.limitations ?? ''}</div>
-          </div>
-        )
-      })()}
+      {tab === 'Forecast' && (
+        <ForecastPanel forecast={forecast} loading={forecastLoading} error={forecastError} terminalUi={terminalUi} />
+      )}
 
       {tab === 'Tax' && (
-        <div className={terminalUi ? 'cc-panel' : undefined} style={tabPanel}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 8, display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
-            <span>Tax Lots ({taxLots?.count ?? 0})</span>
-            {taxLots?.total_unrealized_gain != null && (
-              <span style={{ fontSize: 12, fontWeight: 800, color: taxLots.total_unrealized_gain >= 0 ? 'var(--green)' : 'var(--red)' }}>
-                {taxLots.total_unrealized_gain >= 0 ? '+' : ''}{fmt$(taxLots.total_unrealized_gain, 0)} unrealized
-              </span>
-            )}
-            {taxLots?.reconciled_to_holdings === false && (
-              <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--amber)' }}>⚠ not reconciled</span>
-            )}
-          </div>
-          {(taxLots?.harvest_candidates ?? 0) > 0 && (
-            <div style={{ marginBottom: 10, padding: '6px 10px', background: 'rgba(245,158,11,.06)', border: '1px solid rgba(245,158,11,.15)', borderRadius: 6, fontSize: 11, color: 'var(--amber)' }}>
-              {taxLots.harvest_candidates} taxable-loss harvest candidate{taxLots.harvest_candidates === 1 ? '' : 's'}
-              {taxLots?.worthless_security_loss ? ` · incl. ${fmt$(taxLots.worthless_security_loss, 0)} worthless-security losses` : ''}
-            </div>
-          )}
-          {Array.isArray(taxLots?.lots) && taxLots.lots.length > 0 && (
-            <div style={{ overflowX: 'auto', marginBottom: 10 }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
-                <thead>
-                  <tr style={{ color: 'var(--text3)' }}>
-                    <th style={{ textAlign: 'left', padding: '4px 8px' }}>Symbol</th>
-                    <th style={{ textAlign: 'left', padding: '4px 8px' }}>Account</th>
-                    <th style={{ textAlign: 'right', padding: '4px 8px' }}>Shares</th>
-                    <th style={{ textAlign: 'right', padding: '4px 8px' }}>Cost basis</th>
-                    <th style={{ textAlign: 'right', padding: '4px 8px' }}>Value</th>
-                    <th style={{ textAlign: 'right', padding: '4px 8px' }}>Unrealized</th>
-                    <th style={{ textAlign: 'right', padding: '4px 8px' }}>%</th>
-                    <th style={{ textAlign: 'left', padding: '4px 8px' }}>Term</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {taxLots.lots.map((l: any, i: number) => (
-                    <tr key={i} style={{ borderTop: '1px solid rgba(148,163,184,.12)', color: 'var(--text1)' }}>
-                      <td style={{ textAlign: 'left', padding: '4px 8px', fontWeight: 700, color: 'var(--text0)' }}>{l.symbol}{l.worthless ? ' ⚠' : ''}</td>
-                      <td style={{ textAlign: 'left', padding: '4px 8px', color: 'var(--text3)' }}>{String(l.account || '').replace('schwab_', '')}</td>
-                      <td style={{ textAlign: 'right', padding: '4px 8px', fontFamily: 'monospace' }}>{l.shares}</td>
-                      <td style={{ textAlign: 'right', padding: '4px 8px', fontFamily: 'monospace' }}>{fmt$(l.cost_basis, 0)}</td>
-                      <td style={{ textAlign: 'right', padding: '4px 8px', fontFamily: 'monospace' }}>{fmt$(l.current_value, 0)}</td>
-                      <td style={{ textAlign: 'right', padding: '4px 8px', fontFamily: 'monospace', fontWeight: 700, color: (l.unrealized_gain ?? 0) >= 0 ? 'var(--green)' : 'var(--red)' }}>{(l.unrealized_gain ?? 0) >= 0 ? '+' : ''}{fmt$(l.unrealized_gain, 0)}</td>
-                      <td style={{ textAlign: 'right', padding: '4px 8px', fontFamily: 'monospace', color: (l.gain_pct ?? 0) >= 0 ? 'var(--green)' : 'var(--red)' }}>{l.gain_pct}%</td>
-                      <td style={{ textAlign: 'left', padding: '4px 8px', color: 'var(--text3)' }}>{l.holding_period}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-          <div style={{ fontSize: 10, color: 'var(--text3)' }}>{taxLots?.data_note ?? 'Source: /api/v2/tax-lots'}</div>
-        </div>
+        <TaxPanel taxLots={taxLots} loading={taxLoading} error={taxError} terminalUi={terminalUi} panelStyle={tabPanel} />
       )}
     </div>
   )

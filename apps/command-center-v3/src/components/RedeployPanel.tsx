@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { fmt$ } from '../lib/format'
 import { BB } from '../lib/holdingsTerminalTokens'
@@ -18,6 +19,7 @@ const shortAcct = (a?: string) =>
   (a ?? '').replace(/_/g, ' ').replace('schwab ', 'S·').replace('fidelity ', 'F·')
 
 export default function RedeployPanel() {
+  const navigate = useNavigate()
   const { data, loading, error, refetch } = useApi<any>('/api/v2/deploy/events?status=open&days=14&material_only=true', 60_000)
   const { data: dismissedData, refetch: refetchDismissed } = useApi<any>('/api/v2/deploy/events?status=dismissed&days=14&material_only=false&limit=20', 60_000)
   const [busy, setBusy] = useState<'detect' | 'recompute' | null>(null)
@@ -102,9 +104,8 @@ export default function RedeployPanel() {
   }
 
   function openModal(ev: RedeployEventDetail) {
-    // drawer retired 2026-07-14 — the workstation page replaces it
-    // (app is served under the /v3 base path — a bare /redeploy 404s)
-    window.location.assign(`/v3/redeploy?event=${ev.id}&tab=EVENT+OVERVIEW`)
+    // drawer retired 2026-07-14 — SPA navigate keeps shell state
+    navigate(`/redeploy?event=${ev.id}&tab=EVENT+OVERVIEW`)
   }
 
   const gaps = data?.portfolio_gaps ?? selected?.metadata?.sleeve_gaps ?? []

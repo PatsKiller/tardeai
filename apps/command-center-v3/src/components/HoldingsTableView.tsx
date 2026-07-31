@@ -326,15 +326,19 @@ export default function HoldingsTableView({
   return (
     <div
       data-testid="holdings-table"
+      role="table"
+      aria-label="Portfolio holdings"
+      aria-rowcount={models.length + 1}
       style={{ background: BB.bg, border: `1px solid ${BB.border}`, borderRadius: 8, overflow: 'hidden' }}
     >
       {/* Sticky header */}
       <div
         data-testid="holdings-table-legend"
         role="row"
+        aria-rowindex={1}
         style={{
           display: 'grid', gridTemplateColumns: GRID, gap: 8, padding: '10px 12px',
-          fontSize: 9, fontWeight: 700, color: BB.text3, textTransform: 'uppercase', letterSpacing: 0.4,
+          fontSize: 10, fontWeight: 700, color: BB.text3, textTransform: 'uppercase', letterSpacing: 0.4,
           borderBottom: `1px solid ${BB.border}`, background: BB.bgRow,
           position: 'sticky', top: 0, zIndex: 2, alignItems: 'end',
         }}
@@ -382,9 +386,17 @@ export default function HoldingsTableView({
               key={m.key}
               id={`hold-${h.symbol}-${h.account}`}
               role="row"
+              aria-rowindex={i + 2}
+              aria-label={`${m.symbol} ${m.accountLabel}`}
               tabIndex={0}
               title={rowTooltip(m, h)}
-              onKeyDown={e => { if (e.key === 'Enter') onOpenDetail(rowCtx) }}
+              onKeyDown={e => {
+                if (e.key === 'Enter') onOpenDetail(rowCtx)
+                if (e.key === 's' || e.key === 'S') {
+                  e.preventDefault()
+                  if (m.protectionState !== 'CASH') openStops(rowCtx)
+                }
+              }}
               onMouseEnter={() => setHoverKey(m.key)}
               onMouseLeave={() => setHoverKey(null)}
               onClick={() => onOpenDetail(rowCtx)}
