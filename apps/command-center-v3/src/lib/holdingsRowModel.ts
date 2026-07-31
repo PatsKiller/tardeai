@@ -7,6 +7,7 @@ export interface HoldingsRowInput {
   pr?: any
   confirmedStop?: any
   monitored?: any
+  brokerStopReadOk?: string[]
   llmHealth?: string | null
   /** Finviz strip map row for this symbol (rsi / perf fallback). */
   fv?: any
@@ -62,6 +63,7 @@ export interface HoldingsRowModel {
   stopLiveDistPct: number | null
   stopOrderType: string | null
   stopLabel: string
+  protectionState: 'PROTECTED' | 'NO_STOP' | 'UNVERIFIABLE' | 'CASH'
   /** Imperative: what to do, e.g. "Tighten stop → $32.43" */
   stopInstruction: string
   /** Context line: e.g. "Live $35.00 now" */
@@ -71,7 +73,10 @@ export interface HoldingsRowModel {
   stopTooltip: string
   primaryAction: { label: string; tone: 'amber' | 'green' | 'red' | 'muted' }
   primaryActionTooltip: string
+  /** Verified NO_STOP / size-mismatch / replace — permission to place or resize a stop. */
   needsAction: boolean
+  /** Incomplete broker read — verification required; never counts as place-stop permission. */
+  needsVerification: boolean
   /** Stop order qty vs held shares (partial after size-up). Null when no live stop qty. */
   stopCoverage: StopCoverage | null
   stopQty: number | null
@@ -371,6 +376,16 @@ function stopStatusFromLogic(
   return 'stable'
 }
 
+/** Synthetic cash / money-unit rows — never equity-enriched or stop-placed. */
+export function isCashHolding(h: any): boolean {
+  if (!h || typeof h !== 'object') return false
+  if (h.is_cash === true) return true
+  const sym = String(h.symbol || '').toUpperCase()
+  if (sym === 'CASH') return true
+  const at = String(h.asset_type || h.assetType || h.security_type || '').toLowerCase()
+  return at === 'cash' || at === 'currency' || at === 'cash_equivalent'
+}
+
 export function buildHoldingsRowModel(input: HoldingsRowInput): HoldingsRowModel {
   const h = input.h
   const pr = input.pr
@@ -381,10 +396,71 @@ export function buildHoldingsRowModel(input: HoldingsRowInput): HoldingsRowModel
   const key = `${sym}:${acct}`
   const { dollars: pl$, pct: plPct } = plMetrics(h)
   const sh = Number(h.shares) || 0
-  const cur = h.current_price != null ? Number(h.current_price)
-    : sh > 0 && h.market_value != null ? Number(h.market_value) / sh : null
-  const buy = sh > 0 && h.cost_basis != null && Number(h.cost_basis) > 0 ? Number(h.cost_basis) / sh : null
+  const cash = isCashHolding(h)
+  // Cash unit price is 1.0 unless an explicit cash-unit contract says otherwise.
+  const cur = cash
+    ? (h.current_price != null && Number(h.current_price) > 0 ? Number(h.current_price) : 1.0)
+    : (h.current_price != null ? Number(h.current_price)
+      : sh > 0 && h.market_value != null ? Number(h.market_value) / sh : null)
+  const buy = cash ? 1.0
+    : (sh > 0 && h.cost_basis != null && Number(h.cost_basis) > 0 ? Number(h.cost_basis) / sh : null)
   const dayPct = h.day_change_pct != null ? Number(h.day_change_pct) : null
+
+  if (cash) {
+    const nameRaw = String(h.name || h.security_name || h.company_name || 'Cash').trim()
+    const name = nameRaw
+      ? (nameRaw.length > 36 ? `${nameRaw.slice(0, 34)}…` : nameRaw)
+      : 'Cash'
+    return {
+      key,
+      symbol: sym || 'CASH',
+      name,
+      account: acct,
+      accountLabel: accountFullName(acct),
+      accountShort: accountFullName(acct),
+      marketValue: Number(h.market_value) || 0,
+      dayPct: dayPct != null && !Number.isNaN(dayPct) ? dayPct : 0,
+      portfolioPct: h.portfolio_pct != null ? Number(h.portfolio_pct) : null,
+      price: 1.0,
+      cost: 1.0,
+      pl$: pl$ != null && !Number.isNaN(pl$) ? pl$ : 0,
+      plPct: plPct != null && !Number.isNaN(plPct) ? plPct : 0,
+      signal: null,
+      shares: sh || null,
+      rsi: null,
+      rsiStatus: null,
+      volTier: null,
+      newsTitle: null,
+      newsSource: null,
+      newsAt: null,
+      newsUrl: null,
+      earningsDate: null,
+      earningsLabel: null,
+      stopStatus: 'stable',
+      stopDistPct: null,
+      stopPrice: null,
+      liveStopPrice: null,
+      plIfFired: null,
+      stopKind: 'CASH',
+      stopTrailPct: null,
+      stopLiveDistPct: null,
+      stopOrderType: null,
+      stopLabel: 'CASH',
+      protectionState: 'CASH',
+      stopInstruction: 'Cash — no stop',
+      stopContext: 'N/A',
+      stopAdvisory: 'Cash — no stop',
+      stopTooltip: 'Cash holdings are not equities; protective stop placement does not apply.',
+      primaryAction: { label: 'N/A', tone: 'muted' },
+      primaryActionTooltip: 'Cash position — no protective stop action',
+      needsAction: false,
+      needsVerification: false,
+      stopCoverage: null,
+      stopQty: null,
+      llmHealth: null,
+      llmAction: null,
+    }
+  }
 
   const stopPrice = pr?.stop_price != null ? Number(pr.stop_price) : null
   const stopDist = pr?.stop_distance_pct != null ? Number(pr.stop_distance_pct) : null
@@ -415,7 +491,7 @@ export function buildHoldingsRowModel(input: HoldingsRowInput): HoldingsRowModel
   })
 
   const liveStopPrice = logic.liveStop
-  const hasLiveBroker = Boolean(logic.liveStop != null && input.confirmedStop?.order_id)
+  const hasLiveBroker = Boolean((logic.liveStop != null || logic.liveStopIsTrailing) && input.confirmedStop?.order_id)
   const stopQtyRaw = input.confirmedStop?.qty
   const stopCoverage = (hasLiveBroker || stopQtyRaw != null)
     ? computeStopCoverage(stopQtyRaw, sh)
@@ -448,14 +524,36 @@ export function buildHoldingsRowModel(input: HoldingsRowInput): HoldingsRowModel
     : null
   const sizeMismatch = stopCoverage?.kind === 'partial' || stopCoverage?.kind === 'oversized'
 
+  const acctNorm = acct.replace(/_ira$/, '')
+  const brokerReadOk = !isSchwab
+    || (Array.isArray(input.brokerStopReadOk)
+      && input.brokerStopReadOk.some(a => String(a).replace(/_ira$/, '') === acctNorm))
+  const protectionState: 'PROTECTED' | 'NO_STOP' | 'UNVERIFIABLE' | 'CASH' = hasLiveBroker
+    ? 'PROTECTED'
+    : brokerReadOk ? 'NO_STOP' : 'UNVERIFIABLE'
+
   let copy = stopCopyFromLogic(logic, { isFidelity, isSchwab, health, signal, needsSellAll, shares: sh })
   let stopStatus = stopStatusFromLogic(logic, health, signal, stopDist)
   let primary = primaryFromLogic(logic, sym, acct, {
     isFidelity, isSchwab, hasLiveBroker, health, signal, needsSellAll, shares: sh,
     instruction: copy.instruction,
   })
+  if (protectionState === 'UNVERIFIABLE') {
+    stopStatus = 'concern'
+    primary = {
+      label: 'Verify Stops',
+      tone: 'amber',
+      tooltip: `Broker stop read did not verify ${accountFullName(acct)}. Refresh broker stops before placing or replacing any stop.`,
+    }
+    copy = {
+      instruction: 'Broker verification required',
+      context: 'Do not place duplicate stop',
+      tooltip: primary.tooltip,
+    }
+  }
+
   // Size mismatch beats KEEP_EXISTING — GTC stop did not resize after buy/trim.
-  if (sizeMismatch && stopCoverage) {
+  if (protectionState !== 'UNVERIFIABLE' && sizeMismatch && stopCoverage) {
     stopStatus = 'action'
     const tgt = stopCoverage.targetQty
     primary = {
@@ -472,10 +570,14 @@ export function buildHoldingsRowModel(input: HoldingsRowInput): HoldingsRowModel
     }
   }
 
-  const needsAction = primary.tone === 'amber' || primary.tone === 'red'
-  const stopLabel = sizeMismatch
-    ? (stopCoverage!.kind === 'partial' ? 'PARTIAL' : 'OVERSIZE')
-    : stopStatus === 'stable' ? 'Stable' : stopStatus === 'concern' ? 'Concern' : 'Action'
+  // UNVERIFIABLE is verification-required, never place-stop permission.
+  const needsVerification = protectionState === 'UNVERIFIABLE'
+  const needsAction = !needsVerification && (primary.tone === 'amber' || primary.tone === 'red')
+  const stopLabel = protectionState === 'UNVERIFIABLE'
+    ? 'UNVERIFIABLE'
+    : sizeMismatch
+      ? (stopCoverage!.kind === 'partial' ? 'PARTIAL' : 'OVERSIZE')
+      : stopStatus === 'stable' ? 'Stable' : stopStatus === 'concern' ? 'Concern' : 'Action'
 
   const nameRaw = String(h.name || h.security_name || h.company_name || '').trim()
   const name = nameRaw
@@ -518,6 +620,7 @@ export function buildHoldingsRowModel(input: HoldingsRowInput): HoldingsRowModel
     stopLiveDistPct,
     stopOrderType: liveOrderType,
     stopLabel,
+    protectionState,
     stopInstruction: copy.instruction,
     stopContext: copy.context,
     stopAdvisory: copy.context ? `${copy.instruction} · ${copy.context}` : copy.instruction,
@@ -525,6 +628,7 @@ export function buildHoldingsRowModel(input: HoldingsRowInput): HoldingsRowModel
     primaryAction: { label: primary.label, tone: primary.tone },
     primaryActionTooltip: primary.tooltip,
     needsAction,
+    needsVerification,
     stopCoverage,
     stopQty: stopCoverage?.stopQty ?? (stopQtyRaw != null ? Number(stopQtyRaw) : null),
     llmHealth: h.llm_health ?? null,
