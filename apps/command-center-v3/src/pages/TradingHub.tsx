@@ -2,6 +2,13 @@ import { useEffect, useState, type CSSProperties } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import {
+  parseTradingDeepLink,
+  tradingTabSearchParams,
+  TRADING_TABS,
+  type TradingTab,
+} from '../lib/tradingDeepLink'
+import TradingDeskHealth from '../components/TradingDeskHealth'
+import {
   pageSlice, toggleSelectedSymbol, selectSymbols, deselectSymbols, dedupeSymbols,
   formatThinkorswimSymbols, selectionStorageKey, getSocialScoutPill, getTopGainerPill,
   getSqueezePill, getRunnerPill, getMicroFloatPill, getLowPricePill,
@@ -31,16 +38,7 @@ import { runLabel } from '../lib/homeLabels'
 import { BB, TYPE } from '../lib/watchTokens'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
-const TABS = ['Trade AI', 'Options', 'Open Trades', 'Proposals', 'Entry Desk', 'Execution', 'Broker Recon', 'Scalp', 'ATM Controls', 'Broker Orders', 'Schwab Accounts'] as const
-const TAB_ALIASES: Record<string, typeof TABS[number]> = {
-  'Manual ToS': 'Entry Desk',
-  'Manual%20ToS': 'Entry Desk',
-  // Telegram / legacy deep-links sometimes use + or encoded space for "Broker Orders"
-  'Broker+Orders': 'Broker Orders',
-  'Broker%20Orders': 'Broker Orders',
-  'Broker Proposals': 'Proposals',
-  'Broker+Proposals': 'Proposals',
-}
+const TABS = TRADING_TABS
 
 // GO / WAIT / MANUAL_REVIEW / NO-GO decision color
 const decisionColor = (d?: string) => d === 'GO' ? '#22c55e' : d === 'WAIT' ? '#f59e0b' : d === 'MANUAL_REVIEW' ? 'var(--squeeze)' : '#ef4444'
@@ -174,19 +172,19 @@ function dedupeScalpSignalsBySymbol(sigs: any[]): { unique: any[]; rawCount: num
 
 export default function TradingHub({ onDrill }: Props) {
   const [terminalUi] = useTerminalUi()
-  // Deep-link support (Stage 2a): /trading?tab=Broker+Orders&intent=<id> — the Telegram approval
-  // message links the operator straight to the exact order item.
-  const [searchParams] = useSearchParams()
-  // Proposals unified into a single tab — old "Broker Proposals" deep-links land on "Proposals".
-  const rawUrlTab = searchParams.get('tab')
-  const urlProposal = searchParams.get('proposal')
-  const urlTab = rawUrlTab === 'Broker Proposals' ? 'Proposals'
-    : (urlProposal && !rawUrlTab ? 'Proposals' : (TAB_ALIASES[rawUrlTab ?? ''] ?? rawUrlTab))
-  const [tab, setTab] = useState<typeof TABS[number]>(
-    (TABS as readonly string[]).includes(urlTab ?? '') ? (urlTab as typeof TABS[number]) : 'Trade AI')
-  useEffect(() => {
-    if (urlTab && (TABS as readonly string[]).includes(urlTab)) setTab(urlTab as typeof TABS[number])
-  }, [urlTab])
+  // Deep-link support (WP-T1): /trading?tab=…&symbol=…&proposal=…&intent=…
+  // Telegram /go/order and /go/proposal rewrite into these params (App.tsx).
+  const [searchParams, setSearchParams] = useSearchParams()
+  const deepLink = parseTradingDeepLink(searchParams)
+  const urlTab = deepLink.tab
+  const urlProposal = deepLink.proposal
+  const [tab, setTabState] = useState<TradingTab>(urlTab)
+  useEffect(() => { setTabState(urlTab) }, [urlTab])
+  /** URL-synced tab change — shareable desk state (Portfolio parity). */
+  const setTab = (next: TradingTab) => {
+    setTabState(next)
+    setSearchParams(tradingTabSearchParams(searchParams, next), { replace: true })
+  }
   // C2 monitor → "edit as DRAFT" hands a seeded intent to the Broker Orders Active Trader panel
   const [draftSeed, setDraftSeed] = useState<any | null>(null)
   const [activeTraderStrategiesOpen, setActiveTraderStrategiesOpen] = useState(false)
@@ -274,24 +272,35 @@ export default function TradingHub({ onDrill }: Props) {
         <div>
           <div style={hubTitle()}>Trading</div>
           <div style={hubSubtitle(terminalUi)}>
-            {/* hub-wide strip: paper pending = /paper-proposals PENDING+AFPT; broker queue = Path B
-                /broker-proposals (queue_summary.total). Never mix the two under one "pending" label. */}
-            {pureSchwabTabs
-              ? <span>{trades.length} open (automated) · Schwab program: <b style={{ color: '#f59e0b' }}>READ-ONLY — execution disabled</b> · automated acct (Alpaca) {alpaca.account_status ?? '—'}</span>
-              : (
-                <span title="Paper pending = validation/Alpaca pipeline (PENDING+AFPT). Broker queue = Path B operator queue (active entries + protection).">
-                  {trades.length} open · paper pending {fmtCount(paperPendingCount)} · broker queue {fmtCount(brokerQueueCount)} · automated acct (Alpaca) {alpaca.account_status ?? '—'}
-                </span>
-              )}
-            {readiness && <span> · Validation level: {readiness.level?.replace(/_/g, ' ')}</span>}
+            Path A Entry Desk · Path B Proposals + per-order 2FA · AUTO LIVE BLOCKED unless 2FA path · Stop Management on Portfolio
           </div>
         </div>
-        <div className="hub-tabs" style={{ display: 'flex', gap: terminalUi ? 4 : 6, flexWrap: 'wrap' }}>
+        <div className="hub-tabs" role="tablist" aria-label="Trading desk tabs" style={{ display: 'flex', gap: terminalUi ? 4 : 6, flexWrap: 'wrap' }}>
           {TABS.map(t => (
-            <button key={t} onClick={() => setTab(t)} style={hubTab(tab === t, terminalUi)}>{t}</button>
+            <button
+              key={t}
+              type="button"
+              role="tab"
+              aria-selected={tab === t}
+              onClick={() => setTab(t)}
+              style={hubTab(tab === t, terminalUi)}
+            >
+              {t}
+            </button>
           ))}
         </div>
       </div>
+
+      <TradingDeskHealth
+        openCount={trades.length}
+        paperPending={paperPendingCount}
+        brokerQueue={brokerQueueCount}
+        readinessLevel={readiness?.level}
+        readinessPct={readiness?.pct_to_2000}
+        liveVia2faAllowed={execState?.operator_live_via_2fa_allowed}
+        alpacaStatus={alpaca.account_status ?? null}
+        pureSchwabTabs={pureSchwabTabs}
+      />
 
       {/* Readiness bar */}
       {readiness && tab === 'Proposals' && (
@@ -883,7 +892,7 @@ export default function TradingHub({ onDrill }: Props) {
       {tab === 'Open Trades' && (
         <>
           <TimeExitProposals />
-          <OpenTradesIntelligence onDrill={onDrill} focusSymbol={searchParams.get('symbol') || undefined} />
+          <OpenTradesIntelligence onDrill={onDrill} focusSymbol={deepLink.symbol || undefined} />
           <details style={{ marginTop: 14 }}>
             <summary style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', cursor: 'pointer' }}>Protection Advisory (all proposals)</summary>
             <div style={{ marginTop: 10 }}><ProtectionPanel onDrill={onDrill} /></div>
@@ -893,7 +902,7 @@ export default function TradingHub({ onDrill }: Props) {
 
       {tab === 'Proposals' && (
         <BrokerProposals
-          focusSymbol={searchParams.get('symbol') || undefined}
+          focusSymbol={deepLink.symbol || undefined}
           focusProposalId={urlProposal ? Number(urlProposal) : undefined}
         />
       )}
@@ -1201,7 +1210,7 @@ export default function TradingHub({ onDrill }: Props) {
         </div>
         )
       })()}
-      {tab === 'Entry Desk' && <ManualTosDesk focusSymbol={searchParams.get('symbol') || undefined} />}
+      {tab === 'Entry Desk' && <ManualTosDesk focusSymbol={deepLink.symbol || undefined} />}
       {tab === 'ATM Controls' && <ATMControlPanel />}
     </div>
   )
