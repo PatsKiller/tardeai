@@ -10,6 +10,12 @@ import {
 import { buildTradingTriage } from '../lib/tradingCommandTriage'
 import TradingDeskHealth from '../components/TradingDeskHealth'
 import TradingCommandTriage from '../components/TradingCommandTriage'
+import { Link } from 'react-router-dom'
+import {
+  downloadExecutionQualityCsv,
+  filterExecutionByDays,
+} from '../lib/exportExecutionQualityCsv'
+import { summarizeReconByBroker } from '../lib/brokerReconSummary'
 import {
   pageSlice, toggleSelectedSymbol, selectSymbols, deselectSymbols, dedupeSymbols,
   formatThinkorswimSymbols, selectionStorageKey, getSocialScoutPill, getTopGainerPill,
@@ -209,6 +215,8 @@ export default function TradingHub({ onDrill }: Props) {
   const [scannerPage, setScannerPage] = useState(1)
   const [tosFormat, setTosFormat] = useState<TosFormat>('comma')
   const [tosCopied, setTosCopied] = useState(false)
+  // WP-T6: TCA lookback window (client-side filter)
+  const [execDays, setExecDays] = useState<number | 'all'>(90)
   // Broker desk tab: skip heavy hub polls so single-threaded API can serve broker-proposals first.
   const brokerDesk = tab === 'Proposals' || tab === 'Broker Orders' || tab === 'Schwab Accounts'
   // Pure Schwab program tabs — hub chrome is Schwab-specific (not paper vs Path B counts).
@@ -259,7 +267,14 @@ export default function TradingHub({ onDrill }: Props) {
   const advColor = (f?: string) => f === 'caution' ? '#ef4444' : f === 'favorable' ? '#22c55e' : 'var(--text3)'
 
   const trades = openTrades?.trades ?? []
-  const execList: any[] = Array.isArray(execQual) ? execQual : []
+  const execRaw: any[] = Array.isArray(execQual)
+    ? execQual
+    : Array.isArray((execQual as any)?.fills)
+      ? (execQual as any).fills
+      : Array.isArray((execQual as any)?.rows)
+        ? (execQual as any).rows
+        : []
+  const execList: any[] = filterExecutionByDays(execRaw, execDays)
   const propList = proposals?.proposals ?? []
   const pending = propList.filter((p: any) => p.status === 'PENDING' || p.status === 'APPROVED_FOR_PAPER_TEST')
   // Paper pending = API whole-table PENDING+AFPT (not the LIMIT-50 list; not Path B broker queue).
@@ -960,23 +975,23 @@ export default function TradingHub({ onDrill }: Props) {
         </div>
       )}
       {tab === 'Execution' && !execQualLoading && execQualError && (
-        <div style={{ background: 'rgba(239,68,68,.08)', border: '1px solid rgba(239,68,68,.3)', borderRadius: 10, padding: 20 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: '#ef4444', marginBottom: 6 }}>Execution data unavailable</div>
+        <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 20 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 6 }}>Execution data unavailable</div>
           <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 10 }}>{execQualError}</div>
-          <a href="/v3/journal" style={{ fontSize: 11, fontWeight: 700, color: '#60a5fa' }}>Journal closed trades →</a>
+          <Link to="/journal" style={{ fontSize: 11, fontWeight: 700, color: 'var(--text1)' }}>Journal closed trades →</Link>
         </div>
       )}
       {tab === 'Execution' && !execQualLoading && !execQualError && execQual == null && (
         <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 20 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 6 }}>No execution quality data yet</div>
           <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 10, lineHeight: 1.5 }}>TCA fills appear after broker orders execute. Check Journal closed trades or Broker Orders.</div>
-          <a href="/v3/journal" style={{ fontSize: 11, fontWeight: 700, color: '#60a5fa', marginRight: 14 }}>Journal →</a>
-          <a href="/v3/trading?tab=Broker+Orders" style={{ fontSize: 11, fontWeight: 700, color: '#60a5fa' }}>Broker Orders →</a>
+          <Link to="/journal" style={{ fontSize: 11, fontWeight: 700, color: 'var(--text1)', marginRight: 14 }}>Journal →</Link>
+          <Link to="/trading?tab=Broker+Orders" style={{ fontSize: 11, fontWeight: 700, color: 'var(--text1)' }}>Broker Orders →</Link>
         </div>
       )}
       {tab === 'Execution' && !execQualLoading && !execQualError && execQual != null && (() => {
         // ── Transaction Cost Analysis: aggregate the rich per-fill data into a clear, actionable view ──
-        const QC = (q?: string) => { const u = (q || '').toUpperCase(); return u === 'EXCELLENT' ? '#22c55e' : u === 'GOOD' ? '#4ade80' : u === 'ACCEPTABLE' ? '#f59e0b' : u === 'POOR' ? '#ef4444' : 'var(--text3)' }
+        const QC = (q?: string) => { const u = (q || '').toUpperCase(); return u === 'EXCELLENT' ? 'var(--text1)' : u === 'GOOD' ? 'var(--text1)' : u === 'ACCEPTABLE' ? 'var(--text2)' : u === 'POOR' ? 'var(--text0)' : 'var(--text3)' }
         const ex = execList
         const n = ex.length
         const q = { EXCELLENT: 0, GOOD: 0, ACCEPTABLE: 0, POOR: 0, OTHER: 0 } as Record<string, number>
@@ -1000,17 +1015,52 @@ export default function TradingHub({ onDrill }: Props) {
         )
         const Metric = ({ label, value, color, tip }: { label: string; value: any; color?: string; tip: string }) => (
           <div title={tip} style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 10px', cursor: 'help', minWidth: 110, flex: '1 1 110px' }}>
-            <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 0.4 }}>{label} ⓘ</div>
+            <div style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 0.4 }}>{label} ⓘ</div>
             <div style={{ fontSize: 17, fontWeight: 700, color: color || 'var(--text0)', marginTop: 2 }}>{value}</div>
           </div>
         )
         return (
         <div className={terminalUi ? 'cc-panel' : undefined} style={terminalUi ? hubPanel(terminalUi) : { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
-          <div style={{ fontSize: terminalUi ? 11 : 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 4 }}>Execution Quality — Transaction Cost Analysis</div>
-          <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 12 }}>How well orders filled vs. intended. Clean execution (low slippage, tight fills) is part of the live-readiness case.</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', marginBottom: 8 }}>
+            <div style={{ fontSize: terminalUi ? 11 : 13, fontWeight: 700, color: 'var(--text0)' }}>Execution Quality — Transaction Cost Analysis</div>
+            <span style={{ flex: 1 }} />
+            <label style={{ fontSize: 10, color: 'var(--text3)', display: 'flex', alignItems: 'center', gap: 6 }}>
+              Lookback
+              <select
+                aria-label="TCA lookback days"
+                value={String(execDays)}
+                onChange={e => setExecDays(e.target.value === 'all' ? 'all' : Number(e.target.value))}
+                style={{ fontSize: 10, padding: '4px 8px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text0)' }}
+              >
+                <option value="7">7d</option>
+                <option value="30">30d</option>
+                <option value="90">90d</option>
+                <option value="180">180d</option>
+                <option value="365">1y</option>
+                <option value="all">All</option>
+              </select>
+            </label>
+            <button
+              type="button"
+              data-testid="execution-export-csv"
+              disabled={!execList.length}
+              title="Download filtered TCA fills as CSV (client-side; no broker write)."
+              onClick={() => downloadExecutionQualityCsv(execList)}
+              style={{
+                fontSize: 10, fontWeight: 800, padding: '4px 10px', borderRadius: 5, cursor: execList.length ? 'pointer' : 'not-allowed',
+                opacity: execList.length ? 1 : 0.45, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text1)',
+              }}
+            >
+              Export CSV ({execList.length})
+            </button>
+            <Link to="/journal" style={{ fontSize: 10, fontWeight: 800, color: 'var(--text1)' }}>Journal →</Link>
+          </div>
+          <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 12 }}>
+            How well orders filled vs. intended. Window: {execDays === 'all' ? 'all available' : `last ${execDays} days`} · {execRaw.length} raw · {n} shown.
+            Clean execution is part of live-readiness — not auto-trade authority.
+          </div>
 
-          {n === 0 ? <div style={{ color: 'var(--text3)', fontSize: 11 }}>No execution quality data yet.</div> : (<>
-
+          {n === 0 ? <div style={{ color: 'var(--text3)', fontSize: 11 }}>No execution quality data in this lookback.</div> : (<>
           {/* POOR-fill alert */}
           {poor.length > 0 && (
             <div style={{ background: 'rgba(239,68,68,.1)', border: '1px solid rgba(239,68,68,.4)', borderRadius: 8, padding: '8px 12px', marginBottom: 12 }}>
@@ -1074,7 +1124,7 @@ export default function TradingHub({ onDrill }: Props) {
               <span style={{ flex: '1 1 auto', fontSize: 9, color: 'var(--text3)' }}>{e.market_session ?? '—'}{e.strategy_id ? ` · ${e.strategy_id}` : ''}</span>
             </div>
           )})}
-          <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/execution-quality · click any row for full TCA (intended → arrival → fill, spread, shares, data-quality). Hover ⓘ for definitions.</div>
+          <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/execution-quality · click any row for full TCA. Export is client-side only.</div>
           </>)}
         </div>
         )
@@ -1085,34 +1135,55 @@ export default function TradingHub({ onDrill }: Props) {
         const runs = r.runs ?? []
         const items = r.items ?? []
         const latest = runs[0] ?? {}
-        const stClr = (s: string) => /ok|matched|clean/i.test(s || '') ? '#22c55e' : /unmatched|mismatch|orphan|issue/i.test(s || '') ? '#ef4444' : 'var(--text3)'
+        const venues = summarizeReconByBroker(runs, items)
+        const stClr = (s: string) => /ok|matched|clean/i.test(s || '') ? 'var(--text1)' : /unmatched|mismatch|orphan|issue|break/i.test(s || '') ? 'var(--text0)' : 'var(--text3)'
         return (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,minmax(100px,1fr))', gap: 10 }}>
               {[
                 { k: 'Orders seen', v: latest.orders_seen ?? '—', c: 'var(--text0)' },
-                { k: 'Trades matched', v: latest.trades_matched ?? '—', c: '#22c55e' },
-                { k: 'Unmatched broker', v: latest.unmatched_broker_orders ?? 0, c: (latest.unmatched_broker_orders ?? 0) > 0 ? '#ef4444' : 'var(--text3)' },
-                { k: 'Unmatched local', v: latest.unmatched_local_trades ?? 0, c: (latest.unmatched_local_trades ?? 0) > 0 ? '#ef4444' : 'var(--text3)' },
+                { k: 'Trades matched', v: latest.trades_matched ?? '—', c: 'var(--text1)' },
+                { k: 'Unmatched broker', v: latest.unmatched_broker_orders ?? 0, c: (latest.unmatched_broker_orders ?? 0) > 0 ? 'var(--text0)' : 'var(--text3)' },
+                { k: 'Unmatched local', v: latest.unmatched_local_trades ?? 0, c: (latest.unmatched_local_trades ?? 0) > 0 ? 'var(--text0)' : 'var(--text3)' },
               ].map(s => (
                 <div key={s.k} style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 8px', textAlign: 'center' }}>
                   <div style={{ fontSize: 17, fontWeight: 700, color: s.c }}>{s.v}</div>
-                  <div style={{ fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase' }}>{s.k}</div>
+                  <div style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase' }}>{s.k}</div>
                 </div>
               ))}
             </div>
+
+            <div className={terminalUi ? 'cc-panel' : undefined} style={terminalUi ? hubPanel(terminalUi) : { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--text0)', marginBottom: 8 }}>Venues · next action</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {venues.map(v => (
+                  <div key={v.broker} style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg2)' }}>
+                    <b style={{ fontSize: 11, color: 'var(--text0)', minWidth: 140 }}>{v.broker}</b>
+                    <span style={{ fontSize: 10, color: stClr(v.status), fontWeight: 800 }}>{v.status.toUpperCase()}</span>
+                    <span style={{ fontSize: 10, color: 'var(--text3)' }}>brokerΔ {v.unmatched_broker} · localΔ {v.unmatched_local}</span>
+                    <span style={{ fontSize: 10, color: 'var(--text2)', flex: 1 }}>{v.next_action}</span>
+                  </div>
+                ))}
+              </div>
+              <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                <Link to="/journal" style={{ fontSize: 10, fontWeight: 800, color: 'var(--text1)' }}>Journal →</Link>
+                <Link to="/trading?tab=Broker+Orders" style={{ fontSize: 10, fontWeight: 800, color: 'var(--text1)' }}>Broker Orders →</Link>
+                <Link to="/trading?tab=Open+Trades" style={{ fontSize: 10, fontWeight: 800, color: 'var(--text1)' }}>Open Trades →</Link>
+              </div>
+            </div>
+
             <div className={terminalUi ? 'cc-panel' : undefined} style={terminalUi ? hubPanel(terminalUi) : { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
               <div style={{ fontSize: terminalUi ? 10 : 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Reconciliation items ({items.length})</div>
-              {items.length === 0 ? <div style={{ color: '#22c55e', fontSize: 11 }}>No unmatched items — broker and local in sync.</div> :
+              {items.length === 0 ? <div style={{ color: 'var(--text1)', fontSize: 11 }}>No unmatched items — broker and local in sync for latest run.</div> :
               items.slice(0, 20).map((it: any, i: number) => (
                 <div key={i} onClick={() => onDrill({ title: it.symbol ?? it.broker_order_id, subtitle: it.reconciliation_state, endpoint: '/api/v2/broker-reconciliation', rows: [it] })}
                   style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr 1fr', gap: 8, padding: '5px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 10, alignItems: 'center' }}>
                   <span style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--text0)' }}>{it.symbol ?? '—'}</span>
-                  <span style={{ color: stClr(it.reconciliation_state), fontSize: 9 }}>{it.reconciliation_state ?? ''}</span>
-                  <span style={{ color: 'var(--text3)', fontSize: 9 }}>{it.issue_code ?? it.broker ?? ''}</span>
+                  <span style={{ color: stClr(it.reconciliation_state), fontSize: 10 }}>{it.reconciliation_state ?? ''}</span>
+                  <span style={{ color: 'var(--text3)', fontSize: 10 }}>{it.issue_code ?? it.broker ?? ''}</span>
                 </div>
               ))}
-              <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/broker-reconciliation — DB vs Alpaca. Latest run: {latest.broker ?? ''} {latest.run_status ?? ''} {latest.started_at ? new Date(latest.started_at).toLocaleString() : ''}</div>
+              <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/broker-reconciliation — multi-venue runs + items. Latest: {latest.broker ?? ''} {latest.run_status ?? ''} {latest.started_at ? new Date(latest.started_at).toLocaleString() : ''}</div>
             </div>
           </div>
         )

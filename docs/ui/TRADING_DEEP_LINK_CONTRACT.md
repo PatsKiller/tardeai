@@ -68,3 +68,9 @@ Deep-links never auto-submit live orders. Live capital requires per-order 2FA on
   - CSV: `exportBrokerProposalsCsv.ts` (currently **shown** page/filter set)
   - Filters URL-synced via `pq_*` + `symbol`/`account`
   - Leaving Proposals tab clears `pq_*` keys
+- Execution / recon (WP-T6):
+  - TCA lookback + CSV: `exportExecutionQualityCsv.ts`
+  - Multi-venue recon summary: `brokerReconSummary.ts`
+- Charts / a11y (WP-T7):
+  - Lazy Finviz chart on Open Trades expand: `TradingSymbolChart.tsx`
+  - Hub tablist roles + Open Trades quick-filter `aria-pressed`

@@ -154,7 +154,19 @@ export default function OpenTradesIntelligence({ onDrill, focusSymbol }: { onDri
     </div>
 
     <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', alignItems: 'center' }}><span style={{ fontSize: 10, color: MUTED }}>account:</span>{['all', ...(flt.accounts ?? [])].map((a: string) => { const paper = String(a).toLowerCase().includes('paper'), on = f.account === a; return <button key={a} onClick={() => set('account', a)} style={{ fontSize: 10, padding: '4px 11px', borderRadius: 6, cursor: 'pointer', border: '1px solid var(--border)', background: on ? (a === 'all' || paper ? 'rgba(96,165,250,.18)' : 'rgba(255,167,38,.18)') : 'var(--bg2)', color: on ? (a === 'all' || paper ? BLUE : '#ffa726') : MUTED, fontWeight: on ? 800 : 500 }}>{a === 'all' ? 'All accounts' : `${paper ? 'PAPER' : 'REAL'} ${a.replace(/_/g, ' ')}`}{a !== 'all' && summary.by_account?.[a] != null ? ` (${summary.by_account[a]})` : ''}</button> })}</div>
-    <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>{[['all', 'All'], ['needs_protection', 'Needs protection'], ['high_priority', 'High priority'], ['watchlist', 'Watchlist/directive'], ['data_stale', 'Data stale'], ['basis_issue', 'Basis issue'], ['news_fresh', 'News fresh'], ['trailing', 'Trailing candidate'], ['large_gain', 'Large gain'], ['underperforming', 'Underperforming']].map(([k, lbl]) => <button key={k} onClick={() => set('quick', k)} style={{ fontSize: 10, padding: '4px 10px', borderRadius: 6, cursor: 'pointer', border: '1px solid var(--border)', background: f.quick === k ? 'rgba(96,165,250,.18)' : 'var(--bg2)', color: f.quick === k ? BLUE : MUTED, fontWeight: f.quick === k ? 800 : 500 }}>{lbl}</button>)}</div>
+    <div role="group" aria-label="Quick position filters" style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
+      {[['all', 'All'], ['needs_protection', 'Needs protection'], ['high_priority', 'High priority'], ['watchlist', 'Watchlist/directive'], ['data_stale', 'Data stale'], ['basis_issue', 'Basis issue'], ['news_fresh', 'News fresh'], ['trailing', 'Trailing candidate'], ['large_gain', 'Large gain'], ['underperforming', 'Underperforming']].map(([k, lbl]) => (
+        <button
+          key={k}
+          type="button"
+          aria-pressed={f.quick === k}
+          onClick={() => set('quick', k)}
+          style={{ fontSize: 10, padding: '4px 10px', borderRadius: 6, cursor: 'pointer', border: '1px solid var(--border)', background: f.quick === k ? 'rgba(96,165,250,.18)' : 'var(--bg2)', color: f.quick === k ? BLUE : MUTED, fontWeight: f.quick === k ? 800 : 500 }}
+        >
+          {lbl}
+        </button>
+      ))}
+    </div>
 
     {focus && (
       <div style={{ ...panel, padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 10, fontSize: 11.5, borderColor: 'rgba(96,165,250,.35)', background: 'rgba(96,165,250,.08)', color: '#93c5fd' }}>
