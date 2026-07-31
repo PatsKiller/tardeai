@@ -7,7 +7,9 @@ import {
   TRADING_TABS,
   type TradingTab,
 } from '../lib/tradingDeepLink'
+import { buildTradingTriage } from '../lib/tradingCommandTriage'
 import TradingDeskHealth from '../components/TradingDeskHealth'
+import TradingCommandTriage from '../components/TradingCommandTriage'
 import {
   pageSlice, toggleSelectedSymbol, selectSymbols, deselectSymbols, dedupeSymbols,
   formatThinkorswimSymbols, selectionStorageKey, getSocialScoutPill, getTopGainerPill,
@@ -217,6 +219,10 @@ export default function TradingHub({ onDrill }: Props) {
   const { data: warriorAudit } = useApi<any>('/api/v2/warrior-audit/latest', 300_000, { enabled: tab === 'Trade AI' })
   const paMap = useProAnalystMap()
   const { data: openTrades } = useApi<any>('/api/v2/open-trades', 30_000, { enabled: tab === 'Open Trades' || !brokerDesk })
+  // WP-T3 triage: position intelligence summary (risk flags) — hub-wide, slower poll
+  const { data: openIntel, loading: openIntelLoading } = useApi<any>('/api/v2/open-trades/intelligence', 120_000, {
+    enabled: !pureSchwabTabs,
+  })
   // Paper PENDING+AFPT — validation/Alpaca pipeline only (NOT Path B broker queue).
   const { data: proposals } = useApi<any>('/api/v2/paper-proposals', 60_000, { enabled: !pureSchwabTabs })
   // Path B truth for operator queue size — queue_summary.total (active broker entries).
@@ -233,7 +239,14 @@ export default function TradingHub({ onDrill }: Props) {
   const { data: scalpExt } = useApi<any>('/api/v2/hermes/subject-intel-map?type=scalp', 120_000, { enabled: tab === 'Scalp' })
   const scalpExtMap: Record<string, any[]> = scalpExt?.map ?? {}
   const { data: setupAdvisory } = useApi<any>('/api/v2/atm/setup-advisory', 120_000, { enabled: tab === 'Open Trades' || tab === 'ATM Controls' })
-  const { data: recon } = useApi<any>('/api/v2/broker-reconciliation', 120_000, { enabled: tab === 'Broker Recon' })
+  // Recon for tab body + hub triage (unmatched breaks)
+  const { data: recon } = useApi<any>('/api/v2/broker-reconciliation', 120_000, {
+    enabled: tab === 'Broker Recon' || !pureSchwabTabs,
+  })
+  // Pilot standing approvals for 2FA triage chip
+  const { data: pilotStatus } = useApi<any>('/api/v2/broker-orders/pilot/status', 60_000, {
+    enabled: !pureSchwabTabs || tab === 'Broker Orders',
+  })
 
   const advMap: Record<string, any> = {}
   const advBySym: Record<string, any> = {}
@@ -265,6 +278,27 @@ export default function TradingHub({ onDrill }: Props) {
   })()
   const alpaca = paperStatus?.alpaca ?? {}
   const fmtCount = (n: number | null) => (n == null ? '—' : String(n))
+
+  // WP-T3: command triage chips (pure, fail-closed)
+  const queueForTriage = brokerQueueSummary ?? brokerQueueList?.queue_summary ?? null
+  const triageChips = buildTradingTriage({
+    intelSummary: openIntel?.summary ?? null,
+    intelPositions: openIntel?.positions ?? null,
+    queueSummary: queueForTriage,
+    recon: recon ?? null,
+    pilot: pilotStatus ?? null,
+    paperPending: paperPendingCount,
+  })
+  const navigateTriage = (nextTab: TradingTab, params?: Record<string, string>) => {
+    setTabState(nextTab)
+    const next = tradingTabSearchParams(searchParams, nextTab)
+    if (params) {
+      for (const [k, v] of Object.entries(params)) {
+        if (v) next.set(k, v)
+      }
+    }
+    setSearchParams(next, { replace: true })
+  }
 
   return (
     <div>
@@ -301,6 +335,14 @@ export default function TradingHub({ onDrill }: Props) {
         alpacaStatus={alpaca.account_status ?? null}
         pureSchwabTabs={pureSchwabTabs}
       />
+
+      {!pureSchwabTabs && (
+        <TradingCommandTriage
+          chips={triageChips}
+          loading={openIntelLoading && !openIntel}
+          onNavigate={navigateTriage}
+        />
+      )}
 
       {/* Readiness bar */}
       {readiness && tab === 'Proposals' && (

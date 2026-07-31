@@ -50,3 +50,5 @@ Deep-links never auto-submit live orders. Live capital requires per-order 2FA on
 - Parser: `apps/command-center-v3/src/lib/tradingDeepLink.ts`
 - Consumer: `apps/command-center-v3/src/pages/TradingHub.tsx`
 - Desk health: `apps/command-center-v3/src/components/TradingDeskHealth.tsx`
+- Command triage (WP-T3): `apps/command-center-v3/src/lib/tradingCommandTriage.ts` + `TradingCommandTriage.tsx`  
+  Sticky **NOW** chips deep-link into `tab` (+ optional `symbol`). Sources: open-trades intelligence, broker-proposals summary, recon, pilot status. **Never auto-submits.**
