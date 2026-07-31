@@ -717,7 +717,7 @@ export default function ReEntryCurrentIntelligence({
                     <span style={{ color: BB.text3 }}>{row.latest.import_source || 'source unavailable'}</span>
                   </div>
                   <div onClick={event => event.stopPropagation()}>
-                    <button type="button" onClick={() => setExpanded(value => ({ ...value, [row.symbol]: true }))} style={button(true)}>OPEN GATES</button>
+                    <button type="button" onClick={() => setExpanded(value => ({ ...value, [row.symbol]: true }))} style={button(true)}>OPEN EVIDENCE</button>
                     <button type="button" onClick={() => setArmSymbol(row.symbol)} style={{ ...button(false), marginTop: 5 }} data-testid={`reentry-arm-${row.symbol}`}>
                       ARM ALERT{row.alertCount ? ` (${row.alertCount})` : ''}
                     </button>
