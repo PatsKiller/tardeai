@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
 import { fmt$ } from '../lib/format'
@@ -24,9 +24,16 @@ import HoldingsSideDrawer from '../components/HoldingsSideDrawer'
 import ShareReconciliationModal, { type ShareDriftItem } from '../components/ShareReconciliationModal'
 import type { HoldingsDetailContext } from '../components/HoldingsDetailPanel'
 import type { HoldingsCvdMode } from '../lib/holdingsTerminalTokens'
-import { accountFullName } from '../lib/holdingsRowModel'
+import { accountFullName, buildHoldingsRowModel, isCashHolding } from '../lib/holdingsRowModel'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubTab, hubPanel } from '../lib/terminalHubChrome'
+import PortfolioDeskHealth from '../components/PortfolioDeskHealth'
+import {
+  parsePortfolioDeepLink,
+  pickHoldingForDeepLink,
+  resolvePortfolioSig,
+  type PortfolioSignalTab,
+} from '../lib/portfolioDeepLink'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 const TABS = ['Holdings', 'Allocation', 'Look-through', 'Returns', 'Dividends', 'Forecast', 'Tax', 'Redeploy', 'Stop Management'] as const
@@ -150,11 +157,23 @@ export default function PortfolioHub({ onDrill }: Props) {
     else next.set('acct', a)
     setSearchParams(next, { replace: true })
   }
-  const [sigTab, setSigTab] = useState('All')
+  const [sigTab, setSigTab] = useState<PortfolioSignalTab>(resolvePortfolioSig(searchParams.get('sig')))
+  useEffect(() => {
+    const s = resolvePortfolioSig(searchParams.get('sig'))
+    if (s !== sigTab) setSigTab(s)
+  }, [searchParams]) // eslint-disable-line react-hooks/exhaustive-deps
+  const selectSig = (s: PortfolioSignalTab) => {
+    setSigTab(s)
+    const next = new URLSearchParams(searchParams)
+    if (s === 'All') next.delete('sig')
+    else next.set('sig', s)
+    setSearchParams(next, { replace: true })
+  }
   const [focusKey, setFocusKey] = useState<string | null>(null)
+  const deepLinkConsumed = useRef(false)
   // From the Stop Management Adjust modal: jump to a holding's card (its inline gated 2FA / manual-ticket panel).
   const focusHolding = (symbol: string, account: string) => {
-    selectTab('Holdings'); selectAcct(account); setSigTab('All')
+    selectTab('Holdings'); selectAcct(account); selectSig('All')
     const key = `${symbol}-${account}`; setFocusKey(key)
     const tryScroll = (n: number) => {
       const el = document.getElementById(`hold-${key}`)
@@ -316,17 +335,18 @@ export default function PortfolioHub({ onDrill }: Props) {
     const h = mergeHolding(rawH)
     const symU = (h.symbol || '').toUpperCase()
     const stopKey = `${symU}:${h.account}`
+    const cash = isCashHolding(h)
     return {
       h,
-      pr: mergeProtection(symU, protection[symU]),
-      monitored: monitoredByKey[stopKey],
-      confirmedStop: mergeLiveStop(confirmedByKey[stopKey], liveStopsByKey[stopKey]),
+      pr: cash ? undefined : mergeProtection(symU, protection[symU]),
+      monitored: cash ? undefined : monitoredByKey[stopKey],
+      confirmedStop: cash ? undefined : mergeLiveStop(confirmedByKey[stopKey], liveStopsByKey[stopKey]),
       brokerStopReadOk,
-      reportEntry: reportMap[symU],
-      coverage: coverage[symU],
-      // Existing enrichment only — Finviz strip + symbol cards (news / earnings)
-      fv: fvMap[symU],
-      card: cardMap[symU],
+      reportEntry: cash ? undefined : reportMap[symU],
+      coverage: cash ? undefined : coverage[symU],
+      // Cash never inherits Finviz strip / symbol-card news (CASH ticker contamination).
+      fv: cash ? undefined : fvMap[symU],
+      card: cash ? undefined : cardMap[symU],
     }
   }
   const openHoldingsDrawer = (rowCtx: HoldingsTableRowContext, opts?: { focus?: 'stops' | 'overview' }) => {
@@ -364,6 +384,62 @@ export default function PortfolioHub({ onDrill }: Props) {
   const openHoldingsStops = (rowCtx: HoldingsTableRowContext) => openHoldingsDrawer(rowCtx, { focus: 'stops' })
   const terminalRows = holdingsList.map(buildRowContext)
 
+  // Desk health: placement vs verification from the same row model the table uses.
+  const deskCounts = useMemo(() => {
+    let placement = 0
+    let verification = 0
+    for (const r of terminalRows) {
+      const m = buildHoldingsRowModel({
+        h: r.h, pr: r.pr, confirmedStop: r.confirmedStop, monitored: r.monitored,
+        brokerStopReadOk: r.brokerStopReadOk, fv: r.fv, card: r.card,
+      })
+      if (m.needsVerification || m.protectionState === 'UNVERIFIABLE') verification += 1
+      else if (m.needsAction && m.protectionState === 'NO_STOP') placement += 1
+    }
+    return { placement, verification }
+  }, [terminalRows])
+
+  const unverifiedAccounts: string[] = Array.isArray((liveStops as any)?.unverified_accounts)
+    ? (liveStops as any).unverified_accounts
+    : []
+
+  // Deep-link: ?symbol= / ?account= / ?drawer= / ?drawerTab=stops (Home + Research Intel)
+  useEffect(() => {
+    if (deepLinkConsumed.current) return
+    if (!allHoldings.length) return
+    const dl = parsePortfolioDeepLink(searchParams)
+    if (!dl.symbol && !dl.drawer) return
+    deepLinkConsumed.current = true
+    const target = pickHoldingForDeepLink(allHoldings, dl.symbol, dl.account)
+      || (dl.drawer ? (() => {
+        const [sym, ...rest] = dl.drawer!.split(':')
+        return pickHoldingForDeepLink(allHoldings, sym, rest.join(':') || null)
+      })() : null)
+    if (!target) return
+    const sym = String(target.symbol || '').toUpperCase()
+    const acct = String(target.account || '')
+    if (dl.tab === 'Stop Management') {
+      selectTab('Stop Management')
+      if (acct) selectAcct(acct)
+      return
+    }
+    selectTab('Holdings')
+    if (acct) selectAcct(acct)
+    selectSig('All')
+    const key = `${sym}-${acct}`
+    setFocusKey(key)
+    const rowCtx = buildRowContext(target)
+    const focusStops = dl.drawerTab === 'stops' || String(searchParams.get('tab') || '').toLowerCase().includes('stop')
+    // Open drawer after paint so row exists for scroll
+    setTimeout(() => {
+      openHoldingsDrawer(rowCtx, { focus: focusStops ? 'stops' : 'overview' })
+      const el = document.getElementById(`hold-${sym}-${acct}`)
+      el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, 80)
+    setTimeout(() => setFocusKey(null), 5000)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allHoldings.length, searchParams])
+
   return (
     <div>
       <div className="hub-title-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
@@ -395,11 +471,14 @@ export default function PortfolioHub({ onDrill }: Props) {
               title="Full Schwab refresh: positions + trade ledger + journal round-trips (read-only; no trading; stops not pulled).">
               {syncState.busy === 'schwab' ? '⟳ Syncing Schwab…' : '⟳ Sync Schwab'}
             </button>
-            {/* Fidelity Rollover IRA closed 2026-07-16 (ACATS → Schwab). Keep button but mark legacy so operators don't think Fidelity is still an active book. */}
-            <button onClick={() => void runFidelityStopSync()} disabled={!!syncState.busy} style={{ ...syncBtn(syncState.busy === 'fidelity_stops'), opacity: 0.55 }}
-              title="LEGACY — Fidelity Rollover IRA is CLOSED (rolled to Schwab 2026-07-16). Historical GTC stop map only (config/fidelity_rollover_stops.json). Re-arm protective stops on Schwab Rollover IRA instead.">
-              {syncState.busy === 'fidelity_stops' ? '⟳ Fidelity stops…' : '⟳ Sync Fidelity GTC stops (legacy)'}
-            </button>
+            <details style={{ fontSize: 10, color: 'var(--text3)' }}>
+              <summary style={{ cursor: 'pointer', fontWeight: 700, color: 'var(--text3)' }}>Advanced / legacy</summary>
+              <button onClick={() => void runFidelityStopSync()} disabled={!!syncState.busy}
+                style={{ ...syncBtn(syncState.busy === 'fidelity_stops'), opacity: 0.7, marginTop: 4 }}
+                title="LEGACY — Fidelity Rollover IRA is CLOSED (rolled to Schwab 2026-07-16). Historical GTC stop map only.">
+                {syncState.busy === 'fidelity_stops' ? '⟳ Fidelity stops…' : '⟳ Sync Fidelity GTC stops (legacy)'}
+              </button>
+            </details>
             {syncState.msg && (
               <span style={{ fontSize: 10, color: /error|failed/.test(syncState.msg) ? '#ef4444' : '#22c55e' }}>{syncState.msg}</span>
             )}
@@ -411,6 +490,18 @@ export default function PortfolioHub({ onDrill }: Props) {
           ))}
         </div>
       </div>
+
+      <PortfolioDeskHealth
+        holdingsCount={holdingsList.length}
+        viewTotalLabel={fmt$(viewTotal, 0)}
+        brokerStopReadOk={brokerStopReadOk}
+        unverifiedAccounts={unverifiedAccounts}
+        liveStopsDegraded={liveStopsDegraded}
+        brokerStopsFetchedAt={brokerStopsFetchedAt}
+        placementCount={deskCounts.placement}
+        verificationCount={deskCounts.verification}
+        priceStamp={priceStamp}
+      />
 
       {tab === 'Redeploy' && <RedeployPanel />}
 
@@ -443,10 +534,10 @@ export default function PortfolioHub({ onDrill }: Props) {
                     : null}
               </div>
             </div>
-            <a href="/v3/rotation" style={{
+            <Link to="/rotation" style={{
               padding: '6px 14px', fontSize: 11, fontWeight: 700, borderRadius: 6, textDecoration: 'none',
               background: 'rgba(96,165,250,.15)', color: '#60a5fa', border: '1px solid #60a5fa55', whiteSpace: 'nowrap',
-            }}>Open Rotation Review →</a>
+            }}>Open Rotation Review →</Link>
           </div>
         )
       })()}
@@ -467,7 +558,7 @@ export default function PortfolioHub({ onDrill }: Props) {
               color: acctFilter === a ? acctColor(a) : 'var(--text3)', fontWeight: acctFilter === a ? 700 : 400,
             }}>
               <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: acctColor(a), marginRight: 5 }} />
-              {a} ({info.n})
+              {accountFullName(a)} ({info.n})
             </button>
           ))}
         </div>
@@ -486,7 +577,7 @@ export default function PortfolioHub({ onDrill }: Props) {
           onOpenHolding={(symbol, account) => {
             selectTab('Holdings')
             selectAcct(account)
-            setSigTab('All')
+            selectSig('All')
             const key = `${symbol}-${account}`
             setFocusKey(key)
             setTimeout(() => {
@@ -532,7 +623,7 @@ export default function PortfolioHub({ onDrill }: Props) {
                 const n = sigCount(sigs)
                 const c = k === 'Buy/Add' ? '#22c55e' : k === 'Trim/Sell' ? '#ef4444' : k === 'Watch' ? '#f59e0b' : '#60a5fa'
                 return (
-                  <button key={k} onClick={() => setSigTab(k)} style={{
+                  <button key={k} onClick={() => selectSig(k as PortfolioSignalTab)} style={{
                     padding: '4px 12px', fontSize: 10.5, borderRadius: 6, cursor: 'pointer',
                     border: `1px solid ${sigTab === k ? c : 'var(--border)'}`,
                     background: sigTab === k ? `${c}1f` : 'var(--bg2)',
@@ -824,7 +915,7 @@ export default function PortfolioHub({ onDrill }: Props) {
           onOpenHolding={(symbol, account) => {
             selectTab('Holdings')
             selectAcct(account)
-            setSigTab('All')
+            selectSig('All')
             const key = `${symbol}-${account}`
             setFocusKey(key)
             setTimeout(() => {

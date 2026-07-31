@@ -52,6 +52,23 @@ test.describe('Portfolio hub layout', () => {
     ).toBeVisible({ timeout: 15_000 })
   })
 
+  test('desk health strip is visible with build provenance', async ({ page }) => {
+    await expect(page.getByTestId('portfolio-desk-health')).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByTestId('desk-health-stops')).toBeVisible()
+    await expect(page.getByTestId('desk-health-reload-ui')).toBeVisible()
+  })
+
+  test('deep-link ?symbol= focuses a holdings row when present', async ({ page }) => {
+    // Land with a common symbol; if not in book, page still loads without crash
+    await page.goto('/v3/portfolio?symbol=V&drawerTab=stops')
+    await expect(page.getByText('Portfolio', { exact: true }).first()).toBeVisible({ timeout: 20_000 })
+    await expect(page.getByTestId('portfolio-desk-health')).toBeVisible()
+    // Drawer may open when V is held; soft-assert either drawer or holdings table
+    const drawer = page.getByTestId('holdings-side-drawer')
+    const table = page.getByTestId('holdings-table')
+    await expect(table.or(drawer).first()).toBeVisible({ timeout: 15_000 })
+  })
+
   test('row opens 75% ticker drawer with tabs', async ({ page }) => {
     await page.getByRole('button', { name: 'Holdings', exact: true }).click()
     await expect(page.getByTestId('holdings-table')).toBeVisible()
