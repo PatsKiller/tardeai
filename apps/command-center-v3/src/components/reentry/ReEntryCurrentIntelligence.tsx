@@ -36,6 +36,7 @@ import {
 } from '../../lib/reentryDecisionScorecard'
 import { HelpTip } from './ReEntryHelpGuide'
 import ReEntryCommandHeader, { type ReEntryLaneCounts } from './ReEntryCommandHeader'
+import ReEntryMiniChart from './ReEntryMiniChart'
 
 const COMPOSITE_ALERT_KEY = 'portfolio.reentry.composite-alerts.v1'
 
@@ -56,6 +57,10 @@ type IntelWithScore = Intel & {
   macd: string
   pe: number | null
   forwardPe: number | null
+  riskReward: number | null
+  rsiBand: ScorecardResult['rsiBand']
+  vsExitPct: number | null
+  highlights: string[]
 }
 
 function unwrap(value: any): any { let result = value; for (let i = 0; i < 4 && result?.data && typeof result.data === 'object'; i += 1) result = result.data; return result ?? {} }
@@ -73,6 +78,17 @@ function deriveIntel(
   resistanceLevel: number | null,
   resistanceDistancePct: number | null,
   resistanceSide: string,
+  narrative: {
+    avgExit: number | null
+    exitDate: string | null
+    mandate: string
+    flags: string[]
+    classified: string
+    eventGaps: number
+    analystRec: string
+    analystTarget: number | null
+    analystCount: number | null
+  },
 ): IntelWithScore {
   const levels = extractLevelsFromContext(watch, card)
   const score = buildReEntryScorecard({
@@ -98,6 +114,15 @@ function deriveIntel(
     forwardPe: levels.forwardPe ?? null,
     held,
     regimeLabel,
+    avgExit: narrative.avgExit,
+    exitDate: narrative.exitDate,
+    mandate: narrative.mandate,
+    flags: narrative.flags,
+    classified: narrative.classified,
+    eventGaps: narrative.eventGaps,
+    analystRec: narrative.analystRec,
+    analystTarget: narrative.analystTarget,
+    analystCount: narrative.analystCount,
   })
   const macd = levels.macdHistogram === null || levels.macdHistogram === undefined
     ? 'UNAVAILABLE'
@@ -123,6 +148,10 @@ function deriveIntel(
     macd,
     pe: levels.pe ?? null,
     forwardPe: levels.forwardPe ?? null,
+    riskReward: score.riskReward,
+    rsiBand: score.rsiBand,
+    vsExitPct: score.vsExitPct,
+    highlights: score.highlights,
   }
 }
 
@@ -322,6 +351,9 @@ export default function ReEntryCurrentIntelligence({
     const watch = watchMap[summary.symbol]
     const card = cardMap[summary.symbol]
     const held = heldSet.has(summary.symbol)
+    const classified = classificationState(mandate, summary.rows, events, dispositions)
+    const flags = REENTRY_FLAGS.filter(flag => mandate.flags[flag])
+    const analystRow = analystMap[summary.symbol] ?? null
     // Price first so resistance distance is accurate, then full scorecard with regime + resistance.
     const priceHint = extractLevelsFromContext(watch, card).price ?? null
     const resistance = resistanceFor(resistanceMap[summary.symbol], watch, card, priceHint)
@@ -333,9 +365,18 @@ export default function ReEntryCurrentIntelligence({
       resistance.level,
       resistance.distancePct,
       resistance.state,
+      {
+        avgExit: summary.avgExit,
+        exitDate: summary.latest?.trade_date ?? null,
+        mandate: mandate.mandate,
+        flags,
+        classified,
+        eventGaps: summary.eventGapCount,
+        analystRec: text(analystRow?.rec, analystRow?.recommendation, '').replace(/_/g, ' ').toUpperCase(),
+        analystTarget: finite(analystRow?.target),
+        analystCount: finite(analystRow?.n),
+      },
     )
-    const classified = classificationState(mandate, summary.rows, events, dispositions)
-    const flags = REENTRY_FLAGS.filter(flag => mandate.flags[flag])
     const completeness = [
       summary.shares !== null,
       summary.avgExit !== null,
@@ -344,7 +385,7 @@ export default function ReEntryCurrentIntelligence({
       intel.rsi !== null,
       intel.entryLow !== null,
       resistance.level !== null,
-      Boolean(analystMap[summary.symbol]),
+      Boolean(analystRow),
     ].filter(Boolean).length
     const alertCount = alertRows.filter(row =>
       String(row.symbol || '').toUpperCase() === summary.symbol
@@ -370,7 +411,7 @@ export default function ReEntryCurrentIntelligence({
       alertCount,
       suppressedCount,
       suppressed,
-      analyst: analystMap[summary.symbol] ?? null,
+      analyst: analystRow,
       score: intel.score,
     }
   }), [summaries, mandatesPref.data, eventsPref.data, dispositionsPref.data, watchMap, cards.data, holdings.data, resistancePref.data, analyst.data, alerts.data, regimeLabel])
@@ -571,18 +612,35 @@ export default function ReEntryCurrentIntelligence({
                     <span style={{ color: tone, fontWeight: 900 }}>{row.intel.state}</span>
                     <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 800, color: BB.text3 }}>{score.lane}</span>
                     <div style={{ marginTop: 3, fontWeight: 800 }}>{row.intel.action}</div>
-                    <div style={{ color: BB.text3 }}>{row.intel.reason}</div>
-                    <div style={{ color: BB.text3, marginTop: 2, fontSize: 10 }}>{score.scoreLabel}</div>
+                    <div style={{ color: BB.text2, marginTop: 2, lineHeight: 1.4 }} title={row.intel.reason}>{row.intel.reason}</div>
+                    {row.intel.highlights.length > 0 && (
+                      <div style={{ marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                        {row.intel.highlights.map(h => (
+                          <span key={h} style={{ fontSize: 9, fontWeight: 750, padding: '1px 5px', borderRadius: 3, border: '1px solid var(--border)', color: BB.text3, background: 'var(--bg1)' }}>{h}</span>
+                        ))}
+                      </div>
+                    )}
+                    <div style={{ color: BB.text3, marginTop: 3, fontSize: 10 }}>{score.scoreLabel}{!score.planIntegrityOk ? ' · plan integrity fail' : ''}</div>
                   </div>
                   <div>
                     <b>{money(row.intel.price)}</b><br />
-                    <span style={{ color: BB.text3 }}>RSI {row.intel.rsi === null ? '—' : row.intel.rsi.toFixed(1)} · {row.intel.trend}</span><br />
-                    <span style={{ color: BB.text3 }}>{age(row.intel.asOf)} · MACD {row.intel.macd}</span>
+                    <span style={{ color: BB.text3 }}>
+                      RSI {row.intel.rsi === null ? '—' : row.intel.rsi.toFixed(1)}
+                      {row.intel.rsiBand !== 'unavailable' ? ` ${row.intel.rsiBand}` : ''}
+                      {' · '}{row.intel.trend}
+                    </span><br />
+                    <span style={{ color: BB.text3 }}>
+                      {age(row.intel.asOf)} · MACD {row.intel.macd}
+                      {row.intel.ma50 != null ? ` · MA50 ${money(row.intel.ma50)}` : ' · MA n/a'}
+                    </span>
                   </div>
                   <div>
                     <b>{row.rows.length} exits · {row.shares === null ? 'shares unavailable' : `${row.shares.toLocaleString(undefined, { maximumFractionDigits: 4 })} sh`}</b><br />
                     <span>avg {money(row.avgExit)} · {money(row.proceeds)}</span><br />
-                    <span style={{ color: BB.text3 }}>{row.latest.trade_date ?? 'date unavailable'}</span>
+                    <span style={{ color: BB.text3 }}>
+                      {row.latest.trade_date ?? 'date unavailable'}
+                      {row.intel.vsExitPct != null ? ` · vs exit ${row.intel.vsExitPct >= 0 ? '+' : ''}${row.intel.vsExitPct.toFixed(1)}%` : ''}
+                    </span>
                   </div>
                   <div>
                     <b>
@@ -593,7 +651,10 @@ export default function ReEntryCurrentIntelligence({
                           : `${money(row.intel.entryLow)}–${money(row.intel.entryHigh)}`}
                     </b>
                     <br />
-                    <span style={{ color: BB.text3 }}>stop {money(row.intel.stop)} · target {money(row.intel.target)}</span><br />
+                    <span style={{ color: BB.text3 }}>
+                      stop {money(row.intel.stop)} · target {money(row.intel.target)}
+                      {row.intel.riskReward != null ? ` · R:R ${row.intel.riskReward.toFixed(1)}` : ''}
+                    </span><br />
                     <span>
                       R {row.resistance.state} {money(row.resistance.level)}
                       {row.resistance.distancePct === null ? '' : ` ${row.resistance.distancePct >= 0 ? '+' : ''}${row.resistance.distancePct.toFixed(1)}%`}
@@ -628,6 +689,7 @@ export default function ReEntryCurrentIntelligence({
                       <div style={{ fontSize: 10.5, marginBottom: 8, color: BB.text2 }}>
                         <b style={{ color: tone }}>{row.intel.state}</b> — {row.intel.action}. {row.intel.reason}
                       </div>
+                      <ReEntryMiniChart symbol={row.symbol} entryLow={row.intel.entryLow} entryHigh={row.intel.entryHigh} stop={row.intel.stop} resistance={row.resistance.level} avgExit={row.avgExit} />
                       {score.gates.map(gate => (
                         <div
                           key={gate.id}

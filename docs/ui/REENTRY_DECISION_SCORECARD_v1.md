@@ -27,8 +27,26 @@ Deep-link: `?lane=NOW|NEAR|WATCH|ALL` (default NOW). Optional `?symbol=SYM` focu
 | Market quote + RSI | Price and RSI present | MISSING MARKET |
 | Evidence freshness | `asOf` ≤ 96h (default) | STALE |
 | Validated entry zone | Entry low–high present | MISSING PLAN |
+| **Plan integrity** | stop &lt; entry low–high &lt; target (long) | WAIT — rebuild plan (blocks READY) |
 | Price vs entry zone | Inside zone | WAIT if outside / near |
 | RSI not extended | RSI ≤ 50 for READY; ≤ 55 for NEAR band | WAIT if elevated / overbought |
+
+## Decision narrative (WP-R1.5)
+
+`reason` is **symbol-specific** — composed from facts, never a single global template like “momentum is not extended.”
+
+Clauses (omit when unavailable):
+
+1. **Location** — `$px inside $low–$high (mid/low/high-zone)` or % above/below zone  
+2. **Momentum** — `RSI 26.1 oversold — calm retest`  
+3. **Vs exit** — `% vs exit avg $X · Nd since exit`  
+4. **Structure** — resistance side, support, stop, target, **R:R**  
+5. **Classify** — `Unclassified — classify before size` when AUTO-TAGGED/UNCLASSIFIED READY  
+6. **Soft context** — MA/MACD/P/E n/a, Street rec, mandate/flags, event gaps, resistance-suspect  
+
+Collapsed row also shows **highlight chips** (in zone, RSI band, R:R, vs exit, unclassified).
+
+**Charts (R2 lite):** expand row → lazy Finviz daily chart (`/api/v2/finviz-chart`) + levels caption.
 
 ## Soft gates (informational; do not alone block READY)
 
