@@ -109,13 +109,36 @@ Skill dev repo: `~/openclaw-skills-john718/`
 - Google Calendar
 - Google Drive
 
+## Specialist delegation (Maria front door — 2026-07-31)
+
+All Telegram DMs bind to **Maria** only. Steph, Aegis, Alex, and Iris are **not** separate Telegram bots; Maria delegates live questions via:
+
+```bash
+openclaw agent --agent <steph|aegis|alex|iris> \
+  --message "<question>" \
+  --deliver --reply-channel telegram --reply-to "tg:<sender-id>" --json
+```
+
+Maria's SOUL.md defines routing (income→Steph, surveillance→Aegis, CIO/retirement→Alex, research→Iris), confirm-first vs immediate delegation, and a hard rule against fabricating specialist opinions.
+
+**Exec allowlist:** `~/.openclaw/exec-approvals.json` includes `/usr/bin/openclaw` for the `maria` agent.
+
+Do **not** use `sessions_spawn` for specialists — it strips SOUL.md/IDENTITY.md; only `openclaw agent --agent …` preserves full persona.
+
 ## Cron Jobs
 
-**OpenClaw cron** (`~/.openclaw/cron/jobs.json`):
-- aegis-evening-surveillance (disabled, schedule errors)
-- steph-weekly-allocation-review (disabled)
-- steph-income-progress (disabled)
-- Claude plan reminders: 24th at 9AM "lower plan in a week", last day at 9AM "lower plan today" (enabled)
+**OpenClaw cron** (`openclaw cron list` — live status **ok** as of 2026-07-31):
+
+| Job | Agent | Schedule | Delivery |
+|-----|-------|----------|----------|
+| aegis-evening-surveillance | aegis | 8 PM weekdays | Telegram announce |
+| steph-weekly-allocation-review | steph | Sunday 9 AM | Telegram announce |
+| steph-income-progress | steph | 1st of month 9 AM | Telegram announce |
+| Alex Monthly Retirement Check-in | alex | 1st of month 9 AM | Telegram announce |
+| Iris Weekly Research Digest | iris | Sunday 9 AM | Telegram announce |
+| Claude plan reminders | main | 24th + last day of month | systemEvent (no deliver) |
+
+Previously documented as "disabled" — stale; verify with `openclaw cron list`.
 
 **System crontab** (TradeAI):
 - Event detector, event router, gov research, social scalp scanner (every 15 min / weekday morning / Sunday)
@@ -128,7 +151,7 @@ Skill dev repo: `~/openclaw-skills-john718/`
 - Plugins: 56/56 loaded
 - Memory search: disabled
 
-**Exec approvals:** `~/.openclaw/exec-approvals.json` with allowlist for gog calendar/Gmail ops
+**Exec approvals:** `~/.openclaw/exec-approvals.json` — `main` allowlist (gog calendar/Gmail); **`maria` allowlist includes `/usr/bin/openclaw`** for specialist delegation
 
 ## Related Directories
 

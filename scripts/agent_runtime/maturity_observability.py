@@ -484,7 +484,8 @@ def _definition_records() -> dict[str, Any]:
         definition = spec.definition
         out[agent_id] = {
             "display_name": definition.display_name,
-            "subsystem": "agent_runtime_mvl",
+            "role": definition.role,
+            "subsystem": spec.subsystem.value,
             "agent_kind": "shadow_agent",
             "environment": "SHADOW" if definition.enabled else "LAB",
             "lifecycle": str(definition.deployment_state.value),
@@ -631,6 +632,7 @@ def collect_runtime_evidence(
         engaged: dict[str, set[str]] = {}                 # canonical agent → artifact_ids it touched
         artifact_producer: dict[str, str] = {}            # artifact_id → canonical producer
         reviews_by_artifact: dict[str, list[Mapping[str, Any]]] = {}
+        scores_by_artifact: dict[str, list[Mapping[str, Any]]] = {}
 
         def _engage(agent: str, artifact_id: str) -> None:
             if agent and artifact_id:
@@ -652,8 +654,10 @@ def collect_runtime_evidence(
                 if aid:
                     reviews_by_artifact.setdefault(aid, []).append(rv)
             for sc in reader.list_scores(run_id):
-                _engage(_normalize_agent_id(sc.get("scorer_agent_id")),
-                        str(sc.get("artifact_id") or ""))
+                aid = str(sc.get("artifact_id") or "")
+                _engage(_normalize_agent_id(sc.get("scorer_agent_id")), aid)
+                if aid:
+                    scores_by_artifact.setdefault(aid, []).append(sc)
 
         # reviews OF each agent's OWN produced artifacts → that agent's review_health
         reviews_of_own: dict[str, list[Mapping[str, Any]]] = {}
@@ -665,13 +669,26 @@ def collect_runtime_evidence(
         runtime_evidence: dict[str, dict[str, Any]] = {}
         review_records: dict[str, dict[str, Any]] = {}
         for agent, artifacts in engaged.items():
+            produced_ids = {aid for aid, prod in artifact_producer.items() if prod == agent}
+            scored_produced = sum(1 for aid in produced_ids if scores_by_artifact.get(aid))
+            score_coverage = (scored_produced / len(produced_ids)) if produced_ids else None
+            review_rec = _runtime_review_record(reviews_of_own.get(agent, []))
+            review_ok = review_rec.get("review_health") == "HEALTHY"
+            gates_complete = (
+                score_coverage is not None
+                and score_coverage >= 1.0
+                and review_ok
+                and len(produced_ids) >= 1
+            )
             runtime_evidence[agent] = {
                 "source_class": SOURCE_CLASS_RUNTIME,
                 "sample_size": len(artifacts),
-                "framework_gates_complete": False,
+                "framework_gates_complete": gates_complete,
                 "effective_production_activation_verified": False,
+                "independent_score_coverage": score_coverage,
+                "produced_artifact_count": len(produced_ids),
             }
-            review_records[agent] = _runtime_review_record(reviews_of_own.get(agent, []))
+            review_records[agent] = review_rec
         return runtime_evidence, review_records
     except Exception:
         # Never let a reader hiccup degrade the board into a crash or a lie.
@@ -713,7 +730,12 @@ def build_observations(
         mvl_agent = mvl.get(agent_id) or {}
         defined = definitions.get(agent_id) or {}
         display = cat.get("display_name") or mvl_agent.get("display_name") or defined.get("display_name") or agent_id.replace("_", " ").title()
-        subsystem = defined.get("subsystem") or cat.get("subsystem") or ("hermes" if agent_id == "hermes" else "proposal_review" if agent_id in {"maria", "risk_agent", "steph", "broker_cloud_oversight"} else "agent_runtime")
+        subsystem = defined.get("subsystem") or cat.get("subsystem") or (
+            "HERMES" if agent_id == "hermes"
+            else "OPENCLAW" if agent_id == "concierge"
+            else "SYSTEM" if agent_id in {"broker_cloud_oversight", "defense_adjudication"}
+            else "FLEET"
+        )
         lifecycle = str(cat.get("lifecycle") or mvl_agent.get("state") or defined.get("lifecycle") or "DESIGNED").upper()
         enabled = bool(mvl_agent.get("enabled", defined.get("environment") == "SHADOW"))
         environment = str(cat.get("environment") or mvl_agent.get("environment") or ("SHADOW" if enabled else "LAB")).upper()

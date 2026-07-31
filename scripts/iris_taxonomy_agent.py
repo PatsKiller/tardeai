@@ -2023,6 +2023,105 @@ def run_freshness_validation():
         return {"error": str(e)}
 
 
+# ═══════════════════════════════════════════════════════
+# MODE 5 — STORAGE STEWARD (weekly; orphan/duplicate embeddings)
+# ═══════════════════════════════════════════════════════
+
+_STORAGE_COOLDOWN = PROJECT_ROOT / "state" / "iris_storage_steward.cooldown"
+
+
+def _storage_table_stats(cur) -> list[dict]:
+    cur.execute(
+        """
+        SELECT relname AS name,
+               pg_total_relation_size(schemaname||'.'||relname) AS bytes,
+               n_live_tup AS live_rows
+        FROM pg_stat_user_tables
+        WHERE relname IN ('content_embeddings', 'hermes_score_history', 'schwab_stream_book', 'market_quotes')
+        ORDER BY bytes DESC
+        """
+    )
+    cols = [d[0] for d in cur.description]
+    return [dict(zip(cols, row)) for row in cur.fetchall()]
+
+
+def _storage_orphan_ids(cur, *, limit: int = 5000) -> list[int]:
+    cur.execute(
+        """
+        SELECT ce.id
+        FROM content_embeddings ce
+        WHERE ce.source_type = 'hermes_research'
+          AND NOT EXISTS (
+            SELECT 1 FROM hermes_research_intelligence h
+            WHERE h.id::text = ce.source_id::text
+          )
+        LIMIT %s
+        """,
+        (limit,),
+    )
+    return [row[0] for row in cur.fetchall()]
+
+
+def _storage_duplicate_ids(cur, *, limit: int = 5000) -> list[int]:
+    """Exact duplicate embeddings: same source_type + source_id, keep lowest id."""
+    cur.execute(
+        """
+        WITH ranked AS (
+          SELECT id,
+                 ROW_NUMBER() OVER (
+                   PARTITION BY source_type, source_id
+                   ORDER BY id ASC
+                 ) AS rn
+          FROM content_embeddings
+          WHERE source_type IS NOT NULL AND source_id IS NOT NULL
+        )
+        SELECT id FROM ranked WHERE rn > 1 LIMIT %s
+        """,
+        (limit,),
+    )
+    return [row[0] for row in cur.fetchall()]
+
+
+def run_storage_steward(*, dry_run: bool = True, apply: bool = False) -> dict:
+    """Report DB storage hotspots; optionally delete verified-safe orphan/duplicate embeddings."""
+    print(f"\n{'='*60}\n  IRIS — Storage Steward {'(DRY RUN)' if dry_run or not apply else '(APPLY)'}\n{'='*60}\n")
+    if apply and not dry_run:
+        if _STORAGE_COOLDOWN.is_file():
+            age_h = (time.time() - _STORAGE_COOLDOWN.stat().st_mtime) / 3600.0
+            if age_h < 24:
+                return {"skipped": True, "reason": f"cooldown active ({age_h:.1f}h < 24h)"}
+    conn, cur = _get_conn_dict()
+    report = {"tables": _storage_table_stats(cur)}
+    orphan_ids = _storage_orphan_ids(cur)
+    dup_ids = _storage_duplicate_ids(cur)
+    report["orphan_embedding_ids"] = len(orphan_ids)
+    report["duplicate_embedding_ids"] = len(dup_ids)
+    report["freeable_rows"] = len(orphan_ids) + len(dup_ids)
+    print(json.dumps(report, indent=2, default=str))
+    deleted = 0
+    if apply and not dry_run and (orphan_ids or dup_ids):
+        to_delete = list({*orphan_ids, *dup_ids})
+        cur.execute("DELETE FROM content_embeddings WHERE id = ANY(%s)", (to_delete,))
+        deleted = cur.rowcount
+        conn.commit()
+        _STORAGE_COOLDOWN.parent.mkdir(parents=True, exist_ok=True)
+        _STORAGE_COOLDOWN.write_text(datetime.now(timezone.utc).isoformat(), encoding="utf-8")
+    log_run("storage_steward", gaps_found=report["freeable_rows"])
+    cur.close()
+    conn.close()
+    report["deleted"] = deleted
+    report["dry_run"] = dry_run or not apply
+    return report
+
+
+def storage_steward_telegram_help() -> str:
+    return (
+        "Iris Storage Steward commands:\n"
+        "  iris storage           — table size report + orphan/duplicate counts\n"
+        "  iris storage --apply   — delete verified-safe orphans/duplicates (24h cooldown)"
+    )
+
+
 if __name__ == "__main__":
     p = argparse.ArgumentParser(description="Iris taxonomy intelligence agent")
     p.add_argument("--gaps", action="store_true", help="Gap analysis only")
@@ -2035,10 +2134,14 @@ if __name__ == "__main__":
     p.add_argument("--library-audit", action="store_true", help="Run library audit")
     p.add_argument("--library-audit-dry-run", action="store_true", help="Preview library audit")
     p.add_argument("--discovery", action="store_true", help="Discovery mode — find symbols in intel not on watchlist")
+    p.add_argument("--storage", action="store_true", help="Mode 5: storage steward report (embeddings orphans/dupes)")
+    p.add_argument("--storage-apply", action="store_true", help="Mode 5 apply: delete verified-safe orphan/duplicate embeddings")
     p.add_argument("--telegram", action="store_true", help="Send results to Telegram")
     args = p.parse_args()
 
-    if args.freshness:
+    if args.storage or args.storage_apply:
+        run_storage_steward(dry_run=not args.storage_apply, apply=args.storage_apply)
+    elif args.freshness:
         run_freshness_validation()
     elif args.discovery:
         run_discovery_mode(send_telegram=args.telegram)

@@ -15,7 +15,8 @@ import {
 import { resolveAgentRuntimeView, readApiBaseFromEnv, type ResolvedRuntimeView } from '../lib/agentRuntimeReadAdapter'
 import { resolveAgentRuntimeDetail, type AgentDetailView } from '../lib/agentRuntimeDetailAdapter'
 import { buildAgentRunRollup, buildFleetRunPulse, fetchAgentRuntimeRuns, type AgentRunRollupEntry } from '../lib/agentRuntimeRunRollup'
-import { resolveAgentRuntimeOperations, operationsByAgent, type AgentOperationsEntry } from '../lib/agentRuntimeOperations'
+import { resolveAgentRuntimeOperations, operationsByAgent, type AgentOperationsEntry, type AgentOperationsPayload, type PromotionFrameworkMeta } from '../lib/agentRuntimeOperations'
+import { useApi } from '../hooks/useApi'
 import { fmtDeskAge, fmtDeskTimestamp } from '../lib/fmtTimestamp'
 import {
   FleetOperationsBar,
@@ -26,6 +27,8 @@ import {
   ScheduleCell,
   OperatorActionCell,
   OperatorGlossary,
+  SubsystemChip,
+  OpenClawPersonaChip,
 } from '../components/AgentRuntimeOperatorPanels'
 import {
   maturityHealthLabel,
@@ -50,6 +53,9 @@ import {
   type ResolvedReadinessView,
   type PromotionGatesPayload,
 } from '../lib/agentRuntimeReadiness'
+import {
+  fleetNameCollisionNote,
+} from '../lib/agentSubsystem'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 type View = 'Runtime' | 'Legacy analytics'
@@ -207,20 +213,71 @@ function ArtifactReviewDesk({ d }: { d: AgentDetailView }) {
 }
 
 function KnowledgeDesk({ d }: { d: AgentDetailView }) {
+  const [busy, setBusy] = useState<string | null>(null)
+  const [msg, setMsg] = useState<string | null>(null)
+  const candidates = d.lessons.items.filter(l => l.lifecycle === 'CANDIDATE')
+  async function ratify(lesson: { lessonId: string; title: string; statement: string }) {
+    setBusy(lesson.lessonId)
+    setMsg(null)
+    try {
+      const resp = await fetch('/api/v3/agent-runtime/lessons/ratify', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json' },
+        body: JSON.stringify({
+          lesson_id: lesson.lessonId,
+          title: lesson.title,
+          statement: lesson.statement,
+          reviewed_by: 'operator',
+        }),
+      })
+      const body = await resp.json().catch(() => ({}))
+      if (!resp.ok || body.ok === false) {
+        setMsg(body.detail || `Ratify failed (${resp.status})`)
+      } else {
+        setMsg(`Ratified ${lesson.lessonId} — refresh to see updated lifecycle.`)
+      }
+    } catch (e) {
+      setMsg(String(e))
+    } finally {
+      setBusy(null)
+    }
+  }
   return <LiveDesk title="Knowledge and learning" badge={`${d.lessons.total} LESSONS · ${d.cases.total} CASES`}>
-    <div style={{ fontSize: TYPE.xs, color: 'var(--text3)', marginBottom: 6 }}>Fleet knowledge base (read-only). Automatic production promotion remains impossible.</div>
-    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+    <div style={{ fontSize: TYPE.xs, color: 'var(--text3)', marginBottom: 6 }}>
+      Fleet knowledge base. Candidate lessons require human ratification — no agent may call lesson.ratify.
+    </div>
+    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
       {Object.entries(d.lessons.byLifecycle).map(([k, n]) => <StatusBadge key={k} tone="slate">lesson {k} {n}</StatusBadge>)}
       {Object.entries(d.cases.byType).map(([k, n]) => <StatusBadge key={k} tone="slate">case {k.replace(/_/g, ' ')} {n}</StatusBadge>)}
       {d.lessons.total === 0 && d.cases.total === 0 && <div style={{ fontSize: TYPE.xs, color: 'var(--text3)' }}>No cases or lessons persisted yet.</div>}
     </div>
+    {candidates.length > 0 && (
+      <div style={{ marginTop: 8, display: 'grid', gap: 6 }}>
+        <div style={{ ...label }}>Candidate lessons — operator ratification</div>
+        {candidates.slice(0, 8).map(l => (
+          <div key={l.lessonId} style={{ padding: '6px 8px', borderRadius: 6, background: 'var(--bg2)', fontSize: TYPE.xs }}>
+            <div style={{ fontWeight: 700, color: 'var(--text1)' }}>{l.title || l.lessonId}</div>
+            <div style={{ color: 'var(--text3)', marginTop: 2, fontFamily: 'var(--mono)' }}>{l.lessonId}</div>
+            <div style={{ color: 'var(--text2)', marginTop: 4, lineHeight: 1.4 }}>{l.statement.slice(0, 240)}{l.statement.length > 240 ? '…' : ''}</div>
+            <button type="button" disabled={busy === l.lessonId} onClick={() => void ratify(l)}
+              style={{ marginTop: 6, fontSize: TYPE.xs, fontWeight: 700, padding: '3px 8px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--bg1)', cursor: 'pointer', color: T.link }}>
+              {busy === l.lessonId ? 'Ratifying…' : 'Ratify (human-only)'}
+            </button>
+          </div>
+        ))}
+      </div>
+    )}
+    {msg && <div style={{ marginTop: 8, fontSize: TYPE.xs, color: BB.amber }}>{msg}</div>}
   </LiveDesk>
 }
 
 function SampleBar({ row }: { row: AgentMaturityObservation }) {
   const pct = samplePct(row)
   const text = `${row.sample_size ?? '—'} / ${row.required_sample_size ?? '—'}`
-  return <div style={{ minWidth: 92, display: 'inline-block' }}>
+  const tip = row.required_sample_size
+    ? `min_artifact_population gate (${row.required_sample_size}) from scripts/agent_runtime/agents/maturity_gates.py — independent reviewed artifacts required before human promotion review.`
+    : 'Sample gate not configured for this agent framework.'
+  return <div style={{ minWidth: 92, display: 'inline-block' }} title={tip}>
     <div style={{ ...numStyle, fontSize: TYPE.xs, textAlign: 'right', color: pct === null ? 'var(--text3)' : 'var(--text1)' }}>{text}</div>
     <div style={{ marginTop: 3, height: 4, borderRadius: 2, background: 'rgba(148,163,184,0.18)', overflow: 'hidden' }}>
       <div style={{ width: `${pct ?? 0}%`, height: '100%', background: pct === null ? 'transparent' : BB.amber, transition: 'width .2s ease' }} />
@@ -235,26 +292,28 @@ function DetailField({ name, value, tone }: { name: string; value: ReactNode; to
   </div>
 }
 
-function MaturityDetail({ row, runTemplate, ops, rollup }: {
+function MaturityDetail({ row, runTemplate, ops, rollup, shadowDispatchModel }: {
   row: AgentMaturityObservation
   runTemplate?: string
   ops?: AgentOperationsEntry
   rollup?: AgentRunRollupEntry
+  shadowDispatchModel?: string | null
 }) {
   const [gates, setGates] = useState<PromotionGatesPayload | null>(null)
   const [copied, setCopied] = useState(false)
   useEffect(() => {
     let active = true
-    if (row.promotion_eligibility === 'ELIGIBLE_FOR_HUMAN_REVIEW' || row.promotion_eligibility === 'HUMAN_REVIEW_REQUIRED') {
-      resolvePromotionGates(row.agent_id).then(g => { if (active) setGates(g) })
-    }
+    resolvePromotionGates(row.agent_id).then(g => { if (active) setGates(g) })
     return () => { active = false }
-  }, [row.agent_id, row.promotion_eligibility])
+  }, [row.agent_id])
   const alerts = [...row.warnings, ...row.operator_checks_required]
   const cmd = manualRunCommand(row.agent_id, runTemplate)
   return <div style={{ padding: '10px 14px 14px 26px', background: 'var(--bg2)' }}>
     {row.next_step_hint && <div style={{ marginBottom: 10, padding: '8px 10px', borderRadius: 6, border: `1px solid ${BB.amber}`, background: BB.amberDim, fontSize: TYPE.xs, color: 'var(--text1)', lineHeight: 1.5 }}>
       <b>Next step:</b> {row.next_step_hint}
+    </div>}
+    {row.declared_lifecycle_state === 'SHADOW' && <div style={{ marginBottom: 10, padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg1)', fontSize: TYPE.xs, color: 'var(--text2)', lineHeight: 1.5 }}>
+      <b>Why SHADOW:</b> Fleet critics stay SHADOW until all promotion gates pass and a human authorizes promotion ({row.promotion_authority}). Automatic OPERATIONAL is forbidden.
     </div>}
     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
       {ops?.manual_run_command && <button type="button" onClick={e => { e.stopPropagation(); void navigator.clipboard.writeText(cmd).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000) }) }}
@@ -265,13 +324,16 @@ function MaturityDetail({ row, runTemplate, ops, rollup }: {
       <span style={{ fontSize: TYPE.xs, color: 'var(--text3)', alignSelf: 'center' }}>Runbook: docs/agent_runtime/SHADOW_ACTIVATION_RUNBOOK.md</span>
     </div>
     {gates && gates.gates.length > 0 && <div style={{ marginBottom: 10 }}>
-      <div style={{ ...label, marginBottom: 6 }}>Promotion checklist ({gates.promotable ? 'PROMOTABLE' : 'BLOCKED'})</div>
+      <div style={{ ...label, marginBottom: 6 }}>Promotion checklist ({gates.promotable ? 'PROMOTABLE' : 'BLOCKED'}) · threshold source: maturity_gates.py</div>
       {gates.gates.map(g => <div key={g.gate_id} style={{ display: 'grid', gridTemplateColumns: '1fr 80px 100px', gap: 8, padding: '4px 0', borderBottom: '1px solid var(--border-subtle)', fontSize: TYPE.xs }}>
         <span>{g.description}</span>
         <span style={{ ...numStyle, textAlign: 'right' }}>{g.status.replace(/_/g, ' ')}</span>
         <span style={{ ...numStyle, textAlign: 'right', color: 'var(--text3)' }}>{g.measured_value ?? '—'}</span>
       </div>)}
       {gates.blockers.length > 0 && <div style={{ marginTop: 6, fontSize: TYPE.xs, color: BB.amber }}>{gates.blockers.join(' · ')}</div>}
+    </div>}
+    {fleetNameCollisionNote(row.agent_id) && <div style={{ gridColumn: '1 / -1', marginBottom: 8, padding: '8px 10px', borderRadius: 6, border: `1px solid ${BB.amber}`, background: BB.amberDim, fontSize: TYPE.xs, color: 'var(--text1)', lineHeight: 1.5 }}>
+      <b>Name collision:</b> {fleetNameCollisionNote(row.agent_id)}
     </div>}
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 12 }}>
     <DetailField name="Last dispatch" value={ops?.last_dispatch_at ? `${fmtDeskTimestamp(ops.last_dispatch_at) ?? ops.last_dispatch_at} · ${ops.last_dispatch_outcome ?? '—'}` : rollup?.lastStartedAt ? `${fmtDeskTimestamp(rollup.lastStartedAt) ?? rollup.lastStartedAt} · ${rollup.lastStatus ?? '—'}` : 'NOT RUN'} />
@@ -280,7 +342,20 @@ function MaturityDetail({ row, runTemplate, ops, rollup }: {
     <DetailField name="Installed timer" value={ops
       ? `${ops.timer_unit ?? 'none'} · ${ops.timer_state.replace(/_/g, ' ')}${ops.next_timer_at ? ` · next ${fmtDeskTimestamp(ops.next_timer_at) ?? ops.next_timer_at}` : ' · next NOT SCHEDULED'}`
       : '—'} />
-    <DetailField name="Subsystem" value={row.subsystem} />
+    <DetailField name="Subsystem" value={<SubsystemChip subsystem={row.subsystem} agentId={row.agent_id} />} />
+    <DetailField name="OpenClaw persona" value={
+      ops?.openclaw_persona_registered
+        ? `${ops.openclaw_persona_model ?? 'default model'} · SOUL ${ops.openclaw_persona_soul_exists ? 'present' : 'missing'}`
+        : row.subsystem === 'OPENCLAW' ? 'FLEET bridge (concierge) — register persona in ~/.openclaw/openclaw.json' : 'No matching OpenClaw persona'
+    } />
+    <DetailField name="SHADOW dispatch LLM" value={ops?.shadow_dispatch_model ?? shadowDispatchModel ?? 'AGENT_RUNTIME_SHADOW_MODEL unset'} />
+    <DetailField name="Independent review LLM" value={
+      row.review_model
+        ? `${row.review_provider ?? 'provider?'} / ${row.review_model}${row.review_route ? ` · ${row.review_route}` : ''}`
+        : row.review_health === 'NOT_RUN' ? 'NOT RUN — no independent review of this agent\'s own artifacts yet' : '—'
+    } />
+    <DetailField name="Review provenance" value={`${row.review_provenance.replace(/_/g, ' ')} · health ${row.review_health}`} />
+    <DetailField name="Reviewer / scorer (contract)" value={`reviewer ${ops?.reviewer_agent_id ?? '—'} · scorer ${ops?.scorer_agent_id ?? '—'}`} />
     <DetailField name="Environment" value={row.environment} />
     <DetailField name="Authority" value={row.effective_authority_state.replace(/_/g, ' ')} />
     <DetailField name="Denied authorities" value={row.denied_authorities.join(', ') || 'none listed'} />
@@ -346,6 +421,7 @@ function MaturityScoreboard({
   dispatchWired,
   dispatchOperableMap,
   onDispatched,
+  operationsPayload,
 }: {
   view: ResolvedAgentMaturityView
   runTemplate?: string
@@ -354,6 +430,7 @@ function MaturityScoreboard({
   dispatchWired: boolean
   dispatchOperableMap: Map<string, boolean>
   onDispatched: () => void
+  operationsPayload: AgentOperationsPayload | null
 }) {
   const [preview, setPreview] = useState(false)
   const [filter, setFilter] = useState<'all' | 'shadow' | 'designed' | 'attention'>('all')
@@ -383,12 +460,14 @@ function MaturityScoreboard({
 
   const headers = [
     'Agent',
+    'Subsystem',
+    'OC persona',
     'Lifecycle',
     'Last run',
     'Outcome',
     'Automation',
     'Sample gate',
-    'Review health',
+    'Review / LLM',
     'Next step',
     'Eligibility',
     'Actions',
@@ -466,7 +545,9 @@ function MaturityScoreboard({
         {header === 'Last run' ? <ColumnHeaderTip label="Last run" tip="Newest started_at for this agent from GET /api/v3/agent-runtime/runs." /> :
           header === 'Outcome' ? <ColumnHeaderTip label="Outcome" tip="Status of the most recent run for this agent." /> :
             header === 'Automation' ? <ColumnHeaderTip label="Automation" tip="Designed systemd timer cadence (every 15m) when tradeai-agent-runtime@.timer is installed." /> :
-              header === 'Review health' ? <ColumnHeaderTip label="Review health" tip="Independent peer review health — NOT RUN means no reviewer has scored this agent's own output yet." /> :
+              header === 'Review / LLM' ? <ColumnHeaderTip label="Review / LLM" tip="Independent review health of this agent's OWN produced artifacts, plus reviewer provider/model when measured. SHADOW dispatch uses AGENT_RUNTIME_SHADOW_MODEL separately." /> :
+              header === 'Sample gate' ? <ColumnHeaderTip label="Sample gate" tip="Progress toward min_artifact_population (default 100) from maturity_gates.py — required before human promotion review." /> :
+              header === 'OC persona' ? <ColumnHeaderTip label="OC persona" tip="Registered OpenClaw conversational persona (gateway). Distinct from FLEET subsystem pill — only concierge uses OpenClaw subsystem." /> :
                 header}
       </th>)}</tr></thead>
       <tbody>{rows.map(row => {
@@ -477,6 +558,7 @@ function MaturityScoreboard({
           ops={operationsMap.get(row.agent_id)}
           dispatchWired={dispatchWired}
           dispatchOperable={dispatchOperableMap.get(row.agent_id) ?? false}
+          shadowDispatchModel={operationsPayload?.shadow_dispatch_model}
           onDispatched={onDispatched}
           onToggle={() => setExpanded(e => ({ ...e, [row.agent_id]: !e[row.agent_id] }))} />
       })}
@@ -525,6 +607,59 @@ function healthLabelText(state: string): string {
 
 // Compact legend of the truth vocabulary — advisory only, carries NO authority
 // controls (no Promote/Activate/Deploy). Reinforces what each state means.
+function ShadowPromotionExplainer({ framework, dispatchModel }: { framework?: PromotionFrameworkMeta; dispatchModel?: string | null }) {
+  const min = framework?.min_artifact_population ?? 100
+  return <div style={{ ...panel, padding: '12px 14px', borderColor: 'rgba(255,176,0,.34)', background: BB.amberDim }}>
+    <div style={{ fontSize: TYPE.md, fontWeight: 800, color: 'var(--text0)' }}>Why every agent stays SHADOW (and how to tip over)</div>
+    <div style={{ marginTop: 8, fontSize: TYPE.xs, color: 'var(--text1)', lineHeight: 1.55 }}>
+      SHADOW is intentional — not a bug. Each critic must accumulate <b>{min} independently reviewed artifacts</b> (gate: <code>min_artifact_population</code> in {framework?.gate_source ?? 'maturity_gates.py'}),
+      pass all measurable promotion gates (review coverage, score coverage, contradiction rate, etc.), then receive <b>human-only</b> promotion authorization.
+      No agent can self-promote to OPERATIONAL ({framework?.promotion_authority ?? 'HUMAN_ONLY'}).
+    </div>
+    <div style={{ marginTop: 8, fontSize: TYPE.xs, color: 'var(--text2)' }}>
+      SHADOW batch dispatch model: <span style={{ fontFamily: 'var(--mono)' }}>{dispatchModel ?? 'AGENT_RUNTIME_SHADOW_MODEL not set on server'}</span> (Ollama via shadow_fleet_provider).
+      Independent <em>reviews</em> of each agent&apos;s own output may use a different reviewer agent/model — see Review LLM column.
+    </div>
+  </div>
+}
+
+function OpenClawCrosswalkPanel({ operationsPayload }: { operationsPayload: AgentOperationsPayload | null }) {
+  const { data: ocStatus } = useApi<any>('/api/v2/openclaw/status', 120_000)
+  const personas = operationsPayload?.openclaw_personas ?? []
+  const gateway = ocStatus?.gateway_active ?? 'unknown'
+  return <div style={{ ...panel, padding: '12px 14px' }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', alignItems: 'baseline' }}>
+      <div style={{ fontSize: TYPE.md, fontWeight: 800 }}>OpenClaw vs FLEET (two different systems)</div>
+      <StatusBadge tone={String(gateway).includes('active') ? 'green' : 'amber'}>gateway {String(gateway)}</StatusBadge>
+    </div>
+    <div style={{ marginTop: 8, fontSize: TYPE.xs, color: 'var(--text2)', lineHeight: 1.55 }}>
+      <b>Subsystem pill &quot;OpenClaw&quot;</b> = only <code>concierge</code> (FLEET bridge into the gateway).
+      <b> OC persona</b> = conversational chat persona in <code>~/.openclaw/openclaw.json</code> (Telegram/WhatsApp reachability).
+      Same name ≠ same runtime — e.g. FLEET critic <code>aegis</code> ≠ OpenClaw persona <code>aegis</code>.
+    </div>
+    <div style={{ marginTop: 10, display: 'grid', gap: 6, maxHeight: 220, overflowY: 'auto' }}>
+      {personas.length === 0 && <div style={{ fontSize: TYPE.xs, color: 'var(--text3)' }}>No OpenClaw personas loaded from operations API.</div>}
+      {personas.map(p => (
+        <div key={p.persona_id} style={{ display: 'grid', gridTemplateColumns: '120px 1fr 140px 100px', gap: 8, padding: '6px 8px', borderRadius: 6, background: 'var(--bg2)', fontSize: TYPE.xs, alignItems: 'center' }}>
+          <span style={{ fontFamily: 'var(--mono)', fontWeight: 700 }}>{p.persona_id}</span>
+          <span style={{ color: 'var(--text2)' }}>
+            {p.fleet_agent_id
+              ? <>FLEET critic · subsystem {p.fleet_subsystem ?? 'FLEET'}</>
+              : <span style={{ color: 'var(--text3)' }}>OpenClaw-only (no FLEET dispatch)</span>}
+          </span>
+          <span style={{ fontFamily: 'var(--mono)', color: 'var(--text3)' }}>{p.model ?? 'default'}</span>
+          <span>{p.soul_exists ? 'SOUL ✓' : 'SOUL —'}</span>
+        </div>
+      ))}
+    </div>
+    {(ocStatus?.agents?.length ?? 0) > personas.length && (
+      <div style={{ marginTop: 6, fontSize: TYPE.xs, color: BB.amber }}>
+        OpenClaw status reports {ocStatus.agents.length} personas total — expand via System → OpenClaw or /api/v2/openclaw/status.
+      </div>
+    )}
+  </div>
+}
+
 function MaturityLegend() {
   const groupStyle: CSSProperties = { display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'baseline' }
   const cap: CSSProperties = { fontWeight: 750, letterSpacing: '.04em', textTransform: 'uppercase', color: 'var(--text2)' }
@@ -538,7 +673,7 @@ function MaturityLegend() {
 }
 
 function FragmentRow({
-  row, open, onToggle, runTemplate, rollup, ops, dispatchWired, dispatchOperable, onDispatched,
+  row, open, onToggle, runTemplate, rollup, ops, dispatchWired, dispatchOperable, onDispatched, shadowDispatchModel,
 }: {
   row: AgentMaturityObservation
   open: boolean
@@ -549,6 +684,7 @@ function FragmentRow({
   dispatchWired: boolean
   dispatchOperable: boolean
   onDispatched: () => void
+  shadowDispatchModel?: string | null
 }) {
   const nextGate = row.next_gate_state === 'PASSED' ? 'gate passed' : (row.next_gate_id ?? row.next_gate_state.replace(/_/g, ' ').toLowerCase())
   const nextStep = row.next_step_hint || row.next_gate_description || nextGate
@@ -558,6 +694,8 @@ function FragmentRow({
         <div style={{ fontSize: TYPE.sm, fontWeight: 750 }}>{row.display_name}</div>
         <div style={{ ...numStyle, fontSize: TYPE.xs, color: 'var(--text3)' }}>{row.agent_id}</div>
       </td>
+      <td style={{ padding: '9px 10px' }}><SubsystemChip subsystem={row.subsystem} agentId={row.agent_id} /></td>
+      <td style={{ padding: '9px 10px' }}><OpenClawPersonaChip registered={ops?.openclaw_persona_registered} model={ops?.openclaw_persona_model} /></td>
       <td style={{ padding: '9px 10px' }}><Chip kind="state" tone={maturityLifecycleTone(row.declared_lifecycle_state)}>{row.declared_lifecycle_state}</Chip></td>
       <td style={{ padding: '9px 10px' }}><RunAgeCell rollup={rollup} /></td>
       <td style={{ padding: '9px 10px' }}><RunOutcomeCell rollup={rollup} /></td>
@@ -565,7 +703,9 @@ function FragmentRow({
       <td style={{ padding: '9px 10px' }}><SampleBar row={row} /></td>
       <td style={{ padding: '9px 10px' }}>
         <Chip kind="state" tone={maturityHealthTone(row.review_health)}>{healthLabelText(row.review_health)}</Chip>
-        <div style={{ marginTop: 3, fontSize: TYPE.xs, color: 'var(--text3)' }}>{row.review_provenance.replace(/_/g, ' ')}</div>
+        <div style={{ marginTop: 3, fontSize: TYPE.xs, color: 'var(--text3)', fontFamily: 'var(--mono)' }}>
+          {row.review_model ? `${row.review_provider ?? '?'} / ${row.review_model}` : row.review_provenance.replace(/_/g, ' ')}
+        </div>
       </td>
       <td style={{ padding: '9px 10px', fontSize: TYPE.xs, color: 'var(--text2)', maxWidth: 220, lineHeight: 1.4 }}>
         <span style={{ color: BB.amber }}>&rarr;</span> {nextStep}
@@ -576,7 +716,7 @@ function FragmentRow({
       </td>
       <td style={{ padding: '9px 10px', textAlign: 'center', color: 'var(--text3)', fontSize: TYPE.sm }}>{open ? '\u25be' : '\u25b8'}</td>
     </tr>
-    {open && <tr style={{ borderBottom: '1px solid var(--border-subtle)' }}><td colSpan={11} style={{ padding: 0 }}><MaturityDetail row={row} runTemplate={runTemplate} ops={ops} rollup={rollup} /></td></tr>}
+    {open && <tr style={{ borderBottom: '1px solid var(--border-subtle)' }}><td colSpan={13} style={{ padding: 0 }}><MaturityDetail row={row} runTemplate={runTemplate} ops={ops} rollup={rollup} shadowDispatchModel={shadowDispatchModel} /></td></tr>}
   </>
 }
 
@@ -622,6 +762,7 @@ function RuntimeView() {
     detail: string
   } | null>(null)
   const [operationsObservedAt, setOperationsObservedAt] = useState<string | null>(null)
+  const [operationsPayload, setOperationsPayload] = useState<AgentOperationsPayload | null>(null)
   const [detail, setDetail] = useState<AgentDetailView | null>(null)
 
   const refreshAll = () => {
@@ -638,10 +779,11 @@ function RuntimeView() {
     resolveAgentRuntimeOperations()
       .then(view => {
         setOperationsMap(operationsByAgent(view.payload))
+        setOperationsPayload(view.payload)
         setOperationsHealth(view.payload?.health_monitor ?? null)
         setOperationsObservedAt(view.payload?.observed_at ?? null)
       })
-      .catch(() => { setOperationsMap(new Map()); setOperationsHealth(null); setOperationsObservedAt(null) })
+      .catch(() => { setOperationsMap(new Map()); setOperationsPayload(null); setOperationsHealth(null); setOperationsObservedAt(null) })
     fetchAgentRuntimeRuns(base)
       .then(rows => {
         if (!rows) {
@@ -674,8 +816,11 @@ function RuntimeView() {
   const snapshot = runtimeView.snapshot
   const displayAsOf = operationsObservedAt ?? fleetPulse?.newestStartedAt ?? snapshot.asOf
   const catalogRows = maturityView.payload?.data?.length
-    ? catalogFromMaturity(maturityView.payload.data)
-    : AGENT_RUNTIME_CATALOG.map(a => ({ agentId: a.agentId, displayName: a.displayName, role: a.role, lifecycle: a.lifecycle, enabled: a.enabled, retrievalRequired: a.retrievalRequired, deadlineSeconds: a.budget.deadlineSeconds }))
+    ? catalogFromMaturity(
+      maturityView.payload.data,
+      new Map([...operationsMap.entries()].map(([id, ops]) => [id, ops.role])),
+    )
+    : AGENT_RUNTIME_CATALOG.map(a => ({ agentId: a.agentId, displayName: a.displayName, role: a.role, subsystem: 'FLEET', lifecycle: a.lifecycle, enabled: a.enabled, retrievalRequired: a.retrievalRequired, deadlineSeconds: a.budget.deadlineSeconds }))
   const selectedStatic = AGENT_RUNTIME_CATALOG.find(agent => agent.agentId === selectedId)
   const selectedCatalog = catalogRows.find(a => a.agentId === selectedId)
   const selected = selectedStatic ?? (selectedCatalog ? { ...AGENT_RUNTIME_CATALOG[0], agentId: selectedCatalog.agentId, displayName: selectedCatalog.displayName, role: selectedCatalog.role, lifecycle: selectedCatalog.lifecycle as AgentLifecycle, enabled: selectedCatalog.enabled, retrievalRequired: selectedCatalog.retrievalRequired, budget: { ...AGENT_RUNTIME_CATALOG[0].budget, deadlineSeconds: selectedCatalog.deadlineSeconds } } : AGENT_RUNTIME_CATALOG[0])
@@ -730,7 +875,9 @@ function RuntimeView() {
 
     <FleetOperationsBar pulse={fleetPulse} readiness={readinessView} healthMonitor={operationsHealth} runtimeLive={runtimeView.live} asOf={displayAsOf} lastRefresh={lastRefresh} />
 
-    <MaturityScoreboard view={maturityView} runTemplate={runTemplate} runRollup={runRollup} operationsMap={operationsMap} dispatchWired={dispatchWired} dispatchOperableMap={dispatchOperableMap} onDispatched={refreshAll} />
+    <ShadowPromotionExplainer framework={operationsPayload?.promotion_framework} dispatchModel={operationsPayload?.shadow_dispatch_model} />
+    <OpenClawCrosswalkPanel operationsPayload={operationsPayload} />
+    <MaturityScoreboard view={maturityView} runTemplate={runTemplate} runRollup={runRollup} operationsMap={operationsMap} dispatchWired={dispatchWired} dispatchOperableMap={dispatchOperableMap} onDispatched={refreshAll} operationsPayload={operationsPayload} />
 
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 10 }}>
       <MetricCard value={summary.total} title="Canonical agents" detail="Stable IDs in the maturity catalog" />
@@ -748,9 +895,10 @@ function RuntimeView() {
           <StatusBadge tone="slate">{catalogRows.length} DEFINITIONS</StatusBadge>
         </div>
         <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 760 }}>
-          <thead><tr style={{ borderBottom: '1px solid var(--border)' }}>{['Agent', 'Role', 'Lifecycle', 'Enabled', 'Retrieval', 'Deadline'].map(header => <th key={header} style={{ ...label, textAlign: header === 'Agent' || header === 'Role' ? 'left' : 'right', padding: '8px 10px' }}>{header}</th>)}</tr></thead>
+          <thead><tr style={{ borderBottom: '1px solid var(--border)' }}>{['Agent', 'Subsystem', 'Role', 'Lifecycle', 'Enabled', 'Retrieval', 'Deadline'].map(header => <th key={header} style={{ ...label, textAlign: header === 'Agent' || header === 'Role' || header === 'Subsystem' ? 'left' : 'right', padding: '8px 10px' }}>{header}</th>)}</tr></thead>
           <tbody>{catalogRows.map(agent => <tr key={agent.agentId} onClick={() => setSelectedId(agent.agentId)} style={{ borderBottom: '1px solid var(--border-subtle)', cursor: 'pointer', background: selectedId === agent.agentId ? 'rgba(96,165,250,.07)' : undefined }}>
             <td style={{ padding: '9px 10px' }}><div style={{ fontSize: TYPE.sm, fontWeight: 750 }}>{agent.displayName}</div><div style={{ fontSize: TYPE.xs, color: 'var(--text3)', fontFamily: 'var(--mono)' }}>{agent.agentId}</div></td>
+            <td style={{ padding: '9px 10px' }}><SubsystemChip subsystem={agent.subsystem} /></td>
             <td style={{ padding: '9px 10px', fontSize: TYPE.xs, color: 'var(--text2)' }}>{agent.role}</td>
             <td style={{ padding: '9px 10px', textAlign: 'right' }}><StatusBadge tone={lifecycleTone[agent.lifecycle as AgentLifecycle] ?? 'slate'}>{agent.lifecycle}</StatusBadge></td>
             <td style={{ padding: '9px 10px', textAlign: 'right', fontSize: TYPE.xs, color: agent.enabled ? T.link : 'var(--text3)' }}>{agent.enabled ? 'SHADOW' : 'NO'}</td>

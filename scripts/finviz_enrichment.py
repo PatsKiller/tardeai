@@ -404,22 +404,12 @@ def enrich_tickers(
             else:
                 merged["trend"] = "unknown"
 
-            # Fix recom: parse score + map to text label
+            # Fix recom: parse score + map to text label (canonical helper)
+            from lib.analyst_rating_canonical import apply_finviz_analyst_fields
+
             recom_raw = merged.get("recom")
             if recom_raw is not None:
-                try:
-                    rs = float(str(recom_raw).replace("%","").strip())
-                    merged["recom_score"] = round(rs, 2)
-                    merged["analyst_rating"] = (
-                        "Strong Buy"  if rs < 1.5 else
-                        "Buy"         if rs < 2.5 else
-                        "Hold"        if rs < 3.5 else
-                        "Sell"        if rs < 4.5 else
-                        "Strong Sell"
-                    )
-                except (ValueError, TypeError):
-                    merged["recom_score"] = None
-                    merged["analyst_rating"] = None
+                apply_finviz_analyst_fields(merged, recom_raw)
 
             cache[sym] = merged
 

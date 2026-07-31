@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useApi } from '../hooks/useApi'
 import AgentSoulEditor from './AgentSoulEditor'
+import { openClawCollisionNote } from '../lib/agentSubsystem'
 
 // Command Center → System → TradeAI. Read-only TradeAI agent fleet (roles/model/calibration).
 // Advisory personas expose an editable SOUL (shared with OpenClaw); algorithmic agents are read-only —
@@ -16,7 +17,7 @@ export default function TradeAIPanel() {
 
   const row = (a: any) => (
     <tr key={a.agent} style={{ borderBottom: '1px solid var(--border)' }}>
-      <td style={{ padding: '6px 8px', fontWeight: 600 }}>{a.agent}</td>
+      <td style={{ padding: '6px 8px', fontWeight: 600 }}>{a.agent}{openClawCollisionNote(a.soul_agent || a.agent) ? ' (Advisory)' : ''}</td>
       <td style={{ padding: '6px 8px', color: 'var(--text3)' }}>{a.role}</td>
       <td style={{ padding: '6px 8px' }}><code>{a.runtime_model}</code></td>
       <td style={{ padding: '6px 8px', color: a.type === 'advisory' ? '#60a5fa' : '#f59e0b' }}>{a.type}</td>
@@ -40,6 +41,9 @@ export default function TradeAIPanel() {
           <div style={{ fontSize: 12, color: 'var(--text3)' }}>Agents: <b style={{ color: 'var(--text1)' }}>{agents.length}</b> ({advisory.length} advisory · {algo.length} algorithmic)</div>
         </div>
         <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 6 }}>ℹ {fl?.note}</div>
+        <div style={{ fontSize: 10, color: '#f59e0b', marginTop: 6, lineHeight: 1.45 }}>
+          Names like Aegis, Alex, Steph, and Maria also exist as governed FLEET critics on Agents → Runtime. Those are separate roles with no shared SOUL, dispatch, or memory.
+        </div>
       </div>
 
       <div style={card}>

@@ -55,6 +55,15 @@ class Trigger:
 # channel.  None of these is an execution, promotion, or activation.
 
 
+class AgentSubsystem(str, Enum):
+    """Product-area pill for Command Center maturity/operations views."""
+
+    FLEET = "FLEET"
+    HERMES = "HERMES"
+    OPENCLAW = "OPENCLAW"
+    SYSTEM = "SYSTEM"
+
+
 class OutputKind(str, Enum):
     INTEGRITY_REVIEW = "INTEGRITY_REVIEW"
     SCORECARD = "SCORECARD"
@@ -110,6 +119,7 @@ class ShadowAgentSpec:
     scorer_agent_id: str
     maturity_target: str
     wave: str  # "INITIAL" | "SECOND"
+    subsystem: AgentSubsystem = AgentSubsystem.FLEET
     circuit_breaker_trips_open_after: int = 3
     max_queue_depth: int = 64
     dedup_key: str = "input_hash"

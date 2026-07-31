@@ -6,7 +6,7 @@ from typing import Any
 
 from .agents.definitions import FLEET
 from .agents.maturity_gates import evaluate_gates, MATURITY_GATE_CONTRACT
-from .maturity_observability import maturity_agent_payload
+from .maturity_observability import collect_runtime_evidence, maturity_agent_payload
 
 
 PROMOTION_GATES_CONTRACT = "agent-runtime-promotion-gates-v1"
@@ -38,6 +38,12 @@ def promotion_gates_payload(root: Path, agent_id: str, *, reader: Any | None = N
         measurements["min_artifact_population"] = float(sample)
     if observation.get("source_class") == "RUNTIME_EVIDENCE":
         measurements["independent_review_coverage"] = 1.0 if observation.get("review_health") == "HEALTHY" else 0.0
+    if reader is not None:
+        runtime_evidence, _ = collect_runtime_evidence(reader)
+        rt = runtime_evidence.get(agent_id) or {}
+        score_cov = rt.get("independent_score_coverage")
+        if score_cov is not None:
+            measurements["independent_score_coverage"] = float(score_cov)
     report = evaluate_gates(spec, measurements)
     body = report.as_dict()
     body["read_only"] = True

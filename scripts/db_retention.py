@@ -37,6 +37,13 @@ def _connect():
 
 # ── Retention policies ───────────────────────────────────────────
 # Format: (table_name, date_column, retention_days)
+#
+# COVERAGE GAP (human decision required — not auto-deleted by Iris Mode 5):
+#   • content_embeddings (~multi-GB RAG index) — no age policy here; Iris Storage
+#     Steward handles verified-safe orphans/duplicates only. Remaining growth and
+#     age-based compaction need an explicit operator policy tier.
+#   • schwab_stream_book / schwab_stream_quotes — live market stream tables; any
+#     retention window must be chosen against replay/debug needs, not content curation.
 
 POLICIES = [
     # PRICE tier — 1 year

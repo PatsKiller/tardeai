@@ -80,7 +80,7 @@
       "retrieval_required": true,
       "deployment_state": "SHADOW",
       "enabled": true,
-      "budget": {"max_model_calls": 2, "max_tool_calls": 20, "max_cost_usd": 0.0, "deadline_seconds": 900}
+      "budget": {"max_model_calls": 3, "max_tool_calls": 20, "max_cost_usd": 0.0, "deadline_seconds": 900}
     },
     "argus": {
       "display_name": "Argus",

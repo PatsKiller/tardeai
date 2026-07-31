@@ -84,6 +84,12 @@ export default function HomeHub({ onDrill }: Props) {
   const triggered = positions.filter((p: any) => p.triggered)
   const heat = risk?.portfolio_heat_pct ?? 0
   const pendingCount = proposals?.pending_count ?? 0
+  const approvalQueues = overview?.approval_queues ?? {}
+  const aqPending = approvalQueues.action_queue ?? overview?.pending_approvals ?? 0
+  const jdqPending = approvalQueues.john_decision_queue ?? 0
+  const hermesPending = approvalQueues.hermes_pending_approvals ?? 0
+  const ebaPending = approvalQueues.evidence_bound_approvals ?? 0
+  const paperPropPending = approvalQueues.paper_proposals ?? pendingCount
   const pipelineStatus = overview?.pipeline_status
   const deployRecent = (deployData?.recent_14d_count ?? deployData?.events?.length ?? 0) as number
   const deployTop = (deployData?.events ?? [])[0] as { symbol?: string; proceeds_usd?: number; sold_at?: string } | undefined
@@ -111,8 +117,8 @@ export default function HomeHub({ onDrill }: Props) {
       drill: { title: 'Paper validation win rate', subtitle: '/api/v2/paper-trade-readiness', endpoint: '/api/v2/paper-trade-readiness', rows: readiness ? [{ win_rate: readiness.win_rate, profit_factor: readiness.profit_factor, closed_usable: readiness.closed_usable }] : [] } },
     { label: 'REGIME', value: regimeLabel.replace(/_/g, ' '), sub: vix != null ? `VIX ${vix}` : '', color: regimeLabel === 'risk_off' ? '#ef4444' : regimeLabel === 'risk_on' ? '#22c55e' : '#f59e0b',
       drill: { title: 'Market Regime', subtitle: '/api/v2/risk-regime/latest', endpoint: '/api/v2/risk-regime/latest', rows: regime ? [regime] : [] } },
-    { label: 'SETUPS', value: scanStale ? 'STALE' : `${goCount}/${waitCount}/${avoidCount}`, sub: scanStale ? setupLbl.value : 'GO/WAIT/NO · latest run', color: setupLbl.color,
-      drill: { title: 'Trade Setups', subtitle: 'Latest scanner run only — Trading → Trade AI shows the full scan universe', endpoint: '/api/v2/trade-ai', rows: tradeAi ? [{ scope: 'latest run only', go_count: goCount, wait_count: waitCount, avoid_count: avoidCount, vix, run_label: tradeAi.run_label }] : [] } },
+    { label: 'SETUPS', value: scanStale ? 'STALE' : `${goCount}/${waitCount}/${avoidCount}`, sub: scanStale ? setupLbl.value : 'Trade AI scanner · latest run only', color: setupLbl.color,
+      drill: { title: 'Trade AI Scanner (latest run)', subtitle: 'Distinct from Watch Decision Desk GO/WAIT/NOGO packets — full universe at Trading → Trade AI', endpoint: '/api/v2/trade-ai', rows: tradeAi ? [{ scope: 'Trade AI scanner latest run', go_count: goCount, wait_count: waitCount, avoid_count: avoidCount, vix, run_label: tradeAi.run_label, note: 'Not Watch Decision Desk V5 packets' }] : [] } },
     { label: 'JOURNAL P&L', value: journalPnl != null ? fmt$(journalPnl, 0) : '—', sub: 'cumulative', color: (journalPnl ?? 0) >= 0 ? '#22c55e' : '#ef4444',
       drill: { title: 'Journal P&L', subtitle: '/api/v2/overview → journal', endpoint: '/api/v2/overview', rows: journal ? [journal] : [] } },
   ]
@@ -558,15 +564,23 @@ export default function HomeHub({ onDrill }: Props) {
             {pendingCount > 0 && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderBottom: '1px solid var(--border)', fontSize: 11, flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 8, fontWeight: 800, color: '#ef4444' }}>P0</span>
-                <span onClick={() => onDrill({ title: 'Pending Proposals', subtitle: `${pendingCount} awaiting review`, endpoint: '/api/v2/paper-proposals', rows: [{ pending_count: pendingCount }] })}
+                <span onClick={() => onDrill({ title: 'Paper Proposals', subtitle: `${paperPropPending} PENDING in paper_trade_proposals`, endpoint: '/api/v2/paper-proposals', rows: [{ pending_count: paperPropPending, queue: 'paper_proposals' }] })}
                   style={{ flex: 1, cursor: 'pointer', color: 'var(--text2)', minWidth: 160 }}>
-                  {pendingCount} proposals awaiting review
+                  {paperPropPending} paper proposals (paper_trade_proposals)
                 </span>
                 <Link to="/trading?tab=Proposals" style={{ fontSize: 10, fontWeight: 700, color: '#60a5fa', textDecoration: 'none' }}>Proposals →</Link>
-                <Link to="/reports?super=ops&category=paper" style={{ fontSize: 9, fontWeight: 600, color: 'var(--text3)', textDecoration: 'none' }}>Reports</Link>
               </div>
             )}
-            {triggered.length === 0 && pendingCount === 0 && (
+            {(aqPending > 0 || jdqPending > 0 || hermesPending > 0 || ebaPending > 0) && (
+              <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--border)', fontSize: 10, color: 'var(--text2)', lineHeight: 1.6 }}>
+                <div style={{ fontSize: 8, fontWeight: 800, color: '#a855f7', marginBottom: 4 }}>APPROVAL QUEUES (distinct — not merged)</div>
+                {aqPending > 0 && <div>Action queue: <b>{aqPending}</b> pending advisor actions</div>}
+                {jdqPending > 0 && <div>John decision queue: <b>{jdqPending}</b> pending_john</div>}
+                {hermesPending > 0 && <div>Hermes pending_approvals.json: <b>{hermesPending}</b></div>}
+                {ebaPending > 0 && <div>Evidence-bound approvals: <b>{ebaPending}</b> pending</div>}
+              </div>
+            )}
+            {triggered.length === 0 && pendingCount === 0 && aqPending === 0 && jdqPending === 0 && hermesPending === 0 && ebaPending === 0 && (
               <div style={{ fontSize: 11, color: 'var(--text3)', padding: 8 }}>No pending stop/proposal actions</div>
             )}
             <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/risk + /api/v2/paper-proposals</div>

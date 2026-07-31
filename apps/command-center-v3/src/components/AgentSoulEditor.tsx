@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useApi } from '../hooks/useApi'
+import { openClawCollisionNote } from '../lib/agentSubsystem'
 
 // Shared OpenClaw/TradeAI agent SOUL editor (mirrors the Hermes SoulEditor).
 // Reads + saves ~/.openclaw/agents/<id>/agent/SOUL.md via /api/v2/openclaw/agent-soul (backup-first,
@@ -29,13 +30,16 @@ export default function AgentSoulEditor({ agent, title, onClose }: { agent: stri
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={onClose}>
       <div onClick={e => e.stopPropagation()} style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 20, width: 'min(820px,92vw)', maxHeight: '88vh', overflow: 'auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-          <h3 style={{ margin: 0, fontSize: 15 }}>Agent Identity Editor — {title || agent}</h3>
+          <h3 style={{ margin: 0, fontSize: 15 }}>Agent Identity Editor — {title || agent} <span style={{ fontSize: 11, color: 'var(--text3)' }}>(OpenClaw)</span></h3>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text3)', fontSize: 20, cursor: 'pointer' }}>×</button>
         </div>
         <p style={{ fontSize: 11, color: 'var(--text3)', marginTop: 0 }}>{data?.path} — saves create a timestamped backup first; safety-validated before write.</p>
         <div style={{ fontSize: 10, color: '#f59e0b', marginBottom: 8 }}>
           Advisory persona SOUL. Unsafe enabling language (execute/place orders, bypass approval, read secrets, enable live trading) is rejected.
         </div>
+        {openClawCollisionNote(agent) && <div style={{ fontSize: 11, color: '#f59e0b', marginBottom: 8, lineHeight: 1.45, padding: '6px 8px', border: '1px solid rgba(245,158,11,.35)', borderRadius: 6, background: 'rgba(245,158,11,.08)' }}>
+          {openClawCollisionNote(agent)}
+        </div>}
         {loading && text === null ? <p style={{ color: 'var(--text3)' }}>Loading…</p> : (
           <textarea value={content} onChange={e => setText(e.target.value)} spellCheck={false}
             style={{ width: '100%', minHeight: 360, fontFamily: 'monospace', fontSize: 12, padding: 10, background: 'var(--bg2)', color: 'var(--text1)', border: '1px solid var(--border)', borderRadius: 6, resize: 'vertical' }} />

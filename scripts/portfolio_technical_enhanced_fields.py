@@ -130,14 +130,15 @@ def _parse_num(value: Any) -> Optional[float]:
 
 def _analyst_label(val: Any) -> str:
     """Convert Finviz 1-5 analyst recommendation to label."""
+    from lib.analyst_rating_canonical import finviz_recom_to_label
+
+    label = finviz_recom_to_label(val)
+    if label:
+        return label
     n = _parse_num(val)
     if n is None:
         return str(val or '—')[:20]
-    if n <= 1.5:  return 'Strong Buy'
-    if n <= 2.5:  return 'Buy'
-    if n <= 3.5:  return 'Hold'
-    if n <= 4.5:  return 'Sell'
-    return 'Strong Sell'
+    return finviz_recom_to_label(n) or str(val or '—')[:20]
 
 
 def parse_finviz_quote_fields(raw: Dict[str, Any], existing: Dict[str, Any]) -> Dict[str, Any]:

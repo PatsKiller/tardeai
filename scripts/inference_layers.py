@@ -174,6 +174,19 @@ class FeatureLayer:
     name = "features"
 
     def _vix(self) -> Optional[float]:
+        try:
+            from lib.vix_canonical import vix_effective
+
+            row = _db_all(
+                """SELECT value FROM market_regime_indicators
+                   WHERE indicator_key='vix_close' AND created_at > now() - interval '48 hours'
+                   ORDER BY created_at DESC LIMIT 1""",
+                (),
+            )
+            db_fetch = (lambda sql, params: row[0] if row else None)
+            return vix_effective(None, db_fetch_one=db_fetch)
+        except Exception:
+            pass
         for sym in ("^VIX", "VIX", "VIXY"):
             rows = _db_all(
                 "SELECT close_price FROM price_cache WHERE symbol=%s ORDER BY price_date DESC LIMIT 1",

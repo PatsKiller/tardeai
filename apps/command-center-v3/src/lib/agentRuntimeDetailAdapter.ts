@@ -17,6 +17,14 @@ export interface JoinedArtifact {
   createdAt?: string
 }
 
+export interface LessonItem {
+  lessonId: string
+  title: string
+  lifecycle: string
+  statement: string
+  createdAt?: string
+}
+
 export interface AgentDetailView {
   live: boolean
   agentId: string
@@ -24,7 +32,7 @@ export interface AgentDetailView {
   runs: Array<{ runId: string; status: string; startedAt: string; completedAt: string | null; updatedAt: string }>
   artifacts: JoinedArtifact[]
   counts: { produced: number; reviewed: number; scored: number; byVerdict: Record<string, number> }
-  lessons: { total: number; byLifecycle: Record<string, number> }
+  lessons: { total: number; byLifecycle: Record<string, number>; items: LessonItem[] }
   cases: { total: number; byType: Record<string, number> }
   detail: string
 }
@@ -38,7 +46,7 @@ function emptyView(agentId: string, live: boolean, detail: string): AgentDetailV
   return {
     live, agentId, role: 'none', runs: [], artifacts: [],
     counts: { produced: 0, reviewed: 0, scored: 0, byVerdict: {} },
-    lessons: { total: 0, byLifecycle: {} }, cases: { total: 0, byType: {} }, detail,
+    lessons: { total: 0, byLifecycle: {}, items: [] }, cases: { total: 0, byType: {} }, detail,
   }
 }
 
@@ -133,7 +141,18 @@ export async function resolveAgentRuntimeDetail(
   const lessonRows = (await getRows(baseUrl, '/api/v3/agent-runtime/knowledge/lessons?limit=200', fetchImpl)) ?? []
   const caseRows = (await getRows(baseUrl, '/api/v3/agent-runtime/knowledge/cases?limit=200', fetchImpl)) ?? []
   const byLifecycle: Record<string, number> = {}
-  for (const l of lessonRows) { const k = String(l.lifecycle ?? 'UNKNOWN'); byLifecycle[k] = (byLifecycle[k] ?? 0) + 1 }
+  const lessonItems: LessonItem[] = []
+  for (const l of lessonRows) {
+    const k = String(l.lifecycle ?? 'UNKNOWN')
+    byLifecycle[k] = (byLifecycle[k] ?? 0) + 1
+    lessonItems.push({
+      lessonId: String(l.lesson_id ?? ''),
+      title: String(l.title ?? ''),
+      lifecycle: k,
+      statement: String(l.statement ?? ''),
+      createdAt: l.created_at ? String(l.created_at) : undefined,
+    })
+  }
   const byType: Record<string, number> = {}
   for (const c of caseRows) { const k = String(c.case_type ?? 'UNKNOWN'); byType[k] = (byType[k] ?? 0) + 1 }
 
@@ -142,7 +161,7 @@ export async function resolveAgentRuntimeDetail(
     runs: runInfo,
     artifacts: mine.slice(0, 40),
     counts: { produced, reviewed, scored, byVerdict },
-    lessons: { total: lessonRows.length, byLifecycle },
+    lessons: { total: lessonRows.length, byLifecycle, items: lessonItems },
     cases: { total: caseRows.length, byType },
     detail: 'Live read-only detail from the agent-runtime read API.',
   }

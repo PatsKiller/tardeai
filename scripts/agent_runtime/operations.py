@@ -230,6 +230,61 @@ def _probe_timers() -> dict[str, dict[str, str | None]]:
     return out
 
 
+def _openclaw_persona_index() -> dict[str, dict[str, Any]]:
+    """Read-only map of OpenClaw persona id → model/workspace flags (no secrets)."""
+    try:
+        cfg_path = Path.home() / ".openclaw" / "openclaw.json"
+        if not cfg_path.is_file():
+            return {}
+        payload = json.loads(cfg_path.read_text(encoding="utf-8"))
+        defaults = ((payload.get("agents") or {}).get("defaults") or {})
+        default_model = (defaults.get("model") or {}).get("primary")
+        out: dict[str, dict[str, Any]] = {}
+        for row in (payload.get("agents") or {}).get("list") or []:
+            aid = str(row.get("id") or "").strip()
+            if not aid:
+                continue
+            model = row.get("model")
+            if isinstance(model, dict):
+                model = model.get("primary")
+            model = model or default_model
+            soul = Path.home() / ".openclaw" / "agents" / aid / "agent" / "SOUL.md"
+            out[aid] = {
+                "registered": True,
+                "model": model,
+                "soul_exists": soul.is_file(),
+                "workspace": str(row.get("workspace") or "").replace(str(Path.home()), "~"),
+            }
+        return out
+    except Exception:
+        return {}
+
+
+def _promotion_framework_meta() -> dict[str, Any]:
+    try:
+        from .agents.maturity_gates import GATE_SPECS
+
+        gate = next(g for g in GATE_SPECS if g.gate_id == "min_artifact_population")
+        return {
+            "min_artifact_population": int(gate.threshold),
+            "gate_source": "scripts/agent_runtime/agents/maturity_gates.py",
+            "promotion_authority": "HUMAN_ONLY",
+            "automatic_operational": False,
+            "note": (
+                "All fleet critics remain SHADOW until every promotion gate is measured PASS "
+                "and a human authorizes promotion — agents cannot self-promote."
+            ),
+        }
+    except Exception:
+        return {
+            "min_artifact_population": 100,
+            "gate_source": "scripts/agent_runtime/agents/maturity_gates.py",
+            "promotion_authority": "HUMAN_ONLY",
+            "automatic_operational": False,
+            "note": "Promotion gates could not be loaded.",
+        }
+
+
 def _agent_entry(
     spec: Any,
     *,
@@ -239,6 +294,7 @@ def _agent_entry(
     manifest_row: Mapping[str, Any] | None,
     queue_row: Mapping[str, Any] | None,
     source_rows: Sequence[Mapping[str, Any]],
+    openclaw_personas: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     agent_id = spec.agent_id
     trigger = spec.triggers[0] if spec.triggers else None
@@ -268,6 +324,8 @@ def _agent_entry(
             for row in source_rows
         )
     source_state = "READY" if source_ready else "BLOCKED_SOURCE"
+    oc = (openclaw_personas or {}).get(agent_id) or {}
+    dispatch_model = str(os.environ.get("AGENT_RUNTIME_SHADOW_MODEL", "")).strip() or None
     execution = (
         "SCHEDULED_AUTONOMOUS_SHADOW"
         if spec.is_operable_now and timer_state == "ACTIVE" and source_ready
@@ -292,6 +350,15 @@ def _agent_entry(
         "allowed_outputs": [item.value for item in spec.allowed_output_kinds],
         "reviewer_agent_id": spec.reviewer_agent_id,
         "scorer_agent_id": spec.scorer_agent_id,
+        "subsystem": spec.subsystem.value,
+        "owner": spec.definition.owner,
+        "allowed_tools": list(spec.definition.allowed_tools),
+        "denied_tools": list(spec.definition.denied_tools),
+        "retrieval_required": bool(spec.definition.retrieval_required),
+        "openclaw_persona_registered": bool(oc.get("registered")),
+        "openclaw_persona_model": oc.get("model"),
+        "openclaw_persona_soul_exists": oc.get("soul_exists"),
+        "shadow_dispatch_model": dispatch_model,
         "autonomy": {
             "execution": execution,
             "capability": "BOUNDED_AUTONOMOUS_SHADOW" if spec.is_operable_now else "NOT_OPERABLE",
@@ -366,6 +433,11 @@ def _catalog_only_entries(root: Path, fleet_ids: set[str]) -> list[dict[str, Any
             "allowed_outputs": [row.get("artifact_schema")] if row.get("artifact_schema") else [],
             "reviewer_agent_id": None,
             "scorer_agent_id": None,
+            "subsystem": "SYSTEM",
+            "owner": None,
+            "allowed_tools": list(row.get("allowed_tools") or []),
+            "denied_tools": [],
+            "retrieval_required": False,
             "autonomy": {
                 "execution": "OBSERVABILITY_ONLY",
                 "capability": "NOT_AN_AGENT_RUNTIME_TARGET",
@@ -408,6 +480,8 @@ def operations_payload(
     sources = _source_posture(env)
     timer_probe_enabled = _truthy(env, TIMER_PROBE_ENV) and _truthy(env, OPERATOR_AUTH_ENV)
     timer_rows = _probe_timers() if timer_probe_enabled else {}
+    openclaw_personas = _openclaw_persona_index()
+    promotion_framework = _promotion_framework_meta()
     agents = []
     for aid, spec in sorted(FLEET.items()):
         if agent_id and aid != agent_id:
@@ -421,6 +495,7 @@ def operations_payload(
                 manifest_row=manifest_agents.get(aid),
                 queue_row=queue_posture.get("per_agent", {}).get(aid),
                 source_rows=sources,
+                openclaw_personas=openclaw_personas,
             )
         )
     if not agent_id or agent_id not in FLEET:
@@ -435,6 +510,17 @@ def operations_payload(
         "sources": sources,
         "queue_posture": queue_posture,
         "schedule_manifest": manifest.get("contract"),
+        "promotion_framework": promotion_framework,
+        "shadow_dispatch_model": str(env.get("AGENT_RUNTIME_SHADOW_MODEL", "")).strip() or None,
+        "openclaw_personas": [
+            {
+                "persona_id": pid,
+                "fleet_agent_id": pid if pid in FLEET else None,
+                "fleet_subsystem": FLEET[pid].subsystem.value if pid in FLEET else None,
+                **meta,
+            }
+            for pid, meta in sorted(openclaw_personas.items())
+        ],
         "authority": {
             "mutation": False,
             "provider_call": False,

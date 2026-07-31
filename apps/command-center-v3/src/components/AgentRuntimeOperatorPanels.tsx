@@ -7,6 +7,14 @@ import type { ResolvedReadinessView } from '../lib/agentRuntimeReadiness'
 import type { AgentOperationsEntry } from '../lib/agentRuntimeOperations'
 import { manualRunCommand } from '../lib/agentRuntimeReadiness'
 import { dispatchAgentRun } from '../lib/agentRuntimeDispatch'
+import {
+  fleetNameCollisionNote,
+  normalizeSubsystem,
+  openClawCollisionNote,
+  SUBSYSTEM_LABELS,
+  subsystemChipTone,
+  subsystemExplainer,
+} from '../lib/agentSubsystem'
 
 type BadgeTone = 'blue' | 'green' | 'amber' | 'red' | 'slate'
 
@@ -32,6 +40,20 @@ function StatusBadge({ children, tone = 'blue' }: { children: ReactNode; tone?: 
     border: `1px solid ${colors.border}`, background: colors.background, color: colors.color,
     fontSize: TYPE.xs, fontWeight: 800,
   }}>{children}</span>
+}
+
+export function SubsystemChip({ subsystem, agentId }: { subsystem?: string | null; agentId?: string }) {
+  const norm = normalizeSubsystem(subsystem)
+  const tip = agentId ? subsystemExplainer(norm, agentId) : SUBSYSTEM_LABELS[norm]
+  return <span title={tip}><StatusBadge tone={subsystemChipTone(norm)}>{SUBSYSTEM_LABELS[norm]}</StatusBadge></span>
+}
+
+export function OpenClawPersonaChip({ registered, model }: { registered?: boolean; model?: string | null }) {
+  if (!registered) return <span style={{ fontSize: TYPE.xs, color: 'var(--text3)' }}>—</span>
+  return <span title={`OpenClaw gateway persona · model ${model ?? 'default'}`}>
+    <StatusBadge tone="amber">OC persona</StatusBadge>
+    {model && <span style={{ marginLeft: 4, fontSize: TYPE.xs, color: 'var(--text3)', fontFamily: 'var(--mono)' }}>{model}</span>}
+  </span>
 }
 
 export function ColumnHeaderTip({ label, tip }: { label: string; tip: string }) {
@@ -233,15 +255,28 @@ function AgentDescriptionModal({
     <div style={{ marginTop: 3, fontSize: TYPE.sm, color: 'var(--text1)', lineHeight: 1.5 }}>{value}</div>
   </div>
   const autonomy = operations?.autonomy
+  const collision = fleetNameCollisionNote(agentId)
   return <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.62)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }} onClick={onClose}>
     <div style={{ ...panel, width: 'min(720px, 96vw)', maxHeight: '88vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
         <div>
-          <div style={{ fontSize: TYPE.lg, fontWeight: 850 }}>{operations?.display_name ?? agentId}</div>
-          <div style={{ fontSize: TYPE.xs, color: 'var(--text3)', fontFamily: 'var(--mono)' }}>{agentId}</div>
+          <div style={{ fontSize: TYPE.lg, fontWeight: 850 }}>{operations?.display_name ?? agentId} <span style={{ fontSize: TYPE.xs, color: 'var(--text3)' }}>(Fleet)</span></div>
+          <div style={{ marginTop: 4, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+            <SubsystemChip subsystem={operations?.subsystem} />
+            <span style={{ fontSize: TYPE.xs, color: 'var(--text3)', fontFamily: 'var(--mono)' }}>{agentId}</span>
+          </div>
         </div>
         <button type="button" onClick={onClose} style={{ border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text2)', borderRadius: 6, cursor: 'pointer', height: 28 }}>Close</button>
       </div>
+      {collision && <div style={{ marginTop: 10, padding: '8px 10px', borderRadius: 6, border: `1px solid ${BB.amber}`, background: BB.amberDim, fontSize: TYPE.xs, color: 'var(--text1)', lineHeight: 1.5 }}>
+        <b>Name collision:</b> {collision}
+      </div>}
+      <div style={{ marginTop: 10, fontSize: TYPE.xs, fontWeight: 800, color: 'var(--text3)', textTransform: 'uppercase' }}>Identity card (governed contract)</div>
+      {field('Owner', operations?.owner ?? 'architecture-owner')}
+      {field('Subsystem', operations?.subsystem ? SUBSYSTEM_LABELS[normalizeSubsystem(operations.subsystem)] : '—')}
+      {field('Allowed tools', operations?.allowed_tools?.length ? operations.allowed_tools.join(' · ') : '—')}
+      {field('Denied tools', operations?.denied_tools?.length ? operations.denied_tools.join(' · ') : '—')}
+      {field('Retrieval required', operations?.retrieval_required === true ? 'Yes' : operations?.retrieval_required === false ? 'No' : '—')}
       {field('What it does', operations?.summary ?? 'No governed runtime description is installed.')}
       {field('Role', operations?.role ?? 'Observability-only catalog row')}
       {field('Autonomy', autonomy

@@ -2180,7 +2180,27 @@ def overview():
     notif_rows = _db_query("SELECT count(*) AS cnt FROM notification_log", fetch="one")
     aq_cnt = (_db_query("SELECT count(*) AS cnt FROM action_queue WHERE status='pending'", fetch="one") or {}).get("cnt", 0)
     jdq_cnt = (_db_query("SELECT count(*) AS cnt FROM john_decision_queue WHERE status='pending_john'", fetch="one") or {}).get("cnt", 0)
+    paper_prop_cnt = (_db_query("SELECT count(*) AS cnt FROM paper_trade_proposals WHERE status='PENDING'", fetch="one") or {}).get("cnt", 0)
+    hermes_appr_cnt = 0
+    try:
+        _hp = read_json("pending_approvals.json", {}) or {}
+        hermes_appr_cnt = len((_hp.get("approvals") or []))
+    except Exception:
+        pass
+    eba_cnt = 0
+    try:
+        eba_cnt = (_db_query("SELECT count(*) AS cnt FROM evidence_bound_approvals WHERE status='pending'", fetch="one") or {}).get("cnt", 0)
+    except Exception:
+        pass
     pending_rows = {"cnt": aq_cnt + jdq_cnt}
+    approval_queues = {
+        "action_queue": int(aq_cnt or 0),
+        "john_decision_queue": int(jdq_cnt or 0),
+        "paper_proposals": int(paper_prop_cnt or 0),
+        "hermes_pending_approvals": int(hermes_appr_cnt or 0),
+        "evidence_bound_approvals": int(eba_cnt or 0),
+        "total_distinct_queues": int(aq_cnt or 0) + int(jdq_cnt or 0) + int(paper_prop_cnt or 0) + int(hermes_appr_cnt or 0) + int(eba_cnt or 0),
+    }
 
     # Today's change — recompute per-holding from the day % (holding_day_change) merging the
     # fresh Finviz day %, exactly like /api/v2/portfolio/holdings. The stored totals.day_change
@@ -2375,6 +2395,7 @@ def overview():
         "news_count": len(news.get("catalysts", [])),
         "notification_count": (notif_rows or {}).get("cnt", 0),
         "pending_approvals": (pending_rows or {}).get("cnt", 0),
+        "approval_queues": approval_queues,
         "pipeline_status": fresh.get("status", "unknown"),
         "pipeline_completed": fresh.get("completed_at", ""),
         # Sprint 4A additions
@@ -10922,6 +10943,12 @@ def _vix_effective(run_vix):
     """v3.1 (WS-F2): the orchestrator's run_summary has carried vix=0 since its
     fetch died — fall back to the regime collector's vix_close (fresh daily at
     06:30) so the header tile never shows a dead '—' while real VIX exists."""
+    try:
+        from lib.vix_canonical import vix_effective as _canonical_vix
+
+        return _canonical_vix(run_vix, db_fetch_one=lambda sql, params: _db_query(sql, params, fetch="one"))
+    except Exception:
+        pass
     try:
         v = float(run_vix or 0)
         if v > 0:

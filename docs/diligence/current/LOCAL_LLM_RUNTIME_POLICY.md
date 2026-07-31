@@ -30,7 +30,7 @@ Single-GPU box (Intel Arc B50). Ollama runs **one resident model at a time** —
 **Runtime caveat (`local_llm_config.py`):** the live default is `gemma3:4b`. `gemma3:12b` is policy-"allowed" but was observed to stall (~500s/prompt) at the Ollama runtime and is avoided in practice; treat 4b as the working default and 12b as opt-in only.
 
 ## 4. GPU concurrency & disabled-model enforcement
-- `OLLAMA_MAX_LOADED_MODELS=1` (single resident model), `OLLAMA_KEEP_ALIVE=30m`.
+- `OLLAMA_MAX_LOADED_MODELS=3` (live systemd unit; single resident model is still the practical constraint via the file lock), `OLLAMA_KEEP_ALIVE=5m` on the live unit (`30m` in older notes).
 - **Cross-process single-job lock:** `scripts/local_llm.py` acquires `/tmp/tradeai_local_llm_single_job.lock` (wait timeout 600s) so only one caller hits Ollama at a time — no concurrent GPU contention.
 - **Disabled models:** `DISABLED_LOCAL_LLM_MODELS` (env). A disabled request is substituted with `LOCAL_LLM_SAFE_MODEL` (default `gemma3:4b`). Pre-call cleanup unloads disabled/non-target models and **fails closed** if a disabled model is still resident.
 

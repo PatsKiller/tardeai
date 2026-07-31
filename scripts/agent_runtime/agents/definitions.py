@@ -4,6 +4,7 @@ from typing import Mapping
 
 from ..contracts import AgentDefinition, BudgetPolicy, DeploymentState
 from .base import (
+    AgentSubsystem,
     OutputKind,
     ShadowAgentSpec,
     Trigger,
@@ -391,6 +392,7 @@ _CONCIERGE = ShadowAgentSpec(
     scorer_agent_id="darwin",
     maturity_target="Catalog shadow operator interface",
     wave="SECOND",
+    subsystem=AgentSubsystem.OPENCLAW,
 )
 
 _HERMES = ShadowAgentSpec(
@@ -413,6 +415,7 @@ _HERMES = ShadowAgentSpec(
     scorer_agent_id="darwin",
     maturity_target="Catalog shadow research critic",
     wave="SECOND",
+    subsystem=AgentSubsystem.HERMES,
 )
 
 _PULSE = ShadowAgentSpec(

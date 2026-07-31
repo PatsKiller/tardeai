@@ -17,11 +17,19 @@ from typing import Any, Callable, Mapping, Sequence
 
 from agent_runtime.agents.definitions import FLEET, spec as fleet_spec
 from agent_runtime.agents.dispatcher import JobRequest
+from agent_runtime.argus_pipeline import run_argus
 from agent_runtime.contracts import Environment
+from agent_runtime.darwin_pipeline import run_darwin
+from agent_runtime.domain_critics_pipeline import run_domain_critic
+from agent_runtime.hermes_pipeline import run_hermes
+from agent_runtime.iris_critic_pipeline import run_iris_critic
 from agent_runtime.journal import ShadowRunJournal
 from agent_runtime.knowledge import KnowledgeIndex
+from agent_runtime.pipeline_common import load_knowledge_index
+from agent_runtime.reflection_pipeline import ReflectionPipeline
 from agent_runtime.runtime import MvlRuntime
 from agent_runtime.sentinel_pipeline import SentinelShadowPipeline
+from agent_runtime.synthesis_critics_pipeline import run_synthesis_critic
 from agent_runtime.trigger_intake import (
     PostgresTriggerIntakeStore,
     TriggerIntakeStore,
@@ -170,9 +178,45 @@ class ShadowFleetProviders:
             payload = _payload_from_job(job)
             if agent_id == "sentinel":
                 return _process_sentinel(job, payload, persistence, journal_root)
+            if agent_id == "reflection":
+                return _process_reflection(job, payload, persistence, journal_root)
+            if agent_id == "argus":
+                return {**run_argus(job.job_type, payload, persistence, journal_root), "intake_id": job.intake_id}
+            if agent_id == "darwin":
+                return {**run_darwin(job.job_type, payload, persistence, journal_root), "intake_id": job.intake_id}
+            if agent_id == "hermes":
+                return {**run_hermes(job.job_type, payload, persistence, journal_root), "intake_id": job.intake_id}
+            if agent_id == "iris":
+                return {**run_iris_critic(job.job_type, payload, persistence, journal_root), "intake_id": job.intake_id}
+            if agent_id in {"risk_agent", "vega", "maria", "pulse", "steph", "tax_agent"}:
+                return {
+                    **run_domain_critic(agent_id, job.job_type, payload, persistence, journal_root),
+                    "intake_id": job.intake_id,
+                }
+            if agent_id in {"alex", "atlas", "concierge", "aegis"}:
+                return {
+                    **run_synthesis_critic(agent_id, job.job_type, payload, persistence, journal_root),
+                    "intake_id": job.intake_id,
+                }
             return _process_generic(agent_id, job, payload, persistence, journal_root)
 
         return processor
+
+
+def _load_knowledge_index(persistence) -> KnowledgeIndex:
+    return load_knowledge_index(persistence)
+
+
+def _process_reflection(job: JobRequest, payload: Mapping[str, Any], persistence, journal_root: Path) -> Mapping[str, Any]:
+    pipeline = ReflectionPipeline(
+        persistence=persistence,
+        journal_root=journal_root,
+        model_provider=_local_model,
+        model=_model_name(),
+        provider_family="shadow-fleet-provider",
+    )
+    result = pipeline.run(payload)
+    return {**result, "intake_id": job.intake_id}
 
 
 def _process_sentinel(job: JobRequest, payload: Mapping[str, Any], persistence, journal_root: Path) -> Mapping[str, Any]:
@@ -187,7 +231,7 @@ def _process_sentinel(job: JobRequest, payload: Mapping[str, Any], persistence, 
     pipeline = SentinelShadowPipeline(
         definition=definition,
         journal=ShadowRunJournal(journal_root, Environment.SHADOW),
-        knowledge=KnowledgeIndex([]),
+        knowledge=_load_knowledge_index(persistence),
         model_provider=_local_model,
         review_provider=None,
         score_provider=None,

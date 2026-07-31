@@ -4,6 +4,10 @@
 # DRY-RUN by default. Pass --execute to copy files, apply migration 0003, and
 # refresh operator env for shadow_fleet_provider.
 #
+# Three deployment targets (see AGENTS.md): copy changed agent_runtime files to
+# (1) the SHA-pinned live release tree (HTTP API), (2) trade-ai-v12-rebuild dev
+# worktree (systemd timers), and (3) this repo when developing locally.
+#
 # Usage (from repo root):
 #   ./scripts/agent_runtime/deploy_real_triggers.sh [--execute]
 set -euo pipefail
@@ -37,8 +41,28 @@ COPY_PATHS=(
   "scripts/agent_runtime/trigger_sources.py"
   "scripts/agent_runtime/trigger_producer.py"
   "scripts/agent_runtime/providers/shadow_fleet_provider.py"
+  "scripts/agent_runtime/pipeline_common.py"
+  "scripts/agent_runtime/argus_pipeline.py"
+  "scripts/agent_runtime/darwin_pipeline.py"
+  "scripts/agent_runtime/domain_critics_pipeline.py"
+  "scripts/agent_runtime/synthesis_critics_pipeline.py"
+  "scripts/agent_runtime/iris_critic_pipeline.py"
+  "scripts/agent_runtime/critic_llm.py"
+  "scripts/agent_runtime/hermes_pipeline.py"
+  "scripts/agent_runtime/fleet_alert_bridge.py"
+  "scripts/agent_runtime/hermes.py"
+  "scripts/agent_runtime/reflection_pipeline.py"
+  "scripts/agent_runtime/lesson_operator.py"
+  "scripts/agent_runtime/maturity_observability.py"
+  "scripts/agent_runtime/maturity_promotion_gates.py"
   "scripts/agent_runtime/operations.py"
   "scripts/agent_runtime/health_monitor.py"
+  "scripts/agent_runtime/agents/base.py"
+  "scripts/agent_runtime/agents/definitions.py"
+  "scripts/agent_runtime/prove_incidents_trigger.py"
+  "scripts/lib/vix_canonical.py"
+  "scripts/lib/analyst_rating_canonical.py"
+  "scripts/portfolio_server.py"
   "scripts/agent_runtime/install_agent_runtime_schedules.sh"
   "scripts/agent_runtime_dispatch_boot.py"
   "scripts/agent_runtime/agents/dispatcher.py"
@@ -111,8 +135,14 @@ if [[ -f "$OPERATOR_ENV" ]]; then
   if [[ -n "${SHADOW_READER_DSN:-}" ]] && ! grep -q 'AGENT_RUNTIME_SOURCE_DSN=' "$OPERATOR_ENV"; then
     echo "AGENT_RUNTIME_SOURCE_DSN=${SHADOW_READER_DSN}" >> "$OPERATOR_ENV"
   fi
+  critic_lanes="${AGENT_RUNTIME_CRITIC_LANES:-1}"
+  if grep -q '^AGENT_RUNTIME_CRITIC_LANES=' "$OPERATOR_ENV"; then
+    sed -i "s/^AGENT_RUNTIME_CRITIC_LANES=.*/AGENT_RUNTIME_CRITIC_LANES=${critic_lanes}/" "$OPERATOR_ENV"
+  else
+    echo "AGENT_RUNTIME_CRITIC_LANES=${critic_lanes}" >> "$OPERATOR_ENV"
+  fi
   chmod 600 "$OPERATOR_ENV"
-  note "updated $OPERATOR_ENV for shadow_fleet_provider"
+  note "updated $OPERATOR_ENV for shadow_fleet_provider (AGENT_RUNTIME_CRITIC_LANES=${critic_lanes})"
 fi
 
 systemctl --user restart portfolio-server.service 2>/dev/null && note "restarted portfolio-server.service" || note "restart portfolio-server manually if needed"

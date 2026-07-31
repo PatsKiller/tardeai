@@ -70,6 +70,8 @@ if [[ "$EXECUTE" != "1" ]]; then
   note "  AGENT_RUNTIME_QUEUE_MODULE=agent_runtime_dispatch_boot"
   note "  AGENT_RUNTIME_PROVIDER_MODULE=agent_runtime.providers.shadow_fleet_provider"
   note "  AGENT_RUNTIME_SOURCE_DSN=<from SHADOW_READER_DSN>"
+  note "  AGENT_RUNTIME_SHADOW_MODEL=${AGENT_RUNTIME_SHADOW_MODEL:-gemma3:4b}"
+  note "  AGENT_RUNTIME_CRITIC_LANES=${AGENT_RUNTIME_CRITIC_LANES:-0}"
   note "DRY-RUN: would install drop-in $DROPIN_FILE -> EnvironmentFile=$OPERATOR_ENV_FILE"
   note "DRY-RUN: would systemctl --user daemon-reload && restart $RESTART_SERVICE"
   note "DRY-RUN: would smoke readiness dispatch.state=WIRED and POST /dispatch"
@@ -90,6 +92,7 @@ AGENT_RUNTIME_QUEUE_MODULE=agent_runtime_dispatch_boot
 AGENT_RUNTIME_PROVIDER_MODULE=agent_runtime.providers.shadow_fleet_provider
 AGENT_RUNTIME_SOURCE_DSN=${SHADOW_READER_DSN}
 AGENT_RUNTIME_SHADOW_MODEL=${AGENT_RUNTIME_SHADOW_MODEL:-gemma3:4b}
+AGENT_RUNTIME_CRITIC_LANES=${AGENT_RUNTIME_CRITIC_LANES:-0}
 EOF
 chmod 600 "$OPERATOR_ENV_FILE"
 note "wrote $OPERATOR_ENV_FILE (mode 0600, DSN redacted)"

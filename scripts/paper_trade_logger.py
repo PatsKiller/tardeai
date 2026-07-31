@@ -144,16 +144,26 @@ def _get_entry_regime(conn) -> dict:
         row = cur.fetchone()
         regime = row[0] if row else None
 
-        # Try to get VIX from indicator cache or regime indicators
         vix = None
-        cur.execute("""
-            SELECT value FROM market_regime_indicators
-            WHERE indicator_key = 'vix_close' OR indicator_key = 'vix'
-            ORDER BY created_at DESC LIMIT 1
-        """)
-        vix_row = cur.fetchone()
-        if vix_row:
-            vix = float(vix_row[0])
+        try:
+            from lib.vix_canonical import vix_effective
+
+            def _fetch(sql, params=None):
+                cur.execute(sql)
+                cols = [d[0] for d in cur.description or ()]
+                r = cur.fetchone()
+                return dict(zip(cols, r)) if r else None
+
+            vix = vix_effective(None, db_fetch_one=_fetch)
+        except Exception:
+            cur.execute("""
+                SELECT value FROM market_regime_indicators
+                WHERE indicator_key = 'vix_close' OR indicator_key = 'vix'
+                ORDER BY created_at DESC LIMIT 1
+            """)
+            vix_row = cur.fetchone()
+            if vix_row:
+                vix = float(vix_row[0])
         return {"regime": regime, "vix": vix}
     except Exception:
         return {"regime": None, "vix": None}

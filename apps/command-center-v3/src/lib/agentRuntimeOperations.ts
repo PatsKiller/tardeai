@@ -12,6 +12,11 @@ export interface AgentOperationsEntry {
   allowed_outputs: string[]
   reviewer_agent_id: string | null
   scorer_agent_id: string | null
+  subsystem?: string
+  owner?: string | null
+  allowed_tools?: string[]
+  denied_tools?: string[]
+  retrieval_required?: boolean
   autonomy: {
     execution: string
     capability: string
@@ -39,6 +44,28 @@ export interface AgentOperationsEntry {
   oldest_queued_source_at?: string | null
   last_trigger_at?: string | null
   last_trigger_kind?: string | null
+  openclaw_persona_registered?: boolean
+  openclaw_persona_model?: string | null
+  openclaw_persona_soul_exists?: boolean
+  shadow_dispatch_model?: string | null
+}
+
+export interface OpenClawPersonaRow {
+  persona_id: string
+  fleet_agent_id?: string | null
+  fleet_subsystem?: string | null
+  registered?: boolean
+  model?: string | null
+  soul_exists?: boolean
+  workspace?: string | null
+}
+
+export interface PromotionFrameworkMeta {
+  min_artifact_population: number
+  gate_source: string
+  promotion_authority: string
+  automatic_operational: boolean
+  note: string
 }
 
 export interface AgentOperationsPayload {
@@ -46,6 +73,9 @@ export interface AgentOperationsPayload {
   observed_at: string
   read_only: true
   timer_probe_enabled: boolean
+  promotion_framework?: PromotionFrameworkMeta
+  shadow_dispatch_model?: string | null
+  openclaw_personas?: OpenClawPersonaRow[]
   health_monitor: {
     state: 'HEALTHY' | 'DEGRADED' | 'NOT_INSTALLED' | 'STALE' | 'INVALID' | 'UNKNOWN'
     last_checked_at: string | null

@@ -175,7 +175,7 @@ def _watch_artifact_adapters(cursor_value: str | None, *, limit: int = 32) -> Ad
             dedup = f"{source_id}:{row['packet_id']}"
             for agent_id, job_type in (
                 ("sentinel", "watch_ticket_review"),
-                ("maria", "fundamental_research"),
+                ("maria", "fundamental_research_review"),
                 ("vega", "technical_structure_review"),
                 ("pulse", "microstructure_review"),
             ):
@@ -217,7 +217,7 @@ def _packet_rebuild_adapter(cursor_value: str | None, *, limit: int = 16) -> Ada
             """
             SELECT job_id, symbol, state, completed_at, packet_id_after
             FROM watch_decision_refresh_jobs
-            WHERE state = 'COMPLETED'
+            WHERE state = 'COMPLETE'
               AND completed_at > %s
               AND packet_id_after IS NOT NULL
             ORDER BY completed_at ASC
@@ -277,10 +277,10 @@ def _outcome_adapter(cursor_value: str | None, *, limit: int = 32) -> AdapterRes
         rows = _fetch_rows(
             conn,
             """
-            SELECT outcome_id, artifact_id, agent_id, recorded_at, outcome
+            SELECT agent_name, symbol, verdict, scored_at, war_id, trade_id, recommendation
             FROM agent_recommendation_outcomes
-            WHERE recorded_at > %s
-            ORDER BY recorded_at ASC
+            WHERE scored_at > %s
+            ORDER BY scored_at ASC
             LIMIT %s
             """,
             (since, limit),
@@ -288,29 +288,32 @@ def _outcome_adapter(cursor_value: str | None, *, limit: int = 32) -> AdapterRes
         candidates = []
         newest = cursor_value
         for row in rows:
-            ts = _iso(row["recorded_at"])
+            ts = _iso(row["scored_at"])
             newest = ts
+            ref = row.get("war_id") or row.get("trade_id") or f"{row['agent_name']}:{row['symbol']}:{ts}"
             payload = {
-                "outcome_id": row["outcome_id"],
-                "artifact_id": row["artifact_id"],
-                "producer_agent_id": row["agent_id"],
-                "outcome": row["outcome"],
+                "agent_name": row["agent_name"],
+                "symbol": row["symbol"],
+                "verdict": row["verdict"],
+                "recommendation": row.get("recommendation"),
+                "war_id": row.get("war_id"),
+                "trade_id": row.get("trade_id"),
                 "source": source_id,
             }
             candidates.append(
                 _candidate(
                     agent_id="darwin",
                     trigger_kind="OUTCOME_EVIDENCE_AVAILABLE",
-                    dedup_key=f"{source_id}:{row['outcome_id']}",
+                    dedup_key=f"{source_id}:{ref}",
                     job_type="outcome_join",
                     payload=payload,
-                    source_ref=f"{source_id}:{row['outcome_id']}",
+                    source_ref=f"{source_id}:{ref}",
                     source_timestamp=ts,
                 )
             )
         cursor_updates = ()
         if newest and newest != cursor_value:
-            cursor_updates = ((source_id, "recorded_at", newest),)
+            cursor_updates = ((source_id, "scored_at", newest),)
         return AdapterResult(source_id, probe, tuple(candidates), cursor_updates)
     finally:
         if conn is not None:
@@ -319,7 +322,7 @@ def _outcome_adapter(cursor_value: str | None, *, limit: int = 32) -> AdapterRes
 
 def _kb_lessons_adapter(cursor_value: str | None, *, limit: int = 32) -> AdapterResult:
     source_id = "kb:candidate_lessons"
-    tables = ("kb_lessons",)
+    tables = ("agentic_runtime.kb_lessons",)
     dsn = os.environ.get(SOURCE_DSN_ENV, "").strip()
     conn = None
     try:
@@ -333,8 +336,8 @@ def _kb_lessons_adapter(cursor_value: str | None, *, limit: int = 32) -> Adapter
         rows = _fetch_rows(
             conn,
             """
-            SELECT lesson_id, title, lifecycle, created_at, payload
-            FROM kb_lessons
+            SELECT lesson_id, title, lifecycle, created_at, statement, provenance
+            FROM agentic_runtime.kb_lessons
             WHERE lifecycle = 'CANDIDATE'
               AND created_at > %s
             ORDER BY created_at ASC
@@ -351,7 +354,8 @@ def _kb_lessons_adapter(cursor_value: str | None, *, limit: int = 32) -> Adapter
                 "lesson_id": row["lesson_id"],
                 "title": row["title"],
                 "lifecycle": row["lifecycle"],
-                "payload": row["payload"],
+                "statement": row["statement"],
+                "provenance": row["provenance"],
                 "source": source_id,
             }
             candidates.append(
@@ -359,7 +363,7 @@ def _kb_lessons_adapter(cursor_value: str | None, *, limit: int = 32) -> Adapter
                     agent_id="iris",
                     trigger_kind="CANDIDATE_LESSON",
                     dedup_key=f"{source_id}:{row['lesson_id']}",
-                    job_type="knowledge_curation",
+                    job_type="lesson_review",
                     payload=payload,
                     source_ref=f"{source_id}:{row['lesson_id']}",
                     source_timestamp=ts,
@@ -390,11 +394,11 @@ def _incident_adapter(cursor_value: str | None, *, limit: int = 16) -> AdapterRe
         rows = _fetch_rows(
             conn,
             """
-            SELECT incident_id, component, opened_at, severity, state
+            SELECT incident_id, alert_type, source_system, first_seen_at, last_seen_at, severity, status
             FROM alert_incidents
-            WHERE opened_at > %s
-              AND state IN ('OPEN', 'ACKNOWLEDGED')
-            ORDER BY opened_at ASC
+            WHERE first_seen_at > %s
+              AND status = 'open'
+            ORDER BY first_seen_at ASC
             LIMIT %s
             """,
             (since, limit),
@@ -402,7 +406,7 @@ def _incident_adapter(cursor_value: str | None, *, limit: int = 16) -> AdapterRe
         candidates = []
         newest = cursor_value
         for row in rows:
-            ts = _iso(row["opened_at"])
+            ts = _iso(row["first_seen_at"])
             newest = ts
             payload = dict(row)
             payload["source"] = source_id
@@ -419,7 +423,7 @@ def _incident_adapter(cursor_value: str | None, *, limit: int = 16) -> AdapterRe
             )
         cursor_updates = ()
         if newest and newest != cursor_value:
-            cursor_updates = ((source_id, "opened_at", newest),)
+            cursor_updates = ((source_id, "first_seen_at", newest),)
         return AdapterResult(source_id, probe, tuple(candidates), cursor_updates)
     finally:
         if conn is not None:
@@ -428,7 +432,7 @@ def _incident_adapter(cursor_value: str | None, *, limit: int = 16) -> AdapterRe
 
 def _research_adapter(cursor_value: str | None, *, limit: int = 16) -> AdapterResult:
     source_id = "research:hermes"
-    tables = ("hermes_discovery_candidates", "watchlist_agent_jobs")
+    tables = ("hermes_discovery_candidates",)
     dsn = os.environ.get(SOURCE_DSN_ENV, "").strip()
     conn = None
     try:
@@ -442,9 +446,16 @@ def _research_adapter(cursor_value: str | None, *, limit: int = 16) -> AdapterRe
         rows = _fetch_rows(
             conn,
             """
-            SELECT candidate_id AS ref_id, symbol, created_at, status, hypothesis
+            SELECT id AS ref_id,
+                   normalized_key,
+                   label,
+                   summary,
+                   extracted_symbols,
+                   status,
+                   created_at
             FROM hermes_discovery_candidates
             WHERE created_at > %s
+              AND status IN ('READY_FOR_REVIEW', 'NEEDS_VALIDATION', 'DISCOVERED')
             ORDER BY created_at ASC
             LIMIT %s
             """,
@@ -458,7 +469,7 @@ def _research_adapter(cursor_value: str | None, *, limit: int = 16) -> AdapterRe
             payload = dict(row)
             payload["source"] = source_id
             ref = row["ref_id"]
-            for agent_id, job_type in (("alex", "cio_synthesis"), ("hermes", "hypothesis_design")):
+            for agent_id, job_type in (("alex", "cio_synthesis"), ("hermes", "hypothesis_discovery")):
                 candidates.append(
                     _candidate(
                         agent_id=agent_id,
@@ -506,11 +517,95 @@ SWEEP_AGENTS: dict[str, tuple[str, str]] = {
     "darwin": ("artifact_scoring", "sweep:darwin"),
     "argus": ("population_integrity_scan", "sweep:argus"),
     "risk_agent": ("risk_evidence_review", "sweep:risk"),
-    "atlas": ("workflow_orchestration_review", "sweep:atlas"),
-    "concierge": ("operator_status_poll", "sweep:concierge"),
+    "atlas": ("durable_workflow_orchestration", "sweep:atlas"),
+    "concierge": ("operator_status", "sweep:concierge"),
     "steph": ("allocation_review", "sweep:steph"),
     "tax_agent": ("tax_constraint_review", "sweep:tax"),
 }
+
+
+def _alert_incidents_adapter(
+    cursor_value: str | None,
+    *,
+    source_id: str,
+    alert_types: tuple[str, ...],
+    agents: Sequence[tuple[str, str, str]],
+    limit: int = 16,
+) -> AdapterResult:
+    """Map open alert_incidents rows to bounded FLEET review jobs (read-only)."""
+    tables = ("alert_incidents",)
+    dsn = os.environ.get(SOURCE_DSN_ENV, "").strip()
+    conn = None
+    try:
+        if dsn:
+            conn = _connection_factory(dsn)()
+        probe = _probe_tables(source_id, tables, conn)
+        if probe.state != SourceState.READY or conn is None:
+            return AdapterResult(source_id, probe, ())
+
+        since = cursor_value or "1970-01-01T00:00:00+00:00"
+        type_clause = " OR ".join("alert_type ILIKE %s" for _ in alert_types)
+        params: list[Any] = [since, *alert_types, limit]
+        rows = _fetch_rows(
+            conn,
+            f"""
+            SELECT incident_id, alert_type, source_system, first_seen_at, severity, status, symbol
+            FROM alert_incidents
+            WHERE first_seen_at > %s
+              AND status = 'open'
+              AND ({type_clause})
+            ORDER BY first_seen_at ASC
+            LIMIT %s
+            """,
+            tuple(params),
+        )
+        candidates: list[TriggerCandidate] = []
+        newest = cursor_value
+        for row in rows:
+            ts = _iso(row["first_seen_at"])
+            newest = ts
+            payload = {**row, "source": source_id}
+            ref = row["incident_id"]
+            for agent_id, job_type, trigger_kind in agents:
+                candidates.append(
+                    _candidate(
+                        agent_id=agent_id,
+                        trigger_kind=trigger_kind,
+                        dedup_key=f"{source_id}:{ref}:{agent_id}",
+                        job_type=job_type,
+                        payload={**payload, "target_agent": agent_id},
+                        source_ref=f"{source_id}:{ref}",
+                        source_timestamp=ts,
+                    )
+                )
+        cursor_updates = ()
+        if newest and newest != cursor_value:
+            cursor_updates = ((source_id, "first_seen_at", newest),)
+        return AdapterResult(source_id, probe, tuple(candidates), cursor_updates)
+    finally:
+        if conn is not None:
+            conn.close()
+
+
+def _alerts_risk_adapter(cursor_value: str | None) -> AdapterResult:
+    return _alert_incidents_adapter(
+        cursor_value,
+        source_id="alerts:risk",
+        alert_types=("%stop%", "%risk%", "%breach%"),
+        agents=(("risk_agent", "risk_evidence_review", "QUALITY_EXCEPTION"),),
+    )
+
+
+def _alerts_proposals_adapter(cursor_value: str | None) -> AdapterResult:
+    return _alert_incidents_adapter(
+        cursor_value,
+        source_id="alerts:proposals",
+        alert_types=("%proposal%", "%approval%"),
+        agents=(
+            ("steph", "allocation_review", "SCHEDULED_SWEEP"),
+            ("aegis", "incident_review", "INCIDENT_OPENED"),
+        ),
+    )
 
 
 def _reflection_nightly_adapter() -> AdapterResult:
@@ -543,15 +638,19 @@ ADAPTERS: dict[str, Callable[[str | None], AdapterResult]] = {
     "kb:candidate_lessons": lambda cursor: _kb_lessons_adapter(cursor),
     "incidents:alert": lambda cursor: _incident_adapter(cursor),
     "research:hermes": lambda cursor: _research_adapter(cursor),
+    "alerts:risk": lambda cursor: _alerts_risk_adapter(cursor),
+    "alerts:proposals": lambda cursor: _alerts_proposals_adapter(cursor),
 }
 
 ADAPTER_CURSOR_KEYS: dict[str, str] = {
     "watch:artifacts": "generated_at",
     "watch:refresh_jobs": "completed_at",
-    "outcomes:recommendations": "recorded_at",
+    "outcomes:recommendations": "scored_at",
     "kb:candidate_lessons": "created_at",
-    "incidents:alert": "opened_at",
+    "incidents:alert": "first_seen_at",
     "research:hermes": "created_at",
+    "alerts:risk": "first_seen_at",
+    "alerts:proposals": "first_seen_at",
 }
 
 

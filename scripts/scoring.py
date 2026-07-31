@@ -392,13 +392,31 @@ def _vix_now():
     import time as _t
     if _t.time() - _VIX_CACHE["at"] > 900:
         try:
-            import urllib.request, json as _j, os as _os
+            import os as _os
+            import urllib.request
+            import json as _j
+
+            from lib.vix_canonical import vix_effective
+
             base = _os.getenv("LOCAL_API_BASE", "http://127.0.0.1:7777")
-            with urllib.request.urlopen(f"{base}/api/v2/trade-ai", timeout=5) as r:
-                d = _j.load(r); d = d.get("data", d)
-                _VIX_CACHE["v"] = float(d.get("vix")) if d.get("vix") is not None else None
+            run_vix = None
+            try:
+                with urllib.request.urlopen(f"{base}/api/v2/trade-ai/summary", timeout=5) as r:
+                    d = _j.load(r)
+                    d = d.get("data", d)
+                    run_vix = d.get("vix")
+            except Exception:
+                pass
+            _VIX_CACHE["v"] = vix_effective(run_vix)
         except Exception:
-            pass
+            try:
+                import urllib.request, json as _j, os as _os
+                base = _os.getenv("LOCAL_API_BASE", "http://127.0.0.1:7777")
+                with urllib.request.urlopen(f"{base}/api/v2/trade-ai/summary", timeout=5) as r:
+                    d = _j.load(r); d = d.get("data", d)
+                    _VIX_CACHE["v"] = float(d.get("vix")) if d.get("vix") is not None else None
+            except Exception:
+                pass
         _VIX_CACHE["at"] = _t.time()
     return _VIX_CACHE["v"]
 

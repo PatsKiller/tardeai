@@ -112,11 +112,13 @@ export async function resolvePromotionGates(agentId: string, fetchImpl?: typeof 
 /** Map maturity observations to catalog rows for the agent table. */
 export function catalogFromMaturity(
   rows: import('./agentMaturityObservability').AgentMaturityObservation[],
-): Array<{ agentId: string; displayName: string; role: string; lifecycle: string; enabled: boolean; retrievalRequired: boolean; deadlineSeconds: number }> {
+  roleByAgent?: Map<string, string>,
+): Array<{ agentId: string; displayName: string; role: string; subsystem: string; lifecycle: string; enabled: boolean; retrievalRequired: boolean; deadlineSeconds: number }> {
   return rows.map(row => ({
     agentId: row.agent_id,
     displayName: row.display_name,
-    role: row.subsystem.replace(/_/g, ' '),
+    role: roleByAgent?.get(row.agent_id) ?? row.display_name,
+    subsystem: row.subsystem,
     lifecycle: row.declared_lifecycle_state,
     enabled: row.declared_lifecycle_state === 'SHADOW' || row.environment === 'SHADOW',
     retrievalRequired: row.operator_checks_required.some(c => /retrieval/i.test(c)) || row.maturity_framework === 'agent-runtime-mvl',

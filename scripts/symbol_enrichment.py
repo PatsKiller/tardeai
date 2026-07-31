@@ -200,14 +200,14 @@ def fetch_finviz_deep(symbol: str) -> Optional[dict]:
             'fetched_at': datetime.now(timezone.utc).isoformat(),
         }
 
-        # Analyst rating interpretation
+        # Analyst rating interpretation (canonical Finviz recom mapping)
+        from lib.analyst_rating_canonical import finviz_recom_to_label
+
         recom = result.get('recom')
-        if recom:
-            if recom <= 1.5: result['analyst_rating'] = 'Strong Buy'
-            elif recom <= 2.5: result['analyst_rating'] = 'Buy'
-            elif recom <= 3.5: result['analyst_rating'] = 'Hold'
-            elif recom <= 4.5: result['analyst_rating'] = 'Sell'
-            else: result['analyst_rating'] = 'Strong Sell'
+        if recom is not None:
+            label = finviz_recom_to_label(recom)
+            if label:
+                result['analyst_rating'] = label
 
         if price:
             log.info(f"[enrichment] Finviz: {symbol} price=${price} "
