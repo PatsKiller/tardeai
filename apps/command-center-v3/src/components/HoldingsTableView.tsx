@@ -274,6 +274,11 @@ function fmtRatio(value: unknown): string | null {
  * never a fabricated zero. Advisory fundamentals, mirroring the LevelLines pattern.
  */
 function FundLine({ h, fv }: { h: any; fv?: any }) {
+  // Synthetic cash must never inherit equity Finviz/fundamentals (CASH ticker contamination).
+  const isCash = Boolean(h?.is_cash)
+    || String(h?.symbol || '').toUpperCase() === 'CASH'
+    || ['cash', 'currency', 'cash_equivalent'].includes(String(h?.asset_type || h?.assetType || '').toLowerCase())
+  if (isCash) return null
   const pe = fmtRatio(h?.pe ?? fv?.pe)
   const pb = fmtRatio(fv?.pb ?? h?.pb)
   if (!pe && !pb) return null
