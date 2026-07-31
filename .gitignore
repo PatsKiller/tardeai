@@ -186,3 +186,5 @@ apps/command-center-v3/test-results/
 data/runtime/schwab_browser_profile/
 data/runtime/schwab_reauth_debug/
 data/runtime/schwab_auto_reauth_state.json
+.cursor/approvals/
+logs/cursor-agent-audit.jsonl

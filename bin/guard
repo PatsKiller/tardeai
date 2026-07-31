@@ -1,0 +1,150 @@
+#!/usr/bin/env bash
+# guard — operator approval ledger for Cursor agent sessions.
+#
+#   guard show                          list active grants
+#   guard scopes                        list every scope and what it covers
+#   guard grant <tier> [opts]           approve a whole scope (displays it first)
+#   guard plan <file.md> [opts]         approve a plan: display it, grant its scopes
+#   guard revoke <tier> | --all         cancel
+#   guard log [n]                       what ran under auto-accept
+#
+# Options: --for 30m|2h   --uses N (default 10, -1 = unlimited)   --reason "..."
+set -uo pipefail
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(git -C "$HERE" rev-parse --show-toplevel 2>/dev/null || dirname "$HERE")"
+export CURSOR_PROJECT_DIR="$ROOT"
+# shellcheck source=/dev/null
+source "$ROOT/.cursor/hooks/guard-lib.sh"
+mkdir -p "$GUARD_DIR"; [[ -f "$GRANTS" ]] || echo '{}' > "$GRANTS"
+
+ALL_TIERS="db-write cron git-push maintree service deps sudo state-write release-write openclaw telegram llm destructive"
+BOLD=$'\e[1m'; RED=$'\e[31m'; YEL=$'\e[33m'; GRN=$'\e[32m'; OFF=$'\e[0m'
+
+parse_dur() { case "$1" in *m) echo $(( ${1%m} * 60 ));; *h) echo $(( ${1%h} * 3600 ));; *) echo "$1";; esac; }
+
+cmd_scopes() {
+  echo "${BOLD}Scopes that can be granted${OFF}"
+  for t in $ALL_TIERS; do printf '  %-14s %s\n' "$t" "$(tier_scope "$t")"; done
+  echo
+  echo "${RED}Never grantable:${OFF}"
+  echo "  secret         .env, keys, credential files — read or write. Bitwarden is the only store."
+  echo "  gate           the four live-trading gates and the Schwab interlock."
+}
+
+cmd_show() {
+  local n=$(now) any=0
+  echo "${BOLD}Active grants${OFF}"
+  for t in $ALL_TIERS; do
+    local e u r; e=$(grant_expires "$t"); u=$(grant_left "$t"); r=$(grant_reason "$t")
+    if [[ "$e" -gt "$n" && ( "$u" -lt 0 || "$u" -gt 0 ) ]]; then
+      any=1
+      printf '  %s%-14s%s %4s uses  %5dm left  — %s\n' "$YEL" "$t" "$OFF" \
+        "$([[ $u -lt 0 ]] && echo '∞' || echo "$u")" $(( (e - n) / 60 )) "$r"
+    fi
+  done
+  [[ $any -eq 0 ]] && echo "  ${GRN}none — every consequential action will prompt${OFF}"
+}
+
+cmd_grant() {
+  local tier="$1"; shift
+  local dur=1800 uses=10 reason="(no reason given)" yes=0
+  while [[ $# -gt 0 ]]; do case "$1" in
+    --for)    dur=$(parse_dur "$2"); shift 2;;
+    --uses)   uses="$2"; shift 2;;
+    --reason) reason="$2"; shift 2;;
+    --yes)    yes=1; shift;;
+    *) echo "unknown option: $1"; exit 1;;
+  esac; done
+
+  case " $ALL_TIERS " in *" $tier "*) ;; *)
+    echo "${RED}'$tier' is not grantable.${OFF} Run: guard scopes"; exit 1;; esac
+
+  echo
+  echo "${BOLD}${YEL}══ APPROVING A WHOLE SCOPE ══${OFF}"
+  echo "${BOLD}Scope:${OFF}   $tier"
+  echo "${BOLD}Covers:${OFF}  $(tier_scope "$tier")"
+  echo "${BOLD}Window:${OFF}  $(( dur / 60 )) minutes"
+  echo "${BOLD}Uses:${OFF}    $([[ $uses -lt 0 ]] && echo 'unlimited' || echo "$uses")"
+  echo "${BOLD}Reason:${OFF}  $reason"
+  echo
+  echo "Every command in this scope will run ${BOLD}without prompting${OFF} until it expires."
+  echo "Each one is still logged; review with: guard log"
+  echo
+  if [[ $yes -eq 0 ]]; then
+    read -r -p "Type ${BOLD}APPROVE${OFF} to confirm: " ans
+    [[ "$ans" == "APPROVE" ]] || { echo "cancelled"; exit 1; }
+  fi
+
+  local tmp; tmp=$(mktemp)
+  jq --arg t "$tier" --argjson e "$(( $(now) + dur ))" --argjson u "$uses" --arg r "$reason" \
+     '.[$t] = {expires:$e, uses:$u, reason:$r}' "$GRANTS" > "$tmp" && mv "$tmp" "$GRANTS"
+  audit_line "$(jq -nc --arg ts "$(date -Is)" --arg t "$tier" --arg r "$reason" --argjson d "$dur" \
+    '{ts:$ts, event:"grant-issued", tier:$t, reason:$r, seconds:$d}')"
+  echo "${GRN}granted.${OFF}  revoke with: guard revoke $tier"
+}
+
+cmd_plan() {
+  local file="$1"; shift
+  [[ -f "$file" ]] || { echo "no such plan file: $file"; exit 1; }
+  local dur=3600 uses=25 tiers=""
+  while [[ $# -gt 0 ]]; do case "$1" in
+    --for)  dur=$(parse_dur "$2"); shift 2;;
+    --uses) uses="$2"; shift 2;;
+    --scopes) tiers="$2"; shift 2;;
+    *) shift;;
+  esac; done
+
+  echo
+  echo "${BOLD}${YEL}══ PLAN UNDER REVIEW ══${OFF}"
+  echo "──────────────────────────────────────────────────────────"
+  cat "$file"
+  echo "──────────────────────────────────────────────────────────"
+  echo
+
+  if [[ -z "$tiers" ]]; then
+    echo "Which scopes does this plan need? (space separated, or empty to cancel)"
+    for t in $ALL_TIERS; do printf '  %-14s %s\n' "$t" "$(tier_scope "$t")"; done
+    read -r -p "scopes: " tiers
+  fi
+  [[ -n "$tiers" ]] || { echo "cancelled"; exit 1; }
+
+  echo
+  echo "${BOLD}Auto-accept will be enabled for:${OFF}"
+  for t in $tiers; do printf '  %s%-14s%s %s\n' "$YEL" "$t" "$OFF" "$(tier_scope "$t")"; done
+  echo
+  echo "Window: $(( dur / 60 )) minutes    Uses: $uses per scope"
+  echo "${RED}Not included, and never auto-accepted: secret, gate.${OFF}"
+  echo
+  read -r -p "Type ${BOLD}APPROVE PLAN${OFF} to confirm: " ans
+  [[ "$ans" == "APPROVE PLAN" ]] || { echo "cancelled"; exit 1; }
+
+  for t in $tiers; do
+    cmd_grant "$t" --for "$dur" --uses "$uses" --reason "plan: $(basename "$file")" --yes >/dev/null
+    echo "  ${GRN}✓${OFF} $t"
+  done
+  echo "${GRN}plan approved.${OFF}  status: guard show   |   stop everything: guard revoke --all"
+}
+
+cmd_revoke() {
+  if [[ "${1:-}" == "--all" ]]; then echo '{}' > "$GRANTS"; echo "${GRN}all grants revoked${OFF}"; return; fi
+  local tmp; tmp=$(mktemp)
+  jq --arg t "$1" 'del(.[$t])' "$GRANTS" > "$tmp" && mv "$tmp" "$GRANTS"
+  echo "${GRN}revoked: $1${OFF}"
+}
+
+cmd_log() {
+  local n="${1:-20}"
+  [[ -f "$AUDIT" ]] || { echo "no audit log yet"; return; }
+  jq -r 'select(.event=="auto-accepted" or .event=="grant-issued")
+         | "\(.ts)  \(.event)  [\(.tier)]  \(.command // .reason)"' "$AUDIT" | tail -"$n"
+}
+
+case "${1:-show}" in
+  show)   cmd_show ;;
+  scopes) cmd_scopes ;;
+  grant)  shift; cmd_grant "$@" ;;
+  plan)   shift; cmd_plan  "$@" ;;
+  revoke) shift; cmd_revoke "$@" ;;
+  log)    shift; cmd_log   "$@" ;;
+  *) sed -n '2,12p' "$0" ;;
+esac

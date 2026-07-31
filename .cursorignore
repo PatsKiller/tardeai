@@ -1,0 +1,12 @@
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pgpass
+data/portfolios/state/
+logs/*.log
+worktrees/
+wt-*/
+apps/command-center-v3/dist.old-*/
+.cursor/approvals/
