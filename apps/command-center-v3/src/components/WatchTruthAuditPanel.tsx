@@ -29,7 +29,8 @@ const button = (active = false): CSSProperties => ({ fontSize: 10.5, fontWeight:
 const primaryButton: CSSProperties = { ...button(true), minWidth: 104, textAlign: 'center' }
 const PAGE_SIZE = 20
 
-type Lane = 'favorites' | 'automated' | 'all'
+/** Quality redesign: MAIN setup desk first — not Favorites/Automated/All-200 warehouse. */
+type Lane = 'go' | 'wait' | 'nogo' | 'favorites' | 'legacy'
 type QueueFilter = 'all' | 'needs_review' | 'deterministic_fail' | 'data_gaps' | 'actionable'
 
 function num(...values: any[]): number | null { for (const value of values) { if (value === null || value === undefined || value === '') continue; const parsed = Number(value); if (Number.isFinite(parsed)) return parsed } return null }
@@ -70,25 +71,36 @@ function updateReviewUrl(symbol: string, reviewOpen: boolean) {
   window.history.replaceState(window.history.state, '', url)
 }
 function nextAction(item: any, ticket: ReturnType<typeof ticketState>, value: ReturnType<typeof valuation>, rsi: number | null): string {
+  // Prefer server lane CTA when MAIN admission already labeled the row
+  const cta = text(item?.primary_cta, item?.now_status)
+  if (item?.now_status === 'GO' && !isFailure(ticket.deterministic)) return 'Propose / open evidence — MAIN GO setup.'
+  if (item?.now_status === 'WAIT') return 'Refresh plan or complete ticket — MAIN WAIT.'
+  if (item?.now_status === 'NOGO') return 'Park research or suppress — MAIN NOGO.'
+  if (cta && /propose|refresh|park/i.test(cta)) return cta
   if (isFailure(ticket.deterministic)) return 'Open evidence; deterministic failure blocks proposal.'
   if (ticket.reconciled === 'UNVALIDATED' || /UNAVAILABLE|PENDING|REQUIRED/.test(ticket.reconciled)) return 'Run or inspect independent review.'
   if (rsi === null) return 'Refresh technical inputs before acting.'
   if (!value.notApplicable && !value.available) return 'Valuation is missing; review source coverage.'
   if (item?.starred) return 'Review current plan, alert and Re-Entry context.'
-  return 'Decide whether to promote, suppress or keep automated.'
+  return 'Decide whether to promote, suppress or keep on MAIN.'
+}
+
+function nowOf(item: any): string {
+  const n = String(item?.now_status || '').toUpperCase()
+  if (n === 'GO' || n === 'WAIT' || n === 'NOGO') return n
+  if (item?.starred) return 'WAIT'
+  return 'NOGO'
 }
 
 export default function WatchTruthAuditPanel() {
-  const { data: wl, refetch: refetchWatch } = useApi<any>('/api/v2/watchlist/items?sort=hermes', 60_000)
-  const { data: fv } = useApi<any>('/api/v2/finviz-strip-map', 300_000)
-  const { data: cards } = useApi<any>('/api/v2/symbol-cards', 300_000)
-  // Closed-session support/resistance for the price cell. Same cache the Re-Entry and
-  // Portfolio desks read, so the levels match across surfaces.
-  const { data: lv } = useApi<any>('/api/v2/ui/prefs/get?key=portfolio.reentry.resistance.v1', 300_000)
-  const levelMap: Record<string, any> = lv?.data?.value?.symbols ?? lv?.value?.symbols ?? {}
   const initialUrl = new URL(window.location.href)
   const [open, setOpen] = useState(() => initialUrl.searchParams.get('review') !== '0')
-  const [lane, setLane] = useState<Lane>('favorites')
+  // Default MAIN GO — the quality redesign, not legacy Hermes top-200
+  const [lane, setLane] = useState<Lane>(() => {
+    const q = (initialUrl.searchParams.get('now') || initialUrl.searchParams.get('op_lane') || 'go').toLowerCase()
+    if (q === 'wait' || q === 'nogo' || q === 'favorites' || q === 'legacy') return q
+    return 'go'
+  })
   const [queueFilter, setQueueFilter] = useState<QueueFilter>('all')
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState(() => initialUrl.searchParams.get('symbol')?.toUpperCase() ?? '')
@@ -98,7 +110,28 @@ export default function WatchTruthAuditPanel() {
   const [premium, setPremium] = useState<any>(null)
   const [confirmation, setConfirmation] = useState('')
 
+  // MAIN admission path by default; legacy = old Hermes top-200 warehouse
+  const itemsPath = lane === 'legacy'
+    ? '/api/v2/watchlist/items?sort=hermes&lane=legacy_hermes'
+    : lane === 'go'
+      ? '/api/v2/watchlist/items?sort=hermes&lane=main&now=GO'
+      : lane === 'wait'
+        ? '/api/v2/watchlist/items?sort=hermes&lane=main&now=WAIT'
+        : lane === 'nogo'
+          ? '/api/v2/watchlist/items?sort=hermes&lane=main&now=NOGO'
+          : '/api/v2/watchlist/items?sort=hermes&lane=main'
+
+  const { data: wl, refetch: refetchWatch } = useApi<any>(itemsPath, 60_000)
+  const { data: qualityBoard } = useApi<any>('/api/v2/watchlist/quality-board', 120_000)
+  const { data: fv } = useApi<any>('/api/v2/finviz-strip-map', 300_000)
+  const { data: cards } = useApi<any>('/api/v2/symbol-cards', 300_000)
+  // Closed-session support/resistance for the price cell. Same cache the Re-Entry and
+  // Portfolio desks read, so the levels match across surfaces.
+  const { data: lv } = useApi<any>('/api/v2/ui/prefs/get?key=portfolio.reentry.resistance.v1', 300_000)
+  const levelMap: Record<string, any> = lv?.data?.value?.symbols ?? lv?.value?.symbols ?? {}
+
   const items: any[] = wl?.items ?? wl?.data?.items ?? []
+  const quality = wl?.quality ?? wl?.data?.quality ?? qualityBoard?.main_lane ?? qualityBoard?.data?.main_lane
   const fvMap = fv?.map ?? fv?.data?.map ?? {}
   const cardMap = cards?.cards ?? cards?.data?.cards ?? {}
   const unique = useMemo(() => {
@@ -113,7 +146,6 @@ export default function WatchTruthAuditPanel() {
     return [...map.values()]
   }, [items])
   const favorites = unique.filter(item => Boolean(item.starred))
-  const automated = unique.filter(item => !item.starred)
 
   const classified = useMemo(() => unique.map(item => {
     const symbol = String(item.symbol).toUpperCase()
@@ -131,12 +163,17 @@ export default function WatchTruthAuditPanel() {
     const hasDataGap = price === null || rsi === null || (!value.notApplicable && !value.available)
     const needsReview = ticket.reconciled === 'UNVALIDATED' || /UNAVAILABLE|PENDING|REQUIRED/.test(ticket.reconciled)
     const actionable = !isFailure(ticket.deterministic) && !hasDataGap && !needsReview
-    return { item, symbol, value, ticket, rsi, price, priceAt, level, hasDataGap, needsReview, actionable, next: nextAction(item, ticket, value, rsi) }
+    const now = nowOf(item)
+    return { item, symbol, value, ticket, rsi, price, priceAt, level, hasDataGap, needsReview, actionable, now, next: nextAction(item, ticket, value, rsi) }
   }), [unique, fv, cards, lv])
 
-  const laneRows = classified.filter(row => lane === 'all' || (lane === 'favorites' ? row.item.starred : !row.item.starred))
+  // Server already filters GO/WAIT/NOGO via ?now=; favorites is client star filter on MAIN corpus
+  const laneRows = classified.filter(row => {
+    if (lane === 'favorites') return Boolean(row.item.starred)
+    return true
+  })
   const filtered = laneRows.filter(row => {
-    if (search.trim() && !`${row.symbol} ${row.item.origin_system ?? ''} ${row.item.profile_sector ?? ''} ${row.ticket.deterministic} ${row.ticket.reconciled} ${row.next}`.toUpperCase().includes(search.trim().toUpperCase())) return false
+    if (search.trim() && !`${row.symbol} ${row.item.origin_system ?? ''} ${row.item.source ?? ''} ${row.item.profile_sector ?? ''} ${row.ticket.deterministic} ${row.ticket.reconciled} ${row.next} ${row.now}`.toUpperCase().includes(search.trim().toUpperCase())) return false
     if (queueFilter === 'needs_review' && !row.needsReview) return false
     if (queueFilter === 'deterministic_fail' && !isFailure(row.ticket.deterministic)) return false
     if (queueFilter === 'data_gaps' && !row.hasDataGap) return false
@@ -147,16 +184,22 @@ export default function WatchTruthAuditPanel() {
   const safePage = Math.min(page, pageCount - 1)
   const shown = filtered.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE)
 
-  useEffect(() => { setPage(0) }, [lane, queueFilter, search])
+  useEffect(() => { setPage(0) }, [lane, queueFilter, search, itemsPath])
   useEffect(() => {
     if (selected && unique.some(item => String(item.symbol).toUpperCase() === selected)) return
     const first = favorites[0] ?? unique[0]
     if (first) setSelected(String(first.symbol).toUpperCase())
-  }, [unique.length, favorites.length])
+  }, [unique.length, favorites.length, itemsPath])
 
   const selectedRow = classified.find(row => row.symbol === selected)
   const selectForReview = (symbol: string) => { setSelected(symbol); setOpen(true); setMessage(''); setPremium(null); updateReviewUrl(symbol, true) }
   const setDeskOpen = (next: boolean) => { setOpen(next); updateReviewUrl(selected, next) }
+
+  const mainGo = quality?.main_go ?? classified.filter(r => r.now === 'GO').length
+  const mainWait = quality?.main_wait ?? classified.filter(r => r.now === 'WAIT').length
+  const mainNogo = quality?.main_nogo ?? classified.filter(r => r.now === 'NOGO').length
+  const mainCap = quality?.main_cap ?? 60
+  const mainN = quality?.main_n ?? unique.length
 
   const toggleStar = async (item: any) => {
     const symbol = String(item.symbol).toUpperCase(); setMessage(`${symbol} — updating favorite state…`)
@@ -207,19 +250,72 @@ export default function WatchTruthAuditPanel() {
     actionable: classified.filter(row => row.actionable).length,
   }
 
-  return <section style={{ ...panel, margin: '8px 0 12px', overflow: 'hidden' }} aria-label="Watch operator queue and independent review">
+  const laneButtons: { key: Lane; label: string; activeColor?: string }[] = [
+    { key: 'go', label: `${mainGo} GO`, activeColor: BB.green },
+    { key: 'wait', label: `${mainWait} WAIT`, activeColor: BB.amber },
+    { key: 'nogo', label: `${mainNogo} NOGO`, activeColor: BB.red },
+    { key: 'favorites', label: `★ Favorites ${favorites.length}` },
+    { key: 'legacy', label: 'Legacy top-200' },
+  ]
+
+  return <section style={{ ...panel, margin: '8px 0 12px', overflow: 'hidden' }} aria-label="MAIN setup desk and independent review">
     <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', alignItems: 'center', gap: 12, padding: '10px 12px' }}>
-      <div><div style={{ fontSize: 14, fontWeight: 900 }}>Watch Operator Queue</div><div style={{ marginTop: 2, fontSize: 10.5, color: BB.text3 }}>Click a row or OPEN REVIEW. The selected symbol's evidence and actions remain visible at right. Contract {WATCH_OPERATOR_CONTRACT}.</div></div>
-      <button onClick={() => setDeskOpen(!open)} aria-expanded={open} style={primaryButton}>{open ? 'COLLAPSE QUEUE' : 'OPEN OPERATOR QUEUE'}</button>
+      <div>
+        <div style={{ fontSize: 14, fontWeight: 900 }}>MAIN Setup Desk</div>
+        <div style={{ marginTop: 2, fontSize: 11, color: BB.text3 }}>
+          Quality redesign — default is MAIN GO, not Hermes top-200. Contract {WATCH_OPERATOR_CONTRACT}.
+          {' · '}MAIN {mainN}/{mainCap} · actionable {counts.actionable} · fail {counts.failures}
+        </div>
+      </div>
+      <button onClick={() => setDeskOpen(!open)} aria-expanded={open} style={primaryButton}>{open ? 'COLLAPSE DESK' : 'OPEN MAIN DESK'}</button>
     </div>
 
-    {!open && <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '8px 12px', borderTop: '1px solid var(--border)', background: 'var(--bg2)', flexWrap: 'wrap' }}><span style={{ fontSize: 10.5, color: BB.text3 }}>Favorites {favorites.length} · Automated {automated.length} · Review needed {counts.needsReview} · Data gaps {counts.gaps}</span>{selected && <><span style={{ color: BB.text2, fontSize: 10.5 }}>Selected: <b>{selected}</b></span><button onClick={() => setDeskOpen(true)} style={button(true)}>REVIEW {selected}</button><button onClick={() => { window.location.href = `/v3/portfolio/re-entry?classify=${encodeURIComponent(selected)}` }} style={button(false)}>CLASSIFY RE-ENTRY</button></>}</div>}
+    {!open && (
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '8px 12px', borderTop: '1px solid var(--border)', background: 'var(--bg2)', flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 11, color: BB.green, fontWeight: 800 }}>{mainGo} GO</span>
+        <span style={{ fontSize: 11, color: BB.amber, fontWeight: 800 }}>{mainWait} WAIT</span>
+        <span style={{ fontSize: 11, color: BB.red, fontWeight: 800 }}>{mainNogo} NOGO</span>
+        <span style={{ fontSize: 11, color: BB.text3 }}>· ★ {favorites.length} · review {counts.needsReview} · gaps {counts.gaps}</span>
+        {selected && (
+          <>
+            <span style={{ color: BB.text2, fontSize: 11 }}>Selected: <b>{selected}</b></span>
+            <button onClick={() => setDeskOpen(true)} style={button(true)}>REVIEW {selected}</button>
+            <button onClick={() => { window.location.href = `/v3/portfolio/re-entry?classify=${encodeURIComponent(selected)}` }} style={button(false)}>CLASSIFY RE-ENTRY</button>
+          </>
+        )}
+      </div>
+    )}
 
     {open && <div style={{ borderTop: '1px solid var(--border)', padding: 10 }}>
       <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-        {([['favorites', `★ Favorites ${favorites.length}`], ['automated', `Automated ${automated.length}`], ['all', `All ${unique.length}`]] as const).map(([key, label]) => <button key={key} onClick={() => setLane(key)} style={button(lane === key)}>{label}</button>)}
-        <select value={queueFilter} onChange={event => setQueueFilter(event.target.value as QueueFilter)} aria-label="Watch operator queue filter" style={{ fontSize: 11, padding: '6px 8px', background: 'var(--bg2)', border: '1px solid var(--border)', color: BB.text0 }}><option value="all">ALL QUEUE STATES</option><option value="needs_review">NEEDS REVIEW ({counts.needsReview})</option><option value="deterministic_fail">DETERMINISTIC FAIL ({counts.failures})</option><option value="data_gaps">DATA GAPS ({counts.gaps})</option><option value="actionable">ACTIONABLE ({counts.actionable})</option></select>
-        <input value={search} onChange={event => setSearch(event.target.value)} placeholder="Filter symbol, origin, sector, ticket, action…" aria-label="Filter Watch review symbols" style={{ marginLeft: 'auto', minWidth: 280, fontSize: 11, padding: '6px 8px', background: 'var(--bg2)', border: '1px solid var(--border)', color: BB.text0 }} />
+        {laneButtons.map(({ key, label, activeColor }) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setLane(key)}
+            style={{
+              ...button(lane === key),
+              borderColor: lane === key ? (activeColor || T.link) : 'var(--border)',
+              color: lane === key ? (activeColor || T.link) : BB.text2,
+              background: lane === key ? `${activeColor || T.link}18` : 'transparent',
+            }}
+          >{label}</button>
+        ))}
+        <select value={queueFilter} onChange={event => setQueueFilter(event.target.value as QueueFilter)} aria-label="MAIN desk ticket filter" style={{ fontSize: 11, padding: '6px 8px', background: 'var(--bg2)', border: '1px solid var(--border)', color: BB.text0 }}>
+          <option value="all">ALL TICKET STATES</option>
+          <option value="needs_review">NEEDS REVIEW ({counts.needsReview})</option>
+          <option value="deterministic_fail">DETERMINISTIC FAIL ({counts.failures})</option>
+          <option value="data_gaps">DATA GAPS ({counts.gaps})</option>
+          <option value="actionable">ACTIONABLE ({counts.actionable})</option>
+        </select>
+        <input value={search} onChange={event => setSearch(event.target.value)} placeholder="Filter symbol, source, sector, ticket, action…" aria-label="Filter MAIN desk symbols" style={{ marginLeft: 'auto', minWidth: 280, fontSize: 11, padding: '6px 8px', background: 'var(--bg2)', border: '1px solid var(--border)', color: BB.text0 }} />
+      </div>
+      <div style={{ marginTop: 6, fontSize: 11, color: BB.text3 }}>
+        {lane === 'legacy'
+          ? 'Legacy Hermes top-200 warehouse (not MAIN admission). Prefer GO for setups.'
+          : lane === 'favorites'
+            ? 'Operator-starred names on MAIN only.'
+            : `Showing MAIN ${lane.toUpperCase()} · rank profile main_setup · click OPEN REVIEW for evidence.`}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(650px,1.25fr) minmax(350px,.75fr)', gap: 10, marginTop: 9, alignItems: 'start' }}>
@@ -230,7 +326,12 @@ export default function WatchTruthAuditPanel() {
             const coverage = [row.price === null ? 'price unavailable' : `price ${age(row.priceAt)}`, row.rsi === null ? 'technical unavailable' : `RSI ${row.rsi.toFixed(1)}`, row.value.notApplicable ? 'valuation N/A' : row.value.available ? `valuation ${age(row.value.asOf)}` : 'valuation unavailable', row.item.catalyst_headline ? `catalyst ${age(row.item.catalyst_at)}` : 'catalyst unavailable'].join(' · ')
             const lvl = row.level
             return <div key={row.symbol} role="button" tabIndex={0} aria-selected={isSelected} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); selectForReview(row.symbol) } }} onClick={() => selectForReview(row.symbol)} style={{ display: 'grid', gridTemplateColumns: '92px 130px 150px 120px 110px 1fr 108px', gap: 7, padding: '8px', borderBottom: '1px solid var(--border)', alignItems: 'center', fontSize: 10.5, cursor: 'pointer', background: isSelected ? 'var(--bg2)' : 'transparent', boxShadow: isSelected ? `inset 3px 0 0 ${T.link}` : undefined }}>
-              <div><b style={{ fontSize: 13 }}>{row.symbol}</b><br /><span style={{ color: BB.text3 }}>{row.item.starred ? '★ favorite' : 'system'}</span></div>
+              <div>
+                <b style={{ fontSize: 13 }}>{row.symbol}</b><br />
+                <span style={{ color: row.now === 'GO' ? BB.green : row.now === 'WAIT' ? BB.amber : BB.red, fontWeight: 800 }}>{row.now}</span>
+                {' '}
+                <span style={{ color: BB.text3 }}>{row.item.starred ? '★' : text(row.item.source, 'sys').slice(0, 12)}</span>
+              </div>
               <div>{originLabel(row.item)}<br /><span style={{ color: BB.text3 }}>{text(row.item.profile_sector, 'sector unavailable')}</span></div>
               {/* Levels before the price: resistance overhead, support below, then the live
                   price. Heat-colored by distance so overhead resistance reads warm and a
