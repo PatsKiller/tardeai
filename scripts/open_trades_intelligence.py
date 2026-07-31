@@ -13,7 +13,7 @@ sector-relative + protection. No writes anywhere. NaN/Decimal-safe.
 """
 import os
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 PROJ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HOLDINGS_JSON = os.path.join(PROJ, "data", "portfolios", "state", "holdings.json")
@@ -359,9 +359,31 @@ def _load_base_positions():
     return base, excluded, counts
 
 
-_BSTOP_CACHE = {"ts": 0.0, "map": {}, "key": None, "fetched_at": None}
+_BSTOP_CACHE = {
+    "ts": 0.0, "map": {}, "key": None, "fetched_at": None,
+    "read_ok": set(), "read_errors": {}, "read_attempted": set(),
+    "flat_count": 0, "nested_count": 0, "statuses_observed": set(),
+    "expected_accounts": set(), "capability_available": True, "complete": False,
+    "degraded": False, "safe_error_code": None, "safe_error_summary": None,
+    "cache_status": "empty", "last_good_map": {}, "last_good_fetched_at": None,
+    "last_good_key": None,
+}
 _ASTOP_CACHE = {"ts": 0.0, "map": {}, "fetched_at": None}
 _BSTOP_TERMINAL = {"canceled", "cancelled", "filled", "rejected", "expired", "replaced", "working_rejected"}
+_BSTOP_LIVE_STATUSES = {
+    "working",
+    "queued",
+    "accepted",
+    "pending_activation",
+    "awaiting_stop_condition",
+    "awaiting_parent_order",
+    "awaiting_condition",
+}
+_BSTOP_PROTECTIVE_TYPES = {"STOP", "STOP_LIMIT", "TRAILING_STOP", "TRAILING_STOP_LIMIT"}
+_BSTOP_SELL_INSTRUCTIONS = {"SELL", "SELL_SHORT"}
+# Operator-verified Schwab child-account suffixes. Used only after read-only get_account_numbers();
+# hashes stay in memory and are never logged or persisted by the live-stop reader.
+_SCHWAB_SUFFIX_TO_ACCOUNT = {"258": "schwab_rollover_ira", "415": "schwab_roth_ira", "469": "schwab_taxable"}
 
 
 def _alpaca_protective_stops():
@@ -413,7 +435,58 @@ def _alpaca_protective_stops():
     return out
 
 
-def _broker_protective_stops(accounts):
+def _schwab_child_orders(order):
+    for child in ((order or {}).get("childOrderStrategies") or []):
+        if not isinstance(child, dict):
+            continue
+        yield child
+        yield from _schwab_child_orders(child)
+
+
+def _schwab_extract_protective_stop(order, acct, *, nested=False):
+    if not isinstance(order, dict):
+        return None
+    status = str(order.get("status", "")).lower()
+    if status not in _BSTOP_LIVE_STATUSES or status in _BSTOP_TERMINAL:
+        return None
+    otype = str(order.get("orderType", "")).upper().replace(" ", "_")
+    if otype not in _BSTOP_PROTECTIVE_TYPES:
+        return None
+    for leg in (order.get("orderLegCollection") or []):
+        if str(leg.get("instruction", "")).upper() not in _BSTOP_SELL_INSTRUCTIONS:
+            continue
+        sym = str((leg.get("instrument") or {}).get("symbol", "")).upper()
+        if not sym:
+            continue
+        _sp = order.get("stopPrice")
+        try:
+            sp = float(_sp) if _sp not in (None, "", 0, "0", "0.0") else None
+        except Exception:
+            sp = None
+        _to = order.get("stopPriceOffset")
+        try:
+            trail_offset = float(_to) if _to not in (None, "") else None
+        except Exception:
+            trail_offset = None
+        qty = leg.get("quantity")
+        if qty in (None, ""):
+            qty = order.get("quantity")
+        return {
+            "order_id": str(order.get("orderId") or ""),
+            "stop_price": sp,
+            "trail_offset": trail_offset,
+            "trail_link": order.get("stopPriceLinkType"),
+            "order_type": otype,
+            "status": status,
+            "qty": qty,
+            "account": acct,
+            "source": "broker",
+            "nested": nested,
+        }, sym
+    return None
+
+
+def _broker_protective_stops(accounts, *, force: bool = False):
     """Stage 2c FULL STOP MONITORING — read the broker's LIVE working/pending SELL stop orders (source of
     truth) for the given real accounts and key them by (norm_account, symbol). Captures stops placed via the
     Command Center AND any placed manually in thinkorswim. Cached 60s; fail-open (empty on any read error so
@@ -421,7 +494,11 @@ def _broker_protective_stops(accounts):
     order_type, status, qty, account}}."""
     import time
     _ckey = tuple(sorted({(a or "").lower() for a in (accounts or [])}))
-    if time.time() - _BSTOP_CACHE["ts"] < 60 and _BSTOP_CACHE.get("key") == _ckey and _BSTOP_CACHE["map"]:
+    if (not force
+            and time.time() - _BSTOP_CACHE["ts"] < 60
+            and _BSTOP_CACHE.get("key") == _ckey
+            and (_BSTOP_CACHE["map"] or _BSTOP_CACHE.get("read_ok") or _BSTOP_CACHE.get("read_errors"))):
+        _BSTOP_CACHE["cache_status"] = "hit"
         return _BSTOP_CACHE["map"]
     import datetime as _dt
     out = {}
@@ -436,60 +513,124 @@ def _broker_protective_stops(accounts):
             out.update(_alpaca_protective_stops())
         except Exception:
             pass
+    read_ok = set()
+    read_errors = {}
+    read_attempted = set()
+    expected_accounts = {_norm_acct(a) for a in (accounts or []) if str(a or "").lower().startswith("schwab")}
+    capability_available = True
+    safe_error_code = None
+    safe_error_summary = None
+    flat_count = 0
+    nested_count = 0
+    statuses_observed = set()
     try:
         import schwab_transport as st
     except Exception:
-        _fetched = _dt.datetime.now(_dt.timezone.utc).isoformat()
-        _BSTOP_CACHE.update(ts=time.time(), map=out, key=_ckey, fetched_at=_fetched)
-        return out
-    read_ok = set()
+        capability_available = False
+        safe_error_code = "transport_import_failed"
+        safe_error_summary = "schwab_transport import failed"
+        errors = {"__transport__": safe_error_summary}
+        fallback = _BSTOP_CACHE.get("last_good_map") if _BSTOP_CACHE.get("last_good_key") == _ckey else {}
+        _BSTOP_CACHE.update(ts=time.time(), map=fallback or {}, key=_ckey, fetched_at=None,
+                            read_ok=read_ok, read_errors=errors, read_attempted=set(),
+                            flat_count=0, nested_count=0, statuses_observed=set(), expected_accounts=expected_accounts,
+                            capability_available=False, complete=False, degraded=True,
+                            safe_error_code=safe_error_code, safe_error_summary=safe_error_summary,
+                            cache_status=("stale_last_good" if fallback else "failed"))
+        return fallback or out
     # _ASTOP_CACHE.fetched_at is stamped ONLY on a successful Alpaca fetch — a verified-EMPTY read
     # (no stops working) still counts as verified, which is exactly the AGNC case
     if (_wants_paper
             and _ASTOP_CACHE.get("fetched_at") and time.time() - _ASTOP_CACHE.get("ts", 0) < 120):
         read_ok.add(_norm_acct("tradeai_automated"))   # bounded: a stale success must not vouch during an outage
-    for acct in accounts:
+    schwab_client = None
+    schwab_hash_by_norm = {}
+    schwab_enum_error = None
+    if any(str(a or "").lower().startswith("schwab") for a in (accounts or [])) and hasattr(st, "build_client"):
         try:
-            raw = st.get_orders_raw(acct)   # RAW so we capture trailing fields (offset/link), not just a fixed price
-            if not isinstance(raw, list):
-                # holdings and the Schwab transport disagree on the _ira suffix (holdings say
-                # schwab_roth, transport only resolves schwab_roth_ira) — retry the alias, or roth
-                # stops are invisible HERE while the stops audit flags the same order ORPHANED
-                # under the other key (V #1006999472019 audit, 2026-07-06)
-                _alias = acct[:-4] if str(acct).endswith("_ira") else f"{acct}_ira"
-                raw = st.get_orders_raw(_alias)
-                if not isinstance(raw, list):
-                    continue  # dict ⇒ NOT_PROVEN/degraded/error — skip this account, keep others
-            read_ok.add(_norm_acct(acct))
-            for o in (raw or []):
-                leg = (o.get("orderLegCollection") or [{}])[0]
-                if str(leg.get("instruction", "")).upper() not in ("SELL", "SELL_SHORT"):
-                    continue
-                otype = str(o.get("orderType", "")).upper()
-                if "STOP" not in otype and "TRAILING" not in otype:
-                    continue
-                if str(o.get("status", "")).lower() in _BSTOP_TERMINAL:
-                    continue
-                sym = str((leg.get("instrument") or {}).get("symbol", "")).upper()
-                if not sym:
-                    continue
-                _sp = o.get("stopPrice")
-                try:
-                    sp = float(_sp) if _sp not in (None, "", 0, "0", "0.0") else None  # fixed stop level (None for trailing — it's dynamic)
-                except Exception:
-                    sp = None
-                _to = o.get("stopPriceOffset")
-                try:
-                    trail_offset = float(_to) if _to not in (None, "") else None
-                except Exception:
-                    trail_offset = None
-                # A live SELL stop/trailing order IS protection regardless of whether it carries a fixed price.
-                out[(_norm_acct(acct), sym)] = {
-                    "order_id": str(o.get("orderId") or ""), "stop_price": sp,
-                    "trail_offset": trail_offset, "trail_link": o.get("stopPriceLinkType"),
-                    "order_type": otype.replace(" ", "_"), "status": str(o.get("status", "")).lower(),
-                    "qty": leg.get("quantity"), "account": acct, "source": "broker"}
+            schwab_client, schwab_enum_error = st.build_client("schwab_taxable")
+            if schwab_client and not schwab_enum_error:
+                resp = schwab_client.get_account_numbers()
+                if getattr(resp, "status_code", 200) != 200:
+                    schwab_enum_error = f"account_numbers_http_{getattr(resp, 'status_code', 'unknown')}"
+                else:
+                    rows = resp.json() if hasattr(resp, "json") else resp
+                    for row in (rows or []):
+                        suffix = str(row.get("accountNumber") or "")[-3:]
+                        acct_key = _SCHWAB_SUFFIX_TO_ACCOUNT.get(suffix)
+                        h = row.get("hashValue")
+                        if acct_key and h:
+                            schwab_hash_by_norm[_norm_acct(acct_key)] = h
+            elif isinstance(schwab_enum_error, dict):
+                schwab_enum_error = str(schwab_enum_error.get("status") or "client_unavailable")[:80]
         except Exception:
+            schwab_enum_error = "account_enumeration_exception"
+        if schwab_enum_error and not schwab_hash_by_norm:
+            capability_available = False
+            safe_error_code = "schwab_client_unavailable"
+            safe_error_summary = str(schwab_enum_error)[:120]
+
+    for acct in accounts:
+        acct_norm = _norm_acct(acct)
+        is_schwab = str(acct or "").lower().startswith("schwab")
+        if is_schwab:
+            read_attempted.add(acct_norm)
+        try:
+            raw = None
+            if is_schwab and schwab_client and schwab_hash_by_norm:
+                acct_hash = schwab_hash_by_norm.get(acct_norm)
+                if not acct_hash:
+                    read_errors[acct_norm] = "account_not_enumerated"
+                    continue
+                resp = schwab_client.get_orders_for_account(
+                    acct_hash,
+                    from_entered_datetime=datetime.now() - timedelta(days=180),
+                    to_entered_datetime=datetime.now() + timedelta(days=1),
+                )
+                if getattr(resp, "status_code", 200) != 200:
+                    read_errors[acct_norm] = f"orders_http_{getattr(resp, 'status_code', 'unknown')}"[:80]
+                    continue
+                raw = resp.json() if hasattr(resp, "json") else resp
+            if raw is None:
+                if is_schwab and schwab_enum_error and not hasattr(st, "get_orders_raw"):
+                    read_errors[acct_norm] = str(schwab_enum_error)[:80]
+                    continue
+                raw = st.get_orders_raw(acct)   # RAW so we capture trailing fields (offset/link), not just a fixed price
+                if not isinstance(raw, list):
+                    # holdings and the Schwab transport disagree on the _ira suffix (holdings say
+                    # schwab_roth, transport only resolves schwab_roth_ira) — retry the alias, or roth
+                    # stops are invisible HERE while the stops audit flags the same order ORPHANED
+                    # under the other key (V duplicate-account audit, 2026-07-06)
+                    _alias = acct[:-4] if str(acct).endswith("_ira") else f"{acct}_ira"
+                    raw = st.get_orders_raw(_alias)
+                    if not isinstance(raw, list):
+                        if is_schwab:
+                            read_errors[acct_norm] = str((raw or {}).get("status") or schwab_enum_error or "degraded")[:80]
+                        continue  # dict ⇒ NOT_PROVEN/degraded/error — skip this account, keep others
+            if not isinstance(raw, list):
+                if is_schwab:
+                    read_errors[acct_norm] = "unexpected_order_payload"
+                continue
+            read_ok.add(acct_norm)
+            for o in (raw or []):
+                if isinstance(o, dict) and o.get("status"):
+                    statuses_observed.add(str(o.get("status", "")).upper())
+                parsed = _schwab_extract_protective_stop(o, acct, nested=False)
+                if parsed:
+                    bs, sym = parsed
+                    out[(acct_norm, sym)] = bs
+                    flat_count += 1
+                for child in _schwab_child_orders(o):
+                    if child.get("status"):
+                        statuses_observed.add(str(child.get("status", "")).upper())
+                    parsed = _schwab_extract_protective_stop(child, acct, nested=True)
+                    if parsed:
+                        bs, sym = parsed
+                        out[(acct_norm, sym)] = bs
+                        nested_count += 1
+        except Exception:
+            if is_schwab:
+                read_errors[acct_norm] = "exception"
             continue
     # Fidelity via SnapTrade: open GTC stop orders are NOT returned by getUserAccountOrders (state=open
     # is always empty — only executed market fills sync). Operator-recorded manual_broker_stops are the
@@ -507,8 +648,32 @@ def _broker_protective_stops(accounts):
     _fetched = _dt.datetime.now(_dt.timezone.utc).isoformat()
     for _v in out.values():
         _v["fetched_at"] = _fetched
-    _BSTOP_CACHE.update(ts=time.time(), map=out, key=_ckey, fetched_at=_fetched, read_ok=read_ok)
-    return out
+    complete = bool(expected_accounts) and expected_accounts.issubset(read_ok) and not (expected_accounts & set(read_errors))
+    if expected_accounts and not read_ok:
+        capability_available = False
+    if read_errors and not safe_error_code:
+        safe_error_code = "account_read_failed"
+        safe_error_summary = ", ".join(f"{k}:{v}" for k, v in sorted(read_errors.items()))[:160]
+    degraded = bool(expected_accounts and not complete)
+    verified_fetch = _fetched if (read_ok or out) else None
+    cache_map = out
+    cache_status = "refresh_complete" if complete else ("refresh_degraded" if degraded else "refresh_empty")
+    if degraded and not out and _BSTOP_CACHE.get("last_good_key") == _ckey and _BSTOP_CACHE.get("last_good_map"):
+        cache_map = dict(_BSTOP_CACHE.get("last_good_map") or {})
+        cache_status = "stale_last_good"
+    update = dict(ts=time.time(), map=cache_map, key=_ckey, fetched_at=verified_fetch, read_ok=read_ok,
+                  read_errors=read_errors, read_attempted=read_attempted,
+                  flat_count=flat_count, nested_count=nested_count,
+                  statuses_observed=statuses_observed, expected_accounts=expected_accounts,
+                  capability_available=capability_available, complete=complete, degraded=degraded,
+                  safe_error_code=safe_error_code, safe_error_summary=safe_error_summary,
+                  cache_status=cache_status)
+    if complete:
+        update["last_good_map"] = dict(out)
+        update["last_good_fetched_at"] = verified_fetch
+        update["last_good_key"] = _ckey
+    _BSTOP_CACHE.update(**update)
+    return cache_map
 
 
 def broker_stop_read_ok() -> set:
@@ -517,6 +682,61 @@ def broker_stop_read_ok() -> set:
     the broker and found no stop, the position is unprotected no matter what the trade record says
     (AGNC paper trade #31 showed 'protected' from a record stop the supervisor flagged as missing)."""
     return _BSTOP_CACHE.get("read_ok") or set()
+
+
+def broker_stop_read_status() -> dict:
+    """Operator-safe metadata for the last broker stop read. No hashes, tokens, or raw exceptions."""
+    attempted = set(_BSTOP_CACHE.get("read_attempted") or set())
+    ok = set(_BSTOP_CACHE.get("read_ok") or set())
+    errors = dict(_BSTOP_CACHE.get("read_errors") or {})
+    return {
+        "read_ok_accounts": sorted(ok),
+        "read_attempted_accounts": sorted(attempted),
+        "read_error_accounts": sorted(errors),
+        "read_errors": errors,
+        "accounts_read_ok": len(ok),
+        "accounts_attempted": len(attempted),
+        "accounts_failed": len(attempted - ok),
+        "flat_count": int(_BSTOP_CACHE.get("flat_count") or 0),
+        "nested_count": int(_BSTOP_CACHE.get("nested_count") or 0),
+        "statuses_observed": sorted(_BSTOP_CACHE.get("statuses_observed") or []),
+    }
+
+
+def broker_stop_read_result() -> dict:
+    """Structured operator-safe broker-stop read contract for API serialization."""
+    import time as _time
+    attempted = set(_BSTOP_CACHE.get("read_attempted") or set())
+    ok = set(_BSTOP_CACHE.get("read_ok") or set())
+    expected = set(_BSTOP_CACHE.get("expected_accounts") or set())
+    errors = dict(_BSTOP_CACHE.get("read_errors") or {})
+    age = None
+    if _BSTOP_CACHE.get("ts"):
+        age = max(0, round(_time.time() - float(_BSTOP_CACHE.get("ts") or 0), 3))
+    by_key = {
+        f"{sym}:{acct}": dict(v)
+        for (acct, sym), v in (_BSTOP_CACHE.get("map") or {}).items()
+    }
+    complete = bool(_BSTOP_CACHE.get("complete"))
+    degraded = bool(_BSTOP_CACHE.get("degraded") or (expected and not complete))
+    return {
+        "attempted": bool(attempted),
+        "capability_available": bool(_BSTOP_CACHE.get("capability_available")),
+        "complete": complete,
+        "degraded": degraded,
+        "fetched_at": _BSTOP_CACHE.get("fetched_at"),
+        "last_successful_fetched_at": _BSTOP_CACHE.get("last_good_fetched_at"),
+        "successful_accounts": sorted(ok),
+        "failed_accounts": sorted(errors),
+        "expected_accounts": sorted(expected),
+        "broker_stop_count": len(by_key),
+        "by_key": by_key,
+        "safe_error_code": _BSTOP_CACHE.get("safe_error_code"),
+        "safe_error_summary": _BSTOP_CACHE.get("safe_error_summary"),
+        "source": "schwab_api",
+        "cache_status": _BSTOP_CACHE.get("cache_status") or "unknown",
+        "cache_age_seconds": age,
+    }
 
 
 def broker_stops_fetched_at() -> str | None:

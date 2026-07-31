@@ -82,6 +82,7 @@ export interface HoldingsTableRowContext {
   pr?: any
   monitored?: any
   confirmedStop?: any
+  brokerStopReadOk?: string[]
   reportEntry?: any
   coverage?: any[]
   fv?: any
@@ -308,10 +309,14 @@ export default function HoldingsTableView({
   const models = rows.map(r => ({
     ctx: r,
     m: buildHoldingsRowModel({
-      h: r.h, pr: r.pr, confirmedStop: r.confirmedStop, monitored: r.monitored, fv: r.fv, card: r.card,
+      h: r.h, pr: r.pr, confirmedStop: r.confirmedStop, monitored: r.monitored, brokerStopReadOk: r.brokerStopReadOk, fv: r.fv, card: r.card,
     }),
   }))
-  const actionableCount = models.filter(x => x.m.needsAction).length
+  // Placement permission ≠ verification required. Never count UNVERIFIABLE / CASH as place-stop.
+  const placementCount = models.filter(x => x.m.needsAction && x.m.protectionState === 'NO_STOP').length
+  const resizeCount = models.filter(x => x.m.needsAction && x.m.protectionState === 'PROTECTED').length
+  const verificationCount = models.filter(x => x.m.needsVerification || x.m.protectionState === 'UNVERIFIABLE').length
+  const actionableCount = placementCount + resizeCount
 
   return (
     <div
@@ -552,20 +557,29 @@ export default function HoldingsTableView({
                 {m.earningsLabel || '—'}
               </span>
 
-              {/* Stop — click opens Stop Management drawer (size mismatch → PARTIAL badge + Update size action) */}
+              {/* Stop — click opens Stop Management drawer (size mismatch → PARTIAL badge + Update size action).
+                  CASH rows are non-actionable; UNVERIFIABLE opens for read-only verification only. */}
               <div
                 role="button"
                 data-testid={m.stopCoverage?.kind === 'partial' || m.stopCoverage?.kind === 'oversized' ? 'holdings-stop-size-badge' : undefined}
+                data-protection-state={m.protectionState}
                 title={[
-                  'Click → Stop Management drawer (2FA replace when size mismatch)',
+                  m.protectionState === 'CASH' ? 'Cash — no protective stop'
+                    : m.protectionState === 'UNVERIFIABLE' ? 'Click → verify broker stops (do not place duplicate)'
+                    : 'Click → Stop Management drawer (2FA replace when size mismatch)',
                   m.stopTooltip,
                   m.liveStopPrice != null ? `Live $${m.liveStopPrice.toFixed(2)}` : null,
                   m.stopCoverage?.kind === 'partial' || m.stopCoverage?.kind === 'oversized'
                     ? m.stopCoverage.tip : null,
                 ].filter(Boolean).join('\n')}
-                onClick={e => { e.stopPropagation(); openStops(rowCtx) }}
+                onClick={e => {
+                  e.stopPropagation()
+                  if (m.protectionState === 'CASH') return
+                  openStops(rowCtx)
+                }}
                 style={{
-                  minWidth: 0, padding: '5px 7px', borderRadius: 4, cursor: 'pointer',
+                  minWidth: 0, padding: '5px 7px', borderRadius: 4,
+                  cursor: m.protectionState === 'CASH' ? 'default' : 'pointer',
                   background: (m.stopCoverage?.kind === 'partial' || m.stopCoverage?.kind === 'oversized')
                     ? (m.stopCoverage.kind === 'oversized' ? 'rgba(239,68,68,.18)' : 'rgba(245,158,11,.18)')
                     : stopStatusBg(m.stopStatus),
@@ -600,22 +614,33 @@ export default function HoldingsTableView({
                 )}
               </div>
 
-              {/* Action → Stop Management */}
+              {/* Action → Stop Management (verify-only when UNVERIFIABLE; disabled for CASH) */}
               <button
                 type="button"
                 data-testid={`hold-action-${m.symbol}-${m.account}`}
+                data-protection-state={m.protectionState}
                 title={m.primaryActionTooltip}
-                onClick={e => { e.stopPropagation(); openStops(rowCtx) }}
+                disabled={m.protectionState === 'CASH'}
+                onClick={e => {
+                  e.stopPropagation()
+                  if (m.protectionState === 'CASH') return
+                  openStops(rowCtx)
+                }}
                 style={{
                   width: '100%', padding: '8px 8px', fontSize: 10, fontWeight: 800, borderRadius: 5,
-                  cursor: 'pointer',
-                  border: isAmber ? `2px solid ${BB.amberAlt}` : isRed ? `2px solid ${BB.red}` : `1px solid ${actionColor}55`,
-                  background: isAmber ? 'rgba(255,160,40,0.28)' : isRed ? BB.redDim : actionBg,
-                  color: isAmber ? BB.amberAlt : actionColor,
+                  cursor: m.protectionState === 'CASH' ? 'default' : 'pointer',
+                  border: m.needsVerification
+                    ? `2px solid ${BB.amberAlt}`
+                    : isAmber ? `2px solid ${BB.amberAlt}` : isRed ? `2px solid ${BB.red}` : `1px solid ${actionColor}55`,
+                  background: m.needsVerification
+                    ? 'rgba(245,158,11,0.16)'
+                    : isAmber ? 'rgba(255,160,40,0.28)' : isRed ? BB.redDim : actionBg,
+                  color: m.needsVerification ? BB.amberAlt : isAmber ? BB.amberAlt : actionColor,
                   whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                  opacity: m.protectionState === 'CASH' ? 0.55 : 1,
                 }}
               >
-                {m.needsAction ? '▸ ' : ''}{m.primaryAction.label}
+                {m.needsAction || m.needsVerification ? '▸ ' : ''}{m.primaryAction.label}
               </button>
 
               {/* Reports */}
@@ -646,8 +671,23 @@ export default function HoldingsTableView({
         <span data-testid="holdings-row-count">
           {rows.length} positions · row click → full ticker drawer (75%) · symbol/stop/action → Stop Management
         </span>
-        {actionableCount > 0 && (
-          <span style={{ color: BB.amberAlt, fontWeight: 700 }}>▸ {actionableCount} need stop action</span>
+        {placementCount > 0 && (
+          <span data-testid="holdings-placement-count" style={{ color: BB.amberAlt, fontWeight: 700 }}>
+            ▸ {placementCount} need stop placement
+          </span>
+        )}
+        {resizeCount > 0 && (
+          <span data-testid="holdings-resize-count" style={{ color: BB.amberAlt, fontWeight: 700 }}>
+            ▸ {resizeCount} need stop resize
+          </span>
+        )}
+        {verificationCount > 0 && (
+          <span data-testid="holdings-verification-count" style={{ color: BB.amberAlt, fontWeight: 700 }}>
+            ▸ {verificationCount} verification required
+          </span>
+        )}
+        {actionableCount === 0 && verificationCount === 0 && (
+          <span style={{ color: BB.text3 }}>No stop placement backlog</span>
         )}
         <span>Hover for full news / stop detail</span>
       </div>

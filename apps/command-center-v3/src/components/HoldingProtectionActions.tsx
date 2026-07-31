@@ -272,6 +272,17 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
   }
 
   if (!qty) return null
+  // Cash / currency rows never enter protective-stop placement.
+  const isCashRow = Boolean(h?.is_cash) || sym === 'CASH'
+    || ['cash', 'currency', 'cash_equivalent'].includes(String(h?.asset_type || h?.assetType || '').toLowerCase())
+  if (isCashRow) {
+    return (
+      <div data-testid="cash-stop-na" style={{ padding: 12, fontSize: 12, color: MUTED, lineHeight: 1.5 }}>
+        <b style={{ color: TEXT0 }}>CASH — no protective stop</b>
+        <div>Cash holdings are not equities. Stop placement, replace, and 2FA request do not apply.</div>
+      </div>
+    )
+  }
   if (!stop && !needsSellAll && !logic.isFundLike && logic.liveStop == null && !liveResolved.hasLiveBrokerOrder) return null
 
   // Stop qty vs held — GTC does not auto-resize after size-up (live order qty from broker).
@@ -524,7 +535,9 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
   const tkOk = approveTk.trim().toUpperCase() === sym
   const codeOk = approveCode.trim().length === 6
   const inApprove = !!intentId && !sellAllDone
-  const showProtect = stop != null && !logic.isFundLike && !(needsSellAll && isFractional && Math.floor(qty) < 1)
+  // When broker open-orders read failed for this account, never arm place/replace/2FA —
+  // unknown must stay visibly unknown (no duplicate-stop permission).
+  const showProtect = stop != null && !logic.isFundLike && !(needsSellAll && isFractional && Math.floor(qty) < 1) && !brokerReadDegraded
   // Hard backend gates surfaced from the read-only readiness snapshot. These genuinely prevent a safe live
   // request, so they ALSO disable the button (with a clear reason) — not just the data gates in buildStopLogic.
   // Preflight-not-run and active-approval are advisory (shown in the readiness panel), since the per-order 2FA
@@ -666,6 +679,19 @@ export default function HoldingProtectionActions({ h, pr, monitored, confirmedSt
         <div><span style={{ color: MUTED }}>Price timestamp</span><br /><b>{String(priceTimestamp ?? 'missing').slice(0, 19)}</b></div>
         <div><span style={{ color: MUTED }}>Advisor timestamp</span><br /><b>{String(advisoryTimestamp ?? 'missing').slice(0, 19)}</b></div>
       </div>
+
+      {brokerReadDegraded && (
+        <div
+          data-testid="unverifiable-stop-banner"
+          style={{
+            marginTop: 8, padding: '8px 10px', borderRadius: 6, fontSize: 12, lineHeight: 1.5,
+            background: 'rgba(245,158,11,.12)', border: `1px solid ${AMBER}55`, color: AMBER, fontWeight: 700,
+          }}
+        >
+          VERIFY STOPS — BROKER VERIFICATION REQUIRED. Do not place duplicate stop.
+          The Schwab open-orders read did not succeed for this account; a protective stop may already exist.
+        </div>
+      )}
 
       {/* Stop picture — ONE coherent story from the ACTUAL advisory (not the generic band,
           which contradicted the fixed-stop recommendation; operator 2026-07-14). */}

@@ -47,8 +47,9 @@ def test_04_advisory_stop_is_not_rendered_as_live_and_live_stop_distinct():
     src = read(UI) + read(LOGIC)
     assert "ADVISORY ONLY — NOT PLACED" in src
     assert "LIVE BROKER STOP" in src
-    assert "Broker live stop" in src
-    assert "Advisor fixed stop" in src
+    # Live vs advisory are distinct labels in the protection panel.
+    assert "CURRENT LIVE BROKER STOP" in src
+    assert "ADVISORY RECOMMENDATION" in src
     assert "liveStopDistancePct" in src
 
 
@@ -145,7 +146,9 @@ def test_13_internal_guard_copy_not_schwab_rejected_and_no_sample_code():
 def test_14_operator_buttons_use_2fa_and_manual_ticket_copy():
     src = read(UI) + read(LEGACY_UI) + read(LOGIC)
     assert "Request Schwab stop via 2FA" in src
-    assert "Request Schwab fixed stop via 2FA" in src
+    # Fixed-stop 2FA arm uses dynamic copy with the stop price (not a static "fixed stop" label).
+    assert "Request fixed stop at $" in src
+    assert "via 2FA" in src
     assert "Request Schwab trailing stop via 2FA" in src
     assert "Create Fidelity manual ticket" in src
     assert "Execute @ Schwab" not in src
@@ -154,8 +157,9 @@ def test_14_operator_buttons_use_2fa_and_manual_ticket_copy():
 
 def test_15_build_marker_visible_for_deployment_verification():
     src = read(APP)
-    assert "BUILD_MARKER" in src
-    assert "cc-v3 hermes-efficiency-stop-quality 2026-07-03" in src
+    # Build marker is served via build-meta.json ui_version (App.tsx boot path).
+    assert "ui_version" in src
+    assert "__ANALYST_UI_VERSION__" in src or "build-meta" in src
 
 
 def test_17_click_preflight_validates_before_2fa_and_manual():
@@ -207,3 +211,27 @@ def test_16_live_stops_endpoint_and_review_tooltips():
     assert "last reviewed" in src
     assert "broker_stops_fetched_at" in src
     assert "fetched_at" in src
+
+
+def test_30_unverifiable_never_looks_like_permission_to_place():
+    row = read(ROOT / "apps/command-center-v3/src/lib/holdingsRowModel.ts")
+    table = read(ROOT / "apps/command-center-v3/src/components/HoldingsTableView.tsx")
+    protect = read(UI)
+    assert "UNVERIFIABLE" in row
+    assert "Do not place duplicate stop" in row
+    assert "needsVerification" in row
+    assert "brokerStopReadOk" in row
+    assert "need stop placement" in table
+    assert "verification required" in table
+    assert "VERIFY STOPS — BROKER VERIFICATION REQUIRED" in protect
+    assert "&& !brokerReadDegraded" in protect
+
+
+def test_31_cash_rows_excluded_from_stop_placement_ui():
+    row = read(ROOT / "apps/command-center-v3/src/lib/holdingsRowModel.ts")
+    protect = read(UI)
+    pill = read(ROOT / "apps/command-center-v3/src/components/StopKindPill.tsx")
+    assert "isCashHolding" in row
+    assert "protectionState: 'CASH'" in row or "protectionState: 'PROTECTED' | 'NO_STOP' | 'UNVERIFIABLE' | 'CASH'" in row
+    assert "CASH — no protective stop" in protect
+    assert "CASH:" in pill

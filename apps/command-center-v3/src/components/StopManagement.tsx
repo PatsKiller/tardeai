@@ -1171,7 +1171,7 @@ function AdjustModal({ row, autoStage, onClose, onFocusHolding }: { row: Row; au
   // Assemble the exact props the holding card passes, so the inline panel renders identical live-stop state
   // (never a false "none"). Sources: portfolio/holdings, portfolio/llm-coverage (protection + confirmed_stops),
   // holdings/live-stops (by_key), holdings/monitored-stops (by_key). Then reuse the same protective-stop panel.
-  const [pack, setPack] = useState<{ h: any; pr: any; mon: any; conf: any; fetchedAt: any } | null>(null)
+  const [pack, setPack] = useState<{ h: any; pr: any; mon: any; conf: any; fetchedAt: any; brokerOk: string[] } | null>(null)
   const [perr, setPerr] = useState('')
   const [reloadKey, setReloadKey] = useState(0)
   useEffect(() => {
@@ -1193,7 +1193,8 @@ function AdjustModal({ row, autoStage, onClose, onFocusHolding }: { row: Row; au
       const conf = mergeLiveStop((cov.confirmed_stops ?? {})[key], (ls.by_key ?? {})[key])
       const mon = (unwrap(mj)?.by_key ?? {})[key]
       const fetchedAt = ls.fetched_at ?? cov.broker_stops_fetched_at ?? null
-      if (h) setPack({ h, pr, mon, conf, fetchedAt }); else setPerr('holding not found for this symbol/account')
+      const brokerOk = ls.broker_stop_read_ok_accounts ?? cov.broker_stop_read_ok_accounts ?? []
+      if (h) setPack({ h, pr, mon, conf, fetchedAt, brokerOk }); else setPerr('holding not found for this symbol/account')
     }).catch(() => setPerr('could not load holding data'))
     return () => { cancelled = true }
   }, [row.symbol, row.account, reloadKey])
@@ -1261,7 +1262,8 @@ function AdjustModal({ row, autoStage, onClose, onFocusHolding }: { row: Row; au
           <div style={{ fontSize: 12, color: MUTED, padding: 14 }}>Loading stop controls…</div>
         ) : (
           <HoldingProtectionActions h={pack.h} pr={pack.pr} monitored={pack.mon} confirmedStop={pack.conf}
-            brokerStopsFetchedAt={pack.fetchedAt} autoStageKind={autoStageKind} onRefresh={() => setReloadKey(k => k + 1)} />
+            brokerStopsFetchedAt={pack.fetchedAt} brokerStopReadOk={pack.brokerOk}
+            autoStageKind={autoStageKind} onRefresh={() => setReloadKey(k => k + 1)} />
         )}
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 12 }}>

@@ -14,6 +14,7 @@ export const STOP_KIND_PILL: Record<string, { label: string; color: string }> = 
   TRAILING_LIMIT: { label: 'TRAILING LIMIT', color: PURPLE },
   MONITORED:      { label: 'MONITORED',      color: AMBER },
   PLANNED:        { label: 'PLANNED',        color: AMBER },
+  CASH:           { label: 'CASH',           color: AMBER },
   NONE:           { label: 'NO STOP',        color: RED },
 }
 
@@ -26,15 +27,18 @@ export function StopKindPill({ kind, trailPct, distPct, orderType, small }: {
   const k = String(kind || 'NONE').toUpperCase()
   const p = STOP_KIND_PILL[k] || STOP_KIND_PILL.NONE
   const isTrail = k === 'TRAILING' || k === 'TRAILING_LIMIT'
-  const hasStop = k !== 'NONE'
+  const isCash = k === 'CASH'
+  const hasStop = k !== 'NONE' && !isCash
   // Trailing kinds show the trail %; static kinds (fixed / stop-limit / monitored) show how
   // far the stop sits BELOW price — so every row states the type AND the % at a glance.
   const pct = isTrail ? trailPct : distPct
   const suffix = isTrail ? 'trail' : 'below'
   const label = hasStop && pct != null ? `${p.label} ${fmtPct(pct)}%` : p.label
-  const title = hasStop
-    ? `${p.label} stop${pct != null ? ` — ${fmtPct(pct)}% ${suffix} price` : ''}${orderType ? ` · broker order type: ${orderType}` : ''}`
-    : 'no protective stop'
+  const title = isCash
+    ? 'cash holding — protective stops do not apply'
+    : hasStop
+      ? `${p.label} stop${pct != null ? ` — ${fmtPct(pct)}% ${suffix} price` : ''}${orderType ? ` · broker order type: ${orderType}` : ''}`
+      : 'no protective stop'
   return (
     <span title={title}
       style={{ display: 'inline-block', fontSize: small ? 10 : 11, fontWeight: 800, letterSpacing: '.02em',

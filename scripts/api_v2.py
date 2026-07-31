@@ -317,9 +317,14 @@ def _stops_management_api_build(query=None):
     _live_stops_meta = {"fetched_at": None, "live_read_ok": False, "error": None, "broker_count": 0}
     try:
         ls = _holdings_live_stops() or {}
-        _live_read_ok = bool(not ls.get("error") and ls.get("fetched_at"))
+        _read_status = ls.get("broker_stop_read_status") or {}
+        _live_read_ok = bool(not ls.get("error") and ls.get("fetched_at") and not ls.get("degraded"))
         _live_stops_meta = {
             "fetched_at": ls.get("fetched_at"), "live_read_ok": _live_read_ok,
+            "degraded": bool(ls.get("degraded")),
+            "unverified_accounts": ls.get("unverified_accounts") or [],
+            "read_ok_accounts": ls.get("broker_stop_read_ok_accounts") or [],
+            "read_status": _read_status,
             "error": ls.get("error"), "broker_count": len(ls.get("by_key") or {}),
         }
         for _key, bs in (ls.get("by_key") or {}).items():
@@ -866,8 +871,7 @@ def _stops_management_api_build(query=None):
                      "action": r.get("next_action"), "projection": r.get("projection"),
                      "dollars_at_risk": r.get("dollars_at_risk")} for r in _actionable[:3]]
     _schwab_holdings = sum(1 for h in holds if str(h.get("account", "")).startswith("schwab") and not h.get("is_cash"))
-    _broker_degraded = (_schwab_holdings > 0 and not _live_read_ok
-                        and _live_stops_meta.get("broker_count", 0) == 0)
+    _broker_degraded = (_schwab_holdings > 0 and (not _live_read_ok or bool(_live_stops_meta.get("degraded"))))
     import datetime as _dt
     return {
         "generated_at": _dt.datetime.now(_dt.timezone.utc).isoformat(),
@@ -30814,8 +30818,20 @@ def _holdings_live_stops(query=None):
             _acct_labels[_oti._norm_acct(_raw)] = _raw
             if _raw.startswith("schwab") or _raw.startswith("fidelity") or "alpaca" in _raw.lower():
                 _broker_accts.append(_canon)
-        bmap = _oti._broker_protective_stops(sorted(set(_broker_accts))) or {}
+        _requested_broker_accts = sorted(set(_broker_accts))
+        _force_refresh = str((query or {}).get("refresh", [""])[0] if isinstance((query or {}).get("refresh"), list) else (query or {}).get("refresh", "")).lower() in {"1", "true", "yes"}
+        bmap = _oti._broker_protective_stops(_requested_broker_accts, force=_force_refresh) or {}
         fetched_at = _oti.broker_stops_fetched_at()
+        _read_status = _oti.broker_stop_read_status() if hasattr(_oti, "broker_stop_read_status") else {}
+        _read_result = _oti.broker_stop_read_result() if hasattr(_oti, "broker_stop_read_result") else {}
+        _requested_schwab_norm = sorted({
+            _oti._norm_acct(a) for a in _requested_broker_accts if str(a or "").startswith("schwab")
+        })
+        _read_ok_accounts = set(_read_status.get("read_ok_accounts") or [])
+        _unverified_norm = [a for a in _requested_schwab_norm if a not in _read_ok_accounts]
+        _unverified_accounts = [_acct_labels.get(a) or a for a in _unverified_norm]
+        _read_ok_labels = sorted({_acct_labels.get(a) or a for a in _read_ok_accounts})
+        _degraded = bool(_unverified_accounts or _read_status.get("read_error_accounts") or _read_result.get("degraded"))
         # Which live orders were placed BY THE APP (pilot)? Only those can be API-cancelled for a one-2FA
         # in-app Replace (P2). A manually-placed (ToS) order isn't in schwab_pilot_orders → its replace
         # must happen in ToS (P3). cancel_order refuses non-pilot orders.
@@ -30842,12 +30858,30 @@ def _holdings_live_stops(query=None):
                 "pilot_placed": (str(_oid) in _pilot_ids) if _oid else False,
                 "status": _bs.get("status"),
                 "qty": _bs.get("qty"),
+                "nested": bool(_bs.get("nested")),
                 "source": "broker", "broker_verified": True,
                 "fetched_at": _bs.get("fetched_at") or fetched_at,
                 "note": f"Live {_bs.get('order_type', 'stop')} order {_bs.get('order_id') or ''}".strip(),
             })
         return _json_clean({
             "by_key": by_key, "fetched_at": fetched_at, "cache_ttl_sec": 60,
+            "degraded": _degraded,
+            "unverified_accounts": _unverified_accounts,
+            "broker_stop_read_ok_accounts": _read_ok_labels,
+            "broker_stop_read_status": _read_status,
+            "broker_read_result": _read_result,
+            "attempted": bool(_read_result.get("attempted", bool(_read_status.get("read_attempted_accounts")))),
+            "capability_available": bool(_read_result.get("capability_available", not _degraded)),
+            "complete": bool(_read_result.get("complete", not _degraded)),
+            "successful_accounts": _read_ok_labels,
+            "failed_accounts": _unverified_accounts,
+            "expected_accounts": sorted({_acct_labels.get(a) or a for a in _requested_schwab_norm}),
+            "broker_stop_count": len(by_key),
+            "safe_error_code": _read_result.get("safe_error_code"),
+            "safe_error_summary": _read_result.get("safe_error_summary"),
+            "source": "schwab_api+manual_broker_stops",
+            "cache_status": _read_result.get("cache_status"),
+            "cache_age_seconds": _read_result.get("cache_age_seconds"),
             "note": "Live broker protective stops — Schwab API + Fidelity manual_broker_stops (SnapTrade does not sync open GTC stops).",
         })
     except Exception as e:
