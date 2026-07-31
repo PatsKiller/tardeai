@@ -244,8 +244,15 @@ def _process_generic(
         provider_family="shadow-fleet-provider",
         model=_model_name(),
     )
-    runtime.complete(run.run_id)
-    return {"run_id": run.run_id, "status": "COMPLETED", "agent_id": agent_id, "intake_id": job.intake_id}
+    # MvlRuntime.complete() enforces "cannot complete a run without independent
+    # review" — this pipeline never fabricates that review (that would be the
+    # exact synthetic-evidence pattern this provider replaces). The artifact
+    # is real and durably recorded; independent review (by agent.reviewer_agent_id,
+    # e.g. iris/sentinel/darwin per definitions.py) and completion happen as a
+    # separate, later governed step, same as the sentinel pipeline's own
+    # REVIEW_REQUIRED artifacts.
+    status = str(runtime.status(run.run_id).get("status") or "REVIEW_REQUIRED")
+    return {"run_id": run.run_id, "status": status, "agent_id": agent_id, "intake_id": job.intake_id}
 
 
 def build_providers(agent_id: str) -> ShadowFleetProviders:

@@ -415,8 +415,13 @@ class PostgresTriggerIntakeStore:
     ) -> list[TriggerIntakeRow]:
         if limit < 1:
             return []
+        # self._clock() (utc_now) returns an ISO string for DB writes elsewhere in
+        # this class; lease expiry needs real datetime arithmetic, so parse it
+        # rather than assuming a datetime (same class of bug fixed for the
+        # in-memory store's lease()).
         now = self._clock()
-        expires = now + timedelta(seconds=lease_seconds)
+        now_dt = now if isinstance(now, datetime) else _parse_ts(str(now))
+        expires = now_dt + timedelta(seconds=lease_seconds)
         leased: list[TriggerIntakeRow] = []
         with self._conn() as conn:
             cur = conn.cursor()

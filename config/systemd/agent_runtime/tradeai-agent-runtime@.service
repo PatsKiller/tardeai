@@ -28,6 +28,10 @@ Type=oneshot
 # NON-agentic, deterministic invocation. Replace WorkingDirectory/paths at install time.
 WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
 Environment=AGENT_RUNTIME_OPERATOR_AUTH=0
+# AGENT_RUNTIME_QUEUE_MODULE is a bare module name (e.g. agent_runtime_dispatch_boot)
+# that lives directly under scripts/, matching how portfolio_server.py resolves it
+# (sys.path.insert(0, PROJECT_ROOT/"scripts")); run_once.py needs the same path added.
+Environment=PYTHONPATH=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts
 # A real queue backend module must be supplied by the operator before dispatch runs.
 # Environment=AGENT_RUNTIME_QUEUE_MODULE=<operator-supplied>
 ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.agent_runtime.agents.run_once --agent %i --once --max-batch 8
@@ -44,5 +48,11 @@ ProtectControlGroups=true
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 LockPersonality=true
 MemoryDenyWriteExecute=true
-CapabilityBoundingSet=
+# CapabilityBoundingSet= (dropping to empty) is intentionally NOT set here: on
+# hosts where the user systemd manager itself lacks CAP_SETPCAP (nested/
+# containerized systemd — see AGENTS.md "Live host deployment gotchas"),
+# setting this to any value causes the unit to fail with exit 218/CAPABILITIES
+# before the process even starts. NoNewPrivileges=true already blocks the
+# process from gaining new capabilities/setuid, which is the load-bearing
+# control here.
 # No [Install] auto-wiring beyond being started by its paired timer.

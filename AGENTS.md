@@ -97,3 +97,64 @@ a new migration (e.g. `0003_trigger_intake.up.sql`) to an already-provisioned LA
 new file** directly: `command psql -d "$LAB_DSN" -v ON_ERROR_STOP=1 -f
 migrations/agentic_runtime/000N_name.up.sql`. Also note `agentic_runtime_lab_rw`/`_shadow_rw` have
 `CREATE` revoked on the schema (`0002_roles.up.sql`) — only the migrator role (`LAB_DSN`) can run DDL.
+
+### Three deployment targets, not two — the agent-runtime timers run from a third tree
+
+`run_once.py`, `health_monitor.py`, and `trigger_producer.py` are invoked by **systemd units** whose
+`WorkingDirectory`/`ExecStart` point at `~/trade-ai-v12-rebuild/trade-ai-v12-rebuild` (the `main`-branch dev
+worktree) — **not** the SHA-pinned live release tree that serves the HTTP API, and not this repo. All three
+trees can independently drift. When changing anything under `scripts/agent_runtime/**`,
+`scripts/agent_runtime_dispatch_boot.py`, or `config/agent_runtime_mvl.json`/`config/agent_runtime_schedules.json`,
+copy to **both** the live release dir (HTTP-served readiness/operations/dispatch) **and** the dev worktree
+(systemd-invoked timers), then `systemctl --user restart portfolio-server.service` for the former and just
+re-run the relevant unit for the latter (no restart needed — each timer invocation is a fresh process).
+
+### Per-agent/producer timers ship fail-closed (`AGENT_RUNTIME_OPERATOR_AUTH=0`) — a second wiring step is required
+
+Unlike the HTTP dispatch path (wired by `deploy_operator_wiring.sh` writing
+`~/.config/tradeai/agent-operator.env` + a `portfolio-server.service.d` drop-in), the systemd timer units
+(`tradeai-agent-runtime@.service`, `tradeai-agent-runtime-producer.service`) hardcode
+`AGENT_RUNTIME_OPERATOR_AUTH=0` in their `[Service]` block by design ("prepare-only"). Authorizing them is a
+**separate, explicit** step: `install_agent_runtime_schedules.sh --execute` now also installs
+`~/.config/systemd/user/{tradeai-agent-runtime@.service,tradeai-agent-runtime-producer.service}.d/10-agent-runtime-env.conf`
+with `EnvironmentFile=<the same agent-operator.env>` (never a new/duplicated secret). `--rollback` removes
+both drop-ins, restoring fail-closed behavior.
+
+### `CapabilityBoundingSet=` fails hard on this host (exit 218/CAPABILITIES)
+
+The per-agent timer template originally set `CapabilityBoundingSet=` (drop to empty) as defense-in-depth.
+On this host the **user** systemd manager lacks `CAP_SETPCAP` (nested/containerized systemd), so *any*
+`CapabilityBoundingSet=` value — even a non-empty allowlist — makes the unit fail before the process starts:
+`Failed to drop capabilities: Operation not permitted` / `Failed at step CAPABILITIES`. Verify with
+`systemd-run --user --pty --property=CapabilityBoundingSet= -- /bin/true; echo $?` (218 = broken host,
+0 = fine). Fixed by removing the directive from
+`config/systemd/agent_runtime/tradeai-agent-runtime@.service`; `NoNewPrivileges=true` is the load-bearing
+control that remains.
+
+### `run_once.py` needs `PYTHONPATH=.../scripts` — bare module names don't resolve via `-m scripts...`
+
+`AGENT_RUNTIME_QUEUE_MODULE=agent_runtime_dispatch_boot` is a **bare** module name (the file lives directly
+in `scripts/`). `portfolio_server.py` resolves it because it does
+`sys.path.insert(0, PROJECT_ROOT / "scripts")` itself. `run_once.py`, invoked as
+`python -m scripts.agent_runtime.agents.run_once`, has no such insert — only `scripts` (as a package) is on
+`sys.path`, so `import agent_runtime_dispatch_boot` 404s with `No module named 'agent_runtime_dispatch_boot'`.
+Fix: `Environment=PYTHONPATH=.../scripts` on the per-agent timer unit.
+
+### `AGENT_RUNTIME_SHADOW_MODEL` must name a model actually pulled in Ollama
+
+`shadow_fleet_provider.py`'s code default (`qwen2.5:3b`) is a placeholder — check what's actually pulled
+(`curl -s :11434/api/tags`) before wiring. On this host it's `gemma3:4b`/`gemma3:12b`/`gemma3:27b`/`qwen3:8b`
+etc., not `qwen2.5:3b`; an unpulled model makes every real dispatch fail closed (correct behavior, just the
+wrong config). `deploy_operator_wiring.sh` writes `AGENT_RUNTIME_SHADOW_MODEL` into `agent-operator.env`
+(override via env var before running it) rather than hardcoding a host-specific model into shared code.
+
+### Generic SHADOW agents must not self-complete — that would fabricate review evidence
+
+`MvlRuntime.complete()` raises `RuntimeError("cannot complete a run without independent review")` unless
+`record_review(...)` was called by a genuinely different reviewer. The old LAB fixture provider
+(`lab_watch_provider.py`) worked around this by hardcoding a canned `ReviewVerdict.CAUTION` + a fixed
+finding string — exactly the synthetic-evidence pattern the real-trigger system exists to remove. The real
+`shadow_fleet_provider.py` therefore does **not** call `complete()` for generic agents: it creates the real
+artifact and leaves the run at `REVIEW_REQUIRED`, matching how `SentinelShadowPipeline` already behaves when
+no `review_provider` is wired. Independent review/completion is a separate, later governed step (by the
+agent's `reviewer_agent_id` from `definitions.py`), not something dispatch fabricates inline.
