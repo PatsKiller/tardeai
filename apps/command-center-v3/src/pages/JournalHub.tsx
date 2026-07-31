@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { fmt$ } from '../lib/format'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell } from 'recharts'
@@ -182,6 +183,8 @@ function TradeReviewForm({ tradeKey, symbol, account, closedDate, onClose }: any
 
 export default function JournalHub({ onDrill }: Props) {
   const [terminalUi] = useTerminalUi()
+  const [searchParams] = useSearchParams()
+  const deepSymbol = (searchParams.get('symbol') || '').trim().toUpperCase()
   const [chartTrade, setChartTrade] = useState<any>(null)
   const [tab, setTab] = useState<typeof TABS[number]>('Trades')
   const [critiqueQuery, setCritiqueQuery] = useState('')
@@ -196,9 +199,16 @@ export default function JournalHub({ onDrill }: Props) {
     } catch { /* */ }
   }, [])
   // Trade Log: search + quick filter + pagination
-  const [logSearch, setLogSearch] = useState('')
+  // WP-T4: honor ?symbol= from Open Trades / elsewhere (seed search only)
+  const [logSearch, setLogSearch] = useState(deepSymbol)
   const [logQuick, setLogQuick] = useState('all')
   const [logPage, setLogPage] = useState(0)
+  useEffect(() => {
+    if (deepSymbol) {
+      setLogSearch(deepSymbol)
+      setLogPage(0)
+    }
+  }, [deepSymbol])
   const LOG_PAGE_SIZE = 12
   const [acctFilter, setAcctFilter] = useState('')
   const [timeRange, setTimeRange] = useState<typeof TIME_RANGES[number]>('6M')

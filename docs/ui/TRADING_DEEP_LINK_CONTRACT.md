@@ -52,3 +52,7 @@ Deep-links never auto-submit live orders. Live capital requires per-order 2FA on
 - Desk health: `apps/command-center-v3/src/components/TradingDeskHealth.tsx`
 - Command triage (WP-T3): `apps/command-center-v3/src/lib/tradingCommandTriage.ts` + `TradingCommandTriage.tsx`  
   Sticky **NOW** chips deep-link into `tab` (+ optional `symbol`). Sources: open-trades intelligence, broker-proposals summary, recon, pilot status. **Never auto-submits.**
+- Open Trades export / closed-loop (WP-T4):
+  - CSV: `exportOpenTradesCsv.ts` (filtered **shown** rows)
+  - Journal: `/v3/journal?symbol=SYM` (seeds Trade Log search)
+  - Stop truth: `/v3/portfolio?tab=Stop%20Management&symbol=SYM`
