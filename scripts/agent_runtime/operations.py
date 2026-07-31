@@ -340,6 +340,13 @@ def _agent_entry(
         "summary": spec.summary,
         "enabled": bool(spec.definition.enabled),
         "lifecycle": spec.definition.deployment_state.value,
+        "allowed_job_types": list(spec.definition.allowed_job_types),
+        "budget": {
+            "max_model_calls": int(spec.definition.budget.max_model_calls),
+            "max_tool_calls": int(spec.definition.budget.max_tool_calls),
+            "max_cost_usd": float(spec.definition.budget.max_cost_usd),
+            "deadline_seconds": int(spec.definition.budget.deadline_seconds),
+        },
         "trigger_kind": trigger.kind.value if trigger else None,
         "trigger_description": trigger.description if trigger else None,
         "triggers": [
@@ -506,6 +513,7 @@ def operations_payload(
         "observed_at": _now_iso(),
         "read_only": True,
         "timer_probe_enabled": timer_probe_enabled,
+        "critic_lanes_enabled": _truthy(env, "AGENT_RUNTIME_CRITIC_LANES"),
         "health_monitor": _health_monitor_state(env),
         "sources": sources,
         "queue_posture": queue_posture,
@@ -529,4 +537,30 @@ def operations_payload(
             "financial_action": False,
         },
         "agents": agents,
+    }
+
+
+def fleet_alerts_payload(*, limit: int = 20) -> dict[str, Any]:
+    """Read-only recent FLEET critic Telegram escalations from bridge state file."""
+    state_path = Path.home() / ".local/state/tradeai/fleet_alert_bridge.json"
+    alerts: list[dict[str, Any]] = []
+    updated_at: str | None = None
+    if state_path.is_file():
+        try:
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            updated_at = str(state.get("updated_at") or "") or None
+            raw = state.get("recent_alerts") or []
+            if isinstance(raw, list):
+                alerts = [dict(item) for item in raw if isinstance(item, dict)]
+        except (json.JSONDecodeError, OSError):
+            alerts = []
+    alerts = list(reversed(alerts[-limit:]))
+    return {
+        "contract": OPERATIONS_CONTRACT,
+        "read_only": True,
+        "observed_at": _now_iso(),
+        "source": "fleet_alert_bridge_state",
+        "state_updated_at": updated_at,
+        "alerts": alerts,
+        "count": len(alerts),
     }

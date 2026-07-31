@@ -1506,6 +1506,17 @@ def main():
         )
         _send_telegram(msg)
 
+    # Auto-enqueue remaining gaps into RI queue (after-close drain) when running gaps-only pass
+    if args.gaps_only and not args.dry_run:
+        try:
+            from intelligence_remediation import auto_enqueue_gaps, _ensure_tables, _db
+            ex = _db()
+            _ensure_tables(ex)
+            n = auto_enqueue_gaps(ex, dry_run=False)
+            print(f"  >> Auto-enqueued {n} research gap(s) for after-close drain")
+        except Exception as e:
+            print(f"  >> Gap auto-enqueue skipped: {e}")
+
     conn.close()
 
     # Auto-trigger curation pipeline after ingestion

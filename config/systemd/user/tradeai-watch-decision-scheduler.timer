@@ -1,0 +1,13 @@
+[Unit]
+Description=Trade AI watch decision scheduler (weekday RTH)
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 09:35:00
+OnCalendar=Mon..Fri *-*-* 11:00:00
+OnCalendar=Mon..Fri *-*-* 13:30:00
+OnCalendar=Mon..Fri *-*-* 15:45:00
+Persistent=true
+Unit=tradeai-watch-decision-scheduler.service
+
+[Install]
+WantedBy=timers.target

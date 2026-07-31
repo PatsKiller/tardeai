@@ -6950,7 +6950,7 @@ def _wl_summary():
     jobs = _db_query("SELECT status, COUNT(*) as cnt FROM watchlist_agent_jobs GROUP BY status") or []
     cards = _db_query("SELECT COUNT(*) as cnt FROM watchlist_research_cards", fetch="one") or {}
     needs_iter = _db_query("SELECT COUNT(*) as cnt FROM watchlist_research_cards WHERE needs_iteration = true", fetch="one") or {}
-    return {
+    out = {
         "by_source": {r["source"]: r["cnt"] for r in by_source},
         "by_status": {r["status"]: r["cnt"] for r in by_status},
         "jobs": {r["status"]: r["cnt"] for r in jobs},
@@ -9035,6 +9035,62 @@ _YT_NAME_JOIN = """LEFT JOIN youtube_channels yc ON (
         ELSE yt.channel_name
     END
 )"""
+
+
+def _intelligence_item_state_get():
+    """GET /api/v2/intelligence/item-state — bulk read operator dismiss/review state by stable item id."""
+    q = getattr(_intelligence_item_state_get, '_query', {}) or {}
+
+    def _qp(k, default=""):
+        v = q.get(k, default)
+        return (v[0] if isinstance(v, list) else v) or default
+
+    ids_raw = _qp("ids")
+    item_type = _qp("type")
+    if not ids_raw:
+        return {}
+    ids = [x.strip() for x in ids_raw.split(",") if x.strip()][:200]
+    if not ids:
+        return {}
+    try:
+        placeholders = ",".join(["%s"] * len(ids))
+        sql = (
+            f"SELECT item_id, item_type, status, note, updated_at, updated_by "
+            f"FROM intelligence_item_state WHERE item_id IN ({placeholders})"
+        )
+        params = list(ids)
+        if item_type:
+            sql += " AND item_type = %s"
+            params.append(item_type)
+        rows = _db_query(sql, tuple(params), fetch="all") or []
+        out = {}
+        for r in rows:
+            iid = r.get("item_id")
+            if not iid:
+                continue
+            out[iid] = {
+                "item_type": r.get("item_type"),
+                "status": r.get("status"),
+                "note": r.get("note"),
+                "updated_at": _json_clean(r.get("updated_at")),
+                "updated_by": r.get("updated_by"),
+            }
+        return out
+    except Exception:
+        return {}
+
+
+def _intelligence_remediation_summary():
+    """GET /api/v2/intelligence/remediation-summary — automation maturity metrics for Learning tab."""
+    try:
+        import sys as _s
+        _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from intelligence_remediation import remediation_summary, _ensure_tables, _db
+        ex = _db()
+        _ensure_tables(ex)
+        return remediation_summary(ex)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:240]}
 
 
 def _intelligence_library():
@@ -33824,6 +33880,8 @@ ROUTES = {
     "/api/v2/news/articles": lambda: _news_articles_list(),
     "/api/v2/rag/status": lambda: _rag_status(),
     "/api/v2/intelligence/library": lambda: _intelligence_library(),
+    "/api/v2/intelligence/item-state": lambda: _intelligence_item_state_get(),
+    "/api/v2/intelligence/remediation-summary": lambda: _intelligence_remediation_summary(),
     "/api/v2/youtube/channel-lookup": lambda: _youtube_channel_lookup(),
     "/api/v2/social/posts": lambda: {"posts": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT id, platform, post_id, username, display_name, text, post_date, url, followers, verified, likes, retweets, replies, quality_score, relevance_score, validation_status, matched_keywords, sentiment, sentiment_score, added_by, ingested_at, strategy_tags, agent_tags FROM social_posts ORDER BY quality_score DESC, ingested_at DESC LIMIT 100") or [])]},
     "/api/v2/social/status": lambda: _social_api_status(),
@@ -37936,6 +37994,41 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
             return admin_write(action="topic.delete", target=f"topic:{tid}",
                                old_value={k: _json_clean(v) for k, v in row.items()}, new_value=None,
+                               apply_fn=_apply, operator=operator,
+                               confirmed=bool(b.get("confirm")), token=b.get("token"))
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if method == "POST" and base_path == "/api/v2/admin/intelligence-item/set-status":
+        try:
+            from admin_write_guard import admin_write
+            b = body or {}
+            item_id = (b.get("item_id") or "").strip()
+            item_type = (b.get("item_type") or "").strip()
+            status = (b.get("status") or "active").strip().lower()
+            if status not in ("active", "dismissed", "reviewed"):
+                return 400, {"ok": False, "error": "status must be active|dismissed|reviewed"}
+            if not item_id or not item_type:
+                return 400, {"ok": False, "error": "item_id and item_type required"}
+            note = (b.get("note") or "")[:500]
+            operator = (b.get("operator") or "operator")[:60]
+            existing = _db_query(
+                "SELECT item_id, item_type, status, note FROM intelligence_item_state WHERE item_id=%s",
+                (item_id,), fetch="one")
+            old_value = {k: _json_clean(v) for k, v in existing.items()} if existing else None
+            new_value = {"item_id": item_id, "item_type": item_type, "status": status, "note": note}
+
+            def _apply():
+                _db_write("""INSERT INTO intelligence_item_state
+                        (item_id, item_type, status, note, updated_at, updated_by)
+                    VALUES (%s,%s,%s,%s,NOW(),%s)
+                    ON CONFLICT (item_id) DO UPDATE SET
+                        item_type=EXCLUDED.item_type, status=EXCLUDED.status, note=EXCLUDED.note,
+                        updated_at=NOW(), updated_by=EXCLUDED.updated_by""",
+                    (item_id, item_type, status, note or None, operator))
+
+            return admin_write(action="intelligence_item.set_status", target=f"intel_item:{item_id}",
+                               old_value=old_value, new_value=new_value,
                                apply_fn=_apply, operator=operator,
                                confirmed=bool(b.get("confirm")), token=b.get("token"))
         except Exception as e:

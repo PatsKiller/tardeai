@@ -4,16 +4,10 @@
  */
 import { useApi } from '../hooks/useApi'
 import { BB, T, TYPE } from '../lib/watchTokens'
+import { humanizeFinding, FINDING_SEVERITY_COLOR } from '../lib/intelFindingLabels'
 
 type Props = {
   onDrill?: (ctx: { title: string; subtitle: string; endpoint: string; rows: any[] }) => void
-}
-
-const sevColor = (s?: string) => {
-  const v = (s || '').toLowerCase()
-  if (v === 'critical' || v === 'error') return BB.red
-  if (v === 'warning' || v === 'warn') return BB.amber
-  return 'var(--text2)'
 }
 
 export default function HermesQualitySpotCheck({ onDrill }: Props) {
@@ -72,29 +66,36 @@ export default function HermesQualitySpotCheck({ onDrill }: Props) {
       {recent.length === 0 ? (
         <div style={{ color: 'var(--text3)', fontSize: TYPE.sm, padding: '6px 0' }}>No pipeline-quality findings loaded.</div>
       ) : (
-        recent.map((f, i) => (
-          <div
-            key={f.id ?? i}
-            onClick={() => onDrill?.({
-              title: f.finding_type ?? `Finding ${i}`,
-              subtitle: f.severity ?? '',
-              endpoint: '/api/v2/hermes/pipeline-quality',
-              rows: [f],
-            })}
-            style={{
-              padding: '6px 4px', borderBottom: '1px solid var(--border)',
-              cursor: onDrill ? 'pointer' : 'default', fontSize: TYPE.sm,
-            }}
-          >
-            <span style={{ color: sevColor(f.severity), fontWeight: 700 }}>{f.severity ?? '—'}</span>
-            <span style={{ marginLeft: 8, color: 'var(--text0)' }}>{f.finding_type ?? ''}</span>
-            {f.symbol && <span style={{ marginLeft: 8, color: T.link, fontFamily: 'monospace' }}>{f.symbol}</span>}
-            <div style={{ fontSize: TYPE.xs, color: 'var(--text3)', marginTop: 2, lineHeight: 1.4 }}>
-              {String(f.description || f.recommended_action || '').slice(0, 160)}
-              {String(f.description || '').length > 160 ? '…' : ''}
+        recent.map((f, i) => {
+          const h = humanizeFinding(f)
+          const c = FINDING_SEVERITY_COLOR[h.severity]
+          return (
+            <div
+              key={f.id ?? i}
+              onClick={() => onDrill?.({
+                title: h.title,
+                subtitle: h.severity,
+                endpoint: '/api/v2/hermes/pipeline-quality',
+                rows: [{ ...f, humanized_title: h.title, humanized_meaning: h.meaning, humanized_resolve: h.resolve }],
+              })}
+              style={{
+                padding: '7px 4px', borderBottom: '1px solid var(--border)',
+                cursor: onDrill ? 'pointer' : 'default', fontSize: TYPE.sm,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+                <span style={{ width: 6, height: 6, borderRadius: 3, background: c, flexShrink: 0 }} />
+                <span style={{ color: 'var(--text0)', fontWeight: 700 }}>{h.title}</span>
+              </div>
+              <div style={{ fontSize: TYPE.xs, color: 'var(--text2)', marginTop: 3, lineHeight: 1.4 }}>
+                {h.meaning}
+              </div>
+              <div style={{ fontSize: TYPE.xs, color: c, marginTop: 3 }}>
+                → {h.resolve}{h.where ? <span style={{ color: 'var(--text3)' }}>  ·  {h.where}</span> : null}
+              </div>
             </div>
-          </div>
-        ))
+          )
+        })
       )}
 
       <div style={{ fontSize: TYPE.xs, color: 'var(--text3)', marginTop: 10 }}>

@@ -2,6 +2,8 @@
 // In-stack translation of the requested design (no Tailwind/shadcn/lucide). Renders a synthesized insight,
 // severity rail, symbol/sector/trend chips, quality/ensemble badge, and inline action buttons.
 
+import { useNavigate } from 'react-router-dom'
+
 export interface ReportCardItem {
   id: string
   source?: string
@@ -53,6 +55,13 @@ function relUrl(u?: string): string | undefined {
   if (!u) return u
   try { const p = new URL(u); return p.pathname + p.search + p.hash } catch { return u }
 }
+// Same-app path (absolute /v3/... or already-stripped route) → route for client-side <Link>-style
+// navigation instead of a full-page <a href> reload. External (other host) urls stay as real anchors.
+function appRoute(u?: string): string | undefined {
+  const p = relUrl(u)
+  if (!p) return undefined
+  return p.startsWith('/v3/') ? p.slice(3) : p.startsWith('/v3') ? p.slice(3) || '/' : undefined
+}
 const chip: React.CSSProperties = { fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 5, background: 'var(--bg2)', color: 'var(--text2)' }
 const TREND_C = (t?: string) => /bull|up|strong/i.test(t || '') ? '#22c55e' : /bear|down|weak/i.test(t || '') ? '#ef4444' : '#a855f7'
 
@@ -60,6 +69,7 @@ export default function SynthesizedReportCard(
   { item, onAction, compact, selected, footer }:
   { item: ReportCardItem; onAction?: (action: string, id: string) => void; compact?: boolean; selected?: boolean; footer?: React.ReactNode }
 ) {
+  const navigate = useNavigate()
   const sv = SEV(item.severity)
   const insight = insightOf(item)
   const syms = (item.symbols && item.symbols.length ? item.symbols : item.symbol ? [item.symbol] : []).slice(0, 4)
@@ -107,9 +117,15 @@ export default function SynthesizedReportCard(
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10, paddingTop: 8, borderTop: '1px solid var(--border-subtle)' }}>
           {item.actions.slice(0, 5).map((a, i) => {
             const slug = a.action || (a.url?.startsWith('#') ? a.url.slice(1) : undefined)
-            const external = a.url && !a.url.startsWith('#')
-            if (external) return <a key={i} href={relUrl(a.url)} onClick={e => e.stopPropagation()} style={{ fontSize: 10, fontWeight: 700, padding: '5px 11px', borderRadius: 6, border: '1px solid #60a5fa55', background: '#60a5fa14', color: '#60a5fa', textDecoration: 'none' }}>{a.label} →</a>
-            return <button key={i} onClick={e => { e.stopPropagation(); onAction?.(slug || a.label, item.id) }} style={{ fontSize: 10, fontWeight: 700, padding: '5px 11px', borderRadius: 6, border: slug ? '1px solid #60a5fa55' : '1px solid var(--border)', background: slug ? '#60a5fa14' : 'var(--bg2)', color: slug ? '#60a5fa' : 'var(--text1)', cursor: 'pointer' }}>{a.label}{slug ? ' →' : ''}</button>
+            const internalRoute = appRoute(a.url)
+            const external = a.url && !a.url.startsWith('#') && !internalRoute
+            const linkStyle: React.CSSProperties = { fontSize: 10, fontWeight: 700, padding: '5px 11px', borderRadius: 6, border: '1px solid #60a5fa55', background: '#60a5fa14', color: '#60a5fa', textDecoration: 'none', cursor: 'pointer' }
+            // Same-app route: client-side navigate (no full-page reload). True external: real <a target=_blank>.
+            if (internalRoute) return <button key={i} onClick={e => { e.stopPropagation(); navigate(internalRoute) }} style={linkStyle}>{a.label} →</button>
+            if (external) return <a key={i} href={relUrl(a.url)} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} style={linkStyle}>{a.label} ↗</a>
+            // No URL at all — hide rather than render a dead no-op button, unless a caller actually wired onAction.
+            if (!onAction) return null
+            return <button key={i} onClick={e => { e.stopPropagation(); onAction(slug || a.label, item.id) }} style={{ fontSize: 10, fontWeight: 700, padding: '5px 11px', borderRadius: 6, border: slug ? '1px solid #60a5fa55' : '1px solid var(--border)', background: slug ? '#60a5fa14' : 'var(--bg2)', color: slug ? '#60a5fa' : 'var(--text1)', cursor: 'pointer' }}>{a.label}{slug ? ' →' : ''}</button>
           })}
         </div>
       )}

@@ -359,29 +359,35 @@ body { font-family: var(--sans); background: var(--bg0); color: var(--text0); }
   .wlc-grid > .wlc-cell + .wlc-cell { border-top: none; border-left: 1px solid rgba(148,163,184,.10); }
 }
 
-/* Security Card v4 — links underline on hover only (audit item G) */
-.wlc4-link { color: #aeb9ca; text-decoration: none; border-bottom: 1px dotted rgba(148,163,184,.35); }
-.wlc4-link:hover { text-decoration: none; border-bottom-color: rgba(174,185,202,.9); color: #ecf1f8; }
+/* Security Card dark redesign — elevated surface + CTA bar */
+.wlc4-link { color: #c5d0e0; text-decoration: none; border-bottom: 1px dotted rgba(148,163,184,.35); }
+.wlc4-link:hover { text-decoration: none; border-bottom-color: rgba(255,176,0,.55); color: #ffb000; }
 
-/* Security Card v4 — Bloomberg Terminal dense panel */
-.wlc-term-grid { display: grid; grid-template-columns: 1fr; border-top: 1px solid #1e293b; }
-.wlc-term-grid > .wlc-term-cell { padding: 6px 10px; min-width: 0; }
-.wlc-term-grid > .wlc-term-cell + .wlc-term-cell { border-top: 1px solid #1e293b; }
+.wlc-card-dark { transition: border-color .15s ease, box-shadow .15s ease; }
+.wlc-card-dark:hover {
+  border-color: rgba(255, 176, 0, 0.28);
+  box-shadow: 0 12px 36px rgba(0,0,0,.6), 0 0 0 1px rgba(255,176,0,.08);
+}
+.wlc-card-cta-bar button:hover { filter: brightness(1.08); }
+
+.wlc-term-grid { display: grid; grid-template-columns: 1fr; border-top: 1px solid #243044; }
+.wlc-term-grid > .wlc-term-cell { padding: 12px 14px; min-width: 0; }
+.wlc-term-grid > .wlc-term-cell + .wlc-term-cell { border-top: 1px solid #243044; }
 @media (min-width: 900px) {
   .wlc-term-grid { grid-template-columns: 1.08fr 0.92fr; }
-  .wlc-term-grid > .wlc-term-cell + .wlc-term-cell { border-top: none; border-left: 1px solid #1e293b; }
+  .wlc-term-grid > .wlc-term-cell + .wlc-term-cell { border-top: none; border-left: 1px solid #243044; }
 }
 .wlc-term-tag {
-  font-size: 8px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase;
-  padding: 1px 5px; border-radius: 1px; line-height: 1.35; white-space: nowrap;
+  font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase;
+  padding: 2px 7px; border-radius: 4px; line-height: 1.35; white-space: nowrap;
 }
 .wlc-term-icon {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 24px; height: 22px; font-size: 12px; font-weight: 800;
-  border: 1px solid #1e293b; border-radius: 2px; background: #111827;
-  color: #94a3b8; cursor: pointer; text-decoration: none;
+  width: 28px; height: 28px; font-size: 12px; font-weight: 800;
+  border: 1px solid #243044; border-radius: 6px; background: #141e30;
+  color: #8b9bb0; cursor: pointer; text-decoration: none;
 }
-.wlc-term-icon:hover { color: #ffb000; border-color: rgba(255, 176, 0, 0.45); }
+.wlc-term-icon:hover { color: #ffb000; border-color: rgba(255, 176, 0, 0.45); background: rgba(255,176,0,.08); }
 
 /* ── Global Bloomberg Terminal UI mode (.cc-terminal-ui on app-shell) ── */
 .cc-terminal-ui {

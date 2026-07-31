@@ -8,7 +8,7 @@ const TYPE_CTA: Record<string, { label: string; to: string; reports?: string }> 
   siem: { label: 'System', to: '/system', reports: '/reports?super=ops&category=system' },
   escalation: { label: 'Agents → Workflow', to: '/agents?tab=workflow', reports: '/reports?super=ops&category=escalations' },
   cio_review: { label: 'Intelligence', to: '/intelligence', reports: '/reports?super=intel' },
-  auto_research: { label: 'Research', to: '/intelligence?tab=research', reports: '/reports?super=intel&category=research' },
+  auto_research: { label: 'Research', to: '/research-intelligence', reports: '/reports?super=intel&category=research' },
 }
 
 interface Props {

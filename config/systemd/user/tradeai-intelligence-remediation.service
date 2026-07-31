@@ -1,0 +1,13 @@
+[Unit]
+Description=Trade AI intelligence remediation loop
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=@PROJECT_ROOT@
+Environment=PATH=@PROJECT_ROOT@/.venv/bin:/usr/bin:/bin
+ExecStart=@PYTHON@ scripts/intelligence_remediation.py --run
+Nice=10
+
+[Install]
+WantedBy=default.target

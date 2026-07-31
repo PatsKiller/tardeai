@@ -103,6 +103,30 @@ def run(*, dry_run: bool = False) -> dict:
         for row in new_rows:
             send_telegram(format_alert(row))
             seen.add(str(row.get("artifact_id")))
+            recent = list(state.get("recent_alerts") or [])
+            payload = row.get("payload")
+            if isinstance(payload, str):
+                try:
+                    payload = json.loads(payload)
+                except json.JSONDecodeError:
+                    payload = {}
+            if not isinstance(payload, dict):
+                payload = {}
+            recent.append(
+                {
+                    "artifact_id": str(row.get("artifact_id") or ""),
+                    "agent_id": str(row.get("agent_id") or ""),
+                    "artifact_type": str(row.get("artifact_type") or ""),
+                    "severity": str(payload.get("severity") or "high"),
+                    "alerted_at": datetime.now(timezone.utc).isoformat(),
+                    "summary": (
+                        (payload.get("findings") or [{}])[0].get("message")
+                        if isinstance((payload.get("findings") or [None])[0], dict)
+                        else None
+                    ),
+                }
+            )
+            state["recent_alerts"] = recent[-50:]
             sent += 1
         state["seen_artifact_ids"] = list(seen)
         _save_state(state)

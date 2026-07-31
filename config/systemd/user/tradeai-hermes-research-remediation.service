@@ -1,0 +1,13 @@
+[Unit]
+Description=Trade AI Hermes research quality remediation
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=@PROJECT_ROOT@
+Environment=PATH=@PROJECT_ROOT@/.venv/bin:/usr/bin:/bin
+ExecStart=@PYTHON@ scripts/hermes_research_quality_remediation.py --run --budget 25
+Nice=10
+
+[Install]
+WantedBy=default.target

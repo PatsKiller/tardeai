@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import ReactFlow, { Background, Controls, MarkerType } from 'reactflow'
 import 'reactflow/dist/style.css'
@@ -9,14 +9,16 @@ import { EvidenceBlock } from '../components/EvidenceBlock'
 import HermesClosedLoopPanel from '../components/HermesClosedLoopPanel'
 import HermesDiscoveryInbox from '../components/HermesDiscoveryInbox'
 import HermesQualitySpotCheck from '../components/HermesQualitySpotCheck'
+import HermesBriefsPanel from '../components/HermesBriefsPanel'
 import PrivateProxyCard from '../components/PrivateProxyCard'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubTab } from '../lib/terminalHubChrome'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 const FLEETS = ['Research Fleet', 'Momentum Scalp Swarm'] as const
-// Operator-first order: triage tabs before registry/debug tabs.
-const TABS = ['Overview', 'Research', 'Closed Loop', 'Maturity', 'Discovery', 'Workflow', 'Sources', 'Provenance', 'Pipeline', 'Dual Opinion', 'Proxy Cards'] as const
+// Operator-first order: Briefs (analyst-report reading) is the default landing tab;
+// "Pipeline Ops" (formerly "Overview") is the ops/telemetry view, not the front door.
+const TABS = ['Briefs', 'Pipeline Ops', 'Research', 'Closed Loop', 'Maturity', 'Discovery', 'Workflow', 'Sources', 'Provenance', 'Pipeline', 'Dual Opinion', 'Proxy Cards'] as const
 const REGISTRY_TABS = new Set(['Sources', 'Provenance', 'Pipeline', 'Proxy Cards', 'Dual Opinion'])
 const SCALP_TABS = ['Overview', 'Workflow', 'Getting Started'] as const
 
@@ -148,10 +150,19 @@ function domainsOf(srcJson: any): string[] {
 const HSTATE_COLOR: Record<HState, string> = { operational: '#22c55e', live_data: '#06b6d4', running_unapproved: '#f59e0b', designed: '#64748b', disabled: '#ef4444', idle: '#f59e0b', dormant: '#ef4444' }
 const HSTATE_LABEL: Record<HState, string> = { operational: 'operational (live)', live_data: 'live data', running_unapproved: 'running — NOT approved', designed: 'designed — no footprint', disabled: 'disabled — not approved', idle: 'idle — ran recently', dormant: 'DORMANT — no recent output' }
 
+// Accept ?tab=<slug> for deep-linking from other hubs (e.g. Intelligence → Hermes Maturity/Closed Loop) —
+// slug is the tab label, lowercased and space-hyphenated ("Closed Loop" -> "closed-loop").
+function tabFromSlug(slug: string | null): typeof TABS[number] | null {
+  if (!slug) return null
+  const norm = slug.toLowerCase().trim()
+  return TABS.find(t => t.toLowerCase().replace(/\s+/g, '-') === norm) ?? null
+}
+
 export default function HermesHub({ onDrill }: Props) {
   const [terminalUi] = useTerminalUi()
+  const [searchParams] = useSearchParams()
   const [fleet, setFleet] = useState<typeof FLEETS[number]>('Research Fleet')
-  const [tab, setTab] = useState<typeof TABS[number]>('Overview')
+  const [tab, setTab] = useState<typeof TABS[number]>(() => tabFromSlug(searchParams.get('tab')) ?? 'Briefs')
   const [scalpTab, setScalpTab] = useState<typeof SCALP_TABS[number]>('Overview')
   const { data: health } = useApi<any>('/api/v2/hermes/health', 120_000)
   const { data: scalpSwarm } = useApi<any>('/api/v2/hermes/scalp-swarm/status', 60_000)
@@ -416,7 +427,7 @@ export default function HermesHub({ onDrill }: Props) {
       {editProfile && <HermesSoulEditor profile={editProfile} onClose={() => setEditProfile(null)} />}
       <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
         {FLEETS.map(f => (
-          <button key={f} onClick={() => { setFleet(f); setActiveTab('Overview' as any) }} style={{
+          <button key={f} onClick={() => { setFleet(f); setActiveTab((f.includes('Scalp') ? 'Overview' : 'Briefs') as any) }} style={{
             padding: '6px 14px', fontSize: 12, borderRadius: 6, cursor: 'pointer', fontWeight: fleet === f ? 700 : 500,
             background: fleet === f ? (f.includes('Scalp') ? 'rgba(168,85,247,.15)' : 'rgba(96,165,250,.15)') : 'var(--bg2)',
             color: fleet === f ? (f.includes('Scalp') ? '#a855f7' : '#60a5fa') : 'var(--text3)',
@@ -615,7 +626,9 @@ export default function HermesHub({ onDrill }: Props) {
         </div>
       )}
 
-      {!isScalp && tab === 'Overview' && (
+      {!isScalp && tab === 'Briefs' && <HermesBriefsPanel onDrill={onDrill} />}
+
+      {!isScalp && tab === 'Pipeline Ops' && (
         <div>
         <HermesQualitySpotCheck onDrill={onDrill} />
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>

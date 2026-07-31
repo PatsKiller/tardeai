@@ -1,0 +1,13 @@
+[Unit]
+Description=Trade AI maturity feed refresh (gates snapshot)
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=@PROJECT_ROOT@
+Environment=PATH=@PROJECT_ROOT@/.venv/bin:/usr/bin:/bin
+ExecStart=@PYTHON@ scripts/hermes_maturity_gates.py --snapshot
+Nice=10
+
+[Install]
+WantedBy=default.target

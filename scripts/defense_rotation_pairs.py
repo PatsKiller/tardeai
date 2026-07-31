@@ -20,6 +20,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+import sys
+sys.path.insert(0, str(ROOT / "scripts" / "lib"))
 CFG = json.loads((ROOT / "config" / "defense_recommendations.json").read_text())
 PC = CFG["rotation_pairs"]
 
@@ -195,11 +197,16 @@ def build_rotation_pairs(cur, trim_cards: list, rotate_cards: list, market: dict
 
 def _stage_buy_legs(cur, pair_id: str, legs: list):
     """Buy legs → PENDING proposals through the family-gated queue (operator approves)."""
+    from lib.hermes_research_gate import proposal_prior_research_blocked
     for l in legs:
         cur.execute("""SELECT 1 FROM paper_trade_proposals WHERE symbol=%s
                        AND strategy_id='rotation_pair_buy' AND status='PENDING' LIMIT 1""",
                     (l["symbol"],))
         if cur.fetchone():
+            continue
+        blocked = proposal_prior_research_blocked(cur, l["symbol"])
+        if blocked:
+            print(f"[pairs] stage deferred for {l['symbol']}: {blocked}")
             continue
         entry = l["price"]
         try:

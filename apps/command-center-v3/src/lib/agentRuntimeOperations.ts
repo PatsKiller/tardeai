@@ -1,3 +1,10 @@
+export interface AgentBudgetPayload {
+  max_model_calls: number
+  max_tool_calls: number
+  max_cost_usd: number
+  deadline_seconds: number
+}
+
 export interface AgentOperationsEntry {
   agent_id: string
   display_name: string
@@ -5,6 +12,8 @@ export interface AgentOperationsEntry {
   lifecycle: string
   role: string
   summary: string
+  allowed_job_types?: string[]
+  budget?: AgentBudgetPayload
   trigger_kind: string | null
   trigger_description: string | null
   triggers: Array<{ kind: string; description: string }>
@@ -73,6 +82,7 @@ export interface AgentOperationsPayload {
   observed_at: string
   read_only: true
   timer_probe_enabled: boolean
+  critic_lanes_enabled?: boolean
   promotion_framework?: PromotionFrameworkMeta
   shadow_dispatch_model?: string | null
   openclaw_personas?: OpenClawPersonaRow[]
@@ -121,4 +131,43 @@ export function operationsByAgent(payload: AgentOperationsPayload | null): Map<s
   const m = new Map<string, AgentOperationsEntry>()
   for (const row of payload?.agents ?? []) m.set(row.agent_id, row)
   return m
+}
+
+export interface FleetAlertRow {
+  artifact_id: string
+  agent_id: string
+  artifact_type: string
+  severity: string
+  alerted_at: string
+  summary?: string | null
+}
+
+export interface FleetAlertsPayload {
+  contract: string
+  read_only: true
+  observed_at: string
+  source: string
+  state_updated_at?: string | null
+  alerts: FleetAlertRow[]
+  count: number
+}
+
+export async function resolveFleetAlerts(
+  fetchImpl?: typeof fetch,
+  limit = 20,
+): Promise<FleetAlertsPayload | null> {
+  const doFetch = fetchImpl ?? (typeof fetch !== 'undefined' ? fetch : undefined)
+  if (!doFetch) return null
+  try {
+    const response = await doFetch(`/api/v3/agent-runtime/fleet-alerts?limit=${limit}`, {
+      method: 'GET',
+      headers: { accept: 'application/json' },
+    })
+    if (!response.ok) return null
+    const payload = await response.json() as FleetAlertsPayload
+    if (payload?.read_only !== true || !Array.isArray(payload.alerts)) return null
+    return payload
+  } catch {
+    return null
+  }
 }

@@ -67,6 +67,7 @@ export function FleetOperationsBar({
   runtimeLive,
   asOf,
   lastRefresh,
+  criticLanesEnabled,
 }: {
   pulse: FleetRunPulse | null
   readiness: ResolvedReadinessView
@@ -78,6 +79,7 @@ export function FleetOperationsBar({
   runtimeLive: boolean
   asOf: string
   lastRefresh: string
+  criticLanesEnabled?: boolean | null
 }) {
   const dispatch = readiness.payload?.wiring?.dispatch
   const dispatchTone: BadgeTone = dispatch?.state === 'WIRED' ? 'green' : 'amber'
@@ -118,6 +120,17 @@ export function FleetOperationsBar({
           {healthMonitor?.last_checked_at
             ? `checked ${fmtDeskAge(healthMonitor.last_checked_at) ?? fmtDeskTimestamp(healthMonitor.last_checked_at)}`
             : 'No monitor observation yet.'}
+        </div>
+      </div>
+      <div style={{ padding: 10, borderRadius: 8, background: 'var(--bg2)' }}>
+        <div style={{ fontSize: TYPE.xs, color: 'var(--text3)', marginBottom: 6 }} title="AGENT_RUNTIME_CRITIC_LANES — cloud/local LLM escalation for iris, hermes, alex, reflection, aegis.">Critic LLM lanes</div>
+        <StatusBadge tone={criticLanesEnabled ? 'green' : 'amber'}>
+          {criticLanesEnabled ? 'ENABLED' : 'OFF'}
+        </StatusBadge>
+        <div style={{ marginTop: 6, fontSize: TYPE.xs, color: 'var(--text2)', lineHeight: 1.45 }}>
+          {criticLanesEnabled
+            ? 'Severity-gated Grok/ChatGPT/local escalation active for TEXT_ONLY and LOCAL_ONLY critics.'
+            : 'Deterministic-only critics; set AGENT_RUNTIME_CRITIC_LANES=1 to enable model lanes.'}
         </div>
       </div>
       <div style={{ padding: 10, borderRadius: 8, background: 'var(--bg2)' }}>

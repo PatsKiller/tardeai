@@ -1,0 +1,12 @@
+[Unit]
+Description=Trade AI intelligence remediation (topic gaps, ensemble)
+
+[Timer]
+OnCalendar=*-*-* 08:15:00
+OnCalendar=*-*-* 12:15:00
+OnCalendar=*-*-* 16:15:00
+Persistent=true
+Unit=tradeai-intelligence-remediation.service
+
+[Install]
+WantedBy=timers.target

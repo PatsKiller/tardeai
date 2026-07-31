@@ -1,0 +1,13 @@
+[Unit]
+Description=Trade AI Hermes research quality gates remediation
+
+[Timer]
+OnCalendar=*-*-* 07:45:00
+OnCalendar=*-*-* 10:30:00
+OnCalendar=*-*-* 14:00:00
+OnCalendar=*-*-* 17:30:00
+Persistent=true
+Unit=tradeai-hermes-research-remediation.service
+
+[Install]
+WantedBy=timers.target

@@ -13,9 +13,10 @@ import {
   type AgentRuntimeDefinition,
 } from '../lib/agentRuntimeMonitoring'
 import { resolveAgentRuntimeView, readApiBaseFromEnv, type ResolvedRuntimeView } from '../lib/agentRuntimeReadAdapter'
-import { resolveAgentRuntimeDetail, type AgentDetailView } from '../lib/agentRuntimeDetailAdapter'
+import { resolveAgentRuntimeDetail, irisVerdictLabel, severityTone, laneChipLabel, type AgentDetailView } from '../lib/agentRuntimeDetailAdapter'
 import { buildAgentRunRollup, buildFleetRunPulse, fetchAgentRuntimeRuns, type AgentRunRollupEntry } from '../lib/agentRuntimeRunRollup'
-import { resolveAgentRuntimeOperations, operationsByAgent, type AgentOperationsEntry, type AgentOperationsPayload, type PromotionFrameworkMeta } from '../lib/agentRuntimeOperations'
+import { resolveAgentRuntimeOperations, operationsByAgent, resolveFleetAlerts, type AgentOperationsEntry, type AgentOperationsPayload, type FleetAlertsPayload, type PromotionFrameworkMeta } from '../lib/agentRuntimeOperations'
+import { mergeAgentDefinition } from '../lib/agentRuntimeMerge'
 import { useApi } from '../hooks/useApi'
 import { fmtDeskAge, fmtDeskTimestamp } from '../lib/fmtTimestamp'
 import {
@@ -202,10 +203,17 @@ function ArtifactReviewDesk({ d }: { d: AgentDetailView }) {
     {verdicts.length > 0 && <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>{verdicts.map(([v, n]) => <StatusBadge key={v} tone={v === 'PASS' ? 'green' : v === 'QUARANTINE' ? 'amber' : 'slate'}>{v} {n}</StatusBadge>)}</div>}
     <div style={{ display: 'grid', gap: 4, maxHeight: 190, overflowY: 'auto' }}>
       {d.artifacts.slice(0, 12).map(a => <div key={a.artifactId} style={{ padding: '5px 8px', borderRadius: 6, background: 'var(--bg2)', fontSize: TYPE.xs }}>
-        <span style={{ fontFamily: 'var(--mono)', color: 'var(--text3)' }}>{a.payloadHash.slice(0, 10) || a.artifactId.slice(0, 10)}</span>
-        <span style={{ color: 'var(--text2)' }}> · {a.producer || '—'}</span>
-        {a.reviewer && <span> · rev <b>{a.reviewer}</b>{a.verdict ? ` (${a.verdict})` : ''}</span>}
-        {a.scorer && <span> · scr {a.scorer}</span>}
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontFamily: 'var(--mono)', color: 'var(--text3)' }}>{a.payloadHash.slice(0, 10) || a.artifactId.slice(0, 10)}</span>
+          {a.severity && <StatusBadge tone={severityTone(a.severity)}>{a.severity.toUpperCase()}</StatusBadge>}
+          {(a.providerFamily || a.model) && <StatusBadge tone="blue">{laneChipLabel(a.providerFamily, a.model)}</StatusBadge>}
+          {a.artifactKind && <StatusBadge tone="slate">{a.artifactKind}</StatusBadge>}
+        </div>
+        <div style={{ marginTop: 3 }}>
+          <span style={{ color: 'var(--text2)' }}>{a.producer || '—'} · {a.artifactType || 'artifact'}</span>
+          {a.reviewer && <span> · rev <b>{a.reviewer}</b>{a.verdict ? ` (${a.verdict})` : ''}</span>}
+          {a.scorer && <span> · scr {a.scorer}</span>}
+        </div>
       </div>)}
       {d.artifacts.length === 0 && <div style={{ fontSize: TYPE.xs, color: 'var(--text3)' }}>No artifacts attributed to this agent yet.</div>}
     </div>
@@ -254,9 +262,19 @@ function KnowledgeDesk({ d }: { d: AgentDetailView }) {
     {candidates.length > 0 && (
       <div style={{ marginTop: 8, display: 'grid', gap: 6 }}>
         <div style={{ ...label }}>Candidate lessons — operator ratification</div>
-        {candidates.slice(0, 8).map(l => (
+        {candidates.slice(0, 8).map(l => {
+          const iris = d.irisLessonVerdicts[l.lessonId]
+          const criticLabel = iris ? irisVerdictLabel(iris.code, iris.verdict) : null
+          return (
           <div key={l.lessonId} style={{ padding: '6px 8px', borderRadius: 6, background: 'var(--bg2)', fontSize: TYPE.xs }}>
-            <div style={{ fontWeight: 700, color: 'var(--text1)' }}>{l.title || l.lessonId}</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}>
+              <div style={{ fontWeight: 700, color: 'var(--text1)' }}>{l.title || l.lessonId}</div>
+              {criticLabel && (
+                <StatusBadge tone={criticLabel === 'CONTRADICTION' ? 'red' : criticLabel === 'DUPLICATE' ? 'amber' : criticLabel === 'NOVEL' ? 'green' : 'slate'}>
+                  Iris · {criticLabel}
+                </StatusBadge>
+              )}
+            </div>
             <div style={{ color: 'var(--text3)', marginTop: 2, fontFamily: 'var(--mono)' }}>{l.lessonId}</div>
             <div style={{ color: 'var(--text2)', marginTop: 4, lineHeight: 1.4 }}>{l.statement.slice(0, 240)}{l.statement.length > 240 ? '…' : ''}</div>
             <button type="button" disabled={busy === l.lessonId} onClick={() => void ratify(l)}
@@ -264,7 +282,7 @@ function KnowledgeDesk({ d }: { d: AgentDetailView }) {
               {busy === l.lessonId ? 'Ratifying…' : 'Ratify (human-only)'}
             </button>
           </div>
-        ))}
+        )})}
       </div>
     )}
     {msg && <div style={{ marginTop: 8, fontSize: TYPE.xs, color: BB.amber }}>{msg}</div>}
@@ -730,6 +748,28 @@ function actionToggleStyle(active: boolean): CSSProperties {
   }
 }
 
+function RecentCriticAlertsPanel({ alerts }: { alerts: FleetAlertsPayload | null }) {
+  const rows = alerts?.alerts ?? []
+  return <LiveDesk title="Recent critic alerts" badge={`${rows.length} SHOWN`}>
+    <div style={{ fontSize: TYPE.xs, color: 'var(--text3)', marginBottom: 8 }}>
+      HIGH/CRITICAL FLEET findings escalated via fleet_alert_bridge (Telegram + this panel). Read-only tail of bridge state.
+    </div>
+    <div style={{ display: 'grid', gap: 4, maxHeight: 160, overflowY: 'auto' }}>
+      {rows.slice(0, 10).map(a => (
+        <div key={`${a.artifact_id}-${a.alerted_at}`} style={{ padding: '5px 8px', borderRadius: 6, background: 'var(--bg2)', fontSize: TYPE.xs }}>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+            <StatusBadge tone={severityTone(a.severity)}>{a.severity.toUpperCase()}</StatusBadge>
+            <span style={{ color: 'var(--text2)' }}>{a.agent_id} · {a.artifact_type}</span>
+            <span style={{ color: 'var(--text3)', fontFamily: 'var(--mono)' }}>{fmtDeskAge(a.alerted_at) ?? a.alerted_at}</span>
+          </div>
+          {a.summary && <div style={{ marginTop: 3, color: 'var(--text2)', lineHeight: 1.4 }}>{a.summary}</div>}
+        </div>
+      ))}
+      {rows.length === 0 && <div style={{ fontSize: TYPE.xs, color: 'var(--text3)' }}>No critic alerts recorded yet (bridge state empty or not run).</div>}
+    </div>
+  </LiveDesk>
+}
+
 function filterTabStyle(active: boolean): CSSProperties {
   return {
     fontSize: TYPE.xs, fontWeight: 750,
@@ -763,6 +803,7 @@ function RuntimeView() {
   } | null>(null)
   const [operationsObservedAt, setOperationsObservedAt] = useState<string | null>(null)
   const [operationsPayload, setOperationsPayload] = useState<AgentOperationsPayload | null>(null)
+  const [fleetAlerts, setFleetAlerts] = useState<FleetAlertsPayload | null>(null)
   const [detail, setDetail] = useState<AgentDetailView | null>(null)
 
   const refreshAll = () => {
@@ -784,6 +825,9 @@ function RuntimeView() {
         setOperationsObservedAt(view.payload?.observed_at ?? null)
       })
       .catch(() => { setOperationsMap(new Map()); setOperationsPayload(null); setOperationsHealth(null); setOperationsObservedAt(null) })
+    resolveFleetAlerts()
+      .then(setFleetAlerts)
+      .catch(() => setFleetAlerts(null))
     fetchAgentRuntimeRuns(base)
       .then(rows => {
         if (!rows) {
@@ -823,7 +867,19 @@ function RuntimeView() {
     : AGENT_RUNTIME_CATALOG.map(a => ({ agentId: a.agentId, displayName: a.displayName, role: a.role, subsystem: 'FLEET', lifecycle: a.lifecycle, enabled: a.enabled, retrievalRequired: a.retrievalRequired, deadlineSeconds: a.budget.deadlineSeconds }))
   const selectedStatic = AGENT_RUNTIME_CATALOG.find(agent => agent.agentId === selectedId)
   const selectedCatalog = catalogRows.find(a => a.agentId === selectedId)
-  const selected = selectedStatic ?? (selectedCatalog ? { ...AGENT_RUNTIME_CATALOG[0], agentId: selectedCatalog.agentId, displayName: selectedCatalog.displayName, role: selectedCatalog.role, lifecycle: selectedCatalog.lifecycle as AgentLifecycle, enabled: selectedCatalog.enabled, retrievalRequired: selectedCatalog.retrievalRequired, budget: { ...AGENT_RUNTIME_CATALOG[0].budget, deadlineSeconds: selectedCatalog.deadlineSeconds } } : AGENT_RUNTIME_CATALOG[0])
+  const selectedOps = operationsMap.get(selectedId)
+  const selected = mergeAgentDefinition(
+    selectedStatic ?? {
+      ...AGENT_RUNTIME_CATALOG[0],
+      agentId: selectedId,
+      displayName: selectedCatalog?.displayName ?? selectedId,
+    },
+    selectedOps,
+    selectedCatalog ? {
+      ...selectedCatalog,
+      lifecycle: selectedCatalog.lifecycle as AgentLifecycle,
+    } : null,
+  )
   const runTemplate = readinessView.payload?.manual_run_command_template
   const dispatchWired = readinessView.payload?.wiring?.dispatch?.state === 'WIRED'
   const dispatchOperableMap = useMemo(() => {
@@ -873,7 +929,7 @@ function RuntimeView() {
     <OperatorWiringPanel readiness={readinessView} runtimeState={runtimeView.state} asOf={displayAsOf} lastRefresh={lastRefresh} />
     {readinessView.state !== 'CONNECTED' && <ReadinessFallbackBanner detail={readinessView.detail} />}
 
-    <FleetOperationsBar pulse={fleetPulse} readiness={readinessView} healthMonitor={operationsHealth} runtimeLive={runtimeView.live} asOf={displayAsOf} lastRefresh={lastRefresh} />
+    <FleetOperationsBar pulse={fleetPulse} readiness={readinessView} healthMonitor={operationsHealth} runtimeLive={runtimeView.live} asOf={displayAsOf} lastRefresh={lastRefresh} criticLanesEnabled={operationsPayload?.critic_lanes_enabled ?? null} />
 
     <ShadowPromotionExplainer framework={operationsPayload?.promotion_framework} dispatchModel={operationsPayload?.shadow_dispatch_model} />
     <OpenClawCrosswalkPanel operationsPayload={operationsPayload} />
@@ -918,6 +974,7 @@ function RuntimeView() {
           <EmptyEvidence title="Artifact review desk" description="No authoritative artifacts are loaded. Immutable hash, producer, independent reviewer, scorer, deterministic gate, contradictions, operator disposition, outcome, and Darwin score remain zero rather than inferred." />
           <EmptyEvidence title="Knowledge and learning" description="Cases, candidate lessons, ratified lessons, contradictions, Nightly Reflection outputs, and Iris/operator dispositions are not connected. Automatic production promotion remains impossible." />
         </>}
+      <RecentCriticAlertsPanel alerts={fleetAlerts} />
     </div>
 
     <div style={{ ...panel }}>

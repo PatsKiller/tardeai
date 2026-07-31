@@ -2586,6 +2586,7 @@ def _sem_exempt_path(path: str) -> bool:
         "/api/v2/risk-regime/latest",
         "/api/v2/live-trading-gate",
         "/api/v2/paper-trade-readiness",
+        "/api/v2/intelligence/remediation-summary",
     ):
         return True
     # Static SPA/assets — cheap, high volume

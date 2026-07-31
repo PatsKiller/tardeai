@@ -8,7 +8,7 @@ const ACT_ROUTE: Record<string, string> = {
   stop_triggered: '/v3/risk', unprotected_position: '/v3/risk', risk_review: '/v3/risk',
   approval_needed: '/v3/trading', broker_manual: '/v3/trading', hermes_review: '/v3/hermes',
   system_health: '/v3/system', cron_or_backup: '/v3/system', llm_review: '/v3/system',
-  research_needed: '/v3/intelligence', portfolio_review: '/v3/portfolio', recovery: '/v3/risk',
+  research_needed: '/v3/research-intelligence', portfolio_review: '/v3/portfolio', recovery: '/v3/risk',
 }
 
 function actionRoute(a: DeckAction): string {

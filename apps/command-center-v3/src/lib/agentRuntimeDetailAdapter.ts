@@ -15,6 +15,20 @@ export interface JoinedArtifact {
   verdict?: string
   scorer?: string
   createdAt?: string
+  severity?: string
+  artifactKind?: string
+  providerFamily?: string
+  model?: string
+  primaryFindingCode?: string
+  primaryFindingVerdict?: string
+  primaryLessonId?: string
+}
+
+export interface IrisLessonVerdict {
+  code: string
+  verdict: string
+  severity?: string
+  artifactId?: string
 }
 
 export interface LessonItem {
@@ -34,6 +48,7 @@ export interface AgentDetailView {
   counts: { produced: number; reviewed: number; scored: number; byVerdict: Record<string, number> }
   lessons: { total: number; byLifecycle: Record<string, number>; items: LessonItem[] }
   cases: { total: number; byType: Record<string, number> }
+  irisLessonVerdicts: Record<string, IrisLessonVerdict>
   detail: string
 }
 
@@ -42,11 +57,61 @@ export function normalizeAgentId(raw: unknown): string {
   return String(raw ?? '').trim().replace(SUFFIX, '')
 }
 
+export function irisVerdictLabel(code?: string, verdict?: string): string | null {
+  const c = String(code ?? '').toLowerCase()
+  if (c === 'contradiction_confirmed' || verdict === 'contradiction') return 'CONTRADICTION'
+  if (c === 'duplicate_lesson' || verdict === 'duplicate') return 'DUPLICATE'
+  if (c === 'support_ratification' || verdict === 'support') return 'NOVEL'
+  if (c === 'classification_deferred') return 'DEFERRED'
+  if (c === 'provenance_thin') return 'THIN PROVENANCE'
+  return verdict ? verdict.toUpperCase() : null
+}
+
+export function severityTone(severity?: string): 'blue' | 'green' | 'amber' | 'red' | 'slate' {
+  const s = String(severity ?? '').toLowerCase()
+  if (s === 'critical') return 'red'
+  if (s === 'high') return 'red'
+  if (s === 'warning') return 'amber'
+  if (s === 'info') return 'slate'
+  return 'slate'
+}
+
+export function laneChipLabel(family?: string, model?: string): string {
+  const f = String(family ?? '').toLowerCase()
+  const m = String(model ?? '').trim()
+  if (!f || f === 'deterministic' || m === 'none') return 'deterministic'
+  if (f.includes('grok')) return m ? `grok/${m}` : 'grok'
+  if (f.includes('chatgpt') || f.includes('openai')) return m ? `chatgpt/${m}` : 'chatgpt'
+  if (f === 'local' || f.includes('ollama')) return m ? `local/${m}` : 'local/ollama'
+  return m ? `${f}/${m}` : f
+}
+
 function emptyView(agentId: string, live: boolean, detail: string): AgentDetailView {
   return {
     live, agentId, role: 'none', runs: [], artifacts: [],
     counts: { produced: 0, reviewed: 0, scored: 0, byVerdict: {} },
-    lessons: { total: 0, byLifecycle: {}, items: [] }, cases: { total: 0, byType: {} }, detail,
+    lessons: { total: 0, byLifecycle: {}, items: [] }, cases: { total: 0, byType: {} },
+    irisLessonVerdicts: {},
+    detail,
+  }
+}
+
+function artifactFromRow(a: Row): JoinedArtifact {
+  const aid = String(a.artifact_id ?? '')
+  const producer = normalizeAgentId(a.producer_agent_id)
+  return {
+    artifactId: aid,
+    producer,
+    artifactType: String(a.artifact_type ?? ''),
+    payloadHash: String(a.payload_hash ?? ''),
+    createdAt: String(a.created_at ?? ''),
+    severity: a.severity ? String(a.severity) : undefined,
+    artifactKind: a.artifact_kind ? String(a.artifact_kind) : undefined,
+    providerFamily: a.provider_family ? String(a.provider_family) : undefined,
+    model: a.model ? String(a.model) : undefined,
+    primaryFindingCode: a.primary_finding_code ? String(a.primary_finding_code) : undefined,
+    primaryFindingVerdict: a.primary_finding_verdict ? String(a.primary_finding_verdict) : undefined,
+    primaryLessonId: a.primary_lesson_id ? String(a.primary_lesson_id) : undefined,
   }
 }
 
@@ -81,6 +146,7 @@ export async function resolveAgentRuntimeDetail(
   const artifactById = new Map<string, JoinedArtifact>()
   const engaged = new Set<string>()
   const runInfo: AgentDetailView['runs'] = []
+  const irisLessonVerdicts: Record<string, IrisLessonVerdict> = {}
 
   for (const run of runs.slice(0, 50)) {
     const runId = String(run.run_id ?? '')
@@ -94,12 +160,17 @@ export async function resolveAgentRuntimeDetail(
     for (const a of arts ?? []) {
       const aid = String(a.artifact_id ?? '')
       if (!aid || String(a.artifact_type ?? '') === '__run_event__') continue
-      const producer = normalizeAgentId(a.producer_agent_id)
-      artifactById.set(aid, {
-        artifactId: aid, producer, artifactType: String(a.artifact_type ?? ''),
-        payloadHash: String(a.payload_hash ?? ''), createdAt: String(a.created_at ?? ''),
-      })
-      if (producer === agentId) { engaged.add(aid); touched = true }
+      const joined = artifactFromRow(a)
+      artifactById.set(aid, joined)
+      if (joined.producer === 'iris' && joined.artifactType === 'knowledge_review' && joined.primaryLessonId) {
+        irisLessonVerdicts[joined.primaryLessonId] = {
+          code: joined.primaryFindingCode ?? '',
+          verdict: joined.primaryFindingVerdict ?? '',
+          severity: joined.severity,
+          artifactId: aid,
+        }
+      }
+      if (joined.producer === agentId) { engaged.add(aid); touched = true }
     }
     for (const r of reviews ?? []) {
       const aid = String(r.artifact_id ?? '')
@@ -163,6 +234,7 @@ export async function resolveAgentRuntimeDetail(
     counts: { produced, reviewed, scored, byVerdict },
     lessons: { total: lessonRows.length, byLifecycle, items: lessonItems },
     cases: { total: caseRows.length, byType },
+    irisLessonVerdicts,
     detail: 'Live read-only detail from the agent-runtime read API.',
   }
 }

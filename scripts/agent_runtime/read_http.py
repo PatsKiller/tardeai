@@ -27,6 +27,7 @@ from .read_api import READ_API_CONTRACT, READ_ROUTES, ReadOnlyAgentRuntimeAPI
 AGENT_RUNTIME_READ_PREFIX = "/api/v3/agent-runtime"
 AGENT_RUNTIME_READINESS_PATH = f"{AGENT_RUNTIME_READ_PREFIX}/readiness"
 AGENT_RUNTIME_OPERATIONS_PATH = f"{AGENT_RUNTIME_READ_PREFIX}/operations"
+AGENT_RUNTIME_FLEET_ALERTS_PATH = f"{AGENT_RUNTIME_READ_PREFIX}/fleet-alerts"
 AGENT_MATURITY_READ_PREFIX = "/api/v3/agent-maturity"
 
 # Hard bounds applied to pagination regardless of what the client sends.
@@ -206,6 +207,21 @@ def dispatch(
             return 200, operations_payload(root, reader=reader, agent_id=agent_id)
         except Exception:
             return 503, zero_authority_envelope("not_connected", "agent-runtime operations is unavailable")
+
+    if path == AGENT_RUNTIME_FLEET_ALERTS_PATH:
+        if method != "GET":
+            return 405, zero_authority_envelope(
+                "method_not_allowed", f"{method} is not allowed; the fleet-alerts surface is read-only (GET only)"
+            )
+        try:
+            from .operations import fleet_alerts_payload
+
+            limit = _as_int((query or {}).get("limit"), 20)
+            if limit > MAX_LIMIT:
+                limit = MAX_LIMIT
+            return 200, fleet_alerts_payload(limit=limit)
+        except Exception:
+            return 503, zero_authority_envelope("not_connected", "agent-runtime fleet-alerts is unavailable")
 
     if method != "GET":
         return 405, zero_authority_envelope(

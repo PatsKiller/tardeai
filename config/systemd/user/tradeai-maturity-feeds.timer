@@ -1,0 +1,10 @@
+[Unit]
+Description=Trade AI Hermes maturity gates daily snapshot
+
+[Timer]
+OnCalendar=*-*-* 07:20:00
+Persistent=true
+Unit=tradeai-maturity-feeds.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,13 @@
+[Unit]
+Description=Trade AI watch decision scheduler (auto-run free critics)
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=@PROJECT_ROOT@
+Environment=PATH=@PROJECT_ROOT@/.venv/bin:/usr/bin:/bin
+ExecStart=@PYTHON@ scripts/watch_decision_scheduler.py --run
+Nice=10
+
+[Install]
+WantedBy=default.target

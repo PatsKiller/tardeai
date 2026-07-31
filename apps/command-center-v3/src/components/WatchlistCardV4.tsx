@@ -119,7 +119,7 @@ function ladderFocusIndex(ladder: Ladder | null): number {
   return ladder.steps.length > 1 ? 1 : 0
 }
 
-const micro: CSSProperties = { fontSize: 8, fontWeight: 700, letterSpacing: '.07em', textTransform: 'uppercase', color: BB.text3 }
+const micro: CSSProperties = { fontSize: 10, fontWeight: 700, letterSpacing: '.07em', textTransform: 'uppercase', color: BB.text3 }
 const hair = `1px solid ${BB.border}`
 
 export default function WatchlistCardV4({
@@ -308,45 +308,54 @@ export default function WatchlistCardV4({
     })
   }
 
+  // Primary CTA styling — ready/propose = success green, refresh/fix = amber
+  const primaryCtaKind = action.verdict === 'READY' || action.type === 'PROPOSE_ENTRY'
+    ? 'success'
+    : action.buttonVariant === 'outline-red'
+      ? 'danger'
+      : 'primary'
+
   return (
     <div
+      className="wlc-card-dark"
       onClick={() => onDrill(drillCtx)}
       style={{
-        background: BB.bg,
-        border: hair,
-        borderLeft: `3px solid ${rail}`,
-        borderRadius: 2,
+        background: `linear-gradient(165deg, ${BB.bgElevated} 0%, ${BB.bg} 55%, ${BB.bgPanel} 100%)`,
+        border: `1px solid ${BB.border}`,
+        borderLeft: `4px solid ${rail}`,
+        borderRadius: BB.radius,
         cursor: 'pointer',
         minWidth: 0,
         width: '100%',
         boxSizing: 'border-box',
         overflow: 'hidden',
         color: BB.text1,
-        fontSize: 10,
-        lineHeight: 1.35,
+        fontSize: 11,
+        lineHeight: 1.4,
+        boxShadow: BB.shadow,
       }}
     >
-      {/* ① Ultra-compact header */}
+      {/* ① Header — symbol hero + price */}
       <div
-        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 10px', borderBottom: hair, flexWrap: 'nowrap' }}
+        style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', borderBottom: hair, flexWrap: 'nowrap', background: 'rgba(0,0,0,.18)' }}
         onClick={e => e.stopPropagation()}
       >
         <button
           onClick={e => { e.stopPropagation(); onToggleStar(e) }}
           title={isStarred ? 'Unstar' : 'Star'}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, padding: 0, color: isStarred ? BB.amber : BB.text3, flexShrink: 0 }}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, padding: 0, color: isStarred ? BB.amber : BB.text3, flexShrink: 0 }}
         >{isStarred ? '★' : '☆'}</button>
-        <span style={{ ...numStyle, fontWeight: 800, fontSize: 18, color: BB.text0, flexShrink: 0 }}>{it.symbol}</span>
+        <span style={{ ...numStyle, fontWeight: 900, fontSize: 20, color: BB.text0, flexShrink: 0, letterSpacing: '-0.02em' }}>{it.symbol}</span>
         <CountryFlag symbol={it.symbol} country={it.country} countryName={it.country_name} size={16} />
         {sectorShort && (
-          <span style={{ fontSize: 9, color: BB.text3, textTransform: 'uppercase', letterSpacing: '.05em', flexShrink: 0 }}>{sectorShort}</span>
+          <span style={{ fontSize: 10, color: BB.text3, textTransform: 'uppercase', letterSpacing: '.06em', flexShrink: 0 }}>{sectorShort}</span>
         )}
         {isHeld && (
           <span className="wlc-term-tag" style={{ color: BB.amber, border: `1px solid ${BB.amber}55`, background: BB.amberDim }}>HELD</span>
         )}
         <span onClick={e => e.stopPropagation()} style={{ flexShrink: 0 }}><ProAnalystPill symbol={it.symbol} map={paMap} compact neutral={false} /></span>
         {analystDivergent && <span className="wlc-term-tag" style={{ color: BB.amber, border: `1px solid ${BB.amber}44` }}>CIO≠ST</span>}
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'baseline', gap: 8, flexShrink: 0 }}>
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'baseline', gap: 10, flexShrink: 0 }}>
           {/* The price carries its own as-of stamp. This card once showed $19.09
               in the header and "current $19.83" in the Fib block simultaneously,
               because the header read a cached enrichment snapshot and nothing
@@ -361,7 +370,7 @@ export default function WatchlistCardV4({
                  ? ` · enrichment snapshot ${money(it.price_enriched)} differs from live ${money(it.price_live)}`
                  : '')
               : 'no as-of timestamp for this price'}
-            style={{ ...numStyle, fontSize: 16, fontWeight: 800, color: BB.text0 }}>
+            style={{ ...numStyle, fontSize: 20, fontWeight: 900, color: BB.text0 }}>
             {it.price != null ? money(it.price) : '—'}
           </span>
           {it.price_source === 'enrichment' && it.price_as_of
@@ -410,7 +419,7 @@ export default function WatchlistCardV4({
           <span title={tip} style={{ cursor: 'help' }}><span style={{ color: BB.text3, borderBottom: '1px dotted var(--border)' }}>{label}</span> <b style={{ color: BB.text1 }}>{value === null ? '—' : value.toFixed(1)}</b></span>
         )
         return (
-          <div onClick={e => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '2px 10px', padding: '4px 10px', borderBottom: hair, fontSize: 10, ...numStyle }}>
+          <div onClick={e => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '4px 12px', padding: '8px 14px', borderBottom: hair, fontSize: 11, background: 'rgba(0,0,0,.12)', ...numStyle }}>
             {hasLvl ? <>
               <span title={`Closed-session resistance $${R?.toFixed(2) ?? '—'} · ${signedPctV4(Rd)} from price${lvl?.state ? ` · ${lvl.state}` : ''}`} style={{ color: levelHeat(Rd), fontWeight: 700, cursor: 'help' }}>R {R === null ? '—' : `$${R.toFixed(2)}`} {signedPctV4(Rd)}</span>
               <span title={`Closed-session support $${S?.toFixed(2) ?? '—'} · ${signedPctV4(Sd)} from price${lvl?.support_state ? ` · ${lvl.support_state}` : ''}`} style={{ color: levelHeat(Sd), fontWeight: 700, cursor: 'help' }}>S {S === null ? '—' : `$${S.toFixed(2)}`} {signedPctV4(Sd)}</span>
@@ -451,8 +460,8 @@ export default function WatchlistCardV4({
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 8,
-          padding: '5px 10px',
+          gap: 10,
+          padding: '10px 14px',
           borderBottom: hair,
           background: verdictBg,
           flexWrap: 'wrap',
@@ -461,14 +470,18 @@ export default function WatchlistCardV4({
         <span
           style={{
             ...numStyle,
-            fontSize: 11,
+            fontSize: 12,
             fontWeight: 900,
-            letterSpacing: '.12em',
+            letterSpacing: '.14em',
             color: verdictColor,
             flexShrink: 0,
+            padding: '3px 8px',
+            borderRadius: 4,
+            border: `1px solid ${verdictColor}55`,
+            background: 'rgba(0,0,0,.25)',
           }}
         >{verdictWord(action.verdict)}</span>
-        <span style={{ flex: 1, minWidth: 120, fontSize: 10.5, fontWeight: 600, color: BB.text0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={whyLine || action.heroText}>
+        <span style={{ flex: 1, minWidth: 120, fontSize: 12, fontWeight: 700, color: BB.text0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={whyLine || action.heroText}>
           {whyLine || action.heroText}
         </span>
         <span style={{ ...numStyle, fontSize: 10, fontWeight: 800, color: cioAccent, textTransform: 'uppercase', flexShrink: 0 }}
@@ -513,12 +526,12 @@ export default function WatchlistCardV4({
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
             <span style={micro}>Plan</span>
             {ladder && (
-              <button onClick={e => { e.stopPropagation(); setLadderOpen(v => !v) }} style={{ ...terminalButton('ghost'), fontSize: 8, padding: 0 }}>
+              <button onClick={e => { e.stopPropagation(); setLadderOpen(v => !v) }} style={{ ...terminalButton('ghost'), fontSize: 10, padding: '2px 6px' }}>
                 ladder {ladderOpen ? '▴' : '▾'}
               </button>
             )}
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 4 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 6 }}>
             {([
               ['LMT', money(it.entry_limit), hasPlan && it.entry_zone_low != null ? `z ${money(it.entry_zone_low)}` : null],
               ['STP', money(it.entry_stop), stopVolLine ? truncate(stopVolLine, 22) : null],
@@ -529,18 +542,18 @@ export default function WatchlistCardV4({
                 <div style={micro}>{lbl}</div>
                 <div style={{
                   ...numStyle,
-                  fontSize: 13,
-                  fontWeight: 800,
+                  fontSize: 14,
+                  fontWeight: 900,
                   color: lbl === 'STP' && hasPlan && stop == null ? BB.red
                     : lbl === 'R:R' && rr != null ? terminalRrColor(rr)
                       : BB.text0,
                 }}>{val}</div>
-                {sub && <div style={{ fontSize: 8, color: lbl === 'STP' && volCtx.tightVsAtr ? BB.amber : BB.text3, marginTop: 1 }}>{sub}</div>}
+                {sub && <div style={{ fontSize: 10, color: lbl === 'STP' && volCtx.tightVsAtr ? BB.amber : BB.text3, marginTop: 2 }}>{sub}</div>}
               </div>
             ))}
           </div>
           {planWarn && (
-            <div style={{ fontSize: 8, color: BB.amber, marginTop: 4, fontWeight: 600 }} title={planWarn}>⚠ {truncate(planWarn, 90)}</div>
+            <div style={{ fontSize: 10, color: BB.amber, marginTop: 6, fontWeight: 700 }} title={planWarn}>⚠ {truncate(planWarn, 90)}</div>
           )}
           {ladder && !ladderOpen && (
             <div style={{ marginTop: 4 }}>
@@ -565,14 +578,14 @@ export default function WatchlistCardV4({
       )}
 
       {ladderOpen && ladder && (
-        <div onClick={e => e.stopPropagation()} style={{ padding: '6px 10px', borderTop: hair, background: BB.bgShift }}>
+        <div onClick={e => e.stopPropagation()} style={{ padding: '10px 14px', borderTop: hair, background: BB.bgShift }}>
           {ladder.steps.map((s, i) => (
-            <div key={i} style={{ display: 'flex', gap: 8, fontSize: 9, color: BB.text2 }}>
+            <div key={i} style={{ display: 'flex', gap: 8, fontSize: 11, color: BB.text2 }}>
               <b style={{ ...numStyle, color: BB.text3, width: 96, flexShrink: 0 }}>{s.label}</b>
               <span>{s.px.toFixed(2)} — {s.action}</span>
             </div>
           ))}
-          <div style={{ display: 'flex', gap: 8, fontSize: 9, color: BB.text2, marginTop: 2 }}>
+          <div style={{ display: 'flex', gap: 8, fontSize: 11, color: BB.text2, marginTop: 4 }}>
             <b style={{ ...numStyle, color: BB.text3, width: 96, flexShrink: 0 }}>Rules</b>
             <span>{MONITOR_RULES}</span>
           </div>
@@ -581,57 +594,76 @@ export default function WatchlistCardV4({
 
       {/* ④ Minimal context strip */}
       {contextBullets.length > 0 && (
-        <div onClick={e => e.stopPropagation()} style={{ padding: '5px 10px', borderTop: hair, display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <div onClick={e => e.stopPropagation()} style={{ padding: '8px 14px', borderTop: hair, display: 'flex', flexDirection: 'column', gap: 3, background: 'rgba(0,0,0,.1)' }}>
           {contextBullets.slice(0, 5).map(b => (
-            <div key={b.key} style={{ fontSize: 9.5, color: BB.text2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={typeof b.node === 'string' ? b.node : undefined}>
+            <div key={b.key} style={{ fontSize: 11, color: BB.text2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={typeof b.node === 'string' ? b.node : undefined}>
               {b.node}
             </div>
           ))}
         </div>
       )}
 
-      {/* ⑤ Action row — when a packet leads, CTAs live on the operator decision band;
-          keep only secondary utilities here to avoid duplicate primary buttons. */}
+      {/* ⑤ CTA FOOTER — always visible, dark bar, primary action dominant */}
       <div
         onClick={e => e.stopPropagation()}
+        className="wlc-card-cta-bar"
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 6,
-          padding: '5px 10px',
-          borderTop: hair,
-          background: BB.bgPanel,
+          gap: 8,
+          padding: '12px 14px',
+          borderTop: `1px solid ${BB.border}`,
+          background: 'linear-gradient(180deg, rgba(0,0,0,.35), rgba(0,0,0,.55))',
           flexWrap: 'wrap',
         }}
       >
-        {!hasPacket && action.allowPrimary && (
-          <button onClick={handlePrimary} style={terminalButton(action.buttonVariant === 'outline-red' ? 'danger' : 'primary')}>
-            {action.primaryLabel}
+        {/* Always show a primary CTA — packet path uses band state when present */}
+        {(action.allowPrimary || hasPacket) && (
+          <button
+            onClick={e => {
+              e.stopPropagation()
+              if (hasPacket) {
+                // Mirror DecisionPacketBand primary semantics
+                if (action.type === 'PROPOSE_ENTRY' && onPropose) onPropose(it)
+                else if (onOpenDesk) onOpenDesk(it.symbol)
+                else handlePrimary(e)
+              } else {
+                handlePrimary(e)
+              }
+            }}
+            style={{
+              ...terminalButton(primaryCtaKind as any),
+              flex: '1 1 160px',
+              minWidth: 140,
+              textAlign: 'center',
+            }}
+          >
+            {action.primaryLabel || 'Open'}
           </button>
         )}
-        {!hasPacket && inlineSecondary && (
+        {inlineSecondary && (
           <button onClick={e => executeAction(e, inlineSecondary.type)} style={terminalButton('secondary')}>{inlineSecondary.label}</button>
         )}
-        <button onClick={e => { e.stopPropagation(); setDrawerOpen(v => !v) }} style={terminalButton('ghost')}>More {drawerOpen ? '▴' : '▾'}</button>
-        <div style={{ position: 'relative', marginLeft: 2 }}>
+        <button onClick={e => { e.stopPropagation(); setDrawerOpen(v => !v) }} style={terminalButton('secondary')}>More {drawerOpen ? '▴' : '▾'}</button>
+        <div style={{ position: 'relative' }}>
           <button onClick={e => { e.stopPropagation(); setMenuOpen(v => !v) }} style={terminalButton('ghost')} aria-label="More actions">⋯</button>
           {menuOpen && (
             <div style={{
-              position: 'absolute', bottom: '110%', left: 0, zIndex: 30, minWidth: 150,
-              background: BB.bgPanel, border: hair, borderRadius: 2, padding: 2,
-              boxShadow: '0 8px 20px rgba(0,0,0,.55)',
+              position: 'absolute', bottom: '110%', left: 0, zIndex: 30, minWidth: 160,
+              background: BB.bgElevated, border: `1px solid ${BB.border}`, borderRadius: 8, padding: 4,
+              boxShadow: BB.shadow,
             }}>
               {menuItems.map(m => (
                 <button
                   key={m.type}
                   onClick={e => executeAction(e, m.type)}
-                  style={{ display: 'block', width: '100%', textAlign: 'left', fontSize: 9, fontWeight: 700, color: BB.text2, background: 'none', border: 'none', cursor: 'pointer', padding: '5px 8px' }}
+                  style={{ display: 'block', width: '100%', textAlign: 'left', fontSize: 11, fontWeight: 700, color: BB.text1, background: 'none', border: 'none', cursor: 'pointer', padding: '8px 10px', borderRadius: 4 }}
                 >{m.label}</button>
               ))}
             </div>
           )}
         </div>
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4 }} onClick={e => e.stopPropagation()}>
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }} onClick={e => e.stopPropagation()}>
           <CloudLlmRunButtons processId="watchlist_cio_synthesis" lanePolicy="ensemble" symbol={it.symbol} compact onDone={() => onCioDone?.()} />
           <HoldingReportLinks symbol={it.symbol} entry={reportEntry} reportType={reportEntry?.report_type || 'symbol_watchlist'} compact />
           {hasEvidence && (
@@ -643,7 +675,7 @@ export default function WatchlistCardV4({
 
       {/* Expandable drawer — secondary intelligence + diligence */}
       {drawerOpen && (
-        <div onClick={e => e.stopPropagation()} style={{ padding: '6px 10px', borderTop: hair, background: BB.bgShift, display: 'flex', flexDirection: 'column', gap: 4, fontSize: 9.5, color: BB.text2 }}>
+        <div onClick={e => e.stopPropagation()} style={{ padding: '10px 14px', borderTop: hair, background: BB.bgShift, display: 'flex', flexDirection: 'column', gap: 6, fontSize: 11, color: BB.text2 }}>
           {/* V6 item 7: "Build Full Strategy (shadow)" is redundant with the
               canonical Refresh Strategy CTA and leaks rollout terminology —
               hidden on the production desk; still available with V5/V6 off. */}
@@ -676,17 +708,17 @@ export default function WatchlistCardV4({
       )}
 
       {evidenceOpen && hasEvidence && (
-        <div onClick={e => e.stopPropagation()} style={{ padding: '6px 10px', borderTop: hair }}>
+        <div onClick={e => e.stopPropagation()} style={{ padding: '10px 14px', borderTop: hair }}>
           {it.synthesis_evidence?.length > 0 && (
             <EvidenceBlock title="CIO evidence" evidence={it.synthesis_evidence} compact maxItems={3} />
           )}
-          {action.detail && <div style={{ fontSize: 9, color: BB.text3, marginTop: 4 }}>{action.detail}</div>}
-          {adv?.note && adv.note !== action.detail && <div style={{ fontSize: 9, color: BB.text3, marginTop: 4 }}>{adv.note}</div>}
+          {action.detail && <div style={{ fontSize: 11, color: BB.text3, marginTop: 4 }}>{action.detail}</div>}
+          {adv?.note && adv.note !== action.detail && <div style={{ fontSize: 11, color: BB.text3, marginTop: 4 }}>{adv.note}</div>}
         </div>
       )}
 
       {ensOpen && (
-        <div onClick={e => e.stopPropagation()} style={{ padding: '6px 10px', borderTop: hair }}>
+        <div onClick={e => e.stopPropagation()} style={{ padding: '10px 14px', borderTop: hair }}>
           <EnsembleValidationInline
             targetType="signal"
             targetId={it.id}

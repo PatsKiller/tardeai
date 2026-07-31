@@ -44,9 +44,19 @@ _RUN_COLS = (
     "input_hash", "validation_hash", "retrieval_count", "model_calls", "tool_calls",
     "cost_usd", "checkpoint_seq", "started_at", "updated_at", "completed_at",
 )
-_ARTIFACT_COLS = (
+_ARTIFACT_BASE_COLS = (
     "artifact_id", "producer_agent_id", "artifact_type", "payload_hash",
     "input_hash", "validation_hash", "prompt_version", "provider_family", "model", "created_at",
+)
+_ARTIFACT_PAYLOAD_SCALARS = (
+    "payload->>'severity' AS severity",
+    "payload->>'artifact_kind' AS artifact_kind",
+    "payload->'findings'->0->>'code' AS primary_finding_code",
+    "payload->'findings'->0->>'verdict' AS primary_finding_verdict",
+    "payload->'findings'->0->>'lesson_id' AS primary_lesson_id",
+)
+_ARTIFACT_RESULT_COLS = _ARTIFACT_BASE_COLS + (
+    "severity", "artifact_kind", "primary_finding_code", "primary_finding_verdict", "primary_lesson_id",
 )
 _TOOL_CALL_COLS = (
     "tool_call_id", "agent_id", "tool_name", "decision", "decision_reason",
@@ -191,12 +201,13 @@ class PostgresAgentRuntimeReader:
         return rows[0] if rows else None
 
     def list_artifacts(self, run_id: str) -> Sequence[Mapping[str, Any]]:
+        select_cols = ", ".join([*_ARTIFACT_BASE_COLS, *_ARTIFACT_PAYLOAD_SCALARS])
         sql = (
-            f"SELECT {', '.join(_ARTIFACT_COLS)} FROM {self._q('agent_artifacts')} "
+            f"SELECT {select_cols} FROM {self._q('agent_artifacts')} "
             "WHERE run_id=%s AND artifact_type <> %s ORDER BY created_at, artifact_id"
         )
         with self._reading() as conn:
-            return self._rows(conn, sql, (run_id, RUN_EVENT_TYPE), _ARTIFACT_COLS)
+            return self._rows(conn, sql, (run_id, RUN_EVENT_TYPE), _ARTIFACT_RESULT_COLS)
 
     def list_tool_calls(self, run_id: str) -> Sequence[Mapping[str, Any]]:
         sql = (

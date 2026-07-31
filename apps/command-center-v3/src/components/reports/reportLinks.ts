@@ -12,8 +12,8 @@ const PAGE: Record<string, { label: string; route: string }> = {
   journal: { label: 'Journal', route: '/v3/journal' },
   system: { label: 'System', route: '/v3/system' },
   portfolio: { label: 'Portfolio', route: '/v3/portfolio' },
-  research: { label: 'Research', route: '/v3/intelligence' },
-  'research-topics': { label: 'Research', route: '/v3/intelligence' },
+  research: { label: 'Research', route: '/v3/research-intelligence' },
+  'research-topics': { label: 'Research', route: '/v3/research-intelligence' },
   proposals: { label: 'Proposals', route: '/v3/trading' },
   retirement: { label: 'Retirement', route: '/v3/retirement' },
 }

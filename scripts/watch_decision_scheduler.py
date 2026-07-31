@@ -201,12 +201,60 @@ def build_plan(conn) -> dict:
     return plan
 
 
+def auto_run_free_critics(conn, *, cap: int = 12, dry_run: bool = False) -> dict:
+    """Run free critic lanes for ADMITTED+PASS tickets with missing review verdicts."""
+    import watch_packet_quality as packet_quality
+
+    cur = conn.cursor()
+    cur.execute("""SELECT symbol, packet FROM decision_packets
+                   WHERE superseded_by IS NULL
+                   ORDER BY generated_at DESC NULLS LAST
+                   LIMIT 200""")
+    candidates = []
+    for symbol, packet in cur.fetchall():
+        sym = str(symbol or "").upper()
+        pkt = packet or {}
+        selected = packet_quality.select_governing_validation(pkt)
+        validation = selected.get("validation") or {}
+        deterministic = selected.get("deterministic") or "NOT_RUN"
+        quality = validation.get("quality_admission") or {}
+        prior = pkt.get("ticket_review") or {}
+        reviews = prior.get("reviews") or {}
+        missing = [lane for lane in ("local", "grok", "chatgpt")
+                   if not (reviews.get(lane) or {}).get("verdict")]
+        may_review = (
+            deterministic in {"PASS", "REVIEW_REQUIRED"}
+            and quality.get("state") == "ADMITTED"
+            and quality.get("new_entry_allowed") is not False
+            and missing
+        )
+        if may_review:
+            candidates.append(sym)
+
+    ran = []
+    for sym in candidates[:cap]:
+        if dry_run:
+            ran.append(sym)
+            continue
+        try:
+            from run_ticket_review_job import main as review_main
+            review_main(sym, "local,grok,chatgpt")
+            ran.append(sym)
+        except Exception as exc:
+            ran.append(f"{sym}:err:{type(exc).__name__}")
+    return {"eligible": len(candidates), "ran": len(ran), "symbols": ran[:cap]}
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--run", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--critics-only", action="store_true")
     args = parser.parse_args()
     conn = wdr._conn()
+    if args.critics_only:
+        print(json.dumps(auto_run_free_critics(conn, dry_run=not args.run), indent=2, default=str))
+        return
     if args.dry_run or not args.run:
         plan = build_plan(conn)
         print(json.dumps({
@@ -253,6 +301,8 @@ def main():
             "tier": "STANDARD_BLIND", "run_id": result.get("run_id"),
             "queued": result.get("queued"),
         })
+    critics = auto_run_free_critics(conn, cap=12, dry_run=False)
+    out["free_critics"] = critics
     print(json.dumps(out, indent=2, default=str))
 
 

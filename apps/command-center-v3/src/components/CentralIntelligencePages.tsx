@@ -1,31 +1,30 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { useApi } from '../hooks/useApi'
 import type { DrillContext } from './DetailDrawer'
 import { EnsembleValidationInline } from './EnsembleValidationCard'
-import SynthesizedReportCard from './SynthesizedReportCard'
-import type { ReportCardItem } from './SynthesizedReportCard'
+import ActionBriefCard from './intelligence/ActionBriefCard'
+import { briefFromIntelItem, type IntelItem } from '../lib/intelBrief'
+import { KPI } from './intelligence/dashboardKit'
+import { intelligenceItemId as stableId } from '../lib/intelligenceItemId'
 
-const TEXT0 = '#f8fafc'
-const TEXT2 = '#cbd5e1'
-const MUTED = '#94a3b8'
-const DIM = '#64748b'
-const GREEN = '#22c55e'
-const RED = '#ef4444'
-const AMBER = '#f59e0b'
-const BLUE = '#60a5fa'
-const PURPLE = '#a855f7'
+const TEXT0 = 'var(--text0)'
+const TEXT2 = 'var(--text2)'
+const MUTED = 'var(--text3)'
+const GREEN = 'var(--green)'
+const RED = 'var(--red)'
+const AMBER = 'var(--amber)'
+const BLUE = 'var(--blue)'
+const PURPLE = 'var(--purple)'
 const panel: React.CSSProperties = { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 12, padding: 15 }
 const input: React.CSSProperties = { background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 7, color: TEXT0, fontSize: 11, padding: '8px 10px' }
 
-type Mode = 'command' | 'quality'
 type Special = 'all' | 'actionable' | 'highError' | 'stale'
 type ViewPreset = 'priority' | 'all'
-interface Props { mode: Mode; onDrill: (ctx: DrillContext) => void }
-type IntelItem = { id: string; source: string; type: string; symbol?: string; title: string; summary?: string; severity: 'critical' | 'warning' | 'info' | 'positive'; confidence: number; freshnessH: number | null; model?: string; lane?: string; action?: string; raw: any }
+interface Props { onDrill: (ctx: DrillContext) => void }
+type EnsembleMeta = { score: number; decision: 'approve' | 'block'; consensus: boolean; lanes: string[] }
 
-function first(...xs: any[]) { return xs.find(x => x !== undefined && x !== null && x !== '') }
+// Content-derived id imported from ../lib/intelligenceItemId (stableId alias).
 function ago(v: any): { label: string; hours: number | null } { if (!v) return { label: 'unknown', hours: null }; const t = new Date(v).getTime(); if (!Number.isFinite(t)) return { label: 'unknown', hours: null }; const h = Math.max(0, (Date.now() - t) / 36e5); if (h < 1) return { label: 'just now', hours: h }; if (h < 48) return { label: `${Math.round(h)}h ago`, hours: h }; return { label: `${Math.round(h / 24)}d ago`, hours: h } }
 function sevColor(sev: string) { return sev === 'critical' ? RED : sev === 'warning' ? AMBER : sev === 'positive' ? GREEN : BLUE }
 function confidenceFrom(x: any, fallback = 0.65) { const v = first(x.confidence, x.research_confidence, x.eval_confidence, x.score != null ? Number(x.score) / 100 : null); const y = Number(v); if (!Number.isFinite(y)) return fallback; return y > 1 ? Math.min(1, y / 100) : Math.min(1, Math.max(0, y)) }
@@ -35,9 +34,23 @@ function severityFrom(x: any): IntelItem['severity'] { const s = String(first(x.
 // signals (news, research, external-LM) keep the freshness/source/LM penalties.
 const STRUCTURAL = /^(risk|telegram\/action|open-trade|setup)$/
 function isStructural(it: IntelItem) { return STRUCTURAL.test(it.type) }
-function qscore(it: IntelItem) {
+// Base structural/opinion score, BEFORE any multi-LLM ensemble adjustment (kept separate so the
+// ensemble delta below is a visible, bounded nudge rather than folded invisibly into one number).
+function baseQscore(it: IntelItem) {
   if (isStructural(it)) { const stale = it.freshnessH != null && it.freshnessH > 96 ? 0.10 : 0; return Math.max(0, Math.min(1, it.confidence - stale)) }
   const freshnessPenalty = it.freshnessH == null ? 0.18 : it.freshnessH > 72 ? 0.28 : it.freshnessH > 24 ? 0.15 : it.freshnessH > 8 ? 0.07 : 0; const sourcePenalty = /unknown|browser-local|fallback/i.test(it.source) ? 0.16 : 0; const modelPenalty = it.model || it.lane ? 0 : 0.08; return Math.max(0, Math.min(1, it.confidence - freshnessPenalty - sourcePenalty - modelPenalty)) }
+// Curation is deterministic math (see baseQscore) — this is the one place a real independent multi-LLM
+// verdict (Grok + ChatGPT + local gemma, from the SAME ensemble jobs the card's "Ask LM" button enqueues)
+// is allowed to move the ranking: a consensus BLOCK pulls a card down (it should not look trustworthy just
+// because its raw fields look complete); a consensus APPROVE with a strong score nudges it up. Bounded
+// (+/-12pts) and only ever applied when a verdict actually exists — no LLM call happens on the render path.
+function qscore(it: IntelItem) {
+  const base = baseQscore(it)
+  const en = it.ensemble
+  if (!en || !en.consensus) return base
+  const delta = en.decision === 'block' ? -0.12 : en.score >= 8 ? 0.12 : en.score >= 6 ? 0.05 : 0
+  return Math.max(0, Math.min(1, base + delta))
+}
 function estError(it: IntelItem) { return Math.max(0.02, Math.min(0.75, 1 - qscore(it))) }
 function money(v: any) { const n = Number(v); return Number.isFinite(n) ? `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : '—' }
 function btn(active = false, color = BLUE): React.CSSProperties { return { fontSize: 10, padding: '6px 11px', borderRadius: 7, border: `1px solid ${active ? color : 'var(--border)'}`, background: active ? color + '22' : 'var(--bg2)', color: active ? color : MUTED, fontWeight: active ? 850 : 600, cursor: 'pointer' } }
@@ -56,7 +69,8 @@ function qualityReasons(it: IntelItem) {
   if (it.freshnessH == null) out.push('missing timestamp')
   else if (it.freshnessH > 72) out.push('stale >72h')
   else if (it.freshnessH > 24) out.push('stale >24h')
-  if (!it.model && !it.lane) out.push('not independently LM-reviewed')
+  if (it.ensemble?.consensus && it.ensemble.decision === 'block') out.push(`ensemble consensus BLOCK (${it.ensemble.lanes.join('+')}, ${it.ensemble.score.toFixed(1)}/10)`)
+  else if (!it.model && !it.lane) out.push('not independently LM-reviewed')
   if (/research-gap/.test(it.type)) out.push('research gap not resolved')
   return out.length ? out : ['source looks usable; still verify before action']
 }
@@ -95,52 +109,26 @@ function nextStep(it: IntelItem) {
   return 'Open source record and verify freshness, source, and portfolio impact.'
 }
 
-function KPI({ label, value, sub, color = TEXT0, active = false, onClick }: any) {
-  return <button onClick={onClick} title={onClick ? 'Click to filter / focus this intelligence set' : undefined} style={{ textAlign: 'left', background: active ? `${color}1f` : 'rgba(15,23,42,.55)', border: `1px solid ${active ? color : 'rgba(148,163,184,.18)'}`, borderRadius: 10, padding: '10px 12px', cursor: onClick ? 'pointer' : 'default' }}>
-    <div style={{ fontSize: 22, fontWeight: 950, color }}>{value}</div>
-    <div style={{ fontSize: 9, color: MUTED, textTransform: 'uppercase', letterSpacing: '.05em', marginTop: 3 }}>{label}</div>
-    {sub && <div style={{ fontSize: 10, color: active ? color : DIM, marginTop: 4 }}>{sub}</div>}
-  </button>
-}
-// IntelItem → the shared card's item shape (cohesion: same card on Reports / Inferences / Intelligence).
-function toCardItem(item: IntelItem): ReportCardItem {
-  const created = first((item.raw as any)?.at, (item.raw as any)?.updated_at, (item.raw as any)?.created_at, (item.raw as any)?.generated_at, (item.raw as any)?.last_enriched_at)
-  return {
-    id: item.id, type: item.type, channel: item.model || item.lane || undefined,
-    title: item.title, summary: item.summary, severity: item.severity,
-    symbol: item.symbol, symbols: item.symbol ? [item.symbol] : [],
-    created_at: created, quality_score: Math.round(qscore(item) * 100),
-  }
-}
-// Renders the shared SynthesizedReportCard; the est-error/action meta + (when weak) the verification plan,
-// Ask-LM and live ensemble verdict live in the card FOOTER. Whole-card click still drills; footer controls
-// stopPropagation so they don't trigger a drill.
-function ItemCard({ item, onDrill, onAsk }: { item: IntelItem; onDrill: (ctx: DrillContext) => void; onAsk: (item: IntelItem) => void }) {
-  const er = estError(item), qs = qscore(item), weak = er > .35 || qs < .55
-  const footer = (
-    <div onClick={(e) => e.stopPropagation()}>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: 9 }}>
-        <span style={{ color: MUTED }}>{item.source}</span>
-        <span style={{ color: er > .45 ? RED : er > .25 ? AMBER : GREEN }}>est error {(er * 100).toFixed(0)}%</span>
-        {item.action && <span style={{ color: AMBER }}>action: {item.action}</span>}
-      </div>
-      {weak && <div style={{ marginTop: 8, padding: '8px 10px', borderRadius: 8, background: 'rgba(245,158,11,.08)', border: '1px solid rgba(245,158,11,.25)' }}>
-        <div style={{ color: AMBER, fontSize: 10, fontWeight: 900 }}>Low-quality signal action plan</div>
-        <div style={{ color: TEXT2, fontSize: 10.5, marginTop: 4, lineHeight: 1.45 }}><b>Why:</b> {qualityReasons(item).join(' · ')}</div>
-        <div style={{ color: TEXT2, fontSize: 10.5, marginTop: 3, lineHeight: 1.45 }}><b>Next:</b> {nextStep(item)}</div>
-        <button onClick={(e) => { e.stopPropagation(); onAsk(item) }} style={{ ...btn(true, PURPLE), marginTop: 7 }}>Ask LM to verify this</button>
-        <EnsembleValidationInline targetType="signal" targetId={item.id} subject={item.symbol || item.type} content={`${item.title}\n${item.summary ?? ''}`} />
-      </div>}
+function first(...xs: any[]) { return xs.find(x => x !== undefined && x !== null && x !== '') }
+
+function ItemCard({ item, onDrill }: { item: IntelItem; onDrill: (ctx: DrillContext) => void }) {
+  const brief = briefFromIntelItem(item)
+  const weak = estError(item) > .35 || qscore(item) < .55
+  const footer = weak ? (
+    <div onClick={e => e.stopPropagation()}>
+      <EnsembleValidationInline targetType="signal" targetId={item.id} subject={item.symbol || item.type} content={`${item.title}\n${item.summary ?? ''}`} />
     </div>
-  )
+  ) : undefined
   return (
-    <div onClick={() => onDrill({ title: item.title, subtitle: `${item.source} · ${item.type}`, endpoint: item.source, rows: [item.raw] })}>
-      <SynthesizedReportCard item={toCardItem(item)} footer={footer} />
-    </div>
+    <ActionBriefCard
+      {...brief}
+      footer={footer}
+      onDrill={() => onDrill({ title: item.title, subtitle: brief.who, endpoint: item.source, rows: [item.raw] })}
+    />
   )
 }
 
-export default function CentralIntelligencePages({ mode, onDrill }: Props) {
+export default function CentralIntelligencePages({ onDrill }: Props) {
   const { data: overview } = useApi<any>('/api/v2/overview', 60_000)
   const { data: command } = useApi<any>('/api/v2/command', 60_000)
   const { data: brief } = useApi<any>('/api/v2/morning-brief', 300_000)
@@ -151,9 +139,25 @@ export default function CentralIntelligencePages({ mode, onDrill }: Props) {
   const { data: watchlist } = useApi<any>('/api/v2/watchlist/items?sort=hermes', 60_000)
   const { data: openTrades } = useApi<any>('/api/v2/open-trades/intelligence', 60_000)
   const { data: research } = useApi<any>('/api/v2/research-topics', 120_000)
-  const { data: hermes } = useApi<any>('/api/v2/hermes/health', 120_000)
   const { data: inference } = useApi<any>('/api/v2/inference/latest', 120_000)
   const { data: rotation } = useApi<any>('/api/v2/rotation/summary', 300_000)
+  // Already-computed multi-LLM verdicts (Grok + ChatGPT + local gemma) for signals an operator has
+  // previously asked to verify — joined back onto matching cards below so curation reflects LLM review
+  // it actually has, instead of only showing it behind a click. No LLM call happens here; read-only join.
+  const { data: ensembleFeed } = useApi<any>('/api/v2/inference/ensemble?limit=200', 120_000)
+  const ensembleById = useMemo(() => {
+    const m = new Map<string, EnsembleMeta>()
+    // useApi already unwraps the {ok,data} envelope, so ensembleFeed IS the array — but stay defensive
+    // in case the route ever nests it (matches the ?? fallback pattern used for /api/v2/command above).
+    const rows: any[] = Array.isArray(ensembleFeed) ? ensembleFeed : (ensembleFeed?.data ?? [])
+    rows.filter((r: any) => r.target_type === 'signal').forEach((r: any) => {
+      if (!r.target_id || m.has(r.target_id)) return
+      const votes = typeof r.votes === 'string' ? JSON.parse(r.votes || '[]') : (r.votes ?? [])
+      const lanes = typeof r.lanes_used === 'string' ? JSON.parse(r.lanes_used || '[]') : (r.lanes_used ?? votes.map((v: any) => v.lane))
+      m.set(r.target_id, { score: Number(r.final_score) || 0, decision: r.final_decision === 'approve' ? 'approve' : 'block', consensus: !!r.consensus_reached, lanes })
+    })
+    return m
+  }, [ensembleFeed])
   const [source, setSource] = useState('all')
   const [sev, setSev] = useState('all')
   const [special, setSpecial] = useState<Special>('all')
@@ -170,7 +174,7 @@ export default function CentralIntelligencePages({ mode, onDrill }: Props) {
 
   const items = useMemo<IntelItem[]>(() => {
     const out: IntelItem[] = []
-    const add = (x: Partial<IntelItem> & { raw?: any }) => { if (!x.title) return; const a = ago((x.raw as any)?.at ?? (x.raw as any)?.updated_at ?? (x.raw as any)?.last_enriched_at ?? (x.raw as any)?.created_at ?? (x.raw as any)?.generated_at); out.push({ id: `${x.source}-${out.length}`, source: x.source || 'unknown', type: x.type || 'intelligence', symbol: x.symbol, title: String(x.title), summary: x.summary, severity: x.severity || severityFrom(x.raw ?? x), confidence: x.confidence ?? confidenceFrom(x.raw ?? x), freshnessH: x.freshnessH ?? a.hours, model: x.model, lane: x.lane, action: x.action, raw: x.raw ?? x }) }
+    const add = (x: Partial<IntelItem> & { raw?: any }) => { if (!x.title) return; const a = ago((x.raw as any)?.at ?? (x.raw as any)?.updated_at ?? (x.raw as any)?.last_enriched_at ?? (x.raw as any)?.created_at ?? (x.raw as any)?.generated_at); const type = x.type || 'intelligence'; const source = x.source || 'unknown'; const id = stableId(type, source, x.symbol, String(x.title)); out.push({ id, source, type, symbol: x.symbol, title: String(x.title), summary: x.summary, severity: x.severity || severityFrom(x.raw ?? x), confidence: x.confidence ?? confidenceFrom(x.raw ?? x), freshnessH: x.freshnessH ?? a.hours, model: x.model, lane: x.lane, action: x.action, raw: x.raw ?? x, ensemble: ensembleById.get(id) }) }
     // Current price by symbol from the risk feed — the /api/v2/command feed omits current price, so without
     // this the command items can't compute breach and all collapse to a flat 0.66. seenStop dedups the same
     // triggered stop showing as both a risk item AND a command item.
@@ -237,7 +241,7 @@ export default function CentralIntelligencePages({ mode, onDrill }: Props) {
       severity: 'info', confidence: 0.62, raw: p, action: 'rotation review',
     }))
     return out.sort(sortByPriority)
-  }, [risk, cmd, brief, reportIntel, market, tradeAi, watchlist, openTrades, research, inference, overview, rotation])
+  }, [risk, cmd, brief, reportIntel, market, tradeAi, watchlist, openTrades, research, inference, overview, rotation, ensembleById])
 
   const applyKpi = (next: { source?: string; sev?: string; special?: Special; search?: string; view?: ViewPreset }) => { setSource(next.source ?? 'all'); setSev(next.sev ?? 'all'); setSpecial(next.special ?? 'all'); setSearch(next.search ?? ''); if (next.view) setViewPreset(next.view) }
   const filtered = items.filter(it => (source === 'all' || it.type === source || it.source.includes(source)) && (sev === 'all' || it.severity === sev) && (special === 'all' || (special === 'actionable' && !!it.action) || (special === 'highError' && estError(it) > .35) || (special === 'stale' && (it.freshnessH ?? 999) > 24)) && (!search || `${it.symbol ?? ''} ${it.title} ${it.summary ?? ''} ${it.action ?? ''}`.toLowerCase().includes(search.toLowerCase())))
@@ -257,16 +261,13 @@ export default function CentralIntelligencePages({ mode, onDrill }: Props) {
       <div style={{ color: MUTED, fontSize: 10 }}>{n} item{n === 1 ? '' : 's'}</div>
     </div>
   )
-  const quality = filtered.map(it => ({ ...it, q: qscore(it), e: estError(it) }))
-  const avgQ = quality.length ? quality.reduce((a, b) => a + b.q, 0) / quality.length : 0
+  const avgQ = filtered.length ? filtered.reduce((a, b) => a + qscore(b), 0) / filtered.length : 0
   const highErr = items.filter(x => estError(x) > .35).length
-  const stale = items.filter(x => (x.freshnessH ?? 999) > 24).length
-  const bySeverity = ['critical', 'warning', 'info', 'positive'].map(s => ({ name: s, value: items.filter(i => i.severity === s).length, color: sevColor(s) }))
+  const ensembleBlocked = items.filter(x => x.ensemble?.consensus && x.ensemble.decision === 'block').length
   const bySource = Object.entries(items.reduce((a: any, i) => { a[i.type] = (a[i.type] ?? 0) + 1; return a }, {})).map(([name, value]) => ({ name, value }))
-  const askAbout = (item: IntelItem) => { setQuestion(`Verify this low-quality signal and tell me what must be checked before action: ${item.symbol ? item.symbol + ' - ' : ''}${item.title}. Source=${item.source}. Type=${item.type}. Error=${(estError(item) * 100).toFixed(0)}%. Reasons=${qualityReasons(item).join('; ')}. Next=${nextStep(item)}`); setFeedback('Please critique source freshness, broker/account readback needs, conflict risk, and whether this should become an action item.') }
 
   const askLm = async () => {
-    const payload = { question, feedback, visible_items: filtered.slice(0, 12), page: mode, requested_review: 'quality accuracy usefulness and actionability', use_grok: useGrok }
+    const payload = { question, feedback, visible_items: filtered.slice(0, 12), page: 'command', requested_review: 'quality accuracy usefulness and actionability', use_grok: useGrok }
     setLmBusy(true); setLmReview(null)
     setLmStatus(useGrok ? 'Running local LLM + Grok review…' : 'Running local LLM review…')
     try {
@@ -281,14 +282,6 @@ export default function CentralIntelligencePages({ mode, onDrill }: Props) {
     } finally { setLmBusy(false) }
   }
 
-  if (mode === 'quality') return <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-    <div style={{ ...panel, display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}><div><div style={{ fontSize: 21, fontWeight: 950, color: TEXT0 }}>Signal Quality & Error-Rate Board</div><div style={{ fontSize: 11, color: MUTED }}>Click the KPI cards to focus the board. Low-quality cards now show verification steps.</div></div><div style={{ color: avgQ > .7 ? GREEN : avgQ > .5 ? AMBER : RED, fontWeight: 950 }}>avg quality {(avgQ * 100).toFixed(0)}%</div></div>
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}><KPI label="Signals reviewed" value={items.length} active={special === 'all' && sev === 'all'} onClick={() => applyKpi({})} /><KPI label="High error-rate" value={highErr} color={highErr ? RED : GREEN} sub="click to focus" active={special === 'highError'} onClick={() => applyKpi({ special: 'highError' })} /><KPI label="Stale items" value={stale} color={stale ? AMBER : GREEN} sub="needs refresh" active={special === 'stale'} onClick={() => applyKpi({ special: 'stale' })} /><KPI label="Hermes/RAG" value={hermes?.coordinator_active ? `${hermes?.rag_pipeline?.coverage_pct ?? 0}%` : 'check'} color={hermes?.coordinator_active ? GREEN : AMBER} sub={hermes?.embedding_queue?.pending ? `${hermes.embedding_queue.pending} embed pending` : 'click LM reports'} active={source === 'external-lm-report'} onClick={() => applyKpi({ source: 'external-lm-report' })} /></div>
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}><div style={panel}><div style={{ color: TEXT0, fontWeight: 900, marginBottom: 8 }}>Severity mix</div><ResponsiveContainer width="100%" height={220}><PieChart><Pie data={bySeverity} dataKey="value" nameKey="name" outerRadius={78}>{bySeverity.map((x, i) => <Cell key={i} fill={x.color} />)}</Pie><Tooltip /></PieChart></ResponsiveContainer></div><div style={panel}><div style={{ color: TEXT0, fontWeight: 900, marginBottom: 8 }}>Source volume</div><ResponsiveContainer width="100%" height={220}><BarChart data={bySource}><CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,.12)" /><XAxis dataKey="name" tick={{ fill: MUTED, fontSize: 9 }} /><YAxis tick={{ fill: MUTED, fontSize: 9 }} /><Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #334155' }} /><Bar dataKey="value" fill={BLUE} /></BarChart></ResponsiveContainer></div></div>
-    <FilterRow source={source} setSource={setSource} sev={sev} setSev={setSev} special={special} setSpecial={setSpecial} search={search} setSearch={setSearch} types={[...new Set(items.map(i => i.type))]} />
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,minmax(420px,1fr))', gap: 12 }}>{quality.slice(0, 60).map(it => <ItemCard key={it.id} item={it} onDrill={onDrill} onAsk={askAbout} />)}</div>
-  </div>
-
   return <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
     <div style={{ ...panel, display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 }}>
       <div>
@@ -301,14 +294,14 @@ export default function CentralIntelligencePages({ mode, onDrill }: Props) {
           <Link to="/portfolio" style={linkStyle}>Portfolio →</Link>
           <Link to="/trading?tab=Open+Trades" style={linkStyle}>Open Trades →</Link>
         </div>
-        <div style={{ fontSize: 10, color: MUTED }}>{items.length} signals · {hiddenNoise} low-score setups {viewPreset === 'priority' ? 'hidden' : 'visible'}</div>
+        <div style={{ fontSize: 10, color: MUTED }}>{items.length} signals · avg quality <span style={{ color: avgQ > .7 ? GREEN : avgQ > .5 ? AMBER : RED, fontWeight: 800 }}>{(avgQ * 100).toFixed(0)}%</span> · {hiddenNoise} low-score setups {viewPreset === 'priority' ? 'hidden' : 'visible'}</div>
       </div>
     </div>
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 10 }}>
       <KPI label="Needs action" value={actNowCount} color={actNowCount ? RED : GREEN} sub="stops · open trades · verified" active={viewPreset === 'priority' && special === 'all' && sev === 'all'} onClick={() => applyKpi({ view: 'priority' })} />
       <KPI label="Stop breaches" value={stopCount} color={stopCount ? RED : GREEN} sub="risk feed" active={source === 'risk'} onClick={() => applyKpi({ source: 'risk', view: 'priority' })} />
-      <KPI label="Critical" value={items.filter(i => i.severity === 'critical').length} color={RED} active={sev === 'critical'} onClick={() => applyKpi({ sev: 'critical', view: 'priority' })} />
-      <KPI label="Low-score WAIT" value={hiddenNoise} color={hiddenNoise ? DIM : GREEN} sub={viewPreset === 'priority' ? 'click to show all' : 'showing all'} active={viewPreset === 'all'} onClick={() => setViewPreset(viewPreset === 'priority' ? 'all' : 'priority')} />
+      <KPI label="High error-rate" value={highErr} color={highErr ? RED : GREEN} sub="click to focus" active={special === 'highError'} onClick={() => applyKpi({ special: 'highError' })} />
+      <KPI label="Ensemble BLOCK" value={ensembleBlocked} color={ensembleBlocked ? RED : GREEN} sub={ensembleBlocked ? 'LLM-flagged, resolve' : 'none flagged'} active={special === 'highError' && ensembleBlocked > 0} onClick={() => applyKpi({ special: 'highError', view: 'priority' })} />
       <KPI label="Portfolio" value={money(overview?.portfolio_value)} color={TEXT0} sub="open-trade focus" active={source === 'open-trade'} onClick={() => applyKpi({ source: 'open-trade', view: 'priority' })} />
     </div>
     <FilterRow source={source} setSource={setSource} sev={sev} setSev={setSev} special={special} setSpecial={setSpecial} search={search} setSearch={setSearch} types={[...new Set(items.map(i => i.type))]} viewPreset={viewPreset} setViewPreset={setViewPreset} />
@@ -321,8 +314,8 @@ export default function CentralIntelligencePages({ mode, onDrill }: Props) {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 8, marginTop: 9 }}><textarea value={question} onChange={e => setQuestion(e.target.value)} placeholder="Ask the local model: What changed? Which signals conflict? What should agents verify?" style={{ ...input, minHeight: 58 }} /><textarea value={feedback} onChange={e => setFeedback(e.target.value)} placeholder="Feedback to agents / LM critique: missing source, false positive, stale data, better decision wording..." style={{ ...input, minHeight: 58 }} /><div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 130 }}><label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: TEXT0, cursor: 'pointer' }}><input type="checkbox" checked={useGrok} onChange={e => setUseGrok(e.target.checked)} /> also ask Grok</label><button onClick={askLm} disabled={lmBusy} style={{ ...btn(true, PURPLE), flex: 1, opacity: lmBusy ? .6 : 1 }}>{lmBusy ? 'Reviewing…' : 'Run LM Review'}</button></div></div>
         {lmStatus && <div style={{ fontSize: 10, color: lmStatus.includes('Reviewed') || lmStatus.includes('recorded') ? GREEN : AMBER, marginTop: 7 }}>{lmStatus}</div>}
         {lmReview && <div style={{ display: 'grid', gridTemplateColumns: lmReview.grok || lmReview.grokErr ? '1fr 1fr' : '1fr', gap: 10, marginTop: 10 }}>
-          <div style={{ background: 'rgba(96,165,250,.05)', border: '1px solid #334155', borderRadius: 6, padding: 10 }}><div style={{ fontSize: 11, fontWeight: 800, color: BLUE, marginBottom: 5 }}>🖥 Local LLM (gemma)</div><div style={{ fontSize: 11.5, color: TEXT0, whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{lmReview.local || <span style={{ color: AMBER }}>{lmReview.localErr || 'no response'}</span>}</div></div>
-          {(lmReview.grok || lmReview.grokErr) && <div style={{ background: 'rgba(168,85,247,.05)', border: '1px solid #334155', borderRadius: 6, padding: 10 }}><div style={{ fontSize: 11, fontWeight: 800, color: PURPLE, marginBottom: 5 }}>⚡ Grok</div><div style={{ fontSize: 11.5, color: TEXT0, whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{lmReview.grok || <span style={{ color: AMBER }}>{lmReview.grokErr || 'no response'}</span>}</div></div>}
+          <div style={{ background: 'rgba(96,165,250,.05)', border: '1px solid var(--border)', borderRadius: 6, padding: 10 }}><div style={{ fontSize: 11, fontWeight: 800, color: BLUE, marginBottom: 5 }}>🖥 Local LLM (gemma)</div><div style={{ fontSize: 11.5, color: TEXT0, whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{lmReview.local || <span style={{ color: AMBER }}>{lmReview.localErr || 'no response'}</span>}</div></div>
+          {(lmReview.grok || lmReview.grokErr) && <div style={{ background: 'rgba(168,85,247,.05)', border: '1px solid var(--border)', borderRadius: 6, padding: 10 }}><div style={{ fontSize: 11, fontWeight: 800, color: PURPLE, marginBottom: 5 }}>⚡ Grok</div><div style={{ fontSize: 11.5, color: TEXT0, whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{lmReview.grok || <span style={{ color: AMBER }}>{lmReview.grokErr || 'no response'}</span>}</div></div>}
         </div>}
       </>}
     </div>
@@ -330,11 +323,11 @@ export default function CentralIntelligencePages({ mode, onDrill }: Props) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         {actNowItems.length > 0 && <div>
           {sectionHead('Act now', actNowItems.length, RED)}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10 }}>{actNowItems.map(it => <ItemCard key={it.id} item={it} onDrill={onDrill} onAsk={askAbout} />)}</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10 }}>{actNowItems.map(it => <ItemCard key={it.id} item={it} onDrill={onDrill} />)}</div>
         </div>}
         {monitorItems.length > 0 && <div>
           {sectionHead(viewPreset === 'priority' ? 'Monitor (top)' : 'Monitor', viewPreset === 'priority' ? Math.min(6, monitorItems.length) : monitorItems.length, AMBER)}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10 }}>{(viewPreset === 'priority' ? monitorItems.slice(0, 6) : monitorItems).map(it => <ItemCard key={it.id} item={it} onDrill={onDrill} onAsk={askAbout} />)}</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10 }}>{(viewPreset === 'priority' ? monitorItems.slice(0, 6) : monitorItems).map(it => <ItemCard key={it.id} item={it} onDrill={onDrill} />)}</div>
           {viewPreset === 'priority' && monitorItems.length > 6 && <button onClick={() => setViewPreset('all')} style={{ ...btn(), marginTop: 4, alignSelf: 'flex-start' }}>Show {monitorItems.length - 6} more monitor items</button>}
         </div>}
         {displayFiltered.length === 0 && <div style={{ ...panel, color: MUTED, fontSize: 12 }}>No items match the current filters. Try clearing filters or showing all signals.</div>}

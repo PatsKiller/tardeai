@@ -1,11 +1,12 @@
 /**
  * MAIN Setup Desk — visual + logic redesign (2026-07-31).
- * Default surface is ticket-honest GO/WAIT/NOGO on MAIN admission,
- * not Favorites/Automated/Hermes top-200.
+ * Default surface is MAIN admission GO/WAIT/NOGO with ticket truth as badges.
+ * Hard FAIL → NOGO. Missing critics do NOT empty the GO lane (that broke ops).
  */
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { useApi } from '../hooks/useApi'
 import { BB, T, heatRamp } from '../lib/watchTokens'
+import { terminalButton } from '../lib/watchlistTerminalTokens'
 
 export const WATCH_OPERATOR_CONTRACT = 'watch-operator-v3-main'
 
@@ -25,11 +26,12 @@ const VAL_TIP = {
 }
 
 const shell: CSSProperties = {
-  background: 'var(--bg1)',
+  background: `linear-gradient(165deg, ${BB.bgElevated} 0%, ${BB.bg} 55%, ${BB.bgPanel} 100%)`,
   border: `1px solid ${BB.border}`,
-  borderRadius: 8,
+  borderRadius: 10,
   margin: '8px 0 14px',
   overflow: 'hidden',
+  boxShadow: '0 10px 32px rgba(0,0,0,.45)',
 }
 const chip = (active: boolean, color: string): CSSProperties => ({
   fontSize: 12,
@@ -38,7 +40,7 @@ const chip = (active: boolean, color: string): CSSProperties => ({
   borderRadius: 8,
   cursor: 'pointer',
   border: `2px solid ${active ? color : BB.border}`,
-  background: active ? `${color}22` : 'var(--bg2)',
+  background: active ? `${color}22` : 'rgba(0,0,0,.28)',
   color: active ? color : BB.text2,
   minWidth: 88,
   textAlign: 'center',
@@ -50,10 +52,11 @@ const btn = (active = false): CSSProperties => ({
   borderRadius: 6,
   cursor: 'pointer',
   border: `1px solid ${active ? T.link : BB.border}`,
-  background: active ? `${T.link}18` : 'transparent',
+  background: active ? `${T.link}18` : 'rgba(0,0,0,.2)',
   color: active ? T.link : BB.text2,
 })
-const primaryBtn: CSSProperties = { ...btn(true), minWidth: 120, textAlign: 'center' }
+const primaryBtn: CSSProperties = { ...terminalButton('primary'), minWidth: 120, textAlign: 'center' } as CSSProperties
+const successBtn: CSSProperties = { ...terminalButton('success'), minWidth: 120, textAlign: 'center' } as CSSProperties
 const PAGE_SIZE = 12
 
 type Lane = 'go' | 'wait' | 'nogo' | 'favorites' | 'legacy'
@@ -111,15 +114,31 @@ function ticketState(item: any) {
   const packet = item?.decision_packet ?? {}
   const validation = packet?.current_actionable_plan?.ticket_validation ?? {}
   const review = packet?.ticket_review ?? {}
+  const validated0 = Array.isArray(review?.tickets_validated) ? review.tickets_validated[0] : null
+  const detRaw = text(validation.state, validated0?.state)
+  const recRaw = text(review?.reconciled?.state)
   return {
-    deterministic: text(validation.state, review?.tickets_validated?.[0]?.state, 'NOT RUN').toUpperCase(),
-    reconciled: text(review?.reconciled?.state, 'UNVALIDATED').toUpperCase(),
+    // Missing critics = NOT RUN (pending), not a hard fail / not UNVALIDATED-as-block
+    deterministic: (detRaw || 'NOT RUN').toUpperCase(),
+    reconciled: (recRaw || 'NOT RUN').toUpperCase(),
     local: text(review?.reviews?.local?.verdict, 'NOT RUN').toUpperCase(),
     grok: text(review?.reviews?.grok?.verdict, 'NOT RUN').toUpperCase(),
     chatgpt: text(review?.reviews?.chatgpt?.verdict, 'NOT RUN').toUpperCase(),
   }
 }
 function isFailure(value: string): boolean { return /FAIL|REJECT|BLOCK/.test(value) }
+function isTicketPass(ticket: ReturnType<typeof ticketState>): boolean {
+  return /^(PASS|PASS_WITH_WARNINGS|ADMITTED|OK)$/.test(ticket.deterministic)
+}
+function isTicketPending(ticket: ReturnType<typeof ticketState>): boolean {
+  if (isFailure(ticket.deterministic) || isFailure(ticket.reconciled)) return false
+  if (isTicketPass(ticket)) return false
+  return (
+    ticket.deterministic === 'NOT RUN'
+    || /NOT RUN|UNVALIDATED|UNAVAILABLE|PENDING|REQUIRED|QUALITY_NOT_ASSESSED|REVIEW_UNAVAILABLE/.test(ticket.reconciled)
+    || ticket.deterministic === 'REVIEW_REQUIRED'
+  )
+}
 function originLabel(item: any): string {
   return item?.starred ? 'Operator favorite' : text(item?.origin_system, item?.source, 'system').replace(/_/g, ' ')
 }
@@ -139,46 +158,46 @@ function admissionNow(item: any): 'GO' | 'WAIT' | 'NOGO' {
 }
 
 /**
- * Operator-visible NOW — ticket truth overrides admission GO.
- * FAIL → NOGO; unvalidated / not run / data gap → WAIT.
+ * Operator-visible NOW.
+ * - Hard ticket FAIL → NOGO (never propose)
+ * - Missing price (blocking) → WAIT
+ * - Missing critics / QUALITY_NOT_ASSESSED → keep admission (badge: ticket pending)
+ *   so the GO lane is not emptied when validation hasn't been run yet.
  */
 function operatorNow(
   item: any,
   ticket: ReturnType<typeof ticketState>,
-  hasDataGap: boolean,
-  needsReview: boolean,
+  price: number | null,
 ): 'GO' | 'WAIT' | 'NOGO' {
   const admitted = admissionNow(item)
-  if (admitted === 'NOGO') return 'NOGO'
   if (isFailure(ticket.deterministic) || isFailure(ticket.reconciled)) return 'NOGO'
-  if (hasDataGap || needsReview || ticket.deterministic === 'NOT RUN' || /QUALITY_NOT_ASSESSED|UNVALIDATED/.test(ticket.reconciled)) {
-    return 'WAIT'
-  }
+  if (admitted === 'NOGO') return 'NOGO'
+  if (price === null) return 'WAIT'
   if (admitted === 'GO') return 'GO'
   return admitted
 }
 
 function nextAction(
-  item: any,
   ticket: ReturnType<typeof ticketState>,
   value: ReturnType<typeof valuation>,
   rsi: number | null,
   now: string,
+  price: number | null,
 ): string {
-  if (now === 'NOGO' && isFailure(ticket.deterministic)) return 'Fix deterministic gate — not proposeable.'
-  if (now === 'NOGO') return 'Park / suppress — MAIN NOGO.'
-  if (now === 'WAIT') {
-    if (ticket.deterministic === 'NOT RUN') return 'Run ticket validation (local / free critics).'
-    if (needsUnvalidated(ticket)) return 'Complete independent review before propose.'
-    return 'Refresh plan / fill data gaps — MAIN WAIT.'
+  if (now === 'NOGO' && (isFailure(ticket.deterministic) || isFailure(ticket.reconciled))) {
+    return 'Fix deterministic gate — not proposeable.'
   }
-  if (isFailure(ticket.deterministic)) return 'Open evidence; deterministic failure blocks proposal.'
+  if (now === 'NOGO') return 'Park / suppress — MAIN NOGO.'
+  if (price === null) return 'Refresh quote / price before acting.'
+  if (now === 'WAIT') return 'Refresh plan / fill data gaps — MAIN WAIT.'
+  if (isTicketPending(ticket)) return 'Setup GO — run free critics before propose (ticket pending).'
   if (rsi === null) return 'Refresh technical inputs before acting.'
   if (!value.notApplicable && !value.available) return 'Valuation is missing; review source coverage.'
+  if (isTicketPass(ticket)) return 'Propose / open evidence — ticket validated.'
   return 'Propose / open evidence — MAIN GO setup.'
 }
 function needsUnvalidated(ticket: ReturnType<typeof ticketState>): boolean {
-  return ticket.reconciled === 'UNVALIDATED' || /UNAVAILABLE|PENDING|REQUIRED|QUALITY_NOT_ASSESSED/.test(ticket.reconciled)
+  return isTicketPending(ticket)
 }
 
 export default function WatchTruthAuditPanel() {
@@ -243,13 +262,15 @@ export default function WatchTruthAuditPanel() {
     } : null
     const hasDataGap = price === null || rsi === null || (!value.notApplicable && !value.available)
     const needsReview = needsUnvalidated(ticket)
-    const now = operatorNow(item, ticket, hasDataGap, needsReview)
-    const actionable = now === 'GO' && !isFailure(ticket.deterministic) && !hasDataGap
+    const ticketPending = isTicketPending(ticket)
+    const now = operatorNow(item, ticket, price)
+    // Propose-ready = GO + ticket pass + no hard data gap on price
+    const actionable = now === 'GO' && isTicketPass(ticket) && price !== null
     return {
       item, symbol, value, ticket, rsi, price, priceAt, level,
-      hasDataGap, needsReview, actionable, now,
+      hasDataGap, needsReview, ticketPending, actionable, now,
       admitted: admissionNow(item),
-      next: nextAction(item, ticket, value, rsi, now),
+      next: nextAction(ticket, value, rsi, now, price),
     }
   }), [unique, fv, cards, lv])
 
@@ -258,6 +279,8 @@ export default function WatchTruthAuditPanel() {
   const trueNogo = classified.filter(r => r.now === 'NOGO')
   const favorites = classified.filter(r => Boolean(r.item.starred))
   const demotedFromAdmissionGo = classified.filter(r => r.admitted === 'GO' && r.now !== 'GO').length
+  const ticketPendingGo = trueGo.filter(r => r.ticketPending).length
+  const proposeReadyGo = trueGo.filter(r => r.actionable).length
 
   const laneRows = classified.filter(row => {
     if (lane === 'go') return row.now === 'GO'
@@ -275,11 +298,12 @@ export default function WatchTruthAuditPanel() {
     if (queueFilter === 'actionable' && !row.actionable) return false
     return true
   })
-  // GO lane: true GO first, sort failures out already; prefer higher hermes only as tiebreak
+  // GO lane: propose-ready first, then ticket-pending, then hermes rank
   const sorted = useMemo(() => {
     const list = [...filtered]
     list.sort((a, b) => {
       if (a.actionable !== b.actionable) return a.actionable ? -1 : 1
+      if (a.ticketPending !== b.ticketPending) return a.ticketPending ? -1 : 1
       if (isFailure(a.ticket.deterministic) !== isFailure(b.ticket.deterministic)) return isFailure(a.ticket.deterministic) ? 1 : -1
       return (num(a.item.hermes_rank) ?? 9999) - (num(b.item.hermes_rank) ?? 9999)
     })
@@ -367,27 +391,28 @@ export default function WatchTruthAuditPanel() {
   }
 
   const mainCap = quality?.main_cap ?? 60
-  const failures = classified.filter(r => isFailure(r.ticket.deterministic)).length
+  const failures = classified.filter(r => isFailure(r.ticket.deterministic) || isFailure(r.ticket.reconciled)).length
 
   return (
     <section style={shell} aria-label="MAIN setup command desk">
-      {/* HERO — cannot miss redesign */}
+      {/* HERO — dark elevated desk */}
       <div style={{
         padding: '16px 18px',
-        background: 'linear-gradient(135deg, rgba(34,197,94,.12), rgba(15,23,42,.9) 45%, rgba(245,158,11,.08))',
+        background: 'linear-gradient(135deg, rgba(34,197,94,.14), rgba(8,14,24,.95) 42%, rgba(255,176,0,.08))',
         borderBottom: `1px solid ${BB.border}`,
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
           <div>
             <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.12em', color: BB.green, textTransform: 'uppercase' }}>
-              Redesign · MAIN command desk
+              MAIN command desk
             </div>
             <div style={{ fontSize: 22, fontWeight: 900, color: BB.text0, marginTop: 4 }}>
               What do I do next?
             </div>
-            <div style={{ fontSize: 12, color: BB.text3, marginTop: 4, maxWidth: 560, lineHeight: 1.45 }}>
-              Ticket-honest GO only. Admission GO with FAIL / unvalidated tickets demote to WAIT or NOGO
-              ({demotedFromAdmissionGo} demoted this load). Contract {WATCH_OPERATOR_CONTRACT}.
+            <div style={{ fontSize: 12, color: BB.text3, marginTop: 4, maxWidth: 620, lineHeight: 1.45 }}>
+              GO = MAIN admission setup. Ticket FAIL → NOGO. Missing critics stay in GO with a pending badge
+              ({ticketPendingGo} ticket-pending · {proposeReadyGo} propose-ready · {demotedFromAdmissionGo} demoted this load).
+              Contract {WATCH_OPERATOR_CONTRACT}.
             </div>
           </div>
           <button type="button" onClick={() => setDeskOpen(!open)} aria-expanded={open} style={primaryBtn}>
@@ -397,15 +422,15 @@ export default function WatchTruthAuditPanel() {
 
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 14, alignItems: 'stretch' }}>
           {([
-            { key: 'go' as Lane, n: trueGo.length, label: 'GO', color: BB.green, hint: 'Propose-ready' },
-            { key: 'wait' as Lane, n: trueWait.length, label: 'WAIT', color: BB.amber, hint: 'Fix ticket / data' },
-            { key: 'nogo' as Lane, n: trueNogo.length, label: 'NOGO', color: BB.red, hint: 'Park / fail' },
+            { key: 'go' as Lane, n: trueGo.length, label: 'GO', color: BB.green, hint: `${proposeReadyGo} ready · ${ticketPendingGo} pending` },
+            { key: 'wait' as Lane, n: trueWait.length, label: 'WAIT', color: BB.amber, hint: 'Data / plan gap' },
+            { key: 'nogo' as Lane, n: trueNogo.length, label: 'NOGO', color: BB.red, hint: 'Fail / park' },
           ]).map(b => (
             <button
               key={b.key}
               type="button"
               onClick={() => { setLane(b.key); setDeskOpen(true) }}
-              style={{ ...chip(lane === b.key, b.color), minWidth: 110 }}
+              style={{ ...chip(lane === b.key, b.color), minWidth: 120 }}
             >
               <div style={{ fontSize: 28, fontWeight: 900, lineHeight: 1.1 }}>{b.n}</div>
               <div style={{ fontSize: 12, marginTop: 2 }}>{b.label}</div>
@@ -420,11 +445,11 @@ export default function WatchTruthAuditPanel() {
             gap: 4,
             fontSize: 11,
             color: BB.text3,
-            minWidth: 160,
+            minWidth: 170,
           }}>
             <div>MAIN pool {classified.length}/{mainCap}</div>
             <div>★ {favorites.length} · ticket fail {failures}</div>
-            <div>actionable {trueGo.length}</div>
+            <div>propose-ready {proposeReadyGo}</div>
           </div>
         </div>
 
@@ -455,37 +480,43 @@ export default function WatchTruthAuditPanel() {
       )}
 
       {open && (
-        <div style={{ padding: 12 }}>
+        <div style={{ padding: 12, background: 'rgba(0,0,0,.18)' }}>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
             <span style={{ fontSize: 12, fontWeight: 800, color: BB.text0 }}>
-              {lane === 'go' ? 'GO — propose-ready only' : lane === 'wait' ? 'WAIT — unblock these' : lane === 'nogo' ? 'NOGO — park / fail' : lane === 'favorites' ? '★ Favorites' : 'Legacy Hermes top-200'}
+              {lane === 'go' ? 'GO — MAIN setups' : lane === 'wait' ? 'WAIT — data / plan gaps' : lane === 'nogo' ? 'NOGO — fail / park' : lane === 'favorites' ? '★ Favorites' : 'Legacy Hermes top-200'}
             </span>
             <span style={{ fontSize: 11, color: BB.text3 }}>{sorted.length} rows</span>
             <select
               value={queueFilter}
               onChange={e => setQueueFilter(e.target.value as QueueFilter)}
-              style={{ fontSize: 11, padding: '6px 8px', background: 'var(--bg2)', border: `1px solid ${BB.border}`, color: BB.text0, borderRadius: 4 }}
+              style={{ fontSize: 11, padding: '6px 8px', background: BB.bgShift, border: `1px solid ${BB.border}`, color: BB.text0, borderRadius: 4 }}
             >
               <option value="all">All ticket states</option>
               <option value="deterministic_fail">Deterministic fail</option>
-              <option value="needs_review">Needs review</option>
+              <option value="needs_review">Ticket pending</option>
               <option value="data_gaps">Data gaps</option>
-              <option value="actionable">Actionable only</option>
+              <option value="actionable">Propose-ready only</option>
             </select>
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="Filter symbol…"
-              style={{ marginLeft: 'auto', minWidth: 180, fontSize: 11, padding: '6px 8px', background: 'var(--bg2)', border: `1px solid ${BB.border}`, color: BB.text0, borderRadius: 4 }}
+              style={{ marginLeft: 'auto', minWidth: 180, fontSize: 11, padding: '6px 8px', background: BB.bgShift, border: `1px solid ${BB.border}`, color: BB.text0, borderRadius: 4 }}
             />
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.2fr) minmax(300px,.8fr)', gap: 12, alignItems: 'start' }}>
-            {/* Compact command list — not a 200-row warehouse */}
-            <div style={{ border: `1px solid ${BB.border}`, borderRadius: 8, overflow: 'hidden', background: 'var(--bg1)' }}>
+            {/* Dark command list — elevated rows + CTA */}
+            <div style={{ border: `1px solid ${BB.border}`, borderRadius: 10, overflow: 'hidden', background: BB.bgPanel, boxShadow: '0 8px 24px rgba(0,0,0,.35)' }}>
               {shown.map(row => {
                 const isSelected = selected === row.symbol
                 const nowColor = row.now === 'GO' ? BB.green : row.now === 'WAIT' ? BB.amber : BB.red
+                const ctaLabel = row.actionable ? 'Propose' : row.ticketPending ? 'Validate' : row.now === 'NOGO' ? 'Review' : 'Open'
+                const ctaStyle = row.actionable
+                  ? successBtn
+                  : row.ticketPending
+                    ? primaryBtn
+                    : (isSelected ? primaryBtn : btn(false))
                 return (
                   <div
                     key={row.symbol}
@@ -493,133 +524,190 @@ export default function WatchTruthAuditPanel() {
                     tabIndex={0}
                     onClick={() => selectForReview(row.symbol)}
                     onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectForReview(row.symbol) } }}
+                    className="wlc-card-dark"
                     style={{
                       display: 'grid',
-                      gridTemplateColumns: '72px 1fr auto',
+                      gridTemplateColumns: '80px 1fr auto',
                       gap: 10,
                       padding: '12px 14px',
                       borderBottom: `1px solid ${BB.border}`,
                       cursor: 'pointer',
-                      background: isSelected ? 'var(--bg2)' : 'transparent',
-                      boxShadow: isSelected ? `inset 4px 0 0 ${nowColor}` : undefined,
+                      background: isSelected
+                        ? `linear-gradient(90deg, ${nowColor}18, rgba(20,30,48,.95))`
+                        : 'linear-gradient(90deg, rgba(0,0,0,.15), transparent)',
+                      boxShadow: isSelected ? `inset 4px 0 0 ${nowColor}` : `inset 3px 0 0 ${nowColor}55`,
                     }}
                   >
                     <div>
-                      <div style={{ fontSize: 15, fontWeight: 900, color: BB.text0 }}>{row.symbol}</div>
-                      <div style={{ fontSize: 11, fontWeight: 800, color: nowColor }}>{row.now}</div>
+                      <div style={{ fontSize: 16, fontWeight: 900, color: BB.text0, letterSpacing: '-0.02em' }}>{row.symbol}</div>
+                      <div style={{ fontSize: 11, fontWeight: 800, color: nowColor, marginTop: 2 }}>{row.now}</div>
+                      {row.ticketPending && row.now === 'GO' && (
+                        <div style={{ fontSize: 10, fontWeight: 700, color: BB.amber, marginTop: 2 }}>TICKET PENDING</div>
+                      )}
+                      {row.actionable && (
+                        <div style={{ fontSize: 10, fontWeight: 700, color: BB.green, marginTop: 2 }}>READY</div>
+                      )}
                     </div>
                     <div>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: isFailure(row.ticket.deterministic) ? BB.red : BB.text1 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: isFailure(row.ticket.deterministic) || isFailure(row.ticket.reconciled) ? BB.red : BB.text1 }}>
                         {row.next}
                       </div>
                       <div style={{ fontSize: 11, color: BB.text3, marginTop: 3 }}>
                         {money(row.price)} · {originLabel(row.item)} · ticket {row.ticket.deterministic}
-                        {row.admitted === 'GO' && row.now !== 'GO' ? ' · demoted from admission GO' : ''}
+                        {row.admitted === 'GO' && row.now === 'NOGO' ? ' · demoted (ticket FAIL)' : ''}
                       </div>
                     </div>
                     <button
                       type="button"
                       onClick={e => { e.stopPropagation(); selectForReview(row.symbol) }}
-                      style={isSelected ? primaryBtn : btn(false)}
+                      style={ctaStyle}
                     >
-                      {isSelected ? 'Selected' : 'Open'}
+                      {isSelected ? 'Selected' : ctaLabel}
                     </button>
                   </div>
                 )
               })}
               {!shown.length && (
                 <div style={{ padding: 24, color: BB.text3, fontSize: 13 }}>
-                  No symbols in this lane. Try WAIT if GO is empty (tickets still unvalidated).
+                  {lane === 'go'
+                    ? 'No MAIN GO setups in this filter. Clear filters or check WAIT/NOGO.'
+                    : 'No symbols in this lane for the current filter.'}
                 </div>
               )}
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', fontSize: 11, color: BB.text3 }}>
+              <div style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                padding: '10px 14px', fontSize: 11, color: BB.text3,
+                background: 'linear-gradient(180deg, rgba(0,0,0,.35), rgba(0,0,0,.55))',
+                borderTop: `1px solid ${BB.border}`,
+              }}>
                 <span>{sorted.length} matching · page {safePage + 1}/{pageCount}</span>
                 <span style={{ display: 'flex', gap: 6 }}>
-                  <button type="button" disabled={safePage === 0} onClick={() => setPage(p => Math.max(0, p - 1))} style={btn(false)}>Prev</button>
-                  <button type="button" disabled={safePage >= pageCount - 1} onClick={() => setPage(p => Math.min(pageCount - 1, p + 1))} style={btn(false)}>Next</button>
+                  <button type="button" disabled={safePage === 0} onClick={() => setPage(p => Math.max(0, p - 1))} style={terminalButton('secondary') as CSSProperties}>Prev</button>
+                  <button type="button" disabled={safePage >= pageCount - 1} onClick={() => setPage(p => Math.min(pageCount - 1, p + 1))} style={terminalButton('secondary') as CSSProperties}>Next</button>
                 </span>
               </div>
             </div>
 
-            <aside style={{ border: `1px solid ${BB.border}`, borderRadius: 8, padding: 12, position: 'sticky', top: 8, background: 'var(--bg1)' }} aria-live="polite">
+            <aside
+              style={{
+                border: `1px solid ${BB.border}`,
+                borderRadius: 10,
+                padding: 0,
+                position: 'sticky',
+                top: 8,
+                background: `linear-gradient(165deg, ${BB.bgElevated} 0%, ${BB.bg} 100%)`,
+                boxShadow: '0 10px 28px rgba(0,0,0,.4)',
+                overflow: 'hidden',
+              }}
+              aria-live="polite"
+            >
               {!selectedRow ? (
-                <div style={{ color: BB.text3, fontSize: 12 }}>Select a symbol.</div>
+                <div style={{ color: BB.text3, fontSize: 12, padding: 14 }}>Select a symbol.</div>
               ) : (
                 <>
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                    <b style={{ fontSize: 20 }}>{selectedRow.symbol}</b>
-                    <span style={{
-                      fontSize: 11, fontWeight: 800, padding: '3px 8px', borderRadius: 999,
-                      color: selectedRow.now === 'GO' ? BB.green : selectedRow.now === 'WAIT' ? BB.amber : BB.red,
-                      border: `1px solid currentColor`,
-                    }}>{selectedRow.now}</span>
-                    <button type="button" onClick={() => void toggleStar(selectedRow.item)} style={{ ...btn(Boolean(selectedRow.item.starred)), marginLeft: 'auto' }}>
-                      {selectedRow.item.starred ? 'Unstar' : '★ Star'}
-                    </button>
-                  </div>
-                  <div style={{ marginTop: 6, fontSize: 11, color: BB.text3 }}>
-                    {text(selectedRow.item.profile_sector, '—')} · {money(selectedRow.price)} · RSI {selectedRow.rsi === null ? '—' : selectedRow.rsi.toFixed(1)}
-                  </div>
-                  <div style={{ marginTop: 10, padding: 10, borderRadius: 6, background: 'var(--bg2)', border: `1px solid ${BB.border}` }}>
-                    <div style={{ fontSize: 10, fontWeight: 800, color: BB.text3, letterSpacing: '.06em' }}>NEXT ACTION</div>
-                    <div style={{ fontSize: 14, fontWeight: 800, marginTop: 4, color: isFailure(selectedRow.ticket.deterministic) ? BB.red : BB.text0 }}>
-                      {selectedRow.next}
+                  <div style={{ padding: '12px 14px', borderBottom: `1px solid ${BB.border}`, background: 'rgba(0,0,0,.22)' }}>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <b style={{ fontSize: 20, color: BB.text0 }}>{selectedRow.symbol}</b>
+                      <span style={{
+                        fontSize: 11, fontWeight: 800, padding: '3px 8px', borderRadius: 999,
+                        color: selectedRow.now === 'GO' ? BB.green : selectedRow.now === 'WAIT' ? BB.amber : BB.red,
+                        border: `1px solid currentColor`,
+                        background: selectedRow.now === 'GO' ? 'rgba(34,197,94,.12)' : selectedRow.now === 'WAIT' ? 'rgba(255,176,0,.12)' : 'rgba(239,68,68,.12)',
+                      }}>{selectedRow.now}</span>
+                      {selectedRow.ticketPending && (
+                        <span style={{ fontSize: 10, fontWeight: 800, color: BB.amber, letterSpacing: '.06em' }}>TICKET PENDING</span>
+                      )}
+                      {selectedRow.actionable && (
+                        <span style={{ fontSize: 10, fontWeight: 800, color: BB.green, letterSpacing: '.06em' }}>PROPOSE-READY</span>
+                      )}
+                      <button type="button" onClick={() => void toggleStar(selectedRow.item)} style={{ ...btn(Boolean(selectedRow.item.starred)), marginLeft: 'auto' }}>
+                        {selectedRow.item.starred ? 'Unstar' : '★ Star'}
+                      </button>
+                    </div>
+                    <div style={{ marginTop: 6, fontSize: 11, color: BB.text3 }}>
+                      {text(selectedRow.item.profile_sector, '—')} · {money(selectedRow.price)} · RSI {selectedRow.rsi === null ? '—' : selectedRow.rsi.toFixed(1)}
                     </div>
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0, marginTop: 10, border: `1px solid ${BB.border}`, borderRadius: 6, overflow: 'hidden' }}>
-                    {([
-                      ['Deterministic', selectedRow.ticket.deterministic],
-                      ['Reconciled', selectedRow.ticket.reconciled],
-                      ['Local', selectedRow.ticket.local],
-                      ['Grok', selectedRow.ticket.grok],
-                      ['ChatGPT', selectedRow.ticket.chatgpt],
-                      ['Valuation', selectedRow.value.notApplicable ? 'N/A' : selectedRow.value.available ? `P/E ${selectedRow.value.pe ?? '—'}` : '—'],
-                    ] as const).map(([label, value]) => (
-                      <div key={label} style={{ padding: 8, borderBottom: `1px solid ${BB.border}`, borderRight: `1px solid ${BB.border}` }}>
-                        <div style={{ fontSize: 10, color: BB.text3 }}>{label}</div>
-                        <b style={{ fontSize: 12, color: isFailure(String(value)) ? BB.red : BB.text1 }}>{value}</b>
+                  <div style={{ padding: '12px 14px' }}>
+                    <div style={{ padding: 10, borderRadius: 8, background: 'rgba(0,0,0,.28)', border: `1px solid ${BB.border}` }}>
+                      <div style={{ fontSize: 10, fontWeight: 800, color: BB.text3, letterSpacing: '.06em' }}>NEXT ACTION</div>
+                      <div style={{ fontSize: 14, fontWeight: 800, marginTop: 4, color: isFailure(selectedRow.ticket.deterministic) || isFailure(selectedRow.ticket.reconciled) ? BB.red : BB.text0 }}>
+                        {selectedRow.next}
                       </div>
-                    ))}
-                  </div>
-                  {!selectedRow.value.notApplicable && (
-                    <div style={{ marginTop: 8, fontSize: 11, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                      {([['P/E', selectedRow.value.pe, VAL_TIP.pe], ['Fwd', selectedRow.value.forwardPe, VAL_TIP.fwd], ['P/B', selectedRow.value.pb, VAL_TIP.pb], ['P/S', selectedRow.value.ps, VAL_TIP.ps]] as const).map(([label, value, tip]) => (
-                        <span key={label} title={tip}><span style={{ color: BB.text3 }}>{label}</span> <b>{value === null ? '—' : Number(value).toFixed(2)}</b></span>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0, marginTop: 10, border: `1px solid ${BB.border}`, borderRadius: 8, overflow: 'hidden' }}>
+                      {([
+                        ['Deterministic', selectedRow.ticket.deterministic],
+                        ['Reconciled', selectedRow.ticket.reconciled],
+                        ['Local', selectedRow.ticket.local],
+                        ['Grok', selectedRow.ticket.grok],
+                        ['ChatGPT', selectedRow.ticket.chatgpt],
+                        ['Valuation', selectedRow.value.notApplicable ? 'N/A' : selectedRow.value.available ? `P/E ${selectedRow.value.pe ?? '—'}` : '—'],
+                      ] as const).map(([label, value]) => (
+                        <div key={label} style={{ padding: 8, borderBottom: `1px solid ${BB.border}`, borderRight: `1px solid ${BB.border}`, background: 'rgba(0,0,0,.12)' }}>
+                          <div style={{ fontSize: 10, color: BB.text3 }}>{label}</div>
+                          <b style={{ fontSize: 12, color: isFailure(String(value)) ? BB.red : BB.text1 }}>{value}</b>
+                        </div>
                       ))}
                     </div>
-                  )}
-                  {selectedRow.level && (selectedRow.level.resistance !== null || selectedRow.level.support !== null) && (
-                    <div style={{ marginTop: 6, fontSize: 11, display: 'flex', gap: 12 }}>
-                      <span style={{ color: levelHeat(selectedRow.level.resistancePct) }}>R {selectedRow.level.resistance === null ? '—' : `$${selectedRow.level.resistance.toFixed(2)}`} {signedPct(selectedRow.level.resistancePct)}</span>
-                      <span style={{ color: levelHeat(selectedRow.level.supportPct) }}>S {selectedRow.level.support === null ? '—' : `$${selectedRow.level.support.toFixed(2)}`} {signedPct(selectedRow.level.supportPct)}</span>
-                    </div>
-                  )}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginTop: 10 }}>
-                    <button type="button" disabled={Boolean(reviewBusy)} onClick={() => void runReview('local', 'Local critic')} style={btn(false)}>{reviewBusy === 'Local critic' ? '…' : 'Run local'}</button>
-                    <button type="button" disabled={Boolean(reviewBusy)} onClick={() => void runReview('grok', 'Grok OAuth')} style={btn(false)}>{reviewBusy === 'Grok OAuth' ? '…' : 'Grok OAuth'}</button>
-                    <button type="button" disabled={Boolean(reviewBusy)} onClick={() => void runReview('chatgpt', 'ChatGPT OAuth')} style={btn(false)}>{reviewBusy === 'ChatGPT OAuth' ? '…' : 'ChatGPT OAuth'}</button>
-                    <button type="button" disabled={Boolean(reviewBusy)} onClick={() => void runReview('local,grok,chatgpt', 'All free critics')} style={btn(true)}>{reviewBusy === 'All free critics' ? '…' : 'All free'}</button>
+                    {!selectedRow.value.notApplicable && (
+                      <div style={{ marginTop: 8, fontSize: 11, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                        {([['P/E', selectedRow.value.pe, VAL_TIP.pe], ['Fwd', selectedRow.value.forwardPe, VAL_TIP.fwd], ['P/B', selectedRow.value.pb, VAL_TIP.pb], ['P/S', selectedRow.value.ps, VAL_TIP.ps]] as const).map(([label, value, tip]) => (
+                          <span key={label} title={tip}><span style={{ color: BB.text3 }}>{label}</span> <b style={{ color: BB.text0 }}>{value === null ? '—' : Number(value).toFixed(2)}</b></span>
+                        ))}
+                      </div>
+                    )}
+                    {selectedRow.level && (selectedRow.level.resistance !== null || selectedRow.level.support !== null) && (
+                      <div style={{ marginTop: 6, fontSize: 11, display: 'flex', gap: 12 }}>
+                        <span style={{ color: levelHeat(selectedRow.level.resistancePct) }}>R {selectedRow.level.resistance === null ? '—' : `$${selectedRow.level.resistance.toFixed(2)}`} {signedPct(selectedRow.level.resistancePct)}</span>
+                        <span style={{ color: levelHeat(selectedRow.level.supportPct) }}>S {selectedRow.level.support === null ? '—' : `$${selectedRow.level.support.toFixed(2)}`} {signedPct(selectedRow.level.supportPct)}</span>
+                      </div>
+                    )}
                   </div>
-                  <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
-                    <button type="button" onClick={() => { window.location.href = `/v3/portfolio/re-entry?classify=${encodeURIComponent(selectedRow.symbol)}` }} style={primaryBtn}>Classify Re-Entry</button>
-                    <button type="button" onClick={() => { window.location.href = `/v3/rotation?symbol=${encodeURIComponent(selectedRow.symbol)}` }} style={btn(false)}>Rotation</button>
-                    <button type="button" disabled={Boolean(reviewBusy)} onClick={() => void estimatePremium()} style={btn(false)}>Paid…</button>
-                  </div>
-                  {message && <div style={{ marginTop: 8, fontSize: 11, color: /failed|error/i.test(message) ? BB.red : BB.text2 }}>{message}</div>}
-                  {premium && (
-                    <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px solid ${BB.border}` }}>
-                      {premium.available ? (
-                        <>
-                          <div style={{ fontSize: 11 }}>{premium.provider}/{premium.model} · est ${Number(premium.est_cost_usd).toFixed(4)}</div>
-                          <label style={{ display: 'block', fontSize: 10, color: BB.text3, marginTop: 6 }}>
-                            Type: <code>{premium.confirm_with}</code>
-                            <input value={confirmation} onChange={e => setConfirmation(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', marginTop: 4, fontSize: 11, padding: '6px 8px', background: 'var(--bg2)', border: `1px solid ${BB.border}`, color: BB.text0 }} />
-                          </label>
-                          <button type="button" disabled={confirmation !== premium.confirm_with || Boolean(reviewBusy)} onClick={() => void runPremium()} style={{ ...btn(true), marginTop: 6, opacity: confirmation === premium.confirm_with ? 1 : 0.5 }}>Confirm paid</button>
-                        </>
-                      ) : <div style={{ fontSize: 11, color: BB.text2 }}>{premium.reason}</div>}
+                  {/* CTA FOOTER — dark dominant actions */}
+                  <div
+                    className="wlc-card-cta-bar"
+                    style={{
+                      display: 'flex', flexDirection: 'column', gap: 8,
+                      padding: '12px 14px',
+                      borderTop: `1px solid ${BB.border}`,
+                      background: 'linear-gradient(180deg, rgba(0,0,0,.35), rgba(0,0,0,.55))',
+                    }}
+                  >
+                    <button
+                      type="button"
+                      disabled={Boolean(reviewBusy)}
+                      onClick={() => void runReview('local,grok,chatgpt', 'All free critics')}
+                      style={{ ...successBtn, width: '100%' }}
+                    >
+                      {reviewBusy === 'All free critics' ? '…' : selectedRow.ticketPending ? 'Run free critics' : 'Re-run free critics'}
+                    </button>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                      <button type="button" disabled={Boolean(reviewBusy)} onClick={() => void runReview('local', 'Local critic')} style={terminalButton('secondary') as CSSProperties}>{reviewBusy === 'Local critic' ? '…' : 'Run local'}</button>
+                      <button type="button" disabled={Boolean(reviewBusy)} onClick={() => void runReview('grok', 'Grok OAuth')} style={terminalButton('secondary') as CSSProperties}>{reviewBusy === 'Grok OAuth' ? '…' : 'Grok OAuth'}</button>
+                      <button type="button" disabled={Boolean(reviewBusy)} onClick={() => void runReview('chatgpt', 'ChatGPT OAuth')} style={terminalButton('secondary') as CSSProperties}>{reviewBusy === 'ChatGPT OAuth' ? '…' : 'ChatGPT OAuth'}</button>
+                      <button type="button" disabled={Boolean(reviewBusy)} onClick={() => void estimatePremium()} style={terminalButton('secondary') as CSSProperties}>Paid…</button>
                     </div>
-                  )}
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      <button type="button" onClick={() => { window.location.href = `/v3/portfolio/re-entry?classify=${encodeURIComponent(selectedRow.symbol)}` }} style={primaryBtn}>Classify Re-Entry</button>
+                      <button type="button" onClick={() => { window.location.href = `/v3/rotation?symbol=${encodeURIComponent(selectedRow.symbol)}` }} style={terminalButton('ghost') as CSSProperties}>Rotation</button>
+                    </div>
+                    {message && <div style={{ fontSize: 11, color: /failed|error/i.test(message) ? BB.red : BB.text2 }}>{message}</div>}
+                    {premium && (
+                      <div style={{ paddingTop: 4, borderTop: `1px solid ${BB.border}` }}>
+                        {premium.available ? (
+                          <>
+                            <div style={{ fontSize: 11, color: BB.text2 }}>{premium.provider}/{premium.model} · est ${Number(premium.est_cost_usd).toFixed(4)}</div>
+                            <label style={{ display: 'block', fontSize: 10, color: BB.text3, marginTop: 6 }}>
+                              Type: <code>{premium.confirm_with}</code>
+                              <input value={confirmation} onChange={e => setConfirmation(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', marginTop: 4, fontSize: 11, padding: '6px 8px', background: BB.bgShift, border: `1px solid ${BB.border}`, color: BB.text0 }} />
+                            </label>
+                            <button type="button" disabled={confirmation !== premium.confirm_with || Boolean(reviewBusy)} onClick={() => void runPremium()} style={{ ...successBtn, marginTop: 6, opacity: confirmation === premium.confirm_with ? 1 : 0.5, width: '100%' }}>Confirm paid</button>
+                          </>
+                        ) : <div style={{ fontSize: 11, color: BB.text2 }}>{premium.reason}</div>}
+                      </div>
+                    )}
+                  </div>
                 </>
               )}
             </aside>

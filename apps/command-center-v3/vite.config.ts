@@ -47,4 +47,14 @@ export default defineConfig({
       '/api': 'http://127.0.0.1:7777',
     },
   },
+  // `vite preview` serves the already-built dist/ statically (no chokidar file watchers), which is
+  // the only local option on hosts where fs.inotify.max_user_watches is exhausted (see `vite dev`
+  // ENOSPC). Mirrors server.proxy so /api still hits the real backend for a faithful local review.
+  preview: {
+    port: 7791,
+    host: '0.0.0.0',
+    proxy: {
+      '/api': 'http://127.0.0.1:7777',
+    },
+  },
 })
