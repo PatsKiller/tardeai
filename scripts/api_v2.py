@@ -2159,22 +2159,49 @@ def overview():
     periods = perf.get("periods", {})
     active_positions = [p for p in holdings if not p.get("is_cash") and (p.get("market_value") or 0) > 100]
 
+    # Data Broker (Phase 2): shared aggregate from portfolio_snapshot read model.
+    today_change = None
+    today_pct = None
+    _snap_sectors = None
+    _snap_movers = None
+    _snap_by_acct = None
+    try:
+        import sys as _ds
+        _ds.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from lib.data_broker.portfolio_snapshot import get_portfolio_snapshot
+        _snap = get_portfolio_snapshot()
+        if _snap.get("ok"):
+            _st = _snap.get("totals") or {}
+            today_change = _st.get("day_change")
+            today_pct = _st.get("day_change_pct")
+            _snap_sectors = _snap.get("sector_allocation")
+            _snap_movers = _snap.get("top_movers")
+            _snap_by_acct = _snap.get("by_account")
+    except Exception:
+        pass
+
     # Sector allocation — prefer the pipeline's look-through breakdown (holdings.json resolved_sectors:
     # funds decomposed into underlying sectors). Holding ROWS carry no sector field, so the old per-row
     # sector_type aggregation collapsed everything into "Other". Fall back to it only if look-through is absent.
-    resolved = h.get("resolved_sectors")
-    if isinstance(resolved, list) and resolved:
-        sector_list = [(r.get("sector") or "Other / Unclassified", r.get("value") or 0)
-                       for r in resolved if (r.get("value") or 0) > 0][:13]
+    if _snap_sectors:
+        sector_list = [(r.get("sector") or "Other", r.get("value") or 0) for r in _snap_sectors]
     else:
-        sectors = {}
-        for p in active_positions:
-            s = p.get("sector_type") or "Other"
-            sectors[s] = sectors.get(s, 0) + (p.get("market_value") or 0)
-        sector_list = sorted(sectors.items(), key=lambda x: -x[1])[:10]
+        resolved = h.get("resolved_sectors")
+        if isinstance(resolved, list) and resolved:
+            sector_list = [(r.get("sector") or "Other / Unclassified", r.get("value") or 0)
+                           for r in resolved if (r.get("value") or 0) > 0][:13]
+        else:
+            sectors = {}
+            for p in active_positions:
+                s = p.get("sector_type") or "Other"
+                sectors[s] = sectors.get(s, 0) + (p.get("market_value") or 0)
+            sector_list = sorted(sectors.items(), key=lambda x: -x[1])[:10]
 
     # Top movers
-    movers = sorted(active_positions, key=lambda p: abs(p.get("day_change") or 0), reverse=True)[:6]
+    if _snap_movers:
+        movers = _snap_movers
+    else:
+        movers = sorted(active_positions, key=lambda p: abs(p.get("day_change") or 0), reverse=True)[:6]
 
     # Notifications count
     notif_rows = _db_query("SELECT count(*) AS cnt FROM notification_log", fetch="one")
@@ -2208,29 +2235,39 @@ def overview():
     # prev_price == new_price at write time, so trusting them silently under-counts — the header
     # once read +$171 while the portfolio had truly moved ~+$5,258. Fall back to the stored
     # aggregate only if the live recompute yields nothing.
-    today_change = _live_portfolio_day_change(holdings)
+    if today_change is None:
+        today_change = _live_portfolio_day_change(holdings)
     if today_change is None or today_change == 0:
         today_change = totals.get("day_change")
         if today_change is None:
             today_change = sum(p.get("day_change") or 0 for p in holdings)
     total_val = totals.get("total_value", 0)
-    today_pct = (today_change / (total_val - today_change) * 100) if total_val > abs(today_change) else 0
+    if today_pct is None:
+        today_pct = (today_change / (total_val - today_change) * 100) if total_val > abs(today_change) else 0
     # per-account breakdown (operator 2026-06-12: "show what's moved today by account") + top movers
-    today_by_account = {}
-    for p in holdings:
-        a = p.get("account") or "unknown"
-        d = today_by_account.setdefault(a, {"change": 0.0, "value": 0.0})
-        d["change"] += p.get("day_change") or 0
-        d["value"] += p.get("market_value") or 0
-    for a, d in today_by_account.items():
-        base = d["value"] - d["change"]
-        d["change"] = round(d["change"], 2)
-        d["pct"] = round(d["change"] / base * 100, 2) if base > 0 else None
-        d["value"] = round(d["value"], 2)
-        movers_a = sorted([p for p in holdings if (p.get("account") or "unknown") == a],
-                          key=lambda p: abs(p.get("day_change") or 0), reverse=True)[:2]
-        d["top_movers"] = "; ".join(f"{m.get('symbol')} {('+' if (m.get('day_change') or 0) >= 0 else '')}"
-                                    f"{round(m.get('day_change') or 0)}" for m in movers_a if m.get("day_change"))
+    if _snap_by_acct:
+        today_by_account = dict(_snap_by_acct)
+        for a, d in today_by_account.items():
+            movers_a = sorted([p for p in holdings if (p.get("account") or "unknown") == a],
+                              key=lambda p: abs(p.get("day_change") or 0), reverse=True)[:2]
+            d["top_movers"] = "; ".join(f"{m.get('symbol')} {('+' if (m.get('day_change') or 0) >= 0 else '')}"
+                                        f"{round(m.get('day_change') or 0)}" for m in movers_a if m.get("day_change"))
+    else:
+        today_by_account = {}
+        for p in holdings:
+            a = p.get("account") or "unknown"
+            d = today_by_account.setdefault(a, {"change": 0.0, "value": 0.0})
+            d["change"] += p.get("day_change") or 0
+            d["value"] += p.get("market_value") or 0
+        for a, d in today_by_account.items():
+            base = d["value"] - d["change"]
+            d["change"] = round(d["change"], 2)
+            d["pct"] = round(d["change"] / base * 100, 2) if base > 0 else None
+            d["value"] = round(d["value"], 2)
+            movers_a = sorted([p for p in holdings if (p.get("account") or "unknown") == a],
+                              key=lambda p: abs(p.get("day_change") or 0), reverse=True)[:2]
+            d["top_movers"] = "; ".join(f"{m.get('symbol')} {('+' if (m.get('day_change') or 0) >= 0 else '')}"
+                                        f"{round(m.get('day_change') or 0)}" for m in movers_a if m.get("day_change"))
 
     # Trade AI run data
     import glob
@@ -2741,6 +2778,14 @@ def portfolio_holdings():
         for p in holdings
         if str(p.get("symbol") or "").strip()
     })
+    _ind_by_sym: dict = {}
+    try:
+        import sys as _is
+        _is.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from lib.data_broker.indicator_snapshot import get_indicator_snapshot
+        _ind_by_sym = (get_indicator_snapshot(_holding_symbols).get("by_symbol") or {})
+    except Exception:
+        _ind_by_sym = {}
     _mq_rows = []
     if _holding_symbols:
         _mq_rows = _db_query(
@@ -2807,12 +2852,13 @@ def portfolio_holdings():
                 if v is not None:
                     return v
             return None
-        merged_rsi = _pick(e_cache, t_snap, key="rsi")
+        _ind = _ind_by_sym.get(str(sym).upper()) or {}
+        merged_rsi = _ind.get("rsi") if _ind.get("rsi") is not None else _pick(e_cache, t_snap, key="rsi")
         merged_beta = _pick(e_cache, t_snap, key="beta")
-        merged_sma20 = _pick(e_cache, t_snap, key="sma20_pct")
-        merged_sma50 = _pick(e_cache, t_snap, key="sma50_pct")
-        merged_sma200 = _pick(e_cache, t_snap, key="sma200_pct")
-        merged_atr = _pick(e_cache, t_snap, key="atr")
+        merged_sma20 = _ind.get("sma20_pct") if _ind.get("sma20_pct") is not None else _pick(e_cache, t_snap, key="sma20_pct")
+        merged_sma50 = _ind.get("sma50_pct") if _ind.get("sma50_pct") is not None else _pick(e_cache, t_snap, key="sma50_pct")
+        merged_sma200 = _ind.get("sma200_pct") if _ind.get("sma200_pct") is not None else _pick(e_cache, t_snap, key="sma200_pct")
+        merged_atr = _ind.get("atr") if _ind.get("atr") is not None else _pick(e_cache, t_snap, key="atr")
         # For pi_score, build a merged dict with all needed fields
         pi_input = {**t_snap, **{k: v for k, v in e_cache.items() if v is not None}}
         # Map technical snapshot field names to pi_score expected names
@@ -6608,6 +6654,8 @@ def _wl_items(query: dict = None):
                sp.next_earnings_date AS next_earnings_date,
                cat.catalyst_type, cat.headline AS catalyst_headline,
                cat.impact_score AS catalyst_impact, cat.severity AS catalyst_severity,
+               cat.confidence AS catalyst_confidence,
+               (COALESCE(cat.confidence, cat.impact_score, 0) >= 0.3) AS catalyst_verified,
                cat.ts AS catalyst_at, cat.source_url AS catalyst_url,
                (SELECT string_agg(DISTINCT wd.label, ' · ' ORDER BY wd.label)
                 FROM watch_directives wd
@@ -6635,7 +6683,7 @@ def _wl_items(query: dict = None):
         LEFT JOIN LATERAL (SELECT * FROM watchlist_symbol_master t WHERE t.symbol = p.symbol LIMIT 1) sm ON true
         LEFT JOIN LATERAL (SELECT * FROM symbol_profiles t WHERE upper(t.symbol) = upper(p.symbol) LIMIT 1) sp ON true
         LEFT JOIN LATERAL (
-            SELECT catalyst_type, headline, severity, impact_score, source_url,
+            SELECT catalyst_type, headline, severity, impact_score, confidence, source_url,
                    COALESCE(published_at, created_at) AS ts
             FROM catalyst_events ce
             WHERE upper(ce.symbol) = upper(p.symbol) AND ce.catalyst_type <> 'other'
@@ -6706,6 +6754,8 @@ def _wl_items(query: dict = None):
                         _it["catalyst_at"] = _ln.get("published_at")
                         _it["catalyst_url"] = _ln.get("source_url")
                         _it["catalyst_type"] = "news_headline"
+                        _it["catalyst_verified"] = False
+                        _it["catalyst_confidence"] = None
         except Exception:
             pass
     # Flag PRIVATE / non-tradeable names (genuinely private only — kept current vs IPOs). reload so registry
@@ -27130,6 +27180,27 @@ def _data_coverage_get():
         return {"ok": False, "error": str(e)[:240]}
 
 
+def _data_indicator_snapshot_get(query=None):
+    """GET /api/v2/data/indicator-snapshot — broker read model for rsi/sma/macd/atr."""
+    try:
+        import sys as _s
+        _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from lib.data_broker.indicator_snapshot import get_indicator_snapshot
+        q = query or {}
+        sym_raw = q.get("symbols") or q.get("symbol") or ""
+        if isinstance(sym_raw, list):
+            symbols = sym_raw
+        else:
+            symbols = [s.strip() for s in str(sym_raw).split(",") if s.strip()]
+        if not symbols:
+            h = _load_json(STATE_DIR / "holdings.json") or {}
+            symbols = [p.get("symbol") for p in h.get("holdings", []) if p.get("symbol")]
+        profile = str(q.get("profile") or "swing")
+        return {"ok": True, "snapshot": get_indicator_snapshot(symbols, profile=profile)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:240]}
+
+
 def _data_portfolio_snapshot_get():
     """GET /api/v2/data/portfolio-snapshot — the Phase 4 read model (see
     scripts/lib/data_broker/portfolio_snapshot.py). ADDITIVE/inspection endpoint: /overview,
@@ -34020,6 +34091,7 @@ ROUTES = {
     "/api/v2/data/registry": lambda: _data_registry_get(),
     "/api/v2/data/coverage": lambda: _data_coverage_get(),
     "/api/v2/data/matrix": lambda: _data_matrix_get(),
+    "/api/v2/data/indicator-snapshot": lambda q=None: _data_indicator_snapshot_get(q),
     "/api/v2/data/portfolio-snapshot": lambda: _data_portfolio_snapshot_get(),
     "/api/v2/youtube/channel-lookup": lambda: _youtube_channel_lookup(),
     "/api/v2/social/posts": lambda: {"posts": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT id, platform, post_id, username, display_name, text, post_date, url, followers, verified, likes, retweets, replies, quality_score, relevance_score, validation_status, matched_keywords, sentiment, sentiment_score, added_by, ingested_at, strategy_tags, agent_tags FROM social_posts ORDER BY quality_score DESC, ingested_at DESC LIMIT 100") or [])]},

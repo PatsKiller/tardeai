@@ -201,7 +201,7 @@ def _sma(vals: list[float], n: int) -> float | None:
     return sum(vals[-n:]) / n
 
 
-def compute_metrics(bars: list[dict]) -> dict[str, Any] | None:
+def compute_metrics(bars: list[dict], symbol: str | None = None) -> dict[str, Any] | None:
     """Deterministic per-holding metrics from daily bars."""
     closes = [float(b.get("close") or b.get("c") or 0) for b in bars]
     highs = [float(b.get("high") or b.get("h") or 0) for b in bars]
@@ -212,6 +212,15 @@ def compute_metrics(bars: list[dict]) -> dict[str, Any] | None:
     if len(closes) < 30:
         return None
     price = closes[-1]
+    if symbol:
+        try:
+            from market_quote_provider import get_best_quote
+            q = get_best_quote(symbol) or {}
+            live = q.get("last_price")
+            if live and float(live) > 0:
+                price = float(live)
+        except Exception:
+            pass
 
     trs = [max(highs[i] - lows[i], abs(highs[i] - closes[i - 1]), abs(lows[i] - closes[i - 1]))
            for i in range(-14, 0)] if len(closes) >= 15 else []
@@ -421,7 +430,7 @@ def run(*, apply: bool, shadow: bool, symbols: set[str] | None, limit: int, json
     for h in holds:
         sym, acct = h["symbol"], h["account"]
         bars = _bars_with_volume(sym)
-        m = compute_metrics(bars) if bars else None
+        m = compute_metrics(bars, sym) if bars else None
         if not m:
             results.append({"symbol": sym, "account": acct, "skip": "no_bars"})
             continue

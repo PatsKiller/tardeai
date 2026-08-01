@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""social_monitor.py — Social media ingestion with unified scoring.
+"""
+DEPRECATED (Data Broker Phase 5): use scripts/social_ingest.py as the canonical
+social_posts writer. This module remains for backward-compatible cron until removed.
+
+social_monitor.py — Social media ingestion with unified scoring.
 
 Ingests posts from X/Twitter, Reddit, StockTwits (when API keys are configured).
 Scores every post using content_scoring.score_social_post() for quality, relevance,

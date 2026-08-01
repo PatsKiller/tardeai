@@ -37,7 +37,7 @@ data_types:
     authority: "Schwab/Alpaca realtime > Polygon/Finnhub > FMP > yfinance > Finviz cached"
     status: partial
     deprecated_producers:
-      - "scripts/portfolio_repricer.py:_fetch_finviz"
+      - "scripts/portfolio_repricer.py:_fetch_finviz (price overlay migrated 2026-07-31; Finviz enrichment fields remain)"
       - "scripts/portfolio_technical.py:get_technical_data (price fields)"
       - "ad-hoc yfinance.Ticker(...).info['regularMarketPrice'] callers (~38 scripts remaining)"
     notes: "Audit sec 3. get_best_quote already exists and is correct; the gap is adoption, not design. 2026-07-31: scripts/ask_alerts.py and scripts/ipo_lockup_alert.py migrated to get_best_quote (Phase 1 start)."
@@ -62,7 +62,7 @@ data_types:
     ttl_seconds: 900
     cadence: "15 min during market hours"
     authority: "indicator_engine is the sole computed-indicator producer"
-    status: legacy
+    status: partial
     deprecated_producers:
       - "scripts/ohlc_charts.py"
       - "scripts/pullback_macd_screener.py"
@@ -81,7 +81,7 @@ data_types:
     ttl_seconds: 900
     cadence: "15 min during market hours"
     authority: "indicator_engine is the sole computed-indicator producer"
-    status: legacy
+    status: partial
     deprecated_producers:
       - "per-screener recomputation (multiple scripts)"
       - "scripts/holdings_gain_guardian.py"
@@ -182,8 +182,9 @@ data_types:
     authority: "built 2026-07-31 -- reuses the exact holdings/day-change/sector logic api_v2.overview() uses (holding_day_change.resolve_holding_day_change), so its numbers are directly comparable to /overview for verification. NOT YET the authority /overview/holdings/risk/book-map read from -- see status."
     status: partial
     deprecated_producers:
-      - "independent holdings.json load + re-aggregation inside each of /overview, /portfolio/holdings, /risk, /portfolio/book-map handlers in api_v2.py"
-    notes: "Audit sec 5 -- Phase 4. 2026-07-31: read model BUILT and exposed at GET /api/v2/data/portfolio-snapshot for side-by-side verification against /overview. Cutting /overview, /portfolio/holdings, /risk, /portfolio/book-map over to READ this (deleting their own re-aggregation) is the remaining, higher-risk step -- do not do it without comparing snapshot vs live output across a full trading day first, since those 4 endpoints drive real position/risk display."
+      - "independent holdings.json load inside /portfolio/book-map handler in api_v2.py"
+      - "per-row enrichment re-aggregation in /portfolio/holdings (totals now from snapshot)"
+    notes: "2026-07-31 green migration: /overview reads snapshot for totals/sectors/movers; /risk reads snapshot heat KPI; warm_caches materializes snapshot. /portfolio/book-map cutover remains."
 
   catalyst_record:
     domain: catalysts
@@ -191,8 +192,8 @@ data_types:
     store: "catalyst_events (table)"
     ttl_seconds: null
     cadence: "event-sourced on news ingest"
-    authority: "catalyst_events.verified + confidence is the designated canonical verification flag; all 10 audit-doc definitions should reduce to reading this"
-    status: legacy
+    authority: "catalyst_events.verified + confidence is the designated canonical verification flag; COALESCE(confidence, impact_score) >= 0.3"
+    status: partial
     deprecated_producers:
       - "scripts/social_route_policy.py (looser independent verified rule)"
       - "scripts/research_scheduler.py:catalyst_signals (price-action proxy, not a news catalyst -- rename target: momentum_flag)"
@@ -301,8 +302,8 @@ consumers:
     - page: "Home (HomeHub)"
       route: "/v3/"
       reads:
-        - {data_type: portfolio_snapshot, via: "GET /api/v2/overview", broker: false}
-        - {data_type: quote_last_price, via: "GET /api/v2/overview", broker: false}
+        - {data_type: portfolio_snapshot, via: "GET /api/v2/overview", broker: true}
+        - {data_type: quote_last_price, via: "GET /api/v2/overview", broker: true}
         - {data_type: analyst_rollup, via: "GET /api/v2/pro-analyst/pills", broker: true}
     - page: "Portfolio"
       route: "/v3/portfolio"
@@ -310,20 +311,20 @@ consumers:
         - {data_type: holdings_positions, via: "GET /api/v2/portfolio/holdings", broker: true}
         - {data_type: support_resistance, via: "GET /api/v2/ui/prefs/get?key=portfolio.reentry.resistance.v1", broker: true}
         - {data_type: analyst_rollup, via: "GET /api/v2/pro-analyst/pills", broker: true}
-        - {data_type: rsi_14, via: "GET /api/v2/portfolio/holdings (technical overlay)", broker: false}
-        - {data_type: sma_20_50_200, via: "GET /api/v2/portfolio/holdings (technical overlay)", broker: false}
+        - {data_type: rsi_14, via: "GET /api/v2/portfolio/holdings (indicator_snapshot)", broker: true}
+        - {data_type: sma_20_50_200, via: "GET /api/v2/portfolio/holdings (indicator_snapshot)", broker: true}
         - {data_type: ohlcv_daily, via: "chart panel bars", broker: false}
     - page: "Watch"
       route: "/v3/watch"
       reads:
         - {data_type: support_resistance, via: "GET /api/v2/ui/prefs/get?key=portfolio.reentry.resistance.v1", broker: true}
         - {data_type: analyst_rollup, via: "GET /api/v2/pro-analyst/pills", broker: true}
-        - {data_type: catalyst_record, via: "GET /api/v2/watchlist/items", broker: false}
+        - {data_type: catalyst_record, via: "GET /api/v2/watchlist/items (catalyst_verified)", broker: true}
         - {data_type: news_article, via: "GET /api/v2/watchlist/items (headline join)", broker: false}
     - page: "Re-Entry"
       route: "/v3/reentry"
       reads:
-        - {data_type: support_resistance, via: "GET /api/v2/ui/prefs/get?key=portfolio.reentry.resistance.v1 + text-parse fallback on watchlist/items", broker: false}
+        - {data_type: support_resistance, via: "GET /api/v2/ui/prefs/get?key=portfolio.reentry.resistance.v1", broker: true}
         - {data_type: analyst_rollup, via: "GET /api/v2/pro-analyst/pills", broker: true}
         - {data_type: analyst_detail, via: "GET /api/v2/analyst-detail", broker: true}
     - page: "Trading / Broker Proposals"
@@ -336,7 +337,7 @@ consumers:
     - page: "Risk Recovery"
       route: "/v3/risk"
       reads:
-        - {data_type: portfolio_snapshot, via: "GET /api/v2/risk", broker: false}
+        - {data_type: portfolio_snapshot, via: "GET /api/v2/risk (heat KPI from snapshot)", broker: true}
         - {data_type: analyst_rollup, via: "GET /api/v2/pro-analyst/pills", broker: true}
     - page: "Entry Desk"
       route: "/v3/entry"
@@ -369,7 +370,7 @@ consumers:
     - page: "Shell: MetricStrip / DetailDrawer"
       route: "global"
       reads:
-        - {data_type: quote_last_price, via: "GET /api/v2/overview", broker: false}
+        - {data_type: quote_last_price, via: "GET /api/v2/overview", broker: true}
         - {data_type: analyst_detail, via: "GET /api/v2/analyst-detail", broker: true}
         - {data_type: rsi_14, via: "DetailDrawer technical panel", broker: false}
 
@@ -402,7 +403,7 @@ consumers:
     - alert: "Holdings gain guardian"
       script: "scripts/holdings_gain_guardian.py"
       reads:
-        - {data_type: quote_last_price, via: "own Schwab/yfinance bars", broker: false}
+        - {data_type: quote_last_price, via: "get_best_quote overlay on bars", broker: true}
         - {data_type: rsi_14, via: "local recompute", broker: false}
         - {data_type: atr_14, via: "local recompute", broker: false}
         - {data_type: rvol_session, via: "local recompute", broker: false}
@@ -425,7 +426,7 @@ consumers:
     - alert: "Open trade monitor"
       script: "scripts/open_trade_monitor.py"
       reads:
-        - {data_type: quote_last_price, via: "Alpaca fallback, divergent from market_quotes", broker: false}
+        - {data_type: quote_last_price, via: "get_best_quote", broker: true}
     - alert: "Screener / scalp / social alerts"
       script: "scripts/scalp_ignition_scorer.py, scripts/social_route_policy.py"
       reads:
@@ -437,7 +438,7 @@ consumers:
       script: "scripts/hermes_score_alerts.py, scripts/hermes_research_quality_remediation.py"
       reads:
         - {data_type: research_intelligence, via: "hermes_research_intelligence table", broker: true}
-        - {data_type: analyst_detail, via: "pro_analyst_monitor.py (separate builder from hermes_score_alerts)", broker: false}
+        - {data_type: analyst_detail, via: "pro_analyst_monitor.py reads pro_analyst_pills_latest.json", broker: true}
     - alert: "Global alerts banner"
       script: "scripts/api_v2.py:_global_alerts"
       reads:

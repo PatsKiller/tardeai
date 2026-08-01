@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """pro_analyst_monitor.py — track professional-analyst coverage as it expands.
 
-READ-ONLY. Snapshots coverage metrics from data/runtime/pro_analyst_pills_latest.json into a 90-day
+READ-ONLY. Snapshots coverage metrics from data/runtime/pro_analyst_pills_latest.json (analyst_rollup broker store) into a 90-day
 time-series, computes day-over-day deltas (newly-covered / lost-coverage symbols, coverage % by tier),
 and flags growth/regression. Lets you watch the analyst layer's coverage expand. No mutation.
 

@@ -74,14 +74,23 @@ function deriveIntel(watch: any, card: any, held: boolean): Intel {
   return { price, asOf, rsi, trend, entryLow, entryHigh, stop, target, distancePct, state, action, reason }
 }
 
-function resistanceFor(cached: any, watch: any, card: any, price: number | null): Resistance {
-  if (cached && String(cached.state || '').toUpperCase() !== 'UNAVAILABLE') return { state: String(cached.state || 'UNAVAILABLE').toUpperCase(), level: finite(cached.resistance), distancePct: finite(cached.distance_pct), holdDays: finite(cached.hold_days), source: 'CLOSED-SESSION CACHE', reason: text(cached.reason, cached.method, 'Closed-session resistance evidence.') }
-  const packet = watch?.decision_packet ?? card?.decision_packet ?? {}
-  const trigger = text(packet?.horizons?.tactical?.trigger, packet?.horizons?.swing?.trigger, packet?.selected_family?.mechanics?.trigger, watch?.trigger)
-  const match = trigger.match(/resistance\s+\$?([0-9]+(?:\.[0-9]+)?)/i)
-  const level = finite(watch?.resistance, watch?.resistance_level, card?.resistance, packet?.selected_family?.mechanics?.resistance, match?.[1])
-  if (level !== null && price !== null && level > 0) { const distancePct = ((price - level) / level) * 100; return { state: Math.abs(distancePct) <= .5 ? 'TESTING' : distancePct > 0 ? 'ABOVE' : 'BELOW', level, distancePct, holdDays: null, source: 'WATCH FALLBACK', reason: trigger || 'Decision-packet resistance fallback.' } }
-  return { state: 'UNAVAILABLE', level: null, distancePct: null, holdDays: null, source: 'MISSING', reason: 'No valid resistance cache row or parsable Watch trigger.' }
+function resistanceFor(cached: any, _watch: any, _card: any, _price: number | null): Resistance {
+  if (cached && String(cached.state || '').toUpperCase() !== 'UNAVAILABLE') {
+    return {
+      state: String(cached.state || 'UNAVAILABLE').toUpperCase(),
+      level: finite(cached.resistance),
+      distancePct: finite(cached.distance_pct),
+      holdDays: finite(cached.hold_days),
+      source: 'CLOSED-SESSION CACHE',
+      reason: text(cached.reason, cached.method, 'Closed-session resistance evidence.'),
+    }
+  }
+  // Data Broker Phase 6: no text-parse fallback from watchlist/decision-packet triggers.
+  return {
+    state: 'UNAVAILABLE', level: null, distancePct: null, holdDays: null,
+    source: 'MISSING',
+    reason: 'No closed-session resistance cache — run watch_alerts_eval resistance refresh.',
+  }
 }
 
 function stateTone(state: IntelState): string { if (state === 'READY TO REVIEW') return BB.green; if (state === 'NEAR ENTRY') return BB.amber; if (state === 'MISSING MARKET' || state === 'MISSING PLAN' || state === 'STALE') return BB.red; if (state === 'CURRENTLY HELD') return BB.amber; return BB.blue }

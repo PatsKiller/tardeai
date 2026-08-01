@@ -102,21 +102,22 @@ def get_current_price(conn, symbol):
                        datetime.now(timezone.utc) - scanned_at).total_seconds()
             if age_sec <= 300:
                 return price
-            log.warning(f"[{symbol}] Scan price is {age_sec/60:.0f}min old — trying Alpaca quote")
-    # Fallback: Alpaca latest trade
+            log.warning(f"[{symbol}] Scan price is {age_sec/60:.0f}min old — trying broker quote")
+    # Data Broker (Phase 1): canonical quote waterfall before raw Alpaca-only fallback.
     try:
-        import os, requests
-        _key = os.getenv('ALPACA_API_KEY', '')
-        _sec = os.getenv('ALPACA_SECRET_KEY', '')
-        if _key:
-            r = requests.get(f'https://data.alpaca.markets/v2/stocks/{symbol}/trades/latest',
-                             headers={'APCA-API-KEY-ID': _key, 'APCA-API-SECRET-KEY': _sec}, timeout=5)
-            if r.status_code == 200:
-                p = float(r.json().get('trade', {}).get('p', 0))
-                if p > 0:
-                    return p
+        import sys as _s
+        from pathlib import Path as _P
+        _root = _P(__file__).resolve().parent.parent
+        _scripts = str(_root / "scripts")
+        if _scripts not in _s.path:
+            _s.path.insert(0, _scripts)
+        from market_quote_provider import get_best_quote
+        q = get_best_quote(symbol) or {}
+        p = q.get("last_price")
+        if p and float(p) > 0:
+            return float(p)
     except Exception as _e:
-        log.warning(f"[{symbol}] Alpaca quote fallback failed: {_e}")
+        log.warning(f"[{symbol}] get_best_quote fallback failed: {_e}")
     # Last resort: return scan price even if stale
     return float(row[0]) if row and row[0] else None
 

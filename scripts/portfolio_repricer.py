@@ -178,6 +178,22 @@ def _fetch_finviz(symbols: List[str], root: Path) -> Dict[str, Dict]:
             }
     except Exception as e:
         print(f"  [repricer] Finviz fetch error: {e}")
+
+    # Data Broker (Phase 1): overlay canonical live prices from get_best_quote so the
+    # quote cache + holdings day-change agree with what the UI/alerts read elsewhere.
+    if results:
+        try:
+            lib_dir = str(root / "scripts" / "lib")
+            if lib_dir not in sys.path:
+                sys.path.insert(0, lib_dir)
+            from data_broker.quote_batch import overlay_broker_prices
+            n_before = len(results)
+            overlay_broker_prices(results, symbols)
+            n_broker = sum(1 for s in symbols if (results.get(s) or {}).get("price_authority") == "get_best_quote")
+            if n_broker:
+                print(f"  [repricer] Broker price overlay: {n_broker}/{n_before} symbols via get_best_quote")
+        except Exception as e:
+            print(f"  [repricer] Broker price overlay skipped: {e}")
     return results
 
 

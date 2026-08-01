@@ -60,22 +60,8 @@ def _day_change(holdings: list[dict], finviz_cache: dict[str, Any]) -> float | N
             sys.path.insert(0, lib_dir)
         from holding_day_change import resolve_holding_day_change
 
-        day_pct: dict[str, float] = {}
-        px: dict[str, float] = {}
-        for sym, row in (finviz_cache or {}).items():
-            if not isinstance(row, dict):
-                continue
-            u = str(sym).upper()
-            if row.get("change_pct") is not None:
-                try:
-                    day_pct[u] = float(row["change_pct"])
-                except (TypeError, ValueError):
-                    pass
-            if row.get("price"):
-                try:
-                    px[u] = float(row["price"])
-                except (TypeError, ValueError):
-                    pass
+        from data_broker.quote_batch import quote_cache_day_maps
+        day_pct, px = quote_cache_day_maps(finviz_cache)
 
         total = 0.0
         for p in holdings or []:

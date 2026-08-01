@@ -48,6 +48,16 @@ def main():
     except Exception as e:
         print(f"[warm_caches] rotation_autopilot FAILED: {str(e)[:200]}")
 
+
+    # Data Broker (Phase 2): materialize portfolio snapshot off the request path.
+    t_ps = time.time()
+    try:
+        from lib.data_broker.portfolio_snapshot import write_portfolio_snapshot
+        write_portfolio_snapshot()
+        print(f"[warm_caches] portfolio_snapshot warmed in {time.time() - t_ps:.1f}s")
+    except Exception as e:
+        print(f"[warm_caches] portfolio_snapshot FAILED: {str(e)[:200]}")
+
     return 0
 
 

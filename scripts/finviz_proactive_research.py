@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""finviz_proactive_research.py — use Finviz for PROACTIVE research beyond screeners.
+"""finviz_proactive_research.py — use Finviz for PROACTIVE research
+
+Data Broker Phase 5: prefer news_ingestion.py as canonical writer; this script
+feeds finviz_news rows with URL dedup against news_articles to avoid parallel drift. beyond screeners.
 
 The screener runner discovers tickers; finviz_news.py can pull per-ticker headlines but was only ever
 reactive (per-symbol on demand). This runs Finviz's Elite news_export proactively across the whole watch
