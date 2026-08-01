@@ -27216,6 +27216,49 @@ def _data_portfolio_snapshot_get():
         return {"ok": False, "error": str(e)[:240]}
 
 
+
+def _reentry_decision_desk_get(query=None):
+    """GET /api/v2/reentry/decision-desk — deterministic broker-backed Re-Entry Decision Desk.
+    Price via get_best_quote, RSI/MACD via indicator_snapshot, resistance from prefs cache,
+    catalyst via catalyst_record, heat via portfolio_snapshot. No LLM on this path."""
+    try:
+        import sys as _s
+        _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from lib.data_broker.reentry_decision_desk import build_decision_desk
+        q = query or {}
+        sym_raw = q.get("symbols") or q.get("symbol") or ""
+        if isinstance(sym_raw, list):
+            # parse_qs may give one list element containing commas
+            parts = []
+            for item in sym_raw:
+                parts.extend(str(item).split(","))
+            symbols = [s.strip().upper() for s in parts if s and str(s).strip()]
+        else:
+            symbols = [s.strip().upper() for s in str(sym_raw).split(",") if s.strip()]
+        return build_decision_desk(_db_query, symbols or None)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:240], "llm_in_path": False}
+
+
+def _reentry_resistance_refresh_post(body=None):
+    """POST /api/v2/reentry/resistance/refresh — operator on-demand closed-session resistance rebuild.
+    Calls ensure_price_history then refresh_resistance_cache; attaches live quote metadata."""
+    try:
+        import sys as _s
+        _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from lib.reentry_resistance import refresh_resistance_cache
+        from db_adapter import _execute
+        payload = refresh_resistance_cache(_execute)
+        return {
+            "ok": True,
+            "generated_at": payload.get("generated_at"),
+            "symbol_count": payload.get("symbol_count"),
+            "version": payload.get("version"),
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:240]}
+
+
 def _data_matrix_get():
     """GET /api/v2/data/matrix — the data-type x consumer grid alone (pages + alerts + pipeline
     scripts, each with which data types they read and whether that path goes through the
@@ -34093,6 +34136,7 @@ ROUTES = {
     "/api/v2/data/matrix": lambda: _data_matrix_get(),
     "/api/v2/data/indicator-snapshot": lambda q=None: _data_indicator_snapshot_get(q),
     "/api/v2/data/portfolio-snapshot": lambda: _data_portfolio_snapshot_get(),
+    "/api/v2/reentry/decision-desk": lambda q=None: _reentry_decision_desk_get(q),
     "/api/v2/youtube/channel-lookup": lambda: _youtube_channel_lookup(),
     "/api/v2/social/posts": lambda: {"posts": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT id, platform, post_id, username, display_name, text, post_date, url, followers, verified, likes, retweets, replies, quality_score, relevance_score, validation_status, matched_keywords, sentiment, sentiment_score, added_by, ingested_at, strategy_tags, agent_tags FROM social_posts ORDER BY quality_score DESC, ingested_at DESC LIMIT 100") or [])]},
     "/api/v2/social/status": lambda: _social_api_status(),
@@ -34464,6 +34508,13 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
     # POST routes
     if method == "POST":
+        if base_path == "/api/v2/reentry/resistance/refresh":
+            try:
+                result = _reentry_resistance_refresh_post(body)
+                code = 200 if result.get("ok") else 500
+                return code, result
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:240]}
         if base_path == "/api/v2/health/remediate":
             # Manual "Fix now" — operator-triggered remediation of one finding. Server-authoritative:
             # the command is NEVER taken from the client; it's derived from policy by finding type.

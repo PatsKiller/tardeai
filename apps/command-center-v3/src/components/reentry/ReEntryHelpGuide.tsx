@@ -3,8 +3,76 @@ import { BB } from '../../lib/holdingsTerminalTokens'
 
 const panel: CSSProperties = { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8 }
 
-export function HelpTip({ text }: { text: string }) {
-  return <span title={text} aria-label={text} style={{ display: 'inline-grid', placeItems: 'center', width: 16, height: 16, marginLeft: 5, borderRadius: 999, border: '1px solid var(--border)', color: BB.blue, fontSize: 10, fontWeight: 900, cursor: 'help', verticalAlign: 'middle' }}>?</span>
+export function HelpTip({ text, label = '?' }: { text: string; label?: string }) {
+  return (
+    <span
+      tabIndex={0}
+      aria-label={text}
+      title={text}
+      style={{
+        position: 'relative',
+        display: 'inline-grid',
+        placeItems: 'center',
+        width: 16,
+        height: 16,
+        marginLeft: 5,
+        borderRadius: 999,
+        border: '1px solid var(--border)',
+        color: BB.blue,
+        fontSize: 10,
+        fontWeight: 900,
+        cursor: 'help',
+        verticalAlign: 'middle',
+      }}
+      onMouseEnter={event => {
+        const tip = event.currentTarget.querySelector('[data-tip]') as HTMLElement | null
+        if (tip) tip.style.opacity = '1'
+      }}
+      onMouseLeave={event => {
+        const tip = event.currentTarget.querySelector('[data-tip]') as HTMLElement | null
+        if (tip) tip.style.opacity = '0'
+      }}
+      onFocus={event => {
+        const tip = event.currentTarget.querySelector('[data-tip]') as HTMLElement | null
+        if (tip) tip.style.opacity = '1'
+      }}
+      onBlur={event => {
+        const tip = event.currentTarget.querySelector('[data-tip]') as HTMLElement | null
+        if (tip) tip.style.opacity = '0'
+      }}
+    >
+      {label}
+      <span
+        data-tip
+        role="tooltip"
+        style={{
+          position: 'absolute',
+          zIndex: 1600,
+          left: '50%',
+          bottom: 'calc(100% + 6px)',
+          transform: 'translateX(-50%)',
+          width: 240,
+          maxWidth: 'min(240px, 70vw)',
+          padding: '7px 9px',
+          borderRadius: 5,
+          border: `1px solid ${BB.blue}`,
+          background: 'var(--bg0, #0b1220)',
+          color: 'var(--text0)',
+          fontSize: 10.5,
+          fontWeight: 600,
+          lineHeight: 1.4,
+          textAlign: 'left',
+          boxShadow: '0 8px 24px rgba(0,0,0,.45)',
+          opacity: 0,
+          pointerEvents: 'none',
+          transition: 'opacity 80ms linear',
+          whiteSpace: 'normal',
+        }}
+      >
+        {text}
+      </span>
+    </span>
+  )
 }
 
 const steps = [

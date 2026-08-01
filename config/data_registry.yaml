@@ -322,9 +322,14 @@ consumers:
         - {data_type: catalyst_record, via: "GET /api/v2/watchlist/items (catalyst_verified)", broker: true}
         - {data_type: news_article, via: "GET /api/v2/watchlist/items (headline join)", broker: false}
     - page: "Re-Entry"
-      route: "/v3/reentry"
+      route: "/v3/portfolio/re-entry"
       reads:
-        - {data_type: support_resistance, via: "GET /api/v2/ui/prefs/get?key=portfolio.reentry.resistance.v1", broker: true}
+        - {data_type: quote_last_price, via: "GET /api/v2/reentry/decision-desk (get_best_quote)", broker: true}
+        - {data_type: rsi_14, via: "GET /api/v2/reentry/decision-desk (indicator_snapshot)", broker: true}
+        - {data_type: sma_20_50_200, via: "GET /api/v2/reentry/decision-desk (indicator_snapshot)", broker: true}
+        - {data_type: catalyst_record, via: "GET /api/v2/reentry/decision-desk (catalyst_record)", broker: true}
+        - {data_type: portfolio_snapshot, via: "GET /api/v2/reentry/decision-desk (heat)", broker: true}
+        - {data_type: support_resistance, via: "GET /api/v2/reentry/decision-desk + prefs portfolio.reentry.resistance.v1", broker: true}
         - {data_type: analyst_rollup, via: "GET /api/v2/pro-analyst/pills", broker: true}
         - {data_type: analyst_detail, via: "GET /api/v2/analyst-detail", broker: true}
     - page: "Trading / Broker Proposals"

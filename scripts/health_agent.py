@@ -213,7 +213,7 @@ def run_auto_remediation(policy: dict, findings: list[dict]) -> list[dict]:
         return []
     types = set(cfg.get("finding_types") or [
         "portfolio_totals_drift", "account_summary_drift", "snaptrade_cash_stale",
-        "portfolio_repricer_stale", "finviz_quote_cache_stale", "market_quotes_stale",
+        "portfolio_repricer_stale", "finviz_quote_cache_stale", "market_quotes_stale", "reentry_indicator_cache_stale", "reentry_indicator_cache_gap",
     ])
     cooldown_m = float(cfg.get("cooldown_minutes", 10))
     # Circuit breaker: if a remediation keeps "succeeding" (exit 0) yet the SAME finding fires again
@@ -401,6 +401,52 @@ def collect_data_quality() -> list[dict]:
                     out.append(_f("data_quality", "market_quotes_stale", "warning",
                                   f"market_quotes DB stale {mq_age:.0f}m (max {mq_max:.0f}m)",
                                   age_minutes=mq_age))
+
+        # Re-Entry Decision Desk needs RSI from indicator_confluence_cache for exited names.
+        ric = (load_policy().get("reentry_indicator_freshness") or {})
+        if ric.get("enabled", True):
+            max_h = float(ric.get("max_age_hours", 36))
+            miss_warn = int(ric.get("missing_exits_warn", 15))
+            max_h_i = max(1, int(max_h))
+            row = _db(
+                f"""
+                WITH exits AS (
+                  SELECT DISTINCT upper(symbol) AS symbol
+                  FROM trade_transactions
+                  WHERE trade_date >= CURRENT_DATE - 365
+                    AND (lower(coalesce(action,'')) IN
+                           ('sell','sold','assigned','assignment','expired','exercise','exercised','close','closed')
+                         OR lower(coalesce(action,'')) LIKE 'sell%%')
+                )
+                SELECT
+                  (SELECT count(*) FROM exits) AS exited,
+                  (SELECT count(*) FROM exits e
+                     JOIN indicator_confluence_cache i
+                       ON upper(i.symbol)=e.symbol AND i.profile='swing'
+                    WHERE i.computed_at > NOW() - interval '{max_h_i} hours') AS fresh,
+                  (SELECT EXTRACT(EPOCH FROM (NOW() - MAX(computed_at)))/3600.0
+                     FROM indicator_confluence_cache WHERE profile='swing') AS cache_age_h
+                """,
+                fetch="one",
+            ) or {}
+            exited = int(row.get("exited") or 0)
+            fresh = int(row.get("fresh") or 0)
+            missing = max(0, exited - fresh)
+            cache_age_h = row.get("cache_age_h")
+            if exited and missing >= miss_warn:
+                sev = "critical" if missing >= miss_warn * 2 else "warning"
+                out.append(_f(
+                    "data_quality", "reentry_indicator_cache_gap", sev,
+                    f"Re-Entry exits missing fresh RSI cache: {missing}/{exited} "
+                    f"(need computed_at < {max_h:.0f}h)",
+                    count=missing,
+                ))
+            if cache_age_h is not None and float(cache_age_h) > max_h:
+                out.append(_f(
+                    "data_quality", "reentry_indicator_cache_stale", "warning",
+                    f"indicator_confluence_cache age {float(cache_age_h):.0f}h (max {max_h:.0f}h) - Decision Desk MISSING MARKET rises",
+                    age_minutes=float(cache_age_h) * 60,
+                ))
     except Exception as e:
         out.append(_f("data_quality", "collector_error", "info", f"data_quality check error: {e}"))
     return out
@@ -1023,6 +1069,8 @@ WHY = {
 _CTA_BY_TYPE = {
     "portfolio_repricer_stale": {"label": "System → Pipeline", "route": "/v3/system?tab=pipeline"},
     "finviz_quote_cache_stale": {"label": "System → Admin", "route": "/v3/system?tab=admin"},
+    "reentry_indicator_cache_stale": {"label": "Re-Entry Desk", "route": "/v3/reentry"},
+    "reentry_indicator_cache_gap": {"label": "Re-Entry Desk", "route": "/v3/reentry"},
     "agent_jobs_processing_stuck": {"label": "System → Jobs", "route": "/v3/system?tab=jobs"},
     "trade_proposals_backlog": {"label": "Trading → Proposals", "route": "/v3/trading?tab=Proposals"},
     "enrichment_pipeline_failure": {"label": "Trading → Proposals", "route": "/v3/trading?tab=Proposals"},

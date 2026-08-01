@@ -80,6 +80,16 @@ def _normalize_symbol_row(symbol: str, full_result: Any, atr_col: Any = None) ->
     if atr_val is None:
         atr_val = atr_details.get("atr") or atr_sig.get("value")
 
+    obv = sig.get("obv") or {}
+    obv_details = obv.get("details") or {}
+    cmf = sig.get("cmf") or {}
+    cmf_details = cmf.get("details") or {}
+    vroc = sig.get("volume_roc") or {}
+    vroc_details = vroc.get("details") or {}
+    volume_ratio = vroc_details.get("volume_ratio")
+    if volume_ratio is None:
+        volume_ratio = (sig.get("volume_profile") or {}).get("details", {}).get("volume_ratio")
+
     return {
         "symbol": symbol.upper(),
         "rsi": rsi.get("value"),
@@ -95,6 +105,11 @@ def _normalize_symbol_row(symbol: str, full_result: Any, atr_col: Any = None) ->
         "macd_is_real": True,
         "atr": atr_val,
         "alignment": sma_details.get("alignment"),
+        "obv_signal": obv.get("signal"),
+        "obv_trend": obv_details.get("obv_trend"),
+        "cmf_signal": cmf.get("signal"),
+        "cmf_value": cmf.get("value") if cmf.get("value") is not None else cmf_details.get("cmf"),
+        "volume_ratio": volume_ratio,
         "source": "indicator_confluence_cache",
     }
 

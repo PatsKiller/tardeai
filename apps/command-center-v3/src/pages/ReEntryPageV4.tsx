@@ -14,18 +14,25 @@ export default function ReEntryPageV4() {
   const [params] = useSearchParams()
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <ReEntryHelpGuide compact />
       <ReEntryClassificationOverlay />
-      <ReEntryEvidenceContractPanel />
       <ReEntryCurrentIntelligence />
-      <ReEntryExitWorkbench />
-      <ReEntryExitDetailLedger />
-      <ReEntryAnalystEvidence />
-      <ReEntryResistanceBoard />
-      <ReEntryAnalystLookthroughBoard />
-      <div id="rotation-workspace">
-        <ReEntryRotationWorkspace mode="full" initialSymbol={params.get('symbol') ?? ''} />
-      </div>
+      <details style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 5, padding: '8px 12px' }}>
+        <summary style={{ cursor: 'pointer', fontSize: 12, fontWeight: 850, color: 'var(--text2)' }}>
+          Evidence & process — help, contract, exits, analyst, resistance, rotation
+        </summary>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 10 }}>
+          <ReEntryHelpGuide compact />
+          <ReEntryEvidenceContractPanel />
+          <ReEntryExitWorkbench />
+          <ReEntryExitDetailLedger />
+          <ReEntryAnalystEvidence />
+          <ReEntryResistanceBoard />
+          <ReEntryAnalystLookthroughBoard />
+          <div id="rotation-workspace">
+            <ReEntryRotationWorkspace mode="full" initialSymbol={params.get('symbol') ?? ''} />
+          </div>
+        </div>
+      </details>
     </div>
   )
 }

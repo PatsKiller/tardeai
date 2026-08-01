@@ -94,7 +94,7 @@
     "min_universe": 400
   },
   "broker_token_health": {
-    "_comment": "Schwab OAuth token liveness (collect_broker_token_health). Detects server-side REVOCATION that the TTL-based token health misses: broker_oauth_tokens.degraded/last_error + invalid_grant/no-login-token in schwab_ingest.log. Emits critical schwab_token_revoked. Deliberately NOT in remediation_map — a revoked token needs a manual reauth (GATE A), not an auto-retry; the finding carries the reauth command for the operator.",
+    "_comment": "Schwab OAuth token liveness (collect_broker_token_health). Detects server-side REVOCATION that the TTL-based token health misses: broker_oauth_tokens.degraded/last_error + invalid_grant/no-login-token in schwab_ingest.log. Emits critical schwab_token_revoked. Deliberately NOT in remediation_map \u2014 a revoked token needs a manual reauth (GATE A), not an auto-retry; the finding carries the reauth command for the operator.",
     "enabled": true,
     "tail_lines": 200
   },
@@ -116,7 +116,7 @@
     "burst_critical": 30
   },
   "watchlist_news_guard": {
-    "_comment": "Yahoo RSS mis-tags headlines to wrong tickers — affects all CIO tiers (BUY/HOLD/AVOID/pullback).",
+    "_comment": "Yahoo RSS mis-tags headlines to wrong tickers \u2014 affects all CIO tiers (BUY/HOLD/AVOID/pullback).",
     "enabled": true,
     "sample_limit": 120,
     "mismatch_warn": 1,
@@ -172,11 +172,13 @@
       "enrichment_failures_high",
       "approved_paper_test_stuck",
       "enrichment_status_in_progress_stale",
-      "news_symbol_mismatch"
+      "news_symbol_mismatch",
+      "reentry_indicator_cache_stale",
+      "reentry_indicator_cache_gap"
     ]
   },
   "scalp_catalyst_health": {
-    "_comment": "URGENT monitor for the real-time momentum-scalp GO/WAIT Telegram lane (collect_scalp_catalyst_health). Fires critical scalp_catalyst_verification_dead when the scanner is active but 0 setups reach GO across window_days (catalyst verification silently producing nothing → all capped to WAIT → suppressed). Auto-remediated by re-running the scanner; circuit-breaker escalates if futile. Caught the 2026-07-01 week-long silent outage.",
+    "_comment": "URGENT monitor for the real-time momentum-scalp GO/WAIT Telegram lane (collect_scalp_catalyst_health). Fires critical scalp_catalyst_verification_dead when the scanner is active but 0 setups reach GO across window_days (catalyst verification silently producing nothing \u2192 all capped to WAIT \u2192 suppressed). Auto-remediated by re-running the scanner; circuit-breaker escalates if futile. Caught the 2026-07-01 week-long silent outage.",
     "enabled": true,
     "window_days": 3,
     "min_rows": 40
@@ -245,7 +247,9 @@
     "enrichment_failures_high": "flock -n /tmp/auto_enrichment.lock .venv/bin/python scripts/auto_enrichment_runner.py --force-all --limit 15 >> logs/auto_enrichment.log 2>&1",
     "approved_paper_test_stuck": ".venv/bin/python scripts/cleanup_stale_proposals.py --pipeline-sweep --apply",
     "enrichment_status_in_progress_stale": ".venv/bin/python scripts/cleanup_stale_proposals.py --pipeline-sweep --apply",
-    "news_symbol_mismatch": "flock -n /tmp/watchlist_news_guard.lock .venv/bin/python scripts/remediate_watchlist_news_guard.py --apply >> logs/remediate_watchlist_news_guard.log 2>&1"
+    "news_symbol_mismatch": "flock -n /tmp/watchlist_news_guard.lock .venv/bin/python scripts/remediate_watchlist_news_guard.py --apply >> logs/remediate_watchlist_news_guard.log 2>&1",
+    "reentry_indicator_cache_stale": "flock -n /tmp/indicator_cache_refresh.lock .venv/bin/python scripts/indicator_cache_refresh.py --missing-exits-only --limit 80 >> logs/indicator_refresh.log 2>&1",
+    "reentry_indicator_cache_gap": "flock -n /tmp/indicator_cache_refresh.lock .venv/bin/python scripts/indicator_cache_refresh.py --missing-exits-only --limit 80 >> logs/indicator_refresh.log 2>&1"
   },
   "log_errors": {
     "_comment": "Scan recently-active component logs for ERROR/Traceback spikes (content, not staleness).",
@@ -284,5 +288,11 @@
       "watchlist_sweep.log",
       "hermes_analyst_coverage.log"
     ]
+  },
+  "reentry_indicator_freshness": {
+    "_comment": "Re-Entry Decision Desk READY needs RSI from indicator_confluence_cache. Exited symbols must be refreshed on cadence or they show MISSING MARKET despite live quotes.",
+    "enabled": true,
+    "max_age_hours": 36,
+    "missing_exits_warn": 15
   }
 }

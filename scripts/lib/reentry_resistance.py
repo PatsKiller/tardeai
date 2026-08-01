@@ -161,14 +161,48 @@ def _symbols(ex: Callable[..., Any]) -> list[str]:
     return sorted(symbol for symbol in symbols if symbol)
 
 
+def _attach_live_quote(symbol: str, row: dict[str, Any]) -> dict[str, Any]:
+    """Attach broker live quote metadata without changing closed-session authority."""
+    try:
+        import sys
+        from pathlib import Path
+        root = Path(__file__).resolve().parent.parent.parent
+        scripts = str(root / "scripts")
+        if scripts not in sys.path:
+            sys.path.insert(0, scripts)
+        from market_quote_provider import get_best_quote
+        q = get_best_quote(symbol) or {}
+        price = _f(q.get("last_price"))
+        if price and price > 0:
+            row["live_price"] = round(price, 4)
+            row["live_as_of"] = q.get("quote_timestamp")
+            row["live_source"] = q.get("provider") or "get_best_quote"
+    except Exception:
+        pass
+    return row
+
+
 def refresh_resistance_cache(ex: Callable[..., Any]) -> dict[str, Any]:
     generated_at = dt.datetime.now(dt.timezone.utc).isoformat()
+    symbols = _symbols(ex)
+    # Data Broker: ensure daily closes exist for exit/mandate universe before compute.
+    try:
+        import sys
+        from pathlib import Path
+        root = Path(__file__).resolve().parent.parent.parent
+        scripts = str(root / "scripts")
+        if scripts not in sys.path:
+            sys.path.insert(0, scripts)
+        from price_db_sync import ensure_price_history
+        ensure_price_history(symbols, min_rows=LOOKBACK + 5, yfinance_cap=min(40, len(symbols)))
+    except Exception:
+        pass
     values: dict[str, Any] = {}
-    for symbol in _symbols(ex):
+    for symbol in symbols:
         try:
-            values[symbol] = compute_resistance(_series(ex, symbol))
+            row = compute_resistance(_series(ex, symbol))
         except Exception as error:
-            values[symbol] = {
+            row = {
                 "state": "UNAVAILABLE",
                 "resistance": None,
                 "distance_pct": None,
@@ -178,6 +212,7 @@ def refresh_resistance_cache(ex: Callable[..., Any]) -> dict[str, Any]:
                 "as_of": None,
                 "reason": str(error)[:160],
             }
+        values[symbol] = _attach_live_quote(symbol, row)
     payload = {
         "version": "reentry_resistance_v1",
         "generated_at": generated_at,

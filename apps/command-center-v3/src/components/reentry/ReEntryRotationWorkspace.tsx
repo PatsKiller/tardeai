@@ -7,6 +7,7 @@ const MANDATE_KEY = 'portfolio.reentry.mandates.v4'
 const EVENT_KEY = 'portfolio.reentry.event-classifications.v1'
 const ROTATION_KEY = 'portfolio.reentry.rotation-links.v1'
 const COMPOSITE_ALERT_KEY = 'portfolio.reentry.composite-alerts.v1'
+const RESISTANCE_KEY = 'portfolio.reentry.resistance.v1'
 
 const panel: CSSProperties = { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8 }
 const field: CSSProperties = { width: '100%', boxSizing: 'border-box', fontSize: 12, padding: '7px 9px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text0)' }
@@ -177,7 +178,7 @@ async function savePref(key: string, value: any) {
   if (!response.ok || payload?.ok === false) throw new Error(payload?.error || 'preference save failed')
 }
 
-function technical(symbol: string, cardMap: Record<string, any>, watchMap: Record<string, any>): Technical {
+function technical(symbol: string, cardMap: Record<string, any>, watchMap: Record<string, any>, resistanceMap: Record<string, any> = {}): Technical {
   const card = cardMap[symbol] ?? {}
   const watch = watchMap[symbol] ?? {}
   const packet = watch?.decision_packet ?? card?.decision_packet ?? {}
@@ -191,14 +192,29 @@ function technical(symbol: string, cardMap: Record<string, any>, watchMap: Recor
   if (entryLow === null) entryLow = entry
   if (entryHigh === null) entryHigh = entry
   if (entryLow !== null && entryHigh !== null && entryLow > entryHigh) [entryLow, entryHigh] = [entryHigh, entryLow]
-  const resistance = pickNumber(objects, ['resistance', 'resistance_price', 'sc_resistance', 'technical.resistance', 'technicals.resistance', 'trigger_price', 'mechanics.trigger'])
-  const tolerance = resistance === null ? null : Math.max(resistance * 0.005, 0.02)
-  const distance = price !== null && resistance !== null && resistance > 0 ? ((price - resistance) / resistance) * 100 : null
-  const resistanceSide: Technical['resistanceSide'] = price === null || resistance === null || tolerance === null
-    ? 'UNAVAILABLE' : Math.abs(price - resistance) <= tolerance ? 'TESTING' : price > resistance ? 'ABOVE' : 'BELOW'
-  const holdDays = pickNumber(objects, ['resistance_hold_days', 'days_above_resistance', 'breakout_hold_days', 'reclaim_hold_days', 'technicals.resistance_hold_days'])
-  const holdStart = pickText(objects, ['resistance_hold_start', 'breakout_hold_start', 'reclaim_date', 'technicals.resistance_hold_start'])
-  const resistanceTests = pickNumber(objects, ['resistance_tests', 'resistance_test_count', 'breakout_test_count', 'technicals.resistance_tests'])
+  // Data Broker: closed-session resistance only from prefs cache (same as Decision Desk).
+  const cached = resistanceMap[symbol] ?? resistanceMap[symbol.toUpperCase()] ?? {}
+  const resistance = finite(cached.resistance)
+  const cachedDistance = finite(cached.distance_pct)
+  const distance = cachedDistance !== null
+    ? cachedDistance
+    : (price !== null && resistance !== null && resistance > 0 ? ((price - resistance) / resistance) * 100 : null)
+  const cachedState = String(cached.state || '').toUpperCase()
+  const resistanceSide: Technical['resistanceSide'] =
+    cachedState === 'ABOVE' || cachedState === 'BELOW' || cachedState === 'TESTING'
+      ? cachedState
+      : resistance === null
+        ? 'UNAVAILABLE'
+        : distance === null
+          ? 'UNAVAILABLE'
+          : Math.abs(distance) <= 0.5
+            ? 'TESTING'
+            : distance > 0
+              ? 'ABOVE'
+              : 'BELOW'
+  const holdDays = finite(cached.hold_days)
+  const holdStart = text(cached.hold_start)
+  const resistanceTests = finite(cached.tests)
   const ma20 = pickNumber(objects, ['ma20', 'sma20', 'technicals.sma20', 'technical.ma20'])
   const ma50 = pickNumber(objects, ['ma50', 'sma50', 'technicals.sma50', 'technical.ma50'])
   const ma200 = pickNumber(objects, ['ma200', 'sma200', 'technicals.sma200', 'technical.ma200'])
@@ -385,6 +401,7 @@ export default function ReEntryRotationWorkspace({ mode = 'full', eventId: event
   const eventsPref = useJson(`/api/v2/ui/prefs/get?key=${encodeURIComponent(EVENT_KEY)}`, 0)
   const rotationsPref = useJson(`/api/v2/ui/prefs/get?key=${encodeURIComponent(ROTATION_KEY)}`, 0)
   const alertsPref = useJson(`/api/v2/ui/prefs/get?key=${encodeURIComponent(COMPOSITE_ALERT_KEY)}`, 0)
+  const resistancePref = useJson(`/api/v2/ui/prefs/get?key=${encodeURIComponent(RESISTANCE_KEY)}`, 120_000)
 
   const [mandates, setMandates] = useState<Record<string, Mandate>>({})
   const [classifications, setClassifications] = useState<Record<string, EventClassification>>({})
@@ -445,6 +462,7 @@ export default function ReEntryRotationWorkspace({ mode = 'full', eventId: event
   }, [symbols.join('|')])
 
   const cardMap: Record<string, any> = unwrap(cards.data)?.cards ?? {}
+  const resistanceMap: Record<string, any> = prefValue(resistancePref.data)?.symbols ?? {}
   const openPositions = positionRows(positions.data)
   const taxRows = rows(taxLots.data, ['lots', 'rows', 'tax_lots'])
   const dividendRows = rows(dividends.data, ['rows', 'dividends', 'payments'])
@@ -498,8 +516,8 @@ export default function ReEntryRotationWorkspace({ mode = 'full', eventId: event
     {Object.values(links).length > 0 && <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
       <div style={{ fontSize: 13, fontWeight: 900 }}>ROTATION PAIRS — BOTH-SIDE MONITORING</div>
       {Object.values(links).map(link => {
-        const source = technical(link.sourceSymbol, cardMap, watchMap)
-        const destination = technical(link.destinationSymbol, cardMap, watchMap)
+        const source = technical(link.sourceSymbol, cardMap, watchMap, resistanceMap)
+        const destination = technical(link.destinationSymbol, cardMap, watchMap, resistanceMap)
         const sourceAnalyst = analystFor(link.sourceSymbol, analyst.data)
         const destAnalyst = analystFor(link.destinationSymbol, analyst.data)
         const sourceLook = lookthroughFor(link.sourceSymbol, lookthrough.data)
