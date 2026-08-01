@@ -326,6 +326,7 @@ def _build_live_alert(triggers: List[Dict], time_str: str, market: Dict) -> str:
             # Inline Scalp Critic check
             critic_line = ""
             _verdict = ""
+            _cv = False  # safe default if validate_catalyst() below never runs (import/critic error)
             try:
                 from scalp_critic_agent import check_danger_flags, validate_catalyst, llm_critique, industry_fallback
                 _ticker = {"symbol": sym, "catalyst": _cat, "decision": "GO",
@@ -385,7 +386,11 @@ def _build_live_alert(triggers: List[Dict], time_str: str, market: Dict) -> str:
                     "change_percent": str(t.get("change_pct", "")),
                     "rvol": _rv,
                     "critic_verdict": _verdict,
-                    "catalyst_verified": True,
+                    # Data Broker (2026-07-31): was hardcoded True regardless of the actual
+                    # validate_catalyst() score — the DB write a few lines up already uses the
+                    # real _cv value; the WS broadcast now matches it instead of lying to live
+                    # subscribers. See docs/DATA_ARCHITECTURE_AUDIT_2026_07_31.md sec 4.
+                    "catalyst_verified": bool(_cv),
                     "source": "continuous",
                 })
             except Exception:

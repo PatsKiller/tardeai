@@ -35,8 +35,11 @@ def _save_fired(s):
 
 def _live_price(sym):
     try:
-        import yfinance as yf
-        return float(yf.Ticker(sym).info.get("regularMarketPrice") or 0)
+        # Data Broker (2026-07-31): canonical quote waterfall, not a raw yfinance call —
+        # see config/data_registry.yaml:quote_last_price.
+        from market_quote_provider import get_best_quote
+        q = get_best_quote(sym) or {}
+        return float(q.get("last_price") or 0)
     except Exception:
         return None
 

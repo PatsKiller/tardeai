@@ -175,6 +175,7 @@ function Shell() {
             <Route path="health" element={<HealthHub onDrill={setDrill} />} />
             <Route path="consumption" element={<ConsumptionHub />} />
             <Route path="system" element={<SystemHub onDrill={setDrill} />} />
+            <Route path="data" element={<Navigate to="/system?tab=Data" replace />} />
           </Routes>
           <div style={{ marginTop: 18, paddingTop: 8, borderTop: '1px solid rgba(148,163,184,.16)', fontSize: 11, color: 'var(--text3)' }}>
             <BuildMarker />

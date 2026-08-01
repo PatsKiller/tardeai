@@ -112,8 +112,13 @@ def check_alerts() -> list:
                     break
         elif a["kind"] == "price" and a.get("target_price") and a.get("symbols"):
             try:
-                import yfinance as yf
-                px = float(yf.Ticker(a["symbols"][0]).fast_info["last_price"])
+                # Data Broker (2026-07-31): route through the canonical quote waterfall
+                # (Alpaca/Schwab/Polygon/Finnhub/FMP/yfinance/Finviz) instead of a raw
+                # yfinance call, so this alert can't disagree with what the UI shows.
+                # See config/data_registry.yaml:quote_last_price.
+                from market_quote_provider import get_best_quote
+                q = get_best_quote(a["symbols"][0]) or {}
+                px = float(q["last_price"])
                 if px >= a["target_price"] and _fire(a, a["symbols"][0], {"title": f"price ${px:.2f} ≥ ${a['target_price']}"}):
                     a["status"], a["triggered_at"] = "triggered", _now()
                     fired.append({"id": a["id"], "subject": a["symbols"][0], "price": px})

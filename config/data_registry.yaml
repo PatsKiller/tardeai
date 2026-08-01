@@ -1,0 +1,462 @@
+# Data Broker Registry — single source of truth for "what produces this data, where does it
+# live, how long is it valid, and who reads it."
+#
+# This file is read by scripts/lib/data_broker/registry.py, which serves it to:
+#   - /api/v2/data/registry   (raw catalog)
+#   - /api/v2/data/coverage   (deprecated-producer scan results)
+#   - /api/v2/data/matrix     (data-type x consumer grid)
+#   - the Data Management page (System hub -> Data, CC v3 route /v3/data)
+#
+# RULE (see AGENTS.md "Data sources & the Data Broker"): any NEW data source or data type MUST
+# add an entry here and be served through the listed canonical store/producer. Do not add a new
+# ad-hoc yfinance/scrape path without registering it — scripts/lib/data_broker/registry.py
+# check_coverage() is meant to catch exactly that drift over time as entries are added below.
+#
+# Field meanings per data_type entry:
+#   domain            — grouping used for the UI (quotes / technicals / catalysts / analyst / ...)
+#   producer          — the module/function that SHOULD be the authoritative writer
+#   store             — canonical persisted location (table, JSON file, or in-memory cache)
+#   ttl_seconds       — how long a value is considered fresh (null = event-sourced / no TTL concept)
+#   cadence           — human-readable refresh schedule
+#   authority         — rank note (used when >1 source could answer the same question)
+#   status            — broker | partial | legacy  (see registry.py for the exact semantics)
+#   deprecated_producers — known ad-hoc/duplicate producers that should migrate to `producer`
+#   notes             — free text, cites the audit doc section
+
+version: "2026-07-31"
+audit_doc: "docs/DATA_ARCHITECTURE_AUDIT_2026_07_31.md"
+
+data_types:
+
+  quote_last_price:
+    domain: quotes
+    producer: "scripts/market_quote_provider.py:get_best_quote"
+    store: "market_quotes (table) + finviz_quote_cache.json"
+    ttl_seconds: 15
+    cadence: "on-demand waterfall (Alpaca -> Schwab -> Polygon -> Finnhub -> FMP -> yfinance -> Finviz cache)"
+    authority: "Schwab/Alpaca realtime > Polygon/Finnhub > FMP > yfinance > Finviz cached"
+    status: partial
+    deprecated_producers:
+      - "scripts/portfolio_repricer.py:_fetch_finviz"
+      - "scripts/portfolio_technical.py:get_technical_data (price fields)"
+      - "ad-hoc yfinance.Ticker(...).info['regularMarketPrice'] callers (~38 scripts remaining)"
+    notes: "Audit sec 3. get_best_quote already exists and is correct; the gap is adoption, not design. 2026-07-31: scripts/ask_alerts.py and scripts/ipo_lockup_alert.py migrated to get_best_quote (Phase 1 start)."
+
+  ohlcv_daily:
+    domain: technicals
+    producer: "scripts/price_db_sync.py"
+    store: "ticker_prices (table)"
+    ttl_seconds: 86400
+    cadence: "daily 7:15 AM after market data ingest"
+    authority: "yfinance daily bars, ticker_prices is the single designated store"
+    status: legacy
+    deprecated_producers:
+      - "price_cache (JSON + DB table) — scripts/portfolio_price_cache.py"
+      - "market_ohlcv_bars (table) — scripts/market_data_snapshot_loader.py multi-timeframe ingest"
+    notes: "Audit sec 3. Three overlapping daily-close stores; ticker_prices designated as sole store, others shim/deprecate."
+
+  rsi_14:
+    domain: technicals
+    producer: "scripts/indicator_engine.py"
+    store: "indicator_confluence_cache (table)"
+    ttl_seconds: 900
+    cadence: "15 min during market hours"
+    authority: "indicator_engine is the sole computed-indicator producer"
+    status: legacy
+    deprecated_producers:
+      - "scripts/ohlc_charts.py"
+      - "scripts/pullback_macd_screener.py"
+      - "scripts/holding_protection_advisor.py"
+      - "scripts/holdings_gain_guardian.py"
+      - "scripts/technicals_gap_backfill.py"
+      - "scripts/fund_technicals_enrich.py"
+      - "scripts/trade_backtest_engine.py"
+      - "Finviz-scraped RSI field (context only, not authoritative)"
+    notes: "Audit sec 3. 8+ independent implementations found."
+
+  sma_20_50_200:
+    domain: technicals
+    producer: "scripts/indicator_engine.py"
+    store: "indicator_confluence_cache (table)"
+    ttl_seconds: 900
+    cadence: "15 min during market hours"
+    authority: "indicator_engine is the sole computed-indicator producer"
+    status: legacy
+    deprecated_producers:
+      - "per-screener recomputation (multiple scripts)"
+      - "scripts/holdings_gain_guardian.py"
+      - "Finviz SMA20/50/200 % distance fields (context only)"
+    notes: "Audit sec 3."
+
+  macd:
+    domain: technicals
+    producer: "scripts/indicator_engine.py"
+    store: "indicator_confluence_cache (table)"
+    ttl_seconds: 900
+    cadence: "15 min during market hours"
+    authority: "indicator_engine computes real MACD (12/26/9 EMA); this is the only correct formula in the codebase"
+    status: legacy
+    deprecated_producers:
+      - "scripts/portfolio_technical.py (BUG: approximates MACD via SMA20 vs SMA50, not real MACD)"
+      - "scripts/ohlc_charts.py"
+      - "scripts/pullback_macd_screener.py"
+    notes: "Audit sec 3 -- FORMULA MISMATCH, not just duplication. portfolio_technical's MACD-shaped field is not MACD. 2026-07-31: added macd_signal_is_approximation=true + macd_signal_source flags to portfolio_technical.py's output so consumers can tell it apart from the real indicator_engine MACD; full migration (consumers reading indicator_confluence_cache directly) still pending -- see stop_decision_brief.py, ticker_snapshot_builder.py, journal_ai_critique.py."
+
+  atr_14:
+    domain: technicals
+    producer: "scripts/indicator_engine.py"
+    store: "indicator_confluence_cache (table)"
+    ttl_seconds: 900
+    cadence: "15 min during market hours"
+    authority: "indicator_engine is the sole computed-indicator producer; Finviz $ATR is context only"
+    status: legacy
+    deprecated_producers:
+      - "scripts/fib_swing_engine.py"
+      - "scripts/holding_protection_advisor.py"
+      - "scripts/holdings_gain_guardian.py"
+      - "chart-pattern and scalp-ignition modules (multiple)"
+      - "scripts/defense_rotation_pairs.py"
+    notes: "Audit sec 3. 10+ implementations, mixed Finviz $ vs computed."
+
+  rvol_session:
+    domain: technicals
+    producer: "scripts/indicator_engine.py (session RVOL, Finviz-sourced volume ratio)"
+    store: "indicator_confluence_cache (table)"
+    ttl_seconds: 300
+    cadence: "5 min during market hours"
+    authority: "session-relative volume vs trailing average; distinct from intraday time-of-day RVOL"
+    status: legacy
+    notes: "Audit sec 3. Renamed distinctly from rvol_tod per Phase 2 plan -- do not conflate the two."
+
+  rvol_tod:
+    domain: technicals
+    producer: "scripts/scalp_ignition_scorer.py"
+    store: "in-memory / scan-scoped (1m Alpaca bar profile)"
+    ttl_seconds: 60
+    cadence: "intraday, scan-triggered"
+    authority: "time-of-day-normalized volume, only meaningful intraday for scalp scans"
+    status: partial
+    deprecated_producers:
+      - "scripts/watchlist_entry_planner.py (own RVOL recompute)"
+      - "scripts/holdings_gain_guardian.py (own RVOL recompute)"
+    notes: "Audit sec 3. Was previously conflated with rvol_session under one name; now named distinctly."
+
+  support_resistance:
+    domain: technicals
+    producer: "scripts/lib/reentry_resistance.py (closed-session levels) + scripts/broker_proposal_intel.py (trade-plan levels)"
+    store: "ui_prefs key portfolio.reentry.resistance.v1 (closed-session) + broker_proposals.support_1/resistance_1 (trade-plan)"
+    ttl_seconds: 86400
+    cadence: "daily after close (closed-session); on proposal generation (trade-plan)"
+    authority: "TWO legitimate products for two purposes -- not a bug, but must be labeled distinctly everywhere"
+    status: partial
+    deprecated_producers:
+      - "ad-hoc text-parsing of watchlist/items or symbol-cards fields on Re-Entry hub (fallback path)"
+    notes: "Audit sec 3 & 6. Registry marks both as authoritative for their own consumer set; the text-parse fallback is the only true migration target."
+
+  vwap:
+    domain: technicals
+    producer: "scripts/compute_intraday_vwap.py"
+    store: "in-memory / chart-scoped"
+    ttl_seconds: 60
+    cadence: "intraday tick-driven"
+    authority: "session VWAP; anchored variants (ohlc_charts, pullback_macd_screener) are chart-local, not persisted"
+    status: partial
+    notes: "Audit sec 3."
+
+  holdings_positions:
+    domain: portfolio
+    producer: "scripts/holdings_guard.py:protected_holdings_write (fail-closes writes below $1M total)"
+    store: "data/portfolios/state/holdings.json"
+    ttl_seconds: null
+    cadence: "event-sourced: Schwab sync, SnapTrade merge, Alpaca/Moomoo live read, /api/import, repricer"
+    authority: "holdings.json is the sole source of truth for share counts; brokers are the sole source of truth for cost basis / lots"
+    status: broker
+    notes: "Audit sec 3. Writers gated by holdings_guard; ~200 repo-wide readers, ~83 independent loads inside api_v2.py alone -- the redundancy is on the READ side (see portfolio_snapshot)."
+
+  portfolio_snapshot:
+    domain: portfolio
+    producer: "scripts/lib/data_broker/portfolio_snapshot.py:get_portfolio_snapshot"
+    store: "state/data_broker/portfolio_snapshot.json (outcome_bus pattern, JSON-sourced not DB)"
+    ttl_seconds: 45
+    cadence: "computed on-demand, cached 45s; served read-only via GET /api/v2/data/portfolio-snapshot"
+    authority: "built 2026-07-31 -- reuses the exact holdings/day-change/sector logic api_v2.overview() uses (holding_day_change.resolve_holding_day_change), so its numbers are directly comparable to /overview for verification. NOT YET the authority /overview/holdings/risk/book-map read from -- see status."
+    status: partial
+    deprecated_producers:
+      - "independent holdings.json load + re-aggregation inside each of /overview, /portfolio/holdings, /risk, /portfolio/book-map handlers in api_v2.py"
+    notes: "Audit sec 5 -- Phase 4. 2026-07-31: read model BUILT and exposed at GET /api/v2/data/portfolio-snapshot for side-by-side verification against /overview. Cutting /overview, /portfolio/holdings, /risk, /portfolio/book-map over to READ this (deleting their own re-aggregation) is the remaining, higher-risk step -- do not do it without comparing snapshot vs live output across a full trading day first, since those 4 endpoints drive real position/risk display."
+
+  catalyst_record:
+    domain: catalysts
+    producer: "scripts/catalyst_enrichment.py + scripts/scoring.py (feeds catalyst_events)"
+    store: "catalyst_events (table)"
+    ttl_seconds: null
+    cadence: "event-sourced on news ingest"
+    authority: "catalyst_events.verified + confidence is the designated canonical verification flag; all 10 audit-doc definitions should reduce to reading this"
+    status: legacy
+    deprecated_producers:
+      - "scripts/social_route_policy.py (looser independent verified rule)"
+      - "scripts/research_scheduler.py:catalyst_signals (price-action proxy, not a news catalyst -- rename target: momentum_flag)"
+      - "scripts/hermes_momentum_catalyst_researcher.py (separate typed taxonomy, should annotate not replace)"
+      - "scripts/catalyst_intelligence.py (separate Ollama typed taxonomy, should annotate not replace)"
+    notes: "Audit sec 4 -- 10 distinct definitions found across ~12 tables. Phase 3 of the plan. 2026-07-31: fixed scripts/continuous_runner.py WS broadcast hardcoding catalyst_verified:true -- now sends the real validate_catalyst() result."
+
+  momentum_flag:
+    domain: catalysts
+    producer: "scripts/research_scheduler.py:catalyst_signals"
+    store: "in-memory / research-scheduler-scoped"
+    ttl_seconds: 300
+    cadence: "on research scheduling pass"
+    authority: "price-action proxy (RVOL>=5 or |gap|>=10) -- explicitly NOT a news catalyst"
+    status: partial
+    notes: "Audit sec 4 -- renamed from ambiguous 'catalyst' usage to stop masquerading as catalyst_record. See Phase 3."
+
+  analyst_rollup:
+    domain: analyst
+    producer: "scripts/pro_analyst_fetch.py (build_pro_analyst_read_model)"
+    store: "pro_analyst_pills_latest.json"
+    ttl_seconds: 3600
+    cadence: "hourly during market hours"
+    authority: "Street/Hermes rollup pills -- highest authority for at-a-glance UI badges"
+    status: broker
+    notes: "Audit sec 6. Served via GET /api/v2/pro-analyst/pills."
+
+  analyst_detail:
+    domain: analyst
+    producer: "scripts/pro_analyst_fetch.py (Yahoo consensus + rating distribution)"
+    store: "analyst_consensus (table)"
+    ttl_seconds: 21600
+    cadence: "every 6h"
+    authority: "Yahoo target price + rating distribution -- authoritative for DetailDrawer/Re-Entry evidence depth"
+    status: broker
+    deprecated_producers:
+      - "symbol-cards.analyst cached snapshot (should read analyst_rollup/analyst_detail, not carry its own copy)"
+    notes: "Audit sec 6 -- served via GET /api/v2/analyst-detail. See scripts/lib/analyst_rating_canonical.py for the pre-existing Finviz-recom-is-not-consensus distinction."
+
+  analyst_document:
+    domain: analyst
+    producer: "scripts/hermes_analyst_coverage.py + reports pipeline"
+    store: "reports/analyst/*.md (generated documents)"
+    ttl_seconds: 86400
+    cadence: "on-demand / daily report cycle"
+    authority: "narrative document, not a numeric feed -- cites analyst_rollup/analyst_detail as inputs"
+    status: broker
+    notes: "Audit sec 6 -- served via GET /api/v2/reports/analyst/*."
+
+  news_article:
+    domain: news
+    producer: "scripts/news_ingestion.py"
+    store: "news_articles (table)"
+    ttl_seconds: null
+    cadence: "3x daily (6:30/12:30/18:30) + continuous RSS poll"
+    authority: "Yahoo RSS + Finnhub + Google News RSS, deduped by URL/hash"
+    status: partial
+    deprecated_producers:
+      - "scripts/finviz_proactive_research.py (parallel ingest path)"
+      - "scripts/topic_ingestion.py (parallel ingest path)"
+    notes: "Audit sec 2 -- multiple ingestion paths for the same news domain; not yet consolidated."
+
+  social_sentiment:
+    domain: social
+    producer: "scripts/social_ingest.py"
+    store: "social_observations (table)"
+    ttl_seconds: 1800
+    cadence: "continuous poll (StockTwits/Reddit/X where keyed)"
+    authority: "primary social ingest path"
+    status: partial
+    deprecated_producers:
+      - "scripts/social_monitor.py (parallel path)"
+      - "scripts/aegis_social_sentiment.py (parallel path)"
+    notes: "Audit sec 2."
+
+  research_intelligence:
+    domain: research
+    producer: "scripts/hermes_research_intelligence* pipeline"
+    store: "hermes_research_intelligence (table)"
+    ttl_seconds: null
+    cadence: "event-sourced, LLM-lane dispatched"
+    authority: "sole store for LLM research artifacts (Grok/ChatGPT/Claude/Ollama)"
+    status: broker
+    notes: "Feeds Hermes maturity gates; see scripts/hermes_research_quality_remediation.py."
+
+  data_source_health:
+    domain: meta
+    producer: "scripts/lib/data_source_report.py + scripts/source_maturity.py"
+    store: "data_source_health (table)"
+    ttl_seconds: 300
+    cadence: "5 min heartbeat"
+    authority: "the pre-existing per-source liveness/maturity signal; the broker registry composes with this, does not replace it"
+    status: broker
+    notes: "Existing asset (audit sec 1) -- Data Management page surfaces this directly."
+
+# ---------------------------------------------------------------------------------------------
+# Consumers matrix. Every frontend page/hub and every outbound alert family, with which
+# data_types (keys above) it reads and via which endpoint/script, plus a `broker` flag
+# (true = goes through the canonical producer above, false = known ad-hoc/bypass path).
+# This is Phase 5b -- kept here so a coverage-check can fail when a new consumer reads a
+# registered data type without being added below.
+# ---------------------------------------------------------------------------------------------
+consumers:
+
+  pages:
+    - page: "Home (HomeHub)"
+      route: "/v3/"
+      reads:
+        - {data_type: portfolio_snapshot, via: "GET /api/v2/overview", broker: false}
+        - {data_type: quote_last_price, via: "GET /api/v2/overview", broker: false}
+        - {data_type: analyst_rollup, via: "GET /api/v2/pro-analyst/pills", broker: true}
+    - page: "Portfolio"
+      route: "/v3/portfolio"
+      reads:
+        - {data_type: holdings_positions, via: "GET /api/v2/portfolio/holdings", broker: true}
+        - {data_type: support_resistance, via: "GET /api/v2/ui/prefs/get?key=portfolio.reentry.resistance.v1", broker: true}
+        - {data_type: analyst_rollup, via: "GET /api/v2/pro-analyst/pills", broker: true}
+        - {data_type: rsi_14, via: "GET /api/v2/portfolio/holdings (technical overlay)", broker: false}
+        - {data_type: sma_20_50_200, via: "GET /api/v2/portfolio/holdings (technical overlay)", broker: false}
+        - {data_type: ohlcv_daily, via: "chart panel bars", broker: false}
+    - page: "Watch"
+      route: "/v3/watch"
+      reads:
+        - {data_type: support_resistance, via: "GET /api/v2/ui/prefs/get?key=portfolio.reentry.resistance.v1", broker: true}
+        - {data_type: analyst_rollup, via: "GET /api/v2/pro-analyst/pills", broker: true}
+        - {data_type: catalyst_record, via: "GET /api/v2/watchlist/items", broker: false}
+        - {data_type: news_article, via: "GET /api/v2/watchlist/items (headline join)", broker: false}
+    - page: "Re-Entry"
+      route: "/v3/reentry"
+      reads:
+        - {data_type: support_resistance, via: "GET /api/v2/ui/prefs/get?key=portfolio.reentry.resistance.v1 + text-parse fallback on watchlist/items", broker: false}
+        - {data_type: analyst_rollup, via: "GET /api/v2/pro-analyst/pills", broker: true}
+        - {data_type: analyst_detail, via: "GET /api/v2/analyst-detail", broker: true}
+    - page: "Trading / Broker Proposals"
+      route: "/v3/trading"
+      reads:
+        - {data_type: support_resistance, via: "GET /api/v2/broker-proposals (support_1/resistance_1)", broker: true}
+        - {data_type: quote_last_price, via: "send_telegram_proposal_alert path uses get_best_quote", broker: true}
+        - {data_type: catalyst_record, via: "GET /api/v2/broker-proposals (verified + confidence >= 30)", broker: true}
+        - {data_type: analyst_rollup, via: "GET /api/v2/pro-analyst/pills", broker: true}
+    - page: "Risk Recovery"
+      route: "/v3/risk"
+      reads:
+        - {data_type: portfolio_snapshot, via: "GET /api/v2/risk", broker: false}
+        - {data_type: analyst_rollup, via: "GET /api/v2/pro-analyst/pills", broker: true}
+    - page: "Entry Desk"
+      route: "/v3/entry"
+      reads:
+        - {data_type: analyst_rollup, via: "GET /api/v2/pro-analyst/pills", broker: true}
+        - {data_type: rvol_tod, via: "scalp/entry scan endpoints", broker: false}
+        - {data_type: vwap, via: "scalp ignition scan (intraday VWAP anchor)", broker: false}
+    - page: "Reports"
+      route: "/v3/reports"
+      reads:
+        - {data_type: analyst_document, via: "GET /api/v2/reports/analyst/*", broker: true}
+    - page: "Intelligence (Learning/Research tabs)"
+      route: "/v3/intelligence"
+      reads:
+        - {data_type: research_intelligence, via: "GET /api/v2/intelligence/*", broker: true}
+        - {data_type: data_source_health, via: "GET /api/v2/data-sources", broker: true}
+    - page: "System (Data Sources tab)"
+      route: "/v3/system"
+      reads:
+        - {data_type: data_source_health, via: "GET /api/v2/data-sources", broker: true}
+    - page: "System > Data (Data Management, this project)"
+      route: "/v3/data"
+      reads:
+        - {data_type: data_source_health, via: "GET /api/v2/data/registry", broker: true}
+        - {data_type: portfolio_snapshot, via: "GET /api/v2/data/portfolio-snapshot", broker: true}
+    - page: "Book Map"
+      route: "/v3/portfolio (book-map tab)"
+      reads:
+        - {data_type: portfolio_snapshot, via: "GET /api/v2/portfolio/book-map", broker: false}
+    - page: "Shell: MetricStrip / DetailDrawer"
+      route: "global"
+      reads:
+        - {data_type: quote_last_price, via: "GET /api/v2/overview", broker: false}
+        - {data_type: analyst_detail, via: "GET /api/v2/analyst-detail", broker: true}
+        - {data_type: rsi_14, via: "DetailDrawer technical panel", broker: false}
+
+  alerts:
+    - alert: "Position/stop alerts (protective stop, stop-health)"
+      script: "scripts/holding_protection_advisor.py, scripts/fidelity_stop_sync.py"
+      reads:
+        - {data_type: atr_14, via: "local recompute", broker: false}
+        - {data_type: quote_last_price, via: "get_best_quote", broker: true}
+    - alert: "Proposal/ATM alerts"
+      script: "scripts/send_telegram_proposal_alert.py"
+      reads:
+        - {data_type: quote_last_price, via: "get_best_quote", broker: true}
+        - {data_type: catalyst_record, via: "catalyst_events.verified", broker: true}
+      notes: "Aligned example (audit sec 7) -- pattern to generalize to every other alert."
+    - alert: "Watch / re-entry alerts"
+      script: "scripts/watch_alerts_eval.py"
+      reads:
+        - {data_type: quote_last_price, via: "market_quotes", broker: true}
+        - {data_type: support_resistance, via: "lib/reentry_resistance", broker: true}
+    - alert: "Watchlist entry planner"
+      script: "scripts/watchlist_entry_planner.py"
+      reads:
+        - {data_type: rsi_14, via: "own yfinance bars + local recompute", broker: false}
+        - {data_type: rvol_tod, via: "own recompute", broker: false}
+    - alert: "Pullback MACD screener"
+      script: "scripts/pullback_macd_screener.py"
+      reads:
+        - {data_type: macd, via: "own yfinance bars + local recompute", broker: false}
+    - alert: "Holdings gain guardian"
+      script: "scripts/holdings_gain_guardian.py"
+      reads:
+        - {data_type: quote_last_price, via: "own Schwab/yfinance bars", broker: false}
+        - {data_type: rsi_14, via: "local recompute", broker: false}
+        - {data_type: atr_14, via: "local recompute", broker: false}
+        - {data_type: rvol_session, via: "local recompute", broker: false}
+      notes: "Worst offender (audit sec 7) -- 4 data types all bypassing the broker."
+    - alert: "Portfolio live monitor / portfolio technical"
+      script: "scripts/portfolio_live_monitor.py, scripts/portfolio_technical.py"
+      reads:
+        - {data_type: quote_last_price, via: "own Finviz scrape, not market_quotes", broker: false}
+        - {data_type: macd, via: "SMA20/50 approximation (formula bug)", broker: false}
+    - alert: "Ask alerts"
+      script: "scripts/ask_alerts.py"
+      reads:
+        - {data_type: quote_last_price, via: "get_best_quote", broker: true}
+      notes: "Migrated 2026-07-31 from raw yfinance to get_best_quote (Phase 1 quote-broker migration)."
+    - alert: "IPO lockup alert"
+      script: "scripts/ipo_lockup_alert.py"
+      reads:
+        - {data_type: quote_last_price, via: "get_best_quote", broker: true}
+      notes: "Migrated 2026-07-31 from raw yfinance to get_best_quote (Phase 1 quote-broker migration)."
+    - alert: "Open trade monitor"
+      script: "scripts/open_trade_monitor.py"
+      reads:
+        - {data_type: quote_last_price, via: "Alpaca fallback, divergent from market_quotes", broker: false}
+    - alert: "Screener / scalp / social alerts"
+      script: "scripts/scalp_ignition_scorer.py, scripts/social_route_policy.py"
+      reads:
+        - {data_type: rvol_tod, via: "own 1m Alpaca profile", broker: true}
+        - {data_type: catalyst_record, via: "social_route_policy independent verified rule", broker: false}
+        - {data_type: social_sentiment, via: "social_route_policy.py", broker: false}
+        - {data_type: news_article, via: "social_route_policy.py headline match", broker: false}
+    - alert: "Hermes / research alerts"
+      script: "scripts/hermes_score_alerts.py, scripts/hermes_research_quality_remediation.py"
+      reads:
+        - {data_type: research_intelligence, via: "hermes_research_intelligence table", broker: true}
+        - {data_type: analyst_detail, via: "pro_analyst_monitor.py (separate builder from hermes_score_alerts)", broker: false}
+    - alert: "Global alerts banner"
+      script: "scripts/api_v2.py:_global_alerts"
+      reads:
+        - {data_type: portfolio_snapshot, via: "risk_management.json only (misses broker working-order stop scans)", broker: false}
+    - alert: "Premarket / social catalyst alerts"
+      script: "scripts/finviz_proactive_research.py (premarket path)"
+      reads:
+        - {data_type: catalyst_record, via: "raw headline text, ignores catalyst_events.verified", broker: false}
+
+  pipeline_scripts:
+    - script: "scripts/api_v2.py (/overview, /portfolio/holdings, /risk, /portfolio/book-map handlers)"
+      reads:
+        - {data_type: holdings_positions, via: "independent holdings.json load per-handler (~83 loads)", broker: false}
+    - script: "scripts/warm_caches.py"
+      reads:
+        - {data_type: portfolio_snapshot, via: "data/runtime/*_latest.json materialization", broker: true}
+    - script: "scripts/research_scheduler.py"
+      reads:
+        - {data_type: momentum_flag, via: "catalyst_signals price-action proxy", broker: true}
+    - script: "scripts/trade_backtest_engine.py"
+      reads:
+        - {data_type: ohlcv_daily, via: "own price_cache read (deprecated store)", broker: false}

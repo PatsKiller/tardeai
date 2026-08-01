@@ -53,6 +53,63 @@ testing, and demoing the app.
   server; the root `npm install` (with `canvas` native build deps) is intentionally left out of the update
   script — install it on demand if you need those e2e tests.
 
+## Data sources & the Data Broker
+
+A 2026-07-31 audit (`docs/DATA_ARCHITECTURE_AUDIT_2026_07_31.md`) found ~30 external sources feeding
+~55 ingestion scripts with heavy duplication — 6+ parallel "last price" pipelines, 8–10 independent
+RSI/SMA/ATR implementations, 10 distinct "catalyst" definitions, ~83 independent `holdings.json` loads
+inside `api_v2.py`. The fix is `config/data_registry.yaml` — the single catalog of every data type, its
+authoritative producer/store, TTL, authority rank, and every known consumer (page + alert + pipeline
+script) — plus `scripts/lib/data_broker/registry.py`, which serves it and runs a duplication/coverage
+check. Read the live state via the **Data Management page** (System hub → **Data** tab, `/v3/data`
+redirects there) or straight from the API: `GET /api/v2/data/registry`, `GET /api/v2/data/coverage`,
+`GET /api/v2/data/matrix`.
+
+### Where sources connect
+
+- **Brokers** (positions/fills, gated by `holdings_guard`): Schwab (OAuth, `schwab_transport.py`), Alpaca
+  (REST, paper + live-read), SnapTrade (Fidelity bridge), Moomoo/Futu (local OpenD TCP, read-only).
+- **Market data / fundamentals**: Finviz Elite (7 capabilities — screeners/enrichment/news/charts/sector
+  perf), yfinance/Yahoo, Alpaca market data, Polygon, Finnhub, FMP, Alpha Vantage, FRED, SEC EDGAR.
+- **News/social**: Yahoo RSS, Google News RSS, Finviz news, Benzinga, NewsAPI, StockTwits, Reddit, X,
+  YouTube (Data API + transcripts), DuckDuckGo, SearXNG (`:18888`).
+- **LLM/research lanes**: Grok + ChatGPT via local OAuth proxies (`:8645`/`:8646`), Claude (metered,
+  escalation only), local Ollama (`:11434`) — all feed `hermes_research_intelligence`.
+- Credential **names** for all of the above live in `config/agents_data_sources.yaml` (agent-facing view)
+  and the registry; **values** are Bitwarden-only (see the Bitwarden section below) — never read/print a
+  resolved secret to satisfy a data-source question, look up the key name instead.
+
+### Canonical store per domain (read these, don't recompute)
+
+| Domain | Canonical producer | Canonical store |
+|---|---|---|
+| Last price | `market_quote_provider.get_best_quote` | `market_quotes` table |
+| Daily OHLCV | `price_db_sync.py` | `ticker_prices` table |
+| RSI/SMA/MACD/ATR/RVOL | `indicator_engine.py` | `indicator_confluence_cache` table |
+| Catalyst verification | `catalyst_enrichment.py` + `scoring.py` | `catalyst_events.verified` / `.confidence` |
+| Share counts | broker syncs, via `holdings_guard.protected_holdings_write` | `data/portfolios/state/holdings.json` |
+| Analyst rollup / detail | `pro_analyst_fetch.py` | `pro_analyst_pills_latest.json` / `analyst_consensus` table |
+| Source liveness | `data_source_report.py` + `source_maturity.py` | `data_source_health` table |
+
+**Authority hierarchy** where more than one source could answer the same question: Schwab/Alpaca
+realtime > Polygon/Finnhub > FMP > yfinance > Finviz (cached/context) for quotes; Schwab = contract facts
+(cost basis, lots) and `holdings.json` = share counts, always — brokers are never overridden by a
+scrape. Finviz `recom` (1–5) is **not** Street analyst consensus — see
+`scripts/lib/analyst_rating_canonical.py` and use `pro_analyst_pills_latest.json` for consensus.
+
+### The rule for new data sources/types
+
+**Any new data source or new data type MUST add an entry to `config/data_registry.yaml`
+(producer/store/TTL/authority + at least one consumer row) and be served through that canonical
+producer/store — do not add a new ad-hoc `yfinance`/scrape/local-recompute path.**
+`scripts/lib/data_broker/registry.py:check_coverage()` is the enforcement: it flags (a) deprecated/ad-hoc
+producers that are still present in the repo (migration not done) and (b) any matrix row whose
+`data_type` isn't a real registry entry, or any data type with zero listed consumers (registry drifted
+from reality). Run it standalone: `python3 -m scripts.lib.data_broker.registry` (add `--strict` in CI to
+fail on dangling refs). If you're adding a page or an alert that reads an existing registered data type,
+add its row under `consumers.pages` / `consumers.alerts` / `consumers.pipeline_scripts` in the same PR —
+that's what keeps the Data Management page's matrix honest.
+
 ## Live host (ms01-openclaw) deployment gotchas
 
 The live `portfolio-server` runs from a **SHA-pinned release directory**, not this working tree:

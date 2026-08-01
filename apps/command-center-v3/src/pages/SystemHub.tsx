@@ -19,12 +19,13 @@ import HermesPanel from '../components/HermesPanel'
 import OpenClawPanel from '../components/OpenClawPanel'
 import TradeAIPanel from '../components/TradeAIPanel'
 import DataSourceHealth from '../components/DataSourceHealth'
+import DataBrokerPanel from '../components/DataBrokerPanel'
 import ExecutionStatePanel from '../components/ExecutionStatePanel'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubTab } from '../lib/terminalHubChrome'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
-const TABS = ['Pipeline', 'Control Plane', 'Data Sources', 'Queue', 'SIEM', 'Jobs', 'Apps', 'Access', 'Admin', 'Brokers', 'Crons', 'LLM', 'Hermes', 'OpenClaw', 'TradeAI'] as const
+const TABS = ['Pipeline', 'Control Plane', 'Data', 'Data Sources', 'Queue', 'SIEM', 'Jobs', 'Apps', 'Access', 'Admin', 'Brokers', 'Crons', 'LLM', 'Hermes', 'OpenClaw', 'TradeAI'] as const
 
 // Freshness color for an ISO timestamp vs a max-age (hours)
 function ageColor(iso: string | null | undefined, maxH: number): string {
@@ -182,6 +183,8 @@ export default function SystemHub({ onDrill }: Props) {
           <PipelineControlTower />
         </>
       )}
+
+      {tab === 'Data' && <DataBrokerPanel />}
 
       {tab === 'Data Sources' && <DataSourceHealth />}
 

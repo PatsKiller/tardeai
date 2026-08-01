@@ -12540,6 +12540,50 @@ def _ticket_review_status(query=None):
             "ticket_review": rows[0]["tr"]}
 
 
+def _main_desk_free_llm_weekly_status(query=None):
+    """GET /api/v2/watch/free-llm-weekly — last weekly free-lane batch stamp (local/grok/chatgpt).
+
+    Read-only. Stamp written by scripts/main_desk_free_llm_weekly.py (systemd weekly timer).
+    """
+    paths = [
+        PROJECT_ROOT / "data" / "runtime" / "main_desk_free_llm_weekly.json",
+        Path.home() / "trade-ai-v12-rebuild" / "trade-ai-v12-rebuild" / "data" / "runtime" / "main_desk_free_llm_weekly.json",
+    ]
+    for path in paths:
+        try:
+            if not path.exists():
+                continue
+            data = json.loads(path.read_text())
+            return {
+                "ok": True,
+                "exists": True,
+                "path": str(path),
+                "lanes": data.get("lanes") or "local,grok,chatgpt",
+                "cadence": data.get("cadence") or "weekly",
+                "started_at": data.get("started_at"),
+                "finished_at": data.get("finished_at"),
+                "next_due_after": data.get("next_due_after"),
+                "main_pool_n": data.get("main_pool_n"),
+                "ran_n": data.get("ran_n"),
+                "ok_n": data.get("ok_n"),
+                "fail_n": data.get("fail_n"),
+                "skipped_n": data.get("skipped_n"),
+                "skip_reasons": data.get("skip_reasons") or {},
+                "duration_sec": data.get("duration_sec"),
+                "policy": data.get("policy"),
+                "stamp_version": data.get("stamp_version"),
+            }
+        except Exception as exc:
+            return {"ok": False, "exists": True, "path": str(path), "error": str(exc)[:160]}
+    return {
+        "ok": True,
+        "exists": False,
+        "lanes": "local,grok,chatgpt",
+        "cadence": "weekly",
+        "note": "No weekly free-LLM stamp yet — timer tradeai-main-desk-free-llm-weekly.timer",
+    }
+
+
 def _ticket_review_premium_estimate(body):
     """POST /api/v2/watch/ticket-review/premium/estimate {symbol} — cost preview,
     NEVER a call. Fail-closed registry."""
@@ -27034,6 +27078,86 @@ def _data_source_health(query=None):
                     "stale=2-4x late, dead=>4x late or no data. Catches silent sub-source failures."}
 
 
+def _data_broker_module():
+    """Lazy import of scripts.lib.data_broker.registry (keeps it off the hot import path)."""
+    import sys as _s
+    _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    from lib.data_broker import registry as _reg
+    return _reg
+
+
+def _data_source_health_rows():
+    """Raw data_source_health table rows, JSON-only-mode safe (returns [] without a DB)."""
+    try:
+        rows = _db_query("""
+            SELECT source_key, status, last_success_at, last_failure_at,
+                   last_row_count, failure_count, last_error, degraded, updated_at
+            FROM data_source_health ORDER BY source_key
+        """) or []
+        return [{k: _json_clean(v) for k, v in r.items()} for r in rows]
+    except Exception:
+        return []
+
+
+def _data_registry_get():
+    """GET /api/v2/data/registry — the full Data Broker catalog: every data type (producer,
+    canonical store, TTL, authority, status) plus the consumers matrix (pages/alerts/pipeline
+    scripts). See config/data_registry.yaml and docs/DATA_ARCHITECTURE_AUDIT_2026_07_31.md.
+    Read-only, static-config-backed — works with no DB (JSON-only mode)."""
+    try:
+        reg_mod = _data_broker_module()
+        reg = reg_mod.load_registry()
+        return {
+            "ok": True,
+            "summary": reg_mod.registry_summary(reg),
+            "data_types": reg_mod.list_data_types(reg),
+            "consumers": reg_mod.get_matrix(reg),
+            "source_health": _data_source_health_rows(),
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:240]}
+
+
+def _data_coverage_get():
+    """GET /api/v2/data/coverage — duplication report: which deprecated/ad-hoc producers listed
+    in the registry are still present in the repo (migration pending) vs already removed
+    (migrated), plus registry referential-integrity checks (orphan data types, dangling
+    consumer refs). Backs the Data Management page's "Duplication report" panel."""
+    try:
+        reg_mod = _data_broker_module()
+        return {"ok": True, **reg_mod.check_coverage()}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:240]}
+
+
+def _data_portfolio_snapshot_get():
+    """GET /api/v2/data/portfolio-snapshot — the Phase 4 read model (see
+    scripts/lib/data_broker/portfolio_snapshot.py). ADDITIVE/inspection endpoint: /overview,
+    /portfolio/holdings, /risk, /portfolio/book-map do not read this yet (see
+    config/data_registry.yaml:portfolio_snapshot for the migration status) -- this exists so
+    the snapshot's numbers can be verified against those live endpoints before any cutover."""
+    try:
+        import sys as _s
+        _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from lib.data_broker.portfolio_snapshot import get_portfolio_snapshot
+        return {"ok": True, "snapshot": get_portfolio_snapshot()}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:240]}
+
+
+def _data_matrix_get():
+    """GET /api/v2/data/matrix — the data-type x consumer grid alone (pages + alerts + pipeline
+    scripts, each with which data types they read and whether that path goes through the
+    broker). Same underlying data as /api/v2/data/registry's `consumers` key, exposed
+    separately so the frontend matrix tab can fetch it on its own."""
+    try:
+        reg_mod = _data_broker_module()
+        reg = reg_mod.load_registry()
+        return {"ok": True, "data_types": reg_mod.list_data_types(reg), "consumers": reg_mod.get_matrix(reg)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:240]}
+
+
 _FINVIZ_ENRICH_CACHE = {"mtime": 0, "data": {}}
 def _finviz_enrichment(query=None):
     """GET /api/v2/finviz-enrichment?symbol=X — the ~60 Finviz fields already collected daily
@@ -27179,7 +27303,9 @@ def _finviz_strip_map_compute(query=None):
         pw = d.get("perf_week_pct"); pw = pw if pw is not None else _json_clean(pf.get("perf_week_pct"))
         pm = d.get("perf_month_pct"); pm = pm if pm is not None else _json_clean(pf.get("perf_month_pct"))
         pytd = d.get("perf_ytd_pct"); pytd = pytd if pytd is not None else _json_clean(pf.get("ytd_return_pct"))
+        sma20 = d.get("sma20_pct")
         sma = d.get("sma50_pct"); sma = sma if sma is not None else _json_clean(pf.get("sma50_pct"))
+        sma200 = d.get("sma200_pct")
         atr = d.get("atr")
         # Valuation is already in the enrichment cache (pe/forward_pe/peg/pb/ps) but was
         # never passed through, so the whole Watch queue rendered "valuation unavailable"
@@ -27203,20 +27329,29 @@ def _finviz_strip_map_compute(query=None):
         val_from_supp = supp_ok and not finviz_has_val and has_val
         val_as_of = sd.get("cached_at") if val_from_supp else d.get("cached_at")
         if (rsi is None and pw is None and pm is None and pytd is None and sma is None
-                and atr is None and not has_val):
+                and sma20 is None and sma200 is None and atr is None and not has_val):
             continue   # nothing for this symbol from either source
+        # MAIN desk / cards need decision evidence: MAs + analyst recom, not just RSI/PE.
         row = {"rsi": _json_clean(rsi),
                "rsi_status": d.get("rsi_status") if d.get("rsi") is not None else _rsi_status(rsi),
                "perf_week": _json_clean(pw), "perf_month": _json_clean(pm),
-               "perf_ytd": _json_clean(pytd), "sma50": _json_clean(sma),
+               "perf_ytd": _json_clean(pytd),
+               "sma20": _json_clean(sma20),
+               "sma50": _json_clean(sma),
+               "sma200": _json_clean(sma200),
                "atr": _json_clean(atr),
                "pe": pe, "forward_pe": forward_pe, "peg": peg, "pb": pb, "ps": ps,
+               "analyst_rating": d.get("analyst_rating") or d.get("recom"),
+               "recom_score": _json_clean(d.get("recom_score")),
+               "trend": d.get("trend"),
+               "week52_high_pct": _json_clean(d.get("week52_high_pct")),
+               "week52_low_pct": _json_clean(d.get("week52_low_pct")),
                "fundamentals_as_of": val_as_of,
                "valuation_source": ("yfinance" if val_from_supp else "finviz" if has_val else None),
                "source": ("finviz" if d.get("rsi") is not None else "yfinance_nav")}
         out[s] = row
     return {"ok": True, "count": len(out), "map": out,
-            "note": "Finviz inline-strip metrics (daily); mutual funds fall back to yfinance-NAV technicals."}
+            "note": "Finviz inline-strip metrics (daily); mutual funds fall back to yfinance-NAV technicals. Includes SMA20/50/200 + analyst for MAIN desk."}
 
 
 def _sector_performance(query=None):
@@ -33882,6 +34017,10 @@ ROUTES = {
     "/api/v2/intelligence/library": lambda: _intelligence_library(),
     "/api/v2/intelligence/item-state": lambda: _intelligence_item_state_get(),
     "/api/v2/intelligence/remediation-summary": lambda: _intelligence_remediation_summary(),
+    "/api/v2/data/registry": lambda: _data_registry_get(),
+    "/api/v2/data/coverage": lambda: _data_coverage_get(),
+    "/api/v2/data/matrix": lambda: _data_matrix_get(),
+    "/api/v2/data/portfolio-snapshot": lambda: _data_portfolio_snapshot_get(),
     "/api/v2/youtube/channel-lookup": lambda: _youtube_channel_lookup(),
     "/api/v2/social/posts": lambda: {"posts": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT id, platform, post_id, username, display_name, text, post_date, url, followers, verified, likes, retweets, replies, quality_score, relevance_score, validation_status, matched_keywords, sentiment, sentiment_score, added_by, ingested_at, strategy_tags, agent_tags FROM social_posts ORDER BY quality_score DESC, ingested_at DESC LIMIT 100") or [])]},
     "/api/v2/social/status": lambda: _social_api_status(),
@@ -33938,6 +34077,7 @@ ROUTES = {
     "/api/v2/watch/decision/summary": _watch_decision_summary,
     "/api/v2/watch/decision/technicals": _watch_decision_technicals,
     "/api/v2/watch/ticket-review/status": _ticket_review_status,
+    "/api/v2/watch/free-llm-weekly": _main_desk_free_llm_weekly_status,
     "/api/v2/decision/action-policy": _decision_action_policy,
     "/api/v2/shadow/strategy/batch": _shadow_batch_status,
     "/api/v2/defense/core": _defense_core_registry,

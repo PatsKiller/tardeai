@@ -589,7 +589,8 @@ def _derive_indicators(data: Dict, current_price: float) -> Dict:
         sma20, sma50, sma200               — Actual dollar MA levels
         bb_upper, bb_lower                  — Bollinger Bands (SMA20 ± 2×ATR)
         bb_position_pct                     — Price position in BB (0-100%)
-        macd_signal                         — bullish/bearish/neutral (SMA20 vs SMA50)
+        macd_signal                         — bullish/bearish/neutral SMA20-vs-SMA50 cross proxy
+                                               (NOT real MACD — see macd_signal_is_approximation)
         cross                               — golden/death/none (SMA50 vs SMA200)
         above_sma20/50/200                  — Boolean price vs MA
         pct_from_high, pct_from_low         — Distance from 52wk extremes
@@ -636,7 +637,16 @@ def _derive_indicators(data: Dict, current_price: float) -> Dict:
     if bb_upper and bb_lower and bb_upper != bb_lower:
         bb_pos = round((price - bb_lower) / (bb_upper - bb_lower) * 100, 1)
 
-    # MACD signal approximation (SMA20 vs SMA50 crossover direction)
+    # SMA20-vs-SMA50 crossover direction. Data Broker audit (2026-07-31, sec 3): this is NOT
+    # real MACD (12/26/9 EMA) — real MACD needs full price history, which this Finviz-%-distance
+    # snapshot doesn't carry. The real 12/26/9 EMA MACD lives in indicator_engine.py ->
+    # indicator_confluence_cache (full_result.signals.macd.signal), which is the registered
+    # canonical producer (config/data_registry.yaml:macd). Kept as "macd_signal" for existing
+    # consumers (stop_decision_brief.py, ticker_snapshot_builder.py, journal_ai_critique.py) —
+    # a silent rename would be a bigger, untested behavior change than fixing the honesty of the
+    # label — but callers that need the REAL indicator should read indicator_confluence_cache
+    # directly, and macd_signal_is_approximation below makes the distinction explicit for anyone
+    # consuming this field going forward.
     macd_signal = "neutral"
     if sma20 and sma50:
         macd_signal = "bullish" if sma20 > sma50 else "bearish"
@@ -674,6 +684,10 @@ def _derive_indicators(data: Dict, current_price: float) -> Dict:
         "bb_lower":         bb_lower,
         "bb_position_pct":  bb_pos,
         "macd_signal":      macd_signal,
+        # Explicit honesty flag (Data Broker audit 2026-07-31): macd_signal above is an SMA20/50
+        # crossover proxy, not real MACD. See indicator_confluence_cache for the real value.
+        "macd_signal_is_approximation": True,
+        "macd_signal_source":           "sma20_sma50_cross_proxy",
         "cross":            cross,
         "above_sma20":      above_sma20,
         "above_sma50":      above_sma50,
