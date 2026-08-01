@@ -1,17 +1,9 @@
 {
-  "date": "2026-07-30",
-  "timestamp": "2026-07-30T08:15:52.352415+00:00",
+  "date": "2026-07-31",
+  "timestamp": "2026-07-31T08:15:05.435619+00:00",
   "embedding_recommendations": [
     {
-      "id": 13573,
-      "symbol": "AAAC",
-      "type": "options_desk",
-      "confidence": 0.95,
-      "has_url": false,
-      "reason": "staged, has evidence, not embedded"
-    },
-    {
-      "id": 13502,
+      "id": 13226,
       "symbol": "BIYA",
       "type": "momentum_catalyst",
       "confidence": 0.7,
@@ -27,16 +19,24 @@
       "reason": "staged, has evidence, not embedded"
     },
     {
-      "id": 13411,
-      "symbol": "DFNS",
+      "id": 13672,
+      "symbol": "BOOM",
       "type": "momentum_catalyst",
       "confidence": 0.7,
       "has_url": true,
       "reason": "staged, has evidence, not embedded"
     },
     {
-      "id": 12835,
-      "symbol": "ADVB",
+      "id": 13408,
+      "symbol": "BIYA",
+      "type": "momentum_catalyst",
+      "confidence": 0.7,
+      "has_url": true,
+      "reason": "staged, has evidence, not embedded"
+    },
+    {
+      "id": 13411,
+      "symbol": "DFNS",
       "type": "momentum_catalyst",
       "confidence": 0.7,
       "has_url": true,
@@ -45,15 +45,7 @@
   ],
   "promotion_recommendations": [
     {
-      "id": 13573,
-      "symbol": "AAAC",
-      "type": "options_desk",
-      "confidence": 0.95,
-      "has_url": false,
-      "reason": "staged, high conf, has evidence"
-    },
-    {
-      "id": 13502,
+      "id": 13226,
       "symbol": "BIYA",
       "type": "momentum_catalyst",
       "confidence": 0.7,
@@ -69,16 +61,24 @@
       "reason": "staged, high conf, has evidence"
     },
     {
-      "id": 13411,
-      "symbol": "DFNS",
+      "id": 13672,
+      "symbol": "BOOM",
       "type": "momentum_catalyst",
       "confidence": 0.7,
       "has_url": true,
       "reason": "staged, high conf, has evidence"
     },
     {
-      "id": 12835,
-      "symbol": "ADVB",
+      "id": 13408,
+      "symbol": "BIYA",
+      "type": "momentum_catalyst",
+      "confidence": 0.7,
+      "has_url": true,
+      "reason": "staged, high conf, has evidence"
+    },
+    {
+      "id": 13411,
+      "symbol": "DFNS",
       "type": "momentum_catalyst",
       "confidence": 0.7,
       "has_url": true,
@@ -86,7 +86,7 @@
     }
   ],
   "rejected": [],
-  "total_staged_non_backlog": 223,
+  "total_staged_non_backlog": 202,
   "embeddings_created": 0,
   "promotions_created": 0
 }
