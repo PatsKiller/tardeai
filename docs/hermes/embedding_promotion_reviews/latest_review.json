@@ -1,10 +1,10 @@
 {
-  "date": "2026-07-31",
-  "timestamp": "2026-07-31T08:15:05.435619+00:00",
+  "date": "2026-08-01",
+  "timestamp": "2026-08-01T08:15:52.356125+00:00",
   "embedding_recommendations": [
     {
-      "id": 13226,
-      "symbol": "BIYA",
+      "id": 14135,
+      "symbol": "BSBR",
       "type": "momentum_catalyst",
       "confidence": 0.7,
       "has_url": true,
@@ -19,24 +19,24 @@
       "reason": "staged, has evidence, not embedded"
     },
     {
-      "id": 13672,
-      "symbol": "BOOM",
-      "type": "momentum_catalyst",
-      "confidence": 0.7,
-      "has_url": true,
-      "reason": "staged, has evidence, not embedded"
-    },
-    {
-      "id": 13408,
-      "symbol": "BIYA",
-      "type": "momentum_catalyst",
-      "confidence": 0.7,
-      "has_url": true,
-      "reason": "staged, has evidence, not embedded"
-    },
-    {
       "id": 13411,
       "symbol": "DFNS",
+      "type": "momentum_catalyst",
+      "confidence": 0.7,
+      "has_url": true,
+      "reason": "staged, has evidence, not embedded"
+    },
+    {
+      "id": 13396,
+      "symbol": "BYRN",
+      "type": "momentum_catalyst",
+      "confidence": 0.7,
+      "has_url": true,
+      "reason": "staged, has evidence, not embedded"
+    },
+    {
+      "id": 13499,
+      "symbol": "AMIX",
       "type": "momentum_catalyst",
       "confidence": 0.7,
       "has_url": true,
@@ -45,8 +45,8 @@
   ],
   "promotion_recommendations": [
     {
-      "id": 13226,
-      "symbol": "BIYA",
+      "id": 14135,
+      "symbol": "BSBR",
       "type": "momentum_catalyst",
       "confidence": 0.7,
       "has_url": true,
@@ -61,24 +61,24 @@
       "reason": "staged, high conf, has evidence"
     },
     {
-      "id": 13672,
-      "symbol": "BOOM",
-      "type": "momentum_catalyst",
-      "confidence": 0.7,
-      "has_url": true,
-      "reason": "staged, high conf, has evidence"
-    },
-    {
-      "id": 13408,
-      "symbol": "BIYA",
-      "type": "momentum_catalyst",
-      "confidence": 0.7,
-      "has_url": true,
-      "reason": "staged, high conf, has evidence"
-    },
-    {
       "id": 13411,
       "symbol": "DFNS",
+      "type": "momentum_catalyst",
+      "confidence": 0.7,
+      "has_url": true,
+      "reason": "staged, high conf, has evidence"
+    },
+    {
+      "id": 13396,
+      "symbol": "BYRN",
+      "type": "momentum_catalyst",
+      "confidence": 0.7,
+      "has_url": true,
+      "reason": "staged, high conf, has evidence"
+    },
+    {
+      "id": 13499,
+      "symbol": "AMIX",
       "type": "momentum_catalyst",
       "confidence": 0.7,
       "has_url": true,
@@ -86,7 +86,7 @@
     }
   ],
   "rejected": [],
-  "total_staged_non_backlog": 202,
+  "total_staged_non_backlog": 191,
   "embeddings_created": 0,
   "promotions_created": 0
 }
