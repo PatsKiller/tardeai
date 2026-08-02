@@ -345,7 +345,25 @@ def process_one_job(conn) -> bool:
         reasons = cmp.get("invalidation_reasons") or []
         cur.execute("""SELECT force FROM watch_decision_refresh_runs WHERE run_id=%s""", (run_id,))
         force = bool(cur.fetchone()[0])
-        if scope != "INPUTS_ONLY" and cmp.get("inputs_match") and packet_before and not force:
+        # Only force a rebuild for ticket/quality gaps when the packet itself is
+        # missing validation *and* we have never produced a governing validation
+        # candidate (no structures validated). Fresh packets with no zone stay
+        # NOT_RUN by design — forcing rebuild loops the queue forever.
+        ticket_gap = False
+        if packet_before and scope != "INPUTS_ONLY":
+            try:
+                import watch_packet_quality as packet_quality
+                gate = packet_quality.packet_gate(packet_before)
+                det = str(gate.get("deterministic") or "NOT_RUN").upper().replace(" ", "_")
+                q = str(gate.get("quality") or "UNASSESSED").upper()
+                tickets = list(packet_quality.iter_ticket_validations(packet_before))
+                # Rebuilt packets that still have zero validations are plan gaps.
+                ticket_gap = (det in ("", "NOT_RUN", "NOTRUN") or q == "UNASSESSED") and not tickets \
+                    and not (packet_before.get("ticket_review") or {}).get("reconciled")
+            except Exception:
+                ticket_gap = False
+        if (scope != "INPUTS_ONLY" and cmp.get("inputs_match") and packet_before
+                and not force and not ticket_gap):
             _finish(conn, job_id, "SKIPPED_CURRENT",
                     input_hash_before=hash_before, packet_id_before=packet_id_before,
                     invalidation_reasons=[])
@@ -472,6 +490,22 @@ def run_worker_loop():
             break
 
 
+def ensure_refresh_workers(n: int | None = None) -> int:
+    """Spawn detached workers when QUEUED jobs exist but no new enqueue happened."""
+    conn = _conn(); cur = conn.cursor()
+    cur.execute("SELECT count(*) FROM watch_decision_refresh_jobs WHERE state='QUEUED'")
+    queued = int(cur.fetchone()[0] or 0)
+    if queued <= 0:
+        return 0
+    spawn = max(1, min(int(n or WORKERS_PER_RUN), queued, WORKERS_PER_RUN))
+    for _ in range(spawn):
+        subprocess.Popen([PY, str(PROJECT_ROOT / "scripts" / "watch_decision_refresh.py"),
+                          "--worker"],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         start_new_session=True, cwd=PROJECT_ROOT)
+    return spawn
+
+
 def sweep_stale(grace_seconds: int = 300) -> dict:
     """Fail RUNNING jobs whose worker died without reaching a terminal state
     (heartbeat older than the grace window), then reconcile their runs. Cron-run
@@ -486,12 +520,22 @@ def sweep_stale(grace_seconds: int = 300) -> dict:
     conn.commit()
     for _, rid, _ in swept:
         _reconcile_run(conn, rid)
-    # also release any QUEUED jobs older than 30m with no worker (spawn died pre-claim)
-    cur.execute("""SELECT count(*) FROM watch_decision_refresh_jobs
-                   WHERE state='QUEUED' AND created_at < now() - interval '30 minutes'""")
-    orphaned_queued = cur.fetchone()[0]
+    # Fail orphaned QUEUED jobs older than 30m (spawn died pre-claim) so the
+    # unique live-job index no longer blocks MAIN desk remediations.
+    cur.execute("""UPDATE watch_decision_refresh_jobs
+                   SET state='FAILED', failure_class='OrphanQueued',
+                       error='queued >30m with no claim (stale-job sweep)', completed_at=now()
+                   WHERE state='QUEUED' AND created_at < now() - interval '30 minutes'
+                   RETURNING job_id, run_id, symbol""")
+    orphaned = cur.fetchall()
+    conn.commit()
+    for _, rid, _ in orphaned:
+        _reconcile_run(conn, rid)
+    spawned = ensure_refresh_workers()
     return {"swept": [{"job_id": j, "run_id": r, "symbol": s} for j, r, s in swept],
-            "stale_queued": orphaned_queued}
+            "stale_queued": len(orphaned),
+            "orphaned_failed": [{"job_id": j, "run_id": r, "symbol": s} for j, r, s in orphaned],
+            "workers_spawned": spawned}
 
 
 # ── status / freshness contract (Section 8) ──────────────────────────────────

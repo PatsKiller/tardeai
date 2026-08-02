@@ -142,9 +142,9 @@ export function deriveRecommendedAction(args: {
   if (ap && ap.policy_version) {
     const trig = (ap.warnings || []).join(' · ')
     if (ap.action === 'PROPOSE_ENTRY' && ap.allowed) {
-      return action('PROPOSE_ENTRY', 'READY', 'Propose entry', {
-        subtext: 'blueprint eligible · approve + per-order 2FA in Options',
-        urgency: 'green', primaryLabel: 'Propose Entry', buttonVariant: 'solid-green', allowPrimary: true,
+      return action('PROPOSE_ENTRY', 'READY', 'Open MAIN Setup Desk', {
+        subtext: 'advisory — opens MAIN desk; broker queue only via Entry Desk / bridge',
+        urgency: 'green', primaryLabel: 'Open MAIN Desk', buttonVariant: 'solid-green', allowPrimary: true,
       })
     }
     if (ap.action === 'RESEARCH_OPTIONS' && ap.allowed) {
@@ -333,7 +333,7 @@ export function deriveRecommendedAction(args: {
     return action('PROPOSE_ENTRY', 'READY', urgency === 'ready' ? `Ready · ${money(entry)}` : `Near entry · ${money(entry)}`, {
       subtext: urgency === 'ready' ? 'Validated plan · limit ready' : 'Validated plan · near trigger',
       urgency: urgency === 'ready' ? 'green' : 'amber',
-      primaryLabel: 'Propose Entry',
+      primaryLabel: 'Open MAIN Desk',
       buttonVariant: 'solid-green',
     })
   }

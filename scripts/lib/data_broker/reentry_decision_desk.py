@@ -40,15 +40,58 @@ def _f(value: Any) -> float | None:
 
 
 def _age_hours(as_of: str | None) -> float | None:
+    """Hours since quote timestamp. Accepts ISO and broker forms like '2026-08-01 07:35:12 ET'."""
     if not as_of:
         return None
+    s = str(as_of).strip()
+    if not s:
+        return None
     try:
-        ts = datetime.fromisoformat(str(as_of).replace("Z", "+00:00"))
-        if ts.tzinfo is None:
-            ts = ts.replace(tzinfo=timezone.utc)
-        return max(0.0, (datetime.now(timezone.utc) - ts).total_seconds() / 3600)
+        import re
+        from zoneinfo import ZoneInfo
+
+        m = re.match(r"^(.+?)\s+(ET|EST|EDT|UTC|GMT|Z)$", s, re.I)
+        if m:
+            body, tz = m.group(1).strip(), m.group(2).upper()
+            if "T" not in body and " " in body:
+                body = body.replace(" ", "T", 1)
+            naive = datetime.fromisoformat(body)
+            if tz in ("ET", "EST", "EDT"):
+                ts = naive.replace(tzinfo=ZoneInfo("America/New_York"))
+            else:
+                ts = naive.replace(tzinfo=timezone.utc)
+        else:
+            ts = datetime.fromisoformat(s.replace("Z", "+00:00"))
+            if ts.tzinfo is None:
+                # Naive market quotes are Eastern unless explicitly UTC/Z
+                try:
+                    ts = ts.replace(tzinfo=ZoneInfo("America/New_York"))
+                except Exception:
+                    ts = ts.replace(tzinfo=timezone.utc)
+        return max(0.0, (datetime.now(timezone.utc) - ts.astimezone(timezone.utc)).total_seconds() / 3600)
     except Exception:
         return None
+
+
+def _weekend_fresh_ok(age_h: float | None, *, stale_hours: float = STALE_HOURS) -> bool:
+    """True when quote is within stale_hours, or is a Friday RTH print held over Sat/Sun.
+
+    Operators decide on weekends from last session quotes — do not fail freshness solely
+    because the calendar crossed into Saturday/Sunday.
+    """
+    if age_h is None:
+        return False
+    if age_h <= stale_hours:
+        return True
+    try:
+        from zoneinfo import ZoneInfo
+        now_et = datetime.now(ZoneInfo("America/New_York"))
+        # Sat=5, Sun=6 — allow up to Fri 16:00 → Sun night (~56h) plus buffer to stale_hours
+        if now_et.weekday() >= 5 and age_h <= max(stale_hours, 72.0):
+            return True
+    except Exception:
+        pass
+    return False
 
 
 def derive_intel_state(
@@ -63,7 +106,7 @@ def derive_intel_state(
 ) -> dict[str, Any]:
     """Canonical READY band: in zone + 40 <= RSI < 70 (matches rotation gates)."""
     age_h = _age_hours(as_of)
-    stale = age_h is None or age_h > STALE_HOURS
+    stale = age_h is None or not _weekend_fresh_ok(age_h)
 
     distance_pct = None
     if price is not None and entry_low is not None and entry_high is not None and entry_low > 0 and entry_high > 0:
@@ -561,6 +604,8 @@ def build_decision_desk(
     from lib.data_broker.indicator_snapshot import get_indicator_snapshot
     from lib.data_broker.catalyst_record import get_catalyst_record
     from lib.data_broker.portfolio_snapshot import get_portfolio_snapshot
+    from lib.data_broker.symbol_profile import get_symbol_profiles
+    from lib.data_broker.entry_plan import get_entry_plans
 
     resistance_pref = _pref_json(db_query, RESISTANCE_KEY)
     resistance_map = resistance_pref.get("symbols") or {}
@@ -602,43 +647,24 @@ def build_decision_desk(
     instrument_map: dict[str, str] = {}
     if symbols:
         try:
-            earn_rows = db_query(
-                """SELECT upper(symbol) AS symbol, next_earnings_date, sector, industry,
-                          instrument_type, quote_type
-                   FROM symbol_profiles
-                   WHERE upper(symbol) = ANY(%s)""",
-                (symbols,),
-            ) or []
-            for row in earn_rows:
-                sym = str(row.get("symbol") or "").upper()
-                if not sym:
-                    continue
-                if row.get("next_earnings_date"):
-                    ed = row["next_earnings_date"]
+            profiles = get_symbol_profiles(db_query, symbols)
+            for sym, prof in profiles.items():
+                if prof.get("next_earnings_date"):
+                    ed = prof["next_earnings_date"]
                     earnings_map[sym] = ed.isoformat()[:10] if hasattr(ed, "isoformat") else str(ed)[:10]
-                label = " · ".join(x for x in [row.get("sector"), row.get("industry")] if x)
+                label = " · ".join(x for x in [prof.get("sector"), prof.get("industry")] if x)
                 if label:
                     company_map[sym] = label[:80]
-                instrument_map[sym] = str(row.get("instrument_type") or row.get("quote_type") or "")
+                instrument_map[sym] = str(prof.get("instrument_type") or "")
         except Exception:
             instrument_map = {}
 
-    plan_rows = []
+    plans: dict[str, dict[str, Any]] = {}
     if symbols:
         try:
-            plan_rows = db_query(
-                """SELECT DISTINCT ON (upper(symbol))
-                          upper(symbol) AS symbol, entry_zone_low, entry_zone_high,
-                          stop_price, target_price, created_at, limit_price
-                   FROM watchlist_entry_plans
-                   WHERE upper(symbol) = ANY(%s)
-                     AND entry_zone_low IS NOT NULL AND entry_zone_high IS NOT NULL
-                   ORDER BY upper(symbol), created_at DESC""",
-                (symbols,),
-            ) or []
+            plans = get_entry_plans(db_query, symbols)
         except Exception:
-            plan_rows = []
-    plans = {str(r.get("symbol") or "").upper(): r for r in plan_rows}
+            plans = {}
 
     wash_until: dict[str, str] = {}
     if symbols:
@@ -741,7 +767,7 @@ def build_decision_desk(
         age_h = _age_hours(quote.get("as_of"))
         in_zone = intel.get("distance_pct") == 0
         rsi_ok = rsi is not None and RSI_READY_LOW <= rsi < RSI_READY_HIGH
-        fresh_ok = age_h is not None and age_h <= STALE_HOURS
+        fresh_ok = _weekend_fresh_ok(age_h)
         gates = [
             {"id": "fresh", "pass": fresh_ok, "label": "Fresh quote", "value": f"{age_h:.0f}h" if age_h is not None else "missing"},
             {"id": "zone", "pass": bool(in_zone), "label": "Inside entry zone", "value": (

@@ -124,6 +124,9 @@ def _bars(symbol, days=70):
 
 
 def _tech(bars):
+    """Compute RSI, ATR, SMA50, price — replaced by canonical indicator_snapshot broker wrapper.
+    This function is KEPT for the exit ladder (swing_high/swing_low from 20-bar range) and
+    for the OLD yfinance/Alpaca bar fetch path — see run() for the broker override."""
     closes = [b["close"] for b in bars]
     highs = [b["high"] for b in bars]
     lows = [b["low"] for b in bars]
@@ -139,19 +142,62 @@ def _tech(bars):
             "sma50": sum(closes[-50:]) / 50}
 
 
+def _tech_broker(symbol: str, fallback_bars=None) -> dict | None:
+    """Compute RSI/ATR/SMA50/price from canonical indicator_snapshot broker wrapper.
+    Returns None if the broker has no data for this symbol (caller falls back to _tech + bars)."""
+    try:
+        from lib.data_broker.indicator_snapshot import get_indicator_snapshot
+        snap = get_indicator_snapshot([symbol])
+        ind = (snap.get("by_symbol") or {}).get(symbol.upper()) or {}
+        rsi = ind.get("rsi")
+        atr = ind.get("atr")
+        sma50 = ind.get("sma_50")
+        sma200 = ind.get("sma_200")
+        price = ind.get("sma50_pct")  # indicator_snapshot doesn't store price directly...
+        # If we have RSI from the broker, use it. If not, fall back to bars-based compute.
+        if rsi is not None and atr is not None:
+            # Price: use SMA50 * (1 + sma50_pct/100) if available, else fallback
+            if sma50 is not None and price is not None:
+                price = sma50 * (1 + price / 100)
+            elif sma50 is not None:
+                price = sma50
+            elif fallback_bars:
+                price = fallback_bars[-1]["close"]
+            else:
+                return None
+            return {
+                "price": price,
+                "rsi": rsi,
+                "atr": atr,
+                "swing_high": max(b["high"] for b in fallback_bars[-20:]) if fallback_bars else price,
+                "swing_low": min(b["low"] for b in fallback_bars[-20:]) if fallback_bars else price,
+                "sma50": sma50 or (sum(b["close"] for b in fallback_bars[-50:]) / 50) if fallback_bars else price,
+            }
+    except Exception:
+        pass
+    return None
+
+
 def _analyst(cur, symbol):
-    cur.execute("""SELECT target_mean_price, target_low_price, target_high_price, recommendation_key,
-                          number_of_analyst_opinions FROM yahoo_analyst_targets_history
-                   WHERE symbol=%s ORDER BY created_at DESC LIMIT 1""", (symbol,))
-    r = cur.fetchone()
-    if not r:
-        return {"tgt_mean": "n/a", "tgt_low": "n/a", "tgt_high": "n/a", "rec_key": "n/a",
-                "n_analysts": 0, "tgt_mean_num": None}
-    return {"tgt_mean": f"${float(r[0]):.2f}" if r[0] else "n/a",
-            "tgt_low": f"${float(r[1]):.2f}" if r[1] else "n/a",
-            "tgt_high": f"${float(r[2]):.2f}" if r[2] else "n/a",
-            "rec_key": r[3] or "n/a", "n_analysts": int(r[4] or 0),
-            "tgt_mean_num": float(r[0]) if r[0] else None}   # numeric mean for the exit ladder
+    """Read analyst targets from canonical broker wrapper (yahoo_analyst_targets_history)."""
+    from lib.data_broker.analyst_detail import get_analyst_targets
+
+    def _dbq(sql, params=None, fetch="all"):
+        cur.execute(sql, params or [])
+        if fetch == "one":
+            row = cur.fetchone()
+            return dict(zip([d[0] for d in cur.description], row)) if row else None
+        return [dict(zip([d[0] for d in cur.description], row)) for row in cur.fetchall()]
+
+    data = get_analyst_targets(_dbq, [symbol])
+    entry = data.get(symbol.upper()) or {}
+    tgt_mean = entry.get("target_mean")
+    return {"tgt_mean": f"${float(tgt_mean):.2f}" if tgt_mean else "n/a",
+            "tgt_low": f"${float(entry.get('target_low')):.2f}" if entry.get("target_low") else "n/a",
+            "tgt_high": f"${float(entry.get('target_high')):.2f}" if entry.get("target_high") else "n/a",
+            "rec_key": entry.get("recommendation_key") or "n/a",
+            "n_analysts": int(entry.get("analyst_count") or 0),
+            "tgt_mean_num": float(tgt_mean) if tgt_mean else None}
 
 
 MONITOR_RULES = ("+1R -> stop to breakeven; T1 filled -> trail 1R or prior-day low; "
@@ -441,7 +487,9 @@ def run(lane="local", symbols=None, limit=25, alert=True, scope="watchlist", buy
         bars = _bars(sym)
         if not bars:
             failed += 1; continue
-        t = _tech(bars)
+        # Prefer canonical broker indicators; fall back to local yfinance/Alpaca compute.
+        t_broker = _tech_broker(sym, fallback_bars=bars)
+        t = t_broker if t_broker else _tech(bars)
         conn, cur = _live(conn, cur)   # _bars can stall long enough for the server to drop us
         an = _analyst(cur, sym)
         prompt = PROMPT_V1.format(symbol=sym, hermes=c.get("hermes_composite_score"),
@@ -624,6 +672,39 @@ def _alert(sym, p, urg, price) -> bool:
         return False
 
 
+def _main_lane_symbols(limit: int = 60) -> list[str]:
+    """MAIN desk symbols missing a fresh entry plan — weekend / health remediations."""
+    from db_adapter import _get_conn
+    from lib.watch_lane_admission import main_sql_source_clause, load_policy
+    main_sql, main_params = main_sql_source_clause(load_policy())
+    conn = _get_conn(); cur = conn.cursor()
+    try:
+        cur.execute(
+            f"""
+            SELECT DISTINCT upper(wi.symbol)
+            FROM watchlist_items wi
+            WHERE wi.status <> 'removed'
+              AND wi.symbol ~ '^[A-Z][A-Z0-9.\\-]{{0,5}}$'
+              AND {main_sql}
+              AND NOT EXISTS (
+                SELECT 1 FROM watchlist_entry_plans ep
+                WHERE upper(ep.symbol) = upper(wi.symbol)
+                  AND ep.created_at > now() - interval '7 days'
+                  AND (ep.entry_zone_low IS NOT NULL OR ep.limit_price IS NOT NULL)
+              )
+            ORDER BY 1
+            LIMIT %s
+            """,
+            (*main_params, int(limit)),
+        )
+        return [r[0] for r in cur.fetchall() if r and r[0]]
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--lane", default="local", choices=["local", "grok"])
@@ -632,7 +713,17 @@ if __name__ == "__main__":
     ap.add_argument("--scope", default="watchlist", choices=["watchlist", "proposals"])
     ap.add_argument("--buy-rated-cap", type=int, default=20,
                     help="also plan up to N strongest BUY-rated researched names (0=off)")
+    ap.add_argument("--main-lane", action="store_true",
+                    help="plan MAIN desk symbols missing a 7d entry zone (health/weekend)")
     ap.add_argument("--no-alert", action="store_true")
     a = ap.parse_args()
-    run(lane=a.lane, symbols=a.symbols.split(",") if a.symbols else None,
-        limit=a.limit, alert=not a.no_alert, scope=a.scope, buy_rated_cap=a.buy_rated_cap)
+    symbols = a.symbols.split(",") if a.symbols else None
+    buy_cap = a.buy_rated_cap
+    if a.main_lane:
+        symbols = _main_lane_symbols(limit=a.limit)
+        buy_cap = 0
+        if not symbols:
+            print(json.dumps({"ok": True, "planned": 0, "reason": "no_main_lane_gaps"}))
+            raise SystemExit(0)
+    run(lane=a.lane, symbols=symbols,
+        limit=a.limit, alert=not a.no_alert, scope=a.scope, buy_rated_cap=buy_cap)

@@ -213,7 +213,7 @@ def run_auto_remediation(policy: dict, findings: list[dict]) -> list[dict]:
         return []
     types = set(cfg.get("finding_types") or [
         "portfolio_totals_drift", "account_summary_drift", "snaptrade_cash_stale",
-        "portfolio_repricer_stale", "finviz_quote_cache_stale", "market_quotes_stale", "reentry_indicator_cache_stale", "reentry_indicator_cache_gap",
+        "portfolio_repricer_stale", "finviz_quote_cache_stale", "market_quotes_stale", "reentry_indicator_cache_stale", "reentry_indicator_cache_gap", "watch_main_indicator_cache_gap", "watch_main_ticket_not_run", "watch_main_entry_zone_gap",
     ])
     cooldown_m = float(cfg.get("cooldown_minutes", 10))
     # Circuit breaker: if a remediation keeps "succeeding" (exit 0) yet the SAME finding fires again
@@ -285,11 +285,22 @@ def run_auto_remediation(policy: dict, findings: list[dict]) -> list[dict]:
                 and "auto_enrichment_runner.py" not in cmd \
                 and "cleanup_stale_proposals.py" not in cmd \
                 and "remediate_watchlist_news_guard.py" not in cmd \
-                and "hermes_scope_governor.py" not in cmd:
+                and "hermes_scope_governor.py" not in cmd \
+                and "indicator_cache_refresh.py" not in cmd \
+                and "data_broker_indicator_refresh.py" not in cmd \
+                and "watch_decision_scheduler.py" not in cmd \
+                and "watchlist_entry_planner.py" not in cmd:
             continue
         try:
+            # Indicator / broker refresh and watch ticket rebuilds can run long.
+            _timeout = 600 if (
+                "indicator_cache_refresh.py" in cmd
+                or "data_broker_indicator_refresh.py" in cmd
+                or "watch_decision_scheduler.py" in cmd
+                or "watchlist_entry_planner.py" in cmd
+            ) else 180
             proc = subprocess.run(cmd, shell=True, cwd=str(PROJECT_ROOT),
-                                  capture_output=True, text=True, timeout=180)
+                                  capture_output=True, text=True, timeout=_timeout)
             ok = proc.returncode == 0
             entry = {
                 "at": now.isoformat(), "type": ftype, "cmd": cmd, "ok": ok,
@@ -403,9 +414,13 @@ def collect_data_quality() -> list[dict]:
                                   age_minutes=mq_age))
 
         # Re-Entry Decision Desk needs RSI from indicator_confluence_cache for exited names.
+        # Same broker remediation as Watch MAIN (--operator-desks); weekends use a longer TTL
+        # so Friday session prints remain valid for Sat/Sun operator review.
         ric = (load_policy().get("reentry_indicator_freshness") or {})
         if ric.get("enabled", True):
             max_h = float(ric.get("max_age_hours", 36))
+            if _IS_WEEKEND:
+                max_h = float(ric.get("weekend_max_age_hours", max(max_h, 96)))
             miss_warn = int(ric.get("missing_exits_warn", 15))
             max_h_i = max(1, int(max_h))
             row = _db(
@@ -446,6 +461,137 @@ def collect_data_quality() -> list[dict]:
                     "data_quality", "reentry_indicator_cache_stale", "warning",
                     f"indicator_confluence_cache age {float(cache_age_h):.0f}h (max {max_h:.0f}h) - Decision Desk MISSING MARKET rises",
                     age_minutes=float(cache_age_h) * 60,
+                ))
+
+        # Watch MAIN Setup Desk — same RSI cache + broker remediation as Re-Entry.
+        wic = (load_policy().get("watch_main_indicator_freshness") or {})
+        if wic.get("enabled", True):
+            max_h_w = float(wic.get("max_age_hours", ric.get("max_age_hours", 36) if ric else 36))
+            if _IS_WEEKEND:
+                max_h_w = float(wic.get("weekend_max_age_hours", max(max_h_w, 96)))
+            miss_warn_w = int(wic.get("missing_main_warn", 8))
+            max_h_wi = max(1, int(max_h_w))
+            try:
+                from lib.watch_lane_admission import main_sql_source_clause, load_policy as _wlp
+                _main_sql, _main_params = main_sql_source_clause(_wlp())
+                wrow = _db(
+                    f"""
+                    WITH main_syms AS (
+                      SELECT DISTINCT upper(wi.symbol) AS symbol
+                      FROM watchlist_items wi
+                      WHERE wi.status <> 'removed' AND {_main_sql}
+                    )
+                    SELECT
+                      (SELECT count(*) FROM main_syms) AS main_n,
+                      (SELECT count(*) FROM main_syms m
+                         JOIN indicator_confluence_cache i
+                           ON upper(i.symbol)=m.symbol AND i.profile='swing'
+                        WHERE i.computed_at > NOW() - interval '{max_h_wi} hours') AS fresh
+                    """,
+                    _main_params,
+                    fetch="one",
+                ) or {}
+            except Exception:
+                wrow = {}
+            main_n = int(wrow.get("main_n") or 0)
+            fresh_main = int(wrow.get("fresh") or 0)
+            missing_main = max(0, main_n - fresh_main)
+            if main_n and missing_main >= miss_warn_w:
+                sev = "critical" if missing_main >= miss_warn_w * 2 else "warning"
+                out.append(_f(
+                    "data_quality", "watch_main_indicator_cache_gap", sev,
+                    f"Watch MAIN missing fresh RSI cache: {missing_main}/{main_n} "
+                    f"(need computed_at < {max_h_w:.0f}h)",
+                    count=missing_main,
+                ))
+
+        # MAIN / operator desk — ticket validation + free critics still NOT RUN
+        # (scheduler is weekday-RTH by default; health agent covers weekends too).
+        wtc = (load_policy().get("watch_main_ticket_freshness") or {})
+        if wtc.get("enabled", True):
+            warn_n = int(wtc.get("not_run_warn", 6))
+            try:
+                from lib.watch_lane_admission import main_sql_source_clause, load_policy as _wlp2
+                _msql, _mparams = main_sql_source_clause(_wlp2())
+                trow = _db(
+                    f"""
+                    WITH main_syms AS (
+                      SELECT DISTINCT upper(wi.symbol) AS symbol
+                      FROM watchlist_items wi
+                      WHERE wi.status <> 'removed' AND {_msql}
+                    ),
+                    pkt AS (
+                      SELECT DISTINCT ON (upper(symbol))
+                             upper(symbol) AS symbol, packet, generated_at
+                      FROM decision_packets
+                      WHERE superseded_by IS NULL
+                      ORDER BY upper(symbol), generated_at DESC NULLS LAST
+                    )
+                    SELECT
+                      (SELECT count(*) FROM main_syms) AS main_n,
+                      (SELECT count(*) FROM main_syms m
+                         LEFT JOIN pkt p ON p.symbol = m.symbol
+                        WHERE p.packet IS NULL
+                           OR p.generated_at < now() - (%s::text || ' hours')::interval
+                      ) AS ticket_stale_or_absent
+                    """,
+                    (*_mparams, float(wtc.get("stale_hours", 36))),
+                    fetch="one",
+                ) or {}
+            except Exception:
+                trow = {}
+            main_n_t = int(trow.get("main_n") or 0)
+            not_run = int(trow.get("ticket_stale_or_absent") or 0)
+            if main_n_t and not_run >= warn_n:
+                sev = "critical" if not_run >= warn_n * 2 else "warning"
+                out.append(_f(
+                    "data_quality", "watch_main_ticket_not_run", sev,
+                    f"Watch MAIN packets stale/absent: {not_run}/{main_n_t} "
+                    f"(LOCAL_QUANT via watch_decision_scheduler; fresh NOT RUN = plan/zone gap)",
+                    count=not_run,
+                ))
+
+        # MAIN desk — no entry zone ⇒ ticket validation stays NOT RUN / critics blocked
+        wz = (load_policy().get("watch_main_entry_zone") or {})
+        if wz.get("enabled", True):
+            warn_z = int(wz.get("missing_warn", 8))
+            try:
+                from lib.watch_lane_admission import main_sql_source_clause, load_policy as _wlp3
+                _zsql, _zparams = main_sql_source_clause(_wlp3())
+                zrow = _db(
+                    f"""
+                    WITH main_syms AS (
+                      SELECT DISTINCT upper(wi.symbol) AS symbol
+                      FROM watchlist_items wi
+                      WHERE wi.status <> 'removed'
+                        AND wi.symbol ~ '^[A-Z][A-Z0-9.\\-]{{0,5}}$'
+                        AND {_zsql}
+                    )
+                    SELECT
+                      (SELECT count(*) FROM main_syms) AS main_n,
+                      (SELECT count(*) FROM main_syms m
+                        WHERE NOT EXISTS (
+                          SELECT 1 FROM watchlist_entry_plans ep
+                          WHERE upper(ep.symbol) = m.symbol
+                            AND ep.created_at > now() - interval '7 days'
+                            AND (ep.entry_zone_low IS NOT NULL OR ep.limit_price IS NOT NULL)
+                        )
+                      ) AS zone_missing
+                    """,
+                    _zparams,
+                    fetch="one",
+                ) or {}
+            except Exception:
+                zrow = {}
+            main_n_z = int(zrow.get("main_n") or 0)
+            zone_miss = int(zrow.get("zone_missing") or 0)
+            if main_n_z and zone_miss >= warn_z:
+                sev = "critical" if zone_miss >= warn_z * 2 else "warning"
+                out.append(_f(
+                    "data_quality", "watch_main_entry_zone_gap", sev,
+                    f"Watch MAIN missing entry zones: {zone_miss}/{main_n_z} "
+                    f"(ticket/critics stay NOT RUN until watchlist_entry_planner --main-lane)",
+                    count=zone_miss,
                 ))
     except Exception as e:
         out.append(_f("data_quality", "collector_error", "info", f"data_quality check error: {e}"))
@@ -1071,6 +1217,9 @@ _CTA_BY_TYPE = {
     "finviz_quote_cache_stale": {"label": "System → Admin", "route": "/v3/system?tab=admin"},
     "reentry_indicator_cache_stale": {"label": "Re-Entry Desk", "route": "/v3/reentry"},
     "reentry_indicator_cache_gap": {"label": "Re-Entry Desk", "route": "/v3/reentry"},
+    "watch_main_indicator_cache_gap": {"label": "Watch MAIN Desk", "route": "/v3/watch"},
+    "watch_main_ticket_not_run": {"label": "Watch MAIN Desk", "route": "/v3/watch"},
+    "watch_main_entry_zone_gap": {"label": "Watch MAIN Desk", "route": "/v3/watch"},
     "agent_jobs_processing_stuck": {"label": "System → Jobs", "route": "/v3/system?tab=jobs"},
     "trade_proposals_backlog": {"label": "Trading → Proposals", "route": "/v3/trading?tab=Proposals"},
     "enrichment_pipeline_failure": {"label": "Trading → Proposals", "route": "/v3/trading?tab=Proposals"},

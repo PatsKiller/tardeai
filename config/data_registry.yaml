@@ -57,12 +57,12 @@ data_types:
 
   rsi_14:
     domain: technicals
-    producer: "scripts/indicator_engine.py"
-    store: "indicator_confluence_cache (table)"
+    producer: "scripts/data_broker_indicator_refresh.py → indicator_cache_refresh.py → indicator_engine.py"
+    store: "indicator_confluence_cache (table) + state/data_broker/indicator_snapshot.json"
     ttl_seconds: 900
-    cadence: "15 min during market hours"
-    authority: "indicator_engine is the sole computed-indicator producer"
-    status: partial
+    cadence: "weekday cron 5:45 all-universe + 12:15 exits; weekend 08:30/14:30 --operator-desks (MAIN+Re-Entry); health_agent every 30m remediates both desks via data_broker_indicator_refresh"
+    authority: "indicator_engine is the sole computed-indicator producer; broker refresh invalidates snapshot for all consumers"
+    status: broker
     deprecated_producers:
       - "scripts/ohlc_charts.py"
       - "scripts/pullback_macd_screener.py"
@@ -72,7 +72,7 @@ data_types:
       - "scripts/fund_technicals_enrich.py"
       - "scripts/trade_backtest_engine.py"
       - "Finviz-scraped RSI field (context only, not authoritative)"
-    notes: "Audit sec 3. 8+ independent implementations found."
+    notes: "Consumers must read via lib.data_broker.indicator_snapshot.get_indicator_snapshot. Health agent remediates via data_broker_indicator_refresh.py (not ad-hoc yfinance)."
 
   sma_20_50_200:
     domain: technicals
@@ -279,6 +279,102 @@ data_types:
     status: broker
     notes: "Feeds Hermes maturity gates; see scripts/hermes_research_quality_remediation.py."
 
+  # -----------------------------------------------------------------
+  # 2026-08-01: Data Broker wrappers for watchlist pipeline (Phase 1)
+  # -----------------------------------------------------------------
+
+  intelligence_entities_signals:
+    domain: research
+    producer: "scripts/hermes_research_intelligence* pipeline"
+    store: "intelligence_entities (table)"
+    ttl_seconds: 1800
+    cadence: "continuous LLM-lane dispatch"
+    authority: "sole store for rvol, confluence_score, social_score, catalyst presence per symbol"
+    status: partial
+    notes: "Read by hermes_watchlist_scorer and watch_decision_desk via broker wrapper intelligence_signals.py."
+
+  watchlist_research_card:
+    domain: research
+    producer: "scripts/agent_watchlist_engine.py + watchlist agent pipeline"
+    store: "watchlist_research_cards (table)"
+    ttl_seconds: 86400
+    cadence: "on agent review / research cycle"
+    authority: "agent-curated CIO recommendation per watchlist symbol"
+    status: partial
+    notes: "Consumed by watch_decision_desk and watchlist_entry_planner via broker wrapper research_card.py."
+
+  watchlist_final_synthesis:
+    domain: research
+    producer: "scripts/process_watchlist_agent_jobs.py:run_synthesis"
+    store: "watchlist_final_synthesis (table)"
+    ttl_seconds: 86400
+    cadence: "on synthesis cycle (when all agents complete)"
+    authority: "dual-LLM consensus recommendation with trust metadata"
+    status: partial
+    notes: "Consumed by watch_decision_desk, cio_trust_bundle, and watchlist_entry_planner via broker wrapper final_synthesis.py."
+
+  watchlist_entry_plan:
+    domain: trading
+    producer: "scripts/watchlist_entry_planner.py"
+    store: "watchlist_entry_plans (table)"
+    ttl_seconds: null
+    cadence: "weekly re-plan with catalyst override; on-demand --symbols"
+    authority: "LLM-generated entry zone / stop / target for watchlist symbols"
+    status: partial
+    deprecated_producers:
+      - "scripts/watchlist_entry_planner.py (own yfinance bars + local RSI/ATR recompute — should use indicator_snapshot + analyst_targets broker wrappers)"
+    notes: "Read by reentry_decision_desk and watch_decision_desk via broker wrapper entry_plan.py."
+
+  symbol_profile:
+    domain: fundamentals
+    producer: "watchlist enrichment + market data pipelines"
+    store: "symbol_profiles (table)"
+    ttl_seconds: 86400
+    cadence: "daily enrichment"
+    authority: "earnings_date, sector, industry, instrument_type per symbol"
+    status: partial
+    notes: "Read by reentry_decision_desk and watch_decision_desk via broker wrapper symbol_profile.py."
+
+  analyst_detail_yahoo:
+    domain: analyst
+    producer: "scripts/pro_analyst_fetch.py"
+    store: "yahoo_analyst_targets_history (table)"
+    ttl_seconds: 21600
+    cadence: "every 6h"
+    authority: "Yahoo target mean/low/high, recommendation_key, analyst count"
+    status: partial
+    notes: "Read by watchlist_entry_planner via broker wrapper analyst_detail.py. Distinct from analyst_detail (analyst_consensus table)."
+
+  sector_momentum:
+    domain: technicals
+    producer: "scripts/lib/data_broker/sector_momentum.py:get_sector_momentum (recomputed from market_quotes sector ETF prices vs SPY)"
+    store: "state/data_broker/sector_momentum.json"
+    ttl_seconds: 300
+    cadence: "on Hermes scoring pass (5 min cached)"
+    authority: "sector ETF vs SPY relative momentum for Hermes scoring"
+    status: partial
+    notes: "Read by hermes_watchlist_scorer via broker wrapper sector_momentum.py."
+
+  agent_result:
+    domain: research
+    producer: "scripts/process_watchlist_agent_jobs.py"
+    store: "watchlist_agent_results (table)"
+    ttl_seconds: 86400
+    cadence: "per-agent job completion"
+    authority: "Maria/Steph/Risk/Tax recommendations per watchlist symbol"
+    status: partial
+    notes: "Read by agent_watchlist_engine --rotate via broker wrapper agent_results.py."
+
+  fred_economic_indicator:
+    domain: macro
+    producer: "FRED API ingest"
+    store: "fred_economic_series (table)"
+    ttl_seconds: 86400
+    cadence: "daily"
+    authority: "FRED DFF/VIXCLS/T10Y2Y for rotation macro context"
+    status: partial
+    notes: "Read by agent_watchlist_engine --rotate. No broker read wrapper yet — deferred to Phase 2."
+
   data_source_health:
     domain: meta
     producer: "scripts/lib/data_source_report.py + scripts/source_maturity.py"
@@ -316,11 +412,24 @@ consumers:
         - {data_type: ohlcv_daily, via: "chart panel bars", broker: false}
     - page: "Watch"
       route: "/v3/watch"
+      notes: "MAIN Setup Desk is a filtered lane (~60 cap) — not the full watchlist warehouse. ETFs/funds live in RESEARCH/ToS unless promoted; Defense rotation stays on Defense unless operator Watch-clicks."
       reads:
+        - {data_type: quote_last_price, via: "GET /api/v2/watch/decision-desk (get_best_quote)", broker: true}
+        - {data_type: rsi_14, via: "GET /api/v2/watch/decision-desk (indicator_snapshot)", broker: true}
+        - {data_type: sma_20_50_200, via: "GET /api/v2/watch/decision-desk (indicator_snapshot)", broker: true}
+        - {data_type: catalyst_record, via: "GET /api/v2/watch/decision-desk (catalyst_record)", broker: true}
         - {data_type: support_resistance, via: "GET /api/v2/ui/prefs/get?key=portfolio.reentry.resistance.v1", broker: true}
         - {data_type: analyst_rollup, via: "GET /api/v2/pro-analyst/pills", broker: true}
         - {data_type: catalyst_record, via: "GET /api/v2/watchlist/items (catalyst_verified)", broker: true}
         - {data_type: news_article, via: "GET /api/v2/watchlist/items (headline join)", broker: false}
+        - {data_type: intelligence_entities_signals, via: "watch_decision_desk (intelligence_signals broker wrapper)", broker: true}
+        - {data_type: watchlist_research_card, via: "watch_decision_desk (research_card broker wrapper)", broker: true}
+        - {data_type: watchlist_final_synthesis, via: "watch_decision_desk (final_synthesis broker wrapper)", broker: true}
+        - {data_type: watchlist_entry_plan, via: "watch_decision_desk (entry_plan broker wrapper)", broker: true}
+        - {data_type: symbol_profile, via: "watch_decision_desk (symbol_profile broker wrapper)", broker: true}
+        - {data_type: sector_momentum, via: "hermes_watchlist_scorer (sector_momentum broker wrapper)", broker: true}
+        - {data_type: analyst_detail_yahoo, via: "watchlist_entry_planner (analyst_detail broker wrapper)", broker: true}
+        - {data_type: agent_result, via: "agent_watchlist_engine --rotate (agent_results broker wrapper)", broker: true}
     - page: "Re-Entry"
       route: "/v3/portfolio/re-entry"
       reads:
@@ -466,3 +575,27 @@ consumers:
     - script: "scripts/trade_backtest_engine.py"
       reads:
         - {data_type: ohlcv_daily, via: "own price_cache read (deprecated store)", broker: false}
+    - script: "scripts/watchlist_enrichment_sweep.py"
+      reads:
+        - {data_type: quote_last_price, via: "get_price_batch broker wrapper", broker: true}
+        - {data_type: rsi_14, via: "indicator_snapshot broker wrapper", broker: true}
+        - {data_type: sma_20_50_200, via: "indicator_snapshot broker wrapper", broker: true}
+    - script: "scripts/hermes_watchlist_scorer.py"
+      reads:
+        - {data_type: intelligence_entities_signals, via: "intelligence_signals broker wrapper", broker: true}
+        - {data_type: analyst_rollup, via: "analyst_rollup broker wrapper", broker: true}
+        - {data_type: sector_momentum, via: "sector_momentum broker wrapper", broker: true}
+    - script: "scripts/watchlist_entry_planner.py"
+      reads:
+        - {data_type: rsi_14, via: "indicator_snapshot broker wrapper (replaces local yfinance recompute)", broker: true}
+        - {data_type: atr_14, via: "indicator_snapshot broker wrapper (replaces local yfinance recompute)", broker: true}
+        - {data_type: analyst_detail_yahoo, via: "analyst_detail broker wrapper", broker: true}
+        - {data_type: watchlist_research_card, via: "research_card broker wrapper", broker: true}
+        - {data_type: watchlist_final_synthesis, via: "final_synthesis broker wrapper", broker: true}
+        - {data_type: watchlist_entry_plan, via: "entry_plan broker wrapper (weekly drain check)", broker: true}
+        - {data_type: catalyst_record, via: "catalyst_record broker wrapper", broker: true}
+    - script: "scripts/agent_watchlist_engine.py (--rotate path)"
+      reads:
+        - {data_type: agent_result, via: "agent_results broker wrapper", broker: true}
+        - {data_type: holdings_positions, via: "portfolio_snapshot broker wrapper", broker: true}
+        - {data_type: fred_economic_indicator, via: "fred_economic_series table", broker: false}

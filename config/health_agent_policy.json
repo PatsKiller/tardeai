@@ -174,7 +174,10 @@
       "enrichment_status_in_progress_stale",
       "news_symbol_mismatch",
       "reentry_indicator_cache_stale",
-      "reentry_indicator_cache_gap"
+      "reentry_indicator_cache_gap",
+      "watch_main_indicator_cache_gap",
+      "watch_main_ticket_not_run",
+      "watch_main_entry_zone_gap"
     ]
   },
   "scalp_catalyst_health": {
@@ -248,8 +251,11 @@
     "approved_paper_test_stuck": ".venv/bin/python scripts/cleanup_stale_proposals.py --pipeline-sweep --apply",
     "enrichment_status_in_progress_stale": ".venv/bin/python scripts/cleanup_stale_proposals.py --pipeline-sweep --apply",
     "news_symbol_mismatch": "flock -n /tmp/watchlist_news_guard.lock .venv/bin/python scripts/remediate_watchlist_news_guard.py --apply >> logs/remediate_watchlist_news_guard.log 2>&1",
-    "reentry_indicator_cache_stale": "flock -n /tmp/indicator_cache_refresh.lock .venv/bin/python scripts/indicator_cache_refresh.py --missing-exits-only --limit 80 >> logs/indicator_refresh.log 2>&1",
-    "reentry_indicator_cache_gap": "flock -n /tmp/indicator_cache_refresh.lock .venv/bin/python scripts/indicator_cache_refresh.py --missing-exits-only --limit 80 >> logs/indicator_refresh.log 2>&1"
+    "reentry_indicator_cache_stale": "flock -n /tmp/indicator_cache_refresh.lock .venv/bin/python scripts/data_broker_indicator_refresh.py --operator-desks --limit 160 --sleep-ms 400 --max-age-hours 96 >> logs/indicator_refresh.log 2>&1",
+    "reentry_indicator_cache_gap": "flock -n /tmp/indicator_cache_refresh.lock .venv/bin/python scripts/data_broker_indicator_refresh.py --operator-desks --limit 160 --sleep-ms 400 --max-age-hours 96 >> logs/indicator_refresh.log 2>&1",
+    "watch_main_indicator_cache_gap": "flock -n /tmp/indicator_cache_refresh.lock .venv/bin/python scripts/data_broker_indicator_refresh.py --operator-desks --limit 160 --sleep-ms 400 --max-age-hours 96 >> logs/indicator_refresh.log 2>&1",
+    "watch_main_ticket_not_run": "flock -n /tmp/watch_decision_scheduler.lock .venv/bin/python scripts/watch_decision_scheduler.py --run >> logs/watch_decision_scheduler.log 2>&1",
+    "watch_main_entry_zone_gap": "flock -n /tmp/entry_planner.lock .venv/bin/python scripts/watchlist_entry_planner.py --main-lane --limit 40 --lane local --no-alert >> logs/entry_planner.log 2>&1"
   },
   "log_errors": {
     "_comment": "Scan recently-active component logs for ERROR/Traceback spikes (content, not staleness).",
@@ -290,9 +296,28 @@
     ]
   },
   "reentry_indicator_freshness": {
-    "_comment": "Re-Entry Decision Desk READY needs RSI from indicator_confluence_cache. Exited symbols must be refreshed on cadence or they show MISSING MARKET despite live quotes.",
+    "_comment": "Re-Entry Decision Desk READY needs RSI from indicator_confluence_cache. Same health agent + data_broker_indicator_refresh --operator-desks path as Watch MAIN (weekdays and weekends).",
     "enabled": true,
     "max_age_hours": 36,
+    "weekend_max_age_hours": 96,
     "missing_exits_warn": 15
+  },
+  "watch_main_indicator_freshness": {
+    "_comment": "Watch MAIN Setup Desk DATA GAP. Shares operator-desks broker remediation with Re-Entry so both desks stay fresh on weekends.",
+    "enabled": true,
+    "max_age_hours": 36,
+    "weekend_max_age_hours": 96,
+    "missing_main_warn": 8
+  },
+  "watch_main_ticket_freshness": {
+    "_comment": "MAIN desk packets stale/absent (not fresh NOT RUN with no zone — that is an entry-plan gap). Remediates via watch_decision_scheduler --run. Weekend timer also fires.",
+    "enabled": true,
+    "stale_hours": 36,
+    "not_run_warn": 6
+  },
+  "watch_main_entry_zone": {
+    "_comment": "SETUP ADVISORY 'No zone on plan' blocks deterministic ticket + free critics. Weekday entry_planner cron + weekend/health --main-lane.",
+    "enabled": true,
+    "missing_warn": 8
   }
 }

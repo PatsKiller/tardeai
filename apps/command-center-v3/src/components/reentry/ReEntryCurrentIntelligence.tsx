@@ -588,7 +588,7 @@ function AdvisoryBody({
           </div>
         )
       })}
-      {compact && <div style={{ fontSize: 9, color: BB.text3, marginTop: 4 }}>qty src {sourceFor(selected.latest, 'quantity')} · proceeds {money(selected.proceeds)}</div>}
+      {compact && <div style={{ fontSize: 10, color: BB.text3, marginTop: 4 }}>qty src {sourceFor(selected.latest, 'quantity')} · proceeds {money(selected.proceeds)}</div>}
     </div>
 
     <div style={{ display: 'flex', gap: 8, marginTop: compact ? 14 : 18, flexWrap: 'wrap' }}>
@@ -833,7 +833,7 @@ export default function ReEntryCurrentIntelligence() {
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,minmax(90px,1fr))', gap: 6 }}>{filterButtons.map(([name, value, key]) => {
       const active = stateFilter === key
       return <button key={String(name)} onClick={() => setStateFilter(key)} style={{ ...panel, padding: '8px 9px', textAlign: 'left', cursor: 'pointer', background: active ? BB.blueDim : 'var(--bg2)', borderColor: active ? BB.blue : 'var(--border)', color: 'var(--text0)' }}>
-        <span style={{ color: active ? BB.blue : BB.text3, fontSize: 9, fontWeight: 800 }}>{active ? 'FILTER ON' : 'FILTER'}</span>
+        <span style={{ color: active ? BB.blue : BB.text3, fontSize: 10, fontWeight: 800 }}>{active ? 'FILTER ON' : 'FILTER'}</span>
         <br /><span style={{ fontSize: 10, color: BB.text3 }}>{String(name)}</span>
         <br /><b style={{ fontSize: 20 }}>{String(value)}</b>
       </button>
@@ -870,11 +870,11 @@ export default function ReEntryCurrentIntelligence() {
             const zone = d?.entry_low == null ? '—' : `${money(d.entry_low)}–${money(d.entry_high)}`
             const active = row.symbol === selectedSymbol
             return <div key={row.symbol} role="button" tabIndex={0} onClick={() => { setSelectedSymbol(row.symbol); setFullOpen(true) }} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedSymbol(row.symbol); setFullOpen(true) } }} style={{ display: 'grid', gridTemplateColumns: '64px 110px 88px 56px 1fr', gap: 6, padding: '8px 9px', borderBottom: '1px solid var(--border)', cursor: 'pointer', background: active ? BB.blueDim : 'transparent', boxShadow: active ? `inset 3px 0 0 ${tone}` : undefined, fontSize: 10.5 }}>
-              <div><b style={{ fontSize: 13 }}>{row.symbol}</b><div style={{ color: BB.text3, fontSize: 9 }}>{daysSince(row.latest.trade_date)}</div></div>
-              <div><b style={{ color: tone, fontSize: 10 }}>{row.intelState.replace(' TO REVIEW', '')}</b><div style={{ color: BB.text3, fontSize: 9 }}>{row.mandate.priority}</div></div>
-              <div><b>{money(d?.price)}</b><div style={{ color: BB.text3, fontSize: 9 }}>{zone}</div></div>
-              <div><b>{d?.rsi == null ? '—' : d.rsi.toFixed(0)}</b><div style={{ color: BB.text3, fontSize: 9 }}>{pct(d?.intel?.distance_pct)}</div></div>
-              <div style={{ fontSize: 9 }}><span style={{ color: BB.text3 }}>avg exit {money(row.avgExit)}</span><div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginTop: 2 }}>{(row.chips || []).slice(0, 2).map(chip => <span key={chip.label} style={{ fontWeight: 700, padding: '1px 4px', borderRadius: 3, border: `1px solid ${chipTone(chip.tone)}`, color: chipTone(chip.tone) }}>{chip.label}</span>)}</div></div>
+              <div><b style={{ fontSize: 13 }}>{row.symbol}</b><div style={{ color: BB.text3, fontSize: 10 }}>{daysSince(row.latest.trade_date)}</div></div>
+              <div><b style={{ color: tone, fontSize: 10 }}>{row.intelState.replace(' TO REVIEW', '')}</b><div style={{ color: BB.text3, fontSize: 10 }}>{row.mandate.priority}</div></div>
+              <div><b>{money(d?.price)}</b><div style={{ color: BB.text3, fontSize: 10 }}>{zone}</div></div>
+              <div><b>{d?.rsi == null ? '—' : d.rsi.toFixed(0)}</b><div style={{ color: BB.text3, fontSize: 10 }}>{pct(d?.intel?.distance_pct)}</div></div>
+              <div style={{ fontSize: 10 }}><span style={{ color: BB.text3 }}>avg exit {money(row.avgExit)}</span><div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginTop: 2 }}>{(row.chips || []).slice(0, 2).map(chip => <span key={chip.label} style={{ fontWeight: 700, padding: '1px 4px', borderRadius: 3, border: `1px solid ${chipTone(chip.tone)}`, color: chipTone(chip.tone) }}>{chip.label}</span>)}</div></div>
             </div>
           })}
           {!displayRows.length && <div style={{ padding: 14, color: BB.text3 }}>No symbols match. Clear search or click <b>ALL EXITED</b>.</div>}

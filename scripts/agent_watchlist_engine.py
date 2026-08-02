@@ -694,19 +694,34 @@ def propose_rotations() -> dict:
     conn = _get_conn()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    # Get latest agent results with strategy + account info
-    cur.execute("""
-        SELECT DISTINCT ON (r.symbol)
-            r.symbol, r.agent, r.recommendation, r.confidence,
-            tsc.strategy_type
-        FROM watchlist_agent_results r
-        JOIN ticker_strategy_classifications tsc ON r.symbol = tsc.symbol AND tsc.active=TRUE
-        WHERE r.created_at > NOW() - INTERVAL '14 days'
-          AND r.recommendation IN ('SELL', 'TRIM', 'AVOID')
-          AND r.confidence > 0.5
-        ORDER BY r.symbol, r.confidence DESC
-    """)
-    sell_candidates = cur.fetchall()
+    # Get latest agent results via canonical broker wrapper.
+    from lib.data_broker.agent_results import get_agent_results
+    agent_results = get_agent_results(
+        lambda sql, params=None, fetch="all":
+            (cur.execute(sql, params or []) or True)
+            and [dict(r) for r in cur.fetchall()]
+            if fetch == "all" else (
+                cur.execute(sql, params or []) or True
+                and next(iter([dict(r) for r in [cur.fetchone()] if r]), None)
+            ),
+        [],  # all symbols — the wrapper filters to SELL/TRIM/AVOID internally
+    )
+    # Reconstruct sell_candidates in the expected format (with strategy_type from classifications)
+    sell_candidates = []
+    for sym, results in agent_results.items():
+        for r in results:
+            if r.get("recommendation") in ("SELL", "TRIM", "AVOID") and (r.get("confidence") or 0) > 0.5:
+                # Join with strategy_type
+                cur.execute("SELECT strategy_type FROM ticker_strategy_classifications WHERE symbol=%s AND active=TRUE LIMIT 1", (sym,))
+                st_row = cur.fetchone()
+                strategy_type = (dict(st_row).get("strategy_type") if st_row else None) if isinstance(st_row, dict) else None
+                sell_candidates.append({
+                    "symbol": sym,
+                    "agent": r.get("agent"),
+                    "recommendation": r.get("recommendation"),
+                    "confidence": r.get("confidence"),
+                    "strategy_type": strategy_type,
+                })
 
     # Load holdings for account-specific details
     holdings_path = PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json"

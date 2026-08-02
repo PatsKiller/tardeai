@@ -6981,6 +6981,52 @@ def _wl_items(query: dict = None):
     except Exception as _lane_err:
         _lane_meta["lane_error"] = str(_lane_err)[:160]
 
+    # CIO trust strip (HIGH|DEGRADED) — deterministic gates over dual/street/QA
+    try:
+        from lib.cio_trust_bundle import compute_cio_trust_bundle
+        _street_map: dict = {}
+        _pills_updated_at = None
+        try:
+            _pills = json.loads((PROJECT_ROOT / "data" / "runtime" / "pro_analyst_pills_latest.json").read_text())
+            _pills_updated_at = _pills.get("updated_at")
+            for _p in (_pills.get("pills") or []):
+                _sym = str(_p.get("symbol") or "").upper()
+                if _sym:
+                    _street_map[_sym] = _p
+        except Exception:
+            _street_map = {}
+        for _it in _items:
+            _dual = _it.get("dual_consensus_json") or {}
+            if isinstance(_dual, str):
+                try:
+                    _dual = json.loads(_dual)
+                except Exception:
+                    _dual = {}
+            _sym_u = str(_it.get("symbol") or "").upper()
+            _street = _street_map.get(_sym_u) or {}
+            _street_as_of = None
+            if _street:
+                _street_as_of = _street.get("as_of") or _street.get("updated_at") or _pills_updated_at
+            _it["cio_trust"] = compute_cio_trust_bundle(
+                recommendation=_it.get("synthesis_recommendation") or _it.get("latest_recommendation"),
+                synthesis_updated_at=_it.get("synthesis_updated_at"),
+                models_agree=_it.get("models_agree"),
+                dual_consensus=_dual if isinstance(_dual, dict) else {},
+                model_used=_it.get("cio_model_used"),
+                decision_quality_status=_it.get("decision_quality_status"),
+                decision_safety=_it.get("decision_safety"),
+                actionable=_it.get("decision_actionable") if _it.get("decision_actionable") is not None else _it.get("actionable"),
+                synthesis_narrative=_it.get("synthesis_narrative"),
+                instrument_type=_it.get("instrument_type"),
+                street_rec=_street.get("recommendation_key") or _street.get("street_direction"),
+                street_n=_street.get("number_of_analyst_opinions"),
+                street_as_of=_street_as_of,
+                street_divergence=_street.get("divergence"),
+                on_main=(_it.get("lane") == "main"),
+            )
+    except Exception:
+        pass
+
     return {"count": len(_items), "items": _items,
             "facets": dict(sorted(_facets.items(), key=lambda x: -x[1])),
             "universe_count": _universe_n,
@@ -27240,6 +27286,63 @@ def _reentry_decision_desk_get(query=None):
         return {"ok": False, "error": str(e)[:240], "llm_in_path": False}
 
 
+
+def _watch_defense_promote_main(body=None):
+    """POST /api/v2/watch/defense/promote-main — one-click Defense ETF → MAIN WAIT."""
+    try:
+        import sys as _s
+        _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from lib.defense_main_promote import promote_to_main, load_promote_policy
+        from db_adapter import _execute
+        body = body or {}
+        sym = str(body.get("symbol") or "").upper().strip()
+        mode = str(body.get("mode") or "click").lower()
+        if not sym:
+            return 400, {"ok": False, "error": "symbol required"}
+        # Cap awareness for soft path
+        main_count = None
+        try:
+            from watch_lane_admission import annotate_item, apply_main_cap, load_policy
+            # cheap count of already-promoted / MAIN-ish rows not required for click
+            if mode == "soft":
+                row = _db_query(
+                    "SELECT count(DISTINCT upper(symbol)) AS c FROM watchlist_items "
+                    "WHERE status <> 'removed' AND (origin_system='defense_rotation' OR notes ILIKE '%%defense_main_promote%%')",
+                    fetch="one",
+                ) or {}
+                main_count = int(row.get("c") or 0)
+        except Exception:
+            main_count = None
+        result = promote_to_main(_execute, sym, mode=mode, provenance={"via": "api"}, main_count=main_count)
+        result["policy"] = {k: load_promote_policy().get(k) for k in ("soft_auto_symbols", "click_only_symbols", "main_cap")}
+        code = 200 if result.get("ok") else 400
+        return code, result
+    except Exception as e:
+        return 500, {"ok": False, "error": str(e)[:240]}
+
+
+def _watch_decision_desk_get(query=None):
+    """GET /api/v2/watch/decision-desk — deterministic broker-backed MAIN Setup Decision Desk.
+    Price via get_best_quote, RSI/MACD via indicator_snapshot, ticket from decision_packet,
+    fund look-through from fund_lookthrough.json. No LLM on this path."""
+    try:
+        import sys as _s
+        _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from lib.data_broker.watch_decision_desk import build_watch_decision_desk
+        q = query or {}
+        sym_raw = q.get("symbols") or q.get("symbol") or ""
+        if isinstance(sym_raw, list):
+            parts = []
+            for item in sym_raw:
+                parts.extend(str(item).split(","))
+            symbols = [s.strip().upper() for s in parts if s and str(s).strip()]
+        else:
+            symbols = [s.strip().upper() for s in str(sym_raw).split(",") if s.strip()]
+        return build_watch_decision_desk(_db_query, symbols or None)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:240], "llm_in_path": False}
+
+
 def _reentry_resistance_refresh_post(body=None):
     """POST /api/v2/reentry/resistance/refresh — operator on-demand closed-session resistance rebuild.
     Calls ensure_price_history then refresh_resistance_cache; attaches live quote metadata."""
@@ -34137,6 +34240,9 @@ ROUTES = {
     "/api/v2/data/indicator-snapshot": lambda q=None: _data_indicator_snapshot_get(q),
     "/api/v2/data/portfolio-snapshot": lambda: _data_portfolio_snapshot_get(),
     "/api/v2/reentry/decision-desk": lambda q=None: _reentry_decision_desk_get(q),
+    "/api/v2/watch/decision-desk": lambda q=None: _watch_decision_desk_get(q),
+    # POST handled in dispatch; GET policy helper:
+    "/api/v2/watch/defense/promote-main": lambda q=None: {"ok": True, "hint": "POST {symbol, mode:click|soft}"},
     "/api/v2/youtube/channel-lookup": lambda: _youtube_channel_lookup(),
     "/api/v2/social/posts": lambda: {"posts": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT id, platform, post_id, username, display_name, text, post_date, url, followers, verified, likes, retweets, replies, quality_score, relevance_score, validation_status, matched_keywords, sentiment, sentiment_score, added_by, ingested_at, strategy_tags, agent_tags FROM social_posts ORDER BY quality_score DESC, ingested_at DESC LIMIT 100") or [])]},
     "/api/v2/social/status": lambda: _social_api_status(),
@@ -37373,6 +37479,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         return _discovery_run(body or {})
     if method == "POST" and base_path == "/api/v2/discovery/add-to-watchlist":
         return _discovery_add(body or {})
+    if method == "POST" and base_path == "/api/v2/watch/defense/promote-main":
+        return _watch_defense_promote_main(body)
     if method == "POST" and base_path == "/api/v2/watch/directives/promote":
         try:
             return _watch_directive_promote(body or {})

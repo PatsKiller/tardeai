@@ -1,6 +1,17 @@
 {
   "version": "watch-lane-admission-v1",
   "mandate": "MAIN is a setup command desk, not a research warehouse. Coverage and raw discovery stay off MAIN unless operator-promoted.",
+  "operator_notes": {
+    "main_vs_warehouse": "MAIN shows ~60 setup-shaped names from allowlisted sources (operator, hermes, portfolio, pullback_macd, trade_ai_go, prev_traded, personal_watchlist). The full watchlist_items warehouse (~12k rows) includes RESEARCH/ToS/ai_discovered buckets — not auto-flooded onto MAIN.",
+    "etf_funds": "ETFs and mutual funds are not hard-banned. ~474 fund rows live in the warehouse but rarely reach MAIN because screener/ai_discovered ETF lists are excluded from M1 source allowlist and the ticket/propose path is equity-setup shaped. When a fund is on MAIN, Decision Desk shows fund look-through + volume N/A criteria (same as Re-Entry).",
+    "defense_sector_flow": "Soft-auto MAIN WAIT for income/defensive Defense destinations (SCHD + lean-sector ETFs XLU/XLP/XLV when defensive_lean enabled). Cyclical destinations (XLK, XLF, …) require one-click Promote to MAIN on the Defense desk. Never auto-GO; never broker-write."
+  },
+  "defense_main_promote": {
+    "require_click_for_cyclical": true,
+    "respect_defensive_lean": true,
+    "soft_auto_symbols": ["SCHD"],
+    "click_only_symbols": ["XLK", "XLF", "XLY", "XLE", "XLI", "XLB", "XLRE", "XLC", "SCHG", "JEPQ", "VUG"]
+  },
   "main_cap": 60,
   "lanes": ["main", "research", "coverage", "legacy_hermes"],
   "default_lane": "main",

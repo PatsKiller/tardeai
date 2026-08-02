@@ -54,6 +54,9 @@ function PairCard({ c, oversight }: { c: any; oversight?: any }) {
           <div style={{ color: BB.amber }}>{c.tax_note}</div>
           {c.cross_account_note && <div style={{ color: BB.text3 }}>{c.cross_account_note}</div>}
           <div style={{ color: BB.text3 }}>routes: sell — {c.routes.sell} · buys — {c.routes.buys}</div>
+          {(c.buy_legs || []).map((l: any) => (
+            <PromoteToMainButton key={String(l.symbol || l.line)} symbol={String(l.symbol || '').toUpperCase()} />
+          ))}
         </div>
       )}
     </div>
@@ -374,6 +377,11 @@ function Card({ c, tab, ladder, oversight }: { c: any; tab: string; ladder?: any
             account: 'schwab_taxable', est_dollars: 700,
           }} />
         )}
+        {(c.group === 'get_into' || c.group === 'income' || String(c.id || '').startsWith('rotatein-')) && (
+          <PromoteToMainButton
+            symbol={String(c.etf || c.instruments?.find((i: any) => /etf|fund/i.test(String(i.kind || '')))?.symbol || c.instruments?.[0]?.symbol || '').toUpperCase()}
+          />
+        )}
         <div style={{ fontSize: DASH.data, color: BB.text3 }}>
           {topFactors.map((f: any, i: number) => (
             <span key={i} style={{ marginRight: 10 }}>{f.name}: <b style={{ color: BB.text2 }}>{String(f.value)}</b></span>
@@ -406,6 +414,44 @@ function Card({ c, tab, ladder, oversight }: { c: any; tab: string; ladder?: any
         </div>
       )}
     </div>
+  )
+}
+
+async function promoteDefenseToMain(symbol: string) {
+  const r = await fetch('/api/v2/watch/defense/promote-main', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ symbol, mode: 'click' }),
+  })
+  const j = await r.json().catch(() => ({}))
+  const data = j?.data ?? j
+  if (!r.ok || data?.ok === false) throw new Error(data?.error || 'promote failed')
+  return data
+}
+
+function PromoteToMainButton({ symbol }: { symbol: string }) {
+  const [state, setState] = useState<'idle' | 'busy' | 'ok' | 'err'>('idle')
+  const [msg, setMsg] = useState('')
+  if (!symbol) return null
+  return (
+    <button
+      type="button"
+      disabled={state === 'busy' || state === 'ok'}
+      title="Promote this Defense destination ETF to MAIN Setup Desk as WAIT (no broker write, no auto-GO). Cyclical names require this click; SCHD/defensive may also soft-auto."
+      onClick={e => {
+        e.stopPropagation()
+        setState('busy')
+        void promoteDefenseToMain(symbol)
+          .then(d => { setState('ok'); setMsg(`${symbol} → MAIN WAIT (${d.mode || 'click'})`) })
+          .catch(err => { setState('err'); setMsg(String(err?.message || err)) })
+      }}
+      style={{
+        fontSize: DASH.chip, fontWeight: 800, marginTop: 4, marginBottom: 4, cursor: state === 'busy' ? 'wait' : 'pointer',
+        padding: '4px 8px', borderRadius: 2, border: `1px solid ${state === 'ok' ? BB.green : state === 'err' ? BB.red : T.link}`,
+        background: 'transparent', color: state === 'ok' ? BB.green : state === 'err' ? BB.red : T.link,
+      }}
+    >
+      {state === 'busy' ? '…' : state === 'ok' ? `✓ ${msg}` : state === 'err' ? msg : `Promote ${symbol} to MAIN`}
+    </button>
   )
 }
 

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -27,14 +28,23 @@ import watch_packet_quality as packet_quality  # noqa: E402
 
 TIER_ORDER = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
 QUALITY_ORDER = {"ADMITTED": 0, "UNASSESSED": 1, "RESEARCH_ONLY": 2, "QUARANTINED": 3}
+_TICKER_RE = re.compile(r"^[A-Z][A-Z0-9.\-]{0,5}$")
 
 
 def _now():
     return datetime.now(timezone.utc)
 
 
+def _is_tradeable_ticker(sym: str) -> bool:
+    """Drop CUSIPs / junk ids that burn the 40-symbol scheduler cap."""
+    s = str(sym or "").upper().strip()
+    return bool(s) and bool(_TICKER_RE.match(s)) and not s[0].isdigit()
+
+
 def _priority_key(item: dict) -> tuple:
+    # MAIN desk names first — operator SETUP ADVISORY gaps beat bulk watchlist.
     return (
+        0 if item.get("main_lane") else 1,
         TIER_ORDER.get(item.get("tier"), 9),
         QUALITY_ORDER.get(item.get("quality"), 9),
         str(item.get("symbol") or ""),
@@ -62,7 +72,24 @@ def build_plan(conn) -> dict:
     }
     cur.execute("SELECT upper(symbol) FROM operator_starred_symbols")
     starred = {row[0] for row in cur.fetchall()}
-    population = sorted(set(packets) | starred)
+    main_syms: set[str] = set()
+    try:
+        from lib.watch_lane_admission import main_sql_source_clause, load_policy as _wlp
+        main_sql, main_params = main_sql_source_clause(_wlp())
+        cur.execute(
+            f"""SELECT DISTINCT upper(wi.symbol)
+                FROM watchlist_items wi
+                WHERE wi.status <> 'removed' AND {main_sql}""",
+            main_params,
+        )
+        main_syms = {row[0] for row in cur.fetchall() if row and row[0]}
+    except Exception:
+        conn.rollback()
+        main_syms = set()
+    # MAIN desk + stars + existing packets — weekend operators need ticket rebuilds too
+    population = sorted(
+        s for s in (set(packets) | starred | main_syms) if _is_tradeable_ticker(s)
+    )
 
     cur.execute("""SELECT DISTINCT symbol FROM watch_decision_refresh_jobs
                    WHERE state IN ('QUEUED','RUNNING')""")
@@ -74,6 +101,7 @@ def build_plan(conn) -> dict:
         "skipped_in_flight": [],
         "quality_deferred": [],
         "not_due": [],
+        "main_syms": sorted(main_syms),
     }
     quality_counts = {state: 0 for state in QUALITY_ORDER}
     now = _now()
@@ -117,15 +145,29 @@ def build_plan(conn) -> dict:
         due_local = False
         due_reason = ""
 
+        det = str(gate.get("deterministic") or "NOT_RUN").upper().replace(" ", "_")
+        age_min = None
+        if packet:
+            age_min = (now - packet["generated_at"]).total_seconds() / 60
         if not packet:
             due_local = True
             due_reason = "PACKET_ABSENT — deterministic quality assessment required"
-        elif quality_state == "UNASSESSED":
-            due_local = True
-            due_reason = "QUALITY_UNASSESSED — rebuild locally before any model lane"
+        elif det in ("NOT_RUN", "NOTRUN", "") or quality_state == "UNASSESSED":
+            # Fresh rebuilds with no zone/mechanics stay NOT_RUN by design — that is a
+            # plan gap (entry planner), not a missing LOCAL_QUANT pass. Only re-queue
+            # when the packet is absent/stale past the tier ceiling.
+            stale = bool(local_ceiling and age_min is not None and age_min > float(local_ceiling))
+            if stale or age_min is None:
+                due_local = True
+                due_reason = (
+                    "TICKET_NOT_RUN — stale/missing deterministic assessment for MAIN desk"
+                    if det in ("NOT_RUN", "NOTRUN", "")
+                    else "QUALITY_UNASSESSED — rebuild locally before any model lane"
+                )
+            else:
+                due_local = False
         else:
-            age_min = (now - packet["generated_at"]).total_seconds() / 60
-            due_local = bool(local_ceiling and age_min > float(local_ceiling))
+            due_local = bool(local_ceiling and age_min is not None and age_min > float(local_ceiling))
             if due_local:
                 due_reason = f"age {age_min:.0f}m > ceiling {local_ceiling}m"
             else:
@@ -154,6 +196,7 @@ def build_plan(conn) -> dict:
             "deterministic": gate["deterministic"],
             "validation_source": gate.get("validation_source"),
             "held_or_starred": held_or_starred,
+            "main_lane": symbol in main_syms,
             "why": due_reason,
         }
         plan["local"].append(local_item)
@@ -274,21 +317,42 @@ def main():
 
     swept = wdr.sweep_stale()
     plan = build_plan(conn)
-    out = {"swept": len(swept.get("swept", [])), **plan["estimates"], "runs": []}
+    out = {
+        "swept": len(swept.get("swept", [])),
+        "workers_spawned": swept.get("workers_spawned", 0),
+        **plan["estimates"],
+        "runs": [],
+    }
     blind_symbols = {item["symbol"] for item in plan["blind"]}
     local_symbols = [item["symbol"] for item in plan["local"] if item["symbol"] not in blind_symbols]
-    if local_symbols:
+    main_set = set(plan.get("main_syms") or [])
+    main_due = [s for s in local_symbols if s in main_set]
+    rest_due = [s for s in local_symbols if s not in main_set]
+    # Separate MAIN run at priority 10 so SETUP ADVISORY gaps claim ahead of bulk P2.
+    for label, syms, prio, reason in (
+        ("LOCAL_QUANT_MAIN", main_due, 10, "main_desk_ticket_not_run"),
+        ("LOCAL_QUANT", rest_due, 100, "quality_aware_policy_cadence"),
+    ):
+        if not syms:
+            continue
         result = wdr.enqueue_run(
-            local_symbols,
+            syms,
             scope="AFFECTED_DIMENSIONS",
             analysis_tier="LOCAL_QUANT",
             requested_by="scheduler",
-            reason="quality_aware_policy_cadence",
+            reason=reason,
+            priority=prio,
         )
         out["runs"].append({
-            "tier": "LOCAL_QUANT", "run_id": result.get("run_id"),
+            "tier": label, "run_id": result.get("run_id"),
             "queued": result.get("queued"),
+            "skipped_locked": result.get("skipped_locked"),
+            "symbols": result.get("symbols") or syms,
         })
+        if not result.get("queued"):
+            out["workers_spawned"] = (
+                int(out.get("workers_spawned") or 0) + wdr.ensure_refresh_workers()
+            )
     if blind_symbols:
         result = wdr.enqueue_run(
             sorted(blind_symbols),

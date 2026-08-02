@@ -488,11 +488,13 @@ def _synthesis_lanes(prompt: str, lanes=None, max_tokens: int = 2000, manual_tri
         meta.update(agree=None, consensus=chatgpt_rec, consensus_confidence=round(chatgpt_conf, 2))
         return chatgpt_raw, meta
     if manual_trigger:
-        meta.update(agree=None, consensus=None, consensus_confidence=None, error="oauth_lane_unavailable")
+        meta.update(agree=None, consensus=None, consensus_confidence=None, error="oauth_lane_unavailable",
+                    lane_mode="oauth_unavailable")
         return "LLM error: requested OAuth lane(s) unavailable or blocked", meta
+    # Local/gemma fallback — warehouse OK; MAIN-facing CIO marked degraded (cio_trust_bundle).
     out = _llm(prompt, max_tokens=max_tokens, task_type="cio_synthesis", high_impact=False)
     _llm._last_model = getattr(_llm, "_last_model", OLLAMA_MODEL) or OLLAMA_MODEL
-    meta.update(agree=None, consensus=None, consensus_confidence=None)
+    meta.update(agree=None, consensus=None, consensus_confidence=None, lane_mode="local_fallback")
     return out, meta
 
 
@@ -1968,6 +1970,19 @@ CRITICAL INSTRUCTIONS:
             synthesis_narrative = (f"[DUAL-CONSENSUS] Grok and ChatGPT disagreed "
                                    f"(Grok={dual_meta['grok']['recommendation']}, "
                                    f"ChatGPT={dual_meta['chatgpt']['recommendation']}). " + synthesis_narrative)
+            # Buy-side disagree is never HIGH-trust / actionable (cio_trust_bundle).
+            from lib.cio_trust_bundle import is_buy_side as _cio_buy
+            if _cio_buy(dual_meta.get("consensus")):
+                unresolved.append("DUAL_DISAGREE_BUY_SIDE — re-run until AGREE or human review")
+                dual_meta["trust_block"] = "dual_disagree_buy_side"
+
+    # Stamp lane ages for trust strip
+    from datetime import datetime as _dt_trust, timezone as _tz_trust
+    dual_meta["as_of"] = _dt_trust.now(_tz_trust.utc).isoformat()
+    if dual_meta.get("grok"):
+        dual_meta["grok"]["as_of"] = dual_meta["as_of"]
+    if dual_meta.get("chatgpt"):
+        dual_meta["chatgpt"]["as_of"] = dual_meta["as_of"]
 
     # ── POST-LLM GATING RULES (hard overrides) ──────────────────────
     rec = parsed["recommendation"].upper()

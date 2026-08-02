@@ -3,7 +3,7 @@ import { BB } from '../../lib/holdingsTerminalTokens'
 
 const panel: CSSProperties = { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8 }
 
-export function HelpTip({ text, label = '?' }: { text: string; label?: string }) {
+export function HelpTip({ text, label = 'i' }: { text: string; label?: string }) {
   return (
     <span
       tabIndex={0}
@@ -56,7 +56,7 @@ export function HelpTip({ text, label = '?' }: { text: string; label?: string })
           padding: '7px 9px',
           borderRadius: 5,
           border: `1px solid ${BB.blue}`,
-          background: 'var(--bg0, #0b1220)',
+          background: 'var(--bg0)',
           color: 'var(--text0)',
           fontSize: 10.5,
           fontWeight: 600,

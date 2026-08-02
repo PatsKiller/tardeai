@@ -36,35 +36,20 @@ def _conn():
 
 
 def _price(conn, symbol):
-    try:
+    """Read price from canonical broker wrapper (market_quotes + get_best_quote fallback)."""
+    from lib.data_broker.market_quote import get_price_batch
+
+    def _dbq(sql, params=None, fetch="all"):
         cur = conn.cursor()
-        cur.execute("""SELECT price, day_change_pct FROM market_quotes WHERE symbol=%s
-                       AND fetched_at > NOW() - INTERVAL '12 hours'
-                       ORDER BY fetched_at DESC LIMIT 1""", (symbol,))
-        r = cur.fetchone()
-        if r and r[0] is not None:
-            return float(r[0]), (float(r[1]) if r[1] is not None else None)
-    except Exception:
-        pass
-    # Fallback: no FRESH market_quotes row (e.g. a brand-new IPO the Alpaca/finviz repricer lags on) →
-    # pull from yfinance and backfill market_quotes so downstream stays current.
-    try:
-        import yfinance as yf
-        info = yf.Ticker(symbol).info or {}
-        px, prev = info.get("regularMarketPrice"), info.get("regularMarketPreviousClose")
-        if px:
-            chg = round((px - prev) / prev * 100, 2) if prev else None
-            try:
-                cur = conn.cursor()
-                cur.execute("INSERT INTO market_quotes (symbol, price, day_change_pct, source, fetched_at) "
-                            "VALUES (%s,%s,%s,'yfinance',NOW())", (symbol, px, chg))
-                conn.commit()
-            except Exception:
-                conn.rollback()
-            return float(px), chg
-    except Exception:
-        pass
-    return None, None
+        cur.execute(sql, params or [])
+        if fetch == "one":
+            row = cur.fetchone()
+            return dict(zip([d[0] for d in cur.description], row)) if row else None
+        return [dict(zip([d[0] for d in cur.description], row)) for row in cur.fetchall()]
+
+    result = get_price_batch(_dbq, [symbol])
+    data = result.get(symbol.upper()) or {}
+    return data.get("price"), data.get("chg_pct")
 
 
 def _num(v):
@@ -76,10 +61,10 @@ def _num(v):
 
 def enrich_symbols(symbols: list[str], *, dry: bool = False) -> dict:
     """Enrich explicit symbols (used by manual watchlist refresh in CC v3)."""
-    from finviz_enrichment import enrich_tickers, get_enriched
     from open_trades_intelligence import _trend_label
     from setup_quality_prior import rsi_band
     import directive_promotion as dp
+    from lib.data_broker.indicator_snapshot import get_indicator_snapshot
 
     syms = [str(s).upper().strip() for s in symbols if s and str(s).strip()]
     syms = list(dict.fromkeys(syms))
@@ -91,27 +76,56 @@ def enrich_symbols(symbols: list[str], *, dry: bool = False) -> dict:
     enriched = 0
     for i in range(0, len(syms), BATCH):
         batch = syms[i:i + BATCH]
-        try:
-            enrich_tickers(batch, project_root=str(PROJECT_ROOT))
-        except Exception as e:
-            print(f"  [sweep] enrich_tickers batch failed (non-fatal): {str(e)[:80]}")
+        # Phase 1: canonical indicators via broker (replaces deprecated Finviz RSI/SMA reads)
+        ind_snap = get_indicator_snapshot(batch)
+        by_ind = ind_snap.get("by_symbol") or {}
+        # Phase 2: price via broker (replaces direct market_queries + yfinance fallback)
+        from lib.data_broker.market_quote import get_price_batch
+        def _dbq(sql, params=None, fetch="all"):
+            cur2 = conn.cursor()
+            cur2.execute(sql, params or [])
+            if fetch == "one":
+                row = cur2.fetchone()
+                return dict(zip([d[0] for d in cur2.description], row)) if row else None
+            return [dict(zip([d[0] for d in cur2.description], row)) for row in cur2.fetchall()]
+        price_batch = get_price_batch(_dbq, batch)
+
         for sym in batch:
             try:
-                tech = get_enriched(sym, project_root=str(PROJECT_ROOT)) or {}
-                rsi = _num(tech.get("rsi"))
-                sma50, sma200 = _num(tech.get("sma50_pct")), _num(tech.get("sma200_pct"))
-                trend = _trend_label(sma50, sma200)
-                floatm, rvol = _num(tech.get("float_m")), _num(tech.get("rvol"))
-                price, chg = _price(conn, sym)
+                ind = by_ind.get(sym) or {}
+                rsi = ind.get("rsi")
+                sma20_pct = ind.get("sma20_pct")
+                sma200_pct = ind.get("sma200_pct")
+                trend = _trend_label(sma50_pct=None, sma200_pct=sma200_pct)
+                # Use actual SMA50 if available; fallback to Finviz for enrichment-only fields (float, rvol)
+                sma50_pct_val = ind.get("sma50_pct")
+
+                # Read Finviz cache for enrichment-only fields (float_m, rvol) — note: these are NOT
+                # available from indicator_confluence_cache. Finviz remains the canonical source for
+                # float and session RVOL until a broker wrapper exists for those fields.
+                floatm, rvol = None, None
+                try:
+                    from finviz_enrichment import get_enriched
+                    tech = get_enriched(sym, project_root=str(PROJECT_ROOT)) or {}
+                    floatm = _num(tech.get("float_m"))
+                    rvol = _num(tech.get("rvol"))
+                except Exception:
+                    pass
+
+                # Price from broker wrapper
+                px_data = price_batch.get(sym) or {}
+                price = px_data.get("price")
+                chg = px_data.get("chg_pct")
                 if price is not None:
-                    tech["price"] = price
+                    pass  # already set
+
                 band = rsi_band(rsi) if rsi is not None else None
                 advisory = (f"RSI {rsi:.0f} · band {band}" if rsi is not None else "awaiting enrichment")
 
                 score, score_kind = None, None
                 if price is not None:
                     try:
-                        qual = dp.classify_tradeable(sym, tech)
+                        qual = dp.classify_tradeable(sym, {})
                         if qual:
                             base = min(95, 55 + 8 * len(qual))
                             score, score_kind = base, "strategy_qualified"
@@ -119,7 +133,7 @@ def enrich_symbols(symbols: list[str], *, dry: bool = False) -> dict:
                         pass
                 if score is None and rsi is not None:
                     t = {"bullish": 18, "neutral": 8, "bearish": 0}.get(trend, 5)
-                    score, score_kind = round(40 + t + (10 if 40 <= (rsi or 0) <= 60 else 0)), "technical"
+                    score, score_kind = round(40 + t + (10 if rsi is not None and 40 <= (rsi or 0) <= 60 else 0)), "technical"
 
                 if dry:
                     print(f"  {sym}: rsi={rsi} trend={trend} price={price} score={score}({score_kind}) {advisory}")

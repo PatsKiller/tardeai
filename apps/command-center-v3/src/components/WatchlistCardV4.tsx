@@ -217,7 +217,7 @@ export default function WatchlistCardV4({
       case 'REFRESH_DATA': onRefresh(e); break
       case 'VIEW_INTEL':
       case 'REVIEW_SETUP': onDrill(drillCtx); break
-      case 'PROPOSE_ENTRY': onPropose?.(it); break
+      case 'PROPOSE_ENTRY': onPropose?.(it); break // opens MAIN desk — no broker write
       case 'ADJUST_PLAN':
       case 'REVIEW_EXIT': onAdjust?.(it); break
       case 'BUILD_PLAN': onBuildPlan?.(it.symbol); break

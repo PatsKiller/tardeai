@@ -264,20 +264,11 @@ export default function WatchlistHub({ onDrill, embedded, lane }: Props) {
     window.location.href = `/v3/trading?tab=Entry+Desk&symbol=${sym}`
   }
 
-  const openProposeModal = (it: any, opts?: { account_key?: string; risk_pct?: RiskPct }) => {
-    const entry = it.entry_limit != null ? Number(it.entry_limit) : null
-    const stop = it.entry_stop != null ? Number(it.entry_stop) : null
-    const planTarget = it.entry_target != null ? Number(it.entry_target) : null
-    const pa = paMap[it.symbol]
-    const street = pa?.target != null && Number(pa.target) > 0 ? Number(pa.target) : null
-    const rr = it.entry_rr != null ? Number(it.entry_rr)
-      : (entry && stop && planTarget && entry > stop && planTarget > entry ? (planTarget - entry) / (entry - stop) : null)
-    setProposeSeed({
-      it, entry, stop, planTarget, rr,
-      ladder: entry != null || stop != null ? exitLadder(entry, stop, planTarget, street) : null,
-      pa,
-      ...(opts ?? {}),
-    })
+  const openProposeModal = (it: any, _opts?: { account_key?: string; risk_pct?: RiskPct }) => {
+    // 2A: cards must not write paper_trade_proposals — navigate to MAIN Setup Desk (Re-Entry semantics).
+    const sym = String(it?.symbol || '').toUpperCase()
+    if (!sym) return
+    window.location.href = `/v3/watch?tab=watchlist&symbol=${encodeURIComponent(sym)}&review=1`
   }
 
   const buildPlan = async (sym: string) => {
@@ -906,7 +897,7 @@ export default function WatchlistHub({ onDrill, embedded, lane }: Props) {
                   onRefreshStrategy={watchV5Enabled() ? (e => { e.stopPropagation(); void refreshStrategy([it.symbol]) }) : undefined}
                   strategyRefreshing={!!strategyBusy[symKey]}
                   onToggleEns={() => setEnsOpen(o => ({ ...o, [it.id]: !o[it.id] }))}
-                  onPropose={openProposeModal}
+                  onPropose={(it) => { window.location.href = `/v3/watch?tab=watchlist&symbol=${encodeURIComponent(String(it.symbol).toUpperCase())}&review=1` }}
                   onAdjust={it => openDesk(it.symbol)}
                   onBuildPlan={buildPlan}
                   onOpenDesk={openDesk}
@@ -925,7 +916,7 @@ export default function WatchlistHub({ onDrill, embedded, lane }: Props) {
             <button onClick={() => { setPage(p => Math.min(pageCount - 1, p + 1)); window.scrollTo({ top: 0, behavior: 'smooth' }) }} disabled={curPage >= pageCount - 1} style={{ ...SEL, cursor: curPage >= pageCount - 1 ? 'default' : 'pointer', opacity: curPage >= pageCount - 1 ? 0.4 : 1 }}>Next ›</button>
           </div>
         )}
-        <div style={{ fontSize: 10, color: MUTED, marginTop: 10 }}>Decision-first cards — CIO view, confidence, R:R, L/S/target, model, data-quality flags, and reasoning visible by default. Street analyst shown with divergence when CIO disagrees. Advisory-only — never places trades.</div>
+        <div style={{ fontSize: 10, color: MUTED, marginTop: 10 }}>Decision-first cards — advisory ticket strip. Primary CTA opens MAIN Setup Desk (no broker-queue write from cards). Propose only via Entry Desk / governed bridge. Street + CIO trust strip when present.</div>
       </div>
       </>
       )}

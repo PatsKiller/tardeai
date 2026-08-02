@@ -353,7 +353,7 @@ def assess_symbol(symbol: str) -> dict:
         if synthesis.get("human_review_required"):
             human_review = True
 
-    return {
+    out = {
         "symbol": sym,
         "decision_quality_status": status,
         "actionable": actionable,
@@ -371,6 +371,44 @@ def assess_symbol(symbol: str) -> dict:
         "has_synthesis": synthesis is not None,
         "synthesis_rec": synthesis.get("recommendation") if synthesis else None,
     }
+    # CIO TRUST HIGH|DEGRADED — buy-side fail-closes when dual/street/narrative weak
+    try:
+        from lib.cio_trust_bundle import apply_trust_to_qa, compute_cio_trust_bundle
+        dual = {}
+        if synthesis:
+            raw_dual = synthesis.get("dual_consensus_json") or synthesis.get("dual_consensus") or {}
+            if isinstance(raw_dual, str):
+                try:
+                    dual = json.loads(raw_dual)
+                except Exception:
+                    dual = {}
+            elif isinstance(raw_dual, dict):
+                dual = raw_dual
+        trust = compute_cio_trust_bundle(
+            recommendation=synthesis.get("recommendation") if synthesis else None,
+            synthesis_updated_at=synthesis.get("updated_at") if synthesis else None,
+            models_agree=synthesis.get("models_agree") if synthesis else None,
+            dual_consensus=dual,
+            model_used=synthesis.get("model_used") if synthesis else None,
+            decision_quality_status=status,
+            decision_safety=synthesis.get("decision_safety") if synthesis else None,
+            actionable=actionable,
+            synthesis_narrative=synthesis.get("synthesis_narrative") if synthesis else None,
+            evidence=dual.get("structured_evidence") if isinstance(dual, dict) else None,
+            on_main=False,
+        )
+        patched = apply_trust_to_qa(out, trust)
+        out = patched
+        out["decision_quality_status"] = patched.get("status") or patched.get("decision_quality_status") or status
+        if "status" in patched and patched["status"] != status:
+            out["decision_quality_status"] = patched["status"]
+        out["actionable"] = patched.get("actionable", actionable)
+        out["human_review_required"] = patched.get("needs_human_review") or patched.get("human_review_required") or human_review
+        out["gating_reasons"] = patched.get("gating_reasons") or gating_reasons
+        out["cio_trust"] = patched.get("cio_trust") or trust
+    except Exception:
+        pass
+    return out
 
 
 def assess_all() -> list:

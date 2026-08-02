@@ -78,24 +78,32 @@ def _clamp(x):
 
 
 def _pills_map():
-    try:
-        return {p["symbol"].upper(): p for p in json.loads(PILLS.read_text()).get("pills", [])}
-    except Exception:
-        return {}
+    """Read pro_analyst_pills_latest.json via canonical broker wrapper."""
+    from lib.data_broker.analyst_rollup import get_analyst_rollup
+    return get_analyst_rollup()
 
 
 def _sector_momentum(conn):
-    """sector → (momentum_str, score0-100). Leading sectors score high."""
-    cur = conn.cursor()
-    cur.execute("SELECT day_change_pct FROM market_quotes WHERE symbol='SPY' ORDER BY fetched_at DESC LIMIT 1")
-    r = cur.fetchone(); spy = float(r[0]) if r and r[0] is not None else 0.0
+    """sector → (momentum_str, score0-100) via canonical broker wrapper (sector_momentum.py)."""
+    from lib.data_broker.sector_momentum import get_sector_momentum
+
+    def _dbq(sql, params=None, fetch="all"):
+        cur = conn.cursor()
+        cur.execute(sql, params or [])
+        if fetch == "one":
+            row = cur.fetchone()
+            return dict(zip([d[0] for d in cur.description], row)) if row else None
+        return [dict(zip([d[0] for d in cur.description], row)) for row in cur.fetchall()]
+
+    snap = get_sector_momentum(db_query=_dbq)
+    sectors = snap.get("sectors") or {}
     out = {}
     for sec, etf in SECTOR_ETF.items():
-        cur.execute("SELECT day_change_pct FROM market_quotes WHERE symbol=%s ORDER BY fetched_at DESC LIMIT 1", (etf,))
-        rr = cur.fetchone()
-        if not rr or rr[0] is None:
-            out[sec] = ("unknown", None); continue
-        rel = float(rr[0]) - spy
+        data = sectors.get(etf) or {}
+        if data.get("rel_pct") is None:
+            out[sec] = ("unknown", None)
+            continue
+        rel = data["rel_pct"]
         mom = "leading" if rel > 0.15 else "lagging" if rel < -0.15 else "neutral"
         out[sec] = (mom, _clamp(55 + rel * 25))
     return out
@@ -255,11 +263,8 @@ def _regime_weights(weights, vix):
 
 
 _BASE_SELECT = """SELECT wi.symbol, wi.rsi, wi.trend, wi.score, wi.watch_score_kind, wi.price,
-                     sc.target_price, sc.stop_loss,
-                     ie.social_score, ie.social_sentiment, ie.rvol, ie.confluence_score,
-                     ie.catalyst, ie.catalyst_verified, ie.sector
+                     sc.target_price, sc.stop_loss
                    FROM watchlist_items wi
-                   LEFT JOIN intelligence_entities ie ON ie.display_name = wi.symbol
                    LEFT JOIN watchlist_strategy_cards sc ON sc.symbol = wi.symbol
                    WHERE wi.status IN ('active','researched')"""
 
@@ -351,12 +356,9 @@ def _fetch_watchlist_rows(cur, limit=None, off_hours=False):
                      ) capped WHERE rn <= %s
                    )
                    SELECT wi.symbol, wi.rsi, wi.trend, wi.score, wi.watch_score_kind, wi.price,
-                     sc.target_price, sc.stop_loss,
-                     ie.social_score, ie.social_sentiment, ie.rvol, ie.confluence_score,
-                     ie.catalyst, ie.catalyst_verified, ie.sector
+                     sc.target_price, sc.stop_loss
                    FROM candidates c
                    JOIN watchlist_items wi ON wi.symbol = c.symbol AND wi.status IN ('active','researched')
-                   LEFT JOIN intelligence_entities ie ON ie.display_name = wi.symbol
                    LEFT JOIN watchlist_strategy_cards sc ON sc.symbol = wi.symbol
                    ORDER BY c.tier, c.best_rank ASC NULLS LAST""",
                 (dp[0], dp[1], dp[2], dp[3], *dp, WATCHLIST_TOP_N, cap, cap))
@@ -390,11 +392,31 @@ def run(limit=None):
         _fetch_watchlist_rows(cur, limit=limit, off_hours=use_capped_fetch)
     cols = [d[0] for d in cur.description]
     rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+
+    # Phase 2: read intelligence_entities via canonical broker wrapper.
+    syms = list({str(r["symbol"]).upper() for r in rows if r.get("symbol")})
+    ie_data: dict[str, dict] = {}
+    if syms:
+        try:
+            from lib.data_broker.intelligence_signals import get_intelligence_signals
+
+            def _dbq(sql, params=None, fetch="all"):
+                cur.execute(sql, params or [])
+                if fetch == "one":
+                    row = cur.fetchone()
+                    return dict(zip([d[0] for d in cur.description], row)) if row else None
+                return [dict(zip([d[0] for d in cur.description], row)) for row in cur.fetchall()]
+
+            ie_data = get_intelligence_signals(_dbq, syms)
+        except Exception:
+            pass
+
     scored = []
     for r in rows:
+        sym = str(r["symbol"]).upper()
         wi = {k: r[k] for k in ("symbol", "rsi", "trend", "score", "watch_score_kind", "price", "target_price", "stop_loss")}
-        ie = {k: r[k] for k in ("social_score", "social_sentiment", "rvol", "confluence_score", "catalyst", "catalyst_verified", "sector")}
-        comp, components = score_symbol(wi, ie, pills.get(str(r["symbol"]).upper()), secmap, weights)
+        ie = ie_data.get(sym) or {}
+        comp, components = score_symbol(wi, ie, pills.get(sym), secmap, weights)
         if comp is not None:
             components = {**components, "_regime": _regime, "_vix": vix}
         if comp is not None:

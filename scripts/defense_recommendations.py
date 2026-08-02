@@ -1121,6 +1121,17 @@ def main() -> int:
     }
     if not args.dry_run:
         SNAP.write_text(json.dumps(snap, default=str))
+        # 1C soft-auto: SCHD + defensive-lean ETFs → MAIN WAIT (origin_system=defense_rotation)
+        try:
+            from lib.defense_main_promote import run_soft_auto_from_cards
+            from db_adapter import _execute as _db_exec
+            cards = []
+            for g in ("get_into", "income"):
+                cards.extend(groups.get(g) or [])
+            promo = run_soft_auto_from_cards(_db_exec, cards)
+            print(f"[recs] defense→MAIN soft-auto: {promo.get('promoted') or []} (candidates={promo.get('candidates')})")
+        except Exception as e:
+            print(f"[recs] defense→MAIN soft-auto skipped: {str(e)[:120]}")
     if not args.dry_run:
         try:
             import defense_oversight as do

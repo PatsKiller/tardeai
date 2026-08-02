@@ -117,8 +117,23 @@ def has_m1_identity(item: dict, policy: dict | None = None) -> bool:
         return True
     if item.get("main_promoted") or item.get("lane_promoted_main"):
         return True
+    # Defense → MAIN promote bridge (soft-auto SCHD/defensive ETFs or operator click)
+    if _is_defense_main_promoted(item):
+        return True
     # ai_discovered / topic_research / paper_proposal never earn M1 from actionable alone —
     # they stay RESEARCH until operator star, screener pin, directive, or explicit promote.
+    return False
+
+
+def _is_defense_main_promoted(item: dict) -> bool:
+    origin = str(item.get("origin_system") or "").lower()
+    if origin in ("defense_rotation", "defense_main_promote"):
+        return True
+    notes = str(item.get("notes") or "")
+    if "defense_main_promote" in notes:
+        return True
+    if item.get("defense_main_promoted"):
+        return True
     return False
 
 
@@ -160,6 +175,9 @@ def classify_lane(item: dict, policy: dict | None = None) -> str:
                 "operator", "personal_watchlist", "pullback_macd", "trade_ai_go", "portfolio", "prev_traded",
             }:
                 return "main"
+    # Defense-promoted funds/ETFs: MAIN WAIT without equity setup_shaped (star-parity)
+    if _is_defense_main_promoted(item) and not is_no_trade_setup(item, p):
+        return "main"
     if has_m1_identity(item, p) and has_m3_ticket(item) and not is_no_trade_setup(item, p):
         return "main"
     return "research"
@@ -182,6 +200,11 @@ def now_status(item: dict, policy: dict | None = None) -> str:
     if has_m3_ticket(item) and is_setup_shaped(item, p):
         return "GO"
     if item.get("starred") and not is_no_trade_setup(item, p):
+        return "WAIT"
+    # Defense promote lands WAIT until fund-aware ticket/plan exists
+    if _is_defense_main_promoted(item) and not is_no_trade_setup(item, p):
+        if has_m3_ticket(item) and is_setup_shaped(item, p):
+            return "GO"
         return "WAIT"
     if has_m1_identity(item, p) and not is_no_trade_setup(item, p):
         return "WAIT"

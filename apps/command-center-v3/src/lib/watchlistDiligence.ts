@@ -38,6 +38,26 @@ export function diligenceFromWatchlistItem(it: Record<string, unknown>): Watchli
 }
 
 export function cioBlocksEntry(d?: WatchlistDiligence | null): boolean {
-  const cio = String(d?.synthesis ?? '').toUpperCase()
-  return ['AVOID', 'IGNORE', 'SELL', 'REBALANCE_TRIM'].includes(cio)
+  // Either research-card or final synthesis AVOID/SELL blocks propose-ready (V: card AVOID vs synth ADD).
+  const block = ['AVOID', 'IGNORE', 'SELL', 'REBALANCE_TRIM']
+  const synth = String(d?.synthesis ?? '').toUpperCase()
+  const card = String(d?.researchCard ?? '').toUpperCase()
+  return block.includes(synth) || block.includes(card)
+}
+
+/** True when buy-side CIO is TRUST DEGRADED — blocks propose-ready only (not park). */
+export function cioTrustBlocksPropose(item?: Record<string, unknown> | null): boolean {
+  const trust = (item?.cio_trust || null) as { level?: string; trust_high?: boolean } | null
+  if (!trust) return false
+  if (trust.trust_high === true || String(trust.level || '').toUpperCase() === 'HIGH') return false
+  if (String(trust.level || '').toUpperCase() !== 'DEGRADED') return false
+  // HOLD/AVOID are not propose candidates — don't shout "refresh before propose"
+  const buy = ['BUY', 'STRONG_BUY', 'ADD', 'ADD_ON_PULLBACK', 'ACCUMULATE']
+  const rec = String(
+    (item?.synthesis_recommendation as string)
+    || (item?.latest_recommendation as string)
+    || (trust as { recommendation?: string }).recommendation
+    || '',
+  ).toUpperCase().replace(/ /g, '_')
+  return !rec || buy.includes(rec)
 }

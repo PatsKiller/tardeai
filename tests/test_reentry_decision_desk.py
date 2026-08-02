@@ -7,7 +7,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
-from lib.data_broker.reentry_decision_desk import build_advisory, derive_intel_state
+from lib.data_broker.reentry_decision_desk import (
+    build_advisory,
+    derive_intel_state,
+    _age_hours,
+    _weekend_fresh_ok,
+)
 
 
 def _fresh() -> str:
@@ -195,3 +200,13 @@ def test_advisory_sizing_1pct_rule():
     assert adv["sizing"]["shares"] == 23
     assert "Capped" in adv["sizing"]["note"]
     assert any(c["id"] == "rsi_reset" and c["met"] for c in adv["criteria"])
+
+
+def test_age_hours_parses_et_broker_timestamp():
+    # Same form market_quote_provider emits — must not return None (was "Quote age unknown")
+    fresh_et = datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M:%S ET")
+    age = _age_hours(fresh_et)
+    assert age is not None
+    assert age < 2.0
+    assert _weekend_fresh_ok(age) is True
+    assert _age_hours("2026-08-01 07:35:12 ET") is not None
