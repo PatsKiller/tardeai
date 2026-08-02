@@ -730,11 +730,14 @@ def json_response(handler, status: int, data: dict) -> None:
     handler.end_headers()
     try:
         handler.wfile.write(body)
+        handler.wfile.flush()  # critical for SO_LINGER=0: push all data to socket before close
     except (BrokenPipeError, ConnectionResetError, TimeoutError, OSError):
         pass  # client gone — do not escalate to 500 handler
 
 
 _AGENT_RUNTIME_READ_PREFIX = "/api/v3/agent-runtime"
+_AGENT_RUNTIME_DISPATCH_PATH = "/api/v3/agent-runtime/dispatch"
+_AGENT_RUNTIME_LESSON_RATIFY_PATH = "/api/v3/agent-runtime/lessons/ratify"
 _AGENT_MATURITY_READ_PREFIX = "/api/v3/agent-maturity"
 _ACTIVE_TRADER_READ_PREFIX = "/api/v3/active-trader"
 
@@ -780,6 +783,41 @@ def _agent_runtime_read_handle(method: str, path: str, raw_query):
                 "schedule_change": False, "financial_action": False,
             },
             "detail": "agent-runtime read API is unavailable",
+        }
+
+
+def _agent_runtime_dispatch_handle(body):
+    """Bounded SHADOW dispatch — separate from the read-only surface."""
+    try:
+        _scripts_dir = str(PROJECT_ROOT / "scripts")
+        if _scripts_dir not in sys.path:
+            sys.path.insert(0, _scripts_dir)
+        from agent_runtime.operator_dispatch_http import dispatch_post
+
+        return dispatch_post(body or {}, root=PROJECT_ROOT)
+    except Exception as exc:
+        return 500, {
+            "contract": "agent-runtime-operator-dispatch-v1",
+            "detail": str(exc),
+            "authority": {"mutation": True, "financial_action": False, "schedule_change": False},
+        }
+
+
+def _agent_runtime_lesson_ratify_handle(body):
+    """Human-authorized lesson ratification — operator-only, no fleet authority."""
+    try:
+        _scripts_dir = str(PROJECT_ROOT / "scripts")
+        if _scripts_dir not in sys.path:
+            sys.path.insert(0, _scripts_dir)
+        from agent_runtime.lesson_operator import ratify_post
+
+        return ratify_post(body or {}, root=PROJECT_ROOT)
+    except Exception as exc:
+        return 500, {
+            "contract": "agent-runtime-lesson-ratify-v1",
+            "ok": False,
+            "detail": str(exc),
+            "authority": {"mutation": True, "financial_action": False, "schedule_change": False},
         }
 
 
@@ -867,6 +905,7 @@ def _send_agent_runtime_json(handler, status: int, data: dict) -> None:
     handler.end_headers()
     try:
         handler.wfile.write(body)
+        handler.wfile.flush()
     except (BrokenPipeError, ConnectionResetError, TimeoutError, OSError):
         pass
 
@@ -929,6 +968,7 @@ def serve_file(handler, path: Path) -> None:
         handler.send_header("Cache-Control", "no-cache")
     handler.end_headers()
     handler.wfile.write(data)
+    handler.wfile.flush()  # critical for SO_LINGER=0: push all data to socket before close
 
 
 # ── Import handler ────────────────────────────────────────────────────────────
@@ -1411,7 +1451,7 @@ import time as _wd_time
 
 _INFLIGHT: dict = {}  # thread ident -> (path, started_at, connection)
 _INFLIGHT_LOCK = threading.Lock()
-_WATCHDOG_ABANDON_SEC = float(os.getenv("DASHBOARD_WATCHDOG_ABANDON_SEC", "25"))
+_WATCHDOG_ABANDON_SEC = float(os.getenv("DASHBOARD_WATCHDOG_ABANDON_SEC", "12"))
 
 
 def _peer_closed(conn) -> bool:
@@ -1500,6 +1540,7 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
         self.wfile.write(json.dumps({"ok": False, "error": "Unauthorized. Set Authorization: Bearer <token> header."}).encode())
+        self.wfile.flush()
 
     def do_OPTIONS(self):
         self.send_response(200)
@@ -1679,11 +1720,13 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
                 self.send_header("Content-Length", str(len(_body)))
                 self.end_headers()
                 self.wfile.write(_body)
+                self.wfile.flush()
             else:
                 self.send_response(404)
                 self.send_header("Content-Type", "text/plain")
                 self.end_headers()
                 self.wfile.write(b"Not found")
+                self.wfile.flush()
             return
 
         # Command Center v3 — live boot script (always fresh; busts stale SPA bundles)
@@ -1708,6 +1751,7 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(_js)))
             self.end_headers()
             self.wfile.write(_js)
+            self.wfile.flush()
             return
 
         # Active Trader Next — read-only static bundle at /v3-next/ (additive
@@ -1739,6 +1783,7 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
                 self.send_header("Content-Length", str(len(_vn_body)))
                 self.end_headers()
                 self.wfile.write(_vn_body)
+                self.wfile.flush()
             else:
                 self.send_response(404)
                 self.end_headers()
@@ -1787,6 +1832,7 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
                 self.send_header("Content-Length", str(len(_body)))
                 self.end_headers()
                 self.wfile.write(_body)
+                self.wfile.flush()  # critical for SO_LINGER=0: push all data to socket before close
             else:
                 self.send_response(404)
                 self.send_header("Content-Type", "text/plain")
@@ -2075,8 +2121,40 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path
 
-        # Agent-runtime read surface is GET-only: any POST here is 405, never a write.
+        # Bounded SHADOW dispatch (POST only) — checked before read-only 405.
         _ar_path = path.rstrip("/") or "/"
+        if _ar_path == _AGENT_RUNTIME_DISPATCH_PATH:
+            _slen = int(self.headers.get("Content-Length", 0))
+            _sraw = self.rfile.read(_slen) if _slen > 0 else b"{}"
+            try:
+                _dbody = json.loads(_sraw or b"{}")
+            except Exception:
+                _send_agent_runtime_json(self, 400, {
+                    "contract": "agent-runtime-operator-dispatch-v1",
+                    "detail": "invalid JSON body",
+                })
+                return
+            _dst = _agent_runtime_dispatch_handle(_dbody)
+            _send_agent_runtime_json(self, _dst[0], _dst[1])
+            return
+
+        if _ar_path == _AGENT_RUNTIME_LESSON_RATIFY_PATH:
+            _slen = int(self.headers.get("Content-Length", 0))
+            _sraw = self.rfile.read(_slen) if _slen > 0 else b"{}"
+            try:
+                _dbody = json.loads(_sraw or b"{}")
+            except Exception:
+                _send_agent_runtime_json(self, 400, {
+                    "contract": "agent-runtime-lesson-ratify-v1",
+                    "ok": False,
+                    "detail": "invalid JSON body",
+                })
+                return
+            _rat = _agent_runtime_lesson_ratify_handle(_dbody)
+            _send_agent_runtime_json(self, _rat[0], _rat[1])
+            return
+
+        # Agent-runtime read surface is GET-only: any POST here is 405, never a write.
         if _is_agent_runtime_read_path(_ar_path):
             _ar = _agent_runtime_read_handle("POST", _ar_path, None)
             if _ar is not None:
@@ -2517,6 +2595,7 @@ def _sem_exempt_path(path: str) -> bool:
         "/api/v2/risk-regime/latest",
         "/api/v2/live-trading-gate",
         "/api/v2/paper-trade-readiness",
+        "/api/v2/intelligence/remediation-summary",
     ):
         return True
     # Static SPA/assets — cheap, high volume
@@ -2545,7 +2624,7 @@ class ReusableHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
     allow_reuse_port = False
     request_queue_size = 128
     daemon_threads = True
-    _sem = threading.BoundedSemaphore(int(os.getenv("DASHBOARD_MAX_CONCURRENCY", "48")))
+    _sem = threading.BoundedSemaphore(int(os.getenv("DASHBOARD_MAX_CONCURRENCY", "32")))
     _sem_timeout = float(os.getenv("DASHBOARD_SEM_TIMEOUT_SEC", "5.0"))
 
     def process_request_thread(self, request, client_address):
@@ -2601,6 +2680,14 @@ if __name__ == "__main__":
     # Do NOT fuser-kill :7777 here — overlapping systemd restarts + port-guard SIGTERM caused
     # adopt churn (orphan PPID=1 while systemctl shows inactive). Watchdog clears unhealthy orphans;
     # manual recovery: systemctl --user stop portfolio-server && kill stray pid && systemctl start.
+    # NOTE: SO_LINGER=0 removed 2026-08-02 — it truncated large (>~1MB) HTTP responses
+    # (e.g. the 4MB React JS bundle) because accepted sockets inherited the setting and
+    # discarded the send buffer on close. CLOSE-WAIT is handled by request timeout + finish().
+    _socket = None
+    try:
+        import socket as _socket
+    except Exception:
+        pass
     try:
         server = ReusableHTTPServer(("", PORT), PortfolioHandler)
     except OSError as e:
