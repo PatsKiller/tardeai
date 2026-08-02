@@ -2148,39 +2148,205 @@ def _live_portfolio_day_change(holdings_list):
         return None
 
 
+# ── Overview cache (2026-08-02) ──────────────────────────────────────────────
+# Single-flight lock: only one thread computes the 16-source overview at a time;
+# others wait and reuse. 30s TTL eliminates redundant recomputation from
+# concurrent 60s/120s polls across MetricStrip + HomeHub + nav bar.
+_OV_CACHE: dict = {"ts": 0.0, "data": None}
+_OV_CACHE_TTL = float(__import__("os").environ.get("OVERVIEW_CACHE_TTL_SEC", "30"))
+_OV_CACHE_LOCK = __import__("threading").Lock()
+
+
+def overview_refresh():
+    """Force-refresh the overview — bypasses cache, recomputes, stores back."""
+    _now = __import__("time").time()
+    acquired = _OV_CACHE_LOCK.acquire(timeout=15)
+    if not acquired:
+        # Another refresh already in flight — return stale cache
+        if _OV_CACHE["data"] is not None:
+            return _OV_CACHE["data"]
+        return {"portfolio_total": 0, "active_positions": [], "status": "server_busy"}
+    try:
+        data = _overview_compute()
+        _OV_CACHE["data"] = data
+        _OV_CACHE["ts"] = __import__("time").time()
+        return data
+    finally:
+        try:
+            _OV_CACHE_LOCK.release()
+        except Exception:
+            pass
+
+
 def overview():
+    # Fast path: return cached if fresh
+    _now = __import__("time").time()
+    if _OV_CACHE["data"] is not None and (_now - _OV_CACHE["ts"]) < _OV_CACHE_TTL:
+        return _OV_CACHE["data"]
+    # Single-flight lock: only one thread computes
+    if not _OV_CACHE_LOCK.acquire(blocking=False):
+        # Another thread is computing — wait briefly and return stale cache
+        _elapsed = _now - _OV_CACHE["ts"]
+        if _OV_CACHE["data"] is not None and _elapsed < 60:
+            return _OV_CACHE["data"]
+        # Stale >60s — block until the compute thread finishes (max 15s)
+        if _OV_CACHE_LOCK.acquire(timeout=15):
+            # Check if another thread already computed while we waited
+            if _OV_CACHE["data"] is not None and (__import__("time").time() - _OV_CACHE["ts"]) < _OV_CACHE_TTL:
+                _OV_CACHE_LOCK.release()
+                return _OV_CACHE["data"]
+        else:
+            # Timeout — return whatever we have
+            if _OV_CACHE["data"] is not None:
+                return _OV_CACHE["data"]
+            return {"portfolio_total": 0, "active_positions": [], "status": "server_busy"}
+    try:
+        data = _overview_compute()
+        _OV_CACHE["data"] = data
+        _OV_CACHE["ts"] = __import__("time").time()
+        return data
+    finally:
+        try:
+            _OV_CACHE_LOCK.release()
+        except Exception:
+            pass
+
+
+def _overview_compute():
+    """Original overview() body — extracts the 16-source computation."""
     h = _load_json(STATE_DIR / "holdings.json") or {}
     perf = _load_json(STATE_DIR / "performance_history.json") or {}
     fresh = _load_json(STATE_DIR / "_freshness.json") or {}
     news = _load_json(STATE_DIR / "portfolio_news.json") or {}
+
+    # ── Smart pipeline status (2026-08-02): weekend-aware, shows market state ──
+    _pipeline_completed = fresh.get("completed_at", "")
+    _refreshed_at = datetime.now(timezone.utc).isoformat()
+    try:
+        from datetime import timedelta as _ptd
+        _now_p = datetime.now(timezone.utc)
+        if _pipeline_completed:
+            # fromisoformat produces naive datetime on tz-less strings; make it UTC-aware
+            _p_completed = datetime.fromisoformat(_pipeline_completed).replace(tzinfo=timezone.utc)
+            _pipeline_age_h = round((_now_p - _p_completed).total_seconds() / 3600, 1)
+        else:
+            _pipeline_age_h = 999.0
+        # Market session: just check day-of-week — avoid heavy market_session import
+        # in the server thread context. Full holiday calendar isn't needed here;
+        # the purpose is to show "weekend" vs "stale" on the HomeHub tile.
+        _dow = _now_p.weekday()  # 0=Mon, 6=Sun
+        _hour_et = (_now_p.astimezone(timezone(timedelta(hours=-4))).hour)  # rough ET
+        if _dow >= 5:
+            _market_status = "weekend"
+        elif _hour_et < 9:
+            _market_status = "closed"  # pre-market
+        elif _hour_et < 16:
+            _market_status = "regular"
+        elif _hour_et < 20:
+            _market_status = "afterhours"
+        else:
+            _market_status = "closed"
+        # Baseline threshold: 26h from last pipeline run
+        _thr_h = 26.0
+        if _pipeline_completed and _market_status in ("weekend", "holiday"):
+            # Count how many weekend days have passed since the pipeline completed
+            _g = 0
+            _cur = _now_p.date()
+            _comp_date = _p_completed.date()
+            while _cur > _comp_date:
+                if _cur.weekday() >= 5:  # Sat=5, Sun=6
+                    _g += 1
+                _cur -= _ptd(days=1)
+            _thr_h += 24 * _g
+        if _pipeline_age_h <= _thr_h:
+            _pipeline_status = "fresh"
+        elif _market_status in ("weekend", "holiday"):
+            _pipeline_status = "weekend"  # stale by age but market is closed — expected
+        elif _market_status == "afterhours":
+            _pipeline_status = "afterhours" if _pipeline_age_h <= _thr_h + 24 else "stale"
+        elif _market_status == "closed":
+            _pipeline_status = "afterhours" if _pipeline_age_h <= _thr_h + 24 else "stale"
+        else:
+            _pipeline_status = "stale"
+    except Exception:
+        _pipeline_status = fresh.get("status", "unknown")
+        _pipeline_age_h = 999.0
+        _market_status = "unknown"
 
     holdings = h.get("holdings", [])
     totals = h.get("portfolio_totals", {})
     periods = perf.get("periods", {})
     active_positions = [p for p in holdings if not p.get("is_cash") and (p.get("market_value") or 0) > 100]
 
+    # Data Broker (Phase 2): shared aggregate from portfolio_snapshot read model.
+    today_change = None
+    today_pct = None
+    _snap_sectors = None
+    _snap_movers = None
+    _snap_by_acct = None
+    try:
+        import sys as _ds
+        _ds.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from lib.data_broker.portfolio_snapshot import get_portfolio_snapshot
+        _snap = get_portfolio_snapshot()
+        if _snap.get("ok"):
+            _st = _snap.get("totals") or {}
+            today_change = _st.get("day_change")
+            today_pct = _st.get("day_change_pct")
+            _snap_sectors = _snap.get("sector_allocation")
+            _snap_movers = _snap.get("top_movers")
+            _snap_by_acct = _snap.get("by_account")
+    except Exception:
+        pass
+
     # Sector allocation — prefer the pipeline's look-through breakdown (holdings.json resolved_sectors:
     # funds decomposed into underlying sectors). Holding ROWS carry no sector field, so the old per-row
     # sector_type aggregation collapsed everything into "Other". Fall back to it only if look-through is absent.
-    resolved = h.get("resolved_sectors")
-    if isinstance(resolved, list) and resolved:
-        sector_list = [(r.get("sector") or "Other / Unclassified", r.get("value") or 0)
-                       for r in resolved if (r.get("value") or 0) > 0][:13]
+    if _snap_sectors:
+        sector_list = [(r.get("sector") or "Other", r.get("value") or 0) for r in _snap_sectors]
     else:
-        sectors = {}
-        for p in active_positions:
-            s = p.get("sector_type") or "Other"
-            sectors[s] = sectors.get(s, 0) + (p.get("market_value") or 0)
-        sector_list = sorted(sectors.items(), key=lambda x: -x[1])[:10]
+        resolved = h.get("resolved_sectors")
+        if isinstance(resolved, list) and resolved:
+            sector_list = [(r.get("sector") or "Other / Unclassified", r.get("value") or 0)
+                           for r in resolved if (r.get("value") or 0) > 0][:13]
+        else:
+            sectors = {}
+            for p in active_positions:
+                s = p.get("sector_type") or "Other"
+                sectors[s] = sectors.get(s, 0) + (p.get("market_value") or 0)
+            sector_list = sorted(sectors.items(), key=lambda x: -x[1])[:10]
 
     # Top movers
-    movers = sorted(active_positions, key=lambda p: abs(p.get("day_change") or 0), reverse=True)[:6]
+    if _snap_movers:
+        movers = _snap_movers
+    else:
+        movers = sorted(active_positions, key=lambda p: abs(p.get("day_change") or 0), reverse=True)[:6]
 
     # Notifications count
     notif_rows = _db_query("SELECT count(*) AS cnt FROM notification_log", fetch="one")
     aq_cnt = (_db_query("SELECT count(*) AS cnt FROM action_queue WHERE status='pending'", fetch="one") or {}).get("cnt", 0)
     jdq_cnt = (_db_query("SELECT count(*) AS cnt FROM john_decision_queue WHERE status='pending_john'", fetch="one") or {}).get("cnt", 0)
+    paper_prop_cnt = (_db_query("SELECT count(*) AS cnt FROM paper_trade_proposals WHERE status='PENDING'", fetch="one") or {}).get("cnt", 0)
+    hermes_appr_cnt = 0
+    try:
+        _hp = read_json("pending_approvals.json", {}) or {}
+        hermes_appr_cnt = len((_hp.get("approvals") or []))
+    except Exception:
+        pass
+    eba_cnt = 0
+    try:
+        eba_cnt = (_db_query("SELECT count(*) AS cnt FROM evidence_bound_approvals WHERE status='pending'", fetch="one") or {}).get("cnt", 0)
+    except Exception:
+        pass
     pending_rows = {"cnt": aq_cnt + jdq_cnt}
+    approval_queues = {
+        "action_queue": int(aq_cnt or 0),
+        "john_decision_queue": int(jdq_cnt or 0),
+        "paper_proposals": int(paper_prop_cnt or 0),
+        "hermes_pending_approvals": int(hermes_appr_cnt or 0),
+        "evidence_bound_approvals": int(eba_cnt or 0),
+        "total_distinct_queues": int(aq_cnt or 0) + int(jdq_cnt or 0) + int(paper_prop_cnt or 0) + int(hermes_appr_cnt or 0) + int(eba_cnt or 0),
+    }
 
     # Today's change — recompute per-holding from the day % (holding_day_change) merging the
     # fresh Finviz day %, exactly like /api/v2/portfolio/holdings. The stored totals.day_change
@@ -2188,29 +2354,39 @@ def overview():
     # prev_price == new_price at write time, so trusting them silently under-counts — the header
     # once read +$171 while the portfolio had truly moved ~+$5,258. Fall back to the stored
     # aggregate only if the live recompute yields nothing.
-    today_change = _live_portfolio_day_change(holdings)
+    if today_change is None:
+        today_change = _live_portfolio_day_change(holdings)
     if today_change is None or today_change == 0:
         today_change = totals.get("day_change")
         if today_change is None:
             today_change = sum(p.get("day_change") or 0 for p in holdings)
     total_val = totals.get("total_value", 0)
-    today_pct = (today_change / (total_val - today_change) * 100) if total_val > abs(today_change) else 0
+    if today_pct is None:
+        today_pct = (today_change / (total_val - today_change) * 100) if total_val > abs(today_change) else 0
     # per-account breakdown (operator 2026-06-12: "show what's moved today by account") + top movers
-    today_by_account = {}
-    for p in holdings:
-        a = p.get("account") or "unknown"
-        d = today_by_account.setdefault(a, {"change": 0.0, "value": 0.0})
-        d["change"] += p.get("day_change") or 0
-        d["value"] += p.get("market_value") or 0
-    for a, d in today_by_account.items():
-        base = d["value"] - d["change"]
-        d["change"] = round(d["change"], 2)
-        d["pct"] = round(d["change"] / base * 100, 2) if base > 0 else None
-        d["value"] = round(d["value"], 2)
-        movers_a = sorted([p for p in holdings if (p.get("account") or "unknown") == a],
-                          key=lambda p: abs(p.get("day_change") or 0), reverse=True)[:2]
-        d["top_movers"] = "; ".join(f"{m.get('symbol')} {('+' if (m.get('day_change') or 0) >= 0 else '')}"
-                                    f"{round(m.get('day_change') or 0)}" for m in movers_a if m.get("day_change"))
+    if _snap_by_acct:
+        today_by_account = dict(_snap_by_acct)
+        for a, d in today_by_account.items():
+            movers_a = sorted([p for p in holdings if (p.get("account") or "unknown") == a],
+                              key=lambda p: abs(p.get("day_change") or 0), reverse=True)[:2]
+            d["top_movers"] = "; ".join(f"{m.get('symbol')} {('+' if (m.get('day_change') or 0) >= 0 else '')}"
+                                        f"{round(m.get('day_change') or 0)}" for m in movers_a if m.get("day_change"))
+    else:
+        today_by_account = {}
+        for p in holdings:
+            a = p.get("account") or "unknown"
+            d = today_by_account.setdefault(a, {"change": 0.0, "value": 0.0})
+            d["change"] += p.get("day_change") or 0
+            d["value"] += p.get("market_value") or 0
+        for a, d in today_by_account.items():
+            base = d["value"] - d["change"]
+            d["change"] = round(d["change"], 2)
+            d["pct"] = round(d["change"] / base * 100, 2) if base > 0 else None
+            d["value"] = round(d["value"], 2)
+            movers_a = sorted([p for p in holdings if (p.get("account") or "unknown") == a],
+                              key=lambda p: abs(p.get("day_change") or 0), reverse=True)[:2]
+            d["top_movers"] = "; ".join(f"{m.get('symbol')} {('+' if (m.get('day_change') or 0) >= 0 else '')}"
+                                        f"{round(m.get('day_change') or 0)}" for m in movers_a if m.get("day_change"))
 
     # Trade AI run data
     import glob
@@ -2375,8 +2551,12 @@ def overview():
         "news_count": len(news.get("catalysts", [])),
         "notification_count": (notif_rows or {}).get("cnt", 0),
         "pending_approvals": (pending_rows or {}).get("cnt", 0),
-        "pipeline_status": fresh.get("status", "unknown"),
-        "pipeline_completed": fresh.get("completed_at", ""),
+        "approval_queues": approval_queues,
+        "pipeline_status": _pipeline_status,
+        "pipeline_age_hours": _pipeline_age_h,
+        "pipeline_completed": _pipeline_completed,
+        "market_status": _market_status,
+        "refreshed_at": _refreshed_at,
         # Sprint 4A additions
         "total_cash": _total_cash,
         "weighted_beta": _weighted_beta(active_positions),
@@ -2720,6 +2900,14 @@ def portfolio_holdings():
         for p in holdings
         if str(p.get("symbol") or "").strip()
     })
+    _ind_by_sym: dict = {}
+    try:
+        import sys as _is
+        _is.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from lib.data_broker.indicator_snapshot import get_indicator_snapshot
+        _ind_by_sym = (get_indicator_snapshot(_holding_symbols).get("by_symbol") or {})
+    except Exception:
+        _ind_by_sym = {}
     _mq_rows = []
     if _holding_symbols:
         _mq_rows = _db_query(
@@ -2786,12 +2974,13 @@ def portfolio_holdings():
                 if v is not None:
                     return v
             return None
-        merged_rsi = _pick(e_cache, t_snap, key="rsi")
+        _ind = _ind_by_sym.get(str(sym).upper()) or {}
+        merged_rsi = _ind.get("rsi") if _ind.get("rsi") is not None else _pick(e_cache, t_snap, key="rsi")
         merged_beta = _pick(e_cache, t_snap, key="beta")
-        merged_sma20 = _pick(e_cache, t_snap, key="sma20_pct")
-        merged_sma50 = _pick(e_cache, t_snap, key="sma50_pct")
-        merged_sma200 = _pick(e_cache, t_snap, key="sma200_pct")
-        merged_atr = _pick(e_cache, t_snap, key="atr")
+        merged_sma20 = _ind.get("sma20_pct") if _ind.get("sma20_pct") is not None else _pick(e_cache, t_snap, key="sma20_pct")
+        merged_sma50 = _ind.get("sma50_pct") if _ind.get("sma50_pct") is not None else _pick(e_cache, t_snap, key="sma50_pct")
+        merged_sma200 = _ind.get("sma200_pct") if _ind.get("sma200_pct") is not None else _pick(e_cache, t_snap, key="sma200_pct")
+        merged_atr = _ind.get("atr") if _ind.get("atr") is not None else _pick(e_cache, t_snap, key="atr")
         # For pi_score, build a merged dict with all needed fields
         pi_input = {**t_snap, **{k: v for k, v in e_cache.items() if v is not None}}
         # Map technical snapshot field names to pi_score expected names
@@ -6390,13 +6579,29 @@ def _wl_items(query: dict = None):
     params = []
     _sym_lookup = None
     _sym_list = None
-    _lane = str((q.get("lane") or [""])[0] if isinstance(q.get("lane"), list) else (q.get("lane") or "")).strip()
+    _lane = str((q.get("lane") or [""])[0] if isinstance(q.get("lane"), list) else (q.get("lane") or "")).strip().lower()
+    _now_filter = str((q.get("now") or [""])[0] if isinstance(q.get("now"), list) else (q.get("now") or "")).strip().upper()
     if _lane == "screener_finds":
         _ensure_screener_find_pins_table()
         _sync_all_screener_find_pins()
         _sym_list = [r["symbol"] for r in (_db_query(
             "SELECT symbol FROM screener_find_pins WHERE active = true ORDER BY auto_research_at DESC NULLS LAST"
         ) or [])]
+    elif _lane == "main":
+        # Pre-filter M1-ish identity so the 200-window is not pure ai_discovered rank.
+        try:
+            from watch_lane_admission import main_sql_source_clause, load_policy as _lane_pol
+            _main_sql, _main_params = main_sql_source_clause(_lane_pol())
+            conditions.append(_main_sql)
+            params.extend(_main_params)
+        except Exception:
+            conditions.append("""(
+                wi.source = ANY(%s)
+                OR EXISTS (SELECT 1 FROM operator_starred_symbols s WHERE upper(s.symbol) = upper(wi.symbol))
+                OR COALESCE(wi.in_directive_watch, false) = true
+            )""")
+            params.append(["operator", "personal_watchlist", "pullback_macd", "trade_ai_go",
+                           "hermes", "portfolio", "prev_traded"])
     elif q.get("symbols"):
         raw = q["symbols"][0] if isinstance(q["symbols"], list) else q["symbols"]
         _sym_list = [s.strip().upper() for s in str(raw or "").split(",") if s.strip()]
@@ -6571,6 +6776,8 @@ def _wl_items(query: dict = None):
                sp.next_earnings_date AS next_earnings_date,
                cat.catalyst_type, cat.headline AS catalyst_headline,
                cat.impact_score AS catalyst_impact, cat.severity AS catalyst_severity,
+               cat.confidence AS catalyst_confidence,
+               (COALESCE(cat.confidence, cat.impact_score, 0) >= 0.3) AS catalyst_verified,
                cat.ts AS catalyst_at, cat.source_url AS catalyst_url,
                (SELECT string_agg(DISTINCT wd.label, ' · ' ORDER BY wd.label)
                 FROM watch_directives wd
@@ -6598,7 +6805,7 @@ def _wl_items(query: dict = None):
         LEFT JOIN LATERAL (SELECT * FROM watchlist_symbol_master t WHERE t.symbol = p.symbol LIMIT 1) sm ON true
         LEFT JOIN LATERAL (SELECT * FROM symbol_profiles t WHERE upper(t.symbol) = upper(p.symbol) LIMIT 1) sp ON true
         LEFT JOIN LATERAL (
-            SELECT catalyst_type, headline, severity, impact_score, source_url,
+            SELECT catalyst_type, headline, severity, impact_score, confidence, source_url,
                    COALESCE(published_at, created_at) AS ts
             FROM catalyst_events ce
             WHERE upper(ce.symbol) = upper(p.symbol) AND ce.catalyst_type <> 'other'
@@ -6669,6 +6876,8 @@ def _wl_items(query: dict = None):
                         _it["catalyst_at"] = _ln.get("published_at")
                         _it["catalyst_url"] = _ln.get("source_url")
                         _it["catalyst_type"] = "news_headline"
+                        _it["catalyst_verified"] = False
+                        _it["catalyst_confidence"] = None
         except Exception:
             pass
     # Flag PRIVATE / non-tradeable names (genuinely private only — kept current vs IPOs). reload so registry
@@ -6863,10 +7072,91 @@ def _wl_items(query: dict = None):
         for _it in _items:
             _it.setdefault("action_policy", None)
 
+    # Watch quality plan 2026-07-31: lane annotation + MAIN cap / filters
+    _lane_meta = {"lane": _lane or "legacy_hermes", "now": _now_filter or None}
+    try:
+        from watch_lane_admission import (
+            annotate_item as _lane_ann,
+            apply_main_cap as _lane_cap,
+            load_policy as _lane_pol,
+            quality_board_from_items as _lane_qb,
+        )
+        _pol = _lane_pol()
+        _items = [_lane_ann(it, _pol) for it in _items]
+        if _lane == "main":
+            _items = [it for it in _items if it.get("lane") == "main"]
+            _items = _lane_cap(_items, _pol)
+            _items = [it for it in _items if it.get("lane") == "main"]
+            if _now_filter in ("GO", "WAIT", "NOGO"):
+                _items = [it for it in _items if (it.get("now_status") or "").upper() == _now_filter]
+            _lane_meta["main_cap"] = int(_pol.get("main_cap") or 60)
+            _lane_meta["rank_name"] = "MAIN setup admission · GO/WAIT first"
+        elif _lane == "research":
+            _items = [it for it in _items if it.get("lane") == "research"]
+            _lane_meta["rank_name"] = "RESEARCH warehouse"
+        elif _lane == "coverage":
+            _items = [it for it in _items if it.get("lane") == "coverage"]
+            _lane_meta["rank_name"] = "COVERAGE (analyst) — not Main"
+        else:
+            _lane_meta["rank_name"] = "Hermes rank (composite score order)"
+        _lane_meta["quality"] = _lane_qb(_items, _pol)
+    except Exception as _lane_err:
+        _lane_meta["lane_error"] = str(_lane_err)[:160]
+
+    # CIO trust strip (HIGH|DEGRADED) — deterministic gates over dual/street/QA
+    try:
+        from lib.cio_trust_bundle import compute_cio_trust_bundle
+        _street_map: dict = {}
+        _pills_updated_at = None
+        try:
+            _pills = json.loads((PROJECT_ROOT / "data" / "runtime" / "pro_analyst_pills_latest.json").read_text())
+            _pills_updated_at = _pills.get("updated_at")
+            for _p in (_pills.get("pills") or []):
+                _sym = str(_p.get("symbol") or "").upper()
+                if _sym:
+                    _street_map[_sym] = _p
+        except Exception:
+            _street_map = {}
+        for _it in _items:
+            _dual = _it.get("dual_consensus_json") or {}
+            if isinstance(_dual, str):
+                try:
+                    _dual = json.loads(_dual)
+                except Exception:
+                    _dual = {}
+            _sym_u = str(_it.get("symbol") or "").upper()
+            _street = _street_map.get(_sym_u) or {}
+            _street_as_of = None
+            if _street:
+                _street_as_of = _street.get("as_of") or _street.get("updated_at") or _pills_updated_at
+            _it["cio_trust"] = compute_cio_trust_bundle(
+                recommendation=_it.get("synthesis_recommendation") or _it.get("latest_recommendation"),
+                synthesis_updated_at=_it.get("synthesis_updated_at"),
+                models_agree=_it.get("models_agree"),
+                dual_consensus=_dual if isinstance(_dual, dict) else {},
+                model_used=_it.get("cio_model_used"),
+                decision_quality_status=_it.get("decision_quality_status"),
+                decision_safety=_it.get("decision_safety"),
+                actionable=_it.get("decision_actionable") if _it.get("decision_actionable") is not None else _it.get("actionable"),
+                synthesis_narrative=_it.get("synthesis_narrative"),
+                instrument_type=_it.get("instrument_type"),
+                street_rec=_street.get("recommendation_key") or _street.get("street_direction"),
+                street_n=_street.get("number_of_analyst_opinions"),
+                street_as_of=_street_as_of,
+                street_divergence=_street.get("divergence"),
+                on_main=(_it.get("lane") == "main"),
+            )
+    except Exception:
+        pass
+
     return {"count": len(_items), "items": _items,
             "facets": dict(sorted(_facets.items(), key=lambda x: -x[1])),
             "universe_count": _universe_n,
-            "rank_name": "Hermes rank (composite score order)",
+            "rank_name": _lane_meta.get("rank_name") or "Hermes rank (composite score order)",
+            "lane": _lane_meta.get("lane"),
+            "now": _lane_meta.get("now"),
+            "main_cap": _lane_meta.get("main_cap"),
+            "quality": _lane_meta.get("quality"),
             "facet_note": ("setup_advisory is descriptive text from the enrichment pipeline "
                            "(RSI band), not a favorable/advisory/caution rating engine")}
 
@@ -6878,13 +7168,72 @@ def _wl_summary():
     jobs = _db_query("SELECT status, COUNT(*) as cnt FROM watchlist_agent_jobs GROUP BY status") or []
     cards = _db_query("SELECT COUNT(*) as cnt FROM watchlist_research_cards", fetch="one") or {}
     needs_iter = _db_query("SELECT COUNT(*) as cnt FROM watchlist_research_cards WHERE needs_iteration = true", fetch="one") or {}
-    return {
+    out = {
         "by_source": {r["source"]: r["cnt"] for r in by_source},
         "by_status": {r["status"]: r["cnt"] for r in by_status},
         "jobs": {r["status"]: r["cnt"] for r in jobs},
         "total_active": sum(r["cnt"] for r in by_source),
         "research_cards": cards.get("cnt", 0),
         "needs_iteration": needs_iter.get("cnt", 0),
+    }
+    try:
+        from watch_lane_admission import live_weights_meta, load_policy
+        pol = load_policy()
+        out["lane_policy"] = {
+            "version": pol.get("version"),
+            "default_lane": pol.get("default_lane"),
+            "main_cap": pol.get("main_cap"),
+            "main_source_allowlist": pol.get("main_source_allowlist"),
+        }
+        out["hermes_weights"] = live_weights_meta()
+    except Exception as e:
+        out["lane_policy_error"] = str(e)[:120]
+    return out
+
+
+def _wl_quality_board(query: dict = None):
+    """GET /api/v2/watchlist/quality-board — shadow MAIN admission metrics (W0).
+
+    Samples the Hermes top window + MAIN pre-filter window without mutating storage.
+    """
+    q = query or {}
+    try:
+        from watch_lane_admission import (
+            annotate_item, apply_main_cap, load_policy, live_weights_meta, quality_board_from_items,
+        )
+    except Exception as e:
+        return {"ok": False, "error": f"admission_ liber unavailable: {e}"}
+    pol = load_policy()
+    # Legacy top-200 hermes (quantity baseline)
+    legacy = _wl_items({"sort": ["hermes"], "lane": ["legacy_hermes"]})
+    legacy_items = legacy.get("items") or []
+    # MAIN admission window
+    main = _wl_items({"sort": ["hermes"], "lane": ["main"]})
+    main_items = main.get("items") or []
+    legacy_ann = [annotate_item(dict(it), pol) for it in legacy_items]
+    return {
+        "ok": True,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "policy": {
+            "version": pol.get("version"),
+            "default_lane": pol.get("default_lane"),
+            "main_cap": pol.get("main_cap"),
+            "main_source_allowlist": pol.get("main_source_allowlist"),
+        },
+        "hermes_weights": live_weights_meta(),
+        "legacy_hermes_top": quality_board_from_items(legacy_ann, pol),
+        "main_lane": quality_board_from_items(main_items, pol),
+        "delta": {
+            "legacy_n": len(legacy_items),
+            "main_n": len(main_items),
+            "note": "MAIN excludes raw ai_discovered without setup/ticket identity",
+        },
+        "ctas": [
+            {"id": "review_go", "label": "Review GO", "href": "/watch?tab=watchlist&lane=main&now=GO"},
+            {"id": "fix_wait", "label": "Fix WAIT", "href": "/watch?tab=watchlist&lane=main&now=WAIT"},
+            {"id": "coverage", "label": "Coverage only", "href": "/watch?tab=watchlist&lane=coverage"},
+            {"id": "legacy", "label": "Legacy Hermes top-200", "href": "/watch?tab=watchlist&lane=legacy_hermes"},
+        ],
     }
 
 
@@ -6961,14 +7310,19 @@ def _wl_cio_synthesis(sym: str, body: dict | None) -> tuple[int, dict]:
     lanes = None
     if isinstance(raw_lanes, list) and raw_lanes:
         lanes = tuple(str(x).strip().lower() for x in raw_lanes
-                        if str(x).strip().lower() in ("grok", "chatgpt"))
+                        if str(x).strip().lower() in ("grok", "chatgpt", "deepseek-flash", "deepseek-v4"))
         if not lanes:
-            return 400, {"ok": False, "error": "lanes must include grok and/or chatgpt"}
+            return 400, {"ok": False, "error": "lanes must include grok, chatgpt, deepseek-flash, and/or deepseek-v4"}
+    ManualRequired = type('ManualRequired', (Exception,), {})
+    try:
+        from lib.llm_consumption import ManualRequired as _ManualRequired
+        ManualRequired = _ManualRequired
+    except Exception:
+        pass
     try:
         import sys as _sys
         _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
         import process_watchlist_agent_jobs as _pwaj
-        from lib.llm_consumption import ManualRequired as _ManualRequired
         conn = _pwaj._get_conn()
         try:
             result = _pwaj.run_synthesis(
@@ -6981,7 +7335,7 @@ def _wl_cio_synthesis(sym: str, body: dict | None) -> tuple[int, dict]:
         if dry_run:
             out["persisted"] = False
         return 200, out
-    except _ManualRequired as mr:
+    except ManualRequired as mr:
         return 200, {"ok": False, "manual_required": True, "process_id": mr.process_id,
                      "lane": mr.lane, "task_summary": mr.task_summary, "symbol": sym}
     except Exception as e:
@@ -8906,6 +9260,62 @@ _YT_NAME_JOIN = """LEFT JOIN youtube_channels yc ON (
 )"""
 
 
+def _intelligence_item_state_get():
+    """GET /api/v2/intelligence/item-state — bulk read operator dismiss/review state by stable item id."""
+    q = getattr(_intelligence_item_state_get, '_query', {}) or {}
+
+    def _qp(k, default=""):
+        v = q.get(k, default)
+        return (v[0] if isinstance(v, list) else v) or default
+
+    ids_raw = _qp("ids")
+    item_type = _qp("type")
+    if not ids_raw:
+        return {}
+    ids = [x.strip() for x in ids_raw.split(",") if x.strip()][:200]
+    if not ids:
+        return {}
+    try:
+        placeholders = ",".join(["%s"] * len(ids))
+        sql = (
+            f"SELECT item_id, item_type, status, note, updated_at, updated_by "
+            f"FROM intelligence_item_state WHERE item_id IN ({placeholders})"
+        )
+        params = list(ids)
+        if item_type:
+            sql += " AND item_type = %s"
+            params.append(item_type)
+        rows = _db_query(sql, tuple(params), fetch="all") or []
+        out = {}
+        for r in rows:
+            iid = r.get("item_id")
+            if not iid:
+                continue
+            out[iid] = {
+                "item_type": r.get("item_type"),
+                "status": r.get("status"),
+                "note": r.get("note"),
+                "updated_at": _json_clean(r.get("updated_at")),
+                "updated_by": r.get("updated_by"),
+            }
+        return out
+    except Exception:
+        return {}
+
+
+def _intelligence_remediation_summary():
+    """GET /api/v2/intelligence/remediation-summary — automation maturity metrics for Learning tab."""
+    try:
+        import sys as _s
+        _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from intelligence_remediation import remediation_summary, _ensure_tables, _db
+        ex = _db()
+        _ensure_tables(ex)
+        return remediation_summary(ex)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:240]}
+
+
 def _intelligence_library():
     """GET /api/v2/intelligence/library — Unified search across all intelligence."""
     q = getattr(_intelligence_library, '_query', {}) or {}
@@ -10210,6 +10620,323 @@ def _health_activity():
             "note": "Recent auto-remediations (escalation handler + AI coders), newest first."}
 
 
+def _health_coverage():
+    """GET /api/v2/health/coverage — agent monitoring scope map: what each health agent
+    monitors, its cadence, what it can auto-fix, and when it last ran successfully."""
+    import datetime as _dt
+    now = _dt.datetime.now(_dt.timezone.utc)
+    agents = {}
+
+    # health_agent.py — central scoring brain
+    try:
+        state_path = PROJECT_ROOT / "data" / "portfolios" / "state" / "health_agent_status.json"
+        last_run = None
+        if state_path.exists():
+            try:
+                raw = json.loads(state_path.read_text())
+                last_run = raw.get("captured_at")
+            except Exception:
+                pass
+        agents["health_agent"] = {
+            "name": "Central Health Agent",
+            "cadence": "30min",
+            "mode": "advisory",
+            "last_run": last_run,
+            "domains": [
+                {"domain": "Data Quality", "score": None, "collectors": ["portfolio_totals_drift", "account_summary_drift",
+                 "table_freshness", "finviz_quote_cache", "market_quotes", "reentry_indicator_cache",
+                 "watch_main_indicators", "entry_zone_gaps", "data_source_health"]},
+                {"domain": "Execution Health", "score": None, "collectors": ["pipeline_failures", "agent_jobs_stuck",
+                 "execution_escalations", "orphaned_stops", "pending_lifecycle_mismatch",
+                 "never_submitted_stale", "atm_proposal_bypass"]},
+                {"domain": "Intelligence", "score": None, "collectors": ["local_llm_down", "ensemble_failures",
+                 "research_stale", "hermes_rag_gap", "hermes_coordinator_stale", "hermes_scope_governor"]},
+                {"domain": "Risk Protection", "score": None, "collectors": ["unprotected_positions",
+                 "stop_alerts", "portfolio_drawdown_guard"]},
+                {"domain": "Retirement", "score": None, "collectors": ["retirement_signals"]},
+                {"domain": "Pipeline Freshness", "score": None, "collectors": ["pipeline_freshness",
+                 "strategy_output", "proposal_maturity", "execution_readiness"]},
+            ],
+            "auto_fix_capabilities": ["portfolio_repricing", "snaptrade_sync", "market_data_ingest",
+                "indicator_refresh", "watch_decision_scheduler", "entry_planner",
+                "stuck_agent_job_reset", "strategy_registry_fix", "news_guard_remediation"],
+        }
+    except Exception:
+        agents["health_agent"] = {"name": "Central Health Agent", "error": "unavailable"}
+
+    # watchlist_health_agent.py
+    try:
+        wl_events = _db_query(
+            """SELECT MIN(created_at) AS first, MAX(created_at) AS last,
+                      COUNT(*) FILTER (WHERE success) AS fixed,
+                      COUNT(*) FILTER (WHERE NOT success) AS failed,
+                      COUNT(*) AS total
+               FROM system_health_events
+               WHERE component = 'watchlist_health'
+                 AND created_at >= NOW() - INTERVAL '7 days'""")
+        wl_row = (wl_events or [{}])[0]
+        agents["watchlist_health"] = {
+            "name": "Watchlist Health Agent",
+            "cadence": "weekday 30min / weekend hourly",
+            "last_run": wl_row.get("last"),
+            "domains": [
+                {"domain": "CIO Synthesis", "check": "stale >24h"},
+                {"domain": "Critic Reviews", "check": "missing >6h"},
+                {"domain": "Quality Assessment", "check": "not assessed 120m after packet"},
+                {"domain": "Street Data", "check": "analyst consensus >7d"},
+                {"domain": "Entry Plans", "check": "missing >12h"},
+                {"domain": "Agent Reviews", "check": "stale >48h"},
+                {"domain": "Deterministic Validation", "check": "not run"},
+            ],
+            "auto_fix_capabilities": ["refresh_data", "cio_synthesis", "build_plan",
+                "run_critics", "queue_agent_reviews", "refresh_street"],
+            "stats_7d": {"total": wl_row.get("total") or 0,
+                         "fixed": wl_row.get("fixed") or 0,
+                         "failed": wl_row.get("failed") or 0},
+        }
+    except Exception:
+        agents["watchlist_health"] = {"name": "Watchlist Health Agent", "error": "unavailable"}
+
+    # pipeline_health_agent.py
+    try:
+        pl_events = _db_query(
+            """SELECT MIN(created_at) AS first, MAX(created_at) AS last,
+                      COUNT(*) FILTER (WHERE success) AS fixed,
+                      COUNT(*) FILTER (WHERE NOT success) AS failed,
+                      COUNT(*) AS total
+               FROM system_health_events
+               WHERE component = 'pipeline_health'
+                 AND created_at >= NOW() - INTERVAL '7 days'""")
+        pl_row = (pl_events or [{}])[0]
+        agents["pipeline_health"] = {
+            "name": "Pipeline Health Agent",
+            "cadence": "10min",
+            "last_run": pl_row.get("last"),
+            "domains": [
+                {"domain": "Pipeline Schedule", "check": "MISSED/FAILED runs"},
+                {"domain": "Data Row Counts", "check": "8 target tables"},
+                {"domain": "Scheduling Respect", "check": "weekday/weekend routing"},
+            ],
+            "auto_fix_capabilities": ["retry_pipeline", "re_run_ingest",
+                "re_run_discovery", "flush_queue", "retry_batch"],
+            "stats_7d": {"total": pl_row.get("total") or 0,
+                         "fixed": pl_row.get("fixed") or 0,
+                         "failed": pl_row.get("failed") or 0},
+        }
+    except Exception:
+        agents["pipeline_health"] = {"name": "Pipeline Health Agent", "error": "unavailable"}
+
+    # system_freshness_monitor.py
+    try:
+        fs_events = _db_query(
+            """SELECT MIN(created_at) AS first, MAX(created_at) AS last,
+                      COUNT(*) FILTER (WHERE success) AS fixed,
+                      COUNT(*) FILTER (WHERE NOT success) AS failed,
+                      COUNT(*) AS total
+               FROM system_health_events
+               WHERE component = 'SYSTEM_FRESHNESS'
+                 AND created_at >= NOW() - INTERVAL '7 days'""")
+        fs_row = (fs_events or [{}])[0]
+        agents["freshness_monitor"] = {
+            "name": "System Freshness Monitor",
+            "cadence": "20min",
+            "last_run": fs_row.get("last"),
+            "domains": [
+                {"domain": "Data Freshness", "check": "17 registry entries"},
+                {"domain": "Logfile Heartbeats", "check": "news_ingestion, drive-sync"},
+                {"domain": "Empty-vs-Input", "check": "catalyst bug pattern"},
+            ],
+            "auto_fix_capabilities": ["news_to_catalyst", "hermes_news_bridge",
+                "research_insight_extractor"],
+            "stats_7d": {"total": fs_row.get("total") or 0,
+                         "fixed": fs_row.get("fixed") or 0,
+                         "failed": fs_row.get("failed") or 0},
+        }
+    except Exception:
+        agents["freshness_monitor"] = {"name": "System Freshness Monitor", "error": "unavailable"}
+
+    # claude_escalation_handler.py
+    try:
+        esc_stats = _db_query(
+            """SELECT COUNT(*) FILTER (WHERE status = 'fixed') AS fixed,
+                      COUNT(*) FILTER (WHERE status LIKE '%%failed%%' OR status = 'error') AS failed,
+                      COUNT(*) FILTER (WHERE status = 'investigating') AS investigating,
+                      COUNT(*) AS total,
+                      MAX(created_at) AS last
+               FROM claude_interventions
+               WHERE created_at >= NOW() - INTERVAL '7 days'""")
+        esc_row = (esc_stats or [{}])[0]
+        agents["escalation_handler"] = {
+            "name": "Escalation Handler",
+            "cadence": "daily 7:00 AM ET",
+            "last_run": esc_row.get("last"),
+            "tiers": ["Direct retry_cmd", "Local LLM diagnosis (gemma)", "Deep LLM (gemma4:31b / claude)"],
+            "domains": [{"domain": "Escalation Queue", "check": "all queued findings"}],
+            "auto_fix_capabilities": ["allowlisted_retry_cmd", "llm_diagnosis", "llm_fix"],
+            "stats_7d": {"total": esc_row.get("total") or 0,
+                         "fixed": esc_row.get("fixed") or 0,
+                         "failed": esc_row.get("failed") or 0},
+        }
+    except Exception:
+        agents["escalation_handler"] = {"name": "Escalation Handler", "error": "unavailable"}
+
+    return {"ok": True, "agents": agents,
+            "generated_at": now.strftime("%Y-%m-%dT%H:%M:%S"),
+            "note": "Coverage map of all health monitoring agents: domains, cadences, fix capabilities, and 7-day stats."}
+
+
+def _health_autofix_ledger():
+    """GET /api/v2/health/autofix-ledger — fix statistics across all remediation agents:
+    success rates, fix volumes, top fixed issue types, circuit-breaker status."""
+    import datetime as _dt
+    now = _dt.datetime.now(_dt.timezone.utc)
+
+    # Combined fix stats from system_health_events + claude_interventions
+    events = _db_query(
+        """SELECT component, event_type, success, COUNT(*) AS n
+           FROM system_health_events
+           WHERE created_at >= NOW() - INTERVAL '7 days'
+             AND (action_taken IS NOT NULL AND action_taken != '')
+           GROUP BY component, event_type, success
+           ORDER BY n DESC""") or []
+    interventions = _db_query(
+        """SELECT status, COUNT(*) AS n
+           FROM claude_interventions
+           WHERE created_at >= NOW() - INTERVAL '7 days'
+           GROUP BY status""") or []
+    coder_stats = _db_query(
+        """SELECT outcome, COUNT(*) AS n
+           FROM coder_dispatch_audit
+           WHERE created_at >= NOW() - INTERVAL '7 days'
+           GROUP BY outcome""") or []
+
+    by_component = {}
+    total_fixes = 0
+    total_attempts = 0
+    for r in events:
+        comp = r["component"]
+        if comp not in by_component:
+            by_component[comp] = {"fixed": 0, "failed": 0, "total": 0, "top_issues": []}
+        n = r["n"] or 0
+        total_attempts += n
+        if r["success"]:
+            by_component[comp]["fixed"] += n
+            total_fixes += n
+        else:
+            by_component[comp]["failed"] += n
+        by_component[comp]["total"] += n
+
+    # Build summary
+    for comp, stats in by_component.items():
+        stats["success_rate"] = round(100 * stats["fixed"] / max(1, stats["total"]), 1)
+
+    # Top fixed issue types
+    top_fixed = _db_query(
+        """SELECT event_type, COUNT(*) AS n
+           FROM system_health_events
+           WHERE created_at >= NOW() - INTERVAL '7 days'
+             AND success = true
+           GROUP BY event_type
+           ORDER BY n DESC
+           LIMIT 10""") or []
+
+    # Intervention stats
+    int_fixed = sum(r["n"] for r in interventions if r["status"] == "fixed")
+    int_failed = sum(r["n"] for r in interventions if "fail" in (r["status"] or "").lower()
+                     or r["status"] == "error")
+    int_total = sum(r["n"] for r in interventions)
+
+    # Coder stats
+    coder = {"pr_opened": 0, "advisory_diff": 0, "failed": 0, "total": 0}
+    for r in coder_stats:
+        coder[r["outcome"]] = r["n"] or 0
+        coder["total"] += r["n"] or 0
+
+    overall_success_rate = round(100 * total_fixes / max(1, total_attempts), 1) if total_attempts else None
+
+    return {"ok": True,
+            "summary": {
+                "total_fixes_7d": total_fixes,
+                "total_attempts_7d": total_attempts,
+                "overall_success_rate": overall_success_rate,
+                "interventions_fixed_7d": int_fixed,
+                "interventions_total_7d": int_total,
+                "coder_prs_opened_7d": coder.get("pr_opened", 0),
+                "coder_total_7d": coder.get("total", 0),
+            },
+            "by_agent": by_component,
+            "by_intervention_status": {r["status"]: r["n"] for r in interventions},
+            "by_coder_outcome": {r["outcome"]: r["n"] for r in coder_stats},
+            "top_fixed_issues": [{"type": r["event_type"], "count": r["n"]} for r in top_fixed],
+            "generated_at": now.strftime("%Y-%m-%dT%H:%M:%S"),
+            "note": "Auto-fix statistics across all remediation agents (7-day window)."}
+
+
+def _health_escalations():
+    """GET /api/v2/health/escalations — active escalation items needing operator attention:
+    pipeline approvals, watchlist approvals, and queued escalation handler items."""
+    import datetime as _dt
+    now = _dt.datetime.now(_dt.timezone.utc)
+
+    # Pending watchlist approvals
+    wl_approvals = _db_query(
+        """SELECT id, symbol AS target, diagnosis, actions, status, created_at
+           FROM watchlist_health_approvals
+           WHERE status = 'pending'
+           ORDER BY created_at DESC LIMIT 20""") or []
+    # Pending pipeline approvals (table may not exist yet — fail gracefully)
+    pl_approvals = []
+    try:
+        pl_approvals = _db_query(
+            """SELECT id, pipeline_key AS target, diagnosis, actions, status, created_at
+               FROM pipeline_health_approvals
+               WHERE status = 'pending'
+               ORDER BY created_at DESC LIMIT 20""") or []
+    except Exception:
+        pass
+
+    # Escalation queue items
+    q_items = []
+    q_path = PROJECT_ROOT / "logs" / "claude_escalation_queue.json"
+    if q_path.exists():
+        try:
+            raw = json.loads(q_path.read_text())
+            q_items = (raw if isinstance(raw, list) else [])[:30]
+        except Exception:
+            pass
+
+    # Build unified escalation list
+    items = []
+    for a in wl_approvals:
+        items.append({"source": "watchlist_health", "id": a.get("id"),
+                      "target": a.get("target"), "diagnosis": a.get("diagnosis"),
+                      "actions": a.get("actions"), "status": a.get("status"),
+                      "created_at": str(a.get("created_at")) if a.get("created_at") else None,
+                      "approve_action": "wl_health_approve",
+                      "deny_action": "wl_health_deny"})
+    for a in pl_approvals:
+        items.append({"source": "pipeline_health", "id": a.get("id"),
+                      "target": a.get("target"), "diagnosis": a.get("diagnosis"),
+                      "actions": a.get("actions"), "status": a.get("status"),
+                      "created_at": str(a.get("created_at")) if a.get("created_at") else None,
+                      "approve_action": "pl_health_approve",
+                      "deny_action": "pl_health_deny"})
+    for q in q_items:
+        items.append({"source": "escalation_queue", "target": q.get("component"),
+                      "detail": q.get("detail"), "severity": q.get("severity"),
+                      "retry_cmd": q.get("retry_cmd"), "needs_code_fix": q.get("needs_code_fix"),
+                      "created_at": q.get("queued_at")})
+
+    items.sort(key=lambda x: x.get("created_at") or "", reverse=True)
+
+    return {"ok": True,
+            "total_pending": sum(1 for i in items if i.get("status") == "pending"),
+            "total_queued": len(q_items),
+            "items": items[:40],
+            "generated_at": now.strftime("%Y-%m-%dT%H:%M:%S"),
+            "note": "Active escalations: pending approvals (Telegram) + queued handler items."}
+
+
 def _llm_health():
     """GET /api/v2/llm/health — LLM router health + budget status."""
     try:
@@ -10922,6 +11649,12 @@ def _vix_effective(run_vix):
     """v3.1 (WS-F2): the orchestrator's run_summary has carried vix=0 since its
     fetch died — fall back to the regime collector's vix_close (fresh daily at
     06:30) so the header tile never shows a dead '—' while real VIX exists."""
+    try:
+        from lib.vix_canonical import vix_effective as _canonical_vix
+
+        return _canonical_vix(run_vix, db_fetch_one=lambda sql, params: _db_query(sql, params, fetch="one"))
+    except Exception:
+        pass
     try:
         v = float(run_vix or 0)
         if v > 0:
@@ -12325,7 +13058,7 @@ def _ticket_review_run(body):
     sym = str(b.get("symbol") or "").upper()
     if not sym:
         return {"ok": False, "error": "symbol required"}
-    lanes = str(b.get("lanes") or "local,grok,chatgpt")
+    lanes = str(b.get("lanes") or "deepseek-flash,local,grok,chatgpt")
     import subprocess
     subprocess.Popen([str(PROJECT_ROOT / ".venv" / "bin" / "python"),
                       str(PROJECT_ROOT / "scripts" / "run_ticket_review_job.py"), sym, lanes],
@@ -12345,6 +13078,50 @@ def _ticket_review_status(query=None):
         return {"ok": False, "error": "no live packet"}
     return {"ok": True, "packet_id": rows[0]["packet_id"],
             "ticket_review": rows[0]["tr"]}
+
+
+def _main_desk_free_llm_weekly_status(query=None):
+    """GET /api/v2/watch/free-llm-weekly — last weekly free-lane batch stamp (deepseek-flash/local/grok/chatgpt).
+
+    Read-only. Stamp written by scripts/main_desk_free_llm_weekly.py (systemd weekly timer).
+    """
+    paths = [
+        PROJECT_ROOT / "data" / "runtime" / "main_desk_free_llm_weekly.json",
+        Path.home() / "trade-ai-v12-rebuild" / "trade-ai-v12-rebuild" / "data" / "runtime" / "main_desk_free_llm_weekly.json",
+    ]
+    for path in paths:
+        try:
+            if not path.exists():
+                continue
+            data = json.loads(path.read_text())
+            return {
+                "ok": True,
+                "exists": True,
+                "path": str(path),
+                "lanes": data.get("lanes") or "deepseek-flash,local,grok,chatgpt",
+                "cadence": data.get("cadence") or "weekly",
+                "started_at": data.get("started_at"),
+                "finished_at": data.get("finished_at"),
+                "next_due_after": data.get("next_due_after"),
+                "main_pool_n": data.get("main_pool_n"),
+                "ran_n": data.get("ran_n"),
+                "ok_n": data.get("ok_n"),
+                "fail_n": data.get("fail_n"),
+                "skipped_n": data.get("skipped_n"),
+                "skip_reasons": data.get("skip_reasons") or {},
+                "duration_sec": data.get("duration_sec"),
+                "policy": data.get("policy"),
+                "stamp_version": data.get("stamp_version"),
+            }
+        except Exception as exc:
+            return {"ok": False, "exists": True, "path": str(path), "error": str(exc)[:160]}
+    return {
+        "ok": True,
+        "exists": False,
+        "lanes": "deepseek-flash,local,grok,chatgpt",
+        "cadence": "weekly",
+        "note": "No weekly free-LLM stamp yet — timer tradeai-main-desk-free-llm-weekly.timer",
+    }
 
 
 def _ticket_review_premium_estimate(body):
@@ -20385,19 +21162,82 @@ def _broker_mature_llm_stage_2b(body: dict):
 
 
 def _broker_queue_agent_batch(body: dict):
-    """Queue steph/maria/risk agent reviews for proposal symbols."""
+    """Queue steph/maria/risk agent reviews for proposal symbols.
+
+    Body:
+      symbol?: str
+      proposal_ids?: int[]   — CTA strip path (oversight wall)
+      agents?: str[] | str   — e.g. ["steph"] or "steph"
+    """
     import subprocess
     b = body or {}
     sym = str(b.get("symbol") or "").strip().upper()
+    raw_agents = b.get("agents") or b.get("agent") or []
+    if isinstance(raw_agents, str):
+        agents = [a.strip() for a in raw_agents.split(",") if a.strip()]
+    else:
+        agents = [str(a).strip() for a in (raw_agents or []) if str(a).strip()]
+    raw_ids = b.get("proposal_ids") or b.get("ids") or []
+    if isinstance(raw_ids, (int, float, str)) and str(raw_ids).strip():
+        raw_ids = [raw_ids]
+    pids = []
+    for x in raw_ids:
+        try:
+            pids.append(int(x))
+        except (TypeError, ValueError):
+            pass
+    # Prefer in-process call when targeting specific IDs (faster, structured stats)
+    if pids or agents:
+        try:
+            import queue_proposal_agent_reviews as qpar
+            stats = qpar.run(
+                symbol=sym or None,
+                dry_run=False,
+                agents=agents or None,
+                proposal_ids=pids or None,
+            )
+            return {
+                "ok": True,
+                "mode": "in_process",
+                "agents": stats.get("agents") or agents,
+                "proposal_ids": pids,
+                "jobs_queued": stats.get("jobs_queued", 0),
+                "reviews_created": stats.get("reviews_created", 0),
+                "skipped_existing": stats.get("skipped_existing", 0),
+                "symbols": stats.get("symbols", 0),
+                "message": (
+                    f"Queued {stats.get('jobs_queued', 0)} job(s) · "
+                    f"{stats.get('reviews_created', 0)} review row(s) · "
+                    f"agents={','.join(stats.get('agents') or agents or ['all'])}"
+                ),
+            }
+        except Exception as e:
+            # fall through to subprocess
+            fallback_err = str(e)[:160]
+    else:
+        fallback_err = None
     cmd = [str(PROJECT_ROOT / ".venv" / "bin" / "python"), "scripts/queue_proposal_agent_reviews.py", "--apply"]
     if sym:
         cmd.extend(["--symbol", sym])
+    if pids:
+        cmd.extend(["--proposal-ids", ",".join(str(x) for x in pids)])
+    if agents:
+        cmd.extend(["--agents", ",".join(agents)])
     proc = subprocess.run(cmd, cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=120)
     return {
         "ok": proc.returncode == 0,
+        "mode": "subprocess",
         "exit_code": proc.returncode,
-        "stdout_tail": (proc.stdout or "")[-400:],
+        "agents": agents,
+        "proposal_ids": pids,
+        "stdout_tail": (proc.stdout or "")[-500:],
         "stderr_tail": (proc.stderr or "")[-400:],
+        "fallback_error": fallback_err,
+        "message": (
+            f"Agent batch exit={proc.returncode}"
+            + (f" · agents={','.join(agents)}" if agents else "")
+            + (f" · {len(pids)} proposal(s)" if pids else "")
+        ),
     }
 
 
@@ -22487,6 +23327,153 @@ def _system_health_events_api():
         FROM system_health_events ORDER BY created_at DESC LIMIT 200
     """) or []
     return {"ok": True, "events": [{k: _json_clean(v) for k, v in e.items()} for e in events]}
+
+
+def _watchlist_health_dashboard_api():
+    """Watchlist health agent dashboard data: recent scans, degradations, fix stats."""
+    health_events = _db_query("""
+        SELECT severity, event_type, message, action_taken, success, symbol, created_at
+        FROM system_health_events WHERE component = 'watchlist_health'
+        ORDER BY created_at DESC LIMIT 100
+    """) or []
+
+    pending_approvals = _db_query("""
+        SELECT id, symbol, diagnosis, actions, status, created_at
+        FROM watchlist_health_approvals WHERE status = 'pending'
+        ORDER BY created_at DESC LIMIT 50
+    """) or []
+
+    # Aggregate stats
+    auto_fixed = sum(1 for e in health_events if e.get("event_type") == "AUTO_FIXED")
+    fix_failed = sum(1 for e in health_events if e.get("event_type") == "AUTO_FIX_FAILED")
+    pending = sum(1 for e in health_events if e.get("event_type") == "PENDING_APPROVAL")
+    escalated = sum(1 for e in health_events if e.get("event_type") == "ESCALATED_BLOCKED")
+
+    # Resolve JSON fields for pending approvals
+    for pa in pending_approvals:
+        try:
+            pa["diagnosis"] = json.loads(pa["diagnosis"]) if isinstance(pa["diagnosis"], str) else pa["diagnosis"]
+        except Exception:
+            pass
+        try:
+            pa["actions"] = json.loads(pa["actions"]) if isinstance(pa["actions"], str) else pa["actions"]
+        except Exception:
+            pass
+
+    return {
+        "ok": True,
+        "stats": {"auto_fixed": auto_fixed, "fix_failed": fix_failed,
+                  "pending_approval": pending, "escalated": escalated},
+        "recent_events": [{k: _json_clean(v) for k, v in e.items()} for e in health_events[:50]],
+        "pending_approvals": [dict(pa) for pa in pending_approvals],
+    }
+
+
+def _watchlist_health_approvals_api():
+    """List all watchlist health approval requests (pending + resolved)."""
+    approvals = _db_query("""
+        SELECT id, symbol, diagnosis, actions, status, resolved_by, created_at, resolved_at, resolution_note
+        FROM watchlist_health_approvals ORDER BY created_at DESC LIMIT 200
+    """) or []
+    for a in approvals:
+        for field in ("diagnosis", "actions"):
+            try:
+                a[field] = json.loads(a[field]) if isinstance(a[field], str) else a[field]
+            except Exception:
+                pass
+    return {"ok": True, "approvals": [{k: _json_clean(v) for k, v in a.items()} for a in approvals]}
+
+
+def _health_agents_dashboard_api():
+    """Aggregate dashboard for all health agents: watchlist + pipeline + system."""
+    now = datetime.now(timezone.utc)
+
+    # ── Watchlist health ──
+    wl_events = _db_query("""
+        SELECT severity, event_type, message, action_taken, success, symbol, created_at
+        FROM system_health_events WHERE component = 'watchlist_health'
+        ORDER BY created_at DESC LIMIT 50
+    """) or []
+    wl_degraded = sum(1 for e in wl_events
+                      if e.get("event_type") in ("AUTO_FIXED", "AUTO_FIX_FAILED",
+                                                  "PENDING_APPROVAL", "ESCALATED_BLOCKED"))
+    wl_score = max(0, 100 - (wl_degraded * 5))
+
+    # ── Pipeline health ──
+    try:
+        from pipeline_health_agent import get_dashboard_data as pl_dash
+        pl_data = pl_dash()
+    except Exception:
+        pl_data = {"total": 0, "healthy": 0, "degraded": 0, "critical": 0,
+                   "pipelines": [], "events": [], "pending_approvals": []}
+    pl_score = int((pl_data.get("healthy", 0) / max(1, pl_data.get("total", 1))) * 100)
+
+    # ── System health ──
+    sys_score = 0
+    try:
+        sys_score = _system_health_api().get("health_score", 0) or 0
+    except Exception:
+        pass
+
+    # ── Composite ──
+    composite = int((wl_score + pl_score + sys_score) / 3) if (wl_score or pl_score or sys_score) else 0
+
+    # ── Events across all health components ──
+    all_events = _db_query("""
+        SELECT component, event_type, severity, message, action_taken, success, symbol, created_at
+        FROM system_health_events
+        WHERE component IN ('watchlist_health', 'pipeline_health', 'system_health')
+        ORDER BY created_at DESC LIMIT 100
+    """) or []
+
+    # ── Pending approvals ──
+    wl_approvals = _db_query("""
+        SELECT 'watchlist' as source, symbol as target, diagnosis, actions, status, created_at
+        FROM watchlist_health_approvals WHERE status = 'pending'
+        ORDER BY created_at DESC LIMIT 20
+    """) or []
+    for a in wl_approvals:
+        for f in ("diagnosis", "actions"):
+            try:
+                a[f] = json.loads(a[f]) if isinstance(a[f], str) else a[f]
+            except Exception:
+                pass
+    pl_approvals = pl_data.get("pending_approvals", [])
+    for a in pl_approvals:
+        try:
+            a["source"] = "pipeline"
+            a["target"] = a.pop("pipeline_key", "?")
+        except Exception:
+            pass
+    all_approvals = wl_approvals + pl_approvals
+
+    # ── Timeline (last 24h rollup) ──
+    timeline_rows = _db_query("""
+        SELECT date_trunc('hour', created_at) as h,
+               max(CASE severity WHEN 'HIGH' THEN 3 WHEN 'MEDIUM' THEN 2 ELSE 1 END) as max_sev,
+               count(*) as cnt
+        FROM system_health_events
+        WHERE component IN ('watchlist_health', 'pipeline_health', 'system_health')
+        AND created_at > NOW() - INTERVAL '24 hours'
+        GROUP BY date_trunc('hour', created_at)
+        ORDER BY h
+    """) or []
+
+    return {"ok": True, "data": {
+        "watchlist": {"score": wl_score, "degraded": wl_degraded, "events": wl_events[:20]},
+        "pipeline": {"score": pl_score, "total": pl_data.get("total", 0),
+                     "healthy": pl_data.get("healthy", 0),
+                     "degraded": pl_data.get("degraded", 0),
+                     "critical": pl_data.get("critical", 0),
+                     "pipelines": pl_data.get("pipelines", [])[:30]},
+        "system": {"score": sys_score},
+        "composite": {"score": composite},
+        "events": [{k: _json_clean(v) for k, v in e.items()} for e in all_events[:50]],
+        "approvals": all_approvals[:20],
+        "timeline": [{"hour": str(t.get("h")), "count": t.get("cnt", 0),
+                      "max_severity": t.get("max_sev", 0)} for t in timeline_rows],
+        "timestamp": now.isoformat(),
+    }}
 
 
 def _ops_cron_health():
@@ -26778,6 +27765,207 @@ def _data_source_health(query=None):
                     "stale=2-4x late, dead=>4x late or no data. Catches silent sub-source failures."}
 
 
+def _data_broker_module():
+    """Lazy import of scripts.lib.data_broker.registry (keeps it off the hot import path)."""
+    import sys as _s
+    _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    from lib.data_broker import registry as _reg
+    return _reg
+
+
+def _data_source_health_rows():
+    """Raw data_source_health table rows, JSON-only-mode safe (returns [] without a DB)."""
+    try:
+        rows = _db_query("""
+            SELECT source_key, status, last_success_at, last_failure_at,
+                   last_row_count, failure_count, last_error, degraded, updated_at
+            FROM data_source_health ORDER BY source_key
+        """) or []
+        return [{k: _json_clean(v) for k, v in r.items()} for r in rows]
+    except Exception:
+        return []
+
+
+def _data_registry_get():
+    """GET /api/v2/data/registry — the full Data Broker catalog: every data type (producer,
+    canonical store, TTL, authority, status) plus the consumers matrix (pages/alerts/pipeline
+    scripts). See config/data_registry.yaml and docs/DATA_ARCHITECTURE_AUDIT_2026_07_31.md.
+    Read-only, static-config-backed — works with no DB (JSON-only mode)."""
+    try:
+        reg_mod = _data_broker_module()
+        reg = reg_mod.load_registry()
+        return {
+            "ok": True,
+            "summary": reg_mod.registry_summary(reg),
+            "data_types": reg_mod.list_data_types(reg),
+            "consumers": reg_mod.get_matrix(reg),
+            "source_health": _data_source_health_rows(),
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:240]}
+
+
+def _data_coverage_get():
+    """GET /api/v2/data/coverage — duplication report: which deprecated/ad-hoc producers listed
+    in the registry are still present in the repo (migration pending) vs already removed
+    (migrated), plus registry referential-integrity checks (orphan data types, dangling
+    consumer refs). Backs the Data Management page's "Duplication report" panel."""
+    try:
+        reg_mod = _data_broker_module()
+        return {"ok": True, **reg_mod.check_coverage()}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:240]}
+
+
+def _data_indicator_snapshot_get(query=None):
+    """GET /api/v2/data/indicator-snapshot — broker read model for rsi/sma/macd/atr."""
+    try:
+        import sys as _s
+        _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from lib.data_broker.indicator_snapshot import get_indicator_snapshot
+        q = query or {}
+        sym_raw = q.get("symbols") or q.get("symbol") or ""
+        if isinstance(sym_raw, list):
+            symbols = sym_raw
+        else:
+            symbols = [s.strip() for s in str(sym_raw).split(",") if s.strip()]
+        if not symbols:
+            h = _load_json(STATE_DIR / "holdings.json") or {}
+            symbols = [p.get("symbol") for p in h.get("holdings", []) if p.get("symbol")]
+        profile = str(q.get("profile") or "swing")
+        return {"ok": True, "snapshot": get_indicator_snapshot(symbols, profile=profile)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:240]}
+
+
+def _data_portfolio_snapshot_get():
+    """GET /api/v2/data/portfolio-snapshot — the Phase 4 read model (see
+    scripts/lib/data_broker/portfolio_snapshot.py). ADDITIVE/inspection endpoint: /overview,
+    /portfolio/holdings, /risk, /portfolio/book-map do not read this yet (see
+    config/data_registry.yaml:portfolio_snapshot for the migration status) -- this exists so
+    the snapshot's numbers can be verified against those live endpoints before any cutover."""
+    try:
+        import sys as _s
+        _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from lib.data_broker.portfolio_snapshot import get_portfolio_snapshot
+        return {"ok": True, "snapshot": get_portfolio_snapshot()}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:240]}
+
+
+
+def _reentry_decision_desk_get(query=None):
+    """GET /api/v2/reentry/decision-desk — deterministic broker-backed Re-Entry Decision Desk.
+    Price via get_best_quote, RSI/MACD via indicator_snapshot, resistance from prefs cache,
+    catalyst via catalyst_record, heat via portfolio_snapshot. No LLM on this path."""
+    try:
+        import sys as _s
+        _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from lib.data_broker.reentry_decision_desk import build_decision_desk
+        q = query or {}
+        sym_raw = q.get("symbols") or q.get("symbol") or ""
+        if isinstance(sym_raw, list):
+            # parse_qs may give one list element containing commas
+            parts = []
+            for item in sym_raw:
+                parts.extend(str(item).split(","))
+            symbols = [s.strip().upper() for s in parts if s and str(s).strip()]
+        else:
+            symbols = [s.strip().upper() for s in str(sym_raw).split(",") if s.strip()]
+        return build_decision_desk(_db_query, symbols or None)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:240], "llm_in_path": False}
+
+
+
+def _watch_defense_promote_main(body=None):
+    """POST /api/v2/watch/defense/promote-main — one-click Defense ETF → MAIN WAIT."""
+    try:
+        import sys as _s
+        _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from lib.defense_main_promote import promote_to_main, load_promote_policy
+        from db_adapter import _execute
+        body = body or {}
+        sym = str(body.get("symbol") or "").upper().strip()
+        mode = str(body.get("mode") or "click").lower()
+        if not sym:
+            return 400, {"ok": False, "error": "symbol required"}
+        # Cap awareness for soft path
+        main_count = None
+        try:
+            from watch_lane_admission import annotate_item, apply_main_cap, load_policy
+            # cheap count of already-promoted / MAIN-ish rows not required for click
+            if mode == "soft":
+                row = _db_query(
+                    "SELECT count(DISTINCT upper(symbol)) AS c FROM watchlist_items "
+                    "WHERE status <> 'removed' AND (origin_system='defense_rotation' OR notes ILIKE '%%defense_main_promote%%')",
+                    fetch="one",
+                ) or {}
+                main_count = int(row.get("c") or 0)
+        except Exception:
+            main_count = None
+        result = promote_to_main(_execute, sym, mode=mode, provenance={"via": "api"}, main_count=main_count)
+        result["policy"] = {k: load_promote_policy().get(k) for k in ("soft_auto_symbols", "click_only_symbols", "main_cap")}
+        code = 200 if result.get("ok") else 400
+        return code, result
+    except Exception as e:
+        return 500, {"ok": False, "error": str(e)[:240]}
+
+
+def _watch_decision_desk_get(query=None):
+    """GET /api/v2/watch/decision-desk — deterministic broker-backed MAIN Setup Decision Desk.
+    Price via get_best_quote, RSI/MACD via indicator_snapshot, ticket from decision_packet,
+    fund look-through from fund_lookthrough.json. No LLM on this path."""
+    try:
+        import sys as _s
+        _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from lib.data_broker.watch_decision_desk import build_watch_decision_desk
+        q = query or {}
+        sym_raw = q.get("symbols") or q.get("symbol") or ""
+        if isinstance(sym_raw, list):
+            parts = []
+            for item in sym_raw:
+                parts.extend(str(item).split(","))
+            symbols = [s.strip().upper() for s in parts if s and str(s).strip()]
+        else:
+            symbols = [s.strip().upper() for s in str(sym_raw).split(",") if s.strip()]
+        return build_watch_decision_desk(_db_query, symbols or None)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:240], "llm_in_path": False}
+
+
+def _reentry_resistance_refresh_post(body=None):
+    """POST /api/v2/reentry/resistance/refresh — operator on-demand closed-session resistance rebuild.
+    Calls ensure_price_history then refresh_resistance_cache; attaches live quote metadata."""
+    try:
+        import sys as _s
+        _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from lib.reentry_resistance import refresh_resistance_cache
+        from db_adapter import _execute
+        payload = refresh_resistance_cache(_execute)
+        return {
+            "ok": True,
+            "generated_at": payload.get("generated_at"),
+            "symbol_count": payload.get("symbol_count"),
+            "version": payload.get("version"),
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:240]}
+
+
+def _data_matrix_get():
+    """GET /api/v2/data/matrix — the data-type x consumer grid alone (pages + alerts + pipeline
+    scripts, each with which data types they read and whether that path goes through the
+    broker). Same underlying data as /api/v2/data/registry's `consumers` key, exposed
+    separately so the frontend matrix tab can fetch it on its own."""
+    try:
+        reg_mod = _data_broker_module()
+        reg = reg_mod.load_registry()
+        return {"ok": True, "data_types": reg_mod.list_data_types(reg), "consumers": reg_mod.get_matrix(reg)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:240]}
+
+
 _FINVIZ_ENRICH_CACHE = {"mtime": 0, "data": {}}
 def _finviz_enrichment(query=None):
     """GET /api/v2/finviz-enrichment?symbol=X — the ~60 Finviz fields already collected daily
@@ -26923,7 +28111,9 @@ def _finviz_strip_map_compute(query=None):
         pw = d.get("perf_week_pct"); pw = pw if pw is not None else _json_clean(pf.get("perf_week_pct"))
         pm = d.get("perf_month_pct"); pm = pm if pm is not None else _json_clean(pf.get("perf_month_pct"))
         pytd = d.get("perf_ytd_pct"); pytd = pytd if pytd is not None else _json_clean(pf.get("ytd_return_pct"))
+        sma20 = d.get("sma20_pct")
         sma = d.get("sma50_pct"); sma = sma if sma is not None else _json_clean(pf.get("sma50_pct"))
+        sma200 = d.get("sma200_pct")
         atr = d.get("atr")
         # Valuation is already in the enrichment cache (pe/forward_pe/peg/pb/ps) but was
         # never passed through, so the whole Watch queue rendered "valuation unavailable"
@@ -26947,20 +28137,29 @@ def _finviz_strip_map_compute(query=None):
         val_from_supp = supp_ok and not finviz_has_val and has_val
         val_as_of = sd.get("cached_at") if val_from_supp else d.get("cached_at")
         if (rsi is None and pw is None and pm is None and pytd is None and sma is None
-                and atr is None and not has_val):
+                and sma20 is None and sma200 is None and atr is None and not has_val):
             continue   # nothing for this symbol from either source
+        # MAIN desk / cards need decision evidence: MAs + analyst recom, not just RSI/PE.
         row = {"rsi": _json_clean(rsi),
                "rsi_status": d.get("rsi_status") if d.get("rsi") is not None else _rsi_status(rsi),
                "perf_week": _json_clean(pw), "perf_month": _json_clean(pm),
-               "perf_ytd": _json_clean(pytd), "sma50": _json_clean(sma),
+               "perf_ytd": _json_clean(pytd),
+               "sma20": _json_clean(sma20),
+               "sma50": _json_clean(sma),
+               "sma200": _json_clean(sma200),
                "atr": _json_clean(atr),
                "pe": pe, "forward_pe": forward_pe, "peg": peg, "pb": pb, "ps": ps,
+               "analyst_rating": d.get("analyst_rating") or d.get("recom"),
+               "recom_score": _json_clean(d.get("recom_score")),
+               "trend": d.get("trend"),
+               "week52_high_pct": _json_clean(d.get("week52_high_pct")),
+               "week52_low_pct": _json_clean(d.get("week52_low_pct")),
                "fundamentals_as_of": val_as_of,
                "valuation_source": ("yfinance" if val_from_supp else "finviz" if has_val else None),
                "source": ("finviz" if d.get("rsi") is not None else "yfinance_nav")}
         out[s] = row
     return {"ok": True, "count": len(out), "map": out,
-            "note": "Finviz inline-strip metrics (daily); mutual funds fall back to yfinance-NAV technicals."}
+            "note": "Finviz inline-strip metrics (daily); mutual funds fall back to yfinance-NAV technicals. Includes SMA20/50/200 + analyst for MAIN desk."}
 
 
 def _sector_performance(query=None):
@@ -27451,8 +28650,8 @@ def _discovery_run(body):
     q = ((body or {}).get("query") or "").strip()
     if not q:
         return 400, {"ok": False, "error": "query required"}
-    lane = (body or {}).get("lane", "grok")
-    lane = lane if lane in ("grok", "chatgpt") else "grok"
+    lane = (body or {}).get("lane", "deepseek-flash")
+    lane = lane if lane in ("deepseek-flash", "grok", "chatgpt") else "deepseek-flash"
     try:
         return 200, {"ok": True, "data": hd.run(q, lane=lane, apply=True)}
     except Exception as e:
@@ -30944,7 +32143,7 @@ def _hermes_curate_top20_trigger(body=None):
     if _hermes_curate_running():
         return {"ok": True, "status": "already_running", "message": "A top-20 curation run is already in progress."}
     lanes = (body or {}).get("lanes", "chatgpt")
-    lanes = ",".join(x for x in str(lanes).split(",") if x.strip() in ("chatgpt", "grok", "claude")) or "chatgpt"
+    lanes = ",".join(x for x in str(lanes).split(",") if x.strip() in ("deepseek-flash", "chatgpt", "grok", "claude")) or "deepseek-flash"
     cmd = (f"cd {PROJECT_ROOT} && flock -n /tmp/hermes_top20_manual.lock "
            f"{sys.executable} scripts/hermes_top20_external_intel.py --top 20 --lanes {lanes} --apply "
            f">> logs/hermes_top20_manual.log 2>&1")
@@ -33463,6 +34662,9 @@ ROUTES = {
     "/api/v2/health/dispatches": lambda: _health_dispatches(),
     "/api/v2/health/activity": lambda: _health_activity(),
     "/api/v2/health/proposals": lambda: _health_proposals(),
+    "/api/v2/health/coverage": lambda: _health_coverage(),
+    "/api/v2/health/autofix-ledger": lambda: _health_autofix_ledger(),
+    "/api/v2/health/escalations": lambda: _health_escalations(),
     "/api/v2/proposals/execution-readiness": lambda: _proposals_execution_readiness(),
     "/api/v2/snaptrade/status": _snaptrade_status,
     "/api/v2/fidelity-stops/status": lambda: _fidelity_stops_status(),
@@ -33499,6 +34701,7 @@ ROUTES = {
     "/api/v2/atm/profit-capture": lambda: _atm_profit_capture(),
     "/api/v2/atm/advisory-threshold-tuning": lambda: _atm_advisory_threshold_tuning(),
     "/api/v2/overview": overview,
+    "/api/v2/overview/refresh": overview_refresh,
     "/api/v2/portfolio/holdings": portfolio_holdings,
     "/api/v2/holdings/share-drift": lambda q=None: _share_drift_list(q),
     "/api/v2/holdings/share-drift/impact": lambda q=None: _share_drift_impact(q),
@@ -33528,6 +34731,7 @@ ROUTES = {
     "/api/v2/aegis/evidence": lambda: _aegis_evidence(),
     "/api/v2/john/decisions": lambda: _john_decisions(),
     "/api/v2/watchlist/summary": _wl_summary,
+    "/api/v2/watchlist/quality-board": _wl_quality_board,
     "/api/v2/watchlist/jobs": _wl_jobs,
     "/api/v2/watchlist/results": _wl_results,
     "/api/v2/watchlist/debug": _wl_debug,
@@ -33623,6 +34827,17 @@ ROUTES = {
     "/api/v2/news/articles": lambda: _news_articles_list(),
     "/api/v2/rag/status": lambda: _rag_status(),
     "/api/v2/intelligence/library": lambda: _intelligence_library(),
+    "/api/v2/intelligence/item-state": lambda: _intelligence_item_state_get(),
+    "/api/v2/intelligence/remediation-summary": lambda: _intelligence_remediation_summary(),
+    "/api/v2/data/registry": lambda: _data_registry_get(),
+    "/api/v2/data/coverage": lambda: _data_coverage_get(),
+    "/api/v2/data/matrix": lambda: _data_matrix_get(),
+    "/api/v2/data/indicator-snapshot": lambda q=None: _data_indicator_snapshot_get(q),
+    "/api/v2/data/portfolio-snapshot": lambda: _data_portfolio_snapshot_get(),
+    "/api/v2/reentry/decision-desk": lambda q=None: _reentry_decision_desk_get(q),
+    "/api/v2/watch/decision-desk": lambda q=None: _watch_decision_desk_get(q),
+    # POST handled in dispatch; GET policy helper:
+    "/api/v2/watch/defense/promote-main": lambda q=None: {"ok": True, "hint": "POST {symbol, mode:click|soft}"},
     "/api/v2/youtube/channel-lookup": lambda: _youtube_channel_lookup(),
     "/api/v2/social/posts": lambda: {"posts": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT id, platform, post_id, username, display_name, text, post_date, url, followers, verified, likes, retweets, replies, quality_score, relevance_score, validation_status, matched_keywords, sentiment, sentiment_score, added_by, ingested_at, strategy_tags, agent_tags FROM social_posts ORDER BY quality_score DESC, ingested_at DESC LIMIT 100") or [])]},
     "/api/v2/social/status": lambda: _social_api_status(),
@@ -33679,6 +34894,7 @@ ROUTES = {
     "/api/v2/watch/decision/summary": _watch_decision_summary,
     "/api/v2/watch/decision/technicals": _watch_decision_technicals,
     "/api/v2/watch/ticket-review/status": _ticket_review_status,
+    "/api/v2/watch/free-llm-weekly": _main_desk_free_llm_weekly_status,
     "/api/v2/decision/action-policy": _decision_action_policy,
     "/api/v2/shadow/strategy/batch": _shadow_batch_status,
     "/api/v2/defense/core": _defense_core_registry,
@@ -33760,6 +34976,9 @@ ROUTES = {
     "/api/v2/ops/llm-audit": lambda: _ops_llm_audit(),
     "/api/v2/execution-integrity": lambda: _system_health_api(),
     "/api/v2/execution-integrity/events": lambda: _system_health_events_api(),
+    "/api/v2/watchlist/health/dashboard": lambda: _watchlist_health_dashboard_api(),
+    "/api/v2/watchlist/health/approvals": lambda: _watchlist_health_approvals_api(),
+    "/api/v2/health/agents/dashboard": lambda: _health_agents_dashboard_api(),
     "/api/v2/queue/calibration": lambda: _queue_calibration(),
     "/api/v2/strategy-intelligence": lambda: _strategy_intelligence(),
     "/api/v2/system/access-links": lambda: _system_access_links(),
@@ -33993,6 +35212,13 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
     # POST routes
     if method == "POST":
+        if base_path == "/api/v2/reentry/resistance/refresh":
+            try:
+                result = _reentry_resistance_refresh_post(body)
+                code = 200 if result.get("ok") else 500
+                return code, result
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)[:240]}
         if base_path == "/api/v2/health/remediate":
             # Manual "Fix now" — operator-triggered remediation of one finding. Server-authoritative:
             # the command is NEVER taken from the client; it's derived from policy by finding type.
@@ -35737,7 +36963,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 _MODELS = {"grok": "grok-3-mini", "chatgpt": "gpt-5.4"}
                 results = {}
                 for _lane in lanes:
-                    if _lane not in ("grok", "chatgpt"):
+                    if _lane not in ("deepseek-flash", "grok", "chatgpt"):
                         continue
                     if not llm_lane.available(_lane):
                         results[_lane] = {"ok": False, "available": False,
@@ -35890,7 +37116,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     "plan is roughly cash-neutral. Reply ONLY JSON: {\"steps\":[{\"action\":\"BUY\",\"symbol\":"
                     "\"CIBR\",\"theme\":\"Cybersecurity\",\"dollars\":50000,\"funded_by\":\"trim V ~$50k\","
                     "\"rationale\":\"one line\"}],\"summary\":\"2 sentences\",\"net_cash_note\":\"...\"}")
-                lane = "grok" if llm_lane.available("grok") else "local"
+                lane = "deepseek-flash" if llm_lane.available("deepseek-flash") else ("grok" if llm_lane.available("grok") else "local")
                 raw = llm_lane.generate(prompt, lane=lane, timeout=120)
                 design = None
                 try:
@@ -35913,7 +37139,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 if not q:
                     return 400, {"ok": False, "error": "question required"}
                 want = (b.get("lane") or "").lower()
-                lanes = [want] if want in ("grok", "chatgpt", "local") else ["grok", "chatgpt", "local"]
+                lanes = [want] if want in ("deepseek-flash", "deepseek-v4", "grok", "chatgpt", "local") else ["deepseek-flash", "grok", "chatgpt", "local"]
                 ans, used = None, None
                 for ln in lanes:
                     try:
@@ -36008,8 +37234,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 sym = str(b.get("symbol") or "").strip().upper()
                 if not sym:
                     return 400, {"ok": False, "error": "symbol required"}
-                lane = str(b.get("lane") or "grok").strip().lower()
-                if lane not in ("grok", "local"):
+                lane = str(b.get("lane") or "deepseek-flash").strip().lower()
+                if lane not in ("deepseek-flash", "grok", "local"):
                     lane = "grok"
                 import io, contextlib
                 buf = io.StringIO()
@@ -36031,8 +37257,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 import holding_protection_advisor as _hpa
                 b = body or {}
                 limit = min(12, max(1, int(b.get("limit") or 6)))
-                lane = str(b.get("lane") or "grok").strip().lower()
-                if lane not in ("grok", "local"):
+                lane = str(b.get("lane") or "deepseek-flash").strip().lower()
+                if lane not in ("deepseek-flash", "grok", "local"):
                     lane = "grok"
                 syms = b.get("symbols")
                 sym_list = [s.strip().upper() for s in str(syms).split(",") if s.strip()] if syms else None
@@ -36055,13 +37281,13 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 from lib.oauth_lane_status import lane_available
                 b = body or {}
                 pid = str(b.get("process_id") or "").strip()
-                lane = str(b.get("lane") or "grok").strip().lower()
+                lane = str(b.get("lane") or "deepseek-flash").strip().lower()
                 prompt = str(b.get("prompt") or "").strip()
                 task = str(b.get("task_summary") or b.get("task") or "").strip()
                 if not pid or not prompt:
                     return 400, {"ok": False, "error": "process_id and prompt required"}
-                if lane not in ("grok", "chatgpt"):
-                    return 400, {"ok": False, "error": "lane must be grok or chatgpt"}
+                if lane not in ("deepseek-flash", "deepseek-v4", "grok", "chatgpt"):
+                    return 400, {"ok": False, "error": "lane must be deepseek-flash, deepseek-v4, grok, or chatgpt"}
                 if not lane_available(lane):
                     return 200, {"ok": False, "lane": lane, "error": f"{lane} OAuth lane not ready — check proxy service"}
                 text = _lc.gate_and_generate(prompt, lane=lane, process_id=pid,
@@ -36138,7 +37364,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 if not q:
                     return 400, {"ok": False, "error": "no question"}
                 lane = str((body or {}).get("lane") or "").strip().lower()
-                if lane not in ("grok", "chatgpt"):
+                if lane not in ("deepseek-flash", "grok", "chatgpt"):
                     lane = None
                 return 200, {"ok": True, **_pa.ask(q, lane=lane, manual_trigger=bool(lane))}
             except Exception as e:
@@ -36156,7 +37382,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 if not q:
                     return 400, {"ok": False, "error": "no question"}
                 lane = str(b.get("lane") or "").strip().lower()
-                if lane not in ("grok", "chatgpt"):
+                if lane not in ("deepseek-flash", "grok", "chatgpt"):
                     lane = None
                 return 200, {"ok": True, **_ja.ask(q, account=b.get("account"),
                                                     days=int(b.get("days") or 180),
@@ -36272,20 +37498,19 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     rewritten = (generate(f"{prompt_text}\n\nOriginal: {text}\n\nRewritten (concise, clear):", timeout=30, fast=True) or "").strip()
                 except Exception:
                     pass
-                # Fallback to Claude Haiku if local failed
+                # Fallback to DeepSeek Flash if local failed (replaces Claude Haiku)
                 if not rewritten:
                     try:
-                        import anthropic
-                        _ak = ""
-                        for line in (PROJECT_ROOT / ".env").read_text().splitlines():
-                            if line.startswith("ANTHROPIC_API_KEY="): _ak = line.split("=", 1)[1].strip()
-                        client = anthropic.Anthropic(api_key=_ak)
-                        msg = client.messages.create(model="claude-haiku-4-5", max_tokens=150,
-                            messages=[{"role": "user", "content": f"{prompt_text}\n\nOriginal: {text}\n\nRewritten:"}])
-                        rewritten = msg.content[0].text.strip()
-                        provider = "claude-haiku"
+                        from llm_lane import generate
+                        rewritten = (generate(
+                            f"{prompt_text}\n\nOriginal: {text}\n\nRewritten (concise, clear):",
+                            lane="deepseek-flash", timeout=30) or "").strip()
+                        if rewritten:
+                            provider = "deepseek-flash"
                     except Exception as e2:
-                        return 200, {"ok": False, "error": f"Both local LLM and Claude failed: {e2}"}
+                        pass
+                if not rewritten:
+                    return 200, {"ok": False, "error": "Both local LLM and DeepSeek flash failed"}
                 return 200, {"ok": True, "rewritten": rewritten, "provider": provider}
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
@@ -36851,6 +38076,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         return _discovery_run(body or {})
     if method == "POST" and base_path == "/api/v2/discovery/add-to-watchlist":
         return _discovery_add(body or {})
+    if method == "POST" and base_path == "/api/v2/watch/defense/promote-main":
+        return _watch_defense_promote_main(body)
     if method == "POST" and base_path == "/api/v2/watch/directives/promote":
         try:
             return _watch_directive_promote(body or {})
@@ -37735,6 +38962,41 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
             return admin_write(action="topic.delete", target=f"topic:{tid}",
                                old_value={k: _json_clean(v) for k, v in row.items()}, new_value=None,
+                               apply_fn=_apply, operator=operator,
+                               confirmed=bool(b.get("confirm")), token=b.get("token"))
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if method == "POST" and base_path == "/api/v2/admin/intelligence-item/set-status":
+        try:
+            from admin_write_guard import admin_write
+            b = body or {}
+            item_id = (b.get("item_id") or "").strip()
+            item_type = (b.get("item_type") or "").strip()
+            status = (b.get("status") or "active").strip().lower()
+            if status not in ("active", "dismissed", "reviewed"):
+                return 400, {"ok": False, "error": "status must be active|dismissed|reviewed"}
+            if not item_id or not item_type:
+                return 400, {"ok": False, "error": "item_id and item_type required"}
+            note = (b.get("note") or "")[:500]
+            operator = (b.get("operator") or "operator")[:60]
+            existing = _db_query(
+                "SELECT item_id, item_type, status, note FROM intelligence_item_state WHERE item_id=%s",
+                (item_id,), fetch="one")
+            old_value = {k: _json_clean(v) for k, v in existing.items()} if existing else None
+            new_value = {"item_id": item_id, "item_type": item_type, "status": status, "note": note}
+
+            def _apply():
+                _db_write("""INSERT INTO intelligence_item_state
+                        (item_id, item_type, status, note, updated_at, updated_by)
+                    VALUES (%s,%s,%s,%s,NOW(),%s)
+                    ON CONFLICT (item_id) DO UPDATE SET
+                        item_type=EXCLUDED.item_type, status=EXCLUDED.status, note=EXCLUDED.note,
+                        updated_at=NOW(), updated_by=EXCLUDED.updated_by""",
+                    (item_id, item_type, status, note or None, operator))
+
+            return admin_write(action="intelligence_item.set_status", target=f"intel_item:{item_id}",
+                               old_value=old_value, new_value=new_value,
                                apply_fn=_apply, operator=operator,
                                confirmed=bool(b.get("confirm")), token=b.get("token"))
         except Exception as e:

@@ -118,3 +118,39 @@ If the site goes blank again:
 1. Check JS bundle download integrity (see detection heuristic above)
 2. Verify no `SO_LINGER` on the server socket: `grep -r SO_LINGER scripts/portfolio_server.py`
 3. Restart the server: `systemctl --user restart portfolio-server` (or kill + re-nohup)
+
+## Weekend-Aware Pipeline Status (2026-08-02)
+
+### Problem
+The Overview API (`/api/v2/overview`) reported `pipeline_status: "fresh"` based on a timestamp
+written by the orchestrator when it last ran successfully. There was no staleness computation —
+the orchestrator just hardcoded `"status": "fresh"` in `_freshness.json`. This meant:
+- Pipeline "fresh" status never decayed, even on weekends
+- No off-market awareness — a Friday run still showed "fresh" on Sunday
+- No visible "last refreshed" timestamp in the HomeHub UI
+
+### Fix
+
+**Backend (`scripts/api_v2.py`):**
+
+1. **Smart pipeline_status computation** in `_overview_compute()`:
+   - Computes `pipeline_age_hours` from `completed_at` in `_freshness.json`
+   - Computes `market_status` from day-of-week and rough ET hour (weekend/regular/afterhours/closed)
+   - Threshold: 26h baseline, +24h per Sat/Sun in the gap
+   - Status values: `"fresh"`, `"weekend"`, `"afterhours"`, `"stale"`
+   - New fields in overview response: `pipeline_age_hours`, `market_status`, `refreshed_at`
+   - On weekdays: stale after 26h without a run
+   - On weekends: stale only when the gap exceeds 26h + (2×24h) = 74h
+
+2. **Force-refresh endpoint** (`GET /api/v2/overview/refresh`):
+   - Bypasses the 30s cache, computes fresh, stores back
+   - Safe for off-market use — no side effects, just re-reads data files
+
+**Frontend (`apps/command-center-v3/src/pages/HomeHub.tsx`):**
+
+3. **Enhanced "Data:" tile** in the HomeHub sidebar:
+   - Shows pipeline status with contextual color: fresh=normal, weekend=amber, stale=red
+   - Shows age: `"39h ago · market weekend"`
+   - Shows last refreshed time: `"refreshed 10:54 PM"`
+   - **Off-market refresh button** appears when market is weekend/closed or data >12h old
+   - Button calls `refetchOverview()` which triggers a fresh `/api/v2/overview` fetch

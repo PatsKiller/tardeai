@@ -48,7 +48,7 @@ function acctPretty(a: string) {
 
 export default function HomeHub({ onDrill }: Props) {
   const [terminalUi] = useTerminalUi()
-  const { data: overview, loading: overviewLoading } = useApi<any>('/api/v2/overview', 60_000)
+  const { data: overview, loading: overviewLoading, refetch: refetchOverview } = useApi<any>('/api/v2/overview', 60_000)
   const { data: readiness } = useApi<any>('/api/v2/paper-trade-readiness', 120_000)
   const { data: regime, loading: regimeLoading } = useApi<any>('/api/v2/risk-regime/latest', 120_000)
   // Home only reads header scalars (vix, counts, run label) — the ~500B summary endpoint,
@@ -85,6 +85,9 @@ export default function HomeHub({ onDrill }: Props) {
   const heat = risk?.portfolio_heat_pct ?? 0
   const pendingCount = proposals?.pending_count ?? 0
   const pipelineStatus = overview?.pipeline_status
+  const pipelineAgeHours = overview?.pipeline_age_hours
+  const marketStatus = overview?.market_status
+  const refreshedAt = overview?.refreshed_at
   const deployRecent = (deployData?.recent_14d_count ?? deployData?.events?.length ?? 0) as number
   const deployTop = (deployData?.events ?? [])[0] as { symbol?: string; proceeds_usd?: number; sold_at?: string } | undefined
 
@@ -490,12 +493,24 @@ export default function HomeHub({ onDrill }: Props) {
                   <div style={{ fontSize: 10, color: '#fbbf24', marginTop: 2 }}>{thresholdSentence('Heat', heat, 5).split('— ')[1]}</div>
                 </div>
               )}
-              <div onClick={() => onDrill({ title: 'Data Freshness', subtitle: pipelineStatus ?? '—', endpoint: '/api/v2/overview', rows: [{ pipeline_status: pipelineStatus, last_repriced: lastRepriced, as_of: overview?.as_of }] })}
+              <div onClick={() => onDrill({ title: 'Data Freshness', subtitle: pipelineStatus ?? '—', endpoint: '/api/v2/overview', rows: [{ pipeline_status: pipelineStatus, pipeline_age_hours: pipelineAgeHours, market_status: marketStatus, last_repriced: lastRepriced, refreshed_at: refreshedAt, as_of: overview?.as_of }] })}
                 style={{ padding: '10px 12px', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, cursor: 'pointer' }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: pipelineStatus === 'fresh' ? 'var(--text2)' : '#f59e0b' }}>
-                  Data: {pipelineStatus ?? '—'}
+                <div style={{ fontSize: 12, fontWeight: 600, color: pipelineStatus === 'fresh' ? 'var(--text2)' : pipelineStatus === 'weekend' ? '#f59e0b' : '#ef4444' }}>
+                  Data: {pipelineStatus ? pipelineStatus.replace(/_/g, ' ') : '—'}
                 </div>
-                <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 2 }}>last: {lastRepriced ?? '—'}</div>
+                <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 2 }}>
+                  {pipelineAgeHours != null ? `${pipelineAgeHours}h ago · market ${marketStatus ?? '?'}` : ''}
+                  {refreshedAt ? ` · refreshed ${new Date(refreshedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}
+                </div>
+                {(marketStatus === 'weekend' || marketStatus === 'closed' || pipelineAgeHours != null && pipelineAgeHours > 12) && (
+                  <button onClick={(e) => { e.stopPropagation(); refetchOverview(); }} style={{
+                    marginTop: 6, padding: '4px 10px', fontSize: 10, fontWeight: 700,
+                    background: 'var(--bg2)', color: '#60a5fa', border: '1px solid var(--border)',
+                    borderRadius: 4, cursor: 'pointer',
+                  }}>
+                    {marketStatus === 'weekend' || marketStatus === 'closed' ? 'Off-market refresh' : 'Refresh data'}
+                  </button>
+                )}
               </div>
               {propHealth?.execution_readiness && (() => {
                 const er = propHealth.execution_readiness
