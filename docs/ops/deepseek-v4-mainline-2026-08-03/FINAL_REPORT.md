@@ -1,51 +1,53 @@
 # DeepSeek V4 Mainline Integration Report
 
-**Verdict: CONDITIONAL_PASS** (core integration complete; live provider smoke in service runtime and full Playwright route suite not executed here)
+**Verdict: CONDITIONAL_PASS**
 
-## SHAs
+## SHAs (exact)
 
-| Item | SHA |
-|------|-----|
+| Item | Value |
+|------|--------|
+| Branch | `fix/deepseek-v4-routing-mainline` |
+| Worktree | `/home/johnclaw/tradeai-wt-deepseek-v4-mainline` |
 | origin/main base | `ddef4613ec362e6c32307160aba8f4a56b835a20` |
-| Branch tip (pre-this-report commits may follow) | `cbdf2ccc4c3410416231638d543a1644f55dcafd` |
-| Backup before cleanup | `11707968e02908980761bd8f5b61855f078f4326` (`backup/deepseek-v4-mainline-before-cleanup`) |
+| Final code SHA | `a6868431fba802a201f67b8e519e10fcbfa76974` |
+| Backup pre-cleanup | `11707968e02908980761bd8f5b61855f078f4326` (`backup/deepseek-v4-mainline-before-cleanup`) |
 
 ## Exact models
 
-- `deepseek-v4-flash`
-- `deepseek-v4-pro`
+- Flash: `deepseek-v4-flash`
+- Pro: `deepseek-v4-pro`
 
 ## Policies
 
-| Policy | Model | Thinking | Effort |
-|--------|-------|----------|--------|
-| FAST | deepseek-v4-flash | off | — |
-| FAST_THINK | deepseek-v4-flash | on | high |
-| PRO | deepseek-v4-pro | off | — |
-| PRO_THINK | deepseek-v4-pro | on | high |
-| PRO_MAX | deepseek-v4-pro | on | max (operator confirm) |
+| Policy | Model | Thinking | Effort | Confirm |
+|--------|-------|----------|--------|---------|
+| FAST | deepseek-v4-flash | disabled | — | no |
+| FAST_THINK | deepseek-v4-flash | enabled | high | no |
+| PRO | deepseek-v4-pro | disabled | — | no |
+| PRO_THINK | deepseek-v4-pro | enabled | high | no |
+| PRO_MAX | deepseek-v4-pro | enabled | max | **yes** |
 
-Ambiguous `deepseek-v4` → **AMBIGUOUS_LEGACY_LANE** (rejected).
-Legacy `deepseek-chat` / `deepseek-reasoner` → rejected.
+- Ambiguous `deepseek-v4` → **AMBIGUOUS_LEGACY_LANE** (rejected, never available)
+- Legacy `deepseek-chat` / `deepseek-reasoner` → rejected as model IDs
 
-## Key fixes
+## Tests executed
 
-1. Clean history: no raw audit commits (a167b8b3 / 11707968 removed).
-2. Process gate preserves operator_confirmed, response_json, provenance, cost fields.
-3. relative_units separated from estimated_cost_usd.
-4. Process DB sync + cost caps (process + optional global env).
-5. Strict JSON schemas + one repair for named process schemas.
-6. Tool-loop helper preserves reasoning_content.
-7. Frontend uses deepseek-v4-pro / Flash labels (not V4 R1).
+| Command | Result |
+|---------|--------|
+| `pytest tests/test_llm_model_registry.py tests/test_llm_governance_no_override.py tests/test_no_broker_write_bypass.py` | **31 passed** |
+| `npx tsc -p tsconfig.json --noEmit` | **PASS** (0 errors after deepseek_pro fix) |
+| `npm run build` (design guard + chip scope + tsc + vite) | **PASS** |
+| Live provider smoke (this worktree run) | **NOT RUN** |
+| portfolio-server DeepSeek env names | **FAIL historically** (process lacks deepseek_* keys; see SERVICE_RUNTIME_OPERATOR_STEPS.md) |
+| Full Playwright V3 route/subtab suite | **NOT RUN** (static inventory only: 71 route hits in /tmp) |
 
-## Tests run
+## Deployed / pushed
 
-- `pytest tests/test_llm_model_registry.py tests/test_llm_governance_no_override.py tests/test_no_broker_write_bypass.py` → **31 passed**
-- `npx tsc --noEmit` → **PASS** (after deepseek_pro fix)
-- `npm run build` → **PASS**
-- Live service-runtime key on portfolio-server → **not re-probed this run** (prior: FAIL — no DeepSeek env on process)
-- Full Playwright V3 subtab suite → **NOT RUN**
+**DEPLOYED: NO** · **PUSHED: NO** (await operator approval)
 
-## Deployed
+## Residual risks
 
-**NO** · **Pushed: NO** (awaiting operator approval)
+1. Service runtime must receive `DEEPSEEK_API_KEY` / legacy `deepseek_tradeai` via systemd EnvironmentFile before production DeepSeek works.
+2. Full process-schema suite coverage beyond four named schemas is partial.
+3. Full V3 URL+heading+active-tab screenshot maturity suite not executed.
+4. Rebase/merge to main still requires PR review; origin/main diverged history was rebuilt cleanly from ddef4613.
