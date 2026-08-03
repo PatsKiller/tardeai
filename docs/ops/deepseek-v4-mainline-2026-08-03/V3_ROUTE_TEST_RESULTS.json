@@ -1,0 +1,285 @@
+{
+  "generated_at": "2026-08-03T14:37:30.258508+00:00",
+  "base_url": "http://127.0.0.1:7777/v3",
+  "duration_s": 21.64,
+  "passed": 14,
+  "total": 20,
+  "all_pass": false,
+  "screenshot_dir": "/tmp/deepseek-v4-mainline-v3-screenshots",
+  "results": [
+    {
+      "path": "/",
+      "url_expected": "http://127.0.0.1:7777/v3/",
+      "tabs": [],
+      "pass": true,
+      "errors": [],
+      "screenshot": "/tmp/deepseek-v4-mainline-v3-screenshots/home.png",
+      "url_actual": "http://127.0.0.1:7777/v3/?_cc_reload=1785767828957",
+      "heading_ok": true,
+      "console_errors": [],
+      "screenshot_sha256": "c5cf12eac780556e"
+    },
+    {
+      "path": "portfolio",
+      "url_expected": "http://127.0.0.1:7777/v3/portfolio",
+      "tabs": [
+        {
+          "tab": "Holdings",
+          "pass": false,
+          "errors": [
+            "active_marker_missing"
+          ]
+        },
+        {
+          "tab": "Allocation",
+          "pass": true,
+          "active_via": "url"
+        }
+      ],
+      "pass": false,
+      "errors": [],
+      "screenshot": null,
+      "url_actual": "http://127.0.0.1:7777/v3/portfolio",
+      "heading_ok": true,
+      "console_errors": []
+    },
+    {
+      "path": "portfolio/re-entry",
+      "url_expected": "http://127.0.0.1:7777/v3/portfolio/re-entry",
+      "tabs": [],
+      "pass": true,
+      "errors": [],
+      "screenshot": "/tmp/deepseek-v4-mainline-v3-screenshots/portfolio_re-entry.png",
+      "url_actual": "http://127.0.0.1:7777/v3/portfolio/re-entry",
+      "heading_ok": true,
+      "console_errors": [],
+      "screenshot_sha256": "d77b4e304d96f0b8"
+    },
+    {
+      "path": "risk",
+      "url_expected": "http://127.0.0.1:7777/v3/risk",
+      "tabs": [],
+      "pass": true,
+      "errors": [],
+      "screenshot": "/tmp/deepseek-v4-mainline-v3-screenshots/risk.png",
+      "url_actual": "http://127.0.0.1:7777/v3/risk",
+      "heading_ok": true,
+      "console_errors": [],
+      "screenshot_sha256": "965d15e562613a68"
+    },
+    {
+      "path": "trading",
+      "url_expected": "http://127.0.0.1:7777/v3/trading",
+      "tabs": [],
+      "pass": true,
+      "errors": [],
+      "screenshot": "/tmp/deepseek-v4-mainline-v3-screenshots/trading.png",
+      "url_actual": "http://127.0.0.1:7777/v3/trading",
+      "heading_ok": true,
+      "console_errors": [],
+      "screenshot_sha256": "d58f57b4bc04a84b"
+    },
+    {
+      "path": "active-trader",
+      "url_expected": "http://127.0.0.1:7777/v3/active-trader",
+      "tabs": [],
+      "pass": true,
+      "errors": [],
+      "screenshot": "/tmp/deepseek-v4-mainline-v3-screenshots/active-trader.png",
+      "url_actual": "http://127.0.0.1:7777/v3/active-trader",
+      "heading_ok": true,
+      "console_errors": [],
+      "screenshot_sha256": "ac5f25427d8c62f0"
+    },
+    {
+      "path": "strategy",
+      "url_expected": "http://127.0.0.1:7777/v3/strategy",
+      "tabs": [],
+      "pass": true,
+      "errors": [],
+      "screenshot": "/tmp/deepseek-v4-mainline-v3-screenshots/strategy.png",
+      "url_actual": "http://127.0.0.1:7777/v3/strategy",
+      "heading_ok": true,
+      "console_errors": [],
+      "screenshot_sha256": "21c30d21e46f39a1"
+    },
+    {
+      "path": "watch",
+      "url_expected": "http://127.0.0.1:7777/v3/watch",
+      "tabs": [],
+      "pass": true,
+      "errors": [],
+      "screenshot": "/tmp/deepseek-v4-mainline-v3-screenshots/watch.png",
+      "url_actual": "http://127.0.0.1:7777/v3/watch?tab=watchlist",
+      "heading_ok": true,
+      "console_errors": [],
+      "screenshot_sha256": "325cab518c9ec541"
+    },
+    {
+      "path": "defense",
+      "url_expected": "http://127.0.0.1:7777/v3/defense",
+      "tabs": [],
+      "pass": false,
+      "errors": [
+        "console:Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+      ],
+      "screenshot": null,
+      "url_actual": "http://127.0.0.1:7777/v3/defense",
+      "heading_ok": true,
+      "console_errors": [
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+      ]
+    },
+    {
+      "path": "agents",
+      "url_expected": "http://127.0.0.1:7777/v3/agents",
+      "tabs": [],
+      "pass": true,
+      "errors": [],
+      "screenshot": "/tmp/deepseek-v4-mainline-v3-screenshots/agents.png",
+      "url_actual": "http://127.0.0.1:7777/v3/agents",
+      "heading_ok": true,
+      "console_errors": [],
+      "screenshot_sha256": "b8e5dfb7581dd551"
+    },
+    {
+      "path": "intelligence",
+      "url_expected": "http://127.0.0.1:7777/v3/intelligence",
+      "tabs": [],
+      "pass": true,
+      "errors": [],
+      "screenshot": "/tmp/deepseek-v4-mainline-v3-screenshots/intelligence.png",
+      "url_actual": "http://127.0.0.1:7777/v3/intelligence",
+      "heading_ok": true,
+      "console_errors": [],
+      "screenshot_sha256": "332042b943f32a59"
+    },
+    {
+      "path": "research-intelligence",
+      "url_expected": "http://127.0.0.1:7777/v3/research-intelligence",
+      "tabs": [],
+      "pass": false,
+      "errors": [
+        "console:Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+      ],
+      "screenshot": null,
+      "url_actual": "http://127.0.0.1:7777/v3/research-intelligence",
+      "heading_ok": true,
+      "console_errors": [
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+      ]
+    },
+    {
+      "path": "hermes",
+      "url_expected": "http://127.0.0.1:7777/v3/hermes",
+      "tabs": [],
+      "pass": true,
+      "errors": [],
+      "screenshot": "/tmp/deepseek-v4-mainline-v3-screenshots/hermes.png",
+      "url_actual": "http://127.0.0.1:7777/v3/hermes",
+      "heading_ok": true,
+      "console_errors": [],
+      "screenshot_sha256": "caa4c3c79e9ab131"
+    },
+    {
+      "path": "reports",
+      "url_expected": "http://127.0.0.1:7777/v3/reports",
+      "tabs": [],
+      "pass": false,
+      "errors": [
+        "console:Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+      ],
+      "screenshot": null,
+      "url_actual": "http://127.0.0.1:7777/v3/reports",
+      "heading_ok": true,
+      "console_errors": [
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+      ]
+    },
+    {
+      "path": "rotation",
+      "url_expected": "http://127.0.0.1:7777/v3/rotation",
+      "tabs": [],
+      "pass": true,
+      "errors": [],
+      "screenshot": "/tmp/deepseek-v4-mainline-v3-screenshots/rotation.png",
+      "url_actual": "http://127.0.0.1:7777/v3/rotation",
+      "heading_ok": true,
+      "console_errors": [],
+      "screenshot_sha256": "4db1408fc3377086"
+    },
+    {
+      "path": "health",
+      "url_expected": "http://127.0.0.1:7777/v3/health",
+      "tabs": [],
+      "pass": false,
+      "errors": [
+        "heading_missing for /health: Health",
+        "console:Error: Minified React error #310; visit https://reactjs.org/docs/error-decoder.html?invariant=310 fo"
+      ],
+      "screenshot": null,
+      "url_actual": "http://127.0.0.1:7777/v3/health",
+      "headings": [],
+      "console_errors": [
+        "Error: Minified React error #310; visit https://reactjs.org/docs/error-decoder.html?invariant=310 for the full message or use the non-minified dev environment for full errors and additional helpful warnings.\n    at hl (http://127.0.0.1:7777/v3/assets/index-DjyIvlDb.js:38:17629)\n    at Object.BV [as useMemo] (http://127.0.0.1:7777/v3/assets/index-DjyIvlDb.js:38:21323)\n    at Zr.useMemo (http://127.0.0.1:7777/v3/assets/index-DjyIvlDb.js:9:6253)\n    at uet (http://127.0.0.1:7777/v3/assets/index-DjyIvlDb.js:299:59995)\n    at eI (http://127.0.0.1:7777/v3/assets/index-DjyIvlDb.js:38:17031)\n    at g5 (http://127.0.0.1:7777/v3/assets/index-DjyIvlDb.js:40:3143)\n    at xG (http://127.0.0.1:7777/v3/assets/index-DjyIvlDb.js:40:44880)\n    at hG (http://127.0.0.1:7777/v3/assets/index-DjyIvlDb.js:40:39822)\n    at yie (http://127.0.0.1:7777/v3/assets/index-DjyIvlDb.js:40:39748)\n    at $k (http://127.0.0.1:7777/v3/assets/index-DjyIvlDb.js:40:39598)",
+        "Minified React error #310; visit https://reactjs.org/docs/error-decoder.html?invariant=310 for the full message or use the non-minified dev environment for full errors and additional helpful warnings."
+      ]
+    },
+    {
+      "path": "consumption",
+      "url_expected": "http://127.0.0.1:7777/v3/consumption",
+      "tabs": [],
+      "pass": false,
+      "errors": [
+        "console:Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+      ],
+      "screenshot": null,
+      "url_actual": "http://127.0.0.1:7777/v3/consumption",
+      "heading_ok": true,
+      "console_errors": [
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+      ]
+    },
+    {
+      "path": "system",
+      "url_expected": "http://127.0.0.1:7777/v3/system",
+      "tabs": [],
+      "pass": true,
+      "errors": [],
+      "screenshot": "/tmp/deepseek-v4-mainline-v3-screenshots/system.png",
+      "url_actual": "http://127.0.0.1:7777/v3/system",
+      "heading_ok": true,
+      "console_errors": [],
+      "screenshot_sha256": "7cd791d81a3f88a5"
+    },
+    {
+      "path": "journal",
+      "url_expected": "http://127.0.0.1:7777/v3/journal",
+      "tabs": [],
+      "pass": true,
+      "errors": [],
+      "screenshot": "/tmp/deepseek-v4-mainline-v3-screenshots/journal.png",
+      "url_actual": "http://127.0.0.1:7777/v3/journal",
+      "heading_ok": true,
+      "console_errors": [],
+      "screenshot_sha256": "7f5e910f5177e8f0"
+    },
+    {
+      "path": "retirement",
+      "url_expected": "http://127.0.0.1:7777/v3/retirement",
+      "tabs": [],
+      "pass": true,
+      "errors": [],
+      "screenshot": "/tmp/deepseek-v4-mainline-v3-screenshots/retirement.png",
+      "url_actual": "http://127.0.0.1:7777/v3/retirement",
+      "heading_ok": true,
+      "console_errors": [],
+      "screenshot_sha256": "709d00f974082958"
+    }
+  ]
+}
