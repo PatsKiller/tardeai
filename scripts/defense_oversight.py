@@ -307,7 +307,8 @@ def run_paid_review(cur, seats=None) -> dict:
             continue
         t0 = time.time()
         try:
-            raw = generate(prompt, lane="deepseek-v4", timeout=180)
+            raw = generate(prompt, lane="deepseek-flash", timeout=120,
+                           process_id="defense_oversight", task_summary="defense oversight")
             raw = raw if isinstance(raw, str) else json.dumps(raw)
         except Exception as e:
             raw = f"__error__ {e}"

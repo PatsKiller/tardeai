@@ -91,7 +91,8 @@ Flag ONLY genuine compliance issues. Respond JSON:
 
     try:
         from llm_lane import generate
-        text = generate(prompt, lane="deepseek-v4", timeout=90)
+        text = generate(prompt, lane="deepseek-flash", timeout=90,
+                        process_id="rebalance_verifier", task_summary="rebalance verify")
         print(f"[verifier] Response: {len(text)} chars")
     except Exception as e:
         print(f"[verifier] API error: {e}")

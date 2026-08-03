@@ -202,7 +202,8 @@ EXPERT 2 (Grok): {grok[:2000]}
 EXPERT 3 (GPT-4o): {gpt4o[:2000]}
 
 Decision type: {decision_type}. Synthesize now."""
-        out = llm_lane.generate(prompt, lane="deepseek-v4", timeout=180)
+        out = llm_lane.generate(prompt, lane="deepseek-flash", timeout=120,
+                                process_id="alex_hygiene", task_summary="alex hygiene")
         if out and not str(out).startswith("LLM error"):
             return {"provider": "deepseek-v4-pro", "synthesis": out.strip(), "ok": True,
                     "input_tokens": 0, "output_tokens": 0}

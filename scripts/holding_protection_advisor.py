@@ -408,7 +408,17 @@ def run(lane="deepseek-flash", symbols=None, limit=12, manual_trigger=False, bat
             # the LOCAL gemma lane — free, never a paid fallback (honours the no-paid-fallback policy).
             if lane != "local":
                 try:
-                    out = llm_lane.generate(prompt, lane="local", timeout=120)
+                    # Fallback: Flash then local (policy — never silent local-only)
+                    try:
+                        if llm_lane.available("deepseek-flash"):
+                            out = llm_lane.generate(
+                                prompt, lane="deepseek-flash", timeout=120,
+                                process_id="holding_protection", task_summary="protection fallback flash",
+                            )
+                        else:
+                            out = llm_lane.generate(prompt, lane="local", timeout=120)
+                    except Exception:
+                        out = llm_lane.generate(prompt, lane="local", timeout=120)
                     used_lane = "local"; fellback += 1
                     print(f"  {sym}: {lane} lane failed ({str(e)[:40]}) -> local gemma fallback (free, no paid)")
                 except Exception as e2:

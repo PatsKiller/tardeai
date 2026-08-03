@@ -165,7 +165,16 @@ def _generate(prompt, tier):
     elif cfg["provider"] == "anthropic":
         try:
             from llm_lane import generate
-            return generate(prompt, lane="deepseek-v4", timeout=120)
+            # Expert tier: Flash by default; USE_PRO=1 for reasoner
+            import os as _os
+            use_pro = _os.getenv("USE_PRO", "").strip().lower() in {"1", "true", "yes", "on"}
+            return generate(
+                prompt,
+                lane="deepseek-v4" if use_pro else "deepseek-flash",
+                timeout=180 if use_pro else 120,
+                process_id="multi_tier_trade_reviewer",
+                task_summary="expert tier",
+            )
         except Exception as e:
             log.warning(f"llm_lane deepseek-v4 failed: {e}")
             return None

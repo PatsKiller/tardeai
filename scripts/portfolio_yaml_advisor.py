@@ -351,7 +351,8 @@ def call_opus(prompt: str, log: logging.Logger) -> Optional[Dict]:
     try:
         from llm_lane import generate
         log.info("  Trying: DeepSeek v4 via llm_lane")
-        raw_text = generate(prompt, lane="deepseek-v4", timeout=180)
+        raw_text = generate(prompt, lane="deepseek-flash", timeout=120,
+                            process_id="portfolio_yaml_advisor", task_summary="yaml advisor")
         if raw_text:
             model_used = "deepseek-v4-pro"
             log.info(f"  DeepSeek v4 response: {len(raw_text):,} chars")

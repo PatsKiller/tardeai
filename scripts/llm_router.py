@@ -63,38 +63,39 @@ DAILY_BUDGET_LIMIT = 1.50  # USD/day — allows cloud fallback when Ollama offli
 
 # ── Task routing — auto-adjusts based on LOCAL_MODEL ─────────────────────
 
-# DeepSeek Flash primary, DeepSeek v4 for high-reasoning, local for fast batch
+# Policy 2026-08-03: DeepSeek Flash primary for ALL agent/cron tasks.
+# Pro (deepseek-v4) is NOT in default chains — operator/manual only via ticket desk.
 _TASK_ROUTING_PRE_GPU = {
     "agent_narrative":          ["deepseek-flash", "local", "grok"],
     "agent_debate":             ["deepseek-flash", "local", "grok"],
     "sector_correlation":       ["deepseek-flash", "local", "grok"],
-    "cio_synthesis":            ["deepseek-v4", "deepseek-flash", "local"],
+    "cio_synthesis":            ["deepseek-flash", "local", "grok"],
     "catalyst_classification":  ["deepseek-flash", "local"],
     "sentiment":                ["deepseek-flash", "local"],
-    "code_generation":          ["deepseek-v4", "deepseek-flash"],
-    "fast_summary":             ["local"],
+    "code_generation":          ["deepseek-flash", "local"],
+    "fast_summary":             ["deepseek-flash", "local"],
     "default":                  ["deepseek-flash", "local", "grok"],
 }
 
-# Post-GPU routing: local is high quality, but DeepSeek still primary for cloud
+# Post-GPU: still Flash-first for fleet policy (local is free fallback, not primary cloud)
 _TASK_ROUTING_POST_GPU = {
-    "agent_narrative":          ["local", "deepseek-flash", "grok"],
-    "agent_debate":             ["local", "deepseek-flash", "grok"],
-    "sector_correlation":       ["local", "deepseek-flash", "grok"],
-    "cio_synthesis":            ["deepseek-v4", "local", "deepseek-flash"],
-    "catalyst_classification":  ["local", "deepseek-flash"],
-    "sentiment":                ["local"],
-    "code_generation":          ["deepseek-v4", "deepseek-flash"],
-    "fast_summary":             ["local"],
-    "default":                  ["local", "deepseek-flash", "grok"],
+    "agent_narrative":          ["deepseek-flash", "local", "grok"],
+    "agent_debate":             ["deepseek-flash", "local", "grok"],
+    "sector_correlation":       ["deepseek-flash", "local", "grok"],
+    "cio_synthesis":            ["deepseek-flash", "local", "grok"],
+    "catalyst_classification":  ["deepseek-flash", "local"],
+    "sentiment":                ["deepseek-flash", "local"],
+    "code_generation":          ["deepseek-flash", "local"],
+    "fast_summary":             ["deepseek-flash", "local"],
+    "default":                  ["deepseek-flash", "local", "grok"],
 }
 
 _HIGH_IMPACT_ROUTING = {
-    "cio_synthesis":        ["deepseek-v4", "deepseek-flash", "local"],
-    "agent_narrative":      ["deepseek-flash", "deepseek-v4", "local"],
-    "agent_debate":         ["deepseek-flash", "deepseek-v4", "local"],
-    "sector_correlation":   ["deepseek-flash", "deepseek-v4", "local"],
-    "default":              ["deepseek-v4", "deepseek-flash", "local", "grok"],
+    "cio_synthesis":        ["deepseek-flash", "local", "grok"],
+    "agent_narrative":      ["deepseek-flash", "local", "grok"],
+    "agent_debate":         ["deepseek-flash", "local", "grok"],
+    "sector_correlation":   ["deepseek-flash", "local", "grok"],
+    "default":              ["deepseek-flash", "local", "grok"],
 }
 
 # Select routing table based on current model
@@ -166,15 +167,21 @@ def _call_local(prompt: str, max_tokens: int = 800, timeout: int = None) -> dict
 
 
 def _call_anthropic(prompt: str, max_tokens: int = 2000) -> dict:
-    """DeepSeek v4 (replaces paid Claude). Falls back through llm_lane chain."""
+    """Legacy Claude alias → DeepSeek Flash (Pro only if USE_PRO=1)."""
     t0 = time.time()
     try:
         import llm_lane
-        out = llm_lane.generate(prompt, lane="deepseek-v4", timeout=120)
+        use_pro = os.getenv("USE_PRO", "").strip().lower() in {"1", "true", "yes", "on"}
+        lane = "deepseek-v4" if use_pro else "deepseek-flash"
+        out = llm_lane.generate(
+            prompt, lane=lane, timeout=180 if use_pro else 120,
+            process_id="llm_router", task_summary="legacy_anthropic_alias",
+        )
         latency = round(time.time() - t0, 2)
         if out and not str(out).startswith("LLM error"):
             return {
-                "model_used": "deepseek-v4-pro", "provider": "deepseek",
+                "model_used": "deepseek-reasoner" if use_pro else "deepseek-chat",
+                "provider": "deepseek",
                 "response": out.strip(), "latency": latency,
                 "success": bool(out.strip()),
                 "cost_estimate": 0.0,
@@ -187,15 +194,18 @@ def _call_anthropic(prompt: str, max_tokens: int = 2000) -> dict:
 
 
 def _call_openai(prompt: str, max_tokens: int = 2000) -> dict:
-    """DeepSeek Flash (replaces paid OpenAI GPT-4o). Falls back through llm_lane chain."""
+    """DeepSeek Flash (fleet primary — policy 2026-08-03)."""
     t0 = time.time()
     try:
         import llm_lane
-        out = llm_lane.generate(prompt, lane="deepseek-flash", timeout=90)
+        out = llm_lane.generate(
+            prompt, lane="deepseek-flash", timeout=90,
+            process_id="llm_router", task_summary="agent_flash",
+        )
         latency = round(time.time() - t0, 2)
         if out and not str(out).startswith("LLM error"):
             return {
-                "model_used": "deepseek-v4-flash", "provider": "deepseek",
+                "model_used": "deepseek-chat", "provider": "deepseek",
                 "response": out.strip(), "latency": latency,
                 "success": bool(out.strip()),
                 "cost_estimate": 0.0,
