@@ -36291,13 +36291,13 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 b = body or {}
                 pid = str(b.get("process_id") or "").strip()
                 lane = str(b.get("lane") or "grok").strip().lower()
-                prompt = str(b.get("prompt") or "").strip()
+                body_prompt = str(b.get("prompt") or "").strip()
                 task = str(b.get("task_summary") or b.get("task") or "").strip()
                 # Body flags must NEVER authorize Pro on this endpoint (ignore completely).
-                if not pid or not prompt:
+                if not pid:
                     return 400, {
                         "ok": False,
-                        "error": "process_id and prompt required",
+                        "error": "process_id required",
                         "reason_code": "LANE_REQUIRED",
                     }
                 if not _lc.is_process_registered(pid):
@@ -36317,17 +36317,23 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                         "requested_policy": classified.get("policy"),
                         "requested_model_id": classified.get("requested_model_id"),
                     }
-                allow = process_allows_policy(pid, classified.get("policy"), classified.get("lane") or lane)
-                if not allow.get("ok"):
-                    return 400, {
-                        "ok": False,
-                        "error": allow.get("error") or "not allowed",
-                        "reason_code": allow.get("reason_code") or "POLICY_NOT_ALLOWED",
-                        "process_id": pid,
-                        "lane": lane,
-                    }
                 kind = classified.get("kind")
                 if kind == "oauth":
+                    if not body_prompt:
+                        return 400, {
+                            "ok": False,
+                            "error": "process_id and prompt required",
+                            "reason_code": "LANE_REQUIRED",
+                        }
+                    allow = process_allows_policy(pid, None, lane)
+                    if not allow.get("ok"):
+                        return 400, {
+                            "ok": False,
+                            "error": allow.get("error") or "not allowed",
+                            "reason_code": allow.get("reason_code") or "POLICY_NOT_ALLOWED",
+                            "process_id": pid,
+                            "lane": lane,
+                        }
                     if not lane_available(lane):
                         return 200, {
                             "ok": False, "lane": lane,
@@ -36335,8 +36341,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                             "reason_code": "OAUTH_LANE_NOT_READY",
                         }
                     text = _lc.gate_and_generate(
-                        prompt, lane=lane, process_id=pid,
-                        task_summary=task or _lc.summarize_prompt(prompt),
+                        body_prompt, lane=lane, process_id=pid,
+                        task_summary=task or _lc.summarize_prompt(body_prompt),
                         manual_trigger=True, timeout=int(b.get("timeout") or 120),
                         model=b.get("model"),
                     )
@@ -36346,16 +36352,45 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                         "advisory_only": True, "billing": "free_oauth",
                         "returned_model": None, "fallback_used": False,
                     }
-                # DeepSeek FAST path only — prefer dedicated smoke process for operator tests
-                ds_lane = classified["lane"]
+                # ── DeepSeek branch: smoke process ONLY ──────────────────────
+                # No other production process may use this generic endpoint.
+                if pid != SMOKE_PROCESS_ID:
+                    return 400, {
+                        "ok": False,
+                        "error": "DeepSeek on run-manual is restricted to deepseek_flash_operator_smoke",
+                        "reason_code": "POLICY_NOT_ALLOWED",
+                        "process_id": pid,
+                        "lane": lane,
+                    }
+                if classified.get("policy") != "FAST" or classified.get("requested_model_id") != "deepseek-v4-flash":
+                    return 400, {
+                        "ok": False,
+                        "error": "Smoke process allows FAST / deepseek-v4-flash only",
+                        "reason_code": "POLICY_NOT_ALLOWED",
+                        "process_id": pid,
+                    }
+                allow = process_allows_policy(pid, "FAST", "deepseek-flash")
+                if not allow.get("ok"):
+                    return 400, {
+                        "ok": False,
+                        "error": allow.get("error") or "not allowed",
+                        "reason_code": allow.get("reason_code") or "POLICY_NOT_ALLOWED",
+                        "process_id": pid,
+                    }
+                from lib.consumption_run_manual import resolve_smoke_prompt, deepseek_readiness_rows
+                try:
+                    prompt = resolve_smoke_prompt(body_prompt)
+                except RuntimeError as pe:
+                    safe = sanitize_provider_error(pe)
+                    return 400, {
+                        "ok": False,
+                        "error": safe.get("error"),
+                        "reason_code": safe.get("reason_code") or "INVALID_SMOKE_PROMPT",
+                        "process_id": pid,
+                    }
+                ds_lane = "deepseek-flash"
                 cfg = allow.get("config") or _lc.get_process_config(pid)
                 max_out = int(cfg.get("max_output_tokens") or 32)
-                # Bound prompt for smoke process
-                max_in = int(cfg.get("max_input_tokens") or 64)
-                if len(prompt) > max_in * 8:  # rough char bound
-                    prompt = prompt[: max_in * 8]
-                # Independent Flash readiness
-                from lib.consumption_run_manual import deepseek_readiness_rows
                 flash_row = next((r for r in deepseek_readiness_rows() if r["lane"] == "deepseek-flash"), None)
                 if not flash_row or not flash_row.get("ready"):
                     return 200, {
@@ -36363,8 +36398,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                         "lane": ds_lane,
                         "error": (flash_row or {}).get("hint") or "DeepSeek Flash not ready",
                         "reason_code": (flash_row or {}).get("reason_code") or "MODEL_NOT_AVAILABLE",
-                        "requested_policy": classified.get("policy"),
-                        "requested_model_id": classified.get("requested_model_id"),
+                        "requested_policy": "FAST",
+                        "requested_model_id": "deepseek-v4-flash",
                         "returned_model": None,
                         "fallback_used": False,
                         "configured": (flash_row or {}).get("configured"),
@@ -36372,11 +36407,11 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                         "model_available": (flash_row or {}).get("model_available"),
                     }
                 result = _lc.gate_and_generate(
-                    prompt, lane=ds_lane, process_id=pid,
-                    task_summary=task or _lc.summarize_prompt(prompt),
+                    prompt, lane=ds_lane, process_id=SMOKE_PROCESS_ID,
+                    task_summary=task or "operator DeepSeek Flash smoke",
                     manual_trigger=True, timeout=int(b.get("timeout") or 60),
-                    model=classified.get("requested_model_id") or "deepseek-v4-flash",
-                    policy=classified.get("policy") or "FAST",
+                    model="deepseek-v4-flash",
+                    policy="FAST",
                     max_tokens=max_out,
                     return_provenance=True,
                 )

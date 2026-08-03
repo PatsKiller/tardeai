@@ -78,11 +78,14 @@ def test_check_cost_cap_global(monkeypatch):
 def test_gate_blocks_on_cost_cap(monkeypatch):
     from lib import llm_consumption as lc
 
+    # Non-smoke paid routes require an explicit global USD cap before reserve.
+    monkeypatch.setenv("LLM_GLOBAL_DAILY_USD_CAP", "100")
     monkeypatch.setattr(lc, "should_call", lambda *a, **k: {"allow": True, "mode": "automated"})
     monkeypatch.setattr(lc, "cost_persistence_available", lambda: True)
     monkeypatch.setattr(lc, "get_process_config", lambda pid: {
         "registered": True, "mode": "manual", "allowed_lanes": ["fast"],
-        "max_input_tokens": 64, "max_output_tokens": 32, "daily_cost_cap_usd": 5.0,
+        "max_input_tokens": 64, "max_output_tokens": 32,
+        "daily_cost_cap_usd": 5.0, "daily_soft_cap": 20,
     })
     monkeypatch.setattr(
         lc, "reserve_projected_cost",
@@ -101,11 +104,13 @@ def test_no_downgrade_after_cost_block(monkeypatch):
         called["n"] += 1
         raise AssertionError("should not call model after cost block")
 
+    monkeypatch.setenv("LLM_GLOBAL_DAILY_USD_CAP", "100")
     monkeypatch.setattr(lc, "should_call", lambda *a, **k: {"allow": True, "mode": "manual"})
     monkeypatch.setattr(lc, "cost_persistence_available", lambda: True)
     monkeypatch.setattr(lc, "get_process_config", lambda pid: {
         "registered": True, "mode": "manual", "allowed_lanes": ["fast"],
-        "max_input_tokens": 64, "max_output_tokens": 32, "daily_cost_cap_usd": 1.0,
+        "max_input_tokens": 64, "max_output_tokens": 32,
+        "daily_cost_cap_usd": 1.0, "daily_soft_cap": 20,
     })
     monkeypatch.setattr(
         lc, "reserve_projected_cost",

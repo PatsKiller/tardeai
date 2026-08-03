@@ -139,11 +139,16 @@ def _deepseek_generate(
         raise RuntimeError(f"{code}: {e}") from e
 
     if not resp.ok or not resp.content:
-        raise RuntimeError(
+        err = RuntimeError(
             f"{resp.error_class or 'DEEPSEEK_FAILED'}: "
             f"policy={resp.requested_policy} model={resp.requested_model_id} "
             f"returned={resp.returned_model} {resp.error_message or ''}".strip()
         )
+        # Propagate billable-attempt flags for reservation settle
+        err.request_sent = bool(getattr(resp, "request_sent", False))  # type: ignore[attr-defined]
+        err.possibly_billable = bool(getattr(resp, "possibly_billable", False))  # type: ignore[attr-defined]
+        err.estimated_cost_usd = getattr(resp, "estimated_cost_usd", None)  # type: ignore[attr-defined]
+        raise err
     # provenance dict for callers that inspect usage via consumption logger
     usage = dict(resp.usage or {})
     usage["_tradeai"] = {
@@ -161,6 +166,8 @@ def _deepseek_generate(
         "finish_reason": resp.finish_reason,
         "raw_response_hash": resp.raw_response_hash,
         "fallback_used": resp.fallback_used,
+        "request_sent": bool(getattr(resp, "request_sent", False)),
+        "possibly_billable": bool(getattr(resp, "possibly_billable", False)),
     }
     return resp.content, usage, resp
 

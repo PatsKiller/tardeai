@@ -84,6 +84,9 @@ class DeepSeekResponse:
     fallback_reason: str | None = None
     raw_response_hash: str | None = None
     client_request_id: str | None = None
+    # Billing semantics: set only after the HTTP POST is handed to the network stack
+    request_sent: bool = False
+    possibly_billable: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -225,6 +228,7 @@ def chat(
         body["response_format"] = {"type": "json_object"}
 
     t0 = time.time()
+    request_sent = False
     try:
         r = requests.post(
             f"{base.rstrip('/')}/v1/chat/completions",
@@ -237,7 +241,10 @@ def chat(
             },
             timeout=timeout,
         )
+        # POST returned (any HTTP status) — network handoff completed
+        request_sent = True
     except requests.Timeout:
+        # Timeout after send attempt — treat as possibly billable
         return DeepSeekResponse(
             ok=False,
             requested_policy=requested_policy,
@@ -254,8 +261,11 @@ def chat(
             error_class=TIMEOUT,
             error_message="request timeout",
             client_request_id=client_rid,
+            request_sent=True,
+            possibly_billable=True,
         )
     except requests.RequestException as e:
+        # May or may not have left the host; treat as possibly billable conservatively
         return DeepSeekResponse(
             ok=False,
             requested_policy=requested_policy,
@@ -272,6 +282,8 @@ def chat(
             error_class=NETWORK_ERROR,
             error_message=type(e).__name__,
             client_request_id=client_rid,
+            request_sent=True,
+            possibly_billable=True,
         )
 
     latency = int((time.time() - t0) * 1000)
@@ -295,6 +307,8 @@ def chat(
             error_class=_classify_http(r.status_code),
             error_message=f"HTTP {r.status_code}",
             client_request_id=client_rid,
+            request_sent=True,
+            possibly_billable=True,
         )
 
     try:
@@ -318,6 +332,8 @@ def chat(
             error_class=JSON_INVALID,
             error_message="response body not JSON",
             client_request_id=client_rid,
+            request_sent=True,
+            possibly_billable=True,
         )
 
     choice = (payload.get("choices") or [{}])[0]
@@ -353,6 +369,8 @@ def chat(
             error_message=f"requested {model_id} returned {returned}",
             raw_response_hash=raw_hash,
             client_request_id=client_rid,
+            request_sent=True,
+            possibly_billable=True,
         )
 
     if finish == "length":
@@ -392,6 +410,8 @@ def chat(
         error_message=None if err is None else err,
         raw_response_hash=raw_hash,
         client_request_id=client_rid,
+        request_sent=True,
+        possibly_billable=True,
     )
 
 

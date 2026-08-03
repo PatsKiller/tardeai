@@ -52,6 +52,8 @@ POLICY_TO_MODEL = {
 }
 
 SMOKE_PROCESS_ID = "deepseek_flash_operator_smoke"
+# Server-defined fixed smoke prompt — never trust client body for provider content
+SMOKE_FIXED_PROMPT = "Reply with exactly: OK"
 
 # Capability probe cache (process-local)
 _PROBE_LOCK = threading.Lock()
@@ -198,9 +200,44 @@ def projected_max_cost_usd(*, model_id: str, max_input_tokens: int, max_output_t
     val = est.get("estimated_cost_usd")
     if val is None:
         # Fail closed for paid: require pricing snapshot
-        raise RuntimeError("COST_CAP_EXCEEDED: pricing unavailable for projected cost")
+        raise RuntimeError("COST_CONFIGURATION_INVALID: pricing unavailable for projected cost")
     # Conservative headroom
     return float(val) * 1.15
+
+
+def validate_paid_cap_config(cfg: dict, *, require_global: bool = False) -> None:
+    """Require explicit process USD + request caps. Missing/malformed → fail closed (never unlimited)."""
+    import os
+    raw_usd = cfg.get("daily_cost_cap_usd")
+    raw_req = cfg.get("daily_soft_cap")
+    try:
+        usd = float(raw_usd) if raw_usd is not None else None
+    except (TypeError, ValueError):
+        usd = None
+    try:
+        req = int(raw_req) if raw_req is not None else None
+    except (TypeError, ValueError):
+        req = None
+    if usd is None or usd <= 0:
+        raise RuntimeError("COST_CONFIGURATION_INVALID: process daily_cost_cap_usd required")
+    if req is None or req <= 0:
+        raise RuntimeError("COST_CONFIGURATION_INVALID: process daily request cap required")
+    if require_global:
+        graw = os.environ.get("LLM_GLOBAL_DAILY_USD_CAP")
+        try:
+            gcap = float(graw) if graw not in (None, "") else None
+        except (TypeError, ValueError):
+            gcap = None
+        if gcap is None or gcap <= 0:
+            raise RuntimeError("COST_CONFIGURATION_INVALID: global daily USD cap required")
+
+
+def resolve_smoke_prompt(body_prompt: str | None) -> str:
+    """Server-fixed smoke prompt. Body may omit or match exactly; otherwise INVALID_SMOKE_PROMPT."""
+    p = (body_prompt or "").strip()
+    if not p or p == SMOKE_FIXED_PROMPT:
+        return SMOKE_FIXED_PROMPT
+    raise RuntimeError("INVALID_SMOKE_PROMPT: smoke process uses a fixed server prompt only")
 
 
 def sanitize_provider_error(exc: BaseException | str) -> dict[str, str]:
@@ -220,6 +257,8 @@ def sanitize_provider_error(exc: BaseException | str) -> dict[str, str]:
         ("COST_CAP", "COST_CAP_EXCEEDED", "Cost or request cap would be exceeded"),
         ("COST_PERSISTENCE", "COST_CAP_EXCEEDED", "Cost accounting unavailable; paid call blocked"),
         ("INPUT_LIMIT", "INPUT_LIMIT_EXCEEDED", "Prompt exceeds process input token limit"),
+        ("INVALID_SMOKE_PROMPT", "INVALID_SMOKE_PROMPT", "Smoke prompt is invalid for this process"),
+        ("COST_CONFIGURATION", "COST_CONFIGURATION_INVALID", "Paid cost caps are not configured"),
         ("PROCESS_NOT_REGISTERED", "PROCESS_NOT_REGISTERED", "process_id is not registered"),
         ("POLICY_NOT_ALLOWED", "POLICY_NOT_ALLOWED", "Policy or lane not allowed for process"),
         ("HTTP_5", "PROVIDER_UNAVAILABLE", "Provider temporarily unavailable"),

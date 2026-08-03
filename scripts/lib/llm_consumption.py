@@ -631,26 +631,39 @@ def reserve_projected_cost(
     *,
     model_id: str | None = None,
     metadata: dict | None = None,
+    process_config: dict | None = None,
+    global_cap: float | None = None,
 ) -> int:
     """Atomically reserve projected USD + one request slot under a transaction lock.
+
+    process_config MUST be resolved and validated *before* this call (immutable snapshot).
+    This function must not call get_process_config (which may rollback) after locks.
 
     Single transaction:
       1) pg_advisory_xact_lock (global namespace + process key)
       2) recover stale reserved rows (conservative settle)
-      3) read ledger paid spend + open holds + request counts
+      3) read ledger paid spend + request counts (using cur only)
       4) enforce process/global USD caps and request-per-day cap
       5) INSERT reservation status=reserved
       6) COMMIT
 
-    Concurrent requests cannot both pass when combined projected cost exceeds a cap.
-    Fail-closed on persistence failure.
+    Any error after lock acquisition rolls back the entire operation.
     """
     if not cost_persistence_available():
         raise RuntimeError("COST_PERSISTENCE_UNAVAILABLE: paid execution blocked")
+    if process_config is None:
+        raise RuntimeError("COST_CONFIGURATION_INVALID: process_config required before reservation")
+    cfg = process_config
+    # Explicit caps required — never treat missing as unlimited
+    try:
+        proc_cap = float(cfg["daily_cost_cap_usd"])
+        soft_n = int(cfg["daily_soft_cap"])
+    except (KeyError, TypeError, ValueError):
+        raise RuntimeError("COST_CONFIGURATION_INVALID: process caps missing or malformed")
+    if proc_cap <= 0 or soft_n <= 0:
+        raise RuntimeError("COST_CONFIGURATION_INVALID: process caps must be positive")
+
     ensure_schema()
-    import os
-    gcap_raw = os.environ.get("LLM_GLOBAL_DAILY_USD_CAP")
-    gcap = float(gcap_raw) if gcap_raw not in (None, "") else None
     proj = float(projected_usd or 0)
     if proj < 0:
         proj = 0.0
@@ -659,40 +672,26 @@ def reserve_projected_cost(
     cur = conn.cursor()
     try:
         ns, pkey = _ledger_lock_keys(process_id)
-        # Transaction-scoped advisory locks: global ledger + per-process
         cur.execute("SELECT pg_advisory_xact_lock(%s)", (ns,))
         cur.execute("SELECT pg_advisory_xact_lock(%s, %s)", (ns, pkey))
 
         recover_stale_reservations(max_age_minutes=30, cur=cur)
 
-        cfg = get_process_config(process_id)
-        if cfg.get("daily_cost_cap_usd") is None:
-            for p in (_load_registry().get("processes") or []):
-                if p.get("id") == process_id and p.get("daily_cost_cap_usd") is not None:
-                    cfg["daily_cost_cap_usd"] = p.get("daily_cost_cap_usd")
-                    break
-
         spent_p = ledger_paid_usd_today(process_id, cur=cur)
-        proc_cap = cfg.get("daily_cost_cap_usd")
-        if proc_cap is not None and (spent_p + proj) > float(proc_cap):
+        if (spent_p + proj) > proc_cap:
             raise RuntimeError("COST_CAP_EXCEEDED: process cap")
 
-        if gcap is not None:
+        if global_cap is not None:
+            gcap = float(global_cap)
+            if gcap <= 0:
+                raise RuntimeError("COST_CONFIGURATION_INVALID: global cap malformed")
             spent_g = ledger_paid_usd_today(None, cur=cur)
-            if (spent_g + proj) > float(gcap):
+            if (spent_g + proj) > gcap:
                 raise RuntimeError("COST_CAP_EXCEEDED: global cap")
 
-        # Request-per-day from reservation ledger (reserved+settled)
-        soft = cfg.get("daily_soft_cap")
-        if soft is not None:
-            try:
-                soft_n = int(soft)
-            except (TypeError, ValueError):
-                soft_n = 0
-            if soft_n > 0:
-                nreq = ledger_request_count_today(process_id, cur=cur)
-                if nreq + 1 > soft_n:
-                    raise RuntimeError("COST_CAP_EXCEEDED: daily request cap")
+        nreq = ledger_request_count_today(process_id, cur=cur)
+        if nreq + 1 > soft_n:
+            raise RuntimeError("COST_CAP_EXCEEDED: daily request cap")
 
         cur.execute(
             """INSERT INTO llm_cost_reservations
@@ -904,12 +903,19 @@ def gate_and_generate(
     if is_deepseek_lane:
         if not cost_persistence_available():
             raise RuntimeError("COST_PERSISTENCE_UNAVAILABLE: paid execution blocked")
-        from lib.consumption_run_manual import projected_max_cost_usd, POLICY_TO_MODEL
+        from lib.consumption_run_manual import (
+            projected_max_cost_usd, POLICY_TO_MODEL, validate_paid_cap_config,
+        )
+        # Resolve immutable config + caps BEFORE any reservation transaction/locks
         model_id = model or POLICY_TO_MODEL.get((policy or lane).upper() if policy else "", None)
         if not model_id:
             model_id = "deepseek-v4-pro" if "pro" in lane else "deepseek-v4-flash"
 
-        # Effective token limits: min(requested, process registry) — caller cannot raise process max
+        # Smoke path: require process caps. Non-smoke paid routes also require global cap.
+        from lib.consumption_run_manual import SMOKE_PROCESS_ID
+        require_global = process_id != SMOKE_PROCESS_ID
+        validate_paid_cap_config(cfg, require_global=require_global)
+
         proc_out = cfg.get("max_output_tokens")
         proc_in = cfg.get("max_input_tokens")
         req_out = int(max_tokens or (proc_out or 2048))
@@ -921,7 +927,6 @@ def gate_and_generate(
 
         if proc_in is not None:
             effective_in = int(proc_in)
-            # Conservative token estimate: ~4 chars/token
             est_in = max(1, (len(prompt or "") + 3) // 4)
             if est_in > effective_in:
                 raise RuntimeError(
@@ -930,14 +935,24 @@ def gate_and_generate(
         else:
             effective_in = max(1, (len(prompt or "") + 3) // 4)
 
-        # Cost projection uses the SAME effective limits as the provider request
         projected = projected_max_cost_usd(
             model_id=model_id,
             max_input_tokens=int(effective_in),
             max_output_tokens=int(effective_out),
         )
+        gcap_raw = os.environ.get("LLM_GLOBAL_DAILY_USD_CAP")
+        try:
+            gcap = float(gcap_raw) if gcap_raw not in (None, "") else None
+        except (TypeError, ValueError):
+            gcap = None
+        if require_global and (gcap is None or gcap <= 0):
+            raise RuntimeError("COST_CONFIGURATION_INVALID: global daily USD cap required")
+
         reservation_id = reserve_projected_cost(
             process_id, projected, model_id=model_id,
+            process_config=cfg,
+            # Smoke may omit global when env unset (gcap=None); non-smoke required gcap above.
+            global_cap=gcap,
             metadata={
                 "lane": lane, "policy": policy,
                 "effective_max_tokens": effective_out,
@@ -960,9 +975,9 @@ def gate_and_generate(
     text = ""
     ok = True
     prov: dict = {}
-    provider_started = False
+    # Billable only if DeepSeek client reports request_sent / possibly_billable
+    billable_attempt = False
     try:
-        provider_started = is_deepseek_lane  # about to invoke paid client
         result = llm_lane.generate(
             prompt, lane=lane, timeout=timeout, model=model, _skip_consumption=True,
             operator_confirmed=operator_confirmed or bool(meta.get("operator_cost_confirmed")),
@@ -974,9 +989,24 @@ def gate_and_generate(
             text, prov = result[0], (result[1] or {})
         else:
             text = result
+        tradeai_ok = (prov.get("_tradeai") or {}) if isinstance(prov, dict) else {}
+        # Success implies the network request completed
+        billable_attempt = bool(
+            tradeai_ok.get("request_sent")
+            or tradeai_ok.get("possibly_billable")
+            or (is_deepseek_lane and ok)
+        )
     except Exception as e:
         ok = False
         err = str(e)[:300]
+        # AUTH/policy before send → request_sent False → release
+        # timeout/network after send → possibly_billable True → settle projected
+        billable_attempt = bool(
+            getattr(e, "possibly_billable", False) or getattr(e, "request_sent", False)
+        )
+        if getattr(e, "estimated_cost_usd", None) is not None:
+            # stash for settle below via local
+            meta["_exc_estimated_cost_usd"] = e.estimated_cost_usd
         raise
     finally:
         usage = prov.get("usage") or {}
@@ -984,13 +1014,15 @@ def gate_and_generate(
         is_deepseek = bool(tradeai.get("requested_model_id") or tradeai.get("returned_model")
                            or is_deepseek_lane)
         actual_cost = tradeai.get("estimated_cost_usd") if is_deepseek else None
+        if actual_cost is None and meta.get("_exc_estimated_cost_usd") is not None:
+            actual_cost = meta.get("_exc_estimated_cost_usd")
         if is_deepseek_lane and reservation_id is not None:
-            # Authoritative settle: logging failure must not erase budget consumption
+            settle_cost = float(actual_cost) if actual_cost is not None else None
             settle_reservation(
                 reservation_id,
-                float(actual_cost) if actual_cost is not None else None,
+                settle_cost,
                 ok=ok,
-                billable_attempt=provider_started,
+                billable_attempt=billable_attempt,
                 projected_fallback=projected,
             )
         try:
