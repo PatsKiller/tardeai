@@ -1,4 +1,5 @@
-"""LLM consumption tracking + per-process Automated/Manual gating for FREE OAuth lanes (Grok, ChatGPT).
+"""LLM consumption tracking + per-process Automated/Manual gating for OAuth lanes (Grok, ChatGPT) and
+metered API lanes (DeepSeek Flash, DeepSeek V4).
 
 Fail-open: if logging or config DB fails, model calls still proceed. Manual mode blocks automatic
 calls and returns a structured ManualRequired response for the UI.
@@ -66,7 +67,7 @@ def ensure_schema() -> None:
             process_name TEXT NOT NULL,
             category TEXT,
             mode TEXT NOT NULL DEFAULT 'manual',
-            allowed_lanes TEXT[] DEFAULT ARRAY['grok','chatgpt'],
+            allowed_lanes TEXT[] DEFAULT ARRAY['grok','chatgpt','deepseek-flash','deepseek-v4'],
             daily_soft_cap INT,
             notes TEXT,
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -222,7 +223,7 @@ def should_call(process_id: str, lane: str, *, manual_trigger: bool = False) -> 
     """Decision only — does not call the model."""
     cfg = get_process_config(process_id)
     lane = (lane or "").strip().lower()
-    allowed = lane in (cfg.get("allowed_lanes") or ["grok", "chatgpt"])
+    allowed = lane in (cfg.get("allowed_lanes") or ["grok", "chatgpt", "deepseek-flash", "deepseek-v4"])
     if not allowed:
         return {"allow": False, "reason": f"lane {lane} not allowed for {process_id}", "mode": cfg.get("mode")}
     if cfg.get("mode") == "manual" and not manual_trigger:

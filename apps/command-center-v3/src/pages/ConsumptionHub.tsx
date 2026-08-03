@@ -86,7 +86,7 @@ export default function ConsumptionHub() {
     }
   }
 
-  const testLane = async (lane: 'grok' | 'chatgpt') => {
+  const testLane = async (lane: 'grok' | 'chatgpt' | 'deepseek-flash' | 'deepseek-v4') => {
     setBusy(`test-${lane}`)
     setMsg('')
     try {
@@ -94,9 +94,9 @@ export default function ConsumptionHub() {
         process_id: 'oauth_lane_keepalive',
         lane,
         prompt: 'Reply with exactly: OK',
-        task_summary: `${lane} OAuth test from Consumption`,
+        task_summary: `${lane} test from Consumption`,
       })
-      if (res?.ok) setMsg(`✓ ${lane} OAuth test OK — "${(res.text || '').trim().slice(0, 40)}"`)
+      if (res?.ok) setMsg(`✓ ${lane} test OK — "${(res.text || '').trim().slice(0, 40)}"`)
       else setMsg(`⛔ ${lane} test failed: ${res?.error || 'unknown'}`)
       await oauth.refresh()
       await load()
@@ -123,9 +123,10 @@ export default function ConsumptionHub() {
     <div style={{ maxWidth: 1100 }}>
       <div style={hubTitle()}>LLM Consumption</div>
       <p style={{ ...hubSubtitle(terminalUi), marginBottom: 16, lineHeight: 1.5, fontSize: 9 }}>
-        Track and control <b style={{ color: TEXT }}>free OAuth</b> usage — Grok (xAI :8645) and ChatGPT (codex :8646).
-        No metered API keys. <b>Manual</b> mode blocks automatic calls; use per-lane <b>▶ Grok / ▶ ChatGPT</b> on feature cards or below.
-        <b> Automated</b> when you want hands-off cron.
+        Track and control <b style={{ color: TEXT }}>free OAuth</b> usage — Grok (xAI :8645) and ChatGPT (codex :8646),
+        plus <b style={{ color: '#a78bfa' }}>DeepSeek</b> metered API (flash / v4·R1).
+        No metered API keys for OAuth. <b>Manual</b> mode blocks automatic calls; use per-lane <b>▶</b> buttons below.
+        <b>Automated</b> when you want hands-off cron.
       </p>
       <div className="cc-panel" style={{ ...hubPanel(terminalUi), marginBottom: 14, lineHeight: 1.5, fontSize: 9, color: MUTED }}>
         <b style={{ color: TEXT }}>Lane policies:</b>{' '}
@@ -135,17 +136,19 @@ export default function ConsumptionHub() {
 
       {/* OAuth lane status */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: 10, marginBottom: 16 }}>
-        {(['grok', 'chatgpt'] as const).map(id => {
-          const ln = id === 'grok' ? grokLane : chatLane
-          const ok = laneReady(ln)
+        {(['grok', 'chatgpt', 'deepseek-flash', 'deepseek-v4'] as const).map(id => {
+          const ln = id === 'grok' ? grokLane : (id === 'chatgpt' ? chatLane : (id === 'deepseek-flash' ? oauth.deepseek_flash : oauth.deepseek_v4))
+          const ok = id.startsWith('deepseek') ? (ln?.ready ?? false) : laneReady(ln)
+          const label = id === 'grok' ? (ln?.label || 'Grok') : (id === 'chatgpt' ? (ln?.label || 'ChatGPT') : (id === 'deepseek-flash' ? 'DeepSeek Flash' : 'DeepSeek V4'))
+          const isDeepSeek = id.startsWith('deepseek')
           return (
-            <div key={id} style={{ padding: 14, borderRadius: 10, background: 'var(--bg1)', border: `1px solid ${ok ? GREEN : RED}44` }}>
-              <div style={{ fontSize: 11, fontWeight: 800, color: MUTED, textTransform: 'uppercase' }}>{ln?.label || id}</div>
-              <div style={{ fontSize: 18, fontWeight: 900, color: ok ? GREEN : RED, marginTop: 4 }}>
+            <div key={id} style={{ padding: 14, borderRadius: 10, background: 'var(--bg1)', border: `1px solid ${ok ? (isDeepSeek ? '#a855f7' : GREEN) : RED}44` }}>
+              <div style={{ fontSize: 11, fontWeight: 800, color: MUTED, textTransform: 'uppercase' }}>{label}</div>
+              <div style={{ fontSize: 18, fontWeight: 900, color: ok ? (isDeepSeek ? '#a855f7' : GREEN) : RED, marginTop: 4 }}>
                 {ok ? '✓ Ready' : (ln?.status || 'offline')}
               </div>
               <div style={{ fontSize: 10, color: MUTED, marginTop: 4 }}>
-                Free OAuth · :{ln?.port ?? (id === 'grok' ? 8645 : 8646)}
+                {isDeepSeek ? 'Metered API' : `Free OAuth · :${ln?.port ?? (id === 'grok' ? 8645 : 8646)}`}
                 {ln?.consec_fail ? ` · ${ln.consec_fail} recent fail(s)` : ''}
               </div>
               {!ok && ln?.hint && (
@@ -169,6 +172,10 @@ export default function ConsumptionHub() {
               style={{ fontSize: 10, fontWeight: 800, padding: '6px 10px', borderRadius: 6, border: '1px solid #10a37f66', background: '#10a37f14', color: '#10a37f', cursor: busy ? 'wait' : 'pointer' }}>
               {busy === 'test-chatgpt' ? '…' : '▶ Test ChatGPT'}
             </button>
+            <button type="button" onClick={() => void testLane('deepseek-flash')} disabled={!!busy}
+              style={{ fontSize: 10, fontWeight: 800, padding: '6px 10px', borderRadius: 6, border: '1px solid #a855f766', background: '#a855f714', color: '#a855f7', cursor: busy ? 'wait' : 'pointer' }}>
+              {busy === 'test-deepseek-flash' ? '…' : '▶ Test DeepSeek'}
+            </button>
           </div>
           <button onClick={() => void runKeepalive()} disabled={!!busy}
             style={{ fontSize: 12, fontWeight: 800, padding: '8px 12px', borderRadius: 6, border: `1px solid ${BLUE}`, background: `${BLUE}22`, color: BLUE, cursor: busy ? 'wait' : 'pointer' }}>
@@ -183,18 +190,19 @@ export default function ConsumptionHub() {
       {/* Overview cards */}
       {overview && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: 8, marginBottom: 16 }}>
-          {(['grok', 'chatgpt'] as const).flatMap(lane => {
+          {(['grok', 'chatgpt', 'deepseek-flash', 'deepseek-v4'] as const).flatMap(lane => {
             const t = overview?.by_lane?.[lane]?.today
             const w = overview?.by_lane?.[lane]?.week
             if (!t && !w) return []
+            const laneColor = lane === 'grok' ? '#1d9bf0' : (lane === 'chatgpt' ? '#10a37f' : '#a855f7')
             return [
-              <div key={`${lane}-today`} style={{ padding: 12, borderRadius: 8, background: 'var(--bg1)', border: '1px solid var(--border)' }}>
-                <div style={{ fontSize: 10, color: MUTED }}>{lane} today</div>
+              <div key={`${lane}-today`} style={{ padding: 12, borderRadius: 8, background: 'var(--bg1)', border: `1px solid ${laneColor}44` }}>
+                <div style={{ fontSize: 10, color: laneColor }}>{lane} today</div>
                 <div style={{ fontSize: 20, fontWeight: 900, color: TEXT }}>{t?.calls ?? 0}</div>
                 <div style={{ fontSize: 10, color: MUTED }}>{(t?.relative_units ?? 0).toFixed(1)} rel. units</div>
               </div>,
-              <div key={`${lane}-week`} style={{ padding: 12, borderRadius: 8, background: 'var(--bg1)', border: '1px solid var(--border)' }}>
-                <div style={{ fontSize: 10, color: MUTED }}>{lane} 7d</div>
+              <div key={`${lane}-week`} style={{ padding: 12, borderRadius: 8, background: 'var(--bg1)', border: `1px solid ${laneColor}44` }}>
+                <div style={{ fontSize: 10, color: laneColor }}>{lane} 7d</div>
                 <div style={{ fontSize: 20, fontWeight: 900, color: TEXT }}>{w?.calls ?? 0}</div>
                 <div style={{ fontSize: 10, color: MUTED }}>{(w?.relative_units ?? 0).toFixed(1)} rel. units</div>
               </div>,
@@ -295,7 +303,7 @@ export default function ConsumptionHub() {
               <div key={l.id} style={{ padding: '8px 10px', borderRadius: 6, background: 'var(--bg2)', border: '1px solid var(--border)', fontSize: 11 }}>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                   <span style={{ color: MUTED }}>{new Date(l.created_at).toLocaleString()}</span>
-                  <span style={{ fontWeight: 800, color: l.model_lane === 'grok' ? '#1d9bf0' : '#10a37f' }}>{l.model_lane}</span>
+                  <span style={{ fontWeight: 800, color: l.model_lane === 'grok' ? '#1d9bf0' : (l.model_lane === 'chatgpt' ? '#10a37f' : (l.model_lane?.startsWith('deepseek') ? '#a855f7' : MUTED)) }}>{l.model_lane}</span>
                   <span style={{ color: TEXT, fontWeight: 700 }}>{l.process_name}</span>
                   <span style={{ color: l.trigger_mode === 'manual' ? AMBER : MUTED, fontSize: 10 }}>{l.trigger_mode}</span>
                   {!l.success && <span style={{ color: RED }}>failed</span>}

@@ -1,9 +1,10 @@
-"""llm_lane.py — unified FREE LLM lanes: Grok OAuth (xAI proxy :8645), ChatGPT OAuth (codex proxy :8646),
-or local gemma. No metered APIs, no API keys.
+"""llm_lane.py — unified LLM lanes: Grok OAuth (xAI proxy :8645), ChatGPT OAuth (codex proxy :8646),
+DeepSeek (paid API: deepseek-flash, deepseek-v4), or local gemma.
 
-All cloud lanes are free OAuth via local proxies (Grok = hermes xAI proxy; ChatGPT = chatgpt_oauth_proxy.py
-driving the authed hermes openai-codex CLI). Local gemma via ollama. generate() returns the raw text; the
-caller parses. `available()` uses lib.oauth_lane_status (canonical). Pass process_id to enable consumption
+All cloud lanes: Grok/ChatGPT are free OAuth via local proxies (Grok = hermes xAI proxy;
+ChatGPT = chatgpt_oauth_proxy.py driving the authed hermes openai-codex CLI). DeepSeek is a
+metered API key lane (deepseek_tradeai env var). Local gemma via ollama. generate() returns the
+raw text; the caller parses. `available()` probes each lane. Pass process_id to enable consumption
 tracking + Automated/Manual gating (lib.llm_consumption).
 """
 import os
@@ -16,6 +17,30 @@ if str(_SCRIPTS) not in sys.path:
 
 _GROK_URL = os.environ.get("HERMES_XAI_PROXY_URL", "http://127.0.0.1:8645/v1/chat/completions")
 _CHATGPT_URL = os.environ.get("CHATGPT_PROXY_URL", "http://127.0.0.1:8646").rstrip("/")
+
+# DeepSeek paid API — key from .env (deepseek_tradeai), endpoint from env or default
+_DEEPSEEK_KEY = os.environ.get("deepseek_tradeai", "").strip()
+_DEEPSEEK_BASE = os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com").rstrip("/")
+
+# Model mapping: lane name -> DeepSeek model ID
+_DEEPSEEK_MODELS = {
+    "deepseek-flash": "deepseek-chat",       # fast, low-cost
+    "deepseek-v4": "deepseek-reasoner",       # deep reasoning (R1)
+}
+
+
+def _deepseek_available() -> bool:
+    """Lightweight probe: call /v1/models, verify key works."""
+    if not _DEEPSEEK_KEY:
+        return False
+    try:
+        import requests
+        r = requests.get(f"{_DEEPSEEK_BASE}/v1/models",
+                         headers={"Authorization": f"Bearer {_DEEPSEEK_KEY}"},
+                         timeout=8)
+        return r.status_code == 200
+    except Exception:
+        return False
 
 
 def available(lane):
@@ -40,7 +65,26 @@ def available(lane):
                 return bool(h.get("authenticated")) and not h.get("token_expired")
             except Exception:
                 return False
-    return True
+    if lane in ("deepseek-flash", "deepseek-v4"):
+        return _deepseek_available()
+    return False
+
+
+def _deepseek_generate(prompt, model_id, timeout):
+    """Call the real DeepSeek API with the metered key."""
+    if not _DEEPSEEK_KEY:
+        raise RuntimeError("DeepSeek API key not configured (deepseek_tradeai env var missing)")
+    import requests
+    r = requests.post(
+        f"{_DEEPSEEK_BASE}/v1/chat/completions",
+        json={"model": model_id,
+              "messages": [{"role": "user", "content": prompt}],
+              "temperature": 0.3},
+        headers={"Authorization": f"Bearer {_DEEPSEEK_KEY}"},
+        timeout=timeout)
+    r.raise_for_status()
+    body = r.json()
+    return body["choices"][0]["message"]["content"], body.get("usage") or {}
 
 
 def generate(
@@ -56,13 +100,29 @@ def generate(
     _skip_consumption=False,
 ):
     """Generate text. When process_id is set, routes through consumption gate (Automated/Manual)."""
-    if process_id and not _skip_consumption and lane in ("grok", "chatgpt"):
+    if process_id and not _skip_consumption and lane in ("grok", "chatgpt", "deepseek-flash", "deepseek-v4"):
         from lib.llm_consumption import gate_and_generate
         return gate_and_generate(
             prompt, lane=lane, process_id=process_id, task_summary=task_summary,
             manual_trigger=manual_trigger, timeout=timeout, model=model, metadata=metadata,
         )
     lane = (lane or "grok").lower()
+
+    # ── DeepSeek lanes (paid API key) ──
+    if lane in ("deepseek-flash", "deepseek-v4"):
+        model_id = model or _DEEPSEEK_MODELS[lane]
+        text, usage = _deepseek_generate(prompt, model_id, timeout)
+        if process_id and not _skip_consumption:
+            try:
+                from lib.llm_consumption import log_call
+                log_call(lane=lane, process_id=process_id, task_summary=task_summary or prompt[:160],
+                         trigger_mode="automated", success=True, model_name=model_id,
+                         prompt=prompt, response=text,
+                         tokens_in=usage.get("prompt_tokens"), tokens_out=usage.get("completion_tokens"))
+            except Exception:
+                pass
+        return text
+
     if lane == "grok":
         import requests
         r = requests.post(_GROK_URL, json={"model": model or "grok-3-mini",
