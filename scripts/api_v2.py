@@ -13053,10 +13053,30 @@ def _ticket_review_run(body):
         return {"ok": False, "error": "symbol required"}
     lanes = str(b.get("lanes") or "deepseek-flash,local,grok,chatgpt")
     import subprocess
-    subprocess.Popen([_project_python(),
-                      str(PROJECT_ROOT / "scripts" / "run_ticket_review_job.py"), sym, lanes],
-                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                     start_new_session=True, cwd=PROJECT_ROOT)
+    log_dir = PROJECT_ROOT / "logs"
+    try:
+        log_dir.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
+    log_path = log_dir / "ticket_review_jobs.log"
+    try:
+        from datetime import datetime, timezone as _tz
+        log_fh = open(log_path, "a", encoding="utf-8")
+        log_fh.write(
+            f"\n--- {sym} lanes={lanes} spawn={datetime.now(_tz.utc).isoformat()} ---\n"
+        )
+        log_fh.flush()
+    except Exception:
+        log_fh = subprocess.DEVNULL
+    # Prefer rebuild venv explicitly — release trees symlink .venv; still use parent exe.
+    subprocess.Popen(
+        [_project_python(),
+         str(PROJECT_ROOT / "scripts" / "run_ticket_review_job.py"), sym, lanes],
+        stdout=log_fh if log_fh is not subprocess.DEVNULL else subprocess.DEVNULL,
+        stderr=subprocess.STDOUT if log_fh is not subprocess.DEVNULL else subprocess.DEVNULL,
+        start_new_session=True,
+        cwd=PROJECT_ROOT,
+    )
     return {"ok": True, "symbol": sym, "lanes": lanes, "state": "RUNNING",
             "note": "poll /api/v2/watch/ticket-review/status?symbol=..."}
 

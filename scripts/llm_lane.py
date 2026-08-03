@@ -259,9 +259,18 @@ def generate(
         )
     if lane == "grok":
         import requests
-        r = requests.post(_GROK_URL, json={"model": model or "grok-3-mini",
-                                           "messages": [{"role": "user", "content": prompt}], "temperature": 0.3},
-                          timeout=timeout)
+        # (connect, read) so a stuck OAuth proxy cannot hang ticket critics for hours
+        to = (10, max(15, int(timeout or 90)))
+        r = requests.post(
+            _GROK_URL,
+            json={
+                "model": model or "grok-3-mini",
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.3,
+                "max_tokens": 2048,
+            },
+            timeout=to,
+        )
         r.raise_for_status()
         body = r.json()
         if process_id and not _skip_consumption:
@@ -278,9 +287,16 @@ def generate(
         return body["choices"][0]["message"]["content"]
     if lane == "chatgpt":
         import requests
-        r = requests.post(_CHATGPT_URL + "/v1/chat/completions",
-                          json={"model": model or "gpt-5.4", "messages": [{"role": "user", "content": prompt}]},
-                          timeout=timeout)
+        to = (10, max(15, int(timeout or 90)))
+        r = requests.post(
+            _CHATGPT_URL + "/v1/chat/completions",
+            json={
+                "model": model or "gpt-5.4",
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": 2048,
+            },
+            timeout=to,
+        )
         if r.status_code == 401:
             raise RuntimeError("AUTH_EXPIRED: " + (r.json().get("error", {}) or {}).get("message", "ChatGPT session ended"))
         r.raise_for_status()

@@ -5,14 +5,31 @@ The worker never constructs mechanics and never calls a model before mandatory
 deterministic validation and quality admission complete. It persists critic
 artifacts and deterministic reconciliation only; no proposal, broker, approval,
 paid-lane or 2FA action is available here.
+
+2026-08-03: run each lane independently with a hard wall-clock timeout and
+persist after every lane. Prior multi-lane jobs hung forever on Grok OAuth
+(:8645) and never wrote DeepSeek Flash results that had already finished.
 """
+import concurrent.futures
 import json
 import sys
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 sys.path.insert(1, str(PROJECT_ROOT / "scripts" / "lib"))
+
+# Hard wall-clock caps per lane (seconds). Keeps "Re-run critics" from stalling
+# the whole ticket when one OAuth proxy accepts TCP but never returns a body.
+_LANE_TIMEOUT_S = {
+    "deepseek-flash": 150,
+    "deepseek-v4": 240,
+    "local": 100,
+    "grok": 130,
+    "chatgpt": 130,
+}
 
 
 def _facts_from_packet(symbol: str, packet: dict, validation: dict, conn, svc) -> dict:
@@ -143,12 +160,8 @@ def main(symbol: str, lanes: str):
         lane for lane in (part.strip() for part in lanes.split(","))
         if lane in _ALLOWED
     )
-    reviews = {}
-    if may_review and selected_lanes:
-        reviews = reviewer.run_free_reviews(
-            sym, target, facts, validation, lanes=selected_lanes,
-        )
-    elif may_review and not selected_lanes:
+    reviews: dict = {}
+    if may_review and not selected_lanes:
         # Surface mis-routed lane strings instead of silent no-op
         print(json.dumps({
             "ok": False,
@@ -156,6 +169,111 @@ def main(symbol: str, lanes: str):
             "symbol": sym,
         }))
         return
+
+    # Per-lane run + persist so a hung Grok/ChatGPT proxy cannot erase DeepSeek
+    # results that already completed earlier in the same "Re-run critics" click.
+    if may_review and selected_lanes:
+        for lane in selected_lanes:
+            t0 = time.monotonic()
+            wall = int(_LANE_TIMEOUT_S.get(lane, 150))
+            try:
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                    fut = pool.submit(
+                        reviewer.run_free_reviews,
+                        sym, target, facts, validation,
+                        lanes=(lane,),
+                    )
+                    one = fut.result(timeout=wall)
+                if not isinstance(one, dict):
+                    one = {}
+                for key, value in one.items():
+                    if str(key).startswith("_"):
+                        continue
+                    if isinstance(value, dict):
+                        reviews[key] = value
+                print(json.dumps({
+                    "event": "lane_done",
+                    "symbol": sym,
+                    "lane": lane,
+                    "verdict": (reviews.get(lane) or {}).get("verdict"),
+                    "elapsed_s": round(time.monotonic() - t0, 1),
+                }), flush=True)
+            except concurrent.futures.TimeoutError:
+                reviews[lane] = {
+                    "review_type": f"{lane.upper().replace('-', '_')}_CRITIC",
+                    "provider_family": lane.upper(),
+                    "model": None,
+                    "verdict": "UNAVAILABLE",
+                    "error": f"{lane} wall-clock timeout after {wall}s",
+                    "ticket_hash_reviewed": validation.get("ticket_hash"),
+                    "facts_hash_reviewed": validation.get("facts_hash"),
+                    "reviewed_at": datetime.now(timezone.utc).isoformat(),
+                    "review_contract": "watch-ticket-independent-review-v2",
+                    "math_check": {},
+                    "semantic_contradictions": [],
+                    "missing_evidence": [],
+                    "stale_inputs": [],
+                    "risk_objections": [],
+                    "questions": [],
+                    "evidence_citations": [],
+                }
+                print(json.dumps({
+                    "event": "lane_timeout",
+                    "symbol": sym,
+                    "lane": lane,
+                    "timeout_s": wall,
+                }), flush=True)
+            except Exception as exc:
+                reviews[lane] = {
+                    "review_type": f"{lane.upper().replace('-', '_')}_CRITIC",
+                    "provider_family": lane.upper(),
+                    "model": None,
+                    "verdict": "UNAVAILABLE",
+                    "error": f"{type(exc).__name__}: {str(exc)[:140]}",
+                    "ticket_hash_reviewed": validation.get("ticket_hash"),
+                    "facts_hash_reviewed": validation.get("facts_hash"),
+                    "reviewed_at": datetime.now(timezone.utc).isoformat(),
+                    "review_contract": "watch-ticket-independent-review-v2",
+                    "math_check": {},
+                    "semantic_contradictions": [],
+                    "missing_evidence": [],
+                    "stale_inputs": [],
+                    "risk_objections": [],
+                    "questions": [],
+                    "evidence_citations": [],
+                }
+                print(json.dumps({
+                    "event": "lane_error",
+                    "symbol": sym,
+                    "lane": lane,
+                    "error": f"{type(exc).__name__}: {str(exc)[:140]}",
+                }), flush=True)
+
+            # Incremental persist after every lane (DeepSeek visible even if later lanes hang)
+            prior_reviews = {**(prior.get("reviews") or {}), **reviews}
+            reconciled = reconciler.reconcile(
+                validation,
+                prior_reviews,
+                current_ticket_hash=validation.get("ticket_hash"),
+            )
+            try:
+                _persist(
+                    packet_id, prior, reviews, reconciled, selected.get("source"),
+                )
+                # Keep accumulating into prior so next lane merge is correct
+                prior = {
+                    **prior,
+                    "reviews": {**(prior.get("reviews") or {}), **reviews},
+                    "reconciled": reconciled,
+                    "validation_source": selected.get("source"),
+                }
+            except Exception as exc:
+                print(json.dumps({
+                    "event": "persist_error",
+                    "symbol": sym,
+                    "lane": lane,
+                    "error": f"{type(exc).__name__}: {str(exc)[:140]}",
+                }), flush=True)
 
     prior_reviews = {**(prior.get("reviews") or {}), **reviews}
     reconciled = reconciler.reconcile(
@@ -173,7 +291,7 @@ def main(symbol: str, lanes: str):
         "deterministic": deterministic,
         "quality_admission": quality.get("state"),
         "models_called": bool(reviews),
-        "paid_lane_called": False,
+        "paid_lane_called": any(k.startswith("deepseek") for k in reviews),
         "verdicts": {
             key: value.get("verdict")
             for key, value in merged_reviews.items()
@@ -181,7 +299,7 @@ def main(symbol: str, lanes: str):
         },
         "reconciled": reconciled.get("state"),
         "premium_recommended": reconciled.get("premium_recommended"),
-    }))
+    }), flush=True)
 
 
 if __name__ == "__main__":
