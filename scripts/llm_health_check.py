@@ -15,7 +15,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-LANES = ("local", "grok", "chatgpt")
+LANES = ("local", "grok", "chatgpt", "deepseek-flash", "deepseek-v4")
 
 
 def lane_status() -> dict:
@@ -64,7 +64,8 @@ def corpus_quality(days: int = 30) -> dict:
 
 def check_all_lanes(days: int = 30) -> dict:
     return {"lanes": lane_status(), "review_corpus": corpus_quality(days),
-            "note": ("3 lanes: local (Ollama gemma3:4b), grok (xAI OAuth :8645), chatgpt (codex OAuth :8646). "
+            "note": ("5 lanes: local (Ollama gemma3:4b), grok (xAI OAuth :8645), chatgpt (codex OAuth :8646), "
+                     "deepseek-flash (paid API), deepseek-v4 (paid API, R1 reasoning). "
                      "Availability via llm_lane.available(); corpus from paper_trade_multi_reviews.")}
 
 
