@@ -22,7 +22,7 @@ export default defineConfig({
           ui_version: FULL_UI_VERSION,
           base_version: UI_VERSION,
           built_at: new Date().toISOString(),
-          release_notes: 'watch-deepseek-ticket-strip: surface DeepSeek Flash/v4 + longer decision-desk timeout',
+          release_notes: 'watch-critic-gate: block DeepSeek until ticket PASS + entry plan CTA'
         }
         fs.writeFileSync(
           path.resolve(__dirname, 'dist/build-meta.json'),

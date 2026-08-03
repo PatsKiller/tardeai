@@ -13043,15 +13043,123 @@ def _watch_decision_latest(query=None):
     return out
 
 
+def _ticket_review_gate(sym: str) -> dict:
+    """Whether multi-lane critics may spend LLM budget on this live packet."""
+    rows = _db_query(
+        """SELECT packet_id, packet FROM decision_packets
+           WHERE upper(symbol)=%s AND superseded_by IS NULL""",
+        (sym,),
+    )
+    if not rows:
+        return {
+            "ok": False,
+            "may_review": False,
+            "block_code": "NO_LIVE_PACKET",
+            "block_detail": f"No live decision packet for {sym}",
+            "deterministic": "NOT_RUN",
+            "quality_admission": None,
+            "next_action": "Refresh decision packet / add to MAIN with planner",
+        }
+    packet = rows[0].get("packet") or {}
+    try:
+        import sys as _s
+        _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        import watch_packet_quality as packet_quality
+        selected = packet_quality.select_governing_validation(packet)
+    except Exception as exc:
+        return {
+            "ok": False,
+            "may_review": False,
+            "block_code": "GATE_ERROR",
+            "block_detail": f"{type(exc).__name__}: {str(exc)[:160]}",
+            "deterministic": "NOT_RUN",
+            "quality_admission": None,
+            "packet_id": rows[0].get("packet_id"),
+        }
+    validation = selected.get("validation") or {}
+    deterministic = selected.get("deterministic") or "NOT_RUN"
+    quality = validation.get("quality_admission") or {}
+    may_review = (
+        deterministic in {"PASS", "REVIEW_REQUIRED"}
+        and quality.get("state") == "ADMITTED"
+        and quality.get("new_entry_allowed") is not False
+    )
+    if may_review:
+        return {
+            "ok": True,
+            "may_review": True,
+            "block_code": None,
+            "block_detail": None,
+            "deterministic": deterministic,
+            "quality_admission": quality.get("state"),
+            "packet_id": rows[0].get("packet_id"),
+            "ticket_hash": validation.get("ticket_hash"),
+        }
+    if deterministic in (None, "", "NOT_RUN", "NOT RUN"):
+        block_code = "DETERMINISTIC_NOT_RUN"
+        block_detail = (
+            f"{sym} has no validated ticket on the decision packet "
+            "(current_actionable_plan.ticket_validation empty). "
+            "DeepSeek/local/Grok/ChatGPT critics cannot run until a ticket is built and validated."
+        )
+        next_action = f"POST /api/v2/watchlist/{sym}/plan then refresh packet; then re-run critics"
+    elif quality.get("state") != "ADMITTED":
+        block_code = "QUALITY_NOT_ADMITTED"
+        block_detail = (
+            f"{sym} quality admission is {quality.get('state') or 'missing'} "
+            f"(deterministic={deterministic}). Critics require ADMITTED."
+        )
+        next_action = "Fix quality admission / re-validate ticket"
+    else:
+        block_code = "CRITIC_GATE_BLOCKED"
+        block_detail = (
+            f"deterministic={deterministic} quality={quality.get('state')} "
+            f"new_entry_allowed={quality.get('new_entry_allowed')}"
+        )
+        next_action = "Resolve gate then re-run critics"
+    return {
+        "ok": False,
+        "may_review": False,
+        "block_code": block_code,
+        "block_detail": block_detail,
+        "deterministic": deterministic,
+        "quality_admission": quality.get("state"),
+        "packet_id": rows[0].get("packet_id"),
+        "next_action": next_action,
+    }
+
+
 def _ticket_review_run(body):
     """POST /api/v2/watch/ticket-review/run {symbol, lanes?} — free critic lanes
     on the live actionable ticket, detached worker (results land in the packet's
-    ticket_review; poll status). Advisory only; deterministic authority unchanged."""
+    ticket_review; poll status). Advisory only; deterministic authority unchanged.
+
+    Preflight: if deterministic/quality gate is closed, refuse to spawn a no-op
+    worker and return a clear block (UI must not poll forever for DeepSeek).
+    Pass force=true to spawn the worker anyway (it will still persist BLOCKED).
+    """
     b = body or {}
     sym = str(b.get("symbol") or "").upper()
     if not sym:
         return {"ok": False, "error": "symbol required"}
     lanes = str(b.get("lanes") or "deepseek-flash,local,grok,chatgpt")
+    force = bool(b.get("force"))
+    gate = _ticket_review_gate(sym)
+    if not gate.get("may_review") and not force:
+        return {
+            "ok": False,
+            "symbol": sym,
+            "lanes": lanes,
+            "state": "BLOCKED",
+            "blocked": True,
+            "block_code": gate.get("block_code"),
+            "block_detail": gate.get("block_detail"),
+            "deterministic": gate.get("deterministic"),
+            "quality_admission": gate.get("quality_admission"),
+            "next_action": gate.get("next_action"),
+            "error": gate.get("block_detail") or gate.get("block_code") or "critic gate blocked",
+            "plan_endpoint": f"/api/v2/watchlist/{sym}/plan",
+        }
     import subprocess
     log_dir = PROJECT_ROOT / "logs"
     try:
@@ -13078,6 +13186,8 @@ def _ticket_review_run(body):
         cwd=PROJECT_ROOT,
     )
     return {"ok": True, "symbol": sym, "lanes": lanes, "state": "RUNNING",
+            "deterministic": gate.get("deterministic"),
+            "quality_admission": gate.get("quality_admission"),
             "note": "poll /api/v2/watch/ticket-review/status?symbol=..."}
 
 
@@ -13089,8 +13199,22 @@ def _ticket_review_status(query=None):
                         WHERE upper(symbol)=%s AND superseded_by IS NULL""", (sym,))
     if not rows:
         return {"ok": False, "error": "no live packet"}
-    return {"ok": True, "packet_id": rows[0]["packet_id"],
-            "ticket_review": rows[0]["tr"]}
+    tr = rows[0]["tr"] or {}
+    gate = _ticket_review_gate(sym)
+    return {
+        "ok": True,
+        "packet_id": rows[0]["packet_id"],
+        "ticket_review": tr,
+        "gate": {
+            "may_review": gate.get("may_review"),
+            "block_code": tr.get("block_code") or gate.get("block_code"),
+            "block_detail": tr.get("block_detail") or gate.get("block_detail"),
+            "deterministic": gate.get("deterministic"),
+            "quality_admission": gate.get("quality_admission"),
+            "run_status": tr.get("run_status"),
+            "next_action": gate.get("next_action"),
+        },
+    }
 
 
 def _main_desk_free_llm_weekly_status(query=None):

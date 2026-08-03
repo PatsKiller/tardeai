@@ -724,18 +724,58 @@ export default function WatchTruthAuditPanel() {
       window.setTimeout(() => refetchWatch(), 500)
     } catch (error: any) { setMessage(`${symbol} — ${String(error?.message || error)}`) }
   }
+  const runEntryPlan = async () => {
+    if (!selected || reviewBusy) return
+    setReviewBusy('entry plan'); setMessage('')
+    try {
+      const response = await fetch(`/api/v2/watchlist/${encodeURIComponent(selected)}/plan`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+      })
+      const payload = await response.json().catch(() => ({}))
+      const data = payload?.data ?? payload
+      if (!response.ok || data?.ok === false) throw new Error(data?.error || data?.message || 'entry plan failed')
+      setMessage(
+        `${selected} — ${data.message || 'entry plan queued'}. `
+        + 'Wait ~1–2 min for ticket validation, then re-run DeepSeek Flash. Critics cannot run while Deterministic is NOT RUN.',
+      )
+      window.setTimeout(() => { refetchWatch(); refetchDesk() }, 4000)
+    } catch (error: any) {
+      setMessage(`${selected} — ${String(error?.message || error)}`)
+    } finally { setReviewBusy('') }
+  }
   const runReview = async (lanes: string, label: string) => {
     if (!selected || reviewBusy) return
     setReviewBusy(label); setMessage('')
     const wanted = lanes.split(',').map(s => s.trim()).filter(Boolean)
     try {
+      // Hard gate: no ticket → DeepSeek cannot run. Do not fake a 90s poll.
+      const det = String(selectedRow?.ticket?.deterministic || 'NOT RUN').toUpperCase()
+      if (det === 'NOT RUN' || det === 'NOT_RUN' || det === 'DETERMINISTIC_NOT_RUN') {
+        setMessage(
+          `${selected} — critics blocked: Deterministic is NOT RUN (no validated ticket on packet). `
+          + 'Click “Build entry plan” first, wait for ticket PASS, then DeepSeek Flash.',
+        )
+        return
+      }
       const response = await fetch('/api/v2/watch/ticket-review/run', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ symbol: selected, lanes }),
       })
       const payload = await response.json().catch(() => ({}))
       const data = payload?.data ?? payload
-      if (!response.ok || data?.ok === false) throw new Error(data?.error || 'review failed')
+      // Gate closed from server — surface block, never infinite poll
+      if (data?.blocked || data?.state === 'BLOCKED' || data?.ok === false) {
+        const code = data?.block_code || 'GATE_BLOCKED'
+        const detail = data?.block_detail || data?.error || 'critic gate blocked'
+        setMessage(
+          `${selected} — ${code}: ${detail}`
+          + (data?.plan_endpoint ? ' → use Build entry plan, then re-run critics.' : ''),
+        )
+        refetchWatch()
+        refetchDesk()
+        return
+      }
+      if (!response.ok) throw new Error(data?.error || 'review failed')
       setMessage(`${selected} — ${label} queued… polling for verdicts.`)
       // Poll packet until requested lanes report a non-empty verdict (up to ~90s).
       const deadline = Date.now() + 90_000
@@ -745,12 +785,27 @@ export default function WatchTruthAuditPanel() {
         try {
           const st = await fetch(`/api/v2/watch/ticket-review/status?symbol=${encodeURIComponent(selected)}`, { cache: 'no-store' })
           const body = await st.json().catch(() => ({}))
-          const tr = body?.ticket_review ?? body?.data?.ticket_review ?? {}
+          const envelope = body?.data ?? body
+          const tr = envelope?.ticket_review ?? {}
+          const gate = envelope?.gate || {}
+          if (gate?.may_review === false || tr?.run_status === 'BLOCKED' || tr?.block_code) {
+            setMessage(
+              `${selected} — ${tr?.block_code || gate?.block_code || 'BLOCKED'}: `
+              + `${tr?.block_detail || gate?.block_detail || 'critics gated'}. `
+              + 'Build entry plan / validate ticket first.',
+            )
+            lastSnap = 'BLOCKED'
+            break
+          }
           const reviews = tr?.reviews || {}
           const recLanes = (tr?.reconciled || {}).reviews || {}
           const parts = wanted.map(lane => {
             const v = String(reviews?.[lane]?.verdict || recLanes?.[lane] || '').toUpperCase()
-            return v ? `${laneLabel(lane)}=${v}` : null
+            const err = reviews?.[lane]?.error
+            if (!v) return null
+            return err && /blocked|timeout|unavailable/i.test(String(err))
+              ? `${laneLabel(lane)}=${v} (${String(err).slice(0, 48)})`
+              : `${laneLabel(lane)}=${v}`
           }).filter(Boolean)
           if (parts.length) {
             lastSnap = parts.join(' · ')
@@ -765,8 +820,8 @@ export default function WatchTruthAuditPanel() {
       }
       refetchWatch()
       refetchDesk()
-      if (lastSnap) setMessage(`${selected} — ${lastSnap}`)
-      else setMessage(`${selected} — ${label} finished polling; refresh if strip still empty.`)
+      if (lastSnap && lastSnap !== 'BLOCKED') setMessage(`${selected} — ${lastSnap}`)
+      else if (lastSnap !== 'BLOCKED') setMessage(`${selected} — ${label} finished polling; refresh if strip still empty.`)
     } catch (error: any) { setMessage(`${selected} — ${String(error?.message || error)}`) }
     finally { setReviewBusy('') }
   }
@@ -1337,6 +1392,27 @@ export default function WatchTruthAuditPanel() {
                       background: 'linear-gradient(180deg, rgba(0,0,0,.35), rgba(0,0,0,.55))',
                     }}
                   >
+                    {/NOT.?RUN/i.test(String(selectedRow.ticket.deterministic)) && (
+                      <div style={{
+                        padding: 10, marginBottom: 8, borderRadius: 6,
+                        border: `1px solid ${BB.amber}`, background: 'rgba(255,176,0,.08)',
+                        fontSize: 11, color: BB.text1, lineHeight: 1.4,
+                      }}>
+                        <b style={{ color: BB.amber }}>Critics gated — no validated ticket</b>
+                        <div style={{ marginTop: 4, color: BB.text2 }}>
+                          Deterministic is <b>NOT RUN</b>. DeepSeek Flash/v4 cannot invent a ticket.
+                          Build an entry plan first (limit/stop/target + validation PASS), then re-run critics.
+                        </div>
+                        <button
+                          type="button"
+                          disabled={Boolean(reviewBusy)}
+                          onClick={() => void runEntryPlan()}
+                          style={{ ...successBtn, width: '100%', marginTop: 8 }}
+                        >
+                          {reviewBusy === 'entry plan' ? '…' : 'Build entry plan (required before DeepSeek)'}
+                        </button>
+                      </div>
+                    )}
                     <button
                       type="button"
                       disabled={Boolean(reviewBusy)}

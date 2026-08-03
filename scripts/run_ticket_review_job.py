@@ -170,9 +170,97 @@ def main(symbol: str, lanes: str):
         }))
         return
 
+    # Gate closed: no ticket / quality not ADMITTED. Persist an explicit block so the
+    # UI stops polling and shows the real reason (not "DeepSeek broken").
+    if not may_review:
+        if deterministic in (None, "", "NOT_RUN", "NOT RUN"):
+            block_code = "DETERMINISTIC_NOT_RUN"
+            block_detail = (
+                "No validated ticket on the decision packet. Build an entry plan "
+                "(POST /api/v2/watchlist/{symbol}/plan) and refresh the packet "
+                "before DeepSeek / multi-lane critics can run."
+            )
+        elif quality.get("state") != "ADMITTED":
+            block_code = "QUALITY_NOT_ADMITTED"
+            block_detail = (
+                f"Quality admission is {quality.get('state') or 'missing'} — "
+                "critics only run after ADMITTED deterministic validation."
+            )
+        else:
+            block_code = "CRITIC_GATE_BLOCKED"
+            block_detail = (
+                f"deterministic={deterministic} quality={quality.get('state')} "
+                f"new_entry_allowed={quality.get('new_entry_allowed')}"
+            )
+        now_iso = datetime.now(timezone.utc).isoformat()
+        for lane in selected_lanes or ("deepseek-flash",):
+            reviews[lane] = {
+                "review_type": f"{lane.upper().replace('-', '_')}_CRITIC",
+                "provider_family": lane.upper(),
+                "model": None,
+                "verdict": "UNAVAILABLE",
+                "error": f"blocked: {block_code}",
+                "ticket_hash_reviewed": validation.get("ticket_hash"),
+                "facts_hash_reviewed": validation.get("facts_hash"),
+                "reviewed_at": now_iso,
+                "review_contract": "watch-ticket-independent-review-v2",
+                "math_check": {},
+                "semantic_contradictions": [],
+                "missing_evidence": [],
+                "stale_inputs": [],
+                "risk_objections": [],
+                "questions": [],
+                "evidence_citations": [],
+            }
+        prior_reviews = {**(prior.get("reviews") or {}), **reviews}
+        reconciled = reconciler.reconcile(
+            validation or {"state": deterministic or "NOT_RUN"},
+            prior_reviews,
+            current_ticket_hash=validation.get("ticket_hash"),
+        )
+        # Stamp operator-visible block fields onto ticket_review envelope
+        blocked_prior = {
+            **prior,
+            "run_status": "BLOCKED",
+            "block_code": block_code,
+            "block_detail": block_detail,
+            "blocked_at": now_iso,
+            "requested_lanes": list(selected_lanes),
+        }
+        merged = _persist(
+            packet_id, blocked_prior, reviews, reconciled, selected.get("source"),
+        )
+        print(json.dumps({
+            "ok": False,
+            "blocked": True,
+            "block_code": block_code,
+            "block_detail": block_detail,
+            "packet_id": packet_id,
+            "deterministic": deterministic,
+            "quality_admission": quality.get("state"),
+            "models_called": False,
+            "verdicts": {
+                k: (v or {}).get("verdict")
+                for k, v in merged.items()
+                if isinstance(v, dict) and not str(k).startswith("_")
+            },
+            "reconciled": reconciled.get("state"),
+            "next_action": "POST /api/v2/watchlist/{symbol}/plan then re-run critics",
+        }), flush=True)
+        return
+
     # Per-lane run + persist so a hung Grok/ChatGPT proxy cannot erase DeepSeek
     # results that already completed earlier in the same "Re-run critics" click.
     if may_review and selected_lanes:
+        # Clear prior block stamp so UI does not keep showing DETERMINISTIC_NOT_RUN
+        prior = {
+            **prior,
+            "run_status": "RUNNING",
+            "block_code": None,
+            "block_detail": None,
+            "requested_lanes": list(selected_lanes),
+            "started_at": datetime.now(timezone.utc).isoformat(),
+        }
         for lane in selected_lanes:
             t0 = time.monotonic()
             wall = int(_LANE_TIMEOUT_S.get(lane, 150))
@@ -281,6 +369,13 @@ def main(symbol: str, lanes: str):
         prior_reviews,
         current_ticket_hash=validation.get("ticket_hash"),
     )
+    prior = {
+        **prior,
+        "run_status": "COMPLETE",
+        "block_code": None,
+        "block_detail": None,
+        "completed_at": datetime.now(timezone.utc).isoformat(),
+    }
     merged_reviews = _persist(
         packet_id, prior, reviews, reconciled, selected.get("source"),
     )
