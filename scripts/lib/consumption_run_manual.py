@@ -219,6 +219,7 @@ def sanitize_provider_error(exc: BaseException | str) -> dict[str, str]:
         ("MODEL_NOT_AVAILABLE", "MODEL_NOT_AVAILABLE", "Requested model is not available"),
         ("COST_CAP", "COST_CAP_EXCEEDED", "Cost or request cap would be exceeded"),
         ("COST_PERSISTENCE", "COST_CAP_EXCEEDED", "Cost accounting unavailable; paid call blocked"),
+        ("INPUT_LIMIT", "INPUT_LIMIT_EXCEEDED", "Prompt exceeds process input token limit"),
         ("PROCESS_NOT_REGISTERED", "PROCESS_NOT_REGISTERED", "process_id is not registered"),
         ("POLICY_NOT_ALLOWED", "POLICY_NOT_ALLOWED", "Policy or lane not allowed for process"),
         ("HTTP_5", "PROVIDER_UNAVAILABLE", "Provider temporarily unavailable"),

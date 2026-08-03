@@ -97,11 +97,11 @@ def test_projected_cost_blocks_before_execution(monkeypatch):
         "mode": "manual", "allowed_lanes": ["fast", "deepseek-flash"],
     })
 
-    def block_cap(process_id, *, projected_usd=0.0, global_cap=None):
+    def block_reserve(process_id, projected_usd, **kwargs):
         assert projected_usd > 0
-        return {"allow": False, "reason": "COST_CAP_EXCEEDED", "scope": "process"}
+        raise RuntimeError("COST_CAP_EXCEEDED: process cap")
 
-    monkeypatch.setattr(lc, "check_cost_cap", block_cap)
+    monkeypatch.setattr(lc, "reserve_projected_cost", block_reserve)
     called = {"gen": False}
 
     def no_gen(*a, **k):

@@ -51,7 +51,8 @@ def test_check_cost_cap_process(monkeypatch):
     monkeypatch.setattr(lc, "get_process_config", lambda pid: {
         "process_id": pid, "daily_cost_cap_usd": 1.0, "mode": "automated", "allowed_lanes": [],
     })
-    monkeypatch.setattr(lc, "usd_spent_today", lambda pid=None: 0.95)
+    # Paid authority is reservation ledger, not consumption logs
+    monkeypatch.setattr(lc, "ledger_paid_usd_today", lambda pid=None, cur=None: 0.95)
     deny = lc.check_cost_cap("watchlist_maria_priority", projected_usd=0.1)
     assert deny["allow"] is False
     assert deny["reason"] == "COST_CAP_EXCEEDED"
@@ -65,7 +66,10 @@ def test_check_cost_cap_global(monkeypatch):
     monkeypatch.setattr(lc, "get_process_config", lambda pid: {
         "process_id": pid, "daily_cost_cap_usd": None, "mode": "automated", "allowed_lanes": [],
     })
-    monkeypatch.setattr(lc, "usd_spent_today", lambda pid=None: 9.5 if pid is None else 0.0)
+    monkeypatch.setattr(
+        lc, "ledger_paid_usd_today",
+        lambda pid=None, cur=None: 9.5 if pid is None else 0.0,
+    )
     deny = lc.check_cost_cap("any", projected_usd=1.0, global_cap=10.0)
     assert deny["allow"] is False
     assert deny["scope"] == "global"
@@ -75,9 +79,15 @@ def test_gate_blocks_on_cost_cap(monkeypatch):
     from lib import llm_consumption as lc
 
     monkeypatch.setattr(lc, "should_call", lambda *a, **k: {"allow": True, "mode": "automated"})
-    monkeypatch.setattr(lc, "check_cost_cap", lambda *a, **k: {
-        "allow": False, "reason": "COST_CAP_EXCEEDED", "scope": "process", "spent_usd": 5, "cap_usd": 5,
+    monkeypatch.setattr(lc, "cost_persistence_available", lambda: True)
+    monkeypatch.setattr(lc, "get_process_config", lambda pid: {
+        "registered": True, "mode": "manual", "allowed_lanes": ["fast"],
+        "max_input_tokens": 64, "max_output_tokens": 32, "daily_cost_cap_usd": 5.0,
     })
+    monkeypatch.setattr(
+        lc, "reserve_projected_cost",
+        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("COST_CAP_EXCEEDED: process cap")),
+    )
     with pytest.raises(RuntimeError, match="COST_CAP_EXCEEDED"):
         lc.gate_and_generate("hi", lane="fast", process_id="watchlist_maria_priority", manual_trigger=True)
 
@@ -92,7 +102,15 @@ def test_no_downgrade_after_cost_block(monkeypatch):
         raise AssertionError("should not call model after cost block")
 
     monkeypatch.setattr(lc, "should_call", lambda *a, **k: {"allow": True, "mode": "manual"})
-    monkeypatch.setattr(lc, "check_cost_cap", lambda *a, **k: {"allow": False, "reason": "COST_CAP_EXCEEDED"})
+    monkeypatch.setattr(lc, "cost_persistence_available", lambda: True)
+    monkeypatch.setattr(lc, "get_process_config", lambda pid: {
+        "registered": True, "mode": "manual", "allowed_lanes": ["fast"],
+        "max_input_tokens": 64, "max_output_tokens": 32, "daily_cost_cap_usd": 1.0,
+    })
+    monkeypatch.setattr(
+        lc, "reserve_projected_cost",
+        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("COST_CAP_EXCEEDED: process cap")),
+    )
     monkeypatch.setitem(sys.modules, "llm_lane", MagicMock(generate=boom))
     with pytest.raises(RuntimeError, match="COST_CAP_EXCEEDED"):
         lc.gate_and_generate("hi", lane="fast", process_id="p", manual_trigger=True)

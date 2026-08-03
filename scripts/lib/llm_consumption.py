@@ -359,6 +359,7 @@ def sync_process_policies_from_registry(*, force_expand_deepseek: bool = True) -
 
 
 def usd_spent_today(process_id: str | None = None) -> float:
+    """Observability-only: sum from consumption logs (NOT used for paid cap authority)."""
     ensure_schema()
     cur = _conn().cursor()
     if process_id:
@@ -377,8 +378,111 @@ def usd_spent_today(process_id: str | None = None) -> float:
     return float(cur.fetchone()[0] or 0)
 
 
+# Fixed advisory lock namespace for paid cost ledger (global + per-process keys).
+_LEDGER_LOCK_NS = 0x7EAD11C0
+
+
+def _ledger_lock_keys(process_id: str) -> tuple[int, int]:
+    import zlib
+    proc_key = zlib.crc32(str(process_id or "").encode("utf-8")) & 0x7FFFFFFF
+    return _LEDGER_LOCK_NS, proc_key
+
+
+def ledger_paid_usd_today(process_id: str | None = None, *, cur=None) -> float:
+    """Authoritative paid-cost total for today from the reservation ledger.
+
+    Policy:
+      - reserved: count projected_usd (open holds)
+      - settled: count actual_usd if set, else projected_usd (conservative)
+      - released: count 0 (pre-provider failures do not consume budget)
+
+    Consumption logs are NOT included (avoid double counting).
+    """
+    own = cur is None
+    if own:
+        ensure_schema()
+        cur = _conn().cursor()
+    try:
+        if process_id:
+            cur.execute(
+                """
+                SELECT COALESCE(SUM(
+                    CASE
+                      WHEN status = 'reserved' THEN projected_usd
+                      WHEN status = 'settled' THEN COALESCE(actual_usd, projected_usd)
+                      ELSE 0
+                    END
+                ), 0)
+                FROM llm_cost_reservations
+                WHERE process_id=%s AND created_at >= CURRENT_DATE
+                """,
+                (str(process_id),),
+            )
+        else:
+            cur.execute(
+                """
+                SELECT COALESCE(SUM(
+                    CASE
+                      WHEN status = 'reserved' THEN projected_usd
+                      WHEN status = 'settled' THEN COALESCE(actual_usd, projected_usd)
+                      ELSE 0
+                    END
+                ), 0)
+                FROM llm_cost_reservations
+                WHERE created_at >= CURRENT_DATE
+                """
+            )
+        return float(cur.fetchone()[0] or 0)
+    finally:
+        if own:
+            pass
+
+
+def ledger_request_count_today(process_id: str, *, cur=None) -> int:
+    """Count reserved+settled reservation rows today (request-per-day authority)."""
+    own = cur is None
+    if own:
+        ensure_schema()
+        cur = _conn().cursor()
+    cur.execute(
+        """
+        SELECT COUNT(*) FROM llm_cost_reservations
+        WHERE process_id=%s AND created_at >= CURRENT_DATE
+          AND status IN ('reserved', 'settled')
+        """,
+        (str(process_id),),
+    )
+    return int(cur.fetchone()[0] or 0)
+
+
+def recover_stale_reservations(*, max_age_minutes: int = 30, cur=None) -> int:
+    """Conservative recovery: reserved rows older than max_age are settled at projected_usd.
+
+    Documents hang/timeout recovery so open holds cannot pin budget forever while still
+    charging conservatively for possibly billable attempts.
+    """
+    own = cur is None
+    if own:
+        ensure_schema()
+        cur = _conn().cursor()
+    cur.execute(
+        """
+        UPDATE llm_cost_reservations
+        SET status='settled',
+            actual_usd=COALESCE(actual_usd, projected_usd)
+        WHERE status='reserved'
+          AND created_at < NOW() - (%s * INTERVAL '1 minute')
+        """,
+        (int(max_age_minutes),),
+    )
+    n = cur.rowcount or 0
+    if own:
+        _conn().commit()
+    return int(n)
+
+
 def reserved_usd_open(process_id: str | None = None) -> float:
-    """Sum of open (unsettled) reservations counting toward caps."""
+    """Open holds only (projected). Prefer ledger_paid_usd_today for cap checks."""
     try:
         ensure_schema()
         cur = _conn().cursor()
@@ -402,21 +506,27 @@ def reserved_usd_open(process_id: str | None = None) -> float:
         return 0.0
 
 
-def check_cost_cap(process_id: str, *, projected_usd: float = 0.0, global_cap: float | None = None) -> dict:
+def check_cost_cap(
+    process_id: str,
+    *,
+    projected_usd: float = 0.0,
+    global_cap: float | None = None,
+    cur=None,
+) -> dict:
+    """Cap check using reservation ledger as the paid authority (not consumption logs)."""
     cfg = get_process_config(process_id)
-    # registry fallback for cost cap when column empty
     if cfg.get("daily_cost_cap_usd") is None:
         for p in (_load_registry().get("processes") or []):
             if p.get("id") == process_id and p.get("daily_cost_cap_usd") is not None:
                 cfg["daily_cost_cap_usd"] = p.get("daily_cost_cap_usd")
                 break
     proc_cap = cfg.get("daily_cost_cap_usd")
-    spent = usd_spent_today(process_id) + reserved_usd_open(process_id)
+    spent = ledger_paid_usd_today(process_id, cur=cur)
     if proc_cap is not None and (spent + float(projected_usd or 0)) > float(proc_cap):
         return {"allow": False, "reason": "COST_CAP_EXCEEDED", "scope": "process",
                 "spent_usd": spent, "cap_usd": float(proc_cap)}
     if global_cap is not None:
-        g = usd_spent_today(None) + reserved_usd_open(None)
+        g = ledger_paid_usd_today(None, cur=cur)
         if (g + float(projected_usd or 0)) > float(global_cap):
             return {"allow": False, "reason": "COST_CAP_EXCEEDED", "scope": "global",
                     "spent_usd": g, "cap_usd": float(global_cap)}
@@ -522,9 +632,18 @@ def reserve_projected_cost(
     model_id: str | None = None,
     metadata: dict | None = None,
 ) -> int:
-    """Atomically reserve projected USD against process + global caps. Returns reservation id.
+    """Atomically reserve projected USD + one request slot under a transaction lock.
 
-    Fail-closed: raises RuntimeError on persistence or cap failure.
+    Single transaction:
+      1) pg_advisory_xact_lock (global namespace + process key)
+      2) recover stale reserved rows (conservative settle)
+      3) read ledger paid spend + open holds + request counts
+      4) enforce process/global USD caps and request-per-day cap
+      5) INSERT reservation status=reserved
+      6) COMMIT
+
+    Concurrent requests cannot both pass when combined projected cost exceeds a cap.
+    Fail-closed on persistence failure.
     """
     if not cost_persistence_available():
         raise RuntimeError("COST_PERSISTENCE_UNAVAILABLE: paid execution blocked")
@@ -532,39 +651,119 @@ def reserve_projected_cost(
     import os
     gcap_raw = os.environ.get("LLM_GLOBAL_DAILY_USD_CAP")
     gcap = float(gcap_raw) if gcap_raw not in (None, "") else None
-    cap = check_cost_cap(process_id, projected_usd=float(projected_usd), global_cap=gcap)
-    if not cap.get("allow"):
-        raise RuntimeError(f"COST_CAP_EXCEEDED: {cap.get('scope')} cap")
-    # request-per-day soft cap
-    if over_daily_cap(process_id, extra=1):
-        raise RuntimeError("COST_CAP_EXCEEDED: daily request cap")
-    cur = _conn().cursor()
-    cur.execute(
-        """INSERT INTO llm_cost_reservations
-           (process_id, projected_usd, status, model_id, metadata_json)
-           VALUES (%s,%s,'reserved',%s,%s) RETURNING id""",
-        (
-            str(process_id),
-            float(projected_usd),
-            model_id,
-            json.dumps(metadata or {}, default=str)[:2000],
-        ),
-    )
-    rid = int(cur.fetchone()[0])
-    _conn().commit()
-    return rid
+    proj = float(projected_usd or 0)
+    if proj < 0:
+        proj = 0.0
+
+    conn = _conn()
+    cur = conn.cursor()
+    try:
+        ns, pkey = _ledger_lock_keys(process_id)
+        # Transaction-scoped advisory locks: global ledger + per-process
+        cur.execute("SELECT pg_advisory_xact_lock(%s)", (ns,))
+        cur.execute("SELECT pg_advisory_xact_lock(%s, %s)", (ns, pkey))
+
+        recover_stale_reservations(max_age_minutes=30, cur=cur)
+
+        cfg = get_process_config(process_id)
+        if cfg.get("daily_cost_cap_usd") is None:
+            for p in (_load_registry().get("processes") or []):
+                if p.get("id") == process_id and p.get("daily_cost_cap_usd") is not None:
+                    cfg["daily_cost_cap_usd"] = p.get("daily_cost_cap_usd")
+                    break
+
+        spent_p = ledger_paid_usd_today(process_id, cur=cur)
+        proc_cap = cfg.get("daily_cost_cap_usd")
+        if proc_cap is not None and (spent_p + proj) > float(proc_cap):
+            raise RuntimeError("COST_CAP_EXCEEDED: process cap")
+
+        if gcap is not None:
+            spent_g = ledger_paid_usd_today(None, cur=cur)
+            if (spent_g + proj) > float(gcap):
+                raise RuntimeError("COST_CAP_EXCEEDED: global cap")
+
+        # Request-per-day from reservation ledger (reserved+settled)
+        soft = cfg.get("daily_soft_cap")
+        if soft is not None:
+            try:
+                soft_n = int(soft)
+            except (TypeError, ValueError):
+                soft_n = 0
+            if soft_n > 0:
+                nreq = ledger_request_count_today(process_id, cur=cur)
+                if nreq + 1 > soft_n:
+                    raise RuntimeError("COST_CAP_EXCEEDED: daily request cap")
+
+        cur.execute(
+            """INSERT INTO llm_cost_reservations
+               (process_id, projected_usd, status, model_id, metadata_json)
+               VALUES (%s,%s,'reserved',%s,%s) RETURNING id""",
+            (
+                str(process_id),
+                proj,
+                model_id,
+                json.dumps(metadata or {}, default=str)[:2000],
+            ),
+        )
+        rid = int(cur.fetchone()[0])
+        conn.commit()
+        return rid
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        raise
 
 
-def settle_reservation(reservation_id: int | None, actual_usd: float | None, *, ok: bool) -> None:
+def settle_reservation(
+    reservation_id: int | None,
+    actual_usd: float | None,
+    *,
+    ok: bool,
+    billable_attempt: bool = False,
+    projected_fallback: float | None = None,
+) -> None:
+    """Settle or release a reservation.
+
+    Policy:
+      - success: status=settled, actual=actual_usd or projected (conservative if missing)
+      - failure before provider send: status=released, actual=0 (no budget consumed)
+      - failure after provider send / ambiguous: status=settled, actual=actual or projected
+    """
     if not reservation_id:
         return
     try:
         ensure_schema()
         cur = _conn().cursor()
         cur.execute(
+            "SELECT projected_usd, status FROM llm_cost_reservations WHERE id=%s FOR UPDATE",
+            (int(reservation_id),),
+        )
+        row = cur.fetchone()
+        if not row:
+            _conn().commit()
+            return
+        projected = float(row[0] or 0)
+        if ok:
+            status = "settled"
+            actual = float(actual_usd) if actual_usd is not None else projected
+        elif billable_attempt:
+            # Conservative: possibly billable provider attempt
+            status = "settled"
+            if actual_usd is not None:
+                actual = float(actual_usd)
+            elif projected_fallback is not None:
+                actual = float(projected_fallback)
+            else:
+                actual = projected
+        else:
+            status = "released"
+            actual = 0.0
+        cur.execute(
             """UPDATE llm_cost_reservations
                SET actual_usd=%s, status=%s WHERE id=%s""",
-            (actual_usd, "settled" if ok else "released", int(reservation_id)),
+            (actual, status, int(reservation_id)),
         )
         _conn().commit()
     except Exception:
@@ -698,34 +897,56 @@ def gate_and_generate(
     reservation_id = None
     projected = 0.0
     cfg = get_process_config(process_id)
+    effective_out = int(max_tokens or 2048)
+    effective_in = None
+    model_id = model
 
     if is_deepseek_lane:
-        # Fail closed without cost accounting for paid paths
         if not cost_persistence_available():
             raise RuntimeError("COST_PERSISTENCE_UNAVAILABLE: paid execution blocked")
         from lib.consumption_run_manual import projected_max_cost_usd, POLICY_TO_MODEL
         model_id = model or POLICY_TO_MODEL.get((policy or lane).upper() if policy else "", None)
         if not model_id:
-            if "pro" in lane:
-                model_id = "deepseek-v4-pro"
-            else:
-                model_id = "deepseek-v4-flash"
-        max_in = int(cfg.get("max_input_tokens") or max_tokens or 2048)
-        max_out = int(cfg.get("max_output_tokens") or max_tokens or 2048)
-        # Cap projection to process limits when present
-        max_in = min(max_in, int(cfg.get("max_input_tokens") or max_in))
-        max_out = min(max_out, int(cfg.get("max_output_tokens") or max_out))
+            model_id = "deepseek-v4-pro" if "pro" in lane else "deepseek-v4-flash"
+
+        # Effective token limits: min(requested, process registry) — caller cannot raise process max
+        proc_out = cfg.get("max_output_tokens")
+        proc_in = cfg.get("max_input_tokens")
+        req_out = int(max_tokens or (proc_out or 2048))
+        if proc_out is not None:
+            effective_out = min(req_out, int(proc_out))
+        else:
+            effective_out = req_out
+        effective_out = max(1, int(effective_out))
+
+        if proc_in is not None:
+            effective_in = int(proc_in)
+            # Conservative token estimate: ~4 chars/token
+            est_in = max(1, (len(prompt or "") + 3) // 4)
+            if est_in > effective_in:
+                raise RuntimeError(
+                    f"INPUT_LIMIT_EXCEEDED: prompt ~{est_in} tokens exceeds process max_input_tokens={effective_in}"
+                )
+        else:
+            effective_in = max(1, (len(prompt or "") + 3) // 4)
+
+        # Cost projection uses the SAME effective limits as the provider request
         projected = projected_max_cost_usd(
-            model_id=model_id, max_input_tokens=max_in, max_output_tokens=max_out,
+            model_id=model_id,
+            max_input_tokens=int(effective_in),
+            max_output_tokens=int(effective_out),
         )
         reservation_id = reserve_projected_cost(
             process_id, projected, model_id=model_id,
-            metadata={"lane": lane, "policy": policy},
+            metadata={
+                "lane": lane, "policy": policy,
+                "effective_max_tokens": effective_out,
+                "effective_max_input_tokens": effective_in,
+            },
         )
     else:
         gcap_raw = os.environ.get("LLM_GLOBAL_DAILY_USD_CAP")
         gcap = float(gcap_raw) if gcap_raw not in (None, "") else None
-        # Free OAuth: projected 0 is acceptable
         cap = check_cost_cap(process_id, projected_usd=0.0, global_cap=gcap)
         if not cap.get("allow"):
             raise RuntimeError(f"COST_CAP_EXCEEDED: {cap}")
@@ -739,12 +960,15 @@ def gate_and_generate(
     text = ""
     ok = True
     prov: dict = {}
+    provider_started = False
     try:
+        provider_started = is_deepseek_lane  # about to invoke paid client
         result = llm_lane.generate(
             prompt, lane=lane, timeout=timeout, model=model, _skip_consumption=True,
             operator_confirmed=operator_confirmed or bool(meta.get("operator_cost_confirmed")),
             response_json=response_json or bool(output_schema_id),
             metadata=meta, return_provenance=True,
+            max_tokens=effective_out,
         )
         if isinstance(result, tuple):
             text, prov = result[0], (result[1] or {})
@@ -760,8 +984,15 @@ def gate_and_generate(
         is_deepseek = bool(tradeai.get("requested_model_id") or tradeai.get("returned_model")
                            or is_deepseek_lane)
         actual_cost = tradeai.get("estimated_cost_usd") if is_deepseek else None
-        if is_deepseek_lane:
-            settle_reservation(reservation_id, float(actual_cost) if actual_cost is not None else None, ok=ok)
+        if is_deepseek_lane and reservation_id is not None:
+            # Authoritative settle: logging failure must not erase budget consumption
+            settle_reservation(
+                reservation_id,
+                float(actual_cost) if actual_cost is not None else None,
+                ok=ok,
+                billable_attempt=provider_started,
+                projected_fallback=projected,
+            )
         try:
             log_call(
                 lane=lane, process_id=process_id,
@@ -773,7 +1004,12 @@ def gate_and_generate(
                 tokens_out=usage.get("completion_tokens"),
                 duration_ms=int((time.time() - t0) * 1000),
                 error_message=err,
-                metadata={**meta, **{k: v for k, v in tradeai.items() if k != "usage"}},
+                metadata={
+                    **meta,
+                    **{k: v for k, v in tradeai.items() if k != "usage"},
+                    "effective_max_tokens": effective_out,
+                    "reservation_id": reservation_id,
+                },
                 estimated_cost_usd=actual_cost if is_deepseek else None,
                 cost_basis=tradeai.get("cost_basis") if is_deepseek else "oauth_free_or_unset",
                 pricing_effective_at=tradeai.get("pricing_effective_at"),
@@ -789,11 +1025,8 @@ def gate_and_generate(
                 provider_request_id=tradeai.get("request_id"),
             )
         except Exception:
-            if is_deepseek_lane:
-                # Paid path: logging failure after call is non-ideal but reservation settled;
-                # pre-call persistence already required.
-                pass
-            # free path remains fail-open on log
+            # Observability only for paid; ledger already settled/released
+            pass
     if return_provenance:
         tradeai = prov.get("_tradeai") or {}
         return text, {
@@ -808,6 +1041,7 @@ def gate_and_generate(
             "estimated_cost_usd": tradeai.get("estimated_cost_usd"),
             "latency_ms": tradeai.get("latency_ms"),
             "fallback_used": tradeai.get("fallback_used", False),
+            "effective_max_tokens": effective_out,
         }
     return text
 

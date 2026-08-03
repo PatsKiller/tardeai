@@ -116,6 +116,7 @@ def _deepseek_generate(
     timeout: float,
     operator_confirmed: bool = False,
     response_json: bool = False,
+    max_tokens: int = 2048,
 ):
     """Call exact DeepSeek V4 models via canonical client. Raises on failure — no Gemma fallback."""
     from lib.deepseek_client import DeepSeekError, chat
@@ -123,13 +124,15 @@ def _deepseek_generate(
 
     try:
         policy = _resolve_deepseek_policy(lane, model)
+        # max_tokens must be the process-capped effective limit from the caller
+        mt = max(1, int(max_tokens or 2048))
         resp = chat(
             policy=policy,
             prompt=prompt,
             timeout=timeout,
             operator_confirmed=operator_confirmed,
             response_json=response_json,
-            max_tokens=2048,
+            max_tokens=mt,
         )
     except (RegistryError, DeepSeekError) as e:
         code = getattr(e, "code", "POLICY_BLOCKED")
@@ -176,11 +179,13 @@ def generate(
     operator_confirmed=False,
     response_json=False,
     return_provenance=False,
+    max_tokens: int = 2048,
 ):
     """Generate text. When process_id is set, routes through consumption gate (Automated/Manual).
 
     DeepSeek failures raise RuntimeError — they never fall through to local Gemma.
     If return_provenance=True, returns (text, provenance_dict) for DeepSeek paths.
+    max_tokens is honored for DeepSeek provider calls (process-capped by gate_and_generate).
     """
     lane_l = (lane or "grok").lower().strip()
 
@@ -201,6 +206,7 @@ def generate(
             manual_trigger=manual_trigger, timeout=timeout, model=model, metadata=metadata,
             operator_confirmed=operator_confirmed,
             response_json=response_json,
+            max_tokens=max_tokens,
         )
 
     # ── DeepSeek lanes (paid API key, exact V4 models) ──
@@ -212,6 +218,7 @@ def generate(
             timeout=timeout,
             operator_confirmed=operator_confirmed or bool((metadata or {}).get("operator_cost_confirmed")),
             response_json=response_json,
+            max_tokens=max_tokens,
         )
         provenance = {
             "usage": {k: v for k, v in usage.items() if k != "_tradeai"},
