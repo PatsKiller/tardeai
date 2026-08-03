@@ -22,8 +22,16 @@
           "tool_use": true,
           "thinking_supported": true,
           "thinking_default": "disabled",
-          "allowed_reasoning_effort": ["high", "max"],
-          "unsupported_params_in_thinking_mode": ["temperature", "top_p", "presence_penalty", "frequency_penalty"],
+          "allowed_reasoning_effort": [
+            "high",
+            "max"
+          ],
+          "unsupported_params_in_thinking_mode": [
+            "temperature",
+            "top_p",
+            "presence_penalty",
+            "frequency_penalty"
+          ],
           "latency_class": "fast",
           "concurrency_limit": 2500,
           "pricing_snapshot_usd_per_million_tokens": {
@@ -45,8 +53,16 @@
           "tool_use": true,
           "thinking_supported": true,
           "thinking_default": "enabled",
-          "allowed_reasoning_effort": ["high", "max"],
-          "unsupported_params_in_thinking_mode": ["temperature", "top_p", "presence_penalty", "frequency_penalty"],
+          "allowed_reasoning_effort": [
+            "high",
+            "max"
+          ],
+          "unsupported_params_in_thinking_mode": [
+            "temperature",
+            "top_p",
+            "presence_penalty",
+            "frequency_penalty"
+          ],
           "latency_class": "premium",
           "concurrency_limit": 500,
           "pricing_snapshot_usd_per_million_tokens": {
@@ -56,7 +72,9 @@
           },
           "pricing_effective_at": "2026-08-03",
           "enabled": true,
-          "operator_cost_confirmation_for": ["PRO_MAX"],
+          "operator_cost_confirmation_for": [
+            "PRO_MAX"
+          ],
           "last_capability_probe": "2026-08-03T13:35:59Z",
           "probe_artifact": "artifacts/deepseek-v4-audit/DEEPSEEK_CAPABILITY_PROBE.json"
         }
@@ -66,10 +84,12 @@
         "deepseek-reasoner"
       ],
       "legacy_lane_aliases": {
-        "deepseek-flash": "FAST",
-        "deepseek-v4": "PRO_THINK"
+        "deepseek-flash": "FAST"
       },
-      "fallback_policy": "VISIBLE_FAILURE_NO_SILENT_FALLBACK"
+      "fallback_policy": "VISIBLE_FAILURE_NO_SILENT_FALLBACK",
+      "ambiguous_lanes_rejected": [
+        "deepseek-v4"
+      ]
     }
   },
   "logical_policies": {

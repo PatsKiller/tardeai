@@ -53,7 +53,7 @@ export function useOAuthLanes(pollMs = 120_000) {
     grok: byLane('grok'),
     chatgpt: byLane('chatgpt'),
     deepseek_flash: byLane('deepseek-flash'),
-    deepseek_v4: byLane('deepseek-v4'),
+    deepseek_pro: byLane('deepseek-v4-pro'),
     grokReady: laneReady(byLane('grok')),
     chatgptReady: laneReady(byLane('chatgpt')),
     deepseekReady: byLane('deepseek-flash')?.ready ?? false,

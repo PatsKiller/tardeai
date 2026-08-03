@@ -32,9 +32,9 @@ export default function CloudLlmRunButtons({
   const isStopAdvisory = processId === 'holding_protection_advisor' && !!symbol
   const needsPrompt = !proposalId && !prompt && !isBatch && !isWatchlistCio && !isStopAdvisory
 
-  const run = async (lane: 'grok' | 'chatgpt' | 'deepseek-flash' | 'deepseek-v4') => {
+  const run = async (lane: 'grok' | 'chatgpt' | 'deepseek-flash' | 'deepseek-v4-pro') => {
     const isOAuth = lane === 'grok' || lane === 'chatgpt'
-    const isDeepSeek = lane === 'deepseek-flash' || lane === 'deepseek-v4'
+    const isDeepSeek = lane === 'deepseek-flash' || lane === 'deepseek-v4-pro'
     
     // Check readiness: OAuth lanes check via oauth hook, DeepSeek via ready flag
     if (isOAuth) {
@@ -115,10 +115,10 @@ export default function CloudLlmRunButtons({
           {busy === 'deepseek-flash' ? '…' : '▶ DeepSeek Flash'}
         </button>
       )}
-      {lanes.includes('deepseek-v4') && (
-        <button type="button" disabled={!!busy} onClick={() => void run('deepseek-v4')}
-          style={btnStyle(DEEPSEEK, busy === 'deepseek-v4', compact)}>
-          {busy === 'deepseek-v4' ? '…' : '▶ DeepSeek Pro'}
+      {lanes.includes('deepseek-v4-pro') && (
+        <button type="button" disabled={!!busy} onClick={() => void run('deepseek-v4-pro')}
+          style={btnStyle(DEEPSEEK, busy === 'deepseek-v4-pro', compact)}>
+          {busy === 'deepseek-v4-pro' ? '…' : '▶ DeepSeek V4 Pro'}
         </button>
       )}
       {msg && <span style={{ fontSize: compact ? 9 : 10, color: msg.startsWith('✓') ? '#22c55e' : '#ef4444', maxWidth: 220 }}>{msg}</span>}

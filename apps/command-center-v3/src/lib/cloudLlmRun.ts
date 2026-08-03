@@ -2,7 +2,7 @@
  * Plus DeepSeek metered API lanes — deepseek-flash / deepseek-v4. */
 
 export type LanePolicy = 'grok_only' | 'chatgpt_only' | 'deepseek_only' | 'either' | 'both_preferred' | 'ensemble'
-export type LaneId = 'grok' | 'chatgpt' | 'deepseek-flash' | 'deepseek-v4' | 'local'
+export type LaneId = 'grok' | 'chatgpt' | 'deepseek-flash' | 'deepseek-v4-flash' | 'deepseek-v4-pro' | 'fast' | 'pro' | 'pro_think' | 'local'
 
 /** Bundled from config/llm_process_registry.json — UI fallback when API omits lane_policy. */
 export const PROCESS_LANE_POLICIES: Record<string, LanePolicy> = {
@@ -37,7 +37,7 @@ export function lanesForPolicy(policy: LanePolicy | string | undefined): LaneId[
   const p = (policy || 'either') as LanePolicy
   if (p === 'grok_only') return ['grok']
   if (p === 'chatgpt_only') return ['chatgpt']
-  if (p === 'deepseek_only') return ['deepseek-flash', 'deepseek-v4']
+  if (p === 'deepseek_only') return ['deepseek-flash', 'deepseek-v4-pro']
   if (p === 'both_preferred' || p === 'ensemble') return ['grok', 'chatgpt', 'deepseek-flash']
   return ['grok', 'chatgpt', 'deepseek-flash'] // either — show all, operator picks
 }
@@ -59,7 +59,7 @@ export async function runManualCloud(params: {
   return d
 }
 
-export async function runBrokerCloudLane(proposalId: number, lane: 'grok' | 'chatgpt' | 'deepseek-flash' | 'deepseek-v4', timeout = 120) {
+export async function runBrokerCloudLane(proposalId: number, lane: 'grok' | 'chatgpt' | 'deepseek-flash' | 'deepseek-v4-pro', timeout = 120) {
   const res = await fetch('/api/v2/broker-proposals/run-cloud-oversight', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -68,7 +68,7 @@ export async function runBrokerCloudLane(proposalId: number, lane: 'grok' | 'cha
   return res.json().then(j => j?.data ?? j)
 }
 
-export async function runStopAdvisory(symbol: string, lane: 'grok' | 'local' | 'deepseek-flash' | 'deepseek-v4' = 'grok') {
+export async function runStopAdvisory(symbol: string, lane: 'grok' | 'local' | 'deepseek-flash' | 'deepseek-v4-pro' = 'grok') {
   const sym = symbol.trim().toUpperCase()
   const res = await fetch('/api/v2/consumption/stop-advisory', {
     method: 'POST',
@@ -79,7 +79,7 @@ export async function runStopAdvisory(symbol: string, lane: 'grok' | 'local' | '
   return j?.data ?? j
 }
 
-export async function runStopAdvisoryBatch(opts?: { limit?: number; lane?: 'grok' | 'chatgpt' | 'deepseek-flash' | 'deepseek-v4'; symbols?: string }) {
+export async function runStopAdvisoryBatch(opts?: { limit?: number; lane?: 'grok' | 'chatgpt' | 'deepseek-flash' | 'deepseek-v4-pro'; symbols?: string }) {
   const res = await fetch('/api/v2/consumption/stop-advisory-batch', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -88,7 +88,7 @@ export async function runStopAdvisoryBatch(opts?: { limit?: number; lane?: 'grok
   return res.json().then(j => j?.data ?? j)
 }
 
-export async function runWatchlistCioSynthesis(symbol: string, lane: 'grok' | 'chatgpt' | 'deepseek-flash' | 'deepseek-v4') {
+export async function runWatchlistCioSynthesis(symbol: string, lane: 'grok' | 'chatgpt' | 'deepseek-flash' | 'deepseek-v4-pro') {
   const sym = symbol.trim().toUpperCase()
   const res = await fetch(`/api/v2/watchlist/${encodeURIComponent(sym)}/cio-synthesis`, {
     method: 'POST',
@@ -98,7 +98,7 @@ export async function runWatchlistCioSynthesis(symbol: string, lane: 'grok' | 'c
   return res.json().then(j => j?.data ?? j)
 }
 
-export async function runRotationOversight(lanes: ('grok' | 'chatgpt' | 'deepseek-flash' | 'deepseek-v4')[]) {
+export async function runRotationOversight(lanes: ('grok' | 'chatgpt' | 'deepseek-flash' | 'deepseek-v4-pro')[]) {
   const res = await fetch('/api/v2/rotation/oversight', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -112,7 +112,7 @@ export async function runRotationOversight(lanes: ('grok' | 'chatgpt' | 'deepsee
   }
 }
 
-export async function runPortfolioAsk(question: string, lane: 'grok' | 'chatgpt' | 'deepseek-flash' | 'deepseek-v4') {
+export async function runPortfolioAsk(question: string, lane: 'grok' | 'chatgpt' | 'deepseek-flash' | 'deepseek-v4-pro') {
   const res = await fetch('/api/v2/portfolio/ask', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -124,7 +124,7 @@ export async function runPortfolioAsk(question: string, lane: 'grok' | 'chatgpt'
 
 export async function runJournalAsk(params: {
   question: string
-  lane: 'grok' | 'chatgpt' | 'deepseek-flash' | 'deepseek-v4'
+  lane: 'grok' | 'chatgpt' | 'deepseek-flash' | 'deepseek-v4-pro'
   account?: string
   days?: number
 }) {
@@ -137,7 +137,7 @@ export async function runJournalAsk(params: {
   return j?.data ?? j
 }
 
-export type EnsembleLane = 'grok' | 'chatgpt' | 'deepseek-flash' | 'deepseek-v4' | 'local'
+export type EnsembleLane = 'grok' | 'chatgpt' | 'deepseek-flash' | 'deepseek-v4-pro' | 'local'
 
 export async function requestEnsemble(params: {
   targetType: string

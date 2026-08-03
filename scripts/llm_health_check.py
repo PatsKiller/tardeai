@@ -65,7 +65,7 @@ def corpus_quality(days: int = 30) -> dict:
 def check_all_lanes(days: int = 30) -> dict:
     return {"lanes": lane_status(), "review_corpus": corpus_quality(days),
             "note": ("5 lanes: local (Ollama gemma3:4b), grok (xAI OAuth :8645), chatgpt (codex OAuth :8646), "
-                     "deepseek-flash (paid API), deepseek-v4 (paid API, R1 reasoning). "
+                     "deepseek-flash / deepseek-v4-flash (paid Flash), deepseek-v4-pro (paid Pro). "
                      "Availability via llm_lane.available(); corpus from paper_trade_multi_reviews.")}
 
 

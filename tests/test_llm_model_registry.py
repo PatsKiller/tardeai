@@ -60,9 +60,8 @@ def test_legacy_model_ids_rejected():
 
 def test_lane_aliases():
     assert resolve_lane_alias("deepseek-flash") == "FAST"
-    assert resolve_lane_alias("deepseek-v4") == "PRO_THINK"
     assert resolve_lane_alias("deepseek-v4-flash") == "FAST"
-    assert resolve_lane_alias("deepseek-v4-pro") == "PRO_THINK"
+    assert resolve_lane_alias("deepseek-v4-pro") == "PRO"
     assert resolve_lane_alias("FAST_THINK") == "FAST_THINK"
 
 
@@ -131,3 +130,55 @@ def test_registry_schema_file_exists():
     json.loads(schema.read_text())
     reg = json.loads((ROOT / "config" / "llm_model_registry.json").read_text())
     assert "logical_policies" in reg
+
+
+def test_ambiguous_deepseek_v4_rejected():
+    from lib.llm_model_registry import AmbiguousLegacyLane, resolve_lane_alias
+    import pytest
+    with pytest.raises(AmbiguousLegacyLane):
+        resolve_lane_alias("deepseek-v4")
+
+
+def test_llm_lane_rejects_ambiguous():
+    import llm_lane
+    import pytest
+    with pytest.raises(RuntimeError, match="AMBIGUOUS"):
+        llm_lane.generate("hi", lane="deepseek-v4", _skip_consumption=True)
+
+
+def test_available_ambiguous_false():
+    import llm_lane
+    assert llm_lane.available("deepseek-v4") is False
+
+
+def test_json_contract_validate_watch():
+    from lib.llm_output_schemas import validate_process_output
+    data = validate_process_output("watch_narrative.v1", {
+        "schema_id": "watch_narrative.v1",
+        "symbol": "AAPL",
+        "narrative": "ok",
+        "stance": "bullish",
+        "confidence": 0.5,
+        "drivers": [],
+        "risks": [],
+    })
+    assert data["symbol"] == "AAPL"
+
+
+def test_json_contract_rejects_bad_type():
+    from lib.llm_output_schemas import validate_process_output
+    import pytest
+    with pytest.raises(ValueError):
+        validate_process_output("watch_narrative.v1", {
+            "schema_id": "watch_narrative.v1",
+            "symbol": "AAPL",
+            "narrative": "ok",
+            "confidence": "high",  # wrong type
+        })
+
+
+def test_cost_not_relative_units_in_estimate():
+    from lib.llm_model_registry import estimate_usd_cost
+    # 1000 chars of text must NOT be used; only tokens
+    est = estimate_usd_cost(model_id="deepseek-v4-flash", prompt_tokens=0, completion_tokens=0)
+    assert est["estimated_cost_usd"] == 0.0

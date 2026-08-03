@@ -197,7 +197,10 @@ def chat(
             client_request_id=client_rid,
         )
 
-    msgs = messages or [{"role": "user", "content": prompt}]
+    if messages:
+        msgs = messages
+    else:
+        msgs = [{"role": "user", "content": prompt}]
     body: dict[str, Any] = {
         "model": model_id,
         "messages": msgs,
@@ -399,3 +402,41 @@ def parse_strict_json(content: str | None) -> dict[str, Any]:
     if not isinstance(obj, dict):
         raise DeepSeekError(JSON_INVALID, "JSON root must be an object")
     return obj
+
+
+def continue_with_tool_results(
+    *,
+    policy: str,
+    prior_messages: list[dict],
+    assistant_message: dict,
+    tool_results: list[dict],
+    operator_confirmed: bool = False,
+    timeout: float = 90.0,
+    max_tokens: int = 2048,
+) -> DeepSeekResponse:
+    """Continue a thinking-mode tool loop preserving assistant reasoning_content.
+
+    assistant_message must include role=assistant and any reasoning_content/tool_calls
+    returned by the provider. tool_results are role=tool messages.
+    """
+    msgs = list(prior_messages)
+    # Preserve reasoning_content and tool_calls exactly
+    asst = {
+        "role": "assistant",
+        "content": assistant_message.get("content"),
+    }
+    if "reasoning_content" in assistant_message:
+        asst["reasoning_content"] = assistant_message.get("reasoning_content")
+    if assistant_message.get("tool_calls") is not None:
+        asst["tool_calls"] = assistant_message.get("tool_calls")
+    msgs.append(asst)
+    for tr in tool_results:
+        msgs.append(tr)
+    return chat(
+        policy=policy,
+        prompt="",  # unused when messages provided
+        messages=msgs,
+        operator_confirmed=operator_confirmed,
+        timeout=timeout,
+        max_tokens=max_tokens,
+    )

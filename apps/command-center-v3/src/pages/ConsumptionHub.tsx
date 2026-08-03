@@ -86,7 +86,7 @@ export default function ConsumptionHub() {
     }
   }
 
-  const testLane = async (lane: 'grok' | 'chatgpt' | 'deepseek-flash' | 'deepseek-v4') => {
+  const testLane = async (lane: 'grok' | 'chatgpt' | 'deepseek-flash' | 'deepseek-v4-pro') => {
     setBusy(`test-${lane}`)
     setMsg('')
     try {
@@ -124,7 +124,7 @@ export default function ConsumptionHub() {
       <div style={hubTitle()}>LLM Consumption</div>
       <p style={{ ...hubSubtitle(terminalUi), marginBottom: 16, lineHeight: 1.5, fontSize: 9 }}>
         Track and control <b style={{ color: TEXT }}>free OAuth</b> usage — Grok (xAI :8645) and ChatGPT (codex :8646),
-        plus <b style={{ color: '#a78bfa' }}>DeepSeek</b> metered API (flash / v4·R1).
+        plus <b style={{ color: '#a78bfa' }}>DeepSeek</b> metered API (Flash / Pro).
         No metered API keys for OAuth. <b>Manual</b> mode blocks automatic calls; use per-lane <b>▶</b> buttons below.
         <b>Automated</b> when you want hands-off cron.
       </p>
@@ -136,8 +136,8 @@ export default function ConsumptionHub() {
 
       {/* OAuth lane status */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: 10, marginBottom: 16 }}>
-        {(['grok', 'chatgpt', 'deepseek-flash', 'deepseek-v4'] as const).map(id => {
-          const ln = id === 'grok' ? grokLane : (id === 'chatgpt' ? chatLane : (id === 'deepseek-flash' ? oauth.deepseek_flash : oauth.deepseek_v4))
+        {(['grok', 'chatgpt', 'deepseek-flash', 'deepseek-v4-pro'] as const).map(id => {
+          const ln = id === 'grok' ? grokLane : (id === 'chatgpt' ? chatLane : (id === 'deepseek-flash' ? oauth.deepseek_flash : oauth.deepseek_pro))
           const ok = id.startsWith('deepseek') ? (ln?.ready ?? false) : laneReady(ln)
           const label = id === 'grok' ? (ln?.label || 'Grok') : (id === 'chatgpt' ? (ln?.label || 'ChatGPT') : (id === 'deepseek-flash' ? 'DeepSeek Flash' : 'DeepSeek V4'))
           const isDeepSeek = id.startsWith('deepseek')
@@ -174,7 +174,7 @@ export default function ConsumptionHub() {
             </button>
             <button type="button" onClick={() => void testLane('deepseek-flash')} disabled={!!busy}
               style={{ fontSize: 10, fontWeight: 800, padding: '6px 10px', borderRadius: 6, border: '1px solid #a855f766', background: '#a855f714', color: '#a855f7', cursor: busy ? 'wait' : 'pointer' }}>
-              {busy === 'test-deepseek-flash' ? '…' : '▶ Test DeepSeek'}
+              {busy === 'test-deepseek-flash' ? '…' : '▶ Test V4 Flash'}
             </button>
           </div>
           <button onClick={() => void runKeepalive()} disabled={!!busy}
@@ -190,7 +190,7 @@ export default function ConsumptionHub() {
       {/* Overview cards */}
       {overview && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: 8, marginBottom: 16 }}>
-          {(['grok', 'chatgpt', 'deepseek-flash', 'deepseek-v4'] as const).flatMap(lane => {
+          {(['grok', 'chatgpt', 'deepseek-flash', 'deepseek-v4-pro'] as const).flatMap(lane => {
             const t = overview?.by_lane?.[lane]?.today
             const w = overview?.by_lane?.[lane]?.week
             if (!t && !w) return []

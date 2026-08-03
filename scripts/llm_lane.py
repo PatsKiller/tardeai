@@ -26,7 +26,6 @@ _CHATGPT_URL = os.environ.get("CHATGPT_PROXY_URL", "http://127.0.0.1:8646").rstr
 # They must NOT map to deepseek-chat / deepseek-reasoner model IDs.
 _DEEPSEEK_LANES = frozenset({
     "deepseek-flash",
-    "deepseek-v4",
     "deepseek-v4-flash",
     "deepseek-v4-pro",
     "fast",
@@ -35,6 +34,8 @@ _DEEPSEEK_LANES = frozenset({
     "pro_think",
     "pro_max",
 })
+# Ambiguous legacy — accepted only to raise a typed error (never route)
+_AMBIGUOUS_DEEPSEEK = frozenset({"deepseek-v4", "deepseek_v4"})
 
 
 def _deepseek_available() -> bool:
@@ -80,6 +81,8 @@ def available(lane):
                 return bool(h.get("authenticated")) and not h.get("token_expired")
             except Exception:
                 return False
+    if lane in _AMBIGUOUS_DEEPSEEK:
+        return False  # never available=True for ambiguous alias
     if lane in _DEEPSEEK_LANES:
         return _deepseek_available()
     # Unknown lane — never report available
@@ -94,9 +97,9 @@ def _resolve_deepseek_policy(lane: str, model: str | None) -> str:
         if model == "deepseek-v4-flash":
             return "FAST"
         if model == "deepseek-v4-pro":
-            return "PRO_THINK"
+            return "PRO"  # exact model without think request → PRO non-thinking
         raise RegistryError(f"unsupported explicit model override: {model!r}")
-    pol = resolve_lane_alias(lane)
+    pol = resolve_lane_alias(lane)  # may raise AmbiguousLegacyLane
     if not pol:
         raise RegistryError(f"not a DeepSeek lane: {lane!r}")
     return pol
@@ -169,23 +172,32 @@ def generate(
     _skip_consumption=False,
     operator_confirmed=False,
     response_json=False,
+    return_provenance=False,
 ):
     """Generate text. When process_id is set, routes through consumption gate (Automated/Manual).
 
     DeepSeek failures raise RuntimeError — they never fall through to local Gemma.
+    If return_provenance=True, returns (text, provenance_dict) for DeepSeek paths.
     """
     lane_l = (lane or "grok").lower().strip()
+
+    if lane_l in _AMBIGUOUS_DEEPSEEK:
+        raise RuntimeError(
+            "AMBIGUOUS_LEGACY_LANE: 'deepseek-v4' is not exact. "
+            "Use FAST/FAST_THINK/PRO/PRO_THINK/PRO_MAX or deepseek-v4-flash / deepseek-v4-pro."
+        )
+
     deepseek_requested = lane_l in _DEEPSEEK_LANES
 
-    if process_id and not _skip_consumption and lane_l in (
-        "grok", "chatgpt", "deepseek-flash", "deepseek-v4",
-        "deepseek-v4-flash", "deepseek-v4-pro",
-        "fast", "fast_think", "pro", "pro_think", "pro_max",
+    if process_id and not _skip_consumption and (
+        lane_l in ("grok", "chatgpt") or deepseek_requested
     ):
         from lib.llm_consumption import gate_and_generate
         return gate_and_generate(
             prompt, lane=lane_l, process_id=process_id, task_summary=task_summary,
             manual_trigger=manual_trigger, timeout=timeout, model=model, metadata=metadata,
+            operator_confirmed=operator_confirmed,
+            response_json=response_json,
         )
 
     # ── DeepSeek lanes (paid API key, exact V4 models) ──
@@ -198,9 +210,14 @@ def generate(
             operator_confirmed=operator_confirmed or bool((metadata or {}).get("operator_cost_confirmed")),
             response_json=response_json,
         )
+        provenance = {
+            "usage": {k: v for k, v in usage.items() if k != "_tradeai"},
+            "_tradeai": usage.get("_tradeai") or {},
+        }
         if process_id and not _skip_consumption:
             try:
                 from lib.llm_consumption import log_call
+                ta = provenance["_tradeai"]
                 log_call(
                     lane=lane_l,
                     process_id=process_id,
@@ -212,13 +229,21 @@ def generate(
                     response=text,
                     tokens_in=usage.get("prompt_tokens"),
                     tokens_out=usage.get("completion_tokens"),
-                    metadata={
-                        **(metadata or {}),
-                        **(usage.get("_tradeai") or {}),
-                    },
+                    estimated_cost_usd=ta.get("estimated_cost_usd"),
+                    cost_basis=ta.get("cost_basis"),
+                    requested_policy=ta.get("requested_policy"),
+                    executed_policy=ta.get("executed_policy"),
+                    requested_model_id=ta.get("requested_model_id"),
+                    returned_model=ta.get("returned_model"),
+                    thinking=ta.get("thinking"),
+                    reasoning_effort=ta.get("reasoning_effort"),
+                    provider_request_id=ta.get("request_id"),
+                    metadata={**(metadata or {}), **ta},
                 )
             except Exception:
                 pass
+        if return_provenance:
+            return text, provenance
         return text
 
     if lane_l == "grok":

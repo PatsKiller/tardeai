@@ -67,7 +67,7 @@ def ensure_schema() -> None:
             process_name TEXT NOT NULL,
             category TEXT,
             mode TEXT NOT NULL DEFAULT 'manual',
-            allowed_lanes TEXT[] DEFAULT ARRAY['grok','chatgpt','deepseek-flash','deepseek-v4'],
+            allowed_lanes TEXT[] DEFAULT ARRAY['grok','chatgpt','deepseek-flash','deepseek-v4-flash','deepseek-v4-pro','fast','pro','pro_think'],
             daily_soft_cap INT,
             notes TEXT,
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -78,6 +78,31 @@ def ensure_schema() -> None:
     cur.execute("""
         CREATE INDEX IF NOT EXISTS idx_llm_consumption_log_process
             ON llm_consumption_log (process_id, created_at DESC)""")
+    # Additive migrations for paid-token accounting (safe on existing DBs)
+    for stmt in (
+        "ALTER TABLE llm_consumption_log ADD COLUMN IF NOT EXISTS relative_units NUMERIC(12,6) DEFAULT 0",
+        "ALTER TABLE llm_consumption_log ADD COLUMN IF NOT EXISTS cost_basis TEXT",
+        "ALTER TABLE llm_consumption_log ADD COLUMN IF NOT EXISTS pricing_effective_at TEXT",
+        "ALTER TABLE llm_consumption_log ADD COLUMN IF NOT EXISTS reasoning_tokens INT",
+        "ALTER TABLE llm_consumption_log ADD COLUMN IF NOT EXISTS cache_hit_tokens INT",
+        "ALTER TABLE llm_consumption_log ADD COLUMN IF NOT EXISTS cache_miss_tokens INT",
+        "ALTER TABLE llm_consumption_log ADD COLUMN IF NOT EXISTS requested_policy TEXT",
+        "ALTER TABLE llm_consumption_log ADD COLUMN IF NOT EXISTS executed_policy TEXT",
+        "ALTER TABLE llm_consumption_log ADD COLUMN IF NOT EXISTS requested_model_id TEXT",
+        "ALTER TABLE llm_consumption_log ADD COLUMN IF NOT EXISTS returned_model TEXT",
+        "ALTER TABLE llm_consumption_log ADD COLUMN IF NOT EXISTS thinking TEXT",
+        "ALTER TABLE llm_consumption_log ADD COLUMN IF NOT EXISTS reasoning_effort TEXT",
+        "ALTER TABLE llm_consumption_log ADD COLUMN IF NOT EXISTS provider_request_id TEXT",
+        "ALTER TABLE llm_process_config ADD COLUMN IF NOT EXISTS daily_cost_cap_usd NUMERIC(12,4)",
+    ):
+        try:
+            cur.execute(stmt)
+        except Exception:
+            try:
+                _conn().rollback()
+            except Exception:
+                pass
+            cur = _conn().cursor()
     _conn().commit()
     _seed_registry()
     _SCHEMA_OK = True
@@ -160,13 +185,113 @@ def get_process_config(process_id: str) -> dict:
             return {
                 "process_id": pid, "process_name": p.get("name") or pid,
                 "category": p.get("category"), "mode": p.get("default_mode") or reg.get("default_mode") or "manual",
-                "allowed_lanes": ["grok", "chatgpt"], "daily_soft_cap": p.get("daily_soft_cap"),
+                "allowed_lanes": list(DEFAULT_ALLOWED_LANES), "daily_soft_cap": p.get("daily_soft_cap"),
+                "daily_cost_cap_usd": p.get("daily_cost_cap_usd"),
                 "notes": p.get("description"),
             }
     return {
         "process_id": pid, "process_name": pid, "category": "Unknown",
-        "mode": reg.get("default_mode") or "manual", "allowed_lanes": ["grok", "chatgpt"],
+        "mode": reg.get("default_mode") or "manual", "allowed_lanes": list(DEFAULT_ALLOWED_LANES),
     }
+
+
+DEFAULT_ALLOWED_LANES = [
+    "grok", "chatgpt", "local",
+    "deepseek-flash", "deepseek-v4-flash", "deepseek-v4-pro",
+    "fast", "fast_think", "pro", "pro_think", "pro_max",
+]
+
+
+def sync_process_policies_from_registry(*, force_expand_deepseek: bool = True) -> dict:
+    """Non-destructive: create missing process rows and expand allowed_lanes for DeepSeek."""
+    ensure_schema()
+    reg = _load_registry()
+    cur = _conn().cursor()
+    created = updated = 0
+    for p in reg.get("processes") or []:
+        pid = str(p.get("id") or "").strip()
+        if not pid:
+            continue
+        allowed = list(DEFAULT_ALLOWED_LANES)
+        for pol in (p.get("deepseek_allowed_policies") or []):
+            pl = str(pol).lower()
+            if pl not in allowed:
+                allowed.append(pl)
+        if p.get("deepseek_default_policy"):
+            pl = str(p["deepseek_default_policy"]).lower()
+            if pl not in allowed:
+                allowed.append(pl)
+        cost_cap = p.get("daily_cost_cap_usd")
+        cur.execute("SELECT allowed_lanes, mode FROM llm_process_config WHERE process_id=%s", (pid,))
+        row = cur.fetchone()
+        if row is None:
+            cur.execute(
+                """INSERT INTO llm_process_config
+                   (process_id, process_name, category, mode, allowed_lanes, daily_soft_cap, daily_cost_cap_usd, notes, updated_at)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,NOW())""",
+                (pid, p.get("name") or pid, p.get("category"),
+                 p.get("default_mode") or reg.get("default_mode") or "manual",
+                 allowed, p.get("daily_soft_cap"), cost_cap, p.get("description")),
+            )
+            created += 1
+            continue
+        old = [x for x in (row[0] or []) if x != "deepseek-v4"]
+        if force_expand_deepseek:
+            for lane in allowed:
+                if lane not in old:
+                    old.append(lane)
+        cur.execute(
+            """UPDATE llm_process_config SET process_name=%s, category=%s, notes=%s,
+               allowed_lanes=%s,
+               daily_soft_cap=COALESCE(%s, daily_soft_cap),
+               daily_cost_cap_usd=COALESCE(%s, daily_cost_cap_usd),
+               updated_at=NOW() WHERE process_id=%s""",
+            (p.get("name") or pid, p.get("category"), p.get("description"),
+             old, p.get("daily_soft_cap"), cost_cap, pid),
+        )
+        updated += 1
+    _conn().commit()
+    return {"ok": True, "created": created, "updated": updated}
+
+
+def usd_spent_today(process_id: str | None = None) -> float:
+    ensure_schema()
+    cur = _conn().cursor()
+    if process_id:
+        cur.execute(
+            "SELECT COALESCE(SUM(estimated_cost_usd),0) FROM llm_consumption_log "
+            "WHERE process_id=%s AND created_at >= CURRENT_DATE "
+            "AND COALESCE(cost_basis,'') NOT IN ('relative_units','relative_units_not_usd','')",
+            (str(process_id),),
+        )
+    else:
+        cur.execute(
+            "SELECT COALESCE(SUM(estimated_cost_usd),0) FROM llm_consumption_log "
+            "WHERE created_at >= CURRENT_DATE "
+            "AND cost_basis IS NOT NULL AND cost_basis NOT IN ('relative_units','relative_units_not_usd')"
+        )
+    return float(cur.fetchone()[0] or 0)
+
+
+def check_cost_cap(process_id: str, *, projected_usd: float = 0.0, global_cap: float | None = None) -> dict:
+    cfg = get_process_config(process_id)
+    # registry fallback for cost cap when column empty
+    if cfg.get("daily_cost_cap_usd") is None:
+        for p in (_load_registry().get("processes") or []):
+            if p.get("id") == process_id and p.get("daily_cost_cap_usd") is not None:
+                cfg["daily_cost_cap_usd"] = p.get("daily_cost_cap_usd")
+                break
+    proc_cap = cfg.get("daily_cost_cap_usd")
+    spent = usd_spent_today(process_id)
+    if proc_cap is not None and (spent + projected_usd) > float(proc_cap):
+        return {"allow": False, "reason": "COST_CAP_EXCEEDED", "scope": "process",
+                "spent_usd": spent, "cap_usd": float(proc_cap)}
+    if global_cap is not None:
+        g = usd_spent_today(None)
+        if (g + projected_usd) > float(global_cap):
+            return {"allow": False, "reason": "COST_CAP_EXCEEDED", "scope": "global",
+                    "spent_usd": g, "cap_usd": float(global_cap)}
+    return {"allow": True, "spent_process_usd": spent}
 
 
 def set_process_mode(process_id: str, mode: str) -> dict:
@@ -223,7 +348,19 @@ def should_call(process_id: str, lane: str, *, manual_trigger: bool = False) -> 
     """Decision only — does not call the model."""
     cfg = get_process_config(process_id)
     lane = (lane or "").strip().lower()
-    allowed = lane in (cfg.get("allowed_lanes") or ["grok", "chatgpt", "deepseek-flash", "deepseek-v4"])
+    if lane in ("deepseek-v4", "deepseek_v4"):
+        return {"allow": False, "reason": "AMBIGUOUS_LEGACY_LANE", "mode": cfg.get("mode"),
+                "process_id": process_id}
+    allowed_list = list(cfg.get("allowed_lanes") or DEFAULT_ALLOWED_LANES)
+    # Expand from registry deepseek policies for this process
+    for p in (_load_registry().get("processes") or []):
+        if p.get("id") == process_id:
+            for pol in (p.get("deepseek_allowed_policies") or []):
+                pl = str(pol).lower()
+                if pl not in allowed_list:
+                    allowed_list.append(pl)
+            break
+    allowed = lane in allowed_list or lane.upper() in {x.upper() for x in allowed_list}
     if not allowed:
         return {"allow": False, "reason": f"lane {lane} not allowed for {process_id}", "mode": cfg.get("mode")}
     if cfg.get("mode") == "manual" and not manual_trigger:
@@ -246,29 +383,53 @@ def log_call(
     duration_ms: int | None = None,
     error_message: str | None = None,
     metadata: dict | None = None,
+    relative_units: float | None = None,
+    estimated_cost_usd: float | None = None,
+    cost_basis: str | None = None,
+    pricing_effective_at: str | None = None,
+    reasoning_tokens: int | None = None,
+    cache_hit_tokens: int | None = None,
+    cache_miss_tokens: int | None = None,
+    requested_policy: str | None = None,
+    executed_policy: str | None = None,
+    requested_model_id: str | None = None,
+    returned_model: str | None = None,
+    thinking: str | None = None,
+    reasoning_effort: str | None = None,
+    provider_request_id: str | None = None,
 ) -> int | None:
-    """Persist a consumption log row. Returns log id or None on failure."""
+    """Persist consumption. relative_units is char-based; estimated_cost_usd is paid-token only."""
     try:
         ensure_schema()
         cfg = get_process_config(process_id)
         pc = len(prompt or "")
         rc = len(response or "")
-        # Free tier: relative units — 1 unit ≈ 1k chars combined
-        rel_units = round((pc + rc) / 1000.0, 3)
+        rel = relative_units if relative_units is not None else round((pc + rc) / 1000.0, 3)
+        # Never store char-relative units in estimated_cost_usd
+        cost = float(estimated_cost_usd) if estimated_cost_usd is not None else 0.0
+        basis = cost_basis or ("provider_usage_x_registry_snapshot" if estimated_cost_usd is not None else "oauth_free_or_unset")
+        meta = dict(metadata or {})
         cur = _conn().cursor()
         cur.execute("""
             INSERT INTO llm_consumption_log
               (model_lane, model_name, process_id, process_name, task_summary, trigger_mode,
                prompt_chars, response_chars, tokens_in, tokens_out, estimated_cost_usd,
+               relative_units, reasoning_tokens, cache_hit_tokens, cache_miss_tokens,
+               cost_basis, pricing_effective_at, requested_policy, executed_policy,
+               requested_model_id, returned_model, thinking, reasoning_effort, provider_request_id,
                success, error_message, duration_ms, metadata_json)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             RETURNING id
         """, (
-            lane, model_name, process_id, cfg.get("process_name") or process_id,
+            lane, model_name or returned_model or requested_model_id, process_id,
+            cfg.get("process_name") or process_id,
             summarize_prompt(task_summary or prompt or ""),
-            trigger_mode, pc, rc, tokens_in, tokens_out, rel_units,
+            trigger_mode, pc, rc, tokens_in, tokens_out, cost,
+            rel, reasoning_tokens, cache_hit_tokens, cache_miss_tokens,
+            basis, pricing_effective_at, requested_policy, executed_policy,
+            requested_model_id, returned_model, thinking, reasoning_effort, provider_request_id,
             success, (error_message or "")[:400] if error_message else None,
-            duration_ms, json.dumps(metadata or {}, default=str)[:4000] if metadata else None,
+            duration_ms, json.dumps(meta, default=str)[:4000] if meta else None,
         ))
         lid = cur.fetchone()[0]
         _conn().commit()
@@ -291,19 +452,39 @@ def gate_and_generate(
     timeout: int = 90,
     model: str | None = None,
     metadata: dict | None = None,
+    operator_confirmed: bool = False,
+    response_json: bool = False,
+    output_schema_id: str | None = None,
+    max_tokens: int = 2048,
+    policy: str | None = None,
 ) -> str:
-    """Check process mode, call llm_lane.generate, log result. Raises ManualRequired when blocked."""
+    """Check process mode + cost caps; call llm_lane with DeepSeek kwargs; log full provenance."""
+    import os
     import sys
     sys.path.insert(0, str(ROOT / "scripts"))
     from lib.oauth_lane_status import lane_available
 
     lane = (lane or "grok").lower()
     process_id = str(process_id or "unregistered")
+    meta = dict(metadata or {})
+    if operator_confirmed:
+        meta["operator_cost_confirmed"] = True
+    if policy:
+        meta["requested_policy"] = policy
+        lane = policy.lower()
+
     decision = should_call(process_id, lane, manual_trigger=manual_trigger)
     if not decision.get("allow"):
         if decision.get("reason") == "manual_mode":
             raise ManualRequired(process_id, lane, task_summary or summarize_prompt(prompt), prompt[:500])
         raise RuntimeError(decision.get("reason") or "call not allowed")
+
+    gcap_raw = os.environ.get("LLM_GLOBAL_DAILY_USD_CAP")
+    gcap = float(gcap_raw) if gcap_raw not in (None, "") else None
+    cap = check_cost_cap(process_id, projected_usd=0.0, global_cap=gcap)
+    if not cap.get("allow"):
+        raise RuntimeError(f"COST_CAP_EXCEEDED: {cap}")
+
     if lane in ("grok", "chatgpt") and not lane_available(lane):
         raise RuntimeError(f"{lane} OAuth lane unavailable — check grok-oauth-proxy / chatgpt-oauth-proxy")
     import llm_lane
@@ -312,20 +493,52 @@ def gate_and_generate(
     err = None
     text = ""
     ok = True
+    prov: dict = {}
     try:
-        text = llm_lane.generate(prompt, lane=lane, timeout=timeout, model=model, _skip_consumption=True)
+        result = llm_lane.generate(
+            prompt, lane=lane, timeout=timeout, model=model, _skip_consumption=True,
+            operator_confirmed=operator_confirmed or bool(meta.get("operator_cost_confirmed")),
+            response_json=response_json or bool(output_schema_id),
+            metadata=meta, return_provenance=True,
+        )
+        if isinstance(result, tuple):
+            text, prov = result[0], (result[1] or {})
+        else:
+            text = result
     except Exception as e:
         ok = False
         err = str(e)[:300]
         raise
     finally:
+        usage = prov.get("usage") or {}
+        tradeai = prov.get("_tradeai") or prov
+        is_deepseek = bool(tradeai.get("requested_model_id") or tradeai.get("returned_model")
+                           or lane.startswith("deepseek") or lane in (
+                               "fast", "fast_think", "pro", "pro_think", "pro_max"))
         log_call(
             lane=lane, process_id=process_id,
             task_summary=task_summary or summarize_prompt(prompt),
-            trigger_mode=trigger, success=ok, model_name=model,
+            trigger_mode=trigger, success=ok,
+            model_name=tradeai.get("returned_model") or tradeai.get("requested_model_id") or model,
             prompt=prompt, response=text if ok else None,
+            tokens_in=usage.get("prompt_tokens"),
+            tokens_out=usage.get("completion_tokens"),
             duration_ms=int((time.time() - t0) * 1000),
-            error_message=err, metadata=metadata,
+            error_message=err,
+            metadata={**meta, **{k: v for k, v in tradeai.items() if k != "usage"}},
+            estimated_cost_usd=tradeai.get("estimated_cost_usd") if is_deepseek else None,
+            cost_basis=tradeai.get("cost_basis") if is_deepseek else "oauth_free_or_unset",
+            pricing_effective_at=tradeai.get("pricing_effective_at"),
+            reasoning_tokens=usage.get("reasoning_tokens"),
+            cache_hit_tokens=usage.get("prompt_cache_hit_tokens"),
+            cache_miss_tokens=usage.get("prompt_cache_miss_tokens"),
+            requested_policy=tradeai.get("requested_policy") or policy,
+            executed_policy=tradeai.get("executed_policy"),
+            requested_model_id=tradeai.get("requested_model_id"),
+            returned_model=tradeai.get("returned_model"),
+            thinking=tradeai.get("thinking"),
+            reasoning_effort=tradeai.get("reasoning_effort"),
+            provider_request_id=tradeai.get("request_id"),
         )
     return text
 

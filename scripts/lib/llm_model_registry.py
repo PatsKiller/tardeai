@@ -88,22 +88,39 @@ def resolve_logical_policy(policy: str, *, operator_confirmed: bool = False) -> 
     }
 
 
+class AmbiguousLegacyLane(RegistryError):
+    """Raised when a caller uses an ambiguous DeepSeek lane name (e.g. deepseek-v4)."""
+
+
 def resolve_lane_alias(lane: str) -> str | None:
-    """Map legacy UI/API lane strings to logical policies. Returns None if not a DeepSeek lane."""
+    """Map UI/API lane strings to logical policies. Returns None if not a DeepSeek lane.
+
+    Ambiguous `deepseek-v4` raises AmbiguousLegacyLane — never silently maps to Pro.
+    Temporary: `deepseek-flash` → FAST for backward compatibility.
+    """
     lane = (lane or "").strip().lower()
+    if not lane:
+        return None
     # Prefer exact logical policy names passed as lane
     if lane.upper() in LOGICAL_POLICIES:
         return lane.upper()
+    # Ambiguous — fail closed
+    if lane in ("deepseek-v4", "deepseek_v4", "v4"):
+        raise AmbiguousLegacyLane(
+            "AMBIGUOUS_LEGACY_LANE: 'deepseek-v4' is not an exact model or logical policy. "
+            "Use FAST / FAST_THINK / PRO / PRO_THINK / PRO_MAX, or exact "
+            "deepseek-v4-flash / deepseek-v4-pro."
+        )
     reg = load_registry()
     aliases = ((reg.get("providers") or {}).get("deepseek") or {}).get("legacy_lane_aliases") or {}
     if lane in aliases:
         return str(aliases[lane]).upper()
-    # New explicit lane names
     mapping = {
         "deepseek-v4-flash": "FAST",
-        "deepseek-v4-pro": "PRO_THINK",
+        "deepseek-v4-pro": "PRO",  # exact model without think → PRO non-thinking default
         "deepseek-flash": "FAST",
-        "deepseek-v4": "PRO_THINK",  # historical ambiguous lane → Pro think (not legacy reasoner id)
+        "deepseek_flash": "FAST",
+        "deepseek-pro": "PRO",
     }
     return mapping.get(lane)
 
