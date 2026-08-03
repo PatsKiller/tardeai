@@ -105,7 +105,13 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
       // broker-proposals: 15s hard timeout (P0 2026-07-14) — the endpoint is now bounded
       // server-side (quote budget + background autocal/summary); anything slower should
       // surface the error/Retry state instead of an endless "Loading broker queue…".
-      const timeoutMs = path.includes('broker-proposals') ? 15_000 : 30_000
+      // decision-desk for full MAIN (~60 names) regularly takes 20–40s; 30s aborted
+      // mid-flight and left ticket/criteria strips on stale last-good data.
+      const timeoutMs = path.includes('broker-proposals')
+        ? 15_000
+        : path.includes('/watch/decision-desk')
+          ? 90_000
+          : 30_000
       const timer = setTimeout(() => controller.abort(), timeoutMs)
       // Initial load only — interval polls keep last data without blanking the UI
       if (dataRef.current == null) setLoading(true)

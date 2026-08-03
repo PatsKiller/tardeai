@@ -377,25 +377,64 @@ function valuation(item: any, fv: any, card: any) {
     available: pe !== null || forwardPe !== null || peg !== null || pb !== null || ps !== null,
   }
 }
+function laneVerdict(reviews: any, reconciled: any, key: string): string {
+  // Prefer full critic artifact verdict; fall back to reconciler's per-lane summary.
+  const fromReview = reviews?.[key]?.verdict
+  const fromRec = reconciled?.reviews?.[key]
+  return (text(fromReview, fromRec, 'NOT RUN') || 'NOT RUN').toUpperCase()
+}
+
 function ticketState(item: any) {
   const packet = item?.decision_packet ?? {}
   const validation = packet?.current_actionable_plan?.ticket_validation ?? {}
   const review = packet?.ticket_review ?? {}
+  const reviews = review?.reviews ?? {}
+  const reconciled = review?.reconciled ?? {}
   const validated0 = Array.isArray(review?.tickets_validated) ? review.tickets_validated[0] : null
   const detRaw = text(validation.state, validated0?.state)
-  const recRaw = text(review?.reconciled?.state)
+  const recRaw = text(reconciled?.state)
   return {
     // Missing critics = NOT RUN (pending), not a hard fail / not UNVALIDATED-as-block
     deterministic: (detRaw || 'NOT RUN').toUpperCase(),
     reconciled: (recRaw || 'NOT RUN').toUpperCase(),
-    local: text(review?.reviews?.local?.verdict, 'NOT RUN').toUpperCase(),
-    'deepseek-flash': text(review?.reviews?.['deepseek-flash']?.verdict, 'NOT RUN').toUpperCase(),
-    'deepseek-v4': text(review?.reviews?.['deepseek-v4']?.verdict, 'NOT RUN').toUpperCase(),
-    grok: text(review?.reviews?.grok?.verdict, 'NOT RUN').toUpperCase(),
-    chatgpt: text(review?.reviews?.chatgpt?.verdict, 'NOT RUN').toUpperCase(),
+    local: laneVerdict(reviews, reconciled, 'local'),
+    'deepseek-flash': laneVerdict(reviews, reconciled, 'deepseek-flash'),
+    'deepseek-v4': laneVerdict(reviews, reconciled, 'deepseek-v4'),
+    grok: laneVerdict(reviews, reconciled, 'grok'),
+    chatgpt: laneVerdict(reviews, reconciled, 'chatgpt'),
   }
 }
+
+/** Prefer server decision-desk ticket projection when present (includes DeepSeek lanes). */
+function mergeTicket(
+  base: ReturnType<typeof ticketState>,
+  deskTicket: Record<string, string> | null | undefined,
+): ReturnType<typeof ticketState> {
+  if (!deskTicket || typeof deskTicket !== 'object') return base
+  const out = { ...base }
+  for (const key of Object.keys(out) as (keyof typeof out)[]) {
+    const v = deskTicket[key as string]
+    if (v !== null && v !== undefined && String(v).trim()) {
+      ;(out as any)[key] = String(v).trim().toUpperCase()
+    }
+  }
+  // Desk may carry lane keys base missed (forward-compat)
+  for (const [k, v] of Object.entries(deskTicket)) {
+    if (v !== null && v !== undefined && String(v).trim() && !(k in out)) {
+      ;(out as any)[k] = String(v).trim().toUpperCase()
+    }
+  }
+  return out
+}
+
 function isFailure(value: string): boolean { return /FAIL|REJECT|BLOCK/.test(value) }
+function isCaution(value: string): boolean { return /CAUTION|WARN|HOLD|SPLIT/.test(value) }
+function ticketTone(value: string): string {
+  if (isFailure(value)) return BB.red
+  if (isCaution(value)) return BB.amber
+  if (/PASS|AGREE|OK|BUY|ADMITTED/.test(value)) return BB.green
+  return BB.text1
+}
 function isTicketPass(ticket: ReturnType<typeof ticketState>): boolean {
   return /^(PASS|PASS_WITH_WARNINGS|ADMITTED|OK)$/.test(ticket.deterministic)
 }
@@ -586,7 +625,7 @@ export default function WatchTruthAuditPanel() {
     () => classified.map(r => r.symbol).filter(Boolean).join(','),
     [classified],
   )
-  const { data: deskPayload } = useApi<any>(
+  const { data: deskPayload, refetch: refetchDesk } = useApi<any>(
     deskSymbols ? `/api/v2/watch/decision-desk?symbols=${encodeURIComponent(deskSymbols)}` : '/api/v2/watch/decision-desk',
     60_000,
     { enabled: classified.length > 0 },
@@ -660,8 +699,12 @@ export default function WatchTruthAuditPanel() {
     if (first) setSelected(first.symbol)
   }, [classified.length, lane, trueGo.length])
 
-  const selectedRow = classified.find(row => row.symbol === selected)
-  const selectedDesk = selectedRow ? deskBySymbol[selectedRow.symbol] : null
+  const selectedRowRaw = classified.find(row => row.symbol === selected)
+  const selectedDesk = selectedRowRaw ? deskBySymbol[selectedRowRaw.symbol] : null
+  // Always prefer desk ticket projection so DeepSeek Flash/v4 appear even if local packet lag
+  const selectedRow = selectedRowRaw
+    ? { ...selectedRowRaw, ticket: mergeTicket(selectedRowRaw.ticket, selectedDesk?.ticket) }
+    : null
   const selectForReview = (symbol: string) => {
     setSelected(symbol); setOpen(true); setMessage(''); setPremium(null); updateReviewUrl(symbol, true)
   }
@@ -684,6 +727,7 @@ export default function WatchTruthAuditPanel() {
   const runReview = async (lanes: string, label: string) => {
     if (!selected || reviewBusy) return
     setReviewBusy(label); setMessage('')
+    const wanted = lanes.split(',').map(s => s.trim()).filter(Boolean)
     try {
       const response = await fetch('/api/v2/watch/ticket-review/run', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -692,8 +736,37 @@ export default function WatchTruthAuditPanel() {
       const payload = await response.json().catch(() => ({}))
       const data = payload?.data ?? payload
       if (!response.ok || data?.ok === false) throw new Error(data?.error || 'review failed')
-      setMessage(`${selected} — ${label} queued.`)
-      window.setTimeout(() => refetchWatch(), 6000)
+      setMessage(`${selected} — ${label} queued… polling for verdicts.`)
+      // Poll packet until requested lanes report a non-empty verdict (up to ~90s).
+      const deadline = Date.now() + 90_000
+      let lastSnap = ''
+      while (Date.now() < deadline) {
+        await new Promise(r => window.setTimeout(r, 4000))
+        try {
+          const st = await fetch(`/api/v2/watch/ticket-review/status?symbol=${encodeURIComponent(selected)}`, { cache: 'no-store' })
+          const body = await st.json().catch(() => ({}))
+          const tr = body?.ticket_review ?? body?.data?.ticket_review ?? {}
+          const reviews = tr?.reviews || {}
+          const recLanes = (tr?.reconciled || {}).reviews || {}
+          const parts = wanted.map(lane => {
+            const v = String(reviews?.[lane]?.verdict || recLanes?.[lane] || '').toUpperCase()
+            return v ? `${laneLabel(lane)}=${v}` : null
+          }).filter(Boolean)
+          if (parts.length) {
+            lastSnap = parts.join(' · ')
+            setMessage(`${selected} — ${lastSnap}`)
+          }
+          const done = wanted.every(lane => {
+            const v = String(reviews?.[lane]?.verdict || recLanes?.[lane] || '').toUpperCase()
+            return v && v !== 'NOT RUN' && v !== 'PENDING'
+          })
+          if (done) break
+        } catch { /* keep polling */ }
+      }
+      refetchWatch()
+      refetchDesk()
+      if (lastSnap) setMessage(`${selected} — ${lastSnap}`)
+      else setMessage(`${selected} — ${label} finished polling; refresh if strip still empty.`)
     } catch (error: any) { setMessage(`${selected} — ${String(error?.message || error)}`) }
     finally { setReviewBusy('') }
   }
@@ -725,7 +798,7 @@ export default function WatchTruthAuditPanel() {
       const data = payload?.data ?? payload
       if (!response.ok || data?.ok === false) throw new Error(data?.error || 'paid review failed')
       setMessage(`${selected} — paid review queued.`); setPremium(null); setConfirmation('')
-      window.setTimeout(() => refetchWatch(), 6000)
+      window.setTimeout(() => { refetchWatch(); refetchDesk() }, 8000)
     } catch (error: any) { setMessage(`${selected} — ${String(error?.message || error)}`) }
     finally { setReviewBusy('') }
   }
@@ -1192,18 +1265,32 @@ export default function WatchTruthAuditPanel() {
                       {([
                         ['Deterministic', selectedRow.ticket.deterministic],
                         ['Reconciled', selectedRow.ticket.reconciled],
-                        [laneLabel('deepseek-flash'), selectedRow.ticket['deepseek-flash']],
-                        ['Local', selectedRow.ticket.local],
-                        [laneLabel('grok'), selectedRow.ticket.grok],
-                        [laneLabel('chatgpt'), selectedRow.ticket.chatgpt],
-                        [laneLabel('deepseek-v4'), selectedRow.ticket['deepseek-v4']],
+                        [laneLabel('deepseek-flash'), selectedRow.ticket['deepseek-flash'] || 'NOT RUN'],
+                        ['Local', selectedRow.ticket.local || 'NOT RUN'],
+                        [laneLabel('grok'), selectedRow.ticket.grok || 'NOT RUN'],
+                        [laneLabel('chatgpt'), selectedRow.ticket.chatgpt || 'NOT RUN'],
+                        [laneLabel('deepseek-v4'), selectedRow.ticket['deepseek-v4'] || 'NOT RUN'],
                         ['Valuation', selectedRow.value.notApplicable ? 'N/A' : selectedRow.value.available ? `P/E ${selectedRow.value.pe ?? '—'}` : '—'],
                       ] as const).map(([label, value]) => (
                         <div key={label} style={{ padding: 8, borderBottom: `1px solid ${BB.border}`, borderRight: `1px solid ${BB.border}`, background: 'rgba(0,0,0,.12)' }}>
                           <div style={{ fontSize: 10, color: BB.text3 }}>{label}</div>
-                          <b style={{ fontSize: 12, color: isFailure(String(value)) ? BB.red : BB.text1 }}>{value}</b>
+                          <b style={{ fontSize: 12, color: ticketTone(String(value)) }}>{value}</b>
                         </div>
                       ))}
+                    </div>
+                    <div style={{ marginTop: 8, fontSize: 11, color: BB.text2, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                      <span title="DeepSeek Flash critic verdict">
+                        <span style={{ color: BB.text3 }}>DeepSeek Flash</span>{' '}
+                        <b style={{ color: ticketTone(String(selectedRow.ticket['deepseek-flash'] || 'NOT RUN')) }}>
+                          {selectedRow.ticket['deepseek-flash'] || 'NOT RUN'}
+                        </b>
+                      </span>
+                      <span title="DeepSeek v4 critic verdict">
+                        <span style={{ color: BB.text3 }}>DeepSeek v4</span>{' '}
+                        <b style={{ color: ticketTone(String(selectedRow.ticket['deepseek-v4'] || 'NOT RUN')) }}>
+                          {selectedRow.ticket['deepseek-v4'] || 'NOT RUN'}
+                        </b>
+                      </span>
                     </div>
                     {!selectedRow.value.notApplicable && (
                       <div style={{ marginTop: 8, fontSize: 11, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
