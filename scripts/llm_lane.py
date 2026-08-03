@@ -38,25 +38,24 @@ _DEEPSEEK_LANES = frozenset({
 _AMBIGUOUS_DEEPSEEK = frozenset({"deepseek-v4", "deepseek_v4"})
 
 
-def _deepseek_available() -> bool:
-    """Probe: key present + /v1/models returns both exact V4 IDs."""
+def _deepseek_model_available(model_id: str) -> bool:
+    """Independent probe for one exact V4 model id (uses TTL cache via consumption_run_manual)."""
     try:
-        from lib.deepseek_client import DeepSeekError, list_models
-        info = list_models(timeout=8)
-        return bool(info.get("has_v4_flash") and info.get("has_v4_pro"))
+        from lib.consumption_run_manual import deepseek_readiness_rows
+        if model_id == "deepseek-v4-flash":
+            row = next((r for r in deepseek_readiness_rows() if r["lane"] == "deepseek-flash"), None)
+        else:
+            row = next((r for r in deepseek_readiness_rows() if r["lane"] == "deepseek-v4-pro"), None)
+        return bool(row and row.get("ready"))
     except Exception:
-        try:
-            from lib.llm_model_registry import get_deepseek_api_key
-            key, _, _ = get_deepseek_api_key()
-            return bool(key)
-        except Exception:
-            return False
+        return False
 
 
 def available(lane):
     """Return True only when the lane can actually serve requests.
 
     Unknown lanes return False (never available=True for unknown).
+    Flash and Pro readiness are independent.
     """
     lane = (lane or "").lower().strip()
     if not lane:
@@ -83,8 +82,12 @@ def available(lane):
                 return False
     if lane in _AMBIGUOUS_DEEPSEEK:
         return False  # never available=True for ambiguous alias
+    if lane in ("deepseek-flash", "deepseek-v4-flash", "fast", "fast_think"):
+        return _deepseek_model_available("deepseek-v4-flash")
+    if lane in ("deepseek-v4-pro", "pro", "pro_think", "pro_max"):
+        return _deepseek_model_available("deepseek-v4-pro")
     if lane in _DEEPSEEK_LANES:
-        return _deepseek_available()
+        return False
     # Unknown lane — never report available
     return False
 

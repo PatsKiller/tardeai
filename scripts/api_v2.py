@@ -36274,26 +36274,40 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return 500, {"ok": False, "error": str(e)[:200]}
 
         if base_path == "/api/v2/consumption/run-manual":
-            # Operator-approved single LLM call for a Manual-mode process.
-            # Free OAuth (grok/chatgpt) + DeepSeek V4 logical policies / exact aliases.
-            # No silent fallback to local/Grok/ChatGPT when DeepSeek is requested.
+            # Operator manual LLM call: free OAuth (grok/chatgpt) + DeepSeek FAST only.
+            # PRO/PRO_THINK/PRO_MAX are never executed here (governed premium path only).
+            # No silent fallback. Errors sanitized for browser clients.
             try:
                 import sys as _sys
                 _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
                 from lib import llm_consumption as _lc
-                from lib.consumption_run_manual import classify_manual_lane
+                from lib.consumption_run_manual import (
+                    classify_manual_lane,
+                    process_allows_policy,
+                    sanitize_provider_error,
+                    SMOKE_PROCESS_ID,
+                )
                 from lib.oauth_lane_status import lane_available
                 b = body or {}
                 pid = str(b.get("process_id") or "").strip()
                 lane = str(b.get("lane") or "grok").strip().lower()
                 prompt = str(b.get("prompt") or "").strip()
                 task = str(b.get("task_summary") or b.get("task") or "").strip()
-                operator_confirmed = bool(
-                    b.get("operator_confirmed") or b.get("operator_cost_confirmed")
-                )
+                # Body flags must NEVER authorize Pro on this endpoint (ignore completely).
                 if not pid or not prompt:
-                    return 400, {"ok": False, "error": "process_id and prompt required"}
-                classified = classify_manual_lane(lane, operator_confirmed=operator_confirmed)
+                    return 400, {
+                        "ok": False,
+                        "error": "process_id and prompt required",
+                        "reason_code": "LANE_REQUIRED",
+                    }
+                if not _lc.is_process_registered(pid):
+                    return 400, {
+                        "ok": False,
+                        "error": "process_id is not registered",
+                        "reason_code": "PROCESS_NOT_REGISTERED",
+                        "process_id": pid,
+                    }
+                classified = classify_manual_lane(lane)
                 if not classified.get("ok"):
                     return 400, {
                         "ok": False,
@@ -36303,12 +36317,21 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                         "requested_policy": classified.get("policy"),
                         "requested_model_id": classified.get("requested_model_id"),
                     }
+                allow = process_allows_policy(pid, classified.get("policy"), classified.get("lane") or lane)
+                if not allow.get("ok"):
+                    return 400, {
+                        "ok": False,
+                        "error": allow.get("error") or "not allowed",
+                        "reason_code": allow.get("reason_code") or "POLICY_NOT_ALLOWED",
+                        "process_id": pid,
+                        "lane": lane,
+                    }
                 kind = classified.get("kind")
                 if kind == "oauth":
                     if not lane_available(lane):
                         return 200, {
                             "ok": False, "lane": lane,
-                            "error": f"{lane} OAuth lane not ready — check proxy service",
+                            "error": "OAuth lane not ready",
                             "reason_code": "OAUTH_LANE_NOT_READY",
                         }
                     text = _lc.gate_and_generate(
@@ -36323,28 +36346,38 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                         "advisory_only": True, "billing": "free_oauth",
                         "returned_model": None, "fallback_used": False,
                     }
-                # DeepSeek metered path — registry/client via gate_and_generate + llm_lane
-                import llm_lane as _llm_lane
+                # DeepSeek FAST path only — prefer dedicated smoke process for operator tests
                 ds_lane = classified["lane"]
-                # All DeepSeek V4 lanes share the same provider readiness probe
-                if not _llm_lane.available("deepseek-flash"):
+                cfg = allow.get("config") or _lc.get_process_config(pid)
+                max_out = int(cfg.get("max_output_tokens") or 32)
+                # Bound prompt for smoke process
+                max_in = int(cfg.get("max_input_tokens") or 64)
+                if len(prompt) > max_in * 8:  # rough char bound
+                    prompt = prompt[: max_in * 8]
+                # Independent Flash readiness
+                from lib.consumption_run_manual import deepseek_readiness_rows
+                flash_row = next((r for r in deepseek_readiness_rows() if r["lane"] == "deepseek-flash"), None)
+                if not flash_row or not flash_row.get("ready"):
                     return 200, {
                         "ok": False,
                         "lane": ds_lane,
-                        "error": "DeepSeek provider not ready",
-                        "reason_code": "PROVIDER_NOT_READY",
+                        "error": (flash_row or {}).get("hint") or "DeepSeek Flash not ready",
+                        "reason_code": (flash_row or {}).get("reason_code") or "MODEL_NOT_AVAILABLE",
                         "requested_policy": classified.get("policy"),
                         "requested_model_id": classified.get("requested_model_id"),
                         "returned_model": None,
                         "fallback_used": False,
+                        "configured": (flash_row or {}).get("configured"),
+                        "reachable": (flash_row or {}).get("reachable"),
+                        "model_available": (flash_row or {}).get("model_available"),
                     }
                 result = _lc.gate_and_generate(
                     prompt, lane=ds_lane, process_id=pid,
                     task_summary=task or _lc.summarize_prompt(prompt),
-                    manual_trigger=True, timeout=int(b.get("timeout") or 120),
-                    model=b.get("model"),
-                    operator_confirmed=operator_confirmed,
-                    policy=classified.get("policy"),
+                    manual_trigger=True, timeout=int(b.get("timeout") or 60),
+                    model=classified.get("requested_model_id") or "deepseek-v4-flash",
+                    policy=classified.get("policy") or "FAST",
+                    max_tokens=max_out,
                     return_provenance=True,
                 )
                 if isinstance(result, tuple):
@@ -36372,15 +36405,31 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     "latency_ms": prov.get("latency_ms"),
                     "fallback_used": bool(prov.get("fallback_used")),
                 }
-            except _lc.ManualRequired as mr:
-                return 200, {"ok": False, "manual_required": True, "process_id": mr.process_id,
-                             "lane": mr.lane, "task_summary": mr.task_summary,
-                             "prompt_preview": mr.prompt_preview}
             except Exception as e:
-                err = str(e)[:200]
-                # Never include secret material; fail closed, no alternate provider
+                from lib.llm_consumption import ManualRequired as _MR
+                if isinstance(e, _MR):
+                    return 200, {
+                        "ok": False, "manual_required": True,
+                        "process_id": e.process_id,
+                        "lane": e.lane,
+                        "task_summary": e.task_summary,
+                        "prompt_preview": e.prompt_preview,
+                        "reason_code": "MANUAL_REQUIRED",
+                    }
+                safe = sanitize_provider_error(e)
+                try:
+                    import logging as _logging
+                    _logging.getLogger("tradeai.consumption").warning(
+                        "run-manual failed code=%s type=%s",
+                        safe.get("reason_code"), type(e).__name__,
+                    )
+                except Exception:
+                    pass
                 return 200, {
-                    "ok": False, "error": err, "fallback_used": False,
+                    "ok": False,
+                    "error": safe.get("error"),
+                    "reason_code": safe.get("reason_code"),
+                    "fallback_used": False,
                     "returned_model": None,
                 }
 

@@ -86,15 +86,19 @@ export default function ConsumptionHub() {
     }
   }
 
-  const testLane = async (lane: 'grok' | 'chatgpt' | 'deepseek-flash' | 'deepseek-v4-pro') => {
+  const testLane = async (lane: 'grok' | 'chatgpt' | 'deepseek-flash') => {
+    // Pro is never invoked from this generic path — governed premium flow only.
     setBusy(`test-${lane}`)
     setMsg('')
     try {
+      const processId = lane === 'deepseek-flash'
+        ? 'deepseek_flash_operator_smoke'
+        : 'oauth_lane_keepalive'
       const res = await runManualCloud({
-        process_id: 'oauth_lane_keepalive',
+        process_id: processId,
         lane,
         prompt: 'Reply with exactly: OK',
-        task_summary: lane.startsWith('deepseek')
+        task_summary: lane === 'deepseek-flash'
           ? 'operator DeepSeek Flash smoke'
           : `${lane} test from Consumption`,
       })
