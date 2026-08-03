@@ -1,4 +1,6 @@
-"""LLM consumption tracking + per-process Automated/Manual gating for FREE OAuth lanes (Grok, ChatGPT).
+"""LLM consumption tracking + per-process Automated/Manual gating.
+
+Covers DeepSeek (paid API), free OAuth lanes (Grok, ChatGPT), and local gemma.
 
 Fail-open: if logging or config DB fails, model calls still proceed. Manual mode blocks automatic
 calls and returns a structured ManualRequired response for the UI.
@@ -17,6 +19,9 @@ REGISTRY_PATH = ROOT / "config" / "llm_process_registry.json"
 
 _SCHEMA_OK = False
 _REGISTRY: dict | None = None
+
+# Audit 2026-08-02: DeepSeek is primary paid lane; OAuth remains fallback.
+_DEFAULT_LANES = ["deepseek-flash", "deepseek-v4", "grok", "chatgpt", "local"]
 
 
 class ManualRequired(Exception):
@@ -93,6 +98,28 @@ def _load_registry() -> dict:
     return _REGISTRY
 
 
+def reload_registry() -> dict:
+    """Force re-read of llm_process_registry.json (tests / post-deploy)."""
+    global _REGISTRY, _SCHEMA_OK
+    _REGISTRY = None
+    _SCHEMA_OK = False
+    return _load_registry()
+
+
+def _lanes_for_process(p: dict, reg: dict | None = None) -> list[str]:
+    """Resolve allowed_lanes from explicit list, lane_policy_map, or defaults."""
+    reg = reg or _load_registry()
+    explicit = p.get("allowed_lanes")
+    if isinstance(explicit, list) and explicit:
+        return [str(x).strip().lower() for x in explicit if str(x).strip()]
+    policy = str(p.get("lane_policy") or "").strip()
+    pmap = reg.get("lane_policy_map") or {}
+    if policy and policy in pmap:
+        return [str(x).strip().lower() for x in pmap[policy] if str(x).strip()]
+    defaults = reg.get("default_allowed_lanes") or _DEFAULT_LANES
+    return [str(x).strip().lower() for x in defaults if str(x).strip()]
+
+
 def _seed_registry() -> None:
     reg = _load_registry()
     default = reg.get("default_mode") or "manual"
@@ -102,27 +129,37 @@ def _seed_registry() -> None:
         if not pid:
             continue
         mode = p.get("default_mode") or default
-        # Processes with an explicit default_mode in the registry are bootstrap-synced so
-        # operator-approved defaults (e.g. cloud_review=automated) apply on deploy.
         daily_cap = p.get("daily_soft_cap")
+        lanes = _lanes_for_process(p, reg)
+        # Always bootstrap-sync process_name/category/allowed_lanes.
+        # Mode is force-synced only when registry declares default_mode (operator-approved).
         if "default_mode" in p:
             cur.execute("""
-                INSERT INTO llm_process_config (process_id, process_name, category, mode, daily_soft_cap, notes, updated_at)
-                VALUES (%s, %s, %s, %s, %s, %s, NOW())
+                INSERT INTO llm_process_config
+                  (process_id, process_name, category, mode, allowed_lanes, daily_soft_cap, notes, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, NOW())
                 ON CONFLICT (process_id) DO UPDATE SET
                   process_name = EXCLUDED.process_name,
                   category = EXCLUDED.category,
                   mode = EXCLUDED.mode,
+                  allowed_lanes = EXCLUDED.allowed_lanes,
                   daily_soft_cap = COALESCE(EXCLUDED.daily_soft_cap, llm_process_config.daily_soft_cap),
                   notes = EXCLUDED.notes,
                   updated_at = NOW()
-            """, (pid, p.get("name") or pid, p.get("category"), mode, daily_cap, p.get("description")))
+            """, (pid, p.get("name") or pid, p.get("category"), mode, lanes, daily_cap, p.get("description")))
         else:
             cur.execute("""
-                INSERT INTO llm_process_config (process_id, process_name, category, mode, daily_soft_cap, notes)
-                VALUES (%s, %s, %s, %s, %s, %s)
-                ON CONFLICT (process_id) DO NOTHING
-            """, (pid, p.get("name") or pid, p.get("category"), mode, daily_cap, p.get("description")))
+                INSERT INTO llm_process_config
+                  (process_id, process_name, category, mode, allowed_lanes, daily_soft_cap, notes, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, NOW())
+                ON CONFLICT (process_id) DO UPDATE SET
+                  process_name = EXCLUDED.process_name,
+                  category = EXCLUDED.category,
+                  allowed_lanes = EXCLUDED.allowed_lanes,
+                  daily_soft_cap = COALESCE(EXCLUDED.daily_soft_cap, llm_process_config.daily_soft_cap),
+                  notes = EXCLUDED.notes,
+                  updated_at = NOW()
+            """, (pid, p.get("name") or pid, p.get("category"), mode, lanes, daily_cap, p.get("description")))
     _conn().commit()
 
 
@@ -159,12 +196,13 @@ def get_process_config(process_id: str) -> dict:
             return {
                 "process_id": pid, "process_name": p.get("name") or pid,
                 "category": p.get("category"), "mode": p.get("default_mode") or reg.get("default_mode") or "manual",
-                "allowed_lanes": ["grok", "chatgpt"], "daily_soft_cap": p.get("daily_soft_cap"),
+                "allowed_lanes": _lanes_for_process(p, reg), "daily_soft_cap": p.get("daily_soft_cap"),
                 "notes": p.get("description"),
             }
     return {
         "process_id": pid, "process_name": pid, "category": "Unknown",
-        "mode": reg.get("default_mode") or "manual", "allowed_lanes": ["grok", "chatgpt"],
+        "mode": reg.get("default_mode") or "manual",
+        "allowed_lanes": list(reg.get("default_allowed_lanes") or _DEFAULT_LANES),
     }
 
 
@@ -222,12 +260,13 @@ def should_call(process_id: str, lane: str, *, manual_trigger: bool = False) -> 
     """Decision only — does not call the model."""
     cfg = get_process_config(process_id)
     lane = (lane or "").strip().lower()
-    allowed = lane in (cfg.get("allowed_lanes") or ["grok", "chatgpt"])
+    allowed_list = cfg.get("allowed_lanes") or list(_DEFAULT_LANES)
+    allowed = lane in allowed_list
     if not allowed:
-        return {"allow": False, "reason": f"lane {lane} not allowed for {process_id}", "mode": cfg.get("mode")}
+        return {"allow": False, "reason": f"lane {lane} not allowed for {process_id}", "mode": cfg.get("mode"), "allowed_lanes": allowed_list}
     if cfg.get("mode") == "manual" and not manual_trigger:
         return {"allow": False, "reason": "manual_mode", "mode": "manual", "process_id": process_id}
-    return {"allow": True, "mode": cfg.get("mode"), "process_id": process_id}
+    return {"allow": True, "mode": cfg.get("mode"), "process_id": process_id, "allowed_lanes": allowed_list}
 
 
 def log_call(
@@ -283,7 +322,7 @@ def log_call(
 def gate_and_generate(
     prompt: str,
     *,
-    lane: str = "grok",
+    lane: str = "deepseek-flash",
     process_id: str = "unregistered",
     task_summary: str | None = None,
     manual_trigger: bool = False,
@@ -291,22 +330,53 @@ def gate_and_generate(
     model: str | None = None,
     metadata: dict | None = None,
 ) -> str:
-    """Check process mode, call llm_lane.generate, log result. Raises ManualRequired when blocked."""
+    """Check process mode, call llm_lane.generate, log result. Raises ManualRequired when blocked.
+
+    Lane failover: if the requested lane is not allowed or OAuth-unavailable, try the next
+    allowed lane in process config order (DeepSeek → OAuth → local).
+    """
     import sys
     sys.path.insert(0, str(ROOT / "scripts"))
     from lib.oauth_lane_status import lane_available
 
-    lane = (lane or "grok").lower()
+    lane = (lane or "deepseek-flash").lower()
     process_id = str(process_id or "unregistered")
-    decision = should_call(process_id, lane, manual_trigger=manual_trigger)
-    if not decision.get("allow"):
-        if decision.get("reason") == "manual_mode":
+    cfg = get_process_config(process_id)
+    candidates = []
+    for cand in [lane] + list(cfg.get("allowed_lanes") or _DEFAULT_LANES):
+        c = (cand or "").strip().lower()
+        if c and c not in candidates:
+            candidates.append(c)
+
+    last_err: str | None = None
+    chosen = None
+    decision = None
+    for cand in candidates:
+        decision = should_call(process_id, cand, manual_trigger=manual_trigger)
+        if not decision.get("allow"):
+            last_err = decision.get("reason") or "call not allowed"
+            if decision.get("reason") == "manual_mode":
+                raise ManualRequired(process_id, cand, task_summary or summarize_prompt(prompt), prompt[:500])
+            continue
+        if cand in ("grok", "chatgpt"):
+            try:
+                if not lane_available(cand):
+                    last_err = f"{cand} OAuth lane unavailable"
+                    continue
+            except Exception as e:
+                last_err = f"{cand} availability check failed: {e}"
+                continue
+        chosen = cand
+        break
+
+    if not chosen:
+        if last_err and "manual" in str(last_err):
             raise ManualRequired(process_id, lane, task_summary or summarize_prompt(prompt), prompt[:500])
-        raise RuntimeError(decision.get("reason") or "call not allowed")
-    if lane in ("grok", "chatgpt") and not lane_available(lane):
-        raise RuntimeError(f"{lane} OAuth lane unavailable — check grok-oauth-proxy / chatgpt-oauth-proxy")
+        raise RuntimeError(last_err or f"no allowed lane available for {process_id}")
+
+    lane = chosen
     import llm_lane
-    trigger = "manual" if manual_trigger else ("automated" if decision.get("mode") == "automated" else "manual")
+    trigger = "manual" if manual_trigger else ("automated" if (decision or {}).get("mode") == "automated" else "manual")
     t0 = time.time()
     err = None
     text = ""
@@ -324,7 +394,7 @@ def gate_and_generate(
             trigger_mode=trigger, success=ok, model_name=model,
             prompt=prompt, response=text if ok else None,
             duration_ms=int((time.time() - t0) * 1000),
-            error_message=err, metadata=metadata,
+            error_message=err, metadata={**(metadata or {}), "requested_lane": candidates[0] if candidates else lane},
         )
     return text
 

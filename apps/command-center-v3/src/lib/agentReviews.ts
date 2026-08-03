@@ -9,7 +9,7 @@ const AGENT_LABELS: Record<string, string> = {
   aegis: 'Aegis',
 }
 
-const CLOUD_LANES = new Set(['grok', 'chatgpt', 'local', 'ensemble'])
+const CLOUD_LANES = new Set(['grok', 'chatgpt', 'local', 'ensemble', 'deepseek-flash', 'deepseek-v4'])
 
 export function normalizeAgentKey(name: string | null | undefined): string {
   const raw = String(name || '').trim()
@@ -109,6 +109,6 @@ export function agentVerdictColor(verdict: string | null | undefined): string {
 export function modelTierLabel(model: string | null | undefined): { label: string; tier: 'cloud' | 'local' | 'fallback' } {
   const m = String(model || '').toLowerCase()
   if (!m || m === 'deterministic_fallback') return { label: 'Rule-based fallback', tier: 'fallback' }
-  if (m.includes('gpt') || m.includes('grok') || m.includes('claude')) return { label: model!, tier: 'cloud' }
+  if (m.includes('gpt') || m.includes('grok') || m.includes('claude') || m.includes('deepseek')) return { label: model!, tier: 'cloud' }
   return { label: model!, tier: 'local' }
 }

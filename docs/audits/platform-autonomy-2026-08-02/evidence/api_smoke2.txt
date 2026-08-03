@@ -1,0 +1,17 @@
+200 size=4261 /api/v2/agents/summary
+400 size=50 /api/v2/agent-dashboard
+200 size=550 /api/v2/agent-calibration/status
+200 size=2003735 /api/v2/research-intelligence
+200 size=4751 /api/v2/research-intelligence/freshness
+200 size=3013 /api/v2/consumption/overview
+200 size=626 /api/v2/llm-health
+200 size=626 /api/v2/llm/health
+200 size=11562 /api/v2/llm-spend
+200 size=731097 /api/v2/watch-directives
+200 size=746137 /api/v2/hermes/discovery-inbox
+200 size=13805 /api/v2/hermes/source-maturity
+200 size=1498 /api/v2/hermes/learning-scorecard
+200 size=90 /api/v2/intelligence/remediation-summary
+200 size=1426 /api/v2/defense/core
+200 size=53039 /api/v2/defense/industries
+200 size=31734 /api/v2/rec-intel/summary

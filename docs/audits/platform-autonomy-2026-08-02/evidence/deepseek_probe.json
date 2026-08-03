@@ -1,0 +1,21 @@
+{
+  "deepseek_key_present": true,
+  "available": {
+    "deepseek-flash": true,
+    "deepseek-v4": true,
+    "grok": true,
+    "chatgpt": true,
+    "local": true,
+    "deepseek": false
+  },
+  "deepseek-flash": {
+    "ok": false,
+    "error": "ManualRequired('manual approval required for audit_probe (deepseek-flash)')",
+    "ms": 47
+  },
+  "deepseek-v4": {
+    "ok": false,
+    "error": "ManualRequired('manual approval required for audit_probe (deepseek-v4)')",
+    "ms": 0
+  }
+}

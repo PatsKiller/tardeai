@@ -1,0 +1,51 @@
+{
+  "total": 32,
+  "ok": 32,
+  "fail": [],
+  "withConsoleErrors": [
+    "agents"
+  ],
+  "withNetFails": [
+    {
+      "id": "home",
+      "n": 1
+    },
+    {
+      "id": "portfolio-reentry",
+      "n": 10
+    },
+    {
+      "id": "risk",
+      "n": 10
+    },
+    {
+      "id": "watch-finds",
+      "n": 3
+    },
+    {
+      "id": "watch-watchpool",
+      "n": 1
+    },
+    {
+      "id": "research-intel",
+      "n": 2
+    },
+    {
+      "id": "hermes",
+      "n": 2
+    },
+    {
+      "id": "hermes-maturity",
+      "n": 1
+    },
+    {
+      "id": "hermes-discovery",
+      "n": 1
+    },
+    {
+      "id": "reports",
+      "n": 1
+    }
+  ],
+  "lowActionability": []
+}

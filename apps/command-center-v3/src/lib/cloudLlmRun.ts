@@ -1,3 +1,5 @@
+import { laneLabel } from './laneLabels'
+
 /** Free OAuth manual runs — Grok :8645 / ChatGPT :8646 via consumption API. */
 
 export type LanePolicy = 'grok_only' | 'chatgpt_only' | 'either' | 'both_preferred' | 'ensemble'
@@ -39,9 +41,11 @@ export function lanesForPolicy(policy: LanePolicy | string | undefined): ('grok'
   return ['grok', 'chatgpt'] // either — show both, operator picks
 }
 
+export type CloudLane = 'grok' | 'chatgpt' | 'deepseek-flash' | 'deepseek-v4'
+
 export async function runManualCloud(params: {
   process_id: string
-  lane: 'grok' | 'chatgpt'
+  lane: CloudLane
   prompt: string
   task_summary?: string
   timeout?: number
@@ -134,7 +138,7 @@ export async function runJournalAsk(params: {
   return j?.data ?? j
 }
 
-export type EnsembleLane = 'grok' | 'chatgpt' | 'local'
+export type EnsembleLane = 'grok' | 'chatgpt' | 'local' | 'deepseek-flash' | 'deepseek-v4'
 
 export async function requestEnsemble(params: {
   targetType: string
@@ -164,13 +168,16 @@ export async function requestEnsemble(params: {
 export function lanePolicyHint(policy: LanePolicy | string | undefined): string {
   const p = (policy || 'either') as LanePolicy
   const map: Record<LanePolicy, string> = {
-    grok_only: 'Grok only',
-    chatgpt_only: 'ChatGPT only',
-    either: 'Grok or ChatGPT',
+    grok_only: `${laneLabel('grok')} only`,
+    chatgpt_only: `${laneLabel('chatgpt')} only`,
+    either: `${laneLabel('grok')} or ${laneLabel('chatgpt')}`,
     both_preferred: 'Both preferred',
     ensemble: 'Run both',
   }
-  return map[p] || p
+  // Allow deepseek-flash / deepseek-v4 lane hints through (cast via string since they're not in LanePolicy)
+  const ps = p as string
+  if (ps === 'deepseek-flash' || ps === 'deepseek-v4') return laneLabel(p)
+  return map[p] || laneLabel(p)
 }
 
 export function lanePolicyColor(policy: LanePolicy | string | undefined): string {

@@ -1,8 +1,9 @@
+import { useState } from 'react'
 import { useApi } from '../hooks/useApi'
 import { useNavigate } from 'react-router-dom'
 import { fmt$ } from '../lib/format'
 import { pricingStampLine } from '../lib/pricingStamp'
-import { isScanStale, runLabel } from '../lib/homeLabels'
+import { isScanStale, isJournalStale, runLabel } from '../lib/homeLabels'
 import { BB, T, TYPE } from '../lib/watchTokens'
 import type { DrillContext } from './DetailDrawer'
 
@@ -43,16 +44,43 @@ export default function MetricStrip({ onDrill }: Props) {
   const realizedCount = overview?.journal?.realized_count
   const longTermTrimPnl = overview?.journal?.long_term_trim_pnl
   const journalLastClose = overview?.journal?.last_close_date
-  const journalStaleDays = (() => {
-    if (!journalLastClose) return null
-    const ms = Date.now() - new Date(String(journalLastClose)).getTime()
-    return isFinite(ms) && ms > 0 ? Math.floor(ms / 86_400_000) : null
-  })()
-  const journalStale = journalStaleDays != null && journalStaleDays > 7
-  const journalAgeMark = journalStale ? ` · ${journalStaleDays}d old` : ''
+  const journalStaleInfo = isJournalStale(journalLastClose)
+  const journalStale = journalStaleInfo.stale
+  const journalAgeMark = journalStaleInfo.ageMark
   const vix = tradeAi?.vix
   const approvals = overview?.pending_approvals ?? overview?.approvals_count
   const priceStamp = pricingStampLine(overview?.pricing ?? { last_repriced: overview?.last_repriced, reprice_source: overview?.reprice_source })
+  const [remediating, setRemediating] = useState<string | null>(null)
+  const [remediateMsg, setRemediateMsg] = useState<string | null>(null)
+
+  const triggerRemediation = async (kind: 'scan' | 'journal') => {
+    setRemediating(kind)
+    setRemediateMsg(null)
+    try {
+      // Prefer v2 trade-ai run when present; fall back to legacy /api/run-trade-ai.
+      const url = kind === 'scan' ? '/api/v2/trade-ai/run' : '/api/run-pipeline'
+      const body = kind === 'scan' ? {} : { pipeline: 'daily' }
+      let r = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!r.ok && kind === 'scan') {
+        r = await fetch('/api/run-trade-ai', { method: 'POST' })
+      }
+      if (!r.ok && kind === 'journal') {
+        r = await fetch('/api/run-portfolio', { method: 'POST' })
+      }
+      const ok = r.ok
+      setRemediateMsg(ok
+        ? (kind === 'scan' ? 'Scan refresh queued — strip updates after next run' : 'Pipeline refresh queued — re-import journal if still stale')
+        : `Remediate failed (${r.status}) — open Health or Trading`)
+    } catch (e: any) {
+      setRemediateMsg(`Remediate error: ${String(e?.message || e).slice(0, 80)}`)
+    } finally {
+      setRemediating(null)
+    }
+  }
 
   const setupsValue = (() => {
     if (scanStale) return `STALE · ${setupsRun}`
@@ -127,6 +155,11 @@ export default function MetricStrip({ onDrill }: Props) {
 
   return (
     <div className="metric-strip" style={{ display: 'flex', flexDirection: 'column', background: 'var(--bg0)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+    {remediateMsg && (
+      <div style={{ padding: '3px 16px', fontSize: TYPE.xs, color: BB.amber, background: BB.amberDim, borderBottom: '1px solid var(--border)' }}>
+        {remediateMsg}
+      </div>
+    )}
     <div style={{ display: 'flex', alignItems: 'center', gap: 0, padding: '8px 16px 4px' }}>
       <div style={{ marginRight: 24, whiteSpace: 'nowrap' }}>
         <div style={{ fontSize: TYPE.md, fontWeight: 700, color: T.link }}>Command Center v3</div>
@@ -154,10 +187,49 @@ export default function MetricStrip({ onDrill }: Props) {
           </div>
         </div>
       ))}
+      {(scanStale || journalStale) && (
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center', marginRight: 8 }}>
+          {scanStale && (
+            <button
+              type="button"
+              title="Queue Trade AI scanner refresh (does not place orders)"
+              disabled={remediating === 'scan'}
+              onClick={(e) => { e.stopPropagation(); void triggerRemediation('scan') }}
+              style={{ padding: '4px 10px', borderRadius: 6, fontSize: TYPE.xs, fontWeight: 700, cursor: 'pointer',
+                border: `1px solid ${BB.amber}`, background: BB.amberDim, color: BB.amber }}
+            >
+              {remediating === 'scan' ? '…' : '↻ RUN SCAN'}
+            </button>
+          )}
+          {journalStale && (
+            <button
+              type="button"
+              title="Queue portfolio/journal refresh. If still stale after, open Journal → Import for broker CSV."
+              disabled={remediating === 'journal'}
+              onClick={(e) => { e.stopPropagation(); void triggerRemediation('journal') }}
+              style={{ padding: '4px 10px', borderRadius: 6, fontSize: TYPE.xs, fontWeight: 700, cursor: 'pointer',
+                border: `1px solid ${BB.amber}`, background: BB.amberDim, color: BB.amber }}
+            >
+              {remediating === 'journal' ? '…' : '↻ REFRESH JOURNAL'}
+            </button>
+          )}
+          {journalStale && (
+            <button
+              type="button"
+              title="Open Journal import desk"
+              onClick={(e) => { e.stopPropagation(); navigate('/journal?tab=import') }}
+              style={{ padding: '4px 10px', borderRadius: 6, fontSize: TYPE.xs, fontWeight: 700, cursor: 'pointer',
+                border: '1px solid var(--border)', background: 'var(--bg1)', color: 'var(--text2)' }}
+            >
+              Import →
+            </button>
+          )}
+        </div>
+      )}
       {approvals != null && approvals > 0 && (
         <div onClick={() => navigate('/')}
           title={`${approvals} pending approvals — Home → Action Inbox has CTAs to Risk and Trading`}
-          style={{ marginLeft: 'auto', padding: '4px 12px', borderRadius: 6, fontSize: TYPE.xs, fontWeight: 700, cursor: 'pointer',
+          style={{ marginLeft: (scanStale || journalStale) ? 0 : 'auto', padding: '4px 12px', borderRadius: 6, fontSize: TYPE.xs, fontWeight: 700, cursor: 'pointer',
             background: BB.amberDim, color: BB.amber, marginRight: 8 }}>
           ⚑ {approvals} APPROVALS →
         </div>
@@ -173,7 +245,7 @@ export default function MetricStrip({ onDrill }: Props) {
       <div
         title={gate?.operator_status_label || (operatorLive ? 'Schwab operator live via standing unlock + per-order 2FA' : 'Autonomous Alpaca live gate not passed')}
         style={{
-        marginLeft: approvals != null && approvals > 0 ? 0 : 'auto', padding: '4px 14px', borderRadius: 6, fontSize: TYPE.xs, fontWeight: 700,
+        marginLeft: (approvals != null && approvals > 0) || scanStale || journalStale ? 0 : 'auto', padding: '4px 14px', borderRadius: 6, fontSize: TYPE.xs, fontWeight: 700,
         background: operatorLive ? BB.greenDim : liveBadgeBlocked ? BB.amberDim : BB.greenDim,
         color: operatorLive ? BB.green : liveBadgeBlocked ? BB.amber : BB.green,
       }}>

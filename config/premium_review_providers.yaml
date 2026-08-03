@@ -32,3 +32,17 @@ providers:
     daily_budget_usd: 2.00
     monthly_budget_usd: 20.00
     credentials_env: OPENAI_API_KEY
+  - provider: deepseek
+    model: deepseek-v4-pro
+    provider_family: DEEPSEEK
+    enabled: true
+    capability: expert_ticket_review
+    pricing_basis: per_token
+    est_input_tokens: 3200
+    est_output_tokens: 900
+    est_cost_usd: 0.002
+    max_tokens: 1500
+    timeout_s: 60
+    daily_budget_usd: 0.20
+    monthly_budget_usd: 2.00
+    credentials_env: deepseek_tradeai

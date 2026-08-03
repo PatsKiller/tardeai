@@ -1,9 +1,12 @@
 """
-local_llm.py — Local Ollama LLM with cloud fallback + toll gate queue.
-Use for non-time-sensitive narrative generation to save API costs.
+local_llm.py — Local Ollama LLM with DeepSeek Flash PRIMARY + cloud fallback + toll gate queue.
 
-All callers go through generate() which acquires a file lock before
-hitting Ollama, preventing concurrent GPU contention.
+DeepSeek Flash is the PRIMARY model (fast, cheap, reliable API).
+Local gemma3:4b is the FALLBACK (when DeepSeek is unavailable or for offline operation).
+Paid OpenAI/Anthropic fallbacks are gated behind ALLOW_PAID_FALLBACK=true (default: false).
+
+All callers go through generate() which tries DeepSeek first, then local Ollama, then
+paid cloud only if explicitly allowed.
 
 Safety router (2026-05-28):
 - Blocks disabled models (DISABLED_LOCAL_LLM_MODELS)
@@ -15,7 +18,7 @@ Usage:
     from local_llm import generate
 
     text = generate(prompt, timeout=300)
-    # Returns text from Ollama if available, falls back to Claude Sonnet
+    # Returns text from DeepSeek Flash if available, falls back to Ollama gemma3:4b
 """
 import fcntl
 import json
@@ -30,13 +33,20 @@ from local_llm_config import get_local_llm_model, get_local_llm_base_url, apply_
 
 apply_ollama_runtime_env()
 
+# ── DeepSeek Flash (PRIMARY API) ──
+_DEEPSEEK_API_KEY = os.environ.get("deepseek_tradeai", "").strip()
+_DEEPSEEK_FLASH_URL = "https://api.deepseek.com/v1/chat/completions"
+_DEEPSEEK_FLASH_MODEL = "deepseek-v4-flash"
+_DEEPSEEK_FLASH_TIMEOUT = int(os.environ.get("DEEPSEEK_FLASH_TIMEOUT", "30"))
+
 OLLAMA_BASE = get_local_llm_base_url().rstrip("/")
 OLLAMA_URL = OLLAMA_BASE + "/api/chat"
 OLLAMA_MODEL_FAST = get_local_llm_model()
 OLLAMA_MODEL = get_local_llm_model()
-# Fallback models — centralized from .env, live-discovered defaults
+# Paid fallback models — gated behind ALLOW_PAID_FALLBACK=true
 FALLBACK_OPENAI = os.getenv("LLM_FALLBACK_OPENAI", "gpt-4o-mini").strip()
 FALLBACK_ANTHROPIC = os.getenv("LLM_FALLBACK_ANTHROPIC", "claude-sonnet-4-6").strip()
+ALLOW_PAID_FALLBACK = os.getenv("ALLOW_PAID_FALLBACK", "false").strip().lower() in ("1", "true", "yes", "on")
 DEFAULT_TIMEOUT = 300
 LOCK_FILE = Path("/tmp/tradeai_local_llm_single_job.lock")
 LOCK_WAIT_TIMEOUT = 600  # max seconds to wait for lock
@@ -335,8 +345,41 @@ def _try_ollama(prompt: str, timeout: int, model: str = OLLAMA_MODEL,
     return None
 
 
+def _try_deepseek_flash(prompt: str, timeout: int = None) -> str | None:
+    """PRIMARY: DeepSeek Flash API. Falls back to local gemma on failure."""
+    if not _DEEPSEEK_API_KEY:
+        return None
+    import urllib.request as _rq
+    timeout_s = timeout or _DEEPSEEK_FLASH_TIMEOUT
+    try:
+        payload = json.dumps({
+            "model": _DEEPSEEK_FLASH_MODEL,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.3,
+            "max_tokens": 2048
+        }).encode()
+        req = _rq.Request(
+            _DEEPSEEK_FLASH_URL,
+            data=payload,
+            headers={"Content-Type": "application/json", "Authorization": f"Bearer {_DEEPSEEK_API_KEY}"},
+            method="POST"
+        )
+        with _rq.urlopen(req, timeout=timeout_s) as resp:
+            data = json.loads(resp.read())
+            text = data["choices"][0]["message"]["content"].strip()
+            usage = data.get("usage") or {}
+            print(f"  [local-llm] DeepSeek Flash OK — {len(text)} chars, "
+                  f"{usage.get('prompt_tokens',0)} in / {usage.get('completion_tokens',0)} out")
+            return text
+    except Exception as e:
+        print(f"  [local-llm] DeepSeek Flash failed: {e} — falling back to local gemma")
+        return None
+
+
 def _try_openai(prompt: str) -> str | None:
-    """Fallback to OpenAI gpt-4o-mini."""
+    """Fallback to OpenAI gpt-4o-mini (only if ALLOW_PAID_FALLBACK=true)."""
+    if not ALLOW_PAID_FALLBACK:
+        return None
     try:
         api_key = os.getenv("OPENAI_API_KEY", "")
         if not api_key:
@@ -370,7 +413,9 @@ def _try_openai(prompt: str) -> str | None:
 
 
 def _try_anthropic(prompt: str) -> str | None:
-    """Final fallback to Claude Sonnet via Anthropic API."""
+    """Final fallback to Claude Sonnet via Anthropic API (only if ALLOW_PAID_FALLBACK=true)."""
+    if not ALLOW_PAID_FALLBACK:
+        return None
     try:
         import anthropic
         api_key = os.getenv("ANTHROPIC_API_KEY", "")
@@ -402,8 +447,8 @@ def _try_anthropic(prompt: str) -> str | None:
 def generate(prompt: str, timeout: int = DEFAULT_TIMEOUT,
              fallback: bool = True, fast: bool = True,
              caller: str = "", process_type: str = "STANDARD") -> str:
-    """4-tier chain with toll gate: local model -> OpenAI -> Anthropic.
-    Acquires file lock before Ollama calls to prevent GPU contention.
+    """4-tier chain: DeepSeek Flash (PRIMARY) -> local gemma -> OpenAI -> Anthropic.
+    Paid OpenAI/Anthropic fallbacks are gated behind ALLOW_PAID_FALLBACK=true.
 
     Args:
         caller: script name for audit logging (optional)
@@ -413,11 +458,19 @@ def generate(prompt: str, timeout: int = DEFAULT_TIMEOUT,
     model_used = None
     t0 = time.time()
 
-    # Acquire toll gate — only one process hits Ollama at a time
+    # Tier 0: DeepSeek Flash (PRIMARY — no file lock needed for API call)
+    result = _try_deepseek_flash(prompt, timeout=min(timeout, _DEEPSEEK_FLASH_TIMEOUT))
+    if result:
+        model_used = _DEEPSEEK_FLASH_MODEL
+        _log_audit(caller, process_type, _DEEPSEEK_FLASH_MODEL, "deepseek",
+                   int((time.time()-t0)*1000), "ok")
+        return result
+
+    # Tier 1-2: local Ollama (needs file lock)
     if not _gate.acquire():
         print("  [local-llm] Could not acquire gate — skipping Ollama, trying fallbacks")
         _log_audit(caller, process_type, OLLAMA_MODEL, "ollama", 0, "gate_timeout")
-        if fallback:
+        if fallback and ALLOW_PAID_FALLBACK:
             result = _try_openai(prompt)
             if result:
                 model_used = FALLBACK_OPENAI
@@ -456,8 +509,8 @@ def generate(prompt: str, timeout: int = DEFAULT_TIMEOUT,
     _log_audit(caller, process_type, OLLAMA_MODEL, "ollama",
                int((time.time()-t0)*1000), "local_failed")
 
-    # Cloud fallbacks don't need the gate
-    if fallback:
+    # Paid cloud fallbacks (only if ALLOW_PAID_FALLBACK=true)
+    if fallback and ALLOW_PAID_FALLBACK:
         print(f"  [local-llm] Using OpenAI fallback ({FALLBACK_OPENAI})")
         result = _try_openai(prompt)
         if result:
@@ -466,7 +519,7 @@ def generate(prompt: str, timeout: int = DEFAULT_TIMEOUT,
                        int((time.time()-t0)*1000), "ok", fallback_used=True)
             return result
 
-    if fallback:
+    if fallback and ALLOW_PAID_FALLBACK:
         print(f"  [local-llm] Using Anthropic fallback ({FALLBACK_ANTHROPIC})")
         result = _try_anthropic(prompt)
         if result:
@@ -478,6 +531,36 @@ def generate(prompt: str, timeout: int = DEFAULT_TIMEOUT,
     _log_audit(caller, process_type, "", "none", int((time.time()-t0)*1000), "all_failed")
     print("  [local-llm] All LLM attempts failed — returning empty")
     return ""
+
+
+# ── Cache-aware generate wrapper ──
+
+def cached_generate(prompt: str, cache_key: str, *,
+                    tier: str = "default", ttl_hours: float | None = None,
+                    **kwargs) -> tuple[str, bool]:
+    """Cache-aware version of generate(). Checks llm_cache before trying models.
+    Returns (text, was_cached) tuple.
+    """
+    model = _DEEPSEEK_FLASH_MODEL
+    try:
+        from lib.llm_cache import llm_cache_get, llm_cache_put
+        cached = llm_cache_get(cache_key, model)
+        if cached is not None:
+            return cached, True
+    except Exception:
+        pass
+
+    text = generate(prompt, **kwargs)
+
+    if text:
+        try:
+            from lib.llm_cache import llm_cache_put
+            llm_cache_put(cache_key, model, text,
+                         ttl_hours=ttl_hours, prompt=prompt, tier=tier)
+        except Exception:
+            pass
+
+    return text, False
 
 
 if __name__ == "__main__":

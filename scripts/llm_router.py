@@ -63,39 +63,38 @@ DAILY_BUDGET_LIMIT = 1.50  # USD/day — allows cloud fallback when Ollama offli
 
 # ── Task routing — auto-adjusts based on LOCAL_MODEL ─────────────────────
 
-# Pre-GPU routing: Grok is primary cloud (local quality limited)
+# DeepSeek Flash primary, DeepSeek v4 for high-reasoning, local for fast batch
 _TASK_ROUTING_PRE_GPU = {
-    "agent_narrative":          ["local", "grok", "claude"],
-    "agent_debate":             ["local", "grok", "claude"],
-    "sector_correlation":       ["grok", "local", "claude"],
-    "cio_synthesis":            ["local", "claude", "grok", "openai"],
-    "catalyst_classification":  ["local", "grok"],
-    "sentiment":                ["local", "grok"],
-    "code_generation":          ["claude", "openai"],
+    "agent_narrative":          ["deepseek-flash", "local", "grok"],
+    "agent_debate":             ["deepseek-flash", "local", "grok"],
+    "sector_correlation":       ["deepseek-flash", "local", "grok"],
+    "cio_synthesis":            ["deepseek-v4", "deepseek-flash", "local"],
+    "catalyst_classification":  ["deepseek-flash", "local"],
+    "sentiment":                ["deepseek-flash", "local"],
+    "code_generation":          ["deepseek-v4", "deepseek-flash"],
     "fast_summary":             ["local"],
-    "default":                  ["local", "grok", "claude", "openai"],
+    "default":                  ["deepseek-flash", "local", "grok"],
 }
 
-# Post-GPU routing: local is high quality, Grok demoted to fallback
+# Post-GPU routing: local is high quality, but DeepSeek still primary for cloud
 _TASK_ROUTING_POST_GPU = {
-    "agent_narrative":          ["local", "claude", "grok"],
-    "agent_debate":             ["local", "claude", "grok"],
-    "sector_correlation":       ["local", "grok", "claude"],
-    "cio_synthesis":            ["local", "claude", "grok", "openai"],
-    "catalyst_classification":  ["local", "grok"],
+    "agent_narrative":          ["local", "deepseek-flash", "grok"],
+    "agent_debate":             ["local", "deepseek-flash", "grok"],
+    "sector_correlation":       ["local", "deepseek-flash", "grok"],
+    "cio_synthesis":            ["deepseek-v4", "local", "deepseek-flash"],
+    "catalyst_classification":  ["local", "deepseek-flash"],
     "sentiment":                ["local"],
-    "code_generation":          ["claude", "openai"],
+    "code_generation":          ["deepseek-v4", "deepseek-flash"],
     "fast_summary":             ["local"],
-    "default":                  ["local", "claude", "grok", "openai"],
+    "default":                  ["local", "deepseek-flash", "grok"],
 }
 
-# High-impact always prefers Claude, regardless of GPU state
 _HIGH_IMPACT_ROUTING = {
-    "cio_synthesis":        ["claude", "grok", "openai"],
-    "agent_narrative":      ["grok", "claude", "local"],
-    "agent_debate":         ["grok", "claude", "local"],
-    "sector_correlation":   ["grok", "claude", "local"],
-    "default":              ["claude", "grok", "local", "openai"],
+    "cio_synthesis":        ["deepseek-v4", "deepseek-flash", "local"],
+    "agent_narrative":      ["deepseek-flash", "deepseek-v4", "local"],
+    "agent_debate":         ["deepseek-flash", "deepseek-v4", "local"],
+    "sector_correlation":   ["deepseek-flash", "deepseek-v4", "local"],
+    "default":              ["deepseek-v4", "deepseek-flash", "local", "grok"],
 }
 
 # Select routing table based on current model
@@ -167,136 +166,75 @@ def _call_local(prompt: str, max_tokens: int = 800, timeout: int = None) -> dict
 
 
 def _call_anthropic(prompt: str, max_tokens: int = 2000) -> dict:
-    """Call Anthropic Claude API."""
-    keys = _load_env()
-    api_key = keys.get("ANTHROPIC_API_KEY", "")
-    if not api_key:
-        return {"success": False, "error": "ANTHROPIC_API_KEY not configured", "provider": "claude"}
-
+    """DeepSeek v4 (replaces paid Claude). Falls back through llm_lane chain."""
     t0 = time.time()
     try:
-        payload = json.dumps({
-            "model": "claude-sonnet-4-20250514",
-            "max_tokens": max_tokens,
-            "messages": [{"role": "user", "content": prompt}],
-        }).encode()
-        req = urllib.request.Request(
-            "https://api.anthropic.com/v1/messages",
-            data=payload,
-            headers={
-                "Content-Type": "application/json",
-                "x-api-key": api_key,
-                "anthropic-version": "2023-06-01",
-            },
-            method="POST"
-        )
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            result = json.loads(resp.read())
-            text = ""
-            for block in result.get("content", []):
-                if block.get("type") == "text":
-                    text += block["text"]
-            latency = round(time.time() - t0, 2)
-            tokens = result.get("usage", {})
-            cost = (tokens.get("input_tokens", 0) * 3 + tokens.get("output_tokens", 0) * 15) / 1_000_000
+        import llm_lane
+        out = llm_lane.generate(prompt, lane="deepseek-v4", timeout=120)
+        latency = round(time.time() - t0, 2)
+        if out and not str(out).startswith("LLM error"):
             return {
-                "model_used": "claude-sonnet-4-20250514", "provider": "claude",
-                "response": text.strip(), "latency": latency,
-                "success": bool(text.strip()),
-                "cost_estimate": round(cost, 4),
-                "tokens": tokens,
+                "model_used": "deepseek-v4-pro", "provider": "deepseek",
+                "response": out.strip(), "latency": latency,
+                "success": bool(out.strip()),
+                "cost_estimate": 0.0,
             }
+        return {"success": False, "error": "empty response", "provider": "deepseek",
+                "latency": latency, "cost_estimate": 0.0}
     except Exception as e:
-        return {"success": False, "error": str(e), "provider": "claude",
+        return {"success": False, "error": str(e), "provider": "deepseek",
                 "latency": round(time.time() - t0, 2), "cost_estimate": 0.0}
 
 
 def _call_openai(prompt: str, max_tokens: int = 2000) -> dict:
-    """Call OpenAI GPT-4o API."""
-    keys = _load_env()
-    api_key = keys.get("OPENAI_API_KEY", "")
-    if not api_key:
-        return {"success": False, "error": "OPENAI_API_KEY not configured", "provider": "openai"}
-
+    """DeepSeek Flash (replaces paid OpenAI GPT-4o). Falls back through llm_lane chain."""
     t0 = time.time()
     try:
-        payload = json.dumps({
-            "model": "gpt-4o",
-            "max_tokens": max_tokens,
-            "messages": [{"role": "user", "content": prompt}],
-        }).encode()
-        req = urllib.request.Request(
-            "https://api.openai.com/v1/chat/completions",
-            data=payload,
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {api_key}",
-            },
-            method="POST"
-        )
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            result = json.loads(resp.read())
-            text = result.get("choices", [{}])[0].get("message", {}).get("content", "")
-            latency = round(time.time() - t0, 2)
-            tokens = result.get("usage", {})
-            cost = (tokens.get("prompt_tokens", 0) * 2.5 + tokens.get("completion_tokens", 0) * 10) / 1_000_000
+        import llm_lane
+        out = llm_lane.generate(prompt, lane="deepseek-flash", timeout=90)
+        latency = round(time.time() - t0, 2)
+        if out and not str(out).startswith("LLM error"):
             return {
-                "model_used": "gpt-4o", "provider": "openai",
-                "response": text.strip(), "latency": latency,
-                "success": bool(text.strip()),
-                "cost_estimate": round(cost, 4),
-                "tokens": tokens,
+                "model_used": "deepseek-v4-flash", "provider": "deepseek",
+                "response": out.strip(), "latency": latency,
+                "success": bool(out.strip()),
+                "cost_estimate": 0.0,
             }
+        return {"success": False, "error": "empty response", "provider": "deepseek",
+                "latency": latency, "cost_estimate": 0.0}
     except Exception as e:
-        return {"success": False, "error": str(e), "provider": "openai",
+        return {"success": False, "error": str(e), "provider": "deepseek",
                 "latency": round(time.time() - t0, 2), "cost_estimate": 0.0}
 
 
 def _call_grok(prompt: str, max_tokens: int = 2000) -> dict:
-    """Call xAI Grok API."""
-    keys = _load_env()
-    api_key = keys.get("XAI_API_KEY", "")
-    if not api_key:
-        return {"success": False, "error": "XAI_API_KEY not configured", "provider": "grok"}
-
+    """Grok OAuth lane (free proxy, now fallback only). Kept for routing compatibility."""
     t0 = time.time()
     try:
-        payload = json.dumps({
-            "model": "grok-3-mini",  # grok-3-mini: fast + cheap for agent tasks
-            # GPU upgrade: stays as grok-3-mini even after GPU — Grok used as cloud fallback
-            "max_tokens": max_tokens,
-            "messages": [{"role": "user", "content": prompt}],
-        }).encode()
-        req = urllib.request.Request(
-            "https://api.x.ai/v1/chat/completions",
-            data=payload,
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {api_key}",
-            },
-            method="POST"
-        )
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            result = json.loads(resp.read())
-            text = result.get("choices", [{}])[0].get("message", {}).get("content", "")
-            latency = round(time.time() - t0, 2)
+        import llm_lane
+        out = llm_lane.generate(prompt, lane="grok", timeout=90)
+        latency = round(time.time() - t0, 2)
+        if out and not str(out).startswith("LLM error"):
             return {
-                "model_used": "grok-3-mini", "provider": "grok",
-                "response": text.strip(), "latency": latency,
-                "success": bool(text.strip()),
-                # grok-3-mini: ~$0.30/1M input, $0.50/1M output (estimate)
-                "cost_estimate": round((max_tokens * 0.0005) / 1000, 5),
+                "model_used": "grok-3-mini", "provider": "grok-oauth",
+                "response": out.strip(), "latency": latency,
+                "success": bool(out.strip()),
+                "cost_estimate": 0.0,
             }
+        return {"success": False, "error": "empty response", "provider": "grok-oauth",
+                "latency": latency, "cost_estimate": 0.0}
     except Exception as e:
-        return {"success": False, "error": str(e), "provider": "grok",
+        return {"success": False, "error": str(e), "provider": "grok-oauth",
                 "latency": round(time.time() - t0, 2), "cost_estimate": 0.0}
 
 
 _PROVIDERS = {
     "local": _call_local,
-    "grok": _call_grok,
-    "claude": _call_anthropic,
-    "openai": _call_openai,
+    "deepseek-flash": _call_openai,   # DeepSeek Flash (was OpenAI paid)
+    "deepseek-v4": _call_anthropic,   # DeepSeek v4 (was Claude paid)
+    "grok": _call_grok,               # Grok OAuth (fallback only)
+    "claude": _call_anthropic,        # legacy alias
+    "openai": _call_openai,           # legacy alias
 }
 
 

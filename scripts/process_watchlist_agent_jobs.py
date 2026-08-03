@@ -291,7 +291,7 @@ def _llm(prompt: str, max_tokens: int = 800, task_type: str = "agent_narrative",
                 priority=_CURRENT_JOB_PRIORITY,
                 request_type=_CURRENT_JOB_REQUEST_TYPE,
             )
-            for lane in ("grok", "chatgpt"):
+            for lane in ("deepseek-flash", "grok", "chatgpt"):
                 try:
                     out = gate_and_generate(
                         cloud_prompt,
@@ -383,10 +383,10 @@ def _synthesis_llm(prompt: str, max_tokens: int = 2000) -> str:
     stored model_used is truthful (the old path hard-coded OLLAMA_MODEL regardless of what ran)."""
     try:
         import llm_lane
-        if llm_lane.available("grok"):
-            out = llm_lane.generate(_strip_local_tokens(prompt), lane="grok", timeout=120)
+        if llm_lane.available("deepseek-flash"):
+            out = llm_lane.generate(_strip_local_tokens(prompt), lane="deepseek-flash", timeout=120)
             if out and not str(out).startswith("LLM error") and not _is_refusal(out):
-                _llm._last_model = "grok-3-mini"; _llm._last_provider = "grok-oauth"; _llm._last_cost = 0
+                _llm._last_model = "deepseek-v4-flash"; _llm._last_provider = "deepseek"; _llm._last_cost = 0
                 return out
     except Exception:
         pass
@@ -422,18 +422,17 @@ def _rec_from(raw):
 
 
 def _synthesis_lanes(prompt: str, lanes=None, max_tokens: int = 2000, manual_trigger: bool = False):
-    """Run CIO final synthesis on selected free-OAuth lanes and reconcile.
-    lanes: None → grok+chatgpt (cron default), ('grok',), ('chatgpt',), or both.
-    manual_trigger: route via watchlist_cio_synthesis consumption gate (Manual mode safe)."""
+    """Run CIO final synthesis — DeepSeek v4 primary, Grok+ChatGPT dual-consensus fallback.
+    lanes: None → deepseek-v4 (cron default), ('grok','chatgpt') for legacy dual-consensus."""
     global _dual_chatgpt_count
     import llm_lane
     cloud_prompt = _strip_local_tokens(prompt)
-    want = tuple(l for l in (lanes or ("grok", "chatgpt")) if l in ("grok", "chatgpt"))
+    want = tuple(l for l in (lanes or ("deepseek-v4",)) if l in ("deepseek-v4", "grok", "chatgpt"))
     if not want:
-        want = ("grok", "chatgpt")
-    grok_raw = chatgpt_raw = None
-    grok_rec = chatgpt_rec = None
-    grok_conf = chatgpt_conf = 0.0
+        want = ("grok", "chatgpt")  # legacy dual-consensus fallback
+    v4_raw = grok_raw = chatgpt_raw = None
+    v4_rec = grok_rec = chatgpt_rec = None
+    v4_conf = grok_conf = chatgpt_conf = 0.0
     pid = "watchlist_cio_synthesis" if manual_trigger else None
     task = "CIO synthesis"
 
@@ -444,6 +443,24 @@ def _synthesis_lanes(prompt: str, lanes=None, max_tokens: int = 2000, manual_tri
                 cloud_prompt, process_id=pid, task_summary=f"{task} {lane}",
                 manual_trigger=True, **kw)
         return llm_lane.generate(cloud_prompt, **kw)
+
+    # DeepSeek v4 primary (high-reasoning CIO synthesis)
+    if "deepseek-v4" in want:
+        try:
+            if llm_lane.available("deepseek-v4"):
+                v4_raw = _gen("deepseek-v4", 180)
+                if _is_refusal(v4_raw):
+                    v4_raw = None
+        except Exception:
+            v4_raw = None
+        if v4_raw:
+            v4_rec, v4_conf = _rec_from(v4_raw)
+            _llm._last_model = "deepseek-v4-pro"; _llm._last_provider = "deepseek"; _llm._last_cost = 0
+            return (v4_rec or v4_raw, {"lanes_run": ["deepseek-v4"], "recommendation": v4_rec,
+                     "confidence": v4_conf, "raw": v4_raw})
+        # DeepSeek v4 failed — fall through to dual-consensus
+        want = ("grok", "chatgpt")
+        v4_raw = None
 
     if "grok" in want:
         try:
@@ -2062,7 +2079,7 @@ CRITICAL INSTRUCTIONS:
             "dual_consensus": dual_meta,
             "model_used": actual_model,
             "raw_response": raw,
-            "lanes_run": list(lanes or ("grok", "chatgpt")),
+            "lanes_run": list(lanes or ("deepseek-v4",)),
             "manual_trigger": manual_trigger,
         }
     _grok_rec = (dual_meta.get("grok") or {}).get("recommendation")

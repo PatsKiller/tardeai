@@ -1,0 +1,167 @@
+{
+  "wl_total": {
+    "cols": [
+      "c"
+    ],
+    "rows": [
+      [
+        12502
+      ]
+    ],
+    "err": null
+  },
+  "wl_by_source": {
+    "cols": [
+      "s",
+      "c"
+    ],
+    "rows": [
+      [
+        "ai_discovered",
+        11473
+      ],
+      [
+        "paper_proposal",
+        363
+      ],
+      [
+        "topic_research",
+        230
+      ],
+      [
+        "pullback_macd",
+        105
+      ],
+      [
+        "hermes",
+        77
+      ],
+      [
+        "portfolio",
+        67
+      ],
+      [
+        "small_cap_rotation",
+        59
+      ],
+      [
+        "ai_watchlist",
+        55
+      ],
+      [
+        "trade_ai_go",
+        21
+      ],
+      [
+        "prev_traded",
+        20
+      ],
+      [
+        "static_universe",
+        16
+      ],
+      [
+        "personal_watchlist",
+        13
+      ],
+      [
+        "operator",
+        2
+      ],
+      [
+        "discovery",
+        1
+      ]
+    ],
+    "err": null
+  },
+  "wl_by_status": {
+    "cols": [
+      "s",
+      "c"
+    ],
+    "rows": [
+      [
+        "removed",
+        7107
+      ],
+      [
+        "researched",
+        5334
+      ],
+      [
+        "active",
+        61
+      ]
+    ],
+    "err": null
+  },
+  "agent_jobs": {
+    "cols": null,
+    "rows": null,
+    "err": "column \"agent_name\" does not exist\nLINE 1: SELECT COALESCE(agent_name, agent, 'unk') a, COALESCE(status...\n                        ^\n"
+  },
+  "directives": {
+    "cols": [
+      "status",
+      "count"
+    ],
+    "rows": [
+      [
+        "active",
+        437
+      ],
+      [
+        "archived",
+        224
+      ],
+      [
+        "expired",
+        19
+      ],
+      [
+        "paused",
+        14
+      ]
+    ],
+    "err": null
+  },
+  "pp_status": {
+    "cols": [
+      "status",
+      "count"
+    ],
+    "rows": [
+      [
+        "EXPIRED",
+        3120
+      ],
+      [
+        "REJECTED",
+        1344
+      ],
+      [
+        "RISK_BLOCKED",
+        154
+      ],
+      [
+        "APPROVED",
+        36
+      ],
+      [
+        "APPROVED_FOR_PAPER_TEST",
+        7
+      ],
+      [
+        "CANCELLED",
+        1
+      ]
+    ],
+    "err": null
+  },
+  "ri_items": {
+    "cols": null,
+    "rows": null,
+    "err": "relation \"research_intelligence_items\" does not exist\nLINE 1: SELECT count(*) FROM research_intelligence_items\n                             ^\n"
+  }
+}

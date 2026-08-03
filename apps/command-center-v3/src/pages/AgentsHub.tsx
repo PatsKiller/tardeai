@@ -179,6 +179,10 @@ export default function AgentsHub({ onDrill }: Props) {
 
   const agents: any[] = summary?.agents ?? []
   const handoffs: any[] = summary?.handoffs ?? []
+  const honesty = summary?.honesty
+  const holdFactories: string[] = honesty?.hold_factory_agents
+    ?? agents.filter((a: any) => a.is_hold_factory).map((a: any) => a.agent)
+  const catalogStates: Record<string, any> = summary?.catalog_states ?? {}
   const windows: any[] = (Array.isArray(calWindows) ? calWindows : calWindows?.windows) ?? []
   const agentList: any[] = (Array.isArray(calAgents) ? calAgents : calAgents?.agents) ?? []
   const symbolsByAgent: Record<string, number> = {}
@@ -277,22 +281,39 @@ export default function AgentsHub({ onDrill }: Props) {
         </div>
       </div>
 
+      {/* Audit 2026-08-02: autonomy honesty banner */}
+      <div style={{
+        margin: '8px 0 12px', padding: '8px 12px', borderRadius: 8,
+        border: `1px solid ${A}55`, background: `${A}14`, fontSize: 11, color: 'var(--text1)', lineHeight: 1.45,
+      }}>
+        <b style={{ color: A }}>Advisory only · not production-activated.</b>
+        {' '}Catalog MVL fleet is SHADOW/DESIGNED with all order/broker authorities DENIED.
+        {holdFactories.length > 0 && (
+          <span> HOLD-factory personas (≈100% HOLD, no BUY/SELL): <b style={{ color: A }}>{holdFactories.join(', ')}</b> — commentary volume, not trade signals.</span>
+        )}
+        {' '}Runtime model labels below are narrative defaults; paid analysis prefers DeepSeek when the process registry allows it.
+      </div>
+
       {/* ===== ROSTER ===== */}
       {tab === 'Roster' && (
         <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
           {agents.length === 0 ? <div style={{ color: 'var(--text3)', fontSize: 11, padding: 16 }}>No agent data from /agents/summary.</div> : (
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead><tr style={{ borderBottom: '1px solid var(--border)' }}>
-                {['Agent / role', 'Model', 'Actions (all-time)', 'Rec mix', 'Avg conf', 'Last run'].map(h => <th key={h} style={{ textAlign: ['Agent / role', 'Model'].includes(h) ? 'left' : 'right', padding: '7px 10px', fontSize: 9, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase' }}>{h}</th>)}
+                {['Agent / role', 'Model', 'Actions (all-time)', 'Rec mix', 'Hold %', 'Avg conf', 'Last run'].map(h => <th key={h} style={{ textAlign: ['Agent / role', 'Model'].includes(h) ? 'left' : 'right', padding: '7px 10px', fontSize: 9, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase' }}>{h}</th>)}
               </tr></thead>
               <tbody>{agents.map((a: any, i: number) => {
                 const win = winByAgent[a.agent]
+                const cat = catalogStates[a.agent] || catalogStates[String(a.agent || '').replace(/_agent$/, '')]
+                const holdPct = a.hold_rate != null ? Math.round(Number(a.hold_rate) * 100) : null
                 return (
-                  <tr key={i} onClick={() => onDrill({ title: a.agent, subtitle: `${ROLES[a.agent] ?? ''} · ${RUNTIME_MODEL}`, endpoint: '/api/v2/agents/summary', rows: [{ ...a, role: ROLES[a.agent] ?? '—', runtime_model: RUNTIME_MODEL }] })}
-                    style={{ borderBottom: '1px solid var(--border-subtle)', cursor: 'pointer' }}>
+                  <tr key={i} onClick={() => onDrill({ title: a.agent, subtitle: `${ROLES[a.agent] ?? ''} · ${RUNTIME_MODEL}`, endpoint: '/api/v2/agents/summary', rows: [{ ...a, role: ROLES[a.agent] ?? '—', runtime_model: RUNTIME_MODEL, catalog_state: cat?.deployment_state }] })}
+                    style={{ borderBottom: '1px solid var(--border-subtle)', cursor: 'pointer', opacity: a.is_hold_factory ? 0.85 : 1 }}>
                     <td style={{ padding: '9px 10px' }}>
                       <div style={{ fontWeight: 600, color: 'var(--text0)', fontFamily: 'var(--mono)' }}>
                         {a.agent}
+                        {a.is_hold_factory && <span style={{ marginLeft: 6, fontSize: 9, color: A, fontWeight: 800 }}>HOLD FACTORY</span>}
+                        {cat?.deployment_state && <span style={{ marginLeft: 6, fontSize: 9, color: 'var(--text3)' }}>{cat.deployment_state}</span>}
                         {win && <span style={{ marginLeft: 8, fontSize: 8, padding: '1px 6px', borderRadius: 3, fontWeight: 700,
                           background: win.sample_size_status === 'proposal_allowed' ? 'rgba(34,197,94,.12)' : 'rgba(96,165,250,.12)',
                           color: win.sample_size_status === 'proposal_allowed' ? G : B }}>
@@ -315,6 +336,10 @@ export default function AgentsHub({ onDrill }: Props) {
                       ) : (
                         <><span style={{ color: G }}>{a.buy_count ?? 0}</span> / <span style={{ color: R }}>{a.sell_count ?? 0}</span> / <span style={{ color: 'var(--text2)' }}>{a.hold_count ?? 0}</span></>
                       )}
+                    </td>
+                    <td style={{ padding: '9px 10px', textAlign: 'right', fontWeight: 700, color: holdPct != null && holdPct >= 95 ? A : 'var(--text2)' }}
+                      title={a.is_hold_factory ? 'HOLD factory — no directional recommendations' : 'Hold rate of B/S/H mix'}>
+                      {holdPct != null ? `${holdPct}%` : '—'}
                     </td>
                     <td style={{ padding: '9px 10px', textAlign: 'right', color: 'var(--text2)' }}>{fmtPct(a.avg_confidence)}</td>
                     <td style={{ padding: '9px 10px', textAlign: 'right', fontSize: 10, color: staleColor(a.last_run), fontWeight: 600 }} title={a.last_run ? `Last run: ${new Date(a.last_run).toLocaleString()}` : 'No recorded run'}>{timeAgo(a.last_run)}</td>

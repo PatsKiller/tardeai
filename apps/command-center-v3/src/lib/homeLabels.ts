@@ -71,15 +71,51 @@ export function runLabel(label?: string | null, date?: string | null): string {
   return t
 }
 
-/** True when the trade-ai scan date is older than the current US calendar session day. */
+/** Most recent NYSE session calendar day (weekend → Friday). Holidays approximate. */
+export function lastSessionDay(now = new Date()): Date {
+  const d = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const day = d.getDay() // 0=Sun … 6=Sat
+  if (day === 0) d.setDate(d.getDate() - 2)
+  else if (day === 6) d.setDate(d.getDate() - 1)
+  return d
+}
+
+/** True when the trade-ai scan date is older than the last market session day.
+ *  Friday scans stay fresh over the weekend (audit 2026-08-02: stop false STALE on Sat/Sun). */
 export function isScanStale(runDate?: string | null, now = new Date()): boolean {
   if (!runDate) return true
   const m = String(runDate).match(/(\d{4}-\d{2}-\d{2})/)
   if (!m) return true
   const scan = new Date(`${m[1]}T00:00:00`)
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
   const scanDay = new Date(scan.getFullYear(), scan.getMonth(), scan.getDate())
-  return scanDay.getTime() < today.getTime()
+  const session = lastSessionDay(now)
+  return scanDay.getTime() < session.getTime()
+}
+
+/** Journal last-close is stale when older than `maxTradingDays` session days (default 5 ≈ 1 week).
+ *  Calendar-day thresholds (e.g. >7) over-flag long weekends/holidays. */
+export function isJournalStale(lastCloseDate?: string | null, maxTradingDays = 5, now = new Date()): { stale: boolean; ageCalendarDays: number | null; ageMark: string } {
+  if (!lastCloseDate) return { stale: true, ageCalendarDays: null, ageMark: ' · no closes' }
+  const ms = now.getTime() - new Date(String(lastCloseDate)).getTime()
+  if (!Number.isFinite(ms) || ms < 0) return { stale: false, ageCalendarDays: null, ageMark: '' }
+  const ageCalendarDays = Math.floor(ms / 86_400_000)
+  // Count weekdays between last close and now (rough trading-day age)
+  let trading = 0
+  const cursor = new Date(String(lastCloseDate))
+  cursor.setHours(12, 0, 0, 0)
+  const end = new Date(now)
+  end.setHours(12, 0, 0, 0)
+  while (cursor < end && trading <= maxTradingDays + 2) {
+    cursor.setDate(cursor.getDate() + 1)
+    const wd = cursor.getDay()
+    if (wd !== 0 && wd !== 6) trading += 1
+  }
+  const stale = trading > maxTradingDays
+  return {
+    stale,
+    ageCalendarDays,
+    ageMark: stale ? ` · ${ageCalendarDays}d old` : '',
+  }
 }
 
 export function thresholdSentence(label: string, value: number, threshold: number, unit = '%'): string {

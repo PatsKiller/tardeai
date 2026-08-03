@@ -1,0 +1,373 @@
+{
+  "rec_intel_by_source": [
+    {
+      "source": "watchlist",
+      "tickers": 5015,
+      "executed": 0
+    },
+    {
+      "source": "scan",
+      "tickers": 763,
+      "executed": 0
+    },
+    {
+      "source": "proposal",
+      "tickers": 640,
+      "executed": 64
+    },
+    {
+      "source": "hermes_research",
+      "tickers": 638,
+      "executed": 0
+    },
+    {
+      "source": "claude_challenger",
+      "tickers": 335,
+      "executed": 0
+    },
+    {
+      "source": "execution",
+      "tickers": 189,
+      "executed": 6045
+    },
+    {
+      "source": "directive",
+      "tickers": 62,
+      "executed": 0
+    },
+    {
+      "source": "cio",
+      "tickers": 49,
+      "executed": 0
+    },
+    {
+      "source": "holding",
+      "tickers": 41,
+      "executed": 51
+    },
+    {
+      "source": "rotation",
+      "tickers": 16,
+      "executed": 646
+    }
+  ],
+  "hermes_gate_dims": [
+    "scope",
+    "research",
+    "tagging",
+    "efficiency",
+    "closed_loop",
+    "autonomy"
+  ],
+  "hermes_gate_pass": {
+    "scope": "4/4",
+    "research": "1/3",
+    "tagging": "2/3",
+    "efficiency": "2/4",
+    "closed_loop": "3/4",
+    "autonomy": "2/3"
+  },
+  "atm": {
+    "mode": "active",
+    "paused_until": "",
+    "pause_reason": null,
+    "last_state_change_at": "2026-05-22 19:14:15.890231-04:00",
+    "last_state_change_by": "john-approved",
+    "last_evaluated_at": "2026-07-31 19:50:11.654644-04:00",
+    "config_hash": "54915904a886",
+    "is_market_hours": false,
+    "next_expected_cycle": "Mon 9:35 ET",
+    "accounts": [
+      {
+        "account_label": "tradeai_automated",
+        "broker": "alpaca",
+        "mode": "paper",
+        "enabled": true,
+        "positions_open": 0,
+        "new_today": 0,
+        "new_today_atm": 0
+      },
+      {
+        "account_label": "schwab_rollover_ira",
+        "broker": "schwab",
+        "mode": "live",
+        "enabled": false,
+        "positions_open": 0,
+        "new_today": 0,
+        "new_today_atm": 0
+      },
+      {
+        "account_label": "schwab_roth_ira",
+        "broker": "schwab",
+        "mode": "live",
+        "enabled": false,
+        "positions_open": 0,
+        "new_today": 0,
+        "new_today_atm": 0
+      },
+      {
+        "account_label": "schwab_taxable",
+        "broker": "schwab",
+        "mode": "live",
+        "enabled": false,
+        "positions_open": 0,
+        "new_today": 0,
+        "new_today_atm": 0
+      },
+      {
+        "account_label": "fidelity_401k",
+        "broker": "fidelity",
+        "mode": "live",
+        "enabled": false,
+        "positions_open": 0,
+        "new_today": 0,
+        "new_today_atm": 0
+      }
+    ],
+    "decisions_today": {},
+    "classifier_guardrail": {
+      "classifier_health_min": 0.0,
+      "classifier_gate_disabled": true,
+      "classifier_gate_reason": "cold_start_burn_in",
+      "classifier_graduation_blocked": true,
+      "production_threshold": 0.5
+    }
+  },
+  "defense_momentum_generated_at": "2026-07-31T21:26:23.477958+00:00",
+  "defense_momentum_rows": 11,
+  "defense_rec_mode": "SHADOW",
+  "defense_rec_generated_at": "2026-07-31T21:50:01.809148+00:00",
+  "defense_rec_group_count": 4,
+  "agents_summary_keys": [
+    "agents",
+    "handoffs"
+  ],
+  "research_intel_top": [
+    "ok",
+    "version",
+    "as_of",
+    "taxonomy",
+    "freshness_policy",
+    "filters",
+    "stats",
+    "items",
+    "hidden_items",
+    "queued_research",
+    "hermes_wire",
+    "priority_lanes",
+    "note",
+    "portfolio_context",
+    "meta",
+    "from_cache"
+  ],
+  "consumption": {
+    "ok": true,
+    "overview": {
+      "by_lane": {
+        "deepseek-v4": {
+          "today": {
+            "calls": 4,
+            "chars": 1029056,
+            "relative_units": 1029.056,
+            "failures": 0
+          },
+          "week": {
+            "calls": 4,
+            "chars": 1029056,
+            "relative_units": 1029.056,
+            "failures": 0
+          },
+          "month": {
+            "calls": 4,
+            "chars": 1029056,
+            "relative_units": 1029.056,
+            "failures": 0
+          }
+        },
+        "grok": {
+          "today": {
+            "calls": 25,
+            "chars": 520987,
+            "relative_units": 520.987,
+            "failures": 2
+          },
+          "week": {
+            "calls": 382,
+            "chars": 1464204,
+            "relative_units": 1464.204,
+            "failures": 201
+          },
+          "month": {
+            "calls": 1902,
+            "chars": 6001148,
+            "relative_units": 6001.148,
+            "failures": 262
+          }
+        },
+        "chatgpt": {
+          "today": {
+            "calls": 25,
+            "chars": 522564,
+            "relative_units": 522.564,
+            "failures": 2
+          },
+          "week": {
+            "calls": 288,
+            "chars": 1341180,
+            "relative_units": 1341.18,
+            "failures": 22
+          },
+          "month": {
+            "calls": 691,
+            "chars": 2526084,
+            "relative_units": 2526.084,
+            "failures": 22
+          }
+        }
+      },
+      "top_processes": [
+        {
+          "process_id": "watchlist_maria_priority",
+          "process_name": "Maria Priority OAuth",
+          "calls": 1594,
+          "relative_units": 5134.006,
+          "last_used": "2026-08-01 14:50:15.405424-04:00"
+        },
+        {
+          "process_id": "watchlist_cio_synthesis",
+          "process_name": "Watchlist CIO Synthesis",
+          "calls": 22,
+          "relative_units": 2297.455,
+          "last_used": "2026-08-02 22:27:59.683040-04:00"
+        },
+        {
+          "process_id": "cloud_review",
+          "process_name": "Cloud Review (ensemble)",
+          "calls": 898,
+          "relative_units": 2043.082,
+          "last_used": "2026-08-02 18:37:27.955508-04:00"
+        },
+        {
+          "process_id": "portfolio_weekly_report",
+          "process_name": "Portfolio Weekly Report",
+          "calls": 10,
+          "relative_units": 33.721,
+          "last_used": "2026-07-26 20:40:56.762397-04:00"
+        },
+        {
+          "process_id": "holding_protection_advisor",
+          "process_name": "Holding Protection Advisor",
+          "calls": 8,
+          "relative_units": 26.005,
+          "last_used": "2026-07-17 10:09:33.851393-04:00"
+        },
+        {
+          "process_id": "holding_protection_advisor_batch",
+          "process_name": "Stop Advisory Batch (top N)",
+          "calls": 6,
+          "relative_units": 20.295,
+          "last_used": "2026-07-08 13:04:10.427955-04:00"
+        },
+        {
+          "process_id": "oauth_lane_keepalive",
+          "process_name": "OAuth Lane Keepalive",
+          "calls": 58,
+          "relative_units": 1.384,
+          "last_used": "2026-08-02 22:30:06.865751-04:00"
+        },
+        {
+          "process_id": "ri_narrative_enrich",
+          "process_name": "ri_narrative_enrich",
+          "calls": 1,
+          "relative_units": 0.34,
+          "last_used": "2026-07-15 19:23:30.975718-04:00"
+        }
+      ],
+      "generated_at": "2026-08-03T02:30:13.775587+00:00"
+    },
+    "lanes": {
+      "grok": true,
+      "chatgpt": true
+    },
+    "insights": [
+      {
+        "type": "high_consumer",
+        "process_id": "cloud_review",
+        "message": "Cloud Review (ensemble) is Automated with 898 calls / 2043.1 relative units (30d) \u2014 consider Manual mode.",
+        "severity": "warning"
+      },
+      {
+        "type": "high_consumer",
+        "process_id": "portfolio_weekly_report",
+        "message": "Portfolio Weekly Report is Automated with 10 calls / 33.7 relative units (30d) \u2014 consider Manual mode.",
+        "severity": "warning"
+      },
+      {
+        "type": "high_consumer",
+        "process_id": "watchlist_maria_priority",
+        "message": "Maria Priority OAuth is Automated with 1594 calls / 5134.0 relative units (30d) \u2014 consider Manual mode.",
+        "severity": "warning"
+      }
+    ]
+  },
+  "llm_health": {
+    "lanes": {
+      "local": {
+        "available": true
+      },
+      "grok": {
+        "available": true
+      },
+      "chatgpt": {
+        "available": true
+      },
+      "deepseek-flash": {
+        "available": true
+      },
+      "deepseek-v4": {
+        "available": true
+      },
+      "any_available": true
+    },
+    "review_corpus": {
+      "window_days": 30,
+      "total": 47,
+      "valid": 47,
+      "valid_rate": 1.0,
+      "by_model_category": [
+        {
+          "model": "gpt-4o-mini",
+          "category": "valid",
+          "n": 47
+        }
+      ]
+    },
+    "note": "5 lanes: local (Ollama gemma3:4b), grok (xAI OAuth :8645), chatgpt (codex OAuth :8646), deepseek-flash (paid API), deepseek-v4 (paid API, R1 reasoning). Availability via llm_lane.available(); corpus from paper_trade_multi_reviews."
+  },
+  "portfolio_value": 1255395.51,
+  "total_cash": 580054.82,
+  "paper_proposals_summary": {
+    "pending": 7,
+    "ready_count": 0,
+    "needs_review_count": 0,
+    "stale_count": 0,
+    "unknown_quote_count": 0,
+    "exec_missing_count": 0,
+    "entry_missed_count": 0,
+    "expired_today": 0,
+    "incubator_ready_count": 183,
+    "last_promotion_run": "2026-07-31T17:00:13.075632-04:00",
+    "pipeline_health_message": null,
+    "incubator_diagnostics": {
+      "ready_count": 183,
+      "pending_proposals": 0,
+      "broker_desk_excluded": 0,
+      "pending_limit": 20,
+      "headroom": 20,
+      "last_promotion_run": "2026-07-31T17:00:13.075632-04:00",
+      "promotion_blocked_reason": null
+    },
+    "by_strategy": [],
+    "multi_strategy_symbols": []
+  }
+}

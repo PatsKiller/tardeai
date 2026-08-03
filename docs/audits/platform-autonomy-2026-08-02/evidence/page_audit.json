@@ -1,0 +1,817 @@
+{
+  "base": "http://127.0.0.1:7777/v3",
+  "at": "2026-08-03T02:33:03.283Z",
+  "results": [
+    {
+      "id": "home",
+      "path": "/",
+      "url": "http://127.0.0.1:7777/v3/",
+      "ok": true,
+      "status": 200,
+      "title": "Command Center v3",
+      "bodyTextLen": 10687,
+      "hasErrorBoundary": false,
+      "emptyHints": [
+        "n/a",
+        "—",
+        "stale"
+      ],
+      "consoleErrors": [],
+      "networkFails": [
+        {
+          "url": "http://127.0.0.1:7777/v3/assets/index-C34oUonL.js",
+          "err": "net::ERR_ABORTED"
+        }
+      ],
+      "actionableButtons": 144,
+      "loadMs": 3698,
+      "screenshot": "/home/johnclaw/tradeai-wt-cursor-guardrails/docs/audits/platform-autonomy-2026-08-02/screenshots/home.png",
+      "textSample": "Command Center v3 Prices 08:00 ET · Finviz after-hours PORTFOLIO $1,255,396→ TODAY +$1,411 +0.11%→ TRADING ⚠ STALE 50.9% · 159 · $37,890 · 10d old→ REALIZED ⚠ STALE $152,450 · 10d old→ REGIME risk on trend 33%→ VIX 17.1→ SETUPS · LATEST RUN ⚠ STALE STALE · 7:00 AM scan · Jul 31→ ⚑ 17 APPROVALS → ♥ 12 HEALTH → 2FA LIVE TRADE Home Portfolio ↳ Re-Entry Risk Trading Active Trader Strategy TradeInView "
+    },
+    {
+      "id": "portfolio",
+      "path": "/portfolio",
+      "url": "http://127.0.0.1:7777/v3/portfolio",
+      "ok": true,
+      "status": 200,
+      "title": "Command Center v3",
+      "bodyTextLen": 8289,
+      "hasErrorBoundary": false,
+      "emptyHints": [
+        "—",
+        "stale"
+      ],
+      "consoleErrors": [],
+      "networkFails": [],
+      "actionableButtons": 146,
+      "loadMs": 3578,
+      "screenshot": "/home/johnclaw/tradeai-wt-cursor-guardrails/docs/audits/platform-autonomy-2026-08-02/screenshots/portfolio.png",
+      "textSample": "Command Center v3 Prices 08:00 ET · Finviz after-hours PORTFOLIO $1,255,396→ TODAY +$1,411 +0.11%→ TRADING ⚠ STALE 50.9% · 159 · $37,890 · 10d old→ REALIZED ⚠ STALE $152,450 · 10d old→ REGIME risk on trend 33%→ VIX 17.1→ SETUPS · LATEST RUN ⚠ STALE STALE · 7:00 AM scan · Jul 31→ ⚑ 17 APPROVALS → ♥ 12 HEALTH → 2FA LIVE TRADE Home Portfolio ↳ Re-Entry Risk Trading Active Trader Strategy TradeInView "
+    },
+    {
+      "id": "portfolio-reentry",
+      "path": "/portfolio/re-entry",
+      "url": "http://127.0.0.1:7777/v3/portfolio/re-entry",
+      "ok": true,
+      "status": 200,
+      "title": "Command Center v3",
+      "bodyTextLen": 140296,
+      "hasErrorBoundary": false,
+      "emptyHints": [
+        "n/a",
+        "—",
+        "stale",
+        "manual"
+      ],
+      "consoleErrors": [],
+      "networkFails": [
+        {
+          "url": "http://127.0.0.1:7777/api/v2/watchlist/items?symbol=CSCO",
+          "err": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:7777/api/v2/watchlist/items?symbol=ANET",
+          "err": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:7777/api/v2/watchlist/items?symbol=LDOS",
+          "err": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:7777/api/v2/watchlist/items?symbol=CSWC",
+          "err": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:7777/api/v2/watchlist/items?symbol=JEPQ",
+          "err": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:7777/api/v2/watchlist/items?symbol=SCHG",
+          "err": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:7777/api/v2/watchlist/items?symbol=RTX",
+          "err": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:7777/api/v2/watchlist/items?symbol=NOC",
+          "err": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:7777/api/v2/watchlist/items?symbol=LDOS",
+          "err": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:7777/api/v2/watchlist/items?symbol=CSWC",
+          "err": "net::ERR_ABORTED"
+        }
+      ],
+      "actionableButtons": 1041,
+      "loadMs": 3580,
+      "screenshot": "/home/johnclaw/tradeai-wt-cursor-guardrails/docs/audits/platform-autonomy-2026-08-02/screenshots/portfolio-reentry.png",
+      "textSample": "Command Center v3 Prices 08:00 ET · Finviz after-hours PORTFOLIO $1,255,396→ TODAY +$1,411 +0.11%→ TRADING ⚠ STALE 50.9% · 159 · $37,890 · 10d old→ REALIZED ⚠ STALE $152,450 · 10d old→ REGIME risk on trend 33%→ VIX 17.1→ SETUPS · LATEST RUN ⚠ STALE STALE · 7:00 AM scan · Jul 31→ ⚑ 17 APPROVALS → ♥ 12 HEALTH → 2FA LIVE TRADE Home Portfolio ↳ Re-Entry Risk Trading Active Trader Strategy TradeInView "
+    },
+    {
+      "id": "risk",
+      "path": "/risk",
+      "url": "http://127.0.0.1:7777/v3/risk",
+      "ok": true,
+      "status": 200,
+      "title": "Command Center v3",
+      "bodyTextLen": 2236,
+      "hasErrorBoundary": false,
+      "emptyHints": [
+        "—",
+        "stale"
+      ],
+      "consoleErrors": [],
+      "networkFails": [
+        {
+          "url": "http://127.0.0.1:7777/api/v2/watchlist/items?symbol=ACHV",
+          "err": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:7777/api/v2/watchlist/items?symbol=GSIT",
+          "err": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:7777/api/v2/watchlist/items?symbol=STI",
+          "err": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:7777/api/v2/watchlist/items?symbol=GWH",
+          "err": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:7777/api/v2/watchlist/items?symbol=ACHV",
+          "err": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:7777/api/v2/watchlist/items?symbol=AUUD",
+          "err": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:7777/api/v2/watchlist/items?symbol=NERV",
+          "err": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:7777/api/v2/watchlist/items?symbol=CTXR",
+          "err": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:7777/api/v2/watchlist/items?symbol=UBER",
+          "err": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:7777/api/v2/watchlist/items?symbol=ELBM",
+          "err": "net::ERR_ABORTED"
+        }
+      ],
+      "actionableButtons": 27,
+      "loadMs": 3696,
+      "screenshot": "/home/johnclaw/tradeai-wt-cursor-guardrails/docs/audits/platform-autonomy-2026-08-02/screenshots/risk.png",
+      "textSample": "Command Center v3 Prices 08:00 ET · Finviz after-hours PORTFOLIO $1,255,396→ TODAY +$1,411 +0.11%→ TRADING ⚠ STALE 50.9% · 159 · $37,890 · 10d old→ REALIZED ⚠ STALE $152,450 · 10d old→ REGIME risk on trend 33%→ VIX 17.1→ SETUPS · LATEST RUN ⚠ STALE STALE · 7:00 AM scan · Jul 31→ ⚑ 17 APPROVALS → ♥ 12 HEALTH → 2FA LIVE TRADE Home Portfolio ↳ Re-Entry Risk Trading Active Trader Strategy TradeInView "
+    },
+    {
+      "id": "trading",
+      "path": "/trading",
+      "url": "http://127.0.0.1:7777/v3/trading",
+      "ok": true,
+      "status": 200,
+      "title": "Command Center v3",
+      "bodyTextLen": 3552,
+      "hasErrorBoundary": false,
+      "emptyHints": [
+        "empty",
+        "—",
+        "stale",
+        "manual"
+      ],
+      "consoleErrors": [],
+      "networkFails": [],
+      "actionableButtons": 29,
+      "loadMs": 3580,
+      "screenshot": "/home/johnclaw/tradeai-wt-cursor-guardrails/docs/audits/platform-autonomy-2026-08-02/screenshots/trading.png",
+      "textSample": "Command Center v3 Prices 08:00 ET · Finviz after-hours PORTFOLIO $1,255,396→ TODAY +$1,411 +0.11%→ TRADING ⚠ STALE 50.9% · 159 · $37,890 · 10d old→ REALIZED ⚠ STALE $152,450 · 10d old→ REGIME risk on trend 33%→ VIX 17.1→ SETUPS · LATEST RUN ⚠ STALE STALE · 7:00 AM scan · Jul 31→ ⚑ 17 APPROVALS → ♥ 12 HEALTH → 2FA LIVE TRADE Home Portfolio ↳ Re-Entry Risk Trading Active Trader Strategy TradeInView "
+    },
+    {
+      "id": "trading-proposals",
+      "path": "/trading?tab=Proposals",
+      "url": "http://127.0.0.1:7777/v3/trading?tab=Proposals",
+      "ok": true,
+      "status": 200,
+      "title": "Command Center v3",
+      "bodyTextLen": 2381,
+      "hasErrorBoundary": false,
+      "emptyHints": [
+        "—",
+        "stale",
+        "manual"
+      ],
+      "consoleErrors": [],
+      "networkFails": [],
+      "actionableButtons": 20,
+      "loadMs": 3579,
+      "screenshot": "/home/johnclaw/tradeai-wt-cursor-guardrails/docs/audits/platform-autonomy-2026-08-02/screenshots/trading-proposals.png",
+      "textSample": "Command Center v3 Prices 08:00 ET · Finviz after-hours PORTFOLIO $1,255,396→ TODAY +$1,411 +0.11%→ TRADING ⚠ STALE 50.9% · 159 · $37,890 · 10d old→ REALIZED ⚠ STALE $152,450 · 10d old→ REGIME risk on trend 33%→ VIX 17.1→ SETUPS · LATEST RUN ⚠ STALE STALE · 7:00 AM scan · Jul 31→ ⚑ 17 APPROVALS → ♥ 12 HEALTH → 2FA LIVE TRADE Home Portfolio ↳ Re-Entry Risk Trading Active Trader Strategy TradeInView "
+    },
+    {
+      "id": "trading-tradeai",
+      "path": "/trading?tab=Trade%20AI",
+      "url": "http://127.0.0.1:7777/v3/trading?tab=Trade%20AI",
+      "ok": true,
+      "status": 200,
+      "title": "Command Center v3",
+      "bodyTextLen": 3552,
+      "hasErrorBoundary": false,
+      "emptyHints": [
+        "empty",
+        "—",
+        "stale",
+        "manual"
+      ],
+      "consoleErrors": [],
+      "networkFails": [],
+      "actionableButtons": 29,
+      "loadMs": 3589,
+      "screenshot": "/home/johnclaw/tradeai-wt-cursor-guardrails/docs/audits/platform-autonomy-2026-08-02/screenshots/trading-tradeai.png",
+      "textSample": "Command Center v3 Prices 08:00 ET · Finviz after-hours PORTFOLIO $1,255,396→ TODAY +$1,411 +0.11%→ TRADING ⚠ STALE 50.9% · 159 · $37,890 · 10d old→ REALIZED ⚠ STALE $152,450 · 10d old→ REGIME risk on trend 33%→ VIX 17.1→ SETUPS · LATEST RUN ⚠ STALE STALE · 7:00 AM scan · Jul 31→ ⚑ 17 APPROVALS → ♥ 12 HEALTH → 2FA LIVE TRADE Home Portfolio ↳ Re-Entry Risk Trading Active Trader Strategy TradeInView "
+    },
+    {
+      "id": "trading-atm",
+      "path": "/trading?tab=ATM%20Controls",
+      "url": "http://127.0.0.1:7777/v3/trading?tab=ATM%20Controls",
+      "ok": true,
+      "status": 200,
+      "title": "Command Center v3",
+      "bodyTextLen": 2431,
+      "hasErrorBoundary": false,
+      "emptyHints": [
+        "n/a",
+        "—",
+        "stale",
+        "manual"
+      ],
+      "consoleErrors": [],
+      "networkFails": [],
+      "actionableButtons": 13,
+      "loadMs": 3590,
+      "screenshot": "/home/johnclaw/tradeai-wt-cursor-guardrails/docs/audits/platform-autonomy-2026-08-02/screenshots/trading-atm.png",
+      "textSample": "Command Center v3 Prices 08:00 ET · Finviz after-hours PORTFOLIO $1,255,396→ TODAY +$1,411 +0.11%→ TRADING ⚠ STALE 50.9% · 159 · $37,890 · 10d old→ REALIZED ⚠ STALE $152,450 · 10d old→ REGIME risk on trend 33%→ VIX 17.1→ SETUPS · LATEST RUN ⚠ STALE STALE · 7:00 AM scan · Jul 31→ ⚑ 17 APPROVALS → ♥ 12 HEALTH → 2FA LIVE TRADE Home Portfolio ↳ Re-Entry Risk Trading Active Trader Strategy TradeInView "
+    },
+    {
+      "id": "active-trader",
+      "path": "/active-trader",
+      "url": "http://127.0.0.1:7777/v3/active-trader",
+      "ok": true,
+      "status": 200,
+      "title": "Command Center v3",
+      "bodyTextLen": 2492,
+      "hasErrorBoundary": false,
+      "emptyHints": [
+        "empty",
+        "—",
+        "stale",
+        "manual"
+      ],
+      "consoleErrors": [],
+      "networkFails": [],
+      "actionableButtons": 5,
+      "loadMs": 3580,
+      "screenshot": "/home/johnclaw/tradeai-wt-cursor-guardrails/docs/audits/platform-autonomy-2026-08-02/screenshots/active-trader.png",
+      "textSample": "Command Center v3 Prices 08:00 ET · Finviz after-hours PORTFOLIO $1,255,396→ TODAY +$1,411 +0.11%→ TRADING ⚠ STALE 50.9% · 159 · $37,890 · 10d old→ REALIZED ⚠ STALE $152,450 · 10d old→ REGIME risk on trend 33%→ VIX 17.1→ SETUPS · LATEST RUN ⚠ STALE STALE · 7:00 AM scan · Jul 31→ ⚑ 17 APPROVALS → ♥ 12 HEALTH → 2FA LIVE TRADE Home Portfolio ↳ Re-Entry Risk Trading Active Trader Strategy TradeInView "
+    },
+    {
+      "id": "strategy",
+      "path": "/strategy",
+      "url": "http://127.0.0.1:7777/v3/strategy",
+      "ok": true,
+      "status": 200,
+      "title": "Command Center v3",
+      "bodyTextLen": 2169,
+      "hasErrorBoundary": false,
+      "emptyHints": [
+        "—",
+        "stale"
+      ],
+      "consoleErrors": [],
+      "networkFails": [],
+      "actionableButtons": 26,
+      "loadMs": 3587,
+      "screenshot": "/home/johnclaw/tradeai-wt-cursor-guardrails/docs/audits/platform-autonomy-2026-08-02/screenshots/strategy.png",
+      "textSample": "Command Center v3 Prices 08:00 ET · Finviz after-hours PORTFOLIO $1,255,396→ TODAY +$1,411 +0.11%→ TRADING ⚠ STALE 50.9% · 159 · $37,890 · 10d old→ REALIZED ⚠ STALE $152,450 · 10d old→ REGIME risk on trend 33%→ VIX 17.1→ SETUPS · LATEST RUN ⚠ STALE STALE · 7:00 AM scan · Jul 31→ ⚑ 17 APPROVALS → ♥ 12 HEALTH → 2FA LIVE TRADE Home Portfolio ↳ Re-Entry Risk Trading Active Trader Strategy TradeInView "
+    },
+    {
+      "id": "journal",
+      "path": "/journal",
+      "url": "http://127.0.0.1:7777/v3/journal",
+      "ok": true,
+      "status": 200,
+      "title": "Command Center v3",
+      "bodyTextLen": 7790,
+      "hasErrorBoundary": false,
+      "emptyHints": [
+        "—",
+        "stale",
+        "shadow",
+        "manual"
+      ],
+      "consoleErrors": [],
+      "networkFails": [],
+      "actionableButtons": 82,
+      "loadMs": 3584,
+      "screenshot": "/home/johnclaw/tradeai-wt-cursor-guardrails/docs/audits/platform-autonomy-2026-08-02/screenshots/journal.png",
+      "textSample": "Command Center v3 Prices 08:00 ET · Finviz after-hours PORTFOLIO $1,255,396→ TODAY +$1,411 +0.11%→ TRADING ⚠ STALE 50.9% · 159 · $37,890 · 10d old→ REALIZED ⚠ STALE $152,450 · 10d old→ REGIME risk on trend 33%→ VIX 17.1→ SETUPS · LATEST RUN ⚠ STALE STALE · 7:00 AM scan · Jul 31→ ⚑ 17 APPROVALS → ♥ 12 HEALTH → 2FA LIVE TRADE Home Portfolio ↳ Re-Entry Risk Trading Active Trader Strategy TradeInView "
+    },
+    {
+      "id": "watch",
+      "path": "/watch",
+      "url": "http://127.0.0.1:7777/v3/watch",
+      "ok": true,
+      "status": 200,
+      "title": "Command Center v3",
+      "bodyTextLen": 34078,
+      "hasErrorBoundary": false,
+      "emptyHints": [
+        "—",
+        "loading",
+        "stale",
+        "shadow"
+      ],
+      "consoleErrors": [],
+      "networkFails": [],
+      "actionableButtons": 27,
+      "loadMs": 3603,
+      "screenshot": "/home/johnclaw/tradeai-wt-cursor-guardrails/docs/audits/platform-autonomy-2026-08-02/screenshots/watch.png",
+      "textSample": "Command Center v3 Prices 08:00 ET · Finviz after-hours PORTFOLIO $1,255,396→ TODAY +$1,411 +0.11%→ TRADING ⚠ STALE 50.9% · 159 · $37,890 · 10d old→ REALIZED ⚠ STALE $152,450 · 10d old→ REGIME risk on trend 33%→ VIX 17.1→ SETUPS · LATEST RUN ⚠ STALE STALE · 7:00 AM scan · Jul 31→ ⚑ 17 APPROVALS → ♥ 12 HEALTH → 2FA LIVE TRADE Home Portfolio ↳ Re-Entry Risk Trading Active Trader Strategy TradeInView "
+    },
+    {
+      "id": "watch-finds",
+      "path": "/watch?tab=screener-finds",
+      "url": "http://127.0.0.1:7777/v3/watch?tab=screener-finds",
+      "ok": true,
+      "status": 200,
+      "title": "Command Center v3",
+      "bodyTextLen": 42936,
+      "hasErrorBoundary": false,
+      "emptyHints": [
+        "n/a",
+        "—",
+        "stale",
+        "shadow"
+      ],
+      "consoleErrors": [],
+      "networkFails": [
+        {
+          "url": "http://127.0.0.1:7777/api/v2/proposal-accounts?_=1785724306106",
+          "err": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:7777/api/v2/watchlist/items?sort=hermes&_=1785724306105",
+          "err": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:7777/api/v2/watchlist/items?sort=hermes&_=1785724306106",
+          "err": "net::ERR_ABORTED"
+        }
+      ],
+      "actionableButtons": 104,
+      "loadMs": 3591,
+      "screenshot": "/home/johnclaw/tradeai-wt-cursor-guardrails/docs/audits/platform-autonomy-2026-08-02/screenshots/watch-finds.png",
+      "textSample": "Command Center v3 Prices 08:00 ET · Finviz after-hours PORTFOLIO $1,255,396→ TODAY +$1,411 +0.11%→ TRADING ⚠ STALE 50.9% · 159 · $37,890 · 10d old→ REALIZED ⚠ STALE $152,450 · 10d old→ REGIME risk on trend 33%→ VIX 17.1→ SETUPS · LATEST RUN ⚠ STALE STALE · 7:00 AM scan · Jul 31→ ⚑ 17 APPROVALS → ♥ 12 HEALTH → 2FA LIVE TRADE Home Portfolio ↳ Re-Entry Risk Trading Active Trader Strategy TradeInView "
+    },
+    {
+      "id": "watch-watchpool",
+      "path": "/watch?tab=watchpool",
+      "url": "http://127.0.0.1:7777/v3/watch?tab=watchpool",
+      "ok": true,
+      "status": 200,
+      "title": "Command Center v3",
+      "bodyTextLen": 54506,
+      "hasErrorBoundary": false,
+      "emptyHints": [
+        "n/a",
+        "—",
+        "stale"
+      ],
+      "consoleErrors": [],
+      "networkFails": [
+        {
+          "url": "http://127.0.0.1:7777/api/v2/proposal-accounts?_=1785724309769",
+          "err": "net::ERR_ABORTED"
+        }
+      ],
+      "actionableButtons": 30,
+      "loadMs": 3595,
+      "screenshot": "/home/johnclaw/tradeai-wt-cursor-guardrails/docs/audits/platform-autonomy-2026-08-02/screenshots/watch-watchpool.png",
+      "textSample": "Command Center v3 Prices 08:00 ET · Finviz after-hours PORTFOLIO $1,255,396→ TODAY +$1,411 +0.11%→ TRADING ⚠ STALE 50.9% · 159 · $37,890 · 10d old→ REALIZED ⚠ STALE $152,450 · 10d old→ REGIME risk on trend 33%→ VIX 17.1→ SETUPS · LATEST RUN ⚠ STALE STALE · 7:00 AM scan · Jul 31→ ⚑ 17 APPROVALS → ♥ 12 HEALTH → 2FA LIVE TRADE Home Portfolio ↳ Re-Entry Risk Trading Active Trader Strategy TradeInView "
+    },
+    {
+      "id": "watch-sectors",
+      "path": "/watch?tab=sectors",
+      "url": "http://127.0.0.1:7777/v3/watch?tab=sectors",
+      "ok": true,
+      "status": 200,
+      "title": "Command Center v3",
+      "bodyTextLen": 9214,
+      "hasErrorBoundary": false,
+      "emptyHints": [
+        "n/a",
+        "—",
+        "stale",
+        "shadow"
+      ],
+      "consoleErrors": [],
+      "networkFails": [],
+      "actionableButtons": 67,
+      "loadMs": 3590,
+      "screenshot": "/home/johnclaw/tradeai-wt-cursor-guardrails/docs/audits/platform-autonomy-2026-08-02/screenshots/watch-sectors.png",
+      "textSample": "Command Center v3 Prices 08:00 ET · Finviz after-hours PORTFOLIO $1,255,396→ TODAY +$1,411 +0.11%→ TRADING ⚠ STALE 50.9% · 159 · $37,890 · 10d old→ REALIZED ⚠ STALE $152,450 · 10d old→ REGIME risk on trend 33%→ VIX 17.1→ SETUPS · LATEST RUN ⚠ STALE STALE · 7:00 AM scan · Jul 31→ ⚑ 17 APPROVALS → ♥ 12 HEALTH → 2FA LIVE TRADE Home Portfolio ↳ Re-Entry Risk Trading Active Trader Strategy TradeInView "
+    },
+    {
+      "id": "watch-pullback",
+      "path": "/watch?tab=pullback-macd",
+      "url": "http://127.0.0.1:7777/v3/watch?tab=pullback-macd",
+      "ok": true,
+      "status": 200,
+      "title": "Command Center v3",
+      "bodyTextLen": 8245,
+      "hasErrorBoundary": false,
+      "emptyHints": [
+        "—",
+        "stale"
+      ],
+      "consoleErrors": [],
+      "networkFails": [],
+      "actionableButtons": 149,
+      "loadMs": 3589,
+      "screenshot": "/home/johnclaw/tradeai-wt-cursor-guardrails/docs/audits/platform-autonomy-2026-08-02/screenshots/watch-pullback.png",
+      "textSample": "Command Center v3 Prices 08:00 ET · Finviz after-hours PORTFOLIO $1,255,396→ TODAY +$1,411 +0.11%→ TRADING ⚠ STALE 50.9% · 159 · $37,890 · 10d old→ REALIZED ⚠ STALE $152,450 · 10d old→ REGIME risk on trend 33%→ VIX 17.1→ SETUPS · LATEST RUN ⚠ STALE STALE · 7:00 AM scan · Jul 31→ ⚑ 17 APPROVALS → ♥ 12 HEALTH → 2FA LIVE TRADE Home Portfolio ↳ Re-Entry Risk Trading Active Trader Strategy TradeInView "
+    },
+    {
+      "id": "defense",
+      "path": "/defense",
+      "url": "http://127.0.0.1:7777/v3/defense",
+      "ok": true,
+      "status": 200,
+      "title": "Command Center v3",
+      "bodyTextLen": 10046,
+      "hasErrorBoundary": false,
+      "emptyHints": [
+        "n/a",
+        "—",
+        "stale",
+        "shadow"
+      ],
+      "consoleErrors": [],
+      "networkFails": [],
+      "actionableButtons": 49,
+      "loadMs": 3591,
+      "screenshot": "/home/johnclaw/tradeai-wt-cursor-guardrails/docs/audits/platform-autonomy-2026-08-02/screenshots/defense.png",
+      "textSample": "Command Center v3 Prices 08:00 ET · Finviz after-hours PORTFOLIO $1,255,396→ TODAY +$1,411 +0.11%→ TRADING ⚠ STALE 50.9% · 159 · $37,890 · 10d old→ REALIZED ⚠ STALE $152,450 · 10d old→ REGIME risk on trend 33%→ VIX 17.1→ SETUPS · LATEST RUN ⚠ STALE STALE · 7:00 AM scan · Jul 31→ ⚑ 17 APPROVALS → ♥ 12 HEALTH → 2FA LIVE TRADE Home Portfolio ↳ Re-Entry Risk Trading Active Trader Strategy TradeInView "
+    },
+    {
+      "id": "agents",
+      "path": "/agents",
+      "url": "http://127.0.0.1:7777/v3/agents",
+      "ok": true,
+      "status": 200,
+      "title": "Command Center v3",
+      "bodyTextLen": 9215,
+      "hasErrorBoundary": false,
+      "emptyHints": [
+        "n/a",
+        "—",
+        "stale",
+        "shadow"
+      ],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 503 (Service Unavailable)"
+      ],
+      "networkFails": [],
+      "actionableButtons": 8,
+      "loadMs": 3580,
+      "screenshot": "/home/johnclaw/tradeai-wt-cursor-guardrails/docs/audits/platform-autonomy-2026-08-02/screenshots/agents.png",
+      "textSample": "Command Center v3 Prices 08:00 ET · Finviz after-hours PORTFOLIO $1,255,396→ TODAY +$1,411 +0.11%→ TRADING ⚠ STALE 50.9% · 159 · $37,890 · 10d old→ REALIZED ⚠ STALE $152,450 · 10d old→ REGIME risk on trend 33%→ VIX 17.1→ SETUPS · LATEST RUN ⚠ STALE STALE · 7:00 AM scan · Jul 31→ ⚑ 17 APPROVALS → ♥ 12 HEALTH → 2FA LIVE TRADE Home Portfolio ↳ Re-Entry Risk Trading Active Trader Strategy TradeInView "
+    },
+    {
+      "id": "research-intel",
+      "path": "/research-intelligence",
+      "url": "http://127.0.0.1:7777/v3/research-intelligence",
+      "ok": true,
+      "status": 200,
+      "title": "Command Center v3",
+      "bodyTextLen": 177648,
+      "hasErrorBoundary": false,
+      "emptyHints": [
+        "no data",
+        "—",
+        "stale"
+      ],
+      "consoleErrors": [],
+      "networkFails": [
+        {
+          "url": "http://127.0.0.1:7777/api/v3/agent-runtime/runs?limit=200",
+          "err": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:7777/api/v3/agent-runtime/runs?limit=200",
+          "err": "net::ERR_ABORTED"
+        }
+      ],
+      "actionableButtons": 839,
+      "loadMs": 3602,
+      "screenshot": "/home/johnclaw/tradeai-wt-cursor-guardrails/docs/audits/platform-autonomy-2026-08-02/screenshots/research-intel.png",
+      "textSample": "Command Center v3 Prices 08:00 ET · Finviz after-hours PORTFOLIO $1,255,396→ TODAY +$1,411 +0.11%→ TRADING ⚠ STALE 50.9% · 159 · $37,890 · 10d old→ REALIZED ⚠ STALE $152,450 · 10d old→ REGIME risk on trend 33%→ VIX 17.1→ SETUPS · LATEST RUN ⚠ STALE STALE · 7:00 AM scan · Jul 31→ ⚑ 17 APPROVALS → ♥ 12 HEALTH → 2FA LIVE TRADE Home Portfolio ↳ Re-Entry Risk Trading Active Trader Strategy TradeInView "
+    },
+    {
+      "id": "intelligence",
+      "path": "/intelligence",
+      "url": "http://127.0.0.1:7777/v3/intelligence",
+      "ok": true,
+      "status": 200,
+      "title": "Command Center v3",
+      "bodyTextLen": 6986,
+      "hasErrorBoundary": false,
+      "emptyHints": [
+        "—",
+        "stale"
+      ],
+      "consoleErrors": [],
+      "networkFails": [],
+      "actionableButtons": 59,
+      "loadMs": 3581,
+      "screenshot": "/home/johnclaw/tradeai-wt-cursor-guardrails/docs/audits/platform-autonomy-2026-08-02/screenshots/intelligence.png",
+      "textSample": "Command Center v3 Prices 08:00 ET · Finviz after-hours PORTFOLIO $1,255,396→ TODAY +$1,411 +0.11%→ TRADING ⚠ STALE 50.9% · 159 · $37,890 · 10d old→ REALIZED ⚠ STALE $152,450 · 10d old→ REGIME risk on trend 33%→ VIX 17.1→ SETUPS · LATEST RUN ⚠ STALE STALE · 7:00 AM scan · Jul 31→ ⚑ 17 APPROVALS → ♥ 12 HEALTH → 2FA LIVE TRADE Home Portfolio ↳ Re-Entry Risk Trading Active Trader Strategy TradeInView "
+    },
+    {
+      "id": "hermes",
+      "path": "/hermes",
+      "url": "http://127.0.0.1:7777/v3/hermes",
+      "ok": true,
+      "status": 200,
+      "title": "Command Center v3",
+      "bodyTextLen": 4008,
+      "hasErrorBoundary": false,
+      "emptyHints": [
+        "—",
+        "stale"
+      ],
+      "consoleErrors": [],
+      "networkFails": [
+        {
+          "url": "http://127.0.0.1:7777/api/v2/watchlist/items?sort=hermes&_=1785724335537",
+          "err": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://127.0.0.1:7777/api/v2/open-trades/intelligence?_=1785724335537",
+          "err": "net::ERR_ABORTED"
+        }
+      ],
+      "actionableButtons": 17,
+      "loadMs": 3579,
+      "screenshot": "/home/johnclaw/tradeai-wt-cursor-guardrails/docs/audits/platform-autonomy-2026-08-02/screenshots/hermes.png",
+      "textSample": "Command Center v3 Prices 08:00 ET · Finviz after-hours PORTFOLIO $1,255,396→ TODAY +$1,411 +0.11%→ TRADING ⚠ STALE 50.9% · 159 · $37,890 · 10d old→ REALIZED ⚠ STALE $152,450 · 10d old→ REGIME risk on trend 33%→ VIX 17.1→ SETUPS · LATEST RUN ⚠ STALE STALE · 7:00 AM scan · Jul 31→ ⚑ 17 APPROVALS → ♥ 12 HEALTH → 2FA LIVE TRADE Home Portfolio ↳ Re-Entry Risk Trading Active Trader Strategy TradeInView "
+    },
+    {
+      "id": "hermes-maturity",
+      "path": "/hermes?tab=Maturity",
+      "url": "http://127.0.0.1:7777/v3/hermes?tab=Maturity",
+      "ok": true,
+      "status": 200,
+      "title": "Command Center v3",
+      "bodyTextLen": 4008,
+      "hasErrorBoundary": false,
+      "emptyHints": [
+        "—",
+        "stale"
+      ],
+      "consoleErrors": [],
+      "networkFails": [
+        {
+          "url": "http://127.0.0.1:7777/api/v2/hermes/profiles-status?_=1785724339221",
+          "err": "net::ERR_ABORTED"
+        }
+      ],
+      "actionableButtons": 17,
+      "loadMs": 3580,
+      "screenshot": "/home/johnclaw/tradeai-wt-cursor-guardrails/docs/audits/platform-autonomy-2026-08-02/screenshots/hermes-maturity.png",
+      "textSample": "Command Center v3 Prices 08:00 ET · Finviz after-hours PORTFOLIO $1,255,396→ TODAY +$1,411 +0.11%→ TRADING ⚠ STALE 50.9% · 159 · $37,890 · 10d old→ REALIZED ⚠ STALE $152,450 · 10d old→ REGIME risk on trend 33%→ VIX 17.1→ SETUPS · LATEST RUN ⚠ STALE STALE · 7:00 AM scan · Jul 31→ ⚑ 17 APPROVALS → ♥ 12 HEALTH → 2FA LIVE TRADE Home Portfolio ↳ Re-Entry Risk Trading Active Trader Strategy TradeInView "
+    },
+    {
+      "id": "hermes-discovery",
+      "path": "/hermes?tab=Discovery",
+      "url": "http://127.0.0.1:7777/v3/hermes?tab=Discovery",
+      "ok": true,
+      "status": 200,
+      "title": "Command Center v3",
+      "bodyTextLen": 4008,
+      "hasErrorBoundary": false,
+      "emptyHints": [
+        "—",
+        "stale"
+      ],
+      "consoleErrors": [],
+      "networkFails": [
+        {
+          "url": "http://127.0.0.1:7777/api/v2/hermes/profiles-status?_=1785724342855",
+          "err": "net::ERR_ABORTED"
+        }
+      ],
+      "actionableButtons": 17,
+      "loadMs": 3595,
+      "screenshot": "/home/johnclaw/tradeai-wt-cursor-guardrails/docs/audits/platform-autonomy-2026-08-02/screenshots/hermes-discovery.png",
+      "textSample": "Command Center v3 Prices 08:00 ET · Finviz after-hours PORTFOLIO $1,255,396→ TODAY +$1,411 +0.11%→ TRADING ⚠ STALE 50.9% · 159 · $37,890 · 10d old→ REALIZED ⚠ STALE $152,450 · 10d old→ REGIME risk on trend 33%→ VIX 17.1→ SETUPS · LATEST RUN ⚠ STALE STALE · 7:00 AM scan · Jul 31→ ⚑ 17 APPROVALS → ♥ 12 HEALTH → 2FA LIVE TRADE Home Portfolio ↳ Re-Entry Risk Trading Active Trader Strategy TradeInView "
+    },
+    {
+      "id": "reports",
+      "path": "/reports",
+      "url": "http://127.0.0.1:7777/v3/reports",
+      "ok": true,
+      "status": 200,
+      "title": "Command Center v3",
+      "bodyTextLen": 2093,
+      "hasErrorBoundary": false,
+      "emptyHints": [
+        "—",
+        "stale",
+        "manual"
+      ],
+      "consoleErrors": [],
+      "networkFails": [
+        {
+          "url": "http://127.0.0.1:7777/api/v2/hermes/profiles-status?_=1785724346537",
+          "err": "net::ERR_ABORTED"
+        }
+      ],
+      "actionableButtons": 31,
+      "loadMs": 3594,
+      "screenshot": "/home/johnclaw/tradeai-wt-cursor-guardrails/docs/audits/platform-autonomy-2026-08-02/screenshots/reports.png",
+      "textSample": "Command Center v3 Prices 08:00 ET · Finviz after-hours PORTFOLIO $1,255,396→ TODAY +$1,411 +0.11%→ TRADING ⚠ STALE 50.9% · 159 · $37,890 · 10d old→ REALIZED ⚠ STALE $152,450 · 10d old→ REGIME risk on trend 33%→ VIX 17.1→ SETUPS · LATEST RUN ⚠ STALE STALE · 7:00 AM scan · Jul 31→ ⚑ 17 APPROVALS → ♥ 12 HEALTH → 2FA LIVE TRADE Home Portfolio ↳ Re-Entry Risk Trading Active Trader Strategy TradeInView "
+    },
+    {
+      "id": "rotation",
+      "path": "/rotation",
+      "url": "http://127.0.0.1:7777/v3/rotation",
+      "ok": true,
+      "status": 200,
+      "title": "Command Center v3",
+      "bodyTextLen": 24037,
+      "hasErrorBoundary": false,
+      "emptyHints": [
+        "—",
+        "stale",
+        "manual"
+      ],
+      "consoleErrors": [],
+      "networkFails": [],
+      "actionableButtons": 39,
+      "loadMs": 3591,
+      "screenshot": "/home/johnclaw/tradeai-wt-cursor-guardrails/docs/audits/platform-autonomy-2026-08-02/screenshots/rotation.png",
+      "textSample": "Command Center v3 Prices 08:00 ET · Finviz after-hours PORTFOLIO $1,255,396→ TODAY +$1,411 +0.11%→ TRADING ⚠ STALE 50.9% · 159 · $37,890 · 10d old→ REALIZED ⚠ STALE $152,450 · 10d old→ REGIME risk on trend 33%→ VIX 17.1→ SETUPS · LATEST RUN ⚠ STALE STALE · 7:00 AM scan · Jul 31→ ⚑ 17 APPROVALS → ♥ 12 HEALTH → 2FA LIVE TRADE Home Portfolio ↳ Re-Entry Risk Trading Active Trader Strategy TradeInView "
+    },
+    {
+      "id": "rec-intel",
+      "path": "/rec-intel",
+      "url": "http://127.0.0.1:7777/v3/rec-intel",
+      "ok": true,
+      "status": 200,
+      "title": "Command Center v3",
+      "bodyTextLen": 17236,
+      "hasErrorBoundary": false,
+      "emptyHints": [
+        "—",
+        "stale",
+        "manual"
+      ],
+      "consoleErrors": [],
+      "networkFails": [],
+      "actionableButtons": 7,
+      "loadMs": 3586,
+      "screenshot": "/home/johnclaw/tradeai-wt-cursor-guardrails/docs/audits/platform-autonomy-2026-08-02/screenshots/rec-intel.png",
+      "textSample": "Command Center v3 Prices 08:00 ET · Finviz after-hours PORTFOLIO $1,255,396→ TODAY +$1,411 +0.11%→ TRADING ⚠ STALE 50.9% · 159 · $37,890 · 10d old→ REALIZED ⚠ STALE $152,450 · 10d old→ REGIME risk on trend 33%→ VIX 17.1→ SETUPS · LATEST RUN ⚠ STALE STALE · 7:00 AM scan · Jul 31→ ⚑ 17 APPROVALS → ♥ 12 HEALTH → 2FA LIVE TRADE Home Portfolio ↳ Re-Entry Risk Trading Active Trader Strategy TradeInView "
+    },
+    {
+      "id": "retirement",
+      "path": "/retirement",
+      "url": "http://127.0.0.1:7777/v3/retirement",
+      "ok": true,
+      "status": 200,
+      "title": "Command Center v3",
+      "bodyTextLen": 1527,
+      "hasErrorBoundary": false,
+      "emptyHints": [
+        "—",
+        "stale"
+      ],
+      "consoleErrors": [],
+      "networkFails": [],
+      "actionableButtons": 4,
+      "loadMs": 3583,
+      "screenshot": "/home/johnclaw/tradeai-wt-cursor-guardrails/docs/audits/platform-autonomy-2026-08-02/screenshots/retirement.png",
+      "textSample": "Command Center v3 Prices 08:00 ET · Finviz after-hours PORTFOLIO $1,255,396→ TODAY +$1,411 +0.11%→ TRADING ⚠ STALE 50.9% · 159 · $37,890 · 10d old→ REALIZED ⚠ STALE $152,450 · 10d old→ REGIME risk on trend 33%→ VIX 17.1→ SETUPS · LATEST RUN ⚠ STALE STALE · 7:00 AM scan · Jul 31→ ⚑ 17 APPROVALS → ♥ 12 HEALTH → 2FA LIVE TRADE Home Portfolio ↳ Re-Entry Risk Trading Active Trader Strategy TradeInView "
+    },
+    {
+      "id": "health",
+      "path": "/health",
+      "url": "http://127.0.0.1:7777/v3/health",
+      "ok": true,
+      "status": 200,
+      "title": "Command Center v3",
+      "bodyTextLen": 9444,
+      "hasErrorBoundary": false,
+      "emptyHints": [
+        "—",
+        "stale"
+      ],
+      "consoleErrors": [],
+      "networkFails": [],
+      "actionableButtons": 12,
+      "loadMs": 3595,
+      "screenshot": "/home/johnclaw/tradeai-wt-cursor-guardrails/docs/audits/platform-autonomy-2026-08-02/screenshots/health.png",
+      "textSample": "Command Center v3 Prices 08:00 ET · Finviz after-hours PORTFOLIO $1,255,396→ TODAY +$1,411 +0.11%→ TRADING ⚠ STALE 50.9% · 159 · $37,890 · 10d old→ REALIZED ⚠ STALE $152,450 · 10d old→ REGIME risk on trend 33%→ VIX 17.1→ SETUPS · LATEST RUN ⚠ STALE STALE · 7:00 AM scan · Jul 31→ ⚑ 17 APPROVALS → ♥ 12 HEALTH → 2FA LIVE TRADE Home Portfolio ↳ Re-Entry Risk Trading Active Trader Strategy TradeInView "
+    },
+    {
+      "id": "consumption",
+      "path": "/consumption",
+      "url": "http://127.0.0.1:7777/v3/consumption",
+      "ok": true,
+      "status": 200,
+      "title": "Command Center v3",
+      "bodyTextLen": 8874,
+      "hasErrorBoundary": false,
+      "emptyHints": [
+        "—",
+        "stale",
+        "manual"
+      ],
+      "consoleErrors": [],
+      "networkFails": [],
+      "actionableButtons": 91,
+      "loadMs": 3579,
+      "screenshot": "/home/johnclaw/tradeai-wt-cursor-guardrails/docs/audits/platform-autonomy-2026-08-02/screenshots/consumption.png",
+      "textSample": "Command Center v3 Prices 08:00 ET · Finviz after-hours PORTFOLIO $1,255,396→ TODAY +$1,411 +0.11%→ TRADING ⚠ STALE 50.9% · 159 · $37,890 · 10d old→ REALIZED ⚠ STALE $152,450 · 10d old→ REGIME risk on trend 33%→ VIX 17.1→ SETUPS · LATEST RUN ⚠ STALE STALE · 7:00 AM scan · Jul 31→ ⚑ 17 APPROVALS → ♥ 12 HEALTH → 2FA LIVE TRADE Home Portfolio ↳ Re-Entry Risk Trading Active Trader Strategy TradeInView "
+    },
+    {
+      "id": "system",
+      "path": "/system",
+      "url": "http://127.0.0.1:7777/v3/system",
+      "ok": true,
+      "status": 200,
+      "title": "Command Center v3",
+      "bodyTextLen": 1783,
+      "hasErrorBoundary": false,
+      "emptyHints": [
+        "n/a",
+        "—",
+        "stale"
+      ],
+      "consoleErrors": [],
+      "networkFails": [],
+      "actionableButtons": 30,
+      "loadMs": 3582,
+      "screenshot": "/home/johnclaw/tradeai-wt-cursor-guardrails/docs/audits/platform-autonomy-2026-08-02/screenshots/system.png",
+      "textSample": "Command Center v3 Prices 08:00 ET · Finviz after-hours PORTFOLIO $1,255,396→ TODAY +$1,411 +0.11%→ TRADING ⚠ STALE 50.9% · 159 · $37,890 · 10d old→ REALIZED ⚠ STALE $152,450 · 10d old→ REGIME risk on trend 33%→ VIX 17.1→ SETUPS · LATEST RUN ⚠ STALE STALE · 7:00 AM scan · Jul 31→ ⚑ 17 APPROVALS → ♥ 12 HEALTH → 2FA LIVE TRADE Home Portfolio ↳ Re-Entry Risk Trading Active Trader Strategy TradeInView "
+    },
+    {
+      "id": "system-llm",
+      "path": "/system?tab=LLM",
+      "url": "http://127.0.0.1:7777/v3/system?tab=LLM",
+      "ok": true,
+      "status": 200,
+      "title": "Command Center v3",
+      "bodyTextLen": 1835,
+      "hasErrorBoundary": false,
+      "emptyHints": [
+        "stale"
+      ],
+      "consoleErrors": [],
+      "networkFails": [],
+      "actionableButtons": 31,
+      "loadMs": 3599,
+      "screenshot": "/home/johnclaw/tradeai-wt-cursor-guardrails/docs/audits/platform-autonomy-2026-08-02/screenshots/system-llm.png",
+      "textSample": "Command Center v3 Prices 08:00 ET · Finviz after-hours PORTFOLIO $1,255,396→ TODAY +$1,411 +0.11%→ TRADING ⚠ STALE 50.9% · 159 · $37,890 · 10d old→ REALIZED ⚠ STALE $152,450 · 10d old→ REGIME risk on trend 33%→ VIX 17.1→ SETUPS · LATEST RUN ⚠ STALE STALE · 7:00 AM scan · Jul 31→ ⚑ 17 APPROVALS → ♥ 12 HEALTH → 2FA LIVE TRADE Home Portfolio ↳ Re-Entry Risk Trading Active Trader Strategy TradeInView "
+    },
+    {
+      "id": "redeploy",
+      "path": "/redeploy",
+      "url": "http://127.0.0.1:7777/v3/redeploy",
+      "ok": true,
+      "status": 200,
+      "title": "Command Center v3",
+      "bodyTextLen": 18844,
+      "hasErrorBoundary": false,
+      "emptyHints": [
+        "—",
+        "stale",
+        "manual"
+      ],
+      "consoleErrors": [],
+      "networkFails": [],
+      "actionableButtons": 171,
+      "loadMs": 3580,
+      "screenshot": "/home/johnclaw/tradeai-wt-cursor-guardrails/docs/audits/platform-autonomy-2026-08-02/screenshots/redeploy.png",
+      "textSample": "Command Center v3 Prices 08:00 ET · Finviz after-hours PORTFOLIO $1,255,396→ TODAY +$1,411 +0.11%→ TRADING ⚠ STALE 50.9% · 159 · $37,890 · 10d old→ REALIZED ⚠ STALE $152,450 · 10d old→ REGIME risk on trend 33%→ VIX 17.1→ SETUPS · LATEST RUN ⚠ STALE STALE · 7:00 AM scan · Jul 31→ ⚑ 17 APPROVALS → ♥ 12 HEALTH → 2FA LIVE TRADE Home Portfolio ↳ Re-Entry Risk Trading Active Trader Strategy TradeInView "
+    }
+  ]
+}

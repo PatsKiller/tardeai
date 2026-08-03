@@ -1,0 +1,49 @@
+=== TIMESTAMP ===
+2026-08-02T22:28:59-04:00
+=== PORTS ===
+LISTEN 0      128                        0.0.0.0:7777       0.0.0.0:*    users:(("python",pid=4044954,fd=5)) 
+LISTEN 0      511                        0.0.0.0:7791       0.0.0.0:*    users:(("node",pid=1149003,fd=22))  
+=== SYSTEMD ===
+○ portfolio-server.service - TradeAI Portfolio Server
+     Loaded: loaded (/home/johnclaw/.config/systemd/user/portfolio-server.service; enabled; preset: enabled)
+    Drop-In: /home/johnclaw/.config/systemd/user/portfolio-server.service.d
+             └─10-agent-read-api.conf, 12-agent-runtime-probe.conf, 20-exact-sha-release.conf
+     Active: inactive (dead) since Sun 2026-08-02 13:31:43 EDT; 8h ago
+   Duration: 3h 2.301s
+ Invocation: 890006e779c148feb2a14fc1686e4cc3
+    Process: 3070121 ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python /home/johnclaw/trade-ai-releases/portfolio-server/7ea3db55-cio-propose-block-20260801-1350/scripts/portfolio_server.py (code=killed, signal=HUP)
+   Main PID: 3070121 (code=killed, signal=HUP)
+   Mem peak: 1.6G
+        CPU: 55min 11.184s
+
+Aug 02 11:00:16 ms01-openclaw crontab[3156044]: (johnclaw) LIST (johnclaw)
+Aug 02 11:00:34 ms01-openclaw crontab[3159138]: (johnclaw) LIST (johnclaw)
+Aug 02 11:00:35 ms01-openclaw crontab[3159148]: (johnclaw) LIST (johnclaw)
+Aug 02 11:00:35 ms01-openclaw crontab[3159186]: (johnclaw) LIST (johnclaw)
+Aug 02 11:00:35 ms01-openclaw crontab[3159197]: (johnclaw) LIST (johnclaw)
+Aug 02 11:00:38 ms01-openclaw crontab[3159623]: (johnclaw) LIST (johnclaw)
+Aug 02 11:00:38 ms01-openclaw crontab[3159627]: (johnclaw) LIST (johnclaw)
+Aug 02 11:00:38 ms01-openclaw crontab[3159679]: (johnclaw) LIST (johnclaw)
+=== BUILD META 7777 ===
+{
+  "ui_version": "3.14+mscln59n",
+  "base_version": "3.14",
+  "built_at": "2026-08-03T02:17:46.046Z",
+  "release_notes": "home-inbox-parity: MetricStrip STALE, No-stop gauge taxonomy, Operator Inbox plain language"
+}
+=== HEALTH ===
+{"ok": true, "version": "2.0", "port": 7777, "holdings_exists": true}
+=== SERVER CWD ===
+pid=4044954
+lrwxrwxrwx 1 johnclaw johnclaw 0 Aug  2 22:27 /proc/4044954/cwd -> /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+.venv/bin/python scripts/portfolio_server.py --port 7777 
+=== GIT GUARDRAILS ===
+dcafb411ea81676cd03b0f9370293cd1e859f702
+dcafb411 feat(data-broker): route watchlist pipeline through canonical broker wrappers
+=== GIT REBUILD ===
+72b6ddd201e541357cb52f30c3fdeb073adef02d
+72b6ddd2 DeepSeek: fix silent local-gemma fallback, wire frontend, dry-test, screenshots
+=== RELEASE SOURCE ===
+7ea3db55-reentry-decision-desk-20260801-1048
+
+-rw------- 1 johnclaw johnclaw 45 Aug  1 10:48 /home/johnclaw/trade-ai-releases/portfolio-server/7ea3db55-cio-propose-block-20260801-1350/SOURCE_COMMIT

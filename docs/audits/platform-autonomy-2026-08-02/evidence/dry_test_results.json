@@ -1,0 +1,181 @@
+{
+  "pass": 35,
+  "fail": 0,
+  "results": [
+    {
+      "name": "registry version >= 3",
+      "ok": true,
+      "detail": "3"
+    },
+    {
+      "name": "maria has deepseek-flash allowed",
+      "ok": true,
+      "detail": "['deepseek-flash', 'grok', 'chatgpt']"
+    },
+    {
+      "name": "cio has deepseek-v4 allowed",
+      "ok": true,
+      "detail": "['deepseek-v4', 'deepseek-flash', 'grok', 'chatgpt']"
+    },
+    {
+      "name": "cloud_review automated",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "unregistered manual (no free-for-all)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "lanes_for maria includes deepseek-flash",
+      "ok": true,
+      "detail": "['deepseek-flash', 'grok', 'chatgpt']"
+    },
+    {
+      "name": "lanes_for cio includes deepseek-v4",
+      "ok": true,
+      "detail": "['deepseek-v4', 'deepseek-flash', 'grok', 'chatgpt']"
+    },
+    {
+      "name": "DB config maria allows deepseek-flash",
+      "ok": true,
+      "detail": "['deepseek-flash', 'grok', 'chatgpt']"
+    },
+    {
+      "name": "DB config maria mode automated",
+      "ok": true,
+      "detail": "automated"
+    },
+    {
+      "name": "DB config cio allows deepseek-v4",
+      "ok": true,
+      "detail": "['deepseek-v4', 'deepseek-flash', 'grok', 'chatgpt']"
+    },
+    {
+      "name": "should_call maria deepseek-flash automated allow",
+      "ok": true,
+      "detail": "{'allow': True, 'mode': 'automated', 'process_id': 'watchlist_maria_priority', 'allowed_lanes': ['deepseek-flash', 'grok', 'chatgpt']}"
+    },
+    {
+      "name": "should_call unregistered blocks without manual",
+      "ok": true,
+      "detail": "{'allow': False, 'reason': 'manual_mode', 'mode': 'manual', 'process_id': 'unregistered'}"
+    },
+    {
+      "name": "should_call unregistered allows manual_trigger",
+      "ok": true,
+      "detail": "{'allow': True, 'mode': 'manual', 'process_id': 'unregistered', 'allowed_lanes': ['deepseek-flash', 'deepseek-v4', 'grok', 'chatgpt', 'local']}"
+    },
+    {
+      "name": "enforce_intake true",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "load_cfg enforce",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "operator always admitted",
+      "ok": true,
+      "detail": "exempt_source"
+    },
+    {
+      "name": "ai_discovered admit (not currently low_efficacy)",
+      "ok": true,
+      "detail": "{'admit': True, 'source': 'ai_discovered', 'reason': 'pass', 'low_efficacy': False, 'enforce': True, 'alpha_21d_median': -1.07, 'n': 765}"
+    },
+    {
+      "name": "ROUTES has /api/v2/health/snapshot",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "ROUTES has /api/v2/consumption/summary",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "ROUTES has /api/v2/system/llm",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "ROUTES has /api/v2/agents/maturity",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "ROUTES has /api/v2/watch/scoreboard",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "ROUTES has /api/v2/research-intelligence/desk",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "ROUTES has /api/v2/agent-runtime/status",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "agents summary honesty fields",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "MetricStrip has RUN SCAN",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "MetricStrip uses isJournalStale",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "homeLabels isJournalStale exported",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "homeLabels lastSessionDay",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "AgentsHub honesty banner",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "AgentsHub hold_rate column",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Sunday session day is Friday",
+      "ok": true,
+      "detail": "2026-07-31"
+    },
+    {
+      "name": "Friday scan not stale on Sunday",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "finviz imports quality gate",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "finviz quality_gate_blocked flag",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}

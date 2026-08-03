@@ -278,6 +278,22 @@ def run_screener(screener_id: str = None, dry_run: bool = False) -> dict:
                         screener_result["membership_error"] = str(_me)[:160]
 
                 if new_tickers:
+                    # Audit 2026-08-02: quality gate blocks NEW ai_discovered when source median α is below floor.
+                    _qg_admit = True
+                    _qg_reason = "pass"
+                    try:
+                        from lib.watch_quality_intake import should_insert_ai_discovered
+                        _qg = should_insert_ai_discovered()
+                        _qg_admit = bool(_qg.get("admit", True))
+                        _qg_reason = str(_qg.get("reason") or "")
+                        if not _qg_admit:
+                            print(f"  [screener] quality gate BLOCK ai_discovered intake: {_qg_reason} "
+                                  f"(α_med={_qg.get('alpha_21d_median')} n={_qg.get('n')})")
+                            screener_result["quality_gate_blocked"] = True
+                            screener_result["quality_gate_reason"] = _qg_reason
+                    except Exception as _qge:
+                        print(f"  [screener] quality gate check failed (fail-open): {str(_qge)[:120]}")
+
                     for ticker in new_tickers[:200]:  # SCREENER-ARCH-2: raised from 10 to 200 per screener
                         cur.execute("""
                             INSERT INTO ticker_strategy_classifications
@@ -286,13 +302,17 @@ def run_screener(screener_id: str = None, dry_run: bool = False) -> dict:
                             ON CONFLICT (symbol) DO NOTHING
                         """, (ticker, strategy, f"Discovered by screener {sid}"))
 
-                        cur.execute("""
-                            INSERT INTO watchlist_items (symbol, source, status, updated_at)
-                            VALUES (%s, 'ai_discovered', 'active', now())
-                            ON CONFLICT DO NOTHING
-                        """, (ticker,))
-
-                        total_new += 1
+                        if _qg_admit:
+                            cur.execute("""
+                                INSERT INTO watchlist_items (symbol, source, status, updated_at)
+                                VALUES (%s, 'ai_discovered', 'active', now())
+                                ON CONFLICT DO NOTHING
+                            """, (ticker,))
+                            total_new += 1
+                        else:
+                            # Still record emission for α tracking, but do not grow warehouse as active.
+                            screener_result.setdefault("quality_gate_skipped", 0)
+                            screener_result["quality_gate_skipped"] = int(screener_result["quality_gate_skipped"]) + 1
                         known.add(ticker)
 
                     cur.execute("""

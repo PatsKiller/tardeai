@@ -1,0 +1,36 @@
+{
+  "audit_date": "2026-08-02",
+  "overall_autonomy": 4.5,
+  "deepseek_maturity": 5.0,
+  "truly_autonomous": false,
+  "agent_class_counts": {
+    "prompt_wrapper": 10,
+    "partially_autonomous": 6,
+    "truly_autonomous": 0
+  },
+  "research_class": "semi_autonomous",
+  "watchlist_class": "semi_autonomous",
+  "defense_class": "semi_autonomous_structural_reactive_capital",
+  "paper_execute": "broken_in_practice",
+  "live_execute": "human_required",
+  "critical_blockers": [
+    "multi_tree_deploy_drift",
+    "stale_metric_strip",
+    "paper_funnel_starved",
+    "discovery_negative_median_alpha",
+    "learning_cannot_rewrite_main_weights",
+    "deepseek_not_primary_traffic",
+    "agents_hold_factory",
+    "defense_shadow"
+  ],
+  "path_to_9": [
+    "single_deploy_spine",
+    "paper_closed_loop_green",
+    "consequential_quality_gates",
+    "outcome_bus_to_atm_paper",
+    "deepseek_registry_cutover",
+    "defense_paper_promote",
+    "journal_source_keys",
+    "live_remains_2fa"
+  ]
+}

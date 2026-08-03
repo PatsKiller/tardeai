@@ -2148,7 +2148,51 @@ def _live_portfolio_day_change(holdings_list):
         return None
 
 
+# ── Overview cache (2026-08-02) ──────────────────────────────────────────────
+# Single-flight lock: only one thread computes the 16-source overview at a time;
+# others wait and reuse. 30s TTL eliminates redundant recomputation from
+# concurrent 60s/120s polls across MetricStrip + HomeHub + nav bar.
+_OV_CACHE: dict = {"ts": 0.0, "data": None}
+_OV_CACHE_TTL = float(__import__("os").environ.get("OVERVIEW_CACHE_TTL_SEC", "30"))
+_OV_CACHE_LOCK = __import__("threading").Lock()
+
+
 def overview():
+    # Fast path: return cached if fresh
+    _now = __import__("time").time()
+    if _OV_CACHE["data"] is not None and (_now - _OV_CACHE["ts"]) < _OV_CACHE_TTL:
+        return _OV_CACHE["data"]
+    # Single-flight lock: only one thread computes
+    if not _OV_CACHE_LOCK.acquire(blocking=False):
+        # Another thread is computing — wait briefly and return stale cache
+        _elapsed = _now - _OV_CACHE["ts"]
+        if _OV_CACHE["data"] is not None and _elapsed < 60:
+            return _OV_CACHE["data"]
+        # Stale >60s — block until the compute thread finishes (max 15s)
+        if _OV_CACHE_LOCK.acquire(timeout=15):
+            # Check if another thread already computed while we waited
+            if _OV_CACHE["data"] is not None and (__import__("time").time() - _OV_CACHE["ts"]) < _OV_CACHE_TTL:
+                _OV_CACHE_LOCK.release()
+                return _OV_CACHE["data"]
+        else:
+            # Timeout — return whatever we have
+            if _OV_CACHE["data"] is not None:
+                return _OV_CACHE["data"]
+            return {"portfolio_total": 0, "active_positions": [], "status": "server_busy"}
+    try:
+        data = _overview_compute()
+        _OV_CACHE["data"] = data
+        _OV_CACHE["ts"] = __import__("time").time()
+        return data
+    finally:
+        try:
+            _OV_CACHE_LOCK.release()
+        except Exception:
+            pass
+
+
+def _overview_compute():
+    """Original overview() body — extracts the 16-source computation."""
     h = _load_json(STATE_DIR / "holdings.json") or {}
     perf = _load_json(STATE_DIR / "performance_history.json") or {}
     fresh = _load_json(STATE_DIR / "_freshness.json") or {}
@@ -6351,21 +6395,25 @@ _WQG_CACHE = {"ts": 0.0, "cfg": None, "low": None, "per_source": None}
 
 
 def _watch_quality_gate():
-    """Watch Desk v4 (WS-D): per-source rolling efficacy from watch_candidate_events.
+    """Watch Desk v4 (WS-D) + audit 2026-08-02 enforcement.
+
     Returns (low_efficacy_sources: set, per_source: list). Cached 1h — the underlying
-    ledger only moves on the Sunday reconciler. Visibility throttle only, no blocking;
-    the label lifts automatically when the rolling median α recovers above the floor.
-    NOTE (Engine Room WS-4 hook): the Hermes backlog drain can read the same per-source
-    table to deprioritize research on low-efficacy discovery lanes — same corpus, one truth."""
+    ledger only moves on the Sunday reconciler. UI still folds low-efficacy rows; intake
+    writers (finviz_screener_runner via lib.watch_quality_intake) **block** new inserts
+    when config enforce_intake is true. Label lifts when rolling median α recovers.
+    """
     import time as _t
     if _WQG_CACHE["low"] is not None and _t.time() - _WQG_CACHE["ts"] < 3600:
         return _WQG_CACHE["low"], _WQG_CACHE["per_source"]
-    cfg = {"alpha_floor_pct": -2.0, "min_n": 30, "window_days": 90}
+    cfg = {"alpha_floor_pct": -2.0, "min_n": 30, "window_days": 90, "enforce_intake": True}
     try:
         import json as _j
-        cfg.update({k: v for k, v in _j.loads(
-            (PROJECT_ROOT / "config" / "watch_quality_gate.json").read_text()).items()
-            if isinstance(v, (int, float))})
+        raw = _j.loads((PROJECT_ROOT / "config" / "watch_quality_gate.json").read_text())
+        for k, v in raw.items():
+            if k.startswith("_"):
+                continue
+            if isinstance(v, (int, float, bool, str, list, dict)):
+                cfg[k] = v
     except Exception:
         pass
     per_source, low = [], set()
@@ -7188,14 +7236,19 @@ def _wl_cio_synthesis(sym: str, body: dict | None) -> tuple[int, dict]:
     lanes = None
     if isinstance(raw_lanes, list) and raw_lanes:
         lanes = tuple(str(x).strip().lower() for x in raw_lanes
-                        if str(x).strip().lower() in ("grok", "chatgpt"))
+                        if str(x).strip().lower() in ("grok", "chatgpt", "deepseek-flash", "deepseek-v4"))
         if not lanes:
-            return 400, {"ok": False, "error": "lanes must include grok and/or chatgpt"}
+            return 400, {"ok": False, "error": "lanes must include grok, chatgpt, deepseek-flash, and/or deepseek-v4"}
+    ManualRequired = type('ManualRequired', (Exception,), {})
+    try:
+        from lib.llm_consumption import ManualRequired as _ManualRequired
+        ManualRequired = _ManualRequired
+    except Exception:
+        pass
     try:
         import sys as _sys
         _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
         import process_watchlist_agent_jobs as _pwaj
-        from lib.llm_consumption import ManualRequired as _ManualRequired
         conn = _pwaj._get_conn()
         try:
             result = _pwaj.run_synthesis(
@@ -7208,7 +7261,7 @@ def _wl_cio_synthesis(sym: str, body: dict | None) -> tuple[int, dict]:
         if dry_run:
             out["persisted"] = False
         return 200, out
-    except _ManualRequired as mr:
+    except ManualRequired as mr:
         return 200, {"ok": False, "manual_required": True, "process_id": mr.process_id,
                      "lane": mr.lane, "task_summary": mr.task_summary, "symbol": sym}
     except Exception as e:
@@ -8069,9 +8122,43 @@ def _agents_summary():
             ea["actions_30d"] = ea.get("total_30d", 0) or 0
             agents_out.append(ea)
 
+    # Honesty fields (audit 2026-08-02): hold-rate / directional rate so UI can flag HOLD factories.
+    for a in agents_out:
+        buy = int(a.get("buy_count") or 0)
+        sell = int(a.get("sell_count") or 0)
+        hold = int(a.get("hold_count") or 0)
+        denom = buy + sell + hold
+        a["directional_count"] = buy + sell
+        a["hold_rate"] = round(hold / denom, 4) if denom else None
+        a["directional_rate"] = round((buy + sell) / denom, 4) if denom else None
+        a["is_hold_factory"] = bool(denom >= 50 and hold / denom >= 0.95 and (buy + sell) == 0)
+        a["authority"] = "advisory_only"
+        a["production_activation_authorized"] = False
+
+    # Maturity catalog snapshot (DESIGNED/SHADOW) — fail-soft if file missing.
+    catalog_states = {}
+    try:
+        import json as _jcat
+        _cat_path = PROJECT_ROOT / "config" / "agent_maturity_catalog.json"
+        _cat = _jcat.loads(_cat_path.read_text())
+        for _aid, _av in (_cat.get("agents") or {}).items():
+            catalog_states[_aid] = {
+                "deployment_state": _av.get("deployment_state"),
+                "display_name": _av.get("display_name") or _aid,
+            }
+    except Exception:
+        pass
+
     return {
         "agents": agents_out,
         "handoffs": [{k: _json_clean(v) for k, v in r.items()} for r in handoff_counts],
+        "honesty": {
+            "note": "Production personas are advisory prompt pipelines. Catalog MVL fleet is SHADOW/DESIGNED — not production-activated.",
+            "production_activation_authorized": False,
+            "catalog_environment": "SHADOW",
+            "hold_factory_agents": [a.get("agent") for a in agents_out if a.get("is_hold_factory")],
+        },
+        "catalog_states": catalog_states,
     }
 
 
@@ -10493,6 +10580,323 @@ def _health_activity():
             "note": "Recent auto-remediations (escalation handler + AI coders), newest first."}
 
 
+def _health_coverage():
+    """GET /api/v2/health/coverage — agent monitoring scope map: what each health agent
+    monitors, its cadence, what it can auto-fix, and when it last ran successfully."""
+    import datetime as _dt
+    now = _dt.datetime.now(_dt.timezone.utc)
+    agents = {}
+
+    # health_agent.py — central scoring brain
+    try:
+        state_path = PROJECT_ROOT / "data" / "portfolios" / "state" / "health_agent_status.json"
+        last_run = None
+        if state_path.exists():
+            try:
+                raw = json.loads(state_path.read_text())
+                last_run = raw.get("captured_at")
+            except Exception:
+                pass
+        agents["health_agent"] = {
+            "name": "Central Health Agent",
+            "cadence": "30min",
+            "mode": "advisory",
+            "last_run": last_run,
+            "domains": [
+                {"domain": "Data Quality", "score": None, "collectors": ["portfolio_totals_drift", "account_summary_drift",
+                 "table_freshness", "finviz_quote_cache", "market_quotes", "reentry_indicator_cache",
+                 "watch_main_indicators", "entry_zone_gaps", "data_source_health"]},
+                {"domain": "Execution Health", "score": None, "collectors": ["pipeline_failures", "agent_jobs_stuck",
+                 "execution_escalations", "orphaned_stops", "pending_lifecycle_mismatch",
+                 "never_submitted_stale", "atm_proposal_bypass"]},
+                {"domain": "Intelligence", "score": None, "collectors": ["local_llm_down", "ensemble_failures",
+                 "research_stale", "hermes_rag_gap", "hermes_coordinator_stale", "hermes_scope_governor"]},
+                {"domain": "Risk Protection", "score": None, "collectors": ["unprotected_positions",
+                 "stop_alerts", "portfolio_drawdown_guard"]},
+                {"domain": "Retirement", "score": None, "collectors": ["retirement_signals"]},
+                {"domain": "Pipeline Freshness", "score": None, "collectors": ["pipeline_freshness",
+                 "strategy_output", "proposal_maturity", "execution_readiness"]},
+            ],
+            "auto_fix_capabilities": ["portfolio_repricing", "snaptrade_sync", "market_data_ingest",
+                "indicator_refresh", "watch_decision_scheduler", "entry_planner",
+                "stuck_agent_job_reset", "strategy_registry_fix", "news_guard_remediation"],
+        }
+    except Exception:
+        agents["health_agent"] = {"name": "Central Health Agent", "error": "unavailable"}
+
+    # watchlist_health_agent.py
+    try:
+        wl_events = _db_query(
+            """SELECT MIN(created_at) AS first, MAX(created_at) AS last,
+                      COUNT(*) FILTER (WHERE success) AS fixed,
+                      COUNT(*) FILTER (WHERE NOT success) AS failed,
+                      COUNT(*) AS total
+               FROM system_health_events
+               WHERE component = 'watchlist_health'
+                 AND created_at >= NOW() - INTERVAL '7 days'""")
+        wl_row = (wl_events or [{}])[0]
+        agents["watchlist_health"] = {
+            "name": "Watchlist Health Agent",
+            "cadence": "weekday 30min / weekend hourly",
+            "last_run": wl_row.get("last"),
+            "domains": [
+                {"domain": "CIO Synthesis", "check": "stale >24h"},
+                {"domain": "Critic Reviews", "check": "missing >6h"},
+                {"domain": "Quality Assessment", "check": "not assessed 120m after packet"},
+                {"domain": "Street Data", "check": "analyst consensus >7d"},
+                {"domain": "Entry Plans", "check": "missing >12h"},
+                {"domain": "Agent Reviews", "check": "stale >48h"},
+                {"domain": "Deterministic Validation", "check": "not run"},
+            ],
+            "auto_fix_capabilities": ["refresh_data", "cio_synthesis", "build_plan",
+                "run_critics", "queue_agent_reviews", "refresh_street"],
+            "stats_7d": {"total": wl_row.get("total") or 0,
+                         "fixed": wl_row.get("fixed") or 0,
+                         "failed": wl_row.get("failed") or 0},
+        }
+    except Exception:
+        agents["watchlist_health"] = {"name": "Watchlist Health Agent", "error": "unavailable"}
+
+    # pipeline_health_agent.py
+    try:
+        pl_events = _db_query(
+            """SELECT MIN(created_at) AS first, MAX(created_at) AS last,
+                      COUNT(*) FILTER (WHERE success) AS fixed,
+                      COUNT(*) FILTER (WHERE NOT success) AS failed,
+                      COUNT(*) AS total
+               FROM system_health_events
+               WHERE component = 'pipeline_health'
+                 AND created_at >= NOW() - INTERVAL '7 days'""")
+        pl_row = (pl_events or [{}])[0]
+        agents["pipeline_health"] = {
+            "name": "Pipeline Health Agent",
+            "cadence": "10min",
+            "last_run": pl_row.get("last"),
+            "domains": [
+                {"domain": "Pipeline Schedule", "check": "MISSED/FAILED runs"},
+                {"domain": "Data Row Counts", "check": "8 target tables"},
+                {"domain": "Scheduling Respect", "check": "weekday/weekend routing"},
+            ],
+            "auto_fix_capabilities": ["retry_pipeline", "re_run_ingest",
+                "re_run_discovery", "flush_queue", "retry_batch"],
+            "stats_7d": {"total": pl_row.get("total") or 0,
+                         "fixed": pl_row.get("fixed") or 0,
+                         "failed": pl_row.get("failed") or 0},
+        }
+    except Exception:
+        agents["pipeline_health"] = {"name": "Pipeline Health Agent", "error": "unavailable"}
+
+    # system_freshness_monitor.py
+    try:
+        fs_events = _db_query(
+            """SELECT MIN(created_at) AS first, MAX(created_at) AS last,
+                      COUNT(*) FILTER (WHERE success) AS fixed,
+                      COUNT(*) FILTER (WHERE NOT success) AS failed,
+                      COUNT(*) AS total
+               FROM system_health_events
+               WHERE component = 'SYSTEM_FRESHNESS'
+                 AND created_at >= NOW() - INTERVAL '7 days'""")
+        fs_row = (fs_events or [{}])[0]
+        agents["freshness_monitor"] = {
+            "name": "System Freshness Monitor",
+            "cadence": "20min",
+            "last_run": fs_row.get("last"),
+            "domains": [
+                {"domain": "Data Freshness", "check": "17 registry entries"},
+                {"domain": "Logfile Heartbeats", "check": "news_ingestion, drive-sync"},
+                {"domain": "Empty-vs-Input", "check": "catalyst bug pattern"},
+            ],
+            "auto_fix_capabilities": ["news_to_catalyst", "hermes_news_bridge",
+                "research_insight_extractor"],
+            "stats_7d": {"total": fs_row.get("total") or 0,
+                         "fixed": fs_row.get("fixed") or 0,
+                         "failed": fs_row.get("failed") or 0},
+        }
+    except Exception:
+        agents["freshness_monitor"] = {"name": "System Freshness Monitor", "error": "unavailable"}
+
+    # claude_escalation_handler.py
+    try:
+        esc_stats = _db_query(
+            """SELECT COUNT(*) FILTER (WHERE status = 'fixed') AS fixed,
+                      COUNT(*) FILTER (WHERE status LIKE '%%failed%%' OR status = 'error') AS failed,
+                      COUNT(*) FILTER (WHERE status = 'investigating') AS investigating,
+                      COUNT(*) AS total,
+                      MAX(created_at) AS last
+               FROM claude_interventions
+               WHERE created_at >= NOW() - INTERVAL '7 days'""")
+        esc_row = (esc_stats or [{}])[0]
+        agents["escalation_handler"] = {
+            "name": "Escalation Handler",
+            "cadence": "daily 7:00 AM ET",
+            "last_run": esc_row.get("last"),
+            "tiers": ["Direct retry_cmd", "Local LLM diagnosis (gemma)", "Deep LLM (gemma4:31b / claude)"],
+            "domains": [{"domain": "Escalation Queue", "check": "all queued findings"}],
+            "auto_fix_capabilities": ["allowlisted_retry_cmd", "llm_diagnosis", "llm_fix"],
+            "stats_7d": {"total": esc_row.get("total") or 0,
+                         "fixed": esc_row.get("fixed") or 0,
+                         "failed": esc_row.get("failed") or 0},
+        }
+    except Exception:
+        agents["escalation_handler"] = {"name": "Escalation Handler", "error": "unavailable"}
+
+    return {"ok": True, "agents": agents,
+            "generated_at": now.strftime("%Y-%m-%dT%H:%M:%S"),
+            "note": "Coverage map of all health monitoring agents: domains, cadences, fix capabilities, and 7-day stats."}
+
+
+def _health_autofix_ledger():
+    """GET /api/v2/health/autofix-ledger — fix statistics across all remediation agents:
+    success rates, fix volumes, top fixed issue types, circuit-breaker status."""
+    import datetime as _dt
+    now = _dt.datetime.now(_dt.timezone.utc)
+
+    # Combined fix stats from system_health_events + claude_interventions
+    events = _db_query(
+        """SELECT component, event_type, success, COUNT(*) AS n
+           FROM system_health_events
+           WHERE created_at >= NOW() - INTERVAL '7 days'
+             AND (action_taken IS NOT NULL AND action_taken != '')
+           GROUP BY component, event_type, success
+           ORDER BY n DESC""") or []
+    interventions = _db_query(
+        """SELECT status, COUNT(*) AS n
+           FROM claude_interventions
+           WHERE created_at >= NOW() - INTERVAL '7 days'
+           GROUP BY status""") or []
+    coder_stats = _db_query(
+        """SELECT outcome, COUNT(*) AS n
+           FROM coder_dispatch_audit
+           WHERE created_at >= NOW() - INTERVAL '7 days'
+           GROUP BY outcome""") or []
+
+    by_component = {}
+    total_fixes = 0
+    total_attempts = 0
+    for r in events:
+        comp = r["component"]
+        if comp not in by_component:
+            by_component[comp] = {"fixed": 0, "failed": 0, "total": 0, "top_issues": []}
+        n = r["n"] or 0
+        total_attempts += n
+        if r["success"]:
+            by_component[comp]["fixed"] += n
+            total_fixes += n
+        else:
+            by_component[comp]["failed"] += n
+        by_component[comp]["total"] += n
+
+    # Build summary
+    for comp, stats in by_component.items():
+        stats["success_rate"] = round(100 * stats["fixed"] / max(1, stats["total"]), 1)
+
+    # Top fixed issue types
+    top_fixed = _db_query(
+        """SELECT event_type, COUNT(*) AS n
+           FROM system_health_events
+           WHERE created_at >= NOW() - INTERVAL '7 days'
+             AND success = true
+           GROUP BY event_type
+           ORDER BY n DESC
+           LIMIT 10""") or []
+
+    # Intervention stats
+    int_fixed = sum(r["n"] for r in interventions if r["status"] == "fixed")
+    int_failed = sum(r["n"] for r in interventions if "fail" in (r["status"] or "").lower()
+                     or r["status"] == "error")
+    int_total = sum(r["n"] for r in interventions)
+
+    # Coder stats
+    coder = {"pr_opened": 0, "advisory_diff": 0, "failed": 0, "total": 0}
+    for r in coder_stats:
+        coder[r["outcome"]] = r["n"] or 0
+        coder["total"] += r["n"] or 0
+
+    overall_success_rate = round(100 * total_fixes / max(1, total_attempts), 1) if total_attempts else None
+
+    return {"ok": True,
+            "summary": {
+                "total_fixes_7d": total_fixes,
+                "total_attempts_7d": total_attempts,
+                "overall_success_rate": overall_success_rate,
+                "interventions_fixed_7d": int_fixed,
+                "interventions_total_7d": int_total,
+                "coder_prs_opened_7d": coder.get("pr_opened", 0),
+                "coder_total_7d": coder.get("total", 0),
+            },
+            "by_agent": by_component,
+            "by_intervention_status": {r["status"]: r["n"] for r in interventions},
+            "by_coder_outcome": {r["outcome"]: r["n"] for r in coder_stats},
+            "top_fixed_issues": [{"type": r["event_type"], "count": r["n"]} for r in top_fixed],
+            "generated_at": now.strftime("%Y-%m-%dT%H:%M:%S"),
+            "note": "Auto-fix statistics across all remediation agents (7-day window)."}
+
+
+def _health_escalations():
+    """GET /api/v2/health/escalations — active escalation items needing operator attention:
+    pipeline approvals, watchlist approvals, and queued escalation handler items."""
+    import datetime as _dt
+    now = _dt.datetime.now(_dt.timezone.utc)
+
+    # Pending watchlist approvals
+    wl_approvals = _db_query(
+        """SELECT id, symbol AS target, diagnosis, actions, status, created_at
+           FROM watchlist_health_approvals
+           WHERE status = 'pending'
+           ORDER BY created_at DESC LIMIT 20""") or []
+    # Pending pipeline approvals (table may not exist yet — fail gracefully)
+    pl_approvals = []
+    try:
+        pl_approvals = _db_query(
+            """SELECT id, pipeline_key AS target, diagnosis, actions, status, created_at
+               FROM pipeline_health_approvals
+               WHERE status = 'pending'
+               ORDER BY created_at DESC LIMIT 20""") or []
+    except Exception:
+        pass
+
+    # Escalation queue items
+    q_items = []
+    q_path = PROJECT_ROOT / "logs" / "claude_escalation_queue.json"
+    if q_path.exists():
+        try:
+            raw = json.loads(q_path.read_text())
+            q_items = (raw if isinstance(raw, list) else [])[:30]
+        except Exception:
+            pass
+
+    # Build unified escalation list
+    items = []
+    for a in wl_approvals:
+        items.append({"source": "watchlist_health", "id": a.get("id"),
+                      "target": a.get("target"), "diagnosis": a.get("diagnosis"),
+                      "actions": a.get("actions"), "status": a.get("status"),
+                      "created_at": str(a.get("created_at")) if a.get("created_at") else None,
+                      "approve_action": "wl_health_approve",
+                      "deny_action": "wl_health_deny"})
+    for a in pl_approvals:
+        items.append({"source": "pipeline_health", "id": a.get("id"),
+                      "target": a.get("target"), "diagnosis": a.get("diagnosis"),
+                      "actions": a.get("actions"), "status": a.get("status"),
+                      "created_at": str(a.get("created_at")) if a.get("created_at") else None,
+                      "approve_action": "pl_health_approve",
+                      "deny_action": "pl_health_deny"})
+    for q in q_items:
+        items.append({"source": "escalation_queue", "target": q.get("component"),
+                      "detail": q.get("detail"), "severity": q.get("severity"),
+                      "retry_cmd": q.get("retry_cmd"), "needs_code_fix": q.get("needs_code_fix"),
+                      "created_at": q.get("queued_at")})
+
+    items.sort(key=lambda x: x.get("created_at") or "", reverse=True)
+
+    return {"ok": True,
+            "total_pending": sum(1 for i in items if i.get("status") == "pending"),
+            "total_queued": len(q_items),
+            "items": items[:40],
+            "generated_at": now.strftime("%Y-%m-%dT%H:%M:%S"),
+            "note": "Active escalations: pending approvals (Telegram) + queued handler items."}
+
+
 def _llm_health():
     """GET /api/v2/llm/health — LLM router health + budget status."""
     try:
@@ -12614,7 +13018,7 @@ def _ticket_review_run(body):
     sym = str(b.get("symbol") or "").upper()
     if not sym:
         return {"ok": False, "error": "symbol required"}
-    lanes = str(b.get("lanes") or "local,grok,chatgpt")
+    lanes = str(b.get("lanes") or "deepseek-flash,local,grok,chatgpt")
     import subprocess
     subprocess.Popen([str(PROJECT_ROOT / ".venv" / "bin" / "python"),
                       str(PROJECT_ROOT / "scripts" / "run_ticket_review_job.py"), sym, lanes],
@@ -12637,7 +13041,7 @@ def _ticket_review_status(query=None):
 
 
 def _main_desk_free_llm_weekly_status(query=None):
-    """GET /api/v2/watch/free-llm-weekly — last weekly free-lane batch stamp (local/grok/chatgpt).
+    """GET /api/v2/watch/free-llm-weekly — last weekly free-lane batch stamp (deepseek-flash/local/grok/chatgpt).
 
     Read-only. Stamp written by scripts/main_desk_free_llm_weekly.py (systemd weekly timer).
     """
@@ -12654,7 +13058,7 @@ def _main_desk_free_llm_weekly_status(query=None):
                 "ok": True,
                 "exists": True,
                 "path": str(path),
-                "lanes": data.get("lanes") or "local,grok,chatgpt",
+                "lanes": data.get("lanes") or "deepseek-flash,local,grok,chatgpt",
                 "cadence": data.get("cadence") or "weekly",
                 "started_at": data.get("started_at"),
                 "finished_at": data.get("finished_at"),
@@ -12674,7 +13078,7 @@ def _main_desk_free_llm_weekly_status(query=None):
     return {
         "ok": True,
         "exists": False,
-        "lanes": "local,grok,chatgpt",
+        "lanes": "deepseek-flash,local,grok,chatgpt",
         "cadence": "weekly",
         "note": "No weekly free-LLM stamp yet — timer tradeai-main-desk-free-llm-weekly.timer",
     }
@@ -22885,6 +23289,153 @@ def _system_health_events_api():
     return {"ok": True, "events": [{k: _json_clean(v) for k, v in e.items()} for e in events]}
 
 
+def _watchlist_health_dashboard_api():
+    """Watchlist health agent dashboard data: recent scans, degradations, fix stats."""
+    health_events = _db_query("""
+        SELECT severity, event_type, message, action_taken, success, symbol, created_at
+        FROM system_health_events WHERE component = 'watchlist_health'
+        ORDER BY created_at DESC LIMIT 100
+    """) or []
+
+    pending_approvals = _db_query("""
+        SELECT id, symbol, diagnosis, actions, status, created_at
+        FROM watchlist_health_approvals WHERE status = 'pending'
+        ORDER BY created_at DESC LIMIT 50
+    """) or []
+
+    # Aggregate stats
+    auto_fixed = sum(1 for e in health_events if e.get("event_type") == "AUTO_FIXED")
+    fix_failed = sum(1 for e in health_events if e.get("event_type") == "AUTO_FIX_FAILED")
+    pending = sum(1 for e in health_events if e.get("event_type") == "PENDING_APPROVAL")
+    escalated = sum(1 for e in health_events if e.get("event_type") == "ESCALATED_BLOCKED")
+
+    # Resolve JSON fields for pending approvals
+    for pa in pending_approvals:
+        try:
+            pa["diagnosis"] = json.loads(pa["diagnosis"]) if isinstance(pa["diagnosis"], str) else pa["diagnosis"]
+        except Exception:
+            pass
+        try:
+            pa["actions"] = json.loads(pa["actions"]) if isinstance(pa["actions"], str) else pa["actions"]
+        except Exception:
+            pass
+
+    return {
+        "ok": True,
+        "stats": {"auto_fixed": auto_fixed, "fix_failed": fix_failed,
+                  "pending_approval": pending, "escalated": escalated},
+        "recent_events": [{k: _json_clean(v) for k, v in e.items()} for e in health_events[:50]],
+        "pending_approvals": [dict(pa) for pa in pending_approvals],
+    }
+
+
+def _watchlist_health_approvals_api():
+    """List all watchlist health approval requests (pending + resolved)."""
+    approvals = _db_query("""
+        SELECT id, symbol, diagnosis, actions, status, resolved_by, created_at, resolved_at, resolution_note
+        FROM watchlist_health_approvals ORDER BY created_at DESC LIMIT 200
+    """) or []
+    for a in approvals:
+        for field in ("diagnosis", "actions"):
+            try:
+                a[field] = json.loads(a[field]) if isinstance(a[field], str) else a[field]
+            except Exception:
+                pass
+    return {"ok": True, "approvals": [{k: _json_clean(v) for k, v in a.items()} for a in approvals]}
+
+
+def _health_agents_dashboard_api():
+    """Aggregate dashboard for all health agents: watchlist + pipeline + system."""
+    now = datetime.now(timezone.utc)
+
+    # ── Watchlist health ──
+    wl_events = _db_query("""
+        SELECT severity, event_type, message, action_taken, success, symbol, created_at
+        FROM system_health_events WHERE component = 'watchlist_health'
+        ORDER BY created_at DESC LIMIT 50
+    """) or []
+    wl_degraded = sum(1 for e in wl_events
+                      if e.get("event_type") in ("AUTO_FIXED", "AUTO_FIX_FAILED",
+                                                  "PENDING_APPROVAL", "ESCALATED_BLOCKED"))
+    wl_score = max(0, 100 - (wl_degraded * 5))
+
+    # ── Pipeline health ──
+    try:
+        from pipeline_health_agent import get_dashboard_data as pl_dash
+        pl_data = pl_dash()
+    except Exception:
+        pl_data = {"total": 0, "healthy": 0, "degraded": 0, "critical": 0,
+                   "pipelines": [], "events": [], "pending_approvals": []}
+    pl_score = int((pl_data.get("healthy", 0) / max(1, pl_data.get("total", 1))) * 100)
+
+    # ── System health ──
+    sys_score = 0
+    try:
+        sys_score = _system_health_api().get("health_score", 0) or 0
+    except Exception:
+        pass
+
+    # ── Composite ──
+    composite = int((wl_score + pl_score + sys_score) / 3) if (wl_score or pl_score or sys_score) else 0
+
+    # ── Events across all health components ──
+    all_events = _db_query("""
+        SELECT component, event_type, severity, message, action_taken, success, symbol, created_at
+        FROM system_health_events
+        WHERE component IN ('watchlist_health', 'pipeline_health', 'system_health')
+        ORDER BY created_at DESC LIMIT 100
+    """) or []
+
+    # ── Pending approvals ──
+    wl_approvals = _db_query("""
+        SELECT 'watchlist' as source, symbol as target, diagnosis, actions, status, created_at
+        FROM watchlist_health_approvals WHERE status = 'pending'
+        ORDER BY created_at DESC LIMIT 20
+    """) or []
+    for a in wl_approvals:
+        for f in ("diagnosis", "actions"):
+            try:
+                a[f] = json.loads(a[f]) if isinstance(a[f], str) else a[f]
+            except Exception:
+                pass
+    pl_approvals = pl_data.get("pending_approvals", [])
+    for a in pl_approvals:
+        try:
+            a["source"] = "pipeline"
+            a["target"] = a.pop("pipeline_key", "?")
+        except Exception:
+            pass
+    all_approvals = wl_approvals + pl_approvals
+
+    # ── Timeline (last 24h rollup) ──
+    timeline_rows = _db_query("""
+        SELECT date_trunc('hour', created_at) as h,
+               max(CASE severity WHEN 'HIGH' THEN 3 WHEN 'MEDIUM' THEN 2 ELSE 1 END) as max_sev,
+               count(*) as cnt
+        FROM system_health_events
+        WHERE component IN ('watchlist_health', 'pipeline_health', 'system_health')
+        AND created_at > NOW() - INTERVAL '24 hours'
+        GROUP BY date_trunc('hour', created_at)
+        ORDER BY h
+    """) or []
+
+    return {"ok": True, "data": {
+        "watchlist": {"score": wl_score, "degraded": wl_degraded, "events": wl_events[:20]},
+        "pipeline": {"score": pl_score, "total": pl_data.get("total", 0),
+                     "healthy": pl_data.get("healthy", 0),
+                     "degraded": pl_data.get("degraded", 0),
+                     "critical": pl_data.get("critical", 0),
+                     "pipelines": pl_data.get("pipelines", [])[:30]},
+        "system": {"score": sys_score},
+        "composite": {"score": composite},
+        "events": [{k: _json_clean(v) for k, v in e.items()} for e in all_events[:50]],
+        "approvals": all_approvals[:20],
+        "timeline": [{"hour": str(t.get("h")), "count": t.get("cnt", 0),
+                      "max_severity": t.get("max_sev", 0)} for t in timeline_rows],
+        "timestamp": now.isoformat(),
+    }}
+
+
 def _ops_cron_health():
     rows = _db_query("""
         SELECT ps.script_name as name, COALESCE(ps.display_name, ps.script_name) as display_name,
@@ -28059,8 +28610,8 @@ def _discovery_run(body):
     q = ((body or {}).get("query") or "").strip()
     if not q:
         return 400, {"ok": False, "error": "query required"}
-    lane = (body or {}).get("lane", "grok")
-    lane = lane if lane in ("grok", "chatgpt") else "grok"
+    lane = (body or {}).get("lane", "deepseek-flash")
+    lane = lane if lane in ("deepseek-flash", "grok", "chatgpt") else "deepseek-flash"
     try:
         return 200, {"ok": True, "data": hd.run(q, lane=lane, apply=True)}
     except Exception as e:
@@ -31552,7 +32103,7 @@ def _hermes_curate_top20_trigger(body=None):
     if _hermes_curate_running():
         return {"ok": True, "status": "already_running", "message": "A top-20 curation run is already in progress."}
     lanes = (body or {}).get("lanes", "chatgpt")
-    lanes = ",".join(x for x in str(lanes).split(",") if x.strip() in ("chatgpt", "grok", "claude")) or "chatgpt"
+    lanes = ",".join(x for x in str(lanes).split(",") if x.strip() in ("deepseek-flash", "chatgpt", "grok", "claude")) or "deepseek-flash"
     cmd = (f"cd {PROJECT_ROOT} && flock -n /tmp/hermes_top20_manual.lock "
            f"{sys.executable} scripts/hermes_top20_external_intel.py --top 20 --lanes {lanes} --apply "
            f">> logs/hermes_top20_manual.log 2>&1")
@@ -34061,16 +34612,73 @@ def _hermes_discovery_gaps(query=None):
                     "pathways, never direct writes."}
 
 
+def _api_aliases_health_snapshot():
+    """Alias for /api/v2/health/snapshot — same payload as health dashboard (audit 2026-08-02)."""
+    return _health_agent_dashboard()
+
+
+def _api_aliases_consumption_summary():
+    """Alias for /api/v2/consumption/summary → overview."""
+    return _consumption_overview()
+
+
+def _api_aliases_system_llm():
+    """Alias for /api/v2/system/llm → llm health."""
+    return _llm_health()
+
+
+def _api_aliases_agents_maturity():
+    """Alias for /api/v2/agents/maturity — catalog + honesty from agents/summary."""
+    s = _agents_summary()
+    return {
+        "ok": True,
+        "production_activation_authorized": False,
+        "environment": "SHADOW",
+        "catalog_states": s.get("catalog_states") or {},
+        "honesty": s.get("honesty") or {},
+        "agents": s.get("agents") or [],
+    }
+
+
+def _api_aliases_watch_scoreboard():
+    """Alias for /api/v2/watch/scoreboard — quality gate + finds track record."""
+    low, per = _watch_quality_gate()
+    return {
+        "ok": True,
+        "low_efficacy_sources": sorted(low),
+        "per_source": per,
+        "track_record": _finds_track_record(),
+        "quality_gate_cfg": _WQG_CACHE.get("cfg"),
+        "note": "Canonical scoreboard is also on Watch → Screener Finds header + /watchlist/quality-board",
+    }
+
+
+def _api_aliases_research_intel_desk(q=None):
+    """Alias /api/v2/research-intelligence/desk → research intelligence feed."""
+    return _research_intelligence_feed(q)
+
+
 ROUTES = {
     "/api/v2/hermes/discovery-inbox": lambda q=None: _hermes_discovery_inbox_list(q),
     "/api/v2/hermes/discovery-gaps": lambda q=None: _hermes_discovery_gaps(q),
     "/api/v2/hermes/discovery-scorecard": lambda: _hermes_discovery_scorecard_api(),
     "/api/v2/health": lambda: _health_agent_dashboard(),
+    # ── Audit 2026-08-02: aliases for common smoke/audit path mistakes ──
+    "/api/v2/health/snapshot": lambda: _api_aliases_health_snapshot(),
+    "/api/v2/consumption/summary": lambda: _api_aliases_consumption_summary(),
+    "/api/v2/system/llm": lambda: _api_aliases_system_llm(),
+    "/api/v2/agents/maturity": lambda: _api_aliases_agents_maturity(),
+    "/api/v2/agent-runtime/status": lambda: _api_aliases_agents_maturity(),
+    "/api/v2/watch/scoreboard": lambda: _api_aliases_watch_scoreboard(),
+    "/api/v2/research-intelligence/desk": lambda q=None: _api_aliases_research_intel_desk(q),
     "/api/v2/health/history": lambda: _health_agent_history(),
     "/api/v2/health/coders": lambda: _health_coder_status(),
     "/api/v2/health/dispatches": lambda: _health_dispatches(),
     "/api/v2/health/activity": lambda: _health_activity(),
     "/api/v2/health/proposals": lambda: _health_proposals(),
+    "/api/v2/health/coverage": lambda: _health_coverage(),
+    "/api/v2/health/autofix-ledger": lambda: _health_autofix_ledger(),
+    "/api/v2/health/escalations": lambda: _health_escalations(),
     "/api/v2/proposals/execution-readiness": lambda: _proposals_execution_readiness(),
     "/api/v2/snaptrade/status": _snaptrade_status,
     "/api/v2/fidelity-stops/status": lambda: _fidelity_stops_status(),
@@ -34381,6 +34989,9 @@ ROUTES = {
     "/api/v2/ops/llm-audit": lambda: _ops_llm_audit(),
     "/api/v2/execution-integrity": lambda: _system_health_api(),
     "/api/v2/execution-integrity/events": lambda: _system_health_events_api(),
+    "/api/v2/watchlist/health/dashboard": lambda: _watchlist_health_dashboard_api(),
+    "/api/v2/watchlist/health/approvals": lambda: _watchlist_health_approvals_api(),
+    "/api/v2/health/agents/dashboard": lambda: _health_agents_dashboard_api(),
     "/api/v2/queue/calibration": lambda: _queue_calibration(),
     "/api/v2/strategy-intelligence": lambda: _strategy_intelligence(),
     "/api/v2/system/access-links": lambda: _system_access_links(),
@@ -36365,7 +36976,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 _MODELS = {"grok": "grok-3-mini", "chatgpt": "gpt-5.4"}
                 results = {}
                 for _lane in lanes:
-                    if _lane not in ("grok", "chatgpt"):
+                    if _lane not in ("deepseek-flash", "grok", "chatgpt"):
                         continue
                     if not llm_lane.available(_lane):
                         results[_lane] = {"ok": False, "available": False,
@@ -36518,7 +37129,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     "plan is roughly cash-neutral. Reply ONLY JSON: {\"steps\":[{\"action\":\"BUY\",\"symbol\":"
                     "\"CIBR\",\"theme\":\"Cybersecurity\",\"dollars\":50000,\"funded_by\":\"trim V ~$50k\","
                     "\"rationale\":\"one line\"}],\"summary\":\"2 sentences\",\"net_cash_note\":\"...\"}")
-                lane = "grok" if llm_lane.available("grok") else "local"
+                lane = "deepseek-flash" if llm_lane.available("deepseek-flash") else ("grok" if llm_lane.available("grok") else "local")
                 raw = llm_lane.generate(prompt, lane=lane, timeout=120)
                 design = None
                 try:
@@ -36541,7 +37152,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 if not q:
                     return 400, {"ok": False, "error": "question required"}
                 want = (b.get("lane") or "").lower()
-                lanes = [want] if want in ("grok", "chatgpt", "local") else ["grok", "chatgpt", "local"]
+                lanes = [want] if want in ("deepseek-flash", "deepseek-v4", "grok", "chatgpt", "local") else ["deepseek-flash", "grok", "chatgpt", "local"]
                 ans, used = None, None
                 for ln in lanes:
                     try:
@@ -36636,8 +37247,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 sym = str(b.get("symbol") or "").strip().upper()
                 if not sym:
                     return 400, {"ok": False, "error": "symbol required"}
-                lane = str(b.get("lane") or "grok").strip().lower()
-                if lane not in ("grok", "local"):
+                lane = str(b.get("lane") or "deepseek-flash").strip().lower()
+                if lane not in ("deepseek-flash", "grok", "local"):
                     lane = "grok"
                 import io, contextlib
                 buf = io.StringIO()
@@ -36659,8 +37270,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 import holding_protection_advisor as _hpa
                 b = body or {}
                 limit = min(12, max(1, int(b.get("limit") or 6)))
-                lane = str(b.get("lane") or "grok").strip().lower()
-                if lane not in ("grok", "local"):
+                lane = str(b.get("lane") or "deepseek-flash").strip().lower()
+                if lane not in ("deepseek-flash", "grok", "local"):
                     lane = "grok"
                 syms = b.get("symbols")
                 sym_list = [s.strip().upper() for s in str(syms).split(",") if s.strip()] if syms else None
@@ -36683,13 +37294,13 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 from lib.oauth_lane_status import lane_available
                 b = body or {}
                 pid = str(b.get("process_id") or "").strip()
-                lane = str(b.get("lane") or "grok").strip().lower()
+                lane = str(b.get("lane") or "deepseek-flash").strip().lower()
                 prompt = str(b.get("prompt") or "").strip()
                 task = str(b.get("task_summary") or b.get("task") or "").strip()
                 if not pid or not prompt:
                     return 400, {"ok": False, "error": "process_id and prompt required"}
-                if lane not in ("grok", "chatgpt"):
-                    return 400, {"ok": False, "error": "lane must be grok or chatgpt"}
+                if lane not in ("deepseek-flash", "deepseek-v4", "grok", "chatgpt"):
+                    return 400, {"ok": False, "error": "lane must be deepseek-flash, deepseek-v4, grok, or chatgpt"}
                 if not lane_available(lane):
                     return 200, {"ok": False, "lane": lane, "error": f"{lane} OAuth lane not ready — check proxy service"}
                 text = _lc.gate_and_generate(prompt, lane=lane, process_id=pid,
@@ -36766,7 +37377,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 if not q:
                     return 400, {"ok": False, "error": "no question"}
                 lane = str((body or {}).get("lane") or "").strip().lower()
-                if lane not in ("grok", "chatgpt"):
+                if lane not in ("deepseek-flash", "grok", "chatgpt"):
                     lane = None
                 return 200, {"ok": True, **_pa.ask(q, lane=lane, manual_trigger=bool(lane))}
             except Exception as e:
@@ -36784,7 +37395,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 if not q:
                     return 400, {"ok": False, "error": "no question"}
                 lane = str(b.get("lane") or "").strip().lower()
-                if lane not in ("grok", "chatgpt"):
+                if lane not in ("deepseek-flash", "grok", "chatgpt"):
                     lane = None
                 return 200, {"ok": True, **_ja.ask(q, account=b.get("account"),
                                                     days=int(b.get("days") or 180),
@@ -36900,20 +37511,19 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     rewritten = (generate(f"{prompt_text}\n\nOriginal: {text}\n\nRewritten (concise, clear):", timeout=30, fast=True) or "").strip()
                 except Exception:
                     pass
-                # Fallback to Claude Haiku if local failed
+                # Fallback to DeepSeek Flash if local failed (replaces Claude Haiku)
                 if not rewritten:
                     try:
-                        import anthropic
-                        _ak = ""
-                        for line in (PROJECT_ROOT / ".env").read_text().splitlines():
-                            if line.startswith("ANTHROPIC_API_KEY="): _ak = line.split("=", 1)[1].strip()
-                        client = anthropic.Anthropic(api_key=_ak)
-                        msg = client.messages.create(model="claude-haiku-4-5", max_tokens=150,
-                            messages=[{"role": "user", "content": f"{prompt_text}\n\nOriginal: {text}\n\nRewritten:"}])
-                        rewritten = msg.content[0].text.strip()
-                        provider = "claude-haiku"
+                        from llm_lane import generate
+                        rewritten = (generate(
+                            f"{prompt_text}\n\nOriginal: {text}\n\nRewritten (concise, clear):",
+                            lane="deepseek-flash", timeout=30) or "").strip()
+                        if rewritten:
+                            provider = "deepseek-flash"
                     except Exception as e2:
-                        return 200, {"ok": False, "error": f"Both local LLM and Claude failed: {e2}"}
+                        pass
+                if not rewritten:
+                    return 200, {"ok": False, "error": "Both local LLM and DeepSeek flash failed"}
                 return 200, {"ok": True, "rewritten": rewritten, "provider": provider}
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
