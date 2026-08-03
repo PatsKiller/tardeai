@@ -287,17 +287,21 @@ def governed_flash_call(
     Returns a result dict compatible with llm_router.get_llm_response consumers:
       success, response, model_used, provider, latency, cost_estimate, tokens, ...
     """
-    from lib.agent_jobs_containment import is_contained, report_contained
+    from lib.agent_jobs_containment import guard_agent_jobs_execution
 
-    if is_contained():
-        r = report_contained(source="governed_flash_call")
+    g = guard_agent_jobs_execution(
+        "scripts/process_watchlist_agent_jobs.py",
+        source="governed_flash_call",
+    )
+    if g.get("blocked"):
         return {
             "success": False,
-            "error": r["message"],
+            "error": g.get("message") or "CONTAINMENT_CHECK_FAILED",
             "provider": "deepseek",
             "model_used": FLASH_MODEL,
             "process_id": process_for_task(task_type),
             "contained": True,
+            "remediation_status": g.get("remediation_status") or g.get("status"),
             "cost_estimate": 0.0,
             "latency": 0.0,
             "response": "",

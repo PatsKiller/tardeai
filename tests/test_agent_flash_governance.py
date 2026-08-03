@@ -86,12 +86,14 @@ def test_health_remediation_blocked_when_contained(tmp_path, monkeypatch):
     monkeypatch.delenv("AGENT_JOBS_P0_CONTAINED", raising=False)
     assert c.is_contained() is True
     cmd = "flock -n /tmp/x .venv/bin/python scripts/process_watchlist_agent_jobs.py --limit 15"
-    g = c.guard_remediation_command(cmd, source="test")
+    g = c.guard_agent_jobs_execution(cmd, source="test")
     assert g["blocked"] is True
     assert g["cmd"] is None
+    assert g["fixable"] is False
+    assert g["retry_cmd"] is None
     assert "CONTAINED" in g["message"]
     # unrelated remediation allowed
-    g2 = c.guard_remediation_command(".venv/bin/python scripts/news_ingestion.py", source="test")
+    g2 = c.guard_agent_jobs_execution(".venv/bin/python scripts/news_ingestion.py", source="test")
     assert g2["blocked"] is False
 
 

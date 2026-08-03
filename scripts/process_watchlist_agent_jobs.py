@@ -2666,16 +2666,25 @@ def _auto_queue_new_symbols():
 
 
 if __name__ == "__main__":
-    import argparse
     import sys as _sys
-    from lib.agent_jobs_containment import exit_if_contained_worker_entry, is_contained, report_contained
-    from lib.agent_jobs_lock import OverlapError, acquire_jobs_lock, OVERLAP_EXIT
-    from lib.agent_flash_governance import reset_run_budget
 
-    # P0 containment: do not run paid work or job processing
+    # P0 fail-closed containment BEFORE argparse DB/provider work (Gate 4)
+    try:
+        from lib.agent_jobs_containment import exit_if_contained_worker_entry, WORKER_BLOCKED_EXIT
+    except Exception as _imp_err:
+        print(
+            "CONTAINMENT_CHECK_FAILED: cannot import containment helper; "
+            f"worker blocked ({type(_imp_err).__name__})"
+        )
+        _sys.exit(78)
+
     _rc = exit_if_contained_worker_entry()
     if _rc is not None:
         _sys.exit(_rc)
+
+    import argparse
+    from lib.agent_jobs_lock import OverlapError, acquire_jobs_lock, OVERLAP_EXIT
+    from lib.agent_flash_governance import reset_run_budget
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--limit", type=int, default=10)
