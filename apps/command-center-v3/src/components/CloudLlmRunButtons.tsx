@@ -43,7 +43,7 @@ export default function CloudLlmRunButtons({
         return
       }
     } else if (isDeepSeek && !oauth.deepseekReady) {
-      setMsg(`⛔ ${lane} API not ready — check deepseek_tradeai key`)
+      setMsg(`⛔ ${lane} API not ready — DeepSeek credentials not configured`)
       return
     }
     setBusy(lane)

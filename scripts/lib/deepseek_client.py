@@ -133,11 +133,14 @@ def list_models(*, timeout: float = 15.0) -> dict[str, Any]:
         "http_status": r.status_code,
         "latency_ms": int((time.time() - t0) * 1000),
         "request_id": r.headers.get("x-request-id"),
-        "auth_env_name": env_name,  # name only
+        # Name of env var used for auth (never the secret value). Prefer not to
+        # surface this to browsers — service health should stay generic.
+        "auth_env_name": env_name,
         "used_compatibility_auth_env": dep,
-        "used_legacy_auth_env": dep,  # backward-compatible field name
         "has_v4_flash": "deepseek-v4-flash" in ids,
         "has_v4_pro": "deepseek-v4-pro" in ids,
+        "configured": True,
+        "provider": "deepseek",
     }
 
 

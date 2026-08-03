@@ -26,7 +26,7 @@ from lib.llm_model_registry import (  # noqa: E402
 
 @pytest.fixture(autouse=True)
 def _fake_key(monkeypatch):
-    monkeypatch.setattr(dc, "get_deepseek_api_key", lambda: ("test-key-not-real", "DEEPSEEK_API_KEY", False))
+    monkeypatch.setattr(dc, "get_deepseek_api_key", lambda: ("test-key-not-real", "deepseek_tradeai", False))
 
 
 def _ok_payload(model: str, content: str = "ok", reasoning: str | None = None, finish: str = "stop", usage=None):

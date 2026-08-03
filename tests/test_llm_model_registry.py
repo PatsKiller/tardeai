@@ -104,7 +104,7 @@ def test_chat_mismatched_returned_model(monkeypatch):
         def json(self):
             return json.loads(self.content)
 
-    monkeypatch.setattr(dc, "get_deepseek_api_key", lambda: ("fake-key", "DEEPSEEK_API_KEY", False))
+    monkeypatch.setattr(dc, "get_deepseek_api_key", lambda: ("fake-key", "deepseek_tradeai", False))
     monkeypatch.setattr(dc.requests, "post", lambda *a, **k: FakeResp())
     resp = dc.chat(model_id="deepseek-v4-pro", prompt="hi")
     assert resp.ok is False
@@ -237,3 +237,19 @@ def test_registry_auth_env_is_deepseek_tradeai():
     assert ds["auth_env"] == "deepseek_tradeai"
     assert ds.get("compatibility_auth_env") == "DEEPSEEK_API_KEY"
     assert "legacy_auth_env" not in ds or ds.get("auth_env") == "deepseek_tradeai"
+
+
+def test_auth_missing_message_has_no_secret_value(monkeypatch):
+    from lib import deepseek_client as dc
+    from lib import llm_model_registry as reg
+    reg.clear_registry_cache()
+    monkeypatch.delenv("deepseek_tradeai", raising=False)
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    monkeypatch.setattr(dc, "get_deepseek_api_key", lambda: (None, None, False))
+    resp = dc.chat(policy="FAST", prompt="x")
+    assert resp.error_class == dc.AUTH_MISSING
+    blob = (resp.error_message or "") + str(resp.to_dict())
+    assert "sk-" not in blob
+    # placeholder keys must never appear if we accidentally used them
+    assert "unit-test-placeholder" not in blob
+    assert "alias-placeholder" not in blob

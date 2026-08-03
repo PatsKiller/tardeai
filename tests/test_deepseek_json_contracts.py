@@ -136,7 +136,7 @@ def test_repair_fails(monkeypatch):
 
 
 def test_finish_length_from_client(monkeypatch):
-    monkeypatch.setattr(dc, "get_deepseek_api_key", lambda: ("k", "DEEPSEEK_API_KEY", False))
+    monkeypatch.setattr(dc, "get_deepseek_api_key", lambda: ("k", "deepseek_tradeai", False))
 
     def fake_post(url, json=None, headers=None, timeout=None):
         r = MagicMock()

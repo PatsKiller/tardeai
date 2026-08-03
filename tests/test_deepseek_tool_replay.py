@@ -16,7 +16,7 @@ from lib import deepseek_client as dc  # noqa: E402
 
 @pytest.fixture(autouse=True)
 def _key(monkeypatch):
-    monkeypatch.setattr(dc, "get_deepseek_api_key", lambda: ("k", "DEEPSEEK_API_KEY", False))
+    monkeypatch.setattr(dc, "get_deepseek_api_key", lambda: ("k", "deepseek_tradeai", False))
 
 
 def test_continue_preserves_reasoning_content(monkeypatch):
