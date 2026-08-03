@@ -178,9 +178,15 @@ def get_indicator_snapshot(
 
     fresh = build_indicator_snapshot(symbols, profile=profile)
     fresh["_cache_key"] = key
-    SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = SNAPSHOT_PATH.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(fresh, indent=2, default=str), encoding="utf-8")
-    tmp.replace(SNAPSHOT_PATH)
+    # Soft publish — concurrent desk refreshes must not 500 the UI if cache write races.
+    try:
+        from lib.data_broker.atomic_json import atomic_write_json_soft
+        atomic_write_json_soft(SNAPSHOT_PATH, fresh)
+    except Exception:
+        try:
+            SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
+            SNAPSHOT_PATH.write_text(json.dumps(fresh, indent=2, default=str), encoding="utf-8")
+        except Exception:
+            pass
     fresh["_cache"] = {"hit": False, "age_seconds": 0}
     return fresh

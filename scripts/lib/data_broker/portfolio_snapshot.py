@@ -181,10 +181,12 @@ def write_portfolio_snapshot(snapshot: dict[str, Any] | None = None) -> Path:
     this refreshes every 30-60s and callers only ever want the latest, unlike outcome_bus's
     audit-trail use case."""
     snap = snapshot if snapshot is not None else build_portfolio_snapshot()
-    SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = SNAPSHOT_PATH.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(snap, indent=2, default=str), encoding="utf-8")
-    tmp.replace(SNAPSHOT_PATH)
+    try:
+        from lib.data_broker.atomic_json import atomic_write_json
+        atomic_write_json(SNAPSHOT_PATH, snap)
+    except Exception:
+        SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
+        SNAPSHOT_PATH.write_text(json.dumps(snap, indent=2, default=str), encoding="utf-8")
     return SNAPSHOT_PATH
 
 

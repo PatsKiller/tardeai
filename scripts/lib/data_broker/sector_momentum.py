@@ -95,9 +95,14 @@ def get_sector_momentum(db_query=None, max_age_s: float = DEFAULT_MAX_AGE_S) -> 
         return {"computed_at": "", "spy_chg_pct": 0, "sectors": {}, "source": "unavailable"}
 
     fresh = _build(db_query)
-    SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = SNAPSHOT_PATH.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(fresh, indent=2, default=str), encoding="utf-8")
-    tmp.replace(SNAPSHOT_PATH)
+    try:
+        from lib.data_broker.atomic_json import atomic_write_json_soft
+        atomic_write_json_soft(SNAPSHOT_PATH, fresh)
+    except Exception:
+        try:
+            SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
+            SNAPSHOT_PATH.write_text(json.dumps(fresh, indent=2, default=str), encoding="utf-8")
+        except Exception:
+            pass
     fresh["_cache"] = {"hit": False, "age_seconds": 0}
     return fresh
