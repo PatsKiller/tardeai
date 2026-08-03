@@ -35,7 +35,7 @@ export default function CloudLlmRunButtons({
   const run = async (lane: 'grok' | 'chatgpt' | 'deepseek-flash' | 'deepseek-v4-pro') => {
     const isOAuth = lane === 'grok' || lane === 'chatgpt'
     const isDeepSeek = lane === 'deepseek-flash' || lane === 'deepseek-v4-pro'
-    
+
     // Check readiness: OAuth lanes check via oauth hook, DeepSeek via ready flag
     if (isOAuth) {
       if (!laneReady(lane === 'grok' ? oauth.grok : oauth.chatgpt)) {

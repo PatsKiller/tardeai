@@ -1,7 +1,7 @@
 # Security and authority review — DeepSeek V4 mainline
 
-**Base:** `origin/main` = `ddef4613ec362e6c32307160aba8f4a56b835a20`  
-**Tip:** see FINAL_REPORT final SHA  
+**Base:** `origin/main` = `ddef4613ec362e6c32307160aba8f4a56b835a20`
+**Tip:** see FINAL_REPORT final SHA
 **Method:** `git diff --name-only origin/main...HEAD` + targeted safety pytest
 
 ## Changed files inventory
@@ -42,12 +42,12 @@ Also DeepSeek suite (provider/json/tool/cost/registry): **86 passed**.
 
 ## Verdict
 
-- Broker write ability: **unchanged**  
-- Order queue/submit/modify/cancel: **unchanged**  
-- 2FA: **unchanged**  
-- Risk/stop enforcement: **unchanged**  
-- Deployment authority: **unchanged**  
-- LLM remains **advisory only**  
+- Broker write ability: **unchanged**
+- Order queue/submit/modify/cancel: **unchanged**
+- 2FA: **unchanged**
+- Risk/stop enforcement: **unchanged**
+- Deployment authority: **unchanged**
+- LLM remains **advisory only**
 
 
 ## Credential naming (corrected)

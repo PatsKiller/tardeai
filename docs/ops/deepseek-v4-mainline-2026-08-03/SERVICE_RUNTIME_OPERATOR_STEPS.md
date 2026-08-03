@@ -9,7 +9,7 @@
 | Compatibility alias (optional, not required) | `DEEPSEEK_API_KEY` |
 | Secret value | **never print or inspect** |
 
-Do **not** rename the Bitwarden item. Do **not** require `DEEPSEEK_API_KEY`.  
+Do **not** rename the Bitwarden item. Do **not** require `DEEPSEEK_API_KEY`.
 Do **not** create a second unmanaged secret file or put the value in systemd `Environment=`.
 
 ## Verified current state (read-only)

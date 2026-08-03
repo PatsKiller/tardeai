@@ -1,8 +1,8 @@
 > **HISTORICAL (2026-08-02).** Superseded by mainline DeepSeek V4 integration (`config/llm_model_registry.json`, exact IDs `deepseek-v4-flash` / `deepseek-v4-pro`). Do not treat the model IDs or status claims in this file as current.
 
 # DeepSeek Audit & Fix — Comprehensive Report
-**Date:** 2026-08-02  
-**Author:** Automated audit — executed via Cursor agent  
+**Date:** 2026-08-02
+**Author:** Automated audit — executed via Cursor agent
 **Status:** Historical pre-mainline note — superseded.
 
 ---
