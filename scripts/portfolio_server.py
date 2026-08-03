@@ -1823,7 +1823,16 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
                         _body = _body.replace(b"</head>", _inject + b"</head>", 1)
                 self.send_header("Content-Length", str(len(_body)))
                 self.end_headers()
-                self.wfile.write(_body)
+                # Chunk large SPA assets so a single write isn't aborted mid-stream.
+                try:
+                    _mv = memoryview(_body)
+                    _off = 0
+                    _n = len(_body)
+                    while _off < _n:
+                        _off += self.wfile.write(_mv[_off:_off + 256 * 1024])
+                except (BrokenPipeError, ConnectionResetError, TimeoutError, OSError):
+                    self.close_connection = True
+                    return
             else:
                 self.send_response(404)
                 self.send_header("Content-Type", "text/plain")
@@ -2671,17 +2680,13 @@ if __name__ == "__main__":
     # Do NOT fuser-kill :7777 here — overlapping systemd restarts + port-guard SIGTERM caused
     # adopt churn (orphan PPID=1 while systemctl shows inactive). Watchdog clears unhealthy orphans;
     # manual recovery: systemctl --user stop portfolio-server && kill stray pid && systemctl start.
-    class _LingerHTTPServer(ReusableHTTPServer):
-        """SO_LINGER=0: close immediately, no CLOSE-WAIT for dead Tailscale peers."""
-        def server_close(self):
-            super().server_close()
+    #
+    # NEVER set SO_LINGER=0 on the listen/accepted sockets. Abortive close (RST) discards
+    # unacked send-buffer data — large SPA bundles (~4MB JS) arrive truncated, the browser
+    # module loader fails, and /v3 renders a white page (2026-08-02 incident). Graceful FIN
+    # is required so Content-Length payloads fully reach the client.
     try:
-        server = _LingerHTTPServer(("", PORT), PortfolioHandler)
-        # SO_LINGER with l_onoff=1, l_linger=0 -> immediate close, no CLOSE-WAIT
-        try:
-            server.socket.setsockopt(_socket.SOL_SOCKET, _socket.SO_LINGER, b'\x01\x00\x00\x00\x00\x00\x00\x00')
-        except Exception:
-            pass  # some systems don't support struct linger
+        server = ReusableHTTPServer(("", PORT), PortfolioHandler)
     except OSError as e:
         print(f"[fatal] Cannot bind port {PORT}: {e}")
         print("Another portfolio_server may already be listening. Check: ss -tlnp | grep 7777")
