@@ -1,0 +1,25 @@
+{
+  "probed_at": "2026-08-03T13:35:59.205450+00:00",
+  "base_url": "https://api.deepseek.com",
+  "unix_user": "johnclaw",
+  "python": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python",
+  "key_env_name_used": "deepseek_tradeai",
+  "key_present": true,
+  "key_names_loaded_from_files": [
+    "deepseek_tradeai"
+  ],
+  "portfolio_server_has_deepseek_env": false,
+  "http_status": 200,
+  "request_id": null,
+  "duration_ms": 1445,
+  "model_ids": [
+    "deepseek-v4-flash",
+    "deepseek-v4-pro"
+  ],
+  "has_deepseek_v4_flash": true,
+  "has_deepseek_v4_pro": true,
+  "has_deepseek_chat": false,
+  "has_deepseek_reasoner": false,
+  "error_class": null,
+  "error_sanitized": null
+}
