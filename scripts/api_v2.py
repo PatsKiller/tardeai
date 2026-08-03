@@ -31,6 +31,39 @@ for _stale in ("decision_action_policy", "packet_invalidation", "decision_packet
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
 
+# Canonical interpreter for subprocess spawns. Release trees often have no local
+# .venv (systemd points ExecStart at the rebuild venv) — never hardcode only
+# PROJECT_ROOT/.venv/bin/python (white-page-adjacent ENOENT on critic/DeepSeek buttons).
+_PROJECT_PYTHON_CACHE: str | None = None
+
+
+def _project_python() -> str:
+    """Resolve a usable python for child scripts (release-safe)."""
+    global _PROJECT_PYTHON_CACHE
+    if _PROJECT_PYTHON_CACHE:
+        return _PROJECT_PYTHON_CACHE
+    import sys as _sys
+    candidates = [
+        Path(_sys.executable) if _sys.executable else None,
+        PROJECT_ROOT / ".venv" / "bin" / "python",
+        PROJECT_ROOT / ".venv" / "bin" / "python3",
+        Path("/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python"),
+        Path("/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python3"),
+    ]
+    for c in candidates:
+        if c is None:
+            continue
+        try:
+            if c.is_file() and os.access(c, os.X_OK):
+                _PROJECT_PYTHON_CACHE = str(c.resolve())
+                return _PROJECT_PYTHON_CACHE
+        except Exception:
+            continue
+    # Last resort — may still fail, but better than a dead relative path
+    _PROJECT_PYTHON_CACHE = _sys.executable or "python3"
+    return _PROJECT_PYTHON_CACHE
+
+
 try:
     from dotenv import load_dotenv
     load_dotenv(PROJECT_ROOT / ".env")
@@ -7270,7 +7303,7 @@ def _wl_cio_synthesis(sym: str, body: dict | None) -> tuple[int, dict]:
 
 def _wl_run_refresh_script(script: str, args: list[str], *, timeout: int = 120) -> dict:
     import subprocess
-    venv_py = str(PROJECT_ROOT / ".venv/bin/python")
+    venv_py = _project_python()
     try:
         proc = subprocess.run(
             [venv_py, str(PROJECT_ROOT / "scripts" / script), *args],
@@ -12790,7 +12823,7 @@ def _shadow_batch_start(body=None):
                 "done": st.get("done"), "to_generate": st.get("to_generate")}
     import subprocess
     body = body or {}
-    cmd = [str(PROJECT_ROOT / ".venv" / "bin" / "python"),
+    cmd = [_project_python(),
            str(PROJECT_ROOT / "scripts" / "shadow_batch_generator.py"), "--run"]
     if body.get("top"):
         cmd += ["--top", str(int(body["top"]))]
@@ -13020,7 +13053,7 @@ def _ticket_review_run(body):
         return {"ok": False, "error": "symbol required"}
     lanes = str(b.get("lanes") or "deepseek-flash,local,grok,chatgpt")
     import subprocess
-    subprocess.Popen([str(PROJECT_ROOT / ".venv" / "bin" / "python"),
+    subprocess.Popen([_project_python(),
                       str(PROJECT_ROOT / "scripts" / "run_ticket_review_job.py"), sym, lanes],
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                      start_new_session=True, cwd=PROJECT_ROOT)
@@ -13213,7 +13246,7 @@ def _defense_refresh_start(body=None):
     if job.get("state") == "running":
         return {"ok": True, "queued": False, "already_running": True, "job": job}
     subprocess.Popen(
-        [str(PROJECT_ROOT / ".venv" / "bin" / "python"),
+        [_project_python(),
          str(PROJECT_ROOT / "scripts" / "defense_refresh_job.py")],
         cwd=PROJECT_ROOT, start_new_session=True,
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -21176,7 +21209,7 @@ def _broker_queue_agent_batch(body: dict):
             fallback_err = str(e)[:160]
     else:
         fallback_err = None
-    cmd = [str(PROJECT_ROOT / ".venv" / "bin" / "python"), "scripts/queue_proposal_agent_reviews.py", "--apply"]
+    cmd = [_project_python(), "scripts/queue_proposal_agent_reviews.py", "--apply"]
     if sym:
         cmd.extend(["--symbol", sym])
     if pids:
@@ -23796,8 +23829,8 @@ def _system_applications():
         "update_cmd": "Manual OS package review required"})
 
     apps.append({"name": "Python (venv)", "category": "core",
-        "installed": _ver(_run([f"{pr}/.venv/bin/python", "--version"])),
-        "latest": py_ver, "path": f"{pr}/.venv/bin/python",
+        "installed": _ver(_run([_project_python(), "--version"])),
+        "latest": py_ver, "path": _project_python(),
         "version_cmd": ".venv/bin/python --version",
         "update_cmd": "Manual review required"})
 
@@ -24758,7 +24791,7 @@ def _queue_control_tower():
     try:
         _qenv = dict(os.environ)
         _qenv["DBUS_SESSION_BUS_ADDRESS"] = f"unix:path=/run/user/{os.getuid()}/bus"
-        _rs = _sp_qct.run([str(PROJECT_ROOT / ".venv/bin/python"), str(PROJECT_ROOT / "scripts/queue_runtime_status.py"), "--json"],
+        _rs = _sp_qct.run([_project_python(), str(PROJECT_ROOT / "scripts/queue_runtime_status.py"), "--json"],
                           capture_output=True, text=True, timeout=10, cwd=str(PROJECT_ROOT), env=_qenv)
         if _rs.returncode == 0:
             import json as _jrt
@@ -29114,7 +29147,7 @@ def _journal_csv_import(body):
         status, result = handle_import_transactions(parsed)
         import subprocess
         subprocess.run(
-            [str(PROJECT_ROOT / ".venv/bin/python3"), str(PROJECT_ROOT / "scripts/schwab_journal_builder.py"), "--apply"],
+            [_project_python(), str(PROJECT_ROOT / "scripts/schwab_journal_builder.py"), "--apply"],
             cwd=str(PROJECT_ROOT), timeout=120, check=False)
         enrich = {}
         try:
@@ -35248,7 +35281,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     return 400, {"ok": False, "error": "missing finding type"}
                 _pol = _load_json(PROJECT_ROOT / "config" / "health_agent_policy.json") or {}
                 _rmap = _pol.get("remediation_map") or {}
-                _py = str(PROJECT_ROOT / ".venv" / "bin" / "python")
+                _py = _project_python()
                 _logf = open(PROJECT_ROOT / "logs" / "health_manual_remediation.log", "a")
                 triggered, cmd_desc = None, None
                 if action in ("auto_retry", "refresh") and ftype in _rmap:
@@ -35460,7 +35493,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             try:
                 import subprocess as _sp
                 _sp.Popen(
-                    [str(PROJECT_ROOT / ".venv/bin/python"), str(PROJECT_ROOT / "scripts/journal_agent_coach.py")],
+                    [_project_python(), str(PROJECT_ROOT / "scripts/journal_agent_coach.py")],
                     cwd=str(PROJECT_ROOT), stdout=open(str(PROJECT_ROOT / "logs/agent_coach.log"), "w"),
                     stderr=_sp.STDOUT
                 )
@@ -36522,7 +36555,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             try:
                 import subprocess, threading
                 def _run():
-                    subprocess.run([str(PROJECT_ROOT / ".venv/bin/python"),
+                    subprocess.run([_project_python(),
                                     str(PROJECT_ROOT / "scripts/rag_indexer.py"), "--backfill", "--source", "all"],
                                    capture_output=True, cwd=str(PROJECT_ROOT), timeout=7200)
                 threading.Thread(target=_run, daemon=True).start()
@@ -37532,7 +37565,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             try:
                 import subprocess, threading
                 def _run():
-                    subprocess.run([str(PROJECT_ROOT / ".venv/bin/python"),
+                    subprocess.run([_project_python(),
                                     str(PROJECT_ROOT / "scripts/alex_retirement_advisor.py"),
                                     "--weekly-health", "--telegram"], capture_output=True,
                                    cwd=str(PROJECT_ROOT))
@@ -37595,7 +37628,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 import subprocess
                 log_path = str(PROJECT_ROOT / "logs" / "youtube_ingest_manual.log")
                 subprocess.Popen(
-                    [str(PROJECT_ROOT / ".venv/bin/python"),
+                    [_project_python(),
                      str(PROJECT_ROOT / "scripts/youtube_transcript_ingest.py"), "--all-channels"],
                     cwd=str(PROJECT_ROOT),
                     stdout=open(log_path, "a"), stderr=subprocess.STDOUT
@@ -37625,7 +37658,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     # Trigger ingest for this channel
                     import subprocess, threading
                     def _ingest():
-                        subprocess.run([str(PROJECT_ROOT / ".venv/bin/python"),
+                        subprocess.run([_project_python(),
                                         str(PROJECT_ROOT / "scripts/youtube_transcript_ingest.py"),
                                         "--channel", ch["channel_name"]], capture_output=True, timeout=120,
                                        cwd=str(PROJECT_ROOT))
@@ -37828,7 +37861,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             try:
                 import subprocess as _sp
                 _sp.Popen(
-                    [str(PROJECT_ROOT / ".venv/bin/python"), str(PROJECT_ROOT / "scripts/continuous_runner.py"), "--test"],
+                    [_project_python(), str(PROJECT_ROOT / "scripts/continuous_runner.py"), "--test"],
                     cwd=str(PROJECT_ROOT), stdout=open(str(PROJECT_ROOT / "logs/tradeai_manual.log"), "w"),
                     stderr=_sp.STDOUT
                 )
@@ -37840,7 +37873,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             try:
                 import subprocess as _sp
                 _sp.Popen(
-                    [str(PROJECT_ROOT / ".venv/bin/python"), str(PROJECT_ROOT / "scripts/trade_ai_orchestrator.py"),
+                    [_project_python(), str(PROJECT_ROOT / "scripts/trade_ai_orchestrator.py"),
                      "--run-label", "0900", "--date", __import__('datetime').datetime.now().strftime("%Y-%m-%d"),
                      "--skip-market-check", "--no-alerts"],
                     cwd=str(PROJECT_ROOT), stdout=open(str(PROJECT_ROOT / "logs/critic_manual.log"), "w"),
@@ -38533,7 +38566,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             operator = (b.get("operator") or "operator")[:60]
             import subprocess as _sp
             def _apply():
-                _sp.Popen([str(PROJECT_ROOT / ".venv/bin/python"),
+                _sp.Popen([_project_python(),
                            str(PROJECT_ROOT / "scripts" / f"{job}.py")],
                           cwd=str(PROJECT_ROOT),
                           stdout=open(PROJECT_ROOT / "logs" / f"{job}.log", "a"), stderr=_sp.STDOUT)
@@ -40687,7 +40720,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return 400, {"ok": False, "error": "proposal_id required"}
             import subprocess as _sp
             _sp.Popen(
-                [str(PROJECT_ROOT / ".venv/bin/python"),
+                [_project_python(),
                  str(PROJECT_ROOT / "scripts/proposal_intelligence_analyzer.py"),
                  "--proposal-id", str(pid), "--apply"],
                 cwd=str(PROJECT_ROOT),
@@ -40706,7 +40739,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return 400, {"ok": False, "error": "proposal_id required"}
             import subprocess as _sp
             result = _sp.run(
-                [str(PROJECT_ROOT / ".venv/bin/python"),
+                [_project_python(),
                  str(PROJECT_ROOT / "scripts/proposal_execution_readiness.py"),
                  "--proposal-id", str(pid), "--apply"],
                 capture_output=True, text=True, timeout=30, cwd=str(PROJECT_ROOT)
@@ -40957,7 +40990,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     if method == "POST" and base_path == "/api/v2/strategy-configs/validate":
         try:
             import subprocess as _sp
-            r = _sp.run([str(PROJECT_ROOT / ".venv/bin/python"),
+            r = _sp.run([_project_python(),
                          str(PROJECT_ROOT / "scripts/strategy_config_loader.py"), "--validate"],
                         capture_output=True, text=True, timeout=30, cwd=str(PROJECT_ROOT))
             return 200, {"ok": r.returncode == 0, "output": r.stdout[-2000:]}
@@ -40991,7 +41024,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             with open(_yaml_path, "w") as _f:
                 _yaml.dump(_cfg, _f, sort_keys=False)
             # Trigger sync
-            _sync = _sp.run([str(PROJECT_ROOT / ".venv/bin/python"),
+            _sync = _sp.run([_project_python(),
                              str(PROJECT_ROOT / "scripts/strategy_config_loader.py"), "--sync-db"],
                             capture_output=True, text=True, timeout=30, cwd=str(PROJECT_ROOT))
             return 200, {"ok": True, "strategy_id": _sid,
@@ -41003,7 +41036,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     if method == "POST" and base_path == "/api/v2/strategy-configs/sync-db":
         try:
             import subprocess as _sp
-            r = _sp.run([str(PROJECT_ROOT / ".venv/bin/python"),
+            r = _sp.run([_project_python(),
                          str(PROJECT_ROOT / "scripts/strategy_config_loader.py"), "--sync-db"],
                         capture_output=True, text=True, timeout=30, cwd=str(PROJECT_ROOT))
             return 200, {"ok": r.returncode == 0, "output": r.stdout[-1000:]}
@@ -41062,7 +41095,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         try:
             body = body or {}
             import subprocess as _sp
-            args = [str(PROJECT_ROOT / ".venv/bin/python"),
+            args = [_project_python(),
                     str(PROJECT_ROOT / "scripts/proposal_monitor.py"),
                     "--pending", "--apply"]
             if body.get("include_intraday"):
@@ -41259,7 +41292,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     if method == "POST" and base_path == "/api/v2/paper-reconciliation/run":
         try:
             import subprocess as _sp
-            r = _sp.run([str(PROJECT_ROOT / ".venv/bin/python"),
+            r = _sp.run([_project_python(),
                          str(PROJECT_ROOT / "scripts/alpaca_paper_reconciler.py"), "--apply"],
                         capture_output=True, text=True, timeout=60, cwd=str(PROJECT_ROOT))
             return 200, {"ok": True, "output": r.stdout[-1000:], "returncode": r.returncode}
@@ -41269,7 +41302,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     if method == "POST" and base_path == "/api/v2/execution-quality/run":
         try:
             import subprocess as _sp
-            r = _sp.run([str(PROJECT_ROOT / ".venv/bin/python"),
+            r = _sp.run([_project_python(),
                          str(PROJECT_ROOT / "scripts/paper_execution_quality_analyzer.py"),
                          "--recent", "--apply"],
                         capture_output=True, text=True, timeout=60, cwd=str(PROJECT_ROOT))
@@ -41306,7 +41339,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                         pass
                     try:
                         r = _sp.run(
-                            [str(PROJECT_ROOT / ".venv/bin/python"),
+                            [_project_python(),
                              str(PROJECT_ROOT / "scripts" / script)] + args,
                             capture_output=True, text=True, timeout=timeout, cwd=str(PROJECT_ROOT))
                         results[key] = "ok" if r.returncode == 0 else f"exit:{r.returncode}"
@@ -41355,7 +41388,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             ]:
                 try:
                     r = _sp.run(
-                        [str(PROJECT_ROOT / ".venv/bin/python"),
+                        [_project_python(),
                          str(PROJECT_ROOT / "scripts" / script),
                          "--proposal-id", str(pid), "--apply"],
                         capture_output=True, text=True, timeout=60, cwd=str(PROJECT_ROOT)
@@ -41429,7 +41462,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             if body.get('proposal_id'):
                 pid_arg = ['--proposal-id', str(body['proposal_id'])]
             r = _sp.run(
-                [str(PROJECT_ROOT / ".venv/bin/python3"),
+                [_project_python(),
                  str(PROJECT_ROOT / "scripts/proposal_enrichment_loop.py"), "--run", "--limit", "10"] + pid_arg,
                 capture_output=True, text=True, timeout=120, cwd=str(PROJECT_ROOT))
             return 200, {"ok": r.returncode == 0,
@@ -41443,7 +41476,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         try:
             import subprocess as _sp
             r = _sp.run(
-                [str(PROJECT_ROOT / ".venv/bin/python3"),
+                [_project_python(),
                  str(PROJECT_ROOT / "scripts/proposal_enrichment_loop.py"), "--run", "--queue-llm-only", "--limit", "20"],
                 capture_output=True, text=True, timeout=60, cwd=str(PROJECT_ROOT))
             return 200, {"ok": r.returncode == 0,
@@ -41457,7 +41490,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         try:
             import subprocess as _sp
             r = _sp.run(
-                [str(PROJECT_ROOT / ".venv/bin/python3"),
+                [_project_python(),
                  str(PROJECT_ROOT / "scripts/proposal_llm_review_worker.py"), "--run", "--limit", "2"],
                 capture_output=True, text=True, timeout=600, cwd=str(PROJECT_ROOT))
             return 200, {"ok": r.returncode == 0,
@@ -41483,7 +41516,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         try:
             import subprocess as _sp
             r = _sp.run(
-                [str(PROJECT_ROOT / ".venv/bin/python3"),
+                [_project_python(),
                  str(PROJECT_ROOT / "scripts/incubator_proposal_promoter.py"), "--run", "--limit", "15"],
                 capture_output=True, text=True, timeout=60, cwd=str(PROJECT_ROOT))
             promoted = [l for l in r.stdout.splitlines() if l.startswith("PROMOTED:")]
@@ -43014,7 +43047,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     if method == "POST" and base_path == "/api/v2/paper-outcomes/run":
         try:
             import subprocess as _sp
-            r = _sp.run([str(PROJECT_ROOT / ".venv/bin/python"),
+            r = _sp.run([_project_python(),
                          str(PROJECT_ROOT / "scripts/post_trade_thesis_reviewer.py"), "--apply"],
                         capture_output=True, text=True, timeout=60, cwd=str(PROJECT_ROOT))
             return 200, {"ok": True, "output": r.stdout[-2000:], "returncode": r.returncode}
@@ -43024,7 +43057,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     if method == "POST" and base_path == "/api/v2/paper-performance-governance/run":
         try:
             import subprocess as _sp
-            r = _sp.run([str(PROJECT_ROOT / ".venv/bin/python"),
+            r = _sp.run([_project_python(),
                          str(PROJECT_ROOT / "scripts/paper_performance_governance.py"), "--apply"],
                         capture_output=True, text=True, timeout=60, cwd=str(PROJECT_ROOT))
             return 200, {"ok": True, "output": r.stdout[-2000:], "returncode": r.returncode}
@@ -43060,7 +43093,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     if method == "GET" and base_path == "/api/v2/paper-submit-candidates":
         try:
             import subprocess as _sp
-            r = _sp.run([str(PROJECT_ROOT / ".venv/bin/python"),
+            r = _sp.run([_project_python(),
                          str(PROJECT_ROOT / "scripts/paper_submit_readiness.py"),
                          "--best-candidates", "--limit", "5"],
                         capture_output=True, text=True, timeout=30, cwd=str(PROJECT_ROOT))
@@ -43128,7 +43161,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return 400, {"ok": False, "error": f"Proposal {pid} is {row['status']}, not PENDING"}
             # Run via subprocess for isolation
             import subprocess as _sp
-            r = _sp.run([str(PROJECT_ROOT / ".venv/bin/python3"),
+            r = _sp.run([_project_python(),
                          str(PROJECT_ROOT / "scripts/proposal_paper_submitter.py"),
                          "--proposal-id", str(pid), "--submit-paper-bracket",
                          "--allow-after-hours-paper"],
@@ -43158,7 +43191,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     if method == "POST" and base_path == "/api/v2/paper-trades/monitor":
         try:
             import subprocess as _sp
-            r = _sp.run([str(PROJECT_ROOT / ".venv/bin/python"),
+            r = _sp.run([_project_python(),
                          str(PROJECT_ROOT / "scripts/paper_trade_monitor.py"), "--apply"],
                         capture_output=True, text=True, timeout=60, cwd=str(PROJECT_ROOT))
             try:
@@ -43180,7 +43213,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             if _os.getenv("ALPACA_MODE", "paper").lower() != "paper":
                 return 400, {"ok": False, "error": "BLOCKED: ALPACA_MODE is not paper"}
             import subprocess as _sp
-            r = _sp.run([str(PROJECT_ROOT / ".venv/bin/python"),
+            r = _sp.run([_project_python(),
                          str(PROJECT_ROOT / "scripts/paper_trade_closer.py"),
                          "--paper-trade-id", str(ptid),
                          "--close-paper", "--reason", reason],
@@ -43902,7 +43935,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         try:
             import subprocess as _sp
             _proc = _sp.Popen(
-                [str(PROJECT_ROOT / ".venv/bin/python"),
+                [_project_python(),
                  str(PROJECT_ROOT / "scripts/portfolio_yaml_advisor.py")],
                 cwd=str(PROJECT_ROOT),
                 stdout=_sp.PIPE, stderr=_sp.STDOUT,
@@ -45625,7 +45658,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     if base_path == "/api/v2/backtesting/run-replay-trades" and method == "POST":
         try:
             import subprocess as _sp
-            _sp.Popen([str(PROJECT_ROOT / ".venv/bin/python"),
+            _sp.Popen([_project_python(),
                        str(PROJECT_ROOT / "scripts/enterprise_backtester.py"),
                        "--replay-trades", "--apply", "--verbose"],
                       cwd=str(PROJECT_ROOT), stdout=_sp.PIPE, stderr=_sp.STDOUT)
@@ -45636,7 +45669,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     if base_path == "/api/v2/backtesting/run-replay-proposals" and method == "POST":
         try:
             import subprocess as _sp
-            _sp.Popen([str(PROJECT_ROOT / ".venv/bin/python"),
+            _sp.Popen([_project_python(),
                        str(PROJECT_ROOT / "scripts/enterprise_backtester.py"),
                        "--replay-proposals", "--apply", "--verbose"],
                       cwd=str(PROJECT_ROOT), stdout=_sp.PIPE, stderr=_sp.STDOUT)
@@ -45648,7 +45681,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         strat = base_path.split("/")[-1]
         try:
             import subprocess as _sp
-            _sp.Popen([str(PROJECT_ROOT / ".venv/bin/python"),
+            _sp.Popen([_project_python(),
                        str(PROJECT_ROOT / "scripts/enterprise_backtester.py"),
                        "--replay-trades", "--strategy", strat, "--apply", "--verbose"],
                       cwd=str(PROJECT_ROOT), stdout=_sp.PIPE, stderr=_sp.STDOUT)
@@ -45757,7 +45790,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     if base_path == "/api/v2/backtesting/analyze-trades" and method == "POST":
         try:
             import subprocess as _sp
-            _sp.Popen([str(PROJECT_ROOT / ".venv/bin/python"),
+            _sp.Popen([_project_python(),
                        str(PROJECT_ROOT / "scripts/backtest_analyzer.py"),
                        "--analyze-trades", "--limit", "5", "--verbose",
                        "--output-json", str(PROJECT_ROOT / "data/portfolios/state/backtest_analysis_latest.json")],
@@ -45770,7 +45803,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         strat = base_path.split("/")[-1]
         try:
             import subprocess as _sp
-            _sp.Popen([str(PROJECT_ROOT / ".venv/bin/python"),
+            _sp.Popen([_project_python(),
                        str(PROJECT_ROOT / "scripts/backtest_analyzer.py"),
                        "--backtest-strategy", strat, "--limit", "20", "--verbose",
                        "--output-json", str(PROJECT_ROOT / f"data/portfolios/state/backtest_incubator_{strat}.json")],
@@ -45782,7 +45815,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     if base_path == "/api/v2/backtesting/all-incubator" and method == "POST":
         try:
             import subprocess as _sp
-            _sp.Popen([str(PROJECT_ROOT / ".venv/bin/python"),
+            _sp.Popen([_project_python(),
                        str(PROJECT_ROOT / "scripts/backtest_analyzer.py"),
                        "--all-strategies", "--limit", "15", "--verbose",
                        "--output-json", str(PROJECT_ROOT / "data/portfolios/state/backtest_incubator_all.json")],
@@ -45864,7 +45897,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     if base_path == "/api/v2/backtesting/run-trailing-analysis" and method == "POST":
         try:
             import subprocess as _sp
-            _sp.Popen([str(PROJECT_ROOT / ".venv/bin/python"),
+            _sp.Popen([_project_python(),
                        str(PROJECT_ROOT / "scripts/trailing_stop_analyzer.py")],
                       cwd=str(PROJECT_ROOT), stdout=_sp.PIPE, stderr=_sp.STDOUT)
             return 200, {"ok": True, "message": "Trailing stop analysis started in background"}
@@ -46001,7 +46034,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     if base_path == "/api/v2/backtesting/run-mfe-analysis" and method == "POST":
         try:
             import subprocess as _sp
-            _sp.Popen([str(PROJECT_ROOT / ".venv/bin/python"),
+            _sp.Popen([_project_python(),
                        str(PROJECT_ROOT / "scripts/trade_execution_analyzer.py"), "--all"],
                       cwd=str(PROJECT_ROOT), stdout=_sp.PIPE, stderr=_sp.STDOUT)
             return 200, {"ok": True, "message": "MFE analysis + trailing optimization started"}
