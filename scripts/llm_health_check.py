@@ -15,7 +15,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-LANES = ("local", "grok", "chatgpt", "deepseek-flash", "deepseek-v4")
+LANES = ("local", "grok", "chatgpt", "deepseek-flash", "deepseek-v4-pro")
 
 
 def lane_status() -> dict:
