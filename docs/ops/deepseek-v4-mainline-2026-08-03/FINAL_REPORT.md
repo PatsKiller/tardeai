@@ -9,7 +9,7 @@
 | Branch | `fix/deepseek-v4-routing-mainline` |
 | Worktree | `/home/johnclaw/tradeai-wt-deepseek-v4-mainline` |
 | origin/main base | `ddef4613ec362e6c32307160aba8f4a56b835a20` |
-| Final code SHA | *(stamped after final commit)* |
+| Final code SHA | `e02ed97f79ebeb81915cf0b1b13e14668d9870bf`
 | Prior checkpoint | `6e7070cae536988f4157333111b385490a7b395f` (ancestor) |
 | Backup pre-cleanup | `11707968e02908980761bd8f5b61855f078f4326` |
 
