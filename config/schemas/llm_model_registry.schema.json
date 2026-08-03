@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tradeai.llm_model_registry.v1",
+  "title": "Trade AI LLM Model Registry",
+  "type": "object",
+  "required": ["version", "effective_at", "providers", "logical_policies"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "type": "integer", "minimum": 1 },
+    "effective_at": { "type": "string", "minLength": 8 },
+    "registry_schema": { "type": "string" },
+    "providers": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "required": ["provider_family", "base_url", "auth_type", "auth_env", "enabled", "models"],
+        "properties": {
+          "provider_family": { "type": "string" },
+          "base_url": { "type": "string", "format": "uri" },
+          "auth_type": { "type": "string" },
+          "credential_slot": { "type": "string" },
+          "auth_env": { "type": "string" },
+          "compatibility_auth_env": { "type": "string" },
+          "enabled": { "type": "boolean" },
+          "kill_switch": { "type": "boolean" },
+          "models": {
+            "type": "object",
+            "minProperties": 1,
+            "additionalProperties": {
+              "type": "object",
+              "required": ["model_id", "display_name", "enabled"],
+              "properties": {
+                "model_id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9.-]*$" },
+                "display_name": { "type": "string" },
+                "context_window": { "type": "integer" },
+                "max_output_tokens": { "type": "integer" },
+                "structured_output": { "type": "boolean" },
+                "tool_use": { "type": "boolean" },
+                "thinking_supported": { "type": "boolean" },
+                "thinking_default": { "type": "string" },
+                "allowed_reasoning_effort": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                },
+                "unsupported_params_in_thinking_mode": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                },
+                "latency_class": { "type": "string" },
+                "concurrency_limit": { "type": "integer" },
+                "pricing_snapshot_usd_per_million_tokens": { "type": "object" },
+                "pricing_effective_at": { "type": "string" },
+                "enabled": { "type": "boolean" },
+                "operator_cost_confirmation_for": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                },
+                "last_capability_probe": { "type": ["string", "null"] },
+                "probe_artifact": { "type": ["string", "null"] }
+              },
+              "additionalProperties": true
+            }
+          },
+          "legacy_model_ids_rejected": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "legacy_lane_aliases": { "type": "object" },
+          "fallback_policy": { "type": "string" }
+        },
+        "additionalProperties": true
+      }
+    },
+    "logical_policies": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "required": ["provider", "model", "thinking"],
+        "properties": {
+          "provider": { "type": "string" },
+          "model": { "type": "string" },
+          "thinking": { "type": "string", "enum": ["enabled", "disabled"] },
+          "reasoning_effort": { "type": "string" },
+          "requires_operator_cost_confirmation": { "type": "boolean" }
+        },
+        "additionalProperties": true
+      }
+    }
+  }
+}

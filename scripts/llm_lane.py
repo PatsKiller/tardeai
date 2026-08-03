@@ -1,11 +1,16 @@
-"""llm_lane.py — unified FREE LLM lanes: Grok OAuth (xAI proxy :8645), ChatGPT OAuth (codex proxy :8646),
-or local gemma. No metered APIs, no API keys.
+"""llm_lane.py — unified LLM lanes: Grok OAuth (xAI proxy :8645), ChatGPT OAuth (codex proxy :8646),
+DeepSeek V4 (paid API: exact models deepseek-v4-flash / deepseek-v4-pro), or local gemma.
 
-All cloud lanes are free OAuth via local proxies (Grok = hermes xAI proxy; ChatGPT = chatgpt_oauth_proxy.py
-driving the authed hermes openai-codex CLI). Local gemma via ollama. generate() returns the raw text; the
-caller parses. `available()` uses lib.oauth_lane_status (canonical). Pass process_id to enable consumption
-tracking + Automated/Manual gating (lib.llm_consumption).
+DeepSeek:
+  - Exact provider model IDs only (verified via /v1/models).
+  - Logical policies: FAST, FAST_THINK, PRO, PRO_THINK, PRO_MAX (see config/llm_model_registry.json).
+  - Legacy IDs deepseek-chat / deepseek-reasoner are REJECTED (provider silently remaps them to Flash).
+  - No silent fallback to Gemma when DeepSeek is requested.
+
+Grok/ChatGPT remain free OAuth via local proxies. Pass process_id for consumption gating.
 """
+from __future__ import annotations
+
 import os
 import sys
 from pathlib import Path
@@ -17,9 +22,45 @@ if str(_SCRIPTS) not in sys.path:
 _GROK_URL = os.environ.get("HERMES_XAI_PROXY_URL", "http://127.0.0.1:8645/v1/chat/completions")
 _CHATGPT_URL = os.environ.get("CHATGPT_PROXY_URL", "http://127.0.0.1:8646").rstrip("/")
 
+# Legacy lane names still accepted as *logical* aliases → registry policies.
+# They must NOT map to deepseek-chat / deepseek-reasoner model IDs.
+_DEEPSEEK_LANES = frozenset({
+    "deepseek-flash",
+    "deepseek-v4-flash",
+    "deepseek-v4-pro",
+    "fast",
+    "fast_think",
+    "pro",
+    "pro_think",
+    "pro_max",
+})
+# Ambiguous legacy — accepted only to raise a typed error (never route)
+_AMBIGUOUS_DEEPSEEK = frozenset({"deepseek-v4", "deepseek_v4"})
+
+
+def _deepseek_available() -> bool:
+    """Probe: key present + /v1/models returns both exact V4 IDs."""
+    try:
+        from lib.deepseek_client import DeepSeekError, list_models
+        info = list_models(timeout=8)
+        return bool(info.get("has_v4_flash") and info.get("has_v4_pro"))
+    except Exception:
+        try:
+            from lib.llm_model_registry import get_deepseek_api_key
+            key, _, _ = get_deepseek_api_key()
+            return bool(key)
+        except Exception:
+            return False
+
 
 def available(lane):
-    lane = (lane or "").lower()
+    """Return True only when the lane can actually serve requests.
+
+    Unknown lanes return False (never available=True for unknown).
+    """
+    lane = (lane or "").lower().strip()
+    if not lane:
+        return False
     if lane == "local":
         try:
             import requests
@@ -40,7 +81,82 @@ def available(lane):
                 return bool(h.get("authenticated")) and not h.get("token_expired")
             except Exception:
                 return False
-    return True
+    if lane in _AMBIGUOUS_DEEPSEEK:
+        return False  # never available=True for ambiguous alias
+    if lane in _DEEPSEEK_LANES:
+        return _deepseek_available()
+    # Unknown lane — never report available
+    return False
+
+
+def _resolve_deepseek_policy(lane: str, model: str | None) -> str:
+    from lib.llm_model_registry import RegistryError, resolve_lane_alias, reject_legacy_model_id
+
+    if model:
+        reject_legacy_model_id(model)
+        if model == "deepseek-v4-flash":
+            return "FAST"
+        if model == "deepseek-v4-pro":
+            return "PRO"  # exact model without think request → PRO non-thinking
+        raise RegistryError(f"unsupported explicit model override: {model!r}")
+    pol = resolve_lane_alias(lane)  # may raise AmbiguousLegacyLane
+    if not pol:
+        raise RegistryError(f"not a DeepSeek lane: {lane!r}")
+    return pol
+
+
+def _deepseek_generate(
+    prompt,
+    *,
+    lane: str,
+    model: str | None,
+    timeout: float,
+    operator_confirmed: bool = False,
+    response_json: bool = False,
+):
+    """Call exact DeepSeek V4 models via canonical client. Raises on failure — no Gemma fallback."""
+    from lib.deepseek_client import DeepSeekError, chat
+    from lib.llm_model_registry import RegistryError
+
+    try:
+        policy = _resolve_deepseek_policy(lane, model)
+        resp = chat(
+            policy=policy,
+            prompt=prompt,
+            timeout=timeout,
+            operator_confirmed=operator_confirmed,
+            response_json=response_json,
+            max_tokens=2048,
+        )
+    except (RegistryError, DeepSeekError) as e:
+        code = getattr(e, "code", "POLICY_BLOCKED")
+        raise RuntimeError(f"{code}: {e}") from e
+
+    if not resp.ok or not resp.content:
+        raise RuntimeError(
+            f"{resp.error_class or 'DEEPSEEK_FAILED'}: "
+            f"policy={resp.requested_policy} model={resp.requested_model_id} "
+            f"returned={resp.returned_model} {resp.error_message or ''}".strip()
+        )
+    # provenance dict for callers that inspect usage via consumption logger
+    usage = dict(resp.usage or {})
+    usage["_tradeai"] = {
+        "requested_policy": resp.requested_policy,
+        "executed_policy": resp.executed_policy,
+        "requested_model_id": resp.requested_model_id,
+        "returned_model": resp.returned_model,
+        "thinking": resp.thinking,
+        "reasoning_effort": resp.reasoning_effort,
+        "request_id": resp.request_id,
+        "client_request_id": resp.client_request_id,
+        "latency_ms": resp.latency_ms,
+        "estimated_cost_usd": resp.estimated_cost_usd,
+        "cost_basis": resp.cost_basis,
+        "finish_reason": resp.finish_reason,
+        "raw_response_hash": resp.raw_response_hash,
+        "fallback_used": resp.fallback_used,
+    }
+    return resp.content, usage, resp
 
 
 def generate(
@@ -54,16 +170,83 @@ def generate(
     manual_trigger=False,
     metadata=None,
     _skip_consumption=False,
+    operator_confirmed=False,
+    response_json=False,
+    return_provenance=False,
 ):
-    """Generate text. When process_id is set, routes through consumption gate (Automated/Manual)."""
-    if process_id and not _skip_consumption and lane in ("grok", "chatgpt"):
+    """Generate text. When process_id is set, routes through consumption gate (Automated/Manual).
+
+    DeepSeek failures raise RuntimeError — they never fall through to local Gemma.
+    If return_provenance=True, returns (text, provenance_dict) for DeepSeek paths.
+    """
+    lane_l = (lane or "grok").lower().strip()
+
+    if lane_l in _AMBIGUOUS_DEEPSEEK:
+        raise RuntimeError(
+            "AMBIGUOUS_LEGACY_LANE: 'deepseek-v4' is not exact. "
+            "Use FAST/FAST_THINK/PRO/PRO_THINK/PRO_MAX or deepseek-v4-flash / deepseek-v4-pro."
+        )
+
+    deepseek_requested = lane_l in _DEEPSEEK_LANES
+
+    if process_id and not _skip_consumption and (
+        lane_l in ("grok", "chatgpt") or deepseek_requested
+    ):
         from lib.llm_consumption import gate_and_generate
         return gate_and_generate(
-            prompt, lane=lane, process_id=process_id, task_summary=task_summary,
+            prompt, lane=lane_l, process_id=process_id, task_summary=task_summary,
             manual_trigger=manual_trigger, timeout=timeout, model=model, metadata=metadata,
+            operator_confirmed=operator_confirmed,
+            response_json=response_json,
         )
-    lane = (lane or "grok").lower()
-    if lane == "grok":
+
+    # ── DeepSeek lanes (paid API key, exact V4 models) ──
+    if deepseek_requested:
+        text, usage, resp = _deepseek_generate(
+            prompt,
+            lane=lane_l,
+            model=model,
+            timeout=timeout,
+            operator_confirmed=operator_confirmed or bool((metadata or {}).get("operator_cost_confirmed")),
+            response_json=response_json,
+        )
+        provenance = {
+            "usage": {k: v for k, v in usage.items() if k != "_tradeai"},
+            "_tradeai": usage.get("_tradeai") or {},
+        }
+        if process_id and not _skip_consumption:
+            try:
+                from lib.llm_consumption import log_call
+                ta = provenance["_tradeai"]
+                log_call(
+                    lane=lane_l,
+                    process_id=process_id,
+                    task_summary=task_summary or prompt[:160],
+                    trigger_mode="manual" if manual_trigger else "automated",
+                    success=True,
+                    model_name=resp.returned_model or resp.requested_model_id,
+                    prompt=prompt,
+                    response=text,
+                    tokens_in=usage.get("prompt_tokens"),
+                    tokens_out=usage.get("completion_tokens"),
+                    estimated_cost_usd=ta.get("estimated_cost_usd"),
+                    cost_basis=ta.get("cost_basis"),
+                    requested_policy=ta.get("requested_policy"),
+                    executed_policy=ta.get("executed_policy"),
+                    requested_model_id=ta.get("requested_model_id"),
+                    returned_model=ta.get("returned_model"),
+                    thinking=ta.get("thinking"),
+                    reasoning_effort=ta.get("reasoning_effort"),
+                    provider_request_id=ta.get("request_id"),
+                    metadata={**(metadata or {}), **ta},
+                )
+            except Exception:
+                pass
+        if return_provenance:
+            return text, provenance
+        return text
+
+    if lane_l == "grok":
         import requests
         r = requests.post(_GROK_URL, json={"model": model or "grok-3-mini",
                                            "messages": [{"role": "user", "content": prompt}], "temperature": 0.3},
@@ -82,7 +265,7 @@ def generate(
             except Exception:
                 pass
         return body["choices"][0]["message"]["content"]
-    if lane == "chatgpt":
+    if lane_l == "chatgpt":
         import requests
         r = requests.post(_CHATGPT_URL + "/v1/chat/completions",
                           json={"model": model or "gpt-5.4", "messages": [{"role": "user", "content": prompt}]},
@@ -103,5 +286,13 @@ def generate(
             except Exception:
                 pass
         return body["choices"][0]["message"]["content"]
-    import local_llm
-    return local_llm.generate(prompt, timeout=timeout)
+
+    if lane_l == "local":
+        import local_llm
+        return local_llm.generate(prompt, timeout=timeout)
+
+    # Unknown lane — fail closed (do NOT fall through to Gemma while claiming another provider)
+    raise RuntimeError(
+        f"UNKNOWN_LANE: lane={lane!r} is not registered; "
+        "refusing silent local-Gemma fallback"
+    )

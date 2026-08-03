@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "effective_at": "2026-08-03",
+  "providers": {
+    "deepseek": {
+      "provider_family": "deepseek",
+      "base_url": "https://api.deepseek.com",
+      "auth_type": "api_key",
+      "auth_env": "deepseek_tradeai",
+      "compatibility_auth_env": "DEEPSEEK_API_KEY",
+      "enabled": true,
+      "models": {
+        "deepseek_flash": {
+          "model_id": "deepseek-v4-flash",
+          "display_name": "Flash",
+          "enabled": true
+        }
+      }
+    }
+  },
+  "logical_policies": {
+    "FAST": {
+      "provider": "deepseek",
+      "model": "deepseek_flash",
+      "thinking": "disabled"
+    }
+  }
+}

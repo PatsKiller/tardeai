@@ -1,0 +1,56 @@
+{
+  "generated_at": "2026-08-03T14:39:41.999954+00:00",
+  "runs": [
+    {
+      "name": "deepseek_mocked_matrix+json+tool+cost+registry",
+      "command": "pytest tests/test_deepseek_provider_matrix.py tests/test_deepseek_json_contracts.py tests/test_deepseek_tool_replay.py tests/test_deepseek_cost_governance.py tests/test_llm_model_registry.py tests/test_llm_governance_no_override.py tests/test_no_broker_write_bypass.py",
+      "passed": 86,
+      "failed": 0,
+      "exit_code": 0,
+      "log": "/tmp/ds_matrix_tests2.txt"
+    },
+    {
+      "name": "safety_authority",
+      "command": "pytest tests/test_no_broker_write_bypass.py tests/test_llm_governance_no_override.py tests/test_execution_readiness.py tests/test_evidence_bound_approval.py",
+      "passed": 35,
+      "failed": 0,
+      "exit_code": 0,
+      "log": "/tmp/ds_safety.txt"
+    },
+    {
+      "name": "live_flash_pro_smoke_interactive",
+      "command": "scripts deepseek_client chat policies FAST/FAST_THINK/PRO/PRO_THINK + JSON",
+      "passed": 6,
+      "failed": 0,
+      "exit_code": 0,
+      "log": "/tmp/deepseek-v4-mainline-live/LIVE_SMOKE.json",
+      "note": "interactive user env with deepseek_tradeai; NOT portfolio-server service context"
+    },
+    {
+      "name": "frontend_tsc",
+      "command": "npx tsc -p tsconfig.json --noEmit",
+      "passed": 1,
+      "failed": 0,
+      "exit_code": 0,
+      "log": "/tmp/ds_tsc3.txt"
+    },
+    {
+      "name": "frontend_build",
+      "command": "npm run build",
+      "passed": 1,
+      "failed": 0,
+      "exit_code": 0,
+      "log": "/tmp/ds_build3.txt"
+    },
+    {
+      "name": "v3_route_maturity_live_deployed_spa",
+      "command": "python scripts/v3_route_maturity_probe.py",
+      "passed": 14,
+      "failed": 6,
+      "total": 20,
+      "exit_code": 1,
+      "log": "docs/ops/deepseek-v4-mainline-2026-08-03/V3_ROUTE_TEST_RESULTS.json",
+      "note": "Targets live :7777 release SPA, not this branch's unbuilt serve; API 500s and React errors on deploy"
+    }
+  ]
+}

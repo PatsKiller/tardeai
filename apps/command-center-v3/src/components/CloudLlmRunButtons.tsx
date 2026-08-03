@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { lanesForPolicy, runBrokerCloudLane, runManualCloud, runStopAdvisory, runStopAdvisoryBatch, runWatchlistCioSynthesis, type LanePolicy } from '../lib/cloudLlmRun'
+import { lanesForPolicy, runBrokerCloudLane, runManualCloud, runStopAdvisory, runStopAdvisoryBatch, runWatchlistCioSynthesis, type LanePolicy, type LaneId } from '../lib/cloudLlmRun'
 import { useOAuthLanes, laneReady } from '../hooks/useOAuthLanes'
 
-const GROK = '#1d9bf0', GPT = '#10a37f', MUTED = '#94a3b8'
+const GROK = '#1d9bf0', GPT = '#10a37f', DEEPSEEK = '#a855f7', MUTED = '#94a3b8'
 
 type Props = {
   processId: string
@@ -23,7 +23,7 @@ export default function CloudLlmRunButtons({
   processId, lanePolicy = 'either', proposalId, symbol, prompt, taskSummary, compact, batchLimit, onDone,
 }: Props) {
   const oauth = useOAuthLanes(0)
-  const [busy, setBusy] = useState<'grok' | 'chatgpt' | null>(null)
+  const [busy, setBusy] = useState<LaneId | null>(null)
   const [msg, setMsg] = useState('')
 
   const lanes = lanesForPolicy(lanePolicy)
@@ -32,9 +32,18 @@ export default function CloudLlmRunButtons({
   const isStopAdvisory = processId === 'holding_protection_advisor' && !!symbol
   const needsPrompt = !proposalId && !prompt && !isBatch && !isWatchlistCio && !isStopAdvisory
 
-  const run = async (lane: 'grok' | 'chatgpt') => {
-    if (!laneReady(lane === 'grok' ? oauth.grok : oauth.chatgpt)) {
-      setMsg(`⛔ ${lane} OAuth not ready — Ops → Consumption`)
+  const run = async (lane: 'grok' | 'chatgpt' | 'deepseek-flash' | 'deepseek-v4-pro') => {
+    const isOAuth = lane === 'grok' || lane === 'chatgpt'
+    const isDeepSeek = lane === 'deepseek-flash' || lane === 'deepseek-v4-pro'
+
+    // Check readiness: OAuth lanes check via oauth hook, DeepSeek via ready flag
+    if (isOAuth) {
+      if (!laneReady(lane === 'grok' ? oauth.grok : oauth.chatgpt)) {
+        setMsg(`⛔ ${lane} OAuth not ready — Ops → Consumption`)
+        return
+      }
+    } else if (isDeepSeek && !oauth.deepseekReady) {
+      setMsg(`⛔ ${lane} API not ready — DeepSeek credentials not configured`)
       return
     }
     setBusy(lane)
@@ -98,6 +107,18 @@ export default function CloudLlmRunButtons({
         <button type="button" disabled={!!busy} onClick={() => void run('chatgpt')}
           style={btnStyle(GPT, busy === 'chatgpt', compact)}>
           {busy === 'chatgpt' ? '…' : '▶ ChatGPT'}
+        </button>
+      )}
+      {lanes.includes('deepseek-flash') && (
+        <button type="button" disabled={!!busy} onClick={() => void run('deepseek-flash')}
+          style={btnStyle(DEEPSEEK, busy === 'deepseek-flash', compact)}>
+          {busy === 'deepseek-flash' ? '…' : '▶ DeepSeek Flash'}
+        </button>
+      )}
+      {lanes.includes('deepseek-v4-pro') && (
+        <button type="button" disabled={!!busy} onClick={() => void run('deepseek-v4-pro')}
+          style={btnStyle(DEEPSEEK, busy === 'deepseek-v4-pro', compact)}>
+          {busy === 'deepseek-v4-pro' ? '…' : '▶ DeepSeek V4 Pro'}
         </button>
       )}
       {msg && <span style={{ fontSize: compact ? 9 : 10, color: msg.startsWith('✓') ? '#22c55e' : '#ef4444', maxWidth: 220 }}>{msg}</span>}

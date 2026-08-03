@@ -12420,12 +12420,51 @@ def _watch_decision_latest(query=None):
 def _ticket_review_run(body):
     """POST /api/v2/watch/ticket-review/run {symbol, lanes?} — free critic lanes
     on the live actionable ticket, detached worker (results land in the packet's
-    ticket_review; poll status). Advisory only; deterministic authority unchanged."""
+    ticket_review; poll status). Advisory only; deterministic authority unchanged.
+
+    Paid / operator-confirmed policies (DeepSeek Pro, PRO_THINK, PRO_MAX, etc.) are
+    rejected here. Use /api/v2/watch/ticket-review/premium/estimate + /premium/run.
+    Metered Flash may run only as an explicit single-lane request, never as a silent
+    free-ensemble default.
+    """
     b = body or {}
     sym = str(b.get("symbol") or "").upper()
     if not sym:
         return {"ok": False, "error": "symbol required"}
     lanes = str(b.get("lanes") or "local,grok,chatgpt")
+    parts = [p.strip().lower() for p in lanes.split(",") if p.strip()]
+    free_allowed = {"local", "grok", "chatgpt"}
+    # Explicit single-lane metered Flash is allowed; Pro/policies needing confirmation are not.
+    metered_flash = {"deepseek-flash", "deepseek-v4-flash", "fast", "fast_think"}
+    blocked_paid = {
+        "deepseek-v4-pro", "deepseek-v4", "pro", "pro_think", "pro_max",
+        "deepseek-chat", "deepseek-reasoner",
+    }
+    for p in parts:
+        if p in blocked_paid or p.startswith("pro"):
+            return {
+                "ok": False,
+                "error": (
+                    "PAID_LANE_REQUIRES_PREMIUM_FLOW: lane "
+                    f"{p!r} cannot use free ticket-review/run. "
+                    "Use PAID EXPERT… → /api/v2/watch/ticket-review/premium/estimate "
+                    "and /premium/run with typed confirmation."
+                ),
+                "lanes": lanes,
+            }
+    # Free ensemble may not mix in metered Flash silently
+    if len(parts) > 1 and any(p in metered_flash for p in parts):
+        return {
+            "ok": False,
+            "error": (
+                "METERED_LANE_NOT_IN_FREE_ENSEMBLE: deepseek-flash must not be bundled "
+                "into free multi-lane runs (use RUN ALL FREE = local,grok,chatgpt only)."
+            ),
+            "lanes": lanes,
+        }
+    for p in parts:
+        if p not in free_allowed and p not in metered_flash:
+            return {"ok": False, "error": f"unknown or disallowed free-review lane: {p!r}", "lanes": lanes}
     import subprocess
     subprocess.Popen([str(PROJECT_ROOT / ".venv" / "bin" / "python"),
                       str(PROJECT_ROOT / "scripts" / "run_ticket_review_job.py"), sym, lanes],
