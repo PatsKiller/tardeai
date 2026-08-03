@@ -38,25 +38,24 @@ _DEEPSEEK_LANES = frozenset({
 _AMBIGUOUS_DEEPSEEK = frozenset({"deepseek-v4", "deepseek_v4"})
 
 
-def _deepseek_available() -> bool:
-    """Probe: key present + /v1/models returns both exact V4 IDs."""
+def _deepseek_model_available(model_id: str) -> bool:
+    """Independent probe for one exact V4 model id (uses TTL cache via consumption_run_manual)."""
     try:
-        from lib.deepseek_client import DeepSeekError, list_models
-        info = list_models(timeout=8)
-        return bool(info.get("has_v4_flash") and info.get("has_v4_pro"))
+        from lib.consumption_run_manual import deepseek_readiness_rows
+        if model_id == "deepseek-v4-flash":
+            row = next((r for r in deepseek_readiness_rows() if r["lane"] == "deepseek-flash"), None)
+        else:
+            row = next((r for r in deepseek_readiness_rows() if r["lane"] == "deepseek-v4-pro"), None)
+        return bool(row and row.get("ready"))
     except Exception:
-        try:
-            from lib.llm_model_registry import get_deepseek_api_key
-            key, _, _ = get_deepseek_api_key()
-            return bool(key)
-        except Exception:
-            return False
+        return False
 
 
 def available(lane):
     """Return True only when the lane can actually serve requests.
 
     Unknown lanes return False (never available=True for unknown).
+    Flash and Pro readiness are independent.
     """
     lane = (lane or "").lower().strip()
     if not lane:
@@ -83,8 +82,12 @@ def available(lane):
                 return False
     if lane in _AMBIGUOUS_DEEPSEEK:
         return False  # never available=True for ambiguous alias
+    if lane in ("deepseek-flash", "deepseek-v4-flash", "fast", "fast_think"):
+        return _deepseek_model_available("deepseek-v4-flash")
+    if lane in ("deepseek-v4-pro", "pro", "pro_think", "pro_max"):
+        return _deepseek_model_available("deepseek-v4-pro")
     if lane in _DEEPSEEK_LANES:
-        return _deepseek_available()
+        return False
     # Unknown lane — never report available
     return False
 
@@ -113,6 +116,7 @@ def _deepseek_generate(
     timeout: float,
     operator_confirmed: bool = False,
     response_json: bool = False,
+    max_tokens: int = 2048,
 ):
     """Call exact DeepSeek V4 models via canonical client. Raises on failure — no Gemma fallback."""
     from lib.deepseek_client import DeepSeekError, chat
@@ -120,24 +124,31 @@ def _deepseek_generate(
 
     try:
         policy = _resolve_deepseek_policy(lane, model)
+        # max_tokens must be the process-capped effective limit from the caller
+        mt = max(1, int(max_tokens or 2048))
         resp = chat(
             policy=policy,
             prompt=prompt,
             timeout=timeout,
             operator_confirmed=operator_confirmed,
             response_json=response_json,
-            max_tokens=2048,
+            max_tokens=mt,
         )
     except (RegistryError, DeepSeekError) as e:
         code = getattr(e, "code", "POLICY_BLOCKED")
         raise RuntimeError(f"{code}: {e}") from e
 
     if not resp.ok or not resp.content:
-        raise RuntimeError(
+        err = RuntimeError(
             f"{resp.error_class or 'DEEPSEEK_FAILED'}: "
             f"policy={resp.requested_policy} model={resp.requested_model_id} "
             f"returned={resp.returned_model} {resp.error_message or ''}".strip()
         )
+        # Propagate billable-attempt flags for reservation settle
+        err.request_sent = bool(getattr(resp, "request_sent", False))  # type: ignore[attr-defined]
+        err.possibly_billable = bool(getattr(resp, "possibly_billable", False))  # type: ignore[attr-defined]
+        err.estimated_cost_usd = getattr(resp, "estimated_cost_usd", None)  # type: ignore[attr-defined]
+        raise err
     # provenance dict for callers that inspect usage via consumption logger
     usage = dict(resp.usage or {})
     usage["_tradeai"] = {
@@ -155,6 +166,8 @@ def _deepseek_generate(
         "finish_reason": resp.finish_reason,
         "raw_response_hash": resp.raw_response_hash,
         "fallback_used": resp.fallback_used,
+        "request_sent": bool(getattr(resp, "request_sent", False)),
+        "possibly_billable": bool(getattr(resp, "possibly_billable", False)),
     }
     return resp.content, usage, resp
 
@@ -173,11 +186,13 @@ def generate(
     operator_confirmed=False,
     response_json=False,
     return_provenance=False,
+    max_tokens: int = 2048,
 ):
     """Generate text. When process_id is set, routes through consumption gate (Automated/Manual).
 
     DeepSeek failures raise RuntimeError — they never fall through to local Gemma.
     If return_provenance=True, returns (text, provenance_dict) for DeepSeek paths.
+    max_tokens is honored for DeepSeek provider calls (process-capped by gate_and_generate).
     """
     lane_l = (lane or "grok").lower().strip()
 
@@ -198,6 +213,7 @@ def generate(
             manual_trigger=manual_trigger, timeout=timeout, model=model, metadata=metadata,
             operator_confirmed=operator_confirmed,
             response_json=response_json,
+            max_tokens=max_tokens,
         )
 
     # ── DeepSeek lanes (paid API key, exact V4 models) ──
@@ -209,6 +225,7 @@ def generate(
             timeout=timeout,
             operator_confirmed=operator_confirmed or bool((metadata or {}).get("operator_cost_confirmed")),
             response_json=response_json,
+            max_tokens=max_tokens,
         )
         provenance = {
             "usage": {k: v for k, v in usage.items() if k != "_tradeai"},

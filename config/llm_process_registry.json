@@ -1,12 +1,13 @@
 {
-  "version": 3,
+  "version": 4,
   "default_mode": "manual",
   "lane_policies": {
     "grok_only": "Grok only \u2014 single lane",
     "chatgpt_only": "ChatGPT only",
     "either": "Operator picks Grok OR ChatGPT (one is enough)",
     "both_preferred": "Best with both lanes; either alone still useful",
-    "ensemble": "Designed to run both and reconcile"
+    "ensemble": "Designed to run both and reconcile",
+    "deepseek_only": "DeepSeek metered only (exact policy allowlist)"
   },
   "processes": [
     {
@@ -47,6 +48,30 @@
       "lane_policy": "either",
       "default_mode": "automated",
       "description": "Token roll pings (Grok + ChatGPT cron)"
+    },
+    {
+      "id": "deepseek_flash_operator_smoke",
+      "name": "DeepSeek Flash Operator Smoke",
+      "category": "System",
+      "lane_policy": "deepseek_only",
+      "default_mode": "manual",
+      "description": "Manual-only Consumption smoke for DeepSeek V4 Flash. Advisory only. No tools. No fallback.",
+      "allowed_lanes": [
+        "deepseek-flash",
+        "deepseek-v4-flash",
+        "fast"
+      ],
+      "deepseek_default_policy": "FAST",
+      "deepseek_allowed_policies": [
+        "FAST"
+      ],
+      "max_input_tokens": 64,
+      "max_output_tokens": 32,
+      "daily_soft_cap": 20,
+      "daily_cost_cap_usd": 0.05,
+      "tools_allowed": false,
+      "fallback_allowed": false,
+      "advisory_only": true
     },
     {
       "id": "rotation_grok_review",

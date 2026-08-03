@@ -9,7 +9,9 @@ export type OAuthLane = {
   token_expired?: boolean
   status?: string
   hint?: string | null
+  reason_code?: string | null
   billing?: string
+  kind?: string
   port?: number
   last_ok?: number
   consec_fail?: number
@@ -47,16 +49,22 @@ export function useOAuthLanes(pollMs = 120_000) {
   }, [refresh, pollMs])
 
   const byLane = (id: string) => (data?.lanes || []).find(l => l.lane === id)
+  const deepseekFlash = byLane('deepseek-flash')
+  const deepseekPro = byLane('deepseek-v4-pro')
+  // Metered DeepSeek: trust explicit ready; fall back to status === 'ready'
+  const deepseekFlashReady = Boolean(deepseekFlash?.ready ?? (deepseekFlash?.status === 'ready'))
+  const deepseekProReady = Boolean(deepseekPro?.ready ?? (deepseekPro?.status === 'ready'))
 
   return {
     lanes: data?.lanes || [],
     grok: byLane('grok'),
     chatgpt: byLane('chatgpt'),
-    deepseek_flash: byLane('deepseek-flash'),
-    deepseek_pro: byLane('deepseek-v4-pro'),
+    deepseek_flash: deepseekFlash,
+    deepseek_pro: deepseekPro,
     grokReady: laneReady(byLane('grok')),
     chatgptReady: laneReady(byLane('chatgpt')),
-    deepseekReady: byLane('deepseek-flash')?.ready ?? false,
+    deepseekReady: deepseekFlashReady,
+    deepseekProReady,
     readyCount: data?.ready_count,
     note: data?.note,
     loading,

@@ -2,6 +2,9 @@
  * Plus DeepSeek metered API lanes — deepseek-flash / deepseek-v4. */
 
 export type LanePolicy = 'grok_only' | 'chatgpt_only' | 'deepseek_only' | 'either' | 'both_preferred' | 'ensemble'
+
+/** Manual Consumption Flash smoke process — FAST only, never Pro. */
+export const DEEPSEEK_FLASH_SMOKE_PROCESS = 'deepseek_flash_operator_smoke'
 export type LaneId = 'grok' | 'chatgpt' | 'deepseek-flash' | 'deepseek-v4-flash' | 'deepseek-v4-pro' | 'fast' | 'pro' | 'pro_think' | 'local'
 
 /** Bundled from config/llm_process_registry.json — UI fallback when API omits lane_policy. */
@@ -11,6 +14,7 @@ export const PROCESS_LANE_POLICIES: Record<string, LanePolicy> = {
   broker_cloud_oversight: 'both_preferred',
   cloud_review: 'both_preferred',
   oauth_lane_keepalive: 'either',
+  deepseek_flash_operator_smoke: 'deepseek_only',
   rotation_grok_review: 'grok_only',
   rotation_oversight: 'ensemble',
   watchlist_cio_synthesis: 'ensemble',
@@ -42,17 +46,47 @@ export function lanesForPolicy(policy: LanePolicy | string | undefined): LaneId[
   return ['grok', 'chatgpt', 'deepseek-flash'] // either — show all, operator picks
 }
 
+export type ManualCloudResult = {
+  ok: boolean
+  text?: string | null
+  error?: string
+  reason_code?: string
+  manual_required?: boolean
+  lane?: string
+  process_id?: string
+  requested_policy?: string | null
+  executed_policy?: string | null
+  requested_model_id?: string | null
+  returned_model?: string | null
+  thinking?: string | null
+  request_id?: string | null
+  tokens_in?: number | null
+  tokens_out?: number | null
+  estimated_cost_usd?: number | null
+  latency_ms?: number | null
+  fallback_used?: boolean
+  billing?: string
+}
+
 export async function runManualCloud(params: {
   process_id: string
   lane: LaneId
   prompt: string
   task_summary?: string
   timeout?: number
-}): Promise<{ ok: boolean; text?: string; error?: string; manual_required?: boolean }> {
+}): Promise<ManualCloudResult> {
+  // Never send operator_confirmed — generic endpoint cannot authorize Pro.
+  const body = {
+    process_id: params.process_id,
+    lane: params.lane,
+    prompt: params.prompt,
+    task_summary: params.task_summary,
+    timeout: params.timeout,
+  }
   const res = await fetch('/api/v2/consumption/run-manual', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(params),
+    body: JSON.stringify(body),
   })
   const j = await res.json()
   const d = j?.data ?? j
