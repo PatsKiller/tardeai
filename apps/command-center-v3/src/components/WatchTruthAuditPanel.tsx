@@ -543,6 +543,8 @@ export default function WatchTruthAuditPanel() {
   const [message, setMessage] = useState('')
   const [premium, setPremium] = useState<any>(null)
   const [confirmation, setConfirmation] = useState('')
+  /** Live critic verdicts from ticket-review/status while/after a run (desk cache lags). */
+  const [ticketOverlay, setTicketOverlay] = useState<Record<string, string> | null>(null)
 
   // One MAIN fetch; client splits ticket-honest GO/WAIT/NOGO. Legacy = old warehouse.
   const itemsPath = lane === 'legacy'
@@ -554,6 +556,7 @@ export default function WatchTruthAuditPanel() {
   const { data: fv } = useApi<any>('/api/v2/finviz-strip-map', 300_000)
   const { data: cards } = useApi<any>('/api/v2/symbol-cards', 300_000)
   const { data: lv } = useApi<any>('/api/v2/ui/prefs/get?key=portfolio.reentry.resistance.v1', 300_000)
+  const { data: freeLlmWeekly } = useApi<any>('/api/v2/watch/free-llm-weekly', 300_000)
   const paMap = useProAnalystMap()
   const levelMap: Record<string, any> = lv?.data?.value?.symbols ?? lv?.value?.symbols ?? {}
 
@@ -701,12 +704,19 @@ export default function WatchTruthAuditPanel() {
 
   const selectedRowRaw = classified.find(row => row.symbol === selected)
   const selectedDesk = selectedRowRaw ? deskBySymbol[selectedRowRaw.symbol] : null
-  // Always prefer desk ticket projection so DeepSeek Flash/v4 appear even if local packet lag
+  // Prefer: live status overlay > decision-desk > packet ticketState
   const selectedRow = selectedRowRaw
-    ? { ...selectedRowRaw, ticket: mergeTicket(selectedRowRaw.ticket, selectedDesk?.ticket) }
+    ? {
+        ...selectedRowRaw,
+        ticket: mergeTicket(
+          mergeTicket(selectedRowRaw.ticket, selectedDesk?.ticket),
+          ticketOverlay || undefined,
+        ),
+      }
     : null
+  const freeLlmStamp = freeLlmWeekly?.data ?? freeLlmWeekly
   const selectForReview = (symbol: string) => {
-    setSelected(symbol); setOpen(true); setMessage(''); setPremium(null); updateReviewUrl(symbol, true)
+    setSelected(symbol); setOpen(true); setMessage(''); setPremium(null); setTicketOverlay(null); updateReviewUrl(symbol, true)
   }
   const setDeskOpen = (next: boolean) => { setOpen(next); updateReviewUrl(selected, next) }
 
@@ -747,8 +757,12 @@ export default function WatchTruthAuditPanel() {
     if (!selected || reviewBusy) return
     setReviewBusy(label); setMessage('')
     const wanted = lanes.split(',').map(s => s.trim()).filter(Boolean)
+    const heavy = wanted.some(l => l === 'deepseek-v4' || l.includes('deepseek-v4'))
+    // v4 reasoner+json-retry routinely 60–120s; 90s poll made "nothing happened"
+    const pollMs = heavy ? 200_000 : 120_000
+    const t0 = Date.now()
     try {
-      // Hard gate: no ticket → DeepSeek cannot run. Do not fake a 90s poll.
+      // Hard gate: no ticket → DeepSeek cannot run. Do not fake a long poll.
       const det = String(selectedRow?.ticket?.deterministic || 'NOT RUN').toUpperCase()
       if (det === 'NOT RUN' || det === 'NOT_RUN' || det === 'DETERMINISTIC_NOT_RUN') {
         setMessage(
@@ -757,6 +771,12 @@ export default function WatchTruthAuditPanel() {
         )
         return
       }
+      // Optimistic: mark requested lanes as RUNNING in the strip so the click is visible
+      setTicketOverlay(prev => {
+        const next = { ...(prev || {}) }
+        for (const lane of wanted) next[lane] = 'RUNNING'
+        return next
+      })
       const response = await fetch('/api/v2/watch/ticket-review/run', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ symbol: selected, lanes }),
@@ -767,6 +787,7 @@ export default function WatchTruthAuditPanel() {
       if (data?.blocked || data?.state === 'BLOCKED' || data?.ok === false) {
         const code = data?.block_code || 'GATE_BLOCKED'
         const detail = data?.block_detail || data?.error || 'critic gate blocked'
+        setTicketOverlay(null)
         setMessage(
           `${selected} — ${code}: ${detail}`
           + (data?.plan_endpoint ? ' → use Build entry plan, then re-run critics.' : ''),
@@ -776,12 +797,12 @@ export default function WatchTruthAuditPanel() {
         return
       }
       if (!response.ok) throw new Error(data?.error || 'review failed')
-      setMessage(`${selected} — ${label} queued… polling for verdicts.`)
-      // Poll packet until requested lanes report a non-empty verdict (up to ~90s).
-      const deadline = Date.now() + 90_000
+      const expect = heavy ? 'expect 60–180s for DeepSeek v4' : 'expect 15–90s'
+      setMessage(`${selected} — ${label} running… ${expect}`)
       let lastSnap = ''
-      while (Date.now() < deadline) {
-        await new Promise(r => window.setTimeout(r, 4000))
+      while (Date.now() - t0 < pollMs) {
+        await new Promise(r => window.setTimeout(r, 3000))
+        const elapsed = Math.round((Date.now() - t0) / 1000)
         try {
           const st = await fetch(`/api/v2/watch/ticket-review/status?symbol=${encodeURIComponent(selected)}`, { cache: 'no-store' })
           const body = await st.json().catch(() => ({}))
@@ -795,34 +816,50 @@ export default function WatchTruthAuditPanel() {
               + 'Build entry plan / validate ticket first.',
             )
             lastSnap = 'BLOCKED'
+            setTicketOverlay(null)
             break
           }
           const reviews = tr?.reviews || {}
           const recLanes = (tr?.reconciled || {}).reviews || {}
+          const recState = String((tr?.reconciled || {}).state || '').toUpperCase()
+          // Push live verdicts into the ticket strip immediately (do not wait for desk poll)
+          const overlay: Record<string, string> = {}
+          if (recState) overlay.reconciled = recState
+          for (const lane of ['local', 'deepseek-flash', 'deepseek-v4', 'grok', 'chatgpt']) {
+            const v = String(reviews?.[lane]?.verdict || recLanes?.[lane] || '').toUpperCase()
+            if (v && v !== 'NOT RUN') overlay[lane] = v
+            else if (wanted.includes(lane) && !v) overlay[lane] = 'RUNNING'
+          }
+          if (Object.keys(overlay).length) setTicketOverlay(overlay)
+
           const parts = wanted.map(lane => {
             const v = String(reviews?.[lane]?.verdict || recLanes?.[lane] || '').toUpperCase()
             const err = reviews?.[lane]?.error
-            if (!v) return null
+            if (!v || v === 'NOT RUN') return `${laneLabel(lane)}=…`
             return err && /blocked|timeout|unavailable/i.test(String(err))
-              ? `${laneLabel(lane)}=${v} (${String(err).slice(0, 48)})`
+              ? `${laneLabel(lane)}=${v}`
               : `${laneLabel(lane)}=${v}`
-          }).filter(Boolean)
-          if (parts.length) {
-            lastSnap = parts.join(' · ')
-            setMessage(`${selected} — ${lastSnap}`)
-          }
+          })
+          lastSnap = parts.join(' · ')
+          setMessage(`${selected} — ${lastSnap} · ${elapsed}s`)
           const done = wanted.every(lane => {
             const v = String(reviews?.[lane]?.verdict || recLanes?.[lane] || '').toUpperCase()
-            return v && v !== 'NOT RUN' && v !== 'PENDING'
+            return v && v !== 'NOT RUN' && v !== 'PENDING' && v !== 'RUNNING'
           })
-          if (done) break
+          if (done || tr?.run_status === 'COMPLETE') break
         } catch { /* keep polling */ }
       }
       refetchWatch()
       refetchDesk()
-      if (lastSnap && lastSnap !== 'BLOCKED') setMessage(`${selected} — ${lastSnap}`)
-      else if (lastSnap !== 'BLOCKED') setMessage(`${selected} — ${label} finished polling; refresh if strip still empty.`)
-    } catch (error: any) { setMessage(`${selected} — ${String(error?.message || error)}`) }
+      if (lastSnap && lastSnap !== 'BLOCKED') {
+        setMessage(`${selected} — done: ${lastSnap}`)
+      } else if (lastSnap !== 'BLOCKED') {
+        setMessage(`${selected} — ${label} timed out waiting for verdicts; open status or re-click after ~30s.`)
+      }
+    } catch (error: any) {
+      setTicketOverlay(null)
+      setMessage(`${selected} — ${String(error?.message || error)}`)
+    }
     finally { setReviewBusy('') }
   }
   const estimatePremium = async () => {
@@ -882,6 +919,21 @@ export default function WatchTruthAuditPanel() {
               ({ticketPendingGo} ticket-pending · {proposeReadyGo} propose-ready · {demotedFromAdmissionGo} demoted this load).
               MAIN ≠ full warehouse — ETFs/funds live in RESEARCH/ToS unless promoted. Defense rotation stays on Defense unless you Watch-click.
               Contract {WATCH_OPERATOR_CONTRACT}.
+            </div>
+            <div style={{
+              marginTop: 10, maxWidth: 760, padding: '8px 10px', borderRadius: 6,
+              border: `1px solid ${BB.border}`, background: 'rgba(0,0,0,.25)',
+              fontSize: 11, color: BB.text2, lineHeight: 1.45,
+            }}>
+              <b style={{ color: BB.amber }}>LLM cadence (honest)</b>
+              {' · '}
+              <b style={{ color: BB.text1 }}>Ticket critics (DeepSeek / Grok / ChatGPT / Local) are manual-first</b>
+              {' — click a button per name. '}
+              Auto batch is only the weekly MAIN free-LLM timer
+              {freeLlmStamp?.finished_at
+                ? ` (last ${String(freeLlmStamp.finished_at).slice(0, 16).replace('T', ' ')} UTC · ran ${freeLlmStamp.ran_n ?? '—'}/${freeLlmStamp.main_pool_n ?? 60} · next ~${String(freeLlmStamp.next_due_after || '').slice(0, 10) || 'Sun 18:15'})`
+                : ' (Sunday 18:15 · stamp missing)'}
+              . Screener crons use <b>--no-llm</b>. DeepSeek v4 is optional heavy and can take 1–3 minutes — strip shows RUNNING until done.
             </div>
           </div>
           <button type="button" onClick={() => setDeskOpen(!open)} aria-expanded={open} style={primaryBtn}>
