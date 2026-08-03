@@ -213,7 +213,11 @@ def run_auto_remediation(policy: dict, findings: list[dict]) -> list[dict]:
         return []
     types = set(cfg.get("finding_types") or [
         "portfolio_totals_drift", "account_summary_drift", "snaptrade_cash_stale",
-        "portfolio_repricer_stale", "finviz_quote_cache_stale", "market_quotes_stale", "reentry_indicator_cache_stale", "reentry_indicator_cache_gap", "watch_main_indicator_cache_gap", "watch_main_ticket_not_run", "watch_main_entry_zone_gap",
+        "portfolio_repricer_stale", "finviz_quote_cache_stale", "market_quotes_stale",
+        "reentry_indicator_cache_stale", "reentry_indicator_cache_gap",
+        "reentry_resistance_cache_stale", "reentry_resistance_cache_missing",
+        "reentry_entry_plan_gap",
+        "watch_main_indicator_cache_gap", "watch_main_ticket_not_run", "watch_main_entry_zone_gap",
     ])
     cooldown_m = float(cfg.get("cooldown_minutes", 10))
     # Circuit breaker: if a remediation keeps "succeeding" (exit 0) yet the SAME finding fires again
@@ -461,6 +465,114 @@ def collect_data_quality() -> list[dict]:
                     "data_quality", "reentry_indicator_cache_stale", "warning",
                     f"indicator_confluence_cache age {float(cache_age_h):.0f}h (max {max_h:.0f}h) - Decision Desk MISSING MARKET rises",
                     age_minutes=float(cache_age_h) * 60,
+                ))
+
+        # Re-Entry closed-session resistance cache (ui_prefs portfolio.reentry.resistance.v1).
+        # Without this, desk shows multi-day-old R levels and READY stays empty even with fresh RSI.
+        rrc = (load_policy().get("reentry_resistance_freshness") or {})
+        if rrc.get("enabled", True):
+            max_h_r = float(rrc.get("max_age_hours", 48))
+            if _IS_WEEKEND:
+                max_h_r = float(rrc.get("weekend_max_age_hours", max(max_h_r, 96)))
+            try:
+                rpref = _db(
+                    """SELECT value, updated_at FROM ui_prefs
+                       WHERE key = 'portfolio.reentry.resistance.v1' LIMIT 1""",
+                    fetch="one",
+                ) or {}
+                age_h = None
+                gen = None
+                val = rpref.get("value")
+                if isinstance(val, str):
+                    import json as _json
+                    try:
+                        val = _json.loads(val)
+                    except Exception:
+                        val = {}
+                if isinstance(val, dict):
+                    gen = val.get("generated_at") or val.get("as_of")
+                if gen:
+                    try:
+                        from datetime import datetime as _dt, timezone as _tz
+                        gdt = _dt.fromisoformat(str(gen).replace("Z", "+00:00"))
+                        if gdt.tzinfo is None:
+                            gdt = gdt.replace(tzinfo=_tz.utc)
+                        age_h = (datetime.now(_tz.utc) - gdt.astimezone(_tz.utc)).total_seconds() / 3600.0
+                    except Exception:
+                        age_h = None
+                if age_h is None and rpref.get("updated_at") is not None:
+                    try:
+                        from datetime import datetime as _dt, timezone as _tz
+                        u = rpref["updated_at"]
+                        if hasattr(u, "timestamp"):
+                            age_h = (datetime.now(_tz.utc).timestamp() - u.timestamp()) / 3600.0
+                    except Exception:
+                        pass
+                if age_h is None:
+                    out.append(_f(
+                        "data_quality", "reentry_resistance_cache_missing", "warning",
+                        "Re-Entry resistance cache missing (ui_prefs portfolio.reentry.resistance.v1) — "
+                        "desk READY/NEAR stuck; POST /api/v2/reentry/resistance/refresh",
+                    ))
+                elif float(age_h) > max_h_r:
+                    out.append(_f(
+                        "data_quality", "reentry_resistance_cache_stale", "warning",
+                        f"Re-Entry resistance cache age {float(age_h):.0f}h (max {max_h_r:.0f}h) — "
+                        "REFRESH RESISTANCE or reentry_resistance refresh cron",
+                        age_minutes=float(age_h) * 60,
+                    ))
+            except Exception as ex:
+                out.append(_f(
+                    "data_quality", "reentry_resistance_check_error", "info",
+                    f"reentry resistance freshness check error: {ex}",
+                ))
+
+        # Re-Entry exit universe — MISSING PLAN blocks READY (entry zone/stop required).
+        # Entry planner currently targets watchlist/MAIN, not exited names — surface the gap.
+        rep = (load_policy().get("reentry_entry_plan_gap") or {})
+        if rep.get("enabled", True):
+            warn_p = int(rep.get("missing_warn", 25))
+            days = int(rep.get("exit_lookback_days", 365))
+            plan_days = int(rep.get("plan_fresh_days", 14))
+            try:
+                prow = _db(
+                    f"""
+                    WITH exits AS (
+                      SELECT DISTINCT upper(symbol) AS symbol
+                      FROM trade_transactions
+                      WHERE trade_date >= CURRENT_DATE - {days}
+                        AND (lower(coalesce(action,'')) IN
+                               ('sell','sold','assigned','assignment','expired','exercise','exercised','close','closed')
+                             OR lower(coalesce(action,'')) LIKE 'sell%%')
+                        AND symbol ~ '^[A-Z][A-Z0-9.\\-]{{0,5}}$'
+                    )
+                    SELECT
+                      (SELECT count(*) FROM exits) AS exited,
+                      (SELECT count(*) FROM exits e
+                        WHERE EXISTS (
+                          SELECT 1 FROM watchlist_entry_plans ep
+                          WHERE upper(ep.symbol)=e.symbol
+                            AND ep.created_at > now() - interval '{plan_days} days'
+                            AND (ep.entry_zone_low IS NOT NULL OR ep.limit_price IS NOT NULL)
+                        )) AS with_plan
+                    """,
+                    fetch="one",
+                ) or {}
+                exited_n = int(prow.get("exited") or 0)
+                with_plan = int(prow.get("with_plan") or 0)
+                miss_p = max(0, exited_n - with_plan)
+                if exited_n and miss_p >= warn_p:
+                    sev = "critical" if miss_p >= warn_p * 2 else "warning"
+                    out.append(_f(
+                        "data_quality", "reentry_entry_plan_gap", sev,
+                        f"Re-Entry exits MISSING PLAN: {miss_p}/{exited_n} "
+                        f"(no zone/stop in {plan_days}d — READY blocked; schedule reentry entry planner)",
+                        count=miss_p,
+                    ))
+            except Exception as ex:
+                out.append(_f(
+                    "data_quality", "reentry_entry_plan_check_error", "info",
+                    f"reentry plan gap check error: {ex}",
                 ))
 
         # Watch MAIN Setup Desk — same RSI cache + broker remediation as Re-Entry.
@@ -1217,6 +1329,9 @@ _CTA_BY_TYPE = {
     "finviz_quote_cache_stale": {"label": "System → Admin", "route": "/v3/system?tab=admin"},
     "reentry_indicator_cache_stale": {"label": "Re-Entry Desk", "route": "/v3/reentry"},
     "reentry_indicator_cache_gap": {"label": "Re-Entry Desk", "route": "/v3/reentry"},
+    "reentry_resistance_cache_stale": {"label": "Re-Entry Desk", "route": "/v3/reentry"},
+    "reentry_resistance_cache_missing": {"label": "Re-Entry Desk", "route": "/v3/reentry"},
+    "reentry_entry_plan_gap": {"label": "Re-Entry Desk", "route": "/v3/reentry"},
     "watch_main_indicator_cache_gap": {"label": "Watch MAIN Desk", "route": "/v3/watch"},
     "watch_main_ticket_not_run": {"label": "Watch MAIN Desk", "route": "/v3/watch"},
     "watch_main_entry_zone_gap": {"label": "Watch MAIN Desk", "route": "/v3/watch"},

@@ -175,6 +175,9 @@
       "news_symbol_mismatch",
       "reentry_indicator_cache_stale",
       "reentry_indicator_cache_gap",
+      "reentry_resistance_cache_stale",
+      "reentry_resistance_cache_missing",
+      "reentry_entry_plan_gap",
       "watch_main_indicator_cache_gap",
       "watch_main_ticket_not_run",
       "watch_main_entry_zone_gap"
@@ -253,9 +256,25 @@
     "news_symbol_mismatch": "flock -n /tmp/watchlist_news_guard.lock .venv/bin/python scripts/remediate_watchlist_news_guard.py --apply >> logs/remediate_watchlist_news_guard.log 2>&1",
     "reentry_indicator_cache_stale": "flock -n /tmp/indicator_cache_refresh.lock .venv/bin/python scripts/data_broker_indicator_refresh.py --operator-desks --limit 160 --sleep-ms 400 --max-age-hours 96 >> logs/indicator_refresh.log 2>&1",
     "reentry_indicator_cache_gap": "flock -n /tmp/indicator_cache_refresh.lock .venv/bin/python scripts/data_broker_indicator_refresh.py --operator-desks --limit 160 --sleep-ms 400 --max-age-hours 96 >> logs/indicator_refresh.log 2>&1",
+    "reentry_resistance_cache_stale": "flock -n /tmp/reentry_resistance.lock .venv/bin/python scripts/refresh_reentry_resistance.py >> logs/reentry_resistance.log 2>&1",
+    "reentry_resistance_cache_missing": "flock -n /tmp/reentry_resistance.lock .venv/bin/python scripts/refresh_reentry_resistance.py >> logs/reentry_resistance.log 2>&1",
+    "reentry_entry_plan_gap": "flock -n /tmp/entry_planner.lock .venv/bin/python scripts/watchlist_entry_planner.py --limit 80 --buy-rated-cap 400 --lane deepseek-flash --no-alert >> logs/entry_planner.log 2>&1",
     "watch_main_indicator_cache_gap": "flock -n /tmp/indicator_cache_refresh.lock .venv/bin/python scripts/data_broker_indicator_refresh.py --operator-desks --limit 160 --sleep-ms 400 --max-age-hours 96 >> logs/indicator_refresh.log 2>&1",
     "watch_main_ticket_not_run": "flock -n /tmp/watch_decision_scheduler.lock .venv/bin/python scripts/watch_decision_scheduler.py --run >> logs/watch_decision_scheduler.log 2>&1",
-    "watch_main_entry_zone_gap": "flock -n /tmp/entry_planner.lock .venv/bin/python scripts/watchlist_entry_planner.py --main-lane --limit 40 --lane local --no-alert >> logs/entry_planner.log 2>&1"
+    "watch_main_entry_zone_gap": "flock -n /tmp/entry_planner.lock .venv/bin/python scripts/watchlist_entry_planner.py --main-lane --limit 40 --lane deepseek-flash --no-alert >> logs/entry_planner.log 2>&1"
+  },
+  "reentry_resistance_freshness": {
+    "_comment": "Closed-session resistance cache (ui_prefs portfolio.reentry.resistance.v1). Desk READY needs fresh R levels.",
+    "enabled": true,
+    "max_age_hours": 36,
+    "weekend_max_age_hours": 96
+  },
+  "reentry_entry_plan_gap": {
+    "_comment": "Exited symbols without entry zones show MISSING PLAN and cannot be READY.",
+    "enabled": true,
+    "missing_warn": 25,
+    "exit_lookback_days": 365,
+    "plan_fresh_days": 14
   },
   "log_errors": {
     "_comment": "Scan recently-active component logs for ERROR/Traceback spikes (content, not staleness).",
