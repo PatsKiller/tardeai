@@ -1,6 +1,6 @@
 {
-  "date": "2026-08-01",
-  "timestamp": "2026-08-01T08:15:52.356125+00:00",
+  "date": "2026-08-02",
+  "timestamp": "2026-08-02T08:15:42.334080+00:00",
   "embedding_recommendations": [
     {
       "id": 14135,
@@ -35,8 +35,8 @@
       "reason": "staged, has evidence, not embedded"
     },
     {
-      "id": 13499,
-      "symbol": "AMIX",
+      "id": 14217,
+      "symbol": "CMCO",
       "type": "momentum_catalyst",
       "confidence": 0.7,
       "has_url": true,
@@ -77,8 +77,8 @@
       "reason": "staged, high conf, has evidence"
     },
     {
-      "id": 13499,
-      "symbol": "AMIX",
+      "id": 14217,
+      "symbol": "CMCO",
       "type": "momentum_catalyst",
       "confidence": 0.7,
       "has_url": true,
@@ -86,7 +86,7 @@
     }
   ],
   "rejected": [],
-  "total_staged_non_backlog": 191,
+  "total_staged_non_backlog": 199,
   "embeddings_created": 0,
   "promotions_created": 0
 }

@@ -1,18 +1,17 @@
 {
-  "generated_at": "2026-07-31T11:40:00.550053+00:00",
-  "git_head": "f31eb179",
-  "files_checked": 1,
+  "generated_at": "2026-08-02T22:00:12.066805+00:00",
+  "git_head": "14cb1b9c",
+  "files_checked": 3,
   "findings_count": 2,
   "by_severity": {
-    "P1": 1,
-    "P2": 1
+    "P2": 2
   },
   "status": "warning",
   "findings": [
     {
-      "severity": "P1",
-      "check": "code_without_docs",
-      "message": "1 code files changed, 0 docs updated"
+      "severity": "P2",
+      "check": "stale_facts",
+      "message": "System facts 58h old (>48h)"
     },
     {
       "severity": "P2",
