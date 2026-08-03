@@ -21,7 +21,8 @@
           "auth_type": { "type": "string" },
           "credential_slot": { "type": "string" },
           "auth_env": { "type": "string" },
-          "legacy_auth_env": { "type": "string" },
+          "compatibility_auth_env": { "type": "string" },
+          "legacy_auth_env": { "type": "string", "description": "Deprecated field name; use compatibility_auth_env" },
           "enabled": { "type": "boolean" },
           "kill_switch": { "type": "boolean" },
           "models": {

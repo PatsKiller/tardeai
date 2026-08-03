@@ -79,8 +79,10 @@ def resolve_logical_policy(policy: str, *, operator_confirmed: bool = False) -> 
         "reasoning_effort": effort if thinking == "enabled" else None,
         "requires_operator_cost_confirmation": requires,
         "base_url": provider.get("base_url") or "https://api.deepseek.com",
-        "auth_env": provider.get("auth_env") or "DEEPSEEK_API_KEY",
-        "legacy_auth_env": provider.get("legacy_auth_env") or "deepseek_tradeai",
+        "auth_env": provider.get("auth_env") or "deepseek_tradeai",
+        "compatibility_auth_env": provider.get("compatibility_auth_env")
+            or provider.get("legacy_auth_env")
+            or "DEEPSEEK_API_KEY",
         "display_name": model.get("display_name") or model_id,
         "pricing": model.get("pricing_snapshot_usd_per_million_tokens") or {},
         "pricing_effective_at": model.get("pricing_effective_at"),
@@ -187,13 +189,26 @@ def estimate_usd_cost(
 
 
 def get_deepseek_api_key() -> tuple[str | None, str | None, bool]:
-    """Return (key, env_name_used, used_legacy_name). Never logs the key."""
+    """Return (key, env_name_used, used_compatibility_alias).
+
+    Lookup order (canonical Trade AI Bitwarden/rendered chain):
+      1. deepseek_tradeai  (canonical)
+      2. DEEPSEEK_API_KEY  (optional compatibility alias only)
+
+    Never logs or returns whether to print the key value. Callers must only
+    surface env_name_used as a name string.
+    """
     reg = load_registry()
     ds = (reg.get("providers") or {}).get("deepseek") or {}
-    primary = ds.get("auth_env") or "DEEPSEEK_API_KEY"
-    legacy = ds.get("legacy_auth_env") or "deepseek_tradeai"
-    if os.environ.get(primary, "").strip():
-        return os.environ[primary].strip(), primary, False
-    if os.environ.get(legacy, "").strip():
-        return os.environ[legacy].strip(), legacy, True
+    canonical = ds.get("auth_env") or "deepseek_tradeai"
+    alias = (
+        ds.get("compatibility_auth_env")
+        or ds.get("legacy_auth_env")  # older registry field name
+        or "DEEPSEEK_API_KEY"
+    )
+    # Prefer canonical even if both are set
+    if os.environ.get(canonical, "").strip():
+        return os.environ[canonical].strip(), canonical, False
+    if alias and os.environ.get(alias, "").strip():
+        return os.environ[alias].strip(), alias, True
     return None, None, False

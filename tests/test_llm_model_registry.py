@@ -182,3 +182,58 @@ def test_cost_not_relative_units_in_estimate():
     # 1000 chars of text must NOT be used; only tokens
     est = estimate_usd_cost(model_id="deepseek-v4-flash", prompt_tokens=0, completion_tokens=0)
     assert est["estimated_cost_usd"] == 0.0
+
+
+def test_auth_canonical_deepseek_tradeai_alone(monkeypatch):
+    from lib import llm_model_registry as reg
+    reg.clear_registry_cache()
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    monkeypatch.setenv("deepseek_tradeai", "unit-test-placeholder-not-a-real-key")
+    key, name, used_alias = reg.get_deepseek_api_key()
+    assert key == "unit-test-placeholder-not-a-real-key"
+    assert name == "deepseek_tradeai"
+    assert used_alias is False
+    # never embed key in exception messages from helpers
+    assert "unit-test-placeholder" not in name
+
+
+def test_auth_compatibility_alias_alone(monkeypatch):
+    from lib import llm_model_registry as reg
+    reg.clear_registry_cache()
+    monkeypatch.delenv("deepseek_tradeai", raising=False)
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "alias-placeholder-not-real")
+    key, name, used_alias = reg.get_deepseek_api_key()
+    assert name == "DEEPSEEK_API_KEY"
+    assert used_alias is True
+    assert key == "alias-placeholder-not-real"
+
+
+def test_auth_canonical_precedes_alias(monkeypatch):
+    from lib import llm_model_registry as reg
+    reg.clear_registry_cache()
+    monkeypatch.setenv("deepseek_tradeai", "canonical-placeholder")
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "alias-placeholder")
+    key, name, used_alias = reg.get_deepseek_api_key()
+    assert name == "deepseek_tradeai"
+    assert used_alias is False
+    assert key == "canonical-placeholder"
+
+
+def test_auth_missing_both(monkeypatch):
+    from lib import llm_model_registry as reg
+    reg.clear_registry_cache()
+    monkeypatch.delenv("deepseek_tradeai", raising=False)
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    key, name, used_alias = reg.get_deepseek_api_key()
+    assert key is None
+    assert name is None
+
+
+def test_registry_auth_env_is_deepseek_tradeai():
+    from lib.llm_model_registry import load_registry, clear_registry_cache
+    clear_registry_cache()
+    reg = load_registry()
+    ds = reg["providers"]["deepseek"]
+    assert ds["auth_env"] == "deepseek_tradeai"
+    assert ds.get("compatibility_auth_env") == "DEEPSEEK_API_KEY"
+    assert "legacy_auth_env" not in ds or ds.get("auth_env") == "deepseek_tradeai"

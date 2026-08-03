@@ -48,3 +48,11 @@ Also DeepSeek suite (provider/json/tool/cost/registry): **86 passed**.
 - Risk/stop enforcement: **unchanged**  
 - Deployment authority: **unchanged**  
 - LLM remains **advisory only**  
+
+
+## Credential naming (corrected)
+
+- Canonical env / Bitwarden-rendered name: **`deepseek_tradeai`**
+- `DEEPSEEK_API_KEY` is optional compatibility only; not required for production wiring.
+- No secret values in git, logs, API browser payloads, or systemd Environment= text.
+- Service fix: load existing `/run/user/1000/tradeai/env` EnvironmentFile so the process inherits the **name** `deepseek_tradeai`.

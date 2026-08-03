@@ -7,9 +7,9 @@
       "provider_family": "deepseek",
       "base_url": "https://api.deepseek.com",
       "auth_type": "api_key",
-      "credential_slot": "trade-ai-prod/deepseek_api_key",
-      "auth_env": "DEEPSEEK_API_KEY",
-      "legacy_auth_env": "deepseek_tradeai",
+      "credential_slot": "deepseek_tradeai",
+      "auth_env": "deepseek_tradeai",
+      "compatibility_auth_env": "DEEPSEEK_API_KEY",
       "enabled": true,
       "kill_switch": false,
       "models": {

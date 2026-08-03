@@ -1,88 +1,98 @@
 # Service-runtime DeepSeek credential wiring (operator-approved only)
 
-## Verified current state (read-only, 2026-08-03)
+## Canonical secret
+
+| Item | Value |
+|------|--------|
+| **Canonical Trade AI DeepSeek secret identifier** | `deepseek_tradeai` |
+| Bitwarden/rendered env var | `deepseek_tradeai` |
+| Compatibility alias (optional, not required) | `DEEPSEEK_API_KEY` |
+| Secret value | **never print or inspect** |
+
+Do **not** rename the Bitwarden item. Do **not** require `DEEPSEEK_API_KEY`.  
+Do **not** create a second unmanaged secret file or put the value in systemd `Environment=`.
+
+## Verified current state (read-only)
 
 | Check | Result |
 |-------|--------|
-| Unit | `portfolio-server.service` (user) |
-| FragmentPath | `~/.config/systemd/user/portfolio-server.service` |
-| Drop-ins | `10-agent-read-api.conf`, `12-agent-runtime-probe.conf`, `20-exact-sha-release.conf` |
-| EnvironmentFile | `/home/johnclaw/.config/tradeai/agent-operator.env` only |
-| `DEEPSEEK_API_KEY` name in agent-operator.env | **ABSENT** |
+| EnvironmentFile on portfolio-server | `/home/johnclaw/.config/tradeai/agent-operator.env` only |
 | `deepseek_tradeai` name in agent-operator.env | **ABSENT** |
-| Rendered Bitwarden tmpfs `/run/user/$UID/tradeai/env` has `deepseek_tradeai` name | **PRESENT** |
-| Running `portfolio_server.py` process env has DeepSeek names | **ABSENT** |
-| WorkingDirectory (live) | `…/af45096e-platform-audit-20260802` (release tree, not this worktree) |
+| `DEEPSEEK_API_KEY` name in agent-operator.env | **ABSENT** |
+| Rendered Bitwarden tmpfs `/run/user/$UID/tradeai/env` name `deepseek_tradeai` | **PRESENT** |
+| Running portfolio_server process has `deepseek_tradeai` name | **ABSENT** |
+| Live WorkingDirectory | release tree `af45096e-platform-audit-20260802` (not this worktree) |
 
-**Status: BLOCKED for service-context DeepSeek until operator wires env + restarts.**
-
-This worktree must not execute daemon-reload or restart.
+**Status: BLOCKED** for service-context DeepSeek until the service loads the rendered env that already defines `deepseek_tradeai`, then an **operator-approved** restart.
 
 ---
 
-## Exact operator procedure (do not run unless you approve mutation)
-
-### 1) Confirm key **names** only (no values)
+## Name-only verification (safe)
 
 ```bash
-awk -F= '{print $1}' /run/user/$(id -u)/tradeai/env | grep -iE 'deepseek|DEEPSEEK'
-# expect: deepseek_tradeai and/or DEEPSEEK_API_KEY
+# Rendered Trade AI env — name only
+awk -F= '{print $1}' /run/user/$(id -u)/tradeai/env | grep -Fx 'deepseek_tradeai'
+
+# Optional: confirm alias is NOT required
+awk -F= '{print $1}' /run/user/$(id -u)/tradeai/env | grep -Fx 'DEEPSEEK_API_KEY' || true
 ```
 
-### 2) Create drop-in loading the rendered env
+Never `cat`, `echo $deepseek_tradeai`, or print values.
+
+---
+
+## Exact remediation (mutation — operator approval required)
+
+### 1) Ensure portfolio-server loads the Bitwarden-rendered EnvironmentFile
 
 ```bash
 mkdir -p ~/.config/systemd/user/portfolio-server.service.d
-cat > ~/.config/systemd/user/portfolio-server.service.d/30-deepseek-env.conf <<'EOF'
+cat > ~/.config/systemd/user/portfolio-server.service.d/30-deepseek-env.conf <<'UNIT'
 [Service]
-# Prefer Bitwarden-rendered env (contains deepseek_tradeai and/or DEEPSEEK_API_KEY)
+# Load the existing Bitwarden-rendered tmpfs env (defines deepseek_tradeai).
+# Do not put the secret value in this file.
 EnvironmentFile=-/run/user/1000/tradeai/env
-# Optional explicit canonical name if you set it in agent-operator.env later:
-# EnvironmentFile=-/home/johnclaw/.config/tradeai/agent-operator.env
-EOF
+UNIT
 ```
 
-Prefer canonical `DEEPSEEK_API_KEY` in Bitwarden when practical; `deepseek_tradeai` remains temporary legacy (client accepts both).
+Use the same UID path the host already uses for Trade AI render (`/run/user/1000/tradeai/env` on this host).
 
-### 3) daemon-reload (approved)
+### 2) Confirm the file defines the **name** only
+
+```bash
+awk -F= '{print $1}' /run/user/1000/tradeai/env | grep -Fx 'deepseek_tradeai'
+```
+
+### 3) Later — operator-approved reload + restart
 
 ```bash
 systemctl --user daemon-reload
-```
-
-### 4) restart (approved)
-
-```bash
 systemctl --user restart portfolio-server.service
 systemctl --user is-active portfolio-server.service
 ```
 
-### 5) Post-restart **name** check on service PID
+### 4) After restart — process has the **name**
 
 ```bash
 PID=$(pgrep -f portfolio_server.py | head -1)
-tr '\0' '\n' < /proc/$PID/environ | cut -d= -f1 | grep -iE 'deepseek|DEEPSEEK'
-# expect DEEPSEEK_API_KEY and/or deepseek_tradeai
+tr '\0' '\n' < /proc/$PID/environ | cut -d= -f1 | grep -Fx 'deepseek_tradeai'
 ```
 
-### 6) Service-context smoke (exact existing endpoints)
+### 5) Service-context health (existing API routes — no invented endpoints)
 
 ```bash
-# LLM router health (exists in api_v2 routes)
 curl -sS -o /tmp/llm_health.json -w '%{http_code}\n' http://127.0.0.1:7777/api/v2/llm/health
 curl -sS -o /tmp/llm_health2.json -w '%{http_code}\n' http://127.0.0.1:7777/api/v2/llm-health
 curl -sS -o /tmp/oauth_lanes.json -w '%{http_code}\n' http://127.0.0.1:7777/api/v2/llm/oauth-lanes
-curl -sS -o /tmp/system_health.json -w '%{http_code}\n' http://127.0.0.1:7777/api/v2/system-health
-# Inspect JSON for DeepSeek lane readiness fields without printing secrets
-python3 -c "import json;d=json.load(open('/tmp/llm_health.json'));print(sorted(d.keys())[:30] if isinstance(d,dict) else type(d))"
+python3 -c "import json;d=json.load(open('/tmp/llm_health.json'));print(type(d).__name__, list(d)[:20] if isinstance(d,dict) else '')"
 ```
 
-Interactive worktree live Flash/Pro smoke is **not** a substitute for this service-context check.
+Interactive worktree probes using `deepseek_tradeai` are **not** service-context proof.
 
-### 7) Rollback
+### 6) Rollback
 
 ```bash
 rm -f ~/.config/systemd/user/portfolio-server.service.d/30-deepseek-env.conf
 systemctl --user daemon-reload
-systemctl --user restart portfolio-server.service   # only if you previously restarted
+# restart only if you previously restarted
 ```

@@ -104,12 +104,13 @@ def _classify_http(status: int) -> str:
 def list_models(*, timeout: float = 15.0) -> dict[str, Any]:
     key, env_name, legacy = get_deepseek_api_key()
     if not key:
-        raise DeepSeekError(AUTH_MISSING, "DeepSeek API key not configured (DEEPSEEK_API_KEY / deepseek_tradeai)")
-    if legacy:
-        # deprecation signal without printing values
-        dep = True
-    else:
-        dep = False
+        raise DeepSeekError(
+            AUTH_MISSING,
+            "DeepSeek API key not configured (canonical env deepseek_tradeai; "
+            "optional compatibility alias DEEPSEEK_API_KEY)",
+        )
+    # used_compatibility_alias: True when DEEPSEEK_API_KEY was used because canonical absent
+    dep = bool(legacy)
     base = "https://api.deepseek.com"
     t0 = time.time()
     try:
@@ -132,8 +133,9 @@ def list_models(*, timeout: float = 15.0) -> dict[str, Any]:
         "http_status": r.status_code,
         "latency_ms": int((time.time() - t0) * 1000),
         "request_id": r.headers.get("x-request-id"),
-        "auth_env_name": env_name,
-        "used_legacy_auth_env": dep,
+        "auth_env_name": env_name,  # name only
+        "used_compatibility_auth_env": dep,
+        "used_legacy_auth_env": dep,  # backward-compatible field name
         "has_v4_flash": "deepseek-v4-flash" in ids,
         "has_v4_pro": "deepseek-v4-pro" in ids,
     }
@@ -193,7 +195,7 @@ def chat(
             tool_calls=None,
             finish_reason=None,
             error_class=AUTH_MISSING,
-            error_message="DeepSeek API key not configured",
+            error_message="DeepSeek API key not configured (canonical env: deepseek_tradeai)",
             client_request_id=client_rid,
         )
 

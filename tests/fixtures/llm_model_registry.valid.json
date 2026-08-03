@@ -6,7 +6,8 @@
       "provider_family": "deepseek",
       "base_url": "https://api.deepseek.com",
       "auth_type": "api_key",
-      "auth_env": "DEEPSEEK_API_KEY",
+      "auth_env": "deepseek_tradeai",
+      "compatibility_auth_env": "DEEPSEEK_API_KEY",
       "enabled": true,
       "models": {
         "deepseek_flash": {

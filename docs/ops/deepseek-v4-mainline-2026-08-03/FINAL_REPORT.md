@@ -46,6 +46,16 @@ Ambiguous `deepseek-v4` / legacy chat/reasoner: **rejected**.
 
 **NO / NO / NO**
 
+
+## Canonical DeepSeek secret
+
+| Item | Value |
+|------|--------|
+| **Canonical Trade AI DeepSeek secret identifier** | `deepseek_tradeai` |
+| `DEEPSEEK_API_KEY` | Compatibility alias only, if retained; **not** required and **not** canonical |
+| Lookup order | 1) `deepseek_tradeai` 2) optional `DEEPSEEK_API_KEY` |
+| Secret value | Never printed, logged, or exposed |
+
 ## Residual blockers for PASS_FOR_DRAFT_PR
 
 1. Operator wire DeepSeek env into portfolio-server + approved restart + service-context probe.
