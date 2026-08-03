@@ -2666,14 +2666,31 @@ def _auto_queue_new_symbols():
 
 
 if __name__ == "__main__":
-    with PipelineRun("process_watchlist_agent_jobs") as _run:
-        import argparse
-        parser = argparse.ArgumentParser()
-        parser.add_argument("--limit", type=int, default=10)
-        args = parser.parse_args()
-        _auto_queue_new_symbols()  # Check for new symbols first
-        effective = _effective_job_limit(args.limit)
-        if effective != args.limit:
-            print(f"[watchlist-agent] Queue depth >100 — raised limit {args.limit}→{effective}")
-        process_jobs(effective)
+    import argparse
+    import sys as _sys
+    from lib.agent_jobs_containment import exit_if_contained_worker_entry, is_contained, report_contained
+    from lib.agent_jobs_lock import OverlapError, acquire_jobs_lock, OVERLAP_EXIT
+    from lib.agent_flash_governance import reset_run_budget
+
+    # P0 containment: do not run paid work or job processing
+    _rc = exit_if_contained_worker_entry()
+    if _rc is not None:
+        _sys.exit(_rc)
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--limit", type=int, default=10)
+    args = parser.parse_args()
+
+    try:
+        with acquire_jobs_lock(blocking=False):
+            reset_run_budget()
+            with PipelineRun("process_watchlist_agent_jobs") as _run:
+                _auto_queue_new_symbols()  # Check for new symbols first
+                effective = _effective_job_limit(args.limit)
+                if effective != args.limit:
+                    print(f"[watchlist-agent] Queue depth >100 — raised limit {args.limit}→{effective}")
+                process_jobs(effective)
+    except OverlapError as e:
+        print(f"[watchlist-agent] {e} — exit {OVERLAP_EXIT} (no provider calls)")
+        _sys.exit(OVERLAP_EXIT)
 

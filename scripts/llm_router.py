@@ -63,8 +63,8 @@ DAILY_BUDGET_LIMIT = 1.50  # USD/day — allows cloud fallback when Ollama offli
 
 # ── Task routing — auto-adjusts based on LOCAL_MODEL ─────────────────────
 
-# Pre-GPU: governed DeepSeek Flash first for agent watchlist workloads (issue #283).
-# deepseek-flash provider is fail-closed (no silent fallback to local/cloud aliases).
+# Governed DeepSeek Flash only for agent watchlist workloads (issue #283 / PR #284).
+# No silent local/Grok/Claude/OpenAI fallback on paid agent tasks.
 _TASK_ROUTING_PRE_GPU = {
     "agent_narrative":          ["deepseek-flash"],
     "agent_debate":             ["deepseek-flash"],
@@ -73,20 +73,19 @@ _TASK_ROUTING_PRE_GPU = {
     "catalyst_classification":  ["deepseek-flash"],
     "sentiment":                ["deepseek-flash"],
     "code_generation":          ["deepseek-flash"],
-    "fast_summary":             ["deepseek-flash", "local"],
+    "fast_summary":             ["deepseek-flash"],
     "default":                  ["deepseek-flash"],
 }
 
-# Post-GPU: still use governed Flash for paid agent narratives; local only for free extract.
 _TASK_ROUTING_POST_GPU = {
     "agent_narrative":          ["deepseek-flash"],
     "agent_debate":             ["deepseek-flash"],
     "sector_correlation":       ["deepseek-flash"],
     "cio_synthesis":            ["deepseek-flash"],
-    "catalyst_classification":  ["deepseek-flash", "local"],
-    "sentiment":                ["deepseek-flash", "local"],
+    "catalyst_classification":  ["deepseek-flash"],
+    "sentiment":                ["deepseek-flash"],
     "code_generation":          ["deepseek-flash"],
-    "fast_summary":             ["local", "deepseek-flash"],
+    "fast_summary":             ["deepseek-flash"],
     "default":                  ["deepseek-flash"],
 }
 

@@ -40,12 +40,11 @@ TASK_TO_PROCESS: dict[str, str] = {
     "default": "watchlist_maria_flash_narrative",
 }
 
-# FAST_THINK only for reconciliation / contradiction-style debate
-THINK_TASKS = frozenset({"agent_debate"})
-
-# Per-process-run caps (in-memory; daily caps enforced by reservation ledger)
+# Aggregate per-run budget (entire process_watchlist_agent_jobs invocation)
 _RUN_LOCK = threading.Lock()
-_RUN_COUNTS: dict[str, int] = {}
+_RUN_COUNTS: dict[str, int] = {}  # per process_id
+_RUN_TOTAL_CALLS = 0
+_RUN_TOTAL_PROJECTED_USD = 0.0
 _RUN_ID = f"run_{int(time.time())}_{os.getpid()}"
 _CIRCUIT: dict[str, Any] = {"errors": 0, "open_until": 0.0, "last_error": None}
 _DEDUPE_LOCK = threading.Lock()
@@ -59,9 +58,16 @@ _DEDUPE_PATH = Path(os.environ.get(
 DEFAULT_MAX_INPUT = 4000
 DEFAULT_MAX_OUTPUT = 800
 DEFAULT_TIMEOUT = 90
-MAX_CALLS_PER_RUN = int(os.environ.get("AGENT_FLASH_MAX_CALLS_PER_RUN", "40"))
+# Per-process additional limit
+MAX_CALLS_PER_PROCESS = int(os.environ.get("AGENT_FLASH_MAX_CALLS_PER_PROCESS", "40"))
+# Aggregate across ALL process IDs in this worker run
+MAX_CALLS_PER_RUN_TOTAL = int(os.environ.get("AGENT_FLASH_MAX_CALLS_PER_RUN_TOTAL", "40"))
+MAX_PROJECTED_USD_PER_RUN = float(os.environ.get("AGENT_FLASH_MAX_PROJECTED_USD_PER_RUN", "0.50"))
 CIRCUIT_ERROR_THRESHOLD = int(os.environ.get("AGENT_FLASH_CIRCUIT_ERRORS", "8"))
 CIRCUIT_COOLDOWN_SEC = int(os.environ.get("AGENT_FLASH_CIRCUIT_COOLDOWN_SEC", "900"))
+
+# Backward-compatible alias
+MAX_CALLS_PER_RUN = MAX_CALLS_PER_PROCESS
 
 
 def reject_legacy_model_id(model_id: str | None) -> None:
@@ -78,11 +84,91 @@ def process_for_task(task_type: str) -> str:
     return TASK_TO_PROCESS.get(tt) or TASK_TO_PROCESS["default"]
 
 
-def policy_for_task(task_type: str) -> str:
+def reset_run_budget(run_id: str | None = None) -> str:
+    """Start a new aggregate run budget (call once at worker entry)."""
+    global _RUN_ID, _RUN_TOTAL_CALLS, _RUN_TOTAL_PROJECTED_USD, _RUN_COUNTS
+    with _RUN_LOCK:
+        _RUN_ID = run_id or f"run_{int(time.time())}_{os.getpid()}"
+        _RUN_TOTAL_CALLS = 0
+        _RUN_TOTAL_PROJECTED_USD = 0.0
+        _RUN_COUNTS = {}
+        return _RUN_ID
+
+
+def run_budget_snapshot() -> dict[str, Any]:
+    with _RUN_LOCK:
+        return {
+            "run_id": _RUN_ID,
+            "total_calls": _RUN_TOTAL_CALLS,
+            "total_projected_usd": _RUN_TOTAL_PROJECTED_USD,
+            "per_process": dict(_RUN_COUNTS),
+            "max_calls_total": MAX_CALLS_PER_RUN_TOTAL,
+            "max_projected_usd": MAX_PROJECTED_USD_PER_RUN,
+            "max_calls_per_process": MAX_CALLS_PER_PROCESS,
+        }
+
+
+def should_escalate_fast_think(
+    task_type: str,
+    *,
+    metadata: dict | None = None,
+    prompt: str | None = None,
+) -> tuple[bool, str | None]:
+    """FAST by default. FAST_THINK only when a deterministic condition is met.
+
+    Returns (escalate, reason). Reason is persisted in metadata when True.
+    """
     tt = (task_type or "").strip()
-    if tt in THINK_TASKS:
-        return FLASH_THINK_POLICY
-    return FLASH_POLICY
+    meta = metadata or {}
+    # Explicit flags from caller / job
+    if meta.get("force_fast_think") is True or meta.get("escalate_fast_think") is True:
+        return True, "explicit_flag"
+    if str(meta.get("task_kind") or "").lower() in (
+        "reconciliation", "reconcile", "contradiction_review", "debate_resolve",
+    ):
+        return True, "explicit_reconciliation_task"
+    if str(meta.get("severity") or "").lower() in ("critical", "elevated", "high"):
+        return True, "elevated_severity"
+    if meta.get("reviewer_disagreement") is True or meta.get("agent_disagreement") is True:
+        return True, "reviewer_disagreement"
+    if meta.get("conflicting_evidence") is True:
+        return True, "conflicting_evidence"
+    # Deterministic text markers (no LLM classification)
+    blob = " ".join([
+        str(meta.get("conflict_summary") or ""),
+        str(meta.get("job_reason") or ""),
+        (prompt or "")[:2000],
+    ]).lower()
+    markers = (
+        "conflicting evidence",
+        "reviewer disagreement",
+        "agents disagree",
+        "contradiction",
+        "reconcile",
+        "reconciliation required",
+        "conflict: ",
+    )
+    for m in markers:
+        if m in blob:
+            return True, f"marker:{m.strip()}"
+    # agent_debate alone is NOT enough
+    _ = tt
+    return False, None
+
+
+def policy_for_task(
+    task_type: str,
+    *,
+    metadata: dict | None = None,
+    prompt: str | None = None,
+) -> tuple[str, str | None]:
+    """Return (policy, escalation_reason). Default FAST."""
+    escalate, reason = should_escalate_fast_think(
+        task_type, metadata=metadata, prompt=prompt,
+    )
+    if escalate:
+        return FLASH_THINK_POLICY, reason
+    return FLASH_POLICY, None
 
 
 def evidence_hash(
@@ -159,15 +245,30 @@ def _reset_circuit_on_success() -> None:
     _CIRCUIT["open_until"] = 0.0
 
 
-def _check_run_budget(process_id: str) -> None:
+def _reserve_run_budget(process_id: str, projected_usd: float) -> None:
+    """Enforce aggregate + per-process run caps before provider handoff."""
+    global _RUN_TOTAL_CALLS, _RUN_TOTAL_PROJECTED_USD
+    proj = max(0.0, float(projected_usd or 0))
     with _RUN_LOCK:
-        n = int(_RUN_COUNTS.get(process_id, 0))
-        if n >= MAX_CALLS_PER_RUN:
+        if _RUN_TOTAL_CALLS >= MAX_CALLS_PER_RUN_TOTAL:
             raise RuntimeError(
-                f"COST_CAP_EXCEEDED: per-run call cap {MAX_CALLS_PER_RUN} "
-                f"for process {process_id} ({_RUN_ID})"
+                f"COST_CAP_EXCEEDED: aggregate per-run call cap "
+                f"{MAX_CALLS_PER_RUN_TOTAL} ({_RUN_ID})"
+            )
+        if _RUN_TOTAL_PROJECTED_USD + proj > MAX_PROJECTED_USD_PER_RUN + 1e-12:
+            raise RuntimeError(
+                f"COST_CAP_EXCEEDED: aggregate per-run projected USD cap "
+                f"{MAX_PROJECTED_USD_PER_RUN} ({_RUN_ID})"
+            )
+        n = int(_RUN_COUNTS.get(process_id, 0))
+        if n >= MAX_CALLS_PER_PROCESS:
+            raise RuntimeError(
+                f"COST_CAP_EXCEEDED: per-process run call cap {MAX_CALLS_PER_PROCESS} "
+                f"for {process_id} ({_RUN_ID})"
             )
         _RUN_COUNTS[process_id] = n + 1
+        _RUN_TOTAL_CALLS += 1
+        _RUN_TOTAL_PROJECTED_USD += proj
 
 
 def governed_flash_call(
@@ -186,24 +287,62 @@ def governed_flash_call(
     Returns a result dict compatible with llm_router.get_llm_response consumers:
       success, response, model_used, provider, latency, cost_estimate, tokens, ...
     """
-    reject_legacy_model_id(FLASH_MODEL)  # sanity — exact id not in legacy set
+    from lib.agent_jobs_containment import is_contained, report_contained
+
+    if is_contained():
+        r = report_contained(source="governed_flash_call")
+        return {
+            "success": False,
+            "error": r["message"],
+            "provider": "deepseek",
+            "model_used": FLASH_MODEL,
+            "process_id": process_for_task(task_type),
+            "contained": True,
+            "cost_estimate": 0.0,
+            "latency": 0.0,
+            "response": "",
+            "fallback_used": False,
+        }
 
     if circuit_open():
-        raise RuntimeError(
-            f"CIRCUIT_OPEN: agent_flash circuit breaker open until "
-            f"{_CIRCUIT.get('open_until')} last={_CIRCUIT.get('last_error')}"
-        )
+        return {
+            "success": False,
+            "error": (
+                f"CIRCUIT_OPEN: agent_flash circuit breaker open until "
+                f"{_CIRCUIT.get('open_until')} last={_CIRCUIT.get('last_error')}"
+            ),
+            "provider": "deepseek",
+            "model_used": FLASH_MODEL,
+            "process_id": process_for_task(task_type),
+            "cost_estimate": 0.0,
+            "latency": 0.0,
+            "response": "",
+            "fallback_used": False,
+        }
 
     process_id = process_for_task(task_type)
-    policy = policy_for_task(task_type) if allow_fast_think else FLASH_POLICY
-    if policy == FLASH_THINK_POLICY and not allow_fast_think:
-        policy = FLASH_POLICY
+    policy, esc_reason = policy_for_task(
+        task_type, metadata=metadata, prompt=prompt,
+    )
+    if not allow_fast_think and policy == FLASH_THINK_POLICY:
+        policy, esc_reason = FLASH_POLICY, None
 
     # Clamp tokens to process registry when available
     from lib import llm_consumption as lc
+    from lib.consumption_run_manual import projected_max_cost_usd
     cfg = lc.get_process_config(process_id)
     if not cfg.get("registered"):
-        raise RuntimeError(f"PROCESS_NOT_REGISTERED: {process_id}")
+        return {
+            "success": False,
+            "error": f"PROCESS_NOT_REGISTERED: {process_id}",
+            "provider": "deepseek",
+            "model_used": FLASH_MODEL,
+            "process_id": process_id,
+            "cost_estimate": 0.0,
+            "latency": 0.0,
+            "response": "",
+            "fallback_used": False,
+        }
     proc_out = cfg.get("max_output_tokens")
     proc_in = cfg.get("max_input_tokens")
     effective_out = int(max_tokens or DEFAULT_MAX_OUTPUT)
@@ -213,10 +352,23 @@ def governed_flash_call(
     if proc_in is not None:
         est_in = max(1, (len(prompt or "") + 3) // 4)
         if est_in > int(proc_in):
-            raise RuntimeError(
-                f"INPUT_LIMIT_EXCEEDED: prompt ~{est_in} tokens exceeds "
-                f"max_input_tokens={proc_in} for {process_id}"
-            )
+            return {
+                "success": False,
+                "error": (
+                    f"INPUT_LIMIT_EXCEEDED: prompt ~{est_in} tokens exceeds "
+                    f"max_input_tokens={proc_in} for {process_id}"
+                ),
+                "provider": "deepseek",
+                "model_used": FLASH_MODEL,
+                "process_id": process_id,
+                "cost_estimate": 0.0,
+                "latency": 0.0,
+                "response": "",
+                "fallback_used": False,
+            }
+        effective_in = int(proc_in)
+    else:
+        effective_in = max(1, (len(prompt or "") + 3) // 4)
 
     ekey = evidence_hash(
         process_id=process_id,
@@ -237,17 +389,54 @@ def governed_flash_call(
             "cost_estimate": 0.0,
             "latency": 0.0,
             "response": "",
+            "fallback_used": False,
         }
 
-    _check_run_budget(process_id)
+    try:
+        projected = projected_max_cost_usd(
+            model_id=FLASH_MODEL,
+            max_input_tokens=int(effective_in),
+            max_output_tokens=int(effective_out),
+        )
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"COST_CONFIGURATION_INVALID: {e}"[:300],
+            "provider": "deepseek",
+            "model_used": FLASH_MODEL,
+            "process_id": process_id,
+            "cost_estimate": 0.0,
+            "latency": 0.0,
+            "response": "",
+            "fallback_used": False,
+        }
+
+    try:
+        _reserve_run_budget(process_id, projected)
+    except RuntimeError as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "provider": "deepseek",
+            "model_used": FLASH_MODEL,
+            "process_id": process_id,
+            "cost_estimate": 0.0,
+            "latency": 0.0,
+            "response": "",
+            "fallback_used": False,
+            "run_budget": run_budget_snapshot(),
+        }
 
     meta = {
         **(metadata or {}),
         "task_type": task_type,
         "evidence_hash": ekey,
         "run_id": _RUN_ID,
-        "governance": "agent_flash_v1",
+        "governance": "agent_flash_v2",
         "fallback_used": False,
+        "requested_policy": policy,
+        "fast_think_escalation_reason": esc_reason,
+        "projected_usd": projected,
     }
 
     t0 = time.time()
@@ -275,6 +464,7 @@ def governed_flash_call(
             "model_used": FLASH_MODEL,
             "process_id": process_id,
             "requested_policy": policy,
+            "fast_think_escalation_reason": esc_reason,
             "latency": round(time.time() - t0, 2),
             "cost_estimate": 0.0,
             "response": "",
@@ -294,6 +484,8 @@ def governed_flash_call(
             "requested_model_id": requested,
             "returned_model": returned,
             "process_id": process_id,
+            "requested_policy": policy,
+            "fast_think_escalation_reason": esc_reason,
             "latency": latency,
             "cost_estimate": float((prov or {}).get("estimated_cost_usd") or 0),
             "response": "",
@@ -308,6 +500,8 @@ def governed_flash_call(
             "provider": "deepseek",
             "model_used": returned or FLASH_MODEL,
             "process_id": process_id,
+            "requested_policy": policy,
+            "fast_think_escalation_reason": esc_reason,
             "latency": latency,
             "cost_estimate": float((prov or {}).get("estimated_cost_usd") or 0),
             "response": "",
@@ -328,6 +522,7 @@ def governed_flash_call(
         "returned_model": returned,
         "requested_policy": (prov or {}).get("requested_policy") or policy,
         "executed_policy": (prov or {}).get("executed_policy") or policy,
+        "fast_think_escalation_reason": esc_reason,
         "process_id": process_id,
         "latency": latency,
         "cost_estimate": float(cost) if cost is not None else 0.0,
@@ -340,4 +535,5 @@ def governed_flash_call(
         "evidence_hash": ekey,
         "fallback_used": False,
         "relative_units": None,  # never treat as USD
+        "run_id": _RUN_ID,
     }

@@ -150,6 +150,17 @@ def _execute_retry_cmd(item, allowlist, dry_run=False):
     if not cmd:
         return False, False, "no_retry_cmd"
 
+    # P0 containment: never execute process_watchlist_agent_jobs while flag active
+    try:
+        from lib.agent_jobs_containment import guard_remediation_command
+        g = guard_remediation_command(cmd, source="claude_escalation_handler")
+        if g.get("blocked"):
+            log.info(f"  ⛔ retry_cmd CONTAINED (P0 agent_jobs): {cmd[:80]}")
+            _log_retry(item, cmd, False, "CONTAINED", "contained_p0")
+            return False, False, "CONTAINED"
+    except Exception:
+        pass
+
     allowed, reason = _check_allowlist(cmd, allowlist)
 
     if not allowed:

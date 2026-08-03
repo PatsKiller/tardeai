@@ -216,6 +216,7 @@
     "data_gaps_open": ".venv/bin/python scripts/data_gap_resolver.py",
     "agent_jobs_stuck": "flock -n /tmp/tradeai_watchlist_agent_jobs.lock .venv/bin/python scripts/process_watchlist_agent_jobs.py --limit 15",
     "pipeline_failures": "flock -n /tmp/tradeai_watchlist_agent_jobs.lock .venv/bin/python scripts/process_watchlist_agent_jobs.py --limit 10",
+    "_p0_agent_jobs_note": "While AGENT_JOBS_P0_CONTAINED flag/env is active, health_agent.guard_remediation_command blocks these worker invocations and reports CONTAINED (issue #283). Worker entry also exits 78 when contained.",
     "research_stale": ".venv/bin/python scripts/hermes_coordinator.py",
     "hermes_rag_gap": ".venv/bin/python scripts/hermes_embedding_enqueue.py --backfill --limit 500",
     "hermes_embed_backlog": "flock -n /tmp/tradeai_hermes_embedding_worker.lock .venv/bin/python scripts/hermes_embedding_worker.py --apply --limit 10",

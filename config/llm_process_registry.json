@@ -137,7 +137,7 @@
       "default_mode": "automated",
       "description": "Governed agent_debate; FAST_THINK allowed for contradiction/reconciliation only (issue #283).",
       "allowed_lanes": ["deepseek-flash", "deepseek-v4-flash", "fast", "fast_think"],
-      "deepseek_default_policy": "FAST_THINK",
+      "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": ["FAST", "FAST_THINK"],
       "max_input_tokens": 4000,
       "max_output_tokens": 1000,
@@ -145,7 +145,8 @@
       "daily_cost_cap_usd": 1.5,
       "tools_allowed": false,
       "fallback_allowed": false,
-      "advisory_only": true
+      "advisory_only": true,
+      "notes": "FAST by default; FAST_THINK only when deterministic escalation reason is set (PR #284)"
     },
     {
       "id": "watchlist_agent_flash_extract",
