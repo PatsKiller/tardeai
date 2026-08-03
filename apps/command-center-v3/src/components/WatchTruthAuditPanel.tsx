@@ -389,6 +389,8 @@ function ticketState(item: any) {
     deterministic: (detRaw || 'NOT RUN').toUpperCase(),
     reconciled: (recRaw || 'NOT RUN').toUpperCase(),
     local: text(review?.reviews?.local?.verdict, 'NOT RUN').toUpperCase(),
+    'deepseek-flash': text(review?.reviews?.['deepseek-flash']?.verdict, 'NOT RUN').toUpperCase(),
+    'deepseek-v4': text(review?.reviews?.['deepseek-v4']?.verdict, 'NOT RUN').toUpperCase(),
     grok: text(review?.reviews?.grok?.verdict, 'NOT RUN').toUpperCase(),
     chatgpt: text(review?.reviews?.chatgpt?.verdict, 'NOT RUN').toUpperCase(),
   }
@@ -1190,9 +1192,11 @@ export default function WatchTruthAuditPanel() {
                       {([
                         ['Deterministic', selectedRow.ticket.deterministic],
                         ['Reconciled', selectedRow.ticket.reconciled],
+                        [laneLabel('deepseek-flash'), selectedRow.ticket['deepseek-flash']],
                         ['Local', selectedRow.ticket.local],
                         [laneLabel('grok'), selectedRow.ticket.grok],
                         [laneLabel('chatgpt'), selectedRow.ticket.chatgpt],
+                        [laneLabel('deepseek-v4'), selectedRow.ticket['deepseek-v4']],
                         ['Valuation', selectedRow.value.notApplicable ? 'N/A' : selectedRow.value.available ? `P/E ${selectedRow.value.pe ?? '—'}` : '—'],
                       ] as const).map(([label, value]) => (
                         <div key={label} style={{ padding: 8, borderBottom: `1px solid ${BB.border}`, borderRight: `1px solid ${BB.border}`, background: 'rgba(0,0,0,.12)' }}>

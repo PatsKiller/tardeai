@@ -60,12 +60,18 @@ def _ticket_state(packet: dict | None) -> dict[str, str]:
     det_raw = str(validation.get("state") or (validated0 or {}).get("state") or "NOT RUN").upper()
     rec_raw = str((review.get("reconciled") or {}).get("state") or "NOT RUN").upper()
     reviews = review.get("reviews") or {}
+
+    def _lane(key: str) -> str:
+        return str((reviews.get(key) or {}).get("verdict") or "NOT RUN").upper()
+
     return {
         "deterministic": det_raw or "NOT RUN",
         "reconciled": rec_raw or "NOT RUN",
-        "local": str((reviews.get("local") or {}).get("verdict") or "NOT RUN").upper(),
-        "grok": str((reviews.get("grok") or {}).get("verdict") or "NOT RUN").upper(),
-        "chatgpt": str((reviews.get("chatgpt") or {}).get("verdict") or "NOT RUN").upper(),
+        "local": _lane("local"),
+        "deepseek-flash": _lane("deepseek-flash"),
+        "deepseek-v4": _lane("deepseek-v4"),
+        "grok": _lane("grok"),
+        "chatgpt": _lane("chatgpt"),
     }
 
 
@@ -348,11 +354,21 @@ def build_watch_advisory(
         fresh_detail = f"Quote age {price_age_h:.0f}h"
     else:
         fresh_detail = "Quote age unknown"
+    # Free critics required for MET. deepseek-v4 is paid/optional — shown but not required.
+    free_lanes = ("local", "deepseek-flash", "grok", "chatgpt")
     critics_ok = all(
-        v not in ("NOT RUN", "UNVALIDATED", "UNAVAILABLE", "")
-        for k, v in ticket.items()
-        if k in ("local", "deepseek-flash", "deepseek-v4", "grok", "chatgpt")
+        (ticket.get(k) or "NOT RUN") not in ("NOT RUN", "UNVALIDATED", "UNAVAILABLE", "")
+        for k in free_lanes
     )
+    ds_v4 = ticket.get("deepseek-v4") or "NOT RUN"
+    critics_detail = (
+        f"DeepSeek Flash {ticket.get('deepseek-flash') or 'NOT RUN'} · "
+        f"Local {ticket.get('local') or 'NOT RUN'} · "
+        f"Grok {ticket.get('grok') or 'NOT RUN'} · "
+        f"ChatGPT {ticket.get('chatgpt') or 'NOT RUN'}"
+    )
+    if ds_v4 not in ("NOT RUN", ""):
+        critics_detail += f" · DeepSeek v4 {ds_v4}"
 
     criteria = [
         {
@@ -364,8 +380,8 @@ def build_watch_advisory(
         {
             "id": "critics",
             "met": critics_ok if _is_ticket_pass(ticket.get("deterministic")) else None,
-            "label": "Multi-lane critics (local / DeepSeek Flash / Grok)",
-            "detail": f"Local {ticket.get('local')} · Grok {ticket.get('grok')} · ChatGPT {ticket.get('chatgpt')}",
+            "label": "Multi-lane critics (DeepSeek Flash / local / Grok / ChatGPT)",
+            "detail": critics_detail,
         },
         {
             "id": "zone",

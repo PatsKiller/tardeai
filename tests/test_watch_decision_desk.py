@@ -179,6 +179,7 @@ def test_ticket_state_from_packet():
             "reviews": {
                 "local": {"verdict": "PASS"},
                 "grok": {"verdict": "NOT RUN"},
+                "deepseek-flash": {"verdict": "CAUTION"},
             },
         },
     }
@@ -186,6 +187,9 @@ def test_ticket_state_from_packet():
     assert ts["deterministic"] == "PASS"
     assert ts["local"] == "PASS"
     assert ts["grok"] == "NOT RUN"
+    assert ts["deepseek-flash"] == "CAUTION"
+    assert ts["deepseek-v4"] == "NOT RUN"
+    assert ts["chatgpt"] == "NOT RUN"
 
 
 def test_advisory_no_llm_prose_fields():
