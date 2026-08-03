@@ -20,9 +20,15 @@ def _best_quote(symbol: str, max_age_s: int = 900) -> dict[str, Any] | None:
         if scripts not in sys.path:
             sys.path.insert(0, scripts)
         from market_quote_provider import get_best_quote
-        q = get_best_quote(symbol, max_age_seconds=max_age_s)
-        if q and q.get("price"):
-            return {"price": float(q["price"]), "chg_pct": q.get("change_percent")}
+        q = get_best_quote(symbol, max_age_seconds=max_age_s) or {}
+        price = q.get("price") or q.get("last_price")
+        if price is not None:
+            return {
+                "price": float(price),
+                "chg_pct": q.get("change_percent") or q.get("chg_pct"),
+                "as_of": q.get("quote_timestamp") or q.get("as_of") or q.get("fetched_at"),
+                "provider": q.get("provider"),
+            }
     except Exception:
         pass
     return None
@@ -43,10 +49,10 @@ def get_price_batch(db_query, symbols: list[str], max_age_hours: int = 12) -> di
     if not symbols:
         return {}
 
-    # First pass: read from market_quotes
+    # First pass: read from market_quotes (Data Broker canonical live quote store)
     rows = db_query(
         """SELECT DISTINCT ON (upper(symbol))
-                  upper(symbol) AS symbol, price, day_change_pct, fetched_at
+                  upper(symbol) AS symbol, price, day_change_pct, fetched_at, source
            FROM market_quotes
            WHERE upper(symbol) = ANY(%s)
              AND fetched_at > NOW() - make_interval(hours => %s)
@@ -59,22 +65,28 @@ def get_price_batch(db_query, symbols: list[str], max_age_hours: int = 12) -> di
     for row in rows:
         sym = str(row.get("symbol") or "").upper()
         if sym and row.get("price") is not None:
+            as_of = row.get("fetched_at")
+            if hasattr(as_of, "isoformat"):
+                as_of = as_of.isoformat()
+            src = str(row.get("source") or "market_quotes")
             out[sym] = {
                 "price": float(row["price"]),
                 "chg_pct": float(row["day_change_pct"]) if row.get("day_change_pct") is not None else None,
-                "source": "market_quotes",
+                "as_of": as_of,
+                "source": f"data_broker.market_quotes:{src}",
             }
             found.add(sym)
 
-    # Second pass: get_best_quote fallback for missing symbols
+    # Second pass: broker waterfall only for missing symbols (still Data Broker path)
     missing = [s for s in symbols if s not in found]
     if missing:
         for sym in missing:
-            q = _best_quote(sym)
+            q = _best_quote(sym, max_age_s=max(900, max_age_hours * 3600))
             if q:
                 out[sym] = {
                     "price": q["price"],
                     "chg_pct": q.get("chg_pct"),
-                    "source": "get_best_quote",
+                    "as_of": q.get("as_of") or q.get("quote_timestamp"),
+                    "source": "data_broker.market_quote:get_best_quote",
                 }
     return out

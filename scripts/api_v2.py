@@ -27992,8 +27992,8 @@ def _data_portfolio_snapshot_get():
 
 
 def _reentry_decision_desk_get(query=None):
-    """GET /api/v2/reentry/decision-desk — deterministic broker-backed Re-Entry Decision Desk.
-    Price via get_best_quote, RSI/MACD via indicator_snapshot, resistance from prefs cache,
+    """GET /api/v2/reentry/decision-desk — deterministic Data Broker Re-Entry Decision Desk.
+    Price via data_broker.market_quote, RSI/MACD via indicator_snapshot, resistance from prefs cache,
     catalyst via catalyst_record, heat via portfolio_snapshot. No LLM on this path."""
     try:
         import sys as _s

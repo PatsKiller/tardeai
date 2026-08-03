@@ -241,15 +241,18 @@ def _held_symbols() -> set[str]:
 
 
 def _quote(symbol: str) -> dict[str, Any]:
+    """Single-symbol quote via Data Broker (prefer batch path in build_decision_desk)."""
     _scripts_path()
     try:
+        from lib.data_broker.market_quote import get_price_batch
+        # db_query not available here — use null batch with get_best_quote only via broker helper
         from market_quote_provider import get_best_quote
         q = get_best_quote(symbol) or {}
-        price = _f(q.get("last_price"))
+        price = _f(q.get("last_price") if q.get("last_price") is not None else q.get("price"))
         return {
             "price": price,
-            "as_of": q.get("quote_timestamp") or datetime.now(timezone.utc).isoformat(),
-            "source": q.get("provider") or "get_best_quote",
+            "as_of": q.get("quote_timestamp") or q.get("as_of") or q.get("fetched_at"),
+            "source": f"data_broker.market_quote:{q.get('provider') or 'get_best_quote'}",
         }
     except Exception as e:
         return {"price": None, "as_of": None, "source": None, "error": str(e)[:120]}
@@ -599,13 +602,25 @@ def build_decision_desk(
     *,
     max_symbols: int = 250,
 ) -> dict[str, Any]:
-    """Build deterministic Decision Desk payload for Re-Entry symbols."""
+    """Build deterministic Decision Desk payload for Re-Entry symbols.
+
+    **All market/technical inputs are Data Broker only** (no ad-hoc yfinance in this path):
+      - quotes → data_broker.market_quote.get_price_batch
+      - RSI/MACD/ATR/OBV → data_broker.indicator_snapshot
+      - entry zones/stops → data_broker.entry_plan
+      - book/heat → data_broker.portfolio_snapshot
+      - profiles/earnings → data_broker.symbol_profile
+      - catalysts → data_broker.catalyst_record
+      - resistance → ui_prefs portfolio.reentry.resistance.v1 (closed-session broker cache)
+    LLM never sets READY/NEAR/BLOCK.
+    """
     _scripts_path()
     from lib.data_broker.indicator_snapshot import get_indicator_snapshot
     from lib.data_broker.catalyst_record import get_catalyst_record
     from lib.data_broker.portfolio_snapshot import get_portfolio_snapshot
     from lib.data_broker.symbol_profile import get_symbol_profiles
     from lib.data_broker.entry_plan import get_entry_plans
+    from lib.data_broker.market_quote import get_price_batch
 
     resistance_pref = _pref_json(db_query, RESISTANCE_KEY)
     resistance_map = resistance_pref.get("symbols") or {}
@@ -638,6 +653,19 @@ def build_decision_desk(
     heat = (snap.get("risk") or {}).get("portfolio_heat_pct")
     book_equity = _f((snap.get("totals") or {}).get("total_value")) or DEFAULT_BOOK
     fund_lt_map = _load_fund_lookthrough_map()
+
+    # Quotes: Data Broker batch (market_quotes primary, get_best_quote waterfall only for gaps)
+    # Weekend: allow up to 96h so Friday RTH prints remain usable Sat/Sun.
+    quote_max_h = 96 if datetime.now(timezone.utc).weekday() >= 5 else 36
+    try:
+        from zoneinfo import ZoneInfo
+        if datetime.now(ZoneInfo("America/New_York")).weekday() >= 5:
+            quote_max_h = 96
+        else:
+            quote_max_h = 48  # Mon open may still hold Friday close until 09:00 cron
+    except Exception:
+        pass
+    price_batch = get_price_batch(db_query, symbols, max_age_hours=quote_max_h) if symbols else {}
 
     indicators = get_indicator_snapshot(symbols) if symbols else {"by_symbol": {}}
     by_ind = indicators.get("by_symbol") or {}
@@ -699,7 +727,16 @@ def build_decision_desk(
     today = datetime.now(timezone.utc).date().isoformat()
     rows_out: list[dict[str, Any]] = []
     for sym in symbols:
-        quote = _quote(sym)
+        batch_q = price_batch.get(sym) or {}
+        if batch_q.get("price") is not None:
+            quote = {
+                "price": _f(batch_q.get("price")),
+                "as_of": batch_q.get("as_of"),
+                "source": batch_q.get("source") or "data_broker.market_quote",
+            }
+        else:
+            # Last-resort single-symbol broker path (still labeled data_broker)
+            quote = _quote(sym)
         ind = by_ind.get(sym) or {}
         plan = plans.get(sym) or {}
         res = resistance_map.get(sym) or {}
@@ -948,12 +985,33 @@ def build_decision_desk(
     ]
     act_ages = [r.get("price_age_h") for r in actionable if r.get("price_age_h") is not None]
     stale_n = sum(1 for a in ages if a is not None and a > STALE_HOURS)
+    quote_sources = {}
+    for r in rows_out:
+        src = str(r.get("price_source") or "none")
+        quote_sources[src] = quote_sources.get(src, 0) + 1
     return {
         "ok": True,
-        "version": "reentry-decision-desk-v1",
+        "version": "reentry-decision-desk-v2-data-broker",
         "computed_at": datetime.now(timezone.utc).isoformat(),
         "deterministic": True,
         "llm_in_path": False,
+        "data_broker": {
+            "enforced": True,
+            "modules": {
+                "quotes": "lib.data_broker.market_quote.get_price_batch",
+                "indicators": "lib.data_broker.indicator_snapshot.get_indicator_snapshot",
+                "entry_plans": "lib.data_broker.entry_plan.get_entry_plans",
+                "portfolio": "lib.data_broker.portfolio_snapshot.get_portfolio_snapshot",
+                "profiles": "lib.data_broker.symbol_profile.get_symbol_profiles",
+                "catalysts": "lib.data_broker.catalyst_record.get_catalyst_record",
+                "resistance": "ui_prefs:portfolio.reentry.resistance.v1",
+            },
+            "quote_source_counts": quote_sources,
+            "quote_batch_hits": len(price_batch),
+            "indicator_hits": len(by_ind),
+            "plan_hits": len(plans),
+            "note": "READY/NEAR/BLOCK are deterministic from Data Broker stores only — no LLM.",
+        },
         "criteria": {
             "rsi_ready": f"{RSI_READY_LOW:.0f} <= RSI < {RSI_READY_HIGH:.0f}",
             "near_pct": NEAR_PCT,
