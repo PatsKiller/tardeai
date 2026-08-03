@@ -1292,6 +1292,22 @@ export default function WatchTruthAuditPanel() {
                         </b>
                       </span>
                     </div>
+                    {(() => {
+                      const revs = selectedRow.item?.decision_packet?.ticket_review?.reviews || {}
+                      const errs = (['deepseek-flash', 'deepseek-v4', 'local', 'grok', 'chatgpt'] as const)
+                        .map(k => {
+                          const e = revs?.[k]?.error
+                          if (!e) return null
+                          return `${laneLabel(k)}: ${String(e).slice(0, 120)}`
+                        })
+                        .filter(Boolean)
+                      if (!errs.length) return null
+                      return (
+                        <div style={{ marginTop: 6, fontSize: 10, color: BB.amber, lineHeight: 1.35 }}>
+                          Critic errors · {errs.join(' · ')}
+                        </div>
+                      )
+                    })()}
                     {!selectedRow.value.notApplicable && (
                       <div style={{ marginTop: 8, fontSize: 11, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                         {([['P/E', selectedRow.value.pe, VAL_TIP.pe], ['Fwd', selectedRow.value.forwardPe, VAL_TIP.fwd], ['P/B', selectedRow.value.pb, VAL_TIP.pb], ['P/S', selectedRow.value.ps, VAL_TIP.ps]] as const).map(([label, value, tip]) => (

@@ -141,12 +141,22 @@ def generate(
                           manual_trigger=manual_trigger, metadata=metadata)
         import requests
         try:
-            r = requests.post(_DEEPSEEK_FLASH_URL,
-                            json={"model": model or _DEEPSEEK_FLASH_MODEL,
-                                  "messages": [{"role": "user", "content": prompt}],
-                                  "temperature": 0.3, "max_tokens": 2048},
-                            headers={"Authorization": f"Bearer {_DEEPSEEK_API_KEY}"},
-                            timeout=timeout)
+            use_model = model or _DEEPSEEK_FLASH_MODEL
+            payload = {
+                "model": use_model,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.2 if (process_id or "") == "ticket_review" else 0.3,
+                "max_tokens": 2048,
+            }
+            # Force JSON object when the caller is the ticket critic schema path.
+            if (process_id or "") == "ticket_review" and "reasoner" not in use_model:
+                payload["response_format"] = {"type": "json_object"}
+            r = requests.post(
+                _DEEPSEEK_FLASH_URL,
+                json=payload,
+                headers={"Authorization": f"Bearer {_DEEPSEEK_API_KEY}"},
+                timeout=timeout,
+            )
             r.raise_for_status()
             body = r.json()
             text = _deepseek_message_text(body)
@@ -160,7 +170,7 @@ def generate(
                              task_summary=task_summary or prompt[:160],
                              trigger_mode="manual" if manual_trigger else "automated",
                              success=True,
-                             model_name=model or _DEEPSEEK_FLASH_MODEL,
+                             model_name=use_model,
                              prompt=prompt, response=text,
                              tokens_in=usage.get("prompt_tokens"),
                              tokens_out=usage.get("completion_tokens"))
@@ -181,12 +191,26 @@ def generate(
                           manual_trigger=manual_trigger, metadata=metadata)
         import requests
         try:
-            r = requests.post(_DEEPSEEK_FLASH_URL,
-                            json={"model": model or _DEEPSEEK_V4_MODEL,
-                                  "messages": [{"role": "user", "content": prompt}],
-                                  "temperature": 0.15, "max_tokens": 4096},
-                            headers={"Authorization": f"Bearer {_DEEPSEEK_API_KEY}"},
-                            timeout=max(timeout, 120))
+            # Ticket critics need schema JSON; reasoner often exhausts tokens on CoT.
+            # Give more room (8192) and slightly lower temp. Callers that require
+            # strict JSON should still retry on deepseek-chat if parse fails.
+            use_model = model or _DEEPSEEK_V4_MODEL
+            max_tok = 8192 if (process_id or "") == "ticket_review" else 4096
+            payload = {
+                "model": use_model,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.15,
+                "max_tokens": max_tok,
+            }
+            # json_object helps chat models; reasoner may ignore or reject — try only on chat.
+            if "reasoner" not in use_model and (process_id or "") == "ticket_review":
+                payload["response_format"] = {"type": "json_object"}
+            r = requests.post(
+                _DEEPSEEK_FLASH_URL,
+                json=payload,
+                headers={"Authorization": f"Bearer {_DEEPSEEK_API_KEY}"},
+                timeout=max(timeout, 180),
+            )
             r.raise_for_status()
             body = r.json()
             text = _deepseek_message_text(body)
@@ -200,7 +224,7 @@ def generate(
                              task_summary=task_summary or prompt[:160],
                              trigger_mode="manual" if manual_trigger else "automated",
                              success=True,
-                             model_name=model or _DEEPSEEK_V4_MODEL,
+                             model_name=use_model,
                              prompt=prompt, response=text,
                              tokens_in=usage.get("prompt_tokens"),
                              tokens_out=usage.get("completion_tokens"))
@@ -208,10 +232,23 @@ def generate(
                     pass
             return text
         except Exception as e:
-            print(f"  [llm-lane] DeepSeek v4 failed ({e}), falling back to grok+gpt dual-consensus")
-            return generate(prompt, lane="grok", timeout=timeout, model=model,
-                          process_id=process_id, task_summary=task_summary,
-                          manual_trigger=manual_trigger, metadata=metadata)
+            print(f"  [llm-lane] DeepSeek v4 failed ({e}), falling back to deepseek-chat then grok")
+            # Prefer chat (same provider, schema-friendly) before OAuth fallback
+            try:
+                return generate(
+                    prompt,
+                    lane="deepseek-flash",
+                    model=_DEEPSEEK_FLASH_MODEL,
+                    timeout=timeout,
+                    process_id=process_id,
+                    task_summary=task_summary,
+                    manual_trigger=manual_trigger,
+                    metadata=metadata,
+                )
+            except Exception:
+                return generate(prompt, lane="grok", timeout=timeout, model=model,
+                              process_id=process_id, task_summary=task_summary,
+                              manual_trigger=manual_trigger, metadata=metadata)
 
     # ── Free OAuth lanes (fallback) ──
     if process_id and not _skip_consumption and lane in ("grok", "chatgpt"):

@@ -417,8 +417,25 @@ def run_oauth_critic(lane: str, symbol, ticket, facts, validation) -> dict:
         return base
 
 
+def _llm_text(output) -> str:
+    if isinstance(output, dict):
+        return str(output.get("text") or output.get("content") or "")
+    return str(output or "")
+
+
+def _llm_model(output, default: str) -> str:
+    if isinstance(output, dict) and output.get("model"):
+        return str(output.get("model"))
+    return default
+
+
 def run_deepseek_critic(lane: str, symbol, ticket, facts, validation) -> dict:
-    """lane: deepseek-flash | deepseek-v4 — primary paid critics via llm_lane."""
+    """lane: deepseek-flash | deepseek-v4 — primary paid critics via llm_lane.
+
+    deepseek-reasoner (v4 default) often burns the budget on chain-of-thought and
+    never emits schema JSON → UNAVAILABLE. We always try the requested lane first,
+    then one forced deepseek-chat JSON retry so the desk gets a real verdict.
+    """
     import llm_lane
     packet = build_review_packet(symbol, ticket, facts, validation)
     family = {
@@ -431,31 +448,76 @@ def run_deepseek_critic(lane: str, symbol, ticket, facts, validation) -> dict:
     }.get(lane, "DEEPSEEK_CRITIC")
     base = _base(review_type, family, validation)
     try:
-        if not llm_lane.available(lane):
+        if not llm_lane.available(lane) and not llm_lane.available("deepseek-flash"):
             base["error"] = f"{lane} lane unavailable (API key or endpoint)"
             return base
-        # Operator-clicked desk action → manual_trigger so consumption gate allows
-        # unregistered process_id ticket_review without flipping global defaults.
-        output = llm_lane.generate(
-            _SYSTEM + "\n\n" + _prompt(packet),
-            lane=lane,
-            process_id="ticket_review",
-            task_summary=f"ticket critic {symbol} {lane}",
-            manual_trigger=True,
-            timeout=180 if lane == "deepseek-v4" else 120,
-        )
-        text = output.get("text") if isinstance(output, dict) else str(output or "")
         try:
             from llm_lane import _DEEPSEEK_FLASH_MODEL, _DEEPSEEK_V4_MODEL
             default_model = _DEEPSEEK_V4_MODEL if lane == "deepseek-v4" else _DEEPSEEK_FLASH_MODEL
         except Exception:
             default_model = "deepseek-reasoner" if lane == "deepseek-v4" else "deepseek-chat"
-        base["model"] = (
-            (output.get("model") if isinstance(output, dict) else None) or default_model
+
+        # Operator-clicked desk action → manual_trigger so consumption gate allows
+        # unregistered process_id ticket_review without flipping global defaults.
+        prompt = (
+            _SYSTEM
+            + "\n\nCRITICAL: Your entire reply must be one JSON object. "
+              "No prose before or after. No markdown fences. No chain-of-thought outside JSON.\n\n"
+            + _prompt(packet)
         )
-        return _finish(base, _parse(text),
-                       f"{lane} returned incomplete or non-schema JSON",
-                       raw_text=text)
+        # Prefer chat model for schema critics. v4 still *requests* the reasoner first
+        # for depth, but Flash always uses chat. If reasoner is unavailable, start on chat.
+        primary_lane = lane if llm_lane.available(lane) else "deepseek-flash"
+        output = llm_lane.generate(
+            prompt,
+            lane=primary_lane,
+            process_id="ticket_review",
+            task_summary=f"ticket critic {symbol} {lane}",
+            manual_trigger=True,
+            timeout=180 if lane == "deepseek-v4" else 120,
+        )
+        text = _llm_text(output)
+        base["model"] = _llm_model(output, default_model)
+        parsed = _parse(text)
+
+        # Reasoner / truncated CoT → one chat-model JSON retry (same review family)
+        if parsed is None:
+            retry_prompt = (
+                _SYSTEM
+                + "\n\nYour previous answer was not valid schema JSON. "
+                  "Reply again with ONLY the required JSON object — no reasoning, no markdown.\n\n"
+                + _prompt(packet)
+            )
+            try:
+                from llm_lane import _DEEPSEEK_FLASH_MODEL as _chat_model
+            except Exception:
+                _chat_model = "deepseek-chat"
+            retry = llm_lane.generate(
+                retry_prompt,
+                lane="deepseek-flash",
+                model=_chat_model,
+                process_id="ticket_review",
+                task_summary=f"ticket critic {symbol} {lane} json-retry",
+                manual_trigger=True,
+                timeout=120,
+            )
+            retry_text = _llm_text(retry)
+            retry_parsed = _parse(retry_text)
+            if retry_parsed is not None:
+                base["model"] = f"{_llm_model(retry, _chat_model)} (json-retry)"
+                base["retry_from"] = lane
+                return _finish(base, retry_parsed)
+            # Keep the longer raw excerpt for diagnosis
+            if len(retry_text or "") > len(text or ""):
+                text = retry_text
+            base["model"] = _llm_model(output, default_model)
+
+        return _finish(
+            base,
+            parsed,
+            f"{lane} returned incomplete or non-schema JSON",
+            raw_text=text,
+        )
     except Exception as exc:
         base["error"] = f"{type(exc).__name__}: {str(exc)[:140]}"
         return base
