@@ -1,0 +1,229 @@
+{
+  "keys": [
+    "version",
+    "default_mode",
+    "lane_policies",
+    "processes"
+  ],
+  "version": 2,
+  "sample": {
+    "version": 2,
+    "default_mode": "manual",
+    "lane_policies": {
+      "grok_only": "Grok only \u2014 single lane",
+      "chatgpt_only": "ChatGPT only",
+      "either": "Operator picks Grok OR ChatGPT (one is enough)",
+      "both_preferred": "Best with both lanes; either alone still useful",
+      "ensemble": "Designed to run both and reconcile"
+    },
+    "processes": [
+      {
+        "id": "holding_protection_advisor",
+        "name": "Holding Protection Advisor",
+        "category": "Portfolio",
+        "lane_policy": "grok_only",
+        "default_mode": "manual",
+        "description": "Per-holding stop/trail via Grok \u2014 use batch for periodic top-N runs"
+      },
+      {
+        "id": "holding_protection_advisor_batch",
+        "name": "Stop Advisory Batch (top N)",
+        "category": "Portfolio",
+        "lane_policy": "grok_only",
+        "default_mode": "manual",
+        "description": "Manual/cron batch: advise up to 6 priority holdings per run"
+      },
+      {
+        "id": "broker_cloud_oversight",
+        "name": "Broker Proposal Cloud Oversight",
+        "category": "Trading",
+        "lane_policy": "both_preferred",
+        "description": "Per-proposal second opinion \u2014 pick Grok, ChatGPT, or both via card buttons"
+      },
+      {
+        "id": "cloud_review",
+        "name": "Cloud Review (ensemble)",
+        "category": "Hermes",
+        "lane_policy": "both_preferred",
+        "default_mode": "automated",
+        "description": "Reviews local LLM output \u2014 auto uses both when available"
+      },
+      {
+        "id": "oauth_lane_keepalive",
+        "name": "OAuth Lane Keepalive",
+        "category": "System",
+        "lane_policy": "either",
+        "default_mode": "automated",
+        "description": "Token roll pings (Grok + ChatGPT cron)"
+      },
+      {
+        "id": "rotation_grok_review",
+        "name": "Rotation Grok Review",
+        "category": "Rotation",
+        "lane_policy": "grok_only",
+        "description": "Inline Grok second opinion on rotation questions"
+      },
+      {
+        "id": "rotation_oversight",
+        "name": "Rotation Independent Oversight",
+        "category": "Rotation",
+        "lane_policy": "ensemble",
+        "description": "Grok + ChatGPT oversight on rotation engine \u2014 run both for full picture"
+      },
+      {
+        "id": "watchlist_cio_synthesis",
+        "name": "Watchlist CIO Synthesis",
+        "category": "Watch",
+        "lane_policy": "ensemble",
+        "default_mode": "manual",
+        "description": "CIO view \u2014 Grok primary + ChatGPT reconcile when both run"
+      },
+      {
+        "id": "watchlist_maria_priority",
+        "name": "Maria Priority OAuth",
+        "category": "Watch",
+        "lane_policy": "either",
+        "default_mode": "automated",
+        "daily_soft_cap": 80,
+        "description": "OAuth Maria narratives for portfolio holdings, top WAIT setups, and manual refresh \u2014 ~30-80 calls/day"
+      },
+      {
+        "id": "paper_trade_advisory",
+        "name": "Paper Trade Post-Mortem",
+        "category": "Trading",
+        "lane_policy": "both_preferred",
+        "description": "Post-mortem on closed paper trades"
+      },
+      {
+        "id": "hermes_external_research",
+        "name": "Hermes External Research",
+        "category": "Hermes",
+        "lane_policy": "either",
+        "description": "Escalation \u2014 first available OAuth lane"
+      },
+      {
+        "id": "multi_tier_trade_reviewer",
+        "name": "Multi-Tier Trade Reviewer",
+        "category": "Journal",
+        "lane_policy": "both_preferred",
+        "description": "Cloud review of local trade reviews"
+      },
+      {
+        "id": "reporting_grok_editorial",
+        "name": "Report Grok Editorial",
+        "category": "Reports",
+        "lane_policy": "grok_only",
+        "description": "Optional Grok polish on exports"
+      },
+      {
+        "id": "portfolio_weekly_report",
+        "name": "Portfolio Weekly Report",
+        "category": "Reports",
+        "lane_policy": "either",
+        "default_mode": "automated",
+        "description": "Weekly portfolio narratives (6 sections) via OAuth LLM"
+      },
+      {
+        "id": "portfolio_monthly_report",
+        "name": "Portfolio Monthly Report",
+        "category": "Reports",
+        "lane_policy": "either",
+        "default_mode": "automated",
+        "daily_soft_cap": 24,
+        "description": "Monthly portfolio narratives (8 sections) via OAuth LLM"
+      },
+      {
+        "id": "directive_keyword_enhancer",
+        "name": "Directive Keyword Enhancer",
+        "category": "Intel",
+        "lane_policy": "ensemble",
+        "description": "Merges keywords from grok + chatgpt + local"
+      },
+      {
+        "id": "think_tank_signal_miner",
+        "name": "Think Tank Signal Miner",
+        "category": "Intel",
+        "lane_policy": "either",
+        "description": "Tries lanes in order"
+      },
+      {
+        "id": "hermes_scalp_review",
+        "name": "Hermes Scalp Post-Trade Review",
+        "category": "Trading",
+        "lane_policy": "either",
+        "description": "OAuth enrichment \u2014 grok preferred"
+      },
+      {
+        "id": "portfolio_ask",
+        "name": "Portfolio Ask",
+        "category": "Portfolio",
+        "lane_policy": "either",
+        "description": "Q&A \u2014 Grok or ChatGPT"
+      },
+      {
+        "id": "journal_ask",
+        "name": "Journal Ask",
+        "category": "Journal",
+        "lane_policy": "either",
+        "description": "Q&A \u2014 Grok or ChatGPT"
+      },
+      {
+        "id": "strategy_planner",
+        "name": "Strategy Planner",
+        "category": "Strategy",
+        "lane_policy": "either",
+        "description": "What-if planning \u2014 Grok default, ChatGPT ok"
+      },
+      {
+        "id": "options_ensemble",
+        "name": "Options Desk Ensemble",
+        "category": "Options",
+        "lane_policy": "ensemble",
+        "description": "Grok + ChatGPT + Gemma scored review"
+      },
+      {
+        "id": "cloud_consensus_verdict",
+        "name": "Cloud Consensus Verdict",
+        "category": "Trading",
+        "lane_policy": "ensemble",
+        "description": "Requires both lanes for CLOUD_APPROVE"
+      },
+      {
+        "id": "stop_drift_alert",
+        "name": "Stop Drift Alert Narrative",
+        "category": "Portfolio",
+        "lane_policy": "either",
+        "description": "Narrative on stop drift"
+      },
+      {
+        "id": "hermes_analyst_coverage",
+        "name": "Hermes Analyst Coverage",
+        "category": "Hermes",
+        "lane_policy": "either",
+        "description": "Coverage gap analysis"
+      },
+      {
+        "id": "watchlist_entry_planner",
+        "name": "Watchlist Entry Planner",
+        "category": "Watch",
+        "lane_policy": "either",
+        "description": "Entry planning context"
+      },
+      {
+        "id": "grok_execution_review",
+        "name": "Grok Execution Review",
+        "category": "Journal",
+        "lane_policy": "grok_only",
+        "description": "Execution coaching via Grok"
+      },
+      {
+        "id": "unregistered",
+        "name": "Unregistered / Legacy",
+        "category": "System",
+        "lane_policy": "either",
+        "default_mode": "automated",
+        "description": "Legacy calls without process_id"
+      }
+    ]
+  }
+}

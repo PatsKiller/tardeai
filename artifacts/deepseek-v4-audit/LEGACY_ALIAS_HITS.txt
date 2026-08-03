@@ -1,0 +1,55 @@
+scripts/llm_health_check.py:18:LANES = ("local", "grok", "chatgpt", "deepseek-flash", "deepseek-v4")
+scripts/llm_health_check.py:68:"deepseek-flash (paid API), deepseek-v4 (paid API, R1 reasoning). "
+scripts/api_v2.py:7313:if str(x).strip().lower() in ("grok", "chatgpt", "deepseek-flash", "deepseek-v4"))
+scripts/api_v2.py:7315:return 400, {"ok": False, "error": "lanes must include grok, chatgpt, deepseek-flash, and/or deepseek-v4"}
+scripts/api_v2.py:37142:lanes = [want] if want in ("deepseek-flash", "deepseek-v4", "grok", "chatgpt", "local") else ["deepseek-flash", "grok", "chatgpt", "local"]
+scripts/api_v2.py:37289:if lane not in ("deepseek-flash", "deepseek-v4", "grok", "chatgpt"):
+scripts/api_v2.py:37290:return 400, {"ok": False, "error": "lane must be deepseek-flash, deepseek-v4, grok, or chatgpt"}
+scripts/llm_lane.py:2:DeepSeek (paid API: deepseek-flash, deepseek-v4), or local gemma.
+scripts/llm_lane.py:27:"deepseek-flash": "deepseek-chat",       # fast, low-cost
+scripts/llm_lane.py:28:"deepseek-v4": "deepseek-reasoner",       # deep reasoning (R1)
+scripts/llm_lane.py:68:if lane in ("deepseek-flash", "deepseek-v4"):
+scripts/llm_lane.py:103:if process_id and not _skip_consumption and lane in ("grok", "chatgpt", "deepseek-flash", "deepseek-v4"):
+scripts/llm_lane.py:112:if lane in ("deepseek-flash", "deepseek-v4"):
+docs/deepseek_audit_2026-08-02.md:18:The `generate()` function in `scripts/llm_lane.py` had no branch for DeepSeek. Any call with `lane="deepseek-flash"` or `lane="deepseek-v4"` fell through to the catch-all:
+docs/deepseek_audit_2026-08-02.md:29:All calls in `api_v2.py` that pass `"deepseek-flash"` or `"deepseek-v4"` as a lane parameter were silently redirected to local Gemma. Key call sites include:
+docs/deepseek_audit_2026-08-02.md:67:"deepseek-flash": "deepseek-chat",       # fast, low-cost
+docs/deepseek_audit_2026-08-02.md:68:"deepseek-v4": "deepseek-reasoner",      # deep reasoning (R1)
+docs/deepseek_audit_2026-08-02.md:72:- `available("deepseek-flash")` / `available("deepseek-v4")`: calls `GET /v1/models` with API key to verify
+docs/deepseek_audit_2026-08-02.md:73:- `generate(prompt, lane="deepseek-flash")`: calls `POST /v1/chat/completions` with model `deepseek-chat`
+docs/deepseek_audit_2026-08-02.md:74:- `generate(prompt, lane="deepseek-v4")`: calls `POST /v1/chat/completions` with model `deepseek-reasoner` (R1)
+docs/deepseek_audit_2026-08-02.md:76:- Consumption tracking now includes `deepseek-flash` and `deepseek-v4` in `llm_consumption.py`
+docs/deepseek_audit_2026-08-02.md:77:- Health check in `llm_health_check.py` now probes all 5 lanes (local, grok, chatgpt, deepseek-flash, deepseek-v4)
+docs/deepseek_audit_2026-08-02.md:83:- `LaneId` type alias: `'grok' | 'chatgpt' | 'deepseek-flash' | 'deepseek-v4' | 'local'`
+docs/deepseek_audit_2026-08-02.md:84:- `EnsembleLane` includes `'deepseek-flash'` and `'deepseek-v4'`
+docs/deepseek_audit_2026-08-02.md:119:deepseek-v4:    True (real API /v1/models check)
+docs/deepseek_audit_2026-08-02.md:128:deepseek-flash → "OK"  (1.3s response time, model: deepseek-chat)
+docs/deepseek_audit_2026-08-02.md:129:deepseek-v4    → "OK"  (2.1s response time, model: deepseek-reasoner R1)
+docs/deepseek_audit_2026-08-02.md:191:| `scripts/llm_lane.py` | Added DeepSeek lane support: `_DEEPSEEK_KEY`, `_DEEPSEEK_BASE`, `_DEEPSEEK_MODELS`, `_deepseek_available()`, `_deepseek_generate()`. Updated `available()` and `generate()` to
+docs/deepseek_audit_2026-08-02.md:192:| `scripts/lib/llm_consumption.py` | Added `deepseek-flash`, `deepseek-v4` to `allowed_lanes` defaults and fallback arrays. Updated docstring. |
+docs/deepseek_audit_2026-08-02.md:193:| `scripts/llm_health_check.py` | Added `deepseek-flash`, `deepseek-v4` to `LANES` tuple. Updated note string. |
+docs/deepseek_audit_2026-08-02.md:208:3. **Consider `deepseek-reasoner` for high-value tasks** — The v4/R1 model excels at reasoning-heavy tasks like strategy planning, CIO synthesis, and trade reviews. The heavier latency (~2s vs ~1.3s f
+apps/command-center-v3/src/components/WatchTruthAuditPanel.tsx:272:<div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, marginTop: 9 }}><button disabled={Boolean(reviewBusy)} onClick={() => void runReview('local', 'Local critic')} style={button(
+apps/command-center-v3/src/components/CloudLlmRunButtons.tsx:35:const run = async (lane: 'grok' | 'chatgpt' | 'deepseek-flash' | 'deepseek-v4') => {
+apps/command-center-v3/src/components/CloudLlmRunButtons.tsx:37:const isDeepSeek = lane === 'deepseek-flash' || lane === 'deepseek-v4'
+apps/command-center-v3/src/components/CloudLlmRunButtons.tsx:118:{lanes.includes('deepseek-v4') && (
+apps/command-center-v3/src/components/CloudLlmRunButtons.tsx:119:<button type="button" disabled={!!busy} onClick={() => void run('deepseek-v4')}
+apps/command-center-v3/src/components/CloudLlmRunButtons.tsx:120:style={btnStyle(DEEPSEEK, busy === 'deepseek-v4', compact)}>
+apps/command-center-v3/src/components/CloudLlmRunButtons.tsx:121:{busy === 'deepseek-v4' ? '…' : '▶ DeepSeek V4'}
+apps/command-center-v3/src/hooks/useOAuthLanes.ts:56:deepseek_v4: byLane('deepseek-v4'),
+apps/command-center-v3/src/pages/ConsumptionHub.tsx:89:const testLane = async (lane: 'grok' | 'chatgpt' | 'deepseek-flash' | 'deepseek-v4') => {
+apps/command-center-v3/src/pages/ConsumptionHub.tsx:139:{(['grok', 'chatgpt', 'deepseek-flash', 'deepseek-v4'] as const).map(id => {
+apps/command-center-v3/src/pages/ConsumptionHub.tsx:193:{(['grok', 'chatgpt', 'deepseek-flash', 'deepseek-v4'] as const).flatMap(lane => {
+apps/command-center-v3/src/lib/cloudLlmRun.ts:2:* Plus DeepSeek metered API lanes — deepseek-flash / deepseek-v4. */
+apps/command-center-v3/src/lib/cloudLlmRun.ts:5:export type LaneId = 'grok' | 'chatgpt' | 'deepseek-flash' | 'deepseek-v4' | 'local'
+apps/command-center-v3/src/lib/cloudLlmRun.ts:40:if (p === 'deepseek_only') return ['deepseek-flash', 'deepseek-v4']
+apps/command-center-v3/src/lib/cloudLlmRun.ts:62:export async function runBrokerCloudLane(proposalId: number, lane: 'grok' | 'chatgpt' | 'deepseek-flash' | 'deepseek-v4', timeout = 120) {
+apps/command-center-v3/src/lib/cloudLlmRun.ts:71:export async function runStopAdvisory(symbol: string, lane: 'grok' | 'local' | 'deepseek-flash' | 'deepseek-v4' = 'grok') {
+apps/command-center-v3/src/lib/cloudLlmRun.ts:82:export async function runStopAdvisoryBatch(opts?: { limit?: number; lane?: 'grok' | 'chatgpt' | 'deepseek-flash' | 'deepseek-v4'; symbols?: string }) {
+apps/command-center-v3/src/lib/cloudLlmRun.ts:91:export async function runWatchlistCioSynthesis(symbol: string, lane: 'grok' | 'chatgpt' | 'deepseek-flash' | 'deepseek-v4') {
+apps/command-center-v3/src/lib/cloudLlmRun.ts:101:export async function runRotationOversight(lanes: ('grok' | 'chatgpt' | 'deepseek-flash' | 'deepseek-v4')[]) {
+apps/command-center-v3/src/lib/cloudLlmRun.ts:115:export async function runPortfolioAsk(question: string, lane: 'grok' | 'chatgpt' | 'deepseek-flash' | 'deepseek-v4') {
+apps/command-center-v3/src/lib/cloudLlmRun.ts:127:lane: 'grok' | 'chatgpt' | 'deepseek-flash' | 'deepseek-v4'
+apps/command-center-v3/src/lib/cloudLlmRun.ts:140:export type EnsembleLane = 'grok' | 'chatgpt' | 'deepseek-flash' | 'deepseek-v4' | 'local'
+scripts/lib/llm_consumption.py:70:allowed_lanes TEXT[] DEFAULT ARRAY['grok','chatgpt','deepseek-flash','deepseek-v4'],
+scripts/lib/llm_consumption.py:226:allowed = lane in (cfg.get("allowed_lanes") or ["grok", "chatgpt", "deepseek-flash", "deepseek-v4"])

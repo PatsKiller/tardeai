@@ -1,0 +1,89 @@
+dirty_count=184
+=== by status prefix ===
+    103 M
+     81 ??
+=== top-level dirs of dirty paths ===
+    107 scripts
+     39 apps
+     18 config
+     14 docs
+      3 migrations
+      1 tests
+      1 SOURCE_COMMIT
+      1 AGENTS.md
+=== sample dirty (first 60) ===
+ M AGENTS.md
+ M apps/command-center-v2/src/pages/OpsHub.tsx
+ M apps/command-center-v3/src/components/BrokerOrders.tsx
+ M apps/command-center-v3/src/components/BrokerProposals.tsx
+ M apps/command-center-v3/src/components/DataSourceHealth.tsx
+ M apps/command-center-v3/src/components/MetricStrip.tsx
+ M apps/command-center-v3/src/components/StopManagement.tsx
+ M apps/command-center-v3/src/components/SynthesizedReportCard.tsx
+ M apps/command-center-v3/src/components/ThesisValidityBar.tsx
+ M apps/command-center-v3/src/components/WatchTruthAuditPanel.tsx
+ M apps/command-center-v3/src/components/WatchlistCardV4.tsx
+ M apps/command-center-v3/src/components/reports/ArchiveListItem.tsx
+ M apps/command-center-v3/src/hooks/useApi.ts
+ M apps/command-center-v3/src/hooks/useOAuthLanes.ts
+ M apps/command-center-v3/src/index.css
+ M apps/command-center-v3/src/lib/agentRuntimeMonitoring.ts
+ M apps/command-center-v3/src/lib/cloudLlmRun.ts
+ M apps/command-center-v3/src/pages/ActiveTraderHub.tsx
+ M apps/command-center-v3/src/pages/ConsumptionHub.tsx
+ M apps/command-center-v3/src/pages/DefenseHub.tsx
+ M apps/command-center-v3/src/pages/HealthHub.tsx
+ M apps/command-center-v3/src/pages/HomeHub.tsx
+ M apps/command-center-v3/src/pages/JournalHub.tsx
+ M apps/command-center-v3/src/pages/OptionsHub.tsx
+ M apps/command-center-v3/src/pages/PortfolioHub.tsx
+ M apps/command-center-v3/src/pages/ReportsHub.tsx
+ M apps/command-center-v3/src/pages/RotationIntelligence.tsx
+ M apps/command-center-v3/src/pages/SystemHub.tsx
+ M apps/command-center-v3/src/pages/TradingHub.tsx
+ M apps/command-center-v3/vite.config.ts
+ M config/agent_runtime_mvl.json
+ M config/design_token_baseline.json
+ M config/health_agent_policy.json
+ M config/hermes_score_weights.yaml
+ M config/ipo_lockups.json
+ M config/llm_process_registry.json
+ M config/premium_review_providers.yaml
+ M config/systemd/agent_runtime/README.md
+ M config/watch_quality_gate.json
+ M docs/deepseek_audit_2026-08-02.md
+ M docs/diligence/current/OPTIONS_RISK_BLOCK_MATRIX.md
+ M docs/ops/SERVER_PERF_OPTIMIZE_AND_SO_LINGER_FIX_2026-08-02.md
+ M docs/project/CI_EVIDENCE_LATEST.md
+ M docs/project/RELEASE_MANIFEST_LATEST.md
+ M migrations/agentic_runtime/apply.sh
+ M scripts/account_policy.py
+ M scripts/agent_runtime/agents/__init__.py
+ M scripts/agent_runtime/agents/base.py
+ M scripts/agent_runtime/agents/definitions.py
+ M scripts/agent_runtime/agents/dispatcher.py
+ M scripts/agent_runtime/maturity_observability.py
+ M scripts/agent_runtime/read_http.py
+ M scripts/agent_runtime/read_postgres.py
+ M scripts/agent_runtime/sentinel_pipeline.py
+ M scripts/agent_runtime_dispatch_boot.py
+ M scripts/alex_hygiene.py
+ M scripts/api_v2.py
+ M scripts/ask_alerts.py
+ M scripts/chatgpt_oauth_proxy.py
+ M scripts/continuous_runner.py
+=== llm/deepseek related dirty ===
+ M apps/command-center-v3/src/hooks/useOAuthLanes.ts
+ M apps/command-center-v3/src/pages/ConsumptionHub.tsx
+ M config/llm_process_registry.json
+ M docs/deepseek_audit_2026-08-02.md
+ M scripts/lib/llm_consumption.py
+ M scripts/lib/oauth_lane_status.py
+ M scripts/llm_intelligence_enrichment.py
+ M scripts/llm_lane.py
+ M scripts/llm_router.py
+?? config/watch_lane_admission.json
+?? docs/ops/REENTRY_DATA_BROKER_AND_LLM_FIXES_2026-08-03.md
+?? scripts/lib/llm_route_policy.py
+?? scripts/lib/watch_lane_admission.py
+?? scripts/main_desk_free_llm_weekly.py

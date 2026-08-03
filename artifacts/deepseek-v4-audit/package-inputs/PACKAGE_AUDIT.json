@@ -1,0 +1,42 @@
+{
+  "package_name": "TRADE_AI_DEEPSEEK_V4_IMPLEMENTATION_PACKAGE_v2_2026-08-03",
+  "created_at_utc": "2026-08-03T13:12:30.161357+00:00",
+  "intended_server_directory": "/home/johnclaw/implementation-inputs/deepseek-v4-2026-08-03",
+  "payload_file_count": 6,
+  "payload_files": [
+    {
+      "name": "EXECUTE_TRADE_AI_DEEPSEEK_V4_RECONCILIATION_AND_MATURITY_PROMPT.md",
+      "size_bytes": 27740,
+      "sha256": "bc223dd8e0074cf0f854f9a4807b678051e8dabe8f9392f5922304494ae52061"
+    },
+    {
+      "name": "README_FIRST.md",
+      "size_bytes": 1296,
+      "sha256": "1c59857dee64a2dba57af17ef0bca9e8173dae78e130ebd042224f685f3b38bf"
+    },
+    {
+      "name": "TRADE_AI_DEEPSEEK_V4_ROUTING_AND_SITE_MATURITY_AUDIT_2026-08-03.md",
+      "size_bytes": 13568,
+      "sha256": "8740fafaf35fb2c360354a06e2411acc672bf63c3cb7a2168c0f2f17b552526a"
+    },
+    {
+      "name": "TRADE_AI_LLM_MODEL_REGISTRY_PROPOSED.json",
+      "size_bytes": 2826,
+      "sha256": "7d33890b92653a953f7161e6eb374cf1c02ca52062ea79440887bb0b3f6d0e79"
+    },
+    {
+      "name": "TRADE_AI_LLM_PROCESS_POLICY_PROPOSED.json",
+      "size_bytes": 2294,
+      "sha256": "7fdf34ec56f4d4399dbfee6bfba28e457a3881a0d01ca74d3bb7891c3fcc5144"
+    },
+    {
+      "name": "UPLOAD_FROM_POWERSHELL.ps1",
+      "size_bytes": 1142,
+      "sha256": "a8b6eef2cac8617ddadff13139982e96aae2028194f16c5e21d259c843be791b"
+    }
+  ],
+  "required_core_files_present": true,
+  "checksum_manifest_present": true,
+  "zip_integrity_test": "pending",
+  "tar_integrity_test": "pending"
+}

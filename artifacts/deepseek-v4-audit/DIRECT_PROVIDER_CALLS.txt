@@ -1,0 +1,61 @@
+scripts/run_batch_overnight_gemma_pilot.sh:21:OLLAMA_URL="http://localhost:11434"
+scripts/hermes_browse_proxy.py:15:OLLAMA_URL = "http://localhost:11434/api/chat"
+scripts/phase3_media_prose_router.py:11:OLLAMA = "http://localhost:11434"
+scripts/hybrid_rag_context_adapter.py:23:OLLAMA_URL = "http://localhost:11434"
+scripts/compare_phase2f_global_shadow_retrieval.py:17:OLLAMA_URL = "http://localhost:11434"
+scripts/build_phase2e_qwen3_global_shadow_index.py:18:OLLAMA_URL = "http://localhost:11434"
+scripts/check_llm_fleet_alerts.py:8:OLLAMA = "http://localhost:11434"
+scripts/run_phase3d_expanded_media_prose_pilot.py:9:OLLAMA = "http://localhost:11434"
+scripts/report_llm_fleet_status.py:8:OLLAMA = "http://localhost:11434"
+scripts/smoke_test_phase3_small_model.py:10:OLLAMA = "http://localhost:11434"
+scripts/write_daily_llm_fleet_summary.py:8:OLLAMA = "http://localhost:11434"
+scripts/report_llm_fix1_overnight_fallback.py:132:issues.append("ollama not reachable at localhost:11434")
+scripts/embedding_ab_baseline.py:29:OLLAMA_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+scripts/run_phase2c_hybrid_offline_pilot.sh:112:curl -s http://localhost:11434/api/generate -d '{"model":"gemma3-overnight","keep_alive":0,"prompt":""}' > /dev/null 2>&1 || true
+scripts/run_phase2c_hybrid_offline_pilot.sh:117:curl -s http://localhost:11434/api/generate -d '{"model":"gemma3:4b","prompt":"test","options":{"num_predict":1}}' > /dev/null 2>&1 || true
+scripts/compare_phase2b_parallel_retrieval.py:16:OLLAMA_URL = "http://localhost:11434"
+scripts/run_deep_overnight_llm_queue.py:29:OLLAMA_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+scripts/rag_retrieval.py:17:OLLAMA_URL = "http://localhost:11434/api/embeddings"
+scripts/run_deep_overnight_llm_window.sh:35:OLLAMA_URL="http://localhost:11434"
+scripts/hybrid_rag_retrieval_pilot.py:21:OLLAMA_URL = "http://localhost:11434"
+scripts/hermes_deep_research_local.py:30:OLLAMA = "http://localhost:11434/api/chat"
+scripts/llm_lane.py:18:_GROK_URL = os.environ.get("HERMES_XAI_PROXY_URL", "http://127.0.0.1:8645/v1/chat/completions")
+scripts/llm_lane.py:23:_DEEPSEEK_BASE = os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com").rstrip("/")
+scripts/llm_lane.py:38:r = requests.get(f"{_DEEPSEEK_BASE}/v1/models",
+scripts/llm_lane.py:62:h = requests.get(_GROK_URL.replace("/v1/chat/completions", "/health"), timeout=5).json()
+scripts/llm_lane.py:79:f"{_DEEPSEEK_BASE}/v1/chat/completions",
+scripts/llm_lane.py:147:r = requests.post(_CHATGPT_URL + "/v1/chat/completions",
+scripts/build_phase2b_parallel_embedding_index.py:17:OLLAMA_URL = "http://localhost:11434"
+scripts/gpu_lifecycle.py:33:OLLAMA_BASE = os.getenv("LOCAL_LLM_BASE_URL", "http://localhost:11434").strip()
+scripts/check_deep_overnight_health.py:30:OLLAMA_BASE = "http://localhost:11434"
+scripts/check_deep_overnight_health.py:253:return {"status": "FAIL", "detail": "ollama unreachable at localhost:11434"}
+scripts/prefetch_hybrid_rag_context.py:31:OLLAMA_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+scripts/hermes_embedding_worker.py:22:OLLAMA_EMBED_URL = "http://localhost:11434/api/embed"
+scripts/grok_oauth_proxy.py:9:GET  /v1/models            -> grok model list
+scripts/hermes_external_researcher.py:33:"grok":    {"kind": "xai_proxy", "url": os.environ.get("HERMES_XAI_PROXY_URL", "http://127.0.0.1:8645/v1/chat/completions"),
+scripts/smoke_test_phase3_gemma4_e4b.py:10:OLLAMA = "http://localhost:11434"
+docs/OPERATOR_RUNBOOK_LLM_v4_1_FINAL.md:122:curl -sf http://localhost:11434/api/tags >/tmp/ollama_tags.json && echo 'Ollama: alive'
+docs/AGENT_ROSTER.md:105:- **Ollama URL:** http://localhost:11434
+docs/CHANGELOG.md:2270:refreshes raw tokens**. Free under the ChatGPT subscription, NOT the metered API. `/health` + `/v1/models` +
+docs/MASTER_SYSTEM_DOCUMENTATION.md:1780:| Runtime | Ollama (localhost:11434) |
+docs/deepseek_audit_2026-08-02.md:47:These two scripts bypass `llm_lane.py` and call `https://api.deepseek.com/v1/chat/completions` directly:
+docs/deepseek_audit_2026-08-02.md:64:_DEEPSEEK_BASE = os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com").rstrip("/")
+docs/deepseek_audit_2026-08-02.md:72:- `available("deepseek-flash")` / `available("deepseek-v4")`: calls `GET /v1/models` with API key to verify
+docs/deepseek_audit_2026-08-02.md:73:- `generate(prompt, lane="deepseek-flash")`: calls `POST /v1/chat/completions` with model `deepseek-chat`
+docs/deepseek_audit_2026-08-02.md:74:- `generate(prompt, lane="deepseek-v4")`: calls `POST /v1/chat/completions` with model `deepseek-reasoner` (R1)
+docs/deepseek_audit_2026-08-02.md:118:deepseek-flash: True (real API /v1/models check)
+docs/deepseek_audit_2026-08-02.md:119:deepseek-v4:    True (real API /v1/models check)
+docs/system/SYSTEM_ACCESS_AND_APPLICATIONS_PAGE_REPORT.md:41:| Ollama | healthy | localhost:11434 |
+docs/atm_audit_2026_05_26/SYSTEM_ARCHITECTURE_COMPLETE.md:92:├─ Try 1: Ollama (qwen3:14b, localhost:11434)
+docs/project/ROTATION_LLM_ADVISOR.md:374:the Grok proxy: an OpenAI-compatible local server (`/health`, `/v1/models`, `/v1/chat/completions`) that
+docs/hermes/HERMES_COMPATIBILITY_AUDIT.md:56:| Ollama | YES | OpenAI-compatible endpoint at `localhost:11434/v1` |
+docs/hermes/HERMES_PHASE_P0_FINAL_GATE.md:42:| Ollama support | YES — OpenAI-compatible endpoint at `localhost:11434/v1` |
+docs/_archive/prompts/CLAUDE_CODE_EXECUTION_PROMPT_LLM_v4_1_FINAL.md:170:curl -sf http://localhost:11434/api/tags > /tmp/ollama_tags.json && echo "Ollama: alive" || { echo "Ollama: DOWN"; exit 1; }
+docs/_archive/v4_1_discovery/llm_reference_scan_before.txt:437:scripts/rag_retrieval.py:16:OLLAMA_URL = "http://localhost:11434/api/embeddings"
+docs/_archive/2026-05-08/SESSION_15_OPEN_TRADE_MONITOR_AGENT_CURATION_LOCAL_LLM.md:102:- **Model:** qwen3:1.7b via Ollama (localhost:11434)
+docs/_archive/2026-06-02_doc_consolidation/SYSTEM_ARCHITECTURE_COMPLETE.md:94:├─ Try 1: Ollama (qwen3:14b, localhost:11434)
+docs/_archive/2026-05-24_cleanup/old_phase_reports/v4_1_phase1h_daily_deep_overnight_llm_window.md:280:curl -s http://localhost:11434/api/generate -d '{"model":"gemma3-overnight","keep_alive":0}'
+docs/_archive/2026-05-24_cleanup/old_phase_reports/v4_1_deployment_log.md:827:Ollama alive at localhost:11434. Running models: qwen3:14b (9624MB), nomic-embed-text (551MB).
+docs/_archive/2026-05-24_cleanup/completed_phases/phase2_embedding_ab/v4_1_phase2_rag_embedding_discovery.md:10:- **Model:** nomic-embed-text (via Ollama at localhost:11434)
+docs/_archive/post_session35_cleanup_20260509/misc_obsolete/docx_patch_20260509_cloud_rebuild.py:383:["Runtime", "Ollama (localhost:11434)"],
+docs/_archive/post_session35_cleanup_20260509/misc_obsolete/SKILL.md:706:| AI rewrite returns error | Local LLM (qwen3:1.7b) offline — check Ollama: `curl localhost:11434` |

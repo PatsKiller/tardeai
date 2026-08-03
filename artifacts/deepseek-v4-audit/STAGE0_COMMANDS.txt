@@ -1,0 +1,1054 @@
+===== Stage 0 started 2026-08-03T09:31:44-04:00 =====
+===== CHECKSUMS =====
+EXECUTE_TRADE_AI_DEEPSEEK_V4_RECONCILIATION_AND_MATURITY_PROMPT.md: OK
+README_FIRST.md: OK
+TRADE_AI_DEEPSEEK_V4_ROUTING_AND_SITE_MATURITY_AUDIT_2026-08-03.md: OK
+TRADE_AI_LLM_MODEL_REGISTRY_PROPOSED.json: OK
+TRADE_AI_LLM_PROCESS_POLICY_PROPOSED.json: OK
+UPLOAD_FROM_POWERSHELL.ps1: OK
+checksum_exit=0
+
+===== REPOSITORY DISCOVERY =====
+
+=== /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild ===
+https://github.com/PatsKiller/tardeai
+main
+72b6ddd201e541357cb52f30c3fdeb073adef02d
+dirty_count=184
+MATCH: PatsKiller/tardeai
+
+=== /home/johnclaw/tradeai-wt-active-trader-stage0 ===
+https://github.com/PatsKiller/tardeai
+wt/active-trader-stage0
+1867abca27fbb5c61186d56e3590580fa8c0f4ef
+dirty_count=0
+MATCH: PatsKiller/tardeai
+
+=== /home/johnclaw/tradeai-wt-cursor-guardrails ===
+https://github.com/PatsKiller/tardeai
+wt/cursor-guardrails
+31cd83989a3e65ed84cde92aacabaac04c4ade10
+dirty_count=0
+MATCH: PatsKiller/tardeai
+
+=== /home/johnclaw/tradeai-wt-entry-planner-fix ===
+https://github.com/PatsKiller/tardeai
+wt/entry-planner-fix
+12875b94f10a9409b3ad9ebb0a8bf27e5beba23a
+dirty_count=0
+MATCH: PatsKiller/tardeai
+
+=== /home/johnclaw/tradeai-wt-llm-queue-fixes ===
+https://github.com/PatsKiller/tardeai
+wt/llm-queue-fixes
+8ce0e52a71b2dfa44cb0476e1c6f921bfaae05e8
+dirty_count=0
+MATCH: PatsKiller/tardeai
+
+=== /home/johnclaw/tradeai-wt-moomoo-stage0 ===
+https://github.com/PatsKiller/tardeai
+wt/moomoo-stage0
+9eb8c192932293555859a62b61b48be8fe98dc04
+dirty_count=0
+MATCH: PatsKiller/tardeai
+
+=== /home/johnclaw/tradeai-wt-packet-b-watch ===
+https://github.com/PatsKiller/tardeai
+wt/packet-b-watch
+412c05e368eeaedd709af84a130b694cc6d3e693
+dirty_count=0
+MATCH: PatsKiller/tardeai
+
+=== /home/johnclaw/tradeai-wt-packet-d-idempotent-kb ===
+https://github.com/PatsKiller/tardeai
+wt/packet-d-idempotent-kb
+de04068f6647745e0f556ffd579250fd2f1fecbb
+dirty_count=0
+MATCH: PatsKiller/tardeai
+
+=== /home/johnclaw/tradeai-wt-packet-e-promotion-gate ===
+https://github.com/PatsKiller/tardeai
+wt/packet-e-promotion-gate
+18ddcfe8c853107598dbbe2395241fd1ff8a5197
+dirty_count=0
+MATCH: PatsKiller/tardeai
+
+=== /home/johnclaw/tradeai-wt-reentry-levels ===
+https://github.com/PatsKiller/tardeai
+wt/reentry-levels
+54649849e263edd47791d3b8c58f6e0a7e5c6789
+dirty_count=0
+MATCH: PatsKiller/tardeai
+
+=== /home/johnclaw/tradeai-wt-stop-truth-repair ===
+https://github.com/PatsKiller/tardeai
+feat/trading-desk-maturity-t1-t2
+ca8491ce9f42010d01d7c520bd6859ec18773c02
+dirty_count=0
+MATCH: PatsKiller/tardeai
+
+=== /home/johnclaw/tradeai-wt-watch-audit-fixes ===
+https://github.com/PatsKiller/tardeai
+wt/watch-audit-fixes
+998997851b4d9b507612ba4693af321258d55c6b
+dirty_count=0
+MATCH: PatsKiller/tardeai
+
+===== BROADER SEARCH for PatsKiller/tardeai =====
+/home/johnclaw/worktrees/active-trader-next | https://github.com/PatsKiller/tardeai | HEAD=819a51ba | branch=feat/active-trader-next
+/home/johnclaw/worktrees/v3next-css | https://github.com/PatsKiller/tardeai | HEAD=c86be8a8 | branch=wt/v3next-css
+/home/johnclaw/tradeai-wt-reentry-levels | https://github.com/PatsKiller/tardeai | HEAD=54649849 | branch=wt/reentry-levels
+/home/johnclaw/tradeai-wt-packet-b-watch | https://github.com/PatsKiller/tardeai | HEAD=412c05e3 | branch=wt/packet-b-watch
+/home/johnclaw/tradeai-wt-watch-audit-fixes | https://github.com/PatsKiller/tardeai | HEAD=99899785 | branch=wt/watch-audit-fixes
+/home/johnclaw/wt-polish | https://github.com/PatsKiller/tardeai | HEAD=73b6d914 | branch=agent/defense-sectors-institutional-polish
+/home/johnclaw/tradeai-wt-moomoo-stage0 | https://github.com/PatsKiller/tardeai | HEAD=9eb8c192 | branch=wt/moomoo-stage0
+/home/johnclaw/wt-dq-v1 | https://github.com/PatsKiller/tardeai | HEAD=f8e2a968 | branch=agent/defense-data-quality-v1
+/home/johnclaw/tradeai-wt-llm-queue-fixes | https://github.com/PatsKiller/tardeai | HEAD=8ce0e52a | branch=wt/llm-queue-fixes
+/home/johnclaw/tradeai-wt-packet-d-idempotent-kb | https://github.com/PatsKiller/tardeai | HEAD=de04068f | branch=wt/packet-d-idempotent-kb
+/home/johnclaw/trade-ai-v12-rebuild/wt-watch-v5 | https://github.com/PatsKiller/tardeai | HEAD=177b7b3a | branch=wt/watch-v5-technicals
+/home/johnclaw/trade-ai-v12-rebuild/worktrees/schwab-live-stops-sync-fix | https://github.com/PatsKiller/tardeai | HEAD=130d961b | branch=fix/schwab-live-stops-sync
+/home/johnclaw/trade-ai-v12-rebuild/worktrees/research-prompt-curation | https://github.com/PatsKiller/tardeai | HEAD=7e2fcd48 | branch=fix/research-prompt-curation
+/home/johnclaw/trade-ai-v12-rebuild/worktrees/schwab-reauth-anchor-gate | https://github.com/PatsKiller/tardeai | HEAD=4dec62c8 | branch=fix/schwab-reauth-anchor-gate
+/home/johnclaw/trade-ai-v12-rebuild/worktrees/agent-maturity-observability-v1 | https://github.com/PatsKiller/tardeai | HEAD=dc47a7ed | branch=codex/agent-maturity-observability-v1
+/home/johnclaw/trade-ai-v12-rebuild/worktrees/moomoo-l2-gateway-249 | https://github.com/PatsKiller/tardeai | HEAD=bd9fb8fe | branch=
+/home/johnclaw/trade-ai-v12-rebuild/worktrees/telegram-notification-normalization-v2 | https://github.com/PatsKiller/tardeai | HEAD=a51ddd72 | branch=feat/telegram-notification-normalization-v2
+/home/johnclaw/trade-ai-v12-rebuild/wt-ciodocs | https://github.com/PatsKiller/tardeai | HEAD=469a3f42 | branch=wt/ciodocs
+/home/johnclaw/trade-ai-v12-rebuild/wt-redeploy-p0 | https://github.com/PatsKiller/tardeai | HEAD=65f851af | branch=wt/redeploy-workstation-ui
+/home/johnclaw/trade-ai-v12-rebuild/trade-ai-stop-integration | https://github.com/PatsKiller/tardeai | HEAD=b9cdcff4 | branch=fix/stop-execution-journal-reentry-integration
+/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild | https://github.com/PatsKiller/tardeai | HEAD=72b6ddd2 | branch=main
+/home/johnclaw/tradeai-wt-entry-planner-fix | https://github.com/PatsKiller/tardeai | HEAD=12875b94 | branch=wt/entry-planner-fix
+/home/johnclaw/tradeai-wt-packet-e-promotion-gate | https://github.com/PatsKiller/tardeai | HEAD=18ddcfe8 | branch=wt/packet-e-promotion-gate
+/home/johnclaw/tradeai-wt-active-trader-stage0 | https://github.com/PatsKiller/tardeai | HEAD=1867abca | branch=wt/active-trader-stage0
+/home/johnclaw/tradeai-a1-preflight | https://github.com/PatsKiller/tardeai | HEAD=4dd555e8 | branch=
+/home/johnclaw/wt-watch-valuation | https://github.com/PatsKiller/tardeai | HEAD=50cd16eb | branch=fix/watch-valuation-passthrough
+/home/johnclaw/tradeai-wt-stop-truth-repair | https://github.com/PatsKiller/tardeai | HEAD=ca8491ce | branch=feat/trading-desk-maturity-t1-t2
+/home/johnclaw/wt-host-inventory | https://github.com/PatsKiller/tardeai | HEAD=25f39ada | branch=agent/host-runtime-inventory-2026-07-24
+/home/johnclaw/wt-watch-cards | https://github.com/PatsKiller/tardeai | HEAD=7b2b025c | branch=feat/watch-card-levels-tooltips
+/home/johnclaw/tradeai-wt-cursor-guardrails | https://github.com/PatsKiller/tardeai | HEAD=31cd8398 | branch=wt/cursor-guardrails
+/home/johnclaw/trade-ai-deployments/active-trader/306f817993707a99129633a8555352277bc6d05f | https://github.com/PatsKiller/tardeai | HEAD=306f8179 | branch=
+
+===== CANONICAL REPO = /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild =====
+=== git remote -v ===
+origin	https://github.com/PatsKiller/tardeai (fetch)
+origin	https://github.com/PatsKiller/tardeai (push)
+=== branch ===
+main
+=== HEAD ===
+72b6ddd201e541357cb52f30c3fdeb073adef02d
+=== status --short (full) ===
+ M AGENTS.md
+ M apps/command-center-v2/src/pages/OpsHub.tsx
+ M apps/command-center-v3/src/components/BrokerOrders.tsx
+ M apps/command-center-v3/src/components/BrokerProposals.tsx
+ M apps/command-center-v3/src/components/DataSourceHealth.tsx
+ M apps/command-center-v3/src/components/MetricStrip.tsx
+ M apps/command-center-v3/src/components/StopManagement.tsx
+ M apps/command-center-v3/src/components/SynthesizedReportCard.tsx
+ M apps/command-center-v3/src/components/ThesisValidityBar.tsx
+ M apps/command-center-v3/src/components/WatchTruthAuditPanel.tsx
+ M apps/command-center-v3/src/components/WatchlistCardV4.tsx
+ M apps/command-center-v3/src/components/reports/ArchiveListItem.tsx
+ M apps/command-center-v3/src/hooks/useApi.ts
+ M apps/command-center-v3/src/hooks/useOAuthLanes.ts
+ M apps/command-center-v3/src/index.css
+ M apps/command-center-v3/src/lib/agentRuntimeMonitoring.ts
+ M apps/command-center-v3/src/lib/cloudLlmRun.ts
+ M apps/command-center-v3/src/pages/ActiveTraderHub.tsx
+ M apps/command-center-v3/src/pages/ConsumptionHub.tsx
+ M apps/command-center-v3/src/pages/DefenseHub.tsx
+ M apps/command-center-v3/src/pages/HealthHub.tsx
+ M apps/command-center-v3/src/pages/HomeHub.tsx
+ M apps/command-center-v3/src/pages/JournalHub.tsx
+ M apps/command-center-v3/src/pages/OptionsHub.tsx
+ M apps/command-center-v3/src/pages/PortfolioHub.tsx
+ M apps/command-center-v3/src/pages/ReportsHub.tsx
+ M apps/command-center-v3/src/pages/RotationIntelligence.tsx
+ M apps/command-center-v3/src/pages/SystemHub.tsx
+ M apps/command-center-v3/src/pages/TradingHub.tsx
+ M apps/command-center-v3/vite.config.ts
+ M config/agent_runtime_mvl.json
+ M config/design_token_baseline.json
+ M config/health_agent_policy.json
+ M config/hermes_score_weights.yaml
+ M config/ipo_lockups.json
+ M config/llm_process_registry.json
+ M config/premium_review_providers.yaml
+ M config/systemd/agent_runtime/README.md
+ M config/watch_quality_gate.json
+ M docs/deepseek_audit_2026-08-02.md
+ M docs/diligence/current/OPTIONS_RISK_BLOCK_MATRIX.md
+ M docs/ops/SERVER_PERF_OPTIMIZE_AND_SO_LINGER_FIX_2026-08-02.md
+ M docs/project/CI_EVIDENCE_LATEST.md
+ M docs/project/RELEASE_MANIFEST_LATEST.md
+ M migrations/agentic_runtime/apply.sh
+ M scripts/account_policy.py
+ M scripts/agent_runtime/agents/__init__.py
+ M scripts/agent_runtime/agents/base.py
+ M scripts/agent_runtime/agents/definitions.py
+ M scripts/agent_runtime/agents/dispatcher.py
+ M scripts/agent_runtime/maturity_observability.py
+ M scripts/agent_runtime/read_http.py
+ M scripts/agent_runtime/read_postgres.py
+ M scripts/agent_runtime/sentinel_pipeline.py
+ M scripts/agent_runtime_dispatch_boot.py
+ M scripts/alex_hygiene.py
+ M scripts/api_v2.py
+ M scripts/ask_alerts.py
+ M scripts/chatgpt_oauth_proxy.py
+ M scripts/continuous_runner.py
+ M scripts/db_adapter.py
+ M scripts/defense_oversight.py
+ M scripts/finviz_screener_runner.py
+ M scripts/grok_oauth_proxy.py
+ M scripts/health_agent.py
+ M scripts/hermes_data_access.py
+ M scripts/hermes_external_researcher.py
+ M scripts/holding_protection_advisor.py
+ M scripts/holdings_gain_guardian.py
+ M scripts/indicator_cache_refresh.py
+ M scripts/ipo_lockup_alert.py
+ M scripts/lib/llm_consumption.py
+ M scripts/lib/oauth_lane_status.py
+ M scripts/lib/reentry_resistance.py
+ M scripts/llm_intelligence_enrichment.py
+ M scripts/llm_lane.py
+ M scripts/llm_router.py
+ M scripts/local_llm.py
+ M scripts/morning_eval_check.sh
+ M scripts/multi_tier_trade_reviewer.py
+ M scripts/news_ingestion.py
+ M scripts/news_symbol_guard.py
+ M scripts/open_trade_monitor.py
+ M scripts/opening_intelligence.py
+ M scripts/portfolio_ai_analyst.py
+ M scripts/portfolio_repricer.py
+ M scripts/portfolio_technical.py
+ M scripts/portfolio_yaml_advisor.py
+ M scripts/premium_ticket_review.py
+ M scripts/process_watchlist_agent_jobs.py
+ M scripts/rebalance_verifier.py
+ M scripts/research_scheduler.py
+ M scripts/run_ticket_review_job.py
+ M scripts/schwab_auto_reauth.py
+ M scripts/screenshot_pass.py
+ M scripts/strategy_ticket_review.py
+ M scripts/system_freshness_monitor.py
+ M scripts/system_health_agent.py
+ M scripts/telegram_callback_handler.py
+ M scripts/warm_caches.py
+ M scripts/watch_decision_refresh.py
+ M scripts/watch_decision_scheduler.py
+ M scripts/watchlist_entry_planner.py
+?? SOURCE_COMMIT
+?? apps/command-center-v3/dist.old-20260727_215046/
+?? apps/command-center-v3/dist.old-20260727_234748/
+?? apps/command-center-v3/dist.old-20260728_003338/
+?? apps/command-center-v3/dist.old-20260728_073101/
+?? apps/command-center-v3/dist.old-20260728_084311/
+?? apps/command-center-v3/dist.old-20260728_095820/
+?? apps/command-center-v3/dist.old-20260728_115948/
+?? apps/command-center-v3/dist.old-20260730_140304/
+?? apps/command-center-v3/src/components/primitives/EmptyState.tsx
+?? apps/command-center-v3/src/components/primitives/ModeBanner.tsx
+?? config/agent_runtime_schedules.json
+?? config/data_registry.yaml
+?? config/health_agent_policy.json.bak-before-main-20260801-145348
+?? config/systemd/agent_runtime/tradeai-agent-runtime-health.service
+?? config/systemd/agent_runtime/tradeai-agent-runtime-health.timer
+?? config/systemd/agent_runtime/tradeai-agent-runtime-producer.service
+?? config/systemd/agent_runtime/tradeai-agent-runtime-producer.timer
+?? config/systemd/flash-cadence/
+?? config/watch_lane_admission.json
+?? docs/_findings/at_config_tab_recon_2026-07-28.md
+?? docs/_findings/defense_redesign_2026-07-29/prod_default.png
+?? docs/_findings/defense_redesign_2026-07-29/prod_final.png
+?? docs/_findings/defense_redesign_2026-07-29/prod_redesign.png
+?? docs/agent_runtime/DEPLOY_OPERATOR_UX.md
+?? docs/ops/REENTRY_DATA_BROKER_AND_LLM_FIXES_2026-08-03.md
+?? docs/ops/alerts/telegram_notification_normalization_2026_07_28/telegram_notification_audit_all_messages.csv
+?? docs/ops/alerts/telegram_notification_normalization_2026_07_28/telegram_notification_audit_last_7_days.csv
+?? docs/screenshots_2026-08-02/
+?? migrations/agentic_runtime/0003_trigger_intake.down.sql
+?? migrations/agentic_runtime/0003_trigger_intake.up.sql
+?? scripts/agent_runtime/argus_pipeline.py
+?? scripts/agent_runtime/critic_llm.py
+?? scripts/agent_runtime/darwin_pipeline.py
+?? scripts/agent_runtime/deploy_operator_wiring.sh
+?? scripts/agent_runtime/deploy_real_triggers.sh
+?? scripts/agent_runtime/domain_critics_pipeline.py
+?? scripts/agent_runtime/fleet_alert_bridge.py
+?? scripts/agent_runtime/health_monitor.py
+?? scripts/agent_runtime/hermes_pipeline.py
+?? scripts/agent_runtime/install_agent_runtime_schedules.sh
+?? scripts/agent_runtime/iris_critic_pipeline.py
+?? scripts/agent_runtime/lesson_operator.py
+?? scripts/agent_runtime/maturity_promotion_gates.py
+?? scripts/agent_runtime/operations.py
+?? scripts/agent_runtime/operator_dispatch_http.py
+?? scripts/agent_runtime/pipeline_common.py
+?? scripts/agent_runtime/prove_incidents_trigger.py
+?? scripts/agent_runtime/providers/
+?? scripts/agent_runtime/readiness.py
+?? scripts/agent_runtime/reflection_pipeline.py
+?? scripts/agent_runtime/synthesis_critics_pipeline.py
+?? scripts/agent_runtime/trigger_intake.py
+?? scripts/agent_runtime/trigger_producer.py
+?? scripts/agent_runtime/trigger_sources.py
+?? scripts/ask_alerts.py.bak-20260731-222157
+?? scripts/check_ops_constitution.sh
+?? scripts/continuous_runner.py.bak-20260731-222157
+?? scripts/data_broker_indicator_refresh.py
+?? scripts/flash_cadence_runner.py
+?? scripts/health_agent.py.bak-before-indicator-allow-20260801-145348
+?? scripts/holdings_gain_guardian.py.bak-20260731-235911
+?? scripts/indicator_cache_refresh.py.bak-before-main-20260801-145348
+?? scripts/ipo_lockup_alert.py.bak-20260731-222157
+?? scripts/lib/analyst_rating_canonical.py
+?? scripts/lib/data_broker/
+?? scripts/lib/defense_main_promote.py
+?? scripts/lib/llm_route_policy.py
+?? scripts/lib/reentry_resistance.py.bak-20260801-104809
+?? scripts/lib/vix_canonical.py
+?? scripts/lib/watch_lane_admission.py
+?? scripts/lib/watch_quality_intake.py
+?? scripts/main_desk_free_llm_weekly.py
+?? scripts/open_trade_monitor.py.bak-20260731-235911
+?? scripts/pipeline_health_agent.py
+?? scripts/portfolio_repricer.py.bak-20260731-235911
+?? scripts/portfolio_technical.py.bak-20260731-222157
+?? scripts/refresh_reentry_resistance.py
+?? scripts/warm_caches.py.bak-20260731-235911
+?? scripts/watchlist_health_agent.py
+?? tests/test_schwab_reauth_anchor_gate.py
+=== dirty count ===
+184
+=== log -20 ===
+72b6ddd2 (HEAD -> main) DeepSeek: fix silent local-gemma fallback, wire frontend, dry-test, screenshots
+3c632d20 feat(overview): weekend-aware pipeline status + off-market refresh
+98c1eba5 fix(cron): correct script paths and lane args in cron_freshness_watcher
+14cb1b9c fix(server): remove SO_LINGER=0 that truncated large HTTP responses
+f31eb179 fix(agents-ui): sync argus in the static runtime catalog to SHADOW (match #270) (#271)
+ac802f2b feat(agents): author argus SHADOW runtime spec + per-agent "next step" hints (#270)
+79b6cd4a feat(agent-runtime): governed dispatch backend for the SHADOW fleet (LAB, zero authority) (#264)
+409a85b7 docs(agent-runtime): fleet status report 2026-07-30 (Tasks A-E) (#265)
+ea1cb405 feat(agents): wire Runtime detail desks to live data (+ read-only knowledge endpoints) (#269)
+8b33b291 docs(agent-runtime): fleet lifecycle + promotion assessment (why 4/16 are SHADOW) (#268)
+c31f5688 fix(agents-ui): Runtime panel defaults to the same-origin read API (was FIXTURE) (#267)
+61d14978 fix(agent-maturity): map _shadow runtime ids to board agents; attribute evidence by role (#266)
+d38e5544 docs(agent-runtime): wave-1 SHADOW activation runbook (operator, root-required) (#262)
+036c8d5a feat(agent-maturity): bridge live runtime evidence into the maturity board (read-only, fail-closed) (#261)
+eba1055c fix(agents-ui): restore maturity truth-labels dropped by the #260 redesign (#263)
+ddffc194 feat(agents): redesign maturity scoreboard as ranked, toned, drill-in board (#260)
+3af1db34 feat(agent-runtime): add read-only maturity observability and review provenance (#258)
+b17d594b Set up Cursor Cloud dev environment (AGENTS.md + update script) (#256)
+a51605ba config(discovery): enable analyst_signal lane as the committed default
+86576212 fix(discovery): analyst-signal TICKER_CANDIDATE label must be the bare symbol
+=== origin/main..HEAD (before fetch) ===
+72b6ddd2 DeepSeek: fix silent local-gemma fallback, wire frontend, dry-test, screenshots
+3c632d20 feat(overview): weekend-aware pipeline status + off-market refresh
+98c1eba5 fix(cron): correct script paths and lane args in cron_freshness_watcher
+14cb1b9c fix(server): remove SO_LINGER=0 that truncated large HTTP responses
+=== HEAD..origin/main (before fetch) ===
+ddef4613 Merge pull request #277 from PatsKiller/feat/trading-desk-maturity-t1-t2
+ca8491ce feat(trading): WP-T6/T7 TCA export, recon venues, charts, a11y
+be219d1e feat(trading): WP-T5 Proposals CSV export + URL-synced queue filters
+d181bc2c feat(trading): WP-T4 Open Trades CSV export + Journal/Stop links
+7a52f33c feat(trading): WP-T3 command triage NOW strip
+dbf471e6 feat(trading): WP-T1/T2 deep-link contract + desk health strip
+f9adfd9b Merge pull request #276 from PatsKiller/fix/reentry-command-desk-r0-r1
+31fd77a7 fix(reentry): restore OPEN EVIDENCE label for operator contract test
+0c6d7485 feat(reentry): R3 alert center + zone/RSI arm on V4
+9a221075 feat(reentry): R1.5 symbol-specific READY narratives + plan integrity + chart
+7c5d0332 feat(reentry): command desk R0/R1 — lanes, scorecard, deep-links
+869ca570 Merge PR #275: portfolio enterprise maturity WP-D–G
+e1b1fbc5 feat(portfolio): enterprise maturity WP-D–G — lazy load, panels, export, a11y
+5de93a33 Merge PR #274: portfolio enterprise maturity WP-A/B/C
+136ff6d5 feat(portfolio): enterprise maturity WP-A/B/C — deep-links, desk health, cash join
+9ce3974e Merge PR #273: unblock Schwab 2FA on SHA-pinned releases
+01cf38d4 fix(stops): SHA-pinned release passes Schwab tamper-evidence guard
+1c628574 Merge PR #272: restore portfolio stop truth + cash boundary
+94d7fe55 fix(portfolio): fail-closed live-stops exception envelope
+ffe0a5cb fix(portfolio): exclude cash holdings from equity enrichment and stop actions
+67ea3ce9 fix(portfolio): restore account-aware Schwab stop truth on current main
+=== diff --stat (first 80 lines) ===
+ AGENTS.md                                          |   64 +
+ apps/command-center-v2/src/pages/OpsHub.tsx        |    2 -
+ .../src/components/BrokerOrders.tsx                |    6 +-
+ .../src/components/BrokerProposals.tsx             |    2 +-
+ .../src/components/DataSourceHealth.tsx            |    1 +
+ .../src/components/MetricStrip.tsx                 |   23 +-
+ .../src/components/StopManagement.tsx              |    5 +-
+ .../src/components/SynthesizedReportCard.tsx       |    2 +-
+ .../src/components/ThesisValidityBar.tsx           |    2 +-
+ .../src/components/WatchTruthAuditPanel.tsx        | 1555 ++++++++++++++++++--
+ .../src/components/WatchlistCardV4.tsx             |    4 +-
+ .../src/components/reports/ArchiveListItem.tsx     |    2 +-
+ apps/command-center-v3/src/hooks/useApi.ts         |   18 +-
+ apps/command-center-v3/src/hooks/useOAuthLanes.ts  |    2 +-
+ apps/command-center-v3/src/index.css               |   18 +
+ .../src/lib/agentRuntimeMonitoring.ts              |   22 +-
+ apps/command-center-v3/src/lib/cloudLlmRun.ts      |    4 +-
+ .../src/pages/ActiveTraderHub.tsx                  |    2 +
+ .../command-center-v3/src/pages/ConsumptionHub.tsx |    6 +-
+ apps/command-center-v3/src/pages/DefenseHub.tsx    |    4 +-
+ apps/command-center-v3/src/pages/HealthHub.tsx     |   25 +-
+ apps/command-center-v3/src/pages/HomeHub.tsx       |   36 +-
+ apps/command-center-v3/src/pages/JournalHub.tsx    |    7 +-
+ apps/command-center-v3/src/pages/OptionsHub.tsx    |    2 +-
+ apps/command-center-v3/src/pages/PortfolioHub.tsx  |    2 +
+ apps/command-center-v3/src/pages/ReportsHub.tsx    |    4 +-
+ .../src/pages/RotationIntelligence.tsx             |   42 +-
+ apps/command-center-v3/src/pages/SystemHub.tsx     |   57 +-
+ apps/command-center-v3/src/pages/TradingHub.tsx    |    2 +
+ apps/command-center-v3/vite.config.ts              |   12 +-
+ config/agent_runtime_mvl.json                      |  152 +-
+ config/design_token_baseline.json                  |    7 +-
+ config/health_agent_policy.json                    |   66 +-
+ config/hermes_score_weights.yaml                   |   18 +-
+ config/ipo_lockups.json                            |  171 ++-
+ config/llm_process_registry.json                   |   66 +-
+ config/premium_review_providers.yaml               |   22 +-
+ config/systemd/agent_runtime/README.md             |   20 +-
+ config/watch_quality_gate.json                     |   10 +-
+ docs/deepseek_audit_2026-08-02.md                  |  420 +++---
+ .../diligence/current/OPTIONS_RISK_BLOCK_MATRIX.md |    2 +-
+ ...R_PERF_OPTIMIZE_AND_SO_LINGER_FIX_2026-08-02.md |  312 ++--
+ docs/project/CI_EVIDENCE_LATEST.md                 |   34 +-
+ docs/project/RELEASE_MANIFEST_LATEST.md            |   14 +-
+ migrations/agentic_runtime/apply.sh                |    8 +-
+ scripts/account_policy.py                          |    5 +-
+ scripts/agent_runtime/agents/__init__.py           |    3 +
+ scripts/agent_runtime/agents/base.py               |   10 +
+ scripts/agent_runtime/agents/definitions.py        |  202 ++-
+ scripts/agent_runtime/agents/dispatcher.py         |    2 +
+ scripts/agent_runtime/maturity_observability.py    |   46 +-
+ scripts/agent_runtime/read_http.py                 |   64 +-
+ scripts/agent_runtime/read_postgres.py             |   17 +-
+ scripts/agent_runtime/sentinel_pipeline.py         |    2 +
+ scripts/agent_runtime_dispatch_boot.py             |   55 +-
+ scripts/alex_hygiene.py                            |   47 +-
+ scripts/api_v2.py                                  |  480 ++++--
+ scripts/ask_alerts.py                              |    9 +-
+ scripts/chatgpt_oauth_proxy.py                     |   23 +-
+ scripts/continuous_runner.py                       |    7 +-
+ scripts/db_adapter.py                              |  199 +--
+ scripts/defense_oversight.py                       |   27 +-
+ scripts/finviz_screener_runner.py                  |   34 +-
+ scripts/grok_oauth_proxy.py                        |   22 +-
+ scripts/health_agent.py                            |  349 ++++-
+ scripts/hermes_data_access.py                      |   36 +-
+ scripts/hermes_external_researcher.py              |  121 +-
+ scripts/holding_protection_advisor.py              |   16 +-
+ scripts/holdings_gain_guardian.py                  |   13 +-
+ scripts/indicator_cache_refresh.py                 |  384 ++++-
+ scripts/ipo_lockup_alert.py                        |    7 +-
+ scripts/lib/llm_consumption.py                     |  125 +-
+ scripts/lib/oauth_lane_status.py                   |   24 +
+ scripts/lib/reentry_resistance.py                  |   41 +-
+ scripts/llm_intelligence_enrichment.py             |   18 +-
+ scripts/llm_lane.py                                |  339 ++++-
+ scripts/llm_router.py                              |  200 +--
+ scripts/local_llm.py                               |  113 +-
+ scripts/morning_eval_check.sh                      |   16 +-
+ scripts/multi_tier_trade_reviewer.py               |   44 +-
+=== diff --stat total lines ===
+104
+=== worktree list --porcelain ===
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+HEAD 72b6ddd201e541357cb52f30c3fdeb073adef02d
+branch refs/heads/main
+
+worktree /home/johnclaw/trade-ai-deployments/active-trader/306f817993707a99129633a8555352277bc6d05f
+HEAD 306f817993707a99129633a8555352277bc6d05f
+detached
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-stop-integration
+HEAD b9cdcff43bae3fb5696500379886cf476c88bf28
+branch refs/heads/fix/stop-execution-journal-reentry-integration
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-a03967ded7e43718b
+HEAD dbdd7438f39f24298e1f9fce8329b6dbf7a5b9fb
+branch refs/heads/worktree-agent-a03967ded7e43718b
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-a281c7b653c6ae402
+HEAD 6808bedfec7ed55716a2066f4ce28fab5d106708
+branch refs/heads/worktree-agent-a281c7b653c6ae402
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-a37e37e1fc68fb93f
+HEAD 6fb23bd4d4ca7ceaf1a1a30c149998565a12dc20
+branch refs/heads/codex/a1-no-connect-preflight-v1
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-a5eb1de95b22aa3a7
+HEAD c67d2dbc658ea604846e04145644b57254de0930
+branch refs/heads/codex/a2-strict-503-200-preflight-v1
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-a6dc005f499e10bdd
+HEAD b09424eb9559b58d4066c394d6801c15543e16a6
+branch refs/heads/worktree-agent-a6dc005f499e10bdd
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-a6de298cdc62d3860
+HEAD a65fd52951856bd212848731a1cd1efcf9ec4ff1
+branch refs/heads/codex/agent-runtime-read-mount-v1
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-a72422cff5c059fd8
+HEAD 3aa1ab33cbf7b2d4cc731aeb1cc61f8368e60732
+branch refs/heads/agent/moomoo-l2-active-trader-live-truth-v1
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-a752489fc7b2b813c
+HEAD d4671a32178ca88a91cd1555123ca4d16c63a91f
+branch refs/heads/codex/agent-autonomy-shadow-v1
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-a78e335deeca60e40
+HEAD 46bad45c8b931d86581cecab0270d69356c85c6e
+branch refs/heads/ci-fix-rc
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-a8013540b613df359
+HEAD 58887d16a7d4aef62b343531f61853d4954713bb
+branch refs/heads/agent/active-trader-motion-endpoint-v1
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-a8440d37bb96b918f
+HEAD 8315a3a96ccdd1eb0469cbd58f384181fcfb6db2
+branch refs/heads/worktree-agent-a8440d37bb96b918f
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-aa1aa70476100238b
+HEAD 785b9f6b61cb6b8107e9ecf32e990bd0a69d14be
+branch refs/heads/worktree-agent-aa1aa70476100238b
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-aaeafe6fd2214c73b
+HEAD 4472c9ca3b309d28bbb816b27a44f77fd4c3f146
+branch refs/heads/codex/watch-production-reconciliation-v1
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-abafd26c1f35a84a6
+HEAD 3ffab4b660a5af60bbed158fd1c9a1492a35072e
+branch refs/heads/codex/a2-reader-dsn-guard-fix-v1
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-ad125f3b8be5713b4
+HEAD 45cccdbe3a17ecd751444cae36b99750c7934994
+branch refs/heads/worktree-agent-ad125f3b8be5713b4
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-ad57469494ef7da5c
+HEAD 00640cbdf5adf5d7fc7beb9ee45c772fa780dbdd
+branch refs/heads/agent/active-trader-live-motion-ui-v1
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-ad7f8fce56e6961bf
+HEAD cbedfc396e15f91fc8786acad545d94f954d40d6
+branch refs/heads/worktree-agent-ad7f8fce56e6961bf
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-adda39a933c09309f
+HEAD cc3fd466eb4966f85fe478ee631f1883ab81bc9e
+branch refs/heads/codex/non-active-trader-release-candidate-v1
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-ae54fdd28e8039d1e
+HEAD 288093e8e32509477e37b9e7e8be12a878593518
+branch refs/heads/codex/a2-host-model-adaptation-v1
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-af9ea432de9d55d2f
+HEAD 2190c6ca3654ca7f6ac7da1bb810040b469a7431
+branch refs/heads/codex/defense-sectors-production-reconciliation-v1
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-afa32717f71e25862
+HEAD eaa653f893326fccf6dd2dc6afc8de8c8265ed95
+branch refs/heads/worktree-agent-afa32717f71e25862
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/worktrees/agent-maturity-observability-v1
+HEAD dc47a7edd24302254fec0e7a526487ab598bc70c
+branch refs/heads/codex/agent-maturity-observability-v1
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/worktrees/moomoo-l2-gateway-249
+HEAD bd9fb8fee4f7e36aed64518ad5dc490a5bb0fb69
+detached
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/worktrees/research-prompt-curation
+HEAD 7e2fcd487d6172140934bff6b1e929ab142cceca
+branch refs/heads/fix/research-prompt-curation
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/worktrees/schwab-live-stops-sync-fix
+HEAD 130d961be8f5029e155a9e50d04ea7a60f9f8d50
+branch refs/heads/fix/schwab-live-stops-sync
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/worktrees/schwab-reauth-anchor-gate
+HEAD 4dec62c8bc778aa7daaa6e4bdbc5e587a7aa71da
+branch refs/heads/fix/schwab-reauth-anchor-gate
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/worktrees/telegram-notification-normalization-v2
+HEAD a51ddd72f75b9fbe5dac749bc786396c9b558104
+branch refs/heads/feat/telegram-notification-normalization-v2
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/wt-ciodocs
+HEAD 469a3f4214fb395a42bf6ea701e834a801437232
+branch refs/heads/wt/ciodocs
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/wt-redeploy-p0
+HEAD 65f851af934be0ff1048cca32f40fbcd3d85afb9
+branch refs/heads/wt/redeploy-workstation-ui
+
+worktree /home/johnclaw/trade-ai-v12-rebuild/wt-watch-v5
+HEAD 177b7b3a006e60d0ba3cc45660d4895bc4691046
+branch refs/heads/wt/watch-v5-technicals
+
+worktree /home/johnclaw/tradeai-a1-preflight
+HEAD 4dd555e8fb9b32b1ac70b474fef1c9260ae63595
+detached
+
+worktree /home/johnclaw/tradeai-wt-active-trader-stage0
+HEAD 1867abca27fbb5c61186d56e3590580fa8c0f4ef
+branch refs/heads/wt/active-trader-stage0
+
+worktree /home/johnclaw/tradeai-wt-cursor-guardrails
+HEAD 31cd83989a3e65ed84cde92aacabaac04c4ade10
+branch refs/heads/wt/cursor-guardrails
+
+worktree /home/johnclaw/tradeai-wt-entry-planner-fix
+HEAD 12875b94f10a9409b3ad9ebb0a8bf27e5beba23a
+branch refs/heads/wt/entry-planner-fix
+
+worktree /home/johnclaw/tradeai-wt-llm-queue-fixes
+HEAD 8ce0e52a71b2dfa44cb0476e1c6f921bfaae05e8
+branch refs/heads/wt/llm-queue-fixes
+
+worktree /home/johnclaw/tradeai-wt-moomoo-stage0
+HEAD 9eb8c192932293555859a62b61b48be8fe98dc04
+branch refs/heads/wt/moomoo-stage0
+
+worktree /home/johnclaw/tradeai-wt-packet-b-watch
+HEAD 412c05e368eeaedd709af84a130b694cc6d3e693
+branch refs/heads/wt/packet-b-watch
+
+worktree /home/johnclaw/tradeai-wt-packet-d-idempotent-kb
+HEAD de04068f6647745e0f556ffd579250fd2f1fecbb
+branch refs/heads/wt/packet-d-idempotent-kb
+
+worktree /home/johnclaw/tradeai-wt-packet-e-promotion-gate
+HEAD 18ddcfe8c853107598dbbe2395241fd1ff8a5197
+branch refs/heads/wt/packet-e-promotion-gate
+
+worktree /home/johnclaw/tradeai-wt-reentry-levels
+HEAD 54649849e263edd47791d3b8c58f6e0a7e5c6789
+branch refs/heads/wt/reentry-levels
+
+worktree /home/johnclaw/tradeai-wt-stop-truth-repair
+HEAD ca8491ce9f42010d01d7c520bd6859ec18773c02
+branch refs/heads/feat/trading-desk-maturity-t1-t2
+
+worktree /home/johnclaw/tradeai-wt-watch-audit-fixes
+HEAD 998997851b4d9b507612ba4693af321258d55c6b
+branch refs/heads/wt/watch-audit-fixes
+
+worktree /home/johnclaw/worktrees/active-trader-next
+HEAD 819a51baf9681ff61c18c44a4c6e3cd01063909e
+branch refs/heads/feat/active-trader-next
+
+worktree /home/johnclaw/worktrees/v3next-css
+HEAD c86be8a89fe7cbf5c71fdebd12829e4fcea30d34
+branch refs/heads/wt/v3next-css
+
+worktree /home/johnclaw/wt-dq-v1
+HEAD f8e2a9686267aba651f7c8538d2b32c3a9c2680b
+branch refs/heads/agent/defense-data-quality-v1
+
+worktree /home/johnclaw/wt-host-inventory
+HEAD 25f39ada941ccdc7048eabc980554adebc6f3d59
+branch refs/heads/agent/host-runtime-inventory-2026-07-24
+
+worktree /home/johnclaw/wt-polish
+HEAD 73b6d9142b842b1bec70d8b6dc0e4f36938c87e3
+branch refs/heads/agent/defense-sectors-institutional-polish
+
+worktree /home/johnclaw/wt-watch-cards
+HEAD 7b2b025cf171d1628ab476924e80b0acec0157ef
+branch refs/heads/feat/watch-card-levels-tooltips
+
+worktree /home/johnclaw/wt-watch-valuation
+HEAD 50cd16eb25f8bef193ab5eacc1c6ef5deeb1c516
+branch refs/heads/fix/watch-valuation-passthrough
+
+worktree /tmp/claude-1000/-home-johnclaw/9bd72dea-d057-4e00-934a-6967ef897ab3/scratchpad/ar-163
+HEAD fd56b2d755c74b1c96db03e69b6861a3fcfc81ed
+branch refs/heads/feat/agentic-mvl-runtime-foundation
+
+worktree /tmp/claude-1000/-home-johnclaw/9bd72dea-d057-4e00-934a-6967ef897ab3/scratchpad/ar-tool
+HEAD 189aeb9572bf56e522a705fcd10b17089a384f6e
+branch refs/heads/codex/ar-tool
+
+
+===== FETCH (no working tree modify) =====
+fetch_exit=0
+
+===== AFTER FETCH =====
+origin/main=ddef4613ec362e6c32307160aba8f4a56b835a20
+HEAD=72b6ddd201e541357cb52f30c3fdeb073adef02d
+origin/main..HEAD:
+72b6ddd2 DeepSeek: fix silent local-gemma fallback, wire frontend, dry-test, screenshots
+3c632d20 feat(overview): weekend-aware pipeline status + off-market refresh
+98c1eba5 fix(cron): correct script paths and lane args in cron_freshness_watcher
+14cb1b9c fix(server): remove SO_LINGER=0 that truncated large HTTP responses
+HEAD..origin/main:
+ddef4613 Merge pull request #277 from PatsKiller/feat/trading-desk-maturity-t1-t2
+ca8491ce feat(trading): WP-T6/T7 TCA export, recon venues, charts, a11y
+be219d1e feat(trading): WP-T5 Proposals CSV export + URL-synced queue filters
+d181bc2c feat(trading): WP-T4 Open Trades CSV export + Journal/Stop links
+7a52f33c feat(trading): WP-T3 command triage NOW strip
+dbf471e6 feat(trading): WP-T1/T2 deep-link contract + desk health strip
+f9adfd9b Merge pull request #276 from PatsKiller/fix/reentry-command-desk-r0-r1
+31fd77a7 fix(reentry): restore OPEN EVIDENCE label for operator contract test
+0c6d7485 feat(reentry): R3 alert center + zone/RSI arm on V4
+9a221075 feat(reentry): R1.5 symbol-specific READY narratives + plan integrity + chart
+7c5d0332 feat(reentry): command desk R0/R1 — lanes, scorecard, deep-links
+869ca570 Merge PR #275: portfolio enterprise maturity WP-D–G
+e1b1fbc5 feat(portfolio): enterprise maturity WP-D–G — lazy load, panels, export, a11y
+5de93a33 Merge PR #274: portfolio enterprise maturity WP-A/B/C
+136ff6d5 feat(portfolio): enterprise maturity WP-A/B/C — deep-links, desk health, cash join
+9ce3974e Merge PR #273: unblock Schwab 2FA on SHA-pinned releases
+01cf38d4 fix(stops): SHA-pinned release passes Schwab tamper-evidence guard
+1c628574 Merge PR #272: restore portfolio stop truth + cash boundary
+94d7fe55 fix(portfolio): fail-closed live-stops exception envelope
+ffe0a5cb fix(portfolio): exclude cash holdings from equity enrichment and stop actions
+67ea3ce9 fix(portfolio): restore account-aware Schwab stop truth on current main
+merge-base:
+f31eb17959719074f9dd52cf23f2cfa4b9f414a5
+is_ancestor origin/main HEAD?
+NO
+is_ancestor HEAD origin/main?
+NO
+
+===== 72b6ddd2 RECOVERY =====
+cat-file type: commit
+=== show --stat --oneline ===
+72b6ddd2 DeepSeek: fix silent local-gemma fallback, wire frontend, dry-test, screenshots
+ .../src/components/CloudLlmRunButtons.tsx          |  33 +++-
+ .../src/components/WatchTruthAuditPanel.tsx        |   2 +-
+ apps/command-center-v3/src/hooks/useOAuthLanes.ts  |   3 +
+ apps/command-center-v3/src/lib/cloudLlmRun.ts      |  35 ++--
+ .../command-center-v3/src/pages/ConsumptionHub.tsx |  46 +++--
+ config/design_token_baseline.json                  |  14 +-
+ docs/deepseek_audit_2026-08-02.md                  | 210 +++++++++++++++++++++
+ scripts/lib/llm_consumption.py                     |   7 +-
+ scripts/llm_health_check.py                        |   5 +-
+ scripts/llm_lane.py                                |  74 +++++++-
+ scripts/screenshot_pass.py                         | 111 +++++++++++
+ 11 files changed, 479 insertions(+), 61 deletions(-)
+=== branches containing 72b6ddd2 ===
+* main
+=== remotes containing 72b6ddd2 ===
+=== is 72b6ddd2 on origin/*? ===
+
+===== DIRTY FILE ANALYSIS =====
+dirty_count=184
+=== by status prefix ===
+    103 M
+     81 ??
+=== top-level dirs of dirty paths ===
+    107 scripts
+     39 apps
+     18 config
+     14 docs
+      3 migrations
+      1 tests
+      1 SOURCE_COMMIT
+      1 AGENTS.md
+=== sample dirty (first 60) ===
+ M AGENTS.md
+ M apps/command-center-v2/src/pages/OpsHub.tsx
+ M apps/command-center-v3/src/components/BrokerOrders.tsx
+ M apps/command-center-v3/src/components/BrokerProposals.tsx
+ M apps/command-center-v3/src/components/DataSourceHealth.tsx
+ M apps/command-center-v3/src/components/MetricStrip.tsx
+ M apps/command-center-v3/src/components/StopManagement.tsx
+ M apps/command-center-v3/src/components/SynthesizedReportCard.tsx
+ M apps/command-center-v3/src/components/ThesisValidityBar.tsx
+ M apps/command-center-v3/src/components/WatchTruthAuditPanel.tsx
+ M apps/command-center-v3/src/components/WatchlistCardV4.tsx
+ M apps/command-center-v3/src/components/reports/ArchiveListItem.tsx
+ M apps/command-center-v3/src/hooks/useApi.ts
+ M apps/command-center-v3/src/hooks/useOAuthLanes.ts
+ M apps/command-center-v3/src/index.css
+ M apps/command-center-v3/src/lib/agentRuntimeMonitoring.ts
+ M apps/command-center-v3/src/lib/cloudLlmRun.ts
+ M apps/command-center-v3/src/pages/ActiveTraderHub.tsx
+ M apps/command-center-v3/src/pages/ConsumptionHub.tsx
+ M apps/command-center-v3/src/pages/DefenseHub.tsx
+ M apps/command-center-v3/src/pages/HealthHub.tsx
+ M apps/command-center-v3/src/pages/HomeHub.tsx
+ M apps/command-center-v3/src/pages/JournalHub.tsx
+ M apps/command-center-v3/src/pages/OptionsHub.tsx
+ M apps/command-center-v3/src/pages/PortfolioHub.tsx
+ M apps/command-center-v3/src/pages/ReportsHub.tsx
+ M apps/command-center-v3/src/pages/RotationIntelligence.tsx
+ M apps/command-center-v3/src/pages/SystemHub.tsx
+ M apps/command-center-v3/src/pages/TradingHub.tsx
+ M apps/command-center-v3/vite.config.ts
+ M config/agent_runtime_mvl.json
+ M config/design_token_baseline.json
+ M config/health_agent_policy.json
+ M config/hermes_score_weights.yaml
+ M config/ipo_lockups.json
+ M config/llm_process_registry.json
+ M config/premium_review_providers.yaml
+ M config/systemd/agent_runtime/README.md
+ M config/watch_quality_gate.json
+ M docs/deepseek_audit_2026-08-02.md
+ M docs/diligence/current/OPTIONS_RISK_BLOCK_MATRIX.md
+ M docs/ops/SERVER_PERF_OPTIMIZE_AND_SO_LINGER_FIX_2026-08-02.md
+ M docs/project/CI_EVIDENCE_LATEST.md
+ M docs/project/RELEASE_MANIFEST_LATEST.md
+ M migrations/agentic_runtime/apply.sh
+ M scripts/account_policy.py
+ M scripts/agent_runtime/agents/__init__.py
+ M scripts/agent_runtime/agents/base.py
+ M scripts/agent_runtime/agents/definitions.py
+ M scripts/agent_runtime/agents/dispatcher.py
+ M scripts/agent_runtime/maturity_observability.py
+ M scripts/agent_runtime/read_http.py
+ M scripts/agent_runtime/read_postgres.py
+ M scripts/agent_runtime/sentinel_pipeline.py
+ M scripts/agent_runtime_dispatch_boot.py
+ M scripts/alex_hygiene.py
+ M scripts/api_v2.py
+ M scripts/ask_alerts.py
+ M scripts/chatgpt_oauth_proxy.py
+ M scripts/continuous_runner.py
+=== llm/deepseek related dirty ===
+ M apps/command-center-v3/src/hooks/useOAuthLanes.ts
+ M apps/command-center-v3/src/pages/ConsumptionHub.tsx
+ M config/llm_process_registry.json
+ M docs/deepseek_audit_2026-08-02.md
+ M scripts/lib/llm_consumption.py
+ M scripts/lib/oauth_lane_status.py
+ M scripts/llm_intelligence_enrichment.py
+ M scripts/llm_lane.py
+ M scripts/llm_router.py
+?? config/watch_lane_admission.json
+?? docs/ops/REENTRY_DATA_BROKER_AND_LLM_FIXES_2026-08-03.md
+?? scripts/lib/llm_route_policy.py
+?? scripts/lib/watch_lane_admission.py
+?? scripts/main_desk_free_llm_weekly.py
+
+===== DEPLOYED SHA =====
+live_cwd=/home/johnclaw/trade-ai-releases/portfolio-server/af45096e-platform-audit-20260802
+SOURCE_COMMIT=31cd83989a3e65ed84cde92aacabaac04c4ade10
+RELEASE_NOTE=baseline 31cd8398 2026-08-03T09:28:37-04:00 agents-md stop-truth policy
+release_not_git_checkout=true
+ExecStart={ path=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python ; argv[]=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python /home/johnclaw/trade-ai-releases/portfolio-server/af45096e-platform-audit-20260802/scripts/portfolio_server.py ; ignore_errors=no ; start_time=[Mon 2026-08-03 09:19:20 EDT] ; stop_time=[n/a] ; pid=1290108 ; code=(null) ; status=0/0 }
+WorkingDirectory=/home/johnclaw/trade-ai-releases/portfolio-server/af45096e-platform-audit-20260802
+
+===== EXISTING TARGET WORKTREE/BRANCH? =====
+ls: cannot access '/home/johnclaw/tradeai-wt-deepseek-v4-routing': No such file or directory
+no matching branch name
+no deepseek worktree
+
+===== COMMIT ANCESTRY DETAIL =====
+72b6ddd2 parents: 3c632d2014b60a3591334b5dc640ec8050080a7f
+* 72b6ddd2 DeepSeek: fix silent local-gemma fallback, wire frontend, dry-test, screenshots
+* 3c632d20 feat(overview): weekend-aware pipeline status + off-market refresh
+* 98c1eba5 fix(cron): correct script paths and lane args in cron_freshness_watcher
+* 14cb1b9c fix(server): remove SO_LINGER=0 that truncated large HTTP responses
+* f31eb179 fix(agents-ui): sync argus in the static runtime catalog to SHADOW (match #270) (#271)
+--- local main only commits (full) ---
+72b6ddd2 DeepSeek: fix silent local-gemma fallback, wire frontend, dry-test, screenshots
+3c632d20 feat(overview): weekend-aware pipeline status + off-market refresh
+98c1eba5 fix(cron): correct script paths and lane args in cron_freshness_watcher
+14cb1b9c fix(server): remove SO_LINGER=0 that truncated large HTTP responses
+--- files changed in 72b6ddd2 alone ---
+commit 72b6ddd201e541357cb52f30c3fdeb073adef02d
+Author:     John <john@patskiller.com>
+AuthorDate: Sun Aug 2 20:25:39 2026 -0400
+Commit:     John <john@patskiller.com>
+CommitDate: Sun Aug 2 20:25:39 2026 -0400
+
+    DeepSeek: fix silent local-gemma fallback, wire frontend, dry-test, screenshots
+    
+    - llm_lane.py: add deepseek-flash/deepseek-v4 as first-class lanes with real API
+      calls to api.deepseek.com (available() probes /v1/models, generate() calls
+      /v1/chat/completions). Previously all DeepSeek lanes fell through to local gemma.
+    - llm_consumption.py: include DeepSeek in allowed_lanes defaults and fallbacks
+    - llm_health_check.py: probe all 5 lanes (local, grok, chatgpt, deepseek-flash, v4)
+    - cloudLlmRun.ts: extend LanePolicy, LaneId, EnsembleLane types; all run functions
+      accept DeepSeek lanes
+    - ConsumptionHub.tsx: add DeepSeek Flash/V4 status cards, overview stats, test btn
+    - CloudLlmRunButtons.tsx: add DeepSeek Flash/V4 buttons with readiness check
+    - WatchTruthAuditPanel.tsx: add DEEPSEEK FLASH and DEEPSEEK V4 R1 review buttons
+    - useOAuthLanes.ts: expose deepseek_flash, deepseek_v4, deepseekReady
+    - docs/deepseek_audit_2026-08-02.md: comprehensive audit report with dry-test results
+    - scripts/screenshot_pass.py: Playwright script, 145/145 screenshots captured
+    
+    Co-authored-by: Cursor <cursoragent@cursor.com>
+
+apps/command-center-v3/src/components/CloudLlmRunButtons.tsx
+apps/command-center-v3/src/components/WatchTruthAuditPanel.tsx
+apps/command-center-v3/src/hooks/useOAuthLanes.ts
+apps/command-center-v3/src/lib/cloudLlmRun.ts
+apps/command-center-v3/src/pages/ConsumptionHub.tsx
+config/design_token_baseline.json
+docs/deepseek_audit_2026-08-02.md
+scripts/lib/llm_consumption.py
+scripts/llm_health_check.py
+scripts/llm_lane.py
+scripts/screenshot_pass.py
+--- ancestry of 3c632d20 98c1eba5 14cb1b9c ---
+3c632d20 feat(overview): weekend-aware pipeline status + off-market refresh
+98c1eba5 fix(cron): correct script paths and lane args in cron_freshness_watcher
+14cb1b9c fix(server): remove SO_LINGER=0 that truncated large HTTP responses
+--- merge-base with origin/main ---
+f31eb17959719074f9dd52cf23f2cfa4b9f414a5
+f31eb179 fix(agents-ui): sync argus in the static runtime catalog to SHADOW (match #270) (#271)
+
+===== DRIVE / RUNTIME REPORT SHA SEARCH =====
+/home/johnclaw/implementation-inputs/deepseek-v4-2026-08-03/artifacts/deepseek-v4-audit/STAGE0_COMMANDS.txt
+/home/johnclaw/implementation-inputs/deepseek-v4-2026-08-03/artifacts/deepseek-v4-audit/STAGE0_GIT_STATUS.txt
+/home/johnclaw/implementation-inputs/deepseek-v4-2026-08-03/EXECUTE_TRADE_AI_DEEPSEEK_V4_RECONCILIATION_AND_MATURITY_PROMPT.md
+/home/johnclaw/implementation-inputs/deepseek-v4-2026-08-03/TRADE_AI_DEEPSEEK_V4_ROUTING_AND_SITE_MATURITY_AUDIT_2026-08-03.md
+/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/docs/project/STATE_OF_REPO_LATEST.md
+/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/docs/project/SYSTEM_FACTS_LATEST.md
+/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/docs/governance/a1a_latest_check_results.json
+# Release Manifest (auto-generated)
+
+Status: FAIL
+
+_Generated: 2026-07-29T19:37:54.021717+00:00_  
+_Source: `python3 scripts/validate_release_readiness.py --json --skip-build`_
+
+## Checks
+
+- [FAIL] repo_hygiene_report: 1 live-broker/execution-adjacent dirty files; dirty_count=28
+- [PASS] python3 scripts/validate_metric_consistency.py --strict: Ambiguous label hits: 0
+- [PASS] symbol_card_quality_validator: validator present; run with /api/v2/symbol-cards export during deployment
+- [PASS] python3 scripts/validate_schwab_write_policy.py:   27/27 guards green
+- [PASS] frontend_smoke: command-center-v3 present, build script defined, dist/index.html built
+- [PASS] python3 scripts/execution_state.py --json: }
+- [PASS] execution_readiness: central readiness resolver present
+- [PASS] python3 scripts/brokers/kill_switches.py --status: }
+- [PASS] python3 tests/test_no_broker_write_bypass.py: 11 passed, 0 failed
+- [PASS] export_diligence_evidence: diligence export script present
+
+## Dirty-file classification
+
+- live-adjacent (would FAIL): ['scripts/schwab_auto_reauth.py']
+- documented runtime/generated (WARN_NON_LIVE_ADJACENT only):
+  - `docs/diligence/current/OPTIONS_RISK_BLOCK_MATRIX.md`
+  - `docs/project/CI_EVIDENCE_LATEST.md`
+  - `docs/project/RELEASE_MANIFEST_LATEST.md`
+- other untracked-by-policy: ['config/ipo_lockups.json', 'scripts/alert_outbox.py', 'scripts/hermes_data_access.py', 'scripts/hermes_external_researcher.py', 'scripts/morning_eval_check.sh', 'scripts/news_ingestion.py', 'scripts/news_symbol_guard.py', 'scripts/research_scheduler.py', 'tests/conftest.py', 'tests/test_alert_delivery_recording_db.py', 'apps/command-center-v3/dist.old-20260727_215046/', 'apps/command-center-v3/dist.old-20260727_234748/', 'apps/command-center-v3/dist.old-20260728_003338/', 'apps/command-center-v3/dist.old-20260728_073101/', 'apps/command-center-v3/dist.old-20260728_084311/', 'apps/command-center-v3/dist.old-20260728_095820/', 'apps/command-center-v3/dist.old-20260728_115948/', 'docs/_findings/at_config_tab_recon_2026-07-28.md', 'docs/_findings/defense_redesign_2026-07-29/prod_default.png', 'docs/_findings/defense_redesign_2026-07-29/prod_final.png', 'docs/_findings/defense_redesign_2026-07-29/prod_redesign.png', 'docs/ops/alerts/telegram_notification_normalization_2026_07_28/telegram_notification_audit_all_messages.csv', 'docs/ops/alerts/telegram_notification_normalization_2026_07_28/telegram_notification_audit_last_7_days.csv', 'tests/test_schwab_reauth_anchor_gate.py']
+
+*Does not authorize live trading. Operator-approved path only.*
+# CI Evidence — Release Readiness Proof
+
+**Status: PASS**  
+_Generated: 2026-07-29T00:30:47.940418+00:00_  
+_Source: `python3 scripts/run_release_ci_equivalent.py --json`_  
+_Steps: 17 passed / 0 failed / 0 warn in 22.9s_
+
+No broker writes are performed — every step is a read-only validator or test.
+
+| Step | Status | Exit | Duration (s) | Command | Detail |
+|------|--------|------|--------------|---------|--------|
+| execution_state | PASS | 0 | 0.16 | `python3 scripts/execution_state.py --json` | } |
+| release_readiness | PASS | 0 | 11.15 | `python3 scripts/validate_release_readiness.py --json --skip-build` | } |
+| schwab_write_policy | PASS | 0 | 5.63 | `python3 scripts/validate_schwab_write_policy.py --source-only` |   source-only mode: DB-state posture guards are proven by th |
+| no_broker_write_bypass | PASS | 0 | 4.53 | `python3 tests/test_no_broker_write_bypass.py` | 11 passed, 0 failed |
+| execution_readiness | PASS | 0 | 0.21 | `python3 tests/test_execution_readiness.py` | 20 passed, 0 failed |
+| evidence_bound_approval | PASS | 0 | 0.08 | `python3 tests/test_evidence_bound_approval.py` | 13 passed, 0 failed |
+| intraday_window_fail_closed | PASS | 0 | 0.05 | `python3 tests/test_intraday_window_fail_closed.py` | 23 passed, 0 failed |
+| order_lifecycle | PASS | 0 | 0.08 | `python3 tests/test_order_lifecycle.py` | 24 passed, 0 failed |
+| reconcile_orders | PASS | 0 | 0.03 | `python3 tests/test_reconcile_orders.py` | 12 passed, 0 failed |
+| audit_ledger | PASS | 0 | 0.15 | `python3 tests/test_audit_ledger.py` | 15 passed, 0 failed |
+| options_hard_risk_blocks_matrix | PASS | 0 | 0.33 | `python3 tests/test_options_hard_risk_blocks_matrix.py` | 87 passed, 0 failed |
+| options_hard_risk_blocks | PASS | 0 | 0.1 | `python3 tests/test_options_hard_risk_blocks.py` | 5 passed, 0 failed |
+| llm_governance_no_override | PASS | 0 | 0.15 | `python3 tests/test_llm_governance_no_override.py` | 4 passed, 0 failed |
+| kill_switches_status | PASS | 0 | 0.07 | `python3 scripts/brokers/kill_switches.py --status` | } |
+| journal_ai_critique | PASS | 0 | 0.06 | `python3 tests/test_journal_ai_critique.py` | 25 passed, 0 failed |
+| audit_ledger_coverage | PASS | 0 | 0.08 | `python3 scripts/audit_ledger.py --coverage --release-mode review --json` | } |
+| frontend_smoke | PASS | 0 | 0.04 | `python3 -c import sys;sys.path.insert(0,'scripts');import validate_release_readiness as v;c=v.frontend_smoke();print(c.status,c.detail);sys.exit(0 if c.status!='FAIL' else 1)` | PASS command-center-v3 present, build script defined, dist/i |
+
+===== REPO INSTRUCTION DISCOVERY (read-only list) =====
+FOUND AGENTS.md size=25174 lines=402
+MISSING CLAUDE.md
+FOUND OPERATIONS.md size=12474 lines=199
+FOUND ARCHITECTURE.md size=21675 lines=279
+FOUND README.txt size=2304 lines=49
+MISSING docs/ops/LIVE_BASELINE_2026-08-03_STOP_TRUTH.md
+MISSING .claude/CLAUDE.md
+MISSING .cursorrules
+-rw-rw-r-- 1 johnclaw johnclaw 3417 Aug  3 09:28 /home/johnclaw/tradeai-wt-cursor-guardrails/docs/ops/LIVE_BASELINE_2026-08-03_STOP_TRUTH.md
+-rw------- 1 johnclaw johnclaw 24933 Aug  3 09:28 /home/johnclaw/tradeai-wt-cursor-guardrails/AGENTS.md
+
+===== DEEPSEEK STATE AT 72b6ddd2 (no edit) =====
+2:DeepSeek (paid API: deepseek-flash, deepseek-v4), or local gemma.
+6:metered API key lane (deepseek_tradeai env var). Local gemma via ollama. generate() returns the
+21:# DeepSeek paid API — key from .env (deepseek_tradeai), endpoint from env or default
+22:_DEEPSEEK_KEY = os.environ.get("deepseek_tradeai", "").strip()
+23:_DEEPSEEK_BASE = os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com").rstrip("/")
+26:_DEEPSEEK_MODELS = {
+27:    "deepseek-flash": "deepseek-chat",       # fast, low-cost
+28:    "deepseek-v4": "deepseek-reasoner",       # deep reasoning (R1)
+32:def _deepseek_available() -> bool:
+34:    if not _DEEPSEEK_KEY:
+38:        r = requests.get(f"{_DEEPSEEK_BASE}/v1/models",
+39:                         headers={"Authorization": f"Bearer {_DEEPSEEK_KEY}"},
+68:    if lane in ("deepseek-flash", "deepseek-v4"):
+69:        return _deepseek_available()
+73:def _deepseek_generate(prompt, model_id, timeout):
+75:    if not _DEEPSEEK_KEY:
+76:        raise RuntimeError("DeepSeek API key not configured (deepseek_tradeai env var missing)")
+79:        f"{_DEEPSEEK_BASE}/v1/chat/completions",
+83:        headers={"Authorization": f"Bearer {_DEEPSEEK_KEY}"},
+103:    if process_id and not _skip_consumption and lane in ("grok", "chatgpt", "deepseek-flash", "deepseek-v4"):
+112:    if lane in ("deepseek-flash", "deepseek-v4"):
+113:        model_id = model or _DEEPSEEK_MODELS[lane]
+114:        text, usage = _deepseek_generate(prompt, model_id, timeout)
+---
+{
+  "version": 2,
+  "default_mode": "manual",
+  "lane_policies": {
+    "grok_only": "Grok only — single lane",
+apps/command-center-v2/src/components/LLMBacktestingReviewPanel.tsx
+apps/command-center-v2/src/pages/LLMQueue.tsx
+apps/command-center-v3/src/components/CloudLlmRunButtons.tsx
+apps/command-center-v3/src/components/defense/LlmLogos.tsx
+apps/command-center-v3/src/lib/cloudLlmRun.ts
+config/llm_fleet_alert_rules.yaml
+config/llm_process_registry.json
+data/runtime/hermes_llm_capabilities.json
+docs/INTELLIGENCE_RATING_AND_LLM_STAGES_2026_06_04.md
+docs/LLM_DATA_DICTIONARY.md
+docs/LLM_FLEET_STRATEGY_v4_1_FINAL.md
+docs/OPERATOR_RUNBOOK_LLM_v4_1_FINAL.md
+docs/_archive/2026-05-08/LLM_PROVIDER_GUIDE.md
+docs/_archive/2026-05-08/SESSION_15_OPEN_TRADE_MONITOR_AGENT_CURATION_LOCAL_LLM.md
+docs/_archive/2026-05-08/SESSION_18E_INTEL_ARC_B50_LOCAL_LLM.md
+docs/_archive/2026-05-09_pre_cloud_rebuild/SESSION_26B_LLM_REVIEW_FIXES.md
+docs/_archive/2026-05-24_cleanup/completed_phases/operator_hygiene/phase_post_audit_ops1_remaining_backend_fixes/llm_fix1_overnight_fallback_report.md
+docs/_archive/2026-05-24_cleanup/completed_phases/operator_hygiene/phase_post_audit_ops1_remaining_backend_fixes/llm_fix1_overnight_fallback_results.json
+docs/_archive/2026-05-24_cleanup/completed_phases/phase4_observability/daily/llm_fleet_summary_2026-05-14.md
+docs/_archive/2026-05-24_cleanup/old_phase_reports/v4_1_phase1h_daily_deep_overnight_llm_window.md
+docs/_archive/llm_fleet/phase2_embedding_ab/crontab_post_phase2c_friday_hybrid_enable.txt
+docs/_archive/llm_fleet/phase2_embedding_ab/crontab_pre_phase2c_friday_hybrid_enable.txt
+docs/_archive/llm_fleet/phase2_embedding_ab/crontab_pre_phase2c_nightly_hybrid_enable.txt
+docs/_archive/prompts/CLAUDE_CODE_EXECUTION_PROMPT_LLM_v4_1_FINAL.md
+docs/_archive/v4_1_discovery/llm_files.txt
+docs/_archive/v4_1_discovery/llm_reference_scan_before.txt
+docs/atm_lifecycle_v1_2026_05_26/LLM_BACKTESTING_V3_8_IMPLEMENTATION_REPORT.md
+docs/atm_lifecycle_v1_2026_05_26/LLM_BACKTESTING_V3_8_STAGE1_IMPLEMENTATION_REPORT.md
+docs/atm_lifecycle_v1_2026_05_26/LLM_BACKTESTING_V3_8_STAGE1_PROMPT_PARSER_DIAGNOSIS.md
+docs/atm_lifecycle_v1_2026_05_26/LLM_BACKTESTING_V3_8_STAGE1_QUALITY_AUDIT.md
+docs/atm_lifecycle_v1_2026_05_26/LLM_BACKTESTING_V3_8_STAGE1_V2_IMPLEMENTATION_REPORT.md
+docs/atm_lifecycle_v1_2026_05_26/LLM_BACKTESTING_V3_8_STAGE1_V2_QUALITY_AUDIT.md
+docs/atm_lifecycle_v1_2026_05_26/V4_0_RECURRING_BACKTEST_LLM_COVERAGE_IMPLEMENTATION_REPORT.md
+docs/atm_lifecycle_v1_2026_05_26/backtest_llm_coverage_v4_0_design/BACKTEST_LLM_COVERAGE_V4_0_DESIGN.md
+docs/atm_lifecycle_v1_2026_05_26/backtest_llm_coverage_v4_0_design/HANDOFF_MANIFEST.md
+docs/atm_lifecycle_v1_2026_05_26/backtest_llm_coverage_v4_0_design/LLM_BACKTEST_TRADE_ANALYZER_DESIGN.md
+docs/atm_lifecycle_v1_2026_05_26/backtest_llm_coverage_v4_0_design/RECURRING_BACKTEST_CRON_DESIGN.md
+docs/atm_lifecycle_v1_2026_05_26/backtest_llm_coverage_v4_0_design/gap_analysis/V4_0_BACKTEST_LLM_GAPS.md
+docs/atm_lifecycle_v1_2026_05_26/llm_backtesting_workflow_v3_8_design/HANDOFF_MANIFEST.md
+docs/atm_lifecycle_v1_2026_05_26/llm_backtesting_workflow_v3_8_design/LLM_ANALYSIS_SCHEMA_DESIGN.md
+
+===== CREATE WORKTREE 2026-08-03T09:34:33-04:00 =====
+REPO=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild BASE=72b6ddd201e541357cb52f30c3fdeb073adef02d WT=/home/johnclaw/tradeai-wt-deepseek-v4-routing BRANCH=fix/deepseek-v4-routing
+HEAD is now at 72b6ddd2 DeepSeek: fix silent local-gemma fallback, wire frontend, dry-test, screenshots
+worktree_add_exit=0
+HEAD=72b6ddd201e541357cb52f30c3fdeb073adef02d
+branch=fix/deepseek-v4-routing
+dirty=0
+origin	https://github.com/PatsKiller/tardeai (fetch)
+origin	https://github.com/PatsKiller/tardeai (push)
+72b6ddd201e541357cb52f30c3fdeb073adef02d

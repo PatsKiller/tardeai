@@ -1,0 +1,99 @@
+{
+  "version": 1,
+  "effective_at": "2026-08-03",
+  "providers": {
+    "deepseek": {
+      "provider_family": "deepseek",
+      "base_url": "https://api.deepseek.com",
+      "auth_type": "api_key",
+      "credential_slot": "trade-ai-prod/deepseek_api_key",
+      "auth_env": "DEEPSEEK_API_KEY",
+      "legacy_auth_env": "deepseek_tradeai",
+      "enabled": false,
+      "models": {
+        "deepseek_flash": {
+          "model_id": "deepseek-v4-flash",
+          "display_name": "DeepSeek V4 Flash",
+          "context_window": 1000000,
+          "max_output_tokens": 384000,
+          "structured_output": true,
+          "tool_use": true,
+          "thinking_supported": true,
+          "thinking_default": "disabled",
+          "allowed_reasoning_effort": [
+            "high",
+            "max"
+          ],
+          "latency_class": "fast",
+          "pricing_snapshot_usd_per_million_tokens": {
+            "cache_hit_input": 0.0028,
+            "cache_miss_input": 0.14,
+            "output": 0.28
+          },
+          "pricing_effective_at": "2026-08-03",
+          "enabled": false,
+          "last_capability_probe": null,
+          "probe_artifact": null
+        },
+        "deepseek_pro": {
+          "model_id": "deepseek-v4-pro",
+          "display_name": "DeepSeek V4 Pro",
+          "context_window": 1000000,
+          "max_output_tokens": 384000,
+          "structured_output": true,
+          "tool_use": true,
+          "thinking_supported": true,
+          "thinking_default": "enabled",
+          "allowed_reasoning_effort": [
+            "high",
+            "max"
+          ],
+          "latency_class": "premium",
+          "pricing_snapshot_usd_per_million_tokens": {
+            "cache_hit_input": 0.003625,
+            "cache_miss_input": 0.435,
+            "output": 0.87
+          },
+          "pricing_effective_at": "2026-08-03",
+          "enabled": false,
+          "operator_cost_confirmation_for": [
+            "PRO_MAX"
+          ],
+          "last_capability_probe": null,
+          "probe_artifact": null
+        }
+      }
+    }
+  },
+  "logical_policies": {
+    "FAST": {
+      "provider": "deepseek",
+      "model": "deepseek_flash",
+      "thinking": "disabled"
+    },
+    "FAST_THINK": {
+      "provider": "deepseek",
+      "model": "deepseek_flash",
+      "thinking": "enabled",
+      "reasoning_effort": "high"
+    },
+    "PRO": {
+      "provider": "deepseek",
+      "model": "deepseek_pro",
+      "thinking": "disabled"
+    },
+    "PRO_THINK": {
+      "provider": "deepseek",
+      "model": "deepseek_pro",
+      "thinking": "enabled",
+      "reasoning_effort": "high"
+    },
+    "PRO_MAX": {
+      "provider": "deepseek",
+      "model": "deepseek_pro",
+      "thinking": "enabled",
+      "reasoning_effort": "max",
+      "requires_operator_cost_confirmation": true
+    }
+  }
+}

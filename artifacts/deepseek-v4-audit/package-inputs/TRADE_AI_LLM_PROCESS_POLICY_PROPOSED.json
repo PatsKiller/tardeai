@@ -1,0 +1,101 @@
+{
+  "version": 3,
+  "default_policy": "FAST",
+  "default_failure_behavior": "VISIBLE_FAILURE_NO_SILENT_FALLBACK",
+  "processes": [
+    {
+      "id": "watchlist_maria_priority",
+      "default_policy": "FAST",
+      "allowed_policies": [
+        "FAST",
+        "FAST_THINK"
+      ],
+      "output_schema": "watch_narrative.v1",
+      "daily_cost_cap_usd": 5.0
+    },
+    {
+      "id": "portfolio_ask",
+      "default_policy": "FAST",
+      "allowed_policies": [
+        "FAST",
+        "FAST_THINK",
+        "PRO_THINK"
+      ],
+      "escalate_to": "PRO_THINK",
+      "escalation_conditions": [
+        "operator_think_deeper",
+        "conflicting_sources",
+        "insufficient_evidence"
+      ]
+    },
+    {
+      "id": "journal_ask",
+      "default_policy": "FAST",
+      "allowed_policies": [
+        "FAST",
+        "FAST_THINK"
+      ]
+    },
+    {
+      "id": "watchlist_cio_synthesis",
+      "default_policy": "PRO_THINK",
+      "allowed_policies": [
+        "FAST_THINK",
+        "PRO_THINK",
+        "PRO_MAX"
+      ],
+      "requires_operator_cost_confirmation_for": [
+        "PRO_MAX"
+      ],
+      "output_schema": "cio_synthesis.v1"
+    },
+    {
+      "id": "strategy_planner",
+      "default_policy": "PRO_THINK",
+      "allowed_policies": [
+        "FAST_THINK",
+        "PRO_THINK",
+        "PRO_MAX"
+      ],
+      "requires_operator_cost_confirmation_for": [
+        "PRO_MAX"
+      ],
+      "output_schema": "strategy_plan.v1"
+    },
+    {
+      "id": "multi_tier_trade_reviewer",
+      "default_policy": "FAST_THINK",
+      "allowed_policies": [
+        "FAST_THINK",
+        "PRO_THINK"
+      ],
+      "escalate_to": "PRO_THINK",
+      "escalation_conditions": [
+        "reviewer_disagreement",
+        "material_risk",
+        "unresolved_contradictions"
+      ]
+    },
+    {
+      "id": "pipeline_health_diagnosis",
+      "default_policy": "FAST",
+      "allowed_policies": [
+        "FAST",
+        "FAST_THINK"
+      ],
+      "output_schema": "pipeline_diagnosis.v1",
+      "fallback": "DETERMINISTIC_DIAGNOSIS"
+    },
+    {
+      "id": "architecture_review",
+      "default_policy": "PRO_THINK",
+      "allowed_policies": [
+        "PRO_THINK",
+        "PRO_MAX"
+      ],
+      "requires_operator_cost_confirmation_for": [
+        "PRO_MAX"
+      ]
+    }
+  ]
+}

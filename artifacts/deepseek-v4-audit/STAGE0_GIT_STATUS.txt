@@ -1,0 +1,296 @@
+===== STAGE0_GIT_STATUS captured 2026-08-03T09:34:24-04:00 =====
+remote:
+origin	https://github.com/PatsKiller/tardeai (fetch)
+origin	https://github.com/PatsKiller/tardeai (push)
+branch: main
+HEAD: 72b6ddd201e541357cb52f30c3fdeb073adef02d
+origin/main: ddef4613ec362e6c32307160aba8f4a56b835a20
+dirty_count: 184
+--- status --short ---
+ M AGENTS.md
+ M apps/command-center-v2/src/pages/OpsHub.tsx
+ M apps/command-center-v3/src/components/BrokerOrders.tsx
+ M apps/command-center-v3/src/components/BrokerProposals.tsx
+ M apps/command-center-v3/src/components/DataSourceHealth.tsx
+ M apps/command-center-v3/src/components/MetricStrip.tsx
+ M apps/command-center-v3/src/components/StopManagement.tsx
+ M apps/command-center-v3/src/components/SynthesizedReportCard.tsx
+ M apps/command-center-v3/src/components/ThesisValidityBar.tsx
+ M apps/command-center-v3/src/components/WatchTruthAuditPanel.tsx
+ M apps/command-center-v3/src/components/WatchlistCardV4.tsx
+ M apps/command-center-v3/src/components/reports/ArchiveListItem.tsx
+ M apps/command-center-v3/src/hooks/useApi.ts
+ M apps/command-center-v3/src/hooks/useOAuthLanes.ts
+ M apps/command-center-v3/src/index.css
+ M apps/command-center-v3/src/lib/agentRuntimeMonitoring.ts
+ M apps/command-center-v3/src/lib/cloudLlmRun.ts
+ M apps/command-center-v3/src/pages/ActiveTraderHub.tsx
+ M apps/command-center-v3/src/pages/ConsumptionHub.tsx
+ M apps/command-center-v3/src/pages/DefenseHub.tsx
+ M apps/command-center-v3/src/pages/HealthHub.tsx
+ M apps/command-center-v3/src/pages/HomeHub.tsx
+ M apps/command-center-v3/src/pages/JournalHub.tsx
+ M apps/command-center-v3/src/pages/OptionsHub.tsx
+ M apps/command-center-v3/src/pages/PortfolioHub.tsx
+ M apps/command-center-v3/src/pages/ReportsHub.tsx
+ M apps/command-center-v3/src/pages/RotationIntelligence.tsx
+ M apps/command-center-v3/src/pages/SystemHub.tsx
+ M apps/command-center-v3/src/pages/TradingHub.tsx
+ M apps/command-center-v3/vite.config.ts
+ M config/agent_runtime_mvl.json
+ M config/design_token_baseline.json
+ M config/health_agent_policy.json
+ M config/hermes_score_weights.yaml
+ M config/ipo_lockups.json
+ M config/llm_process_registry.json
+ M config/premium_review_providers.yaml
+ M config/systemd/agent_runtime/README.md
+ M config/watch_quality_gate.json
+ M docs/deepseek_audit_2026-08-02.md
+ M docs/diligence/current/OPTIONS_RISK_BLOCK_MATRIX.md
+ M docs/ops/SERVER_PERF_OPTIMIZE_AND_SO_LINGER_FIX_2026-08-02.md
+ M docs/project/CI_EVIDENCE_LATEST.md
+ M docs/project/RELEASE_MANIFEST_LATEST.md
+ M migrations/agentic_runtime/apply.sh
+ M scripts/account_policy.py
+ M scripts/agent_runtime/agents/__init__.py
+ M scripts/agent_runtime/agents/base.py
+ M scripts/agent_runtime/agents/definitions.py
+ M scripts/agent_runtime/agents/dispatcher.py
+ M scripts/agent_runtime/maturity_observability.py
+ M scripts/agent_runtime/read_http.py
+ M scripts/agent_runtime/read_postgres.py
+ M scripts/agent_runtime/sentinel_pipeline.py
+ M scripts/agent_runtime_dispatch_boot.py
+ M scripts/alex_hygiene.py
+ M scripts/api_v2.py
+ M scripts/ask_alerts.py
+ M scripts/chatgpt_oauth_proxy.py
+ M scripts/continuous_runner.py
+ M scripts/db_adapter.py
+ M scripts/defense_oversight.py
+ M scripts/finviz_screener_runner.py
+ M scripts/grok_oauth_proxy.py
+ M scripts/health_agent.py
+ M scripts/hermes_data_access.py
+ M scripts/hermes_external_researcher.py
+ M scripts/holding_protection_advisor.py
+ M scripts/holdings_gain_guardian.py
+ M scripts/indicator_cache_refresh.py
+ M scripts/ipo_lockup_alert.py
+ M scripts/lib/llm_consumption.py
+ M scripts/lib/oauth_lane_status.py
+ M scripts/lib/reentry_resistance.py
+ M scripts/llm_intelligence_enrichment.py
+ M scripts/llm_lane.py
+ M scripts/llm_router.py
+ M scripts/local_llm.py
+ M scripts/morning_eval_check.sh
+ M scripts/multi_tier_trade_reviewer.py
+ M scripts/news_ingestion.py
+ M scripts/news_symbol_guard.py
+ M scripts/open_trade_monitor.py
+ M scripts/opening_intelligence.py
+ M scripts/portfolio_ai_analyst.py
+ M scripts/portfolio_repricer.py
+ M scripts/portfolio_technical.py
+ M scripts/portfolio_yaml_advisor.py
+ M scripts/premium_ticket_review.py
+ M scripts/process_watchlist_agent_jobs.py
+ M scripts/rebalance_verifier.py
+ M scripts/research_scheduler.py
+ M scripts/run_ticket_review_job.py
+ M scripts/schwab_auto_reauth.py
+ M scripts/screenshot_pass.py
+ M scripts/strategy_ticket_review.py
+ M scripts/system_freshness_monitor.py
+ M scripts/system_health_agent.py
+ M scripts/telegram_callback_handler.py
+ M scripts/warm_caches.py
+ M scripts/watch_decision_refresh.py
+ M scripts/watch_decision_scheduler.py
+ M scripts/watchlist_entry_planner.py
+?? SOURCE_COMMIT
+?? apps/command-center-v3/dist.old-20260727_215046/
+?? apps/command-center-v3/dist.old-20260727_234748/
+?? apps/command-center-v3/dist.old-20260728_003338/
+?? apps/command-center-v3/dist.old-20260728_073101/
+?? apps/command-center-v3/dist.old-20260728_084311/
+?? apps/command-center-v3/dist.old-20260728_095820/
+?? apps/command-center-v3/dist.old-20260728_115948/
+?? apps/command-center-v3/dist.old-20260730_140304/
+?? apps/command-center-v3/src/components/primitives/EmptyState.tsx
+?? apps/command-center-v3/src/components/primitives/ModeBanner.tsx
+?? config/agent_runtime_schedules.json
+?? config/data_registry.yaml
+?? config/health_agent_policy.json.bak-before-main-20260801-145348
+?? config/systemd/agent_runtime/tradeai-agent-runtime-health.service
+?? config/systemd/agent_runtime/tradeai-agent-runtime-health.timer
+?? config/systemd/agent_runtime/tradeai-agent-runtime-producer.service
+?? config/systemd/agent_runtime/tradeai-agent-runtime-producer.timer
+?? config/systemd/flash-cadence/
+?? config/watch_lane_admission.json
+?? docs/_findings/at_config_tab_recon_2026-07-28.md
+?? docs/_findings/defense_redesign_2026-07-29/prod_default.png
+?? docs/_findings/defense_redesign_2026-07-29/prod_final.png
+?? docs/_findings/defense_redesign_2026-07-29/prod_redesign.png
+?? docs/agent_runtime/DEPLOY_OPERATOR_UX.md
+?? docs/ops/REENTRY_DATA_BROKER_AND_LLM_FIXES_2026-08-03.md
+?? docs/ops/alerts/telegram_notification_normalization_2026_07_28/telegram_notification_audit_all_messages.csv
+?? docs/ops/alerts/telegram_notification_normalization_2026_07_28/telegram_notification_audit_last_7_days.csv
+?? docs/screenshots_2026-08-02/
+?? migrations/agentic_runtime/0003_trigger_intake.down.sql
+?? migrations/agentic_runtime/0003_trigger_intake.up.sql
+?? scripts/agent_runtime/argus_pipeline.py
+?? scripts/agent_runtime/critic_llm.py
+?? scripts/agent_runtime/darwin_pipeline.py
+?? scripts/agent_runtime/deploy_operator_wiring.sh
+?? scripts/agent_runtime/deploy_real_triggers.sh
+?? scripts/agent_runtime/domain_critics_pipeline.py
+?? scripts/agent_runtime/fleet_alert_bridge.py
+?? scripts/agent_runtime/health_monitor.py
+?? scripts/agent_runtime/hermes_pipeline.py
+?? scripts/agent_runtime/install_agent_runtime_schedules.sh
+?? scripts/agent_runtime/iris_critic_pipeline.py
+?? scripts/agent_runtime/lesson_operator.py
+?? scripts/agent_runtime/maturity_promotion_gates.py
+?? scripts/agent_runtime/operations.py
+?? scripts/agent_runtime/operator_dispatch_http.py
+?? scripts/agent_runtime/pipeline_common.py
+?? scripts/agent_runtime/prove_incidents_trigger.py
+?? scripts/agent_runtime/providers/
+?? scripts/agent_runtime/readiness.py
+?? scripts/agent_runtime/reflection_pipeline.py
+?? scripts/agent_runtime/synthesis_critics_pipeline.py
+?? scripts/agent_runtime/trigger_intake.py
+?? scripts/agent_runtime/trigger_producer.py
+?? scripts/agent_runtime/trigger_sources.py
+?? scripts/ask_alerts.py.bak-20260731-222157
+?? scripts/check_ops_constitution.sh
+?? scripts/continuous_runner.py.bak-20260731-222157
+?? scripts/data_broker_indicator_refresh.py
+?? scripts/flash_cadence_runner.py
+?? scripts/health_agent.py.bak-before-indicator-allow-20260801-145348
+?? scripts/holdings_gain_guardian.py.bak-20260731-235911
+?? scripts/indicator_cache_refresh.py.bak-before-main-20260801-145348
+?? scripts/ipo_lockup_alert.py.bak-20260731-222157
+?? scripts/lib/analyst_rating_canonical.py
+?? scripts/lib/data_broker/
+?? scripts/lib/defense_main_promote.py
+?? scripts/lib/llm_route_policy.py
+?? scripts/lib/reentry_resistance.py.bak-20260801-104809
+?? scripts/lib/vix_canonical.py
+?? scripts/lib/watch_lane_admission.py
+?? scripts/lib/watch_quality_intake.py
+?? scripts/main_desk_free_llm_weekly.py
+?? scripts/open_trade_monitor.py.bak-20260731-235911
+?? scripts/pipeline_health_agent.py
+?? scripts/portfolio_repricer.py.bak-20260731-235911
+?? scripts/portfolio_technical.py.bak-20260731-222157
+?? scripts/refresh_reentry_resistance.py
+?? scripts/warm_caches.py.bak-20260731-235911
+?? scripts/watchlist_health_agent.py
+?? tests/test_schwab_reauth_anchor_gate.py
+--- log -20 ---
+72b6ddd2 (HEAD -> main) DeepSeek: fix silent local-gemma fallback, wire frontend, dry-test, screenshots
+3c632d20 feat(overview): weekend-aware pipeline status + off-market refresh
+98c1eba5 fix(cron): correct script paths and lane args in cron_freshness_watcher
+14cb1b9c fix(server): remove SO_LINGER=0 that truncated large HTTP responses
+f31eb179 fix(agents-ui): sync argus in the static runtime catalog to SHADOW (match #270) (#271)
+ac802f2b feat(agents): author argus SHADOW runtime spec + per-agent "next step" hints (#270)
+79b6cd4a feat(agent-runtime): governed dispatch backend for the SHADOW fleet (LAB, zero authority) (#264)
+409a85b7 docs(agent-runtime): fleet status report 2026-07-30 (Tasks A-E) (#265)
+ea1cb405 feat(agents): wire Runtime detail desks to live data (+ read-only knowledge endpoints) (#269)
+8b33b291 docs(agent-runtime): fleet lifecycle + promotion assessment (why 4/16 are SHADOW) (#268)
+c31f5688 fix(agents-ui): Runtime panel defaults to the same-origin read API (was FIXTURE) (#267)
+61d14978 fix(agent-maturity): map _shadow runtime ids to board agents; attribute evidence by role (#266)
+d38e5544 docs(agent-runtime): wave-1 SHADOW activation runbook (operator, root-required) (#262)
+036c8d5a feat(agent-maturity): bridge live runtime evidence into the maturity board (read-only, fail-closed) (#261)
+eba1055c fix(agents-ui): restore maturity truth-labels dropped by the #260 redesign (#263)
+ddffc194 feat(agents): redesign maturity scoreboard as ranked, toned, drill-in board (#260)
+3af1db34 feat(agent-runtime): add read-only maturity observability and review provenance (#258)
+b17d594b Set up Cursor Cloud dev environment (AGENTS.md + update script) (#256)
+a51605ba config(discovery): enable analyst_signal lane as the committed default
+86576212 fix(discovery): analyst-signal TICKER_CANDIDATE label must be the bare symbol
+--- origin/main..HEAD ---
+72b6ddd2 DeepSeek: fix silent local-gemma fallback, wire frontend, dry-test, screenshots
+3c632d20 feat(overview): weekend-aware pipeline status + off-market refresh
+98c1eba5 fix(cron): correct script paths and lane args in cron_freshness_watcher
+14cb1b9c fix(server): remove SO_LINGER=0 that truncated large HTTP responses
+--- HEAD..origin/main (first 25) ---
+ddef4613 Merge pull request #277 from PatsKiller/feat/trading-desk-maturity-t1-t2
+ca8491ce feat(trading): WP-T6/T7 TCA export, recon venues, charts, a11y
+be219d1e feat(trading): WP-T5 Proposals CSV export + URL-synced queue filters
+d181bc2c feat(trading): WP-T4 Open Trades CSV export + Journal/Stop links
+7a52f33c feat(trading): WP-T3 command triage NOW strip
+dbf471e6 feat(trading): WP-T1/T2 deep-link contract + desk health strip
+f9adfd9b Merge pull request #276 from PatsKiller/fix/reentry-command-desk-r0-r1
+31fd77a7 fix(reentry): restore OPEN EVIDENCE label for operator contract test
+0c6d7485 feat(reentry): R3 alert center + zone/RSI arm on V4
+9a221075 feat(reentry): R1.5 symbol-specific READY narratives + plan integrity + chart
+7c5d0332 feat(reentry): command desk R0/R1 — lanes, scorecard, deep-links
+869ca570 Merge PR #275: portfolio enterprise maturity WP-D–G
+e1b1fbc5 feat(portfolio): enterprise maturity WP-D–G — lazy load, panels, export, a11y
+5de93a33 Merge PR #274: portfolio enterprise maturity WP-A/B/C
+136ff6d5 feat(portfolio): enterprise maturity WP-A/B/C — deep-links, desk health, cash join
+9ce3974e Merge PR #273: unblock Schwab 2FA on SHA-pinned releases
+01cf38d4 fix(stops): SHA-pinned release passes Schwab tamper-evidence guard
+1c628574 Merge PR #272: restore portfolio stop truth + cash boundary
+94d7fe55 fix(portfolio): fail-closed live-stops exception envelope
+ffe0a5cb fix(portfolio): exclude cash holdings from equity enrichment and stop actions
+67ea3ce9 fix(portfolio): restore account-aware Schwab stop truth on current main
+--- worktree list ---
+/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild                                           72b6ddd2 [main]
+/home/johnclaw/trade-ai-deployments/active-trader/306f817993707a99129633a8555352277bc6d05f         306f8179 (detached HEAD)
+/home/johnclaw/trade-ai-v12-rebuild/trade-ai-stop-integration                                      b9cdcff4 [fix/stop-execution-journal-reentry-integration]
+/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-a03967ded7e43718b dbdd7438 [worktree-agent-a03967ded7e43718b]
+/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-a281c7b653c6ae402 6808bedf [worktree-agent-a281c7b653c6ae402]
+/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-a37e37e1fc68fb93f 6fb23bd4 [codex/a1-no-connect-preflight-v1]
+/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-a5eb1de95b22aa3a7 c67d2dbc [codex/a2-strict-503-200-preflight-v1]
+/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-a6dc005f499e10bdd b09424eb [worktree-agent-a6dc005f499e10bdd]
+/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-a6de298cdc62d3860 a65fd529 [codex/agent-runtime-read-mount-v1]
+/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-a72422cff5c059fd8 3aa1ab33 [agent/moomoo-l2-active-trader-live-truth-v1]
+/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-a752489fc7b2b813c d4671a32 [codex/agent-autonomy-shadow-v1]
+/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-a78e335deeca60e40 46bad45c [ci-fix-rc]
+/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-a8013540b613df359 58887d16 [agent/active-trader-motion-endpoint-v1]
+/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-a8440d37bb96b918f 8315a3a9 [worktree-agent-a8440d37bb96b918f]
+/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-aa1aa70476100238b 785b9f6b [worktree-agent-aa1aa70476100238b]
+/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-aaeafe6fd2214c73b 4472c9ca [codex/watch-production-reconciliation-v1]
+/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-abafd26c1f35a84a6 3ffab4b6 [codex/a2-reader-dsn-guard-fix-v1]
+/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-ad125f3b8be5713b4 45cccdbe [worktree-agent-ad125f3b8be5713b4]
+/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-ad57469494ef7da5c 00640cbd [agent/active-trader-live-motion-ui-v1]
+/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-ad7f8fce56e6961bf cbedfc39 [worktree-agent-ad7f8fce56e6961bf]
+/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-adda39a933c09309f cc3fd466 [codex/non-active-trader-release-candidate-v1]
+/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-ae54fdd28e8039d1e 288093e8 [codex/a2-host-model-adaptation-v1]
+/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-af9ea432de9d55d2f 2190c6ca [codex/defense-sectors-production-reconciliation-v1]
+/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-afa32717f71e25862 eaa653f8 [worktree-agent-afa32717f71e25862]
+/home/johnclaw/trade-ai-v12-rebuild/worktrees/agent-maturity-observability-v1                      dc47a7ed [codex/agent-maturity-observability-v1]
+/home/johnclaw/trade-ai-v12-rebuild/worktrees/moomoo-l2-gateway-249                                bd9fb8fe (detached HEAD)
+/home/johnclaw/trade-ai-v12-rebuild/worktrees/research-prompt-curation                             7e2fcd48 [fix/research-prompt-curation]
+/home/johnclaw/trade-ai-v12-rebuild/worktrees/schwab-live-stops-sync-fix                           130d961b [fix/schwab-live-stops-sync]
+/home/johnclaw/trade-ai-v12-rebuild/worktrees/schwab-reauth-anchor-gate                            4dec62c8 [fix/schwab-reauth-anchor-gate]
+/home/johnclaw/trade-ai-v12-rebuild/worktrees/telegram-notification-normalization-v2               a51ddd72 [feat/telegram-notification-normalization-v2]
+/home/johnclaw/trade-ai-v12-rebuild/wt-ciodocs                                                     469a3f42 [wt/ciodocs]
+/home/johnclaw/trade-ai-v12-rebuild/wt-redeploy-p0                                                 65f851af [wt/redeploy-workstation-ui]
+/home/johnclaw/trade-ai-v12-rebuild/wt-watch-v5                                                    177b7b3a [wt/watch-v5-technicals]
+/home/johnclaw/tradeai-a1-preflight                                                                4dd555e8 (detached HEAD)
+/home/johnclaw/tradeai-wt-active-trader-stage0                                                     1867abca [wt/active-trader-stage0]
+/home/johnclaw/tradeai-wt-cursor-guardrails                                                        31cd8398 [wt/cursor-guardrails]
+/home/johnclaw/tradeai-wt-entry-planner-fix                                                        12875b94 [wt/entry-planner-fix]
+/home/johnclaw/tradeai-wt-llm-queue-fixes                                                          8ce0e52a [wt/llm-queue-fixes]
+/home/johnclaw/tradeai-wt-moomoo-stage0                                                            9eb8c192 [wt/moomoo-stage0]
+/home/johnclaw/tradeai-wt-packet-b-watch                                                           412c05e3 [wt/packet-b-watch]
+/home/johnclaw/tradeai-wt-packet-d-idempotent-kb                                                   de04068f [wt/packet-d-idempotent-kb]
+/home/johnclaw/tradeai-wt-packet-e-promotion-gate                                                  18ddcfe8 [wt/packet-e-promotion-gate]
+/home/johnclaw/tradeai-wt-reentry-levels                                                           54649849 [wt/reentry-levels]
+/home/johnclaw/tradeai-wt-stop-truth-repair                                                        ca8491ce [feat/trading-desk-maturity-t1-t2]
+/home/johnclaw/tradeai-wt-watch-audit-fixes                                                        99899785 [wt/watch-audit-fixes]
+/home/johnclaw/worktrees/active-trader-next                                                        819a51ba [feat/active-trader-next]
+/home/johnclaw/worktrees/v3next-css                                                                c86be8a8 [wt/v3next-css]
+/home/johnclaw/wt-dq-v1                                                                            f8e2a968 [agent/defense-data-quality-v1]
+/home/johnclaw/wt-host-inventory                                                                   25f39ada [agent/host-runtime-inventory-2026-07-24]
+/home/johnclaw/wt-polish                                                                           73b6d914 [agent/defense-sectors-institutional-polish]
+/home/johnclaw/wt-watch-cards                                                                      7b2b025c [feat/watch-card-levels-tooltips]
+/home/johnclaw/wt-watch-valuation                                                                  50cd16eb [fix/watch-valuation-passthrough]
+/tmp/claude-1000/-home-johnclaw/9bd72dea-d057-4e00-934a-6967ef897ab3/scratchpad/ar-163             fd56b2d7 [feat/agentic-mvl-runtime-foundation]
+/tmp/claude-1000/-home-johnclaw/9bd72dea-d057-4e00-934a-6967ef897ab3/scratchpad/ar-tool            189aeb95 [codex/ar-tool]
