@@ -20,8 +20,12 @@ if str(_SCRIPTS) not in sys.path:
 
 _DEEPSEEK_API_KEY = os.environ.get("deepseek_tradeai", "").strip()
 _DEEPSEEK_FLASH_URL = "https://api.deepseek.com/v1/chat/completions"
-_DEEPSEEK_FLASH_MODEL = "deepseek-v4-flash"
-_DEEPSEEK_V4_MODEL = "deepseek-v4-pro"
+# deepseek-chat = non-reasoning bulk model (returns content JSON reliably).
+# deepseek-v4-flash is a REASONER: it burns max_tokens on reasoning_content and often
+# leaves content empty (finish_reason=length) — that made ticket critics show UNAVAILABLE.
+_DEEPSEEK_FLASH_MODEL = os.environ.get("DEEPSEEK_FLASH_MODEL", "deepseek-chat").strip() or "deepseek-chat"
+# CIO / heavy: reasoner-class pro (or env override)
+_DEEPSEEK_V4_MODEL = os.environ.get("DEEPSEEK_V4_MODEL", "deepseek-reasoner").strip() or "deepseek-reasoner"
 
 # ── Lane label helper (single source of truth for user-facing labels) ──────────
 LANE_LABELS: dict[str, str] = {
@@ -83,6 +87,36 @@ def available(lane):
     return True
 
 
+def _deepseek_message_text(body: dict) -> str:
+    """Extract assistant text from DeepSeek chat completions.
+
+    Some v4-flash responses put the usable answer in ``reasoning_content`` with
+    empty ``content`` (or vice versa). Prefer content, then reasoning, then "".
+    """
+    try:
+        msg = ((body or {}).get("choices") or [{}])[0].get("message") or {}
+    except Exception:
+        return ""
+    content = msg.get("content")
+    if isinstance(content, str) and content.strip():
+        return content
+    reasoning = msg.get("reasoning_content")
+    if isinstance(reasoning, str) and reasoning.strip():
+        return reasoning
+    # content may be a list of parts
+    if isinstance(content, list):
+        parts = []
+        for part in content:
+            if isinstance(part, str):
+                parts.append(part)
+            elif isinstance(part, dict) and part.get("text"):
+                parts.append(str(part["text"]))
+        joined = "\n".join(parts).strip()
+        if joined:
+            return joined
+    return (content or reasoning or "") if isinstance(content or reasoning, str) else ""
+
+
 def generate(
     prompt,
     lane="deepseek-flash",
@@ -115,14 +149,17 @@ def generate(
                             timeout=timeout)
             r.raise_for_status()
             body = r.json()
-            text = body["choices"][0]["message"]["content"]
+            text = _deepseek_message_text(body)
+            if not (text or "").strip():
+                raise RuntimeError("DeepSeek Flash returned empty content/reasoning_content")
             if process_id and not _skip_consumption:
                 try:
                     from lib.llm_consumption import log_call
                     usage = body.get("usage") or {}
                     log_call(lane="deepseek-flash", process_id=process_id,
                              task_summary=task_summary or prompt[:160],
-                             trigger_mode="automated", success=True,
+                             trigger_mode="manual" if manual_trigger else "automated",
+                             success=True,
                              model_name=model or _DEEPSEEK_FLASH_MODEL,
                              prompt=prompt, response=text,
                              tokens_in=usage.get("prompt_tokens"),
@@ -152,14 +189,17 @@ def generate(
                             timeout=max(timeout, 120))
             r.raise_for_status()
             body = r.json()
-            text = body["choices"][0]["message"]["content"]
+            text = _deepseek_message_text(body)
+            if not (text or "").strip():
+                raise RuntimeError("DeepSeek v4 returned empty content/reasoning_content")
             if process_id and not _skip_consumption:
                 try:
                     from lib.llm_consumption import log_call
                     usage = body.get("usage") or {}
                     log_call(lane="deepseek-v4", process_id=process_id,
                              task_summary=task_summary or prompt[:160],
-                             trigger_mode="automated", success=True,
+                             trigger_mode="manual" if manual_trigger else "automated",
+                             success=True,
                              model_name=model or _DEEPSEEK_V4_MODEL,
                              prompt=prompt, response=text,
                              tokens_in=usage.get("prompt_tokens"),

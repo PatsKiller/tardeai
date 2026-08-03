@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """strategy_ticket_review.py — adversarial critics of the EXACT final ticket.
 
-Runs ONLY after deterministic construction and validation. Three bounded lanes:
+Runs ONLY after deterministic construction and validation. Bounded lanes:
 
-    LOCAL_CRITIC          local_llm.generate_local_only (cloud structurally off)
-    GROK_OAUTH_CRITIC     free Grok OAuth lane (llm_lane)
-    CHATGPT_OAUTH_CRITIC  free ChatGPT OAuth lane (llm_lane)
+    LOCAL_CRITIC            local_llm.generate_local_only (cloud structurally off)
+    DEEPSEEK_FLASH_CRITIC   DeepSeek Flash (primary paid bulk lane via llm_lane)
+    DEEPSEEK_V4_CRITIC      DeepSeek v4 pro (heavy reasoning via llm_lane)
+    GROK_OAUTH_CRITIC       free Grok OAuth lane (llm_lane)
+    CHATGPT_OAUTH_CRITIC    free ChatGPT OAuth lane (llm_lane)
 
 Every critic receives the same immutable, curated packet and no other critic's
 verdict. Street ratings, CIO conclusions, Hermes rank and model verdicts are
@@ -182,47 +184,168 @@ def _prompt(packet: dict) -> str:
     )
 
 
-def _parse(text: str) -> dict | None:
+def _coerce_bool(value):
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)) and value in (0, 1):
+        return bool(value)
+    if isinstance(value, str):
+        low = value.strip().lower()
+        if low in ("true", "yes", "y", "1", "pass"):
+            return True
+        if low in ("false", "no", "n", "0", "fail", "reject"):
+            return False
+    return None
+
+
+def _coerce_str_list(value) -> list[str] | None:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        return None
+    out = []
+    for item in value:
+        if isinstance(item, str):
+            out.append(item)
+        elif isinstance(item, dict):
+            # DeepSeek sometimes returns {text: "..."} or {reason: "..."}
+            text = item.get("text") or item.get("reason") or item.get("message") or item.get("citation")
+            out.append(str(text if text is not None else item)[:240])
+        else:
+            out.append(str(item)[:240])
+    return out
+
+
+def _extract_json_obj(text: str) -> dict | None:
+    """Pull the best JSON object from model text (content or reasoning dump)."""
     raw = (text or "").strip()
+    if not raw:
+        return None
     if "```" in raw:
         chunks = raw.split("```")
-        raw = chunks[1] if len(chunks) > 1 else raw
-        raw = raw.removeprefix("json").strip()
+        for chunk in chunks[1::2] if len(chunks) > 1 else chunks:
+            c = chunk.strip()
+            if c.lower().startswith("json"):
+                c = c[4:].lstrip()
+            if "{" in c:
+                raw = c
+                break
+        else:
+            raw = chunks[1].strip() if len(chunks) > 1 else raw
+            raw = raw.removeprefix("json").strip()
+    # Prefer an object that includes "verdict"
+    candidates = []
+    for token in ('{"verdict"', '{ "verdict"', '{\n  "verdict"', "{\n\"verdict\""):
+        idx = raw.rfind(token)
+        if idx >= 0:
+            candidates.append(idx)
+    if not candidates and "{" in raw:
+        candidates.append(raw.find("{"))
+    for start in candidates or []:
+        chunk = raw[start:]
+        # shrink from the end until JSON parses
+        end = len(chunk)
+        while end > 2:
+            try:
+                obj = json.loads(chunk[:end])
+                if isinstance(obj, dict):
+                    return obj
+            except Exception:
+                end -= 1
+                continue
+            break
+    # Classic first-brace..last-brace
     try:
         start, end = raw.index("{"), raw.rindex("}") + 1
         obj = json.loads(raw[start:end])
+        if isinstance(obj, dict):
+            return obj
     except (ValueError, json.JSONDecodeError, TypeError):
+        pass
+    return None
+
+
+def _parse(text: str) -> dict | None:
+    """Parse critic JSON. Tolerant of markdown fences and mild schema drift from DeepSeek.
+
+    Required: verdict in PASS|CAUTION|REJECT and a math_check object with three bools.
+    Arrays may be missing (default []); non-string items are stringified.
+    """
+    obj = _extract_json_obj(text)
+    if obj is None:
         return None
     if not isinstance(obj, dict):
         return None
-    if set(CRITIC_SCHEMA_KEYS) - set(obj):
+
+    # Case-insensitive key normalize for common drift
+    lower_map = {str(k).lower(): k for k in obj}
+    def _get(*names):
+        for name in names:
+            if name in obj:
+                return obj[name]
+            lk = name.lower()
+            if lk in lower_map:
+                return obj[lower_map[lk]]
         return None
-    verdict = str(obj.get("verdict") or "").upper()
+
+    verdict = str(_get("verdict") or "").upper().strip()
     if verdict not in {"PASS", "CAUTION", "REJECT"}:
-        return None
-    math_check = obj.get("math_check")
-    if not isinstance(math_check, dict) or set(MATH_KEYS) - set(math_check):
-        return None
+        # Map common synonyms
+        if verdict in {"APPROVE", "OK", "GO"}:
+            verdict = "PASS"
+        elif verdict in {"WARN", "WARNING", "HOLD"}:
+            verdict = "CAUTION"
+        elif verdict in {"BLOCK", "FAIL", "NOGO", "AVOID"}:
+            verdict = "REJECT"
+        else:
+            return None
+
+    math_check = _get("math_check", "math")
+    if not isinstance(math_check, dict):
+        math_check = {}
+    # Fill / coerce required math keys
+    coerced_math = {}
     for key in ("entry_consistent", "stop_consistent", "target_consistent"):
-        if not isinstance(math_check.get(key), bool):
-            return None
-    if math_check.get("rr_matches") is not None and not isinstance(math_check.get("rr_matches"), bool):
-        return None
-    if math_check.get("rr_recomputed") is not None and _finite(math_check.get("rr_recomputed")) is None:
-        return None
+        b = _coerce_bool(math_check.get(key))
+        if b is None:
+            # Default False when ticket field may be absent — still a valid critic opinion
+            b = False
+        coerced_math[key] = b
+    if "rr_matches" in math_check:
+        rm = math_check.get("rr_matches")
+        if rm is None:
+            coerced_math["rr_matches"] = None
+        else:
+            coerced_math["rr_matches"] = _coerce_bool(rm)
+            if coerced_math["rr_matches"] is None:
+                coerced_math["rr_matches"] = None
+    else:
+        coerced_math["rr_matches"] = None
+    if math_check.get("rr_recomputed") is None:
+        coerced_math["rr_recomputed"] = None
+    else:
+        coerced_math["rr_recomputed"] = _finite(math_check.get("rr_recomputed"))
+
+    out = {
+        "verdict": verdict,
+        "math_check": coerced_math,
+    }
     for key in ARRAY_KEYS:
-        if not isinstance(obj.get(key), list) or not all(isinstance(item, str) for item in obj[key]):
+        lst = _coerce_str_list(_get(key))
+        if lst is None:
             return None
-    obj["verdict"] = verdict
-    return obj
+        out[key] = lst
+    return out
 
 
-def _finish(base: dict, parsed: dict | None, raw_err: str | None = None) -> dict:
+def _finish(base: dict, parsed: dict | None, raw_err: str | None = None, raw_text: str | None = None) -> dict:
     if parsed is None:
         base.update(
             verdict="UNAVAILABLE",
             error=raw_err or "critic response failed the strict schema contract",
         )
+        if raw_text:
+            base["raw_excerpt"] = str(raw_text)[:400]
         return base
     for key in CRITIC_SCHEMA_KEYS:
         base[key] = parsed[key]
@@ -258,8 +381,10 @@ def run_local_critic(symbol, ticket, facts, validation) -> dict:
         base["error"] = result.get("error")
         return base
     base["model"] = result.get("model")
-    return _finish(base, _parse(result.get("text")),
-                   "local model returned incomplete or non-schema JSON")
+    text = result.get("text")
+    return _finish(base, _parse(text),
+                   "local model returned incomplete or non-schema JSON",
+                   raw_text=text)
 
 
 def run_oauth_critic(lane: str, symbol, ticket, facts, validation) -> dict:
@@ -274,20 +399,82 @@ def run_oauth_critic(lane: str, symbol, ticket, facts, validation) -> dict:
             return base
         # Correct llm_lane contract: prompt first, lane keyword. No unsupported
         # max_tokens keyword; the previous call failed every OAuth review.
-        output = llm_lane.generate(_SYSTEM + "\n\n" + _prompt(packet), lane=lane)
+        output = llm_lane.generate(
+            _SYSTEM + "\n\n" + _prompt(packet),
+            lane=lane,
+            process_id="ticket_review",
+            task_summary=f"ticket critic {symbol} {lane}",
+            manual_trigger=True,
+            timeout=120,
+        )
         text = output.get("text") if isinstance(output, dict) else str(output)
         base["model"] = (output.get("model") if isinstance(output, dict) else None) or lane
         return _finish(base, _parse(text),
-                       f"{lane} returned incomplete or non-schema JSON")
+                       f"{lane} returned incomplete or non-schema JSON",
+                       raw_text=text)
+    except Exception as exc:
+        base["error"] = f"{type(exc).__name__}: {str(exc)[:140]}"
+        return base
+
+
+def run_deepseek_critic(lane: str, symbol, ticket, facts, validation) -> dict:
+    """lane: deepseek-flash | deepseek-v4 — primary paid critics via llm_lane."""
+    import llm_lane
+    packet = build_review_packet(symbol, ticket, facts, validation)
+    family = {
+        "deepseek-flash": "DEEPSEEK_FLASH",
+        "deepseek-v4": "DEEPSEEK_V4",
+    }.get(lane, "DEEPSEEK")
+    review_type = {
+        "deepseek-flash": "DEEPSEEK_FLASH_CRITIC",
+        "deepseek-v4": "DEEPSEEK_V4_CRITIC",
+    }.get(lane, "DEEPSEEK_CRITIC")
+    base = _base(review_type, family, validation)
+    try:
+        if not llm_lane.available(lane):
+            base["error"] = f"{lane} lane unavailable (API key or endpoint)"
+            return base
+        # Operator-clicked desk action → manual_trigger so consumption gate allows
+        # unregistered process_id ticket_review without flipping global defaults.
+        output = llm_lane.generate(
+            _SYSTEM + "\n\n" + _prompt(packet),
+            lane=lane,
+            process_id="ticket_review",
+            task_summary=f"ticket critic {symbol} {lane}",
+            manual_trigger=True,
+            timeout=180 if lane == "deepseek-v4" else 120,
+        )
+        text = output.get("text") if isinstance(output, dict) else str(output or "")
+        try:
+            from llm_lane import _DEEPSEEK_FLASH_MODEL, _DEEPSEEK_V4_MODEL
+            default_model = _DEEPSEEK_V4_MODEL if lane == "deepseek-v4" else _DEEPSEEK_FLASH_MODEL
+        except Exception:
+            default_model = "deepseek-reasoner" if lane == "deepseek-v4" else "deepseek-chat"
+        base["model"] = (
+            (output.get("model") if isinstance(output, dict) else None) or default_model
+        )
+        return _finish(base, _parse(text),
+                       f"{lane} returned incomplete or non-schema JSON",
+                       raw_text=text)
     except Exception as exc:
         base["error"] = f"{type(exc).__name__}: {str(exc)[:140]}"
         return base
 
 
 def run_free_reviews(symbol, ticket, facts, validation, *,
-                     lanes=("local", "grok", "chatgpt")) -> dict:
-    """Run selected critics; never call a paid lane and never fake consensus."""
+                     lanes=("deepseek-flash", "local", "grok", "chatgpt")) -> dict:
+    """Run selected critics; never fake consensus.
+
+    DeepSeek is the primary paid bulk critic (Flash). Local + OAuth remain free
+    second opinions. deepseek-v4 is optional heavy review (operator button).
+    """
     reviews = {}
+    if "deepseek-flash" in lanes:
+        reviews["deepseek-flash"] = run_deepseek_critic(
+            "deepseek-flash", symbol, ticket, facts, validation)
+    if "deepseek-v4" in lanes:
+        reviews["deepseek-v4"] = run_deepseek_critic(
+            "deepseek-v4", symbol, ticket, facts, validation)
     if "local" in lanes:
         reviews["local"] = run_local_critic(symbol, ticket, facts, validation)
     if "grok" in lanes:
@@ -295,15 +482,17 @@ def run_free_reviews(symbol, ticket, facts, validation, *,
     if "chatgpt" in lanes:
         reviews["chatgpt"] = run_oauth_critic("chatgpt", symbol, ticket, facts, validation)
     completed = [review for review in reviews.values()
-                 if review["verdict"] != "UNAVAILABLE"]
-    families = {review["provider_family"] for review in completed}
+                 if isinstance(review, dict) and review.get("verdict") not in (None, "UNAVAILABLE")]
+    families = {review["provider_family"] for review in completed if review.get("provider_family")}
+    paid = any(k.startswith("deepseek") for k in reviews if not str(k).startswith("_"))
     reviews["_meta"] = {
         "completed": len(completed),
         "independent_families": len(families),
         "consensus_possible": len(families) >= 2,
         "single_lane": len(completed) == 1,
         "review_contract": "watch-ticket-independent-review-v2",
-        "paid_lane_called": False,
+        # True only if a deepseek lane was *selected* (not necessarily successful)
+        "paid_lane_called": paid,
         "reviewed_at": _now(),
     }
     return reviews

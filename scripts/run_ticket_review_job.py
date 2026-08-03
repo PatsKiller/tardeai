@@ -135,15 +135,27 @@ def main(symbol: str, lanes: str):
     )
 
     facts = _facts_from_packet(sym, packet, validation, conn, svc)
+    # 2026-08-02: DeepSeek Flash/v4 are first-class critics (UI buttons). Prior filter
+    # only allowed local/grok/chatgpt — DeepSeek clicks queued then silently dropped,
+    # leaving REVIEW_UNAVAILABLE / NOT RUN with "All critics queued" toast only.
+    _ALLOWED = {"local", "grok", "chatgpt", "deepseek-flash", "deepseek-v4"}
     selected_lanes = tuple(
         lane for lane in (part.strip() for part in lanes.split(","))
-        if lane in {"local", "grok", "chatgpt"}
+        if lane in _ALLOWED
     )
     reviews = {}
     if may_review and selected_lanes:
         reviews = reviewer.run_free_reviews(
             sym, target, facts, validation, lanes=selected_lanes,
         )
+    elif may_review and not selected_lanes:
+        # Surface mis-routed lane strings instead of silent no-op
+        print(json.dumps({
+            "ok": False,
+            "error": f"no allowed lanes in request (got {lanes!r}; allowed={sorted(_ALLOWED)})",
+            "symbol": sym,
+        }))
+        return
 
     prior_reviews = {**(prior.get("reviews") or {}), **reviews}
     reconciled = reconciler.reconcile(
@@ -173,4 +185,4 @@ def main(symbol: str, lanes: str):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1], sys.argv[2] if len(sys.argv) > 2 else "local,grok,chatgpt")
+    main(sys.argv[1], sys.argv[2] if len(sys.argv) > 2 else "deepseek-flash,local,grok,chatgpt")
