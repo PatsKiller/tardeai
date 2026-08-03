@@ -118,7 +118,7 @@ export default function CloudLlmRunButtons({
       {lanes.includes('deepseek-v4') && (
         <button type="button" disabled={!!busy} onClick={() => void run('deepseek-v4')}
           style={btnStyle(DEEPSEEK, busy === 'deepseek-v4', compact)}>
-          {busy === 'deepseek-v4' ? '…' : '▶ DeepSeek V4'}
+          {busy === 'deepseek-v4' ? '…' : '▶ DeepSeek Pro'}
         </button>
       )}
       {msg && <span style={{ fontSize: compact ? 9 : 10, color: msg.startsWith('✓') ? '#22c55e' : '#ef4444', maxWidth: 220 }}>{msg}</span>}
