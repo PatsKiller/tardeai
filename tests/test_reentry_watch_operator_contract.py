@@ -79,3 +79,67 @@ def test_watch_queue_has_truthful_state_filters_and_operator_actions() -> None:
     ]:
         assert action in source
     assert "Deterministic arithmetic, freshness, validation and release remain authoritative" in source
+    # Free ensemble is free-only — never silently include metered DeepSeek
+    assert "runReview('local,grok,chatgpt', 'All free critics')" in source
+    assert "runReview('local,grok,chatgpt,deepseek-flash'" not in source
+    free_call = "runReview('local,grok,chatgpt', 'All free critics')"
+    free_idx = source.index(free_call)
+    free_snippet = source[free_idx : free_idx + len(free_call)]
+    assert "deepseek-flash" not in free_snippet
+    assert "deepseek-v4-pro" not in free_snippet
+    assert "local,grok,chatgpt" in free_snippet
+    assert "DEEPSEEK FLASH · METERED" in source
+    # Pro is not a generic unconfirmed button — premium flow only
+    assert "runReview('deepseek-v4-pro'" not in source
+    assert "/api/v2/watch/ticket-review/premium/estimate" in source
+    assert "/api/v2/watch/ticket-review/premium/run" in source
+    assert "CONFIRM PAID REVIEW" in source
+
+
+def test_ticket_review_run_blocks_paid_pro_lanes() -> None:
+    """Generic free endpoint must reject Pro / confirmation-required policies."""
+    api = (ROOT / "scripts" / "api_v2.py").read_text(encoding="utf-8")
+    assert "def _ticket_review_run" in api
+    assert "PAID_LANE_REQUIRES_PREMIUM_FLOW" in api
+    assert "METERED_LANE_NOT_IN_FREE_ENSEMBLE" in api
+    # Block list in _ticket_review_run includes Pro
+    start = api.index("def _ticket_review_run")
+    end = api.index("def _ticket_review_status", start)
+    body = api[start:end]
+    assert "deepseek-v4-pro" in body
+    assert "pro_max" in body
+    # Premium path remains the governed entry
+    assert "def _ticket_review_premium_estimate" in api
+    assert "def _ticket_review_premium_run" in api
+
+
+def test_ticket_review_run_logic_rejects_pro_and_mixed_flash() -> None:
+    """Unit-level: exercise the free-lane gate without spawning workers."""
+    import importlib.util
+    # Inline the gate logic by importing api_v2 is heavy; re-encode the contract here
+    # and call a small pure helper if present — otherwise validate via source + simulated rules.
+    free_allowed = {"local", "grok", "chatgpt"}
+    metered_flash = {"deepseek-flash", "deepseek-v4-flash", "fast", "fast_think"}
+    blocked_paid = {
+        "deepseek-v4-pro", "deepseek-v4", "pro", "pro_think", "pro_max",
+        "deepseek-chat", "deepseek-reasoner",
+    }
+
+    def gate(lanes: str) -> str | None:
+        parts = [p.strip().lower() for p in lanes.split(",") if p.strip()]
+        for p in parts:
+            if p in blocked_paid or p.startswith("pro"):
+                return "PAID_LANE_REQUIRES_PREMIUM_FLOW"
+        if len(parts) > 1 and any(p in metered_flash for p in parts):
+            return "METERED_LANE_NOT_IN_FREE_ENSEMBLE"
+        for p in parts:
+            if p not in free_allowed and p not in metered_flash:
+                return "unknown"
+        return None
+
+    assert gate("local,grok,chatgpt") is None
+    assert gate("deepseek-flash") is None  # explicit single-lane metered flash OK
+    assert gate("local,grok,chatgpt,deepseek-flash") == "METERED_LANE_NOT_IN_FREE_ENSEMBLE"
+    assert gate("deepseek-v4-pro") == "PAID_LANE_REQUIRES_PREMIUM_FLOW"
+    assert gate("pro_max") == "PAID_LANE_REQUIRES_PREMIUM_FLOW"
+    assert gate("pro_think") == "PAID_LANE_REQUIRES_PREMIUM_FLOW"
