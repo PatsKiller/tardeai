@@ -7,7 +7,7 @@
 | Item | SHA |
 |------|-----|
 | origin/main base | `ddef4613ec362e6c32307160aba8f4a56b835a20` |
-| Branch tip (pre-this-report commits may follow) | see git after final commit |
+| Branch tip (pre-this-report commits may follow) | `cbdf2ccc4c3410416231638d543a1644f55dcafd` |
 | Backup before cleanup | `11707968e02908980761bd8f5b61855f078f4326` (`backup/deepseek-v4-mainline-before-cleanup`) |
 
 ## Exact models
