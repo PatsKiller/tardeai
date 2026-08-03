@@ -174,13 +174,14 @@ def evaluate_reentry_signals():
 
 
 def send_telegram_msg(msg):
-    if not TELEGRAM_TOKEN: return
-    for cid in TELEGRAM_CHATS:
-        try:
-            requests.post(f'https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage',
-                          json={'chat_id': cid, 'text': msg, 'parse_mode': 'Markdown'}, timeout=10)
-        except Exception as e:
-            log.error(f"Telegram {cid}: {e}")
+    """Route through the central chokepoint (2026-08-01: Phase 5 broker consolidation)."""
+    if not TELEGRAM_TOKEN:
+        return
+    try:
+        from telegram_alert import chokepoint_send
+        chokepoint_send(msg, token=TELEGRAM_TOKEN, chat_id=TELEGRAM_CHATS[0] if TELEGRAM_CHATS else None)
+    except Exception as e:
+        log.error(f"Telegram send error: {e}")
 
 
 def send_weekly_telegram(dry_run=False):

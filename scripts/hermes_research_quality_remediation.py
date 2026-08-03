@@ -22,7 +22,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 DEFAULT_BUDGET = 25
-EXTERNAL_LANES = ("grok", "chatgpt")
+EXTERNAL_LANES = ("deepseek-flash", "grok", "chatgpt")
 
 
 def _db():

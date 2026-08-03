@@ -814,7 +814,7 @@ export default function BrokerProposals({
 
   const runCloudOversight = async (pid: number) => {
     setCloudBusy(m => ({ ...m, [pid]: true }))
-    setOversightMsg(m => ({ ...m, [pid]: 'Running Grok+ChatGPT…' }))
+    setOversightMsg(m => ({ ...m, [pid]: 'Running cloud review…' }))
     try {
       const r = await fetch('/api/v2/broker-proposals/run-cloud-oversight', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -901,7 +901,7 @@ export default function BrokerProposals({
 
   const queueCloudBatch = async (scope: 'page' | 'filtered' | 'selected', selectedList?: number[]) => {
     setBatchCloudBusy(true)
-    setBatchCloudMsg('Queuing Grok+ChatGPT…')
+    setBatchCloudMsg('Queuing cloud review…')
     try {
       const max = 30
       const body = (scope === 'page' || scope === 'selected')
@@ -1405,7 +1405,7 @@ export default function BrokerProposals({
           <button
             onClick={() => queueCloudBatch('page')}
             disabled={batchCloudBusy || shown.length === 0}
-            title="Queue Grok+ChatGPT for visible cards on this page only"
+            title="Queue cloud review for visible cards"
             style={btn(AMBER, batchCloudBusy || shown.length === 0)}
           >
             {batchCloudBusy ? '…' : `☁ Run cloud · page (${shown.length})`}
@@ -1413,7 +1413,7 @@ export default function BrokerProposals({
           <button
             onClick={() => queueCloudBatch('filtered')}
             disabled={batchCloudBusy || !(queueTotal > 0)}
-            title="Queue Grok+ChatGPT for up to 30 proposals matching current filters"
+            title="Queue cloud review for up to 30 proposals matching current filters"
             style={btn(AMBER, batchCloudBusy || !(queueTotal > 0))}
           >
             {batchCloudBusy ? '…' : `☁ Run cloud · filtered (≤30 of ${queueTotal || 0})`}
@@ -1499,7 +1499,7 @@ export default function BrokerProposals({
               onClick={bulkCloudSelected}
               disabled={batchCloudBusy || selectedShownIds.length === 0}
               aria-label="Run cloud oversight for selected proposals"
-              title="Queue Grok+ChatGPT for the selected cards"
+              title="Queue cloud review for the selected cards"
               style={btn(AMBER, batchCloudBusy || selectedShownIds.length === 0)}
             >{batchCloudBusy ? '…' : `☁ Run cloud selected (${selectedShownIds.length})`}</button>
             <button onClick={() => bulkAction('resize_to_cap', selectedShownIds)} disabled={bulkActionBusy || selectedShownIds.length === 0}

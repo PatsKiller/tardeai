@@ -199,7 +199,7 @@ def ensemble_validate(content: str, context: str = "", task: str = "content_qual
             if not llm_lane.available(lane):
                 continue
             gen_kw = dict(lane=lane, timeout=int(cfg["timeout"]))
-            if lane in ("grok", "chatgpt"):
+            if lane in ("deepseek-flash", "grok", "chatgpt"):
                 gen_kw.update(process_id=pid, task_summary=(task or "ensemble")[:120],
                               manual_trigger=bool(manual_trigger))
             raw = llm_lane.generate(prompt, **gen_kw)

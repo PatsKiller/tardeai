@@ -240,24 +240,15 @@ def main():
                 dest = telegram_destination_for_alert(packet)
                 result["destination"] = redact_telegram_destination(dest)
 
-                from telegram_alert import send_telegram
-                # Use dedicated chat_id if available, with optional thread_id
-                import requests
+                from telegram_alert import chokepoint_send
                 token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
                 if dest.get("chat_id") and token:
                     keyboard = build_proposal_inline_keyboard(packet)
-                    payload = {"chat_id": dest["chat_id"], "text": message, "parse_mode": "Markdown"}
-                    if keyboard:
-                        payload["reply_markup"] = json.dumps(keyboard)
-                    if dest.get("thread_id"):
-                        payload["message_thread_id"] = int(dest["thread_id"])
-                    resp = requests.post(f"https://api.telegram.org/bot{token}/sendMessage", json=payload, timeout=10)
-                    ok = resp.ok
-                    if not ok:
-                        # Retry without Markdown (keep buttons)
-                        payload.pop("parse_mode", None)
-                        resp2 = requests.post(f"https://api.telegram.org/bot{token}/sendMessage", json=payload, timeout=10)
-                        ok = resp2.ok
+                    thr = str(dest["thread_id"]) if dest.get("thread_id") else None
+                    resp = chokepoint_send(message, token=token, chat_id=dest["chat_id"],
+                                          reply_markup=keyboard, parse_mode="Markdown",
+                                          thread_id=thr)
+                    ok = resp.get("ok", False)
                 else:
                     ok = send_telegram(message)  # Fallback to default
 

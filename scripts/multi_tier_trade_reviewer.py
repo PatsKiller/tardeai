@@ -56,15 +56,15 @@ TIER_CONFIG = {
         "description": "Deeper overnight analysis with larger model",
     },
     "weekly": {
-        "model": os.getenv("LLM_FALLBACK_OPENAI", "gpt-4o-mini"),
-        "provider": "openai",
+        "model": "deepseek-v4-flash",
+        "provider": "openai",  # routed through llm_lane deepseek-flash
         "max_tokens": 1500,
         "temperature": 0.5,
         "description": "Weekly pattern analysis across all trades",
     },
     "monthly": {
-        "model": os.getenv("LLM_FALLBACK_ANTHROPIC", "claude-sonnet-4-6"),
-        "provider": "anthropic",
+        "model": "deepseek-v4-pro",
+        "provider": "anthropic",  # routed through llm_lane deepseek-v4
         "max_tokens": 2000,
         "temperature": 0.5,
         "description": "Monthly strategic review of weekly summaries",
@@ -108,8 +108,8 @@ def _generate_ollama(prompt, model, max_tokens=400, temperature=0.3):
     return None
 
 
-def _generate_openai(prompt, model, max_tokens=1500, temperature=0.5):
-    """Call OpenAI API."""
+def _generate_openai_DEPRECATED(prompt, model, max_tokens=1500, temperature=0.5):
+    """Deprecated — migrated to llm_lane.generate(lane='deepseek-flash')."""
     import requests
     api_key = os.getenv("OPENAI_API_KEY", "")
     if not api_key:
@@ -128,8 +128,8 @@ def _generate_openai(prompt, model, max_tokens=1500, temperature=0.5):
     return None
 
 
-def _generate_anthropic(prompt, model, max_tokens=2000, temperature=0.5):
-    """Call Anthropic API."""
+def _generate_anthropic_DEPRECATED(prompt, model, max_tokens=2000, temperature=0.5):
+    """Deprecated — migrated to llm_lane.generate(lane='deepseek-v4')."""
     try:
         import anthropic
         api_key = os.getenv("ANTHROPIC_API_KEY", "")
@@ -148,14 +148,27 @@ def _generate_anthropic(prompt, model, max_tokens=2000, temperature=0.5):
 
 
 def _generate(prompt, tier):
-    """Route to correct provider."""
+    """Route to correct provider. Paid APIs replaced with llm_lane.generate().
+    - ollama → local Ollama (realtime, overnight)
+    - openai → llm_lane deepseek-flash (weekly)
+    - anthropic → llm_lane deepseek-v4 (monthly)"""
     cfg = TIER_CONFIG[tier]
     if cfg["provider"] == "ollama":
         return _generate_ollama(prompt, cfg["model"], cfg["max_tokens"], cfg["temperature"])
     elif cfg["provider"] == "openai":
-        return _generate_openai(prompt, cfg["model"], cfg["max_tokens"], cfg["temperature"])
+        try:
+            from llm_lane import generate
+            return generate(prompt, lane="deepseek-flash", timeout=120)
+        except Exception as e:
+            log.warning(f"llm_lane deepseek-flash failed: {e}")
+            return None
     elif cfg["provider"] == "anthropic":
-        return _generate_anthropic(prompt, cfg["model"], cfg["max_tokens"], cfg["temperature"])
+        try:
+            from llm_lane import generate
+            return generate(prompt, lane="deepseek-v4", timeout=120)
+        except Exception as e:
+            log.warning(f"llm_lane deepseek-v4 failed: {e}")
+            return None
     return None
 
 

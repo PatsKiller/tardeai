@@ -35,17 +35,11 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message
 def _telegram_both(msg: str):
     """Send to both operator chat IDs."""
     try:
+        from telegram_alert import chokepoint_send
         token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-        chat_ids = [c.strip() for c in os.environ.get("TELEGRAM_CHAT_ID", "").split(",") if c.strip()]
-        if not token or not chat_ids:
+        if not token:
             return
-        import requests
-        for cid in chat_ids:
-            try:
-                requests.post(f"https://api.telegram.org/bot{token}/sendMessage",
-                              json={"chat_id": cid, "text": msg}, timeout=10)
-            except Exception:
-                pass
+        chokepoint_send(msg, token=token)
     except Exception:
         pass
 

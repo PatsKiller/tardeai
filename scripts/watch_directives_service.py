@@ -86,13 +86,11 @@ def _resolve(d, conn=None):
 def _notify(msg):
     """Best-effort Telegram to BOTH operator chat IDs (advisory; never raises)."""
     try:
-        import requests
+        from telegram_alert import chokepoint_send
         tok = os.getenv("TELEGRAM_BOT_TOKEN", "")
         if not tok:
             return
-        for cid in __import__("tg_chat_ids").chat_ids():
-            requests.post(f"https://api.telegram.org/bot{tok}/sendMessage",
-                          json={"chat_id": cid, "text": msg}, timeout=8)
+        chokepoint_send(msg, token=tok)
     except Exception:
         pass
 

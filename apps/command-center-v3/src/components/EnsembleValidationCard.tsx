@@ -1,8 +1,9 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { requestEnsemble, type EnsembleLane } from '../lib/cloudLlmRun'
 import { useOAuthLanes, laneReady } from '../hooks/useOAuthLanes'
+import { LANE_ICONS, LANE_LABELS, laneLabel } from '../lib/laneLabels'
 
-// Multi-LLM ensemble validation UI (Grok + ChatGPT OAuth + local gemma).
+// Multi-LLM ensemble validation UI (DeepSeek Flash, Grok OAuth, ChatGPT OAuth, local).
 // Mirrors the real backend shape from scripts/inference_ensemble.ensemble_validate:
 //   { final_decision, final_score(0-10), final_confidence(0-1), consensus_reached,
 //     lanes_used[], votes[{lane,score,decision,confidence,reasoning}], reasoning_summary }
@@ -35,8 +36,6 @@ export interface EnsembleResult {
 
 const decColor = (d?: string) => (d === 'approve' ? '#22c55e' : '#ef4444')
 const scoreColor = (s?: number) => (s == null ? 'var(--text2)' : s >= 8 ? '#34d399' : s >= 6 ? '#facc15' : '#f87171')
-const LANE_ICON: Record<string, string> = { grok: '𝕏', chatgpt: '◎', local: '🖥', claude: '✶' }
-const LANE_LABEL: Record<string, string> = { grok: 'Grok', chatgpt: 'ChatGPT', local: 'Gemma', claude: 'Claude' }
 
 /** Map DB score to 0–10 (some rows store 0–1 fractions). */
 export function normalizeScore10(val: unknown): number {
@@ -137,7 +136,7 @@ export function EnsembleValidationCard({ result, onRevalidate }: {
             <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'baseline', fontSize: 10,
               padding: '4px 6px', background: 'var(--bg1)', borderRadius: 4 }}>
               <span style={{ width: 58, fontWeight: 700, color: 'var(--text1)' }}>
-                {LANE_ICON[v.lane] || '•'} {v.lane}
+                {LANE_ICONS[v.lane] || '•'} {LANE_LABELS[v.lane] || v.lane}
               </span>
               <span style={{ color: scoreColor(v.score), fontFamily: 'monospace', width: 26 }}>{v.score?.toFixed(1)}</span>
               <span style={{ color: decColor(v.decision), width: 50 }}>{(v.decision || '').toUpperCase()}</span>
@@ -182,15 +181,15 @@ function EnsembleRunButtons({ compact, busy, onRun }: {
     <div style={wrap}>
       <button type="button" disabled={!!busy} onClick={() => runCloud('grok')}
         style={ensembleBtnStyle(GROK, busy === 'grok', compact)}>
-        {busy === 'grok' ? '…' : '▶ Grok'}
+        {busy === 'grok' ? '…' : `▶ ${laneLabel('grok')}`}
       </button>
       <button type="button" disabled={!!busy} onClick={() => runCloud('chatgpt')}
         style={ensembleBtnStyle(GPT, busy === 'chatgpt', compact)}>
-        {busy === 'chatgpt' ? '…' : '▶ ChatGPT'}
+        {busy === 'chatgpt' ? '…' : `▶ ${laneLabel('chatgpt')}`}
       </button>
       <button type="button" disabled={!!busy} onClick={() => onRun(undefined)}
         style={ensembleBtnStyle(ALL, busy === 'all', compact)}>
-        {busy === 'all' ? '⏳ validating…' : '⚖ All (Grok+ChatGPT+Gemma)'}
+        {busy === 'all' ? '⏳ validating…' : '⚖ All (ensemble)'}
       </button>
     </div>
   )
@@ -271,7 +270,7 @@ export function EnsembleValidationInline({ targetType, targetId, subject, conten
     if (state === 'done' || state === 'idle' || state === 'error') setRunBusy(null)
   }, [state])
 
-  if (state === 'loading') return <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: compact ? 0 : 6 }}>checking Grok/ChatGPT/Gemma…</div>
+  if (state === 'loading') return <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: compact ? 0 : 6 }}>checking lanes…</div>
   if (state === 'done' && result) {
     if (compact) {
       return (
@@ -284,7 +283,7 @@ export function EnsembleValidationInline({ targetType, targetId, subject, conten
                 background: 'var(--bg1)', border: `1px solid ${v.decision === 'approve' ? '#22c55e44' : '#ef444444'}`,
                 cursor: v.reasoning ? 'help' : undefined,
               }}>
-                {LANE_ICON[v.lane] || '•'} {LANE_LABEL[v.lane] || v.lane} {v.score?.toFixed(1)} {(v.decision || '').toUpperCase()}
+                {LANE_ICONS[v.lane] || '•'} {LANE_LABELS[v.lane] || v.lane} {v.score?.toFixed(1)} {(v.decision || '').toUpperCase()}
               </span>
             ))}
             <span style={{ fontSize: 11, fontWeight: 900, color: result.final_decision === 'approve' ? '#22c55e' : '#ef4444' }}>

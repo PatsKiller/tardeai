@@ -1,5 +1,8 @@
 """Lane-aware, escalation-gated LLM helper for FLEET critic pipelines.
 
+PRIMARY: DeepSeek Flash (via local_llm.generate() → llm_lane.generate() fallback chain).
+Local gemma3:4b is the FALLBACK (when DeepSeek is unavailable).
+
 Master switch: AGENT_RUNTIME_CRITIC_LANES (default off). When off, callers get
 deterministic-only results with honest provenance (provider_family=deterministic).
 """
@@ -22,6 +25,9 @@ if str(SCRIPTS) not in sys.path:
 
 AMBIGUOUS_LOW = 0.4
 AMBIGUOUS_HIGH = 0.6
+# AGENT_RUNTIME_SHADOW_MODEL: primary critic model. DeepSeek Flash is tried first
+# by local_llm.generate(); this env var controls the local fallback model if DeepSeek
+# is unavailable. Override per-agent for CIO-level agents that need v4.
 LOCAL_MODEL = os.environ.get("AGENT_RUNTIME_SHADOW_MODEL", "gemma3:4b").strip() or "gemma3:4b"
 DEFAULT_OLLAMA = os.environ.get("AGENT_RUNTIME_OLLAMA_BASE", "http://127.0.0.1:11434").rstrip("/")
 DAILY_SOFT_CAP = int(os.environ.get("AGENT_RUNTIME_CRITIC_LANE_DAILY_CAP", "20"))
@@ -226,6 +232,7 @@ def generate_for_critic(
         return _deterministic
 
     for lane, family, model in (
+        ("deepseek-flash", "cloud_api/deepseek", "deepseek-chat"),
         ("grok", "cloud_free/grok", "grok-3-mini"),
         ("chatgpt", "cloud_free/chatgpt", "gpt-5.4"),
     ):
@@ -350,3 +357,52 @@ def finding_from_lesson_verdict(
         "lesson_id": lesson_id,
         "verdict": "caution",
     }
+
+
+# ── Cache-aware critic generate wrapper ──
+
+def cached_critic_generate(
+    cache_key: str,
+    *,
+    agent_id: str,
+    prompt: str,
+    egress: EgressClass,
+    tier: str = "default",
+    ttl_hours: float | None = None,
+    **kwargs,
+) -> CriticLlmResult:
+    """Cache-aware version of generate_for_critic(). Checks llm_cache before calling.
+    Returns CriticLlmResult (cached or fresh).
+    """
+    model = "deepseek-chat"
+    try:
+        from lib.llm_cache import llm_cache_get, llm_cache_put
+        cached = llm_cache_get(cache_key, model)
+        if cached is not None:
+            return CriticLlmResult(
+                text=cached,
+                provider_family="cloud_api/deepseek",
+                model=model,
+                lane_used="deepseek-flash",
+                escalated=True,
+                cost_usd=0.0,
+            )
+    except Exception:
+        pass
+
+    result = generate_for_critic(
+        agent_id=agent_id,
+        prompt=prompt,
+        egress=egress,
+        **kwargs,
+    )
+
+    if result.text:
+        try:
+            from lib.llm_cache import llm_cache_put
+            llm_cache_put(cache_key, model, result.text,
+                         ttl_hours=ttl_hours, prompt=prompt, tier=tier)
+        except Exception:
+            pass
+
+    return result

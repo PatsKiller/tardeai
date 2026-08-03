@@ -60,6 +60,10 @@ REGISTRY = [
     {"key": "hermes_research_intel",    "kind": "fresh", "table": "hermes_research_intelligence", "max_age_h": 12, "sev": "P2"},
     {"key": "ticker_prices",            "kind": "fresh", "table": "ticker_prices",            "max_age_h": 26, "sev": "P1", "weekday_only": True},
     {"key": "cio_decisions",            "kind": "fresh", "table": "cio_decisions",            "max_age_h": 30, "sev": "P2", "weekday_only": True},
+    {"key": "youtube_transcripts",      "kind": "fresh", "table": "youtube_transcripts",    "max_age_h": 30, "sev": "P1"},
+    {"key": "youtube_channels",         "kind": "fresh", "table": "youtube_channels",       "max_age_h": 48, "sev": "P2"},
+    {"key": "hermes_sources_youtube",   "kind": "fresh", "table": "hermes_sources",         "max_age_h": 48, "sev": "P2", "filter_clause": "source_type = 'youtube'"},
+    {"key": "transcript_observations",  "kind": "fresh", "table": "transcript_observations","max_age_h": 36, "sev": "P2"},
     {"key": "drive_sync_mirror",        "kind": "logfile", "path": os.path.join(ROOT, "..", "..", "logs", "drive-sync.log"),
                                         "alt_path": "/home/johnclaw/logs/drive-sync.log", "needle": "sync done", "max_age_h": 26, "sev": "P3"},
 ]
@@ -88,12 +92,13 @@ def _count_since(cur, table, hours):
     return cur.fetchone()[0]
 
 
-def _age_hours(cur, table, ts_col="created_at", agg="max"):
+def _age_hours(cur, table, ts_col="created_at", agg="max", filter_clause=None):
     # agg="max" -> newest row (is the pipeline alive?); agg="min" -> oldest row
     # (are ALL items fresh? — used for per-item tables like topic_monitor where one
     # fresh topic must not mask the rest being stale).
     agg = agg if agg in ("max", "min") else "max"
-    cur.execute(f"SELECT extract(epoch from (now()-{agg}({ts_col})))/3600.0 FROM {table}")
+    f = f" WHERE {filter_clause}" if filter_clause else ""
+    cur.execute(f"SELECT extract(epoch from (now()-{agg}({ts_col})))/3600.0 FROM {table}{f}")
     r = cur.fetchone()[0]
     return float(r) if r is not None else None
 
@@ -106,7 +111,8 @@ def detect(cur):
             continue  # weekday-cadence table — don't false-page on weekends
         try:
             if e["kind"] == "fresh":
-                age = _age_hours(cur, e["table"], e.get("ts_col", "created_at"), e.get("agg", "max"))
+                age = _age_hours(cur, e["table"], e.get("ts_col", "created_at"), e.get("agg", "max"),
+                                e.get("filter_clause"))
                 if age is None or age > e["max_age_h"]:
                     _lbl = "oldest item" if e.get("agg") == "min" else "last row"
                     _agetxt = "never" if age is None else f"{age:.1f}h{'' if e.get('agg')=='min' else ' ago'}"

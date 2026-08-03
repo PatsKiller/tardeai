@@ -1,6 +1,6 @@
 """CIO trust bundle — operator TRUST HIGH | DEGRADED from deterministic gates.
 
-High means dual OAuth agree (buy-side) + fresh Street evidence + QA/safety.
+High means dual lane agree (buy-side) + fresh Street evidence + QA/safety.
 Does not claim LLMs are ground truth; fails closed when evidence is thin.
 """
 from __future__ import annotations
@@ -96,7 +96,7 @@ def compute_cio_trust_bundle(
     chatgpt = dual.get("chatgpt") if isinstance(dual.get("chatgpt"), dict) else None
     agree = models_agree if models_agree is not None else dual.get("agree")
     model = str(model_used or dual.get("model") or "").lower()
-    local_only = bool(model) and ("gemma" in model or "ollama" in model or model in ("local",)) and "grok" not in model and "chatgpt" not in model and "gpt" not in model
+    local_only = bool(model) and ("gemma" in model or "ollama" in model or model in ("local",)) and "grok" not in model and "chatgpt" not in model and "gpt" not in model and "deepseek" not in model
 
     gates: list[dict[str, Any]] = []
     failed: list[str] = []
@@ -123,7 +123,7 @@ def compute_cio_trust_bundle(
         dual_pass = both_lanes and agree is True and not local_only
         detail = (
             f"{dual_mode} — buy-side requires both OAuth lanes AGREE"
-            if not dual_pass else "Grok + ChatGPT agree"
+            if not dual_pass else "Dual lane consensus (AGREE)"
         )
     else:
         # Non-buy: AGREE (or cautious single) OK; SPLIT never HIGH
@@ -212,7 +212,7 @@ def compute_cio_trust_bundle(
             "id": "local_fallback",
             "pass": False,
             "label": "MAIN OAuth lanes",
-            "detail": "local/gemma fallback — not HIGH on MAIN",
+            "detail": "local fallback — not HIGH on MAIN",
         })
 
     level = "HIGH" if not failed else "DEGRADED"

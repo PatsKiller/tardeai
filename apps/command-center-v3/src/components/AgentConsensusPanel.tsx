@@ -7,6 +7,7 @@ import {
 } from '../lib/agentReviews'
 import { formatCloudRanAt, localLlmLabel } from '../lib/brokerThesis'
 import { desk, sectionLabel } from '../lib/proposalDeskTheme'
+import { laneLabel } from '../lib/laneLabels'
 import CloudLlmRunButtons from './CloudLlmRunButtons'
 
 function cloudColor(status: string | null | undefined) {
@@ -179,8 +180,8 @@ export default function AgentConsensusPanel({
         </span>
         <span style={{ color: desk.textDim }}>
           OAuth: {[
-            lanes?.grok ? 'Grok ✓' : 'Grok ✗',
-            lanes?.chatgpt ? 'ChatGPT ✓' : 'ChatGPT ✗',
+            lanes?.grok ? `${laneLabel('grok')} ✓` : `${laneLabel('grok')} ✗`,
+            lanes?.chatgpt ? `${laneLabel('chatgpt')} ✓` : `${laneLabel('chatgpt')} ✗`,
           ].join(' · ')}
         </span>
       </div>
@@ -208,7 +209,7 @@ export default function AgentConsensusPanel({
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                   <span style={{ fontSize: 11, fontWeight: 800, color: desk.text, minWidth: 64 }}>
-                    {lane === 'grok' ? 'Grok' : lane === 'chatgpt' ? 'ChatGPT' : lane}
+                    {lane === 'grok' ? laneLabel('grok') : lane === 'chatgpt' ? laneLabel('chatgpt') : lane}
                   </span>
                   <span style={{ fontSize: 10, fontWeight: 800, color: cloudColor(lr?.verdict) }}>
                     {lr?.ok ? (lr?.verdict || '—') : 'unavailable'}
@@ -238,7 +239,7 @@ export default function AgentConsensusPanel({
 
       <div style={{ fontSize: 9, color: desk.textDim, marginTop: 10, lineHeight: 1.45, borderTop: `1px solid ${desk.borderSubtle}`, paddingTop: 8 }}>
         Agents are advisory — risk gate and oversight BLOCK override any APPROVE vote.
-        Cloud LLMs use free OAuth proxies (Grok :8645, ChatGPT :8646) — no API keys. Manage usage in Ops → Consumption.
+        Cloud LLMs use free OAuth proxies — no API keys. Manage usage in Ops → Consumption.
         Fallback reviews are rule-based when the local model is unavailable.
       </div>
     </div>

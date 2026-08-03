@@ -245,7 +245,7 @@ def build_plan(conn) -> dict:
 
 
 def auto_run_free_critics(conn, *, cap: int = 12, dry_run: bool = False) -> dict:
-    """Run free critic lanes for ADMITTED+PASS tickets with missing review verdicts."""
+    """Run critic lanes for ADMITTED+PASS tickets with missing review verdicts."""
     import watch_packet_quality as packet_quality
 
     cur = conn.cursor()
@@ -263,7 +263,7 @@ def auto_run_free_critics(conn, *, cap: int = 12, dry_run: bool = False) -> dict
         quality = validation.get("quality_admission") or {}
         prior = pkt.get("ticket_review") or {}
         reviews = prior.get("reviews") or {}
-        missing = [lane for lane in ("local", "grok", "chatgpt")
+        missing = [lane for lane in ("local", "deepseek-flash", "grok", "chatgpt")
                    if not (reviews.get(lane) or {}).get("verdict")]
         may_review = (
             deterministic in {"PASS", "REVIEW_REQUIRED"}

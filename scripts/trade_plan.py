@@ -37,7 +37,7 @@ def _sonnet(prompt: str, max_tokens: int = 400) -> str:
     rule, 2026-06-11). Name kept for call-site compatibility; metered Anthropic path removed."""
     try:
         import llm_lane
-        out = llm_lane.generate(prompt, lane="grok", timeout=120)
+        out = llm_lane.generate(prompt, lane="deepseek-flash", timeout=120)
         if out and not str(out).startswith("["):
             return str(out).strip()
     except Exception:

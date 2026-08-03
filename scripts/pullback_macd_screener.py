@@ -76,6 +76,27 @@ def _db(sql, params=None, fetch=None):
     return _execute(sql, params, fetch=fetch)
 
 
+# ── broker indicators (2026-08-01: canonical indicator_snapshot for MACD/RSI/SMA) ──────
+def _broker_macd_snapshot(symbols: list[str]) -> dict[str, dict]:
+    """Fetch MACD/RSI/SMA from indicator_snapshot broker. Returns {SYM: {macd_line, macd_signal, macd_hist, rsi14, sma50, sma200}}."""
+    out: dict[str, dict] = {}
+    try:
+        from lib.data_broker.indicator_snapshot import get_indicator_snapshot
+        snap = get_indicator_snapshot(symbols)
+        for sym in symbols:
+            s = sym.upper()
+            d = snap.get(s, {}) or {}
+            entry = {}
+            for k in ("macd_line", "macd_signal", "macd_hist", "rsi_14", "sma_50", "sma_200"):
+                if d.get(k) is not None:
+                    entry[k] = float(d[k])
+            if entry:
+                out[sym] = entry
+    except Exception as e:
+        print(f"  [broker] indicator_snapshot unavailable: {e}")
+    return out
+
+
 # ── indicators (pandas-native; no pandas_ta dependency) ─────────────────────────────────
 def _macd(close: pd.Series, fast: int, slow: int, sig: int):
     ema_f = close.ewm(span=fast, adjust=False).mean()
@@ -136,32 +157,66 @@ def _load_universe(dry: bool) -> list[str]:
 
 
 # ── scan ────────────────────────────────────────────────────────────────────────────────
-def _evaluate(sym: str, df: pd.DataFrame, cfg: dict) -> dict | None:
+def _evaluate(sym: str, df: pd.DataFrame, cfg: dict, broker_snap: dict | None = None) -> dict | None:
     df = df.dropna()
     if len(df) < int(cfg.get("min_bars", 205)):
         return None
     close = df["Close"].astype(float)
     px = float(close.iloc[-1])
-    sma_f = close.rolling(int(cfg["sma_fast"])).mean()
-    sma_s = close.rolling(int(cfg["sma_slow"])).mean()
-    s_f, s_s = float(sma_f.iloc[-1]), float(sma_s.iloc[-1])
-    if not (s_f > 0 and s_s > 0):
+
+    # ── Broker indicators (canonical) for SMA/MACD/RSI — fall back to bars ──
+    b = (broker_snap or {}).get(sym.upper(), {})
+    b_sma50 = b.get("sma_50")
+    b_sma200 = b.get("sma_200")
+    b_macd_line = b.get("macd_line")
+    b_macd_signal = b.get("macd_signal")
+    b_macd_hist = b.get("macd_hist")
+    b_rsi = b.get("rsi_14")
+
+    sma_f_val = float(b_sma50) if b_sma50 is not None else float(close.rolling(int(cfg["sma_fast"])).mean().iloc[-1])
+    sma_s_val = float(b_sma200) if b_sma200 is not None else float(close.rolling(int(cfg["sma_slow"])).mean().iloc[-1])
+
+    if not (sma_f_val > 0 and sma_s_val > 0):
         return None
-    line, signal, hist = _macd(close, int(cfg["macd_fast"]), int(cfg["macd_slow"]), int(cfg["macd_signal"]))
-    h = hist.dropna()
+
+    if b_macd_line is not None and b_macd_signal is not None and b_macd_hist is not None:
+        line_val, signal_val, hist_val = float(b_macd_line), float(b_macd_signal), float(b_macd_hist)
+        # Synthetic hist series for rising / proximity check: last 2 bars via broker hist
+        line_last = line_val
+        signal_last = signal_val
+        below = line_last < signal_last
+        neg_hist = hist_val < 0
+        # Rising check: we can't reconstruct full hist from a single snapshot, so fall through
+        # to bars if we need hist_rising_bars > 1, else trust broker if rising_n==1
+        rising_n = int(cfg.get("hist_rising_bars", 2))
+        if rising_n > 1:
+            # Need bar-level hist — fall back to local compute for rising check
+            line, signal, hist = _macd(close, int(cfg["macd_fast"]), int(cfg["macd_slow"]), int(cfg["macd_signal"]))
+            h = hist.dropna()
+            rising = len(h) > rising_n and all(float(h.iloc[-1 - i]) > float(h.iloc[-2 - i]) for i in range(rising_n))
+            prox = abs(hist_val) / px * 100.0 if px else 999.0
+        else:
+            rising = True  # single-bar: trust broker hist
+            prox = abs(hist_val) / px * 100.0 if px else 999.0
+            h = pd.Series([hist_val - 0.01, hist_val])
+    else:
+        line, signal, hist = _macd(close, int(cfg["macd_fast"]), int(cfg["macd_slow"]), int(cfg["macd_signal"]))
+        h = hist.dropna()
+        rising_n = int(cfg.get("hist_rising_bars", 2))
+        rising = len(h) > rising_n and all(float(h.iloc[-1 - i]) > float(h.iloc[-2 - i]) for i in range(rising_n))
+        below = float(line.iloc[-1]) < float(signal.iloc[-1])
+        neg_hist = float(h.iloc[-1]) < 0
+        prox = abs(float(h.iloc[-1])) / px * 100.0 if px else 999.0
+    prox_ok = prox <= float(cfg.get("macd_proximity_pct", 0.6))
+
     hi = float(close.tail(int(cfg.get("lookback_high_days", 252))).max())
     pull = (hi - px) / hi * 100.0 if hi > 0 else 0.0
 
-    rising_n = int(cfg.get("hist_rising_bars", 2))
-    rising = len(h) > rising_n and all(float(h.iloc[-1 - i]) > float(h.iloc[-2 - i]) for i in range(rising_n))
-    below = float(line.iloc[-1]) < float(signal.iloc[-1])
-    neg_hist = float(h.iloc[-1]) < 0
-    prox = abs(float(h.iloc[-1])) / px * 100.0 if px else 999.0
-    prox_ok = prox <= float(cfg.get("macd_proximity_pct", 0.6))
-
+    # Broker SMA50 rising check needs bar-level SMA data — fall back to rolling
+    sma_f_series = close.rolling(int(cfg["sma_fast"])).mean()
     rising_sma = (not cfg.get("require_sma50_rising", True)) or \
-        s_f > float(sma_f.iloc[-1 - int(cfg.get("sma50_rising_lookback", 5))])
-    uptrend = px > s_s and s_f > s_s and rising_sma
+        sma_f_val > float(sma_f_series.iloc[-1 - int(cfg.get("sma50_rising_lookback", 5))])
+    uptrend = px > sma_s_val and sma_f_val > sma_s_val and rising_sma
     in_pullback = float(cfg["pullback_min_pct"]) <= pull <= float(cfg["pullback_max_pct"])
 
     # EARLIEST confirmed recovery: the MACD histogram has turned up off the pullback trough — rising
@@ -173,7 +228,8 @@ def _evaluate(sym: str, df: pd.DataFrame, cfg: dict) -> dict | None:
     approaching = macd_recovering and (prox_ok or not require_prox)
 
     if cfg.get("rsi_confirm"):
-        if _rsi(close, int(cfg.get("rsi_period", 14))) > float(cfg.get("rsi_max", 50)):
+        rsi_val = float(b_rsi) if b_rsi is not None else _rsi(close, int(cfg.get("rsi_period", 14)))
+        if rsi_val > float(cfg.get("rsi_max", 50)):
             approaching = False
 
     if not (uptrend and in_pullback):
@@ -200,9 +256,9 @@ def _evaluate(sym: str, df: pd.DataFrame, cfg: dict) -> dict | None:
     target1 = round(entry + frac * (hi - entry), 2)
     risk = max(entry - stop, 0.01)
     rr = round((target1 - entry) / risk, 2)
-    slope = float(h.iloc[-1]) - float(h.iloc[-2])
+    slope = float(h.iloc[-1]) - float(h.iloc[-2]) if len(h) >= 2 else 0.0
     bars = round(abs(float(h.iloc[-1]) / slope), 1) if slope > 0 else None
-    trend_pct = round((s_f / s_s - 1) * 100, 2)
+    trend_pct = round((sma_f_val / sma_s_val - 1) * 100, 2)
     score = round(100 - prox / max(float(cfg["macd_proximity_pct"]), 0.01) * 30
                   - abs(pull - float(cfg.get("pullback_target_pct", 20))) * 1.5 + trend_pct, 1)
 
@@ -636,13 +692,19 @@ def run(dry: bool = False, limit: int = 0, as_json: bool = False, monitor: bool 
         syms = syms[:limit]
     bars = _fetch_all(syms)
     cands, funnel, errors = [], {"uptrend_pullback": 0}, 0
+
+    # ── Fetch broker indicators once for all symbols (2026-08-01: MACD/RSI/SMA via broker) ──
+    broker_snap = _broker_macd_snapshot(syms) if syms else {}
+    if broker_snap:
+        print(f"  [broker] MACD snapshot available for {len(broker_snap)}/{len(syms)} symbols")
+
     for s in syms:
         df = bars.get(s)
         if df is None:
             errors += 1
             continue
         try:
-            r = _evaluate(s, df, cfg)
+            r = _evaluate(s, df, cfg, broker_snap=broker_snap)
         except Exception:
             errors += 1
             continue

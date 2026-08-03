@@ -129,7 +129,7 @@ def _alert(msg, source=""):
     if "test" in (source or "").lower() or "proof" in (source or "").lower():
         return
     try:
-        import requests
+        from telegram_alert import chokepoint_send
         tok = os.environ.get("TELEGRAM_BOT_TOKEN", "")
         if not tok:
             for l in (PROJECT_ROOT / ".env").read_text().splitlines():
@@ -137,8 +137,7 @@ def _alert(msg, source=""):
                     tok = l.split("=", 1)[1].strip()
         if not tok:
             return
-        for cid in chat_ids():
-            requests.post(f"https://api.telegram.org/bot{tok}/sendMessage", json={"chat_id": cid, "text": msg}, timeout=8)
+        chokepoint_send(msg, token=tok)
     except Exception:
         pass
 

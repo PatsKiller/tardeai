@@ -97,7 +97,7 @@ def run(limit=8, thin=3, symbols=None, apply=False):
     import psycopg2.extras
     conn = _conn()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    lane = "grok" if llm_lane.available("grok") else ("chatgpt" if llm_lane.available("chatgpt") else None)
+    lane = "deepseek-flash" if llm_lane.available("deepseek-flash") else ("grok" if llm_lane.available("grok") else ("chatgpt" if llm_lane.available("chatgpt") else None))
     if lane is None:
         print(json.dumps({"error": "no OAuth lane available — coverage research needs web-grounded models"}))
         return 1

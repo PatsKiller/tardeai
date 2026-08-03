@@ -543,7 +543,7 @@ export default function WatchlistHub({ onDrill, embedded, lane }: Props) {
           </div>
         )}
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginLeft: embedded ? 0 : 'auto' }}>
-          <button onClick={runChatgptTop20} disabled={curateRunning} title="Run ChatGPT curation on the top-20 ranked names." style={{ padding: embedded ? '6px 10px' : '9px 15px', fontSize: embedded ? 10 : 12, fontWeight: 800, borderRadius: 2, border: `1px solid ${T.extIntel.gpt}`, cursor: curateRunning ? 'default' : 'pointer', background: curateRunning ? 'rgba(16, 163, 127, 0.15)' : 'rgba(16, 163, 127, 0.12)', color: BB.green, opacity: curateRunning ? 0.7 : 1 }}>{curateRunning ? `✦ ChatGPT… ${curateStatus?.chatgpt_curated_top20 ?? 0}/20` : '✦ ChatGPT Top 20'}</button>
+          <button onClick={runChatgptTop20} disabled={curateRunning} title="Run Level 2 curation on the top-20 ranked names." style={{ padding: embedded ? '6px 10px' : '9px 15px', fontSize: embedded ? 10 : 12, fontWeight: 800, borderRadius: 2, border: `1px solid ${T.extIntel.gpt}`, cursor: curateRunning ? 'default' : 'pointer', background: curateRunning ? 'rgba(16, 163, 127, 0.15)' : 'rgba(16, 163, 127, 0.12)', color: BB.green, opacity: curateRunning ? 0.7 : 1 }}>{curateRunning ? `✦ Level 2… ${curateStatus?.chatgpt_curated_top20 ?? 0}/20` : '✦ Level 2 Top 20'}</button>
           <button onClick={() => setShowAdd(true)} style={{ padding: embedded ? '6px 12px' : '9px 17px', fontSize: embedded ? 10 : 12, fontWeight: 800, borderRadius: 2, border: 'none', cursor: 'pointer', background: PURPLE, color: BB.text0 }}>+ Add Watch</button>
           <ShadowBatchButton embedded={embedded} />
         </div>
@@ -725,7 +725,7 @@ export default function WatchlistHub({ onDrill, embedded, lane }: Props) {
                 disabled={Object.keys(strategyBusy).length > 0}
                 onClick={async () => {
                   const syms = selSyms.slice(0, 25)
-                  if (!window.confirm(`Run STANDARD BLIND for ${syms.length} symbols?\nEstimated model-lane calls: ${2 * syms.length} (free OAuth lanes — Grok + ChatGPT). Paid cost: $0.`)) return
+                  if (!window.confirm(`Run STANDARD BLIND for ${syms.length} symbols?\nEstimated model-lane calls: ${2 * syms.length} (cloud lanes). Paid cost: $0.`)) return
                   const res = await enqueueStrategyRefresh(syms, { scope: 'AFFECTED_DIMENSIONS', tier: 'STANDARD_BLIND', force: true, reason: 'bulk_standard_blind' })
                   if (!res.ok || !res.run_id) { setActionToast(`Blind refresh failed: ${res.error ?? 'unknown'}`); return }
                   setActionToast(`Standard Blind queued (run ${res.run_id}) — ${res.queued} symbols, est ${res.estimated_lane_calls} lane calls`)

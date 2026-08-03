@@ -368,7 +368,7 @@ export default function OptionsHub({ onDrill }: Props) {
       })
       const j = await r.json()
       const d = j.data ?? j
-      setEnsembleMsg(`Queued ${d.enqueued ?? 0} Grok+ChatGPT+Gemma reviews · ${d.skipped ?? 0} already warm`)
+      setEnsembleMsg(`Queued ${d.enqueued ?? 0} ensemble reviews · ${d.skipped ?? 0} already warm`)
       refetchProps()
     } catch (e: any) {
       setEnsembleMsg(String(e?.message || e))

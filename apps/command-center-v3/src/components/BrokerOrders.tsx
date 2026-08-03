@@ -753,7 +753,7 @@ function ActiveTraderPanel({ seed, onPreviewed }: { seed: any | null; onPreviewe
           </div>
         )}
 
-        {/* AI help — advisory only; local first, Claude on explicit request */}
+        {/* AI help — advisory only; local first, cloud on explicit request */}
         <div style={{ marginTop: 10, padding: 8, background: '#101010', border: `1px dashed ${T.border}`, borderRadius: 4 }}>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
             <span style={{ fontSize: 9.5, fontWeight: 700, color: '#9e9e9e' }}>🧠 AI help (advisory only — explains mechanics, never picks trades, cannot submit/approve)</span>
@@ -762,7 +762,7 @@ function ActiveTraderPanel({ seed, onPreviewed }: { seed: any | null; onPreviewe
             <button disabled={aiBusy} onClick={() => explain(false)} style={btn('#1b1b1b', '#90caf9')}>
               {aiBusy ? '…' : 'Explain (local model)'}</button>
             <button disabled={aiBusy} onClick={() => explain(true)} style={btn('#1b1b1b', '#ce93d8')}>
-              Ask Claude (explicit escalation)</button>
+              Ask AI (explicit escalation)</button>
           </div>
           {ai && (
             <div style={{ fontSize: 10, color: '#bdbdbd', marginTop: 6, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>

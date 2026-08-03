@@ -145,7 +145,7 @@ export default function AiTradeCritique({ tradeKey, symbol }: { tradeKey: string
             <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 8, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
               <span>Status: {meta.status ?? 'ok'}</span>
               {meta.history_count != null && meta.history_count > 0 && <span>{meta.history_count} prior version(s)</span>}
-              {nar.llm_enhanced && <span>Grok-enhanced</span>}
+              {nar.llm_enhanced && <span>LLM-enhanced</span>}
               {nar.deterministic && !nar.llm_enhanced && <span>deterministic fallback</span>}
             </div>
           )}

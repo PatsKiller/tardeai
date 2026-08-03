@@ -26,7 +26,7 @@ export default function CsvUpload() {
       })
       const j = await r.json()
       const d = j?.data ?? j
-      setStatus(d?.ok ? `✓ saved ${d.saved} (${d.rows} rows) — ingesting on next cron, or tell Claude to ingest now`
+      setStatus(d?.ok ? `✓ saved ${d.saved} (${d.rows} rows) — ingesting on next cron, or tell AI to ingest now`
         : `✗ ${d?.error || 'upload failed'}`)
     } catch (e: any) {
       setStatus(`✗ ${String(e?.message || e).slice(0, 120)}`)

@@ -185,12 +185,8 @@ def build_iris_state_block() -> str:
     return '\n'.join(lines)
 
 
-def ask_iris(question: str) -> str:
-    """Main Q&A function — Iris answers using Claude Sonnet.
-
-    Used by Telegram command handler and dashboard.
-    Cost: ~$0.003 per question.
-    """
+def ask_iris_DEPRECATED(question: str) -> str:
+    """Deprecated — migrated to llm_lane.generate(lane='deepseek-flash')."""
     import anthropic
 
     state = build_iris_state_block()
@@ -206,6 +202,22 @@ def ask_iris(question: str) -> str:
             messages=[{'role': 'user', 'content': question}],
         )
         return response.content[0].text
+    except Exception as e:
+        return f"Iris is unavailable: {e}"
+
+
+def ask_iris(question: str) -> str:
+    """Main Q&A function — Iris answers using DeepSeek Flash.
+
+    Used by Telegram command handler and dashboard.
+    """
+    state = build_iris_state_block()
+    system = IRIS_SYSTEM_PROMPT.format(state_block=state)
+    prompt = f"{system}\n\nQuestion: {question}"
+
+    try:
+        from llm_lane import generate
+        return generate(prompt, lane="deepseek-flash", timeout=60)
     except Exception as e:
         return f"Iris is unavailable: {e}"
 

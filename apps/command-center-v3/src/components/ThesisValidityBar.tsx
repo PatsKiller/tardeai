@@ -140,7 +140,7 @@ export default function ThesisValidityBar({ tv, compact, showSourceNote, refresh
       </div>
       {showSourceNote && (
         <div style={{ fontSize: 10.5, color: MUTED, marginBottom: 4 }}>
-          Price math from entry/stop/target + live quote — not Grok/ChatGPT cloud review.
+          Price math from entry/stop/target + live quote — not cloud LLM review.
         </div>
       )}
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', fontSize: 11, color: MUTED }}>

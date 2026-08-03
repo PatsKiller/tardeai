@@ -227,12 +227,12 @@ export default function RiskHub({ onDrill }: Props) {
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
             <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
-              <RiskContributionBars positions={positions} title="Risk contribution (max loss)" mode="risk" />
+              <RiskContributionBars positions={positions} title="Risk contribution (1-day VaR at stop)" mode="risk" />
             </div>
             <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
               <RiskHeatmapGrid
                 title="Position risk heatmap"
-                valueLabel="max loss"
+                valueLabel="max loss (VaR)"
                 cells={riskContributionRows(positions, { max: 12 }).map(r => ({
                   key: r.symbol,
                   label: r.symbol,
@@ -279,8 +279,9 @@ export default function RiskHub({ onDrill }: Props) {
                   onClick={() => onDrill({ title: ind.indicator_key, subtitle: ind.indicator_group, endpoint: '/api/v2/risk-regime/indicators', rows: [ind] })}
                   style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 6px', cursor: 'pointer', borderRadius: 4 }}>
                   <span style={{ width: 140, fontSize: 10, color: 'var(--text2)', fontFamily: 'monospace' }}>{ind.indicator_key}</span>
-                  <div style={{ width: 20, height: 16, borderRadius: 3, background: signalColor(ind.signal) }} title={ind.signal} />
-                  <span style={{ fontSize: 9, color: 'var(--text3)' }}>{ind.value_text || ind.signal}</span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', padding: '1px 6px', borderRadius: 3, background: signalColor(ind.signal), fontSize: 9, fontWeight: 700, color: signalColor(ind.signal) === '#ef4444' ? '#fff' : '#0f172a', whiteSpace: 'nowrap' }}>
+                    {ind.value_text || ind.signal}
+                  </span>
                 </div>
               ))}
             </div>

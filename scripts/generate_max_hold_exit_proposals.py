@@ -56,7 +56,6 @@ def _tg_token():
 def _send_proposal_alert(pid, symbol, strategy, hold_days, max_hold_days, overdue_by, upnl):
     """Telegram alert with one-tap inline approve/reject (handled by telegram_callback_handler)."""
     try:
-        import requests
         tok = _tg_token()
         if not tok:
             return
@@ -66,9 +65,8 @@ def _send_proposal_alert(pid, symbol, strategy, hold_days, max_hold_days, overdu
                + "Past strategy max-hold. *Close now* (paper, gated) or *Dismiss*.")
         markup = {"inline_keyboard": [[{"text": "✅ Close now", "callback_data": f"texitapprove:{pid}"},
                                        {"text": "✖ Dismiss", "callback_data": f"texitreject:{pid}"}]]}
-        for cid in chat_ids():
-            requests.post(f"https://api.telegram.org/bot{tok}/sendMessage",
-                          json={"chat_id": cid, "text": txt, "parse_mode": "Markdown", "reply_markup": markup}, timeout=8)
+        from telegram_alert import chokepoint_send
+        chokepoint_send(txt, token=tok, reply_markup=markup, parse_mode="Markdown")
     except Exception:
         pass
 

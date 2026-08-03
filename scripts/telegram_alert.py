@@ -50,10 +50,11 @@ def _smart_split(text: str, limit: int) -> list[str]:
     return smart_split(text, limit)
 
 
-def _raw_send_telegram(message: str, chat_ids: list = None) -> bool:
-    """Low-level Telegram send. No routing — called after router approval."""
-    # FQDN/v3 normalization at the send chokepoint: rewrite any internal IP/localhost + legacy /v2/
-    # dashboard link to the public Tailscale FQDN + /v3/ so no notification can leak a wrong URL.
+def _raw_send_telegram(message: str, chat_ids: list = None, *,
+                       reply_markup: dict | None = None,
+                       parse_mode: str = "Markdown",
+                       thread_id: str | None = None) -> dict:
+    """Low-level Telegram send. Returns dict with ok, results (per-chat delivery detail)."""
     try:
         from notification_url_builder import publicize_message
         message = publicize_message(message)
@@ -62,26 +63,29 @@ def _raw_send_telegram(message: str, chat_ids: list = None) -> bool:
     token = _token()
     targets = chat_ids or _chat_ids()
     if not token or not targets:
-        return False
-    ok = True
+        return {"ok": False, "reason": "missing_token_or_chat_id"}
+    all_ok = True
+    results = []
     try:
         chunks = _smart_split(message, MAX_MSG_LEN)
         for cid in targets:
             for chunk in chunks:
-                result = send_message(token=token, chat_id=cid, text=chunk)
+                result = send_message(token=token, chat_id=cid, text=chunk,
+                                     thread_id=thread_id, reply_markup=reply_markup,
+                                     parse_mode=parse_mode)
+                results.append({"chat_id": cid, **result})
                 if not result.get("ok"):
                     print(f"[telegram] Error to {cid}: {result.get('status_code')}")
-                    ok = False
+                    all_ok = False
     except Exception as e:
         print(f"[telegram] Error: {e}")
-        ok = False
-    # Persist recognized reports so the v3 Reports portal can surface them (best-effort, never blocks).
+        all_ok = False
     try:
         from report_capture import capture
-        capture(message, ok=ok, channel="telegram")
+        capture(message, ok=all_ok, channel="telegram")
     except Exception:
         pass
-    return ok
+    return {"ok": all_ok, "results": results}
 
 
 def _legacy_send(message: str, bypass_router: bool) -> bool:
@@ -104,7 +108,7 @@ def _legacy_send(message: str, bypass_router: bool) -> bool:
             mark_sent(message)
         except ImportError:
             pass  # Router not available — send normally
-    return _raw_send_telegram(message)
+    return _raw_send_telegram(message).get("ok", False)
 
 
 def publish_operator_message(message: str, *, bypass_router: bool = False,
@@ -359,3 +363,91 @@ def build_telegram_message(
         lines.append(" · ".join(iris_parts))
 
     return "\n".join(lines)
+
+
+# ── Chokepoint accessors (2026-08-01: Phase 5 broker consolidation) ───────────────────
+
+# Set of scripts known to bypass the central send_telegram() chokepoint (requests.post directly).
+# These should be migrated to chokepoint_send() or send_telegram() at next maintenance touch.
+TELEGRAM_BYPASS_SCRIPTS: set[str] = {
+    "audit_enrichment_coverage.py",
+    "audit_position_basis.py",
+    "atm_auto_approver.py",
+    "crawl_v3_dashboard.py",
+    "freshness_watchdog_heartbeat.py",
+    "full_system_backup.py",
+    "intel_table_staleness_monitor.py",
+    "iris_taxonomy_agent.py",
+    "pipeline_health_monitor.py",
+    "pipeline_watchdog.py",
+    "premarket_watcher.py",
+    "previously_traded_watchlist.py",
+    "pro_analyst_monitor.py",
+    "protection_alerts.py",
+    "schwab_position_sync.py",
+    "schwab_token_manager.py",
+    "system_freshness_monitor.py",
+    "technicals_gap_backfill.py",
+    "trade_ai_news_monitor.py",
+    "watch_directives_service.py",
+    "watchlist_entry_planner.py",
+    "youtube_cookie_health_check.py",
+}
+
+
+def chokepoint_send(message: str, *, token: str | None = None,
+                    chat_id: str | None = None,
+                    reply_markup: dict | None = None,
+                    parse_mode: str = "Markdown",
+                    thread_id: str | None = None,
+                    dry_run: bool = False) -> dict:
+    """Central Telegram chokepoint — use this instead of requests.post() direct.
+
+    Route all outbound Telegram messages through this function. It applies:
+      - URL normalization (notification_url_builder)
+      - Smart split (4096-char limit)
+      - Report capture (Reports portal)
+      - ENV-based token/chat_id fallback (from .env)
+
+    Args:
+        message: The raw message text to send.
+        token: Optional override for TELEGRAM_BOT_TOKEN.
+        chat_id: Optional override for TELEGRAM_CHAT_ID.
+        reply_markup: Optional inline keyboard dict (Telegram format).
+        parse_mode: Telegram parse mode (\"Markdown\", \"HTML\", \"MarkdownV2\").
+        thread_id: Optional message_thread_id for topic groups.
+        dry_run: If True, returns mock success without sending.
+
+    Returns:
+        dict with ok (bool), results (list of per-chat send results with message_id).
+        Truthiness matches ok — use `if result.get(\"ok\")` or `if result:`.
+    """
+    if dry_run:
+        return {"ok": True, "results": [], "dry_run": True}
+    tok = token or _token()
+    cids = [chat_id] if chat_id else _chat_ids()
+    if not tok or not cids:
+        print("[telegram:chokepoint] missing token or chat_id — message dropped")
+        return {"ok": False, "reason": "missing_token_or_chat_id"}
+    if not _enabled():
+        return {"ok": False, "reason": "telegram_disabled"}
+    return _raw_send_telegram(message, chat_ids=cids,
+                             reply_markup=reply_markup, parse_mode=parse_mode,
+                             thread_id=thread_id)
+
+
+def warn_telegram_bypass(caller_file: str) -> None:
+    """Warn at runtime if a script is still using direct requests.post() to Telegram.
+
+    Call this from scripts that currently bypass the chokepoint::
+
+        from telegram_alert import warn_telegram_bypass
+        warn_telegram_bypass(__file__)
+
+    It prints a one-line warning and records the bypass in the TELEGRAM_BYPASS_SCRIPTS set.
+    """
+    import os as _os
+    fname = _os.path.basename(caller_file)
+    TELEGRAM_BYPASS_SCRIPTS.add(fname)
+    print(f"[telegram:bypass] WARN: {fname} bypasses the central chokepoint — "
+          f"migrate to telegram_alert.chokepoint_send() or send_telegram()")

@@ -167,7 +167,7 @@ def derive_setup_state(
     elif now == "WAIT":
         why.append("MAIN WAIT — fill plan / data gaps before GO.")
     elif desk_state == "TICKET PENDING":
-        why.append("Setup GO — run free critics before propose (ticket pending).")
+        why.append("Setup GO — run critics before propose (ticket pending).")
     elif desk_state == "PROPOSE-READY":
         why.append("Ticket validated — propose / open evidence.")
     elif stale:
@@ -351,7 +351,7 @@ def build_watch_advisory(
     critics_ok = all(
         v not in ("NOT RUN", "UNVALIDATED", "UNAVAILABLE", "")
         for k, v in ticket.items()
-        if k in ("local", "grok", "chatgpt")
+        if k in ("local", "deepseek-flash", "deepseek-v4", "grok", "chatgpt")
     )
 
     criteria = [
@@ -364,7 +364,7 @@ def build_watch_advisory(
         {
             "id": "critics",
             "met": critics_ok if _is_ticket_pass(ticket.get("deterministic")) else None,
-            "label": "Free critics run (local / Grok / ChatGPT)",
+            "label": "Multi-lane critics (local / DeepSeek Flash / Grok)",
             "detail": f"Local {ticket.get('local')} · Grok {ticket.get('grok')} · ChatGPT {ticket.get('chatgpt')}",
         },
         {
@@ -433,7 +433,7 @@ def build_watch_advisory(
 
     action_map = {
         "PROPOSE-READY": "Propose / open evidence — ticket validated",
-        "TICKET PENDING": "Run free critics before propose",
+        "TICKET PENDING": "Run critics before propose",
         "DATA GAP": "Refresh quote / RSI cache",
         "STALE": "Refresh stale quote before acting",
         "GO": "Review setup — MAIN GO",

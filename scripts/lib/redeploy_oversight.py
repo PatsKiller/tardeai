@@ -326,7 +326,7 @@ def run_deploy_oversight(cur, body: dict[str, Any]) -> dict[str, Any]:
     results = []
     for lane in lanes:
         lane = str(lane).lower()
-        if lane not in ("grok", "chatgpt"):
+        if lane not in ("deepseek-flash", "grok", "chatgpt"):
             continue
         res = _run_lane(lane, prompt)
         verdict = res.get("verdict") or ("needs_review" if res.get("ok") else "manual_required")

@@ -174,7 +174,7 @@ def _free_lane_gen(prompt, timeout=40):
     Replaces local-only `local_llm.generate` so research entity extraction uses the better free models."""
     try:
         import llm_lane
-        for lane in ("grok", "chatgpt", "local"):
+        for lane in ("deepseek-flash", "grok", "chatgpt", "local"):
             try:
                 if not llm_lane.available(lane):
                     continue

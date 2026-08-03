@@ -482,7 +482,7 @@ export default function AnalystReportViewer({ report }: { report: any }) {
             <div>
               <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text3)', marginBottom: 8 }}>RISK PROFILE</div>
               {[
-                ['Beta', riskVis.beta != null ? Number(riskVis.beta).toFixed(2) : '—'],
+                ['Beta (vs S&P 500)', riskVis.beta != null ? Number(riskVis.beta).toFixed(2) : '—'],
                 ['Portfolio weight', riskVis.portfolio_pct != null ? `${Number(riskVis.portfolio_pct).toFixed(2)}%` : '—'],
               ].map(([k, v]) => (
                 <div key={String(k)} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, padding: '4px 0' }}>

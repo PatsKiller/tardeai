@@ -69,7 +69,7 @@ def _parse(text):
     return d if req.issubset(d.keys()) else None
 
 
-def run(limit=10, trade_key=None, apply=False, lane="grok"):
+def run(limit=10, trade_key=None, apply=False, lane="deepseek-flash"):
     import llm_lane
     conn = _conn(); cur = conn.cursor()
     import psycopg2.extras

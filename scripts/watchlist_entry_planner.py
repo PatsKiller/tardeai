@@ -462,7 +462,7 @@ def run(lane="local", symbols=None, limit=25, alert=True, scope="watchlist", buy
     # (Grok) instead of the weak local model — "need oauth review not local". Only kicks in when running
     # in the default local mode (an explicit --lane grok already routes everything through OAuth); the
     # low-conviction tail stays local to conserve the OAuth lane. Falls back to local if OAuth is down.
-    oauth_lane = "grok" if llm_lane.available("grok") else None
+    oauth_lane = "deepseek-flash" if llm_lane.available("deepseek-flash") else ("grok" if llm_lane.available("grok") else None)
     upgrade_conviction = base_lane == "local" and oauth_lane is not None
     buy_strong_syms = set()
     if upgrade_conviction:
@@ -664,9 +664,8 @@ def _alert(sym, p, urg, price) -> bool:
             f"proposal advice: *{prop.get('tag','WAIT')}* — {str(prop.get('sizing_rationale',''))[:100]}\n"
             f"_advisory only — nothing queued, nothing executed_")
     try:
-        import requests
-        requests.post(f"https://api.telegram.org/bot{tok}/sendMessage",
-                      json={"chat_id": chat, "text": text, "parse_mode": "Markdown"}, timeout=10)
+        from telegram_alert import chokepoint_send
+        chokepoint_send(text, token=tok, chat_id=chat)
         return True
     except Exception:
         return False
@@ -707,7 +706,7 @@ def _main_lane_symbols(limit: int = 60) -> list[str]:
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--lane", default="local", choices=["local", "grok"])
+    ap.add_argument("--lane", default="local", choices=["local", "deepseek-flash", "grok"])
     ap.add_argument("--symbols")
     ap.add_argument("--limit", type=int, default=25)
     ap.add_argument("--scope", default="watchlist", choices=["watchlist", "proposals"])

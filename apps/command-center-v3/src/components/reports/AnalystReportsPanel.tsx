@@ -344,7 +344,7 @@ export default function AnalystReportsPanel() {
         {needsSymbol && symbol.trim() && (
           <label style={{ fontSize: 10, display: 'flex', alignItems: 'center', gap: 5, marginBottom: 10, cursor: 'pointer', color: 'var(--text2)' }}>
             <input type="checkbox" checked={grokEdit} onChange={e => setGrokEdit(e.target.checked)} />
-            Grok OAuth editorial polish on export
+            Cloud editorial polish on export
           </label>
         )}
 
@@ -371,7 +371,7 @@ export default function AnalystReportsPanel() {
             <button onClick={() => generateProspectus({ grok: true })} disabled={!!exporting} style={{
               fontSize: 11, fontWeight: 700, padding: '6px 14px', borderRadius: 6, cursor: 'pointer',
               border: '1px solid #60a5fa', background: 'rgba(96,165,250,.12)', color: '#60a5fa',
-            }}>{exporting === 'grok' ? 'Generating…' : 'Generate + Grok'}</button>
+            }}>{exporting === 'grok' ? 'Generating…' : 'Generate + Cloud'}</button>
           )}
           {exportUrl && (
             <a href={exportUrl} target="_blank" rel="noreferrer" style={{ fontSize: 11, fontWeight: 700, color: '#22c55e', alignSelf: 'center' }}>

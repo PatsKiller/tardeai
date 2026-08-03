@@ -46,9 +46,8 @@ THIS MONTH'S RECOMMENDATIONS:
 {body}"""
 
 
-def _claude(prompt: str) -> str | None:
-    """Direct Anthropic call sized for the meta-review (local_llm._try_anthropic caps at 1024 tokens,
-    which truncated the 10-symbol arbitration mid-JSON — found 2026-06-12). Key from env/.env only."""
+def _claude_DEPRECATED(prompt: str) -> str | None:
+    """Deprecated — migrated to llm_lane.generate(lane='deepseek-v4')."""
     import os
     key = os.getenv("ANTHROPIC_API_KEY", "")
     if not key:
@@ -67,6 +66,17 @@ def _claude(prompt: str) -> str | None:
         return msg.content[0].text.strip()
     except Exception as e:
         print(f"  anthropic error: {str(e)[:160]}")
+        return None
+
+
+def _claude(prompt: str) -> str | None:
+    """Monthly protection meta-review using DeepSeek v4 (CIO-level adjudication).
+    Replaces direct Anthropic call; DeepSeek v4 has ample token budget for multi-symbol arbitration."""
+    try:
+        from llm_lane import generate
+        return generate(prompt, lane="deepseek-v4", timeout=180)
+    except Exception as e:
+        print(f"  deepseek-v4 error: {str(e)[:160]}")
         return None
 
 
@@ -115,7 +125,7 @@ def main():
         print(f"DRY-RUN: {len(by_sym)} symbols, {len(rows)} recs, prompt {len(prompt)} chars, month {month}")
         return
 
-    from local_llm import FALLBACK_ANTHROPIC
+    MODEL_NAME = "deepseek-v4-pro"
     out = _claude(prompt)
     parsed = None
     if out:
@@ -129,8 +139,8 @@ def main():
                      (review_month, model_provider, model_name, prompt_version, generated_at, status,
                       trade_count, reviewed_trade_count, patterns, recommendations,
                       input_snapshot_hash, input_snapshot, output_payload, error_message)
-                   VALUES (%s,'anthropic',%s,%s,NOW(),%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
-                (month, FALLBACK_ANTHROPIC, PROMPT_VERSION, status, len(rows), len(by_sym),
+                   VALUES (%s,'deepseek',%s,%s,NOW(),%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                (month, MODEL_NAME, PROMPT_VERSION, status, len(rows), len(by_sym),
                  json.dumps((parsed or {}).get("patterns") or []),
                  json.dumps((parsed or {}).get("per_symbol") or {}),
                  snap_hash, json.dumps(by_sym, default=str),               # json column: never truncate mid-token
@@ -142,9 +152,9 @@ def main():
             cur.execute("""INSERT INTO hermes_external_research
                              (lane, trigger_reason, priority, symbol, question, model, status,
                               recommendation, evidence_json, confidence, advisory_only)
-                           VALUES ('claude','monthly_protection_meta_review','normal',%s,
+                           VALUES ('deepseek','monthly_protection_meta_review','normal',%s,
                               'arbitrate this month''s stop/trail recommendations',%s,'sent',%s,%s,NULL,TRUE)""",
-                        (sym.upper(), FALLBACK_ANTHROPIC,
+                        (sym.upper(), MODEL_NAME,
                          (f"verdict: stop {v.get('verdict_stop')} · trail "
                           f"{v.get('verdict_trail_offset')}{'%' if v.get('verdict_trail_type') == 'PERCENT' else '$'} "
                           f"· agrees with {v.get('agrees_with')} — {v.get('note', '')}")[:400],

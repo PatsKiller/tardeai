@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { lanesForPolicy, runBrokerCloudLane, runManualCloud, runStopAdvisory, runStopAdvisoryBatch, runWatchlistCioSynthesis, type LanePolicy } from '../lib/cloudLlmRun'
 import { useOAuthLanes, laneReady } from '../hooks/useOAuthLanes'
+import { laneLabel } from '../lib/laneLabels'
 
-const GROK = '#1d9bf0', GPT = '#10a37f', MUTED = '#94a3b8'
+const GROK = '#1d9bf0', GPT = '#10a37f', DEEPSEEK = '#6c5ce7', MUTED = '#94a3b8'
 
 type Props = {
   processId: string
@@ -43,7 +44,7 @@ export default function CloudLlmRunButtons({
       let result: any
       if (isBatch && lane === 'grok') {
         result = await runStopAdvisoryBatch({ limit: batchLimit ?? 6, lane: 'grok' })
-        if (result?.ok) setMsg(`✓ Grok batch · top ${result.limit ?? batchLimit ?? 6}`)
+        if (result?.ok) setMsg(`✓ ${laneLabel('grok')} batch · top ${result.limit ?? batchLimit ?? 6}`)
         else setMsg(`⛔ ${result?.error || 'batch failed'}`)
       } else if (isWatchlistCio) {
         result = await runWatchlistCioSynthesis(symbol!, lane)
@@ -53,7 +54,7 @@ export default function CloudLlmRunButtons({
         result = await runStopAdvisory(symbol!, 'grok')
         if (result?.ok && result?.protection) {
           const sp = result.protection.stop_price
-          setMsg(`✓ Grok stop${sp != null ? ` $${Number(sp).toFixed(2)}` : ''}`)
+          setMsg(`✓ ${laneLabel('grok')} stop${sp != null ? ` $${Number(sp).toFixed(2)}` : ''}`)
         } else setMsg(`⛔ ${result?.error || 'stop advisory failed'}`)
       } else if (proposalId) {
         result = await runBrokerCloudLane(proposalId, lane)
@@ -91,16 +92,25 @@ export default function CloudLlmRunButtons({
       {lanes.includes('grok') && (
         <button type="button" disabled={!!busy} onClick={() => void run('grok')}
           style={btnStyle(GROK, busy === 'grok', compact)}>
-          {busy === 'grok' ? '…' : isBatch ? `▶ Grok (top ${batchLimit ?? 6})` : '▶ Grok'}
+          {busy === 'grok' ? '…' : isBatch ? `▶ ${laneLabel('grok')} (top ${batchLimit ?? 6})` : `▶ ${laneLabel('grok')}`}
         </button>
       )}
       {lanes.includes('chatgpt') && (
         <button type="button" disabled={!!busy} onClick={() => void run('chatgpt')}
           style={btnStyle(GPT, busy === 'chatgpt', compact)}>
-          {busy === 'chatgpt' ? '…' : '▶ ChatGPT'}
+          {busy === 'chatgpt' ? '…' : `▶ ${laneLabel('chatgpt')}`}
         </button>
       )}
       {msg && <span style={{ fontSize: compact ? 9 : 10, color: msg.startsWith('✓') ? '#22c55e' : '#ef4444', maxWidth: 220 }}>{msg}</span>}
+      {/* DeepSeek lanes — visual options (not yet wired to API) */}
+      <button type="button" disabled title="DeepSeek Flash (not yet wired)"
+        style={btnStyle(DEEPSEEK, false, compact)}>
+        ▶ {laneLabel('deepseek-flash')}
+      </button>
+      <button type="button" disabled title="DeepSeek v4 (not yet wired)"
+        style={{ ...btnStyle('#a29bfe', false, compact), opacity: 0.5 }}>
+        ▶ {laneLabel('deepseek-v4')}
+      </button>
     </div>
   )
 }

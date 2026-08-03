@@ -38,7 +38,6 @@ data_types:
     status: partial
     deprecated_producers:
       - "scripts/portfolio_repricer.py:_fetch_finviz (price overlay migrated 2026-07-31; Finviz enrichment fields remain)"
-      - "scripts/portfolio_technical.py:get_technical_data (price fields)"
       - "ad-hoc yfinance.Ticker(...).info['regularMarketPrice'] callers (~38 scripts remaining)"
     notes: "Audit sec 3. get_best_quote already exists and is correct; the gap is adoption, not design. 2026-07-31: scripts/ask_alerts.py and scripts/ipo_lockup_alert.py migrated to get_best_quote (Phase 1 start)."
 
@@ -65,9 +64,7 @@ data_types:
     status: broker
     deprecated_producers:
       - "scripts/ohlc_charts.py"
-      - "scripts/pullback_macd_screener.py"
       - "scripts/holding_protection_advisor.py"
-      - "scripts/holdings_gain_guardian.py"
       - "scripts/technicals_gap_backfill.py"
       - "scripts/fund_technicals_enrich.py"
       - "scripts/trade_backtest_engine.py"
@@ -84,7 +81,6 @@ data_types:
     status: partial
     deprecated_producers:
       - "per-screener recomputation (multiple scripts)"
-      - "scripts/holdings_gain_guardian.py"
       - "Finviz SMA20/50/200 % distance fields (context only)"
     notes: "Audit sec 3."
 
@@ -99,7 +95,6 @@ data_types:
     deprecated_producers:
       - "scripts/portfolio_technical.py (BUG: approximates MACD via SMA20 vs SMA50, not real MACD)"
       - "scripts/ohlc_charts.py"
-      - "scripts/pullback_macd_screener.py"
     notes: "Audit sec 3 -- FORMULA MISMATCH, not just duplication. portfolio_technical's MACD-shaped field is not MACD. 2026-07-31: added macd_signal_is_approximation=true + macd_signal_source flags to portfolio_technical.py's output so consumers can tell it apart from the real indicator_engine MACD; full migration (consumers reading indicator_confluence_cache directly) still pending -- see stop_decision_brief.py, ticker_snapshot_builder.py, journal_ai_critique.py."
 
   atr_14:
@@ -113,7 +108,6 @@ data_types:
     deprecated_producers:
       - "scripts/fib_swing_engine.py"
       - "scripts/holding_protection_advisor.py"
-      - "scripts/holdings_gain_guardian.py"
       - "chart-pattern and scalp-ignition modules (multiple)"
       - "scripts/defense_rotation_pairs.py"
     notes: "Audit sec 3. 10+ implementations, mixed Finviz $ vs computed."
@@ -138,7 +132,6 @@ data_types:
     status: partial
     deprecated_producers:
       - "scripts/watchlist_entry_planner.py (own RVOL recompute)"
-      - "scripts/holdings_gain_guardian.py (own RVOL recompute)"
     notes: "Audit sec 3. Was previously conflated with rvol_session under one name; now named distinctly."
 
   support_resistance:
@@ -394,13 +387,27 @@ data_types:
 # ---------------------------------------------------------------------------------------------
 consumers:
 
+  # ============================================================================
+  # 2026-08-01: Full page audit — expanded 7 partial pages + added 13 missing pages
+  # ============================================================================
+
   pages:
+    # --- Fully-Declared (Comprehensive) ---
     - page: "Home (HomeHub)"
       route: "/v3/"
       reads:
         - {data_type: portfolio_snapshot, via: "GET /api/v2/overview", broker: true}
         - {data_type: quote_last_price, via: "GET /api/v2/overview", broker: true}
         - {data_type: analyst_rollup, via: "GET /api/v2/pro-analyst/pills", broker: true}
+        - {data_type: catalyst_record, via: "GET /api/v2/risk-regime/latest", broker: false}
+        - {data_type: portfolio_snapshot, via: "GET /api/v2/risk (heat, stops, paper-proposals)", broker: true}
+        - {data_type: data_source_health, via: "GET /api/v2/system/metrics-history", broker: false}
+        - {data_type: ohlcv_daily, via: "GET /api/v2/portfolio/performance", broker: false}
+        - {data_type: holdings_positions, via: "GET /api/v2/portfolio/book-map", broker: false}
+        - {data_type: support_resistance, via: "GET /api/v2/portfolio/book-map", broker: false}
+        - {data_type: analyst_detail, via: "GET /api/v2/cio-decisions", broker: false}
+      notes: "Expanded 2026-08-01 from 3 reads to 10 reads — previously 21% coverage."
+
     - page: "Portfolio"
       route: "/v3/portfolio"
       reads:
@@ -410,6 +417,11 @@ consumers:
         - {data_type: rsi_14, via: "GET /api/v2/portfolio/holdings (indicator_snapshot)", broker: true}
         - {data_type: sma_20_50_200, via: "GET /api/v2/portfolio/holdings (indicator_snapshot)", broker: true}
         - {data_type: ohlcv_daily, via: "chart panel bars", broker: false}
+        - {data_type: portfolio_snapshot, via: "GET /api/v2/portfolio/performance", broker: false}
+        - {data_type: news_article, via: "GET /api/v2/watch/alerts/list", broker: false}
+        - {data_type: catalyst_record, via: "GET /api/v2/risk-regime/latest", broker: false}
+      notes: "Expanded 2026-08-01 from 6 reads to 9 reads — previously 27% coverage."
+
     - page: "Watch"
       route: "/v3/watch"
       notes: "MAIN Setup Desk is a filtered lane (~60 cap) — not the full watchlist warehouse. ETFs/funds live in RESEARCH/ToS unless promoted; Defense rotation stays on Defense unless operator Watch-clicks."
@@ -430,6 +442,7 @@ consumers:
         - {data_type: sector_momentum, via: "hermes_watchlist_scorer (sector_momentum broker wrapper)", broker: true}
         - {data_type: analyst_detail_yahoo, via: "watchlist_entry_planner (analyst_detail broker wrapper)", broker: true}
         - {data_type: agent_result, via: "agent_watchlist_engine --rotate (agent_results broker wrapper)", broker: true}
+
     - page: "Re-Entry"
       route: "/v3/portfolio/re-entry"
       reads:
@@ -441,6 +454,10 @@ consumers:
         - {data_type: support_resistance, via: "GET /api/v2/reentry/decision-desk + prefs portfolio.reentry.resistance.v1", broker: true}
         - {data_type: analyst_rollup, via: "GET /api/v2/pro-analyst/pills", broker: true}
         - {data_type: analyst_detail, via: "GET /api/v2/analyst-detail", broker: true}
+        - {data_type: holdings_positions, via: "GET /api/v2/portfolio/holdings", broker: true}
+        - {data_type: news_article, via: "GET /api/v2/redeploy/history", broker: false}
+
+    # --- Expanded from Partial ---
     - page: "Trading / Broker Proposals"
       route: "/v3/trading"
       reads:
@@ -448,30 +465,228 @@ consumers:
         - {data_type: quote_last_price, via: "send_telegram_proposal_alert path uses get_best_quote", broker: true}
         - {data_type: catalyst_record, via: "GET /api/v2/broker-proposals (verified + confidence >= 30)", broker: true}
         - {data_type: analyst_rollup, via: "GET /api/v2/pro-analyst/pills", broker: true}
+        - {data_type: holdings_positions, via: "GET /api/v2/broker-reconciliation", broker: false}
+        - {data_type: research_intelligence, via: "GET /api/v2/hermes/subject-intel-map?type=scalp", broker: true}
+        - {data_type: portfolio_snapshot, via: "GET /api/v2/broker-proposals/summary", broker: false}
+      notes: "Expanded 2026-08-01 from 4 reads to 7 reads — previously 28% coverage."
+
     - page: "Risk Recovery"
       route: "/v3/risk"
       reads:
         - {data_type: portfolio_snapshot, via: "GET /api/v2/risk (heat KPI from snapshot)", broker: true}
         - {data_type: analyst_rollup, via: "GET /api/v2/pro-analyst/pills", broker: true}
+        - {data_type: support_resistance, via: "GET /api/v2/risk (risk config)", broker: false}
+        - {data_type: holdings_positions, via: "GET /api/v2/atm/config", broker: false}
+        - {data_type: catalyst_record, via: "GET /api/v2/risk-regime/latest", broker: false}
+      notes: "Expanded 2026-08-01 from 2 reads to 5 reads — previously 33% coverage."
+
     - page: "Entry Desk"
       route: "/v3/entry"
       reads:
         - {data_type: analyst_rollup, via: "GET /api/v2/pro-analyst/pills", broker: true}
         - {data_type: rvol_tod, via: "scalp/entry scan endpoints", broker: false}
         - {data_type: vwap, via: "scalp ignition scan (intraday VWAP anchor)", broker: false}
+        - {data_type: catalyst_record, via: "scalp ignition scorer catalyst validation", broker: false}
+        - {data_type: social_sentiment, via: "social scalp candidate ingestion", broker: false}
+      notes: "Expanded 2026-08-01 from 3 reads to 5 reads."
+
     - page: "Reports"
       route: "/v3/reports"
       reads:
         - {data_type: analyst_document, via: "GET /api/v2/reports/analyst/*", broker: true}
+        - {data_type: analyst_document, via: "GET /api/v2/reports/categories", broker: true}
+        - {data_type: analyst_document, via: "GET /api/v2/reports/list?category=*", broker: true}
+        - {data_type: analyst_document, via: "GET /api/v2/reports/portal-summary", broker: true}
+        - {data_type: analyst_document, via: "GET /api/v2/reports/action-items", broker: true}
+        - {data_type: analyst_document, via: "GET /api/v2/reports/catalog", broker: true}
+        - {data_type: portfolio_snapshot, via: "GET /api/v2/overview (report context)", broker: true}
+        - {data_type: portfolio_snapshot, via: "GET /api/v2/risk (report context)", broker: true}
+        - {data_type: catalyst_record, via: "GET /api/v2/risk-regime/latest", broker: false}
+        - {data_type: analyst_document, via: "POST /api/v2/reports/purge", broker: true}
+      notes: "Expanded 2026-08-01 from 1 read to 10 reads — previously 10% coverage."
+
     - page: "Intelligence (Learning/Research tabs)"
       route: "/v3/intelligence"
       reads:
         - {data_type: research_intelligence, via: "GET /api/v2/intelligence/*", broker: true}
         - {data_type: data_source_health, via: "GET /api/v2/data-sources", broker: true}
+        - {data_type: research_intelligence, via: "GET /api/v2/hermes/maturity-dashboard", broker: true}
+        - {data_type: research_intelligence, via: "GET /api/v2/hermes/learning-scorecard", broker: true}
+        - {data_type: research_intelligence, via: "GET /api/v2/rec-intel/summary", broker: true}
+      notes: "Expanded 2026-08-01 from 2 reads to 5 reads — previously 0% coverage (wrong endpoints declared)."
+
     - page: "System (Data Sources tab)"
       route: "/v3/system"
       reads:
         - {data_type: data_source_health, via: "GET /api/v2/data-sources", broker: true}
+        - {data_type: data_source_health, via: "GET /api/v2/system/queue-control-tower", broker: false}
+        - {data_type: data_source_health, via: "GET /api/v2/system/siem", broker: false}
+        - {data_type: data_source_health, via: "GET /api/v2/system/pipeline-health", broker: false}
+        - {data_type: data_source_health, via: "GET /api/v2/system/applications", broker: false}
+        - {data_type: data_source_health, via: "GET /api/v2/system/scheduled-jobs", broker: false}
+        - {data_type: data_source_health, via: "GET /api/v2/system/access-links", broker: false}
+        - {data_type: data_source_health, via: "GET /api/v2/system/broker-connectors", broker: false}
+        - {data_type: data_source_health, via: "GET /api/v2/system/cron-compression", broker: false}
+        - {data_type: portfolio_snapshot, via: "GET /api/v2/risk", broker: true}
+        - {data_type: data_source_health, via: "GET /api/v2/system/metrics-history", broker: false}
+      notes: "Expanded 2026-08-01 from 1 read to 11 reads — previously 5% coverage."
+
+    # --- 2026-08-01: 13 Newly Registered Pages (previously had zero coverage) ---
+    - page: "Active Trader"
+      route: "/v3/active-trader"
+      reads:
+        - {data_type: holdings_positions, via: "GET /api/v2/active-trader/*", broker: false}
+        - {data_type: quote_last_price, via: "active trader margin/risk endpoints", broker: false}
+        - {data_type: rvol_tod, via: "active trader intraday signaling", broker: false}
+      notes: "New entry 2026-08-01."
+
+    - page: "Strategy"
+      route: "/v3/strategy"
+      reads:
+        - {data_type: research_intelligence, via: "GET /api/v2/strategy-leaderboard", broker: false}
+        - {data_type: research_intelligence, via: "GET /api/v2/strategy-intelligence", broker: false}
+        - {data_type: analyst_rollup, via: "GET /api/v2/strategy-configs", broker: false}
+        - {data_type: research_intelligence, via: "GET /api/v2/strategy-desk", broker: false}
+        - {data_type: research_intelligence, via: "POST /api/v2/strategy/plan", broker: false}
+        - {data_type: research_intelligence, via: "POST /api/v2/strategy/approve", broker: false}
+      notes: "New entry 2026-08-01. 9 endpoints (6 externalized)."
+
+    - page: "Agent Runtime"
+      route: "/v3/agents"
+      reads:
+        - {data_type: agent_result, via: "GET /api/v2/agent-runtime/*", broker: true}
+        - {data_type: data_source_health, via: "agent runtime fleet status endpoints", broker: false}
+        - {data_type: research_intelligence, via: "agent runtime dispatch status", broker: false}
+      notes: "New entry 2026-08-01. Agent runtime fleet status and governed dispatch UI."
+
+    - page: "Research Intelligence"
+      route: "/v3/research-intelligence"
+      reads:
+        - {data_type: research_intelligence, via: "GET /api/v2/research-intelligence/*", broker: true}
+        - {data_type: news_article, via: "research intelligence subject-intel-map", broker: false}
+        - {data_type: social_sentiment, via: "research intelligence social feeds", broker: false}
+        - {data_type: analyst_detail, via: "research intelligence analyst context", broker: false}
+        - {data_type: catalyst_record, via: "research intelligence catalyst pipeline", broker: false}
+        - {data_type: data_source_health, via: "research source maturity/liveness", broker: false}
+      notes: "New entry 2026-08-01. 10 endpoints."
+
+    - page: "Hermes"
+      route: "/v3/hermes"
+      reads:
+        - {data_type: research_intelligence, via: "GET /api/v2/hermes/maturity-dashboard", broker: true}
+        - {data_type: research_intelligence, via: "GET /api/v2/hermes/learning-scorecard", broker: true}
+        - {data_type: research_intelligence, via: "GET /api/v2/hermes/discovery-inbox", broker: true}
+        - {data_type: research_intelligence, via: "GET /api/v2/hermes/discovery-scorecard", broker: true}
+        - {data_type: research_intelligence, via: "GET /api/v2/hermes/discovery-gaps", broker: true}
+        - {data_type: research_intelligence, via: "GET /api/v2/hermes/pipeline-quality", broker: true}
+        - {data_type: research_intelligence, via: "GET /api/v2/hermes/health", broker: true}
+        - {data_type: research_intelligence, via: "GET /api/v2/hermes/profiles-status", broker: true}
+        - {data_type: research_intelligence, via: "GET /api/v2/hermes/terminal-commands", broker: true}
+        - {data_type: research_intelligence, via: "GET /api/v2/hermes/codex-dev-status", broker: true}
+        - {data_type: research_intelligence, via: "GET /api/v2/hermes/legacy-agents", broker: true}
+        - {data_type: research_intelligence, via: "GET /api/v2/hermes/workflow-matrix", broker: true}
+        - {data_type: research_intelligence, via: "GET /api/v2/hermes/self-learning-loops", broker: true}
+        - {data_type: research_intelligence, via: "GET /api/v2/hermes/researcher-matrix", broker: true}
+        - {data_type: research_intelligence, via: "GET /api/v2/hermes/llm-auth-status", broker: true}
+        - {data_type: research_intelligence, via: "GET /api/v2/hermes/source-maturity", broker: true}
+        - {data_type: research_intelligence, via: "GET /api/v2/hermes/catalyst-calibration", broker: true}
+        - {data_type: research_intelligence, via: "GET /api/v2/hermes/research-governance", broker: true}
+        - {data_type: research_intelligence, via: "GET /api/v2/hermes/identity", broker: true}
+        - {data_type: research_intelligence, via: "GET /api/v2/hermes/soul", broker: true}
+        - {data_type: research_intelligence, via: "GET /api/v2/hermes/subject-intel-map", broker: true}
+        - {data_type: research_intelligence, via: "GET /api/v2/hermes/intel/:symbol", broker: true}
+        - {data_type: research_intelligence, via: "GET /api/v2/hermes/loop-detail", broker: true}
+      notes: "New entry 2026-08-01. 15+ endpoints — the most API-heavy page after Watch."
+
+    - page: "Retirement"
+      route: "/v3/retirement"
+      reads:
+        - {data_type: holdings_positions, via: "GET /api/v2/retirement", broker: true}
+        - {data_type: research_intelligence, via: "GET /api/v2/retirement/planning-research", broker: true}
+      notes: "New entry 2026-08-01. 2 endpoints — low data footprint."
+
+    - page: "Journal"
+      route: "/v3/journal"
+      reads:
+        - {data_type: ohlcv_daily, via: "GET /api/v2/journal", broker: false}
+        - {data_type: ohlcv_daily, via: "GET /api/v2/journal/by-ticker", broker: false}
+        - {data_type: ohlcv_daily, via: "GET /api/v2/journal/backtest-summary", broker: false}
+        - {data_type: ohlcv_daily, via: "GET /api/v2/journal/backtest-analytics", broker: false}
+        - {data_type: research_intelligence, via: "GET /api/v2/journal/ai-critique/search", broker: false}
+        - {data_type: research_intelligence, via: "GET /api/v2/journal/ai-critique/insights", broker: false}
+        - {data_type: research_intelligence, via: "GET /api/v2/journal/ai-critique/setups", broker: false}
+        - {data_type: holdings_positions, via: "GET /api/v2/journal/reporting-audit", broker: false}
+        - {data_type: quote_last_price, via: "journal trade fill detection", broker: false}
+      notes: "New entry 2026-08-01. 12 endpoints — heavy read pattern on backtest + AI critique."
+
+    - page: "Defense"
+      route: "/v3/defense"
+      reads:
+        - {data_type: catalyst_record, via: "GET /api/v2/risk-regime/latest", broker: false}
+        - {data_type: holdings_positions, via: "GET /api/v2/defense/review", broker: false}
+        - {data_type: holdings_positions, via: "POST /api/v2/defense/review/action", broker: false}
+        - {data_type: research_intelligence, via: "POST /api/v2/defense/intent/stage", broker: false}
+        - {data_type: research_intelligence, via: "POST /api/v2/defense/chain/validate", broker: false}
+        - {data_type: support_resistance, via: "POST /api/v2/defense/cc/queue-trade", broker: false}
+        - {data_type: sector_momentum, via: "GET /api/v2/defense/sector-leaders", broker: false}
+        - {data_type: support_resistance, via: "GET /api/v2/defense/inverse-stoplights", broker: false}
+      notes: "New entry 2026-08-01. 7 endpoints — primarily POST actions."
+
+    - page: "Rotation Intelligence"
+      route: "/v3/rotation"
+      reads:
+        - {data_type: sector_momentum, via: "rotation intelligence sector momentum", broker: true}
+        - {data_type: fred_economic_indicator, via: "rotation intelligence macro context", broker: false}
+        - {data_type: holdings_positions, via: "rotation intelligence portfolio exposure", broker: false}
+        - {data_type: analyst_rollup, via: "rotation intelligence sector analyst", broker: false}
+        - {data_type: ohlcv_daily, via: "rotation intelligence sector performance", broker: false}
+        - {data_type: catalyst_record, via: "rotation intelligence macro catalyst", broker: false}
+      notes: "New entry 2026-08-01. 9 endpoints."
+
+    - page: "Recommendation Intelligence"
+      route: "/v3/rec-intel"
+      reads:
+        - {data_type: research_intelligence, via: "GET /api/v2/rec-intel/summary", broker: true}
+        - {data_type: research_intelligence, via: "GET /api/v2/rec-intel/lifecycle", broker: true}
+        - {data_type: research_intelligence, via: "GET /api/v2/rec-intel/lifecycle-performance", broker: true}
+        - {data_type: research_intelligence, via: "GET /api/v2/rec-intel/open-positions", broker: true}
+        - {data_type: research_intelligence, via: "GET /api/v2/rec-intel/ticker?symbol=*", broker: true}
+      notes: "New entry 2026-08-01. 5 endpoints — all broker:true (reads hermes_research_intelligence)."
+
+    - page: "Health"
+      route: "/v3/health"
+      reads:
+        - {data_type: data_source_health, via: "GET /api/v2/health/*", broker: true}
+        - {data_type: portfolio_snapshot, via: "health dashboard portfolio context", broker: true}
+        - {data_type: data_source_health, via: "health agent fleet status", broker: false}
+        - {data_type: data_source_health, via: "health pipeline monitoring", broker: false}
+        - {data_type: data_source_health, via: "health broker connector status", broker: false}
+      notes: "New entry 2026-08-01. 7 endpoints."
+
+    - page: "Consumption"
+      route: "/v3/consumption"
+      reads:
+        - {data_type: data_source_health, via: "GET /api/v2/consumption/overview", broker: false}
+        - {data_type: data_source_health, via: "GET /api/v2/consumption/processes", broker: false}
+        - {data_type: data_source_health, via: "GET /api/v2/consumption/lane-registry", broker: false}
+        - {data_type: data_source_health, via: "GET /api/v2/consumption/logs", broker: false}
+        - {data_type: data_source_health, via: "POST /api/v2/consumption/process-mode", broker: false}
+      notes: "New entry 2026-08-01. 6 endpoints."
+
+    - page: "Redeploy Desk"
+      route: "/v3/redeploy"
+      reads:
+        - {data_type: holdings_positions, via: "GET /api/v2/redeploy/book", broker: false}
+        - {data_type: holdings_positions, via: "GET /api/v2/redeploy/capital-pools", broker: false}
+        - {data_type: holdings_positions, via: "GET /api/v2/redeploy/candidates", broker: false}
+        - {data_type: holdings_positions, via: "GET /api/v2/redeploy/audit", broker: false}
+        - {data_type: holdings_positions, via: "GET /api/v2/redeploy/portfolio-pro-forma", broker: false}
+        - {data_type: holdings_positions, via: "GET /api/v2/redeploy/performance", broker: false}
+        - {data_type: ohlcv_daily, via: "GET /api/v2/redeploy/history", broker: false}
+        - {data_type: holdings_positions, via: "GET /api/v2/redeploy/history?days=365", broker: false}
+      notes: "New entry 2026-08-01. 12 endpoints."
+
+    # --- Ancillary Pages ---
     - page: "System > Data (Data Management, this project)"
       route: "/v3/data"
       reads:
@@ -487,6 +702,10 @@ consumers:
         - {data_type: quote_last_price, via: "GET /api/v2/overview", broker: true}
         - {data_type: analyst_detail, via: "GET /api/v2/analyst-detail", broker: true}
         - {data_type: rsi_14, via: "DetailDrawer technical panel", broker: false}
+
+  # ============================================================================
+  # 2026-08-01: Alert audit — 21 unregistered scripts added
+  # ============================================================================
 
   alerts:
     - alert: "Position/stop alerts (protective stop, stop-health)"
@@ -508,8 +727,12 @@ consumers:
     - alert: "Watchlist entry planner"
       script: "scripts/watchlist_entry_planner.py"
       reads:
-        - {data_type: rsi_14, via: "own yfinance bars + local recompute", broker: false}
-        - {data_type: rvol_tod, via: "own recompute", broker: false}
+        - {data_type: rsi_14, via: "indicator_snapshot broker wrapper", broker: true}
+        - {data_type: atr_14, via: "indicator_snapshot broker wrapper", broker: true}
+        - {data_type: analyst_detail_yahoo, via: "analyst_detail broker wrapper", broker: true}
+        - {data_type: watchlist_research_card, via: "research_card broker wrapper", broker: true}
+        - {data_type: watchlist_final_synthesis, via: "final_synthesis broker wrapper", broker: true}
+      notes: "Updated 2026-08-01: now uses broker wrappers for RSI/ATR/analyst (previously broker:false)."
     - alert: "Pullback MACD screener"
       script: "scripts/pullback_macd_screener.py"
       reads:
@@ -531,12 +754,12 @@ consumers:
       script: "scripts/ask_alerts.py"
       reads:
         - {data_type: quote_last_price, via: "get_best_quote", broker: true}
-      notes: "Migrated 2026-07-31 from raw yfinance to get_best_quote (Phase 1 quote-broker migration)."
+      notes: "Migrated 2026-07-31 from raw yfinance to get_best_quote."
     - alert: "IPO lockup alert"
       script: "scripts/ipo_lockup_alert.py"
       reads:
         - {data_type: quote_last_price, via: "get_best_quote", broker: true}
-      notes: "Migrated 2026-07-31 from raw yfinance to get_best_quote (Phase 1 quote-broker migration)."
+      notes: "Migrated 2026-07-31 from raw yfinance to get_best_quote."
     - alert: "Open trade monitor"
       script: "scripts/open_trade_monitor.py"
       reads:
@@ -561,6 +784,180 @@ consumers:
       script: "scripts/finviz_proactive_research.py (premarket path)"
       reads:
         - {data_type: catalyst_record, via: "raw headline text, ignores catalyst_events.verified", broker: false}
+
+    # --- 2026-08-01: 21 Newly Registered Alert Scripts ---
+    - alert: "System health alerts"
+      script: "scripts/system_health_alerts.py"
+      reads:
+        - {data_type: data_source_health, via: "system health check", broker: false}
+      notes: "New entry 2026-08-01."
+    - alert: "Protection alerts"
+      script: "scripts/protection_alerts.py"
+      reads:
+        - {data_type: atr_14, via: "local recompute", broker: false}
+        - {data_type: quote_last_price, via: "get_best_quote", broker: true}
+      notes: "New entry 2026-08-01."
+    - alert: "Stop drift alert"
+      script: "scripts/stop_drift_alert.py"
+      reads:
+        - {data_type: quote_last_price, via: "get_best_quote", broker: true}
+        - {data_type: atr_14, via: "local recompute", broker: false}
+      notes: "New entry 2026-08-01."
+    - alert: "EOD open trade alert"
+      script: "scripts/eod_open_trade_alert.py"
+      reads:
+        - {data_type: holdings_positions, via: "holdings.json load", broker: false}
+        - {data_type: quote_last_price, via: "local quote fetch", broker: false}
+      notes: "New entry 2026-08-01."
+    - alert: "Watchpool maturity alerts"
+      script: "scripts/send_watchpool_maturity_alerts.py"
+      reads:
+        - {data_type: research_intelligence, via: "watchpool maturity gates", broker: false}
+      notes: "New entry 2026-08-01."
+    - alert: "Telegram smart alerts"
+      script: "scripts/telegram_smart_alerts.py"
+      reads:
+        - {data_type: quote_last_price, via: "telegram alert dispatch", broker: false}
+        - {data_type: holdings_positions, via: "portfolio context for alerts", broker: false}
+      notes: "New entry 2026-08-01. Direct Telegram sender — outbound channel issue."
+    - alert: "ATP alert evaluator"
+      script: "scripts/run_atp_alert_evaluator.py"
+      reads:
+        - {data_type: holdings_positions, via: "ATP proposal alert eval", broker: false}
+      notes: "New entry 2026-08-01."
+    - alert: "Screener schedule health alert"
+      script: "scripts/send_screener_schedule_health_alert.py"
+      reads:
+        - {data_type: data_source_health, via: "screener schedule liveness", broker: false}
+      notes: "New entry 2026-08-01."
+    - alert: "No-leads diagnostic alert"
+      script: "scripts/send_no_leads_diagnostic_alert.py"
+      reads:
+        - {data_type: data_source_health, via: "diagnostic scan", broker: false}
+      notes: "New entry 2026-08-01."
+    - alert: "Alert dispatcher unified"
+      script: "scripts/alert_dispatcher_unified.py"
+      reads:
+        - {data_type: quote_last_price, via: "unified dispatch", broker: false}
+        - {data_type: holdings_positions, via: "unified dispatch", broker: false}
+      notes: "New entry 2026-08-01."
+    - alert: "Portfolio alerts"
+      script: "scripts/portfolio_alerts.py"
+      reads:
+        - {data_type: holdings_positions, via: "portfolio alert eval", broker: false}
+        - {data_type: quote_last_price, via: "portfolio alert eval", broker: false}
+      notes: "New entry 2026-08-01."
+    - alert: "Overnight digest (Telegram)"
+      script: "scripts/overnight_digest_telegram.py"
+      reads:
+        - {data_type: portfolio_snapshot, via: "overnight dashboard generation", broker: true}
+        - {data_type: holdings_positions, via: "overnight portfolio state", broker: false}
+      notes: "New entry 2026-08-01. Direct Telegram sender — outbound channel issue."
+    - alert: "Pipeline alert"
+      script: "scripts/pipeline_alert.py"
+      reads:
+        - {data_type: data_source_health, via: "pipeline health alert", broker: false}
+      notes: "New entry 2026-08-01."
+    - alert: "Scalp alert emitter"
+      script: "scripts/scalp_alert_emitter.py"
+      reads:
+        - {data_type: rvol_tod, via: "scalp ignition alert", broker: true}
+        - {data_type: social_sentiment, via: "scalp social context", broker: false}
+      notes: "New entry 2026-08-01."
+    - alert: "Premarket watcher"
+      script: "scripts/premarket_watcher.py"
+      reads:
+        - {data_type: quote_last_price, via: "premarket price scan", broker: false}
+        - {data_type: catalyst_record, via: "premarket catalyst scan", broker: false}
+      notes: "New entry 2026-08-01."
+    - alert: "LLM fleet alerts"
+      script: "scripts/check_llm_fleet_alerts.py"
+      reads:
+        - {data_type: data_source_health, via: "LLM fleet health", broker: false}
+      notes: "New entry 2026-08-01."
+    - alert: "Report alert SLA status"
+      script: "scripts/report_alert_sla_status.py"
+      reads:
+        - {data_type: data_source_health, via: "alert SLA tracking", broker: false}
+      notes: "New entry 2026-08-01."
+    - alert: "Proposal alerter"
+      script: "scripts/proposal_alerter.py"
+      reads:
+        - {data_type: holdings_positions, via: "proposal alert generation", broker: false}
+        - {data_type: support_resistance, via: "proposal alert levels", broker: false}
+      notes: "New entry 2026-08-01."
+    - alert: "SIEM critical notify"
+      script: "scripts/siem_critical_notify.py"
+      reads:
+        - {data_type: data_source_health, via: "SIEM critical events", broker: false}
+      notes: "New entry 2026-08-01."
+    - alert: "Alerting (core)"
+      script: "scripts/alerting.py"
+      reads:
+        - {data_type: holdings_positions, via: "core alerting module", broker: false}
+        - {data_type: quote_last_price, via: "core alerting module", broker: false}
+      notes: "New entry 2026-08-01. Core alerting library — consumed by many other alert scripts."
+    - alert: "Options lifecycle alerts"
+      script: "scripts/options_lifecycle_alerts.py"
+      reads:
+        - {data_type: holdings_positions, via: "options contract lifecycle", broker: false}
+        - {data_type: quote_last_price, via: "options pricing", broker: false}
+      notes: "New entry 2026-08-01."
+
+  # ============================================================================
+  # 2026-08-01: Outbound Notification Channels (Registry)
+  # ============================================================================
+
+  notification_channels:
+    - channel: "Telegram (central)"
+      type: telegram
+      via: "scripts/telegram_alert.py:send_telegram"
+      notes: "Central Telegram chokepoint — preferred path. All direct senders should migrate here."
+      status: active
+    - channel: "Telegram (direct bypass)"
+      type: telegram
+      via: "direct requests.post to Telegram API (bypasses central send_telegram)"
+      scripts:
+        - "scripts/overnight_digest_telegram.py"
+        - "scripts/telegram_smart_alerts.py"
+        - "scripts/send_watchpool_maturity_alerts.py"
+        - "scripts/send_screener_schedule_health_alert.py"
+        - "scripts/send_no_leads_diagnostic_alert.py"
+        - "scripts/alert_dispatcher_unified.py"
+        - "scripts/portfolio_alerts.py"
+        - "scripts/siem_critical_notify.py"
+        - "scripts/proposal_alerter.py"
+        - "scripts/check_llm_fleet_alerts.py"
+      notes: "~10 scripts bypass central send_telegram — Phase 5 migration target."
+      status: needs_consolidation
+    - channel: "Email (GoG CLI)"
+      type: email
+      via: "GoG CLI send-email"
+      scripts: []
+      notes: "Occasional email delivery — not tracked in alert registry prior to 2026-08-01."
+      status: unmonitored
+    - channel: "Email (SMTP)"
+      type: email
+      via: "smtplib direct SMTP"
+      scripts: []
+      notes: "Fallback email path."
+      status: unmonitored
+    - channel: "WhatsApp"
+      type: whatsapp
+      via: "WhatsApp Business API formatting (via OpenClaw agent bridge)"
+      scripts: []
+      notes: "WhatsApp formatting utilities exist; live delivery gated by agent bridge."
+      status: unmonitored
+    - channel: "Slack"
+      type: slack
+      via: "Slack Webhook formatting"
+      scripts: []
+      notes: "Slack webhook formatting exists; not currently used for critical alerts."
+      status: unmonitored
+
+  # ============================================================================
+  # Pipeline Scripts (unchanged from 2026-07-31, maintained for coverage checks)
+  # ============================================================================
 
   pipeline_scripts:
     - script: "scripts/api_v2.py (/overview, /portfolio/holdings, /risk, /portfolio/book-map handlers)"

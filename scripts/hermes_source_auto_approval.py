@@ -72,7 +72,7 @@ def _llm_approve_news_source(source: str, score: float, tier: str) -> tuple[bool
         "Activate only if this is a credible finance/news publisher (not spam, content farm, "
         "or unrelated). Reply ONLY JSON: {\"approve\": true|false, \"reason\": \"<=10 words\"}"
     )
-    for lane in ("grok", "chatgpt", "local"):
+    for lane in ("deepseek-flash", "grok", "chatgpt", "local"):
         try:
             if not llm_lane.available(lane):
                 continue

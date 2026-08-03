@@ -568,6 +568,13 @@ def get_technical_data(symbols: List[str], root: Path) -> Dict[str, Dict]:
     Public interface for portfolio_live_monitor.py.
     Returns Tier 1 data only (price, change, RVOL) — no cookie scrape.
     Monitor uses cached RSI/SMA from morning snapshot.
+
+    DEPRECATED (2026-08-01): consumers should prefer the broker canonical path:
+      1. market_quote_provider.get_best_quote(sym)   for live price + change_pct
+      2. indicator_snapshot.get_indicator_snapshot()  for RSI/SMA/RVOL/MACD (canonical)
+    The Finviz scrape remains as fallback only — DO NOT add new consumers to this function.
+    The MACD field ("macd_signal") is an SMA20-vs-SMA50 crossover proxy, NOT real MACD(12,26,9).
+    Real MACD lives in indicator_engine.py → indicator_confluence_cache.
     """
     results = _finviz_api_batch(symbols, root)
     return results
@@ -641,7 +648,10 @@ def _derive_indicators(data: Dict, current_price: float) -> Dict:
     # real MACD (12/26/9 EMA) — real MACD needs full price history, which this Finviz-%-distance
     # snapshot doesn't carry. The real 12/26/9 EMA MACD lives in indicator_engine.py ->
     # indicator_confluence_cache (full_result.signals.macd.signal), which is the registered
-    # canonical producer (config/data_registry.yaml:macd). Kept as "macd_signal" for existing
+    # canonical producer (config/data_registry.yaml:macd). Also available via the broker:
+    #   from lib.data_broker.indicator_snapshot import get_indicator_snapshot
+    #   snap = get_indicator_snapshot(["SYM"]); macd_data = snap.get("SYM", {}).get("macd_line")
+    # Kept as "macd_signal" for existing
     # consumers (stop_decision_brief.py, ticker_snapshot_builder.py, journal_ai_critique.py) —
     # a silent rename would be a bigger, untested behavior change than fixing the honesty of the
     # label — but callers that need the REAL indicator should read indicator_confluence_cache

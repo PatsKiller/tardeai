@@ -101,13 +101,11 @@ def main():
                 dest = telegram_destination_for_alert(packet)
                 token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
                 if dest.get("chat_id") and token:
-                    payload = {"chat_id": dest["chat_id"], "text": message, "parse_mode": "Markdown"}
-                    r = requests.post(f"https://api.telegram.org/bot{token}/sendMessage", json=payload, timeout=10)
-                    if not r.ok:
-                        payload.pop("parse_mode", None)
-                        r = requests.post(f"https://api.telegram.org/bot{token}/sendMessage", json=payload, timeout=10)
-                    result["sent"] = r.ok
-                    sent_count += 1 if r.ok else 0
+                    from telegram_alert import chokepoint_send
+                    resp = chokepoint_send(message, token=token, chat_id=dest["chat_id"],
+                                          parse_mode="Markdown")
+                    result["sent"] = resp.get("ok", False)
+                    sent_count += 1 if result["sent"] else 0
             except Exception as e:
                 result["error"] = str(e)[:80]
             _log_alert(check["key"], c["symbol"], alert_type, result["sent"], "sent" if result["sent"] else "error")

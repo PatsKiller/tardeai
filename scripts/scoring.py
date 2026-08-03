@@ -79,7 +79,7 @@ def _haiku_score_catalyst(symbol: str, headlines: List[str], summary_blurb: str)
                 f"Headlines:\n{headlines_str2}\nReply integer only."
             )
             import re as _re
-            result = llm_lane.generate(prompt2, lane="grok", timeout=60)
+            result = llm_lane.generate(prompt2, lane="deepseek-flash", timeout=60)
             nums = _re.findall(r"\b(\d+)\b", result or "")
             if nums:
                 return max(0, min(15, int(nums[0])))
@@ -107,7 +107,7 @@ def _sonnet_narrative(symbol: str, score: int, grade: str, decision: str,
     )
     try:
         import llm_lane
-        out = llm_lane.generate(prompt, lane="grok", timeout=90)
+        out = llm_lane.generate(prompt, lane="deepseek-flash", timeout=90)
         if out and not out.startswith("["):
             return out.strip()
     except Exception:

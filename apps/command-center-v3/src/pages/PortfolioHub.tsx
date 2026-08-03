@@ -7,6 +7,7 @@ import { pricingStampLine } from '../lib/pricingStamp'
 import type { DrillContext } from '../components/DetailDrawer'
 import ProAnalystPill, { useProAnalystMap } from '../components/ProAnalystPill'
 import AnalystReviews, { useAnalystMap } from '../components/AnalystReviews'
+import { laneLabel } from '../lib/laneLabels'
 import AskAgents from '../components/AskAgents'
 import HoldingProtectionActions from '../components/HoldingProtectionActions'
 import { mergeLiveStop, stopReviewTooltip } from '../lib/stopReviewTooltip'
@@ -419,7 +420,7 @@ export default function PortfolioHub({ onDrill }: Props) {
                 <span style={{ fontSize: 8.5, color: '#f59e0b', fontWeight: 600, marginLeft: 8 }}>advisory only · no broker action</span>
               </div>
               <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2 }}>
-                Account-aware rotation review with a local + Grok OAuth second opinion.
+                Account-aware rotation review with a local + cloud second opinion.
                 {rotation && noAction
                   ? <span style={{ color: '#f59e0b' }}> No model-supported action — WATCH / RESEARCH_MORE.</span>
                   : rotation
@@ -652,7 +653,7 @@ export default function PortfolioHub({ onDrill }: Props) {
             </div>
             {lt.grok_narrative && (
               <div style={{ background: 'rgba(168,85,247,.08)', border: '1px solid rgba(168,85,247,.3)', borderRadius: 10, padding: '10px 13px', marginBottom: 10 }}>
-                <div style={{ fontSize: 10, fontWeight: 800, color: '#c084fc', marginBottom: 4 }}>🧠 AI ADVISORY (Grok)</div>
+                <div style={{ fontSize: 10, fontWeight: 800, color: '#c084fc', marginBottom: 4 }}>{`🧠 AI ADVISORY (${laneLabel('grok')})`}</div>
                 <div style={{ fontSize: 11.5, color: 'var(--text1)', lineHeight: 1.55 }}>{lt.grok_narrative}</div>
               </div>
             )}

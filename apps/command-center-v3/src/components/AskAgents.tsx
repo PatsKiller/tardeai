@@ -1,7 +1,8 @@
 // AskAgents — contextual "ask the CIO/agents" box. Sends a natural-language question to
 // /api/v2/portfolio/ask, which pulls the user's REAL positions + analyst ratings + look-through and
-// routes to Grok or ChatGPT (operator picks lane). Reusable on any portfolio page.
+// routes to cloud LLM lanes (operator picks lane). Reusable on any portfolio page.
 import { useState } from 'react'
+import { laneLabel } from '../lib/laneLabels'
 import { runPortfolioAsk } from '../lib/cloudLlmRun'
 import { useOAuthLanes, laneReady } from '../hooks/useOAuthLanes'
 
@@ -54,14 +55,14 @@ export default function AskAgents({ examples = EXAMPLES }: { examples?: string[]
       style={{ fontSize: 12, fontWeight: 800, padding: '8px 14px', borderRadius: 7, cursor: busy ? 'wait' : 'pointer',
         border: `1px solid ${color}66`, background: `${color}14`, color,
         opacity: busy && busy !== lane ? 0.5 : 1 }}>
-      {busy === lane ? 'Analyzing…' : lane === 'grok' ? '▶ Grok' : '▶ ChatGPT'}
+      {busy === lane ? 'Analyzing…' : lane === 'grok' ? `▶ ${laneLabel('grok')}` : `▶ ${laneLabel('chatgpt')}`}
     </button>
   )
 
   return (
     <div style={{ background: 'rgba(96,165,250,.06)', border: '1px solid rgba(96,165,250,.28)', borderRadius: 10, padding: 12, marginBottom: 12 }}>
       <div style={{ fontSize: 11, fontWeight: 800, color: '#60a5fa', marginBottom: 6 }}>💬 ASK THE AGENTS — about your real positions</div>
-      <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 6 }}>Pick Grok or ChatGPT — either lane is enough</div>
+      <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 6 }}>Pick a lane — either lane is enough</div>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
         <input value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && q.trim() && !busy) ask(undefined, 'grok') }}
           placeholder="e.g. R:R of trimming 5% V to get SpaceX exposure?"
@@ -80,7 +81,7 @@ export default function AskAgents({ examples = EXAMPLES }: { examples?: string[]
       {res && (
         <div style={{ marginTop: 10 }}>
           {res.ok === false || res.manual_required ? (
-            <div style={{ fontSize: 11, color: '#ef4444' }}>⚠ {res.error || 'blocked — pick ▶ Grok or ▶ ChatGPT'}</div>
+            <div style={{ fontSize: 11, color: '#ef4444' }}>⚠ {res.error || 'blocked — pick a cloud lane'}</div>
           ) : (
             <>
               <div style={{ fontSize: 12, color: 'var(--text1)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{res.answer}</div>

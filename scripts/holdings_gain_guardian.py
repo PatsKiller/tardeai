@@ -201,8 +201,36 @@ def _sma(vals: list[float], n: int) -> float | None:
     return sum(vals[-n:]) / n
 
 
-def compute_metrics(bars: list[dict], symbol: str | None = None) -> dict[str, Any] | None:
-    """Deterministic per-holding metrics from daily bars."""
+def _broker_indicators(symbols: list[str]) -> dict[str, dict]:
+    """Try indicator_snapshot broker for RSI/ATR/RVOL/SMA. Returns {SYM: {rsi14, atr14, rvol_session, sma50, sma200}}."""
+    out: dict[str, dict] = {}
+    try:
+        from lib.data_broker.indicator_snapshot import get_indicator_snapshot
+        snap = get_indicator_snapshot(symbols)
+        for sym in symbols:
+            s = sym.upper()
+            d = snap.get(s, {}) or {}
+            entry = {}
+            if d.get("rsi_14") is not None:
+                entry["rsi14"] = float(d["rsi_14"])
+            if d.get("atr_14") is not None:
+                entry["atr14"] = float(d["atr_14"])
+            if d.get("rvol_session") is not None:
+                entry["rvol20"] = float(d["rvol_session"])
+            if d.get("sma_50") is not None:
+                entry["sma50"] = float(d["sma_50"])
+            if d.get("sma_200") is not None:
+                entry["sma200"] = float(d["sma_200"])
+            if entry:
+                out[sym] = entry
+    except Exception:
+        pass
+    return out
+
+
+def compute_metrics(bars: list[dict], symbol: str | None = None,
+                    broker: dict | None = None) -> dict[str, Any] | None:
+    """Per-holding metrics. Broker indicators have priority; bars are fallback."""
     closes = [float(b.get("close") or b.get("c") or 0) for b in bars]
     highs = [float(b.get("high") or b.get("h") or 0) for b in bars]
     lows = [float(b.get("low") or b.get("l") or 0) for b in bars]
@@ -222,24 +250,37 @@ def compute_metrics(bars: list[dict], symbol: str | None = None) -> dict[str, An
         except Exception:
             pass
 
-    trs = [max(highs[i] - lows[i], abs(highs[i] - closes[i - 1]), abs(lows[i] - closes[i - 1]))
-           for i in range(-14, 0)] if len(closes) >= 15 else []
-    atr14 = (sum(trs) / len(trs)) if trs else None
+    b = broker or {}
+    sym_key = (symbol or "").upper()
 
-    gains = losses = 0.0
-    for i in range(-14, 0):
-        d = closes[i] - closes[i - 1]
-        gains += max(d, 0)
-        losses += max(-d, 0)
-    rsi14 = round(100 - 100 / (1 + (gains / losses)), 1) if losses else 100.0
+    # RSI/ATR/RVOL/SMA from broker (canonical), fall back to local bars
+    rsi14 = b.get(sym_key, {}).get("rsi14") if b else None
+    atr14 = b.get(sym_key, {}).get("atr14") if b else None
+    rvol20 = b.get(sym_key, {}).get("rvol20") if b else None
+    sma50_b = b.get(sym_key, {}).get("sma50") if b else None
+    sma200_b = b.get(sym_key, {}).get("sma200") if b else None
 
-    sma50 = _sma(closes, 50)
-    sma200 = _sma(closes, 200)
+    if rsi14 is None:
+        gains = losses = 0.0
+        for i in range(-14, 0):
+            d = closes[i] - closes[i - 1]
+            gains += max(d, 0)
+            losses += max(-d, 0)
+        rsi14 = round(100 - 100 / (1 + (gains / losses)), 1) if losses else 100.0
+
+    if atr14 is None:
+        trs = [max(highs[i] - lows[i], abs(highs[i] - closes[i - 1]), abs(lows[i] - closes[i - 1]))
+               for i in range(-14, 0)] if len(closes) >= 15 else []
+        atr14 = (sum(trs) / len(trs)) if trs else None
+
+    sma50 = sma50_b if sma50_b is not None else _sma(closes, 50)
+    sma200 = sma200_b if sma200_b is not None else _sma(closes, 200)
     ext50 = round((price - sma50) / atr14, 2) if (sma50 and atr14) else None
     ext200 = round((price - sma200) / atr14, 2) if (sma200 and atr14) else None
 
-    have_vol = len([v for v in vols if v > 0]) >= 21
-    rvol20 = round(vols[-1] / (sum(vols[-21:-1]) / 20), 2) if have_vol and sum(vols[-21:-1]) > 0 else None
+    if rvol20 is None:
+        have_vol = len([v for v in vols if v > 0]) >= 21
+        rvol20 = round(vols[-1] / (sum(vols[-21:-1]) / 20), 2) if have_vol and sum(vols[-21:-1]) > 0 else None
 
     streak = 0
     for i in range(len(closes) - 1, 0, -1):
@@ -401,6 +442,12 @@ def run(*, apply: bool, shadow: bool, symbols: set[str] | None, limit: int, json
     # engine exists for. Then everything else by position value.
     active_stops, recently_stopped = _stop_state(ex)
 
+    # ── Fetch broker indicators once for all symbols (2026-08-01: RSI/ATR/RVOL via broker) ──
+    all_symbols = [h["symbol"] for h in holds if h.get("symbol")]
+    broker_inds = _broker_indicators(all_symbols) if all_symbols else {}
+    if broker_inds:
+        print(f"  [guardian] Broker indicators available for {len(broker_inds)}/{len(all_symbols)} symbols")
+
     def _rough_gain_pct(h: dict) -> float:
         try:
             cb = float(h.get("holdings_cost_basis") or 0)
@@ -430,7 +477,7 @@ def run(*, apply: bool, shadow: bool, symbols: set[str] | None, limit: int, json
     for h in holds:
         sym, acct = h["symbol"], h["account"]
         bars = _bars_with_volume(sym)
-        m = compute_metrics(bars, sym) if bars else None
+        m = compute_metrics(bars, sym, broker=broker_inds) if bars else None
         if not m:
             results.append({"symbol": sym, "account": acct, "skip": "no_bars"})
             continue

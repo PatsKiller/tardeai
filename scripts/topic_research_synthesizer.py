@@ -53,7 +53,7 @@ def _synthesize(topic, context, articles=None):
         import llm_lane
     except Exception:
         return None
-    for lane in ("grok", "chatgpt", "local"):
+    for lane in ("deepseek-flash", "grok", "chatgpt", "local"):
         try:
             if not llm_lane.available(lane):
                 continue

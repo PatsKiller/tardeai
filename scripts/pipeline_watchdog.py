@@ -34,13 +34,12 @@ DB_CONFIG = dict(host='127.0.0.1', port=5432, dbname='trade_ai', user='trade_ai'
 
 def send_telegram(message, urgent=False):
     try:
+        from telegram_alert import chokepoint_send
         bot_token = os.getenv('TELEGRAM_BOT_TOKEN', '')
-        chat_ids = [c.strip() for c in os.getenv('TELEGRAM_CHAT_ID', '').split(',') if c.strip()]
-        if not bot_token or not chat_ids: return
+        if not bot_token:
+            return
         prefix = '🚨' if urgent else '⚠️'
-        for cid in chat_ids:
-            requests.post(f"https://api.telegram.org/bot{bot_token}/sendMessage",
-                         json={'chat_id': cid, 'text': f"{prefix} WATCHDOG: {message}"}, timeout=8)
+        chokepoint_send(f"{prefix} WATCHDOG: {message}", token=bot_token)
     except Exception:
         pass
 

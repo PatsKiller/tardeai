@@ -1,3 +1,5 @@
+import { laneLabel } from '../lib/laneLabels'
+
 type SourceKind = 'PROPOSAL' | 'WATCHLIST' | 'DRAFT'
 
 const C = {
@@ -115,11 +117,11 @@ export default function EntryDeskDiligenceStrip({ source, symbol, diligence, ana
       <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center', marginBottom: 5 }}>
         {d?.researchCard && <Pill text={`research ${d.researchCard}`} color={recColor(d.researchCard)} />}
         {d?.synthesis && <Pill text={`CIO ${d.synthesis}`} color={recColor(d.synthesis)} />}
-        {d?.grokRec && <Pill text={`Grok ${d.grokRec}`} color={recColor(d.grokRec)} />}
-        {d?.chatgptRec && <Pill text={`GPT ${d.chatgptRec}`} color={recColor(d.chatgptRec)} />}
+        {d?.grokRec && <Pill text={`${laneLabel('grok')} ${d.grokRec}`} color={recColor(d.grokRec)} />}
+        {d?.chatgptRec && <Pill text={`${laneLabel('chatgpt')} ${d.chatgptRec}`} color={recColor(d.chatgptRec)} />}
         {d?.decisionSafety && <Pill text={`safety ${d.decisionSafety}`} color={statusColor(d.decisionSafety)} />}
         {d?.modelsAgree != null && (
-          <Pill text={d.modelsAgree ? 'Grok+GPT agree' : 'Grok/GPT split'} color={d.modelsAgree ? C.green : C.amber} />
+          <Pill text={d.modelsAgree ? 'LLMs agree' : 'LLMs split'} color={d.modelsAgree ? C.green : C.amber} />
         )}
         {d?.analysisStage && <Pill text={`stage ${d.analysisStage}`} color={C.blue} />}
         {d?.maria && <Pill text={`Maria ${d.maria}`} color={statusColor(d.maria)} />}

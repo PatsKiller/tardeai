@@ -1202,7 +1202,7 @@ export default function BrokerProposalCardV4({
             </div>
             {litmus.cloud_conflict && (
               <div style={{ color: W.amber, marginTop: 6, fontWeight: 700, fontSize: 10.5 }}>
-                ☁ Cloud lane split — re-run Grok+ChatGPT after Validate so models see live price
+                ☁ Cloud lane split — re-run cloud review after Validate so models see live price
               </div>
             )}
           </div>

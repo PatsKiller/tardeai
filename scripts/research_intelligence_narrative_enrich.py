@@ -181,7 +181,7 @@ def main() -> int:
     ap.add_argument("--limit", type=int, default=8)
     ap.add_argument(
         "--lane", default="auto",
-        choices=["auto", "local", "grok", "chatgpt"],
+        choices=["auto", "local", "deepseek-flash", "grok", "chatgpt"],
         help="auto = local then OAuth grok then chatgpt",
     )
     ap.add_argument("--retirement-only", action="store_true")

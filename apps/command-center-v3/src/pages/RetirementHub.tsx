@@ -230,7 +230,7 @@ export default function RetirementHub({ onDrill }: Props) {
               )
             })}
           </div>
-          <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 10 }}>Source: /api/v2/retirement/planning-research → topic_research (Hermes knowledge research). Ensemble = free-lane multi-LLM (grok/chatgpt/local), advisory only.</div>
+          <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 10 }}>Source: /api/v2/retirement/planning-research → topic_research (Hermes knowledge research). Ensemble = free-lane multi-LLM (cloud/local), advisory only.</div>
         </div>
       )}
     </div>

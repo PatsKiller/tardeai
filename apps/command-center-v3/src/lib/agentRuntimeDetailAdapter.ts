@@ -82,7 +82,7 @@ export function laneChipLabel(family?: string, model?: string): string {
   if (!f || f === 'deterministic' || m === 'none') return 'deterministic'
   if (f.includes('grok')) return m ? `grok/${m}` : 'grok'
   if (f.includes('chatgpt') || f.includes('openai')) return m ? `chatgpt/${m}` : 'chatgpt'
-  if (f === 'local' || f.includes('ollama')) return m ? `local/${m}` : 'local/ollama'
+  if (f === 'local' || f.includes('ollama')) return m ? `local/${m}` : 'local'
   return m ? `${f}/${m}` : f
 }
 

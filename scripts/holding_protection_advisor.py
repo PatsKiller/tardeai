@@ -325,7 +325,7 @@ def protection_rec_for_symbol(symbol: str) -> dict | None:
     }
 
 
-def run(lane="grok", symbols=None, limit=12, manual_trigger=False, batch=False):
+def run(lane="deepseek-flash", symbols=None, limit=12, manual_trigger=False, batch=False):
     # operator 2026-06-13: prefer the FREE Grok OAuth lane (tighter adherence to the bounded prompt
     # than gemma3:4b); auto-fall back to local gemma when the proxy isn't authenticated. Both free.
     import llm_lane
@@ -464,7 +464,7 @@ def run(lane="grok", symbols=None, limit=12, manual_trigger=False, batch=False):
         except Exception:
             pass
         sanity = _sanity_check(rec, t, fb)   # validate vs real structure + family bounds
-        model = "grok-3-mini" if used_lane == "grok" else getattr(__import__("local_llm"), "model_used", None) or "gemma3:12b"
+        model = getattr(__import__("llm_lane"), "_DEEPSEEK_FLASH_MODEL", None) or getattr(__import__("local_llm"), "model_used", None) or "gemma3:12b"
         cur.execute("""INSERT INTO hermes_research_intelligence
                          (source, hermes_agent_name, research_type, symbol, topic, summary, thesis,
                           thesis_type, evidence_json, confidence_score, model_used, prompt_hash,

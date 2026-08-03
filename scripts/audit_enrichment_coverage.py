@@ -124,13 +124,11 @@ def _alert(directive_gaps):
         return
     lines = [f"• {g['symbol']}: missing {', '.join(g['missing'])}" for g in directive_gaps[:12]]
     try:
-        import requests
-        requests.post(f"https://api.telegram.org/bot{tok}/sendMessage",
-                      json={"chat_id": chat, "parse_mode": "Markdown",
-                            "text": "⚠️ *ENRICHMENT COVERAGE GAPS — operator-directive symbols*\n"
-                                    + "\n".join(lines)
-                                    + "\n\nFix: the relevant fetcher skipped the canonical watch "
-                                      "universe (scripts/watch_universe.py)."}, timeout=10)
+        from telegram_alert import chokepoint_send
+        chokepoint_send("⚠️ *ENRICHMENT COVERAGE GAPS — operator-directive symbols*\n"
+                        + "\n".join(lines)
+                        + "\n\nFix: the relevant fetcher skipped the canonical watch "
+                          "universe (scripts/watch_universe.py).", token=tok, chat_id=chat)
         print(f"alert sent ({len(directive_gaps)} directive gaps)")
     except Exception:
         pass

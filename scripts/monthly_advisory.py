@@ -46,7 +46,8 @@ def _get_key(provider):
                     break
     return key
 
-def _call_claude(prompt, model, max_tokens=2000):
+def _call_claude_DEPRECATED(prompt, model, max_tokens=2000):
+    """Deprecated — dead code since 2026-06-07 (now uses free local Ollama models by default)."""
     key = _get_key("anthropic")
     if not key:
         return "Anthropic API key not available."
@@ -62,7 +63,8 @@ def _call_claude(prompt, model, max_tokens=2000):
     except Exception as e:
         return f"Error: {str(e)[:200]}"
 
-def _call_openai(prompt, model=GPT4O, max_tokens=2000):
+def _call_openai_DEPRECATED(prompt, model=GPT4O, max_tokens=2000):
+    """Deprecated — dead code since 2026-06-07 (now uses free local Ollama models by default)."""
     key = _get_key("openai")
     if not key:
         return "OpenAI API key not available."

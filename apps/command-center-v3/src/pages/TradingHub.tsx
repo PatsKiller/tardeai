@@ -29,6 +29,7 @@ import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubTab, hubFilterSelect, hubKpiChip, hubPanel } from '../lib/terminalHubChrome'
 import { runLabel } from '../lib/homeLabels'
 import { BB, TYPE } from '../lib/watchTokens'
+import { laneLabel } from '../lib/laneLabels'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 const TABS = ['Trade AI', 'Options', 'Open Trades', 'Proposals', 'Entry Desk', 'Execution', 'Broker Recon', 'Scalp', 'ATM Controls', 'Broker Orders', 'Schwab Accounts'] as const
@@ -1183,7 +1184,7 @@ export default function TradingHub({ onDrill }: Props) {
             <div key={d.symbol} onClick={() => onDrill({ title: `${d.symbol} — Scalp Signal`, subtitle: `${d.decision ?? '—'} · grade ${d.grade ?? '—'} · score ${d.score ?? '—'} · RVOL ${d.rvol ?? '—'}${d.critic_verdict ? ' · ' + d.critic_verdict : ''}`, endpoint: '/api/v2/scalp/live', rows: [d], subjectType: 'scalp', subjectKey: d.symbol })}
               style={{ display: 'flex', alignItems: 'center', padding: '6px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 11, background: isGo ? 'rgba(34,197,94,.05)' : undefined }}>
               <span style={{ flex: '0 0 66px', fontWeight: 600, color: 'var(--text0)', fontFamily: 'monospace' }}>{d.symbol}
-                {(scalpExtMap[d.symbol] || []).map((e: any, j: number) => <span key={j} title={`${e.lane === 'grok' ? 'Grok' : e.lane === 'chatgpt' ? 'ChatGPT' : e.lane}: ${e.recommendation || ''}\n${e.at ? new Date(e.at).toLocaleString() : ''}`} style={{ marginLeft: 4, fontSize: 8, fontWeight: 700, color: e.lane === 'grok' ? '#1d9bf0' : '#10a37f', cursor: 'help' }}>✦</span>)}</span>
+                {(scalpExtMap[d.symbol] || []).map((e: any, j: number) => <span key={j} title={`${laneLabel(e.lane)}: ${e.recommendation || ''}\n${e.at ? new Date(e.at).toLocaleString() : ''}`} style={{ marginLeft: 4, fontSize: 8, fontWeight: 700, color: e.lane === 'grok' ? '#1d9bf0' : e.lane === 'chatgpt' ? '#10a37f' : '#6c5ce7', cursor: 'help' }}>✦</span>)}</span>
               <span style={{ flex: '0 0 48px' }}><span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: GC(d.grade), color: '#0a0a0a' }}>{d.grade ?? '—'}</span></span>
               <span style={{ flex: '0 0 56px', fontWeight: 600, color: decisionColor((d.decision || '').toUpperCase().startsWith('NO') ? 'NO' : (d.decision || '').toUpperCase()), fontSize: 10 }}>{d.decision ?? '—'}</span>
               <span style={{ flex: '0 0 50px', color: 'var(--text2)' }}>{d.score ?? '—'}</span>

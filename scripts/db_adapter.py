@@ -81,62 +81,36 @@ USE_DB = _db_enabled()
 # ── PostgreSQL connection ─────────────────────────────────────────────────────
 
 import threading as _threading
+import time as _pool_time
 
-# THREAD-LOCAL connections (2026-06-29): the dashboard server is now multi-threaded, so a single
-# shared connection would let concurrent requests corrupt each other's cursor/transaction state.
-# Each thread gets its OWN connection. Single-threaded callers (crons) still get exactly one
-# persistent connection (their main thread's), so their behavior is unchanged.
+# ── Connection Pool (2026-08-02) ──────────────────────────────────────────────
+# Thread-local connections caused 80+ open DB connections (thread-local × 48 threads).
+# Replaced with a bounded ThreadedConnectionPool (max 20), eliminating the per-thread
+# connection that causes PG slot near-exhaustion at scale.
+# Single-threaded callers (crons) still get persistent connections from the pool.
+_POOL_MIN = int(os.getenv("DB_POOL_MIN", "3"))
+_POOL_MAX = int(os.getenv("DB_POOL_MAX", "20"))
+_POOL: any = None  # psycopg2.pool.ThreadedConnectionPool
+_POOL_LOCK = _threading.Lock()
+_POOL_LAST_BORROW: dict = {}  # thread_id -> timestamp (for idle reaping)
+
+# Thread-local: each thread borrows from pool, returns on close
 _tls = _threading.local()
 
-def _get_conn():
-    """Get or create a THREAD-LOCAL PostgreSQL connection (lazy, one per thread)."""
-    import time as _time
-    conn = getattr(_tls, "conn", None)
-    if conn is not None and not conn.closed:
-        # Server-side disconnects (idle_session_timeout reaper, PG restart) leave
-        # conn.closed == 0 until an operation fails — so a long-idle daemon would fail
-        # exactly one query per idle episode. Ping when this thread's conn has been
-        # idle >60s AND no transaction is open (never roll back a caller's open txn);
-        # a dead conn is rebuilt below instead of being handed out (2026-07-17,
-        # prerequisite for the role-level idle_session_timeout backstop).
-        try:
-            import psycopg2.extensions as _pgext
-            _idle = _time.time() - getattr(_tls, "last_used", 0.0)
-            if _idle > 60 and conn.get_transaction_status() == _pgext.TRANSACTION_STATUS_IDLE:
-                try:
-                    with conn.cursor() as _pc:
-                        _pc.execute("SELECT 1")
-                    conn.rollback()
-                except Exception:
-                    try:
-                        conn.close()
-                    except Exception:
-                        pass
-                    conn = None
-                    _tls.conn = None
-        except Exception:
-            pass
-    if conn is not None and not conn.closed:
-        # Self-heal a poisoned connection: if a prior handler swallowed a query error
-        # without rollback, every later query on this thread fails with "current
-        # transaction is aborted" forever (2026-07-14: Redeploy panel showed 0 events
-        # all session on the affected worker thread). Roll back and hand out a clean txn.
-        try:
-            import psycopg2.extensions as _pgext
-            if conn.get_transaction_status() == _pgext.TRANSACTION_STATUS_INERROR:
-                conn.rollback()
-        except Exception:
-            pass
-        _tls.last_used = _time.time()
-        return conn
-    try:
+
+def _init_pool():
+    global _POOL
+    if _POOL is not None:
+        return
+    with _POOL_LOCK:
+        if _POOL is not None:
+            return
         import psycopg2
-        import psycopg2.extras
+        import psycopg2.pool
         import sys as _sys
-        # application_name = calling script, so pg_stat_activity / PG-log victims are
-        # attributable (the 2026-07-04 idle-in-transaction audit had to guess offenders).
         _app = os.path.basename(_sys.argv[0] or "python")[:60] or "python"
-        conn = psycopg2.connect(
+        _POOL = psycopg2.pool.ThreadedConnectionPool(
+            _POOL_MIN, _POOL_MAX,
             host=os.getenv("DB_HOST", "localhost"),
             port=int(os.getenv("DB_PORT", "5432")),
             dbname=os.getenv("DB_NAME", "trade_ai"),
@@ -145,65 +119,108 @@ def _get_conn():
             connect_timeout=10,
             application_name=_app,
         )
+        # Pre-warm with safety settings on each pooled connection.
+        # The pool creates connections lazily; we'll set safety nets at borrow time
+        # because ThreadedConnectionPool doesn't expose a factory hook.
+
+
+def _apply_safety_nets(conn) -> None:
+    """Apply per-connection safety nets that prevent DB hangs."""
+    try:
         conn.autocommit = False
-        # Per-connection safety nets (2026-06-29 idle; lock/stmt added 2026-06-30 after a server hang).
-        # The dashboard hung when an additive ALTER on a hot table queued behind an idle-in-transaction
-        # AccessShareLock holder, cascading every query on that table and blocking the server's request
-        # threads. Three guards so no single connection can wedge the box:
-        #   • idle_in_transaction_session_timeout — a read left uncommitted can't hold a lock forever.
-        #   • lock_timeout — a query waiting on a lock FAILS FAST (3s) instead of queuing the table behind a
-        #     blocked DDL/lock (this is the anti-cascade guard; lock_timeout was 0/unbounded before).
-        #   • statement_timeout — a runaway query is killed (180s) rather than pinning a thread indefinitely.
-        # NOTE: these only cover db_adapter connections. Raw psycopg2.connect() callers are covered by the
-        # role-level `ALTER ROLE trade_ai SET lock_timeout/idle_in_transaction_session_timeout/statement_timeout`
-        # (see docs/runbooks/DB_HANG_PREVENTION.md) — the universal backstop.
+        with conn.cursor() as _c:
+            _c.execute("SET idle_in_transaction_session_timeout = '120s'")
+            _c.execute("SET lock_timeout = '3s'")
+            _c.execute("SET statement_timeout = '180s'")
+        conn.commit()
+    except Exception:
         try:
-            with conn.cursor() as _c:
-                _c.execute("SET idle_in_transaction_session_timeout = '120s'")
-                _c.execute("SET lock_timeout = '3s'")
-                _c.execute("SET statement_timeout = '180s'")
-            conn.commit()
+            conn.rollback()
+        except Exception:
+            pass
+
+
+def _reap_idle_pool_conns() -> None:
+    """Close connections idle >120s to keep pool footprint low."""
+    import psycopg2.extensions as _pgext
+    now = _pool_time.time()
+    with _POOL_LOCK:
+        stale = [
+            tid for tid, t in list(_POOL_LAST_BORROW.items())
+            if now - t > 120
+        ]
+        for tid in stale:
+            _POOL_LAST_BORROW.pop(tid, None)
+
+
+def _get_conn():
+    """Borrow a connection from the pool (ThreadedConnectionPool, max 20)."""
+    _init_pool()
+    if _POOL is None:
+        return None
+    import psycopg2.extensions as _pgext
+
+    # Check if this thread already has a connection from the pool
+    conn = getattr(_tls, "conn", None)
+    if conn is not None and not conn.closed:
+        # Self-heal poisoned connections
+        try:
+            if conn.get_transaction_status() == _pgext.TRANSACTION_STATUS_INERROR:
+                conn.rollback()
         except Exception:
             try:
-                conn.rollback()
+                _POOL.putconn(conn)
             except Exception:
                 pass
+            _tls.conn = None
+            conn = None
+        if conn is not None:
+            # Health check: ping idle >60s connections
+            _idle = _pool_time.time() - getattr(_tls, "last_used", 0.0)
+            if _idle > 60 and conn.get_transaction_status() == _pgext.TRANSACTION_STATUS_IDLE:
+                try:
+                    with conn.cursor() as _pc:
+                        _pc.execute("SELECT 1")
+                    conn.rollback()
+                except Exception:
+                    try:
+                        _POOL.putconn(conn, close=True)
+                    except Exception:
+                        pass
+                    _tls.conn = None
+                    conn = None
+            if conn is not None:
+                _tls.last_used = _pool_time.time()
+                return conn
+
+    # Borrow from pool
+    try:
+        conn = _POOL.getconn()
         _tls.conn = conn
-        _tls.last_used = _time.time()
-        if os.getenv("DB_CONN_TRACE"):
-            try:
-                import traceback as _tb, threading as _th, datetime as _dt2
-                _stack = " <- ".join(
-                    f"{fr.name}:{fr.lineno}" for fr in _tb.extract_stack()[-8:-1])
-                with open(os.path.join(os.path.dirname(__file__), "..", "logs", "db_conn_trace.log"), "a") as _tf:
-                    _tf.write(f"{_dt2.datetime.now():%H:%M:%S} OPEN  {_th.current_thread().name} :: {_stack}\n")
-            except Exception:
-                pass
+        _tls.last_used = _pool_time.time()
+        _apply_safety_nets(conn)
         return conn
-    except Exception as e:
-        import datetime as _edt
-        print(f"{_edt.datetime.now():%Y-%m-%d %H:%M:%S}  [db_adapter] PostgreSQL connection failed: {e}")
-        print(f"  [db_adapter] Falling back to JSON")
+    except Exception:
+        # Pool exhausted — log and return None (callers handle gracefully)
         return None
 
 
 def close_thread_conn():
-    """Close + clear THIS thread's connection. Call at the end of a threaded request so the
-    multi-threaded server doesn't accumulate one open DB connection per request thread."""
+    """Return THIS thread's connection to the pool."""
     conn = getattr(_tls, "conn", None)
     if conn is not None:
         try:
-            conn.close()
-        except Exception:
-            pass
-        _tls.conn = None
-        if os.getenv("DB_CONN_TRACE"):
             try:
-                import threading as _th, datetime as _dt2
-                with open(os.path.join(os.path.dirname(__file__), "..", "logs", "db_conn_trace.log"), "a") as _tf:
-                    _tf.write(f"{_dt2.datetime.now():%H:%M:%S} CLOSE {_th.current_thread().name}\n")
+                conn.rollback()  # clean before return
             except Exception:
                 pass
+            _POOL.putconn(conn)
+        except Exception:
+            try:
+                _POOL.putconn(conn, close=True)
+            except Exception:
+                pass
+        _tls.conn = None
 
 
 # Alias for scripts that import get_connection

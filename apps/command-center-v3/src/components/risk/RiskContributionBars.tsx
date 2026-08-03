@@ -31,7 +31,7 @@ export default function RiskContributionBars({
           <YAxis type="category" dataKey="name" width={44} tick={{ fontSize: 9, fill: 'var(--text1)', fontFamily: 'monospace' }} />
           <Tooltip
             contentStyle={{ background: 'var(--bg1)', border: '1px solid var(--border)', fontSize: 10 }}
-            formatter={(v: number) => [`$${Math.round(v).toLocaleString()}`, mode === 'risk' ? 'Max risk' : 'Exposure']}
+            formatter={(v: number) => [`$${Math.round(v).toLocaleString()}`, mode === 'risk' ? '1-day VaR at stop' : 'Exposure']}
             labelFormatter={l => String(l)}
           />
           <Bar dataKey="value" radius={[0, 4, 4, 0]}>

@@ -103,23 +103,61 @@ def lane_available(lane: str) -> bool:
 
 
 def lanes_available() -> dict[str, bool]:
-    return {ln: lane_available(ln) for ln in ("grok", "chatgpt")}
+    import llm_lane
+    return {
+        "deepseek-flash": llm_lane.available("deepseek-flash"),
+        "deepseek-v4": llm_lane.available("deepseek-v4"),
+        "grok": lane_available("grok"),
+        "chatgpt": lane_available("chatgpt"),
+    }
 
 
 def all_lanes(*, include_local: bool = True, use_cache: bool = True) -> list[dict]:
     """Shape compatible with GET /api/v2/llm/oauth-lanes."""
-    out = [lane_status("grok", use_cache=use_cache), lane_status("chatgpt", use_cache=use_cache)]
+    import llm_lane
+    out = []
+
+    # DeepSeek Flash (primary)
+    try:
+        ds_flash_ok = llm_lane.available("deepseek-flash")
+        out.append({
+            "lane": "deepseek-flash", "label": "DeepSeek Flash", "kind": "api",
+            "reachable": ds_flash_ok, "authenticated": ds_flash_ok, "ready": ds_flash_ok,
+            "status": "ready" if ds_flash_ok else "offline", "billing": "api",
+            "model": "deepseek-v4-flash",
+        })
+    except Exception:
+        out.append({"lane": "deepseek-flash", "label": "DeepSeek Flash", "kind": "api",
+                     "ready": False, "status": "offline", "billing": "api"})
+
+    # DeepSeek v4 (high-reasoning)
+    try:
+        ds_v4_ok = llm_lane.available("deepseek-v4")
+        out.append({
+            "lane": "deepseek-v4", "label": "DeepSeek v4", "kind": "api",
+            "reachable": ds_v4_ok, "authenticated": ds_v4_ok, "ready": ds_v4_ok,
+            "status": "ready" if ds_v4_ok else "offline", "billing": "api",
+            "model": "deepseek-v4-pro",
+        })
+    except Exception:
+        out.append({"lane": "deepseek-v4", "label": "DeepSeek v4", "kind": "api",
+                     "ready": False, "status": "offline", "billing": "api"})
+
+    # Free OAuth lanes (fallback)
+    out.append(lane_status("grok", use_cache=use_cache))
+    out.append(lane_status("chatgpt", use_cache=use_cache))
+
     if include_local:
         import requests
         try:
             r = requests.get("http://127.0.0.1:11434/api/tags", timeout=3)
             models = [m.get("name") for m in (r.json().get("models") or [])][:8] if r.ok else []
             out.append({
-                "lane": "local", "label": "Local gemma (ollama)", "kind": "local", "port": 11434,
+                "lane": "local", "label": "Gemma (local)", "kind": "local", "port": 11434,
                 "reachable": r.ok, "authenticated": r.ok, "ready": r.ok,
                 "status": "ready" if r.ok else "offline", "models": models, "billing": "local",
             })
         except Exception:
-            out.append({"lane": "local", "label": "Local gemma (ollama)", "kind": "local",
+            out.append({"lane": "local", "label": "Gemma (local)", "kind": "local",
                           "ready": False, "status": "offline", "billing": "local"})
     return out

@@ -51,7 +51,7 @@ def enhance(label: str, kind: str = "trend", existing_keywords=None) -> dict:
     kws, syms, used = [], [], []
     try:
         import llm_lane
-        for lane in ("grok", "chatgpt", "local"):
+        for lane in ("deepseek-flash", "grok", "chatgpt", "local"):
             try:
                 if not llm_lane.available(lane):
                     continue

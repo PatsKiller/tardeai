@@ -217,28 +217,32 @@ def _telegram_ev(text: str) -> dict:
         from telegram_alert_router import should_send_telegram, mark_sent
         if not should_send_telegram(text):
             return {"ok": False, "message_id": None, "error": "router_suppressed"}
-        import requests
         tok = os.environ.get("TELEGRAM_BOT_TOKEN", "")
         if not tok:
             for l in (ROOT / ".env").read_text().splitlines():
                 if l.startswith("TELEGRAM_BOT_TOKEN="):
                     tok = l.split("=", 1)[1].strip()
+        from telegram_alert import chokepoint_send
         from tg_chat_ids import chat_ids
-        ok, mid, err = False, None, None
-        for chat in chat_ids() or []:
-            r = requests.post(f"https://api.telegram.org/bot{tok}/sendMessage",
-                              json={"chat_id": chat, "text": text}, timeout=10)
-            if r.ok:
-                ok = True
+        # Use chokepoint_send with explicit chat_id for message_id tracking
+        cids = chat_ids() or []
+        if not cids:
+            return {"ok": False, "message_id": None, "error": "no chat_ids"}
+        resp = chokepoint_send(text, token=tok, chat_id=cids[0])
+        ok = resp.get("ok", False)
+        mid = None
+        if ok:
+            results = resp.get("results", [])
+            for r in results:
                 try:
-                    mid = str(r.json().get("result", {}).get("message_id"))
+                    mid = str(r.get("response", {}).get("result", {}).get("message_id"))
+                    if mid:
+                        break
                 except Exception:
                     pass
-            else:
-                err = f"http {r.status_code}"
         if ok:
             mark_sent(text)
-        return {"ok": ok, "message_id": mid, "error": err}
+        return {"ok": ok, "message_id": mid, "error": None if ok else "send_failed"}
     except Exception as e:
         return {"ok": False, "message_id": None, "error": str(e)[:80]}
 

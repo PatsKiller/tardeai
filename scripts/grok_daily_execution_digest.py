@@ -46,7 +46,7 @@ def _parse(text):
     return d if req.issubset(d.keys()) else None
 
 
-def run(run_id=None, apply=False, lane="grok"):
+def run(run_id=None, apply=False, lane="deepseek-flash"):
     import psycopg2.extras, llm_lane
     from db_adapter import _get_conn
     conn = _get_conn(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)

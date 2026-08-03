@@ -226,12 +226,12 @@ def _clean_llm_text(text: str) -> str:
     return text.strip()
 
 
-def pick_lane(preferred: str = "grok") -> Optional[str]:
+def pick_lane(preferred: str = "deepseek-flash") -> Optional[str]:
     try:
         import llm_lane
     except Exception:
         return None
-    for lane in (preferred, "chatgpt", "local"):
+    for lane in (preferred, "grok", "chatgpt", "local"):
         if llm_lane.available(lane):
             return lane
     return None
@@ -260,11 +260,11 @@ def generate_oauth_narrative(
 
     sys_prompt = system or REPORT_SYSTEM
     full_prompt = f"{sys_prompt}\n\n{prompt}"
-    oauth_lane = chosen if chosen in ("grok", "chatgpt") else None
+    oauth_lane = chosen if chosen in ("deepseek-flash", "grok", "chatgpt") else None
 
     def _call(ln: str, *, with_process: bool) -> str:
         kw: Dict[str, Any] = {"lane": ln, "timeout": timeout}
-        if with_process and ln in ("grok", "chatgpt"):
+        if with_process and ln in ("deepseek-flash", "grok", "chatgpt"):
             kw["process_id"] = process_id
             kw["task_summary"] = task_summary
         return llm_lane.generate(full_prompt, **kw)

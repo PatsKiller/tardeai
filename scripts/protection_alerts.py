@@ -91,22 +91,15 @@ def emit_siem(cur, tid, sym, atype, payload):
 
 
 def telegram(msg):
-    import urllib.request
-    token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-    if not token:
+    try:
+        from telegram_alert import chokepoint_send
+        token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+        if not token:
+            return []
+        ok = chokepoint_send(msg, token=token)
+        return ["ok"] if ok else []
+    except Exception:
         return []
-    ids = [c.strip() for c in os.environ.get("TELEGRAM_CHAT_ID", "").split(",") if c.strip()]
-    out = []
-    for cid in ids:
-        try:
-            data = json.dumps({"chat_id": cid, "text": msg}).encode()
-            req = urllib.request.Request(f"https://api.telegram.org/bot{token}/sendMessage",
-                                         data=data, headers={"Content-Type": "application/json"})
-            r = urllib.request.urlopen(req, timeout=15)
-            out.append((cid, json.loads(r.read()).get("result", {}).get("message_id")))
-        except Exception as e:
-            out.append((cid, f"ERR:{e}"))
-    return out
 
 
 def run(send=False):

@@ -172,7 +172,7 @@ def _call_lane(lane: str, prompt: str, *, timeout: int = 120, model: str = "") -
         return her.call_external(lane, mdl, prompt, max_tokens=1600) or ""
     except Exception:
         # free-lane fallback via llm_lane proxy (grok/chatgpt only)
-        if lane in ("grok", "chatgpt"):
+        if lane in ("deepseek-flash", "grok", "chatgpt"):
             try:
                 import llm_lane
                 return llm_lane.generate(prompt, lane=lane, timeout=timeout, model=model or None)
@@ -442,7 +442,7 @@ def oversee_report(
     packet = build_data_packet(report)
 
     free: list[dict] = []
-    for lane in ("grok", "chatgpt"):
+    for lane in ("deepseek-flash", "grok", "chatgpt"):
         try:
             free.append(free_lane_critique(report, packet, lane, timeout=min(timeout, 120)))
         except Exception as e:

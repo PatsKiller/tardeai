@@ -294,10 +294,13 @@ MONITORED_COMPONENTS = [
      "retry_cmd": ".venv/bin/python scripts/strategy_backtester.py --all-strategies --apply",
      "downstream": "strategy_backtest_trades, active strategy validation"},
     {"component": "llm_backtest_reviewer", "display": "LLM Backtest Trade Reviewer",
-     "schedule": "0 23 * * 0", "log_file": "llm_backtest_review.log",
-     "max_age_min": 10080, "max_runtime_sec": 7200, "critical": False,
-     "retry_cmd": ".venv/bin/python scripts/trade_close_llm_analyzer.py --source backtest --limit 50 --apply --confirm-llm-review-write --allow-local-llm",
+... 298 lines not shown ...
      "downstream": "trade_llm_reviews, backtest learning"},
+    {"component": "watchlist_health_agent", "display": "Watchlist Health Agent",
+     "schedule": "*/30 9-16 * * 1-5", "log_file": "watchlist_health_agent.log",
+     "max_age_min": 60, "max_runtime_sec": 300, "critical": False,
+     "retry_cmd": "/usr/bin/python3 scripts/watchlist_health_agent.py --apply --limit 50",
+     "downstream": "watchlist remediation, CIO synthesis, critic reviews, street data refresh"},
 ]
 
 MAX_RETRIES = 2

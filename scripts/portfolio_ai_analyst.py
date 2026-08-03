@@ -105,12 +105,17 @@ def _ollama(prompt: str, max_tokens: int = 500) -> str:
         return f"LLM error: {e}"
 
 def _ai(prompt: str, model: str = None, max_tokens: int = 1500) -> str:
-    """Route to local LLM (daily/weekly) or Claude (monthly/manual)."""
+    """Route to local LLM (daily/weekly) or DeepSeek v4 (monthly/manual)."""
     if _USE_OLLAMA:
         return _ollama(prompt, max_tokens=min(max_tokens, 600))
-    return _claude(prompt, model=model, max_tokens=max_tokens)
+    try:
+        from llm_lane import generate
+        return generate(prompt, lane="deepseek-v4", timeout=120)
+    except Exception as e:
+        return f"AI analysis unavailable — llm_lane failed: {str(e)[:100]}"
 
-def _claude(prompt: str, model: str = None, max_tokens: int = 1500) -> str:
+def _claude_DEPRECATED(prompt: str, model: str = None, max_tokens: int = 1500) -> str:
+    """Deprecated — migrated to llm_lane.generate(lane='deepseek-v4')."""
     key = _get_api_key()
     if not key: return "AI analysis unavailable — ANTHROPIC_API_KEY not set."
     try:

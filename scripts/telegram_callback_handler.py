@@ -357,6 +357,133 @@ def handle_callback_query(cb):
             send_reply(chat_id, message_id, f"Trail switch failed: {result.get('error', 'unknown')}")
             answer_callback(cb_id, f"Failed: {result.get('error', '?')[:60]}")
 
+    # ── Watchlist Health Agent approval callbacks ──
+    # wl_health_approve:<symbol>:<action_id1+action_id2+...>
+    # wl_health_deny:<symbol>
+    # wl_health_view:<symbol>
+    elif action == "wl_health_approve":
+        symbol = parts[1] if len(parts) > 1 else "?"
+        action_ids = parts[2].split("+") if len(parts) > 2 else []
+        if not action_ids:
+            answer_callback(cb_id, "No actions to approve")
+            return
+        # Execute each approved action (guard is enforced in _execute_action)
+        from watchlist_health_agent import _execute_action, _guard_action
+        results = []
+        for aid in action_ids:
+            if not _guard_action(aid):
+                results.append(f"⚠ {aid}: BLOCKED")
+                continue
+            r = _execute_action(symbol, aid)
+            results.append(f"{'✅' if r.get('ok') else '❌'} {aid}: {r.get('detail', '')[:60]}")
+        summary = f"⚕ Watchlist Health: {symbol} — {user_name} approved {now_short}\n" + "\n".join(results)
+        edit_message(chat_id, message_id, summary)
+        answer_callback(cb_id, f"{symbol}: {len([r for r in results if '✅' in r])}/{len(results)} fixed")
+        # Update approval record
+        try:
+            from db_adapter import _get_conn as _dhc
+            conn = _dhc()
+            cur = conn.cursor()
+            cur.execute("""UPDATE watchlist_health_approvals
+                SET status='approved', resolved_by=%s, resolved_at=NOW(), resolution_note=%s
+                WHERE symbol=%s AND status='pending'
+                ORDER BY created_at DESC LIMIT 1""",
+                [user_name, "; ".join(results)[:500], symbol])
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            log.warning(f"Failed to update approval for {symbol}: {e}")
+
+    elif action == "wl_health_deny":
+        symbol = parts[1] if len(parts) > 1 else "?"
+        edit_message(chat_id, message_id,
+                     f"✖ Watchlist Health: {symbol} — DENIED by {user_name} {now_short}")
+        answer_callback(cb_id, f"{symbol}: denied")
+        try:
+            from db_adapter import _get_conn as _dhc
+            conn = _dhc()
+            cur = conn.cursor()
+            cur.execute("""UPDATE watchlist_health_approvals
+                SET status='denied', resolved_by=%s, resolved_at=NOW()
+                WHERE symbol=%s AND status='pending'
+                ORDER BY created_at DESC LIMIT 1""",
+                [user_name, symbol])
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            log.warning(f"Failed to update denial for {symbol}: {e}")
+
+    elif action == "wl_health_view":
+        symbol = parts[1] if len(parts) > 1 else "?"
+        from watchlist_health_agent import _diagnose_with_deepseek, _deterministic_diagnosis
+        # Quick re-diagnose for the operator to see current state
+        try:
+            diag = _diagnose_with_deepseek(symbol, time.time())
+            if not diag:
+                diag = _deterministic_diagnosis(symbol, time.time())
+            detail = f"🔍 {symbol}: {diag.get('summary', 'No issues')}"
+        except Exception:
+            detail = f"🔍 {symbol}: diagnosis unavailable"
+        answer_callback(cb_id, detail)
+
+    # ── Pipeline Health Agent approval callbacks ──
+    # pl_health_approve:<pipeline_key>:<action_id1+action_id2+...>
+    # pl_health_deny:<pipeline_key>
+    elif action == "pl_health_approve":
+        pipeline_key = parts[1] if len(parts) > 1 else "?"
+        action_ids = parts[2].split("+") if len(parts) > 2 else []
+        if not action_ids:
+            answer_callback(cb_id, "No actions to approve")
+            return
+        try:
+            from pipeline_health_agent import _execute_action, _guard_action
+        except ImportError:
+            answer_callback(cb_id, "Agent module not available")
+            return
+        results = []
+        for aid in action_ids:
+            if not _guard_action(aid):
+                results.append(f"BLOCKED: {aid}")
+                continue
+            r = _execute_action(pipeline_key, aid)
+            emoji = "OK" if r.get("ok") else "FAIL"
+            results.append(f"{emoji} {aid}: {r.get('detail','')[:60]}")
+        summary = f"Pipeline Health: {pipeline_key} — {user_name} approved {now_short}\n" + "\n".join(results)
+        edit_message(chat_id, message_id, summary)
+        answer_callback(cb_id, f"{pipeline_key}: {sum(1 for r in results if r.startswith('OK'))}/{len(results)} done")
+        try:
+            from db_adapter import _get_conn as _dhc
+            conn = _dhc()
+            cur = conn.cursor()
+            cur.execute("""UPDATE pipeline_health_approvals
+                SET status='approved', resolved_by=%s, resolved_at=NOW(), resolution_note=%s
+                WHERE pipeline_key=%s AND status='pending'
+                ORDER BY created_at DESC LIMIT 1""",
+                [user_name, "; ".join(results)[:500], pipeline_key])
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            log.warning(f"Failed to update pipeline approval: {e}")
+
+    elif action == "pl_health_deny":
+        pipeline_key = parts[1] if len(parts) > 1 else "?"
+        edit_message(chat_id, message_id,
+                     f"Pipeline Health: {pipeline_key} — DENIED by {user_name} {now_short}")
+        answer_callback(cb_id, f"{pipeline_key}: denied")
+        try:
+            from db_adapter import _get_conn as _dhc
+            conn = _dhc()
+            cur = conn.cursor()
+            cur.execute("""UPDATE pipeline_health_approvals
+                SET status='denied', resolved_by=%s, resolved_at=NOW()
+                WHERE pipeline_key=%s AND status='pending'
+                ORDER BY created_at DESC LIMIT 1""",
+                [user_name, pipeline_key])
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            log.warning(f"Failed to update pipeline denial: {e}")
+
     else:
         answer_callback(cb_id, f"Unknown: {action}")
 

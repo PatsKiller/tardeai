@@ -166,34 +166,33 @@ OPUS_SYNTH = """Synthesize three independent expert analyses into a final report
 
 def _run_grok(question, shared_ctx):
     try:
-        from openai import OpenAI
-        c = OpenAI(api_key=_env("XAI_API_KEY"), base_url="https://api.x.ai/v1")
-        r = c.chat.completions.create(model="grok-3", messages=[
-            {"role": "system", "content": GROK_SYSTEM},
-            {"role": "user", "content": shared_ctx}], max_tokens=1000, temperature=0.3)
-        return {"provider": "grok-3", "analysis": r.choices[0].message.content, "ok": True,
-                "tokens": r.usage.total_tokens if r.usage else 0}
+        import llm_lane
+        prompt = f"{GROK_SYSTEM}\n\n{shared_ctx}"
+        out = llm_lane.generate(prompt, lane="deepseek-flash", timeout=90)
+        if out and not str(out).startswith("LLM error"):
+            return {"provider": "deepseek-v4-flash", "analysis": out.strip(), "ok": True,
+                    "tokens": 0}
+        return {"provider": "deepseek-v4-flash", "analysis": "", "ok": False, "error": "empty response"}
     except Exception as e:
-        return {"provider": "grok-3", "analysis": "", "ok": False, "error": str(e)}
+        return {"provider": "deepseek-v4-flash", "analysis": "", "ok": False, "error": str(e)}
 
 
 def _run_gpt4o(question, shared_ctx):
     try:
-        from openai import OpenAI
-        c = OpenAI(api_key=_env("OPENAI_API_KEY"))
-        r = c.chat.completions.create(model="gpt-4o", messages=[
-            {"role": "system", "content": GPT4O_SYSTEM},
-            {"role": "user", "content": shared_ctx}], max_tokens=1000, temperature=0.3)
-        return {"provider": "gpt-4o", "analysis": r.choices[0].message.content, "ok": True,
-                "tokens": r.usage.total_tokens if r.usage else 0}
+        import llm_lane
+        prompt = f"{GPT4O_SYSTEM}\n\n{shared_ctx}"
+        out = llm_lane.generate(prompt, lane="deepseek-flash", timeout=90)
+        if out and not str(out).startswith("LLM error"):
+            return {"provider": "deepseek-v4-flash", "analysis": out.strip(), "ok": True,
+                    "tokens": 0}
+        return {"provider": "deepseek-v4-flash", "analysis": "", "ok": False, "error": "empty response"}
     except Exception as e:
-        return {"provider": "gpt-4o", "analysis": "", "ok": False, "error": str(e)}
+        return {"provider": "deepseek-v4-flash", "analysis": "", "ok": False, "error": str(e)}
 
 
 def _run_opus_synthesis(question, alex, grok, gpt4o, decision_type):
     try:
-        import anthropic
-        c = anthropic.Anthropic(api_key=_env("ANTHROPIC_API_KEY"))
+        import llm_lane
         prompt = f"""{OPUS_SYNTH}
 
 QUESTION: {question}
@@ -203,12 +202,13 @@ EXPERT 2 (Grok): {grok[:2000]}
 EXPERT 3 (GPT-4o): {gpt4o[:2000]}
 
 Decision type: {decision_type}. Synthesize now."""
-        r = c.messages.create(model="claude-opus-4-5", max_tokens=2000,
-                              messages=[{"role": "user", "content": prompt}])
-        return {"provider": "claude-opus-4-5", "synthesis": r.content[0].text, "ok": True,
-                "input_tokens": r.usage.input_tokens, "output_tokens": r.usage.output_tokens}
+        out = llm_lane.generate(prompt, lane="deepseek-v4", timeout=180)
+        if out and not str(out).startswith("LLM error"):
+            return {"provider": "deepseek-v4-pro", "synthesis": out.strip(), "ok": True,
+                    "input_tokens": 0, "output_tokens": 0}
+        return {"provider": "deepseek-v4-pro", "synthesis": "", "ok": False, "error": "empty response"}
     except Exception as e:
-        return {"provider": "claude-opus-4-5", "synthesis": "", "ok": False, "error": str(e)}
+        return {"provider": "deepseek-v4-pro", "synthesis": "", "ok": False, "error": str(e)}
 
 
 def _agreement(alex, grok, gpt4o):

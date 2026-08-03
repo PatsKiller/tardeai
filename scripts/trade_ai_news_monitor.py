@@ -178,6 +178,7 @@ def re_critique_ticker(symbol: str, new_headline: str) -> dict:
 
 def send_verdict_change_telegram(changes: list):
     if not changes or not TELEGRAM_TOKEN: return
+    from telegram_alert import chokepoint_send
     lines = ["🔄 *Iris Update — Verdict Changed*\n"]
     for c in changes:
         em = '🚫' if c.get('disqualified') else '⬇'
@@ -189,13 +190,7 @@ def send_verdict_change_telegram(changes: list):
         lines.append("")
     lines.append("_http://192.168.50.16:7777/v3/trading_")
     msg = '\n'.join(lines)
-    for cid in TELEGRAM_CHATS:
-        try:
-            requests.post(f'https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage',
-                          json={'chat_id': cid, 'text': msg, 'parse_mode': 'Markdown',
-                                'disable_web_page_preview': True}, timeout=10)
-        except Exception as e:
-            log.error(f"Telegram {cid}: {e}")
+    chokepoint_send(msg, token=TELEGRAM_TOKEN)
 
 
 def main():

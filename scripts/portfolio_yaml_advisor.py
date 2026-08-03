@@ -335,7 +335,10 @@ Respond ONLY in this exact JSON format — no preamble, no markdown:
 # ── Opus call ──────────────────────────────────────────────────────────────────
 
 def call_opus(prompt: str, log: logging.Logger) -> Optional[Dict]:
-    """Call Claude Opus with the advisor prompt, falling back through LLM router.
+    """YAML portfolio advisor cascade:
+    Try 1: DeepSeek v4 via llm_lane.generate() (CIO-level reasoning)
+    Try 2: LLM router (Grok → local qwen3)
+    Try 3: Direct local LLM (last resort)
     Returns parsed JSON dict or None."""
     import re
     log.info("─" * 50)
@@ -344,33 +347,16 @@ def call_opus(prompt: str, log: logging.Logger) -> Optional[Dict]:
     raw_text = None
     model_used = "unknown"
 
-    # Try 1: Claude Opus (preferred for complex financial analysis)
+    # Try 1: DeepSeek v4 via llm_lane (replaces Claude Opus — CIO-level reasoning)
     try:
-        import anthropic
-        api_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
-        if api_key:
-            client = anthropic.Anthropic(api_key=api_key)
-            model = "claude-opus-4-6"
-            log.info(f"  Trying: {model}")
-            try:
-                response = client.messages.create(
-                    model=model, max_tokens=4000,
-                    thinking={"type": "adaptive", "budget_tokens": 8000},
-                    messages=[{"role": "user", "content": prompt}],
-                )
-            except Exception:
-                log.warning("  Extended thinking unavailable — retrying without")
-                response = client.messages.create(
-                    model=model, max_tokens=4000,
-                    messages=[{"role": "user", "content": prompt}],
-                )
-            text_blocks = [b.text for b in response.content if hasattr(b, "text")]
-            raw_text = "\n".join(text_blocks).strip()
-            model_used = model
-            log.info(f"  Claude response: {len(raw_text):,} chars, "
-                     f"{response.usage.input_tokens:,} in / {response.usage.output_tokens:,} out")
+        from llm_lane import generate
+        log.info("  Trying: DeepSeek v4 via llm_lane")
+        raw_text = generate(prompt, lane="deepseek-v4", timeout=180)
+        if raw_text:
+            model_used = "deepseek-v4-pro"
+            log.info(f"  DeepSeek v4 response: {len(raw_text):,} chars")
     except Exception as e:
-        log.warning(f"  Claude failed: {e}")
+        log.warning(f"  DeepSeek v4 failed: {e}")
 
     # Try 2: LLM router (Grok → local qwen3)
     if not raw_text:

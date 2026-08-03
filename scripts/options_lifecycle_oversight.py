@@ -121,7 +121,7 @@ def run_free_review(cur, conn, s: dict, eco: dict, d: dict, trigger: str,
     from llm_lane import available, generate
     results = []
     prompt = _brief(s, eco, d, trigger)
-    for lane in ("chatgpt", "grok"):
+    for lane in ("deepseek-flash", "chatgpt", "grok"):
         cur.execute("""SELECT run_id, verdict FROM options_oversight_runs
                        WHERE strategy_position_id=%s AND snapshot_id IS NOT DISTINCT FROM %s
                          AND lane=%s AND trigger_reason=%s""",

@@ -43,8 +43,8 @@ def ask(question: str, account=None, days=180, lane: str | None = None, manual_t
     try:
         import llm_lane
         use = (lane or "").strip().lower() or None
-        if use not in ("grok", "chatgpt", "local"):
-            use = "grok" if llm_lane.available("grok") else "local"
+        if use not in ("deepseek-flash", "grok", "chatgpt", "local"):
+            use = "deepseek-flash" if llm_lane.available("deepseek-flash") else ("grok" if llm_lane.available("grok") else "local")
         prompt = (
             "You are a sharp, honest trading-journal coach. Answer the trader's question using ONLY the "
             "journal analytics below — cite the actual numbers (win rate, net P&L, R, trade counts) and "
@@ -54,7 +54,7 @@ def ask(question: str, account=None, days=180, lane: str | None = None, manual_t
             f"QUESTION: {question}\n\nJOURNAL ANALYTICS (account={ctx['filters']['account']}, "
             f"last {ctx['filters']['days']}d):\n{json.dumps(ctx, indent=2, default=str)}")
         gen_kw = dict(lane=use, timeout=90)
-        if use in ("grok", "chatgpt"):
+        if use in ("deepseek-flash", "grok", "chatgpt"):
             gen_kw.update(process_id="journal_ask", task_summary=question[:120],
                           manual_trigger=bool(manual_trigger or lane))
         out = llm_lane.generate(prompt, **gen_kw)

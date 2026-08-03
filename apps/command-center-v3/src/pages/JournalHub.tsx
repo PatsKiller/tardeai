@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useApi } from '../hooks/useApi'
+import { laneLabel } from '../lib/laneLabels'
 import { fmt$ } from '../lib/format'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell } from 'recharts'
 import type { DrillContext } from '../components/DetailDrawer'
@@ -541,9 +542,9 @@ export default function JournalHub({ onDrill }: Props) {
           {batchCritBusy ? '… generating critiques' : '🤖 Generate AI critiques'}
         </button>
         <button disabled={batchCritBusy} onClick={() => runBatchCritiques(true)}
-          title="Regenerate with Grok narrative (slower)"
+          title="Regenerate with cloud narrative (slower)"
           style={{ fontSize: 9, padding: '3px 10px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text3)', cursor: batchCritBusy ? 'wait' : 'pointer' }}>
-          Grok batch
+          Cloud batch
         </button>
       </div>
       {batchCritMsg && <div style={{ fontSize: 10, color: '#c4b5fd', marginBottom: 8 }}>{batchCritMsg}</div>}
@@ -998,7 +999,7 @@ export default function JournalHub({ onDrill }: Props) {
           {/* ═══ Ask the journal (AI Q&A) ═══ */}
           <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14, marginBottom: 14 }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 6 }}>💬 Ask your journal</div>
-            <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 8 }}>Natural-language Q&A over your real trade analytics — pick Grok or ChatGPT</div>
+            <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 8 }}>Natural-language Q&A over your real trade analytics — pick a cloud lane</div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <input value={jq} onChange={e => setJq(e.target.value)} placeholder="ask about your trading…"
                 onKeyDown={e => { if (e.key === 'Enter' && jq.trim() && !jBusy) { void jAsk('grok') } }}
@@ -1010,7 +1011,7 @@ export default function JournalHub({ onDrill }: Props) {
                     onClick={() => void jAsk(lane)}
                     style={{ padding: '8px 14px', borderRadius: 6, fontWeight: 800, fontSize: 12, cursor: jBusy ? 'wait' : 'pointer',
                       border: `1px solid ${color}66`, background: `${color}14`, color, opacity: jBusy && jBusy !== lane ? 0.5 : 1 }}>
-                    {jBusy === lane ? '…' : lane === 'grok' ? '▶ Grok' : '▶ ChatGPT'}
+                    {jBusy === lane ? '…' : `▶ ${laneLabel(lane)}`}
                   </button>
                 )
               })}
@@ -1018,7 +1019,7 @@ export default function JournalHub({ onDrill }: Props) {
             {jAns && (
               <div style={{ marginTop: 10, padding: 10, background: 'var(--bg2)', borderRadius: 6, fontSize: 11.5, color: 'var(--text1)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
                 {jAns.ok === false || jAns.manual_required
-                  ? <span style={{ color: '#ef4444' }}>⚠ {jAns.error || 'blocked — pick ▶ Grok or ▶ ChatGPT'}</span>
+                  ? <span style={{ color: '#ef4444' }}>⚠ {jAns.error || 'blocked — pick a cloud lane'}</span>
                   : jAns.answer}
                 {jAns.model && jAns.ok !== false && !jAns.manual_required && (
                   <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 6 }}>via {jAns.model}{jAns.lane ? ` · ${jAns.lane}` : ''} · over your {acctFilter ? (ACCT_LABEL[acctFilter] ?? acctFilter) : 'all-account'} journal ({timeRange})</div>

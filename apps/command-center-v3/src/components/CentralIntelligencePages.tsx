@@ -7,6 +7,7 @@ import ActionBriefCard from './intelligence/ActionBriefCard'
 import { briefFromIntelItem, type IntelItem } from '../lib/intelBrief'
 import { KPI } from './intelligence/dashboardKit'
 import { intelligenceItemId as stableId } from '../lib/intelligenceItemId'
+import { laneLabel } from '../lib/laneLabels'
 
 const TEXT0 = 'var(--text0)'
 const TEXT2 = 'var(--text2)'
@@ -40,7 +41,7 @@ function baseQscore(it: IntelItem) {
   if (isStructural(it)) { const stale = it.freshnessH != null && it.freshnessH > 96 ? 0.10 : 0; return Math.max(0, Math.min(1, it.confidence - stale)) }
   const freshnessPenalty = it.freshnessH == null ? 0.18 : it.freshnessH > 72 ? 0.28 : it.freshnessH > 24 ? 0.15 : it.freshnessH > 8 ? 0.07 : 0; const sourcePenalty = /unknown|browser-local|fallback/i.test(it.source) ? 0.16 : 0; const modelPenalty = it.model || it.lane ? 0 : 0.08; return Math.max(0, Math.min(1, it.confidence - freshnessPenalty - sourcePenalty - modelPenalty)) }
 // Curation is deterministic math (see baseQscore) — this is the one place a real independent multi-LLM
-// verdict (Grok + ChatGPT + local gemma, from the SAME ensemble jobs the card's "Ask LM" button enqueues)
+// verdict (DeepSeek Flash + Grok OAuth + ChatGPT OAuth + local, from the SAME ensemble jobs the card's "Ask LM" button enqueues)
 // is allowed to move the ranking: a consensus BLOCK pulls a card down (it should not look trustworthy just
 // because its raw fields look complete); a consensus APPROVE with a strong score nudges it up. Bounded
 // (+/-12pts) and only ever applied when a verdict actually exists — no LLM call happens on the render path.
@@ -141,7 +142,7 @@ export default function CentralIntelligencePages({ onDrill }: Props) {
   const { data: research } = useApi<any>('/api/v2/research-topics', 120_000)
   const { data: inference } = useApi<any>('/api/v2/inference/latest', 120_000)
   const { data: rotation } = useApi<any>('/api/v2/rotation/summary', 300_000)
-  // Already-computed multi-LLM verdicts (Grok + ChatGPT + local gemma) for signals an operator has
+  // Already-computed multi-LLM verdicts (DeepSeek Flash + Grok OAuth + ChatGPT OAuth + local) for signals an operator has
   // previously asked to verify — joined back onto matching cards below so curation reflects LLM review
   // it actually has, instead of only showing it behind a click. No LLM call happens here; read-only join.
   const { data: ensembleFeed } = useApi<any>('/api/v2/inference/ensemble?limit=200', 120_000)
@@ -269,7 +270,7 @@ export default function CentralIntelligencePages({ onDrill }: Props) {
   const askLm = async () => {
     const payload = { question, feedback, visible_items: filtered.slice(0, 12), page: 'command', requested_review: 'quality accuracy usefulness and actionability', use_grok: useGrok }
     setLmBusy(true); setLmReview(null)
-    setLmStatus(useGrok ? 'Running local LLM + Grok review…' : 'Running local LLM review…')
+    setLmStatus(useGrok ? `Running ${laneLabel('local')} + ${laneLabel('grok')} review…` : `Running ${laneLabel('local')} review…`)
     try {
       const r = await fetch('/api/v2/agents/intelligence-feedback', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
       if (!r.ok) throw new Error(String(r.status))
@@ -311,11 +312,11 @@ export default function CentralIntelligencePages({ onDrill }: Props) {
         <span style={{ color: MUTED, fontSize: 10 }}>{lmOpen ? 'collapse ▲' : 'expand ▼'}</span>
       </button>
       {lmOpen && <>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 8, marginTop: 9 }}><textarea value={question} onChange={e => setQuestion(e.target.value)} placeholder="Ask the local model: What changed? Which signals conflict? What should agents verify?" style={{ ...input, minHeight: 58 }} /><textarea value={feedback} onChange={e => setFeedback(e.target.value)} placeholder="Feedback to agents / LM critique: missing source, false positive, stale data, better decision wording..." style={{ ...input, minHeight: 58 }} /><div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 130 }}><label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: TEXT0, cursor: 'pointer' }}><input type="checkbox" checked={useGrok} onChange={e => setUseGrok(e.target.checked)} /> also ask Grok</label><button onClick={askLm} disabled={lmBusy} style={{ ...btn(true, PURPLE), flex: 1, opacity: lmBusy ? .6 : 1 }}>{lmBusy ? 'Reviewing…' : 'Run LM Review'}</button></div></div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 8, marginTop: 9 }}><textarea value={question} onChange={e => setQuestion(e.target.value)} placeholder="Ask the local model: What changed? Which signals conflict? What should agents verify?" style={{ ...input, minHeight: 58 }} /><textarea value={feedback} onChange={e => setFeedback(e.target.value)} placeholder="Feedback to agents / LM critique: missing source, false positive, stale data, better decision wording..." style={{ ...input, minHeight: 58 }} /><div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 130 }}><label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: TEXT0, cursor: 'pointer' }}><input type="checkbox" checked={useGrok} onChange={e => setUseGrok(e.target.checked)} /> also run cloud review</label><button onClick={askLm} disabled={lmBusy} style={{ ...btn(true, PURPLE), flex: 1, opacity: lmBusy ? .6 : 1 }}>{lmBusy ? 'Reviewing…' : 'Run LM Review'}</button></div></div>
         {lmStatus && <div style={{ fontSize: 10, color: lmStatus.includes('Reviewed') || lmStatus.includes('recorded') ? GREEN : AMBER, marginTop: 7 }}>{lmStatus}</div>}
         {lmReview && <div style={{ display: 'grid', gridTemplateColumns: lmReview.grok || lmReview.grokErr ? '1fr 1fr' : '1fr', gap: 10, marginTop: 10 }}>
-          <div style={{ background: 'rgba(96,165,250,.05)', border: '1px solid var(--border)', borderRadius: 6, padding: 10 }}><div style={{ fontSize: 11, fontWeight: 800, color: BLUE, marginBottom: 5 }}>🖥 Local LLM (gemma)</div><div style={{ fontSize: 11.5, color: TEXT0, whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{lmReview.local || <span style={{ color: AMBER }}>{lmReview.localErr || 'no response'}</span>}</div></div>
-          {(lmReview.grok || lmReview.grokErr) && <div style={{ background: 'rgba(168,85,247,.05)', border: '1px solid var(--border)', borderRadius: 6, padding: 10 }}><div style={{ fontSize: 11, fontWeight: 800, color: PURPLE, marginBottom: 5 }}>⚡ Grok</div><div style={{ fontSize: 11.5, color: TEXT0, whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{lmReview.grok || <span style={{ color: AMBER }}>{lmReview.grokErr || 'no response'}</span>}</div></div>}
+          <div style={{ background: 'rgba(96,165,250,.05)', border: '1px solid var(--border)', borderRadius: 6, padding: 10 }}><div style={{ fontSize: 11, fontWeight: 800, color: BLUE, marginBottom: 5 }}>🖥 {laneLabel('local')}</div><div style={{ fontSize: 11.5, color: TEXT0, whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{lmReview.local || <span style={{ color: AMBER }}>{lmReview.localErr || 'no response'}</span>}</div></div>
+          {(lmReview.grok || lmReview.grokErr) && <div style={{ background: 'rgba(168,85,247,.05)', border: '1px solid var(--border)', borderRadius: 6, padding: 10 }}><div style={{ fontSize: 11, fontWeight: 800, color: PURPLE, marginBottom: 5 }}>⚡ {laneLabel('grok')}</div><div style={{ fontSize: 11.5, color: TEXT0, whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{lmReview.grok || <span style={{ color: AMBER }}>{lmReview.grokErr || 'no response'}</span>}</div></div>}
         </div>}
       </>}
     </div>

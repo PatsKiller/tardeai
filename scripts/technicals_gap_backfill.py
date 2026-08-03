@@ -160,12 +160,10 @@ def _alert(dead):
     if not (tok and chat):
         return
     try:
-        import requests
-        requests.post(f"https://api.telegram.org/bot{tok}/sendMessage",
-                      json={"chat_id": chat, "parse_mode": "Markdown",
-                            "text": "⚠️ *TECHNICALS GAP* — no price series found for held symbols: "
-                                    + ", ".join(dead) + "\n(delisted or unmapped — flagged, not faked)"},
-                      timeout=10)
+        from telegram_alert import chokepoint_send
+        chokepoint_send("⚠️ *TECHNICALS GAP* — no price series found for held symbols: "
+                        + ", ".join(dead) + "\n(delisted or unmapped — flagged, not faked)",
+                        token=tok, chat_id=chat)
     except Exception:
         pass
 

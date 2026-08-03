@@ -4,6 +4,7 @@ import AnalystReviews from './AnalystReviews'
 import HoldingProtectionActions from './HoldingProtectionActions'
 import HoldingReportLinks from './HoldingReportLinks'
 import { EvidenceBlock } from './EvidenceBlock'
+import { laneLabel } from '../lib/laneLabels'
 import { fmt$ } from '../lib/format'
 import { volTierTooltip } from './HoldingsTableView'
 import { buildHoldingsRowModel, plMetrics } from '../lib/holdingsRowModel'
@@ -243,7 +244,7 @@ export default function HoldingsCard({
       {(pr?.evidence?.length > 0 || stopCuration?.evidence?.length > 0) && (
         <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
           {pr?.evidence?.length > 0 && <EvidenceBlock title={`Stop advisory${pr.model ? ` · ${pr.model}` : ''}`} evidence={pr.evidence} dataIDoubt={pr.data_i_doubt} compact maxItems={3} />}
-          {stopCuration?.evidence?.length > 0 && <EvidenceBlock title={`Grok stop curation${stopCuration.grade ? ` · ${stopCuration.grade}` : ''}`} evidence={stopCuration.evidence} dataIDoubt={stopCuration.data_i_doubt} compact maxItems={2} />}
+          {stopCuration?.evidence?.length > 0 && <EvidenceBlock title={`${laneLabel('grok')} stop curation${stopCuration.grade ? ` · ${stopCuration.grade}` : ''}`} evidence={stopCuration.evidence} dataIDoubt={stopCuration.data_i_doubt} compact maxItems={2} />}
         </div>
       )}
       {holdingReportEligible(h) && (

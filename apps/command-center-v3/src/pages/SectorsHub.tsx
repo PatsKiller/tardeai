@@ -5,6 +5,7 @@ import InstitutionalRotationBrief from '../components/rotation/InstitutionalRota
 import type { DrillContext } from '../components/DetailDrawer'
 import { BB, T, TYPE, RAIL, numStyle, terminalButton, statePill, metricChip } from '../lib/watchTokens'
 import { Chip } from '../components/TerminalChip'
+import { laneLabel } from '../lib/laneLabels'
 
 // Sector & Industry Monitor — deterministic monitoring and governed recommendations.
 // External-model badges are narrative critiques, never the source of price, portfolio or permission truth.
@@ -140,9 +141,9 @@ export default function SectorsHub({ onDrill, embedded }: Props) {
                     {s.is_watched && <Chip kind="state" tone="amber" title={s.directive?.label}>WATCHING</Chip>}
                     <span style={statePill(postureTone)}>{postureLabel}</span>
                     {(secExtMap[`SECTOR:${s.sector}`] || []).map((e: any, i: number) => (
-                      <span key={i} onClick={(ev) => { ev.stopPropagation(); onDrill({ title: `${s.sector} — model critique`, subtitle: `${e.lane === 'grok' ? 'Grok' : 'GPT'} narrative · not recommendation authority`, endpoint: 'derived', rows: [s], subjectType: 'sector', subjectKey: `SECTOR:${s.sector}` }) }}
-                        title={`${e.lane === 'grok' ? 'Grok' : 'GPT'} critique: ${e.recommendation || ''}\n${e.at ? new Date(e.at).toLocaleString() : ''}\nNarrative context only — deterministic state and governed recommendation cards remain authoritative.`}
-                        style={{ fontSize: TYPE.xs, fontWeight: 700, color: e.lane === 'grok' ? T.extIntel.grok : T.extIntel.gpt, cursor: 'pointer' }}>✦ {e.lane === 'grok' ? 'Grok critique' : 'GPT critique'}</span>
+                      <span key={i} onClick={(ev) => { ev.stopPropagation(); onDrill({ title: `${s.sector} — model critique`, subtitle: `${laneLabel(e.lane)} narrative · not recommendation authority`, endpoint: 'derived', rows: [s], subjectType: 'sector', subjectKey: `SECTOR:${s.sector}` }) }}
+                        title={`${laneLabel(e.lane)} critique: ${e.recommendation || ''}\n${e.at ? new Date(e.at).toLocaleString() : ''}\nNarrative context only — deterministic state and governed recommendation cards remain authoritative.`}
+                        style={{ fontSize: TYPE.xs, fontWeight: 700, color: e.lane === 'grok' ? T.extIntel.grok : e.lane === 'chatgpt' ? T.extIntel.gpt : T.extIntel.gpt, cursor: 'pointer' }}>✦ {laneLabel(e.lane)} critique</span>
                     ))}
                   </div>
                   <div style={{ display: 'flex', gap: 6, marginTop: 5, alignItems: 'center', flexWrap: 'wrap' }}>

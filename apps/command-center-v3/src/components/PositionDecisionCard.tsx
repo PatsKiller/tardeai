@@ -27,7 +27,14 @@ const PRI: Record<string, string> = { critical: RED, high: AMBER, medium: BLUE, 
 const RSI_C = (b: string) => b === 'oversold' ? GREEN : b === 'overbought' ? RED : b === 'missing' ? MUTED : BLUE
 const BASIS_C: Record<string, string> = { broker: GREEN, tax_grade: GREEN, verified: BLUE, entry: BLUE, owner_provided: PURPLE, unknown: RED }
 const FRESH_C: Record<string, string> = { fresh: GREEN, aging: AMBER, stale: RED, none: MUTED }
-const LANE_META: Record<string, { label: string; c: string }> = { local: { label: 'GEMMA', c: '#2dd4bf' }, grok: { label: 'GROK', c: AMBER }, chatgpt: { label: 'GPT', c: '#a3e635' }, claude: { label: 'CLAUDE', c: '#d97757' } }
+const LANE_META: Record<string, { label: string; c: string }> = {
+  'deepseek-flash': { label: 'DEEPSEEK FLASH', c: '#6c5ce7' },
+  'deepseek-v4': { label: 'DEEPSEEK V4', c: '#a29bfe' },
+  local: { label: 'LOCAL', c: '#2dd4bf' },
+  grok: { label: 'GROK', c: AMBER },
+  chatgpt: { label: 'GPT', c: '#a3e635' },
+  claude: { label: 'CLAUDE', c: '#d97757' },
+}
 const SCHWAB_SELL_ALL_MAX_SHARES = 40
 
 // The REAL failure reason is often nested in result.error (e.g. a Schwab transport error like an expired

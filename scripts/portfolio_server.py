@@ -1448,7 +1448,7 @@ import time as _wd_time
 
 _INFLIGHT: dict = {}  # thread ident -> (path, started_at, connection)
 _INFLIGHT_LOCK = threading.Lock()
-_WATCHDOG_ABANDON_SEC = float(os.getenv("DASHBOARD_WATCHDOG_ABANDON_SEC", "25"))
+_WATCHDOG_ABANDON_SEC = float(os.getenv("DASHBOARD_WATCHDOG_ABANDON_SEC", "12"))
 
 
 def _peer_closed(conn) -> bool:
@@ -2615,7 +2615,7 @@ class ReusableHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
     allow_reuse_port = False
     request_queue_size = 128
     daemon_threads = True
-    _sem = threading.BoundedSemaphore(int(os.getenv("DASHBOARD_MAX_CONCURRENCY", "48")))
+    _sem = threading.BoundedSemaphore(int(os.getenv("DASHBOARD_MAX_CONCURRENCY", "32")))
     _sem_timeout = float(os.getenv("DASHBOARD_SEM_TIMEOUT_SEC", "5.0"))
 
     def process_request_thread(self, request, client_address):
@@ -2671,8 +2671,17 @@ if __name__ == "__main__":
     # Do NOT fuser-kill :7777 here — overlapping systemd restarts + port-guard SIGTERM caused
     # adopt churn (orphan PPID=1 while systemctl shows inactive). Watchdog clears unhealthy orphans;
     # manual recovery: systemctl --user stop portfolio-server && kill stray pid && systemctl start.
+    class _LingerHTTPServer(ReusableHTTPServer):
+        """SO_LINGER=0: close immediately, no CLOSE-WAIT for dead Tailscale peers."""
+        def server_close(self):
+            super().server_close()
     try:
-        server = ReusableHTTPServer(("", PORT), PortfolioHandler)
+        server = _LingerHTTPServer(("", PORT), PortfolioHandler)
+        # SO_LINGER with l_onoff=1, l_linger=0 -> immediate close, no CLOSE-WAIT
+        try:
+            server.socket.setsockopt(_socket.SOL_SOCKET, _socket.SO_LINGER, b'\x01\x00\x00\x00\x00\x00\x00\x00')
+        except Exception:
+            pass  # some systems don't support struct linger
     except OSError as e:
         print(f"[fatal] Cannot bind port {PORT}: {e}")
         print("Another portfolio_server may already be listening. Check: ss -tlnp | grep 7777")

@@ -228,7 +228,7 @@ def agent_advisories(data: dict) -> list:
     out = []
     try:
         import llm_lane
-        lane = "grok" if llm_lane.available("grok") else "local"
+        lane = "deepseek-flash" if llm_lane.available("deepseek-flash") else ("grok" if llm_lane.available("grok") else "local")
         themes = " · ".join(f"{k} {v['pct']}%" for k, v in data.get("themes", {}).items())
         top = ", ".join(f"{t['symbol']} {t['pct']}%" for t in data.get("top_underlying", [])[:8])
         ctx = (f"Portfolio ${data.get('portfolio_total',0):,.0f}. LOOK-THROUGH exposure (funds resolved to "
@@ -256,7 +256,7 @@ def grok_narrative(data: dict) -> str:
                   f"LOOK-THROUGH exposure (funds resolved to underlying stocks): themes [{themes}]; top names "
                   f"[{top}]. In 4-5 sentences, give a concentration/diversification read and 2 concrete actions. "
                   f"Be specific and brief.")
-        lane = "grok" if llm_lane.available("grok") else "local"
+        lane = "deepseek-flash" if llm_lane.available("deepseek-flash") else ("grok" if llm_lane.available("grok") else "local")
         out = llm_lane.generate(prompt, lane=lane, timeout=60)
         return out if out and not str(out).startswith("LLM error") else ""
     except Exception:

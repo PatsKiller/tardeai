@@ -104,51 +104,116 @@ def _fetch_holdings_data(symbols: List[str], root: Path) -> Dict[str, Dict]:
         return {}
 
     results = {}
+
+    # ── Tier 1: Broker canonical — get_best_quote + indicator_snapshot (2026-08-01) ──
+    broker_inds: dict = {}
     try:
         _load_env_file(root)
         sys.path.insert(0, str(root / "scripts"))
-        from portfolio_technical import get_technical_data
-        tech = get_technical_data(symbols, root)
-        for sym, data in tech.items():
-            results[sym] = {
-                "price":       data.get("price", 0),
-                "change_pct":  data.get("change_pct", 0),
-                "rvol":        data.get("relative_volume", 0) or 0,
-                "rsi":         data.get("rsi", 50) or 50,
-                "sma50_pct":   data.get("sma50_pct", 0) or 0,
-                "sma200_pct":  data.get("sma200_pct", 0) or 0,
-                "week52_high": data.get("52wk_high", 0) or 0,
-                "week52_low":  data.get("52wk_low", 0) or 0,
-                "volume":      data.get("volume", 0) or 0,
-                "analyst":     data.get("analyst", ""),
-                "target":      data.get("target", 0) or 0,
-            }
-    except Exception as e:
-        print(f"  [monitor] Finviz fetch error: {e} — using price cache")
+        from market_quote_provider import get_best_quote
+        for sym in symbols:
+            try:
+                q = get_best_quote(sym) or {}
+                live = q.get("last_price")
+                if live and float(live) > 0:
+                    price = float(live)
+                    results[sym] = {"price": price, "change_pct": float(q.get("change_pct", 0))}
+            except Exception:
+                continue
+    except Exception:
+        pass
 
-    if len(results) < len(symbols):
+    try:
+        from lib.data_broker.indicator_snapshot import get_indicator_snapshot
+        broker_inds = get_indicator_snapshot(symbols) or {}
+    except Exception:
+        pass
+
+    for sym in symbols:
+        b = broker_inds.get(sym.upper(), {}) or {}
+        if sym not in results:
+            results[sym] = {}
+        d = results[sym]
+        if "price" not in d:
+            try:
+                from market_quote_provider import get_best_quote
+                q = get_best_quote(sym) or {}
+                live = q.get("last_price")
+                if live and float(live) > 0:
+                    d["price"] = float(live)
+                    d["change_pct"] = float(q.get("change_pct", 0))
+            except Exception:
+                pass
+        d["rsi"] = float(b.get("rsi_14", 50)) if b.get("rsi_14") is not None else 50
+        d["rvol"] = float(b.get("rvol_session", 0)) if b.get("rvol_session") is not None else 0
+        if b.get("sma_50") is not None:
+            sma50 = float(b["sma_50"])
+            px = d.get("price", 0) or 1
+            d["sma50_pct"] = round((px / sma50 - 1) * 100, 2)
+        else:
+            d["sma50_pct"] = 0
+        if b.get("sma_200") is not None:
+            sma200 = float(b["sma_200"])
+            px = d.get("price", 0) or 1
+            d["sma200_pct"] = round((px / sma200 - 1) * 100, 2)
+        else:
+            d["sma200_pct"] = 0
+        d["week52_high"] = float(b.get("high_52w", 0)) if b.get("high_52w") else 0
+        d["week52_low"] = float(b.get("low_52w", 0)) if b.get("low_52w") else 0
+
+    # ── Tier 2: Fall back to Finviz for any missing data ──
+    missing = [s for s in symbols if not results.get(s, {}).get("price") or not results.get(s, {}).get("rsi")]
+    if missing:
+        try:
+            _load_env_file(root)
+            sys.path.insert(0, str(root / "scripts"))
+            from portfolio_technical import get_technical_data
+            tech = get_technical_data(missing, root)
+            for sym, data in tech.items():
+                d = results.setdefault(sym, {})
+                for k in ("price", "change_pct", "rvol", "rsi", "sma50_pct", "sma200_pct",
+                          "week52_high", "week52_low", "volume", "analyst", "target"):
+                    cur = d.get(k) or 0
+                    new = data.get(k, 0) or 0
+                    if isinstance(cur, (int, float)) and isinstance(new, (int, float)):
+                        if cur in (0, 50) and new not in (0, 50):
+                            d[k] = new
+                    elif isinstance(new, str) and not cur:
+                        d[k] = new
+        except Exception as e:
+            print(f"  [monitor] Finviz fallback error: {e}")
+
+    # ── Tier 3: Price cache for any remaining gaps ──
+    gap_syms = [s for s in symbols if not results.get(s, {}).get("price")]
+    if gap_syms:
         try:
             cache_path = root / "data" / "portfolios" / "state" / "price_cache.json"
             if cache_path.exists():
                 cache = json.loads(cache_path.read_text(encoding="utf-8"))
                 today = _et_now().strftime("%Y-%m-%d")
                 yesterday = (_et_now() - timedelta(days=1)).strftime("%Y-%m-%d")
-                for sym in symbols:
-                    if sym in results:
-                        continue
+                for sym in gap_syms:
                     sym_data = cache.get(sym, {})
                     price = sym_data.get(today) or sym_data.get(yesterday)
                     if isinstance(price, dict):
                         price = price.get("close")
                     if price:
-                        results[sym] = {
-                            "price": float(price), "change_pct": 0,
-                            "rvol": 0, "rsi": 50, "sma50_pct": 0, "sma200_pct": 0,
-                            "week52_high": 0, "week52_low": 0, "volume": 0,
-                        }
+                        results[sym] = results.get(sym, {})
+                        results[sym]["price"] = float(price)
+                        results[sym]["change_pct"] = 0
+                        results[sym]["rvol"] = 0
+                        results[sym]["rsi"] = 50
+                        results[sym]["sma50_pct"] = 0
+                        results[sym]["sma200_pct"] = 0
+                        results[sym]["week52_high"] = 0
+                        results[sym]["week52_low"] = 0
+                        results[sym]["volume"] = 0
         except Exception:
             pass
 
+    print(f"  [monitor] Data tiers: broker_quote={sum(1 for s in symbols if results.get(s, {}).get('price', 0) > 0)}, "
+          f"broker_inds={sum(1 for v in broker_inds.values() if v)}, "
+          f"finviz_fallback={len(missing)}, cache_fallback={len(gap_syms)}")
     return results
 
 class TriggerState:

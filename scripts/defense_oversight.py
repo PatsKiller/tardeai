@@ -249,7 +249,8 @@ def paid_preview(cur, seats=None) -> dict:
             "weekly_paid_review": pc.get("weekly_paid_review", False)}
 
 
-def _call_provider(provider: str, model: str, prompt: str, key_env: dict) -> str:
+def _call_provider_DEPRECATED(provider: str, model: str, prompt: str, key_env: dict) -> str:
+    """Deprecated — migrated to llm_lane.generate(). Kept for audit trail."""
     import urllib.request
     import urllib.error
     try:
@@ -280,19 +281,19 @@ def _call_provider(provider: str, model: str, prompt: str, key_env: dict) -> str
 
 
 def run_paid_review(cur, seats=None) -> dict:
-    """Tier 2 — the metered seats. seats=['paid'] (claude, default) or any of
-    paid/paid_gpt/paid_xai; panel mode runs several and the memo panel diffs them.
-    Shared monthly budget gated at send; same contract, same strict parsing."""
+    """Tier 2 — the metered seats, now routed through llm_lane.generate() (DeepSeek v4)
+    instead of direct paid API calls. seats=['paid'] is the default; panel mode runs
+    multiple seats and the memo panel diffs them.
+    Shared monthly budget gated at send; same contract, same strict parsing.
+    Cost estimates are now advisory only (DeepSeek is far cheaper than Anthropic/OpenAI)."""
     import os
     import time
+    from llm_lane import generate
     seats = seats or ["paid"]
     pv = paid_preview(cur, seats=seats)
     total = pv["panel_cost_usd"]
     if total > pv["budget_remaining_usd"]:
         return {"ok": False, "error": f"monthly oversight budget: ${pv['budget_remaining_usd']} left < ${total} est"}
-    keys = {"anthropic": os.environ.get("ANTHROPIC_API_KEY", "").strip(),
-            "openai": os.environ.get("OPENAI_API_KEY", "").strip(),
-            "xai": os.environ.get("XAI_API_KEY", "").strip()}
     art = build_oversight_brief()
     prompt = ("You are a PAID senior seat on an oversight panel for a retirement-scale defensive "
               "trading desk. Two free seats have already reviewed; be the adjudicator: judge WITHIN "
@@ -304,11 +305,12 @@ def run_paid_review(cur, seats=None) -> dict:
         if not sc:
             results[name] = {"status": "unknown_seat"}
             continue
-        if not keys.get(sc["provider"], ""):
-            results[name] = {"status": "unavailable", "error": f"{sc['provider']} key not set"}
-            continue
         t0 = time.time()
-        raw = _call_provider(sc["provider"], sc["model"], prompt, keys)
+        try:
+            raw = generate(prompt, lane="deepseek-v4", timeout=180)
+            raw = raw if isinstance(raw, str) else json.dumps(raw)
+        except Exception as e:
+            raw = f"__error__ {e}"
         ms = int((time.time() - t0) * 1000)
         parsed = _parse_strict(raw) if not raw.startswith("__error__") else None
         status = "ok" if parsed else ("unavailable" if raw.startswith("__error__") else "unparseable")
@@ -327,7 +329,7 @@ def run_paid_review(cur, seats=None) -> dict:
                      json.dumps(parsed["memo"]) if parsed else None,
                      raw[:8000], ms, sc["cost_est_usd"] if status in ("ok", "unparseable") else 0))
         cur.connection.commit()
-        results[name] = {"status": status, "model": sc["model"], "latency_ms": ms,
+        results[name] = {"status": status, "model": "deepseek-v4-pro", "latency_ms": ms,
                          "cost_est_usd": sc["cost_est_usd"] if status == "ok" else 0,
                          **({"error": raw[:150]} if raw.startswith("__error__") else {})}
     ok_any = any(r.get("status") == "ok" for r in results.values())

@@ -1,0 +1,10 @@
+name = "tradeai-prerender"
+main = "index.js"
+compatibility_date = "2025-08-02"
+
+# Deploy as a Worker (not Pages function) — you can also attach
+# this as a custom domain worker or route it via Cloudflare Dashboard.
+
+[env.production]
+# Set PRERENDER_TOKEN via: wrangler secret put PRERENDER_TOKEN --env production
+# Or via Cloudflare Dashboard > Workers > Settings > Variables

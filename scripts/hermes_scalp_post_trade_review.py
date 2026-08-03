@@ -46,7 +46,7 @@ Return STRICT JSON only:
   "recommended_params_setup_regime": "..."
 }}}}"""
 
-OAUTH_LANES = ("grok", "chatgpt", "local")
+OAUTH_LANES = ("grok", "chatgpt", "local", "deepseek-flash", "deepseek-v4")
 
 
 def _r_multiple(entry, exit_, stop) -> float | None:
@@ -191,7 +191,7 @@ def _pick_oauth_lane(preferred: str = "grok") -> str | None:
     return None
 
 
-def _enrich_with_llm(crit: dict, row: dict, *, lane: str = "grok") -> dict:
+def _enrich_with_llm(crit: dict, row: dict, *, lane: str = "deepseek-flash") -> dict:
     """OAuth LLM enrichment via llm_lane (Grok :8645, ChatGPT :8646, local fallback)."""
     chosen = _pick_oauth_lane(lane)
     if not chosen:
@@ -373,7 +373,7 @@ def main():
     ap.add_argument("--once", action="store_true")
     ap.add_argument("--interval", type=int, default=300)
     ap.add_argument("--llm", action="store_true", help="OAuth LLM enrichment (grok/chatgpt via llm_lane)")
-    ap.add_argument("--lane", default="grok", choices=["grok", "chatgpt", "local"], help="preferred OAuth lane")
+    ap.add_argument("--lane", default="deepseek-flash", choices=["deepseek-flash", "grok", "chatgpt", "local"], help="preferred lane")
     ap.add_argument("--force-llm", action="store_true", help="re-run LLM on reviews that already have llm_enhanced")
     args = ap.parse_args()
     if args.once:

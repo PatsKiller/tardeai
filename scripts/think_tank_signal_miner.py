@@ -769,7 +769,7 @@ def llm_themes_from_signals(signals: dict, sector_snap: dict, style: dict) -> li
         "Utilities": "XLU", "Real Estate": "XLRE", "Basic Materials": "XLB",
         "Communication Services": "XLC",
     }
-    for lane in ("grok", "chatgpt", "local"):
+    for lane in ("deepseek-flash", "grok", "chatgpt", "local"):
         try:
             if not llm_lane.available(lane):
                 continue

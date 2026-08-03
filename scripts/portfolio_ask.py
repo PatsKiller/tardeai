@@ -131,8 +131,8 @@ def ask(question: str, lane: str | None = None, manual_trigger: bool = False) ->
     try:
         import llm_lane
         use = (lane or "").strip().lower() or None
-        if use not in ("grok", "chatgpt", "local"):
-            use = "grok" if llm_lane.available("grok") else "local"
+        if use not in ("deepseek-flash", "grok", "chatgpt", "local"):
+            use = "deepseek-flash" if llm_lane.available("deepseek-flash") else ("grok" if llm_lane.available("grok") else "local")
         private_facts = "\n".join(f"- {p['name']}: {p['note']}" for p in ctx["positions"] if p.get("private"))
         prompt = (
             "You are the portfolio CIO/risk advisor. Answer the operator's question about THEIR portfolio "
@@ -151,7 +151,7 @@ def ask(question: str, lane: str | None = None, manual_trigger: bool = False) ->
             + "Be concrete, 5-8 sentences.\n\n"
             f"QUESTION: {question}\n\nPORTFOLIO CONTEXT:\n{json.dumps(ctx, indent=2)}")
         gen_kw = dict(lane=use, timeout=90)
-        if use in ("grok", "chatgpt"):
+        if use in ("deepseek-flash", "grok", "chatgpt"):
             gen_kw.update(process_id="portfolio_ask", task_summary=question[:120],
                           manual_trigger=bool(manual_trigger or lane))
         out = llm_lane.generate(prompt, **gen_kw)

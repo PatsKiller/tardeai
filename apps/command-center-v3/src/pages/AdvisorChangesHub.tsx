@@ -31,11 +31,11 @@ const CHANGES: Change[] = [
     validate: 'Inspect local_answer_validation.ok and the issues list in the JSON output.',
   },
   {
-    title: 'Grok OAuth Second Opinion',
+    title: 'Cloud Second Opinion',
     pill: 'active', pillColor: '#f59e0b',
     source: 'scripts/rotation_dual_llm_advisor.py',
-    improves: 'Builds a copy-paste prompt for a free / OAuth Grok second opinion. No API key is used.',
-    validate: 'Run with --print-grok-prompt and paste the result into Grok via free/OAuth login.',
+    improves: 'Builds a copy-paste prompt for a free cloud second opinion. No API key is used.',
+    validate: 'Run with --print-grok-prompt and paste the result into a cloud LLM via free/OAuth login.',
   },
   {
     title: 'Fidelity Fund Code Mapping',
@@ -109,7 +109,7 @@ python3 scripts/rotation_dual_llm_advisor.py \\
   --cards data/runtime/symbol_cards_latest.json \\
   --print-grok-prompt`}</pre>
         <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 8 }}>
-          Grok is free / OAuth / manual-paste only — no API key is used in any of the above.
+          Cloud LLM is free / OAuth / manual-paste only — no API key is used in any of the above.
         </div>
       </section>
     </div>

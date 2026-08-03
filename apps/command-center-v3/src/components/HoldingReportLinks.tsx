@@ -1,6 +1,7 @@
 /** Inline prospectus report icon-links for portfolio holding + watchlist cards and drawer.
  *  Icon links (PDF / Word / open / regenerate) with a rich hover tooltip showing date created etc. */
 import { useState } from 'react'
+import { laneLabel } from '../lib/laneLabels'
 import { requestAnalystReportMapRefetch, type AnalystReportEntry } from '../hooks/useAnalystReportMap'
 
 type Props = {
@@ -47,7 +48,7 @@ function tooltip(sym: string, e?: AnalystReportEntry): string {
   if (e.generation) lines.push(`Generation: #${e.generation}`)
   if (e.recommendation) lines.push(`Stance: ${e.recommendation}`)
   if (e.oversight_verdict) lines.push(`Cloud oversight: ${e.oversight_verdict}`)
-  lines.push(e.grok_edited ? 'Grok editorial: applied' : 'Grok editorial: none')
+  lines.push(e.grok_edited ? `${laneLabel('grok')} editorial: applied` : `${laneLabel('grok')} editorial: none`)
   lines.push('Click PDF/Word to open · ↻ to regenerate')
   return lines.join('\n')
 }

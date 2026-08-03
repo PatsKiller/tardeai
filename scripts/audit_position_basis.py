@@ -189,13 +189,11 @@ def _alert_unreachable(api_errors):
     if not (tok and chat):
         return
     try:
-        import requests
-        requests.post(f"https://api.telegram.org/bot{tok}/sendMessage",
-                      json={"chat_id": chat, "parse_mode": "Markdown",
-                            "text": "⚠️ *BASIS AUDIT SKIPPED* — Schwab API unreachable from the audit "
-                                    f"environment ({', '.join(f'{k}:{v}' for k, v in list(api_errors.items())[:4])}). "
-                                    "No holdings flags issued (absence of API data proves nothing). "
-                                    "Check creds/.env sourcing or server load."}, timeout=10)
+        from telegram_alert import chokepoint_send
+        chokepoint_send("⚠️ *BASIS AUDIT SKIPPED* — Schwab API unreachable from the audit "
+                        f"environment ({', '.join(f'{k}:{v}' for k, v in list(api_errors.items())[:4])}). "
+                        "No holdings flags issued (absence of API data proves nothing). "
+                        "Check creds/.env sourcing or server load.", token=tok, chat_id=chat)
     except Exception:
         pass
 
@@ -226,9 +224,8 @@ def _send_alert(flagged, api_errors):
     text = ("⛔ *POSITION BASIS AUDIT — discrepancies found*\n" + "\n".join(lines) +
             f"\n\nRun: `python3 scripts/audit_position_basis.py` · fix: `sync_basis_from_broker.py`")
     try:
-        import requests
-        requests.post(f"https://api.telegram.org/bot{tok}/sendMessage",
-                      json={"chat_id": chat, "text": text, "parse_mode": "Markdown"}, timeout=10)
+        from telegram_alert import chokepoint_send
+        chokepoint_send(text, token=tok, chat_id=chat)
         print(f"alert sent ({len(flagged)} flagged)")
     except Exception as e:
         print(f"⚠ alert send failed: {e}")

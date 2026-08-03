@@ -68,12 +68,10 @@ _Diagnostic only — no trade, no order_"""
             dest = telegram_destination_for_alert({"alert_type": "WATCHPOOL_NO_GO_EXPLAINED"})
             token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
             if dest.get("chat_id") and token:
-                payload = {"chat_id": dest["chat_id"], "text": msg, "parse_mode": "Markdown"}
-                r = requests.post(f"https://api.telegram.org/bot{token}/sendMessage", json=payload, timeout=10)
-                if not r.ok:
-                    payload.pop("parse_mode", None)
-                    r = requests.post(f"https://api.telegram.org/bot{token}/sendMessage", json=payload, timeout=10)
-                result["sent"] = r.ok
+                from telegram_alert import chokepoint_send
+                resp = chokepoint_send(msg, token=token, chat_id=dest["chat_id"],
+                                      parse_mode="Markdown")
+                result["sent"] = resp.get("ok", False)
         except Exception as e:
             result["error"] = str(e)[:80]
 

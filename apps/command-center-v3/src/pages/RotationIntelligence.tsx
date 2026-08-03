@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import AdvisorChangesPanel from '../components/AdvisorChangesPanel'
 import { runRotationOversight } from '../lib/cloudLlmRun'
+import { laneLabel } from '../lib/laneLabels'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubTab } from '../lib/terminalHubChrome'
 
@@ -248,9 +249,9 @@ export default function RotationIntelligence() {
       const text = await res.text()
       let json: AskResult
       try {
-        json = text ? JSON.parse(text) : { ok: false, error: 'Empty response — the local model likely timed out under GPU load. Try again, or use Build Grok OAuth Prompt (instant).' }
+        json = text ? JSON.parse(text) : { ok: false, error: 'Empty response — the local model likely timed out under GPU load. Try again, or use Build Cloud Review Prompt (instant).' }
       } catch {
-        json = { ok: false, error: 'Advisor returned a non-JSON / truncated response (local model busy). Use Build Grok OAuth Prompt for an instant result.' }
+        json = { ok: false, error: 'Advisor returned a non-JSON / truncated response (local model busy). Use Build Cloud Review Prompt for an instant result.' }
       }
       if (json && json.ok === false) {
         setAskError(`Advisor error: ${json.error ?? `HTTP ${res.status}`}`)
@@ -266,10 +267,10 @@ export default function RotationIntelligence() {
     }
   }
 
-  // Inline free/OAuth Grok second opinion (runs via the local OAuth proxy — no API key, no paid API).
+  // Inline free/OAuth cloud second opinion (runs via the local OAuth proxy — no API key, no paid API).
   // Falls back to the manual paste prompt if the proxy is not authenticated.
   async function runGrokReview() {
-    setBusy('Run Grok Review')
+    setBusy('Run Cloud Review')
     setAskError('')
     try {
       const res = await fetch('/api/v2/rotation/grok-review', {
@@ -279,27 +280,27 @@ export default function RotationIntelligence() {
       })
       const text = await res.text()   // RAW (not wrapped); parse defensively
       let json: GrokPromptResult
-      try { json = text ? JSON.parse(text) : { ok: false, error: 'Empty response — Grok proxy may be busy. Try again.' } }
+      try { json = text ? JSON.parse(text) : { ok: false, error: 'Empty response — cloud proxy may be busy. Try again.' } }
       catch { json = { ok: false, error: 'Non-JSON response — try again.' } }
-      if (json && json.ok === false) setAskError(`Grok review error: ${json.error ?? `HTTP ${res.status}`}`)
+      if (json && json.ok === false) setAskError(`Cloud review error: ${json.error ?? `HTTP ${res.status}`}`)
       setGrokPrompt(json)
     } catch (err) {
-      setAskError(`Grok review request failed: ${err instanceof Error ? err.message : String(err)}`)
+      setAskError(`Cloud review request failed: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
       setBusy('')
     }
   }
 
-  // Inline free/OAuth Grok review of the rebalance-from-research ideas.
+  // Inline free/OAuth cloud review of the rebalance-from-research ideas.
   async function runGrokRebalanceReview() {
-    setBusy('Grok Review Ideas'); setRebalReview(null)
+    setBusy('Cloud review ideas'); setRebalReview(null)
     try {
       const res = await fetch('/api/v2/rotation/grok-rebalance-review', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}),
       })
       const text = await res.text()
       let json: any
-      try { json = text ? JSON.parse(text) : { error: 'Empty response — Grok proxy may be busy. Try again.' } }
+      try { json = text ? JSON.parse(text) : { error: 'Empty response — cloud proxy may be busy. Try again.' } }
       catch { json = { error: 'Non-JSON response — try again.' } }
       setRebalReview(json)
     } catch (err) {
@@ -362,7 +363,7 @@ export default function RotationIntelligence() {
     }
   }
 
-  // Free OAuth LLM lane health (Grok / ChatGPT / Hermes / local) — command-center monitoring.
+  // Free OAuth LLM lane health — command-center monitoring.
   async function loadLaneHealth() {
     try {
       const res = await fetch('/api/v2/llm/oauth-lanes')
@@ -370,7 +371,7 @@ export default function RotationIntelligence() {
       setLaneHealth(json?.data ?? json ?? null)
     } catch { /* noop */ }
   }
-  // Control: run keepalive now (rolls Grok/ChatGPT OAuth tokens, alerts on stale).
+  // Control: run keepalive now (rolls OAuth tokens, alerts on stale).
   async function runKeepalive() {
     setLaneBusy(true); setLaneMsg('')
     try {
@@ -395,7 +396,7 @@ export default function RotationIntelligence() {
     return `${Math.floor(s / 86400)}d ago`
   }
 
-  // Independent oversight layers — free/OAuth Grok + ChatGPT (codex). Advisory only.
+  // Independent oversight layers — free/OAuth cloud LLMs. Advisory only.
   async function runOversight(lanes: ('grok' | 'chatgpt')[] = ['grok', 'chatgpt']) {
     const label = lanes.length === 1 ? `Run ${lanes[0]}` : 'Run Oversight'
     setBusy(label)
@@ -522,7 +523,7 @@ export default function RotationIntelligence() {
           <div>
             <div style={hubTitle()}>Rotation Intelligence</div>
             <div style={hubSubtitle(terminalUi)}>
-              Grounded local review + free/OAuth Grok second opinion · strategy engine — monitoring
+              Grounded local review + free/OAuth cloud second opinion · strategy engine — monitoring
               lens lives at <a href="/v3/watch?tab=sectors" style={{ color: 'inherit', textDecoration: 'underline dotted' }}>Watch → Sectors</a>
             </div>
           </div>
@@ -787,15 +788,15 @@ export default function RotationIntelligence() {
         />
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
           <button disabled={!!busy} onClick={() => ask('grounded')} style={btn(!!busy)}>Ask Local</button>
-          <button disabled={!!busy} onClick={runGrokReview} style={btn(!!busy)}>Run Grok Review</button>
+          <button disabled={!!busy} onClick={runGrokReview} style={btn(!!busy)}>Run Cloud Review</button>
           <button disabled={!!busy || !result} onClick={() => ask('local')} style={btn(!!busy || !result)} title={!result ? 'Ask Local first, then optionally validate with the local model' : ''}>Validate with local model</button>
           <button disabled={!!busy} onClick={() => ask('dual_oauth')} style={btn(!!busy)}>Run Dual Review</button>
           <button disabled={!!busy} onClick={loadSummary} style={btn(!!busy)}>Refresh Summary</button>
           {busy && <span style={{ fontSize: 11, color: ACCENT }}>Running {busy}…{(busy.includes('local model') || busy === 'Run Dual Review') ? ' (local model — can take 1–3 min under GPU load)' : ''}</span>}
         </div>
         <div style={{ fontSize: 9.5, color: 'var(--text3)', marginTop: 8 }}>
-          <b>Ask Local</b> returns the grounded review instantly. <b>Run Grok Review</b> gets a second opinion inline via the free Grok OAuth proxy. <b>Validate with local model</b> / <b>Run Dual Review</b> run the local model (1–3 min under GPU load).
-          Grok runs on a free / OAuth session — <b>no API key, no paid API</b> (manual-paste fallback if the proxy is offline). The advisor reviews holdings and offers a second opinion; it never places, buys, or sells anything.
+          <b>Ask Local</b> returns the grounded review instantly. <b>Run Cloud Review</b> gets a second opinion inline via the free cloud OAuth proxy. <b>Validate with local model</b> / <b>Run Dual Review</b> run the local model (1–3 min under GPU load).
+          Cloud review runs on a free / OAuth session — <b>no API key, no paid API</b> (manual-paste fallback if the proxy is offline). The advisor reviews holdings and offers a second opinion; it never places, buys, or sells anything.
         </div>
         {askError && (
           <div style={{ marginTop: 10, fontSize: 11, color: '#ef4444' }}>
@@ -807,18 +808,18 @@ export default function RotationIntelligence() {
         )}
       </section>
 
-      {/* C2. Independent Oversight — free/OAuth Grok + ChatGPT review the rotate-out reasoning */}
+      {/* C2. Independent Oversight — free/OAuth cloud LLM review of the rotate-out reasoning */}
       <section style={{ ...card, marginBottom: 20, borderColor: 'rgba(168,85,247,.3)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 6 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: '#a855f7' }}>Independent Oversight <span style={{ fontSize: 10, fontWeight: 400, color: 'var(--text3)' }}>· Grok + ChatGPT · free / OAuth · no API key</span></div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#a855f7' }}>Independent Oversight <span style={{ fontSize: 10, fontWeight: 400, color: 'var(--text3)' }}>· Cloud review · no API key</span></div>
           <span style={{ flex: 1 }} />
           <button type="button" disabled={!!busy} onClick={() => void runOversight(['grok'])}
             style={{ ...btn(!!busy), borderColor: '#1d9bf066', background: 'rgba(29,155,240,.12)', color: '#1d9bf0' }}>
-            {busy === 'Run grok' ? '…' : '▶ Grok'}
+            {busy === 'Run grok' ? '…' : `▶ ${laneLabel('grok')}`}
           </button>
           <button type="button" disabled={!!busy} onClick={() => void runOversight(['chatgpt'])}
             style={{ ...btn(!!busy), borderColor: '#10a37f66', background: 'rgba(16,163,127,.12)', color: '#10a37f' }}>
-            {busy === 'Run chatgpt' ? '… (~1–4 min)' : '▶ ChatGPT'}
+            {busy === 'Run chatgpt' ? '… (~1–4 min)' : `▶ ${laneLabel('chatgpt')}`}
           </button>
           <button type="button" disabled={!!busy} onClick={() => void runOversight(['grok', 'chatgpt'])}
             style={btn(!!busy)}>
@@ -826,16 +827,16 @@ export default function RotationIntelligence() {
           </button>
         </div>
         <div style={{ fontSize: 9.5, color: 'var(--text3)', marginBottom: 10 }}>
-          Two independent models review the system's rotate-OUT flags, rebalance ideas, and sector overweights — a second + third opinion on the engine. Both run on free OAuth sessions (Grok via the local xAI-OAuth proxy, ChatGPT via the openai-codex OAuth proxy — <b>not the paid API</b>). Advisory only; oversight never places, buys, or sells.
+          Two independent models review the system's rotate-OUT flags, rebalance ideas, and sector overweights — a second + third opinion on the engine. Both run on free OAuth sessions via the local proxy — <b>not the paid API</b>. Advisory only; oversight never places, buys, or sells.
         </div>
-        {/* OAuth-lane monitor + control (Grok / ChatGPT / Hermes / local) — command-center commander */}
+        {/* OAuth-lane monitor + control — command-center commander */}
         {laneHealth?.lanes && (
           <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8, padding: 10, marginBottom: oversight ? 12 : 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
               <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text1)' }}>Free OAuth LLM Lanes</span>
               <span style={{ fontSize: 9, color: 'var(--text3)' }}>{laneHealth.ready_count}/{laneHealth.total} ready</span>
               <span style={{ flex: 1 }} />
-              <button disabled={laneBusy} onClick={runKeepalive} style={{ ...btn(laneBusy), padding: '3px 10px', fontSize: 9.5 }} title="Run keepalive now — rolls the Grok/ChatGPT OAuth tokens forward and alerts on stale">{laneBusy ? 'Running…' : 'Run keepalive'}</button>
+              <button disabled={laneBusy} onClick={runKeepalive} style={{ ...btn(laneBusy), padding: '3px 10px', fontSize: 9.5 }} title="Run keepalive now — rolls the OAuth tokens forward and alerts on stale">{laneBusy ? 'Running…' : 'Run keepalive'}</button>
               <button disabled={laneBusy} onClick={loadLaneHealth} style={{ ...btn(laneBusy), padding: '3px 8px', fontSize: 9.5 }}>Re-check ↻</button>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 6 }}>
@@ -862,7 +863,7 @@ export default function RotationIntelligence() {
             {(['grok', 'chatgpt'] as const).map((lane) => {
               const r = oversight.lanes?.[lane]
               if (!r) return null
-              const label = lane === 'grok' ? 'Grok (xAI OAuth)' : 'ChatGPT (openai-codex OAuth)'
+              const label = laneLabel(lane)
               return (
                 <div key={lane} style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8, padding: 12 }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: r.ok ? '#a855f7' : '#f59e0b', marginBottom: 6 }}>
@@ -872,7 +873,7 @@ export default function RotationIntelligence() {
                     <div style={{ fontSize: 12, color: 'var(--text0)', whiteSpace: 'pre-wrap', lineHeight: 1.55 }}>{r.answer}</div>
                   ) : (
                     <div style={{ fontSize: 10.5, color: 'var(--text2)' }}>
-                      {r.error || 'Lane unavailable.'} {lane === 'chatgpt' ? 'Re-login to activate the ChatGPT OAuth proxy, or paste the prompt below into chatgpt.com (free).' : 'Or paste the prompt below into the model’s free web session.'}
+                      {r.error || 'Lane unavailable.'} {lane === 'chatgpt' ? 'Re-login to activate the cloud OAuth proxy, or paste the prompt below into the model’s free web session.' : 'Or paste the prompt below into the model’s free web session.'}
                       {r.auth_hint && <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 4, fontFamily: 'monospace' }}>{r.auth_hint}</div>}
                     </div>
                   )}
@@ -929,7 +930,7 @@ export default function RotationIntelligence() {
 
           {result.grok_second_opinion?.mode && (
             <div style={{ marginBottom: 12, fontSize: 11, color: 'var(--text2)' }}>
-              Grok second opinion mode: <b style={{ color: '#f59e0b' }}>{result.grok_second_opinion.mode}</b> (free / OAuth / manual-paste)
+              Cloud second opinion mode: <b style={{ color: '#f59e0b' }}>{result.grok_second_opinion.mode}</b> (via local proxy)
             </div>
           )}
 
@@ -964,30 +965,30 @@ export default function RotationIntelligence() {
         </section>
       )}
 
-      {/* E. Grok second opinion (inline free/OAuth) — manual paste is the fallback */}
+      {/* E. Cloud second opinion (inline free/OAuth) — manual paste is the fallback */}
       {hasGrok && (
         <section style={{ ...card, marginBottom: 20, borderColor: 'rgba(245,158,11,.3)' }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: '#f59e0b', marginBottom: 6 }}>Grok Second Opinion <span style={{ fontSize: 10, fontWeight: 400, color: 'var(--text3)' }}>· free / OAuth · no API key</span></div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#f59e0b', marginBottom: 6 }}>Cloud Second Opinion <span style={{ fontSize: 10, fontWeight: 400, color: 'var(--text3)' }}>· no API key</span></div>
           {grokAnswer ? (
             <>
               <div style={{ fontSize: 12.5, color: 'var(--text0)', whiteSpace: 'pre-wrap', lineHeight: 1.55, background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8, padding: 12 }}>{grokAnswer}</div>
-              <div style={{ fontSize: 9.5, color: 'var(--text3)', marginTop: 6 }}>{grokNote ?? 'Free/OAuth Grok via the local proxy. Grounding remains authoritative — this is advisory only.'}</div>
+              <div style={{ fontSize: 9.5, color: 'var(--text3)', marginTop: 6 }}>{grokNote ?? 'Cloud review via the local proxy. Grounding remains authoritative — this is advisory only.'}</div>
               <details style={{ marginTop: 8 }}>
                 <summary style={{ fontSize: 10, color: 'var(--text3)', cursor: 'pointer' }}>view / copy the prompt that was sent</summary>
                 {promptPath && <div style={{ fontSize: 9.5, color: 'var(--text3)', margin: '6px 0' }}>Prompt file: <span style={{ fontFamily: 'monospace', color: 'var(--text2)' }}>{promptPath}</span></div>}
                 {promptText && <>
-                  <button onClick={copyPrompt} style={{ ...btn(false), marginBottom: 8, borderColor: '#f59e0b55', background: 'rgba(245,158,11,.15)', color: '#f59e0b' }}>{copied ? 'Copied ✓' : 'Copy Grok Prompt'}</button>
+                  <button onClick={copyPrompt} style={{ ...btn(false), marginBottom: 8, borderColor: '#f59e0b55', background: 'rgba(245,158,11,.15)', color: '#f59e0b' }}>{copied ? 'Copied ✓' : 'Copy Cloud Prompt'}</button>
                   <textarea readOnly value={promptText} rows={8} style={{ width: '100%', boxSizing: 'border-box', padding: 10, fontSize: 10, fontFamily: 'monospace', background: 'var(--bg2)', color: 'var(--text1)', border: '1px solid var(--border)', borderRadius: 8, resize: 'vertical' }} />
                 </>}
               </details>
             </>
           ) : (
             <>
-              <div style={{ fontSize: 10.5, color: 'var(--text2)', marginBottom: 10 }}>{grokNote ?? 'Grok proxy offline — paste this into Grok using free/OAuth login. No API key is used.'}</div>
+              <div style={{ fontSize: 10.5, color: 'var(--text2)', marginBottom: 10 }}>{grokNote ?? 'Cloud proxy offline — paste this into a cloud LLM using free/OAuth login. No API key is used.'}</div>
               {promptPath && <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 10 }}>Prompt file: <span style={{ fontFamily: 'monospace', color: 'var(--text2)' }}>{promptPath}</span></div>}
               {promptText ? (
                 <>
-                  <button onClick={copyPrompt} style={{ ...btn(false), marginBottom: 10, borderColor: '#f59e0b55', background: 'rgba(245,158,11,.15)', color: '#f59e0b' }}>{copied ? 'Copied ✓' : 'Copy Grok Prompt'}</button>
+                  <button onClick={copyPrompt} style={{ ...btn(false), marginBottom: 10, borderColor: '#f59e0b55', background: 'rgba(245,158,11,.15)', color: '#f59e0b' }}>{copied ? 'Copied ✓' : 'Copy Cloud Prompt'}</button>
                   <textarea readOnly value={promptText} rows={10} style={{ width: '100%', boxSizing: 'border-box', padding: 10, fontSize: 10.5, fontFamily: 'monospace', background: 'var(--bg2)', color: 'var(--text1)', border: '1px solid var(--border)', borderRadius: 8, resize: 'vertical' }} />
                 </>
               ) : (
@@ -1100,7 +1101,7 @@ export default function RotationIntelligence() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4, flexWrap: 'wrap' }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)' }}>Rebalance from Research <span style={{ fontSize: 10, fontWeight: 400, color: '#f59e0b' }}>· advisory · not a model-supported signal</span></div>
             <span style={{ flex: 1 }} />
-            {researchIdeas.length > 0 && <button disabled={!!busy} onClick={runGrokRebalanceReview} style={btn(!!busy)}>{busy === 'Grok Review Ideas' ? 'Reviewing…' : 'Grok Review These Ideas'}</button>}
+            {researchIdeas.length > 0 && <button disabled={!!busy} onClick={runGrokRebalanceReview} style={btn(!!busy)}>{busy === 'Cloud review ideas' ? 'Reviewing…' : 'Cloud Review These Ideas'}</button>}
           </div>
           <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 10 }}>Ideas to rotate from a trim-worthy holding into a high-conviction <b>research name you don't hold</b>. Review only — confirm sizing, tax, and account fit yourself; nothing is placed.
             <div style={{ marginTop: 4, color: '#f59e0b' }}><b>"stop-driven"</b> = the rotate-out reason is the Aegis stop/thesis signal, not the valuation trim score. These names have <b>trim score 0</b> on purpose — they're small positions with positive analyst upside, so the valuation engine wouldn't trim them; the broken stop is what flags them. (The engine doesn't see stop state, so the two signals can disagree — that's the point of showing both.)</div>
@@ -1108,7 +1109,7 @@ export default function RotationIntelligence() {
 
           {rebalReview && (
             <div style={{ ...card, marginBottom: 12, borderColor: 'rgba(245,158,11,.3)' }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: '#f59e0b', marginBottom: 6 }}>Grok review of these ideas <span style={{ fontSize: 9.5, fontWeight: 400, color: 'var(--text3)' }}>· free / OAuth · no API key</span></div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#f59e0b', marginBottom: 6 }}>Cloud review of these ideas <span style={{ fontSize: 9.5, fontWeight: 400, color: 'var(--text3)' }}>· no API key</span></div>
               {rebalReview.grok_answer ? (
                 <div style={{ fontSize: 12, color: 'var(--text0)', whiteSpace: 'pre-wrap', lineHeight: 1.55 }}>{rebalReview.grok_answer}</div>
               ) : (

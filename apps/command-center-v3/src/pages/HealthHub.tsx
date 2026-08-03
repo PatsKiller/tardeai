@@ -55,6 +55,26 @@ function deltaStr(d: number | null | undefined) {
   return `${sign}${d}`
 }
 
+const COVERAGE_AGENTS = ['health_agent', 'watchlist_health', 'pipeline_health', 'freshness_monitor', 'escalation_handler']
+
+function parseCadenceMs(c: string): number {
+  const num = parseFloat(c)
+  if (isNaN(num)) return 3600_000
+  if (c.endsWith('s')) return num * 1000
+  if (c.endsWith('m')) return num * 60_000
+  if (c.endsWith('h')) return num * 3_600_000
+  return num * 60_000
+}
+
+function freshnessColor(lastRun: string | null | undefined, cadence: string): string {
+  if (!lastRun || lastRun === 'unavailable') return 'var(--red)'
+  try {
+    const age = Date.now() - new Date(lastRun).getTime()
+    const threshold = parseCadenceMs(cadence) * 2
+    return age < threshold ? 'var(--green)' : 'var(--amber)'
+  } catch { return 'var(--red)' }
+}
+
 export default function HealthHub({ onDrill }: Props) {
   const [terminalUi] = useTerminalUi()
   const [searchParams] = useSearchParams()
@@ -72,7 +92,11 @@ export default function HealthHub({ onDrill }: Props) {
   const { data: propHealth } = useApi<any>('/api/v2/health/proposals', 120_000)
   const execReady = propHealth?.execution_readiness
   const { data: riskData } = useApi<any>('/api/v2/risk', 120_000)
+  const { data: coverage } = useApi<any>('/api/v2/health/coverage', 120_000)
+  const { data: autofixLedger } = useApi<any>('/api/v2/health/autofix-ledger', 120_000)
+  const { data: escalations } = useApi<any>('/api/v2/health/escalations', 60_000)
   const [acting, setActing] = useState<Record<string, string>>({})
+  const [autoFixing, setAutoFixing] = useState<Record<string, string>>({})
   const [histExpanded, setHistExpanded] = useState<number | null>(null)
 
   async function remediate(f: any, e: any) {
@@ -96,6 +120,27 @@ export default function HealthHub({ onDrill }: Props) {
     }
   }
 
+  async function queueAutoFix(f: any, e: any) {
+    e.stopPropagation()
+    const key = `${f.category}:${f.type}`
+    setAutoFixing(s => ({ ...s, [key]: 'queuing' }))
+    try {
+      const r = await fetch('/api/v2/health/remediate', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: f.type, category: f.category, action_type: 'auto_fix_queue',
+          kind: 'queue', message: f.message,
+          operator: localStorage.getItem('admin_operator') || 'operator',
+        }),
+      })
+      const j = await r.json()
+      setAutoFixing(s => ({ ...s, [key]: j.ok ? 'queued' : `failed: ${j.error || ''}` }))
+      setTimeout(refetchActivity, 2500)
+    } catch (err: any) {
+      setAutoFixing(s => ({ ...s, [key]: `failed: ${err?.message || 'error'}` }))
+    }
+  }
+
   const histSummary = hist?.summary || {}
   const histRows: any[] = hist?.history || []
   const catSeries: Record<string, { at?: string; score?: number }[]> = hist?.category_series || {}
@@ -110,6 +155,13 @@ export default function HealthHub({ onDrill }: Props) {
   const cats = health?.category_scores || {}
   const findings: any[] = health?.findings || []
   const trends: any[] = health?.trends || []
+  const decomposition = health?.decomposition
+  const coverageAgents: any[] = coverage?.agents || []
+  const coverageMap = useMemo(() => {
+    const m: Record<string, any> = {}
+    for (const a of coverageAgents) m[a.name] = a
+    return m
+  }, [coverageAgents])
 
   return (
     <div>
@@ -140,6 +192,53 @@ export default function HealthHub({ onDrill }: Props) {
             brokerStale={propHealth?.broker?.stale_count ?? 0}
             optionsAlerts={propHealth?.options?.needs_action ?? 0}
           />
+
+          {/* ── Coverage ── */}
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text2)', marginBottom: 8,
+              textTransform: 'uppercase', letterSpacing: '.4px' }}>
+              Agent Coverage
+            </div>
+            {coverageAgents.length === 0 ? (
+              <div style={{ fontSize: 10, color: 'var(--text3)', padding: '10px 14px',
+                background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
+                No coverage data yet — health agents need cron runs
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 8 }}>
+                {COVERAGE_AGENTS.map(name => {
+                  const a = coverageMap[name]
+                  const borderColor = a ? freshnessColor(a.last_run, a.cadence) : 'var(--red)'
+                  return (
+                    <div key={name} style={{
+                      padding: '8px 10px', background: 'var(--bg1)',
+                      border: `1px solid var(--border)`, borderLeft: `3px solid ${borderColor}`,
+                      borderRadius: 'var(--radius)', fontSize: 9,
+                    }}>
+                      <div style={{ fontWeight: 700, color: 'var(--text0)', fontSize: 10, marginBottom: 2 }}>
+                        {name.replace(/_/g, ' ')}
+                      </div>
+                      <div style={{ color: 'var(--text3)' }}>
+                        cadence: <span style={{ color: 'var(--text2)', fontWeight: 600 }}>{a?.cadence || '—'}</span>
+                      </div>
+                      <div style={{ color: 'var(--text3)' }}>
+                        last run: <span style={{ color: borderColor, fontWeight: 600 }}>
+                          {a?.last_run ? fmtWhen(a.last_run) : 'unavailable'}
+                        </span>
+                      </div>
+                      <div style={{ color: 'var(--text3)' }}>
+                        domains: <span style={{ color: 'var(--text2)', fontWeight: 600 }}>{a?.domain_count ?? '—'}</span>
+                        {a?.fixes_7d != null && (
+                          <span style={{ marginLeft: 6 }}>fixes 7d: <span style={{ color: 'var(--green)', fontWeight: 600 }}>{a.fixes_7d}</span></span>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
           {/* Score hero */}
           <div className={terminalUi ? 'cc-panel' : undefined} style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 16,
             ...(terminalUi ? hubPanel(terminalUi) : { padding: '16px 20px', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }),
@@ -158,6 +257,48 @@ export default function HealthHub({ onDrill }: Props) {
               {health?.note && <div style={{ fontSize: 10, color: 'var(--amber)', marginTop: 4 }}>{health.note}</div>}
             </div>
           </div>
+
+          {/* ── Score Decomposition ── */}
+          {decomposition?.categories && (decomposition.categories as any[]).length > 0 && (
+            <div style={{ marginBottom: 16, padding: '10px 14px', background: 'var(--bg1)',
+              border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text2)', marginBottom: 8,
+                textTransform: 'uppercase', letterSpacing: '.4px' }}>
+                Score Breakdown
+              </div>
+              <div style={{ display: 'flex', height: 22, borderRadius: 4, overflow: 'hidden', marginBottom: 6 }}>
+                {(decomposition.categories as any[]).map((c: any, i: number) => {
+                  const pct = Math.max(0.5, (c.contribution ?? c.weighted_score ?? 0) * 100 / (overall || 100))
+                  const colors = ['#22c55e', '#60a5fa', '#f59e0b', '#a78bfa', '#94a3b8']
+                  return (
+                    <div key={i} title={`${CAT_LABEL[c.category] || c.category}: score ${c.score ?? '—'}, weight ${c.weight != null ? (c.weight * 100).toFixed(0) + '%' : '—'}, contribution ${c.contribution != null ? c.contribution.toFixed(1) : '—'}`}
+                      style={{
+                        flex: `${pct} 0 0`, minWidth: 0,
+                        background: colors[i % colors.length],
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 8, fontWeight: 800, color: '#0f172a',
+                        overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
+                        padding: '0 4px',
+                      }}>
+                      {pct > 3 ? `${CAT_LABEL[c.category] || c.category} ${c.score ?? ''}` : ''}
+                    </div>
+                  )
+                })}
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, fontSize: 9, color: 'var(--text3)' }}>
+                {(decomposition.categories as any[]).map((c: any, i: number) => {
+                  const colors = ['#22c55e', '#60a5fa', '#f59e0b', '#a78bfa', '#94a3b8']
+                  return (
+                    <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <span style={{ width: 8, height: 8, borderRadius: 2, background: colors[i % colors.length], display: 'inline-block' }} />
+                      {CAT_LABEL[c.category] || c.category}: {c.score ?? '—'}
+                      {c.weight != null && <> ({(c.weight * 100).toFixed(0)}%)</>}
+                    </span>
+                  )
+                })}
+              </div>
+            </div>
+          )}
 
           {propHealth && (
             <div style={{ marginBottom: 16, padding: '12px 16px', background: 'var(--bg1)',
@@ -299,6 +440,94 @@ export default function HealthHub({ onDrill }: Props) {
             </div>
           )}
 
+          {/* ── Auto-Fix Ledger ── */}
+          <div style={{ marginBottom: 16, padding: '10px 14px', background: 'var(--bg1)',
+            border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text2)', marginBottom: 8,
+              textTransform: 'uppercase', letterSpacing: '.4px' }}>
+              Auto-Fix Statistics
+            </div>
+            {!autofixLedger || (autofixLedger.total_fixes_7d == null && (autofixLedger.top_fixed_issue_types || []).length === 0) ? (
+              <div style={{ fontSize: 10, color: 'var(--text3)' }}>
+                No auto-fix data yet — health agents need cron runs
+              </div>
+            ) : (
+              <>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 8, marginBottom: 10 }}>
+                  {[
+                    { label: 'Total fixes 7d', value: autofixLedger.total_fixes_7d ?? '—', color: 'var(--text0)' },
+                    { label: 'Success rate', value: autofixLedger.success_rate_pct != null ? `${autofixLedger.success_rate_pct}%` : '—',
+                      color: (autofixLedger.success_rate_pct ?? 0) >= 80 ? 'var(--green)' : (autofixLedger.success_rate_pct ?? 0) >= 50 ? 'var(--amber)' : 'var(--red)' },
+                    { label: 'Coder PRs opened', value: autofixLedger.coder_prs_opened ?? '—', color: 'var(--text0)' },
+                    { label: 'Intervention fixes', value: autofixLedger.intervention_fixes ?? '—', color: 'var(--text0)' },
+                  ].map(k => (
+                    <div key={k.label} style={{ textAlign: 'center', padding: '6px 8px', background: 'var(--bg2)', borderRadius: 6 }}>
+                      <div style={{ fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase' }}>{k.label}</div>
+                      <div style={{ fontSize: 16, fontWeight: 800, color: k.color }}>{k.value}</div>
+                    </div>
+                  ))}
+                </div>
+                {(autofixLedger.top_fixed_issue_types || []).length > 0 && (
+                  <div>
+                    <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 4, textTransform: 'uppercase' }}>Top fixed issue types</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                      {(autofixLedger.top_fixed_issue_types as string[]).map((t: string, i: number) => (
+                        <span key={i} style={{
+                          fontSize: 9, fontWeight: 600, color: 'var(--text0)',
+                          background: 'var(--bg2)', padding: '2px 8px', borderRadius: 9,
+                        }}>{t}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* ── Escalation Queue ── */}
+          <div style={{ marginBottom: 16, padding: '10px 14px', background: 'var(--bg1)',
+            border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text2)',
+                textTransform: 'uppercase', letterSpacing: '.4px' }}>
+                Pending Escalations
+              </span>
+              {(escalations?.pending ?? 0) > 0 && (
+                <span style={{
+                  fontSize: 10, fontWeight: 800, color: '#f8fafc',
+                  background: (escalations?.pending ?? 0) > 3 ? 'var(--red)' : 'var(--amber)',
+                  padding: '1px 8px', borderRadius: 9,
+                }}>
+                  {escalations.pending}
+                </span>
+              )}
+            </div>
+            {!escalations || !(escalations.items || []).length ? (
+              <div style={{ fontSize: 10, color: 'var(--green)' }}>✓ No pending escalations</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 180, overflowY: 'auto' }}>
+                {(escalations.items as any[]).map((item: any, i: number) => (
+                  <div key={i} style={{
+                    padding: '6px 10px', background: 'var(--bg2)', borderRadius: 4,
+                    display: 'flex', gap: 8, alignItems: 'center', fontSize: 9,
+                  }}>
+                    <span style={{ color: 'var(--text3)', width: 80, flexShrink: 0 }}>{fmtWhen(item.created_at)}</span>
+                    <span style={{ color: 'var(--text2)', fontWeight: 600, width: 100, flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {item.source || '—'}
+                    </span>
+                    <span style={{ color: 'var(--text3)' }}>→</span>
+                    <span style={{ color: 'var(--accent)', fontWeight: 600, width: 100, flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {item.target || '—'}
+                    </span>
+                    <span style={{ color: 'var(--text3)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: 'italic' }}>
+                      {item.actions_preview || ''}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* Category scores */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: 10, marginBottom: 18 }}>
             {Object.entries(cats).map(([k, v]: any) => (
@@ -381,6 +610,19 @@ export default function HealthHub({ onDrill }: Props) {
                           background: st && st !== 'working' && !st.startsWith('failed') ? 'var(--green-dim)' : 'var(--accent-dim)',
                           color: st && st.startsWith('failed') ? 'var(--red)' : 'var(--accent)' }}>
                         {st === 'working' ? '…' : st ? st.replace('_', ' ') : label}
+                      </button>
+                    )
+                  })()}
+                  {f.actionable && (() => {
+                    const k = `${f.category}:${f.type}`; const st = autoFixing[k]
+                    return (
+                      <button onClick={e => queueAutoFix(f, e)} disabled={st === 'queuing'}
+                        title="Queue for auto-fix pipeline"
+                        style={{ marginLeft: 4, padding: '2px 10px', fontSize: 10, fontWeight: 700,
+                          borderRadius: 5, border: '1px solid var(--green)', cursor: st === 'queuing' ? 'default' : 'pointer',
+                          background: st === 'queued' ? 'var(--green-dim)' : 'transparent',
+                          color: st && st.startsWith('failed') ? 'var(--red)' : 'var(--green)' }}>
+                        {st === 'queuing' ? '…' : st === 'queued' ? 'queued' : 'Auto-fix'}
                       </button>
                     )
                   })()}
@@ -478,18 +720,46 @@ export default function HealthHub({ onDrill }: Props) {
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 100, padding: '8px 10px 4px',
               background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
               {histRows.length === 0 && <div style={{ fontSize: 11, color: 'var(--text3)', padding: 12 }}>No history yet — wait for cron runs.</div>}
-              {histRows.map((h: any, i: number) => (
-                <div key={i} title={`${h.overall_score}/100 ${h.status}${h.delta != null ? ` (${deltaStr(h.delta)})` : ''}\n${fmtWhen(h.captured_at)}`}
+              {histRows.map((h: any, i: number) => {
+                const anomaly = h.delta != null && (h.delta <= -10 || h.delta >= 15)
+                return (
+                <div key={i} title={`${h.overall_score}/100 ${h.status}${h.delta != null ? ` (${deltaStr(h.delta)})` : ''}${anomaly ? ' ⚡ ANOMALY' : ''}\n${fmtWhen(h.captured_at)}`}
                   onClick={() => setHistExpanded(histExpanded === i ? null : i)}
                   style={{
                     flex: 1, minWidth: 4, height: `${Math.round(((h.overall_score || 0) / chartMax) * 100)}%`,
                     background: scoreColor(h.overall_score), borderRadius: '2px 2px 0 0', alignSelf: 'flex-end',
                     cursor: 'pointer', outline: histExpanded === i ? '2px solid #60a5fa' : 'none',
+                    boxShadow: anomaly ? '0 0 6px rgba(239,68,68,0.5)' : undefined,
+                    borderTop: anomaly ? '2px solid #ef4444' : undefined,
                   }} />
-              ))}
+              )})}
             </div>
-            <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 4 }}>Click a bar for run context · green ≥85 · amber ≥65 · red &lt;65</div>
+            <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 4 }}>Click a bar for run context · green ≥85 · amber ≥65 · red &lt;65 · <span style={{ color: '#ef4444', fontWeight: 700 }}>red glow = anomaly (&gt;10pt swing)</span></div>
           </div>
+
+          {/* Remediation impact summary */}
+          {(() => {
+            const remediatedRuns = histRows.filter((h: any) => h.rescored_after_remediation)
+            const remediatedCount = remediatedRuns.length
+            if (remediatedCount === 0) return null
+            // Find score improvements from remediation runs
+            const improvements = remediatedRuns.filter((h: any, i: number) => {
+              const nextIdx = histRows.indexOf(h) + 1
+              return nextIdx < histRows.length && (histRows[nextIdx]?.overall_score || 0) > (h.overall_score || 0)
+            })
+            return (
+              <div style={{ marginBottom: 12, padding: '8px 12px', background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.2)', borderRadius: 8 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--green)', marginBottom: 4, textTransform: 'uppercase' }}>
+                  Remediation Impact
+                </div>
+                <div style={{ fontSize: 10, color: 'var(--text2)', display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                  <span><b style={{ color: 'var(--text0)' }}>{remediatedCount}</b> auto-fix rescore events</span>
+                  <span><b style={{ color: 'var(--green)' }}>{improvements.length}</b> resulted in score improvement</span>
+                  <span>Latest: {fmtWhen(remediatedRuns[0]?.captured_at)}</span>
+                </div>
+              </div>
+            )
+          })()}
 
           {/* Category mini-trends */}
           {Object.keys(catSeries).length > 0 && (
@@ -533,6 +803,9 @@ export default function HealthHub({ onDrill }: Props) {
                     <span style={{ fontSize: 10, color: 'var(--text3)', width: 130, flexShrink: 0 }}>{fmtWhen(h.captured_at)}</span>
                     <span style={{ fontSize: 14, fontWeight: 800, color: scoreColor(h.overall_score), width: 36 }}>{h.overall_score}</span>
                     <StatusBadge status={STATUS_TO_BADGE[h.status] || 'unknown'} label={h.status} size="sm" />
+                    {h.rescored_after_remediation && (
+                      <span title="Rescored after auto-remediation" style={{ fontSize: 8, fontWeight: 700, padding: '1px 5px', borderRadius: 4, background: 'rgba(96,165,250,0.15)', color: '#60a5fa' }}>AUTO-FIXED</span>
+                    )}
                     {h.delta != null && h.delta !== 0 && (
                       <span style={{ fontSize: 10, fontWeight: 700, color: h.delta > 0 ? 'var(--green)' : 'var(--red)' }}>{deltaStr(h.delta)}</span>
                     )}

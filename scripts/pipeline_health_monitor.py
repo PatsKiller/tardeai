@@ -110,16 +110,12 @@ def check_go_ticker_intelligence(conn, no_heal=False):
 
 
 def send_telegram(message):
-    bot_token = os.getenv('TELEGRAM_BOT_TOKEN', '')
-    chat_ids = [c.strip() for c in os.getenv('TELEGRAM_CHAT_ID', '').split(',') if c.strip()]
-    if not bot_token or not chat_ids:
-        return
-    for cid in chat_ids:
-        try:
-            requests.post(f"https://api.telegram.org/bot{bot_token}/sendMessage",
-                         json={'chat_id': cid, 'text': message}, timeout=10)
-        except Exception:
-            pass
+    """Route through the central chokepoint (2026-08-01: Phase 5 broker consolidation)."""
+    try:
+        from telegram_alert import chokepoint_send
+        chokepoint_send(message)
+    except Exception:
+        pass
 
 
 def main():

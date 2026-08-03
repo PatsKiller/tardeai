@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import CloudLlmRunButtons from '../components/CloudLlmRunButtons'
-import { lanePolicyColor, lanePolicyHint, PROCESS_LANE_POLICIES, runManualCloud } from '../lib/cloudLlmRun'
+import { lanePolicyColor, lanePolicyHint, PROCESS_LANE_POLICIES, runManualCloud, type CloudLane } from '../lib/cloudLlmRun'
 import { useOAuthLanes, laneReady } from '../hooks/useOAuthLanes'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubPanel } from '../lib/terminalHubChrome'
+import { laneLabel, LANE_COLORS } from '../lib/laneLabels'
 
 const GREEN = '#22c55e', RED = '#ef4444', AMBER = '#f59e0b', BLUE = '#60a5fa', MUTED = '#94a3b8', TEXT = '#f8fafc'
+const DS_FLASH = LANE_COLORS['deepseek-flash'], DS_V4 = LANE_COLORS['deepseek-v4']
 
 type ProcessRow = {
   process_id: string
@@ -86,22 +88,24 @@ export default function ConsumptionHub() {
     }
   }
 
-  const testLane = async (lane: 'grok' | 'chatgpt') => {
+  const testLane = async (lane: CloudLane) => {
     setBusy(`test-${lane}`)
     setMsg('')
     try {
+      const isDs = lane === 'deepseek-flash' || lane === 'deepseek-v4'
+      const tag = isDs ? `${laneLabel(lane)} API test` : `${lane} OAuth test from Consumption`
       const res = await runManualCloud({
         process_id: 'oauth_lane_keepalive',
         lane,
         prompt: 'Reply with exactly: OK',
-        task_summary: `${lane} OAuth test from Consumption`,
+        task_summary: tag,
       })
-      if (res?.ok) setMsg(`✓ ${lane} OAuth test OK — "${(res.text || '').trim().slice(0, 40)}"`)
-      else setMsg(`⛔ ${lane} test failed: ${res?.error || 'unknown'}`)
+      if (res?.ok) setMsg(`✓ ${laneLabel(lane)} test OK — "${(res.text || '').trim().slice(0, 40)}"`)
+      else setMsg(`⛔ ${laneLabel(lane)} test failed: ${res?.error || 'unknown'}`)
       await oauth.refresh()
       await load()
     } catch (e: any) {
-      setMsg(`⛔ ${lane} test error: ${String(e?.message || e).slice(0, 80)}`)
+      setMsg(`⛔ ${laneLabel(lane)} test error: ${String(e?.message || e).slice(0, 80)}`)
     } finally {
       setBusy('')
     }
@@ -118,34 +122,49 @@ export default function ConsumptionHub() {
 
   const grokLane = oauth.grok
   const chatLane = oauth.chatgpt
+  const dsFlashLane = oauth.deepseekFlash
+  const dsV4Lane = oauth.deepseekV4
+
+  const DEEPSEEK_LANES = [
+    { id: 'deepseek-flash', laneObj: dsFlashLane, color: DS_FLASH, label: laneLabel('deepseek-flash'), kind: 'API key' },
+    { id: 'deepseek-v4', laneObj: dsV4Lane, color: DS_V4, label: laneLabel('deepseek-v4'), kind: 'API key' },
+  ] as const
+  const OAUTH_LANES = [
+    { id: 'grok' as const, laneObj: grokLane, color: '#1d9bf0', label: laneLabel('grok'), kind: 'Free OAuth · :8645' },
+    { id: 'chatgpt' as const, laneObj: chatLane, color: '#10a37f', label: laneLabel('chatgpt'), kind: 'Free OAuth · :8646' },
+  ] as const
 
   return (
     <div style={{ maxWidth: 1100 }}>
       <div style={hubTitle()}>LLM Consumption</div>
       <p style={{ ...hubSubtitle(terminalUi), marginBottom: 16, lineHeight: 1.5, fontSize: 9 }}>
-        Track and control <b style={{ color: TEXT }}>free OAuth</b> usage — Grok (xAI :8645) and ChatGPT (codex :8646).
-        No metered API keys. <b>Manual</b> mode blocks automatic calls; use per-lane <b>▶ Grok / ▶ ChatGPT</b> on feature cards or below.
-        <b> Automated</b> when you want hands-off cron.
+        Track and control <b style={{ color: TEXT }}>LLM usage</b> — {laneLabel('deepseek-flash')} <span style={{ color: DS_FLASH }}>(API key)</span>, {laneLabel('deepseek-v4')} <span style={{ color: DS_V4 }}>(API key)</span>, {laneLabel('grok')} (xAI :8645), and {laneLabel('chatgpt')} (codex :8646).
+        No metered charges on free-OAuth lanes. <b>Manual</b> mode blocks automatic calls; use per-lane buttons on feature cards or below.
+        <b>Automated</b> when you want hands-off cron.
       </p>
       <div className="cc-panel" style={{ ...hubPanel(terminalUi), marginBottom: 14, lineHeight: 1.5, fontSize: 9, color: MUTED }}>
         <b style={{ color: TEXT }}>Lane policies:</b>{' '}
-        <span>Grok only</span> · <span>Grok or ChatGPT (pick one)</span> · <span>Both preferred</span> · <span>Ensemble (run both)</span>.
-        Stop advisories stay <b>Manual</b> — use Grok batch (top 6) on Portfolio → Stop Management or the batch row here.
+        <span style={{ fontWeight: 700, color: DS_FLASH }}>{laneLabel('deepseek-flash')}</span>{' '}
+        · <span style={{ fontWeight: 700, color: DS_V4 }}>{laneLabel('deepseek-v4')}</span>{' '}
+        · <span>{laneLabel('grok')} only</span>{' '}
+        · <span>{laneLabel('grok')} or {laneLabel('chatgpt')} (pick one)</span>{' '}
+        · <span>Both preferred</span>{' '}
+        · <span>Ensemble (run both)</span>.
+        Stop advisories stay <b>Manual</b> — use {laneLabel('grok')} batch (top 6) on Portfolio → Stop Management or the batch row here.
       </div>
 
-      {/* OAuth lane status */}
+      {/* Lane status: DeepSeek API + OAuth */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: 10, marginBottom: 16 }}>
-        {(['grok', 'chatgpt'] as const).map(id => {
-          const ln = id === 'grok' ? grokLane : chatLane
+        {[...DEEPSEEK_LANES, ...OAUTH_LANES].map(({ id, laneObj: ln, color, label, kind }) => {
           const ok = laneReady(ln)
           return (
-            <div key={id} style={{ padding: 14, borderRadius: 10, background: 'var(--bg1)', border: `1px solid ${ok ? GREEN : RED}44` }}>
-              <div style={{ fontSize: 11, fontWeight: 800, color: MUTED, textTransform: 'uppercase' }}>{ln?.label || id}</div>
-              <div style={{ fontSize: 18, fontWeight: 900, color: ok ? GREEN : RED, marginTop: 4 }}>
+            <div key={id} style={{ padding: 14, borderRadius: 10, background: 'var(--bg1)', border: `1px solid ${ok ? color : RED}44` }}>
+              <div style={{ fontSize: 11, fontWeight: 800, color: MUTED, textTransform: 'uppercase' }}>{label}</div>
+              <div style={{ fontSize: 18, fontWeight: 900, color: ok ? color : RED, marginTop: 4 }}>
                 {ok ? '✓ Ready' : (ln?.status || 'offline')}
               </div>
               <div style={{ fontSize: 10, color: MUTED, marginTop: 4 }}>
-                Free OAuth · :{ln?.port ?? (id === 'grok' ? 8645 : 8646)}
+                {kind}
                 {ln?.consec_fail ? ` · ${ln.consec_fail} recent fail(s)` : ''}
               </div>
               {!ok && ln?.hint && (
@@ -161,13 +180,21 @@ export default function ConsumptionHub() {
         })}
         <div style={{ padding: 14, borderRadius: 10, background: 'var(--bg1)', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 8 }}>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            <button type="button" onClick={() => void testLane('deepseek-flash')} disabled={!!busy}
+              style={{ fontSize: 10, fontWeight: 800, padding: '6px 10px', borderRadius: 6, border: `1px solid ${DS_FLASH}66`, background: `${DS_FLASH}14`, color: DS_FLASH, cursor: busy ? 'wait' : 'pointer' }}>
+              {busy === 'test-deepseek-flash' ? '…' : `▶ Test ${laneLabel('deepseek-flash')}`}
+            </button>
+            <button type="button" onClick={() => void testLane('deepseek-v4')} disabled={!!busy}
+              style={{ fontSize: 10, fontWeight: 800, padding: '6px 10px', borderRadius: 6, border: `1px solid ${DS_V4}66`, background: `${DS_V4}14`, color: DS_V4, cursor: busy ? 'wait' : 'pointer' }}>
+              {busy === 'test-deepseek-v4' ? '…' : `▶ Test ${laneLabel('deepseek-v4')}`}
+            </button>
             <button type="button" onClick={() => void testLane('grok')} disabled={!!busy}
               style={{ fontSize: 10, fontWeight: 800, padding: '6px 10px', borderRadius: 6, border: '1px solid #1d9bf066', background: '#1d9bf014', color: '#1d9bf0', cursor: busy ? 'wait' : 'pointer' }}>
-              {busy === 'test-grok' ? '…' : '▶ Test Grok'}
+              {busy === 'test-grok' ? '…' : `▶ Test ${laneLabel('grok')}`}
             </button>
             <button type="button" onClick={() => void testLane('chatgpt')} disabled={!!busy}
               style={{ fontSize: 10, fontWeight: 800, padding: '6px 10px', borderRadius: 6, border: '1px solid #10a37f66', background: '#10a37f14', color: '#10a37f', cursor: busy ? 'wait' : 'pointer' }}>
-              {busy === 'test-chatgpt' ? '…' : '▶ Test ChatGPT'}
+              {busy === 'test-chatgpt' ? '…' : `▶ Test ${laneLabel('chatgpt')}`}
             </button>
           </div>
           <button onClick={() => void runKeepalive()} disabled={!!busy}
@@ -183,7 +210,7 @@ export default function ConsumptionHub() {
       {/* Overview cards */}
       {overview && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: 8, marginBottom: 16 }}>
-          {(['grok', 'chatgpt'] as const).flatMap(lane => {
+          {(['deepseek-flash', 'deepseek-v4', 'grok', 'chatgpt'] as const).flatMap(lane => {
             const t = overview?.by_lane?.[lane]?.today
             const w = overview?.by_lane?.[lane]?.week
             if (!t && !w) return []
@@ -279,7 +306,7 @@ export default function ConsumptionHub() {
             </tbody>
           </table>
         </div>
-        <div style={{ fontSize: 9, color: MUTED, marginTop: 8 }}>Default for new processes: Manual. Relative units ≈ (prompt+response chars)/1000 on free tier ($0).</div>
+        <div style={{ fontSize: 9, color: MUTED, marginTop: 8 }}>Default for new processes: Manual. Relative units ≈ (prompt+response chars)/1000. DeepSeek via API key, Grok/ChatGPT via free OAuth ($0).</div>
       </div>
 
       {/* Recent activity */}
@@ -288,14 +315,14 @@ export default function ConsumptionHub() {
           Recent activity{filterPid ? ` · ${filterPid}` : ''}
         </div>
         {logs.length === 0 ? (
-          <div style={{ fontSize: 11, color: MUTED }}>No logged calls yet — calls appear after processes use Grok/ChatGPT with tracking.</div>
+          <div style={{ fontSize: 11, color: MUTED }}>No logged calls yet — calls appear after processes use LLM lanes with tracking.</div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {logs.map(l => (
               <div key={l.id} style={{ padding: '8px 10px', borderRadius: 6, background: 'var(--bg2)', border: '1px solid var(--border)', fontSize: 11 }}>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                   <span style={{ color: MUTED }}>{new Date(l.created_at).toLocaleString()}</span>
-                  <span style={{ fontWeight: 800, color: l.model_lane === 'grok' ? '#1d9bf0' : '#10a37f' }}>{l.model_lane}</span>
+                  <span style={{ fontWeight: 800, color: l.model_lane === 'grok' ? '#1d9bf0' : l.model_lane === 'chatgpt' ? '#10a37f' : l.model_lane === 'deepseek-flash' ? '#6c5ce7' : l.model_lane === 'deepseek-v4' ? '#a29bfe' : '#94a3b8' }}>{laneLabel(l.model_lane)}</span>
                   <span style={{ color: TEXT, fontWeight: 700 }}>{l.process_name}</span>
                   <span style={{ color: l.trigger_mode === 'manual' ? AMBER : MUTED, fontSize: 10 }}>{l.trigger_mode}</span>
                   {!l.success && <span style={{ color: RED }}>failed</span>}

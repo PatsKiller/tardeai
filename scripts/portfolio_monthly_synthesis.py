@@ -62,8 +62,8 @@ def _load_current_state() -> Dict:
     return data
 
 
-def _sonnet(prompt: str, max_tokens: int = 1500) -> str:
-    """Call Claude Sonnet for synthesis."""
+def _sonnet_DEPRECATED(prompt: str, max_tokens: int = 1500) -> str:
+    """Deprecated — migrated to llm_lane.generate(lane='deepseek-v4')."""
     try:
         import anthropic
         api_key = _get_env("ANTHROPIC_API_KEY")
@@ -78,6 +78,15 @@ def _sonnet(prompt: str, max_tokens: int = 1500) -> str:
         return msg.content[0].text.strip()
     except Exception as e:
         return f"[Sonnet error: {e}]"
+
+
+def _sonnet(prompt: str, max_tokens: int = 1500) -> str:
+    """Generate monthly synthesis using DeepSeek v4 (CIO-level reasoning)."""
+    try:
+        from llm_lane import generate
+        return generate(prompt, lane="deepseek-v4", timeout=120)
+    except Exception as e:
+        return f"[DeepSeek v4 error: {e}]"
 
 
 def _build_weekly_context(weeklies: List[Dict]) -> str:

@@ -30,9 +30,9 @@ for arg in "$@"; do
 done
 
 if [ "$DIRECTION" = "up" ]; then
-    FILES=("0001_mvl.up.sql" "0002_roles.up.sql" "0003_trigger_intake.up.sql")
+    FILES=("0001_mvl.up.sql" "0002_roles.up.sql" "0003_trigger_intake.up.sql" "0004_pipeline_health_approvals.up.sql")
 else
-    FILES=("0003_trigger_intake.down.sql" "0002_roles.down.sql" "0001_mvl.down.sql")
+    FILES=("0004_pipeline_health_approvals.down.sql" "0003_trigger_intake.down.sql" "0002_roles.down.sql" "0001_mvl.down.sql")
 fi
 
 echo "=============================================================="

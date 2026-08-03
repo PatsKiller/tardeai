@@ -23,7 +23,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 LANE_STALE_DAYS = int(os.getenv("HERMES_LANE_STALE_DAYS", "3"))
-EXPECTED_LANES = [s.strip() for s in os.getenv("HERMES_EXPECTED_LANES", "grok,chatgpt").split(",") if s.strip()]
+EXPECTED_LANES = [s.strip() for s in os.getenv("HERMES_EXPECTED_LANES", "deepseek-flash,grok,chatgpt").split(",") if s.strip()]
 
 
 def _conn():

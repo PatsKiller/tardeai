@@ -87,24 +87,12 @@ Flag ONLY genuine compliance issues. Respond JSON:
         print(f"[verifier] DRY RUN — prompt ({len(prompt)} chars)")
         return {"dry_run": True, "result_id": result_id}
 
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not api_key:
-        print("[verifier] ANTHROPIC_API_KEY not set — skipping")
-        return {"skipped": True, "reason": "no_api_key"}
-
-    import anthropic
-    client = anthropic.Anthropic(api_key=api_key)
-    print(f"[verifier] Calling Sonnet for verification of id={result_id}...")
+    print(f"[verifier] Calling DeepSeek v4 for verification of id={result_id}...")
 
     try:
-        msg = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=400,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        text = msg.content[0].text
-        print(f"[verifier] Response: {len(text)} chars, "
-              f"in={msg.usage.input_tokens} out={msg.usage.output_tokens}")
+        from llm_lane import generate
+        text = generate(prompt, lane="deepseek-v4", timeout=90)
+        print(f"[verifier] Response: {len(text)} chars")
     except Exception as e:
         print(f"[verifier] API error: {e}")
         return {"error": str(e), "result_id": result_id}
@@ -121,7 +109,7 @@ Flag ONLY genuine compliance issues. Respond JSON:
     cur.execute("""
         UPDATE rebalance_analysis_results SET
             ssdi_irmaa_flags = %s, verification_passed = %s,
-            verification_notes = %s, model_verifier = 'claude-sonnet-4-6',
+            verification_notes = %s, model_verifier = 'deepseek-v4-pro',
             verified_at = NOW()
         WHERE id = %s
     """, [json.dumps(flags), flags.get("verification_passed"),

@@ -44,7 +44,7 @@ const LAYERS: Layer[] = [
   },
   {
     id: 'cloud',
-    title: '5 · Cloud OAuth (Grok + ChatGPT)',
+    title: '5 · Cloud review',
     summary: 'Second opinion — needs OAuth keys. Reviews static thesis unless you Validate first (live quote). DISAGREE warns but does not alone block unless REQUIRE_CLOUD_LIVE=1.',
     backend: 'inference_ensemble · broker_promote_oversight cloud lanes',
   },
@@ -125,7 +125,7 @@ export default function GradingAuditMethodology() {
           <div style={{ ...sectionLabel, color: desk.amber, marginBottom: 4 }}>Agents &amp; LLM maturity</div>
           <b>Right agents?</b> Maria + Risk + Steph are correct for swing/pullback proposals. Aegis is desk supervisor (optional).
           <br />
-          <b>Strong enough?</b> Local gemma3:4b is fast triage — not institutional depth. Cloud OAuth (Grok/ChatGPT) adds reasoning but needs Validate first so they see live price.
+          <b>Strong enough?</b> Local LLM is fast triage — not institutional depth. Cloud review adds reasoning but needs Validate first so they see live price.
           <br />
           <b>Backend maturity:</b> Gates (trade plan, sizing, oversight) are production-grade and hard-block live routes. Agent job queue has backlog risk (144+ queued) — sync on detail load now backfills completed jobs.
           <br />

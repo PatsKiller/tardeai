@@ -496,7 +496,7 @@ export function rrTooltip(entry: number | null, stop: number | null, planTarget:
 export function confidenceTooltip(it: any): string {
   const conf = it.research_confidence ?? it.hermes_score_components?._confidence
   const modelNote = it.models_agree === true
-    ? '2 models (Grok + ChatGPT agree)'
+    ? '2 models agree'
     : it.models_agree === false
       ? '2 models split — cautious view used'
       : 'Partial model coverage (Hermes + enrichment)'

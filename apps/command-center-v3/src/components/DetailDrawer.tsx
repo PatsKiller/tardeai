@@ -3,6 +3,7 @@ import FibChartsInline from './FibChartsInline'
 import AnalystReviews, { useAnalystMap } from './AnalystReviews'
 import InsiderActivity from './InsiderActivity'
 import FinvizEnrichmentPanel from './FinvizEnrichmentPanel'
+import { laneLabel } from '../lib/laneLabels'
 import OptionChainPanel from './OptionChainPanel'
 import HoldingReportLinks from './HoldingReportLinks'
 import SymbolJourneyPanel from './SymbolJourneyPanel'
@@ -57,7 +58,7 @@ const KEY_LABELS: Record<string, string> = {
 }
 const ACRONYMS = /\b(Pnl|Rsi|Raci|Id|Url|Llm|Atr|Mfe|Mae|Vwap|Macd|Adx|Pf|Wr|Rr|Cio|Tca|Pct|Bb|Rvol)\b/gi
 const SECTION_RE = /^[—\-]{1,2}\s*(.+?)\s*[—\-]{1,2}$/
-const LLM_META: Record<string, { label: string; color: string }> = { grok: { label: 'Grok', color: '#1d9bf0' }, chatgpt: { label: 'ChatGPT', color: '#10a37f' }, claude: { label: 'Claude', color: '#d97757' }, local: { label: 'Local', color: '#2dd4bf' } }
+const LLM_META: Record<string, { label: string; color: string }> = { 'deepseek-flash': { label: laneLabel('deepseek-flash'), color: '#6c5ce7' }, 'deepseek-v4': { label: laneLabel('deepseek-v4'), color: '#a29bfe' }, grok: { label: laneLabel('grok'), color: '#1d9bf0' }, chatgpt: { label: laneLabel('chatgpt'), color: '#10a37f' }, claude: { label: laneLabel('claude'), color: '#d97757' }, local: { label: laneLabel('local'), color: '#2dd4bf' } }
 
 function humanizeKey(k: string): string { if (KEY_LABELS[k]) return KEY_LABELS[k]; return k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).replace(ACRONYMS, m => ({ pnl: 'P&L', rsi: 'RSI', raci: 'RACI', id: 'ID', url: 'URL', llm: 'LLM', atr: 'ATR', mfe: 'MFE', mae: 'MAE', vwap: 'VWAP', macd: 'MACD', adx: 'ADX', pf: 'PF', wr: 'WR', rr: 'R:R', cio: 'CIO', tca: 'TCA', pct: '%', bb: 'BB', rvol: 'RVOL' }[m.toLowerCase()] || m)) }
 function parseMaybeJson(v: any): any { if (v && typeof v === 'object') return v; if (typeof v === 'string') { const t = v.trim(); if ((t.startsWith('{') && t.endsWith('}')) || (t.startsWith('[') && t.endsWith(']'))) { try { return JSON.parse(t) } catch {} } } return null }
@@ -214,7 +215,7 @@ export default function DetailDrawer({ ctx, onClose }: Props) {
           </Section>
         )}
         {primary.stop_curation && (primary.stop_curation.evidence?.length > 0 || (primary.stop_curation.data_i_doubt && primary.stop_curation.data_i_doubt !== 'none') || primary.stop_curation.grade) && (
-          <Section title="Grok stop curation" subtitle={primary.stop_curation.grade ? `grade ${primary.stop_curation.grade}` : 'external LLM R:R review'} accent={PURPLE}>
+          <Section title={`${laneLabel(primary.stop_curation?.lane || 'grok')} stop curation`} subtitle={primary.stop_curation.grade ? `grade ${primary.stop_curation.grade}` : 'external LLM R:R review'} accent={PURPLE}>
             {primary.stop_curation.rr_assessment && <div style={{ fontSize: 11, color: TEXT2, marginBottom: 6, lineHeight: 1.45 }}>{primary.stop_curation.rr_assessment}</div>}
             <EvidenceBlock evidence={primary.stop_curation.evidence} dataIDoubt={primary.stop_curation.data_i_doubt} />
           </Section>

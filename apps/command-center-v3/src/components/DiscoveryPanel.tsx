@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { laneLabel } from '../lib/laneLabels'
 
 // Discovery & Watchlist Builder — type a sector/theme/company/supply-chain query, Hermes (free Grok/
 // ChatGPT OAuth) discovers relevant tickers with relevance + relationship + reason, then add to the
@@ -57,8 +58,10 @@ export default function DiscoveryPanel({ onAdded }: { onAdded: () => void }) {
             placeholder='e.g. "companies that supply NVIDIA"  ·  "AI data center growth"  ·  "defense drones"'
             style={{ flex: '1 1 360px', padding: '8px 12px', fontSize: 12, borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text0)' }} />
           <select value={lane} onChange={e => setLane(e.target.value as any)} style={{ padding: '8px 10px', fontSize: 11, borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text1)' }}>
-            <option value="grok">Grok (fast)</option>
-            <option value="chatgpt">ChatGPT</option>
+            <option value="deepseek-flash">DeepSeek Flash (primary)</option>
+            <option value="deepseek-v4">DeepSeek v4</option>
+            <option value="grok">{laneLabel('grok')}</option>
+            <option value="chatgpt">{laneLabel('chatgpt')}</option>
           </select>
           <button onClick={discover} disabled={running || !query.trim()} style={{ padding: '8px 16px', fontSize: 12, fontWeight: 700, borderRadius: 7, border: 'none', cursor: running ? 'default' : 'pointer', background: '#3b82f6', color: '#fff', opacity: running || !query.trim() ? 0.6 : 1 }}>
             {running ? 'Discovering…' : 'Discover'}

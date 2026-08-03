@@ -44,6 +44,7 @@ CALL_TIMEOUT    = int(os.getenv("RESEARCH_CALL_TIMEOUT", "150"))
 # never auto-dispatched here. Topic/source/news lanes run on their own cadence (see the doc) and are
 # governed by the same tier priorities but not symbol-fanned-out by this scheduler.
 LANES = {
+    "deepseek-flash": {"cost": "api-primary",  "dispatch": "llm_lane",   "auto": True},
     "local-gemma":   {"cost": "free-fast",    "dispatch": "queue",    "auto": True},
     "internal-deep": {"cost": "free-slow",    "dispatch": "queue",    "auto": True},
     "grok":          {"cost": "free-limited", "dispatch": "external", "auto": True},
@@ -53,11 +54,11 @@ LANES = {
 
 # tier → (sla_refreshes, sla_window_days, lanes[]).  Local always covers; externals are tier-gated.
 TIER_SLA = {
-    "T0-HOLD":  (3, 1,  ["local-gemma", "internal-deep", "grok", "chatgpt"]),
-    "T0-PROP":  (2, 1,  ["local-gemma", "grok", "chatgpt"]),
-    "T1-WATCH": (4, 7,  ["local-gemma", "grok", "chatgpt"]),   # externals rotated (one per refresh)
-    "T2-INCUB": (1, 7,  ["local-gemma", "chatgpt"]),           # external only on catalyst
-    "T3-COLD":  (1, 14, ["local-gemma"]),                      # external only on catalyst
+    "T0-HOLD":  (3, 1,  ["deepseek-flash", "local-gemma", "internal-deep", "grok", "chatgpt"]),
+    "T0-PROP":  (2, 1,  ["deepseek-flash", "local-gemma", "grok", "chatgpt"]),
+    "T1-WATCH": (4, 7,  ["deepseek-flash", "local-gemma", "grok", "chatgpt"]),
+    "T2-INCUB": (1, 7,  ["deepseek-flash", "local-gemma", "chatgpt"]),
+    "T3-COLD":  (1, 14, ["deepseek-flash", "local-gemma"]),
 }
 TIER_WEIGHT = {"T0-HOLD": 1.0, "T0-PROP": 0.9, "T1-WATCH": 0.6, "T2-INCUB": 0.3, "T3-COLD": 0.1}
 EXTERNAL_LANES = {"grok", "chatgpt", "claude"}
@@ -427,7 +428,7 @@ def run(mode, apply, budget):
         lanes_for = lambda t: TIER_SLA[t][2]   # full T0 fleet: local-gemma + internal-deep + grok + chatgpt
         ordered = [{"symbol": s, "tier": "T0-HOLD"} for s in targets]
     else:
-        lane = "chatgpt"  # primary ordering lane; gemma assumed broad/elsewhere
+        lane = "deepseek-flash"  # primary ordering lane; gemma assumed broad/elsewhere
         due = build_due(uni, lane, force_all=(mode == "backfill"))
         if mode == "priority":
             due = [d for d in due if d["tier"].startswith("T0") or d["tier"] == "T1-WATCH" or d["catalyst"]]
@@ -447,7 +448,7 @@ def run(mode, apply, budget):
     fresh_ext = {}
     if mode == "backfill":
         skip_h = int(os.getenv("RESEARCH_BACKFILL_SKIP_FRESH_HOURS", "6"))
-        for ln in ("chatgpt", "grok"):
+        for ln in ("deepseek-flash", "chatgpt", "grok"):
             rows = _q("""SELECT DISTINCT symbol FROM hermes_external_research
                          WHERE lane=%s AND recommendation NOT LIKE '[%%'
                          AND created_at > NOW() - (%s||' hours')::interval""", (ln, skip_h))

@@ -110,7 +110,7 @@ def _verify(conn, tickers):
     return {r[0] for r in cur.fetchall()}
 
 
-def run(query, lane="grok", mode=None, apply=False, created_by="operator"):
+def run(query, lane="deepseek-flash", mode=None, apply=False, created_by="operator"):
     mode = mode or _detect_mode(query)
     conn = _conn(); cur = conn.cursor()
     qid = None
@@ -143,7 +143,7 @@ def run(query, lane="grok", mode=None, apply=False, created_by="operator"):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--query", required=True)
-    ap.add_argument("--lane", default="grok", choices=["grok", "chatgpt"])
+    ap.add_argument("--lane", default="deepseek-flash", choices=["deepseek-flash", "grok", "chatgpt"])
     ap.add_argument("--mode", default=None)
     ap.add_argument("--apply", action="store_true")
     a = ap.parse_args()

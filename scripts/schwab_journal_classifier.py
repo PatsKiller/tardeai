@@ -59,7 +59,7 @@ def _parse(raw):
         return None
 
 
-def run(limit=None, do_all=False, lane="grok"):
+def run(limit=None, do_all=False, lane="deepseek-flash"):
     import llm_lane
     if not llm_lane.available(lane):
         lane = "local"

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useApi } from '../hooks/useApi'
 import { fmt$ } from '../lib/format'
+import { laneLabel } from '../lib/laneLabels'
 import TradeReplayChart from './TradeReplayChart'
 import { buildReplayTrade } from '../lib/replayTrade'
 
@@ -93,8 +94,8 @@ export default function SchwabJournal() {
             <span style={{ flex: '0 0 64px', fontSize: 9, color: 'var(--text3)' }}>{t.account?.replace('schwab_', '')}</span>
             <span style={{ flex: '0 0 96px', fontSize: 9, color: 'var(--text2)', display: 'flex', alignItems: 'center', gap: 3 }}>
               {t.strategy_tag || t.classification}
-              {t.review_lane === 'grok' && <span title="Reviewed by Grok (xAI) via free OAuth — tighter, trade-specific lesson" style={{ fontSize: 7, fontWeight: 700, color: '#a855f7', border: '1px solid rgba(168,85,247,.5)', borderRadius: 3, padding: '0 2px', lineHeight: 1.4 }}>grok</span>}
-              {t.review_lane === 'local' && <span title="Reviewed by local gemma" style={{ fontSize: 7, color: 'var(--text3)', border: '1px solid var(--border)', borderRadius: 3, padding: '0 2px', lineHeight: 1.4 }}>local</span>}
+              {t.review_lane === 'grok' && <span title={`Reviewed by ${laneLabel(t.review_lane)} — tighter, trade-specific lesson`} style={{ fontSize: 7, fontWeight: 700, color: '#a855f7', border: '1px solid rgba(168,85,247,.5)', borderRadius: 3, padding: '0 2px', lineHeight: 1.4 }}>grok</span>}
+              {t.review_lane === 'local' && <span title="Reviewed by local LLM" style={{ fontSize: 7, color: 'var(--text3)', border: '1px solid var(--border)', borderRadius: 3, padding: '0 2px', lineHeight: 1.4 }}>local</span>}
             </span>
             <span style={{ flex: '0 0 70px', fontSize: 9, color: 'var(--text3)' }}>{t.hold_minutes < 390 ? `${t.hold_minutes}m` : `${Math.round(t.hold_minutes / 1440)}d`}</span>
             {t.entry_grade && <span title={gradeExplain(t, eq)} style={{ flex: '0 0 80px', fontSize: 9, cursor: 'help' }}>E:<b style={{ color: GRADE[t.entry_grade] }}>{t.entry_grade}</b> X:<b style={{ color: GRADE[t.exit_grade] }}>{t.exit_grade}</b> ⓘ</span>}

@@ -18,6 +18,7 @@ import PipelineControlTower from '../components/PipelineControlTower'
 import HermesPanel from '../components/HermesPanel'
 import OpenClawPanel from '../components/OpenClawPanel'
 import TradeAIPanel from '../components/TradeAIPanel'
+import HealthAgentsDashboard from '../components/health/HealthAgentsDashboard'
 import DataSourceHealth from '../components/DataSourceHealth'
 import DataBrokerPanel from '../components/DataBrokerPanel'
 import ExecutionStatePanel from '../components/ExecutionStatePanel'
@@ -25,7 +26,10 @@ import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubTab } from '../lib/terminalHubChrome'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
-const TABS = ['Pipeline', 'Control Plane', 'Data', 'Data Sources', 'Queue', 'SIEM', 'Jobs', 'Apps', 'Access', 'Admin', 'Brokers', 'Crons', 'LLM', 'Hermes', 'OpenClaw', 'TradeAI'] as const
+const TABS = ['Pipelines', 'Data', 'Security', 'Infrastructure', 'LLM', 'Components'] as const
+const ADMIN_TABS = ['Apps', 'Access', 'Admin'] as const
+const ALL_TABS = [...TABS, ...ADMIN_TABS] as const
+type Tab = typeof ALL_TABS[number]
 
 // Freshness color for an ISO timestamp vs a max-age (hours)
 function ageColor(iso: string | null | undefined, maxH: number): string {
@@ -43,7 +47,7 @@ function fmtAge(iso: string | null | undefined): string {
 
 export default function SystemHub({ onDrill }: Props) {
   const [terminalUi] = useTerminalUi()
-  const [tab, setTab] = useState<typeof TABS[number]>(() => _dlTab(TABS, 'Pipeline'))
+  const [tab, setTab] = useState<Tab>(() => _dlTab(ALL_TABS, 'Pipelines'))
   const [dlQuery] = useState(_dlQuery)
   const { data: qct } = useApi<any>('/api/v2/system/queue-control-tower', 30_000)
   const { data: siem } = useApi<any>('/api/v2/system/siem', 120_000)
@@ -88,10 +92,16 @@ export default function SystemHub({ onDrill }: Props) {
           <div style={hubTitle()}>System</div>
           <div style={hubSubtitle(terminalUi)}>{timers} timers · {cronCount} crons · {services} services · {llmJobs} LLM jobs</div>
         </div>
-        <div className="hub-tabs" style={{ display: 'flex', gap: terminalUi ? 4 : 6, flexWrap: 'wrap' }}>
+        <div className="hub-tabs" style={{ display: 'flex', gap: terminalUi ? 4 : 6, flexWrap: 'wrap', alignItems: 'center' }}>
           {TABS.map(t => (
             <button key={t} onClick={() => setTab(t)} style={hubTab(tab === t, terminalUi)}>{t}</button>
           ))}
+          <span style={{ color: 'var(--text3)', fontSize: 11, margin: '0 2px' }}>·</span>
+          <span style={{ fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.5px', marginRight: 2 }}>Admin</span>
+          {ADMIN_TABS.map(t => (
+            <button key={t} onClick={() => setTab(t)} style={hubTab(tab === t, terminalUi)}>{t}</button>
+          ))}
+          <Link to="/health" style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #60a5fa40', background: '#60a5fa10', color: '#60a5fa', fontSize: 11, fontWeight: 600, textDecoration: 'none', cursor: 'pointer' }}>Health →</Link>
         </div>
       </div>
 
@@ -101,7 +111,7 @@ export default function SystemHub({ onDrill }: Props) {
         </div>
       )}
 
-      {tab === 'Pipeline' && (() => {
+      {tab === 'Pipelines' && (() => {
         const d = pipe?.data ?? pipe ?? {}
         const ing = d.ingestion ?? {}, cur = d.curation ?? {}, lm = d.llm ?? {}, rag = d.rag ?? {}, jb = d.jobs ?? {}
         const nf = (n: any) => (n ?? 0).toLocaleString()
@@ -173,95 +183,21 @@ export default function SystemHub({ onDrill }: Props) {
               </Card>
             </div>
             <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 10 }}>Source: /api/v2/system/pipeline-health. Live counts across ingestion → curation → LLM → RAG → jobs. Freshness colored green/amber/red vs each stage's SLA. As of {pipe?.data?.as_of ? new Date(pipe.data.as_of).toLocaleTimeString() : '—'}.</div>
+            <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 8, padding: '6px 10px', background: 'rgba(96,165,250,.06)', borderRadius: 6, border: '1px solid rgba(96,165,250,.15)' }}>
+              For pipeline failures and queue status, see <Link to="/health" style={{ color: '#60a5fa', fontWeight: 700, textDecoration: 'none' }}>Health → /health</Link>
+            </div>
           </div>
         )
       })()}
 
-      {tab === 'Control Plane' && (
-        <>
-          <div style={{ marginBottom: 14 }}><ExecutionStatePanel /></div>
-          <PipelineControlTower />
-        </>
-      )}
-
-      {tab === 'Data' && <DataBrokerPanel />}
-
-      {tab === 'Data Sources' && <DataSourceHealth />}
-
-      {tab === 'Hermes' && <HermesPanel />}
-
-      {tab === 'OpenClaw' && <OpenClawPanel />}
-
-      {tab === 'TradeAI' && <TradeAIPanel />}
-
-      {tab === 'Queue' && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-          {/* Needs attention */}
-          <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: needsAttention.length > 0 ? '#ef4444' : 'var(--text0)', marginBottom: 10 }}>
-              Needs Attention ({needsAttention.length})
-            </div>
-            {needsAttention.length === 0 ? <div style={{ color: 'var(--text3)', fontSize: 11 }}>All systems nominal</div> :
-            needsAttention.map((a: any, i: number) => (
-              <div key={i} onClick={() => onDrill({ title: a.job_id, subtitle: a.reason, endpoint: '/api/v2/system/queue-control-tower', rows: [a] })}
-                style={{ padding: '6px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 10, color: '#fca5a5' }}>
-                {a.job_id}: {a.reason}
-              </div>
-            ))}
-          </div>
-
-          {/* LLM Queue */}
-          <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>
-              LLM Queue ({realQueue.total ?? 0} jobs — {realQueue.source_status ?? '—'})
-            </div>
-            {realQueue.stats && (
-              <div style={{ display: 'flex', gap: 10, marginBottom: 8, fontSize: 10 }}>
-                <span style={{ color: '#f59e0b' }}>Pending: {realQueue.stats.pending}</span>
-                <span style={{ color: '#06b6d4' }}>Approved: {realQueue.stats.approved}</span>
-                <span style={{ color: '#22c55e' }}>Done: {realQueue.stats.completed}</span>
-                <span style={{ color: '#ef4444' }}>Failed: {realQueue.stats.failed}</span>
-              </div>
-            )}
-            {realQueue.next_job && (
-              <div style={{ padding: '6px 8px', background: 'rgba(168,85,247,.08)', borderRadius: 6, fontSize: 10, marginBottom: 6 }}>
-                Next: <strong>{realQueue.next_job.job_type}</strong> (priority {realQueue.next_job.priority_score})
-              </div>
-            )}
-            {(realQueue.items ?? []).slice(0, 6).map((q: any) => (
-              <div key={q.queue_id} onClick={() => onDrill({ title: q.job_type, subtitle: `${q.status} · priority ${q.priority_score}`, endpoint: '/api/v2/system/queue-control-tower', rows: [q] })}
-                style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 10 }}>
-                <span style={{ color: 'var(--text2)', fontFamily: 'monospace' }}>{q.job_type?.slice(0, 30)}</span>
-                <span style={{ color: q.status === 'failed' ? '#ef4444' : q.status === 'completed' ? '#22c55e' : '#f59e0b', fontSize: 9 }}>{q.status}</span>
-              </div>
-            ))}
-            <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 6 }}>
-              Source: /api/v2/system/queue-control-tower. Failed/stuck jobs →{' '}
-              <Link to="/health?tab=coders" style={{ color: '#60a5fa', fontWeight: 700, textDecoration: 'none' }}>Health → Coders</Link> for auto-remediation status.
-            </div>
-          </div>
-
-          {/* Due next */}
-          {dueNext.length > 0 && (
-            <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, gridColumn: '1 / -1' }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Due Next</div>
-              <div style={{ display: 'flex', gap: 8, overflowX: 'auto' }}>
-                {dueNext.slice(0, 8).map((d: any) => (
-                  <div key={d.job_id} onClick={() => onDrill({ title: d.job_id, subtitle: `in ${d.next_in_min}min`, endpoint: '/api/v2/system/queue-control-tower', rows: [d] })}
-                    style={{ minWidth: 120, padding: '6px 10px', background: 'var(--bg2)', borderRadius: 6, cursor: 'pointer', fontSize: 10 }}>
-                    <div style={{ fontWeight: 600, color: 'var(--text0)', fontFamily: 'monospace' }}>{d.job_id?.slice(0, 20)}</div>
-                    <div style={{ color: d.next_in_min < 60 ? '#f59e0b' : 'var(--text3)' }}>
-                      {d.next_in_min < 60 ? `${d.next_in_min}m` : `${Math.floor(d.next_in_min / 60)}h`}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+      {tab === 'Data' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <DataBrokerPanel />
+          <DataSourceHealth />
         </div>
       )}
 
-      {tab === 'SIEM' && (() => {
+      {tab === 'Security' && (() => {
         const sevColor = (s: string) => s === 'P0' ? '#dc2626' : s === 'P1' ? '#ef4444' : s === 'P2' ? '#f59e0b' : 'var(--text3)'
         const sv = siem?.severity ?? {}
         const critical = (sv.P0 ?? 0) + (sv.P1 ?? 0)
@@ -338,14 +274,28 @@ export default function SystemHub({ onDrill }: Props) {
         )
       })()}
 
-      {tab === 'Jobs' && (() => {
+      {tab === 'Infrastructure' && (() => {
         const j = jobs?.data ?? jobs ?? {}
         const timers = j.timers ?? {}
         const groups: [string, any[]][] = [['Hermes', timers.hermes ?? []], ['Trade AI', timers.tradeai ?? []], ['Other', timers.other ?? []]].filter(([, v]) => (v as any[]).length) as any
         const cron = j.cron ?? {}
         const sc = (s: string) => s === 'active' || s === 'running' || s === 'ok' ? '#22c55e' : s === 'failed' || s === 'dead' ? '#ef4444' : 'var(--text3)'
+
+        const bd = brokers?.data ?? brokers ?? {}
+        const accts = bd.accounts ?? []
+        const sum = bd.summary ?? {}
+        const audit = (tia?.data ?? tia ?? {}).summary ?? {}
+        const CONN: Record<string, [string, string]> = {
+          connected: ['#22c55e', 'LIVE'],
+          ready_awaiting_creds: ['#f59e0b', 'READY · awaiting creds'],
+          validated: ['#60a5fa', 'VALIDATED'],
+          manual: ['var(--text3)', 'MANUAL (no API)'],
+          broken: ['#ef4444', 'BROKEN'],
+        }
+
         return (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {/* ── Scheduled Jobs ── */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}>
               {[
                 { k: 'Systemd timers', v: timers.total ?? 0, c: 'var(--text0)' },
@@ -385,9 +335,152 @@ export default function SystemHub({ onDrill }: Props) {
               ))}
             </div>
             <div style={{ fontSize: 8, color: 'var(--text3)' }}>Source: /api/v2/system/scheduled-jobs (systemd timers + cron). "unknown" = systemctl status not resolvable for that unit. <span style={{ fontStyle: 'italic' }}>retired</span> = disabled + inactive (superseded/consolidated, not a fault).</div>
+
+            {/* ── Cron Compression ── */}
+            <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>
+                Cron Compression ({crons?.total_crons ?? 0} crons / {crons?.unique_scripts ?? 0} scripts)
+              </div>
+              {cronDups.length > 0 && (
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 10, fontWeight: 600, color: '#f59e0b', marginBottom: 6 }}>Multi-Schedule Scripts ({cronDups.length})</div>
+                  {cronDups.slice(0, 10).map((d: any, i: number) => (
+                    <div key={i} onClick={() => onDrill({ title: d.script.split('/').pop(), subtitle: `${d.count} schedules`, endpoint: '/api/v2/system/cron-compression', rows: [{ ...d }] })}
+                      style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 10 }}>
+                      <span style={{ color: 'var(--text2)', fontFamily: 'monospace' }}>{d.script.split('/').pop()}</span>
+                      <span style={{ color: '#f59e0b', fontWeight: 600 }}>{d.count}x</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div style={{ fontSize: 8, color: 'var(--text3)' }}>Source: /api/v2/system/cron-compression</div>
+            </div>
+
+            {/* ── Broker Connectors ── */}
+            <div style={{ background: 'rgba(245,158,11,.08)', border: '1px solid rgba(245,158,11,.3)', borderRadius: 8, padding: '8px 12px', fontSize: 10, color: '#f59e0b', lineHeight: 1.5 }}>
+              <b>READ-ONLY.</b> Broker connectivity & validation for due diligence — no secrets shown, no controls. Credential configuration happens in the separate <b>authenticated broker-admin app</b> (localhost-bound, password-gated), never on this dashboard. Only Alpaca is live API trading today.
+            </div>
+
+            {/* summary strip */}
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              {[['API accounts', sum.api_accounts, '#60a5fa'], ['Live now', sum.live_now, '#22c55e'],
+                ['Awaiting creds', sum.ready_awaiting_creds, '#f59e0b'], ['Manual', sum.manual, 'var(--text3)'],
+                ['Broken', sum.broken, (sum.broken ?? 0) > 0 ? '#ef4444' : 'var(--text3)']].map(([k, v, c]: any) => (
+                <div key={k} style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 14px', minWidth: 92 }}>
+                  <div style={{ fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase' }}>{k}</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: c, fontFamily: 'var(--mono)' }}>{v ?? '—'}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* per-account connectors */}
+            <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Broker Connectors ({accts.length})</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 0.8fr 0.6fr 1.3fr 0.8fr 0.9fr', fontSize: 8, color: 'var(--text3)', padding: '3px 6px', borderBottom: '1px solid var(--border)', textTransform: 'uppercase' }}>
+                <span>Account</span><span>Broker</span><span>Mode</span><span>Connectivity</span><span>Creds</span><span>Last sync</span>
+              </div>
+              {accts.map((a: any, i: number) => {
+                const [clr, label] = CONN[a.connectivity] ?? ['var(--text3)', a.connectivity]
+                const credClr = a.configured ? '#22c55e' : a.api_enabled ? '#f59e0b' : 'var(--text3)'
+                return (
+                  <div key={i} onClick={() => onDrill({
+                    title: a.display_name || a.account_label,
+                    subtitle: `${a.broker} · ${a.mode} · ${label}`,
+                    endpoint: '/api/v2/system/broker-connectors',
+                    rows: [{
+                      account: a.account_label, broker: a.broker, mode: a.mode,
+                      api_enabled: a.api_enabled, connectivity: a.connectivity,
+                      wired_now: a.wired_now, routing_adapter: a.routing_adapter,
+                      configured: a.configured, env_present: a.env_present,
+                      interface_ok: a.interface_ok, missing_methods: a.missing_methods,
+                      validation_errors: a.validation_errors, open_positions: a.open_positions,
+                      last_sync: a.last_sync, notes: a.notes,
+                      configure_at: 'authenticated broker-admin app (localhost:8788)',
+                    }],
+                  })}
+                    style={{ display: 'grid', gridTemplateColumns: '1.4fr 0.8fr 0.6fr 1.3fr 0.8fr 0.9fr', padding: '6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 10, alignItems: 'center' }}>
+                    <span style={{ fontFamily: 'var(--mono)', color: 'var(--text1)', fontWeight: 600 }}>{a.account_label}</span>
+                    <span style={{ color: 'var(--text3)' }}>{a.broker}</span>
+                    <span style={{ color: a.mode === 'live' ? '#ef4444' : '#60a5fa', fontWeight: 600 }}>{a.mode}</span>
+                    <span style={{ color: clr, fontWeight: 600 }}>{label}</span>
+                    <span style={{ color: credClr }}>{a.configured ? 'set' : a.api_enabled ? 'missing' : 'n/a'}</span>
+                    <span style={{ color: ageColor(a.last_sync, 24), fontFamily: 'var(--mono)' }}>{fmtAge(a.last_sync)}</span>
+                  </div>
+                )
+              })}
+              <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 6 }}>Click a row for validation detail. Source: /api/v2/system/broker-connectors</div>
+            </div>
+
+            <SchwabMonitor />
+
+            <CsvUpload />
+
+            {/* trade integrity audit summary */}
+            <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Trade Integrity Audit — Trade AI + Hermes dual sign-off</div>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                {[['Green', audit.green, '#22c55e'], ['Yellow', audit.yellow, '#f59e0b'], ['Red', audit.red, (audit.red ?? 0) > 0 ? '#ef4444' : 'var(--text3)'],
+                  ['Remediated', audit.remediated, 'var(--text3)'], ['Hermes coverage', audit.hermes_coverage_pct != null ? `${audit.hermes_coverage_pct}%` : '—', '#60a5fa']].map(([k, v, c]: any) => (
+                  <div key={k} onClick={() => onDrill({ title: 'Trade Integrity Audit', subtitle: 'Trade AI rules + Hermes agent review, per trade', endpoint: '/api/v2/trade-integrity-audit', rows: (tia?.data ?? tia ?? {}).trades ?? [] })}
+                    style={{ cursor: 'pointer', background: 'var(--bg2)', borderRadius: 8, padding: '8px 14px', minWidth: 92 }}>
+                    <div style={{ fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase' }}>{k}</div>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: c, fontFamily: 'var(--mono)' }}>{v ?? '—'}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>GREEN = Trade AI passed AND Hermes reviewed. Click for per-trade detail. Source: /api/v2/trade-integrity-audit</div>
+            </div>
           </div>
         )
       })()}
+
+      {tab === 'LLM' && (<>
+        {/* 3-lane review health (operator 2026-06-19): live lane availability + corpus quality */}
+        <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, marginBottom: 12 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>LLM Review Lane Health</div>
+          {llmHealth ? (() => {
+            const lanes = llmHealth.lanes ?? {}, corpus = llmHealth.review_corpus ?? {}
+            return <>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+                {['deepseek-flash', 'deepseek-v4', 'local', 'grok', 'chatgpt'].map(k => {
+                  const up = lanes[k]?.available
+                  return <span key={k} style={{ fontSize: 11, fontWeight: 800, padding: '4px 10px', borderRadius: 7, border: `1px solid ${up ? '#22c55e' : '#ef4444'}`, background: `${up ? '#22c55e' : '#ef4444'}1f`, color: up ? '#22c55e' : '#ef4444' }} title={lanes[k]?.reason || ''}>{k} {up ? '✓ up' : '✗ down'}</span>
+                })}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text2)' }}>
+                Review corpus ({corpus.window_days ?? 30}d): <b style={{ color: (corpus.valid_rate ?? 0) >= 0.9 ? '#22c55e' : (corpus.valid_rate ?? 0) >= 0.7 ? '#f59e0b' : '#ef4444' }}>{corpus.valid_rate != null ? `${(corpus.valid_rate * 100).toFixed(1)}% valid` : '—'}</b> ({corpus.valid ?? 0}/{corpus.total ?? 0})
+              </div>
+            </>
+          })() : <div style={{ color: 'var(--text3)', fontSize: 11 }}>Loading review health...</div>}
+          <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>
+            Source: /api/v2/llm-health · OAuth probe: <a href="/v3/consumption" style={{ color: '#60a5fa' }}>Consumption</a> (free cloud lanes, not XAI_API_KEY)
+          </div>
+        </div>
+        <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Local LLM Status</div>
+          {llm ? (
+            <>
+              {Object.entries(llm).map(([k, v]: [string, any]) => (
+                <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 6px', borderBottom: '1px solid var(--border)', fontSize: 11 }}>
+                  <span style={{ color: 'var(--text2)' }}>{k.replace(/_/g, ' ')}</span>
+                  <span style={{ color: 'var(--text0)', fontFamily: 'monospace', fontSize: 10, maxWidth: 250, textAlign: 'right', wordBreak: 'break-word' }}>
+                    {typeof v === 'object' ? JSON.stringify(v) : String(v ?? '—')}
+                  </span>
+                </div>
+              ))}
+            </>
+          ) : <div style={{ color: 'var(--text3)', fontSize: 11 }}>Loading LLM status...</div>}
+          <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/local-llm-status</div>
+        </div>
+      </>)}
+
+      {tab === 'Components' && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(340px,1fr))', gap: 14 }}>
+          <HermesPanel />
+          <OpenClawPanel />
+          <TradeAIPanel />
+        </div>
+      )}
 
       {tab === 'Apps' && (() => {
         const a = apps?.data ?? apps ?? {}
@@ -454,7 +547,10 @@ export default function SystemHub({ onDrill }: Props) {
                       <div style={{ fontSize: 11, fontWeight: 600, color: '#60a5fa' }}>{s.name} →</div>
                       <div style={{ fontSize: 8, color: 'var(--text3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.category} · {s.url}</div>
                     </div>
-                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: hc(s.health), flexShrink: 0 }} title={s.health} />
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 9, color: 'var(--text2)' }}>
+                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: hc(s.health), flexShrink: 0 }} />
+                      {s.health === 'up' || s.health === 'ok' || s.health === 'healthy' ? 'Up' : s.health === 'down' ? 'Down' : 'Unknown'}
+                    </span>
                   </a>
                 ))}
               </div>
@@ -673,158 +769,6 @@ export default function SystemHub({ onDrill }: Props) {
           </div>
         )
       })()}
-
-      {tab === 'Brokers' && (() => {
-        const bd = brokers?.data ?? brokers ?? {}
-        const accts = bd.accounts ?? []
-        const sum = bd.summary ?? {}
-        const audit = (tia?.data ?? tia ?? {}).summary ?? {}
-        const CONN: Record<string, [string, string]> = {
-          connected: ['#22c55e', 'LIVE'],
-          ready_awaiting_creds: ['#f59e0b', 'READY · awaiting creds'],
-          validated: ['#60a5fa', 'VALIDATED'],
-          manual: ['var(--text3)', 'MANUAL (no API)'],
-          broken: ['#ef4444', 'BROKEN'],
-        }
-        return (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <div style={{ background: 'rgba(245,158,11,.08)', border: '1px solid rgba(245,158,11,.3)', borderRadius: 8, padding: '8px 12px', fontSize: 10, color: '#f59e0b', lineHeight: 1.5 }}>
-              <b>READ-ONLY.</b> Broker connectivity & validation for due diligence — no secrets shown, no controls. Credential configuration happens in the separate <b>authenticated broker-admin app</b> (localhost-bound, password-gated), never on this dashboard. Only Alpaca is live API trading today.
-            </div>
-
-            {/* summary strip */}
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-              {[['API accounts', sum.api_accounts, '#60a5fa'], ['Live now', sum.live_now, '#22c55e'],
-                ['Awaiting creds', sum.ready_awaiting_creds, '#f59e0b'], ['Manual', sum.manual, 'var(--text3)'],
-                ['Broken', sum.broken, (sum.broken ?? 0) > 0 ? '#ef4444' : 'var(--text3)']].map(([k, v, c]: any) => (
-                <div key={k} style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 14px', minWidth: 92 }}>
-                  <div style={{ fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase' }}>{k}</div>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: c, fontFamily: 'var(--mono)' }}>{v ?? '—'}</div>
-                </div>
-              ))}
-            </div>
-
-            {/* per-account connectors */}
-            <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Broker Connectors ({accts.length})</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 0.8fr 0.6fr 1.3fr 0.8fr 0.9fr', fontSize: 8, color: 'var(--text3)', padding: '3px 6px', borderBottom: '1px solid var(--border)', textTransform: 'uppercase' }}>
-                <span>Account</span><span>Broker</span><span>Mode</span><span>Connectivity</span><span>Creds</span><span>Last sync</span>
-              </div>
-              {accts.map((a: any, i: number) => {
-                const [clr, label] = CONN[a.connectivity] ?? ['var(--text3)', a.connectivity]
-                const credClr = a.configured ? '#22c55e' : a.api_enabled ? '#f59e0b' : 'var(--text3)'
-                return (
-                  <div key={i} onClick={() => onDrill({
-                    title: a.display_name || a.account_label,
-                    subtitle: `${a.broker} · ${a.mode} · ${label}`,
-                    endpoint: '/api/v2/system/broker-connectors',
-                    rows: [{
-                      account: a.account_label, broker: a.broker, mode: a.mode,
-                      api_enabled: a.api_enabled, connectivity: a.connectivity,
-                      wired_now: a.wired_now, routing_adapter: a.routing_adapter,
-                      configured: a.configured, env_present: a.env_present,
-                      interface_ok: a.interface_ok, missing_methods: a.missing_methods,
-                      validation_errors: a.validation_errors, open_positions: a.open_positions,
-                      last_sync: a.last_sync, notes: a.notes,
-                      configure_at: 'authenticated broker-admin app (localhost:8788)',
-                    }],
-                  })}
-                    style={{ display: 'grid', gridTemplateColumns: '1.4fr 0.8fr 0.6fr 1.3fr 0.8fr 0.9fr', padding: '6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 10, alignItems: 'center' }}>
-                    <span style={{ fontFamily: 'var(--mono)', color: 'var(--text1)', fontWeight: 600 }}>{a.account_label}</span>
-                    <span style={{ color: 'var(--text3)' }}>{a.broker}</span>
-                    <span style={{ color: a.mode === 'live' ? '#ef4444' : '#60a5fa', fontWeight: 600 }}>{a.mode}</span>
-                    <span style={{ color: clr, fontWeight: 600 }}>{label}</span>
-                    <span style={{ color: credClr }}>{a.configured ? 'set' : a.api_enabled ? 'missing' : 'n/a'}</span>
-                    <span style={{ color: ageColor(a.last_sync, 24), fontFamily: 'var(--mono)' }}>{fmtAge(a.last_sync)}</span>
-                  </div>
-                )
-              })}
-              <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 6 }}>Click a row for validation detail. Source: /api/v2/system/broker-connectors</div>
-            </div>
-
-            <SchwabMonitor />
-
-            <CsvUpload />
-
-            {/* trade integrity audit summary */}
-            <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Trade Integrity Audit — Trade AI + Hermes dual sign-off</div>
-              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                {[['Green', audit.green, '#22c55e'], ['Yellow', audit.yellow, '#f59e0b'], ['Red', audit.red, (audit.red ?? 0) > 0 ? '#ef4444' : 'var(--text3)'],
-                  ['Remediated', audit.remediated, 'var(--text3)'], ['Hermes coverage', audit.hermes_coverage_pct != null ? `${audit.hermes_coverage_pct}%` : '—', '#60a5fa']].map(([k, v, c]: any) => (
-                  <div key={k} onClick={() => onDrill({ title: 'Trade Integrity Audit', subtitle: 'Trade AI rules + Hermes agent review, per trade', endpoint: '/api/v2/trade-integrity-audit', rows: (tia?.data ?? tia ?? {}).trades ?? [] })}
-                    style={{ cursor: 'pointer', background: 'var(--bg2)', borderRadius: 8, padding: '8px 14px', minWidth: 92 }}>
-                    <div style={{ fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase' }}>{k}</div>
-                    <div style={{ fontSize: 18, fontWeight: 700, color: c, fontFamily: 'var(--mono)' }}>{v ?? '—'}</div>
-                  </div>
-                ))}
-              </div>
-              <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>GREEN = Trade AI passed AND Hermes reviewed. Click for per-trade detail. Source: /api/v2/trade-integrity-audit</div>
-            </div>
-          </div>
-        )
-      })()}
-
-      {tab === 'Crons' && (
-        <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>
-            Cron Compression ({crons?.total_crons ?? 0} crons / {crons?.unique_scripts ?? 0} scripts)
-          </div>
-          {cronDups.length > 0 && (
-            <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 10, fontWeight: 600, color: '#f59e0b', marginBottom: 6 }}>Multi-Schedule Scripts ({cronDups.length})</div>
-              {cronDups.slice(0, 10).map((d: any, i: number) => (
-                <div key={i} onClick={() => onDrill({ title: d.script.split('/').pop(), subtitle: `${d.count} schedules`, endpoint: '/api/v2/system/cron-compression', rows: [{ ...d }] })}
-                  style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 10 }}>
-                  <span style={{ color: 'var(--text2)', fontFamily: 'monospace' }}>{d.script.split('/').pop()}</span>
-                  <span style={{ color: '#f59e0b', fontWeight: 600 }}>{d.count}x</span>
-                </div>
-              ))}
-            </div>
-          )}
-          <div style={{ fontSize: 8, color: 'var(--text3)' }}>Source: /api/v2/system/cron-compression</div>
-        </div>
-      )}
-
-      {tab === 'LLM' && (<>
-        {/* 3-lane review health (operator 2026-06-19): live lane availability + corpus quality */}
-        <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, marginBottom: 12 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>LLM Review Lane Health</div>
-          {llmHealth ? (() => {
-            const lanes = llmHealth.lanes ?? {}, corpus = llmHealth.review_corpus ?? {}
-            return <>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
-                {['local', 'grok', 'chatgpt'].map(k => {
-                  const up = lanes[k]?.available
-                  return <span key={k} style={{ fontSize: 11, fontWeight: 800, padding: '4px 10px', borderRadius: 7, border: `1px solid ${up ? '#22c55e' : '#ef4444'}`, background: `${up ? '#22c55e' : '#ef4444'}1f`, color: up ? '#22c55e' : '#ef4444' }} title={lanes[k]?.reason || ''}>{k} {up ? '✓ up' : '✗ down'}</span>
-                })}
-              </div>
-              <div style={{ fontSize: 11, color: 'var(--text2)' }}>
-                Review corpus ({corpus.window_days ?? 30}d): <b style={{ color: (corpus.valid_rate ?? 0) >= 0.9 ? '#22c55e' : (corpus.valid_rate ?? 0) >= 0.7 ? '#f59e0b' : '#ef4444' }}>{corpus.valid_rate != null ? `${(corpus.valid_rate * 100).toFixed(1)}% valid` : '—'}</b> ({corpus.valid ?? 0}/{corpus.total ?? 0})
-              </div>
-            </>
-          })() : <div style={{ color: 'var(--text3)', fontSize: 11 }}>Loading review health...</div>}
-          <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>
-            Source: /api/v2/llm-health · OAuth probe: <a href="/v3/consumption" style={{ color: '#60a5fa' }}>Consumption</a> (free Grok/ChatGPT, not XAI_API_KEY)
-          </div>
-        </div>
-        <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Local LLM Status</div>
-          {llm ? (
-            <>
-              {Object.entries(llm).map(([k, v]: [string, any]) => (
-                <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 6px', borderBottom: '1px solid var(--border)', fontSize: 11 }}>
-                  <span style={{ color: 'var(--text2)' }}>{k.replace(/_/g, ' ')}</span>
-                  <span style={{ color: 'var(--text0)', fontFamily: 'monospace', fontSize: 10, maxWidth: 250, textAlign: 'right', wordBreak: 'break-word' }}>
-                    {typeof v === 'object' ? JSON.stringify(v) : String(v ?? '—')}
-                  </span>
-                </div>
-              ))}
-            </>
-          ) : <div style={{ color: 'var(--text3)', fontSize: 11 }}>Loading LLM status...</div>}
-          <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/local-llm-status</div>
-        </div>
-      </>)}
     </div>
   )
 }

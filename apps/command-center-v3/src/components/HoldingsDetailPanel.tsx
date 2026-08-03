@@ -4,6 +4,7 @@ import HoldingProtectionActions from './HoldingProtectionActions'
 import HoldingReportLinks from './HoldingReportLinks'
 import ProAnalystPill, { useProAnalystMap } from './ProAnalystPill'
 import { EvidenceBlock } from './EvidenceBlock'
+import { laneLabel } from '../lib/laneLabels'
 import { fmt$ } from '../lib/format'
 import {
   accountBrand,
@@ -273,7 +274,7 @@ export default function HoldingsDetailPanel(ctx: HoldingsDetailContext) {
                 ⚠ OUTDATED curation mentions a live stop, but broker state shows none — trust live stop above.
               </div>
             )}
-            <EvidenceBlock title={`Grok stop curation${sc.grade ? ` · ${sc.grade}` : ''}`} evidence={sc.evidence} dataIDoubt={sc.data_i_doubt} maxItems={5} />
+            <EvidenceBlock title={`${laneLabel('grok')} stop curation${sc.grade ? ` · ${sc.grade}` : ''}`} evidence={sc.evidence} dataIDoubt={sc.data_i_doubt} maxItems={5} />
           </div>
         )
       })()}
@@ -713,7 +714,7 @@ export default function HoldingsDetailPanel(ctx: HoldingsDetailContext) {
               </div>
             )}
             {sc && (
-              <Section title="Stop curation (Grok)">
+              <Section title={`Stop curation (${laneLabel('grok')})`}>
                 {(sc.grade || sc.recommendation) && (
                   <div style={{ fontSize: 12, color: BB.text1, marginBottom: 8, lineHeight: 1.45 }}>
                     {sc.grade && <b style={{ color: BB.amber }}>Grade {sc.grade}</b>}

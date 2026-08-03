@@ -22,7 +22,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-DEFAULT_LANES = ["grok", "chatgpt"]
+DEFAULT_LANES = ["deepseek-flash", "grok", "chatgpt"]
 
 # ── Curated post-mortem prompt ────────────────────────────────────────────────────────────────────
 # Specific, no-boilerplate critique that extracts ONE actionable lesson + a trade grade. The

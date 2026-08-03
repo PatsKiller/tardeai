@@ -63,15 +63,12 @@ def _transcript_age_h():
 
 def _send_telegram(msg):
     try:
-        import requests
+        from telegram_alert import chokepoint_send
         token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
-        chat_ids = [c.strip() for c in os.getenv("TELEGRAM_CHAT_ID", "").split(",") if c.strip()]
-        if not token or not chat_ids:
+        if not token:
             print("[cookie-health] no Telegram config — skipping send")
             return False
-        for cid in chat_ids:
-            requests.post(f"https://api.telegram.org/bot{token}/sendMessage",
-                          json={"chat_id": cid, "text": msg}, timeout=10)
+        chokepoint_send(msg, token=token)
         return True
     except Exception as e:
         print(f"[cookie-health] telegram error: {e}")

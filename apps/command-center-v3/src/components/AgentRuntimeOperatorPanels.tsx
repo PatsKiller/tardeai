@@ -129,7 +129,7 @@ export function FleetOperationsBar({
         </StatusBadge>
         <div style={{ marginTop: 6, fontSize: TYPE.xs, color: 'var(--text2)', lineHeight: 1.45 }}>
           {criticLanesEnabled
-            ? 'Severity-gated Grok/ChatGPT/local escalation active for TEXT_ONLY and LOCAL_ONLY critics.'
+            ? 'Severity-gated cloud/local escalation active for TEXT_ONLY and LOCAL_ONLY critics.'
             : 'Deterministic-only critics; set AGENT_RUNTIME_CRITIC_LANES=1 to enable model lanes.'}
         </div>
       </div>

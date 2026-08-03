@@ -203,8 +203,8 @@ def _lane_order():
     """Preferred lane order — available() first, but keep both because the free OAuth proxies flap
     (available() can pass while generate() 502s), so we always keep a fallback lane in the list."""
     import llm_lane
-    avail = [l for l in ("grok", "chatgpt") if llm_lane.available(l)]
-    return avail + [l for l in ("grok", "chatgpt") if l not in avail]
+    avail = [l for l in ("deepseek-flash", "grok", "chatgpt") if llm_lane.available(l)]
+    return avail + [l for l in ("deepseek-flash", "grok", "chatgpt") if l not in avail]
 
 
 def _llm(prompt, attempts=4, backoff=8):

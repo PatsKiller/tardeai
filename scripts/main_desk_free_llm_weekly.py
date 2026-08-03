@@ -28,8 +28,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 sys.path.insert(1, str(PROJECT_ROOT / "scripts" / "lib"))
 
-LANES = ("local", "grok", "chatgpt")
-LANES_CSV = "local,grok,chatgpt"
+LANES = ("local", "grok", "chatgpt", "deepseek-flash", "deepseek-v4")
+LANES_CSV = "local,grok,chatgpt,deepseek-flash,deepseek-v4"
 # Re-run if last free-lane stamp (or any lane ran_at) older than this
 FRESH_DAYS = 6.5
 DEFAULT_CAP = 60

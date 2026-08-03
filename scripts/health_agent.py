@@ -2547,18 +2547,38 @@ def compute(policy: dict):
     rmap = (policy.get("remediation_map") or {})
     for _f_ in all_findings:
         _annotate(_f_, rmap)
+        # Impact scoring: how many points this finding costs the category
+        _f_["impact_score"] = penalties.get(_f_.get("severity"), 0)
     # Group findings by their tagged category so multiple collectors can feed one category.
     cat_findings = {c: [f for f in all_findings if f.get("category") == c] for c in CATEGORIES}
     cat_scores = {c: score_category(cat_findings[c], penalties) for c in CATEGORIES}
     # weighted overall (fallback to equal weights)
+    effective_weights = {}
     if weights:
         tot_w = sum(weights.get(c, 0) for c in cat_scores) or 1
         overall = round(sum(cat_scores[c] * weights.get(c, 0) for c in cat_scores) / tot_w)
+        for c in cat_scores:
+            effective_weights[c] = round(100 * weights.get(c, 0) / tot_w)
     else:
         overall = round(sum(cat_scores.values()) / len(cat_scores))
+        for c in cat_scores:
+            effective_weights[c] = round(100 / len(cat_scores))
     thr = policy.get("score_thresholds", {"healthy": 85, "degraded": 65})
     status = "healthy" if overall >= thr["healthy"] else ("degraded" if overall >= thr["degraded"] else "unhealthy")
-    return overall, status, cat_scores, cat_findings
+    # Score decomposition: exactly what drives the overall score
+    decomp = {
+        "thresholds": thr,
+        "categories": {c: {
+            "score": cat_scores[c],
+            "weight_pct": effective_weights.get(c, 0),
+            "weighted_contribution": round(cat_scores[c] * effective_weights.get(c, 0) / 100),
+            "finding_count": len(cat_findings[c]),
+            "top_penalty": max((f.get("impact_score", 0) for f in cat_findings[c]), default=0),
+        } for c in CATEGORIES},
+        "overall": overall,
+        "status": status,
+    }
+    return overall, status, cat_scores, cat_findings, decomp
 
 
 # ── trends ────────────────────────────────────────────────────────────────────────────────────────────
@@ -2691,6 +2711,7 @@ def persist(snapshot: dict, policy: dict | None = None):
             fh.write(json.dumps({"captured_at": snapshot["captured_at"],
                                  "overall": snapshot["overall_score"], "status": snapshot["status"],
                                  "category_scores": snapshot["category_scores"],
+                                 "decomposition": snapshot.get("decomposition"),
                                  "trends": snapshot["trends"], "enqueued": snapshot.get("enqueued", 0)},
                                 default=str) + "\n")
     except Exception:
@@ -2793,6 +2814,7 @@ def alert(policy: dict, snapshot: dict):
 
 
 def main():
+    global _POLICY
     ap = argparse.ArgumentParser(description="Centralized proactive Health Agent")
     ap.add_argument("--no-enqueue", action="store_true", help="score only; do not touch escalation queue")
     ap.add_argument("--no-alert", action="store_true", help="do not send Telegram")
@@ -2802,9 +2824,12 @@ def main():
     policy = load_policy()
     mode = (os.getenv("HEALTH_AGENT_MODE") or policy.get("mode") or "advisory").lower()
     ensure_snapshot_table()  # so the first-ever trend lookup has a table to read
-    overall, status, cat_scores, cat_findings = compute(policy)
+    overall, status, cat_scores, cat_findings, decomp = compute(policy)
     findings_flat = [f for fs in cat_findings.values() for f in fs]
     trends = detect_trends(policy, overall, cat_scores)
+    # Store decomposition for persistence
+    _POLICY = _POLICY or {}
+    _POLICY["_last_decomp"] = decomp
 
     enqueued = 0
     if not args.no_enqueue:
@@ -2822,9 +2847,10 @@ def main():
     rescored = False
     if remediated and any(r.get("ok") for r in remediated):
         try:
-            overall, status, cat_scores, cat_findings = compute(policy)
+            overall, status, cat_scores, cat_findings, decomp = compute(policy)
             findings_flat = [f for fs in cat_findings.values() for f in fs]
             trends = detect_trends(policy, overall, cat_scores)
+            _POLICY["_last_decomp"] = decomp
             rescored = True
         except Exception:
             pass
@@ -2835,6 +2861,7 @@ def main():
         "captured_at": datetime.now(timezone.utc).isoformat(),
         "overall_score": overall, "status": status, "mode": mode,
         "category_scores": cat_scores, "findings": findings_flat,
+        "decomposition": decomp,
         "trends": trends, "enqueued": enqueued, "remediated": remediated,
         "rescored_after_remediation": rescored,
         "scheduler": scheduler,

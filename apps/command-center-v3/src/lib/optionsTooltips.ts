@@ -41,7 +41,7 @@ export const FILTERS = {
   edge: 'Minimum composite quality score (POP + IV + R:R + conviction).',
   refresh: 'Reload cached proposals and positions from server.',
   forceScan: 'Bypass 10m cache — regenerate proposals from live chains.',
-  validateAll: 'Queue Grok + ChatGPT + local Gemma review for each proposal card.',
+  validateAll: 'Queue ensemble review for each proposal card.',
   clear: 'Reset all proposal filters.',
   showing: 'Count after filters vs total on desk.',
   all: 'Clear type/side/pair filters.',
@@ -112,8 +112,8 @@ export const GREEKS = {
 } as const
 
 export const REVIEW = {
-  aegis: 'Local Aegis covered-call screening (rules + gemma) — catalyst and verdict context.',
-  ensemble: 'Multi-LLM quality review: Grok OAuth + ChatGPT OAuth + local Gemma. Advisory only.',
+  aegis: 'Local Aegis covered-call screening (rules + local LLM) — catalyst and verdict context.',
+  ensemble: 'Multi-LLM quality review: ensemble. Advisory only.',
   worker: 'Background worker processes ensemble jobs — refresh card to see verdict.',
   reviewedBy: 'Sources that screened this proposal before it reached your desk.',
 } as const

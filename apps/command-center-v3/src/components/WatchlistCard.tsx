@@ -29,6 +29,7 @@ import HoldingReportLinks from './HoldingReportLinks'
 import SizingTable from './SizingTable'
 import { EnsembleValidationInline } from './EnsembleValidationCard'
 import CloudLlmRunButtons from './CloudLlmRunButtons'
+import { laneLabel } from '../lib/laneLabels'
 import {
   resolvePlanVolContext,
   stopVolatilityLine,
@@ -84,9 +85,6 @@ const moduleLabel: CSSProperties = {
   fontSize: 10, fontWeight: 700, letterSpacing: '.09em', textTransform: 'uppercase',
   color: WL.text.dim, marginBottom: 6, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10,
 }
-
-const LLM_NAMES: Record<string, string> = { grok: 'Grok', chatgpt: 'ChatGPT', claude: 'Claude' }
-const llmName = (lane?: string) => LLM_NAMES[lane || ''] || lane || 'LLM'
 
 const linkStyle: CSSProperties = {
   color: WL.text.secondary,
@@ -329,7 +327,7 @@ export default function WatchlistCard({
     : [enrichedTooltip(it), planValidatedTooltip(it)].join('\n')
 
   const convictionMeta = [
-    it.models_agree === true ? 'Grok + ChatGPT agree' : it.models_agree === false ? 'models split' : null,
+    it.models_agree === true ? 'Models agree' : it.models_agree === false ? 'models split' : null,
     validatedVal ? `validated ${validatedVal}` : null,
     (it.cio_model_used || it.entry_model) ? `${it.cio_model_used || it.entry_model}` : null,
   ].filter(Boolean).join(' · ')
@@ -672,7 +670,7 @@ export default function WatchlistCard({
             {(companyDesc || llms.length > 0) && (
               <div style={{ ...ctxLine, color: WL.text.dim }}>
                 {companyDesc ? truncate(companyDesc, 90) : ''}
-                {llms.length > 0 ? `${companyDesc ? ' · ' : ''}intel: ${llms.map((e: any) => llmName(e.lane)).join(' · ')}` : ''}
+                {llms.length > 0 ? `${companyDesc ? ' · ' : ''}intel: ${llms.map((e: any) => laneLabel(e.lane)).join(' · ')}` : ''}
               </div>
             )}
           </div>

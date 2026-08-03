@@ -80,7 +80,7 @@ def _llm_validate_source(domain):
         'analysis site), or low-value (spam, content farm, pure forum noise, unrelated, paywalled-stub)?\n'
         'Reply ONLY JSON: {"approve": true|false, "reason": "<=8 words"}'
     )
-    for lane in ("grok", "chatgpt", "local"):
+    for lane in ("deepseek-flash", "grok", "chatgpt", "local"):
         try:
             if not llm_lane.available(lane):
                 continue

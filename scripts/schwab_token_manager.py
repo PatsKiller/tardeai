@@ -537,7 +537,7 @@ def health(account_key, broker="schwab", environment="live"):
 
 def _telegram(msg):
     try:
-        import requests
+        from telegram_alert import chokepoint_send
         tok = os.environ.get("TELEGRAM_BOT_TOKEN", "")
         if not tok:
             for l in (PROJECT_ROOT / ".env").read_text().splitlines():
@@ -545,8 +545,7 @@ def _telegram(msg):
                     tok = l.split("=", 1)[1].strip()
         if not tok:
             return
-        for cid in chat_ids():
-            requests.post(f"https://api.telegram.org/bot{tok}/sendMessage", json={"chat_id": cid, "text": msg}, timeout=8)
+        chokepoint_send(msg, token=tok)
     except Exception:
         pass
 

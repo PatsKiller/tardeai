@@ -8,6 +8,7 @@ import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { useApi } from '../hooks/useApi'
 import { BB, T, heatRamp } from '../lib/watchTokens'
 import { terminalButton } from '../lib/watchlistTerminalTokens'
+import { laneLabel } from '../lib/laneLabels'
 import ProAnalystPill, { useProAnalystMap } from './ProAnalystPill'
 import { HelpTip } from './reentry/ReEntryHelpGuide'
 import { cioBlocksEntry, cioTrustBlocksPropose, diligenceFromWatchlistItem } from '../lib/watchlistDiligence'
@@ -147,7 +148,7 @@ const PAGE_SIZE = 15
 
 const DESK_TIPS = {
   propose: 'Ticket PASS + price present — propose bridge eligible. Deterministic validation remains authoritative over any model review.',
-  pending: 'MAIN GO but ticket critics not finished — run free critics (Local / Grok / ChatGPT). Street rating does not unlock propose.',
+  pending: `MAIN GO but ticket critics not finished — run critics (${laneLabel('deepseek-flash')} / Local / ${laneLabel('grok')} / ${laneLabel('chatgpt')}). Street rating does not unlock propose.`,
   gap: 'Price or RSI missing from Data Broker indicator snapshot — health agent remediates via data_broker_indicator_refresh (fills indicator_confluence_cache for all consumers).',
   stale: 'Quote older than weekend-safe TTL — refresh before acting. Session-hold quotes on Sat/Sun can still be fresh.',
   wait: 'MAIN WAIT — fill entry plan / ticket shape before GO. Not the same as CIO HOLD (advisory) or Street Buy (external consensus).',
@@ -155,12 +156,12 @@ const DESK_TIPS = {
   main: 'MAIN is the ~60-name setup desk. Street = external analyst consensus (context). CIO = internal research/synthesis (can block propose). They are allowed to disagree.',
   street: 'Street = Yahoo/professional-analyst consensus. Advisory only — never MAIN admission and never a propose unlock.',
   cio: 'CIO = internal research card and/or final synthesis. AVOID/SELL parks propose. HOLD is advisory; TRUST DEGRADED blocks buy-side propose-ready until dual/Street gates recover.',
-  trust: 'TRUST HIGH needs dual OAuth AGREE + fresh Street evidence + QA/safety. DEGRADED means those gates failed — not a second Street rating.',
+  trust: 'TRUST HIGH needs dual lane AGREE + fresh Street evidence + QA/safety. DEGRADED means those gates failed — not a second Street rating.',
 }
 
 const CRITERIA_TIPS: Record<string, string> = {
   ticket: 'Deterministic ticket validator must PASS before propose.',
-  critics: 'Local + Grok + ChatGPT free critics should run at least once.',
+  critics: `Free critics (${laneLabel('deepseek-flash')} + Local + ${laneLabel('grok')} + ${laneLabel('chatgpt')}) should run at least once.`,
   zone: 'Price in entry zone or structure reclaimed.',
   ma_bounce: 'Hold or bounce on SMA20/50/200.',
   rsi_reset: 'RSI 40–70 band for setup quality.',
@@ -462,7 +463,7 @@ function nextAction(
   if (now === 'NOGO') return 'Park / suppress — MAIN NOGO.'
   if (price === null) return 'Refresh quote / price before acting.'
   if (now === 'WAIT') return 'Refresh plan / fill data gaps — MAIN WAIT.'
-  if (isTicketPending(ticket)) return 'Setup GO — run free critics before propose (ticket pending).'
+  if (isTicketPending(ticket)) return 'Setup GO — run critics before propose (ticket pending).'
   if (rsi === null) return 'Refresh technical inputs before acting.'
   if (!value.notApplicable && !value.available) return 'Valuation is missing; review source coverage.'
   if (isTicketPass(ticket)) return 'Propose / open evidence — ticket validated.'
@@ -1190,8 +1191,8 @@ export default function WatchTruthAuditPanel() {
                         ['Deterministic', selectedRow.ticket.deterministic],
                         ['Reconciled', selectedRow.ticket.reconciled],
                         ['Local', selectedRow.ticket.local],
-                        ['Grok', selectedRow.ticket.grok],
-                        ['ChatGPT', selectedRow.ticket.chatgpt],
+                        [laneLabel('grok'), selectedRow.ticket.grok],
+                        [laneLabel('chatgpt'), selectedRow.ticket.chatgpt],
                         ['Valuation', selectedRow.value.notApplicable ? 'N/A' : selectedRow.value.available ? `P/E ${selectedRow.value.pe ?? '—'}` : '—'],
                       ] as const).map(([label, value]) => (
                         <div key={label} style={{ padding: 8, borderBottom: `1px solid ${BB.border}`, borderRight: `1px solid ${BB.border}`, background: 'rgba(0,0,0,.12)' }}>
@@ -1232,15 +1233,17 @@ export default function WatchTruthAuditPanel() {
                     <button
                       type="button"
                       disabled={Boolean(reviewBusy)}
-                      onClick={() => void runReview('local,grok,chatgpt', 'All free critics')}
+                      onClick={() => void runReview('deepseek-flash,local,grok,chatgpt', 'All critics')}
                       style={{ ...successBtn, width: '100%' }}
                     >
-                      {reviewBusy === 'All free critics' ? '…' : selectedRow.ticketPending ? 'Run free critics' : 'Re-run free critics'}
+                      {reviewBusy === 'All critics' ? '…' : selectedRow.ticketPending ? 'Run critics' : 'Re-run critics'}
                     </button>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-                      <button type="button" disabled={Boolean(reviewBusy)} onClick={() => void runReview('local', 'Local critic')} style={terminalButton('secondary') as CSSProperties}>{reviewBusy === 'Local critic' ? '…' : 'Run local'}</button>
-                      <button type="button" disabled={Boolean(reviewBusy)} onClick={() => void runReview('grok', 'Grok OAuth')} style={terminalButton('secondary') as CSSProperties}>{reviewBusy === 'Grok OAuth' ? '…' : 'Grok OAuth'}</button>
-                      <button type="button" disabled={Boolean(reviewBusy)} onClick={() => void runReview('chatgpt', 'ChatGPT OAuth')} style={terminalButton('secondary') as CSSProperties}>{reviewBusy === 'ChatGPT OAuth' ? '…' : 'ChatGPT OAuth'}</button>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
+<button type="button" disabled={Boolean(reviewBusy)} onClick={() => void runReview('deepseek-flash', laneLabel('deepseek-flash'))} style={terminalButton('secondary') as CSSProperties}>{reviewBusy === laneLabel('deepseek-flash') ? '…' : laneLabel('deepseek-flash')}</button>
+<button type="button" disabled={Boolean(reviewBusy)} onClick={() => void runReview('local', `${laneLabel('local')} critic`)} style={terminalButton('secondary') as CSSProperties}>{reviewBusy === `${laneLabel('local')} critic` ? '…' : `Run ${laneLabel('local')}`}</button>
+                      <button type="button" disabled={Boolean(reviewBusy)} onClick={() => void runReview('grok', laneLabel('grok'))} style={terminalButton('secondary') as CSSProperties}>{reviewBusy === laneLabel('grok') ? '…' : laneLabel('grok')}</button>
+                      <button type="button" disabled={Boolean(reviewBusy)} onClick={() => void runReview('chatgpt', laneLabel('chatgpt'))} style={terminalButton('secondary') as CSSProperties}>{reviewBusy === laneLabel('chatgpt') ? '…' : laneLabel('chatgpt')}</button>
+                      <button type="button" disabled={Boolean(reviewBusy)} onClick={() => void runReview('deepseek-v4', laneLabel('deepseek-v4'))} style={terminalButton('secondary') as CSSProperties}>{reviewBusy === laneLabel('deepseek-v4') ? '…' : laneLabel('deepseek-v4')}</button>
                       <button type="button" disabled={Boolean(reviewBusy)} onClick={() => void estimatePremium()} style={terminalButton('secondary') as CSSProperties}>Paid…</button>
                     </div>
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>

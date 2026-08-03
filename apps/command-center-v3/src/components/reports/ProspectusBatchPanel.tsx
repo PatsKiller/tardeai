@@ -129,13 +129,13 @@ export default function ProspectusBatchPanel() {
       </div>
       <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 12, lineHeight: 1.5 }}>
         Auto-generates JEPQ-style prospectus reports for all <b style={{ color: '#22c55e' }}>BUY / STRONG BUY / ADD</b> holdings.
-        Weekly cron (Sun 21:15) refreshes with latest data when fingerprint changes or report is ≥6 days old. Optional <b style={{ color: '#60a5fa' }}>Grok OAuth</b> editorial polish.
+        Weekly cron (Sun 21:15) refreshes with latest data when fingerprint changes or report is ≥6 days old. Optional <b style={{ color: '#60a5fa' }}>Cloud</b> editorial polish.
       </div>
 
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 12, alignItems: 'center' }}>
         <label style={{ fontSize: 10, display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', color: 'var(--text2)' }}>
           <input type="checkbox" checked={grokEdit} onChange={e => setGrokEdit(e.target.checked)} />
-          Grok editorial polish
+          Cloud editorial polish
         </label>
         <label style={{ fontSize: 10, display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', color: 'var(--text2)' }}>
           <input type="checkbox" checked={forceRefresh} onChange={e => setForceRefresh(e.target.checked)} />
@@ -252,7 +252,7 @@ export default function ProspectusBatchPanel() {
                       : <span style={{ color: 'var(--text3)' }}>{row.recommendation || '—'}</span>
                   })()}
                   <span style={{ color: 'var(--text4)', fontSize: 9 }}>{fmtDate(row.generated_at)}</span>
-                  {row.grok_edited && <span style={{ fontSize: 8, fontWeight: 700, color: '#60a5fa', padding: '1px 5px', borderRadius: 3, background: 'rgba(96,165,250,.12)' }}>Grok</span>}
+                  {row.grok_edited && <span style={{ fontSize: 8, fontWeight: 700, color: '#60a5fa', padding: '1px 5px', borderRadius: 3, background: 'rgba(96,165,250,.12)' }}>Cloud</span>}
                   <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
                     {docx && <a href={docx} target="_blank" rel="noreferrer" style={{ fontWeight: 700, color: '#60a5fa', textDecoration: 'none' }}>DOCX</a>}
                     {pdf && <a href={pdf} target="_blank" rel="noreferrer" style={{ fontWeight: 700, color: '#f59e0b', textDecoration: 'none' }}>PDF</a>}

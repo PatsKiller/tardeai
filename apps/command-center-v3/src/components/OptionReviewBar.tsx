@@ -1,3 +1,4 @@
+import { laneLabel } from '../lib/laneLabels'
 import { REVIEW } from '../lib/optionsTooltips'
 import { EnsembleValidationInline } from './EnsembleValidationCard'
 import type { OptionProposal } from './OptionProposalCard'
@@ -34,7 +35,7 @@ export default function OptionReviewBar({ proposal: p, autoRequest }: { proposal
         {aegis && <span style={{ fontSize: 9.5, color: MUTED, flex: '1 1 180px', lineHeight: 1.35 }}>{aegis}</span>}
       </div>
       <div title={REVIEW.ensemble} style={{ fontSize: 9, color: MUTED, marginBottom: 4, cursor: 'help' }}>
-        Multi-LLM ensemble (OAuth-free): <b style={{ color: BLUE }}>Grok</b> + <b style={{ color: '#10a37f' }}>ChatGPT</b> + <b style={{ color: '#2dd4bf' }}>local Gemma</b> ⓘ
+        Multi-LLM ensemble (OAuth-free): <b style={{ color: BLUE }}>{laneLabel('grok')}</b> + <b style={{ color: '#10a37f' }}>{laneLabel('chatgpt')}</b> + <b style={{ color: '#2dd4bf' }}>{laneLabel('local')}</b> ⓘ
       </div>
       <EnsembleValidationInline
         targetType="options_proposal"

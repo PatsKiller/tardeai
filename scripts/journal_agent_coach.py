@@ -61,8 +61,8 @@ def _call_ollama(prompt: str, timeout: int = 90) -> str:
         return ""
 
 
-def call_llm(prompt: str) -> tuple[str, str]:
-    """Returns (response_text, model_used). Tries Ollama first."""
+def call_llm_DEPRECATED(prompt: str) -> tuple[str, str]:
+    """Deprecated — migrated to llm_lane.generate() for fallback."""
     text = _call_ollama(prompt)
     if text:
         from local_llm_config import get_local_llm_model
@@ -81,6 +81,26 @@ def call_llm(prompt: str) -> tuple[str, str]:
             return msg.content[0].text, "claude-sonnet-4-6"
         except Exception as e:
             log.error(f"  Anthropic failed: {e}")
+
+    log.error("No LLM available")
+    return "", "none"
+
+
+def call_llm(prompt: str) -> tuple[str, str]:
+    """Returns (response_text, model_used). Tries Ollama first, then DeepSeek Flash."""
+    text = _call_ollama(prompt)
+    if text:
+        from local_llm_config import get_local_llm_model
+        return text, get_local_llm_model()
+
+    # Fallback to DeepSeek Flash via llm_lane
+    try:
+        from llm_lane import generate
+        result = generate(prompt, lane="deepseek-flash", timeout=90)
+        if result:
+            return result, "deepseek-v4-flash"
+    except Exception as e:
+        log.error(f"  DeepSeek flash failed: {e}")
 
     log.error("No LLM available")
     return "", "none"

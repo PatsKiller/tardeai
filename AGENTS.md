@@ -215,3 +215,97 @@ finding string — exactly the synthetic-evidence pattern the real-trigger syste
 artifact and leaves the run at `REVIEW_REQUIRED`, matching how `SentinelShadowPipeline` already behaves when
 no `review_provider` is wired. Independent review/completion is a separate, later governed step (by the
 agent's `reviewer_agent_id` from `definitions.py`), not something dispatch fabricates inline.
+
+## Ops Page Constitution
+
+Every page, tab, and data display under the Ops navigation (Retirement, Health, Consumption, System) MUST
+follow these rules. They are enforced by design-guard and code review. Violations are blocking.
+
+### 1. Canonical Data Source Rule
+
+Every data point shown on an Ops page MUST trace to exactly ONE backend endpoint and ONE database table
+or agent. No ad-hoc computations in the frontend that duplicate backend logic. Frontend components MUST
+document their data source endpoint in a JSDoc comment on the fetch/useApi call:
+
+```
+/** Fetched from GET /api/v2/health — health_agent_snapshots table via health_agent.py */
+const { data } = useApi('/api/v2/health', 120_000)
+```
+
+### 2. Freshness Rule
+
+Every Ops page MUST show when data was captured (`captured_at`, `last_run`, or `generated_at` field).
+If the displayed data is older than 2x the producing agent's run interval, it MUST show a visual stale
+indicator (amber border-left + "STALE" badge) and offer a refresh action. Pages fetching live backend
+data via polling are exempt from stale detection but must show the polling interval.
+
+### 3. Actionability Rule
+
+Every finding, alert, or anomaly shown in a primary dashboard view MUST have at least ONE concrete
+action the operator can take (button, link, or remediation trigger). Informational-only items that
+require no action MUST appear in a separate "FYI" or "Monitor" tray, never in the main findings feed
+or alert stream.
+
+### 4. No Overlap Rule
+
+No data domain may appear as a primary (full-detail) view on more than ONE Ops page. If a domain
+appears on two pages, one MUST be a summary card or metric that links to the canonical page.
+Cross-linking is required: the summary card must include a "View in [CanonicalPage]" link.
+
+Examples of overlap violations:
+- Pipeline health appearing as primary in both HealthHub findings AND SystemHub Pipeline tab → keep
+  findings in HealthHub, make SystemHub Pipeline a raw data explorer that links back
+- Data freshness appearing in both SystemHub Data Sources AND HealthHub Data Quality → SystemHub Data
+  Sources shows raw source status; HealthHub shows business impact with cross-links
+
+### 5. Component Hierarchy Rule
+
+Ops pages use a consistent visual hierarchy:
+```
+Score/Status Hero → Category Breakdown Cards → Detail Table/Feed → Timeline/History
+```
+- HERO: large number + status badge + key metrics summary (always at top)
+- CARDS: category or domain score cards (grid, 2-4 columns)
+- FEED: detail table with filter/sort/search (the main interaction surface)
+- TIMELINE: historical view (below or separate tab)
+
+New Ops pages MUST follow this hierarchy. Existing pages should be refactored to match on next touch.
+
+### 6. Consolidation Rule
+
+When adding a new monitoring feature or data view, ALWAYS check if it fits within an EXISTING tab or
+hub before creating a new tab, hub, or page. Adding a tab requires explicit justification in the PR
+describing: (a) what data it shows, (b) why it cannot fit in an existing tab, (c) whether it creates
+overlap. The default answer is "add it to an existing tab."
+
+### 7. Threshold Visibility Rule
+
+Every score, gauge, health indicator, or status badge MUST show its threshold — the numeric value or
+condition that would change its color/status (green/amber/red or healthy/degraded/unhealthy). If a
+gauge shows "42/100 unhealthy", the user must be able to see "threshold: <65 unhealthy, 65-84 degraded,
+85+ healthy" via hover, tooltip, or adjacent label. No mystery scores.
+
+### 8. Agent Logging Rule
+
+Every health agent or monitoring script that feeds an Ops page MUST log its runs to a QUERYABLE database
+table (not just a logfile). The Ops page queries that table for "last run timestamp" and "success/failure"
+status. Agents that write only to logfiles must be migrated to DB logging before they appear on an Ops page.
+
+### 9. Constitution Enforcement
+
+The design guard (`scripts/check_design_tokens.sh`) enforces frontend token compliance (no raw hex,
+no sub-10px fonts). An `--ops-constitution` mode validates pages against rules 1-8 above. CI runs it
+on every PR touching files under `apps/command-center-v3/src/pages/` or
+`apps/command-center-v3/src/components/health/` or `apps/command-center-v3/src/components/risk/`.
+
+Enforcement checklist for `--ops-constitution`:
+- [ ] Every useApi call has a doc-comment with endpoint + data source (Rule 1)
+- [ ] Every page shows captured_at/last_run or declares polling interval (Rule 2)
+- [ ] Primary feed items have action buttons; pure-info items are separated (Rule 3)
+- [ ] No data domain appears as full-detail on multiple pages (Rule 4) — checked via grep of
+  endpoint names across pages
+- [ ] Visual hierarchy: hero → cards → feed → timeline present (Rule 5) — structural lint
+- [ ] Tab/hub additions have justification comment (Rule 6) — checked for new TABS arrays
+  or Route entries without adjacent comment
+- [ ] Score indicators show thresholds via title/tooltip (Rule 7)
+- [ ] Backend agents writing to Ops pages log to DB tables (Rule 8)

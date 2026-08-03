@@ -150,8 +150,8 @@ def _load_env() -> None:
         os.environ.setdefault(k.strip(), v.strip())
 
 
-def _call_llm(prompt: str, timeout: int = 90, *, skip_ollama: bool = False) -> str:
-    """Ollama (fast fail) → OpenAI → Anthropic. Loads .env; no toll gate."""
+def _call_llm_DEPRECATED(prompt: str, timeout: int = 90, *, skip_ollama: bool = False) -> str:
+    """Deprecated — migrated to llm_lane.generate(lane='deepseek-flash')."""
     import json
     import os
     import urllib.request
@@ -230,6 +230,58 @@ def _call_llm(prompt: str, timeout: int = 90, *, skip_ollama: bool = False) -> s
             return msg.content[0].text
         except Exception:
             pass
+    return ""
+
+
+def _call_llm(prompt: str, timeout: int = 90, *, skip_ollama: bool = False) -> str:
+    """Ollama (fast fail) → DeepSeek Flash via llm_lane. Loads .env; no toll gate.
+    Replaces OpenAI + Anthropic fallbacks with DeepSeek Flash for cataloging tasks."""
+    import json
+    import os
+    import urllib.request
+
+    _load_env()
+    ollama_timeout = min(timeout, 12)
+
+    if not skip_ollama:
+        try:
+            import sys
+            from pathlib import Path
+
+            scripts = Path(__file__).resolve().parent.parent
+            if str(scripts) not in sys.path:
+                sys.path.insert(0, str(scripts))
+            from local_llm_config import get_local_llm_base_url, get_local_llm_model
+
+            payload = json.dumps({
+                "model": get_local_llm_model(),
+                "stream": False,
+                "messages": [{"role": "user", "content": prompt}],
+                "think": False,
+                "options": {"temperature": 0.1, "num_predict": 1200},
+            }).encode()
+            req = urllib.request.Request(
+                f"{get_local_llm_base_url().rstrip('/')}/api/chat",
+                data=payload,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=ollama_timeout) as resp:
+                data = json.loads(resp.read())
+                text = (data.get("message") or {}).get("content", "").strip()
+                if text:
+                    return text
+        except Exception:
+            pass
+
+    # Fallback to DeepSeek Flash (replaces OpenAI + Anthropic)
+    try:
+        from llm_lane import generate
+        result = generate(prompt, lane="deepseek-flash", timeout=60)
+        if result:
+            return result
+    except Exception:
+        pass
     return ""
 
 

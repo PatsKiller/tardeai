@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useApi } from '../hooks/useApi'
 import SoulEditor from './HermesSoulEditor'
+import { laneLabel } from '../lib/laneLabels'
 
 // Hermes global-profile management panel (Command Center → System → Hermes).
 // Read-only status + safe SOUL/identity editing (shared HermesSoulEditor). Never enables the sidecar gateway.
@@ -194,7 +195,7 @@ export default function HermesPanel() {
                   <td style={{ padding: '4px 6px', fontWeight: 600 }}>{l.lane}</td>
                   <td style={{ padding: '4px 6px', color: 'var(--text3)' }}>{l.kind}</td>
                   <td title={`${l.lane}: ${l.usable ? 'ready for use' : l.authed ? 'authenticated but the OAuth proxy is not running' : 'not authenticated — run the login command'}${l.reason_code ? ' (' + l.reason_code + ')' : ''}`} style={{ padding: '4px 6px', color: l.usable ? '#22c55e' : l.authed ? '#f59e0b' : '#f59e0b', fontWeight: 600 }}>{l.usable ? '✓ ready' : l.authed ? 'authed · needs proxy' : 'auth pending'}</td>
-                  <td style={{ padding: '4px 6px', fontFamily: 'monospace', fontSize: 10 }}>{l.login_command !== '(none — local gemma3 via Ollama)' && <>{l.login_command}<Copy text={l.login_command} /></>}</td>
+                  <td style={{ padding: '4px 6px', fontFamily: 'monospace', fontSize: 10 }}>{l.login_command !== '(none — local via Ollama)' && <>{l.login_command}<Copy text={l.login_command} /></>}</td>
                 </tr>
               ))}
             </tbody>
@@ -494,7 +495,7 @@ export default function HermesPanel() {
 
       {/* Codex dev */}
       <div style={card}>
-        <div style={{ fontWeight: 700, marginBottom: 8 }}>ChatGPT / Codex Dev Profile</div>
+        <div style={{ fontWeight: 700, marginBottom: 8 }}>{laneLabel('chatgpt')} / Codex Dev Profile</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: 6, marginBottom: 8 }}>
           <div style={kv}>dev profile exists: <b>{String(codex?.dev_profile_exists)}</b></div>
           <div style={kv}>dev SOUL exists: <b>{String(codex?.dev_soul_exists)}</b></div>
