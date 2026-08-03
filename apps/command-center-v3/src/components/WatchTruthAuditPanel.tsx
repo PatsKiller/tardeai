@@ -925,15 +925,16 @@ export default function WatchTruthAuditPanel() {
               border: `1px solid ${BB.border}`, background: 'rgba(0,0,0,.25)',
               fontSize: 11, color: BB.text2, lineHeight: 1.45,
             }}>
-              <b style={{ color: BB.amber }}>LLM cadence (honest)</b>
+              <b style={{ color: BB.amber }}>LLM cadence (Flash-first)</b>
               {' · '}
-              <b style={{ color: BB.text1 }}>Ticket critics (DeepSeek / Grok / ChatGPT / Local) are manual-first</b>
-              {' — click a button per name. '}
-              Auto batch is only the weekly MAIN free-LLM timer
+              Agents / Hermes / entry planner → <b style={{ color: BB.text1 }}>DeepSeek Flash</b>.
+              {' '}Watchlist Flash critics <b>weekdays 09:30</b> (skip if data fresh).
+              {' '}Portfolio risk Flash <b>hourly 07–19 weekdays</b> + <b>weekends 10:00</b>.
+              {' '}LLM intelligence Flash <b>07:20 / 12:20 / 16:20 weekdays</b>.
+              {' '}Pro (v4) only: operator desk button, Paid…, or explicit escalation — not cron.
               {freeLlmStamp?.finished_at
-                ? ` (last ${String(freeLlmStamp.finished_at).slice(0, 16).replace('T', ' ')} UTC · ran ${freeLlmStamp.ran_n ?? '—'}/${freeLlmStamp.main_pool_n ?? 60} · next ~${String(freeLlmStamp.next_due_after || '').slice(0, 10) || 'Sun 18:15'})`
-                : ' (Sunday 18:15 · stamp missing)'}
-              . Screener crons use <b>--no-llm</b>. DeepSeek v4 is optional heavy and can take 1–3 minutes — strip shows RUNNING until done.
+                ? ` Last MAIN batch ${String(freeLlmStamp.finished_at).slice(0, 16).replace('T', ' ')} UTC (${freeLlmStamp.ran_n ?? '—'}/${freeLlmStamp.main_pool_n ?? 60}).`
+                : ''}
             </div>
           </div>
           <button type="button" onClick={() => setDeskOpen(!open)} aria-expanded={open} style={primaryBtn}>

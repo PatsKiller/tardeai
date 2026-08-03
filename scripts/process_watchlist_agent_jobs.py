@@ -422,45 +422,77 @@ def _rec_from(raw):
 
 
 def _synthesis_lanes(prompt: str, lanes=None, max_tokens: int = 2000, manual_trigger: bool = False):
-    """Run CIO final synthesis — DeepSeek v4 primary, Grok+ChatGPT dual-consensus fallback.
-    lanes: None → deepseek-v4 (cron default), ('grok','chatgpt') for legacy dual-consensus."""
+    """Run CIO final synthesis — DeepSeek Flash primary (policy 2026-08-03).
+
+    lanes: None → deepseek-flash (cron/agent default). Pro (deepseek-v4) only when
+    explicitly requested (manual operator escalation). Fallback: Grok+ChatGPT dual.
+    """
     global _dual_chatgpt_count
     import llm_lane
+    try:
+        from llm_route_policy import FLASH, PRO, resolve_lane
+    except Exception:
+        FLASH, PRO = "deepseek-flash", "deepseek-v4"
+        def resolve_lane(requested=None, process_id=None, manual_trigger=False):
+            return requested or FLASH
+
     cloud_prompt = _strip_local_tokens(prompt)
-    want = tuple(l for l in (lanes or ("deepseek-v4",)) if l in ("deepseek-v4", "grok", "chatgpt"))
+    default = (FLASH,)
+    if lanes is None:
+        want = default
+    else:
+        want = tuple(
+            resolve_lane(l, process_id="watchlist_cio_synthesis", manual_trigger=manual_trigger)
+            for l in lanes
+            if l
+        )
+        want = tuple(l for l in want if l in (FLASH, PRO, "grok", "chatgpt"))
     if not want:
         want = ("grok", "chatgpt")  # legacy dual-consensus fallback
-    v4_raw = grok_raw = chatgpt_raw = None
-    v4_rec = grok_rec = chatgpt_rec = None
-    v4_conf = grok_conf = chatgpt_conf = 0.0
-    pid = "watchlist_cio_synthesis" if manual_trigger else None
+    flash_raw = v4_raw = grok_raw = chatgpt_raw = None
+    flash_rec = v4_rec = grok_rec = chatgpt_rec = None
+    flash_conf = v4_conf = grok_conf = chatgpt_conf = 0.0
+    pid = "watchlist_cio_synthesis" if manual_trigger else "watchlist_cio_synthesis"
     task = "CIO synthesis"
 
     def _gen(lane: str, timeout: int):
-        kw = dict(lane=lane, timeout=timeout)
-        if pid:
-            return llm_lane.generate(
-                cloud_prompt, process_id=pid, task_summary=f"{task} {lane}",
-                manual_trigger=True, **kw)
+        kw = dict(lane=lane, timeout=timeout, process_id=pid,
+                  task_summary=f"{task} {lane}", manual_trigger=manual_trigger)
         return llm_lane.generate(cloud_prompt, **kw)
 
-    # DeepSeek v4 primary (high-reasoning CIO synthesis)
-    if "deepseek-v4" in want:
+    # DeepSeek Flash primary (bulk CIO / agents policy)
+    if FLASH in want:
         try:
-            if llm_lane.available("deepseek-v4"):
-                v4_raw = _gen("deepseek-v4", 180)
+            if llm_lane.available(FLASH):
+                flash_raw = _gen(FLASH, 120)
+                if _is_refusal(flash_raw):
+                    flash_raw = None
+        except Exception:
+            flash_raw = None
+        if flash_raw:
+            flash_rec, flash_conf = _rec_from(flash_raw)
+            _llm._last_model = "deepseek-chat"; _llm._last_provider = "deepseek"; _llm._last_cost = 0
+            return (flash_rec or flash_raw, {"lanes_run": [FLASH], "recommendation": flash_rec,
+                     "confidence": flash_conf, "raw": flash_raw})
+
+    # Explicit Pro only (manual escalation) — not cron default
+    if PRO in want and manual_trigger:
+        try:
+            if llm_lane.available(PRO):
+                v4_raw = _gen(PRO, 180)
                 if _is_refusal(v4_raw):
                     v4_raw = None
         except Exception:
             v4_raw = None
         if v4_raw:
             v4_rec, v4_conf = _rec_from(v4_raw)
-            _llm._last_model = "deepseek-v4-pro"; _llm._last_provider = "deepseek"; _llm._last_cost = 0
-            return (v4_rec or v4_raw, {"lanes_run": ["deepseek-v4"], "recommendation": v4_rec,
+            _llm._last_model = "deepseek-reasoner"; _llm._last_provider = "deepseek"; _llm._last_cost = 0
+            return (v4_rec or v4_raw, {"lanes_run": [PRO], "recommendation": v4_rec,
                      "confidence": v4_conf, "raw": v4_raw})
-        # DeepSeek v4 failed — fall through to dual-consensus
-        want = ("grok", "chatgpt")
-        v4_raw = None
+
+    # Flash/Pro failed — dual free OAuth
+    want = ("grok", "chatgpt")
+    v4_raw = None
 
     if "grok" in want:
         try:
@@ -2079,7 +2111,7 @@ CRITICAL INSTRUCTIONS:
             "dual_consensus": dual_meta,
             "model_used": actual_model,
             "raw_response": raw,
-            "lanes_run": list(lanes or ("deepseek-v4",)),
+            "lanes_run": list(lanes or ("deepseek-flash",)),
             "manual_trigger": manual_trigger,
         }
     _grok_rec = (dual_meta.get("grok") or {}).get("recommendation")

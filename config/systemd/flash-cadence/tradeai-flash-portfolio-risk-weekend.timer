@@ -1,0 +1,10 @@
+[Unit]
+Description=TradeAI portfolio risk Flash — weekends 10:00 once
+
+[Timer]
+OnCalendar=Sat,Sun *-*-* 10:00:00
+Persistent=true
+Unit=tradeai-flash-portfolio-risk.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,10 @@
+[Unit]
+Description=TradeAI MAIN watchlist Flash — weekdays 09:30 ET
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 09:30:00
+Persistent=true
+Unit=tradeai-flash-watchlist-daily.service
+
+[Install]
+WantedBy=timers.target

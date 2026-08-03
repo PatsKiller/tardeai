@@ -453,7 +453,7 @@ def _live(conn, cur):
         return conn, conn.cursor()
 
 
-def run(lane="local", symbols=None, limit=25, alert=True, scope="watchlist", buy_rated_cap=20):
+def run(lane="deepseek-flash", symbols=None, limit=25, alert=True, scope="watchlist", buy_rated_cap=20):
     import llm_lane
     from db_adapter import _get_conn
     conn = _get_conn(); cur = conn.cursor()
@@ -706,7 +706,7 @@ def _main_lane_symbols(limit: int = 60) -> list[str]:
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--lane", default="local", choices=["local", "deepseek-flash", "grok"])
+    ap.add_argument("--lane", default="deepseek-flash", choices=["local", "deepseek-flash", "grok"])
     ap.add_argument("--symbols")
     ap.add_argument("--limit", type=int, default=25)
     ap.add_argument("--scope", default="watchlist", choices=["watchlist", "proposals"])

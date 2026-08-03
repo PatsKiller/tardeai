@@ -105,17 +105,26 @@ def _ollama(prompt: str, max_tokens: int = 500) -> str:
         return f"LLM error: {e}"
 
 def _ai(prompt: str, model: str = None, max_tokens: int = 1500) -> str:
-    """Route to local LLM (daily/weekly) or DeepSeek v4 (monthly/manual)."""
+    """Route to DeepSeek Flash (policy 2026-08-03). Pro only via explicit env USE_PRO=1."""
     if _USE_OLLAMA:
         return _ollama(prompt, max_tokens=min(max_tokens, 600))
     try:
         from llm_lane import generate
-        return generate(prompt, lane="deepseek-v4", timeout=120)
+        import os as _os
+        use_pro = _os.getenv("USE_PRO", "").strip().lower() in {"1", "true", "yes", "on"}
+        lane = "deepseek-v4" if use_pro else "deepseek-flash"
+        return generate(
+            prompt,
+            lane=lane,
+            timeout=180 if use_pro else 120,
+            process_id="portfolio_ai_analyst",
+            task_summary="portfolio AI analysis",
+        )
     except Exception as e:
         return f"AI analysis unavailable — llm_lane failed: {str(e)[:100]}"
 
 def _claude_DEPRECATED(prompt: str, model: str = None, max_tokens: int = 1500) -> str:
-    """Deprecated — migrated to llm_lane.generate(lane='deepseek-v4')."""
+    """Deprecated — migrated to llm_lane.generate(lane='deepseek-flash')."""
     key = _get_api_key()
     if not key: return "AI analysis unavailable — ANTHROPIC_API_KEY not set."
     try:

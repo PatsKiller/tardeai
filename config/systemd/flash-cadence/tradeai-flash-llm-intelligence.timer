@@ -1,0 +1,12 @@
+[Unit]
+Description=TradeAI LLM intelligence Flash — weekdays 07:20 12:20 16:20
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 07:20:00
+OnCalendar=Mon..Fri *-*-* 12:20:00
+OnCalendar=Mon..Fri *-*-* 16:20:00
+Persistent=true
+Unit=tradeai-flash-llm-intelligence.service
+
+[Install]
+WantedBy=timers.target

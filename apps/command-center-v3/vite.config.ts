@@ -22,7 +22,7 @@ export default defineConfig({
           ui_version: FULL_UI_VERSION,
           base_version: UI_VERSION,
           built_at: new Date().toISOString(),
-          release_notes: 'watch-critic-live: overlay RUNNING/verdicts + honest weekly LLM cadence banner'
+          release_notes: 'flash-policy: fleet Flash defaults + Pro allowlist + cadence timers'
         }
         fs.writeFileSync(
           path.resolve(__dirname, 'dist/build-meta.json'),

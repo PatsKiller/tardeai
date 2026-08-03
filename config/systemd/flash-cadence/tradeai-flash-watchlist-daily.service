@@ -1,0 +1,14 @@
+[Unit]
+Description=TradeAI MAIN watchlist Flash critics (trading day)
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/johnclaw/tradeai-wt-cursor-guardrails
+Environment=PATH=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin:/usr/bin:/bin
+Environment=HOME=/home/johnclaw
+Environment=PYTHONPATH=/home/johnclaw/tradeai-wt-cursor-guardrails/scripts
+ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python /home/johnclaw/tradeai-wt-cursor-guardrails/scripts/flash_cadence_runner.py watchlist-daily
+Nice=10
+StandardOutput=append:/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/flash_watchlist_daily.log
+StandardError=append:/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/flash_watchlist_daily.log

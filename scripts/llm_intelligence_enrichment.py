@@ -42,7 +42,23 @@ def _get_conn():
 
 
 def _llm_generate(prompt: str, timeout: int = 120) -> str:
-    """Prefer free local Ollama; local_llm handles optional cloud fallback."""
+    """DeepSeek Flash primary (policy 2026-08-03); local gemma fallback."""
+    # Prefer Flash via llm_lane
+    try:
+        import llm_lane
+        if llm_lane.available("deepseek-flash"):
+            out = llm_lane.generate(
+                prompt,
+                lane="deepseek-flash",
+                timeout=timeout,
+                process_id="llm_intelligence",
+                task_summary="llm intelligence enrichment",
+            )
+            if out and str(out).strip() and not str(out).startswith("LLM error"):
+                return str(out)
+    except Exception as e:
+        print(f"  [llm_intel] flash failed: {e}")
+    # Fallback: free local Ollama
     from local_llm import generate
     no_cloud = os.getenv("LOCAL_LLM_NO_CLOUD", "").strip().lower() in {"1", "true", "yes", "on"}
     return generate(

@@ -1,18 +1,16 @@
 #!/usr/bin/env python3
-"""Weekly free-LLM critic lanes on MAIN setup desk (local + Grok OAuth + ChatGPT OAuth).
+"""MAIN desk free-LLM critics — trading-day Flash batch (policy 2026-08-03).
 
-Once per week (systemd timer), walk MAIN-admitted symbols, run free ticket critics
-where deterministic validation allows, and stamp a runtime file the UI/API read:
+Default lanes: deepseek-flash + local + grok + chatgpt (NO Pro/v4).
+Cadence: trading days (skip if critics already ran with same ticket hash /
+within FRESH_HOURS). Weekly stamp file kept for UI compatibility.
 
-  data/runtime/main_desk_free_llm_weekly.json
-
-Never schedules premium / paid lanes. Never submits orders. Advisory only —
-deterministic ticket authority unchanged.
+Never schedules premium / paid Pro by default. Never submits orders. Advisory only.
 
 Usage:
   python scripts/main_desk_free_llm_weekly.py --dry-run
   python scripts/main_desk_free_llm_weekly.py --run
-  python scripts/main_desk_free_llm_weekly.py --run --force   # ignore 6.5d freshness
+  python scripts/main_desk_free_llm_weekly.py --run --force   # ignore freshness
   python scripts/main_desk_free_llm_weekly.py --status
 """
 from __future__ import annotations
@@ -28,10 +26,16 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 sys.path.insert(1, str(PROJECT_ROOT / "scripts" / "lib"))
 
-LANES = ("local", "grok", "chatgpt", "deepseek-flash", "deepseek-v4")
-LANES_CSV = "local,grok,chatgpt,deepseek-flash,deepseek-v4"
-# Re-run if last free-lane stamp (or any lane ran_at) older than this
-FRESH_DAYS = 6.5
+try:
+    from llm_route_policy import FREE_CRITIC_LANES, free_critic_lanes_csv
+    LANES = FREE_CRITIC_LANES
+    LANES_CSV = free_critic_lanes_csv()
+except Exception:
+    LANES = ("deepseek-flash", "local", "grok", "chatgpt")
+    LANES_CSV = "deepseek-flash,local,grok,chatgpt"
+# Re-run if last free-lane stamp older than this (trading-day freshness)
+FRESH_DAYS = 0.85  # ~20h — once per trading day unless data/ticket changed
+FRESH_HOURS = 20
 DEFAULT_CAP = 60
 STAMP_NAME = "main_desk_free_llm_weekly.json"
 

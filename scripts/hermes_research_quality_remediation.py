@@ -22,6 +22,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 DEFAULT_BUDGET = 25
+# Flash-first (policy 2026-08-03); Pro not in batch remediation
 EXTERNAL_LANES = ("deepseek-flash", "grok", "chatgpt")
 
 
