@@ -327,6 +327,13 @@ def _llm(prompt: str, max_tokens: int = 800, task_type: str = "agent_narrative",
             prompt=prompt,
             max_tokens=max_tokens,
             high_impact=high_impact,
+            # issue #283: stable job key + metadata for governed Flash (no private PII)
+            metadata={
+                "symbol": _CURRENT_JOB_SYMBOL,
+                "submitted_from": _CURRENT_JOB_SUBMITTED_FROM,
+                "agent_path": "process_watchlist_agent_jobs",
+            },
+            job_key=f"{task_type}:{_CURRENT_JOB_SYMBOL or ''}:{_CURRENT_JOB_SUBMITTED_FROM or ''}",
         )
         if result.get("success"):
             # Saturation valve: one slow local call widens cloud routing to priority-3 jobs.
