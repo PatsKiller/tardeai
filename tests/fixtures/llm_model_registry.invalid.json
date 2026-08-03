@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "effective_at": "2026-08-03",
+  "providers": {},
+  "logical_policies": {
+    "FAST": {
+      "provider": "deepseek",
+      "thinking": "disabled"
+    }
+  }
+}
