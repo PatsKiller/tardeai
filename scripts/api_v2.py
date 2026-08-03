@@ -32150,8 +32150,24 @@ def _holdings_live_stops(query=None):
             _acct_labels[_oti._norm_acct(_raw)] = _raw
             if _raw.startswith("schwab") or _raw.startswith("fidelity") or "alpaca" in _raw.lower():
                 _broker_accts.append(_canon)
-        bmap = _oti._broker_protective_stops(sorted(set(_broker_accts))) or {}
+        _broker_accts_u = sorted(set(_broker_accts))
+        bmap = _oti._broker_protective_stops(_broker_accts_u) or {}
         fetched_at = _oti.broker_stops_fetched_at()
+        _read_ok = sorted(_oti.broker_stop_read_ok() or [])
+        # Surface Schwab hash / auth gaps so Portfolio does not silently show NO STOP when
+        # the broker still has working orders (af45096e deploy missing broker_credentials.env).
+        _schwab_requested = sorted({a for a in _broker_accts_u if str(a).startswith("schwab")})
+        _schwab_hash_ok: list[str] = []
+        _schwab_hash_missing: list[str] = []
+        try:
+            import schwab_transport as _st
+            for _a in _schwab_requested:
+                if _st._get_hash(_a):
+                    _schwab_hash_ok.append(_a)
+                else:
+                    _schwab_hash_missing.append(_a)
+        except Exception:
+            _schwab_hash_missing = list(_schwab_requested)
         # Which live orders were placed BY THE APP (pilot)? Only those can be API-cancelled for a one-2FA
         # in-app Replace (P2). A manually-placed (ToS) order isn't in schwab_pilot_orders → its replace
         # must happen in ToS (P3). cancel_order refuses non-pilot orders.
@@ -32182,8 +32198,22 @@ def _holdings_live_stops(query=None):
                 "fetched_at": _bs.get("fetched_at") or fetched_at,
                 "note": f"Live {_bs.get('order_type', 'stop')} order {_bs.get('order_id') or ''}".strip(),
             })
+        _warn = None
+        if _schwab_requested and not _schwab_hash_ok:
+            _warn = ("Schwab account hashes unavailable — check config/broker_credentials.env "
+                     "(SCHWAB_TOKEN_ENC_KEY) and schwab_account_links. Portfolio will show NO STOP "
+                     "even when ToS has working stops.")
+        elif _schwab_hash_missing:
+            _warn = f"Schwab hash missing for: {', '.join(_schwab_hash_missing)}"
+        elif _schwab_requested and not any(a.replace("_ira", "") in {x.replace("_ira", "") for x in _read_ok}
+                                          for a in _schwab_requested):
+            _warn = "Schwab order read did not succeed for any requested account (auth/API)."
         return _json_clean({
             "by_key": by_key, "fetched_at": fetched_at, "cache_ttl_sec": 60,
+            "broker_stop_read_ok_accounts": _read_ok,
+            "schwab_hash_ok_accounts": _schwab_hash_ok,
+            "schwab_hash_missing_accounts": _schwab_hash_missing,
+            "warning": _warn,
             "note": "Live broker protective stops — Schwab API + Fidelity manual_broker_stops (SnapTrade does not sync open GTC stops).",
         })
     except Exception as e:

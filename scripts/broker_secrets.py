@@ -15,12 +15,17 @@ _loaded = False
 
 def load_into_env(force: bool = False) -> int:
     """Set any broker credential keys from the secrets file that aren't already in the
-    environment. Returns the count of keys applied. Safe to call repeatedly."""
+    environment. Returns the count of keys applied. Safe to call repeatedly.
+
+    If the secrets file is missing on first call we do NOT latch success — a later
+    deploy that restores config/broker_credentials.env (symlink) must be able to load
+    without restarting the process. Only latch after a successful read of an existing file.
+    """
     global _loaded
     if _loaded and not force:
         return 0
-    _loaded = True
     if not _SECRETS_FILE.exists():
+        # Leave _loaded=False so a subsequently-created symlink/file is picked up.
         return 0
     applied = 0
     try:
@@ -33,6 +38,8 @@ def load_into_env(force: bool = False) -> int:
             if k and v and not os.environ.get(k):   # main .env / shell env wins
                 os.environ[k] = v
                 applied += 1
+        _loaded = True
     except Exception:
+        # Read failed — allow retry on next call.
         pass
     return applied
