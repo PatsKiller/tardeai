@@ -13,8 +13,32 @@
 >   — live protective-stop path, evidence-bound 2FA approvals, duplicate-stop guard.
 > - [docs/infra/POST_REBOOT_RECOVERY_2026_07_02.md](docs/infra/POST_REBOOT_RECOVERY_2026_07_02.md) — full
 >   post-reboot recovery sequence.
+> - **[docs/ops/LIVE_BASELINE_2026-08-03_STOP_TRUTH.md](docs/ops/LIVE_BASELINE_2026-08-03_STOP_TRUTH.md)** —
+>   **live baseline + stop-truth deploy rules** (Portfolio NO STOP when `broker_credentials.env` missing).
+>   Agents: also **[AGENTS.md](AGENTS.md)** section *MANDATORY — Live baseline*.
 >
 > **Architecture context:** [ARCHITECTURE.md](ARCHITECTURE.md).
+
+## 0. Live baseline & stop-truth (agents + operator)
+
+**Canonical policy for all agents:** [AGENTS.md](AGENTS.md) → *MANDATORY — Live baseline, git, and portfolio-server releases*.
+
+| Check | Command / path |
+|-------|----------------|
+| Git tip | `git rev-parse origin/wt/cursor-guardrails` |
+| Live release | `readlink -f /proc/$(pgrep -f portfolio_server.py \| head -1)/cwd` |
+| SOURCE_COMMIT | `$LIVE/SOURCE_COMMIT` must match git tip after deploy |
+| Secrets link | `ls -la $LIVE/config/broker_credentials.env` → symlink to rebuild `config/broker_credentials.env` |
+| Stops healthy | `curl -s localhost:7777/api/v2/holdings/live-stops` → Schwab symbols in `by_key`, `warning` null |
+
+**New release directory — always:**
+
+```bash
+ln -sfn ~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/config/broker_credentials.env \
+  <release>/config/broker_credentials.env
+```
+
+Do **not** commit secrets. Do **not** partial-rsync a release without re-linking secrets. Fractured mid-stack deploys blank Portfolio stops even when Thinkorswim still has working orders.
 
 ## 1. Daily operator workflow
 

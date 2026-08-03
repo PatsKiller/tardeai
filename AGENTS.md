@@ -3,6 +3,65 @@
 Authoritative human/agent docs live in `README.txt`, `ARCHITECTURE.md`, `OPERATIONS.md`, and `docs/`.
 This file only adds durable operating notes for automated (cloud) agents.
 
+## MANDATORY — Live baseline, git, and portfolio-server releases
+
+**Every agent that deploys, syncs git→live, restarts `portfolio-server`, or touches stops/Schwab must follow this.**
+
+Full detail: [`docs/ops/LIVE_BASELINE_2026-08-03_STOP_TRUTH.md`](docs/ops/LIVE_BASELINE_2026-08-03_STOP_TRUTH.md).
+
+### What is “live baseline” (do not invent a different one)
+
+| Item | Value |
+|------|--------|
+| Branch | `wt/cursor-guardrails` |
+| How to read tip | `git rev-parse origin/wt/cursor-guardrails` (or local `HEAD` when checked out) |
+| Live release dir | `~/trade-ai-releases/portfolio-server/af45096e-platform-audit-20260802` (confirm via `cwd` of the running `portfolio_server.py`) |
+| Truth stamp | `$LIVE/SOURCE_COMMIT` and `$LIVE/RELEASE_NOTE` must match the git tip after any intentional deploy |
+| Smoke | `GET /api/v2/holdings/live-stops` → many Schwab keys (SCHD/V/JEPI/…), **not** only `MU:tradeai_automated` |
+
+After the 2026-08-03 stop-truth fix, **live-after-fix is the baseline**. Do not force-push or “clean up” git in a way that drops live code unless you also roll live back deliberately and the operator approved it.
+
+### Hard rules (break these → Portfolio shows NO STOP again)
+
+1. **Never ship a release tree without Schwab secrets link**
+   ```bash
+   ln -sfn ~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/config/broker_credentials.env \
+     <release>/config/broker_credentials.env
+   ```
+   File is **0600**, **gitignored**, never committed. Missing link ⇒ account hashes fail decrypt ⇒
+   `get_orders_raw` → `needs_account_hash` ⇒ `/api/v2/holdings/live-stops` empty of Schwab ⇒ UI **NO STOP**.
+
+2. **No fractured git→live syncs** — do not rsync/cp partial trees that drop `config/`, secrets
+   symlinks, or half-apply commits. Prefer whole-tree sync of the intended SHA + secrets relink +
+   `SOURCE_COMMIT` stamp + restart.
+
+3. **No fractured “push every commit” deploys** — land a coherent commit (or small stack), push once,
+   then deploy that tip. Do not auto-deploy mid-stack from a work-in-progress branch.
+
+4. **After any release create/copy**, verify before calling it done:
+   - `test -L <release>/config/broker_credentials.env` (or file exists and is readable)
+   - `curl -s localhost:7777/api/v2/holdings/live-stops` → `schwab_hash_ok_accounts` non-empty,
+     `warning` null, `by_key` has Schwab symbols
+   - If `warning` mentions hash/credentials — **stop and fix**; do not “refresh quotes” as the fix
+
+5. **Git and live stay paired** — if you change live in place (hotfix), commit the same diff to
+   `wt/cursor-guardrails` and stamp `$LIVE/SOURCE_COMMIT` to that SHA. If you reset git, update live
+   the same way or you will re-break the next agent’s deploy.
+
+6. **`broker_secrets.load_into_env`** must not latch `_loaded=True` when the secrets file is missing
+   (already fixed on baseline). Do not reintroduce that latch.
+
+### Where agents should look
+
+| Need | Location |
+|------|----------|
+| This policy (all agents) | **`AGENTS.md` (this section)** |
+| Baseline narrative + deploy one-liner | `docs/ops/LIVE_BASELINE_2026-08-03_STOP_TRUTH.md` |
+| Operator index | `OPERATIONS.md` → Live baseline / stop-truth |
+| Live stop API | `GET /api/v2/holdings/live-stops` (`by_key`, `schwab_hash_*`, `warning`) |
+| Secrets loader | `scripts/broker_secrets.py` |
+| Hash decrypt / orders | `scripts/schwab_transport.py` (`_get_hash`, `get_orders_raw`) |
+
 ## Cursor Cloud specific instructions
 
 The update script (run automatically on VM startup) already refreshes dependencies:
@@ -111,6 +170,10 @@ add its row under `consumers.pages` / `consumers.alerts` / `consumers.pipeline_s
 that's what keeps the Data Management page's matrix honest.
 
 ## Live host (ms01-openclaw) deployment gotchas
+
+**Before anything else on this host:** read **[MANDATORY — Live baseline](#mandatory--live-baseline-git-and-portfolio-server-releases)**
+(top of this file) and `docs/ops/LIVE_BASELINE_2026-08-03_STOP_TRUTH.md`. Every new release dir needs
+`config/broker_credentials.env` relinked or Portfolio blanks all Schwab stops.
 
 The live `portfolio-server` runs from a **SHA-pinned release directory**, not this working tree:
 `~/trade-ai-releases/portfolio-server/<sha>-<label>/` (find the current one with
