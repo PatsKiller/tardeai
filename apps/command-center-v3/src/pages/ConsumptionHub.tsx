@@ -94,10 +94,18 @@ export default function ConsumptionHub() {
         process_id: 'oauth_lane_keepalive',
         lane,
         prompt: 'Reply with exactly: OK',
-        task_summary: `${lane} test from Consumption`,
+        task_summary: lane.startsWith('deepseek')
+          ? 'operator DeepSeek Flash smoke'
+          : `${lane} test from Consumption`,
       })
-      if (res?.ok) setMsg(`✓ ${lane} test OK — "${(res.text || '').trim().slice(0, 40)}"`)
-      else setMsg(`⛔ ${lane} test failed: ${res?.error || 'unknown'}`)
+      if (res?.ok) {
+        const model = res.returned_model ? ` · model ${res.returned_model}` : ''
+        const cost = res.estimated_cost_usd != null ? ` · ~$${Number(res.estimated_cost_usd).toFixed(6)}` : ''
+        setMsg(`✓ ${lane} test OK — "${(res.text || '').trim().slice(0, 40)}"${model}${cost}`)
+      } else {
+        const reason = res?.reason_code ? ` [${res.reason_code}]` : ''
+        setMsg(`⛔ ${lane} test failed: ${res?.error || 'unknown'}${reason}`)
+      }
       await oauth.refresh()
       await load()
     } catch (e: any) {
@@ -138,8 +146,14 @@ export default function ConsumptionHub() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: 10, marginBottom: 16 }}>
         {(['grok', 'chatgpt', 'deepseek-flash', 'deepseek-v4-pro'] as const).map(id => {
           const ln = id === 'grok' ? grokLane : (id === 'chatgpt' ? chatLane : (id === 'deepseek-flash' ? oauth.deepseek_flash : oauth.deepseek_pro))
-          const ok = id.startsWith('deepseek') ? (ln?.ready ?? false) : laneReady(ln)
-          const label = id === 'grok' ? (ln?.label || 'Grok') : (id === 'chatgpt' ? (ln?.label || 'ChatGPT') : (id === 'deepseek-flash' ? 'DeepSeek Flash' : 'DeepSeek V4'))
+          const ok = id.startsWith('deepseek')
+            ? Boolean(ln?.ready ?? (ln?.status === 'ready'))
+            : laneReady(ln)
+          const label = id === 'grok'
+            ? (ln?.label || 'Grok')
+            : (id === 'chatgpt'
+              ? (ln?.label || 'ChatGPT')
+              : (id === 'deepseek-flash' ? (ln?.label || 'DeepSeek V4 Flash') : (ln?.label || 'DeepSeek V4 Pro')))
           const isDeepSeek = id.startsWith('deepseek')
           return (
             <div key={id} style={{ padding: 14, borderRadius: 10, background: 'var(--bg1)', border: `1px solid ${ok ? (isDeepSeek ? '#a855f7' : GREEN) : RED}44` }}>
@@ -151,9 +165,9 @@ export default function ConsumptionHub() {
                 {isDeepSeek ? 'Metered API' : `Free OAuth · :${ln?.port ?? (id === 'grok' ? 8645 : 8646)}`}
                 {ln?.consec_fail ? ` · ${ln.consec_fail} recent fail(s)` : ''}
               </div>
-              {!ok && ln?.hint && (
+              {!ok && (ln?.hint || ln?.reason_code) && (
                 <div style={{ fontSize: 10, color: AMBER, marginTop: 6 }}>
-                  {ln.hint}
+                  {ln?.hint || ln?.reason_code}
                   {id === 'grok' && ln?.authenticated && (
                     <span> — or click <b>↻ Roll OAuth tokens</b> below (refreshes without re-login)</span>
                   )}
@@ -172,8 +186,21 @@ export default function ConsumptionHub() {
               style={{ fontSize: 10, fontWeight: 800, padding: '6px 10px', borderRadius: 6, border: '1px solid #10a37f66', background: '#10a37f14', color: '#10a37f', cursor: busy ? 'wait' : 'pointer' }}>
               {busy === 'test-chatgpt' ? '…' : '▶ Test ChatGPT'}
             </button>
-            <button type="button" onClick={() => void testLane('deepseek-flash')} disabled={!!busy}
-              style={{ fontSize: 10, fontWeight: 800, padding: '6px 10px', borderRadius: 6, border: '1px solid #a855f766', background: '#a855f714', color: '#a855f7', cursor: busy ? 'wait' : 'pointer' }}>
+            <button
+              type="button"
+              onClick={() => void testLane('deepseek-flash')}
+              disabled={!!busy || !Boolean(oauth.deepseek_flash?.ready ?? (oauth.deepseek_flash?.status === 'ready'))}
+              title={
+                Boolean(oauth.deepseek_flash?.ready ?? (oauth.deepseek_flash?.status === 'ready'))
+                  ? 'Metered DeepSeek V4 Flash smoke'
+                  : (oauth.deepseek_flash?.hint || oauth.deepseek_flash?.reason_code || 'DeepSeek Flash offline')
+              }
+              style={{
+                fontSize: 10, fontWeight: 800, padding: '6px 10px', borderRadius: 6,
+                border: '1px solid #a855f766', background: '#a855f714', color: '#a855f7',
+                cursor: (busy || !(oauth.deepseek_flash?.ready ?? (oauth.deepseek_flash?.status === 'ready'))) ? 'not-allowed' : 'pointer',
+                opacity: (oauth.deepseek_flash?.ready ?? (oauth.deepseek_flash?.status === 'ready')) ? 1 : 0.45,
+              }}>
               {busy === 'test-deepseek-flash' ? '…' : '▶ Test V4 Flash'}
             </button>
           </div>
@@ -195,16 +222,31 @@ export default function ConsumptionHub() {
             const w = overview?.by_lane?.[lane]?.week
             if (!t && !w) return []
             const laneColor = lane === 'grok' ? '#1d9bf0' : (lane === 'chatgpt' ? '#10a37f' : '#a855f7')
+            const label = lane === 'deepseek-v4-pro' ? 'DeepSeek V4 Pro' : lane
+            const failToday = Number(t?.failures ?? 0)
+            const failWeek = Number(w?.failures ?? 0)
+            const okToday = Math.max(0, Number(t?.calls ?? 0) - failToday)
+            const okWeek = Math.max(0, Number(w?.calls ?? 0) - failWeek)
             return [
               <div key={`${lane}-today`} style={{ padding: 12, borderRadius: 8, background: 'var(--bg1)', border: `1px solid ${laneColor}44` }}>
-                <div style={{ fontSize: 10, color: laneColor }}>{lane} today</div>
+                <div style={{ fontSize: 10, color: laneColor }}>{label} today</div>
                 <div style={{ fontSize: 20, fontWeight: 900, color: TEXT }}>{t?.calls ?? 0}</div>
                 <div style={{ fontSize: 10, color: MUTED }}>{(t?.relative_units ?? 0).toFixed(1)} rel. units</div>
+                <div style={{ fontSize: 10, marginTop: 4 }}>
+                  <span style={{ color: GREEN }}>{okToday} ok</span>
+                  {' · '}
+                  <span style={{ color: failToday ? RED : MUTED }}>{failToday} fail</span>
+                </div>
               </div>,
               <div key={`${lane}-week`} style={{ padding: 12, borderRadius: 8, background: 'var(--bg1)', border: `1px solid ${laneColor}44` }}>
-                <div style={{ fontSize: 10, color: laneColor }}>{lane} 7d</div>
+                <div style={{ fontSize: 10, color: laneColor }}>{label} 7d</div>
                 <div style={{ fontSize: 20, fontWeight: 900, color: TEXT }}>{w?.calls ?? 0}</div>
                 <div style={{ fontSize: 10, color: MUTED }}>{(w?.relative_units ?? 0).toFixed(1)} rel. units</div>
+                <div style={{ fontSize: 10, marginTop: 4 }}>
+                  <span style={{ color: GREEN }}>{okWeek} ok</span>
+                  {' · '}
+                  <span style={{ color: failWeek ? RED : MUTED }}>{failWeek} fail</span>
+                </div>
               </div>,
             ]
           })}

@@ -42,13 +42,36 @@ export function lanesForPolicy(policy: LanePolicy | string | undefined): LaneId[
   return ['grok', 'chatgpt', 'deepseek-flash'] // either — show all, operator picks
 }
 
+export type ManualCloudResult = {
+  ok: boolean
+  text?: string | null
+  error?: string
+  reason_code?: string
+  manual_required?: boolean
+  lane?: string
+  process_id?: string
+  requested_policy?: string | null
+  executed_policy?: string | null
+  requested_model_id?: string | null
+  returned_model?: string | null
+  thinking?: string | null
+  request_id?: string | null
+  tokens_in?: number | null
+  tokens_out?: number | null
+  estimated_cost_usd?: number | null
+  latency_ms?: number | null
+  fallback_used?: boolean
+  billing?: string
+}
+
 export async function runManualCloud(params: {
   process_id: string
   lane: LaneId
   prompt: string
   task_summary?: string
   timeout?: number
-}): Promise<{ ok: boolean; text?: string; error?: string; manual_required?: boolean }> {
+  operator_confirmed?: boolean
+}): Promise<ManualCloudResult> {
   const res = await fetch('/api/v2/consumption/run-manual', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

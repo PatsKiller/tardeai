@@ -10346,10 +10346,27 @@ def _llm_oauth_lanes():
                       "reachable": True, "authenticated": _nous, "ready": _nous, "token_expired": None,
                       "status": "ready" if _nous else "not logged in", "billing": "free_oauth",
                       "hint": None if _nous else "hermes portal login"})
+        # Append DeepSeek metered readiness (no secret names/values in payload).
+        try:
+            from lib.consumption_run_manual import deepseek_readiness_rows
+            lanes.extend(deepseek_readiness_rows())
+        except Exception as _ds_e:
+            lanes.append({
+                "lane": "deepseek-flash", "label": "DeepSeek V4 Flash", "kind": "metered_api",
+                "billing": "metered", "ready": False, "status": "offline",
+                "authenticated": False, "hint": "Provider readiness probe unavailable",
+                "reason_code": "PROVIDER_PROBE_FAILED",
+            })
+            lanes.append({
+                "lane": "deepseek-v4-pro", "label": "DeepSeek V4 Pro", "kind": "metered_api",
+                "billing": "metered", "ready": False, "status": "offline",
+                "authenticated": False, "hint": "Provider readiness probe unavailable",
+                "reason_code": "PROVIDER_PROBE_FAILED",
+            })
         _ready = sum(1 for ln in lanes if ln.get("status") == "ready" or ln.get("ready"))
         return {"ok": True, "advisory_only": True, "lanes": lanes, "ready_count": _ready, "total": len(lanes),
                 "generated_at": _t.strftime("%Y-%m-%dT%H:%M:%S"),
-                "note": "Free OAuth only — Grok via xai-oauth :8645, ChatGPT via codex :8646. No metered API keys."}
+                "note": "Free OAuth (Grok :8645, ChatGPT :8646) + DeepSeek metered API readiness. No secret values exposed."}
     except Exception as e:
         return {"ok": False, "error": str(e)[:200], "lanes": []}
 
@@ -36258,34 +36275,114 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
         if base_path == "/api/v2/consumption/run-manual":
             # Operator-approved single LLM call for a Manual-mode process.
+            # Free OAuth (grok/chatgpt) + DeepSeek V4 logical policies / exact aliases.
+            # No silent fallback to local/Grok/ChatGPT when DeepSeek is requested.
             try:
                 import sys as _sys
                 _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
                 from lib import llm_consumption as _lc
+                from lib.consumption_run_manual import classify_manual_lane
                 from lib.oauth_lane_status import lane_available
                 b = body or {}
                 pid = str(b.get("process_id") or "").strip()
                 lane = str(b.get("lane") or "grok").strip().lower()
                 prompt = str(b.get("prompt") or "").strip()
                 task = str(b.get("task_summary") or b.get("task") or "").strip()
+                operator_confirmed = bool(
+                    b.get("operator_confirmed") or b.get("operator_cost_confirmed")
+                )
                 if not pid or not prompt:
                     return 400, {"ok": False, "error": "process_id and prompt required"}
-                if lane not in ("grok", "chatgpt"):
-                    return 400, {"ok": False, "error": "lane must be grok or chatgpt"}
-                if not lane_available(lane):
-                    return 200, {"ok": False, "lane": lane, "error": f"{lane} OAuth lane not ready — check proxy service"}
-                text = _lc.gate_and_generate(prompt, lane=lane, process_id=pid,
-                                             task_summary=task or _lc.summarize_prompt(prompt),
-                                             manual_trigger=True, timeout=int(b.get("timeout") or 120),
-                                             model=b.get("model"))
-                return 200, {"ok": True, "lane": lane, "process_id": pid, "text": str(text).strip(),
-                             "advisory_only": True, "billing": "free_oauth"}
+                classified = classify_manual_lane(lane, operator_confirmed=operator_confirmed)
+                if not classified.get("ok"):
+                    return 400, {
+                        "ok": False,
+                        "error": classified.get("error") or "lane not allowed",
+                        "reason_code": classified.get("reason_code"),
+                        "lane": classified.get("lane") or lane,
+                        "requested_policy": classified.get("policy"),
+                        "requested_model_id": classified.get("requested_model_id"),
+                    }
+                kind = classified.get("kind")
+                if kind == "oauth":
+                    if not lane_available(lane):
+                        return 200, {
+                            "ok": False, "lane": lane,
+                            "error": f"{lane} OAuth lane not ready — check proxy service",
+                            "reason_code": "OAUTH_LANE_NOT_READY",
+                        }
+                    text = _lc.gate_and_generate(
+                        prompt, lane=lane, process_id=pid,
+                        task_summary=task or _lc.summarize_prompt(prompt),
+                        manual_trigger=True, timeout=int(b.get("timeout") or 120),
+                        model=b.get("model"),
+                    )
+                    return 200, {
+                        "ok": True, "lane": lane, "process_id": pid,
+                        "text": str(text).strip(),
+                        "advisory_only": True, "billing": "free_oauth",
+                        "returned_model": None, "fallback_used": False,
+                    }
+                # DeepSeek metered path — registry/client via gate_and_generate + llm_lane
+                import llm_lane as _llm_lane
+                ds_lane = classified["lane"]
+                # All DeepSeek V4 lanes share the same provider readiness probe
+                if not _llm_lane.available("deepseek-flash"):
+                    return 200, {
+                        "ok": False,
+                        "lane": ds_lane,
+                        "error": "DeepSeek provider not ready",
+                        "reason_code": "PROVIDER_NOT_READY",
+                        "requested_policy": classified.get("policy"),
+                        "requested_model_id": classified.get("requested_model_id"),
+                        "returned_model": None,
+                        "fallback_used": False,
+                    }
+                result = _lc.gate_and_generate(
+                    prompt, lane=ds_lane, process_id=pid,
+                    task_summary=task or _lc.summarize_prompt(prompt),
+                    manual_trigger=True, timeout=int(b.get("timeout") or 120),
+                    model=b.get("model"),
+                    operator_confirmed=operator_confirmed,
+                    policy=classified.get("policy"),
+                    return_provenance=True,
+                )
+                if isinstance(result, tuple):
+                    text, prov = result[0], (result[1] or {})
+                else:
+                    text, prov = result, {}
+                usage = prov.get("usage") or {}
+                return 200, {
+                    "ok": True,
+                    "lane": ds_lane,
+                    "process_id": pid,
+                    "text": str(text).strip(),
+                    "advisory_only": True,
+                    "billing": "metered",
+                    "requested_policy": prov.get("requested_policy") or classified.get("policy"),
+                    "executed_policy": prov.get("executed_policy") or classified.get("policy"),
+                    "requested_model_id": prov.get("requested_model_id") or classified.get("requested_model_id"),
+                    "returned_model": prov.get("returned_model"),
+                    "thinking": prov.get("thinking"),
+                    "reasoning_effort": prov.get("reasoning_effort"),
+                    "request_id": prov.get("request_id"),
+                    "tokens_in": usage.get("prompt_tokens"),
+                    "tokens_out": usage.get("completion_tokens"),
+                    "estimated_cost_usd": prov.get("estimated_cost_usd"),
+                    "latency_ms": prov.get("latency_ms"),
+                    "fallback_used": bool(prov.get("fallback_used")),
+                }
             except _lc.ManualRequired as mr:
                 return 200, {"ok": False, "manual_required": True, "process_id": mr.process_id,
                              "lane": mr.lane, "task_summary": mr.task_summary,
                              "prompt_preview": mr.prompt_preview}
             except Exception as e:
-                return 500, {"ok": False, "error": str(e)[:200]}
+                err = str(e)[:200]
+                # Never include secret material; fail closed, no alternate provider
+                return 200, {
+                    "ok": False, "error": err, "fallback_used": False,
+                    "returned_model": None,
+                }
 
         if base_path == "/api/v2/llm/oauth-lanes/keepalive":
             # Control: run the OAuth-lane keepalive now (rolls Grok/ChatGPT tokens, alerts on stale).

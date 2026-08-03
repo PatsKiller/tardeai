@@ -457,8 +457,12 @@ def gate_and_generate(
     output_schema_id: str | None = None,
     max_tokens: int = 2048,
     policy: str | None = None,
-) -> str:
-    """Check process mode + cost caps; call llm_lane with DeepSeek kwargs; log full provenance."""
+    return_provenance: bool = False,
+):
+    """Check process mode + cost caps; call llm_lane with DeepSeek kwargs; log full provenance.
+
+    When return_provenance=True, returns (text, provenance_dict) instead of text alone.
+    """
     import os
     import sys
     sys.path.insert(0, str(ROOT / "scripts"))
@@ -471,7 +475,10 @@ def gate_and_generate(
         meta["operator_cost_confirmed"] = True
     if policy:
         meta["requested_policy"] = policy
-        lane = policy.lower()
+        # Keep exact policy for DeepSeek; llm_lane accepts logical policy names as lanes
+        lane = policy.lower() if policy.lower() in (
+            "fast", "fast_think", "pro", "pro_think", "pro_max"
+        ) else lane
 
     decision = should_call(process_id, lane, manual_trigger=manual_trigger)
     if not decision.get("allow"):
@@ -540,6 +547,21 @@ def gate_and_generate(
             reasoning_effort=tradeai.get("reasoning_effort"),
             provider_request_id=tradeai.get("request_id"),
         )
+    if return_provenance:
+        tradeai = prov.get("_tradeai") or {}
+        return text, {
+            "usage": prov.get("usage") or {},
+            "requested_policy": tradeai.get("requested_policy") or policy,
+            "executed_policy": tradeai.get("executed_policy"),
+            "requested_model_id": tradeai.get("requested_model_id"),
+            "returned_model": tradeai.get("returned_model"),
+            "thinking": tradeai.get("thinking"),
+            "reasoning_effort": tradeai.get("reasoning_effort"),
+            "request_id": tradeai.get("request_id") or tradeai.get("client_request_id"),
+            "estimated_cost_usd": tradeai.get("estimated_cost_usd"),
+            "latency_ms": tradeai.get("latency_ms"),
+            "fallback_used": tradeai.get("fallback_used", False),
+        }
     return text
 
 
