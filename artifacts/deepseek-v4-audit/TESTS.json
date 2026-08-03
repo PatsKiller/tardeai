@@ -1,0 +1,17 @@
+{
+  "unit": {
+    "tests/test_llm_model_registry.py+governance+no_broker_write": {
+      "result": "PASS",
+      "passed": 25,
+      "log": "artifacts/deepseek-v4-audit/TEST_LOGS/unit_registry_safety.txt"
+    }
+  },
+  "live_provider_interactive": {
+    "GET /v1/models": "PASS",
+    "flash/pro chat smoke": "PASS",
+    "legacy remaps to flash": "OBSERVED",
+    "service_runtime_key_on_portfolio_server": "FAIL"
+  },
+  "frontend_build": "NOT_RUN",
+  "v3_routes_screenshots": "NOT_RUN"
+}

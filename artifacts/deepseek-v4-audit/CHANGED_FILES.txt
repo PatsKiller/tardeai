@@ -1,0 +1,13 @@
+config/llm_model_registry.json
+config/schemas/llm_model_registry.schema.json
+config/llm_process_registry.json
+scripts/lib/llm_model_registry.py
+scripts/lib/deepseek_client.py
+scripts/llm_lane.py
+scripts/llm_health_check.py
+apps/command-center-v3/src/components/CloudLlmRunButtons.tsx
+apps/command-center-v3/src/components/WatchTruthAuditPanel.tsx
+tests/test_llm_model_registry.py
+tests/fixtures/llm_model_registry.valid.json
+tests/fixtures/llm_model_registry.invalid.json
+artifacts/deepseek-v4-audit/** (evidence)

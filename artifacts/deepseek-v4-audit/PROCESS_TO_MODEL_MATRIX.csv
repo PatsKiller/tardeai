@@ -1,29 +1,31 @@
-process_id,default_lane_or_policy,allowed,schema,source,recommended_logical_policy,notes
-holding_protection_advisor,manual,[],,config/llm_process_registry.json,,registry vocabulary at 72b6ddd2 — not yet Flash/Pro logical policies
-holding_protection_advisor_batch,manual,[],,config/llm_process_registry.json,,registry vocabulary at 72b6ddd2 — not yet Flash/Pro logical policies
-broker_cloud_oversight,,[],,config/llm_process_registry.json,,registry vocabulary at 72b6ddd2 — not yet Flash/Pro logical policies
-cloud_review,automated,[],,config/llm_process_registry.json,,registry vocabulary at 72b6ddd2 — not yet Flash/Pro logical policies
-oauth_lane_keepalive,automated,[],,config/llm_process_registry.json,,registry vocabulary at 72b6ddd2 — not yet Flash/Pro logical policies
-rotation_grok_review,,[],,config/llm_process_registry.json,,registry vocabulary at 72b6ddd2 — not yet Flash/Pro logical policies
-rotation_oversight,,[],,config/llm_process_registry.json,,registry vocabulary at 72b6ddd2 — not yet Flash/Pro logical policies
-watchlist_cio_synthesis,manual,[],,config/llm_process_registry.json,,registry vocabulary at 72b6ddd2 — not yet Flash/Pro logical policies
-watchlist_maria_priority,automated,[],,config/llm_process_registry.json,,registry vocabulary at 72b6ddd2 — not yet Flash/Pro logical policies
-paper_trade_advisory,,[],,config/llm_process_registry.json,,registry vocabulary at 72b6ddd2 — not yet Flash/Pro logical policies
-hermes_external_research,,[],,config/llm_process_registry.json,,registry vocabulary at 72b6ddd2 — not yet Flash/Pro logical policies
-multi_tier_trade_reviewer,,[],,config/llm_process_registry.json,,registry vocabulary at 72b6ddd2 — not yet Flash/Pro logical policies
-reporting_grok_editorial,,[],,config/llm_process_registry.json,,registry vocabulary at 72b6ddd2 — not yet Flash/Pro logical policies
-portfolio_weekly_report,automated,[],,config/llm_process_registry.json,,registry vocabulary at 72b6ddd2 — not yet Flash/Pro logical policies
-portfolio_monthly_report,automated,[],,config/llm_process_registry.json,,registry vocabulary at 72b6ddd2 — not yet Flash/Pro logical policies
-directive_keyword_enhancer,,[],,config/llm_process_registry.json,,registry vocabulary at 72b6ddd2 — not yet Flash/Pro logical policies
-think_tank_signal_miner,,[],,config/llm_process_registry.json,,registry vocabulary at 72b6ddd2 — not yet Flash/Pro logical policies
-hermes_scalp_review,,[],,config/llm_process_registry.json,,registry vocabulary at 72b6ddd2 — not yet Flash/Pro logical policies
-portfolio_ask,,[],,config/llm_process_registry.json,,registry vocabulary at 72b6ddd2 — not yet Flash/Pro logical policies
-journal_ask,,[],,config/llm_process_registry.json,,registry vocabulary at 72b6ddd2 — not yet Flash/Pro logical policies
-strategy_planner,,[],,config/llm_process_registry.json,,registry vocabulary at 72b6ddd2 — not yet Flash/Pro logical policies
-options_ensemble,,[],,config/llm_process_registry.json,,registry vocabulary at 72b6ddd2 — not yet Flash/Pro logical policies
-cloud_consensus_verdict,,[],,config/llm_process_registry.json,,registry vocabulary at 72b6ddd2 — not yet Flash/Pro logical policies
-stop_drift_alert,,[],,config/llm_process_registry.json,,registry vocabulary at 72b6ddd2 — not yet Flash/Pro logical policies
-hermes_analyst_coverage,,[],,config/llm_process_registry.json,,registry vocabulary at 72b6ddd2 — not yet Flash/Pro logical policies
-watchlist_entry_planner,,[],,config/llm_process_registry.json,,registry vocabulary at 72b6ddd2 — not yet Flash/Pro logical policies
-grok_execution_review,,[],,config/llm_process_registry.json,,registry vocabulary at 72b6ddd2 — not yet Flash/Pro logical policies
-unregistered,automated,[],,config/llm_process_registry.json,,registry vocabulary at 72b6ddd2 — not yet Flash/Pro logical policies
+process_id,oauth_lane_policy,deepseek_default_policy,deepseek_allowed_policies,output_schema,daily_cost_cap_usd,fallback,requires_operator_cost_confirmation_for
+holding_protection_advisor,grok_only,,,,,,
+holding_protection_advisor_batch,grok_only,,,,,,
+broker_cloud_oversight,both_preferred,,,,,,
+cloud_review,both_preferred,,,,,,
+oauth_lane_keepalive,either,,,,,,
+rotation_grok_review,grok_only,,,,,,
+rotation_oversight,ensemble,,,,,,
+watchlist_cio_synthesis,ensemble,PRO_THINK,FAST_THINK|PRO_THINK|PRO_MAX,cio_synthesis.v1,,,PRO_MAX
+watchlist_maria_priority,either,FAST,FAST|FAST_THINK,watch_narrative.v1,5.0,,
+paper_trade_advisory,both_preferred,,,,,,
+hermes_external_research,either,,,,,,
+multi_tier_trade_reviewer,both_preferred,FAST_THINK,FAST_THINK|PRO_THINK,,,,
+reporting_grok_editorial,grok_only,,,,,,
+portfolio_weekly_report,either,,,,,,
+portfolio_monthly_report,either,,,,,,
+directive_keyword_enhancer,ensemble,,,,,,
+think_tank_signal_miner,either,,,,,,
+hermes_scalp_review,either,,,,,,
+portfolio_ask,either,FAST,FAST|FAST_THINK|PRO_THINK,,,,
+journal_ask,either,FAST,FAST|FAST_THINK,,,,
+strategy_planner,either,PRO_THINK,FAST_THINK|PRO_THINK|PRO_MAX,strategy_plan.v1,,,PRO_MAX
+options_ensemble,ensemble,,,,,,
+cloud_consensus_verdict,ensemble,,,,,,
+stop_drift_alert,either,,,,,,
+hermes_analyst_coverage,either,,,,,,
+watchlist_entry_planner,either,,,,,,
+grok_execution_review,grok_only,,,,,,
+unregistered,either,,,,,,
+pipeline_health_diagnosis,either,FAST,FAST|FAST_THINK,pipeline_diagnosis.v1,,DETERMINISTIC_DIAGNOSIS,
+architecture_review,either,PRO_THINK,PRO_THINK|PRO_MAX,,,,PRO_MAX

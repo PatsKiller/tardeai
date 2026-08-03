@@ -1,0 +1,45 @@
+{
+  "retrieved_at": "2026-08-03T13:36:00+00:00",
+  "sources": [
+    {
+      "name": "DeepSeek Models & Pricing",
+      "url": "https://api-docs.deepseek.com/quick_start/pricing",
+      "retrieved_at": "2026-08-03"
+    },
+    {
+      "name": "Live GET https://api.deepseek.com/v1/models",
+      "retrieved_at": "2026-08-03T13:35:59Z",
+      "artifact": "DEEPSEEK_CAPABILITY_PROBE.json"
+    }
+  ],
+  "exact_model_ids": ["deepseek-v4-flash", "deepseek-v4-pro"],
+  "base_url_openai": "https://api.deepseek.com",
+  "base_url_anthropic": "https://api.deepseek.com/anthropic",
+  "context_length": 1000000,
+  "max_output_tokens": 384000,
+  "json_output": true,
+  "tool_calls": true,
+  "thinking_mode": "supports non-thinking and thinking (default) — see thinking_mode guide",
+  "pricing_usd_per_million_tokens": {
+    "deepseek-v4-flash": {
+      "cache_hit_input": 0.0028,
+      "cache_miss_input": 0.14,
+      "output": 0.28
+    },
+    "deepseek-v4-pro": {
+      "cache_hit_input": 0.003625,
+      "cache_miss_input": 0.435,
+      "output": 0.87
+    },
+    "pricing_effective_note": "As published 2026-08-03 on api-docs.deepseek.com/quick_start/pricing; subject to change; peak/off-peak policy announced for future."
+  },
+  "concurrency_limits": {
+    "deepseek-v4-flash": 2500,
+    "deepseek-v4-pro": 500
+  },
+  "legacy_alias_behavior_live_probe": {
+    "deepseek-chat": "HTTP 200 returns model deepseek-v4-flash (silent remap by provider)",
+    "deepseek-reasoner": "HTTP 200 returns model deepseek-v4-flash (NOT Pro) — confirms audit root cause"
+  },
+  "v1_models_list_only": ["deepseek-v4-flash", "deepseek-v4-pro"]
+}

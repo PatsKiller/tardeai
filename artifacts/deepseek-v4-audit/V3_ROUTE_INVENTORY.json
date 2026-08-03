@@ -1,0 +1,211 @@
+{
+  "note": "partial static extract \u2014 full Playwright subtab assertions NOT complete",
+  "hits": [
+    {
+      "file": "apps/command-center-v3/src/App.tsx",
+      "line": 144,
+      "text": "<Routes>"
+    },
+    {
+      "file": "apps/command-center-v3/src/App.tsx",
+      "line": 145,
+      "text": "<Route index element={<HomeHub onDrill={setDrill} />} />"
+    },
+    {
+      "file": "apps/command-center-v3/src/App.tsx",
+      "line": 146,
+      "text": "<Route path=\"portfolio\" element={<PortfolioHub onDrill={setDrill} />} />"
+    },
+    {
+      "file": "apps/command-center-v3/src/App.tsx",
+      "line": 147,
+      "text": "<Route path=\"portfolio/re-entry\" element={<ReEntryPage />} />"
+    },
+    {
+      "file": "apps/command-center-v3/src/App.tsx",
+      "line": 148,
+      "text": "<Route path=\"risk\" element={<RiskHub onDrill={setDrill} />} />"
+    },
+    {
+      "file": "apps/command-center-v3/src/App.tsx",
+      "line": 149,
+      "text": "<Route path=\"trading\" element={<TradingHub onDrill={setDrill} />} />"
+    },
+    {
+      "file": "apps/command-center-v3/src/App.tsx",
+      "line": 150,
+      "text": "<Route path=\"active-trader\" element={<ActiveTraderHub />} />"
+    },
+    {
+      "file": "apps/command-center-v3/src/App.tsx",
+      "line": 151,
+      "text": "<Route path=\"trading/active-trader\" element={<Navigate to=\"/active-trader\" replace />} />"
+    },
+    {
+      "file": "apps/command-center-v3/src/App.tsx",
+      "line": 152,
+      "text": "<Route path=\"go/order/:intentId\" element={<GoOrderDeepLink />} />"
+    },
+    {
+      "file": "apps/command-center-v3/src/App.tsx",
+      "line": 153,
+      "text": "<Route path=\"go/proposal/:proposalId\" element={<GoProposalDeepLink />} />"
+    },
+    {
+      "file": "apps/command-center-v3/src/App.tsx",
+      "line": 154,
+      "text": "<Route path=\"manual-execution\" element={<Navigate to=\"/trading?tab=Entry+Desk\" replace />} />"
+    },
+    {
+      "file": "apps/command-center-v3/src/App.tsx",
+      "line": 155,
+      "text": "<Route path=\"strategy\" element={<StrategyHub onDrill={setDrill} />} />"
+    },
+    {
+      "file": "apps/command-center-v3/src/App.tsx",
+      "line": 156,
+      "text": "<Route path=\"agents\" element={<AgentRuntimeHub onDrill={setDrill} />} />"
+    },
+    {
+      "file": "apps/command-center-v3/src/App.tsx",
+      "line": 157,
+      "text": "<Route path=\"intelligence\" element={<IntelligenceHub onDrill={setDrill} />} />"
+    },
+    {
+      "file": "apps/command-center-v3/src/App.tsx",
+      "line": 158,
+      "text": "<Route path=\"research-intelligence\" element={<ResearchIntelligenceHub onDrill={setDrill} />} />"
+    },
+    {
+      "file": "apps/command-center-v3/src/App.tsx",
+      "line": 159,
+      "text": "<Route path=\"research\" element={<Navigate to=\"/research-intelligence\" replace />} />"
+    },
+    {
+      "file": "apps/command-center-v3/src/App.tsx",
+      "line": 160,
+      "text": "<Route path=\"hermes\" element={<HermesHub onDrill={setDrill} />} />"
+    },
+    {
+      "file": "apps/command-center-v3/src/App.tsx",
+      "line": 161,
+      "text": "<Route path=\"retirement\" element={<RetirementHub onDrill={setDrill} />} />"
+    },
+    {
+      "file": "apps/command-center-v3/src/App.tsx",
+      "line": 162,
+      "text": "<Route path=\"journal\" element={<JournalHub onDrill={setDrill} />} />"
+    },
+    {
+      "file": "apps/command-center-v3/src/App.tsx",
+      "line": 163,
+      "text": "<Route path=\"trade-in-view\" element={<Navigate to=\"/journal\" replace />} />"
+    },
+    {
+      "file": "apps/command-center-v3/src/App.tsx",
+      "line": 164,
+      "text": "<Route path=\"watch\" element={<WatchHub onDrill={setDrill} />} />"
+    },
+    {
+      "file": "apps/command-center-v3/src/App.tsx",
+      "line": 165,
+      "text": "<Route path=\"defense\" element={<DefenseHub />} />"
+    },
+    {
+      "file": "apps/command-center-v3/src/App.tsx",
+      "line": 166,
+      "text": "<Route path=\"watchlist\" element={<Navigate to=\"/watch?tab=watchlist\" replace />} />"
+    },
+    {
+      "file": "apps/command-center-v3/src/App.tsx",
+      "line": 167,
+      "text": "<Route path=\"watchpool\" element={<Navigate to=\"/watch?tab=watchpool\" replace />} />"
+    },
+    {
+      "file": "apps/command-center-v3/src/App.tsx",
+      "line": 168,
+      "text": "<Route path=\"sectors\" element={<Navigate to=\"/watch?tab=sectors\" replace />} />"
+    },
+    {
+      "file": "apps/command-center-v3/src/App.tsx",
+      "line": 169,
+      "text": "<Route path=\"pullback-macd\" element={<Navigate to=\"/watch?tab=pullback-macd\" replace />} />"
+    },
+    {
+      "file": "apps/command-center-v3/src/App.tsx",
+      "line": 170,
+      "text": "<Route path=\"reports\" element={<ReportsHub onDrill={setDrill} />} />"
+    },
+    {
+      "file": "apps/command-center-v3/src/App.tsx",
+      "line": 171,
+      "text": "<Route path=\"rotation\" element={<RotationIntelligence />} />"
+    },
+    {
+      "file": "apps/command-center-v3/src/App.tsx",
+      "line": 172,
+      "text": "<Route path=\"redeploy\" element={<RedeployDeskIntegrated />} />"
+    },
+    {
+      "file": "apps/command-center-v3/src/App.tsx",
+      "line": 173,
+      "text": "<Route path=\"advisor-changes\" element={<Navigate to=\"/rotation?tab=advisor-guide\" replace />} />"
+    },
+    {
+      "file": "apps/command-center-v3/src/App.tsx",
+      "line": 174,
+      "text": "<Route path=\"rec-intel\" element={<RecommendationIntelligence />} />"
+    },
+    {
+      "file": "apps/command-center-v3/src/App.tsx",
+      "line": 175,
+      "text": "<Route path=\"health\" element={<HealthHub onDrill={setDrill} />} />"
+    },
+    {
+      "file": "apps/command-center-v3/src/App.tsx",
+      "line": 176,
+      "text": "<Route path=\"consumption\" element={<ConsumptionHub />} />"
+    },
+    {
+      "file": "apps/command-center-v3/src/App.tsx",
+      "line": 177,
+      "text": "<Route path=\"system\" element={<SystemHub onDrill={setDrill} />} />"
+    },
+    {
+      "file": "apps/command-center-v3/src/App.tsx",
+      "line": 192,
+      "text": "<Routes>"
+    },
+    {
+      "file": "apps/command-center-v3/src/App.tsx",
+      "line": 193,
+      "text": "<Route path=\"/*\" element={<Shell />} />"
+    },
+    {
+      "file": "apps/command-center-v3/src/components/ResearchTopicsModal.tsx",
+      "line": 43,
+      "text": "path: '/api/v2/admin/topic/upsert',"
+    },
+    {
+      "file": "apps/command-center-v3/src/components/ResearchTopicsModal.tsx",
+      "line": 50,
+      "text": "const toggle = (t: Topic) => setPending({ path: '/api/v2/admin/topic/toggle',"
+    },
+    {
+      "file": "apps/command-center-v3/src/components/ResearchTopicsModal.tsx",
+      "line": 52,
+      "text": "const del = (t: Topic) => setPending({ path: '/api/v2/admin/topic/delete',"
+    },
+    {
+      "file": "apps/command-center-v3/src/components/ATMControlPanel.tsx",
+      "line": 239,
+      "text": "onSubmit={(body: any) => { setShowAuto(false); setPending({ path: '/api/v2/admin/broker-account/policy', body, label: `${account.account_key}: automation \u2192 ${body.automation_mode} / ${body.approval_po"
+    },
+    {
+      "file": "apps/command-center-v3/src/components/ATMControlPanel.tsx",
+      "line": 242,
+      "text": "onSubmit={(f: any) => { setShowApi(null); setPending({ path: '/api/v2/admin/broker-account/api', body: f, label: `${f.account_key}: ${f.broker}/${f.environment} API (read=${!!f.api_read_enabled} write"
+    }
+  ],
+  "hit_count": 41
+}
