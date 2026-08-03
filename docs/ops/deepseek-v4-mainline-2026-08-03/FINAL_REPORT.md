@@ -1,21 +1,22 @@
 # DeepSeek V4 Mainline Integration Report
 
-**Verdict: CONDITIONAL_PASS**
+**Verdict: CONDITIONAL_PASS_DO_NOT_PUSH**
 
-## SHAs (exact)
+## SHAs
 
 | Item | Value |
 |------|--------|
 | Branch | `fix/deepseek-v4-routing-mainline` |
 | Worktree | `/home/johnclaw/tradeai-wt-deepseek-v4-mainline` |
 | origin/main base | `ddef4613ec362e6c32307160aba8f4a56b835a20` |
-| Final code SHA | `6e7070cae536988f4157333111b385490a7b395f` |
-| Backup pre-cleanup | `11707968e02908980761bd8f5b61855f078f4326` (`backup/deepseek-v4-mainline-before-cleanup`) |
+| Final code SHA | *(stamped after final commit)* |
+| Prior checkpoint | `6e7070cae536988f4157333111b385490a7b395f` (ancestor) |
+| Backup pre-cleanup | `11707968e02908980761bd8f5b61855f078f4326` |
 
 ## Exact models
 
-- Flash: `deepseek-v4-flash`
-- Pro: `deepseek-v4-pro`
+- `deepseek-v4-flash`
+- `deepseek-v4-pro`
 
 ## Policies
 
@@ -27,27 +28,26 @@
 | PRO_THINK | deepseek-v4-pro | enabled | high | no |
 | PRO_MAX | deepseek-v4-pro | enabled | max | **yes** |
 
-- Ambiguous `deepseek-v4` → **AMBIGUOUS_LEGACY_LANE** (rejected, never available)
-- Legacy `deepseek-chat` / `deepseek-reasoner` → rejected as model IDs
+Ambiguous `deepseek-v4` / legacy chat/reasoner: **rejected**.
 
-## Tests executed
+## Test summary (see TEST_RESULTS.json)
 
-| Command | Result |
-|---------|--------|
-| `pytest tests/test_llm_model_registry.py tests/test_llm_governance_no_override.py tests/test_no_broker_write_bypass.py` | **31 passed** |
-| `npx tsc -p tsconfig.json --noEmit` | **PASS** (0 errors after deepseek_pro fix) |
-| `npm run build` (design guard + chip scope + tsc + vite) | **PASS** |
-| Live provider smoke (this worktree run) | **NOT RUN** |
-| portfolio-server DeepSeek env names | **FAIL historically** (process lacks deepseek_* keys; see SERVICE_RUNTIME_OPERATOR_STEPS.md) |
-| Full Playwright V3 route/subtab suite | **NOT RUN** (static inventory only: 71 route hits in /tmp) |
+| Suite | Result |
+|-------|--------|
+| Mocked provider matrix + JSON + tool + cost + registry + no-broker | **86 passed** |
+| Safety (no-broker, governance, execution readiness, evidence-bound) | **35 passed** |
+| Live Flash/Pro interactive smoke (6 cases) | **6/6 pass** (not service runtime) |
+| Frontend tsc | **PASS** |
+| Frontend build | **PASS** |
+| V3 route maturity vs live :7777 | **14/20 pass** — FAIL reasons: deploy API 500s, health React #310; SPA is release tree not this branch |
+| Service-runtime DeepSeek env names on portfolio-server | **BLOCKED / ABSENT** |
 
-## Deployed / pushed
+## Deployed / pushed / restart
 
-**DEPLOYED: NO** · **PUSHED: NO** (await operator approval)
+**NO / NO / NO**
 
-## Residual risks
+## Residual blockers for PASS_FOR_DRAFT_PR
 
-1. Service runtime must receive `DEEPSEEK_API_KEY` / legacy `deepseek_tradeai` via systemd EnvironmentFile before production DeepSeek works.
-2. Full process-schema suite coverage beyond four named schemas is partial.
-3. Full V3 URL+heading+active-tab screenshot maturity suite not executed.
-4. Rebase/merge to main still requires PR review; origin/main diverged history was rebuilt cleanly from ddef4613.
+1. Operator wire DeepSeek env into portfolio-server + approved restart + service-context probe.
+2. V3 route suite against a server serving **this branch** SPA (or fix live API 500s) to reach 20/20 with URL+heading+active-tab.
+3. Optional full backend pytest suite beyond targeted sets.
