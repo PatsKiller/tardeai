@@ -1296,6 +1296,144 @@ Respond in JSON only:
     return combined
 
 
+def _run_maria_one_pass(symbol: str, context_text: str, note: str = "") -> str:
+    """Single FAST governed call combining news + fundamentals (call-count contract).
+
+    Replaces the historical two-pass Maria path for production worker jobs so each
+    Maria job makes exactly one provider request via task_type=agent_narrative
+    → watchlist_maria_flash_narrative. Does not call _run_maria_two_pass.
+    """
+    global _last_rag_sources, _last_peer_agents
+    _last_rag_sources = []
+    _last_peer_agents = []
+    rag_block = ""
+    try:
+        from rag_retrieval import get_rag_context, format_rag_context_for_prompt
+        rag_results = get_rag_context(symbol=symbol, agent_name="maria", limit=5)
+        rag_block = format_rag_context_for_prompt(rag_results, symbol=symbol)
+        _last_rag_sources = [
+            {"source_type": r["source_type"], "title": r.get("title", "")[:60], "rag_score": r["rag_score"]}
+            for r in rag_results
+        ]
+        print(
+            f"  [RAG] {symbol} (maria-1pass): {len(rag_results)} items"
+            + (f", top score {rag_results[0]['rag_score']:.3f}" if rag_results else "")
+        )
+    except Exception as e:
+        print(f"  [RAG] {symbol} (maria-1pass): FAILED — {e}")
+
+    intel = ""
+    try:
+        intel = _get_recent_intel(symbol)
+    except Exception:
+        pass
+    peer_notes = ""
+    try:
+        peer_notes = _get_peer_agent_notes(symbol, "maria")
+    except Exception:
+        pass
+
+    prompt = f"""/no_think You are Maria, a senior research analyst. Analyze {symbol} in ONE response.
+
+Combine news/catalyst review AND fundamentals into a single recommendation.
+
+CATALYST CRITERIA (catalyst_present=true if ANY):
+- Earnings beat >10% + guidance raised; SEC Form 4 insider buy >$500K;
+- M&A accretive; analyst upgrade target >15% above price; FDA/Phase 3 positive; material positive 8-K.
+
+BEARISH (sentiment=negative if ANY):
+- Insider selling >$1M/30d; EPS miss >10% + guidance cut; target below price;
+- Payout >100% income; SEC investigation / material weakness.
+
+DECISION RULES:
+BUY: catalyst_present=true AND (PE reasonable OR growth justifies) AND target >10% upside AND no negative SEC 30d.
+SELL/TRIM: bearish catalyst OR RSI>75 with no catalyst. Never SELL income-critical unless Rule G2.
+HOLD: mixed signals, conf <55%, or no material catalyst in 7d.
+RESEARCH_MORE: conflicting signals AND conf <45%.
+
+Context (7d):
+{context_text[:2000]}
+Fundamentals / notes:
+{context_text[:1500]}
+{rag_block}
+{peer_notes}
+{intel}
+{note or ''}
+
+Respond in JSON only:
+{{"sentiment":"positive"|"neutral"|"negative",
+  "catalyst_present": true|false,
+  "catalyst": "string or null",
+  "key_headlines": ["h1","h2","h3 max"],
+  "thesis_intact":"yes"|"no"|"maybe",
+  "recommendation":"BUY"|"HOLD"|"SELL"|"TRIM"|"RESEARCH_MORE"|"AVOID",
+  "confidence": 0-100,
+  "summary":"1-2 sentence summary",
+  "full_narrative":"short narrative",
+  "reasoning":"1-2 sentence reasoning",
+  "income_critical": false,
+  "evidence":[{{"tag":"fact","text":"..."}},{{"tag":"risk","text":"..."}}],
+  "data_i_doubt":"none or what you distrust",
+  "reason_codes":["code1","code2"],
+  "next_action":"string"}}"""
+
+    # Exactly one LLM invocation — no second pass
+    raw = _llm(prompt, max_tokens=600, task_type="agent_narrative", high_impact=False)
+    model = getattr(_llm, "_last_model", "unknown")
+    print(f"  [maria-1pass] {symbol}: model={model}")
+
+    if not raw or str(raw).startswith("LLM error"):
+        return raw or "LLM error: empty"
+
+    data = {}
+    try:
+        import re as _re
+        m = _re.search(r"\{[\s\S]*\}", raw)
+        if m:
+            data = merge_structured_into_result(json.loads(m.group()))
+    except Exception:
+        data = {}
+
+    rec = str(data.get("recommendation") or data.get("fundamental_signal") or "HOLD").upper()
+    rec_map = {"BUY": "BUY", "HOLD": "HOLD", "SELL": "AVOID", "TRIM": "TRIM",
+               "RESEARCH_MORE": "RESEARCH_MORE", "AVOID": "AVOID"}
+    recommendation = rec_map.get(rec, "HOLD")
+    conf_raw = data.get("confidence", 50)
+    try:
+        conf = float(conf_raw)
+        conf = conf / 100.0 if conf > 1.0 else conf
+    except (TypeError, ValueError):
+        conf = 0.5
+
+    sentiment = str(data.get("sentiment") or "neutral")
+    catalyst = data.get("catalyst") or "No catalyst identified"
+    evidence = _normalize_evidence(data.get("evidence"))
+    if catalyst and catalyst != "No catalyst identified":
+        evidence.insert(0, {"tag": "fact", "text": f"Catalyst: {catalyst}"})
+    evidence = evidence[:5]
+    doubt = _normalize_data_i_doubt(data.get("data_i_doubt"))
+    summary = data.get("summary") or f"{symbol}: {sentiment}, {recommendation}. {catalyst}"
+    narrative = data.get("full_narrative") or data.get("reasoning") or summary
+    codes = data.get("reason_codes") or [f"news_{sentiment}", f"rec_{recommendation.lower()}"]
+    next_action = data.get("next_action") or (
+        "Review catalyst timing" if catalyst != "No catalyst identified" else "Monitor for new developments"
+    )
+
+    out = json.dumps({
+        "summary": summary,
+        "full_narrative": f"## Maria one-pass\n{narrative}\n\nModel: {model}",
+        "recommendation": recommendation,
+        "confidence": conf,
+        "evidence": evidence,
+        "data_i_doubt": doubt,
+        "reason_codes": codes if isinstance(codes, list) else [str(codes)],
+        "next_action": next_action,
+        "maria_call_count_contract": 1,
+    })
+    print(f"  [maria-1pass-final] {symbol}: {recommendation} conf={conf:.0%}")
+    return out
+
+
 # Backward-compatible aliases (tests + internal callers)
 _normalize_evidence = normalize_evidence
 _normalize_data_i_doubt = normalize_data_i_doubt
@@ -2341,10 +2479,10 @@ def process_jobs(limit: int = 10):
         # Build context and prompt
         context = _get_context(conn, symbol)
 
-        # Maria uses two-pass analysis for higher confidence
+        # Maria: ONE governed FAST call (call-count contract). Two-pass retained but unused.
         if agent == "maria":
-            raw = _run_maria_two_pass(symbol, context["text"], note)
-            prompt = f"[two-pass maria for {symbol}]"
+            raw = _run_maria_one_pass(symbol, context["text"], note)
+            prompt = f"[one-pass maria for {symbol}]"
             prompt_hash = hashlib.sha256(prompt.encode()).hexdigest()[:16]
         else:
             prompt = _build_prompt(agent, symbol, context["text"], note)
@@ -2665,6 +2803,121 @@ def _auto_queue_new_symbols():
     return queued
 
 
+def run_scheduled_canary(
+    *,
+    max_provider_calls: int = 1,
+    process_id: str = "watchlist_maria_flash_narrative",
+    max_tokens: int = 200,
+    timeout: float = 90.0,
+) -> dict:
+    """One-call governed Flash canary — does NOT enter two-pass Maria / process_jobs.
+
+    Guarantees (enforced):
+      - exactly one provider call budget (aggregate + per-process)
+      - FAST only (allow_fast_think=False)
+      - no fan-out to other agents
+      - no retries inside this function
+      - no second Maria pass
+    """
+    import time as _time
+    from lib import agent_flash_governance as afg
+    from lib.agent_flash_governance import (
+        FLASH_MODEL,
+        FLASH_POLICY,
+        governed_flash_call,
+        process_for_task,
+        reset_run_budget,
+        run_budget_snapshot,
+    )
+
+    if max_provider_calls != 1:
+        raise RuntimeError(
+            f"SCHEDULED_CANARY_INVALID: max_provider_calls must be 1, got {max_provider_calls}"
+        )
+    if process_id != "watchlist_maria_flash_narrative":
+        raise RuntimeError(
+            f"SCHEDULED_CANARY_INVALID: only watchlist_maria_flash_narrative allowed, got {process_id}"
+        )
+    # Map process_id → task_type used by governance (maria narrative)
+    task_type = "agent_narrative"
+    mapped = process_for_task(task_type)
+    if mapped != process_id:
+        raise RuntimeError(
+            f"SCHEDULED_CANARY_INVALID: process_for_task({task_type})={mapped} != {process_id}"
+        )
+
+    # Enforce one-call caps at module level (env is also set by wrapper / caller)
+    os.environ["AGENT_FLASH_MAX_CALLS_PER_RUN_TOTAL"] = "1"
+    os.environ["AGENT_FLASH_MAX_CALLS_PER_PROCESS"] = "1"
+    afg.MAX_CALLS_PER_RUN_TOTAL = 1
+    afg.MAX_CALLS_PER_PROCESS = 1
+    afg.MAX_CALLS_PER_RUN = 1
+
+    run_id = reset_run_budget(
+        run_id=f"scheduled_canary_{int(_time.time())}_{os.getpid()}"
+    )
+    job_key = f"scheduled-canary-{run_id}"
+    prompt = (
+        "Advisory-only scheduled canary. Respond with JSON only. No tools. No orders. "
+        'Schema: {"recommendation":"HOLD"|"BUY"|"SELL","confidence":0-100,"summary":"string"}. '
+        "Symbol: CANARY. recommendation=HOLD, confidence=50, summary='scheduled canary ok'."
+    )
+    print(f"[scheduled-canary] run_id={run_id} process_id={process_id} max_calls=1 policy=FAST")
+    result = governed_flash_call(
+        prompt,
+        task_type=task_type,
+        max_tokens=int(max_tokens),
+        timeout=float(timeout),
+        metadata={
+            "symbol": "CANARY",
+            "agent": "maria",
+            "canary": True,
+            "scheduled_canary": True,
+            "submitted_from": "scheduled_canary",
+            "force_fast_think": False,
+        },
+        job_key=job_key,
+        prompt_version="scheduled_canary_v1",
+        allow_fast_think=False,
+    )
+    budget = run_budget_snapshot()
+    out = {
+        "mode": "scheduled_canary",
+        "run_id": run_id,
+        "job_key": job_key,
+        "process_id": result.get("process_id") or process_id,
+        "requested_policy": result.get("requested_policy") or FLASH_POLICY,
+        "executed_policy": result.get("executed_policy"),
+        "requested_model": result.get("requested_model_id") or FLASH_MODEL,
+        "returned_model": result.get("returned_model") or result.get("model_used"),
+        "provider_request_id": result.get("provider_request_id"),
+        "tokens": result.get("tokens"),
+        "cost_estimate": result.get("cost_estimate"),
+        "fallback_used": result.get("fallback_used"),
+        "success": bool(result.get("success")),
+        "error": result.get("error"),
+        "budget": budget,
+        "provider_calls": int(budget.get("total_calls") or 0),
+        # Prove two-pass path was not used
+        "maria_two_pass_entered": False,
+        "process_jobs_entered": False,
+    }
+    print(json.dumps(out, default=str))
+    if not out["success"]:
+        raise RuntimeError(out.get("error") or "SCHEDULED_CANARY_FAILED")
+    if out["provider_calls"] != 1:
+        raise RuntimeError(
+            f"SCHEDULED_CANARY_CALL_COUNT: expected 1 got {out['provider_calls']}"
+        )
+    if out["returned_model"] != FLASH_MODEL:
+        raise RuntimeError(
+            f"SCHEDULED_CANARY_MODEL: expected {FLASH_MODEL} got {out['returned_model']}"
+        )
+    if out.get("fallback_used"):
+        raise RuntimeError("SCHEDULED_CANARY_FALLBACK_FORBIDDEN")
+    return out
+
+
 if __name__ == "__main__":
     import sys as _sys
 
@@ -2688,10 +2941,51 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--limit", type=int, default=10)
+    parser.add_argument(
+        "--scheduled-canary",
+        action="store_true",
+        help=(
+            "One-call governed Flash canary: exactly one FAST deepseek-v4-flash request "
+            "for watchlist_maria_flash_narrative. Bypasses process_jobs and Maria two-pass."
+        ),
+    )
+    parser.add_argument(
+        "--max-provider-calls",
+        type=int,
+        default=None,
+        help="Hard aggregate provider-call cap for this invocation (required=1 with --scheduled-canary).",
+    )
+    parser.add_argument(
+        "--process-id",
+        type=str,
+        default="watchlist_maria_flash_narrative",
+        help="Registered process id (scheduled-canary only allows watchlist_maria_flash_narrative).",
+    )
     args = parser.parse_args()
 
     try:
         with acquire_jobs_lock(blocking=False):
+            if args.scheduled_canary:
+                max_calls = 1 if args.max_provider_calls is None else int(args.max_provider_calls)
+                if max_calls != 1:
+                    print(
+                        f"[scheduled-canary] REFUSED max-provider-calls={max_calls} "
+                        "(must be 1)"
+                    )
+                    _sys.exit(2)
+                if int(args.limit) != 1:
+                    print(
+                        f"[scheduled-canary] REFUSED --limit {args.limit} "
+                        "(must be 1; limit alone is not a canary guarantee)"
+                    )
+                    _sys.exit(2)
+                # Do NOT call process_jobs / _run_maria_two_pass / _auto_queue_new_symbols
+                run_scheduled_canary(
+                    max_provider_calls=1,
+                    process_id=str(args.process_id or "watchlist_maria_flash_narrative"),
+                )
+                _sys.exit(0)
+
             reset_run_budget()
             with PipelineRun("process_watchlist_agent_jobs") as _run:
                 _auto_queue_new_symbols()  # Check for new symbols first
@@ -2702,4 +2996,11 @@ if __name__ == "__main__":
     except OverlapError as e:
         print(f"[watchlist-agent] {e} — exit {OVERLAP_EXIT} (no provider calls)")
         _sys.exit(OVERLAP_EXIT)
+    except Exception as e:
+        if "--scheduled-canary" in _sys.argv or any(
+            a == "--scheduled-canary" for a in _sys.argv
+        ):
+            print(f"[scheduled-canary] FAILED: {type(e).__name__}: {e}")
+            _sys.exit(1)
+        raise
 
