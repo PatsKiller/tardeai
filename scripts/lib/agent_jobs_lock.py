@@ -39,7 +39,22 @@ def acquire_jobs_lock(
     *,
     blocking: bool = False,
 ) -> Iterator[int]:
-    """Acquire exclusive flock. Yields lock fd. Raises OverlapError if busy (non-blocking)."""
+    """Acquire exclusive flock. Yields lock fd. Raises OverlapError if busy (non-blocking).
+
+    When AGENT_JOBS_LOCK_HELD_EXTERNALLY=1 (e.g. governed market wrapper already holds
+    /tmp/tradeai_watchlist_agent_jobs.lock via flock), skip re-acquire to avoid
+    self-deadlock / false OVERLAP against the same production lock.
+    """
+    if str(os.environ.get("AGENT_JOBS_LOCK_HELD_EXTERNALLY", "")).strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    ):
+        # External holder (wrapper) owns the production flock for this process tree.
+        yield -1
+        return
+
     lock_path = Path(path or DEFAULT_LOCK)
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     fd = os.open(str(lock_path), os.O_RDWR | os.O_CREAT, 0o644)
