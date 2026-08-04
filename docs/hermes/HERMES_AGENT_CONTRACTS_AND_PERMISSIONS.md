@@ -1,7 +1,15 @@
 # Hermes Agent Contracts and Permissions Registry
 
-**Date:** 2026-05-31 (updated 2026-06-24 with maturity remediation notes)
+**Date:** 2026-05-31 (updated 2026-08-04 — Phase 0-5 autonomous research engine deployed)
 **Status:** AUTHORITATIVE — governance document
+
+> **2026-08-04 — Autonomous Research Engine (Phases 0-5):** See [HERMES_AUTONOMOUS_RESEARCH_ENGINE_PHASES_0_5.md](HERMES_AUTONOMOUS_RESEARCH_ENGINE_PHASES_0_5.md) for the five-phase implementation that transforms Hermes into a fully autonomous research engine:
+> - Phase 0: Config flips + stub loop implementations
+> - Phase 1: Autonomous discovery promotion lane (curator promotes inside rails)
+> - Phase 2: Research agenda engine (creates/retires/boosts topics, pivots on market rotation)
+> - Phase 3: Librarian Agent v2 (taxonomy, knowledge graph, freshness, retention, RAG health)
+> - Phase 4: Cross-source synthesis (gemma3:12b generates emerging-theme briefs)
+> - Phase 5: Outcome closure (discovery scores learn from outcome ledger yield)
 
 > **Recent Operational Hardening (2026-06-24):** See [HERMES_MATURITY_AUDIT_REMEDIATION_20260624.md](HERMES_MATURITY_AUDIT_REMEDIATION_20260624.md) for the six prioritized fixes executed after the Hermes maturity audit:
 > - Embedding worker timeout/retry + caps
