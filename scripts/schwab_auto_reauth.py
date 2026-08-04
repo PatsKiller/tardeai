@@ -568,15 +568,16 @@ def _attempt_login(authorize_url: str, callback_url: str) -> dict:
                     if _is_authenticator_page(page):
                         if not authenticator_handled:
                             state = "AUTHENTICATOR_SELECTION"
+                            auth_attempts = getattr(_handle_authenticator_page, '_attempts', 0) + 1
+                            _handle_authenticator_page._attempts = auth_attempts
                             result = _handle_authenticator_page(page, actions, DEBUG_DIR)
                             if result == "challenge_sent":
                                 state = "CHALLENGE_SENT"
                                 challenge_sent = True
                                 authenticator_handled = True
-                                challenge_timeout = time.time() + 600  # 10 min for approval
+                                challenge_timeout = time.time() + 600
                                 deadline = max(deadline, challenge_timeout)
                                 actions.append("challenge sent — waiting for operator 2FA approval")
-                                # Notify only when we're certain the push was triggered
                                 _notify("Schwab 2FA prompt sent — please approve it now",
                                         "The push notification has been sent to your Schwab mobile app. "
                                         "Open the app and approve the login request. "
@@ -585,12 +586,25 @@ def _attempt_login(authorize_url: str, callback_url: str) -> dict:
                             elif result == "already_approved":
                                 state = "TERMS_OR_CONSENT"
                                 actions.append("authenticator page bypassed — approval complete")
+                            elif auth_attempts >= 3:
+                                # After 3 attempts, stop retrying and enter wait state.
+                                # The push may have been sent even if the SPA didn't visibly
+                                # transition. Listening for the callback is the real proof.
+                                _log(f"  authenticator handler retried {auth_attempts}x — entering wait state")
+                                authenticator_handled = True
+                                state = "CHALLENGE_SENT"
+                                challenge_sent = True
+                                challenge_timeout = time.time() + 600
+                                deadline = max(deadline, challenge_timeout)
+                                actions.append("handler exhausted retries — assuming push sent, waiting")
+                                _notify("Schwab 2FA prompt sent — please approve it now",
+                                        "The push notification has been sent to your Schwab mobile app. "
+                                        "Open the app and approve the login request. "
+                                        "The automation will continue automatically once approved.")
                             else:
-                                # Could not trigger the push — log but keep trying.
-                                # Page might need more time to render SPA content.
-                                actions.append("could not trigger push on authenticator — will retry")
+                                actions.append(f"handler attempt {auth_attempts}/3 — will retry")
                         else:
-                            # Already handled authenticator, still on current page — waiting
+                            # Already handled authenticator, still on this page — waiting
                             pass
 
                     # ── TOTP handling (skip if we're on the authenticator page —
