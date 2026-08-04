@@ -504,6 +504,10 @@ def _attempt_login(authorize_url: str, callback_url: str) -> dict:
                                 challenge_timeout = time.time() + 600  # 10 min for approval
                                 deadline = max(deadline, challenge_timeout)
                                 actions.append("challenge sent — waiting for operator 2FA approval")
+                                _notify("Schwab 2FA prompt sent — please approve it now",
+                                        "The push notification has been sent to your Schwab mobile app. "
+                                        "Open the app and approve the login request. "
+                                        "The automation will continue automatically once approved.")
                             elif result == "already_approved":
                                 state = "TERMS_OR_CONSENT"
                                 actions.append("authenticator page bypassed — approval complete")
@@ -522,10 +526,16 @@ def _attempt_login(authorize_url: str, callback_url: str) -> dict:
                                 cont = _first_visible(frame, CONTINUE_SEL)
                                 if cont:
                                     cont.click(); actions.append("continued after TOTP")
+                                was_sent = challenge_sent
                                 challenge_sent = True  # TOTP = already sent challenge
                                 state = "CHALLENGE_SENT"
                                 challenge_timeout = time.time() + 600
                                 deadline = max(deadline, challenge_timeout)
+                                if not was_sent:
+                                    _notify("Schwab 2FA prompt sent — please approve it now",
+                                            "The push notification has been sent to your Schwab mobile app. "
+                                            "Open the app and approve the login request. "
+                                            "The automation will continue automatically once approved.")
                             elif otp_el and not code:
                                 state = "CHALLENGE_SENT"  # push/SMS 2FA — wait
                                 if not challenge_sent:
@@ -533,6 +543,10 @@ def _attempt_login(authorize_url: str, callback_url: str) -> dict:
                                     challenge_timeout = time.time() + 600
                                     deadline = max(deadline, challenge_timeout)
                                     actions.append("waiting for operator push/SMS 2FA")
+                                    _notify("Schwab 2FA prompt sent — please approve it now",
+                                            "The push notification has been sent to your Schwab mobile app. "
+                                            "Open the app and approve the login request. "
+                                            "The automation will continue automatically once approved.")
 
                 # ── STATE: CHALLENGE_SENT / TERMS_OR_CONSENT / ACCOUNT_GRANT ──
                 if state in ("CHALLENGE_SENT", "TERMS_OR_CONSENT", "ACCOUNT_GRANT"):
@@ -615,13 +629,7 @@ def run_attempt(notice_wait: int = NOTICE_WAIT_S) -> int:
     res = _attempt_login(url_info["authorize_url"], cb)
     state = res.get("state", "?")
 
-    # If the push challenge was sent, notify the operator to approve it
-    if state in ("CHALLENGE_SENT", "TERMS_OR_CONSENT", "ACCOUNT_GRANT"):
-        _notify("Schwab 2FA prompt sent — please approve it now",
-                "The push notification has been sent to your Schwab mobile app. "
-                "Please open the app and approve the login request. "
-                "The automation will continue automatically once approved. "
-                "(If no prompt arrived within 60s, check your device is online.)")
+    # (push notification fires inline inside _attempt_login at trigger time)
 
     if not res["ok"]:
         _save_state({"last_result": "fail", "last_error": res["error"], "last_state": state})
