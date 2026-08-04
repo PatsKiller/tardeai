@@ -486,6 +486,12 @@ def _attempt_login(authorize_url: str, callback_url: str) -> dict:
         if not headed:
             kwargs["user_agent"] = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                                     "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
+        # Auto-clean stale SingletonLock from prior crashed sessions
+        for _sl in ("SingletonLock", "SingletonCookie", "SingletonSocket"):
+            try:
+                (PROFILE_DIR / _sl).unlink(missing_ok=True)
+            except Exception:
+                pass
         ctx = pw.chromium.launch_persistent_context(
             str(PROFILE_DIR), headless=not headed, executable_path=_CHROME_PATH, **kwargs)
         try:
