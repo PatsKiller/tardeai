@@ -620,32 +620,31 @@ def run_pipeline_quality(args):
         cur.close(); conn.close()
         return []
 
-    # 1. Source yield: active sources with yield stats
+    # 1. Active sources with credibility scores
     cur.execute("""
-        SELECT source_name, source_type, quality_yield, total_articles,
-               active, last_fetched::text
+        SELECT source_name, source_type, credibility_score, active, created_at::text
         FROM research_sources
         WHERE active = true
-        ORDER BY quality_yield DESC NULLS LAST
+        ORDER BY credibility_score DESC NULLS LAST
         LIMIT 20
     """)
     sources = []
-    for name, stype, yield_val, total, active, last_fetched in cur.fetchall():
+    for name, stype, cred, active, created in cur.fetchall():
         sources.append({
             "name": name, "type": stype,
-            "quality_yield": float(yield_val) if yield_val is not None else None,
-            "total_articles": total,
-            "last_fetched": last_fetched,
+            "credibility_score": float(cred) if cred is not None else None,
+            "created_at": created,
         })
 
     # 2. Freshness: state_freshness_history summary
     freshness_summary = {}
     try:
         cur.execute("""
-            SELECT producer, MAX(age_hours) AS max_age, AVG(age_hours)::numeric(6,1) AS avg_age,
+            SELECT source_script, MAX(age_hours) AS max_age,
+                   AVG(age_hours)::numeric(6,1) AS avg_age,
                    COUNT(*) AS file_count
-            FROM latest_state_freshness
-            GROUP BY producer
+            FROM state_freshness_history
+            GROUP BY source_script
             ORDER BY max_age DESC
             LIMIT 15
         """)
