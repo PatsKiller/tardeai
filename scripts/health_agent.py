@@ -2442,8 +2442,33 @@ def enqueue_escalations(policy: dict, findings_flat: list[dict]):
         }
         retry = rmap.get(f["type"])
         if retry:
-            item["fixable"] = True
-            item["retry_cmd"] = retry
+            # P0 fail-closed containment (issue #283 / PR #284 Gate 4)
+            try:
+                from lib.agent_jobs_containment import guard_agent_jobs_execution
+                g = guard_agent_jobs_execution(retry, source="health_agent.enqueue_escalations")
+            except Exception:
+                # Import/eval crash: never restore worker retry_cmd
+                if "process_watchlist_agent_jobs" in str(retry).lower():
+                    g = {
+                        "blocked": True,
+                        "remediation_status": "CONTAINMENT_CHECK_FAILED",
+                        "message": "CONTAINMENT_CHECK_FAILED",
+                    }
+                else:
+                    g = {"blocked": False}
+            if g.get("blocked"):
+                item["fixable"] = False
+                item["retry_cmd"] = None
+                item["remediation_status"] = (
+                    g.get("remediation_status") or g.get("status") or "CONTAINMENT_CHECK_FAILED"
+                )
+                item["detail"] = (
+                    f"{f['message']} | {item['remediation_status']}: "
+                    f"process_watchlist_agent_jobs will not be invoked"
+                )
+            else:
+                item["fixable"] = True
+                item["retry_cmd"] = retry
         if f.get("kind") in ("code", "single_file", "multi_file", "schema") and enq.get("code_fixes", True):
             item["needs_code_fix"] = True
             item["kind"] = f.get("kind", "code")

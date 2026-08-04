@@ -150,6 +150,23 @@ def _execute_retry_cmd(item, allowlist, dry_run=False):
     if not cmd:
         return False, False, "no_retry_cmd"
 
+    # P0 fail-closed containment (issue #283 / PR #284 Gate 4)
+    try:
+        from lib.agent_jobs_containment import guard_agent_jobs_execution
+        g = guard_agent_jobs_execution(cmd, source="claude_escalation_handler")
+    except Exception as _cex:
+        if "process_watchlist_agent_jobs" in str(cmd).lower():
+            status = "CONTAINMENT_CHECK_FAILED"
+            log.info(f"  ⛔ retry_cmd {status} (import/eval): {cmd[:80]}")
+            _log_retry(item, cmd, False, status, "containment_check_failed")
+            return False, False, status
+        g = {"blocked": False}
+    if g.get("blocked"):
+        status = g.get("remediation_status") or g.get("status") or "CONTAINMENT_CHECK_FAILED"
+        log.info(f"  ⛔ retry_cmd {status} (P0 agent_jobs): {cmd[:80]}")
+        _log_retry(item, cmd, False, status, "contained_p0")
+        return False, False, status
+
     allowed, reason = _check_allowlist(cmd, allowlist)
 
     if not allowed:

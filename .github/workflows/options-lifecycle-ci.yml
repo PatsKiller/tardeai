@@ -29,6 +29,17 @@ on:
       - 'config/options_lifecycle_policy.json'
       - 'apps/command-center-v3/**'
       - '.github/workflows/options-lifecycle-ci.yml'
+      # Agent-flash governance (PR #284) — ensure backend/frontend run on this path
+      - 'scripts/llm_router.py'
+      - 'scripts/process_watchlist_agent_jobs.py'
+      - 'scripts/health_agent.py'
+      - 'scripts/lib/agent_flash_governance.py'
+      - 'scripts/lib/agent_jobs_containment.py'
+      - 'scripts/lib/agent_jobs_lock.py'
+      - 'scripts/lib/llm_consumption.py'
+      - 'config/llm_process_registry.json'
+      - 'config/health_agent_policy.json'
+      - 'tests/test_agent_flash_governance.py'
   pull_request:
     paths: *lifecycle_paths
   workflow_dispatch: {}

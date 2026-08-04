@@ -63,39 +63,39 @@ DAILY_BUDGET_LIMIT = 1.50  # USD/day — allows cloud fallback when Ollama offli
 
 # ── Task routing — auto-adjusts based on LOCAL_MODEL ─────────────────────
 
-# Pre-GPU routing: Grok is primary cloud (local quality limited)
+# Governed DeepSeek Flash only for agent watchlist workloads (issue #283 / PR #284).
+# No silent local/Grok/Claude/OpenAI fallback on paid agent tasks.
 _TASK_ROUTING_PRE_GPU = {
-    "agent_narrative":          ["local", "grok", "claude"],
-    "agent_debate":             ["local", "grok", "claude"],
-    "sector_correlation":       ["grok", "local", "claude"],
-    "cio_synthesis":            ["local", "claude", "grok", "openai"],
-    "catalyst_classification":  ["local", "grok"],
-    "sentiment":                ["local", "grok"],
-    "code_generation":          ["claude", "openai"],
-    "fast_summary":             ["local"],
-    "default":                  ["local", "grok", "claude", "openai"],
+    "agent_narrative":          ["deepseek-flash"],
+    "agent_debate":             ["deepseek-flash"],
+    "sector_correlation":       ["deepseek-flash"],
+    "cio_synthesis":            ["deepseek-flash"],
+    "catalyst_classification":  ["deepseek-flash"],
+    "sentiment":                ["deepseek-flash"],
+    "code_generation":          ["deepseek-flash"],
+    "fast_summary":             ["deepseek-flash"],
+    "default":                  ["deepseek-flash"],
 }
 
-# Post-GPU routing: local is high quality, Grok demoted to fallback
 _TASK_ROUTING_POST_GPU = {
-    "agent_narrative":          ["local", "claude", "grok"],
-    "agent_debate":             ["local", "claude", "grok"],
-    "sector_correlation":       ["local", "grok", "claude"],
-    "cio_synthesis":            ["local", "claude", "grok", "openai"],
-    "catalyst_classification":  ["local", "grok"],
-    "sentiment":                ["local"],
-    "code_generation":          ["claude", "openai"],
-    "fast_summary":             ["local"],
-    "default":                  ["local", "claude", "grok", "openai"],
+    "agent_narrative":          ["deepseek-flash"],
+    "agent_debate":             ["deepseek-flash"],
+    "sector_correlation":       ["deepseek-flash"],
+    "cio_synthesis":            ["deepseek-flash"],
+    "catalyst_classification":  ["deepseek-flash"],
+    "sentiment":                ["deepseek-flash"],
+    "code_generation":          ["deepseek-flash"],
+    "fast_summary":             ["deepseek-flash"],
+    "default":                  ["deepseek-flash"],
 }
 
-# High-impact always prefers Claude, regardless of GPU state
+# High-impact agent tasks still use governed Flash only (no Pro on this path).
 _HIGH_IMPACT_ROUTING = {
-    "cio_synthesis":        ["claude", "grok", "openai"],
-    "agent_narrative":      ["grok", "claude", "local"],
-    "agent_debate":         ["grok", "claude", "local"],
-    "sector_correlation":   ["grok", "claude", "local"],
-    "default":              ["claude", "grok", "local", "openai"],
+    "cio_synthesis":        ["deepseek-flash"],
+    "agent_narrative":      ["deepseek-flash"],
+    "agent_debate":         ["deepseek-flash"],
+    "sector_correlation":   ["deepseek-flash"],
+    "default":              ["deepseek-flash"],
 }
 
 # Select routing table based on current model
@@ -167,89 +167,61 @@ def _call_local(prompt: str, max_tokens: int = 800, timeout: int = None) -> dict
 
 
 def _call_anthropic(prompt: str, max_tokens: int = 2000) -> dict:
-    """Call Anthropic Claude API."""
-    keys = _load_env()
-    api_key = keys.get("ANTHROPIC_API_KEY", "")
-    if not api_key:
-        return {"success": False, "error": "ANTHROPIC_API_KEY not configured", "provider": "claude"}
+    """Legacy Claude path — rejected for agent_flash governance (issue #283).
 
-    t0 = time.time()
-    try:
-        payload = json.dumps({
-            "model": "claude-sonnet-4-20250514",
-            "max_tokens": max_tokens,
-            "messages": [{"role": "user", "content": prompt}],
-        }).encode()
-        req = urllib.request.Request(
-            "https://api.anthropic.com/v1/messages",
-            data=payload,
-            headers={
-                "Content-Type": "application/json",
-                "x-api-key": api_key,
-                "anthropic-version": "2023-06-01",
-            },
-            method="POST"
-        )
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            result = json.loads(resp.read())
-            text = ""
-            for block in result.get("content", []):
-                if block.get("type") == "text":
-                    text += block["text"]
-            latency = round(time.time() - t0, 2)
-            tokens = result.get("usage", {})
-            cost = (tokens.get("input_tokens", 0) * 3 + tokens.get("output_tokens", 0) * 15) / 1_000_000
-            return {
-                "model_used": "claude-sonnet-4-20250514", "provider": "claude",
-                "response": text.strip(), "latency": latency,
-                "success": bool(text.strip()),
-                "cost_estimate": round(cost, 4),
-                "tokens": tokens,
-            }
-    except Exception as e:
-        return {"success": False, "error": str(e), "provider": "claude",
-                "latency": round(time.time() - t0, 2), "cost_estimate": 0.0}
+    Pro/Claude must not be used as silent fallback for watchlist agent automation.
+    """
+    return {
+        "success": False,
+        "error": "POLICY_NOT_ALLOWED: Claude/Pro not permitted on agent_flash governed path",
+        "provider": "claude",
+        "cost_estimate": 0.0,
+        "latency": 0.0,
+    }
+
+
+def _call_deepseek_v4_legacy_rejected(prompt: str, max_tokens: int = 2000) -> dict:
+    """Ambiguous deepseek-v4 / Pro path — always rejected on this router."""
+    return {
+        "success": False,
+        "error": "LEGACY_MODEL_REJECTED: deepseek-v4 / Pro aliases forbidden; use governed deepseek-flash only",
+        "provider": "deepseek",
+        "cost_estimate": 0.0,
+        "latency": 0.0,
+    }
+
+
+def _call_deepseek_flash_governed(
+    prompt: str,
+    max_tokens: int = 800,
+    *,
+    task_type: str = "agent_narrative",
+    metadata: dict | None = None,
+    job_key: str | None = None,
+) -> dict:
+    """Governed DeepSeek V4 Flash only (issue #283). No legacy IDs. No silent fallback."""
+    from lib.agent_flash_governance import governed_flash_call
+    return governed_flash_call(
+        prompt,
+        task_type=task_type,
+        max_tokens=max_tokens,
+        metadata=metadata,
+        job_key=job_key,
+    )
 
 
 def _call_openai(prompt: str, max_tokens: int = 2000) -> dict:
-    """Call OpenAI GPT-4o API."""
-    keys = _load_env()
-    api_key = keys.get("OPENAI_API_KEY", "")
-    if not api_key:
-        return {"success": False, "error": "OPENAI_API_KEY not configured", "provider": "openai"}
+    """Legacy name kept for provider map key only — routes to governed DeepSeek Flash.
 
-    t0 = time.time()
-    try:
-        payload = json.dumps({
-            "model": "gpt-4o",
-            "max_tokens": max_tokens,
-            "messages": [{"role": "user", "content": prompt}],
-        }).encode()
-        req = urllib.request.Request(
-            "https://api.openai.com/v1/chat/completions",
-            data=payload,
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {api_key}",
-            },
-            method="POST"
-        )
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            result = json.loads(resp.read())
-            text = result.get("choices", [{}])[0].get("message", {}).get("content", "")
-            latency = round(time.time() - t0, 2)
-            tokens = result.get("usage", {})
-            cost = (tokens.get("prompt_tokens", 0) * 2.5 + tokens.get("completion_tokens", 0) * 10) / 1_000_000
-            return {
-                "model_used": "gpt-4o", "provider": "openai",
-                "response": text.strip(), "latency": latency,
-                "success": bool(text.strip()),
-                "cost_estimate": round(cost, 4),
-                "tokens": tokens,
-            }
-    except Exception as e:
-        return {"success": False, "error": str(e), "provider": "openai",
-                "latency": round(time.time() - t0, 2), "cost_estimate": 0.0}
+    Does NOT call OpenAI. Does NOT label results as deepseek-chat.
+    """
+    # task_type threaded via get_llm_response → _current_task_type
+    tt = getattr(_call_openai, "_current_task_type", "agent_narrative")
+    meta = getattr(_call_openai, "_current_metadata", None)
+    job_key = getattr(_call_openai, "_current_job_key", None)
+    return _call_deepseek_flash_governed(
+        prompt, max_tokens=max_tokens, task_type=tt, metadata=meta, job_key=job_key,
+    )
 
 
 def _call_grok(prompt: str, max_tokens: int = 2000) -> dict:
@@ -294,9 +266,11 @@ def _call_grok(prompt: str, max_tokens: int = 2000) -> dict:
 
 _PROVIDERS = {
     "local": _call_local,
+    "deepseek-flash": _call_openai,  # → governed deepseek-v4-flash (issue #283)
+    "deepseek-v4": _call_deepseek_v4_legacy_rejected,
     "grok": _call_grok,
     "claude": _call_anthropic,
-    "openai": _call_openai,
+    "openai": _call_openai,  # alias → governed flash, not OpenAI API
 }
 
 
@@ -307,19 +281,29 @@ def get_llm_response(
     high_impact: bool = False,
     max_tokens: int = 800,
     local_timeout: int = None,
+    *,
+    metadata: dict | None = None,
+    job_key: str | None = None,
 ) -> dict:
     """Route LLM request through provider hierarchy. Returns best response.
 
     Args:
         task_type: agent_narrative, cio_synthesis, catalyst_classification, sentiment, etc.
         prompt: The full prompt text
-        high_impact: If True, prefer Claude/Grok over local
+        high_impact: If True, use high-impact routing table (still Flash-only for agents)
         max_tokens: Max response tokens
         local_timeout: Override local timeout (default 8s for fallback trigger)
+        metadata: optional job metadata (symbol, agent) — no private prompt echo
+        job_key: stable job id for dedupe
 
     Returns:
         dict with: model_used, provider, response, latency, cost_estimate, fallback_reason
     """
+    # Thread task context into governed DeepSeek provider
+    _call_openai._current_task_type = task_type or "agent_narrative"  # type: ignore[attr-defined]
+    _call_openai._current_metadata = metadata  # type: ignore[attr-defined]
+    _call_openai._current_job_key = job_key  # type: ignore[attr-defined]
+
     # Determine provider order
     if high_impact:
         providers = _HIGH_IMPACT_ROUTING.get(task_type, _HIGH_IMPACT_ROUTING["default"])
@@ -332,6 +316,41 @@ def get_llm_response(
     for provider_name in providers:
         caller = _PROVIDERS.get(provider_name)
         if not caller:
+            continue
+
+        # Governed DeepSeek path: no chain fallback on hard policy/cost failures
+        if provider_name == "deepseek-flash":
+            result = _call_deepseek_flash_governed(
+                prompt,
+                max_tokens=max_tokens,
+                task_type=task_type or "agent_narrative",
+                metadata=metadata,
+                job_key=job_key,
+            )
+            result["task_type"] = task_type
+            result["high_impact"] = high_impact
+            if result.get("success"):
+                result["fallback_reasons"] = fallback_reasons
+                result["total_cost"] = round(float(result.get("cost_estimate") or 0), 6)
+                _log_call(task_type, result)
+                return result
+            # Dedupe skip is not a circuit failure — surface cleanly
+            err = str(result.get("error") or "")
+            if err.startswith("DEDUPE_SKIP"):
+                result["fallback_reasons"] = fallback_reasons
+                _log_call(task_type, result)
+                return result
+            # Policy / cost / mismatch — do not fall through to local (no silent fallback)
+            if any(x in err.upper() for x in (
+                "COST_CAP", "COST_CONFIGURATION", "POLICY_NOT", "LEGACY_MODEL",
+                "MISMATCHED", "PROCESS_NOT", "CIRCUIT_OPEN", "FALLBACK_FORBIDDEN",
+                "INPUT_LIMIT", "COST_PERSISTENCE",
+            )):
+                result["fallback_reasons"] = fallback_reasons
+                _log_call(task_type, result)
+                return result
+            fallback_reasons.append(f"deepseek-flash: {err[:120]}")
+            # only continue if another free provider remains in chain
             continue
 
         # Budget check for external providers

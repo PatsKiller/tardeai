@@ -327,6 +327,13 @@ def _llm(prompt: str, max_tokens: int = 800, task_type: str = "agent_narrative",
             prompt=prompt,
             max_tokens=max_tokens,
             high_impact=high_impact,
+            # issue #283: stable job key + metadata for governed Flash (no private PII)
+            metadata={
+                "symbol": _CURRENT_JOB_SYMBOL,
+                "submitted_from": _CURRENT_JOB_SUBMITTED_FROM,
+                "agent_path": "process_watchlist_agent_jobs",
+            },
+            job_key=f"{task_type}:{_CURRENT_JOB_SYMBOL or ''}:{_CURRENT_JOB_SUBMITTED_FROM or ''}",
         )
         if result.get("success"):
             # Saturation valve: one slow local call widens cloud routing to priority-3 jobs.
@@ -2659,14 +2666,40 @@ def _auto_queue_new_symbols():
 
 
 if __name__ == "__main__":
-    with PipelineRun("process_watchlist_agent_jobs") as _run:
-        import argparse
-        parser = argparse.ArgumentParser()
-        parser.add_argument("--limit", type=int, default=10)
-        args = parser.parse_args()
-        _auto_queue_new_symbols()  # Check for new symbols first
-        effective = _effective_job_limit(args.limit)
-        if effective != args.limit:
-            print(f"[watchlist-agent] Queue depth >100 — raised limit {args.limit}→{effective}")
-        process_jobs(effective)
+    import sys as _sys
+
+    # P0 fail-closed containment BEFORE argparse DB/provider work (Gate 4)
+    try:
+        from lib.agent_jobs_containment import exit_if_contained_worker_entry, WORKER_BLOCKED_EXIT
+    except Exception as _imp_err:
+        print(
+            "CONTAINMENT_CHECK_FAILED: cannot import containment helper; "
+            f"worker blocked ({type(_imp_err).__name__})"
+        )
+        _sys.exit(78)
+
+    _rc = exit_if_contained_worker_entry()
+    if _rc is not None:
+        _sys.exit(_rc)
+
+    import argparse
+    from lib.agent_jobs_lock import OverlapError, acquire_jobs_lock, OVERLAP_EXIT
+    from lib.agent_flash_governance import reset_run_budget
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--limit", type=int, default=10)
+    args = parser.parse_args()
+
+    try:
+        with acquire_jobs_lock(blocking=False):
+            reset_run_budget()
+            with PipelineRun("process_watchlist_agent_jobs") as _run:
+                _auto_queue_new_symbols()  # Check for new symbols first
+                effective = _effective_job_limit(args.limit)
+                if effective != args.limit:
+                    print(f"[watchlist-agent] Queue depth >100 — raised limit {args.limit}→{effective}")
+                process_jobs(effective)
+    except OverlapError as e:
+        print(f"[watchlist-agent] {e} — exit {OVERLAP_EXIT} (no provider calls)")
+        _sys.exit(OVERLAP_EXIT)
 
