@@ -1,22 +1,18 @@
 #!/bin/bash
-"""make_release.sh — Create a SHA-pinned release directory for portfolio_server.
-
-    Usage:  bash scripts/make_release.sh [--label "optional-label"]
-
-    Creates a timestamped release at:
-        ~/trade-ai-releases/portfolio-server/<short-sha>-<label>-<YYYYMMDD>-<HHMMSS>/
-
-    Copies the full working tree (including gitignored build artifacts like
-    apps/command-center-v3/dist/) while excluding heavy dirs the server doesn't
-    need at runtime (.git, .venv, node_modules, __pycache__, .pytest_cache).
-
-    The release is a self-contained directory that can be pointed to by the
-    portfolio-server systemd drop-in.
-
-    NOTE: git-archive is NOT suitable for releases — it skips gitignored files
-    (dist/, data/state/) that the server requires at runtime. The /v3/ route
-    broke on 2026-08-03 when a git-archive release was deployed without dist/.
-"""
+# make_release.sh — Create a SHA-pinned release directory for portfolio_server.
+#
+# Usage:  bash scripts/make_release.sh [--label "optional-label"]
+#
+# Creates a timestamped release at:
+#     ~/trade-ai-releases/portfolio-server/<short-sha>-<label>-<YYYYMMDD>-<HHMMSS>/
+#
+# Copies the full working tree (including gitignored build artifacts like
+# apps/command-center-v3/dist/) while excluding heavy dirs the server doesn't
+# need at runtime (.git, .venv, node_modules, __pycache__, .pytest_cache).
+#
+# NOTE: git-archive is NOT suitable for releases — it skips gitignored files
+# (dist/, data/state/) that the server requires at runtime. The /v3/ route
+# broke on 2026-08-03 when a git-archive release was deployed without dist/.
 set -euo pipefail
 
 LABEL="${1:-release}"
