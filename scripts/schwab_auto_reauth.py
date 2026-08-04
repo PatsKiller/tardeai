@@ -294,9 +294,8 @@ def _is_authenticator_page(page) -> bool:
 
 
 def _handle_authenticator_page(page, actions: list, debug_dir: Path) -> str | None:
-    """Handle the Schwab authenticator-selection page using JavaScript click-by-text.
-    CSS selectors fail on React SPAs where elements are divs without stable IDs.
-    Returns: 'challenge_sent' | 'already_approved' | None (will retry)"""
+    """Handle the Schwab authenticator-selection page using JavaScript click-by-text
+    across ALL frames. Returns: 'challenge_sent' | 'already_approved' | None (retry)"""
     # ── Debug screenshot ──
     try:
         shot = debug_dir / f"reauth_authpage_{_now().strftime('%Y%m%d_%H%M%S')}.png"
@@ -306,114 +305,84 @@ def _handle_authenticator_page(page, actions: list, debug_dir: Path) -> str | No
     except Exception as e:
         _log(f"  screenshot failed: {e}")
 
-    # ── JS: click element by visible text ──
-    def _js_click_text(label: str) -> bool:
-        """Use JS to find and click a visible element with exact text match."""
+    # ── Sanitized DOM dump (tags only, no text values = no credential leak) ──
+    for frame in page.frames:
+        try:
+            tags_js = """(()=>{const r=[];document.querySelectorAll('*').forEach(el=>{
+            if(!el.offsetParent)return;const t=el.tagName.toLowerCase();
+            const roles=el.getAttribute('role')||'';
+            r.push(t+(roles?'[role='+roles+']':''));
+            });return [...new Set(r)].slice(0,30).join(' ');})()"""
+            tags = frame.evaluate(tags_js)
+            _log(f"  tags in frame: {tags}")
+            actions.append(f"tags: {tags}")
+        except Exception:
+            pass
+
+    # ── JS click-by-text helper (searches ALL element types, across frames) ──
+    def _click_text_in_frame(frame, label: str, partial: bool = False) -> bool:
+        cond = f"txt.includes({json.dumps(label)})" if partial else (
+            f"txt === {json.dumps(label)} || txt.startsWith({json.dumps(label)})")
         js = f"""
         (() => {{
-            const label = {json.dumps(label)};
             const all = document.querySelectorAll('*');
             for (const el of all) {{
-                if (!el.offsetParent) continue; // not visible
-                const txt = (el.innerText || el.textContent || '').trim();
-                if (txt === label || txt.startsWith(label)) {{
+                if (!el.offsetParent) continue;
+                const txt = (el.innerText || '').trim();
+                if ({cond}) {{
                     el.click();
-                    return 'clicked:' + el.tagName;
+                    return 'clicked:<' + el.tagName.toLowerCase() + '>';
                 }}
             }}
             return 'notfound';
         }})()
         """
         try:
-            result = page.evaluate(js)
-            return str(result).startswith("clicked")
+            return str(frame.evaluate(js)).startswith("clicked:")
         except Exception:
             return False
 
-    # ── Step 1: Click "Trusted contact" to select it ──
-    if _js_click_text("Trusted contact"):
-        _log("  JS clicked: Trusted contact")
-        actions.append("JS clicked: Trusted contact")
-        time.sleep(1.5)
-    else:
-        _log("  JS: 'Trusted contact' not found as standalone clickable element, trying partial match")
-        # Try partial match — the element might contain "Trusted contact\n(718) 219-4296"
-        try:
-            js = """
-            (() => {
-                const all = document.querySelectorAll('*');
-                for (const el of all) {
-                    if (!el.offsetParent) return;
-                    const txt = (el.innerText || '').trim();
-                    if (txt.includes('Trusted contact')) {
-                        el.click();
-                        return 'clicked:' + el.tagName;
-                    }
-                }
-                return 'notfound';
-            })()
-            """
-            result = page.evaluate(js)
-            _log(f"  JS partial text result: {result}")
+    # ── Step 1: Click "Trusted contact" (search ALL frames) ──
+    tc_clicked = False
+    for frame in page.frames:
+        if _click_text_in_frame(frame, "Trusted contact"):
+            _log("  clicked: Trusted contact")
+            actions.append("clicked Trusted contact")
+            tc_clicked = True
             time.sleep(1.5)
-        except Exception as e:
-            _log(f"  JS partial text failed: {e}")
+            break
+        if _click_text_in_frame(frame, "Trusted contact", partial=True):
+            _log("  clicked: Trusted contact (partial match)")
+            actions.append("clicked Trusted contact (partial)")
+            tc_clicked = True
+            time.sleep(1.5)
+            break
+    if not tc_clicked:
+        _log("  Trusted contact not found in any frame")
 
-    # ── Step 2: Click "Continue" ──
-    if _js_click_text("Continue"):
-        _log("  JS clicked: Continue")
-        actions.append("JS clicked: Continue")
-        time.sleep(3.0)
+    # ── Step 2: Click "Continue" (search ALL frames) ──
+    for frame in page.frames:
+        if _click_text_in_frame(frame, "Continue"):
+            _log("  clicked: Continue")
+            actions.append("clicked Continue")
+            time.sleep(3.0)
 
-        # Verify page transition
-        still_auth = _is_authenticator_page(page)
-        if not still_auth:
-            _log("  page LEFT authenticator — challenge sent ✓")
-            return "challenge_sent"
-
-        # Check for approval-pending content
-        for frame in page.frames:
-            txt = _page_text(frame)
-            if any(sig in txt for sig in APPROVAL_PENDING_SIG):
-                _log("  page shows approval-pending — challenge sent ✓")
+            still_auth = _is_authenticator_page(page)
+            if not still_auth:
+                _log("  page LEFT authenticator — challenge sent")
                 return "challenge_sent"
-
-        _log("  clicked Continue but still on authenticator page")
-    else:
-        _log("  JS: 'Continue' button not found")
-        # Try _click_affirmative as fallback
-        for frame in page.frames:
-            if _click_affirmative(frame, actions, extra_selectors=["div[role='button']", "span[role='button']"]):
-                time.sleep(3.0)
-                if not _is_authenticator_page(page):
-                    _log("  fallback click moved off authenticator page")
+            for f in page.frames:
+                txt = _page_text(f)
+                if any(sig in txt for sig in APPROVAL_PENDING_SIG):
+                    _log("  approval-pending content detected — challenge sent")
                     return "challenge_sent"
+            _log("  clicked Continue but still on authenticator page")
+            break
 
     # ── Step 3: Already approved? ──
     if not _is_authenticator_page(page):
         _log("  no longer on authenticator page")
         return "already_approved"
-
-    # ── Step 4: Dump visible HTML for debugging ──
-    try:
-        js = """
-        (() => {
-            const vis = [];
-            document.querySelectorAll('button, a, input, [role="button"], [role="radio"]').forEach(el => {
-                if (!el.offsetParent) return;
-                const tag = el.tagName.toLowerCase();
-                const type = el.getAttribute('type') || '';
-                const txt = (el.innerText || el.value || '').trim().slice(0, 80);
-                vis.push(`<${tag}${type ? ' type='+type : ''}> "${txt}"`);
-            });
-            return vis.slice(0, 20).join('|');
-        })()
-        """
-        dom = page.evaluate(js)
-        _log(f"  DOM: {dom}")
-        actions.append(f"DOM: {dom}")
-    except Exception as e:
-        _log(f"  DOM dump failed: {e}")
 
     _log("  could not trigger push — will retry")
     return None
