@@ -784,25 +784,71 @@ export default function SystemHub({ onDrill }: Props) {
       )}
 
       {tab === 'LLM' && (<>
-        {/* 3-lane review health (operator 2026-06-19): live lane availability + corpus quality */}
+        {/* Lane health + Hermes hybrid (operator 2026-08-04): free OAuth + DeepSeek Flash rollover */}
         <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, marginBottom: 12 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>LLM Review Lane Health</div>
           {llmHealth ? (() => {
             const lanes = llmHealth.lanes ?? {}, corpus = llmHealth.review_corpus ?? {}
+            const hybrid = llmHealth.hybrid_policy ?? llmHealth.data?.hybrid_policy
+            const freeKeys = ['local', 'grok', 'chatgpt'] as const
+            const paidKeys = ['deepseek-flash', 'deepseek-v4-pro'] as const
+            const chip = (k: string, billing?: string) => {
+              const row = lanes[k] ?? {}
+              const up = Boolean(row.available)
+              const bill = billing || row.billing || (k.startsWith('deepseek') ? 'metered' : 'free')
+              return (
+                <span key={k} style={{
+                  fontSize: 11, fontWeight: 800, padding: '4px 10px', borderRadius: 7,
+                  border: `1px solid ${up ? '#22c55e' : '#ef4444'}`,
+                  background: `${up ? '#22c55e' : '#ef4444'}1f`,
+                  color: up ? '#22c55e' : '#ef4444',
+                }} title={row.reason || row.model || bill}>
+                  {k} {up ? '✓ up' : '✗ down'}
+                  <span style={{ fontWeight: 600, opacity: 0.75, marginLeft: 6 }}>{bill}</span>
+                </span>
+              )
+            }
+            const roll = hybrid?.free_oauth_bottleneck_rollover
             return <>
+              <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 6, fontWeight: 700, letterSpacing: 0.4 }}>FREE / LOCAL</div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
-                {['local', 'grok', 'chatgpt'].map(k => {
-                  const up = lanes[k]?.available
-                  return <span key={k} style={{ fontSize: 11, fontWeight: 800, padding: '4px 10px', borderRadius: 7, border: `1px solid ${up ? '#22c55e' : '#ef4444'}`, background: `${up ? '#22c55e' : '#ef4444'}1f`, color: up ? '#22c55e' : '#ef4444' }} title={lanes[k]?.reason || ''}>{k} {up ? '✓ up' : '✗ down'}</span>
-                })}
+                {freeKeys.map(k => chip(k))}
               </div>
-              <div style={{ fontSize: 11, color: 'var(--text2)' }}>
+              <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 6, fontWeight: 700, letterSpacing: 0.4 }}>METERED DEEPSEEK</div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+                {paidKeys.map(k => chip(k, 'metered'))}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 10 }}>
                 Review corpus ({corpus.window_days ?? 30}d): <b style={{ color: (corpus.valid_rate ?? 0) >= 0.9 ? '#22c55e' : (corpus.valid_rate ?? 0) >= 0.7 ? '#f59e0b' : '#ef4444' }}>{corpus.valid_rate != null ? `${(corpus.valid_rate * 100).toFixed(1)}% valid` : '—'}</b> ({corpus.valid ?? 0}/{corpus.total ?? 0})
               </div>
+              {hybrid && !hybrid.error && (
+                <div style={{
+                  marginTop: 4, padding: 12, borderRadius: 8,
+                  border: '1px solid var(--border)', background: 'var(--bg2)',
+                }}>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--text0)', marginBottom: 6 }}>
+                    Hermes hybrid · free OAuth → DeepSeek Flash on bottleneck
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--text2)', lineHeight: 1.45 }}>
+                    Local first · free OAuth (Grok/ChatGPT) second · if free OAuth bottlenecks →{' '}
+                    <b style={{ color: 'var(--text0)' }}>{roll?.model || 'deepseek-v4-flash'}</b>
+                    {' '}({roll?.policy || 'FAST'})
+                    {roll?.never_pro !== false ? ' · Pro never used for this rollover' : ''}
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 6 }}>
+                    Rollover {roll?.enabled === false ? 'DISABLED' : 'ENABLED'}
+                    {roll?.credential_slot ? ` · credential slot ${roll.credential_slot}` : ''}
+                    {' · '}no paid fallback when local fails
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 6 }}>
+                    Docs: docs/ops/HERMES_DEEPSEEK_HYBRID_FREE_OAUTH_ROLLOVER_2026-08-04.md
+                  </div>
+                </div>
+              )}
             </>
           })() : <div style={{ color: 'var(--text3)', fontSize: 11 }}>Loading review health...</div>}
-          <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>
-            Source: /api/v2/llm-health · OAuth probe: <a href="/v3/consumption" style={{ color: '#60a5fa' }}>Consumption</a> (free Grok/ChatGPT, not XAI_API_KEY)
+          <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 8 }}>
+            Source: /api/v2/llm-health · OAuth + DeepSeek probe: <a href="/v3/consumption" style={{ color: 'var(--accent, #60a5fa)' }}>Consumption</a>
           </div>
         </div>
         <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>

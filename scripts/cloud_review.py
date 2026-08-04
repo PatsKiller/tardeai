@@ -126,12 +126,92 @@ def _review_one(lane, task, local_output, context, timeout):
     return out
 
 
+def _free_oauth_bottleneck_rollover_cfg() -> dict:
+    """Load free-OAuth → DeepSeek Flash rollover policy from Hermes budget YAML.
+
+    Default: enabled (hybrid). Fail closed (no Pro) if config missing/malformed.
+    """
+    try:
+        import yaml  # type: ignore
+        path = ROOT / "config" / "hermes_research_budget.yaml"
+        if not path.exists():
+            return {"enabled": True, "lane": "deepseek-flash", "model": "deepseek-v4-flash"}
+        pol = yaml.safe_load(path.read_text()) or {}
+        cfg = ((pol.get("cloud_unavailable") or {}).get("free_oauth_bottleneck_rollover")
+               or {})
+        if not isinstance(cfg, dict):
+            return {"enabled": True, "lane": "deepseek-flash", "model": "deepseek-v4-flash"}
+        return cfg
+    except Exception:
+        return {"enabled": True, "lane": "deepseek-flash", "model": "deepseek-v4-flash"}
+
+
+def _deepseek_flash_rollover_review(task, local_output, context, timeout, *, reason: str) -> dict:
+    """Explicit paid rollover when free-OAuth bottlenecks. FAST / deepseek-v4-flash only.
+
+    Uses llm_lane deepseek-flash (credential: deepseek_tradeai / Bitwarden).
+    Never Pro / PRO_THINK / PRO_MAX. Failures return ok=False (advisory).
+    """
+    out = {
+        "ok": False,
+        "available": False,
+        "verdict": "UNKNOWN",
+        "lane": "deepseek-flash",
+        "model": "deepseek-v4-flash",
+        "rollover": True,
+        "rollover_reason": reason,
+        "policy": "FAST",
+    }
+    cfg = _free_oauth_bottleneck_rollover_cfg()
+    if cfg.get("enabled") is False:
+        out["error"] = "deepseek_rollover_disabled"
+        return out
+    if cfg.get("never_pro") is False:
+        # Safety: ignore attempts to enable Pro via config
+        pass
+    model = str(cfg.get("model") or "deepseek-v4-flash")
+    lane = str(cfg.get("lane") or "deepseek-flash")
+    if model != "deepseek-v4-flash" or lane not in ("deepseek-flash", "deepseek-v4-flash", "fast"):
+        out["error"] = f"deepseek_rollover_forbidden_model lane={lane} model={model}"
+        return out
+    try:
+        import llm_lane
+        if not llm_lane.available("deepseek-flash"):
+            out["error"] = "deepseek-flash lane unavailable (not ready or no credential)"
+            return out
+        raw = llm_lane.generate(
+            _build_prompt(task, local_output, context),
+            lane="deepseek-flash",
+            timeout=min(int(timeout or 180), 180),
+            model="deepseek-v4-flash",
+            process_id="hermes_external_research",
+            task_summary=f"free_oauth_bottleneck_rollover:{task[:60]}",
+        )
+        out.update(ok=True, available=True, raw=str(raw)[:6000], **_parse(raw))
+    except Exception as e:
+        out["error"] = str(e)[:240]
+    return out
+
+
 def review(task, local_output, context=None, *, lanes=DEFAULT_LANES, timeout=180,
-           persist=True, symbol=None, source=None):
-    """Free-OAuth cloud lanes review the local LLM's output. Returns per-lane verdicts + consensus. Never
-    raises (advisory). Lanes that are down are skipped."""
-    result = {"ok": False, "task": task, "lanes": {}}
-    for lane in lanes:
+           persist=True, symbol=None, source=None,
+           allow_deepseek_rollover: bool = True):
+    """Free-OAuth cloud lanes review the local LLM's output.
+
+    Hybrid: ChatGPT + Grok first. If free-OAuth bottlenecks (zero successful
+    lanes) and allow_deepseek_rollover=True, attempt one DeepSeek V4 Flash
+    FAST call (paid, cost-gated via llm_lane / deepseek_tradeai). Never Pro.
+    Never raises (advisory). Lanes that are down are skipped.
+    """
+    result = {
+        "ok": False,
+        "task": task,
+        "lanes": {},
+        "free_oauth_bottleneck": False,
+        "deepseek_rollover_used": False,
+    }
+    free_lanes = tuple(ln for ln in lanes if ln in DEFAULT_LANES) or DEFAULT_LANES
+    for lane in free_lanes:
         r = _review_one(lane, task, local_output, context, timeout)
         result["lanes"][lane] = r
         if r.get("ok") and persist:
@@ -140,6 +220,24 @@ def review(task, local_output, context=None, *, lanes=DEFAULT_LANES, timeout=180
             except Exception:
                 pass
     oks = [r for r in result["lanes"].values() if r.get("ok")]
+    # Free-OAuth bottleneck → optional DeepSeek Flash rollover
+    if not oks and allow_deepseek_rollover:
+        free_any = any(result["lanes"].get(ln, {}).get("available") for ln in free_lanes)
+        reason = ("free_oauth_zero_ok_lanes" if free_any or result["lanes"]
+                  else "free_oauth_unavailable")
+        result["free_oauth_bottleneck"] = True
+        ds = _deepseek_flash_rollover_review(
+            task, local_output, context, timeout, reason=reason)
+        result["lanes"]["deepseek-flash"] = ds
+        if ds.get("ok"):
+            result["deepseek_rollover_used"] = True
+            if persist:
+                try:
+                    _persist(task, source or task, symbol, local_output,
+                             "deepseek-flash", ds)
+                except Exception:
+                    pass
+            oks = [ds]
     result["ok"] = bool(oks)
     verdicts = [r["verdict"] for r in oks]
     result["consensus"] = {
@@ -150,6 +248,8 @@ def review(task, local_output, context=None, *, lanes=DEFAULT_LANES, timeout=180
         "verdict": ("DISAGREE" if "DISAGREE" in verdicts else
                     "CAUTION" if "CAUTION" in verdicts else
                     "AGREE" if "AGREE" in verdicts else "UNKNOWN"),
+        "deepseek_rollover_used": result["deepseek_rollover_used"],
+        "free_oauth_bottleneck": result["free_oauth_bottleneck"],
     }
     return result
 
