@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-08-02T22:00:12.630568+00:00",
-  "status": "warning",
+  "generated_at": "2026-08-03T11:40:02.315785+00:00",
+  "status": "attention_required",
   "safety": {
     "ALPACA_MODE": "paper",
     "LLM_DISABLE_LIVE_EXECUTION": "true"
@@ -12,10 +12,11 @@
     "strategies": null
   },
   "a1a_summary": {
-    "status": "warning",
+    "status": "attention_required",
     "findings": 2,
     "by_severity": {
-      "P2": 2
+      "P0": 1,
+      "P2": 1
     }
   }
 }

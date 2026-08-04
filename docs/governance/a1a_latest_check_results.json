@@ -1,17 +1,19 @@
 {
-  "generated_at": "2026-08-02T22:00:12.066805+00:00",
-  "git_head": "14cb1b9c",
-  "files_checked": 3,
+  "generated_at": "2026-08-03T11:40:01.597107+00:00",
+  "git_head": "72b6ddd2",
+  "files_checked": 11,
   "findings_count": 2,
   "by_severity": {
-    "P2": 2
+    "P0": 1,
+    "P2": 1
   },
-  "status": "warning",
+  "status": "attention_required",
   "findings": [
     {
-      "severity": "P2",
-      "check": "stale_facts",
-      "message": "System facts 58h old (>48h)"
+      "severity": "P0",
+      "check": "unsafe_file",
+      "file": "config/design_token_baseline.json",
+      "message": "Unsafe file pattern 'token' in commit"
     },
     {
       "severity": "P2",
