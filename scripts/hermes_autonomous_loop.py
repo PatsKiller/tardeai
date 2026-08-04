@@ -529,7 +529,7 @@ Respond ONLY with valid JSON (no markdown, no preamble)."""
     output.setdefault("freshness_date", date.today().isoformat())
     output.setdefault("model_used", LOOP_MODEL)
     output["status"] = "staged"
-    output.setdefault("tags", ["portfolio_reflection", "autonomous_loop", "phase_0"])
+    # tags omitted — build_insert handles NULL/absent gracefully
 
     ej = output.get("evidence_json", {})
     if not isinstance(ej, dict):
@@ -750,7 +750,7 @@ Respond ONLY with valid JSON (no markdown, no preamble)."""
     output.setdefault("freshness_date", date.today().isoformat())
     output.setdefault("model_used", LOOP_MODEL)
     output["status"] = "staged"
-    output.setdefault("tags", ["pipeline_quality", "autonomous_loop", "phase_0"])
+    # tags omitted — build_insert handles NULL/absent gracefully
 
     ej = output.get("evidence_json", {})
     if not isinstance(ej, dict):
