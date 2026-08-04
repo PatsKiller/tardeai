@@ -148,6 +148,13 @@ def poll_once(timeout=25):
                 handled = True
             except Exception as e:
                 log.error(f"atm command error: {e}")
+        # Schwab OAuth callback — operator pastes the 127.0.0.1?code=... URL
+        elif "127.0.0.1?code=" in text or "code=" in text.lower():
+            try:
+                _handle_schwab_callback(msg, text, chat_id)
+                handled = True
+            except Exception as e:
+                log.error(f"schwab callback error: {e}")
 
         if handled:
             processed += 1
@@ -574,6 +581,71 @@ def _handle_atm_command(msg, text, chat_id):
             urllib.request.urlopen(req, timeout=10)
         except Exception as e:
             log.error(f"ATM reply send failed: {e}")
+
+
+# ── Schwab OAuth callback auto-exchange ──────────────────────────────────────────────
+
+def _send_reply(chat_id, reply_to_message_id, text):
+    """Send a reply to a specific message in the operator chat."""
+    token = _token()
+    if not token:
+        log.error("No TELEGRAM_BOT_TOKEN for reply")
+        return
+    payload = urllib.parse.urlencode({
+        "chat_id": chat_id, "reply_to_message_id": reply_to_message_id,
+        "text": text, "parse_mode": "Markdown",
+    }).encode()
+    try:
+        req = urllib.request.Request(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            data=payload, headers={"Content-Type": "application/x-www-form-urlencoded"})
+        urllib.request.urlopen(req, timeout=10)
+    except Exception as e:
+        log.error(f"schwab reply failed: {e}")
+
+
+def _handle_schwab_callback(msg, text, chat_id):
+    """Operator pasted a Schwab OAuth redirect URL containing ?code=.
+    Auto-extract the code, exchange for a token, and reply with status."""
+    message_id = msg.get("message_id")
+    log.info(f"schwab callback from chat={chat_id}: {text[:80]}...")
+
+    # Extract the full redirect URL (the user may have pasted extra text)
+    import re as _re
+    url_match = _re.search(r'(https?://127\.0\.0\.1[^\s]*)', text)
+    if not url_match:
+        _send_reply(chat_id, message_id,
+                    "❌ Could not find a valid `127.0.0.1?code=...` URL in your message.\n"
+                    "Please paste the FULL redirect URL from your browser's address bar.")
+        return
+
+    redirect_url = url_match.group(1)
+    _send_reply(chat_id, message_id,
+                "⏳ Exchanging authorization code for a new 7-day token…")
+
+    # Import and call exchange_code
+    import schwab_token_manager as _tm
+    result = _tm.exchange_code("schwab_taxable", redirect_url)
+
+    if result.get("ok"):
+        expiry = result.get("refresh_expires_at", "?")
+        _send_reply(chat_id, message_id,
+                    f"✅ Schwab token refreshed\\! Valid until *{expiry[:10]}*.\n"
+                    f"Next proactive reauth ≈ {expiry[:10] if expiry else '7 days'}.")
+        # Verify with live probe
+        try:
+            probe = _tm.live_probe("schwab_taxable")
+            if probe and probe.get("live_ok"):
+                _send_reply(chat_id, message_id,
+                            "✓ Live probe passed — quotes, stops, and journal reads are restored.")
+        except Exception:
+            pass
+    else:
+        reason = result.get("reason", "unknown error")[:200]
+        _send_reply(chat_id, message_id,
+                    f"❌ Token exchange failed: `{reason}`\n"
+                    "The authorization code may have expired (codes are valid ~5 minutes).\n"
+                    "Restart the login and paste the new redirect URL promptly.")
 
 
 def main():

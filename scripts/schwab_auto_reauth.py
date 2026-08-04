@@ -705,10 +705,13 @@ def run_attempt(notice_wait: int = NOTICE_WAIT_S) -> int:
         return 1
     st = _token_state()
     _mark_attempt()
+    auth_url = url_info["authorize_url"]
     _notify("Schwab auto-reauth starting",
-            f"Reason: {st['reason']}. In ~{notice_wait // 60 or 1} min I will log in to Schwab "
-            f"with the stored credentials. If your phone shows a Schwab 2FA prompt, IT IS ME — "
-            f"please APPROVE it. Nothing else is touched (login only, token refresh).")
+            f"Reason: {st['reason']}. The browser will log in using stored credentials.\n\n"
+            f"**Manual override** — open this link on your phone, log in, then paste the "
+            f"`127.0.0.1?code=...` URL back here as a reply. I'll exchange it automatically:\n"
+            f"{auth_url}\n\n"
+            f"(Codes expire ~5 min after login — paste promptly.)")
     time.sleep(notice_wait)
 
     cb = os.environ.get("SCHWAB_CALLBACK_URL", "https://127.0.0.1")
@@ -720,11 +723,11 @@ def run_attempt(notice_wait: int = NOTICE_WAIT_S) -> int:
 
     if not res["ok"]:
         _save_state({"last_result": "fail", "last_error": res["error"], "last_state": state})
-        _notify("Schwab auto-reauth FAILED",
-                f"{res['error']}\nState: {state}\nSteps taken: {'; '.join(res['log'][-8:]) or 'none'}\n"
-                f"Manual fallback:\n1) open the login link on any device:\n{url_info['authorize_url']}\n"
-                f"2) after login, copy the full 127.0.0.1 redirect URL and run:\n"
-                f"{url_info['step2_command']}")
+        _notify("Schwab auto-reauth FAILED — use manual link",
+                f"{res['error']}\n\n"
+                f"**Manual fallback:**\n1) Open this link on your phone and log in:\n{auth_url}\n"
+                f"2) Copy the full `127.0.0.1?code=...` URL from your browser\n"
+                f"3) Paste it here as a reply — I'll auto-exchange it")
         return 1
 
     ex = tm.exchange_code(ACCOUNT_KEY, res["redirect_url"])
