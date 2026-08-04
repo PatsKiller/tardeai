@@ -154,3 +154,51 @@ def test_recompute_happens_before_the_insert():
     recompute = SRC.index('p["urgency"] = urg')
     insert = SRC.index("INSERT INTO watchlist_entry_plans")
     assert recompute < insert
+
+
+# ── proposals-branch regression (P0-1 + P1-7, 2026-08-03) ───────────────────
+
+def test_proposals_candidates_returns_list_not_none():
+    """The --scope proposals branch crashed every cron run since 2026-06-12
+    because _candidates returned None (fell off the function end).
+    The fix (line ~250) must return a list, not None."""
+    # Find the proposals-scope return statement
+    proposals_block = SRC[SRC.index('if scope == "proposals"'):]
+    return_idx = proposals_block.index("return [dict")
+    # The return must come BEFORE the else block that handles watchlist scope
+    else_idx = proposals_block.index("else:")
+    assert return_idx < else_idx, (
+        "proposals scope must return a list BEFORE falling through to else. "
+        "The None-return bug (2026-06-12) was: no return in the if-block, so "
+        "the function fell off the end returning None."
+    )
+
+
+def test_analyst_function_uses_correct_column_name():
+    """P0-1 (2026-08-03): deployed analyst_detail.py queried number_of_analysts
+    but the column is number_of_analyst_opinions. Every cron died on UndefinedColumn.
+    The merged-tree _analyst function must use the correct column name."""
+    analyst_fn = SRC[SRC.index("def _analyst"):SRC.index("def ", SRC.index("def _analyst") + 1)]
+    assert "number_of_analyst_opinions" in analyst_fn, (
+        "P0-1 regression: _analyst must query number_of_analyst_opinions "
+        "(NOT number_of_analysts — that column doesn't exist)"
+    )
+
+
+def test_proposals_sql_references_real_columns():
+    """The proposals-branch SQL must only reference columns that exist in
+    paper_trade_proposals. Verify the SELECT list is safe."""
+    # Extract the proposals SQL
+    proposals_block = SRC[SRC.index('if scope == "proposals"'):]
+    sql_start = proposals_block.index('cur.execute("""')
+    sql_end = proposals_block.index('""")', sql_start)
+    sql = proposals_block[sql_start:sql_end]
+
+    # These columns must exist in paper_trade_proposals
+    required = ["symbol", "id", "proposed_entry", "proposed_stop",
+                "proposed_target1", "strategy_id", "status", "created_at"]
+    for col in required:
+        assert col in sql, f"proposals SQL must reference column: {col}"
+
+    # The SQL must reference paper_trade_proposals (not some other table)
+    assert "paper_trade_proposals" in sql, "proposals scope must query paper_trade_proposals"

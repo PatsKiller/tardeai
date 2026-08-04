@@ -190,6 +190,16 @@ def run():
     except Exception as e:
         check("Stop data", False, str(e))
 
+    # 11. Finviz throttle coverage audit (P0 gate — 2026-08-03)
+    print("\nFINVIZ THROTTLE COVERAGE:")
+    try:
+        from audit_finviz_throttle_coverage import main as throttle_audit
+        result = throttle_audit()
+        check("All Finviz callers throttled", result == 0,
+              f"{result} uncovered caller(s) — fix before proceeding")
+    except Exception as e:
+        check("Throttle audit", False, str(e))
+
     # Summary
     print(f"\n{'='*50}")
     print(f"PASS: {PASS}  FAIL: {FAIL}")
