@@ -657,8 +657,8 @@ def run_pipeline_quality(args):
 
     # 3. Embedding queue health
     cur.execute("""
-        SELECT status, COUNT(*) FROM hermes_embedding_queue
-        GROUP BY status ORDER BY status
+        SELECT embedding_status, COUNT(*) FROM hermes_embedding_queue
+        GROUP BY embedding_status ORDER BY embedding_status
     """)
     embed_stats = dict(cur.fetchall())
 
