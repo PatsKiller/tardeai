@@ -30,12 +30,14 @@ Lane policy (External LLM policy, docs/hermes/EXTERNAL_LLM_USAGE_POLICY_*.md):
   * Local gemma first, always: local_llm.generate(..., fallback=False) — the
     metered OpenAI/Anthropic fallbacks inside local_llm are explicitly
     disabled; this lane never spends paid API keys.
-  * Cloud escalation goes ONLY to the free-OAuth lanes via
-    cloud_review.review (ChatGPT :8646 / Grok :8645), ONLY when
-    lanes='auto' AND (domain_policy.llm_review_required OR the local
-    relevance_score is ambiguous, 0.4-0.6 inclusive) AND today's cloud
-    reviews (audit rows whose lanes_used contains a cloud lane) are below
+  * Cloud escalation prefers free-OAuth via cloud_review.review
+    (ChatGPT :8646 / Grok :8645), ONLY when lanes='auto' AND
+    (domain_policy.llm_review_required OR local relevance_score is
+    ambiguous, 0.4-0.6 inclusive) AND today's cloud reviews are below
     config/hermes_discovery_schedule.json cloud_lane_daily_cap.
+  * If free-OAuth bottlenecks (down / zero ok lanes), cloud_review may
+    roll over once to DeepSeek V4 Flash (FAST, cost-gated via
+    deepseek_tradeai / Bitwarden). Never Pro / PRO_* / local-heavy.
   * lanes='local' never escalates.
   * Cloud packets are redacted: label/summary/domain/scores only — never
     holdings, accounts, or dollar amounts (subject_json is NOT sent).
@@ -416,7 +418,16 @@ def _escalation_decision(review: dict[str, Any], policy: dict[str, Any],
                               f"({used}/{caps['cloud_lane_daily_cap']})")
         return decision
     if not _cloud_available():
-        decision["reason"] = "cloud lanes unavailable"
+        # Free-OAuth bottleneck: still escalate so cloud_review can attempt
+        # governed DeepSeek Flash rollover (paid, cost-gated). Not a local-heavy
+        # fallback and not Pro.
+        decision["escalate"] = True
+        decision["reason"] = (
+            "free_oauth_unavailable — try deepseek-flash bottleneck rollover"
+            if required or ambiguous
+            else "cloud lanes unavailable"
+        )
+        decision["free_oauth_bottleneck"] = True
         return decision
     decision["escalate"] = True
     decision["reason"] = ("domain requires llm review" if required

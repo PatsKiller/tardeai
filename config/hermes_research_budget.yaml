@@ -1,14 +1,15 @@
 # Hermes Research Budget Policy
 # Same governance posture as config/llm_budget_policy.yaml + config/finviz_screener_cadence_policy.yaml:
 # tier research by how strong its trigger is, cap each tier, keep broad-universe work OFF the LLM,
-# free-OAuth only for deep cloud synthesis, NEVER a paid fallback, fail closed for unknown sources.
+# free-OAuth preferred for deep cloud synthesis; DeepSeek Flash only on free-OAuth bottleneck
+# (explicit rollover, cost-gated). Fail closed for unknown sources.
 #
 # Decisions: ALLOW | DEFER | METADATA_ONLY | BLOCK. Read by scripts/hermes_research_budget_guard.py.
 # Advisory-only system: nothing here places trades, touches the broker, or bypasses any gate.
 
 version: 1
 fail_closed: true            # unknown trigger_source / unknown tier -> BLOCK
-no_paid_fallback: true       # paid models are never a fallback for a free-OAuth or local job
+no_paid_fallback: false      # paid DeepSeek Flash allowed ONLY as free-OAuth bottleneck rollover (see cloud_unavailable.free_oauth_bottleneck_rollover); never for local-lane failure
 default_research_ttl_hours: 24
 
 # Hermes audit 2026-07-02: external OAuth lanes only for capital-exposed / actionable tiers.
@@ -134,9 +135,34 @@ dedup:
   freshness_hours: 12
   decision_when_fresh: DEFER
 
-# When a cloud (free-OAuth) lane is requested but unavailable (auth fail / cooldown / down):
-#   T1/T0 urgent -> DEFER (retry later). NEVER fall back to paid or to local heavy models.
+# When free-OAuth (Grok/ChatGPT) is requested but bottlenecks (auth fail / cooldown /
+# proxy down / zero lanes ok):
+#   1) Prefer DEFER for bulk/non-escalation work (retry later).
+#   2) Allow an EXPLICIT paid rollover to DeepSeek V4 Flash only (never Pro/PRO_*)
+#      when the caller opts in and cost gates allow (reservation + global USD cap).
+#   3) Never silent-fall back to local heavy models (gemma3:27b / gemma4-31b).
+#   4) Never use DeepSeek as a silent substitute for a *local* lane failure
+#      (local still uses fallback=False). This is free-OAuth bottleneck only.
 cloud_unavailable:
   decision: DEFER
-  never_fallback_to_paid: true
   never_fallback_to_local_heavy: true
+  # Paid rollover is opt-in and gated — not a blanket paid fallback.
+  free_oauth_bottleneck_rollover:
+    enabled: true
+    provider: deepseek
+    lane: deepseek-flash
+    model: deepseek-v4-flash
+    policy: FAST
+    # Credential slot (Bitwarden / .env): deepseek_tradeai
+    credential_slot: deepseek_tradeai
+    # Only when free-OAuth was requested and produced zero successful lanes.
+    triggers:
+      - free_oauth_unavailable
+      - free_oauth_zero_ok_lanes
+      - free_oauth_proxy_down
+    never_pro: true
+    never_pro_think: true
+    never_pro_max: true
+    # Fail closed if global / process caps reject the reservation.
+    require_reservation: true
+    require_global_usd_cap: true

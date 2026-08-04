@@ -18229,13 +18229,89 @@ def _broker_account_readiness():
 
 
 def _llm_health():
-    """GET /api/v2/llm-health — three-lane LLM review health (operator 2026-06-19): live lane
-    availability (delegates to llm_lane.available via llm_health_check) + review-corpus quality."""
+    """GET /api/v2/llm-health — LLM review lane health + Hermes hybrid policy (2026-08-04).
+
+    Base: three free/local review lanes via llm_health_check.
+    Enrichment: DeepSeek Flash/Pro readiness (llm_lane) + free-OAuth→Flash rollover policy
+    from config/hermes_research_budget.yaml. No secret values returned.
+    """
     try:
         import llm_health_check as _lhc
-        return _lhc.check_all_lanes(30)
+        out = _lhc.check_all_lanes(30)
     except Exception as e:
-        return {"error": str(e)[:160], "lanes": {}, "review_corpus": {}}
+        out = {"error": str(e)[:160], "lanes": {}, "review_corpus": {}}
+    if not isinstance(out, dict):
+        out = {"lanes": {}, "review_corpus": {}, "raw": str(out)[:200]}
+    lanes = out.setdefault("lanes", {})
+    # DeepSeek readiness (metered) — never expose credentials
+    try:
+        import llm_lane
+        for lane, model in (
+            ("deepseek-flash", "deepseek-v4-flash"),
+            ("deepseek-v4-pro", "deepseek-v4-pro"),
+        ):
+            try:
+                up = bool(llm_lane.available(lane))
+                lanes[lane] = {
+                    "available": up,
+                    "billing": "metered",
+                    "model": model,
+                    "reason": None if up else "not ready or credential missing",
+                }
+            except Exception as le:
+                lanes[lane] = {
+                    "available": False,
+                    "billing": "metered",
+                    "model": model,
+                    "reason": str(le)[:100],
+                }
+    except Exception as e:
+        lanes.setdefault("deepseek-flash", {
+            "available": False, "billing": "metered",
+            "reason": f"llm_lane import: {type(e).__name__}",
+        })
+    # Hybrid policy (sanitized)
+    try:
+        from pathlib import Path as _P
+        import yaml  # type: ignore
+        root = _P(__file__).resolve().parent.parent
+        pol_path = root / "config" / "hermes_research_budget.yaml"
+        pol = yaml.safe_load(pol_path.read_text()) if pol_path.exists() else {}
+        cu = (pol or {}).get("cloud_unavailable") or {}
+        roll = cu.get("free_oauth_bottleneck_rollover") or {}
+        out["hybrid_policy"] = {
+            "local_first": True,
+            "free_oauth_lanes": ["grok", "chatgpt"],
+            "free_oauth_bottleneck_rollover": {
+                "enabled": bool(roll.get("enabled", True)),
+                "lane": roll.get("lane") or "deepseek-flash",
+                "model": roll.get("model") or "deepseek-v4-flash",
+                "policy": roll.get("policy") or "FAST",
+                "never_pro": roll.get("never_pro", True),
+                "credential_slot": roll.get("credential_slot") or "deepseek_tradeai",
+                "triggers": roll.get("triggers") or [
+                    "free_oauth_unavailable",
+                    "free_oauth_zero_ok_lanes",
+                ],
+            },
+            "no_paid_fallback_for_local_failure": True,
+            "docs": [
+                "docs/ops/HERMES_DEEPSEEK_HYBRID_FREE_OAUTH_ROLLOVER_2026-08-04.md",
+                "docs/hermes/HERMES_DEEPSEEK_HYBRID_POLICY.md",
+            ],
+        }
+    except Exception as e:
+        out["hybrid_policy"] = {
+            "error": str(e)[:160],
+            "local_first": True,
+            "free_oauth_bottleneck_rollover": {
+                "enabled": True,
+                "lane": "deepseek-flash",
+                "model": "deepseek-v4-flash",
+                "never_pro": True,
+            },
+        }
+    return out
 
 
 def _strategy_leaderboard():
