@@ -21,9 +21,19 @@ ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS = ROOT / "scripts"
 
 FINVIZ_HOST = re.compile(r"https?://(?:\w+\.)?finviz\.com", re.I)
-# NOTE: bare `session.get(` is deliberately NOT a fetch signal — dict.get()
-# collides with it (html_dashboard.py:470 is session.get("session_label")).
-FETCH = re.compile(r"requests\.(get|post)\s*\(|urlopen\s*\(|"
+# Match HTTP-fetch patterns:
+#  - requests.get / requests.post / httpx.get / urllib.request.urlopen
+#  - .get()/.post()/.request() on session/client/http/conn/api/req variables
+#    (avoids dict.get() false positives by constraining the identifier prefix)
+#  - sanctioned finviz_get / finviz_probe wrappers
+# False-positive risk is low because we only check files already matched by
+# FINVIZ_HOST above.
+FETCH = re.compile(r"requests\.(get|post|put|patch)\s*\(|"
+                   r"\bhttpx\.(get|post|request)\s*\(|"
+                   r"\baiohttp\.(ClientSession|request)\s*\(|"
+                   r"\b(?:session|client|http|conn|api|req|resp|fetch)\w{0,10}\.(get|post|request)\s*\(|"
+                   r"\b[sr]\.get\s*\(\s*['\"]https?://|"
+                   r"urlopen\s*\(|"
                    r"finviz_get\s*\(|finviz_probe\s*\(", re.I)
 COVERED = re.compile(r"finviz_http|finviz_throttle")
 

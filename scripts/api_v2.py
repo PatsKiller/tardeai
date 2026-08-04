@@ -26923,6 +26923,8 @@ def _data_source_health(query=None):
     _feed("Catalyst events", "research", "SELECT max(created_at), count(*) FILTER (WHERE created_at>now()-interval '2 days') FROM catalyst_events", 24)
     _feed("Finviz sector/industry", "finviz", "SELECT max(created_at), count(*) FROM finviz_group_performance WHERE snapshot_date=(SELECT max(snapshot_date) FROM finviz_group_performance)", 30)
     _feed("SEC Form-4 insider", "research", "SELECT max(created_at), count(*) FILTER (WHERE filing_date>current_date-7) FROM sec_form4", 48)
+    _feed("Earnings dates (profile)", "research", "SELECT max(updated_at), count(*) FILTER (WHERE next_earnings_date IS NOT NULL AND next_earnings_date >= current_date) FROM symbol_profiles WHERE next_earnings_date IS NOT NULL", 30)
+    _feed("Symbol profiles", "research", "SELECT max(updated_at), count(*) FROM symbol_profiles WHERE updated_at > now() - interval '48 hours'", 48)
     order = {"dead": 0, "error": 1, "stale": 2, "slow": 3, "live": 4}
     out.sort(key=lambda x: order.get(x.get("status"), 9))
     counts = {}
