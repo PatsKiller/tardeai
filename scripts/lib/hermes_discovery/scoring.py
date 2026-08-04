@@ -152,7 +152,7 @@ def _load_outcome_yield_map() -> dict[str, dict[str, float]]:
         if yield_path.exists():
             raw = _j.loads(yield_path.read_text())
             out = {}
-            for key, data in raw.items():
+            for key, data in raw.get("yield", {}).items():
                 if data.get("n", 0) >= YIELD_MIN_SAMPLES:
                     out[key] = {
                         "n": data["n"],
@@ -198,11 +198,26 @@ def _component_outcome_yield(candidate: dict[str, Any], signals: dict[str, Any])
     if entry is None:
         return 0.5, _NEUTRAL_NOTE
 
-    # Convert avg_realized_r to 0..1 scale: 0 = worst, 0.5 = neutral, 1 = best
-    # realized_r of -0.05 → 0.30, 0.00 → 0.50, +0.05 → 0.70
-    avg_r = entry["avg_realized_r"]
-    yield_val = _clamp01(0.5 + avg_r * 4.0)  # scale: ±0.125 maps to 0..1
-    return yield_val, (f"yield: {avg_r:+.3f} avg_r over {entry['n']} outcomes "
+    # Blend hit_rate (verdict-based) and avg_realized_r (return-based).
+    # When R data is sparse (early system), hit_rate carries the signal.
+    # When R data matures, avg_realized_r dominates.
+    hit_rate = entry.get("yield_rate", 0.5)
+    avg_r = entry.get("avg_realized_r", 0.0)
+    n = entry.get("n", 0)
+
+    # R-signal: ±0.125 maps to 0..1 range around 0.5
+    r_signal = _clamp01(0.5 + avg_r * 4.0)
+
+    # Hit-rate signal: 0% → 0.25, 50% → 0.50, 100% → 0.75
+    h_signal = _clamp01(0.25 + hit_rate * 0.5)
+
+    # Blend: when |avg_r| > 0.01, weight R more. Otherwise rely on hit_rate.
+    r_weight = min(0.7, abs(avg_r) * 20)  # 0 at avg_r=0, 0.7 at avg_r=0.035+
+    h_weight = 1.0 - r_weight
+
+    yield_val = _clamp01(r_signal * r_weight + h_signal * h_weight)
+    return yield_val, (f"yield: hit={hit_rate:.3f} avg_r={avg_r:+.3f} "
+                       f"n={n} r_weight={r_weight:.2f} "
                        f"({type_domain_key or type_key})")
 
 

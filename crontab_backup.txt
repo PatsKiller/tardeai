@@ -738,6 +738,10 @@ CIO_DUAL_CHATGPT_CAP=1100
 # Phase 2: Research Agenda Engine — autonomous topic creation, retirement, and market-rotation pivoting (2026-08-04)
 45 7 * * * cd $PROJ && flock -n /tmp/hermes_agenda.lock $PY scripts/hermes_research_agenda.py --apply --json >> logs/hermes_agenda.log 2>&1  # agenda: after 07:30 topic bridge — new topics flow same day
 15 18 * * 1-5 cd $PROJ && flock -n /tmp/hermes_agenda.lock $PY scripts/hermes_research_agenda.py --apply --json >> logs/hermes_agenda.log 2>&1  # agenda: after 16:45 RI queue drain
+# Phase 4: Cross-source synthesis — Mon/Thu off-hours, llm_priority_guard-wrapped (2026-08-04)
+20 6 * * 1,4 cd $PROJ && bash $PROJ/scripts/llm_priority_guard.sh && flock -n /tmp/hermes_synthesizer.lock timeout 20m $PY scripts/hermes_cross_source_synthesizer.py --apply --json >> logs/hermes_synthesizer.log 2>&1
+# Phase 5: Discovery outcome yield — nightly after 03:35 outcome learning (2026-08-04)
+45 3 * * * cd $PROJ && flock -n /tmp/hermes_yield_builder.lock $PY scripts/hermes_discovery_yield_builder.py --apply --json >> logs/hermes_discovery_yield.log 2>&1
 # Options desk pipeline (proposals + Schwab legs + lifecycle hook via run_options_monitor.py)
 # Alpaca paper options reconcile (hourly market hours — fills/closes → monitored registry)
 # After-hours lifecycle snapshot (advisory marks when after_hours_snapshot enabled)
