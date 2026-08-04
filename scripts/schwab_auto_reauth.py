@@ -55,6 +55,26 @@ NOTICE_WAIT_S = 120           # heads-up lead time before the browser touches Sc
 LOGIN_TIMEOUT_S = 420         # includes waiting for the operator's 2FA approval
 STEP_POLL_S = 2.0
 
+# ── Chromium binary discovery ───────────────────────────────────────────────────
+# Playwright may be installed in the home cache or via system paths. Find whichever
+# is actually present so we don't fail on Executable-not-found.
+_CHROME_PATH = None
+for _cand in [
+    os.environ.get("AGENT_BROWSER_EXECUTABLE_PATH", ""),
+    os.path.expanduser("~/.cache/ms-playwright/chromium-1228/chrome-linux64/chrome"),
+    os.path.expanduser("~/.cache/ms-playwright/chromium-1223/chrome-linux64/chrome"),
+    os.path.expanduser("~/.cache/ms-playwright/chromium-1217/chrome-linux64/chrome"),
+    os.path.expanduser("~/.cache/puppeteer/chrome/linux-147.0.7727.56/chrome-linux64/chrome"),
+    "/usr/bin/chromium-browser",
+    "/usr/bin/chromium",
+    "/usr/bin/google-chrome",
+    "/usr/bin/google-chrome-stable",
+    "/snap/bin/chromium",
+]:
+    if _cand and Path(_cand).exists():
+        _CHROME_PATH = _cand
+        break
+
 
 def _now() -> dt.datetime:
     return dt.datetime.now(dt.timezone.utc)
@@ -383,6 +403,10 @@ def _attempt_login(authorize_url: str, callback_url: str) -> dict:
         actions.append(f"xvfb display {disp_env['DISPLAY']}")
     elif not headed:
         actions.append("WARNING: no display + no Xvfb — headless (Akamai may deny)")
+    if _CHROME_PATH:
+        actions.append(f"chromium: {_CHROME_PATH}")
+    else:
+        actions.append("WARNING: no Chromium binary found")
 
     with sync_playwright() as pw:
         kwargs = dict(viewport={"width": 1280, "height": 900}, locale="en-US",
@@ -391,7 +415,7 @@ def _attempt_login(authorize_url: str, callback_url: str) -> dict:
             kwargs["user_agent"] = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                                     "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
         ctx = pw.chromium.launch_persistent_context(
-            str(PROFILE_DIR), headless=not headed, **kwargs)
+            str(PROFILE_DIR), headless=not headed, executable_path=_CHROME_PATH, **kwargs)
         try:
             page = ctx.pages[0] if ctx.pages else ctx.new_page()
             page.add_init_script("Object.defineProperty(navigator,'webdriver',{get:()=>undefined})")
