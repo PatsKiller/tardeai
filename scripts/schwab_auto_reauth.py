@@ -294,120 +294,128 @@ def _is_authenticator_page(page) -> bool:
 
 
 def _handle_authenticator_page(page, actions: list, debug_dir: Path) -> str | None:
-    """Handle the Schwab authenticator-selection page. Returns:
-    'challenge_sent' — push notification was triggered AND page transitioned
-    'already_approved' — operator already approved (page moved on)
-    None — could not determine state (will keep polling)"""
-    # ── Debug: screenshot the authenticator page ──
+    """Handle the Schwab authenticator-selection page using JavaScript click-by-text.
+    CSS selectors fail on React SPAs where elements are divs without stable IDs.
+    Returns: 'challenge_sent' | 'already_approved' | None (will retry)"""
+    # ── Debug screenshot ──
     try:
         shot = debug_dir / f"reauth_authpage_{_now().strftime('%Y%m%d_%H%M%S')}.png"
         page.screenshot(path=str(shot))
-        actions.append(f"auth page screenshot: {shot}")
-    except Exception:
-        pass
+        _log(f"  auth page screenshot: {shot}")
+        actions.append(f"screenshot: {shot}")
+    except Exception as e:
+        _log(f"  screenshot failed: {e}")
 
-    # ── Debug: dump visible text so we know what selectors to use ──
-    for frame in page.frames:
+    # ── JS: click element by visible text ──
+    def _js_click_text(label: str) -> bool:
+        """Use JS to find and click a visible element with exact text match."""
+        js = f"""
+        (() => {{
+            const label = {json.dumps(label)};
+            const all = document.querySelectorAll('*');
+            for (const el of all) {{
+                if (!el.offsetParent) continue; // not visible
+                const txt = (el.innerText || el.textContent || '').trim();
+                if (txt === label || txt.startsWith(label)) {{
+                    el.click();
+                    return 'clicked:' + el.tagName;
+                }}
+            }}
+            return 'notfound';
+        }})()
+        """
         try:
-            txt = _page_text(frame)
-            if txt:
-                actions.append(f"page excerpt: {txt[:300]}")
-                break
+            result = page.evaluate(js)
+            return str(result).startswith("clicked")
         except Exception:
-            pass
+            return False
 
-    # ── Dump all visible buttons/inputs for debug ──
-    for frame in page.frames:
+    # ── Step 1: Click "Trusted contact" to select it ──
+    if _js_click_text("Trusted contact"):
+        _log("  JS clicked: Trusted contact")
+        actions.append("JS clicked: Trusted contact")
+        time.sleep(1.5)
+    else:
+        _log("  JS: 'Trusted contact' not found as standalone clickable element, trying partial match")
+        # Try partial match — the element might contain "Trusted contact\n(718) 219-4296"
         try:
-            els = frame.query_selector_all("button, input, a, [role='button'], [role='radio'], [role='checkbox']")
-            for el in els:
-                try:
-                    if not el.is_visible():
-                        continue
-                    tag = (el.evaluate("el => el.tagName") or "").lower()
-                    typ = (el.get_attribute("type") or "").lower()
-                    txt = (el.inner_text() or el.get_attribute("value") or el.get_attribute("aria-label") or "").strip()[:60]
-                    if txt:
-                        actions.append(f"  DOM: <{tag} type={typ}> '{txt}'")
-                except Exception:
-                    pass
-            if len(actions) > 30:  # don't let DOM dump balloon
-                break
-        except Exception:
-            pass
+            js = """
+            (() => {
+                const all = document.querySelectorAll('*');
+                for (const el of all) {
+                    if (!el.offsetParent) return;
+                    const txt = (el.innerText || '').trim();
+                    if (txt.includes('Trusted contact')) {
+                        el.click();
+                        return 'clicked:' + el.tagName;
+                    }
+                }
+                return 'notfound';
+            })()
+            """
+            result = page.evaluate(js)
+            _log(f"  JS partial text result: {result}")
+            time.sleep(1.5)
+        except Exception as e:
+            _log(f"  JS partial text failed: {e}")
 
-    # ── Step 1: Check all visible checkboxes/radios and click them ──
-    selected_radio = False
-    for frame in page.frames:
-        try:
-            inputs = frame.query_selector_all("input[type='radio'], input[type='checkbox']")
-            for inp in inputs:
-                try:
-                    if inp.is_visible() and not inp.is_checked():
-                        inp.check(timeout=3000)
-                        actions.append("checked a radio/checkbox on auth page")
-                        selected_radio = True
-                except Exception:
-                    pass
-        except Exception:
-            pass
+    # ── Step 2: Click "Continue" ──
+    if _js_click_text("Continue"):
+        _log("  JS clicked: Continue")
+        actions.append("JS clicked: Continue")
+        time.sleep(3.0)
 
-    # ── Step 2: Also try clicking any Trusted-contact element ──
-    if not selected_radio:
-        for frame in page.frames:
-            tc = _first_visible(frame, TRUSTED_CONTACT_SEL)
-            if tc:
-                try:
-                    tc.click(timeout=3000)
-                    actions.append(f"clicked: Trusted contact element")
-                    selected_radio = True
-                    break
-                except Exception:
-                    pass
-
-    # ── Step 3: Click the primary action button and VERIFY page transition ──
-    for frame in page.frames:
-        for sel in SEND_CHALLENGE_SEL:
-            try:
-                btn = frame.query_selector(sel)
-                if btn and btn.is_visible():
-                    actions.append(f"trying button: {sel}")
-                    btn.click(timeout=5000)
-                    # Wait briefly for the page to react
-                    time.sleep(3.0)
-                    # Check if the page actually changed
-                    still_auth = _is_authenticator_page(page)
-                    for f2 in page.frames:
-                        txt2 = _page_text(f2)
-                        if any(sig in txt2 for sig in APPROVAL_PENDING_SIG):
-                            actions.append("page shows approval-pending — challenge SENT")
-                            return "challenge_sent"
-                    if not still_auth:
-                        actions.append("page transitioned off authenticator — challenge likely sent")
-                        return "challenge_sent"
-                    actions.append("page did NOT change after this button click")
-            except Exception:
-                continue
-
-    # ── Step 4: Already approved check ──
-    for frame in page.frames:
-        txt = _page_text(frame)
-        if any(sig in txt for sig in APPROVAL_PENDING_SIG):
-            actions.append("approval pending (challenge already sent)")
+        # Verify page transition
+        still_auth = _is_authenticator_page(page)
+        if not still_auth:
+            _log("  page LEFT authenticator — challenge sent ✓")
             return "challenge_sent"
 
-    if not _is_authenticator_page(page):
-        actions.append("no longer on authenticator page — already approved")
-        return "already_approved"
-
-    # ── Step 5: Fallback — try affirmative click on anything ──
-    for frame in page.frames:
-        if _click_affirmative(frame, actions, extra_selectors=["div[role='button']", "span[role='button']"]):
-            time.sleep(2.0)
-            if not _is_authenticator_page(page):
-                actions.append("fallback click caused page transition — challenge sent")
+        # Check for approval-pending content
+        for frame in page.frames:
+            txt = _page_text(frame)
+            if any(sig in txt for sig in APPROVAL_PENDING_SIG):
+                _log("  page shows approval-pending — challenge sent ✓")
                 return "challenge_sent"
 
+        _log("  clicked Continue but still on authenticator page")
+    else:
+        _log("  JS: 'Continue' button not found")
+        # Try _click_affirmative as fallback
+        for frame in page.frames:
+            if _click_affirmative(frame, actions, extra_selectors=["div[role='button']", "span[role='button']"]):
+                time.sleep(3.0)
+                if not _is_authenticator_page(page):
+                    _log("  fallback click moved off authenticator page")
+                    return "challenge_sent"
+
+    # ── Step 3: Already approved? ──
+    if not _is_authenticator_page(page):
+        _log("  no longer on authenticator page")
+        return "already_approved"
+
+    # ── Step 4: Dump visible HTML for debugging ──
+    try:
+        js = """
+        (() => {
+            const vis = [];
+            document.querySelectorAll('button, a, input, [role="button"], [role="radio"]').forEach(el => {
+                if (!el.offsetParent) return;
+                const tag = el.tagName.toLowerCase();
+                const type = el.getAttribute('type') || '';
+                const txt = (el.innerText || el.value || '').trim().slice(0, 80);
+                vis.push(`<${tag}${type ? ' type='+type : ''}> "${txt}"`);
+            });
+            return vis.slice(0, 20).join('|');
+        })()
+        """
+        dom = page.evaluate(js)
+        _log(f"  DOM: {dom}")
+        actions.append(f"DOM: {dom}")
+    except Exception as e:
+        _log(f"  DOM dump failed: {e}")
+
+    _log("  could not trigger push — will retry")
     return None
 
 
@@ -585,9 +593,11 @@ def _attempt_login(authorize_url: str, callback_url: str) -> dict:
                             # Already handled authenticator, still on current page — waiting
                             pass
 
-                    # ── TOTP handling ──
+                    # ── TOTP handling (skip if we're on the authenticator page —
+                    #     the handler above is responsible for triggering the push there) ──
+                    on_auth_page = _is_authenticator_page(page)
                     for frame in page.frames:
-                        if state in ("SUBMITTED", "AUTHENTICATOR_SELECTION"):
+                        if state in ("SUBMITTED", "AUTHENTICATOR_SELECTION") and not on_auth_page:
                             otp_el = _first_visible(frame, OTP_INPUT_SEL)
                             code = _totp_code()
                             if otp_el and code:
@@ -597,26 +607,20 @@ def _attempt_login(authorize_url: str, callback_url: str) -> dict:
                                 if cont:
                                     cont.click(); actions.append("continued after TOTP")
                                 was_sent = challenge_sent
-                                challenge_sent = True  # TOTP = already sent challenge
+                                challenge_sent = True
                                 state = "CHALLENGE_SENT"
                                 challenge_timeout = time.time() + 600
                                 deadline = max(deadline, challenge_timeout)
                                 if not was_sent:
-                                    _notify("Schwab 2FA prompt sent — please approve it now",
-                                            "The push notification has been sent to your Schwab mobile app. "
-                                            "Open the app and approve the login request. "
-                                            "The automation will continue automatically once approved.")
+                                    _log("  TOTP submitted — waiting for 2FA approval")
                             elif otp_el and not code:
-                                state = "CHALLENGE_SENT"  # push/SMS 2FA — wait
+                                state = "CHALLENGE_SENT"
                                 if not challenge_sent:
                                     challenge_sent = True
                                     challenge_timeout = time.time() + 600
                                     deadline = max(deadline, challenge_timeout)
                                     actions.append("waiting for operator push/SMS 2FA")
-                                    _notify("Schwab 2FA prompt sent — please approve it now",
-                                            "The push notification has been sent to your Schwab mobile app. "
-                                            "Open the app and approve the login request. "
-                                            "The automation will continue automatically once approved.")
+                                    _log("  OTP field detected (push/SMS) — waiting for operator")
 
                 # ── STATE: CHALLENGE_SENT / TERMS_OR_CONSENT / ACCOUNT_GRANT ──
                 if state in ("CHALLENGE_SENT", "TERMS_OR_CONSENT", "ACCOUNT_GRANT"):
