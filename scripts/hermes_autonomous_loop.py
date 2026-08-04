@@ -405,6 +405,411 @@ def run_ticker_challenger(args):
     return results
 
 
+def run_portfolio_reflection(args):
+    """Post-mortem synthesis over closed trades from the outcome ledger.
+
+    Reads closed-trade outcomes from hermes_outcome_ledger (with realized_r, pnl_pct,
+    trade date, strategy tags) and asks the local LLM to synthesize cross-trade lessons:
+    patterns in winners vs losers, strategy efficacy, risk-management takeaways.
+
+    Produces research_type='portfolio_reflection' rows (staged, advisory-only).
+    Dedup: one reflection per calendar month (last run date tracked via staged rows).
+    """
+    import psycopg2
+    from hermes_staging_ingest import validate_payload
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    # One reflection per calendar month — check if current month already has one
+    cur.execute("""
+        SELECT COUNT(*) FROM hermes_research_intelligence
+        WHERE research_type = 'portfolio_reflection'
+          AND created_at::date >= date_trunc('month', CURRENT_DATE)::date
+    """)
+    if cur.fetchone()[0] > 0:
+        print("Portfolio reflection already exists for this month — skipping")
+        cur.close(); conn.close()
+        return []
+
+    # Gather closed-trade outcomes from the ledger (last 90 days, at least 3 trades)
+    cur.execute("""
+        SELECT symbol, outcome_ret_20d, realized_r, closed_date::text, strategy_tags,
+               entry_date::text, holding_days
+        FROM hermes_outcome_ledger
+        WHERE closed_date IS NOT NULL
+          AND closed_date > CURRENT_DATE - INTERVAL '90 days'
+        ORDER BY closed_date DESC
+        LIMIT 30
+    """)
+    closed_rows = cur.fetchall()
+    if len(closed_rows) < 3:
+        print(f"Not enough closed trades for portfolio reflection ({len(closed_rows)} < 3)")
+        cur.close(); conn.close()
+        return []
+
+    # Aggregate summary for the prompt
+    trades = []
+    for symbol, ret_20d, realized_r, closed_dt, tags, entry_dt, hold_days in closed_rows:
+        trades.append({
+            "symbol": symbol,
+            "outcome_ret_20d": float(ret_20d) if ret_20d is not None else None,
+            "realized_r": float(realized_r) if realized_r is not None else None,
+            "closed_date": closed_dt,
+            "entry_date": entry_dt,
+            "holding_days": int(hold_days) if hold_days is not None else None,
+            "strategy_tags": tags if isinstance(tags, list) else [],
+        })
+
+    winners = [t for t in trades if (t["realized_r"] or 0) > 0]
+    losers = [t for t in trades if (t["realized_r"] or 0) <= 0]
+    avg_r = sum(t["realized_r"] or 0 for t in trades) / len(trades)
+    win_rate = len(winners) / len(trades) if trades else 0
+
+    # Count strategy-tag frequency
+    from collections import Counter
+    tag_counter = Counter()
+    for t in trades:
+        for tag in (t.get("strategy_tags") or []):
+            tag_counter[tag] += 1
+
+    run_id = f"auto_portfolio_reflection_{datetime.now().strftime('%Y%m%d_%H%M')}"
+    month_label = datetime.now().strftime("%B %Y")
+
+    prompt = f"""You are Hermes, the autonomous research engine for Trade AI v12. Perform a portfolio
+reflection: synthesize lessons from the last 90 days of closed trades.
+
+## Closed Trade Summary ({month_label})
+- Total closed trades: {len(trades)}
+- Winners: {len(winners)} ({win_rate:.0%} win rate)
+- Average R: {avg_r:+.2f}
+- Most common strategy tags: {dict(tag_counter.most_common(5))}
+
+## Individual Trades
+{json.dumps(trades, indent=2, default=str)}
+
+## Instructions
+Analyze the patterns in these closed trades. Output JSON with:
+- "topic": "Portfolio Reflection — {month_label}" (string)
+- "summary": 2-4 sentence executive summary of key patterns (string, REQUIRED)
+- "thesis": deeper analysis — what worked, what didn't, what patterns recur (string, REQUIRED)
+- "thesis_type": "bullish" | "bearish" | "neutral" — overall takeaway tone
+- "confidence_score": 0.0-1.0 how confident you are in the patterns found (float)
+- "evidence_json": object with "pattern_analysis" (dict: winner_traits, loser_traits, strategy_efficacy, risk_observations, recommended_adjustments — each a string)
+
+Respond ONLY with valid JSON (no markdown, no preamble)."""
+
+    results = []
+    outdir = PROJECT_ROOT / "docs" / "hermes" / "phase3b_dryrun"
+    outdir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        payload_data = json.dumps({
+            "model": LOOP_MODEL,
+            "messages": [{"role": "user", "content": prompt}],
+            "stream": False,
+            "options": {"num_ctx": 8192, "num_predict": 2000, "temperature": 0.3},
+            "format": "json"
+        }).encode()
+        req = urllib.request.Request("http://localhost:11434/api/chat",
+                                     data=payload_data, headers={"Content-Type": "application/json"})
+        resp = urllib.request.urlopen(req, timeout=OLLAMA_TIMEOUT)
+        result = json.loads(resp.read())
+        content = result.get("message", {}).get("content", "")
+        output = json.loads(content)
+    except Exception as e:
+        print(f"  Ollama call failed: {e}")
+        cur.close(); conn.close()
+        return [{"status": "failed", "error": str(e)[:200]}]
+
+    output["hermes_agent_name"] = "portfolio_reflection_agent"
+    output["research_type"] = "portfolio_reflection"
+    output.setdefault("topic", f"Portfolio Reflection — {month_label}")
+    output.setdefault("confidence_score", 0.5)
+    output.setdefault("freshness_date", date.today().isoformat())
+    output.setdefault("model_used", LOOP_MODEL)
+    output["status"] = "staged"
+    output.setdefault("tags", ["portfolio_reflection", "autonomous_loop", "phase_0"])
+
+    ej = output.get("evidence_json", {})
+    if not isinstance(ej, dict):
+        ej = {}
+    ej.update({
+        "run_id": run_id,
+        "trade_count": len(trades),
+        "winners": len(winners),
+        "losers": len(losers),
+        "avg_r": round(avg_r, 4),
+        "win_rate": round(win_rate, 4),
+        "period_start": trades[-1]["closed_date"] if trades else None,
+        "period_end": trades[0]["closed_date"] if trades else None,
+        "source_views": ["hermes_outcome_ledger"],
+        "advisory_only": True,
+        "not_execution": True,
+    })
+    output["evidence_json"] = ej
+
+    ok, errors = validate_payload(output, "hermes_research_intelligence")
+    if not ok:
+        # Try recovery for missing summary
+        if any("MISSING required column: summary" in e for e in errors):
+            if output.get("thesis"):
+                output["summary"] = output["thesis"][:500]
+                ok, errors = validate_payload(output, "hermes_research_intelligence")
+                if ok:
+                    print("    Summary recovered from thesis field")
+        if not ok:
+            print(f"    VALIDATION FAILED: {errors[:2]}")
+            cur.close(); conn.close()
+            return [{"status": "rejected", "errors": errors}]
+
+    pay_path = outdir / f"hermes_{run_id}_payload.json"
+    with open(pay_path, "w") as f:
+        json.dump(output, f, indent=2)
+
+    print(f"    VALIDATED: confidence={output['confidence_score']} | "
+          f"{len(winners)}W/{len(losers)}L avgR={avg_r:+.2f}")
+    results.append({"status": "validated", "payload_path": str(pay_path)})
+
+    if args.apply:
+        from hermes_staging_ingest import build_insert, get_db_connection as get_ingest_conn
+        iconn = get_ingest_conn()
+        try:
+            sql, vals = build_insert("hermes_research_intelligence", output)
+            icur = iconn.cursor()
+            icur.execute(sql, vals)
+            row = icur.fetchone()
+            iconn.commit()
+            print(f"    COMMITTED: id={row[0]}")
+            results[-1]["row_id"] = row[0]
+            results[-1]["status"] = "applied"
+        except Exception as e:
+            iconn.rollback()
+            print(f"    APPLY ERROR: {e}")
+            results[-1]["status"] = "apply_failed"
+        finally:
+            iconn.close()
+
+    cur.close(); conn.close()
+    return results
+
+
+def run_pipeline_quality(args):
+    """Feed pipeline health snapshot to LLM → research_type='pipeline_quality' rows.
+
+    Gathers: hermes_maturity_gates snapshot, per-source yield from research_sources,
+    freshness SLO status, embedding queue health — asks the LLM to produce a structured
+    pipeline-quality assessment.
+
+    Dedup: one assessment per 7 days.
+    """
+    import psycopg2
+    from hermes_staging_ingest import validate_payload
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    # Dedup: one per rolling 7-day window
+    cur.execute("""
+        SELECT COUNT(*) FROM hermes_research_intelligence
+        WHERE research_type = 'pipeline_quality'
+          AND created_at > CURRENT_DATE - INTERVAL '7 days'
+    """)
+    if cur.fetchone()[0] > 0:
+        print("Pipeline quality assessment already exists within 7 days — skipping")
+        cur.close(); conn.close()
+        return []
+
+    # 1. Source yield: active sources with yield stats
+    cur.execute("""
+        SELECT source_name, source_type, quality_yield, total_articles,
+               active, last_fetched::text
+        FROM research_sources
+        WHERE active = true
+        ORDER BY quality_yield DESC NULLS LAST
+        LIMIT 20
+    """)
+    sources = []
+    for name, stype, yield_val, total, active, last_fetched in cur.fetchall():
+        sources.append({
+            "name": name, "type": stype,
+            "quality_yield": float(yield_val) if yield_val is not None else None,
+            "total_articles": total,
+            "last_fetched": last_fetched,
+        })
+
+    # 2. Freshness: state_freshness_history summary
+    freshness_summary = {}
+    try:
+        cur.execute("""
+            SELECT producer, MAX(age_hours) AS max_age, AVG(age_hours)::numeric(6,1) AS avg_age,
+                   COUNT(*) AS file_count
+            FROM latest_state_freshness
+            GROUP BY producer
+            ORDER BY max_age DESC
+            LIMIT 15
+        """)
+        freshness_summary = {
+            "producers": [{"producer": p, "max_age_h": float(m), "avg_age_h": float(a), "files": int(c)}
+                          for p, m, a, c in cur.fetchall()]
+        }
+    except Exception:
+        freshness_summary = {"error": "state_freshness view unavailable"}
+
+    # 3. Embedding queue health
+    cur.execute("""
+        SELECT status, COUNT(*) FROM hermes_embedding_queue
+        GROUP BY status ORDER BY status
+    """)
+    embed_stats = dict(cur.fetchall())
+
+    # 4. Research type distribution (last 7 days)
+    cur.execute("""
+        SELECT research_type, COUNT(*) FROM hermes_research_intelligence
+        WHERE created_at > CURRENT_DATE - INTERVAL '7 days'
+        GROUP BY research_type ORDER BY COUNT(*) DESC
+    """)
+    research_dist = dict(cur.fetchall())
+
+    # 5. Maturity gates snapshot (if table exists)
+    maturity = {}
+    try:
+        cur.execute("""
+            SELECT gate_name, score, status, last_evaluated::text
+            FROM hermes_maturity_gates
+            ORDER BY gate_name
+        """)
+        maturity = {"gates": [{"gate": g, "score": float(s) if s is not None else None,
+                                "status": st, "last_evaluated": le}
+                              for g, s, st, le in cur.fetchall()]}
+    except Exception:
+        maturity = {"note": "maturity_gates table not yet populated"}
+
+    run_id = f"auto_pipeline_quality_{datetime.now().strftime('%Y%m%d_%H%M')}"
+    date_label = date.today().isoformat()
+
+    prompt = f"""You are Hermes, the autonomous research engine for Trade AI v12. Assess the quality
+and health of the research pipeline based on the following snapshot data.
+
+## Pipeline Health Snapshot ({date_label})
+
+### Active Sources ({len(sources)})
+{json.dumps(sources, indent=2, default=str)}
+
+### Freshness (state files)
+{json.dumps(freshness_summary, indent=2, default=str)}
+
+### Embedding Queue
+{json.dumps(embed_stats, indent=2)}
+
+### Research Output (last 7 days, by type)
+{json.dumps(research_dist, indent=2)}
+
+### Maturity Gates
+{json.dumps(maturity, indent=2, default=str)}
+
+## Instructions
+Analyze the health of the Hermes research pipeline. Output JSON with:
+- "topic": "Pipeline Quality Assessment — {date_label}" (string)
+- "summary": 2-4 sentence assessment of overall pipeline health (string, REQUIRED)
+- "thesis": detailed analysis — what's working, what's degrading, what needs attention (string, REQUIRED)
+- "thesis_type": "bullish" | "bearish" | "neutral" — pipeline health tone
+- "confidence_score": 0.0-1.0 (float)
+- "evidence_json": object with "health_observations" (dict: source_layer, freshness_layer, embedding_layer, output_layer, maturity_layer — each a string assessment)
+
+Respond ONLY with valid JSON (no markdown, no preamble)."""
+
+    results = []
+    outdir = PROJECT_ROOT / "docs" / "hermes" / "phase3b_dryrun"
+    outdir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        payload_data = json.dumps({
+            "model": LOOP_MODEL,
+            "messages": [{"role": "user", "content": prompt}],
+            "stream": False,
+            "options": {"num_ctx": 8192, "num_predict": 2000, "temperature": 0.3},
+            "format": "json"
+        }).encode()
+        req = urllib.request.Request("http://localhost:11434/api/chat",
+                                     data=payload_data, headers={"Content-Type": "application/json"})
+        resp = urllib.request.urlopen(req, timeout=OLLAMA_TIMEOUT)
+        result = json.loads(resp.read())
+        content = result.get("message", {}).get("content", "")
+        output = json.loads(content)
+    except Exception as e:
+        print(f"  Ollama call failed: {e}")
+        cur.close(); conn.close()
+        return [{"status": "failed", "error": str(e)[:200]}]
+
+    output["hermes_agent_name"] = "pipeline_quality_agent"
+    output["research_type"] = "pipeline_quality"
+    output.setdefault("topic", f"Pipeline Quality Assessment — {date_label}")
+    output.setdefault("confidence_score", 0.5)
+    output.setdefault("freshness_date", date.today().isoformat())
+    output.setdefault("model_used", LOOP_MODEL)
+    output["status"] = "staged"
+    output.setdefault("tags", ["pipeline_quality", "autonomous_loop", "phase_0"])
+
+    ej = output.get("evidence_json", {})
+    if not isinstance(ej, dict):
+        ej = {}
+    ej.update({
+        "run_id": run_id,
+        "source_count": len(sources),
+        "embed_queue": embed_stats,
+        "research_distribution": research_dist,
+        "source_views": ["research_sources", "state_freshness_history",
+                         "hermes_embedding_queue", "hermes_research_intelligence"],
+        "advisory_only": True,
+        "not_execution": True,
+    })
+    output["evidence_json"] = ej
+
+    ok, errors = validate_payload(output, "hermes_research_intelligence")
+    if not ok:
+        if any("MISSING required column: summary" in e for e in errors):
+            if output.get("thesis"):
+                output["summary"] = output["thesis"][:500]
+                ok, errors = validate_payload(output, "hermes_research_intelligence")
+                if ok:
+                    print("    Summary recovered from thesis field")
+        if not ok:
+            print(f"    VALIDATION FAILED: {errors[:2]}")
+            cur.close(); conn.close()
+            return [{"status": "rejected", "errors": errors}]
+
+    pay_path = outdir / f"hermes_{run_id}_payload.json"
+    with open(pay_path, "w") as f:
+        json.dump(output, f, indent=2)
+
+    print(f"    VALIDATED: confidence={output['confidence_score']} | "
+          f"{len(sources)} sources, {research_dist.get('topic_research', 0)} topic research rows")
+    results.append({"status": "validated", "payload_path": str(pay_path)})
+
+    if args.apply:
+        from hermes_staging_ingest import build_insert, get_db_connection as get_ingest_conn
+        iconn = get_ingest_conn()
+        try:
+            sql, vals = build_insert("hermes_research_intelligence", output)
+            icur = iconn.cursor()
+            icur.execute(sql, vals)
+            row = icur.fetchone()
+            iconn.commit()
+            print(f"    COMMITTED: id={row[0]}")
+            results[-1]["row_id"] = row[0]
+            results[-1]["status"] = "applied"
+        except Exception as e:
+            iconn.rollback()
+            print(f"    APPLY ERROR: {e}")
+            results[-1]["status"] = "apply_failed"
+        finally:
+            iconn.close()
+
+    cur.close(); conn.close()
+    return results
+
+
 def main():
     parser = argparse.ArgumentParser(description="Hermes autonomous research loop")
     parser.add_argument("--loop", required=True, choices=["ticker_challenger", "portfolio_reflection", "pipeline_quality"])
@@ -424,6 +829,10 @@ def main():
     try:
         if args.loop == "ticker_challenger":
             results = run_ticker_challenger(args)
+        elif args.loop == "portfolio_reflection":
+            results = run_portfolio_reflection(args)
+        elif args.loop == "pipeline_quality":
+            results = run_pipeline_quality(args)
         else:
             print(f"Loop '{args.loop}' not yet implemented")
             results = []

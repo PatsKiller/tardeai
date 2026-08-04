@@ -17,15 +17,19 @@ from typing import Any
 SCORING_VERSION = "discovery-score-v1"
 
 # Positive component weights (sum 1.0). Keep keys in sync with _component_*.
+# Phase 5: outcome_yield (0.06) reduces outcome_bus_alignment (0.15→0.09)
+# — yield measures real downstream outcomes, not just bus alignment.
 WEIGHTS: dict[str, float] = {
     "novelty": 0.15,
     "source_quality": 0.15,
     "cross_source_confirmation": 0.15,
     "ticker_validation": 0.10,
     "trend_momentum": 0.15,
-    "outcome_bus_alignment": 0.15,
+    "outcome_bus_alignment": 0.09,
     "operator_history_lift": 0.15,
+    "outcome_yield": 0.06,  # Phase 5: per-type/domain yield from outcome ledger
 }
+YIELD_MIN_SAMPLES = 10  # minimum samples before yield signal is used (sample-gated)
 
 # Penalty magnitudes (each subtracted from the weighted sum when triggered).
 PENALTIES: dict[str, float] = {
@@ -134,6 +138,74 @@ def _component_operator_history(candidate: dict[str, Any], signals: dict[str, An
     return 0.5, _NEUTRAL_NOTE
 
 
+def _load_outcome_yield_map() -> dict[str, dict[str, float]]:
+    """Load per-candidate_type/domain yield priors from outcome ledger.
+
+    Returns dict[type_key, dict] with n, yield_rate, avg_realized_r per key.
+    Sample-gated: only returns entries with n >= YIELD_MIN_SAMPLES.
+    Keys are 'candidate_type' or 'candidate_type:domain'.
+    """
+    try:
+        from pathlib import Path
+        import json as _j
+        yield_path = Path(__file__).resolve().parents[3] / "data" / "runtime" / "hermes_discovery_yield.json"
+        if yield_path.exists():
+            raw = _j.loads(yield_path.read_text())
+            out = {}
+            for key, data in raw.items():
+                if data.get("n", 0) >= YIELD_MIN_SAMPLES:
+                    out[key] = {
+                        "n": data["n"],
+                        "yield_rate": data.get("yield_rate", 0.5),
+                        "avg_realized_r": data.get("avg_realized_r", 0.0),
+                    }
+            return out
+    except Exception:
+        pass
+    return {}
+
+
+def _component_outcome_yield(candidate: dict[str, Any], signals: dict[str, Any]) -> tuple[float, str]:
+    """Per-type/domain yield from outcome ledger (Phase 5).
+
+    Higher yield = candidates of this type/domain produced more actioned research.
+    Low/negative yield lanes get penalized — the Watch Desk v4 gate proved
+    ai_discovered α was −4.82% with n=385.
+    """
+    if "outcome_yield" in signals:
+        return _clamp01(signals["outcome_yield"]), "provided signal"
+
+    yield_map = _load_outcome_yield_map()
+    if not yield_map:
+        return 0.5, _NEUTRAL_NOTE
+
+    ctype = candidate.get("candidate_type", "")
+    domain = (candidate.get("research_domain") or
+              (candidate.get("meta_json") or {}).get("research_domain", ""))
+    if not isinstance(domain, str):
+        domain = ""
+
+    # Try specific (type:domain) first, then type-only
+    type_domain_key = f"{ctype}:{domain}" if domain else None
+    type_key = ctype
+
+    entry = None
+    if type_domain_key and type_domain_key in yield_map:
+        entry = yield_map[type_domain_key]
+    elif type_key in yield_map:
+        entry = yield_map[type_key]
+
+    if entry is None:
+        return 0.5, _NEUTRAL_NOTE
+
+    # Convert avg_realized_r to 0..1 scale: 0 = worst, 0.5 = neutral, 1 = best
+    # realized_r of -0.05 → 0.30, 0.00 → 0.50, +0.05 → 0.70
+    avg_r = entry["avg_realized_r"]
+    yield_val = _clamp01(0.5 + avg_r * 4.0)  # scale: ±0.125 maps to 0..1
+    return yield_val, (f"yield: {avg_r:+.3f} avg_r over {entry['n']} outcomes "
+                       f"({type_domain_key or type_key})")
+
+
 def _penalties(candidate: dict[str, Any]) -> dict[str, dict[str, Any]]:
     out: dict[str, dict[str, Any]] = {}
     flags = _risk_flag_list(candidate)
@@ -185,6 +257,7 @@ def discovery_score(candidate: dict[str, Any],
         "trend_momentum": _component_trend_momentum(candidate, signals, adjustments),
         "outcome_bus_alignment": _component_outcome_bus(candidate, signals),
         "operator_history_lift": _component_operator_history(candidate, signals),
+        "outcome_yield": _component_outcome_yield(candidate, signals),  # Phase 5
     }
 
     parts: dict[str, Any] = {"version": SCORING_VERSION, "components": {}, "penalties": {}}

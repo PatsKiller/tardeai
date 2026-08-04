@@ -47,6 +47,7 @@ CAP_AUTONOMOUS = 3
 CAP_BACKLOG_DRAIN = 2
 CAP_SOURCE_AUTO = 8
 # 24/7 research curator — always-on conscious curation (deep synthesis also on think_tank cron)
+CAP_AUTONOMOUS_PROMOTE = 5  # Phase 1 autonomous discovery governance — curator promotes inside rails
 CAP_PROMOTE = 10        # ungated by confidence (operator directive B); capped per tick for sanity
 CAP_EMBED = 15
 CAP_EMBED_RESET_FAILED = 20
@@ -143,11 +144,15 @@ def main():
     # 1. Research generation (Source Discovery + Autonomous Research Manager via the autonomous loop)
     for loop in ("ticker_challenger", "pipeline_quality"):
         agents.append(run_script(f"autonomous:{loop}", ["scripts/hermes_autonomous_loop.py", "--loop", loop, "--apply", "--max-rows", str(CAP_AUTONOMOUS)]))
-    # 2. Librarian + Backlog drain (files findings + resolves staged backlog)
-    agents.append(run_script("librarian_backlog", ["scripts/hermes_autonomous_librarian_backlog_loop.py", "--apply", "--max-rows", str(CAP_LIBRARIAN)]))
+    # 2. Librarian v2 light scopes (Phase 3): freshness + retention every tick
+    agents.append(run_script("librarian_light", ["scripts/hermes_librarian_agent.py", "--apply",
+        "--scope", "freshness,retention", "--max-rows", "10"]))
+    # 2b. Legacy backlog drain (moved into librarian v2 backlog scope — kept for transition)
     agents.append(run_script("backlog_drain", ["scripts/hermes_backlog_drain.py", "--apply", "--max-rows", str(CAP_BACKLOG_DRAIN)]))
     # 2b. Autonomous source vetting closure (no operator approval queue)
     agents.append(run_script("source_auto_approval", ["scripts/hermes_source_auto_approval.py", "--apply", "--max-actions", str(CAP_SOURCE_AUTO)]))
+    # 2c. Autonomous discovery governance (Phase 1): curator promotes research-only inbox candidates inside rails
+    agents.append(run_script("discovery_autonomy", ["scripts/hermes_discovery_autonomy.py", "--apply", "--limit", str(CAP_AUTONOMOUS_PROMOTE)]))
     agents.append(run_script("research_curator", ["scripts/hermes_research_curator.py", "--apply"], timeout=900))
     agents.append(run_script("options_research_bridge", ["scripts/options_research_bridge.py", "--apply"], timeout=300))
     # 3. Auto-promote (ungated) + backfill RAG gap + 4. embedding worker — isolated per step

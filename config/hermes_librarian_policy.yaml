@@ -1,0 +1,32 @@
+# Hermes Librarian v2 — retention policy (Phase 3)
+# Single source of truth for retention windows across all Hermes tables.
+# Never delete live rows — lifecycle: live → hidden/flagged → archived → purge
+
+hermes_research_intelligence:
+  staged_max_days: 90      # archive staged rows after 90d
+  promoted_max_days: 365   # keep promoted research for 1yr
+  archived_purge_days: 180 # purge archived rows after 6mo
+
+hermes_score_history:
+  max_days: 21             # already handled by hermes_score_history_retention.py
+
+hermes_discovery_candidates:
+  cold_archive_days: 90    # ARCHIVED_COLD after 90d idle
+
+content_embeddings:
+  orphan_purge_days: 30    # purge embeddings whose source row is gone
+
+hermes_embedding_queue:
+  failed_purge_days: 14    # purge failed queue entries after 14d
+
+# Entity graph
+graph:
+  edge_window_days: 30     # co-occurrence window
+  edge_min_weight: 2       # minimum co-occurrence count
+  edge_stale_days: 90      # prune edges not sighted in 90d
+
+# Content taxonomy
+taxonomy:
+  backfill_batch_size: 200 # rows per deep pass
+  min_text_length: 20      # skip rows with less text
+  fallback_share_target: 0.15  # ≤15% fallback (keyword heuristic) target

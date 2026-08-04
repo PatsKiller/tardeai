@@ -1,0 +1,11 @@
+{
+  "_note": "Hermes Discovery — Autonomous Governance config (Phase 1). Advisory-only, kill-switched via HERMES_DISABLED.",
+  "enabled": true,
+  "min_score": 0.60,
+  "require_llm_review": true,
+  "max_research_topics_per_day": 4,
+  "max_sources_per_day": 1,
+  "max_ticker_stages_per_day": 3,
+  "domains_never_auto": ["tax", "legal", "planning", "medical"],
+  "respect_do_no_harm": true
+}

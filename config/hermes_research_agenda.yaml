@@ -1,0 +1,13 @@
+# Hermes Research Agenda — autonomous topic pivoting (Phase 2)
+# Kill switches: HERMES_DISABLED + HERMES_AGENDA_DISABLED
+# 12h minimum between applies (agenda is a slow signal)
+
+enabled: true
+min_hours_between_runs: 12
+max_creates_per_day: 3
+max_retires_per_day: 2
+max_boosts_per_day: 5
+retire_after_days_no_yield: 21
+min_rank_score: 0.35
+domains_never_auto: [tax, legal, planning, medical]
+book_relevance_weight: 0.15
