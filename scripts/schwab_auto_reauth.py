@@ -620,7 +620,14 @@ def _attempt_login(authorize_url: str, callback_url: str) -> dict:
                                     challenge_timeout = time.time() + 600
                                     deadline = max(deadline, challenge_timeout)
                                     actions.append("waiting for operator push/SMS 2FA")
-                                    _log("  OTP field detected (push/SMS) — waiting for operator")
+                                    _log("  OTP field on non-auth page (push/SMS) — waiting for operator")
+                                    # This is the push/SMS path (no TOTP secret configured).
+                                    # Only notify when we're sure we're past the authenticator page
+                                    # and a real 2FA challenge is pending.
+                                    _notify("Schwab 2FA prompt sent — please approve it now",
+                                            "The push notification has been sent to your Schwab mobile app. "
+                                            "Open the app and approve the login request. "
+                                            "The automation will continue automatically once approved.")
 
                 # ── STATE: CHALLENGE_SENT / TERMS_OR_CONSENT / ACCOUNT_GRANT ──
                 if state in ("CHALLENGE_SENT", "TERMS_OR_CONSENT", "ACCOUNT_GRANT"):
