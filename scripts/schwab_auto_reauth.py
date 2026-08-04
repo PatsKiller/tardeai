@@ -293,57 +293,121 @@ def _is_authenticator_page(page) -> bool:
     return False
 
 
-def _handle_authenticator_page(page, actions: list) -> str | None:
+def _handle_authenticator_page(page, actions: list, debug_dir: Path) -> str | None:
     """Handle the Schwab authenticator-selection page. Returns:
-    'challenge_sent' — push notification was triggered
+    'challenge_sent' — push notification was triggered AND page transitioned
     'already_approved' — operator already approved (page moved on)
     None — could not determine state (will keep polling)"""
-    # Step 1: Select the "Trusted contact" push method
-    for frame in page.frames:
-        tc = _first_visible(frame, TRUSTED_CONTACT_SEL)
-        if tc:
-            try:
-                # If it's a radio/checkbox, ensure it's checked
-                tag = (tc.evaluate("el => el.tagName") or "").lower()
-                role = (tc.get_attribute("role") or "").lower()
-                if tag in ("input",) or role in ("radio", "checkbox"):
-                    if not tc.is_checked():
-                        tc.check(timeout=3000)
-                        actions.append("selected Trusted contact authenticator")
-                else:
-                    tc.click(timeout=3000)
-                    actions.append("clicked Trusted contact")
-                break
-            except Exception:
-                pass
+    # ── Debug: screenshot the authenticator page ──
+    try:
+        shot = debug_dir / f"reauth_authpage_{_now().strftime('%Y%m%d_%H%M%S')}.png"
+        page.screenshot(path=str(shot))
+        actions.append(f"auth page screenshot: {shot}")
+    except Exception:
+        pass
 
-    # Step 2: Click the button that sends the push notification
+    # ── Debug: dump visible text so we know what selectors to use ──
+    for frame in page.frames:
+        try:
+            txt = _page_text(frame)
+            if txt:
+                actions.append(f"page excerpt: {txt[:300]}")
+                break
+        except Exception:
+            pass
+
+    # ── Dump all visible buttons/inputs for debug ──
+    for frame in page.frames:
+        try:
+            els = frame.query_selector_all("button, input, a, [role='button'], [role='radio'], [role='checkbox']")
+            for el in els:
+                try:
+                    if not el.is_visible():
+                        continue
+                    tag = (el.evaluate("el => el.tagName") or "").lower()
+                    typ = (el.get_attribute("type") or "").lower()
+                    txt = (el.inner_text() or el.get_attribute("value") or el.get_attribute("aria-label") or "").strip()[:60]
+                    if txt:
+                        actions.append(f"  DOM: <{tag} type={typ}> '{txt}'")
+                except Exception:
+                    pass
+            if len(actions) > 30:  # don't let DOM dump balloon
+                break
+        except Exception:
+            pass
+
+    # ── Step 1: Check all visible checkboxes/radios and click them ──
+    selected_radio = False
+    for frame in page.frames:
+        try:
+            inputs = frame.query_selector_all("input[type='radio'], input[type='checkbox']")
+            for inp in inputs:
+                try:
+                    if inp.is_visible() and not inp.is_checked():
+                        inp.check(timeout=3000)
+                        actions.append("checked a radio/checkbox on auth page")
+                        selected_radio = True
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    # ── Step 2: Also try clicking any Trusted-contact element ──
+    if not selected_radio:
+        for frame in page.frames:
+            tc = _first_visible(frame, TRUSTED_CONTACT_SEL)
+            if tc:
+                try:
+                    tc.click(timeout=3000)
+                    actions.append(f"clicked: Trusted contact element")
+                    selected_radio = True
+                    break
+                except Exception:
+                    pass
+
+    # ── Step 3: Click the primary action button and VERIFY page transition ──
     for frame in page.frames:
         for sel in SEND_CHALLENGE_SEL:
             try:
                 btn = frame.query_selector(sel)
                 if btn and btn.is_visible():
+                    actions.append(f"trying button: {sel}")
                     btn.click(timeout=5000)
-                    actions.append(f"sent push challenge via '{sel}'")
-                    return "challenge_sent"
+                    # Wait briefly for the page to react
+                    time.sleep(3.0)
+                    # Check if the page actually changed
+                    still_auth = _is_authenticator_page(page)
+                    for f2 in page.frames:
+                        txt2 = _page_text(f2)
+                        if any(sig in txt2 for sig in APPROVAL_PENDING_SIG):
+                            actions.append("page shows approval-pending — challenge SENT")
+                            return "challenge_sent"
+                    if not still_auth:
+                        actions.append("page transitioned off authenticator — challenge likely sent")
+                        return "challenge_sent"
+                    actions.append("page did NOT change after this button click")
             except Exception:
                 continue
 
-    # Step 3: Scan for approval-pending page content (already sent)
+    # ── Step 4: Already approved check ──
     for frame in page.frames:
         txt = _page_text(frame)
         if any(sig in txt for sig in APPROVAL_PENDING_SIG):
             actions.append("approval pending (challenge already sent)")
             return "challenge_sent"
 
-    # Step 4: If we're no longer on the authenticator page, approval happened
     if not _is_authenticator_page(page):
+        actions.append("no longer on authenticator page — already approved")
         return "already_approved"
 
-    # Still on authenticator page but couldn't trigger push — try affirmative click as fallback
+    # ── Step 5: Fallback — try affirmative click on anything ──
     for frame in page.frames:
         if _click_affirmative(frame, actions, extra_selectors=["div[role='button']", "span[role='button']"]):
-            return "challenge_sent"  # optimistic — might have triggered the push
+            time.sleep(2.0)
+            if not _is_authenticator_page(page):
+                actions.append("fallback click caused page transition — challenge sent")
+                return "challenge_sent"
+
     return None
 
 
@@ -496,7 +560,7 @@ def _attempt_login(authorize_url: str, callback_url: str) -> dict:
                     if _is_authenticator_page(page):
                         if not authenticator_handled:
                             state = "AUTHENTICATOR_SELECTION"
-                            result = _handle_authenticator_page(page, actions)
+                            result = _handle_authenticator_page(page, actions, DEBUG_DIR)
                             if result == "challenge_sent":
                                 state = "CHALLENGE_SENT"
                                 challenge_sent = True
@@ -504,13 +568,19 @@ def _attempt_login(authorize_url: str, callback_url: str) -> dict:
                                 challenge_timeout = time.time() + 600  # 10 min for approval
                                 deadline = max(deadline, challenge_timeout)
                                 actions.append("challenge sent — waiting for operator 2FA approval")
+                                # Notify only when we're certain the push was triggered
                                 _notify("Schwab 2FA prompt sent — please approve it now",
                                         "The push notification has been sent to your Schwab mobile app. "
                                         "Open the app and approve the login request. "
                                         "The automation will continue automatically once approved.")
+                                _log("  Schwab push challenge TRIGGERED — check your phone")
                             elif result == "already_approved":
                                 state = "TERMS_OR_CONSENT"
                                 actions.append("authenticator page bypassed — approval complete")
+                            else:
+                                # Could not trigger the push — log but keep trying.
+                                # Page might need more time to render SPA content.
+                                actions.append("could not trigger push on authenticator — will retry")
                         else:
                             # Already handled authenticator, still on current page — waiting
                             pass
