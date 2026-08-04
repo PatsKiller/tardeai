@@ -152,18 +152,58 @@ OTP_INPUT_SEL = ["#securityCode", "input[name='securityCode']", "input[autocompl
 CONTINUE_SEL = ["#submit-btn", "#btn-continue", "#continueButton", "button[type='submit']"]
 REMEMBER_SEL = ["#rememberDevice", "input[name='rememberDevice']", "#checkbox-remember-device"]
 
+# ── Schwab authenticator page (sws-gateway.schwab.com/ui/host/#/authenticators) ─────────
+# This page appears AFTER credential submission. The operator's trusted-device push method
+# must be selected and the challenge explicitly sent. The prior code had no handler here.
+AUTH_PAGE_INDICATORS = [
+    "/ui/host/#/authenticators",          # URL fragment
+    "sws-gateway.schwab.com",             # domain
+]
+AUTH_PAGE_CONTENT_SIG = ["authenticator", "trusted contact", "verify your identity"]
+
+# Trusted-device push authenticator — the preferred method (not SMS, not security question)
+TRUSTED_CONTACT_SEL = [
+    "[data-testid='trusted-contact']",
+    "[aria-label*='Trusted contact']",
+    "label:has-text('Trusted contact')",
+    "span:has-text('Trusted contact')",
+    "div:has-text('Trusted contact')",
+    "button:has-text('Trusted contact')",
+    "input[value*='trusted']",
+]
+
+# The control that actually sends the push notification after method selection
+SEND_CHALLENGE_SEL = [
+    "button:has-text('Send')",
+    "button:has-text('Continue')",
+    "button:has-text('Continue to Schwab')",
+    "button:has-text('Verify')",
+    "#continueButton", "#btn-continue", "#btnSendNotification",
+    "[aria-label*='Continue']", "[aria-label*='Send']",
+    "[data-testid='continue']", "[data-testid='send']",
+]
+
+# Pending approval indicators
+APPROVAL_PENDING_SIG = ["approval pending", "check your device", "notification sent",
+                         "waiting for approval", "approve the request", "push sent"]
+
 # Post-login pages (Trader API terms → "Instruction and Informed Consent" modal → account
 # grant → done) use plain-text buttons, not stable ids — match by visible text. Order =
 # priority; the consent modal's Accept must win over the covered background Continue.
 AFFIRM_WORDS = ("accept", "continue", "done", "allow", "confirm", "authorize", "next", "submit")
-NEGATIVE_WORDS = ("cancel", "deny", "decline", "resend", "back", "close", "help", "forgot")
+NEGATIVE_WORDS = ("cancel", "deny", "decline", "resend", "back", "close", "help", "forgot",
+                  "try another way", "try another")  # added: never click "Try another way"
 
 
-def _click_affirmative(frame, actions: list) -> bool:
+def _click_affirmative(frame, actions: list, extra_selectors: list | None = None) -> bool:
     """Click the highest-priority visible affirmative button in this frame. Never clicks
-    negative-word buttons. Returns True if something was clicked."""
+    negative-word buttons. extra_selectors broadens the element search for SPA pages where
+    buttons are divs/spans. Returns True if something was clicked."""
     try:
-        btns = frame.query_selector_all("button, input[type='submit'], a[role='button']")
+        sel = "button, input[type='submit'], a[role='button']"
+        if extra_selectors:
+            sel += ", " + ", ".join(extra_selectors)
+        btns = frame.query_selector_all(sel)
     except Exception:
         return False
     cands = []
@@ -171,7 +211,7 @@ def _click_affirmative(frame, actions: list) -> bool:
         try:
             if not b.is_visible():
                 continue
-            txt = (b.inner_text() or b.get_attribute("value") or "").strip().lower()
+            txt = (b.inner_text() or b.get_attribute("value") or b.get_attribute("aria-label") or "").strip().lower()
         except Exception:
             continue
         if not txt or any(w in txt for w in NEGATIVE_WORDS):
@@ -198,6 +238,92 @@ def _first_visible(frame, selectors):
                 return el
         except Exception:
             continue
+    return None
+
+
+def _page_text(frame) -> str:
+    """Return the visible text content of a frame (lowercase, first 500 chars)."""
+    try:
+        body = frame.query_selector("body")
+        if body:
+            return (body.inner_text() or "").strip().lower()[:500]
+    except Exception:
+        pass
+    return ""
+
+
+def _url_contains(page, fragments: list[str]) -> bool:
+    """Check if the current page URL contains any of the given fragments."""
+    try:
+        u = (page.url or "").lower()
+        return any(f.lower() in u for f in fragments)
+    except Exception:
+        return False
+
+
+def _is_authenticator_page(page) -> bool:
+    """Detect Schwab's authenticator-selection page by URL and/or content."""
+    if _url_contains(page, AUTH_PAGE_INDICATORS):
+        return True
+    # Fallback: scan for authenticator content in any frame
+    for frame in page.frames:
+        txt = _page_text(frame)
+        if any(sig in txt for sig in AUTH_PAGE_CONTENT_SIG):
+            return True
+    return False
+
+
+def _handle_authenticator_page(page, actions: list) -> str | None:
+    """Handle the Schwab authenticator-selection page. Returns:
+    'challenge_sent' — push notification was triggered
+    'already_approved' — operator already approved (page moved on)
+    None — could not determine state (will keep polling)"""
+    # Step 1: Select the "Trusted contact" push method
+    for frame in page.frames:
+        tc = _first_visible(frame, TRUSTED_CONTACT_SEL)
+        if tc:
+            try:
+                # If it's a radio/checkbox, ensure it's checked
+                tag = (tc.evaluate("el => el.tagName") or "").lower()
+                role = (tc.get_attribute("role") or "").lower()
+                if tag in ("input",) or role in ("radio", "checkbox"):
+                    if not tc.is_checked():
+                        tc.check(timeout=3000)
+                        actions.append("selected Trusted contact authenticator")
+                else:
+                    tc.click(timeout=3000)
+                    actions.append("clicked Trusted contact")
+                break
+            except Exception:
+                pass
+
+    # Step 2: Click the button that sends the push notification
+    for frame in page.frames:
+        for sel in SEND_CHALLENGE_SEL:
+            try:
+                btn = frame.query_selector(sel)
+                if btn and btn.is_visible():
+                    btn.click(timeout=5000)
+                    actions.append(f"sent push challenge via '{sel}'")
+                    return "challenge_sent"
+            except Exception:
+                continue
+
+    # Step 3: Scan for approval-pending page content (already sent)
+    for frame in page.frames:
+        txt = _page_text(frame)
+        if any(sig in txt for sig in APPROVAL_PENDING_SIG):
+            actions.append("approval pending (challenge already sent)")
+            return "challenge_sent"
+
+    # Step 4: If we're no longer on the authenticator page, approval happened
+    if not _is_authenticator_page(page):
+        return "already_approved"
+
+    # Still on authenticator page but couldn't trigger push — try affirmative click as fallback
+    for frame in page.frames:
+        if _click_affirmative(frame, actions, extra_selectors=["div[role='button']", "span[role='button']"]):
+            return "challenge_sent"  # optimistic — might have triggered the push
     return None
 
 
@@ -233,13 +359,22 @@ def _ensure_display() -> tuple[dict, object | None]:
 
 
 def _attempt_login(authorize_url: str, callback_url: str) -> dict:
-    """Drive the OAuth login. Returns {ok, redirect_url?, error?, log: [...]}."""
+    """Drive the OAuth login with an explicit state machine.
+
+    States: LOGIN_FORM → AUTHENTICATOR_SELECTION → CHALLENGE_SENT →
+            WAITING_FOR_APPROVAL → TERMS_OR_CONSENT → ACCOUNT_GRANT →
+            CALLBACK_CAPTURED → TOKEN_EXCHANGED → LIVE_PROBE_VERIFIED
+
+    Returns {ok, redirect_url?, error?, log: [...], state: str}."""
     from playwright.sync_api import sync_playwright
     PROFILE_DIR.mkdir(parents=True, exist_ok=True)
     os.chmod(PROFILE_DIR, 0o700)
     DEBUG_DIR.mkdir(parents=True, exist_ok=True)
     actions: list[str] = []
     captured: dict = {}
+    state = "START"
+    challenge_sent = False
+    last_heartbeat = 0.0
 
     disp_env, xvfb_proc = _ensure_display()
     headed = bool(disp_env) or bool(os.environ.get("DISPLAY"))
@@ -250,8 +385,6 @@ def _attempt_login(authorize_url: str, callback_url: str) -> dict:
         actions.append("WARNING: no display + no Xvfb — headless (Akamai may deny)")
 
     with sync_playwright() as pw:
-        # Headed: keep the browser's own UA (a spoofed version mismatch is itself a bot
-        # signal). Headless fallback keeps the stealth UA as a best effort.
         kwargs = dict(viewport={"width": 1280, "height": 900}, locale="en-US",
                       args=["--disable-blink-features=AutomationControlled"])
         if not headed:
@@ -262,10 +395,9 @@ def _attempt_login(authorize_url: str, callback_url: str) -> dict:
         try:
             page = ctx.pages[0] if ctx.pages else ctx.new_page()
             page.add_init_script("Object.defineProperty(navigator,'webdriver',{get:()=>undefined})")
-            page.set_default_timeout(8000)  # keep per-element waits snappy inside the poll loop
+            page.set_default_timeout(8000)
 
-            # Intercept the 127.0.0.1 callback BEFORE any connection attempt — capture ?code=
-            # and serve a friendly page instead of ERR_CONNECTION_REFUSED.
+            # Intercept the 127.0.0.1 callback BEFORE any connection attempt
             def _route(route):
                 captured["url"] = route.request.url
                 route.fulfill(status=200, content_type="text/html",
@@ -274,14 +406,22 @@ def _attempt_login(authorize_url: str, callback_url: str) -> dict:
             ctx.route(lambda url: str(url).startswith(cb_base), _route)
 
             page.goto(authorize_url, wait_until="domcontentloaded", timeout=60_000)
+            state = "LOGIN_FORM"
             actions.append(f"opened authorize page → {page.url[:80]}")
 
             filled_login = clicked_submit = False
+            authenticator_handled = False
             deadline = time.time() + LOGIN_TIMEOUT_S
+            challenge_timeout = deadline  # reset after challenge is sent
+
             while time.time() < deadline and "url" not in captured:
+                # ── Callback check (highest priority) ──
                 if "code=" in (page.url or ""):
                     captured["url"] = page.url
+                    state = "CALLBACK_CAPTURED"
                     break
+
+                # ── Access Denied check ──
                 try:
                     if (page.title() or "").strip().lower() == "access denied":
                         shot = DEBUG_DIR / f"reauth_denied_{_now().strftime('%Y%m%d_%H%M%S')}.png"
@@ -289,35 +429,67 @@ def _attempt_login(authorize_url: str, callback_url: str) -> dict:
                             page.screenshot(path=str(shot))
                         except Exception:
                             pass
-                        return {"ok": False, "log": actions,
+                        return {"ok": False, "state": state, "log": actions,
                                 "error": "Schwab bot-defense served 'Access Denied' "
-                                         + ("(headed)" if headed else "(headless — install Xvfb: sudo apt-get install -y xvfb)")}
+                                         + ("(headed)" if headed else "(headless — install Xvfb)")}
                 except Exception:
                     pass
-                for frame in page.frames:
-                    try:
-                        if not filled_login:
-                            uid = _first_visible(frame, LOGIN_ID_SEL)
-                            pwd = _first_visible(frame, PASSWORD_SEL)
-                            if uid and pwd:
-                                uid.fill(os.environ["SCHWAB_LOGIN_ID"])
-                                pwd.fill(os.environ["SCHWAB_LOGIN_PASSWORD"])
-                                remember = _first_visible(frame, REMEMBER_SEL)
-                                if remember:
-                                    try:
-                                        remember.check()
-                                        actions.append("checked remember-device")
-                                    except Exception:
-                                        pass
-                                filled_login = True
-                                btn = _first_visible(frame, SUBMIT_SEL)
-                                if btn:
-                                    btn.click(); clicked_submit = True
-                                else:
-                                    pwd.press("Enter"); clicked_submit = True
-                                actions.append("submitted credentials")
-                                break
+
+                # ── STATE: LOGIN_FORM — fill credentials and submit ──
+                if state == "LOGIN_FORM":
+                    for frame in page.frames:
+                        try:
+                            if not filled_login:
+                                uid = _first_visible(frame, LOGIN_ID_SEL)
+                                pwd = _first_visible(frame, PASSWORD_SEL)
+                                if uid and pwd:
+                                    uid.fill(os.environ["SCHWAB_LOGIN_ID"])
+                                    pwd.fill(os.environ["SCHWAB_LOGIN_PASSWORD"])
+                                    remember = _first_visible(frame, REMEMBER_SEL)
+                                    if remember:
+                                        try:
+                                            remember.check()
+                                            actions.append("checked remember-device")
+                                        except Exception:
+                                            pass
+                                    filled_login = True
+                                    btn = _first_visible(frame, SUBMIT_SEL)
+                                    if btn:
+                                        btn.click(); clicked_submit = True
+                                    else:
+                                        pwd.press("Enter"); clicked_submit = True
+                                    state = "SUBMITTED"
+                                    actions.append("submitted credentials")
+                                    # Small delay to let the page transition
+                                    time.sleep(3.0)
+                                    break
+                        except Exception:
+                            continue
+
+                # ── STATE: SUBMITTED/AUTHENTICATOR — handle post-login pages ──
+                if state in ("SUBMITTED", "AUTHENTICATOR_SELECTION"):
+                    # Check if we're on the authenticator-selection page
+                    if _is_authenticator_page(page):
+                        if not authenticator_handled:
+                            state = "AUTHENTICATOR_SELECTION"
+                            result = _handle_authenticator_page(page, actions)
+                            if result == "challenge_sent":
+                                state = "CHALLENGE_SENT"
+                                challenge_sent = True
+                                authenticator_handled = True
+                                challenge_timeout = time.time() + 600  # 10 min for approval
+                                deadline = max(deadline, challenge_timeout)
+                                actions.append("challenge sent — waiting for operator 2FA approval")
+                            elif result == "already_approved":
+                                state = "TERMS_OR_CONSENT"
+                                actions.append("authenticator page bypassed — approval complete")
                         else:
+                            # Already handled authenticator, still on current page — waiting
+                            pass
+
+                    # ── TOTP handling ──
+                    for frame in page.frames:
+                        if state in ("SUBMITTED", "AUTHENTICATOR_SELECTION"):
                             otp_el = _first_visible(frame, OTP_INPUT_SEL)
                             code = _totp_code()
                             if otp_el and code:
@@ -326,24 +498,47 @@ def _attempt_login(authorize_url: str, callback_url: str) -> dict:
                                 cont = _first_visible(frame, CONTINUE_SEL)
                                 if cont:
                                     cont.click(); actions.append("continued after TOTP")
-                                break
-                            if otp_el and not code:
-                                continue  # push/SMS 2FA — wait for the operator, don't click around
-                            # Terms / consent-modal / account-grant pages: tick every visible
-                            # unchecked checkbox (terms box; per-account grant boxes — ALL
-                            # accounts share the one token, so grant all), then click the
-                            # highest-priority affirmative button (modal Accept first).
-                            try:
-                                for cb_el in frame.query_selector_all("input[type='checkbox']"):
-                                    if cb_el.is_visible() and not cb_el.is_checked():
-                                        cb_el.check(timeout=3000)
-                                        actions.append("checked a consent/account box")
-                            except Exception:
-                                pass
-                            if _click_affirmative(frame, actions):
-                                break
-                    except Exception:
-                        continue
+                                challenge_sent = True  # TOTP = already sent challenge
+                                state = "CHALLENGE_SENT"
+                                challenge_timeout = time.time() + 600
+                                deadline = max(deadline, challenge_timeout)
+                            elif otp_el and not code:
+                                state = "CHALLENGE_SENT"  # push/SMS 2FA — wait
+                                if not challenge_sent:
+                                    challenge_sent = True
+                                    challenge_timeout = time.time() + 600
+                                    deadline = max(deadline, challenge_timeout)
+                                    actions.append("waiting for operator push/SMS 2FA")
+
+                # ── STATE: CHALLENGE_SENT / TERMS_OR_CONSENT / ACCOUNT_GRANT ──
+                if state in ("CHALLENGE_SENT", "TERMS_OR_CONSENT", "ACCOUNT_GRANT"):
+                    # Tick every visible unchecked checkbox (terms, account grants)
+                    for frame in page.frames:
+                        try:
+                            for cb_el in frame.query_selector_all("input[type='checkbox']"):
+                                if cb_el.is_visible() and not cb_el.is_checked():
+                                    cb_el.check(timeout=3000)
+                                    actions.append("checked a consent/account box")
+                        except Exception:
+                            pass
+
+                    # Click the highest-priority affirmative button
+                    for frame in page.frames:
+                        if _click_affirmative(frame, actions,
+                                              extra_selectors=["div[role='button']", "span[role='button']"]):
+                            if state == "CHALLENGE_SENT":
+                                state = "TERMS_OR_CONSENT"
+                            elif state == "TERMS_OR_CONSENT":
+                                state = "ACCOUNT_GRANT"
+                            break
+
+                # ── Progress heartbeat ──
+                now = time.time()
+                if challenge_sent and (now - last_heartbeat) >= 60:
+                    _log(f"  still waiting for operator 2FA approval "
+                         f"({int(deadline - now)}s remaining, page: {page.url[:80]})")
+                    last_heartbeat = now
+
                 time.sleep(STEP_POLL_S)
 
             if "url" not in captured:
@@ -353,9 +548,10 @@ def _attempt_login(authorize_url: str, callback_url: str) -> dict:
                     actions.append(f"screenshot: {shot}")
                 except Exception:
                     pass
-                return {"ok": False, "error": f"no callback within {LOGIN_TIMEOUT_S}s "
-                                              f"(last page: {page.url[:100]})", "log": actions}
-            return {"ok": True, "redirect_url": captured["url"], "log": actions}
+                return {"ok": False, "state": state,
+                        "error": f"no callback within {LOGIN_TIMEOUT_S}s "
+                                f"(last page: {page.url[:100]})", "log": actions}
+            return {"ok": True, "state": state, "redirect_url": captured["url"], "log": actions}
         finally:
             try:
                 ctx.close()
@@ -393,10 +589,20 @@ def run_attempt(notice_wait: int = NOTICE_WAIT_S) -> int:
     cb = os.environ.get("SCHWAB_CALLBACK_URL", "https://127.0.0.1")
     _log("starting browser login…")
     res = _attempt_login(url_info["authorize_url"], cb)
+    state = res.get("state", "?")
+
+    # If the push challenge was sent, notify the operator to approve it
+    if state in ("CHALLENGE_SENT", "TERMS_OR_CONSENT", "ACCOUNT_GRANT"):
+        _notify("Schwab 2FA prompt sent — please approve it now",
+                "The push notification has been sent to your Schwab mobile app. "
+                "Please open the app and approve the login request. "
+                "The automation will continue automatically once approved. "
+                "(If no prompt arrived within 60s, check your device is online.)")
+
     if not res["ok"]:
-        _save_state({"last_result": "fail", "last_error": res["error"]})
+        _save_state({"last_result": "fail", "last_error": res["error"], "last_state": state})
         _notify("Schwab auto-reauth FAILED",
-                f"{res['error']}\nSteps taken: {'; '.join(res['log'][-6:]) or 'none'}\n"
+                f"{res['error']}\nState: {state}\nSteps taken: {'; '.join(res['log'][-8:]) or 'none'}\n"
                 f"Manual fallback:\n1) open the login link on any device:\n{url_info['authorize_url']}\n"
                 f"2) after login, copy the full 127.0.0.1 redirect URL and run:\n"
                 f"{url_info['step2_command']}")
@@ -412,7 +618,8 @@ def run_attempt(notice_wait: int = NOTICE_WAIT_S) -> int:
         probe = tm.live_probe(ACCOUNT_KEY) or {}
     except Exception as e:
         probe = {"error": str(e)[:120]}
-    _save_state({"last_result": "ok", "last_success_at": _now().isoformat(), "last_error": None})
+    _save_state({"last_result": "ok", "last_success_at": _now().isoformat(), "last_error": None,
+                  "last_state": state})
     nxt = (_now() + dt.timedelta(days=REAUTH_AT_DAYS)).strftime("%a %b %d %H:%M UTC")
     _notify("Schwab auto-reauth SUCCESS ✅",
             f"New 7-day token seeded and verified (live_probe ok={probe.get('live_ok', probe)}). "
