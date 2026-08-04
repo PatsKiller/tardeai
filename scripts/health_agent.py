@@ -1404,6 +1404,151 @@ def collect_infra_optimization_health() -> list[dict]:
     return out
 
 
+def collect_pipeline_containment() -> list[dict]:
+    """P0 pipeline-integrity checks — detects the failure mode that killed watchlist agent
+    reviews for days (2026-08-03: containment flag cleared but crons left commented out).
+
+    Checks:
+      1. Agent jobs pipeline containment state (flag/env)
+      2. Crontab integrity — are the 4 process_watchlist_agent_jobs lines commented?
+      3. Discovery scorecard staleness (>7d no update)
+      4. Catalyst quality ratio (other% > 80% → poor classification)
+
+    Auto-fix: If containment is INACTIVE (no flag, no env) and governed PR is deployed
+    (agent_flash_governance.py exists) BUT crons are still commented → auto-uncomment
+    and report with retry_cmd so health-agent escalations can re-enable the pipeline.
+    """
+    out = []
+    try:
+        import subprocess
+        # ── 1. Containment state ──
+        from lib.agent_jobs_containment import evaluate_containment_state, STATUS_ACTIVE, STATUS_INACTIVE
+        from pathlib import Path
+
+        state = evaluate_containment_state()
+        contained = state["status"] == STATUS_ACTIVE
+
+        # ── 2. Crontab integrity — are critical watchlist agent lines commented? ──
+        crontab_raw = subprocess.run(
+            ["crontab", "-l"], capture_output=True, text=True, timeout=10
+        ).stdout
+        agent_cron_lines = [
+            l for l in crontab_raw.split("\n")
+            if "process_watchlist_agent_jobs.py" in l
+        ]
+        commented_lines = [l for l in agent_cron_lines if l.strip().startswith("#")]
+        active_lines = [l for l in agent_cron_lines if not l.strip().startswith("#")]
+
+        # ── 3. Governed PR deployed? ──
+        gov_module = Path(__file__).resolve().parent / "lib" / "agent_flash_governance.py"
+        governed_deployed = gov_module.exists()
+
+        # ── 4. Discovery scorecard staleness ──
+        scorecard_path = PROJECT_ROOT / "data" / "runtime" / "hermes_discovery_scorecard.json"
+        scorecard_stale_days = None
+        if scorecard_path.exists():
+            try:
+                age_s = __import__("time").time() - scorecard_path.stat().st_mtime
+                scorecard_stale_days = age_s / 86400.0
+                if scorecard_stale_days > 7:
+                    out.append(_f("intelligence_quality", "discovery_scorecard_stale", "warning",
+                                  f"Hermes discovery scorecard is {scorecard_stale_days:.0f}d stale "
+                                  f"(last written {scorecard_stale_days:.0f} days ago). "
+                                  f"Discovery intake continues but scorecard-based gating is blind. "
+                                  f"Check hermes_discovery_scorecard.py cron.",
+                                  age_days=round(scorecard_stale_days, 1)))
+            except Exception:
+                pass
+        else:
+            out.append(_f("intelligence_quality", "discovery_scorecard_missing", "warning",
+                          "Hermes discovery scorecard file missing — scorecard cron may not be "
+                          "running or writing to wrong path. Check hermes_discovery_scorecard.py."))
+
+        # ── 5. Catalyst quality ratio ──
+        try:
+            cat_row = _db(
+                """SELECT COUNT(*) FILTER (WHERE catalyst_type='other') AS other_n,
+                          COUNT(*) AS total
+                   FROM catalyst_events
+                   WHERE created_at > now() - interval '7 days'""",
+                fetch="one"
+            )
+            if cat_row and cat_row.get("total", 0) > 100:
+                other_pct = (cat_row.get("other_n", 0) or 0) / max(cat_row["total"], 1) * 100
+                if other_pct > 80:
+                    out.append(_f("intelligence_quality", "catalyst_type_quality", "warning",
+                                  f"Catalyst classification quality low: {other_pct:.0f}% 'other' "
+                                  f"in last 7d ({cat_row['other_n']}/{cat_row['total']}). "
+                                  f"catalyst_type_weights may need retuning or classifier retraining.",
+                                  other_pct=round(other_pct, 1), total=cat_row["total"]))
+        except Exception:
+            pass
+
+        # ── AUTO-FIX: stale containment — inactive but crons still commented ──
+        if not contained and governed_deployed and commented_lines and not active_lines:
+            # Uncomment the cron lines
+            fixed_lines = []
+            fixed_count = 0
+            for line in crontab_raw.split("\n"):
+                if "process_watchlist_agent_jobs.py" in line and line.strip().startswith("#"):
+                    # Strip the leading '# CONTAINED ... : ' or '# ' prefix
+                    uncommented = line.strip()
+                    # Remove "# CONTAINED YYYY-MM-DD issue#NNN ... re-enable only after governed PR: "
+                    import re
+                    uncommented = re.sub(
+                        r'^#\s*CONTAINED\s+\d{4}-\d{2}-\d{2}\s+issue#\d+\s+.*?re-enable only after governed PR:\s*',
+                        '', uncommented
+                    )
+                    # Also handle plain "# " prefix if the above didn't match
+                    if uncommented.startswith("# "):
+                        uncommented = uncommented[2:]
+                    elif uncommented.startswith("#"):
+                        uncommented = uncommented[1:]
+                    fixed_lines.append(uncommented)
+                    fixed_count += 1
+                else:
+                    fixed_lines.append(line)
+
+            if fixed_count > 0:
+                new_crontab = "\n".join(fixed_lines) + "\n"
+                try:
+                    subprocess.run(
+                        ["crontab", "-"],
+                        input=new_crontab, text=True, timeout=10, capture_output=True
+                    )
+                    out.append(_f("execution_health", "agent_jobs_crons_auto_restored", "critical",
+                                  f"AUTO-FIXED: {fixed_count} contained watchlist agent cron lines "
+                                  f"uncommented. Containment is INACTIVE (flag absent, governed PR "
+                                  f"deployed). Pipeline resuming next cron tick.",
+                                  auto_fixed=True, fixed_count=fixed_count))
+                except Exception as e:
+                    out.append(_f("execution_health", "agent_jobs_crons_still_contained", "critical",
+                                  f"{fixed_count} watchlist agent cron lines STILL COMMENTED despite "
+                                  f"inactive containment. Auto-fix FAILED: {e}. "
+                                  f"Manually run: crontab -l | sed 's/^# CONTAINED.*: //' | crontab -",
+                                  auto_fix_failed=True, error=str(e)[:120]))
+        elif not contained and governed_deployed and active_lines:
+            # All good — pipeline is active
+            pass
+        elif contained:
+            out.append(_f("execution_health", "agent_jobs_contained", "critical",
+                          f"Watchlist agent jobs pipeline is CONTAINED "
+                          f"(source={state.get('source','?')}, detail={state.get('detail','?')}). "
+                          f"No LLM reviews firing. Clear flag and re-enable crons after governed PR deploy.",
+                          contained=True, state=state))
+        elif commented_lines and not governed_deployed:
+            out.append(_f("execution_health", "agent_jobs_crons_contained_no_gov", "critical",
+                          f"{len(commented_lines)} watchlist agent cron lines commented but "
+                          f"governance module (agent_flash_governance.py) NOT deployed. "
+                          f"Deploy PR #284 first, then uncomment crons."))
+
+    except Exception as e:
+        out.append(_f("execution_health", "pipeline_containment_check_failed", "warning",
+                      f"Pipeline containment check failed: {type(e).__name__}: {str(e)[:120]}"))
+
+    return out
+
+
 def collect_proposal_integrity() -> list[dict]:
     """Per-proposal FINANCIAL correctness — the gap that let a stale favorable live R:R (WEN 13.48,
     computed when price was near the $7.37 stop) keep showing after the price blew past the $8.53
@@ -2297,6 +2442,7 @@ COLLECTORS = [
     collect_data_quality,
     collect_broker_token_health,
     collect_trade_in_view_health,
+    collect_pipeline_containment,
     collect_execution_health,
     collect_execution_hardening_health,
     collect_intelligence_quality,
