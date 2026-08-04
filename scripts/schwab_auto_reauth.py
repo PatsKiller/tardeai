@@ -176,8 +176,8 @@ REMEMBER_SEL = ["#rememberDevice", "input[name='rememberDevice']", "#checkbox-re
 # This page appears AFTER credential submission. The operator's trusted-device push method
 # must be selected and the challenge explicitly sent. The prior code had no handler here.
 AUTH_PAGE_INDICATORS = [
-    "/ui/host/#/authenticators",          # URL fragment
-    "sws-gateway.schwab.com",             # domain
+    "#/authenticators",          # URL fragment — the unique authenticator path
+    "/authenticators",           # path variant
 ]
 AUTH_PAGE_CONTENT_SIG = ["authenticator", "trusted contact", "verify your identity"]
 
@@ -525,8 +525,9 @@ def _attempt_login(authorize_url: str, callback_url: str) -> dict:
                                         pwd.press("Enter"); clicked_submit = True
                                     state = "SUBMITTED"
                                     actions.append("submitted credentials")
-                                    # Small delay to let the page transition
-                                    time.sleep(3.0)
+                                    # Schwab's SPA can take 5-10s to transition through
+                                    # login → clientid page → authenticator. Give it time.
+                                    time.sleep(8.0)
                                     break
                         except Exception:
                             continue
