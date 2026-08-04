@@ -22,10 +22,10 @@ def get_analyst_targets(db_query, symbols: list[str]) -> dict[str, dict[str, Any
     rows = db_query(
         """SELECT DISTINCT ON (upper(symbol))
                   upper(symbol) AS symbol, target_mean_price, target_high_price, target_low_price,
-                  recommendation_key, number_of_analyst_opinions, fetched_at
+                  recommendation_key, number_of_analyst_opinions, created_at
            FROM yahoo_analyst_targets_history
            WHERE upper(symbol) = ANY(%s)
-           ORDER BY upper(symbol), fetched_at DESC NULLS LAST""",
+           ORDER BY upper(symbol), created_at DESC NULLS LAST""",
         (symbols,),
     ) or []
     out: dict[str, dict[str, Any]] = {}
@@ -38,6 +38,6 @@ def get_analyst_targets(db_query, symbols: list[str]) -> dict[str, dict[str, Any
                 "target_low": row.get("target_low_price"),
                 "recommendation_key": row.get("recommendation_key"),
                 "analyst_count": row.get("number_of_analyst_opinions"),
-                "fetched_at": row.get("fetched_at"),
+                "created_at": row.get("created_at"),
             }
     return out
