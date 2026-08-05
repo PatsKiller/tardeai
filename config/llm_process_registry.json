@@ -167,6 +167,25 @@
       "advisory_only": true
     },
     {
+      "id": "watch_news_intelligence_flash",
+      "name": "Watch News Intelligence Flash",
+      "category": "Watch",
+      "lane_policy": "deepseek_only",
+      "default_mode": "automated",
+      "description": "Async news/catalyst intelligence for Watch board. Exact deepseek-v4-flash FAST, thinking off, no fallback. Oversight optional dual OAuth. Never page-load. Advisory only.",
+      "allowed_lanes": ["deepseek-flash", "deepseek-v4-flash", "fast"],
+      "deepseek_default_policy": "FAST",
+      "deepseek_allowed_policies": ["FAST"],
+      "max_input_tokens": 2500,
+      "max_output_tokens": 500,
+      "daily_soft_cap": 40,
+      "daily_cost_cap_usd": 0.08,
+      "tools_allowed": false,
+      "fallback_allowed": false,
+      "advisory_only": true,
+      "output_schema": "news_intelligence.v1"
+    },
+    {
       "id": "rotation_grok_review",
       "name": "Rotation Grok Review",
       "category": "Rotation",

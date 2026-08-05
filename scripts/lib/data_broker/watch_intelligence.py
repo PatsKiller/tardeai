@@ -623,9 +623,27 @@ def _enrich_card_semantics(card: dict, *, enrich: dict, held_source: str) -> dic
     c["relative_vs_spy"] = None
     c["relative_performance_quality"] = "UNAVAILABLE"
     c["relative_performance_note"] = rel_gap.get("note")
-    c["catalyst_vs_industry"] = None
-    c["catalyst_vs_industry_quality"] = "UNAVAILABLE"
-    c["catalyst_vs_industry_note"] = "Catalyst-versus-industry not joined"
+    # News / catalyst projection (DB + optional async agent artifact; never provider calls)
+    try:
+        from lib.data_broker.news_intelligence import project_catalyst_context
+        catx = project_catalyst_context(c)
+        c["catalyst_summary"] = catx.get("catalyst_summary") or c.get("catalyst_summary")
+        c["catalyst_as_of"] = catx.get("catalyst_as_of")
+        c["catalyst_freshness"] = catx.get("catalyst_freshness") or "MISSING"
+        c["catalyst_type"] = catx.get("catalyst_type")
+        c["catalyst_severity"] = catx.get("catalyst_severity")
+        c["catalyst_source_mix"] = catx.get("catalyst_source_mix") or []
+        c["latest_headlines"] = catx.get("latest_headlines") or []
+        c["catalyst_oversight_status"] = catx.get("catalyst_oversight_status")
+        c["catalyst_worker_status"] = catx.get("catalyst_worker_status")
+        c["catalyst_vs_industry"] = catx.get("catalyst_vs_industry")
+        c["catalyst_vs_industry_quality"] = catx.get("catalyst_vs_industry_quality") or "UNAVAILABLE"
+        c["catalyst_vs_industry_note"] = "Catalyst-versus-industry not joined"
+    except Exception:
+        c["catalyst_vs_industry"] = None
+        c["catalyst_vs_industry_quality"] = "UNAVAILABLE"
+        c["catalyst_vs_industry_note"] = "Catalyst-versus-industry not joined"
+        c.setdefault("catalyst_freshness", "MISSING" if not c.get("catalyst_summary") else "STALE")
 
     nt = near_trigger_eval(c)
     c["near_trigger"] = nt

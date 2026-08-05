@@ -723,7 +723,16 @@ def rank_top_ideas(items: list[dict]) -> list[dict]:
             state_pts = max(state_pts, 0)
         qf = (c.get("quote_freshness") or c.get("freshness_state") or "")
         fresh = 5 if qf in ("CURRENT", "PREMARKET_CURRENT", "AFTER_HOURS_CURRENT") else 0
-        total = street + state_pts + upside_pts + starred + held + review + fresh
+        # Multi-source catalyst freshness (not Finviz-only): bonus FRESH, demote MISSING non-held
+        cf = (c.get("catalyst_freshness") or "").upper()
+        cat_pts = 0
+        if cf == "FRESH":
+            cat_pts = 8
+        elif cf == "STALE":
+            cat_pts = 2
+        elif cf == "MISSING" and not c.get("held"):
+            cat_pts = -6
+        total = street + state_pts + upside_pts + starred + held + review + fresh + cat_pts
         components = {
             "street": street,
             "trade_ai_state": state_pts,
@@ -732,6 +741,7 @@ def rank_top_ideas(items: list[dict]) -> list[dict]:
             "held": held,
             "reviews": review,
             "quote_freshness": fresh,
+            "catalyst_freshness": cat_pts,
             "eligibility": elig,
         }
         scored.append((total, components, it))

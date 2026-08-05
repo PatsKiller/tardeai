@@ -43,6 +43,11 @@ type Card = {
   resistance?: number | string | null
   technical_setup?: string | null
   catalyst_summary?: string | null
+  catalyst_as_of?: string | null
+  catalyst_freshness?: string | null
+  catalyst_type?: string | null
+  catalyst_source_mix?: string[] | null
+  catalyst_oversight_status?: string | null
   catalyst_vs_industry?: string | null
   relative_performance_summary?: string | null
   one_line_thesis?: string | null
@@ -648,8 +653,29 @@ export default function WatchIntelligenceUnified() {
                     <ReviewBox title="CIO" rev={c.cio_review} />
                     <ReviewBox title="Maria" rev={c.maria_review} />
                   </div>
-                  <div style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 8 }}>
-                    <b style={{ color: BB.text2 }}>Catalyst:</b> {c.catalyst_summary || '—'}
+                  <div style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 8 }} data-catalyst-block>
+                    <b style={{ color: BB.text2 }}>Catalyst:</b>{' '}
+                    <span
+                      data-catalyst-freshness={(c as any).catalyst_freshness || 'MISSING'}
+                      style={{
+                        fontWeight: 800,
+                        color:
+                          (c as any).catalyst_freshness === 'FRESH' ? BB.green
+                            : (c as any).catalyst_freshness === 'STALE' ? BB.amber
+                              : BB.text3,
+                      }}
+                    >
+                      {(c as any).catalyst_freshness || 'MISSING'}
+                    </span>
+                    {(c as any).catalyst_type ? ` · ${(c as any).catalyst_type}` : ''}
+                    {(c as any).catalyst_as_of ? ` · as of ${String((c as any).catalyst_as_of).slice(0, 16)}` : ''}
+                    {(c as any).catalyst_oversight_status ? ` · oversight ${(c as any).catalyst_oversight_status}` : ''}
+                    <div style={{ marginTop: 2 }}>{c.catalyst_summary || '—'}</div>
+                    {(c as any).catalyst_source_mix?.length ? (
+                      <div style={{ marginTop: 2, color: BB.text3 }}>
+                        sources: {((c as any).catalyst_source_mix as string[]).slice(0, 4).join(', ')}
+                      </div>
+                    ) : null}
                   </div>
                   <div style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 3 }}>
                     <b style={{ color: BB.text2 }}>Catalyst vs industry:</b> UNAVAILABLE (typed gap)
