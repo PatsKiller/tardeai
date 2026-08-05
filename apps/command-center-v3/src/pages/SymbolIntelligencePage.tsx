@@ -96,7 +96,10 @@ export default function SymbolIntelligencePage() {
               {pct(card.day_change_pct)}
             </div>
             <div style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 4 }}>
-              {card.freshness_state} · {card.price_source} · {card.market_session}
+              Quote: {card.quote_freshness || card.freshness_state || '—'} · {card.price_source} · {card.market_session}
+            </div>
+            <div style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 2 }}>
+              Technicals: {card.technical_freshness || '—'} · Decision: {card.decision_freshness || '—'} · Street: {card.street_freshness || '—'} · Reviews: {card.review_freshness || '—'}
             </div>
           </div>
         </div>
@@ -106,8 +109,22 @@ export default function SymbolIntelligencePage() {
           </Pill>
           <Pill>TRADE AI {tradeAi.primary_state || card.trade_ai_state}</Pill>
           <Pill>PROPOSAL {tradeAi.proposal_allowed || card.proposal_allowed ? 'YES' : 'NO'}</Pill>
-          <Pill>CIO {cio.status === 'COMPLETE' ? (cio.verdict || 'COMPLETE') : 'NOT RUN'}</Pill>
+          <Pill>
+            CIO {cio.status === 'COMPLETE' ? (cio.verdict || 'COMPLETE') : `NOT RUN${cio.reason_code ? ` · ${cio.reason_code}` : ''}`}
+          </Pill>
+          <Pill>
+            Maria {maria.status === 'COMPLETE' ? (maria.verdict || 'COMPLETE') : `NOT RUN${maria.reason_code ? ` · ${maria.reason_code}` : ''}`}
+          </Pill>
         </div>
+        {card.decision_input_price != null && card.current_quote != null && Number(card.decision_input_price) !== Number(card.current_quote) ? (
+          <div style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 8 }} data-decision-vs-quote>
+            Decision input {money(Number(card.decision_input_price))}
+            {card.decision_input_as_of ? ` @ ${card.decision_input_as_of}` : ''}
+            {' · '}
+            Quote {money(Number(card.current_quote))}
+            {card.current_quote_as_of ? ` @ ${card.current_quote_as_of}` : ''}
+          </div>
+        ) : null}
       </section>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1.15fr .85fr', gap: 12, marginTop: 12 }}>

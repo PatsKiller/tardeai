@@ -345,16 +345,18 @@ def _apply_filters(items: list[dict], q: dict[str, Any]) -> list[dict]:
         if view == "screener_finds" and not c.get("screener_origin"):
             continue
         if view == "needs_data":
-            if c.get("freshness_state") not in ("DATA_UNAVAILABLE", "STALE") and c.get("last") is not None:
-                if c.get("company_summary"):
-                    continue
+            # repair_queue: data failures / stale / pending review evidence
+            from lib.data_broker.watch_domains import REPAIR_QUEUE
+            st = (c.get("trade_ai_state") or "").upper()
+            quote_bad = c.get("freshness_state") in ("DATA_UNAVAILABLE", "STALE") or c.get("last") is None
+            if st not in REPAIR_QUEUE and not quote_bad and c.get("company_summary"):
+                continue
         if view == "needs_review":
             cio = (c.get("cio_review") or {}).get("status")
             maria = (c.get("maria_review") or {}).get("status")
             if cio == "COMPLETE" and maria == "COMPLETE":
                 continue
         if view == "reviewed_today":
-            # Require completed_at within market date ET
             from lib.data_broker.watch_domains import completed_today
             cio = c.get("cio_review") or {}
             maria = c.get("maria_review") or {}
@@ -365,8 +367,10 @@ def _apply_filters(items: list[dict], q: dict[str, Any]) -> list[dict]:
             if not ok_today:
                 continue
         if view == "avoid":
+            # excluded tier: AVOID / BLOCKED / DETERMINISTIC_FAIL
+            from lib.data_broker.watch_domains import EXCLUDED_TOP
             st = (c.get("trade_ai_state") or "").upper()
-            if st not in ("AVOID", "BLOCKED", "DETERMINISTIC_FAIL"):
+            if st not in EXCLUDED_TOP:
                 continue
         if view == "near_trigger":
             from lib.data_broker.watch_domains import near_trigger_eval
@@ -374,7 +378,7 @@ def _apply_filters(items: list[dict], q: dict[str, Any]) -> list[dict]:
             if not nt.get("is_near"):
                 continue
         if view == "top_ideas":
-            # Ranking applied after filter pass — keep eligible non-fail unless fail ranks last
+            # Eligible-only ranking applied after this filter pass
             pass
 
         if starred_only and not c.get("starred"):
@@ -502,7 +506,12 @@ def _sort_items(items: list[dict], sort: str) -> list[dict]:
 
 
 def _enrich_card_semantics(card: dict, *, enrich: dict, held_source: str) -> dict:
-    """Broker-owned presentation fields: absolute vs relative, near-trigger, material change."""
+    """Broker-owned presentation fields: absolute vs relative, near-trigger, material change.
+
+    Review dispositions always go through load_review_artifacts so quarantine
+    (UNVERIFIED_OPERATOR_AUTHORIZATION) cannot be masked by NMC/legacy.
+    Material fingerprints are read-only on GET (never written here).
+    """
     from lib.data_broker.watch_domains import (
         absolute_performance,
         relative_performance_gaps,
@@ -511,16 +520,21 @@ def _enrich_card_semantics(card: dict, *, enrich: dict, held_source: str) -> dic
         material_change_vs_prior,
         load_review_artifacts,
         completed_today,
+        dimensional_freshness,
+        rank_eligibility,
+        RANK_VERSION,
     )
     c = dict(card)
-    # Re-bind reviews through authorization gate (demote quarantine / self-asserted)
+    # Re-bind reviews through durable disposition projection (quarantine wins)
     arts = load_review_artifacts(c.get("symbol") or "")
     for agent, key in (("cio", "cio_review"), ("maria", "maria_review")):
         if agent in arts:
             a = arts[agent]
-            if a.get("status") == "COMPLETE":
+            if a.get("status") == "COMPLETE" and a.get("artifact_disposition") == "COMPLETE":
                 c[key] = {
                     "status": "COMPLETE",
+                    "reason_code": None,
+                    "artifact_disposition": "COMPLETE",
                     "summary": a.get("summary"),
                     "verdict": a.get("verdict"),
                     "provider": a.get("provider"),
@@ -529,23 +543,47 @@ def _enrich_card_semantics(card: dict, *, enrich: dict, held_source: str) -> dic
                     "process_id": a.get("process_id"),
                     "completed_at": a.get("completed_at"),
                     "estimated_cost_usd": a.get("estimated_cost_usd"),
-                    "display": {
+                    "display": a.get("display") or {
                         "label": f"{agent.upper()} REVIEW: COMPLETE",
                         "provider": str(a.get("provider") or "").upper(),
                         "model": a.get("model"),
                         "policy": a.get("executed_policy"),
                         "cost": f"${float(a.get('estimated_cost_usd') or 0):.5f}",
+                        "reason": None,
+                        "disposition": "COMPLETE",
                     },
                 }
             else:
-                c[key] = a
+                # NOT_RUN path — keep reason_code + artifact_disposition visible
+                c[key] = {
+                    "agent_id": agent,
+                    "status": "NOT_RUN",
+                    "reason_code": a.get("reason_code") or "NOT_SCHEDULED",
+                    "artifact_disposition": a.get("artifact_disposition") or "NOT_SCHEDULED",
+                    "provider": None,
+                    "model": None,
+                    "policy": "NO_CALL",
+                    "requested_policy": "NO_CALL",
+                    "executed_policy": "NO_CALL",
+                    "estimated_cost_usd": 0.0,
+                    "fallback_used": False,
+                    "display": a.get("display") or {
+                        "label": f"{agent.upper()} REVIEW: NOT RUN",
+                        "provider": "NONE",
+                        "model": "NONE",
+                        "policy": "NO_CALL",
+                        "cost": "$0",
+                        "reason": a.get("reason_code"),
+                        "disposition": a.get("artifact_disposition"),
+                    },
+                }
         else:
-            # Force demote if prior complete without auth path
             prev = c.get(key) or {}
             if prev.get("status") == "COMPLETE" and not prev.get("authorization_event_id"):
                 c[key] = {
                     "status": "NOT_RUN",
                     "reason_code": "UNVERIFIED_OPERATOR_AUTHORIZATION",
+                    "artifact_disposition": "AUTHORIZATION_REJECTED",
                     "provider": None,
                     "model": None,
                     "policy": "NO_CALL",
@@ -557,6 +595,7 @@ def _enrich_card_semantics(card: dict, *, enrich: dict, held_source: str) -> dic
                         "policy": "NO_CALL",
                         "cost": "$0",
                         "reason": "UNVERIFIED_OPERATOR_AUTHORIZATION",
+                        "disposition": "AUTHORIZATION_REJECTED",
                     },
                 }
 
@@ -581,7 +620,37 @@ def _enrich_card_semantics(card: dict, *, enrich: dict, held_source: str) -> dic
 
     fp = material_fingerprint(c)
     c["material_fingerprint"] = fp
+    # READ-ONLY: never mkdir/write fingerprints on GET
     c["material_change"] = material_change_vs_prior(c.get("symbol") or "", fp)
+
+    # Dimensional freshness — never a generic whole-card CURRENT chip
+    dims = dimensional_freshness(c)
+    c["quote_freshness"] = dims.get("quote_freshness")
+    c["technical_freshness"] = dims.get("technical_freshness")
+    c["decision_freshness"] = dims.get("decision_freshness")
+    c["street_freshness"] = dims.get("street_freshness")
+    c["review_freshness"] = dims.get("review_freshness")
+    c["freshness_dimensions"] = dims
+    # Keep quote-level freshness_state; do not promote it as whole-card label
+    c["card_freshness_label"] = None
+
+    # Decision input price vs current quote (when risk references historical price)
+    c["current_quote"] = c.get("last")
+    c["current_quote_as_of"] = c.get("price_as_of")
+    decision_input_price = c.get("decision_input_price") or c.get("decision_price") or c.get("packet_price")
+    decision_input_as_of = c.get("decision_input_as_of") or c.get("decision_as_of") or c.get("packet_as_of")
+    # Parse risk text for "$X.XX" when explicit fields absent (display only)
+    if decision_input_price is None:
+        risk = str(c.get("primary_risk") or "")
+        import re
+        m = re.search(r"\$(\d+(?:\.\d+)?)", risk)
+        if m:
+            try:
+                decision_input_price = float(m.group(1))
+            except ValueError:
+                decision_input_price = None
+    c["decision_input_price"] = decision_input_price
+    c["decision_input_as_of"] = decision_input_as_of
 
     # Separate next review fields
     raw_next = c.get("next_review_time") or c.get("next_deterministic_review_condition")
@@ -591,7 +660,6 @@ def _enrich_card_semantics(card: dict, *, enrich: dict, held_source: str) -> dic
         c["next_review_condition"] = raw_next
         c["next_review_at"] = None
     c["review_sla_state"] = "UNKNOWN"
-    # Review age from latest COMPLETE
     ages = []
     for key in ("cio_review", "maria_review"):
         r = c.get(key) or {}
@@ -604,7 +672,6 @@ def _enrich_card_semantics(card: dict, *, enrich: dict, held_source: str) -> dic
         if (c.get(k) or {}).get("status") == "COMPLETE"
     )
 
-    # Analyst target fields (already on street consensus)
     street = c.get("street_consensus") or {}
     c["target_mean"] = c.get("target_mean") if c.get("target_mean") is not None else street.get("target_mean")
     c["implied_upside_pct"] = c.get("implied_upside_pct") if c.get("implied_upside_pct") is not None else street.get("implied_upside_pct")
@@ -612,6 +679,11 @@ def _enrich_card_semantics(card: dict, *, enrich: dict, held_source: str) -> dic
     c["latest_analyst_action_quality"] = "UNAVAILABLE"
     c["position_source"] = held_source
     c["data_quality_note"] = "relative and business-model domains typed unavailable until broker providers land"
+
+    elig, excl = rank_eligibility(c.get("trade_ai_state"))
+    c.setdefault("rank_eligibility", elig)
+    c.setdefault("rank_exclusion_reason", excl)
+    c.setdefault("rank_version", RANK_VERSION)
     return c
 
 
@@ -790,40 +862,141 @@ def list_watch_intelligence(query: dict | None = None) -> dict[str, Any]:
     return body
 
 
+def compose_broker_item(symbol: str, *, card: dict | None = None) -> dict[str, Any]:
+    """Canonical broker item for one symbol — shared by list and detail.
+
+    Applies membership, review disposition, dimensional freshness, absolute
+    performance, and read-only material-change comparison. Zero provider calls.
+    """
+    from lib.watchlist_intelligence import list_intelligence
+    from lib.data_broker.watch_domains import enrichment_batch, assess_data_quality
+
+    sym = symbol.upper()
+    if card is None:
+        raw = list_intelligence(symbols=[sym], limit=1, priority_only=False, offset=0)
+        cards = raw.get("cards") or []
+        card = next((c for c in cards if (c.get("symbol") or "").upper() == sym), None)
+        if not card and cards:
+            card = cards[0]
+        if not card:
+            return {"ok": False, "error": "symbol_not_found", "symbol": sym}
+
+    starred = sym in _starred_set()
+    screener = sym in _screener_origin_set()
+    held = sym in _held_set()
+    held_source = _held_source()
+    enrich_map = enrichment_batch([sym])
+    c = _enrich_card_semantics(
+        {**card, "symbol": sym, "starred": starred, "held": held, "screener_origin": screener},
+        enrich=enrich_map.get(sym) or {},
+        held_source=held_source,
+    )
+    it = _card_to_broker_item(c, starred=starred, screener=screener)
+    it["card"] = c
+    it["domains"]["WatchMembership"]["starred"] = field(starred, source="operator_starred_symbols")
+    it["domains"]["WatchMembership"]["screener_origin"] = field(
+        screener, source="screener_find_pins|watchlist_items.source"
+    )
+    it["domains"]["PositionContext"] = {
+        "held": field(held, source=held_source),
+        "source": field(held_source, source="data_broker.watch_domains.membership_held"),
+    }
+    it["domains"]["RelativePerformance"] = {
+        "absolute_summary": field(
+            c.get("absolute_performance_summary"),
+            source="enrichment_cache",
+            quality_state="VALID" if c.get("absolute_performance_summary") else "UNAVAILABLE",
+        ),
+        "versus_industry": field(None, source=None, quality_state="UNAVAILABLE"),
+        "versus_sector": field(None, source=None, quality_state="UNAVAILABLE"),
+        "versus_spy": field(None, source=None, quality_state="UNAVAILABLE"),
+        "note": field(c.get("relative_performance_note"), source="broker"),
+    }
+    it["domains"]["FreshnessDimensions"] = {
+        "quote": field(c.get("quote_freshness"), source="watch_canonical_quote"),
+        "technical": field(c.get("technical_freshness"), source="decision_packet|risk"),
+        "decision": field(c.get("decision_freshness"), source="trade_ai_state"),
+        "street": field(c.get("street_freshness"), source="yahoo/analyst_rollup"),
+        "review": field(c.get("review_freshness"), source="review_artifacts"),
+    }
+    quality = assess_data_quality([it])
+    return {
+        "ok": True,
+        "symbol": sym,
+        "item": it,
+        "card": c,
+        "quality": quality,
+        "held_source": held_source,
+    }
+
+
 def detail_watch_intelligence(symbol: str) -> dict[str, Any]:
+    """GET detail — same canonical composer as list (no hard-coded OK, no generated_at snapshot)."""
+    from lib.data_broker.watch_domains import content_snapshot_id, DIRECT_DEPENDENCIES
     from lib.watchlist_intelligence import detail_intelligence
 
-    raw = detail_intelligence(symbol)
-    if not raw.get("ok"):
+    composed = compose_broker_item(symbol)
+    if not composed.get("ok"):
         return {
             "ok": False,
-            "error": raw.get("error") or "unavailable",
+            "error": composed.get("error") or "unavailable",
             "symbol": symbol.upper(),
             "provider_calls": 0,
+            "paid_flags_enabled": False,
+            "broker_write_authority": "NONE",
             "data_contract_version": CONTRACT_VERSION,
             "generated_at": _now(),
         }
-    card = raw.get("card") or {}
-    starred = card.get("symbol", "").upper() in _starred_set()
-    screener = card.get("symbol", "").upper() in _screener_origin_set()
-    item = _card_to_broker_item(card, starred=starred, screener=screener)
+
+    item = composed["item"]
+    card = composed["card"]
+    quality = composed["quality"]
+    # Full package for symbol page (legacy detail envelope) — still no providers
+    raw = detail_intelligence(symbol)
+    # Prefer broker-enriched card over raw for parity fields
+    if isinstance(raw, dict) and raw.get("ok"):
+        raw = dict(raw)
+        raw["card"] = card
+
+    snap = content_snapshot_id(
+        [item],
+        view="detail",
+        query={"symbol": symbol.upper()},
+    )
     body = {
         "ok": True,
-        "snapshot_id": _snapshot_id({"sym": symbol.upper(), "v": CONTRACT_VERSION, "t": raw.get("generated_at")}),
+        "snapshot_id": snap,
         "generated_at": _now(),
         "data_contract_version": CONTRACT_VERSION,
         "contract_version": CONTRACT_VERSION,
         "provider_calls": 0,
         "paid_flags_enabled": False,
         "broker_write_authority": "NONE",
-        "source_status": {"detail": "ok", "provider_calls": 0},
-        "data_quality_status": "OK",
+        "source_status": {
+            "detail": "ok",
+            "provider_calls": 0,
+            "composer": "compose_broker_item",
+            "position_source": composed.get("held_source"),
+        },
+        "data_quality_status": quality.get("status"),
+        "data_quality": quality,
         "counts": {"domains": len(item.get("domains") or {})},
         "symbol": symbol.upper(),
         "item": item,
-        "card": item.get("card"),
-        "detail": raw,  # full package for symbol page
+        "card": card,
+        "detail": raw if isinstance(raw, dict) else {"ok": True, "card": card},
         "domains": item.get("domains"),
+        "data_broker": {
+            "package": "scripts/lib/data_broker",
+            "projection": "watch_intelligence",
+            "domains": "lib.data_broker.watch_domains",
+            "contract_version": CONTRACT_VERSION,
+            "catalog": "/api/v3/data-broker",
+            "dependency_direction": "watch_domains → watch_intelligence projection → API → React",
+            "direct_dependencies": DIRECT_DEPENDENCIES,
+            "read_only": True,
+            "provider_calls": 0,
+        },
         "consumers": [
             "Watch Intelligence", "Portfolio", "Re-Entry", "Risk",
             "Active Trader", "Research Intelligence", "Agents", "Reports",
@@ -833,11 +1006,18 @@ def detail_watch_intelligence(symbol: str) -> dict[str, Any]:
 
 
 def watch_filters() -> dict[str, Any]:
-    """Filter catalog with id/label/options/source/generated_at."""
-    from lib.watchlist_intelligence import list_intelligence
-    from lib.data_broker.watch_domains import saved_lists_canonical
+    """Filter catalog with id/label/options/source/generated_at.
 
-    # Facet sample from membership universe (not DEFAULT_PRIORITY rank)
+    Provider/model options derive ONLY from authorized COMPLETE artifacts —
+    never hard-coded when zero authorized completes exist.
+    Unavailable controls stay disabled with explanations.
+    """
+    from lib.watchlist_intelligence import list_intelligence
+    from lib.data_broker.watch_domains import (
+        saved_lists_canonical,
+        authorized_complete_providers_models,
+    )
+
     sample = sorted(_starred_set() | _held_set() | _screener_origin_set())[:40]
     from lib.watchlist_intelligence import DEFAULT_PRIORITY
     sample = list(dict.fromkeys(sample + list(DEFAULT_PRIORITY)))
@@ -847,8 +1027,11 @@ def watch_filters() -> dict[str, Any]:
     industries = sorted({c.get("industry") for c in cards if c.get("industry")})
     instruments = sorted({c.get("instrument_type") or "stock" for c in cards})
     states = sorted({c.get("trade_ai_state") for c in cards if c.get("trade_ai_state")})
+    providers, models = authorized_complete_providers_models()
+    lists = saved_lists_canonical()
     gen = _now()
-    def filt(fid, label, options, source, applicability="all"):
+
+    def filt(fid, label, options, source, applicability="all", *, enabled=True, note=None):
         return {
             "id": fid,
             "label": label,
@@ -857,30 +1040,77 @@ def watch_filters() -> dict[str, Any]:
             "applicability": applicability,
             "source": source,
             "generated_at": gen,
+            "enabled": enabled,
+            "note": note,
         }
+
+    unavailable = "typed unavailable until broker provider lands"
     filters = [
         filt("view", "View", list(VIEWS), "watch_intelligence"),
         filt("street_rating", "Street rating", ["STRONG BUY", "BUY", "HOLD", "SELL", "NOT RATED"], "yahoo/analyst_rollup"),
-        filt("trade_ai_state", "Trade AI state", states or ["WAIT", "READY", "MANAGING", "DETERMINISTIC_FAIL", "BLOCKED", "DATA_UNAVAILABLE"], "decision_packets"),
+        filt(
+            "trade_ai_state",
+            "Trade AI state",
+            states or ["WAIT", "READY", "MANAGING", "DETERMINISTIC_FAIL", "BLOCKED", "DATA_UNAVAILABLE"],
+            "decision_packets",
+        ),
         filt("sector", "Sector", sectors, "symbol_profiles"),
         filt("industry", "Industry", industries, "symbol_profiles"),
         filt("instrument", "Instrument", instruments, "symbol_profiles"),
         filt("origin", "Origin", ["screener_find"], "screener_find_pins"),
-        filt("saved_list", "Saved list", [x.get("id") for x in saved_lists_canonical()], "canonical_lists"),
+        filt(
+            "saved_list",
+            "Saved list",
+            [x.get("id") for x in lists],
+            "canonical_lists",
+            enabled=bool(lists),
+            note=None if lists else "No canonical saved-list membership on host",
+        ),
         filt("review_status", "Review status", ["COMPLETE", "NOT_RUN"], "review_artifacts"),
         filt("review_agent", "Review agent", ["cio", "maria"], "review_artifacts"),
-        filt("provider", "Provider", ["deepseek"], "review_artifacts"),
-        filt("model", "Model", ["deepseek-v4-flash"], "review_artifacts"),
-        filt("freshness", "Freshness", ["CURRENT", "PREMARKET_CURRENT", "AFTER_HOURS_CURRENT", "STALE", "DATA_UNAVAILABLE"], "canonical_quote"),
+        filt(
+            "provider",
+            "Provider",
+            providers,
+            "authorized COMPLETE review artifacts only",
+            enabled=bool(providers),
+            note=None if providers else "No authorized COMPLETE review artifacts — options empty",
+        ),
+        filt(
+            "model",
+            "Model",
+            models,
+            "authorized COMPLETE review artifacts only",
+            enabled=bool(models),
+            note=None if models else "No authorized COMPLETE review artifacts — options empty",
+        ),
+        filt(
+            "freshness",
+            "Quote freshness",
+            ["CURRENT", "PREMARKET_CURRENT", "AFTER_HOURS_CURRENT", "STALE", "DATA_UNAVAILABLE"],
+            "canonical_quote",
+        ),
         filt("material_change", "Material change", ["1", "0"], "material_fingerprint"),
-        filt("cio_view", "CIO view", ["ADD", "HOLD", "AVOID", "WATCH", "RESEARCH"], "cio_review.verdict"),
+        filt(
+            "cio_view",
+            "CIO view",
+            ["ADD", "HOLD", "AVOID", "WATCH", "RESEARCH"],
+            "cio_review.verdict",
+            enabled=bool(providers),
+            note=None if providers else "No authorized COMPLETE CIO reviews",
+        ),
         filt("starred", "Starred only", ["1"], "operator_starred_symbols"),
         filt("held", "Held only", ["1"], "portfolio_snapshot|holdings_fallback"),
         filt("sort", "Sort", ["watch_rank", "street_rating", "day_change", "upside", "symbol"], "projection"),
+        # Typed unavailable — keep disabled with explanation
+        filt("catalyst_window", "Catalyst window", [], "not_implemented", enabled=False, note=unavailable),
+        filt("earnings_window", "Earnings window", [], "not_implemented", enabled=False, note=unavailable),
+        filt("relative_strength_band", "Relative-strength band", [], "not_implemented", enabled=False, note=unavailable),
+        filt("valuation_band", "Valuation band", [], "not_implemented", enabled=False, note=unavailable),
     ]
     return {
         "ok": True,
-        "snapshot_id": _snapshot_id({"filters": [f["id"] for f in filters], "n": len(filters)}),
+        "snapshot_id": _snapshot_id({"filters": [f["id"] for f in filters], "n": len(filters), "providers": providers, "models": models}),
         "generated_at": gen,
         "data_contract_version": CONTRACT_VERSION,
         "provider_calls": 0,
@@ -893,12 +1123,24 @@ def watch_filters() -> dict[str, Any]:
         "instruments": instruments,
         "origins": ["screener_find"],
         "review_statuses": ["COMPLETE", "NOT_RUN"],
+        "providers": providers,
+        "models": models,
+        "saved_lists": [x.get("id") for x in lists],
+        "cio_views": ["ADD", "HOLD", "AVOID", "WATCH", "RESEARCH"] if providers else [],
         "sorts": ["watch_rank", "street_rating", "day_change", "upside", "symbol"],
+        "unavailable_filters": [
+            {"id": "catalyst_window", "note": unavailable},
+            {"id": "earnings_window", "note": unavailable},
+            {"id": "relative_strength_band", "note": unavailable},
+            {"id": "valuation_band", "note": unavailable},
+        ],
         "counts": {
             "starred": len(_starred_set()),
             "held": len(_held_set()),
             "screener": len(_screener_origin_set()),
-            "saved_lists": len(saved_lists_canonical()),
+            "saved_lists": len(lists),
+            "authorized_providers": len(providers),
+            "authorized_models": len(models),
         },
     }
 
@@ -922,30 +1164,43 @@ def watch_lists() -> dict[str, Any]:
 
 
 def watch_reviews(symbol: str) -> dict[str, Any]:
-    """Reviews through authorization gate — quarantine excluded."""
+    """Reviews through durable disposition projection.
+
+    Quarantine excluded from narrative/model/cost, but disposition remains visible:
+      status=NOT_RUN, reason_code=UNVERIFIED_OPERATOR_AUTHORIZATION,
+      artifact_disposition=QUARANTINED
+    """
     from lib.data_broker.watch_domains import load_review_artifacts
-    from lib.watchlist_intelligence import not_run_review
 
     arts = load_review_artifacts(symbol)
     agents = ("cio", "maria", "sentinel", "steph", "risk", "grok", "chatgpt")
     items = []
     complete = 0
+    quarantined = 0
     for a in agents:
         if a in arts:
             items.append(arts[a])
             if arts[a].get("status") == "COMPLETE":
                 complete += 1
+            if arts[a].get("artifact_disposition") == "QUARANTINED":
+                quarantined += 1
         else:
-            items.append(not_run_review(a, reason_code="NOT_SCHEDULED"))
+            from lib.data_broker.watch_domains import _not_run_display
+            items.append(_not_run_display(a, "NOT_SCHEDULED", disposition="NOT_SCHEDULED"))
     return {
         "ok": True,
-        "snapshot_id": _snapshot_id({"sym": symbol.upper(), "n": complete, "agents": [i.get("status") for i in items]}),
+        "snapshot_id": _snapshot_id({
+            "sym": symbol.upper(),
+            "n": complete,
+            "q": quarantined,
+            "agents": [(i.get("status"), i.get("reason_code"), i.get("artifact_disposition")) for i in items],
+        }),
         "generated_at": _now(),
         "data_contract_version": CONTRACT_VERSION,
         "provider_calls": 0,
         "paid_flags_enabled": False,
         "symbol": symbol.upper(),
-        "counts": {"total": len(items), "complete": complete},
+        "counts": {"total": len(items), "complete": complete, "quarantined": quarantined},
         "items": items,
         "source_status": {"reviews": "authorization_gated", "quarantine_excluded": True},
     }

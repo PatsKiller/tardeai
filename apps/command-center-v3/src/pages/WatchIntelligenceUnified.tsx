@@ -27,6 +27,15 @@ type Card = {
   price_as_of?: string | null
   price_source?: string | null
   freshness_state?: string | null
+  quote_freshness?: string | null
+  technical_freshness?: string | null
+  decision_freshness?: string | null
+  street_freshness?: string | null
+  review_freshness?: string | null
+  decision_input_price?: number | null
+  decision_input_as_of?: string | null
+  current_quote?: number | null
+  current_quote_as_of?: string | null
   market_session?: string | null
   quote_id?: string | number | null
   source_record_id?: string | null
@@ -47,6 +56,8 @@ type Card = {
   cio_review?: ReviewStatus
   maria_review?: ReviewStatus
   rank?: number | null
+  rank_eligibility?: string | null
+  rank_exclusion_reason?: string | null
   material_change?: boolean
   absolute_performance_summary?: string | null
   next_review_at?: string | null
@@ -60,6 +71,7 @@ type ReviewStatus = {
   model?: string | null
   policy?: string | null
   reason_code?: string | null
+  artifact_disposition?: string | null
   display?: Record<string, string | null | undefined>
   estimated_cost_usd?: number
 }
@@ -97,11 +109,15 @@ function stateColor(s?: string) {
 
 function ReviewBox({ title, rev }: { title: string; rev?: ReviewStatus }) {
   const complete = rev?.status === 'COMPLETE'
+  const reason = rev?.reason_code || rev?.display?.reason || null
+  const disposition = rev?.artifact_disposition || rev?.display?.disposition || null
   return (
     <div
       style={{ background: BB.bgShift, border: `1px solid ${BB.border}`, borderRadius: 8, padding: 8 }}
       data-review-box
       data-review-status={rev?.status || 'NOT_RUN'}
+      data-review-reason={reason || ''}
+      data-review-disposition={disposition || ''}
       data-review-model={complete ? String(rev?.model || '') : 'NONE'}
     >
       <div style={{ fontSize: TYPE.xs, color: BB.text3, fontWeight: 900, letterSpacing: 0.5, textTransform: 'uppercase' }}>{title}</div>
@@ -120,11 +136,38 @@ function ReviewBox({ title, rev }: { title: string; rev?: ReviewStatus }) {
           </div>
           <div style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 3 }}>
             Provider NONE · Model NONE · Policy NO_CALL · Cost $0
-            {rev?.reason_code ? ` · ${rev.reason_code}` : ''}
+            {reason ? ` · ${reason}` : ''}
+            {disposition ? ` · ${disposition}` : ''}
           </div>
         </>
       )}
     </div>
+  )
+}
+
+function FreshnessChips({ c }: { c: Card }) {
+  const dims: { k: string; v?: string | null }[] = [
+    { k: 'Quote', v: c.quote_freshness || c.freshness_state },
+    { k: 'Technicals', v: c.technical_freshness },
+    { k: 'Decision', v: c.decision_freshness },
+    { k: 'Street', v: c.street_freshness },
+    { k: 'Reviews', v: c.review_freshness },
+  ]
+  return (
+    <>
+      {dims.map(d =>
+        d.v ? (
+          <span
+            key={d.k}
+            data-freshness-dim={d.k.toLowerCase()}
+            data-freshness-value={d.v}
+            style={{ border: `1px solid ${BB.border}`, borderRadius: 999, padding: '3px 8px', fontSize: TYPE.xs, color: BB.text3 }}
+          >
+            {d.k}: {d.v}
+          </span>
+        ) : null,
+      )}
+    </>
   )
 }
 
@@ -154,6 +197,17 @@ export default function WatchIntelligenceUnified() {
     setSp(next, { replace: true })
   }, [sp, setSp])
 
+  const savedList = qsGet(sp, 'saved_list', '')
+  const provider = qsGet(sp, 'provider', '')
+  const model = qsGet(sp, 'model', '')
+  const cioView = qsGet(sp, 'cio_view', '')
+  const industry = qsGet(sp, 'industry', '')
+  const instrument = qsGet(sp, 'instrument', '')
+  const reviewStatus = qsGet(sp, 'review_status', '')
+  const reviewAgent = qsGet(sp, 'review_agent', '')
+  const freshness = qsGet(sp, 'freshness', '')
+  const materialChange = qsGet(sp, 'material_change', '')
+
   const apiQs = useMemo(() => {
     const p = new URLSearchParams()
     p.set('view', view || 'top_ideas')
@@ -164,11 +218,21 @@ export default function WatchIntelligenceUnified() {
     if (street) p.set('street_rating', street)
     if (state) p.set('trade_ai_state', state)
     if (sector) p.set('sector', sector)
+    if (industry) p.set('industry', industry)
+    if (instrument) p.set('instrument', instrument)
+    if (reviewStatus) p.set('review_status', reviewStatus)
+    if (reviewAgent) p.set('review_agent', reviewAgent)
+    if (freshness) p.set('freshness', freshness)
+    if (materialChange) p.set('material_change', materialChange)
+    if (savedList) p.set('saved_list', savedList)
+    if (provider) p.set('provider', provider)
+    if (model) p.set('model', model)
+    if (cioView) p.set('cio_view', cioView)
     if (starredOnly) p.set('starred', '1')
     if (heldOnly) p.set('held', '1')
     if (origin) p.set('origin', origin)
     return p.toString()
-  }, [view, page, sort, q, street, state, sector, starredOnly, heldOnly, origin])
+  }, [view, page, sort, q, street, state, sector, industry, instrument, reviewStatus, reviewAgent, freshness, materialChange, savedList, provider, model, cioView, starredOnly, heldOnly, origin])
 
   const [refreshKey, setRefreshKey] = useState(0)
   const [starError, setStarError] = useState<string | null>(null)
@@ -318,38 +382,90 @@ export default function WatchIntelligenceUnified() {
             <option key={r} value={r}>{r}</option>
           ))}
         </select>
-        <select value={qsGet(sp, 'industry', '')} onChange={e => setParam('industry', e.target.value)} style={inputStyle}>
+        <select value={industry} onChange={e => setParam('industry', e.target.value)} style={inputStyle}>
           <option value="">Industry</option>
           {(filterBody?.industries || []).map((r: string) => (
             <option key={r} value={r}>{r}</option>
           ))}
         </select>
-        <select value={qsGet(sp, 'instrument', '')} onChange={e => setParam('instrument', e.target.value)} style={inputStyle}>
+        <select value={instrument} onChange={e => setParam('instrument', e.target.value)} style={inputStyle}>
           <option value="">Instrument</option>
           {(filterBody?.instruments || []).map((r: string) => (
             <option key={r} value={r}>{r}</option>
           ))}
         </select>
-        <select value={qsGet(sp, 'review_status', '')} onChange={e => setParam('review_status', e.target.value)} style={inputStyle}>
+        <select value={reviewStatus} onChange={e => setParam('review_status', e.target.value)} style={inputStyle}>
           <option value="">Review status</option>
           <option value="COMPLETE">COMPLETE</option>
           <option value="NOT_RUN">NOT_RUN</option>
         </select>
-        <select value={qsGet(sp, 'review_agent', '')} onChange={e => setParam('review_agent', e.target.value)} style={inputStyle}>
+        <select value={reviewAgent} onChange={e => setParam('review_agent', e.target.value)} style={inputStyle}>
           <option value="">Review agent</option>
           <option value="cio">CIO</option>
           <option value="maria">Maria</option>
         </select>
-        <select value={qsGet(sp, 'freshness', '')} onChange={e => setParam('freshness', e.target.value)} style={inputStyle}>
-          <option value="">Freshness</option>
+        <select value={freshness} onChange={e => setParam('freshness', e.target.value)} style={inputStyle}>
+          <option value="">Quote freshness</option>
           {['CURRENT', 'PREMARKET_CURRENT', 'AFTER_HOURS_CURRENT', 'STALE', 'DATA_UNAVAILABLE'].map(r => (
             <option key={r} value={r}>{r}</option>
           ))}
         </select>
-        <select value={qsGet(sp, 'material_change', '')} onChange={e => setParam('material_change', e.target.value)} style={inputStyle}>
+        <select value={materialChange} onChange={e => setParam('material_change', e.target.value)} style={inputStyle}>
           <option value="">Material change</option>
           <option value="1">Yes</option>
           <option value="0">No</option>
+        </select>
+        <select
+          value={savedList}
+          onChange={e => setParam('saved_list', e.target.value)}
+          style={inputStyle}
+          disabled={!(filterBody?.saved_lists || []).length}
+          title={(filterBody?.saved_lists || []).length ? 'Saved list' : 'No canonical saved lists on host'}
+          data-filter="saved_list"
+        >
+          <option value="">{(filterBody?.saved_lists || []).length ? 'Saved list' : 'Saved list (unavailable)'}</option>
+          {(filterBody?.saved_lists || []).map((r: string) => (
+            <option key={r} value={r}>{r}</option>
+          ))}
+        </select>
+        <select
+          value={cioView}
+          onChange={e => setParam('cio_view', e.target.value)}
+          style={inputStyle}
+          disabled={!(filterBody?.cio_views || []).length}
+          title={(filterBody?.cio_views || []).length ? 'CIO view' : 'No authorized COMPLETE CIO reviews'}
+          data-filter="cio_view"
+        >
+          <option value="">{(filterBody?.cio_views || []).length ? 'CIO view' : 'CIO view (no authorized reviews)'}</option>
+          {(filterBody?.cio_views || []).map((r: string) => (
+            <option key={r} value={r}>{r}</option>
+          ))}
+        </select>
+        <select
+          value={provider}
+          onChange={e => setParam('provider', e.target.value)}
+          style={inputStyle}
+          disabled={!(filterBody?.providers || []).length}
+          title={(filterBody?.providers || []).length ? 'Provider' : 'No authorized COMPLETE artifacts — options empty'}
+          data-filter="provider"
+        >
+          <option value="">{(filterBody?.providers || []).length ? 'Provider' : 'Provider (none authorized)'}</option>
+          {(filterBody?.providers || []).map((r: string) => (
+            <option key={r} value={r}>{r}</option>
+          ))}
+        </select>
+        <select
+          value={model}
+          onChange={e => setParam('model', e.target.value)}
+          style={inputStyle}
+          disabled={!(filterBody?.models || []).length}
+          title={(filterBody?.models || []).length ? 'Model' : 'No authorized COMPLETE artifacts — options empty'}
+          data-filter="model"
+        >
+          <option value="">{(filterBody?.models || []).length ? 'Model' : 'Model (none authorized)'}</option>
+          {(filterBody?.models || []).map((r: string) => (
+            <option key={r} value={r}>{r}</option>
+          ))}
         </select>
         <select value={sort} onChange={e => setParam('sort', e.target.value)} style={inputStyle}>
           <option value="watch_rank">Sort: watch rank</option>
@@ -361,6 +477,19 @@ export default function WatchIntelligenceUnified() {
         <select value={origin} onChange={e => setParam('origin', e.target.value)} style={inputStyle}>
           <option value="">Origin</option>
           <option value="screener_find">Screener find</option>
+        </select>
+        {/* Typed unavailable controls — disabled with explanation */}
+        <select disabled style={{ ...inputStyle, opacity: 0.55 }} title="typed unavailable until broker provider lands" data-filter="catalyst_window">
+          <option>Catalyst window (unavailable)</option>
+        </select>
+        <select disabled style={{ ...inputStyle, opacity: 0.55 }} title="typed unavailable until broker provider lands" data-filter="earnings_window">
+          <option>Earnings window (unavailable)</option>
+        </select>
+        <select disabled style={{ ...inputStyle, opacity: 0.55 }} title="typed unavailable until broker provider lands" data-filter="relative_strength_band">
+          <option>Relative-strength band (unavailable)</option>
+        </select>
+        <select disabled style={{ ...inputStyle, opacity: 0.55 }} title="typed unavailable until broker provider lands" data-filter="valuation_band">
+          <option>Valuation band (unavailable)</option>
         </select>
         <button type="button" style={pill(starredOnly)} onClick={() => setParam('starred', starredOnly ? '' : '1')}>★ Starred only</button>
         <button type="button" style={pill(heldOnly)} onClick={() => setParam('held', heldOnly ? '' : '1')}>Held only</button>
@@ -426,7 +555,12 @@ export default function WatchIntelligenceUnified() {
                   data-held={String(!!c.held)}
                   data-screener-origin={String(!!c.screener_origin)}
                   data-cio-status={c.cio_review?.status || 'NOT_RUN'}
+                  data-cio-reason={c.cio_review?.reason_code || ''}
                   data-maria-status={c.maria_review?.status || 'NOT_RUN'}
+                  data-maria-reason={c.maria_review?.reason_code || ''}
+                  data-quote-freshness={c.quote_freshness || c.freshness_state || ''}
+                  data-technical-freshness={c.technical_freshness || ''}
+                  data-decision-freshness={c.decision_freshness || ''}
                   style={{
                     background: BB.bgPanel,
                     border: `1px solid ${active ? BB.text2 : BB.border}`,
@@ -457,9 +591,7 @@ export default function WatchIntelligenceUnified() {
                     <span style={{ border: `1px solid ${BB.border}`, borderRadius: 999, padding: '3px 8px', fontSize: TYPE.xs, color: stateColor(c.trade_ai_state) }}>
                       Trade AI: {c.trade_ai_state}
                     </span>
-                    <span style={{ border: `1px solid ${BB.border}`, borderRadius: 999, padding: '3px 8px', fontSize: TYPE.xs, color: BB.text3 }}>
-                      {c.freshness_state || '—'}
-                    </span>
+                    <FreshnessChips c={c} />
                     {c.rank != null && (
                       <span style={{ border: `1px solid ${BB.border}`, borderRadius: 999, padding: '3px 8px', fontSize: TYPE.xs, color: BB.text2 }}>
                         Rank #{c.rank}
@@ -469,6 +601,15 @@ export default function WatchIntelligenceUnified() {
                       <span style={{ border: `1px solid ${BB.amber}`, borderRadius: 999, padding: '3px 8px', fontSize: TYPE.xs, color: BB.amber }}>MATERIAL CHANGE</span>
                     ) : null}
                   </div>
+                  {c.decision_input_price != null && c.current_quote != null && Number(c.decision_input_price) !== Number(c.current_quote) ? (
+                    <div style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 6 }} data-decision-vs-quote>
+                      Decision input {money(Number(c.decision_input_price))}
+                      {c.decision_input_as_of ? ` @ ${c.decision_input_as_of}` : ''}
+                      {' · '}
+                      Quote {money(Number(c.current_quote))}
+                      {c.current_quote_as_of ? ` @ ${c.current_quote_as_of}` : ''}
+                    </div>
+                  ) : null}
                   {c.company_summary && (
                     <div style={{ fontSize: TYPE.sm, color: BB.text2, marginTop: 8, lineHeight: 1.4 }} data-company-summary>{c.company_summary}</div>
                   )}

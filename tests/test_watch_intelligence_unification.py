@@ -293,5 +293,252 @@ class TestBrokerCatalogAdvertisement(unittest.TestCase):
         self.assertIn("Data Broker", ui)
 
 
+class TestFinalGateBlockers(unittest.TestCase):
+    """PR #295 final truth + read-only blockers."""
+
+    def test_quarantine_precedence_ceco_everywhere(self):
+        from lib.data_broker.watch_intelligence import (
+            list_watch_intelligence,
+            detail_watch_intelligence,
+            watch_reviews,
+        )
+        from lib.data_broker.watch_domains import load_review_artifacts, merge_review_dispositions, _not_run_display
+
+        arts = load_review_artifacts("CECO")
+        for agent in ("cio", "maria"):
+            self.assertEqual(arts[agent].get("status"), "NOT_RUN")
+            self.assertEqual(arts[agent].get("reason_code"), "UNVERIFIED_OPERATOR_AUTHORIZATION")
+            self.assertEqual(arts[agent].get("artifact_disposition"), "QUARANTINED")
+
+        # Lower-priority reasons must not mask quarantine
+        q = _not_run_display("cio", "UNVERIFIED_OPERATOR_AUTHORIZATION", disposition="QUARANTINED")
+        nmc = _not_run_display("cio", "NO_MATERIAL_CHANGE_NO_CALL", disposition="NO_MATERIAL_CHANGE_NO_CALL")
+        leg = _not_run_display("cio", "LEGACY_INCOMPLETE_PROVENANCE", disposition="LEGACY_INCOMPLETE_PROVENANCE")
+        merged = merge_review_dispositions(nmc, leg, q)
+        self.assertEqual(merged.get("artifact_disposition"), "QUARANTINED")
+        self.assertEqual(merged.get("reason_code"), "UNVERIFIED_OPERATOR_AUTHORIZATION")
+
+        out = list_watch_intelligence({"view": "all", "q": "CECO", "page_size": 40})
+        ceco = next((c for c in (out.get("cards") or []) if c.get("symbol") == "CECO"), None)
+        self.assertIsNotNone(ceco)
+        for key in ("cio_review", "maria_review"):
+            rev = ceco.get(key) or {}
+            self.assertEqual(rev.get("status"), "NOT_RUN", key)
+            self.assertEqual(rev.get("reason_code"), "UNVERIFIED_OPERATOR_AUTHORIZATION", key)
+            self.assertEqual(rev.get("artifact_disposition"), "QUARANTINED", key)
+            self.assertIsNone(rev.get("provider"))
+            self.assertIsNone(rev.get("model"))
+
+        detail = detail_watch_intelligence("CECO")
+        self.assertTrue(detail.get("ok"))
+        dcard = detail.get("card") or {}
+        for key in ("cio_review", "maria_review"):
+            rev = dcard.get(key) or {}
+            self.assertEqual(rev.get("reason_code"), "UNVERIFIED_OPERATOR_AUTHORIZATION", f"detail.{key}")
+            self.assertEqual(rev.get("artifact_disposition"), "QUARANTINED", f"detail.{key}")
+        self.assertNotEqual(detail.get("data_quality_status"), "OK")
+        self.assertIn(detail.get("data_quality_status"), ("COMPLETE", "PARTIAL", "DEGRADED", "UNAVAILABLE"))
+
+        rev = watch_reviews("CECO")
+        for r in rev.get("items") or []:
+            if r.get("agent_id") in ("cio", "maria"):
+                self.assertEqual(r.get("reason_code"), "UNVERIFIED_OPERATOR_AUTHORIZATION")
+                self.assertEqual(r.get("artifact_disposition"), "QUARANTINED")
+
+    def test_get_list_zero_writes(self):
+        from lib.data_broker.watch_intelligence import list_watch_intelligence
+        from lib.data_broker.watch_domains import FINGERPRINT_DIR, ARTIFACTS, QUARANTINE
+
+        roots = [FINGERPRINT_DIR, ARTIFACTS, QUARANTINE]
+        before = {}
+        for root in roots:
+            if not root.exists():
+                before[str(root)] = {}
+                continue
+            before[str(root)] = {
+                str(p.relative_to(root)): (p.stat().st_mtime_ns, p.stat().st_size)
+                for p in root.rglob("*")
+                if p.is_file()
+            }
+        out1 = list_watch_intelligence({"view": "top_ideas", "page_size": 8})
+        out2 = list_watch_intelligence({"view": "top_ideas", "page_size": 8})
+        self.assertEqual(out1.get("provider_calls"), 0)
+        self.assertEqual(out2.get("provider_calls"), 0)
+        self.assertEqual(out1.get("snapshot_id"), out2.get("snapshot_id"))
+        # material_change must not flip solely because page was refreshed
+        m1 = {(c.get("symbol"), c.get("material_change")) for c in (out1.get("cards") or [])}
+        m2 = {(c.get("symbol"), c.get("material_change")) for c in (out2.get("cards") or [])}
+        self.assertEqual(m1, m2)
+        after = {}
+        for root in roots:
+            if not root.exists():
+                after[str(root)] = {}
+                continue
+            after[str(root)] = {
+                str(p.relative_to(root)): (p.stat().st_mtime_ns, p.stat().st_size)
+                for p in root.rglob("*")
+                if p.is_file()
+            }
+        self.assertEqual(before, after, "list GET must not mutate fingerprint/artifact/quarantine files")
+
+    def test_get_detail_zero_writes(self):
+        from lib.data_broker.watch_intelligence import detail_watch_intelligence
+        from lib.data_broker.watch_domains import FINGERPRINT_DIR
+
+        before = {}
+        if FINGERPRINT_DIR.exists():
+            before = {
+                p.name: (p.stat().st_mtime_ns, p.stat().st_size)
+                for p in FINGERPRINT_DIR.glob("*.json")
+            }
+        d1 = detail_watch_intelligence("CECO")
+        d2 = detail_watch_intelligence("CECO")
+        self.assertTrue(d1.get("ok"))
+        self.assertEqual(d1.get("provider_calls"), 0)
+        self.assertEqual(d1.get("snapshot_id"), d2.get("snapshot_id"))
+        self.assertEqual((d1.get("card") or {}).get("material_change"), (d2.get("card") or {}).get("material_change"))
+        after = {}
+        if FINGERPRINT_DIR.exists():
+            after = {
+                p.name: (p.stat().st_mtime_ns, p.stat().st_size)
+                for p in FINGERPRINT_DIR.glob("*.json")
+            }
+        self.assertEqual(before, after, "detail GET must not write fingerprints")
+
+    def test_list_detail_parity_reviews(self):
+        from lib.data_broker.watch_intelligence import list_watch_intelligence, detail_watch_intelligence
+        out = list_watch_intelligence({"view": "all", "q": "CECO", "page_size": 40})
+        list_card = next((c for c in (out.get("cards") or []) if c.get("symbol") == "CECO"), None)
+        self.assertIsNotNone(list_card)
+        detail = detail_watch_intelligence("CECO")
+        dcard = detail.get("card") or {}
+        for key in ("cio_review", "maria_review"):
+            self.assertEqual(
+                (list_card.get(key) or {}).get("reason_code"),
+                (dcard.get(key) or {}).get("reason_code"),
+                key,
+            )
+            self.assertEqual(
+                (list_card.get(key) or {}).get("artifact_disposition"),
+                (dcard.get(key) or {}).get("artifact_disposition"),
+                key,
+            )
+            self.assertEqual(
+                (list_card.get(key) or {}).get("status"),
+                (dcard.get(key) or {}).get("status"),
+                key,
+            )
+        # detail snapshot must not depend on generated_at transport noise
+        self.assertNotIn("generated_at", (detail.get("snapshot_id") or ""))
+        self.assertNotEqual(detail.get("data_quality_status"), "OK")
+
+    def test_top_ideas_excludes_fail_avoid_unavailable(self):
+        from lib.data_broker.watch_intelligence import list_watch_intelligence
+        from lib.data_broker.watch_domains import EXCLUDED_TOP, REPAIR_QUEUE, rank_top_ideas
+
+        # Unit: ranker drops excluded + repair
+        fake = []
+        for sym, state in (
+            ("OK1", "READY"),
+            ("OK2", "WAIT"),
+            ("FAIL1", "DETERMINISTIC_FAIL"),
+            ("AVOID1", "AVOID"),
+            ("BLOCK1", "BLOCKED"),
+            ("NA1", "DATA_UNAVAILABLE"),
+            ("STALE1", "STALE"),
+        ):
+            fake.append({"symbol": sym, "card": {
+                "symbol": sym,
+                "trade_ai_state": state,
+                "street_rating": "STRONG BUY",
+                "implied_upside_pct": 80,
+                "freshness_state": "CURRENT",
+            }})
+        ranked = rank_top_ideas(fake)
+        states = {(r.get("card") or {}).get("trade_ai_state") for r in ranked}
+        for bad in EXCLUDED_TOP | REPAIR_QUEUE:
+            self.assertNotIn(bad, states)
+        self.assertTrue(states <= {"READY", "WAIT", "MANAGING"})
+        for r in ranked:
+            self.assertEqual((r.get("card") or {}).get("rank_eligibility"), "eligible")
+            self.assertIsNotNone((r.get("card") or {}).get("rank"))
+            self.assertIsNotNone((r.get("card") or {}).get("rank_components"))
+            self.assertIsNotNone((r.get("card") or {}).get("rank_version"))
+            self.assertIsNotNone((r.get("card") or {}).get("rank_generated_at"))
+
+        out = list_watch_intelligence({"view": "top_ideas", "page_size": 40})
+        for c in out.get("cards") or []:
+            st = (c.get("trade_ai_state") or "").upper()
+            self.assertNotIn(st, EXCLUDED_TOP | REPAIR_QUEUE, c.get("symbol"))
+            self.assertEqual(c.get("rank_eligibility"), "eligible")
+
+    def test_dimensional_freshness_no_generic_chip(self):
+        from lib.data_broker.watch_intelligence import list_watch_intelligence
+        from lib.data_broker.watch_domains import dimensional_freshness
+
+        dims = dimensional_freshness({
+            "freshness_state": "CURRENT",
+            "trade_ai_state": "DETERMINISTIC_FAIL",
+            "primary_risk": "technical snapshot is STALE",
+            "blockers": [],
+            "cio_review": {"status": "NOT_RUN", "reason_code": "UNVERIFIED_OPERATOR_AUTHORIZATION", "artifact_disposition": "QUARANTINED"},
+            "maria_review": {},
+        })
+        self.assertEqual(dims["quote_freshness"], "CURRENT")
+        self.assertEqual(dims["technical_freshness"], "STALE")
+        self.assertIsNone(dims.get("card_freshness_label"))
+
+        out = list_watch_intelligence({"view": "all", "page_size": 10})
+        for c in out.get("cards") or []:
+            self.assertIn("quote_freshness", c)
+            self.assertIn("technical_freshness", c)
+            self.assertIn("decision_freshness", c)
+            self.assertIn("street_freshness", c)
+            self.assertIn("review_freshness", c)
+            self.assertIsNone(c.get("card_freshness_label"))
+
+        ui = (ROOT / "apps/command-center-v3/src/pages/WatchIntelligenceUnified.tsx").read_text()
+        self.assertIn("FreshnessChips", ui)
+        self.assertIn("quote_freshness", ui)
+        self.assertIn("technical_freshness", ui)
+        # dimensional chips use Quote / Technicals labels (not a bare whole-card CURRENT)
+        self.assertIn("k: 'Quote'", ui)
+        self.assertIn("k: 'Technicals'", ui)
+        self.assertIn("data-freshness-dim", ui)
+
+    def test_filter_options_data_derived(self):
+        from lib.data_broker.watch_intelligence import watch_filters
+        f = watch_filters()
+        self.assertEqual(f.get("provider_calls"), 0)
+        # When zero authorized COMPLETE artifacts, provider/model options empty
+        self.assertIsInstance(f.get("providers"), list)
+        self.assertIsInstance(f.get("models"), list)
+        by_id = {x["id"]: x for x in (f.get("filters") or [])}
+        self.assertIn("provider", by_id)
+        self.assertIn("model", by_id)
+        self.assertIn("saved_list", by_id)
+        self.assertIn("cio_view", by_id)
+        self.assertEqual(by_id["provider"]["options"], f.get("providers"))
+        self.assertEqual(by_id["model"]["options"], f.get("models"))
+        # Unavailable filters present and disabled
+        for fid in ("catalyst_window", "earnings_window", "relative_strength_band", "valuation_band"):
+            self.assertIn(fid, by_id)
+            self.assertFalse(by_id[fid].get("enabled"))
+        # Must not hard-code deepseek when no authorized completes
+        if not f.get("providers"):
+            self.assertNotIn("deepseek", by_id["provider"]["options"])
+            self.assertNotIn("deepseek-v4-flash", by_id["model"]["options"])
+
+    def test_paid_flags_and_read_only(self):
+        from lib.data_broker.watch_intelligence import list_watch_intelligence, detail_watch_intelligence
+        out = list_watch_intelligence({"view": "top_ideas", "page_size": 3})
+        self.assertFalse(out.get("paid_flags_enabled"))
+        self.assertEqual(out.get("broker_write_authority"), "NONE")
+        self.assertTrue((out.get("data_broker") or {}).get("read_only"))
+        d = detail_watch_intelligence("CECO")
+        self.assertFalse(d.get("paid_flags_enabled"))
+        self.assertEqual(d.get("broker_write_authority"), "NONE")
+
+
 if __name__ == "__main__":
     unittest.main()
