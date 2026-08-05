@@ -221,6 +221,152 @@ def compose_quote_artifact(
     return empty
 
 
+# Fields the Watch list must never leave as pre-overlay legacy after selection.
+_OVERLAY_NULL_PRICE_KEYS = (
+    "price",
+    "change_pct",
+    "price_as_of",
+    "price_source",
+    "quote_id",
+    "source_record_id",
+    "market_session",
+    "winning_branch",
+)
+
+
+def unavailable_watch_quote_fields(
+    *,
+    error_code: str = "CANONICAL_QUOTE_SELECTOR_FAILED",
+    missing: list[str] | None = None,
+) -> dict[str, Any]:
+    """Typed fail-closed quote artifact for list/detail Watch items."""
+    return {
+        "price": None,
+        "change_pct": None,
+        "price_as_of": None,
+        "price_source": None,
+        "quote_id": None,
+        "source_record_id": None,
+        "market_session": None,
+        "freshness_state": "DATA_UNAVAILABLE",
+        "market_state": "DATA_UNAVAILABLE",
+        "quote_missing": list(missing or ["canonical_market_quote"]),
+        "quote_error_code": error_code,
+        "winning_branch": None,
+    }
+
+
+def _apply_unavailable(item: dict[str, Any], *, error_code: str, missing: list[str] | None = None) -> None:
+    """Overwrite an item's quote fields — never leave legacy price/change."""
+    fields = unavailable_watch_quote_fields(error_code=error_code, missing=missing)
+    for k, v in fields.items():
+        item[k] = v
+
+
+def apply_canonical_quote_overlay(
+    items: list[dict[str, Any]],
+    *,
+    batch_fn=None,
+    now: datetime | None = None,
+    log: Any = None,
+) -> list[dict[str, Any]]:
+    """Apply CASE-bound quotes to watchlist items. Fail-closed on any selector error.
+
+    On import/DB/compose failure every item gets DATA_UNAVAILABLE with
+    quote_error_code=CANONICAL_QUOTE_SELECTOR_FAILED and pre-overlay price fields
+    are nullified. Missing per-symbol artifact is also fail-closed.
+    Logs only the sanitized exception type name — never DB details or secrets.
+    """
+    if not items:
+        return items
+    resolve = batch_fn or batch_canonical_quotes
+    try:
+        syms = [str(it.get("symbol") or "").upper() for it in items if it.get("symbol")]
+        if batch_fn is not None:
+            arts = resolve(syms) if syms else {}
+        else:
+            arts = resolve(syms, now=now) if syms else {}
+        if not isinstance(arts, dict):
+            raise TypeError("batch_canonical_quotes_must_return_dict")
+    except Exception as e:
+        err_type = type(e).__name__
+        if log is not None:
+            try:
+                log("canonical_quote_selector_failed type=%s", err_type)
+            except Exception:
+                pass
+        else:
+            try:
+                import logging
+                logging.getLogger("watch_canonical_quote").warning(
+                    "canonical_quote_selector_failed type=%s", err_type
+                )
+            except Exception:
+                pass
+        for it in items:
+            _apply_unavailable(it, error_code="CANONICAL_QUOTE_SELECTOR_FAILED")
+        return items
+
+    for it in items:
+        sym = str(it.get("symbol") or "").upper()
+        if not sym:
+            _apply_unavailable(it, error_code="CANONICAL_QUOTE_SELECTOR_FAILED")
+            continue
+        art = arts.get(sym)
+        if not art:
+            _apply_unavailable(
+                it,
+                error_code="CANONICAL_QUOTE_SELECTOR_FAILED",
+                missing=["canonical_market_quote"],
+            )
+            continue
+
+        # Always write identity/session/freshness from the selector.
+        it["quote_id"] = art.get("quote_id")
+        it["source_record_id"] = art.get("source_record_id")
+        it["market_session"] = art.get("market_session")
+        it["freshness_state"] = art.get("freshness_state")
+        it["market_state"] = art.get("market_state")
+        it["winning_branch"] = art.get("winning_branch")
+        it.pop("quote_error_code", None)
+
+        missing = list(art.get("missing") or [])
+        last = art.get("last")
+        # Fail-closed or incomplete identity: never leave legacy price/change.
+        if (
+            last is None
+            or art.get("freshness_state") == "DATA_UNAVAILABLE"
+            or "canonical_quote_identity" in missing
+            or "canonical_market_quote" in missing
+        ):
+            it["price"] = None
+            it["change_pct"] = None
+            it["price_as_of"] = None
+            it["price_source"] = None
+            it["quote_id"] = None
+            it["source_record_id"] = None
+            it["market_session"] = art.get("market_session")  # may be None
+            it["freshness_state"] = "DATA_UNAVAILABLE"
+            it["market_state"] = "DATA_UNAVAILABLE"
+            it["quote_missing"] = missing or ["canonical_market_quote"]
+            if "canonical_quote_identity" in missing:
+                # Keep identity-typed missing; no separate selector error code.
+                it.pop("quote_error_code", None)
+            else:
+                it["quote_error_code"] = "CANONICAL_QUOTE_SELECTOR_FAILED"
+            continue
+
+        it["price"] = last
+        it["change_pct"] = art.get("day_change_pct")
+        it["price_as_of"] = art.get("price_as_of")
+        it["price_source"] = art.get("price_source")
+        if missing:
+            it["quote_missing"] = missing
+        else:
+            it.pop("quote_missing", None)
+    return items
+
+
 def batch_canonical_quotes(symbols: list[str], *, now: datetime | None = None) -> dict[str, dict]:
     """Batch-load raw rows and compose CASE-bound quote artifacts."""
     from db_adapter import _get_conn

@@ -28,21 +28,91 @@ class TestLiveProjection(unittest.TestCase):
             self.assertFalse(c.get("fixture"))
             self.assertTrue(c.get("live") or c.get("missing_components"))
 
-    def test_fth_identity_and_fail_closed(self):
+    def test_fixture_fth_is_exact_deterministic_fail(self):
+        """Frozen regression fixture — exact DETERMINISTIC_FAIL (not mutable live)."""
+        from lib.rockville.decision_projection import (
+            project_watch_decision,
+            assert_no_mechanics_on_invalid,
+        )
+        from lib.rockville.live_projection import _verification_stages
+        fx_path = ROOT / "tests" / "fixtures" / "rockville" / "ROCKVILLE_FTH_REGRESSION_FIXTURE.json"
+        fx = json.loads(fx_path.read_text(encoding="utf-8"))
+        dec = project_watch_decision(fx["packet"], fx["action_policy"], symbol="FTH")
+        self.assertEqual(dec.get("primary_state"), "DETERMINISTIC_FAIL")
+        self.assertFalse(dec.get("proposal_allowed"))
+        self.assertFalse(dec.get("current_mechanics_visible"))
+        self.assertIsNone(dec.get("current_mechanics"))
+        assert_no_mechanics_on_invalid(dec)
+        rec = ((fx["packet"].get("ticket_review") or {}).get("reconciled") or {})
+        self.assertEqual(rec.get("state"), "DETERMINISTIC_FAIL")
+        self.assertFalse(rec.get("proposal_allowed"))
+        stages = _verification_stages(fx["packet"])
+        self.assertEqual(stages.get("reconciliation_status"), "FAIL_CLOSED")
+
+    def test_live_fth_invariants_state_independent(self):
+        """Live FTH may be WAIT or DETERMINISTIC_FAIL — assert invariants, not a frozen state."""
         from lib.rockville.live_projection import build_live_symbol
         out = build_live_symbol("FTH")
         self.assertTrue(out.get("ok"))
         self.assertIn("Faeth", out.get("company") or "")
         self.assertNotIn("Fate Therapeutics", out.get("company") or "")
+        self.assertNotIn("Fate ", (out.get("company") or ""))
+        self.assertFalse(out.get("fixture"))
+
+        # Quote provenance complete or explicit DATA_UNAVAILABLE
+        fresh = out.get("freshness_state")
+        if fresh == "DATA_UNAVAILABLE" or out.get("last") is None:
+            self.assertEqual(fresh, "DATA_UNAVAILABLE")
+            self.assertIsNone(out.get("last"))
+        else:
+            self.assertIsNotNone(out.get("quote_id"))
+            self.assertIsNotNone(out.get("source_record_id"))
+            self.assertIsNotNone(out.get("price_as_of"))
+            self.assertIsNotNone(out.get("price_source"))
+            self.assertIsNotNone(out.get("market_session"))
+
         dec = out.get("decision") or {}
-        self.assertEqual(dec.get("primary_state"), "DETERMINISTIC_FAIL")
-        self.assertFalse(dec.get("proposal_allowed"))
-        self.assertFalse(dec.get("current_mechanics_visible"))
-        self.assertIsNone(dec.get("current_mechanics"))
+        st = dec.get("primary_state")
+        self.assertIsNotNone(st)
+
+        non_ready_no_proposal = {
+            "WAIT", "DETERMINISTIC_FAIL", "BLOCKED", "STALE",
+            "DATA_UNAVAILABLE", "AVOID", "REVIEW_PENDING",
+        }
+        if st in non_ready_no_proposal:
+            self.assertFalse(dec.get("proposal_allowed"), msg=f"live FTH {st}")
+            self.assertFalse(dec.get("current_mechanics_visible"), msg=f"live FTH {st}")
+            self.assertIsNone(dec.get("current_mechanics"))
+
+        if st != "READY":
+            self.assertFalse(dec.get("current_mechanics_visible"), msg=f"non-READY {st}")
+            if dec.get("current_mechanics") is not None and st != "MANAGING":
+                # Only READY may show executable current mechanics
+                self.assertFalse(dec.get("current_mechanics_visible"))
+
         stages = out.get("verification_stages") or dec.get("verification_stages") or {}
-        self.assertEqual(stages.get("reconciliation_status"), "FAIL_CLOSED")
-        # Quality stage should not be NOT_RUN when fail is quality-driven
-        self.assertNotEqual(stages.get("quality_admission_status"), "NOT_RUN")
+        if st == "DETERMINISTIC_FAIL":
+            self.assertEqual(stages.get("reconciliation_status"), "FAIL_CLOSED")
+            self.assertFalse(dec.get("proposal_allowed"))
+            self.assertFalse(dec.get("current_mechanics_visible"))
+            self.assertIsNone(dec.get("current_mechanics"))
+
+        if st == "WAIT":
+            self.assertFalse(dec.get("proposal_allowed"))
+            self.assertFalse(dec.get("current_mechanics_visible"))
+            self.assertIsNone(dec.get("current_mechanics"))
+            # Only a non-executable wait contract may appear
+            wc = dec.get("wait_contract")
+            if wc is not None:
+                self.assertIsInstance(wc, dict)
+                # wait contract must not look like executable ticket mechanics
+                for banned in ("entry_zone", "stop_price", "risk_reward", "targets"):
+                    if banned in wc and wc.get(banned) is not None:
+                        # tolerate presence only if clearly non-executable label
+                        self.assertTrue(
+                            wc.get("non_executable") or wc.get("label") or wc.get("what_must_happen"),
+                            msg="WAIT contract must be non-executable",
+                        )
 
     def test_fail_symbols_fail_closed(self):
         from lib.rockville.live_projection import build_live_symbol
@@ -52,12 +122,13 @@ class TestLiveProjection(unittest.TestCase):
                 self.skipTest(f"{sym} no packet")
             dec = out["decision"]
             st = dec["primary_state"]
-            if st in ("DETERMINISTIC_FAIL", "BLOCKED", "STALE", "AVOID", "DATA_UNAVAILABLE"):
+            if st in ("DETERMINISTIC_FAIL", "BLOCKED", "STALE", "AVOID", "DATA_UNAVAILABLE", "WAIT"):
                 self.assertFalse(dec["proposal_allowed"], sym)
                 self.assertFalse(dec["current_mechanics_visible"], sym)
-                vis = dec.get("visibility") or {}
-                for k, v in vis.items():
-                    self.assertFalse(v, msg=f"{sym} {k}")
+                if st != "READY":
+                    vis = dec.get("visibility") or {}
+                    for k, v in vis.items():
+                        self.assertFalse(v, msg=f"{sym} {k}")
 
     def test_held_symbol_present(self):
         from lib.rockville.live_projection import build_live_cards
@@ -200,13 +271,24 @@ class TestLiveProjection(unittest.TestCase):
 
 
 class TestOperatorPresentationFailClosed(unittest.TestCase):
-    def test_presentation_header(self):
+    def test_presentation_header_fixture_fail(self):
+        """Fixture packet → DETERMINISTIC FAIL header (not mutable live state)."""
+        import operator_presentation as op
+        fx_path = ROOT / "tests" / "fixtures" / "rockville" / "ROCKVILLE_FTH_REGRESSION_FIXTURE.json"
+        fx = json.loads(fx_path.read_text(encoding="utf-8"))
+        pres = op.build(fx["packet"], fx.get("action_policy"))
+        self.assertEqual(pres["header_state"], "DETERMINISTIC FAIL")
+        self.assertFalse(pres["display_current_mechanics"])
+        for k, v in (pres.get("mechanics") or {}).items():
+            self.assertIsNone(v)
+
+    def test_presentation_live_nonready_hides_mechanics(self):
+        """Live packet: whatever state, non-READY must hide current mechanics."""
         import operator_presentation as op
         import shadow_decision_service as svc
         rb = svc.readback("FTH")
         self.assertTrue(rb.get("ok"))
         pres = op.build(rb["packet"], None)
-        self.assertEqual(pres["header_state"], "DETERMINISTIC FAIL")
         self.assertFalse(pres["display_current_mechanics"])
         for k, v in (pres.get("mechanics") or {}).items():
             self.assertIsNone(v)

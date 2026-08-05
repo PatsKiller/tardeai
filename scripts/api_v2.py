@@ -6963,40 +6963,31 @@ def _wl_items(query: dict = None):
         for _it in _items:
             _it.setdefault("action_policy", None)
 
-    # Canonical quote contract (Rockville P0): both Watch surfaces consume the
-    # shared CASE-bound selector so price/change/timestamp/identity describe the
-    # same winning record. Overlays quote_id / source_record_id / session /
-    # freshness on every list item; aligns price + change_pct when the selector
-    # returns a complete artifact (fail-closed leaves last null).
+    # Canonical quote contract: shared CASE-bound selector for both Watch
+    # surfaces. Fail-closed — never leave pre-overlay legacy price/change when
+    # import/DB/compose fails (no silent pass that keeps legacy prices).
     try:
-        from lib.watch_canonical_quote import batch_canonical_quotes as _bcq
-        _syms = [str(_it.get("symbol") or "").upper() for _it in _items if _it.get("symbol")]
-        _arts = _bcq(_syms) if _syms else {}
+        from lib.watch_canonical_quote import apply_canonical_quote_overlay as _apply_cq
+        _apply_cq(_items)
+    except Exception as _cq_err:
+        # Helper import/runtime broken — still fail closed, log type only.
+        try:
+            import logging as _logging
+            _logging.getLogger("api_v2").warning(
+                "canonical_quote_overlay_failed type=%s", type(_cq_err).__name__
+            )
+        except Exception:
+            pass
         for _it in _items:
-            _sym = str(_it.get("symbol") or "").upper()
-            _art = _arts.get(_sym) or {}
-            if not _art:
-                continue
-            _it["quote_id"] = _art.get("quote_id")
-            _it["source_record_id"] = _art.get("source_record_id")
-            _it["market_session"] = _art.get("market_session")
-            _it["freshness_state"] = _art.get("freshness_state")
-            _it["market_state"] = _art.get("market_state")
-            _it["winning_branch"] = _art.get("winning_branch")
-            # Align numeric display with the same winning record
-            if _art.get("last") is not None:
-                _it["price"] = _art.get("last")
-            if _art.get("day_change_pct") is not None:
-                _it["change_pct"] = _art.get("day_change_pct")
-            if _art.get("price_as_of") is not None:
-                _it["price_as_of"] = _art.get("price_as_of")
-            if _art.get("price_source") is not None:
-                _it["price_source"] = _art.get("price_source")
-            # Surface fail-closed missing identity explicitly
-            if _art.get("missing"):
-                _it["quote_missing"] = list(_art.get("missing") or [])
-    except Exception:
-        pass
+            for _k in (
+                "price", "change_pct", "price_as_of", "price_source",
+                "quote_id", "source_record_id", "market_session", "winning_branch",
+            ):
+                _it[_k] = None
+            _it["freshness_state"] = "DATA_UNAVAILABLE"
+            _it["market_state"] = "DATA_UNAVAILABLE"
+            _it["quote_missing"] = ["canonical_market_quote"]
+            _it["quote_error_code"] = "CANONICAL_QUOTE_SELECTOR_FAILED"
 
     return {"count": len(_items), "items": _items,
             "facets": dict(sorted(_facets.items(), key=lambda x: -x[1])),

@@ -17,6 +17,8 @@ from lib.watch_canonical_quote import (  # noqa: E402
     derive_freshness,
     market_session_for,
     batch_canonical_quotes,
+    apply_canonical_quote_overlay,
+    unavailable_watch_quote_fields,
 )
 
 ET = ZoneInfo("America/New_York")
@@ -274,6 +276,120 @@ class TestUiProvenanceContract(unittest.TestCase):
         self.assertIn("quoteId={c.quote_id}", hub)
         self.assertIn("sourceRecordId={c.source_record_id}", hub)
         self.assertIn("freshnessState={c.freshness_state}", hub)
+
+
+class TestOverlayFailClosed(unittest.TestCase):
+    def _legacy_item(self, symbol="FTH", price=25.35, chg=-9.9):
+        return {
+            "symbol": symbol,
+            "price": price,
+            "change_pct": chg,
+            "price_as_of": "2026-08-04T12:00:00-04:00",
+            "price_source": "enrichment",
+            "quote_id": "legacy-should-die",
+            "source_record_id": "legacy:1",
+        }
+
+    def test_selector_raises_nulls_legacy_and_typed_error(self):
+        items = [self._legacy_item("FTH"), self._legacy_item("NUAI", 5.0, 1.0)]
+
+        def boom(_syms, **_kw):
+            raise RuntimeError("db connection failed with secret=hunter2")
+
+        apply_canonical_quote_overlay(items, batch_fn=boom)
+        for it in items:
+            self.assertIsNone(it["price"], msg=it["symbol"])
+            self.assertIsNone(it["change_pct"], msg=it["symbol"])
+            self.assertIsNone(it["price_as_of"], msg=it["symbol"])
+            self.assertIsNone(it["price_source"], msg=it["symbol"])
+            self.assertIsNone(it["quote_id"], msg=it["symbol"])
+            self.assertIsNone(it["source_record_id"], msg=it["symbol"])
+            self.assertIsNone(it["market_session"], msg=it["symbol"])
+            self.assertEqual(it["freshness_state"], "DATA_UNAVAILABLE")
+            self.assertEqual(it["market_state"], "DATA_UNAVAILABLE")
+            self.assertEqual(it["quote_missing"], ["canonical_market_quote"])
+            self.assertEqual(it["quote_error_code"], "CANONICAL_QUOTE_SELECTOR_FAILED")
+            # legacy values must not survive
+            self.assertNotEqual(it.get("price"), 25.35)
+            self.assertNotIn("legacy-should-die", str(it.get("quote_id")))
+
+    def test_selector_returns_no_artifact_fail_closed(self):
+        items = [self._legacy_item("ZZZ", price=99.0, chg=3.0)]
+
+        def empty(_syms, **_kw):
+            return {}  # no per-symbol artifact
+
+        apply_canonical_quote_overlay(items, batch_fn=empty)
+        it = items[0]
+        self.assertIsNone(it["price"])
+        self.assertIsNone(it["change_pct"])
+        self.assertEqual(it["freshness_state"], "DATA_UNAVAILABLE")
+        self.assertEqual(it["quote_error_code"], "CANONICAL_QUOTE_SELECTOR_FAILED")
+        self.assertIsNone(it["quote_id"])
+
+    def test_data_unavailable_artifact_clears_legacy_price(self):
+        items = [self._legacy_item("X", price=11.0, chg=2.0)]
+
+        def ua(_syms, **_kw):
+            return {
+                "X": {
+                    "symbol": "X",
+                    "last": None,
+                    "day_change_pct": None,
+                    "price_as_of": None,
+                    "price_source": None,
+                    "quote_id": None,
+                    "source_record_id": None,
+                    "market_session": None,
+                    "freshness_state": "DATA_UNAVAILABLE",
+                    "market_state": "DATA_UNAVAILABLE",
+                    "missing": ["canonical_market_quote"],
+                    "winning_branch": None,
+                }
+            }
+
+        apply_canonical_quote_overlay(items, batch_fn=ua)
+        it = items[0]
+        self.assertIsNone(it["price"])
+        self.assertIsNone(it["change_pct"])
+        self.assertEqual(it["freshness_state"], "DATA_UNAVAILABLE")
+        self.assertNotEqual(it.get("price"), 11.0)
+
+    def test_success_path_overlays_complete_artifact(self):
+        items = [self._legacy_item("FTH", price=1.0, chg=0.0)]
+
+        def ok(_syms, **_kw):
+            return {
+                "FTH": {
+                    "symbol": "FTH",
+                    "last": 25.35,
+                    "day_change_pct": -7.6,
+                    "price_as_of": "2026-08-04T16:45:00-04:00",
+                    "price_source": "market_quotes",
+                    "quote_id": 4386078,
+                    "source_record_id": "market_quotes:4386078",
+                    "market_session": "afterhours",
+                    "freshness_state": "AFTER_HOURS_CURRENT",
+                    "market_state": "OK",
+                    "missing": [],
+                    "winning_branch": "market_quotes",
+                }
+            }
+
+        apply_canonical_quote_overlay(items, batch_fn=ok)
+        it = items[0]
+        self.assertEqual(it["price"], 25.35)
+        self.assertAlmostEqual(it["change_pct"], -7.6, places=4)
+        self.assertEqual(it["quote_id"], 4386078)
+        self.assertEqual(it["source_record_id"], "market_quotes:4386078")
+        self.assertEqual(it["freshness_state"], "AFTER_HOURS_CURRENT")
+        self.assertNotIn("quote_error_code", it)
+
+    def test_unavailable_helper_shape(self):
+        f = unavailable_watch_quote_fields()
+        self.assertIsNone(f["price"])
+        self.assertEqual(f["quote_error_code"], "CANONICAL_QUOTE_SELECTOR_FAILED")
+        self.assertEqual(f["freshness_state"], "DATA_UNAVAILABLE")
 
 
 if __name__ == "__main__":
