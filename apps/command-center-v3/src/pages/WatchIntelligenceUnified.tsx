@@ -152,7 +152,11 @@ function ReviewBox({ title, rev }: { title: string; rev?: ReviewStatus }) {
           </div>
           {nextReview ? (
             <div style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 3 }} data-next-review>
-              Next run: {String(nextReview)}
+              {(rev as any)?.execution_status === 'DISABLED' || reason === 'WORKERS_DISABLED'
+                ? `Policy window: ${String(nextReview)} · Execution disabled`
+                : (rev as any)?.next_execution_at
+                  ? `Next execution: ${String((rev as any).next_execution_at)}`
+                  : `Policy window: ${String(nextReview)}`}
             </div>
           ) : null}
         </>

@@ -242,12 +242,41 @@ def eligible_universe(
     return ordered[:priority_limit]
 
 
+def is_unresolved_identity(card: dict[str, Any]) -> bool:
+    """CUSIP-like / non-ticker symbols or missing company identity."""
+    sym = (card.get("symbol") or "").upper()
+    if not sym:
+        return True
+    # Pure digit+letter CUSIP-style (e.g. 12507E201)
+    if len(sym) >= 8 and any(ch.isdigit() for ch in sym) and not card.get("company"):
+        return True
+    if sym.isdigit():
+        return True
+    if (card.get("identity_quality") or "").upper() in ("INVALID", "UNRESOLVED", "UNAVAILABLE"):
+        return True
+    return False
+
+
+def workers_enabled() -> bool:
+    pol = load_policy()
+    return bool(pol and pol.get("workers_enabled"))
+
+
 def review_freshness_fields(card: dict[str, Any]) -> dict[str, Any]:
-    """Populate SLA / next-review fields for projection (no provider calls)."""
+    """Populate SLA / next-review fields for projection (no provider calls).
+
+    Semantic contract:
+      workers_enabled=false → POLICY_CONFIGURED / WORKERS_DISABLED
+      (not SCHEDULED — that implies executable jobs)
+      quarantine / unresolved → BLOCKED, next_execution_at=null
+    """
     sym = (card.get("symbol") or "").upper()
     maria = card.get("maria_review") or {}
     cio = card.get("cio_review") or {}
     times = schedule_times()
+    enabled = workers_enabled()
+    policy_window_maria = times["next_maria_review_at"]
+    policy_window_cio = times["next_cio_review_at"]
 
     def parse_ts(v: Any) -> datetime | None:
         if not v:
@@ -262,8 +291,17 @@ def review_freshness_fields(card: dict[str, Any]) -> dict[str, Any]:
 
     last_maria = parse_ts(maria.get("completed_at"))
     last_cio = parse_ts(cio.get("completed_at"))
-    next_maria = times["next_maria_review_at"]
-    next_cio = times["next_cio_review_at"]
+
+    blocked_reason = None
+    if is_unresolved_identity(card):
+        blocked_reason = "UNRESOLVED_IDENTITY"
+    elif (maria.get("artifact_disposition") == "QUARANTINED"
+          or cio.get("artifact_disposition") == "QUARANTINED"
+          or maria.get("reason_code") == "UNVERIFIED_OPERATOR_AUTHORIZATION"
+          or cio.get("reason_code") == "UNVERIFIED_OPERATOR_AUTHORIZATION"):
+        blocked_reason = "UNVERIFIED_OPERATOR_AUTHORIZATION"
+    elif (card.get("trade_ai_state") or "").upper() in EXCLUDE_STATES:
+        blocked_reason = f"STATE_{(card.get('trade_ai_state') or '').upper()}"
 
     def age_hours(ts: datetime | None) -> float | None:
         if not ts:
@@ -275,8 +313,7 @@ def review_freshness_fields(card: dict[str, Any]) -> dict[str, Any]:
 
     def sla_for(status: str | None, reason: str | None, age: float | None, agent: str) -> str:
         st = (status or "").upper()
-        disp = (card.get(f"{agent}_review") or {}).get("artifact_disposition")
-        if disp == "QUARANTINED" or reason == "UNVERIFIED_OPERATOR_AUTHORIZATION":
+        if blocked_reason:
             return "BLOCKED"
         if st == "COMPLETE" and age is not None:
             if age <= 48:
@@ -288,125 +325,197 @@ def review_freshness_fields(card: dict[str, Any]) -> dict[str, Any]:
             return "CURRENT"
         if reason == "COST_DEFERRED":
             return "COST_DEFERRED"
-        if reason == "NOT_SCHEDULED":
+        if not enabled:
+            return "POLICY_CONFIGURED"
+        if reason == "NOT_SCHEDULED" or st == "NOT_RUN":
             return "SCHEDULED"
-        if st == "NOT_RUN":
-            return "SCHEDULED"
-        return "SCHEDULED"
+        return "POLICY_CONFIGURED"
 
     maria_sla = sla_for(maria.get("status"), maria.get("reason_code"), m_age, "maria")
     cio_sla = sla_for(cio.get("status"), cio.get("reason_code"), c_age, "cio")
 
-    # CIO prerequisite
+    # next_execution_at only when workers enabled and not blocked
+    if blocked_reason:
+        next_maria_exec = None
+        next_cio_exec = None
+        next_maria_disp = None
+        next_cio_disp = None
+    elif not enabled:
+        next_maria_exec = None
+        next_cio_exec = None
+        next_maria_disp = policy_window_maria  # policy window only
+        next_cio_disp = policy_window_cio
+    else:
+        next_maria_exec = policy_window_maria
+        next_cio_exec = policy_window_cio
+        next_maria_disp = policy_window_maria
+        next_cio_disp = policy_window_cio
+
     if maria.get("status") != "COMPLETE" and cio.get("status") != "COMPLETE":
-        if cio_sla not in ("BLOCKED", "COST_DEFERRED"):
-            if maria_sla in ("SCHEDULED", "OVERDUE", "DUE_SOON"):
-                cio_due_reason = "Maria prerequisite missing"
-            else:
-                cio_due_reason = cio.get("reason_code") or "NOT_SCHEDULED"
+        if blocked_reason:
+            cio_due_reason = blocked_reason
+        elif not enabled:
+            cio_due_reason = "WORKERS_DISABLED"
+        elif maria_sla in ("SCHEDULED", "OVERDUE", "DUE_SOON", "POLICY_CONFIGURED"):
+            cio_due_reason = "Maria prerequisite missing"
         else:
-            cio_due_reason = cio.get("reason_code") or cio_sla
+            cio_due_reason = cio.get("reason_code") or "NOT_SCHEDULED"
     else:
         cio_due_reason = cio.get("reason_code")
 
-    review_due_reason = None
+    review_due_reason = blocked_reason or (
+        "WORKERS_DISABLED" if not enabled and maria.get("status") != "COMPLETE" else None
+    )
     if maria_sla == "OVERDUE":
         review_due_reason = "Maria freshness > 72h"
     elif cio_sla == "OVERDUE":
         review_due_reason = "CIO freshness > 72h"
 
-    # condition watch for near triggers
-    if card.get("is_near_trigger") or card.get("material_change"):
-        if maria_sla == "SCHEDULED":
-            maria_sla = "CONDITION_WATCH"
-
     return {
         "last_maria_review_at": last_maria.isoformat() if last_maria else None,
         "last_cio_review_at": last_cio.isoformat() if last_cio else None,
-        "next_maria_review_at": next_maria,
-        "next_cio_review_at": next_cio,
+        "next_maria_review_at": next_maria_disp,
+        "next_cio_review_at": next_cio_disp,
+        "next_policy_window_maria": policy_window_maria,
+        "next_policy_window_cio": policy_window_cio,
+        "next_execution_at": next_maria_exec,  # only when executable
+        "next_maria_execution_at": next_maria_exec,
+        "next_cio_execution_at": next_cio_exec,
+        "review_status": "BLOCKED" if blocked_reason else (
+            "COMPLETE" if maria.get("status") == "COMPLETE" else (
+                "POLICY_CONFIGURED" if not enabled else "SCHEDULED"
+            )
+        ),
+        "execution_status": "DISABLED" if not enabled else (
+            "BLOCKED" if blocked_reason else "ENABLED"
+        ),
         "next_review_condition": card.get("next_review_condition")
             or ("Rolling 5-session |move| ≥ 7%" if card.get("material_change") else "Mon/Wed/Fri schedule"),
-        "review_sla_state": maria_sla if maria_sla == "OVERDUE" else (
-            "OVERDUE" if cio_sla == "OVERDUE" else maria_sla
+        "review_sla_state": "BLOCKED" if blocked_reason else (
+            maria_sla if maria_sla == "OVERDUE" else (
+                "OVERDUE" if cio_sla == "OVERDUE" else maria_sla
+            )
         ),
         "maria_review_sla_state": maria_sla,
         "cio_review_sla_state": cio_sla,
         "review_due_reason": review_due_reason or cio_due_reason or maria.get("reason_code"),
+        "workers_enabled": enabled,
         "last_attempt_at": max(
             [x for x in [last_maria, last_cio] if x],
             default=None,
         ),
         "last_attempt_status": (
             "COMPLETE" if maria.get("status") == "COMPLETE" or cio.get("status") == "COMPLETE"
-            else (maria.get("reason_code") or cio.get("reason_code") or "NOT_SCHEDULED")
+            else (blocked_reason or ("WORKERS_DISABLED" if not enabled else (maria.get("reason_code") or "NOT_SCHEDULED")))
         ),
     }
 
 
 def enrich_review_display(rev: dict[str, Any], *, agent: str, card: dict) -> dict[str, Any]:
-    """UI-facing display for scheduled / no-call / complete states."""
+    """UI-facing display for policy-configured / blocked / complete states."""
     r = dict(rev or {})
     fields = review_freshness_fields({**card, f"{agent}_review": r})
     status = (r.get("status") or "NOT_RUN").upper()
     reason = r.get("reason_code")
     sla = fields.get(f"{agent}_review_sla_state") or fields.get("review_sla_state")
+    enabled = bool(fields.get("workers_enabled"))
+    policy_window = fields.get(f"next_policy_window_{agent}") or fields.get(f"next_{agent}_review_at")
+    next_exec = fields.get(f"next_{agent}_execution_at")
 
     if status == "COMPLETE" and r.get("provider") and r.get("model"):
-        r.setdefault("display", {})
         r["display"] = {
             **(r.get("display") or {}),
             "label": f"{agent.upper()} REVIEW: COMPLETE",
             "provider": str(r.get("provider") or "").upper(),
             "model": r.get("model"),
             "policy": r.get("executed_policy") or r.get("requested_policy"),
-            "cost": f"${float(r.get('estimated_cost_usd') or 0):.5f}",
+            "cost": f"${float(r.get('estimated_cost_usd') or r.get('settled_cost_usd') or 0):.5f}",
             "completed_at": r.get("completed_at"),
             "review_age": fields.get(f"last_{agent}_review_at"),
-            "next_review": fields.get(f"next_{agent}_review_at"),
+            "next_review": policy_window,
+            "next_policy_window": policy_window,
         }
-        r["next_review_at"] = fields.get(f"next_{agent}_review_at")
+        r["next_review_at"] = policy_window
+        r["next_execution_at"] = next_exec
         r["review_sla_state"] = sla
+        r["review_status"] = "COMPLETE"
+        r["execution_status"] = "DONE"
         return r
 
-    # NOT complete — never show configured provider/model
-    next_at = fields.get(f"next_{agent}_review_at")
+    # NOT complete — never show configured provider/model as if executed
     if reason == "NO_MATERIAL_CHANGE_NO_CALL":
         label = f"{agent.upper()} REVIEW: NO CALL"
-    elif reason == "UNVERIFIED_OPERATOR_AUTHORIZATION" or r.get("artifact_disposition") == "QUARANTINED":
+        detail_reason = reason
+        review_status = "NO_CALL"
+    elif (
+        reason == "UNVERIFIED_OPERATOR_AUTHORIZATION"
+        or r.get("artifact_disposition") == "QUARANTINED"
+        or fields.get("review_due_reason") == "UNVERIFIED_OPERATOR_AUTHORIZATION"
+    ):
         label = f"{agent.upper()} REVIEW: BLOCKED"
-    elif reason == "NOT_SCHEDULED" or r.get("artifact_disposition") == "NOT_SCHEDULED":
-        label = f"{agent.upper()} REVIEW: SCHEDULED"
+        detail_reason = "UNVERIFIED_OPERATOR_AUTHORIZATION"
+        review_status = "BLOCKED"
+        policy_window = None
+        next_exec = None
+    elif fields.get("review_due_reason") == "UNRESOLVED_IDENTITY" or is_unresolved_identity(card):
+        label = f"{agent.upper()} REVIEW: BLOCKED"
+        detail_reason = "UNRESOLVED_IDENTITY"
+        review_status = "BLOCKED"
+        policy_window = None
+        next_exec = None
+    elif not enabled:
+        label = f"{agent.upper()} REVIEW: POLICY CONFIGURED"
+        detail_reason = "WORKERS_DISABLED"
+        review_status = "POLICY_CONFIGURED"
     elif sla == "OVERDUE":
         label = f"{agent.upper()} REVIEW: OVERDUE"
+        detail_reason = reason or "OVERDUE"
+        review_status = "OVERDUE"
     elif sla == "COST_DEFERRED":
         label = f"{agent.upper()} REVIEW: COST DEFERRED"
-    elif sla == "CONDITION_WATCH":
-        label = f"{agent.upper()} REVIEW: CONDITION WATCH"
+        detail_reason = "COST_DEFERRED"
+        review_status = "COST_DEFERRED"
     else:
         label = f"{agent.upper()} REVIEW: SCHEDULED"
+        detail_reason = reason or "SCHEDULED"
+        review_status = "SCHEDULED"
 
-    detail_reason = reason or fields.get("review_due_reason")
-    if agent == "cio" and fields.get("review_due_reason") == "Maria prerequisite missing":
+    if agent == "cio" and fields.get("review_due_reason") == "Maria prerequisite missing" and enabled:
         detail_reason = "Maria prerequisite missing"
 
-    r["status"] = "NOT_RUN"
+    r["status"] = "NOT_RUN" if status != "COMPLETE" else status
     r["provider"] = None
     r["model"] = None
     r["requested_policy"] = "NO_CALL"
     r["executed_policy"] = "NO_CALL"
     r["estimated_cost_usd"] = 0.0
     r["review_sla_state"] = sla
-    r["next_review_at"] = next_at
+    r["review_status"] = review_status
+    r["execution_status"] = "DISABLED" if not enabled else (
+        "BLOCKED" if review_status == "BLOCKED" else "QUEUED"
+    )
+    r["next_review_at"] = policy_window  # policy window (not a promise to execute)
+    r["next_execution_at"] = next_exec
+    r["next_policy_window"] = policy_window
+    r["reason_code"] = detail_reason if not (r.get("reason_code") in (
+        "UNVERIFIED_OPERATOR_AUTHORIZATION",
+    )) else r.get("reason_code")
+    if review_status == "BLOCKED" and detail_reason == "UNRESOLVED_IDENTITY":
+        r["reason_code"] = "UNRESOLVED_IDENTITY"
+    elif review_status == "POLICY_CONFIGURED":
+        r["reason_code"] = "WORKERS_DISABLED"
     r["display"] = {
         "label": label,
         "provider": "NONE",
         "model": "NONE",
         "policy": "NO_CALL",
         "cost": "$0",
-        "reason": detail_reason,
+        "reason": r.get("reason_code") or detail_reason,
         "disposition": r.get("artifact_disposition"),
-        "next_review": next_at,
+        "next_review": policy_window,
+        "next_policy_window": policy_window,
+        "next_execution_at": next_exec,
+        "execution_status": r["execution_status"],
         "sla": sla,
     }
     return r

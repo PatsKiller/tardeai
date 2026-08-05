@@ -238,14 +238,36 @@ def authorize_review_artifact(raw: dict[str, Any]) -> tuple[bool, str | None]:
             return False, f"MISSING_{k.upper()}"
     if raw.get("fallback_used") is None:
         return False, "MISSING_FALLBACK_USED"
-    rid = raw.get("provider_request_id")
+    rid = raw.get("provider_request_id") or raw.get("provider_request_reference")
+    reservation_id = raw.get("reservation_id") or raw.get("settlement_id")
     try:
-        row = _db_query(
-            """SELECT id, success FROM llm_consumption_log
-                WHERE provider_request_id=%s LIMIT 1""",
-            (rid,),
-            fetch="one",
-        )
+        row = None
+        if rid:
+            row = _db_query(
+                """SELECT id, success FROM llm_consumption_log
+                    WHERE provider_request_id=%s LIMIT 1""",
+                (rid,),
+                fetch="one",
+            )
+            if not row:
+                # DeepSeek path sometimes stores id only as client_request_id in metadata
+                row = _db_query(
+                    """SELECT id, success FROM llm_consumption_log
+                        WHERE metadata_json->>'client_request_id'=%s
+                           OR metadata_json->>'request_id'=%s
+                        LIMIT 1""",
+                    (str(rid), str(rid)),
+                    fetch="one",
+                )
+        if not row and reservation_id is not None:
+            row = _db_query(
+                """SELECT id, success FROM llm_consumption_log
+                    WHERE metadata_json->>'reservation_id'=%s
+                       OR metadata_json->>'reservation_id'=%s
+                    LIMIT 1""",
+                (str(reservation_id), str(int(reservation_id)) if str(reservation_id).isdigit() else str(reservation_id)),
+                fetch="one",
+            )
         if not row:
             return False, "CONSUMPTION_REQUEST_ID_UNLINKED"
     except Exception:
