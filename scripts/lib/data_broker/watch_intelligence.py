@@ -65,55 +65,25 @@ def _snapshot_id(payload: Any) -> str:
 
 
 def _starred_set() -> set[str]:
-    try:
-        from db_adapter import _get_conn
-        cur = _get_conn().cursor()
-        cur.execute("SELECT upper(symbol) AS s FROM operator_starred_symbols")
-        return {
-            (r["s"] if hasattr(r, "keys") else r[0])
-            for r in (cur.fetchall() or [])
-        }
-    except Exception:
-        return set()
+    from lib.data_broker.watch_domains import membership_starred
+    return membership_starred()
 
 
 def _screener_origin_set() -> set[str]:
-    out: set[str] = set()
-    try:
-        from db_adapter import _get_conn
-        cur = _get_conn().cursor()
-        cur.execute(
-            """
-            SELECT upper(symbol) AS s FROM screener_find_pins WHERE active = true
-            """
-        )
-        out |= {(r["s"] if hasattr(r, "keys") else r[0]) for r in (cur.fetchall() or [])}
-    except Exception:
-        pass
-    try:
-        from db_adapter import _get_conn
-        cur = _get_conn().cursor()
-        cur.execute(
-            """
-            SELECT DISTINCT upper(symbol) AS s FROM watchlist_items
-             WHERE status IN ('active','researched')
-               AND (
-                 lower(coalesce(source,'')) LIKE '%%screener%%'
-                 OR lower(coalesce(trigger_source,'')) LIKE '%%screener%%'
-                 OR lower(coalesce(source,'')) LIKE '%%find%%'
-               )
-             LIMIT 500
-            """
-        )
-        out |= {(r["s"] if hasattr(r, "keys") else r[0]) for r in (cur.fetchall() or [])}
-    except Exception:
-        pass
-    return out
+    from lib.data_broker.watch_domains import membership_screener
+    return membership_screener()
 
 
 def _held_set() -> set[str]:
-    from lib.watchlist_intelligence import _held_set as hs
-    return hs()
+    from lib.data_broker.watch_domains import membership_held
+    held, _src = membership_held()
+    return held
+
+
+def _held_source() -> str:
+    from lib.data_broker.watch_domains import membership_held
+    _held, src = membership_held()
+    return src
 
 
 def _universe_symbols(*, view: str, page_size: int, extra: list[str] | None = None) -> list[str]:
@@ -376,7 +346,6 @@ def _apply_filters(items: list[dict], q: dict[str, Any]) -> list[dict]:
             continue
         if view == "needs_data":
             if c.get("freshness_state") not in ("DATA_UNAVAILABLE", "STALE") and c.get("last") is not None:
-                # also needs company description
                 if c.get("company_summary"):
                     continue
         if view == "needs_review":
@@ -385,23 +354,27 @@ def _apply_filters(items: list[dict], q: dict[str, Any]) -> list[dict]:
             if cio == "COMPLETE" and maria == "COMPLETE":
                 continue
         if view == "reviewed_today":
-            # COMPLETE either review (date filter best-effort via artifact later)
-            cio = (c.get("cio_review") or {}).get("status")
-            maria = (c.get("maria_review") or {}).get("status")
-            if cio != "COMPLETE" and maria != "COMPLETE":
+            # Require completed_at within market date ET
+            from lib.data_broker.watch_domains import completed_today
+            cio = c.get("cio_review") or {}
+            maria = c.get("maria_review") or {}
+            ok_today = (
+                (cio.get("status") == "COMPLETE" and completed_today(cio.get("completed_at")))
+                or (maria.get("status") == "COMPLETE" and completed_today(maria.get("completed_at")))
+            )
+            if not ok_today:
                 continue
         if view == "avoid":
             st = (c.get("trade_ai_state") or "").upper()
             if st not in ("AVOID", "BLOCKED", "DETERMINISTIC_FAIL"):
                 continue
         if view == "near_trigger":
-            # heuristic: WAIT with support/resistance present
-            if (c.get("trade_ai_state") or "").upper() != "WAIT":
-                continue
-            if c.get("support") is None and c.get("resistance") is None:
+            from lib.data_broker.watch_domains import near_trigger_eval
+            nt = c.get("near_trigger") or near_trigger_eval(c)
+            if not nt.get("is_near"):
                 continue
         if view == "top_ideas":
-            # Strong street or WAIT/MANAGING priority set — keep all passed base
+            # Ranking applied after filter pass — keep eligible non-fail unless fail ranks last
             pass
 
         if starred_only and not c.get("starred"):
@@ -410,6 +383,60 @@ def _apply_filters(items: list[dict], q: dict[str, Any]) -> list[dict]:
             continue
         if origin in ("screener_find", "screener_finds", "screener") and not c.get("screener_origin"):
             continue
+
+        # Extended filters
+        list_id = str(q.get("saved_list") or q.get("list_id") or "").strip()
+        if list_id:
+            from lib.data_broker.watch_domains import saved_list_membership
+            if (c.get("symbol") or "").upper() not in saved_list_membership(list_id):
+                continue
+        industry = (q.get("industry") or "").strip().lower()
+        if industry and (c.get("industry") or "").lower() != industry:
+            continue
+        instrument = (q.get("instrument") or q.get("instrument_type") or "").strip().lower()
+        if instrument and (c.get("instrument_type") or "stock").lower() != instrument:
+            continue
+        review_agent = (q.get("review_agent") or "").strip().lower()
+        if review_agent:
+            rev = c.get(f"{review_agent}_review") or {}
+            if rev.get("status") != "COMPLETE":
+                continue
+        provider = (q.get("provider") or "").strip().lower()
+        if provider:
+            ok_p = False
+            for key in ("cio_review", "maria_review"):
+                r = c.get(key) or {}
+                if r.get("status") == "COMPLETE" and str(r.get("provider") or "").lower() == provider:
+                    ok_p = True
+            if not ok_p:
+                continue
+        model = (q.get("model") or "").strip().lower()
+        if model:
+            ok_m = False
+            for key in ("cio_review", "maria_review"):
+                r = c.get(key) or {}
+                if r.get("status") == "COMPLETE" and str(r.get("model") or "").lower() == model:
+                    ok_m = True
+            if not ok_m:
+                continue
+        freshness = (q.get("freshness") or "").strip().upper()
+        if freshness and (c.get("freshness_state") or "").upper() != freshness:
+            continue
+        material = str(q.get("material_change") or "").lower()
+        if material in ("1", "true", "yes") and not c.get("material_change"):
+            continue
+        if material in ("0", "false", "no") and c.get("material_change"):
+            continue
+        cio_view = (q.get("cio_view") or "").strip().upper()
+        if cio_view:
+            verdict = str((c.get("cio_review") or {}).get("verdict") or "").upper()
+            if cio_view not in verdict and (c.get("cio_review") or {}).get("status") != "COMPLETE":
+                continue
+            if cio_view and (c.get("cio_review") or {}).get("status") == "COMPLETE" and cio_view not in verdict:
+                # allow substring match on summary
+                summary = str((c.get("cio_review") or {}).get("summary") or "").upper()
+                if cio_view not in summary:
+                    continue
 
         sr = (c.get("street_rating") or "NOT RATED").upper().replace(" ", "_")
         if street:
@@ -474,9 +501,139 @@ def _sort_items(items: list[dict], sort: str) -> list[dict]:
     return sorted(items, key=key)
 
 
+def _enrich_card_semantics(card: dict, *, enrich: dict, held_source: str) -> dict:
+    """Broker-owned presentation fields: absolute vs relative, near-trigger, material change."""
+    from lib.data_broker.watch_domains import (
+        absolute_performance,
+        relative_performance_gaps,
+        near_trigger_eval,
+        material_fingerprint,
+        material_change_vs_prior,
+        load_review_artifacts,
+        completed_today,
+    )
+    c = dict(card)
+    # Re-bind reviews through authorization gate (demote quarantine / self-asserted)
+    arts = load_review_artifacts(c.get("symbol") or "")
+    for agent, key in (("cio", "cio_review"), ("maria", "maria_review")):
+        if agent in arts:
+            a = arts[agent]
+            if a.get("status") == "COMPLETE":
+                c[key] = {
+                    "status": "COMPLETE",
+                    "summary": a.get("summary"),
+                    "verdict": a.get("verdict"),
+                    "provider": a.get("provider"),
+                    "model": a.get("model"),
+                    "policy": a.get("executed_policy") or a.get("requested_policy"),
+                    "process_id": a.get("process_id"),
+                    "completed_at": a.get("completed_at"),
+                    "estimated_cost_usd": a.get("estimated_cost_usd"),
+                    "display": {
+                        "label": f"{agent.upper()} REVIEW: COMPLETE",
+                        "provider": str(a.get("provider") or "").upper(),
+                        "model": a.get("model"),
+                        "policy": a.get("executed_policy"),
+                        "cost": f"${float(a.get('estimated_cost_usd') or 0):.5f}",
+                    },
+                }
+            else:
+                c[key] = a
+        else:
+            # Force demote if prior complete without auth path
+            prev = c.get(key) or {}
+            if prev.get("status") == "COMPLETE" and not prev.get("authorization_event_id"):
+                c[key] = {
+                    "status": "NOT_RUN",
+                    "reason_code": "UNVERIFIED_OPERATOR_AUTHORIZATION",
+                    "provider": None,
+                    "model": None,
+                    "policy": "NO_CALL",
+                    "estimated_cost_usd": 0.0,
+                    "display": {
+                        "label": f"{key.split('_')[0].upper()} REVIEW: NOT RUN",
+                        "provider": "NONE",
+                        "model": "NONE",
+                        "policy": "NO_CALL",
+                        "cost": "$0",
+                        "reason": "UNVERIFIED_OPERATOR_AUTHORIZATION",
+                    },
+                }
+
+    abs_perf = absolute_performance(enrich or {})
+    rel_gap = relative_performance_gaps()
+    c["absolute_performance"] = abs_perf
+    c["absolute_performance_summary"] = abs_perf.get("summary")
+    # Do not label absolute as relative
+    c["relative_performance_summary"] = None
+    c["relative_vs_industry"] = None
+    c["relative_vs_sector"] = None
+    c["relative_vs_spy"] = None
+    c["relative_performance_quality"] = "UNAVAILABLE"
+    c["relative_performance_note"] = rel_gap.get("note")
+    c["catalyst_vs_industry"] = None
+    c["catalyst_vs_industry_quality"] = "UNAVAILABLE"
+    c["catalyst_vs_industry_note"] = "Catalyst-versus-industry not joined"
+
+    nt = near_trigger_eval(c)
+    c["near_trigger"] = nt
+    c["is_near_trigger"] = bool(nt.get("is_near"))
+
+    fp = material_fingerprint(c)
+    c["material_fingerprint"] = fp
+    c["material_change"] = material_change_vs_prior(c.get("symbol") or "", fp)
+
+    # Separate next review fields
+    raw_next = c.get("next_review_time") or c.get("next_deterministic_review_condition")
+    c["next_review_condition"] = raw_next if raw_next and not str(raw_next).endswith("Z") and "T" not in str(raw_next)[:20] else None
+    c["next_review_at"] = raw_next if raw_next and ("T" in str(raw_next) or str(raw_next).endswith("Z")) else None
+    if c.get("next_review_at") and c.get("next_review_condition") is None and " " in str(raw_next) and "T" not in str(raw_next):
+        c["next_review_condition"] = raw_next
+        c["next_review_at"] = None
+    c["review_sla_state"] = "UNKNOWN"
+    # Review age from latest COMPLETE
+    ages = []
+    for key in ("cio_review", "maria_review"):
+        r = c.get(key) or {}
+        if r.get("status") == "COMPLETE" and r.get("completed_at"):
+            ages.append(str(r.get("completed_at")))
+    c["review_completed_at"] = max(ages) if ages else None
+    c["reviewed_today"] = any(
+        completed_today((c.get(k) or {}).get("completed_at"))
+        for k in ("cio_review", "maria_review")
+        if (c.get(k) or {}).get("status") == "COMPLETE"
+    )
+
+    # Analyst target fields (already on street consensus)
+    street = c.get("street_consensus") or {}
+    c["target_mean"] = c.get("target_mean") if c.get("target_mean") is not None else street.get("target_mean")
+    c["implied_upside_pct"] = c.get("implied_upside_pct") if c.get("implied_upside_pct") is not None else street.get("implied_upside_pct")
+    c["latest_analyst_action"] = None
+    c["latest_analyst_action_quality"] = "UNAVAILABLE"
+    c["position_source"] = held_source
+    c["data_quality_note"] = "relative and business-model domains typed unavailable until broker providers land"
+    return c
+
+
 def list_watch_intelligence(query: dict | None = None) -> dict[str, Any]:
-    """GET /api/v3/data-broker/watch-intelligence — filtered, paginated, provenance-bearing."""
+    """GET /api/v3/data-broker/watch-intelligence — broker projection compose path.
+
+    Dependency direction (target):
+      watch_domains + existing broker modules → this projection → API → React
+
+    Still uses list_intelligence for Trade AI / street / quote assembly until those
+    domains are fully split; membership, ranking, near-trigger, review auth, and
+    quality live in watch_domains.
+    """
     from lib.watchlist_intelligence import list_intelligence
+    from lib.data_broker.watch_domains import (
+        rank_top_ideas,
+        content_snapshot_id,
+        assess_data_quality,
+        enrichment_batch,
+        DIRECT_DEPENDENCIES,
+        RANK_VERSION,
+    )
 
     q = dict(query or {})
     view = (q.get("view") or "top_ideas").lower()
@@ -486,57 +643,90 @@ def list_watch_intelligence(query: dict | None = None) -> dict[str, Any]:
     page_size = min(100, max(1, int(q.get("page_size") or q.get("limit") or 40)))
     sort = str(q.get("sort") or "watch_rank")
 
-    syms = _universe_symbols(view=view, page_size=page_size)
-    # Build cards via shared intelligence aggregator (no provider calls)
+    # Universe from membership domains — not DEFAULT_PRIORITY as production rank
+    syms = _universe_symbols(view="all" if view == "top_ideas" else view, page_size=max(page_size, 80))
     raw = list_intelligence(symbols=syms, limit=len(syms) or 1, priority_only=False, offset=0)
     cards = raw.get("cards") or []
 
     starred = _starred_set()
     screener = _screener_origin_set()
+    held = _held_set()
+    held_source = _held_source()
+    enrich_map = enrichment_batch([c.get("symbol") for c in cards if c.get("symbol")])
 
-    items = [
-        _card_to_broker_item(
-            c,
-            starred=(c.get("symbol") or "").upper() in starred,
-            screener=(c.get("symbol") or "").upper() in screener,
+    items = []
+    for c in cards:
+        sym = (c.get("symbol") or "").upper()
+        c = _enrich_card_semantics(
+            {**c, "starred": sym in starred, "held": sym in held, "screener_origin": sym in screener},
+            enrich=enrich_map.get(sym) or {},
+            held_source=held_source,
         )
-        for c in cards
-    ]
-    # ensure membership flags accurate
-    for it in items:
-        sym = (it.get("symbol") or "").upper()
-        it["card"]["starred"] = sym in starred
-        it["card"]["screener_origin"] = sym in screener
+        it = _card_to_broker_item(c, starred=sym in starred, screener=sym in screener)
+        it["card"] = c
         it["domains"]["WatchMembership"]["starred"] = field(sym in starred, source="operator_starred_symbols")
         it["domains"]["WatchMembership"]["screener_origin"] = field(sym in screener, source="screener_find_pins|watchlist_items.source")
+        it["domains"]["PositionContext"] = {
+            "held": field(sym in held, source=held_source),
+            "source": field(held_source, source="data_broker.watch_domains.membership_held"),
+        }
+        # Absolute vs relative labels
+        it["domains"]["RelativePerformance"] = {
+            "absolute_summary": field(c.get("absolute_performance_summary"), source="enrichment_cache", quality_state="VALID" if c.get("absolute_performance_summary") else "UNAVAILABLE"),
+            "versus_industry": field(None, source=None, quality_state="UNAVAILABLE"),
+            "versus_sector": field(None, source=None, quality_state="UNAVAILABLE"),
+            "versus_spy": field(None, source=None, quality_state="UNAVAILABLE"),
+            "note": field(c.get("relative_performance_note"), source="broker"),
+        }
+        items.append(it)
 
-    filtered = _apply_filters(items, {**q, "view": view})
-    sorted_items = _sort_items(filtered, sort)
+    # Apply non-view ranking filters first (view=top_ideas filters after rank)
+    filter_q = {**q, "view": "all" if view == "top_ideas" else view}
+    filtered = _apply_filters(items, filter_q)
+
+    if view == "top_ideas":
+        ranked = rank_top_ideas(filtered)
+        # Top Ideas = top ranked slice (dynamic), not DEFAULT_PRIORITY
+        sorted_items = ranked
+        sort = f"rank:{RANK_VERSION}"
+    elif view == "near_trigger":
+        sorted_items = _apply_filters(items, {**q, "view": "near_trigger"})
+        sorted_items = _sort_items(sorted_items, sort)
+    else:
+        sorted_items = _apply_filters(items, {**q, "view": view})
+        sorted_items = _sort_items(sorted_items, sort)
+
     total = len(sorted_items)
     start = (page - 1) * page_size
     page_items = sorted_items[start : start + page_size]
+    quality = assess_data_quality(page_items)
 
     counts = {
         "total_matched": total,
         "page": page,
         "page_size": page_size,
         "starred_universe": len(starred),
-        "held_universe": len(_held_set()),
+        "held_universe": len(held),
         "screener_universe": len(screener),
-        "street_strong_buy": sum(1 for i in filtered if (i.get("card") or {}).get("street_rating") == "STRONG BUY"),
-        "street_buy": sum(1 for i in filtered if (i.get("card") or {}).get("street_rating") == "BUY"),
-        "trade_ai_wait": sum(1 for i in filtered if (i.get("card") or {}).get("trade_ai_state") == "WAIT"),
-        "proposal_eligible": sum(1 for i in filtered if (i.get("card") or {}).get("proposal_allowed")),
+        "street_strong_buy": sum(1 for i in sorted_items if (i.get("card") or {}).get("street_rating") == "STRONG BUY"),
+        "street_buy": sum(1 for i in sorted_items if (i.get("card") or {}).get("street_rating") == "BUY"),
+        "trade_ai_wait": sum(1 for i in sorted_items if (i.get("card") or {}).get("trade_ai_state") == "WAIT"),
+        "proposal_eligible": sum(1 for i in sorted_items if (i.get("card") or {}).get("proposal_allowed")),
         "complete_reviews": sum(
-            1 for i in filtered
+            1 for i in sorted_items
             if (i.get("card") or {}).get("cio_review", {}).get("status") == "COMPLETE"
             or (i.get("card") or {}).get("maria_review", {}).get("status") == "COMPLETE"
         ),
+        "near_trigger": sum(1 for i in items if (i.get("card") or {}).get("is_near_trigger")),
+        "material_change": sum(1 for i in sorted_items if (i.get("card") or {}).get("material_change")),
     }
+
+    cards_out = [i.get("card") for i in page_items]
+    snap = content_snapshot_id(page_items, view=view, query=q)
 
     body = {
         "ok": True,
-        "snapshot_id": None,  # filled below
+        "snapshot_id": snap,
         "generated_at": _now(),
         "data_contract_version": CONTRACT_VERSION,
         "contract_version": CONTRACT_VERSION,
@@ -549,30 +739,28 @@ def list_watch_intelligence(query: dict | None = None) -> dict[str, Any]:
         "source_status": {
             "package": "scripts/lib/data_broker",
             "projection": "watch_intelligence",
-            "canonical_quotes": "data_broker + watch_canonical_quote",
-            "street_consensus": "data_broker.analyst_rollup + yahoo_analyst_targets_history",
-            "decision_packets": "ok",
-            "review_artifacts": "ok",
-            "symbol_profiles": "data_broker.symbol_profile store",
-            "membership": "operator_starred_symbols + holdings + screener_find_pins",
+            "domains_module": "lib.data_broker.watch_domains",
+            "position_source": held_source,
+            "canonical_quotes": "watch_canonical_quote",
+            "street_consensus": "yahoo + analyst_rollup",
             "provider_calls": 0,
         },
-        "data_quality_status": "OK",
+        "data_quality_status": quality.get("status"),
+        "data_quality": quality,
         "counts": counts,
         "items": page_items,
-        # convenience for existing board components
-        "cards": [i.get("card") for i in page_items],
+        "cards": cards_out,
         "summary": {
             "street_strong_buy": counts["street_strong_buy"],
             "street_buy": counts["street_buy"],
             "trade_ai_wait": counts["trade_ai_wait"],
             "blocked_or_unavailable": sum(
-                1 for i in filtered
+                1 for i in sorted_items
                 if (i.get("card") or {}).get("trade_ai_state") in (
                     "BLOCKED", "DATA_UNAVAILABLE", "DETERMINISTIC_FAIL", "STALE", "AVOID"
                 )
             ),
-            "managing_held": sum(1 for i in filtered if (i.get("card") or {}).get("held") or (i.get("card") or {}).get("trade_ai_state") == "MANAGING"),
+            "managing_held": sum(1 for i in sorted_items if (i.get("card") or {}).get("held") or (i.get("card") or {}).get("trade_ai_state") == "MANAGING"),
             "proposal_eligible": counts["proposal_eligible"],
         },
         "flags": {
@@ -580,43 +768,25 @@ def list_watch_intelligence(query: dict | None = None) -> dict[str, Any]:
             "watch_legacy_hidden": True,
             "watch_deepseek_flash_enabled": False,
             "watch_cio_daily_enabled": False,
+            "ceco_artifacts_quarantined": True,
         },
         "consumers": [
-            "Watch Intelligence",
-            "Portfolio",
-            "Re-Entry",
-            "Risk",
-            "Active Trader",
-            "Research Intelligence",
-            "Agents",
-            "Reports",
+            "Watch Intelligence", "Portfolio", "Re-Entry", "Risk",
+            "Active Trader", "Research Intelligence", "Agents", "Reports",
         ],
         "data_broker": {
             "package": "scripts/lib/data_broker",
             "projection": "watch_intelligence",
+            "domains": "lib.data_broker.watch_domains",
             "contract_version": CONTRACT_VERSION,
             "catalog": "/api/v3/data-broker",
-            "composes": [
-                "market_quote / watch_canonical_quote",
-                "symbol_profile",
-                "analyst_rollup",
-                "yahoo_analyst_targets_history",
-                "catalyst_record / catalyst_events",
-                "decision_packets",
-                "review_artifacts",
-                "operator_starred_symbols",
-                "holdings.json",
-                "screener_find_pins",
-            ],
+            "dependency_direction": "watch_domains → watch_intelligence projection → API → React",
+            "direct_dependencies": DIRECT_DEPENDENCIES,
             "read_only": True,
             "provider_calls": 0,
         },
+        "rank_version": RANK_VERSION if view == "top_ideas" else None,
     }
-    body["snapshot_id"] = _snapshot_id({
-        "view": view, "count": total, "page": page,
-        "symbols": [i.get("symbol") for i in page_items],
-        "v": CONTRACT_VERSION,
-    })
     return body
 
 
@@ -663,85 +833,119 @@ def detail_watch_intelligence(symbol: str) -> dict[str, Any]:
 
 
 def watch_filters() -> dict[str, Any]:
-    """Facet options for the unified filter toolbar."""
-    from lib.watchlist_intelligence import list_intelligence, DEFAULT_PRIORITY
+    """Filter catalog with id/label/options/source/generated_at."""
+    from lib.watchlist_intelligence import list_intelligence
+    from lib.data_broker.watch_domains import saved_lists_canonical
 
-    raw = list_intelligence(symbols=list(DEFAULT_PRIORITY) + sorted(_starred_set())[:20], limit=80, priority_only=False)
+    # Facet sample from membership universe (not DEFAULT_PRIORITY rank)
+    sample = sorted(_starred_set() | _held_set() | _screener_origin_set())[:40]
+    from lib.watchlist_intelligence import DEFAULT_PRIORITY
+    sample = list(dict.fromkeys(sample + list(DEFAULT_PRIORITY)))
+    raw = list_intelligence(symbols=sample, limit=len(sample) or 1, priority_only=False)
     cards = raw.get("cards") or []
     sectors = sorted({c.get("sector") for c in cards if c.get("sector")})
     industries = sorted({c.get("industry") for c in cards if c.get("industry")})
     instruments = sorted({c.get("instrument_type") or "stock" for c in cards})
     states = sorted({c.get("trade_ai_state") for c in cards if c.get("trade_ai_state")})
-    ratings = ["STRONG BUY", "BUY", "HOLD", "SELL", "NOT RATED"]
+    gen = _now()
+    def filt(fid, label, options, source, applicability="all"):
+        return {
+            "id": fid,
+            "label": label,
+            "options": options,
+            "counts": None,
+            "applicability": applicability,
+            "source": source,
+            "generated_at": gen,
+        }
+    filters = [
+        filt("view", "View", list(VIEWS), "watch_intelligence"),
+        filt("street_rating", "Street rating", ["STRONG BUY", "BUY", "HOLD", "SELL", "NOT RATED"], "yahoo/analyst_rollup"),
+        filt("trade_ai_state", "Trade AI state", states or ["WAIT", "READY", "MANAGING", "DETERMINISTIC_FAIL", "BLOCKED", "DATA_UNAVAILABLE"], "decision_packets"),
+        filt("sector", "Sector", sectors, "symbol_profiles"),
+        filt("industry", "Industry", industries, "symbol_profiles"),
+        filt("instrument", "Instrument", instruments, "symbol_profiles"),
+        filt("origin", "Origin", ["screener_find"], "screener_find_pins"),
+        filt("saved_list", "Saved list", [x.get("id") for x in saved_lists_canonical()], "canonical_lists"),
+        filt("review_status", "Review status", ["COMPLETE", "NOT_RUN"], "review_artifacts"),
+        filt("review_agent", "Review agent", ["cio", "maria"], "review_artifacts"),
+        filt("provider", "Provider", ["deepseek"], "review_artifacts"),
+        filt("model", "Model", ["deepseek-v4-flash"], "review_artifacts"),
+        filt("freshness", "Freshness", ["CURRENT", "PREMARKET_CURRENT", "AFTER_HOURS_CURRENT", "STALE", "DATA_UNAVAILABLE"], "canonical_quote"),
+        filt("material_change", "Material change", ["1", "0"], "material_fingerprint"),
+        filt("cio_view", "CIO view", ["ADD", "HOLD", "AVOID", "WATCH", "RESEARCH"], "cio_review.verdict"),
+        filt("starred", "Starred only", ["1"], "operator_starred_symbols"),
+        filt("held", "Held only", ["1"], "portfolio_snapshot|holdings_fallback"),
+        filt("sort", "Sort", ["watch_rank", "street_rating", "day_change", "upside", "symbol"], "projection"),
+    ]
     return {
         "ok": True,
-        "snapshot_id": _snapshot_id({"f": "filters", "t": _now()[:13]}),
-        "generated_at": _now(),
+        "snapshot_id": _snapshot_id({"filters": [f["id"] for f in filters], "n": len(filters)}),
+        "generated_at": gen,
         "data_contract_version": CONTRACT_VERSION,
         "provider_calls": 0,
         "views": list(VIEWS),
-        "street_ratings": ratings,
+        "filters": filters,
+        "street_ratings": ["STRONG BUY", "BUY", "HOLD", "SELL", "NOT RATED"],
         "trade_ai_states": states or ["WAIT", "READY", "MANAGING", "DETERMINISTIC_FAIL", "BLOCKED", "DATA_UNAVAILABLE"],
         "sectors": sectors,
         "industries": industries,
         "instruments": instruments,
-        "origins": ["screener_find", "directive", "personal", "all"],
+        "origins": ["screener_find"],
         "review_statuses": ["COMPLETE", "NOT_RUN"],
         "sorts": ["watch_rank", "street_rating", "day_change", "upside", "symbol"],
         "counts": {
             "starred": len(_starred_set()),
             "held": len(_held_set()),
             "screener": len(_screener_origin_set()),
+            "saved_lists": len(saved_lists_canonical()),
         },
     }
 
 
 def watch_lists() -> dict[str, Any]:
-    """Saved lists / directive labels (bounded)."""
-    lists: list[dict] = []
-    try:
-        from db_adapter import _get_conn
-        cur = _get_conn().cursor()
-        cur.execute(
-            """
-            SELECT label, count(*) AS n
-              FROM watch_directives
-             WHERE kind='ticker' AND label IS NOT NULL AND label <> ''
-             GROUP BY label
-             ORDER BY n DESC
-             LIMIT 80
-            """
-        )
-        for r in cur.fetchall() or []:
-            if hasattr(r, "keys"):
-                lists.append({"id": r["label"], "label": r["label"], "count": r["n"], "source": "watch_directives"})
-            else:
-                lists.append({"id": r[0], "label": r[0], "count": r[1], "source": "watch_directives"})
-    except Exception:
-        pass
+    """Canonical saved lists only — not directive label substitution."""
+    from lib.data_broker.watch_domains import saved_lists_canonical
+    lists = saved_lists_canonical()
     return {
         "ok": True,
-        "snapshot_id": _snapshot_id({"lists": len(lists)}),
+        "snapshot_id": _snapshot_id({"lists": [x.get("id") for x in lists]}),
         "generated_at": _now(),
         "data_contract_version": CONTRACT_VERSION,
         "provider_calls": 0,
         "items": lists,
+        "canonical": True,
         "starred_count": len(_starred_set()),
+        "note": None if lists else "No canonical saved-list membership table on host; directive labels intentionally not substituted",
+        "quality_state": "VALID" if lists else "UNAVAILABLE",
     }
 
 
 def watch_reviews(symbol: str) -> dict[str, Any]:
-    from lib.watchlist_intelligence import reviews_intelligence
-    raw = reviews_intelligence(symbol)
+    """Reviews through authorization gate — quarantine excluded."""
+    from lib.data_broker.watch_domains import load_review_artifacts
+    from lib.watchlist_intelligence import not_run_review
+
+    arts = load_review_artifacts(symbol)
+    agents = ("cio", "maria", "sentinel", "steph", "risk", "grok", "chatgpt")
+    items = []
+    complete = 0
+    for a in agents:
+        if a in arts:
+            items.append(arts[a])
+            if arts[a].get("status") == "COMPLETE":
+                complete += 1
+        else:
+            items.append(not_run_review(a, reason_code="NOT_SCHEDULED"))
     return {
         "ok": True,
-        "snapshot_id": _snapshot_id({"sym": symbol.upper(), "n": raw.get("complete_count")}),
+        "snapshot_id": _snapshot_id({"sym": symbol.upper(), "n": complete, "agents": [i.get("status") for i in items]}),
         "generated_at": _now(),
         "data_contract_version": CONTRACT_VERSION,
         "provider_calls": 0,
         "paid_flags_enabled": False,
         "symbol": symbol.upper(),
-        "counts": {"total": raw.get("count"), "complete": raw.get("complete_count")},
-        "items": raw.get("reviews") or [],
-        "source_status": {"reviews": "ok"},
+        "counts": {"total": len(items), "complete": complete},
+        "items": items,
+        "source_status": {"reviews": "authorization_gated", "quarantine_excluded": True},
     }

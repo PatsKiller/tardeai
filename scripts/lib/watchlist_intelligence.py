@@ -292,9 +292,23 @@ def _load_rockville_review(symbol: str) -> dict | None:
 
 
 def _try_promote_artifact(raw: dict[str, Any], *, agent_id: str) -> dict[str, Any]:
-    """Promote raw artifact dict to COMPLETE or demote to NOT RUN."""
+    """Promote raw artifact dict to COMPLETE or demote to NOT RUN.
+
+    operator_approved=true is never sufficient — broker authorization gate required.
+    """
     candidate = dict(raw)
     candidate.setdefault("agent_id", agent_id)
+    try:
+        from lib.data_broker.watch_domains import authorize_review_artifact
+        auth_ok, auth_reason = authorize_review_artifact(candidate)
+        if not auth_ok:
+            return not_run_review(
+                agent_id,
+                reason_code=auth_reason or "UNVERIFIED_OPERATOR_AUTHORIZATION",
+                extra={"legacy_present": bool(raw), "operator_approved_insufficient": True},
+            )
+    except Exception:
+        return not_run_review(agent_id, reason_code="UNVERIFIED_OPERATOR_AUTHORIZATION")
     ok, missing = validate_complete_review(candidate)
     if ok:
         return complete_review_from_validated(candidate)
@@ -306,25 +320,12 @@ def _try_promote_artifact(raw: dict[str, Any], *, agent_id: str) -> dict[str, An
 
 
 def _load_intelligence_artifacts(symbol: str) -> dict[str, dict[str, Any]]:
-    """Load governed proof artifacts written under data/runtime/watchlist_intelligence/artifacts."""
-    out: dict[str, dict[str, Any]] = {}
+    """Load artifacts only via broker authorization gate (quarantine excluded)."""
     try:
-        INTEL_ARTIFACTS.mkdir(parents=True, exist_ok=True)
+        from lib.data_broker.watch_domains import load_review_artifacts
+        return load_review_artifacts(symbol)
     except Exception:
-        pass
-    if not INTEL_ARTIFACTS.exists():
-        return out
-    sym = symbol.upper()
-    for path in INTEL_ARTIFACTS.glob(f"{sym}_*.json"):
-        try:
-            raw = json.loads(path.read_text(encoding="utf-8"))
-        except Exception:
-            continue
-        if not isinstance(raw, dict):
-            continue
-        agent = str(raw.get("agent_id") or path.stem.split("_", 1)[-1]).lower()
-        out[agent] = raw
-    return out
+        return {}
 
 
 def _reviews_for_symbol(symbol: str) -> list[dict[str, Any]]:

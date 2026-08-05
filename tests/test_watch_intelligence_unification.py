@@ -146,6 +146,119 @@ class TestCommands(unittest.TestCase):
         self.assertEqual(m.get("provider_calls"), 0)
 
 
+class TestProductionTruthCorrection(unittest.TestCase):
+    def test_operator_approved_not_authorization(self):
+        from lib.data_broker.watch_domains import authorize_review_artifact
+        fake = {
+            "status": "COMPLETE",
+            "operator_approved": True,
+            "process_id": "watchlist_maria_flash_narrative",
+            "provider": "deepseek",
+            "model": "deepseek-v4-flash",
+            "provider_request_id": "req-x",
+            "input_hash": "h",
+            "artifact_id": "a",
+            "artifact_hash": "ah",
+            "started_at": "t0",
+            "completed_at": "t1",
+            "requested_policy": "FAST",
+            "executed_policy": "FAST",
+            "fallback_used": False,
+        }
+        ok, reason = authorize_review_artifact(fake)
+        self.assertFalse(ok)
+        self.assertEqual(reason, "UNVERIFIED_OPERATOR_AUTHORIZATION")
+
+    def test_quarantine_not_complete(self):
+        from lib.data_broker.watch_domains import load_review_artifacts
+        arts = load_review_artifacts("CECO")
+        # Quarantined files must not load as COMPLETE from artifacts dir
+        for a in arts.values():
+            self.assertNotEqual(a.get("status"), "COMPLETE")
+
+    def test_top_ideas_not_default_priority_only(self):
+        from lib.data_broker.watch_intelligence import list_watch_intelligence
+        from lib.watchlist_intelligence import DEFAULT_PRIORITY
+        out = list_watch_intelligence({"view": "top_ideas", "page_size": 20})
+        cards = out.get("cards") or []
+        self.assertTrue(cards)
+        # Must expose rank metadata from dynamic ranker
+        self.assertIsNotNone(cards[0].get("rank"))
+        self.assertIsNotNone(cards[0].get("rank_version"))
+        # Rank scores must exist (dynamic)
+        self.assertIsNotNone(cards[0].get("rank_score"))
+        # Not merely equal to DEFAULT_PRIORITY ordering without scores
+        self.assertTrue(out.get("rank_version") or cards[0].get("rank_version"))
+
+    def test_near_trigger_requires_distance(self):
+        from lib.data_broker.watch_domains import near_trigger_eval
+        far = near_trigger_eval({
+            "trade_ai_state": "WAIT",
+            "last": 100,
+            "resistance": 150,
+            "freshness_state": "CURRENT",
+        })
+        self.assertFalse(far.get("is_near"))
+        near = near_trigger_eval({
+            "trade_ai_state": "WAIT",
+            "last": 100,
+            "resistance": 102,
+            "freshness_state": "CURRENT",
+        })
+        self.assertTrue(near.get("is_near"))
+        stale = near_trigger_eval({
+            "trade_ai_state": "WAIT",
+            "last": 100,
+            "resistance": 101,
+            "freshness_state": "STALE",
+        })
+        self.assertFalse(stale.get("is_near"))
+
+    def test_reviewed_today_date_gate(self):
+        from lib.data_broker.watch_domains import completed_today
+        self.assertFalse(completed_today("2020-01-01T12:00:00+00:00"))
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).isoformat()
+        self.assertTrue(completed_today(now))
+
+    def test_snapshot_excludes_generated_at_only(self):
+        from lib.data_broker.watch_domains import content_snapshot_id
+        items = [{"symbol": "X", "card": {"symbol": "X", "street_rating": "BUY", "last": 1}}]
+        a = content_snapshot_id(items, view="all", query={})
+        b = content_snapshot_id(items, view="all", query={})
+        self.assertEqual(a, b)
+        items2 = [{"symbol": "X", "card": {"symbol": "X", "street_rating": "BUY", "last": 2}}]
+        c = content_snapshot_id(items2, view="all", query={})
+        self.assertNotEqual(a, c)
+
+    def test_quality_not_hardcoded_ok(self):
+        from lib.data_broker.watch_intelligence import list_watch_intelligence
+        out = list_watch_intelligence({"view": "top_ideas", "page_size": 6})
+        self.assertIn(out.get("data_quality_status"), ("COMPLETE", "PARTIAL", "DEGRADED", "UNAVAILABLE"))
+        self.assertIsInstance(out.get("data_quality"), dict)
+
+    def test_absolute_not_relative_label(self):
+        from lib.data_broker.watch_intelligence import list_watch_intelligence
+        out = list_watch_intelligence({"view": "top_ideas", "page_size": 3})
+        for c in out.get("cards") or []:
+            # relative summary must not be absolute returns mislabeled
+            if c.get("absolute_performance_summary"):
+                self.assertIsNone(c.get("relative_performance_summary"))
+            self.assertEqual(c.get("relative_performance_quality"), "UNAVAILABLE")
+
+    def test_ceco_not_complete_after_quarantine(self):
+        from lib.data_broker.watch_intelligence import list_watch_intelligence, watch_reviews
+        out = list_watch_intelligence({"view": "all", "q": "CECO", "page_size": 20})
+        for c in out.get("cards") or []:
+            if c.get("symbol") == "CECO":
+                self.assertNotEqual((c.get("cio_review") or {}).get("status"), "COMPLETE")
+                self.assertNotEqual((c.get("maria_review") or {}).get("status"), "COMPLETE")
+        rev = watch_reviews("CECO")
+        for r in rev.get("items") or []:
+            if r.get("agent_id") in ("cio", "maria"):
+                self.assertNotEqual(r.get("status"), "COMPLETE")
+
+
 class TestBrokerCatalogAdvertisement(unittest.TestCase):
     def test_catalog_lists_watch_intelligence(self):
         from lib.data_broker.catalog import broker_catalog, PROJECTIONS
@@ -170,7 +283,8 @@ class TestBrokerCatalogAdvertisement(unittest.TestCase):
         self.assertEqual(db.get("package"), "scripts/lib/data_broker")
         self.assertEqual(db.get("projection"), "watch_intelligence")
         self.assertEqual(db.get("catalog"), "/api/v3/data-broker")
-        self.assertTrue(db.get("composes"))
+        self.assertTrue(db.get("domains") or db.get("composes") or db.get("direct_dependencies"))
+        self.assertIn("watch_domains", str(db.get("dependency_direction") or db.get("domains") or ""))
 
     def test_ui_advertises_broker(self):
         ui = (ROOT / "apps/command-center-v3/src/pages/WatchIntelligenceUnified.tsx").read_text()

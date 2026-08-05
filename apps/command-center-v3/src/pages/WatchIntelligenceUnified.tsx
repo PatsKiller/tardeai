@@ -46,6 +46,11 @@ type Card = {
   screener_origin?: boolean
   cio_review?: ReviewStatus
   maria_review?: ReviewStatus
+  rank?: number | null
+  material_change?: boolean
+  absolute_performance_summary?: string | null
+  next_review_at?: string | null
+  next_review_condition?: string | null
 }
 
 type ReviewStatus = {
@@ -165,7 +170,13 @@ export default function WatchIntelligenceUnified() {
     return p.toString()
   }, [view, page, sort, q, street, state, sector, starredOnly, heldOnly, origin])
 
-  const { data, loading, error } = useApi<any>(`/api/v3/data-broker/watch-intelligence?${apiQs}`, 90_000)
+  const [refreshKey, setRefreshKey] = useState(0)
+  const [starError, setStarError] = useState<string | null>(null)
+  const [starBusy, setStarBusy] = useState<string | null>(null)
+  const { data, loading, error } = useApi<any>(
+    `/api/v3/data-broker/watch-intelligence?${apiQs}&_rk=${refreshKey}`,
+    90_000,
+  )
   const { data: filters } = useApi<any>('/api/v3/data-broker/watch-filters', 300_000)
   const { data: catalog } = useApi<any>('/api/v3/data-broker', 600_000)
   const body = data?.data && data.data.items ? data.data : data
@@ -175,18 +186,32 @@ export default function WatchIntelligenceUnified() {
   const counts = body?.counts || {}
   const filterBody = filters?.data && filters.data.views ? filters.data : filters
   const brokerMeta = body?.data_broker || catalogBody?.watch_intelligence || {}
+  const quality = body?.data_quality || { status: body?.data_quality_status }
 
   const [selected, setSelected] = useState<string | null>(null)
   const sel = cards.find(c => c.symbol === selected) || cards[0]
 
   const star = async (symbol: string, action: 'star' | 'unstar') => {
-    await fetch('/api/v3/watch/commands/star', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ symbol, action }),
-    })
-    // force reload via param nudge
-    setParam('page', page)
+    setStarError(null)
+    setStarBusy(symbol)
+    try {
+      const res = await fetch('/api/v3/watch/commands/star', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symbol, action }),
+      })
+      const js = await res.json().catch(() => ({}))
+      if (!res.ok || js?.ok === false) {
+        setStarError(js?.error || js?.detail || `Star failed (${res.status})`)
+        return
+      }
+      // Explicit revalidation — do not nudge same page param
+      setRefreshKey(k => k + 1)
+    } catch (e: any) {
+      setStarError(String(e?.message || e || 'Star request failed'))
+    } finally {
+      setStarBusy(null)
+    }
   }
 
   const activeChips: string[] = []
@@ -225,12 +250,16 @@ export default function WatchIntelligenceUnified() {
           <Chip good>Data Broker</Chip>
           <Chip good>{body?.data_contract_version || body?.contract_version || 'watch_intelligence.broker.v1'}</Chip>
           <Chip good>Provider calls {body?.provider_calls ?? 0}</Chip>
+          <Chip good={quality?.status === 'COMPLETE'}>{`Quality ${quality?.status || body?.data_quality_status || '—'}`}</Chip>
           <Chip>Paid OFF</Chip>
           <Chip>Read-only projection</Chip>
           <Chip>Catalog {catalogBody?.projection_count ?? '—'} projections</Chip>
           <Link to="/watch/discovery" style={{ fontSize: TYPE.xs, color: BB.text3, alignSelf: 'center' }}>Discovery →</Link>
         </div>
       </div>
+      {starError && (
+        <div style={{ color: BB.red, fontSize: TYPE.sm, marginBottom: 8 }} data-star-error>{starError}</div>
+      )}
 
       {/* 2. Counts */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,minmax(0,1fr))', gap: 8, marginBottom: 10 }}>
@@ -288,6 +317,39 @@ export default function WatchIntelligenceUnified() {
           {(filterBody?.sectors || []).map((r: string) => (
             <option key={r} value={r}>{r}</option>
           ))}
+        </select>
+        <select value={qsGet(sp, 'industry', '')} onChange={e => setParam('industry', e.target.value)} style={inputStyle}>
+          <option value="">Industry</option>
+          {(filterBody?.industries || []).map((r: string) => (
+            <option key={r} value={r}>{r}</option>
+          ))}
+        </select>
+        <select value={qsGet(sp, 'instrument', '')} onChange={e => setParam('instrument', e.target.value)} style={inputStyle}>
+          <option value="">Instrument</option>
+          {(filterBody?.instruments || []).map((r: string) => (
+            <option key={r} value={r}>{r}</option>
+          ))}
+        </select>
+        <select value={qsGet(sp, 'review_status', '')} onChange={e => setParam('review_status', e.target.value)} style={inputStyle}>
+          <option value="">Review status</option>
+          <option value="COMPLETE">COMPLETE</option>
+          <option value="NOT_RUN">NOT_RUN</option>
+        </select>
+        <select value={qsGet(sp, 'review_agent', '')} onChange={e => setParam('review_agent', e.target.value)} style={inputStyle}>
+          <option value="">Review agent</option>
+          <option value="cio">CIO</option>
+          <option value="maria">Maria</option>
+        </select>
+        <select value={qsGet(sp, 'freshness', '')} onChange={e => setParam('freshness', e.target.value)} style={inputStyle}>
+          <option value="">Freshness</option>
+          {['CURRENT', 'PREMARKET_CURRENT', 'AFTER_HOURS_CURRENT', 'STALE', 'DATA_UNAVAILABLE'].map(r => (
+            <option key={r} value={r}>{r}</option>
+          ))}
+        </select>
+        <select value={qsGet(sp, 'material_change', '')} onChange={e => setParam('material_change', e.target.value)} style={inputStyle}>
+          <option value="">Material change</option>
+          <option value="1">Yes</option>
+          <option value="0">No</option>
         </select>
         <select value={sort} onChange={e => setParam('sort', e.target.value)} style={inputStyle}>
           <option value="watch_rank">Sort: watch rank</option>
@@ -398,6 +460,14 @@ export default function WatchIntelligenceUnified() {
                     <span style={{ border: `1px solid ${BB.border}`, borderRadius: 999, padding: '3px 8px', fontSize: TYPE.xs, color: BB.text3 }}>
                       {c.freshness_state || '—'}
                     </span>
+                    {c.rank != null && (
+                      <span style={{ border: `1px solid ${BB.border}`, borderRadius: 999, padding: '3px 8px', fontSize: TYPE.xs, color: BB.text2 }}>
+                        Rank #{c.rank}
+                      </span>
+                    )}
+                    {c.material_change ? (
+                      <span style={{ border: `1px solid ${BB.amber}`, borderRadius: 999, padding: '3px 8px', fontSize: TYPE.xs, color: BB.amber }}>MATERIAL CHANGE</span>
+                    ) : null}
                   </div>
                   {c.company_summary && (
                     <div style={{ fontSize: TYPE.sm, color: BB.text2, marginTop: 8, lineHeight: 1.4 }} data-company-summary>{c.company_summary}</div>
@@ -409,6 +479,10 @@ export default function WatchIntelligenceUnified() {
                     <Fact k="Tech" v={c.technical_setup || '—'} />
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginTop: 8 }}>
+                    <Fact k="Target / upside" v={`${c.target_mean != null ? money(Number(c.target_mean)) : '—'} · ${c.implied_upside_pct != null ? pct(Number(c.implied_upside_pct)) : '—'}`} />
+                    <Fact k="Analyst action" v={(c as any).latest_analyst_action || 'UNAVAILABLE'} />
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginTop: 8 }}>
                     <ReviewBox title="CIO" rev={c.cio_review} />
                     <ReviewBox title="Maria" rev={c.maria_review} />
                   </div>
@@ -416,13 +490,28 @@ export default function WatchIntelligenceUnified() {
                     <b style={{ color: BB.text2 }}>Catalyst:</b> {c.catalyst_summary || '—'}
                   </div>
                   <div style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 3 }}>
-                    <b style={{ color: BB.text2 }}>Relative:</b> {c.relative_performance_summary || '—'}
+                    <b style={{ color: BB.text2 }}>Catalyst vs industry:</b> UNAVAILABLE (typed gap)
+                  </div>
+                  <div style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 3 }}>
+                    <b style={{ color: BB.text2 }}>Absolute perf:</b> {(c as any).absolute_performance_summary || '—'}
+                  </div>
+                  <div style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 3 }}>
+                    <b style={{ color: BB.text2 }}>Vs industry / sector / SPY:</b> UNAVAILABLE
+                  </div>
+                  <div style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 3 }}>
+                    <b style={{ color: BB.text2 }}>Next review:</b>{' '}
+                    {(c as any).next_review_at || (c as any).next_review_condition || c.next_review_time || '—'}
                   </div>
                   {c.primary_risk && <div style={{ fontSize: TYPE.xs, color: BB.red, marginTop: 6 }}>Risk: {c.primary_risk}</div>}
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, gap: 8 }}>
                     <Link to={`/watch/intelligence/${c.symbol}`} style={linkBtn} onClick={e => e.stopPropagation()}>OPEN INTELLIGENCE</Link>
-                    <button type="button" style={ghostBtn} onClick={e => { e.stopPropagation(); star(c.symbol, c.starred ? 'unstar' : 'star') }}>
-                      {c.starred ? 'Unstar' : 'Star'}
+                    <button
+                      type="button"
+                      style={ghostBtn}
+                      disabled={starBusy === c.symbol}
+                      onClick={e => { e.stopPropagation(); star(c.symbol, c.starred ? 'unstar' : 'star') }}
+                    >
+                      {starBusy === c.symbol ? '…' : c.starred ? 'Unstar' : 'Star'}
                     </button>
                   </div>
                 </div>
