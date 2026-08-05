@@ -15,6 +15,7 @@ import { S, panel, ph, mono, chip, th, thL, td, tdL, tdProse, btn } from '../../
 import { Val, Unk, isNum, pct, signColor, compact, money } from './Val'
 import { transitionRead, isStyleRow } from './transitionRead'
 import SectorLeadersCard from '../SectorLeadersCard'
+import CashAlternatives from './CashAlternatives'
 
 const HORIZONS = [{ k: 'W', l: '1 week' }, { k: 'M', l: '1 month' }, { k: 'Q', l: '1 quarter' }]
 const STALE_DAYS = 5
@@ -33,9 +34,11 @@ const ageShort = (iso?: string | null) => {
 }
 
 /* ─────────────────────────── 1. COMMAND STRIP ─────────────────────────── */
-function CommandStrip({ sources, staleSectors, onRefresh, refreshing }: {
+function CommandStrip({ sources, staleSectors, grokHealth, engineGaps, onRefresh, refreshing }: {
   sources: Record<string, string | null>
   staleSectors: string[]
+  grokHealth?: { available: boolean; status: number } | null
+  engineGaps?: { gaps: { sector: string; etf: string; days_stale: number }[]; last_check: string | null } | null
   onRefresh: () => void
   refreshing: boolean
 }) {
@@ -56,6 +59,16 @@ function CommandStrip({ sources, staleSectors, onRefresh, refreshing }: {
         {staleSectors.length > 0 && (
           <span style={chip('a')} title={`no refresh in over ${STALE_DAYS} days: ${staleSectors.join(', ')}`}>
             {staleSectors.length} sector{staleSectors.length === 1 ? '' : 's'} stale &gt;{STALE_DAYS}d
+          </span>
+        )}
+        {grokHealth && (
+          <span style={chip(grokHealth.available ? 'g' : 'r')} title={grokHealth.available ? 'Grok OAuth proxy reachable' : 'Grok OAuth proxy unreachable — oversight seat unavailable'}>
+            GROK {grokHealth.available ? 'LIVE' : 'DOWN'}
+          </span>
+        )}
+        {(engineGaps?.gaps?.length ?? 0) > 0 && (
+          <span style={chip('a')} title={`engine gap filed for: ${engineGaps!.gaps.map(g => g.etf).join(', ')}`}>
+            {engineGaps!.gaps.length} GAP{engineGaps!.gaps.length === 1 ? '' : 'S'} FILED
           </span>
         )}
         <button style={btn()} onClick={onRefresh} disabled={refreshing}>
@@ -455,6 +468,9 @@ function Oversight({ oversight }: { oversight: any }) {
   const alt = usable[1]
   const objection = top?.memo?.strongest_objection || top?.memo?.top_concerns?.[0] || null
   const counter = alt?.memo?.strongest_objection || alt?.memo?.top_concerns?.[0] || null
+  // Coverage: how many cards each seat reviewed (stored in memo.coverage e.g. "42/53 cards")
+  const topCov = top?.memo?.coverage || null
+  const altCov = alt?.memo?.coverage || null
   return (
     <section style={{ ...panel, marginTop: 14 }}>
       <div style={ph}>
@@ -475,6 +491,7 @@ function Oversight({ oversight }: { oversight: any }) {
               <span style={{ ...mono, color: S.t2, fontSize: 11 }}>
                 {top?.seat || 'seat unknown'}{top?.at ? ` · ${top.at}` : ''}
               </span>
+              {topCov && <span style={{ ...chip('n'), marginLeft: 'auto' }}>coverage {topCov}</span>}
             </div>
             <div style={{ color: S.t1 }}>{objection || <Unk reason="no objection returned by any seat" />}</div>
           </div>
@@ -525,6 +542,15 @@ export default function DefenseRedesign({ posture, recsData, tradeAi, regime, in
     return () => { dead = true }
   }, [])
 
+  const [cashAlt, setCashAlt] = useState<any>(null)
+  useEffect(() => {
+    let dead = false
+    fetch('/api/v2/defense/cash-alternatives').then(r => r.json()).then(j => {
+      if (!dead) setCashAlt(j?.data ?? j)
+    }).catch(() => { /* section renders its own empty state */ })
+    return () => { dead = true }
+  }, [])
+
   const rows: any[] = posture?.momentum?.rows || []
   const transitions: any[] = posture?.momentum?.transitions_today || []
   const sectors: any[] = sl?.sectors || []
@@ -543,8 +569,9 @@ export default function DefenseRedesign({ posture, recsData, tradeAi, regime, in
 
   return (
     <div>
-      <CommandStrip sources={sources} staleSectors={staleSectors} onRefresh={onRefresh} refreshing={refreshing} />
+      <CommandStrip sources={sources} staleSectors={staleSectors} grokHealth={posture?.grok_proxy_health} engineGaps={posture?.engine_gaps} onRefresh={onRefresh} refreshing={refreshing} />
       <WhereToAct tiles={tiles} maxWeight={maxWeight} />
+      <CashAlternatives data={cashAlt} />
       <MarketState
         net={posture?.net_exposure?.equity_pct}
         cashPct={posture?.net_exposure?.cash_pct}

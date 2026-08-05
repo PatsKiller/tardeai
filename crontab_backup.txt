@@ -873,3 +873,5 @@ CIO_DUAL_CHATGPT_CAP=1100
 # BEGIN moomoo-live-read-sync (2026-07-28) — READ-ONLY account facts; no order path, no unlock
 */15 9-16 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/moomoo_live_read.lock .venv/bin/python scripts/moomoo_live_read_sync.py >> logs/moomoo_live_read_sync.log 2>&1  # positions + cash -> holdings.json via protected_holdings_write; totals left to portfolio_loader/repricer
 # END moomoo-live-read-sync
+56 17 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/engine_gap_check.lock .venv/bin/python scripts/defense_engine_gap_checker.py >> logs/engine_gap_checker.log 2>&1
+16 10 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/engine_gap_check.lock .venv/bin/python scripts/defense_engine_gap_checker.py >> logs/engine_gap_checker.log 2>&1

@@ -11805,9 +11805,9 @@ def _defense_posture(query=None):
             "tranches_armed": armed, "tranches_fired": fired,
             "rollback_open": sum(1 for t in recs.get("round_trips") or []
                                  if t.get("status") == "rollback_open")}
-    except Exception:
-        pass
-    # v7 WS-HOME: the hedge playbook state machine — timing where the operator looks first
+    except Exception as e:
+        import traceback
+        print(f"[defense-posture] rotation_plan_counts failed: {e}\n{traceback.format_exc()}", flush=True)
     try:
         from db_adapter import _get_conn as _hgc
         _hc = _hgc().cursor()
@@ -11833,8 +11833,9 @@ def _defense_posture(query=None):
         else:
             hs = {"state": "armed", "line": f"HEDGE: waiting for a bounce day ({_bounce[0]} ≥ ${_bounce[1]})" if _bounce else "HEDGE: alerts arming tonight"}
         out["hedge_state"] = hs
-    except Exception:
-        pass
+    except Exception as e:
+        import traceback
+        print(f"[defense-posture] hedge_state failed: {e}\n{traceback.format_exc()}", flush=True)
     try:
         sl = _load_json(PROJECT_ROOT / "data" / "runtime" / "inverse_stoplights_latest.json")
         active = [c for c in (sl or {}).get("candidates", [])
@@ -11846,9 +11847,9 @@ def _defense_posture(query=None):
                 "line": (f"🚦 {c0['inverse']}/{c0['bench']}: THESIS {L['THESIS']['state']} · "
                          f"ENTRY {L['ENTRY']['state']} — {L['ENTRY']['label']}"),
                 "tip": L["ENTRY"].get("reason", "")}
-    except Exception:
-        pass
-    # net-exposure line inputs (D2 preview): cash weight from book-map total vs overview value
+    except Exception as e:
+        import traceback
+        print(f"[defense-posture] inverse_stoplights failed: {e}\n{traceback.format_exc()}", flush=True)
     try:
         bm = _portfolio_book_map() or {}
         ov_val = None
@@ -11856,16 +11857,32 @@ def _defense_posture(query=None):
             ov = _load_json(PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json") or {}
             cash = sum(float(r.get("market_value") or 0) for r in ov.get("holdings", []) if r.get("is_cash"))
             ov_val = cash
-        except Exception:
-            pass
+        except Exception as e2:
+            import traceback
+            print(f"[defense-posture] net_exposure holdings parse failed: {e2}\n{traceback.format_exc()}", flush=True)
         eq = float(bm.get("total_value") or 0)
         if ov_val is not None and eq:
             tot = eq + ov_val
             out["net_exposure"] = {"equity_pct": round(eq / tot * 100, 1),
                                    "cash_pct": round(ov_val / tot * 100, 1),
                                    "equity_dollars": round(eq), "cash_dollars": round(ov_val)}
+    except Exception as e:
+        import traceback
+        print(f"[defense-posture] net_exposure failed: {e}\n{traceback.format_exc()}", flush=True)
+    # Grok OAuth proxy health check — the desk needs to know if Grok is reachable
+    try:
+        import urllib.request
+        req = urllib.request.Request("http://127.0.0.1:8645/health", method="GET")
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            out["grok_proxy_health"] = {"available": resp.status == 200, "status": resp.status}
     except Exception:
-        pass
+        out["grok_proxy_health"] = {"available": False, "status": 0}
+    # Defense engine gap summary — reads the gap checker ledger for frontend chips
+    try:
+        gaps_json = _load_json(PROJECT_ROOT / "data" / "runtime" / "defense_engine_gaps.json")
+        out["engine_gaps"] = gaps_json or {"gaps": [], "last_check": None}
+    except Exception:
+        out["engine_gaps"] = {"gaps": [], "last_check": None}
     return out
 
 
@@ -11875,8 +11892,21 @@ def _defense_industries(query=None):
     source_type=industry_momentum). Disk snapshot written by finviz_industry_groups
     (12:30 refresh + 16:18 close); NOT folded into /defense/posture — the Home strip
     polls posture and doesn't need this ~50KB."""
-    snap = _load_json(PROJECT_ROOT / "data" / "runtime" / "industry_momentum_latest.json")
-    return {"ok": True, **(snap or {"industries": [], "note": "industry engine has not run yet"})}
+    try:
+        snap = _load_json(PROJECT_ROOT / "data" / "runtime" / "industry_momentum_latest.json")
+        return {"ok": True, **(snap or {"industries": [], "note": "industry engine has not run yet"})}
+    except Exception as e:
+        import traceback
+        print(f"[defense-industries] failed: {e}\n{traceback.format_exc()}", flush=True)
+        return {"ok": True, "industries": [], "note": "industry engine read error — check server logs"}
+
+
+def _cash_alternatives_get(query=None):
+    """GET /api/v2/defense/cash-alternatives — Defense Desk v10: ranked cash
+    deployment alternatives (low-vol, dividend, bond, balanced, covered-call ETFs).
+    Disk snapshot written by defense_cash_alternatives.py; cheap read."""
+    snap = _load_json(PROJECT_ROOT / "data" / "runtime" / "defense_cash_alternatives_latest.json")
+    return {"ok": True, **(snap or {"candidates": [], "top3": [], "note": "cash alternatives engine has not run yet"})}
 
 
 def _defense_recommendations(query=None):
@@ -11894,8 +11924,9 @@ def _defense_recommendations(query=None):
         cur = _get_conn().cursor()
         intents = dex.open_intents(cur)
         exec_log = dex.execution_log(cur, 20)
-    except Exception:
-        pass
+    except Exception as e:
+        import traceback
+        print(f"[defense-recommendations] intents/exec_log failed: {e}\n{traceback.format_exc()}", flush=True)
     return {"ok": True,
             "recommendations": recs or {"groups": {}, "note": "engine has not run yet"},
             "hedging_radar": radar or {"radar": [], "note": "chain snapshot has not run yet"},
@@ -34251,6 +34282,7 @@ ROUTES = {
     "/api/v2/options/overview": _options_overview,
     "/api/v2/options/lifecycle": _options_lifecycle_get,
     "/api/v2/defense/inverse-stoplights": _inverse_stoplights_get,
+    "/api/v2/defense/cash-alternatives": _cash_alternatives_get,
     "/api/v2/journal/costs/summary": _costs_summary,
     "/api/v2/journal/costs/timeseries": _costs_timeseries,
     "/api/v2/journal/costs/by-security": _costs_by_security,

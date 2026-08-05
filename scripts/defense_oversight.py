@@ -145,7 +145,7 @@ def run_free_critiques(cur, force: bool = False) -> dict:
     prompt = ("You are an independent risk overseer for a retirement-scale defensive trading desk. "
               "Judge WITHIN the constitution. Be adversarial where warranted.\n\n"
               + art["markdown"] + "\n\n" + CONTRACT)
-    for seat, lane in (("chatgpt", "chatgpt"), ("grok", "grok")):
+    for seat, lane in (("chatgpt", "chatgpt"), ("grok", "grok"), ("deepseek", "deepseek-flash")):
         cur.execute("SELECT status FROM oversight_reviews WHERE build_hash=%s AND seat=%s", (bh, seat))
         if cur.fetchone() and not force:
             out["seats"][seat] = "cached"
