@@ -28,6 +28,16 @@ interface CashData {
   error?: string
 }
 
+const SIZING: Record<string, string> = { money_market: '100%', bond: '≤40%', balanced: '≤30%', low_vol: '≤25%', dividend: '≤25%', covered_call: '≤15%' }
+const SIZING_TOOLTIP: Record<string, string> = {
+  money_market: 'Near-zero risk — can hold entire cash reserve',
+  bond: 'Low credit/duration risk — size up to 40% of cash allocation',
+  balanced: 'Mixed equity/bond — up to 30% for longer-horizon cash',
+  low_vol: 'Equity drawdown risk remains — cap at 25%',
+  dividend: 'Income tilt with equity beta — cap at 25%',
+  covered_call: 'Capped upside + modest NAV erosion — cap at 15% for yield enhancement only',
+}
+
 const CAT_CHIP: Record<string, string> = {
   low_vol: 'LOW VOL', dividend: 'DIVIDEND', bond: 'BOND',
   money_market: 'MM', balanced: 'BALANCED', covered_call: 'CC INC',
@@ -135,7 +145,7 @@ export default function CashAlternatives({ data, onRefresh }: { data: CashData |
                   <thead><tr>
                     <th style={thL}>Symbol</th><th style={th}>Category</th><th style={th}>Score</th>
                     <th style={th}>Yield</th><th style={th}>Preserv</th><th style={th}>Liq</th>
-                    <th style={th}>Tax</th><th style={{ ...thL, paddingLeft: 18 }}>Thesis</th>
+                    <th style={th}>Tax</th><th style={th}>Sizing</th><th style={{ ...thL, paddingLeft: 18 }}>Thesis</th>
                   </tr></thead>
                   <tbody style={mono}>
                     {candidates.map((c, i) => (
@@ -152,6 +162,9 @@ export default function CashAlternatives({ data, onRefresh }: { data: CashData |
                         <td style={{ ...td, color: c.scores?.preservation >= 80 ? S.green : S.t2 }}>{c.scores?.preservation ?? '—'}</td>
                         <td style={{ ...td, color: S.t2 }}>{c.scores?.liquidity ?? '—'}</td>
                         <td style={{ ...td, color: S.t2 }}>{c.scores?.tax ?? '—'}</td>
+                        <td style={{ ...td, color: S.t2 }} title={SIZING_TOOLTIP[c.category] || ''}>
+                          {SIZING[c.category] || '—'}
+                        </td>
                         <td style={{ ...tdL, color: S.t2, maxWidth: 300, fontSize: 11 }}>
                           {(c.thesis || '').slice(0, 120)}{(c.thesis || '').length > 120 ? '…' : ''}
                           {c.thesis_lane ? <span style={{ ...chip('n'), marginLeft: 6, fontSize: 10 }}>{c.thesis_lane}</span> : null}
