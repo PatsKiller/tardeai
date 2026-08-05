@@ -167,11 +167,14 @@ export default function WatchIntelligenceUnified() {
 
   const { data, loading, error } = useApi<any>(`/api/v3/data-broker/watch-intelligence?${apiQs}`, 90_000)
   const { data: filters } = useApi<any>('/api/v3/data-broker/watch-filters', 300_000)
+  const { data: catalog } = useApi<any>('/api/v3/data-broker', 600_000)
   const body = data?.data && data.data.items ? data.data : data
+  const catalogBody = catalog?.data && catalog.data.projections ? catalog.data : catalog
   const cards: Card[] = body?.cards || (body?.items || []).map((i: any) => i.card).filter(Boolean)
   const summary = body?.summary || {}
   const counts = body?.counts || {}
   const filterBody = filters?.data && filters.data.views ? filters.data : filters
+  const brokerMeta = body?.data_broker || catalogBody?.watch_intelligence || {}
 
   const [selected, setSelected] = useState<string | null>(null)
   const sel = cards.find(c => c.symbol === selected) || cards[0]
@@ -197,23 +200,34 @@ export default function WatchIntelligenceUnified() {
   if (q) activeChips.push(`q:${q}`)
 
   return (
-    <div data-watch-intelligence-primary data-provider-calls={String(body?.provider_calls ?? 0)} data-broker-snapshot={body?.snapshot_id || ''}>
-      {/* 1. System truth strip */}
+    <div
+      data-watch-intelligence-primary
+      data-provider-calls={String(body?.provider_calls ?? 0)}
+      data-broker-snapshot={body?.snapshot_id || ''}
+      data-broker-projection="watch_intelligence"
+      data-broker-catalog="/api/v3/data-broker"
+    >
+      {/* 1. System truth strip — advertises Data Broker ownership */}
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
         <div>
           <div style={{ fontSize: TYPE.xs, fontWeight: 900, color: BB.text2, letterSpacing: 1.1, textTransform: 'uppercase' }}>
-            Primary Watch workspace
+            Data Broker · watch_intelligence · primary Watch workspace
           </div>
           <div style={{ fontSize: TYPE.lg, fontWeight: 900, color: BB.text0, marginTop: 4 }}>WATCH INTELLIGENCE</div>
           <div style={{ fontSize: TYPE.base, color: BB.text3, marginTop: 4 }}>
-            Street rating primary · Trade AI independent · broker projection only · page load = 0 provider calls
+            Street rating primary · Trade AI independent · composed from Data Broker domains · page load = 0 provider calls
+          </div>
+          <div style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 4 }} data-broker-composes>
+            Composes: {(brokerMeta.composes || body?.data_broker?.composes || []).slice(0, 6).join(' · ') || 'quotes · profiles · street · decisions · reviews · membership'}
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          <Chip good>Broker {body?.data_contract_version || body?.contract_version || '—'}</Chip>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+          <Chip good>Data Broker</Chip>
+          <Chip good>{body?.data_contract_version || body?.contract_version || 'watch_intelligence.broker.v1'}</Chip>
           <Chip good>Provider calls {body?.provider_calls ?? 0}</Chip>
           <Chip>Paid OFF</Chip>
-          <Chip>Broker writes NONE</Chip>
+          <Chip>Read-only projection</Chip>
+          <Chip>Catalog {catalogBody?.projection_count ?? '—'} projections</Chip>
           <Link to="/watch/discovery" style={{ fontSize: TYPE.xs, color: BB.text3, alignSelf: 'center' }}>Discovery →</Link>
         </div>
       </div>

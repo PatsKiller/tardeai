@@ -38367,11 +38367,19 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
 
-    # Canonical Data Broker — Watch Intelligence projection (read-only)
-    if method == "GET" and base_path.startswith("/api/v3/data-broker/"):
+    # Canonical Data Broker — catalog + Watch Intelligence (read-only)
+    # Catalog: GET /api/v3/data-broker  and  GET /api/v3/data-broker/catalog
+    if method == "GET" and (
+        base_path == "/api/v3/data-broker"
+        or base_path.startswith("/api/v3/data-broker/")
+    ):
         try:
             import api_v3_data_broker_watch as _dbw
+            if base_path in ("/api/v3/data-broker", "/api/v3/data-broker/"):
+                return 200, _dbw.get_catalog()
             p = base_path[len("/api/v3/data-broker/"):].strip("/")
+            if p in ("", "catalog", "index"):
+                return 200, _dbw.get_catalog()
             if p == "watch-intelligence":
                 return 200, _dbw.get_list(query or {})
             if p == "watch-filters":
@@ -38386,7 +38394,11 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 sym = p[len("watch-reviews/"):].strip("/").upper()
                 if sym:
                     return 200, _dbw.get_reviews(sym)
-            return 404, {"ok": False, "error": "not_found"}
+            return 404, {
+                "ok": False,
+                "error": "not_found",
+                "hint": "GET /api/v3/data-broker for the projection catalog",
+            }
         except Exception as e:
             return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
 

@@ -146,5 +146,38 @@ class TestCommands(unittest.TestCase):
         self.assertEqual(m.get("provider_calls"), 0)
 
 
+class TestBrokerCatalogAdvertisement(unittest.TestCase):
+    def test_catalog_lists_watch_intelligence(self):
+        from lib.data_broker.catalog import broker_catalog, PROJECTIONS
+        cat = broker_catalog()
+        self.assertTrue(cat.get("ok"))
+        self.assertEqual(cat.get("service"), "data_broker")
+        self.assertEqual(cat.get("provider_calls"), 0)
+        ids = {p["id"] for p in PROJECTIONS}
+        self.assertIn("watch_intelligence", ids)
+        self.assertIn("market_quote", ids)
+        self.assertIn("reentry_decision_desk", ids)
+        wi = cat.get("watch_intelligence") or {}
+        self.assertTrue(wi.get("primary"))
+        http = " ".join(wi.get("http") or [])
+        self.assertIn("/api/v3/data-broker/watch-intelligence", http)
+        self.assertEqual(wi.get("provider_calls_on_page_load"), 0)
+
+    def test_list_payload_advertises_data_broker(self):
+        from lib.data_broker.watch_intelligence import list_watch_intelligence
+        out = list_watch_intelligence({"view": "top_ideas", "page_size": 3})
+        db = out.get("data_broker") or {}
+        self.assertEqual(db.get("package"), "scripts/lib/data_broker")
+        self.assertEqual(db.get("projection"), "watch_intelligence")
+        self.assertEqual(db.get("catalog"), "/api/v3/data-broker")
+        self.assertTrue(db.get("composes"))
+
+    def test_ui_advertises_broker(self):
+        ui = (ROOT / "apps/command-center-v3/src/pages/WatchIntelligenceUnified.tsx").read_text()
+        self.assertIn("data-broker-projection", ui)
+        self.assertIn("/api/v3/data-broker", ui)
+        self.assertIn("Data Broker", ui)
+
+
 if __name__ == "__main__":
     unittest.main()

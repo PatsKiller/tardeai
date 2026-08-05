@@ -1,6 +1,20 @@
 # Data Broker — Watch Intelligence consumers
 
+Watch Intelligence is **not a side API**. It is a projection in the existing
+`scripts/lib/data_broker` package, advertised next to `market_quote`,
+`symbol_profile`, `reentry_decision_desk`, and the rest.
+
+**Catalog (discover everything):**
+
+```http
+GET /api/v3/data-broker
+GET /api/v3/data-broker/catalog
+```
+
 Contract: `watch_intelligence.broker.v1`  
+Module: `lib.data_broker.watch_intelligence`  
+Primary UI: `/v3/watch`
+
 Endpoints:
 
 - `GET /api/v3/data-broker/watch-intelligence`
@@ -8,6 +22,18 @@ Endpoints:
 - `GET /api/v3/data-broker/watch-filters`
 - `GET /api/v3/data-broker/watch-lists`
 - `GET /api/v3/data-broker/watch-reviews/{symbol}`
+
+## Composes (existing broker domains)
+
+| Domain in projection | Underlying store / module |
+|----------------------|---------------------------|
+| CanonicalQuote | `watch_canonical_quote` + market_quotes lineage |
+| SymbolIdentity | `symbol_profiles` (same store as `data_broker.symbol_profile`) |
+| StreetConsensus | Yahoo targets + `data_broker.analyst_rollup` |
+| CatalystContext | `catalyst_events` / catalyst_record pattern |
+| TradeAiDecision | decision_packets + projection |
+| Cio/Agent reviews | immutable runtime artifacts only when fully provenanced |
+| WatchMembership | operator_starred_symbols, holdings.json, screener_find_pins |
 
 Write commands (not broker):
 
