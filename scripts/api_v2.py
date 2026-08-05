@@ -38298,6 +38298,22 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return 500, {"ok": False, "error": str(e)}
 
     # Rockville additive /api/v3/watch/* parameterized + deep-review
+    # Watchlist Intelligence Board (shadow) — read-only, zero provider calls
+    if method == "GET" and base_path.startswith("/api/v3/watchlist/intelligence"):
+        try:
+            import api_v3_watchlist_intelligence as _wli
+            rest = base_path[len("/api/v3/watchlist/intelligence"):].strip("/")
+            if not rest:
+                return 200, _wli.get_list(query or {})
+            parts = [p for p in rest.split("/") if p]
+            if len(parts) == 1:
+                return 200, _wli.get_detail(parts[0].upper())
+            if len(parts) == 2 and parts[1].lower() == "reviews":
+                return 200, _wli.get_reviews(parts[0].upper())
+            return 404, {"ok": False, "error": "not_found"}
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
+
     if base_path.startswith("/api/v3/watch/"):
         try:
             import api_v3_watch_rockville as _rv

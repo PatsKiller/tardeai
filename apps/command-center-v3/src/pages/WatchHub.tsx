@@ -13,12 +13,14 @@ import { ChipLegend } from '../components/TerminalChip'
 import { useApi } from '../hooks/useApi'
 import CioDailyPanel from '../components/rockville/CioDailyPanel'
 import WatchCardV2 from '../components/rockville/WatchCardV2'
+import WatchlistIntelligenceBoard from './WatchlistIntelligenceBoard'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 
-const TABS = ['Watchlist', 'Screener Finds', 'Watchpool', 'Sectors', 'Pullback/MACD'] as const
+const TABS = ['Watchlist', 'Intelligence', 'Screener Finds', 'Watchpool', 'Sectors', 'Pullback/MACD'] as const
 const TAB_SLUG: Record<typeof TABS[number], string> = {
   Watchlist: 'watchlist',
+  Intelligence: 'intelligence',
   'Screener Finds': 'screener-finds',
   Watchpool: 'watchpool',
   Sectors: 'sectors',
@@ -50,7 +52,11 @@ export default function WatchHub({ onDrill }: Props) {
       <div className="hub-title-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
         <div>
           <div style={hubTitle()}>Watch <span style={{ color: BB.text3 }}>›</span> {tab}</div>
-          <div style={hubSubtitle(terminalUi)}>Watchlist is the default workspace · other tabs are explicit research lenses</div>
+          <div style={hubSubtitle(terminalUi)}>
+            {tab === 'Intelligence'
+              ? 'Shadow Intelligence Board · Street rating primary · zero provider calls on load'
+              : 'Watchlist is the default workspace · other tabs are explicit research lenses'}
+          </div>
         </div>
         <div className="hub-tabs" style={{ display: 'flex', gap: terminalUi ? 4 : 6, flexWrap: 'wrap', alignItems: 'center' }}>
           {TABS.map(candidate => (
@@ -67,6 +73,7 @@ export default function WatchHub({ onDrill }: Props) {
           <WatchlistHub onDrill={onDrill} embedded />
         </>
       )}
+      {tab === 'Intelligence' && <WatchlistIntelligenceBoard />}
       {tab === 'Screener Finds' && <ScreenerFindsHub onDrill={onDrill} embedded />}
       {tab === 'Watchpool' && <WatchpoolHub onDrill={onDrill} embedded />}
       {tab === 'Sectors' && <SectorsHub onDrill={onDrill} embedded />}
