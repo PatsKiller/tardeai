@@ -114,11 +114,28 @@ export default function DecisionPacketBand({ packet, generatedAt, actionPolicy, 
   if (!base) return null
   const pres = { ...base } as OperatorPresentation
   const op = packet?.operator_presentation
-  if (op?.header_state && op.header_state !== pres.state) {
-    pres.state = op.header_state as OperatorState
-    if (op.header_note) pres.headline = op.header_note
+  // Prefer live client classification for DETERMINISTIC FAIL (stale baked WAIT headers
+  // from older packets must not win). Only adopt server header when client is not fail-closed.
+  const clientIsFail = String(pres.state || '').toUpperCase().includes('DETERMINISTIC FAIL')
+  const serverHeader = String(op?.header_state || '').toUpperCase()
+  if (op?.header_state && op.header_state !== pres.state && !clientIsFail) {
+    // Server DETERMINISTIC FAIL always overrides WAIT
+    if (serverHeader.includes('DETERMINISTIC FAIL') || op.verification_state === 'DETERMINISTIC_FAIL') {
+      pres.state = 'DETERMINISTIC FAIL' as OperatorState
+      pres.headline = op.header_note || 'NO TRADE MECHANICS'
+      pres.mechanics = null
+      pres.primaryCta = 'View Blockers'
+    } else {
+      pres.state = op.header_state as OperatorState
+      if (op.header_note) pres.headline = op.header_note
+    }
   }
-  const mechanicsAllowed = op ? Boolean(op.display_current_mechanics) : !pres.stale
+  if (clientIsFail || op?.verification_state === 'DETERMINISTIC_FAIL' || op?.display_current_mechanics === false) {
+    pres.mechanics = null
+  }
+  const mechanicsAllowed =
+    !(clientIsFail || op?.verification_state === 'DETERMINISTIC_FAIL') &&
+    (op ? Boolean(op.display_current_mechanics) : !pres.stale)
   if (op && !mechanicsAllowed) pres.mechanics = null
   const accent = operatorStateColor(pres.state)
   const tech = packet?.technical_state || {}
@@ -177,7 +194,22 @@ export default function DecisionPacketBand({ packet, generatedAt, actionPolicy, 
         {pres.mechanics && <div style={{ opacity: pres.stale || pres.mechanics.previous ? .6 : 1 }}><SectionTitle title={pres.stale ? 'Previous mechanics — not current' : 'Current mechanics'} /><div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,minmax(76px,1fr))', gap: 0, borderTop: `1px solid ${BB.border}`, borderLeft: `1px solid ${BB.border}` }}>{([
           ['Entry', pres.mechanics.entry], ['Limit', pres.mechanics.limit], ['Stop', pres.mechanics.stop], ['Target', pres.mechanics.target], ['R:R', pres.mechanics.rr],
         ] as const).map(([label, value]) => <div key={label} style={{ padding: '7px 9px', minHeight: 44, borderRight: `1px solid ${BB.border}`, borderBottom: `1px solid ${BB.border}` }}><div style={{ fontSize: 10, fontWeight: 850, color: BB.text3, textTransform: 'uppercase', letterSpacing: '.06em' }}>{label}</div><div style={{ ...numStyle, marginTop: 2, fontSize: 14, fontWeight: 850, color: BB.text0 }}>{value || '—'}</div></div>)}</div></div>}
-        <div><SectionTitle title="What changes the decision" /><div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>{(packet?.horizons?.tactical?.trigger || packet?.horizons?.swing?.trigger) && <Condition label="Trigger" text={packet?.horizons?.tactical?.trigger || packet?.horizons?.swing?.trigger} />}{(packet?.horizons?.tactical?.invalidation || packet?.horizons?.swing?.invalidation) && <Condition label="Invalidation" text={packet?.horizons?.tactical?.invalidation || packet?.horizons?.swing?.invalidation} warning />}{!packet?.horizons?.tactical?.trigger && !packet?.horizons?.swing?.trigger && <Condition label="Next" text={pres.primaryFamily?.why || pres.whyLines[0] || 'Review the full evidence'} />}</div></div>
+        <div><SectionTitle title="What changes the decision" /><div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>{
+          /* Never show current trigger/invalidation on DETERMINISTIC FAIL or when mechanics are not current */
+          mechanicsAllowed && (packet?.horizons?.tactical?.trigger || packet?.horizons?.swing?.trigger)
+            ? <Condition label="Trigger" text={packet?.horizons?.tactical?.trigger || packet?.horizons?.swing?.trigger} />
+            : null
+        }{
+          mechanicsAllowed && (packet?.horizons?.tactical?.invalidation || packet?.horizons?.swing?.invalidation)
+            ? <Condition label="Invalidation" text={packet?.horizons?.tactical?.invalidation || packet?.horizons?.swing?.invalidation} warning />
+            : null
+        }{
+          !mechanicsAllowed
+            ? <Condition label="Next" text={pres.whyLines[0] || 'Refresh admission inputs and rerun deterministic validation — no current trade mechanics'} warning />
+            : (!packet?.horizons?.tactical?.trigger && !packet?.horizons?.swing?.trigger
+              ? <Condition label="Next" text={pres.primaryFamily?.why || pres.whyLines[0] || 'Review the full evidence'} />
+              : null)
+        }</div></div>
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '9px 16px' }}>

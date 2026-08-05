@@ -72,27 +72,29 @@
     "provenance": {
       "type": "object",
       "required": [
-        "provider",
-        "model",
         "policy",
-        "thinking",
-        "effort",
         "prompt_version",
         "input_hash",
         "output_hash"
       ],
       "properties": {
-        "provider": { "const": "deepseek" },
-        "model": { "const": "deepseek-v4-pro" },
-        "policy": { "const": "CIO_DAILY_PRO" },
-        "thinking": { "const": true },
-        "effort": { "enum": ["high", "max"] },
+        "provider": { "type": ["string", "null"] },
+        "model": { "type": ["string", "null"] },
+        "policy": {
+          "type": "string",
+          "enum": ["CIO_DAILY_PRO", "CIO_DEEP_REVIEW", "NO_CALL"]
+        },
+        "thinking": { "type": ["boolean", "null"] },
+        "effort": { "type": ["string", "null"], "enum": ["high", "max", null] },
+        "execution": { "type": ["string", "null"] },
+        "artifact_type": { "type": ["string", "null"] },
+        "provider_call_occurred": { "type": ["boolean", "null"] },
         "prompt_version": { "type": "string" },
         "input_hash": { "type": "string" },
         "output_hash": { "type": "string" },
         "request_id": { "type": ["string", "null"] }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "usage": {
       "type": "object",

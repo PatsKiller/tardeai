@@ -1,13 +1,23 @@
 {
   "_comment": "FTH contradiction fixture: header WAIT + live trigger/invalidation while ticket DETERMINISTIC FAIL. Corrected projection must be DETERMINISTIC_FAIL with zero current mechanics.",
   "symbol": "FTH",
-  "company": "Fate Therapeutics",
+  "company": "Faeth Therapeutics, Inc.",
+  "company_must_not": ["Fate Therapeutics", "FATE"],
   "sector": "Healthcare",
+  "industry": "Biotechnology",
+  "market": {
+    "last": 25.35,
+    "day_change_pct": -9.9854,
+    "price_source": "market_quotes",
+    "price_as_of": "2026-08-04T16:45:00-04:00"
+  },
   "observed_bad_ui": {
     "header_said": "WAIT / Waiting for confirmation",
     "exposed_trigger": 37.9,
     "exposed_invalidation": 23.12,
     "ticket_verification": "DETERMINISTIC_FAIL",
+    "wrong_identity_seen": "Fate Therapeutics",
+    "canonical_identity": "Faeth Therapeutics, Inc.",
     "quality_blockers": [
       "float 18.6M is below the 20M exclusion floor",
       "ATR 12.1% exceeds the 10% extreme-volatility cap"
@@ -16,7 +26,15 @@
   "packet": {
     "symbol": "FTH",
     "packet_id": "fth-fixture-2026-08-04",
+    "company": "Faeth Therapeutics, Inc.",
+    "company_name": "Faeth Therapeutics, Inc.",
     "ownership": { "held": false },
+    "last": 25.35,
+    "price": 25.35,
+    "day_change_pct": -9.9854,
+    "change_pct": -9.9854,
+    "price_source": "market_quotes",
+    "price_as_of": "2026-08-04T16:45:00-04:00",
     "quality_admission": {
       "state": "FAIL",
       "admission": "REJECTED",

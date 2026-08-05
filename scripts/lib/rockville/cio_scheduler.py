@@ -198,6 +198,7 @@ def mark_failed(decision: CioTriggerDecision, failure_code: str, message: str) -
 
 
 def publish_no_material_change(material_hash: str, *, now: datetime | None = None) -> dict:
+    """Deterministic no-call artifact — NEVER claims a DeepSeek provider run."""
     md = market_date_et(now)
     art = {
         "artifact_id": f"nmc-{md}-{material_hash[:12]}",
@@ -227,16 +228,20 @@ def publish_no_material_change(material_hash: str, *, now: datetime | None = Non
         "what_changed_since_prior_digest": [],
         "what_did_not_change": ["watchlist_material_hash unchanged"],
         "evidence_refs": [],
+        # Truthful no-call provenance — do not default to DeepSeek model/policy labels.
         "provenance": {
-            "provider": "deepseek",
-            "model": "deepseek-v4-pro",
-            "policy": "CIO_DAILY_PRO",
-            "thinking": True,
-            "effort": "high",
+            "provider": None,
+            "model": None,
+            "policy": "NO_CALL",
+            "thinking": False,
+            "effort": None,
+            "execution": "deterministic_scheduler",
+            "artifact_type": "no_change_decision",
             "prompt_version": PROMPT_VERSION,
             "input_hash": material_hash,
             "output_hash": hashlib.sha256(b"NO_MATERIAL_CHANGE").hexdigest(),
             "request_id": None,
+            "provider_call_occurred": False,
         },
         "usage": {
             "cache_hit_input_tokens": 0,

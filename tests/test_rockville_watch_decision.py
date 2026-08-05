@@ -66,6 +66,24 @@ class TestFthRegression(unittest.TestCase):
         hist = dec.get("history_mechanics_not_current") or {}
         self.assertEqual(hist.get("label"), "NOT CURRENT")
 
+    def test_fth_identity_is_faeth_not_fate(self):
+        """Permanent FTH/FATE anti-cross-map fixture."""
+        company = self.fx.get("company") or ""
+        self.assertIn("Faeth", company)
+        self.assertNotIn("Fate Therapeutics", company)
+        for bad in self.fx.get("company_must_not") or []:
+            self.assertNotIn(bad, company)
+        # API card path
+        sys.path.insert(0, str(ROOT / "scripts"))
+        import api_v3_watch_rockville as rv
+        card = rv._card_from_fixture(self.fx)
+        self.assertEqual(card["symbol"], "FTH")
+        self.assertIn("Faeth", card["company"] or "")
+        self.assertNotIn("Fate Therapeutics", card["company"] or "")
+        # market fields present (live or fixture fallback)
+        self.assertIsNotNone(card.get("last"))
+        self.assertIsNotNone(card.get("day_change_pct"))
+
 
 class TestDecisionStates(unittest.TestCase):
     def _pkt(self, **kwargs):
@@ -198,6 +216,14 @@ class TestCioScheduler(unittest.TestCase):
         art = publish_no_material_change(mh, now=datetime(2026, 8, 4, 16, 20, tzinfo=ET))
         self.assertEqual(art["status"], "NO_MATERIAL_CHANGE")
         self.assertEqual(art["usage"]["actual_cost_usd"], 0.0)
+        # Truthful no-call provenance — never default to DeepSeek
+        prov = art["provenance"]
+        self.assertIsNone(prov.get("provider"))
+        self.assertIsNone(prov.get("model"))
+        self.assertEqual(prov.get("policy"), "NO_CALL")
+        self.assertFalse(prov.get("provider_call_occurred"))
+        self.assertNotEqual(prov.get("provider"), "deepseek")
+        self.assertNotEqual(prov.get("model"), "deepseek-v4-pro")
 
     def test_duplicate_invocation_locked(self):
         mh = "b" * 64

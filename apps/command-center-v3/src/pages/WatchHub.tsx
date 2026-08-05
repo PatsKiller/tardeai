@@ -104,6 +104,10 @@ function RockvilleWatchShadow() {
               symbol={c.symbol}
               company={c.company}
               sector={c.sector}
+              last={c.last}
+              dayChangePct={c.day_change_pct}
+              marketTs={c.market_ts || c.price_as_of}
+              priceSource={c.price_source}
               decision={c.decision}
               review={c.reflective_review}
             />
