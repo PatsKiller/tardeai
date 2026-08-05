@@ -1,10 +1,18 @@
 {
-  "date": "2026-08-03",
-  "timestamp": "2026-08-03T08:15:47.972133+00:00",
+  "date": "2026-08-04",
+  "timestamp": "2026-08-04T08:15:33.538517+00:00",
   "embedding_recommendations": [
     {
-      "id": 14135,
+      "id": 14101,
       "symbol": "BSBR",
+      "type": "momentum_catalyst",
+      "confidence": 0.7,
+      "has_url": true,
+      "reason": "staged, has evidence, not embedded"
+    },
+    {
+      "id": 13672,
+      "symbol": "BOOM",
       "type": "momentum_catalyst",
       "confidence": 0.7,
       "has_url": true,
@@ -19,24 +27,16 @@
       "reason": "staged, has evidence, not embedded"
     },
     {
-      "id": 13411,
-      "symbol": "DFNS",
+      "id": 13408,
+      "symbol": "BIYA",
       "type": "momentum_catalyst",
       "confidence": 0.7,
       "has_url": true,
       "reason": "staged, has evidence, not embedded"
     },
     {
-      "id": 13396,
-      "symbol": "BYRN",
-      "type": "momentum_catalyst",
-      "confidence": 0.7,
-      "has_url": true,
-      "reason": "staged, has evidence, not embedded"
-    },
-    {
-      "id": 14217,
-      "symbol": "CMCO",
+      "id": 14100,
+      "symbol": "BOOM",
       "type": "momentum_catalyst",
       "confidence": 0.7,
       "has_url": true,
@@ -45,8 +45,16 @@
   ],
   "promotion_recommendations": [
     {
-      "id": 14135,
+      "id": 14101,
       "symbol": "BSBR",
+      "type": "momentum_catalyst",
+      "confidence": 0.7,
+      "has_url": true,
+      "reason": "staged, high conf, has evidence"
+    },
+    {
+      "id": 13672,
+      "symbol": "BOOM",
       "type": "momentum_catalyst",
       "confidence": 0.7,
       "has_url": true,
@@ -61,24 +69,16 @@
       "reason": "staged, high conf, has evidence"
     },
     {
-      "id": 13411,
-      "symbol": "DFNS",
+      "id": 13408,
+      "symbol": "BIYA",
       "type": "momentum_catalyst",
       "confidence": 0.7,
       "has_url": true,
       "reason": "staged, high conf, has evidence"
     },
     {
-      "id": 13396,
-      "symbol": "BYRN",
-      "type": "momentum_catalyst",
-      "confidence": 0.7,
-      "has_url": true,
-      "reason": "staged, high conf, has evidence"
-    },
-    {
-      "id": 14217,
-      "symbol": "CMCO",
+      "id": 14100,
+      "symbol": "BOOM",
       "type": "momentum_catalyst",
       "confidence": 0.7,
       "has_url": true,
@@ -86,7 +86,7 @@
     }
   ],
   "rejected": [],
-  "total_staged_non_backlog": 198,
+  "total_staged_non_backlog": 201,
   "embeddings_created": 0,
   "promotions_created": 0
 }
