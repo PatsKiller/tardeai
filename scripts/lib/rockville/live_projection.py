@@ -40,6 +40,33 @@ def _sha(obj: Any) -> str:
     ).hexdigest()
 
 
+def _canonical_company_name(desc: str | None, symbol: str = "") -> str | None:
+    """Legal/display name only — never full description_1s prose."""
+    d = (desc or "").strip()
+    if not d:
+        return None
+    low = d.lower()
+    if low.startswith("faeth therapeutics") or symbol.upper() == "FTH":
+        return FTH_CANONICAL_COMPANY
+    # Cut at common company-description continuations
+    for sep in (
+        ", a ", ", an ", " provides ", " is a ", " is an ", " engages ",
+        " specializes ", " operates ", " develops ", " focuses ",
+    ):
+        i = low.find(sep)
+        if i > 8:
+            return d[:i].strip().rstrip(",")
+    if ". " in d:
+        first = d.split(". ", 1)[0].strip().rstrip(".")
+        if len(first) <= 80:
+            return first
+    # First comma clause if short enough to be a name
+    head = d.split(",", 1)[0].strip()
+    if 2 <= len(head) <= 80 and " provides " not in head.lower():
+        return head
+    return head[:80] if head else None
+
+
 def batch_identity(symbols: list[str]) -> dict[str, dict]:
     """One query for company/sector/industry from symbol_profiles."""
     out: dict[str, dict] = {s.upper(): {} for s in symbols}
@@ -57,20 +84,14 @@ def batch_identity(symbols: list[str]) -> dict[str, dict]:
             ([s.upper() for s in symbols],),
         )
         for sym, desc, sector, industry in cur.fetchall() or []:
-            company = None
             d = (desc or "").strip()
-            if d.lower().startswith("faeth therapeutics"):
-                company = FTH_CANONICAL_COMPANY
-            elif d:
-                company = d.split(",")[0].strip()
-                if " engages" in company.lower():
-                    company = company.split(" engages")[0].strip()
+            company = _canonical_company_name(d, sym)
             out[sym] = {
                 "company": company,
+                "company_summary": d[:280] if d else None,
                 "sector": sector,
                 "industry": industry,
                 "identity_source": "symbol_profiles",
-                "description_1s": d[:240] if d else None,
             }
     except Exception as e:
         for s in out:
@@ -87,128 +108,143 @@ def batch_identity(symbols: list[str]) -> dict[str, dict]:
 
 
 def batch_market(symbols: list[str]) -> dict[str, dict]:
-    """Batch market quotes — prefer market_quotes, fallback watchlist_items columns."""
-    out: dict[str, dict] = {
-        s.upper(): {
-            "last": None,
-            "day_change_pct": None,
-            "price_source": None,
-            "price_as_of": None,
-            "missing": ["market_quote"],
-        }
-        for s in symbols
+    """Canonical Watch quote selector — same lateral join as api_v2 watchlist items.
+
+    Authority (api_v2 ~6685-6687 + CASE 6621-6629):
+      latest market_quotes row by fetched_at DESC where price+fetched_at non-null;
+      overlay when newer than watchlist_items.last_enriched_at;
+      else enrichment price; never display untimestamped quotes as current.
+    """
+    empty = {
+        "last": None,
+        "day_change_pct": None,
+        "price_source": None,
+        "price_as_of": None,
+        "quote_id": None,
+        "market_session": None,
+        "source_record_id": None,
+        "freshness_state": "DATA_UNAVAILABLE",
+        "market_state": "DATA_UNAVAILABLE",
+        "missing": ["canonical_market_quote"],
     }
+    out: dict[str, dict] = {s.upper(): dict(empty) for s in symbols}
     if not symbols:
         return out
     syms = [s.upper() for s in symbols]
     try:
         conn = _conn()
         cur = conn.cursor()
+        # Mirror watchlist items price CASE — join watchlist_items + latest mq
+        # Plain symbol equality (indexed); both tables uppercase.
         cur.execute(
             """
-            SELECT table_name FROM information_schema.tables
-             WHERE table_schema='public' AND table_name IN ('market_quotes','watchlist_items')
-            """
+            SELECT DISTINCT ON (upper(w.symbol))
+                   upper(w.symbol) AS symbol,
+                   mq.id AS quote_id,
+                   mq.source AS mq_source,
+                   CASE
+                     WHEN mq.price IS NOT NULL
+                      AND mq.fetched_at IS NOT NULL
+                      AND (w.last_enriched_at IS NULL OR mq.fetched_at > w.last_enriched_at)
+                     THEN mq.price
+                     ELSE w.price
+                   END AS last,
+                   w.change_pct AS day_change_pct,
+                   CASE
+                     WHEN mq.price IS NOT NULL
+                      AND mq.fetched_at IS NOT NULL
+                      AND (w.last_enriched_at IS NULL OR mq.fetched_at > w.last_enriched_at)
+                     THEN mq.fetched_at
+                     ELSE w.last_enriched_at
+                   END AS price_as_of,
+                   CASE
+                     WHEN mq.price IS NOT NULL
+                      AND mq.fetched_at IS NOT NULL
+                      AND (w.last_enriched_at IS NULL OR mq.fetched_at > w.last_enriched_at)
+                     THEN 'market_quotes'
+                     ELSE 'enrichment'
+                   END AS price_source
+              FROM watchlist_items w
+              LEFT JOIN LATERAL (
+                    SELECT t.id, t.price, t.fetched_at, t.source
+                      FROM market_quotes t
+                     WHERE t.symbol = w.symbol
+                       AND t.price IS NOT NULL
+                       AND t.fetched_at IS NOT NULL
+                     ORDER BY t.fetched_at DESC, t.id DESC
+                     LIMIT 1
+              ) mq ON true
+             WHERE upper(w.symbol) = ANY(%s)
+             ORDER BY upper(w.symbol), w.updated_at DESC NULLS LAST
+            """,
+            (syms,),
         )
-        tables = {r[0] for r in (cur.fetchall() or [])}
-        if "market_quotes" in tables:
-            # Discover columns
+        for row in cur.fetchall() or []:
+            # RealDictCursor or tuple
+            if hasattr(row, "keys"):
+                sym = row["symbol"]
+                quote_id = row.get("quote_id")
+                last = row.get("last")
+                chg = row.get("day_change_pct")
+                asof = row.get("price_as_of")
+                src = row.get("price_source")
+            else:
+                sym, quote_id, _mqs, last, chg, asof, src = row[0], row[1], row[2], row[3], row[4], row[5], row[6]
+            # Fail closed: no timestamp → do not show price as current
+            if asof is None or last is None:
+                out[sym] = dict(empty)
+                continue
+            asof_s = asof.isoformat() if hasattr(asof, "isoformat") else str(asof)
+            out[sym] = {
+                "last": float(last),
+                "day_change_pct": float(chg) if chg is not None else None,
+                "price_source": src or "market_quotes",
+                "price_as_of": asof_s,
+                "quote_id": int(quote_id) if quote_id is not None else None,
+                "source_record_id": str(quote_id) if quote_id is not None else None,
+                "market_session": None,
+                "freshness_state": "CURRENT",
+                "market_state": "OK",
+                "missing": [],
+            }
+        # Symbols with no watchlist row: pure market_quotes latest (same ORDER BY)
+        still = [s for s in syms if out[s].get("last") is None]
+        if still:
             cur.execute(
                 """
-                SELECT column_name FROM information_schema.columns
-                 WHERE table_name='market_quotes'
-                """
+                SELECT DISTINCT ON (symbol)
+                       symbol, id, source, price, day_change_pct, fetched_at
+                  FROM market_quotes
+                 WHERE symbol = ANY(%s)
+                   AND price IS NOT NULL
+                   AND fetched_at IS NOT NULL
+                 ORDER BY symbol, fetched_at DESC, id DESC
+                """,
+                (still,),
             )
-            cols = {r[0] for r in (cur.fetchall() or [])}
-            price_c = next((c for c in ("last_price", "price", "last", "close") if c in cols), None)
-            chg_c = next((c for c in ("change_pct", "day_change_pct", "pct_change") if c in cols), None)
-            asof_c = next((c for c in ("as_of", "updated_at", "ts", "quoted_at") if c in cols), None)
-            src_c = "source" if "source" in cols else None
-            if price_c:
-                sel = [f"upper(symbol)", price_c]
-                if chg_c:
-                    sel.append(chg_c)
-                if asof_c:
-                    sel.append(asof_c)
-                if src_c:
-                    sel.append(src_c)
-                cur.execute(
-                    f"""
-                    SELECT DISTINCT ON (upper(symbol)) {", ".join(sel)}
-                      FROM market_quotes
-                     WHERE upper(symbol) = ANY(%s)
-                     ORDER BY upper(symbol), {asof_c or price_c} DESC NULLS LAST
-                    """,
-                    (syms,),
-                )
-                for row in cur.fetchall() or []:
-                    sym = row[0]
-                    idx = 1
-                    last = float(row[idx]) if row[idx] is not None else None
-                    idx += 1
-                    chg = None
-                    if chg_c:
-                        chg = float(row[idx]) if row[idx] is not None else None
-                        idx += 1
-                    asof = None
-                    if asof_c:
-                        v = row[idx]
-                        asof = v.isoformat() if hasattr(v, "isoformat") else (str(v) if v else None)
-                        idx += 1
-                    src = "market_quotes"
-                    if src_c:
-                        src = row[idx] or "market_quotes"
-                    out[sym] = {
-                        "last": last,
-                        "day_change_pct": chg,
-                        "price_source": src,
-                        "price_as_of": asof,
-                        "missing": [] if last is not None else ["market_quote"],
-                    }
-        # Fill missing from watchlist_items
-        missing = [s for s, v in out.items() if v.get("last") is None]
-        if missing and "watchlist_items" in tables:
-            cur.execute(
-                """
-                SELECT column_name FROM information_schema.columns
-                 WHERE table_name='watchlist_items'
-                """
-            )
-            cols = {r[0] for r in (cur.fetchall() or [])}
-            price_c = next((c for c in ("price", "last_price", "latest_price") if c in cols), None)
-            chg_c = next((c for c in ("change_pct", "day_change_pct") if c in cols), None)
-            asof_c = next((c for c in ("price_as_of", "updated_at", "last_enriched_at") if c in cols), None)
-            if price_c:
-                sel = ["upper(symbol)", price_c]
-                if chg_c:
-                    sel.append(chg_c)
-                if asof_c:
-                    sel.append(asof_c)
-                cur.execute(
-                    f"""
-                    SELECT DISTINCT ON (upper(symbol)) {", ".join(sel)}
-                      FROM watchlist_items
-                     WHERE upper(symbol) = ANY(%s)
-                     ORDER BY upper(symbol), {asof_c or 'id'} DESC NULLS LAST
-                    """,
-                    (missing,),
-                )
-                for row in cur.fetchall() or []:
-                    sym = row[0]
-                    last = float(row[1]) if row[1] is not None else None
-                    chg = float(row[2]) if chg_c and len(row) > 2 and row[2] is not None else None
-                    asof = None
-                    if asof_c and len(row) > (3 if chg_c else 2):
-                        v = row[-1]
-                        asof = v.isoformat() if hasattr(v, "isoformat") else (str(v) if v else None)
-                    if last is not None:
-                        out[sym] = {
-                            "last": last,
-                            "day_change_pct": chg,
-                            "price_source": "watchlist_items",
-                            "price_as_of": asof,
-                            "missing": [],
-                        }
+            for row in cur.fetchall() or []:
+                if hasattr(row, "keys"):
+                    sym = str(row["symbol"]).upper()
+                    quote_id, src, last, chg, asof = (
+                        row["id"], row["source"], row["price"], row["day_change_pct"], row["fetched_at"]
+                    )
+                else:
+                    sym = str(row[0]).upper()
+                    quote_id, src, last, chg, asof = row[1], row[2], row[3], row[4], row[5]
+                if asof is None or last is None:
+                    continue
+                out[sym] = {
+                    "last": float(last),
+                    "day_change_pct": float(chg) if chg is not None else None,
+                    "price_source": "market_quotes",
+                    "price_as_of": asof.isoformat() if hasattr(asof, "isoformat") else str(asof),
+                    "quote_id": int(quote_id) if quote_id is not None else None,
+                    "source_record_id": str(quote_id) if quote_id is not None else None,
+                    "market_session": None,
+                    "freshness_state": "CURRENT",
+                    "market_state": "OK",
+                    "missing": [],
+                }
     except Exception as e:
         for s in out:
             out[s]["market_error"] = type(e).__name__
@@ -418,28 +454,29 @@ def build_live_cards(
         except Exception:
             ap = packet.get("action_policy")
 
-        # Recompute presentation into packet for consistency (does not mutate DB)
-        try:
-            import operator_presentation as opres
-            packet = dict(packet)
-            packet["operator_presentation"] = opres.build(packet, ap)
-        except Exception:
-            pass
-
         held = sym in held_set or bool((packet.get("ownership") or {}).get("held"))
+        packet = dict(packet)
         if held:
-            packet = dict(packet)
             own = dict(packet.get("ownership") or {})
             own["held"] = True
             packet["ownership"] = own
 
-        dec = project_watch_decision(packet, ap, symbol=sym)
         stages = _verification_stages(packet)
+        packet["verification_stages"] = stages
+
+        # Recompute presentation into packet for consistency (does not mutate DB)
+        try:
+            import operator_presentation as opres
+            op = opres.build(packet, ap)
+            op["verification_stages"] = stages
+            packet["operator_presentation"] = op
+        except Exception:
+            pass
+
+        dec = project_watch_decision(packet, ap, symbol=sym)
         dec["verification_stages"] = stages
-        # Align primary reason codes when fail
         if dec.get("primary_state") == "DETERMINISTIC_FAIL" and stages.get("primary_reason_codes"):
             dec["primary_reason_codes"] = stages["primary_reason_codes"]
-        # Surface blockers from reconciliation detail when quality gate failed without structured list
         if dec.get("primary_state") == "DETERMINISTIC_FAIL" and not dec.get("blockers"):
             detail = stages.get("reconciled_detail") or ""
             parts = [p.strip() for p in re.split(r"[;|]", detail) if p.strip()]
@@ -449,18 +486,18 @@ def build_live_cards(
             ] or [{"code": "DETERMINISTIC_FAIL", "message": "Deterministic validation failed", "source": "reconciled"}]
             dec["blocking_drivers"] = [b["message"] for b in dec["blockers"]][:3]
 
-
         ident = identity.get(sym) or {}
         mkt = market.get(sym) or {}
         company = ident.get("company")
         if sym == "FTH" and (not company or str(company).lower() in FTH_FORBIDDEN_NAMES or str(company).lower().startswith("fate ")):
             company = FTH_CANONICAL_COMPANY
 
-        missing = []
+        missing = list(mkt.get("missing") or [])
         if not company:
             missing.append("identity")
-        if mkt.get("last") is None:
-            missing.append("market_quote")
+        if mkt.get("last") is None or mkt.get("price_as_of") is None:
+            if "canonical_market_quote" not in missing:
+                missing.append("canonical_market_quote")
         if not packet.get("technical_state"):
             missing.append("technicals")
         if not (packet.get("fundamentals") or packet.get("fundamental_state")):
@@ -477,6 +514,9 @@ def build_live_cards(
             "fundamentals": packet.get("fundamentals") or {},
             "catalysts": packet.get("event_state") or {},
             "contract": packet.get("current_actionable_plan") or {},
+            "quote_id": mkt.get("quote_id"),
+            "last": mkt.get("last"),
+            "price_as_of": mkt.get("price_as_of"),
         }
         fp = build_symbol_material_fingerprint(fp_payload)
         fps.append(fp)
@@ -493,6 +533,7 @@ def build_live_cards(
             "next_review": dec.get("next_deterministic_review_condition") or (ap or {}).get("next_review"),
             "missing_components": missing,
             "company": company,
+            "company_summary": ident.get("company_summary"),
             "sector": ident.get("sector"),
             "industry": ident.get("industry"),
             "identity_source": ident.get("identity_source"),
@@ -501,6 +542,11 @@ def build_live_cards(
             "price_source": mkt.get("price_source"),
             "price_as_of": mkt.get("price_as_of"),
             "market_ts": mkt.get("price_as_of"),
+            "quote_id": mkt.get("quote_id"),
+            "source_record_id": mkt.get("source_record_id"),
+            "market_session": mkt.get("market_session"),
+            "freshness_state": mkt.get("freshness_state"),
+            "market_state": mkt.get("market_state"),
             "held": held,
             "decision": dec,
             "verification_stages": stages,
@@ -537,6 +583,7 @@ def build_live_symbol(symbol: str) -> dict[str, Any]:
         "ok": True,
         "symbol": card["symbol"],
         "company": card.get("company"),
+        "company_summary": card.get("company_summary"),
         "sector": card.get("sector"),
         "industry": card.get("industry"),
         "last": card.get("last"),
@@ -544,6 +591,11 @@ def build_live_symbol(symbol: str) -> dict[str, Any]:
         "price_source": card.get("price_source"),
         "price_as_of": card.get("price_as_of"),
         "market_ts": card.get("market_ts"),
+        "quote_id": card.get("quote_id"),
+        "source_record_id": card.get("source_record_id"),
+        "market_session": card.get("market_session"),
+        "freshness_state": card.get("freshness_state"),
+        "market_state": card.get("market_state"),
         "identity_source": card.get("identity_source"),
         "held": card.get("held"),
         "packet_id": card.get("packet_id"),

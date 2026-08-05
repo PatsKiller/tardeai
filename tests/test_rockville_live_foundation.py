@@ -73,6 +73,62 @@ class TestLiveProjection(unittest.TestCase):
         api = (ROOT / "scripts/api_v3_watch_rockville.py").read_text()
         self.assertNotIn("DB_PASSWORD=", api)
 
+    def test_cross_surface_quote_coherence(self):
+        """Rockville last/change/as_of/source match watchlist items (canonical CASE overlay)."""
+        import urllib.request
+        from lib.rockville.live_projection import build_live_cards
+        cards = {c["symbol"]: c for c in (build_live_cards().get("cards") or [])}
+        for sym in ("FTH", "NUAI", "AXTI", "SWBI", "CECO", "PFLT"):
+            if sym not in cards:
+                continue
+            raw = urllib.request.urlopen(
+                f"http://127.0.0.1:7777/api/v2/watchlist/items?symbol={sym}", timeout=45
+            ).read()
+            it = json.loads(raw)["data"]["items"][0]
+            c = cards[sym]
+            self.assertIsNotNone(c.get("price_as_of"), msg=f"{sym} missing timestamp")
+            self.assertIsNotNone(c.get("last"), msg=f"{sym} missing last")
+            self.assertIsNotNone(c.get("quote_id"), msg=f"{sym} missing quote_id")
+            self.assertEqual(float(c["last"]), float(it["price"]), msg=f"{sym} last mismatch")
+            # change_pct may be float-equal
+            if it.get("change_pct") is not None and c.get("day_change_pct") is not None:
+                self.assertAlmostEqual(float(c["day_change_pct"]), float(it["change_pct"]), places=4, msg=sym)
+            self.assertEqual(c.get("price_source"), it.get("price_source"), msg=sym)
+            # timestamps both present and equal when both set
+            if it.get("price_as_of") and c.get("price_as_of"):
+                self.assertTrue(
+                    str(c["price_as_of"])[:19] == str(it["price_as_of"])[:19]
+                    or str(c["price_as_of"]).startswith(str(it["price_as_of"])[:19]),
+                    msg=f"{sym} as_of {c.get('price_as_of')} vs {it.get('price_as_of')}",
+                )
+            # company names not full prose
+            co = c.get("company") or ""
+            self.assertNotIn(" provides ", co)
+            self.assertNotIn(" is a Private", co)
+            self.assertLessEqual(len(co), 80)
+
+    def test_company_name_canonicalizer(self):
+        from lib.rockville.live_projection import _canonical_company_name
+        self.assertEqual(
+            _canonical_company_name(
+                "CECO Environmental Corp. provides critical solutions in industrial air quality",
+                "CECO",
+            ),
+            "CECO Environmental Corp.",
+        )
+        self.assertEqual(
+            _canonical_company_name(
+                "PennantPark Floating Rate Capital Ltd. is a Private Debt fund",
+                "PFLT",
+            ),
+            "PennantPark Floating Rate Capital Ltd.",
+        )
+        self.assertEqual(
+            _canonical_company_name("Faeth Therapeutics, Inc., a clinical-stage", "FTH"),
+            "Faeth Therapeutics, Inc.",
+        )
+
+
 
 class TestOperatorPresentationFailClosed(unittest.TestCase):
     def test_presentation_header(self):

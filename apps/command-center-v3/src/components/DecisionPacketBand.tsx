@@ -289,26 +289,36 @@ function TicketVerification({ packet, symbol }: { packet: any; symbol?: string }
   const stages = packet?.operator_presentation?.verification_stages
     || packet?.verification_stages
     || null
-  let qualityRaw = quality.state || selected.quality || reconciled.quality_admission || 'NOT ASSESSED'
-  // If reconciliation fail-closed on quality admission text, do not show UNASSESSED
   const detail = String(reconciled.detail || '').toLowerCase()
-  if ((!qualityRaw || qualityRaw === 'NOT ASSESSED' || qualityRaw === 'NOT_ASSESSED')
-    && reconciled.state === 'DETERMINISTIC_FAIL'
-    && (detail.includes('quality admission') || detail.includes('float') || detail.includes('atr'))) {
-    qualityRaw = 'FAIL'
-  }
+  const qualityDrivenFail = reconciled.state === 'DETERMINISTIC_FAIL'
+    && (detail.includes('quality admission') || detail.includes('float') || detail.includes('atr')
+      || stages?.primary_failed_stage === 'quality_admission'
+      || stages?.quality_admission_status === 'FAIL')
+  // Never show UNASSESSED/NOT_RUN for a stage that governs the final fail
+  let qualityRaw = quality.state || selected.quality || reconciled.quality_admission
+    || stages?.quality_admission_status || 'NOT ASSESSED'
+  if (qualityDrivenFail) qualityRaw = stages?.quality_admission_status || 'FAIL'
   if (stages?.quality_admission_status && stages.quality_admission_status !== 'NOT_RUN') {
     qualityRaw = stages.quality_admission_status
   }
   const qualityState = String(qualityRaw).replace(/_/g, ' ')
-  // Compilation vs ticket validation: avoid NOT_RUN when fail-closed used quality
+  // Compilation / ticket validation independent of LLM critics
+  let compilation = stages?.deterministic_compilation_status
+    || (packet?.plan_families ? 'PASS' : 'NOT_RUN')
   let detDisplay = validationState
-  if (stages?.ticket_validation_status === 'NOT_APPLICABLE') {
+  if (qualityDrivenFail) {
+    detDisplay = stages?.ticket_validation_status === 'FAIL' ? 'FAIL' : 'N/A'
+    if (!stages?.ticket_validation_status || stages.ticket_validation_status === 'NOT_RUN') {
+      detDisplay = 'N/A'
+    }
+    compilation = stages?.deterministic_compilation_status || 'PASS'
+  } else if (stages?.ticket_validation_status === 'NOT_APPLICABLE') {
     detDisplay = 'N/A'
   } else if (stages?.deterministic_compilation_status === 'PASS' && (!validationState || validationState === 'NOT RUN' || validationState === 'NOT_RUN')) {
     detDisplay = 'COMPILED'
+    compilation = 'PASS'
   }
-  if (stages?.ticket_validation_status && !['NOT_RUN', 'NOT_APPLICABLE'].includes(stages.ticket_validation_status)) {
+  if (stages?.ticket_validation_status && !['NOT_RUN', 'NOT_APPLICABLE'].includes(String(stages.ticket_validation_status))) {
     detDisplay = stages.ticket_validation_status
   }
   const reviews = review.reviews || {}
@@ -325,7 +335,9 @@ function TicketVerification({ packet, symbol }: { packet: any; symbol?: string }
   const stageNote = stages?.primary_failed_stage
     ? `failed stage: ${String(stages.primary_failed_stage).replace(/_/g, ' ')}`
     : null
-  return <div style={{ padding: '9px 16px', borderBottom: `1px solid ${BB.border}` }}><div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}><span style={{ fontSize: 10, fontWeight: 900, letterSpacing: '.08em', color: BB.text3 }}>TICKET VERIFICATION</span><span style={{ fontSize: 10.5, fontWeight: 900, color: failure ? BB.red : reconciled.proposal_allowed ? BB.green : BB.text1 }}>{String(overall).replace(/_/g, ' ')}</span>{selected.source && <span title="Canonical validation source" style={{ fontSize: 10, color: BB.text3 }}>{selected.source}</span>}{reconciled.detail && <span style={{ fontSize: 10, color: BB.text3 }}>{String(reconciled.detail).slice(0, 130)}</span>}<button onClick={event => { event.stopPropagation(); void runFree() }} disabled={busy || !mayRunReview} title={!mayRunReview ? 'Complete deterministic validation and quality admission first' : 'Run bounded local and OAuth critics on the exact validated ticket'} style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 800, padding: '2px 8px', cursor: busy ? 'wait' : !mayRunReview ? 'not-allowed' : 'pointer', opacity: mayRunReview ? 1 : .55, background: 'transparent', color: BB.text2, border: `1px solid ${BB.border}`, borderRadius: 3 }}>{busy ? 'Reviewing…' : mayRunReview ? 'Run free review' : 'Fix deterministic gate first'}</button></div><div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 5, fontSize: 10, color: BB.text3 }}><span>Compilation <b style={{ color: BB.text2 }}>{stages?.deterministic_compilation_status || (detDisplay === 'COMPILED' ? 'PASS' : '—')}</b></span><span>Ticket val <b style={{ color: detDisplay === 'FAIL' ? BB.red : detDisplay === 'PASS' ? BB.green : BB.text2 }}>{detDisplay}</b></span><span>Quality <b style={{ color: qualityRaw === 'ADMITTED' || qualityRaw === 'PASS' ? BB.green : /FAIL|QUARANTINE/.test(String(qualityRaw)) ? BB.red : BB.amber }}>{qualityState}</b></span><span>Reconcile <b style={{ color: failure ? BB.red : BB.text2 }}>{stages?.reconciliation_status || String(overall).replace(/_/g, ' ')}</b></span><span>Local <b style={{ color: BB.text2 }}>{reviews.local?.verdict || 'NOT RUN'}</b></span><span>Grok OAuth <b style={{ color: BB.text2 }}>{reviews.grok?.verdict || 'NOT RUN'}</b></span><span>ChatGPT OAuth <b style={{ color: BB.text2 }}>{reviews.chatgpt?.verdict || 'NOT RUN'}</b></span><span>Premium <b style={{ color: reconciled.premium_recommended ? BB.amber : BB.text2 }}>{premiumLabel}</b></span></div>{stageNote && <div style={{ marginTop: 4, fontSize: 10, color: BB.amber }}>{stageNote}{(stages?.primary_reason_codes || []).length ? ` · ${(stages.primary_reason_codes || []).slice(0, 4).join(', ')}` : ''}</div>}{validation.hard_failures?.length > 0 && <div style={{ marginTop: 4, fontSize: 10, color: BB.red }}>{validation.hard_failures.slice(0, 2).join(' · ')}</div>}{(quality.reasons?.length > 0 || detail.includes('quality')) && /FAIL|QUARANTINE|NOT_ADMIT/.test(String(qualityRaw)) && <div style={{ marginTop: 4, fontSize: 10, color: BB.red }}>Quality gate: {(quality.reasons || [reconciled.detail]).filter(Boolean).slice(0, 2).join(' · ')}</div>}</div>
+  const reconcileLabel = stages?.reconciliation_status
+    || (reconciled.state === 'DETERMINISTIC_FAIL' ? 'FAIL_CLOSED' : String(overall).replace(/_/g, ' '))
+  return <div style={{ padding: '9px 16px', borderBottom: `1px solid ${BB.border}` }} data-ticket-verification data-quality-status={String(qualityRaw)} data-compilation={String(compilation)} data-ticket-val={String(detDisplay)} data-reconcile={String(reconcileLabel)}><div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}><span style={{ fontSize: 10, fontWeight: 900, letterSpacing: '.08em', color: BB.text3 }}>TICKET VERIFICATION</span><span style={{ fontSize: 10.5, fontWeight: 900, color: failure ? BB.red : reconciled.proposal_allowed ? BB.green : BB.text1 }}>{String(overall).replace(/_/g, ' ')}</span>{selected.source && <span title="Canonical validation source" style={{ fontSize: 10, color: BB.text3 }}>{selected.source}</span>}{reconciled.detail && <span style={{ fontSize: 10, color: BB.text3 }}>{String(reconciled.detail).slice(0, 130)}</span>}<button onClick={event => { event.stopPropagation(); void runFree() }} disabled={busy || !mayRunReview} title={!mayRunReview ? 'Complete deterministic validation and quality admission first' : 'Run bounded local and OAuth critics on the exact validated ticket'} style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 800, padding: '2px 8px', cursor: busy ? 'wait' : !mayRunReview ? 'not-allowed' : 'pointer', opacity: mayRunReview ? 1 : .55, background: 'transparent', color: BB.text2, border: `1px solid ${BB.border}`, borderRadius: 3 }}>{busy ? 'Reviewing…' : mayRunReview ? 'Run free review' : 'Fix deterministic gate first'}</button></div><div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 5, fontSize: 10, color: BB.text3 }}><span>Compilation <b style={{ color: BB.text2 }}>{String(compilation).replace(/_/g, ' ')}</b></span><span>Ticket val <b style={{ color: detDisplay === 'FAIL' ? BB.red : detDisplay === 'PASS' ? BB.green : BB.text2 }}>{String(detDisplay).replace(/_/g, ' ')}</b></span><span>Quality <b style={{ color: qualityRaw === 'ADMITTED' || qualityRaw === 'PASS' ? BB.green : /FAIL|QUARANTINE/.test(String(qualityRaw)) ? BB.red : BB.amber }}>{qualityState}</b></span><span>Reconcile <b style={{ color: failure ? BB.red : BB.text2 }}>{String(reconcileLabel).replace(/_/g, ' ')}</b></span><span>Local <b style={{ color: BB.text2 }}>{reviews.local?.verdict || 'NOT RUN'}</b></span><span>Grok OAuth <b style={{ color: BB.text2 }}>{reviews.grok?.verdict || 'NOT RUN'}</b></span><span>ChatGPT OAuth <b style={{ color: BB.text2 }}>{reviews.chatgpt?.verdict || 'NOT RUN'}</b></span><span>Premium <b style={{ color: reconciled.premium_recommended ? BB.amber : BB.text2 }}>{premiumLabel}</b></span></div>{stageNote && <div style={{ marginTop: 4, fontSize: 10, color: BB.amber }}>{stageNote}{(stages?.primary_reason_codes || []).length ? ` · ${(stages.primary_reason_codes || []).slice(0, 4).join(', ')}` : ''}</div>}{validation.hard_failures?.length > 0 && <div style={{ marginTop: 4, fontSize: 10, color: BB.red }}>{validation.hard_failures.slice(0, 2).join(' · ')}</div>}{(quality.reasons?.length > 0 || detail.includes('quality') || qualityDrivenFail) && /FAIL|QUARANTINE|NOT_ADMIT/.test(String(qualityRaw)) && <div style={{ marginTop: 4, fontSize: 10, color: BB.red }}>Quality gate: {(quality.reasons || [reconciled.detail]).filter(Boolean).slice(0, 2).join(' · ')}</div>}</div>
 }
 
 function AuditDrawer({ pres, tech }: { pres: OperatorPresentation; tech: any }) {
