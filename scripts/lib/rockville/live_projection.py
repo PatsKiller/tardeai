@@ -108,147 +108,30 @@ def batch_identity(symbols: list[str]) -> dict[str, dict]:
 
 
 def batch_market(symbols: list[str]) -> dict[str, dict]:
-    """Canonical Watch quote selector — same lateral join as api_v2 watchlist items.
+    """Canonical Watch quote artifact — shared CASE-bound selector.
 
-    Authority (api_v2 ~6685-6687 + CASE 6621-6629):
-      latest market_quotes row by fetched_at DESC where price+fetched_at non-null;
-      overlay when newer than watchlist_items.last_enriched_at;
-      else enrichment price; never display untimestamped quotes as current.
+    See scripts/lib/watch_canonical_quote.py. Identity always matches the winning branch.
     """
-    empty = {
-        "last": None,
-        "day_change_pct": None,
-        "price_source": None,
-        "price_as_of": None,
-        "quote_id": None,
-        "market_session": None,
-        "source_record_id": None,
-        "freshness_state": "DATA_UNAVAILABLE",
-        "market_state": "DATA_UNAVAILABLE",
-        "missing": ["canonical_market_quote"],
-    }
-    out: dict[str, dict] = {s.upper(): dict(empty) for s in symbols}
-    if not symbols:
-        return out
-    syms = [s.upper() for s in symbols]
+    from lib.watch_canonical_quote import batch_canonical_quotes
     try:
-        conn = _conn()
-        cur = conn.cursor()
-        # Mirror watchlist items price CASE — join watchlist_items + latest mq
-        # Plain symbol equality (indexed); both tables uppercase.
-        cur.execute(
-            """
-            SELECT DISTINCT ON (upper(w.symbol))
-                   upper(w.symbol) AS symbol,
-                   mq.id AS quote_id,
-                   mq.source AS mq_source,
-                   CASE
-                     WHEN mq.price IS NOT NULL
-                      AND mq.fetched_at IS NOT NULL
-                      AND (w.last_enriched_at IS NULL OR mq.fetched_at > w.last_enriched_at)
-                     THEN mq.price
-                     ELSE w.price
-                   END AS last,
-                   w.change_pct AS day_change_pct,
-                   CASE
-                     WHEN mq.price IS NOT NULL
-                      AND mq.fetched_at IS NOT NULL
-                      AND (w.last_enriched_at IS NULL OR mq.fetched_at > w.last_enriched_at)
-                     THEN mq.fetched_at
-                     ELSE w.last_enriched_at
-                   END AS price_as_of,
-                   CASE
-                     WHEN mq.price IS NOT NULL
-                      AND mq.fetched_at IS NOT NULL
-                      AND (w.last_enriched_at IS NULL OR mq.fetched_at > w.last_enriched_at)
-                     THEN 'market_quotes'
-                     ELSE 'enrichment'
-                   END AS price_source
-              FROM watchlist_items w
-              LEFT JOIN LATERAL (
-                    SELECT t.id, t.price, t.fetched_at, t.source
-                      FROM market_quotes t
-                     WHERE t.symbol = w.symbol
-                       AND t.price IS NOT NULL
-                       AND t.fetched_at IS NOT NULL
-                     ORDER BY t.fetched_at DESC, t.id DESC
-                     LIMIT 1
-              ) mq ON true
-             WHERE upper(w.symbol) = ANY(%s)
-             ORDER BY upper(w.symbol), w.updated_at DESC NULLS LAST
-            """,
-            (syms,),
-        )
-        for row in cur.fetchall() or []:
-            # RealDictCursor or tuple
-            if hasattr(row, "keys"):
-                sym = row["symbol"]
-                quote_id = row.get("quote_id")
-                last = row.get("last")
-                chg = row.get("day_change_pct")
-                asof = row.get("price_as_of")
-                src = row.get("price_source")
-            else:
-                sym, quote_id, _mqs, last, chg, asof, src = row[0], row[1], row[2], row[3], row[4], row[5], row[6]
-            # Fail closed: no timestamp → do not show price as current
-            if asof is None or last is None:
-                out[sym] = dict(empty)
-                continue
-            asof_s = asof.isoformat() if hasattr(asof, "isoformat") else str(asof)
-            out[sym] = {
-                "last": float(last),
-                "day_change_pct": float(chg) if chg is not None else None,
-                "price_source": src or "market_quotes",
-                "price_as_of": asof_s,
-                "quote_id": int(quote_id) if quote_id is not None else None,
-                "source_record_id": str(quote_id) if quote_id is not None else None,
-                "market_session": None,
-                "freshness_state": "CURRENT",
-                "market_state": "OK",
-                "missing": [],
-            }
-        # Symbols with no watchlist row: pure market_quotes latest (same ORDER BY)
-        still = [s for s in syms if out[s].get("last") is None]
-        if still:
-            cur.execute(
-                """
-                SELECT DISTINCT ON (symbol)
-                       symbol, id, source, price, day_change_pct, fetched_at
-                  FROM market_quotes
-                 WHERE symbol = ANY(%s)
-                   AND price IS NOT NULL
-                   AND fetched_at IS NOT NULL
-                 ORDER BY symbol, fetched_at DESC, id DESC
-                """,
-                (still,),
-            )
-            for row in cur.fetchall() or []:
-                if hasattr(row, "keys"):
-                    sym = str(row["symbol"]).upper()
-                    quote_id, src, last, chg, asof = (
-                        row["id"], row["source"], row["price"], row["day_change_pct"], row["fetched_at"]
-                    )
-                else:
-                    sym = str(row[0]).upper()
-                    quote_id, src, last, chg, asof = row[1], row[2], row[3], row[4], row[5]
-                if asof is None or last is None:
-                    continue
-                out[sym] = {
-                    "last": float(last),
-                    "day_change_pct": float(chg) if chg is not None else None,
-                    "price_source": "market_quotes",
-                    "price_as_of": asof.isoformat() if hasattr(asof, "isoformat") else str(asof),
-                    "quote_id": int(quote_id) if quote_id is not None else None,
-                    "source_record_id": str(quote_id) if quote_id is not None else None,
-                    "market_session": None,
-                    "freshness_state": "CURRENT",
-                    "market_state": "OK",
-                    "missing": [],
-                }
+        return batch_canonical_quotes(symbols)
     except Exception as e:
-        for s in out:
-            out[s]["market_error"] = type(e).__name__
-    return out
+        return {
+            s.upper(): {
+                "last": None,
+                "day_change_pct": None,
+                "price_source": None,
+                "price_as_of": None,
+                "quote_id": None,
+                "source_record_id": None,
+                "market_session": None,
+                "freshness_state": "DATA_UNAVAILABLE",
+                "market_state": "DATA_UNAVAILABLE",
+                "missing": ["canonical_market_quote"],
+                "market_error": type(e).__name__,
+            }
+            for s in symbols
+        }
 
 
 def _verification_stages(packet: dict) -> dict[str, Any]:

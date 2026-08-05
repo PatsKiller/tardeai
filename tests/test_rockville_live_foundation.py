@@ -74,10 +74,12 @@ class TestLiveProjection(unittest.TestCase):
         self.assertNotIn("DB_PASSWORD=", api)
 
     def test_cross_surface_quote_coherence(self):
-        """Rockville last/change/as_of/source match watchlist items (canonical CASE overlay)."""
+        """Rockville last/change/as_of/source match watchlist + shared selector identity."""
         import urllib.request
         from lib.rockville.live_projection import build_live_cards
+        from lib.watch_canonical_quote import batch_canonical_quotes
         cards = {c["symbol"]: c for c in (build_live_cards().get("cards") or [])}
+        expected = batch_canonical_quotes(list(cards.keys()))
         for sym in ("FTH", "NUAI", "AXTI", "SWBI", "CECO", "PFLT"):
             if sym not in cards:
                 continue
@@ -86,22 +88,26 @@ class TestLiveProjection(unittest.TestCase):
             ).read()
             it = json.loads(raw)["data"]["items"][0]
             c = cards[sym]
+            exp = expected.get(sym) or {}
             self.assertIsNotNone(c.get("price_as_of"), msg=f"{sym} missing timestamp")
             self.assertIsNotNone(c.get("last"), msg=f"{sym} missing last")
             self.assertIsNotNone(c.get("quote_id"), msg=f"{sym} missing quote_id")
             self.assertEqual(float(c["last"]), float(it["price"]), msg=f"{sym} last mismatch")
-            # change_pct may be float-equal
             if it.get("change_pct") is not None and c.get("day_change_pct") is not None:
                 self.assertAlmostEqual(float(c["day_change_pct"]), float(it["change_pct"]), places=4, msg=sym)
             self.assertEqual(c.get("price_source"), it.get("price_source"), msg=sym)
-            # timestamps both present and equal when both set
             if it.get("price_as_of") and c.get("price_as_of"):
-                self.assertTrue(
-                    str(c["price_as_of"])[:19] == str(it["price_as_of"])[:19]
-                    or str(c["price_as_of"]).startswith(str(it["price_as_of"])[:19]),
-                    msg=f"{sym} as_of {c.get('price_as_of')} vs {it.get('price_as_of')}",
-                )
-            # company names not full prose
+                self.assertEqual(str(c["price_as_of"])[:19], str(it["price_as_of"])[:19], msg=sym)
+            # Identity matches shared selector (same CASE boundary)
+            self.assertEqual(c.get("quote_id"), exp.get("quote_id"), msg=f"{sym} quote_id")
+            self.assertEqual(c.get("source_record_id"), exp.get("source_record_id"), msg=f"{sym} source_record_id")
+            self.assertEqual(c.get("price_source"), exp.get("price_source"), msg=sym)
+            self.assertEqual(c.get("market_session"), exp.get("market_session"), msg=sym)
+            self.assertEqual(c.get("freshness_state"), exp.get("freshness_state"), msg=sym)
+            # Enrichment branch must never carry raw mq int identity
+            if c.get("price_source") == "enrichment":
+                self.assertIsInstance(c.get("quote_id"), str)
+                self.assertTrue(str(c.get("quote_id")).startswith("enrichment:"))
             co = c.get("company") or ""
             self.assertNotIn(" provides ", co)
             self.assertNotIn(" is a Private", co)
