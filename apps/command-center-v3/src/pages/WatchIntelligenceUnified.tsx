@@ -147,11 +147,13 @@ function ReviewBox({ title, rev }: { title: string; rev?: ReviewStatus }) {
           <div style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 3 }}>
             Provider NONE · Model NONE · Policy NO_CALL · Cost $0
             {reason ? ` · ${reason}` : ''}
-            {disposition ? ` · ${disposition}` : ''}
-            {sla ? ` · ${sla}` : ''}
+            {disposition && disposition !== reason ? ` · ${disposition}` : ''}
+            {sla && sla !== reason && sla !== disposition ? ` · ${sla}` : ''}
           </div>
           {nextReview ? (
-            <div style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 3 }}>Next run: {String(nextReview)}</div>
+            <div style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 3 }} data-next-review>
+              Next run: {String(nextReview)}
+            </div>
           ) : null}
         </>
       )}
@@ -653,9 +655,11 @@ export default function WatchIntelligenceUnified() {
                   <div style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 3 }}>
                     <b style={{ color: BB.text2 }}>Vs industry / sector / SPY:</b> UNAVAILABLE
                   </div>
-                  <div style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 3 }}>
+                  <div style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 3 }} data-card-next-review>
                     <b style={{ color: BB.text2 }}>Next review:</b>{' '}
-                    {(c as any).next_review_at || (c as any).next_review_condition || c.next_review_time || '—'}
+                    {(c as any).next_maria_review_at
+                      ? `Maria ${(c as any).next_maria_review_at} · CIO ${(c as any).next_cio_review_at || '—'}`
+                      : ((c as any).next_review_at || (c as any).next_review_condition || c.next_review_time || '—')}
                   </div>
                   {c.primary_risk && <div style={{ fontSize: TYPE.xs, color: BB.red, marginTop: 6 }}>Risk: {c.primary_risk}</div>}
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, gap: 8 }}>

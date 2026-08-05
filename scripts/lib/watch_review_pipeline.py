@@ -374,7 +374,9 @@ def enrich_review_display(rev: dict[str, Any], *, agent: str, card: dict) -> dic
     if reason == "NO_MATERIAL_CHANGE_NO_CALL":
         label = f"{agent.upper()} REVIEW: NO CALL"
     elif reason == "UNVERIFIED_OPERATOR_AUTHORIZATION" or r.get("artifact_disposition") == "QUARANTINED":
-        label = f"{agent.upper()} REVIEW: NOT RUN"
+        label = f"{agent.upper()} REVIEW: BLOCKED"
+    elif reason == "NOT_SCHEDULED" or r.get("artifact_disposition") == "NOT_SCHEDULED":
+        label = f"{agent.upper()} REVIEW: SCHEDULED"
     elif sla == "OVERDUE":
         label = f"{agent.upper()} REVIEW: OVERDUE"
     elif sla == "COST_DEFERRED":
