@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "watch_decision.v1",
+  "title": "watch_decision.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "symbol",
+    "primary_state",
+    "operator_meaning",
+    "allowed_action_now",
+    "proposal_allowed",
+    "current_mechanics_visible",
+    "blockers",
+    "provenance"
+  ],
+  "properties": {
+    "schema_version": { "const": "watch_decision.v1" },
+    "symbol": { "type": "string", "minLength": 1, "maxLength": 12 },
+    "primary_state": {
+      "type": "string",
+      "enum": [
+        "READY",
+        "WAIT",
+        "REVIEW_PENDING",
+        "STALE",
+        "AVOID",
+        "BLOCKED",
+        "DETERMINISTIC_FAIL",
+        "DATA_UNAVAILABLE",
+        "MANAGING"
+      ]
+    },
+    "operator_meaning": { "type": "string" },
+    "allowed_action_now": { "type": "string" },
+    "proposal_allowed": { "type": "boolean" },
+    "current_mechanics_visible": { "type": "boolean" },
+    "selected_strategy_family": { "type": ["string", "null"] },
+    "last_state_change_at": { "type": ["string", "null"] },
+    "last_state_change_reason": { "type": ["string", "null"] },
+    "next_deterministic_review_condition": { "type": ["string", "null"] },
+    "blockers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["code", "message"],
+        "properties": {
+          "code": { "type": "string" },
+          "message": { "type": "string" },
+          "source": { "type": ["string", "null"] }
+        },
+        "additionalProperties": false
+      }
+    },
+    "supporting_drivers": { "type": "array", "items": { "type": "string" } },
+    "conflicting_drivers": { "type": "array", "items": { "type": "string" } },
+    "blocking_drivers": { "type": "array", "items": { "type": "string" } },
+    "current_mechanics": {
+      "type": ["object", "null"],
+      "description": "Only populated when current_mechanics_visible is true and primary_state is READY or MANAGING"
+    },
+    "wait_contract": { "type": ["object", "null"] },
+    "history_mechanics_not_current": {
+      "type": ["object", "null"],
+      "description": "Collapsed history only; never styled as current"
+    },
+    "provenance": {
+      "type": "object",
+      "required": ["source", "projection_version"],
+      "properties": {
+        "source": { "type": "string" },
+        "projection_version": { "type": "string" },
+        "input_hashes": { "type": "object" }
+      },
+      "additionalProperties": true
+    }
+  }
+}

@@ -1,0 +1,96 @@
+{
+  "_comment": "FTH contradiction fixture: header WAIT + live trigger/invalidation while ticket DETERMINISTIC FAIL. Corrected projection must be DETERMINISTIC_FAIL with zero current mechanics.",
+  "symbol": "FTH",
+  "company": "Fate Therapeutics",
+  "sector": "Healthcare",
+  "observed_bad_ui": {
+    "header_said": "WAIT / Waiting for confirmation",
+    "exposed_trigger": 37.9,
+    "exposed_invalidation": 23.12,
+    "ticket_verification": "DETERMINISTIC_FAIL",
+    "quality_blockers": [
+      "float 18.6M is below the 20M exclusion floor",
+      "ATR 12.1% exceeds the 10% extreme-volatility cap"
+    ]
+  },
+  "packet": {
+    "symbol": "FTH",
+    "packet_id": "fth-fixture-2026-08-04",
+    "ownership": { "held": false },
+    "quality_admission": {
+      "state": "FAIL",
+      "admission": "REJECTED",
+      "blockers": [
+        {
+          "code": "FLOAT_FLOOR",
+          "message": "Float 18.6M is below the 20M admission floor."
+        },
+        {
+          "code": "ATR_CAP",
+          "message": "ATR 12.1% exceeds the configured extreme-volatility cap."
+        }
+      ]
+    },
+    "ticket_review": {
+      "tickets_validated": true,
+      "reconciled": {
+        "state": "DETERMINISTIC_FAIL",
+        "proposal_allowed": false,
+        "detail": "Quality admission failed",
+        "hard_failures": [
+          "Float 18.6M is below the 20M admission floor.",
+          "ATR 12.1% exceeds the configured extreme-volatility cap."
+        ]
+      }
+    },
+    "current_actionable_plan": {
+      "structure": "swing_breakout",
+      "trigger": 37.9,
+      "invalidation": 23.12,
+      "entry_zone": { "lo": 36.0, "hi": 38.0 },
+      "stop_price": 23.12,
+      "targets": [42.0, 48.0],
+      "risk_reward": 1.8,
+      "ticket_validation": {
+        "state": "FAIL",
+        "ticket_hash": "fth-bad-ticket-hash",
+        "hard_failures": [
+          "Float 18.6M is below the 20M admission floor.",
+          "ATR 12.1% exceeds the configured extreme-volatility cap."
+        ]
+      }
+    },
+    "previous_plan": {
+      "trigger": 37.9,
+      "invalidation": 23.12,
+      "note": "prior non-current watch levels"
+    },
+    "action_policy": {
+      "state": "WAIT",
+      "allowed": false,
+      "action": null,
+      "reason": "Waiting for confirmation"
+    }
+  },
+  "action_policy": {
+    "state": "WAIT",
+    "allowed": false,
+    "action": null,
+    "reason": "Waiting for confirmation"
+  },
+  "expected_projection": {
+    "primary_state": "DETERMINISTIC_FAIL",
+    "allowed_action_now": "NO TRADE ACTION",
+    "proposal_allowed": false,
+    "current_mechanics_visible": false,
+    "visibility": {
+      "trigger_visible": false,
+      "entry_visible": false,
+      "stop_or_invalidation_visible": false,
+      "targets_visible": false,
+      "risk_reward_visible": false
+    },
+    "must_not_primary_state": ["WAIT", "READY"],
+    "blocker_substrings": ["Float 18.6M", "ATR"]
+  }
+}

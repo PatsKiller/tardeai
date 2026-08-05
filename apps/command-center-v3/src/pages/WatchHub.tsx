@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import type { DrillContext } from '../components/DetailDrawer'
 import WatchTruthAuditPanel from '../components/WatchTruthAuditPanel'
@@ -10,6 +10,9 @@ import ScreenerFindsHub from './ScreenerFindsHub'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubTab, BB, TYPE, RAIL } from '../lib/watchTokens'
 import { ChipLegend } from '../components/TerminalChip'
+import { useApi } from '../hooks/useApi'
+import CioDailyPanel from '../components/rockville/CioDailyPanel'
+import WatchCardV2 from '../components/rockville/WatchCardV2'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 
@@ -57,7 +60,13 @@ export default function WatchHub({ onDrill }: Props) {
         </div>
       </div>
       <WatchRegimeStrip />
-      {tab === 'Watchlist' && <><WatchTruthAuditPanel /><WatchlistHub onDrill={onDrill} embedded /></>}
+      {tab === 'Watchlist' && (
+        <>
+          <RockvilleWatchShadow />
+          <WatchTruthAuditPanel />
+          <WatchlistHub onDrill={onDrill} embedded />
+        </>
+      )}
       {tab === 'Screener Finds' && <ScreenerFindsHub onDrill={onDrill} embedded />}
       {tab === 'Watchpool' && <WatchpoolHub onDrill={onDrill} embedded />}
       {tab === 'Sectors' && <SectorsHub onDrill={onDrill} embedded />}
@@ -66,7 +75,45 @@ export default function WatchHub({ onDrill }: Props) {
   )
 }
 
-import { useApi } from '../hooks/useApi'
+/** Rockville card v2 + CIO panel — shadow by default; visible when flag on. */
+function RockvilleWatchShadow() {
+  const { data: cio } = useApi<any>('/api/v3/watch/cio/latest', 120_000)
+  const { data: pri } = useApi<any>('/api/v3/watch/priority', 120_000)
+  const flags = pri?.flags || cio?.flags || {}
+  const shadow = flags.watch_card_v2_shadow !== false
+  const visible = Boolean(flags.watch_card_v2_visible)
+  const [showShadow, setShowShadow] = useState(true)
+  if (!shadow && !visible) return null
+  const cards = pri?.cards || []
+  return (
+    <div style={{ marginBottom: 14 }} data-rockville-shadow>
+      {!visible && (
+        <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--text3)', marginBottom: 6, letterSpacing: 0.4 }}>
+          ROCKVILLE SHADOW (card v2 + CIO · not default){' '}
+          <button type="button" onClick={() => setShowShadow(s => !s)} style={{ fontSize: 10, marginLeft: 6, cursor: 'pointer' }}>
+            {showShadow ? 'hide' : 'show'}
+          </button>
+        </div>
+      )}
+      {(visible || showShadow) && (
+        <>
+          <CioDailyPanel artifact={cio?.artifact} status={cio?.status} />
+          {cards.map((c: any) => (
+            <WatchCardV2
+              key={c.symbol}
+              symbol={c.symbol}
+              company={c.company}
+              sector={c.sector}
+              decision={c.decision}
+              review={c.reflective_review}
+            />
+          ))}
+        </>
+      )}
+    </div>
+  )
+}
+
 function WatchRegimeStrip() {
   const { data: regime } = useApi<any>('/api/v2/risk-regime/latest', 300_000)
   const { data: alerts } = useApi<any>('/api/v2/watch/alerts/list', 120_000)

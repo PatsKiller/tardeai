@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "watch_reflective_review.v1",
+  "title": "watch_reflective_review.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "symbol",
+    "generated_at",
+    "snapshot_hash",
+    "decision_summary",
+    "bull_case",
+    "counter_thesis",
+    "principal_risk",
+    "what_would_change_view",
+    "confidence",
+    "evidence_gaps",
+    "actionable_ticket_exists",
+    "provenance"
+  ],
+  "properties": {
+    "schema_version": { "const": "watch_reflective_review.v1" },
+    "symbol": { "type": "string" },
+    "generated_at": { "type": "string" },
+    "snapshot_hash": { "type": "string" },
+    "decision_summary": { "type": "string", "maxLength": 600 },
+    "bull_case": { "type": "string", "maxLength": 800 },
+    "counter_thesis": { "type": "string", "maxLength": 800 },
+    "principal_risk": { "type": "string", "maxLength": 400 },
+    "what_would_change_view": { "type": "string", "maxLength": 400 },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "evidence_gaps": { "type": "array", "items": { "type": "string" } },
+    "actionable_ticket_exists": { "type": "boolean" },
+    "forbidden_fields_present": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "If non-empty after validation, reject the model output"
+    },
+    "provenance": {
+      "type": "object",
+      "required": ["provider", "model", "policy", "thinking", "prompt_version"],
+      "properties": {
+        "provider": { "const": "deepseek" },
+        "model": {
+          "type": "string",
+          "enum": ["deepseek-v4-flash", "deepseek-v4-pro"]
+        },
+        "policy": {
+          "type": "string",
+          "enum": ["WATCH_FAST", "WATCH_FAST_THINK"]
+        },
+        "thinking": { "type": "boolean" },
+        "effort": { "type": ["string", "null"] },
+        "prompt_version": { "type": "string" },
+        "request_id": { "type": ["string", "null"] },
+        "raw_response_hash": { "type": ["string", "null"] },
+        "schema_version": { "type": "string" },
+        "usage": { "type": "object" },
+        "actual_cost_usd": { "type": ["number", "null"] },
+        "latency_ms": { "type": ["integer", "null"] },
+        "finish_reason": { "type": ["string", "null"] }
+      },
+      "additionalProperties": true
+    },
+    "status": {
+      "type": "string",
+      "enum": ["COMPLETE", "FAILED", "STALE", "CACHE_HIT"]
+    },
+    "failure_code": { "type": ["string", "null"] }
+  }
+}
