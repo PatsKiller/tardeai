@@ -68,6 +68,43 @@ export default function WatchHub({ onDrill }: Props) {
       <WatchRegimeStrip />
       {tab === 'Watchlist' && (
         <>
+          <div
+            style={{
+              marginBottom: 10,
+              padding: '8px 10px',
+              borderRadius: 8,
+              border: `1px solid ${BB.border}`,
+              background: BB.bgShift,
+              fontSize: TYPE.xs,
+              color: BB.text2,
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: 8,
+              alignItems: 'center',
+            }}
+            data-intelligence-board-pointer
+          >
+            <span>
+              <b style={{ color: BB.text0 }}>Watchlist Intelligence Board (shadow)</b>
+              {' · '}Street rating primary · CIO/Maria with real provenance only · 0 provider calls on load
+            </span>
+            <button
+              type="button"
+              onClick={() => selectTab('Intelligence')}
+              style={{
+                fontSize: TYPE.xs,
+                fontWeight: 900,
+                padding: '5px 10px',
+                borderRadius: 6,
+                border: `1px solid ${BB.border}`,
+                background: BB.bgPanel,
+                color: BB.amber,
+                cursor: 'pointer',
+              }}
+            >
+              OPEN INTELLIGENCE TAB →
+            </button>
+          </div>
           <RockvilleWatchShadow />
           <WatchTruthAuditPanel />
           <WatchlistHub onDrill={onDrill} embedded />

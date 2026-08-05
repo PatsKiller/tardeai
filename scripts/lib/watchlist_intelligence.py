@@ -17,6 +17,7 @@ from typing import Any
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 RUNTIME = PROJECT_ROOT / "data" / "runtime"
 ROCKVILLE_REVIEWS = RUNTIME / "rockville" / "reviews"
+INTEL_ARTIFACTS = RUNTIME / "watchlist_intelligence" / "artifacts"
 ENRICH_CACHE = PROJECT_ROOT / "data" / "state" / "ticker_enrichment_cache.json"
 HOLDINGS = PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json"
 
@@ -304,6 +305,28 @@ def _try_promote_artifact(raw: dict[str, Any], *, agent_id: str) -> dict[str, An
     )
 
 
+def _load_intelligence_artifacts(symbol: str) -> dict[str, dict[str, Any]]:
+    """Load governed proof artifacts written under data/runtime/watchlist_intelligence/artifacts."""
+    out: dict[str, dict[str, Any]] = {}
+    try:
+        INTEL_ARTIFACTS.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
+    if not INTEL_ARTIFACTS.exists():
+        return out
+    sym = symbol.upper()
+    for path in INTEL_ARTIFACTS.glob(f"{sym}_*.json"):
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if not isinstance(raw, dict):
+            continue
+        agent = str(raw.get("agent_id") or path.stem.split("_", 1)[-1]).lower()
+        out[agent] = raw
+    return out
+
+
 def _reviews_for_symbol(symbol: str) -> list[dict[str, Any]]:
     """Assemble per-agent review objects — COMPLETE only with full provenance."""
     sym = symbol.upper()
@@ -311,6 +334,14 @@ def _reviews_for_symbol(symbol: str) -> list[dict[str, Any]]:
     by_agent: dict[str, dict[str, Any]] = {
         a: not_run_review(a, reason_code="NOT_SCHEDULED") for a in agents
     }
+
+    # Governed intelligence proof artifacts (preferred — full provenance)
+    for agent, raw in _load_intelligence_artifacts(sym).items():
+        if agent not in by_agent:
+            continue
+        promoted = _try_promote_artifact(raw, agent_id=agent)
+        if promoted.get("status") == "COMPLETE":
+            by_agent[agent] = promoted
 
     # Rockville reflective review file (must have full provenance to COMPLETE)
     rv = _load_rockville_review(sym)
