@@ -1024,6 +1024,67 @@ def _run_reentry_insights_api(body=None):
         return {"ok": False, "error": str(e)[:300], "advisory_only": True}
 
 
+def _reentry_scorecard_api(query=None):
+    """GET /api/v2/reentry/scorecard?symbol=XYZ — compute the 8-stage re-entry scorecard.
+    Advisory only. Per-symbol. No auto-LLM calls.
+    Returns all 9 gates (S0 gatekeeping + S1-S8 scoring) with fired/not status,
+    decision state, confluence count, and provider trace."""
+    q = query or {}
+    sym = (q.get("symbol") or "").upper().strip()
+    if not sym:
+        return {"ok": False, "error": "symbol parameter required"}
+
+    try:
+        from lib.data_broker.reentry_decision_desk import build_decision_desk
+        from lib.data_broker.reentry_scorecard import compute_scorecard
+
+        # Build decision desk to get data-broker-sourced numbers
+        desk = build_decision_desk(_db_query)
+        rows = desk.get("rows") or []
+
+        # Find the row for this symbol
+        row = next((r for r in rows if (r.get("symbol") or "").upper() == sym), None)
+        if not row:
+            return {"ok": True, "symbol": sym, "scorecard": None, "message": "Symbol not in re-entry watchlist"}
+
+        sc = compute_scorecard(
+            symbol=sym,
+            db_query=_db_query,
+            price=row.get("price"),
+            rsi=row.get("rsi"),
+            indicators={
+                "sma_20": row.get("sma_20"),
+                "sma_50": row.get("sma_50"),
+                "sma_200": row.get("sma_200"),
+                "sma20_pct": row.get("sma20_pct"),
+                "sma50_pct": row.get("sma50_pct"),
+                "sma200_pct": row.get("sma200_pct"),
+                "macd_signal": row.get("macd_signal"),
+                "macd_histogram_direction": row.get("macd_histogram_direction"),
+                "alignment": row.get("alignment"),
+                "rsi": row.get("rsi"),
+            },
+            entry_low=row.get("entry_low"),
+            entry_high=row.get("entry_high"),
+            stop_price=row.get("stop"),
+            target_price=row.get("target"),
+            resistance=(
+                (row.get("resistance") or {}).get("level")
+                if isinstance(row.get("resistance"), dict)
+                else None
+            ),
+        )
+
+        return {
+            "ok": True,
+            "symbol": sym,
+            "advisory_only": True,
+            "scorecard": sc.to_dict(),
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:300], "advisory_only": True}
+
+
 def _stops_reentry_watch_api(query=None):
     """GET /api/v2/stops/reentry-watch — advisory stop-out reviews + re-entry watch rows from journal lifecycle.
     Powers Stop Management → Audit re-entry panel. Never routes orders."""
@@ -7541,6 +7602,39 @@ def _wl_build_plan(sym: str) -> tuple[int, dict]:
         "symbol": sym,
         "message": f"Entry planner queued for {sym} — refresh card in ~1–2 min",
         "note": "Advisory-only — validates limit, stop, target, and R:R",
+    }
+
+
+_WL_ALL_PLAN_INFLIGHT = False
+
+
+def _wl_build_all_plans() -> tuple[int, dict]:
+    """POST /api/v2/watchlist/all/plan — run entry planner for ALL symbols (async, batched)."""
+    global _WL_ALL_PLAN_INFLIGHT
+    import threading
+    import time as _time
+
+    if _WL_ALL_PLAN_INFLIGHT:
+        return 200, {"ok": True, "already_running": True,
+                     "message": "Batch entry planner already running — refresh cards in ~3–5 min"}
+
+    _WL_ALL_PLAN_INFLIGHT = True
+
+    def _run():
+        try:
+            import watchlist_entry_planner as wep
+            wep.run(symbols=None, limit=50, lane="deepseek-flash", alert=False)
+        except Exception as e:
+            log.warning(f"batch plan run failed: {e}")
+        finally:
+            global _WL_ALL_PLAN_INFLIGHT
+            _WL_ALL_PLAN_INFLIGHT = False
+
+    threading.Thread(target=_run, daemon=True).start()
+    return 200, {
+        "ok": True,
+        "message": "Batch entry planner queued for all watchlist symbols — refresh cards in ~3–5 min",
+        "note": "Runs DeepSeek Flash lane for cost efficiency; generates entry zones, stops, and targets",
     }
 
 
@@ -33893,6 +33987,7 @@ ROUTES = {
     "/api/v2/stops/reentry-watch": lambda q=None: _stops_reentry_watch_api(q),
     "/api/v2/reentry/decision-desk": lambda q=None: _build_reentry_decision_desk_api(q),
     "/api/v2/reentry/run-insights": lambda q=None: _run_reentry_insights_api(),
+    "/api/v2/reentry/scorecard": lambda q=None: _reentry_scorecard_api(q),
     "/api/v2/portfolio/performance": portfolio_performance,
     "/api/v2/watchlist": watchlist_combined,
     "/api/v2/notifications/recent": notifications_recent,
@@ -36790,6 +36885,12 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     return _wl_propose_symbol(sym, body or {})
                 except Exception as e:
                     return 500, {"ok": False, "error": str(e)}
+        # POST /api/v2/watchlist/all/plan — run entry planner for ALL symbols (batched)
+        if base_path == "/api/v2/watchlist/all/plan":
+            try:
+                return _wl_build_all_plans()
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
         # POST /api/v2/watchlist/<SYMBOL>/plan — run entry planner for one symbol
         if base_path.startswith("/api/v2/watchlist/") and base_path.endswith("/plan"):
             sym = base_path[len("/api/v2/watchlist/"):-len("/plan")].strip("/").upper()
@@ -38394,10 +38495,6 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 sym = p[len("watch-reviews/"):].strip("/").upper()
                 if sym:
                     return 200, _dbw.get_reviews(sym)
-            if p in ("watch-review-policy", "watch_review_policy"):
-                return 200, _dbw.get_review_policy()
-            if p in ("watch-review-schedule", "watch_review_schedule"):
-                return 200, _dbw.get_review_schedule()
             return 404, {
                 "ok": False,
                 "error": "not_found",

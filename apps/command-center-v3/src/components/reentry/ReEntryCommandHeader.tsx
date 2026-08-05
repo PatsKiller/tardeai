@@ -3,6 +3,7 @@
  */
 import { useEffect, useState, type CSSProperties } from 'react'
 import type { ReEntryLane } from '../../lib/reentryDecisionScorecard'
+import { BB } from '../../lib/holdingsTerminalTokens'
 
 export type ReEntryLaneCounts = {
   now: number
@@ -21,10 +22,12 @@ type Props = {
   regimeLabel?: string
   onRefresh?: () => void
   refreshing?: boolean
+  onRefreshAllPlans?: () => void
+  refreshingAllPlans?: boolean
 }
 
 export default function ReEntryCommandHeader({
-  lane, onLane, counts, regimeLabel, onRefresh, refreshing,
+  lane, onLane, counts, regimeLabel, onRefresh, refreshing, onRefreshAllPlans, refreshingAllPlans,
 }: Props) {
   const [build, setBuild] = useState<string>('')
   useEffect(() => {
@@ -91,6 +94,17 @@ export default function ReEntryCommandHeader({
         {onRefresh && (
           <button type="button" onClick={onRefresh} style={chip(false)} data-testid="reentry-command-refresh">
             {refreshing ? 'Refreshing…' : 'Refresh'}
+          </button>
+        )}
+        {onRefreshAllPlans && (
+          <button
+            type="button"
+            onClick={onRefreshAllPlans}
+            style={{ ...chip(false), background: BB.blueDim ?? 'var(--blue-bg)', borderColor: BB.blue, color: BB.blue }}
+            data-testid="reentry-command-refresh-all-plans"
+            title="Re-run DeepSeek Flash entry planner for ALL symbols — generates fresh entry zones, stops, and targets"
+          >
+            {refreshingAllPlans ? 'Generating All…' : '⚡ REFRESH ALL PLANS'}
           </button>
         )}
         {build && (
