@@ -18,6 +18,9 @@ import HermesHub from './pages/HermesHub'
 import RetirementHub from './pages/RetirementHub'
 import JournalHub from './pages/JournalHub'
 import WatchHub from './pages/WatchHub'
+import SymbolIntelligencePage from './pages/SymbolIntelligencePage'
+import WatchDiscovery from './pages/WatchDiscovery'
+import WatchLegacy from './pages/WatchLegacy'
 import DefenseHub from './pages/DefenseHub'
 import ReportsHub from './pages/ReportsHub'
 import SystemHub from './pages/SystemHub'
@@ -162,8 +165,12 @@ function Shell() {
             <Route path="journal" element={<JournalHub onDrill={setDrill} />} />
             <Route path="trade-in-view" element={<Navigate to="/journal" replace />} />
             <Route path="watch" element={<WatchHub onDrill={setDrill} />} />
+            <Route path="watch/intelligence/:symbol" element={<SymbolIntelligencePage />} />
+            <Route path="watch/discovery" element={<WatchDiscovery onDrill={setDrill} />} />
+            <Route path="watch-legacy" element={<WatchLegacy onDrill={setDrill} />} />
             <Route path="defense" element={<DefenseHub />} />
-            <Route path="watchlist" element={<Navigate to="/watch?tab=watchlist" replace />} />
+            {/* Legacy watchlist/screener nav → primary Intelligence (not the old card wall) */}
+            <Route path="watchlist" element={<Navigate to="/watch?tab=intelligence&view=top_ideas" replace />} />
             <Route path="watchpool" element={<Navigate to="/watch?tab=watchpool" replace />} />
             <Route path="sectors" element={<Navigate to="/watch?tab=sectors" replace />} />
             <Route path="pullback-macd" element={<Navigate to="/watch?tab=pullback-macd" replace />} />

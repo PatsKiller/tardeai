@@ -114,11 +114,28 @@ export default function DecisionPacketBand({ packet, generatedAt, actionPolicy, 
   if (!base) return null
   const pres = { ...base } as OperatorPresentation
   const op = packet?.operator_presentation
-  if (op?.header_state && op.header_state !== pres.state) {
-    pres.state = op.header_state as OperatorState
-    if (op.header_note) pres.headline = op.header_note
+  // Prefer live client classification for DETERMINISTIC FAIL (stale baked WAIT headers
+  // from older packets must not win). Only adopt server header when client is not fail-closed.
+  const clientIsFail = String(pres.state || '').toUpperCase().includes('DETERMINISTIC FAIL')
+  const serverHeader = String(op?.header_state || '').toUpperCase()
+  if (op?.header_state && op.header_state !== pres.state && !clientIsFail) {
+    // Server DETERMINISTIC FAIL always overrides WAIT
+    if (serverHeader.includes('DETERMINISTIC FAIL') || op.verification_state === 'DETERMINISTIC_FAIL') {
+      pres.state = 'DETERMINISTIC FAIL' as OperatorState
+      pres.headline = op.header_note || 'NO TRADE MECHANICS'
+      pres.mechanics = null
+      pres.primaryCta = 'View Blockers'
+    } else {
+      pres.state = op.header_state as OperatorState
+      if (op.header_note) pres.headline = op.header_note
+    }
   }
-  const mechanicsAllowed = op ? Boolean(op.display_current_mechanics) : !pres.stale
+  if (clientIsFail || op?.verification_state === 'DETERMINISTIC_FAIL' || op?.display_current_mechanics === false) {
+    pres.mechanics = null
+  }
+  const mechanicsAllowed =
+    !(clientIsFail || op?.verification_state === 'DETERMINISTIC_FAIL') &&
+    (op ? Boolean(op.display_current_mechanics) : !pres.stale)
   if (op && !mechanicsAllowed) pres.mechanics = null
   const accent = operatorStateColor(pres.state)
   const tech = packet?.technical_state || {}
@@ -160,15 +177,22 @@ export default function DecisionPacketBand({ packet, generatedAt, actionPolicy, 
             const family = families[key] || {}
             const preferred = Boolean(preferredKey) && (preferredKey === key || preferredKey.startsWith(key.split('_')[0]))
             const word = familyWord(key, family, op?.tile_overrides, preferred, pres.state)
-            const reason = familyReason(key, family, word)
-            return <button key={key} onClick={event => { event.stopPropagation(); setDetails(true) }} title={`${label}: ${word}. ${reason}`} style={{ minHeight: 66, textAlign: 'left', cursor: 'pointer', border: 'none', borderRight: `1px solid ${BB.border}`, borderBottom: `1px solid ${BB.border}`, background: preferred ? 'rgba(148,163,184,.07)' : 'transparent', padding: '8px 9px', boxShadow: preferred ? `inset 0 2px 0 ${accent}` : undefined }}><div style={{ display: 'flex', gap: 6, alignItems: 'center' }}><span style={{ fontSize: 10.5, fontWeight: 900, color: preferred ? BB.text0 : BB.text2 }}>{label}</span>{preferred && <span style={{ fontSize: 10, color: BB.text3 }}>PRIMARY</span>}</div><div style={{ marginTop: 4, fontSize: 10.5, fontWeight: 900, color: quietStateTone(word, preferred) }}>{word}</div><div style={{ marginTop: 2, fontSize: 10, lineHeight: 1.25, color: BB.text3 }}>{reason.slice(0, 88)}</div></button>
+            let reason = familyReason(key, family, word)
+            if (!mechanicsAllowed) {
+              // Non-primary family evidence only — never surface current trade mechanics text
+              reason = sanitizeTechEvidence(reason, true) || 'Not the governing action — historical/evidence only'
+            }
+            const tip = !mechanicsAllowed
+              ? `${label}: ${word}. Evidence only under fail-closed primary state — not a current trade contract`
+              : `${label}: ${word}. ${reason}`
+            return <button key={key} onClick={event => { event.stopPropagation(); setDetails(true) }} title={tip} aria-label={tip} style={{ minHeight: 66, textAlign: 'left', cursor: 'pointer', border: 'none', borderRight: `1px solid ${BB.border}`, borderBottom: `1px solid ${BB.border}`, background: preferred ? 'rgba(148,163,184,.07)' : 'transparent', padding: '8px 9px', boxShadow: preferred ? `inset 0 2px 0 ${accent}` : undefined }}><div style={{ display: 'flex', gap: 6, alignItems: 'center' }}><span style={{ fontSize: 10.5, fontWeight: 900, color: preferred ? BB.text0 : BB.text2 }}>{label}</span>{preferred && <span style={{ fontSize: 10, color: BB.text3 }}>PRIMARY</span>}</div><div style={{ marginTop: 4, fontSize: 10.5, fontWeight: 900, color: quietStateTone(word, preferred) }}>{word}</div><div style={{ marginTop: 2, fontSize: 10, lineHeight: 1.25, color: BB.text3 }}>{reason.slice(0, 88)}</div></button>
           })}
         </div>
       </div>
 
       <div style={{ padding: '10px 16px', borderBottom: `1px solid ${BB.border}` }}>
         <SectionTitle title="Technical setup" note={tech?.source_hash ? `${tech.overall_direction || 'UNRESOLVED'} · source ${tech.source_hash}` : 'Canonical technical snapshot unavailable'} />
-        <TechnicalSummary tech={tech} onOpen={() => setDetails(true)} />
+        <TechnicalSummary tech={tech} failClosed={!mechanicsAllowed} onOpen={() => setDetails(true)} />
       </div>
 
       <TicketVerification packet={packet} symbol={packet?.symbol} />
@@ -177,7 +201,22 @@ export default function DecisionPacketBand({ packet, generatedAt, actionPolicy, 
         {pres.mechanics && <div style={{ opacity: pres.stale || pres.mechanics.previous ? .6 : 1 }}><SectionTitle title={pres.stale ? 'Previous mechanics — not current' : 'Current mechanics'} /><div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,minmax(76px,1fr))', gap: 0, borderTop: `1px solid ${BB.border}`, borderLeft: `1px solid ${BB.border}` }}>{([
           ['Entry', pres.mechanics.entry], ['Limit', pres.mechanics.limit], ['Stop', pres.mechanics.stop], ['Target', pres.mechanics.target], ['R:R', pres.mechanics.rr],
         ] as const).map(([label, value]) => <div key={label} style={{ padding: '7px 9px', minHeight: 44, borderRight: `1px solid ${BB.border}`, borderBottom: `1px solid ${BB.border}` }}><div style={{ fontSize: 10, fontWeight: 850, color: BB.text3, textTransform: 'uppercase', letterSpacing: '.06em' }}>{label}</div><div style={{ ...numStyle, marginTop: 2, fontSize: 14, fontWeight: 850, color: BB.text0 }}>{value || '—'}</div></div>)}</div></div>}
-        <div><SectionTitle title="What changes the decision" /><div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>{(packet?.horizons?.tactical?.trigger || packet?.horizons?.swing?.trigger) && <Condition label="Trigger" text={packet?.horizons?.tactical?.trigger || packet?.horizons?.swing?.trigger} />}{(packet?.horizons?.tactical?.invalidation || packet?.horizons?.swing?.invalidation) && <Condition label="Invalidation" text={packet?.horizons?.tactical?.invalidation || packet?.horizons?.swing?.invalidation} warning />}{!packet?.horizons?.tactical?.trigger && !packet?.horizons?.swing?.trigger && <Condition label="Next" text={pres.primaryFamily?.why || pres.whyLines[0] || 'Review the full evidence'} />}</div></div>
+        <div><SectionTitle title="What changes the decision" /><div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>{
+          /* Never show current trigger/invalidation on DETERMINISTIC FAIL or when mechanics are not current */
+          mechanicsAllowed && (packet?.horizons?.tactical?.trigger || packet?.horizons?.swing?.trigger)
+            ? <Condition label="Trigger" text={packet?.horizons?.tactical?.trigger || packet?.horizons?.swing?.trigger} />
+            : null
+        }{
+          mechanicsAllowed && (packet?.horizons?.tactical?.invalidation || packet?.horizons?.swing?.invalidation)
+            ? <Condition label="Invalidation" text={packet?.horizons?.tactical?.invalidation || packet?.horizons?.swing?.invalidation} warning />
+            : null
+        }{
+          !mechanicsAllowed
+            ? <Condition label="Next" text={pres.whyLines[0] || 'Refresh admission inputs and rerun deterministic validation — no current trade mechanics'} warning />
+            : (!packet?.horizons?.tactical?.trigger && !packet?.horizons?.swing?.trigger
+              ? <Condition label="Next" text={pres.primaryFamily?.why || pres.whyLines[0] || 'Review the full evidence'} />
+              : null)
+        }</div></div>
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '9px 16px' }}>
@@ -201,7 +240,23 @@ function SectionTitle({ title, note }: { title: string; note?: string }) { retur
 function Meta({ label, value, tone }: { label: string; value: string; tone?: string }) { return <div style={{ minWidth: 0 }}><div style={{ fontSize: 10, fontWeight: 850, color: BB.text3, textTransform: 'uppercase', letterSpacing: '.05em' }}>{label}</div><div style={{ marginTop: 1, fontSize: 10, color: tone || BB.text1, fontWeight: 650, overflow: 'hidden', textOverflow: 'ellipsis' }} title={value}>{value}</div></div> }
 function Condition({ label, text, warning }: { label: string; text: string; warning?: boolean }) { return <div style={{ display: 'grid', gridTemplateColumns: '78px 1fr', gap: 8, alignItems: 'start' }}><span style={{ fontSize: 10, fontWeight: 900, color: warning ? BB.red : BB.text2, textTransform: 'uppercase', letterSpacing: '.05em' }}>{label}</span><span style={{ fontSize: 10.5, color: BB.text1, lineHeight: 1.35 }}>{text}</span></div> }
 
-function TechnicalSummary({ tech, onOpen }: { tech: any; onOpen: () => void }) {
+/** Strip trade-mechanics phrases from tooltips/labels when fail-closed. */
+function sanitizeTechEvidence(text: string | undefined | null, failClosed: boolean): string {
+  if (!text) return ''
+  if (!failClosed) return String(text)
+  let s = String(text)
+  // Remove trigger/invalidation/stop/target/R:R style mechanics (not RSI/trend/volume)
+  s = s.replace(/\btrigger\s*[:=]?\s*\$?\d+(?:\.\d+)?/gi, '')
+  s = s.replace(/\binvalidation\s*[:=]?\s*\$?\d+(?:\.\d+)?/gi, '')
+  s = s.replace(/\bstop\s*[:=]?\s*\$?\d+(?:\.\d+)?/gi, '')
+  s = s.replace(/\btargets?\s*[:=]?\s*\$?\d+(?:\.\d+)?/gi, '')
+  s = s.replace(/\bentry\s*[:=]?\s*\$?\d+(?:\.\d+)?/gi, '')
+  s = s.replace(/\br\s*[:/]\s*r\b[^·|]*/gi, '')
+  s = s.replace(/\s*[·|]\s*[·|]/g, ' · ').replace(/^\s*[·|]\s*|\s*[·|]\s*$/g, '').trim()
+  return s || 'technical evidence only — no current trade mechanics'
+}
+
+function TechnicalSummary({ tech, failClosed, onOpen }: { tech: any; failClosed?: boolean; onOpen: () => void }) {
   const pills: any[] = tech?.pills || []
   const verdict = tech?.verdict
   if (!pills.length) {
@@ -209,7 +264,17 @@ function TechnicalSummary({ tech, onOpen }: { tech: any; onOpen: () => void }) {
     const message = !tech || !tech.schema_version || tech.schema_version === 'unavailable' && !tech.error ? 'Legacy packet — technical snapshot not built. Refresh Strategy.' : tech.error || fresh === 'FAILED' ? `Technical analysis failed — ${String(tech.error || 'unknown error')}` : fresh === 'STALE' ? `Technical data stale — computed ${String(tech.computed_at || '').slice(0, 16)}` : fresh === 'REFRESHING' ? 'Technical refresh currently running…' : tech.unavailable?.length ? `Unavailable timeframes: ${tech.unavailable.join(', ')}` : 'Technical snapshot unavailable.'
     return <div style={{ padding: '7px 0', color: BB.text3, fontSize: 10.5 }}>{message}</div>
   }
-  return <div>{verdict && <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr', gap: 10, padding: '6px 0 8px', borderBottom: `1px solid ${BB.border}` }}><div style={{ fontSize: 10, fontWeight: 900, color: verdict.state === 'OPPOSED' ? BB.red : verdict.state === 'SUPPORTIVE' ? BB.green : BB.amber }}>{String(verdict.state || 'MIXED')}</div><div><div style={{ fontSize: 10.5, color: BB.text1, fontWeight: 750 }}>{verdict.line}</div><div style={{ marginTop: 2, fontSize: 10, color: BB.text3 }}>{[...(verdict.supporting || []).slice(0, 2), ...(verdict.conflicting || []).slice(0, 2)].join(' · ')}</div></div></div>}<div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,minmax(115px,1fr))', borderTop: verdict ? 'none' : `1px solid ${BB.border}`, borderLeft: `1px solid ${BB.border}` }}>{pills.slice(0, 6).map((pill, index) => <button key={`${pill.kind || 'tech'}-${index}`} onClick={event => { event.stopPropagation(); onOpen() }} title={`${pill.tooltip || ''} · ${pill.lifecycle || ''} · ${pill.freshness || ''}`} style={{ minHeight: 57, textAlign: 'left', cursor: 'pointer', background: 'transparent', border: 'none', borderRight: `1px solid ${BB.border}`, borderBottom: `1px solid ${BB.border}`, padding: '7px 8px' }}><div style={{ fontSize: 10, color: BB.text3, fontWeight: 850, textTransform: 'uppercase', letterSpacing: '.05em' }}>{String(pill.kind || 'technical').replace(/_/g, ' ')}</div><div style={{ marginTop: 3, fontSize: 10.5, color: BB.text1, fontWeight: 900 }}>{pill.label}</div><div style={{ marginTop: 2, fontSize: 10, color: BB.text3 }}>{pill.kind === 'freshness' && pill.as_of ? clock(pill.as_of) : pill.value || String(pill.lifecycle || '').replace(/_/g, ' ') || '—'}</div></button>)}</div></div>
+  return <div>{verdict && <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr', gap: 10, padding: '6px 0 8px', borderBottom: `1px solid ${BB.border}` }}><div style={{ fontSize: 10, fontWeight: 900, color: verdict.state === 'OPPOSED' ? BB.red : verdict.state === 'SUPPORTIVE' ? BB.green : BB.amber }}>{String(verdict.state || 'MIXED')}</div><div><div style={{ fontSize: 10.5, color: BB.text1, fontWeight: 750 }}>{sanitizeTechEvidence(verdict.line, !!failClosed)}</div><div style={{ marginTop: 2, fontSize: 10, color: BB.text3 }}>{sanitizeTechEvidence([...(verdict.supporting || []).slice(0, 2), ...(verdict.conflicting || []).slice(0, 2)].join(' · '), !!failClosed)}</div></div></div>}<div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,minmax(115px,1fr))', borderTop: verdict ? 'none' : `1px solid ${BB.border}`, borderLeft: `1px solid ${BB.border}` }}>{pills.slice(0, 6).map((pill, index) => {
+    const tip = sanitizeTechEvidence(pill.tooltip, !!failClosed)
+    // Freshness CURRENT is ok; do not attach lifecycle CONFIRMED with mechanics tooltips when fail-closed
+    const title = failClosed
+      ? `${tip || pill.label || 'technical evidence'} · evidence only · not a trade contract`
+      : `${pill.tooltip || ''} · ${pill.lifecycle || ''} · ${pill.freshness || ''}`
+    const value = pill.kind === 'freshness' && pill.as_of
+      ? clock(pill.as_of)
+      : sanitizeTechEvidence(pill.value || String(pill.lifecycle || '').replace(/_/g, ' ') || '—', !!failClosed)
+    return <button key={`${pill.kind || 'tech'}-${index}`} onClick={event => { event.stopPropagation(); onOpen() }} title={title} aria-label={title} style={{ minHeight: 57, textAlign: 'left', cursor: 'pointer', background: 'transparent', border: 'none', borderRight: `1px solid ${BB.border}`, borderBottom: `1px solid ${BB.border}`, padding: '7px 8px' }}><div style={{ fontSize: 10, color: BB.text3, fontWeight: 850, textTransform: 'uppercase', letterSpacing: '.05em' }}>{String(pill.kind || 'technical').replace(/_/g, ' ')}</div><div style={{ marginTop: 3, fontSize: 10.5, color: BB.text1, fontWeight: 900 }}>{sanitizeTechEvidence(pill.label, !!failClosed)}</div><div style={{ marginTop: 2, fontSize: 10, color: BB.text3 }}>{value}</div></button>
+  })}</div></div>
 }
 
 function TicketVerification({ packet, symbol }: { packet: any; symbol?: string }) {
@@ -220,11 +285,45 @@ function TicketVerification({ packet, symbol }: { packet: any; symbol?: string }
   const validationState = String(validation.state || selected.deterministic || review?.tickets_validated?.[0]?.state || 'NOT RUN').toUpperCase()
   const quality = validation.quality_admission || {}
   const reconciled = review.reconciled || {}
-  const qualityRaw = quality.state || selected.quality || reconciled.quality_admission || 'NOT ASSESSED'
+  // Prefer independent stage fields when Rockville / recompute attached them
+  const stages = packet?.operator_presentation?.verification_stages
+    || packet?.verification_stages
+    || null
+  const detail = String(reconciled.detail || '').toLowerCase()
+  const qualityDrivenFail = reconciled.state === 'DETERMINISTIC_FAIL'
+    && (detail.includes('quality admission') || detail.includes('float') || detail.includes('atr')
+      || stages?.primary_failed_stage === 'quality_admission'
+      || stages?.quality_admission_status === 'FAIL')
+  // Never show UNASSESSED/NOT_RUN for a stage that governs the final fail
+  let qualityRaw = quality.state || selected.quality || reconciled.quality_admission
+    || stages?.quality_admission_status || 'NOT ASSESSED'
+  if (qualityDrivenFail) qualityRaw = stages?.quality_admission_status || 'FAIL'
+  if (stages?.quality_admission_status && stages.quality_admission_status !== 'NOT_RUN') {
+    qualityRaw = stages.quality_admission_status
+  }
   const qualityState = String(qualityRaw).replace(/_/g, ' ')
+  // Compilation / ticket validation independent of LLM critics
+  let compilation = stages?.deterministic_compilation_status
+    || (packet?.plan_families ? 'PASS' : 'NOT_RUN')
+  let detDisplay = validationState
+  if (qualityDrivenFail) {
+    detDisplay = stages?.ticket_validation_status === 'FAIL' ? 'FAIL' : 'N/A'
+    if (!stages?.ticket_validation_status || stages.ticket_validation_status === 'NOT_RUN') {
+      detDisplay = 'N/A'
+    }
+    compilation = stages?.deterministic_compilation_status || 'PASS'
+  } else if (stages?.ticket_validation_status === 'NOT_APPLICABLE') {
+    detDisplay = 'N/A'
+  } else if (stages?.deterministic_compilation_status === 'PASS' && (!validationState || validationState === 'NOT RUN' || validationState === 'NOT_RUN')) {
+    detDisplay = 'COMPILED'
+    compilation = 'PASS'
+  }
+  if (stages?.ticket_validation_status && !['NOT_RUN', 'NOT_APPLICABLE'].includes(String(stages.ticket_validation_status))) {
+    detDisplay = stages.ticket_validation_status
+  }
   const reviews = review.reviews || {}
   const overall = reconciled.state || (validationState === 'FAIL' ? 'DETERMINISTIC_FAIL' : validationState === 'REVIEW_REQUIRED' ? 'DETERMINISTIC_REVIEW_REQUIRED' : validationState === 'PASS' && qualityRaw === 'ADMITTED' ? 'DETERMINISTIC_PASS_REVIEW_NOT_RUN' : validationState === 'PASS' ? 'QUALITY_NOT_ASSESSED' : 'DETERMINISTIC_NOT_RUN')
-  const failure = /FAIL|REJECT|BLOCK|QUARANTINED|NOT_ADMITTED|NOT_ASSESSED|NOT_RUN/.test(String(overall))
+  const failure = /FAIL|REJECT|BLOCK|QUARANTINED|NOT_ADMITTED/.test(String(overall))
   const qualityAdmitted = qualityRaw === 'ADMITTED' && quality.new_entry_allowed !== false
   const mayRunReview = ['PASS', 'REVIEW_REQUIRED'].includes(validationState) && qualityAdmitted
   const premiumLabel = reconciled.premium || (reconciled.premium_recommended ? 'RECOMMENDED · NOT RUN' : 'NOT NEEDED')
@@ -233,7 +332,12 @@ function TicketVerification({ packet, symbol }: { packet: any; symbol?: string }
     setBusy(true)
     try { await fetch('/api/v2/watch/ticket-review/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ symbol }) }) } finally { window.setTimeout(() => setBusy(false), 60_000) }
   }
-  return <div style={{ padding: '9px 16px', borderBottom: `1px solid ${BB.border}` }}><div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}><span style={{ fontSize: 10, fontWeight: 900, letterSpacing: '.08em', color: BB.text3 }}>TICKET VERIFICATION</span><span style={{ fontSize: 10.5, fontWeight: 900, color: failure ? BB.red : reconciled.proposal_allowed ? BB.green : BB.text1 }}>{String(overall).replace(/_/g, ' ')}</span>{selected.source && <span title="Canonical validation source" style={{ fontSize: 10, color: BB.text3 }}>{selected.source}</span>}{reconciled.detail && <span style={{ fontSize: 10, color: BB.text3 }}>{String(reconciled.detail).slice(0, 130)}</span>}<button onClick={event => { event.stopPropagation(); void runFree() }} disabled={busy || !mayRunReview} title={!mayRunReview ? 'Complete deterministic validation and quality admission first' : 'Run bounded local and OAuth critics on the exact validated ticket'} style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 800, padding: '2px 8px', cursor: busy ? 'wait' : !mayRunReview ? 'not-allowed' : 'pointer', opacity: mayRunReview ? 1 : .55, background: 'transparent', color: BB.text2, border: `1px solid ${BB.border}`, borderRadius: 3 }}>{busy ? 'Reviewing…' : mayRunReview ? 'Run free review' : 'Fix deterministic gate first'}</button></div><div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 5, fontSize: 10, color: BB.text3 }}><span>Deterministic <b style={{ color: validationState === 'FAIL' ? BB.red : validationState === 'PASS' ? BB.green : validationState === 'REVIEW_REQUIRED' ? BB.amber : BB.text2 }}>{validationState}</b></span><span>Quality <b style={{ color: qualityRaw === 'ADMITTED' ? BB.green : qualityRaw === 'QUARANTINED' ? BB.red : BB.amber }}>{qualityState}</b></span><span>Local <b style={{ color: BB.text2 }}>{reviews.local?.verdict || 'NOT RUN'}</b></span><span>Grok OAuth <b style={{ color: BB.text2 }}>{reviews.grok?.verdict || 'NOT RUN'}</b></span><span>ChatGPT OAuth <b style={{ color: BB.text2 }}>{reviews.chatgpt?.verdict || 'NOT RUN'}</b></span><span>Premium <b style={{ color: reconciled.premium_recommended ? BB.amber : BB.text2 }}>{premiumLabel}</b></span></div>{validation.hard_failures?.length > 0 && <div style={{ marginTop: 4, fontSize: 10, color: BB.red }}>{validation.hard_failures.slice(0, 2).join(' · ')}</div>}{quality.reasons?.length > 0 && qualityRaw !== 'ADMITTED' && <div style={{ marginTop: 4, fontSize: 10, color: qualityRaw === 'QUARANTINED' ? BB.red : BB.amber }}>Quality gate: {quality.reasons.slice(0, 2).join(' · ')}</div>}</div>
+  const stageNote = stages?.primary_failed_stage
+    ? `failed stage: ${String(stages.primary_failed_stage).replace(/_/g, ' ')}`
+    : null
+  const reconcileLabel = stages?.reconciliation_status
+    || (reconciled.state === 'DETERMINISTIC_FAIL' ? 'FAIL_CLOSED' : String(overall).replace(/_/g, ' '))
+  return <div style={{ padding: '9px 16px', borderBottom: `1px solid ${BB.border}` }} data-ticket-verification data-quality-status={String(qualityRaw)} data-compilation={String(compilation)} data-ticket-val={String(detDisplay)} data-reconcile={String(reconcileLabel)}><div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}><span style={{ fontSize: 10, fontWeight: 900, letterSpacing: '.08em', color: BB.text3 }}>TICKET VERIFICATION</span><span style={{ fontSize: 10.5, fontWeight: 900, color: failure ? BB.red : reconciled.proposal_allowed ? BB.green : BB.text1 }}>{String(overall).replace(/_/g, ' ')}</span>{selected.source && <span title="Canonical validation source" style={{ fontSize: 10, color: BB.text3 }}>{selected.source}</span>}{reconciled.detail && <span style={{ fontSize: 10, color: BB.text3 }}>{String(reconciled.detail).slice(0, 130)}</span>}<button onClick={event => { event.stopPropagation(); void runFree() }} disabled={busy || !mayRunReview} title={!mayRunReview ? 'Complete deterministic validation and quality admission first' : 'Run bounded local and OAuth critics on the exact validated ticket'} style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 800, padding: '2px 8px', cursor: busy ? 'wait' : !mayRunReview ? 'not-allowed' : 'pointer', opacity: mayRunReview ? 1 : .55, background: 'transparent', color: BB.text2, border: `1px solid ${BB.border}`, borderRadius: 3 }}>{busy ? 'Reviewing…' : mayRunReview ? 'Run free review' : 'Fix deterministic gate first'}</button></div><div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 5, fontSize: 10, color: BB.text3 }}><span>Compilation <b style={{ color: BB.text2 }}>{String(compilation).replace(/_/g, ' ')}</b></span><span>Ticket val <b style={{ color: detDisplay === 'FAIL' ? BB.red : detDisplay === 'PASS' ? BB.green : BB.text2 }}>{String(detDisplay).replace(/_/g, ' ')}</b></span><span>Quality <b style={{ color: qualityRaw === 'ADMITTED' || qualityRaw === 'PASS' ? BB.green : /FAIL|QUARANTINE/.test(String(qualityRaw)) ? BB.red : BB.amber }}>{qualityState}</b></span><span>Reconcile <b style={{ color: failure ? BB.red : BB.text2 }}>{String(reconcileLabel).replace(/_/g, ' ')}</b></span><span>Local <b style={{ color: BB.text2 }}>{reviews.local?.verdict || 'NOT RUN'}</b></span><span>Grok OAuth <b style={{ color: BB.text2 }}>{reviews.grok?.verdict || 'NOT RUN'}</b></span><span>ChatGPT OAuth <b style={{ color: BB.text2 }}>{reviews.chatgpt?.verdict || 'NOT RUN'}</b></span><span>Premium <b style={{ color: reconciled.premium_recommended ? BB.amber : BB.text2 }}>{premiumLabel}</b></span></div>{stageNote && <div style={{ marginTop: 4, fontSize: 10, color: BB.amber }}>{stageNote}{(stages?.primary_reason_codes || []).length ? ` · ${(stages.primary_reason_codes || []).slice(0, 4).join(', ')}` : ''}</div>}{validation.hard_failures?.length > 0 && <div style={{ marginTop: 4, fontSize: 10, color: BB.red }}>{validation.hard_failures.slice(0, 2).join(' · ')}</div>}{(quality.reasons?.length > 0 || detail.includes('quality') || qualityDrivenFail) && /FAIL|QUARANTINE|NOT_ADMIT/.test(String(qualityRaw)) && <div style={{ marginTop: 4, fontSize: 10, color: BB.red }}>Quality gate: {(quality.reasons || [reconciled.detail]).filter(Boolean).slice(0, 2).join(' · ')}</div>}</div>
 }
 
 function AuditDrawer({ pres, tech }: { pres: OperatorPresentation; tech: any }) {

@@ -973,6 +973,118 @@ def _stops_audit_api(query=None):
             "note": "read-only: evidence-bound 2FA stop requests + operator confirmations / Fidelity manual tickets"}
 
 
+def _build_reentry_decision_desk_api(query=None):
+    """GET /api/v2/reentry/decision-desk — calls the deterministic Data Broker decision desk.
+    All price/RSI/indicator values sourced from market_quotes + indicator_confluence_cache.
+    No LLM on this path. Advisory only."""
+    try:
+        from lib.data_broker.reentry_decision_desk import build_decision_desk
+        return build_decision_desk(_db_query)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:300], "advisory_only": True}
+
+
+def _run_reentry_insights_api(body=None):
+    """POST /api/v2/reentry/run-insights — runs DeepSeek Flash stop-out quality + thesis.
+    Advisory only. Capped at 20 quality + 10 thesis calls.
+    Stores results in ui_prefs under portfolio.reentry.llm_insights.v1."""
+    try:
+        from lib.data_broker.reentry_decision_desk import build_decision_desk
+        from lib.reentry_llm_insight import run_reentry_insights, store_insights
+
+        # Build decision desk to get rows with market data
+        desk = build_decision_desk(_db_query)
+        rows = desk.get("rows") or []
+
+        if not rows:
+            return {"ok": True, "insight_count": 0, "message": "No symbols to analyze"}
+
+        results = run_reentry_insights(rows)
+        from db_adapter import _execute
+        stored = store_insights(_execute, results)
+
+        quality_count = sum(1 for k in results if k.endswith(":quality") and results[k].success)
+        thesis_count = sum(1 for k in results if k.endswith(":thesis") and results[k].success)
+        total_cost = sum(r.cost_estimate for r in results.values())
+        errors = [r.error for r in results.values() if not r.success]
+
+        return {
+            "ok": True,
+            "advisory_only": True,
+            "provider": "deepseek-v4-flash",
+            "policy": "FAST",
+            "quality_calls": quality_count,
+            "thesis_calls": thesis_count,
+            "total_calls": len(results),
+            "total_estimated_cost_usd": round(total_cost, 6),
+            "stored": stored,
+            "errors": errors[:5] if errors else None,
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:300], "advisory_only": True}
+
+
+def _reentry_scorecard_api(query=None):
+    """GET /api/v2/reentry/scorecard?symbol=XYZ — compute the 8-stage re-entry scorecard.
+    Advisory only. Per-symbol. No auto-LLM calls.
+    Returns all 9 gates (S0 gatekeeping + S1-S8 scoring) with fired/not status,
+    decision state, confluence count, and provider trace."""
+    q = query or {}
+    sym = (q.get("symbol") or "").upper().strip()
+    if not sym:
+        return {"ok": False, "error": "symbol parameter required"}
+
+    try:
+        from lib.data_broker.reentry_decision_desk import build_decision_desk
+        from lib.data_broker.reentry_scorecard import compute_scorecard
+
+        # Build decision desk to get data-broker-sourced numbers
+        desk = build_decision_desk(_db_query)
+        rows = desk.get("rows") or []
+
+        # Find the row for this symbol
+        row = next((r for r in rows if (r.get("symbol") or "").upper() == sym), None)
+        if not row:
+            return {"ok": True, "symbol": sym, "scorecard": None, "message": "Symbol not in re-entry watchlist"}
+
+        sc = compute_scorecard(
+            symbol=sym,
+            db_query=_db_query,
+            price=row.get("price"),
+            rsi=row.get("rsi"),
+            indicators={
+                "sma_20": row.get("sma_20"),
+                "sma_50": row.get("sma_50"),
+                "sma_200": row.get("sma_200"),
+                "sma20_pct": row.get("sma20_pct"),
+                "sma50_pct": row.get("sma50_pct"),
+                "sma200_pct": row.get("sma200_pct"),
+                "macd_signal": row.get("macd_signal"),
+                "macd_histogram_direction": row.get("macd_histogram_direction"),
+                "alignment": row.get("alignment"),
+                "rsi": row.get("rsi"),
+            },
+            entry_low=row.get("entry_low"),
+            entry_high=row.get("entry_high"),
+            stop_price=row.get("stop"),
+            target_price=row.get("target"),
+            resistance=(
+                (row.get("resistance") or {}).get("level")
+                if isinstance(row.get("resistance"), dict)
+                else None
+            ),
+        )
+
+        return {
+            "ok": True,
+            "symbol": sym,
+            "advisory_only": True,
+            "scorecard": sc.to_dict(),
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:300], "advisory_only": True}
+
+
 def _stops_reentry_watch_api(query=None):
     """GET /api/v2/stops/reentry-watch — advisory stop-out reviews + re-entry watch rows from journal lifecycle.
     Powers Stop Management → Audit re-entry panel. Never routes orders."""
@@ -6963,6 +7075,32 @@ def _wl_items(query: dict = None):
         for _it in _items:
             _it.setdefault("action_policy", None)
 
+    # Canonical quote contract: shared CASE-bound selector for both Watch
+    # surfaces. Fail-closed — never leave pre-overlay legacy price/change when
+    # import/DB/compose fails (no silent pass that keeps legacy prices).
+    try:
+        from lib.watch_canonical_quote import apply_canonical_quote_overlay as _apply_cq
+        _apply_cq(_items)
+    except Exception as _cq_err:
+        # Helper import/runtime broken — still fail closed, log type only.
+        try:
+            import logging as _logging
+            _logging.getLogger("api_v2").warning(
+                "canonical_quote_overlay_failed type=%s", type(_cq_err).__name__
+            )
+        except Exception:
+            pass
+        for _it in _items:
+            for _k in (
+                "price", "change_pct", "price_as_of", "price_source",
+                "quote_id", "source_record_id", "market_session", "winning_branch",
+            ):
+                _it[_k] = None
+            _it["freshness_state"] = "DATA_UNAVAILABLE"
+            _it["market_state"] = "DATA_UNAVAILABLE"
+            _it["quote_missing"] = ["canonical_market_quote"]
+            _it["quote_error_code"] = "CANONICAL_QUOTE_SELECTOR_FAILED"
+
     return {"count": len(_items), "items": _items,
             "facets": dict(sorted(_facets.items(), key=lambda x: -x[1])),
             "universe_count": _universe_n,
@@ -7464,6 +7602,39 @@ def _wl_build_plan(sym: str) -> tuple[int, dict]:
         "symbol": sym,
         "message": f"Entry planner queued for {sym} — refresh card in ~1–2 min",
         "note": "Advisory-only — validates limit, stop, target, and R:R",
+    }
+
+
+_WL_ALL_PLAN_INFLIGHT = False
+
+
+def _wl_build_all_plans() -> tuple[int, dict]:
+    """POST /api/v2/watchlist/all/plan — run entry planner for ALL symbols (async, batched)."""
+    global _WL_ALL_PLAN_INFLIGHT
+    import threading
+    import time as _time
+
+    if _WL_ALL_PLAN_INFLIGHT:
+        return 200, {"ok": True, "already_running": True,
+                     "message": "Batch entry planner already running — refresh cards in ~3–5 min"}
+
+    _WL_ALL_PLAN_INFLIGHT = True
+
+    def _run():
+        try:
+            import watchlist_entry_planner as wep
+            wep.run(symbols=None, limit=50, lane="deepseek-flash", alert=False)
+        except Exception as e:
+            log.warning(f"batch plan run failed: {e}")
+        finally:
+            global _WL_ALL_PLAN_INFLIGHT
+            _WL_ALL_PLAN_INFLIGHT = False
+
+    threading.Thread(target=_run, daemon=True).start()
+    return 200, {
+        "ok": True,
+        "message": "Batch entry planner queued for all watchlist symbols — refresh cards in ~3–5 min",
+        "note": "Runs DeepSeek Flash lane for cost efficiency; generates entry zones, stops, and targets",
     }
 
 
@@ -33814,6 +33985,9 @@ ROUTES = {
     "/api/v2/stops/management": lambda q=None: _stops_management_api(q),
     "/api/v2/stops/audit": lambda q=None: _stops_audit_api(q),
     "/api/v2/stops/reentry-watch": lambda q=None: _stops_reentry_watch_api(q),
+    "/api/v2/reentry/decision-desk": lambda q=None: _build_reentry_decision_desk_api(q),
+    "/api/v2/reentry/run-insights": lambda q=None: _run_reentry_insights_api(),
+    "/api/v2/reentry/scorecard": lambda q=None: _reentry_scorecard_api(q),
     "/api/v2/portfolio/performance": portfolio_performance,
     "/api/v2/watchlist": watchlist_combined,
     "/api/v2/notifications/recent": notifications_recent,
@@ -33984,6 +34158,22 @@ ROUTES = {
     "/api/v2/watch/decision/summary": _watch_decision_summary,
     "/api/v2/watch/decision/technicals": _watch_decision_technicals,
     "/api/v2/watch/ticket-review/status": _ticket_review_status,
+    # ── Rockville Watch / CIO additive v3 APIs (shadow-safe; feature-flagged) ──
+    "/api/v3/watch/priority": lambda query=None: __import__(
+        "api_v3_watch_rockville", fromlist=["get_priority"]
+    ).get_priority(),
+    "/api/v3/watch/pipeline-health": lambda query=None: __import__(
+        "api_v3_watch_rockville", fromlist=["get_pipeline_health"]
+    ).get_pipeline_health(),
+    "/api/v3/watch/universe-health": lambda query=None: __import__(
+        "api_v3_watch_rockville", fromlist=["get_universe_health"]
+    ).get_universe_health(),
+    "/api/v3/watch/cio/latest": lambda query=None: __import__(
+        "api_v3_watch_rockville", fromlist=["get_cio_latest"]
+    ).get_cio_latest(),
+    "/api/v3/watch/cio/history": lambda query=None: __import__(
+        "api_v3_watch_rockville", fromlist=["get_cio_history"]
+    ).get_cio_history(),
     "/api/v2/decision/action-policy": _decision_action_policy,
     "/api/v2/shadow/strategy/batch": _shadow_batch_status,
     "/api/v2/defense/core": _defense_core_registry,
@@ -36695,6 +36885,12 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     return _wl_propose_symbol(sym, body or {})
                 except Exception as e:
                     return 500, {"ok": False, "error": str(e)}
+        # POST /api/v2/watchlist/all/plan — run entry planner for ALL symbols (batched)
+        if base_path == "/api/v2/watchlist/all/plan":
+            try:
+                return _wl_build_all_plans()
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
         # POST /api/v2/watchlist/<SYMBOL>/plan — run entry planner for one symbol
         if base_path.startswith("/api/v2/watchlist/") and base_path.endswith("/plan"):
             sym = base_path[len("/api/v2/watchlist/"):-len("/plan")].strip("/").upper()
@@ -38254,6 +38450,91 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return 200, {"ok": True, "data": _watch_provenance(symbol)}
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
+
+    # Rockville additive /api/v3/watch/* parameterized + deep-review
+    # Watchlist Intelligence Board (shadow) — read-only, zero provider calls
+    if method == "GET" and base_path.startswith("/api/v3/watchlist/intelligence"):
+        try:
+            import api_v3_watchlist_intelligence as _wli
+            rest = base_path[len("/api/v3/watchlist/intelligence"):].strip("/")
+            if not rest:
+                return 200, _wli.get_list(query or {})
+            parts = [p for p in rest.split("/") if p]
+            if len(parts) == 1:
+                return 200, _wli.get_detail(parts[0].upper())
+            if len(parts) == 2 and parts[1].lower() == "reviews":
+                return 200, _wli.get_reviews(parts[0].upper())
+            return 404, {"ok": False, "error": "not_found"}
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
+
+    # Canonical Data Broker — catalog + Watch Intelligence (read-only)
+    # Catalog: GET /api/v3/data-broker  and  GET /api/v3/data-broker/catalog
+    if method == "GET" and (
+        base_path == "/api/v3/data-broker"
+        or base_path.startswith("/api/v3/data-broker/")
+    ):
+        try:
+            import api_v3_data_broker_watch as _dbw
+            if base_path in ("/api/v3/data-broker", "/api/v3/data-broker/"):
+                return 200, _dbw.get_catalog()
+            p = base_path[len("/api/v3/data-broker/"):].strip("/")
+            if p in ("", "catalog", "index"):
+                return 200, _dbw.get_catalog()
+            if p == "watch-intelligence":
+                return 200, _dbw.get_list(query or {})
+            if p == "watch-filters":
+                return 200, _dbw.get_filters()
+            if p == "watch-lists":
+                return 200, _dbw.get_lists()
+            if p.startswith("watch-intelligence/"):
+                sym = p[len("watch-intelligence/"):].strip("/").upper()
+                if sym:
+                    return 200, _dbw.get_detail(sym)
+            if p.startswith("watch-reviews/"):
+                sym = p[len("watch-reviews/"):].strip("/").upper()
+                if sym:
+                    return 200, _dbw.get_reviews(sym)
+            return 404, {
+                "ok": False,
+                "error": "not_found",
+                "hint": "GET /api/v3/data-broker for the projection catalog",
+            }
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
+
+    # Governed Watch commands (writes) — not broker projection mutations
+    if method == "POST" and base_path.startswith("/api/v3/watch/commands/"):
+        try:
+            import api_v3_watch_commands as _wcmd
+            cmd = base_path[len("/api/v3/watch/commands/"):].strip("/").lower()
+            if cmd == "star":
+                return 200, _wcmd.post_star(body or {})
+            if cmd in ("list-membership", "list_membership"):
+                return 200, _wcmd.post_list_membership(body or {})
+            if cmd == "alert":
+                return 200, _wcmd.post_alert(body or {})
+            if cmd in ("refresh-data", "refresh_data"):
+                return 200, _wcmd.post_refresh_data(body or {})
+            return 404, {"ok": False, "error": "unknown_command"}
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
+
+    if base_path.startswith("/api/v3/watch/"):
+        try:
+            import api_v3_watch_rockville as _rv
+            if method == "GET" and base_path.startswith("/api/v3/watch/symbols/"):
+                sym = base_path[len("/api/v3/watch/symbols/"):].strip("/").upper()
+                if sym:
+                    return 200, _rv.get_symbol(sym)
+            if method == "GET" and base_path.startswith("/api/v3/watch/reviews/"):
+                sym = base_path[len("/api/v3/watch/reviews/"):].strip("/").upper()
+                if sym:
+                    return 200, _rv.get_reviews(sym)
+            if method == "POST" and base_path == "/api/v3/watch/cio/deep-review":
+                return 200, _rv.post_cio_deep_review(body or {})
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:200]}
 
     # Hermes Discovery Inbox candidate detail (GET /{id}); list route lives in ROUTES.
     if method == "GET" and base_path.startswith("/api/v2/hermes/discovery-inbox/"):

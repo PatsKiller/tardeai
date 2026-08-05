@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApi } from '../../hooks/useApi'
 import { useReEntryExitEvidence } from '../../hooks/useReEntryExitEvidence'
+import { useReentryDecisionDesk, type DecisionDeskRow } from '../../hooks/useReentryDecisionDesk'
 import { BB } from '../../lib/holdingsTerminalTokens'
 import {
   DISPOSITION_KEY,
@@ -235,6 +236,7 @@ export default function ReEntryCurrentIntelligence({
   const resistancePref = useApi<any>(`/api/v2/ui/prefs/get?key=${encodeURIComponent(RESISTANCE_KEY)}`, 120_000)
   const compositePref = useApi<any>(`/api/v2/ui/prefs/get?key=${encodeURIComponent(COMPOSITE_ALERT_KEY)}`, 120_000)
   const analyst = useApi<any>('/api/v2/pro-analyst/pills?map=1', 300_000)
+  const decisionDesk = useReentryDecisionDesk()  // Data-Broker-sourced canonical state
   const [watchMap, setWatchMap] = useState<Record<string, any>>({})
   const [search, setSearch] = useState('')
   const [stateFilter, setStateFilter] = useState('ALL')
@@ -249,6 +251,14 @@ export default function ReEntryCurrentIntelligence({
   const [lane, setLane] = useState<ReEntryLane>(laneProp ?? 'NOW')
   const [armSymbol, setArmSymbol] = useState<string | null>(null)
   const [toast, setToast] = useState('')
+  const [refreshingAllPlans, setRefreshingAllPlans] = useState(false)
+  const [favoriteSet, setFavoriteSet] = useState<Set<string>>(() => {
+    try {
+      const stored = localStorage.getItem('reentry.favorites')
+      return stored ? new Set(JSON.parse(stored)) : new Set()
+    } catch { return new Set() }
+  })
+  const [favOnly, setFavOnly] = useState(false)
 
   useEffect(() => { if (laneProp) setLane(laneProp) }, [laneProp])
 
@@ -419,20 +429,85 @@ export default function ReEntryCurrentIntelligence({
     }
   }), [summaries, mandatesPref.data, eventsPref.data, dispositionsPref.data, watchMap, cards.data, holdings.data, resistancePref.data, analyst.data, alerts.data, regimeLabel])
 
-  const laneCounts: ReEntryLaneCounts = useMemo(() => {
-    const active = rows.filter(row => !row.suppressed)
+  // ── Overlay Data-Broker canonical state (price/RSI from market_quotes + indicator_confluence_cache) ──
+  const ddMap = useMemo(() => {
+    const map = new Map<string, DecisionDeskRow>()
+    const ddRows = decisionDesk.data?.rows
+    if (ddRows) {
+      for (const r of ddRows) {
+        map.set((r.symbol || '').toUpperCase(), r)
+      }
+    }
+    return map
+  }, [decisionDesk.data])
+  const ddBlocked = useMemo(() => decisionDesk.data?.blocked || [], [decisionDesk.data])
+  const ddFreshness = useMemo(() => decisionDesk.data?.freshness || null, [decisionDesk.data])
+  const ddProvenance = useMemo(() => decisionDesk.data?.data_broker || null, [decisionDesk.data])
+  const ddScorecards = useMemo(() => (decisionDesk.data?.scorecard_summary?.by_symbol) || {}, [decisionDesk.data])
+
+  const enrichedRows = useMemo(() => rows.map(row => {
+    const dd = ddMap.get(row.symbol.toUpperCase())
+    if (!dd) return row // no decision desk data for this symbol
+    const ddIntel = dd.intel || {}
     return {
-      now: active.filter(row => row.score.lane === 'NOW').length,
-      near: active.filter(row => row.score.lane === 'NEAR').length,
-      watch: active.filter(row => row.score.lane === 'WATCH').length,
+      ...row,
+      // Canonical state from data broker
+      canonicalState: ddIntel.state || row.intel.state,
+      canonicalAction: ddIntel.action || row.intel.action,
+      canonicalReason: ddIntel.reason || row.intel.reason,
+      canonicalChips: ddIntel.chips || [],
+      // Data-broker-sourced price/RSI (overrides watchlist/card cache)
+      dataBrokerPrice: dd.price,
+      dataBrokerPriceSource: dd.price_source,
+      dataBrokerPriceAge: dd.price_age_h,
+      dataBrokerRSI: dd.rsi,
+      dataBrokerRSIStatus: dd.rsi_status,
+      // Advisory
+      advisoryOnly: dd.advisory?.advisory_only ?? true,
+      confirmationsComplete: dd.advisory?.confirmations_complete ?? false,
+      confirmationGaps: dd.advisory?.confirmation_gaps || [],
+      advisoryAction: dd.advisory?.action || '',
+      advisoryRationale: dd.advisory?.rationale || [],
+      // Gates
+      ddGates: dd.gates || [],
+      why: dd.why || [],
+      rr: dd.rr,
+      entryLow: dd.entry_low ?? row.intel.entryLow,
+      entryHigh: dd.entry_high ?? row.intel.entryHigh,
+      stop: dd.stop ?? row.intel.stop,
+      target: dd.target ?? row.intel.target,
+      washBlocked: dd.wash_blocked,
+      washUntil: dd.wash_until,
+      company: dd.company || '',
+      // Provenance
+      provenance: {
+        price: dd.price_source || 'unknown',
+        indicator: dd.indicator_source || 'unknown',
+        dataBroker: ddProvenance,
+      },
+      // Data Broker Scorecard
+      ddScorecard: ddScorecards[(row.symbol || '').toUpperCase()] || null,
+    }
+  }), [rows, ddMap, ddProvenance])
+
+  const laneCounts: ReEntryLaneCounts = useMemo(() => {
+    const active = enrichedRows.filter(row => !row.suppressed)
+    return {
+      now: active.filter(row => ddMap.has(row.symbol.toUpperCase())
+        ? (ddMap.get(row.symbol.toUpperCase())?.intel?.state === 'READY TO REVIEW')
+        : row.score.lane === 'NOW').length,
+      near: active.filter(row => ddMap.has(row.symbol.toUpperCase())
+        ? (ddMap.get(row.symbol.toUpperCase())?.intel?.state === 'NEAR ENTRY')
+        : row.score.lane === 'NEAR').length,
+      watch: active.filter(row => !(ddMap.has(row.symbol.toUpperCase())) ? row.score.lane === 'WATCH' : false).length,
       all: active.length,
       armed: armedCount,
       sourcesOk: evidence.sources.filter(source => source.available).length,
       sourcesTotal: evidence.sources.length,
     }
-  }, [rows, armedCount, evidence.sources])
+  }, [enrichedRows, ddMap, armedCount, evidence.sources])
 
-  const shown = rows.filter(row => {
+  const shown = enrichedRows.filter(row => {
     if (search.trim() && !`${row.symbol} ${row.intel.state} ${row.intel.action} ${row.classified} ${row.mandate.mandate} ${row.flags.join(' ')} ${row.latest.import_source ?? ''} ${(row.latest.evidence_gaps ?? []).join(' ')}`.toUpperCase().includes(search.trim().toUpperCase())) return false
     // SUPPRESS FROM RE-ENTRY QUEUE means gone from the working queue — suppressed
     // symbols surface only under the SUPPRESSED filter.
@@ -441,6 +516,7 @@ export default function ReEntryCurrentIntelligence({
     if (stateFilter !== 'ALL' && row.intel.state !== stateFilter) return false
     if (classificationFilter !== 'ALL' && row.classified !== classificationFilter) return false
     if (gapOnly && row.completeness >= 8 && row.eventGapCount === 0) return false
+    if (favOnly && !favoriteSet.has(row.symbol)) return false
     return true
   })
     .filter(row => filterByLane([{ score: row.score }], lane).length > 0)
@@ -450,14 +526,14 @@ export default function ReEntryCurrentIntelligence({
       || String(b.latest.trade_date || '').localeCompare(String(a.latest.trade_date || '')),
     )
 
-  const suppressedTotal = rows.filter(row => row.suppressed).length
+  const suppressedTotal = enrichedRows.filter(row => row.suppressed).length
   const selectedSymbols = shown.filter(row => selected[row.symbol]).map(row => row.symbol)
   const counts = {
-    symbols: rows.length,
-    classified: rows.filter(row => row.classified === 'CLASSIFIED').length,
+    symbols: enrichedRows.length,
+    classified: enrichedRows.filter(row => row.classified === 'CLASSIFIED').length,
     ready: laneCounts.now,
     near: laneCounts.near,
-    missing: rows.filter(row => row.completeness < 8 || row.eventGapCount > 0).length,
+    missing: enrichedRows.filter(row => row.completeness < 8 || row.eventGapCount > 0).length,
   }
   const refresh = () => {
     evidence.refetch()
@@ -472,6 +548,25 @@ export default function ReEntryCurrentIntelligence({
     eventsPref.refetch()
     dispositionsPref.refetch()
     setWatchReload(value => value + 1)
+  }
+  const toggleFavorite = (symbol: string) => {
+    setFavoriteSet(prev => {
+      const next = new Set(prev)
+      if (next.has(symbol)) { next.delete(symbol) } else { next.add(symbol) }
+      try { localStorage.setItem('reentry.favorites', JSON.stringify([...next])) } catch {}
+      return next
+    })
+  }
+  const refreshAllPlans = () => {
+    setRefreshingAllPlans(true)
+    fetch('/api/v2/watchlist/all/plan', { method: 'POST' })
+      .then(r => r.json())
+      .then(data => {
+        setToast(data?.message || 'Batch plan generation started')
+        if (data?.ok) setTimeout(() => { refresh(); setRefreshingAllPlans(false) }, 6000)
+        else setRefreshingAllPlans(false)
+      })
+      .catch(() => { setToast('Batch plan request failed'); setRefreshingAllPlans(false) })
   }
   const shareCoverage = evidence.sources.map(source => `${source.label} shares ${evidence.sourceFieldCoverage[source.key]?.quantity ?? 0}`).join(' · ')
   const refreshing = evidence.loading || evidence.refreshing
@@ -491,6 +586,8 @@ export default function ReEntryCurrentIntelligence({
         regimeLabel={regimeLabel}
         onRefresh={refresh}
         refreshing={refreshing}
+        onRefreshAllPlans={refreshAllPlans}
+        refreshingAllPlans={refreshingAllPlans}
       />
 
       <div
@@ -543,13 +640,35 @@ export default function ReEntryCurrentIntelligence({
         <b>Quantity-bearing rows:</b> {shareCoverage}. A remaining blank means no compatible event or aggregate supplied the field; deterministic derivations and account-alias joins are labeled in the expanded audit.
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,minmax(120px,1fr))', gap: 7, marginTop: 9 }}>
+      {ddBlocked.length > 0 && (
+        <div style={{ ...panel, marginTop: 8, padding: 8, background: 'var(--bg2)', fontSize: 10.5, borderLeft: `3px solid ${BB.amber}` }}>
+          <b style={{ color: BB.amber }}>BLOCKED — CUSIP / Delisted</b> ({ddBlocked.length} symbols filtered from re-entry review)<br />
+          {ddBlocked.map(b => (
+            <span key={b.symbol} style={{ marginRight: 10, color: BB.text3 }}>
+              <span style={{ fontWeight: 800, color: BB.text2 }}>{b.symbol}</span> — {b.reason}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {ddFreshness && (
+        <div style={{ marginTop: 6, fontSize: 10, color: BB.text3, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <span>Data Broker: {ddFreshness.symbol_count} symbols · {ddFreshness.actionable_count} actionable</span>
+          <span>Price median age: {ddFreshness.price_age_h_median !== null ? `${ddFreshness.price_age_h_median.toFixed(0)}h` : 'n/a'}</span>
+          <span>Stale: {ddFreshness.stale_symbol_count}</span>
+          <span>Heat: {ddFreshness.heat_pct !== null ? `${ddFreshness.heat_pct.toFixed(1)}%` : 'n/a'}</span>
+          {ddProvenance && <span>Provenance: Data Broker v2</span>}
+        </div>
+      )}
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,minmax(110px,1fr))', gap: 7, marginTop: 9 }}>
         {([
-          ['EXITED SYMBOLS', counts.symbols, lane === 'ALL' && stateFilter === 'ALL' && classificationFilter === 'ALL' && !gapOnly, () => { setLaneBoth('ALL'); setStateFilter('ALL'); setClassificationFilter('ALL'); setGapOnly(false) }],
+          ['EXITED SYMBOLS', counts.symbols, lane === 'ALL' && stateFilter === 'ALL' && classificationFilter === 'ALL' && !gapOnly && !favOnly, () => { setLaneBoth('ALL'); setStateFilter('ALL'); setClassificationFilter('ALL'); setGapOnly(false); setFavOnly(false) }],
           ['CLASSIFIED', counts.classified, classificationFilter === 'CLASSIFIED', () => setClassificationFilter(value => value === 'CLASSIFIED' ? 'ALL' : 'CLASSIFIED')],
           ['READY NOW', counts.ready, lane === 'NOW', () => setLaneBoth(lane === 'NOW' ? 'ALL' : 'NOW')],
           ['NEAR ENTRY', counts.near, lane === 'NEAR', () => setLaneBoth(lane === 'NEAR' ? 'ALL' : 'NEAR')],
           ['EVIDENCE GAPS', counts.missing, gapOnly, () => setGapOnly(value => !value)],
+          [`⭐ FAVORITES`, favoriteSet.size, favOnly, () => setFavOnly(value => !value)],
         ] as const).map(([name, value, active, action]) => (
           <button
             key={String(name)}
@@ -563,7 +682,7 @@ export default function ReEntryCurrentIntelligence({
         ))}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px,1fr) 190px 170px 150px auto auto auto', gap: 7, marginTop: 8 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px,1fr) 190px 170px 150px 120px auto auto auto', gap: 7, marginTop: 8 }}>
         <input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search symbol, state, source or missing field…" style={field} />
         <select value={queueFilter} onChange={event => setQueueFilter(event.target.value as 'ACTIVE' | 'SUPPRESSED' | 'ALL')} style={field} title="Suppressed symbols are hidden from the working queue">
           <option value="ACTIVE">ACTIVE QUEUE</option>
@@ -581,6 +700,14 @@ export default function ReEntryCurrentIntelligence({
           <option value="CLASSIFIED">CLASSIFIED</option>
           <option value="AUTO-TAGGED">AUTO-TAGGED</option>
           <option value="UNCLASSIFIED">UNCLASSIFIED</option>
+        </select>
+        <select
+          value={favOnly ? 'FAVORITES' : 'ALL'}
+          onChange={event => setFavOnly(event.target.value === 'FAVORITES')}
+          style={{ ...field, color: favOnly ? BB.amber : 'var(--text0)', fontWeight: favOnly ? 800 : undefined }}
+        >
+          <option value="ALL">{`ALL (${counts.symbols})`}</option>
+          <option value="FAVORITES">{`⭐ FAVORITES (${favoriteSet.size})`}</option>
         </select>
         <button type="button" onClick={() => setSelected(Object.fromEntries(shown.map(row => [row.symbol, true])))} style={button(false)}>SELECT VISIBLE</button>
         <button type="button" onClick={() => setSelected({})} style={button(false)}>CLEAR</button>
@@ -601,6 +728,7 @@ export default function ReEntryCurrentIntelligence({
             <span>Actions</span>
           </div>
           {shown.map(row => {
+            const erow = row as any  // enriched with Data Broker fields
             const open = Boolean(expanded[row.symbol])
             const tone = stateTone(row.intel.state)
             const classTone = row.classified === 'CLASSIFIED' ? BB.green : row.classified === 'AUTO-TAGGED' ? BB.amber : BB.text3
@@ -651,24 +779,73 @@ export default function ReEntryCurrentIntelligence({
                     <div style={{ color: BB.text3 }}>{row.flags.join(' · ') || 'no strategy flags'}</div>
                   </div>
                   <div>
-                    <span style={{ color: tone, fontWeight: 900 }}>{row.intel.state}</span>
+                    <span style={{ color: tone, fontWeight: 900 }}>{erow.canonicalState || row.intel.state}</span>
                     <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 800, color: BB.text3 }}>{score.lane}</span>
-                    <div style={{ marginTop: 3, fontWeight: 800 }}>{row.intel.action}</div>
-                    <div style={{ color: BB.text2, marginTop: 2, lineHeight: 1.4 }} title={row.intel.reason}>{row.intel.reason}</div>
-                    {row.intel.highlights.length > 0 && (
-                      <div style={{ marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                        {row.intel.highlights.map(h => (
-                          <span key={h} style={{ fontSize: 10, fontWeight: 750, padding: '1px 5px', borderRadius: 3, border: '1px solid var(--border)', color: BB.text3, background: 'var(--bg1)' }}>{h}</span>
+                    {erow.advisoryOnly !== false && (
+                      <span style={{ marginLeft: 5, fontSize: 10, fontWeight: 800, padding: '1px 4px', borderRadius: 3, background: BB.amberDim ?? 'var(--amber-bg)', color: BB.amber }}>ADVISORY ONLY</span>
+                    )}
+                    {erow.provenance?.dataBroker && (
+                      <span style={{ marginLeft: 5, fontSize: 10, fontWeight: 700, padding: '1px 4px', borderRadius: 3, background: BB.blueDim ?? 'var(--blue-bg)', color: BB.blue }}>DATA BROKER</span>
+                    )}
+                    <div style={{ marginTop: 3, fontWeight: 800 }}>{erow.advisoryAction || row.intel.action}</div>
+                    <div style={{ color: BB.text2, marginTop: 2, lineHeight: 1.4 }} title={erow.canonicalReason || row.intel.reason}>{erow.canonicalReason || row.intel.reason}</div>
+                    {erow.canonicalChips?.length > 0 && (
+                      <div style={{ marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+                        {erow.canonicalChips.map((c: any, i: number) => (
+                          <span key={i} style={{ fontSize: 10, fontWeight: 700, padding: '1px 5px', borderRadius: 3, border: `1px solid ${c.tone === 'green' ? BB.green : c.tone === 'red' ? BB.red : c.tone === 'amber' ? BB.amber : BB.text3}`, color: c.tone === 'green' ? BB.green : c.tone === 'red' ? BB.red : c.tone === 'amber' ? BB.amber : BB.text3, background: 'var(--bg1)' }}>{c.label}</span>
                         ))}
+                      </div>
+                    )}
+                    {/* Data-Broker Scorecard Pills */}
+                    {erow.ddScorecard && (
+                      <div style={{ marginTop: 5 }}>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+                          {erow.ddScorecard.gates?.map((g: any) => {
+                            const gateColor = g.fired ? BB.green : g.data_available ? 'var(--text3)' : BB.amber
+                            const gateLabel = g.stage === 'S0' ? '' : g.stage.substring(1)
+                            const title = `${g.label}: ${g.fired ? 'FIRED' : 'not fired'}`
+                            return (
+                              <span
+                                key={g.stage}
+                                title={title}
+                                style={{
+                                  fontSize: 10, fontWeight: 800, padding: '2px 5px', borderRadius: 3,
+                                  border: `1px solid ${gateColor}`,
+                                  color: gateColor,
+                                  background: 'var(--bg1)',
+                                }}
+                              >
+                                {g.stage === 'S0' ? 'T' : gateLabel}{g.fired ? ' \u25CF' : g.data_available ? ' \u25CB' : ' \u2014'}
+                              </span>
+                            )
+                          })}
+                          <span style={{
+                            fontSize: 10, fontWeight: 900, padding: '2px 5px', borderRadius: 3,
+                            border: `1px solid ${erow.ddScorecard.decision_state === 'READY' ? BB.green : erow.ddScorecard.decision_state === 'DISQUALIFIED' ? BB.red : BB.amber}`,
+                            color: erow.ddScorecard.decision_state === 'READY' ? BB.green : erow.ddScorecard.decision_state === 'DISQUALIFIED' ? BB.red : BB.amber,
+                            background: 'var(--bg1)',
+                          }}>
+                            {erow.ddScorecard.confluence_count}/8 {erow.ddScorecard.has_structure_gate ? '+S' : ''}
+                          </span>
+                        </div>
+                        {erow.ddScorecard.hard_disqualifier && (
+                          <div style={{ fontSize: 10, color: BB.red, fontWeight: 800, marginTop: 2 }}>
+                            DISQ: {erow.ddScorecard.hard_disqualifier}
+                          </div>
+                        )}
+                        {erow.ddScorecard.thesis && (
+                          <div style={{ fontSize: 10, color: BB.text2, marginTop: 2, lineHeight: 1.3 }}>
+                            {erow.ddScorecard.thesis}
+                          </div>
+                        )}
                       </div>
                     )}
                     <div style={{ color: BB.text3, marginTop: 3, fontSize: 10 }}>{score.scoreLabel}{!score.planIntegrityOk ? ' · plan integrity fail' : ''}</div>
                   </div>
                   <div>
-                    <b>{money(row.intel.price)}</b><br />
+                    <b>{money(erow.dataBrokerPrice ?? row.intel.price)}</b><br />
                     <span style={{ color: BB.text3 }}>
-                      RSI {row.intel.rsi === null ? '—' : row.intel.rsi.toFixed(1)}
-                      {row.intel.rsiBand !== 'unavailable' ? ` ${row.intel.rsiBand}` : ''}
+                      RSI {erow.dataBrokerRSI === null || erow.dataBrokerRSI === undefined ? (row.intel.rsi === null ? '—' : row.intel.rsi.toFixed(1)) : erow.dataBrokerRSI.toFixed(1)}
                       {' · '}{row.intel.trend}
                     </span><br />
                     <span style={{ color: BB.text3 }}>
@@ -717,7 +894,55 @@ export default function ReEntryCurrentIntelligence({
                     <span style={{ color: BB.text3 }}>{row.latest.import_source || 'source unavailable'}</span>
                   </div>
                   <div onClick={event => event.stopPropagation()}>
+                    <button
+                      type="button"
+                      onClick={() => toggleFavorite(row.symbol)}
+                      style={{
+                        ...button(favoriteSet.has(row.symbol)),
+                        fontSize: 14,
+                        padding: '2px 6px',
+                        color: favoriteSet.has(row.symbol) ? BB.amber : BB.text3,
+                        borderColor: favoriteSet.has(row.symbol) ? BB.amber : 'var(--border)',
+                        background: favoriteSet.has(row.symbol) ? BB.amberDim : 'var(--bg2)',
+                      }}
+                      title={favoriteSet.has(row.symbol) ? 'Remove from favorites' : 'Add to favorites'}
+                      aria-label={favoriteSet.has(row.symbol) ? `Remove ${row.symbol} from favorites` : `Add ${row.symbol} to favorites`}
+                    >
+                      {favoriteSet.has(row.symbol) ? '★' : '☆'}
+                    </button>
                     <button type="button" onClick={() => setExpanded(value => ({ ...value, [row.symbol]: true }))} style={button(true)}>OPEN EVIDENCE</button>
+                    {/* Plan freshness: show timestamp or MISSING, color-code by age */}
+                    {(() => {
+                      const planAsOf = erow.planAsOf || erow.plan_as_of
+                      const planAgeLabel = planAsOf ? (() => {
+                        const age = (Date.now() - new Date(planAsOf).getTime()) / 3600000
+                        return age < 24 ? `${age.toFixed(0)}h old` : `${(age / 24).toFixed(0)}d old`
+                      })() : null
+                      const planAgeDays = planAsOf ? (Date.now() - new Date(planAsOf).getTime()) / 86400000 : null
+                      const planColor = planAgeDays === null ? BB.text3 : planAgeDays > 5 ? BB.red : planAgeDays > 3 ? BB.amber : BB.green
+                      const needsRefresh = erow.canonicalState === 'MISSING PLAN' || (planAgeDays !== null && planAgeDays > 3)
+                      return (
+                        <>
+                          {planAsOf ? (
+                            <span style={{ fontSize: 10, fontWeight: 700, color: planColor, padding: '3px 7px', borderRadius: 4, background: 'var(--bg2)', border: `1px solid ${planColor}`, display: 'inline-block', marginRight: 5 }} title={`Plan generated ${planAsOf}`}>
+                              PLAN {planAgeLabel}
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: 10, fontWeight: 700, color: BB.amber, padding: '3px 7px', borderRadius: 4, background: 'var(--bg2)', border: `1px solid ${BB.amber}`, display: 'inline-block', marginRight: 5 }}>
+                              NO PLAN
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => { fetch(`/api/v2/watchlist/${row.symbol}/plan`, { method: 'POST' }).then(() => { setTimeout(() => refresh(), 5000) }).catch(() => {}) }}
+                            style={{ ...button(needsRefresh), marginTop: 5, color: needsRefresh ? BB.green : BB.text2, borderColor: needsRefresh ? BB.green : 'var(--border)' }}
+                            title="Re-run entry planner with DeepSeek Flash to generate fresh levels"
+                          >
+                            {erow.canonicalState === 'MISSING PLAN' ? 'GENERATE PLAN' : 'REFRESH PLAN NOW'}
+                          </button>
+                        </>
+                      )
+                    })()}
                     <button type="button" onClick={() => setArmSymbol(row.symbol)} style={{ ...button(false), marginTop: 5 }} data-testid={`reentry-arm-${row.symbol}`}>
                       ARM ALERT{row.alertCount ? ` (${row.alertCount})` : ''}
                     </button>
@@ -728,8 +953,27 @@ export default function ReEntryCurrentIntelligence({
                 {open && (
                   <div style={{ padding: '10px 14px 14px 42px', background: 'var(--bg2)', borderBottom: '1px solid var(--border)', display: 'grid', gridTemplateColumns: '1fr 1fr 0.9fr', gap: 16 }}>
                     <div>
-                      <div style={{ fontSize: 10, fontWeight: 900, color: BB.text3, marginBottom: 6 }}>
-                        DECISION SCORECARD — {score.scoreLabel} · lane {score.lane}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                        <div style={{ fontSize: 10, fontWeight: 900, color: BB.text3 }}>
+                          DECISION SCORECARD — {score.scoreLabel} · lane {score.lane}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={event => { event.stopPropagation(); toggleFavorite(row.symbol); }}
+                          style={{
+                            ...button(favoriteSet.has(row.symbol)),
+                            fontSize: 12,
+                            padding: '1px 5px',
+                            color: favoriteSet.has(row.symbol) ? BB.amber : BB.text3,
+                            borderColor: favoriteSet.has(row.symbol) ? BB.amber : 'var(--border)',
+                            background: favoriteSet.has(row.symbol) ? BB.amberDim : 'var(--bg2)',
+                            marginLeft: 'auto',
+                          }}
+                          title={favoriteSet.has(row.symbol) ? 'Remove from favorites' : 'Add to favorites'}
+                          aria-label={favoriteSet.has(row.symbol) ? `Remove ${row.symbol} from favorites` : `Add ${row.symbol} to favorites`}
+                        >
+                          {favoriteSet.has(row.symbol) ? '★' : '☆'} STAR
+                        </button>
                       </div>
                       <div style={{ fontSize: 10.5, marginBottom: 8, color: BB.text2 }}>
                         <b style={{ color: tone }}>{row.intel.state}</b> — {row.intel.action}. {row.intel.reason}

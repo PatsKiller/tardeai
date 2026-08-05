@@ -167,6 +167,25 @@
       "advisory_only": true
     },
     {
+      "id": "watch_news_intelligence_flash",
+      "name": "Watch News Intelligence Flash",
+      "category": "Watch",
+      "lane_policy": "deepseek_only",
+      "default_mode": "automated",
+      "description": "Async news/catalyst intelligence for Watch board. Exact deepseek-v4-flash FAST, thinking off, no fallback. Oversight optional dual OAuth. Never page-load. Advisory only.",
+      "allowed_lanes": ["deepseek-flash", "deepseek-v4-flash", "fast"],
+      "deepseek_default_policy": "FAST",
+      "deepseek_allowed_policies": ["FAST"],
+      "max_input_tokens": 2500,
+      "max_output_tokens": 500,
+      "daily_soft_cap": 40,
+      "daily_cost_cap_usd": 0.08,
+      "tools_allowed": false,
+      "fallback_allowed": false,
+      "advisory_only": true,
+      "output_schema": "news_intelligence.v1"
+    },
+    {
       "id": "rotation_grok_review",
       "name": "Rotation Grok Review",
       "category": "Rotation",
@@ -186,17 +205,28 @@
       "category": "Watch",
       "lane_policy": "ensemble",
       "default_mode": "manual",
-      "description": "CIO view \u2014 Grok primary + ChatGPT reconcile when both run",
-      "deepseek_default_policy": "PRO_THINK",
+      "description": "CIO synthesis. Automated Watch Intelligence path uses exact deepseek-v4-pro PRO (thinking off); manual ensemble path may still use PRO_THINK with confirmation for PRO_MAX. Advisory only. No silent fallback.",
+      "allowed_lanes": ["deepseek-pro", "deepseek-v4-pro", "pro", "ensemble"],
+      "deepseek_default_policy": "PRO",
       "deepseek_allowed_policies": [
+        "PRO",
         "FAST_THINK",
         "PRO_THINK",
         "PRO_MAX"
       ],
       "requires_operator_cost_confirmation_for": [
-        "PRO_MAX"
+        "PRO_MAX",
+        "PRO_THINK"
       ],
-      "output_schema": "cio_synthesis.v1"
+      "tools_allowed": false,
+      "fallback_allowed": false,
+      "advisory_only": true,
+      "daily_soft_cap": 20,
+      "daily_cost_cap_usd": 0.25,
+      "max_input_tokens": 6000,
+      "max_output_tokens": 1200,
+      "output_schema": "cio_synthesis.v1",
+      "notes": "Watch Intelligence automated pipeline: model=deepseek-v4-pro policy=PRO thinking=off fallback_allowed=false (PR watch-review-automation)"
     },
     {
       "id": "watchlist_maria_priority",

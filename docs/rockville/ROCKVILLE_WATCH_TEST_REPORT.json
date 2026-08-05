@@ -1,0 +1,26 @@
+{
+  "suite": "tests/test_rockville_watch_decision.py",
+  "ran_at": "2026-08-04T21:00:00Z",
+  "result": "OK",
+  "tests": 17,
+  "failures": 0,
+  "errors": 0,
+  "coverage_notes": [
+    "FTH fixture: DETERMINISTIC_FAIL not WAIT; zero current mechanics",
+    "BLOCKED/STALE zero mechanics",
+    "READY may show mechanics",
+    "MANAGING held path",
+    "LLM cannot force READY on fail",
+    "Exact deepseek-v4-flash / deepseek-v4-pro",
+    "Ambiguous model IDs rejected",
+    "Quote noise does not dirty material hash",
+    "State transition dirties hash",
+    "CIO no-change zero provider cost",
+    "CIO lock + already complete + next day"
+  ],
+  "remaining": [
+    "Screenshot CI not yet automated",
+    "Live provider JSON schema integration tests when flags enabled",
+    "Full universe packet projection against live watch DB"
+  ]
+}

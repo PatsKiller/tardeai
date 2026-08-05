@@ -1,0 +1,1432 @@
+{
+  "ok": true,
+  "snapshot_id": "137f4863e63d035868551a92",
+  "generated_at": "2026-08-05T14:15:12.833331+00:00",
+  "data_contract_version": "watch_intelligence.broker.v1",
+  "contract_version": "watch_intelligence.broker.v1",
+  "provider_calls": 0,
+  "paid_flags_enabled": false,
+  "broker_write_authority": "NONE",
+  "source_status": {
+    "detail": "ok",
+    "provider_calls": 0
+  },
+  "data_quality_status": "OK",
+  "counts": {
+    "domains": 12
+  },
+  "symbol": "CECO",
+  "item": {
+    "symbol": "CECO",
+    "domains": {
+      "SymbolIdentity": {
+        "symbol": {
+          "value": "CECO",
+          "source": "watch_intelligence",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        },
+        "company": {
+          "value": "CECO Environmental Corp.",
+          "source": "symbol_profiles",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        },
+        "company_summary": {
+          "value": "CECO Environmental Corp. provides critical solutions in industrial air quality, industrial water treatment, and energy transition solutions in the United States, the United Kingdom, the Netherlands, China, and internati\u2026",
+          "source": "symbol_profiles.description_1s",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        },
+        "sector": {
+          "value": "Industrials",
+          "source": "symbol_profiles",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        },
+        "industry": {
+          "value": "Pollution & Treatment Controls",
+          "source": "symbol_profiles",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        },
+        "instrument_type": {
+          "value": "stock",
+          "source": "symbol_profiles",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        }
+      },
+      "CanonicalQuote": {
+        "last": {
+          "value": 71.26,
+          "source": "market_quotes",
+          "source_record_id": "market_quotes:4406299",
+          "observed_at": "2026-08-05T10:00:03.359707-04:00",
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        },
+        "day_change_pct": {
+          "value": 1.236,
+          "source": "market_quotes",
+          "source_record_id": "market_quotes:4406299",
+          "observed_at": "2026-08-05T10:00:03.359707-04:00",
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        },
+        "price_as_of": {
+          "value": "2026-08-05T10:00:03.359707-04:00",
+          "source": "market_quotes",
+          "source_record_id": "market_quotes:4406299",
+          "observed_at": "2026-08-05T10:00:03.359707-04:00",
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        },
+        "price_source": {
+          "value": "market_quotes",
+          "source": "watch_canonical_quote",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        },
+        "quote_id": {
+          "value": 4406299.0,
+          "source": "watch_canonical_quote",
+          "source_record_id": "4406299.0",
+          "observed_at": null,
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        },
+        "source_record_id": {
+          "value": "market_quotes:4406299",
+          "source": "watch_canonical_quote",
+          "source_record_id": "market_quotes:4406299",
+          "observed_at": null,
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        },
+        "market_session": {
+          "value": "regular",
+          "source": "watch_canonical_quote",
+          "source_record_id": null,
+          "observed_at": "2026-08-05T10:00:03.359707-04:00",
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        },
+        "freshness_state": {
+          "value": "CURRENT",
+          "source": "watch_canonical_quote",
+          "source_record_id": null,
+          "observed_at": "2026-08-05T10:00:03.359707-04:00",
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        },
+        "market_state": {
+          "value": "OK",
+          "source": "watch_canonical_quote",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        }
+      },
+      "WatchMembership": {
+        "on_watchlist": {
+          "value": true,
+          "source": "watchlist_items",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        },
+        "starred": {
+          "value": true,
+          "source": "operator_starred_symbols",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        },
+        "held": {
+          "value": false,
+          "source": "holdings.json",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        },
+        "screener_origin": {
+          "value": false,
+          "source": "screener_find_pins|watchlist_items.source",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        },
+        "status": {
+          "value": null,
+          "source": "watchlist_items",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "DATA_UNAVAILABLE",
+          "quality_state": "UNAVAILABLE"
+        }
+      },
+      "StreetConsensus": {
+        "rating": {
+          "value": "STRONG BUY",
+          "source": "yahoo_analyst_targets_history",
+          "source_record_id": null,
+          "observed_at": "2026-07-14",
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        },
+        "tone": {
+          "value": "strong",
+          "source": "yahoo_analyst_targets_history",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        },
+        "analyst_count": {
+          "value": 6.0,
+          "source": "yahoo_analyst_targets_history",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        },
+        "target_mean": {
+          "value": 111.83,
+          "source": "yahoo_analyst_targets_history",
+          "source_record_id": null,
+          "observed_at": "2026-07-14",
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        },
+        "implied_upside_pct": {
+          "value": 56.93,
+          "source": "computed_from_yahoo_target_vs_quote",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        },
+        "recommendation_key": {
+          "value": "strong_buy",
+          "source": "yahoo_analyst_targets_history",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        },
+        "as_of": {
+          "value": "2026-07-14",
+          "source": "yahoo_analyst_targets_history",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        }
+      },
+      "TradeAiDecision": {
+        "primary_state": {
+          "value": "WAIT",
+          "source": "decision_packets+projection",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        },
+        "proposal_allowed": {
+          "value": false,
+          "source": "decision_action_policy",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        },
+        "operator_meaning": {
+          "value": "Watching for confirmation \u2014 no executable ticket",
+          "source": "decision_projection",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        },
+        "allowed_action_now": {
+          "value": "SET CONDITION ALERT / OBSERVE",
+          "source": "decision_projection",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        },
+        "current_mechanics_visible": {
+          "value": false,
+          "source": "decision_projection",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        },
+        "primary_risk": {
+          "value": null,
+          "source": "decision_projection",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "DATA_UNAVAILABLE",
+          "quality_state": "UNAVAILABLE"
+        },
+        "next_review": {
+          "value": null,
+          "source": "decision_projection",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "DATA_UNAVAILABLE",
+          "quality_state": "UNAVAILABLE"
+        }
+      },
+      "CioReviewArtifact": {
+        "agent_id": {
+          "value": "cio",
+          "source": "review_artifact",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        },
+        "status": {
+          "value": "COMPLETE",
+          "source": "review_artifact",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        },
+        "summary": {
+          "value": "Street consensus is strongly bullish with a mean target of $111.83 (58.9% upside), but Trade AI is in WAIT state with proposal_allowed=false, and price action is neutral with RSI near 41. No entry trigger is confirmed; the correct action is to observe and set condition alerts.",
+          "source": "review_artifact",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        },
+        "verdict": {
+          "value": "ALIGNED: STREET BULLISH / TRADE AI WAIT \u2014 NO EXECUTABLE TICKET",
+          "source": "review_artifact",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        },
+        "provider": {
+          "value": "deepseek",
+          "source": "review_artifact",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        },
+        "model": {
+          "value": "deepseek-v4-flash",
+          "source": "review_artifact",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        },
+        "policy": {
+          "value": "FAST",
+          "source": "review_artifact",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        },
+        "reason_code": {
+          "value": null,
+          "source": "review_artifact",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "DATA_UNAVAILABLE",
+          "quality_state": "UNAVAILABLE"
+        },
+        "process_id": {
+          "value": null,
+          "source": "review_artifact",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "DATA_UNAVAILABLE",
+          "quality_state": "UNAVAILABLE"
+        },
+        "estimated_cost_usd": {
+          "value": 0.00018634,
+          "source": "review_artifact",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        },
+        "display": {
+          "label": "CIO REVIEW: COMPLETE",
+          "provider": "DEEPSEEK",
+          "model": "deepseek-v4-flash",
+          "policy": "FAST",
+          "cost": "$0.00019",
+          "reason": null
+        },
+        "artifact": {
+          "status": "COMPLETE",
+          "summary": "Street consensus is strongly bullish with a mean target of $111.83 (58.9% upside), but Trade AI is in WAIT state with proposal_allowed=false, and price action is neutral with RSI near 41. No entry trigger is confirmed; the correct action is to observe and set condition alerts.",
+          "verdict": "ALIGNED: STREET BULLISH / TRADE AI WAIT \u2014 NO EXECUTABLE TICKET",
+          "provider": "deepseek",
+          "model": "deepseek-v4-flash",
+          "policy": "FAST",
+          "reason_code": null,
+          "display": {
+            "label": "CIO REVIEW: COMPLETE",
+            "provider": "DEEPSEEK",
+            "model": "deepseek-v4-flash",
+            "policy": "FAST",
+            "cost": "$0.00019",
+            "reason": null
+          },
+          "estimated_cost_usd": 0.00018634
+        }
+      },
+      "AgentReviewArtifact": {
+        "agent_id": {
+          "value": "maria",
+          "source": "review_artifact",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        },
+        "status": {
+          "value": "COMPLETE",
+          "source": "review_artifact",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        },
+        "summary": {
+          "value": "CECO Environmental is rated STRONG BUY by analysts with a mean target of $111.83, yet the stock trades at $70.39 with neutral technicals and an RSI near 40.98. The Trade AI state is WAIT, and proposal_allowed is false, so no executable ticket is permitted. The narrative is supportive but lacks confirmation of a technical entry trigger.",
+          "source": "review_artifact",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        },
+        "verdict": {
+          "value": null,
+          "source": "review_artifact",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "DATA_UNAVAILABLE",
+          "quality_state": "UNAVAILABLE"
+        },
+        "provider": {
+          "value": "deepseek",
+          "source": "review_artifact",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        },
+        "model": {
+          "value": "deepseek-v4-flash",
+          "source": "review_artifact",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        },
+        "policy": {
+          "value": "FAST",
+          "source": "review_artifact",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        },
+        "reason_code": {
+          "value": null,
+          "source": "review_artifact",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "DATA_UNAVAILABLE",
+          "quality_state": "UNAVAILABLE"
+        },
+        "process_id": {
+          "value": null,
+          "source": "review_artifact",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "DATA_UNAVAILABLE",
+          "quality_state": "UNAVAILABLE"
+        },
+        "estimated_cost_usd": {
+          "value": 0.0002247,
+          "source": "review_artifact",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        },
+        "display": {
+          "label": "MARIA REVIEW: COMPLETE",
+          "provider": "DEEPSEEK",
+          "model": "deepseek-v4-flash",
+          "policy": "FAST",
+          "cost": "$0.00022",
+          "reason": null
+        },
+        "artifact": {
+          "status": "COMPLETE",
+          "summary": "CECO Environmental is rated STRONG BUY by analysts with a mean target of $111.83, yet the stock trades at $70.39 with neutral technicals and an RSI near 40.98. The Trade AI state is WAIT, and proposal_allowed is false, so no executable ticket is permitted. The narrative is supportive but lacks confirmation of a technical entry trigger.",
+          "provider": "deepseek",
+          "model": "deepseek-v4-flash",
+          "policy": "FAST",
+          "reason_code": null,
+          "display": {
+            "label": "MARIA REVIEW: COMPLETE",
+            "provider": "DEEPSEEK",
+            "model": "deepseek-v4-flash",
+            "policy": "FAST",
+            "cost": "$0.00022",
+            "reason": null
+          },
+          "estimated_cost_usd": 0.0002247
+        }
+      },
+      "CatalystContext": {
+        "summary": {
+          "value": "Best Stocks to Buy in August: AI-Boosted CECO for 70% Upside - Yahoo Finance",
+          "source": "catalyst_events",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        },
+        "versus_industry": {
+          "value": "Company catalyst present; industry relative score not joined (shadow)",
+          "source": "derived",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "CURRENT",
+          "quality_state": "PARTIAL"
+        }
+      },
+      "RelativePerformance": {
+        "summary": {
+          "value": "+0.3% 1D \u00b7 -9.1% 1M \u00b7 -18.4% 3M \u00b7 +57.2% 1Y",
+          "source": "enrichment_cache|symbol_profiles",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        },
+        "periods": {
+          "value": {
+            "1D": 0.28,
+            "1W": 19.81,
+            "1M": -9.09,
+            "3M": -18.35,
+            "6M": 1.14,
+            "YTD": 19.75,
+            "1Y": 57.17
+          },
+          "source": "enrichment_cache",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        },
+        "versus_industry": {
+          "value": null,
+          "source": null,
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "DATA_UNAVAILABLE",
+          "quality_state": "UNAVAILABLE"
+        },
+        "versus_sector": {
+          "value": null,
+          "source": null,
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "DATA_UNAVAILABLE",
+          "quality_state": "UNAVAILABLE"
+        },
+        "versus_spy": {
+          "value": null,
+          "source": null,
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "DATA_UNAVAILABLE",
+          "quality_state": "UNAVAILABLE"
+        },
+        "missing": [
+          "versus_industry",
+          "versus_sector",
+          "versus_spy"
+        ]
+      },
+      "TechnicalSnapshot": {
+        "support": {
+          "value": 59.79,
+          "source": "watchlist_strategy_cards",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        },
+        "resistance": {
+          "value": 82.83,
+          "source": "watchlist_strategy_cards",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        },
+        "setup": {
+          "value": "RSI 41 \u00b7 band 40-55",
+          "source": "watchlist_items|strategy_cards",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        },
+        "rsi": {
+          "value": 40.98,
+          "source": "watchlist_items|enrichment",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        },
+        "rvol": {
+          "value": 6.0,
+          "source": "watchlist_items",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        },
+        "atr": {
+          "value": 4.8,
+          "source": "enrichment_cache",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        }
+      },
+      "PositionContext": {
+        "held": {
+          "value": false,
+          "source": "holdings.json",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        }
+      },
+      "FreshnessAndLineage": {
+        "quote": {
+          "value": "CURRENT",
+          "source": "watch_canonical_quote",
+          "source_record_id": null,
+          "observed_at": "2026-08-05T10:00:03.359707-04:00",
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        },
+        "street": {
+          "value": true,
+          "source": "yahoo_analyst_targets_history",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        },
+        "cio_status": {
+          "value": "COMPLETE",
+          "source": "review_artifact|not_run",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        },
+        "maria_status": {
+          "value": "COMPLETE",
+          "source": "review_artifact|not_run",
+          "source_record_id": null,
+          "observed_at": null,
+          "freshness_state": "CURRENT",
+          "quality_state": "VALID"
+        }
+      }
+    },
+    "card": {
+      "symbol": "CECO",
+      "company": "CECO Environmental Corp.",
+      "company_summary": "CECO Environmental Corp. provides critical solutions in industrial air quality, industrial water treatment, and energy transition solutions in the United States, the United Kingdom, the Netherlands, China, and internati\u2026",
+      "sector": "Industrials",
+      "industry": "Pollution & Treatment Controls",
+      "instrument_type": "stock",
+      "street_rating": "STRONG BUY",
+      "street_tone": "strong",
+      "analyst_count": 6.0,
+      "target_mean": 111.83,
+      "implied_upside_pct": 56.93,
+      "trade_ai_state": "WAIT",
+      "proposal_allowed": false,
+      "operator_meaning": "Watching for confirmation \u2014 no executable ticket",
+      "next_operator_action": "SET CONDITION ALERT / OBSERVE",
+      "primary_risk": null,
+      "last": 71.26,
+      "day_change_pct": 1.236,
+      "price_as_of": "2026-08-05T10:00:03.359707-04:00",
+      "price_source": "market_quotes",
+      "quote_id": 4406299.0,
+      "source_record_id": "market_quotes:4406299",
+      "freshness_state": "CURRENT",
+      "market_session": "regular",
+      "support": 59.79,
+      "resistance": 82.83,
+      "technical_setup": "RSI 41 \u00b7 band 40-55",
+      "catalyst_summary": "Best Stocks to Buy in August: AI-Boosted CECO for 70% Upside - Yahoo Finance",
+      "catalyst_vs_industry": "Company catalyst present; industry relative score not joined (shadow)",
+      "relative_performance_summary": "+0.3% 1D \u00b7 -9.1% 1M \u00b7 -18.4% 3M \u00b7 +57.2% 1Y",
+      "starred": true,
+      "held": false,
+      "screener_origin": false,
+      "cio_review": {
+        "status": "COMPLETE",
+        "summary": "Street consensus is strongly bullish with a mean target of $111.83 (58.9% upside), but Trade AI is in WAIT state with proposal_allowed=false, and price action is neutral with RSI near 41. No entry trigger is confirmed; the correct action is to observe and set condition alerts.",
+        "verdict": "ALIGNED: STREET BULLISH / TRADE AI WAIT \u2014 NO EXECUTABLE TICKET",
+        "provider": "deepseek",
+        "model": "deepseek-v4-flash",
+        "policy": "FAST",
+        "reason_code": null,
+        "display": {
+          "label": "CIO REVIEW: COMPLETE",
+          "provider": "DEEPSEEK",
+          "model": "deepseek-v4-flash",
+          "policy": "FAST",
+          "cost": "$0.00019",
+          "reason": null
+        },
+        "estimated_cost_usd": 0.00018634
+      },
+      "maria_review": {
+        "status": "COMPLETE",
+        "summary": "CECO Environmental is rated STRONG BUY by analysts with a mean target of $111.83, yet the stock trades at $70.39 with neutral technicals and an RSI near 40.98. The Trade AI state is WAIT, and proposal_allowed is false, so no executable ticket is permitted. The narrative is supportive but lacks confirmation of a technical entry trigger.",
+        "provider": "deepseek",
+        "model": "deepseek-v4-flash",
+        "policy": "FAST",
+        "reason_code": null,
+        "display": {
+          "label": "MARIA REVIEW: COMPLETE",
+          "provider": "DEEPSEEK",
+          "model": "deepseek-v4-flash",
+          "policy": "FAST",
+          "cost": "$0.00022",
+          "reason": null
+        },
+        "estimated_cost_usd": 0.0002247
+      },
+      "sentinel_review": {
+        "status": "NOT_RUN",
+        "summary": null,
+        "reason_code": "NOT_SCHEDULED",
+        "display": {
+          "label": "SENTINEL REVIEW: NOT RUN",
+          "provider": "NONE",
+          "model": "NONE",
+          "policy": "NO_CALL",
+          "cost": "$0",
+          "reason": "NOT_SCHEDULED"
+        },
+        "kind": "reflective_or_deterministic_label_only"
+      },
+      "material_change": false,
+      "next_review_time": null
+    }
+  },
+  "card": {
+    "symbol": "CECO",
+    "company": "CECO Environmental Corp.",
+    "company_summary": "CECO Environmental Corp. provides critical solutions in industrial air quality, industrial water treatment, and energy transition solutions in the United States, the United Kingdom, the Netherlands, China, and internati\u2026",
+    "sector": "Industrials",
+    "industry": "Pollution & Treatment Controls",
+    "instrument_type": "stock",
+    "street_rating": "STRONG BUY",
+    "street_tone": "strong",
+    "analyst_count": 6.0,
+    "target_mean": 111.83,
+    "implied_upside_pct": 56.93,
+    "trade_ai_state": "WAIT",
+    "proposal_allowed": false,
+    "operator_meaning": "Watching for confirmation \u2014 no executable ticket",
+    "next_operator_action": "SET CONDITION ALERT / OBSERVE",
+    "primary_risk": null,
+    "last": 71.26,
+    "day_change_pct": 1.236,
+    "price_as_of": "2026-08-05T10:00:03.359707-04:00",
+    "price_source": "market_quotes",
+    "quote_id": 4406299.0,
+    "source_record_id": "market_quotes:4406299",
+    "freshness_state": "CURRENT",
+    "market_session": "regular",
+    "support": 59.79,
+    "resistance": 82.83,
+    "technical_setup": "RSI 41 \u00b7 band 40-55",
+    "catalyst_summary": "Best Stocks to Buy in August: AI-Boosted CECO for 70% Upside - Yahoo Finance",
+    "catalyst_vs_industry": "Company catalyst present; industry relative score not joined (shadow)",
+    "relative_performance_summary": "+0.3% 1D \u00b7 -9.1% 1M \u00b7 -18.4% 3M \u00b7 +57.2% 1Y",
+    "starred": true,
+    "held": false,
+    "screener_origin": false,
+    "cio_review": {
+      "status": "COMPLETE",
+      "summary": "Street consensus is strongly bullish with a mean target of $111.83 (58.9% upside), but Trade AI is in WAIT state with proposal_allowed=false, and price action is neutral with RSI near 41. No entry trigger is confirmed; the correct action is to observe and set condition alerts.",
+      "verdict": "ALIGNED: STREET BULLISH / TRADE AI WAIT \u2014 NO EXECUTABLE TICKET",
+      "provider": "deepseek",
+      "model": "deepseek-v4-flash",
+      "policy": "FAST",
+      "reason_code": null,
+      "display": {
+        "label": "CIO REVIEW: COMPLETE",
+        "provider": "DEEPSEEK",
+        "model": "deepseek-v4-flash",
+        "policy": "FAST",
+        "cost": "$0.00019",
+        "reason": null
+      },
+      "estimated_cost_usd": 0.00018634
+    },
+    "maria_review": {
+      "status": "COMPLETE",
+      "summary": "CECO Environmental is rated STRONG BUY by analysts with a mean target of $111.83, yet the stock trades at $70.39 with neutral technicals and an RSI near 40.98. The Trade AI state is WAIT, and proposal_allowed is false, so no executable ticket is permitted. The narrative is supportive but lacks confirmation of a technical entry trigger.",
+      "provider": "deepseek",
+      "model": "deepseek-v4-flash",
+      "policy": "FAST",
+      "reason_code": null,
+      "display": {
+        "label": "MARIA REVIEW: COMPLETE",
+        "provider": "DEEPSEEK",
+        "model": "deepseek-v4-flash",
+        "policy": "FAST",
+        "cost": "$0.00022",
+        "reason": null
+      },
+      "estimated_cost_usd": 0.0002247
+    },
+    "sentinel_review": {
+      "status": "NOT_RUN",
+      "summary": null,
+      "reason_code": "NOT_SCHEDULED",
+      "display": {
+        "label": "SENTINEL REVIEW: NOT RUN",
+        "provider": "NONE",
+        "model": "NONE",
+        "policy": "NO_CALL",
+        "cost": "$0",
+        "reason": "NOT_SCHEDULED"
+      },
+      "kind": "reflective_or_deterministic_label_only"
+    },
+    "material_change": false,
+    "next_review_time": null
+  },
+  "detail": {
+    "ok": true,
+    "schema": "watchlist_intelligence.detail.v1",
+    "symbol": "CECO",
+    "provider_calls": 0.0,
+    "paid_flags_enabled": false,
+    "broker_write_authority": "NONE",
+    "card": {
+      "symbol": "CECO",
+      "company": "CECO Environmental Corp.",
+      "company_summary": "CECO Environmental Corp. provides critical solutions in industrial air quality, industrial water treatment, and energy transition solutions in the United States, the United Kingdom, the Netherlands, China, and internati\u2026",
+      "sector": "Industrials",
+      "industry": "Pollution & Treatment Controls",
+      "instrument_type": "stock",
+      "street_rating": "STRONG BUY",
+      "street_tone": "strong",
+      "street_consensus": {
+        "rating": "STRONG BUY",
+        "analyst_count": 6.0,
+        "target_mean": 111.83,
+        "target_high": 130.0,
+        "target_low": 85.0,
+        "implied_upside_pct": 56.93,
+        "as_of": "2026-07-14",
+        "source": "yahoo_analyst_targets_history",
+        "recommendation_key": "strong_buy",
+        "recommendation_mean": 1.333
+      },
+      "trade_ai_state": "WAIT",
+      "proposal_allowed": false,
+      "current_mechanics_visible": false,
+      "operator_meaning": "Watching for confirmation \u2014 no executable ticket",
+      "allowed_action_now": "SET CONDITION ALERT / OBSERVE",
+      "next_operator_action": "SET CONDITION ALERT / OBSERVE",
+      "primary_risk": null,
+      "held": false,
+      "last": 71.26,
+      "day_change_pct": 1.236,
+      "price_as_of": "2026-08-05T10:00:03.359707-04:00",
+      "price_source": "market_quotes",
+      "quote_id": 4406299.0,
+      "source_record_id": "market_quotes:4406299",
+      "market_session": "regular",
+      "freshness_state": "CURRENT",
+      "market_state": "OK",
+      "cio_review": {
+        "status": "COMPLETE",
+        "summary": "Street consensus is strongly bullish with a mean target of $111.83 (58.9% upside), but Trade AI is in WAIT state with proposal_allowed=false, and price action is neutral with RSI near 41. No entry trigger is confirmed; the correct action is to observe and set condition alerts.",
+        "verdict": "ALIGNED: STREET BULLISH / TRADE AI WAIT \u2014 NO EXECUTABLE TICKET",
+        "provider": "deepseek",
+        "model": "deepseek-v4-flash",
+        "policy": "FAST",
+        "reason_code": null,
+        "display": {
+          "label": "CIO REVIEW: COMPLETE",
+          "provider": "DEEPSEEK",
+          "model": "deepseek-v4-flash",
+          "policy": "FAST",
+          "cost": "$0.00019",
+          "reason": null
+        },
+        "estimated_cost_usd": 0.00018634
+      },
+      "maria_review": {
+        "status": "COMPLETE",
+        "summary": "CECO Environmental is rated STRONG BUY by analysts with a mean target of $111.83, yet the stock trades at $70.39 with neutral technicals and an RSI near 40.98. The Trade AI state is WAIT, and proposal_allowed is false, so no executable ticket is permitted. The narrative is supportive but lacks confirmation of a technical entry trigger.",
+        "provider": "deepseek",
+        "model": "deepseek-v4-flash",
+        "policy": "FAST",
+        "reason_code": null,
+        "display": {
+          "label": "MARIA REVIEW: COMPLETE",
+          "provider": "DEEPSEEK",
+          "model": "deepseek-v4-flash",
+          "policy": "FAST",
+          "cost": "$0.00022",
+          "reason": null
+        },
+        "estimated_cost_usd": 0.0002247
+      },
+      "sentinel_review": {
+        "status": "NOT_RUN",
+        "summary": null,
+        "reason_code": "NOT_SCHEDULED",
+        "display": {
+          "label": "SENTINEL REVIEW: NOT RUN",
+          "provider": "NONE",
+          "model": "NONE",
+          "policy": "NO_CALL",
+          "cost": "$0",
+          "reason": "NOT_SCHEDULED"
+        },
+        "kind": "reflective_or_deterministic_label_only"
+      },
+      "support": 59.79,
+      "resistance": 82.83,
+      "technical_setup": "RSI 41 \u00b7 band 40-55",
+      "rsi": 40.98,
+      "rvol": 6.0,
+      "atr": 4.8,
+      "catalyst_summary": "Best Stocks to Buy in August: AI-Boosted CECO for 70% Upside - Yahoo Finance",
+      "catalyst_vs_industry": "Company catalyst present; industry relative score not joined (shadow)",
+      "relative_performance_summary": "+0.3% 1D \u00b7 -9.1% 1M \u00b7 -18.4% 3M \u00b7 +57.2% 1Y",
+      "relative_performance": {
+        "periods": {
+          "1D": 0.28,
+          "1W": 19.81,
+          "1M": -9.09,
+          "3M": -18.35,
+          "6M": 1.14,
+          "YTD": 19.75,
+          "1Y": 57.17
+        },
+        "versus_industry": null,
+        "versus_sector": null,
+        "versus_spy": null,
+        "summary": "+0.3% 1D \u00b7 -9.1% 1M \u00b7 -18.4% 3M \u00b7 +57.2% 1Y",
+        "missing": [
+          "versus_industry",
+          "versus_sector",
+          "versus_spy"
+        ],
+        "note": "Industry/sector/SPY relative deltas require peer index join \u2014 null until sourced"
+      },
+      "one_line_thesis": "Watching for confirmation \u2014 no executable ticket",
+      "next_review_time": null,
+      "material_change": false,
+      "investment_thesis": "Watching for confirmation \u2014 no executable ticket",
+      "mechanics": null,
+      "provider_calls_on_build": 0.0,
+      "schema": "watchlist_intelligence.card.v1"
+    },
+    "identity": {
+      "symbol": "CECO",
+      "company": "CECO Environmental Corp.",
+      "company_summary": "CECO Environmental Corp. provides critical solutions in industrial air quality, industrial water treatment, and energy transition solutions in the United States, the United Kingdom, the Netherlands, China, and internati\u2026",
+      "description": "CECO Environmental Corp. provides critical solutions in industrial air quality, industrial water treatment, and energy transition solutions in the United States, the United Kingdom, the Netherlands, China, and internationally.",
+      "sector": "Industrials",
+      "industry": "Pollution & Treatment Controls",
+      "instrument_type": "stock",
+      "what_the_company_does": "CECO Environmental Corp. provides critical solutions in industrial air quality, industrial water treatment, and energy transition solutions in the United States, the United Kingdom, the Netherlands, China, and internationally.",
+      "business_model": null,
+      "customers": null,
+      "segments": null,
+      "geography": null,
+      "economic_sensitivity": null,
+      "missing": [
+        "business_model",
+        "customers",
+        "segments",
+        "geography",
+        "economic_sensitivity"
+      ]
+    },
+    "street": {
+      "rating": "STRONG BUY",
+      "analyst_count": 6.0,
+      "target_mean": 111.83,
+      "target_high": 130.0,
+      "target_low": 85.0,
+      "implied_upside_pct": 56.93,
+      "as_of": "2026-07-14",
+      "source": "yahoo_analyst_targets_history",
+      "recommendation_key": "strong_buy",
+      "recommendation_mean": 1.333
+    },
+    "trade_ai": {
+      "primary_state": "WAIT",
+      "proposal_allowed": false,
+      "current_mechanics_visible": false,
+      "current_mechanics": null,
+      "wait_contract": {
+        "what_must_happen": "options conditional; research, do not propose",
+        "what_must_remain_true": [],
+        "what_would_invalidate": [],
+        "next_review": null,
+        "executable": false
+      },
+      "operator_meaning": "Watching for confirmation \u2014 no executable ticket",
+      "allowed_action_now": "SET CONDITION ALERT / OBSERVE",
+      "blockers": [],
+      "next_deterministic_review_condition": null,
+      "verification_stages": {
+        "deterministic_compilation_status": "PASS",
+        "ticket_validation_status": "NOT_RUN",
+        "quality_admission_status": "NOT_RUN",
+        "reconciliation_status": "QUALITY_NOT_ASSESSED",
+        "primary_failed_stage": null,
+        "primary_reason_codes": [],
+        "reconciled_state": "QUALITY_NOT_ASSESSED",
+        "reconciled_detail": "deterministic result lacks mandatory quality-admission evidence"
+      },
+      "held": false,
+      "packet_id": 3474.0,
+      "material_fingerprint": "d31c60532e4231ed854e51c8b7e6cf6a262ef7774e8eb0f0a583dca44b47d0a7"
+    },
+    "cio_review": {
+      "agent_id": "cio",
+      "status": "COMPLETE",
+      "reason_code": null,
+      "process_id": "watchlist_steph_flash_narrative",
+      "provider": "deepseek",
+      "model": "deepseek-v4-flash",
+      "requested_policy": "FAST",
+      "executed_policy": "FAST",
+      "fallback_used": false,
+      "started_at": "2026-08-05T13:39:54.704077+00:00",
+      "completed_at": "2026-08-05T13:40:02.250209+00:00",
+      "input_snapshot_id": "intel-snap-CECO-cio",
+      "input_hash": "d2f1b7d2f6b2418c45e5879cf82a48959f9757526a518ce02237991b6138efc0",
+      "artifact_id": "intel-cio-CECO-9dc7b17d9349",
+      "artifact_hash": "2332534e592ba8061a23ed940052a5079d6ef93c65b131d49ddfe7886a92ef1a",
+      "request_id_present": true,
+      "provider_request_id": "4b32e404-151e-49be-a55a-e8163c02b6d9",
+      "prompt_tokens": 249.0,
+      "completion_tokens": 541.0,
+      "estimated_cost_usd": 0.00018634,
+      "reconciliation_status": "ADVISORY_COMPLETE",
+      "verdict": "ALIGNED: STREET BULLISH / TRADE AI WAIT \u2014 NO EXECUTABLE TICKET",
+      "summary": "Street consensus is strongly bullish with a mean target of $111.83 (58.9% upside), but Trade AI is in WAIT state with proposal_allowed=false, and price action is neutral with RSI near 41. No entry trigger is confirmed; the correct action is to observe and set condition alerts.",
+      "thesis": "CECO's fundamentals and analyst outlook support a constructive long-term view, but the technical setup lacks confirmation. The stock is trading below the mean target with neutral momentum, suggesting a potential accumulation zone but no clear reversal or breakout signal. Waiting for a technical confirmation (e.g., RSI recovery above 50, price reclaiming a key moving average, or a volume-backed breakout) would align the Trade AI state with the bullish Street narrative.",
+      "counter_thesis": "The bullish Street target may already be partially priced in, and the neutral technicals could indicate a period of consolidation or distribution. The stock may drift lower before finding support, and the WAIT state correctly avoids premature entry. If the broader market or sector weakens, the stock could test lower levels despite analyst optimism.",
+      "catalysts": [],
+      "risks": [
+        "Technical deterioration: RSI near 41 could fall further, signaling continued downside momentum.",
+        "Street target may be stale or overly optimistic; price could remain range-bound for an extended period.",
+        "Macro or sector headwinds could delay the expected re-rating.",
+        "Earnings or guidance miss could invalidate the bullish thesis.",
+        "No volume confirmation: a breakout without volume may be a false signal."
+      ],
+      "evidence_gaps": [],
+      "what_changes_the_decision": "A shift from WAIT to READY would require a confirmed technical trigger, such as: RSI crossing above 50 with increasing volume, price breaking above a key resistance level (e.g., recent swing high or 50-day MA), or a bullish reversal candlestick pattern on higher timeframe. Additionally, a fundamental catalyst (e.g., strong earnings, raised guidance, or new contract wins) could accelerate the transition. Until then, proposal_allowed remains false.",
+      "evidence_references": [],
+      "next_scheduled_review": null,
+      "display": {
+        "label": "CIO REVIEW: COMPLETE",
+        "provider": "DEEPSEEK",
+        "model": "deepseek-v4-flash",
+        "policy": "FAST",
+        "cost": "$0.00019",
+        "reason": null
+      }
+    },
+    "maria_review": {
+      "agent_id": "maria",
+      "status": "COMPLETE",
+      "reason_code": null,
+      "process_id": "watchlist_maria_flash_narrative",
+      "provider": "deepseek",
+      "model": "deepseek-v4-flash",
+      "requested_policy": "FAST",
+      "executed_policy": "FAST",
+      "fallback_used": false,
+      "started_at": "2026-08-05T13:39:45.707192+00:00",
+      "completed_at": "2026-08-05T13:39:54.702811+00:00",
+      "input_snapshot_id": "intel-snap-CECO-maria",
+      "input_hash": "0a6b5b30ef00bb1e3bc4911a8d62d5fb7eff17b53b3a325d7dc38daeb22bfd23",
+      "artifact_id": "intel-maria-CECO-34653e74860c",
+      "artifact_hash": "f6ab9999999ee5055d671c5f3259b00b4c693a37fe28b25c89b3a97b2909541d",
+      "request_id_present": true,
+      "provider_request_id": "d5d84ee9-d186-4529-bd15-607c0a5f7a66",
+      "prompt_tokens": 327.0,
+      "completion_tokens": 639.0,
+      "estimated_cost_usd": 0.0002247,
+      "reconciliation_status": "ADVISORY_COMPLETE",
+      "verdict": "WAIT",
+      "summary": "CECO Environmental is rated STRONG BUY by analysts with a mean target of $111.83, yet the stock trades at $70.39 with neutral technicals and an RSI near 40.98. The Trade AI state is WAIT, and proposal_allowed is false, so no executable ticket is permitted. The narrative is supportive but lacks confirmation of a technical entry trigger.",
+      "thesis": "CECO is positioned in attractive secular themes (industrial air quality, water treatment, energy transition) and has been highlighted for AI-driven upside potential, with multiple sources suggesting undervaluation (37% to 70% upside). The stock is near support at $59.79 and below resistance at $82.83, offering a favorable risk/reward if a confirmed reversal or breakout occurs. Analysts are unanimously bullish (6.0 rating), and the recent oversold signal may be masking an improving earnings narrative ahead of Q2 results.",
+      "counter_thesis": "The stock is in a neutral technical trend with RSI at 40.98, indicating no clear momentum. The WAIT state suggests the current price action does not yet confirm a reversal or breakout. The catalysts are largely narrative-driven (analyst commentary, media mentions) rather than fundamental confirmations, and the stock has not yet demonstrated sustained buying pressure. The gap between the current price and the analyst target implies either a significant re-rating is needed or the market is pricing in risks not captured by the bullish narrative.",
+      "catalysts": [
+        "Q2 earnings release (expected to beat estimates per analyst commentary)",
+        "AI-boosted growth narrative (Yahoo Finance article citing 70% upside)",
+        "Oversold signal potentially masking an upgrade in earnings narrative (sahmcapital.com)",
+        "Recovery hopes and undervaluation thesis (simplywall.st)"
+      ],
+      "risks": [
+        "Neutral technical trend with RSI below 50 suggests lack of momentum",
+        "Failure to break above resistance at $82.83 could lead to continued consolidation or downside",
+        "Earnings miss or weak guidance could invalidate the bullish narrative",
+        "Macro/industrial cyclicality could impact demand for environmental solutions",
+        "High reliance on narrative catalysts rather than confirmed fundamentals"
+      ],
+      "evidence_gaps": [
+        "No recent earnings data or guidance details to validate the 'beat' expectation",
+        "No volume or price action confirmation of the oversold reversal",
+        "No clarity on the specific AI-related growth drivers or their revenue impact",
+        "No comparison of current valuation to historical multiples or peer group"
+      ],
+      "what_changes_the_decision": "A shift to READY would require a confirmed technical trigger (e.g., breakout above $82.83 on strong volume, or a bullish reversal pattern near support) combined with a positive Q2 earnings surprise and raised guidance. Additionally, the Trade AI state must change to allow execution, and the operator must see confirmation of the narrative catalysts translating into price momentum.",
+      "evidence_references": [],
+      "next_scheduled_review": null,
+      "display": {
+        "label": "MARIA REVIEW: COMPLETE",
+        "provider": "DEEPSEEK",
+        "model": "deepseek-v4-flash",
+        "policy": "FAST",
+        "cost": "$0.00022",
+        "reason": null
+      }
+    },
+    "reviews": [
+      {
+        "agent_id": "cio",
+        "status": "COMPLETE",
+        "reason_code": null,
+        "process_id": "watchlist_steph_flash_narrative",
+        "provider": "deepseek",
+        "model": "deepseek-v4-flash",
+        "requested_policy": "FAST",
+        "executed_policy": "FAST",
+        "fallback_used": false,
+        "started_at": "2026-08-05T13:39:54.704077+00:00",
+        "completed_at": "2026-08-05T13:40:02.250209+00:00",
+        "input_snapshot_id": "intel-snap-CECO-cio",
+        "input_hash": "d2f1b7d2f6b2418c45e5879cf82a48959f9757526a518ce02237991b6138efc0",
+        "artifact_id": "intel-cio-CECO-9dc7b17d9349",
+        "artifact_hash": "2332534e592ba8061a23ed940052a5079d6ef93c65b131d49ddfe7886a92ef1a",
+        "request_id_present": true,
+        "provider_request_id": "4b32e404-151e-49be-a55a-e8163c02b6d9",
+        "prompt_tokens": 249.0,
+        "completion_tokens": 541.0,
+        "estimated_cost_usd": 0.00018634,
+        "reconciliation_status": "ADVISORY_COMPLETE",
+        "verdict": "ALIGNED: STREET BULLISH / TRADE AI WAIT \u2014 NO EXECUTABLE TICKET",
+        "summary": "Street consensus is strongly bullish with a mean target of $111.83 (58.9% upside), but Trade AI is in WAIT state with proposal_allowed=false, and price action is neutral with RSI near 41. No entry trigger is confirmed; the correct action is to observe and set condition alerts.",
+        "thesis": "CECO's fundamentals and analyst outlook support a constructive long-term view, but the technical setup lacks confirmation. The stock is trading below the mean target with neutral momentum, suggesting a potential accumulation zone but no clear reversal or breakout signal. Waiting for a technical confirmation (e.g., RSI recovery above 50, price reclaiming a key moving average, or a volume-backed breakout) would align the Trade AI state with the bullish Street narrative.",
+        "counter_thesis": "The bullish Street target may already be partially priced in, and the neutral technicals could indicate a period of consolidation or distribution. The stock may drift lower before finding support, and the WAIT state correctly avoids premature entry. If the broader market or sector weakens, the stock could test lower levels despite analyst optimism.",
+        "catalysts": [],
+        "risks": [
+          "Technical deterioration: RSI near 41 could fall further, signaling continued downside momentum.",
+          "Street target may be stale or overly optimistic; price could remain range-bound for an extended period.",
+          "Macro or sector headwinds could delay the expected re-rating.",
+          "Earnings or guidance miss could invalidate the bullish thesis.",
+          "No volume confirmation: a breakout without volume may be a false signal."
+        ],
+        "evidence_gaps": [],
+        "what_changes_the_decision": "A shift from WAIT to READY would require a confirmed technical trigger, such as: RSI crossing above 50 with increasing volume, price breaking above a key resistance level (e.g., recent swing high or 50-day MA), or a bullish reversal candlestick pattern on higher timeframe. Additionally, a fundamental catalyst (e.g., strong earnings, raised guidance, or new contract wins) could accelerate the transition. Until then, proposal_allowed remains false.",
+        "evidence_references": [],
+        "next_scheduled_review": null,
+        "display": {
+          "label": "CIO REVIEW: COMPLETE",
+          "provider": "DEEPSEEK",
+          "model": "deepseek-v4-flash",
+          "policy": "FAST",
+          "cost": "$0.00019",
+          "reason": null
+        }
+      },
+      {
+        "agent_id": "maria",
+        "status": "COMPLETE",
+        "reason_code": null,
+        "process_id": "watchlist_maria_flash_narrative",
+        "provider": "deepseek",
+        "model": "deepseek-v4-flash",
+        "requested_policy": "FAST",
+        "executed_policy": "FAST",
+        "fallback_used": false,
+        "started_at": "2026-08-05T13:39:45.707192+00:00",
+        "completed_at": "2026-08-05T13:39:54.702811+00:00",
+        "input_snapshot_id": "intel-snap-CECO-maria",
+        "input_hash": "0a6b5b30ef00bb1e3bc4911a8d62d5fb7eff17b53b3a325d7dc38daeb22bfd23",
+        "artifact_id": "intel-maria-CECO-34653e74860c",
+        "artifact_hash": "f6ab9999999ee5055d671c5f3259b00b4c693a37fe28b25c89b3a97b2909541d",
+        "request_id_present": true,
+        "provider_request_id": "d5d84ee9-d186-4529-bd15-607c0a5f7a66",
+        "prompt_tokens": 327.0,
+        "completion_tokens": 639.0,
+        "estimated_cost_usd": 0.0002247,
+        "reconciliation_status": "ADVISORY_COMPLETE",
+        "verdict": "WAIT",
+        "summary": "CECO Environmental is rated STRONG BUY by analysts with a mean target of $111.83, yet the stock trades at $70.39 with neutral technicals and an RSI near 40.98. The Trade AI state is WAIT, and proposal_allowed is false, so no executable ticket is permitted. The narrative is supportive but lacks confirmation of a technical entry trigger.",
+        "thesis": "CECO is positioned in attractive secular themes (industrial air quality, water treatment, energy transition) and has been highlighted for AI-driven upside potential, with multiple sources suggesting undervaluation (37% to 70% upside). The stock is near support at $59.79 and below resistance at $82.83, offering a favorable risk/reward if a confirmed reversal or breakout occurs. Analysts are unanimously bullish (6.0 rating), and the recent oversold signal may be masking an improving earnings narrative ahead of Q2 results.",
+        "counter_thesis": "The stock is in a neutral technical trend with RSI at 40.98, indicating no clear momentum. The WAIT state suggests the current price action does not yet confirm a reversal or breakout. The catalysts are largely narrative-driven (analyst commentary, media mentions) rather than fundamental confirmations, and the stock has not yet demonstrated sustained buying pressure. The gap between the current price and the analyst target implies either a significant re-rating is needed or the market is pricing in risks not captured by the bullish narrative.",
+        "catalysts": [
+          "Q2 earnings release (expected to beat estimates per analyst commentary)",
+          "AI-boosted growth narrative (Yahoo Finance article citing 70% upside)",
+          "Oversold signal potentially masking an upgrade in earnings narrative (sahmcapital.com)",
+          "Recovery hopes and undervaluation thesis (simplywall.st)"
+        ],
+        "risks": [
+          "Neutral technical trend with RSI below 50 suggests lack of momentum",
+          "Failure to break above resistance at $82.83 could lead to continued consolidation or downside",
+          "Earnings miss or weak guidance could invalidate the bullish narrative",
+          "Macro/industrial cyclicality could impact demand for environmental solutions",
+          "High reliance on narrative catalysts rather than confirmed fundamentals"
+        ],
+        "evidence_gaps": [
+          "No recent earnings data or guidance details to validate the 'beat' expectation",
+          "No volume or price action confirmation of the oversold reversal",
+          "No clarity on the specific AI-related growth drivers or their revenue impact",
+          "No comparison of current valuation to historical multiples or peer group"
+        ],
+        "what_changes_the_decision": "A shift to READY would require a confirmed technical trigger (e.g., breakout above $82.83 on strong volume, or a bullish reversal pattern near support) combined with a positive Q2 earnings surprise and raised guidance. Additionally, the Trade AI state must change to allow execution, and the operator must see confirmation of the narrative catalysts translating into price momentum.",
+        "evidence_references": [],
+        "next_scheduled_review": null,
+        "display": {
+          "label": "MARIA REVIEW: COMPLETE",
+          "provider": "DEEPSEEK",
+          "model": "deepseek-v4-flash",
+          "policy": "FAST",
+          "cost": "$0.00022",
+          "reason": null
+        }
+      },
+      {
+        "agent_id": "sentinel",
+        "status": "NOT_RUN",
+        "reason_code": "NOT_SCHEDULED",
+        "process_id": null,
+        "provider": null,
+        "model": null,
+        "requested_policy": "NO_CALL",
+        "executed_policy": "NO_CALL",
+        "fallback_used": false,
+        "started_at": null,
+        "completed_at": null,
+        "input_snapshot_id": null,
+        "input_hash": null,
+        "artifact_id": null,
+        "artifact_hash": null,
+        "request_id_present": false,
+        "provider_request_id": null,
+        "prompt_tokens": 0.0,
+        "completion_tokens": 0.0,
+        "estimated_cost_usd": 0.0,
+        "reconciliation_status": null,
+        "verdict": null,
+        "summary": null,
+        "thesis": null,
+        "counter_thesis": null,
+        "catalysts": [],
+        "risks": [],
+        "evidence_gaps": [],
+        "what_changes_the_decision": null,
+        "evidence_references": [],
+        "next_scheduled_review": null,
+        "display": {
+          "label": "SENTINEL REVIEW: NOT RUN",
+          "provider": "NONE",
+          "model": "NONE",
+          "policy": "NO_CALL",
+          "cost": "$0",
+          "reason": "NOT_SCHEDULED"
+        }
+      },
+      {
+        "agent_id": "steph",
+        "status": "NOT_RUN",
+        "reason_code": "LEGACY_INCOMPLETE_PROVENANCE",
+        "process_id": null,
+        "provider": null,
+        "model": null,
+        "requested_policy": "NO_CALL",
+        "executed_policy": "NO_CALL",
+        "fallback_used": false,
+        "started_at": null,
+        "completed_at": null,
+        "input_snapshot_id": null,
+        "input_hash": null,
+        "artifact_id": null,
+        "artifact_hash": null,
+        "request_id_present": false,
+        "provider_request_id": null,
+        "prompt_tokens": 0.0,
+        "completion_tokens": 0.0,
+        "estimated_cost_usd": 0.0,
+        "reconciliation_status": null,
+        "verdict": null,
+        "summary": null,
+        "thesis": null,
+        "counter_thesis": null,
+        "catalysts": [],
+        "risks": [],
+        "evidence_gaps": [],
+        "what_changes_the_decision": null,
+        "evidence_references": [],
+        "next_scheduled_review": null,
+        "display": {
+          "label": "STEPH REVIEW: NOT RUN",
+          "provider": "NONE",
+          "model": "NONE",
+          "policy": "NO_CALL",
+          "cost": "$0",
+          "reason": "LEGACY_INCOMPLETE_PROVENANCE"
+        },
+        "legacy_present": true,
+        "legacy_model_seen": "gemma3:4b",
+        "legacy_summary_snip": "```json\n{\n  \"summary\": \"The CECO position currently does not support the $55,000 income target due to its near-term technical weakness and the cautious sentimen",
+        "legacy_row_id": "res-ba6ee366-06d",
+        "legacy_completed_at": "2026-07-21T11:35:49.722706-04:00",
+        "legacy_prompt_hash": "62074deb3783a40a",
+        "note": "Legacy row lacks process_id/provider_request_id/artifact_hash \u2014 not shown as COMPLETE"
+      },
+      {
+        "agent_id": "risk",
+        "status": "NOT_RUN",
+        "reason_code": "NOT_SCHEDULED",
+        "process_id": null,
+        "provider": null,
+        "model": null,
+        "requested_policy": "NO_CALL",
+        "executed_policy": "NO_CALL",
+        "fallback_used": false,
+        "started_at": null,
+        "completed_at": null,
+        "input_snapshot_id": null,
+        "input_hash": null,
+        "artifact_id": null,
+        "artifact_hash": null,
+        "request_id_present": false,
+        "provider_request_id": null,
+        "prompt_tokens": 0.0,
+        "completion_tokens": 0.0,
+        "estimated_cost_usd": 0.0,
+        "reconciliation_status": null,
+        "verdict": null,
+        "summary": null,
+        "thesis": null,
+        "counter_thesis": null,
+        "catalysts": [],
+        "risks": [],
+        "evidence_gaps": [],
+        "what_changes_the_decision": null,
+        "evidence_references": [],
+        "next_scheduled_review": null,
+        "display": {
+          "label": "RISK REVIEW: NOT RUN",
+          "provider": "NONE",
+          "model": "NONE",
+          "policy": "NO_CALL",
+          "cost": "$0",
+          "reason": "NOT_SCHEDULED"
+        }
+      },
+      {
+        "agent_id": "grok",
+        "status": "NOT_RUN",
+        "reason_code": "NOT_SCHEDULED",
+        "process_id": null,
+        "provider": null,
+        "model": null,
+        "requested_policy": "NO_CALL",
+        "executed_policy": "NO_CALL",
+        "fallback_used": false,
+        "started_at": null,
+        "completed_at": null,
+        "input_snapshot_id": null,
+        "input_hash": null,
+        "artifact_id": null,
+        "artifact_hash": null,
+        "request_id_present": false,
+        "provider_request_id": null,
+        "prompt_tokens": 0.0,
+        "completion_tokens": 0.0,
+        "estimated_cost_usd": 0.0,
+        "reconciliation_status": null,
+        "verdict": null,
+        "summary": null,
+        "thesis": null,
+        "counter_thesis": null,
+        "catalysts": [],
+        "risks": [],
+        "evidence_gaps": [],
+        "what_changes_the_decision": null,
+        "evidence_references": [],
+        "next_scheduled_review": null,
+        "display": {
+          "label": "GROK REVIEW: NOT RUN",
+          "provider": "NONE",
+          "model": "NONE",
+          "policy": "NO_CALL",
+          "c

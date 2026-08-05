@@ -1054,13 +1054,18 @@ def gate_and_generate(
                 returned_model=tradeai.get("returned_model"),
                 thinking=tradeai.get("thinking"),
                 reasoning_effort=tradeai.get("reasoning_effort"),
-                provider_request_id=tradeai.get("request_id"),
+                provider_request_id=tradeai.get("request_id") or tradeai.get("client_request_id") or tradeai.get("provider_request_id"),
             )
         except Exception:
             # Observability only for paid; ledger already settled/released
             pass
     if return_provenance:
         tradeai = prov.get("_tradeai") or {}
+        req_ref = (
+            tradeai.get("request_id")
+            or tradeai.get("client_request_id")
+            or tradeai.get("provider_request_id")
+        )
         return text, {
             "usage": prov.get("usage") or {},
             "requested_policy": tradeai.get("requested_policy") or policy,
@@ -1069,11 +1074,14 @@ def gate_and_generate(
             "returned_model": tradeai.get("returned_model"),
             "thinking": tradeai.get("thinking"),
             "reasoning_effort": tradeai.get("reasoning_effort"),
-            "request_id": tradeai.get("request_id") or tradeai.get("client_request_id"),
+            "request_id": req_ref,
+            "client_request_id": tradeai.get("client_request_id"),
             "estimated_cost_usd": tradeai.get("estimated_cost_usd"),
             "latency_ms": tradeai.get("latency_ms"),
             "fallback_used": tradeai.get("fallback_used", False),
             "effective_max_tokens": effective_out,
+            "reservation_id": reservation_id,
+            "settlement_id": reservation_id,  # settle updates same reservation row
         }
     return text
 

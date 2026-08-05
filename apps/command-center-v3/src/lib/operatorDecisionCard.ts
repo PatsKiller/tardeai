@@ -16,6 +16,7 @@ export type OperatorState =
   | 'BLOCKED'
   | 'NO TRADE'
   | 'MANAGE POSITION'
+  | 'DETERMINISTIC FAIL'
 
 export type OperatorPlan = {
   key: string
@@ -262,7 +263,41 @@ export function buildOperatorPresentation(opts: {
   let primaryFamily: OperatorPlan | null = null
   let alternative: OperatorPlan | null = null
 
-  if (inputsStale) {
+  // Rockville / V6: deterministic ticket failure is the primary state — never WAIT
+  // with current trigger/invalidation. Mechanics stay historical only.
+  const tr = packet.ticket_review || {}
+  const rec = tr.reconciled || {}
+  const recState = String(rec.state || '').toUpperCase()
+  const cap = packet.current_actionable_plan
+  const tvState = String((cap && cap.ticket_validation && cap.ticket_validation.state) || '').toUpperCase()
+  const deterministicFail =
+    recState === 'DETERMINISTIC_FAIL' ||
+    tvState === 'FAIL' ||
+    rec.deterministic === 'FAIL' ||
+    rec.display_mechanics === false && rec.proposal_allowed === false && recState.includes('FAIL')
+
+  if (deterministicFail) {
+    state = 'DETERMINISTIC FAIL'
+    const detail =
+      rec.detail ||
+      (rec.hard_failures && rec.hard_failures[0]) ||
+      (cap && cap.ticket_validation && (cap.ticket_validation.hard_failures || [])[0]) ||
+      'Quality or ticket validation failed'
+    headline = 'NO TRADE MECHANICS'
+    whyLines = [
+      String(detail).slice(0, 160),
+      'Proposal eligibility: NO — historical levels only under audit history',
+    ]
+    primaryCta = 'View Blockers'
+    secondaryCta = 'Refresh Inputs'
+    mechanics = null // never current mechanics on deterministic fail
+    primaryFamily = {
+      key: 'deterministic_fail',
+      title: 'Deterministic fail',
+      statusLabel: 'no trade mechanics',
+      why: whyLines[0],
+    }
+  } else if (inputsStale) {
     state = 'REFRESH'
     const reasons = (ap.invalidation_reasons || ap.blocks || cv.invalidation_reasons || [])
       .map((x: any) => humanBlock(String(x)))
@@ -540,6 +575,6 @@ export function buildOperatorPresentation(opts: {
 export function operatorStateColor(state: OperatorState): string {
   if (state === 'READY') return '#22c55e'
   if (state === 'REFRESH' || state === 'WAIT' || state === 'MANAGE POSITION') return '#ffb000'
-  if (state === 'BLOCKED' || state === 'NO TRADE') return '#ef4444'
+  if (state === 'BLOCKED' || state === 'NO TRADE' || state === 'DETERMINISTIC FAIL') return '#ef4444'
   return '#94a3b8'
 }
