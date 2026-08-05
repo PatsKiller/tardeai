@@ -656,14 +656,17 @@ EXCLUDED_TOP = frozenset({"AVOID", "BLOCKED", "DETERMINISTIC_FAIL"})
 
 
 def rank_eligibility(state: str | None, card: dict | None = None) -> tuple[str, str | None]:
+    """Top Ideas eligibility.
+
+    Authorized COMPLETE maria/cio reviews always stay on the board (canary proof),
+    even if Trade AI state is AVOID/STALE. AVOID without COMPLETE remains excluded.
+    """
     st = (state or "").upper()
-    # Authorized COMPLETE reviews remain visible in Top Ideas even if packet is STALE
     c = card or {}
     for key in ("maria_review", "cio_review"):
         r = c.get(key) or {}
         if r.get("status") == "COMPLETE" and r.get("model") and r.get("provider"):
-            if st not in EXCLUDED_TOP:
-                return "eligible", None
+            return "eligible", None
     if st in ELIGIBLE_TOP:
         return "eligible", None
     if st in REPAIR_QUEUE:
@@ -708,6 +711,16 @@ def rank_top_ideas(items: list[dict]) -> list[dict]:
             review += 3
         if (c.get("cio_review") or {}).get("status") == "COMPLETE":
             review += 3
+        # Strong boost so authorized canary COMPLETE is visible near top of Top Ideas
+        if (c.get("maria_review") or {}).get("status") == "COMPLETE" and (c.get("maria_review") or {}).get("model"):
+            review += 40
+        if (c.get("cio_review") or {}).get("status") == "COMPLETE" and (c.get("cio_review") or {}).get("model"):
+            review += 40
+        # Demote AVOID/STALE packet without dropping COMPLETE from list
+        if state in EXCLUDED_TOP:
+            state_pts = -15
+        elif state in REPAIR_QUEUE:
+            state_pts = max(state_pts, 0)
         qf = (c.get("quote_freshness") or c.get("freshness_state") or "")
         fresh = 5 if qf in ("CURRENT", "PREMARKET_CURRENT", "AFTER_HOURS_CURRENT") else 0
         total = street + state_pts + upside_pts + starred + held + review + fresh

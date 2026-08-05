@@ -244,14 +244,22 @@ def eligible_universe(
 
 def is_unresolved_identity(card: dict[str, Any]) -> bool:
     """CUSIP-like / non-ticker symbols or missing company identity."""
-    sym = (card.get("symbol") or "").upper()
+    import re
+    sym = (card.get("symbol") or "").upper().strip()
     if not sym:
         return True
-    # Pure digit+letter CUSIP-style (e.g. 12507E201)
-    if len(sym) >= 8 and any(ch.isdigit() for ch in sym) and not card.get("company"):
+    company = (card.get("company") or "").strip()
+    # CUSIP-style (e.g. 12507E201): long alphanumeric with many digits
+    if re.fullmatch(r"[0-9]{3,}[A-Z0-9]{3,}", sym) and sum(ch.isdigit() for ch in sym) >= 4:
+        return True
+    if len(sym) >= 8 and sum(ch.isdigit() for ch in sym) >= 4:
         return True
     if sym.isdigit():
         return True
+    if not company or company.upper() == sym:
+        # no real company name — only block when also no quote/profile signals
+        if card.get("last") is None and not card.get("sector") and not card.get("industry"):
+            return True
     if (card.get("identity_quality") or "").upper() in ("INVALID", "UNRESOLVED", "UNAVAILABLE"):
         return True
     return False
