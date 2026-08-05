@@ -19,26 +19,28 @@ function pct(n?: number | null) {
 export default function SymbolIntelligencePage() {
   const { symbol = '' } = useParams()
   const sym = symbol.toUpperCase()
+  // Canonical Data Broker detail — not page-specific joins
   const { data, loading, error } = useApi<any>(
-    sym ? `/api/v3/watchlist/intelligence/${sym}` : '',
+    sym ? `/api/v3/data-broker/watch-intelligence/${sym}` : '',
     120_000,
   )
   const body = data?.data && data.data.ok != null ? data.data : data
-  const card = body?.card || {}
-  const identity = body?.identity || {}
-  const street = body?.street || card.street_consensus || {}
-  const tradeAi = body?.trade_ai || {}
-  const cio = body?.cio_review || {}
-  const maria = body?.maria_review || {}
-  const reviews = body?.reviews || []
-  const cats = body?.catalysts?.timeline || []
-  const rel = body?.relative_performance || {}
-  const fund = body?.fundamentals || {}
-  const tech = body?.technicals || {}
-  const thesis = body?.thesis || {}
-  const fresh = body?.freshness_matrix || {}
-  const lineage = body?.evidence_lineage || {}
-  const mechanics = body?.mechanics
+  const detail = body?.detail || body || {}
+  const card = body?.card || detail.card || {}
+  const identity = detail.identity || {}
+  const street = detail.street || card.street_consensus || {}
+  const tradeAi = detail.trade_ai || {}
+  const cio = detail.cio_review || card.cio_review || {}
+  const maria = detail.maria_review || card.maria_review || {}
+  const reviews = detail.reviews || []
+  const cats = detail.catalysts?.timeline || []
+  const rel = detail.relative_performance || {}
+  const fund = detail.fundamentals || {}
+  const tech = detail.technicals || {}
+  const thesis = detail.thesis || {}
+  const fresh = detail.freshness_matrix || {}
+  const lineage = detail.evidence_lineage || {}
+  const mechanics = detail.mechanics
 
   if (!sym) return <div style={{ color: BB.red }}>Missing symbol</div>
   if (loading) return <div style={{ color: BB.text3, fontSize: TYPE.sm }}>Loading {sym}…</div>

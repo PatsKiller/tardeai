@@ -973,6 +973,57 @@ def _stops_audit_api(query=None):
             "note": "read-only: evidence-bound 2FA stop requests + operator confirmations / Fidelity manual tickets"}
 
 
+def _build_reentry_decision_desk_api(query=None):
+    """GET /api/v2/reentry/decision-desk — calls the deterministic Data Broker decision desk.
+    All price/RSI/indicator values sourced from market_quotes + indicator_confluence_cache.
+    No LLM on this path. Advisory only."""
+    try:
+        from lib.data_broker.reentry_decision_desk import build_decision_desk
+        return build_decision_desk(_db_query)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:300], "advisory_only": True}
+
+
+def _run_reentry_insights_api(body=None):
+    """POST /api/v2/reentry/run-insights — runs DeepSeek Flash stop-out quality + thesis.
+    Advisory only. Capped at 20 quality + 10 thesis calls.
+    Stores results in ui_prefs under portfolio.reentry.llm_insights.v1."""
+    try:
+        from lib.data_broker.reentry_decision_desk import build_decision_desk
+        from lib.reentry_llm_insight import run_reentry_insights, store_insights
+
+        # Build decision desk to get rows with market data
+        desk = build_decision_desk(_db_query)
+        rows = desk.get("rows") or []
+
+        if not rows:
+            return {"ok": True, "insight_count": 0, "message": "No symbols to analyze"}
+
+        results = run_reentry_insights(rows)
+        from db_adapter import _execute
+        stored = store_insights(_execute, results)
+
+        quality_count = sum(1 for k in results if k.endswith(":quality") and results[k].success)
+        thesis_count = sum(1 for k in results if k.endswith(":thesis") and results[k].success)
+        total_cost = sum(r.cost_estimate for r in results.values())
+        errors = [r.error for r in results.values() if not r.success]
+
+        return {
+            "ok": True,
+            "advisory_only": True,
+            "provider": "deepseek-v4-flash",
+            "policy": "FAST",
+            "quality_calls": quality_count,
+            "thesis_calls": thesis_count,
+            "total_calls": len(results),
+            "total_estimated_cost_usd": round(total_cost, 6),
+            "stored": stored,
+            "errors": errors[:5] if errors else None,
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:300], "advisory_only": True}
+
+
 def _stops_reentry_watch_api(query=None):
     """GET /api/v2/stops/reentry-watch — advisory stop-out reviews + re-entry watch rows from journal lifecycle.
     Powers Stop Management → Audit re-entry panel. Never routes orders."""
@@ -33840,6 +33891,8 @@ ROUTES = {
     "/api/v2/stops/management": lambda q=None: _stops_management_api(q),
     "/api/v2/stops/audit": lambda q=None: _stops_audit_api(q),
     "/api/v2/stops/reentry-watch": lambda q=None: _stops_reentry_watch_api(q),
+    "/api/v2/reentry/decision-desk": lambda q=None: _build_reentry_decision_desk_api(q),
+    "/api/v2/reentry/run-insights": lambda q=None: _run_reentry_insights_api(),
     "/api/v2/portfolio/performance": portfolio_performance,
     "/api/v2/watchlist": watchlist_combined,
     "/api/v2/notifications/recent": notifications_recent,
@@ -38311,6 +38364,46 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             if len(parts) == 2 and parts[1].lower() == "reviews":
                 return 200, _wli.get_reviews(parts[0].upper())
             return 404, {"ok": False, "error": "not_found"}
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
+
+    # Canonical Data Broker — Watch Intelligence projection (read-only)
+    if method == "GET" and base_path.startswith("/api/v3/data-broker/"):
+        try:
+            import api_v3_data_broker_watch as _dbw
+            p = base_path[len("/api/v3/data-broker/"):].strip("/")
+            if p == "watch-intelligence":
+                return 200, _dbw.get_list(query or {})
+            if p == "watch-filters":
+                return 200, _dbw.get_filters()
+            if p == "watch-lists":
+                return 200, _dbw.get_lists()
+            if p.startswith("watch-intelligence/"):
+                sym = p[len("watch-intelligence/"):].strip("/").upper()
+                if sym:
+                    return 200, _dbw.get_detail(sym)
+            if p.startswith("watch-reviews/"):
+                sym = p[len("watch-reviews/"):].strip("/").upper()
+                if sym:
+                    return 200, _dbw.get_reviews(sym)
+            return 404, {"ok": False, "error": "not_found"}
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
+
+    # Governed Watch commands (writes) — not broker projection mutations
+    if method == "POST" and base_path.startswith("/api/v3/watch/commands/"):
+        try:
+            import api_v3_watch_commands as _wcmd
+            cmd = base_path[len("/api/v3/watch/commands/"):].strip("/").lower()
+            if cmd == "star":
+                return 200, _wcmd.post_star(body or {})
+            if cmd in ("list-membership", "list_membership"):
+                return 200, _wcmd.post_list_membership(body or {})
+            if cmd == "alert":
+                return 200, _wcmd.post_alert(body or {})
+            if cmd in ("refresh-data", "refresh_data"):
+                return 200, _wcmd.post_refresh_data(body or {})
+            return 404, {"ok": False, "error": "unknown_command"}
         except Exception as e:
             return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
 

@@ -1,0 +1,1778 @@
+{
+  "ok": true,
+  "snapshot_id": "de3fef8cbf8350f32cea3500",
+  "generated_at": "2026-08-05T14:15:09.875165+00:00",
+  "data_contract_version": "watch_intelligence.broker.v1",
+  "contract_version": "watch_intelligence.broker.v1",
+  "provider_calls": 0,
+  "paid_flags_enabled": false,
+  "broker_write_authority": "NONE",
+  "view": "screener_finds",
+  "sort": "watch_rank",
+  "query": {
+    "view": "screener_finds",
+    "page_size": "20"
+  },
+  "source_status": {
+    "canonical_quotes": "ok",
+    "street_consensus": "ok",
+    "decision_packets": "ok",
+    "review_artifacts": "ok",
+    "symbol_profiles": "ok",
+    "provider_calls": 0
+  },
+  "data_quality_status": "OK",
+  "counts": {
+    "total_matched": 3,
+    "page": 1,
+    "page_size": 20,
+    "starred_universe": 12,
+    "held_universe": 25,
+    "screener_universe": 3,
+    "street_strong_buy": 0,
+    "street_buy": 0,
+    "trade_ai_wait": 0,
+    "proposal_eligible": 0,
+    "complete_reviews": 0
+  },
+  "items": [
+    {
+      "symbol": "BCSF",
+      "domains": {
+        "SymbolIdentity": {
+          "symbol": {
+            "value": "BCSF",
+            "source": "watch_intelligence",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "company": {
+            "value": "Bain Capital Specialty Finance, Inc",
+            "source": "symbol_profiles",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "company_summary": {
+            "value": "Bain Capital Specialty Finance, Inc. is business development company specializing in direct loans to middle-market companies.",
+            "source": "symbol_profiles.description_1s",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "sector": {
+            "value": "Financial Services",
+            "source": "symbol_profiles",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "industry": {
+            "value": "Asset Management",
+            "source": "symbol_profiles",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "instrument_type": {
+            "value": "stock",
+            "source": "symbol_profiles",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          }
+        },
+        "CanonicalQuote": {
+          "last": {
+            "value": 12.94,
+            "source": "market_quotes",
+            "source_record_id": "market_quotes:4405506",
+            "observed_at": "2026-08-05T10:00:03.359707-04:00",
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "day_change_pct": {
+            "value": 1.7296,
+            "source": "market_quotes",
+            "source_record_id": "market_quotes:4405506",
+            "observed_at": "2026-08-05T10:00:03.359707-04:00",
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "price_as_of": {
+            "value": "2026-08-05T10:00:03.359707-04:00",
+            "source": "market_quotes",
+            "source_record_id": "market_quotes:4405506",
+            "observed_at": "2026-08-05T10:00:03.359707-04:00",
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "price_source": {
+            "value": "market_quotes",
+            "source": "watch_canonical_quote",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "quote_id": {
+            "value": 4405506.0,
+            "source": "watch_canonical_quote",
+            "source_record_id": "4405506.0",
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "source_record_id": {
+            "value": "market_quotes:4405506",
+            "source": "watch_canonical_quote",
+            "source_record_id": "market_quotes:4405506",
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "market_session": {
+            "value": "regular",
+            "source": "watch_canonical_quote",
+            "source_record_id": null,
+            "observed_at": "2026-08-05T10:00:03.359707-04:00",
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "freshness_state": {
+            "value": "CURRENT",
+            "source": "watch_canonical_quote",
+            "source_record_id": null,
+            "observed_at": "2026-08-05T10:00:03.359707-04:00",
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "market_state": {
+            "value": "OK",
+            "source": "watch_canonical_quote",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          }
+        },
+        "WatchMembership": {
+          "on_watchlist": {
+            "value": true,
+            "source": "watchlist_items",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "starred": {
+            "value": false,
+            "source": "operator_starred_symbols",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "held": {
+            "value": false,
+            "source": "holdings.json",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "screener_origin": {
+            "value": true,
+            "source": "screener_find_pins|watchlist_items.source",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "status": {
+            "value": null,
+            "source": "watchlist_items",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "DATA_UNAVAILABLE",
+            "quality_state": "UNAVAILABLE"
+          }
+        },
+        "StreetConsensus": {
+          "rating": {
+            "value": "NOT RATED",
+            "source": "yahoo_analyst_targets_history",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "tone": {
+            "value": "hold",
+            "source": "yahoo_analyst_targets_history",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "analyst_count": {
+            "value": null,
+            "source": "yahoo",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "DATA_UNAVAILABLE",
+            "quality_state": "UNAVAILABLE"
+          },
+          "target_mean": {
+            "value": null,
+            "source": "yahoo",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "DATA_UNAVAILABLE",
+            "quality_state": "UNAVAILABLE"
+          },
+          "implied_upside_pct": {
+            "value": null,
+            "source": "computed_from_yahoo_target_vs_quote",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "DATA_UNAVAILABLE",
+            "quality_state": "UNAVAILABLE"
+          },
+          "recommendation_key": {
+            "value": null,
+            "source": "yahoo",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "DATA_UNAVAILABLE",
+            "quality_state": "UNAVAILABLE"
+          },
+          "as_of": {
+            "value": null,
+            "source": "yahoo",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "DATA_UNAVAILABLE",
+            "quality_state": "UNAVAILABLE"
+          }
+        },
+        "TradeAiDecision": {
+          "primary_state": {
+            "value": "DETERMINISTIC_FAIL",
+            "source": "decision_packets+projection",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "proposal_allowed": {
+            "value": false,
+            "source": "decision_action_policy",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "operator_meaning": {
+            "value": "NO TRADE MECHANICS \u2014 quality or ticket validation failed",
+            "source": "decision_projection",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "allowed_action_now": {
+            "value": "NO TRADE ACTION",
+            "source": "decision_projection",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "current_mechanics_visible": {
+            "value": false,
+            "source": "decision_projection",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "primary_risk": {
+            "value": "quality admission: technical snapshot is STALE",
+            "source": "decision_projection",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "next_review": {
+            "value": "Refresh float and volatility inputs, then rerun deterministic validation",
+            "source": "decision_projection",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          }
+        },
+        "CioReviewArtifact": {
+          "agent_id": {
+            "value": "cio",
+            "source": "not_run",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "status": {
+            "value": "NOT_RUN",
+            "source": "not_run",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "summary": {
+            "value": null,
+            "source": "not_run",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "DATA_UNAVAILABLE",
+            "quality_state": "UNAVAILABLE"
+          },
+          "verdict": {
+            "value": null,
+            "source": "not_run",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "DATA_UNAVAILABLE",
+            "quality_state": "UNAVAILABLE"
+          },
+          "provider": {
+            "value": null,
+            "source": "not_run",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "DATA_UNAVAILABLE",
+            "quality_state": "UNAVAILABLE"
+          },
+          "model": {
+            "value": null,
+            "source": "not_run",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "DATA_UNAVAILABLE",
+            "quality_state": "UNAVAILABLE"
+          },
+          "policy": {
+            "value": "NO_CALL",
+            "source": "not_run",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "reason_code": {
+            "value": "NO_MATERIAL_CHANGE_NO_CALL",
+            "source": "not_run",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "process_id": {
+            "value": null,
+            "source": "not_run",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "DATA_UNAVAILABLE",
+            "quality_state": "UNAVAILABLE"
+          },
+          "estimated_cost_usd": {
+            "value": 0.0,
+            "source": "not_run",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "display": {
+            "label": "CIO REVIEW: NOT RUN",
+            "provider": "NONE",
+            "model": "NONE",
+            "policy": "NO_CALL",
+            "cost": "$0",
+            "reason": "NO_MATERIAL_CHANGE_NO_CALL"
+          },
+          "artifact": null
+        },
+        "AgentReviewArtifact": {
+          "agent_id": {
+            "value": "maria",
+            "source": "not_run",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "status": {
+            "value": "NOT_RUN",
+            "source": "not_run",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "summary": {
+            "value": null,
+            "source": "not_run",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "DATA_UNAVAILABLE",
+            "quality_state": "UNAVAILABLE"
+          },
+          "verdict": {
+            "value": null,
+            "source": "not_run",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "DATA_UNAVAILABLE",
+            "quality_state": "UNAVAILABLE"
+          },
+          "provider": {
+            "value": null,
+            "source": "not_run",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "DATA_UNAVAILABLE",
+            "quality_state": "UNAVAILABLE"
+          },
+          "model": {
+            "value": null,
+            "source": "not_run",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "DATA_UNAVAILABLE",
+            "quality_state": "UNAVAILABLE"
+          },
+          "policy": {
+            "value": "NO_CALL",
+            "source": "not_run",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "reason_code": {
+            "value": "LEGACY_INCOMPLETE_PROVENANCE",
+            "source": "not_run",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "process_id": {
+            "value": null,
+            "source": "not_run",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "DATA_UNAVAILABLE",
+            "quality_state": "UNAVAILABLE"
+          },
+          "estimated_cost_usd": {
+            "value": 0.0,
+            "source": "not_run",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "display": {
+            "label": "MARIA REVIEW: NOT RUN",
+            "provider": "NONE",
+            "model": "NONE",
+            "policy": "NO_CALL",
+            "cost": "$0",
+            "reason": "LEGACY_INCOMPLETE_PROVENANCE"
+          },
+          "artifact": null
+        },
+        "CatalystContext": {
+          "summary": {
+            "value": null,
+            "source": "catalyst_events",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "DATA_UNAVAILABLE",
+            "quality_state": "UNAVAILABLE"
+          },
+          "versus_industry": {
+            "value": null,
+            "source": "derived",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "DATA_UNAVAILABLE",
+            "quality_state": "UNAVAILABLE"
+          }
+        },
+        "RelativePerformance": {
+          "summary": {
+            "value": "+1.5% 1D \u00b7 -0.3% 1M \u00b7 -9.6% 3M \u00b7 -13.1% 1Y",
+            "source": "enrichment_cache|symbol_profiles",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "periods": {
+            "value": {
+              "1D": 1.51,
+              "1W": 0.29,
+              "1M": -0.26,
+              "3M": -9.56,
+              "6M": -4.27,
+              "YTD": -9.37,
+              "1Y": -13.07
+            },
+            "source": "enrichment_cache",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "versus_industry": {
+            "value": null,
+            "source": null,
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "DATA_UNAVAILABLE",
+            "quality_state": "UNAVAILABLE"
+          },
+          "versus_sector": {
+            "value": null,
+            "source": null,
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "DATA_UNAVAILABLE",
+            "quality_state": "UNAVAILABLE"
+          },
+          "versus_spy": {
+            "value": null,
+            "source": null,
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "DATA_UNAVAILABLE",
+            "quality_state": "UNAVAILABLE"
+          },
+          "missing": [
+            "versus_industry",
+            "versus_sector",
+            "versus_spy"
+          ]
+        },
+        "TechnicalSnapshot": {
+          "support": {
+            "value": 12.26,
+            "source": "watchlist_strategy_cards",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "resistance": {
+            "value": 12.94,
+            "source": "watchlist_strategy_cards",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "setup": {
+            "value": "RSI 49 \u00b7 band 40-55",
+            "source": "watchlist_items|strategy_cards",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "rsi": {
+            "value": 49.25,
+            "source": "watchlist_items|enrichment",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "rvol": {
+            "value": 2.25,
+            "source": "watchlist_items",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "atr": {
+            "value": 0.31,
+            "source": "enrichment_cache",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          }
+        },
+        "PositionContext": {
+          "held": {
+            "value": false,
+            "source": "holdings.json",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          }
+        },
+        "FreshnessAndLineage": {
+          "quote": {
+            "value": "CURRENT",
+            "source": "watch_canonical_quote",
+            "source_record_id": null,
+            "observed_at": "2026-08-05T10:00:03.359707-04:00",
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "street": {
+            "value": false,
+            "source": "yahoo",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "cio_status": {
+            "value": "NOT_RUN",
+            "source": "review_artifact|not_run",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "maria_status": {
+            "value": "NOT_RUN",
+            "source": "review_artifact|not_run",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          }
+        }
+      },
+      "card": {
+        "symbol": "BCSF",
+        "company": "Bain Capital Specialty Finance, Inc",
+        "company_summary": "Bain Capital Specialty Finance, Inc. is business development company specializing in direct loans to middle-market companies.",
+        "sector": "Financial Services",
+        "industry": "Asset Management",
+        "instrument_type": "stock",
+        "street_rating": "NOT RATED",
+        "street_tone": "hold",
+        "analyst_count": null,
+        "target_mean": null,
+        "implied_upside_pct": null,
+        "trade_ai_state": "DETERMINISTIC_FAIL",
+        "proposal_allowed": false,
+        "operator_meaning": "NO TRADE MECHANICS \u2014 quality or ticket validation failed",
+        "next_operator_action": "NO TRADE ACTION",
+        "primary_risk": "quality admission: technical snapshot is STALE",
+        "last": 12.94,
+        "day_change_pct": 1.7296,
+        "price_as_of": "2026-08-05T10:00:03.359707-04:00",
+        "price_source": "market_quotes",
+        "quote_id": 4405506.0,
+        "source_record_id": "market_quotes:4405506",
+        "freshness_state": "CURRENT",
+        "market_session": "regular",
+        "support": 12.26,
+        "resistance": 12.94,
+        "technical_setup": "RSI 49 \u00b7 band 40-55",
+        "catalyst_summary": null,
+        "catalyst_vs_industry": null,
+        "relative_performance_summary": "+1.5% 1D \u00b7 -0.3% 1M \u00b7 -9.6% 3M \u00b7 -13.1% 1Y",
+        "starred": false,
+        "held": false,
+        "screener_origin": true,
+        "cio_review": {
+          "status": "NOT_RUN",
+          "summary": null,
+          "verdict": null,
+          "provider": null,
+          "model": null,
+          "policy": "NO_CALL",
+          "reason_code": "NO_MATERIAL_CHANGE_NO_CALL",
+          "display": {
+            "label": "CIO REVIEW: NOT RUN",
+            "provider": "NONE",
+            "model": "NONE",
+            "policy": "NO_CALL",
+            "cost": "$0",
+            "reason": "NO_MATERIAL_CHANGE_NO_CALL"
+          },
+          "estimated_cost_usd": 0.0
+        },
+        "maria_review": {
+          "status": "NOT_RUN",
+          "summary": null,
+          "provider": null,
+          "model": null,
+          "policy": "NO_CALL",
+          "reason_code": "LEGACY_INCOMPLETE_PROVENANCE",
+          "display": {
+            "label": "MARIA REVIEW: NOT RUN",
+            "provider": "NONE",
+            "model": "NONE",
+            "policy": "NO_CALL",
+            "cost": "$0",
+            "reason": "LEGACY_INCOMPLETE_PROVENANCE"
+          },
+          "estimated_cost_usd": 0.0
+        },
+        "sentinel_review": {
+          "status": "NOT_RUN",
+          "summary": null,
+          "reason_code": "NOT_SCHEDULED",
+          "display": {
+            "label": "SENTINEL REVIEW: NOT RUN",
+            "provider": "NONE",
+            "model": "NONE",
+            "policy": "NO_CALL",
+            "cost": "$0",
+            "reason": "NOT_SCHEDULED"
+          },
+          "kind": "reflective_or_deterministic_label_only"
+        },
+        "material_change": false,
+        "next_review_time": "Refresh float and volatility inputs, then rerun deterministic validation"
+      }
+    },
+    {
+      "symbol": "CSNR",
+      "domains": {
+        "SymbolIdentity": {
+          "symbol": {
+            "value": "CSNR",
+            "source": "watch_intelligence",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "company": {
+            "value": "Under normal market conditions",
+            "source": "symbol_profiles",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "company_summary": {
+            "value": "Under normal market conditions, the fund will invest at least 80% of its net assets (plus any borrowings for investment purposes) in securities of natural resource companies, which the Advisor defines as companies which\u2026",
+            "source": "symbol_profiles.description_1s",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "sector": {
+            "value": null,
+            "source": "symbol_profiles",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "DATA_UNAVAILABLE",
+            "quality_state": "UNAVAILABLE"
+          },
+          "industry": {
+            "value": null,
+            "source": "symbol_profiles",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "DATA_UNAVAILABLE",
+            "quality_state": "UNAVAILABLE"
+          },
+          "instrument_type": {
+            "value": "etf",
+            "source": "symbol_profiles",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          }
+        },
+        "CanonicalQuote": {
+          "last": {
+            "value": 35.67,
+            "source": "market_quotes",
+            "source_record_id": "market_quotes:4405519",
+            "observed_at": "2026-08-05T10:00:03.359707-04:00",
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "day_change_pct": {
+            "value": 2.0017,
+            "source": "market_quotes",
+            "source_record_id": "market_quotes:4405519",
+            "observed_at": "2026-08-05T10:00:03.359707-04:00",
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "price_as_of": {
+            "value": "2026-08-05T10:00:03.359707-04:00",
+            "source": "market_quotes",
+            "source_record_id": "market_quotes:4405519",
+            "observed_at": "2026-08-05T10:00:03.359707-04:00",
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "price_source": {
+            "value": "market_quotes",
+            "source": "watch_canonical_quote",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "quote_id": {
+            "value": 4405519.0,
+            "source": "watch_canonical_quote",
+            "source_record_id": "4405519.0",
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "source_record_id": {
+            "value": "market_quotes:4405519",
+            "source": "watch_canonical_quote",
+            "source_record_id": "market_quotes:4405519",
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "market_session": {
+            "value": "regular",
+            "source": "watch_canonical_quote",
+            "source_record_id": null,
+            "observed_at": "2026-08-05T10:00:03.359707-04:00",
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "freshness_state": {
+            "value": "CURRENT",
+            "source": "watch_canonical_quote",
+            "source_record_id": null,
+            "observed_at": "2026-08-05T10:00:03.359707-04:00",
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "market_state": {
+            "value": "OK",
+            "source": "watch_canonical_quote",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          }
+        },
+        "WatchMembership": {
+          "on_watchlist": {
+            "value": true,
+            "source": "watchlist_items",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "starred": {
+            "value": false,
+            "source": "operator_starred_symbols",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "held": {
+            "value": false,
+            "source": "holdings.json",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "screener_origin": {
+            "value": true,
+            "source": "screener_find_pins|watchlist_items.source",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "status": {
+            "value": null,
+            "source": "watchlist_items",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "DATA_UNAVAILABLE",
+            "quality_state": "UNAVAILABLE"
+          }
+        },
+        "StreetConsensus": {
+          "rating": {
+            "value": "NOT RATED",
+            "source": "yahoo_analyst_targets_history",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "tone": {
+            "value": "hold",
+            "source": "yahoo_analyst_targets_history",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "analyst_count": {
+            "value": null,
+            "source": "yahoo",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "DATA_UNAVAILABLE",
+            "quality_state": "UNAVAILABLE"
+          },
+          "target_mean": {
+            "value": null,
+            "source": "yahoo",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "DATA_UNAVAILABLE",
+            "quality_state": "UNAVAILABLE"
+          },
+          "implied_upside_pct": {
+            "value": null,
+            "source": "computed_from_yahoo_target_vs_quote",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "DATA_UNAVAILABLE",
+            "quality_state": "UNAVAILABLE"
+          },
+          "recommendation_key": {
+            "value": null,
+            "source": "yahoo",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "DATA_UNAVAILABLE",
+            "quality_state": "UNAVAILABLE"
+          },
+          "as_of": {
+            "value": null,
+            "source": "yahoo",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "DATA_UNAVAILABLE",
+            "quality_state": "UNAVAILABLE"
+          }
+        },
+        "TradeAiDecision": {
+          "primary_state": {
+            "value": "DETERMINISTIC_FAIL",
+            "source": "decision_packets+projection",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "proposal_allowed": {
+            "value": false,
+            "source": "decision_action_policy",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "operator_meaning": {
+            "value": "NO TRADE MECHANICS \u2014 quality or ticket validation failed",
+            "source": "decision_projection",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "allowed_action_now": {
+            "value": "NO TRADE ACTION",
+            "source": "decision_projection",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "current_mechanics_visible": {
+            "value": false,
+            "source": "decision_projection",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "primary_risk": {
+            "value": "quality admission: technical snapshot is STALE",
+            "source": "decision_projection",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "next_review": {
+            "value": "Refresh float and volatility inputs, then rerun deterministic validation",
+            "source": "decision_projection",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          }
+        },
+        "CioReviewArtifact": {
+          "agent_id": {
+            "value": "cio",
+            "source": "not_run",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "status": {
+            "value": "NOT_RUN",
+            "source": "not_run",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "summary": {
+            "value": null,
+            "source": "not_run",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "DATA_UNAVAILABLE",
+            "quality_state": "UNAVAILABLE"
+          },
+          "verdict": {
+            "value": null,
+            "source": "not_run",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "DATA_UNAVAILABLE",
+            "quality_state": "UNAVAILABLE"
+          },
+          "provider": {
+            "value": null,
+            "source": "not_run",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "DATA_UNAVAILABLE",
+            "quality_state": "UNAVAILABLE"
+          },
+          "model": {
+            "value": null,
+            "source": "not_run",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "DATA_UNAVAILABLE",
+            "quality_state": "UNAVAILABLE"
+          },
+          "policy": {
+            "value": "NO_CALL",
+            "source": "not_run",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "reason_code": {
+            "value": "NO_MATERIAL_CHANGE_NO_CALL",
+            "source": "not_run",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "process_id": {
+            "value": null,
+            "source": "not_run",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "DATA_UNAVAILABLE",
+            "quality_state": "UNAVAILABLE"
+          },
+          "estimated_cost_usd": {
+            "value": 0.0,
+            "source": "not_run",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "display": {
+            "label": "CIO REVIEW: NOT RUN",
+            "provider": "NONE",
+            "model": "NONE",
+            "policy": "NO_CALL",
+            "cost": "$0",
+            "reason": "NO_MATERIAL_CHANGE_NO_CALL"
+          },
+          "artifact": null
+        },
+        "AgentReviewArtifact": {
+          "agent_id": {
+            "value": "maria",
+            "source": "not_run",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "status": {
+            "value": "NOT_RUN",
+            "source": "not_run",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "summary": {
+            "value": null,
+            "source": "not_run",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "DATA_UNAVAILABLE",
+            "quality_state": "UNAVAILABLE"
+          },
+          "verdict": {
+            "value": null,
+            "source": "not_run",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "DATA_UNAVAILABLE",
+            "quality_state": "UNAVAILABLE"
+          },
+          "provider": {
+            "value": null,
+            "source": "not_run",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "DATA_UNAVAILABLE",
+            "quality_state": "UNAVAILABLE"
+          },
+          "model": {
+            "value": null,
+            "source": "not_run",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "DATA_UNAVAILABLE",
+            "quality_state": "UNAVAILABLE"
+          },
+          "policy": {
+            "value": "NO_CALL",
+            "source": "not_run",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "reason_code": {
+            "value": "LEGACY_INCOMPLETE_PROVENANCE",
+            "source": "not_run",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "process_id": {
+            "value": null,
+            "source": "not_run",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "DATA_UNAVAILABLE",
+            "quality_state": "UNAVAILABLE"
+          },
+          "estimated_cost_usd": {
+            "value": 0.0,
+            "source": "not_run",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "display": {
+            "label": "MARIA REVIEW: NOT RUN",
+            "provider": "NONE",
+            "model": "NONE",
+            "policy": "NO_CALL",
+            "cost": "$0",
+            "reason": "LEGACY_INCOMPLETE_PROVENANCE"
+          },
+          "artifact": null
+        },
+        "CatalystContext": {
+          "summary": {
+            "value": null,
+            "source": "catalyst_events",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "DATA_UNAVAILABLE",
+            "quality_state": "UNAVAILABLE"
+          },
+          "versus_industry": {
+            "value": null,
+            "source": "derived",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "DATA_UNAVAILABLE",
+            "quality_state": "UNAVAILABLE"
+          }
+        },
+        "RelativePerformance": {
+          "summary": {
+            "value": "Performance data incomplete",
+            "source": "enrichment_cache|symbol_profiles",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "periods": {
+            "value": {
+              "1D": null,
+              "1W": null,
+              "1M": null,
+              "3M": null,
+              "6M": null,
+              "YTD": 13.9,
+              "1Y": null
+            },
+            "source": "enrichment_cache",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "versus_industry": {
+            "value": null,
+            "source": null,
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "DATA_UNAVAILABLE",
+            "quality_state": "UNAVAILABLE"
+          },
+          "versus_sector": {
+            "value": null,
+            "source": null,
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "DATA_UNAVAILABLE",
+            "quality_state": "UNAVAILABLE"
+          },
+          "versus_spy": {
+            "value": null,
+            "source": null,
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "DATA_UNAVAILABLE",
+            "quality_state": "UNAVAILABLE"
+          },
+          "missing": [
+            "1D",
+            "1W",
+            "1M",
+            "3M",
+            "6M",
+            "1Y",
+            "versus_industry",
+            "versus_sector",
+            "versus_spy"
+          ]
+        },
+        "TechnicalSnapshot": {
+          "support": {
+            "value": 33.75,
+            "source": "watchlist_strategy_cards",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "resistance": {
+            "value": 35.7,
+            "source": "watchlist_strategy_cards",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "setup": {
+            "value": "RSI 61 \u00b7 band 55-70",
+            "source": "watchlist_items|strategy_cards",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "rsi": {
+            "value": 60.76,
+            "source": "watchlist_items|enrichment",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "rvol": {
+            "value": null,
+            "source": "watchlist_items",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "DATA_UNAVAILABLE",
+            "quality_state": "UNAVAILABLE"
+          },
+          "atr": {
+            "value": null,
+            "source": "enrichment_cache",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "DATA_UNAVAILABLE",
+            "quality_state": "UNAVAILABLE"
+          }
+        },
+        "PositionContext": {
+          "held": {
+            "value": false,
+            "source": "holdings.json",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          }
+        },
+        "FreshnessAndLineage": {
+          "quote": {
+            "value": "CURRENT",
+            "source": "watch_canonical_quote",
+            "source_record_id": null,
+            "observed_at": "2026-08-05T10:00:03.359707-04:00",
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "street": {
+            "value": false,
+            "source": "yahoo",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "cio_status": {
+            "value": "NOT_RUN",
+            "source": "review_artifact|not_run",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "maria_status": {
+            "value": "NOT_RUN",
+            "source": "review_artifact|not_run",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          }
+        }
+      },
+      "card": {
+        "symbol": "CSNR",
+        "company": "Under normal market conditions",
+        "company_summary": "Under normal market conditions, the fund will invest at least 80% of its net assets (plus any borrowings for investment purposes) in securities of natural resource companies, which the Advisor defines as companies which\u2026",
+        "sector": null,
+        "industry": null,
+        "instrument_type": "etf",
+        "street_rating": "NOT RATED",
+        "street_tone": "hold",
+        "analyst_count": null,
+        "target_mean": null,
+        "implied_upside_pct": null,
+        "trade_ai_state": "DETERMINISTIC_FAIL",
+        "proposal_allowed": false,
+        "operator_meaning": "NO TRADE MECHANICS \u2014 quality or ticket validation failed",
+        "next_operator_action": "NO TRADE ACTION",
+        "primary_risk": "quality admission: technical snapshot is STALE",
+        "last": 35.67,
+        "day_change_pct": 2.0017,
+        "price_as_of": "2026-08-05T10:00:03.359707-04:00",
+        "price_source": "market_quotes",
+        "quote_id": 4405519.0,
+        "source_record_id": "market_quotes:4405519",
+        "freshness_state": "CURRENT",
+        "market_session": "regular",
+        "support": 33.75,
+        "resistance": 35.7,
+        "technical_setup": "RSI 61 \u00b7 band 55-70",
+        "catalyst_summary": null,
+        "catalyst_vs_industry": null,
+        "relative_performance_summary": "Performance data incomplete",
+        "starred": false,
+        "held": false,
+        "screener_origin": true,
+        "cio_review": {
+          "status": "NOT_RUN",
+          "summary": null,
+          "verdict": null,
+          "provider": null,
+          "model": null,
+          "policy": "NO_CALL",
+          "reason_code": "NO_MATERIAL_CHANGE_NO_CALL",
+          "display": {
+            "label": "CIO REVIEW: NOT RUN",
+            "provider": "NONE",
+            "model": "NONE",
+            "policy": "NO_CALL",
+            "cost": "$0",
+            "reason": "NO_MATERIAL_CHANGE_NO_CALL"
+          },
+          "estimated_cost_usd": 0.0
+        },
+        "maria_review": {
+          "status": "NOT_RUN",
+          "summary": null,
+          "provider": null,
+          "model": null,
+          "policy": "NO_CALL",
+          "reason_code": "LEGACY_INCOMPLETE_PROVENANCE",
+          "display": {
+            "label": "MARIA REVIEW: NOT RUN",
+            "provider": "NONE",
+            "model": "NONE",
+            "policy": "NO_CALL",
+            "cost": "$0",
+            "reason": "LEGACY_INCOMPLETE_PROVENANCE"
+          },
+          "estimated_cost_usd": 0.0
+        },
+        "sentinel_review": {
+          "status": "NOT_RUN",
+          "summary": null,
+          "reason_code": "NOT_SCHEDULED",
+          "display": {
+            "label": "SENTINEL REVIEW: NOT RUN",
+            "provider": "NONE",
+            "model": "NONE",
+            "policy": "NO_CALL",
+            "cost": "$0",
+            "reason": "NOT_SCHEDULED"
+          },
+          "kind": "reflective_or_deterministic_label_only"
+        },
+        "material_change": false,
+        "next_review_time": "Refresh float and volatility inputs, then rerun deterministic validation"
+      }
+    },
+    {
+      "symbol": "DIEM",
+      "domains": {
+        "SymbolIdentity": {
+          "symbol": {
+            "value": "DIEM",
+            "source": "watch_intelligence",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "company": {
+            "value": "Under normal market conditions",
+            "source": "symbol_profiles",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "company_summary": {
+            "value": "Under normal market conditions, the fund invests at least 80% of its assets in the component securities of the index and in depositary receipts representing such securities.",
+            "source": "symbol_profiles.description_1s",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "sector": {
+            "value": "Financial",
+            "source": "symbol_profiles",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "industry": {
+            "value": "Exchange Traded Fund",
+            "source": "symbol_profiles",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "instrument_type": {
+            "value": "etf",
+            "source": "symbol_profiles",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          }
+        },
+        "CanonicalQuote": {
+          "last": {
+            "value": 39.705,
+            "source": "market_quotes",
+            "source_record_id": "market_quotes:4406548",
+            "observed_at": "2026-08-05T10:00:03.359707-04:00",
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "day_change_pct": {
+            "value": 0.0378,
+            "source": "market_quotes",
+            "source_record_id": "market_quotes:4406548",
+            "observed_at": "2026-08-05T10:00:03.359707-04:00",
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "price_as_of": {
+            "value": "2026-08-05T10:00:03.359707-04:00",
+            "source": "market_quotes",
+            "source_record_id": "market_quotes:4406548",
+            "observed_at": "2026-08-05T10:00:03.359707-04:00",
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "price_source": {
+            "value": "market_quotes",
+            "source": "watch_canonical_quote",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "quote_id": {
+            "value": 4406548.0,
+            "source": "watch_canonical_quote",
+            "source_record_id": "4406548.0",
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "source_record_id": {
+            "value": "market_quotes:4406548",
+            "source": "watch_canonical_quote",
+            "source_record_id": "market_quotes:4406548",
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "market_session": {
+            "value": "regular",
+            "source": "watch_canonical_quote",
+            "source_record_id": null,
+            "observed_at": "2026-08-05T10:00:03.359707-04:00",
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "freshness_state": {
+            "value": "CURRENT",
+            "source": "watch_canonical_quote",
+            "source_record_id": null,
+            "observed_at": "2026-08-05T10:00:03.359707-04:00",
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "market_state": {
+            "value": "OK",
+            "source": "watch_canonical_quote",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          }
+        },
+        "WatchMembership": {
+          "on_watchlist": {
+            "value": true,
+            "source": "watchlist_items",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "starred": {
+            "value": false,
+            "source": "operator_starred_symbols",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "held": {
+            "value": false,
+            "source": "holdings.json",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "screener_origin": {
+            "value": true,
+            "source": "screener_find_pins|watchlist_items.source",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "status": {
+            "value": null,
+            "source": "watchlist_items",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "DATA_UNAVAILABLE",
+            "quality_state": "UNAVAILABLE"
+          }
+        },
+        "StreetConsensus": {
+          "rating": {
+            "value": "NOT RATED",
+            "source": "yahoo_analyst_targets_history",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "tone": {
+            "value": "hold",
+            "source": "yahoo_analyst_targets_history",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "analyst_count": {
+            "value": null,
+            "source": "yahoo",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "DATA_UNAVAILABLE",
+            "quality_state": "UNAVAILABLE"
+          },
+          "target_mean": {
+            "value": null,
+            "source": "yahoo",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "DATA_UNAVAILABLE",
+            "quality_state": "UNAVAILABLE"
+          },
+          "implied_upside_pct": {
+            "value": null,
+            "source": "computed_from_yahoo_target_vs_quote",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "DATA_UNAVAILABLE",
+            "quality_state": "UNAVAILABLE"
+          },
+          "recommendation_key": {
+            "value": null,
+            "source": "yahoo",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "DATA_UNAVAILABLE",
+            "quality_state": "UNAVAILABLE"
+          },
+          "as_of": {
+            "value": null,
+            "source": "yahoo",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "DATA_UNAVAILABLE",
+            "quality_state": "UNAVAILABLE"
+          }
+        },
+        "TradeAiDecision": {
+          "primary_state": {
+            "value": "DETERMINISTIC_FAIL",
+            "source": "decision_packets+projection",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "proposal_allowed": {
+            "value": false,
+            "source": "decision_action_policy",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "operator_meaning": {
+            "value": "NO TRADE MECHANICS \u2014 quality or ticket validation failed",
+            "source": "decision_projection",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "allowed_action_now": {
+            "value": "NO TRADE ACTION",
+            "source": "decision_projection",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "current_mechanics_visible": {
+            "value": false,
+            "source": "decision_projection",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "primary_risk": {
+            "value": "quality admission: technical snapshot is STALE",
+            "source": "decision_projection",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          },
+          "next_review": {
+            "value": "Refresh float and volatility inputs, then rerun deterministic validation",
+            "source": "decision_projection",
+            "source_record_id": null,
+            "observed_at": null,
+            "freshness_state": "CURRENT",
+            "quality_state": "VALID"
+          }
+        },
+        "CioReviewArtifact": {
+          "agent_id": {
+            "value": "cio",
+            "source": "not_run",
+            "source_record_id": nul
