@@ -684,6 +684,18 @@ def _enrich_card_semantics(card: dict, *, enrich: dict, held_source: str) -> dic
     c.setdefault("rank_eligibility", elig)
     c.setdefault("rank_exclusion_reason", excl)
     c.setdefault("rank_version", RANK_VERSION)
+
+    # Review schedule / SLA / next-run fields (no provider calls)
+    try:
+        from lib.watch_review_pipeline import review_freshness_fields, enrich_review_display
+        rf = review_freshness_fields(c)
+        c.update(rf)
+        for agent, key in (("cio", "cio_review"), ("maria", "maria_review")):
+            c[key] = enrich_review_display(c.get(key) or {}, agent=agent, card=c)
+        # Prefer structured next review timestamps
+        c["next_review_at"] = c.get("next_maria_review_at") or c.get("next_review_at")
+    except Exception:
+        pass
     return c
 
 

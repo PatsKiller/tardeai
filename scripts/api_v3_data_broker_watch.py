@@ -87,3 +87,29 @@ def get_reviews(symbol: str) -> dict[str, Any]:
     out = watch_reviews(symbol)
     out.setdefault("data_broker", {"projection": "watch_reviews", "catalog": "/api/v3/data-broker"})
     return out
+
+
+def get_review_policy() -> dict[str, Any]:
+    """Read-only durable recurring review-policy authorization (phase 2)."""
+    from lib.watch_review_policy_ledger import policy_api_payload
+    return policy_api_payload()
+
+
+def get_review_schedule() -> dict[str, Any]:
+    """Read-only Maria/CIO schedule + SLA defaults — zero provider calls."""
+    from lib.watch_review_pipeline import schedule_times
+    from lib.watch_review_policy_ledger import MARIA_SPEC, CIO_SPEC, GLOBAL_DAILY_USD_CAP
+    times = schedule_times()
+    return {
+        "ok": True,
+        "provider_calls": 0,
+        "paid_flags_enabled": False,
+        "broker_write_authority": "NONE",
+        "schedule": times,
+        "maria": MARIA_SPEC,
+        "cio": CIO_SPEC,
+        "global_daily_usd_cap": GLOBAL_DAILY_USD_CAP,
+        "workers_enabled": False,
+        "event_watcher_enabled": False,
+        "event_trigger": "ROLLING_5_SESSION_MOVE_GE_7PCT",
+    }

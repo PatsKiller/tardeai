@@ -217,9 +217,17 @@ def authorize_review_artifact(raw: dict[str, Any]) -> tuple[bool, str | None]:
     """
     if not raw or raw.get("status") == "QUARANTINED" or raw.get("quarantine"):
         return False, "UNVERIFIED_OPERATOR_AUTHORIZATION"
-    auth = raw.get("authorization_event_id") or raw.get("operator_command_id") or raw.get("authorized_by_event")
+    auth = (
+        raw.get("authorization_event_id")
+        or raw.get("operator_command_id")
+        or raw.get("authorized_by_event")
+        or raw.get("execution_authorization_id")
+        or raw.get("authorization_policy_id")
+    )
     if not auth:
         return False, "UNVERIFIED_OPERATOR_AUTHORIZATION"
+    # Durable policy + child execution IDs are the only acceptable ledger path
+    # (operator_approved alone is never enough — already rejected above).
     required = (
         "process_id", "provider", "model", "provider_request_id",
         "input_hash", "artifact_id", "artifact_hash",

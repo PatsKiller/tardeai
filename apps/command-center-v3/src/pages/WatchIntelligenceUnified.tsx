@@ -72,6 +72,9 @@ type ReviewStatus = {
   policy?: string | null
   reason_code?: string | null
   artifact_disposition?: string | null
+  completed_at?: string | null
+  next_review_at?: string | null
+  review_sla_state?: string | null
   display?: Record<string, string | null | undefined>
   estimated_cost_usd?: number
 }
@@ -108,16 +111,19 @@ function stateColor(s?: string) {
 }
 
 function ReviewBox({ title, rev }: { title: string; rev?: ReviewStatus }) {
-  const complete = rev?.status === 'COMPLETE'
+  const complete = rev?.status === 'COMPLETE' && !!rev?.provider && !!rev?.model
   const reason = rev?.reason_code || rev?.display?.reason || null
   const disposition = rev?.artifact_disposition || rev?.display?.disposition || null
+  const nextReview = (rev as any)?.next_review_at || rev?.display?.next_review || null
+  const sla = (rev as any)?.review_sla_state || rev?.display?.sla || null
   return (
     <div
       style={{ background: BB.bgShift, border: `1px solid ${BB.border}`, borderRadius: 8, padding: 8 }}
       data-review-box
-      data-review-status={rev?.status || 'NOT_RUN'}
+      data-review-status={complete ? 'COMPLETE' : (rev?.status || 'NOT_RUN')}
       data-review-reason={reason || ''}
       data-review-disposition={disposition || ''}
+      data-review-sla={sla || ''}
       data-review-model={complete ? String(rev?.model || '') : 'NONE'}
     >
       <div style={{ fontSize: TYPE.xs, color: BB.text3, fontWeight: 900, letterSpacing: 0.5, textTransform: 'uppercase' }}>{title}</div>
@@ -125,9 +131,13 @@ function ReviewBox({ title, rev }: { title: string; rev?: ReviewStatus }) {
         <>
           <div style={{ fontSize: TYPE.sm, color: BB.text1, marginTop: 3, lineHeight: 1.35 }}>{rev?.summary || '—'}</div>
           <div style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 4 }}>
-            {rev?.provider} · {rev?.model} · {rev?.policy}
+            {rev?.provider} · {rev?.model} · {rev?.policy || rev?.display?.policy}
             {rev?.estimated_cost_usd != null ? ` · $${Number(rev.estimated_cost_usd).toFixed(5)}` : ''}
+            {rev?.completed_at ? ` · ${rev.completed_at}` : ''}
           </div>
+          {nextReview ? (
+            <div style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 3 }}>Next review: {String(nextReview)}</div>
+          ) : null}
         </>
       ) : (
         <>
@@ -138,7 +148,11 @@ function ReviewBox({ title, rev }: { title: string; rev?: ReviewStatus }) {
             Provider NONE · Model NONE · Policy NO_CALL · Cost $0
             {reason ? ` · ${reason}` : ''}
             {disposition ? ` · ${disposition}` : ''}
+            {sla ? ` · ${sla}` : ''}
           </div>
+          {nextReview ? (
+            <div style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 3 }}>Next run: {String(nextReview)}</div>
+          ) : null}
         </>
       )}
     </div>

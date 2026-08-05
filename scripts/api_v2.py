@@ -38394,6 +38394,10 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 sym = p[len("watch-reviews/"):].strip("/").upper()
                 if sym:
                     return 200, _dbw.get_reviews(sym)
+            if p in ("watch-review-policy", "watch_review_policy"):
+                return 200, _dbw.get_review_policy()
+            if p in ("watch-review-schedule", "watch_review_schedule"):
+                return 200, _dbw.get_review_schedule()
             return 404, {
                 "ok": False,
                 "error": "not_found",
