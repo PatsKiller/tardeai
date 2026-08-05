@@ -97,6 +97,29 @@ def derive_freshness(
     return "STALE", session or "closed"
 
 
+def _unavailable(
+    symbol: str,
+    *,
+    missing: list[str],
+    winning_branch: str | None = None,
+) -> dict[str, Any]:
+    return {
+        "symbol": symbol.upper(),
+        "last": None,
+        "day_change_pct": None,
+        "price_as_of": None,
+        "observed_at": None,
+        "price_source": None,
+        "quote_id": None,
+        "source_record_id": None,
+        "market_session": None,
+        "freshness_state": "DATA_UNAVAILABLE",
+        "market_state": "DATA_UNAVAILABLE",
+        "missing": list(missing),
+        "winning_branch": winning_branch,
+    }
+
+
 def compose_quote_artifact(
     *,
     symbol: str,
@@ -111,31 +134,22 @@ def compose_quote_artifact(
     wi_change_pct: float | None,
     now: datetime | None = None,
 ) -> dict[str, Any]:
-    """Apply the single CASE boundary: market_quotes wins only when newer + complete.
+    """Apply the single CASE boundary: market_quotes wins only when strictly newer + complete.
 
-    When market_quotes wins → identity is mq.*
-    When enrichment wins → identity is watchlist_items.*; mq.id MUST NOT appear.
+    Same-record contract (preferred):
+      market_quotes winner → mq.price, mq.day_change_pct, mq.fetched_at, mq.id, mq.source
+      enrichment winner    → w.price, w.change_pct, w.last_enriched_at, w.id
+      Equal timestamps     → enrichment (documented; mirrors SQL CASE strict >)
+    Losing-candidate IDs never appear in the selected artifact (debug logs only).
+    Missing winning-record ID → fail closed (DATA_UNAVAILABLE / canonical_quote_identity).
     """
-    empty = {
-        "symbol": symbol.upper(),
-        "last": None,
-        "day_change_pct": None,
-        "price_as_of": None,
-        "observed_at": None,
-        "price_source": None,
-        "quote_id": None,
-        "source_record_id": None,
-        "market_session": None,
-        "freshness_state": "DATA_UNAVAILABLE",
-        "market_state": "DATA_UNAVAILABLE",
-        "missing": ["canonical_market_quote"],
-        "winning_branch": None,
-    }
+    empty = _unavailable(symbol, missing=["canonical_market_quote"])
     mq_ts = _as_aware(mq_fetched_at)
     wi_ts = _as_aware(wi_last_enriched_at)
     mq_ok = mq_price is not None and mq_ts is not None
     wi_ok = wi_price is not None and wi_ts is not None
 
+    # Strict greater: equal timestamps select enrichment (documented branch).
     mq_wins = False
     if mq_ok:
         if wi_ts is None:
@@ -144,13 +158,16 @@ def compose_quote_artifact(
             mq_wins = True
 
     if mq_wins:
+        if mq_id is None:
+            return _unavailable(
+                symbol,
+                missing=["canonical_quote_identity"],
+                winning_branch="market_quotes",
+            )
         asof = mq_ts
         last = float(mq_price)
-        # Watchlist list uses w.change_pct for display when a row exists; keep that
-        # for cross-surface price_change coherence when enrichment row present.
-        chg = float(wi_change_pct) if wi_change_pct is not None else (
-            float(mq_day_change_pct) if mq_day_change_pct is not None else None
-        )
+        # Same-record: change_pct from market_quotes only when mq wins.
+        chg = float(mq_day_change_pct) if mq_day_change_pct is not None else None
         fresh, session = derive_freshness(asof, now=now)
         if fresh == "DATA_UNAVAILABLE":
             return empty
@@ -161,8 +178,8 @@ def compose_quote_artifact(
             "price_as_of": asof.isoformat(),
             "observed_at": asof.isoformat(),
             "price_source": "market_quotes",
-            "quote_id": int(mq_id) if mq_id is not None else None,
-            "source_record_id": f"market_quotes:{int(mq_id)}" if mq_id is not None else None,
+            "quote_id": int(mq_id),
+            "source_record_id": f"market_quotes:{int(mq_id)}",
             "market_session": session,
             "freshness_state": fresh,
             "market_state": "OK" if fresh != "STALE" else "STALE",
@@ -172,6 +189,12 @@ def compose_quote_artifact(
         }
 
     if wi_ok:
+        if wi_id is None:
+            return _unavailable(
+                symbol,
+                missing=["canonical_quote_identity"],
+                winning_branch="enrichment",
+            )
         asof = wi_ts
         last = float(wi_price)
         chg = float(wi_change_pct) if wi_change_pct is not None else None
@@ -185,15 +208,14 @@ def compose_quote_artifact(
             "price_as_of": asof.isoformat(),
             "observed_at": asof.isoformat(),
             "price_source": "enrichment",
-            "quote_id": f"enrichment:{int(wi_id)}" if wi_id is not None else None,
-            "source_record_id": f"watchlist_items:{int(wi_id)}" if wi_id is not None else None,
+            "quote_id": f"enrichment:{int(wi_id)}",
+            "source_record_id": f"watchlist_items:{int(wi_id)}",
             "market_session": session,
             "freshness_state": fresh,
             "market_state": "OK" if fresh != "STALE" else "STALE",
             "missing": [],
             "winning_branch": "enrichment",
-            # Explicitly no market_quotes identity when enrichment wins
-            "mq_id_unused": int(mq_id) if mq_id is not None else None,
+            # Losing mq.id intentionally omitted — never part of selected artifact.
         }
 
     return empty

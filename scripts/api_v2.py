@@ -6963,6 +6963,41 @@ def _wl_items(query: dict = None):
         for _it in _items:
             _it.setdefault("action_policy", None)
 
+    # Canonical quote contract (Rockville P0): both Watch surfaces consume the
+    # shared CASE-bound selector so price/change/timestamp/identity describe the
+    # same winning record. Overlays quote_id / source_record_id / session /
+    # freshness on every list item; aligns price + change_pct when the selector
+    # returns a complete artifact (fail-closed leaves last null).
+    try:
+        from lib.watch_canonical_quote import batch_canonical_quotes as _bcq
+        _syms = [str(_it.get("symbol") or "").upper() for _it in _items if _it.get("symbol")]
+        _arts = _bcq(_syms) if _syms else {}
+        for _it in _items:
+            _sym = str(_it.get("symbol") or "").upper()
+            _art = _arts.get(_sym) or {}
+            if not _art:
+                continue
+            _it["quote_id"] = _art.get("quote_id")
+            _it["source_record_id"] = _art.get("source_record_id")
+            _it["market_session"] = _art.get("market_session")
+            _it["freshness_state"] = _art.get("freshness_state")
+            _it["market_state"] = _art.get("market_state")
+            _it["winning_branch"] = _art.get("winning_branch")
+            # Align numeric display with the same winning record
+            if _art.get("last") is not None:
+                _it["price"] = _art.get("last")
+            if _art.get("day_change_pct") is not None:
+                _it["change_pct"] = _art.get("day_change_pct")
+            if _art.get("price_as_of") is not None:
+                _it["price_as_of"] = _art.get("price_as_of")
+            if _art.get("price_source") is not None:
+                _it["price_source"] = _art.get("price_source")
+            # Surface fail-closed missing identity explicitly
+            if _art.get("missing"):
+                _it["quote_missing"] = list(_art.get("missing") or [])
+    except Exception:
+        pass
+
     return {"count": len(_items), "items": _items,
             "facets": dict(sorted(_facets.items(), key=lambda x: -x[1])),
             "universe_count": _universe_n,

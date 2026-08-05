@@ -112,6 +112,11 @@ function RockvilleWatchShadow() {
               dayChangePct={c.day_change_pct}
               marketTs={c.market_ts || c.price_as_of}
               priceSource={c.price_source}
+              quoteId={c.quote_id}
+              sourceRecordId={c.source_record_id}
+              marketSession={c.market_session}
+              freshnessState={c.freshness_state}
+              marketState={c.market_state}
               decision={c.decision}
               review={c.reflective_review}
               held={Boolean(c.held)}

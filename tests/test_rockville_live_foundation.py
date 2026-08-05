@@ -74,44 +74,107 @@ class TestLiveProjection(unittest.TestCase):
         self.assertNotIn("DB_PASSWORD=", api)
 
     def test_cross_surface_quote_coherence(self):
-        """Rockville last/change/as_of/source match watchlist + shared selector identity."""
+        """Full canonical quote contract equal on legacy v2 items AND Rockville v3 symbol API.
+
+        Does NOT compare Rockville to a second call of the same helper — that is
+        circular. Both HTTP surfaces must expose the complete artifact.
+        """
         import urllib.request
         from lib.rockville.live_projection import build_live_cards
-        from lib.watch_canonical_quote import batch_canonical_quotes
+
         cards = {c["symbol"]: c for c in (build_live_cards().get("cards") or [])}
-        expected = batch_canonical_quotes(list(cards.keys()))
+        contract_keys = (
+            "last", "day_change_pct", "price_as_of", "price_source",
+            "quote_id", "source_record_id", "market_session",
+            "freshness_state", "market_state",
+        )
         for sym in ("FTH", "NUAI", "AXTI", "SWBI", "CECO", "PFLT"):
             if sym not in cards:
                 continue
-            raw = urllib.request.urlopen(
+            # Legacy Watch API
+            raw_v2 = urllib.request.urlopen(
                 f"http://127.0.0.1:7777/api/v2/watchlist/items?symbol={sym}", timeout=45
             ).read()
-            it = json.loads(raw)["data"]["items"][0]
+            body_v2 = json.loads(raw_v2)
+            items = (body_v2.get("data") or body_v2).get("items") or []
+            self.assertTrue(items, msg=f"{sym} no v2 item")
+            it = items[0]
+
+            # Rockville v3 symbol API (HTTP — not helper re-call)
+            raw_v3 = urllib.request.urlopen(
+                f"http://127.0.0.1:7777/api/v3/watch/symbols/{sym}", timeout=45
+            ).read()
+            v3 = json.loads(raw_v3)
+            if "data" in v3 and isinstance(v3["data"], dict):
+                v3 = v3["data"]
+
             c = cards[sym]
-            exp = expected.get(sym) or {}
-            self.assertIsNotNone(c.get("price_as_of"), msg=f"{sym} missing timestamp")
-            self.assertIsNotNone(c.get("last"), msg=f"{sym} missing last")
-            self.assertIsNotNone(c.get("quote_id"), msg=f"{sym} missing quote_id")
-            self.assertEqual(float(c["last"]), float(it["price"]), msg=f"{sym} last mismatch")
-            if it.get("change_pct") is not None and c.get("day_change_pct") is not None:
-                self.assertAlmostEqual(float(c["day_change_pct"]), float(it["change_pct"]), places=4, msg=sym)
-            self.assertEqual(c.get("price_source"), it.get("price_source"), msg=sym)
-            if it.get("price_as_of") and c.get("price_as_of"):
-                self.assertEqual(str(c["price_as_of"])[:19], str(it["price_as_of"])[:19], msg=sym)
-            # Identity matches shared selector (same CASE boundary)
-            self.assertEqual(c.get("quote_id"), exp.get("quote_id"), msg=f"{sym} quote_id")
-            self.assertEqual(c.get("source_record_id"), exp.get("source_record_id"), msg=f"{sym} source_record_id")
-            self.assertEqual(c.get("price_source"), exp.get("price_source"), msg=sym)
-            self.assertEqual(c.get("market_session"), exp.get("market_session"), msg=sym)
-            self.assertEqual(c.get("freshness_state"), exp.get("freshness_state"), msg=sym)
-            # Enrichment branch must never carry raw mq int identity
+
+            # Full provenance required on both HTTP surfaces
+            for surface, row in (("v2", it), ("v3", v3), ("card", c)):
+                self.assertIsNotNone(row.get("quote_id") if surface != "v2" else it.get("quote_id"),
+                                     msg=f"{sym} {surface} quote_id")
+                self.assertIsNotNone(
+                    (row.get("source_record_id") if surface != "v2" else it.get("source_record_id")),
+                    msg=f"{sym} {surface} source_record_id",
+                )
+                self.assertIsNotNone(
+                    (row.get("market_session") if surface != "v2" else it.get("market_session")),
+                    msg=f"{sym} {surface} market_session",
+                )
+                self.assertIsNotNone(
+                    (row.get("freshness_state") if surface != "v2" else it.get("freshness_state")),
+                    msg=f"{sym} {surface} freshness_state",
+                )
+
+            # Normalize v2 price → last for comparison
+            v2_last = it.get("price")
+            v2_chg = it.get("change_pct")
+            v2_asof = it.get("price_as_of")
+
+            self.assertIsNotNone(c.get("last"), msg=f"{sym} card last")
+            self.assertIsNotNone(c.get("price_as_of"), msg=f"{sym} card as_of")
+            self.assertEqual(float(c["last"]), float(v2_last), msg=f"{sym} last v2 vs card")
+            self.assertEqual(float(v3["last"]), float(v2_last), msg=f"{sym} last v3 vs v2")
+
+            if v2_chg is not None and c.get("day_change_pct") is not None:
+                self.assertAlmostEqual(float(c["day_change_pct"]), float(v2_chg), places=4, msg=f"{sym} chg card/v2")
+            if v3.get("day_change_pct") is not None and v2_chg is not None:
+                self.assertAlmostEqual(float(v3["day_change_pct"]), float(v2_chg), places=4, msg=f"{sym} chg v3/v2")
+
+            self.assertEqual(c.get("price_source"), it.get("price_source"), msg=f"{sym} source card/v2")
+            self.assertEqual(v3.get("price_source"), it.get("price_source"), msg=f"{sym} source v3/v2")
+
+            if v2_asof and c.get("price_as_of"):
+                self.assertEqual(str(c["price_as_of"])[:19], str(v2_asof)[:19], msg=f"{sym} asof card/v2")
+            if v2_asof and v3.get("price_as_of"):
+                self.assertEqual(str(v3["price_as_of"])[:19], str(v2_asof)[:19], msg=f"{sym} asof v3/v2")
+
+            for key in ("quote_id", "source_record_id", "market_session", "freshness_state", "market_state"):
+                self.assertEqual(c.get(key), it.get(key), msg=f"{sym} {key} card vs v2")
+                self.assertEqual(v3.get(key), it.get(key), msg=f"{sym} {key} v3 vs v2")
+
             if c.get("price_source") == "enrichment":
                 self.assertIsInstance(c.get("quote_id"), str)
                 self.assertTrue(str(c.get("quote_id")).startswith("enrichment:"))
+                self.assertNotIn("mq_id_unused", c)
+                self.assertNotIn("mq_id_unused", it)
+
             co = c.get("company") or ""
             self.assertNotIn(" provides ", co)
             self.assertNotIn(" is a Private", co)
             self.assertLessEqual(len(co), 80)
+
+    def test_watchcard_source_has_provenance_dom(self):
+        src = (ROOT / "apps/command-center-v3/src/components/rockville/WatchCardV2.tsx").read_text()
+        for attr in (
+            "data-quote-id",
+            "data-source-record-id",
+            "data-market-session",
+            "data-freshness-state",
+            "data-market-state",
+        ):
+            self.assertIn(attr, src)
 
     def test_company_name_canonicalizer(self):
         from lib.rockville.live_projection import _canonical_company_name

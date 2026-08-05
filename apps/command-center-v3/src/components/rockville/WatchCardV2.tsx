@@ -50,6 +50,11 @@ type Props = {
   dayChangePct?: number | null
   marketTs?: string | null
   priceSource?: string | null
+  quoteId?: string | number | null
+  sourceRecordId?: string | null
+  marketSession?: string | null
+  freshnessState?: string | null
+  marketState?: string | null
   decision: RockvilleDecision
   review?: RockvilleReview | null
   held?: boolean
@@ -82,10 +87,20 @@ function fmtChg(pct?: number | null) {
   return `${sign}${n.toFixed(2)}%`
 }
 
+function freshnessColor(fs?: string | null): string {
+  if (!fs || fs === 'DATA_UNAVAILABLE') return BB.red
+  if (fs === 'STALE') return BB.amber
+  if (fs === 'CURRENT' || fs === 'AFTER_HOURS_CURRENT' || fs === 'PREMARKET_CURRENT') return BB.green
+  return BB.text3
+}
+
 export default function WatchCardV2({
-  symbol, company, sector, last, dayChangePct, marketTs, priceSource, decision, review, held, onRefresh, onViewEvidence,
+  symbol, company, sector, last, dayChangePct, marketTs, priceSource,
+  quoteId, sourceRecordId, marketSession, freshnessState, marketState,
+  decision, review, held, onRefresh, onViewEvidence,
 }: Props) {
   const [histOpen, setHistOpen] = useState(false)
+  const [provOpen, setProvOpen] = useState(false)
   const color = stateColor(decision.primary_state)
   const showMech = decision.current_mechanics_visible && decision.primary_state === 'READY'
   const chg = fmtChg(dayChangePct)
@@ -126,6 +141,12 @@ export default function WatchCardV2({
       data-primary-state={decision.primary_state}
       data-mechanics-visible={String(!!showMech)}
       data-company={company || ''}
+      data-quote-id={quoteId != null ? String(quoteId) : ''}
+      data-source-record-id={sourceRecordId || ''}
+      data-market-session={marketSession || ''}
+      data-freshness-state={freshnessState || ''}
+      data-market-state={marketState || ''}
+      data-price-source={priceSource || ''}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
         <div>
@@ -153,6 +174,52 @@ export default function WatchCardV2({
             {marketTs || '—'}
             {priceSource ? ` · ${priceSource}` : ''}
           </div>
+          <div
+            style={{ fontSize: TYPE.xs, color: freshnessColor(freshnessState), marginTop: 2, fontWeight: 700 }}
+            data-provenance-line
+          >
+            {freshnessState || 'DATA_UNAVAILABLE'}
+            {marketSession ? ` · ${marketSession}` : ''}
+            {marketState ? ` · mkt ${marketState}` : ''}
+          </div>
+          <button
+            type="button"
+            onClick={() => setProvOpen(v => !v)}
+            style={{
+              fontSize: TYPE.xs,
+              color: BB.text3,
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              padding: 0,
+              marginTop: 2,
+            }}
+            data-provenance-toggle
+          >
+            {provOpen ? '▼' : '▶'} quote identity
+          </button>
+          {provOpen && (
+            <div
+              style={{
+                marginTop: 4,
+                textAlign: 'left',
+                fontSize: TYPE.xs,
+                color: BB.text2,
+                background: BB.bgShift,
+                border: `1px solid ${BB.border}`,
+                borderRadius: 6,
+                padding: 8,
+              }}
+              data-provenance-drawer
+            >
+              <div>quote_id: {quoteId != null ? String(quoteId) : '—'}</div>
+              <div>source_record_id: {sourceRecordId || '—'}</div>
+              <div>session: {marketSession || '—'}</div>
+              <div>freshness: {freshnessState || '—'}</div>
+              <div>market_state: {marketState || '—'}</div>
+              <div>price_source: {priceSource || '—'}</div>
+            </div>
+          )}
         </div>
       </div>
 
