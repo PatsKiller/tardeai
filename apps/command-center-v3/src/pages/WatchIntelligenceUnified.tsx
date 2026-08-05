@@ -146,9 +146,10 @@ function ReviewBox({ title, rev }: { title: string; rev?: ReviewStatus }) {
           </div>
           <div style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 3 }}>
             Provider NONE · Model NONE · Policy NO_CALL · Cost $0
-            {reason ? ` · ${reason}` : ''}
-            {disposition && disposition !== reason ? ` · ${disposition}` : ''}
-            {sla && sla !== reason && sla !== disposition ? ` · ${sla}` : ''}
+            {reason && reason !== 'NOT_SCHEDULED' ? ` · ${reason}` : ''}
+            {disposition && disposition !== reason && disposition !== 'NOT_SCHEDULED' && disposition !== 'NOT_RUN'
+              ? ` · ${disposition}`
+              : ''}
           </div>
           {nextReview ? (
             <div style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 3 }} data-next-review>
@@ -661,9 +662,15 @@ export default function WatchIntelligenceUnified() {
                   </div>
                   <div style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 3 }} data-card-next-review>
                     <b style={{ color: BB.text2 }}>Next review:</b>{' '}
-                    {(c as any).next_maria_review_at
-                      ? `Maria ${(c as any).next_maria_review_at} · CIO ${(c as any).next_cio_review_at || '—'}`
-                      : ((c as any).next_review_at || (c as any).next_review_condition || c.next_review_time || '—')}
+                    {(c.maria_review?.status === 'COMPLETE' || c.cio_review?.status === 'COMPLETE')
+                      ? `COMPLETE · policy window Maria ${(c as any).next_policy_window_maria || (c as any).next_maria_review_at || '—'} · CIO ${(c as any).next_policy_window_cio || (c as any).next_cio_review_at || '—'}`
+                      : ((c as any).review_status === 'BLOCKED' || (c.maria_review as any)?.review_status === 'BLOCKED')
+                        ? '—'
+                        : ((c as any).execution_status === 'DISABLED' || (c as any).workers_enabled === false)
+                          ? `Policy only (execution disabled) · Maria ${(c as any).next_maria_review_at || '—'} · CIO ${(c as any).next_cio_review_at || '—'}`
+                          : ((c as any).next_maria_review_at
+                            ? `Maria ${(c as any).next_maria_review_at} · CIO ${(c as any).next_cio_review_at || '—'}`
+                            : ((c as any).next_review_at || (c as any).next_review_condition || c.next_review_time || '—'))}
                   </div>
                   {c.primary_risk && <div style={{ fontSize: TYPE.xs, color: BB.red, marginTop: 6 }}>Risk: {c.primary_risk}</div>}
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, gap: 8 }}>

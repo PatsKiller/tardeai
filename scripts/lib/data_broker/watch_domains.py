@@ -655,8 +655,15 @@ REPAIR_QUEUE = frozenset({"REVIEW_PENDING", "STALE", "DATA_UNAVAILABLE"})
 EXCLUDED_TOP = frozenset({"AVOID", "BLOCKED", "DETERMINISTIC_FAIL"})
 
 
-def rank_eligibility(state: str | None) -> tuple[str, str | None]:
+def rank_eligibility(state: str | None, card: dict | None = None) -> tuple[str, str | None]:
     st = (state or "").upper()
+    # Authorized COMPLETE reviews remain visible in Top Ideas even if packet is STALE
+    c = card or {}
+    for key in ("maria_review", "cio_review"):
+        r = c.get(key) or {}
+        if r.get("status") == "COMPLETE" and r.get("model") and r.get("provider"):
+            if st not in EXCLUDED_TOP:
+                return "eligible", None
     if st in ELIGIBLE_TOP:
         return "eligible", None
     if st in REPAIR_QUEUE:
@@ -677,7 +684,7 @@ def rank_top_ideas(items: list[dict]) -> list[dict]:
     for it in items:
         c = it.get("card") or {}
         state = (c.get("trade_ai_state") or "").upper()
-        elig, excl_reason = rank_eligibility(state)
+        elig, excl_reason = rank_eligibility(state, c)
         # Annotate all; only eligible enter ranking list
         it = dict(it)
         card = dict(c)

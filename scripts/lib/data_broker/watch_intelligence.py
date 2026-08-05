@@ -103,7 +103,20 @@ def _universe_symbols(*, view: str, page_size: int, extra: list[str] | None = No
         base = sorted(screener)[: max(page_size * 3, 80)]
     elif view == "top_ideas":
         base = list(DEFAULT_PRIORITY)
-        # enrich top ideas with strong street candidates later after cards built
+        # Always include symbols with authorized COMPLETE reviews (canary / operator proof)
+        try:
+            from lib.data_broker.watch_domains import ARTIFACTS
+            if ARTIFACTS.exists():
+                for path in ARTIFACTS.glob("*_maria.json"):
+                    sym = path.name.split("_", 1)[0].upper()
+                    if sym and sym not in base:
+                        base.append(sym)
+                for path in ARTIFACTS.glob("*_cio.json"):
+                    sym = path.name.split("_", 1)[0].upper()
+                    if sym and sym not in base:
+                        base.append(sym)
+        except Exception:
+            pass
     else:
         # all / needs_* / near_trigger / avoid / reviewed — start with priority + starred + held
         seen = set()
