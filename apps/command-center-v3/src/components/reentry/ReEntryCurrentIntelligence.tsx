@@ -953,8 +953,27 @@ export default function ReEntryCurrentIntelligence({
                 {open && (
                   <div style={{ padding: '10px 14px 14px 42px', background: 'var(--bg2)', borderBottom: '1px solid var(--border)', display: 'grid', gridTemplateColumns: '1fr 1fr 0.9fr', gap: 16 }}>
                     <div>
-                      <div style={{ fontSize: 10, fontWeight: 900, color: BB.text3, marginBottom: 6 }}>
-                        DECISION SCORECARD — {score.scoreLabel} · lane {score.lane}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                        <div style={{ fontSize: 10, fontWeight: 900, color: BB.text3 }}>
+                          DECISION SCORECARD — {score.scoreLabel} · lane {score.lane}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={event => { event.stopPropagation(); toggleFavorite(row.symbol); }}
+                          style={{
+                            ...button(favoriteSet.has(row.symbol)),
+                            fontSize: 12,
+                            padding: '1px 5px',
+                            color: favoriteSet.has(row.symbol) ? BB.amber : BB.text3,
+                            borderColor: favoriteSet.has(row.symbol) ? BB.amber : 'var(--border)',
+                            background: favoriteSet.has(row.symbol) ? BB.amberDim : 'var(--bg2)',
+                            marginLeft: 'auto',
+                          }}
+                          title={favoriteSet.has(row.symbol) ? 'Remove from favorites' : 'Add to favorites'}
+                          aria-label={favoriteSet.has(row.symbol) ? `Remove ${row.symbol} from favorites` : `Add ${row.symbol} to favorites`}
+                        >
+                          {favoriteSet.has(row.symbol) ? '★' : '☆'} STAR
+                        </button>
                       </div>
                       <div style={{ fontSize: 10.5, marginBottom: 8, color: BB.text2 }}>
                         <b style={{ color: tone }}>{row.intel.state}</b> — {row.intel.action}. {row.intel.reason}
