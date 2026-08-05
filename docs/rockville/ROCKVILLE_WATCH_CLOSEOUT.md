@@ -1,42 +1,38 @@
 # ROCKVILLE_WATCH_CLOSEOUT
 
 **Branch:** `feat/rockville-watch-cio-v1`  
-**Date:** 2026-08-04  
+**Status:** **FOUNDATION only — not product completion**
 
-## Closeout checklist
+## Explicit product limitation
+
+PR #294 is a **shadow foundation**. It does **not** deliver the full Watch rebuild:
+
+- concise ~20-item prioritized operator page  
+- company narrative, industry/benchmark, full fundamentals desk  
+- catalyst timeline, thesis/counter-thesis reflective review  
+- scheduled review cadence + material-change paid Pro runs  
+
+Do **not** call the Watch rebuild complete.
+
+## Foundation gates
 
 | Gate | Status |
 |------|--------|
-| EXACT FLASH MODEL VERIFIED | YES — `deepseek-v4-flash` via `resolve_policy(WATCH_FAST)` tests |
-| EXACT PRO MODEL VERIFIED | YES — `deepseek-v4-pro` via `resolve_policy(CIO_DAILY_PRO)` tests |
-| SILENT FALLBACKS | NONE — forbidden providers/models raise; no Gemma/Grok/ChatGPT path in Rockville |
-| DAILY CALL LIMIT VERIFIED | YES — scheduler `SKIP_ALREADY_COMPLETE` / lock tests |
-| NO-CHANGE PROVIDER CALLS | YES — `SKIP_NO_MATERIAL_CHANGE` + `NO_MATERIAL_CHANGE` artifact cost 0 |
-| DETERMINISTIC FAIL WITH MECHANICS | FAIL FIXED — projection + FTH fixture assert zero mechanics |
-| BLOCKED WITH MECHANICS | PASS — tests assert zero |
-| STALE WITH MECHANICS | PASS — tests assert zero |
-| FTH FIXTURE PASS | YES — see unit tests |
-| CIO DIGEST VISIBLE | SHADOW — panel mounted when shadow/visible flag |
-| PER-CARD LLM SYNTHESIS VISIBLE | SHADOW — panel on card; paid Flash gated off |
-| LLM FINANCIAL AUTHORITY ADDED | NO |
-| REAL ORDER QUEUED OR SUBMITTED | NO |
-| PRODUCTION SECRET EXPOSED | NO |
-| ROLLBACK TESTED | DOCUMENTED — flag + path retain prior projection |
+| LIVE MULTI-SYMBOL PROJECTION | YES — FTH, NUAI, AXTI, SWBI, CECO, held (PFLT) from `decision_packets` |
+| FIXTURE NOT INJECTED IN PROD API | YES — `fixture_injected: false` |
+| FTH = Faeth (not Fate/FATE) | YES |
+| FAIL-CLOSED projection + legacy desk | YES (tooltips sanitized) |
+| CIO NO_CALL truthful | YES |
+| DEEP REVIEW GATED | YES |
+| DESIGN GUARD | PASS required for ship build |
+| PAID FLAGS | all false |
+| PROVIDER CALLS | 0 |
+| LLM AUTHORITY / ORDERS | NO |
 
-## Not yet production-enabled
-
-- Live DeepSeek Flash per-symbol generation  
-- Live CIO_DAILY_PRO provider runner at 16:20 ET  
-- Screenshot CI pack (placeholder dir created)  
-- Full evidence module drill-downs on every live packet  
-
-## How to verify
+## Verify
 
 ```bash
-cd $PROJ
-.venv/bin/python -m unittest tests.test_rockville_watch_decision -v
-curl -sS http://127.0.0.1:7777/api/v3/watch/priority | python3 -m json.tool | head
-curl -sS http://127.0.0.1:7777/api/v3/watch/symbols/FTH | python3 -m json.tool | head
+.venv/bin/python tests/test_rockville_live_foundation.py -v
+.venv/bin/python tests/test_rockville_watch_decision.py -v
+curl -sS http://127.0.0.1:7777/api/v3/watch/priority | python3 -c "import sys,json;d=json.load(sys.stdin);p=d.get('data')or d;print(p.get('count'),p.get('fixture_injected'),[c['symbol'] for c in p.get('cards',[])])"
 ```
-
-Open `/v3/watch` → Rockville shadow band shows FTH DETERMINISTIC FAIL card without current mechanics.

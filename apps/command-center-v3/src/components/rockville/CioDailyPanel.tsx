@@ -192,41 +192,19 @@ export default function CioDailyPanel({
         ))}
         <button
           type="button"
-          onClick={() => setConfirmDeep(true)}
+          disabled
+          title="DEEP REVIEW GATED — ROLLOUT NOT ENABLED"
           style={{
             fontSize: TYPE.xs, fontWeight: 800, padding: '6px 10px', borderRadius: 6,
-            border: `1px solid ${BB.border}`, background: BB.bgShift, color: BB.text1, cursor: 'pointer',
+            border: `1px solid ${BB.border}`, background: BB.bgShift, color: BB.text3,
+            cursor: 'not-allowed', opacity: 0.65,
           }}
         >
-          REQUEST DEEP REVIEW
+          DEEP REVIEW GATED — ROLLOUT NOT ENABLED
         </button>
       </div>
 
-      {confirmDeep && (
-        <div style={{ marginTop: 10, padding: 10, borderRadius: 8, border: `1px solid ${BB.border}`, background: BB.bgShift }}>
-          <div style={{ fontSize: TYPE.base, fontWeight: 800, color: BB.text0 }}>Confirm CIO Deep Review</div>
-          <div style={{ fontSize: TYPE.sm, color: BB.text2, marginTop: 4 }}>
-            Policy CIO_DEEP_REVIEW · exact model deepseek-v4-pro · thinking max · est. cost ~$0.15
-            (not charged until confirmed + flag on). No silent fallback.
-          </div>
-          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-            <button
-              type="button"
-              onClick={() => { setConfirmDeep(false); onDeepReview?.() }}
-              style={{ fontSize: TYPE.xs, fontWeight: 800, padding: '6px 10px', borderRadius: 6, border: 'none', background: BB.amber, color: BB.bg, cursor: 'pointer' }}
-            >
-              CONFIRM
-            </button>
-            <button
-              type="button"
-              onClick={() => setConfirmDeep(false)}
-              style={{ fontSize: TYPE.xs, fontWeight: 700, padding: '6px 10px', borderRadius: 6, border: `1px solid ${BB.border}`, background: 'transparent', color: BB.text2, cursor: 'pointer' }}
-            >
-              CANCEL
-            </button>
-          </div>
-        </div>
-      )}
+      {confirmDeep && null}
     </div>
   )
 }

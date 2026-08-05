@@ -67,22 +67,22 @@ class TestFthRegression(unittest.TestCase):
         self.assertEqual(hist.get("label"), "NOT CURRENT")
 
     def test_fth_identity_is_faeth_not_fate(self):
-        """Permanent FTH/FATE anti-cross-map fixture."""
+        """Permanent FTH/FATE anti-cross-map fixture + live projection."""
         company = self.fx.get("company") or ""
         self.assertIn("Faeth", company)
         self.assertNotIn("Fate Therapeutics", company)
         for bad in self.fx.get("company_must_not") or []:
             self.assertNotIn(bad, company)
-        # API card path
-        sys.path.insert(0, str(ROOT / "scripts"))
-        import api_v3_watch_rockville as rv
-        card = rv._card_from_fixture(self.fx)
-        self.assertEqual(card["symbol"], "FTH")
-        self.assertIn("Faeth", card["company"] or "")
-        self.assertNotIn("Fate Therapeutics", card["company"] or "")
-        # market fields present (live or fixture fallback)
-        self.assertIsNotNone(card.get("last"))
-        self.assertIsNotNone(card.get("day_change_pct"))
+        # Live projection (production path — not fixture inject)
+        from lib.rockville.live_projection import build_live_symbol
+        card = build_live_symbol("FTH")
+        self.assertTrue(card.get("ok"))
+        self.assertEqual(card.get("symbol"), "FTH")
+        self.assertIn("Faeth", card.get("company") or "")
+        self.assertNotIn("Fate Therapeutics", card.get("company") or "")
+        self.assertFalse(card.get("fixture"))
+        self.assertTrue(card.get("live"))
+
 
 
 class TestDecisionStates(unittest.TestCase):

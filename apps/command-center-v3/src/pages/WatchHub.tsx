@@ -98,6 +98,10 @@ function RockvilleWatchShadow() {
       {(visible || showShadow) && (
         <>
           <CioDailyPanel artifact={cio?.artifact} status={cio?.status} />
+          <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 8 }}>
+            Live projection · {cards.length} cards · fixture_injected={String(pri?.fixture_injected ?? false)}
+            {pri?.source ? ` · source ${pri.source}` : ''}
+          </div>
           {cards.map((c: any) => (
             <WatchCardV2
               key={c.symbol}
@@ -110,6 +114,7 @@ function RockvilleWatchShadow() {
               priceSource={c.price_source}
               decision={c.decision}
               review={c.reflective_review}
+              held={Boolean(c.held)}
             />
           ))}
         </>
