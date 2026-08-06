@@ -1,33 +1,9 @@
 {
-  "date": "2026-08-04",
-  "timestamp": "2026-08-04T08:15:33.538517+00:00",
+  "date": "2026-08-05",
+  "timestamp": "2026-08-05T08:15:33.540062+00:00",
   "embedding_recommendations": [
     {
-      "id": 14101,
-      "symbol": "BSBR",
-      "type": "momentum_catalyst",
-      "confidence": 0.7,
-      "has_url": true,
-      "reason": "staged, has evidence, not embedded"
-    },
-    {
-      "id": 13672,
-      "symbol": "BOOM",
-      "type": "momentum_catalyst",
-      "confidence": 0.7,
-      "has_url": true,
-      "reason": "staged, has evidence, not embedded"
-    },
-    {
-      "id": 13500,
-      "symbol": "AVTR",
-      "type": "momentum_catalyst",
-      "confidence": 0.7,
-      "has_url": true,
-      "reason": "staged, has evidence, not embedded"
-    },
-    {
-      "id": 13408,
+      "id": 13502,
       "symbol": "BIYA",
       "type": "momentum_catalyst",
       "confidence": 0.7,
@@ -35,8 +11,32 @@
       "reason": "staged, has evidence, not embedded"
     },
     {
-      "id": 14100,
+      "id": 14975,
+      "symbol": "ALAR",
+      "type": "momentum_catalyst",
+      "confidence": 0.7,
+      "has_url": true,
+      "reason": "staged, has evidence, not embedded"
+    },
+    {
+      "id": 14134,
       "symbol": "BOOM",
+      "type": "momentum_catalyst",
+      "confidence": 0.7,
+      "has_url": true,
+      "reason": "staged, has evidence, not embedded"
+    },
+    {
+      "id": 13671,
+      "symbol": "BATL",
+      "type": "momentum_catalyst",
+      "confidence": 0.7,
+      "has_url": true,
+      "reason": "staged, has evidence, not embedded"
+    },
+    {
+      "id": 13669,
+      "symbol": "AMIX",
       "type": "momentum_catalyst",
       "confidence": 0.7,
       "has_url": true,
@@ -45,31 +45,7 @@
   ],
   "promotion_recommendations": [
     {
-      "id": 14101,
-      "symbol": "BSBR",
-      "type": "momentum_catalyst",
-      "confidence": 0.7,
-      "has_url": true,
-      "reason": "staged, high conf, has evidence"
-    },
-    {
-      "id": 13672,
-      "symbol": "BOOM",
-      "type": "momentum_catalyst",
-      "confidence": 0.7,
-      "has_url": true,
-      "reason": "staged, high conf, has evidence"
-    },
-    {
-      "id": 13500,
-      "symbol": "AVTR",
-      "type": "momentum_catalyst",
-      "confidence": 0.7,
-      "has_url": true,
-      "reason": "staged, high conf, has evidence"
-    },
-    {
-      "id": 13408,
+      "id": 13502,
       "symbol": "BIYA",
       "type": "momentum_catalyst",
       "confidence": 0.7,
@@ -77,8 +53,32 @@
       "reason": "staged, high conf, has evidence"
     },
     {
-      "id": 14100,
+      "id": 14975,
+      "symbol": "ALAR",
+      "type": "momentum_catalyst",
+      "confidence": 0.7,
+      "has_url": true,
+      "reason": "staged, high conf, has evidence"
+    },
+    {
+      "id": 14134,
       "symbol": "BOOM",
+      "type": "momentum_catalyst",
+      "confidence": 0.7,
+      "has_url": true,
+      "reason": "staged, high conf, has evidence"
+    },
+    {
+      "id": 13671,
+      "symbol": "BATL",
+      "type": "momentum_catalyst",
+      "confidence": 0.7,
+      "has_url": true,
+      "reason": "staged, high conf, has evidence"
+    },
+    {
+      "id": 13669,
+      "symbol": "AMIX",
       "type": "momentum_catalyst",
       "confidence": 0.7,
       "has_url": true,
@@ -86,7 +86,7 @@
     }
   ],
   "rejected": [],
-  "total_staged_non_backlog": 201,
+  "total_staged_non_backlog": 171,
   "embeddings_created": 0,
   "promotions_created": 0
 }

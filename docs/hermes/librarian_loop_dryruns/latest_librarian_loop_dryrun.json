@@ -1,9 +1,9 @@
 {
-  "date": "2026-08-04",
-  "timestamp": "2026-08-04T09:45:25.644756+00:00",
+  "date": "2026-08-05",
+  "timestamp": "2026-08-05T07:47:23.550677+00:00",
   "mode": "apply",
   "findings": 0,
-  "max_rows": 10,
+  "max_rows": 5,
   "details": [],
   "db_writes": 0,
   "runtime_sec": 0.1

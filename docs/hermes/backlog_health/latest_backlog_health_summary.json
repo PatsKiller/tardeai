@@ -1,6 +1,6 @@
 {
-  "date": "2026-08-04",
-  "timestamp": "2026-08-04T06:46:23.541328+00:00",
+  "date": "2026-08-05",
+  "timestamp": "2026-08-05T06:45:43.534484+00:00",
   "checks": {
     "total_backlog": 30,
     "open_count": 0,
@@ -126,12 +126,12 @@
     "oldest_item": {
       "id": 22,
       "created": "2026-05-31 21:36:31",
-      "age_days": 64
+      "age_days": 65
     },
     "newest_item": {
       "id": 9666,
       "created": "2026-07-14 12:03:57",
-      "age_days": 20
+      "age_days": 21
     },
     "ready_for_discovery": 0,
     "not_ready_for_discovery": 0,
