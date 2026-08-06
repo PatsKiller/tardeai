@@ -138,7 +138,7 @@ def _deepseek_generate(
         code = getattr(e, "code", "POLICY_BLOCKED")
         raise RuntimeError(f"{code}: {e}") from e
 
-    if not resp.ok or not resp.content:
+    if not resp.ok or (not resp.content and not resp.truncated):
         err = RuntimeError(
             f"{resp.error_class or 'DEEPSEEK_FAILED'}: "
             f"policy={resp.requested_policy} model={resp.requested_model_id} "

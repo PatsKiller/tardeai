@@ -80,6 +80,7 @@ class DeepSeekResponse:
     retry_count: int = 0
     error_class: str | None = None
     error_message: str | None = None
+    truncated: bool = False  # finish_reason=length — partial but billable content
     fallback_used: bool = False
     fallback_reason: str | None = None
     raw_response_hash: str | None = None
@@ -373,8 +374,9 @@ def chat(
             possibly_billable=True,
         )
 
-    if finish == "length":
-        err = OUTPUT_TRUNCATED
+    truncated = finish == "length"
+    if truncated:
+        err = None  # partial content is still billable and may be useful
     elif not (content or reasoning_content or msg.get("tool_calls")):
         err = EMPTY_CONTENT
     else:
@@ -408,6 +410,7 @@ def chat(
         http_status=r.status_code,
         error_class=err,
         error_message=None if err is None else err,
+        truncated=truncated,
         raw_response_hash=raw_hash,
         client_request_id=client_rid,
         request_sent=True,

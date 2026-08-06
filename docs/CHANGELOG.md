@@ -1,5 +1,30 @@
 # Changelog
 
+## 2026-08-06 — Defense Desk v10: cross-desk consistency audit, DeepSeek oversight fix, stop re-entry thesis
+
+Cross-desk audit across Watchlist (200 items), Defense (13 stances), Holdings (22 positions),
+and Re-Entry (108 rows, 77 stop watches). All data sourced from the **data broker** as canonical
+source of truth. **0 hard contradictions** found between desk systems. Four soft conflicts
+(SCHD, JEPI, ARKX, XAR flagged TRIM) are legitimate defensive recommendations, not logic errors.
+
+DeepSeek oversight fully repaired across 3 layers: client now returns partial content with
+`truncated=True` instead of `ok=False`; `llm_lane` no longer raises on `OUTPUT_TRUNCATED`;
+`defense_oversight` increased `max_tokens` from 150 to 4096 and salvages truncated JSON via
+`raw_decode` fallback. All "deep sea" / "deep_sea" references renamed to "deepseek".
+
+Sector staleness fixed: `price_db_sync.py` now prices all 11 sector ETFs regardless of
+watchlist/portfolio membership; `sector_momentum_engine.py` stamps fresh `as_of` dates.
+
+Stop re-entry watches now accept an optional `thesis_map` parameter so the data broker
+can inject thesis text per symbol; symbol-specific triggers appended when a thesis exists.
+
+UI polish: 4 MetricStrip tooltips, 5 SectorLeadersCard column tooltips, sizing policy
+column in CashAlternatives, LLM timeline last-run timestamps, actual days-stale display.
+
+Docs: `docs/architecture/DEFENSE_DESK_V10.md`. Cross-desk health monitor designed
+(collector for health_agent.py using data broker projections, routing contradictions
+through the escalation queue to LLM for repair). 21 files changed, ~2800 additions.
+
 ## 2026-07-22 — V5 §17: institutional technical intelligence (canonical service + pattern engine)
 
 technical_intelligence.py canonical multi-TF snapshot in every packet; chart_patterns.py

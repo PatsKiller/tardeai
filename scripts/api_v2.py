@@ -11885,6 +11885,8 @@ def _defense_posture(query=None):
         out["engine_gaps"] = {"gaps": [], "last_check": None}
     # LLM Timeline — last-run and next-scheduled for every oversight + rotation seat
     out["llm_timeline"] = _build_llm_timeline()
+    # Data Rhythm — schedule + freshness of every data producer the desk consumes
+    out["data_rhythm"] = _build_data_rhythm()
     return out
 
 
@@ -11892,15 +11894,24 @@ def _build_llm_timeline():
     try:
         ov = _oversight_latest() or {}
         seats = ov.get("seats", {})
+        from datetime import time
+        et = timezone(timedelta(hours=-4))
         now_utc = datetime.now(timezone.utc)
         seats_timeline = {}
         for name, s in seats.items():
             at = s.get("at") if isinstance(s, dict) else None
             status = s.get("status", "?") if isinstance(s, dict) else "?"
+            if at:
+                try:
+                    at_dt = datetime.strptime(str(at)[:16], "%Y-%m-%d %H:%M")
+                    at_utc = at_dt.replace(tzinfo=et).astimezone(timezone.utc)
+                    age_m = round((now_utc - at_utc).total_seconds() / 60, 1)
+                except Exception:
+                    age_m = None
+            else:
+                age_m = None
             seats_timeline[name] = {"last_run": str(at)[:16] if at else None, "status": status,
-                "age_m": round((now_utc - datetime.fromisoformat(str(at).replace("Z","+00:00"))).total_seconds()/60, 1) if at else None}
-        from datetime import time
-        et = timezone(timedelta(hours=-4))
+                "age_m": age_m}
         windows = [
             {"label": "AM build", "et": "10:30", "utc_hour": 14, "utc_min": 30, "seats": ["deepseek", "chatgpt", "grok"]},
             {"label": "PM build", "et": "17:50", "utc_hour": 21, "utc_min": 50, "seats": ["deepseek", "chatgpt", "grok"]},
@@ -11922,7 +11933,71 @@ def _build_llm_timeline():
         return {"seats": seats_timeline, "schedule": schedule, "generated_at": now_utc.isoformat()}
     except Exception:
         return {"seats": {}, "schedule": [], "generated_at": None}
-    return out
+
+
+def _build_data_rhythm():
+    """Returns schedule + freshness for every defense data producer, with stoplight age bands."""
+    from datetime import time
+    et = timezone(timedelta(hours=-4))
+    now_utc = datetime.now(timezone.utc)
+    now_et = now_utc.astimezone(et)
+
+    # Age → stoplight: green ≤6h, yellow ≤24h (1d), amber ≤5d, red >5d
+    def light(iso: str | None):
+        if not iso:
+            return "red", "never"
+        try:
+            age_m = round((now_utc - datetime.fromisoformat(iso.replace("Z","+00:00"))).total_seconds() / 60, 1)
+            label = f"{age_m:.0f}m" if age_m < 60 else f"{age_m/60:.1f}h" if age_m < 48*60 else f"{age_m/1440:.1f}d"
+            if age_m <= 360:
+                return "green", label
+            if age_m <= 1440:
+                return "yellow", label
+            if age_m <= 7200:
+                return "amber", label
+            return "red", label
+        except Exception:
+            return "red", "parse_err"
+
+    rhythm = {"producers": [], "generated_at": now_utc.isoformat()}
+
+    # Read each snapshot file's age
+    snapshots = [
+        ("sectors", "data/runtime/sector_momentum_latest.json", "generated_at",
+         "Daily 17:25 ET · ranks, states, transitions"),
+        ("industries", "data/runtime/industry_momentum_latest.json", "generated_at",
+         "2× daily 12:30 (display) + 16:18 ET (close·debounce)"),
+        ("recommendations", "data/runtime/defense_recommendations_latest.json", "generated_at",
+         "2× daily 10:30 + 17:50 ET · trim ladders, plan, oversight"),
+        ("inverse_stoplights", "data/runtime/inverse_stoplights_latest.json", "generated_at",
+         "2× daily 10:15 + 17:55 ET · inverse-ETF entry gates"),
+        ("cash_alternatives", "data/runtime/defense_cash_alternatives_latest.json", "generated_at",
+         "Daily 17:15 ET · conservative cash vehicles"),
+        ("hedging_radar", "data/runtime/hedging_radar_latest.json", "generated_at",
+         "2× daily 10:00 + 17:35 ET · option chain snapshots"),
+    ]
+    for key, path, ts_field, schedule in snapshots:
+        s = _load_json(PROJECT_ROOT / path) or {}
+        ts = (s.get(ts_field) or s.get("captured_at")) if isinstance(s, dict) else None
+        clr, age_label = light(str(ts) if ts else None)
+        rhythm["producers"].append({
+            "key": key,
+            "schedule": schedule,
+            "last_run": str(ts)[:19] if ts else None,
+            "age_label": age_label,
+            "light": clr,
+        })
+    # Engine gaps
+    gaps = _load_json(PROJECT_ROOT / "data/runtime/defense_engine_gaps.json") or {}
+    clr, age_label = light(str(gaps.get("last_check")) if gaps.get("last_check") else None)
+    rhythm["producers"].append({
+        "key": "gap_checker",
+        "schedule": "2× daily 10:16 + 17:56 ET · stale-sector watchdog",
+        "last_run": str(gaps.get("last_check"))[:19] if gaps.get("last_check") else None,
+        "age_label": age_label,
+        "light": clr,
+    })
+    return rhythm
 
 
 def _defense_industries(query=None):
@@ -12775,12 +12850,30 @@ def _defense_refresh_start(body=None):
     """POST /api/v2/defense/refresh — QUEUE the 4-step producer chain (detached);
     the page polls refresh_job status via /defense/recommendations. Never live-waits."""
     import subprocess
+    import sys
     job = _load_json(PROJECT_ROOT / "data" / "runtime" / "defense_refresh_job.json") or {}
     if job.get("state") == "running":
         return {"ok": True, "queued": False, "already_running": True, "job": job}
     subprocess.Popen(
-        [str(PROJECT_ROOT / ".venv" / "bin" / "python"),
+        [sys.executable,
          str(PROJECT_ROOT / "scripts" / "defense_refresh_job.py")],
+        cwd=PROJECT_ROOT, start_new_session=True,
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return {"ok": True, "queued": True}
+
+
+def _defense_deepseek_refresh_start(body=None):
+    """POST /api/v2/defense/deepseek-refresh — QUEUE the full 7-producer chain + LLM oversight re-run.
+    More comprehensive than refresh_all: includes inverse_stoplights, cash_alternatives,
+    gap_checker, and triggers fresh free-seat oversight. Never live-waits."""
+    import subprocess
+    import sys
+    job = _load_json(PROJECT_ROOT / "data" / "runtime" / "defense_deepseek_refresh_job.json") or {}
+    if job.get("state") == "running":
+        return {"ok": True, "queued": False, "already_running": True, "job": job}
+    subprocess.Popen(
+        [sys.executable,
+         str(PROJECT_ROOT / "scripts" / "defense_deepseek_refresh_job.py")],
         cwd=PROJECT_ROOT, start_new_session=True,
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     return {"ok": True, "queued": True}
@@ -39225,6 +39318,12 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     if method == "POST" and base_path == "/api/v2/defense/refresh":
         try:
             return 200, _defense_refresh_start(body or {})
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:200]}
+
+    if method == "POST" and base_path == "/api/v2/defense/deepseek-refresh":
+        try:
+            return 200, _defense_deepseek_refresh_start(body or {})
         except Exception as e:
             return 500, {"ok": False, "error": str(e)[:200]}
 

@@ -143,9 +143,15 @@ export default function CashAlternatives({ data, onRefresh }: { data: CashData |
               <div style={{ overflowX: 'auto', padding: '0 0 10px' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead><tr>
-                    <th style={thL}>Symbol</th><th style={th}>Category</th><th style={th}>Score</th>
-                    <th style={th}>Yield</th><th style={th}>Preserv</th><th style={th}>Liq</th>
-                    <th style={th}>Tax</th><th style={th}>Sizing</th><th style={{ ...thL, paddingLeft: 18 }}>Thesis</th>
+                    <th style={thL} title="Ticker symbol">Symbol</th>
+                    <th style={th} title="Vehicle category">Category</th>
+                    <th style={th} title="Weighted composite: 30% yield · 35% capital preservation · 20% liquidity · 15% tax efficiency. Scale 0-100.">Score</th>
+                    <th style={th} title="Yield adequacy vs ~4.5% risk-free rate. Higher = more income.">Yield</th>
+                    <th style={th} title="Capital preservation — drawdown resistance, credit quality, duration risk. Higher = safer principal.">Preserv</th>
+                    <th style={th} title="Liquidity — average daily volume and bid-ask tightness. Higher = easier entry/exit.">Liq</th>
+                    <th style={th} title="Tax efficiency — municipal exemption, qualified dividends, state-tax treatment. Higher = more tax-advantaged.">Tax</th>
+                    <th style={th} title="Recommended max allocation of cash reserves to this vehicle">Sizing</th>
+                    <th style={{ ...thL, paddingLeft: 18 }} title="One-paragraph investment thesis for this vehicle">Thesis</th>
                   </tr></thead>
                   <tbody style={mono}>
                     {candidates.map((c, i) => (

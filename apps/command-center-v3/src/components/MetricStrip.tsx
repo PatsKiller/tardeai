@@ -66,6 +66,7 @@ export default function MetricStrip({ onDrill }: Props) {
     {
       label: 'PORTFOLIO', value: portfolioVal != null ? fmt$(portfolioVal, 0) : '—',
       color: 'var(--text0)',
+      tip: `Total portfolio equity across all linked broker accounts (Schwab, Fidelity, Alpaca, Moomoo). Refreshes every 2 min via /api/v2/overview.`,
       drill: { title: 'Portfolio', subtitle: 'From /api/v2/overview', endpoint: '/api/v2/overview',
         rows: overview ? [{ portfolio_value: overview.portfolio_value, total_cash: overview.total_cash, position_count: overview.position_count, today_change: overview.today_change, today_pct: overview.today_pct, as_of: overview.as_of }] : [] },
     },
@@ -83,6 +84,7 @@ export default function MetricStrip({ onDrill }: Props) {
               account_value: d.value, top_movers: d.top_movers || null,
             })),
         ] : [] },
+      tip: `Today's net change ($ and %) across all linked accounts. Click to see per-account breakdown. Refreshes every 2 min.`,
     },
     {
       label: 'TRADING', value: winRate != null ? `${winRate}%${winTrades ? ` · ${winTrades}` : ''}${journalPnl != null ? ` · ${fmt$(journalPnl, 0)}` : ''}` : '—',
@@ -103,12 +105,14 @@ export default function MetricStrip({ onDrill }: Props) {
     {
       label: 'REGIME', value: regimeLabel ? `${regimeLabel.replace(/_/g, ' ')}${regimeConf ? ` ${Math.round(regimeConf * 100)}%` : ''}` : '—',
       color: regimeLabel === 'risk_off' ? BB.red : regimeLabel === 'risk_on' ? BB.green : BB.amber,
+      tip: `Market regime from /api/v2/risk-regime/latest — weighs trend, breadth, and volatility signals into a risk-on/risk-off label with confidence.`,
       drill: { title: 'Market Regime', subtitle: 'From /api/v2/risk-regime/latest', endpoint: '/api/v2/risk-regime/latest',
         rows: regime ? [{ regime_label: regime.regime_label, confidence: regime.confidence, volatility_state: regime.volatility_state, trend_state: regime.trend_state, breadth_state: regime.breadth_state, summary: regime.summary }] : [] },
     },
     {
       label: 'VIX', value: vix != null ? Number(vix).toFixed(1) : '—',
       color: vix == null ? 'var(--text3)' : vix >= 25 ? BB.red : vix >= 18 ? BB.amber : BB.green,
+      tip: `CBOE Volatility Index. Green <18 (low fear), amber 18-25 (elevated), red ≥25 (high fear). Sourced from latest Trade AI scan.`,
       drill: { title: 'VIX', subtitle: 'Volatility index (from latest Trade AI run)', endpoint: '/api/v2/trade-ai',
         rows: tradeAi ? [{ vix: tradeAi.vix, market_regime: tradeAi.market_regime, run_label: tradeAi.run_label }] : [] },
     },

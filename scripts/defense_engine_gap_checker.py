@@ -53,6 +53,8 @@ def check_staleness() -> dict:
             continue
         try:
             as_of_dt = datetime.fromisoformat(str(as_of).replace("Z", "+00:00"))
+            if as_of_dt.tzinfo is None:
+                as_of_dt = as_of_dt.replace(tzinfo=timezone.utc)
             days = (now - as_of_dt).total_seconds() / 86400
         except Exception:
             days = None

@@ -110,6 +110,13 @@ def sync_daily_watchlist_prices(*, yfinance_cap: int = 40, min_rows: int = 60) -
     """Keep watchlist + active proposal ticker_prices current (daily cron)."""
     n_quotes = sync_quotes_to_ticker_prices()
     scope = list(dict.fromkeys(_hermes_top_symbols() + active_proposal_symbols()))
+    # Defense Desk: all 11 sector ETFs must stay priced regardless of watchlist/portfolio
+    # membership — the sector_momentum_engine dates each row to its own last close, so
+    # a missing price feed silently ages sectors (XLRE 24d, XLC 14d as of Aug 6).
+    SECTOR_ETFS = ["XLE","XLB","XLF","XLK","XLI","XLV","XLY","XLC","XLP","XLRE","XLU"]
+    for etf in SECTOR_ETFS:
+        if etf not in scope:
+            scope.append(etf)
     short = [s for s in scope if count_price_rows(s) < min_rows]
     yf_result = {"filled": 0}
     if short and yfinance_cap > 0:

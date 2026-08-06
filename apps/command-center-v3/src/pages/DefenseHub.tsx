@@ -30,6 +30,7 @@ export default function DefenseHub() {
   const { data: regime } = useApi<any>('/api/v2/risk-regime/latest', 300_000)
   const { data: tradeAi } = useApi<any>('/api/v2/trade-ai/summary', 300_000)
   const [queueing, setQueueing] = useState(false)
+  const [deepSeekRefreshing, setDeepSeekRefreshing] = useState(false)
 
   const rows: any[] = posture?.momentum?.rows || []
   const market = posture?.momentum?.market
@@ -70,6 +71,16 @@ export default function DefenseHub() {
     } finally { setQueueing(false) }
   }
 
+  const startDeepSeek = async () => {
+    setDeepSeekRefreshing(true)
+    try {
+      const r = await (await fetch('/api/v2/defense/deepseek-refresh', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).json()
+      if (!r.ok) { alert('DeepSeek refresh failed to start: ' + (r.error || 'unknown')); return }
+      refetchRecs()
+    } catch (e) { alert('DeepSeek refresh request failed: ' + String(e)) }
+    finally { setDeepSeekRefreshing(false) }
+  }
+
   // The redesigned desk — no feature flag. It shipped gated for one deploy and
   // the operator removed the gate; rollback is a git revert, not a runtime toggle.
   //
@@ -87,6 +98,7 @@ export default function DefenseHub() {
         posture={posture} recsData={recsData} tradeAi={tradeAi} regime={regime}
         industriesCapturedAt={industries?.captured_at}
         onRefresh={startRefresh} refreshing={queueing}
+        onDeepSeek={startDeepSeek} deepSeekRefreshing={deepSeekRefreshing}
         quadrant={<RotationBoards sectors={rows} industries={ind} spyLong={spyLong} oversight={recsData?.oversight} />}
         preserved={
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>

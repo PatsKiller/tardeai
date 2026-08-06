@@ -53,25 +53,44 @@ def build_stop_out_reviews(lifecycle: dict[str, dict[str, Any]]) -> list[dict[st
     return reviews
 
 
-def build_reentry_watch(reviews: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def build_reentry_watch(reviews: list[dict[str, Any]],
+                        thesis_map: dict[str, str] | None = None) -> list[dict[str, Any]]:
+    """Build advisory re-entry watch rows from stop-out reviews.
+
+    thesis_map: optional {symbol: thesis_text} — injected by the API layer from
+    watchlist entry plans, CIO synthesis, or deterministic thesis engine so the
+    watch desk surfaces a concrete re-entry rationale per symbol instead of
+    leaving the thesis field blank.
+    """
+    _thesis = thesis_map or {}
     watch: list[dict[str, Any]] = []
     for r in reviews:
+        sym = r["symbol"]
+        thesis = _thesis.get(sym, "")
+        # Symbol-specific triggers: start with the universal checklist, then
+        # append thesis-specific conditions when a thesis is available.
+        triggers = [
+            "reclaim stop level",
+            "reclaim 20d/50d moving average",
+            "volume confirmation",
+            "Finviz setup hit",
+            "positive catalyst/news",
+            "sector confirmation",
+            "RSI recovery",
+            "spread/liquidity ok",
+            "no conflicting thesis break",
+        ]
+        if thesis:
+            # When we know the re-entry thesis, add symbol-specific gates
+            triggers.append("thesis intact — re-entry premise still holds")
+            triggers.append("entry zone hit — price in or below planned zone")
         watch.append({
-            "symbol": r["symbol"],
+            "symbol": sym,
             "exit_price": r["exit_price"],
             "realized_pnl": r["realized_pnl"],
             "why_stopped": r["policy_quality"],
-            "triggers": [
-                "reclaim stop level",
-                "reclaim 20d/50d moving average",
-                "volume confirmation",
-                "Finviz setup hit",
-                "positive catalyst/news",
-                "sector confirmation",
-                "RSI recovery",
-                "spread/liquidity ok",
-                "no conflicting thesis break",
-            ],
+            "thesis": thesis,
+            "triggers": triggers,
             "status": "WAIT",
             "decision": "REENTRY_WATCH",
             "advisory_only": True,

@@ -120,15 +120,53 @@ def ensure_tables(cur):
 
 
 def _parse_strict(raw: str):
+    """Try to parse oversght JSON, including truncated responses."""
+    import json
     try:
         txt = raw.strip()
+        # Strip code fence
         if txt.startswith("```"):
-            txt = txt.split("```")[1].lstrip("json").strip()
+            if "```json" in txt:
+                txt = txt.split("```json", 1)[-1].strip()
+            else:
+                txt = txt.split("```", 1)[-1].strip()
+        # Try direct parse first
         d = json.loads(txt)
         assert isinstance(d.get("cards"), list) and isinstance(d.get("memo"), dict)
         for c in d["cards"]:
             assert c.get("verdict") in ("CONCUR", "QUALIFY", "OBJECT")
         return d
+    except json.JSONDecodeError:
+        # Truncated JSON — try raw_decode (parses as much valid JSON as possible)
+        try:
+            decoder = json.JSONDecoder()
+            obj, _idx = decoder.raw_decode(txt)
+            if isinstance(obj, dict) and isinstance(obj.get("cards"), list):
+                return obj
+        except json.JSONDecodeError:
+            pass
+        # Last resort: close open structures from the last complete card edge
+        try:
+            # Find the last '"}\n' or '"},'  — a complete card boundary (closed object)
+            # json.JSONDecoder.raw_decode can't handle truncated strings, so we
+            # look for the last structurally-sound card end
+            pos = len(txt)
+            for _ in range(5):  # try up to 5 card boundaries
+                pos = txt.rfind('},', 0, pos)
+                if pos == -1:
+                    break
+                # Omit the trailing comma when closing the array
+                salvage = txt[:pos+1] + '\n  ]\n}'
+                try:
+                    d = json.loads(salvage)
+                    if isinstance(d.get("cards"), list):
+                        return d
+                except Exception:
+                    pass
+                pos -= 1
+        except Exception:
+            pass
+        return None
     except Exception:
         return None
 
@@ -166,13 +204,23 @@ def run_free_critiques(cur, force: bool = False) -> dict:
             continue
         t0 = time.time()
         try:
-            raw = generate(prompt, lane=lane, timeout=150)
+            raw = generate(prompt, lane=lane, timeout=150, max_tokens=4096)
             raw = raw if isinstance(raw, str) else json.dumps(raw)
         except Exception as e:
             raw = f"__error__ {e}"
         ms = int((time.time() - t0) * 1000)
         parsed = _parse_strict(raw) if not raw.startswith("__error__") else None
-        status = "ok" if parsed else ("unavailable" if raw.startswith("__error__") else "unparseable")
+        # Distinguish truncation from genuine lane failure: truncated content is
+        # partial but potentially useful.  Mark as "truncated" not "unavailable".
+        if raw.startswith("__error__"):
+            if "OUTPUT_TRUNCATED" in raw:
+                status = "truncated"
+            else:
+                status = "unavailable"
+        elif parsed:
+            status = "ok"
+        else:
+            status = "unparseable"
         if parsed:
             want = {c["id"] for c in art["brief"]["cards"]}
             got = {c.get("id") for c in parsed["cards"]}
@@ -321,7 +369,12 @@ def run_paid_review(cur, seats=None) -> dict:
         raw = _call_provider(sc["provider"], sc["model"], prompt, keys)
         ms = int((time.time() - t0) * 1000)
         parsed = _parse_strict(raw) if not raw.startswith("__error__") else None
-        status = "ok" if parsed else ("unavailable" if raw.startswith("__error__") else "unparseable")
+        if raw.startswith("__error__"):
+            status = "truncated" if "OUTPUT_TRUNCATED" in raw else "unavailable"
+        elif parsed:
+            status = "ok"
+        else:
+            status = "unparseable"
         if parsed:
             want = {c["id"] for c in art["brief"]["cards"]}
             got = {c.get("id") for c in parsed["cards"]}

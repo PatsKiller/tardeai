@@ -34,14 +34,17 @@ const ageShort = (iso?: string | null) => {
 }
 
 /* ─────────────────────────── 1. COMMAND STRIP ─────────────────────────── */
-function CommandStrip({ sources, staleSectors, grokHealth, engineGaps, llmTimeline, onRefresh, refreshing }: {
+function CommandStrip({ sources, staleSectors, grokHealth, engineGaps, llmTimeline, dataRhythm, onRefresh, refreshing, onDeepSeek, deepSeekRefreshing }: {
   sources: Record<string, string | null>
   staleSectors: string[]
   grokHealth?: { available: boolean; status: number } | null
   engineGaps?: { gaps: { sector: string; etf: string; days_stale: number }[]; last_check: string | null } | null
   llmTimeline?: { seats: Record<string, { last_run: string | null; status: string; age_m: number | null }>; schedule: { label: string; et: string; next_et: string; in_min: number; seats: string[] }[] } | null
+  dataRhythm?: { producers: { key: string; schedule: string; last_run: string | null; age_label: string; light: string }[] } | null
   onRefresh: () => void
   refreshing: boolean
+  onDeepSeek: () => void
+  deepSeekRefreshing: boolean
 }) {
   const tl = llmTimeline
   const seatLabel: Record<string, string> = { deepseek: 'DS Flash', chatgpt: 'GPT', grok: 'Grok', paid_ds: 'DS Pro', paid: 'Claude', paid_gpt: 'GPT Pro', paid_xai: 'Grok Pro' }
@@ -97,10 +100,26 @@ function CommandStrip({ sources, staleSectors, grokHealth, engineGaps, llmTimeli
             next {nextBuild.et} ({Math.round(nextBuild.in_min / 60)}h)
           </span>
         )}
-        <button style={btn()} onClick={onRefresh} disabled={refreshing}>
+        <button style={btn()} onClick={onRefresh} disabled={refreshing || deepSeekRefreshing}>
           {refreshing ? 'refreshing…' : 'refresh all'}
         </button>
+        <button style={{...btn(), background: 'rgba(96,165,250,.13)', color: S.blue, border: '1px solid rgba(96,165,250,.2)'}} onClick={onDeepSeek} disabled={refreshing || deepSeekRefreshing}>
+          {deepSeekRefreshing ? 'DeepSeek running…' : 'DeepSeek'}
+        </button>
       </div>
+      {dataRhythm?.producers && dataRhythm.producers.length > 0 && (
+        <div style={{ marginTop: 6, display: 'flex', gap: 5, flexWrap: 'wrap', paddingTop: 4, borderTop: '1px solid ' + S.line }}>
+          {dataRhythm.producers.map(p => {
+            const lightTone: Record<string, 'g' | 'n' | 'a' | 'r'> = { green: 'g', yellow: 'n', amber: 'a', red: 'r' }
+            return (
+              <span key={p.key} style={chip(lightTone[p.light] || 'n')} title={`${p.key.replace(/_/g,' ')}: ${p.schedule}\nLast: ${p.last_run || 'never'} (${p.age_label})`}>
+                {p.key.replace(/_/g, ' ')} {p.age_label}
+              </span>
+            )
+          })}
+          <span style={{ fontSize: 10, color: S.t3, alignSelf: 'center', marginLeft: 4 }} title="stoplight: green ≤6h · neutral ≤1d · amber ≤5d · red >5d">freshness code</span>
+        </div>
+      )}
     </div>
   )
 }
@@ -109,7 +128,7 @@ function CommandStrip({ sources, staleSectors, grokHealth, engineGaps, llmTimeli
 interface Tile { rank: number | null; name: string; etf: string; weight: number | null;
                  tone: 'g' | 'r' | 'a' | 'n'; headline: string; hcolor: string; sub: string }
 
-function whereToAct(sectors: any[], leaders: Record<string, any>): Tile[] {
+function whereToAct(sectors: any[], leaders: Record<string, any>, engineGaps?: { gaps: { sector: string; etf: string; days_stale: number }[] } | null): Tile[] {
   const secs = sectors.filter(s => !isStyleRow(s.etf))
   if (!secs.length) return []
   const weights = secs.map(s => s.book_weight_pct).filter(isNum) as number[]
@@ -152,10 +171,11 @@ function whereToAct(sectors: any[], leaders: Record<string, any>): Tile[] {
     .filter(s => { const d = ageDays(s.as_of); return d !== null && d > STALE_DAYS })
     .sort((a, b) => (ageDays(b.as_of) ?? 0) - (ageDays(a.as_of) ?? 0))[0]
   if (stale) {
+    const gap = engineGaps?.gaps?.find(g => g.etf === stale.etf)
     push({
       rank: stale.rank, name: stale.name, etf: stale.etf, weight: stale.book_weight_pct, tone: 'n',
       headline: `Reading is ${ageDays(stale.as_of)} days old — not current`, hcolor: S.amber,
-      sub: `last refresh ${stale.as_of} · engine gap filed`,
+      sub: `last refresh ${stale.as_of}` + (gap ? ` · engine gap filed (${gap.days_stale}d)` : ''),
     })
   }
   return tiles.slice(0, 4)
@@ -537,9 +557,10 @@ function Oversight({ oversight }: { oversight: any }) {
 }
 
 /* ═══════════════════════════ COMPOSITION ══════════════════════════════ */
-export default function DefenseRedesign({ posture, recsData, tradeAi, regime, industriesCapturedAt, onRefresh, refreshing, quadrant, preserved }: {
+export default function DefenseRedesign({ posture, recsData, tradeAi, regime, industriesCapturedAt, onRefresh, refreshing, onDeepSeek, deepSeekRefreshing, quadrant, preserved }: {
   posture: any; recsData: any; tradeAi: any; regime: any; industriesCapturedAt?: string | null
   onRefresh: () => void; refreshing: boolean
+  onDeepSeek: () => void; deepSeekRefreshing: boolean
   quadrant: ReactNode; preserved: ReactNode
 }) {
   const [sl, setSl] = useState<any>(null)
@@ -583,7 +604,7 @@ export default function DefenseRedesign({ posture, recsData, tradeAi, regime, in
   const staleSectors = useMemo(
     () => sectors.filter(s => { const d = ageDays(s.as_of); return d !== null && d > STALE_DAYS }).map(s => s.etf),
     [sectors])
-  const tiles = useMemo(() => whereToAct(sectors, sl?.sector ? { [sl.sector.key]: sl.sector } : {}), [sectors, sl])
+  const tiles = useMemo(() => whereToAct(sectors, sl?.sector ? { [sl.sector.key]: sl.sector } : {}, posture?.engine_gaps), [sectors, sl, posture?.engine_gaps])
   const maxWeight = Math.max(1, ...sectors.map(s => s.book_weight_pct).filter(isNum))
 
   const recs = recsData?.recommendations
@@ -595,7 +616,7 @@ export default function DefenseRedesign({ posture, recsData, tradeAi, regime, in
 
   return (
     <div>
-      <CommandStrip sources={sources} staleSectors={staleSectors} grokHealth={posture?.grok_proxy_health} engineGaps={posture?.engine_gaps} llmTimeline={posture?.llm_timeline} onRefresh={onRefresh} refreshing={refreshing} />
+      <CommandStrip sources={sources} staleSectors={staleSectors} grokHealth={posture?.grok_proxy_health} engineGaps={posture?.engine_gaps} llmTimeline={posture?.llm_timeline} dataRhythm={posture?.data_rhythm} onRefresh={onRefresh} refreshing={refreshing} onDeepSeek={onDeepSeek} deepSeekRefreshing={deepSeekRefreshing} />
       <WhereToAct tiles={tiles} maxWeight={maxWeight} />
       <CashAlternatives data={cashAlt} />
       <MarketState
