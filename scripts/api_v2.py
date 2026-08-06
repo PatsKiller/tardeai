@@ -3515,7 +3515,11 @@ def watchlist_combined():
         company = e.get("company") or t.get("company") or hp.get("name", "")
         yq = {}
         if not company and not e and not t and not hp:
-            yq = _fetch_yahoo_quote(sym)
+            # Skip live Yahoo fallback — en-bloc per-symbol API calls wedge this
+            # endpoint for 6+ seconds when the watchlist has many uncached symbols.
+            # Symbols without any enrichment just serve sparse data (price/name
+            # from holdings) rather than blocking the entire page.
+            pass
         rsi = e.get("rsi") or t.get("rsi") or yq.get("rsi")
         rsi_signal = None
         if rsi is not None:
