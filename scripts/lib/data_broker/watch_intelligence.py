@@ -137,6 +137,14 @@ def _universe_symbols(*, view: str, page_size: int, extra: list[str] | None = No
             su = s.upper()
             if su not in base:
                 base.append(su)
+
+    # Filter CUSIP-style settlement IDs: 9-char alphanumeric strings with no dots/dashes
+    # (e.g. 543354104, 628518102). These are broker settlement identifiers that leak
+    # into watchlist_items via sync_portfolio_watchlist_membership. They will never
+    # resolve in market_quotes, symbol_profiles, or decision_packets — each one
+    # causes "no live shadow packet", "DATA_UNAVAILABLE", and stalls downstream services.
+    _valid_ticker = lambda s: not (len(s) == 9 and s.isalnum() and not any(c in s for c in ('.', '-', '/', '^', ' ')))
+    base = [s for s in base if _valid_ticker(s)]
     return base
 
 

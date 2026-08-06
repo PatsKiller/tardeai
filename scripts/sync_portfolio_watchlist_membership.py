@@ -32,7 +32,12 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 def held_symbols_from_holdings(holdings: dict | None = None,
                                holdings_path: Path | None = None) -> Set[str]:
-    """Canonical currently-held set: shares>0 or market_value>0, non-cash."""
+    """Canonical currently-held set: shares>0 or market_value>0, non-cash.
+
+    Filters CUSIP-style settlement IDs (9-char alphanumeric, no dots/dashes)
+    that appear in broker holdings files. These are not tradeable tickers and
+    pollute watchlist_items, watch_intelligence, and the reentry decision desk.
+    """
     if holdings is None:
         path = holdings_path or (PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json")
         if not path.exists():
@@ -44,6 +49,9 @@ def held_symbols_from_holdings(holdings: dict | None = None,
             continue
         sym = str(r.get("symbol") or "").upper().strip()
         if not sym:
+            continue
+        # Skip CUSIP-style settlement IDs
+        if len(sym) == 9 and sym.isalnum() and all(c not in sym for c in ('.', '-', '/', '^', ' ')):
             continue
         sh = float(r.get("quantity") or r.get("shares") or 0)
         mv = float(r.get("market_value") or 0)
