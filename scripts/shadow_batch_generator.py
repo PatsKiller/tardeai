@@ -283,10 +283,16 @@ def classify_freshness(symbols: list, hours: float = None) -> dict:
 
 def _generate_one(symbol: str) -> dict:
     """Evaluate + persist one packet. Never raises — a batch must not die on one
-    symbol; the failure is recorded and the run continues."""
+    symbol; the failure is recorded and the run continues.
+
+    SHADOW_BATCH_RUN_MODELS=false disables LLM lanes (blind-only: facts + thesis
+    + technicals + ticket validation). Use for weekly backfill or catch-up runs
+    where speed matters more than model enrichment."""
     try:
+        import os as _os
         import shadow_decision_service as svc
-        pkt = svc.evaluate(symbol, run_models=True, origin="batch")
+        _run_models = _os.getenv("SHADOW_BATCH_RUN_MODELS", "true").lower() in ("1", "true", "yes")
+        pkt = svc.evaluate(symbol, run_models=_run_models, origin="batch")
         pid = svc.persist(pkt, origin="batch")
         mr = pkt.get("model_review") or {}
         return {"symbol": symbol, "ok": True, "packet_id": pid,
