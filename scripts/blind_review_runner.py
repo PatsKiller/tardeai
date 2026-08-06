@@ -19,11 +19,17 @@ THE TWO INVARIANTS THIS ENFORCES AT RUNTIME
    be a consensus — measure_agreement() already returns SINGLE_SOURCE, and the
    badge discloses it.
 
-WHY grok + chatgpt + local
---------------------------
-Two independent cloud lanes plus the local model give a genuine three-way first
-pass. The value is in the DISAGREEMENT: when the cloud lanes split on timing but
-agree on thesis, that is the signal the one-word verdict destroyed.
+WHY grok + chatgpt + deepseek-flash
+----------------------------------
+Three genuinely independent cloud lanes give a strong first pass. The value is
+in the DISAGREEMENT: when lanes split on timing but agree on thesis, that is the
+signal the one-word verdict destroyed.
+
+DeepSeek V4 Flash is included by default as a third lane (always metered —
+never dependent on free OAuth). It hedges against OAuth pricing changes:
+even if the free tier disappears, the blind review still has at least one
+independent lane. The `local` Ollama lane is deliberately excluded from the
+default; add it via BLIND_REVIEW_LANES only when Ollama is healthy.
 
 A model MAY interpret evidence into a thesis/direction/timing view. It may NOT
 author a price, a payoff, or an eligibility decision — those stay in
@@ -45,16 +51,17 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 import blind_review as br             # noqa: E402
 import decision_packet as dp          # noqa: E402
 
-LANE_MODEL = {"chatgpt": "gpt-5.4", "grok": "grok-3-mini", "local": None}
+LANE_MODEL = {"chatgpt": "gpt-5.4", "grok": "grok-3-mini", "deepseek-flash": "deepseek-v4-flash", "local": None}
 
-# Default is the two GENUINELY independent cloud lanes: grok (xAI) and chatgpt
-# (OpenAI). The `local` lane is deliberately NOT in the default — when the local
-# Ollama is down it falls back to gpt-4o-mini, i.e. another OpenAI model, which
-# correlates with the chatgpt lane and inflates apparent agreement while adding
-# ~240s of timeout ladder. Two independent providers is an honest blind pass;
-# add `local` via BLIND_REVIEW_LANES only when Ollama is healthy.
+# Default is the three genuinely independent cloud lanes: deepseek-flash (V4),
+# grok (xAI), and chatgpt (OpenAI). DeepSeek is always metered — never dependent
+# on free OAuth — so it hedges against OAuth pricing changes. The `local` lane
+# is deliberately NOT in the default — when the local Ollama is down it falls
+# back to gpt-4o-mini, i.e. another OpenAI model, which correlates with the
+# chatgpt lane and inflates apparent agreement while adding ~240s of timeout
+# ladder. Add `local` via BLIND_REVIEW_LANES only when Ollama is healthy.
 def _default_lanes():
-    raw = os.getenv("BLIND_REVIEW_LANES", "grok,chatgpt")
+    raw = os.getenv("BLIND_REVIEW_LANES", "deepseek-flash,grok,chatgpt")
     return tuple(x.strip().lower() for x in raw.split(",") if x.strip())
 
 

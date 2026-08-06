@@ -2,6 +2,10 @@
 SHELL=/bin/bash
 PROJ=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
 PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
+# Broker env file (API keys via systemd-managed secrets)
+TRADEAI_ENV=/run/user/1000/tradeai/env
+# Three independent cloud lanes for blind review: deepseek always metered (never OAuth-dependent)
+BLIND_REVIEW_LANES=deepseek-flash,grok,chatgpt
 
 # ============================================================
 # Added: Session 35 (May 14 2026)
@@ -859,8 +863,8 @@ CIO_DUAL_CHATGPT_CAP=1100
 31 9 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/opening_intel.lock .venv/bin/python scripts/opening_intelligence.py --persist >> logs/opening_intelligence.log 2>&1
 0 10 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/opening_intel.lock .venv/bin/python scripts/opening_intelligence.py --persist >> logs/opening_intelligence.log 2>&1
 15 18 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/opening_intel.lock .venv/bin/python scripts/opening_intelligence.py --persist >> logs/opening_intelligence.log 2>&1
-15 9 * * 1-5 cd $PROJ && SHADOW_BATCH_TOP_N=300 SHADOW_BATCH_HARD_CAP=400 SHADOW_BATCH_CONCURRENCY=4 flock -n -E 99 /tmp/shadow_batch.lock timeout 60m $PY scripts/shadow_batch_generator.py --run >> logs/shadow_batch.log 2>&1; rc=$?; [ $rc -eq 99 ] && echo "$(date +\%Y-\%m-\%d\\ \%H:\%M:\%S) [flock] shadow_batch skipped — previous still running" >> $PROJ/logs/shadow_batch.log  # daily shadow decision-packet refresh: 300 symbols (6x old rate); idempotent (fresh<12h skipped)
-15 10 * * 0 cd $PROJ && SHADOW_BATCH_TOP_N=100 SHADOW_BATCH_CONCURRENCY=2 flock -n -E 99 /tmp/shadow_batch_weekly.lock timeout 45m $PY scripts/shadow_batch_generator.py --run >> logs/shadow_batch_weekly.log 2>&1; rc=$?; [ $rc -eq 99 ] && echo "$(date +\%Y-\%m-\%d\ \%H:\%M:\%S) [flock] shadow_batch_weekly skipped — previous still running" >> $PROJ/logs/shadow_batch_weekly.log  # weekly top-100 shadow review: full LLM critique of highest-evidence symbols; idempotent (fresh<12h skipped)
+15 9 * * 1-5 cd $PROJ && export $(grep -E "^[A-Za-z_][A-Za-z0-9_]*=" $TRADEAI_ENV | cut -d= -f1) 2>/dev/null; set -a; . <(grep -E "^[A-Za-z_][A-Za-z0-9_]*=" $TRADEAI_ENV) 2>/dev/null; set +a; SHADOW_BATCH_TOP_N=300 SHADOW_BATCH_HARD_CAP=400 SHADOW_BATCH_CONCURRENCY=4 flock -n -E 99 /tmp/shadow_batch.lock timeout 60m $PY scripts/shadow_batch_generator.py --run >> logs/shadow_batch.log 2>&1; rc=$?; [ $rc -eq 99 ] && echo "$(date +\%Y-\%m-\%d\\ \%H:\%M:\%S) [flock] shadow_batch skipped — previous still running" >> $PROJ/logs/shadow_batch.log  # daily shadow decision-packet refresh: 300 symbols (6x old rate); idempotent (fresh<12h skipped)
+15 10 * * 0 cd $PROJ && export $(grep -E "^[A-Za-z_][A-Za-z0-9_]*=" $TRADEAI_ENV | cut -d= -f1) 2>/dev/null; set -a; . <(grep -E "^[A-Za-z_][A-Za-z0-9_]*=" $TRADEAI_ENV) 2>/dev/null; set +a; SHADOW_BATCH_TOP_N=100 SHADOW_BATCH_CONCURRENCY=2 flock -n -E 99 /tmp/shadow_batch_weekly.lock timeout 45m $PY scripts/shadow_batch_generator.py --run >> logs/shadow_batch_weekly.log 2>&1; rc=$?; [ $rc -eq 99 ] && echo "$(date +\%Y-\%m-\%d\ \%H:\%M:\%S) [flock] shadow_batch_weekly skipped — previous still running" >> $PROJ/logs/shadow_batch_weekly.log  # weekly top-100 shadow review: full LLM critique of highest-evidence symbols; idempotent (fresh<12h skipped)
 # BEGIN alpaca-live-read-sync-cron
 */15 9-16 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && bash /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/safe_flock.sh /tmp/alpaca_live_read_sync.lock /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/alpaca_live_read_sync.py >> /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/alpaca_live_read_sync.log 2>&1
 # END alpaca-live-read-sync-cron
