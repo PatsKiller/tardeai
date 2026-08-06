@@ -14,13 +14,22 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 
 
 def _best_quote(symbol: str, max_age_s: int = 900) -> dict[str, Any] | None:
-    """Fallback: call get_best_quote if market_quotes has no fresh row."""
+    """Fallback: call get_best_quote if market_quotes has no fresh row.
+    Guarded by a 5s timeout — the broker waterfall reaches Schwab/Yahoo
+    which can stall for 10+ seconds on delisted/CUSIP symbols."""
+    import concurrent.futures
     try:
         scripts = str(PROJECT_ROOT / "scripts")
         if scripts not in sys.path:
             sys.path.insert(0, scripts)
-        from market_quote_provider import get_best_quote
-        q = get_best_quote(symbol, max_age_seconds=max_age_s) or {}
+
+        def _fetch():
+            from market_quote_provider import get_best_quote
+            return get_best_quote(symbol, max_age_seconds=max_age_s) or {}
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+            fut = ex.submit(_fetch)
+            q = fut.result(timeout=5)
         price = q.get("price") or q.get("last_price")
         if price is not None:
             return {
@@ -34,7 +43,8 @@ def _best_quote(symbol: str, max_age_s: int = 900) -> dict[str, Any] | None:
     return None
 
 
-def get_price_batch(db_query, symbols: list[str], max_age_hours: int = 12) -> dict[str, dict[str, Any]]:
+def get_price_batch(db_query, symbols: list[str], max_age_hours: int = 12,
+                    *, skip_live: bool = False) -> dict[str, dict[str, Any]]:
     """Return {SYMBOL: {price, chg_pct, source}} for a batch.
 
     Primary: market_quotes table (fresh row within max_age_hours).
@@ -44,6 +54,9 @@ def get_price_batch(db_query, symbols: list[str], max_age_hours: int = 12) -> di
         db_query: a callable(sql, params, fetch="all"|"one") injected by the caller.
         symbols: list of upper-case symbols.
         max_age_hours: max age of market_quotes rows to consider fresh.
+        skip_live: when True, skip the get_best_quote live-API fallback entirely.
+            Use for bulk-symbol pages (decision desk, watchlists) where blocking
+            on 250+ Schwab/Yahoo calls would wedge the request thread.
     """
     symbols = [str(s).upper().strip() for s in symbols if s and str(s).strip()]
     if not symbols:
@@ -78,15 +91,16 @@ def get_price_batch(db_query, symbols: list[str], max_age_hours: int = 12) -> di
             found.add(sym)
 
     # Second pass: broker waterfall only for missing symbols (still Data Broker path)
-    missing = [s for s in symbols if s not in found]
-    if missing:
-        for sym in missing:
-            q = _best_quote(sym, max_age_s=max(900, max_age_hours * 3600))
-            if q:
-                out[sym] = {
-                    "price": q["price"],
-                    "chg_pct": q.get("chg_pct"),
-                    "as_of": q.get("as_of") or q.get("quote_timestamp"),
-                    "source": "data_broker.market_quote:get_best_quote",
-                }
+    if not skip_live:
+        missing = [s for s in symbols if s not in found]
+        if missing:
+            for sym in missing:
+                q = _best_quote(sym, max_age_s=max(900, max_age_hours * 3600))
+                if q:
+                    out[sym] = {
+                        "price": q["price"],
+                        "chg_pct": q.get("chg_pct"),
+                        "as_of": q.get("as_of") or q.get("quote_timestamp"),
+                        "source": "data_broker.market_quote:get_best_quote",
+                    }
     return out
