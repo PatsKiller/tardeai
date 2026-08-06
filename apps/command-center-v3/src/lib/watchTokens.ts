@@ -99,7 +99,7 @@ export const DD = {
 } as const
 
 /** v8.5c — LLM provider brand colors for the oversight pills (ONLY place hexes live). */
-export const BRAND = { anthropic: '#D97757', openai: '#10A37F', xai: '#B8C2CC' } as const
+export const BRAND = { anthropic: '#D97757', openai: '#10A37F', xai: '#B8C2CC', deepseek: '#3B82F6' } as const
 
 /** Right-aligned tabular numeric cell (A2: one mono stack). */
 export const numCell: CSSProperties = {

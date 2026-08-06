@@ -262,6 +262,15 @@ def _call_provider(provider: str, model: str, prompt: str, key_env: dict) -> str
             with urllib.request.urlopen(req, timeout=180) as r:
                 resp = json.loads(r.read().decode())
             return "".join(b.get("text", "") for b in resp.get("content", []))
+        if provider == "deepseek":
+            key = key_env.get("deepseek", "")
+            body = json.dumps({"model": model, "max_tokens": 6000,
+                               "messages": [{"role": "user", "content": prompt}]}).encode()
+            req = urllib.request.Request("https://api.deepseek.com/v1/chat/completions", data=body, headers={
+                "Authorization": f"Bearer {key}", "content-type": "application/json"})
+            with urllib.request.urlopen(req, timeout=180) as r:
+                resp = json.loads(r.read().decode())
+            return resp["choices"][0]["message"]["content"]
         url = ("https://api.openai.com/v1/chat/completions" if provider == "openai"
                else "https://api.x.ai/v1/chat/completions")
         key = key_env["openai" if provider == "openai" else "xai"]
@@ -292,7 +301,8 @@ def run_paid_review(cur, seats=None) -> dict:
         return {"ok": False, "error": f"monthly oversight budget: ${pv['budget_remaining_usd']} left < ${total} est"}
     keys = {"anthropic": os.environ.get("ANTHROPIC_API_KEY", "").strip(),
             "openai": os.environ.get("OPENAI_API_KEY", "").strip(),
-            "xai": os.environ.get("XAI_API_KEY", "").strip()}
+            "xai": os.environ.get("XAI_API_KEY", "").strip(),
+            "deepseek": os.environ.get("deepseek_tradeai", "").strip() or os.environ.get("DEEPSEEK_API_KEY", "").strip()}
     art = build_oversight_brief()
     prompt = ("You are a PAID senior seat on an oversight panel for a retirement-scale defensive "
               "trading desk. Two free seats have already reviewed; be the adjudicator: judge WITHIN "

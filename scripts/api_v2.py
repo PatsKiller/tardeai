@@ -11883,6 +11883,45 @@ def _defense_posture(query=None):
         out["engine_gaps"] = gaps_json or {"gaps": [], "last_check": None}
     except Exception:
         out["engine_gaps"] = {"gaps": [], "last_check": None}
+    # LLM Timeline — last-run and next-scheduled for every oversight + rotation seat
+    out["llm_timeline"] = _build_llm_timeline()
+    return out
+
+
+def _build_llm_timeline():
+    try:
+        ov = _oversight_latest() or {}
+        seats = ov.get("seats", {})
+        now_utc = datetime.now(timezone.utc)
+        seats_timeline = {}
+        for name, s in seats.items():
+            at = s.get("at") if isinstance(s, dict) else None
+            status = s.get("status", "?") if isinstance(s, dict) else "?"
+            seats_timeline[name] = {"last_run": str(at)[:16] if at else None, "status": status,
+                "age_m": round((now_utc - datetime.fromisoformat(str(at).replace("Z","+00:00"))).total_seconds()/60, 1) if at else None}
+        from datetime import time
+        et = timezone(timedelta(hours=-4))
+        windows = [
+            {"label": "AM build", "et": "10:30", "utc_hour": 14, "utc_min": 30, "seats": ["deepseek", "chatgpt", "grok"]},
+            {"label": "PM build", "et": "17:50", "utc_hour": 21, "utc_min": 50, "seats": ["deepseek", "chatgpt", "grok"]},
+            {"label": "Weekly paid", "et": "Fri 18:15", "utc_day": 4, "utc_hour": 22, "utc_min": 15, "seats": ["paid_ds", "paid", "paid_gpt", "paid_xai"]},
+        ]
+        schedule = []
+        for w in windows:
+            if "utc_day" in w:
+                d = (w["utc_day"] - now_utc.weekday()) % 7
+                nd = now_utc.replace(hour=w["utc_hour"], minute=w["utc_min"], second=0, microsecond=0)
+                if d == 0 and nd <= now_utc: d = 7
+                next_dt = nd + timedelta(days=d)
+            else:
+                nd = now_utc.replace(hour=w["utc_hour"], minute=w["utc_min"], second=0, microsecond=0)
+                next_dt = nd if nd > now_utc else nd + timedelta(days=1)
+            schedule.append({"label": w["label"], "et": w["et"], "next_utc": next_dt.isoformat(),
+                "next_et": next_dt.astimezone(et).strftime("%a %H:%M ET"),
+                "in_min": round((next_dt-now_utc).total_seconds()/60,1), "seats": w["seats"]})
+        return {"seats": seats_timeline, "schedule": schedule, "generated_at": now_utc.isoformat()}
+    except Exception:
+        return {"seats": {}, "schedule": [], "generated_at": None}
     return out
 
 

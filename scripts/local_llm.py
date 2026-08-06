@@ -35,7 +35,8 @@ OLLAMA_URL = OLLAMA_BASE + "/api/chat"
 OLLAMA_MODEL_FAST = get_local_llm_model()
 OLLAMA_MODEL = get_local_llm_model()
 # Fallback models — centralized from .env, live-discovered defaults
-FALLBACK_OPENAI = os.getenv("LLM_FALLBACK_OPENAI", "gpt-4o-mini").strip()
+FALLBACK_DEEPSEEK = os.getenv("LLM_FALLBACK_DEEPSEEK", "deepseek-v4-flash").strip()
+FALLBACK_DEEPSEEK_PRO = os.getenv("LLM_FALLBACK_DEEPSEEK_PRO", "deepseek-v4-pro").strip()
 FALLBACK_ANTHROPIC = os.getenv("LLM_FALLBACK_ANTHROPIC", "claude-sonnet-4-6").strip()
 DEFAULT_TIMEOUT = 300
 LOCK_FILE = Path("/tmp/tradeai_local_llm_single_job.lock")
@@ -335,6 +336,25 @@ def _try_ollama(prompt: str, timeout: int, model: str = OLLAMA_MODEL,
     return None
 
 
+def _try_deepseek(prompt: str, timeout: int = 120) -> str | None:
+    """Try DeepSeek Flash via the llm_lane router. First cloud fallback after local Ollama."""
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from llm_lane import available, generate as ds_generate
+        lane = "deepseek-flash"
+        if not available(lane):
+            print(f"  [local-llm] DeepSeek Flash not available — skipping")
+            return None
+        result = ds_generate(prompt, lane=lane, timeout=timeout)
+        if result and len(result.strip()) > 10:
+            print(f"  [local-llm] DeepSeek Flash OK — {len(result)} chars")
+            return result.strip()
+        return None
+    except Exception as e:
+        print(f"  [local-llm] DeepSeek Flash error: {e}")
+        return None
+
+
 def _try_openai(prompt: str) -> str | None:
     """Fallback to OpenAI gpt-4o-mini."""
     try:
@@ -418,6 +438,13 @@ def generate(prompt: str, timeout: int = DEFAULT_TIMEOUT,
         print("  [local-llm] Could not acquire gate — skipping Ollama, trying fallbacks")
         _log_audit(caller, process_type, OLLAMA_MODEL, "ollama", 0, "gate_timeout")
         if fallback:
+            print(f"  [local-llm] DeepSeek Flash primary cloud fallback ({FALLBACK_DEEPSEEK})")
+            result = _try_deepseek(prompt)
+            if result:
+                model_used = FALLBACK_DEEPSEEK
+                _log_audit(caller, process_type, FALLBACK_DEEPSEEK, "deepseek",
+                           int((time.time()-t0)*1000), "ok", fallback_used=True)
+                return result
             result = _try_openai(prompt)
             if result:
                 model_used = FALLBACK_OPENAI
@@ -458,6 +485,14 @@ def generate(prompt: str, timeout: int = DEFAULT_TIMEOUT,
 
     # Cloud fallbacks don't need the gate
     if fallback:
+        print(f"  [local-llm] DeepSeek Flash primary cloud fallback ({FALLBACK_DEEPSEEK})")
+        result = _try_deepseek(prompt)
+        if result:
+            model_used = FALLBACK_DEEPSEEK
+            _log_audit(caller, process_type, FALLBACK_DEEPSEEK, "deepseek",
+                       int((time.time()-t0)*1000), "ok", fallback_used=True)
+            return result
+
         print(f"  [local-llm] Using OpenAI fallback ({FALLBACK_OPENAI})")
         result = _try_openai(prompt)
         if result:

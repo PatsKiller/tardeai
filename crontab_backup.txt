@@ -875,3 +875,5 @@ CIO_DUAL_CHATGPT_CAP=1100
 # END moomoo-live-read-sync
 56 17 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/engine_gap_check.lock .venv/bin/python scripts/defense_engine_gap_checker.py >> logs/engine_gap_checker.log 2>&1
 16 10 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/engine_gap_check.lock .venv/bin/python scripts/defense_engine_gap_checker.py >> logs/engine_gap_checker.log 2>&1
+30 10 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/defense_recs_am.lock .venv/bin/python scripts/defense_recommendations.py >> logs/defense_recs_am.log 2>&1
+15 17 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/defense_daily_refresh.lock .venv/bin/python scripts/defense_cash_alternatives.py >> logs/cash_alternatives.log 2>&1

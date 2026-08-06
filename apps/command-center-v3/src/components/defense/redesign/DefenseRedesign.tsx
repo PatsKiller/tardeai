@@ -34,14 +34,29 @@ const ageShort = (iso?: string | null) => {
 }
 
 /* ─────────────────────────── 1. COMMAND STRIP ─────────────────────────── */
-function CommandStrip({ sources, staleSectors, grokHealth, engineGaps, onRefresh, refreshing }: {
+function CommandStrip({ sources, staleSectors, grokHealth, engineGaps, llmTimeline, onRefresh, refreshing }: {
   sources: Record<string, string | null>
   staleSectors: string[]
   grokHealth?: { available: boolean; status: number } | null
   engineGaps?: { gaps: { sector: string; etf: string; days_stale: number }[]; last_check: string | null } | null
+  llmTimeline?: { seats: Record<string, { last_run: string | null; status: string; age_m: number | null }>; schedule: { label: string; et: string; next_et: string; in_min: number; seats: string[] }[] } | null
   onRefresh: () => void
   refreshing: boolean
 }) {
+  const tl = llmTimeline
+  const seatLabel: Record<string, string> = { deepseek: 'DS Flash', chatgpt: 'GPT', grok: 'Grok', paid_ds: 'DS Pro', paid: 'Claude', paid_gpt: 'GPT Pro', paid_xai: 'Grok Pro' }
+  const seatChip = (name: string, s: { last_run: string | null; status: string; age_m: number | null }) => {
+    const label = seatLabel[name] || name
+    const ageStr = s.age_m != null ? (s.age_m >= 1440 ? `${Math.round(s.age_m / 1440)}d` : `${Math.round(s.age_m)}m`) : '—'
+    const ok = s.status === 'ok'
+    const tone = ok ? 'g' : s.status === 'cached' ? 'n' : s.status === 'unavailable' ? 'r' : 'a'
+    return (
+      <span key={name} style={chip(tone)} title={`${label}: ${s.status} · last run ${s.last_run || 'never'} (${ageStr} ago)`}>
+        {label} {ageStr}
+      </span>
+    )
+  }
+  const nextBuild = tl?.schedule?.find(s => s.seats.includes('deepseek'))
   return (
     <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap', marginBottom: 6 }}>
       <div>
@@ -69,6 +84,17 @@ function CommandStrip({ sources, staleSectors, grokHealth, engineGaps, onRefresh
         {(engineGaps?.gaps?.length ?? 0) > 0 && (
           <span style={chip('a')} title={`engine gap filed for: ${engineGaps!.gaps.map(g => g.etf).join(', ')}`}>
             {engineGaps!.gaps.length} GAP{engineGaps!.gaps.length === 1 ? '' : 'S'} FILED
+          </span>
+        )}
+        {tl?.seats && Object.entries(tl.seats).filter(([n]) => !n.startsWith('paid')).map(([n, s]) => seatChip(n, s))}
+        {tl?.seats && Object.entries(tl.seats).filter(([n]) => n.startsWith('paid')).length > 0 && (
+          <span style={{...chip('n'), borderStyle: 'dashed'}} title="Paid seats (weekly, metered)">
+            ⚖ {Object.entries(tl.seats).filter(([n]) => n.startsWith('paid')).map(([n, s]) => `${seatLabel[n] || n} ${s.age_m != null ? Math.round(s.age_m / 1440)+'d' : '—'}`).join(' · ')}
+          </span>
+        )}
+        {nextBuild && (
+          <span style={chip('n')} title={`Next oversight build: ${nextBuild.et} ET (in ${Math.round(nextBuild.in_min / 60)}h ${Math.round(nextBuild.in_min % 60)}m)`}>
+            next {nextBuild.et} ({Math.round(nextBuild.in_min / 60)}h)
           </span>
         )}
         <button style={btn()} onClick={onRefresh} disabled={refreshing}>
@@ -569,7 +595,7 @@ export default function DefenseRedesign({ posture, recsData, tradeAi, regime, in
 
   return (
     <div>
-      <CommandStrip sources={sources} staleSectors={staleSectors} grokHealth={posture?.grok_proxy_health} engineGaps={posture?.engine_gaps} onRefresh={onRefresh} refreshing={refreshing} />
+      <CommandStrip sources={sources} staleSectors={staleSectors} grokHealth={posture?.grok_proxy_health} engineGaps={posture?.engine_gaps} llmTimeline={posture?.llm_timeline} onRefresh={onRefresh} refreshing={refreshing} />
       <WhereToAct tiles={tiles} maxWeight={maxWeight} />
       <CashAlternatives data={cashAlt} />
       <MarketState
