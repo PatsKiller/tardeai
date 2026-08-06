@@ -1039,7 +1039,25 @@ def _stops_reentry_watch_api(query=None):
         from journal_ticker_lifecycle import aggregate_ticker_activity, load_from_db
         lifecycle = aggregate_ticker_activity(load_from_db(account, days))
         reviews = build_stop_out_reviews(lifecycle)
-        watch = build_reentry_watch(reviews)
+
+        # Build thesis map for stop-out symbols — prefer entry plans, fall back to
+        # deterministic_thesis. The thesis field was previously blank on every watch row.
+        stop_syms = sorted({r["symbol"] for r in reviews})
+        thesis_map: dict[str, str] = {}
+        if stop_syms:
+            # Primary: entry plans from watchlist_entry_plans (LLM-generated with price context)
+            plan_rows = _db_query(
+                """SELECT DISTINCT ON (upper(symbol)) upper(symbol) AS sym, plan->>'entry_thesis' AS thesis
+                   FROM watchlist_entry_plans
+                   WHERE upper(symbol) = ANY(%s) AND plan->>'entry_thesis' IS NOT NULL
+                   ORDER BY upper(symbol), created_at DESC""",
+                (stop_syms,),
+            ) or []
+            for row in plan_rows:
+                if row.get("thesis"):
+                    thesis_map[row["sym"]] = row["thesis"]
+
+        watch = build_reentry_watch(reviews, thesis_map)
         return {
             "reviews": [{k: _json_clean(v) for k, v in r.items()} for r in reviews],
             "reentry_watch": [{k: _json_clean(v) for k, v in w.items()} for w in watch],
@@ -1048,6 +1066,7 @@ def _stops_reentry_watch_api(query=None):
             "days": days,
             "total_reviews": len(reviews),
             "total_watch": len(watch),
+            "thesis_populated": len(thesis_map),
         }
     except Exception as e:
         return {
