@@ -285,7 +285,24 @@ def run_auto_remediation(policy: dict, findings: list[dict]) -> list[dict]:
                 and "auto_enrichment_runner.py" not in cmd \
                 and "cleanup_stale_proposals.py" not in cmd \
                 and "remediate_watchlist_news_guard.py" not in cmd \
-                and "hermes_scope_governor.py" not in cmd:
+                and "hermes_scope_governor.py" not in cmd \
+                and "cio_decision_engine.py" not in cmd \
+                and "schwab_journal_builder.py" not in cmd \
+                and "schwab_transaction_ingest.py" not in cmd \
+                and "trade_ai_orchestrator.py" not in cmd \
+                and "shadow_batch_generator.py" not in cmd \
+                and "finviz_screener_runner.py" not in cmd \
+                and "news_ingestion.py" not in cmd \
+                and "indicator_cache_refresh.py" not in cmd \
+                and "build_symbol_profiles.py" not in cmd \
+                and "pro_analyst_fetch.py" not in cmd \
+                and "sector_momentum_engine.py" not in cmd \
+                and "rotation_autopilot.py" not in cmd \
+                and "unified_stop_supervisor.py" not in cmd \
+                and "fred_data_ingest.py" not in cmd \
+                and "sec_data_ingest.py" not in cmd \
+                and "social_ingest.py" not in cmd \
+                and "youtube_transcript_ingest.py" not in cmd:
             continue
         try:
             proc = subprocess.run(cmd, shell=True, cwd=str(PROJECT_ROOT),
@@ -332,6 +349,18 @@ def collect_data_quality() -> list[dict]:
             ("news", _db_age_h("SELECT MAX(created_at) FROM news_articles"), wk or 6, False),
             ("cio_decisions", _db_age_h("SELECT MAX(created_at) FROM cio_decisions"), wk or 48, True),
             ("agent_jobs", _db_age_h("SELECT MAX(created_at) FROM watchlist_agent_jobs WHERE status='completed'"), wk or 4, False),
+            ("indicator_snapshots", _db_age_h("SELECT MAX(computed_at) FROM indicator_signal_history"), wk or 48, True),
+            ("symbol_profiles", _db_age_h("SELECT MAX(updated_at) FROM symbol_profiles"), wk or 48, True),
+            ("analyst_rollups", _db_age_h("SELECT MAX(created_at) FROM analyst_consensus_history"), wk or 48, True),
+            ("sector_momentum", _db_age_h("SELECT MAX(created_at) FROM sector_momentum_state"), wk or 48, True),
+            ("rotation_summary", _db_age_h("SELECT MAX(created_at) FROM strategy_rotation_signals"), wk or 48, True),
+            ("stops", _db_age_h("SELECT MAX(snapshot_at) FROM stop_lifecycle WHERE lifecycle != 'orphaned'"), wk or 48, True),
+            ("fred_data", _db_age_h("SELECT MAX(fetched_at) FROM fred_economic_series"), wk or 168, True),
+            ("sec_data", _db_age_h("SELECT MAX(created_at) FROM sec_form4"), wk or 168, True),
+            ("social_data", _db_age_h("SELECT MAX(observed_at) FROM social_sentiment_history"), wk or 48, True),
+            ("youtube", _db_age_h("SELECT MAX(ingested_at) FROM youtube_transcripts"), wk or 168, True),
+            ("orchestrator_setups", _file_age_h(LOG_DIR / "screener_pm.log"), wk or 24, True),
+            ("shadow_batch", _file_age_h(LOG_DIR / "shadow_batch_manual.log"), wk or 24, True),
         ]
         for name, age, maxh, weekend_ok in checks:
             if age is None:

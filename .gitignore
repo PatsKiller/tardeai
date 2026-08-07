@@ -59,6 +59,8 @@ sandbox/
 # ── All portfolio/personal data — PII, holdings, AI outputs, CSVs ──────────
 # Option A: state stays out of git
 data/
+# Exceptions: integrity manifest is a deployment artifact (source of truth)
+!data/runtime/file_integrity_manifest.json
 
 # ── Generated reports (regenerable from code + state) ──────────────────────
 /reports/

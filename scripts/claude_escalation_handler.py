@@ -30,6 +30,7 @@ except ImportError:
     pass
 
 QUEUE_FILE = PROJECT_ROOT / "logs" / "claude_escalation_queue.json"
+STALENESS_QUEUE_FILE = PROJECT_ROOT / "data" / "runtime" / "staleness_escalation_queue.json"
 RETRY_LOG = PROJECT_ROOT / "logs" / "claude_escalation_retry_cmd.jsonl"
 ALLOWLIST_FILE = PROJECT_ROOT / "config" / "claude_escalation_allowlist.yaml"
 LOG_DIR = PROJECT_ROOT / "logs"
@@ -278,16 +279,36 @@ def _notify(message):
 
 # ── Main processing ─────────────────────────────────────────────────────
 
-def process_queue(dry_run=False):
-    """Process escalation queue: direct retry → LLM diagnosis → Claude Code CLI."""
-    if not QUEUE_FILE.exists():
-        log.info("No escalation queue file — nothing to process")
-        return
-
+def _clear_queues():
+    """Write empty arrays to both escalation queue files."""
     try:
-        items = json.loads(QUEUE_FILE.read_text())
+        QUEUE_FILE.write_text("[]")
     except Exception:
-        items = []
+        pass
+    try:
+        STALENESS_QUEUE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        STALENESS_QUEUE_FILE.write_text("[]")
+    except Exception:
+        pass
+
+
+def process_queue(dry_run=False):
+    """Process escalation queues: direct retry → LLM diagnosis → Claude Code CLI.
+    Reads from both claude_escalation_queue.json AND staleness_escalation_queue.json."""
+    # Collect items from both queues
+    items = []
+
+    if QUEUE_FILE.exists():
+        try:
+            items.extend(json.loads(QUEUE_FILE.read_text()))
+        except Exception:
+            pass
+
+    if STALENESS_QUEUE_FILE.exists():
+        try:
+            items.extend(json.loads(STALENESS_QUEUE_FILE.read_text()))
+        except Exception:
+            pass
 
     if not items:
         log.info("Escalation queue empty")
@@ -307,7 +328,7 @@ def process_queue(dry_run=False):
 
     if not actionable:
         log.info(f"Queue has {len(unique_items)} items but none are actionable (all portfolio_risk)")
-        QUEUE_FILE.write_text("[]")
+        _clear_queues()
         return
 
     tier3_max = max(1, int(os.getenv("ESCALATION_TIER3_MAX_BATCH", "5")))
@@ -344,7 +365,7 @@ def process_queue(dry_run=False):
 
     if not remaining:
         log.info("All items resolved by direct retry_cmd")
-        QUEUE_FILE.write_text("[]")
+        _clear_queues()
         if resolved_by_retry:
             _notify(f"✅ Auto-recovery: {len(resolved_by_retry)} escalation(s) resolved by retry_cmd")
         return
@@ -449,6 +470,15 @@ def process_queue(dry_run=False):
                                   status="deferred",
                                   session_log="dry_run — not invoked")
         QUEUE_FILE.write_text(json.dumps(deferred, indent=2) if deferred else "[]")
+        # Separate staleness items from main queue items for staleness queue
+        stale_items = [i for i in (deferred or []) if i.get("source") == "hermes_health_inspector"]
+        non_stale = [i for i in (deferred or []) if i.get("source") != "hermes_health_inspector"]
+        QUEUE_FILE.write_text(json.dumps(non_stale, indent=2) if non_stale else "[]")
+        try:
+            STALENESS_QUEUE_FILE.parent.mkdir(parents=True, exist_ok=True)
+            STALENESS_QUEUE_FILE.write_text(json.dumps(stale_items, indent=2) if stale_items else "[]")
+        except Exception:
+            pass
         return
 
     log.info(f"Tier 3: Deep LLM analysis for {len(remaining)} item(s)...")
