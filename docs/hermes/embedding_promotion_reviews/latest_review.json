@@ -1,15 +1,7 @@
 {
-  "date": "2026-08-05",
-  "timestamp": "2026-08-05T08:15:33.540062+00:00",
+  "date": "2026-08-06",
+  "timestamp": "2026-08-06T08:16:13.546939+00:00",
   "embedding_recommendations": [
-    {
-      "id": 13502,
-      "symbol": "BIYA",
-      "type": "momentum_catalyst",
-      "confidence": 0.7,
-      "has_url": true,
-      "reason": "staged, has evidence, not embedded"
-    },
     {
       "id": 14975,
       "symbol": "ALAR",
@@ -37,6 +29,14 @@
     {
       "id": 13669,
       "symbol": "AMIX",
+      "type": "momentum_catalyst",
+      "confidence": 0.7,
+      "has_url": true,
+      "reason": "staged, has evidence, not embedded"
+    },
+    {
+      "id": 14102,
+      "symbol": "CMCO",
       "type": "momentum_catalyst",
       "confidence": 0.7,
       "has_url": true,
@@ -45,14 +45,6 @@
   ],
   "promotion_recommendations": [
     {
-      "id": 13502,
-      "symbol": "BIYA",
-      "type": "momentum_catalyst",
-      "confidence": 0.7,
-      "has_url": true,
-      "reason": "staged, high conf, has evidence"
-    },
-    {
       "id": 14975,
       "symbol": "ALAR",
       "type": "momentum_catalyst",
@@ -83,10 +75,18 @@
       "confidence": 0.7,
       "has_url": true,
       "reason": "staged, high conf, has evidence"
+    },
+    {
+      "id": 14102,
+      "symbol": "CMCO",
+      "type": "momentum_catalyst",
+      "confidence": 0.7,
+      "has_url": true,
+      "reason": "staged, high conf, has evidence"
     }
   ],
   "rejected": [],
-  "total_staged_non_backlog": 171,
+  "total_staged_non_backlog": 165,
   "embeddings_created": 0,
   "promotions_created": 0
 }
