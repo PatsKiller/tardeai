@@ -45,7 +45,12 @@
     "telegram_on_trend_drop": true,
     "min_realert_minutes": 360,
     "realert_on_score_drop": 5,
-    "flap_suppress_minutes": 360
+    "flap_suppress_minutes": 360,
+    "escalation_budget": {
+      "_comment": "Per-finding-type daily caps to prevent storm loops (F4-7). Caps Telegram alerts and retry attempts independently — a silent retry loop still burns resources even without alerts.",
+      "max_alerts_per_type_per_day": 6,
+      "max_retries_per_type_per_day": 12
+    }
   },
   "history": {
     "retention_days": 90,

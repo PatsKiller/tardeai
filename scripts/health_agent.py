@@ -2907,6 +2907,64 @@ def collect_trade_ai_session() -> list[dict]:
     return out
 
 
+# ── Phase 4 prevention collectors ────────────────────────────────────────────────────────────────────
+
+def collect_cron_sanity() -> list[dict]:
+    """Verify every scripts/*.py reference in the crontab exists (prevents C8 recurrence).
+
+    Dead cron entries silently fail (exit 127 into cron mail) and are invisible to the
+    log-scanner — the C8 bug class where watchlist_health_agent.py ran every 10-30 min
+    for weeks without existing in prod."""
+    try:
+        from check_cron_sanity import check
+        return check()
+    except Exception as e:
+        return [_f("execution_health", "cron_sanity_check_error", "info",
+                   f"Cron sanity check failed: {str(e)[:100]}")]
+
+
+def collect_queue_health() -> list[dict]:
+    """Inspect the escalation queue for stuck, orphaned, or oversized items.
+
+    Finds items that have been exhausted >24h (stuck), items from dead sources
+    (orphaned), and reports total queue depth."""
+    out: list[dict] = []
+    try:
+        from lib.queue_file import read_items
+        items = read_items(QUEUE_FILE)
+    except Exception:
+        try:
+            items = json.loads(QUEUE_FILE.read_text()) if QUEUE_FILE.exists() else []
+        except Exception:
+            return [_f("execution_health", "queue_health_read_error", "info",
+                       "Could not read escalation queue for health check")]
+    if not items:
+        return []
+    now_ts = __import__("time").time()
+    stuck = 0
+    orphaned_sources = set()
+    for item in items:
+        if item.get("_exhausted"):
+            last_at = item.get("_last_attempt_ts", 0)
+            if last_at and (now_ts - float(last_at)) > 86400:
+                stuck += 1
+        src = item.get("source", "")
+        if src and src not in ("health_agent", "system_health_agent",
+                                "hermes_health_inspector", "manual"):
+            orphaned_sources.add(src)
+    if stuck:
+        out.append(_f("execution_health", "queue_stuck_items", "warning",
+                      f"{stuck} escalation queue item(s) exhausted >24h — may need operator review"))
+    if orphaned_sources:
+        out.append(_f("execution_health", "queue_orphaned_sources", "info",
+                      f"Escalation queue contains items from unknown sources: "
+                      f"{', '.join(sorted(orphaned_sources)[:5])}"))
+    if len(items) > 50:
+        out.append(_f("execution_health", "queue_depth_high", "info",
+                      f"Escalation queue has {len(items)} items (>50) — review may be needed"))
+    return out
+
+
 COLLECTORS = [
     collect_data_quality,
     collect_trade_ai_session,
@@ -2939,6 +2997,9 @@ COLLECTORS = [
     collect_failed_systemd_units,
     collect_db_connection_health,
     collect_backup_health,
+    # Phase 4 prevention collectors
+    collect_cron_sanity,
+    collect_queue_health,
 ]
 
 
