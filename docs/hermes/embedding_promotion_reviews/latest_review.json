@@ -1,33 +1,25 @@
 {
-  "date": "2026-08-06",
-  "timestamp": "2026-08-06T08:16:13.546939+00:00",
+  "date": "2026-08-07",
+  "timestamp": "2026-08-07T08:15:33.538063+00:00",
   "embedding_recommendations": [
     {
-      "id": 14975,
-      "symbol": "ALAR",
+      "id": 14135,
+      "symbol": "BSBR",
       "type": "momentum_catalyst",
       "confidence": 0.7,
       "has_url": true,
       "reason": "staged, has evidence, not embedded"
     },
     {
-      "id": 14134,
-      "symbol": "BOOM",
+      "id": 15282,
+      "symbol": "APPS",
       "type": "momentum_catalyst",
       "confidence": 0.7,
       "has_url": true,
       "reason": "staged, has evidence, not embedded"
     },
     {
-      "id": 13671,
-      "symbol": "BATL",
-      "type": "momentum_catalyst",
-      "confidence": 0.7,
-      "has_url": true,
-      "reason": "staged, has evidence, not embedded"
-    },
-    {
-      "id": 13669,
+      "id": 15279,
       "symbol": "AMIX",
       "type": "momentum_catalyst",
       "confidence": 0.7,
@@ -35,8 +27,16 @@
       "reason": "staged, has evidence, not embedded"
     },
     {
-      "id": 14102,
-      "symbol": "CMCO",
+      "id": 14133,
+      "symbol": "AIBZ",
+      "type": "momentum_catalyst",
+      "confidence": 0.7,
+      "has_url": true,
+      "reason": "staged, has evidence, not embedded"
+    },
+    {
+      "id": 14618,
+      "symbol": "CLDI",
       "type": "momentum_catalyst",
       "confidence": 0.7,
       "has_url": true,
@@ -45,31 +45,23 @@
   ],
   "promotion_recommendations": [
     {
-      "id": 14975,
-      "symbol": "ALAR",
+      "id": 14135,
+      "symbol": "BSBR",
       "type": "momentum_catalyst",
       "confidence": 0.7,
       "has_url": true,
       "reason": "staged, high conf, has evidence"
     },
     {
-      "id": 14134,
-      "symbol": "BOOM",
+      "id": 15282,
+      "symbol": "APPS",
       "type": "momentum_catalyst",
       "confidence": 0.7,
       "has_url": true,
       "reason": "staged, high conf, has evidence"
     },
     {
-      "id": 13671,
-      "symbol": "BATL",
-      "type": "momentum_catalyst",
-      "confidence": 0.7,
-      "has_url": true,
-      "reason": "staged, high conf, has evidence"
-    },
-    {
-      "id": 13669,
+      "id": 15279,
       "symbol": "AMIX",
       "type": "momentum_catalyst",
       "confidence": 0.7,
@@ -77,8 +69,16 @@
       "reason": "staged, high conf, has evidence"
     },
     {
-      "id": 14102,
-      "symbol": "CMCO",
+      "id": 14133,
+      "symbol": "AIBZ",
+      "type": "momentum_catalyst",
+      "confidence": 0.7,
+      "has_url": true,
+      "reason": "staged, high conf, has evidence"
+    },
+    {
+      "id": 14618,
+      "symbol": "CLDI",
       "type": "momentum_catalyst",
       "confidence": 0.7,
       "has_url": true,
@@ -86,7 +86,7 @@
     }
   ],
   "rejected": [],
-  "total_staged_non_backlog": 165,
+  "total_staged_non_backlog": 186,
   "embeddings_created": 0,
   "promotions_created": 0
 }

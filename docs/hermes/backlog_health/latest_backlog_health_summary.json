@@ -1,6 +1,6 @@
 {
-  "date": "2026-08-06",
-  "timestamp": "2026-08-06T06:45:43.557532+00:00",
+  "date": "2026-08-07",
+  "timestamp": "2026-08-07T06:45:33.549970+00:00",
   "checks": {
     "total_backlog": 30,
     "open_count": 0,
@@ -15,98 +15,98 @@
         "key": "NULL:backtest_contradiction"
       },
       {
-        "id": 33,
-        "duplicate_of": 32,
+        "id": 34,
+        "duplicate_of": 33,
         "key": "NULL:unknown"
       },
       {
-        "id": 34,
-        "duplicate_of": 32,
+        "id": 32,
+        "duplicate_of": 33,
         "key": "NULL:unknown"
       },
       {
         "id": 54,
-        "duplicate_of": 32,
+        "duplicate_of": 33,
         "key": "NULL:unknown"
       },
       {
         "id": 53,
-        "duplicate_of": 32,
+        "duplicate_of": 33,
         "key": "NULL:unknown"
       },
       {
         "id": 3727,
-        "duplicate_of": 32,
+        "duplicate_of": 33,
         "key": "NULL:unknown"
       },
       {
         "id": 3726,
-        "duplicate_of": 32,
-        "key": "NULL:unknown"
-      },
-      {
-        "id": 5329,
-        "duplicate_of": 32,
-        "key": "NULL:unknown"
-      },
-      {
-        "id": 5330,
-        "duplicate_of": 32,
+        "duplicate_of": 33,
         "key": "NULL:unknown"
       },
       {
         "id": 5331,
-        "duplicate_of": 32,
+        "duplicate_of": 33,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 5329,
+        "duplicate_of": 33,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 5330,
+        "duplicate_of": 33,
         "key": "NULL:unknown"
       },
       {
         "id": 5478,
-        "duplicate_of": 32,
+        "duplicate_of": 33,
         "key": "NULL:unknown"
       },
       {
         "id": 6024,
-        "duplicate_of": 32,
+        "duplicate_of": 33,
         "key": "NULL:unknown"
       },
       {
         "id": 7106,
-        "duplicate_of": 32,
+        "duplicate_of": 33,
         "key": "NULL:unknown"
       },
       {
         "id": 7986,
-        "duplicate_of": 32,
-        "key": "NULL:unknown"
-      },
-      {
-        "id": 9057,
-        "duplicate_of": 32,
+        "duplicate_of": 33,
         "key": "NULL:unknown"
       },
       {
         "id": 9059,
-        "duplicate_of": 32,
+        "duplicate_of": 33,
         "key": "NULL:unknown"
       },
       {
-        "id": 9061,
-        "duplicate_of": 32,
-        "key": "NULL:unknown"
-      },
-      {
-        "id": 9058,
-        "duplicate_of": 32,
+        "id": 9057,
+        "duplicate_of": 33,
         "key": "NULL:unknown"
       },
       {
         "id": 9060,
-        "duplicate_of": 32,
+        "duplicate_of": 33,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 9061,
+        "duplicate_of": 33,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 9058,
+        "duplicate_of": 33,
         "key": "NULL:unknown"
       },
       {
         "id": 9666,
-        "duplicate_of": 32,
+        "duplicate_of": 33,
         "key": "NULL:unknown"
       }
     ],
@@ -116,22 +116,22 @@
     "missing_symbol": 27,
     "source_surfaces": {
       "librarian_loop": 5,
-      "backtest": 3,
-      "journal": 1,
       "catalyst": 1,
+      "journal": 1,
+      "backtest": 3,
       "backtest_results": 18,
       "screener_registry": 1,
       "catalyst_quality": 1
     },
     "oldest_item": {
-      "id": 19,
+      "id": 20,
       "created": "2026-05-31 21:36:31",
-      "age_days": 66
+      "age_days": 67
     },
     "newest_item": {
       "id": 9666,
       "created": "2026-07-14 12:03:57",
-      "age_days": 22
+      "age_days": 23
     },
     "ready_for_discovery": 0,
     "not_ready_for_discovery": 0,
