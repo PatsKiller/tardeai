@@ -555,3 +555,150 @@ Documenting recommended cron entries — per rules, these are NOT being installe
 | `scripts/hermes_health_inspector.py` | **MODIFIED** | Added remediation tracking, RETURNING id, constraint fixes |
 | `~/.openclaw/agents/.../SOUL.md` | **MODIFIED** | Added Self-Learning Protocol section |
 | `docs/health_inspector_build_log.md` | **MODIFIED** | This section (Phase 6 documentation) |
+
+---
+
+## Phase 7: Agent Watchdog & Self-Healing (Layer 7)
+
+### 7A. Created `agent_heartbeat` DB table
+
+**DB Table Created:** `agent_heartbeat` in `tradeai` database
+
+**Columns:** `agent_id` (TEXT PK), `last_seen` (TIMESTAMPTZ), `status` (TEXT, CHECK: ALIVE/HUNG/DEAD/RESTARTING), `current_task` (TEXT), `error_count` (INTEGER), `last_error` (TEXT), `pid` (INTEGER), `started_at` (TIMESTAMPTZ)
+
+**Indexes:** `idx_agent_heartbeat_id` (unique on agent_id), `idx_agent_heartbeat_seen` (on last_seen)
+
+### 7B. Created `scripts/lib/agent_heartbeat.py`
+
+**File Created:** `scripts/lib/agent_heartbeat.py` (54 lines)
+
+**Architecture:**
+- `AgentHeartbeat` class with `HEARTBEAT_INTERVAL_S = 30`
+- `register()` — upserts agent into table with ALIVE status, pid, current task
+- `heartbeat()` — updates last_seen timestamp
+- `mark_done()` — sets status to ALIVE, increments error_count on failure, records last_error (truncated to 500 chars)
+
+### 7C. Created `scripts/agent_watchdog.py`
+
+**File Created:** `scripts/agent_watchdog.py` (109 lines)
+
+**Behavior:**
+- Runs as standalone watchdog (intended for cron every 5 min)
+- Queries `agent_heartbeat` for agents silent >15 min, not already marked DEAD/RESTARTING
+- Marks hung agents as HUNG status
+- Checks if PID still exists via `os.kill(pid, 0)`
+- Generates escalation payload with agent_id, minutes_since_seen, pid_alive, recommended_action
+- Writes to both `staleness_escalation_queue.json` and `claude_escalation_queue.json`
+- Prints summary: ESCALATED per agent + TOTAL count
+
+### 7D. Added Agent Liveness Check to `health_agent.py`
+
+**File Modified:** `scripts/health_agent.py`
+
+**New check in `collect_data_quality()`:**
+- Queries `agent_heartbeat` for agents silent >5 min (not DEAD)
+- Classifies severity: P0 (>30 min), P1 (>10 min), P2 (>5 min)
+- Labels problems as HUNG (>30 min) or LATE
+- Produces findings with `auto_retry: agent_restart::{agent_id}` for >15 min silence
+- Wrapped in try/except for graceful degradation if table doesn't exist
+
+### 7E. Added Heartbeat Integration to `health_agent.py`
+
+**File Modified:** `scripts/health_agent.py`
+
+- At `main()` start: imports `AgentHeartbeat` from `lib.agent_heartbeat`, gets DB conn via `db_adapter._get_conn()`, registers as `health_agent` with task `health_scoring`
+- At `main()` end: calls `hb.mark_done(success=True)` after scoring/alerting completes
+- Graceful fallback if import or DB connection fails
+
+### 7F. Added Agent Liveness Check to `hermes_health_inspector.py`
+
+**File Modified:** `scripts/hermes_health_inspector.py`
+
+**New `_stage_finding()` helper:**
+- Stages single agent liveness finding in `hermes_research_intelligence`
+- Uses `research_type = 'agent_liveness'`, `topic = agent_liveness_{priority}`
+- Sets `confidence_score = 0.9` for watchdog detections
+- Uses `model_used = 'watchdog'`
+
+**New agent liveness check in `_run()`:**
+- After reading health surfaces, before signal fusion
+- Queries `agent_heartbeat` for agents silent >10 min OR status HUNG/DEAD
+- Stages P0 (>30 min) or P1 findings via `_stage_finding()`
+- Wrapped in try/except for graceful fallback
+
+### 7G. Added Heartbeat Integration to `hermes_health_inspector.py`
+
+**File Modified:** `scripts/hermes_health_inspector.py`
+
+**New functions:**
+- `_init_heartbeat()` — creates separate DB connection, registers as `hermes_health_inspector` with task `pipeline_health_sweep`
+- `_emit_heartbeat()` — updates last_seen (available for periodic pulse within long runs)
+- `_mark_heartbeat_done()` — marks completion with success/failure
+
+**Integration:**
+- `_init_heartbeat()` called at start of `_run()`
+- `_mark_heartbeat_done(success=True)` called on normal completion
+- `_mark_heartbeat_done(success=False, error=str(e))` called on exception
+
+### 7H. Added Heartbeat to `inspect_all.py` (OpenClaw)
+
+**File Modified:** `~/.openclaw/skills/tradeai-health-inspect/scripts/inspect_all.py`
+
+- At `main()` start: imports `AgentHeartbeat`, creates separate psycopg2 connection from env vars
+- Registers as `openclaw_health_inspector` with task `inspect_all`
+- At end: calls `hb.mark_done(success=...)` based on overall report status (HEALTHY vs DEGRADED)
+- Graceful fallback on connection failure
+
+### 7I. Updated `health_agent_policy.json`
+
+**File Modified:** `config/health_agent_policy.json`
+
+**New `remediation_map` entry:**
+```json
+"agent_hung": {
+  "pattern": "agent::*",
+  "diagnostics": ["SELECT * FROM agent_heartbeat WHERE agent_id = $AGENT_ID"],
+  "remediation": "echo 'Agent $AGENT_ID is hung, sending escalation and operator alert'",
+  "risk": "HIGH",
+  "auto_apply": false,
+  "notify_telegram": true,
+  "escalate_to": "claude_escalation_queue.json"
+}
+```
+
+### 7J. Updated SOUL.md with Watchdog Awareness
+
+**File Modified:** `~/.openclaw/agents/tradeai-health-inspector/agent/SOUL.md`
+
+**Changes:**
+- Added item **14. Agent Liveness (SELF-AWARE)** to Inspection Order: check agent_heartbeat table, escalate if any agent (including self) silent >15 min
+- Added **Agent Self-Monitoring** section to Remediation Protocol:
+  - Every 30s emit heartbeat during execution
+  - agent_watchdog.py detects hung agents every 5 min
+  - If another agent is hung: stage P1 finding, escalate
+  - If self is hung: watchdog detects and escalates
+  - Never restart another agent directly — always escalate
+
+### 7K. Cron Recommendations (NOT INSTALLED)
+
+Documenting recommended cron entry for the watchdog — per rules, NOT being installed:
+
+```cron
+# Agent Watchdog — every 5 minutes
+*/5 * * * * cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && .venv/bin/python scripts/agent_watchdog.py >> logs/agent_watchdog.log 2>&1
+```
+
+---
+
+## Files Changed Summary (Phase 7)
+
+| File | Action | Description |
+|---|---|---|
+| `scripts/lib/agent_heartbeat.py` | **CREATED** | Liveness heartbeat emitter (54 lines) |
+| `scripts/agent_watchdog.py` | **CREATED** | Standalone watchdog for hung agent detection (109 lines) |
+| `scripts/health_agent.py` | **MODIFIED** | Added agent liveness check to collect_data_quality + heartbeat |
+| `scripts/hermes_health_inspector.py` | **MODIFIED** | Added _stage_finding, agent liveness check, heartbeat init/done |
+| `config/health_agent_policy.json` | **MODIFIED** | Added agent_hung remediation_map entry |
+| `~/.openclaw/skills/.../inspect_all.py` | **MODIFIED** | Added heartbeat register + mark_done |
+| `~/.openclaw/agents/.../SOUL.md` | **MODIFIED** | Added Agent Liveness checklist item + Agent Self-Monitoring section |
+| `docs/health_inspector_build_log.md` | **MODIFIED** | This section (Phase 7 documentation) |

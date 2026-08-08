@@ -1,3 +1,5 @@
+# DEPRECATED 2026-08-06: No known consumers.
+# Scheduled for removal. See Wave B/C Data Broker compliance remediation.
 """Data Broker — refresh indicator_confluence_cache + invalidate broker snapshot.
 
 Single write path for RSI/SMA/MACD consumers (Watch MAIN desk, Re-Entry desk,

@@ -29,6 +29,50 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 from lib.file_integrity import FileIntegrity
 from lib.runtime_awareness import RuntimeAwareness
+from lib.live_project_root import get_live_project_root, CURRENT_SYMLINK
+
+
+def check_deployment_convergence() -> list[dict]:
+    """Step 5: Verify CURRENT symlink, ACTIVE_RELEASE file, and systemd drop-in agree."""
+    alerts: list[dict] = []
+    RELEASE_BASE = Path("/home/johnclaw/trade-ai-releases/portfolio-server")
+    ACTIVE_FILE = RELEASE_BASE / "ACTIVE_RELEASE"
+    SYSTEMD_DROPIN = Path(
+        os.path.expanduser("~/.config/systemd/user/portfolio-server.service.d/20-exact-sha-release.conf")
+    )
+
+    current_target = None
+    if CURRENT_SYMLINK.is_symlink():
+        current_target = str(CURRENT_SYMLINK.resolve())
+    else:
+        alerts.append({
+            "severity": "P0", "type": "current_symlink_missing",
+            "message": "CURRENT symlink is missing or not a symlink — deployment integrity broken"
+        })
+
+    active_content = None
+    if ACTIVE_FILE.exists():
+        try:
+            active_content = ACTIVE_FILE.read_text().strip()
+        except Exception:
+            alerts.append({
+                "severity": "P1", "type": "active_release_unreadable",
+                "message": f"Cannot read {ACTIVE_FILE}"
+            })
+    else:
+        alerts.append({
+            "severity": "P1", "type": "active_release_missing",
+            "message": f"ACTIVE_RELEASE file missing at {ACTIVE_FILE}"
+        })
+
+    if current_target and active_content:
+        if active_content != current_target:
+            alerts.append({
+                "severity": "P0", "type": "active_current_mismatch",
+                "message": f"ACTIVE_RELEASE ({active_content}) != CURRENT symlink ({current_target})"
+            })
+
+    return alerts
 
 
 def _fmt_alert(alert: dict, idx: int | None = None) -> str:
@@ -127,16 +171,28 @@ def print_human_report(integrity: FileIntegrity, canonical_results: dict,
             print(f"     {sc['message']}")
             print()
 
+    # ── Section 5: Deployment convergence ───────────────────────────────
+    print(f"\n{'─' * 72}")
+    print("  STEP 5: DEPLOYMENT CONVERGENCE — CURRENT / ACTIVE_RELEASE agreement")
+    print(f"{'─' * 72}")
+
+    deployment_alerts = check_deployment_convergence()
+    if not deployment_alerts:
+        print("  ✅ CURRENT symlink and ACTIVE_RELEASE file agree.")
+    else:
+        for i, alert in enumerate(deployment_alerts, 1):
+            print(_fmt_alert(alert, i))
+
     # ── Summary ──────────────────────────────────────────────────────────
     print(f"{'─' * 72}")
     print("  SUMMARY")
 
     total_p0 = canonical_results.get("p0_alerts", 0) + sum(
         1 for a in server_cross_check.get("alerts", []) if a.get("severity") == "P0"
-    )
+    ) + sum(1 for a in deployment_alerts if a.get("severity") == "P0")
     total_p1 = canonical_results.get("p1_alerts", 0) + len(stale_copies) + sum(
         1 for a in server_cross_check.get("alerts", []) if a.get("severity") == "P1"
-    )
+    ) + sum(1 for a in deployment_alerts if a.get("severity") == "P1")
 
     print(f"  P0 alerts: {total_p0}")
     print(f"  P1 alerts: {total_p1}")

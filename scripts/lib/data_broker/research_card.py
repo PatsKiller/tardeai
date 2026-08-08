@@ -1,3 +1,5 @@
+# DEPRECATED 2026-08-06: No known consumers (only imported by orphaned watch_decision_desk).
+# Scheduled for removal. See Wave B/C Data Broker compliance remediation.
 """Research Card — Data Broker read model for watchlist per-symbol CIO research recommendations.
 
 Batch-reads watchlist_research_cards (agent-curated CIO recommendation per symbol).

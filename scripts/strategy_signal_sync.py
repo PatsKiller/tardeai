@@ -499,10 +499,17 @@ def insert_strategy_signal(conn, scan: dict, plan: dict, available_cols: set,
     placeholders = ", ".join(["%s"] * len(insert_data))
 
     cur.execute(
-        f"INSERT INTO strategy_signals ({cols_str}) VALUES ({placeholders}) RETURNING id",
+        f"INSERT INTO strategy_signals ({cols_str}) VALUES ({placeholders}) "
+        f"ON CONFLICT (strategy_id, symbol, signal_type, fired_at) DO NOTHING "
+        f"RETURNING id",
         list(insert_data.values())
     )
-    signal_id = cur.fetchone()[0]
+    row = cur.fetchone()
+    if row is None:
+        # ON CONFLICT DO NOTHING — duplicate signal already exists, skip
+        conn.commit()
+        return None
+    signal_id = row[0]
 
     # Phase B-1c: also write to watchpool if strategy is watchpool-routed
     try:

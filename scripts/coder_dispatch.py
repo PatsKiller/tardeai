@@ -28,6 +28,7 @@ import argparse
 import json
 import logging
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -35,7 +36,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+# DEV_ROOT always points to the git-enabled dev directory for coder worktree operations
+DEV_ROOT = Path("/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild")
+sys.path.insert(0, str(DEV_ROOT / "scripts"))
+
+try:
+    from lib.live_project_root import get_live_project_root
+    LIVE_ROOT = get_live_project_root()
+except Exception:
+    LIVE_ROOT = PROJECT_ROOT
 
 try:
     from dotenv import load_dotenv
@@ -115,7 +124,7 @@ def select_backend(reg: dict, kind: str) -> dict | None:
 # ── git / worktree helpers ──────────────────────────────────────────────────────────────────────────
 
 def _git(*args, cwd=None, timeout=120) -> subprocess.CompletedProcess:
-    return subprocess.run(["git", *args], cwd=str(cwd or PROJECT_ROOT),
+    return subprocess.run(["git", *args], cwd=str(cwd or DEV_ROOT),
                           capture_output=True, text=True, timeout=timeout)
 
 
@@ -183,12 +192,32 @@ def run_cli_agent(b: dict, prompt: str, wt: Path) -> tuple[bool, str]:
     cmd = [b["bin"], *args]
     cwd = wt if b.get("cwd_is_worktree", True) else PROJECT_ROOT
     timeout = b.get("timeout_sec", 900)
+    proc = None
     try:
-        r = subprocess.run(cmd, cwd=str(cwd), capture_output=True, text=True, timeout=timeout)
-        out = (r.stdout or "")[-2000:] + (("\n[stderr] " + r.stderr[-500:]) if r.returncode != 0 and r.stderr else "")
+        proc = subprocess.Popen(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, cwd=str(cwd), start_new_session=True,
+        )
+        try:
+            stdout, stderr = proc.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            try:
+                pgid = os.getpgid(proc.pid)
+                os.killpg(pgid, signal.SIGTERM)
+                try:
+                    proc.communicate(timeout=5)
+                except subprocess.TimeoutExpired:
+                    os.killpg(pgid, signal.SIGKILL)
+                    proc.communicate(timeout=5)
+            except Exception:
+                pass
+            log.warning(f"  ⏱️ coder backend {b.get('name')} timeout ({timeout}s) — process group killed")
+            return True, f"timeout after {timeout}s"
+        out = (stdout or "")[-2000:] + (
+            ("\n[stderr] " + (stderr or "")[-500:])
+            if proc.returncode != 0 and stderr else ""
+        )
         return True, out
-    except subprocess.TimeoutExpired:
-        return True, f"timeout after {timeout}s"
     except Exception as e:
         return False, f"invoke error: {e}"
 
@@ -274,6 +303,8 @@ def ensure_audit_table():
             backend TEXT, mode TEXT, branch TEXT,
             outcome TEXT, files_changed JSONB, pr_url TEXT,
             reasoning TEXT, detail TEXT)""")
+    ex("""CREATE INDEX IF NOT EXISTS idx_coder_dispatch_audit_created_at
+          ON coder_dispatch_audit (created_at)""")
 
 
 def dispatched_today() -> int:
@@ -283,10 +314,10 @@ def dispatched_today() -> int:
         try:
             today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
             return sum(1 for ln in AUDIT_JSONL.read_text().splitlines()
-                       if today in ln and '"outcome": "pr_opened"' in ln or '"outcome": "advisory_diff"' in ln)
+                       if today in ln and ('"outcome": "pr_opened"' in ln or '"outcome": "advisory_diff"' in ln))
         except Exception:
             return 0
-    r = ex("SELECT COUNT(*) AS c FROM coder_dispatch_audit WHERE created_at::date = now()::date "
+    r = ex("SELECT COUNT(*) AS c FROM coder_dispatch_audit WHERE created_at >= now()::date "
            "AND outcome IN ('pr_opened','advisory_diff')", fetch="one")
     return (r or {}).get("c", 0) if r else 0
 
@@ -440,13 +471,32 @@ def _save_diff_artifact(wt: Path, branch: str) -> Path:
 
 def code_fix_items_from_queue() -> list[dict]:
     """Pull code-fix-flagged items from the escalation queue (component-level problems the safe-retry
-    + LLM tiers could not resolve, explicitly tagged needs_code_fix)."""
+    + LLM tiers could not resolve, explicitly tagged needs_code_fix).
+
+    Filters out already-dispatched items unless the dispatch is older than 24h (allows retry
+    after a transient backend-unavailable or verify-failed outcome)."""
     try:
-        items = json.loads(QUEUE_FILE.read_text())
+        from lib.queue_file import read_items
+        items = read_items(QUEUE_FILE)
     except Exception:
-        return []
-    return [i for i in items if i.get("needs_code_fix") or i.get("kind") in
-            ("code", "single_file", "multi_file", "schema")]
+        try:
+            items = json.loads(QUEUE_FILE.read_text()) if QUEUE_FILE.exists() else []
+        except Exception:
+            return []
+    now_ts = time.time()
+    result = []
+    for i in items:
+        if not (i.get("needs_code_fix") or i.get("kind") in
+                ("code", "single_file", "multi_file", "schema")):
+            continue
+        # Skip already-dispatched items unless >24h old (retry window)
+        ds = i.get("_dispatch_status")
+        if ds == "dispatched":
+            dispatched_at = i.get("_dispatched_at", 0)
+            if now_ts - float(dispatched_at) < 86400:
+                continue  # still within retry window
+        result.append(i)
+    return result
 
 
 # ── CLI ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -470,6 +520,8 @@ def main():
     ap.add_argument("--apply", action="store_true", help="actually run the coder (default: plan only)")
     ap.add_argument("--list-backends", action="store_true")
     ap.add_argument("--limit", type=int, default=MAX_PER_RUN)
+    ap.add_argument("--reset-dispatched", action="store_true",
+                    help="clear _dispatch_status on all queue items (operator override)")
     args = ap.parse_args()
 
     reg = load_registry()
@@ -477,6 +529,21 @@ def main():
 
     if args.list_backends:
         list_backends(reg); return
+
+    # --reset-dispatched: clear dispatch status on all queue items (operator override)
+    if args.reset_dispatched:
+        try:
+            from lib.queue_file import atomic_update
+            def _reset(items):
+                for i in items:
+                    for k in ("_dispatch_status", "_dispatch_outcome", "_dispatched_at"):
+                        i.pop(k, None)
+                return items
+            atomic_update(QUEUE_FILE, _reset)
+            print(json.dumps({"ok": True, "reset_dispatched": True}))
+        except Exception as e:
+            print(json.dumps({"ok": False, "error": str(e)}))
+        return
 
     problems = []
     if args.problem:
@@ -495,6 +562,26 @@ def main():
         problems = problems[: min(args.limit, DAILY_CAP - used)]
 
     results = [dispatch_one(p, reg, apply=args.apply) for p in problems[: args.limit]]
+
+    # Mark dispatched items in the queue so they aren't re-dispatched every cron run.
+    # In advisory mode the finding can never clear (diff is never merged), but at least
+    # the dispatch loop stops after one attempt.  Re-eligible after 24h for retry.
+    if args.apply and args.from_queue:
+        try:
+            from lib.queue_file import atomic_update
+            dispatched_comps = {p.get("component") for p in problems[: args.limit]}
+            now_ts = time.time()
+            def _mark(items):
+                for i in items:
+                    if i.get("component") in dispatched_comps:
+                        i["_dispatch_status"] = "dispatched"
+                        i["_dispatch_outcome"] = "attempted"  # detailed outcome in audit table
+                        i["_dispatched_at"] = now_ts
+                return items
+            atomic_update(QUEUE_FILE, _mark)
+        except Exception as e:
+            log.warning(f"Failed to mark dispatched items in queue: {e}")
+
     print(json.dumps({"ok": True, "mode": MODE, "applied": args.apply,
                       "count": len(results), "results": results}, indent=2, default=str))
 

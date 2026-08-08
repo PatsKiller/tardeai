@@ -2,12 +2,22 @@
   "_comment": "Centralized Health Agent policy. DB-overridable via config_documents key 'health_agent_policy'. See docs/HEALTH_AGENT.md. No hardcoded values in code \u2014 weights/penalties/thresholds/mode all live here.",
   "mode": "advisory",
   "_mode_help": "advisory = score + alert + enqueue escalations (handler/coder act on them). safe = also allow the existing escalation handler's allowlisted retries. Code-level auto-fix is always gated by coder_dispatch's own CODER_DISPATCH_MODE.",
+  "daemon": {
+    "_comment": "Continuous health_agent_daemon.py (systemd tradeai-health-agent.service) adaptive sleep. Cron */15 still OK — same flock /tmp/health_agent.lock.",
+    "cadence_seconds": {
+      "healthy": 1800,
+      "degraded": 300,
+      "unhealthy": 90,
+      "unknown": 300
+    }
+  },
   "weights": {
-    "data_quality": 0.25,
-    "execution_health": 0.25,
-    "intelligence_quality": 0.2,
-    "risk_protection": 0.2,
-    "retirement_planning": 0.1
+    "data_quality": 0.20,
+    "execution_health": 0.20,
+    "intelligence_quality": 0.20,
+    "risk_protection": 0.15,
+    "retirement_planning": 0.10,
+    "pipeline_freshness": 0.15
   },
   "penalties": {
     "critical": 40,
@@ -94,7 +104,7 @@
     "min_universe": 400
   },
   "broker_token_health": {
-    "_comment": "Schwab OAuth token liveness (collect_broker_token_health). Detects server-side REVOCATION that the TTL-based token health misses: broker_oauth_tokens.degraded/last_error + invalid_grant/no-login-token in schwab_ingest.log. Emits critical schwab_token_revoked. Deliberately NOT in remediation_map — a revoked token needs a manual reauth (GATE A), not an auto-retry; the finding carries the reauth command for the operator.",
+    "_comment": "Schwab OAuth token liveness (collect_broker_token_health). Detects server-side REVOCATION that the TTL-based token health misses: broker_oauth_tokens.degraded/last_error + invalid_grant/no-login-token in schwab_ingest.log. Emits critical schwab_token_revoked. Deliberately NOT in remediation_map \u2014 a revoked token needs a manual reauth (GATE A), not an auto-retry; the finding carries the reauth command for the operator.",
     "enabled": true,
     "tail_lines": 200
   },
@@ -116,7 +126,7 @@
     "burst_critical": 30
   },
   "watchlist_news_guard": {
-    "_comment": "Yahoo RSS mis-tags headlines to wrong tickers — affects all CIO tiers (BUY/HOLD/AVOID/pullback).",
+    "_comment": "Yahoo RSS mis-tags headlines to wrong tickers \u2014 affects all CIO tiers (BUY/HOLD/AVOID/pullback).",
     "enabled": true,
     "sample_limit": 120,
     "mismatch_warn": 1,
@@ -146,10 +156,22 @@
       "fidelity_rollover_ira"
     ]
   },
+  "never_auto_remediate": [
+    "unprotected_positions",
+    "siem_p0p1",
+    "schwab_token_revoked",
+    "finviz_cookie_expired",
+    "audit_ledger_coverage_warn",
+    "audit_ledger_coverage_fail",
+    "audit_ledger_chain_break",
+    "kill_switch_active"
+  ],
   "auto_remediate": {
-    "_comment": "Health agent runs these allowlisted scripts immediately when matching findings fire (no 15m escalation-handler wait). Cooldown prevents repricer loops.",
+    "_comment": "Health agent runs these allowlisted scripts immediately when matching findings fire (no 15m escalation-handler wait). Cooldown prevents repricer loops. Python path rewritten to DEV venv (live stamp has no .venv). never_auto_remediate is hard denylist for risk/credential/ledger.",
     "enabled": true,
     "cooldown_minutes": 10,
+    "max_ineffective_attempts": 3,
+    "ineffective_window_minutes": 60,
     "finding_types": [
       "portfolio_totals_drift",
       "account_summary_drift",
@@ -161,6 +183,9 @@
       "momentum_scalp_early_lane_error",
       "sec_form4_context_stale",
       "agent_jobs_processing_stuck",
+      "agent_jobs_stuck",
+      "agent_jobs_stale",
+      "pipeline_failures",
       "synthesis_processing_stuck",
       "proposal_trade_plan_blocked",
       "hermes_scope_governor_stale",
@@ -180,6 +205,7 @@
       "finviz_screener_stale",
       "news_ingestion_stale",
       "indicator_snapshot_stale",
+      "indicator_snapshots_stale",
       "symbol_profiles_stale",
       "analyst_rollup_stale",
       "sector_momentum_stale",
@@ -190,11 +216,25 @@
       "sec_data_stale",
       "social_data_stale",
       "snaptrade_stale",
-      "youtube_stale"
+      "youtube_stale",
+      "data_source_stale",
+      "backup_cadence_stale",
+      "db_dump_stale",
+      "db_dump_missing",
+      "options_proposals_stale",
+      "options_zero_proposals",
+      "news_stale",
+      "data_gaps_open",
+      "never_submitted_stale",
+      "stale_paper_trade_stats",
+      "paper_trade_stats_stale",
+      "trade_ai_session_stale",
+      "trade_ai_session_missing",
+      "orchestrator_setups_stale"
     ]
   },
   "scalp_catalyst_health": {
-    "_comment": "URGENT monitor for the real-time momentum-scalp GO/WAIT Telegram lane (collect_scalp_catalyst_health). Fires critical scalp_catalyst_verification_dead when the scanner is active but 0 setups reach GO across window_days (catalyst verification silently producing nothing → all capped to WAIT → suppressed). Auto-remediated by re-running the scanner; circuit-breaker escalates if futile. Caught the 2026-07-01 week-long silent outage.",
+    "_comment": "URGENT monitor for the real-time momentum-scalp GO/WAIT Telegram lane (collect_scalp_catalyst_health). Fires critical scalp_catalyst_verification_dead when the scanner is active but 0 setups reach GO across window_days (catalyst verification silently producing nothing \u2192 all capped to WAIT \u2192 suppressed). Auto-remediated by re-running the scanner; circuit-breaker escalates if futile. Caught the 2026-07-01 week-long silent outage.",
     "enabled": true,
     "window_days": 3,
     "min_rows": 40
@@ -212,7 +252,9 @@
       "tradeai-",
       "portfolio-",
       "grok-oauth",
-      "chatgpt-oauth"
+      "chatgpt-oauth",
+      "hermes-",
+      "mcporter-"
     ]
   },
   "db_connections": {
@@ -227,13 +269,14 @@
   "remediation_map": {
     "_comment": "finding type -> allowlisted retry_cmd enqueued for claude_escalation_handler tier-1. Only verified, side-effect-safe scripts. LLM-heavy processor retries are flock-guarded on the SAME lock as the cron so they SINGLE-FLIGHT \u2014 multiple queued retries (or a retry racing the cron) can no longer stack concurrent processors and saturate the local LLM (the 2026-06-25 Ollama thundering-herd: 6+ --limit 15 processes \u2192 503/timeout cascade).",
     "news_stale": ".venv/bin/python scripts/news_ingestion.py --priority",
-    "scalp_catalyst_verification_dead": "flock -n /tmp/social_scalp.lock .venv/bin/python scripts/social_scalp_scanner.py >> logs/social_scalp_scanner.log 2>&1",
+    "scalp_catalyst_verification_dead": ".venv/bin/python scripts/remediate_scalp_go_dark.py",
     "hermes_scope_governor_stale": "bash scripts/safe_flock.sh /tmp/hermes_scope_governor.lock .venv/bin/python scripts/hermes_scope_governor.py --apply >> logs/hermes_scope_governor.log 2>&1",
     "hermes_scope_governor_heartbeat_missing": "bash scripts/safe_flock.sh /tmp/hermes_scope_governor.lock .venv/bin/python scripts/hermes_scope_governor.py --apply >> logs/hermes_scope_governor.log 2>&1",
     "hermes_scope_governor_last_run_failed": "bash scripts/safe_flock.sh /tmp/hermes_scope_governor.lock .venv/bin/python scripts/hermes_scope_governor.py --apply >> logs/hermes_scope_governor.log 2>&1",
     "data_gaps_open": ".venv/bin/python scripts/data_gap_resolver.py",
-    "agent_jobs_stuck": "flock -n /tmp/tradeai_watchlist_agent_jobs.lock .venv/bin/python scripts/process_watchlist_agent_jobs.py --limit 15",
-    "pipeline_failures": "flock -n /tmp/tradeai_watchlist_agent_jobs.lock .venv/bin/python scripts/process_watchlist_agent_jobs.py --limit 10",
+    "agent_jobs_stuck": ".venv/bin/python scripts/process_watchlist_agent_jobs.py --limit 40",
+    "agent_jobs_stale": ".venv/bin/python scripts/process_watchlist_agent_jobs.py --limit 25",
+    "pipeline_failures": ".venv/bin/python scripts/remediate_pipeline_failures.py",
     "_p0_agent_jobs_note": "While AGENT_JOBS_P0_CONTAINED flag/env is active, health_agent.guard_remediation_command blocks these worker invocations and reports CONTAINED (issue #283). Worker entry also exits 78 when contained.",
     "research_stale": ".venv/bin/python scripts/hermes_coordinator.py",
     "hermes_rag_gap": ".venv/bin/python scripts/hermes_embedding_enqueue.py --backfill --limit 500",
@@ -264,14 +307,20 @@
     "enrichment_failures_high": "flock -n /tmp/auto_enrichment.lock .venv/bin/python scripts/auto_enrichment_runner.py --force-all --limit 15 >> logs/auto_enrichment.log 2>&1",
     "approved_paper_test_stuck": ".venv/bin/python scripts/cleanup_stale_proposals.py --pipeline-sweep --apply",
     "enrichment_status_in_progress_stale": ".venv/bin/python scripts/cleanup_stale_proposals.py --pipeline-sweep --apply",
+    "never_submitted_stale": ".venv/bin/python scripts/paper_trade_monitor.py",
+    "stale_paper_trade_stats": ".venv/bin/python scripts/paper_trade_statistics.py",
+    "paper_trade_stats_stale": ".venv/bin/python scripts/paper_trade_statistics.py",
     "news_symbol_mismatch": "flock -n /tmp/watchlist_news_guard.lock .venv/bin/python scripts/remediate_watchlist_news_guard.py --apply >> logs/remediate_watchlist_news_guard.log 2>&1",
     "cio_decisions_stale": ".venv/bin/python scripts/cio_decision_engine.py --run",
     "trade_closed_stale": "bash -c '.venv/bin/python scripts/schwab_journal_builder.py --apply && .venv/bin/python scripts/schwab_transaction_ingest.py --apply'",
-    "orchestrator_setups_stale": ".venv/bin/python scripts/trade_ai_orchestrator.py --run-label AUTOHEAL --no-llm --allow-underfilled",
+    "orchestrator_setups_stale": ".venv/bin/python scripts/heal_trade_ai_session_cache.py",
+    "trade_ai_session_stale": ".venv/bin/python scripts/heal_trade_ai_session_cache.py",
+    "trade_ai_session_missing": ".venv/bin/python scripts/heal_trade_ai_session_cache.py",
     "shadow_batch_stale": ".venv/bin/python scripts/shadow_batch_generator.py --run --top 300",
     "finviz_screener_stale": ".venv/bin/python scripts/finviz_screener_runner.py --run",
     "news_ingestion_stale": ".venv/bin/python scripts/news_ingestion.py --priority",
     "indicator_snapshot_stale": ".venv/bin/python scripts/indicator_cache_refresh.py",
+    "indicator_snapshots_stale": ".venv/bin/python scripts/indicator_cache_refresh.py",
     "symbol_profiles_stale": ".venv/bin/python scripts/build_symbol_profiles.py",
     "analyst_rollup_stale": ".venv/bin/python scripts/pro_analyst_fetch.py",
     "sector_momentum_stale": ".venv/bin/python scripts/sector_momentum_engine.py",
@@ -282,7 +331,13 @@
     "sec_data_stale": ".venv/bin/python scripts/sec_data_ingest.py --all",
     "social_data_stale": ".venv/bin/python scripts/social_ingest.py --source all",
     "snaptrade_stale": ".venv/bin/python scripts/snaptrade_sync.py --apply",
-    "youtube_stale": ".venv/bin/python scripts/youtube_transcript_ingest.py --all-channels"
+    "youtube_stale": ".venv/bin/python scripts/youtube_transcript_ingest.py --all-channels",
+    "backup_cadence_stale": "bash linux_launchers/run_pg_backup.sh",
+    "db_dump_stale": "bash linux_launchers/run_pg_backup.sh",
+    "db_dump_missing": "bash linux_launchers/run_pg_backup.sh",
+    "log_errors": ".venv/bin/python scripts/unified_stop_supervisor.py --apply >> logs/unified_stop_supervisor.log 2>&1",
+    "execution_log_errors": ".venv/bin/python scripts/unified_stop_supervisor.py --apply >> logs/unified_stop_supervisor.log 2>&1",
+    "data_source_stale": ".venv/bin/python scripts/external_market_data_ingest.py --quotes"
   },
   "log_errors": {
     "_comment": "Scan recently-active component logs for ERROR/Traceback spikes (content, not staleness).",

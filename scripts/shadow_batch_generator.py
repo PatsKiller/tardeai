@@ -92,12 +92,15 @@ LANE_CALLS_PER_SYMBOL = 2
 
 
 def _held_symbols() -> set:
+    _valid_ticker = lambda s: not (len(s) == 9 and s.isalnum()
+                                   and not any(c in s for c in ('.', '-', '/', '^', ' ')))
     try:
         path = PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json"
         d = json.loads(path.read_text()) if path.exists() else {}
         return {str(r.get("symbol", "")).upper()
                 for r in (d.get("holdings") or [])
-                if (r.get("market_value") or 0) or (r.get("quantity") or r.get("shares") or 0)}
+                if (r.get("market_value") or 0) or (r.get("quantity") or r.get("shares") or 0)
+                if _valid_ticker(str(r.get("symbol", "")))}
     except Exception:
         return set()
 

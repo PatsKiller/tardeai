@@ -76,6 +76,76 @@ def fresh_quote(sym):
     return q
 
 
+def batch_fresh_quotes(symbols, cur):
+    """Fetch quotes for a batch of symbols in parallel.
+
+    Primary: market_quotes DB (one cheap query for all symbols).
+    Fallback for missing symbols: get_best_quote via ThreadPoolExecutor with 5s timeout —
+    the Schwab→Yahoo→Alpaca waterfall runs concurrently instead of sequentially.
+    Eliminates the N+1 blocking pattern in run().
+    """
+    syms = sorted({str(s).upper().strip() for s in symbols if s})
+    if not syms:
+        return {}
+
+    out = {}
+    # First pass: market_quotes DB (single query for all symbols)
+    try:
+        cur.execute("""
+            SELECT DISTINCT ON (upper(symbol)) upper(symbol) AS sym, price, day_change_pct, fetched_at, source
+            FROM market_quotes
+            WHERE upper(symbol) = ANY(%s)
+              AND fetched_at > NOW() - INTERVAL '4 hours'
+            ORDER BY upper(symbol), fetched_at DESC
+        """, (syms,))
+        for r in (cur.fetchall() or []):
+            sym = r[0]
+            price = r[1]
+            if price is not None:
+                ts = r[3]
+                age = None
+                if ts:
+                    try:
+                        if hasattr(ts, "isoformat"):
+                            age = round((datetime.now(timezone.utc) - ts).total_seconds() / 60, 1)
+                        else:
+                            age = round((datetime.now(timezone.utc) -
+                                         datetime.fromisoformat(str(ts))).total_seconds() / 60, 1)
+                    except Exception:
+                        pass
+                out[sym] = {"last_price": float(price), "change_pct": r[2], "quote_timestamp": ts,
+                            "provider": f"mq:{r[4]}" if r[4] else "market_quotes", "age_min": age}
+    except Exception:
+        pass
+
+    # Second pass: missing symbols via ThreadPoolExecutor (concurrent waterfall)
+    missing = [s for s in syms if s not in out]
+    if missing:
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from market_quote_provider import get_best_quote
+        with ThreadPoolExecutor(max_workers=10) as ex:
+            futures = {ex.submit(get_best_quote, s): s for s in missing}
+            for fut in as_completed(futures, timeout=30):
+                try:
+                    q = fut.result(timeout=5) or {}
+                    sym = futures[fut]
+                    if q.get("last_price") is not None:
+                        qt = q.get("quote_timestamp")
+                        age = None
+                        if qt:
+                            try:
+                                age = round((datetime.now(timezone.utc) -
+                                             datetime.fromisoformat(str(qt))).total_seconds() / 60, 1)
+                            except Exception:
+                                pass
+                        q["age_min"] = age
+                        out[sym] = q
+                except Exception:
+                    pass
+
+    return out
+
+
 def trailing_eval(strategy, entry, planned_stop, current_stop, price):
     try:
         from strategy_trailing_policy import recommend_stop, get_strategy_family
@@ -274,9 +344,12 @@ def run(persist=True):
     advisories = []
     counts = {"reviewed": len(rows), "take_profit_missing": 0, "stop_quality_advisory": 0,
               "trailing_eligible": 0, "profit_lock_advisory": 0, "action_required": 0}
+    # Pre-fetch all quotes in one batch to eliminate N+1 sequential blocking
+    symbols = sorted({row[1] for row in rows if row[1]})
+    quotes = batch_fresh_quotes(symbols, cur)
     for row in rows:
         sym = row[1]
-        q = fresh_quote(sym)
+        q = quotes.get(sym, fresh_quote(sym))  # fallback to live per-symbol (should never hit)
         a = audit_trade(row, q)
         # Phase 206: canonical all-trades linkage + additive audit fields (no execution change)
         a.update(canonical_link(cur, a["trade_id"]))

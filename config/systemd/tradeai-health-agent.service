@@ -8,7 +8,7 @@ WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
 ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/health_agent.py
 Environment=HEALTH_AGENT_MODE=advisory
 Environment=HEALTH_AGENT_SCHEDULER=systemd
-Environment=CODER_DISPATCH_MODE=pr
+Environment=CODER_DISPATCH_MODE=advisory
 EnvironmentFile=-/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.env
 
 [Install]

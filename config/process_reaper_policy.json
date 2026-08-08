@@ -1,5 +1,5 @@
 {
-  "_comment": "Reaper for hung/piled-up batch jobs (defense-in-depth; root cause is fixed at each spawner via flock+killpg). ADVISORY by default — detect + alert, no kill. Flip enabled=true (or set env REAP_ENABLED=1) to auto-kill. Only the patterns in rules are ever touched; the server/Ollama/DB are hard-guarded. See scripts/process_reaper.py.",
+  "_comment": "Reaper for hung/piled-up batch jobs (defense-in-depth; root cause fixed at each spawner via flock+killpg — see F0-2). ACTIVE (auto-kill ON). After 2 weeks of verified F0-2 operation without orphan incidents, flip enabled=false for advisory-only mode. Only the patterns in rules are ever touched; server/Ollama/DB are hard-guarded. See scripts/process_reaper.py.",
   "enabled": true,
   "rules": [
     {"name": "trade_ai_orchestrator",        "pattern": "trade_ai_orchestrator.py",        "max_concurrent": 1, "max_runtime_min": 20},

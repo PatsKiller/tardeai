@@ -36,11 +36,66 @@ def _file_age_min(path: Path) -> float | None:
         return None
 
 
+_CRONTAB_CACHE: dict[str, Any] = {"ts": 0.0, "text": ""}
+
+
 def _crontab_text() -> str:
-    try:
-        return subprocess.run(["crontab", "-l"], capture_output=True, text=True, timeout=5).stdout or ""
-    except Exception:
-        return ""
+    """Load user crontab with cache + spool fallback.
+
+    Concurrent health/daemon ticks used to stampede `crontab -l` and occasionally
+    get an empty result → false critical hermes_*_cron_missing. Cache 90s and
+    fall back to the spool file when the CLI returns empty.
+    """
+    import os
+    import time as _t
+
+    now = _t.time()
+    if _CRONTAB_CACHE.get("text") and (now - float(_CRONTAB_CACHE.get("ts") or 0)) < 90:
+        return str(_CRONTAB_CACHE["text"])
+
+    text = ""
+    for cmd in (["/usr/bin/crontab", "-l"], ["crontab", "-l"]):
+        try:
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=8)
+            if proc.returncode == 0 and (proc.stdout or "").strip():
+                text = proc.stdout or ""
+                break
+        except Exception:
+            continue
+
+    if not text.strip():
+        # Spool fallback (same user)
+        for spool in (
+            Path(f"/var/spool/cron/crontabs/{os.environ.get('USER', 'johnclaw')}"),
+            Path(f"/var/spool/cron/{os.environ.get('USER', 'johnclaw')}"),
+        ):
+            try:
+                if spool.is_file():
+                    text = spool.read_text(errors="ignore")
+                    if text.strip():
+                        break
+            except Exception:
+                continue
+
+    _CRONTAB_CACHE["ts"] = now
+    _CRONTAB_CACHE["text"] = text or ""
+    return str(_CRONTAB_CACHE["text"])
+
+
+def _crontab_has_script_apply(cr: str, script_name: str) -> bool:
+    """True if an active (non-comment) cron line runs script_name with --apply.
+
+    Requires both tokens on the *same* line so a giant crontab that has --apply
+    somewhere else cannot false-positive — and so we do not report cron_missing
+    when $PROJ/$PY wrappers obscure a naive whole-file check.
+    """
+    for line in (cr or "").splitlines():
+        s = line.strip()
+        if not s or s.startswith("#"):
+            continue
+        if script_name in s and "--apply" in s:
+            return True
+    return False
 
 
 def _safe_flock_skips(component: str, hours: float = 6.0) -> int:
@@ -96,11 +151,23 @@ def check_scope_governor_health(conn=None) -> list[dict[str, Any]]:
     """Return raw finding dicts: {type, severity, message, **extra}."""
     findings: list[dict[str, Any]] = []
     cr = _crontab_text()
-    has_gov_cron = "hermes_scope_governor.py" in cr and "--apply" in cr
-    has_feeder_cron = "hermes_score_event_feeder.py" in cr and "--apply" in cr
-    uses_safe_flock_gov = "safe_flock.sh" in cr and "hermes_scope_governor" in cr
+    cr_empty = not (cr or "").strip()
+    has_gov_cron = _crontab_has_script_apply(cr, "hermes_scope_governor.py")
+    has_feeder_cron = _crontab_has_script_apply(cr, "hermes_score_event_feeder.py")
+    uses_safe_flock_gov = any(
+        (not ln.strip().startswith("#")) and "safe_flock.sh" in ln and "hermes_scope_governor" in ln
+        for ln in (cr or "").splitlines()
+    )
 
-    if not has_gov_cron:
+    # Fail OPEN on empty crontab read — never emit critical cron_missing on a
+    # transient crontab -l failure (the 2026-08-08 health-score thrash).
+    if cr_empty:
+        findings.append({
+            "type": "hermes_crontab_unreadable",
+            "severity": "info",
+            "message": "Could not read crontab this cycle — skipping cron_missing checks (fail-open)",
+        })
+    elif not has_gov_cron:
         findings.append({
             "type": "hermes_scope_governor_cron_missing",
             "severity": "critical",
@@ -115,7 +182,7 @@ def check_scope_governor_health(conn=None) -> list[dict[str, Any]]:
             "kind": "code",
         })
 
-    if not has_feeder_cron:
+    if (not cr_empty) and (not has_feeder_cron):
         findings.append({
             "type": "hermes_event_feeder_cron_missing",
             "severity": "critical",

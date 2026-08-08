@@ -36,6 +36,11 @@ ENDPOINTS = [
     ("/api/v2/defense/recommendations",        2.0,   2.0,   5000),
     ("/api/v2/reentry/decision-desk",          3.0,   3.0,  10000),
     ("/api/v2/stops/reentry-watch",            2.0,   2.0,   1000),
+    # Wave C: expand coverage from 6 to 10 endpoints
+    ("/api/v2/defense/posture",                2.0,   2.0,   1000),
+    ("/api/v2/rotation/summary",               2.5,   2.0,   1000),
+    ("/api/v2/holdings/share-drift",           2.5,   2.0,   1000),
+    ("/api/v2/health",                         5.0,   2.0,    500),
     # watchlist/items LATERAL-joins 5.9K active items against 4.5M-row
     # market_quotes (729MB). Cold start is DB-bound (~11s); once cached ~4s.
     ("/api/v2/watchlist/items",               12.0,   5.0,   5000),

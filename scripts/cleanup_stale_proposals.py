@@ -32,10 +32,38 @@ def log(msg):
     print(f"{datetime.now().strftime('%H:%M:%S')} [cleanup] {msg}", flush=True)
 
 
+# Cap infinite revalidation thrash (e.g. MRNA price_drift requeued every 10m by health).
+# After MAX requeues for the same proposal, expire terminal so health stops looping.
+MAX_PAPER_REQUEUE = int(__import__("os").environ.get("PAPER_REQUEUE_MAX", "3"))
+_REQUEUE_STATE = PROJ / "data" / "runtime" / "paper_requeue_counts.json"
+
+
+def _requeue_counts() -> dict:
+    try:
+        if _REQUEUE_STATE.exists():
+            return json.loads(_REQUEUE_STATE.read_text())
+    except Exception:
+        pass
+    return {}
+
+
+def _save_requeue_counts(d: dict) -> None:
+    try:
+        _REQUEUE_STATE.parent.mkdir(parents=True, exist_ok=True)
+        _REQUEUE_STATE.write_text(json.dumps(d, indent=2))
+    except Exception:
+        pass
+
+
 def sweep_approved_paper_test_lifecycle(cur, conn, apply: bool) -> dict:
-    """Normalize terminal APPROVED_FOR_PAPER_TEST rows and re-queue drift revalidation cases."""
+    """Normalize terminal APPROVED_FOR_PAPER_TEST rows and re-queue drift revalidation cases.
+
+    Requeue is capped per proposal id (default 3). Further drift → EXPIRED with audit reason
+    so health_agent stop thrashing "retry_cmd succeeded" while the finding stays active.
+    """
     stats = {"executed_to_approved": 0, "requeued_revalidation": 0, "expired_terminal": 0,
-             "enrichment_cleared": 0}
+             "enrichment_cleared": 0, "expired_requeue_cap": 0}
+    counts = _requeue_counts()
     cur.execute("""
         SELECT id, symbol, paper_submit_state, execution_eligibility_status,
                execution_eligibility_reason, expires_at
@@ -51,6 +79,31 @@ def sweep_approved_paper_test_lifecycle(cur, conn, apply: bool) -> dict:
         trade = cur.fetchone()
 
         if elig == 'NEEDS_REVALIDATION' or submit_state in ('VALIDATING', 'NOT_SUBMITTED'):
+            key = str(pid)
+            n = int(counts.get(key, 0) or 0)
+            reason = elig_reason or submit_state or "revalidation"
+            if n >= MAX_PAPER_REQUEUE:
+                if apply:
+                    cur.execute("""
+                        UPDATE paper_trade_proposals
+                        SET status = 'EXPIRED',
+                            action_label = %s,
+                            paper_submit_state = 'BLOCKED',
+                            updated_at = NOW()
+                        WHERE id = %s AND status = 'APPROVED_FOR_PAPER_TEST'
+                    """, (
+                        f"Expired: revalidation requeue cap ({n}x) — {reason}"[:200],
+                        pid,
+                    ))
+                    if cur.rowcount:
+                        stats["expired_requeue_cap"] += 1
+                        stats["expired_terminal"] += 1
+                        counts.pop(key, None)
+                        log(f"  #{pid} {sym} → EXPIRED (requeue cap {n}x: {reason})")
+                else:
+                    stats["expired_requeue_cap"] += 1
+                    log(f"  [dry-run] #{pid} {sym} would EXPIRE (requeue cap {n}x)")
+                continue
             if apply:
                 cur.execute("""
                     UPDATE paper_trade_proposals
@@ -67,7 +120,8 @@ def sweep_approved_paper_test_lifecycle(cur, conn, apply: bool) -> dict:
                 """, (pid,))
                 if cur.rowcount:
                     stats["requeued_revalidation"] += 1
-                    log(f"  #{pid} {sym} requeued (revalidation: {elig_reason or submit_state})")
+                    counts[key] = n + 1
+                    log(f"  #{pid} {sym} requeued (revalidation {n+1}/{MAX_PAPER_REQUEUE}: {reason})")
             else:
                 stats["requeued_revalidation"] += 1
                 log(f"  [dry-run] #{pid} {sym} would requeue (revalidation)")
@@ -84,6 +138,7 @@ def sweep_approved_paper_test_lifecycle(cur, conn, apply: bool) -> dict:
                     """, (pid,))
                     if cur.rowcount:
                         stats["executed_to_approved"] += 1
+                        counts.pop(str(pid), None)
                         log(f"  #{pid} {sym} → APPROVED (paper trade completed)")
                 else:
                     stats["executed_to_approved"] += 1
@@ -99,10 +154,36 @@ def sweep_approved_paper_test_lifecycle(cur, conn, apply: bool) -> dict:
                 """, (pid,))
                 if cur.rowcount:
                     stats["expired_terminal"] += 1
+                    counts.pop(str(pid), None)
                     log(f"  #{pid} {sym} → EXPIRED (past expires_at)")
+                    continue
             elif expires_at:
                 stats["expired_terminal"] += 1
 
+        # Terminal-expire blocked/ineligible paper-lane rows (no thrash requeue).
+        if str(elig or '') in ('INELIGIBLE', 'REJECTED') or submit_state == 'BLOCKED':
+            if apply:
+                cur.execute("""
+                    UPDATE paper_trade_proposals
+                    SET status = 'EXPIRED',
+                        action_label = %s,
+                        paper_submit_state = 'BLOCKED',
+                        updated_at = NOW()
+                    WHERE id = %s AND status = 'APPROVED_FOR_PAPER_TEST'
+                """, (
+                    f"Expired: paper lane {elig or submit_state} — {elig_reason or 'stuck'}"[:200],
+                    pid,
+                ))
+                if cur.rowcount:
+                    stats["expired_terminal"] += 1
+                    counts.pop(str(pid), None)
+                    log(f"  #{pid} {sym} → EXPIRED ({elig or submit_state}: {elig_reason})")
+            else:
+                stats["expired_terminal"] += 1
+                log(f"  [dry-run] #{pid} {sym} would EXPIRE ({elig or submit_state})")
+
+    if apply:
+        _save_requeue_counts(counts)
     return stats
 
 

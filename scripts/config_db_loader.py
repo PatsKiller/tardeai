@@ -28,7 +28,9 @@ def _env(key, default=""):
 def _get_conn():
     import psycopg2
     return psycopg2.connect(host="localhost", dbname="trade_ai",
-                            user="trade_ai", password=_env("DB_PASSWORD"))
+                            user="trade_ai", password=_env("DB_PASSWORD"),
+                            connect_timeout=5,
+                            options="-c statement_timeout=5000")
 
 
 def _checksum(content):

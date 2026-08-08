@@ -297,14 +297,20 @@ Respond in JSON:
                 and cadence["confidence"] > 0.3
             ):
                 old_h = config.get("max_age_h", 24)
+                recommended_h = cadence["recommended_threshold_h"]
+                # GUARDRAIL: cap recommended threshold at 4x the current
+                # threshold to prevent sparse-data inflation (e.g. 8h -> 242.4h
+                # when only 3 samples exist at 50-80% confidence)
+                max_allowed_h = old_h * 4
+                recommended_h = min(recommended_h, max_allowed_h)
                 if (
-                    abs(cadence["recommended_threshold_h"] - old_h) / old_h
+                    abs(recommended_h - old_h) / old_h
                     > 0.2
                 ):
                     new_h = self.stage_threshold_adjustment(
                         producer_name,
                         old_h,
-                        cadence["recommended_threshold_h"],
+                        recommended_h,
                         cadence["confidence"],
                     )
                     results["threshold_adjustments"].append(

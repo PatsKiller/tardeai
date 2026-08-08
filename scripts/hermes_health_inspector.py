@@ -81,6 +81,44 @@ def _get_db_conn():
         return None
 
 
+_heartbeat_conn = None
+_hb = None
+
+
+def _init_heartbeat(conn, dry_run=False):
+    """Register agent heartbeat in a separate DB connection."""
+    global _heartbeat_conn, _hb
+    try:
+        from lib.agent_heartbeat import AgentHeartbeat
+        _heartbeat_conn = _get_db_conn()
+        if _heartbeat_conn:
+            _hb = AgentHeartbeat(_heartbeat_conn, 'hermes_health_inspector', task='pipeline_health_sweep')
+            _hb.register()
+            _log("Heartbeat registered for hermes_health_inspector")
+    except Exception as e:
+        _log(f"Heartbeat init skipped: {e}")
+
+
+def _emit_heartbeat():
+    """Emit a heartbeat pulse."""
+    global _hb
+    if _hb:
+        try:
+            _hb.heartbeat()
+        except Exception:
+            pass
+
+
+def _mark_heartbeat_done(success=True, error=None):
+    """Mark agent as done."""
+    global _hb
+    if _hb:
+        try:
+            _hb.mark_done(success, error)
+        except Exception:
+            pass
+
+
 def _daily_count(conn) -> int:
     """Count findings staged by this agent today."""
     if not conn:
@@ -272,6 +310,51 @@ def _fuse_signals(
     return findings
 
 
+def _stage_finding(source, summary, severity='P2', confidence_score=0.5, metadata=None):
+    """Stage a single agent finding in hermes_research_intelligence."""
+    conn = _get_db_conn()
+    if not conn:
+        return None
+    try:
+        sev = "critical" if severity in ("P0",) else ("warning" if severity in ("P1",) else "info")
+        pri = severity
+        meta = metadata or {}
+        cur = conn.cursor()
+        linked = meta.get("linked_producers", [])
+        producer_str = ",".join(linked[:5]) if linked else "unknown"
+        pattern_sig = f"agent_liveness::{pri}::{meta.get('agent_id', 'unknown')}"[:200]
+        cur.execute(
+            """INSERT INTO hermes_research_intelligence
+               (source, hermes_agent_name, research_type, topic, summary, thesis, evidence_json,
+                confidence_score, status, tags, pattern_signature, freshness_date, model_used,
+                created_at, updated_at)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_DATE, %s, NOW(), NOW())
+               RETURNING id""",
+            (
+                source or "hermes",
+                "hermes_health_inspector",
+                "agent_liveness",
+                f"agent_liveness_{pri}",
+                f"Agent Liveness: {summary[:200]}",
+                summary[:500],
+                json.dumps(meta),
+                float(confidence_score),
+                "staged",
+                "{" + ",".join(['"agent_liveness"', f'"{sev}"', f'"{pri}"']) + "}",
+                pattern_sig,
+                "watchdog",
+            ),
+        )
+        row_id = cur.fetchone()[0]
+        conn.commit()
+        cur.close()
+        _log(f"Staged agent liveness finding id={row_id} for {meta.get('agent_id', 'unknown')}")
+        return row_id
+    except Exception as e:
+        _log(f"Failed to stage agent finding: {e}")
+        return None
+
+
 def _stage_findings(conn, findings: list[dict]) -> tuple[int, list[dict]]:
     """Stage findings in hermes_research_intelligence DB table.
     Returns (staged_count, list of staged records with ids and pattern info)."""
@@ -408,6 +491,9 @@ def _run(dry_run: bool = False):
             _log("ERROR: No DB connection — cannot proceed")
             return
 
+        # Register heartbeat
+        _init_heartbeat(conn, dry_run)
+
         # Daily cap check
         done_today = _daily_count(conn)
         if done_today >= DAILY_CAP:
@@ -421,6 +507,29 @@ def _run(dry_run: bool = False):
         health_snap = _fetch_health_agent()
         freshness = _read_freshness_monitor()
         hermes_health = _read_hermes_pipeline_health()
+
+        # ── Agent Liveness ──
+        try:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT agent_id, last_seen, status,
+                       EXTRACT(EPOCH FROM (now() - last_seen))/60 as mins
+                FROM agent_heartbeat
+                WHERE (now() - last_seen) > interval '10 minutes' OR status IN ('HUNG', 'DEAD')
+            """)
+            hung_agents = cur.fetchall()
+            cur.close()
+
+            for agent in hung_agents:
+                _stage_finding(
+                    source='hermes',
+                    summary=f"Agent {agent[0]} is {agent[2]} — last seen {agent[3]:.0f}min ago",
+                    severity='P0' if agent[3] > 30 else 'P1',
+                    confidence_score=0.9,
+                    metadata={"agent_id": agent[0], "status": agent[2], "mins_since_seen": agent[3]},
+                )
+        except Exception:
+            pass  # graceful if table doesn't exist yet
 
         if health_snap:
             score = health_snap.get("overall_score", "N/A")
@@ -451,8 +560,12 @@ def _run(dry_run: bool = False):
         elapsed = time.time() - start_time
         _log(f"Complete: {staged} finding(s) staged in {elapsed:.1f}s")
 
+        # Mark heartbeat done
+        _mark_heartbeat_done(success=True)
+
     except Exception as e:
         _log(f"FATAL: {e}")
+        _mark_heartbeat_done(success=False, error=str(e))
         raise
     finally:
         fcntl.flock(lock_fd, fcntl.LOCK_UN)

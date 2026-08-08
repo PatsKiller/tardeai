@@ -15,6 +15,7 @@ allowed_script_patterns:
   - "scripts/pipeline_health_monitor.py"
   - "scripts/trade_ai_health.py"
   - "scripts/screener_run_health.py"
+  - "scripts/indicator_cache_refresh.py"
   # Pipeline requeue (no order submission)
   - "scripts/process_watchlist_agent_jobs.py"
   - "scripts/hermes_scope_governor.py"
@@ -40,14 +41,53 @@ allowed_script_patterns:
   - "scripts/portfolio_repricer.py"
   - "scripts/external_market_data_ingest.py"
   - "scripts/snaptrade_sync.py"
+  # Pipeline recovery (safe cache refresh / lifecycle sweep — no broker mutations)
+  - "scripts/run_options_monitor.py"
+  - "scripts/cleanup_stale_proposals.py"
+  - "scripts/social_scalp_scanner.py"
+  # Backup (no broker mutations)
+  - "linux_launchers/run_pg_backup.sh"
+  # Stuck job reaper + registry hygiene + proposal plan remediate
+  - "scripts/reset_stuck_agent_jobs.py"
+  - "scripts/fix_strategy_registry_null_ids.py"
+  - "scripts/remediate_proposal_trade_plans.py"
+  - "scripts/remediate_watchlist_news_guard.py"
+  - "scripts/trade_ai_orchestrator.py"
+  - "scripts/enrich_proposal_technicals.py"
+  - "scripts/journal_review_builder.py"
+  - "scripts/paper_trade_monitor.py"
+  - "scripts/paper_trade_statistics.py"
+  - "scripts/heal_trade_ai_session_cache.py"
+  # Iterative root-cause remediations (diagnose + strategy ladder + memory)
+  - "scripts/remediate_scalp_go_dark.py"
+  - "scripts/remediate_pipeline_failures.py"
+  - "scripts/social_ingest.py"
+  # Data ingest pipelines (read Schwab/Finnhub/Fred/SEC/YouTube — no broker writes)
+  - "scripts/schwab_transaction_ingest.py"
+  - "scripts/schwab_journal_builder.py"
+  - "scripts/replay_backfill.py"
+  - "scripts/fred_data_ingest.py"
+  - "scripts/sec_data_ingest.py"
+  - "scripts/youtube_transcript_ingest.py"
+  # Scanner / momentum pipelines (read-only market data, supply advisory signals)
+  - "scripts/run_finviz_momentum_scalp_scan.py"
+  - "scripts/run_sec_form4_momentum_context.py"
+  - "scripts/shadow_batch_generator.py"
+  - "scripts/sector_momentum_engine.py"
+  - "scripts/rotation_autopilot.py"
+  # Cache / profile builders (read-only, no broker writes)
+  - "scripts/build_symbol_profiles.py"
+  - "scripts/pro_analyst_fetch.py"
+  # CIO / strategy engines (advisory signals, no execution)
+  - "scripts/cio_decision_engine.py"
+  - "scripts/unified_stop_supervisor.py"
 
 blocked_patterns:
-  # Order/broker mutations
-  - "order"
-  - "submit"
-  - "cancel"
-  - "close_position"
+  # Order/broker mutations (narrow — bare "submit" blocked --submit-validation scalp path)
+  - "submit_order"
   - "alpaca_execute"
+  - "close_position"
+  - "cancel_order"
   # DB mutations on trading tables
   - "UPDATE paper_trades"
   - "DELETE FROM paper_trades"
@@ -66,7 +106,8 @@ blocked_patterns:
   - ".env"
   - "settings.json"
 
-max_runtime_seconds: 120
+# Long enough for process_watchlist drain / market data ingest; flock contention exits fast.
+max_runtime_seconds: 300
 
 environment_guards:
   ALPACA_MODE: "paper"

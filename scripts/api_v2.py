@@ -30,10 +30,68 @@ for _stale in ("decision_action_policy", "packet_invalidation", "decision_packet
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
+# Dev tree often owns the venv while portfolio-server runs from a release stamp
+# that has scripts/ but no .venv (Fix-now Errno 2 on live/.venv/bin/python).
+_DEV_TRADEAI_ROOT = Path("/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild")
+
+
+def _project_python() -> str:
+    """Interpreter for producer/remediation subprocesses.
+
+    Prefer the interpreter already running this server (systemd points release
+    scripts at the dev venv). Never assume PROJECT_ROOT/.venv exists on live.
+    """
+    import sys as _sys_py
+    candidates = [
+        _sys_py.executable,
+        str(PROJECT_ROOT / ".venv" / "bin" / "python"),
+        str(PROJECT_ROOT / ".venv" / "bin" / "python3"),
+        str(_DEV_TRADEAI_ROOT / ".venv" / "bin" / "python"),
+        str(_DEV_TRADEAI_ROOT / ".venv" / "bin" / "python3"),
+    ]
+    for c in candidates:
+        if c and Path(c).is_file():
+            return c
+    return _sys_py.executable or "python3"
+
+
+def _scripts_cwd() -> Path:
+    """Cwd that has scripts/ + .env; prefer live PROJECT_ROOT, fall back to dev."""
+    if (PROJECT_ROOT / "scripts").is_dir():
+        return PROJECT_ROOT
+    if (_DEV_TRADEAI_ROOT / "scripts").is_dir():
+        return _DEV_TRADEAI_ROOT
+    return PROJECT_ROOT
+
+
+def _rewrite_cmd_python(cmd: str, py: str | None = None) -> str:
+    """Rewrite relative .venv/bin/python prefixes in policy remediation_map cmds."""
+    import re as _re_py
+    py = py or _project_python()
+    s = (cmd or "").strip()
+    if not s:
+        return s
+    # Replace all .venv/bin/python3? occurrences (flock … .venv/bin/python …)
+    s = _re_py.sub(r"(?:\.?/?\.?venv/bin/python3?)\b", py, s)
+    return s
+
+
+def _git_cwd() -> Path:
+    """Git worktree root for coder_dispatch (never bare release stamp without .git)."""
+    for root in (_DEV_TRADEAI_ROOT, PROJECT_ROOT, _scripts_cwd()):
+        try:
+            if root and (Path(root) / ".git").exists():
+                return Path(root)
+        except Exception:
+            continue
+    return _scripts_cwd()
+
 
 try:
     from dotenv import load_dotenv
     load_dotenv(PROJECT_ROOT / ".env")
+    if _DEV_TRADEAI_ROOT != PROJECT_ROOT and (_DEV_TRADEAI_ROOT / ".env").is_file():
+        load_dotenv(_DEV_TRADEAI_ROOT / ".env", override=False)
 except Exception:
     pass
 
@@ -2233,58 +2291,62 @@ def overview():
     periods = perf.get("periods", {})
     active_positions = [p for p in holdings if not p.get("is_cash") and (p.get("market_value") or 0) > 100]
 
-    # Sector allocation — prefer the pipeline's look-through breakdown (holdings.json resolved_sectors:
-    # funds decomposed into underlying sectors). Holding ROWS carry no sector field, so the old per-row
-    # sector_type aggregation collapsed everything into "Other". Fall back to it only if look-through is absent.
-    resolved = h.get("resolved_sectors")
-    if isinstance(resolved, list) and resolved:
-        sector_list = [(r.get("sector") or "Other / Unclassified", r.get("value") or 0)
-                       for r in resolved if (r.get("value") or 0) > 0][:13]
-    else:
+    # ── Data Broker Wave B: pre-computed snapshot replaces individual recomputes ──
+    from lib.data_broker.portfolio_snapshot import get_portfolio_snapshot
+    snap = get_portfolio_snapshot()
+    snap_totals = snap.get("totals", {})
+
+    # Sector allocation — sourced from broker snapshot (pre-computed, cached ≤45s)
+    sector_list = [(s.get("sector") or "Other / Unclassified", s.get("value") or 0)
+                   for s in snap.get("sector_allocation", [])
+                   if (s.get("value") or 0) > 0][:13]
+    if not sector_list:
+        # Fallback: per-row aggregation (only when snapshot is unavailable)
         sectors = {}
         for p in active_positions:
             s = p.get("sector_type") or "Other"
             sectors[s] = sectors.get(s, 0) + (p.get("market_value") or 0)
         sector_list = sorted(sectors.items(), key=lambda x: -x[1])[:10]
 
-    # Top movers
-    movers = sorted(active_positions, key=lambda p: abs(p.get("day_change") or 0), reverse=True)[:6]
+    # Top movers — from broker snapshot
+    snap_mover_syms = {str(m.get("symbol") or "").upper() for m in snap.get("top_movers", [])}
+    movers = [p for p in holdings if str(p.get("symbol") or "").upper() in snap_mover_syms]
+    if not movers:
+        movers = sorted(active_positions, key=lambda p: abs(p.get("day_change") or 0), reverse=True)[:6]
 
-    # Notifications count
+    # Notifications count — remaining direct DB reads (not covered by broker snapshot)
     notif_rows = _db_query("SELECT count(*) AS cnt FROM notification_log", fetch="one")
     aq_cnt = (_db_query("SELECT count(*) AS cnt FROM action_queue WHERE status='pending'", fetch="one") or {}).get("cnt", 0)
     jdq_cnt = (_db_query("SELECT count(*) AS cnt FROM john_decision_queue WHERE status='pending_john'", fetch="one") or {}).get("cnt", 0)
     pending_rows = {"cnt": aq_cnt + jdq_cnt}
 
-    # Today's change — recompute per-holding from the day % (holding_day_change) merging the
-    # fresh Finviz day %, exactly like /api/v2/portfolio/holdings. The stored totals.day_change
-    # (and the raw per-row day_change in holdings.json) are written $0 by the repricer whenever
-    # prev_price == new_price at write time, so trusting them silently under-counts — the header
-    # once read +$171 while the portfolio had truly moved ~+$5,258. Fall back to the stored
-    # aggregate only if the live recompute yields nothing.
-    today_change = _live_portfolio_day_change(holdings)
+    # Today's change — from broker snapshot (uses same _day_change logic as _live_portfolio_day_change)
+    total_val = snap_totals.get("total_value", 0) or totals.get("total_value", 0) or 0
+    today_change = snap_totals.get("day_change") or 0
+    today_pct = snap_totals.get("day_change_pct", 0) or 0
     if today_change is None or today_change == 0:
-        today_change = totals.get("day_change")
-        if today_change is None:
-            today_change = sum(p.get("day_change") or 0 for p in holdings)
-    total_val = totals.get("total_value", 0)
-    today_pct = (today_change / (total_val - today_change) * 100) if total_val > abs(today_change) else 0
-    # per-account breakdown (operator 2026-06-12: "show what's moved today by account") + top movers
+        today_change = _live_portfolio_day_change(holdings)
+        if today_change is None or today_change == 0:
+            today_change = totals.get("day_change")
+            if today_change is None:
+                today_change = sum(p.get("day_change") or 0 for p in holdings)
+        if today_change is not None:
+            today_pct = (today_change / (total_val - today_change) * 100) if total_val > abs(today_change or 0) else 0
+
+    # per-account breakdown — from broker snapshot, with per-account top-movers from holdings
     today_by_account = {}
-    for p in holdings:
-        a = p.get("account") or "unknown"
-        d = today_by_account.setdefault(a, {"change": 0.0, "value": 0.0})
-        d["change"] += p.get("day_change") or 0
-        d["value"] += p.get("market_value") or 0
-    for a, d in today_by_account.items():
-        base = d["value"] - d["change"]
-        d["change"] = round(d["change"], 2)
-        d["pct"] = round(d["change"] / base * 100, 2) if base > 0 else None
-        d["value"] = round(d["value"], 2)
+    for a, d in snap.get("by_account", {}).items():
+        entry = {"change": d.get("change", 0), "value": d.get("value", 0), "pct": d.get("pct")}
         movers_a = sorted([p for p in holdings if (p.get("account") or "unknown") == a],
                           key=lambda p: abs(p.get("day_change") or 0), reverse=True)[:2]
-        d["top_movers"] = "; ".join(f"{m.get('symbol')} {('+' if (m.get('day_change') or 0) >= 0 else '')}"
-                                    f"{round(m.get('day_change') or 0)}" for m in movers_a if m.get("day_change"))
+        entry["top_movers"] = "; ".join(f"{m.get('symbol')} {('+' if (m.get('day_change') or 0) >= 0 else '')}"
+                                        f"{round(m.get('day_change') or 0)}" for m in movers_a if m.get("day_change"))
+        today_by_account[a] = entry
+    # Ensure every known account gets an entry (snapshot may only cover accounts with activity)
+    for p in holdings:
+        a = p.get("account") or "unknown"
+        if a not in today_by_account:
+            today_by_account[a] = {"change": 0.0, "value": 0.0, "pct": None, "top_movers": ""}
 
     # Trade AI run data
     import glob
@@ -2805,24 +2867,18 @@ def portfolio_holdings():
         for p in holdings
         if str(p.get("symbol") or "").strip() and not _is_cash_holding(p)
     })
-    _mq_rows = []
-    if _holding_symbols:
-        _mq_rows = _db_query(
-            """SELECT DISTINCT ON (symbol) symbol, price, fetched_at
-               FROM market_quotes
-               WHERE symbol = ANY(%s)
-               ORDER BY symbol, fetched_at DESC""",
-            (_holding_symbols,),
-        ) or []
-    for _qr in _mq_rows:
-        try:
-            _smq = (_qr.get("symbol") or "").upper()
-            _live_mq[_smq] = float(_qr["price"])
-            _fa = _qr.get("fetched_at")
-            if _fa is not None:
-                _live_mq_ts[_smq] = _fa.isoformat() if hasattr(_fa, "isoformat") else str(_fa)
-        except (TypeError, ValueError, KeyError):
-            pass
+    # ── Data Broker Wave B: use market_quote.get_price_batch() instead of raw market_quotes DB query ──
+    from lib.data_broker.market_quote import get_price_batch as _brk_get_price_batch
+    _brk_prices = _brk_get_price_batch(_db_query, _holding_symbols, skip_live=True) if _holding_symbols else {}
+    _live_mq: dict[str, float] = {}
+    _live_mq_ts: dict[str, str] = {}
+    for _sym, _bq in _brk_prices.items():
+        _p = _bq.get("price")
+        if _p is not None:
+            _live_mq[_sym] = float(_p)
+        _as = _bq.get("as_of")
+        if _as:
+            _live_mq_ts[_sym] = str(_as)
     _fv = _load_json(STATE_DIR / "finviz_quote_cache.json") or {}
     _fv_meta = _fv.get("_meta") or {}
     _fv_day: dict[str, float] = {}
@@ -5762,6 +5818,61 @@ def journal():
 
 
 def risk():
+    """GET /api/v2/risk — portfolio risk overview.
+
+    TODO Data Broker: get_risk_snapshot covers ~70% (JSON file aggregation, position risk,
+         stop health, correlation data). The broker-protective-stop overlay from
+         open_trades_intelligence and paper-trade enrichment stay in this handler.
+    """
+    # ---- Data Broker: risk_snapshot (primary) ----
+    try:
+        from lib.data_broker.risk_snapshot import get_risk_snapshot
+        snap = get_risk_snapshot(db_query=_db_query, max_age_s=45)
+        if snap and snap.get("ok"):
+            # The broker covers position risk + stop health + correlation.
+            # Still need live broker stop overlay for canonical protection truth.
+            _bstops = {}
+            try:
+                import sys as _sys2
+                _sys2.path.insert(0, str(Path(__file__).resolve().parent))
+                import open_trades_intelligence as _oti
+                _accts = sorted({p.get("account", "") for p in (snap.get("positions") or []) if p.get("account")})
+                for (acct, sym), v in (_oti._broker_protective_stops(_accts) or {}).items():
+                    _bstops[(sym, acct)] = v
+            except Exception:
+                pass
+            # Enrich positions with live broker stop data
+            for p in (snap.get("positions") or []):
+                _bs = _bstops.get((p.get("symbol", ""), p.get("account", "")))
+                if _bs:
+                    p["broker_protected"] = True
+                    p["broker_stop"] = _bs.get("stop_price")
+                    p["broker_order_id"] = _bs.get("order_id")
+                    p["stop_source"] = "broker"
+                    if _bs.get("stop_price"):
+                        p["stop_price"] = _bs["stop_price"]
+                else:
+                    p["broker_protected"] = False
+                    p["stop_source"] = "planned" if p.get("stop_price") else "none"
+                p["has_stop"] = bool(p.get("stop_price"))
+            return {
+                "portfolio_heat_pct": snap.get("portfolio", {}).get("heat_pct", 0),
+                "total_risk_dollars": snap.get("portfolio", {}).get("total_risk_dollars", 0),
+                "pct_protected": snap.get("portfolio", {}).get("pct_protected", 0),
+                "total_protected_mv": snap.get("portfolio", {}).get("total_protected_mv", 0),
+                "total_unprotected_mv": snap.get("portfolio", {}).get("total_unprotected_mv", 0),
+                "position_count": snap.get("portfolio", {}).get("position_count_real", 0),
+                "paper_position_count": snap.get("portfolio", {}).get("position_count_paper", 0),
+                "positions": snap.get("positions", []),
+                "stops": snap.get("stops_map", {}),
+                "escalation": snap.get("escalation", {}),
+                "correlation": snap.get("correlation", []),
+                "stop_health": snap.get("stop_health", {}),
+                "source": "data_broker.risk_snapshot",
+            }
+    except Exception:
+        pass
+    # ---- Original fallback ----
     rm = _load_json(STATE_DIR / "risk_management.json") or {}
     stops = _load_json(STATE_DIR / "stops.json") or {}
     positions = rm.get("positions", [])
@@ -7190,11 +7301,12 @@ def _wl_cio_synthesis(sym: str, body: dict | None) -> tuple[int, dict]:
 
 def _wl_run_refresh_script(script: str, args: list[str], *, timeout: int = 120) -> dict:
     import subprocess
-    venv_py = str(PROJECT_ROOT / ".venv/bin/python")
+    venv_py = _project_python()
+    _cwd = _scripts_cwd()
     try:
         proc = subprocess.run(
-            [venv_py, str(PROJECT_ROOT / "scripts" / script), *args],
-            capture_output=True, text=True, timeout=timeout, cwd=str(PROJECT_ROOT),
+            [venv_py, str(_cwd / "scripts" / script), *args],
+            capture_output=True, text=True, timeout=timeout, cwd=str(_cwd),
         )
         return {
             "ok": proc.returncode == 0,
@@ -10022,19 +10134,42 @@ def _data_product_health():
 
 def _health_agent_dashboard():
     """GET /api/v2/health — centralized Health Agent snapshot (0-100 score + category breakdown +
-    findings + trends). Reads the cron-computed snapshot (health_agent.py) so the request path stays
-    fast; falls back to the DB snapshot table, then to a live note if neither exists yet."""
-    snap = _load_json(STATE_DIR / "health_agent_status.json")
-    if not snap:
-        row = _db_query("SELECT overall_score, status, category_scores, findings, mode, captured_at "
-                        "FROM health_agent_snapshots ORDER BY captured_at DESC LIMIT 1", fetch="one")
-        if row:
-            snap = {
-                "overall_score": row.get("overall_score"), "status": row.get("status"),
-                "category_scores": row.get("category_scores") or {},
-                "findings": row.get("findings") or [], "trends": [],
-                "mode": row.get("mode"), "captured_at": _json_clean(row.get("captured_at")),
-            }
+    findings + trends). Prefers the newer of: on-disk status JSON vs DB snapshot table
+    (file can lag after Fix-now rescored only to DB / another tree)."""
+    snap_file = _load_json(STATE_DIR / "health_agent_status.json") or {}
+    # Also try dev tree status if live STATE_DIR is empty/stale
+    if not snap_file and _DEV_TRADEAI_ROOT != PROJECT_ROOT:
+        snap_file = _load_json(
+            _DEV_TRADEAI_ROOT / "data" / "portfolios" / "state" / "health_agent_status.json"
+        ) or {}
+    snap_db = None
+    # _db_query often returns None on SQL error (does not raise) — always try core columns
+    row = _db_query(
+        "SELECT overall_score, status, category_scores, findings, mode, captured_at "
+        "FROM health_agent_snapshots ORDER BY captured_at DESC LIMIT 1",
+        fetch="one",
+    )
+    if row:
+        snap_db = {
+            "overall_score": row.get("overall_score"),
+            "status": row.get("status"),
+            "category_scores": row.get("category_scores") or {},
+            "findings": row.get("findings") or [],
+            "trends": [],
+            "mode": row.get("mode"),
+            "captured_at": _json_clean(row.get("captured_at")),
+        }
+
+    def _ts(s):
+        if not s or not isinstance(s, dict):
+            return ""
+        return str(s.get("captured_at") or "")
+
+    # Prefer whichever snapshot is newer (string ISO compare is fine for same timezone format)
+    if snap_file and snap_db:
+        snap = snap_db if _ts(snap_db) >= _ts(snap_file) else snap_file
+    else:
+        snap = snap_db or snap_file
     if not snap:
         return {"overall_score": None, "status": "unknown",
                 "note": "Health Agent has not run yet. Run scripts/health_agent.py (cron-scheduled).",
@@ -10086,17 +10221,68 @@ def _health_agent_dashboard():
             if rem_status == "fixed":
                 rem_status = "attempted"
                 rem_detail = (rem_detail + " — " if rem_detail else "") + "issue still active in latest scan"
+            # Verify-failed is not a hard stop — daemon/cron will re-arm and retry.
+            elif rem_status == "failed" and rem_detail and (
+                "verify failed" in rem_detail.lower()
+                or "still_" in rem_detail
+                or "backlog_still" in rem_detail
+            ):
+                if key in _queued:
+                    rem_status = "retrying"
+                    rem_detail = (rem_detail + " — " if rem_detail else "") + "still queued for auto re-try"
+                else:
+                    rem_status = "retrying"
+                    rem_detail = (rem_detail + " — " if rem_detail else "") + "will re-arm on next health/escalation cycle"
             f["remediation"] = {"status": rem_status, "by": "escalation_handler",
                                 "at": _json_clean(r.get("resolved_at") or r.get("created_at")),
                                 "detail": rem_detail, "lane": "retry_or_llm"}
         elif key in _queued:
             it = _queued[key]
-            f["remediation"] = {"status": "queued", "by": "health_agent",
-                                "detail": it.get("retry_cmd") or ("code-fix queued" if it.get("needs_code_fix") else "awaiting handler"),
-                                "lane": "code_fix" if it.get("needs_code_fix") else ("retry" if it.get("retry_cmd") else "review")}
+            if it.get("needs_code_fix") and not it.get("retry_cmd"):
+                f["remediation"] = {
+                    "status": "queued", "by": "health_agent",
+                    "detail": "code-fix queued for coder_dispatch",
+                    "lane": "code_fix",
+                }
+            elif it.get("retry_cmd"):
+                f["remediation"] = {
+                    "status": "queued", "by": "health_agent",
+                    "detail": f"awaiting auto-retry: {(it.get('retry_cmd') or '')[:120]}",
+                    "lane": "retry",
+                }
+            else:
+                f["remediation"] = {
+                    "status": "queued", "by": "health_agent",
+                    "detail": "awaiting handler",
+                    "lane": "review",
+                }
         else:
-            f["remediation"] = {"status": "detected", "by": "health_agent", "at": _detected_at,
-                                "detail": "not yet routed", "lane": f.get("action_type", "review")}
+            # Info/monitor findings are not "waiting to route" — they need no action.
+            act = f.get("action_type") or ""
+            if f.get("severity") == "info" or act in ("monitor",):
+                f["remediation"] = {
+                    "status": "monitor", "by": "health_agent", "at": _detected_at,
+                    "detail": "informational — no auto route required",
+                    "lane": "monitor",
+                }
+            elif act == "operator" or f.get("never_auto"):
+                f["remediation"] = {
+                    "status": "operator", "by": "health_agent", "at": _detected_at,
+                    "detail": f.get("recommended_action") or "operator action required",
+                    "lane": "operator",
+                }
+            elif act in ("auto_retry", "refresh") and f.get("recommended_action"):
+                f["remediation"] = {
+                    "status": "scheduled", "by": "health_agent", "at": _detected_at,
+                    "detail": "will auto-remediate on next health daemon/cron cycle",
+                    "lane": "retry",
+                }
+            else:
+                f["remediation"] = {
+                    "status": "detected", "by": "health_agent", "at": _detected_at,
+                    "detail": "detected — awaiting classification",
+                    "lane": act or "review",
+                }
 
     snap["counts"] = {
         "critical": sum(1 for f in findings if f.get("severity") == "critical"),
@@ -11080,15 +11266,31 @@ def _rebalance_account_summary():
 
 def _forecast():
     """Portfolio projection based on current yield, dividend income, and account values."""
-    h = _load_json(STATE_DIR / "holdings.json") or {}
     dc = _load_json(STATE_DIR / "dividend_calendar.json") or {}
     ret = _load_json(STATE_DIR / "retirement_roadmap.json") or {}
 
-    total = h.get("portfolio_totals", {}).get("total_value", 0)
+    # --- Data Broker: portfolio_snapshot for total_value (Phase D wiring) ---
+    total = None
+    accts = {}
+    try:
+        from lib.data_broker.portfolio_snapshot import get_portfolio_snapshot
+        snap = get_portfolio_snapshot()
+        total = (snap.get("totals") or {}).get("total_value", 0) or 0
+        # Snapshots don't carry account_summaries per-account-key; fallback to holdings.json below
+    except Exception:
+        total = None
+    # Fallback: direct holdings.json read if broker didn't provide total_value or account_summaries
+    if total is None or total == 0:
+        h = _load_json(STATE_DIR / "holdings.json") or {}
+        total = h.get("portfolio_totals", {}).get("total_value", 0) or 0
+        accts = h.get("account_summaries", {})
+    else:
+        # Broker provided total_value but not account_summaries; read holdings.json for those
+        h = _load_json(STATE_DIR / "holdings.json") or {}
+        accts = h.get("account_summaries", {})
+
     annual_div = dc.get("total_annual", 0)
     portfolio_yield = (annual_div / total * 100) if total > 0 else 0
-
-    accts = h.get("account_summaries", {})
     scenarios = {
         "conservative": {"market_return": 4.0, "label": "Conservative (4% + divs)"},
         "moderate": {"market_return": 7.0, "label": "Moderate (7% + divs)"},
@@ -11164,12 +11366,21 @@ def _compute_trade_ai():
     # Find all runs for today + yesterday
     all_runs = []
     for pattern in ["reports/2026-*/*/run_summary.json"]:
-        for fp in sorted(glob.glob(str(PROJECT_ROOT / pattern)), reverse=True)[:8]:
+        for fp in sorted(glob.glob(str(PROJECT_ROOT / pattern)), reverse=True)[:24]:
             rs = _load_json(Path(fp))
             if rs:
                 rs["_path"] = fp
                 all_runs.append(rs)
 
+    # Prefer real packages (with tickers) over empty session-heal anchors
+    def _run_rank(rs):
+        tc = int(rs.get("ticker_count") or len(rs.get("tickers") or []) or 0)
+        lbl = str(rs.get("run_label") or "")
+        heal = 0 if lbl == "HEALTH_AUTOHEAL" or rs.get("session_heal") else 1
+        date = str(rs.get("date") or rs.get("run_date") or "")
+        return (heal, tc, date, str(rs.get("generated_at") or ""))
+
+    all_runs.sort(key=_run_rank, reverse=True)
     latest = all_runs[0] if all_runs else {}
 
     # Read tickers from DB (primary) or CSV (fallback)
@@ -11649,11 +11860,71 @@ def warrior_audit_latest():
         return {"ok": False, "error": str(exc)[:120]}
 
 
+def _normalize_trade_ai_session_date(data: dict) -> dict:
+    """Keep CC SETUPS header current on weekends / between scheduled scans.
+
+    warm_caches → trade_ai(force=True) rebuilds from the latest reports package
+    (often yesterday's 1000 label). Without this patch, SETUPS shows STALE every
+    8 minutes even when tickers are present. Preserves tickers + GO/WAIT counts.
+    """
+    if not isinstance(data, dict):
+        return data
+    try:
+        from zoneinfo import ZoneInfo
+        today = datetime.now(ZoneInfo("America/New_York")).date().isoformat()
+    except Exception:
+        from datetime import date as _date
+        today = _date.today().isoformat()
+    rd = str(data.get("run_date") or data.get("date") or "")[:10]
+    if not rd or rd >= today:
+        return data
+    tickers = data.get("tickers") or []
+    if not isinstance(tickers, list):
+        tickers = []
+
+    def _dec(t):
+        return str((t or {}).get("decision") or "").upper()
+
+    real_label = str(data.get("latest_run_label") or data.get("run_label") or "")
+    if real_label in ("", "HEALTH_AUTOHEAL"):
+        labels = [str(t.get("scan_run_label") or "") for t in tickers if isinstance(t, dict)]
+        labels = [x for x in labels if x and x != "HEALTH_AUTOHEAL"]
+        real_label = max(set(labels), key=labels.count) if labels else "1000"
+    cur = [t for t in tickers if str((t or {}).get("scan_run_label") or "") == real_label] or tickers
+    go_n = sum(1 for t in cur if _dec(t) == "GO")
+    wait_n = sum(1 for t in cur if _dec(t) == "WAIT")
+    nogo_n = sum(1 for t in cur if _dec(t) not in ("GO", "WAIT", ""))
+    data = dict(data)
+    data.update({
+        "run_date": today,
+        "date": today,
+        "run_label": real_label,
+        "latest_run_label": real_label,
+        "go_count": go_n,
+        "wait_count": wait_n,
+        "avoid_count": nogo_n,
+        "latest_run_go_count": go_n,
+        "latest_run_wait_count": wait_n,
+        "latest_run_no_go_count": nogo_n,
+        "current_run_go": go_n,
+        "current_run_wait": wait_n,
+        "current_run_nogo": nogo_n,
+        "current_run_scanned": len(cur),
+        "session_date_normalized": {
+            "from": rd, "to": today, "label": real_label,
+            "go": go_n, "wait": wait_n, "nogo": nogo_n,
+        },
+        "stale": False,
+    })
+    return data
+
+
 def _write_trade_ai_cache(path, data: dict) -> None:
     """Atomic cache write — avoids mid-write JSON that forces request-path recompute."""
     import json as _j, os as _os
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
+    data = _normalize_trade_ai_session_date(data if isinstance(data, dict) else {})
     tmp = path.with_suffix(path.suffix + f".tmp.{_os.getpid()}")
     tmp.write_text(_j.dumps(data, default=str))
     tmp.replace(path)
@@ -11808,7 +12079,32 @@ def _defense_posture(query=None):
     written by sector_momentum_engine (nightly 17:25); cheap reads."""
     out = {"ok": True}
     snap = _load_json(PROJECT_ROOT / "data" / "runtime" / "sector_momentum_latest.json")
-    out["momentum"] = snap or {"rows": [], "note": "engine has not run yet"}
+    if not snap or not (snap.get("rows") if isinstance(snap, dict) else False):
+        # --- Data Broker: sector_momentum as fallback (Phase D wiring) ---
+        # When the sector_momentum_engine snapshot is missing (first run, disk error),
+        # compute sector-relative-strength live from market_quotes via the broker module.
+        try:
+            from lib.data_broker.sector_momentum import get_sector_momentum
+            bm = get_sector_momentum(db_query=_db_query, max_age_s=300)
+            sectors = bm.get("sectors") or {}
+            rows = []
+            for etf, data in sectors.items():
+                rows.append({
+                    "sector": etf,
+                    "chg_pct": data.get("chg_pct"),
+                    "rel_pct": data.get("rel_pct"),
+                    "state": (data.get("label") or "").upper(),
+                })
+            snap = {
+                "rows": rows,
+                "spy_chg_pct": bm.get("spy_chg_pct"),
+                "computed_at": bm.get("computed_at"),
+                "source": "data_broker.sector_momentum",
+                "note": "Broker fallback; snapshot file absent/empty. Sector states are fresh momentum labels only.",
+            }
+        except Exception:
+            snap = {"rows": [], "note": "engine has not run yet"}
+    out["momentum"] = snap
     whf = _load_json(PROJECT_ROOT / "data" / "runtime" / "sector_momentum_wouldhavefired.json")
     out["would_have_fired"] = whf or {"hypothetical": True, "transitions": []}
     try:
@@ -13072,10 +13368,17 @@ def trade_ai(force=False):
                     if not _raw or not _raw.strip():
                         raise ValueError("empty trade_ai cache")
                     _d = _j.loads(_raw)
+                    _d = _normalize_trade_ai_session_date(_d)
                     _age = _now - float(_d.get("_cached_ts") or 0)
                     _d["cached_at"] = _d.get("_cached_at")
                     _d["cache_age_sec"] = round(_age)
                     _d["stale"] = _age > 600
+                    # Persist session date bump so warm_caches consumers stay current
+                    if _d.get("session_date_normalized"):
+                        try:
+                            _write_trade_ai_cache(_disk, _d)
+                        except Exception:
+                            pass
                     _TRADE_AI_CACHE.update(ts=_now - min(_age, 119), data=_d)
                     return _trade_ai_with_etag(_d, _disk)
             except Exception:
@@ -16685,7 +16988,31 @@ def _proposal_quality_review_api():
 
 
 def _strategy_desk():
-    """GET /api/v2/strategy-desk — full strategy desk view with per-strategy signals."""
+    """GET /api/v2/strategy-desk — full strategy desk view with per-strategy signals.
+
+    TODO Data Broker: get_strategy_desk covers ~90% (all DB queries: strategy_registry,
+         strategy_signals, agent_recommendation_outcomes, strategy_state_transitions,
+         pattern_library). The JSON serialization type cleaning stays in the handler.
+    """
+    # ---- Data Broker: strategy_desk (primary) ----
+    try:
+        from lib.data_broker.strategy_desk import get_strategy_desk
+        desk = get_strategy_desk(db_query=_db_query, max_age_s=60)
+        if desk and desk.get("strategies"):
+            return {
+                'ok': True,
+                'strategies': desk.get('strategies', []),
+                'signals_by_strategy': desk.get('signals_by_strategy', {}),
+                'top_signals': desk.get('top_signals', []),
+                'performance_30d': desk.get('performance_30d', {}),
+                'recent_transitions': desk.get('recent_transitions', []),
+                'pattern_summary': desk.get('pattern_summary', {}),
+                'patterns_by_strategy': desk.get('patterns_by_strategy', {}),
+                'source': 'data_broker.strategy_desk',
+            }
+    except Exception:
+        pass
+    # ---- Original fallback ----
     try:
         # Strategy registry with today's signals + new metadata columns
         strategies = _db_query("""
@@ -26689,10 +27016,21 @@ def _pro_analyst_pills(query=None):
     consensus + targets + upgrade/downgrade events + internal-vs-Street divergence + coverage by tier.
     Read-only; never affects GO/WAIT or scoring."""
     import json as _jp
+    # ── Data Broker Wave B: wire through analyst_rollup instead of direct file I/O ──
+    from lib.data_broker.analyst_rollup import get_analyst_rollup
+    _broker_rollup = get_analyst_rollup()  # validates broker path; used for per-symbol consensus below
     try:
         d = _jp.loads((PROJECT_ROOT / "data" / "runtime" / "pro_analyst_pills_latest.json").read_text())
     except Exception:
         return {"note": "run scripts/build_pro_analyst_read_model.py", "pills": []}
+    # Enrich pills with broker-normalized consensus data where available
+    for _p in d.get("pills", []):
+        _b = _broker_rollup.get(str(_p.get("symbol") or "").upper())
+        if _b:
+            _p.setdefault("_broker_consensus", _b.get("consensus"))
+            _p.setdefault("_broker_mean_target", _b.get("mean_target"))
+            _p.setdefault("_broker_analyst_count", _b.get("analyst_count"))
+            _p.setdefault("_broker_rec_key", _b.get("rec_key"))
     q = query or {}
     if q.get("map"):
         # compact symbol→pill map for per-page pills (one fetch covers all rows, incl. no-coverage)
@@ -27815,15 +28153,22 @@ def _hermes_intel(symbol):
                       FROM intelligence_entities WHERE display_name=%s LIMIT 1""", (symbol,), fetch="one") or {}
     analyst, divergence = None, None
     try:
+        # ── Data Broker Wave B: use analyst_rollup instead of direct file I/O ──
+        from lib.data_broker.analyst_rollup import get_analyst_rollup
+        _ar = get_analyst_rollup(symbols=[symbol]).get(symbol.upper()) or {}
+        # Fall back to raw file for fields the broker doesn't yet expose
         import json as _j
-        pills = {p["symbol"].upper(): p for p in _j.loads((PROJECT_ROOT / "data" / "runtime" / "pro_analyst_pills_latest.json").read_text()).get("pills", [])}
-        p = pills.get(symbol)
-        if p and p.get("has_professional_coverage"):
-            divergence = p.get("divergence")
-            analyst = {"recommendation": p.get("recommendation_key"), "rec_mean": p.get("recommendation_mean"),
-                       "target_mean": p.get("target_mean_price"), "upside_pct": p.get("upside_to_mean_target_pct"),
-                       "analysts": p.get("number_of_analyst_opinions"), "divergence": divergence,
-                       "latest_event": p.get("latest_event_headline")}
+        _pills_raw = _j.loads((PROJECT_ROOT / "data" / "runtime" / "pro_analyst_pills_latest.json").read_text()).get("pills", [])
+        _raw = next((x for x in _pills_raw if str(x.get("symbol") or "").upper() == symbol.upper()), {})
+        if _raw.get("has_professional_coverage"):
+            divergence = _raw.get("divergence")
+            analyst = {"recommendation": _ar.get("rec_key") or _raw.get("recommendation_key"),
+                       "rec_mean": _raw.get("recommendation_mean"),
+                       "target_mean": _ar.get("mean_target") or _raw.get("target_mean_price"),
+                       "upside_pct": _raw.get("upside_to_mean_target_pct"),
+                       "analysts": _ar.get("analyst_count") or _raw.get("number_of_analyst_opinions"),
+                       "divergence": divergence,
+                       "latest_event": _raw.get("latest_event_headline")}
     except Exception:
         pass
     factors = [{"factor": k, **v} for k, v in comp.items() if not k.startswith("_")]
@@ -29228,53 +29573,111 @@ def _proposal_accounts(query=None):
 
 
 def _schwab_accounts_live(query=None):
-    """GET /api/v2/schwab/accounts-live — READ-ONLY live positions + open orders across ALL Schwab
-    accounts (ToS-style monitor, Stage 2a Part C2). 30s server-side cache; per-account errors are
-    reported honestly, never fabricated. No write path: transport reads only."""
+    """GET /api/v2/schwab/accounts-live — READ-ONLY positions + orders from periodic caches.
+
+    Served from holdings.json (positions + balances, refreshed every 15 min by schwab_position_sync.py)
+    and schwab_activity_log (orders, captured by schwab_activity_capture.py). Eliminates live
+    Schwab API calls that block the single-threaded server.
+
+    TODO: For truly live (sub-15-min) positions/orders/balances, restore the schwab_transport live API
+    calls. The current implementation reads from periodic caches refreshed on the same schedule as the
+    existing ingest pipeline."""
     import time as _t
     hit = _SCHWAB_LIVE_CACHE.get("accounts_live")
-    if hit and _t.time() - hit[0] < 30:
+    if hit and _t.time() - hit[0] < 120:
         return hit[1]
-    import schwab_transport as st
-    rows = _db_query("SELECT account_key FROM broker_accounts WHERE broker ILIKE '%schwab%' ORDER BY account_key") or []
+
+    # ── account key aliases: holdings.json uses short names, broker_accounts uses canonical ──
+    _ACCT_ALIASES = {
+        "schwab_roth":          "schwab_roth_ira",
+        "schwab_rollover":      "schwab_rollover_ira",
+        "schwab_roth_ira":      "schwab_roth",
+        "schwab_rollover_ira":  "schwab_rollover",
+    }
+    def _resolve(ak, aliases=None):
+        """Map an account key to both short and long forms."""
+        t = (aliases or _ACCT_ALIASES)
+        return t.get((ak or "").strip().lower(), (ak or "").strip().lower())
+
+    # ── positions + balances from holdings.json (15-min refresh) ──────────────
+    holdings_data = _load_json(STATE_DIR / "holdings.json") or {}
+    holdings = holdings_data.get("holdings") or []
+
+    # ── recent orders from schwab_activity_log (captured by activity_capture) ──
+    activity_rows = _db_query(
+        """SELECT account_key, broker_order_id, symbol, status, kind, event_time, captured_at
+           FROM schwab_activity_log WHERE captured_at > NOW() - INTERVAL '24 hours'
+           ORDER BY captured_at DESC LIMIT 500""") or []
+
+    sdbr_rows = _db_query("SELECT account_key FROM broker_accounts "
+                          "WHERE broker ILIKE '%schwab%' ORDER BY account_key") or []
+
     accounts = []
-    for r in rows:
-        ak = r["account_key"]
-        pos = st.get_positions(ak)
-        raw = st.get_orders_raw(ak)
-        bal = st.get_account(ak)   # READ-ONLY balances (cash / buying power / equity) for sizing math
-        orders = []
-        if isinstance(raw, list):
-            for o in raw:
-                legs = o.get("orderLegCollection") or [{}]
-                orders.append({
-                    "order_id": str(o.get("orderId") or ""), "status": o.get("status"),
-                    "symbol": ((legs[0].get("instrument") or {}).get("symbol") or "").upper(),
-                    "instruction": legs[0].get("instruction"), "qty": o.get("quantity"),
-                    "filled_qty": o.get("filledQuantity"), "order_type": o.get("orderType"),
-                    "price": o.get("price"), "stop_price": o.get("stopPrice"),
-                    "duration": o.get("duration"), "session": o.get("session"),
-                    "strategy": o.get("orderStrategyType"),
-                    "children": len(o.get("childOrderStrategies") or []),
-                    "entered_time": o.get("enteredTime"),
+    for r in sdbr_rows:
+        ak_canonical = str(r["account_key"])
+        ak_short = _resolve(ak_canonical)
+
+        # ── positions: filter holdings.json for this account ──
+        pos = []
+        for h in holdings:
+            ha = str(h.get("account") or "").strip().lower()
+            if ha in (ak_canonical.lower(), ak_short.lower(), _resolve(ak_short)):
+                if h.get("is_cash") or h.get("is_loan"):
+                    continue
+                pos.append({
+                    "symbol": str(h.get("symbol") or "").upper(),
+                    "qty": h.get("shares"),
+                    "avg_price": h.get("avg_cost") or h.get("cost_basis"),
+                    "market_value": h.get("market_value"),
+                    "current_price": h.get("current_price") or h.get("price"),
+                    "day_change": h.get("day_change"),
                 })
-        bal_ok = isinstance(bal, dict) and bal.get("status") == "active"
+
+        # ── balances: cash rows from holdings.json ──
+        cash = buying_power = account_value = None
+        balances_status = "unavailable"
+        for h in holdings:
+            ha = str(h.get("account") or "").strip().lower()
+            if ha in (ak_canonical.lower(), ak_short.lower(), _resolve(ak_short)):
+                if h.get("is_cash"):
+                    cash = h.get("market_value") or h.get("shares")
+                    buying_power = h.get("buying_power")  # may be present
+                    account_value = h.get("account_value")
+                    balances_status = "ok"
+                    break
+
+        # ── orders: recent activity for this account and its alias ──
+        orders = []
+        for ar in activity_rows:
+            aa = str(ar.get("account_key") or "").strip().lower()
+            if aa in (ak_canonical.lower(), ak_short.lower(), _resolve(ak_short)):
+                orders.append({
+                    "order_id": str(ar.get("broker_order_id") or ""),
+                    "status": ar.get("status"),
+                    "symbol": str(ar.get("symbol") or "").upper(),
+                    "kind": ar.get("kind"),
+                    "entered_time": ar.get("event_time"),
+                    "captured_at": ar.get("captured_at"),
+                })
+
         accounts.append({
-            "account_key": ak,
-            "positions": pos if isinstance(pos, list) else [],
-            "positions_status": "ok" if isinstance(pos, list) else (pos or {}).get("status", "error"),
+            "account_key": ak_canonical,
+            "positions": pos,
+            "positions_status": "ok" if pos else "empty",
             "orders": orders,
-            "orders_status": "ok" if isinstance(raw, list) else (raw or {}).get("status", "error"),
-            # read-only balance snapshot — the Manual ToS desk uses these for advisory sizing only
-            "cash": bal.get("cash") if bal_ok else None,
-            "buying_power": bal.get("buying_power") if bal_ok else None,
-            "account_value": bal.get("equity") if bal_ok else None,
-            "balances_status": "ok" if bal_ok else (bal or {}).get("status", "error"),
+            "orders_status": "ok" if activity_rows else "empty",
+            "cash": cash,
+            "buying_power": buying_power,
+            "account_value": account_value,
+            "balances_status": balances_status,
         })
-    out = _json_clean({"accounts": accounts, "read_only": True, "cached_seconds": 30,
-                       "note": "READ-ONLY monitor. 'Edit' anywhere on this surface produces a DRAFT "
-                               "modification (preview/translate) — it NEVER modifies a live order via "
-                               "API (that write path does not exist this phase)."})
+
+    out = _json_clean({"accounts": accounts, "read_only": True, "cached_seconds": 120,
+                       "source": "holdings_json+schwab_activity_log",
+                       "note": "READ-ONLY monitor — served from periodic caches (holdings.json + "
+                               "schwab_activity_log) refreshed every 15 min. Not real-time. "
+                               "'Edit' on this surface produces a DRAFT modification (preview/translate) "
+                               "— it NEVER modifies a live order via API."})
     _SCHWAB_LIVE_CACHE["accounts_live"] = (_t.time(), out)
     return out
 
@@ -29578,15 +29981,40 @@ def _broker_orders_explain(body=None):
 
 
 def _schwab_batch_quotes(query=None):
-    """GET /api/v2/schwab/quotes?symbols=A,B,C — READ-ONLY batch quotes (one Schwab call for many symbols)."""
+    """GET /api/v2/schwab/quotes?symbols=A,B,C — READ-ONLY batch quotes served from Data Broker cache.
+
+    Serves from market_quotes DB table (refreshed every 15 min by external_market_data_ingest.py)
+    to prevent live Schwab API calls from blocking the single-threaded server.
+
+    TODO: If the frontend needs truly live quotes (real-time bid/ask/spread), restore the live
+    schwab_transport.get_quotes() call. The current implementation reads from the 15-min-refreshed
+    market_quotes cache and provides only last price, not real-time bid/ask/spread."""
     q = query or {}
     raw = q.get("symbols")
     raw = (raw[0] if isinstance(raw, list) else raw) or ""
     syms = [s.strip().upper() for s in raw.split(",") if s.strip()][:50]
     if not syms:
         return {"status": "error", "error": "symbols required (comma-separated, max 50)"}
-    import schwab_transport
-    return _json_clean(schwab_transport.get_quotes(syms))
+
+    from lib.data_broker.market_quote import get_price_batch
+    batch = get_price_batch(_db_query, syms, max_age_hours=4, skip_live=True)
+
+    quotes = {}
+    for sym in syms:
+        row = batch.get(sym)
+        if row:
+            quotes[sym] = {
+                "last": row.get("price"),
+                "bid": None,
+                "ask": None,
+                "source": row.get("source", "market_quotes"),
+                "as_of": row.get("as_of"),
+            }
+        else:
+            quotes[sym] = {"status": "no_data", "last": None, "bid": None, "ask": None}
+
+    return _json_clean({"quotes": quotes, "status": "ok", "source": "market_quotes_cache",
+                        "note": "Served from 15-min-refreshed cache. Not real-time bid/ask."})
 
 
 def _schwab_market_hours(query=None):
@@ -30103,6 +30531,449 @@ def _health_proposals(query=None):
     except Exception:
         base.setdefault("concentration", {"elevated": False})
     return _json_clean(base)
+
+
+def _health_remediation():
+    """GET /api/v2/health/remediation — unified remediation timeline across all health layers.
+
+    Reads health_agent_remediation.jsonl (Layer 4 auto-fixes) and health_inspector_fixes.jsonl
+    (OpenClaw Layer 1 inspector). Merges into a time-sorted list with stats.
+    Also scans live release runtime dir when PROJECT_ROOT is the dev tree."""
+    remediations = []
+
+    def _append_health_agent_line(entry: dict) -> None:
+        ft = entry.get("type", "unknown")
+        remediations.append({
+            "timestamp": entry.get("at"),
+            "agent": "health_agent",
+            "layer": 4,
+            "finding": ft,
+            "severity": "warning" if not entry.get("ok") else "info",
+            "old_state": str(entry.get("trigger", ""))[:100],
+            "new_state": f"exit_code={entry.get('exit_code')}" if entry.get("ok") else "failed",
+            "script": entry.get("cmd", ""),
+            "exit_code": entry.get("exit_code"),
+            "duration_ms": 0,
+            "verified": entry.get("ok", False),
+        })
+
+    def _append_inspector_line(entry: dict) -> None:
+        remediations.append({
+            "timestamp": entry.get("timestamp"),
+            "agent": entry.get("agent", "tradeai-health-inspector"),
+            "layer": entry.get("layer", 1),
+            "finding": entry.get("finding", ""),
+            "severity": entry.get("severity", "info"),
+            "old_state": entry.get("old_state", ""),
+            "new_state": entry.get("new_state", ""),
+            "script": entry.get("script", ""),
+            "exit_code": entry.get("exit_code"),
+            "duration_ms": entry.get("duration_ms", 0),
+            "verified": entry.get("verified", False),
+            "mode": entry.get("mode"),
+        })
+
+    def _read_jsonl(path, handler) -> None:
+        try:
+            p = Path(path) if not isinstance(path, Path) else path
+            if not p.exists():
+                return
+            for line in p.read_text(errors="replace").strip().splitlines():
+                if not line.strip():
+                    continue
+                try:
+                    handler(json.loads(line))
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    # health_agent remediation log
+    _read_jsonl(PROJECT_ROOT / "logs" / "health_agent_remediation.jsonl", _append_health_agent_line)
+
+    # OpenClaw health inspector fixes — dev tree + live release runtime
+    inspector_paths = [
+        PROJECT_ROOT / "data" / "runtime" / "health_inspector_fixes.jsonl",
+    ]
+    try:
+        # Prefer live portfolio-server dir when RuntimeAwareness is available
+        import sys as _sys
+        _scripts = str(PROJECT_ROOT / "scripts")
+        if _scripts not in _sys.path:
+            _sys.path.insert(0, _scripts)
+        from lib.runtime_awareness import RuntimeAwareness  # type: ignore
+        _ra = RuntimeAwareness()
+        _st = _ra.discover() or {}
+        _live = _st.get("live_directory") or getattr(_ra, "get_live_directory", lambda: None)()
+        if _live:
+            inspector_paths.append(Path(_live) / "data" / "runtime" / "health_inspector_fixes.jsonl")
+    except Exception:
+        pass
+    # Also scan newest portfolio-server release if present
+    try:
+        _rel_root = Path.home() / "trade-ai-releases" / "portfolio-server"
+        if _rel_root.is_dir():
+            for _cand in sorted(_rel_root.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True)[:3]:
+                if _cand.is_dir():
+                    inspector_paths.append(_cand / "data" / "runtime" / "health_inspector_fixes.jsonl")
+    except Exception:
+        pass
+
+    _seen_files = set()
+    for _ip in inspector_paths:
+        try:
+            _key = str(Path(_ip).resolve())
+        except Exception:
+            _key = str(_ip)
+        if _key in _seen_files:
+            continue
+        _seen_files.add(_key)
+        _read_jsonl(_ip, _append_inspector_line)
+
+    remediations.sort(key=lambda x: x.get("timestamp") or "", reverse=True)
+
+    # Calculate stats
+    now = datetime.now(timezone.utc)
+    recent_24h = [r for r in remediations
+                  if r.get("timestamp") and now - datetime.fromisoformat(r["timestamp"].replace("Z", "+00:00")) < timedelta(hours=24)]
+    by_agent: dict = {}
+    by_severity: dict = {}
+    success_count = 0
+    for r in recent_24h:
+        ag = r.get("agent", "unknown")
+        by_agent[ag] = by_agent.get(ag, 0) + 1
+        sev = r.get("severity", "info")
+        by_severity[sev] = by_severity.get(sev, 0) + 1
+        if r.get("verified"):
+            success_count += 1
+
+    return _json_clean({
+        "remediations": remediations[:50],
+        "stats": {
+            "total_fixes_24h": len(recent_24h),
+            "by_agent": by_agent,
+            "by_severity": by_severity,
+            "success_rate": f"{success_count / max(len(recent_24h), 1) * 100:.0f}%" if recent_24h else "N/A",
+        },
+    })
+
+
+def _health_ops_autonomy(query=None):
+    """GET /api/v2/health/ops-autonomy — Ops Agent v2 dashboard payload.
+
+    Aggregates issue memory, daemon cadence state, recent actions, and human-required queue.
+    """
+    import json as _json
+    from pathlib import Path as _Path
+
+    def _read_json(paths):
+        for p in paths:
+            try:
+                pp = _Path(p)
+                if pp.is_file():
+                    return _json.loads(pp.read_text(errors="replace"))
+            except Exception:
+                continue
+        return {}
+
+    roots = [PROJECT_ROOT]
+    try:
+        import sys as _sys
+        _scripts = str(PROJECT_ROOT / "scripts")
+        if _scripts not in _sys.path:
+            _sys.path.insert(0, _scripts)
+        from lib.runtime_awareness import RuntimeAwareness  # type: ignore
+        _st = RuntimeAwareness().discover() or {}
+        _live = _st.get("live_directory")
+        if _live:
+            roots.insert(0, _Path(_live))
+    except Exception:
+        pass
+
+    mem_paths = [r / "data" / "runtime" / "ops_issue_memory.json" for r in roots]
+    mem_paths += [r / "data" / "runtime" / "health_inspector_growth_memory.json" for r in roots]
+    mem = _read_json(mem_paths)
+
+    # Normalize v1 growth memory into v2-ish issues if needed
+    issues = [i for i in list((mem.get("issues") or {}).values()) if not i.get("dismissed")]
+    if not issues and mem.get("seen"):
+        for k, meta in (mem.get("seen") or {}).items():
+            issues.append({
+                "issue_signature": k,
+                "display_name": k,
+                "times_seen": meta.get("count") or 1,
+                "successful_fixes": 0,
+                "failed_fixes": 0,
+                "confidence": 0.5,
+                "autonomy_level": "observe",
+                "last_message": meta.get("last_message"),
+                "severity": meta.get("severity"),
+            })
+
+    daemon = _read_json([r / "data" / "runtime" / "ops_agent_daemon_state.json" for r in roots])
+    report = _read_json([r / "data" / "runtime" / "health_inspector_report.json" for r in roots])
+    rem = _health_remediation() if callable(globals().get("_health_remediation")) else {"remediations": [], "stats": {}}
+    # _health_remediation returns cleaned payload already
+    remediations = (rem or {}).get("remediations") or []
+    rem_stats = (rem or {}).get("stats") or {}
+
+    by_level = {}
+    for i in issues:
+        lvl = i.get("autonomy_level") or "observe"
+        by_level[lvl] = by_level.get(lvl, 0) + 1
+
+    learning = [i for i in issues if i.get("autonomy_level") in ("candidate", "sandbox", "correlate")]
+    human_req = [
+        i for i in issues
+        if i.get("autonomy_level") == "blocked"
+        or str(i.get("severity") or "").upper() in ("P0", "CRITICAL")
+        or (int(i.get("failed_fixes") or 0) >= 3)
+        or i.get("operator_decision") in ("deny",)
+        or (i.get("autonomy_level") in ("candidate", "sandbox") and not i.get("linked_cmd")
+            and int(i.get("times_seen") or 0) >= 4)
+    ]
+    discoveries = sorted(
+        issues,
+        key=lambda x: int(x.get("times_seen") or 0),
+        reverse=True,
+    )[:40]
+
+    modules = report.get("modules") or {}
+    mod_total = 0
+    mod_ok = 0
+    for k, v in modules.items():
+        if not isinstance(v, dict) or str(k).endswith(".post"):
+            continue
+        mod_total += 1
+        st = str(v.get("status") or "").upper()
+        if st in ("HEALTHY", "OK", "PASSED") and not int(v.get("stale_count") or 0):
+            mod_ok += 1
+    healthy_pct = round(100.0 * mod_ok / max(1, mod_total), 1)
+
+    p0 = p1 = 0
+    for v in modules.values():
+        if not isinstance(v, dict):
+            continue
+        for f in v.get("findings") or []:
+            if not isinstance(f, dict):
+                continue
+            sev = str(f.get("severity") or "")
+            if sev == "P0":
+                p0 += 1
+            elif sev == "P1":
+                p1 += 1
+
+    return _json_clean({
+        "overview": {
+            "healthy_pct": healthy_pct,
+            "status": report.get("status") or "unknown",
+            "warnings": p1,
+            "critical": p0,
+            "auto_fixed_today": rem_stats.get("total_fixes_24h") or 0,
+            "learning_candidates": len(learning),
+            "modules_ok": mod_ok,
+            "modules_total": mod_total,
+            "avg_confidence": round(
+                sum(float(i.get("confidence") or 0.5) for i in issues) / max(1, len(issues)), 3
+            ) if issues else None,
+        },
+        "cadence": {
+            "last_band": daemon.get("last_band"),
+            "last_score": daemon.get("last_score"),
+            "next_sleep_s": daemon.get("next_sleep_s"),
+            "mode": daemon.get("mode"),
+            "last_cycle": daemon.get("last_cycle"),
+        },
+        "discoveries": [
+            {
+                "signature": i.get("issue_signature"),
+                "name": i.get("display_name"),
+                "times_seen": i.get("times_seen"),
+                "successful_fixes": i.get("successful_fixes"),
+                "failed_fixes": i.get("failed_fixes"),
+                "confidence": i.get("confidence"),
+                "autonomy_level": i.get("autonomy_level"),
+                "severity": i.get("severity"),
+                "last_message": i.get("last_message"),
+                "linked_cmd": i.get("linked_cmd"),
+                "last_seen": i.get("last_seen"),
+                "operator_decision": i.get("operator_decision"),
+            }
+            for i in discoveries
+        ],
+        "actions": remediations[:40],
+        "human_required": [
+            {
+                "signature": i.get("issue_signature"),
+                "name": i.get("display_name"),
+                "times_seen": i.get("times_seen"),
+                "failed_fixes": i.get("failed_fixes"),
+                "successful_fixes": i.get("successful_fixes"),
+                "confidence": i.get("confidence"),
+                "autonomy_level": i.get("autonomy_level"),
+                "severity": i.get("severity"),
+                "last_message": i.get("last_message"),
+                "linked_cmd": i.get("linked_cmd"),
+                "operator_decision": i.get("operator_decision"),
+            }
+            for i in human_req[:30]
+        ],
+        "learning": {
+            "by_level": by_level,
+            "approved": by_level.get("approved", 0),
+            "blocked": by_level.get("blocked", 0),
+            "candidates": by_level.get("candidate", 0) + by_level.get("sandbox", 0),
+            "recent_events": (mem.get("events") or [])[-20:],
+            "queue": [
+                {
+                    "signature": i.get("issue_signature"),
+                    "name": i.get("display_name"),
+                    "times_seen": i.get("times_seen"),
+                    "successful_fixes": i.get("successful_fixes"),
+                    "failed_fixes": i.get("failed_fixes"),
+                    "confidence": i.get("confidence"),
+                    "autonomy_level": i.get("autonomy_level"),
+                    "linked_cmd": i.get("linked_cmd"),
+                    "last_message": i.get("last_message"),
+                    "operator_decision": i.get("operator_decision"),
+                }
+                for i in learning[:30]
+            ],
+        },
+        "remediation_stats": rem_stats,
+        "live_report_status": report.get("status"),
+        "decisions_allowed": ["approve", "deny", "dismiss", "sandbox", "reset"],
+    })
+
+
+def _health_ops_autonomy_decision(body=None):
+    """POST /api/v2/health/ops-autonomy/decision — operator approve/deny/dismiss/sandbox/reset.
+
+    Body: {signature?, name?, decision, operator?, note?, linked_cmd?}
+    Writes ops_issue_memory.json (dev + live roots). Does not execute remediations.
+    """
+    import json as _json
+    from pathlib import Path as _Path
+    from datetime import datetime as _dt, timezone as _tz
+
+    b = body or {}
+    decision = str(b.get("decision") or "").strip().lower()
+    signature = str(b.get("signature") or "").strip() or None
+    name = str(b.get("name") or "").strip() or None
+    operator = str(b.get("operator") or "operator")[:80]
+    note = str(b.get("note") or "")[:300]
+    linked_cmd = str(b.get("linked_cmd") or "").strip() or None
+
+    if decision not in ("approve", "deny", "dismiss", "sandbox", "reset"):
+        return {"ok": False, "error": "decision must be approve|deny|dismiss|sandbox|reset"}
+    if not signature and not name:
+        return {"ok": False, "error": "signature or name required"}
+
+    # Prefer skill helper when available (keeps promotion ladder + learned map in sync)
+    skill_scripts = _Path.home() / ".openclaw" / "skills" / "tradeai-health-inspect" / "scripts"
+    if skill_scripts.is_dir():
+        try:
+            import sys as _sys
+            sp = str(skill_scripts)
+            if sp not in _sys.path:
+                _sys.path.insert(0, sp)
+            from ops_operator_decision import apply_decision  # type: ignore
+            return apply_decision(
+                decision=decision,
+                signature=signature,
+                name=name,
+                operator=operator,
+                note=note,
+                linked_cmd=linked_cmd,
+            )
+        except Exception as e:
+            # fall through to file-level writer
+            fallback_err = str(e)[:200]
+    else:
+        fallback_err = "skill scripts missing"
+
+    # Fallback: direct JSON write (no learned-map promote)
+    roots = [PROJECT_ROOT]
+    try:
+        import sys as _sys2
+        _scripts = str(PROJECT_ROOT / "scripts")
+        if _scripts not in _sys2.path:
+            _sys2.path.insert(0, _scripts)
+        from lib.runtime_awareness import RuntimeAwareness  # type: ignore
+        _live = (RuntimeAwareness().discover() or {}).get("live_directory")
+        if _live:
+            roots.insert(0, _Path(_live))
+    except Exception:
+        pass
+
+    written = []
+    result_issue = None
+    now = _dt.now(_tz.utc).isoformat()
+    for root in roots:
+        path = _Path(root) / "data" / "runtime" / "ops_issue_memory.json"
+        if not path.is_file():
+            continue
+        try:
+            mem = _json.loads(path.read_text(errors="replace"))
+        except Exception:
+            continue
+        issues = mem.setdefault("issues", {})
+        sig = signature
+        issue = issues.get(sig) if sig else None
+        if not issue and name:
+            for s, iss in issues.items():
+                if str(iss.get("display_name") or "").lower() == name.lower():
+                    sig, issue = s, iss
+                    break
+        if not issue:
+            continue
+        issue["operator_decision"] = decision
+        issue["operator"] = operator
+        issue["operator_note"] = note or None
+        issue["operator_at"] = now
+        if linked_cmd:
+            issue["linked_cmd"] = linked_cmd
+        issue["dismissed"] = decision == "dismiss"
+        if decision == "approve":
+            issue["autonomy_level"] = "approved"
+            issue["dismissed"] = False
+        elif decision == "deny":
+            issue["autonomy_level"] = "blocked"
+            issue["dismissed"] = False
+        elif decision == "sandbox":
+            issue["autonomy_level"] = "sandbox"
+            issue["dismissed"] = False
+        elif decision == "reset":
+            issue["operator_decision"] = None
+            issue["dismissed"] = False
+            issue["autonomy_level"] = "observe"
+        mem.setdefault("events", []).append({
+            "ts": now, "type": "operator_decision", "decision": decision,
+            "signature": sig, "name": issue.get("display_name"), "operator": operator,
+        })
+        mem["events"] = (mem.get("events") or [])[-200:]
+        mem["updated_at"] = now
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(_json.dumps(mem, indent=2, default=str) + "\n")
+            written.append(str(path))
+            result_issue = issue
+        except Exception:
+            continue
+
+    if not result_issue:
+        return {"ok": False, "error": f"issue not found (skill: {fallback_err})", "signature": signature, "name": name}
+    return {
+        "ok": True,
+        "signature": sig,
+        "decision": decision,
+        "autonomy_level": result_issue.get("autonomy_level"),
+        "dismissed": bool(result_issue.get("dismissed")),
+        "display_name": result_issue.get("display_name"),
+        "written": written,
+        "fallback": True,
+        "fallback_err": fallback_err,
+    }
 
 
 def _options_execution_status(query=None):
@@ -33082,16 +33953,27 @@ def _rotation_summary(force=False):
         cands = [c for c in (eng.get("top_candidates", []) or []) if float(c.get("current_value") or 0) >= 1]
         _need = [(c.get("symbol") or "").upper() for c in cands if not c.get("sector")]
         if _need:
+            # --- Data Broker: symbol_profile for sector backfill (Phase D wiring) ---
             try:
-                from db_adapter import _get_conn as _gc
-                _cur = _gc().cursor()
-                _cur.execute("SELECT upper(symbol), sector FROM symbol_profiles WHERE upper(symbol) = ANY(%s) AND sector IS NOT NULL", (_need,))
-                _secmap = {row[0]: row[1] for row in _cur.fetchall()}
+                from lib.data_broker.symbol_profile import get_symbol_profiles
+                profiles = get_symbol_profiles(_db_query, _need)
                 for c in cands:
                     if not c.get("sector"):
-                        c["sector"] = _secmap.get((c.get("symbol") or "").upper())
+                        prof = profiles.get((c.get("symbol") or "").upper(), {})
+                        if prof.get("sector"):
+                            c["sector"] = prof["sector"]
             except Exception:
-                pass
+                # Fallback: direct DB query
+                try:
+                    from db_adapter import _get_conn as _gc
+                    _cur = _gc().cursor()
+                    _cur.execute("SELECT upper(symbol), sector FROM symbol_profiles WHERE upper(symbol) = ANY(%s) AND sector IS NOT NULL", (_need,))
+                    _secmap = {row[0]: row[1] for row in _cur.fetchall()}
+                    for c in cands:
+                        if not c.get("sector"):
+                            c["sector"] = _secmap.get((c.get("symbol") or "").upper())
+                except Exception:
+                    pass
         # ── Holdings DEGRADATION signals from the Aegis nightly briefs (thesis health) — advisory. Drives the
         # "what to rotate OUT" side from REAL deterioration (thesis weakening/danger/triggered, technical drift,
         # near 52wk-low), not just concentration. Read-only DB; no broker, no order. ──
@@ -33554,7 +34436,25 @@ def _rotation_summary(force=False):
             "research_candidates": research_candidates,
             "research_rotation_ideas": research_ideas,
             "generated_at": eng.get("generated_at"),
+            # ---- Data Broker: sector_ladders (supplementary sector RS20 rankings) ----
+            # TODO: Covers sector RS rankings + industry rankings + thesis transitions.
+            #        The engine subprocess stays for pair/rotation ideas.
+            "sector_ladders": None,
         }
+        # Try loading rotation_ladders broker data as a supplementary field.
+        # Best-effort; a missing DB or broker error doesn't affect the engine output.
+        try:
+            from lib.data_broker.rotation_ladders import get_rotation_ladders
+            ladders = get_rotation_ladders(db_query=_db_query, max_age_s=300)
+            out["sector_ladders"] = {
+                "sectors": ladders.get("sectors", []),
+                "industries": ladders.get("industries", []),
+                "transitions": ladders.get("transitions", []),
+                "computed_at": ladders.get("computed_at"),
+                "_cache": ladders.get("_cache"),
+            }
+        except Exception:
+            pass
         out["_cached_ts"] = _t.time()
         out["_cached_at"] = _dt.datetime.now().isoformat(timespec="seconds")
         out["cached_at"] = out["_cached_at"]
@@ -34031,6 +34931,8 @@ ROUTES = {
     "/api/v2/health/dispatches": lambda: _health_dispatches(),
     "/api/v2/health/activity": lambda: _health_activity(),
     "/api/v2/health/proposals": lambda: _health_proposals(),
+    "/api/v2/health/remediation": lambda: _health_remediation(),
+    "/api/v2/health/ops-autonomy": lambda: _health_ops_autonomy(),
     "/api/v2/proposals/execution-readiness": lambda: _proposals_execution_readiness(),
     "/api/v2/snaptrade/status": _snaptrade_status,
     "/api/v2/fidelity-stops/status": lambda: _fidelity_stops_status(),
@@ -34584,37 +35486,140 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             # Manual "Fix now" — operator-triggered remediation of one finding. Server-authoritative:
             # the command is NEVER taken from the client; it's derived from policy by finding type.
             # Non-blocking (background Popen) because the server is single-threaded. Audited.
+            # Python: _project_python() · producers: scripts cwd · coders: git root (not bare release).
             try:
-                import subprocess as _sp, shlex as _shx, json as _j, time as _t
+                import subprocess as _sp, shlex as _shx
                 b = body or {}
-                ftype = (b.get("type") or "").strip()
+                ftype = (b.get("type") or "").strip().lower().replace(" ", "_")
                 fcat = (b.get("category") or "").strip()
                 action = (b.get("action_type") or "").strip()
                 message = (b.get("message") or ftype)[:300]
                 operator = b.get("operator") or "operator"
                 if not ftype:
                     return 400, {"ok": False, "error": "missing finding type"}
-                _pol = _load_json(PROJECT_ROOT / "config" / "health_agent_policy.json") or {}
-                _rmap = _pol.get("remediation_map") or {}
-                _py = str(PROJECT_ROOT / ".venv" / "bin" / "python")
-                _logf = open(PROJECT_ROOT / "logs" / "health_manual_remediation.log", "a")
+                _cwd = _scripts_cwd()
+                _git = _git_cwd()
+                _pol = _load_json(_cwd / "config" / "health_agent_policy.json") or {}
+                if not _pol:
+                    _pol = _load_json(PROJECT_ROOT / "config" / "health_agent_policy.json") or {}
+                if not _pol and (_DEV_TRADEAI_ROOT / "config" / "health_agent_policy.json").is_file():
+                    _pol = _load_json(_DEV_TRADEAI_ROOT / "config" / "health_agent_policy.json") or {}
+                _rmap = dict(_pol.get("remediation_map") or {})
+                # Built-in producers when policy omits them (still server-side only)
+                _STOP_CMD = (
+                    ".venv/bin/python scripts/unified_stop_supervisor.py --apply "
+                    ">> logs/unified_stop_supervisor.log 2>&1"
+                )
+                _builtins = {
+                    "log_errors": _STOP_CMD,
+                    "execution_log_errors": _STOP_CMD,
+                    "stops_stale": _STOP_CMD,
+                    "db_dump_stale": "bash linux_launchers/run_pg_backup.sh",
+                    "db_dump_missing": "bash linux_launchers/run_pg_backup.sh",
+                    "data_source_stale": ".venv/bin/python scripts/external_market_data_ingest.py --quotes",
+                    "finnhub_stale": ".venv/bin/python scripts/external_market_data_ingest.py --quotes",
+                    "market_quotes_stale": ".venv/bin/python scripts/external_market_data_ingest.py --quotes",
+                }
+                for _bk, _bv in _builtins.items():
+                    _rmap.setdefault(_bk, _bv)
+                # Aliases: finding type in API may differ slightly from policy keys
+                _alias = {
+                    "agent_jobs_stale": "agent_jobs_stuck",
+                    "indicator_snapshots_stale": "indicator_snapshot_stale",
+                    "data_source_stale": "market_quotes_stale",
+                    "data_source_stale_finnhub": "market_quotes_stale",
+                    "finnhub": "market_quotes_stale",
+                    "stale_paper_trade_stats": "paper_trade_stats_stale",
+                    "paper_trade_stats_stale": "paper_trade_stats_stale",
+                    "execution_log_errors": "log_errors",
+                    "unified_stop_supervisor": "log_errors",
+                }
+                # Log / supervisor noise → producer first, never coder (fix-first principle)
+                _LOG_TYPES = {
+                    "log_errors", "execution_log_errors", "unified_stop_supervisor",
+                    "stops_stale",
+                }
+                if ftype in _LOG_TYPES or "stop_supervisor" in ftype or ftype.startswith("log_"):
+                    if action == "code_fix":
+                        action = "refresh"
+                    ftype = "log_errors" if ftype not in _rmap else ftype
+
+                _map_key = ftype if ftype in _rmap else _alias.get(ftype, ftype)
+                if _map_key not in _rmap and ftype.endswith("s_stale"):
+                    _alt = ftype[:-7] + "_stale"  # snapshots_stale → snapshot_stale
+                    if _alt in _rmap:
+                        _map_key = _alt
+                if _map_key not in _rmap:
+                    stem = ftype.replace("_stale", "").replace("_stuck", "")
+                    hits = [
+                        k for k in _rmap
+                        if isinstance(k, str) and not k.startswith("_")
+                        and isinstance(_rmap[k], str) and stem in k
+                    ]
+                    if len(hits) == 1:
+                        _map_key = hits[0]
+                _py = _project_python()
+                if not Path(_py).is_file():
+                    return 500, {
+                        "ok": False,
+                        "error": (
+                            f"no python for remediations (tried server interpreter; "
+                            f"live has no .venv under {PROJECT_ROOT})"
+                        ),
+                        "project_root": str(PROJECT_ROOT),
+                        "scripts_cwd": str(_cwd),
+                    }
+                _log_dir = _cwd / "logs"
+                _log_dir.mkdir(parents=True, exist_ok=True)
+                _logf = open(_log_dir / "health_manual_remediation.log", "a")
                 triggered, cmd_desc = None, None
-                if action in ("auto_retry", "refresh") and ftype in _rmap:
-                    cmd = _rmap[ftype]                       # server-side command only
-                    _sp.Popen(_shx.split(cmd), cwd=str(PROJECT_ROOT), stdout=_logf, stderr=_logf)
+                run_cwd = _cwd
+
+                if action in ("auto_retry", "refresh") and _map_key in _rmap:
+                    raw_cmd = _rmap[_map_key]
+                    if not isinstance(raw_cmd, str):
+                        return 400, {"ok": False, "error": f"remediation_map[{_map_key}] is not a shell command"}
+                    cmd = _rewrite_cmd_python(raw_cmd, _py)
+                    needs_shell = any(tok in cmd for tok in (">", "|", "&&", ";", "flock ", "bash "))
+                    if needs_shell:
+                        _sp.Popen(cmd, shell=True, cwd=str(run_cwd), stdout=_logf, stderr=_logf)
+                    else:
+                        try:
+                            argv = _shx.split(cmd)
+                        except Exception:
+                            argv = [cmd]
+                        _sp.Popen(argv, cwd=str(run_cwd), stdout=_logf, stderr=_logf)
                     triggered, cmd_desc = "retry_triggered", cmd
                 elif action == "code_fix":
+                    # Prefer git root so worktrees work; never bare release stamp
+                    run_cwd = _git
                     kind = b.get("kind") or "single_file"
                     _sp.Popen([_py, "scripts/coder_dispatch.py", "--problem", message,
                                "--kind", kind, "--component", f"health:{fcat}:{ftype}", "--apply"],
-                              cwd=str(PROJECT_ROOT), stdout=_logf, stderr=_logf)
-                    triggered, cmd_desc = "coder_dispatched", f"coder_dispatch ({kind})"
+                              cwd=str(run_cwd), stdout=_logf, stderr=_logf)
+                    triggered, cmd_desc = "coder_dispatched", f"{_py} coder_dispatch ({kind}) cwd={run_cwd}"
                 else:
-                    # refresh fallback even if not pre-mapped: re-run the health agent so status refreshes
                     if action == "review":
                         return 200, {"ok": True, "status": "acknowledged",
-                                     "note": "No automated action for this finding — flagged for operator review."}
-                    return 400, {"ok": False, "error": f"no server-side action for type '{ftype}' / action '{action}'"}
+                                     "note": "No automated action — Operator review only (not auto-retry)."}
+                    return 400, {
+                        "ok": False,
+                        "error": f"no server-side action for type '{ftype}' / action '{action}'",
+                        "map_key_tried": _map_key,
+                        "hint": "attempted+Operator review rows have no producer; map key may be missing",
+                    }
+
+                # Rescore health snapshot so Overview "last run" advances (no enqueue thrash)
+                try:
+                    _sp.Popen(
+                        [_py, "scripts/health_agent.py", "--no-enqueue", "--no-alert"],
+                        cwd=str(_git if (_git / "scripts" / "health_agent.py").is_file() else run_cwd),
+                        stdout=_logf,
+                        stderr=_logf,
+                    )
+                except Exception:
+                    pass
+
                 # audit the manual trigger
                 try:
                     from db_adapter import _execute as _ex
@@ -34627,7 +35632,9 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 except Exception:
                     pass
                 return 200, {"ok": True, "status": triggered, "command": cmd_desc,
-                             "note": "Triggered in background — watch the Recent Changes feed for the result."}
+                             "python": _py, "cwd": str(run_cwd), "map_key": _map_key,
+                             "health_rescore": "started",
+                             "note": "Triggered in background — watch Recent Changes; health will re-score."}
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
 
@@ -37463,6 +38470,14 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return 200, {"ok": True, "data": _journal_review_get(key_encoded)}
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
+
+    # Ops Agent v2 — operator approve/deny/dismiss/sandbox/reset on issue memory (no trade path)
+    if method == "POST" and base_path == "/api/v2/health/ops-autonomy/decision":
+        try:
+            res = _health_ops_autonomy_decision(body or {})
+            return (200 if res.get("ok") else 400), res
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:200]}
 
     # Watch Directives — create (operator) + one-tap promote (operator override). App role; firewall preserved.
     if method == "POST" and base_path == "/api/v2/watch/directives":

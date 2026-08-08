@@ -15,15 +15,12 @@ sys.path.insert(0, os.path.join(TRADEAI_ROOT, "scripts"))
 
 def main():
     try:
-        import psycopg2
-        conn = psycopg2.connect(
-            host=os.environ.get("PGHOST", "localhost"),
-            port=os.environ.get("PGPORT", "5432"),
-            dbname=os.environ.get("PGDATABASE", "tradeai"),
-            user=os.environ.get("PGUSER", "tradeai"),
-            password=os.environ.get("PGPASSWORD", ""),
-        )
-    except Exception:
+        from db_adapter import _get_conn
+        conn = _get_conn()
+    except Exception as e:
+        print(f"DB connection failed: {e}")
+        sys.exit(1)
+    if not conn:
         print("DB connection failed")
         sys.exit(1)
 
@@ -89,7 +86,7 @@ def main():
             json.dump(queue, f, indent=2)
 
         # Also write to main claude escalation queue
-        claude_queue_path = os.path.join(TRADEAI_ROOT, "data", "runtime", "claude_escalation_queue.json")
+        claude_queue_path = os.path.join(TRADEAI_ROOT, "logs", "claude_escalation_queue.json")
         try:
             with open(claude_queue_path, "r") as f:
                 cq = json.load(f)

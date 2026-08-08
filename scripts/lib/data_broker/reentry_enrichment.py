@@ -1,3 +1,5 @@
+# DEPRECATED 2026-08-06: No known consumers (only imported by orphaned reentry_scorecard).
+# Scheduled for removal. See Wave B/C Data Broker compliance remediation.
 """Re-Entry Enrichment — Data Broker read models for the 8-stage scorecard.
 
 Provides deterministic computed evidence for:
