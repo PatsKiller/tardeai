@@ -2,8 +2,9 @@
 
 **Date:** 2026-08-09
 **Branch:** main
-**Commits:** 2580c02b → 9442abc9 (9 PRs)
+**Commits:** 2580c02b → 5e4aa86d (12 commits, 10 PRs)
 **Authority:** READ_ONLY_ADVISORY — no broker/order/risk/approval/2FA/secret
+**Status:** COMPLETE — all 10 phases delivered
 
 ---
 
@@ -115,10 +116,23 @@ Model routing:           DeepSeek V4 Pro (CIO) / Flash (specialists) → free OA
 
 ---
 
-## Remaining (PR #10)
+### PR #10 — Canonical IPS + Model Portfolio (`5e4aa86d`)
+- `config/investment_policy_statement.json`: operator-confirmed IPS (MODERATE_AGGRESSIVE, 25% max DD, 8% max position)
+- `config/model_portfolio.json`: target allocation (equity 75%, FI 15%, cash 5%, tech 28%)
+- Data Broker expanded to 9 domains (+investment_policy, +model_portfolio)
+- Allocation drift computed: equity 54.6% vs 75% target (-20.4%)
+- Drift > 4% triggers High-priority CIO notification
 
-- Canonical IPS (Investment Policy Statement) — template exists, needs operator input
-- Model portfolio definition — needs operator-defined allocation targets
+### Agent Upgrade (`55f4aa2d`) — Morgan + Notification Policy
+- **Morgan**: Senior Wealth Advisor agent (Wave 3, DESIGNED). FLEET: 14 agents
+- **Steph**: Upgraded to Senior Portfolio Advisor — drift monitoring, rotation proposals, position sizing
+- **Notification priority**: Critical/High/Medium/Low/Info on every ACTION_ITEM
+- **Escalation triggers**: P&L > ±1.5% (High), Risk heat > 0.5% (High), allocation drift (High), IPS missing (Critical)
+- **Flash model**: deepseek-v4-flash context for Medium+ actions ("what changed + why it matters")
+- **Operator language**: every action ends with decision guidance
+
+## Remaining
+
 - Manual Darwin cron entry: `7 * * * * cd $PROJ && $PY scripts/darwin_outcome_scorer.py --max-actions 30 >> logs/darwin_scorer.log 2>&1`
 
 ---
