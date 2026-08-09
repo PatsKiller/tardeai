@@ -29,7 +29,7 @@ result = send_email(
     body=open('$DOC').read()[:4000],
     to='$ACCOUNT'
 )
-print('Email:', result.get('sent', result))
+print('Email:', 'sent' if result else 'FAILED')
 " 2>&1 || echo "Email failed (non-fatal)"
 
 echo ""
