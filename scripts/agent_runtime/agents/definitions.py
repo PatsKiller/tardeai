@@ -483,8 +483,8 @@ _MORGAN = ShadowAgentSpec(
             "config.promote", "position.*",
         ),
         retrieval_required=True,
-        enabled=False,
-        state=DeploymentState.DESIGNED,
+        enabled=True,
+        state=DeploymentState.SHADOW,
         budget=BudgetPolicy(max_model_calls=2, max_tool_calls=14, max_cost_usd=0.03, deadline_seconds=600),
     ),
     summary=(
@@ -498,7 +498,9 @@ _MORGAN = ShadowAgentSpec(
         "charitable/gifting windows in coordination with Ledger. Flags when portfolio "
         "risk threatens a stated wealth goal. Produces WEALTH_SYNTHESIS on cadence "
         "set by Alex. Advisory only — cannot execute rebalances, authorize trades, "
-        "or change configuration. DISABLED pending CIO synthesis maturity acceptance."
+        "or change configuration. ENABLED in SHADOW 2026-08-09 — CIO synthesis "
+        "maturity at 11/12 gates, producing real advisory output (PFLT disposition, "
+        "allocation drift)."
     ),
     triggers=(
         Trigger(TriggerKind.CIO_SCHEDULED_BRIEF, "A scheduled wealth review window opens"),

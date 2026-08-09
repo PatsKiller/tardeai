@@ -115,6 +115,9 @@ def _build_data_broker_retrieval(agent_id: str) -> Callable[[str, str], Sequence
         "alex": ["portfolio", "risk", "watch", "rotation", "income",
                  "reconciliation", "hermes_research", "investment_policy",
                  "model_portfolio", "cost_basis"],
+        "morgan": ["portfolio", "holdings_detail", "sectors", "cost_basis",
+                   "transactions", "model_portfolio", "investment_policy",
+                   "income", "risk"],
     }
 
     def _retrieve(run_id: str, query: str) -> Sequence[Mapping[str, Any]]:
@@ -365,6 +368,8 @@ _AGENT_MODEL_MAP: dict[str, Callable[[], Callable]] = {
     "darwin":    lambda: _build_ollama_provider("gemma3:4b"),
     "iris":      lambda: _build_ollama_provider("gemma3:12b"),
     "reflection": lambda: _build_ollama_provider("gemma3:12b"),
+    "steph":     lambda: _build_ollama_provider("gemma3:12b"),
+    "morgan":    lambda: _build_ollama_provider("gemma3:12b"),
 }
 _DEFAULT_MODEL = lambda: _build_ollama_provider("gemma3:4b")
 

@@ -92,11 +92,21 @@ HERMES_EVENTS = frozenset({
     "market.regime_change",
 })
 
+# Events that should wake Morgan (Senior Wealth Advisor)
+MORGAN_EVENTS = frozenset({
+    "portfolio.material_change",
+    "allocation.drift",
+    "behavioral.flag_raised",
+    "risk.heat_increased",
+    "market.regime_change",
+})
+
 # Agent routing table
 AGENT_EVENT_ROUTING: dict[str, frozenset[str]] = {
     "alex": ALEX_EVENTS,
     "steph": STEPH_EVENTS,
     "hermes": HERMES_EVENTS,
+    "morgan": MORGAN_EVENTS,
 }
 
 # Priority mapping for wake job creation
