@@ -76,6 +76,7 @@ class OutputKind(str, Enum):
     ACTION_ITEM = "ACTION_ITEM"
     ALLOCATION_REVIEW = "ALLOCATION_REVIEW"
     TAX_LOT_REVIEW = "TAX_LOT_REVIEW"
+    WEALTH_SYNTHESIS = "WEALTH_SYNTHESIS"
 
 
 # Tool-name fragments that would, if allow-listed, hand an agent authority it must

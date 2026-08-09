@@ -387,8 +387,11 @@ _STEPH = ShadowAgentSpec(
     definition=_def(
         "steph",
         "Steph",
-        "Portfolio allocation and wealth planning strategist",
-        allowed_job_types=("allocation_review", "wealth_scenario_analysis", "income_sleeve_review"),
+        "Senior Portfolio Advisor — allocation, rotation, position sizing",
+        allowed_job_types=(
+            "allocation_review", "wealth_scenario_analysis", "income_sleeve_review",
+            "drift_monitoring", "rotation_proposal", "position_sizing",
+        ),
         allowed_tools=(
             "portfolio.read", "allocation.read", "income.read", "goals.read",
             "retirement_projection.read", "kb.search", "artifact.write",
@@ -403,11 +406,15 @@ _STEPH = ShadowAgentSpec(
         budget=BudgetPolicy(max_model_calls=2, max_tool_calls=14, max_cost_usd=0.03, deadline_seconds=600),
     ),
     summary=(
-        "Portfolio allocation and wealth planning strategist. Reviews strategic "
-        "vs actual allocation, income sleeve construction, goal alignment, and "
-        "retirement projection scenarios. Advisory only — cannot execute rebalances, "
-        "authorize trades, or change configuration. DISABLED pending CIO synthesis "
-        "maturity acceptance (AGENTS.md: 'not yet operational')."
+        "Senior Portfolio Advisor reporting to Alex. Maintains target allocation "
+        "framework (asset class, sector, factor, geographic, liquidity buckets). "
+        "Continuously compares current book vs target and quantifies drift. "
+        "Proposes rotation candidates with clear thesis, expected edge, and risk "
+        "contribution. Sizes new ideas relative to existing risk budget and "
+        "correlation. Flags near-ready setups for Active Trader desk. Produces "
+        "ALLOCATION_REVIEW on cadence set by Alex. Advisory only — cannot execute "
+        "rebalances, authorize trades, or change configuration. DISABLED pending "
+        "CIO synthesis maturity acceptance."
     ),
     triggers=(
         Trigger(TriggerKind.CIO_SCHEDULED_BRIEF, "A scheduled allocation review window opens"),
@@ -417,7 +424,7 @@ _STEPH = ShadowAgentSpec(
     allowed_output_kinds=(OutputKind.ALLOCATION_REVIEW, OutputKind.IMPROVEMENT_PROPOSAL),
     reviewer_agent_id="iris",
     scorer_agent_id="darwin",
-    maturity_target="Wave-3 shadow allocation strategist",
+    maturity_target="Wave-3 shadow senior portfolio advisor",
     wave="THIRD",
 )
 
@@ -455,6 +462,53 @@ _LEDGER = ShadowAgentSpec(
     reviewer_agent_id="iris",
     scorer_agent_id="darwin",
     maturity_target="Wave-3 shadow tax critic",
+    wave="THIRD",
+)
+
+_MORGAN = ShadowAgentSpec(
+    definition=_def(
+        "morgan",
+        "Morgan",
+        "Senior Wealth Advisor — total financial life planning",
+        allowed_job_types=(
+            "wealth_synthesis", "goal_tracking", "liquidity_planning",
+            "tax_coordination", "estate_review", "multi_account_coordination",
+        ),
+        allowed_tools=(
+            "portfolio.read", "tax_lot.read", "income.read", "goals.read",
+            "retirement_projection.read", "kb.search", "artifact.write",
+        ),
+        denied_tools=(
+            "trade.*", "broker.*", "order.*", "rebalance.execute",
+            "config.promote", "position.*",
+        ),
+        retrieval_required=True,
+        enabled=False,
+        state=DeploymentState.DESIGNED,
+        budget=BudgetPolicy(max_model_calls=2, max_tool_calls=14, max_cost_usd=0.03, deadline_seconds=600),
+    ),
+    summary=(
+        "Senior Wealth Advisor reporting to Alex. Mandate: the operator's total "
+        "financial life — spending needs, tax location, estate/liquidity planning, "
+        "multi-account coordination, and long-term goal tracking. Treats taxable "
+        "brokerage, retirement accounts, and cash reserves as one wealth system. "
+        "Tracks after-tax expected return and tax drag across the entire book. "
+        "Maintains running view of liquidity needs (next 12–24 months) vs investable "
+        "assets. Surfaces tax-lot harvesting opportunities, wash-sale risks, and "
+        "charitable/gifting windows in coordination with Ledger. Flags when portfolio "
+        "risk threatens a stated wealth goal. Produces WEALTH_SYNTHESIS on cadence "
+        "set by Alex. Advisory only — cannot execute rebalances, authorize trades, "
+        "or change configuration. DISABLED pending CIO synthesis maturity acceptance."
+    ),
+    triggers=(
+        Trigger(TriggerKind.CIO_SCHEDULED_BRIEF, "A scheduled wealth review window opens"),
+        Trigger(TriggerKind.MATERIAL_PORTFOLIO_CHANGE, "A material change affecting wealth goals"),
+        Trigger(TriggerKind.RESEARCH_REQUEST, "A bounded wealth research request is enqueued"),
+    ),
+    allowed_output_kinds=(OutputKind.WEALTH_SYNTHESIS, OutputKind.IMPROVEMENT_PROPOSAL),
+    reviewer_agent_id="iris",
+    scorer_agent_id="darwin",
+    maturity_target="Wave-3 shadow senior wealth advisor",
     wave="THIRD",
 )
 
@@ -511,6 +565,7 @@ FLEET: dict[str, ShadowAgentSpec] = {
         _ALEX,
         _STEPH,
         _LEDGER,
+        _MORGAN,
     )
 }
 
@@ -520,7 +575,7 @@ FLEET: dict[str, ShadowAgentSpec] = {
 # autonomous paid model calls.
 INITIAL_SHADOW_AGENT_IDS: tuple[str, ...] = ("sentinel", "darwin", "iris", "reflection", "argus", "vigil", "alex")
 SECOND_WAVE_AGENT_IDS: tuple[str, ...] = ("maria", "vega", "risk_agent", "aegis")
-THIRD_WAVE_AGENT_IDS: tuple[str, ...] = ("steph", "ledger")
+THIRD_WAVE_AGENT_IDS: tuple[str, ...] = ("steph", "ledger", "morgan")
 
 # Fail-closed at import time: the entire fleet must satisfy the separation and
 # authority invariants, or the module cannot be imported.

@@ -38,17 +38,37 @@ DATA_DIR = PROJECT_ROOT / "data" / "cio"
 SNAPSHOT_PATH = DATA_DIR / "cio_heartbeat_snapshots.jsonl"
 ACTION_LEDGER_PATH = DATA_DIR / "cio_action_ledger.jsonl"
 
-# Domains we can collect without model calls or providers
+# Domains from the CIO Data Broker (matches cio_portfolio.py's CIO_DOMAINS)
 DETERMINISTIC_DOMAINS = [
     "portfolio",
-    "holdings",
     "risk",
     "watch",
-    "reentry",
     "rotation",
     "income",
-    "broker_reconciliation",
+    "reconciliation",
+    "hermes_research",
 ]
+
+# Notification priority tiers
+NOTIFICATION_PRIORITIES = ("Critical", "High", "Medium", "Low", "Info")
+
+# Priority computation: (change_type, domain) → notification_priority
+_PRIORITY_MAP: dict[tuple[str, str], str] = {
+    ("DOMAIN_WENT_STALE", "risk"): "Critical",
+    ("DOMAIN_WENT_STALE", "reconciliation"): "Critical",
+    ("DOMAIN_WENT_STALE", "portfolio"): "High",
+    ("DOMAIN_WENT_STALE", "watch"): "High",
+    ("DOMAIN_WENT_STALE", "rotation"): "Medium",
+    ("DOMAIN_WENT_STALE", "income"): "Medium",
+    ("DATA_CHANGED", "portfolio"): "High",
+    ("DATA_CHANGED", "risk"): "High",
+    ("DATA_CHANGED", "watch"): "Medium",
+    ("DATA_CHANGED", "rotation"): "Medium",
+    ("DATA_CHANGED", "income"): "Low",
+    ("DATA_CHANGED", "hermes_research"): "Low",
+    ("FIRST_RUN", "system"): "Info",
+    ("DOMAIN_AVAILABLE", "*"): "Info",
+}
 
 # How long before a domain goes STALE (seconds)
 DOMAIN_FRESHNESS: dict[str, int] = {
@@ -192,13 +212,103 @@ def detect_changes(
 
 # ── Action creation ───────────────────────────────────────────────────────────
 
+def _compute_notification_priority(domain: str, change_type: str) -> str:
+    """Compute notification_priority from change type + domain."""
+    key = (change_type, domain)
+    if key in _PRIORITY_MAP:
+        return _PRIORITY_MAP[key]
+    # Wildcard match
+    wildcard = (change_type, "*")
+    if wildcard in _PRIORITY_MAP:
+        return _PRIORITY_MAP[wildcard]
+    return "Low"
+
+
+def _evaluate_escalation_triggers(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
+    """Evaluate hard escalation triggers against the snapshot. Returns High+ findings."""
+    triggers: list[dict[str, Any]] = []
+    domains = snapshot.get("domains", {})
+
+    pf = domains.get("portfolio", {})
+    risk = domains.get("risk", {})
+
+    # Portfolio P&L day > ±1.5%
+    if pf.get("state") == "AVAILABLE" and pf.get("day_change_pct") is not None:
+        day_pct = abs(float(pf.get("day_change_pct", 0)))
+        if day_pct > 1.5:
+            triggers.append({
+                "trigger": "portfolio_day_move",
+                "priority": "High",
+                "detail": f"Portfolio day change {pf['day_change_pct']:+.1f}% exceeds ±1.5% threshold",
+            })
+
+    # Risk heat > 0.5
+    if risk.get("state") == "AVAILABLE" and risk.get("portfolio_heat_pct") is not None:
+        heat = float(risk.get("portfolio_heat_pct", 0))
+        if heat > 0.5:
+            triggers.append({
+                "trigger": "risk_heat_elevated",
+                "priority": "High",
+                "detail": f"Portfolio heat {heat:.1f}% exceeds 0.5% threshold",
+            })
+
+    return triggers
+
+
+def _add_flash_context(action: dict[str, Any], snapshot: dict[str, Any], change: dict[str, Any]) -> dict[str, Any]:
+    """For Medium+ priority actions, call deepseek-v4-flash for context. Fails gracefully."""
+    priority = action.get("notification_priority", "Low")
+    if priority in ("Low", "Info"):
+        return action  # skip — not worth the model call
+
+    try:
+        import urllib.request
+        prompt = (
+            f"CIO heartbeat detected a material change in the {action['domain']} domain. "
+            f"Change type: {change.get('change_type', 'UNKNOWN')}. "
+            f"Portfolio: {json.dumps(snapshot.get('domains', {}).get('portfolio', {}), default=str)[:200]}. "
+            f"Risk: {json.dumps(snapshot.get('domains', {}).get('risk', {}), default=str)[:100]}. "
+            f"In 2 sentences: what changed and why does it matter to the operator? "
+            f"Be specific. No disclaimers."
+        )
+        req = urllib.request.Request(
+            "http://127.0.0.1:11434/api/generate",
+            data=json.dumps({
+                "model": "deepseek-v4-flash",
+                "prompt": prompt,
+                "stream": False,
+                "options": {"temperature": 0.2, "num_predict": 120},
+            }).encode(),
+            headers={"Content-Type": "application/json"},
+        )
+        resp = urllib.request.urlopen(req, timeout=15)
+        data = json.loads(resp.read())
+        context = (data.get("response") or "").strip()
+        if context:
+            action["why_now"] = f"[Flash] {context}"
+            action["flash_context_added"] = True
+    except Exception:
+        action["why_now"] = action.get("why_now", f"Material change in {action['domain']} — operator review recommended")
+
+    return action
+
+
+def _operator_decision(priority: str) -> str:
+    """Operator override language based on notification priority."""
+    if priority in ("Critical", "High"):
+        return "Operator review recommended"
+    if priority == "Medium":
+        return "Operator awareness suggested — no urgent action required"
+    return "No action required — continuing to monitor"
+
 
 def _create_action(
     domain: str,
     change: dict[str, Any],
     priority: str = "P2",
+    notification_priority: str = "Low",
 ) -> dict[str, Any]:
-    """Create a CIO action item payload."""
+    """Create a CIO action item payload with notification priority."""
     action_id = str(uuid.uuid4())[:8]
     change_type = change.get("change_type", "UNKNOWN")
     return {
@@ -206,6 +316,7 @@ def _create_action(
         "created_at": _now_iso(),
         "status": "OPEN",
         "priority": priority,
+        "notification_priority": notification_priority,
         "domain": domain,
         "title": f"[{change_type}] {domain} — CIO heartbeat {_now_iso()[:16]}",
         "recommendation": (
@@ -223,7 +334,8 @@ def _create_action(
         "risk_if_not_done": f"Stale or missing {domain} evidence may degrade CIO advice",
         "alternatives": [],
         "dependencies": [],
-        "operator_decision_required": False,
+        "operator_decision_required": notification_priority in ("Critical", "High"),
+        "operator_decision": _operator_decision(notification_priority),
         "source_snapshot_id": "cio-heartbeat",
         "hermes_challenge_ref": None,
         "cio_artifact_id": None,
@@ -270,9 +382,12 @@ def run_heartbeat(interval_minutes: int = 30, max_actions: int = 5) -> dict[str,
     # 4. Create actions for material changes
     actions_created = 0
     for change in changes[:max_actions]:
-        if change.get("change_type") == "FIRST_RUN":
-            # Create a single baseline action on first run
-            action = _create_action("system", change, "P1")
+        change_type = change.get("change_type", "UNKNOWN")
+        domain = change.get("domain", "system")
+        notif_priority = _compute_notification_priority(domain, change_type)
+
+        if change_type == "FIRST_RUN":
+            action = _create_action("system", change, "P1", notif_priority)
             _append_jsonl(ACTION_LEDGER_PATH, {
                 "event_type": "CIO_ACTION_CREATED",
                 "event_id": str(uuid.uuid4()),
@@ -282,10 +397,15 @@ def run_heartbeat(interval_minutes: int = 30, max_actions: int = 5) -> dict[str,
                 "payload": action,
             })
             actions_created += 1
-            print(f"  [cio-hb] FIRST RUN — created baseline action {action['cio_action_id']}")
-        elif change.get("change_type") in ("DOMAIN_WENT_STALE", "DATA_CHANGED"):
-            priority = "P1" if change.get("change_type") == "DOMAIN_WENT_STALE" else "P2"
-            action = _create_action(change["domain"], change, priority)
+            print(f"  [cio-hb] FIRST RUN [{notif_priority}] — baseline action {action['cio_action_id']}")
+        elif change_type in ("DOMAIN_WENT_STALE", "DATA_CHANGED", "DOMAIN_AVAILABLE"):
+            priority = "P1" if change_type == "DOMAIN_WENT_STALE" else "P2"
+            action = _create_action(domain, change, priority, notif_priority)
+
+            # Flash model context for Medium+ priority
+            if notif_priority in ("Critical", "High", "Medium"):
+                action = _add_flash_context(action, snapshot, change)
+
             _append_jsonl(ACTION_LEDGER_PATH, {
                 "event_type": "CIO_ACTION_CREATED",
                 "event_id": str(uuid.uuid4()),
@@ -295,7 +415,7 @@ def run_heartbeat(interval_minutes: int = 30, max_actions: int = 5) -> dict[str,
                 "payload": action,
             })
             actions_created += 1
-            print(f"  [cio-hb] {change['change_type']}: {change['domain']} → created {action['cio_action_id']}")
+            print(f"  [cio-hb] {change_type} [{notif_priority}]: {domain} → {action['cio_action_id']}")
 
     elapsed = time.time() - t0
     summary = {

@@ -8,6 +8,16 @@ interface Props { onDrill?: (ctx: any) => void }
 const PRIORITY_COLOR: Record<string, string> = {
   P1: 'var(--red)', P2: 'var(--amber)', P3: 'var(--text3)',
 }
+const NOTIF_COLOR: Record<string, string> = {
+  Critical: 'var(--red)',
+  High: 'var(--orange)',
+  Medium: 'var(--amber)',
+  Low: 'var(--text3)',
+  Info: 'var(--text3)',
+}
+const NOTIF_SORT: Record<string, number> = {
+  Critical: 0, High: 1, Medium: 2, Low: 3, Info: 4,
+}
 const STATE_COLOR: Record<string, string> = {
   AVAILABLE: 'var(--green)', DATA_UNAVAILABLE: 'var(--red)', STALE: 'var(--amber)',
 }
@@ -30,7 +40,15 @@ export default function CioHub({ onDrill }: Props) {
   const { data, loading, error } = useApi<any>('/api/v3/cio')
 
   const snapshot = data?.snapshot
-  const actions = data?.actions ?? []
+  const actions = useMemo(() => {
+    const list = data?.actions ?? []
+    return [...list].sort((a: any, b: any) => {
+      const sa = NOTIF_SORT[a.notification_priority] ?? 4
+      const sb = NOTIF_SORT[b.notification_priority] ?? 4
+      if (sa !== sb) return sa - sb
+      return (b.created_at || '').localeCompare(a.created_at || '')
+    })
+  }, [data?.actions])
   const delegation = data?.delegation
   const domains = snapshot?.domains ?? {}
   const health = snapshot?.health ?? {}
@@ -109,11 +127,16 @@ export default function CioHub({ onDrill }: Props) {
               <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8, color: 'var(--text)' }}>Top Actions</div>
               {actions.slice(0, 5).map((a: any, i: number) => (
                 <div key={i} style={{ padding: '6px 0', borderBottom: i < Math.min(actions.length, 5) - 1 ? '1px solid var(--border)' : 'none' }}>
-                  <span style={{ color: PRIORITY_COLOR[a.priority] ?? 'var(--text3)', fontWeight: 600, marginRight: 8 }}>
-                    {a.priority}
+                  <span style={{ color: NOTIF_COLOR[a.notification_priority] ?? NOTIF_COLOR[a.priority] ?? 'var(--text3)', fontWeight: 600, marginRight: 8 }}>
+                    {a.notification_priority || a.priority}
                   </span>
                   <span style={{ color: 'var(--text2)', fontSize: 13 }}>{(a.title || a.recommendation || '')}</span>
                   <span style={{ color: 'var(--text3)', fontSize: 11, marginLeft: 8 }}>· {a.domain}</span>
+                  {a.operator_decision && (
+                    <span style={{ color: a.notification_priority === 'Critical' || a.notification_priority === 'High' ? 'var(--amber)' : 'var(--text3)', fontSize: 10, marginLeft: 8 }}>
+                      {a.operator_decision}
+                    </span>
+                  )}
                 </div>
               ))}
             </div>
@@ -127,8 +150,8 @@ export default function CioHub({ onDrill }: Props) {
           {actions.map((a: any, i: number) => (
             <div key={i} style={{ padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                <span style={{ color: PRIORITY_COLOR[a.priority] ?? 'var(--text3)', fontWeight: 700, fontSize: 12 }}>
-                  {a.priority}
+                <span style={{ color: NOTIF_COLOR[a.notification_priority] ?? NOTIF_COLOR[a.priority] ?? 'var(--text3)', fontWeight: 700, fontSize: 12 }}>
+                  {a.notification_priority || a.priority}
                 </span>
                 <span style={{ color: 'var(--accent)', fontSize: 12 }}>{a.cio_action_id}</span>
                 <span style={{ color: 'var(--text3)', fontSize: 11 }}>· {a.domain}</span>
@@ -136,6 +159,11 @@ export default function CioHub({ onDrill }: Props) {
               </div>
               <div style={{ color: 'var(--text)', fontSize: 13 }}>{a.title || a.recommendation}</div>
               {a.why_now && <div style={{ color: 'var(--text2)', fontSize: 12, marginTop: 2 }}>{a.why_now}</div>}
+              {a.operator_decision && (
+                <div style={{ color: a.notification_priority === 'Critical' || a.notification_priority === 'High' ? 'var(--amber)' : 'var(--text3)', fontSize: 11, marginTop: 2, fontStyle: 'italic' }}>
+                  {a.operator_decision}
+                </div>
+              )}
             </div>
           ))}
           {actions.length === 0 && <div style={{ color: 'var(--text3)', padding: 16 }}>No open actions — portfolio is stable.</div>}

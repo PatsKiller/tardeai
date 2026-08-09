@@ -108,11 +108,19 @@ def cmd_status() -> str:
     lines.append("")
     lines.append("📋 Open Actions:")
     if actions:
-        for a in actions:
-            priority = a.get("priority", "?")
-            emoji = {"P1": "🔴", "P2": "🟡", "P3": "⚪"}.get(priority, "⚪")
+        # Sort by notification_priority
+        notif_sort = {"Critical": 0, "High": 1, "Medium": 2, "Low": 3, "Info": 4}
+        sorted_actions = sorted(
+            actions,
+            key=lambda a: (notif_sort.get(a.get("notification_priority", ""), 4), a.get("created_at", "")),
+        )
+        for a in sorted_actions:
+            notif = a.get("notification_priority", a.get("priority", "?"))
+            emoji = {"Critical": "🚨", "High": "🔴", "Medium": "🟡", "Low": "⚪", "Info": "ℹ️"}.get(notif, "⚪")
             title = (a.get("title") or a.get("recommendation", ""))[:80]
-            lines.append(f"   {emoji} [{a.get('domain', '?')}] {title}")
+            op_decision = a.get("operator_decision", "")
+            decision_suffix = f" — {op_decision}" if op_decision and notif in ("Critical", "High") else ""
+            lines.append(f"   {emoji} [{a.get('domain', '?')}] {title}{decision_suffix}")
     else:
         lines.append("   No open actions")
 
@@ -141,13 +149,18 @@ def cmd_actions() -> str:
         return "📋 No open CIO actions."
 
     lines = ["📋 CIO Action Ledger", f"   {len(actions)} open actions", ""]
-    for a in actions:
+    notif_sort = {"Critical": 0, "High": 1, "Medium": 2, "Low": 3, "Info": 4}
+    emoji_map = {"Critical": "🚨", "High": "🔴", "Medium": "🟡", "Low": "⚪", "Info": "ℹ️"}
+    for a in sorted(actions, key=lambda a: (notif_sort.get(a.get("notification_priority", ""), 4), a.get("created_at", ""))):
         aid = a.get("cio_action_id", "?")
-        priority = a.get("priority", "?")
+        notif = a.get("notification_priority", a.get("priority", "?"))
         domain = a.get("domain", "?")
         title = (a.get("title") or "")[:70]
-        lines.append(f"   [{priority}] {aid} — {domain}")
+        op = a.get("operator_decision", "")
+        lines.append(f"   {emoji_map.get(notif, '⚪')} [{notif}] {aid} — {domain}")
         lines.append(f"   {title}")
+        if op:
+            lines.append(f"   {op}")
         lines.append("")
     return "\n".join(lines)
 
