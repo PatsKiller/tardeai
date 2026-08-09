@@ -39641,6 +39641,23 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
 
+    # ── /v3/cio — CIO Command Center dashboard ────────────────────────────
+    if method == "GET" and base_path.startswith("/api/v3/cio"):
+        try:
+            import api_v3_cio as _cio
+            p = base_path[len("/api/v3/cio"):].strip("/")
+            if p in ("", "dashboard"):
+                return 200, _cio.get_cio_dashboard()
+            if p == "snapshot":
+                return 200, _cio.get_cio_snapshot()
+            if p == "actions":
+                return 200, _cio.get_cio_actions()
+            if p == "delegation":
+                return 200, _cio.get_cio_delegation()
+            return 404, {"ok": False, "error": f"unknown_cio_path: {p}"}
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
+
     if base_path.startswith("/api/v3/watch/"):
         try:
             import api_v3_watch_rockville as _rv
