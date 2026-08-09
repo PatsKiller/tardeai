@@ -242,15 +242,63 @@ COMMANDS = {
     "risk": cmd_risk,
 }
 
-HELP = """🤖 CIO Commands:
-  /cio              — Full CIO dashboard
-  /cio actions      — Open action items
-  /cio portfolio    — Portfolio snapshot
-  /cio hermes       — Hermes research topics
-  /cio risk         — Risk overview
-  /cio action <id>  — Detail on one action (coming soon)
+def cmd_ack() -> str:
+    """Acknowledge a CIO action: /cio ack <action_id>"""
+    if len(sys.argv) < 3:
+        return "Usage: /cio ack <action_id>"
+    action_id = sys.argv[2]
+    try:
+        from lib.cio_action_ledger import CIOActionLedger
+        ledger = CIOActionLedger()
+        result = ledger.transition_action(
+            cio_action_id=action_id,
+            new_event_type="CIO_ACTION_ACKNOWLEDGED",
+            payload={"operator_decision": "Acknowledged by operator"},
+            actor_id="operator",
+            actor_type="operator",
+            authority="operator",
+        )
+        return f"✅ Acknowledged: {action_id}\n   {json.dumps(result, default=str)}"
+    except Exception as e:
+        return f"❌ Failed to acknowledge {action_id}: {e}"
 
-Data source: CIO Data Broker (7 domains). Zero model calls."""
+
+def cmd_rate() -> str:
+    """Rate a CIO action's usefulness: /cio rate <action_id> <useful|notuseful>"""
+    if len(sys.argv) < 4:
+        return "Usage: /cio rate <action_id> <useful|notuseful>"
+    action_id = sys.argv[2]
+    rating = sys.argv[3].lower()
+    if rating not in ("useful", "notuseful"):
+        return f"Invalid rating: {rating}. Use 'useful' or 'notuseful'."
+    try:
+        from lib.cio_outcome_store import CIOOutcomeStore
+        store = CIOOutcomeStore()
+        disposition = "ACCEPTED" if rating == "useful" else "REJECTED"
+        status = "POSITIVE" if rating == "useful" else "NEGATIVE"
+        result = store.record_outcome(
+            cio_action_id=action_id,
+            operator_disposition=disposition,
+            outcome_status=status,
+            result_summary=f"Operator rated as {rating} via cio_commands",
+            actor="operator",
+        )
+        return f"✅ Rated {action_id} as {rating}\n   {json.dumps(result, default=str)}"
+    except Exception as e:
+        return f"❌ Failed to rate {action_id}: {e}"
+
+
+HELP = """🤖 CIO Commands:
+  /cio                 — Full CIO dashboard
+  /cio actions         — Open action items
+  /cio portfolio       — Portfolio snapshot
+  /cio hermes          — Hermes research topics
+  /cio risk            — Risk overview
+  /cio action <id>     — Detail on one action (coming soon)
+  /cio ack <id>        — Acknowledge an action
+  /cio rate <id> <useful|notuseful> — Rate action usefulness
+
+Data source: CIO Data Broker (13 domains). Zero model calls."""
 
 
 def main() -> int:
@@ -261,6 +309,10 @@ def main() -> int:
     subcommand = sys.argv[1]
     if subcommand in COMMANDS:
         print(COMMANDS[subcommand]())
+    elif subcommand == "ack":
+        print(cmd_ack())
+    elif subcommand == "rate":
+        print(cmd_rate())
     elif subcommand == "action" and len(sys.argv) > 2:
         print(f"📋 Action detail for {sys.argv[2]} — coming soon")
     else:
