@@ -11,8 +11,9 @@ DEFAULT-DISABLED and prepare-only.
 Modules
 -------
 - ``base``            — ``ShadowAgentSpec`` + hard authority guards.
-- ``definitions``     — the four initial SHADOW agents (enabled in SHADOW) plus
-                        the second maturity wave (defined but DISABLED).
+- ``definitions``     — the initial SHADOW agents (enabled in SHADOW) plus
+                        the second maturity wave (defined but DISABLED) and
+                        third wave (CIO + wealth advisory).
 - ``governed_output`` — the *only* sanctioned channel an agent may use to emit
                         an advisory artifact / candidate / proposal.
 - ``maturity_gates``  — measurable per-agent promotion gates; reports
@@ -33,10 +34,12 @@ from .definitions import (
     FLEET,
     INITIAL_SHADOW_AGENT_IDS,
     SECOND_WAVE_AGENT_IDS,
+    THIRD_WAVE_AGENT_IDS,
     fleet,
     initial_agents,
     reviewer_scorer_matrix,
     second_wave_agents,
+    third_wave_agents,
     spec,
 )
 from .governed_output import (

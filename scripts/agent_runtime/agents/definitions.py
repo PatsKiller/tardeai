@@ -331,6 +331,135 @@ _VIGIL = ShadowAgentSpec(
 
 
 # ---------------------------------------------------------------------------
+# Wave 3 — CIO + Wealth Advisory agents (enabled in SHADOW, advisory-only)
+# ---------------------------------------------------------------------------
+# Alex: Chief Investment & Wealth Officer — autonomous synthesis agent.
+# Steph: Portfolio allocation & wealth planning strategist.
+# Ledger: Tax-lot & account-constraint critic.
+# Guardian role is served by the existing risk_agent (Wave 2); enable separately.
+# ---------------------------------------------------------------------------
+
+_ALEX = ShadowAgentSpec(
+    definition=_def(
+        "alex",
+        "Alex",
+        "Chief Investment & Wealth Officer — autonomous advisory synthesis",
+        allowed_job_types=("cio_synthesis", "action_ledger_management", "specialist_delegation", "portfolio_review"),
+        allowed_tools=(
+            "data_broker.read", "portfolio.read", "risk.read", "allocation.read",
+            "financial_snapshot.read", "action_ledger.write", "action_ledger.read",
+            "agent_artifact.read", "kb.search", "kb.get_case",
+            "proposal.stage_advisory",
+        ),
+        denied_tools=(
+            "broker.write", "order.*", "risk_policy.write", "position.*",
+            "config.promote", "2fa.*", "secret.*", "broker.submit",
+            "stop.*", "approval.*",
+        ),
+        retrieval_required=True,
+        enabled=True,
+        state=DeploymentState.SHADOW,
+        budget=BudgetPolicy(max_model_calls=3, max_tool_calls=20, max_cost_usd=0.05, deadline_seconds=900),
+    ),
+    summary=(
+        "Autonomous CIO synthesis agent. Reads canonical Trade AI Data Broker "
+        "projections and financial snapshots, maintains the CIO action ledger, "
+        "coordinates specialist research via governed handoff contracts, and "
+        "produces advisory CIO synthesis artifacts. SHADOW deployment: shadow "
+        "outputs only — no Telegram send, no broker action, no autonomous paid "
+        "model calls without operator confirmation. Cannot submit orders, change "
+        "positions, modify risk limits, perform 2FA, or read secrets."
+    ),
+    triggers=(
+        Trigger(TriggerKind.CIO_SCHEDULED_BRIEF, "A scheduled CIO brief window opens (premarket/close/weekly)"),
+        Trigger(TriggerKind.MATERIAL_PORTFOLIO_CHANGE, "A material portfolio composition or risk change is detected"),
+        Trigger(TriggerKind.WATCH_ARTIFACT_CHANGED, "A CIO-relevant Watch artifact is published"),
+        Trigger(TriggerKind.SCHEDULED_SWEEP, "A bounded scheduled CIO sweep runs"),
+    ),
+    allowed_output_kinds=(OutputKind.CIO_SYNTHESIS, OutputKind.ACTION_ITEM, OutputKind.IMPROVEMENT_PROPOSAL),
+    reviewer_agent_id="iris",
+    scorer_agent_id="darwin",
+    maturity_target="Wave-3 shadow CIO synthesis",
+    wave="THIRD",
+)
+
+_STEPH = ShadowAgentSpec(
+    definition=_def(
+        "steph",
+        "Steph",
+        "Portfolio allocation and wealth planning strategist",
+        allowed_job_types=("allocation_review", "wealth_scenario_analysis", "income_sleeve_review"),
+        allowed_tools=(
+            "portfolio.read", "allocation.read", "income.read", "goals.read",
+            "retirement_projection.read", "kb.search", "artifact.write",
+        ),
+        denied_tools=(
+            "trade.authorize", "rebalance.execute", "config.promote",
+            "broker.*", "position.*", "order.*",
+        ),
+        retrieval_required=True,
+        enabled=False,
+        state=DeploymentState.DESIGNED,
+        budget=BudgetPolicy(max_model_calls=2, max_tool_calls=14, max_cost_usd=0.03, deadline_seconds=600),
+    ),
+    summary=(
+        "Portfolio allocation and wealth planning strategist. Reviews strategic "
+        "vs actual allocation, income sleeve construction, goal alignment, and "
+        "retirement projection scenarios. Advisory only — cannot execute rebalances, "
+        "authorize trades, or change configuration. DISABLED pending CIO synthesis "
+        "maturity acceptance (AGENTS.md: 'not yet operational')."
+    ),
+    triggers=(
+        Trigger(TriggerKind.CIO_SCHEDULED_BRIEF, "A scheduled allocation review window opens"),
+        Trigger(TriggerKind.MATERIAL_PORTFOLIO_CHANGE, "A material allocation drift is detected"),
+        Trigger(TriggerKind.RESEARCH_REQUEST, "A bounded allocation research request is enqueued"),
+    ),
+    allowed_output_kinds=(OutputKind.ALLOCATION_REVIEW, OutputKind.IMPROVEMENT_PROPOSAL),
+    reviewer_agent_id="iris",
+    scorer_agent_id="darwin",
+    maturity_target="Wave-3 shadow allocation strategist",
+    wave="THIRD",
+)
+
+_LEDGER = ShadowAgentSpec(
+    definition=_def(
+        "ledger",
+        "Ledger",
+        "Tax-lot and account-constraint critic",
+        allowed_job_types=("tax_lot_review", "account_constraint_review", "wash_sale_check"),
+        allowed_tools=(
+            "tax_lot.read", "holding_period.read", "account_type.read",
+            "wash_sale.check", "kb.search", "artifact.write",
+        ),
+        denied_tools=(
+            "trade.execute", "lot.select", "config.promote",
+            "broker.*", "order.*",
+        ),
+        retrieval_required=True,
+        enabled=False,
+        state=DeploymentState.DESIGNED,
+        budget=BudgetPolicy(max_model_calls=2, max_tool_calls=12, max_cost_usd=0.02, deadline_seconds=600),
+    ),
+    summary=(
+        "Tax-lot and account-constraint critic. Reviews tax lots, holding periods, "
+        "wash-sale windows, and account-type constraints (taxable vs IRA vs Roth). "
+        "Produces advisory tax-lot review artifacts. Cannot execute trades, select "
+        "specific lots, or change configuration. DISABLED pending CIO synthesis "
+        "maturity acceptance (AGENTS.md: 'not yet operational')."
+    ),
+    triggers=(
+        Trigger(TriggerKind.CIO_SCHEDULED_BRIEF, "A scheduled tax/account review window opens"),
+        Trigger(TriggerKind.QUALITY_EXCEPTION, "A tax-lot or account-constraint quality exception is raised"),
+    ),
+    allowed_output_kinds=(OutputKind.TAX_LOT_REVIEW, OutputKind.IMPROVEMENT_PROPOSAL),
+    reviewer_agent_id="iris",
+    scorer_agent_id="darwin",
+    maturity_target="Wave-3 shadow tax critic",
+    wave="THIRD",
+)
+
+
+# ---------------------------------------------------------------------------
 # Population-integrity scanner — enabled SHADOW. Deterministic (0 model calls,
 # retrieval not required); files structured exception findings, advisory only.
 # Mirrors the argus contract in config/agent_maturity_catalog.json.
@@ -379,13 +508,19 @@ FLEET: dict[str, ShadowAgentSpec] = {
         _RISK_AGENT,
         _AEGIS,
         _VIGIL,
+        _ALEX,
+        _STEPH,
+        _LEDGER,
     )
 }
 
 # INITIAL_SHADOW_AGENT_IDS = the enabled SHADOW fleet. argus was authored + enabled
 # after the original four; being enabled, it belongs here (not the disabled 2nd wave).
-INITIAL_SHADOW_AGENT_IDS: tuple[str, ...] = ("sentinel", "darwin", "iris", "reflection", "argus", "vigil")
+# alex is enabled in SHADOW as Wave 3 — shadow CIO synthesis only, no Telegram, no
+# autonomous paid model calls.
+INITIAL_SHADOW_AGENT_IDS: tuple[str, ...] = ("sentinel", "darwin", "iris", "reflection", "argus", "vigil", "alex")
 SECOND_WAVE_AGENT_IDS: tuple[str, ...] = ("maria", "vega", "risk_agent", "aegis")
+THIRD_WAVE_AGENT_IDS: tuple[str, ...] = ("steph", "ledger")
 
 # Fail-closed at import time: the entire fleet must satisfy the separation and
 # authority invariants, or the module cannot be imported.
@@ -408,6 +543,10 @@ def initial_agents() -> dict[str, ShadowAgentSpec]:
 
 def second_wave_agents() -> dict[str, ShadowAgentSpec]:
     return {agent_id: FLEET[agent_id] for agent_id in SECOND_WAVE_AGENT_IDS}
+
+
+def third_wave_agents() -> dict[str, ShadowAgentSpec]:
+    return {agent_id: FLEET[agent_id] for agent_id in THIRD_WAVE_AGENT_IDS}
 
 
 def reviewer_scorer_matrix() -> dict[str, dict[str, str]]:

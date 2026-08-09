@@ -32,6 +32,8 @@ class TriggerKind(str, Enum):
     NIGHTLY_BATCH = "NIGHTLY_BATCH"
     INCIDENT_OPENED = "INCIDENT_OPENED"
     RESEARCH_REQUEST = "RESEARCH_REQUEST"
+    MATERIAL_PORTFOLIO_CHANGE = "MATERIAL_PORTFOLIO_CHANGE"
+    CIO_SCHEDULED_BRIEF = "CIO_SCHEDULED_BRIEF"
 
 
 @dataclass(frozen=True)
@@ -69,6 +71,11 @@ class OutputKind(str, Enum):
     RESEARCH_REVIEW = "RESEARCH_REVIEW"
     TECHNICAL_STRUCTURE_REVIEW = "TECHNICAL_STRUCTURE_REVIEW"
     RISK_EVIDENCE_CRITIQUE = "RISK_EVIDENCE_CRITIQUE"
+    # CIO / wealth-advisory outputs (Wave 3)
+    CIO_SYNTHESIS = "CIO_SYNTHESIS"
+    ACTION_ITEM = "ACTION_ITEM"
+    ALLOCATION_REVIEW = "ALLOCATION_REVIEW"
+    TAX_LOT_REVIEW = "TAX_LOT_REVIEW"
 
 
 # Tool-name fragments that would, if allow-listed, hand an agent authority it must
@@ -109,7 +116,7 @@ class ShadowAgentSpec:
     reviewer_agent_id: str
     scorer_agent_id: str
     maturity_target: str
-    wave: str  # "INITIAL" | "SECOND"
+    wave: str  # "INITIAL" | "SECOND" | "THIRD"
     circuit_breaker_trips_open_after: int = 3
     max_queue_depth: int = 64
     dedup_key: str = "input_hash"
@@ -135,8 +142,8 @@ class ShadowAgentSpec:
             raise ValueError(f"{self.agent_id}: an agent may not be its own reviewer")
         if self.scorer_agent_id == self.agent_id:
             raise ValueError(f"{self.agent_id}: an agent may not be its own scorer")
-        if self.wave not in {"INITIAL", "SECOND"}:
-            raise ValueError(f"{self.agent_id}: wave must be INITIAL or SECOND")
+        if self.wave not in {"INITIAL", "SECOND", "THIRD"}:
+            raise ValueError(f"{self.agent_id}: wave must be INITIAL, SECOND, or THIRD")
         if self.circuit_breaker_trips_open_after < 1:
             raise ValueError(f"{self.agent_id}: circuit breaker threshold must be >= 1")
         if self.max_queue_depth < 1:
