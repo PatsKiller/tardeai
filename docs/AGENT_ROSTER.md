@@ -122,7 +122,7 @@ OpenClaw provides the Telegram/WhatsApp interface layer for agent interaction.
 | Darwin | Exists (minimal) | — | No evidence | SKELETON |
 | Sentinel | Exists (minimal) | — | No evidence | SKELETON |
 | Concierge | Exists (minimal) | — | No evidence | SKELETON |
-| Morgan (Wealth) | ~/.openclaw/agents/morgan/ | — | DISABLED | LIVE — SHADOW, reporting to Alex |
+| Morgan (Wealth) | ~/.openclaw/agents/morgan/ | — | DISABLED | LIVE — SHADOW, 5-min timer, OpenClaw registered, event bus subscribed |
 | Main | ~/.openclaw/agents/main/ | Fallback agent | — | Fallback |
 
 **Note:** Guardian, Ledger, Vega, Darwin, Sentinel, and Concierge OpenClaw agents are skeletal or non-existent — the CIO architecture prompt's 9-agent team has 3 fully operational members (Maria, Steph, Aegis) plus Alex (CIO) with Trade AI durable-state heartbeat. See `docs/architecture/cio/OPENCLAW_CIO_ARCHITECTURE_FEEDBACK_2026-08-08.md` §11 for full gap analysis.
