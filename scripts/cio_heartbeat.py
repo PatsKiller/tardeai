@@ -534,8 +534,31 @@ def run_heartbeat(interval_minutes: int = 30, max_actions: int = 5) -> dict[str,
             except Exception:
                 pass  # delegation is non-fatal — heartbeat continues
 
-    # 4. Create actions for material changes
+    # 4a. Escalation triggers — static-state alerts (drift, heat, reconciliation, IPS)
     actions_created = 0
+    triggers = _evaluate_escalation_triggers(snapshot)
+    for trigger in triggers:
+        notif_priority = trigger.get("priority", "High")
+        action = _create_action(
+            domain=trigger.get("trigger", "escalation"),
+            change={"change_type": "TRIGGER", "description": trigger.get("detail", "")},
+            priority="P1" if notif_priority == "Critical" else "P2",
+            notification_priority=notif_priority,
+        )
+        if notif_priority in ("Critical", "High", "Medium"):
+            action = _add_flash_context(action, snapshot, {"change_type": "TRIGGER", "description": trigger.get("detail", "")})
+        _append_jsonl(ACTION_LEDGER_PATH, {
+            "event_type": "CIO_ACTION_CREATED",
+            "event_id": str(uuid.uuid4()),
+            "timestamp": _now_iso(),
+            "actor": "cio_heartbeat",
+            "authority": "advisory",
+            "payload": action,
+        })
+        actions_created += 1
+        print(f"  [cio-hb] TRIGGER [{notif_priority}]: {trigger.get('trigger')} → {action['cio_action_id']}")
+
+    # 4b. Create actions for material domain changes
     for change in changes[:max_actions]:
         change_type = change.get("change_type", "UNKNOWN")
         domain = change.get("domain", "system")
