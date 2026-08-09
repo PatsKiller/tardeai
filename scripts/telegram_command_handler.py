@@ -57,6 +57,11 @@ _COMMANDS = {
     "/pt SYMBOL auto": "Open paper trade from plan (e.g. /pt FTCI auto)",
     "/pt SYMBOL SHARES ENTRY STOP TARGET": "Open paper trade manually",
     "/ptclose SYMBOL PRICE": "Close paper trade at price",
+    "/cio": "CIO dashboard — portfolio, actions, Hermes research",
+    "/cio actions": "Open CIO action items",
+    "/cio portfolio": "CIO portfolio snapshot",
+    "/cio hermes": "Latest Hermes research topics",
+    "/cio risk": "CIO risk overview",
     "/ptopen": "Show open paper trades",
     "/ptpnl": "Paper trading P&L summary",
     "halt trading": "Global halt — block all strategies",
@@ -139,6 +144,17 @@ def parse_command(text: str) -> dict:
         return {"command": "help", "args": ""}
     if lower == "status":
         return {"command": "status", "args": ""}
+    # /cio commands — CIO dashboard (deterministic, zero model calls)
+    if lower in ("/cio", "cio"):
+        return {"command": "cio", "args": "status"}
+    if lower in ("/cio actions", "cio actions", "/cio status", "cio status"):
+        return {"command": "cio", "args": "actions" if "actions" in lower else "status"}
+    if lower in ("/cio portfolio", "cio portfolio"):
+        return {"command": "cio", "args": "portfolio"}
+    if lower in ("/cio hermes", "cio hermes"):
+        return {"command": "cio", "args": "hermes"}
+    if lower in ("/cio risk", "cio risk"):
+        return {"command": "cio", "args": "risk"}
     # Deterministic watchlist / research / LLM actions — run the REAL skill (agents fabricate these).
     if lower.startswith("watch ") and not lower.startswith("watchlist"):
         return {"command": "wl_add", "args": text[6:].strip()}
@@ -956,6 +972,21 @@ def process_command(cmd: dict) -> str:
                 return process_command({"command": "research", "args": args})
         except Exception as e:
             return f"Alex error: {e}"
+
+    if command == "cio":
+        # Route to CIO query engine — deterministic, zero model calls
+        import subprocess
+        cio_cmd = [str(PROJECT_ROOT / ".venv/bin/python"), str(PROJECT_ROOT / "scripts/cio_commands.py")]
+        if args in ("actions", "portfolio", "hermes", "risk", "status"):
+            cio_cmd.append(args)
+        else:
+            cio_cmd.append("status")  # default: full dashboard
+        try:
+            result = subprocess.run(cio_cmd, capture_output=True, text=True, timeout=15, cwd=str(PROJECT_ROOT))
+            output = result.stdout.strip()
+            return f"🤖 *CIO Alex*\n\n{output}\n\n_Zero model calls · CIO Data Broker · Shadow-advisory only_"
+        except Exception as e:
+            return f"CIO query error: {e}"
 
     if command in ("calibration", "accuracy"):
         try:
