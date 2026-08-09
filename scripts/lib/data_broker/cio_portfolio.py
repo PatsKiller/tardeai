@@ -48,6 +48,9 @@ CIO_DOMAINS = (
     "investment_policy",
     "model_portfolio",
     "cost_basis",
+    "transactions",
+    "sectors",
+    "holdings_detail",
 )
 
 
@@ -383,6 +386,240 @@ def _domain_cost_basis() -> dict[str, Any]:
     }
 
 
+def _domain_transactions() -> dict[str, Any]:
+    """Recent trade history — buys, sells, closed positions from trade journal."""
+    tj_path = STATE_DIR / "trade_journal.json"
+    if not tj_path.exists():
+        return {"state": "DATA_UNAVAILABLE", "reason": "trade_journal.json not found"}
+
+    try:
+        tj = json.loads(tj_path.read_text(encoding="utf-8"))
+    except Exception as e:
+        return {"state": "DATA_UNAVAILABLE", "reason": str(e)[:120]}
+
+    closed = tj.get("closed_trades", [])
+    open_lots = tj.get("open_lots", [])
+
+    # Recent closed trades (last 30)
+    recent_closed: list[dict[str, Any]] = []
+    for t in closed[-30:]:
+        recent_closed.append({
+            "symbol": t.get("symbol", ""),
+            "action": t.get("action", t.get("side", "")),
+            "entry_date": t.get("entry_date", ""),
+            "exit_date": t.get("exit_date", t.get("close_date", "")),
+            "entry_price": t.get("entry_price"),
+            "exit_price": t.get("exit_price"),
+            "realized_pnl": t.get("realized_pnl", t.get("pnl")),
+            "return_pct": t.get("return_pct"),
+            "account": t.get("account", ""),
+            "strategy": t.get("strategy", ""),
+        })
+
+    # Active open lots
+    active_lots: list[dict[str, Any]] = []
+    for lot in open_lots:
+        active_lots.append({
+            "symbol": lot.get("symbol", ""),
+            "entry_date": lot.get("entry_date", ""),
+            "entry_price": lot.get("entry_price"),
+            "quantity": lot.get("quantity"),
+            "account": lot.get("account", ""),
+            "strategy": lot.get("strategy", ""),
+        })
+
+    return {
+        "state": "AVAILABLE",
+        "closed_trades_total": len(closed),
+        "recent_closed": recent_closed,
+        "open_lots_total": len(open_lots),
+        "active_lots": active_lots,
+        "last_updated": tj.get("last_updated", ""),
+        "all_symbols_traded": tj.get("all_symbols", []),
+        "all_accounts": tj.get("all_accounts", []),
+    }
+
+
+def _domain_sectors() -> dict[str, Any]:
+    """Sector weights — current allocation by sector computed from holdings + sector cache."""
+    holdings_path = STATE_DIR / "holdings.json"
+    sector_cache_path = STATE_DIR / "sector_cache.json"
+
+    if not holdings_path.exists():
+        return {"state": "DATA_UNAVAILABLE", "reason": "holdings.json not found"}
+
+    try:
+        holdings = json.loads(holdings_path.read_text(encoding="utf-8"))
+        sector_cache = json.loads(sector_cache_path.read_text(encoding="utf-8")) if sector_cache_path.exists() else {}
+    except Exception as e:
+        return {"state": "DATA_UNAVAILABLE", "reason": str(e)[:120]}
+
+    # Compute sector weights
+    sector_weights: dict[str, float] = {}
+    sector_positions: dict[str, list[str]] = {}
+    uncategorized_value = 0.0
+    cash_value = 0.0
+    total_value = 0.0
+
+    for h in holdings.get("holdings", []):
+        mv = float(h.get("market_value", 0) or 0)
+        total_value += mv
+        symbol = h.get("symbol", "")
+        is_cash = h.get("is_cash") or h.get("asset_type") == "cash" or symbol == "CASH"
+
+        if is_cash:
+            cash_value += mv
+            continue
+
+        sector = sector_cache.get(symbol, "").strip()
+        if not sector:
+            uncategorized_value += mv
+            continue
+
+        sector_weights[sector] = sector_weights.get(sector, 0) + mv
+        if sector not in sector_positions:
+            sector_positions[sector] = []
+        sector_positions[sector].append(symbol)
+
+    # Build sorted sector list (largest first)
+    sectors: list[dict[str, Any]] = []
+    for sector_name, value in sorted(sector_weights.items(), key=lambda x: -x[1]):
+        pct = round(value / total_value * 100, 2) if total_value > 0 else 0
+        sectors.append({
+            "sector": sector_name,
+            "value": round(value, 2),
+            "weight_pct": pct,
+            "position_count": len(sector_positions.get(sector_name, [])),
+            "symbols": sector_positions.get(sector_name, []),
+        })
+
+    concentration_flags: list[str] = []
+    for s in sectors:
+        if s["weight_pct"] > 25:
+            concentration_flags.append(f"{s['sector']}: {s['weight_pct']}% (HIGH — over 25%)")
+        elif s["weight_pct"] > 15:
+            concentration_flags.append(f"{s['sector']}: {s['weight_pct']}% (ELEVATED — over 15%)")
+
+    uncategorized_pct = round(uncategorized_value / total_value * 100, 2) if total_value > 0 else 0
+    cash_pct = round(cash_value / total_value * 100, 2) if total_value > 0 else 0
+
+    return {
+        "state": "AVAILABLE",
+        "total_value": round(total_value, 2),
+        "sectors": sectors,
+        "sector_count": len(sectors),
+        "uncategorized_pct": uncategorized_pct,
+        "cash_pct": cash_pct,
+        "concentration_flags": concentration_flags,
+        # Top 5 sectors
+        "top_sectors": [
+            {"sector": s["sector"], "weight_pct": s["weight_pct"]}
+            for s in sectors[:5]
+        ],
+    }
+
+
+def _domain_holdings_detail() -> dict[str, Any]:
+    """Full holdings enumeration with sector, weight, day change, and P&L per position."""
+    holdings_path = STATE_DIR / "holdings.json"
+    sector_cache_path = STATE_DIR / "sector_cache.json"
+    lots_path = STATE_DIR / "tax_lots.json"
+
+    if not holdings_path.exists():
+        return {"state": "DATA_UNAVAILABLE", "reason": "holdings.json not found"}
+
+    try:
+        holdings = json.loads(holdings_path.read_text(encoding="utf-8"))
+        sector_cache = json.loads(sector_cache_path.read_text(encoding="utf-8")) if sector_cache_path.exists() else {}
+        lots_data = json.loads(lots_path.read_text(encoding="utf-8")) if lots_path.exists() else {}
+    except Exception as e:
+        return {"state": "DATA_UNAVAILABLE", "reason": str(e)[:120]}
+
+    total_value = sum(float(h.get("market_value", 0) or 0) for h in holdings.get("holdings", []))
+
+    positions: list[dict[str, Any]] = []
+    for h in holdings.get("holdings", []):
+        symbol = h.get("symbol", "")
+        mv = float(h.get("market_value", 0) or 0)
+        is_cash = h.get("is_cash") or h.get("asset_type") == "cash" or symbol == "CASH"
+
+        sector = sector_cache.get(symbol, "").strip() if not is_cash else "Cash"
+
+        # Cost basis from tax lots
+        cost_basis = None
+        unrealized_pnl = None
+        unrealized_pnl_pct = None
+        if not is_cash and lots_data:
+            for key, lot_list in lots_data.items():
+                if key.startswith(f"{symbol}:"):
+                    open_lots = [l for l in lot_list if float(l.get("shares_remaining", 0)) > 0]
+                    if open_lots:
+                        cost_basis = sum(
+                            float(l["cost_per_share"]) * float(l["shares_remaining"])
+                            for l in open_lots
+                        )
+                        unrealized_pnl = mv - cost_basis
+                        unrealized_pnl_pct = round(unrealized_pnl / cost_basis * 100, 2) if cost_basis > 0 else None
+                    break
+
+        positions.append({
+            "symbol": symbol,
+            "name": h.get("name", ""),
+            "account": h.get("account", ""),
+            "sector": sector,
+            "market_value": round(mv, 2),
+            "weight_pct": round(mv / total_value * 100, 4) if total_value > 0 else 0,
+            "day_change_pct": h.get("day_change_pct"),
+            "quantity": h.get("quantity") or h.get("shares"),
+            "current_price": h.get("current_price") or h.get("price"),
+            "cost_basis": round(cost_basis, 2) if cost_basis else None,
+            "unrealized_pnl": round(unrealized_pnl, 2) if unrealized_pnl else None,
+            "unrealized_pnl_pct": unrealized_pnl_pct,
+            "is_cash": is_cash,
+            "asset_type": h.get("asset_type", ""),
+        })
+
+    # Sort: non-cash first, by weight descending
+    positions.sort(key=lambda p: (p["is_cash"], -p["weight_pct"]))
+
+    # Account breakdown
+    accounts: dict[str, dict[str, Any]] = {}
+    for p in positions:
+        acct = p["account"]
+        if acct not in accounts:
+            accounts[acct] = {"value": 0.0, "position_count": 0, "symbols": []}
+        accounts[acct]["value"] += p["market_value"]
+        accounts[acct]["position_count"] += 1
+        if not p["is_cash"]:
+            accounts[acct]["symbols"].append(p["symbol"])
+
+    # Sector breakdown
+    sector_breakdown: dict[str, float] = {}
+    for p in positions:
+        s = p["sector"]
+        sector_breakdown[s] = sector_breakdown.get(s, 0) + p["weight_pct"]
+
+    return {
+        "state": "AVAILABLE",
+        "total_value": round(total_value, 2),
+        "position_count": len(positions),
+        "cash_positions": sum(1 for p in positions if p["is_cash"]),
+        "equity_positions": sum(1 for p in positions if not p["is_cash"]),
+        "positions": positions,
+        "accounts": {
+            acct: {
+                "value": round(d["value"], 2),
+                "weight_pct": round(d["value"] / total_value * 100, 2) if total_value > 0 else 0,
+                "position_count": d["position_count"],
+                "top_symbols": d["symbols"][:10],
+            }
+            for acct, d in sorted(accounts.items(), key=lambda x: -x[1]["value"])
+        },
+        "sector_breakdown": dict(sorted(sector_breakdown.items(), key=lambda x: -x[1])),
+        "as_of": holdings.get("as_of", ""),
+    }
+
+
 _COLLECTORS = {
     "portfolio": _domain_portfolio,
     "risk": _domain_risk,
@@ -394,6 +631,9 @@ _COLLECTORS = {
     "investment_policy": _domain_investment_policy,
     "model_portfolio": _domain_model_portfolio,
     "cost_basis": _domain_cost_basis,
+    "transactions": _domain_transactions,
+    "sectors": _domain_sectors,
+    "holdings_detail": _domain_holdings_detail,
 }
 
 

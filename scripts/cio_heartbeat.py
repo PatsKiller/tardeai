@@ -39,6 +39,8 @@ SNAPSHOT_PATH = DATA_DIR / "cio_heartbeat_snapshots.jsonl"
 ACTION_LEDGER_PATH = DATA_DIR / "cio_action_ledger.jsonl"
 
 # Domains from the CIO Data Broker (matches cio_portfolio.py's CIO_DOMAINS)
+# Domains from CIO Data Broker — keep synced with cio_portfolio.py's CIO_DOMAINS
+# Domains from CIO Data Broker — keep synced with cio_portfolio.py's CIO_DOMAINS
 DETERMINISTIC_DOMAINS = [
     "portfolio",
     "risk",
@@ -47,6 +49,12 @@ DETERMINISTIC_DOMAINS = [
     "income",
     "reconciliation",
     "hermes_research",
+    "investment_policy",
+    "model_portfolio",
+    "cost_basis",
+    "transactions",
+    "sectors",
+    "holdings_detail",
 ]
 
 # Notification priority tiers
@@ -67,22 +75,36 @@ _PRIORITY_MAP: dict[tuple[str, str], str] = {
     ("DATA_CHANGED", "income"): "Low",
     ("DATA_CHANGED", "hermes_research"): "Low",
     ("DATA_CHANGED", "model_portfolio"): "High",
+    ("DATA_CHANGED", "cost_basis"): "High",
+    ("DATA_CHANGED", "transactions"): "High",
+    ("DATA_CHANGED", "sectors"): "Medium",
+    ("DATA_CHANGED", "holdings_detail"): "Medium",
     ("DOMAIN_WENT_STALE", "investment_policy"): "Critical",
     ("DOMAIN_WENT_STALE", "model_portfolio"): "Critical",
+    ("DOMAIN_WENT_STALE", "cost_basis"): "High",
+    ("DOMAIN_WENT_STALE", "transactions"): "Medium",
+    ("DOMAIN_WENT_STALE", "sectors"): "Medium",
+    ("DOMAIN_WENT_STALE", "holdings_detail"): "Low",
     ("FIRST_RUN", "system"): "Info",
     ("DOMAIN_AVAILABLE", "*"): "Info",
 }
 
 # How long before a domain goes STALE (seconds)
 DOMAIN_FRESHNESS: dict[str, int] = {
-    "portfolio": 3600,              # 1 hour
-    "holdings": 1800,               # 30 minutes
+    "portfolio": 3600,
+    "holdings": 1800,
     "risk": 3600,
-    "watch": 7200,                  # 2 hours
-    "reentry": 14400,               # 4 hours
-    "rotation": 28800,              # 8 hours (daily rotation summary)
-    "income": 86400,                # 24 hours
-    "broker_reconciliation": 43200, # 12 hours
+    "watch": 7200,
+    "reentry": 14400,
+    "rotation": 28800,
+    "income": 86400,
+    "broker_reconciliation": 43200,
+    "investment_policy": 86400,
+    "model_portfolio": 86400,
+    "cost_basis": 3600,
+    "transactions": 3600,
+    "sectors": 7200,
+    "holdings_detail": 1800,
 }
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
