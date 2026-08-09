@@ -67,7 +67,7 @@
     "alex": {
       "acceptance_evidence": [
         "78 heartbeat actions in event-sourced ledger",
-        "45 financial snapshots (13 domains)",
+        "49 financial snapshots (13 domains)",
         "78 Darwin scorecards (independent scorer)",
         "25 dedup merges \u2014 idempotency proven",
         "11/12 gates passing (0 not yet measured)"
