@@ -473,6 +473,30 @@ def _create_action(
     }
 
 
+def _existing_open_actions() -> dict[str, set[str]]:
+    """Return set of (symbol, bias_flag) for existing OPEN behavioral actions."""
+    existing: dict[str, set[str]] = {}
+    entries = _read_jsonl(ACTION_LEDGER_PATH)
+    actions: dict[str, dict[str, Any]] = {}
+    for entry in entries:
+        payload = entry.get("payload", {})
+        aid = payload.get("cio_action_id")
+        if not aid:
+            continue
+        if entry.get("event_type") == "CIO_ACTION_CREATED":
+            actions[aid] = payload
+        elif entry.get("event_type") == "CIO_ACTION_UPDATED":
+            if aid in actions:
+                actions[aid].update(payload)
+    for a in actions.values():
+        if a.get("status") in ("OPEN", "ACKNOWLEDGED") and a.get("bias_flag"):
+            syms = set(a.get("affected_symbols", []))
+            bias = a.get("bias_flag", "")
+            for sym in syms:
+                existing.setdefault(bias, set()).add(sym)
+    return existing
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 
@@ -548,9 +572,15 @@ def run_heartbeat(interval_minutes: int = 30, max_actions: int = 5) -> dict[str,
             actions_created += 1
             print(f"  [cio-hb] {change_type} [{notif_priority}]: {domain} → {action['cio_action_id']}")
 
-    # 5. Behavioral finance detection — disposition effect
+    # 5. Behavioral finance detection — disposition effect (deduped)
+    existing = _existing_open_actions()
     behavioral_findings = _detect_disposition_effect(snapshot)
     for finding in behavioral_findings:
+        sym = finding.get("symbol", "")
+        bias = finding.get("bias_flag", "")
+        if sym in existing.get(bias, set()):
+            print(f"  [cio-bh] 🧠 SKIP {sym} — already has open {bias} action")
+            continue
         notif_priority = finding.get("severity", "Medium")
         action = {
             "cio_action_id": f"cio-bh-{str(uuid.uuid4())[:8]}",
