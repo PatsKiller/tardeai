@@ -575,7 +575,7 @@ FLEET: dict[str, ShadowAgentSpec] = {
 # after the original four; being enabled, it belongs here (not the disabled 2nd wave).
 # alex is enabled in SHADOW as Wave 3 — shadow CIO synthesis only, no Telegram, no
 # autonomous paid model calls.
-INITIAL_SHADOW_AGENT_IDS: tuple[str, ...] = ("sentinel", "darwin", "iris", "reflection", "argus", "vigil", "alex")
+INITIAL_SHADOW_AGENT_IDS: tuple[str, ...] = ("sentinel", "darwin", "iris", "reflection", "argus", "vigil", "alex", "steph", "morgan")
 SECOND_WAVE_AGENT_IDS: tuple[str, ...] = ("maria", "vega", "risk_agent", "aegis")
 THIRD_WAVE_AGENT_IDS: tuple[str, ...] = ("steph", "ledger", "morgan")
 

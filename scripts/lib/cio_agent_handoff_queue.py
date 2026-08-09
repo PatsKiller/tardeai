@@ -94,10 +94,29 @@ def build_event(
 AGENT_REGISTRY: dict[str, dict[str, str]] = {
     "alex": {"status": "REGISTERED", "role": "cio"},
     "maria": {"status": "AVAILABLE", "role": "research"},
-    "steph": {"status": "NOT_READY", "role": "allocation"},
+    "steph": {"status": "AVAILABLE", "role": "allocation"},
     "guardian": {"status": "NOT_READY", "role": "risk"},
     "ledger": {"status": "NOT_READY", "role": "tax"},
+    "morgan": {"status": "AVAILABLE", "role": "wealth"},
 }
+
+ALLOWED_TASK_TYPES = frozenset({
+    "cio_question",
+    "fundamental_research",
+    "allocation_review",
+    "risk_review",
+    "tax_account_review",
+    "retirement_review",
+    "evidence_review",
+    "specialist_reconciliation",
+    "wake",
+    "wealth_synthesis",
+    "goal_tracking",
+    "liquidity_planning",
+    "tax_coordination",
+    "estate_review",
+    "multi_account_coordination",
+})
 
 TARGET_NOT_READY_POLICY = "BLOCKED"  # Not-ready agents: BLOCKED (not REJECTED)
 
