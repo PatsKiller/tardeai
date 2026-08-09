@@ -182,6 +182,8 @@
 | `docs/architecture/cio/OPENCLAW_CIO_ARCHITECTURE_FEEDBACK_2026-08-08.md` | **OpenClaw CIO architecture audit** — runtime truth vs design: 3/9 specialist agents operational, memory/heartbeat disabled, Hermes bridge absent, no agent-to-agent delegation, DeepSeek auth unproven, $0.25/day cost cap concern | Active (2026-08-08) |
 | `docs/CIO_PROMPT_INPUT_AUDIT_2026_07_01.md` | CIO prompt/input audit (Stages 1+2a merged, Stage 2b pending) — synthesis v3→v5, dual-consensus fixes, DQ notes, prompt-size budget | Active (2026-07-01) |
 | `docs/wealth-advisor/STEPH_WEALTH_ADVISOR.md` | **Steph Wealth Advisor** — full documentation: architecture (OpenClaw + Wave-3), persona, command coverage, data discipline, cron jobs, skills, validation toolkit, model routing, deployment, gaps | Active (2026-08-09) |
+| `scripts/lib/cio_event_bus.py` | **CIO Event Bus** — append-only, hash-chained event stream (15 event types). Agents subscribe instead of polling cron. Routes: alex (12 types), steph (4), hermes (4). Phase 0 foundation for event-driven autonomy. | Active (2026-08-09) |
+| `scripts/agent_runtime_live_providers.py` | **Live provider module** — real DeepSeek/Ollama model + Data Broker retrieval + wake job/event bus job sources. Now ACTIVE (was shadow_fleet_provider no-op). | Active (2026-08-09) |
 
 ### Improvement Plans & Assessments *(both archived)*
 | Document | Purpose | Status |
