@@ -705,7 +705,7 @@ def run_heartbeat(interval_minutes: int = 30, max_actions: int = 5) -> dict[str,
     # ── Emit events onto the CIO event bus ──────────────────────────────────
     events_emitted = 0
     try:
-        from scripts.lib.cio_event_bus import CIOEventBus
+        from lib.cio_event_bus import CIOEventBus
         bus = CIOEventBus()
         # Portfolio material change
         port_change = next((c for c in changes if c[1] == "portfolio" and c[0] == "DATA_CHANGED"), None)
@@ -747,8 +747,8 @@ def run_heartbeat(interval_minutes: int = 30, max_actions: int = 5) -> dict[str,
                   "changes": len(changes), "actions": actions_created},
                  source="cio_heartbeat", priority="LOW")
         events_emitted += 1
-    except Exception:
-        pass  # event bus is optional — heartbeat must not fail if bus is unavailable
+    except Exception as e:
+        print(f"  [cio-hb] Event bus emission failed (non-fatal): {type(e).__name__}: {e}")
 
     summary = {
         "heartbeat_id": snapshot.get("snapshot_id"),
