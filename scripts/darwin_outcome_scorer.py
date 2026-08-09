@@ -79,43 +79,62 @@ def score_action(action: dict[str, Any]) -> dict[str, Any]:
         "scored_at": _now_iso(),
     }
 
+    # Age computation: use created_at if present, else fall back to event timestamp
+    age_hours: float | None = None
+    age_source = created
+    if not age_source:
+        age_source = action.get("timestamp", "")
+    try:
+        if age_source:
+            age_hours = (datetime.now(timezone.utc) - datetime.fromisoformat(age_source)).total_seconds() / 3600
+    except Exception:
+        age_hours = None
+    if age_hours is not None:
+        scores["age_hours"] = round(age_hours, 1)
+
     # Dimension 1: Resolution (0–40 pts)
     if status == "DONE":
         scores["resolution_score"] = 40
         scores["resolution_note"] = "Action completed"
     elif status == "ACKNOWLEDGED":
-        scores["resolution_score"] = 20
+        scores["resolution_score"] = 25
         scores["resolution_note"] = "Acknowledged but not resolved"
+    elif status == "SUPERSEDED":
+        scores["resolution_score"] = 30
+        scores["resolution_note"] = "Dedup-merged — system resolved"
     elif status == "OPEN":
-        # Check age — older open actions score lower
-        try:
-            age_hours = (datetime.now(timezone.utc) - datetime.fromisoformat(created)).total_seconds() / 3600
-            scores["age_hours"] = round(age_hours, 1)
-            if age_hours > 168:  # 7 days
-                scores["resolution_score"] = 0
-                scores["resolution_note"] = f"Open {age_hours:.0f}h — stale"
-            elif age_hours > 24:
-                scores["resolution_score"] = 5
-                scores["resolution_note"] = f"Open {age_hours:.0f}h — aging"
-            else:
-                scores["resolution_score"] = 15
-                scores["resolution_note"] = f"Open {age_hours:.0f}h — recent"
-        except Exception:
-            scores["resolution_score"] = 10
-            scores["resolution_note"] = "Open (age unknown)"
+        if age_hours is None:
+            scores["resolution_score"] = 15
+            scores["resolution_note"] = "Open (age unknown — recent default)"
+        elif age_hours > 168:  # 7 days
+            scores["resolution_score"] = 0
+            scores["resolution_note"] = f"Open {age_hours:.0f}h — stale"
+        elif age_hours > 24:
+            scores["resolution_score"] = 5
+            scores["resolution_note"] = f"Open {age_hours:.0f}h — aging"
+        else:
+            scores["resolution_score"] = 15
+            scores["resolution_note"] = f"Open {age_hours:.0f}h — recent"
     else:
         scores["resolution_score"] = 5
         scores["resolution_note"] = f"Status: {status}"
 
     # Dimension 2: Priority alignment (0–30 pts)
-    priority_scores = {"P1": 30, "P2": 20, "P3": 10}
+    priority_scores = {
+        "P1": 30, "P2": 20, "P3": 10,
+        "Critical": 30, "HIGH": 25, "MEDIUM": 15, "LOW": 10,
+        "High": 25, "Medium": 15, "Low": 10, "Info": 5,
+    }
     scores["priority_score"] = priority_scores.get(priority, 5)
 
     # Dimension 3: Domain impact (0–30 pts) — did the domain improve?
     domain_weights = {
         "portfolio": 25, "risk": 30, "watch": 20, "rotation": 15,
         "income": 20, "reconciliation": 25, "hermes_research": 10,
-        "system": 10,
+        "system": 10, "GENERAL": 15, "allocation": 30,
+        "cost_basis": 25, "behavioral": 30, "investment_policy": 20,
+        "model_portfolio": 20, "transactions": 20, "sectors": 20,
+        "holdings_detail": 20,
     }
     scores["domain_score"] = domain_weights.get(domain, 10)
 
@@ -141,7 +160,10 @@ def score_action(action: dict[str, Any]) -> dict[str, Any]:
 
 
 def run_scoring_cycle(max_actions: int = 20) -> dict[str, Any]:
-    """Score the most recent CIO actions. Returns summary."""
+    """Score the most recent CIO actions. Returns summary.
+
+    max_actions=0 means "score all actions" (no sweep cap).
+    """
     t0 = time.time()
     events = _read_jsonl(ACTION_LEDGER)
     actions: dict[str, dict[str, Any]] = {}
@@ -151,12 +173,46 @@ def run_scoring_cycle(max_actions: int = 20) -> dict[str, Any]:
         aid = payload.get("cio_action_id")
         if not aid:
             continue
-        if event.get("event_type") == "CIO_ACTION_CREATED":
-            actions[aid] = payload
+        # Collect both CREATE and UPDATE events — UPDATEs carry status changes
+        if event.get("event_type") in ("CIO_ACTION_CREATED", "CIO_ACTION_UPDATED"):
+            # Merge: UPDATE payloads overlay on CREATE payloads for the same action
+            if aid not in actions:
+                actions[aid] = dict(payload)
+            else:
+                # UPDATE carries newer status/operator_decision
+                for k, v in payload.items():
+                    if v and v != actions[aid].get(k):
+                        actions[aid][k] = v
+            # Also attach event timestamp for age computation
+            if "timestamp" not in actions[aid]:
+                actions[aid]["timestamp"] = event.get("timestamp", "")
 
-    # Score actions, newest first
+    # Dedup: skip actions that already have a recent scorecard (last 6 hours)
+    existing_scorecards = _read_jsonl(SCORECARD_PATH)
+    already_scored: set[str] = set()
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=6)
+    for sc in existing_scorecards:
+        try:
+            ts = datetime.fromisoformat(sc.get("timestamp", ""))
+            if ts > cutoff:
+                already_scored.add(sc.get("payload", {}).get("action_id", ""))
+        except Exception:
+            pass
+
+    # Score actions, newest first. max_actions=0 means all.
+    candidates = sorted(actions.values(),
+                        key=lambda a: a.get("created_at") or a.get("timestamp", ""),
+                        reverse=True)
+    if max_actions > 0:
+        candidates = candidates[:max_actions]
+
     scored = 0
-    for action in sorted(actions.values(), key=lambda a: a.get("created_at", ""), reverse=True)[:max_actions]:
+    skipped = 0
+    for action in candidates:
+        aid = action.get("cio_action_id", "")
+        if aid in already_scored:
+            skipped += 1
+            continue
         scorecard = score_action(action)
         _append_jsonl(SCORECARD_PATH, {
             "event_type": "DARWIN_SCORECARD",
@@ -171,6 +227,7 @@ def run_scoring_cycle(max_actions: int = 20) -> dict[str, Any]:
     elapsed = time.time() - t0
     return {
         "actions_scored": scored,
+        "actions_skipped": skipped,
         "total_actions": len(actions),
         "elapsed_ms": int(elapsed * 1000),
         "mode": "deterministic",

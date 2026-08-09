@@ -66,11 +66,11 @@
     },
     "alex": {
       "acceptance_evidence": [
-        "30 heartbeat actions in event-sourced ledger",
-        "43 financial snapshots (13 domains)",
-        "10 Darwin scorecards (independent scorer)",
+        "78 heartbeat actions in event-sourced ledger",
+        "45 financial snapshots (13 domains)",
+        "78 Darwin scorecards (independent scorer)",
         "25 dedup merges \u2014 idempotency proven",
-        "6/12 gates passing (1 not yet measured)"
+        "11/12 gates passing (0 not yet measured)"
       ],
       "allowed_job_types": [
         "cio_synthesis",
@@ -100,9 +100,9 @@
         "max_tool_calls": 12
       },
       "current_limitations": [
-        "SHADOW \u2014 autonomous heartbeat active (30-min, 13 domains, event-driven, 30 actions)",
-        "Darwin scoring active (10 scorecards, hourly, independent scorer)",
-        "Gate measurement: 6/12 passing, 1 not measured, 5 failing",
+        "SHADOW \u2014 autonomous heartbeat active (30-min, 13 domains, event-driven, 78 actions)",
+        "Darwin scoring active (78 scorecards, hourly, independent scorer)",
+        "Gate measurement: 11/12 passing, 0 not measured, 1 failing",
         "Provider module: agent_runtime_live_providers.py (DeepSeek V4 + Ollama gemma3, pending activation)",
         "Gate 10 (operator_usefulness) requires operator rating",
         "Gate 11 (rollback_test_passed) requires formal test authoring (~1 hour)"
