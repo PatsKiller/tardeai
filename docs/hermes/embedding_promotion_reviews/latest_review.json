@@ -1,10 +1,18 @@
 {
-  "date": "2026-08-07",
-  "timestamp": "2026-08-07T08:15:33.538063+00:00",
+  "date": "2026-08-08",
+  "timestamp": "2026-08-08T08:15:43.546163+00:00",
   "embedding_recommendations": [
     {
-      "id": 14135,
-      "symbol": "BSBR",
+      "id": 14977,
+      "symbol": "AMRC",
+      "type": "momentum_catalyst",
+      "confidence": 0.7,
+      "has_url": true,
+      "reason": "staged, has evidence, not embedded"
+    },
+    {
+      "id": 14217,
+      "symbol": "CMCO",
       "type": "momentum_catalyst",
       "confidence": 0.7,
       "has_url": true,
@@ -21,14 +29,6 @@
     {
       "id": 15279,
       "symbol": "AMIX",
-      "type": "momentum_catalyst",
-      "confidence": 0.7,
-      "has_url": true,
-      "reason": "staged, has evidence, not embedded"
-    },
-    {
-      "id": 14133,
-      "symbol": "AIBZ",
       "type": "momentum_catalyst",
       "confidence": 0.7,
       "has_url": true,
@@ -45,8 +45,16 @@
   ],
   "promotion_recommendations": [
     {
-      "id": 14135,
-      "symbol": "BSBR",
+      "id": 14977,
+      "symbol": "AMRC",
+      "type": "momentum_catalyst",
+      "confidence": 0.7,
+      "has_url": true,
+      "reason": "staged, high conf, has evidence"
+    },
+    {
+      "id": 14217,
+      "symbol": "CMCO",
       "type": "momentum_catalyst",
       "confidence": 0.7,
       "has_url": true,
@@ -69,14 +77,6 @@
       "reason": "staged, high conf, has evidence"
     },
     {
-      "id": 14133,
-      "symbol": "AIBZ",
-      "type": "momentum_catalyst",
-      "confidence": 0.7,
-      "has_url": true,
-      "reason": "staged, high conf, has evidence"
-    },
-    {
       "id": 14618,
       "symbol": "CLDI",
       "type": "momentum_catalyst",
@@ -86,7 +86,7 @@
     }
   ],
   "rejected": [],
-  "total_staged_non_backlog": 186,
+  "total_staged_non_backlog": 174,
   "embeddings_created": 0,
   "promotions_created": 0
 }
