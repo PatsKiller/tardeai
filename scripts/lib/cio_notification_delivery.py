@@ -55,7 +55,12 @@ class FakeDeliveryAdapter:
 
 
 class RealTelegramAdapter:
-    """Live Telegram adapter — sends real messages. Requires authorization."""
+    """Live Telegram adapter — sends real messages. Requires authorization.
+
+    When credentials are missing, delivery is blocked — no silent fallback
+    to FakeDeliveryAdapter.  FakeDeliveryAdapter exists only for explicit
+    shadow/test mode (set mode="shadow" on CIONotificationDeliveryWorker).
+    """
 
     def __init__(self, bot_token: Optional[str] = None, chat_id: Optional[str] = None):
         self.bot_token = bot_token or ""
@@ -63,8 +68,29 @@ class RealTelegramAdapter:
         self._live = bool(bot_token and chat_id)
 
     def send(self, notification: dict[str, Any]) -> dict[str, Any]:
+        """Send a notification via Telegram.
+
+        Returns `delivered=False` with `DELIVERY_BLOCKED_CREDENTIALS` when
+        bot_token or chat_id is missing.  Never silently falls back to fake
+        delivery.
+        """
+        nid = notification.get("notification_id", "unknown")
+
         if not self._live:
-            return FakeDeliveryAdapter().send(notification)
+            log.error(
+                "Telegram delivery blocked for %s: credentials not configured "
+                "(token=%s, chat_id=%s)",
+                nid,
+                "SET" if self.bot_token else "MISSING",
+                "SET" if self.chat_id else "MISSING",
+            )
+            return {
+                "delivered": False,
+                "error": "DELIVERY_BLOCKED_CREDENTIALS",
+                "reason": "Telegram bot_token or chat_id not configured",
+                "notification_id": nid,
+                "delivery_method": "telegram",
+            }
 
         # Construct and send message via Telegram Bot API
         body = notification.get("body", "")
@@ -95,15 +121,35 @@ class RealTelegramAdapter:
                         "delivery_method": "telegram",
                         "message_id": resp_data.get("result", {}).get("message_id"),
                         "delivered_at": datetime.now(timezone.utc).isoformat(),
-                        "notification_id": notification.get("notification_id"),
+                        "notification_id": nid,
                     }
                 else:
-                    log.error("Telegram delivery failed: %s", resp_data)
-                    return {"delivered": False, "error": str(resp_data)}
+                    error_msg = resp_data.get("description", str(resp_data))
+                    log.error("Telegram API error for %s: %s", nid, error_msg)
+                    return {
+                        "delivered": False,
+                        "delivery_method": "telegram",
+                        "error": error_msg,
+                        "notification_id": nid,
+                        "telegram_ok": False,
+                    }
 
+        except urllib.error.HTTPError as e:
+            log.error("Telegram HTTP %s for %s: %s", e.code, nid, e.reason)
+            return {
+                "delivered": False,
+                "delivery_method": "telegram",
+                "error": f"HTTP {e.code}: {e.reason}",
+                "notification_id": nid,
+            }
         except Exception as e:
-            log.exception("Telegram delivery error")
-            return {"delivered": False, "error": str(e)}
+            log.exception("Telegram delivery error for %s", nid)
+            return {
+                "delivered": False,
+                "delivery_method": "telegram",
+                "error": str(e),
+                "notification_id": nid,
+            }
 
     @property
     def is_live(self) -> bool:

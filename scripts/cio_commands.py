@@ -288,6 +288,102 @@ def cmd_rate() -> str:
         return f"❌ Failed to rate {action_id}: {e}"
 
 
+def cmd_defer() -> str:
+    """Defer a CIO action: /cio defer <action_id> [YYYY-MM-DD|YYYY-MM-DDTHH:MM]"""
+    if len(sys.argv) < 3:
+        return "Usage: /cio defer <action_id> [date]"
+    action_id = sys.argv[2]
+    defer_until = sys.argv[3] if len(sys.argv) >= 4 else None
+    try:
+        from lib.cio_action_ledger import CIOActionLedger
+        ledger = CIOActionLedger()
+        payload: dict[str, Any] = {
+            "operator_decision": "Deferred by operator",
+            "operator_action": "defer",
+        }
+        if defer_until:
+            payload["defer_until"] = defer_until
+            payload["operator_decision"] += f" until {defer_until}"
+        result = ledger.transition_action(
+            cio_action_id=action_id,
+            new_event_type="CIO_ACTION_DEFERRED",
+            payload=payload,
+            actor_id="operator",
+            actor_type="operator",
+            authority="operator",
+        )
+        return f"⏸️ Deferred: {action_id}" + (
+            f" until {defer_until}" if defer_until else ""
+        ) + f"\n   {json.dumps(result, default=str)}"
+    except Exception as e:
+        return f"❌ Failed to defer {action_id}: {e}"
+
+
+def cmd_done() -> str:
+    """Mark a CIO action as done: /cio done <action_id>"""
+    if len(sys.argv) < 3:
+        return "Usage: /cio done <action_id>"
+    action_id = sys.argv[2]
+    try:
+        from lib.cio_action_ledger import CIOActionLedger
+        ledger = CIOActionLedger()
+        result = ledger.transition_action(
+            cio_action_id=action_id,
+            new_event_type="CIO_ACTION_DONE",
+            payload={
+                "operator_decision": "Marked done by operator",
+                "operator_action": "done",
+            },
+            actor_id="operator",
+            actor_type="operator",
+            authority="operator",
+        )
+        return f"✅ Done: {action_id}\n   {json.dumps(result, default=str)}"
+    except Exception as e:
+        return f"❌ Failed to mark {action_id} done: {e}"
+
+
+def cmd_reject() -> str:
+    """Reject a CIO action: /cio reject <action_id>
+
+    The CIO Action Ledger has no dedicated REJECTED status.  Operator rejection
+    is mapped to CIO_ACTION_CANCELLED (a terminal status) with an operator
+    rejection payload.  If semantically a distinct REJECTED status is needed,
+    it should be added to the ledger schema as a first-class terminal status.
+    """
+    if len(sys.argv) < 3:
+        return "Usage: /cio reject <action_id>"
+    action_id = sys.argv[2]
+    try:
+        from lib.cio_action_ledger import CIOActionLedger
+        ledger = CIOActionLedger()
+        result = ledger.transition_action(
+            cio_action_id=action_id,
+            new_event_type="CIO_ACTION_CANCELLED",
+            payload={
+                "operator_decision": "Rejected by operator (mapped to CANCELLED)",
+                "operator_action": "reject",
+                "cancel_reason": "operator_rejection",
+            },
+            actor_id="operator",
+            actor_type="operator",
+            authority="operator",
+        )
+        schema_gap = (
+            "Note: CIO Action Ledger has no dedicated REJECTED terminal status. "
+            "Rejection is stored as CANCELLED with cancel_reason=operator_rejection. "
+            "Consider adding CIO_ACTION_REJECTED and REJECTED status to "
+            "VALID_EVENT_TYPES/TERMINAL_STATUSES for semantic clarity."
+        )
+        return (
+            f"🚫 Rejected (cancelled): {action_id}\n"
+            f"   {schema_gap}\n"
+            f"   {json.dumps(result, default=str)}"
+        )
+    except Exception as e:
+        return f"❌ Failed to reject {action_id}: {e}"
+
+
 HELP = """🤖 CIO Commands:
   /cio                 — Full CIO dashboard
   /cio actions         — Open action items
@@ -296,6 +392,9 @@ HELP = """🤖 CIO Commands:
   /cio risk            — Risk overview
   /cio action <id>     — Detail on one action (coming soon)
   /cio ack <id>        — Acknowledge an action
+  /cio defer <id> [date] — Defer an action (optionally until date)
+  /cio reject <id>     — Reject/cancel an action
+  /cio done <id>       — Mark an action as done
   /cio rate <id> <useful|notuseful> — Rate action usefulness
 
 Data source: CIO Data Broker (13 domains). Zero model calls."""
@@ -313,6 +412,12 @@ def main() -> int:
         print(cmd_ack())
     elif subcommand == "rate":
         print(cmd_rate())
+    elif subcommand == "defer":
+        print(cmd_defer())
+    elif subcommand == "reject":
+        print(cmd_reject())
+    elif subcommand == "done":
+        print(cmd_done())
     elif subcommand == "action" and len(sys.argv) > 2:
         print(f"📋 Action detail for {sys.argv[2]} — coming soon")
     else:

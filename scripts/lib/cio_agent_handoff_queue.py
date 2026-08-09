@@ -102,35 +102,27 @@ AGENT_REGISTRY: dict[str, dict[str, str]] = {
 
 ALLOWED_TASK_TYPES = frozenset({
     "cio_question",
+    "specialist_reconciliation",
+    "evidence_review",
     "fundamental_research",
+    "catalyst_review",
+    "watch_review",
     "allocation_review",
+    "retirement_review",
+    "income_review",
+    "liquidity_review",
     "risk_review",
     "tax_account_review",
-    "retirement_review",
-    "evidence_review",
-    "specialist_reconciliation",
-    "wake",
     "wealth_synthesis",
     "goal_tracking",
     "liquidity_planning",
+    "multi_account_coordination",
     "tax_coordination",
     "estate_review",
-    "multi_account_coordination",
+    "wake",
 })
 
 TARGET_NOT_READY_POLICY = "BLOCKED"  # Not-ready agents: BLOCKED (not REJECTED)
-
-ALLOWED_TASK_TYPES = frozenset({
-    "cio_question",
-    "fundamental_research",
-    "allocation_review",
-    "risk_review",
-    "tax_account_review",
-    "retirement_review",
-    "evidence_review",
-    "specialist_reconciliation",
-    "wake",
-})
 
 FORBIDDEN_TASK_TYPES = frozenset({
     "execute_trade",

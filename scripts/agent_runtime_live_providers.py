@@ -312,7 +312,7 @@ def job_source(agent_id: str, limit: int = 8) -> Sequence[Any]:
         try:
             from scripts.lib.cio_event_bus import CIOEventBus
             bus = CIOEventBus()
-            events = bus.poll(unacknowledged_only=True, limit=limit)
+            events = bus.poll(consumer="alex", limit=limit)
             for evt in events:
                 jobs.append(JobRequest(
                     agent_id="alex",
