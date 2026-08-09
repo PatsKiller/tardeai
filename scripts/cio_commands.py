@@ -119,8 +119,10 @@ def cmd_status() -> str:
             emoji = {"Critical": "🚨", "High": "🔴", "Medium": "🟡", "Low": "⚪", "Info": "ℹ️"}.get(notif, "⚪")
             title = (a.get("title") or a.get("recommendation", ""))[:80]
             op_decision = a.get("operator_decision", "")
+            bias = a.get("bias_flag", "")
+            bias_tag = f" 🧠{bias.replace('_', ' ')}" if bias else ""
             decision_suffix = f" — {op_decision}" if op_decision and notif in ("Critical", "High") else ""
-            lines.append(f"   {emoji} [{a.get('domain', '?')}] {title}{decision_suffix}")
+            lines.append(f"   {emoji} [{a.get('domain', '?')}{bias_tag}] {title}{decision_suffix}")
     else:
         lines.append("   No open actions")
 

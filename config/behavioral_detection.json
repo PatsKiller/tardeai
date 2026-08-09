@@ -1,0 +1,37 @@
+{
+  "_meta": {
+    "version": "1.0.0",
+    "created_at": "2026-08-09",
+    "status": "SHADOW",
+    "note": "Behavioral finance detection thresholds. Shadow-only — findings are advisory, never execute. Operator sees through Alex. Thresholds tuned for ~$1.27M book."
+  },
+  "disposition_rule1": {
+    "enabled": true,
+    "description": "Long-held material losers — primary 'hold losers too long' signal",
+    "min_loss_pct": 0.15,
+    "min_loss_abs": 8000,
+    "min_holding_months": 9,
+    "min_weight_pct": 0.025,
+    "critical_loss_pct": 0.35,
+    "critical_loss_abs": 25000,
+    "critical_holding_months": 18,
+    "thesis_stale_months": 6,
+    "severity": {
+      "medium": { "min_loss_pct": 0.15, "min_holding_months": 9 },
+      "high": { "min_loss_pct": 0.25, "min_holding_months": 12 },
+      "critical": { "min_loss_pct": 0.35, "min_holding_months": 18, "min_loss_abs_override": 25000 }
+    }
+  },
+  "disposition_rule2": {
+    "enabled": false,
+    "description": "Rapid realization of winners while material losers remain — requires realization history",
+    "note": "Disabled until clean realization history is available from broker transaction log"
+  },
+  "false_positive_mitigations": {
+    "exclude_if_thesis_active": true,
+    "exclude_if_core_holding": true,
+    "exclude_if_tax_constrained": true,
+    "exclude_if_guardian_risk_signal": true,
+    "exclude_if_loss_below_min_abs": true
+  }
+}

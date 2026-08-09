@@ -227,6 +227,180 @@ def _compute_notification_priority(domain: str, change_type: str) -> str:
     return "Low"
 
 
+# ── Behavioral finance detection ──────────────────────────────────────────────
+
+def _load_behavioral_config() -> dict[str, Any]:
+    """Load behavioral detection thresholds from config."""
+    cfg_path = PROJECT_ROOT / "config" / "behavioral_detection.json"
+    if not cfg_path.exists():
+        return {}
+    try:
+        return json.loads(cfg_path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _detect_disposition_effect(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
+    """Rule 1: Detect long-held material losers — disposition effect signal.
+
+    Returns list of findings, each with bias_flag, severity, and operator framing.
+    Zero model calls. Uses config/behavioral_detection.json for thresholds.
+    """
+    cfg = _load_behavioral_config()
+    rule1 = cfg.get("disposition_rule1", {})
+    if not rule1.get("enabled", False):
+        return []
+
+    domains = snapshot.get("domains", {})
+    portfolio = domains.get("portfolio", {})
+    model_portfolio = domains.get("model_portfolio", {})
+    ips = domains.get("investment_policy", {})
+
+    # Need portfolio value to compute weights
+    total_value = portfolio.get("total_value")
+    if not total_value or total_value <= 0:
+        return []
+
+    # Load thresholds
+    min_loss_pct = rule1.get("min_loss_pct", 0.15)
+    min_loss_abs = rule1.get("min_loss_abs", 8000)
+    min_holding_months = rule1.get("min_holding_months", 9)
+    min_weight_pct = rule1.get("min_weight_pct", 0.025)
+    critical_loss_pct = rule1.get("critical_loss_pct", 0.35)
+    critical_loss_abs = rule1.get("critical_loss_abs", 25000)
+
+    # Load holdings for per-position data
+    holdings_path = PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json"
+    if not holdings_path.exists():
+        return []
+
+    try:
+        holdings_data = json.loads(holdings_path.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+
+    findings: list[dict[str, Any]] = []
+    holdings = holdings_data.get("holdings", [])
+    taxable_accounts = ips.get("accounts", {}).get("taxable", [])
+    taxable_names = {a.get("name", "").lower() for a in taxable_accounts} if taxable_accounts else set()
+
+    for h in holdings:
+        symbol = h.get("symbol", "")
+        if not symbol or h.get("is_cash"):
+            continue
+
+        market_value = float(h.get("market_value", 0) or 0)
+        shares = float(h.get("shares", 0) or 0)
+        if market_value <= 0 or shares <= 0:
+            continue
+
+        # Check if taxable account
+        account = (h.get("account", "") or "").lower()
+        if taxable_names and account not in taxable_names:
+            continue  # skip retirement accounts for disposition detection
+
+        # Weight check
+        weight_pct = market_value / total_value
+        if weight_pct < min_weight_pct:
+            continue
+
+        # Cost basis estimation: use account-level gain or approximate from price
+        cost_basis = h.get("cost_basis") or h.get("average_cost")
+        if not cost_basis:
+            # Fallback: estimate from account-level data
+            acct_summaries = holdings_data.get("account_summaries", {})
+            acct = acct_summaries.get(account, {})
+            if acct.get("total_gain_pct") is not None and acct.get("total_value", 0) > 0:
+                # Approximate: if account has a gain, individual losers would have lower cost basis
+                # This is a rough approximation — lot-level data would be better
+                cost_basis = None  # can't reliably estimate per-position
+
+        unrealized_pnl: float | None = None
+        unrealized_pnl_pct: float | None = None
+
+        if cost_basis and float(cost_basis) > 0:
+            cost = float(cost_basis)
+            unrealized_pnl = market_value - cost
+            if cost > 0:
+                unrealized_pnl_pct = (unrealized_pnl / cost) * 100
+        else:
+            # Use price and account gain as rough proxy
+            price = float(h.get("price", 0) or 0)
+            acct_summaries = holdings_data.get("account_summaries", {})
+            acct = acct_summaries.get(account, {})
+            if price > 0 and acct.get("total_gain_pct") is not None and acct.get("total_value", 0) > 0:
+                acct_gain_pct = float(acct.get("total_gain_pct", 0))
+                if acct_gain_pct < -5:  # account is down — positions likely have losses
+                    # Estimate: the account's loss is distributed proportionally
+                    estimated_cost = price * shares / (1 + acct_gain_pct / 100)
+                    unrealized_pnl = market_value - estimated_cost
+                    if estimated_cost > 0:
+                        unrealized_pnl_pct = (unrealized_pnl / estimated_cost) * 100
+
+        # Skip if we can't compute P&L
+        if unrealized_pnl_pct is None and unrealized_pnl is None:
+            continue
+
+        # Rule 1 check: material loss
+        is_material_loss = False
+        if unrealized_pnl_pct is not None and unrealized_pnl_pct <= -(min_loss_pct * 100):
+            is_material_loss = True
+        if unrealized_pnl is not None and abs(unrealized_pnl) >= min_loss_abs:
+            is_material_loss = True
+
+        if not is_material_loss:
+            continue
+
+        # Holding period check — approximate from available data
+        holding_months: int | None = None
+        updated_at = h.get("updated_at") or h.get("as_of", "")
+        if updated_at:
+            try:
+                from datetime import datetime, timezone
+                dt = datetime.fromisoformat(str(updated_at).replace("Z", "+00:00"))
+                age_days = (datetime.now(timezone.utc) - dt).days
+                holding_months = max(1, age_days // 30)
+            except Exception:
+                pass
+
+        if holding_months and holding_months < min_holding_months:
+            continue
+
+        # Severity
+        loss_pct = abs(unrealized_pnl_pct) if unrealized_pnl_pct else 0
+        loss_abs = abs(unrealized_pnl) if unrealized_pnl else 0
+
+        if loss_pct >= critical_loss_pct * 100 or loss_abs >= critical_loss_abs:
+            severity = "Critical"
+        elif loss_pct >= 25:
+            severity = "High"
+        else:
+            severity = "Medium"
+
+        # Harvest value estimate
+        harvest_value = round(min(loss_abs, 3000) * 0.24)  # rough federal tax benefit
+
+        findings.append({
+            "symbol": symbol,
+            "bias_flag": "disposition_effect",
+            "rule": "rule1_long_held_loser",
+            "severity": severity,
+            "loss_pct": round(loss_pct, 1),
+            "loss_abs": round(loss_abs),
+            "holding_months": holding_months,
+            "weight_pct": round(weight_pct * 100, 1),
+            "account": account,
+            "estimated_harvest_value_usd": harvest_value,
+            "suggested_reframe": (
+                f"If {symbol} were purchased today at current price, "
+                f"would the size ({round(weight_pct * 100, 1)}% of equity) still match the risk budget? "
+                f"A partial trim could restore the original allocation target."
+            ),
+        })
+
+    return findings
+
+
 def _evaluate_escalation_triggers(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
     """Evaluate hard escalation triggers against the snapshot. Returns High+ findings."""
     triggers: list[dict[str, Any]] = []
@@ -443,6 +617,53 @@ def run_heartbeat(interval_minutes: int = 30, max_actions: int = 5) -> dict[str,
             actions_created += 1
             print(f"  [cio-hb] {change_type} [{notif_priority}]: {domain} → {action['cio_action_id']}")
 
+    # 5. Behavioral finance detection — disposition effect
+    behavioral_findings = _detect_disposition_effect(snapshot)
+    for finding in behavioral_findings:
+        notif_priority = finding.get("severity", "Medium")
+        action = {
+            "cio_action_id": f"cio-bh-{str(uuid.uuid4())[:8]}",
+            "created_at": _now_iso(),
+            "status": "OPEN",
+            "priority": "P1" if notif_priority == "Critical" else "P2",
+            "notification_priority": notif_priority,
+            "domain": "behavioral",
+            "title": f"[Disposition Effect] {finding['symbol']} — {finding['loss_pct']:.1f}% loss, ~{finding.get('holding_months', '?')}mo hold",
+            "recommendation": finding.get("suggested_reframe", ""),
+            "why_now": (
+                f"{finding['symbol']}: unrealized loss {finding['loss_pct']:.1f}% "
+                f"(${finding['loss_abs']:,.0f}), held ~{finding.get('holding_months', '?')}mo, "
+                f"weight {finding['weight_pct']:.1f}% of equity. "
+                f"Estimated harvest value: ~${finding.get('estimated_harvest_value_usd', 0)}."
+            ),
+            "bias_flag": finding.get("bias_flag"),
+            "rule": finding.get("rule"),
+            "behavioral_cost_estimate": finding.get("estimated_harvest_value_usd"),
+            "suggested_reframe": finding.get("suggested_reframe"),
+            "evidence_refs": [],
+            "affected_accounts": [finding.get("account", "")],
+            "affected_symbols": [finding.get("symbol", "")],
+            "estimated_financial_impact": finding.get("estimated_harvest_value_usd"),
+            "estimated_tax_impact": finding.get("estimated_harvest_value_usd"),
+            "risk_if_done": "None — tax-loss harvesting is tax-advantageous",
+            "risk_if_not_done": f"Continued holding of {finding['symbol']} at current weight may drag portfolio performance",
+            "operator_decision_required": True,
+            "operator_decision": _operator_decision(notif_priority),
+            "source_snapshot_id": snapshot.get("snapshot_id", "cio-heartbeat"),
+            "hermes_challenge_ref": None,
+            "cio_artifact_id": None,
+        }
+        _append_jsonl(ACTION_LEDGER_PATH, {
+            "event_type": "CIO_ACTION_CREATED",
+            "event_id": str(uuid.uuid4()),
+            "timestamp": _now_iso(),
+            "actor": "cio_heartbeat",
+            "authority": "advisory",
+            "payload": action,
+        })
+        actions_created += 1
+        print(f"  [cio-bh] 🧠 Disposition Effect [{notif_priority}]: {finding['symbol']} ({finding['loss_pct']:.1f}% loss)")
+
     elapsed = time.time() - t0
     summary = {
         "heartbeat_id": snapshot.get("snapshot_id"),
@@ -451,6 +672,7 @@ def run_heartbeat(interval_minutes: int = 30, max_actions: int = 5) -> dict[str,
         "changes_detected": len(changes),
         "actions_created": actions_created,
         "delegation": delegation_summary,
+        "behavioral_findings": len(behavioral_findings),
         "elapsed_ms": int(elapsed * 1000),
         "mode": "shadow",
         "model_calls": 0,

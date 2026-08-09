@@ -18,6 +18,9 @@ const NOTIF_COLOR: Record<string, string> = {
 const NOTIF_SORT: Record<string, number> = {
   Critical: 0, High: 1, Medium: 2, Low: 3, Info: 4,
 }
+const BIAS_EMOJI: Record<string, string> = {
+  disposition_effect: '🧠',
+}
 const STATE_COLOR: Record<string, string> = {
   AVAILABLE: 'var(--green)', DATA_UNAVAILABLE: 'var(--red)', STALE: 'var(--amber)',
 }
@@ -132,6 +135,11 @@ export default function CioHub({ onDrill }: Props) {
                   </span>
                   <span style={{ color: 'var(--text2)', fontSize: 13 }}>{(a.title || a.recommendation || '')}</span>
                   <span style={{ color: 'var(--text3)', fontSize: 11, marginLeft: 8 }}>· {a.domain}</span>
+                  {a.bias_flag && (
+                    <span style={{ color: 'var(--accent)', fontSize: 10, marginLeft: 6 }} title={a.bias_flag}>
+                      {BIAS_EMOJI[a.bias_flag] || '🧠'} {a.bias_flag.replace(/_/g, ' ')}
+                    </span>
+                  )}
                   {a.operator_decision && (
                     <span style={{ color: a.notification_priority === 'Critical' || a.notification_priority === 'High' ? 'var(--amber)' : 'var(--text3)', fontSize: 10, marginLeft: 8 }}>
                       {a.operator_decision}
@@ -157,7 +165,14 @@ export default function CioHub({ onDrill }: Props) {
                 <span style={{ color: 'var(--text3)', fontSize: 11 }}>· {a.domain}</span>
                 <StatusBadge status={a.status === 'OPEN' ? 'warning' : 'fresh'}>{a.status}</StatusBadge>
               </div>
-              <div style={{ color: 'var(--text)', fontSize: 13 }}>{a.title || a.recommendation}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ color: 'var(--text)', fontSize: 13 }}>{a.title || a.recommendation}</span>
+                {a.bias_flag && (
+                  <span style={{ color: 'var(--accent)', fontSize: 10 }} title={a.bias_flag}>
+                    {BIAS_EMOJI[a.bias_flag] || '🧠'} {a.bias_flag.replace(/_/g, ' ')}
+                  </span>
+                )}
+              </div>
               {a.why_now && <div style={{ color: 'var(--text2)', fontSize: 12, marginTop: 2 }}>{a.why_now}</div>}
               {a.operator_decision && (
                 <div style={{ color: a.notification_priority === 'Critical' || a.notification_priority === 'High' ? 'var(--amber)' : 'var(--text3)', fontSize: 11, marginTop: 2, fontStyle: 'italic' }}>
