@@ -4,10 +4,15 @@ All endpoints return stable, frontend-friendly JSON shapes.
 Read-only aggregation + journal review write layer.
 """
 import json
+import logging
 import os
+import re
 from datetime import datetime, timezone, timedelta
 from decimal import Decimal
 from pathlib import Path
+
+log = logging.getLogger(__name__)
+logger = log  # alias used by YAML tuning + john_decide handlers
 
 # SELF-HEAL on reload: the server hot-reloads api_v2 on mtime change but NOT the
 # decision-authority modules api_v2 imports. A signature change there (e.g. the
@@ -17808,6 +17813,7 @@ def _prospects_add_to_watchlist(body: dict) -> tuple:
     if not symbol:
         return 400, {"ok": False, "error": "symbol required"}
     try:
+        from db_adapter import get_connection as get_db
         conn = get_db()
         cur = conn.cursor()
         # Insert into watchlist_items if not exists
@@ -19769,6 +19775,19 @@ def _broker_list_cache_put(key: str, data: dict) -> None:
         if len(blob) > 24:
             blob = dict(sorted(blob.items(), key=lambda kv: float((kv[1] or {}).get("ts") or 0))[-24:])
         _BROKER_LIST_DISK.write_text(json.dumps(blob, default=str)[:800000], encoding="utf-8")
+    except Exception:
+        pass
+
+
+def _broker_list_cache_clear() -> None:
+    """Clear in-memory and on-disk broker list caches."""
+    try:
+        _BROKER_LIST_CACHE.clear()
+    except Exception:
+        pass
+    try:
+        if _BROKER_LIST_DISK.exists():
+            _BROKER_LIST_DISK.unlink()
     except Exception:
         pass
 
@@ -28352,9 +28371,10 @@ def _discovery_add(body):
         # kick off enrichment + scoring now so the names get composite scores within a couple minutes
         try:
             import subprocess
+            import sys as _sys_exec
             subprocess.Popen(["nohup", "bash", "-c",
-                f"cd {PROJECT_ROOT} && {sys.executable} scripts/watchlist_enrichment_sweep.py --once --limit 40 "
-                f">> logs/discovery_enrich.log 2>&1 && {sys.executable} scripts/hermes_watchlist_scorer.py --once "
+                f"cd {PROJECT_ROOT} && {_sys_exec.executable} scripts/watchlist_enrichment_sweep.py --once --limit 40 "
+                f">> logs/discovery_enrich.log 2>&1 && {_sys_exec.executable} scripts/hermes_watchlist_scorer.py --once "
                 f">> logs/discovery_enrich.log 2>&1"],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL, start_new_session=True)
         except Exception:
@@ -31422,7 +31442,7 @@ def _pullback_score_formula():
     prox, tgt = 0.6, 20.0
     try:
         import yaml as _y
-        cfg = _y.safe_load((root / "config" / "pullback_macd_screener.yaml").read_text()) or {}
+        cfg = _y.safe_load((PROJECT_ROOT / "config" / "pullback_macd_screener.yaml").read_text()) or {}
         flat = {}
         def _walk(d):
             for k, v in (d or {}).items():
@@ -42003,13 +42023,9 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         try:
             import subprocess as _sp
             pid_arg = []
-            body = {}
-            try:
-                body = json.loads(environ.get('wsgi.input', b'').read() if hasattr(environ.get('wsgi.input', b''), 'read') else b'{}')
-            except Exception:
-                pass
-            if body.get('proposal_id'):
-                pid_arg = ['--proposal-id', str(body['proposal_id'])]
+            _req_body = body or {}
+            if _req_body.get('proposal_id'):
+                pid_arg = ['--proposal-id', str(_req_body['proposal_id'])]
             r = _sp.run(
                 [str(PROJECT_ROOT / ".venv/bin/python3"),
                  str(PROJECT_ROOT / "scripts/proposal_enrichment_loop.py"), "--run", "--limit", "10"] + pid_arg,

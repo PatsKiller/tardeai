@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import time
 from datetime import datetime, timezone
 from typing import Optional
@@ -43,6 +44,10 @@ log = logging.getLogger(__name__)
 # ── Config ────────────────────────────────────────────────────────────────────
 REQUEST_TIMEOUT = 10
 REQUEST_DELAY   = 0.3
+
+_REDDIT_HEADERS = {
+    "User-Agent": "TradeAI/12.0 (social sentiment scanner; contact@example.com)",
+}
 
 REDDIT_SUBS = [
     "wallstreetbets",

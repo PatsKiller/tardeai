@@ -12,8 +12,10 @@ Uses flock to prevent duplicate instances.
 Paper mode only. No live trading.
 """
 import json, logging, os, sys, time
+import urllib.request
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlencode
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))

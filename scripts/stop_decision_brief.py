@@ -85,8 +85,9 @@ def generate_stop_brief(symbol: str, alert_data: Dict, state_dir: str, root: str
     price = alert_data.get("price", alert_data.get("current_price", 0))
     stop_price = alert_data.get("stop_price", alert_data.get("stop", stops.get(symbol, {}).get("stop", 0)))
     # Fallback: if price is 0, try to get from enrichment cache or holdings
-    if not price and e:
-        price = e.get("price", e.get("close", 0))
+    _e = enrichment.get(symbol, {})
+    if not price and _e:
+        price = _e.get("price", _e.get("close", 0))
     if not price and sym_holdings:
         shares = sum(h.get("shares", 0) or 0 for h in sym_holdings)
         if shares > 0:
