@@ -1,8 +1,9 @@
 # Trade AI v12 — Documentation Roster
 
-Generated: 2026-05-26 (post-incident recovery session)
+**Generated:** 2026-05-26 (post-incident recovery session)
+**⚠️ Stale — last full scan 2026-05-26. Since then added: `architecture/cio/` (38 files), `agent_runtime/` (12 files), `wealth-advisor/` (1 file), multiple architecture/, governance/, hermes/, runbooks/, sessions/, brokers/, audits/ additions. See `DOCUMENTATION_INDEX.md` for the current canonical index. Roster below is historical and incomplete — newer additions appended at end.
 
-## (root) (17 files)
+## (root) (17 files — May 2026 snapshot)
 - `A1A.md` (4KB)
 - `AGENT_ROSTER.md` (6KB)
 - `APPENDIX_E_SCRIPT_ROUTING_MATRIX.md` (5KB)
@@ -443,10 +444,30 @@ Generated: 2026-05-26 (post-incident recovery session)
 - `BOT_MATURITY_ROADMAP_v1.md` (19KB)
 - `SCREENER_REFERENCE.md` (8KB)
 
-## architecture (1 files)
+## architecture (1 file — May snapshot; now expanded)
 - `TRADE_INTELLIGENCE_JOURNAL_DESIGN.md` (11KB)
 
-**Total active docs: 311**
+## architecture/cio (38 files — added 2026-08, not in original scan)
+See `docs/architecture/cio/` for: CIO_PHASE_3_DELIVERY.md, ADR_*.md (8 ADRs), CIO_*_LAB.md (5 lab docs), PHASE_2_*.md (8 files), PHASE_MINUS_1_*.md (2 files), CIO_PLATFORM_READINESS_REPORT.md, CIO_QUALITY_METRICS.md, CIO_RUN_BUDGETS.md, CIO_OPERATOR_COMMUNICATION_POLICY.md, CIO_FINANCIAL_SCHEDULE_POLICY.md, CIO_OPENCLAW_GOVERNED_MODEL_BRIDGE.md, SPECIALIST_MATURITY_CATALOG.md, HERMES_CHALLENGE_POLICY.md, FINANCIAL_DOMAIN_CAPABILITY_MATRIX.md, OPERATOR_IPS_TEMPLATE.md, LEGACY_*.md (2 files), OPENCLAW_CIO_ARCHITECTURE_FEEDBACK_2026-08-08.md
+
+## agent_runtime (12 files — added 2026-07, not in original scan)
+- `AGENT_HANDBOOK.md`
+- `AGENT_IDENTITY_NAMESPACE_RECOMMENDATION_v1.md`
+- `AGENT_MATURITY_OBSERVABILITY_BASELINE_v1.md`
+- `AGENT_MATURITY_OBSERVABILITY_IMPLEMENTATION_v1.md`
+- `AGENT_MATURITY_OBSERVABILITY_ROLLBACK_v1.md`
+- `AGENT_MATURITY_OUTCOME_COMPLETENESS_DRY_RUN_v1.md`
+- `AGENT_PERMISSION_MATRIX.md`
+- `FLEET_LIFECYCLE_AND_PROMOTION.md`
+- `FLEET_STATUS_2026-07-30.md`
+- `LANE_D_SHADOW_AGENTS.md`
+- `PERSISTENCE_RUNBOOK.md`
+- `SHADOW_ACTIVATION_RUNBOOK.md`
+
+## wealth-advisor (1 file — added 2026-08-09)
+- `STEPH_WEALTH_ADVISOR.md` — full Steph Wealth Advisor documentation
+
+**Total active docs: 311 (May 2026 snapshot) + 51 added since (38 CIO + 12 agent_runtime + 1 wealth) = ~362**
 
 ## Archived 2026-05-26 (8 files)
 Phase 2 observation, A4/A5 checks, session logs, old remediation moved to `_archive/2026-05-26/`

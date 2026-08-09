@@ -1,76 +1,89 @@
 # Trade AI v12 — Agent Roster
 
-> **⚠️ Model policy (validated 2026-06-02):** gemma3:12b = primary chat, gemma3:4b = fallback, gemma3:27b = overnight; **qwen3-embedding:8b = embeddings (active)**; **qwen3:14b (chat) is DISABLED + uninstalled.** Any reference below to qwen3:14b as an active chat/generation model is superseded — see `MASTER_SYSTEM_DOCUMENTATION.md` §12.
+> **⚠️ Model policy (validated 2026-08-09):** DeepSeek V4 Pro = primary CIO/synthesis; DeepSeek V4 Flash = routine agents; gemma3:12b = local chat primary; gemma3:4b = local fallback; gemma3:27b = overnight deep; **qwen3-embedding:8b = embeddings (active)**; **qwen3:14b (chat) is DISABLED + uninstalled.** All agent model references below have been updated. See `docs/LLM_FLEET_STRATEGY_v4_1_FINAL.md` and `docs/v4_1_deployment_log.md`.
 
 
-Generated: 2026-05-24 | All agents documented with identity, role, model, and scheduling.
+**Generated:** 2026-05-24 | **Updated:** 2026-08-09 (model policy, CIO Phase 3, Wealth Advisor, Wave-3 agent_runtime)
+**Related:** `docs/architecture/cio/` (38 CIO architecture docs) · `docs/wealth-advisor/STEPH_WEALTH_ADVISOR.md` · `docs/agent_runtime/FLEET_STATUS_2026-07-30.md`
 
 ## Agent Summary
 
-| Agent | Display | Role | Model | Platform | Schedule |
-|-------|---------|------|-------|----------|----------|
-| Maria | 🔬 Maria | Research analyst / catalyst verification | qwen3:14b (local) | Trade AI LLM | */10-15 via agent job worker |
-| Maria Research | 🔬 Maria Research | Deep research / two-pass RAG analysis | qwen3:14b (local) | Trade AI LLM | */10-15 via agent job worker |
-| Steph | 📊 Steph | Income guardian / allocation strategist | qwen3:14b (local) | Trade AI LLM | */10-15 via agent job worker |
-| Risk Agent | 🛡️ Risk | Risk management / stop coverage / portfolio heat | qwen3:14b (local) | Trade AI LLM | */10-15 via agent job worker |
-| Tax Agent | 💰 Tax | Tax optimization / Roth conversion / harvest | qwen3:14b (local) | Trade AI LLM | */10-15 via agent job worker |
-| Alex | 👔 Alex | CIO / escalation arbiter / strategic oversight | qwen3:14b (local) | Trade AI LLM + OpenClaw | Daily 5 AM + hygiene 7:15 AM |
-| Aegis | 🏛️ Aegis | Portfolio surveillance / overnight analysis | qwen3:14b (local) | Trade AI LLM + OpenClaw | Overnight 8 PM + surveillance 8 AM + social 11/3 PM + nightly 7 PM + synthesis 9 PM + transcript 9 AM + brief 8:05 AM |
-| Iris | 📚 Iris | Intelligence librarian / RAG coverage / taxonomy | qwen3:14b (local) | Trade AI LLM + OpenClaw | Weekly Sun 10 AM + daily gap 7 AM |
-| Social Scalp | 📡 Social Scalp | Social mention scanner / GO-WAIT-AVOID | qwen3:14b (local) | Trade AI LLM | Part of scalp pipeline |
-| Scalp Critic | 🎯 Scalp Critic | Post-scan critic / catalyst validation | qwen3:14b (local) | Trade AI LLM | Part of scalp pipeline |
+| Agent | Display | Role | Model | Platform | Schedule | Authority |
+|-------|---------|------|-------|----------|----------|-----------|
+| Maria | 🔬 Maria | Research analyst / catalyst verification | gemma3:12b (local) | Trade AI LLM | */10-15 via agent job worker | advisory |
+| Maria Research | 🔬 Maria Research | Deep research / two-pass RAG analysis | gemma3:12b (local) | Trade AI LLM | */10-15 via agent job worker | advisory |
+| Steph | 📊 Steph | Wealth & Income Advisor | DeepSeek V4 Flash → Pro | OpenClaw + Trade AI Wave-3 | OpenClaw cron: weekly Sun 9am + monthly 1st 9am | READ_ONLY_ADVISORY |
+| Risk Agent | 🛡️ Risk | Risk management / stop coverage / portfolio heat | gemma3:12b (local) | Trade AI LLM | */10-15 via agent job worker | advisory |
+| Tax Agent (Ledger) | 💰 Tax | Tax optimization / Roth conversion / harvest | gemma3:12b (local) | Trade AI LLM + Wave-3 | */10-15 via agent job worker | advisory |
+| Alex | 👔 Alex | Chief Investment & Wealth Officer | DeepSeek V4 Pro (PRO) / V4 Flash (FAST) | OpenClaw + Trade AI Wave-3 (SHADOW) | 30-min heartbeat + 5-min wake worker + scheduled briefs | READ_ONLY_ADVISORY |
+| Aegis | 🏛️ Aegis | Portfolio surveillance / overnight analysis | gemma3:27b (overnight) | Trade AI LLM + OpenClaw | Overnight 8 PM + surveillance 8 AM + social 11/3 PM + nightly 7 PM + synthesis 9 PM + transcript 9 AM + brief 8:05 AM | advisory |
+| Iris | 📚 Iris | Intelligence librarian / RAG coverage / taxonomy | gemma3:12b (local) | Trade AI LLM + OpenClaw | Weekly Sun 10 AM + daily gap 7 AM | advisory |
+| Morgan | 🏦 Morgan | Senior Wealth Advisor — total financial life planning | — (DISABLED) | Trade AI Wave-3 | NONE | DISABLED |
+| Social Scalp | 📡 Social Scalp | Social mention scanner / GO-WAIT-AVOID | gemma3:12b (local) | Trade AI LLM | Part of scalp pipeline | advisory |
+| Scalp Critic | 🎯 Scalp Critic | Post-scan critic / catalyst validation | gemma3:12b (local) | Trade AI LLM | Part of scalp pipeline | advisory |
 
 ## Agent Detail
 
 ### Maria (Research Analyst)
 - **Identity:** Research analyst specializing in catalyst verification and news analysis
-- **Model:** qwen3:14b on Intel Arc B50 GPU (local Ollama)
+- **Model:** gemma3:12b on Intel Arc B50 GPU (local Ollama)
 - **Platform:** Trade AI internal LLM pipeline
 - **Tasks:** Full analysis of watchlist symbols, news sentiment, catalyst detection
 - **Output tables:** watchlist_agent_results, watchlist_agent_jobs
 - **RACI:** R (Responsible) for daily watchlist batch, CIO analysis
 - **Scripts:** process_watchlist_agent_jobs.py (agent=maria)
 
-### Steph (Income Guardian)
-- **Identity:** Allocation strategist focused on income, dividends, and account fit
-- **Model:** qwen3:14b (local)
-- **Platform:** Trade AI internal LLM pipeline
-- **Tasks:** Income impact analysis, account allocation review, dividend strategy
-- **Output tables:** watchlist_agent_results
-- **RACI:** R for daily watchlist batch, C for overnight surveillance
-- **Scripts:** process_watchlist_agent_jobs.py (agent=steph)
+### Steph (Wealth & Income Advisor)
+- **Identity:** Direct practical financial and wealth advisor — separate from Maria, shared-channel explicit routing
+- **Model:** DeepSeek V4 Flash (FAST) → V4 Pro (complex); fallback: deepseek-chat → gpt-5.4
+- **Platform:** OpenClaw (primary dialogue) + Trade AI Wave-3 agent_runtime (SHADOW, DISABLED pending CIO maturity)
+- **Tasks:** Portfolio snapshot, ticker/sector performance, portfolio vs benchmark, Roth conversion headroom, concentration risk, rebalancing, analyst/technical summaries, watchlist summary
+- **OpenClaw workspace:** `~/.openclaw/workspace-steph/` · agent: `~/.openclaw/agents/steph/`
+- **Skills:** `steph-wealth-advisor` (primary) · `daily-portfolio-brief` ("steph, brief me")
+- **Cron (OpenClaw):** `steph-weekly-allocation-review` (Sun 9am ET) · `steph-income-progress` (1st of month 9am ET)
+- **Trade AI Wave-3:** `scripts/agent_runtime/agents/definitions.py` — id `steph`, "Senior Portfolio Advisor", denied: trade.authorize, rebalance.execute, broker.*
+- **Data priority:** local portfolio JSON → PostgreSQL → Finviz → Yahoo → free APIs → external LLM (permission required)
+- **Validation toolkit:** `~/.openclaw/skills/wealth/steph-wealth-advisor/scripts/` (cache audit)
+- **Docs:** `docs/wealth-advisor/STEPH_WEALTH_ADVISOR.md`
 
 ### Risk Agent
 - **Identity:** Risk management agent monitoring stops, portfolio heat, and position sizing
-- **Model:** qwen3:14b (local)
+- **Model:** gemma3:12b (local)
 - **Platform:** Trade AI internal LLM pipeline
 - **Tasks:** Stop coverage, risk gate validation, portfolio heat monitoring
 - **Output tables:** watchlist_agent_results, risk_gate evaluations
 - **RACI:** R for daily watchlist batch, C for overnight surveillance
 - **Scripts:** process_watchlist_agent_jobs.py (agent=risk_agent), risk_gate.py
 
-### Tax Agent
+### Tax Agent (Ledger)
 - **Identity:** Tax optimization agent for Roth conversion, loss harvesting, and IRMAA
-- **Model:** qwen3:14b (local)
-- **Platform:** Trade AI internal LLM pipeline
+- **Model:** gemma3:12b (local)
+- **Platform:** Trade AI internal LLM pipeline + Wave-3 agent_runtime (SHADOW, DISABLED)
 - **Tasks:** Tax-loss harvest identification, account type classification, wash-sale detection
 - **Output tables:** watchlist_agent_results
 - **RACI:** C for daily watchlist batch
 - **Scripts:** process_watchlist_agent_jobs.py (agent=tax_agent)
+- **Wave-3:** `scripts/agent_runtime/agents/definitions.py` — id `ledger`, "Tax Optimization & Lot Selection", DISABLED pending CIO maturity
 
-### Alex (CIO)
-- **Identity:** Chief Investment Officer — escalation arbiter and strategic oversight
-- **Model:** qwen3:14b (local)
-- **Platform:** Trade AI LLM + OpenClaw (Telegram/WhatsApp interface)
-- **Tasks:** CIO decisions, retirement planning, strategic portfolio review, escalation handling
-- **Output tables:** cio_decisions, alert_events
-- **RACI:** R for Alex daily scan, portfolio governance, retirement/IRMAA review
-- **Cron:** run_alex_daily.py (5 AM, 7 AM, 4 PM), alex_hygiene.py (7:15 AM)
-- **OpenClaw:** ~/.openclaw/agents/alex/
+### Alex (Chief Investment & Wealth Officer)
+- **Identity:** Chief Investment & Wealth Officer — autonomous advisory synthesis, escalation arbiter, strategic oversight
+- **Model:** DeepSeek V4 Pro (PRO) for CIO synthesis/complex escalation; DeepSeek V4 Flash (FAST) for routine; secondary: ChatGPT/gpt-5.4 (free OAuth lane, material disagreement only)
+- **Platform:** HYBRID — OpenClaw (agent identity, Telegram dialogue, delegation contracts) + Trade AI Wave-3 agent_runtime (SHADOW, durable state, action ledger, governance)
+- **Tasks:** CIO synthesis (watchlist committee: Maria/Steph/Risk → final verdict), portfolio governance, retirement/IRMAA review, specialist delegation (Steph/Guardian/Ledger), Hermes research challenge, action ledger management, operator communication
+- **Trade AI Wave-3:** `scripts/agent_runtime/agents/definitions.py` — id `alex`, "Chief Investment & Wealth Officer — autonomous advisory synthesis", SHADOW, enabled, 4 triggers (CIO_SCHEDULED_BRIEF, MATERIAL_PORTFOLIO_CHANGE, WATCH_ARTIFACT_CHANGED, SCHEDULED_SWEEP), denied: broker.write, order.*, risk_policy.write, position.*, config.promote, 2fa.*, secret.*, broker.submit, stop.*, approval.*
+- **Durable state (Trade AI):** action ledger (`data/cio/cio_action_ledger.jsonl`), heartbeat snapshots (`cio_heartbeat_snapshots.jsonl`), wake jobs (`cio_wake_jobs.jsonl`), handoff queue (`agent_handoff_queue.jsonl`), notification outbox (`operator_notification_outbox.jsonl`), Hermes challenge queue (`hermes_challenge_queue.jsonl`), Darwin scorecards (`darwin_scorecards.jsonl`)
+- **Runtime:** 30-min heartbeat (`cio_heartbeat.py` — 17-domain financial snapshot, material change detection, deterministic, zero model calls) · 5-min wake worker (`CIORunWorker mode=shadow`) · agent_runtime@alex.timer (~2.5-min cadence) · overnight dual-consensus backfill (`rerun_cio_dual_consensus.py` 9:30 PM, cap CIO_DUAL_CHATGPT_CAP=1100)
+- **Legacy cron (ALL DISABLED 2026-08-08):** run_alex_daily.py, alex_hygiene.py, alex_gov_research.py, alex_retirement_advisor.py — replaced by agent_runtime@alex.timer
+- **API:** `/api/v3/cio` (Command Center dashboard — snapshot, actions, delegation, Hermes research; zero model calls) · `/api/v3/agent-runtime` · `/api/v3/agent-maturity`
+- **OpenClaw:** `~/.openclaw/agents/alex/` — IDENTITY.md, SOUL.md (read-only advisory, tradeai-readonly skill)
+- **Hermes bridge:** `cio_hermes_challenge_queue.py` — Hermes (16,152 research rows) challenges Alex via governed challenge queue
+- **CIO synthesis pipeline:** `scripts/process_watchlist_agent_jobs.py` — Maria/Steph/Risk committee → Grok+ChatGPT dual-consensus → Alex CIO synthesis (DeepSeek V4 Pro) → `cio_decisions` table → Telegram delivery
+- **Docs:** `docs/architecture/cio/` (38 files) — CIO Phase 3 delivery, ADRs, lab docs, platform readiness, quality metrics, run budgets, specialist maturity catalog · `docs/CIO_PROMPT_INPUT_AUDIT_2026_07_01.md` · `docs/architecture/cio/OPENCLAW_CIO_ARCHITECTURE_FEEDBACK_2026-08-08.md`
+- **Authority:** READ_ONLY_ADVISORY — no broker/order/risk/approval/2FA/secret/config authority. All outputs are advisory.
 
 ### Aegis (Portfolio Surveillance)
 - **Identity:** Portfolio surveillance agent — overnight analysis, morning briefs, covered calls
-- **Model:** qwen3:14b (local)
+- **Model:** gemma3:27b (overnight deep)
 - **Platform:** Trade AI LLM + OpenClaw (Telegram delivery)
 - **Tasks:** Overnight surveillance, portfolio briefs, social sentiment, transcript discovery, synthesis
 - **Output tables:** aegis_portfolio_briefs
@@ -80,7 +93,7 @@ Generated: 2026-05-24 | All agents documented with identity, role, model, and sc
 
 ### Iris (Intelligence Librarian)
 - **Identity:** Taxonomy intelligence agent — content coverage, channel curation, RAG hygiene
-- **Model:** qwen3:14b (local)
+- **Model:** gemma3:12b (local)
 - **Platform:** Trade AI LLM + OpenClaw
 - **Tasks:** Gap analysis, channel discovery proposals, content quality monitoring, stale content removal
 - **Output tables:** iris_run_log, iris_proposals
@@ -91,18 +104,46 @@ Generated: 2026-05-24 | All agents documented with identity, role, model, and sc
 ## OpenClaw Agents
 OpenClaw provides the Telegram/WhatsApp interface layer for agent interaction.
 
-| Agent | OpenClaw Dir | Interface |
-|-------|-------------|-----------|
-| Alex | ~/.openclaw/agents/alex/ | Telegram + WhatsApp |
-| Aegis | ~/.openclaw/agents/aegis/ | Telegram (brief delivery) |
-| Iris | ~/.openclaw/agents/iris/ | Telegram (proposals) |
-| Maria | ~/.openclaw/agents/maria/ | **Telegram DMs (bound)** — portfolio, watchlist, concierge |
-| Steph | ~/.openclaw/agents/steph/ | Telegram (allocation) |
-| Main | ~/.openclaw/agents/main/ | Fallback agent (not Telegram DM handler) |
+| Agent | OpenClaw Dir | Interface | Heartbeat | State |
+|-------|-------------|-----------|-----------|-------|
+| Alex (CIO) | ~/.openclaw/agents/alex/ | Telegram + WhatsApp (via Maria→Concierge router) | 30-min (Trade AI cio_heartbeat.py) | LIVE — advisory only |
+| Steph (Wealth) | ~/.openclaw/agents/steph/ | Telegram (shared-channel: "ask Steph") | DISABLED | LIVE — 2 cron jobs |
+| Aegis | ~/.openclaw/agents/aegis/ | Telegram (brief delivery) | Has file | LIVE — 7 cron jobs |
+| Iris | ~/.openclaw/agents/iris/ | Telegram (proposals) | Has file | LIVE — weekly+daily cron |
+| Maria | ~/.openclaw/agents/maria/ | **Telegram DMs (bound)** — portfolio, watchlist, concierge front door | No file found | LIVE |
+| Guardian/Risk | risk_agent workspace | — | No evidence | SKELETON |
+| Ledger/Tax | NO WORKSPACE | — | — | DOES NOT EXIST |
+| Vega | NO WORKSPACE | — | — | DOES NOT EXIST |
+| Darwin | Exists (minimal) | — | No evidence | SKELETON |
+| Sentinel | Exists (minimal) | — | No evidence | SKELETON |
+| Concierge | Exists (minimal) | — | No evidence | SKELETON |
+| Morgan | NO WORKSPACE | — | — | DOES NOT EXIST (Wave-3 only, DISABLED) |
+| Main | ~/.openclaw/agents/main/ | Fallback agent | — | Fallback |
+
+**Note:** Guardian, Ledger, Vega, Darwin, Sentinel, and Concierge OpenClaw agents are skeletal or non-existent — the CIO architecture prompt's 9-agent team has 3 fully operational members (Maria, Steph, Aegis) plus Alex (CIO) with Trade AI durable-state heartbeat. See `docs/architecture/cio/OPENCLAW_CIO_ARCHITECTURE_FEEDBACK_2026-08-08.md` §11 for full gap analysis.
+
+## Wave-3 Agent Runtime (Trade AI — SHADOW/LAB only)
+
+| Agent | Wave | DeploymentState | Enabled | OutputKinds | Reviewer | Scorer |
+|-------|------|-----------------|---------|-------------|----------|--------|
+| alex (CIO) | 3 | SHADOW | ✅ | CIO_SYNTHESIS, ACTION_ITEM | iris | darwin |
+| steph (Allocation) | 3 | SHADOW | ❌ (pending CIO maturity) | ALLOCATION_REVIEW | sentinel | darwin |
+| ledger (Tax) | 3 | SHADOW | ❌ (pending CIO maturity) | TAX_LOT_REVIEW | sentinel | darwin |
+| morgan (Wealth) | 3 | DESIGNED | ❌ (pending CIO maturity) | WEALTH_SYNTHESIS | sentinel | darwin |
+
+**Wave-1 agents** (sentinel, darwin, iris, reflection): defined in `agent_runtime/agents/definitions.py`, SHADOW, enabled but **not producing evidence** (needs provider module + root timer enable). See `docs/agent_runtime/FLEET_STATUS_2026-07-30.md`.
+**Wave-2 agents** (maria, vega, risk_agent, aegis): DESIGNED, disabled — no acceptance evidence (0 runs). Gated behind wave-1 acceptance.
 
 ## LLM Configuration
-- **Primary model:** qwen3:14b on Intel Arc B50 GPU (Vulkan, 41/41 layers offloaded)
+- **CIO/Synthesis:** DeepSeek V4 Pro (PRO, thinking ON for complex escalation) · DeepSeek V4 Flash (FAST, routine) · ChatGPT/gpt-5.4 (free OAuth lane, secondary — material disagreement only)
+- **Routine agents (watchlist batch):** gemma3:12b on Intel Arc B50 GPU (local Ollama, primary chat)
+- **Fallback:** gemma3:4b (light tasks)
+- **Overnight deep:** gemma3:27b
+- **Embeddings:** qwen3-embedding:8b (active)
 - **Ollama URL:** http://localhost:11434
-- **Fallback:** gemma3:4b (light tasks), gemma3:27b (overnight deep analysis)
-- **External:** Claude Sonnet 4 (escalation only, via API), Grok (demoted to fallback)
+- **External:** Grok (free OAuth lane, :8645, CIOrity secondary), ChatGPT (free OAuth lane, :8646)
+- **LLM cost cap:** $0.25/day (`LLM_GLOBAL_DAILY_USD_CAP`)
+- **CIO dual-consensus cap:** `CIO_DUAL_CHATGPT_CAP=1100` (overnight backfill)
+- **Governed routing:** `scripts/lib/cio_governed_model_bridge.py` — Trade AI model registry → OpenClaw provider config (migration in progress)
 - **Budget:** Brave Search 25/day, 850/month with per-caller caps
+- **Gemma4 re-evaluation:** gated for 2026-08-11 (`docs/v4_1_deployment_log.md`)

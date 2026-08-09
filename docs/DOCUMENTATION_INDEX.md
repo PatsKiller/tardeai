@@ -1,5 +1,5 @@
 # Trade AI v12 — Documentation Index
-**Updated:** 2026-07-21 (Alpaca multi-account taxonomy R1–R5 tip `4fa3ba33`; holdings stop-kind; operator card RTH)
+**Updated:** 2026-08-09 (CIO Phase 3 delivery · CIO architecture docs indexed · Steph Wealth Advisor docs · AGENT_ROSTER refreshed · model policy updated)
 **Protocol:** All doc changes follow `docs/A1A.md`. Do not add a doc without updating this index.
 **Scope:** Project root = `/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild`
 
@@ -166,6 +166,23 @@
 | `docs/_archive/2026-05-24_cleanup/old_versions/TRADE_AI_STRATEGY_PLAYBOOK_v1.0.md` | 23-strategy narrative playbook | **Archived** — superseded by live YAML config |
 | `docs/_archive/2026-05-24_cleanup/old_versions/agents_bible.md` | Agent behavior rules, G1–G10, RACI | **Archived** — current rules live in agent configs |
 
+### CIO & Wealth Advisory Agents (Alex & Steph)
+| Document | Purpose | Status |
+|----------|---------|--------|
+| `docs/AGENT_ROSTER.md` | **Canonical agent roster** — all agents with identity, model, platform, schedule, authority (updated 2026-08-09) | Active |
+| `docs/agent_runtime/FLEET_STATUS_2026-07-30.md` | Wave 1-2 agent_runtime fleet status — per-agent SHADOW/DESIGNED state, gap analysis, operator sequence | Active |
+| `docs/agent_runtime/AGENT_HANDBOOK.md` | Agent runtime handbook — lifecycle, promotion contract, evidence gates | Active |
+| `docs/agent_runtime/SHADOW_ACTIVATION_RUNBOOK.md` | Wave-1 SHADOW activation runbook — provider module, root timer, kill switch | Active |
+| `docs/agent_runtime/AGENT_PERMISSION_MATRIX.md` | Per-agent tool deny-lists and authority boundaries | Active |
+| `docs/agent_runtime/FLEET_LIFECYCLE_AND_PROMOTION.md` | Agent promotion contract — gates, evidence requirements, HUMAN_ONLY policy | Active |
+| `docs/agent_runtime/LANE_D_SHADOW_AGENTS.md` | Lane D shadow agent architecture and governance | Active |
+| `docs/agent_runtime/PERSISTENCE_RUNBOOK.md` | Agent runtime durable state persistence | Active |
+| `docs/architecture/cio/CIO_PHASE_3_DELIVERY.md` | **CIO Phase 3 — DELIVERED 2026-08-09**: Alex autonomous CIOrity Officer — hybrid OpenClaw+Trade AI, 9 PRs, action ledger, 30-min heartbeat, wake worker, `/v3/cio` API, Hermes challenge bridge, DeepSeek V4 Pro primary | Active |
+| `docs/architecture/cio/` | **CIO architecture (38 files)** — ADRs (authority, state, containment, LLM governance, scheduler, specialist calc), lab docs (action ledger, wake detector, handoff queue, health boundary, notification outbox), Phase 2 delivery/authority/canary/cost/data/runtime/triggers, Phase -1 readiness/dependency, platform readiness report, quality metrics, run budgets, operator communication, financial schedule, governed model bridge, specialist maturity catalog, Hermes challenge policy, financial domain matrix, operator IPS template, legacy inventories | Active (2026-08-09) |
+| `docs/architecture/cio/OPENCLAW_CIO_ARCHITECTURE_FEEDBACK_2026-08-08.md` | **OpenClaw CIO architecture audit** — runtime truth vs design: 3/9 specialist agents operational, memory/heartbeat disabled, Hermes bridge absent, no agent-to-agent delegation, DeepSeek auth unproven, $0.25/day cost cap concern | Active (2026-08-08) |
+| `docs/CIO_PROMPT_INPUT_AUDIT_2026_07_01.md` | CIO prompt/input audit (Stages 1+2a merged, Stage 2b pending) — synthesis v3→v5, dual-consensus fixes, DQ notes, prompt-size budget | Active (2026-07-01) |
+| `docs/wealth-advisor/STEPH_WEALTH_ADVISOR.md` | **Steph Wealth Advisor** — full documentation: architecture (OpenClaw + Wave-3), persona, command coverage, data discipline, cron jobs, skills, validation toolkit, model routing, deployment, gaps | Active (2026-08-09) |
+
 ### Improvement Plans & Assessments *(both archived)*
 | Document | Purpose | Status |
 |----------|---------|--------|
@@ -240,6 +257,7 @@ The source draft index drifted from the filesystem; corrected here per A1A:
 
 | Date | Change |
 |------|--------|
+| 2026-08-09 | **CIO & Wealth docs synced:** CIO Phase 3 delivery (Alex autonomous CIOrity Officer, hybrid OpenClaw+Trade AI, 9 PRs, action ledger, heartbeat, /v3/cio); 38-file `docs/architecture/cio/` indexed; OpenClaw CIO architecture feedback (2026-08-08) synced; Steph Wealth Advisor full docs created (`docs/wealth-advisor/STEPH_WEALTH_ADVISOR.md`); AGENT_ROSTER refreshed (model policy, Wave-3 states, OpenClaw heartbeats, authority boundaries, Morgan added, all qwen3:14b→gemma3:12b/DeepSeek); DOCS_ROSTER pending regeneration. |
 | 2026-07-15 | Research Intelligence v2.5: security-level RSI/RS/valuation conviction + multi-factor sizing; `RESEARCH_INTELLIGENCE_V2_5_SECURITY_MULTIFACTOR.md`. |
 | 2026-07-15 | Research Intelligence v2.4: concentration + heat actively size recs, theme capacity, funding trims; `RESEARCH_INTELLIGENCE_V2_4_CONCENTRATION_SIZING.md`. |
 | 2026-07-15 | Research Intelligence v2.3: consistent portfolio-aware recs by primary, quality tiers, narrative polish; `RESEARCH_INTELLIGENCE_V2_3_CONSISTENCY.md`. |
