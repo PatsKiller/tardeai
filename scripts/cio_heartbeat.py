@@ -702,6 +702,54 @@ def run_heartbeat(interval_minutes: int = 30, max_actions: int = 5) -> dict[str,
         print(f"  [cio-bh] 🧠 Disposition Effect [{notif_priority}]: {finding['symbol']} ({finding['loss_pct']:.1f}% loss)")
 
     elapsed = time.time() - t0
+    # ── Emit events onto the CIO event bus ──────────────────────────────────
+    events_emitted = 0
+    try:
+        from scripts.lib.cio_event_bus import CIOEventBus
+        bus = CIOEventBus()
+        # Portfolio material change
+        port_change = next((c for c in changes if c[1] == "portfolio" and c[0] == "DATA_CHANGED"), None)
+        if port_change:
+            bus.emit("portfolio.material_change",
+                     {"domain": "portfolio", "change": str(port_change)},
+                     source="cio_heartbeat")
+            events_emitted += 1
+        # Risk heat
+        if next((c for c in changes if c[1] == "risk" and c[0] in ("DATA_CHANGED", "DOMAIN_WENT_STALE")), None):
+            bus.emit("risk.heat_increased",
+                     {"domain": "risk", "change": "changed"},
+                     source="cio_heartbeat")
+            events_emitted += 1
+        # Allocation drift
+        if next((c for c in changes if c[1] in ("model_portfolio", "allocation")), None):
+            bus.emit("allocation.drift",
+                     {"domain": "model_portfolio"},
+                     source="cio_heartbeat")
+            events_emitted += 1
+        # Behavioral flags
+        if behavioral_findings:
+            for bf in behavioral_findings:
+                bus.emit("behavioral.flag_raised",
+                         {"symbol": bf.get("symbol", ""), "rule": bf.get("rule", ""),
+                          "loss_pct": bf.get("loss_pct"), "hold_months": bf.get("hold_months")},
+                         source="cio_heartbeat",
+                         priority="HIGH")
+                events_emitted += 1
+        # Domain stale
+        for change_type, domain in changes:
+            if change_type == "DOMAIN_WENT_STALE":
+                bus.emit("system.domain_stale", {"domain": domain},
+                         source="cio_heartbeat")
+                events_emitted += 1
+        # Heartbeat OK (always emit — proves the system is alive)
+        bus.emit("system.heartbeat_ok",
+                 {"domains": len(snapshot.get("domains", {})),
+                  "changes": len(changes), "actions": actions_created},
+                 source="cio_heartbeat", priority="LOW")
+        events_emitted += 1
+    except Exception:
+        pass  # event bus is optional — heartbeat must not fail if bus is unavailable
+
     summary = {
         "heartbeat_id": snapshot.get("snapshot_id"),
         "collected_at": snapshot.get("collected_at"),
@@ -710,6 +758,7 @@ def run_heartbeat(interval_minutes: int = 30, max_actions: int = 5) -> dict[str,
         "actions_created": actions_created,
         "delegation": delegation_summary,
         "behavioral_findings": len(behavioral_findings),
+        "events_emitted": events_emitted,
         "elapsed_ms": int(elapsed * 1000),
         "mode": "shadow",
         "model_calls": 0,

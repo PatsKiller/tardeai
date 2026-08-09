@@ -265,41 +265,62 @@ def job_source(agent_id: str, limit: int = 8) -> Sequence[Any]:
     def _hash(s: str) -> str:
         return hashlib.sha256(s.encode()).hexdigest()[:16]
 
-    # 1. CIO wake jobs (alex)
+    # 1. CIO wake jobs (alex) — read from wake job store (nested payloads)
     if agent_id == "alex":
         wake_path = PROJECT_ROOT / "data" / "cio" / "cio_wake_jobs.jsonl"
         if wake_path.exists():
             try:
                 for line in wake_path.read_text().strip().splitlines()[-limit:]:
                     entry = json.loads(line)
-                    if entry.get("status") == "PENDING":
+                    payload = entry.get("payload", {})
+                    # Wake store uses nested payloads: payload.wake_job_id, payload.status
+                    status = entry.get("status") or payload.get("status", "")
+                    if status == "PENDING":
                         jobs.append(JobRequest(
                             agent_id="alex",
                             job_type="cio_synthesis",
-                            input_hash=_hash(json.dumps(entry, sort_keys=True)),
-                            enqueued_at=entry.get("created_at", now_iso),
-                            dedup_value=entry.get("wake_id", _hash(line)),
-                            trigger_kind=entry.get("trigger", "SCHEDULED_SWEEP"),
+                            input_hash=_hash(json.dumps(payload, sort_keys=True)),
+                            enqueued_at=entry.get("timestamp") or entry.get("created_at", now_iso),
+                            dedup_value=payload.get("wake_job_id", _hash(line)),
+                            trigger_kind=payload.get("trigger_type", "SCHEDULED_SWEEP"),
                         ))
             except Exception:
                 pass
-        # Hermes challenges
+        # Hermes challenges — nested payload
         challenge_path = PROJECT_ROOT / "data" / "cio" / "hermes_challenge_queue.jsonl"
         if challenge_path.exists():
             try:
                 for line in challenge_path.read_text().strip().splitlines()[-limit:]:
                     entry = json.loads(line)
-                    if entry.get("status") == "ENQUEUED":
+                    payload = entry.get("payload", {})
+                    status = entry.get("status") or payload.get("status", "")
+                    if status in ("PENDING", "ENQUEUED"):
                         jobs.append(JobRequest(
                             agent_id="alex",
                             job_type="hermes_challenge_review",
-                            input_hash=_hash(json.dumps(entry, sort_keys=True)),
-                            enqueued_at=entry.get("created_at", now_iso),
-                            dedup_value=entry.get("challenge_id", _hash(line)),
+                            input_hash=_hash(json.dumps(payload, sort_keys=True)),
+                            enqueued_at=entry.get("timestamp", now_iso),
+                            dedup_value=payload.get("challenge_id", _hash(line)),
                             trigger_kind="HERMES_CHALLENGE",
                         ))
             except Exception:
                 pass
+        # CIO event bus — unacknowledged events
+        try:
+            from scripts.lib.cio_event_bus import CIOEventBus
+            bus = CIOEventBus()
+            events = bus.poll(unacknowledged_only=True, limit=limit)
+            for evt in events:
+                jobs.append(JobRequest(
+                    agent_id="alex",
+                    job_type="cio_synthesis",
+                    input_hash=_hash(json.dumps(evt.to_dict(), sort_keys=True)),
+                    enqueued_at=evt.timestamp,
+                    dedup_value=evt.event_id,
+                    trigger_kind=evt.event_type.replace(".", "_").upper(),
+                ))
+        except Exception:
+            pass
 
     # 2. Agent handoff queue (all agents)
     handoff_path = PROJECT_ROOT / "data" / "cio" / "agent_handoff_queue.jsonl"
