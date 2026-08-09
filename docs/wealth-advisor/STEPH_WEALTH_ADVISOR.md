@@ -50,15 +50,36 @@ Help answer:
 
 ---
 
+## Data Access
+
+Steph reads from the CIO Data Broker (13 domains), giving full visibility into every aspect of the portfolio:
+
+| Domain | Coverage |
+|--------|----------|
+| **holdings_detail** | Every position: symbol, name, account, sector, weight %, day change %, cost basis, unrealized P&L |
+| **transactions** | All buys/sells — 121 closed trades, 102 open lots, trade history by symbol/account |
+| **sectors** | Sector weights with concentration flags (>25% HIGH, >15% ELEVATED) |
+| **portfolio** | Total value, day change, holdings count |
+| **cost_basis** | Per-position tax lots, holding period, unrealized gain/loss |
+| **risk** | Portfolio heat, stop coverage, max drawdown |
+| **income** | Dividend estimates by position |
+| **model_portfolio** | Target vs actual allocation drift, rebalancing thresholds |
+| **investment_policy** | IPS: risk tolerance, constraints, objectives |
+| **watch** | Active watch items, CIO verdicts |
+| **rotation** | Sector leadership, regime signals |
+| **reconciliation** | Broker sync status |
+| **hermes_research** | 3,385+ promoted research topics |
+
 ## Data Discipline
 
 Always prefer in this order:
-1. Local portfolio JSON / cached state
-2. PostgreSQL database (when enabled)
-3. Finviz / cookie-backed data
-4. Yahoo Finance
-5. Other free APIs already available
-6. External LLM only with explicit permission
+1. CIO Data Broker (13 domains, cached 60s, canonical truth — covers everything above)
+2. Local portfolio JSON / cached state
+3. PostgreSQL database (when enabled)
+4. Finviz / cookie-backed data
+5. Yahoo Finance
+6. Other free APIs already available
+7. External LLM only with explicit permission
 
 External LLM rule: If local data and APIs are insufficient, ask exactly:
 > "I need outside model help for this request. Is it okay to use an external LLM?"
