@@ -10,16 +10,16 @@
     "description": "Long-held material losers — primary 'hold losers too long' signal",
     "min_loss_pct": 0.15,
     "min_loss_abs": 8000,
-    "min_holding_months": 9,
+    "min_holding_months": 6,
     "min_weight_pct": 0.025,
-    "critical_loss_pct": 0.35,
-    "critical_loss_abs": 25000,
-    "critical_holding_months": 18,
+    "critical_loss_pct": 0.20,
+    "critical_loss_abs": 20000,
+    "critical_holding_months": 3,
     "thesis_stale_months": 6,
     "severity": {
-      "medium": { "min_loss_pct": 0.15, "min_holding_months": 9 },
-      "high": { "min_loss_pct": 0.25, "min_holding_months": 12 },
-      "critical": { "min_loss_pct": 0.35, "min_holding_months": 18, "min_loss_abs_override": 25000 }
+      "medium": { "min_loss_pct": 0.15, "min_holding_months": 6, "min_loss_abs": 5000 },
+      "high": { "min_loss_pct": 0.20, "min_holding_months": 4, "min_loss_abs": 10000 },
+      "critical": { "min_loss_pct": 0.20, "min_holding_months": 3, "min_loss_abs_override": 20000 }
     }
   },
   "disposition_rule2": {

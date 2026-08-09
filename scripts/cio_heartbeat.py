@@ -243,8 +243,8 @@ def _load_behavioral_config() -> dict[str, Any]:
 def _detect_disposition_effect(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
     """Rule 1: Detect long-held material losers — disposition effect signal.
 
-    Returns list of findings, each with bias_flag, severity, and operator framing.
-    Zero model calls. Uses config/behavioral_detection.json for thresholds.
+    Uses canonical cost_basis domain from the Data Broker (aggregated from
+    tax_lots.json). Zero model calls. config/behavioral_detection.json for thresholds.
     """
     cfg = _load_behavioral_config()
     rule1 = cfg.get("disposition_rule1", {})
@@ -252,11 +252,12 @@ def _detect_disposition_effect(snapshot: dict[str, Any]) -> list[dict[str, Any]]
         return []
 
     domains = snapshot.get("domains", {})
+    cost_basis_domain = domains.get("cost_basis", {})
     portfolio = domains.get("portfolio", {})
-    model_portfolio = domains.get("model_portfolio", {})
-    ips = domains.get("investment_policy", {})
 
-    # Need portfolio value to compute weights
+    if cost_basis_domain.get("state") != "AVAILABLE":
+        return []  # no lot data available
+
     total_value = portfolio.get("total_value")
     if not total_value or total_value <= 0:
         return []
@@ -269,116 +270,46 @@ def _detect_disposition_effect(snapshot: dict[str, Any]) -> list[dict[str, Any]]
     critical_loss_pct = rule1.get("critical_loss_pct", 0.35)
     critical_loss_abs = rule1.get("critical_loss_abs", 25000)
 
-    # Load holdings for per-position data
-    holdings_path = PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json"
-    if not holdings_path.exists():
-        return []
-
-    try:
-        holdings_data = json.loads(holdings_path.read_text(encoding="utf-8"))
-    except Exception:
-        return []
-
     findings: list[dict[str, Any]] = []
-    holdings = holdings_data.get("holdings", [])
-    taxable_accounts = ips.get("accounts", {}).get("taxable", [])
-    taxable_names = {a.get("name", "").lower() for a in taxable_accounts} if taxable_accounts else set()
 
-    for h in holdings:
-        symbol = h.get("symbol", "")
-        if not symbol or h.get("is_cash"):
+    for pos in cost_basis_domain.get("positions", []):
+        symbol = pos.get("symbol", "")
+        unrealized_pnl = pos.get("unrealized_pnl", 0)
+        unrealized_pnl_pct = pos.get("unrealized_pnl_pct", 0)
+        market_value = pos.get("market_value", 0)
+        holding_months = pos.get("holding_months")
+
+        # Only losers
+        if unrealized_pnl >= 0:
             continue
 
-        market_value = float(h.get("market_value", 0) or 0)
-        shares = float(h.get("shares", 0) or 0)
-        if market_value <= 0 or shares <= 0:
-            continue
+        loss_pct = abs(unrealized_pnl_pct)
+        loss_abs = abs(unrealized_pnl)
+        weight_pct = (market_value / total_value) * 100 if total_value > 0 else 0
 
-        # Check if taxable account
-        account = (h.get("account", "") or "").lower()
-        if taxable_names and account not in taxable_names:
-            continue  # skip retirement accounts for disposition detection
+        # Rule 1: material loss check
+        if loss_pct < (min_loss_pct * 100) and loss_abs < min_loss_abs:
+            continue
 
         # Weight check
-        weight_pct = market_value / total_value
-        if weight_pct < min_weight_pct:
+        if weight_pct < (min_weight_pct * 100):
             continue
 
-        # Cost basis estimation: use account-level gain or approximate from price
-        cost_basis = h.get("cost_basis") or h.get("average_cost")
-        if not cost_basis:
-            # Fallback: estimate from account-level data
-            acct_summaries = holdings_data.get("account_summaries", {})
-            acct = acct_summaries.get(account, {})
-            if acct.get("total_gain_pct") is not None and acct.get("total_value", 0) > 0:
-                # Approximate: if account has a gain, individual losers would have lower cost basis
-                # This is a rough approximation — lot-level data would be better
-                cost_basis = None  # can't reliably estimate per-position
-
-        unrealized_pnl: float | None = None
-        unrealized_pnl_pct: float | None = None
-
-        if cost_basis and float(cost_basis) > 0:
-            cost = float(cost_basis)
-            unrealized_pnl = market_value - cost
-            if cost > 0:
-                unrealized_pnl_pct = (unrealized_pnl / cost) * 100
-        else:
-            # Use price and account gain as rough proxy
-            price = float(h.get("price", 0) or 0)
-            acct_summaries = holdings_data.get("account_summaries", {})
-            acct = acct_summaries.get(account, {})
-            if price > 0 and acct.get("total_gain_pct") is not None and acct.get("total_value", 0) > 0:
-                acct_gain_pct = float(acct.get("total_gain_pct", 0))
-                if acct_gain_pct < -5:  # account is down — positions likely have losses
-                    # Estimate: the account's loss is distributed proportionally
-                    estimated_cost = price * shares / (1 + acct_gain_pct / 100)
-                    unrealized_pnl = market_value - estimated_cost
-                    if estimated_cost > 0:
-                        unrealized_pnl_pct = (unrealized_pnl / estimated_cost) * 100
-
-        # Skip if we can't compute P&L
-        if unrealized_pnl_pct is None and unrealized_pnl is None:
+        # Holding period check
+        if holding_months is not None and holding_months < min_holding_months:
             continue
 
-        # Rule 1 check: material loss
-        is_material_loss = False
-        if unrealized_pnl_pct is not None and unrealized_pnl_pct <= -(min_loss_pct * 100):
-            is_material_loss = True
-        if unrealized_pnl is not None and abs(unrealized_pnl) >= min_loss_abs:
-            is_material_loss = True
-
-        if not is_material_loss:
-            continue
-
-        # Holding period check — approximate from available data
-        holding_months: int | None = None
-        updated_at = h.get("updated_at") or h.get("as_of", "")
-        if updated_at:
-            try:
-                from datetime import datetime, timezone
-                dt = datetime.fromisoformat(str(updated_at).replace("Z", "+00:00"))
-                age_days = (datetime.now(timezone.utc) - dt).days
-                holding_months = max(1, age_days // 30)
-            except Exception:
-                pass
-
-        if holding_months and holding_months < min_holding_months:
-            continue
-
-        # Severity
-        loss_pct = abs(unrealized_pnl_pct) if unrealized_pnl_pct else 0
-        loss_abs = abs(unrealized_pnl) if unrealized_pnl else 0
-
-        if loss_pct >= critical_loss_pct * 100 or loss_abs >= critical_loss_abs:
+        # Severity — use config thresholds per tier
+        sev_cfg = rule1.get("severity", {})
+        if loss_pct >= sev_cfg.get("critical", {}).get("min_loss_pct", 0.35) * 100 or loss_abs >= sev_cfg.get("critical", {}).get("min_loss_abs_override", 25000):
             severity = "Critical"
-        elif loss_pct >= 25:
+        elif loss_pct >= sev_cfg.get("high", {}).get("min_loss_pct", 0.25) * 100:
             severity = "High"
         else:
             severity = "Medium"
 
-        # Harvest value estimate
-        harvest_value = round(min(loss_abs, 3000) * 0.24)  # rough federal tax benefit
+        # Harvest value estimate (24% federal on up to $3K deductible loss)
+        harvest_value = round(min(loss_abs, 3000) * 0.24)
 
         findings.append({
             "symbol": symbol,
@@ -388,12 +319,12 @@ def _detect_disposition_effect(snapshot: dict[str, Any]) -> list[dict[str, Any]]
             "loss_pct": round(loss_pct, 1),
             "loss_abs": round(loss_abs),
             "holding_months": holding_months,
-            "weight_pct": round(weight_pct * 100, 1),
-            "account": account,
+            "weight_pct": round(weight_pct, 1),
+            "account": pos.get("account", ""),
             "estimated_harvest_value_usd": harvest_value,
             "suggested_reframe": (
                 f"If {symbol} were purchased today at current price, "
-                f"would the size ({round(weight_pct * 100, 1)}% of equity) still match the risk budget? "
+                f"would the size ({round(weight_pct, 1)}% of equity) still match the risk budget? "
                 f"A partial trim could restore the original allocation target."
             ),
         })

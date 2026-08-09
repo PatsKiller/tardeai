@@ -47,6 +47,7 @@ CIO_DOMAINS = (
     "hermes_research",
     "investment_policy",
     "model_portfolio",
+    "cost_basis",
 )
 
 
@@ -290,6 +291,98 @@ def _domain_model_portfolio() -> dict[str, Any]:
         return {"state": "DATA_UNAVAILABLE", "reason": str(e)[:120]}
 
 
+def _domain_cost_basis() -> dict[str, Any]:
+    """Aggregate per-position cost basis from tax_lots.json for taxable accounts."""
+    lots_path = STATE_DIR / "tax_lots.json"
+    holdings_path = STATE_DIR / "holdings.json"
+    if not lots_path.exists():
+        return {"state": "DATA_UNAVAILABLE", "reason": "tax_lots.json not found"}
+
+    try:
+        lots_data = json.loads(lots_path.read_text(encoding="utf-8"))
+        holdings_data = json.loads(holdings_path.read_text(encoding="utf-8")) if holdings_path.exists() else {}
+    except Exception as e:
+        return {"state": "DATA_UNAVAILABLE", "reason": str(e)[:120]}
+
+    # Build current price map from holdings
+    price_map: dict[str, float] = {}
+    for h in holdings_data.get("holdings", []):
+        sym = h.get("symbol", "")
+        if sym and not h.get("is_cash"):
+            price = float(h.get("current_price", 0) or h.get("price", 0) or 0)
+            if price > 0:
+                price_map[sym] = price
+
+    positions: list[dict[str, Any]] = []
+    for key, lot_list in lots_data.items():
+        if ":" not in key:
+            continue
+        symbol, account = key.split(":", 1)
+
+        # Only taxable accounts
+        if "roth" in account.lower() or "ira" in account.lower():
+            continue
+
+        open_lots = [l for l in lot_list if float(l.get("shares_remaining", 0)) > 0]
+        if not open_lots:
+            continue
+
+        total_cost = sum(float(l["cost_per_share"]) * float(l["shares_remaining"]) for l in open_lots)
+        total_shares = sum(float(l["shares_remaining"]) for l in open_lots)
+        if total_shares <= 0:
+            continue
+
+        avg_cost = total_cost / total_shares
+        current_price = price_map.get(symbol)
+        if not current_price or current_price <= 0:
+            continue
+
+        market_value = total_shares * current_price
+        unrealized_pnl = market_value - total_cost
+        unrealized_pnl_pct = (unrealized_pnl / total_cost) * 100 if total_cost > 0 else 0
+
+        oldest_lot = min(open_lots, key=lambda l: l.get("lot_date", "9999"))
+        lot_date = oldest_lot.get("lot_date", "")
+        holding_months: int | None = None
+        if lot_date:
+            try:
+                from datetime import datetime, timezone
+                dt = datetime.strptime(lot_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+                holding_months = max(1, (datetime.now(timezone.utc) - dt).days // 30)
+            except Exception:
+                pass
+
+        positions.append({
+            "symbol": symbol,
+            "account": account,
+            "shares": round(total_shares, 2),
+            "avg_cost_per_share": round(avg_cost, 4),
+            "total_cost_basis": round(total_cost, 2),
+            "current_price": round(current_price, 4),
+            "market_value": round(market_value, 2),
+            "unrealized_pnl": round(unrealized_pnl, 2),
+            "unrealized_pnl_pct": round(unrealized_pnl_pct, 2),
+            "holding_months": holding_months,
+            "lot_count": len(open_lots),
+            "oldest_lot_date": lot_date,
+        })
+
+    # Sort by unrealized P&L (worst first)
+    positions.sort(key=lambda p: p["unrealized_pnl"])
+
+    loss_positions = [p for p in positions if p["unrealized_pnl"] < 0]
+    gain_positions = [p for p in positions if p["unrealized_pnl"] > 0]
+
+    return {
+        "state": "AVAILABLE",
+        "positions_count": len(positions),
+        "loss_positions_count": len(loss_positions),
+        "gain_positions_count": len(gain_positions),
+        "total_unrealized_pnl": round(sum(p["unrealized_pnl"] for p in positions), 2),
+        "positions": positions,
+    }
+
+
 _COLLECTORS = {
     "portfolio": _domain_portfolio,
     "risk": _domain_risk,
@@ -300,6 +393,7 @@ _COLLECTORS = {
     "hermes_research": _domain_hermes_research,
     "investment_policy": _domain_investment_policy,
     "model_portfolio": _domain_model_portfolio,
+    "cost_basis": _domain_cost_basis,
 }
 
 
