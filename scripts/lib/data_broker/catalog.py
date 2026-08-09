@@ -181,6 +181,41 @@ PROJECTIONS: list[dict[str, Any]] = [
         "read_only": True,
         "status": "legacy",
     },
+    {
+        "id": "cio_portfolio",
+        "module": "lib.data_broker.cio_portfolio",
+        "entrypoints": [
+            "get_cio_snapshot",
+            "get_cio_domain",
+            "get_cio_material_changes",
+        ],
+        "http": [
+            "GET /api/v3/data-broker/cio/snapshot",
+            "GET /api/v3/data-broker/cio/domain/{domain}",
+            "GET /api/v3/data-broker/cio/changes",
+        ],
+        "domain": "cio",
+        "description": (
+            "Unified CIO snapshot: portfolio, risk, watch, rotation, income, "
+            "reconciliation — aggregated into one read. Composes existing broker "
+            "domains; zero provider calls."
+        ),
+        "contract_version": "cio-snapshot-v1",
+        "read_only": True,
+        "provider_calls": 0,
+        "composes": [
+            "portfolio_snapshot",
+            "risk_snapshot",
+            "watch_intelligence",
+            "rotation_ladders",
+            "strategy_desk",
+        ],
+        "consumers": [
+            "CIO Heartbeat",
+            "Alex / CIO synthesis",
+            "Command Center /v3/cio",
+        ],
+    },
 ]
 
 

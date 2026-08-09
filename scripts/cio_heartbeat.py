@@ -107,98 +107,26 @@ def _last_snapshot() -> Optional[dict[str, Any]]:
     return entries[-1] if entries else None
 
 
-# ── Deterministic data collection ─────────────────────────────────────────────
-
-
-def _collect_portfolio() -> tuple[str, dict[str, Any]]:
-    """Collect portfolio evidence from the holdings.json state file."""
-    holdings_path = PROJECT_ROOT / "data" / "runtime" / "holdings.json"
-    if not holdings_path.exists():
-        return "DATA_UNAVAILABLE", {"reason": "holdings.json not found"}
-    try:
-        data = json.loads(holdings_path.read_text())
-        totals = data.get("portfolio_totals", {})
-        return "AVAILABLE", {
-            "total_value": totals.get("total_value"),
-            "holdings_count": len(data.get("holdings", [])),
-            "as_of": totals.get("as_of", ""),
-        }
-    except Exception as e:
-        return "DATA_UNAVAILABLE", {"reason": str(e)}
-
-
-def _collect_risk() -> tuple[str, dict[str, Any]]:
-    """Collect risk evidence from stops.json."""
-    stops_path = PROJECT_ROOT / "data" / "runtime" / "stops.json"
-    if not stops_path.exists():
-        return "DATA_UNAVAILABLE", {"reason": "stops.json not found"}
-    try:
-        data = json.loads(stops_path.read_text())
-        return "AVAILABLE", {
-            "stops_count": len(data) if isinstance(data, dict) else 0,
-        }
-    except Exception as e:
-        return "DATA_UNAVAILABLE", {"reason": str(e)}
-
-
-def _collect_watch() -> tuple[str, dict[str, Any]]:
-    """Collect watch evidence from watchlist state."""
-    watch_path = PROJECT_ROOT / "data" / "runtime" / "watchlist_state.json"
-    if not watch_path.exists():
-        return "DATA_UNAVAILABLE", {"reason": "watchlist_state.json not found"}
-    try:
-        data = json.loads(watch_path.read_text())
-        return "AVAILABLE", {
-            "items_count": len(data) if isinstance(data, (list, dict)) else 0,
-        }
-    except Exception as e:
-        return "DATA_UNAVAILABLE", {"reason": str(e)}
-
-
-def _collect_rotation() -> tuple[str, dict[str, Any]]:
-    """Check rotation summary freshness."""
-    rotation_path = PROJECT_ROOT / "data" / "runtime" / "rotation_summary.json"
-    if not rotation_path.exists():
-        return "DATA_UNAVAILABLE", {"reason": "rotation_summary.json not found"}
-    try:
-        data = json.loads(rotation_path.read_text())
-        return "AVAILABLE", {"summary": str(data)[:200]}
-    except Exception as e:
-        return "DATA_UNAVAILABLE", {"reason": str(e)}
-
-
-# ── Snapshot builder ──────────────────────────────────────────────────────────
+# ── Snapshot builder (uses Data Broker CIO projection) ────────────────────────
 
 
 def build_snapshot() -> dict[str, Any]:
-    """Build a deterministic CIO heartbeat snapshot. Zero model calls."""
+    """Build a deterministic CIO heartbeat snapshot via the Data Broker. Zero model calls."""
     snapshot_id = str(uuid.uuid4())[:8]
     collected_at = _now_iso()
-    domains: dict[str, dict[str, Any]] = {}
 
-    collectors = {
-        "portfolio": _collect_portfolio,
-        "risk": _collect_risk,
-        "watch": _collect_watch,
-        "rotation": _collect_rotation,
-    }
-
-    for domain, collector in collectors.items():
-        try:
-            state, data = collector()
-        except Exception as e:
-            state, data = "DATA_UNAVAILABLE", {"reason": str(e)}
-        domains[domain] = {
-            "state": state,
-            "data": data,
-            "collected_at": collected_at,
-        }
+    # Use the Data Broker CIO projection (composes portfolio/risk/watch/rotation/income/reconciliation)
+    from lib.data_broker.cio_portfolio import get_cio_snapshot
+    broker_snap = get_cio_snapshot(max_age_s=0)  # force fresh collection
+    domains = broker_snap.get("domains", {})
 
     snapshot = {
         "snapshot_id": snapshot_id,
         "event_type": "CIO_HEARTBEAT_SNAPSHOT",
         "collected_at": collected_at,
         "domains": domains,
+        "broker_version": broker_snap.get("version"),
+        "health": broker_snap.get("health", {}),
     }
     snapshot["content_hash"] = _content_hash(snapshot)
     return snapshot
