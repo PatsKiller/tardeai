@@ -401,8 +401,8 @@ _STEPH = ShadowAgentSpec(
             "broker.*", "position.*", "order.*",
         ),
         retrieval_required=True,
-        enabled=False,
-        state=DeploymentState.DESIGNED,
+        enabled=True,
+        state=DeploymentState.SHADOW,
         budget=BudgetPolicy(max_model_calls=2, max_tool_calls=14, max_cost_usd=0.03, deadline_seconds=600),
     ),
     summary=(

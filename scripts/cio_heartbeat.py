@@ -494,7 +494,32 @@ def _existing_open_actions() -> dict[str, set[str]]:
             bias = a.get("bias_flag", "")
             for sym in syms:
                 existing.setdefault(bias, set()).add(sym)
+    for a in actions.values():
+        if a.get("status") in ("OPEN", "ACKNOWLEDGED"):
+            dom = a.get("domain", "")
+            existing.setdefault(dom, set()).add(a.get("cio_action_id", ""))
     return existing
+
+
+def _open_trigger_domains() -> set[str]:
+    """Return set of domain names that already have OPEN non-behavioral actions."""
+    entries = _read_jsonl(ACTION_LEDGER_PATH)
+    actions: dict[str, dict[str, Any]] = {}
+    for entry in entries:
+        payload = entry.get("payload", {})
+        aid = payload.get("cio_action_id")
+        if not aid:
+            continue
+        if entry.get("event_type") == "CIO_ACTION_CREATED":
+            actions[aid] = payload
+        elif entry.get("event_type") == "CIO_ACTION_UPDATED":
+            if aid in actions:
+                actions[aid].update(payload)
+    return {
+        a.get("domain", "")
+        for a in actions.values()
+        if a.get("status") in ("OPEN", "ACKNOWLEDGED") and not a.get("bias_flag")
+    }
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -535,9 +560,15 @@ def run_heartbeat(interval_minutes: int = 30, max_actions: int = 5) -> dict[str,
                 pass  # delegation is non-fatal — heartbeat continues
 
     # 4a. Escalation triggers — static-state alerts (drift, heat, reconciliation, IPS)
+    # Dedup: skip triggers that already have an OPEN non-behavioral action
     actions_created = 0
+    open_domains = _open_trigger_domains()
     triggers = _evaluate_escalation_triggers(snapshot)
     for trigger in triggers:
+        trigger_key = trigger.get("trigger", "")
+        if trigger_key in open_domains:
+            print(f"  [cio-hb] SKIP trigger [{trigger.get('priority')}]: {trigger_key} — already open")
+            continue
         notif_priority = trigger.get("priority", "High")
         action = _create_action(
             domain=trigger.get("trigger", "escalation"),
