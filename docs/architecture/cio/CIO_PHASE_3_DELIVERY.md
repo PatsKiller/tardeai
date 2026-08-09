@@ -2,9 +2,9 @@
 
 **Date:** 2026-08-09
 **Branch:** main
-**Commits:** 2580c02b → 5e4aa86d (12 commits, 10 PRs)
+**Commits:** 2580c02b → 3cb4c42a (15 commits, 11 PRs)
 **Authority:** READ_ONLY_ADVISORY — no broker/order/risk/approval/2FA/secret
-**Status:** COMPLETE — all 10 phases delivered
+**Status:** COMPLETE — all phases delivered + behavioral finance live
 
 ---
 
@@ -131,9 +131,19 @@ Model routing:           DeepSeek V4 Pro (CIO) / Flash (specialists) → free OA
 - **Flash model**: deepseek-v4-flash context for Medium+ actions ("what changed + why it matters")
 - **Operator language**: every action ends with decision guidance
 
+### PR #11 — Cost Basis + Behavioral Finance (`3cb4c42a`, `16b3a2d4`)
+- `config/behavioral_detection.json`: disposition effect Rule 1 thresholds (15% loss, 6mo hold, 2.5% weight)
+- **cost_basis domain** in Data Broker: aggregates tax_lots.json (lot-level cost_per_share, lot_date, shares_remaining) → per-position unrealized P&L + holding period
+- Data Broker: 10 domains (9→10 with cost_basis)
+- **Disposition effect detection LIVE**: `_detect_disposition_effect()` fires every heartbeat cycle
+- First finding: **PFLT** — 20.9% loss, $230K unrealized, 68.5% weight, 6mo hold → 🚨🧠 Critical
+- CioHub: 🧠 bias_flag badge on behavioral action items
+- 5 loss positions tracked with exact cost basis from tax lots
+
 ## Remaining
 
 - Manual Darwin cron entry: `7 * * * * cd $PROJ && $PY scripts/darwin_outcome_scorer.py --max-actions 30 >> logs/darwin_scorer.log 2>&1`
+- Idempotency dedup across heartbeat runs (same position flagged once per cycle, not every run)
 
 ---
 
