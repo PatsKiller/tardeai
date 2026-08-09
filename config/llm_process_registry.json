@@ -417,6 +417,154 @@
         "PRO_MAX"
       ],
       "description": "Operator-gated architecture review"
+    },
+    {
+      "id": "alex_cio_synthesis",
+      "name": "Alex CIO Autonomous Advisory Synthesis",
+      "category": "CIO",
+      "lane_policy": "deepseek_only",
+      "default_mode": "automated",
+      "description": "Alex CIO autonomous advisory synthesis — platform-wide portfolio/wealth CIO reasoning via governed DeepSeek V4 Pro",
+      "allowed_lanes": [
+        "pro",
+        "deepseek-v4-pro"
+      ],
+      "deepseek_default_policy": "PRO",
+      "deepseek_allowed_policies": [
+        "PRO",
+        "PRO_THINK"
+      ],
+      "max_input_tokens": 32000,
+      "max_output_tokens": 16384,
+      "daily_soft_cap": 40,
+      "daily_cost_cap_usd": 0.02,
+      "tools_allowed": true,
+      "fallback_allowed": false,
+      "advisory_only": true,
+      "dedupe_policy": "request_id_only",
+      "circuit_breaker": true,
+      "registered_by": "P-1.2A",
+      "registered_at": "2026-08-08T13:48:00Z"
+    },
+    {
+      "id": "alex_cio_escalation",
+      "name": "Alex CIO Complex Escalation",
+      "category": "CIO",
+      "lane_policy": "deepseek_only",
+      "default_mode": "automated",
+      "description": "Alex CIO complex escalation — deterministic-reason-gated, thinking-enabled DeepSeek V4 Pro for multi-agent reconciliation and critical decisions. PRO_THINK requires a deterministic escalation reason (specialist_disagreement, conflicting_evidence, unresolved_contradictions, material_risk, or insufficient_evidence). Operator confirmation is NOT required for PRO_THINK.",
+      "allowed_lanes": [
+        "pro_think"
+      ],
+      "deepseek_default_policy": "PRO_THINK",
+      "deepseek_allowed_policies": [
+        "PRO",
+        "PRO_THINK"
+      ],
+      "escalation_conditions": [
+        "specialist_disagreement",
+        "conflicting_evidence",
+        "unresolved_contradictions",
+        "material_risk",
+        "insufficient_evidence"
+      ],
+      "max_input_tokens": 32000,
+      "max_output_tokens": 16384,
+      "daily_soft_cap": 10,
+      "daily_cost_cap_usd": 0.02,
+      "tools_allowed": true,
+      "fallback_allowed": false,
+      "advisory_only": true,
+      "dedupe_policy": "request_id_only",
+      "circuit_breaker": true,
+      "registered_by": "P-1.2A",
+      "registered_at": "2026-08-08T13:48:00Z",
+      "last_modified_by": "P-1.2B",
+      "last_modified_at": "2026-08-08T14:06:00Z"
+    },
+    {
+      "id": "guardian_risk_critique",
+      "name": "Guardian Risk Critique",
+      "category": "CIO",
+      "lane_policy": "deepseek_only",
+      "default_mode": "manual",
+      "description": "Guardian risk critique — deterministic-first risk analysis reading Trade AI risk data. Read-only. No risk limit changes, no stop modifications, no execution.",
+      "allowed_lanes": [
+        "fast",
+        "deepseek-v4-flash"
+      ],
+      "deepseek_default_policy": "FAST",
+      "deepseek_allowed_policies": [
+        "FAST"
+      ],
+      "max_input_tokens": 32000,
+      "max_output_tokens": 8192,
+      "daily_soft_cap": 20,
+      "daily_cost_cap_usd": 0.01,
+      "tools_allowed": true,
+      "fallback_allowed": false,
+      "advisory_only": true,
+      "dedupe_policy": "request_id_only",
+      "circuit_breaker": true,
+      "registered_by": "P-1.8",
+      "registered_at": "2026-08-08T19:23:00Z"
+    },
+    {
+      "id": "ledger_tax_critique",
+      "name": "Ledger Tax & Account-Constraint Critique",
+      "category": "CIO",
+      "lane_policy": "deepseek_only",
+      "default_mode": "manual",
+      "description": "Ledger tax/account-constraint critique — deterministic-first constraint validation reading Trade AI account data. Flags wash-sale proximity, IRA limits, account-type mismatches. Read-only. No execution.",
+      "allowed_lanes": [
+        "fast",
+        "deepseek-v4-flash"
+      ],
+      "deepseek_default_policy": "FAST",
+      "deepseek_allowed_policies": [
+        "FAST"
+      ],
+      "max_input_tokens": 32000,
+      "max_output_tokens": 8192,
+      "daily_soft_cap": 20,
+      "daily_cost_cap_usd": 0.01,
+      "tools_allowed": true,
+      "fallback_allowed": false,
+      "advisory_only": true,
+      "dedupe_policy": "request_id_only",
+      "circuit_breaker": true,
+      "registered_by": "P-1.8",
+      "registered_at": "2026-08-08T19:23:00Z"
+    },
+    {
+      "id": "steph_allocation_planning",
+      "name": "Steph Allocation & Wealth Planning",
+      "category": "CIO",
+      "lane_policy": "deepseek_only",
+      "default_mode": "manual",
+      "description": "Steph allocation and wealth planning — deterministic-first portfolio/wealth analysis reading Trade AI holdings and allocation data. Read-only advisory. No execution.",
+      "allowed_lanes": [
+        "pro",
+        "fast",
+        "deepseek-v4-pro",
+        "deepseek-v4-flash"
+      ],
+      "deepseek_default_policy": "PRO",
+      "deepseek_allowed_policies": [
+        "PRO",
+        "FAST"
+      ],
+      "max_input_tokens": 32000,
+      "max_output_tokens": 8192,
+      "daily_soft_cap": 20,
+      "daily_cost_cap_usd": 0.01,
+      "tools_allowed": true,
+      "fallback_allowed": false,
+      "advisory_only": true,
+      "dedupe_policy": "request_id_only",
+      "circuit_breaker": true,
+      "registered_by": "P-1.8",
+      "registered_at": "2026-08-08T19:23:00Z"
     }
   ],
   "default_deepseek_policy": "FAST",

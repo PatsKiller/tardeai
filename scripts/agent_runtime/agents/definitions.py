@@ -289,6 +289,46 @@ _AEGIS = ShadowAgentSpec(
     wave="SECOND",
 )
 
+_VIGIL = ShadowAgentSpec(
+    definition=_def(
+        "vigil",
+        "Vigil",
+        "Health Signal Fusion Inspector",
+        allowed_job_types=("incident_review", "remediation_proposal", "health_inspection"),
+        allowed_tools=(
+            "health.read", "freshness.read",
+            "db.query", "log.tail", "cron.manifest",
+            "escalation.write", "finding.stage",
+        ),
+        denied_tools=(
+            "*.write", "*.delete", "*.execute",
+            "broker.*", "trading.*", "config.promote",
+        ),
+        retrieval_required=False,
+        enabled=True,
+        state=DeploymentState.SHADOW,
+        budget=BudgetPolicy(max_model_calls=5, max_tool_calls=20, max_cost_usd=0.01, deadline_seconds=900),
+    ),
+    summary=(
+        "Multi-layered health inspection agent: reads health surfaces (health_agent, "
+        "system_health_agent, pipeline_freshness_monitor, hermes_pipeline_health), fuses "
+        "signals via local LLM to identify root cause, stages findings in hermes_research_intelligence, "
+        "and escalates P0/P1 to the staleness escalation queue. Shadow deployment: read-only "
+        "inspection with no broker/trading/config-promote authority. The agent CAN write findings "
+        "and escalation queue entries, but cannot execute remediations, restart services, or "
+        "change configurations."
+    ),
+    triggers=(
+        Trigger(TriggerKind.INCIDENT_OPENED, "An incident is opened"),
+        Trigger(TriggerKind.SCHEDULED_SWEEP, "A scheduled health inspection sweep runs"),
+    ),
+    allowed_output_kinds=(OutputKind.REMEDIATION_PROPOSAL, OutputKind.INTEGRITY_REVIEW),
+    reviewer_agent_id="sentinel",
+    scorer_agent_id="darwin",
+    maturity_target="MVL operational shadow",
+    wave="INITIAL",
+)
+
 
 # ---------------------------------------------------------------------------
 # Population-integrity scanner — enabled SHADOW. Deterministic (0 model calls,
@@ -338,12 +378,13 @@ FLEET: dict[str, ShadowAgentSpec] = {
         _VEGA,
         _RISK_AGENT,
         _AEGIS,
+        _VIGIL,
     )
 }
 
 # INITIAL_SHADOW_AGENT_IDS = the enabled SHADOW fleet. argus was authored + enabled
 # after the original four; being enabled, it belongs here (not the disabled 2nd wave).
-INITIAL_SHADOW_AGENT_IDS: tuple[str, ...] = ("sentinel", "darwin", "iris", "reflection", "argus")
+INITIAL_SHADOW_AGENT_IDS: tuple[str, ...] = ("sentinel", "darwin", "iris", "reflection", "argus", "vigil")
 SECOND_WAVE_AGENT_IDS: tuple[str, ...] = ("maria", "vega", "risk_agent", "aegis")
 
 # Fail-closed at import time: the entire fleet must satisfy the separation and

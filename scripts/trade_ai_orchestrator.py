@@ -138,6 +138,11 @@ def run_pipeline(root, run_label, date_str, use_llm=True, send_alerts=True, skip
     print(f"\n{'='*66}")
     print(f"  \u26a1 Trade AI v12  |  Run {run_label}  |  {date_str}")
     print(f"{'='*66}\n")
+    # Resolve caller's argparse.Namespace (only set when called from main())
+    try:
+        _caller_args = args  # noqa: F821 \u2014 caller scope
+    except NameError:
+        _caller_args = None
     if use_llm:
         _warmup_ollama()
 
@@ -657,8 +662,10 @@ def run_pipeline(root, run_label, date_str, use_llm=True, send_alerts=True, skip
         # empty sectors (68% of some days). Resolve empties from the DB's latest known sector per symbol.
         _sector_map = {}
         try:
+            from db_adapter import _get_conn as _sector_get_conn
             _empty_syms = [t.get("symbol") for t in scored if not (t.get("sector") or "").strip()]
             if _empty_syms:
+                conn = _sector_get_conn()
                 cur2 = conn.cursor()
                 cur2.execute("""SELECT DISTINCT ON (symbol) symbol, sector FROM trade_ai_scans
                                 WHERE symbol = ANY(%s) AND COALESCE(sector,'') <> ''
@@ -900,13 +907,13 @@ def run_pipeline(root, run_label, date_str, use_llm=True, send_alerts=True, skip
         _err("rotation_autopilot", f"{exc}  — continuing without rotation autopilot")
 
     # 18f Auto paper proposal generation (non-fatal)
-    if not getattr(args, '_skip_auto_proposals', False) if 'args' in dir() else True:
+    if not getattr(_caller_args, '_skip_auto_proposals', False):
         try:
             from auto_proposal_generator import run_auto_proposals, get_conn as _ap_get_conn
             # Only auto-propose on healthy/partial runs
             if len(scored) >= min_symbols or allow_underfilled:
                 _ap_conn = _ap_get_conn()
-                _ap_dry = getattr(args, '_auto_proposals_dry_run', False) if 'args' in dir() else False
+                _ap_dry = getattr(_caller_args, '_auto_proposals_dry_run', False)
                 _ap_result = run_auto_proposals(
                     _ap_conn, run_label=run_label,
                     min_score=40, limit=20, dry_run=_ap_dry,

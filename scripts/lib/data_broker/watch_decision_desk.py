@@ -1,3 +1,5 @@
+# DEPRECATED 2026-08-06: No known consumers (build_watch_decision_desk not called from any API route or consumer).
+# Scheduled for removal. See Wave B/C Data Broker compliance remediation.
 """Watch MAIN Setup Decision Desk — deterministic broker-backed advisories.
 
 Mirrors Re-Entry Decision Desk patterns for MAIN lane symbols:

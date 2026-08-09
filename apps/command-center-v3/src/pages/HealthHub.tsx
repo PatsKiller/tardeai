@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { StateCard } from '../components/StateCard'
 import { StatusBadge } from '../components/StatusBadge'
 import CoderDispatchLedger from '../components/health/CoderDispatchLedger'
 import RiskHealthStrip from '../components/risk/RiskHealthStrip'
+import RemediationDashboard from './RemediationDashboard'
+import OpsAutonomyDashboard from './OpsAutonomyDashboard'
 import type { DrillContext } from '../components/DetailDrawer'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubTab, hubPanel } from '../lib/terminalHubChrome'
@@ -29,7 +31,7 @@ const scoreColor = (s: number | null | undefined) =>
 const CAT_LABEL: Record<string, string> = {
   data_quality: 'Data Quality', execution_health: 'Execution Health',
   intelligence_quality: 'Intelligence', risk_protection: 'Risk Protection',
-  retirement_planning: 'Retirement',
+  retirement_planning: 'Retirement', pipeline_freshness: 'Pipeline Freshness',
 }
 const CAT_HELP: Record<string, string> = {
   data_quality: 'Freshness of holdings, risk, dividends, news, CIO decisions, agent jobs + open data gaps.',
@@ -37,11 +39,14 @@ const CAT_HELP: Record<string, string> = {
   intelligence_quality: 'Local LLM reachability, ensemble failures, stale research backlog.',
   risk_protection: 'Unprotected open positions, stops in alert state, recent P0/P1 SIEM alerts.',
   retirement_planning: 'Golden Window present, dividend income consistency, dividend calendar freshness.',
+  pipeline_freshness: 'Data pipeline output recency — ticker snapshots, setup advisories, rotation summaries, backtest results.',
 }
 const TAB_HELP: Record<string, string> = {
   overview: 'Overall 0–100 health score, per-category breakdown, degrading trends, and active findings.',
   coders: 'Dispatch queue, full ledger (problem → coder → outcome), PR/diff links, and backend routing.',
   history: 'Score trend over recent cron runs (every 30 min) with per-run context: what degraded, finding counts, deltas.',
+  log: 'Health Inspector remediation log — every fix, remediation, and escalations across all 22+ producers and agent pipelines. Auto-refreshes every 60s.',
+  autonomy: 'Ops Command Board — WHAT / WHY / WHO / WHEN / HOW / STATUS for Layer-1 Ops Agent + Layer-4 Health Agent.',
 }
 
 function fmtWhen(s?: string) {
@@ -59,10 +64,10 @@ export default function HealthHub({ onDrill }: Props) {
   const [terminalUi] = useTerminalUi()
   const [searchParams] = useSearchParams()
   const urlTab = searchParams.get('tab')
-  const [tab, setTab] = useState<'overview' | 'coders' | 'history'>(
-    urlTab === 'coders' || urlTab === 'history' ? urlTab : 'overview')
+  const [tab, setTab] = useState<'overview' | 'coders' | 'history' | 'log' | 'autonomy'>(
+    urlTab === 'coders' || urlTab === 'history' || urlTab === 'log' || urlTab === 'autonomy' ? urlTab : 'overview')
   useEffect(() => {
-    if (urlTab === 'coders' || urlTab === 'history' || urlTab === 'overview') setTab(urlTab)
+    if (urlTab === 'coders' || urlTab === 'history' || urlTab === 'overview' || urlTab === 'log' || urlTab === 'autonomy') setTab(urlTab)
   }, [urlTab])
   const { data: health, loading, error } = useApi<any>('/api/v2/health', 120_000)
   const { data: coders } = useApi<any>('/api/v2/health/coders', 120_000)
@@ -125,8 +130,10 @@ export default function HealthHub({ onDrill }: Props) {
           </div>
         </div>
         <div className="hub-tabs" style={{ display: 'flex', gap: terminalUi ? 4 : 6, flexWrap: 'wrap' }}>
-          {(['overview', 'coders', 'history'] as const).map(t => (
-            <button key={t} onClick={() => setTab(t)} title={TAB_HELP[t]} style={hubTab(tab === t, terminalUi)}>{t.charAt(0).toUpperCase() + t.slice(1)}</button>
+          {(['overview', 'coders', 'history', 'log', 'autonomy'] as const).map(t => (
+            <button key={t} onClick={() => setTab(t)} title={TAB_HELP[t]} style={hubTab(tab === t, terminalUi)}>
+              {t === 'autonomy' ? 'Ops Command' : t.charAt(0).toUpperCase() + t.slice(1)}
+            </button>
           ))}
         </div>
       </div>
@@ -175,7 +182,7 @@ export default function HealthHub({ onDrill }: Props) {
                   { label: 'Rotation queue', value: propHealth.rotation?.pending_recommendations ?? '—' },
                 ].map(k => (
                   <div key={k.label} style={{ textAlign: 'center', padding: 8, background: 'var(--bg2)', borderRadius: 8 }}>
-                    <div style={{ fontSize: 9, color: 'var(--text3)' }}>{k.label}</div>
+                    <div style={{ fontSize: 10, color: 'var(--text3)' }}>{k.label}</div>
                     <div style={{ fontSize: 18, fontWeight: 800, color: k.warn ? 'var(--amber)' : 'var(--text0)' }}>{k.value}</div>
                   </div>
                 ))}
@@ -208,7 +215,7 @@ export default function HealthHub({ onDrill }: Props) {
                   { label: 'Avg approve (h)', value: execReady.avg_hours_to_approve ?? '—' },
                 ].map(k => (
                   <div key={k.label} style={{ textAlign: 'center', padding: 8, background: 'var(--bg2)', borderRadius: 8 }}>
-                    <div style={{ fontSize: 9, color: 'var(--text3)' }}>{k.label}</div>
+                    <div style={{ fontSize: 10, color: 'var(--text3)' }}>{k.label}</div>
                     <div style={{ fontSize: 16, fontWeight: 800, color: k.warn ? 'var(--amber)' : 'var(--text0)' }}>{k.value}</div>
                   </div>
                 ))}
@@ -282,7 +289,7 @@ export default function HealthHub({ onDrill }: Props) {
                   <div key={i} style={{ fontSize: 10.5, padding: '3px 0' }}>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                       <span style={{ color: 'var(--text3)', width: 116, flexShrink: 0 }}>{fmtWhen(a.at)}</span>
-                      <span style={{ fontWeight: 800, textTransform: 'uppercase', fontSize: 8, color: STATUS_COLOR[a.action] || 'var(--text3)', width: 88, flexShrink: 0 }}>{a.action}</span>
+                      <span style={{ fontWeight: 800, textTransform: 'uppercase', fontSize: 10, color: STATUS_COLOR[a.action] || 'var(--text3)', width: 88, flexShrink: 0 }}>{a.action}</span>
                       <span style={{ color: 'var(--text1)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.component}</span>
                       <span style={{ color: 'var(--accent)', flexShrink: 0 }}>{a.actor}</span>
                       {a.pr_url?.startsWith('http') && <a href={a.pr_url} style={{ color: 'var(--accent)', fontSize: 10 }}>PR ↗</a>}
@@ -326,16 +333,30 @@ export default function HealthHub({ onDrill }: Props) {
             </div>
           )}
 
-          {/* Findings */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
+          {/* Findings — labeled WHAT / WHY / WHO / WHEN / HOW / STATUS */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8, flexWrap: 'wrap', gap: 6 }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text2)' }}>Findings</div>
-            <div style={{ fontSize: 9, color: 'var(--text3)' }}>what · why · recommended action · status (who / when)</div>
+            <div style={{ fontSize: 10, color: 'var(--text3)' }}>
+              WHAT · WHY · WHO · WHEN · HOW · STATUS
+              {' · '}
+              <button type="button" onClick={() => setTab('autonomy')}
+                style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 10, fontWeight: 700, padding: 0 }}>
+                Open Ops Command Board →
+              </button>
+            </div>
           </div>
           {findings.length === 0 && <div style={{ fontSize: 11, color: 'var(--green)' }}>✓ No active findings</div>}
           {findings.map((f, i) => {
             const rem = f.remediation || {}
             const sc = STATUS_COLOR[rem.status] || 'var(--text3)'
-            const when = rem.at ? fmtWhen(rem.at) : ''
+            const when = rem.at || f.detected_at || ''
+            const who = rem.by
+              ? `${f.detected_by || 'health_agent'} → ${rem.by}`
+              : (f.detected_by || 'health_agent')
+            const lab: CSSProperties = {
+              fontSize: 10, fontWeight: 800, color: 'var(--text3)', textTransform: 'uppercase',
+              letterSpacing: 0.3, marginBottom: 2,
+            }
             return (
               <div key={i} onClick={onDrill ? () => onDrill({
                 title: f.message, subtitle: `${CAT_LABEL[f.category] || f.category} · ${f.severity}`,
@@ -347,29 +368,42 @@ export default function HealthHub({ onDrill }: Props) {
                   pr_url: rem.pr_url, lane: rem.lane, evidence: f,
                 }],
               }) : undefined}
-                style={{ padding: '8px 10px', background: 'var(--bg1)', border: '1px solid var(--border)',
-                  borderRadius: 4, marginBottom: 5, borderLeft: `3px solid ${SEV_COLOR[f.severity] || 'var(--border)'}`,
+                style={{ padding: '10px 12px', background: 'var(--bg1)', border: '1px solid var(--border)',
+                  borderRadius: 6, marginBottom: 6, borderLeft: `3px solid ${SEV_COLOR[f.severity] || 'var(--border)'}`,
                   cursor: onDrill ? 'pointer' : 'default' }}>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <span style={{ fontSize: 8, fontWeight: 800, textTransform: 'uppercase', color: SEV_COLOR[f.severity], width: 52, flexShrink: 0 }}>{f.severity}</span>
-                  <span style={{ fontSize: 11, color: 'var(--text0)', flex: 1, fontWeight: 600 }}>{f.message}</span>
-                  <span title={`${rem.by || '—'}${when ? ' @ ' + when : ''}${rem.detail ? '\n' + rem.detail : ''}`}
-                    style={{ fontSize: 8, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.3px',
-                      color: sc, background: 'var(--bg2)', padding: '1px 7px', borderRadius: 9, whiteSpace: 'nowrap' }}>
-                    {rem.status || 'detected'}
-                  </span>
-                  <span style={{ fontSize: 9, color: 'var(--text3)', width: 92, flexShrink: 0, textAlign: 'right' }}>{CAT_LABEL[f.category] || f.category}</span>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+                  <span style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', color: SEV_COLOR[f.severity] }}>{f.severity}</span>
+                  <span style={{ fontSize: 10, color: 'var(--text3)' }}>{CAT_LABEL[f.category] || f.category}</span>
+                  <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 800, textTransform: 'uppercase',
+                    color: sc, background: 'var(--bg2)', padding: '2px 8px', borderRadius: 9 }}>{rem.status || 'detected'}</span>
                 </div>
-                {f.why && <div style={{ fontSize: 10, color: 'var(--text2)', marginTop: 3, marginLeft: 60 }}>{f.why}</div>}
-                <div style={{ fontSize: 10, marginTop: 3, marginLeft: 60, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-                  <span style={{ color: 'var(--accent)' }}>▸ {f.recommended_action}</span>
-                  <span style={{ color: 'var(--text3)' }}>
-                    detected by {f.detected_by}
-                    {rem.by && rem.by !== f.detected_by ? ` · ${rem.status} by ${rem.by}` : ''}
-                    {when ? ` @ ${when}` : ''}
-                  </span>
-                  {rem.detail && <span style={{ color: 'var(--text3)', fontStyle: 'italic' }}>{rem.detail}</span>}
-                  {rem.pr_url && rem.pr_url.startsWith('http') && <a href={rem.pr_url} onClick={e => e.stopPropagation()} style={{ color: 'var(--accent)' }}>PR ↗</a>}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 10 }}>
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <div style={lab}>What</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)' }}>{f.message}</div>
+                  </div>
+                  <div>
+                    <div style={lab}>Why / root cause</div>
+                    <div style={{ fontSize: 11, color: 'var(--text2)' }}>{f.why || '—'}</div>
+                  </div>
+                  <div>
+                    <div style={lab}>Who</div>
+                    <div style={{ fontSize: 11, color: 'var(--text1)', fontFamily: 'ui-monospace, monospace' }}>{who}</div>
+                  </div>
+                  <div>
+                    <div style={lab}>When</div>
+                    <div style={{ fontSize: 11, color: 'var(--text2)' }}>{when ? fmtWhen(when) : '—'}</div>
+                  </div>
+                  <div style={{ gridColumn: 'span 2' }}>
+                    <div style={lab}>How (action)</div>
+                    <div style={{ fontSize: 11, color: 'var(--accent)' }}>{f.recommended_action || '—'}</div>
+                    {rem.detail && <div style={{ fontSize: 10, color: 'var(--text3)', fontStyle: 'italic', marginTop: 2 }}>{rem.detail}</div>}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8, flexWrap: 'wrap' }}>
+                  {rem.pr_url && rem.pr_url.startsWith('http') && (
+                    <a href={rem.pr_url} onClick={e => e.stopPropagation()} style={{ color: 'var(--accent)', fontSize: 10 }}>PR ↗</a>
+                  )}
                   {f.actionable && ['auto_retry', 'refresh', 'code_fix'].includes(f.action_type) && (() => {
                     const k = `${f.category}:${f.type}`; const st = acting[k]
                     const label = f.action_type === 'code_fix' ? 'Route to coder' : 'Fix now'
@@ -467,7 +501,7 @@ export default function HealthHub({ onDrill }: Props) {
             ].map(s => (
               <div key={s.label} style={{ padding: '10px 12px', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8 }}>
                 <div style={{ fontSize: 18, fontWeight: 800, color: s.color }}>{s.value}</div>
-                <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', marginTop: 2 }}>{s.label}</div>
+                <div style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase', marginTop: 2 }}>{s.label}</div>
               </div>
             ))}
           </div>
@@ -488,7 +522,7 @@ export default function HealthHub({ onDrill }: Props) {
                   }} />
               ))}
             </div>
-            <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 4 }}>Click a bar for run context · green ≥85 · amber ≥65 · red &lt;65</div>
+            <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 4 }}>Click a bar for run context · green ≥85 · amber ≥65 · red &lt;65</div>
           </div>
 
           {/* Category mini-trends */}
@@ -540,11 +574,11 @@ export default function HealthHub({ onDrill }: Props) {
                       {h.findings_critical || 0} crit · {h.findings_warning || 0} warn · {h.findings_total || 0} total
                     </span>
                     {(h.degraded_categories || []).length > 0 && (
-                      <span style={{ fontSize: 9, color: 'var(--amber)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <span style={{ fontSize: 10, color: 'var(--amber)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         ↓ {(h.degraded_categories || []).map((c: string) => CAT_LABEL[c] || c).join(', ')}
                       </span>
                     )}
-                    <span style={{ fontSize: 9, color: 'var(--text3)' }}>{open ? '▲' : '▼'}</span>
+                    <span style={{ fontSize: 10, color: 'var(--text3)' }}>{open ? '▲' : '▼'}</span>
                   </button>
                   {open && (
                     <div style={{ padding: '0 12px 10px 12px', borderTop: '1px solid var(--border-subtle)' }}>
@@ -574,6 +608,9 @@ export default function HealthHub({ onDrill }: Props) {
           </div>
         </>
       )}
+
+      {tab === 'log' && <RemediationDashboard />}
+      {tab === 'autonomy' && <OpsAutonomyDashboard />}
     </div>
   )
 }

@@ -168,6 +168,16 @@ def telegram_config():
 
 
 def send_telegram(text):
+    """Send via the centralized telegram_alert router (outbox, dedup, report capture).
+    Falls back to direct urllib only if the router import fails (e.g. missing deps)."""
+    try:
+        from telegram_alert import send_telegram as router_send
+        ok = router_send(text)
+        return {"sent": ok, "via": "router"}
+    except Exception:
+        pass
+
+    # Fallback: direct urllib to Telegram (legacy path — no router/outbox/dedup)
     token, chat_id = telegram_config()
     if not token or not chat_id:
         return {"sent": False, "reason": "missing Telegram token/chat id in .env"}

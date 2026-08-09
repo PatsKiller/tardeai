@@ -1,0 +1,276 @@
+{
+  "version": "2.0",
+  "description": "Machine-readable staleness recovery runbook — all failure types with signatures, diagnostics, remediation, and circuit breakers.",
+  "runbooks": {
+    "cio_decisions_stale": {
+      "signature": "cio_decisions.max(created_at) > 48h AND is_weekday",
+      "severity": "P2",
+      "causes": ["upstream_signal_empty", "env_symlink_race", "db_connection_failure", "empty_signal_flow_audit"],
+      "diagnostics": ["tail -50 logs/cio_decisions.log", "SELECT COUNT(*) FROM signal_flow_audit WHERE created_at > now() - interval '7 days'"],
+      "remediation": {
+        "script": "cio_decision_engine.py --run",
+        "env": "source $TRADEAI_ENV",
+        "timeout_s": 300,
+        "risk": "LOW",
+        "idempotent": true
+      },
+      "validation": "cio_decisions has row with created_at > now() - 1h",
+      "circuit_breaker": {"max_failures": 3, "cooldown_min": 60}
+    },
+    "trade_closed_stale": {
+      "signature": "trade_closed.max(close_date) > 7d",
+      "severity": "P2",
+      "causes": ["schwab_journal_builder_stalled", "schwab_transaction_ingest_stalled", "schwab_api_rate_limit"],
+      "diagnostics": ["tail -50 logs/schwab_ingest.log", "check if schwab_journal_builder cron is firing"],
+      "remediation": {
+        "script": "schwab_journal_builder.py --apply && schwab_transaction_ingest.py --apply",
+        "env": "source $TRADEAI_ENV",
+        "timeout_s": 300,
+        "risk": "LOW",
+        "idempotent": true
+      },
+      "validation": "trade_closed has max(close_date) within last 24h",
+      "circuit_breaker": {"max_failures": 3, "cooldown_min": 60}
+    },
+    "orchestrator_setups_stale": {
+      "signature": "screener_pm.log age > 24h",
+      "severity": "P2",
+      "causes": ["safe_flock_killed_it", "OOM", "ollama_stuck", "underfilled_run"],
+      "diagnostics": ["tail -100 logs/screener_pm.log | grep -i 'Terminated\\|OOM\\|killed'", "check orchestrator cron"],
+      "remediation": {
+        "script": "trade_ai_orchestrator.py --run-label AUTOHEAL --no-llm --allow-underfilled",
+        "env": "source $TRADEAI_ENV",
+        "timeout_s": 600,
+        "risk": "LOW",
+        "idempotent": true
+      },
+      "validation": "screener_pm.log updated within last 6h",
+      "circuit_breaker": {"max_failures": 3, "cooldown_min": 120}
+    },
+    "shadow_batch_stale": {
+      "signature": "shadow_batch_manual.log age > 24h",
+      "severity": "P3",
+      "causes": ["schwab_api_throttle", "rate_limit", "long_running_batch"],
+      "diagnostics": ["tail -20 logs/shadow_batch_manual.log", "check if batch is still running"],
+      "remediation": {
+        "script": "shadow_batch_generator.py --run --top 300",
+        "env": "source $TRADEAI_ENV",
+        "timeout_s": 900,
+        "risk": "LOW",
+        "idempotent": true
+      },
+      "validation": "shadow_batch_manual.log has recent summary line",
+      "circuit_breaker": {"max_failures": 3, "cooldown_min": 120}
+    },
+    "finviz_screener_stale": {
+      "signature": "finviz_quote_cache.json age > 25m during market hours",
+      "severity": "P2",
+      "causes": ["finviz_cookie_expired", "finviz_rate_limit", "network_timeout"],
+      "diagnostics": ["check logs/finviz_screener.log", "credential_monitor.check_finviz()"],
+      "remediation": {
+        "script": "finviz_screener_runner.py --run",
+        "env": "source $TRADEAI_ENV",
+        "timeout_s": 120,
+        "risk": "LOW",
+        "idempotent": true
+      },
+      "validation": "finviz_quote_cache.json updated within 30m",
+      "circuit_breaker": {"max_failures": 3, "cooldown_min": 30}
+    },
+    "news_ingestion_stale": {
+      "signature": "news_articles.max(created_at) > 6h",
+      "severity": "P3",
+      "causes": ["rss_feed_down", "yahoo_api_rate_limit", "network_timeout"],
+      "diagnostics": ["tail -50 logs/news_ingestion.log"],
+      "remediation": {
+        "script": "news_ingestion.py --priority",
+        "env": "source $TRADEAI_ENV",
+        "timeout_s": 180,
+        "risk": "LOW",
+        "idempotent": true
+      },
+      "validation": "news_articles has rows with created_at > now() - 2h",
+      "circuit_breaker": {"max_failures": 3, "cooldown_min": 30}
+    },
+    "indicator_snapshot_stale": {
+      "signature": "indicator_signal_history.max(computed_at) > 48h",
+      "severity": "P3",
+      "causes": ["cache_not_refreshing", "yfinance_failure", "db_write_failure"],
+      "diagnostics": ["SELECT MAX(computed_at) FROM indicator_signal_history", "tail -50 logs/indicator_cache.log"],
+      "remediation": {
+        "script": "indicator_cache_refresh.py",
+        "env": "source $TRADEAI_ENV",
+        "timeout_s": 300,
+        "risk": "LOW",
+        "idempotent": true
+      },
+      "validation": "indicator_signal_history has rows with computed_at > now() - 12h",
+      "circuit_breaker": {"max_failures": 3, "cooldown_min": 60}
+    },
+    "symbol_profiles_stale": {
+      "signature": "symbol_profiles.max(updated_at) > 48h",
+      "severity": "P3",
+      "causes": ["build_symbol_profiles cron stalled", "yfinance_failure"],
+      "diagnostics": ["SELECT MAX(updated_at) FROM symbol_profiles", "check cron for build_symbol_profiles"],
+      "remediation": {
+        "script": "build_symbol_profiles.py",
+        "env": "source $TRADEAI_ENV",
+        "timeout_s": 300,
+        "risk": "LOW",
+        "idempotent": true
+      },
+      "validation": "symbol_profiles has rows with updated_at > now() - 12h",
+      "circuit_breaker": {"max_failures": 3, "cooldown_min": 60}
+    },
+    "analyst_rollup_stale": {
+      "signature": "analyst_consensus_history.max(created_at) > 48h",
+      "severity": "P3",
+      "causes": ["pro_analyst_fetch cron stalled", "yahoo_analyst_api_failure"],
+      "diagnostics": ["SELECT MAX(created_at) FROM analyst_consensus_history"],
+      "remediation": {
+        "script": "pro_analyst_fetch.py",
+        "env": "source $TRADEAI_ENV",
+        "timeout_s": 300,
+        "risk": "LOW",
+        "idempotent": true
+      },
+      "validation": "analyst_consensus_history has rows with created_at > now() - 12h",
+      "circuit_breaker": {"max_failures": 3, "cooldown_min": 60}
+    },
+    "sector_momentum_stale": {
+      "signature": "sector_momentum_state.max(created_at) > 48h",
+      "severity": "P3",
+      "causes": ["sector_momentum_engine cron stalled", "market_data_failure"],
+      "diagnostics": ["SELECT MAX(created_at) FROM sector_momentum_state"],
+      "remediation": {
+        "script": "sector_momentum_engine.py",
+        "env": "source $TRADEAI_ENV",
+        "timeout_s": 180,
+        "risk": "LOW",
+        "idempotent": true
+      },
+      "validation": "sector_momentum_state has rows with created_at > now() - 12h",
+      "circuit_breaker": {"max_failures": 3, "cooldown_min": 60}
+    },
+    "rotation_summary_stale": {
+      "signature": "strategy_rotation_signals.max(created_at) > 48h",
+      "severity": "P3",
+      "causes": ["rotation_autopilot cron stalled", "sector_data_failure"],
+      "diagnostics": ["SELECT MAX(created_at) FROM strategy_rotation_signals"],
+      "remediation": {
+        "script": "rotation_autopilot.py",
+        "env": "source $TRADEAI_ENV",
+        "timeout_s": 180,
+        "risk": "LOW",
+        "idempotent": true
+      },
+      "validation": "strategy_rotation_signals has rows with created_at > now() - 12h",
+      "circuit_breaker": {"max_failures": 3, "cooldown_min": 60}
+    },
+    "holdings_stale": {
+      "signature": "holdings.json age > 24h",
+      "severity": "P2",
+      "causes": ["portfolio_repricer_stalled", "snaptrade_sync_stalled"],
+      "diagnostics": ["stat data/portfolios/state/holdings.json", "tail -50 logs/portfolio_repricer.log"],
+      "remediation": {
+        "script": "portfolio_repricer.py",
+        "env": "source $TRADEAI_ENV",
+        "timeout_s": 120,
+        "risk": "LOW",
+        "idempotent": true
+      },
+      "validation": "holdings.json modified within last 4h",
+      "circuit_breaker": {"max_failures": 3, "cooldown_min": 30}
+    },
+    "stops_stale": {
+      "signature": "stop_lifecycle.max(snapshot_at) > 48h",
+      "severity": "P1",
+      "causes": ["unified_stop_supervisor stalled", "stop_update_failure"],
+      "diagnostics": ["SELECT MAX(snapshot_at) FROM stop_lifecycle", "tail -50 logs/unified_stop_supervisor.log"],
+      "remediation": {
+        "script": "unified_stop_supervisor.py --apply",
+        "env": "source $TRADEAI_ENV",
+        "timeout_s": 180,
+        "risk": "MEDIUM",
+        "idempotent": true
+      },
+      "validation": "stop_lifecycle has rows with snapshot_at > now() - 12h",
+      "circuit_breaker": {"max_failures": 3, "cooldown_min": 60}
+    },
+    "fred_data_stale": {
+      "signature": "fred_economic_series.max(fetched_at) > 168h",
+      "severity": "P3",
+      "causes": ["fred_api_rate_limit", "fred_data_ingest cron stalled"],
+      "diagnostics": ["SELECT MAX(fetched_at) FROM fred_economic_series"],
+      "remediation": {
+        "script": "fred_data_ingest.py --ingest",
+        "env": "source $TRADEAI_ENV",
+        "timeout_s": 180,
+        "risk": "LOW",
+        "idempotent": true
+      },
+      "validation": "fred_economic_series has rows with fetched_at > now() - 24h",
+      "circuit_breaker": {"max_failures": 3, "cooldown_min": 120}
+    },
+    "sec_data_stale": {
+      "signature": "sec_form4.max(created_at) > 168h",
+      "severity": "P3",
+      "causes": ["sec_api_rate_limit", "sec_data_ingest cron stalled"],
+      "diagnostics": ["SELECT MAX(created_at) FROM sec_form4"],
+      "remediation": {
+        "script": "sec_data_ingest.py --all",
+        "env": "source $TRADEAI_ENV",
+        "timeout_s": 300,
+        "risk": "LOW",
+        "idempotent": true
+      },
+      "validation": "sec_form4 has rows with created_at > now() - 24h",
+      "circuit_breaker": {"max_failures": 3, "cooldown_min": 120}
+    },
+    "social_data_stale": {
+      "signature": "social_sentiment_history.max(observed_at) > 48h",
+      "severity": "P3",
+      "causes": ["social_ingest cron stalled", "api_rate_limit"],
+      "diagnostics": ["SELECT MAX(observed_at) FROM social_sentiment_history"],
+      "remediation": {
+        "script": "social_ingest.py --source all",
+        "env": "source $TRADEAI_ENV",
+        "timeout_s": 300,
+        "risk": "LOW",
+        "idempotent": true
+      },
+      "validation": "social_sentiment_history has rows with observed_at > now() - 12h",
+      "circuit_breaker": {"max_failures": 3, "cooldown_min": 60}
+    },
+    "snaptrade_stale": {
+      "signature": "snaptrade sync age > 48h",
+      "severity": "P2",
+      "causes": ["snaptrade_token_expired", "snaptrade_api_error"],
+      "diagnostics": ["tail -50 logs/snaptrade_sync.log", "check snaptrade token validity"],
+      "remediation": {
+        "script": "snaptrade_sync.py --apply",
+        "env": "source $TRADEAI_ENV",
+        "timeout_s": 180,
+        "risk": "LOW",
+        "idempotent": true
+      },
+      "validation": "snaptrade_sync.log updated within last 12h",
+      "circuit_breaker": {"max_failures": 3, "cooldown_min": 60}
+    },
+    "youtube_stale": {
+      "signature": "youtube_transcripts.max(ingested_at) > 168h",
+      "severity": "P3",
+      "causes": ["youtube_transcript_ingest cron stalled", "youtube_api_quota_exceeded"],
+      "diagnostics": ["SELECT MAX(ingested_at) FROM youtube_transcripts"],
+      "remediation": {
+        "script": "youtube_transcript_ingest.py --all-channels",
+        "env": "source $TRADEAI_ENV",
+        "timeout_s": 600,
+        "risk": "LOW",
+        "idempotent": true
+      },
+      "validation": "youtube_transcripts has rows with ingested_at > now() - 24h",
+      "circuit_breaker": {"max_failures": 3, "cooldown_min": 120}
+    }
+  }
+}

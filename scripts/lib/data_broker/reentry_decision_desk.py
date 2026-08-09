@@ -649,6 +649,13 @@ def build_decision_desk(
     else:
         symbols = [str(s).upper() for s in symbols if s][:max_symbols]
 
+    # CUSIP / odd-format filter: skip 9-char alphanumeric strings that match CUSIP format.
+    # These come from trade_transactions exit records (settlement IDs, not tickers) and will
+    # never resolve via market_quotes or get_best_quote — each one blocks 1–2s hitting Schwab
+    # then Yahoo. Filtering before the batch call keeps the decision-desk endpoint responsive.
+    _valid_ticker = lambda s: not (len(s) == 9 and s.isalnum() and not any(c in s for c in ('.', '-', '/')))
+    symbols = [s for s in symbols if _valid_ticker(s)]
+
     snap = get_portfolio_snapshot()
     heat = (snap.get("risk") or {}).get("portfolio_heat_pct")
     book_equity = _f((snap.get("totals") or {}).get("total_value")) or DEFAULT_BOOK
@@ -665,7 +672,7 @@ def build_decision_desk(
             quote_max_h = 48  # Mon open may still hold Friday close until 09:00 cron
     except Exception:
         pass
-    price_batch = get_price_batch(db_query, symbols, max_age_hours=quote_max_h) if symbols else {}
+    price_batch = get_price_batch(db_query, symbols, max_age_hours=quote_max_h, skip_live=True) if symbols else {}
 
     indicators = get_indicator_snapshot(symbols) if symbols else {"by_symbol": {}}
     by_ind = indicators.get("by_symbol") or {}
@@ -735,8 +742,10 @@ def build_decision_desk(
                 "source": batch_q.get("source") or "data_broker.market_quote",
             }
         else:
-            # Last-resort single-symbol broker path (still labeled data_broker)
-            quote = _quote(sym)
+            # When get_price_batch was called with skip_live=True we skip the live-API
+            # fallback here too — _quote() hits Schwab/Yahoo per-symbol and would wedge
+            # the endpoint for 1–2s per missing symbol (common for old closed positions).
+            quote = {"price": None, "as_of": None, "source": None}
         ind = by_ind.get(sym) or {}
         plan = plans.get(sym) or {}
         res = resistance_map.get(sym) or {}

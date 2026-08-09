@@ -17,7 +17,7 @@ from __future__ import annotations
 
 PRESENTATION_VERSION = "1.0.0"
 
-_NO_MECH_HEADERS = {"BLOCKED", "NO TRADE", "MISSED ENTRY", "UNVERIFIED"}
+_NO_MECH_HEADERS = {"BLOCKED", "NO TRADE", "MISSED ENTRY", "UNVERIFIED", "DETERMINISTIC FAIL"}
 
 
 def build(packet: dict, action_policy: dict | None = None) -> dict:
@@ -82,8 +82,10 @@ def build(packet: dict, action_policy: dict | None = None) -> dict:
         header = "UNVERIFIED"
         header_note = "UNVERIFIED — REBUILD REQUIRED (packet predates the oversight schema)"
     elif verification == "DETERMINISTIC_FAIL":
-        header = "WAIT"
-        header_note = "ticket failed deterministic validation — no current entry"
+        # Rockville (2026-08): DETERMINISTIC_FAIL is the primary operator state.
+        # Never map fail → WAIT (FTH contradiction: header WAIT + live mechanics).
+        header = "DETERMINISTIC FAIL"
+        header_note = "NO TRADE MECHANICS — quality or ticket validation failed; no current entry"
     elif no_trade_pref:
         header = "NO TRADE"
         header_note = "no-trade is preferred — no constructive current mechanics"

@@ -271,12 +271,13 @@ def run_audit(open_only=False, enqueue_hermes=False, write=True):
         try:
             for r in reds:
                 cur.execute("""
-                    INSERT INTO system_health_events (component, status, severity, message, created_at)
-                    VALUES ('trade_integrity_audit', 'FAIL', 'P1', %s, now())
+                    INSERT INTO system_health_events (component, event_type, severity, message, created_at)
+                    VALUES ('trade_integrity_audit', 'TRADE_INTEGRITY_RED', 'P1', %s, now())
                 """, [f"Trade #{r['paper_trade_id']} {r['symbol']} RED: {'; '.join(r['trade_ai_reasons'])}"])
             conn.commit()
-        except Exception:
+        except Exception as e:
             conn.rollback()
+            print(f"trade_integrity_audit: SIEM insert failed: {e}", file=sys.stderr)
 
     # Optionally request Hermes reviews for unreviewed trades
     enqueued = 0

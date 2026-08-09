@@ -1,0 +1,88 @@
+{
+  "policy_version": "rockville-watch-cio-v1.0.0",
+  "scope": "Trade AI Command Center v3 Watchlist + daily CIO synthesis",
+  "provider_allowlist": ["deepseek"],
+  "forbidden_models": [
+    "deepseek-v4",
+    "deepseek-chat",
+    "deepseek-reasoner",
+    "deepseek",
+    "deepseek-flash",
+    "fast",
+    "pro",
+    "pro_think"
+  ],
+  "forbidden_fallback_providers": ["gemma", "ollama", "grok", "xai", "chatgpt", "openai", "anthropic"],
+  "no_silent_fallback": true,
+  "llm_authority": "advisory_only",
+  "llm_may_not": [
+    "establish_price",
+    "establish_arithmetic",
+    "establish_state",
+    "establish_eligibility",
+    "establish_risk",
+    "establish_entry",
+    "establish_stop",
+    "establish_target",
+    "proposal_authority",
+    "execution_authority",
+    "convert_deterministic_failure_to_ready_or_wait"
+  ],
+  "policies": {
+    "WATCH_FAST": {
+      "provider": "deepseek",
+      "model": "deepseek-v4-flash",
+      "thinking": false,
+      "effort": null,
+      "use": "Per-symbol company summary, routine Watch narrative, UI explanation text",
+      "max_calls_per_symbol_per_day": 4,
+      "cache_by": ["symbol", "snapshot_hash", "prompt_version", "policy_version", "model"]
+    },
+    "WATCH_FAST_THINK": {
+      "provider": "deepseek",
+      "model": "deepseek-v4-flash",
+      "thinking": true,
+      "effort": "high",
+      "use": "One-symbol contradiction review and structured plan-coherence critique after deterministic validation",
+      "max_calls_per_symbol_per_day": 2,
+      "requires_deterministic_validation": true
+    },
+    "CIO_DAILY_PRO": {
+      "provider": "deepseek",
+      "model": "deepseek-v4-pro",
+      "thinking": true,
+      "effort": "high",
+      "use": "One daily Watchlist/CIO synthesis across changed symbols and portfolio implications",
+      "max_calls_per_market_day": 1,
+      "schedule_default": "16:20 America/New_York market days",
+      "schedule_configurable": true
+    },
+    "CIO_DEEP_REVIEW": {
+      "provider": "deepseek",
+      "model": "deepseek-v4-pro",
+      "thinking": true,
+      "effort": "max",
+      "use": "Manual operator action only, with cost estimate and explicit confirmation",
+      "requires_operator_confirmation": true,
+      "show_cost_estimate": true
+    }
+  },
+  "typed_failure_codes": [
+    "AUTH_MISSING",
+    "AUTH_INVALID",
+    "MODEL_NOT_FOUND",
+    "HTTP_429",
+    "TIMEOUT",
+    "PROVIDER_5XX",
+    "JSON_INVALID",
+    "MODEL_OUTPUT_INVALID",
+    "COST_CAP_BLOCKED"
+  ],
+  "feature_flags": {
+    "watch_card_v2_visible": false,
+    "watch_card_v2_shadow": true,
+    "watch_deepseek_flash_enabled": false,
+    "watch_cio_daily_enabled": false,
+    "watch_cio_deep_review_enabled": false
+  }
+}

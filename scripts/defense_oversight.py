@@ -120,15 +120,53 @@ def ensure_tables(cur):
 
 
 def _parse_strict(raw: str):
+    """Try to parse oversght JSON, including truncated responses."""
+    import json
     try:
         txt = raw.strip()
+        # Strip code fence
         if txt.startswith("```"):
-            txt = txt.split("```")[1].lstrip("json").strip()
+            if "```json" in txt:
+                txt = txt.split("```json", 1)[-1].strip()
+            else:
+                txt = txt.split("```", 1)[-1].strip()
+        # Try direct parse first
         d = json.loads(txt)
         assert isinstance(d.get("cards"), list) and isinstance(d.get("memo"), dict)
         for c in d["cards"]:
             assert c.get("verdict") in ("CONCUR", "QUALIFY", "OBJECT")
         return d
+    except json.JSONDecodeError:
+        # Truncated JSON — try raw_decode (parses as much valid JSON as possible)
+        try:
+            decoder = json.JSONDecoder()
+            obj, _idx = decoder.raw_decode(txt)
+            if isinstance(obj, dict) and isinstance(obj.get("cards"), list):
+                return obj
+        except json.JSONDecodeError:
+            pass
+        # Last resort: close open structures from the last complete card edge
+        try:
+            # Find the last '"}\n' or '"},'  — a complete card boundary (closed object)
+            # json.JSONDecoder.raw_decode can't handle truncated strings, so we
+            # look for the last structurally-sound card end
+            pos = len(txt)
+            for _ in range(5):  # try up to 5 card boundaries
+                pos = txt.rfind('},', 0, pos)
+                if pos == -1:
+                    break
+                # Omit the trailing comma when closing the array
+                salvage = txt[:pos+1] + '\n  ]\n}'
+                try:
+                    d = json.loads(salvage)
+                    if isinstance(d.get("cards"), list):
+                        return d
+                except Exception:
+                    pass
+                pos -= 1
+        except Exception:
+            pass
+        return None
     except Exception:
         return None
 
@@ -145,7 +183,7 @@ def run_free_critiques(cur, force: bool = False) -> dict:
     prompt = ("You are an independent risk overseer for a retirement-scale defensive trading desk. "
               "Judge WITHIN the constitution. Be adversarial where warranted.\n\n"
               + art["markdown"] + "\n\n" + CONTRACT)
-    for seat, lane in (("chatgpt", "chatgpt"), ("grok", "grok")):
+    for seat, lane in (("chatgpt", "chatgpt"), ("grok", "grok"), ("deepseek", "deepseek-flash")):
         cur.execute("SELECT status FROM oversight_reviews WHERE build_hash=%s AND seat=%s", (bh, seat))
         if cur.fetchone() and not force:
             out["seats"][seat] = "cached"
@@ -166,13 +204,23 @@ def run_free_critiques(cur, force: bool = False) -> dict:
             continue
         t0 = time.time()
         try:
-            raw = generate(prompt, lane=lane, timeout=150)
+            raw = generate(prompt, lane=lane, timeout=150, max_tokens=4096)
             raw = raw if isinstance(raw, str) else json.dumps(raw)
         except Exception as e:
             raw = f"__error__ {e}"
         ms = int((time.time() - t0) * 1000)
         parsed = _parse_strict(raw) if not raw.startswith("__error__") else None
-        status = "ok" if parsed else ("unavailable" if raw.startswith("__error__") else "unparseable")
+        # Distinguish truncation from genuine lane failure: truncated content is
+        # partial but potentially useful.  Mark as "truncated" not "unavailable".
+        if raw.startswith("__error__"):
+            if "OUTPUT_TRUNCATED" in raw:
+                status = "truncated"
+            else:
+                status = "unavailable"
+        elif parsed:
+            status = "ok"
+        else:
+            status = "unparseable"
         if parsed:
             want = {c["id"] for c in art["brief"]["cards"]}
             got = {c.get("id") for c in parsed["cards"]}
@@ -262,6 +310,15 @@ def _call_provider(provider: str, model: str, prompt: str, key_env: dict) -> str
             with urllib.request.urlopen(req, timeout=180) as r:
                 resp = json.loads(r.read().decode())
             return "".join(b.get("text", "") for b in resp.get("content", []))
+        if provider == "deepseek":
+            key = key_env.get("deepseek", "")
+            body = json.dumps({"model": model, "max_tokens": 6000,
+                               "messages": [{"role": "user", "content": prompt}]}).encode()
+            req = urllib.request.Request("https://api.deepseek.com/v1/chat/completions", data=body, headers={
+                "Authorization": f"Bearer {key}", "content-type": "application/json"})
+            with urllib.request.urlopen(req, timeout=180) as r:
+                resp = json.loads(r.read().decode())
+            return resp["choices"][0]["message"]["content"]
         url = ("https://api.openai.com/v1/chat/completions" if provider == "openai"
                else "https://api.x.ai/v1/chat/completions")
         key = key_env["openai" if provider == "openai" else "xai"]
@@ -292,7 +349,8 @@ def run_paid_review(cur, seats=None) -> dict:
         return {"ok": False, "error": f"monthly oversight budget: ${pv['budget_remaining_usd']} left < ${total} est"}
     keys = {"anthropic": os.environ.get("ANTHROPIC_API_KEY", "").strip(),
             "openai": os.environ.get("OPENAI_API_KEY", "").strip(),
-            "xai": os.environ.get("XAI_API_KEY", "").strip()}
+            "xai": os.environ.get("XAI_API_KEY", "").strip(),
+            "deepseek": os.environ.get("deepseek_tradeai", "").strip() or os.environ.get("DEEPSEEK_API_KEY", "").strip()}
     art = build_oversight_brief()
     prompt = ("You are a PAID senior seat on an oversight panel for a retirement-scale defensive "
               "trading desk. Two free seats have already reviewed; be the adjudicator: judge WITHIN "
@@ -311,7 +369,12 @@ def run_paid_review(cur, seats=None) -> dict:
         raw = _call_provider(sc["provider"], sc["model"], prompt, keys)
         ms = int((time.time() - t0) * 1000)
         parsed = _parse_strict(raw) if not raw.startswith("__error__") else None
-        status = "ok" if parsed else ("unavailable" if raw.startswith("__error__") else "unparseable")
+        if raw.startswith("__error__"):
+            status = "truncated" if "OUTPUT_TRUNCATED" in raw else "unavailable"
+        elif parsed:
+            status = "ok"
+        else:
+            status = "unparseable"
         if parsed:
             want = {c["id"] for c in art["brief"]["cards"]}
             got = {c.get("id") for c in parsed["cards"]}

@@ -20,7 +20,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 STATUS = ROOT / "data" / "runtime" / "defense_refresh_job.json"
 LOCK = Path("/tmp/defense_refresh_job.lock")
-PY = str(ROOT / ".venv" / "bin" / "python")
+PY = sys.executable
 
 STEPS = [
     ("sectors", ["scripts/sector_momentum_engine.py"]),

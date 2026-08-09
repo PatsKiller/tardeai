@@ -15,6 +15,7 @@ import { S, panel, ph, mono, chip, th, thL, td, tdL, tdProse, btn } from '../../
 import { Val, Unk, isNum, pct, signColor, compact, money } from './Val'
 import { transitionRead, isStyleRow } from './transitionRead'
 import SectorLeadersCard from '../SectorLeadersCard'
+import CashAlternatives from './CashAlternatives'
 
 const HORIZONS = [{ k: 'W', l: '1 week' }, { k: 'M', l: '1 month' }, { k: 'Q', l: '1 quarter' }]
 const STALE_DAYS = 5
@@ -33,12 +34,32 @@ const ageShort = (iso?: string | null) => {
 }
 
 /* ─────────────────────────── 1. COMMAND STRIP ─────────────────────────── */
-function CommandStrip({ sources, staleSectors, onRefresh, refreshing }: {
+function CommandStrip({ sources, staleSectors, grokHealth, engineGaps, llmTimeline, dataRhythm, onRefresh, refreshing, onDeepSeek, deepSeekRefreshing }: {
   sources: Record<string, string | null>
   staleSectors: string[]
+  grokHealth?: { available: boolean; status: number } | null
+  engineGaps?: { gaps: { sector: string; etf: string; days_stale: number }[]; last_check: string | null } | null
+  llmTimeline?: { seats: Record<string, { last_run: string | null; status: string; age_m: number | null }>; schedule: { label: string; et: string; next_et: string; in_min: number; seats: string[] }[] } | null
+  dataRhythm?: { producers: { key: string; schedule: string; last_run: string | null; age_label: string; light: string }[] } | null
   onRefresh: () => void
   refreshing: boolean
+  onDeepSeek: () => void
+  deepSeekRefreshing: boolean
 }) {
+  const tl = llmTimeline
+  const seatLabel: Record<string, string> = { deepseek: 'DS Flash', chatgpt: 'GPT', grok: 'Grok', paid_ds: 'DS Pro', paid: 'Claude', paid_gpt: 'GPT Pro', paid_xai: 'Grok Pro' }
+  const seatChip = (name: string, s: { last_run: string | null; status: string; age_m: number | null }) => {
+    const label = seatLabel[name] || name
+    const ageStr = s.age_m != null ? (s.age_m >= 1440 ? `${Math.round(s.age_m / 1440)}d` : `${Math.round(s.age_m)}m`) : '—'
+    const ok = s.status === 'ok'
+    const tone = ok ? 'g' : s.status === 'cached' ? 'n' : s.status === 'unavailable' ? 'r' : 'a'
+    return (
+      <span key={name} style={chip(tone)} title={`${label}: ${s.status} · last run ${s.last_run || 'never'} (${ageStr} ago)`}>
+        {label} {ageStr}
+      </span>
+    )
+  }
+  const nextBuild = tl?.schedule?.find(s => s.seats.includes('deepseek'))
   return (
     <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap', marginBottom: 6 }}>
       <div>
@@ -58,10 +79,47 @@ function CommandStrip({ sources, staleSectors, onRefresh, refreshing }: {
             {staleSectors.length} sector{staleSectors.length === 1 ? '' : 's'} stale &gt;{STALE_DAYS}d
           </span>
         )}
-        <button style={btn()} onClick={onRefresh} disabled={refreshing}>
+        {grokHealth && (
+          <span style={chip(grokHealth.available ? 'g' : 'r')} title={grokHealth.available ? 'Grok OAuth proxy reachable' : 'Grok OAuth proxy unreachable — oversight seat unavailable'}>
+            GROK {grokHealth.available ? 'LIVE' : 'DOWN'}
+          </span>
+        )}
+        {(engineGaps?.gaps?.length ?? 0) > 0 && (
+          <span style={chip('a')} title={`engine gap filed for: ${engineGaps!.gaps.map(g => g.etf).join(', ')}`}>
+            {engineGaps!.gaps.length} GAP{engineGaps!.gaps.length === 1 ? '' : 'S'} FILED
+          </span>
+        )}
+        {tl?.seats && Object.entries(tl.seats).filter(([n]) => !n.startsWith('paid')).map(([n, s]) => seatChip(n, s))}
+        {tl?.seats && Object.entries(tl.seats).filter(([n]) => n.startsWith('paid')).length > 0 && (
+          <span style={{...chip('n'), borderStyle: 'dashed'}} title="Paid seats (weekly, metered)">
+            ⚖ {Object.entries(tl.seats).filter(([n]) => n.startsWith('paid')).map(([n, s]) => `${seatLabel[n] || n} ${s.age_m != null ? Math.round(s.age_m / 1440)+'d' : '—'}`).join(' · ')}
+          </span>
+        )}
+        {nextBuild && (
+          <span style={chip('n')} title={`Next oversight build: ${nextBuild.et} ET (in ${Math.round(nextBuild.in_min / 60)}h ${Math.round(nextBuild.in_min % 60)}m)`}>
+            next {nextBuild.et} ({Math.round(nextBuild.in_min / 60)}h)
+          </span>
+        )}
+        <button style={btn()} onClick={onRefresh} disabled={refreshing || deepSeekRefreshing}>
           {refreshing ? 'refreshing…' : 'refresh all'}
         </button>
+        <button style={{...btn(), background: 'rgba(96,165,250,.13)', color: S.blue, border: '1px solid rgba(96,165,250,.2)'}} onClick={onDeepSeek} disabled={refreshing || deepSeekRefreshing}>
+          {deepSeekRefreshing ? 'DeepSeek running…' : 'DeepSeek'}
+        </button>
       </div>
+      {dataRhythm?.producers && dataRhythm.producers.length > 0 && (
+        <div style={{ marginTop: 6, display: 'flex', gap: 5, flexWrap: 'wrap', paddingTop: 4, borderTop: '1px solid ' + S.line }}>
+          {dataRhythm.producers.map(p => {
+            const lightTone: Record<string, 'g' | 'n' | 'a' | 'r'> = { green: 'g', yellow: 'n', amber: 'a', red: 'r' }
+            return (
+              <span key={p.key} style={chip(lightTone[p.light] || 'n')} title={`${p.key.replace(/_/g,' ')}: ${p.schedule}\nLast: ${p.last_run || 'never'} (${p.age_label})`}>
+                {p.key.replace(/_/g, ' ')} {p.age_label}
+              </span>
+            )
+          })}
+          <span style={{ fontSize: 10, color: S.t3, alignSelf: 'center', marginLeft: 4 }} title="stoplight: green ≤6h · neutral ≤1d · amber ≤5d · red >5d">freshness code</span>
+        </div>
+      )}
     </div>
   )
 }
@@ -70,7 +128,7 @@ function CommandStrip({ sources, staleSectors, onRefresh, refreshing }: {
 interface Tile { rank: number | null; name: string; etf: string; weight: number | null;
                  tone: 'g' | 'r' | 'a' | 'n'; headline: string; hcolor: string; sub: string }
 
-function whereToAct(sectors: any[], leaders: Record<string, any>): Tile[] {
+function whereToAct(sectors: any[], leaders: Record<string, any>, engineGaps?: { gaps: { sector: string; etf: string; days_stale: number }[] } | null): Tile[] {
   const secs = sectors.filter(s => !isStyleRow(s.etf))
   if (!secs.length) return []
   const weights = secs.map(s => s.book_weight_pct).filter(isNum) as number[]
@@ -113,10 +171,11 @@ function whereToAct(sectors: any[], leaders: Record<string, any>): Tile[] {
     .filter(s => { const d = ageDays(s.as_of); return d !== null && d > STALE_DAYS })
     .sort((a, b) => (ageDays(b.as_of) ?? 0) - (ageDays(a.as_of) ?? 0))[0]
   if (stale) {
+    const gap = engineGaps?.gaps?.find(g => g.etf === stale.etf)
     push({
       rank: stale.rank, name: stale.name, etf: stale.etf, weight: stale.book_weight_pct, tone: 'n',
       headline: `Reading is ${ageDays(stale.as_of)} days old — not current`, hcolor: S.amber,
-      sub: `last refresh ${stale.as_of} · engine gap filed`,
+      sub: `last refresh ${stale.as_of}` + (gap ? ` · engine gap filed (${gap.days_stale}d)` : ''),
     })
   }
   return tiles.slice(0, 4)
@@ -455,6 +514,9 @@ function Oversight({ oversight }: { oversight: any }) {
   const alt = usable[1]
   const objection = top?.memo?.strongest_objection || top?.memo?.top_concerns?.[0] || null
   const counter = alt?.memo?.strongest_objection || alt?.memo?.top_concerns?.[0] || null
+  // Coverage: how many cards each seat reviewed (stored in memo.coverage e.g. "42/53 cards")
+  const topCov = top?.memo?.coverage || null
+  const altCov = alt?.memo?.coverage || null
   return (
     <section style={{ ...panel, marginTop: 14 }}>
       <div style={ph}>
@@ -475,6 +537,7 @@ function Oversight({ oversight }: { oversight: any }) {
               <span style={{ ...mono, color: S.t2, fontSize: 11 }}>
                 {top?.seat || 'seat unknown'}{top?.at ? ` · ${top.at}` : ''}
               </span>
+              {topCov && <span style={{ ...chip('n'), marginLeft: 'auto' }}>coverage {topCov}</span>}
             </div>
             <div style={{ color: S.t1 }}>{objection || <Unk reason="no objection returned by any seat" />}</div>
           </div>
@@ -494,9 +557,10 @@ function Oversight({ oversight }: { oversight: any }) {
 }
 
 /* ═══════════════════════════ COMPOSITION ══════════════════════════════ */
-export default function DefenseRedesign({ posture, recsData, tradeAi, regime, industriesCapturedAt, onRefresh, refreshing, quadrant, preserved }: {
+export default function DefenseRedesign({ posture, recsData, tradeAi, regime, industriesCapturedAt, onRefresh, refreshing, onDeepSeek, deepSeekRefreshing, quadrant, preserved }: {
   posture: any; recsData: any; tradeAi: any; regime: any; industriesCapturedAt?: string | null
   onRefresh: () => void; refreshing: boolean
+  onDeepSeek: () => void; deepSeekRefreshing: boolean
   quadrant: ReactNode; preserved: ReactNode
 }) {
   const [sl, setSl] = useState<any>(null)
@@ -525,13 +589,22 @@ export default function DefenseRedesign({ posture, recsData, tradeAi, regime, in
     return () => { dead = true }
   }, [])
 
+  const [cashAlt, setCashAlt] = useState<any>(null)
+  useEffect(() => {
+    let dead = false
+    fetch('/api/v2/defense/cash-alternatives').then(r => r.json()).then(j => {
+      if (!dead) setCashAlt(j?.data ?? j)
+    }).catch(() => { /* section renders its own empty state */ })
+    return () => { dead = true }
+  }, [])
+
   const rows: any[] = posture?.momentum?.rows || []
   const transitions: any[] = posture?.momentum?.transitions_today || []
   const sectors: any[] = sl?.sectors || []
   const staleSectors = useMemo(
     () => sectors.filter(s => { const d = ageDays(s.as_of); return d !== null && d > STALE_DAYS }).map(s => s.etf),
     [sectors])
-  const tiles = useMemo(() => whereToAct(sectors, sl?.sector ? { [sl.sector.key]: sl.sector } : {}), [sectors, sl])
+  const tiles = useMemo(() => whereToAct(sectors, sl?.sector ? { [sl.sector.key]: sl.sector } : {}, posture?.engine_gaps), [sectors, sl, posture?.engine_gaps])
   const maxWeight = Math.max(1, ...sectors.map(s => s.book_weight_pct).filter(isNum))
 
   const recs = recsData?.recommendations
@@ -543,8 +616,9 @@ export default function DefenseRedesign({ posture, recsData, tradeAi, regime, in
 
   return (
     <div>
-      <CommandStrip sources={sources} staleSectors={staleSectors} onRefresh={onRefresh} refreshing={refreshing} />
+      <CommandStrip sources={sources} staleSectors={staleSectors} grokHealth={posture?.grok_proxy_health} engineGaps={posture?.engine_gaps} llmTimeline={posture?.llm_timeline} dataRhythm={posture?.data_rhythm} onRefresh={onRefresh} refreshing={refreshing} onDeepSeek={onDeepSeek} deepSeekRefreshing={deepSeekRefreshing} />
       <WhereToAct tiles={tiles} maxWeight={maxWeight} />
+      <CashAlternatives data={cashAlt} />
       <MarketState
         net={posture?.net_exposure?.equity_pct}
         cashPct={posture?.net_exposure?.cash_pct}

@@ -1,124 +1,64 @@
 # Current Project Context — Trade AI v12
 
-**Last updated:** 2026-05-26  
-**Author:** Context sync from Drive documentation  
+**Last updated:** 2026-08-06
+**Author:** Cross-desk consistency audit session
 **Purpose:** Canonical handoff document for future Claude Code sessions
 
 ---
 
 ## 1. Current Safety State
 
-- **ALPACA_MODE=paper** — only paper trading endpoint accessible
-- **LLM_DISABLE_LIVE_EXECUTION=true** — live execution blocked at code level
-- **Live trading: BLOCKED** — no path to live orders exists
-- **Holdings:** $1,201,120 / 47 positions (Schwab/Fidelity/Vanguard — untouchable)
+- **ALPACA_MODE=paper** -- only paper trading endpoint accessible
+- **LLM_DISABLE_LIVE_EXECUTION=true** -- live execution blocked at code level
+- **Live trading: BLOCKED** -- no path to live orders exists
+- **Holdings:** ~$1,265,000 / ~22 positions (Schwab only, re-priced Aug 6)
 
-## 2. ATM Status
+## 2. Defense Desk -- Active, Advisory-Only
 
-ATM (Automated Trade Mode) v1 exists and has been used in both dry-run and active modes.
+Defense Desk v10 shipped 2026-08-06 (see `docs/architecture/DEFENSE_DESK_V10.md`).
 
-- **ATM was deployed** 2026-05-22 in DISABLED mode
-- **Dry-run mode** ran successfully for ~2 hours (09:45–11:15 ET)
-- **Active mode** was enabled by operator at 11:25 ET on 2026-05-22
-- **Active execution submitted paper orders** for NWG, NVDA, AGNC, CMCSA
-- **ATM active execution must be frozen** until ATM-SAFE-1 containment completes
+- **Sector momentum:** 11 ETFs priced nightly, 3 producers (sector/industry/recs), 5d staleness threshold
+- **Stances:** 13 positions >=$10K with HOLD/TRIM-WATCH/TRIM -- deterministic factor engine
+- **Rotation Plan:** 6 active rows (ARKX/XAR TRIM ladders, QCOM/CSCO rollback, BND/SPCX advised)
+- **Oversight:** 5 AI seats -- Grok, GPT, Grok Pro, GPT Pro, DeepSeek Flash -- coverage 25/25 cards
+- **LLM timeline:** Shows last-run + next-scheduled per seat
+- **DeepSeek:** Full oversight pipeline functional (primary seat, Flash ready)
+- **Cash alternatives:** 17 vehicles ranked, advisory only
 
-**ATM mode is currently: dry_run** (frozen by ATM-SAFE-1 at 16:13:49 ET 2026-05-22).  
-Do NOT change ATM mode without explicit operator command.
+## 3. Cross-Desk Consistency Audit -- Complete 2026-08-06
 
-## 3. ATM-SAFE-1 Containment — COMPLETE
+Full audit across all four desk systems using **data broker** as canonical source of truth:
 
-ATM-SAFE-1 containment completed 2026-05-22. All items resolved:
+- **0 hard contradictions** between desks
+- **4 soft conflicts**: SCHD, JEPI, ARKX, XAR flagged TRIM by defense -- legitimate (sector weakness, factor fires, ladder triggers)
+- **Stop re-entry watches:** `build_reentry_watch()` now accepts `thesis_map` for data broker enrichment
+- **Health agent gap:** `collect_cross_desk_consistency()` collector designed (pending implementation) to monitor contradictions and route through the escalation queue to LLM for repair
 
-- Partial-fill race condition → **FIXED** (adapter polls through partially_filled)
-- Stale proposal retry loop → **FIXED** (expiry logic, enrichment-failed tracking)
-- Quote fetch 404 → **FIXED** (switched to data.alpaca.markets)
-- NWG/NVDA missing stops → **FIXED** (stops placed, DB synced)
-- audit_log schema mismatch → **FIXED** (event→event_type, details→input_snapshot)
-- Quote fail-closed → **FIXED** (blocks order if no price source)
-- Paper execution containment → **FIXED** (enrichment pre-check, risk gate on promoter)
+## 4. Portfolio Membership Sync -- Working
 
-**Maturity score post-containment: 6.2/10.0**
+`sync_portfolio_watchlist_membership.py` called after every holdings write. All 25 held symbols have `in_portfolio=True` via `watchlist_symbol_master` view. `source='portfolio'` rows created on import, removed on sale. Bulk API pagination (200 cap) is the only visibility gap -- individual symbol lookups return correct data.
 
-## 3a. Stop Management V2 — COMPLETE (V2.4 hotfix 2026-05-26)
+## 5. Re-Entry Desk
 
-All 4 phases completed 2026-05-22, V2.4 hotfix applied 2026-05-26:
+- **Decision desk:** 108 rows, fully deterministic via data broker (no LLM in path)
+- **Stop re-entry:** 77 watches (CSWC, NOC, PFLT, RTX active for held symbols)
+- **Entry plans:** QCOM and CSCO have plans with zone/stops/targets via `watchlist_entry_planner.py`
+- **Thesis fix:** `stop_out_reentry_watch.build_reentry_watch(thesis_map=...)` wired, pending API deployment
 
-- **V2.0:** planned_stop + stop_order_id backfilled on all 5 open trades
-- **V2.1:** Broker stop reconciliation engine — 5/5 GTC stops verified
-- **V2.2:** Racing monitors merged into unified_stop_supervisor (*/3)
-- **V2.3:** Strategy-aware trailing tiers (momentum/swing/income/position)
-- **V2.4 (2026-05-26):** Critical trailing stop fix — two bugs found via ASPN incident:
-  - **Bug:** DB constraint `chk_long_stop_below_entry` blocked trailing stops above entry price → **DROPPED**
-  - **Bug:** `replace_stop()` 1s cancel delay insufficient, Alpaca rejected new stop → **Now verifies cancel before placing new stop (up to 5 retries)**
-  - **Bug:** Stop update didn't record `stop_order_id` or `stop_updated_at` → **Now persists both**
-  - Post-mortem: ASPN closed profitably at target ($6.01), but trailing stop to $5.81 failed — if price reversed, original $5.15 stop would have hit instead
+## 6. Recent Fixes (this session)
 
-**Maturity score post-STOP-V2: 7.0/10.0** (up from 6.2)
-
-## 3a-2. Extended Hours Trading — ENABLED (2026-05-26)
-
-Alpaca paper adapter now supports pre-market (4:00 AM ET) and after-hours (8:00 PM ET):
-
-- **Market hours gate expanded:** 4:00 AM – 8:00 PM ET weekdays (was 9:30–16:00)
-- **Extended hours orders:** Forced limit-only (Alpaca requirement), `extended_hours: true`
-- **No bracket orders** during extended hours (Alpaca limitation) — separate GTC stop placed after fill
-- **Market orders forced to limit** during extended hours
-
-## 3a-3. Alert Fatigue Fix — APPLIED (2026-05-26)
-
-- **Bug:** `run_proactive_quote_refresh.py` called `send_telegram(msg, bypass_router=True)`, sending "ATP REVIEW ALERT" spam every 5 minutes via cron
-- **Fix:** Removed `bypass_router=True` — router now classifies these as P2_DASHBOARD_ONLY (dashboard only, not Telegram)
-- **Rule:** AUTO mode alerts = purchased/sold/trailing stop changed only. MANUAL mode = approval buttons only.
-
-Next: ATM re-enable decision package, STOP-V2 burn-in, A-5 strategy proof
-
-## 3b. A-5 Final Observation Review — FAIL / EXTEND
-
-Reviewed 2026-05-22. Decision: **Phase 8D BLOCKED**.
-
-- 11 closed trades across 7 strategies (8 clean after filtering orphans)
-- 0 strategies have 3+ closed trades (minimum for baseline)
-- Strategy proof score remains 3.5/10
-- Agent learning remains BLOCKED
-- Continue observation via ATM active (limited caps)
-- Re-review when total closed trades ≥ 20 or any strategy reaches 5+ closed
-
-## 4. Recent Paper Executions
-
-All on Alpaca paper account (2026-05-22):
-
-| Trade | Symbol | Shares | Entry | Stop | Status |
-|---|---|---|---|---|---|
-| #28 | NWG | 189 | $15.84 | $15.05 | open, stop confirmed |
-| #29 | NVDA | 13 | $218.00 | $210.58 | open, stop confirmed |
-| #31 | AGNC | 293 | $10.22 | $9.71 | open, stop confirmed |
-| #33 | CMCSA | 120 | $24.97 | $23.61 | open, stop confirmed |
-| #27 | ASPN | 553 | $5.52 | $5.15 | open, stop confirmed (pre-existing) |
-
-## 5. Known Bugs
-
-| Bug | Severity | Status |
-|---|---|---|
-| audit_log.event column missing | P2 | OPEN |
-| Quote failure fallback did not fail-closed | P2 | MITIGATED (data API now primary) |
-| Broker error/partial fill reconciliation | P1 | FIXED (code + DB synced) |
-| Stale proposal infinite retry | P1 | FIXED (expiry logic) |
-| Orphan pending paper_trades | P2 | FIXED (#30, #32 closed) |
-
-## 6. Recent Drive Docs Read
-
-All from 2026-05-22/23:
-- `docs/prompts/ATM_V1_BUILD_PROMPT.md`
-- `docs/operator/ATM_RUNBOOK.md`
-- `docs/sessions/ATM_V1_BUILD_2026-05-22.md`
-- `docs/audits/SUPPLY_TRIAGE_2026-05-22.md`
-- `docs/audits/PROPOSAL_SUPPLY_AUDIT_2026-05-22.md`
-- `docs/sessions/ATM_V1_DAY1_DASHBOARD_2026-05-22.md`
-- `docs/sessions/ATM_PRE_ACTIVE_FIXES_2026-05-22.md`
-- `docs/sessions/AUTO_ENRICHMENT_2026-05-22.md`
-- `docs/audits/ATM_APPROVE_FAILED_2026-05-22.md`
-- `docs/audits/STOP_MGMT_DISCOVERY_2026-05-23.md`
+| Fix | Status |
+|-----|--------|
+| DeepSeek `OUTPUT_TRUNCATED` -- 3-layer repair | Deployed |
+| Sector staleness XLRE/XLC -- price scope + engine fix | Deployed |
+| All "deep sea" renamed to "deepseek" (files, API, UI) | Deployed |
+| MetricStrip 4 tooltips | Deployed |
+| SectorLeadersCard 5 column tooltips | Deployed |
+| CashAlternatives sizing policy column | Deployed |
+| LLM timeline timestamps | Deployed |
+| `build_reentry_watch` thesis_map parameter | Module tested, pending API wire |
+| Staleness display shows actual days | Deployed |
+| Hedging radar path fix in data rhythm | Deployed |
 
 ## 7. Do-Not-Do List
 
@@ -131,10 +71,28 @@ All from 2026-05-22/23:
 - No Finviz criteria changes
 - No .env modifications
 
-## 8. Recommended Next
+## 8. Deployment Mechanism
 
-1. **ATM-SAFE-1** — freeze active execution, fix audit_log schema, enforce quote-failure
-   fail-closed, verify no new orders/trades after freeze, run tests, commit
-2. **Regenerate maturity board** — only after ATM-SAFE-1 completes
-3. **Stop management v2** — after John answers the 7 pending decisions
-4. **Strategy proof (A-5)** — required before any live trading consideration
+```bash
+# Build frontend
+cd apps/command-center-v3 && npm run build
+
+# Create release
+bash scripts/make_release.sh --label "<label>"
+
+# Update systemd drop-in and restart
+# ~/.config/systemd/user/portfolio-server.service.d/20-exact-sha-release.conf
+systemctl --user daemon-reload
+systemctl --user restart portfolio-server
+```
+
+Current release: `bc779f4a-sector-names-tooltips-20260806-111529`
+
+## 9. Documentation
+
+- `docs/architecture/DEFENSE_DESK_V10.md` -- v10 cross-desk audit (this session)
+- `docs/architecture/DEFENSE_DESK_V9.md` -- v9 adjudication layer (Jul 18)
+- `docs/CHANGELOG.md` -- through 2026-08-06
+- `docs/sessions/` -- past session summaries
+- `docs/design/watchlist-intelligence-v3/DATA_BROKER_WATCH_CONSUMERS.md` -- data broker consumer docs
+- `docs/ui/REENTRY_DECISION_SCORECARD_v1.md` -- re-entry scorecard spec

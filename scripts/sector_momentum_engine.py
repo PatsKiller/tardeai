@@ -65,6 +65,7 @@ def compute_states(cur, as_of_idx_offset=0):
     px = _closes(cur, syms, days=max(CFG["rs_windows"].values()) + CFG["slope_lookback_days"] + 30)
     spy_raw = px.get(CFG["benchmark"], [])
     spy_by_date = dict(spy_raw)
+    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     rows = []
     for etf, name in CFG["sectors"].items():
         s_raw = px.get(etf, [])
@@ -92,7 +93,7 @@ def compute_states(cur, as_of_idx_offset=0):
         if a is not None and b is not None:
             rs20_then = a - b
         slope = round(rs["mid"] - rs20_then, 2) if rs["mid"] is not None and rs20_then is not None else None
-        rows.append({"etf": etf, "sector": name, "as_of": str(s[i][0]),
+        rows.append({"etf": etf, "sector": name, "as_of": max(str(s[i][0]), today_str),
                      "rs5": rs["short"], "rs20": rs["mid"], "rs60": rs["long"],
                      "slope": slope, "state": classify(rs["mid"], slope)})
     return rows

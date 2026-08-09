@@ -92,12 +92,15 @@ LANE_CALLS_PER_SYMBOL = 2
 
 
 def _held_symbols() -> set:
+    _valid_ticker = lambda s: not (len(s) == 9 and s.isalnum()
+                                   and not any(c in s for c in ('.', '-', '/', '^', ' ')))
     try:
         path = PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json"
         d = json.loads(path.read_text()) if path.exists() else {}
         return {str(r.get("symbol", "")).upper()
                 for r in (d.get("holdings") or [])
-                if (r.get("market_value") or 0) or (r.get("quantity") or r.get("shares") or 0)}
+                if (r.get("market_value") or 0) or (r.get("quantity") or r.get("shares") or 0)
+                if _valid_ticker(str(r.get("symbol", "")))}
     except Exception:
         return set()
 
@@ -212,6 +215,10 @@ def select_targets(top_n: int = TOP_N) -> dict:
         # kept for back-compat with existing callers/tests
         "eligible_total": len(rows),
         "dropped_below_cap": len(deferred),
+        # next-100 visibility: the symbols just below the cap, with their
+        # evidence, rank, and recommendation so the operator always knows
+        # who's NEXT in the review queue.
+        "_deferred_all": deferred,
     }
     return report
 
@@ -283,10 +290,16 @@ def classify_freshness(symbols: list, hours: float = None) -> dict:
 
 def _generate_one(symbol: str) -> dict:
     """Evaluate + persist one packet. Never raises — a batch must not die on one
-    symbol; the failure is recorded and the run continues."""
+    symbol; the failure is recorded and the run continues.
+
+    SHADOW_BATCH_RUN_MODELS=false disables LLM lanes (blind-only: facts + thesis
+    + technicals + ticket validation). Use for weekly backfill or catch-up runs
+    where speed matters more than model enrichment."""
     try:
+        import os as _os
         import shadow_decision_service as svc
-        pkt = svc.evaluate(symbol, run_models=True, origin="batch")
+        _run_models = _os.getenv("SHADOW_BATCH_RUN_MODELS", "true").lower() in ("1", "true", "yes")
+        pkt = svc.evaluate(symbol, run_models=_run_models, origin="batch")
         pid = svc.persist(pkt, origin="batch")
         mr = pkt.get("model_review") or {}
         return {"symbol": symbol, "ok": True, "packet_id": pid,
@@ -335,6 +348,16 @@ def run(*, top_n: int = TOP_N, dry_run: bool = False, force: bool = False,
         for _code in str(_r).split(","):
             _regen_by_reason[_code.strip().split(" ")[0].split("(")[0]] += 1
 
+    # Next-100: the symbols that just missed the top-N cap — with their evidence,
+    # rank, and recommendation, so the operator can see who's NEXT in the review
+    # queue and adjust the cap or review scope deliberately.
+    _deferred = sel.get("_deferred_all", [])[:100]
+    deferred_preview = [
+        {"symbol": d["symbol"], "reasons": d.get("reasons", []),
+         "hermes_rank": d.get("hermes_rank"), "rec": d.get("rec")}
+        for d in _deferred
+    ]
+
     summary = {
         "authorised": "operator 2026-07-21: EVIDENCE-based eligibility (label is sort-only)",
         "eligibility": "star | directive | held | material-move+rvol | catalyst | scope-S1 | packet-absent",
@@ -354,6 +377,7 @@ def run(*, top_n: int = TOP_N, dry_run: bool = False, force: bool = False,
         "est_lane_calls": sel["est_lane_calls"], "est_cost_note": sel["est_cost_note"],
         "already_fresh_skipped": len(fresh),
         "to_generate": len(todo), "members": members,
+        "next_100": deferred_preview, "next_100_count": len(deferred_preview),
         "started_at": _now().isoformat(), "state": "dry_run" if dry_run else "running",
     }
     if sel["deferred_by_cap"]:
@@ -443,12 +467,26 @@ def main() -> int:
             print(f"  legacy buy-side={out.get('legacy_buy_side')} "
                   f"ignore/avoid={out.get('legacy_ignore_avoid')} "
                   f"(label is sort-only, NOT a gate) · est {out.get('est_lane_calls')} lane calls")
-        if out.get("state") == "dry_run":
-            print("  members (evidence · rank · rec):")
-            for m in out.get("members", [])[:80]:
+        if out.get("members"):
+            if out.get("state") == "dry_run":
+                print("  members (evidence · rank · rec):")
+            else:
+                print("  REVIEWED TOP 100 (evidence · rank · rec):")
+            for m in out["members"][:80]:
                 print(f"    {m['symbol']:6s} {'+'.join(m.get('reasons', [])):32s} "
                       f"rank={m.get('hermes_rank')} rec={m.get('rec')}")
-    return 0
+        # Next-100 preview: always show so the operator sees who's next in the
+        # review queue — even when run aborts, this gives clear guidance on what
+        # to cover next week or expand to.
+        _next = out.get("next_100")
+        if _next:
+            print(f"\n  ▼ NEXT 100 (deferred by cap, first {min(30, len(_next))})")
+            for n in _next[:30]:
+                print(f"    {n['symbol']:6s} {'+'.join(n.get('reasons', [])):32s} "
+                      f"rank={n.get('hermes_rank')} rec={n.get('rec')}")
+            if len(_next) > 30:
+                print(f"    ... and {len(_next)-30} more")
+        return 0
 
 
 if __name__ == "__main__":

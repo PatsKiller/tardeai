@@ -1,0 +1,159 @@
+{
+  "version": "1",
+  "generated": "2026-08-07T16:38:56.410773+00:00",
+  "description": "File Integrity Manifest — canonical paths, expected hashes, and staleness thresholds for all critical state files. Regenerate on every deployment via scripts/generate_integrity_manifest.py.",
+  "files": {
+    "finviz_quote_cache": {
+      "canonical_path": "data/portfolios/state/finviz_quote_cache.json",
+      "sha256": "16e2e7d9e52bfd5551cd3709777b85d8be6e8a659c415942b498d7d83411a739",
+      "size": 29834,
+      "last_validated": "2026-08-07T16:38:56.410773+00:00",
+      "source_pipeline": "external_market_data_ingest.py",
+      "max_age_minutes": 30,
+      "consumers": [
+        "portfolio_dashboard",
+        "holdings_cards",
+        "system_health_agent"
+      ]
+    },
+    "trade_ai_cache": {
+      "canonical_path": "data/runtime/trade_ai_cache.json",
+      "sha256": "1495b0caa447e2f56e812ca244abf776c0cf5783b5543229896de4d57ed0bb48",
+      "size": 194830,
+      "last_validated": "2026-08-07T16:38:56.410773+00:00",
+      "source_pipeline": "trade_ai_orchestrator.py",
+      "max_age_minutes": 180,
+      "consumers": [
+        "portfolio_dashboard",
+        "runtime_awareness",
+        "strategy_signals"
+      ]
+    },
+    "holdings": {
+      "canonical_path": "data/portfolios/state/holdings.json",
+      "sha256": "4b768ed07550712c5144238149725c5385ec1d832e51bfda1ff8687c2be53f06",
+      "size": 218035,
+      "last_validated": "2026-08-07T16:38:56.410773+00:00",
+      "source_pipeline": "portfolio_repricer.py",
+      "max_age_minutes": 30,
+      "consumers": [
+        "portfolio_dashboard",
+        "watch_intelligence",
+        "system_health_agent",
+        "risk_monitor"
+      ]
+    },
+    "ai_analysis_cache": {
+      "canonical_path": "data/portfolios/state/ai_analysis_cache.json",
+      "sha256": "b151a712fc88f5b302778d1ef786aac8ed17dccc54a934b9e5cb07fe1a1b2445",
+      "size": 26625,
+      "last_validated": "2026-08-07T16:38:56.410773+00:00",
+      "source_pipeline": "ai_portfolio_analyzer.py",
+      "max_age_minutes": 720,
+      "consumers": [
+        "portfolio_dashboard",
+        "watch_intelligence"
+      ]
+    },
+    "ai_deep_holdings": {
+      "canonical_path": "data/portfolios/state/ai_deep_holdings.json",
+      "sha256": "2979a6c056f666e9195e44491c71e4f45f72887aa1f319f17a696deefb2feb6a",
+      "size": 4241,
+      "last_validated": "2026-08-07T16:38:56.410773+00:00",
+      "source_pipeline": "ai_deep_holdings_analyzer.py",
+      "max_age_minutes": 720,
+      "consumers": [
+        "portfolio_dashboard",
+        "hermes_holdings_lifecycle"
+      ]
+    },
+    "ticker_enrichment_cache": {
+      "canonical_path": "data/portfolios/state/ticker_enrichment_cache.json",
+      "sha256": "700aeb00186b8213cad03dd4cdb5c6d68aab64a6c63b796fc23a7044d28f1552",
+      "size": 8293836,
+      "last_validated": "2026-08-07T16:38:56.410773+00:00",
+      "source_pipeline": "ticker_enrichment_engine.py",
+      "max_age_minutes": 360,
+      "consumers": [
+        "watch_intelligence",
+        "symbol_profiles",
+        "screening"
+      ]
+    },
+    "price_cache": {
+      "canonical_path": "data/portfolios/state/price_cache.json",
+      "sha256": "ff786991b38e4dbe59c2a7802f00e7bf082af308ad49ce3c46fe611140c63ddd",
+      "size": 3131381,
+      "last_validated": "2026-08-07T16:38:56.410773+00:00",
+      "source_pipeline": "market_quote_ingest.py",
+      "max_age_minutes": 30,
+      "consumers": [
+        "portfolio_dashboard",
+        "market_quote_projection"
+      ]
+    },
+    "price_ohlc_cache": {
+      "canonical_path": "data/portfolios/state/price_ohlc_cache.json",
+      "sha256": "43219458807cfc38587a65ca2e2e04fd7be6b118a10d713f0ab72be6c0bc3147",
+      "size": 24213747,
+      "last_validated": "2026-08-07T16:38:56.410773+00:00",
+      "source_pipeline": "ohlc_ingest.py",
+      "max_age_minutes": 60,
+      "consumers": [
+        "portfolio_dashboard",
+        "charts",
+        "technicals"
+      ]
+    },
+    "staleness_escalation_queue": {
+      "canonical_path": "data/runtime/staleness_escalation_queue.json",
+      "sha256": "11d54dd7c086989de434a6b12e1c422e71fa5e7c8e261c711bee5ab64b654f65",
+      "size": 3224,
+      "last_validated": "2026-08-07T16:38:56.410773+00:00",
+      "source_pipeline": "system_health_agent.py",
+      "max_age_minutes": 1440,
+      "consumers": [
+        "system_health_agent",
+        "operator_alerts"
+      ]
+    },
+    "trade_ai_health": {
+      "canonical_path": "data/portfolios/state/trade_ai_health.json",
+      "sha256": "f185ebf6dbba5558948e1ef58d3c896596925cd6ec3c73434920f1a9bbee40f3",
+      "size": 2187,
+      "last_validated": "2026-08-07T16:38:56.410773+00:00",
+      "source_pipeline": "trade_ai_health.py",
+      "max_age_minutes": 60,
+      "consumers": [
+        "system_health_agent",
+        "hermes_health_inspector"
+      ]
+    },
+    "risk_management": {
+      "canonical_path": "data/portfolios/state/risk_management.json",
+      "sha256": "70145e4ecb58ae01c63ea9bdba9ddce3987b46ed3f12f127a46748184c9abae6",
+      "size": 13612,
+      "last_validated": "2026-08-07T16:38:56.410773+00:00",
+      "source_pipeline": "risk_autopilot.py",
+      "max_age_minutes": 120,
+      "consumers": [
+        "portfolio_dashboard",
+        "risk_monitor",
+        "system_health_agent"
+      ]
+    }
+  },
+  "critical_basenames": [
+    "ai_analysis_cache.json",
+    "ai_deep_holdings.json",
+    "finviz_quote_cache.json",
+    "holdings.json",
+    "price_cache.json",
+    "price_ohlc_cache.json",
+    "risk_management.json",
+    "staleness_escalation_queue.json",
+    "ticker_enrichment_cache.json",
+    "trade_ai_cache.json",
+    "trade_ai_health.json"
+  ]
+}

@@ -1,0 +1,42 @@
+[tool.ruff]
+# Python version
+target-version = "py310"
+
+# Paths to exclude
+exclude = [
+    ".venv",
+    ".git",
+    "__pycache__",
+    "data/",
+    "exports/",
+    "node_modules/",
+    "docs/_archive/",
+    "docs/project/",
+]
+
+# Line length (PEP 8 default + buffer)
+line-length = 120
+
+[tool.ruff.lint]
+# F (pyflakes): catches undefined names, unused imports, redefined functions, etc.
+# This is the class of bug that caught the missing `import re` in claude_escalation_handler.py.
+# F821 (undefined-name) is the critical one — it blocks runtime.
+select = ["F"]
+
+# Ignore these F rules:
+# F401 — unused-import: too many intentional re-exports for hot-reload
+# F841 — unused-variable: too many unpacking patterns
+# F811 — redefined-while-unused: too many hot-reload import patterns
+# These three are noise at current scale; enable them file-by-file as code is cleaned up.
+ignore = ["F401", "F811", "F841"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests can have looser rules
+"tests/**/*.py" = ["F401", "F811", "F841"]
+# Large legacy files — fix incrementally
+"scripts/api_v2.py" = ["F401", "F811", "F841"]
+
+[tool.ruff.format]
+# Keep formatting compatible
+quote-style = "double"
+indent-style = "space"

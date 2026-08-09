@@ -1,0 +1,325 @@
+{
+  "ok": true,
+  "snapshot_id": "cd51e8941194faf9c1a56a54",
+  "generated_at": "2026-08-05T14:16:05.871404+00:00",
+  "data_contract_version": "watch_intelligence.broker.v1",
+  "provider_calls": 0,
+  "view": "top_ideas",
+  "counts": {
+    "total_matched": 6,
+    "page": 1,
+    "page_size": 6,
+    "starred_universe": 12,
+    "held_universe": 25,
+    "screener_universe": 3,
+    "street_strong_buy": 3,
+    "street_buy": 2,
+    "trade_ai_wait": 2,
+    "proposal_eligible": 0,
+    "complete_reviews": 1
+  },
+  "summary": {
+    "street_strong_buy": 3,
+    "street_buy": 2,
+    "trade_ai_wait": 2,
+    "blocked_or_unavailable": 3,
+    "managing_held": 1,
+    "proposal_eligible": 0
+  },
+  "flags": {
+    "watch_intelligence_primary": true,
+    "watch_legacy_hidden": true,
+    "watch_deepseek_flash_enabled": false,
+    "watch_cio_daily_enabled": false
+  },
+  "cards": [
+    {
+      "symbol": "CECO",
+      "company": "CECO Environmental Corp.",
+      "street_rating": "STRONG BUY",
+      "trade_ai_state": "WAIT",
+      "starred": true,
+      "held": false,
+      "screener_origin": false,
+      "last": 71.26,
+      "day_change_pct": 1.236,
+      "company_summary": "CECO Environmental Corp. provides critical solutions in industrial air quality, industrial water treatment, and energy transition solutions in the United States, the United Kingdom, the Netherlands, China, and internati\u2026",
+      "freshness_state": "CURRENT",
+      "cio_review": {
+        "status": "COMPLETE",
+        "summary": "Street consensus is strongly bullish with a mean target of $111.83 (58.9% upside), but Trade AI is in WAIT state with proposal_allowed=false, and price action is neutral with RSI near 41. No entry trigger is confirmed; the correct action is to observe and set condition alerts.",
+        "verdict": "ALIGNED: STREET BULLISH / TRADE AI WAIT \u2014 NO EXECUTABLE TICKET",
+        "provider": "deepseek",
+        "model": "deepseek-v4-flash",
+        "policy": "FAST",
+        "reason_code": null,
+        "display": {
+          "label": "CIO REVIEW: COMPLETE",
+          "provider": "DEEPSEEK",
+          "model": "deepseek-v4-flash",
+          "policy": "FAST",
+          "cost": "$0.00019",
+          "reason": null
+        },
+        "estimated_cost_usd": 0.00018634
+      },
+      "maria_review": {
+        "status": "COMPLETE",
+        "summary": "CECO Environmental is rated STRONG BUY by analysts with a mean target of $111.83, yet the stock trades at $70.39 with neutral technicals and an RSI near 40.98. The Trade AI state is WAIT, and proposal_allowed is false, so no executable ticket is permitted. The narrative is supportive but lacks confirmation of a technical entry trigger.",
+        "provider": "deepseek",
+        "model": "deepseek-v4-flash",
+        "policy": "FAST",
+        "reason_code": null,
+        "display": {
+          "label": "MARIA REVIEW: COMPLETE",
+          "provider": "DEEPSEEK",
+          "model": "deepseek-v4-flash",
+          "policy": "FAST",
+          "cost": "$0.00022",
+          "reason": null
+        },
+        "estimated_cost_usd": 0.0002247
+      }
+    },
+    {
+      "symbol": "FTH",
+      "company": "Faeth Therapeutics, Inc.",
+      "street_rating": "STRONG BUY",
+      "trade_ai_state": "WAIT",
+      "starred": true,
+      "held": false,
+      "screener_origin": false,
+      "last": 25.36,
+      "day_change_pct": 0.0394,
+      "company_summary": "Faeth Therapeutics, Inc., a clinical-stage biotechnology company, engages in the discovery and development of therapeutics for cancer patients.",
+      "freshness_state": "CURRENT",
+      "cio_review": {
+        "status": "NOT_RUN",
+        "summary": null,
+        "verdict": null,
+        "provider": null,
+        "model": null,
+        "policy": "NO_CALL",
+        "reason_code": "NO_MATERIAL_CHANGE_NO_CALL",
+        "display": {
+          "label": "CIO REVIEW: NOT RUN",
+          "provider": "NONE",
+          "model": "NONE",
+          "policy": "NO_CALL",
+          "cost": "$0",
+          "reason": "NO_MATERIAL_CHANGE_NO_CALL"
+        },
+        "estimated_cost_usd": 0.0
+      },
+      "maria_review": {
+        "status": "NOT_RUN",
+        "summary": null,
+        "provider": null,
+        "model": null,
+        "policy": "NO_CALL",
+        "reason_code": "LEGACY_INCOMPLETE_PROVENANCE",
+        "display": {
+          "label": "MARIA REVIEW: NOT RUN",
+          "provider": "NONE",
+          "model": "NONE",
+          "policy": "NO_CALL",
+          "cost": "$0",
+          "reason": "LEGACY_INCOMPLETE_PROVENANCE"
+        },
+        "estimated_cost_usd": 0.0
+      }
+    },
+    {
+      "symbol": "SWBI",
+      "company": "Smith & Wesson Brands, Inc.",
+      "street_rating": "STRONG BUY",
+      "trade_ai_state": "DETERMINISTIC_FAIL",
+      "starred": true,
+      "held": false,
+      "screener_origin": false,
+      "last": 14.79,
+      "day_change_pct": -1.1364,
+      "company_summary": "Smith & Wesson Brands, Inc. engages in the design, manufacture, and sale of firearms worldwide.",
+      "freshness_state": "CURRENT",
+      "cio_review": {
+        "status": "NOT_RUN",
+        "summary": null,
+        "verdict": null,
+        "provider": null,
+        "model": null,
+        "policy": "NO_CALL",
+        "reason_code": "NO_MATERIAL_CHANGE_NO_CALL",
+        "display": {
+          "label": "CIO REVIEW: NOT RUN",
+          "provider": "NONE",
+          "model": "NONE",
+          "policy": "NO_CALL",
+          "cost": "$0",
+          "reason": "NO_MATERIAL_CHANGE_NO_CALL"
+        },
+        "estimated_cost_usd": 0.0
+      },
+      "maria_review": {
+        "status": "NOT_RUN",
+        "summary": null,
+        "provider": null,
+        "model": null,
+        "policy": "NO_CALL",
+        "reason_code": "LEGACY_INCOMPLETE_PROVENANCE",
+        "display": {
+          "label": "MARIA REVIEW: NOT RUN",
+          "provider": "NONE",
+          "model": "NONE",
+          "policy": "NO_CALL",
+          "cost": "$0",
+          "reason": "LEGACY_INCOMPLETE_PROVENANCE"
+        },
+        "estimated_cost_usd": 0.0
+      }
+    },
+    {
+      "symbol": "AXTI",
+      "company": "AXT, Inc",
+      "street_rating": "BUY",
+      "trade_ai_state": "DETERMINISTIC_FAIL",
+      "starred": true,
+      "held": false,
+      "screener_origin": false,
+      "last": 75.9,
+      "day_change_pct": 16.3932,
+      "company_summary": "AXT, Inc. designs, develops, manufactures, and distributes compound and single element semiconductor substrates.",
+      "freshness_state": "CURRENT",
+      "cio_review": {
+        "status": "NOT_RUN",
+        "summary": null,
+        "verdict": null,
+        "provider": null,
+        "model": null,
+        "policy": "NO_CALL",
+        "reason_code": "NO_MATERIAL_CHANGE_NO_CALL",
+        "display": {
+          "label": "CIO REVIEW: NOT RUN",
+          "provider": "NONE",
+          "model": "NONE",
+          "policy": "NO_CALL",
+          "cost": "$0",
+          "reason": "NO_MATERIAL_CHANGE_NO_CALL"
+        },
+        "estimated_cost_usd": 0.0
+      },
+      "maria_review": {
+        "status": "NOT_RUN",
+        "summary": null,
+        "provider": null,
+        "model": null,
+        "policy": "NO_CALL",
+        "reason_code": "LEGACY_INCOMPLETE_PROVENANCE",
+        "display": {
+          "label": "MARIA REVIEW: NOT RUN",
+          "provider": "NONE",
+          "model": "NONE",
+          "policy": "NO_CALL",
+          "cost": "$0",
+          "reason": "LEGACY_INCOMPLETE_PROVENANCE"
+        },
+        "estimated_cost_usd": 0.0
+      }
+    },
+    {
+      "symbol": "NUAI",
+      "company": "New Era Energy & Digital, Inc.",
+      "street_rating": "NOT RATED",
+      "trade_ai_state": "DETERMINISTIC_FAIL",
+      "starred": true,
+      "held": false,
+      "screener_origin": false,
+      "last": 5.35,
+      "day_change_pct": 1.3258,
+      "company_summary": "New Era Energy & Digital, Inc. operates as a developer and operator of next-generation digital infrastructure and integrated power assets for advanced artificial intelligence hyperscalers.",
+      "freshness_state": "CURRENT",
+      "cio_review": {
+        "status": "NOT_RUN",
+        "summary": null,
+        "verdict": null,
+        "provider": null,
+        "model": null,
+        "policy": "NO_CALL",
+        "reason_code": "NO_MATERIAL_CHANGE_NO_CALL",
+        "display": {
+          "label": "CIO REVIEW: NOT RUN",
+          "provider": "NONE",
+          "model": "NONE",
+          "policy": "NO_CALL",
+          "cost": "$0",
+          "reason": "NO_MATERIAL_CHANGE_NO_CALL"
+        },
+        "estimated_cost_usd": 0.0
+      },
+      "maria_review": {
+        "status": "NOT_RUN",
+        "summary": null,
+        "provider": null,
+        "model": null,
+        "policy": "NO_CALL",
+        "reason_code": "LEGACY_INCOMPLETE_PROVENANCE",
+        "display": {
+          "label": "MARIA REVIEW: NOT RUN",
+          "provider": "NONE",
+          "model": "NONE",
+          "policy": "NO_CALL",
+          "cost": "$0",
+          "reason": "LEGACY_INCOMPLETE_PROVENANCE"
+        },
+        "estimated_cost_usd": 0.0
+      }
+    },
+    {
+      "symbol": "PFLT",
+      "company": "PennantPark Floating Rate Capital Ltd.",
+      "street_rating": "BUY",
+      "trade_ai_state": "MANAGING",
+      "starred": false,
+      "held": true,
+      "screener_origin": false,
+      "last": 7.12,
+      "day_change_pct": -1.3167,
+      "company_summary": "PennantPark Floating Rate Capital Ltd. is a Private Debt, business development company.",
+      "freshness_state": "CURRENT",
+      "cio_review": {
+        "status": "NOT_RUN",
+        "summary": null,
+        "verdict": null,
+        "provider": null,
+        "model": null,
+        "policy": "NO_CALL",
+        "reason_code": "NO_MATERIAL_CHANGE_NO_CALL",
+        "display": {
+          "label": "CIO REVIEW: NOT RUN",
+          "provider": "NONE",
+          "model": "NONE",
+          "policy": "NO_CALL",
+          "cost": "$0",
+          "reason": "NO_MATERIAL_CHANGE_NO_CALL"
+        },
+        "estimated_cost_usd": 0.0
+      },
+      "maria_review": {
+        "status": "NOT_RUN",
+        "summary": null,
+        "provider": null,
+        "model": null,
+        "policy": "NO_CALL",
+        "reason_code": "LEGACY_INCOMPLETE_PROVENANCE",
+        "display": {
+          "label": "MARIA REVIEW: NOT RUN",
+          "provider": "NONE",
+          "model": "NONE",
+          "policy": "NO_CALL",
+          "cost": "$0",
+          "reason": "LEGACY_INCOMPLETE_PROVENANCE"
+        },
+        "estimated_cost_usd": 0.0
+      }
+    }
+  ]
+}

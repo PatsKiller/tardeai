@@ -9,7 +9,7 @@ from typing import Any
 
 
 def get_symbol_profiles(db_query, symbols: list[str]) -> dict[str, dict[str, Any]]:
-    """Return {SYMBOL: {sector, industry, instrument_type, next_earnings_date, ...}} for a batch.
+    """Return {SYMBOL: {sector, industry, instrument_type, next_earnings_date}} for a batch.
 
     Args:
         db_query: a callable(sql, params, fetch="all"|"one") injected by the caller.
@@ -20,7 +20,7 @@ def get_symbol_profiles(db_query, symbols: list[str]) -> dict[str, dict[str, Any
         return {}
     rows = db_query(
         """SELECT upper(symbol) AS symbol, sector, industry, instrument_type,
-                  next_earnings_date, market_cap, avg_volume, beta, dividend_yield
+                  next_earnings_date
            FROM symbol_profiles
            WHERE upper(symbol) = ANY(%s)""",
         (symbols,),
@@ -34,9 +34,5 @@ def get_symbol_profiles(db_query, symbols: list[str]) -> dict[str, dict[str, Any
                 "industry": row.get("industry"),
                 "instrument_type": row.get("instrument_type"),
                 "next_earnings_date": row.get("next_earnings_date"),
-                "market_cap": row.get("market_cap"),
-                "avg_volume": row.get("avg_volume"),
-                "beta": row.get("beta"),
-                "dividend_yield": row.get("dividend_yield"),
             }
     return out

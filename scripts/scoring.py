@@ -133,13 +133,8 @@ def _ollama_preplan(symbol: str, score: int, decision: str,
     try:
         from local_llm_config import get_local_llm_model
         _model = get_local_llm_model()
-        data = _ollama_call_serialized({
-            "model": _model,
-            "stream": False,
-            "prompt": prompt,
-            "options": {"temperature": 0.2, "num_predict": 80}
-        }, timeout=120)
-        return data.get("response", "").strip()
+        data_text = _ollama_serialized(prompt, num_predict=80, timeout=120, model=_model)
+        return data_text.strip()
     except Exception as e:
         return f"[pre-plan unavailable: {e}]"
 

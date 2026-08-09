@@ -873,3 +873,11 @@ CIO_DUAL_CHATGPT_CAP=1100
 # BEGIN moomoo-live-read-sync (2026-07-28) — READ-ONLY account facts; no order path, no unlock
 */15 9-16 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/moomoo_live_read.lock .venv/bin/python scripts/moomoo_live_read_sync.py >> logs/moomoo_live_read_sync.log 2>&1  # positions + cash -> holdings.json via protected_holdings_write; totals left to portfolio_loader/repricer
 # END moomoo-live-read-sync
+56 17 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/engine_gap_check.lock .venv/bin/python scripts/defense_engine_gap_checker.py >> logs/engine_gap_checker.log 2>&1
+16 10 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/engine_gap_check.lock .venv/bin/python scripts/defense_engine_gap_checker.py >> logs/engine_gap_checker.log 2>&1
+30 10 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/defense_recs_am.lock .venv/bin/python scripts/defense_recommendations.py >> logs/defense_recs_am.log 2>&1
+15 17 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/defense_daily_refresh.lock .venv/bin/python scripts/defense_cash_alternatives.py >> logs/cash_alternatives.log 2>&1
+# ── Opinions Desk: Dual Opinion Advisory ──
+0 18 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/dual_opinion.lock .venv/bin/python scripts/generate_dual_opinion_advisory.py >> logs/dual_opinion_advisory.log 2>&1  # Daily 18:00: fresh TradeAI vs Hermes opinions for momentum candidates
+15 18 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/dual_outcomes.lock .venv/bin/python scripts/track_dual_opinion_outcomes.py >> logs/dual_opinion_outcomes.log 2>&1  # Daily 18:15: track operator choices vs TradeAI/Hermes outcomes
+30 18 * * 5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/journal_opinions.lock .venv/bin/python scripts/generate_journal_dual_opinions.py >> logs/journal_dual_opinions.log 2>&1  # Weekly Friday 18:30: journal + backtest dual opinions

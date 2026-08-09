@@ -166,17 +166,17 @@ function ConstituentTable({ industry, defaultBlocked, t }: { industry: SLIndustr
       <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: 640 }}>
         <thead>
           <tr>
-            <th style={{ ...th, textAlign: 'left', width: '15%' }}>Name</th>
-            <th style={{ ...th, width: '13%' }}>Price</th>
+            <th style={{ ...th, textAlign: 'left', width: '15%' }} title="Ticker symbol.">Name</th>
+            <th style={{ ...th, width: '13%' }} title="Latest close from ticker_prices (DB). Falls back to italic 'unknown' when no price row exists for this name.">Price</th>
             <th
               style={{ ...th, width: '14%' }}
               title="Relative strength against its OWN industry composite, not against SPY. Both sides are the same Finviz window, so the subtraction is like-for-like."
             >
               RS vs ind
             </th>
-            <th style={{ ...th, width: '12%' }}>52w high</th>
-            <th style={{ ...th, width: '11%' }}>ADV20</th>
-            <th style={{ ...th, textAlign: 'left', paddingLeft: 14 }}>Position and flags</th>
+            <th style={{ ...th, width: '12%' }} title="Percent below 52-week high — distance from peak. Negative means trading below that high.">52w high</th>
+            <th style={{ ...th, width: '11%' }} title="Average daily volume (20-day), compact-formatted: 97M, 1.2B. Used as a liquidity guardrail.">ADV20</th>
+            <th style={{ ...th, textAlign: 'left', paddingLeft: 14 }} title="Position chips: HELD = in your book, CORE = protected, lags = negative RS within its group, earnings Nd = within N days, blocked = restricted account.">Position and flags</th>
           </tr>
         </thead>
         <tbody>

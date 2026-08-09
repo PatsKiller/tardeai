@@ -39,7 +39,34 @@ _AMBIGUOUS_DEEPSEEK = frozenset({"deepseek-v4", "deepseek_v4"})
 
 
 def _deepseek_model_available(model_id: str) -> bool:
-    """Independent probe for one exact V4 model id (uses TTL cache via consumption_run_manual)."""
+    """Independent probe for one exact V4 model id.
+
+    Does a direct API connectivity check (GET /v1/models with a 4s timeout)
+    rather than relying solely on the consumption_run_manual TTL cache — which
+    can stay stale for 60 seconds after a transient network blip. Falls back
+    to the readiness-rows cache only when the direct probe also fails.
+    """
+    # Fast path: direct connectivity probe (bypasses TTL cache)
+    try:
+        from lib.llm_model_registry import get_deepseek_api_key
+        key, _env, _leg = get_deepseek_api_key()
+        if not key:
+            return False
+        import requests as _requests
+        r = _requests.get(
+            "https://api.deepseek.com/v1/models",
+            headers={"Authorization": f"Bearer {key}", "User-Agent": "tradeai-lane-check/1.0"},
+            timeout=4,
+        )
+        if r.status_code == 200:
+            data = r.json()
+            ids = {i.get("id") for i in (data.get("data") or []) if i.get("id")}
+            # model_id is e.g. "deepseek-v4-flash"; the probe returns that exact id
+            return model_id in ids
+    except Exception:
+        pass
+
+    # Slow path: fall back to the cached readiness rows (may be stale)
     try:
         from lib.consumption_run_manual import deepseek_readiness_rows
         if model_id == "deepseek-v4-flash":
@@ -138,7 +165,7 @@ def _deepseek_generate(
         code = getattr(e, "code", "POLICY_BLOCKED")
         raise RuntimeError(f"{code}: {e}") from e
 
-    if not resp.ok or not resp.content:
+    if not resp.ok or (not resp.content and not resp.truncated):
         err = RuntimeError(
             f"{resp.error_class or 'DEEPSEEK_FAILED'}: "
             f"policy={resp.requested_policy} model={resp.requested_model_id} "

@@ -63,7 +63,10 @@ function PairCard({ c, oversight }: { c: any; oversight?: any }) {
 export function OversightPills({ cardId, factorsN, oversight }: { cardId: string; factorsN: number | null; oversight: any }) {
   // v8 WS-PILL — ① DET (native arithmetic) ② ✦GPT ③ ✦GK (④ ⚖API when a paid review exists).
   // Oversight INFORMS — it never blocks, edits, or stages.
-  const seats: Array<[string, string, string, string]> = [['chatgpt', 'openai', '', 'GPT'], ['grok', 'xai', '', 'Grok'], ['paid', 'anthropic', '⚖', 'Claude'], ['paid_gpt', 'openai', '⚖', 'GPT'], ['paid_xai', 'xai', '⚖', 'Grok']]
+  const seats: Array<[string, string, string, string]> = [
+    ['deepseek', 'deepseek', '', 'DS'], ['chatgpt', 'openai', '', 'GPT'], ['grok', 'xai', '', 'Grok'],
+    ['paid_ds', 'deepseek', '⚖', 'DS'], ['paid', 'anthropic', '⚖', 'Claude'], ['paid_gpt', 'openai', '⚖', 'GPT'], ['paid_xai', 'xai', '⚖', 'Grok']
+  ]
   const pill = (key: string, provider: string | null, prefix: string, verdict: string | null, status: string, tip: string, name?: string) => {
     const c = verdict === 'CONCUR' ? BB.green : verdict === 'QUALIFY' ? BB.amber : verdict === 'OBJECT' ? BB.red : BB.text3
     return (
@@ -79,7 +82,7 @@ export function OversightPills({ cardId, factorsN, oversight }: { cardId: string
     const d = oversight?.seats?.[seat]
     if (!d) { if (!seat.startsWith('paid')) rendered.push(pill(seat, provider, prefix, null, 'pend', 'critique pending — runs on the next recommendations build (cached per build, never per refresh)', name)); continue }
     const v = (d.verdicts || []).find((x: any) => cardId.endsWith('*') ? x.id.startsWith(cardId.slice(0, -1)) : x.id === cardId)
-    const seatName = seat === 'paid' ? 'Claude (paid, claude-opus-4-8)' : seat === 'paid_gpt' ? 'GPT (paid, gpt-5.4)' : seat === 'paid_xai' ? 'Grok (paid, grok-4)' : seat === 'chatgpt' ? 'GPT (free lane)' : 'Grok (free lane)'
+    const seatName = seat === 'deepseek' ? 'DeepSeek Flash (free lane)' : seat === 'paid_ds' ? 'DeepSeek Pro (paid, deepseek-v4-pro)' : seat === 'paid' ? 'Claude (paid, claude-opus-4-8)' : seat === 'paid_gpt' ? 'GPT (paid, gpt-5.4)' : seat === 'paid_xai' ? 'Grok (paid, grok-4)' : seat === 'chatgpt' ? 'GPT (free lane)' : 'Grok (free lane)'
     if (d.status !== 'ok') { rendered.push(pill(seat, provider, prefix, null, d.status, `${seatName}: ${d.status} — ${d.status === 'quota' ? 'daily share exhausted, resets 00:00' : d.status === 'unparseable' ? 'response failed the schema; raw kept, never coerced' : 'lane unreachable this build'}`, name)); continue }
     if (!v) { rendered.push(pill(seat, provider, prefix, null, 'n/a', `${seatName} reviewed this build but returned no verdict for this card`, name)); continue }
     if (v.verdict === 'CONCUR') sawConcur = true

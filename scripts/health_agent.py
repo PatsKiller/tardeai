@@ -30,23 +30,71 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import signal
 import subprocess
 import sys
+import time as _time_module
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+from lib.live_project_root import (  # noqa: E402
+    get_live_project_root,
+    DEV_ROOT,
+    DEV_VENV_PYTHON,
+)
+PROJECT_ROOT = get_live_project_root()
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+# Prefer DEV scripts on sys.path when live stamp is missing newer modules
+if DEV_ROOT != PROJECT_ROOT and (DEV_ROOT / "scripts").is_dir():
+    sys.path.insert(0, str(DEV_ROOT / "scripts"))
 
 try:
     from dotenv import load_dotenv
     load_dotenv(PROJECT_ROOT / ".env")
+    if DEV_ROOT != PROJECT_ROOT:
+        load_dotenv(DEV_ROOT / ".env", override=False)
 except Exception:
     pass
 
 STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
 LOG_DIR = PROJECT_ROOT / "logs"
 POLICY_FILE = PROJECT_ROOT / "config" / "health_agent_policy.json"
+# Fallback policy from DEV when live stamp lags (cron often runs health_agent from DEV tree
+# but PROJECT_ROOT resolves to CURRENT release).
+if not POLICY_FILE.is_file() and (DEV_ROOT / "config" / "health_agent_policy.json").is_file():
+    POLICY_FILE = DEV_ROOT / "config" / "health_agent_policy.json"
+
+
+def _resolve_remediation_python() -> str:
+    """Absolute python for producer remediations — live stamp often has no .venv (exit 127)."""
+    candidates = [
+        str(DEV_VENV_PYTHON) if DEV_VENV_PYTHON.is_file() else "",
+        str(DEV_ROOT / ".venv" / "bin" / "python3"),
+        sys.executable or "",
+        str(PROJECT_ROOT / ".venv" / "bin" / "python"),
+    ]
+    for c in candidates:
+        if c and Path(c).is_file():
+            return c
+    return sys.executable or "python3"
+
+
+def _rewrite_remediation_cmd(cmd: str) -> str:
+    """Rewrite relative .venv/bin/python → absolute dev venv; prefer DEV scripts cwd later."""
+    import re
+    if not cmd or not isinstance(cmd, str):
+        return cmd or ""
+    py = _resolve_remediation_python()
+    return re.sub(r"(?:\.?/?\.?venv/bin/python3?)\b", py, cmd)
+
+
+def _remediation_cwd() -> Path:
+    """Cwd with scripts/ + .env. Prefer DEV (has venv + full scripts); fall back to live."""
+    if (DEV_ROOT / "scripts").is_dir() and (DEV_ROOT / ".env").is_file():
+        return DEV_ROOT
+    if (PROJECT_ROOT / "scripts").is_dir():
+        return PROJECT_ROOT
+    return DEV_ROOT
 STATUS_FILE = STATE_DIR / "health_agent_status.json"
 AUDIT_JSONL = LOG_DIR / "health_agent.jsonl"
 QUEUE_FILE = LOG_DIR / "claude_escalation_queue.json"
@@ -205,12 +253,82 @@ REMEDIATION_STATE = STATE_DIR / "health_agent_remediation_state.json"
 REMEDIATION_LOG = LOG_DIR / "health_agent_remediation.jsonl"
 
 
+# Safe script basename substrings permitted for immediate auto-remediation (no broker submit).
+def _load_safe_remediation_scripts() -> tuple:
+    """Return the set of script basenames allowed for immediate auto-remediation.
+
+    Loads from the canonical YAML allowlist (single source of truth).  Falls back to
+    a hardcoded tuple only if the YAML is unreadable — in that case a loud warning is
+    printed so the operator knows the safety net is degraded.
+    """
+    allowlist_path = PROJECT_ROOT / "config" / "claude_escalation_allowlist.yaml"
+    try:
+        # Hand-parse the YAML (no pyyaml dependency — the handler uses the same pattern)
+        lines = allowlist_path.read_text().splitlines()
+        in_allowed = False
+        scripts = []
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith("allowed_script_patterns:"):
+                in_allowed = True
+                continue
+            if in_allowed:
+                if stripped.startswith("blocked_patterns:") or stripped.startswith("max_runtime"):
+                    break
+                # Extract basename from quoted string like '- "scripts/foo.py"'
+                if stripped.startswith("- ") and "." in stripped:
+                    script = stripped.split('"')[1] if '"' in stripped else stripped.split("'")[1] if "'" in stripped else stripped[3:].strip()
+                    basename = script.rsplit("/", 1)[-1]
+                    if basename and "." in basename:
+                        scripts.append(basename)
+        if scripts:
+            return tuple(scripts)
+    except Exception:
+        pass
+
+    # Fallback — hardcoded safety net (must be kept in sync with the YAML manually)
+    import sys as _sys
+    print("WARNING: health_agent failed to load allowlist from YAML — using hardcoded fallback", file=_sys.stderr)
+    return (
+        "portfolio_repricer.py", "external_market_data_ingest.py", "snaptrade_sync.py",
+        "run_finviz_momentum_scalp_scan.py", "social_scalp_scanner.py",
+        "run_sec_form4_momentum_context.py", "reset_stuck_agent_jobs.py",
+        "fix_strategy_registry_null_ids.py", "remediate_proposal_trade_plans.py",
+        "auto_enrichment_runner.py", "cleanup_stale_proposals.py",
+        "remediate_watchlist_news_guard.py", "hermes_scope_governor.py",
+        "cio_decision_engine.py", "schwab_journal_builder.py",
+        "schwab_transaction_ingest.py", "trade_ai_orchestrator.py",
+        "shadow_batch_generator.py", "finviz_screener_runner.py", "news_ingestion.py",
+        "indicator_cache_refresh.py", "build_symbol_profiles.py", "pro_analyst_fetch.py",
+        "sector_momentum_engine.py", "rotation_autopilot.py", "unified_stop_supervisor.py",
+        "fred_data_ingest.py", "sec_data_ingest.py", "social_ingest.py",
+        "youtube_transcript_ingest.py", "process_watchlist_agent_jobs.py",
+        "run_pg_backup.sh", "run_options_monitor.py", "data_gap_resolver.py",
+        "hermes_coordinator.py", "hermes_embedding_enqueue.py",
+        "hermes_embedding_worker.py", "backtest_results_aggregator.py",
+        "proposal_backtest_engine.py", "enrich_proposal_technicals.py",
+        "journal_review_builder.py", "paper_trade_monitor.py",
+        "paper_trade_statistics.py", "heal_trade_ai_session_cache.py",
+        "remediate_scalp_go_dark.py", "remediate_pipeline_failures.py",
+    )
+
+
+_SAFE_REMEDIATION_SCRIPTS = _load_safe_remediation_scripts()
+
+
 def run_auto_remediation(policy: dict, findings: list[dict]) -> list[dict]:
-    """Execute allowlisted fix scripts immediately for portfolio-pricing findings (no escalation wait).
-    Cooldown per finding-type prevents repricer storms."""
+    """Execute allowlisted fix scripts immediately (no escalation wait).
+    Cooldown per finding-type prevents storms. Python path always rewritten to DEV venv
+    so live-stamp CWD without .venv does not exit 127.
+
+    For scalp_catalyst_verification_dead and pipeline_failures the map points at iterative
+    remediators that diagnose root cause, record how-to-fix in health_root_cause_memory,
+    and advance a strategy ladder so the same thrashing command is not re-run forever.
+    """
     cfg = policy.get("auto_remediate") or {}
     if not cfg.get("enabled", True):
         return []
+    never = set(policy.get("never_auto_remediate") or cfg.get("never_auto_remediate") or [])
     types = set(cfg.get("finding_types") or [
         "portfolio_totals_drift", "account_summary_drift", "snaptrade_cash_stale",
         "portfolio_repricer_stale", "finviz_quote_cache_stale", "market_quotes_stale",
@@ -219,13 +337,26 @@ def run_auto_remediation(policy: dict, findings: list[dict]) -> list[dict]:
     # Circuit breaker: if a remediation keeps "succeeding" (exit 0) yet the SAME finding fires again
     # within ineffective_window_minutes, the fix isn't actually fixing it — stop the futile loop and
     # the false "✅ Auto-fixed" pings after max_ineffective_attempts; escalate for operator/code review.
-    # (Caught snaptrade_cash_stale: 24 identical "fixes" of SPAXX $277,333, value never changed —
-    # SnapTrade likely doesn't expose buying_power for that rollover IRA, or the cash is simply correct.)
+    # Iterative ladder remediations (scalp/pipeline) manage their own strategy advance + hold windows
+    # via health_root_cause_memory — they use a higher ineffective ceiling so the ladder can walk.
     max_ineffective = int(cfg.get("max_ineffective_attempts", 3))
+    max_ineffective_ladder = int(cfg.get("max_ineffective_ladder_attempts", 12))
     ineff_window_m = float(cfg.get("ineffective_window_minutes", 60))
     rmap = policy.get("remediation_map") or {}
+    ladder_types = {
+        "scalp_catalyst_verification_dead",
+        "pipeline_failures",
+    }
+    # Always auto session heal even if severity was demoted; SETUPS header is user-visible.
+    session_force = {"trade_ai_session_stale", "trade_ai_session_missing"}
     actionable = [f for f in findings
-                  if f.get("severity") in ("warning", "critical") and f.get("type") in types]
+                  if (
+                      (f.get("severity") in ("warning", "critical") and f.get("type") in types)
+                      or f.get("type") in session_force
+                  )
+                  and f.get("type") not in never
+                  and f.get("type") in types
+                  and not f.get("held")]  # root-cause hold: skip thrash
     if not actionable:
         return []
     try:
@@ -235,6 +366,7 @@ def run_auto_remediation(policy: dict, findings: list[dict]) -> list[dict]:
     now = datetime.now(timezone.utc)
     results = []
     ran_cmds: set[str] = set()
+    run_cwd = _remediation_cwd()
 
     def _st(ftype):  # normalize legacy str-timestamp state → dict
         s = state.get(ftype)
@@ -242,13 +374,42 @@ def run_auto_remediation(policy: dict, findings: list[dict]) -> list[dict]:
             return {"last_success": s, "ineffective_streak": 0}
         return s if isinstance(s, dict) else {"last_success": None, "ineffective_streak": 0}
 
+    def _record_rc_memory(ftype: str, f: dict, entry: dict) -> None:
+        """Best-effort: push error/outcome into durable root-cause memory."""
+        try:
+            from lib import health_root_cause_memory as rcmem
+            if not entry.get("ok") or entry.get("ineffective"):
+                rcmem.record_error(
+                    ftype,
+                    (f.get("message") or entry.get("note") or entry.get("trigger") or "")[:500],
+                    root_cause=entry.get("root_cause"),
+                    how_to_fix=entry.get("how_to_fix"),
+                )
+            # Iterative scripts already record outcomes themselves; only log bare map cmds here
+            if ftype not in ladder_types and entry.get("cmd"):
+                rcmem.record_outcome(
+                    ftype,
+                    strategy_id="remediation_map",
+                    ok=bool(entry.get("ok")) and not entry.get("ineffective"),
+                    note=(entry.get("note") or entry.get("trigger") or "")[:300],
+                    cmd=entry.get("cmd"),
+                    exit_code=entry.get("exit_code"),
+                )
+        except Exception:
+            pass
+
     for f in actionable:
         ftype = f.get("type")
-        cmd = rmap.get(ftype)
-        if not cmd or cmd in ran_cmds:
+        raw_cmd = rmap.get(ftype)
+        # Only string commands are executable (skip agent_hung dict etc.)
+        if not isinstance(raw_cmd, str) or not raw_cmd.strip():
+            continue
+        cmd = _rewrite_remediation_cmd(raw_cmd)
+        if cmd in ran_cmds:
             continue
         st = _st(ftype)
         last = st.get("last_success")
+        ceiling = max_ineffective_ladder if ftype in ladder_types else max_ineffective
         if last:
             try:
                 last_dt = datetime.fromisoformat(str(last).replace("Z", "+00:00"))
@@ -260,53 +421,166 @@ def run_auto_remediation(policy: dict, findings: list[dict]) -> list[dict]:
             except Exception:
                 pass
         # Circuit broken: don't re-run; record an ineffective result so the alert escalates (not "fixed").
-        if st.get("ineffective_streak", 0) >= max_ineffective:
+        if st.get("ineffective_streak", 0) >= ceiling:
             entry = {"at": now.isoformat(), "type": ftype, "cmd": cmd, "ok": False, "ineffective": True,
                      "streak": st["ineffective_streak"],
                      "note": f"remediation ineffective {st['ineffective_streak']}x within {int(ineff_window_m)}m "
                              f"— not re-running; needs operator/code review",
                      "trigger": f.get("message", "")[:200]}
+            # Ladder types: reset streak + advance memory strategy so next window tries next fix
+            if ftype in ladder_types:
+                try:
+                    from lib import health_root_cause_memory as rcmem
+                    rcmem.advance_strategy(ftype)
+                    entry["note"] += " (ladder advanced)"
+                    st["ineffective_streak"] = 0
+                except Exception:
+                    pass
             results.append(entry)
             with open(REMEDIATION_LOG, "a") as fh:
                 fh.write(json.dumps(entry) + "\n")
             state[ftype] = st
+            _record_rc_memory(ftype, f, entry)
             continue
-        # Safe scripts only (no broker order submission). run_finviz_momentum_scalp_scan and
-        # run_sec_form4_momentum_context are source/sandbox-only (no live broker writes) — safe to
-        # auto-run to unstick the lane / refresh supporting evidence.
-        if "portfolio_repricer.py" not in cmd and "external_market_data_ingest.py" not in cmd \
-                and "snaptrade_sync.py" not in cmd \
-                and "run_finviz_momentum_scalp_scan.py" not in cmd \
-                and "social_scalp_scanner.py" not in cmd \
-                and "run_sec_form4_momentum_context.py" not in cmd \
-                and "reset_stuck_agent_jobs.py" not in cmd \
-                and "fix_strategy_registry_null_ids.py" not in cmd \
-                and "remediate_proposal_trade_plans.py" not in cmd \
-                and "auto_enrichment_runner.py" not in cmd \
-                and "cleanup_stale_proposals.py" not in cmd \
-                and "remediate_watchlist_news_guard.py" not in cmd \
-                and "hermes_scope_governor.py" not in cmd:
+        if not any(s in cmd for s in _SAFE_REMEDIATION_SCRIPTS):
             continue
         try:
-            proc = subprocess.run(cmd, shell=True, cwd=str(PROJECT_ROOT),
-                                  capture_output=True, text=True, timeout=180)
-            ok = proc.returncode == 0
+            # P0 agent_jobs containment (same guard as escalation handler)
+            try:
+                from lib.agent_jobs_containment import guard_agent_jobs_execution
+                g = guard_agent_jobs_execution(cmd, source="health_agent_auto_remediate")
+                if g.get("blocked"):
+                    results.append({
+                        "at": now.isoformat(), "type": ftype, "cmd": cmd, "ok": False,
+                        "contained": True, "note": g.get("remediation_status") or "CONTAINED",
+                        "trigger": f.get("message", "")[:200],
+                    })
+                    continue
+            except Exception:
+                pass
+            # Iterative ladder remediations: pipeline spawns orchestrator detached (fast);
+            # scalp may rescan+ingest (~few minutes).
+            if "remediate_pipeline_failures" in cmd:
+                timeout = 180
+            elif "trade_ai_orchestrator" in cmd:
+                timeout = 120  # should be detached via remediate_*; legacy map only
+            elif "remediate_scalp_go_dark" in cmd or "social_scalp" in cmd:
+                timeout = 420
+            elif "run_pg_backup" in cmd:
+                timeout = 600
+            else:
+                timeout = 180
+            # Run in a NEW SESSION (own process group) so a timeout kills the WHOLE tree,
+            # not just the shell wrapper.  The old subprocess.run(timeout=) only SIGKILLed
+            # the `/bin/sh -c`, leaving the python grandchild orphaned — the 2026-06-25
+            # thundering-herd class.  killpg on timeout closes that leak.
+            proc = None
+            stdout = ""
+            stderr = ""
+            t0 = _time_module.time()
+            try:
+                proc = subprocess.Popen(
+                    cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                    text=True, cwd=str(run_cwd), start_new_session=True,
+                )
+                try:
+                    stdout, stderr = proc.communicate(timeout=timeout)
+                except subprocess.TimeoutExpired:
+                    duration = _time_module.time() - t0
+                    try:
+                        pgid = os.getpgid(proc.pid)
+                        os.killpg(pgid, signal.SIGTERM)
+                        try:
+                            proc.communicate(timeout=5)
+                        except subprocess.TimeoutExpired:
+                            os.killpg(pgid, signal.SIGKILL)
+                            proc.communicate(timeout=5)
+                    except Exception:
+                        pass  # process already exited — best-effort cleanup
+                    entry = {
+                        "at": now.isoformat(), "type": ftype, "cmd": cmd, "ok": False,
+                        "exit_code": -1, "cwd": str(run_cwd),
+                        "stdout_tail": (stdout or "")[-400:],
+                        "stderr_tail": (stderr or "")[-400:],
+                        "ineffective_streak": st.get("ineffective_streak", 0),
+                        "trigger": f.get("message", "")[:200],
+                        "error": f"timeout after {timeout}s",
+                    }
+                    results.append(entry)
+                    REMEDIATION_LOG.parent.mkdir(parents=True, exist_ok=True)
+                    with open(REMEDIATION_LOG, "a") as fh:
+                        fh.write(json.dumps(entry) + "\n")
+                    _record_rc_memory(ftype, f, entry)
+                    continue  # next finding — don't fall through to normal rc/parse handling
+                duration = _time_module.time() - t0
+                rc = proc.returncode
+            except Exception as exc:
+                duration = _time_module.time() - t0
+                entry = {
+                    "at": now.isoformat(), "type": ftype, "cmd": cmd, "ok": False,
+                    "exit_code": -1, "cwd": str(run_cwd),
+                    "stdout_tail": (stdout or "")[-400:],
+                    "stderr_tail": (stderr or "")[-400:],
+                    "ineffective_streak": st.get("ineffective_streak", 0),
+                    "trigger": f.get("message", "")[:200],
+                    "error": str(exc)[:200],
+                }
+                results.append(entry)
+                REMEDIATION_LOG.parent.mkdir(parents=True, exist_ok=True)
+                with open(REMEDIATION_LOG, "a") as fh:
+                    fh.write(json.dumps(entry) + "\n")
+                _record_rc_memory(ftype, f, entry)
+                continue  # next finding — don't fall through to normal rc/parse handling
+            # flock contention (rc 69/99) is not a hard failure — leave for next tick
+            ok = rc == 0
             entry = {
                 "at": now.isoformat(), "type": ftype, "cmd": cmd, "ok": ok,
-                "exit_code": proc.returncode,
-                "stdout_tail": (proc.stdout or "")[-400:],
-                "stderr_tail": (proc.stderr or "")[-400:],
+                "exit_code": rc,
+                "cwd": str(run_cwd),
+                "stdout_tail": (stdout or "")[-400:],
+                "stderr_tail": (stderr or "")[-400:],
                 "ineffective_streak": st.get("ineffective_streak", 0),
                 "trigger": f.get("message", "")[:200],
             }
+            # Parse iterative remediator JSON stdout for root_cause / how_to_fix.
+            # The old txt.find("{") + json.loads broke on trailing prose/log lines
+            # after the JSON object — iterate { positions from the END and raw_decode.
+            if ftype in ladder_types and stdout:
+                try:
+                    txt = stdout.strip()
+                    decoder = json.JSONDecoder()
+                    # Find the LAST valid JSON object (skip trailing log lines)
+                    for i in range(len(txt) - 1, -1, -1):
+                        if txt[i] == "{":
+                            try:
+                                parsed, _ = decoder.raw_decode(txt[i:])
+                                if isinstance(parsed, dict):
+                                    entry["root_cause"] = parsed.get("root_cause")
+                                    entry["how_to_fix"] = parsed.get("how_to_fix")
+                                    entry["strategy_id"] = parsed.get("strategy_id")
+                                    entry["held"] = parsed.get("held")
+                                    if parsed.get("note"):
+                                        entry["note"] = str(parsed.get("note"))[:300]
+                                break  # found and parsed — stop
+                            except json.JSONDecodeError:
+                                continue  # try next { from the end
+                except Exception:
+                    pass
+            if rc in (69, 99):
+                entry["ok"] = False
+                entry["flock_contention"] = True
             results.append(entry)
             REMEDIATION_LOG.parent.mkdir(parents=True, exist_ok=True)
             with open(REMEDIATION_LOG, "a") as fh:
                 fh.write(json.dumps(entry) + "\n")
             if ok:
                 st["last_success"] = now.isoformat()
+                # Ladder remediations that hold (product regime) should not inflate ineffective streak
+                if entry.get("held"):
+                    st["ineffective_streak"] = 0
                 state[ftype] = st
                 ran_cmds.add(cmd)
+            _record_rc_memory(ftype, f, entry)
         except Exception as ex:
             results.append({"at": now.isoformat(), "type": ftype, "cmd": cmd, "ok": False,
                             "error": str(ex)[:200], "trigger": f.get("message", "")[:200]})
@@ -332,6 +606,18 @@ def collect_data_quality() -> list[dict]:
             ("news", _db_age_h("SELECT MAX(created_at) FROM news_articles"), wk or 6, False),
             ("cio_decisions", _db_age_h("SELECT MAX(created_at) FROM cio_decisions"), wk or 48, True),
             ("agent_jobs", _db_age_h("SELECT MAX(created_at) FROM watchlist_agent_jobs WHERE status='completed'"), wk or 4, False),
+            ("indicator_snapshots", _db_age_h("SELECT MAX(computed_at) FROM indicator_signal_history"), wk or 48, True),
+            ("symbol_profiles", _db_age_h("SELECT MAX(updated_at) FROM symbol_profiles"), wk or 48, True),
+            ("analyst_rollups", _db_age_h("SELECT MAX(created_at) FROM analyst_consensus_history"), wk or 48, True),
+            ("sector_momentum", _db_age_h("SELECT MAX(created_at) FROM sector_momentum_state"), wk or 48, True),
+            ("rotation_summary", _db_age_h("SELECT MAX(created_at) FROM strategy_rotation_signals"), wk or 48, True),
+            ("stops", _db_age_h("SELECT MAX(snapshot_at) FROM stop_lifecycle WHERE lifecycle != 'orphaned'"), wk or 48, True),
+            ("fred_data", _db_age_h("SELECT MAX(fetched_at) FROM fred_economic_series"), wk or 168, True),
+            ("sec_data", _db_age_h("SELECT MAX(created_at) FROM sec_form4"), wk or 168, True),
+            ("social_data", _db_age_h("SELECT MAX(observed_at) FROM social_sentiment_history"), wk or 48, True),
+            ("youtube", _db_age_h("SELECT MAX(ingested_at) FROM youtube_transcripts"), wk or 168, True),
+            ("orchestrator_setups", _file_age_h(LOG_DIR / "screener_pm.log"), wk or 24, True),
+            ("shadow_batch", _file_age_h(LOG_DIR / "shadow_batch_manual.log"), wk or 24, True),
         ]
         for name, age, maxh, weekend_ok in checks:
             if age is None:
@@ -403,6 +689,43 @@ def collect_data_quality() -> list[dict]:
                                   age_minutes=mq_age))
     except Exception as e:
         out.append(_f("data_quality", "collector_error", "info", f"data_quality check error: {e}"))
+
+    # ── Agent Liveness Check ──
+    # Ignore test_*/fixture agents — they burn critical score without a safe auto-restart.
+    try:
+        rows = _db("""
+            SELECT agent_id, last_seen, status,
+                   EXTRACT(EPOCH FROM (now() - last_seen))/60 as minutes_since_seen
+            FROM agent_heartbeat
+            WHERE last_seen < now() - interval '5 minutes'
+              AND status != 'DEAD'
+              AND agent_id NOT ILIKE 'test\\_%'
+              AND agent_id NOT ILIKE 'fixture\\_%'
+              AND agent_id NOT ILIKE 'dummy\\_%'
+        """, fetch="all")
+        if rows:
+            for row in rows:
+                agent_id = row["agent_id"]
+                last_seen = row["last_seen"]
+                status = row["status"]
+                mins = float(row["minutes_since_seen"])
+                severity = "P0" if mins > 30 else ("P1" if mins > 10 else "P2")
+                problem_label = "HUNG" if mins > 30 else "LATE"
+                out.append({
+                    "category": "data_quality",
+                    "type": f"agent::{agent_id}",
+                    "severity": "critical" if severity == "P0" else ("warning" if severity == "P1" else "info"),
+                    "message": f"Agent {agent_id} ({status}) last seen {mins:.0f}min ago",
+                    "producer": f"agent::{agent_id}",
+                    "problem": problem_label,
+                    "description": f"Agent {agent_id} ({status}) last seen {mins:.0f}min ago",
+                    "latest_reading": str(last_seen),
+                    "needs_restart": mins > 15,
+                    "auto_retry": f"agent_restart::{agent_id}" if mins > 15 else None,
+                })
+    except Exception:
+        pass  # graceful if table doesn't exist yet
+
     return out
 
 
@@ -444,8 +767,20 @@ def collect_execution_health() -> list[dict]:
         # recent pipeline failures — exclude zombie rows and failed-with-empty-errors bookkeeping
         pf_count = _count_real_pipeline_failures(24)
         if pf_count > 0:
+            rc_note = ""
+            try:
+                from lib import health_root_cause_memory as _rcmem
+                mem = _rcmem.summary_for("pipeline_failures")
+                if mem.get("last_root_cause"):
+                    rc_note = (
+                        f" [rc={mem.get('last_root_cause')}; "
+                        f"fix={str(mem.get('last_how_to_fix') or '')[:120]}; "
+                        f"strategy={mem.get('last_strategy_id')}]"
+                    )
+            except Exception:
+                pass
             out.append(_f("execution_health", "pipeline_failures", "warning" if pf_count <= 5 else "critical",
-                          f"{pf_count} pipeline run failures in 24h", count=pf_count))
+                          f"{pf_count} pipeline run failures in 24h{rc_note}", count=pf_count))
         # stuck queued agent jobs — distinguish DECISION-FEEDING jobs (have an SLA) from the rolling
         # background research/discovery queue (no SLA; drained by priority, intentionally backloggy).
         # Penalizing execution_health for a research backlog was a false signal — only time-sensitive
@@ -1052,14 +1387,33 @@ def _attach_cta(f: dict):
     f["cta"] = cta
 
 
+# Hard operator-only: never claim auto-retry; never enqueue producer scripts.
+_NEVER_AUTO_DEFAULT = frozenset({
+    "unprotected_positions", "siem_p0p1", "schwab_token_revoked",
+    "finviz_cookie_expired", "audit_ledger_coverage_warn",
+    "audit_ledger_coverage_fail", "audit_ledger_chain_break",
+    "kill_switch_active",
+})
+
+
 def _annotate(f: dict, rmap: dict):
     """Attach why-it-matters + recommended action + actionability to a finding (write-time)."""
     t = f.get("type", "")
+    never = set(_POLICY.get("never_auto_remediate") or []) | set(_NEVER_AUTO_DEFAULT)
     f["why"] = WHY.get(t) or ("Stale data product — dependent pages/decisions use old numbers."
                               if t.endswith("_stale") else f"{f.get('category','')} signal needs review.")
-    if t in rmap:
+    cmd = rmap.get(t)
+    if t in never or f.get("operator_action"):
+        f["action_type"] = "operator"
+        f["recommended_action"] = (
+            f.get("reauth_cmd")
+            or "Operator action required (risk/credential/SIEM/ledger — never auto)."
+        )
+        f["actionable"] = True
+        f["never_auto"] = True
+    elif isinstance(cmd, str) and cmd.strip():
         f["action_type"] = "auto_retry"
-        f["recommended_action"] = f"Auto-retry (allowlisted): {rmap[t]}"
+        f["recommended_action"] = f"Auto-retry (allowlisted): {cmd}"
         f["actionable"] = True
     elif f.get("kind") in ("code", "single_file", "multi_file", "schema"):
         f["action_type"] = "code_fix"
@@ -1334,12 +1688,52 @@ def collect_scalp_catalyst_health() -> list[dict]:
         verified = int((r or {}).get("verified") or 0)
         wait = int((r or {}).get("wait") or 0)
         if rows >= min_rows and go == 0:
-            out.append(_f("intelligence_quality", "scalp_catalyst_verification_dead", "critical",
+            rc_note = ""
+            sev = "critical"
+            held = False
+            try:
+                from lib import health_root_cause_memory as _rcmem
+                from datetime import datetime, timezone as _tz
+                mem = _rcmem.summary_for("scalp_catalyst_verification_dead")
+                if mem.get("last_root_cause"):
+                    rc_note = (
+                        f" [rc={mem.get('last_root_cause')}; "
+                        f"fix={str(mem.get('last_how_to_fix') or '')[:120]}; "
+                        f"strategy={mem.get('last_strategy_id')}]"
+                    )
+                # Product-regime hold: demote critical→warning so thrash stops and score recovers;
+                # still visible until GO returns or hold expires.
+                hu = mem.get("hold_until")
+                rc = mem.get("last_root_cause") or ""
+                fc = int(mem.get("fail_count") or 0)
+                # Unconditional hold at fail_count≥4 for regime-gated findings — these can
+                # NEVER self-resolve (max_score < GO_THRESHOLD is a market condition, not a
+                # code/data bug).  Drop the hold_until expiry so the finding never re-enters
+                # the enqueue→retry→exhaust→re-arm storm loop.
+                if rc == "low_max_score_regime" and fc >= 4:
+                    sev = "warning"
+                    held = True
+                    rc_note += " [hold — regime-gated, not thrashing scanner]"
+                elif hu and rc == "low_max_score_regime":
+                    try:
+                        if datetime.now(_tz.utc) < datetime.fromisoformat(
+                            str(hu).replace("Z", "+00:00")
+                        ):
+                            sev = "warning"
+                            held = True
+                            rc_note += " [hold — not thrashing scanner]"
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            out.append(_f("intelligence_quality", "scalp_catalyst_verification_dead", sev,
                 f"Momentum-scalp GO tier DARK: {rows} setups scored in {window_days}d ({wait} WAIT, "
                 f"{verified} catalyst-verified) but ZERO reached GO — everything capped to WAIT and "
                 f"suppressed, so real-time scalp GO/WAIT Telegram alerts are silently down (the 2026-07-01 "
-                f"class). Check social_scalp_scanner catalyst enrichment / Hermes catalyst wiring / news feed.",
-                surfaced="Trading hub · momentum scalp real-time alerts"))
+                f"class). Check social_scalp_scanner catalyst enrichment / Hermes catalyst wiring / news feed."
+                f"{rc_note}",
+                surfaced="Trading hub · momentum scalp real-time alerts",
+                held=held))
     except Exception as e:
         out.append(_f("intelligence_quality", "scalp_catalyst_monitor_error", "info",
                       f"scalp catalyst health monitor failed: {str(e)[:80]}"))
@@ -2236,8 +2630,15 @@ def collect_failed_systemd_units() -> list[dict]:
                      ["tradeai-", "portfolio-", "grok-oauth", "chatgpt-oauth"])
     out: list[dict] = []
     try:
+        # systemctl needs DBUS_SESSION_BUS_ADDRESS when running under cron (no login session).
+        # Without it the subprocess fails and the bare `except` made this collector permanently
+        # dead — failed units were never detected under cron.
+        env = os.environ.copy()
+        uid = os.getuid()
+        env.setdefault("DBUS_SESSION_BUS_ADDRESS", f"unix:path=/run/user/{uid}/bus")
+        env.setdefault("XDG_RUNTIME_DIR", f"/run/user/{uid}")
         proc = subprocess.run(["systemctl", "--failed", "--plain", "--no-legend", "--no-pager"],
-                              capture_output=True, text=True, timeout=10)
+                              capture_output=True, text=True, timeout=10, env=env)
         for line in (proc.stdout or "").splitlines():
             unit = (line.split() or [""])[0]
             if unit.startswith(prefixes):
@@ -2245,8 +2646,13 @@ def collect_failed_systemd_units() -> list[dict]:
                               f"systemd unit {unit} is in failed state — scheduled runs may be "
                               f"missed; operator: sudo systemctl reset-failed {unit} "
                               f"(then check why it died: journalctl -u {unit})", unit=unit))
-    except Exception:
-        pass
+    except Exception as e:
+        # Surface that we can't check — silence is worse than an info finding
+        out.append(_f("execution_health", "systemd_check_unavailable", "info",
+                      f"Cannot check systemd unit state: {e}. "
+                      f"systemctl --failed may need DBUS_SESSION_BUS_ADDRESS or the "
+                      f"collector may be running without a system bus.",
+                      error=str(e)[:200]))
     return out
 
 
@@ -2375,15 +2781,23 @@ def collect_backup_health() -> list[dict]:
         except Exception:
             pass
         import glob as _g
-        dumps = sorted(_g.glob(str(Path.home() / "db_backups" / "trade_ai_*.sql.gz")))
+        min_bytes = int(cfg.get("min_dump_bytes", 500 * 1024 * 1024))  # ignore partial thrash dumps
+        dumps = []
+        for p in sorted(_g.glob(str(Path.home() / "db_backups" / "trade_ai_*.sql.gz"))):
+            try:
+                if Path(p).stat().st_size >= min_bytes:
+                    dumps.append(p)
+            except OSError:
+                continue
         if not dumps:
             out.append(_f("pipeline_freshness", "db_dump_missing", "critical",
-                          "no local pg dumps exist in ~/db_backups"))
+                          "no local full pg dumps exist in ~/db_backups "
+                          f"(min size {min_bytes // (1024*1024)}MB)"))
         else:
             dump_age_h = (datetime.now().timestamp() - Path(dumps[-1]).stat().st_mtime) / 3600
             if dump_age_h > max_age_h:
                 out.append(_f("pipeline_freshness", "db_dump_stale", "critical",
-                              f"newest pg dump is {dump_age_h:.0f}h old (>{max_age_h:.0f}h)",
+                              f"newest full pg dump is {dump_age_h:.0f}h old (>{max_age_h:.0f}h)",
                               age_hours=round(dump_age_h, 1)))
     except Exception as e:
         out.append(_f("pipeline_freshness", "backup_check_error", "info", str(e)[:120]))
@@ -2438,8 +2852,122 @@ def collect_broker_token_health() -> list[dict]:
     return out
 
 
+def collect_trade_ai_session() -> list[dict]:
+    """CC SETUPS session freshness (run_date), not cache mtime.
+
+    Autonomously remediable via heal_trade_ai_session_cache.py — Health Agent /
+    escalation run the producer; operators do not patch cache by hand.
+    """
+    out: list[dict] = []
+    try:
+        today = datetime.now().astimezone().strftime("%Y-%m-%d")
+        try:
+            from zoneinfo import ZoneInfo
+            today = datetime.now(ZoneInfo("America/New_York")).date().isoformat()
+        except Exception:
+            pass
+        cache_path = PROJECT_ROOT / "data" / "runtime" / "trade_ai_cache.json"
+        # Also check DEV if live stamp is empty/stale relative to package pointer
+        candidates = [cache_path]
+        try:
+            from lib.live_project_root import DEV_ROOT
+            candidates.append(DEV_ROOT / "data" / "runtime" / "trade_ai_cache.json")
+        except Exception:
+            pass
+        run_date = None
+        used = None
+        for p in candidates:
+            if not p.exists():
+                continue
+            try:
+                d = json.loads(p.read_text())
+                rd = d.get("run_date")
+                if rd:
+                    run_date = str(rd)[:10]
+                    used = str(p)
+                    break
+            except Exception:
+                continue
+        if not run_date:
+            out.append(_f("pipeline_freshness", "trade_ai_session_missing", "critical",
+                          "trade_ai_cache.json missing or has no run_date — SETUPS session unknown",
+                          surfaced="CC SETUPS header"))
+            return out
+        if run_date < today:
+            out.append(_f(
+                "pipeline_freshness", "trade_ai_session_stale", "critical",
+                f"SETUPS session stale: run_date={run_date} (today ET {today}) — "
+                f"CC header will show STALE until cache is healed",
+                run_date=run_date, today_et=today, cache=used,
+                surfaced="CC SETUPS header",
+            ))
+    except Exception as e:
+        out.append(_f("pipeline_freshness", "trade_ai_session_check_error", "info",
+                      f"trade_ai session check failed: {str(e)[:100]}"))
+    return out
+
+
+# ── Phase 4 prevention collectors ────────────────────────────────────────────────────────────────────
+
+def collect_cron_sanity() -> list[dict]:
+    """Verify every scripts/*.py reference in the crontab exists (prevents C8 recurrence).
+
+    Dead cron entries silently fail (exit 127 into cron mail) and are invisible to the
+    log-scanner — the C8 bug class where watchlist_health_agent.py ran every 10-30 min
+    for weeks without existing in prod."""
+    try:
+        from check_cron_sanity import check
+        return check()
+    except Exception as e:
+        return [_f("execution_health", "cron_sanity_check_error", "info",
+                   f"Cron sanity check failed: {str(e)[:100]}")]
+
+
+def collect_queue_health() -> list[dict]:
+    """Inspect the escalation queue for stuck, orphaned, or oversized items.
+
+    Finds items that have been exhausted >24h (stuck), items from dead sources
+    (orphaned), and reports total queue depth."""
+    out: list[dict] = []
+    try:
+        from lib.queue_file import read_items
+        items = read_items(QUEUE_FILE)
+    except Exception:
+        try:
+            items = json.loads(QUEUE_FILE.read_text()) if QUEUE_FILE.exists() else []
+        except Exception:
+            return [_f("execution_health", "queue_health_read_error", "info",
+                       "Could not read escalation queue for health check")]
+    if not items:
+        return []
+    now_ts = __import__("time").time()
+    stuck = 0
+    orphaned_sources = set()
+    for item in items:
+        if item.get("_exhausted"):
+            last_at = item.get("_last_attempt_ts", 0)
+            if last_at and (now_ts - float(last_at)) > 86400:
+                stuck += 1
+        src = item.get("source", "")
+        if src and src not in ("health_agent", "system_health_agent",
+                                "hermes_health_inspector", "manual"):
+            orphaned_sources.add(src)
+    if stuck:
+        out.append(_f("execution_health", "queue_stuck_items", "warning",
+                      f"{stuck} escalation queue item(s) exhausted >24h — may need operator review"))
+    if orphaned_sources:
+        out.append(_f("execution_health", "queue_orphaned_sources", "info",
+                      f"Escalation queue contains items from unknown sources: "
+                      f"{', '.join(sorted(orphaned_sources)[:5])}"))
+    if len(items) > 50:
+        out.append(_f("execution_health", "queue_depth_high", "info",
+                      f"Escalation queue has {len(items)} items (>50) — review may be needed"))
+    return out
+
+
 COLLECTORS = [
     collect_data_quality,
+    collect_trade_ai_session,
     collect_broker_token_health,
     collect_trade_in_view_health,
     collect_pipeline_containment,
@@ -2469,24 +2997,57 @@ COLLECTORS = [
     collect_failed_systemd_units,
     collect_db_connection_health,
     collect_backup_health,
+    # Phase 4 prevention collectors
+    collect_cron_sanity,
+    collect_queue_health,
 ]
 
 
 # ── scoring ──────────────────────────────────────────────────────────────────────────────────────────
 
 def score_category(findings: list[dict], penalties: dict) -> int:
+    """Score a category 0-100.  The cumulative penalty is capped at the largest single
+    severity penalty (default critical −40), so two concurrent criticals in the same
+    category don't zero it — one critical already makes the point; redundant criticals
+    don't add signal.  Info/warning findings still subtract below the cap."""
     score = 100
+    max_penalty = max(penalties.values()) if penalties else 40  # critical
+    total = 0
     for f in findings:
-        score -= penalties.get(f.get("severity"), 0)
+        total += penalties.get(f.get("severity"), 0)
+    score -= min(total, max_penalty)
+    # Info/warning penalties beyond the first critical still register (up to the cap)
     return max(0, min(100, score))
 
 
 def compute(policy: dict):
     global _POLICY
     _POLICY = policy or {}
+
+    # ── DB reachability probe (fail-closed: a dead DB must NOT score "healthy") ──
+    # _db() swallows exceptions and returns None → collectors silently skip, which
+    # historically scored 100/"healthy" during PostgreSQL outages.  This probe runs
+    # BEFORE the collector loop and injects a critical finding if the DB is unreachable,
+    # so the score correctly tanks even though file-based collectors still work.
+    db_down = False
+    try:
+        from db_adapter import _execute, USE_DB
+        if USE_DB:
+            _execute("SELECT 1", fetch="one")  # raises on connectivity failure
+    except Exception:
+        db_down = True
+
     penalties = policy.get("penalties", {"critical": 40, "warning": 15, "info": 5})
     weights = policy.get("weights", {})
     all_findings = []
+
+    if db_down:
+        all_findings.append(_f("execution_health", "database_unreachable", "critical",
+            "PostgreSQL is unreachable — DB-dependent collectors (data freshness, broker state, "
+            "pipeline runs, options desk, etc.) cannot run. The score reflects ONLY file-based "
+            "collectors and WILL be incomplete. Restore Postgres and re-run the health agent.",
+            surfaced="All DB-dependent pages · health agent"))
+
     for fn in COLLECTORS:
         try:
             all_findings.extend(fn() or [])
@@ -2518,6 +3079,8 @@ def ensure_snapshot_table():
              captured_at TIMESTAMPTZ DEFAULT now(),
              overall_score INT, status TEXT,
              category_scores JSONB, findings JSONB, mode TEXT)""", fetch=None)
+    _db("""CREATE INDEX IF NOT EXISTS idx_health_agent_snapshots_captured_at
+           ON health_agent_snapshots (captured_at DESC)""", fetch=None)
 
 
 def detect_trends(policy: dict, overall: int, cat_scores: dict) -> list[dict]:
@@ -2552,83 +3115,105 @@ def enqueue_escalations(policy: dict, findings_flat: list[dict]):
     if not enq.get("escalations", True):
         return 0
     rmap = policy.get("remediation_map", {})
-    try:
-        existing = json.loads(QUEUE_FILE.read_text()) if QUEUE_FILE.exists() else []
-    except Exception:
-        existing = []
-    seen = {f"{i.get('component')}:{i.get('detail','')[:40]}" for i in existing}
-    # Dedup health findings by COMPONENT (category:type) alone. The message embeds a changing count
-    # ("14 agent jobs queued >2h" → "132 ..."), so a message-based key never matched and the same
-    # finding piled up — 14 agent_jobs_stuck items each carrying the --limit 15 retry_cmd, which the
-    # handler then ran concurrently (the 2026-06-25 Ollama thundering-herd). One open escalation per
-    # finding type is enough; the latest detail is what matters.
-    existing_components = {i.get("component") for i in existing
-                          if (i.get("source") or "") in ("health_agent", "health_agent_meta")}
-    added = 0
+    never = set(policy.get("never_auto_remediate") or []) | set(_NEVER_AUTO_DEFAULT)
+
+    # Pre-filter findings so we know the candidate set before the atomic update
+    candidates = []
     for f in findings_flat:
         if f.get("severity") not in ("warning", "critical"):
             continue
-        # Never enqueue the meta execution_escalations finding — it only describes queue depth and
-        # re-enqueueing it creates a critical-count feedback loop in Telegram alerts.
         if f.get("type") == "execution_escalations":
             continue
-        comp = f"health:{f['category']}:{f['type']}"
-        if comp in existing_components:
+        if f.get("held"):
             continue
-        key = f"{comp}:{f['message'][:40]}"
-        if key in seen:
+        if f.get("type") in never or f.get("never_auto") or f.get("operator_action"):
             continue
-        item = {
-            "component": comp,
-            "detail": f["message"],
-            "status": f["severity"],
-            "critical": f["severity"] == "critical",
-            "fixable": False,
-            "source": "health_agent",
-        }
-        retry = rmap.get(f["type"])
-        if retry:
-            # P0 fail-closed containment (issue #283 / PR #284 Gate 4)
-            try:
-                from lib.agent_jobs_containment import guard_agent_jobs_execution
-                g = guard_agent_jobs_execution(retry, source="health_agent.enqueue_escalations")
-            except Exception:
-                # Import/eval crash: never restore worker retry_cmd
-                if "process_watchlist_agent_jobs" in str(retry).lower():
-                    g = {
-                        "blocked": True,
-                        "remediation_status": "CONTAINMENT_CHECK_FAILED",
-                        "message": "CONTAINMENT_CHECK_FAILED",
-                    }
+        candidates.append(f)
+
+    if not candidates:
+        return 0
+
+    count_box = [0]  # mutable container so the lambda can write to it
+
+    def _update(existing):
+        seen = {f"{i.get('component')}:{i.get('detail','')[:40]}" for i in existing}
+        existing_components = {i.get("component") for i in existing
+                              if (i.get("source") or "") in ("health_agent", "health_agent_meta")}
+        existing_by_comp = {}
+        for ei in existing:
+            comp = ei.get("component")
+            if comp:
+                existing_by_comp[comp] = ei
+        for f in candidates:
+            comp = f"health:{f['category']}:{f['type']}"
+            if comp in existing_components:
+                continue
+            key = f"{comp}:{f['message'][:40]}"
+            if key in seen:
+                continue
+            item = {
+                "component": comp,
+                "detail": f["message"],
+                "status": f["severity"],
+                "critical": f["severity"] == "critical",
+                "fixable": False,
+                "source": "health_agent",
+            }
+            old_item = existing_by_comp.get(comp, {})
+            for field in ("_attempts", "_last_attempt_ts", "_exhausted"):
+                if field in old_item:
+                    item[field] = old_item[field]
+            retry = rmap.get(f["type"])
+            if isinstance(retry, str) and retry.strip():
+                retry = _rewrite_remediation_cmd(retry)
+                try:
+                    from lib.agent_jobs_containment import guard_agent_jobs_execution
+                    g = guard_agent_jobs_execution(retry, source="health_agent.enqueue_escalations")
+                except Exception:
+                    if "process_watchlist_agent_jobs" in str(retry).lower():
+                        g = {"blocked": True, "remediation_status": "CONTAINMENT_CHECK_FAILED",
+                             "message": "CONTAINMENT_CHECK_FAILED"}
+                    else:
+                        g = {"blocked": False}
+                if g.get("blocked"):
+                    item["fixable"] = False
+                    item["retry_cmd"] = None
+                    item["remediation_status"] = (
+                        g.get("remediation_status") or g.get("status") or "CONTAINMENT_CHECK_FAILED"
+                    )
+                    item["detail"] = (
+                        f"{f['message']} | {item['remediation_status']}: "
+                        f"process_watchlist_agent_jobs will not be invoked"
+                    )
                 else:
-                    g = {"blocked": False}
-            if g.get("blocked"):
-                item["fixable"] = False
-                item["retry_cmd"] = None
-                item["remediation_status"] = (
-                    g.get("remediation_status") or g.get("status") or "CONTAINMENT_CHECK_FAILED"
-                )
-                item["detail"] = (
-                    f"{f['message']} | {item['remediation_status']}: "
-                    f"process_watchlist_agent_jobs will not be invoked"
-                )
-            else:
-                item["fixable"] = True
-                item["retry_cmd"] = retry
-        if f.get("kind") in ("code", "single_file", "multi_file", "schema") and enq.get("code_fixes", True):
-            item["needs_code_fix"] = True
-            item["kind"] = f.get("kind", "code")
-        existing.append(item)
-        seen.add(key)
-        existing_components.add(comp)
-        added += 1
-    if added:
+                    item["fixable"] = True
+                    item["retry_cmd"] = retry
+            if f.get("kind") in ("code", "single_file", "multi_file", "schema") and enq.get("code_fixes", True):
+                item["needs_code_fix"] = True
+                item["kind"] = f.get("kind", "code")
+            existing.append(item)
+            seen.add(key)
+            existing_components.add(comp)
+            count_box[0] += 1
+        return existing
+
+    try:
+        from lib.queue_file import atomic_update
+        atomic_update(QUEUE_FILE, _update)
+    except Exception:
+        # Fallback: direct read/write if queue_file module is unavailable
         try:
-            QUEUE_FILE.parent.mkdir(parents=True, exist_ok=True)
-            QUEUE_FILE.write_text(json.dumps(existing, indent=2))
+            existing = json.loads(QUEUE_FILE.read_text()) if QUEUE_FILE.exists() else []
         except Exception:
-            pass
-    return added
+            existing = []
+        _update(existing)
+        if count_box[0]:
+            try:
+                QUEUE_FILE.parent.mkdir(parents=True, exist_ok=True)
+                QUEUE_FILE.write_text(json.dumps(existing, indent=2))
+            except Exception:
+                pass
+    return count_box[0]
 
 
 # ── persistence + alerting ───────────────────────────────────────────────────────────────────────────
@@ -2773,6 +3358,18 @@ def main():
     ap.add_argument("--json", action="store_true", help="print snapshot json")
     args = ap.parse_args()
 
+    # Register heartbeat
+    hb = None
+    try:
+        from lib.agent_heartbeat import AgentHeartbeat
+        from db_adapter import _get_conn
+        hb_conn = _get_conn()
+        if hb_conn:
+            hb = AgentHeartbeat(hb_conn, 'health_agent', task='health_scoring')
+            hb.register()
+    except Exception:
+        pass
+
     policy = load_policy()
     mode = (os.getenv("HEALTH_AGENT_MODE") or policy.get("mode") or "advisory").lower()
     ensure_snapshot_table()  # so the first-ever trend lookup has a table to read
@@ -2827,6 +3424,13 @@ def main():
               "  ".join(f"{c}={s}" for c, s in cat_scores.items()) +
               f"  |  {len(findings_flat)} findings, {enqueued} enqueued, "
               f"{len(remediated)} auto-remediated, {len(trends)} trends")
+
+    # Mark heartbeat done
+    if hb:
+        try:
+            hb.mark_done(success=True)
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":

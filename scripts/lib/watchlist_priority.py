@@ -28,7 +28,9 @@ PROPOSAL_ACTIVE_STATUSES = (
 # Decision-feeding job types with a 2h SLA (health_agent counts these as execution
 # defects when starved). They must outrank the rolling research backlog regardless of
 # symbol tier — a stream of scheduled_research on holdings otherwise starves them forever.
-TIME_SENSITIVE_REQUEST_TYPES = ("proposal_review", "full_analysis", "research_gap", "event")
+TIME_SENSITIVE_REQUEST_TYPES = (
+    "proposal_review", "full_analysis", "research_gap", "event", "go_signal_review",
+)
 
 
 def sql_request_type_sla_case(request_type_sql: str = "j.request_type") -> str:

@@ -43,8 +43,22 @@ export function XaiMark({ size = 11 }: { size?: number }) {
   )
 }
 
+export function DeepSeekMark({ size = 11 }: { size?: number }) {
+  const s = size
+  const cx = s / 2, cy = s / 2, r = s * 0.4
+  return (
+    <svg width={s} height={s} viewBox={`0 0 ${s} ${s}`} style={{ display: 'inline', verticalAlign: '-1px' }}>
+      <circle cx={cx} cy={cy} r={r} stroke={BRAND.deepseek} strokeWidth={s / 7} fill="none" />
+      <path d={`M${s * 0.15} ${cy} L${s * 0.85} ${cy} M${cx} ${s * 0.15} L${cx} ${s * 0.85}`}
+        stroke={BRAND.deepseek} strokeWidth={s / 8} strokeLinecap="round" fill="none" />
+    </svg>
+  )
+}
+
 export function ProviderMark({ provider, size = 11 }: { provider: string; size?: number }) {
   if (provider === 'anthropic') return <ClaudeMark size={size} />
   if (provider === 'openai') return <OpenAiMark size={size} />
+  if (provider === 'xai') return <XaiMark size={size} />
+  if (provider === 'deepseek') return <DeepSeekMark size={size} />
   return <XaiMark size={size} />
 }
