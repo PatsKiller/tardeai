@@ -18,7 +18,7 @@
 | Alex | 👔 Alex | Chief Investment & Wealth Officer | DeepSeek V4 Pro (PRO) / V4 Flash (FAST) | OpenClaw + Trade AI Wave-3 (SHADOW) | 30-min heartbeat + 5-min wake worker + scheduled briefs | READ_ONLY_ADVISORY |
 | Aegis | 🏛️ Aegis | Portfolio surveillance / overnight analysis | gemma3:27b (overnight) | Trade AI LLM + OpenClaw | Overnight 8 PM + surveillance 8 AM + social 11/3 PM + nightly 7 PM + synthesis 9 PM + transcript 9 AM + brief 8:05 AM | advisory |
 | Iris | 📚 Iris | Intelligence librarian / RAG coverage / taxonomy | gemma3:12b (local) | Trade AI LLM + OpenClaw | Weekly Sun 10 AM + daily gap 7 AM | advisory |
-| Morgan | 🏦 Morgan | Senior Wealth Advisor — total financial life planning | — (DISABLED) | Trade AI Wave-3 | NONE | DISABLED |
+| Morgan | 🏦 Morgan | Senior Wealth Advisor — total financial life planning | Ollama gemma3:12b | Trade AI Wave-3 + OpenClaw | CIO scheduled briefs + material changes + behavioral flags | READ_ONLY_ADVISORY (SHADOW) |
 | Social Scalp | 📡 Social Scalp | Social mention scanner / GO-WAIT-AVOID | gemma3:12b (local) | Trade AI LLM | Part of scalp pipeline | advisory |
 | Scalp Critic | 🎯 Scalp Critic | Post-scan critic / catalyst validation | gemma3:12b (local) | Trade AI LLM | Part of scalp pipeline | advisory |
 
@@ -79,7 +79,8 @@
 - **OpenClaw:** `~/.openclaw/agents/alex/` — IDENTITY.md, SOUL.md (read-only advisory, tradeai-readonly skill)
 - **Hermes bridge:** `cio_hermes_challenge_queue.py` — Hermes (16,152 research rows) challenges Alex via governed challenge queue
 - **CIO synthesis pipeline:** `scripts/process_watchlist_agent_jobs.py` — Maria/Steph/Risk committee → Grok+ChatGPT dual-consensus → Alex CIO synthesis (DeepSeek V4 Pro) → `cio_decisions` table → Telegram delivery
-- **Event bus:** `scripts/lib/cio_event_bus.py` — 15 event types, agent routing (alex: 12 types, steph: 4, hermes: 4). Heartbeat emits on material change. Foundation for event-driven autonomy (Phase 0 complete).
+- **Operator feedback:** `scripts/cio_commands.py` — `/cio ack <id>` (acknowledge action), `/cio rate <id> <useful|notuseful>` (rate usefulness, feeds gate 10). Writes to action ledger + outcome store.
+- **Event bus:** `scripts/lib/cio_event_bus.py` — 15 event types, agent routing (alex: 12 types, steph: 4, hermes: 4, morgan: 5). Heartbeat emits on material change. Foundation for event-driven autonomy (Phase 0 complete).
 - **Docs:** `docs/architecture/cio/` (39 files) — CIO Phase 3 delivery, ADRs, lab docs, platform readiness, quality metrics, run budgets, specialist maturity catalog · `docs/CIO_PROMPT_INPUT_AUDIT_2026_07_01.md` · `docs/architecture/cio/OPENCLAW_CIO_ARCHITECTURE_FEEDBACK_2026-08-08.md` · `docs/wealth-advisor/STEPH_WEALTH_ADVISOR.md`
 - **Authority:** READ_ONLY_ADVISORY — no broker/order/risk/approval/2FA/secret/config authority. All outputs are advisory.
 - **12-Gate Maturity:** 11/12 PASS. Only g1 remains: 78/100 artifacts (~1.5 days to 100). All quality gates pass: g2 (provenance 100%), g3/g4 (Darwin scored 78/78 = 100% coverage), g5 (sentinel review: 0 contradictions), g6-g9 (deterministic guarantees), g10 (usefulness proxy 0.78), g11 (4/4 rollback tests pass), g12 (zero violations). Run `python scripts/cio_gate_measurement_bridge.py` for live status. Gate measurement scripts: `scripts/darwin_outcome_scorer.py`, `scripts/backfill_cio_actions.py`, `scripts/sentinel_artifact_review.py`, `tests/test_cio_rollback.py`.
@@ -121,7 +122,7 @@ OpenClaw provides the Telegram/WhatsApp interface layer for agent interaction.
 | Darwin | Exists (minimal) | — | No evidence | SKELETON |
 | Sentinel | Exists (minimal) | — | No evidence | SKELETON |
 | Concierge | Exists (minimal) | — | No evidence | SKELETON |
-| Morgan | NO WORKSPACE | — | — | DOES NOT EXIST (Wave-3 only, DISABLED) |
+| Morgan (Wealth) | ~/.openclaw/agents/morgan/ | — | DISABLED | LIVE — SHADOW, reporting to Alex |
 | Main | ~/.openclaw/agents/main/ | Fallback agent | — | Fallback |
 
 **Note:** Guardian, Ledger, Vega, Darwin, Sentinel, and Concierge OpenClaw agents are skeletal or non-existent — the CIO architecture prompt's 9-agent team has 3 fully operational members (Maria, Steph, Aegis) plus Alex (CIO) with Trade AI durable-state heartbeat. See `docs/architecture/cio/OPENCLAW_CIO_ARCHITECTURE_FEEDBACK_2026-08-08.md` §11 for full gap analysis.
@@ -133,7 +134,7 @@ OpenClaw provides the Telegram/WhatsApp interface layer for agent interaction.
 | alex (CIO) | 3 | SHADOW | ✅ | CIO_SYNTHESIS, ACTION_ITEM | iris | darwin |
 | steph (Allocation) | 3 | SHADOW | ❌ (pending CIO maturity) | ALLOCATION_REVIEW | sentinel | darwin |
 | ledger (Tax) | 3 | SHADOW | ❌ (pending CIO maturity) | TAX_LOT_REVIEW | sentinel | darwin |
-| morgan (Wealth) | 3 | DESIGNED | ❌ (pending CIO maturity) | WEALTH_SYNTHESIS | sentinel | darwin |
+| morgan (Wealth) | 3 | SHADOW | ✅ (enabled 2026-08-09) | WEALTH_SYNTHESIS, IMPROVEMENT_PROPOSAL | iris | darwin |
 
 **Wave-1 agents** (sentinel, darwin, iris, reflection): defined in `agent_runtime/agents/definitions.py`, SHADOW, enabled but **not producing evidence** (needs provider module + root timer enable). See `docs/agent_runtime/FLEET_STATUS_2026-07-30.md`.
 **Wave-2 agents** (maria, vega, risk_agent, aegis): DESIGNED, disabled — no acceptance evidence (0 runs). Gated behind wave-1 acceptance.
