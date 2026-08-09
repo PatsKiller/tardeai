@@ -249,7 +249,25 @@ def run_heartbeat(interval_minutes: int = 30, max_actions: int = 5) -> dict[str,
 
     changes = detect_changes(snapshot, previous)
 
-    # 3. Create actions for material changes
+    # 3. Delegate to specialists + Hermes for material changes
+    delegation_summary = {"handoffs": 0, "challenges": 0}
+    for change in changes[:3]:  # delegate for top 3 changes
+        if change.get("domain") != "system":
+            try:
+                from cio_delegation import run_delegation_cycle
+                dsum = run_delegation_cycle(
+                    domain=change.get("domain"),
+                    change=change,
+                    snapshot=snapshot,
+                    max_handoffs=2,
+                    max_challenges=1,
+                )
+                delegation_summary["handoffs"] += dsum.get("handoffs_enqueued", 0)
+                delegation_summary["challenges"] += dsum.get("challenges_enqueued", 0)
+            except Exception:
+                pass  # delegation is non-fatal — heartbeat continues
+
+    # 4. Create actions for material changes
     actions_created = 0
     for change in changes[:max_actions]:
         if change.get("change_type") == "FIRST_RUN":
@@ -286,6 +304,7 @@ def run_heartbeat(interval_minutes: int = 30, max_actions: int = 5) -> dict[str,
         "domains_collected": list(snapshot.get("domains", {}).keys()),
         "changes_detected": len(changes),
         "actions_created": actions_created,
+        "delegation": delegation_summary,
         "elapsed_ms": int(elapsed * 1000),
         "mode": "shadow",
         "model_calls": 0,
