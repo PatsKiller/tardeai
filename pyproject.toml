@@ -12,6 +12,8 @@ exclude = [
     "node_modules/",
     "docs/_archive/",
     "docs/project/",
+    "config/*.json",
+    "*.json",
 ]
 
 # Line length (PEP 8 default + buffer)

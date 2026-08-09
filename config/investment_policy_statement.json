@@ -1,0 +1,99 @@
+{
+  "_meta": {
+    "version": "1.0.0",
+    "created_at": "2026-08-09",
+    "created_by": "operator",
+    "status": "ACTIVE",
+    "review_cadence": "quarterly",
+    "next_review": "2026-11-01",
+    "note": "Canonical Investment Policy Statement. Operator-confirmed values. Used by Alex (CIO) for portfolio construction, risk assessment, and advisory synthesis."
+  },
+
+  "objectives": {
+    "primary": "Long-term growth with income generation — AI/technology sector tilt within diversified framework",
+    "secondary": ["Capital preservation via protective stops", "Tax efficiency (Roth conversion ladder)", "Income to supplement SSDI"],
+    "benchmark": "S&P 500 Total Return (SPY)",
+    "target_return_annual_pct": 7.0,
+    "timeframe_years": 20
+  },
+
+  "risk_tolerance": {
+    "level": "MODERATE_AGGRESSIVE",
+    "max_drawdown_pct": 25.0,
+    "max_annual_loss_pct": 15.0,
+    "capacity": "Moderate capacity — SSDI income floor, 20+ year horizon, no near-term withdrawal needs",
+    "willingness_vs_capacity": "Aligned — operator actively manages risk via stop discipline"
+  },
+
+  "liquidity": {
+    "emergency_fund_months": 6,
+    "emergency_fund_target_usd": 50000,
+    "near_term_expenses_12mo_usd": 20000,
+    "near_term_expenses_36mo_usd": 60000,
+    "cash_buffer_min_pct": 2.0
+  },
+
+  "time_horizon": {
+    "current_age": 45,
+    "target_retirement_age": 65,
+    "accumulation_years": 20,
+    "distribution_years": 30,
+    "risk_glide_path": "Aggressive until 55, moderate 55-65, conservative 65+"
+  },
+
+  "tax": {
+    "filing_status": "SINGLE",
+    "federal_marginal_rate_pct": 24.0,
+    "state_of_residence": "NY",
+    "state_marginal_rate_pct": 6.0,
+    "irmaa_threshold_concern": false,
+    "tax_loss_harvesting_enabled": true,
+    "municipal_bond_preference": false,
+    "roth_conversion_active": true,
+    "golden_window_roth": true,
+    "ssdi_status": "RECEIVING"
+  },
+
+  "accounts": {
+    "taxable": [
+      {"type": "brokerage", "name": "Schwab Taxable", "broker": "schwab", "purpose": "active_trading"}
+    ],
+    "ira": [
+      {"type": "rollover_ira", "name": "Fidelity Rollover IRA", "broker": "fidelity", "purpose": "retirement", "value_usd": 568000}
+    ],
+    "roth": [
+      {"type": "roth_ira", "name": "Roth IRA", "broker": "schwab", "purpose": "roth_ladder"}
+    ],
+    "employer_plan": [],
+    "ira_contribution_limit": 7000,
+    "active_trading_account": "schwab_taxable",
+    "retirement_account": "fidelity_rollover_ira"
+  },
+
+  "income": {
+    "target_annual_income_usd": 55000,
+    "ssdi_monthly": null,
+    "dividend_target_yield_pct": 2.5,
+    "income_sources": ["dividends", "option_premiums", "roth_conversions"]
+  },
+
+  "constraints": {
+    "prohibited_instruments": ["leveraged_etfs", "inverse_etfs_held_overnight", "crypto", "penny_stocks_under_1"],
+    "max_single_position_pct": 8.0,
+    "max_sector_concentration_pct": 25.0,
+    "max_portfolio_heat_pct": 2.0,
+    "min_market_cap": 300000000,
+    "require_stop_on_entry": true,
+    "require_profit_protection_advisory": true,
+    "max_margin_pct": 0
+  },
+
+  "broker_policy": {
+    "primary_broker": "schwab",
+    "secondary_broker": null,
+    "paper_trading_enabled": true,
+    "live_trading_enabled": true,
+    "require_2fa_for_live": true,
+    "execution_mode": "operator_approved"
+  }
+}

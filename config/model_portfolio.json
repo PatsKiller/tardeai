@@ -1,0 +1,100 @@
+{
+  "_meta": {
+    "version": "1.0.0",
+    "created_at": "2026-08-09",
+    "status": "ACTIVE",
+    "review_cadence": "quarterly",
+    "next_review": "2026-11-01",
+    "note": "Canonical Model Portfolio — target allocation framework. Used by Alex (CIO) and Steph (Senior Portfolio Advisor) to compare actual vs target and quantify drift. Drift > 4% in major bucket or > 7% in sector triggers CIO notification."
+  },
+
+  "strategic_allocation": {
+    "equity": {
+      "target_pct": 75.0,
+      "min_pct": 65.0,
+      "max_pct": 85.0,
+      "sub_allocations": {
+        "us_large_cap": {"target_pct": 35.0, "min_pct": 25.0, "max_pct": 45.0},
+        "us_mid_cap": {"target_pct": 10.0, "min_pct": 5.0, "max_pct": 15.0},
+        "us_small_cap": {"target_pct": 5.0, "min_pct": 0.0, "max_pct": 10.0},
+        "international_developed": {"target_pct": 15.0, "min_pct": 8.0, "max_pct": 20.0},
+        "international_emerging": {"target_pct": 5.0, "min_pct": 0.0, "max_pct": 10.0},
+        "technology_sector_tilt": {"target_pct": 15.0, "min_pct": 5.0, "max_pct": 25.0, "note": "AI/tech thesis — operator-directed tactical overlay"}
+      }
+    },
+    "fixed_income": {
+      "target_pct": 15.0,
+      "min_pct": 8.0,
+      "max_pct": 25.0,
+      "sub_allocations": {
+        "corporate_bonds": {"target_pct": 5.0},
+        "treasury_bonds": {"target_pct": 5.0},
+        "municipal_bonds": {"target_pct": 0.0, "note": "Per IPS: no municipal bond preference"},
+        "high_yield": {"target_pct": 5.0}
+      }
+    },
+    "cash_and_equivalents": {
+      "target_pct": 5.0,
+      "min_pct": 2.0,
+      "max_pct": 15.0,
+      "note": "Per IPS: 2% cash buffer minimum. Tactical cash for entry opportunities."
+    },
+    "alternatives": {
+      "target_pct": 5.0,
+      "min_pct": 0.0,
+      "max_pct": 10.0,
+      "sub_allocations": {
+        "real_estate": {"target_pct": 3.0},
+        "commodities": {"target_pct": 2.0}
+      }
+    }
+  },
+
+  "sector_targets": {
+    "technology": {"target_pct": 28.0, "max_pct": 35.0, "note": "AI thesis overlay — operator-approved tactical overweight"},
+    "financials": {"target_pct": 12.0, "max_pct": 18.0},
+    "healthcare": {"target_pct": 10.0, "max_pct": 15.0},
+    "consumer_discretionary": {"target_pct": 8.0, "max_pct": 12.0},
+    "industrials": {"target_pct": 8.0, "max_pct": 12.0},
+    "communication_services": {"target_pct": 6.0, "max_pct": 10.0},
+    "consumer_staples": {"target_pct": 5.0, "max_pct": 10.0},
+    "energy": {"target_pct": 5.0, "max_pct": 10.0},
+    "utilities": {"target_pct": 3.0, "max_pct": 8.0},
+    "materials": {"target_pct": 3.0, "max_pct": 8.0},
+    "real_estate": {"target_pct": 3.0, "max_pct": 8.0}
+  },
+
+  "income_targets": {
+    "annual_dividend_income_usd": 30000,
+    "dividend_yield_pct": 2.5,
+    "option_premium_target_monthly_usd": 2000,
+    "roth_conversion_target_annual_usd": 10000,
+    "total_income_target_annual_usd": 55000
+  },
+
+  "risk_overlay": {
+    "max_portfolio_beta": 1.20,
+    "min_portfolio_beta": 0.80,
+    "target_portfolio_beta": 1.05,
+    "max_correlation_cluster_pct": 40.0,
+    "require_stop_coverage_pct": 90.0,
+    "max_single_position_var_pct": 3.0
+  },
+
+  "rebalancing_policy": {
+    "frequency": "quarterly",
+    "threshold_pct": 4.0,
+    "sector_threshold_pct": 7.0,
+    "tax_aware": true,
+    "prefer_cash_flow_rebalancing": true,
+    "minimum_trade_size_usd": 2000
+  },
+
+  "prohibited_exposures": {
+    "instruments": ["leveraged_etfs", "inverse_etfs_overnight", "crypto_tokens", "options_naked_calls"],
+    "sectors": [],
+    "countries": [],
+    "market_cap_below_usd": 300000000,
+    "daily_volume_below": 500000
+  }
+}

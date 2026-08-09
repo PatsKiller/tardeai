@@ -66,6 +66,9 @@ _PRIORITY_MAP: dict[tuple[str, str], str] = {
     ("DATA_CHANGED", "rotation"): "Medium",
     ("DATA_CHANGED", "income"): "Low",
     ("DATA_CHANGED", "hermes_research"): "Low",
+    ("DATA_CHANGED", "model_portfolio"): "High",
+    ("DOMAIN_WENT_STALE", "investment_policy"): "Critical",
+    ("DOMAIN_WENT_STALE", "model_portfolio"): "Critical",
     ("FIRST_RUN", "system"): "Info",
     ("DOMAIN_AVAILABLE", "*"): "Info",
 }
@@ -251,6 +254,29 @@ def _evaluate_escalation_triggers(snapshot: dict[str, Any]) -> list[dict[str, An
                 "priority": "High",
                 "detail": f"Portfolio heat {heat:.1f}% exceeds 0.5% threshold",
             })
+
+    # Allocation drift vs model portfolio
+    mp = domains.get("model_portfolio", {})
+    if mp.get("state") == "AVAILABLE":
+        for drift_item in mp.get("drift_summary", []):
+            if drift_item.get("status") == "DRIFT":
+                triggers.append({
+                    "trigger": "allocation_drift",
+                    "priority": "High",
+                    "detail": (
+                        f"{drift_item['bucket']}: actual {drift_item['actual_pct']}% vs "
+                        f"target {drift_item['target_pct']}% (drift {drift_item['drift_pct']:+.1f}%)"
+                    ),
+                })
+
+    # IPS missing or stale
+    ips = domains.get("investment_policy", {})
+    if ips.get("state") != "AVAILABLE":
+        triggers.append({
+            "trigger": "ips_unavailable",
+            "priority": "Critical",
+            "detail": "Investment Policy Statement unavailable — CIO cannot advise against policy",
+        })
 
     return triggers
 

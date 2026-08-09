@@ -45,6 +45,8 @@ CIO_DOMAINS = (
     "income",
     "reconciliation",
     "hermes_research",
+    "investment_policy",
+    "model_portfolio",
 )
 
 
@@ -190,6 +192,104 @@ def _domain_hermes_research() -> dict[str, Any]:
     }
 
 
+def _domain_investment_policy() -> dict[str, Any]:
+    """Load canonical Investment Policy Statement."""
+    ips_path = PROJECT_ROOT / "config" / "investment_policy_statement.json"
+    if not ips_path.exists():
+        return {"state": "DATA_UNAVAILABLE", "reason": "IPS config not found"}
+    try:
+        ips = json.loads(ips_path.read_text(encoding="utf-8"))
+        meta = ips.get("_meta", {})
+        return {
+            "state": "AVAILABLE",
+            "version": meta.get("version"),
+            "status": meta.get("status"),
+            "next_review": meta.get("next_review"),
+            "risk_level": ips.get("risk_tolerance", {}).get("level"),
+            "max_drawdown_pct": ips.get("risk_tolerance", {}).get("max_drawdown_pct"),
+            "primary_objective": ips.get("objectives", {}).get("primary", "")[:120],
+            "target_return_pct": ips.get("objectives", {}).get("target_return_annual_pct"),
+            "max_single_position_pct": ips.get("constraints", {}).get("max_single_position_pct"),
+            "active_trading_account": ips.get("accounts", {}).get("active_trading_account"),
+        }
+    except Exception as e:
+        return {"state": "DATA_UNAVAILABLE", "reason": str(e)[:120]}
+
+
+def _domain_model_portfolio() -> dict[str, Any]:
+    """Load canonical model portfolio and compute allocation drift."""
+    mp_path = PROJECT_ROOT / "config" / "model_portfolio.json"
+    if not mp_path.exists():
+        return {"state": "DATA_UNAVAILABLE", "reason": "Model portfolio config not found"}
+
+    try:
+        mp = json.loads(mp_path.read_text(encoding="utf-8"))
+        strategic = mp.get("strategic_allocation", {})
+
+        # Compute drift vs actual if portfolio data is available
+        holdings = _load_json(STATE_DIR / "holdings.json")
+        actual_equity_pct = None
+        drift_summary: list[dict[str, Any]] = []
+
+        if holdings and holdings.get("portfolio_totals", {}).get("total_value"):
+            total = float(holdings["portfolio_totals"]["total_value"])
+            if total > 0:
+                # Compute actual allocation from holdings
+                equity_value = sum(
+                    float(h.get("market_value", 0) or 0)
+                    for h in holdings.get("holdings", [])
+                    if not h.get("is_cash")
+                )
+                cash_value = sum(
+                    float(h.get("market_value", 0) or 0)
+                    for h in holdings.get("holdings", [])
+                    if h.get("is_cash")
+                )
+                actual_equity_pct = round(equity_value / total * 100, 1)
+
+                # Compare vs targets
+                equity_target = strategic.get("equity", {}).get("target_pct", 75)
+                cash_target = strategic.get("cash_and_equivalents", {}).get("target_pct", 5)
+
+                if actual_equity_pct:
+                    drift = round(actual_equity_pct - equity_target, 1)
+                    if abs(drift) > 2:
+                        drift_summary.append({
+                            "bucket": "equity",
+                            "target_pct": equity_target,
+                            "actual_pct": actual_equity_pct,
+                            "drift_pct": drift,
+                            "status": "DRIFT" if abs(drift) > 4 else "MONITOR",
+                        })
+
+                actual_cash_pct = round(cash_value / total * 100, 1) if cash_value > 0 else 0
+                cash_drift = round(actual_cash_pct - cash_target, 1)
+                if abs(cash_drift) > 2:
+                    drift_summary.append({
+                        "bucket": "cash",
+                        "target_pct": cash_target,
+                        "actual_pct": actual_cash_pct,
+                        "drift_pct": cash_drift,
+                        "status": "DRIFT" if abs(cash_drift) > 3 else "MONITOR",
+                    })
+
+        return {
+            "state": "AVAILABLE",
+            "version": mp.get("_meta", {}).get("version"),
+            "status": mp.get("_meta", {}).get("status"),
+            "equity_target_pct": strategic.get("equity", {}).get("target_pct"),
+            "fixed_income_target_pct": strategic.get("fixed_income", {}).get("target_pct"),
+            "cash_target_pct": strategic.get("cash_and_equivalents", {}).get("target_pct"),
+            "actual_equity_pct": actual_equity_pct,
+            "drift_summary": drift_summary,
+            "rebalancing_threshold_pct": mp.get("rebalancing_policy", {}).get("threshold_pct"),
+            "income_target_usd": mp.get("income_targets", {}).get("total_income_target_annual_usd"),
+            "max_single_position_pct": mp.get("risk_overlay", {}).get("max_single_position_var_pct"),
+        }
+    except Exception as e:
+        return {"state": "DATA_UNAVAILABLE", "reason": str(e)[:120]}
+
+
 _COLLECTORS = {
     "portfolio": _domain_portfolio,
     "risk": _domain_risk,
@@ -198,6 +298,8 @@ _COLLECTORS = {
     "income": _domain_income,
     "reconciliation": _domain_reconciliation,
     "hermes_research": _domain_hermes_research,
+    "investment_policy": _domain_investment_policy,
+    "model_portfolio": _domain_model_portfolio,
 }
 
 
