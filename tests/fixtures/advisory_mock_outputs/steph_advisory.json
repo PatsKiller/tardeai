@@ -1,0 +1,32 @@
+{
+  "specialist_id": "steph",
+  "parent_run_id": "run-gate-d-mock-001",
+  "run_purpose": "PORTFOLIO_ALLOCATION_REVIEW",
+  "position": "OPPOSE",
+  "recommendation": "Do NOT increase equity allocation. Technology sector already at 38% — concentration risk is too high. Rebalance toward target model portfolio before adding new positions.",
+  "rationale": "Current Technology sector weight is 38% vs model target of 28%. Adding more Tech exposure violates IPS single-sector concentration limit of 35%. Total equity at 72% is within drift band — no urgency to add. Model portfolio evidence shows multi-sector drift requiring correction before further concentration.",
+  "evidence_sources": [
+    {"source_id": "ds-portfolio", "domain": "portfolio", "quality_state": "AVAILABLE", "as_of": "2026-08-10T20:00:00Z", "source_ref": "canonical://portfolio"},
+    {"source_id": "ds-sectors", "domain": "sectors", "quality_state": "AVAILABLE", "as_of": "2026-08-10T20:00:00Z", "source_ref": "canonical://sectors"},
+    {"source_id": "ds-investment_policy", "domain": "investment_policy", "quality_state": "AVAILABLE", "as_of": "2026-08-10T20:00:00Z", "source_ref": "canonical://investment_policy"},
+    {"source_id": "ds-model_portfolio", "domain": "model_portfolio", "quality_state": "AVAILABLE", "as_of": "2026-08-10T20:00:00Z", "source_ref": "canonical://model_portfolio"}
+  ],
+  "evidence_summary": "Tech sector at 38% (10% above model target of 28%). IPS limits single sector to 35%. Equity drift at 3% — within threshold. Multi-sector drift in model portfolio requires rebalancing before new positions.",
+  "confidence": 0.90,
+  "confidence_basis": "FULL_EVIDENCE",
+  "material_risks": [
+    {"risk_id": "r2", "description": "Technology sector concentration violates IPS limit of 35%", "severity": "HIGH", "evidence_refs": ["ds-sectors", "ds-investment_policy"]},
+    {"risk_id": "r3", "description": "Model portfolio drift in multiple sectors compounds allocation risk", "severity": "MEDIUM", "evidence_refs": ["ds-model_portfolio"]}
+  ],
+  "alternatives_considered": [
+    "Partial rebalance — trim Tech 5%, add to underrepresented sectors",
+    "No action — wait for natural drift correction (rejected: concentration is above hard IPS limit)"
+  ],
+  "conditions_to_change_view": [
+    {"condition": "Technology sector weight drops below 30% through natural market movement", "new_position_if_met": "SUPPORT", "rationale": "Concentration risk resolved — room to add on favorable thesis"}
+  ],
+  "evidence_gaps": ["Account constraints not verified — cannot assess tax impact of rebalance"],
+  "deficiencies_acknowledged": ["Tax impact of rebalance unknown without account_constraints — recommendation may need adjustment after tax review"],
+  "advisory_artifact_id": "steph-advisory-mock-001",
+  "created_at": "2026-08-10T20:00:00Z"
+}

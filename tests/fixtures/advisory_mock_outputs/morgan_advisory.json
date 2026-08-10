@@ -1,0 +1,41 @@
+{
+  "specialist_id": "morgan",
+  "parent_run_id": "run-gate-d-mock-001",
+  "run_purpose": "PORTFOLIO_ALLOCATION_REVIEW",
+  "position": "SUPPORT",
+  "recommendation": "Support increasing equity allocation CONDITIONALLY — only IF liquidity remains above 5% of portfolio value AND retirement projections stay above 90% probability after the allocation change. Current cash reserves of 8% provide adequate buffer for near-term flexibility.",
+  "rationale": "Cash reserves at 8% meet the 5% liquidity threshold with 3% buffer. Retirement roadmap projects on-track at 93% probability. Income projections support additional equity exposure. However, both liquidity and retirement adequacy must be re-verified after allocation change — the 3% buffer is narrow and retirement sensitivity to equity market moves is not independently validated.",
+  "evidence_sources": [
+    {"source_id": "ds-portfolio", "domain": "portfolio", "quality_state": "AVAILABLE", "as_of": "2026-08-10T20:00:00Z", "source_ref": "canonical://portfolio"},
+    {"source_id": "ds-income", "domain": "income", "quality_state": "AVAILABLE", "as_of": "2026-08-10T20:00:00Z", "source_ref": "canonical://income"},
+    {"source_id": "ds-retirement", "domain": "retirement", "quality_state": "PARTIAL", "as_of": "2026-08-10T20:00:00Z", "source_ref": "canonical://retirement"},
+    {"source_id": "ds-liquidity", "domain": "liquidity", "quality_state": "AVAILABLE", "as_of": "2026-08-10T20:00:00Z", "source_ref": "canonical://liquidity"},
+    {"source_id": "ds-model_portfolio", "domain": "model_portfolio", "quality_state": "AVAILABLE", "as_of": "2026-08-10T20:00:00Z", "source_ref": "canonical://model_portfolio"}
+  ],
+  "evidence_summary": "Cash reserves 8% (>5% threshold). Income yield at 2.3%. Retirement on-track at 93% probability. Liquidity adequate with 3% buffer. Retirement projections partially evidenced — not independently validated.",
+  "confidence": 0.75,
+  "confidence_basis": "PARTIAL_EVIDENCE",
+  "material_risks": [
+    {"risk_id": "r8", "description": "Liquidity buffer of 3% is narrow — market drawdown could push below 5% threshold", "severity": "MEDIUM", "evidence_refs": ["ds-liquidity"]},
+    {"risk_id": "r9", "description": "Retirement projections not independently validated — actual probability may be lower than 93%", "severity": "MEDIUM", "evidence_refs": ["ds-retirement"]}
+  ],
+  "alternatives_considered": [
+    "Maintain current allocation until retirement projections are independently verified",
+    "Reduce equity increase to 2% to preserve a wider liquidity buffer",
+    "Full 3% equity increase — accepted with explicit conditions on liquidity and retirement"
+  ],
+  "conditions_to_change_view": [
+    {"condition": "Liquidity drops below 5% of portfolio value after allocation change", "new_position_if_met": "OPPOSE", "rationale": "Liquidity below threshold compromises near-term flexibility and emergency reserves"},
+    {"condition": "Retirement projections fall below 90% probability after equity market sensitivity analysis", "new_position_if_met": "OPPOSE", "rationale": "Retirement adequacy must take priority over equity growth"}
+  ],
+  "evidence_gaps": [
+    "Retirement projections not independently validated — policy projections only",
+    "Post-allocation liquidity impact not simulated"
+  ],
+  "deficiencies_acknowledged": [
+    "Retirement projections are policy projections, not independently validated by a third-party tool",
+    "Conditional support requires operator to verify both conditions are met before executing"
+  ],
+  "advisory_artifact_id": "morgan-advisory-mock-001",
+  "created_at": "2026-08-10T20:00:00Z"
+}

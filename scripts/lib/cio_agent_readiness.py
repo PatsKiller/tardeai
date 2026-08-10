@@ -44,6 +44,7 @@ class AgentReadiness:
     budget: dict[str, Any] = field(default_factory=dict)
     authority: dict[str, str] = field(default_factory=dict)
     stop_conditions: list[str] = field(default_factory=list)
+    advisory_schema_readiness: str = ""  # SCHEMA_DEFINED | SCHEMA_VALIDATED | LIVE_OUTPUT_VALIDATED | ""
 
     @property
     def is_not_ready(self) -> bool:
@@ -189,3 +190,55 @@ class AgentReadinessRegistry:
         except KeyError:
             return False, "AGENT_REMOVED_FROM_CATALOG"
         return True, "READY"
+
+    @staticmethod
+    def get_advisory_schema_readiness() -> str:
+        """Return the current advisory-schema readiness tier.
+
+        Delegates to CIOSpecialistAdvisoryReadiness which distinguishes three
+        tiers: SCHEMA_DEFINED (class exists), SCHEMA_VALIDATED (validation
+        functions pass offline), and LIVE_OUTPUT_VALIDATED (proven via live
+        specialist canary output).
+
+        Returns one of: SCHEMA_DEFINED | SCHEMA_VALIDATED | LIVE_OUTPUT_VALIDATED
+        or an empty string if the readiness module is unavailable.
+        """
+        try:
+            from scripts.lib.cio_advisory_readiness import CIOSpecialistAdvisoryReadiness
+            return CIOSpecialistAdvisoryReadiness.advisory_schema_tier()
+        except ImportError:
+            return ""
+
+    @classmethod
+    def get_readiness(cls, agent_id: str) -> dict:
+        """Return a readiness summary dict for a single agent.
+
+        Includes the advisory schema readiness tier alongside the standard
+        AgentReadiness fields.  This is the recommended single-query entry
+        point for Gate-D promotion checks.
+        """
+        try:
+            instance = cls.get_instance()
+            agent = instance.get(agent_id)
+        except (RuntimeError, KeyError):
+            return {
+                "agent_id": agent_id,
+                "found": False,
+                "readiness_state": "UNKNOWN",
+                "advisory_schema_readiness": cls.get_advisory_schema_readiness(),
+            }
+
+        return {
+            "agent_id": agent.agent_id,
+            "found": True,
+            "display_name": agent.display_name,
+            "maturity_stage": agent.maturity_stage,
+            "readiness_state": agent.readiness_state,
+            "enabled": agent.enabled,
+            "artifact_schema": agent.artifact_schema,
+            "governed_gateway_process": agent.governed_gateway_process,
+            "advisory_schema_readiness": cls.get_advisory_schema_readiness(),
+            "handoff_claim_capable": agent.handoff_claim_capable,
+            "canary_status": agent.canary_status,
+            "promotion_blockers": agent.promotion_blockers,
+        }

@@ -1,0 +1,32 @@
+{
+  "specialist_id": "maria",
+  "parent_run_id": "run-gate-d-mock-001",
+  "run_purpose": "PORTFOLIO_ALLOCATION_REVIEW",
+  "position": "SUPPORT",
+  "recommendation": "Increase equity allocation to 75%, overweight Technology and Healthcare sectors. The fundamental thesis for current holdings is attractive — strong earnings growth, favorable catalysts, and positive analyst revisions support further exposure.",
+  "rationale": "Current portfolio shows 72% equity allocation vs 75% target. Technology sector fundamentals support overweight positioning. Positive earnings momentum and analyst upgrades across key holdings suggest thesis is intact and strengthening. Evidence from portfolio holdings, analyst actions, and upcoming catalysts all align.",
+  "evidence_sources": [
+    {"source_id": "ds-portfolio", "domain": "portfolio", "quality_state": "AVAILABLE", "as_of": "2026-08-10T20:00:00Z", "source_ref": "canonical://portfolio"},
+    {"source_id": "ds-holdings_detail", "domain": "holdings_detail", "quality_state": "AVAILABLE", "as_of": "2026-08-10T20:00:00Z", "source_ref": "canonical://holdings_detail"},
+    {"source_id": "ds-analyst_actions", "domain": "analyst_actions", "quality_state": "AVAILABLE", "as_of": "2026-08-10T20:00:00Z", "source_ref": "canonical://analyst_actions"},
+    {"source_id": "ds-catalysts", "domain": "catalysts", "quality_state": "AVAILABLE", "as_of": "2026-08-10T20:00:00Z", "source_ref": "canonical://catalysts"}
+  ],
+  "evidence_summary": "Portfolio at 72% equity (3% under target). Technology sector fundamentals strong. 4 positive analyst actions, 2 upcoming catalysts. Evidence quality: FULL across all four domains.",
+  "confidence": 0.85,
+  "confidence_basis": "FULL_EVIDENCE",
+  "material_risks": [
+    {"risk_id": "r1", "description": "Technology sector concentration above 35%", "severity": "MEDIUM", "evidence_refs": ["ds-holdings_detail"]}
+  ],
+  "alternatives_considered": [
+    "Maintain current allocation — rejected: underweight vs target",
+    "Overweight Financials instead of Technology — rejected: tech thesis stronger"
+  ],
+  "conditions_to_change_view": [
+    {"condition": "Technology sector earnings guidance turns negative", "new_position_if_met": "NEUTRAL", "rationale": "Core thesis depends on tech earnings momentum"},
+    {"condition": "Portfolio-wide stop-loss triggered on more than 2 positions", "new_position_if_met": "OPPOSE", "rationale": "Risk envelope breached — must prioritize capital preservation"}
+  ],
+  "evidence_gaps": ["defense_stops_protection is DATA_UNAVAILABLE — cannot verify stop coverage"],
+  "deficiencies_acknowledged": ["Stop-loss coverage cannot be verified without defense_stops_protection"],
+  "advisory_artifact_id": "maria-advisory-mock-001",
+  "created_at": "2026-08-10T20:00:00Z"
+}
