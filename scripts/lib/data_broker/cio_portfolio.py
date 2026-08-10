@@ -28,11 +28,18 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from scripts.lib.cio_domain_evidence import DomainEvidence, ReasonCode
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
 RUNTIME_DIR = PROJECT_ROOT / "data" / "runtime"
 SNAPSHOT_DIR = STATE_DIR / "data_broker"
 SNAPSHOT_PATH = SNAPSHOT_DIR / "cio_snapshot.json"
+
+WATCHLIST_PATH = PROJECT_ROOT / "data" / "watchlist" / "state" / "watchlist.json"
+RECONCILIATION_PATH = PROJECT_ROOT / "data" / "reconciliation" / "state" / "latest.json"
+ROTATION_LADDERS_CACHE = PROJECT_ROOT / "state" / "data_broker" / "rotation_ladders.json"
+RETIREMENT_ROADMAP_PATH = STATE_DIR / "retirement_roadmap.json"
 
 SNAPSHOT_VERSION = "cio-snapshot-v1"
 DEFAULT_MAX_AGE_S = 60
@@ -51,6 +58,8 @@ CIO_DOMAINS = (
     "transactions",
     "sectors",
     "holdings_detail",
+    "cash_buying_power",
+    "retirement",
 )
 
 
@@ -103,47 +112,183 @@ def _domain_risk() -> dict[str, Any]:
     }
 
 
-def _domain_watch() -> dict[str, Any]:
-    """Watchlist state summary from API or state files."""
-    watch = _load_json(STATE_DIR / "holdings.json")  # fallback — holdings.json is canonical
-    return {
-        "state": "AVAILABLE" if watch else "DATA_UNAVAILABLE",
-        "holdings_count": len(watch.get("holdings", [])) if isinstance(watch, dict) else 0,
-        "accounts": list(set(h.get("account", "") for h in watch.get("holdings", []))) if isinstance(watch, dict) else [],
-    }
+def _domain_watch() -> DomainEvidence:
+    """Watchlist state summary. Reads actual watchlist source, NOT holdings.json.
+
+    Fallback order:
+      1. data/watchlist/state/watchlist.json (canonical file source)
+      2. DB-based watchlist table (existing approach)
+      3. DATA_UNAVAILABLE with SOURCE_FILE_MISSING
+    """
+    # 1. Try canonical watchlist file
+    if WATCHLIST_PATH.exists():
+        watch_data = _load_json(WATCHLIST_PATH)
+        if watch_data:
+            as_of = watch_data.get("as_of", "") if isinstance(watch_data, dict) else ""
+            return DomainEvidence.available(
+                "watch_intelligence", watch_data,
+                source_ref=str(WATCHLIST_PATH), as_of=as_of
+            )
+
+    # 2. Fallback: try DB-based watchlist
+    try:
+        import psycopg2
+        import os as _os
+        pw = ""
+        for line in (PROJECT_ROOT / ".env").read_text().splitlines():
+            if line.startswith("DB_PASSWORD="):
+                pw = line.split("=", 1)[1].strip().strip('"').strip("'")
+                break
+        conn = psycopg2.connect(
+            host=_os.getenv("DB_HOST", "127.0.0.1"),
+            port=int(_os.getenv("DB_PORT", "5432")),
+            dbname=_os.getenv("DB_NAME", "trade_ai"),
+            user=_os.getenv("DB_USER", "trade_ai"),
+            password=pw,
+        )
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM watchlist")
+        count = (cur.fetchone() or [0])[0]
+        cur.execute(
+            "SELECT symbol, rationale, conviction, last_review_at "
+            "FROM watchlist ORDER BY last_review_at DESC NULLS LAST LIMIT 50"
+        )
+        rows = cur.fetchall()
+        items = [
+            {
+                "symbol": r[0],
+                "rationale": r[1],
+                "conviction": r[2],
+                "last_review_at": str(r[3]) if r[3] else None,
+            }
+            for r in rows
+        ]
+        conn.close()
+        return DomainEvidence.available(
+            "watch_intelligence",
+            {"watchlist_count": count, "items": items},
+            source_ref="DB:watchlist",
+        )
+    except Exception:
+        pass
+
+    # 3. No watchlist source available
+    return DomainEvidence.unavailable(
+        "watch_intelligence",
+        reason_code=ReasonCode.SOURCE_FILE_MISSING,
+        source_ref=str(WATCHLIST_PATH),
+        gap_reason="No watchlist source available: watchlist.json missing and DB fallback failed",
+    )
 
 
-def _domain_rotation() -> dict[str, Any]:
-    """Rotation summary from data directory."""
-    rotation = _load_json(STATE_DIR / "data" / "portfolios" / "state" / "holdings.json")  # fallback
-    return {
-        "state": "AVAILABLE" if rotation else "DATA_UNAVAILABLE",
-        "summary": "See portfolio domain for current allocation",
-    }
+def _domain_rotation() -> DomainEvidence:
+    """Rotation summary from rotation_ladders cache file.
+
+    The old adapter used a malformed nested path that doubled up the
+    data/portfolios/state prefix.  The canonical source is the
+    rotation_ladders module cache at state/data_broker/rotation_ladders.json.
+    If the cache is missing (as is normal when the DB-based rotation engine
+    has not been run), the domain is DATA_UNAVAILABLE.
+    """
+    if ROTATION_LADDERS_CACHE.exists():
+        rotation_data = _load_json(ROTATION_LADDERS_CACHE)
+        if rotation_data:
+            as_of = rotation_data.get("computed_at", "") if isinstance(rotation_data, dict) else ""
+            return DomainEvidence.available(
+                "rotation", rotation_data,
+                source_ref=str(ROTATION_LADDERS_CACHE), as_of=as_of,
+            )
+
+    return DomainEvidence.unavailable(
+        "rotation",
+        reason_code=ReasonCode.SOURCE_FILE_MISSING,
+        source_ref=str(ROTATION_LADDERS_CACHE),
+        gap_reason="Rotation ladders cache not available: rotation_ladders.json missing",
+    )
 
 
-def _domain_income() -> dict[str, Any]:
-    """Income and dividend summary."""
-    income = _load_json(STATE_DIR / "holdings.json")
+def _domain_income() -> DomainEvidence:
+    """Income and dividend summary.
+
+    yield_pct requires portfolio_total to compute (circular dependency) —
+    marked as PARTIAL with gap_reason until the income collector provides it.
+    """
+    holdings_path = STATE_DIR / "holdings.json"
+    if not holdings_path.exists():
+        return DomainEvidence.unavailable(
+            "income",
+            reason_code=ReasonCode.SOURCE_FILE_MISSING,
+            source_ref=str(holdings_path),
+            gap_reason="holdings.json not found",
+        )
+
+    income = _load_json(holdings_path)
+    if not income:
+        return DomainEvidence.unavailable(
+            "income",
+            reason_code=ReasonCode.EMPTY_VALID_RESULT,
+            source_ref=str(holdings_path),
+            gap_reason="holdings.json is empty",
+        )
+
     div_total = 0.0
     if isinstance(income, dict):
         for h in income.get("holdings", []):
             div_total += float(h.get("annual_dividend", 0) or 0)
-    return {
-        "state": "AVAILABLE" if income else "DATA_UNAVAILABLE",
-        "annual_dividend_est": round(div_total, 2) if div_total > 0 else None,
-        "yield_pct": None,  # requires portfolio total to compute
+
+    annual_income_estimate = round(div_total, 2) if div_total > 0 else None
+
+    # Try to compute yield_pct if portfolio total is available
+    yield_pct = None
+    totals = income.get("portfolio_totals", {}) if isinstance(income, dict) else {}
+    total_value = totals.get("total_value")
+    if total_value and annual_income_estimate and float(total_value) > 0:
+        yield_pct = round(annual_income_estimate / float(total_value) * 100, 2)
+
+    data = {
+        "annual_dividend_est": annual_income_estimate,
+        "annual_income_estimate": annual_income_estimate,
+        "yield_pct": yield_pct,
+        "as_of": totals.get("as_of", ""),
     }
 
+    if yield_pct is not None:
+        return DomainEvidence.available(
+            "income", data,
+            source_ref=str(holdings_path),
+            as_of=totals.get("as_of", ""),
+        )
 
-def _domain_reconciliation() -> dict[str, Any]:
-    """Broker reconciliation status from reconciliation state files."""
-    recon = _load_json(STATE_DIR / "holdings.json")
-    return {
-        "state": "AVAILABLE" if recon else "DATA_UNAVAILABLE",
-        "last_sync": recon.get("last_repriced", "") if isinstance(recon, dict) else "",
-        "ok": True,
-    }
+    return DomainEvidence.partial(
+        "income", data,
+        source_ref=str(holdings_path),
+        as_of=totals.get("as_of", ""),
+        partial_fields=["yield_pct"],
+        gap_reason="yield_pct_not_yet_collected_by_income_collector",
+    )
+
+
+def _domain_reconciliation() -> DomainEvidence:
+    """Broker reconciliation status from actual reconciliation result file.
+
+    Does NOT hardcode ok=True.  Reads data/reconciliation/state/latest.json.
+    If the file is missing the domain is DATA_UNAVAILABLE.
+    """
+    if RECONCILIATION_PATH.exists():
+        recon_data = _load_json(RECONCILIATION_PATH)
+        if recon_data:
+            return DomainEvidence.available(
+                "reconciliation", recon_data,
+                source_ref=str(RECONCILIATION_PATH),
+                as_of=recon_data.get("reconciled_at", "") if isinstance(recon_data, dict) else "",
+            )
+
+    return DomainEvidence.unavailable(
+        "reconciliation",
+        reason_code=ReasonCode.SOURCE_FILE_MISSING,
+        source_ref=str(RECONCILIATION_PATH),
+        gap_reason="Reconciliation result file not found",
+    )
 
 
 def _domain_hermes_research() -> dict[str, Any]:
@@ -620,10 +765,120 @@ def _domain_holdings_detail() -> dict[str, Any]:
     }
 
 
+def _domain_cash_buying_power() -> DomainEvidence:
+    """Cash-like positions derived from holdings.json — NOT verified broker buying power.
+
+    Holdings-derived cash positions are a PARTIAL proxy at best. Real broker
+    buying power requires: settled cash, unsettled cash, margin, account type,
+    pending orders, holds, settlement state, broker restrictions.
+
+    This adapter returns PARTIAL, never AVAILABLE, because holdings.json cash
+    positions do not and cannot prove actual broker-of-record buying power.
+    A separate canonical adapter for verified broker buying power is needed
+    before the BUY post-synthesis validator can rely on this domain.
+
+    If holdings.json is unavailable, returns DATA_UNAVAILABLE.
+    """
+    holdings_path = STATE_DIR / "holdings.json"
+    if not holdings_path.exists():
+        return DomainEvidence.unavailable(
+            "cash_buying_power",
+            reason_code=ReasonCode.SOURCE_FILE_MISSING,
+            source_ref=str(holdings_path),
+            gap_reason="holdings.json not found",
+        )
+
+    holdings = _load_json(holdings_path)
+    if not holdings:
+        return DomainEvidence.unavailable(
+            "cash_buying_power",
+            reason_code=ReasonCode.EMPTY_VALID_RESULT,
+            source_ref=str(holdings_path),
+            gap_reason="holdings.json is empty",
+        )
+
+    cash_positions = []
+    total_cash = 0.0
+    if isinstance(holdings, dict):
+        for h in holdings.get("holdings", []):
+            is_cash = (
+                h.get("is_cash")
+                or h.get("asset_type") == "cash"
+                or h.get("symbol") == "CASH"
+            )
+            if is_cash:
+                mv = float(h.get("market_value", 0) or 0)
+                total_cash += mv
+                cash_positions.append({
+                    "symbol": h.get("symbol", "CASH"),
+                    "market_value": round(mv, 2),
+                    "account": h.get("account", ""),
+                })
+
+    # NOTE: portfolio_totals may contain a "buying_power" field,
+    # but this is a holdings-file projection, not a live broker API call.
+    # It does not prove settled/unsettled cash, margin, or account-level
+    # buying power.  The domain is PARTIAL until a real broker adapter exists.
+    totals = holdings.get("portfolio_totals", {})
+    total_buying_power = totals.get("buying_power", total_cash)
+    if total_buying_power == 0 and total_cash > 0:
+        total_buying_power = total_cash
+
+    data = {
+        "total_cash": round(total_cash, 2),
+        "total_buying_power_estimate": round(float(total_buying_power), 2),
+        "cash_positions": cash_positions,
+        "cash_position_count": len(cash_positions),
+        "as_of": totals.get("as_of", ""),
+        "source": "derived_from_holdings_NOT_verified_broker_buying_power",
+    }
+
+    return DomainEvidence.partial(
+        "cash_buying_power", data,
+        source_ref=str(holdings_path),
+        as_of=totals.get("as_of", ""),
+        partial_fields=["verified_broker_buying_power"],
+        gap_reason="holdings_derived_cash_not_verified_broker_buying_power",
+    )
+
+
+def _domain_retirement() -> DomainEvidence:
+    """Retirement roadmap evidence.
+
+    If retirement_roadmap.json exists, marks as AVAILABLE with authority
+    class AUTHORITATIVE_POLICY.  Otherwise DATA_UNAVAILABLE.
+    """
+    # Try canonical path from registry: config/retirement_roadmap.json
+    config_path = PROJECT_ROOT / "config" / "retirement_roadmap.json"
+    # Also try the data/portfolios/state location
+    state_path = RETIREMENT_ROADMAP_PATH
+
+    for path in (config_path, state_path):
+        if path.exists():
+            roadmap = _load_json(path)
+            if roadmap:
+                as_of = roadmap.get("config_version_timestamp", "") if isinstance(roadmap, dict) else ""
+                roadmap["_authority_class"] = "AUTHORITATIVE_POLICY"
+                return DomainEvidence.available(
+                    "retirement",
+                    roadmap,
+                    source_ref=str(path),
+                    as_of=as_of,
+                )
+
+    return DomainEvidence.unavailable(
+        "retirement",
+        reason_code=ReasonCode.SOURCE_FILE_MISSING,
+        source_ref=str(config_path),
+        gap_reason="Retirement roadmap not found in config/ or data/portfolios/state/",
+    )
+
+
 _COLLECTORS = {
     "portfolio": _domain_portfolio,
     "risk": _domain_risk,
     "watch": _domain_watch,
+    "watch_intelligence": _domain_watch,
     "rotation": _domain_rotation,
     "income": _domain_income,
     "reconciliation": _domain_reconciliation,
@@ -634,6 +889,8 @@ _COLLECTORS = {
     "transactions": _domain_transactions,
     "sectors": _domain_sectors,
     "holdings_detail": _domain_holdings_detail,
+    "cash_buying_power": _domain_cash_buying_power,
+    "retirement": _domain_retirement,
 }
 
 
@@ -657,15 +914,21 @@ def get_cio_snapshot(max_age_s: int = DEFAULT_MAX_AGE_S) -> dict[str, Any]:
 
     for domain, collector in _COLLECTORS.items():
         try:
-            data = collector()
+            result = collector()
         except Exception as e:
             data = {"state": "ERROR", "error": str(e)}
+        else:
+            if isinstance(result, DomainEvidence):
+                data = result.to_dict()
+            else:
+                data = result
 
         domains[domain] = data
 
-        if data.get("state") == "DATA_UNAVAILABLE":
+        effective_state = data.get("quality_state") or data.get("state")
+        if effective_state == "DATA_UNAVAILABLE":
             missing.append(domain)
-        elif data.get("state") == "STALE":
+        elif effective_state == "STALE":
             stale.append(domain)
 
     snapshot = {
@@ -713,9 +976,10 @@ def get_cio_material_changes() -> list[dict[str, Any]]:
         if previous_hash and previous_hash == current.get("content_hash"):
             continue  # no change at all
 
-        if cur.get("state") == "DATA_UNAVAILABLE":
+        effective_state = cur.get("quality_state") or cur.get("state")
+        if effective_state == "DATA_UNAVAILABLE":
             changes.append({"domain": domain, "change": "MISSING"})
-        elif cur.get("state") == "STALE":
+        elif effective_state == "STALE":
             changes.append({"domain": domain, "change": "STALE"})
 
     if not changes and previous_hash is None:

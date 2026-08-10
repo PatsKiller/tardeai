@@ -1,0 +1,1023 @@
+{
+  "_schema_version": "1.0.0",
+  "_registry_version": "1.0.0-gate-c",
+  "_description": "Canonical enterprise domain capability registry for CIO evidence model. Every domain the CIO acknowledges must be declared here before entering any snapshot build path. Separates source authority from adapter state and runtime evidence quality.",
+
+  "domains": {
+    "portfolio": {
+      "semantic_definition": "Current portfolio positions, quantities, and market values from the broker-of-record. Represents what the account actually holds, not what it should hold.",
+      "authority_class": "AUTHORITATIVE_ACCOUNT_STATE",
+      "canonical_source": "data/portfolios/state/holdings.json",
+      "source_adapter": "scripts.lib.data_broker.cio_portfolio._domain_portfolio",
+      "source_lineage": ["Schwab API (positions)", "scripts/sync_portfolio.py (canonical writer)", "data/portfolios/state/holdings.json (file projection)"],
+      "freshness_timestamp_field": "as_of",
+      "freshness_threshold_seconds": 43200,
+      "materiality_policy": {
+        "BUY": "REQUIRED",
+        "SELL": "REQUIRED",
+        "SELL_TAXABLE": "REQUIRED",
+        "TRIM": "REQUIRED",
+        "HOLD": "REQUIRED",
+        "NO_ACTION": "REQUIRED",
+        "PORTFOLIO_ALLOCATION_REVIEW": "REQUIRED",
+        "RISK_OR_STOP_EVENT": "REQUIRED",
+        "WATCH_OR_CATALYST_REVIEW": "OPTIONAL",
+        "TAX_REVIEW": "REQUIRED",
+        "INCOME_REVIEW": "REQUIRED",
+        "RETIREMENT_REVIEW": "REQUIRED",
+        "BROKER_RECONCILIATION": "REQUIRED",
+        "SCHEDULED_CIO_BRIEF": "REQUIRED",
+        "OPERATOR_REQUEST": "REQUIRED"
+      },
+      "quality_policy": {
+        "on_file_missing": "DATA_UNAVAILABLE",
+        "on_parse_error": "ERROR",
+        "on_collector_exception": "ERROR",
+        "on_empty_result": "DATA_UNAVAILABLE",
+        "on_stale": "STALE",
+        "on_schema_mismatch": "ERROR"
+      },
+      "fallback_policy": {
+        "fallback_source": null,
+        "is_authoritative": false
+      },
+      "adapter_state": "SUPPORTED",
+      "event_types": ["portfolio.material_change"],
+      "required_by_run_types": ["PORTFOLIO_ALLOCATION_REVIEW", "RISK_OR_STOP_EVENT", "TAX_REVIEW", "SCHEDULED_CIO_BRIEF", "OPERATOR_REQUEST", "INCOME_REVIEW", "RETIREMENT_REVIEW", "BROKER_RECONCILIATION"],
+      "provenance_contract": {
+        "producer_id": "sync_portfolio.py",
+        "broker_source": "Schwab API",
+        "source_as_of": "holdings.json as_of field",
+        "sync_run_id": "sync metadata run_id",
+        "sync_status": "sync metadata status",
+        "reconciliation_status": "reconciliation result",
+        "projection_version": "holdings.json version"
+      }
+    },
+
+    "holdings_detail": {
+      "semantic_definition": "Detailed per-position holdings: symbol, quantity, cost basis, market value, unrealized gains per position. Subset of portfolio domain at position granularity.",
+      "authority_class": "AUTHORITATIVE_ACCOUNT_STATE",
+      "canonical_source": "data/portfolios/state/holdings.json",
+      "source_adapter": "scripts.lib.data_broker.cio_portfolio._domain_holdings_detail",
+      "source_lineage": ["Schwab API (positions)", "scripts/sync_portfolio.py", "data/portfolios/state/holdings.json"],
+      "freshness_timestamp_field": "as_of",
+      "freshness_threshold_seconds": 43200,
+      "materiality_policy": {
+        "BUY": "OPTIONAL",
+        "SELL": "REQUIRED",
+        "SELL_TAXABLE": "REQUIRED",
+        "TRIM": "REQUIRED",
+        "PORTFOLIO_ALLOCATION_REVIEW": "REQUIRED",
+        "RISK_OR_STOP_EVENT": "OPTIONAL",
+        "TAX_REVIEW": "REQUIRED",
+        "BROKER_RECONCILIATION": "OPTIONAL",
+        "SCHEDULED_CIO_BRIEF": "OPTIONAL"
+      },
+      "quality_policy": {
+        "on_file_missing": "DATA_UNAVAILABLE",
+        "on_parse_error": "ERROR",
+        "on_collector_exception": "ERROR",
+        "on_empty_result": "DATA_UNAVAILABLE",
+        "on_stale": "STALE",
+        "on_schema_mismatch": "ERROR"
+      },
+      "fallback_policy": {
+        "fallback_source": null,
+        "is_authoritative": false
+      },
+      "adapter_state": "SUPPORTED",
+      "event_types": ["holding.material_exposure_change"],
+      "required_by_run_types": ["PORTFOLIO_ALLOCATION_REVIEW", "TAX_REVIEW"]
+    },
+
+    "performance": {
+      "semantic_definition": "Portfolio performance metrics: total return, daily return, YTD return, benchmark comparison.",
+      "authority_class": "DERIVED_VALID",
+      "canonical_source": "data/portfolios/state/performance_history.json",
+      "source_adapter": null,
+      "source_lineage": ["holdings.json + market quotes", "performance_history.json"],
+      "freshness_timestamp_field": "as_of",
+      "freshness_threshold_seconds": 86400,
+      "materiality_policy": {
+        "PORTFOLIO_ALLOCATION_REVIEW": "OPTIONAL",
+        "SCHEDULED_CIO_BRIEF": "OPTIONAL",
+        "RETIREMENT_REVIEW": "OPTIONAL"
+      },
+      "quality_policy": {
+        "on_file_missing": "DATA_UNAVAILABLE",
+        "on_parse_error": "ERROR",
+        "on_collector_exception": "ERROR",
+        "on_empty_result": "DATA_UNAVAILABLE",
+        "on_stale": "STALE"
+      },
+      "fallback_policy": {
+        "fallback_source": null,
+        "is_authoritative": false
+      },
+      "adapter_state": "UNSUPPORTED",
+      "event_types": [],
+      "required_by_run_types": []
+    },
+
+    "attribution": {
+      "semantic_definition": "Performance attribution: which positions, sectors, or decisions contributed to gains/losses.",
+      "authority_class": "DERIVED_VALID",
+      "canonical_source": null,
+      "source_adapter": null,
+      "source_lineage": [],
+      "freshness_timestamp_field": "as_of",
+      "freshness_threshold_seconds": 86400,
+      "materiality_policy": {},
+      "quality_policy": {
+        "on_file_missing": "DATA_UNAVAILABLE",
+        "on_collector_exception": "ERROR",
+        "on_stale": "STALE"
+      },
+      "fallback_policy": {
+        "fallback_source": null,
+        "is_authoritative": false
+      },
+      "adapter_state": "UNSUPPORTED",
+      "event_types": [],
+      "required_by_run_types": []
+    },
+
+    "risk": {
+      "semantic_definition": "Portfolio and investment risk evidence: stop levels, exposure concentrations, volatility metrics, drawdown from highs. Uses portfolio positions and risk_management.json/stops.json.",
+      "authority_class": "DERIVED_VALID",
+      "canonical_source": "data/portfolios/state/risk_management.json",
+      "source_adapter": "scripts.lib.data_broker.cio_portfolio._domain_risk",
+      "source_lineage": ["portfolio positions", "risk_management.json", "stops.json"],
+      "freshness_timestamp_field": "as_of",
+      "freshness_threshold_seconds": 86400,
+      "materiality_policy": {
+        "BUY": "REQUIRED",
+        "SELL": "REQUIRED",
+        "SELL_TAXABLE": "REQUIRED",
+        "TRIM": "REQUIRED",
+        "HOLD": "REQUIRED",
+        "NO_ACTION": "REQUIRED",
+        "PORTFOLIO_ALLOCATION_REVIEW": "REQUIRED",
+        "RISK_OR_STOP_EVENT": "REQUIRED",
+        "SCHEDULED_CIO_BRIEF": "REQUIRED"
+      },
+      "quality_policy": {
+        "on_file_missing": "DATA_UNAVAILABLE",
+        "on_parse_error": "ERROR",
+        "on_collector_exception": "ERROR",
+        "on_empty_result": "DATA_UNAVAILABLE",
+        "on_stale": "STALE",
+        "on_schema_mismatch": "ERROR"
+      },
+      "fallback_policy": {
+        "fallback_source": null,
+        "is_authoritative": false
+      },
+      "adapter_state": "SUPPORTED",
+      "event_types": ["risk.heat_increased", "risk.stop_triggered"],
+      "required_by_run_types": ["PORTFOLIO_ALLOCATION_REVIEW", "RISK_OR_STOP_EVENT", "SCHEDULED_CIO_BRIEF"]
+    },
+
+    "health_data_quality": {
+      "semantic_definition": "System health, data quality, and pipeline integrity evidence. Was previously aliased as 'risk' in the legacy snapshot builder. NOT portfolio risk.",
+      "authority_class": "DERIVED_VALID",
+      "canonical_source": "health_boundary",
+      "source_adapter": null,
+      "source_lineage": ["health boundary decision log"],
+      "freshness_timestamp_field": "decision_timestamp",
+      "freshness_threshold_seconds": 3600,
+      "materiality_policy": {
+        "SCHEDULED_CIO_BRIEF": "REQUIRED"
+      },
+      "quality_policy": {
+        "on_collector_exception": "ERROR",
+        "on_stale": "STALE"
+      },
+      "fallback_policy": {
+        "fallback_source": null,
+        "is_authoritative": false
+      },
+      "adapter_state": "SUPPORTED",
+      "event_types": ["system.heartbeat_ok", "system.domain_stale"],
+      "required_by_run_types": ["SCHEDULED_CIO_BRIEF"]
+    },
+
+    "defense_stops_protection": {
+      "semantic_definition": "Current stop-loss orders, trailing stops, and protective triggers. Defense positions, not general risk assessment.",
+      "authority_class": "AUTHORITATIVE_ACCOUNT_STATE",
+      "canonical_source": "data/portfolios/state/stops.json",
+      "source_adapter": null,
+      "source_lineage": ["portfolio_stops.py", "stops.json"],
+      "freshness_timestamp_field": "updated_at",
+      "freshness_threshold_seconds": 3600,
+      "materiality_policy": {
+        "RISK_OR_STOP_EVENT": "REQUIRED",
+        "PORTFOLIO_ALLOCATION_REVIEW": "OPTIONAL"
+      },
+      "quality_policy": {
+        "on_file_missing": "DATA_UNAVAILABLE",
+        "on_parse_error": "ERROR",
+        "on_collector_exception": "ERROR",
+        "on_empty_result": "DATA_UNAVAILABLE",
+        "on_stale": "STALE"
+      },
+      "fallback_policy": {
+        "fallback_source": null,
+        "is_authoritative": false
+      },
+      "adapter_state": "UNSUPPORTED",
+      "event_types": ["risk.stop_triggered"],
+      "required_by_run_types": ["RISK_OR_STOP_EVENT"]
+    },
+
+    "active_trading_setups": {
+      "semantic_definition": "Currently active trading setups, entry plans, and pending order triggers.",
+      "authority_class": "AUTHORITATIVE_INTERNAL_RECORD",
+      "canonical_source": "DB: entry_plans, strategy_signals",
+      "source_adapter": null,
+      "source_lineage": ["strategy_registry", "entry_plans table", "strategy_signals table"],
+      "freshness_timestamp_field": "updated_at",
+      "freshness_threshold_seconds": 86400,
+      "materiality_policy": {
+        "PORTFOLIO_ALLOCATION_REVIEW": "OPTIONAL",
+        "WATCH_OR_CATALYST_REVIEW": "OPTIONAL",
+        "SCHEDULED_CIO_BRIEF": "OPTIONAL"
+      },
+      "quality_policy": {
+        "on_collector_exception": "ERROR",
+        "on_stale": "STALE"
+      },
+      "fallback_policy": {
+        "fallback_source": null,
+        "is_authoritative": false
+      },
+      "adapter_state": "UNSUPPORTED",
+      "event_types": [],
+      "required_by_run_types": []
+    },
+
+    "watch_intelligence": {
+      "semantic_definition": "Current watchlist with intelligence signals: rationale, targets, conviction, last review timestamp. Monitored securities that are not yet in the portfolio.",
+      "authority_class": "AUTHORITATIVE_INTERNAL_RECORD",
+      "canonical_source": "DB: watchlist table + watch_intelligence signals",
+      "source_adapter": "scripts.lib.data_broker.watch_intelligence",
+      "source_lineage": ["hermes_scope_governor.py (watchlist lifecycle)", "watch_intelligence signals", "intelligence_signals.py"],
+      "freshness_timestamp_field": "last_assessed_at",
+      "freshness_threshold_seconds": 86400,
+      "materiality_policy": {
+        "WATCH_OR_CATALYST_REVIEW": "REQUIRED",
+        "SCHEDULED_CIO_BRIEF": "REQUIRED",
+        "PORTFOLIO_ALLOCATION_REVIEW": "OPTIONAL"
+      },
+      "quality_policy": {
+        "on_collector_exception": "ERROR",
+        "on_empty_result": "DATA_UNAVAILABLE",
+        "on_stale": "STALE",
+        "on_schema_mismatch": "ERROR"
+      },
+      "fallback_policy": {
+        "fallback_source": null,
+        "is_authoritative": false
+      },
+      "adapter_state": "SUPPORTED",
+      "event_types": ["watch.new_signal"],
+      "required_by_run_types": ["WATCH_OR_CATALYST_REVIEW", "SCHEDULED_CIO_BRIEF"]
+    },
+
+    "reentry": {
+      "semantic_definition": "Reentry analysis: which previously-held positions are candidates for reentry based on technical/fundamental criteria.",
+      "authority_class": "DERIVED_VALID",
+      "canonical_source": "DB: reentry_scorecard tables",
+      "source_adapter": "scripts.lib.data_broker.reentry_decision_desk",
+      "source_lineage": ["portfolio history", "reentry_scorecard", "reentry_enrichment"],
+      "freshness_timestamp_field": "updated_at",
+      "freshness_threshold_seconds": 86400,
+      "materiality_policy": {
+        "PORTFOLIO_ALLOCATION_REVIEW": "OPTIONAL"
+      },
+      "quality_policy": {
+        "on_collector_exception": "ERROR",
+        "on_empty_result": "DATA_UNAVAILABLE",
+        "on_stale": "STALE"
+      },
+      "fallback_policy": {
+        "fallback_source": null,
+        "is_authoritative": false
+      },
+      "adapter_state": "SUPPORTED",
+      "event_types": [],
+      "required_by_run_types": []
+    },
+
+    "rotation": {
+      "semantic_definition": "Sector rotation and market regime indicators: which sectors are in/out of favor, rotation signals, leadership changes.",
+      "authority_class": "EXTERNAL_MARKET_DATA",
+      "canonical_source": "DB: rotation_ladders + market_quotes",
+      "source_adapter": "scripts.lib.data_broker.rotation_ladders",
+      "source_lineage": ["market_quotes table", "aegis_portfolio_briefs", "rotation_ladders"],
+      "freshness_timestamp_field": "updated_at",
+      "freshness_threshold_seconds": 86400,
+      "materiality_policy": {
+        "PORTFOLIO_ALLOCATION_REVIEW": "OPTIONAL",
+        "SCHEDULED_CIO_BRIEF": "OPTIONAL"
+      },
+      "quality_policy": {
+        "on_collector_exception": "ERROR",
+        "on_empty_result": "DATA_UNAVAILABLE",
+        "on_stale": "STALE"
+      },
+      "fallback_policy": {
+        "fallback_source": null,
+        "is_authoritative": false
+      },
+      "adapter_state": "BROKEN",
+      "event_types": ["market.regime_change"],
+      "required_by_run_types": []
+    },
+
+    "market_regime": {
+      "semantic_definition": "Overall market regime classification: bull/bear/neutral, volatility regime, breadth indicators. Macro context distinct from sector rotation.",
+      "authority_class": "DERIVED_VALID",
+      "canonical_source": "DB: rotation_ladders + market_quotes",
+      "source_adapter": null,
+      "source_lineage": ["market_quotes", "rotation_ladders", "sector_momentum"],
+      "freshness_timestamp_field": "updated_at",
+      "freshness_threshold_seconds": 86400,
+      "materiality_policy": {
+        "PORTFOLIO_ALLOCATION_REVIEW": "OPTIONAL",
+        "SCHEDULED_CIO_BRIEF": "OPTIONAL"
+      },
+      "quality_policy": {
+        "on_collector_exception": "ERROR",
+        "on_stale": "STALE"
+      },
+      "fallback_policy": {
+        "fallback_source": null,
+        "is_authoritative": false
+      },
+      "adapter_state": "UNSUPPORTED",
+      "event_types": ["market.regime_change"],
+      "required_by_run_types": []
+    },
+
+    "income": {
+      "semantic_definition": "Portfolio income evidence: dividend yield, projected annual income, income fund distributions. Yield_pct required for income adequacy assessment.",
+      "authority_class": "DERIVED_VALID",
+      "canonical_source": "data/portfolios/state/holdings.json",
+      "source_adapter": "scripts.lib.data_broker.cio_portfolio._domain_income",
+      "source_lineage": ["holdings.json dividend fields"],
+      "freshness_timestamp_field": "as_of",
+      "freshness_threshold_seconds": 604800,
+      "quality_policy": {
+        "on_file_missing": "DATA_UNAVAILABLE",
+        "on_parse_error": "ERROR",
+        "on_collector_exception": "ERROR",
+        "on_empty_result": "DATA_UNAVAILABLE",
+        "on_stale": "STALE"
+      },
+      "fallback_policy": {
+        "fallback_source": null,
+        "is_authoritative": false
+      },
+      "adapter_state": "SUPPORTED",
+      "event_types": [],
+      "required_by_run_types": ["INCOME_REVIEW", "RETIREMENT_REVIEW"]
+    },
+
+    "tax_lots": {
+      "semantic_definition": "Tax lot accounting: purchase date, cost basis per lot, holding period (short/long-term), wash sale flags. Required for taxable account sell decisions.",
+      "authority_class": "AUTHORITATIVE_ACCOUNT_STATE",
+      "canonical_source": "data/portfolios/state/tax_lots.json",
+      "source_adapter": null,
+      "source_lineage": ["broker cost basis feed", "tax_lots.json"],
+      "freshness_timestamp_field": "as_of",
+      "freshness_threshold_seconds": 86400,
+      "materiality_policy": {
+        "SELL_TAXABLE": "REQUIRED",
+        "TAX_REVIEW": "REQUIRED"
+      },
+      "quality_policy": {
+        "on_file_missing": "DATA_UNAVAILABLE",
+        "on_parse_error": "ERROR",
+        "on_collector_exception": "ERROR",
+        "on_empty_result": "DATA_UNAVAILABLE",
+        "on_stale": "STALE",
+        "on_schema_mismatch": "ERROR"
+      },
+      "fallback_policy": {
+        "fallback_source": null,
+        "is_authoritative": false
+      },
+      "adapter_state": "UNSUPPORTED",
+      "event_types": ["cost_basis.material_change"],
+      "required_by_run_types": ["TAX_REVIEW"]
+    },
+
+    "cost_basis": {
+      "semantic_definition": "Aggregated cost basis per position and total unrealized gains/losses (short-term and long-term). Higher-level than tax_lots.",
+      "authority_class": "DERIVED_VALID",
+      "canonical_source": "data/portfolios/state/tax_lots.json",
+      "source_adapter": "scripts.lib.data_broker.cio_portfolio._domain_cost_basis",
+      "source_lineage": ["tax_lots.json (aggregated)", "holdings.json cost_basis fields"],
+      "freshness_timestamp_field": "as_of",
+      "freshness_threshold_seconds": 2592000,
+      "materiality_policy": {
+        "SELL": "OPTIONAL",
+        "SELL_TAXABLE": "REQUIRED",
+        "TRIM": "OPTIONAL",
+        "TAX_REVIEW": "REQUIRED"
+      },
+      "quality_policy": {
+        "on_file_missing": "DATA_UNAVAILABLE",
+        "on_parse_error": "ERROR",
+        "on_collector_exception": "ERROR",
+        "on_empty_result": "DATA_UNAVAILABLE",
+        "on_stale": "STALE"
+      },
+      "fallback_policy": {
+        "fallback_source": null,
+        "is_authoritative": false
+      },
+      "adapter_state": "SUPPORTED",
+      "event_types": ["cost_basis.material_change"],
+      "required_by_run_types": ["TAX_REVIEW"]
+    },
+
+    "account_constraints": {
+      "semantic_definition": "Account type classification and constraints: taxable vs tax-advantaged, IRA/Roth/401k, margin eligibility, trading restrictions. Determines which tax policies apply.",
+      "authority_class": "AUTHORITATIVE_ACCOUNT_STATE",
+      "canonical_source": "account configuration",
+      "source_adapter": null,
+      "source_lineage": ["broker account metadata", "account configuration"],
+      "freshness_timestamp_field": "verified_at",
+      "freshness_threshold_seconds": 2592000,
+      "materiality_policy": {
+        "SELL_TAXABLE": "REQUIRED",
+        "TAX_REVIEW": "REQUIRED",
+        "PORTFOLIO_ALLOCATION_REVIEW": "OPTIONAL"
+      },
+      "quality_policy": {
+        "on_collector_exception": "ERROR",
+        "on_stale": "STALE"
+      },
+      "fallback_policy": {
+        "fallback_source": null,
+        "is_authoritative": false
+      },
+      "adapter_state": "UNSUPPORTED",
+      "event_types": [],
+      "required_by_run_types": ["TAX_REVIEW"]
+    },
+
+    "retirement": {
+      "semantic_definition": "Retirement roadmap and projections: target date, income needs, withdrawal strategy. Static policy/scenario evidence, not live broker state.",
+      "authority_class": "AUTHORITATIVE_POLICY",
+      "canonical_source": "config/retirement_roadmap.json",
+      "source_adapter": null,
+      "source_lineage": ["operator-authored retirement roadmap config"],
+      "freshness_timestamp_field": "config_version_timestamp",
+      "freshness_threshold_seconds": 2592000,
+      "materiality_policy": {
+        "RETIREMENT_REVIEW": "REQUIRED",
+        "INCOME_REVIEW": "OPTIONAL"
+      },
+      "quality_policy": {
+        "on_file_missing": "DATA_UNAVAILABLE",
+        "on_parse_error": "ERROR",
+        "on_collector_exception": "ERROR",
+        "on_stale": "STALE"
+      },
+      "fallback_policy": {
+        "fallback_source": null,
+        "is_authoritative": false
+      },
+      "adapter_state": "SUPPORTED",
+      "event_types": [],
+      "required_by_run_types": ["RETIREMENT_REVIEW"]
+    },
+
+    "goals": {
+      "semantic_definition": "Financial goals: target amounts, timelines, priority ordering. Operator-authored policy.",
+      "authority_class": "AUTHORITATIVE_POLICY",
+      "canonical_source": "operator_profile / config",
+      "source_adapter": null,
+      "source_lineage": ["operator-authored goals configuration"],
+      "freshness_timestamp_field": "config_version_timestamp",
+      "freshness_threshold_seconds": 2592000,
+      "materiality_policy": {
+        "PORTFOLIO_ALLOCATION_REVIEW": "OPTIONAL",
+        "RETIREMENT_REVIEW": "OPTIONAL"
+      },
+      "quality_policy": {
+        "on_collector_exception": "ERROR",
+        "on_stale": "STALE"
+      },
+      "fallback_policy": {
+        "fallback_source": null,
+        "is_authoritative": false
+      },
+      "adapter_state": "UNSUPPORTED",
+      "event_types": [],
+      "required_by_run_types": []
+    },
+
+    "liquidity": {
+      "semantic_definition": "Portfolio and account liquidity: cash reserves, settlement funds, margin available, near-cash equivalents.",
+      "authority_class": "AUTHORITATIVE_ACCOUNT_STATE",
+      "canonical_source": "account state / holdings.json",
+      "source_adapter": null,
+      "source_lineage": ["broker cash balance", "holdings.json cash positions"],
+      "freshness_timestamp_field": "as_of",
+      "freshness_threshold_seconds": 3600,
+      "materiality_policy": {
+        "PORTFOLIO_ALLOCATION_REVIEW": "OPTIONAL"
+      },
+      "quality_policy": {
+        "on_file_missing": "DATA_UNAVAILABLE",
+        "on_collector_exception": "ERROR",
+        "on_stale": "STALE"
+      },
+      "fallback_policy": {
+        "fallback_source": null,
+        "is_authoritative": false
+      },
+      "adapter_state": "SUPPORTED",
+      "event_types": [],
+      "required_by_run_types": []
+    },
+
+    "cash_buying_power": {
+      "semantic_definition": "Available buying power for new positions: settled cash, margin buying power, funds available for trading. Distinct from liquidity (broader cash view). Required for BUY decision execution.",
+      "authority_class": "AUTHORITATIVE_ACCOUNT_STATE",
+      "canonical_source": "broker account summary",
+      "source_adapter": null,
+      "source_lineage": ["broker buying power API/state"],
+      "freshness_timestamp_field": "as_of",
+      "freshness_threshold_seconds": 3600,
+      "materiality_policy": {
+        "BUY": "REQUIRED",
+        "PORTFOLIO_ALLOCATION_REVIEW": "REQUIRED"
+      },
+      "quality_policy": {
+        "on_collector_exception": "ERROR",
+        "on_empty_result": "DATA_UNAVAILABLE",
+        "on_stale": "STALE"
+      },
+      "fallback_policy": {
+        "fallback_source": null,
+        "is_authoritative": false
+      },
+      "adapter_state": "SUPPORTED",
+      "event_types": [],
+      "required_by_run_types": []
+    },
+
+    "fundamentals": {
+      "semantic_definition": "Company fundamentals: P/E, EPS, revenue growth, margins, debt ratios, book value. External data, not account state.",
+      "authority_class": "EXTERNAL_MARKET_DATA",
+      "canonical_source": "DB: fundamentals data",
+      "source_adapter": null,
+      "source_lineage": ["fundamentals data pipeline", "Yahoo Finance fundamentals"],
+      "freshness_timestamp_field": "data_date",
+      "freshness_threshold_seconds": 604800,
+      "materiality_policy": {
+        "BUY": "OPTIONAL",
+        "WATCH_OR_CATALYST_REVIEW": "OPTIONAL",
+        "PORTFOLIO_ALLOCATION_REVIEW": "OPTIONAL"
+      },
+      "quality_policy": {
+        "on_collector_exception": "ERROR",
+        "on_stale": "STALE"
+      },
+      "fallback_policy": {
+        "fallback_source": null,
+        "is_authoritative": false
+      },
+      "adapter_state": "UNSUPPORTED",
+      "event_types": [],
+      "required_by_run_types": []
+    },
+
+    "technicals": {
+      "semantic_definition": "Technical indicators: RSI, MACD, moving averages, volume trends, support/resistance levels. External data.",
+      "authority_class": "EXTERNAL_MARKET_DATA",
+      "canonical_source": "DB: indicator_confluence_cache",
+      "source_adapter": "scripts.lib.data_broker.indicator_snapshot",
+      "source_lineage": ["indicator_confluence_cache", "market quotes"],
+      "freshness_timestamp_field": "collected_at",
+      "freshness_threshold_seconds": 3600,
+      "materiality_policy": {
+        "WATCH_OR_CATALYST_REVIEW": "OPTIONAL",
+        "PORTFOLIO_ALLOCATION_REVIEW": "OPTIONAL"
+      },
+      "quality_policy": {
+        "on_collector_exception": "ERROR",
+        "on_stale": "STALE"
+      },
+      "fallback_policy": {
+        "fallback_source": null,
+        "is_authoritative": false
+      },
+      "adapter_state": "UNSUPPORTED",
+      "event_types": [],
+      "required_by_run_types": []
+    },
+
+    "catalysts": {
+      "semantic_definition": "Upcoming and recent catalyst events: earnings dates, FDA decisions, product launches, major announcements. External data.",
+      "authority_class": "EXTERNAL_MARKET_DATA",
+      "canonical_source": "DB: catalyst_events",
+      "source_adapter": "scripts.lib.data_broker.catalyst_record",
+      "source_lineage": ["catalyst_events table (confidence >= 0.3, 45-day lookback)"],
+      "freshness_timestamp_field": "occurrence_date",
+      "freshness_threshold_seconds": 86400,
+      "materiality_policy": {
+        "BUY": "OPTIONAL",
+        "WATCH_OR_CATALYST_REVIEW": "REQUIRED",
+        "PORTFOLIO_ALLOCATION_REVIEW": "OPTIONAL"
+      },
+      "quality_policy": {
+        "on_collector_exception": "ERROR",
+        "on_stale": "STALE"
+      },
+      "fallback_policy": {
+        "fallback_source": null,
+        "is_authoritative": false
+      },
+      "adapter_state": "SUPPORTED",
+      "event_types": [],
+      "required_by_run_types": ["WATCH_OR_CATALYST_REVIEW"]
+    },
+
+    "news_materiality": {
+      "semantic_definition": "Material news events affecting held or watched securities. Assessed for impact on thesis, stop levels, or opportunity.",
+      "authority_class": "EXTERNAL_MARKET_DATA",
+      "canonical_source": "hermes_research_intelligence + news pipeline",
+      "source_adapter": null,
+      "source_lineage": ["hermes research intelligence", "news aggregation pipeline"],
+      "freshness_timestamp_field": "published_at",
+      "freshness_threshold_seconds": 86400,
+      "materiality_policy": {
+        "WATCH_OR_CATALYST_REVIEW": "OPTIONAL"
+      },
+      "quality_policy": {
+        "on_collector_exception": "ERROR",
+        "on_stale": "STALE"
+      },
+      "fallback_policy": {
+        "fallback_source": null,
+        "is_authoritative": false
+      },
+      "adapter_state": "UNSUPPORTED",
+      "event_types": [],
+      "required_by_run_types": []
+    },
+
+    "analyst_actions": {
+      "semantic_definition": "Wall Street analyst actions: upgrades, downgrades, price target changes, initiations. External data.",
+      "authority_class": "EXTERNAL_MARKET_DATA",
+      "canonical_source": "DB: yahoo_analyst_targets_history",
+      "source_adapter": "scripts.lib.data_broker.analyst_detail",
+      "source_lineage": ["yahoo_analyst_targets_history", "pro_analyst_pills_latest.json"],
+      "freshness_timestamp_field": "action_date",
+      "freshness_threshold_seconds": 86400,
+      "materiality_policy": {
+        "BUY": "OPTIONAL",
+        "WATCH_OR_CATALYST_REVIEW": "REQUIRED",
+        "PORTFOLIO_ALLOCATION_REVIEW": "OPTIONAL"
+      },
+      "quality_policy": {
+        "on_collector_exception": "ERROR",
+        "on_stale": "STALE"
+      },
+      "fallback_policy": {
+        "fallback_source": null,
+        "is_authoritative": false
+      },
+      "adapter_state": "SUPPORTED",
+      "event_types": [],
+      "required_by_run_types": ["WATCH_OR_CATALYST_REVIEW"]
+    },
+
+    "industry_context": {
+      "semantic_definition": "Industry and sector context: peer comparisons, sector trends, competitive positioning.",
+      "authority_class": "NON_AUTHORITATIVE_REFERENCE",
+      "canonical_source": null,
+      "source_adapter": null,
+      "source_lineage": [],
+      "freshness_timestamp_field": null,
+      "freshness_threshold_seconds": 604800,
+      "materiality_policy": {},
+      "quality_policy": {
+        "on_collector_exception": "ERROR"
+      },
+      "fallback_policy": {
+        "fallback_source": null,
+        "is_authoritative": false
+      },
+      "adapter_state": "UNSUPPORTED",
+      "event_types": [],
+      "required_by_run_types": []
+    },
+
+    "broker_reconciliation": {
+      "semantic_definition": "Broker reconciliation status: whether system projections match broker records. Requires actual reconciliation result, not hardcoded ok=true.",
+      "authority_class": "DERIVED_VALID",
+      "canonical_source": "reconciliation pipeline",
+      "source_adapter": "scripts.lib.data_broker.cio_portfolio._domain_reconciliation",
+      "source_lineage": ["alpaca_paper_reconciler.py", "Schwab broker record comparison"],
+      "freshness_timestamp_field": "reconciled_at",
+      "freshness_threshold_seconds": 172800,
+      "materiality_policy": {
+        "BROKER_RECONCILIATION": "REQUIRED",
+        "SCHEDULED_CIO_BRIEF": "OPTIONAL"
+      },
+      "quality_policy": {
+        "on_collector_exception": "ERROR",
+        "on_stale": "STALE",
+        "on_empty_result": "DATA_UNAVAILABLE"
+      },
+      "fallback_policy": {
+        "fallback_source": null,
+        "is_authoritative": false
+      },
+      "adapter_state": "SUPPORTED",
+      "event_types": ["reconciliation.drift"],
+      "required_by_run_types": ["BROKER_RECONCILIATION"]
+    },
+
+    "investment_policy": {
+      "semantic_definition": "Current Investment Policy Statement: target allocations, risk tolerance, constraints, and authorized instruments. Operator-authored policy.",
+      "authority_class": "AUTHORITATIVE_POLICY",
+      "canonical_source": "config/investment_policy_statement.json",
+      "source_adapter": null,
+      "source_lineage": ["operator-authored IPS config"],
+      "freshness_timestamp_field": "config_version_timestamp",
+      "freshness_threshold_seconds": 604800,
+      "materiality_policy": {
+        "BUY": "REQUIRED",
+        "TRIM": "REQUIRED",
+        "PORTFOLIO_ALLOCATION_REVIEW": "REQUIRED",
+        "SCHEDULED_CIO_BRIEF": "OPTIONAL"
+      },
+      "quality_policy": {
+        "on_file_missing": "DATA_UNAVAILABLE",
+        "on_parse_error": "ERROR",
+        "on_collector_exception": "ERROR",
+        "on_stale": "STALE"
+      },
+      "fallback_policy": {
+        "fallback_source": null,
+        "is_authoritative": false
+      },
+      "adapter_state": "SUPPORTED",
+      "event_types": ["allocation.drift"],
+      "required_by_run_types": ["PORTFOLIO_ALLOCATION_REVIEW"]
+    },
+
+    "model_portfolio": {
+      "semantic_definition": "Model portfolio / target portfolio: ideal allocation targets and specific holdings. Operator-authored policy.",
+      "authority_class": "AUTHORITATIVE_POLICY",
+      "canonical_source": "config/model_portfolio.json",
+      "source_adapter": "scripts.lib.data_broker.cio_portfolio._domain_model_portfolio",
+      "source_lineage": ["operator-authored model portfolio config"],
+      "freshness_timestamp_field": "config_version_timestamp",
+      "freshness_threshold_seconds": 604800,
+      "materiality_policy": {
+        "PORTFOLIO_ALLOCATION_REVIEW": "REQUIRED",
+        "SCHEDULED_CIO_BRIEF": "OPTIONAL"
+      },
+      "quality_policy": {
+        "on_file_missing": "DATA_UNAVAILABLE",
+        "on_parse_error": "ERROR",
+        "on_collector_exception": "ERROR",
+        "on_stale": "STALE"
+      },
+      "fallback_policy": {
+        "fallback_source": null,
+        "is_authoritative": false
+      },
+      "adapter_state": "SUPPORTED",
+      "event_types": [],
+      "required_by_run_types": ["PORTFOLIO_ALLOCATION_REVIEW"]
+    },
+
+    "operator_profile": {
+      "semantic_definition": "Operator identity, confirmed domains, and preference settings. Used for authorization and context, not financial decisions.",
+      "authority_class": "AUTHORITATIVE_POLICY",
+      "canonical_source": "operator_profile_store",
+      "source_adapter": null,
+      "source_lineage": ["operator profile store"],
+      "freshness_timestamp_field": "profile_version",
+      "freshness_threshold_seconds": 604800,
+      "materiality_policy": {
+        "SCHEDULED_CIO_BRIEF": "REQUIRED"
+      },
+      "quality_policy": {
+        "on_collector_exception": "ERROR",
+        "on_stale": "STALE"
+      },
+      "fallback_policy": {
+        "fallback_source": null,
+        "is_authoritative": false
+      },
+      "adapter_state": "SUPPORTED",
+      "event_types": [],
+      "required_by_run_types": ["SCHEDULED_CIO_BRIEF"]
+    },
+
+    "hermes_research": {
+      "semantic_definition": "Hermes research intelligence: contradiction findings, promoted research, deep-dive analysis results. Internal research, not external market data.",
+      "authority_class": "DERIVED_VALID",
+      "canonical_source": "DB: hermes_research_intelligence",
+      "source_adapter": "scripts.lib.data_broker.cio_portfolio._domain_hermes_research",
+      "source_lineage": ["hermes_research_intelligence table", "hermes_canonical_status_latest.json (fallback)"],
+      "freshness_timestamp_field": "updated_at",
+      "freshness_threshold_seconds": 86400,
+      "materiality_policy": {
+        "WATCH_OR_CATALYST_REVIEW": "OPTIONAL",
+        "SCHEDULED_CIO_BRIEF": "OPTIONAL"
+      },
+      "quality_policy": {
+        "on_collector_exception": "ERROR",
+        "on_stale": "STALE",
+        "on_empty_result": "DATA_UNAVAILABLE"
+      },
+      "fallback_policy": {
+        "fallback_source": "hermes_canonical_status_latest.json",
+        "is_authoritative": false
+      },
+      "adapter_state": "SUPPORTED",
+      "event_types": ["hermes.contradiction_found", "hermes.research_promoted"],
+      "required_by_run_types": []
+    },
+
+    "open_cio_actions": {
+      "semantic_definition": "Currently open CIO actions from the event-sourced action ledger: pending, acknowledged, due followups. Not watchlist data.",
+      "authority_class": "AUTHORITATIVE_INTERNAL_RECORD",
+      "canonical_source": "data/cio/cio_action_ledger.jsonl",
+      "source_adapter": null,
+      "source_lineage": ["CIO action ledger (event-sourced, append-only)"],
+      "freshness_timestamp_field": "event_timestamp",
+      "freshness_threshold_seconds": 3600,
+      "materiality_policy": {
+        "SCHEDULED_CIO_BRIEF": "REQUIRED",
+        "PORTFOLIO_ALLOCATION_REVIEW": "OPTIONAL"
+      },
+      "quality_policy": {
+        "on_collector_exception": "ERROR",
+        "on_empty_result": "AVAILABLE",
+        "on_stale": "STALE"
+      },
+      "fallback_policy": {
+        "fallback_source": null,
+        "is_authoritative": false
+      },
+      "adapter_state": "SUPPORTED",
+      "event_types": ["action.stale"],
+      "required_by_run_types": ["SCHEDULED_CIO_BRIEF"]
+    },
+
+    "strategy_desk": {
+      "semantic_definition": "Active strategy signals and pattern matches for the current trading session.",
+      "authority_class": "DERIVED_VALID",
+      "canonical_source": "DB: strategy_registry, strategy_signals",
+      "source_adapter": "scripts.lib.data_broker.strategy_desk",
+      "source_lineage": ["strategy_registry", "strategy_signals", "pattern_library"],
+      "freshness_timestamp_field": "signal_generated_at",
+      "freshness_threshold_seconds": 86400,
+      "materiality_policy": {
+        "WATCH_OR_CATALYST_REVIEW": "OPTIONAL"
+      },
+      "quality_policy": {
+        "on_collector_exception": "ERROR",
+        "on_stale": "STALE"
+      },
+      "fallback_policy": {
+        "fallback_source": null,
+        "is_authoritative": false
+      },
+      "adapter_state": "UNSUPPORTED",
+      "event_types": [],
+      "required_by_run_types": []
+    },
+
+    "transactions": {
+      "semantic_definition": "Recent transaction history: buys, sells, dividends received, corporate actions.",
+      "authority_class": "AUTHORITATIVE_ACCOUNT_STATE",
+      "canonical_source": "data/portfolios/state/transactions.json",
+      "source_adapter": "scripts.lib.data_broker.cio_portfolio._domain_transactions",
+      "source_lineage": ["broker transaction history", "transactions.json"],
+      "freshness_timestamp_field": "as_of",
+      "freshness_threshold_seconds": 86400,
+      "materiality_policy": {
+        "PORTFOLIO_ALLOCATION_REVIEW": "OPTIONAL",
+        "TAX_REVIEW": "OPTIONAL"
+      },
+      "quality_policy": {
+        "on_file_missing": "DATA_UNAVAILABLE",
+        "on_parse_error": "ERROR",
+        "on_collector_exception": "ERROR",
+        "on_stale": "STALE"
+      },
+      "fallback_policy": {
+        "fallback_source": null,
+        "is_authoritative": false
+      },
+      "adapter_state": "SUPPORTED",
+      "event_types": [],
+      "required_by_run_types": []
+    },
+
+    "sectors": {
+      "semantic_definition": "Portfolio sector allocation breakdown: percentage per sector, sector concentration risk.",
+      "authority_class": "DERIVED_VALID",
+      "canonical_source": "holdings.json + symbol_profiles",
+      "source_adapter": "scripts.lib.data_broker.cio_portfolio._domain_sectors",
+      "source_lineage": ["holdings.json", "symbol_profiles (sector/industry)"],
+      "freshness_timestamp_field": "as_of",
+      "freshness_threshold_seconds": 86400,
+      "materiality_policy": {
+        "PORTFOLIO_ALLOCATION_REVIEW": "OPTIONAL"
+      },
+      "quality_policy": {
+        "on_collector_exception": "ERROR",
+        "on_stale": "STALE"
+      },
+      "fallback_policy": {
+        "fallback_source": null,
+        "is_authoritative": false
+      },
+      "adapter_state": "SUPPORTED",
+      "event_types": [],
+      "required_by_run_types": []
+    }
+  },
+
+  "authority_classes": {
+    "AUTHORITATIVE_POLICY": "Operator-authored, version-controlled config defining intended state. Not broker data.",
+    "AUTHORITATIVE_ACCOUNT_STATE": "Broker-synced projection of actual account positions, balances, and transactions.",
+    "AUTHORITATIVE_INTERNAL_RECORD": "Event-sourced, append-only ledger maintained by the Trade AI system.",
+    "EXTERNAL_MARKET_DATA": "Third-party market data feed. Not broker account data.",
+    "DERIVED_VALID": "Computed deterministically from authoritative sources. Not independently authoritative.",
+    "NON_AUTHORITATIVE_REFERENCE": "Informational/reference data. Not decision-critical."
+  },
+
+  "adapter_states": {
+    "SUPPORTED": "Adapter exists and is connected to a known canonical source.",
+    "UNSUPPORTED": "No adapter exists for this domain. Evidence will be DATA_UNAVAILABLE.",
+    "BROKEN": "Adapter exists but produces incorrect data. Must be fixed before use.",
+    "DEPRECATED": "Domain was once supported but has been superseded or retired."
+  },
+
+  "evidence_quality_states": [
+    "AVAILABLE",
+    "PARTIAL",
+    "STALE",
+    "DATA_UNAVAILABLE",
+    "CONFLICTED",
+    "ERROR",
+    "NOT_APPLICABLE"
+  ],
+
+  "run_purposes": {
+    "PORTFOLIO_ALLOCATION_REVIEW": "Review portfolio allocations against IPS and model portfolio. May produce BUY/SELL/TRIM/HOLD actions.",
+    "RISK_OR_STOP_EVENT": "Risk assessment triggered by stop event, heat increase, or exposure concern.",
+    "WATCH_OR_CATALYST_REVIEW": "Review watchlist securities for entry signals, catalysts, or analyst actions.",
+    "TAX_REVIEW": "Tax-lot analysis, wash-sale checks, cost-basis review for taxable accounts.",
+    "INCOME_REVIEW": "Income adequacy assessment: dividend yield, projected income, income sleeve health.",
+    "RETIREMENT_REVIEW": "Retirement roadmap check: progress against goals, withdrawal strategy, tax implications.",
+    "BROKER_RECONCILIATION": "Verify system projections match broker records. Detect drift or missing transactions.",
+    "SCHEDULED_CIO_BRIEF": "Scheduled comprehensive CIO overview. All critical domains, no specific action target.",
+    "OPERATOR_REQUEST": "Operator-initiated request. Server determines required evidence based on request intent, not operator payload."
+  },
+
+  "post_synthesis_validation": {
+    "_description": "Action-specific evidence validation applied after Alex synthesis, before action creation.",
+    "BUY": {
+      "REQUIRED": ["portfolio", "cash_buying_power", "risk", "investment_policy"],
+      "OPTIONAL": ["holdings_detail", "fundamentals", "catalysts", "analyst_actions"]
+    },
+    "SELL": {
+      "REQUIRED": ["portfolio", "holdings_detail", "risk"],
+      "OPTIONAL": []
+    },
+    "SELL_TAXABLE": {
+      "REQUIRED": ["portfolio", "holdings_detail", "risk", "cost_basis", "account_constraints"],
+      "OPTIONAL": ["tax_lots"]
+    },
+    "TRIM": {
+      "REQUIRED": ["portfolio", "holdings_detail", "risk", "investment_policy"],
+      "OPTIONAL": ["cost_basis"]
+    },
+    "HOLD": {
+      "REQUIRED": ["portfolio", "risk"],
+      "OPTIONAL": []
+    },
+    "NO_ACTION": {
+      "REQUIRED": ["portfolio", "risk"],
+      "OPTIONAL": []
+    }
+  }
+}

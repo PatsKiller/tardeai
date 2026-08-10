@@ -587,6 +587,30 @@
       ],
       "version": "1.0.0-designed"
     },
+    "morgan": {
+      "agent_id": "morgan",
+      "canonical_identity": "morgan",
+      "display_name": "Morgan Wealth Strategist",
+      "deployment_state": "DESIGNED",
+      "enabled": false,
+      "allowed_job_types": ["wealth_synthesis", "goal_tracking", "liquidity_planning", "tax_coordination", "estate_review", "multi_account_coordination"],
+      "allowed_tools": ["portfolio.read", "tax_lot.read", "income.read", "goals.read", "retirement_projection.read", "kb.search"],
+      "artifact_schema": "morgan-wealth-synthesis-v1",
+      "governed_gateway_process": "morgan_wealth_synthesis",
+      "gateway_policy": "FAST",
+      "deterministic_sources": ["portfolio.read", "tax_lot.read", "income.read", "goals.read", "retirement_projection.read", "kb.search"],
+      "prohibited_authorities": ["order_authority", "broker_authority", "self_initiated_cio_claims", "action_creation", "operator_communication"],
+      "handoff_claim_capable": false,
+      "handoff_completion_capable": false,
+      "parent_run_id_persistent": false,
+      "live_canary_active": false,
+      "canary_status": "NOT_RUN",
+      "current_limitations": ["No artifact schema validated", "Deterministic sources not independently proven", "Governed gateway not live"],
+      "version": "1.0.0-designed",
+      "budget": {"max_cost_usd": 0.0, "max_model_calls": 0, "max_tool_calls": 10},
+      "authority": {"broker_authority": "DENIED", "order_authority": "DENIED"},
+      "stop_conditions": ["evidence_incomplete", "operator_cancel"]
+    },
     "pulse": {
       "acceptance_evidence": [
         "sequence integrity proven",

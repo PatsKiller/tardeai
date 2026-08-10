@@ -28,6 +28,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional, Callable
 
+from scripts.lib.cio_domain_registry import CIODomainRegistry, VALID_RUN_PURPOSES
+from scripts.lib.cio_domain_evidence import DomainEvidence, BLOCKING_QUALITY_STATES, QUALITY_STATE_NOT_APPLICABLE
+
 log = logging.getLogger("tradeai.cio_run_worker")
 
 # ── Constants ────────────────────────────────────────────────────────────────
@@ -272,6 +275,36 @@ class CIORunWorker:
             else:
                 snapshot_result = {}
 
+            # Store snapshot for downstream use (post-synthesis action validation)
+            self._snapshot_result = snapshot_result
+
+            # Step 2.5: Pre-synthesis evidence gate (Gate C6)
+            # Block the run if any REQUIRED evidence domain is in a blocking state.
+            # For OPERATOR_REQUEST, the server classifies intent and selects
+            # evidence requirements — the operator payload does not remove required evidence.
+            run_purpose = self._classify_run_purpose(trigger_type, run)
+            is_blocked, evidence_gaps = self._check_evidence_gate(run, snapshot_result, run_purpose)
+            if is_blocked:
+                result["status"] = "BLOCKED"
+                result["blocked_by"] = "EVIDENCE_GAP"
+                result["block_reason_code"] = "EVIDENCE_GAP"
+                result["block_detail"] = evidence_gaps
+                result["run_purpose"] = run_purpose
+                try:
+                    gap_summary = "; ".join(
+                        f"{k}:{','.join(v)}" for k, v in evidence_gaps.items() if v
+                    ) if evidence_gaps else "unknown evidence gap"
+                    self.run_store.block(
+                        run_id,
+                        f"EVIDENCE_GAP:{gap_summary}",
+                        actor="cio_run_worker",
+                    )
+                except Exception:
+                    pass
+                return result
+
+            result["run_purpose"] = run_purpose
+
             # Step 3: Route specialists if needed
             required_domains = run.get("required_domains", [])
             specialist_result = self._route_specialists(run_id, required_domains, snapshot_result)
@@ -408,7 +441,13 @@ class CIORunWorker:
             action_ledger=self.action_ledger,
         )
 
-        return snapshot.to_evidence_record()
+        result = snapshot.to_evidence_record()
+        # Include per-domain state map for evidence gate and post-synthesis validation
+        result["domain_states"] = {
+            domain_id: snapshot.get_domain_state(domain_id)
+            for domain_id in snapshot.domains
+        }
+        return result
 
     # ── Step: Specialist Routing ────────────────────────────────────────────
 
@@ -585,14 +624,59 @@ class CIORunWorker:
 
     def _write_actions(self, synthesis_result: dict[str, Any]) -> dict[str, Any]:
         action_ids: list[str] = []
+        blocked_recommendations: list[dict[str, Any]] = []
 
         if self.action_ledger is None:
-            return {"action_ids": action_ids}
+            return {"action_ids": action_ids, "blocked_recommendations": blocked_recommendations}
 
         synthesis_data = synthesis_result.get("result", {})
         recommendations = synthesis_data.get("recommendations", [])
 
+        # Get snapshot domain states for post-synthesis evidence validation
+        snapshot_result = getattr(self, "_snapshot_result", {}) or {}
+        # Build snapshot_domains dict usable by validate_action_evidence
+        # Each entry needs at minimum a "state" key
+        domain_states = snapshot_result.get("domain_states", {})
+        snapshot_domains: dict[str, dict[str, Any]] = {
+            domain_id: {"state": state}
+            for domain_id, state in domain_states.items()
+        }
+
+        # Derive account type from snapshot evidence for tax-sensitive validation
+        account_type = None
+        account_type_unknown = False
+        account_constraints_state = snapshot_domains.get("account_constraints", {}).get("state", "DATA_UNAVAILABLE")
+        if account_constraints_state in ("DATA_UNAVAILABLE", "ERROR", "NOT_APPLICABLE"):
+            account_type_unknown = True
+
+        from scripts.lib.cio_action_validator import validate_action_evidence, determine_action_type
+
         for i, rec in enumerate(recommendations):
+            # Post-synthesis evidence validation (Gate C5c)
+            proposed_action_type = determine_action_type(rec)
+            validation = validate_action_evidence(
+                proposed_action_type,
+                snapshot_domains,
+                account_type=account_type,
+                account_type_unknown=account_type_unknown,
+            )
+
+            if not validation["actionable"]:
+                # Log partial recommendation, do NOT create a CIO action
+                partial = validation.get("partial_recommendation")
+                if partial:
+                    log.warning(
+                        "CIO action blocked by evidence gap (rec %d): %s",
+                        i, partial,
+                    )
+                blocked_recommendations.append({
+                    "index": i,
+                    "action_type": validation["action_type"],
+                    "blocking_gaps": validation.get("blocking_gaps", []),
+                    "partial_recommendation": partial,
+                })
+                continue
+
             try:
                 action = {
                     "cio_action_id": f"cio-action-{uuid.uuid4().hex[:16]}",
@@ -646,7 +730,7 @@ class CIORunWorker:
             except Exception:
                 pass
 
-        return {"action_ids": action_ids}
+        return {"action_ids": action_ids, "blocked_recommendations": blocked_recommendations}
 
     # ── Step: Enqueue Notifications ─────────────────────────────────────────
 
@@ -710,6 +794,81 @@ class CIORunWorker:
                 pass
 
         return {"notification_ids": notification_ids}
+
+    # ── Evidence Gate (Gate C6) ─────────────────────────────────────────────
+
+    @staticmethod
+    def _classify_run_purpose(trigger_type: str, run: dict[str, Any]) -> str:
+        """Map trigger_type to CIO run purpose for evidence requirements.
+
+        SPECIALIST_COMPLETION and HERMES_RESOLVED use the original purpose
+        stored in the run projection. All other trigger types are mapped
+        to their canonical run purpose.
+        """
+        mapping: dict[str, str] = {
+            "SCHEDULED_DAILY": "SCHEDULED_CIO_BRIEF",
+            "SCHEDULED_WEEKLY": "PORTFOLIO_ALLOCATION_REVIEW",
+            "ACTION_FOLLOWUP": "SCHEDULED_CIO_BRIEF",
+            "HEALTH_EVENT": "RISK_OR_STOP_EVENT",
+            "OPERATOR_MESSAGE": "OPERATOR_REQUEST",
+            "MANUAL": "OPERATOR_REQUEST",
+            "SYSTEM": "SCHEDULED_CIO_BRIEF",
+        }
+        # SPECIALIST_COMPLETION and HERMES_RESOLVED use the original purpose
+        if trigger_type in ("SPECIALIST_COMPLETION", "HERMES_RESOLVED"):
+            return run.get("run_purpose", "SCHEDULED_CIO_BRIEF")
+        return mapping.get(trigger_type, "SCHEDULED_CIO_BRIEF")
+
+    def _check_evidence_gate(
+        self,
+        run: dict[str, Any],
+        snapshot: dict[str, Any],
+        run_purpose: str,
+    ) -> tuple[bool, dict[str, list[str]]]:
+        """Check if all required evidence domains are available for this run purpose.
+
+        Returns (is_blocked, evidence_gaps_dict) where:
+        - is_blocked: True if any REQUIRED domain is in a blocking state
+        - evidence_gaps_dict: dict with missing_required/stale_required/error_required/conflicted_required lists
+
+        Uses the existing Gate-B BLOCKED state - does NOT create a new top-level state.
+        block_reason_code is "EVIDENCE_GAP".
+        """
+        missing_required: list[str] = []
+        stale_required: list[str] = []
+        error_required: list[str] = []
+        conflicted_required: list[str] = []
+
+        # Load registry
+        registry = CIODomainRegistry.load()
+        requirements = registry.run_purpose_requirements(run_purpose)
+
+        # Use domain_states from snapshot (populated by _build_snapshot)
+        domain_states = snapshot.get("domain_states", {})
+
+        for domain_id in requirements.required_domains:
+            state = domain_states.get(domain_id, "DATA_UNAVAILABLE")
+            if state == "DATA_UNAVAILABLE":
+                missing_required.append(domain_id)
+            elif state == "STALE":
+                stale_required.append(domain_id)
+            elif state == "ERROR":
+                error_required.append(domain_id)
+            elif state == "CONFLICTED":
+                conflicted_required.append(domain_id)
+
+        is_blocked = bool(
+            missing_required or stale_required or error_required or conflicted_required
+        )
+
+        evidence_gaps = {
+            "missing_required": missing_required,
+            "stale_required": stale_required,
+            "error_required": error_required,
+            "conflicted_required": conflicted_required,
+        }
+
+        return is_blocked, evidence_gaps
 
     # ── Authority verification ─────────────────────────────────────────────
 

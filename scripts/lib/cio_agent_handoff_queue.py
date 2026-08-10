@@ -91,7 +91,7 @@ def build_event(
 # Agent Registry and Maturity
 # ═══════════════════════════════════════════════════════════════════════════════
 
-AGENT_REGISTRY: dict[str, dict[str, str]] = {
+_LEGACY_AGENT_REGISTRY: dict[str, dict[str, str]] = {
     "alex": {"status": "REGISTERED", "role": "cio"},
     "maria": {"status": "AVAILABLE", "role": "research"},
     "steph": {"status": "AVAILABLE", "role": "allocation"},
@@ -99,6 +99,96 @@ AGENT_REGISTRY: dict[str, dict[str, str]] = {
     "ledger": {"status": "NOT_READY", "role": "tax"},
     "morgan": {"status": "AVAILABLE", "role": "wealth"},
 }
+
+# Mapping from handoff queue agent IDs to catalog agent IDs
+_HANDOFF_TO_CATALOG_ID: dict[str, str] = {
+    "alex": "alex",
+    "maria": "maria",
+    "steph": "steph",
+    "guardian": "risk_agent",
+    "ledger": "tax_agent",
+    "morgan": "morgan",
+}
+
+
+def _build_agent_registry_from_catalog() -> dict[str, dict[str, str]]:
+    """Build AGENT_REGISTRY from the canonical agent_maturity_catalog.json.
+    
+    This ensures the handoff queue reads from the single authority,
+    not a separately maintained copy.
+    """
+    try:
+        from scripts.lib.cio_agent_readiness import AgentReadinessRegistry
+        registry = AgentReadinessRegistry.load()
+        result: dict[str, dict[str, str]] = {}
+        for handoff_id, catalog_id in _HANDOFF_TO_CATALOG_ID.items():
+            if not registry.has(catalog_id):
+                continue
+            readiness = registry.get(catalog_id)
+            if readiness.maturity_stage == "SHADOW" and readiness.enabled:
+                status = "AVAILABLE"
+            elif readiness.maturity_stage == "DESIGNED":
+                status = "NOT_READY"
+            else:
+                status = "NOT_READY"
+            result[handoff_id] = {
+                "status": status,
+                "role": readiness.display_name.lower(),
+                "readiness_version": registry.catalog_hash,
+            }
+        if "alex" not in result:
+            result["alex"] = {"status": "REGISTERED", "role": "cio"}
+        # Always ensure alex status is REGISTERED (override catalog-derived status)
+        result["alex"] = {"status": "REGISTERED", "role": "cio"}
+        return result
+    except Exception:
+        return dict(_LEGACY_AGENT_REGISTRY)
+
+
+class _LazyAgentRegistry(dict[str, dict[str, str]]):
+    """Lazy-loading dict wrapper that builds AGENT_REGISTRY from the catalog on first access."""
+
+    _loaded: bool = False
+
+    def _ensure_loaded(self) -> None:
+        if not self._loaded:
+            self.update(_build_agent_registry_from_catalog())
+            self._loaded = True
+
+    def __repr__(self) -> str:
+        self._ensure_loaded()
+        return super().__repr__()
+
+    def __getitem__(self, key: str) -> dict[str, str]:
+        self._ensure_loaded()
+        return super().__getitem__(key)
+
+    def get(self, key: str, default: Any = None) -> Any:
+        self._ensure_loaded()
+        return super().get(key, default)
+
+    def __contains__(self, key: object) -> bool:
+        self._ensure_loaded()
+        return super().__contains__(key)
+
+    def __iter__(self):  # type: ignore[override]
+        self._ensure_loaded()
+        return super().__iter__()
+
+    def keys(self):  # type: ignore[override]
+        self._ensure_loaded()
+        return super().keys()
+
+    def values(self):  # type: ignore[override]
+        self._ensure_loaded()
+        return super().values()
+
+    def items(self):  # type: ignore[override]
+        self._ensure_loaded()
+        return super().items()
+
+
+AGENT_REGISTRY: _LazyAgentRegistry = _LazyAgentRegistry()
 
 ALLOWED_TASK_TYPES = frozenset({
     "cio_question",
@@ -378,6 +468,7 @@ class AgentHandoffQueue:
                     "artifact_hash": None,
                     "failure_code": None,
                     "failure_class": None,
+                    "claimed_at_catalog_hash": p.get("claimed_at_catalog_hash", ""),
                 })
 
             elif et == "HANDOFF_CLAIMED":
@@ -532,6 +623,15 @@ class AgentHandoffQueue:
         agent_info = AGENT_REGISTRY.get(to_agent_id, {})
         target_status = agent_info.get("status", "UNKNOWN")
 
+        # Capture catalog hash at enqueue time for later claim validation
+        catalog_hash_at_enqueue = ""
+        try:
+            from scripts.lib.cio_agent_readiness import AgentReadinessRegistry
+            reg = AgentReadinessRegistry.get_instance()
+        except RuntimeError:
+            reg = AgentReadinessRegistry.load()
+        catalog_hash_at_enqueue = reg.catalog_hash
+
         # Idempotency check
         idempotency_key = handoff.get("idempotency_key", "")
         if idempotency_key:
@@ -563,6 +663,7 @@ class AgentHandoffQueue:
             "required_schema_version": handoff.get("required_schema_version", ""),
             "idempotency_key": idempotency_key,
             "created_at": datetime.now(timezone.utc).isoformat(),
+            "claimed_at_catalog_hash": catalog_hash_at_enqueue,
         }
 
         event_type = "HANDOFF_ENQUEUED"
@@ -616,6 +717,27 @@ class AgentHandoffQueue:
                     raise ValueError(
                         f"Handoff {handoff_id} has passed its deadline ({deadline})"
                     )
+
+        # C7: Check specialist readiness before allowing claim
+        to_agent = current.get("to_agent")
+        catalog_hash_at_enqueue = current.get("claimed_at_catalog_hash", None)
+        if to_agent:
+            try:
+                from scripts.lib.cio_agent_readiness import AgentReadinessRegistry
+                registry = AgentReadinessRegistry.get_instance()
+            except RuntimeError:
+                registry = AgentReadinessRegistry.load()
+            # Map handoff queue agent ID to catalog ID for readiness lookup
+            catalog_agent_id = _HANDOFF_TO_CATALOG_ID.get(to_agent, to_agent)
+            can_claim, reason = registry.can_claim(
+                catalog_agent_id,
+                claimed_at_catalog_hash=catalog_hash_at_enqueue if catalog_hash_at_enqueue else None,
+            )
+            if not can_claim:
+                raise ValueError(
+                    f"Cannot claim handoff {handoff_id}: "
+                    f"agent {to_agent} readiness check failed — {reason}"
+                )
 
         # Idempotency
         if idempotency_key:

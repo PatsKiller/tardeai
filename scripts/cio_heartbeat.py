@@ -321,7 +321,29 @@ def run_heartbeat(interval_minutes: int = 30, max_actions: int = 5) -> dict[str,
     events_emitted = 0
     try:
         from lib.cio_event_bus import CIOEventBus
+        from lib.cio_semantic_event_key import (
+            SemanticEventDeduplicator,
+            compute_semantic_event_key,
+        )
+
         bus = CIOEventBus()
+        dedup = SemanticEventDeduplicator()
+
+        def _emit_if_new(event_type: str, payload: dict[str, Any],
+                         aggregate: dict[str, Any] | None = None,
+                         **kwargs: Any) -> bool:
+            """Emit event only if its semantic key has not been seen.
+
+            The heartbeat is a recovery/backstop detector — if the primary
+            publisher already emitted this event, skip it.
+            """
+            key = compute_semantic_event_key(
+                event_type, aggregate or payload
+            )
+            if not dedup.check_and_mark(key):
+                return False
+            bus.emit(event_type, payload, semantic_event_key=key, **kwargs)
+            return True
 
         # Portfolio material change
         port_change = next(
@@ -331,10 +353,10 @@ def run_heartbeat(interval_minutes: int = 30, max_actions: int = 5) -> dict[str,
             None,
         )
         if port_change:
-            bus.emit("portfolio.material_change",
-                     {"domain": "portfolio", "change": "DATA_CHANGED"},
-                     source="cio_heartbeat")
-            events_emitted += 1
+            if _emit_if_new("portfolio.material_change",
+                            {"domain": "portfolio", "change": "DATA_CHANGED"},
+                            source="cio_heartbeat"):
+                events_emitted += 1
 
         # Risk heat change
         risk_change = next(
@@ -344,10 +366,10 @@ def run_heartbeat(interval_minutes: int = 30, max_actions: int = 5) -> dict[str,
             None,
         )
         if risk_change:
-            bus.emit("risk.heat_increased",
-                     {"domain": "risk", "change": "changed"},
-                     source="cio_heartbeat")
-            events_emitted += 1
+            if _emit_if_new("risk.heat_increased",
+                            {"domain": "risk", "change": "changed"},
+                            source="cio_heartbeat"):
+                events_emitted += 1
 
         # Allocation drift
         alloc_change = next(
@@ -356,37 +378,37 @@ def run_heartbeat(interval_minutes: int = 30, max_actions: int = 5) -> dict[str,
             None,
         )
         if alloc_change:
-            bus.emit("allocation.drift",
-                     {"domain": "model_portfolio"},
-                     source="cio_heartbeat")
-            events_emitted += 1
+            if _emit_if_new("allocation.drift",
+                            {"domain": "model_portfolio"},
+                            source="cio_heartbeat"):
+                events_emitted += 1
 
         # Behavioral flags
         for bf in behavioral_findings:
-            bus.emit("behavioral.flag_raised",
-                     {"symbol": bf.get("symbol", ""),
-                      "rule": bf.get("rule", ""),
-                      "loss_pct": bf.get("loss_pct"),
-                      "holding_months": bf.get("holding_months")},
-                     source="cio_heartbeat",
-                     priority="HIGH")
-            events_emitted += 1
+            if _emit_if_new("behavioral.flag_raised",
+                            {"symbol": bf.get("symbol", ""),
+                             "rule": bf.get("rule", ""),
+                             "loss_pct": bf.get("loss_pct"),
+                             "holding_months": bf.get("holding_months")},
+                            source="cio_heartbeat",
+                            priority="HIGH"):
+                events_emitted += 1
 
         # Domain stale
         for change in changes:
             if change.get("change_type") == "DOMAIN_WENT_STALE":
-                bus.emit("system.domain_stale",
-                         {"domain": change.get("domain", "")},
-                         source="cio_heartbeat")
-                events_emitted += 1
+                if _emit_if_new("system.domain_stale",
+                                {"domain": change.get("domain", "")},
+                                source="cio_heartbeat"):
+                    events_emitted += 1
 
         # Heartbeat OK (always emit — proves the system is alive)
-        bus.emit("system.heartbeat_ok",
-                 {"domains": len(snapshot.get("domains", {})),
-                  "changes": len(changes),
-                  "behavioral_findings": len(behavioral_findings)},
-                 source="cio_heartbeat", priority="LOW")
-        events_emitted += 1
+        if _emit_if_new("system.heartbeat_ok",
+                        {"domains": len(snapshot.get("domains", {})),
+                         "changes": len(changes),
+                         "behavioral_findings": len(behavioral_findings)},
+                        source="cio_heartbeat", priority="LOW"):
+            events_emitted += 1
 
     except Exception as e:
         print(f"  [cio-hb] Event bus emission failed (non-fatal): "

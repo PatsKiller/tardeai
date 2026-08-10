@@ -292,6 +292,8 @@ class CIOEvent:
     payload: dict[str, Any]
     source: str
     priority: str = "MEDIUM"
+    source_event_id: str = ""
+    semantic_event_key: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -301,6 +303,8 @@ class CIOEvent:
             "payload": self.payload,
             "source": self.source,
             "priority": self.priority,
+            "source_event_id": self.source_event_id,
+            "semantic_event_key": self.semantic_event_key,
         }
 
     @classmethod
@@ -312,6 +316,8 @@ class CIOEvent:
             payload=d.get("payload", {}),
             source=d.get("source", ""),
             priority=d.get("priority", "MEDIUM"),
+            source_event_id=d.get("source_event_id", ""),
+            semantic_event_key=d.get("semantic_event_key", ""),
         )
 
 
@@ -405,8 +411,14 @@ class CIOEventBus:
         payload: dict[str, Any],
         source: str = "cio_heartbeat",
         priority: str | None = None,
+        source_event_id: str = "",
+        semantic_event_key: str = "",
     ) -> CIOEvent:
-        """Emit an immutable event onto the bus. Returns the created event."""
+        """Emit an immutable event onto the bus. Returns the created event.
+
+        source_event_id — preserves provenance of the original event.
+        semantic_event_key — deduplication key computed from business transition.
+        """
         if event_type not in VALID_EVENT_TYPES:
             raise ValueError(
                 f"Unknown event type: {event_type}. "
@@ -419,6 +431,8 @@ class CIOEventBus:
             payload=payload,
             source=source,
             priority=priority or EVENT_PRIORITY.get(event_type, "MEDIUM"),
+            source_event_id=source_event_id,
+            semantic_event_key=semantic_event_key,
         )
         self._append_locked(evt.to_dict())
         return evt

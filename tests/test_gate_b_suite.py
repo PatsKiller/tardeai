@@ -643,6 +643,14 @@ class TestRunWorkerGateB:
         run_id = event["payload"]["run_id"]
         result = run_worker.execute(run_id, force_health_state="CLEAR", force_snapshot={
             "snapshot_id": "snap-test", "content_hash": "abc",
+            "domain_states": {
+                "portfolio": "AVAILABLE",
+                "risk": "AVAILABLE",
+                "health_data_quality": "AVAILABLE",
+                "watch_intelligence": "AVAILABLE",
+                "operator_profile": "AVAILABLE",
+                "open_cio_actions": "AVAILABLE",
+            },
         })
         assert result["run_id"] == run_id
         assert result["status"] in ("COMPLETED", "WAITING_FOR_SPECIALISTS")

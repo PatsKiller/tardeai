@@ -40,12 +40,69 @@ def save_stops(state_dir: Path, stops: Dict[str, Dict]) -> None:
     _stops_path(state_dir).write_text(json.dumps(stops, indent=2))
 
 
+def _publish_stop_mutation(
+    symbol: str,
+    account_id: str,
+    previous_state: Optional[str] = None,
+    new_state: str = "updated",
+    old_stop_price: Optional[float] = None,
+    new_stop_price: Optional[float] = None,
+    notes: str = "",
+) -> None:
+    """Publish a stop mutation event to CIOEventBus after file persistence.
+
+    Best-effort: failures are logged but never raised so the mutation
+    (set/remove) always completes even if the event bus is unavailable.
+    """
+    try:
+        from scripts.lib.cio_mutation_publisher import (
+            publish_stop_triggered,
+            publish_stop_updated,
+            publish_stop_removed,
+        )
+
+        if new_state == "removed":
+            publish_stop_removed(symbol=symbol, account_id=account_id)
+        elif new_state == "created":
+            publish_stop_triggered(
+                symbol=symbol,
+                account_id=account_id,
+                stop_id=f"stop-{symbol.lower()}",
+                previous_state="none",
+                new_state="created",
+                trigger_price=new_stop_price,
+                extra_meta={"notes": notes} if notes else None,
+            )
+        elif old_stop_price is not None and new_stop_price is not None:
+            publish_stop_updated(
+                symbol=symbol,
+                account_id=account_id,
+                old_stop_price=old_stop_price,
+                new_stop_price=new_stop_price,
+                notes=notes,
+            )
+        else:
+            publish_stop_triggered(
+                symbol=symbol,
+                account_id=account_id,
+                stop_id=f"stop-{symbol.lower()}",
+                previous_state=previous_state or "unknown",
+                new_state=new_state,
+            )
+    except Exception:
+        pass  # Event bus is best-effort; never fail a mutation for it
+
+
 def set_stop(state_dir: Path, symbol: str, stop_price: float,
              notes: str = "", trail_pct: float = 0.0,
              account: str = "all") -> Dict:
     """Set or update a stop for a symbol."""
     stops = load_stops(state_dir)
     symbol = symbol.upper().strip()
+
+    previous = stops.get(symbol)
+    old_stop = previous.get("stop") if previous else None
+
     stops[symbol] = {
         "stop":       round(stop_price, 4),
         "trail_pct":  trail_pct,   # % trailing stop (0 = hard stop)
@@ -54,13 +111,38 @@ def set_stop(state_dir: Path, symbol: str, stop_price: float,
         "account":    account,
     }
     save_stops(state_dir, stops)
+
+    # Publish mutation event via CIOEventBus
+    _publish_stop_mutation(
+        symbol=symbol,
+        account_id=account,
+        previous_state="active" if previous else None,
+        new_state="updated" if previous else "created",
+        old_stop_price=old_stop,
+        new_stop_price=round(stop_price, 4),
+        notes=notes,
+    )
+
     return stops[symbol]
 
 
 def remove_stop(state_dir: Path, symbol: str) -> None:
     stops = load_stops(state_dir)
-    stops.pop(symbol.upper().strip(), None)
+    sym = symbol.upper().strip()
+    previous = stops.get(sym)
+    stops.pop(sym, None)
     save_stops(state_dir, stops)
+
+    # Publish removal event via CIOEventBus
+    if previous:
+        _publish_stop_mutation(
+            symbol=sym,
+            account_id=previous.get("account", "all"),
+            previous_state="active",
+            new_state="removed",
+            old_stop_price=previous.get("stop"),
+            new_stop_price=None,
+        )
 
 
 # ── Risk calculations ─────────────────────────────────────────────────────────
