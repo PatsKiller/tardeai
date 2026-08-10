@@ -40,6 +40,37 @@ testing, and demoing the app.
 - **A minimal `.env`** (JSON-only, `ENABLE_TELEGRAM=false`) is enough for local dev; leaving `DB_*` unset
   selects JSON-only mode. Real API keys / Postgres / Ollama are only needed for background LLM + broker work.
 
+### Deployment rules — data freshness
+
+**The pipeline writes to the canonical source tree; the server reads from the release directory.
+Never let them diverge.** The data pipeline (repricer, moomoo sync, portfolio_loader, orchestrator)
+writes to `/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/data/`. The live server reads
+from `~/trade-ai-releases/portfolio-server/CURRENT/data/`. If the release has its own stale copies,
+the header PORTFOLIO / TODAY tiles show days-old values.
+
+- **`scripts/deploy_portfolio_server.sh`** enforces this automatically — after rsync, it replaces
+  `data/portfolios/state/` and `state/data_broker/` with symlinks back to the canonical source.
+- **Never manually copy** `data/portfolios/state/` into a release directory. If you create a release
+  manually, symlink those directories to the canonical source immediately.
+- **If the portfolio totals / top header look stale** (last_repriced is not from today):
+  1. Check that `~/trade-ai-releases/portfolio-server/CURRENT/data/portfolios/state/holdings.json` is a
+     **symlink** (not a regular file): `ls -la` on that path.
+  2. If it's a regular file, it's a stale copy. Restore the symlink:
+     ```bash
+     RELEASE=$(readlink -f ~/trade-ai-releases/portfolio-server/CURRENT)
+     rm -rf "$RELEASE/data/portfolios/state"
+     ln -s /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/data/portfolios/state "$RELEASE/data/portfolios/state"
+     systemctl --user restart portfolio-server
+     ```
+  3. The `portfolio_server.py` startup log prints a CRITICAL warning if `holdings.json` is more than
+     7 days old at boot — check `logs/portfolio_server.log`.
+- **The `state/data_broker/portfolio_snapshot.json`** is a 45s cache aggregated from holdings.json.
+  If the symlinks are correct but the snapshot is stale, delete it — the next `/api/v2/overview` request
+  will recompute from the live holdings:
+  ```bash
+  rm ~/trade-ai-releases/portfolio-server/CURRENT/state/data_broker/portfolio_snapshot.json
+  ```
+
 ### Lint / test / build commands
 
 - **Frontend lint+build**: `npm run build` (runs `check_design_tokens.sh` design-token guard +

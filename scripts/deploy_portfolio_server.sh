@@ -10,11 +10,12 @@
 # The script:
 #   1. Creates a timestamped release under trade-ai-releases/portfolio-server/
 #   2. Rsyncs the canonical source (excluding .venv, .git, logs, __pycache__)
-#   3. Regenerates the integrity manifest via generate_integrity_manifest.py
-#   4. Updates the CURRENT symlink to the new release
-#   5. Updates the systemd drop-in (20-exact-sha-release.conf)
-#   6. Reloads systemd and restarts the portfolio-server service
-#   7. Waits for the health endpoint to respond OK
+#   3. Symlinks pipeline-writable data back to canonical source (NEVER stale copies)
+#   4. Regenerates the integrity manifest via generate_integrity_manifest.py
+#   5. Updates the CURRENT symlink to the new release
+#   6. Updates the systemd drop-in (20-exact-sha-release.conf)
+#   7. Reloads systemd and restarts the portfolio-server service
+#   8. Waits for the health endpoint to respond OK
 #
 
 set -euo pipefail
@@ -67,6 +68,7 @@ echo ""
 if $DRY_RUN; then
     echo "[DRY RUN] Would create release at $RELEASE_DIR"
     echo "[DRY RUN] Would rsync canonical source -> $RELEASE_DIR"
+    echo "[DRY RUN] Would symlink pipeline data to canonical source"
     echo "[DRY RUN] Would regenerate integrity manifest"
     echo "[DRY RUN] Would update CURRENT symlink"
     echo "[DRY RUN] Would update systemd drop-in"
@@ -75,11 +77,11 @@ if $DRY_RUN; then
 fi
 
 # --- Step 1: Create release directory ---
-echo "[1/6] Creating release directory..."
+echo "[1/8] Creating release directory..."
 mkdir -p "$RELEASE_DIR"
 
 # --- Step 2: Rsync canonical source ---
-echo "[2/6] Copying canonical source to release..."
+echo "[2/8] Copying canonical source to release..."
 rsync -a --info=progress2 \
     --exclude='.venv' \
     --exclude='.git' \
@@ -92,8 +94,43 @@ rsync -a --info=progress2 \
     "${RELEASE_DIR}/"
 echo "  Rsync complete."
 
-# --- Step 3: Regenerate integrity manifest ---
-echo "[3/6] Regenerating integrity manifest..."
+# --- Step 3: Symlink pipeline-writable data back to canonical source ---
+# The data pipeline (repricer, moomoo sync, portfolio_loader, orchestrator, etc.)
+# writes to the CANONICAL source tree, never to the release. If the release keeps
+# its own stale copy, the header tiles show days-old values even though the
+# pipeline is producing fresh data.
+#
+# RULE: NEVER deploy data/portfolios/state/ or state/data_broker/ as stale copies.
+# These directories are always symlinked to the canonical source so the server
+# reads the live pipeline output on every request.
+echo "[3/8] Linking pipeline data to canonical source..."
+DATA_DIRS_TO_LINK=(
+    "data/portfolios/state"
+    "state/data_broker"
+)
+for rel in "${DATA_DIRS_TO_LINK[@]}"; do
+    target="${RELEASE_DIR}/${rel}"
+    source="${CANONICAL_SOURCE}/${rel}"
+    if [ -d "$target" ] || [ -f "$target" ]; then
+        rm -rf "$target"
+        ln -s "$source" "$target"
+        echo "  [symlink] ${rel} → canonical"
+    else
+        echo "  [warn] ${rel} not found in release — skipping"
+    fi
+done
+
+# Verify symlinks are valid
+for rel in "${DATA_DIRS_TO_LINK[@]}"; do
+    if [ ! -e "${RELEASE_DIR}/${rel}" ]; then
+        echo "  ERROR: symlink ${rel} is broken!"
+        exit 1
+    fi
+done
+echo "  Data symlinks verified."
+
+# --- Step 4: Regenerate integrity manifest ---
+echo "[4/8] Regenerating integrity manifest..."
 cd "$RELEASE_DIR"
 if "$VENV_PYTHON" scripts/generate_integrity_manifest.py 2>&1; then
     echo "  Manifest regenerated."
@@ -101,13 +138,13 @@ else
     echo "  WARNING: Integrity manifest generation had issues (continuing)"
 fi
 
-# --- Step 4: Update CURRENT symlink ---
-echo "[4/6] Updating CURRENT symlink..."
+# --- Step 5: Update CURRENT symlink ---
+echo "[5/8] Updating CURRENT symlink..."
 ln -sfn "$RELEASE_DIR" "${RELEASES_BASE}/CURRENT"
 echo "  CURRENT -> $RELEASE_DIR"
 
-# --- Step 5: Update systemd drop-in ---
-echo "[5/6] Updating systemd drop-in..."
+# --- Step 6: Update systemd drop-in ---
+echo "[6/8] Updating systemd drop-in..."
 mkdir -p "$(dirname "$SYSTEMD_DROPIN")"
 cat > "$SYSTEMD_DROPIN" << DROPIN
 [Service]
@@ -122,8 +159,8 @@ ExecStart=${VENV_PYTHON} ${RELEASE_DIR}/scripts/portfolio_server.py
 DROPIN
 echo "  Drop-in written."
 
-# --- Step 6: Reload systemd and restart service ---
-echo "[6/6] Reloading systemd and restarting service..."
+# --- Step 7: Reload systemd and restart service ---
+echo "[7/8] Reloading systemd and restarting service..."
 systemctl --user daemon-reload
 systemctl --user restart "$SERVICE_NAME"
 echo "  Service restarted."

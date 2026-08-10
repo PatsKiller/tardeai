@@ -2609,6 +2609,39 @@ if __name__ == "__main__":
         sys.exit(1)
     threading.Thread(target=_compute_watchdog, daemon=True,
                      name="engine-room-compute-watchdog").start()
+    # ── Startup data freshness check ──────────────────────────────────────
+    # Defense-in-depth: verify holdings.json is from a recent session BEFORE
+    # the server starts serving stale data. The deploy script symlinks the
+    # release data/ dir to the canonical pipeline output, but if that breaks
+    # (e.g. a manual rsync that copied files instead of symlinking, or a
+    # filesystem restore), we want a loud warning at startup — not a silent
+    # stale-header discovery three days later.
+    try:
+        from datetime import datetime as _dt, timezone as _tz
+        _h = json.loads(HOLDINGS_PATH.read_text(encoding="utf-8"))
+        _lr = _h.get("last_repriced") or _h.get("as_of") or ""
+        _age_hours = None
+        for _fmt in ("%Y-%m-%d %H:%M:%S ET", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d"):
+            try:
+                _aged = _dt.strptime(str(_lr).strip().split(".")[0][:19], _fmt)
+                _age_hours = round((_dt.now(_tz.utc) - _aged.replace(tzinfo=_tz.utc)).total_seconds() / 3600, 1)
+                break
+            except (ValueError, IndexError):
+                continue
+        if _age_hours is not None:
+            if _age_hours > 168:  # >7 days
+                print(f"[CRITICAL] holdings.json last_repriced={_lr} — data is "
+                      f"{_age_hours:.0f}h old ({_age_hours/24:.0f}d)! "
+                      f"Portfolio header will show STALE values.")
+                print(f"[CRITICAL] Check: ls -la {HOLDINGS_PATH} — is it a symlink to the canonical pipeline output?")
+            elif _age_hours > 26:  # >1 day
+                print(f"[WARN] holdings.json last_repriced={_lr} — data is "
+                      f"{_age_hours:.0f}h old. Check pipeline health or deploy symlinks.")
+        else:
+            print(f"[WARN] Could not parse last_repriced from holdings.json: {str(_lr)[:80]}")
+    except Exception as _fe:
+        print(f"[WARN] Startup freshness check failed: {_fe} (continuing)")
+    # ──────────────────────────────────────────────────────────────────────
     print(f"Portfolio server → http://localhost:{PORT}")
     print(f"Project root: {PROJECT_ROOT}")
     print(f"Holdings: {HOLDINGS_PATH}")
