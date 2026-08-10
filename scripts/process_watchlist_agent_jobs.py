@@ -277,10 +277,17 @@ def _llm(prompt: str, max_tokens: int = 800, task_type: str = "agent_narrative",
          high_impact: bool = False) -> str:
     """Call LLM via router with fallback hierarchy.
 
-    Maria priority tier only: free OAuth lanes (see _prefer_maria_oauth), else local Ollama →
-    Grok → Claude → OpenAI based on task type.
+    Gate-B.2 (Provider Authority Closure): The OAuth priority tier is a LEGACY
+    research facility. It must not present its output as governed financial-agent work.
+    Agent identity in metadata is "legacy_watch_research", NOT any of the six
+    governed professional identities (alex/maria/steph/guardian/ledger/morgan).
+
+    The router path and Ollama fallback are also legacy research facilities.
+    Provider provenance is recorded in _llm._fallback_chain so callers can
+    distinguish declared multi-lane research from silent fallback.
     """
     global _MARIA_OAUTH_RUN_CALLS, _LOCAL_SLOW
+    _llm._fallback_chain = []  # Gate-B.2: explicit provider provenance
     if task_type in ("agent_narrative", "agent_debate") and _prefer_maria_oauth():
         try:
             from llm_consumption import gate_and_generate
@@ -302,7 +309,10 @@ def _llm(prompt: str, max_tokens: int = 800, task_type: str = "agent_narrative",
                         timeout=120,
                         metadata={
                             "symbol": _CURRENT_JOB_SYMBOL,
-                            "agent": "maria",
+                            "agent": "legacy_watch_research",
+                            "governed_financial_agent": False,
+                            "provenance_identity": "LEGACY_WATCH_RESEARCH_NON_PROFESSIONAL",
+                            "declared_lanes": ["grok-oauth", "chatgpt-oauth"],
                             "submitted_from": _CURRENT_JOB_SUBMITTED_FROM,
                         },
                     )
@@ -315,9 +325,12 @@ def _llm(prompt: str, max_tokens: int = 800, task_type: str = "agent_narrative",
                     _llm._last_model = f"{lane}-oauth"
                     _llm._last_provider = lane
                     _llm._last_cost = 0
+                    _llm._fallback_chain = [{"attempted": "grok-oauth"}, {"attempted": "chatgpt-oauth"}, {"used": f"{lane}-oauth"}]
                     return str(out)
         except Exception:
             pass  # fall through to the normal router path
+        _llm._fallback_chain = [{"attempted": "grok-oauth", "failed": True},
+                                 {"attempted": "chatgpt-oauth", "failed": True}]
     try:
         import time as _tt
         _t0 = _tt.time()
@@ -343,6 +356,11 @@ def _llm(prompt: str, max_tokens: int = 800, task_type: str = "agent_narrative",
             _llm._last_model = result.get("model_used", OLLAMA_MODEL)
             _llm._last_provider = result.get("provider", "local")
             _llm._last_cost = result.get("cost_estimate", 0)
+            # Gate-B.2: append router step to fallback chain
+            if not hasattr(_llm, '_fallback_chain') or not _llm._fallback_chain:
+                _llm._fallback_chain = []
+            _llm._fallback_chain.append({"used": f"llm_router:{result.get('provider', 'unknown')}",
+                                          "model": _llm._last_model})
             return result["response"]
         else:
             return f"LLM error: {result.get('error', 'all providers failed')}"
@@ -355,6 +373,13 @@ def _llm(prompt: str, max_tokens: int = 800, task_type: str = "agent_narrative",
             req = urllib.request.Request(OLLAMA_URL, data=payload,
                                          headers={"Content-Type": "application/json"}, method="POST")
             with urllib.request.urlopen(req, timeout=120) as resp:
+                # Gate-B.2: record raw Ollama as explicit fallback (not silent)
+                if not hasattr(_llm, '_fallback_chain') or not _llm._fallback_chain:
+                    _llm._fallback_chain = []
+                _llm._fallback_chain.append({"used": f"raw_ollama:{OLLAMA_MODEL}", "fallback": True})
+                _llm._last_model = OLLAMA_MODEL
+                _llm._last_provider = "local"
+                _llm._last_cost = 0
                 return json.loads(resp.read()).get("message", {}).get("content", "").strip()
         except Exception as e:
             return f"LLM error: {e}"
@@ -386,15 +411,25 @@ def _strip_local_tokens(prompt: str) -> str:
 
 
 def _synthesis_llm(prompt: str, max_tokens: int = 2000) -> str:
-    """Free Grok OAuth → local gemma fallback. Records the ACTUAL model on _llm._last_model so the
-    stored model_used is truthful (the old path hard-coded OLLAMA_MODEL regardless of what ran)."""
+    """Declared multi-lane CIO synthesis (Gate-B.2): Grok OAuth primary, local gemma as
+    explicitly declared lane (not silent fallback). Both lanes are free. CIO authority
+    is gated by cio_legacy_watch_gate.py — this function produces LEGACY_CIO_REVIEW,
+    never AUTHORITATIVE_CIO_ACTION.
+
+    Provider provenance recorded on _llm._fallback_chain."""
+    _llm._fallback_chain = []
     try:
         import llm_lane
         if llm_lane.available("grok"):
             out = llm_lane.generate(_strip_local_tokens(prompt), lane="grok", timeout=120)
             if out and not str(out).startswith("LLM error") and not _is_refusal(out):
                 _llm._last_model = "grok-3-mini"; _llm._last_provider = "grok-oauth"; _llm._last_cost = 0
+                _llm._fallback_chain = [{"used": "grok-oauth", "model": "grok-3-mini",
+                                          "declared_lanes": ["grok-oauth", "local-gemma"]}]
                 return out
+        # Gate-B.2: declared fallback lane (not silent)
+        _llm._fallback_chain = [{"attempted": "grok-oauth", "failed": True},
+                                 {"used": "local-gemma", "declared_lanes": ["grok-oauth", "local-gemma"]}]
     except Exception:
         pass
     # fallback: local gemma via the existing router/_llm path
@@ -429,7 +464,11 @@ def _rec_from(raw):
 
 
 def _synthesis_lanes(prompt: str, lanes=None, max_tokens: int = 2000, manual_trigger: bool = False):
-    """Run CIO final synthesis on selected free-OAuth lanes and reconcile.
+    """Declared multi-lane CIO synthesis (Gate-B.2): Grok + ChatGPT OAuth cross-check
+    with explicit reconciliation. On dual-lane failure, local gemma is a declared fallback
+    lane (not silent). CIO authority gated by cio_legacy_watch_gate.py — output is
+    LEGACY_CIO_REVIEW, never AUTHORITATIVE_CIO_ACTION.
+
     lanes: None → grok+chatgpt (cron default), ('grok',), ('chatgpt',), or both.
     manual_trigger: route via watchlist_cio_synthesis consumption gate (Manual mode safe)."""
     global _dual_chatgpt_count
@@ -476,7 +515,8 @@ def _synthesis_lanes(prompt: str, lanes=None, max_tokens: int = 2000, manual_tri
         except Exception:
             pass
     meta = {"grok": ({"recommendation": grok_rec, "confidence": grok_conf} if grok_rec else None),
-            "chatgpt": ({"recommendation": chatgpt_rec, "confidence": chatgpt_conf} if chatgpt_rec else None)}
+            "chatgpt": ({"recommendation": chatgpt_rec, "confidence": chatgpt_conf} if chatgpt_rec else None),
+            "declared_lanes": want}  # Gate-B.2: explicit multi-lane declaration
     if grok_rec and chatgpt_rec:
         if grok_rec == chatgpt_rec:
             meta.update(agree=True, consensus=grok_rec, consensus_confidence=round(max(grok_conf, chatgpt_conf), 2))
@@ -497,14 +537,17 @@ def _synthesis_lanes(prompt: str, lanes=None, max_tokens: int = 2000, manual_tri
     if manual_trigger:
         meta.update(agree=None, consensus=None, consensus_confidence=None, error="oauth_lane_unavailable")
         return "LLM error: requested OAuth lane(s) unavailable or blocked", meta
+    # Gate-B.2: declared fallback to local gemma (not silent)
     out = _llm(prompt, max_tokens=max_tokens, task_type="cio_synthesis", high_impact=False)
     _llm._last_model = getattr(_llm, "_last_model", OLLAMA_MODEL) or OLLAMA_MODEL
-    meta.update(agree=None, consensus=None, consensus_confidence=None)
+    meta.update(agree=None, consensus=None, consensus_confidence=None,
+                fallback_lane="local-gemma", declared_fallback=True)
     return out, meta
 
 
 def _synthesis_dual(prompt: str, max_tokens: int = 2000):
-    """Cron/automated path — both lanes when available, local gemma fallback."""
+    """Gate-B.2: Declared multi-lane CIO research — grok+chatgpt OAuth dual consensus,
+    local gemma as declared fallback. Output classifies LEGACY_CIO_REVIEW."""
     return _synthesis_lanes(prompt, lanes=None, max_tokens=max_tokens, manual_trigger=False)
 
 
