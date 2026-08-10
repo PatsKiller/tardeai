@@ -29,8 +29,11 @@ from typing import Any, Optional
 VALID_EVENT_TYPES = frozenset({
     "CIO_RUN_CREATED",
     "CIO_RUN_STARTED",
+    "CIO_RUN_RESUMED",
     "CIO_RUN_HEALTH_CHECKED",
     "CIO_RUN_EVIDENCE_BUILT",
+    "CIO_RUN_WAITING_SPECIALISTS",
+    "CIO_RUN_WAITING_HERMES",
     "CIO_RUN_SPECIALIST_REQUESTED",
     "CIO_RUN_SPECIALIST_COMPLETED",
     "CIO_RUN_HERMES_REQUESTED",
@@ -55,6 +58,8 @@ RUN_STATUSES = frozenset({
     "QUEUED",
     "HEALTH_CHECK",
     "EVIDENCE_BUILD",
+    "WAITING_FOR_SPECIALISTS",
+    "WAITING_FOR_HERMES",
     "SPECIALIST_REVIEW",
     "HERMES_CHALLENGE",
     "CIO_SYNTHESIS",
@@ -73,10 +78,12 @@ TERMINAL_STATUSES = frozenset({"COMPLETED", "FAILED", "CANCELLED", "EXPIRED"})
 STATE_TRANSITIONS: dict[str, set[str]] = {
     "QUEUED": {"HEALTH_CHECK", "CANCELLED", "EXPIRED"},
     "HEALTH_CHECK": {"EVIDENCE_BUILD", "BLOCKED", "FAILED", "CANCELLED"},
-    "EVIDENCE_BUILD": {"SPECIALIST_REVIEW", "CIO_SYNTHESIS", "BLOCKED", "FAILED", "CANCELLED", "EXPIRED"},
-    "SPECIALIST_REVIEW": {"HERMES_CHALLENGE", "CIO_SYNTHESIS", "BLOCKED", "FAILED", "CANCELLED", "EXPIRED"},
-    "HERMES_CHALLENGE": {"CIO_SYNTHESIS", "BLOCKED", "FAILED", "CANCELLED", "EXPIRED"},
-    "CIO_SYNTHESIS": {"ACTION_WRITE", "COMPLETED", "BLOCKED", "FAILED", "CANCELLED", "EXPIRED"},
+    "EVIDENCE_BUILD": {"WAITING_FOR_SPECIALISTS", "WAITING_FOR_HERMES", "SPECIALIST_REVIEW", "CIO_SYNTHESIS", "BLOCKED", "FAILED", "CANCELLED", "EXPIRED"},
+    "WAITING_FOR_SPECIALISTS": {"EVIDENCE_BUILD", "CIO_SYNTHESIS", "BLOCKED", "FAILED", "CANCELLED", "EXPIRED"},
+    "WAITING_FOR_HERMES": {"EVIDENCE_BUILD", "CIO_SYNTHESIS", "BLOCKED", "FAILED", "CANCELLED", "EXPIRED"},
+    "SPECIALIST_REVIEW": {"WAITING_FOR_SPECIALISTS", "HERMES_CHALLENGE", "CIO_SYNTHESIS", "BLOCKED", "FAILED", "CANCELLED", "EXPIRED"},
+    "HERMES_CHALLENGE": {"WAITING_FOR_HERMES", "CIO_SYNTHESIS", "BLOCKED", "FAILED", "CANCELLED", "EXPIRED"},
+    "CIO_SYNTHESIS": {"ACTION_WRITE", "HERMES_CHALLENGE", "WAITING_FOR_SPECIALISTS", "WAITING_FOR_HERMES", "COMPLETED", "BLOCKED", "FAILED", "CANCELLED", "EXPIRED"},
     "ACTION_WRITE": {"NOTIFICATION_ENQUEUE", "COMPLETED", "BLOCKED", "FAILED", "CANCELLED", "EXPIRED"},
     "NOTIFICATION_ENQUEUE": {"COMPLETED", "BLOCKED", "FAILED", "CANCELLED", "EXPIRED"},
     "COMPLETED": set(),
@@ -90,6 +97,8 @@ TRANSITION_EVENT_MAP: dict[str, str] = {
     "QUEUED": "CIO_RUN_CREATED",
     "HEALTH_CHECK": "CIO_RUN_HEALTH_CHECKED",
     "EVIDENCE_BUILD": "CIO_RUN_EVIDENCE_BUILT",
+    "WAITING_FOR_SPECIALISTS": "CIO_RUN_WAITING_SPECIALISTS",
+    "WAITING_FOR_HERMES": "CIO_RUN_WAITING_HERMES",
     "SPECIALIST_REVIEW": "CIO_RUN_SPECIALIST_REQUESTED",
     "HERMES_CHALLENGE": "CIO_RUN_HERMES_REQUESTED",
     "CIO_SYNTHESIS": "CIO_RUN_SYNTHESIS_STARTED",
@@ -349,6 +358,10 @@ class CIORunStore:
 
         if etype == "CIO_RUN_STARTED":
             run["started_at"] = event["occurred_at"]
+        elif etype == "CIO_RUN_RESUMED":
+            run["status"] = "EVIDENCE_BUILD"
+            run["resumed_at"] = event["occurred_at"]
+            run["resume_count"] = run.get("resume_count", 0) + 1
         elif etype == "CIO_RUN_HEALTH_CHECKED":
             run["status"] = "HEALTH_CHECK"
             run["health_decision_id"] = payload.get("health_decision_id")
@@ -359,6 +372,12 @@ class CIORunStore:
             run["input_snapshot_id"] = payload.get("input_snapshot_id")
             if payload.get("health_decision_id"):
                 run["health_decision_id"] = payload["health_decision_id"]
+        elif etype == "CIO_RUN_WAITING_SPECIALISTS":
+            run["status"] = "WAITING_FOR_SPECIALISTS"
+            run["waiting_since"] = event["occurred_at"]
+        elif etype == "CIO_RUN_WAITING_HERMES":
+            run["status"] = "WAITING_FOR_HERMES"
+            run["waiting_since"] = event["occurred_at"]
         elif etype == "CIO_RUN_SPECIALIST_REQUESTED":
             run["status"] = "SPECIALIST_REVIEW"
             run["specialist_requests"].append(payload.get("handoff_id"))
@@ -569,6 +588,45 @@ class CIORunStore:
         return self.transition(
             run_id, next_status,
             input_snapshot_id=input_snapshot_id,
+            actor=actor,
+        )
+
+    def wait_for_specialists(
+        self, run_id: str, outstanding_handoff_ids: list[str], *, actor: str = "system"
+    ) -> dict[str, Any]:
+        """Transition run to WAITING_FOR_SPECIALISTS. Alex call count = 0, action = 0."""
+        return self.transition(
+            run_id, "WAITING_FOR_SPECIALISTS",
+            outstanding_handoff_ids=outstanding_handoff_ids,
+            actor=actor,
+        )
+
+    def wait_for_hermes(
+        self, run_id: str, outstanding_challenge_ids: list[str], *, actor: str = "system"
+    ) -> dict[str, Any]:
+        """Transition run to WAITING_FOR_HERMES. No Alex synthesis until resolved."""
+        return self.transition(
+            run_id, "WAITING_FOR_HERMES",
+            outstanding_challenge_ids=outstanding_challenge_ids,
+            actor=actor,
+        )
+
+    def resume(
+        self, run_id: str, resume_reason: str, *, actor: str = "system"
+    ) -> dict[str, Any]:
+        """Resume a run from WAITING_FOR_SPECIALISTS or WAITING_FOR_HERMES.
+        
+        Replays state back to EVIDENCE_BUILD so the worker can re-evaluate
+        with newly completed specialists/challenges.
+        """
+        current = self.get_run(run_id)
+        if current is None:
+            raise ValueError(f"Run not found: {run_id}")
+        if current["status"] not in ("WAITING_FOR_SPECIALISTS", "WAITING_FOR_HERMES"):
+            raise ValueError(f"Cannot resume run in status: {current['status']}")
+        return self.transition(
+            run_id, "EVIDENCE_BUILD",
+            resume_reason=resume_reason,
             actor=actor,
         )
 

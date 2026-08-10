@@ -20,7 +20,7 @@ import json
 import os
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -90,6 +90,7 @@ VALID_EVENT_TYPES = frozenset({
     "CIO_WAKE_CLAIMED",
     "CIO_WAKE_DISPATCHED",
     "CIO_WAKE_ACKNOWLEDGED",
+    "CIO_WAKE_IN_FLIGHT",
     "CIO_WAKE_RELEASED",
     "CIO_WAKE_EXPIRED",
     "CIO_WAKE_CANCELLED",
@@ -103,6 +104,7 @@ STATUS_EVENTS: dict[str, str] = {
     "CIO_WAKE_CLAIMED": "CLAIMED",
     "CIO_WAKE_DISPATCHED": "DISPATCHED",
     "CIO_WAKE_ACKNOWLEDGED": "ACKNOWLEDGED",
+    "CIO_WAKE_IN_FLIGHT": "IN_FLIGHT",
     "CIO_WAKE_RELEASED": "PENDING",
     "CIO_WAKE_EXPIRED": "EXPIRED",
     "CIO_WAKE_CANCELLED": "CANCELLED",
@@ -113,8 +115,9 @@ STATUS_EVENTS: dict[str, str] = {
 TRANSITIONS: dict[str, set[str]] = {
     "PENDING": {"CLAIMED", "CANCELLED", "EXPIRED"},
     "CLAIMED": {"DISPATCHED", "RELEASED", "EXPIRED", "CANCELLED"},
-    "DISPATCHED": {"ACKNOWLEDGED", "EXPIRED", "CANCELLED", "RETRY_PENDING"},
-    "ACKNOWLEDGED": {"COMPLETED", "EXPIRED", "CANCELLED"},
+    "DISPATCHED": {"IN_FLIGHT", "ACKNOWLEDGED", "EXPIRED", "CANCELLED", "RETRY_PENDING"},
+    "ACKNOWLEDGED": {"IN_FLIGHT", "EXPIRED", "CANCELLED"},
+    "IN_FLIGHT": {"COMPLETED", "EXPIRED", "CANCELLED", "RETRY_PENDING"},
     "RETRY_PENDING": {"CLAIMED", "EXPIRED", "CANCELLED"},
     "COMPLETED": set(),
     "EXPIRED": set(),
@@ -123,12 +126,16 @@ TRANSITIONS: dict[str, set[str]] = {
 
 TERMINAL = frozenset({"COMPLETED", "EXPIRED", "CANCELLED"})
 
+# Non-terminal but active states — wake is linked to a live run
+ACTIVE = frozenset({"DISPATCHED", "ACKNOWLEDGED", "IN_FLIGHT"})
+
 TRIGGER_TYPES = frozenset({
     "SCHEDULE_DUE",
     "ACTION_FOLLOWUP_DUE",
     "HEALTH_BLOCK_STARTED",
     "HEALTH_BLOCK_CLEARED",
     "HANDOFF_COMPLETED",
+    "HERMES_CHALLENGE_RESOLVED",
 })
 
 WAKE_REASON_CODES = frozenset({
@@ -300,6 +307,8 @@ class CIOWakeJobStore:
             "parent_handoff_id": wake_payload.get("parent_handoff_id"),
             "health_decision_id": wake_payload.get("health_decision_id"),
             "source_snapshot_id": wake_payload.get("source_snapshot_id"),
+            "wake_intent": wake_payload.get("wake_intent", "NEW_RUN"),
+            "target_run_id": wake_payload.get("target_run_id"),
             "idempotency_key": idempotency_key,
         }
 
@@ -320,11 +329,16 @@ class CIOWakeJobStore:
         self,
         wake_job_id: str,
         claim_token: str,
+        lease_seconds: int = 300,
         actor_id: str = "cio_detector",
         actor_type: str = "system",
         authority: str = "system",
     ) -> dict[str, Any]:
-        """Claim a wake job for processing."""
+        """Claim a wake job for processing with a time-limited lease.
+        
+        The lease expires after lease_seconds (default 5 minutes). Expired
+        leases can be recovered via recover_expired_leases().
+        """
         wake = self.get_wake_job(wake_job_id)
         if wake is None:
             raise ValueError(f"Wake job not found: {wake_job_id}")
@@ -334,10 +348,13 @@ class CIOWakeJobStore:
         if "CLAIMED" not in allowed:
             raise ValueError(f"Cannot claim wake in status: {current_status}")
 
+        lease_expires = (datetime.now(timezone.utc) + timedelta(seconds=lease_seconds)).isoformat()
+
         payload: dict[str, Any] = {
             "wake_job_id": wake_job_id,
             "claim_token": claim_token,
             "claimed_at": datetime.now(timezone.utc).isoformat(),
+            "lease_expires_at": lease_expires,
         }
 
         event = build_event(
@@ -356,11 +373,18 @@ class CIOWakeJobStore:
     def dispatch(
         self,
         wake_job_id: str,
+        linked_run_id: str = "",
+        wake_intent: str = "NEW_RUN",
         actor_id: str = "cio_detector",
         actor_type: str = "system",
         authority: str = "system",
     ) -> dict[str, Any]:
-        """Dispatch a claimed wake job for execution."""
+        """Dispatch a claimed wake job for execution.
+        
+        Args:
+            linked_run_id: The CIO run ID associated with this wake.
+            wake_intent: NEW_RUN (creates a new run) or RESUME_RUN (resumes existing).
+        """
         wake = self.get_wake_job(wake_job_id)
         if wake is None:
             raise ValueError(f"Wake job not found: {wake_job_id}")
@@ -373,6 +397,8 @@ class CIOWakeJobStore:
         payload: dict[str, Any] = {
             "wake_job_id": wake_job_id,
             "dispatched_at": datetime.now(timezone.utc).isoformat(),
+            "linked_run_id": linked_run_id,
+            "wake_intent": wake_intent,
         }
 
         event = build_event(
@@ -412,6 +438,46 @@ class CIOWakeJobStore:
 
         event = build_event(
             event_type="CIO_WAKE_ACKNOWLEDGED",
+            stream_id=wake_job_id,
+            payload=payload,
+            actor_type=actor_type,
+            actor_id=actor_id,
+            authority=authority,
+            prev_event_hash="__TO_BE_SET_UNDER_LOCK__",
+        )
+
+        self._append_event(event)
+        return event
+
+    def set_in_flight(
+        self,
+        wake_job_id: str,
+        actor_id: str = "cio_detector",
+        actor_type: str = "system",
+        authority: str = "system",
+    ) -> dict[str, Any]:
+        """Mark a dispatched wake as IN_FLIGHT — the run worker has started execution.
+        
+        This transition separates dispatch (claim/run allocation) from execution.
+        IN_FLIGHT means the run is actively executing. Only when the run reaches
+        a terminal state should the wake transition to COMPLETED.
+        """
+        wake = self.get_wake_job(wake_job_id)
+        if wake is None:
+            raise ValueError(f"Wake job not found: {wake_job_id}")
+
+        current_status = wake["current_status"]
+        allowed = TRANSITIONS.get(current_status, set())
+        if "IN_FLIGHT" not in allowed:
+            raise ValueError(f"Cannot set wake IN_FLIGHT from status: {current_status}")
+
+        payload: dict[str, Any] = {
+            "wake_job_id": wake_job_id,
+            "in_flight_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+        event = build_event(
+            event_type="CIO_WAKE_IN_FLIGHT",
             stream_id=wake_job_id,
             payload=payload,
             actor_type=actor_type,
@@ -495,6 +561,31 @@ class CIOWakeJobStore:
         self._append_event(event)
         return event
 
+    def recover_expired_leases(self, stale_seconds: int = 300) -> list[str]:
+        """Release expired claims/dispatches back to PENDING.
+        
+        Returns list of wake_job_ids that were recovered.
+        """
+        recovered: list[str] = []
+        now = datetime.now(timezone.utc)
+        for wake in self.list_wakes():
+            status = wake.get("current_status", "")
+            if status in ("CLAIMED", "DISPATCHED"):
+                lease_at = wake.get("lease_expires_at") or wake.get("dispatched_at", "")
+                if not lease_at:
+                    continue
+                try:
+                    expiry = datetime.fromisoformat(lease_at)
+                    if now > expiry + timedelta(seconds=stale_seconds):
+                        try:
+                            self.release(wake["wake_job_id"], actor_id="lease_recovery")
+                            recovered.append(wake["wake_job_id"])
+                        except ValueError:
+                            pass
+                except (ValueError, TypeError):
+                    pass
+        return recovered
+
     # ── Validation helpers ─────────────────────────────────────────────────
 
     def _check_idempotency(
@@ -565,6 +656,9 @@ class CIOWakeJobStore:
                     "parent_handoff_id": payload.get("parent_handoff_id"),
                     "health_decision_id": payload.get("health_decision_id"),
                     "source_snapshot_id": payload.get("source_snapshot_id"),
+                    "wake_intent": payload.get("wake_intent", "NEW_RUN"),
+                    "target_run_id": payload.get("target_run_id"),
+                    "linked_run_id": None,
                     "idempotency_key": payload.get("idempotency_key", ""),
                     "updated_at": event["occurred_at"],
                 })
@@ -577,10 +671,15 @@ class CIOWakeJobStore:
                 if event_type == "CIO_WAKE_CLAIMED":
                     state["claim_token"] = payload.get("claim_token")
                     state["claimed_at"] = payload.get("claimed_at")
+                    state["lease_expires_at"] = payload.get("lease_expires_at")
                 elif event_type == "CIO_WAKE_DISPATCHED":
                     state["dispatched_at"] = payload.get("dispatched_at")
+                    state["linked_run_id"] = payload.get("linked_run_id")
+                    state["wake_intent"] = payload.get("wake_intent", "NEW_RUN")
                 elif event_type == "CIO_WAKE_ACKNOWLEDGED":
                     state["acknowledged_at"] = payload.get("acknowledged_at")
+                elif event_type == "CIO_WAKE_IN_FLIGHT":
+                    state["in_flight_at"] = payload.get("in_flight_at")
                 elif event_type == "CIO_WAKE_RELEASED":
                     state["released_at"] = payload.get("released_at")
                 elif event_type == "CIO_WAKE_COMPLETED":

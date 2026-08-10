@@ -494,6 +494,15 @@ class AgentHandoffQueue:
             if field not in handoff:
                 raise ValueError(f"Missing required field: {field}")
 
+        # Gate-B: Parent run linkage required for CIO-originated handoffs
+        from_agent = handoff["from_agent"]
+        parent_run_id = handoff.get("parent_run_id", "")
+        if from_agent == "alex" and not parent_run_id:
+            raise ValueError(
+                "parent_run_id is required for CIO-originated handoffs "
+                "(from_agent='alex'). Handoffs must be linked to a CIO run."
+            )
+
         # Validate agents exist
         self._validate_agent(handoff["from_agent"])
         self._validate_agent(handoff["to_agent"])

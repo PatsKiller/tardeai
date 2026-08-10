@@ -1,20 +1,19 @@
 """
-CIO Run Worker — Core autonomous advisory cycle executor.
+CIO Run Worker — Executes a specific CIO run by run_id.
 
-P-2.6 core component. When a wake job is dispatched, this worker:
-  1. Creates/opens a CIO run
-  2. Runs health boundary check
-  3. Builds canonical financial snapshot
-  4. Routes to specialists as needed (Maria, Steph, Guardian, Ledger)
-  5. Optionally requests Hermes challenge (material events only)
-  6. Calls Alex for governed CIO synthesis
-  7. Creates/updates CIO actions through deterministic service
-  8. Enqueues shadow notifications
-  9. Completes the run
+Gate-B component. CIOWakeDispatcher owns wake lifecycle and creates runs.
+CIORunWorker executes a supplied run_id — it does NOT poll wakes or create runs.
 
-Enforces ALL budgets: calls, cost, time, specialists, hermes.
-NEVER executes broker orders, changes risk limits, or performs infrastructure
-remediation. In shadow mode, all notifications are enqueued but not delivered live.
+Advisory cycle:
+  1. Open run projection from CIORunStore
+  2. Determine current state (fresh QUEUED or resumed EVIDENCE_BUILD)
+  3. If fresh: health check → evidence build
+  4. Route specialists if needed → WAITING_FOR_SPECIALISTS (exit) or continue
+  5. Hermes challenge if material → WAITING_FOR_HERMES (exit) or continue
+  6. CIO synthesis (Alex, governed)
+  7. Write actions → enqueue notifications
+  8. Complete run
+  9. On terminal: notify CIOWakeDispatcher to complete associated wake
 
 Authority: advisory_only, no broker/risk/execution/2FA tools.
 """
@@ -25,7 +24,7 @@ import json
 import logging
 import time
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional, Callable
 
@@ -58,14 +57,13 @@ FORBIDDEN_TOOLS = frozenset({
     "authority_escalate",
 })
 
-# Default budget limits per run type
 RUN_BUDGETS: dict[str, dict[str, Any]] = {
     "daily_brief": {
         "name": "daily_brief",
         "max_provider_calls": 4,
         "max_cost_usd": 0.02,
         "max_specialist_calls": 2,
-        "max_hermes_challenges": 1,  # 1 to work around >= check; worker enforces 0 actual
+        "max_hermes_challenges": 1,
         "max_wall_time_minutes": 5,
     },
     "weekly_review": {
@@ -118,11 +116,10 @@ RUN_BUDGETS: dict[str, dict[str, Any]] = {
     },
 }
 
-# Hermes policy — only trigger for materiality >= this threshold
 HERMES_MATERIALITY_THRESHOLD = 0.7
 
 
-def resolve_run_budget(trigger_type: str, wake_data: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+def resolve_run_budget(trigger_type: str) -> dict[str, Any]:
     """Resolve the budget profile for a run based on trigger type."""
     mapping = {
         "SCHEDULED_DAILY": "daily_brief",
@@ -140,51 +137,40 @@ def resolve_run_budget(trigger_type: str, wake_data: Optional[dict[str, Any]] = 
 
 
 class CIORunWorker:
-    """Executes a single autonomous CIO advisory cycle.
+    """Executes a single CIO advisory cycle for a specific run_id.
 
-    In shadow mode, this worker:
-    - Uses only deterministic/mock evidence
-    - Enqueues notifications but does NOT deliver live
-    - Records all actions through the P-1.3 action ledger
-    - Never executes broker/risk/2FA tools
-
-    In live mode (future, requires authorization):
-    - Would use real governed model bridge for synthesis
-    - Would deliver notifications via real Telegram adapter
+    The run is created by CIOWakeDispatcher. The worker only executes —
+    it never creates runs or polls wakes.
     """
 
     def __init__(
         self,
         *,
         run_store: Any = None,
-        wake_store: Any = None,
         health_boundary: Any = None,
         action_ledger: Any = None,
         notification_outbox: Any = None,
         handoff_queue: Any = None,
         hermes_queue: Any = None,
         operator_profile: Any = None,
-        mode: str = "shadow",  # "shadow" or "live" (live requires AUTHORIZE_P2_SHADOW_AUTONOMY)
+        mode: str = "shadow",
         synthesis_fn: Optional[Callable] = None,
         specialist_fn: Optional[Callable] = None,
         hermes_fn: Optional[Callable] = None,
     ):
         self.run_store = run_store
-        self.wake_store = wake_store
         self.health_boundary = health_boundary
         self.action_ledger = action_ledger
         self.notification_outbox = notification_outbox
         self.handoff_queue = handoff_queue
         self.hermes_queue = hermes_queue
         self.operator_profile = operator_profile
-        self.mode = mode  # "shadow" or "live"
+        self.mode = mode
 
-        # Injectable mock/fixture functions for testing
         self._synthesis_fn = synthesis_fn
         self._specialist_fn = specialist_fn
         self._hermes_fn = hermes_fn
 
-        # Per-run state
         self._run_id: Optional[str] = None
         self._call_count: int = 0
         self._cost_accrued: float = 0.0
@@ -194,29 +180,48 @@ class CIORunWorker:
 
     def execute(
         self,
-        wake_job: dict[str, Any],
+        run_id: str,
         *,
-        force_health_state: Optional[str] = None,  # For testing
-        force_snapshot: Optional[dict[str, Any]] = None,  # For testing
+        force_health_state: Optional[str] = None,
+        force_snapshot: Optional[dict[str, Any]] = None,
     ) -> dict[str, Any]:
-        """Execute the full CIO advisory cycle for a wake job.
+        """Execute the CIO advisory cycle for a specific run_id.
 
-        Returns a result dict with run_id, status, actions_created, etc.
+        The run must already exist (created by CIOWakeDispatcher).
+        Handles both fresh QUEUED runs and resumed EVIDENCE_BUILD runs.
         """
         self._start_time = time.time()
         self._call_count = 0
         self._cost_accrued = 0.0
+        self._run_id = run_id
 
-        wake_job_id = wake_job.get("wake_job_id", "unknown")
-        trigger_type = wake_job.get("trigger_type", "SYSTEM")
-        wake_priority = wake_job.get("priority", "NORMAL").upper()
+        # Load run projection
+        if self.run_store is None:
+            return {
+                "run_id": run_id,
+                "mode": self.mode,
+                "status": "FAILED",
+                "error": "No run_store available",
+            }
+
+        run = self.run_store.get_run(run_id)
+        if run is None:
+            return {
+                "run_id": run_id,
+                "mode": self.mode,
+                "status": "FAILED",
+                "error": f"Run not found: {run_id}",
+            }
+
+        current_status = run.get("status", "QUEUED")
+        trigger_type = run.get("trigger_type", "SYSTEM")
 
         result: dict[str, Any] = {
-            "wake_job_id": wake_job_id,
+            "run_id": run_id,
             "mode": self.mode,
+            "resume": current_status not in ("QUEUED",),
             "started_at": datetime.now(timezone.utc).isoformat(),
             "status": "STARTED",
-            "run_id": None,
             "actions_created": [],
             "notifications_enqueued": [],
             "specialist_handoffs": [],
@@ -228,73 +233,87 @@ class CIORunWorker:
         }
 
         try:
-            # Step 1: Resolve budget using the mapped run trigger type
-            run_trigger = self._map_trigger(trigger_type)
-            budget = resolve_run_budget(run_trigger)
+            budget = resolve_run_budget(trigger_type)
             result["budget_profile"] = budget.get("name", "default")
 
-            # Step 2: Create CIO run (if we have a run store)
-            run_id = self._ensure_run(
-                wake_job, trigger_type, budget, wake_priority
-            )
-            self._run_id = run_id
-            result["run_id"] = run_id
-
-            # Step 3: Health boundary check
-            health_result = self._check_health(force_health_state)
-            if health_result["blocked"]:
-                result["status"] = "BLOCKED_BY_HEALTH"
-                result["blocked_by"] = "HEALTH_BOUNDARY"
-                # Record block in run store
-                if self.run_store and run_id:
+            # Step 1: Health check (fresh runs only)
+            if current_status == "QUEUED":
+                self.run_store.start(run_id, actor="cio_run_worker")
+                health_result = self._check_health(force_health_state)
+                if health_result["blocked"]:
+                    result["status"] = "BLOCKED_BY_HEALTH"
+                    result["blocked_by"] = "HEALTH_BOUNDARY"
                     try:
-                        self.run_store.block(run_id, f"HEALTH:{health_result['state']}",
-                                           actor="cio_run_worker")
+                        self.run_store.block(
+                            run_id, f"HEALTH:{health_result['state']}",
+                            actor="cio_run_worker",
+                        )
                     except Exception:
                         pass
-                return result
+                    return result
+                result["health_state"] = health_result["state"]
+                result["health_decision_id"] = health_result.get("decision_id")
 
-            result["health_state"] = health_result["state"]
-            result["health_decision_id"] = health_result.get("decision_id")
+            # Step 2: Build financial snapshot (fresh runs after health, or resumed)
+            if current_status in ("QUEUED", "EVIDENCE_BUILD"):
+                snapshot_result = self._build_snapshot(force_snapshot)
+                result["snapshot_id"] = snapshot_result.get("snapshot_id")
+                result["snapshot_hash"] = snapshot_result.get("content_hash")
 
-            # Step 4: Build financial snapshot
-            snapshot_result = self._build_snapshot(force_snapshot)
-            result["snapshot_id"] = snapshot_result.get("snapshot_id")
-            result["snapshot_hash"] = snapshot_result.get("content_hash")
+                if self.run_store and snapshot_result.get("snapshot_id"):
+                    try:
+                        self.run_store.evidence_built(
+                            run_id,
+                            snapshot_result["snapshot_id"],
+                            actor="cio_run_worker",
+                        )
+                    except Exception:
+                        pass
+            else:
+                snapshot_result = {}
 
-            # Record snapshot binding in run
-            if self.run_store and run_id and snapshot_result.get("snapshot_id"):
-                try:
-                    self.run_store.evidence_built(
-                        run_id,
-                        snapshot_result["snapshot_id"],
-                        actor="cio_run_worker",
-                    )
-                except Exception:
-                    pass
-
-            # Step 5: Route to specialists if needed
-            specialist_result = self._route_specialists(wake_job, snapshot_result)
+            # Step 3: Route specialists if needed
+            required_domains = run.get("required_domains", [])
+            specialist_result = self._route_specialists(run_id, required_domains, snapshot_result)
             result["specialist_handoffs"] = specialist_result.get("handoff_ids", [])
 
-            # Step 6: Hermes challenge (material events only)
-            hermes_result = self._maybe_challenge(wake_job, snapshot_result)
+            # Check if we need to wait for specialists
+            if specialist_result.get("should_wait"):
+                self.run_store.wait_for_specialists(
+                    run_id,
+                    specialist_result["handoff_ids"],
+                    actor="cio_run_worker",
+                )
+                result["status"] = "WAITING_FOR_SPECIALISTS"
+                return result
+
+            # Step 4: Hermes challenge (material events only)
+            hermes_result = self._maybe_challenge(run_id, run, snapshot_result)
             result["hermes_challenges"] = hermes_result.get("challenge_ids", [])
 
-            # Step 7: Governed CIO synthesis (via Alex)
-            synthesis_result = self._cio_synthesis(wake_job, snapshot_result, specialist_result, hermes_result)
+            if hermes_result.get("should_wait"):
+                self.run_store.wait_for_hermes(
+                    run_id,
+                    hermes_result["challenge_ids"],
+                    actor="cio_run_worker",
+                )
+                result["status"] = "WAITING_FOR_HERMES"
+                return result
+
+            # Step 5: Governed CIO synthesis (via Alex)
+            synthesis_result = self._cio_synthesis(run, snapshot_result, specialist_result, hermes_result)
             result["synthesis_artifact_id"] = synthesis_result.get("artifact_id")
 
-            # Step 8: Create/update CIO actions
+            # Step 6: Create/update CIO actions
             action_result = self._write_actions(synthesis_result)
             result["actions_created"] = action_result.get("action_ids", [])
 
-            # Step 9: Enqueue shadow notifications
+            # Step 7: Enqueue shadow notifications
             notification_result = self._enqueue_notifications(action_result, synthesis_result)
             result["notifications_enqueued"] = notification_result.get("notification_ids", [])
 
-            # Step 10: Complete the run
-            if self.run_store and run_id:
+            # Step 8: Complete the run
+            if self.run_store:
                 try:
                     self.run_store.complete(
                         run_id,
@@ -307,12 +326,12 @@ class CIORunWorker:
             result["status"] = "COMPLETED"
 
         except Exception as e:
-            log.exception("CIO run worker failed for wake %s", wake_job_id)
+            log.exception("CIO run worker failed for run %s", run_id)
             result["status"] = "FAILED"
             result["errors"].append(str(e))
-            if self.run_store and self._run_id:
+            if self.run_store:
                 try:
-                    self.run_store.fail(self._run_id, str(e)[:200], actor="cio_run_worker")
+                    self.run_store.fail(run_id, str(e)[:200], actor="cio_run_worker")
                 except Exception:
                     pass
 
@@ -325,78 +344,9 @@ class CIORunWorker:
 
         return result
 
-    # ── Step: Ensure Run ────────────────────────────────────────────────────
-
-    def _ensure_run(
-        self,
-        wake_job: dict[str, Any],
-        trigger_type: str,
-        budget: dict[str, Any],
-        priority: str,
-    ) -> Optional[str]:
-        """Create or locate the CIO run for this wake."""
-        if self.run_store is None:
-            return None
-
-        # Map wake trigger type to CIO run trigger type
-        run_trigger = self._map_trigger(wake_job.get("trigger_type", trigger_type))
-
-        # Collect profile/IPS versions if available
-        profile_version = None
-        ips_version = None
-        if self.operator_profile is not None:
-            try:
-                profile_version = getattr(self.operator_profile, "_version", None)
-                ips_version = getattr(self.operator_profile, "_ips_version", None)
-            except Exception:
-                pass
-
-        try:
-            event = self.run_store.create_run(
-                trigger_type=run_trigger,
-                trigger_ref=wake_job.get("wake_job_id", ""),
-                priority=priority,
-                required_domains=wake_job.get("required_domains", []),
-                parent_action_ids=(
-                    [wake_job["parent_cio_action_id"]] if wake_job.get("parent_cio_action_id") else []
-                ),
-                parent_handoff_ids=(
-                    [wake_job["parent_handoff_id"]] if wake_job.get("parent_handoff_id") else []
-                ),
-                operator_profile_version=profile_version,
-                ips_version=ips_version,
-                max_provider_calls=budget.get("max_provider_calls", 4),
-                max_cost_usd=budget.get("max_cost_usd", 0.02),
-                max_wall_time_minutes=budget.get("max_wall_time_minutes", 5),
-                max_specialist_calls=budget.get("max_specialist_calls", 2),
-                max_hermes_challenges=budget.get("max_hermes_challenges", 0),
-                actor="cio_run_worker",
-            )
-            run_id = event["payload"]["run_id"]
-            # Start the run
-            if self.run_store:
-                self.run_store.start(run_id, actor="cio_run_worker")
-            return run_id
-        except Exception as e:
-            log.error("Failed to create CIO run: %s", e)
-            return None
-
-    @staticmethod
-    def _map_trigger(wake_trigger: str) -> str:
-        """Map wake trigger types to CIO run trigger types."""
-        mapping = {
-            "SCHEDULE_DUE": "SCHEDULED_DAILY",
-            "ACTION_FOLLOWUP_DUE": "ACTION_FOLLOWUP",
-            "HANDOFF_COMPLETED": "SPECIALIST_COMPLETION",
-            "HEALTH_BLOCK_STARTED": "HEALTH_EVENT",
-            "HEALTH_BLOCK_CLEARED": "HEALTH_EVENT",
-        }
-        return mapping.get(wake_trigger, wake_trigger)
-
     # ── Step: Health Check ──────────────────────────────────────────────────
 
     def _check_health(self, force_state: Optional[str] = None) -> dict[str, Any]:
-        """Check health boundary. Returns {state, blocked, decision_id}."""
         result: dict[str, Any] = {
             "state": "UNKNOWN",
             "blocked": False,
@@ -409,7 +359,6 @@ class CIORunWorker:
             return result
 
         if self.health_boundary is None:
-            result["state"] = "UNKNOWN"
             result["blocked"] = False
             return result
 
@@ -420,9 +369,7 @@ class CIORunWorker:
             result["decision_id"] = getattr(self.health_boundary, "latest_decision_id", lambda: None)()
         except Exception as e:
             log.warning("Health boundary check failed: %s", e)
-            result["state"] = "UNKNOWN"
 
-        # Record in run store
         if self.run_store and self._run_id:
             try:
                 self.run_store.health_checked(
@@ -438,7 +385,6 @@ class CIORunWorker:
     # ── Step: Build Snapshot ────────────────────────────────────────────────
 
     def _build_snapshot(self, force_snapshot: Optional[dict[str, Any]] = None) -> dict[str, Any]:
-        """Build canonical financial snapshot."""
         if force_snapshot:
             return force_snapshot
 
@@ -459,17 +405,16 @@ class CIORunWorker:
 
     def _route_specialists(
         self,
-        wake_job: dict[str, Any],
+        run_id: str,
+        required_domains: list[str],
         snapshot: dict[str, Any],
     ) -> dict[str, Any]:
-        """Route to specialists as determined by the run's required domains."""
+        """Route specialists. Returns should_wait=True if specialists need to complete."""
         handoff_ids: list[str] = []
-        required_domains = wake_job.get("required_domains", [])
 
-        if not self.handoff_queue:
-            return {"handoff_ids": handoff_ids, "artifacts": []}
+        if not self.handoff_queue or not required_domains:
+            return {"handoff_ids": handoff_ids, "should_wait": False, "artifacts": []}
 
-        # Specialist routing map (maps CIO domains to registered agent IDs)
         domain_specialists: dict[str, str] = {
             "portfolio": "maria",
             "holdings": "maria",
@@ -488,7 +433,6 @@ class CIORunWorker:
             "broker_reconciliation": "ledger",
         }
 
-        # Map agent IDs to task types
         agent_task_types: dict[str, str] = {
             "maria": "cio_question",
             "steph": "allocation_review",
@@ -496,107 +440,68 @@ class CIORunWorker:
             "ledger": "tax_account_review",
         }
 
-        # Dedupe specialists needed
         specialists_needed: set[str] = set()
         for domain in required_domains:
             spec = domain_specialists.get(domain)
             if spec:
                 specialists_needed.add(spec)
 
-        if self._specialist_fn:
-            # Use injected mock function
-            for spec in specialists_needed:
-                try:
-                    result = self._specialist_fn(spec, domains=[
-                        d for d in required_domains
-                        if domain_specialists.get(d) == spec
-                    ])
-                    if result and result.get("handoff_id"):
-                        handoff_ids.append(result["handoff_id"])
-                        if self.run_store and self._run_id:
-                            self.run_store.record_specialist_request(
-                                self._run_id, result["handoff_id"],
-                                actor="cio_run_worker",
-                            )
-                except Exception as e:
-                    log.warning("Specialist routing failed for %s: %s", spec, e)
-        elif self.handoff_queue and specialists_needed:
-            # Use real handoff queue (shadow mode only — no live specialist calls)
-            for spec in specialists_needed:
-                try:
-                    task_type = agent_task_types.get(spec, "cio_question")
-                    handoff = {
-                        "handoff_id": f"handoff-{spec}-{uuid.uuid4().hex[:8]}",
-                        "from_agent": "alex",
-                        "to_agent": spec,
-                        "task_type": task_type,
-                        "task_summary": f"CIO run {self._run_id}: review domains",
-                        "input_hash": hashlib.sha256(
-                            f"{spec}:{','.join(required_domains)}".encode()
-                        ).hexdigest(),
-                        "priority": wake_job.get("priority", "NORMAL"),
-                        "parent_cio_action_id": wake_job.get("parent_cio_action_id"),
-                    }
-                    event = self.handoff_queue.enqueue(handoff, actor_id="cio_run_worker")
-                    hid = event.get("stream_id")  # stream_id is the handoff_id
-                    if hid:
-                        handoff_ids.append(hid)
-                        if self.run_store and self._run_id:
-                            self.run_store.record_specialist_request(
-                                self._run_id, hid,
-                                actor="cio_run_worker",
-                            )
-                except Exception as e:
-                    log.warning("Specialist enqueue failed for %s: %s", spec, e)
+        for spec in specialists_needed:
+            try:
+                task_type = agent_task_types.get(spec, "cio_question")
+                handoff = {
+                    "handoff_id": f"handoff-{spec}-{uuid.uuid4().hex[:8]}",
+                    "from_agent": "alex",
+                    "to_agent": spec,
+                    "task_type": task_type,
+                    "task_summary": f"CIO run {run_id}: review domains",
+                    "parent_run_id": run_id,
+                    "input_hash": hashlib.sha256(
+                        f"{spec}:{','.join(required_domains)}".encode()
+                    ).hexdigest(),
+                    "priority": "NORMAL",
+                }
+                event = self.handoff_queue.enqueue(handoff, actor_id="cio_run_worker")
+                hid = event.get("stream_id")
+                if hid:
+                    handoff_ids.append(hid)
+                    if self.run_store:
+                        self.run_store.record_specialist_request(
+                            run_id, hid, actor="cio_run_worker",
+                        )
+            except Exception as e:
+                log.warning("Specialist enqueue failed for %s: %s", spec, e)
 
-        return {"handoff_ids": handoff_ids, "artifacts": []}
+        should_wait = len(handoff_ids) > 0
+        return {"handoff_ids": handoff_ids, "should_wait": should_wait, "artifacts": []}
 
     # ── Step: Hermes Challenge ──────────────────────────────────────────────
 
     def _maybe_challenge(
         self,
-        wake_job: dict[str, Any],
+        run_id: str,
+        run: dict[str, Any],
         snapshot: dict[str, Any],
     ) -> dict[str, Any]:
-        """Request Hermes challenge if materiality exceeds threshold."""
         challenge_ids: list[str] = []
 
-        # Determine materiality from wake job or snapshot
-        materiality = wake_job.get("materiality", 0.0)
-        trigger = wake_job.get("trigger_type", "")
+        trigger_type = run.get("trigger_type", "")
+        materiality = run.get("materiality", 0.0)
 
-        # Only challenge for material events or high-priority items
         should_challenge = (
-            trigger in ("HEALTH_EVENT", "SPECIALIST_COMPLETION", "HERMES_RESOLVED")
+            trigger_type in ("HEALTH_EVENT", "MATERIAL_EVENT")
             or materiality >= HERMES_MATERIALITY_THRESHOLD
         )
 
         if not should_challenge:
-            return {"challenge_ids": [], "materiality": materiality, "challenged": False}
+            return {"challenge_ids": [], "should_wait": False}
 
-        if self._hermes_fn:
-            # Use injected mock function
-            try:
-                result = self._hermes_fn(
-                    context={"wake_job_id": wake_job.get("wake_job_id")},
-                    materiality=materiality,
-                )
-                if result and result.get("challenge_id"):
-                    challenge_ids.append(result["challenge_id"])
-                    if self.run_store and self._run_id:
-                        self.run_store.record_hermes_request(
-                            self._run_id, result["challenge_id"],
-                            actor="cio_run_worker",
-                        )
-            except Exception as e:
-                log.warning("Hermes challenge failed: %s", e)
-        elif self.hermes_queue:
-            # Use real Hermes queue (shadow mode)
+        if self.hermes_queue:
             try:
                 event = self.hermes_queue.enqueue(
                     challenge_type="freshness_decay",
-                    description=f"Material event {wake_job.get('wake_job_id')}: materiality={materiality}",
-                    source=f"cio_run:{self._run_id}",
+                    description=f"Material event for CIO run {run_id}",
+                    source=f"cio_run:{run_id}",
                     priority="high" if materiality >= 0.8 else "normal",
                     evidence_refs=[snapshot.get("snapshot_id", "")],
                     actor_id="cio_run_worker",
@@ -604,63 +509,49 @@ class CIORunWorker:
                 cid = event.get("payload", {}).get("challenge_id") or event.get("stream_id")
                 if cid:
                     challenge_ids.append(cid)
-                    if self.run_store and self._run_id:
+                    if self.run_store:
                         self.run_store.record_hermes_request(
-                            self._run_id, cid,
-                            actor="cio_run_worker",
+                            run_id, cid, actor="cio_run_worker",
                         )
             except Exception as e:
                 log.warning("Hermes enqueue failed: %s", e)
 
         return {
             "challenge_ids": challenge_ids,
-            "materiality": materiality,
-            "challenged": len(challenge_ids) > 0,
+            "should_wait": len(challenge_ids) > 0,
         }
 
     # ── Step: CIO Synthesis ─────────────────────────────────────────────────
 
     def _cio_synthesis(
         self,
-        wake_job: dict[str, Any],
+        run: dict[str, Any],
         snapshot: dict[str, Any],
         specialist_result: dict[str, Any],
         hermes_result: dict[str, Any],
     ) -> dict[str, Any]:
-        """Call Alex for governed CIO synthesis.
-
-        In shadow mode, this is a deterministic stub that produces a
-        structured result without live model calls.
-
-        In live mode (requires authorization), this would call the governed
-        model bridge for real DeepSeek synthesis.
-        """
         artifact_id = f"cio-synth-{uuid.uuid4().hex[:16]}"
 
         if self._synthesis_fn:
-            # Use injected mock function
             result = self._synthesis_fn(
-                wake_job=wake_job,
+                run=run,
                 snapshot=snapshot,
                 specialist_result=specialist_result,
                 hermes_result=hermes_result,
             )
             self._call_count += 1
-            self._cost_accrued += 0.001  # Mock cost
+            self._cost_accrued += 0.001
             if self.run_store and self._run_id:
                 self.run_store.record_model_call(
-                    self._run_id,
-                    f"synthesis-{artifact_id}",
-                    0.001,
+                    self._run_id, f"synthesis-{artifact_id}", 0.001,
                     actor="cio_run_worker",
                 )
             return {"artifact_id": artifact_id, "result": result, "mode": self.mode}
 
-        # Default: deterministic shadow synthesis
         synthesis = {
             "artifact_id": artifact_id,
             "mode": self.mode,
-            "summary": f"CIO synthesis for wake {wake_job.get('wake_job_id', 'unknown')}",
+            "summary": f"CIO synthesis for run {self._run_id}",
             "recommendations": [],
             "confidence": 0.0,
             "requires_operator_review": True,
@@ -671,9 +562,7 @@ class CIORunWorker:
         if self.run_store and self._run_id:
             try:
                 self.run_store.record_model_call(
-                    self._run_id,
-                    f"synthesis-{artifact_id}",
-                    0.001,
+                    self._run_id, f"synthesis-{artifact_id}", 0.001,
                     actor="cio_run_worker",
                 )
             except Exception:
@@ -685,14 +574,7 @@ class CIORunWorker:
 
     # ── Step: Write Actions ─────────────────────────────────────────────────
 
-    def _write_actions(
-        self,
-        synthesis_result: dict[str, Any],
-    ) -> dict[str, Any]:
-        """Create CIO actions via the deterministic action ledger.
-
-        NEVER writes raw files — only through the action ledger service.
-        """
+    def _write_actions(self, synthesis_result: dict[str, Any]) -> dict[str, Any]:
         action_ids: list[str] = []
 
         if self.action_ledger is None:
@@ -724,16 +606,14 @@ class CIORunWorker:
                 aid = event.get("payload", {}).get("cio_action_id")
                 if aid:
                     action_ids.append(aid)
-                    if self.run_store and self._run_id:
+                    if self.run_store:
                         self.run_store.transition(
                             self._run_id, "ACTION_WRITE",
-                            action_id=aid,
-                            actor="cio_run_worker",
+                            action_id=aid, actor="cio_run_worker",
                         )
             except Exception as e:
                 log.warning("Action write failed for rec %d: %s", i, e)
 
-        # If no recommendations, still record a summary action
         if not recommendations and self.action_ledger is not None:
             try:
                 action = {
@@ -766,17 +646,11 @@ class CIORunWorker:
         action_result: dict[str, Any],
         synthesis_result: dict[str, Any],
     ) -> dict[str, Any]:
-        """Enqueue shadow notifications via the outbox.
-
-        In shadow mode, notifications are enqueued but NOT delivered live.
-        Live delivery requires AUTHORIZE_P2_LIVE_OPERATOR_DELIVERY.
-        """
         notification_ids: list[str] = []
 
         if self.notification_outbox is None:
             return {"notification_ids": notification_ids}
 
-        # Create a notification for each action (shadow only)
         for action_id in action_result.get("action_ids", []):
             try:
                 nid = f"notif-{uuid.uuid4().hex[:12]}"
@@ -795,19 +669,17 @@ class CIORunWorker:
                 event = self.notification_outbox.enqueue(notification, actor_id="cio_run_worker")
                 if event:
                     notification_ids.append(nid)
-                    if self.run_store and self._run_id:
+                    if self.run_store:
                         try:
                             self.run_store.transition(
                                 self._run_id, "NOTIFICATION_ENQUEUE",
-                                notification_id=nid,
-                                actor="cio_run_worker",
+                                notification_id=nid, actor="cio_run_worker",
                             )
                         except Exception:
                             pass
             except Exception as e:
                 log.warning("Notification enqueue failed for action %s: %s", action_id, e)
 
-        # Summary notification
         summary = synthesis_result.get("result", {}).get("summary")
         if summary:
             try:
@@ -834,7 +706,6 @@ class CIORunWorker:
 
     @staticmethod
     def verify_authority() -> dict[str, Any]:
-        """Verify this worker has only advisory authority."""
         return {
             "authority_level": "shadow_advisory_only",
             "allowed_tools": sorted(ADVISORY_ONLY_TOOLS),

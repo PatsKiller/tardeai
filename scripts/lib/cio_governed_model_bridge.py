@@ -46,12 +46,47 @@ BIND_MODE = os.environ.get("CIO_BRIDGE_MODE", "mock")
 AUTH_HEADER = "X-TradeAI-Agent"
 
 # ── Server-side caller → process_id mapping (NEVER trust client) ──────
+# Gate-B: All six financial professional agents registered.
 CALLER_PROCESS_MAP: dict[str, str] = {
     "alex": "alex_cio_synthesis",
+    "maria": "maria_research_critique",
+    "steph": "steph_allocation_review",
+    "guardian": "guardian_risk_critique",
+    "ledger": "ledger_tax_critique",
+    "morgan": "morgan_wealth_synthesis",
 }
 
-# ── Policy → model resolution for Alex CIO processes ───────────────────
-ALEX_POLICY_RESOLUTION: dict[str, dict[str, Any]] = {
+# ── Server-side caller → authorized task_types ─────────────────────────
+# Caller-supplied process_id/model_id are never trusted.
+# Each caller's task_type → server-selected policy.
+CALLER_TASK_POLICY_MAP: dict[str, dict[str, str]] = {
+    "alex": {
+        "cio_synthesis": "PRO",
+        "cio_escalation": "PRO_THINK",
+    },
+    "maria": {
+        "research_critique": "FAST",
+        "catalyst_narrative": "FAST",
+        "agent_narrative": "FAST",
+    },
+    "steph": {
+        "allocation_review": "FAST",
+        "wealth_review": "FAST",
+    },
+    "guardian": {
+        "risk_critique": "FAST",
+    },
+    "ledger": {
+        "tax_critique": "FAST",
+    },
+    "morgan": {
+        "wealth_synthesis": "FAST",
+        "goal_tracking": "FAST",
+    },
+}
+
+# ── Policy → model resolution (generalized for all governed agents) ─────
+POLICY_RESOLUTION: dict[str, dict[str, Any]] = {
     "PRO": {
         "provider": "deepseek",
         "model_id": "deepseek-v4-pro",
@@ -65,6 +100,18 @@ ALEX_POLICY_RESOLUTION: dict[str, dict[str, Any]] = {
         "reasoning_effort": "high",
         "display_name": "DeepSeek V4 Pro Think (governed)",
         "requires_deterministic_escalation_reason": True,
+    },
+    "FAST": {
+        "provider": "deepseek",
+        "model_id": "deepseek-v4-flash",
+        "thinking": "disabled",
+        "display_name": "DeepSeek V4 Flash (governed)",
+    },
+    "FAST_THINK": {
+        "provider": "deepseek",
+        "model_id": "deepseek-v4-flash",
+        "thinking": "enabled",
+        "display_name": "DeepSeek V4 Flash Think (governed)",
     },
 }
 
@@ -140,17 +187,26 @@ def resolve_caller(caller: str | None) -> str | None:
     return CALLER_PROCESS_MAP.get(c)
 
 
-def resolve_model_policy(process_id: str) -> dict[str, Any]:
-    """Look up model policy for a CIO process.
+def resolve_model_policy(process_id: str, task_type: str = "") -> dict[str, Any]:
+    """Look up model policy for a registered governance process.
 
     Returns dict with provider, model_id, thinking, display_name, etc.
-    Falls back to PRO for known Alex processes.
+    Unknown process_id returns None → fail closed.
     """
-    if process_id == "alex_cio_synthesis":
-        return ALEX_POLICY_RESOLUTION["PRO"]
-    if process_id == "alex_cio_escalation":
-        return ALEX_POLICY_RESOLUTION["PRO_THINK"]
-    return ALEX_POLICY_RESOLUTION.get("PRO", ALEX_POLICY_RESOLUTION["PRO"])
+    # Map process_id → default policy
+    process_policy_map: dict[str, str] = {
+        "alex_cio_synthesis": "PRO",
+        "alex_cio_escalation": "PRO_THINK",
+        "maria_research_critique": "FAST",
+        "steph_allocation_review": "FAST",
+        "guardian_risk_critique": "FAST",
+        "ledger_tax_critique": "FAST",
+        "morgan_wealth_synthesis": "FAST",
+    }
+    policy_name = process_policy_map.get(process_id)
+    if policy_name is None:
+        return None  # Unknown process → fail closed
+    return POLICY_RESOLUTION.get(policy_name, POLICY_RESOLUTION["FAST"])
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -566,6 +622,8 @@ def execute_governed_call(
 
     # ── Step 3: Model policy resolution (server-side) ──────────────────
     policy = resolve_model_policy(process_id)
+    if policy is None:
+        return _error("UNKNOWN_PROCESS", f"Process '{process_id}' not registered in governance bridge", status=400)
     model_id = policy["model_id"]
 
     # ── Step 4: Reject legacy model IDs ────────────────────────────────
@@ -882,7 +940,11 @@ class GovernedBridgeHandler(http.server.BaseHTTPRequestHandler):
         self.send_header("X-TradeAI-Governed", f"cio_bridge_{'p1_2b' if BIND_MODE == 'canary' else 'p1_2a'}")
         self.end_headers()
 
-        model_id = resolve_model_policy(process_id)["model_id"]
+        policy = resolve_model_policy(process_id)
+        if policy is None:
+            self.send_error(400, f"Unknown process: {process_id}")
+            return
+        model_id = policy["model_id"]
         provider = RealProvider.instance() if BIND_MODE == "canary" else MockProvider.instance()
         if BIND_MODE == "canary":
             try:

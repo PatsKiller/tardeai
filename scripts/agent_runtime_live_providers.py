@@ -38,34 +38,20 @@ PROJECT_ROOT = _resolve_project_root()
 # ---------------------------------------------------------------------------
 # Model providers (per agent)
 # ---------------------------------------------------------------------------
-def _build_deepseek_provider() -> Callable[[str, Mapping[str, Any]], Mapping[str, Any]]:
-    """DeepSeek API provider via the governed llm_router."""
-    sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
-    try:
-        from lib.llm_router import route_llm_call
-    except ImportError:
-        route_llm_call = None
+def _build_governed_gateway_provider() -> Callable[[str, Mapping[str, Any]], Mapping[str, Any]]:
+    """Governed financial-agent gateway provider sentinel.
 
+    Financial agents (alex, maria, steph, guardian, ledger, morgan) must route
+    through the governed financial-agent gateway. This provider returns
+    PROVIDER_BLOCKED if invoked directly — it exists only as a sentinel.
+    The actual governed calls go through CIO governed model bridge HTTP API.
+    """
     def _call(run_id: str, request: Mapping[str, Any]) -> Mapping[str, Any]:
-        if route_llm_call is None:
-            return {"response": "", "provider": "deepseek", "model": "v4-pro",
-                    "error": "llm_router not importable"}
-        try:
-            result = route_llm_call(
-                provider=request.get("provider", "deepseek"),
-                model=request.get("model", "deepseek-v4-pro"),
-                messages=request.get("messages", []),
-                max_tokens=request.get("max_tokens", 1024),
-                temperature=request.get("temperature", 0.3),
-            )
-            return {"response": result.get("content", ""),
-                    "provider": "deepseek",
-                    "model": request.get("model", "deepseek-v4-pro"),
-                    "usage": result.get("usage", {})}
-        except Exception as exc:
-            return {"response": "", "provider": "deepseek",
-                    "model": request.get("model", "deepseek-v4-pro"),
-                    "error": f"{type(exc).__name__}: {exc}"}
+        return {
+            "response": "",
+            "provider": "governed_gateway",
+            "error": "PROVIDER_BLOCKED: Financial agent must route through governed gateway. Direct provider calls removed in Gate-B.",
+        }
     return _call
 
 
@@ -249,13 +235,14 @@ def _make_agent_processor(
 # Job source — bounded intake from existing infrastructure
 # ---------------------------------------------------------------------------
 def job_source(agent_id: str, limit: int = 8) -> Sequence[Any]:
-    """Return bounded jobs for *agent_id* from the governed intake sources.
+    """Return bounded jobs for *agent_id* from governed intake sources.
 
     Pulls from:
-      1. CIO wake jobs (alex only) — cio_wake_jobs.jsonl
-      2. Hermes challenges (alex only) — hermes_challenge_queue.jsonl
-      3. Watch artifact changes — watch_review trigger
-      4. Agent handoff queue — agent_handoff_queue.jsonl
+      1. Agent handoff queue — specialist delegations (all agents)
+
+    Alex-specific CIO intake (wakes, hermes challenges, CIO event bus) has been
+    removed in Gate-B. Alex performs final CIO synthesis only for a specific
+    parent_run_id authorized by the CIO Run Orchestrator via the governed bridge.
 
     Returns at most *limit* JobRequests. Returns empty when nothing is pending.
     """
@@ -268,78 +255,26 @@ def job_source(agent_id: str, limit: int = 8) -> Sequence[Any]:
     def _hash(s: str) -> str:
         return hashlib.sha256(s.encode()).hexdigest()[:16]
 
-    # 1. CIO wake jobs (alex) — read from wake job store (nested payloads)
-    if agent_id == "alex":
-        wake_path = PROJECT_ROOT / "data" / "cio" / "cio_wake_jobs.jsonl"
-        if wake_path.exists():
-            try:
-                for line in wake_path.read_text().strip().splitlines()[-limit:]:
-                    entry = json.loads(line)
-                    payload = entry.get("payload", {})
-                    # Wake store uses nested payloads: payload.wake_job_id, payload.status
-                    status = entry.get("status") or payload.get("status", "")
-                    if status == "PENDING":
-                        jobs.append(JobRequest(
-                            agent_id="alex",
-                            job_type="cio_synthesis",
-                            input_hash=_hash(json.dumps(payload, sort_keys=True)),
-                            enqueued_at=entry.get("timestamp") or entry.get("created_at", now_iso),
-                            dedup_value=payload.get("wake_job_id", _hash(line)),
-                            trigger_kind=payload.get("trigger_type", "SCHEDULED_SWEEP"),
-                        ))
-            except Exception:
-                pass
-        # Hermes challenges — nested payload
-        challenge_path = PROJECT_ROOT / "data" / "cio" / "hermes_challenge_queue.jsonl"
-        if challenge_path.exists():
-            try:
-                for line in challenge_path.read_text().strip().splitlines()[-limit:]:
-                    entry = json.loads(line)
-                    payload = entry.get("payload", {})
-                    status = entry.get("status") or payload.get("status", "")
-                    if status in ("PENDING", "ENQUEUED"):
-                        jobs.append(JobRequest(
-                            agent_id="alex",
-                            job_type="hermes_challenge_review",
-                            input_hash=_hash(json.dumps(payload, sort_keys=True)),
-                            enqueued_at=entry.get("timestamp", now_iso),
-                            dedup_value=payload.get("challenge_id", _hash(line)),
-                            trigger_kind="HERMES_CHALLENGE",
-                        ))
-            except Exception:
-                pass
-        # CIO event bus — unacknowledged events
-        try:
-            from scripts.lib.cio_event_bus import CIOEventBus
-            bus = CIOEventBus()
-            events = bus.poll(consumer="alex", limit=limit)
-            for evt in events:
-                jobs.append(JobRequest(
-                    agent_id="alex",
-                    job_type="cio_synthesis",
-                    input_hash=_hash(json.dumps(evt.to_dict(), sort_keys=True)),
-                    enqueued_at=evt.timestamp,
-                    dedup_value=evt.event_id,
-                    trigger_kind=evt.event_type.replace(".", "_").upper(),
-                ))
-        except Exception:
-            pass
-
-    # 2. Agent handoff queue (all agents)
+    # Agent handoff queue (all agents — specialist delegations only)
     handoff_path = PROJECT_ROOT / "data" / "cio" / "agent_handoff_queue.jsonl"
     if handoff_path.exists():
         try:
-            for line in handoff_path.read_text().strip().splitlines()[-limit:]:
-                entry = json.loads(line)
-                if entry.get("status") == "ENQUEUED" and entry.get("to_agent") == agent_id:
-                    jobs.append(JobRequest(
-                        agent_id=agent_id,
-                        job_type=entry.get("handoff_type", "specialist_delegation"),
-                        input_hash=_hash(json.dumps(entry, sort_keys=True)),
-                        enqueued_at=entry.get("created_at", now_iso),
-                        dedup_value=entry.get("handoff_id", _hash(line)),
-                        trigger_kind="AGENT_HANDOFF",
-                    ))
+            # Use canonical projection via AgentHandoffQueue API, not raw event records
+            from scripts.lib.cio_agent_handoff_queue import AgentHandoffQueue
+            queue = AgentHandoffQueue(event_store_path=handoff_path)
+            enqueued = queue.list_handoffs(status="ENQUEUED", limit=limit)
+            for handoff in enqueued:
+                to_agent = handoff.get("to_agent", "")
+                if to_agent != agent_id:
+                    continue
+                jobs.append(JobRequest(
+                    agent_id=agent_id,
+                    job_type=handoff.get("task_type", "specialist_delegation"),
+                    input_hash=_hash(json.dumps(handoff, sort_keys=True, default=str)),
+                    enqueued_at=handoff.get("created_at", now_iso),
+                    dedup_value=handoff.get("handoff_id", ""),
+                    trigger_kind="AGENT_HANDOFF",
+                ))
         except Exception:
             pass
 
@@ -362,14 +297,26 @@ class _AgentProviders:
 
 
 # Agent → provider assignments
+# Gate-B: Financial agents (alex, maria, steph, guardian, ledger, morgan) route
+# through the governed financial-agent gateway ONLY. Raw Ollama paths for
+# financial agents have been removed. PRO/PRO_THINK for Alex; FAST/Flash for
+# specialists.
+#
+# Non-financial reflective critics (sentinel, darwin, iris, reflection) retain
+# Ollama for their independent analytical work.
 _AGENT_MODEL_MAP: dict[str, Callable[[], Callable]] = {
-    "alex":      lambda: _build_deepseek_provider(),
+    # Financial agents — governed gateway only; no model factory here
+    "alex":      lambda: _build_governed_gateway_provider(),
+    "maria":     lambda: _build_governed_gateway_provider(),
+    "steph":     lambda: _build_governed_gateway_provider(),
+    "guardian":  lambda: _build_governed_gateway_provider(),
+    "ledger":    lambda: _build_governed_gateway_provider(),
+    "morgan":    lambda: _build_governed_gateway_provider(),
+    # Reflective critics — local Ollama
     "sentinel":  lambda: _build_ollama_provider("gemma3:12b"),
     "darwin":    lambda: _build_ollama_provider("gemma3:4b"),
     "iris":      lambda: _build_ollama_provider("gemma3:12b"),
     "reflection": lambda: _build_ollama_provider("gemma3:12b"),
-    "steph":     lambda: _build_ollama_provider("gemma3:12b"),
-    "morgan":    lambda: _build_ollama_provider("gemma3:12b"),
 }
 _DEFAULT_MODEL = lambda: _build_ollama_provider("gemma3:4b")
 
