@@ -193,13 +193,63 @@ class CIOWakeDispatcher:
                 skipped.append(wake_job_id)
                 continue
 
-            # ── NEW_RUN: create CIO run ────────────────────────────────
-            # Treat anything that is not explicitly RESUME_RUN as a
-            # new-run intent.  wake_intent may carry a run-purpose
-            # (SCHEDULED_CIO_BRIEF, HEALTH_EVENT, …) — only
-            # RESUME_RUN means "resume an existing run".
+            # ── Wake intent normalization ────────────────────────────────
+            # Only three valid paths:
+            #   1. NEW_RUN        → create exactly one CIO run
+            #   2. RESUME_RUN     → link to existing run (target_run_id required)
+            #   3. Recognized legacy intent → explicitly normalized to NEW_RUN
+            # Unknown/malformed intents → fail closed (no run created)
+            #
+            # This is the explicit compatibility map.  Do NOT use a
+            # catch-all "anything else = NEW_RUN" — unknown intent
+            # produces durable invalid-intent disposition.
+            LEGACY_INTENT_NORMALIZATION: dict[str, str] = {
+                # Schedule-purpose intents (used by schedule producers)
+                # preserved as run_purpose; normalized to NEW_RUN operation
+                "SCHEDULED_CIO_BRIEF": "NEW_RUN",
+                "HEALTH_EVENT": "NEW_RUN",
+                "WATCH_OR_CATALYST_REVIEW": "NEW_RUN",
+                "TAX_REVIEW": "NEW_RUN",
+                "PORTFOLIO_ALLOCATION_REVIEW": "NEW_RUN",
+                "BROKER_RECONCILIATION": "NEW_RUN",
+                "INCOME_REVIEW": "NEW_RUN",
+                "RETIREMENT_REVIEW": "NEW_RUN",
+                "RISK_OR_STOP_EVENT": "NEW_RUN",
+                "OPERATOR_REQUEST": "NEW_RUN",
+            }
+
+            dispatch_intent = wake_intent
+            if wake_intent == "NEW_RUN" or wake_intent == "RESUME_RUN":
+                dispatch_intent = wake_intent
+            elif wake_intent in LEGACY_INTENT_NORMALIZATION:
+                dispatch_intent = LEGACY_INTENT_NORMALIZATION[wake_intent]
+            else:
+                # Unknown/malformed wake intent → fail closed
+                log.warning(
+                    "Wake %s has unrecognized wake_intent=%r — not creating run",
+                    wake_job_id, wake_intent,
+                )
+                try:
+                    self.wake_store.invalid_intent(
+                        wake_job_id,
+                        reason=f"Unrecognized wake_intent: {wake_intent}",
+                        actor_id="cio_wake_dispatcher",
+                    )
+                except (ValueError, AttributeError):
+                    # If invalid_intent doesn't exist yet, release the claim
+                    try:
+                        self.wake_store.release(wake_job_id, actor_id="cio_wake_dispatcher")
+                    except ValueError:
+                        pass
+                errors.append({
+                    "wake_job_id": wake_job_id,
+                    "error": f"Invalid wake_intent: {wake_intent}",
+                })
+                skipped.append(wake_job_id)
+                continue
+
             run_id = None
-            if wake_intent != "RESUME_RUN":
+            if dispatch_intent == "NEW_RUN":
                 if self.run_store is not None:
                     try:
                         trigger_type = self._map_wake_to_run_trigger(

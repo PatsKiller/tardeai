@@ -520,8 +520,10 @@ def main():
         "canary_type": "D2B_FIRST_LIVE_ADVISORY",
         "run_id": run_id,
         "synthetic": True,
+        "shadow": True,
         "non_actionable": True,
         "not_operator_financial_advice": True,
+        "canonical_CIO_action": False,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "provider_calls": 2,
         "total_tokens": total_tokens,
@@ -554,8 +556,9 @@ def main():
         },
     }
 
-    canary_path = Path("data/cio/d2b_advisory_canary_output.json")
-    canary_path.parent.mkdir(parents=True, exist_ok=True)
+    canary_dir = Path("data/cio/canary")
+    canary_dir.mkdir(parents=True, exist_ok=True)
+    canary_path = canary_dir / "d2b_advisory_canary_output.json"
     canary_path.write_text(json.dumps(output, indent=2, default=str))
     log.info("Canary output saved to %s", canary_path)
 
