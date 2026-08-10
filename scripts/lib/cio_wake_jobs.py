@@ -526,6 +526,80 @@ class CIOWakeJobStore:
         self._append_event(event)
         return event
 
+    def expire(
+        self,
+        wake_job_id: str,
+        reason: str = "",
+        actor_id: str = "cio_detector",
+        actor_type: str = "system",
+        authority: str = "system",
+    ) -> dict[str, Any]:
+        """Mark a wake job as expired with a reason."""
+        wake = self.get_wake_job(wake_job_id)
+        if wake is None:
+            raise ValueError(f"Wake job not found: {wake_job_id}")
+
+        current_status = wake["current_status"]
+        allowed = TRANSITIONS.get(current_status, set())
+        if "EXPIRED" not in allowed:
+            raise ValueError(f"Cannot expire wake in status: {current_status}")
+
+        payload: dict[str, Any] = {
+            "wake_job_id": wake_job_id,
+            "expired_at": datetime.now(timezone.utc).isoformat(),
+            "reason": reason,
+        }
+
+        event = build_event(
+            event_type="CIO_WAKE_EXPIRED",
+            stream_id=wake_job_id,
+            payload=payload,
+            actor_type=actor_type,
+            actor_id=actor_id,
+            authority=authority,
+            prev_event_hash="__TO_BE_SET_UNDER_LOCK__",
+        )
+
+        self._append_event(event)
+        return event
+
+    def cancel(
+        self,
+        wake_job_id: str,
+        reason: str = "",
+        actor_id: str = "cio_detector",
+        actor_type: str = "system",
+        authority: str = "system",
+    ) -> dict[str, Any]:
+        """Mark a wake job as cancelled with a reason."""
+        wake = self.get_wake_job(wake_job_id)
+        if wake is None:
+            raise ValueError(f"Wake job not found: {wake_job_id}")
+
+        current_status = wake["current_status"]
+        allowed = TRANSITIONS.get(current_status, set())
+        if "CANCELLED" not in allowed:
+            raise ValueError(f"Cannot cancel wake in status: {current_status}")
+
+        payload: dict[str, Any] = {
+            "wake_job_id": wake_job_id,
+            "cancelled_at": datetime.now(timezone.utc).isoformat(),
+            "reason": reason,
+        }
+
+        event = build_event(
+            event_type="CIO_WAKE_CANCELLED",
+            stream_id=wake_job_id,
+            payload=payload,
+            actor_type=actor_type,
+            actor_id=actor_id,
+            authority=authority,
+            prev_event_hash="__TO_BE_SET_UNDER_LOCK__",
+        )
+
+        self._append_event(event)
+        return event
+
     def release(
         self,
         wake_job_id: str,
@@ -687,8 +761,10 @@ class CIOWakeJobStore:
                     state["completion_details"] = payload.get("completion_details", {})
                 elif event_type == "CIO_WAKE_CANCELLED":
                     state["cancelled_at"] = payload.get("cancelled_at")
+                    state["cancellation_reason"] = payload.get("reason", "")
                 elif event_type == "CIO_WAKE_EXPIRED":
                     state["expired_at"] = payload.get("expired_at")
+                    state["expiration_reason"] = payload.get("reason", "")
 
         return state
 

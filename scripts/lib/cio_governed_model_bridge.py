@@ -70,7 +70,7 @@ CALLER_TASK_POLICY_MAP: dict[str, dict[str, str]] = {
         "agent_narrative": "FAST",
     },
     "steph": {
-        "allocation_review": "FAST",
+        "allocation_review": "PRO",
         "wealth_review": "FAST",
     },
     "guardian": {
@@ -198,7 +198,7 @@ def resolve_model_policy(process_id: str, task_type: str = "") -> dict[str, Any]
         "alex_cio_synthesis": "PRO",
         "alex_cio_escalation": "PRO_THINK",
         "maria_research_critique": "FAST",
-        "steph_allocation_review": "FAST",
+        "steph_allocation_review": "PRO",
         "guardian_risk_critique": "FAST",
         "ledger_tax_critique": "FAST",
         "morgan_wealth_synthesis": "FAST",
