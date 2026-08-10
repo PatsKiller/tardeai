@@ -194,8 +194,12 @@ class CIOWakeDispatcher:
                 continue
 
             # ── NEW_RUN: create CIO run ────────────────────────────────
+            # Treat anything that is not explicitly RESUME_RUN as a
+            # new-run intent.  wake_intent may carry a run-purpose
+            # (SCHEDULED_CIO_BRIEF, HEALTH_EVENT, …) — only
+            # RESUME_RUN means "resume an existing run".
             run_id = None
-            if wake_intent == "NEW_RUN":
+            if wake_intent != "RESUME_RUN":
                 if self.run_store is not None:
                     try:
                         trigger_type = self._map_wake_to_run_trigger(
