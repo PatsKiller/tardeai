@@ -1,18 +1,26 @@
 {
-  "date": "2026-08-08",
-  "timestamp": "2026-08-08T08:15:43.546163+00:00",
+  "date": "2026-08-09",
+  "timestamp": "2026-08-09T08:15:52.228510+00:00",
   "embedding_recommendations": [
     {
-      "id": 14977,
-      "symbol": "AMRC",
+      "id": 15281,
+      "symbol": "AMWL",
       "type": "momentum_catalyst",
       "confidence": 0.7,
       "has_url": true,
       "reason": "staged, has evidence, not embedded"
     },
     {
-      "id": 14217,
-      "symbol": "CMCO",
+      "id": 14947,
+      "symbol": "AMIX",
+      "type": "momentum_catalyst",
+      "confidence": 0.7,
+      "has_url": true,
+      "reason": "staged, has evidence, not embedded"
+    },
+    {
+      "id": 14948,
+      "symbol": "AMRC",
       "type": "momentum_catalyst",
       "confidence": 0.7,
       "has_url": true,
@@ -27,16 +35,8 @@
       "reason": "staged, has evidence, not embedded"
     },
     {
-      "id": 15279,
-      "symbol": "AMIX",
-      "type": "momentum_catalyst",
-      "confidence": 0.7,
-      "has_url": true,
-      "reason": "staged, has evidence, not embedded"
-    },
-    {
-      "id": 14618,
-      "symbol": "CLDI",
+      "id": 14619,
+      "symbol": "CNCK",
       "type": "momentum_catalyst",
       "confidence": 0.7,
       "has_url": true,
@@ -45,16 +45,24 @@
   ],
   "promotion_recommendations": [
     {
-      "id": 14977,
-      "symbol": "AMRC",
+      "id": 15281,
+      "symbol": "AMWL",
       "type": "momentum_catalyst",
       "confidence": 0.7,
       "has_url": true,
       "reason": "staged, high conf, has evidence"
     },
     {
-      "id": 14217,
-      "symbol": "CMCO",
+      "id": 14947,
+      "symbol": "AMIX",
+      "type": "momentum_catalyst",
+      "confidence": 0.7,
+      "has_url": true,
+      "reason": "staged, high conf, has evidence"
+    },
+    {
+      "id": 14948,
+      "symbol": "AMRC",
       "type": "momentum_catalyst",
       "confidence": 0.7,
       "has_url": true,
@@ -69,24 +77,57 @@
       "reason": "staged, high conf, has evidence"
     },
     {
-      "id": 15279,
-      "symbol": "AMIX",
-      "type": "momentum_catalyst",
-      "confidence": 0.7,
-      "has_url": true,
-      "reason": "staged, high conf, has evidence"
-    },
-    {
-      "id": 14618,
-      "symbol": "CLDI",
+      "id": 14619,
+      "symbol": "CNCK",
       "type": "momentum_catalyst",
       "confidence": 0.7,
       "has_url": true,
       "reason": "staged, high conf, has evidence"
     }
   ],
-  "rejected": [],
-  "total_staged_non_backlog": 174,
+  "rejected": [
+    {
+      "id": 16833,
+      "symbol": null,
+      "reason": "confidence 0.25 too low"
+    },
+    {
+      "id": 16823,
+      "symbol": null,
+      "reason": "confidence 0.25 too low"
+    },
+    {
+      "id": 16827,
+      "symbol": null,
+      "reason": "confidence 0.15 too low"
+    },
+    {
+      "id": 16826,
+      "symbol": null,
+      "reason": "confidence 0.15 too low"
+    },
+    {
+      "id": 16822,
+      "symbol": null,
+      "reason": "confidence 0.15 too low"
+    },
+    {
+      "id": 16835,
+      "symbol": null,
+      "reason": "confidence 0.15 too low"
+    },
+    {
+      "id": 16838,
+      "symbol": null,
+      "reason": "confidence 0.15 too low"
+    },
+    {
+      "id": 16821,
+      "symbol": null,
+      "reason": "confidence 0.1 too low"
+    }
+  ],
+  "total_staged_non_backlog": 196,
   "embeddings_created": 0,
   "promotions_created": 0
 }
