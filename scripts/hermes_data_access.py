@@ -73,8 +73,28 @@ def get_hermes_context(symbol: str, *, research_limit: int = 3, external_limit: 
     return out
 
 
-def hermes_prompt_block(symbol: str) -> str:
-    """Compact markdown block for injecting Hermes intelligence into ANY LLM/agent prompt."""
+# A lane row whose recommendation is really a transport/billing failure. These were being
+# serialized into prompts verbatim — a 638-character Grok 403 "out of credits" body appeared
+# in EVERY symbol's packet, identical across names, consuming ~30% of the context window and
+# reading to the model as "no corroborating evidence" (2026-07-29 audit).
+_LANE_FAILURE_MARKERS = ("[error", "run_failed", "spending-limit", "http 4", "http 5",
+                         "auth_pending", "traceback", "error code:")
+
+
+def _lane_failed(rec) -> bool:
+    s = str(rec or "").lower()
+    return (not s.strip()) or any(m in s for m in _LANE_FAILURE_MARKERS)
+
+
+def hermes_prompt_block(symbol: str, exclude_lane: str | None = None) -> str:
+    """Compact markdown block for injecting Hermes intelligence into ANY LLM/agent prompt.
+
+    `exclude_lane` drops a lane's own prior opinions. A lane that reads its own last answer
+    paraphrases it and calls that a fresh view: on 2026-07-29 seven holdings all returned
+    near-identical "cautious hold, insufficient fresh evidence" text because 44-49% of each
+    packet was that lane's previous reply. Callers that ask a lane to think again MUST pass
+    their own lane name. Other lanes' views are kept — cross-lane disagreement is signal.
+    """
     c = get_hermes_context(symbol)
     if not c or (not c.get("score") and not c.get("research") and not c.get("external_lanes")):
         return ""
@@ -85,10 +105,16 @@ def hermes_prompt_block(symbol: str) -> str:
     for r in (c.get("research") or [])[:3]:
         lines.append(f"- Research [{r.get('as_of') or '—'}] {r.get('topic') or r.get('type') or ''}: "
                      f"{r.get('thesis') or r.get('summary') or ''} (conf {r.get('confidence')})")
-    for e in (c.get("external_lanes") or [])[:3]:
+    ex = c.get("external_lanes") or []
+    if exclude_lane:
+        ex = [e for e in ex if str(e.get("lane") or "").lower() != str(exclude_lane).lower()]
+    ex = [e for e in ex if not _lane_failed(e.get("recommendation"))]
+    for e in ex[:3]:
         d = f" — dissent: {e['dissent']}" if e.get("dissent") else ""
-        lines.append(f"- {str(e.get('lane') or '').title()} lane: {e.get('recommendation')} "
-                     f"(conf {e.get('confidence')}){d}")
+        # Age-stamped and marked PRIOR ROUND so a model treats it as a view to test, not as
+        # current evidence to restate.
+        lines.append(f"- PRIOR ROUND [{e.get('as_of') or '—'}] {str(e.get('lane') or '').title()} lane: "
+                     f"{e.get('recommendation')} (conf {e.get('confidence')}){d}")
     return "\n".join(lines)
 
 

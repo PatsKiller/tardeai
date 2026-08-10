@@ -27,12 +27,63 @@ def _company_tokens(description: str | None) -> list[str]:
     return [t for t in tokens if len(t) >= 3]
 
 
+# "<name> stock hits 52-week high at 27.99 USD" — a headline stating the security's own
+# 52-week extreme. Deliberately narrow: it must NOT match a price target, a deal size or a
+# guidance figure, all of which legitimately differ from the quote. Measured over 21 days of
+# live data this pattern fires on ~9 headlines, so the veto below is surgical, not broad.
+_52W_CLAIM_RE = re.compile(
+    r"(?:hits?|reach(?:es|ed)?|touch(?:es|ed)?)\s+(?:a\s+)?52[-\s]?week\s+"
+    r"(high|low)\s+(?:at|of)\s+\$?\s*([0-9]{1,6}(?:\.[0-9]{1,2})?)", re.I)
+
+#: Relative gap above which a stated 52-week extreme is treated as a different security.
+_52W_TOLERANCE = 0.25
+
+
+def price_contradiction(title: str, summary: str = "", *,
+                        reference_52w: tuple | None = None) -> str | None:
+    """Reason string when a headline's stated 52-week extreme cannot be this security.
+
+    `reference_52w` is (our_52w_low, our_52w_high). A headline claiming "hits 52-week high at
+    27.99" for a security whose own 52-week high is 19.91 is not describing that security —
+    it is a different issuer whose name merely contains the ticker as a substring.
+
+    This exists because the ticker-token test below upper-cases the text before matching, so
+    "Eaton Vance Tax Advantaged Div stock" becomes "...ADVANTAGED DIV STOCK" and matches DIV
+    as a standalone token. The case signal that would have distinguished "Div" from "DIV" is
+    destroyed by the time the test runs. Four such headlines were attached to DIV (a $20 ETF)
+    from a $27.99 Eaton Vance fund, and a research lane correctly refused to judge the holding
+    as a result (2026-07-29).
+
+    Compares against the 52-week EXTREME, not the current price: a "52-week high" headline
+    legitimately quotes a level well above today's quote, so comparing to spot would falsely
+    reject correctly-mapped news (verified — it flagged RDWR/Radware, a true match).
+    """
+    if not reference_52w:
+        return None
+    lo, hi = reference_52w
+    m = _52W_CLAIM_RE.search(f"{title or ''} {summary or ''}")
+    if not m:
+        return None
+    kind, raw = m.group(1).lower(), m.group(2)
+    ref = hi if kind == "high" else lo
+    try:
+        claimed, ref = float(raw), float(ref or 0)
+    except (TypeError, ValueError):
+        return None
+    if ref <= 0:
+        return None
+    if abs(claimed - ref) / ref > _52W_TOLERANCE:
+        return f"price_conflict_52w_{kind}:{claimed}_vs_{round(ref, 2)}"
+    return None
+
+
 def headline_matches_symbol(
     symbol: str,
     title: str,
     summary: str = "",
     *,
     company_description: str | None = None,
+    reference_52w: tuple | None = None,
 ) -> tuple[bool, str]:
     """Return (ok, reason). False = do not attach this headline to symbol."""
     sym = (symbol or "").upper().strip()
@@ -41,6 +92,12 @@ def headline_matches_symbol(
 
     text = f"{title} {summary or ''}"
     upper = text.upper()
+
+    # Hard veto, evaluated BEFORE any positive match: a contradicted 52-week extreme means
+    # this is another issuer, however convincingly the ticker appears in the text.
+    conflict = price_contradiction(title, summary, reference_52w=reference_52w)
+    if conflict:
+        return False, conflict
 
     for m in _FOREIGN_COMPANY_MARKERS:
         if m in text.lower() and sym not in ("PASQAL", "IONQ", "RGTI", "QUBT"):
@@ -76,13 +133,29 @@ def purge_mismatched_for_symbol(conn, symbol: str, *, apply: bool = True, auto_c
     row = cur.fetchone()
     desc = row[0] if row else None
 
+    # 52-week reference so the purge applies the same price-conflict veto the ingest path
+    # does; without it a re-purge would silently keep already-stored mismapped rows.
+    ref_52w = None
+    try:
+        cur.execute(
+            """SELECT min(close_price), max(close_price) FROM price_cache
+                WHERE symbol=%s AND price_date > current_date - 365 AND close_price > 0.5""",
+            (sym,),
+        )
+        r52 = cur.fetchone()
+        if r52 and r52[0] is not None and r52[1] is not None:
+            ref_52w = (float(r52[0]), float(r52[1]))
+    except Exception:
+        ref_52w = None
+
     cur.execute(
         "SELECT id, title, summary FROM news_articles WHERE upper(symbol)=%s",
         (sym,),
     )
     news_del, cat_del = [], []
     for nid, title, summary in cur.fetchall():
-        ok, _ = headline_matches_symbol(sym, title or "", summary or "", company_description=desc)
+        ok, _ = headline_matches_symbol(sym, title or "", summary or "",
+                                        company_description=desc, reference_52w=ref_52w)
         if ok:
             continue
         news_del.append(nid)
@@ -94,7 +167,8 @@ def purge_mismatched_for_symbol(conn, symbol: str, *, apply: bool = True, auto_c
         (sym,),
     )
     for cid, headline, description in cur.fetchall():
-        ok, _ = headline_matches_symbol(sym, headline or "", description or "", company_description=desc)
+        ok, _ = headline_matches_symbol(sym, headline or "", description or "",
+                                        company_description=desc, reference_52w=ref_52w)
         if ok:
             continue
         cat_del.append(cid)
