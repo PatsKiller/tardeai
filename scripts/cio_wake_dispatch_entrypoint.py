@@ -45,11 +45,17 @@ def main():
     # ── Step 0: Backlog policy ─────────────────────────────────────────
     policy = CIOWakeBacklogPolicy()
     backlog_result = policy.apply(wake_store, run_store=run_store, max_dispatches=5)
-    if backlog_result["total_classified"] > 0:
+    total_classified = (
+        backlog_result["dispatched_count"]
+        + backlog_result["expired_count"]
+        + backlog_result["superseded_count"]
+        + backlog_result["satisfied_count"]
+    )
+    if total_classified > 0:
         log.info(
             "backlog: classified=%s DISPATCH=%s EXPIRE=%s SUPERSEDED=%s SATISFIED=%s",
-            backlog_result["total_classified"],
-            backlog_result["dispatch"],
+            total_classified,
+            backlog_result["dispatched"],
             backlog_result["expired"],
             backlog_result["superseded"],
             backlog_result["satisfied"],
