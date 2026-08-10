@@ -603,9 +603,20 @@ def test_crash_after_fsync_no_effect(temp_ledger):
 # ── Public API write-authority gate ─────────────────────────────────────
 
 
-def test_public_api_create(temp_ledger):
+def test_public_api_create(temp_ledger, monkeypatch):
     """create_cio_action must route through authority validation."""
+
+    # Patch CIOActionLedger default construction so create_cio_action uses the
+    # temp ledger (isolated from stale data in the default canonical path).
+    _original_init = CIOActionLedger.__init__
+
+    def _isolated_init(self, event_store_path=None):
+        _original_init(self, event_store_path=temp_ledger.event_store_path)
+
+    monkeypatch.setattr(CIOActionLedger, "__init__", _isolated_init)
+
     import uuid
+
     unique_id = f"pub-{uuid.uuid4().hex[:8]}"
 
     action = create_cio_action(

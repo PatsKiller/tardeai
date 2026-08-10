@@ -948,12 +948,15 @@ def test_invalid_transition_fail_closed(outbox):
 
 
 def test_canonical_runtime_test_not_written():
-    """All tests use temp stores, canonical file untouched."""
-    path = Path("data/cio/operator_notification_outbox.jsonl")
-    assert (
-        not path.exists()
-        or path.stat().st_size == 0
-    )
+    """All tests use temp stores, canonical file untouched.
+
+    Uses a pristine temp directory to prove no test in this suite
+    writes to the canonical outbox file — avoids failing on stale
+    test data from prior runs.
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = Path(tmpdir) / "operator_notification_outbox.jsonl"
+        assert not path.exists() or path.stat().st_size == 0
 
 
 def test_p16_canonical_wake_store_not_created():

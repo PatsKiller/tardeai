@@ -104,11 +104,10 @@ def worker(run_store, wake_store, health_boundary, action_ledger, notification_o
            handoff_queue, hermes_queue, operator_profile):
     return CIORunWorker(
         run_store=run_store,
-        wake_store=wake_store,
         health_boundary=health_boundary,
         action_ledger=action_ledger,
         notification_outbox=notification_outbox,
-        handoff_queue=handoff_queue,
+        handoff_queue=None,
         hermes_queue=hermes_queue,
         operator_profile=operator_profile,
         mode="shadow",
@@ -342,28 +341,46 @@ class TestWakeDispatcher:
 class TestCIORunWorker:
     """Tests for CIORunWorker."""
 
-    def test_scheduled_no_work_zero_cost(self, worker, sample_wake):
+    def test_scheduled_no_work_zero_cost(self, worker, run_store, sample_wake):
         """Detector finds nothing — zero cost, zero actions."""
-        result = worker.execute(sample_wake, force_health_state="READY")
+        run_event = run_store.create_run(
+            trigger_type="SCHEDULED_DAILY",
+            trigger_ref="test",
+            required_domains=sample_wake.get("required_domains", []),
+        )
+        run_id = run_event["payload"]["run_id"]
+        result = worker.execute(run_id, force_health_state="READY")
         assert result["status"] == "COMPLETED"
         assert result["cost_accrued"] <= 0.01  # Minimal shadow cost
         assert result["provider_calls"] <= 1
 
-    def test_material_wake_creates_one_run(self, worker, sample_wake):
+    def test_material_wake_creates_one_run(self, worker, run_store, sample_wake):
         """Scheduled wake dispatches exactly one run."""
-        result = worker.execute(sample_wake, force_health_state="READY")
+        run_event = run_store.create_run(
+            trigger_type="SCHEDULED_DAILY",
+            trigger_ref="test",
+            required_domains=sample_wake.get("required_domains", []),
+        )
+        run_id = run_event["payload"]["run_id"]
+        result = worker.execute(run_id, force_health_state="READY")
         assert result["run_id"] is not None
         assert result["status"] == "COMPLETED"
 
-    def test_run_health_block(self, worker, sample_wake):
+    def test_run_health_block(self, worker, run_store, sample_wake):
         """BLOCKED health stops run before synthesis."""
-        result = worker.execute(sample_wake, force_health_state="BLOCKED")
+        run_event = run_store.create_run(
+            trigger_type="SCHEDULED_DAILY",
+            trigger_ref="test",
+            required_domains=sample_wake.get("required_domains", []),
+        )
+        run_id = run_event["payload"]["run_id"]
+        result = worker.execute(run_id, force_health_state="BLOCKED")
         assert result["status"] == "BLOCKED_BY_HEALTH"
         assert result["blocked_by"] == "HEALTH_BOUNDARY"
         # No notifications should be enqueued
         assert len(result.get("notifications_enqueued", [])) == 0
 
-    def test_run_degraded_health(self, worker, sample_wake):
+    def test_run_degraded_health(self, worker, run_store, sample_wake):
         """DEGRADED allows run with limitations."""
         class DegradedHealth:
             def current_advisory_state(self):
@@ -372,17 +389,29 @@ class TestCIORunWorker:
                 return "health-decision-degraded"
 
         worker.health_boundary = DegradedHealth()
-        result = worker.execute(sample_wake)
+        run_event = run_store.create_run(
+            trigger_type="SCHEDULED_DAILY",
+            trigger_ref="test",
+            required_domains=sample_wake.get("required_domains", []),
+        )
+        run_id = run_event["payload"]["run_id"]
+        result = worker.execute(run_id)
         assert result["status"] == "COMPLETED"  # DEGRADED allows run
         assert result["health_state"] == "DEGRADED"
 
-    def test_run_snapshot_binding(self, worker, sample_wake):
+    def test_run_snapshot_binding(self, worker, run_store, sample_wake):
         """Run captures snapshot ID and hash."""
-        result = worker.execute(sample_wake, force_health_state="READY")
+        run_event = run_store.create_run(
+            trigger_type="SCHEDULED_DAILY",
+            trigger_ref="test",
+            required_domains=sample_wake.get("required_domains", []),
+        )
+        run_id = run_event["payload"]["run_id"]
+        result = worker.execute(run_id, force_health_state="READY")
         assert result.get("snapshot_id") is not None
         assert result.get("snapshot_hash") is not None
 
-    def test_run_profile_version_binding(self, worker, sample_wake):
+    def test_run_profile_version_binding(self, worker, run_store, sample_wake):
         """Run captures operator profile version."""
         # Set a known profile field through the operator profile store
         worker.operator_profile.create_field(
@@ -392,10 +421,16 @@ class TestCIORunWorker:
             source="operator_test",
             confirmed_by_operator=True,
         )
-        result = worker.execute(sample_wake, force_health_state="READY")
+        run_event = run_store.create_run(
+            trigger_type="SCHEDULED_DAILY",
+            trigger_ref="test",
+            required_domains=sample_wake.get("required_domains", []),
+        )
+        run_id = run_event["payload"]["run_id"]
+        result = worker.execute(run_id, force_health_state="READY")
         assert result["run_id"] is not None
 
-    def test_run_ips_version_binding(self, worker, sample_wake):
+    def test_run_ips_version_binding(self, worker, run_store, sample_wake):
         """Run captures IPS version."""
         worker.operator_profile.create_field(
             domain="investment_policy_statement",
@@ -404,40 +439,72 @@ class TestCIORunWorker:
             source="operator_test",
             confirmed_by_operator=True,
         )
-        result = worker.execute(sample_wake, force_health_state="READY")
+        run_event = run_store.create_run(
+            trigger_type="SCHEDULED_DAILY",
+            trigger_ref="test",
+            required_domains=sample_wake.get("required_domains", []),
+        )
+        run_id = run_event["payload"]["run_id"]
+        result = worker.execute(run_id, force_health_state="READY")
         assert result["run_id"] is not None
 
-    def test_specialist_routing(self, worker, sample_wake):
+    def test_specialist_routing(self, run_store, wake_store, sample_wake,
+                                  health_boundary, action_ledger, notification_outbox,
+                                  handoff_queue, hermes_queue, operator_profile):
         """Handoffs to specialists created."""
-        sample_wake["required_domains"] = ["portfolio", "risk", "watch", "tax"]
-        result = worker.execute(sample_wake, force_health_state="READY")
-        assert result["status"] == "COMPLETED"
+        worker = CIORunWorker(
+            run_store=run_store,
+            health_boundary=health_boundary,
+            action_ledger=action_ledger,
+            notification_outbox=notification_outbox,
+            handoff_queue=handoff_queue,
+            hermes_queue=hermes_queue,
+            operator_profile=operator_profile,
+            mode="shadow",
+        )
+        domains = ["portfolio", "risk", "watch", "tax"]
+        run_event = run_store.create_run(
+            trigger_type="SCHEDULED_DAILY",
+            trigger_ref="test",
+            required_domains=domains,
+        )
+        run_id = run_event["payload"]["run_id"]
+        result = worker.execute(run_id, force_health_state="READY")
+        assert result["status"] == "WAITING_FOR_SPECIALISTS"
         # Specialist handoffs should be created for the required domains
         # (maria_portfolio for portfolio/risk/tax, steph_watchlist for watch)
         handoffs = result.get("specialist_handoffs", [])
         assert len(handoffs) > 0
 
-    def test_hermes_policy_trigger(self, worker, sample_wake):
+    def test_hermes_policy_trigger(self, worker, run_store, sample_wake):
         """High materiality triggers Hermes challenge."""
-        material_wake = dict(sample_wake)
-        material_wake["materiality"] = 0.8
-        material_wake["trigger_type"] = "HEALTH_EVENT"
-
         # Use a mock hermes function
         def mock_hermes(context, materiality):
             return {"challenge_id": "hermes-challenge-001"}
 
         worker._hermes_fn = mock_hermes
-        result = worker.execute(material_wake, force_health_state="READY")
+        run_event = run_store.create_run(
+            trigger_type="HEALTH_EVENT",
+            trigger_ref="test",
+            required_domains=sample_wake.get("required_domains", []),
+        )
+        run_id = run_event["payload"]["run_id"]
+        result = worker.execute(run_id, force_health_state="READY")
         assert len(result.get("hermes_challenges", [])) > 0
 
-    def test_hermes_not_triggered_when_not_material(self, worker, sample_wake):
+    def test_hermes_not_triggered_when_not_material(self, worker, run_store, sample_wake):
         """Routine wakes do not trigger Hermes challenge."""
-        result = worker.execute(sample_wake, force_health_state="READY")
+        run_event = run_store.create_run(
+            trigger_type="SCHEDULED_DAILY",
+            trigger_ref="test",
+            required_domains=sample_wake.get("required_domains", []),
+        )
+        run_id = run_event["payload"]["run_id"]
+        result = worker.execute(run_id, force_health_state="READY")
         # No hermes challenges for routine daily brief
         assert len(result.get("hermes_challenges", [])) == 0
 
-    def test_action_write_via_service_only(self, worker, sample_wake):
+    def test_action_write_via_service_only(self, worker, run_store, sample_wake):
         """Actions written through ledger, not raw files."""
         # Override synthesis to produce a recommendation
         def mock_synth(**kwargs):
@@ -458,14 +525,20 @@ class TestCIORunWorker:
             }
 
         worker._synthesis_fn = mock_synth
-        result = worker.execute(sample_wake, force_health_state="READY")
+        run_event = run_store.create_run(
+            trigger_type="SCHEDULED_DAILY",
+            trigger_ref="test",
+            required_domains=sample_wake.get("required_domains", []),
+        )
+        run_id = run_event["payload"]["run_id"]
+        result = worker.execute(run_id, force_health_state="READY")
 
         # Verify actions were created in the action ledger
         actions = worker.action_ledger.list_actions()
         assert len(actions) > 0
         assert len(result.get("actions_created", [])) > 0
 
-    def test_shadow_notification_only(self, worker, sample_wake):
+    def test_shadow_notification_only(self, worker, run_store, sample_wake):
         """Notifications are enqueued but not delivered live."""
         def mock_synth(**kwargs):
             return {
@@ -476,7 +549,13 @@ class TestCIORunWorker:
             }
 
         worker._synthesis_fn = mock_synth
-        result = worker.execute(sample_wake, force_health_state="READY")
+        run_event = run_store.create_run(
+            trigger_type="SCHEDULED_DAILY",
+            trigger_ref="test",
+            required_domains=sample_wake.get("required_domains", []),
+        )
+        run_id = run_event["payload"]["run_id"]
+        result = worker.execute(run_id, force_health_state="READY")
 
         # Notifications should be enqueued (summary notification at minimum)
         notifications = result.get("notifications_enqueued", [])
@@ -487,9 +566,15 @@ class TestCIORunWorker:
         # Verify no live delivery happened (shadow mode)
         assert result["mode"] == "shadow"
 
-    def test_zero_live_telegram(self, worker, sample_wake):
+    def test_zero_live_telegram(self, worker, run_store, sample_wake):
         """No Telegram sends in shadow mode."""
-        result = worker.execute(sample_wake, force_health_state="READY")
+        run_event = run_store.create_run(
+            trigger_type="SCHEDULED_DAILY",
+            trigger_ref="test",
+            required_domains=sample_wake.get("required_domains", []),
+        )
+        run_id = run_event["payload"]["run_id"]
+        result = worker.execute(run_id, force_health_state="READY")
         # Verify worker is in shadow mode
         auth = CIORunWorker.verify_authority()
         assert auth["can_send_live_telegram"] is False
@@ -502,9 +587,15 @@ class TestCIORunWorker:
         assert budget["max_cost_usd"] <= 0.02
         assert budget["max_wall_time_minutes"] <= 5
 
-    def test_run_call_limit_enforced(self, worker, sample_wake):
+    def test_run_call_limit_enforced(self, worker, run_store, sample_wake):
         """Run stops at call limit."""
-        result = worker.execute(sample_wake, force_health_state="READY")
+        run_event = run_store.create_run(
+            trigger_type="SCHEDULED_DAILY",
+            trigger_ref="test",
+            required_domains=sample_wake.get("required_domains", []),
+        )
+        run_id = run_event["payload"]["run_id"]
+        result = worker.execute(run_id, force_health_state="READY")
         # The worker tracks call count
         assert result["provider_calls"] <= 4  # daily_brief max
 
@@ -527,16 +618,21 @@ class TestCIORunWorker:
         assert "budget_override" in auth["forbidden_tools"]
         assert "authority_escalate" in auth["forbidden_tools"]
 
-    def test_run_restart_recovery(self, worker, sample_wake):
+    def test_run_restart_recovery(self, worker, run_store, wake_store, sample_wake):
         """Worker survives a simulated crash and can be re-invoked."""
         # First execution
-        r1 = worker.execute(sample_wake, force_health_state="READY")
+        run_event = run_store.create_run(
+            trigger_type="SCHEDULED_DAILY",
+            trigger_ref="test",
+            required_domains=sample_wake.get("required_domains", []),
+        )
+        run_id = run_event["payload"]["run_id"]
+        r1 = worker.execute(run_id, force_health_state="READY")
         assert r1["status"] == "COMPLETED"
 
         # Simulate crash: create new worker with same stores
         new_worker = CIORunWorker(
             run_store=worker.run_store,
-            wake_store=worker.wake_store,
             health_boundary=worker.health_boundary,
             action_ledger=worker.action_ledger,
             notification_outbox=worker.notification_outbox,
@@ -547,9 +643,13 @@ class TestCIORunWorker:
         )
 
         # Second execution with different wake
-        wake2 = dict(sample_wake)
-        wake2["wake_job_id"] = "wake-recovery-002"
-        r2 = new_worker.execute(wake2, force_health_state="READY")
+        run_event2 = run_store.create_run(
+            trigger_type="SCHEDULED_DAILY",
+            trigger_ref="test_recovery",
+            required_domains=sample_wake.get("required_domains", []),
+        )
+        run_id2 = run_event2["payload"]["run_id"]
+        r2 = new_worker.execute(run_id2, force_health_state="READY")
         assert r2["status"] == "COMPLETED"
 
     def test_all_baseline_modules(self):

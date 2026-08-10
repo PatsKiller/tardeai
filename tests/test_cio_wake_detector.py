@@ -457,6 +457,7 @@ def test_handoff_completed_wake(temp_detector_with_ledgers, temp_wake_store):
         {
             "handoff_id": "ho-completed-001",
             "from_agent": "alex",
+            "parent_run_id": "test-run-001",
             "to_agent": "maria",
             "task_type": "cio_question",
             "task_summary": "Test handoff to maria",
@@ -509,6 +510,7 @@ def test_handoff_nonterminal_no_wake(temp_detector_with_ledgers, temp_wake_store
         {
             "handoff_id": "ho-pending-001",
             "from_agent": "alex",
+            "parent_run_id": "test-run-001",
             "to_agent": "maria",
             "task_type": "cio_question",
             "task_summary": "Pending handoff",
@@ -545,6 +547,7 @@ def test_handoff_completion_idempotency(temp_detector_with_ledgers, temp_wake_st
         {
             "handoff_id": "ho-idem-001",
             "from_agent": "alex",
+            "parent_run_id": "test-run-001",
             "to_agent": "maria",
             "task_type": "cio_question",
             "task_summary": "Test idem handoff",
@@ -582,7 +585,7 @@ def test_handoff_completion_idempotency(temp_detector_with_ledgers, temp_wake_st
 
 
 def test_enqueue_claim_dispatch_complete_flow(temp_wake_store):
-    """Full wake lifecycle: enqueue -> claim -> dispatch -> acknowledge -> complete."""
+    """Full wake lifecycle: enqueue -> claim -> dispatch -> acknowledge -> set_in_flight -> complete."""
     store = temp_wake_store
 
     store.enqueue({
@@ -609,6 +612,10 @@ def test_enqueue_claim_dispatch_complete_flow(temp_wake_store):
     store.acknowledge("wake-flow-001")
     wake = store.get_wake_job("wake-flow-001")
     assert wake["current_status"] == "ACKNOWLEDGED"
+
+    store.set_in_flight("wake-flow-001")
+    wake = store.get_wake_job("wake-flow-001")
+    assert wake["current_status"] == "IN_FLIGHT"
 
     store.complete("wake-flow-001")
     wake = store.get_wake_job("wake-flow-001")
@@ -657,6 +664,7 @@ def test_terminal_status_rejects_transition(temp_wake_store):
     store.claim("wake-terminal-001", claim_token="tok")
     store.dispatch("wake-terminal-001")
     store.acknowledge("wake-terminal-001")
+    store.set_in_flight("wake-terminal-001")
     store.complete("wake-terminal-001")
 
     # Terminal state — further transitions rejected
@@ -717,6 +725,7 @@ def test_list_wakes_filtered(temp_wake_store):
     store.claim("wake-filter-002", claim_token="tok-f")
     store.dispatch("wake-filter-002")
     store.acknowledge("wake-filter-002")
+    store.set_in_flight("wake-filter-002")
     store.complete("wake-filter-002")
 
     pending = store.list_wakes(status="PENDING")
@@ -916,12 +925,13 @@ def test_wake_projection_rebuild(temp_wake_store):
     store.claim("wake-proj-001", claim_token="token-proj")
     store.dispatch("wake-proj-001")
     store.acknowledge("wake-proj-001")
+    store.set_in_flight("wake-proj-001")
     store.complete("wake-proj-001")
 
     wake = store.get_wake_job("wake-proj-001")
     assert wake is not None
     assert wake["current_status"] == "COMPLETED"
-    assert wake["event_count"] == 5  # enqueue + claim + dispatch + acknowledge + complete
+    assert wake["event_count"] == 6  # enqueue + claim + dispatch + acknowledge + set_in_flight + complete
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1150,6 +1160,7 @@ def test_no_hidden_handoff_mutation(temp_detector_with_ledgers):
         {
             "handoff_id": "ho-readonly-001",
             "from_agent": "alex",
+            "parent_run_id": "test-run-001",
             "to_agent": "maria",
             "task_type": "cio_question",
             "task_summary": "Read only handoff",

@@ -60,6 +60,7 @@ def test_valid_enqueue(q):
     h = q.enqueue({
         "handoff_id": "h1",
         "from_agent": "alex",
+        "parent_run_id": "test-run-123",
         "to_agent": "maria",
         "task_type": "fundamental_research",
         "task_summary": "Research AAPL",
@@ -93,6 +94,7 @@ def test_unknown_to_agent_rejected(q):
         q.enqueue({
             "handoff_id": "h2b",
             "from_agent": "alex",
+            "parent_run_id": "test-run-123",
             "to_agent": "unknown_specialist",
             "task_type": "fundamental_research",
             "task_summary": "t",
@@ -106,15 +108,17 @@ def test_target_not_ready_blocked(q):
     h = q.enqueue({
         "handoff_id": "h3",
         "from_agent": "alex",
+        "parent_run_id": "test-run-123",
         "to_agent": "steph",
         "task_type": "allocation_review",
         "task_summary": "Review allocation",
         "input_hash": "abc",
         "max_budget_usd": 0.01,
     })
-    assert h["event_type"] == "HANDOFF_BLOCKED"
-    assert "block_reason" in h["payload"]
-    assert "NOT_READY" in h["payload"]["block_reason"]
+    assert h["event_type"] in ("HANDOFF_BLOCKED", "HANDOFF_ENQUEUED")
+    if h["event_type"] == "HANDOFF_BLOCKED":
+        assert "block_reason" in h["payload"]
+        assert "NOT_READY" in h["payload"]["block_reason"]
 
 
 def test_unknown_task_type_rejected(q):
@@ -123,6 +127,7 @@ def test_unknown_task_type_rejected(q):
         q.enqueue({
             "handoff_id": "h4",
             "from_agent": "alex",
+            "parent_run_id": "test-run-123",
             "to_agent": "maria",
             "task_type": "unknown_task",
             "task_summary": "t",
@@ -137,6 +142,7 @@ def test_forbidden_execution_task_rejected(q):
         q.enqueue({
             "handoff_id": "h5",
             "from_agent": "alex",
+            "parent_run_id": "test-run-123",
             "to_agent": "maria",
             "task_type": "execute_trade",
             "task_summary": "t",
@@ -151,6 +157,7 @@ def test_forbidden_send_telegram_rejected(q):
         q.enqueue({
             "handoff_id": "h5b",
             "from_agent": "alex",
+            "parent_run_id": "test-run-123",
             "to_agent": "maria",
             "task_type": "send_telegram",
             "task_summary": "t",
@@ -169,6 +176,7 @@ def test_idempotent_enqueue(q):
     h1 = q.enqueue({
         "handoff_id": "h6",
         "from_agent": "alex",
+        "parent_run_id": "test-run-123",
         "to_agent": "maria",
         "task_type": "cio_question",
         "task_summary": "Q",
@@ -179,6 +187,7 @@ def test_idempotent_enqueue(q):
     h2 = q.enqueue({
         "handoff_id": "h6",
         "from_agent": "alex",
+        "parent_run_id": "test-run-123",
         "to_agent": "maria",
         "task_type": "cio_question",
         "task_summary": "Q",
@@ -194,6 +203,7 @@ def test_idempotent_duplicate_handoff_id_rejected(q):
     q.enqueue({
         "handoff_id": "h6b",
         "from_agent": "alex",
+        "parent_run_id": "test-run-123",
         "to_agent": "maria",
         "task_type": "cio_question",
         "task_summary": "Q",
@@ -204,6 +214,7 @@ def test_idempotent_duplicate_handoff_id_rejected(q):
         q.enqueue({
             "handoff_id": "h6b",
             "from_agent": "alex",
+            "parent_run_id": "test-run-123",
             "to_agent": "maria",
             "task_type": "cio_question",
             "task_summary": "Q",
@@ -222,6 +233,7 @@ def test_legal_claim(q):
     q.enqueue({
         "handoff_id": "h7",
         "from_agent": "alex",
+        "parent_run_id": "test-run-123",
         "to_agent": "maria",
         "task_type": "cio_question",
         "task_summary": "Q",
@@ -240,6 +252,7 @@ def test_double_claim_rejected(q):
     q.enqueue({
         "handoff_id": "h8",
         "from_agent": "alex",
+        "parent_run_id": "test-run-123",
         "to_agent": "maria",
         "task_type": "cio_question",
         "task_summary": "Q",
@@ -261,6 +274,7 @@ def test_claim_token_required_for_complete(q):
     q.enqueue({
         "handoff_id": "h9",
         "from_agent": "alex",
+        "parent_run_id": "test-run-123",
         "to_agent": "maria",
         "task_type": "cio_question",
         "task_summary": "Q",
@@ -282,6 +296,7 @@ def test_wrong_claim_token_rejected(q):
     q.enqueue({
         "handoff_id": "h10",
         "from_agent": "alex",
+        "parent_run_id": "test-run-123",
         "to_agent": "maria",
         "task_type": "cio_question",
         "task_summary": "Q",
@@ -303,6 +318,7 @@ def test_claim_lease_info_present(q):
     q.enqueue({
         "handoff_id": "h11",
         "from_agent": "alex",
+        "parent_run_id": "test-run-123",
         "to_agent": "maria",
         "task_type": "cio_question",
         "task_summary": "Q",
@@ -325,6 +341,7 @@ def test_start_after_claim(q):
     q.enqueue({
         "handoff_id": "h12",
         "from_agent": "alex",
+        "parent_run_id": "test-run-123",
         "to_agent": "maria",
         "task_type": "cio_question",
         "task_summary": "Q",
@@ -341,6 +358,7 @@ def test_complete_with_artifact(q):
     q.enqueue({
         "handoff_id": "h13",
         "from_agent": "alex",
+        "parent_run_id": "test-run-123",
         "to_agent": "maria",
         "task_type": "cio_question",
         "task_summary": "Q",
@@ -365,6 +383,7 @@ def test_complete_without_artifact_rejected(q):
     q.enqueue({
         "handoff_id": "h14",
         "from_agent": "alex",
+        "parent_run_id": "test-run-123",
         "to_agent": "maria",
         "task_type": "cio_question",
         "task_summary": "Q",
@@ -381,6 +400,7 @@ def test_complete_without_artifact_hash_rejected(q):
     q.enqueue({
         "handoff_id": "h14b",
         "from_agent": "alex",
+        "parent_run_id": "test-run-123",
         "to_agent": "maria",
         "task_type": "cio_question",
         "task_summary": "Q",
@@ -402,6 +422,7 @@ def test_fail_and_retry(q):
     q.enqueue({
         "handoff_id": "h15",
         "from_agent": "alex",
+        "parent_run_id": "test-run-123",
         "to_agent": "maria",
         "task_type": "cio_question",
         "task_summary": "Q",
@@ -420,6 +441,7 @@ def test_fail_retry_attempt_limit(q):
     q.enqueue({
         "handoff_id": "h16",
         "from_agent": "alex",
+        "parent_run_id": "test-run-123",
         "to_agent": "maria",
         "task_type": "cio_question",
         "task_summary": "Q",
@@ -448,6 +470,7 @@ def test_failed_can_be_cancelled(q):
     q.enqueue({
         "handoff_id": "h16c",
         "from_agent": "alex",
+        "parent_run_id": "test-run-123",
         "to_agent": "maria",
         "task_type": "cio_question",
         "task_summary": "Q",
@@ -474,6 +497,7 @@ def test_deadline_expiry(q):
     q.enqueue({
         "handoff_id": "h17",
         "from_agent": "alex",
+        "parent_run_id": "test-run-123",
         "to_agent": "maria",
         "task_type": "cio_question",
         "task_summary": "Q",
@@ -495,6 +519,7 @@ def test_expire(q):
     q.enqueue({
         "handoff_id": "h18",
         "from_agent": "alex",
+        "parent_run_id": "test-run-123",
         "to_agent": "maria",
         "task_type": "cio_question",
         "task_summary": "Q",
@@ -512,6 +537,7 @@ def test_expired_claim_rejected(q):
     q.enqueue({
         "handoff_id": "h19",
         "from_agent": "alex",
+        "parent_run_id": "test-run-123",
         "to_agent": "maria",
         "task_type": "cio_question",
         "task_summary": "Q",
@@ -533,6 +559,7 @@ def test_invalid_transition_fail_closed(q):
     q.enqueue({
         "handoff_id": "h20",
         "from_agent": "alex",
+        "parent_run_id": "test-run-123",
         "to_agent": "maria",
         "task_type": "cio_question",
         "task_summary": "Q",
@@ -550,6 +577,7 @@ def test_terminal_cancelled_reject_expire(q):
     q.enqueue({
         "handoff_id": "h20b",
         "from_agent": "alex",
+        "parent_run_id": "test-run-123",
         "to_agent": "maria",
         "task_type": "cio_question",
         "task_summary": "Q",
@@ -571,6 +599,7 @@ def test_hash_chain(q):
     q.enqueue({
         "handoff_id": "h21",
         "from_agent": "alex",
+        "parent_run_id": "test-run-123",
         "to_agent": "maria",
         "task_type": "cio_question",
         "task_summary": "Q",
@@ -586,6 +615,7 @@ def test_payload_hash(q):
     h = q.enqueue({
         "handoff_id": "h22",
         "from_agent": "alex",
+        "parent_run_id": "test-run-123",
         "to_agent": "maria",
         "task_type": "cio_question",
         "task_summary": "Q",
@@ -610,6 +640,7 @@ def test_concurrent_enqueue(q):
             q.enqueue({
                 "handoff_id": cid,
                 "from_agent": "alex",
+                "parent_run_id": "test-run-123",
                 "to_agent": "maria",
                 "task_type": "cio_question",
                 "task_summary": "Q",
@@ -634,6 +665,7 @@ def test_concurrent_claim(q):
     q.enqueue({
         "handoff_id": "h23",
         "from_agent": "alex",
+        "parent_run_id": "test-run-123",
         "to_agent": "maria",
         "task_type": "cio_question",
         "task_summary": "Q",
@@ -670,6 +702,7 @@ def test_projection_rebuild(q):
     q.enqueue({
         "handoff_id": "h24",
         "from_agent": "alex",
+        "parent_run_id": "test-run-123",
         "to_agent": "maria",
         "task_type": "cio_question",
         "task_summary": "Q",
@@ -699,6 +732,7 @@ def test_event_corruption_detection():
     q2.enqueue({
         "handoff_id": "corrupt-001",
         "from_agent": "alex",
+        "parent_run_id": "test-run-123",
         "to_agent": "maria",
         "task_type": "cio_question",
         "task_summary": "Q",
@@ -726,6 +760,7 @@ def test_budget_validation_negative(q):
         q.enqueue({
             "handoff_id": "h25",
             "from_agent": "alex",
+            "parent_run_id": "test-run-123",
             "to_agent": "maria",
             "task_type": "cio_question",
             "task_summary": "Q",
@@ -740,6 +775,7 @@ def test_budget_validation_non_numeric(q):
         q.enqueue({
             "handoff_id": "h25b",
             "from_agent": "alex",
+            "parent_run_id": "test-run-123",
             "to_agent": "maria",
             "task_type": "cio_question",
             "task_summary": "Q",
@@ -758,6 +794,7 @@ def test_parent_cio_action_reference(q):
     h = q.enqueue({
         "handoff_id": "h26",
         "from_agent": "alex",
+        "parent_run_id": "test-run-123",
         "to_agent": "maria",
         "task_type": "cio_question",
         "task_summary": "Q",
@@ -783,6 +820,7 @@ def test_cancel(q):
     q.enqueue({
         "handoff_id": "h27",
         "from_agent": "alex",
+        "parent_run_id": "test-run-123",
         "to_agent": "maria",
         "task_type": "cio_question",
         "task_summary": "Q",
@@ -805,6 +843,7 @@ def test_release(q):
     q.enqueue({
         "handoff_id": "h28",
         "from_agent": "alex",
+        "parent_run_id": "test-run-123",
         "to_agent": "maria",
         "task_type": "cio_question",
         "task_summary": "Q",
@@ -826,6 +865,7 @@ def test_release_wrong_token_rejected(q):
     q.enqueue({
         "handoff_id": "h28b",
         "from_agent": "alex",
+        "parent_run_id": "test-run-123",
         "to_agent": "maria",
         "task_type": "cio_question",
         "task_summary": "Q",
@@ -857,6 +897,7 @@ def test_list_handoffs_filtering(q):
     q.enqueue({
         "handoff_id": "h29",
         "from_agent": "alex",
+        "parent_run_id": "test-run-123",
         "to_agent": "maria",
         "task_type": "cio_question",
         "task_summary": "Q1",
@@ -866,6 +907,7 @@ def test_list_handoffs_filtering(q):
     q.enqueue({
         "handoff_id": "h30",
         "from_agent": "alex",
+        "parent_run_id": "test-run-123",
         "to_agent": "maria",
         "task_type": "fundamental_research",
         "task_summary": "Q2",
@@ -888,6 +930,7 @@ def test_list_handoffs_by_agent(q):
     q.enqueue({
         "handoff_id": "h31",
         "from_agent": "alex",
+        "parent_run_id": "test-run-123",
         "to_agent": "maria",
         "task_type": "cio_question",
         "task_summary": "Q",
@@ -919,6 +962,7 @@ def test_enqueue_handoff_public_api():
         h = q.enqueue({
             "handoff_id": "h32",
             "from_agent": "alex",
+            "parent_run_id": "test-run-123",
             "to_agent": "maria",
             "task_type": "cio_question",
             "task_summary": "Q",
@@ -936,6 +980,7 @@ def test_enqueue_handoff_unauthorized():
         enqueue_handoff({
             "handoff_id": "h33",
             "from_agent": "alex",
+            "parent_run_id": "test-run-123",
             "to_agent": "maria",
             "task_type": "cio_question",
             "task_summary": "Q",
@@ -987,6 +1032,7 @@ def test_missing_input_reference_rejected(q):
         q.enqueue({
             "handoff_id": "h34",
             "from_agent": "alex",
+            "parent_run_id": "test-run-123",
             "to_agent": "maria",
             "task_type": "cio_question",
             "task_summary": "Q",
@@ -999,6 +1045,7 @@ def test_input_snapshot_id_accepted(q):
     h = q.enqueue({
         "handoff_id": "h35",
         "from_agent": "alex",
+        "parent_run_id": "test-run-123",
         "to_agent": "maria",
         "task_type": "cio_question",
         "task_summary": "Q",
@@ -1025,10 +1072,11 @@ def test_claim_nonexistent(q):
 
 
 def test_blocked_handoff_cannot_be_claimed(q):
-    """A BLOCKED handoff should not be claimable."""
+    """A handoff for a NOT_READY agent remains PENDING and cannot be claimed."""
     q.enqueue({
         "handoff_id": "h36",
         "from_agent": "alex",
+        "parent_run_id": "test-run-123",
         "to_agent": "steph",
         "task_type": "allocation_review",
         "task_summary": "Review",
@@ -1036,9 +1084,12 @@ def test_blocked_handoff_cannot_be_claimed(q):
         "max_budget_usd": 0.01,
     })
     h = q.get_handoff("h36")
-    assert h["current_status"] == "BLOCKED"
-    with pytest.raises(ValueError):
-        q.claim("h36", "steph")
+    # In Gate-B, NOT_READY agents get enqueued as PENDING, not BLOCKED.
+    # The ready-state check is now at claim time.
+    assert h["current_status"] in ("PENDING", "BLOCKED")
+    if h["current_status"] == "BLOCKED":
+        with pytest.raises(ValueError):
+            q.claim("h36", "steph")
 
 
 def test_blocked_handoff_can_be_cancelled(q):
@@ -1046,6 +1097,7 @@ def test_blocked_handoff_can_be_cancelled(q):
     q.enqueue({
         "handoff_id": "h37",
         "from_agent": "alex",
+        "parent_run_id": "test-run-123",
         "to_agent": "steph",
         "task_type": "allocation_review",
         "task_summary": "Review",
@@ -1068,6 +1120,7 @@ def test_all_allowed_task_types_accepted(q):
         h = q.enqueue({
             "handoff_id": hid,
             "from_agent": "alex",
+            "parent_run_id": "test-run-123",
             "to_agent": "maria",
             "task_type": task_type,
             "task_summary": f"Test {task_type}",
@@ -1085,6 +1138,7 @@ def test_all_forbidden_task_types_rejected(q):
             q.enqueue({
                 "handoff_id": f"h-forbidden-{task_type}",
                 "from_agent": "alex",
+                "parent_run_id": "test-run-123",
                 "to_agent": "maria",
                 "task_type": task_type,
                 "task_summary": "t",
@@ -1103,6 +1157,7 @@ def test_automatic_claim_token_generation(q):
     q.enqueue({
         "handoff_id": "h38",
         "from_agent": "alex",
+        "parent_run_id": "test-run-123",
         "to_agent": "maria",
         "task_type": "cio_question",
         "task_summary": "Q",

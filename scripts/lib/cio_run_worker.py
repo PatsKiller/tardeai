@@ -356,6 +356,15 @@ class CIORunWorker:
         if force_state is not None:
             result["state"] = force_state
             result["blocked"] = force_state in ("BLOCKED",)
+            if not result["blocked"] and self.run_store and self._run_id:
+                try:
+                    self.run_store.health_checked(
+                        self._run_id,
+                        f"health-{uuid.uuid4().hex[:12]}",
+                        actor="cio_run_worker",
+                    )
+                except Exception:
+                    pass
             return result
 
         if self.health_boundary is None:

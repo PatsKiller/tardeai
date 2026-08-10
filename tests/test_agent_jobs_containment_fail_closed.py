@@ -169,7 +169,11 @@ def test_health_import_failure_allows_unrelated(monkeypatch, tmp_path):
     assert n == 1
     data = __import__("json").loads(queue.read_text())
     assert data[0]["fixable"] is True
-    assert data[0]["retry_cmd"] == OTHER
+    # Path-independent: the command may resolve to a different Python binary
+    retry_cmd = data[0]["retry_cmd"]
+    assert retry_cmd is not None
+    assert "scripts/news_ingestion.py" in retry_cmd
+    assert "--priority" in retry_cmd
 
 
 def test_claude_retry_import_failure_blocks_worker(monkeypatch):
