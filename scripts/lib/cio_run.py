@@ -72,7 +72,7 @@ RUN_STATUSES = frozenset({
     "EXPIRED",
 })
 
-TERMINAL_STATUSES = frozenset({"COMPLETED", "FAILED", "CANCELLED", "EXPIRED"})
+TERMINAL_STATUSES = frozenset({"COMPLETED", "BLOCKED", "FAILED", "CANCELLED", "EXPIRED"})
 
 # Valid lifecycle transitions
 STATE_TRANSITIONS: dict[str, set[str]] = {

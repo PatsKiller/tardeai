@@ -276,10 +276,14 @@ class CIOWakeDispatcher:
         cio_artifact_id: str = "",
     ) -> bool:
         """Complete a wake after its linked CIO run reaches a terminal state.
-        
-        Should be called when the run reaches COMPLETED, FAILED, CANCELLED, or EXPIRED.
+
+        Uses the canonical TERMINAL_STATUSES from cio_run (COMPLETED,
+        BLOCKED, FAILED, CANCELLED, EXPIRED).  Only those states
+        finalize the linked wake.
         """
-        if terminal_status not in ("COMPLETED", "FAILED", "CANCELLED", "EXPIRED"):
+        from scripts.lib.cio_run import TERMINAL_STATUSES
+
+        if terminal_status not in TERMINAL_STATUSES:
             return False
         try:
             self.wake_store.complete(
