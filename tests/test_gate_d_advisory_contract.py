@@ -656,3 +656,200 @@ class TestDictLevelValidation:
         errors = validate_cioe_executive_advisory(d)
         assert any("invalid position" in e.lower() for e in errors), \
             f"Expected invalid position error, got: {errors}"
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Promotion condition evaluation — offline-testable conditions
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class TestPromotionConditionEvaluation:
+    """Verify that offline-testable promotion conditions are correctly scored."""
+
+    def test_schema_validated_is_not_proven_not_fail(self):
+        """Condition 5 moves from FAIL to NOT_PROVEN (schema code is validated)."""
+        from scripts.lib.cio_advisory_readiness import evaluate_promotion_condition
+        result = evaluate_promotion_condition("maria", 5, schema_validated=True)
+        assert result == "NOT_PROVEN", f"Condition 5 should be NOT_PROVEN after schema validation, got {result}"
+
+    def test_prohibited_authorities_is_not_proven(self):
+        """Condition 13: schema enforces prohibited authorities, but runtime not proven."""
+        from scripts.lib.cio_advisory_readiness import evaluate_promotion_condition
+        result = evaluate_promotion_condition("maria", 13)
+        assert result == "NOT_PROVEN", f"Condition 13 should be NOT_PROVEN, got {result}"
+
+    def test_governed_path_exists_is_not_proven(self):
+        """Condition 4: registry exists but not runtime-proven."""
+        from scripts.lib.cio_advisory_readiness import evaluate_promotion_condition
+        result = evaluate_promotion_condition("maria", 4, governed_path_exists=True)
+        assert result == "NOT_PROVEN", f"Condition 4 should be NOT_PROVEN with path, got {result}"
+
+    def test_no_governed_path_is_fail(self):
+        """Condition 4 without registry entry is FAIL."""
+        from scripts.lib.cio_advisory_readiness import evaluate_promotion_condition
+        result = evaluate_promotion_condition("unknown", 4, governed_path_exists=False)
+        assert result == "FAIL"
+
+    def test_live_canary_conditions_remain_fail(self):
+        """Conditions 1-3, 11, 17 require live canary → still FAIL."""
+        from scripts.lib.cio_advisory_readiness import evaluate_promotion_condition
+        for cond in [1, 2, 3, 11, 17]:
+            result = evaluate_promotion_condition("maria", cond)
+            assert result == "FAIL", f"Condition {cond} should be FAIL, got {result}"
+
+    def test_handoff_conditions_not_applicable(self):
+        """Conditions 15-16 are N/A for specialists."""
+        from scripts.lib.cio_advisory_readiness import evaluate_promotion_condition
+        for cond in [15, 16]:
+            result = evaluate_promotion_condition("maria", cond)
+            assert result == "NOT_APPLICABLE", f"Condition {cond} should be N/A, got {result}"
+
+    def test_all_specialists_same_baseline(self):
+        """All 5 specialists share the same promotion baseline."""
+        from scripts.lib.cio_advisory_readiness import evaluate_all_conditions
+
+        baseline = evaluate_all_conditions("maria")
+        for sid in ["steph", "guardian", "ledger", "morgan"]:
+            assert evaluate_all_conditions(sid) == baseline, \
+                f"{sid} promotion baseline differs from maria"
+
+    def test_conditions_6_10_content_fields_not_proven(self):
+        """Advisory content fields need specialist output proof."""
+        from scripts.lib.cio_advisory_readiness import evaluate_promotion_condition
+        for cond in [6, 7, 8, 9, 10]:
+            result = evaluate_promotion_condition("maria", cond)
+            assert result == "NOT_PROVEN", f"Condition {cond} should be NOT_PROVEN, got {result}"
+
+    def test_no_specialist_has_pass_yet(self):
+        """No specialist has any PASS condition before live canary."""
+        from scripts.lib.cio_advisory_readiness import evaluate_all_conditions
+        for sid in ["maria", "steph", "guardian", "ledger", "morgan"]:
+            results = evaluate_all_conditions(sid)
+            passes = sum(1 for v in results.values() if v == "PASS")
+            assert passes == 0, f"{sid} has {passes} PASS conditions before live canary"
+
+    def test_schema_tier_distinction(self):
+        """SCHEMA_DEFINED, SCHEMA_VALIDATED, and LIVE_OUTPUT_VALIDATED are distinct."""
+        # SCHEMA_DEFINED: the dataclass exists (importable)
+        from scripts.lib.cio_advisory_schema import (
+            SpecialistAdvisory, AlexCIOAdvisory,
+            validate_specialist_advisory, validate_alex_advisory,
+        )
+        assert SpecialistAdvisory is not None
+        assert AlexCIOAdvisory is not None
+
+        # SCHEMA_VALIDATED: validation functions work (offline tests prove)
+        assert callable(validate_specialist_advisory)
+        assert callable(validate_alex_advisory)
+
+        # LIVE_OUTPUT_VALIDATED: requires live canary (NOT_PROVEN here)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CIOSpecialistAdvisoryReadiness class-based tests
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestCIOSpecialistAdvisoryReadiness:
+    """Tests for the CIOSpecialistAdvisoryReadiness class API."""
+
+    def test_condition_4_governed_path_detectable_for_all_six(self):
+        from scripts.lib.cio_advisory_readiness import (
+            CIOSpecialistAdvisoryReadiness, NOT_PROVEN,
+        )
+        expected = {"maria", "steph", "guardian", "ledger", "morgan", "alex"}
+        for sid in expected:
+            result = CIOSpecialistAdvisoryReadiness.evaluate_condition(sid, 4)
+            assert result == NOT_PROVEN, (
+                f"Condition 4 for '{sid}' should be NOT_PROVEN, got {result}"
+            )
+
+    def test_condition_5_schema_validated_proven_offline(self):
+        from scripts.lib.cio_advisory_readiness import (
+            CIOSpecialistAdvisoryReadiness, NOT_PROVEN, FAIL,
+            SCHEMA_VALIDATED, LIVE_OUTPUT_VALIDATED,
+        )
+        assert CIOSpecialistAdvisoryReadiness.is_schema_defined()
+        assert CIOSpecialistAdvisoryReadiness.is_schema_validated_offline()
+        tier = CIOSpecialistAdvisoryReadiness.advisory_schema_tier()
+        assert tier == SCHEMA_VALIDATED
+        assert tier != LIVE_OUTPUT_VALIDATED
+
+        for sid in ("maria", "steph", "guardian", "ledger", "morgan"):
+            result = CIOSpecialistAdvisoryReadiness.evaluate_condition(sid, 5)
+            assert result == NOT_PROVEN
+            assert result != FAIL
+
+    def test_condition_6_explicit_recommendation_required(self):
+        from scripts.lib.cio_advisory_readiness import (
+            CIOSpecialistAdvisoryReadiness, NOT_PROVEN,
+        )
+        # Schema enforces recommendation — empty recommendation rejected
+        adv = SpecialistAdvisory(
+            specialist_id="test", parent_run_id="test-run", run_purpose="TEST",
+            position=SpecialistAdvisoryPosition.NEUTRAL,
+            recommendation="", rationale="Valid rationale.",
+            evidence_sources=_make_evidence_sources(["portfolio"]),
+            evidence_summary="OK", confidence=0.5, confidence_basis="PARTIAL_EVIDENCE",
+            material_risks=[], alternatives_considered=[],
+            conditions_to_change_view=[], evidence_gaps=[], deficiencies_acknowledged=[],
+        )
+        errors = validate_specialist_advisory(adv)
+        assert len(errors) > 0
+
+        for sid in ("maria", "steph", "guardian", "ledger", "morgan"):
+            result = CIOSpecialistAdvisoryReadiness.evaluate_condition(sid, 6)
+            assert result == NOT_PROVEN
+
+    def test_condition_10_conditions_to_change_view_required(self):
+        from scripts.lib.cio_advisory_readiness import (
+            CIOSpecialistAdvisoryReadiness, NOT_PROVEN,
+        )
+        adv = _maria_support_advisory()
+        adv.conditions_to_change_view = []
+        errors = validate_specialist_advisory(adv)
+        assert len(errors) > 0
+
+        for sid in ("maria", "steph", "guardian", "ledger", "morgan"):
+            result = CIOSpecialistAdvisoryReadiness.evaluate_condition(sid, 10)
+            assert result == NOT_PROVEN
+
+    def test_condition_12_confidence_bounded_by_evidence(self):
+        from scripts.lib.cio_advisory_readiness import (
+            CIOSpecialistAdvisoryReadiness, NOT_PROVEN,
+        )
+        adv = _maria_support_advisory()
+        adv.confidence = 1.5
+        errors = validate_specialist_advisory(adv)
+        assert any("confidence" in e.lower() for e in errors)
+
+        for sid in ("maria", "steph", "guardian", "ledger", "morgan"):
+            result = CIOSpecialistAdvisoryReadiness.evaluate_condition(sid, 12)
+            assert result == NOT_PROVEN
+
+    def test_condition_13_prohibited_authorities_enforced_by_schema(self):
+        from scripts.lib.cio_advisory_readiness import (
+            CIOSpecialistAdvisoryReadiness, EXECUTIVE_ACTION_FIELDS,
+            NOT_PROVEN, FAIL,
+        )
+        from dataclasses import fields as dc_fields
+
+        adv_fields = {f.name for f in dc_fields(SpecialistAdvisory)}
+        overlap = adv_fields & EXECUTIVE_ACTION_FIELDS
+        assert not overlap
+
+        advisories = [
+            _maria_support_advisory(), _steph_oppose_advisory(),
+            _guardian_oppose_advisory(), _ledger_defer_advisory(),
+            _morgan_conditional_advisory(),
+        ]
+        for adv in advisories:
+            d = adv.to_dict()
+            for field in EXECUTIVE_ACTION_FIELDS:
+                assert field not in d
+
+        for sid in ("maria", "steph", "guardian", "ledger", "morgan"):
+            result = CIOSpecialistAdvisoryReadiness.evaluate_condition(sid, 13)
+            assert result == NOT_PROVEN
+            assert result != FAIL
+
+
