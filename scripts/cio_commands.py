@@ -384,12 +384,64 @@ def cmd_reject() -> str:
         return f"❌ Failed to reject {action_id}: {e}"
 
 
+def cmd_plans() -> str:
+    """List open advisory plans (deterministic)."""
+    try:
+        from lib.cio_plans import CIOPlanStore
+        rows = CIOPlanStore().list_open_plans(limit=20)
+    except Exception as e:
+        return f"❌ plans unavailable: {e}"
+    if not rows:
+        return "No open plans."
+    lines = ["📋 Open plans (READ_ONLY):"]
+    for p in rows:
+        syms = ",".join(p.get("symbols") or []) or "—"
+        lines.append(
+            f"• {p.get('plan_id')}  {p.get('situation_type')}  "
+            f"[{syms}]  {p.get('status')}"
+        )
+    return "\n".join(lines)
+
+
+def cmd_plan() -> str:
+    """Show one plan: /cio plan <plan_id>"""
+    if len(sys.argv) < 3:
+        return "Usage: /cio plan <plan_id>"
+    plan_id = sys.argv[2]
+    try:
+        from lib.cio_plans import CIOPlanStore
+        p = CIOPlanStore().get_plan(plan_id)
+    except Exception as e:
+        return f"❌ plan lookup failed: {e}"
+    if not p:
+        return f"Plan not found: {plan_id}"
+    opts = p.get("options") or []
+    opt_s = "\n".join(f"  - {o.get('label') or o.get('id')}" for o in opts[:6])
+    refs = p.get("evidence_refs") or []
+    ref_s = "\n".join(
+        f"  - {r.get('domain')} as_of={r.get('as_of')}" for r in refs[:8]
+    )
+    return (
+        f"📌 {p.get('plan_id')} · {p.get('situation_type')} · {p.get('status')}\n"
+        f"Symbols: {', '.join(p.get('symbols') or []) or '—'}\n"
+        f"Owner: {p.get('owner_agent')}\n"
+        f"Summary: {p.get('summary') or p.get('title')}\n"
+        f"Recommendation: {p.get('recommendation')}\n"
+        f"Options:\n{opt_s or '  (none)'}\n"
+        f"Evidence:\n{ref_s or '  (none)'}\n"
+        f"revisit_at: {p.get('revisit_at')}\n"
+        f"authority: READ_ONLY_ADVISORY"
+    )
+
+
 HELP = """🤖 CIO Commands:
   /cio                 — Full CIO dashboard
   /cio actions         — Open action items
   /cio portfolio       — Portfolio snapshot
   /cio hermes          — Hermes research topics
   /cio risk            — Risk overview
+  /cio plans           — Open advisory plans
+  /cio plan <id>       — Show one plan
   /cio action <id>     — Detail on one action (coming soon)
   /cio ack <id>        — Acknowledge an action
   /cio defer <id> [date] — Defer an action (optionally until date)
@@ -397,7 +449,8 @@ HELP = """🤖 CIO Commands:
   /cio done <id>       — Mark an action as done
   /cio rate <id> <useful|notuseful> — Rate action usefulness
 
-Data source: CIO Data Broker (13 domains). Zero model calls."""
+Data source: CIO Data Broker (13 domains). Zero model calls for status.
+Free-text converse uses dedicated CIO bot (READ_ONLY_ADVISORY)."""
 
 
 def main() -> int:
@@ -418,6 +471,10 @@ def main() -> int:
         print(cmd_reject())
     elif subcommand == "done":
         print(cmd_done())
+    elif subcommand == "plans":
+        print(cmd_plans())
+    elif subcommand == "plan":
+        print(cmd_plan())
     elif subcommand == "action" and len(sys.argv) > 2:
         print(f"📋 Action detail for {sys.argv[2]} — coming soon")
     else:

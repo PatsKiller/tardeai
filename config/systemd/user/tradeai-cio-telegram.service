@@ -1,0 +1,21 @@
+[Unit]
+Description=Trade AI CIO dedicated Telegram bot (READ_ONLY_ADVISORY converse)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+Environment=PYTHONPATH=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts
+Environment=CIO_TELEGRAM_CONVERSE=1
+EnvironmentFile=-/run/user/%U/tradeai/env
+EnvironmentFile=-%h/.config/tradeai/agent-operator.env
+ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/cio_telegram_bot.py --loop
+Restart=on-failure
+RestartSec=10
+Nice=10
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target
