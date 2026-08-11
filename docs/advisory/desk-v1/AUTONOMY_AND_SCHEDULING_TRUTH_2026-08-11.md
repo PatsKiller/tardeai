@@ -19,6 +19,8 @@
 
 **Honest product line:** *scheduled advisory factory with LLM brains* — not continuous autonomous agents, not autonomous traders.
 
+**Chat path (P1):** Dedicated CIO Telegram bot: **allowlisted free-text → `operator.message` → wake → structured reply** (template if LLM deferred). Continuity via `plan_id` + reply-to. Still **not** autonomous trading. See `docs/cio/CIO_TELEGRAM_CONVERSE_RUNBOOK.md`.
+
 **2026-08-11 update (goal/thesis gap):** Durable `CIOGoalStore` + `CIOWakeDispatcher.enqueue_goal_wakes` add **goal-due / idle** wakes beside the existing event claim path. Still timer-driven oneshots; still no self-scheduling agents. See [AUTONOMY_GOAL_THESIS_COMPLETE.md](./AUTONOMY_GOAL_THESIS_COMPLETE.md) and [RUNTIME_TRUTH_2026-08-11.md](./RUNTIME_TRUTH_2026-08-11.md).
 
 ---

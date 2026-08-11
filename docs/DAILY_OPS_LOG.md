@@ -1,3 +1,10 @@
+## 2026-08-11 — CIO Telegram converse bot (P1 SHADOW-safe)
+
+Dedicated CIO bot worker (`cio_telegram_bot.py`): allowlist, OPERATOR_MESSAGE
+on event bus, wake enqueue, structured reply + plan_id continuity, /cio slash
+zero-LLM. Template reply when LLM deferred. Notify mass situations still off.
+Runbook: `docs/cio/CIO_TELEGRAM_CONVERSE_RUNBOOK.md`.
+
 ## 2026-08-11 — P0 host: timers on feature/advisory-desk-v1 @ d124b227
 
 Pointed live tree at Phase 2a tip; agent_runtime alex/morgan/steph --once COMPLETED;
