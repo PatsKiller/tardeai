@@ -100,13 +100,20 @@ echo "  Rsync complete."
 # its own stale copy, the header tiles show days-old values even though the
 # pipeline is producing fresh data.
 #
-# RULE: NEVER deploy data/portfolios/state/ or state/data_broker/ as stale copies.
+# RULE: NEVER deploy pipeline-writable dirs as stale rsync copies.
 # These directories are always symlinked to the canonical source so the server
-# reads the live pipeline output on every request.
+# reads the live pipeline output on every request (not the release snapshot).
+#
+# - data/portfolios/state  — holdings, finviz quote cache (header tiles)
+# - state/data_broker      — broker projection cache
+# - data/runtime           — advisory desk, defense, calibration, shadow (1.5G live)
+# - data/health            — health agent findings / history
 echo "[3/8] Linking pipeline data to canonical source..."
 DATA_DIRS_TO_LINK=(
     "data/portfolios/state"
     "state/data_broker"
+    "data/runtime"
+    "data/health"
 )
 for rel in "${DATA_DIRS_TO_LINK[@]}"; do
     target="${RELEASE_DIR}/${rel}"
