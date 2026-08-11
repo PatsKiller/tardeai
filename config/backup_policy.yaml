@@ -18,11 +18,12 @@ drive_db:
   max_count: 1                 # single offsite DB copy
 
 drive_other:
-  env_backup: 7
-  data_backup: 4
-  memory_backup: 7
-  ops_backup: 7
-  apps_backup: 2
+  # 2026-08-11 operator directive: only leave latest of each family on Drive
+  env_backup: 1
+  data_backup: 1
+  memory_backup: 1
+  ops_backup: 1
+  apps_backup: 1
 
 health:
   # Do NOT auto-remediate dump findings by re-running pg_dump (storm root cause).

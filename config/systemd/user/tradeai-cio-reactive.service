@@ -1,0 +1,13 @@
+[Unit]
+Description=TradeAI CIO reactive wake cycle (event+goal, READ_ONLY_ADVISORY)
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+Environment=CIO_REACTIVE_WAKES=1
+Environment=PYTHONPATH=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts
+EnvironmentFile=-/home/johnclaw/.config/tradeai/agent-operator.env
+ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/cio_reactive_cycle.py --once
+StandardOutput=append:/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/cio_reactive_cycle.log
+StandardError=append:/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/cio_reactive_cycle.log

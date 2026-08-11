@@ -1,0 +1,11 @@
+[Unit]
+Description=TradeAI CIO reactive cycle every 2 min (backstop + event wakes)
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=2min
+AccuracySec=30s
+Persistent=true
+
+[Install]
+WantedBy=timers.target

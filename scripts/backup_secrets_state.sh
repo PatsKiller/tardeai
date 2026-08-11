@@ -31,24 +31,14 @@ case "$TARGET" in
   # config/broker_credentials.env (SCHWAB_TOKEN_ENC_KEY — the Fernet key for the encrypted
   # OAuth tokens in Postgres; also mirrored to SM 2026-07-22) + the .env.pre-sm-migration
   # fallback snapshot (via GLOB) that env_bootstrap uses when Bitwarden is unreachable.
-  env)  PREFIX="env_backup";  KEEP=7;  SOURCES=(".env" "config/broker_credentials.env"); GLOB=".env.*" ;;
-  data) PREFIX="data_backup"; KEEP=4;  SOURCES=("data");  GLOB="" ;;
-  # Claude persistent memory (financial profile, project state) lives OUTSIDE the project
-  # tree — tar from $HOME. Small (<1MB), daily, same encryption; also mirrored to the
-  # private GitHub repo trade-ai-memory (this is the second, key-independent copy).
-  memory) PREFIX="memory_backup"; KEEP=7; TAR_BASE="$HOME"
+  # KEEP=1 all families (2026-08-11): only leave latest on Drive
+  env)  PREFIX="env_backup";  KEEP=1;  SOURCES=(".env" "config/broker_credentials.env"); GLOB=".env.*" ;;
+  data) PREFIX="data_backup"; KEEP=1;  SOURCES=("data");  GLOB="" ;;
+  memory) PREFIX="memory_backup"; KEEP=1; TAR_BASE="$HOME"
           SOURCES=(".claude/projects/-home-johnclaw/memory"); GLOB="" ;;
-  # 2026-07-17 backup-scope audit additions:
-  # db   — newest local pg dump goes OFFSITE weekly (dumps were local-only: a disk loss
-  #        took the DB history with it). Already gzipped; gpg adds the encryption layer.
-  # ops  — crontab + systemd user units, regenerated at run time (tiny, daily).
-  # apps — the other applications on this box: OpenClaw config/credentials/agents/memory/
-  #        state (NOT the 2.2G workspace) + nyc-dof-auction (which has NO git remote),
-  #        minus venvs/caches. Weekly.
-  # KEEP=1 (2026-08-11): single offsite DB copy — multi-GB dumps must not accumulate on Drive
   db)   PREFIX="db_backup"; KEEP=1; SOURCES=(); GLOB="" ;;
-  ops)  PREFIX="ops_backup"; KEEP=7; SOURCES=(); GLOB="" ;;
-  apps) PREFIX="apps_backup"; KEEP=2; TAR_BASE="$HOME"
+  ops)  PREFIX="ops_backup"; KEEP=1; SOURCES=(); GLOB="" ;;
+  apps) PREFIX="apps_backup"; KEEP=1; TAR_BASE="$HOME"
         SOURCES=(".openclaw/credentials" ".openclaw/agents" ".openclaw/memory"
                  ".openclaw/state" ".openclaw/openclaw.json" ".openclaw/exec-approvals.json"
                  "nyc-dof-auction"); GLOB="" ;;

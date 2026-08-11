@@ -1,3 +1,12 @@
+## 2026-08-11 — Autonomy WS0 + reactive wakes (SHADOW)
+
+Fixed agent_runtime@* ModuleNotFoundError (provider env comment + AUTH=0 override).
+steph/morgan/alex --once SUCCESS; alex processed 8 wake jobs after event inject.
+Drive backups pruned to latest-only per family. Librarian orphan purge live.
+cio_reactive_cycle timer every 2m; goals store + operator runbook.
+Docs: docs/ops/AUTONOMY_RUNTIME_TRUTH_2026-08-11.md, AUTONOMY_OPERATOR_RUNBOOK.md.
+READ_ONLY_ADVISORY only — not free-running traders.
+
 ## 2026-08-11 — Goal/thesis store + agent_runtime --once green (SHADOW)
 
 Fixed `AGENT_RUNTIME_PROVIDER_MODULE` inline-comment import break; alex/morgan/steph
