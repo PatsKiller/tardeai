@@ -838,6 +838,7 @@ class CIORunWorker:
         stale_required: list[str] = []
         error_required: list[str] = []
         conflicted_required: list[str] = []
+        partial_required: list[str] = []
 
         # Load registry
         registry = CIODomainRegistry.load()
@@ -856,9 +857,24 @@ class CIORunWorker:
                 error_required.append(domain_id)
             elif state == "CONFLICTED":
                 conflicted_required.append(domain_id)
+            elif state == "PARTIAL":
+                # Gate-C contract: PARTIAL on REQUIRED domains blocks unless
+                # the domain's quality_policy explicitly allows PARTIAL.
+                minimum_quality = "AVAILABLE"
+                try:
+                    capability = registry.get(domain_id)
+                    minimum_quality = capability.quality_policy.get(
+                        "minimum_acceptable_state", "AVAILABLE"
+                    )
+                except KeyError:
+                    pass  # domain not in registry → default to AVAILABLE
+                if minimum_quality == "AVAILABLE":
+                    # PARTIAL does not meet AVAILABLE threshold → block
+                    partial_required.append(domain_id)
 
         is_blocked = bool(
-            missing_required or stale_required or error_required or conflicted_required
+            missing_required or stale_required or error_required
+            or conflicted_required or partial_required
         )
 
         evidence_gaps = {
@@ -866,6 +882,7 @@ class CIORunWorker:
             "stale_required": stale_required,
             "error_required": error_required,
             "conflicted_required": conflicted_required,
+            "partial_required": partial_required,
         }
 
         return is_blocked, evidence_gaps

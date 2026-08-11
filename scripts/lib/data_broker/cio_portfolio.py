@@ -454,22 +454,37 @@ def _domain_cost_basis() -> dict[str, Any]:
 
     # Build current price map from holdings
     price_map: dict[str, float] = {}
+    # Build authoritative holdings map: symbol:account → {shares, cost_basis}
+    holdings_map: dict[str, dict[str, Any]] = {}
     for h in holdings_data.get("holdings", []):
         sym = h.get("symbol", "")
         if sym and not h.get("is_cash"):
             price = float(h.get("current_price", 0) or h.get("price", 0) or 0)
             if price > 0:
                 price_map[sym] = price
+            acct = h.get("account", "")
+            key = f"{sym}:{acct}"
+            holdings_map[key] = {
+                "shares": float(h.get("shares", 0) or 0),
+                "cost_basis": float(h.get("cost_basis", 0) or 0),
+                "market_value": float(h.get("market_value", 0) or 0),
+                "gain_loss_pct": float(h.get("gain_loss_pct", 0) or 0) if h.get("gain_loss_pct") is not None else None,
+            }
+
+    SHARE_TOLERANCE = 0.05  # 5% tolerance for share divergence
 
     positions: list[dict[str, Any]] = []
+    reconciled_count = 0
     for key, lot_list in lots_data.items():
         if ":" not in key:
             continue
         symbol, account = key.split(":", 1)
 
-        # Only taxable accounts
-        if "roth" in account.lower() or "ira" in account.lower():
-            continue
+        # IRA accounts: tax_lots has no cost-basis relevance for tax-loss harvesting,
+        # but shares and lot_dates are still consumed by downstream modules
+        # (days_held, holding_period, behavioral detection).  Reconcile IRAs
+        # exactly like taxable.  Retirement accounts carry no cost-basis
+        # reporting requirement but the domain must not report fabricated sizes.
 
         open_lots = [l for l in lot_list if float(l.get("shares_remaining", 0)) > 0]
         if not open_lots:
@@ -480,7 +495,27 @@ def _domain_cost_basis() -> dict[str, Any]:
         if total_shares <= 0:
             continue
 
-        avg_cost = total_cost / total_shares
+        # ── DB-FIX-01: Reconcile against holdings.json authoritative shares ──
+        # tax_lots.json shares_remaining was never decremented when positions
+        # were sold down — 17/34 positions diverge, some by >49,000×.
+        # holdings.json carries broker-verified shares and cost_basis.
+        holding = holdings_map.get(key)
+        reconciled = False
+        if holding and holding["shares"] > 0:
+            share_ratio = total_shares / holding["shares"]
+            if abs(share_ratio - 1.0) > SHARE_TOLERANCE:
+                # tax_lots is stale — use holdings.json as authority
+                reconciled = True
+                reconciled_count += 1
+                total_shares = holding["shares"]
+                # Preserve avg_cost_per_share from the surviving lots if possible,
+                # but fall back to holdings cost_basis/shares
+                if holding["cost_basis"] > 0:
+                    total_cost = holding["cost_basis"]
+                else:
+                    total_cost = total_cost * (holding["shares"] / sum(float(l["shares_remaining"]) for l in open_lots))
+
+        avg_cost = total_cost / total_shares if total_shares > 0 else 0
         current_price = price_map.get(symbol)
         if not current_price or current_price <= 0:
             continue
@@ -513,6 +548,12 @@ def _domain_cost_basis() -> dict[str, Any]:
             "holding_months": holding_months,
             "lot_count": len(open_lots),
             "oldest_lot_date": lot_date,
+            "reconciled": reconciled,
+            "lot_data_status": (
+                "RECONCILED_FROM_HOLDINGS" if reconciled
+                else "VERIFIED" if holding
+                else "UNTRUSTED"
+            ),
         })
 
     # Sort by unrealized P&L (worst first)
@@ -527,6 +568,7 @@ def _domain_cost_basis() -> dict[str, Any]:
         "loss_positions_count": len(loss_positions),
         "gain_positions_count": len(gain_positions),
         "total_unrealized_pnl": round(sum(p["unrealized_pnl"] for p in positions), 2),
+        "reconciled_count": reconciled_count,
         "positions": positions,
     }
 

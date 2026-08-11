@@ -1,0 +1,20 @@
+{
+  "test": "advisory_desk_bridge_cap_exhaustion",
+  "date": "2026-08-11T11:53:00Z",
+  "branch": "feature/advisory-desk-v1",
+  "method": "Set LLM_GLOBAL_DAILY_USD_CAP=0.000001 via systemd drop-in; POST /v1/chat/completions with X-TradeAI-Agent=advisory_desk",
+  "endpoint": "http://127.0.0.1:8766/v1/chat/completions",
+  "http_status": 429,
+  "error_code": "COST_CAP_EXCEEDED",
+  "governance_pass": false,
+  "cost_estimate": 0.0,
+  "message_contains": "scope=global, cap_usd=1e-06",
+  "cap_restored": true,
+  "bridge_active_after": true,
+  "unit_tests": {
+    "test_advisory_bridge_routing.py": "5 passed",
+    "test_cio_governed_model_bridge.py": "24 passed"
+  },
+  "pass": true,
+  "notes": "No tokens billed; provider not called when cap refuses."
+}

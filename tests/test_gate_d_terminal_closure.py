@@ -373,3 +373,152 @@ class TestCanonicalTerminalStatuses:
         """on_run_completed() references the shared TERMINAL_STATUSES."""
         source = inspect.getsource(wake_dispatcher.on_run_completed)
         assert "TERMINAL_STATUSES" in source
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Wake intent → run creation (non-RESUME intents create runs)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class TestWakeIntentRunCreation:
+    """Any wake_intent other than RESUME_RUN must create a CIO run."""
+
+    def test_explicit_new_run_creates_run(
+        self, wake_store, run_store, wake_dispatcher
+    ):
+        """wake_intent=NEW_RUN creates a new run."""
+        wake_job_id = _enqueue_wake(wake_store, wake_intent="NEW_RUN")
+        result = wake_dispatcher.poll_and_dispatch(max_dispatches=1)
+        assert result["dispatched_count"] == 1
+        assert result["dispatched"][0]["run_id"] is not None
+
+    def test_run_purpose_intent_creates_run(
+        self, wake_store, run_store, wake_dispatcher
+    ):
+        """wake_intent=SCHEDULED_CIO_BRIEF creates a new run."""
+        wake_job_id = _enqueue_wake(wake_store, wake_intent="SCHEDULED_CIO_BRIEF")
+        result = wake_dispatcher.poll_and_dispatch(max_dispatches=1)
+        assert result["dispatched_count"] == 1
+        run_id = result["dispatched"][0]["run_id"]
+        assert run_id is not None
+        assert run_id != ""
+
+    def test_health_event_intent_creates_run(
+        self, wake_store, run_store, wake_dispatcher
+    ):
+        """wake_intent=HEALTH_EVENT creates a new run."""
+        wake_job_id = _enqueue_wake(wake_store, wake_intent="HEALTH_EVENT")
+        result = wake_dispatcher.poll_and_dispatch(max_dispatches=1)
+        assert result["dispatched_count"] == 1
+        assert result["dispatched"][0]["run_id"] is not None
+
+    def test_resume_run_does_not_create_run(
+        self, wake_store, run_store, wake_dispatcher
+    ):
+        """wake_intent=RESUME_RUN without target is skipped."""
+        wake_job_id = _enqueue_wake(wake_store, wake_intent="RESUME_RUN")
+        result = wake_dispatcher.poll_and_dispatch(max_dispatches=1)
+        assert result["dispatched_count"] == 0
+
+    def test_resume_with_target_resumes(
+        self, wake_store, run_store, wake_dispatcher
+    ):
+        """wake_intent=RESUME_RUN with valid target_run_id dispatches."""
+        wake_job_id = _enqueue_wake(wake_store, wake_intent="NEW_RUN")
+        result = wake_dispatcher.poll_and_dispatch(max_dispatches=1)
+        run_id = result["dispatched"][0]["run_id"]
+        assert run_id is not None
+
+        resume_id = _enqueue_wake(
+            wake_store, wake_intent="RESUME_RUN", target_run_id=run_id
+        )
+        result2 = wake_dispatcher.poll_and_dispatch(max_dispatches=1)
+        assert result2["dispatched_count"] == 1
+        assert result2["dispatched"][0]["run_id"] == run_id
+
+
+def _enqueue_wake(wake_store, wake_intent="NEW_RUN", target_run_id=None):
+    """Helper: enqueue a PENDING wake via the wake store."""
+    import uuid
+    wake_id = f"test-wake-{uuid.uuid4().hex[:12]}"
+    payload = {
+        "wake_job_id": wake_id,
+        "trigger_type": "SCHEDULE_DUE",
+        "trigger_ref": "test-fixture",
+        "idempotency_key": wake_id,
+        "wake_intent": wake_intent,
+        "target_run_id": target_run_id,
+        "required_domains": [],
+        "priority": "normal",
+    }
+    wake_store.enqueue(payload, actor_id="test-fixture")
+    return wake_id
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Wake-intent normalization — fail-closed for unknown intents
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class TestWakeIntentNormalization:
+    """Wake intent must use explicit normalization map; unknown intents fail closed."""
+
+    def test_new_run_creates_run(self, wake_store, run_store, wake_dispatcher):
+        """NEW_RUN creates exactly one run."""
+        wake_job_id = _enqueue_wake(wake_store, wake_intent="NEW_RUN")
+        result = wake_dispatcher.poll_and_dispatch(max_dispatches=1)
+        assert result["dispatched_count"] == 1
+        assert result["dispatched"][0]["run_id"] is not None
+
+    def test_known_legacy_intent_normalizes_to_new_run(
+        self, wake_store, run_store, wake_dispatcher
+    ):
+        """SCHEDULED_CIO_BRIEF normalizes to NEW_RUN and creates a run."""
+        wake_job_id = _enqueue_wake(wake_store, wake_intent="SCHEDULED_CIO_BRIEF")
+        result = wake_dispatcher.poll_and_dispatch(max_dispatches=1)
+        assert result["dispatched_count"] == 1
+        assert result["dispatched"][0]["run_id"] is not None
+
+    def test_health_event_intent_normalizes(
+        self, wake_store, run_store, wake_dispatcher
+    ):
+        """HEALTH_EVENT normalizes to NEW_RUN."""
+        wake_job_id = _enqueue_wake(wake_store, wake_intent="HEALTH_EVENT")
+        result = wake_dispatcher.poll_and_dispatch(max_dispatches=1)
+        assert result["dispatched_count"] == 1
+
+    def test_unknown_wake_intent_does_not_create_run(
+        self, wake_store, run_store, wake_dispatcher
+    ):
+        """Unknown wake_intent is rejected — no run created."""
+        wake_job_id = _enqueue_wake(wake_store, wake_intent="EXECUTE_TRADE")
+        result = wake_dispatcher.poll_and_dispatch(max_dispatches=1)
+        assert result["dispatched_count"] == 0
+        assert len(result["errors"]) > 0 or len(result["skipped"]) > 0
+
+    def test_malformed_wake_intent_does_not_create_run(
+        self, wake_store, run_store, wake_dispatcher
+    ):
+        """Malformed intent (empty string) does not create a run."""
+        wake_job_id = _enqueue_wake(wake_store, wake_intent="")
+        result = wake_dispatcher.poll_and_dispatch(max_dispatches=1)
+        assert result["dispatched_count"] == 0
+
+    def test_resume_run_never_creates_second_run(
+        self, wake_store, run_store, wake_dispatcher
+    ):
+        """RESUME_RUN with valid target does not create a second run."""
+        # Create a run first
+        wake_job_id = _enqueue_wake(wake_store, wake_intent="NEW_RUN")
+        result = wake_dispatcher.poll_and_dispatch(max_dispatches=1)
+        run_id = result["dispatched"][0]["run_id"]
+
+        # Resume should link to the same run_id, not create a new one
+        resume_id = _enqueue_wake(
+            wake_store, wake_intent="RESUME_RUN", target_run_id=run_id
+        )
+        result2 = wake_dispatcher.poll_and_dispatch(max_dispatches=1)
+        assert result2["dispatched_count"] == 1
+        assert result2["dispatched"][0]["run_id"] == run_id
+        # The wake_job_id should be the resume wake, not the original
+        assert result2["dispatched"][0]["wake_job_id"] == resume_id
