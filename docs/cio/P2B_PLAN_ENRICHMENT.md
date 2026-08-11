@@ -23,7 +23,13 @@ CIOSituationDetector.persist_candidate
        ├─ validate_narrative (soft numeric match) → on fail one repair call
        └─ success → narrative_source=llm, status=proposed
   → maybe_notify_plan (if CIO_SITUATION_NOTIFY=1 + allowlist + notify type allowlist)
+       └─ notify ledger: same plan_id + fingerprint → skip (re-enrich does NOT re-push)
+          force via maybe_notify_plan(..., force=True) or CIO_SITUATION_NOTIFY_FORCE=1
 ```
+
+**Notify spam guard:** `data/cio/cio_plan_notify_ledger.json` keys by `plan_id`.  
+Fingerprint = hash(plan_id + evidence_hash + fire_reasons). Policy:
+`notify_once_per_fingerprint`, `notify_cooldown_hours` (12), `notify_min_gap_minutes` (5).
 
 **Host keys (dedicated CIO bot only — not OpenClaw main):**
 
@@ -127,9 +133,13 @@ p = store.get_plan(pid)
 r = enrich_plan(p, source=p["situation_type"], wake_id="verify:llm", force_llm=True, plan_store=store)
 print(r["narrative_source"], r["llm"], r.get("llm_error"))
 assert r["narrative_source"] == "llm"
-print("notify", maybe_notify_plan(r["plan"]))
+# Re-enrich must NOT re-push Telegram (ledger skip). Force only when intentional:
+print("notify_default", maybe_notify_plan(r["plan"]))          # False if already notified
+print("notify_force", maybe_notify_plan(r["plan"], force=True))  # True when ops want a re-push
 PY
 # Telegram should show ✨ Alex (LLM), plan_id unchanged, /cio ack <plan_id> footer
+# Second default maybe_notify_plan on same plan_id → False (no spam)
+
 
 # 4) Unit tests
 python3 -m pytest tests/test_cio_plan_enrichment_p2b.py tests/test_cio_telegram_converse.py -q

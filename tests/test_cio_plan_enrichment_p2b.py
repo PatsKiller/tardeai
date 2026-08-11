@@ -78,6 +78,80 @@ def test_evidence_pack_numbers_only_from_refs():
     assert "99999" not in allowed
 
 
+def test_notify_once_per_fingerprint(tmp_path, monkeypatch):
+    """Same plan_id + same evidence must not re-notify; force bypasses."""
+    from scripts.lib import cio_plan_enrichment as enr
+
+    ledger = tmp_path / "notify_ledger.json"
+    plan = spacex_plan()
+    plan["status"] = "proposed"
+    plan["narrative_source"] = "llm"
+    plan["evidence_hash"] = enr.evidence_hash(plan)
+
+    monkeypatch.setenv("CIO_SITUATION_NOTIFY", "1")
+    monkeypatch.setenv("TELEGRAM_CIO_CHAT_IDS", "999001")
+    monkeypatch.setenv("TELEGRAM_CIO_BOT_TOKEN", "fake-token")
+
+    sends: list[tuple] = []
+
+    def fake_send(chat_id, text, **kw):
+        sends.append((chat_id, text))
+        return {"ok": True}
+
+    monkeypatch.setattr(
+        "scripts.lib.cio_telegram_converse.send_cio_message",
+        fake_send,
+    )
+    monkeypatch.setattr(
+        "scripts.lib.cio_telegram_converse.allowlist_chat_ids",
+        lambda: {"999001"},
+    )
+
+    pol = enr.load_llm_policy()
+    pol["situation_notify_telegram"] = True
+
+    # first notify → send
+    assert enr.maybe_notify_plan(plan, policy=pol, ledger_path=ledger) is True
+    assert len(sends) == 1
+    # second notify same fingerprint → skip
+    assert enr.maybe_notify_plan(plan, policy=pol, ledger_path=ledger) is False
+    assert len(sends) == 1
+    # force → send again
+    assert enr.maybe_notify_plan(plan, policy=pol, force=True, ledger_path=ledger) is True
+    assert len(sends) == 2
+    # material evidence change → allow without force
+    plan2 = dict(plan)
+    plan2["evidence_refs"] = list(plan["evidence_refs"]) + [
+        {"domain": "cash", "as_of": "2026-08-11", "cash_pct": 50.0}
+    ]
+    plan2["evidence_hash"] = enr.evidence_hash(plan2)
+    plan2["fire_reasons"] = ["cash_pct_above_band", "quality_PARTIAL"]
+    # min_gap may block if too soon — force policy gap to 0
+    pol["notify_min_gap_minutes"] = 0
+    assert enr.maybe_notify_plan(plan2, policy=pol, ledger_path=ledger) is True
+    assert len(sends) == 3
+
+
+def test_should_skip_notify_reasons(tmp_path):
+    from scripts.lib.cio_plan_enrichment import (
+        evidence_hash,
+        notify_fingerprint,
+        record_notify,
+        should_skip_notify,
+    )
+    ledger = tmp_path / "ledger.json"
+    plan = spacex_plan()
+    plan["evidence_hash"] = evidence_hash(plan)
+    skip, reason = should_skip_notify(plan, ledger_path=ledger)
+    assert skip is False
+    assert reason == "first_notify"
+    record_notify(plan, ok=True, ledger_path=ledger)
+    skip2, reason2 = should_skip_notify(plan, ledger_path=ledger)
+    assert skip2 is True
+    assert reason2 == "already_notified_same_fingerprint"
+    assert notify_fingerprint(plan)
+
+
 def test_validator_rejects_invented_price():
     from scripts.lib.cio_plan_enrichment import build_evidence_pack, validate_narrative
     pack = build_evidence_pack(spacex_plan())

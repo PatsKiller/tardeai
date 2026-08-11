@@ -399,19 +399,27 @@ def format_structured_reply(
     if options:
         lines.append("")
         lines.append("⚖️ *Options*")
+
+        def _opt_clause(s: str, limit: int = 180) -> str:
+            """Full clause up to limit; break at word boundary, no mid-word cut."""
+            t = _clean(s)
+            if len(t) <= limit:
+                return t
+            cut = t[: limit - 1]
+            if " " in cut:
+                cut = cut.rsplit(" ", 1)[0]
+            return cut.rstrip(" ,;:") + "…"
+
         for i, o in enumerate(options[:5], 1):
-            lab = o.get("label") or o.get("id") or "?"
+            lab = _clean(str(o.get("label") or o.get("id") or "?"))
             pros = (o.get("pros") or "").strip()
             cons = (o.get("cons") or "").strip()
-            line = f"{i}. {lab}"
-            if pros or cons:
-                bits = []
-                if pros:
-                    bits.append(f"+{pros[:60]}")
-                if cons:
-                    bits.append(f"-{cons[:60]}")
-                line += f"  ({'; '.join(bits)})"
-            lines.append(line)
+            # Multi-line so pros/cons are complete (was [:60] inline — awkward truncations)
+            lines.append(f"{i}. {lab}")
+            if pros:
+                lines.append(f"   + {_opt_clause(pros)}")
+            if cons:
+                lines.append(f"   − {_opt_clause(cons)}")
     if recommendation:
         lines.append("")
         lines.append("✅ *Recommendation*")

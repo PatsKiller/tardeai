@@ -32,6 +32,11 @@ notify_situation_types:
   - S5_CASH_DEPLOYMENT
   - S6_CONCENTRATION_OR_DISPOSITION
   - S8_DEFENSIVE_REGIME
+# Re-notify guards (re-enrich must NOT re-push Telegram by default)
+notify_once_per_fingerprint: true  # same plan_id+evidence/fire → one notify
+notify_cooldown_hours: 12          # legacy rows without fingerprint
+notify_min_gap_minutes: 5          # min gap even when fingerprint changes
+# Override: CIO_SITUATION_NOTIFY_FORCE=1 or maybe_notify_plan(..., force=True)
 
 llm:
   enabled: true                    # CIO_LLM_ENRICH=0 to disable

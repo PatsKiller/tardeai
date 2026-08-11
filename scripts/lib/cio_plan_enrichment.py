@@ -22,6 +22,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_POLICY = PROJECT_ROOT / "config" / "cio_llm_policy.yaml"
 DEFAULT_ENRICH_LOG = PROJECT_ROOT / "data" / "cio" / "cio_llm_enrich_log.jsonl"
 DEFAULT_CALL_COUNTER = PROJECT_ROOT / "data" / "cio" / "cio_llm_hour_counter.json"
+DEFAULT_NOTIFY_LEDGER = PROJECT_ROOT / "data" / "cio" / "cio_plan_notify_ledger.json"
 
 NUM_RE = re.compile(r"\b\d+(?:\.\d+)?\b")
 
@@ -231,16 +232,23 @@ def extract_json_object(text: str) -> Optional[dict[str, Any]]:
     return None
 
 
-def _as_short_text(val: Any, limit: int = 200) -> str:
-    """Flatten list/dict pros/cons into a short operator-facing string."""
+def _as_short_text(val: Any, limit: int = 280) -> str:
+    """Flatten list/dict pros/cons into an operator-facing string (word-safe)."""
     if val is None:
         return ""
     if isinstance(val, list):
         parts = [str(x).strip() for x in val if str(x).strip()]
-        return "; ".join(parts)[:limit]
-    if isinstance(val, dict):
-        return json.dumps(val, default=str)[:limit]
-    return str(val).strip()[:limit]
+        t = "; ".join(parts)
+    elif isinstance(val, dict):
+        t = json.dumps(val, default=str)
+    else:
+        t = str(val).strip()
+    if len(t) <= limit:
+        return t
+    cut = t[: limit - 1]
+    if " " in cut:
+        cut = cut.rsplit(" ", 1)[0]
+    return cut.rstrip(" ,;:") + "…"
 
 
 def normalize_narrative(narrative: dict[str, Any]) -> dict[str, Any]:
@@ -977,11 +985,159 @@ def _patch_plan_meta(store: Any, plan_id: str, meta: dict[str, Any]) -> None:
         pass
 
 
-def maybe_notify_plan(plan: dict[str, Any], policy: Optional[dict[str, Any]] = None) -> bool:
+def _notify_ledger_path(path: Path | None = None) -> Path:
+    return Path(path) if path else DEFAULT_NOTIFY_LEDGER
+
+
+def _load_notify_ledger(path: Path | None = None) -> dict[str, Any]:
+    p = _notify_ledger_path(path)
+    try:
+        if p.exists():
+            data = json.loads(p.read_text())
+            if isinstance(data, dict):
+                return data
+    except Exception:
+        pass
+    return {}
+
+
+def _save_notify_ledger(ledger: dict[str, Any], path: Path | None = None) -> None:
+    p = _notify_ledger_path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = p.with_suffix(p.suffix + ".tmp")
+    tmp.write_text(json.dumps(ledger, indent=2, sort_keys=True, default=str) + "\n")
+    tmp.replace(p)
+
+
+def notify_fingerprint(plan: dict[str, Any]) -> str:
+    """Stable fingerprint of situation material content for re-notify gating.
+
+    Same plan_id + same evidence_hash (or fire_reasons + refs) → no re-notify.
+    Material change (new evidence hash / fire reasons) → may re-notify.
+    """
+    pid = str(plan.get("plan_id") or "")
+    eh = plan.get("evidence_hash")
+    if not eh:
+        try:
+            eh = evidence_hash(plan)
+        except Exception:
+            eh = ""
+    fire = plan.get("fire_reasons") or (plan.get("extra") or {}).get("fire_reasons") or []
+    fire_s = ",".join(str(x) for x in fire[:8])
+    raw = f"{pid}|{eh}|{fire_s}"
+    return hashlib.sha256(raw.encode()).hexdigest()[:16]
+
+
+def should_skip_notify(
+    plan: dict[str, Any],
+    *,
+    force: bool = False,
+    policy: Optional[dict[str, Any]] = None,
+    ledger_path: Path | None = None,
+) -> tuple[bool, str]:
+    """Return (skip, reason). Re-enrich must not re-push by default.
+
+    Skip when:
+      - plan_id already notified with same fingerprint (material unchanged)
+      - plan_id notified within notify_cooldown_hours (default 12) even if
+        fingerprint missing on older rows
+    Allow when:
+      - force=True or CIO_SITUATION_NOTIFY_FORCE=1
+      - fingerprint changed (new evidence / fire reasons)
+      - never notified
+    """
+    if force or os.environ.get("CIO_SITUATION_NOTIFY_FORCE", "").strip().lower() in (
+        "1", "true", "yes", "on",
+    ):
+        return False, "force"
+    pol = policy or load_llm_policy()
+    # once-per-fingerprint is default on
+    if pol.get("notify_once_per_fingerprint", True) is False:
+        return False, "once_disabled"
+    pid = str(plan.get("plan_id") or "")
+    if not pid:
+        return True, "no_plan_id"
+    fp = notify_fingerprint(plan)
+    try:
+        cooldown_h = float(pol["notify_cooldown_hours"]) if "notify_cooldown_hours" in pol else 12.0
+    except (TypeError, ValueError):
+        cooldown_h = 12.0
+    ledger = _load_notify_ledger(ledger_path)
+    row = ledger.get(pid) or {}
+    prev_fp = str(row.get("fingerprint") or "")
+    prev_ts = row.get("ts")
+    if prev_fp and prev_fp == fp:
+        return True, "already_notified_same_fingerprint"
+    # Short cooldown even when fingerprint missing/legacy
+    if prev_ts and not prev_fp:
+        try:
+            dt = datetime.fromisoformat(str(prev_ts).replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            if datetime.now(timezone.utc) - dt < timedelta(hours=cooldown_h):
+                return True, "cooldown_no_fingerprint"
+        except Exception:
+            pass
+    if prev_ts and prev_fp and prev_fp != fp:
+        # material change → allow (optional min gap to avoid thrash)
+        try:
+            min_gap_m = float(pol["notify_min_gap_minutes"]) if "notify_min_gap_minutes" in pol else 5.0
+        except (TypeError, ValueError):
+            min_gap_m = 5.0
+        if min_gap_m > 0:
+            try:
+                dt = datetime.fromisoformat(str(prev_ts).replace("Z", "+00:00"))
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                if datetime.now(timezone.utc) - dt < timedelta(minutes=min_gap_m):
+                    return True, "min_gap_after_prior_notify"
+            except Exception:
+                pass
+        return False, "material_change"
+    return False, "first_notify"
+
+
+def record_notify(
+    plan: dict[str, Any],
+    *,
+    ok: bool,
+    ledger_path: Path | None = None,
+    extra: Optional[dict[str, Any]] = None,
+) -> None:
+    """Persist successful (or attempted) notify for plan_id."""
+    pid = str(plan.get("plan_id") or "")
+    if not pid or not ok:
+        return
+    ledger = _load_notify_ledger(ledger_path)
+    prev = ledger.get(pid) or {}
+    ledger[pid] = {
+        "plan_id": pid,
+        "ts": _now(),
+        "fingerprint": notify_fingerprint(plan),
+        "evidence_hash": plan.get("evidence_hash") or evidence_hash(plan),
+        "situation_type": plan.get("situation_type"),
+        "symbols": list(plan.get("symbols") or []),
+        "count": int(prev.get("count") or 0) + 1,
+        **(extra or {}),
+    }
+    _save_notify_ledger(ledger, ledger_path)
+
+
+def maybe_notify_plan(
+    plan: dict[str, Any],
+    policy: Optional[dict[str, Any]] = None,
+    *,
+    force: bool = False,
+    ledger_path: Path | None = None,
+) -> bool:
     """Optional Telegram notify via dedicated CIO bot. Default off.
 
     Requires CIO_SITUATION_NOTIFY=1 (or policy situation_notify_telegram) and
     TELEGRAM_CIO_BOT_TOKEN + allowlist. Never uses OpenClaw main bot.
+
+    Re-notify guard: same plan_id + same fingerprint is notified at most once
+    (unless force=True / CIO_SITUATION_NOTIFY_FORCE=1, or evidence/fire_reasons change).
+    Re-enrichment alone must not re-push.
     """
     pol = policy or load_llm_policy()
     env_on = os.environ.get("CIO_SITUATION_NOTIFY", "0").strip().lower() in ("1", "true", "yes", "on")
@@ -1003,6 +1159,25 @@ def maybe_notify_plan(plan: dict[str, Any], policy: Optional[dict[str, Any]] = N
     ])
     if st and allow_types and st not in allow_types:
         return False
+
+    skip, skip_reason = should_skip_notify(
+        plan, force=force, policy=pol, ledger_path=ledger_path,
+    )
+    if skip:
+        try:
+            _log_enrich({
+                "ts": _now(),
+                "plan_id": plan.get("plan_id"),
+                "llm": "notify_skipped",
+                "narrative_source": plan.get("narrative_source"),
+                "source": st,
+                "notify_skip": skip_reason,
+                "authority": "READ_ONLY_ADVISORY",
+            })
+        except Exception:
+            pass
+        return False
+
     try:
         from scripts.lib.cio_telegram_converse import (
             allowlist_chat_ids,
@@ -1037,6 +1212,15 @@ def maybe_notify_plan(plan: dict[str, Any], policy: Optional[dict[str, Any]] = N
         for cid in chats:
             r = send_cio_message(cid, text)
             ok_any = ok_any or bool(r.get("ok"))
+        if ok_any:
+            record_notify(plan, ok=True, ledger_path=ledger_path)
+            # best-effort plan meta so operators can see notify state
+            try:
+                if plan.get("plan_id"):
+                    plan["telegram_notified_at"] = _now()
+                    plan["telegram_notify_fingerprint"] = notify_fingerprint(plan)
+            except Exception:
+                pass
         return ok_any
     except Exception:
         return False

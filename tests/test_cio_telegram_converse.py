@@ -108,6 +108,42 @@ def test_structured_reply_formatter():
     assert "desk@v1" in text
 
 
+def test_structured_reply_options_not_mid_truncated():
+    """Pros/cons render multi-line with full clauses (not 60-char mid-word cuts)."""
+    from scripts.lib.cio_telegram_converse import format_structured_reply
+    long_pro = (
+        "Avoids locking in drawdown and allows potential mean reversion "
+        "toward basis over a multi-week horizon"
+    )
+    long_con = (
+        "No downside protection so last price could decline further without a hard stop"
+    )
+    text = format_structured_reply(
+        summary="SPCX lifecycle review.",
+        options=[{
+            "id": "hold",
+            "label": "Hold full position",
+            "pros": long_pro,
+            "cons": long_con,
+        }],
+        recommendation="hold",
+        plan_id="plan_opt1",
+        llm_deferred=False,
+        situation_type="S1_POSITION_LIFECYCLE",
+        symbols=["SPCX"],
+    )
+    assert "1. Hold full position" in text
+    assert "   + " in text
+    assert "   − " in text or "   - " in text
+    # mid-word truncation pattern from old [:60] must not appear
+    assert "reversion ;" not in text
+    assert "break-eve" not in text
+    # full key phrases present
+    assert "mean reversion" in text
+    assert "downside protection" in text
+    assert "✨ Alex (LLM)" in text
+
+
 def test_process_free_text_dry_run_creates_path(paths, monkeypatch, tmp_path):
     """Dry-run free-text: allowlisted, not duplicate, produces converse kind."""
     from scripts.lib.cio_telegram_converse import process_telegram_message
