@@ -19,6 +19,8 @@
 
 **Honest product line:** *scheduled advisory factory with LLM brains* — not continuous autonomous agents, not autonomous traders.
 
+**2026-08-11 update (goal/thesis gap):** Durable `CIOGoalStore` + `CIOWakeDispatcher.enqueue_goal_wakes` add **goal-due / idle** wakes beside the existing event claim path. Still timer-driven oneshots; still no self-scheduling agents. See [AUTONOMY_GOAL_THESIS_COMPLETE.md](./AUTONOMY_GOAL_THESIS_COMPLETE.md) and [RUNTIME_TRUTH_2026-08-11.md](./RUNTIME_TRUTH_2026-08-11.md).
+
 ---
 
 ## How work actually runs (scheduling model)
@@ -45,7 +47,8 @@ Timers are the **heartbeat**. LLM is the **brain on demand**, not a resident dae
 | Outcome scorer | `tradeai-advisory-outcome-scorer.timer` | daily 18:30 | No (deterministic) |
 | Lessons reflect | `tradeai-advisory-lessons-reflect.timer` | daily 21:40 | Optional / rule-based |
 | Morning digest | existing morning path | morning | Desk section after `PROMOTED` or env |
-| `agent_runtime@*` (Steph, …) | templated timers | ~every few min | **Intended** — currently **fail closed** |
+| `agent_runtime@*` (Alex/Morgan/Steph, …) | templated timers | ~every few min | SHADOW oneshot — **fixed** provider env (2026-08-11); goal jobs when open goals exist |
+| Goal/thesis wakes | via `CIOWakeDispatcher.poll_and_dispatch` | on dispatcher cycle | No extra cron; enqueues GOAL_DUE wakes |
 
 There is also host **cron** for unrelated ops (e.g. Drive docs sync hourly `:05`). Advisory desk units are **user systemd**, not classic crontab, but the **scheduling dependency is the same idea**.
 

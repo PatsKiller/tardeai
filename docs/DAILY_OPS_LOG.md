@@ -1,3 +1,11 @@
+## 2026-08-11 — Goal/thesis store + agent_runtime --once green (SHADOW)
+
+Fixed `AGENT_RUNTIME_PROVIDER_MODULE` inline-comment import break; alex/morgan/steph
+`--once` COMPLETED. Added `CIOGoalStore` (`data/cio/cio_goals.jsonl`) and
+`CIOWakeDispatcher.enqueue_goal_wakes` (GOAL_DUE, 30m dedup). Not fully autonomous;
+heartbeat remains safety net. Docs: `docs/advisory/desk-v1/RUNTIME_TRUTH_2026-08-11.md`,
+`AUTONOMY_GOAL_THESIS_COMPLETE.md`. backup_enforcer local dumps=1 compliant.
+
 ## 2026-08-11 — Advisory Desk v1 Phases 0–7 closed (code); autonomy truth documented
 
 Branch `feature/advisory-desk-v1`: governed bridge + Flash opinions + Pro synthesis,

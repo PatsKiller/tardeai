@@ -15,7 +15,9 @@ See [AUTONOMY_AND_SCHEDULING_TRUTH_2026-08-11.md](./AUTONOMY_AND_SCHEDULING_TRUT
 | Doc | Purpose |
 |---|---|
 | [AUTONOMOUS_ADVISORY_DESK_PLAN_2026-08-10.md](./AUTONOMOUS_ADVISORY_DESK_PLAN_2026-08-10.md) | Approved end-to-end plan: CIO + wealth advisors, Flash→Pro, phases, PR DAG, pass criteria |
-| [AUTONOMY_AND_SCHEDULING_TRUTH_2026-08-11.md](./AUTONOMY_AND_SCHEDULING_TRUTH_2026-08-11.md) | **Honest answer:** brains vs timers; fleet SHADOW/failing; desk not self-waking |
+| [AUTONOMY_AND_SCHEDULING_TRUTH_2026-08-11.md](./AUTONOMY_AND_SCHEDULING_TRUTH_2026-08-11.md) | **Honest answer:** brains vs timers; goal wakes; desk not self-waking |
+| [RUNTIME_TRUTH_2026-08-11.md](./RUNTIME_TRUTH_2026-08-11.md) | Host unit pass/fail (WS0) |
+| [AUTONOMY_GOAL_THESIS_COMPLETE.md](./AUTONOMY_GOAL_THESIS_COMPLETE.md) | Goal/thesis store + dispatcher acceptance |
 | [P0_BRIDGE_OUTCOME_2026-08-11.md](./P0_BRIDGE_OUTCOME_2026-08-11.md) | P0 outcome: governed bridge path, registry, systemd unit, tests |
 | [PHASE1_DATA_TRUTH_OUTCOME_2026-08-11.md](./PHASE1_DATA_TRUTH_OUTCOME_2026-08-11.md) | Phase 1: lots rebuild, catalyst path, validation, Risk/Tax holdings enqueue, flag |
 | [PHASE2_QUALITY_CACHE_OUTCOME_2026-08-11.md](./PHASE2_QUALITY_CACHE_OUTCOME_2026-08-11.md) | Phase 2: evidence quality, stable-prefix cache, dollars-first Pro synthesis |
