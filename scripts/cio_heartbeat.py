@@ -414,6 +414,20 @@ def run_heartbeat(interval_minutes: int = 30, max_actions: int = 5) -> dict[str,
         print(f"  [cio-hb] Event bus emission failed (non-fatal): "
               f"{type(e).__name__}: {e}")
 
+    # 5. Situation detector (Phase 2a) — after event emit; fail-soft; SHADOW
+    situations_result: dict[str, Any] = {}
+    try:
+        from lib.cio_situation_detector import run_detector_safe, build_evidence_from_snapshot
+        evidence = build_evidence_from_snapshot(snapshot)
+        situations_result = run_detector_safe(evidence=evidence)
+    except Exception as e:
+        situations_result = {
+            "errors": [f"{type(e).__name__}: {e}"],
+            "plans_created": [],
+        }
+        print(f"  [cio-hb] Situation detector failed (non-fatal): "
+              f"{type(e).__name__}: {e}")
+
     elapsed = time.time() - t0
 
     summary = {
@@ -427,6 +441,7 @@ def run_heartbeat(interval_minutes: int = 30, max_actions: int = 5) -> dict[str,
         ],
         "behavioral_findings": len(behavioral_findings),
         "events_emitted": events_emitted,
+        "situations": situations_result,
         "elapsed_ms": int(elapsed * 1000),
         "mode": "shadow",
         "model_calls": 0,

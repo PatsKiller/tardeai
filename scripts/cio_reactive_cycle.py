@@ -186,6 +186,14 @@ def run_once(*, max_wakes: int = 12, dispatch: bool = True) -> dict[str, Any]:
     except Exception as exc:
         out["errors"].append(f"dispatcher:{exc}")
 
+    # Situation detector (Phase 2a) — AFTER event path; fail-soft, SHADOW default
+    try:
+        from scripts.lib.cio_situation_detector import run_detector_safe
+        # Best-effort live evidence not required; empty pack is ok (no plans)
+        out["situations"] = run_detector_safe(evidence={})
+    except Exception as exc:
+        out["situations"] = {"errors": [f"situations_hook:{exc}"], "plans_created": []}
+
     try:
         STATUS_PATH.parent.mkdir(parents=True, exist_ok=True)
         STATUS_PATH.write_text(json.dumps(out, indent=2, default=str))

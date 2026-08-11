@@ -64,6 +64,7 @@ VALID_EVENT_TYPES = frozenset({
     "cost_basis.material_change",
     "system.heartbeat_ok",
     "system.domain_stale",
+    "situation.raised",
 })
 
 # Events that should wake Alex
@@ -131,6 +132,7 @@ EVENT_PRIORITY: dict[str, str] = {
     "cost_basis.material_change": "LOW",
     "system.heartbeat_ok": "LOW",
     "system.domain_stale": "HIGH",
+    "situation.raised": "MEDIUM",
 }
 
 
