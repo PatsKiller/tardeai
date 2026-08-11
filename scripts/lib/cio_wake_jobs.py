@@ -136,6 +136,9 @@ TRIGGER_TYPES = frozenset({
     "HEALTH_BLOCK_CLEARED",
     "HANDOFF_COMPLETED",
     "HERMES_CHALLENGE_RESOLVED",
+    "GOAL_DUE",
+    "GOAL_EVENT_LINKED",
+    "EVENT_BUS",  # reactive CIO event bus (WS2)
 })
 
 WAKE_REASON_CODES = frozenset({
@@ -146,6 +149,18 @@ WAKE_REASON_CODES = frozenset({
     "HANDOFF_COMPLETED",
     "ACTION_DEADLINE_NEAR",
     "HANDOFF_FAILED_MATERIAL",
+    "GOAL_DUE",
+    "GOAL_IDLE",
+    "GOAL_NEVER_WOKEN",
+    "GOAL_EVENT_LINKED",
+    "EVENT_BUS",
+    "PORTFOLIO_MATERIAL_CHANGE",
+    "ALLOCATION_DRIFT",
+    "BEHAVIORAL_FLAG_RAISED",
+    "RISK_HEAT_INCREASED",
+    "MARKET_REGIME_CHANGE",
+    "HERMES_CONTRADICTION_FOUND",
+    "SYSTEM_DOMAIN_STALE",
 })
 
 PRIORITY_MAP: dict[str, str] = {
@@ -156,6 +171,8 @@ PRIORITY_MAP: dict[str, str] = {
     "HANDOFF_COMPLETED": "normal",
     "HANDOFF_FAILED_MATERIAL": "normal",
     "SCHEDULE_DUE": "normal",
+    "GOAL_DUE": "normal",
+    "GOAL_EVENT_LINKED": "normal",
 }
 
 GENESIS_PREV_HASH = "0000000000000000000000000000000000000000000000000000000000000000"
@@ -310,6 +327,8 @@ class CIOWakeJobStore:
             "wake_intent": wake_payload.get("wake_intent", "NEW_RUN"),
             "target_run_id": wake_payload.get("target_run_id"),
             "idempotency_key": idempotency_key,
+            # Optional agent context for goal/event-sourced wakes (READ_ONLY)
+            "context": wake_payload.get("context") or {},
         }
 
         event = build_event(
@@ -734,6 +753,7 @@ class CIOWakeJobStore:
                     "target_run_id": payload.get("target_run_id"),
                     "linked_run_id": None,
                     "idempotency_key": payload.get("idempotency_key", ""),
+                    "context": payload.get("context") or {},
                     "updated_at": event["occurred_at"],
                 })
 

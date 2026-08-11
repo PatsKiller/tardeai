@@ -33,10 +33,13 @@ log = logging.getLogger("tradeai.cio_wake_dispatcher")
 
 # ── Dispatch idempotency store path ─────────────────────────────────────────
 DISPATCH_LEDGER_PATH = "data/cio/cio_wake_dispatches.jsonl"
+GOAL_WAKE_DEDUP_PATH = "data/cio/cio_goal_wake_dedup.jsonl"
 
 # ── Default lease duration for claimed wakes ────────────────────────────────
 DEFAULT_LEASE_SECONDS = 300  # 5 minutes
 DEFAULT_STALE_LEASE_MULTIPLIER = 2  # 2x lease before auto-recover
+# Dedup window for goal-sourced wakes (same agent+goal within this many minutes)
+GOAL_WAKE_DEDUP_MINUTES = 30
 
 
 class CIOWakeDispatcher:
@@ -60,13 +63,19 @@ class CIOWakeDispatcher:
         run_store: Any = None,
         dispatch_ledger_path: str = DISPATCH_LEDGER_PATH,
         lease_seconds: int = DEFAULT_LEASE_SECONDS,
+        goal_store: Any = None,
+        readiness_registry: Any = None,
     ):
         self.wake_store = wake_store or CIOWakeJobStore()
         self.run_store = run_store  # CIORunStore, injected
         self.lease_seconds = lease_seconds
         self.dispatch_ledger_path = Path(dispatch_ledger_path)
         self.dispatch_ledger_path.parent.mkdir(parents=True, exist_ok=True)
+        self.goal_wake_dedup_path = Path(GOAL_WAKE_DEDUP_PATH)
+        self.goal_wake_dedup_path.parent.mkdir(parents=True, exist_ok=True)
         self._dispatched: set[str] = set()
+        self._goal_store = goal_store  # optional CIOGoalStore
+        self._readiness = readiness_registry
         self._load_dispatch_ledger()
 
     def _load_dispatch_ledger(self):
@@ -118,9 +127,13 @@ class CIOWakeDispatcher:
     def poll_and_dispatch(self, max_dispatches: int = 5) -> dict[str, Any]:
         """Poll for pending wakes and dispatch up to max_dispatches runs.
 
+        Also enqueues NEW_RUN wakes for due/idle goals (WS2) before claim path.
         Does NOT mark wakes complete. Wake completion is linked to
         terminal run state via on_run_completed().
         """
+        # Goal/event secondary path (never replaces event-bus claim authority)
+        goal_enqueue = self.enqueue_goal_wakes(max_new=max_dispatches)
+
         # Recover expired leases first
         recovered = self.wake_store.recover_expired_leases(
             stale_seconds=self.lease_seconds * DEFAULT_STALE_LEASE_MULTIPLIER
@@ -312,7 +325,244 @@ class CIOWakeDispatcher:
             "dispatched": dispatched,
             "skipped": skipped,
             "errors": errors,
+            "goal_enqueue": goal_enqueue,
         }
+
+    # ── Goal-sourced wakes (WS2) ─────────────────────────────────────────
+
+    def _goal_store_or_default(self) -> Any:
+        if self._goal_store is not None:
+            return self._goal_store
+        try:
+            from scripts.lib.cio_goals import CIOGoalStore
+            self._goal_store = CIOGoalStore()
+        except Exception as exc:
+            log.warning("CIOGoalStore unavailable: %s", exc)
+            self._goal_store = None
+        return self._goal_store
+
+    def _readiness_or_default(self) -> Any:
+        if self._readiness is not None:
+            return self._readiness
+        try:
+            from scripts.lib.cio_agent_readiness import AgentReadinessRegistry
+            self._readiness = AgentReadinessRegistry.load()
+        except Exception:
+            try:
+                from scripts.lib.cio_agent_readiness import AgentReadinessRegistry
+                # some versions use from_catalog / get_instance
+                if hasattr(AgentReadinessRegistry, "from_catalog"):
+                    self._readiness = AgentReadinessRegistry.from_catalog()
+                elif hasattr(AgentReadinessRegistry, "get_instance"):
+                    self._readiness = AgentReadinessRegistry.get_instance()
+            except Exception as exc:
+                log.warning("AgentReadinessRegistry unavailable: %s", exc)
+                self._readiness = None
+        return self._readiness
+
+    def _goal_dedup_hit(self, agent_id: str, goal_id: str) -> bool:
+        """True if we already enqueued agent+goal within GOAL_WAKE_DEDUP_MINUTES."""
+        if not self.goal_wake_dedup_path.exists():
+            return False
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=GOAL_WAKE_DEDUP_MINUTES)
+        try:
+            with open(self.goal_wake_dedup_path, "r") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        row = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if row.get("agent_id") != agent_id or row.get("goal_id") != goal_id:
+                        continue
+                    ts = row.get("ts")
+                    if not ts:
+                        continue
+                    try:
+                        dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+                        if dt.tzinfo is None:
+                            dt = dt.replace(tzinfo=timezone.utc)
+                        if dt >= cutoff:
+                            return True
+                    except Exception:
+                        continue
+        except Exception:
+            return False
+        return False
+
+    def _record_goal_dedup(self, agent_id: str, goal_id: str, wake_job_id: str) -> None:
+        entry = json.dumps({
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "agent_id": agent_id,
+            "goal_id": goal_id,
+            "wake_job_id": wake_job_id,
+        }, sort_keys=True) + "\n"
+        try:
+            with open(self.goal_wake_dedup_path, "a") as fh:
+                fh.write(entry)
+                fh.flush()
+        except Exception:
+            pass
+
+    def enqueue_goal_wakes(
+        self,
+        max_new: int = 5,
+        *,
+        recent_event_types: Optional[list[str]] = None,
+    ) -> dict[str, Any]:
+        """Enqueue NEW_RUN wakes for due/idle goals or goals linked to recent events.
+
+        Dedup: same agent + goal within GOAL_WAKE_DEDUP_MINUTES.
+        NOT_READY owners → blocked list (no wake enqueued).
+        """
+        store = self._goal_store_or_default()
+        result: dict[str, Any] = {
+            "enqueued": [],
+            "skipped_dedup": [],
+            "blocked_not_ready": [],
+            "errors": [],
+        }
+        if store is None:
+            result["errors"].append("no_goal_store")
+            return result
+
+        candidates: list[dict[str, Any]] = []
+        try:
+            candidates.extend(store.list_due_or_idle_goals(limit=max_new * 2))
+            if recent_event_types:
+                for g in store.goals_for_event_types(recent_event_types, limit=max_new):
+                    if g.get("goal_id") not in {c.get("goal_id") for c in candidates}:
+                        g = dict(g)
+                        g["_wake_reason"] = "event_linked"
+                        candidates.append(g)
+        except Exception as exc:
+            result["errors"].append(str(exc))
+            return result
+
+        readiness = self._readiness_or_default()
+        enqueued_n = 0
+        for g in candidates:
+            if enqueued_n >= max_new:
+                break
+            agent_id = (g.get("owner_agent") or "").lower()
+            goal_id = g.get("goal_id") or ""
+            if not agent_id or not goal_id:
+                continue
+
+            # Readiness fence (SHADOW-first):
+            # - Allow agents operable in agent_runtime FLEET (SHADOW) even if the
+            #   maturity catalog still says DESIGNED (catalog lag is common).
+            # - Block only hard disabled / suspended when not fleet-operable.
+            fleet_ok = False
+            try:
+                import sys
+                from pathlib import Path
+                scripts = str(Path(__file__).resolve().parents[1])
+                if scripts not in sys.path:
+                    sys.path.insert(0, scripts)
+                from agent_runtime.agents.definitions import FLEET
+                spec = FLEET.get(agent_id)
+                fleet_ok = bool(spec and getattr(spec, "is_operable_now", False))
+            except Exception:
+                fleet_ok = False
+
+            if not fleet_ok and readiness is not None:
+                try:
+                    if hasattr(readiness, "has") and not readiness.has(agent_id):
+                        result["blocked_not_ready"].append({
+                            "goal_id": goal_id,
+                            "agent_id": agent_id,
+                            "reason": "UNKNOWN_AGENT",
+                        })
+                        continue
+                    agent_r = readiness.get(agent_id)
+                    if agent_r is not None:
+                        if not getattr(agent_r, "enabled", True):
+                            result["blocked_not_ready"].append({
+                                "goal_id": goal_id,
+                                "agent_id": agent_id,
+                                "reason": "AGENT_DISABLED",
+                            })
+                            continue
+                        if getattr(agent_r, "readiness_state", "") == "SUSPENDED":
+                            result["blocked_not_ready"].append({
+                                "goal_id": goal_id,
+                                "agent_id": agent_id,
+                                "reason": "SUSPENDED",
+                            })
+                            continue
+                except KeyError:
+                    result["blocked_not_ready"].append({
+                        "goal_id": goal_id,
+                        "agent_id": agent_id,
+                        "reason": "UNKNOWN_AGENT",
+                    })
+                    continue
+                except Exception:
+                    pass
+
+            if self._goal_dedup_hit(agent_id, goal_id):
+                result["skipped_dedup"].append({"goal_id": goal_id, "agent_id": agent_id})
+                continue
+
+            reason = g.get("_wake_reason") or "due"
+            trigger = "GOAL_EVENT_LINKED" if reason == "event_linked" else "GOAL_DUE"
+            # Stable wake id for idempotency within the hour bucket
+            hour_bucket = datetime.now(timezone.utc).strftime("%Y%m%d%H")
+            wake_job_id = f"wake_goal_{goal_id}_{hour_bucket}"
+            try:
+                ctx = store.get_context_for_agent(agent_id)
+                payload = {
+                    "wake_job_id": wake_job_id,
+                    "trigger_type": trigger,
+                    "trigger_ref": goal_id,
+                    "trigger_hash": hashlib.sha256(f"{agent_id}:{goal_id}:{hour_bucket}".encode()).hexdigest()[:16],
+                    "reason_codes": [
+                        "GOAL_DUE" if reason == "due" else
+                        "GOAL_IDLE" if reason == "idle" else
+                        "GOAL_NEVER_WOKEN" if reason == "never_woken" else
+                        "GOAL_EVENT_LINKED"
+                    ],
+                    "required_domains": list(g.get("required_domains") or ["portfolio"]),
+                    "wake_intent": "NEW_RUN",
+                    "idempotency_key": f"goal:{agent_id}:{goal_id}:{hour_bucket}",
+                    "source_snapshot_id": "",
+                    "context": {
+                        "goal_id": goal_id,
+                        "owner_agent": agent_id,
+                        "title": g.get("title"),
+                        "thesis_summary": g.get("thesis_summary"),
+                        "agent_context": {
+                            "open_goal_count": len(ctx.get("open_goals") or []),
+                            "thesis_snippet_count": len(ctx.get("thesis_snippets") or []),
+                        },
+                    },
+                }
+                self.wake_store.enqueue(payload, actor_id="cio_wake_dispatcher")
+                self._record_goal_dedup(agent_id, goal_id, wake_job_id)
+                try:
+                    store.record_wake(goal_id, agent_id=agent_id, outcome="wake_enqueued")
+                except Exception:
+                    pass
+                result["enqueued"].append({
+                    "wake_job_id": wake_job_id,
+                    "goal_id": goal_id,
+                    "agent_id": agent_id,
+                    "reason": reason,
+                })
+                enqueued_n += 1
+            except ValueError as exc:
+                # already exists / validation — treat as dedup
+                if "already exists" in str(exc).lower() or "idempoten" in str(exc).lower():
+                    result["skipped_dedup"].append({"goal_id": goal_id, "agent_id": agent_id, "detail": str(exc)})
+                else:
+                    result["errors"].append({"goal_id": goal_id, "error": str(exc)})
+            except Exception as exc:
+                result["errors"].append({"goal_id": goal_id, "error": str(exc)})
+
+        return result
 
     def mark_in_flight(self, wake_job_id: str) -> bool:
         """Mark a dispatched wake as IN_FLIGHT when the run worker starts."""
@@ -363,6 +613,8 @@ class CIOWakeDispatcher:
             "HERMES_CHALLENGE_RESOLVED": "HERMES_RESOLVED",
             "HEALTH_BLOCK_STARTED": "HEALTH_EVENT",
             "HEALTH_BLOCK_CLEARED": "HEALTH_EVENT",
+            "GOAL_DUE": "SYSTEM",
+            "GOAL_EVENT_LINKED": "SYSTEM",
         }
         return mapping.get(wake_trigger, "SYSTEM")
 

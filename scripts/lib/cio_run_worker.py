@@ -305,6 +305,12 @@ class CIORunWorker:
 
             result["run_purpose"] = run_purpose
 
+            # Step 2.6: Goal/thesis context (WS3) — fail-open if store missing
+            goal_ctx = self._load_goal_context(run)
+            result["goal_context"] = goal_ctx
+            if goal_ctx.get("goal_id"):
+                self._touch_goal_from_run(run_id, goal_ctx, snapshot_result)
+
             # Step 3: Route specialists if needed
             required_domains = run.get("required_domains", [])
             specialist_result = self._route_specialists(run_id, required_domains, snapshot_result)
@@ -376,6 +382,64 @@ class CIORunWorker:
             result["completed_at"] = datetime.now(timezone.utc).isoformat()
 
         return result
+
+    # ── Step: Goal / thesis context (WS3) ──────────────────────────────────
+
+    def _load_goal_context(self, run: dict[str, Any]) -> dict[str, Any]:
+        """Load goal context from trigger_ref / wake context. Fail-open."""
+        out: dict[str, Any] = {"goal_id": None, "owner_agent": "alex", "open_goals": []}
+        try:
+            from scripts.lib.cio_goals import CIOGoalStore
+            store = CIOGoalStore()
+            trigger_ref = run.get("trigger_ref") or ""
+            goal_id = None
+            if str(trigger_ref).startswith("goal_"):
+                goal_id = trigger_ref
+            # Also accept wake_goal_* refs
+            if not goal_id and "goal_" in str(trigger_ref):
+                # wake payload trigger_ref is goal_id for goal wakes
+                goal_id = trigger_ref if str(trigger_ref).startswith("goal_") else None
+            if goal_id:
+                g = store.get_goal(goal_id)
+                if g:
+                    out["goal_id"] = goal_id
+                    out["goal"] = g
+                    out["owner_agent"] = g.get("owner_agent") or "alex"
+            agent = out.get("owner_agent") or "alex"
+            ctx = store.get_context_for_agent(agent)
+            out["open_goals"] = ctx.get("open_goals") or []
+            out["thesis_snippets"] = ctx.get("thesis_snippets") or []
+            out["open_actions"] = ctx.get("open_actions") or []
+        except Exception as exc:
+            out["error"] = f"{type(exc).__name__}: {exc}"
+        return out
+
+    def _touch_goal_from_run(
+        self,
+        run_id: str,
+        goal_ctx: dict[str, Any],
+        snapshot_result: dict[str, Any],
+    ) -> None:
+        """Update thesis with retrieval-grounded notes only — never invent numbers."""
+        goal_id = goal_ctx.get("goal_id")
+        if not goal_id:
+            return
+        try:
+            from scripts.lib.cio_goals import CIOGoalStore
+            store = CIOGoalStore()
+            agent = goal_ctx.get("owner_agent") or "alex"
+            # Only cite structural facts from snapshot metadata (counts/hashes), not fabricated $
+            snap_id = snapshot_result.get("snapshot_id") or ""
+            content_hash = snapshot_result.get("content_hash") or ""
+            n_goals = len(goal_ctx.get("open_goals") or [])
+            snippet = (
+                f"run={run_id}; agent={agent}; open_goals={n_goals}; "
+                f"snapshot_id={snap_id}; content_hash={str(content_hash)[:16]}"
+            )
+            store.record_wake(goal_id, agent_id=agent, outcome=f"run_started:{run_id}")
+            store.update_thesis(goal_id, snippet[:500], agent_id=agent)
+        except Exception as exc:
+            log.warning("goal touch failed for %s: %s", goal_id, exc)
 
     # ── Step: Health Check ──────────────────────────────────────────────────
 
