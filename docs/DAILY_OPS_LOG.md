@@ -1,3 +1,10 @@
+## 2026-08-11 — P2b plan enrichment (governed Flash/Pro under cap)
+
+Evidence pack + numeric validator; material wakes enrich plans via bridge
+(alex/cio_synthesis) or template if cap/provider blocked. Converse uses same
+path. `CIO_LLM_ENRICH=0` forces template. Situation notify still off unless
+`CIO_SITUATION_NOTIFY=1`. Docs: `docs/cio/P2B_PLAN_ENRICHMENT.md`.
+
 ## 2026-08-11 — CIO Telegram converse bot (P1 SHADOW-safe)
 
 Dedicated CIO bot worker (`cio_telegram_bot.py`): allowlist, OPERATOR_MESSAGE

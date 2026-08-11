@@ -72,8 +72,10 @@ Slash `/cio` status still works if you re-enable only allowlisted polls; with co
 - Non-allowlisted chats: **ignored**
 - Rate limit: default 20 converse wakes/hour/chat
 - No broker credentials, orders, or stop placement from chat
-- Situation bulk notify (`situation.raised` → Telegram) remains **off** unless separately enabled
-- LLM path: Phase P1 uses **template reply** (`LLM deferred`) under budget; still useful
+- Situation bulk notify (`situation.raised` → Telegram) remains **off** unless separately enabled (`CIO_SITUATION_NOTIFY=1`)
+- LLM path (P2b): material converse enriches linked plan via governed bridge under cap;  
+  if blocked → **template + “LLM deferred”**. Disable with `CIO_LLM_ENRICH=0`.  
+  See `docs/cio/P2B_PLAN_ENRICHMENT.md`.
 
 ---
 
