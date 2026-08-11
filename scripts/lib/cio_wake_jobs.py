@@ -139,6 +139,7 @@ TRIGGER_TYPES = frozenset({
     "GOAL_DUE",
     "GOAL_EVENT_LINKED",
     "EVENT_BUS",  # reactive CIO event bus (WS2)
+    "OPERATOR_MESSAGE",  # dedicated CIO Telegram converse
 })
 
 WAKE_REASON_CODES = frozenset({
@@ -154,6 +155,7 @@ WAKE_REASON_CODES = frozenset({
     "GOAL_NEVER_WOKEN",
     "GOAL_EVENT_LINKED",
     "EVENT_BUS",
+    "OPERATOR_MESSAGE",
     "PORTFOLIO_MATERIAL_CHANGE",
     "ALLOCATION_DRIFT",
     "BEHAVIORAL_FLAG_RAISED",
@@ -173,6 +175,8 @@ PRIORITY_MAP: dict[str, str] = {
     "SCHEDULE_DUE": "normal",
     "GOAL_DUE": "normal",
     "GOAL_EVENT_LINKED": "normal",
+    "EVENT_BUS": "normal",
+    "OPERATOR_MESSAGE": "high",
 }
 
 GENESIS_PREV_HASH = "0000000000000000000000000000000000000000000000000000000000000000"

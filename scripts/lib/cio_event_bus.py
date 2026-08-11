@@ -65,6 +65,7 @@ VALID_EVENT_TYPES = frozenset({
     "system.heartbeat_ok",
     "system.domain_stale",
     "situation.raised",
+    "operator.message",  # dedicated CIO Telegram free-text (P1 converse)
 })
 
 # Events that should wake Alex
@@ -81,6 +82,7 @@ ALEX_EVENTS = frozenset({
     "market.regime_change",
     "behavioral.flag_raised",
     "system.domain_stale",
+    "operator.message",
 })
 
 # Events that should wake Steph
@@ -133,6 +135,7 @@ EVENT_PRIORITY: dict[str, str] = {
     "system.heartbeat_ok": "LOW",
     "system.domain_stale": "HIGH",
     "situation.raised": "MEDIUM",
+    "operator.message": "HIGH",
 }
 
 

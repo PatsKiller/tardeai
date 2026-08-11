@@ -36,6 +36,7 @@ VALID_SITUATION_TYPES = frozenset({
     "S6_CONCENTRATION_OR_DISPOSITION",
     "S7_WATCH_PROMOTION",
     "S8_DEFENSIVE_REGIME",
+    "S0_OPERATOR_CONVERSE",  # Telegram CIO free-text continuity plans
 })
 
 VALID_EVENT_TYPES = frozenset({
