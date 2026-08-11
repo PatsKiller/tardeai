@@ -1,25 +1,17 @@
 {
-  "date": "2026-08-09",
-  "timestamp": "2026-08-09T08:15:52.228510+00:00",
+  "date": "2026-08-10",
+  "timestamp": "2026-08-10T08:16:26.044790+00:00",
   "embedding_recommendations": [
     {
-      "id": 15281,
-      "symbol": "AMWL",
-      "type": "momentum_catalyst",
-      "confidence": 0.7,
-      "has_url": true,
+      "id": 17709,
+      "symbol": "KMB",
+      "type": "ticker_thesis_challenge",
+      "confidence": 0.75,
+      "has_url": false,
       "reason": "staged, has evidence, not embedded"
     },
     {
-      "id": 14947,
-      "symbol": "AMIX",
-      "type": "momentum_catalyst",
-      "confidence": 0.7,
-      "has_url": true,
-      "reason": "staged, has evidence, not embedded"
-    },
-    {
-      "id": 14948,
+      "id": 15280,
       "symbol": "AMRC",
       "type": "momentum_catalyst",
       "confidence": 0.7,
@@ -27,8 +19,8 @@
       "reason": "staged, has evidence, not embedded"
     },
     {
-      "id": 15282,
-      "symbol": "APPS",
+      "id": 14975,
+      "symbol": "ALAR",
       "type": "momentum_catalyst",
       "confidence": 0.7,
       "has_url": true,
@@ -37,6 +29,14 @@
     {
       "id": 14619,
       "symbol": "CNCK",
+      "type": "momentum_catalyst",
+      "confidence": 0.7,
+      "has_url": true,
+      "reason": "staged, has evidence, not embedded"
+    },
+    {
+      "id": 14977,
+      "symbol": "AMRC",
       "type": "momentum_catalyst",
       "confidence": 0.7,
       "has_url": true,
@@ -45,23 +45,15 @@
   ],
   "promotion_recommendations": [
     {
-      "id": 15281,
-      "symbol": "AMWL",
-      "type": "momentum_catalyst",
-      "confidence": 0.7,
-      "has_url": true,
+      "id": 17709,
+      "symbol": "KMB",
+      "type": "ticker_thesis_challenge",
+      "confidence": 0.75,
+      "has_url": false,
       "reason": "staged, high conf, has evidence"
     },
     {
-      "id": 14947,
-      "symbol": "AMIX",
-      "type": "momentum_catalyst",
-      "confidence": 0.7,
-      "has_url": true,
-      "reason": "staged, high conf, has evidence"
-    },
-    {
-      "id": 14948,
+      "id": 15280,
       "symbol": "AMRC",
       "type": "momentum_catalyst",
       "confidence": 0.7,
@@ -69,8 +61,8 @@
       "reason": "staged, high conf, has evidence"
     },
     {
-      "id": 15282,
-      "symbol": "APPS",
+      "id": 14975,
+      "symbol": "ALAR",
       "type": "momentum_catalyst",
       "confidence": 0.7,
       "has_url": true,
@@ -83,51 +75,39 @@
       "confidence": 0.7,
       "has_url": true,
       "reason": "staged, high conf, has evidence"
+    },
+    {
+      "id": 14977,
+      "symbol": "AMRC",
+      "type": "momentum_catalyst",
+      "confidence": 0.7,
+      "has_url": true,
+      "reason": "staged, high conf, has evidence"
     }
   ],
   "rejected": [
     {
-      "id": 16833,
+      "id": 17628,
       "symbol": null,
       "reason": "confidence 0.25 too low"
     },
     {
-      "id": 16823,
+      "id": 17630,
       "symbol": null,
       "reason": "confidence 0.25 too low"
     },
     {
-      "id": 16827,
+      "id": 17634,
       "symbol": null,
-      "reason": "confidence 0.15 too low"
+      "reason": "confidence 0.22 too low"
     },
     {
-      "id": 16826,
-      "symbol": null,
-      "reason": "confidence 0.15 too low"
-    },
-    {
-      "id": 16822,
-      "symbol": null,
-      "reason": "confidence 0.15 too low"
-    },
-    {
-      "id": 16835,
-      "symbol": null,
-      "reason": "confidence 0.15 too low"
-    },
-    {
-      "id": 16838,
-      "symbol": null,
-      "reason": "confidence 0.15 too low"
-    },
-    {
-      "id": 16821,
+      "id": 17631,
       "symbol": null,
       "reason": "confidence 0.1 too low"
     }
   ],
-  "total_staged_non_backlog": 196,
+  "total_staged_non_backlog": 192,
   "embeddings_created": 0,
   "promotions_created": 0
 }
