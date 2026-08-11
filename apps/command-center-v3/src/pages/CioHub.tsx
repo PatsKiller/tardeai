@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback } from 'react'
+import { useEffect, useState, useMemo, useCallback, type CSSProperties } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { StatusBadge } from '../components/StatusBadge'
@@ -60,11 +60,11 @@ type Plan = {
   authority?: string
 }
 
-const card: React.CSSProperties = {
+const card: CSSProperties = {
   background: 'var(--bg2)', borderRadius: 8, padding: 16,
   border: '1px solid var(--border)', marginBottom: 16,
 }
-const btnBase: React.CSSProperties = {
+const btnBase: CSSProperties = {
   padding: '6px 12px', borderRadius: 6, border: '1px solid var(--border)',
   background: 'var(--bg)', color: 'var(--text)', cursor: 'pointer', fontSize: 12, fontWeight: 600,
 }
@@ -118,8 +118,25 @@ function PlanDetailPanel({
     }
   }
 
-  if (loading) return <div style={{ ...card, color: 'var(--text2)' }}>Loading plan {planId}…</div>
-  if (err) return <div style={{ ...card, color: 'var(--red)' }}>Plan unavailable: {err}</div>
+  if (loading) {
+    return (
+      <div style={{ ...card, borderColor: 'var(--accent)', color: 'var(--text2)' }} data-testid="cio-plan-loading">
+        Loading plan <code>{planId}</code>…
+      </div>
+    )
+  }
+  if (err) {
+    return (
+      <div style={{ ...card, borderColor: 'var(--red)', color: 'var(--red)' }} data-testid="cio-plan-error">
+        Plan unavailable: {err}
+        <div style={{ marginTop: 8 }}>
+          <button type="button" style={btnBase} onClick={load}>Retry</button>
+          {' '}
+          <Link to="/portfolio" style={{ color: 'var(--accent)', fontSize: 12 }}>Portfolio</Link>
+        </div>
+      </div>
+    )
+  }
 
   const plan: Plan = payload?.plan || {}
   const thesis = payload?.thesis
@@ -127,12 +144,13 @@ function PlanDetailPanel({
   const risks = Array.isArray(plan.risks) ? plan.risks : []
   const refs = Array.isArray(plan.evidence_refs) ? plan.evidence_refs : []
   const fire = Array.isArray(plan.fire_reasons) ? plan.fire_reasons : []
+  const sym = (plan.symbols && plan.symbols[0]) || ''
 
   return (
     <div style={{ ...card, borderColor: 'var(--accent)' }} data-testid="cio-plan-detail">
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 10 }}>
         <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>📋 Plan</span>
-        <code style={{ fontSize: 12, color: 'var(--accent)' }}>{plan.plan_id}</code>
+        <code style={{ fontSize: 12, color: 'var(--accent)' }}>{plan.plan_id || planId}</code>
         <StatusBadge status={plan.status === 'accepted' ? 'fresh' : 'warning'} label={String(plan.status || '—')} />
         {plan.narrative_source && (
           <span style={{ fontSize: 11, color: plan.narrative_source === 'llm' ? 'var(--accent)' : 'var(--text3)' }}>
@@ -221,14 +239,21 @@ function PlanDetailPanel({
         </>
       )}
 
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
-        <button style={{ ...btnBase, background: 'var(--accent)', color: 'var(--text0)' }} disabled={busy}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8, alignItems: 'center' }}>
+        <button type="button" style={{ ...btnBase, background: 'var(--accent)', color: 'var(--text0)' }} disabled={busy}
           onClick={() => disposition('ack')}>Ack</button>
-        <button style={btnBase} disabled={busy} onClick={() => disposition('defer')}>Defer</button>
-        <button style={btnBase} disabled={busy} onClick={() => disposition('done')}>Done</button>
-        <button style={{ ...btnBase, color: 'var(--red)' }} disabled={busy}
+        <button type="button" style={btnBase} disabled={busy} onClick={() => disposition('defer')}>Defer</button>
+        <button type="button" style={btnBase} disabled={busy} onClick={() => disposition('done')}>Done</button>
+        <button type="button" style={{ ...btnBase, color: 'var(--red)' }} disabled={busy}
           onClick={() => disposition('reject')}>Reject</button>
-        <button style={btnBase} disabled={busy} onClick={load}>Refresh</button>
+        <button type="button" style={btnBase} disabled={busy} onClick={load}>Refresh</button>
+        <Link to="/portfolio" style={{ color: 'var(--accent)', fontSize: 12, marginLeft: 4 }}>Portfolio</Link>
+        {sym && (
+          <Link to={`/portfolio?symbol=${encodeURIComponent(sym)}`} style={{ color: 'var(--accent)', fontSize: 12 }}>
+            {sym}
+          </Link>
+        )}
+        <Link to="/advisory" style={{ color: 'var(--accent)', fontSize: 12 }}>Advisory</Link>
       </div>
       <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 8 }}>
         Disposition updates plan status only · READ_ONLY_ADVISORY · no orders/stops
@@ -274,11 +299,10 @@ export default function CioHub({ onDrill }: Props) {
     setTab('plans')
   }
 
-  if (loading && !data) return <div style={{ padding: 32, color: 'var(--text2)' }}>Loading CIO dashboard…</div>
-  if (error && !data) return <div style={{ padding: 32, color: 'var(--red)' }}>CIO data unavailable: {String(error)}</div>
-
+  // CRITICAL: deep-linked ?plan= must render even if the dashboard feed is
+  // still loading or failed. Never early-return before PlanDetailPanel.
   return (
-    <div style={{ padding: '16px 24px', maxWidth: 1200 }}>
+    <div style={{ padding: '16px 24px', maxWidth: 1200 }} data-testid="cio-hub">
       <div style={hubTitle()}>🏦 CIO Command Center</div>
       <div style={hubSubtitle()}>
         Alex · Chief Investment & Wealth Officer · READ_ONLY_ADVISORY
@@ -286,16 +310,17 @@ export default function CioHub({ onDrill }: Props) {
         {data?.as_of && <span style={{ color: 'var(--text3)', marginLeft: 16 }}>As of: {new Date(data.as_of).toLocaleString()}</span>}
       </div>
 
-      {/* Deep-linked plan always on top */}
-      {planId && (
+      {/* Deep-linked plan — independent of dashboard useApi */}
+      {planId ? (
         <PlanDetailPanel planId={planId} onDisposition={() => refetch?.()} />
-      )}
+      ) : null}
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 20, marginTop: 12, flexWrap: 'wrap' }}>
         {(['overview', 'plans', 'actions', 'delegation', 'hermes'] as const).map(t => (
           <button
             key={t}
+            type="button"
             onClick={() => setTab(t)}
             style={{
               padding: '6px 16px', borderRadius: 6, border: '1px solid var(--border)',
@@ -312,7 +337,19 @@ export default function CioHub({ onDrill }: Props) {
         ))}
       </div>
 
-      {tab === 'overview' && (
+      {loading && !data && (
+        <div style={{ padding: '12px 0', color: 'var(--text2)', fontSize: 13 }}>
+          Loading CIO dashboard…
+        </div>
+      )}
+      {error && !data && (
+        <div style={{ padding: '12px 0', color: 'var(--amber)', fontSize: 13 }}>
+          Dashboard feed unavailable: {String(error)}
+          {planId ? ' (plan detail above still loads independently)' : ''}
+        </div>
+      )}
+
+      {tab === 'overview' && data && (
         <div>
           {thesis && (
             <div style={card}>
