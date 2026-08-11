@@ -1,3 +1,12 @@
+
+## 2026-08-11 — Provision: alex LLM cap + CIO Telegram env scaffold
+
+- Raised `alex_cio_synthesis` daily_cost_cap_usd **0.02 → 0.15** (registry + DB); global still 0.25.
+- Created `~/.config/tradeai/cio-telegram.env` with allowlist chat IDs (2); **token not yet set**.
+- Provision token: `printf %s '<token>' | bash scripts/ops/provision_cio_telegram_token.sh`
+- Unit installed (not started until token present).
+- P3 (versioned thesis store) **not started** — this is post-P2b ops only.
+
 ## 2026-08-11 — P2b short soak @ 8592abc2 (template path under cap)
 
 Heartbeat/reactive green; alex process COST_CAP_EXCEEDED → enrichment

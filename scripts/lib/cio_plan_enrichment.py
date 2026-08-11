@@ -181,6 +181,33 @@ def extract_json_object(text: str) -> Optional[dict[str, Any]]:
     return None
 
 
+def normalize_narrative(narrative: dict[str, Any]) -> dict[str, Any]:
+    """Coerce common LLM shape quirks into plan schema."""
+    out = dict(narrative)
+    opts = out.get("options")
+    if isinstance(opts, list):
+        norm = []
+        for i, o in enumerate(opts):
+            if isinstance(o, dict) and (o.get("id") or o.get("label")):
+                norm.append({
+                    "id": str(o.get("id") or f"opt_{i}"),
+                    "label": str(o.get("label") or o.get("id") or f"Option {i}"),
+                    "pros": str(o.get("pros") or ""),
+                    "cons": str(o.get("cons") or ""),
+                })
+            elif isinstance(o, str) and o.strip():
+                norm.append({"id": f"opt_{i}", "label": o.strip(), "pros": "", "cons": ""})
+        out["options"] = norm
+    risks = out.get("risks")
+    if isinstance(risks, str):
+        out["risks"] = [risks]
+    elif not isinstance(risks, list):
+        out["risks"] = []
+    if not isinstance(out.get("cited_fields"), list):
+        out["cited_fields"] = []
+    return out
+
+
 def validate_narrative(
     narrative: dict[str, Any],
     pack: dict[str, Any],
@@ -191,6 +218,7 @@ def validate_narrative(
     errs: list[str] = []
     if not isinstance(narrative, dict):
         return False, ["not_a_dict"]
+    narrative = normalize_narrative(narrative)
     for req in ("summary", "recommendation", "options", "risks"):
         if req not in narrative:
             errs.append(f"missing:{req}")
@@ -302,24 +330,38 @@ def call_governed_llm(
     *,
     use_pro: bool = False,
 ) -> dict[str, Any]:
-    """HTTP call to governed bridge. Never hits api.deepseek.com directly."""
+    """HTTP call to governed bridge. Never hits api.deepseek.com directly.
+
+    Flash path uses advisory_desk / advisory_opinion (FAST) — reliable JSON under
+    modest max_tokens. Pro path uses alex / cio_synthesis (PRO); needs higher
+    max_tokens because Pro-think can burn completion budget on reasoning.
+    """
     llm = policy.get("llm") or {}
     endpoint = llm.get("bridge_endpoint") or "http://127.0.0.1:8766/v1/chat/completions"
-    caller = llm.get("caller") or "alex"
-    task = llm.get("task_type_pro") if use_pro else llm.get("task_type_flash")
-    task = task or "cio_synthesis"
-    model = "deepseek-v4-pro" if use_pro else "deepseek-v4-flash"
+    if use_pro:
+        caller = llm.get("caller_pro") or "alex"
+        task = llm.get("task_type_pro") or "cio_synthesis"
+        process_id = "alex_cio_synthesis"
+        model = "deepseek-v4-pro"
+        max_tokens = int(llm.get("max_tokens_pro") or llm.get("max_tokens") or 1600)
+    else:
+        # Prefer advisory_desk Flash — not alex PRO — for plan JSON enrichment
+        caller = llm.get("caller_flash") or "advisory_desk"
+        task = llm.get("task_type_flash") or "advisory_opinion"
+        process_id = "advisory_desk_opinion"
+        model = "deepseek-v4-flash"
+        max_tokens = int(llm.get("max_tokens") or 700)
     payload = {
         "model": model,
         "messages": messages,
         "temperature": float(llm.get("temperature") or 0.2),
-        "max_tokens": int(llm.get("max_tokens") or 700),
+        "max_tokens": max_tokens,
     }
     headers = {
         "Content-Type": "application/json",
         "X-TradeAI-Agent": caller,
         "X-TradeAI-Task-Type": task,
-        "X-TradeAI-Process-Id": "alex_cio_synthesis",
+        "X-TradeAI-Process-Id": process_id,
     }
     req = urllib.request.Request(
         endpoint,
@@ -493,6 +535,7 @@ def enrich_plan(
                 result["llm"] = "blocked_provider"
                 result["llm_error"] = "non_json_response"
                 break
+            parsed = normalize_narrative(parsed)
             ok, verrs = validate_narrative(
                 parsed,
                 pack,

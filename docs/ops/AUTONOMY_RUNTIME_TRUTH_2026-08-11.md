@@ -182,3 +182,22 @@ Artifact: `data/cio/p2b_soak_wakes.json`
 | Converse dry + slash | PASS (live CIO bot token missing) |
 | RUNTIME_TRUTH updated | PASS |
 
+---
+
+## Provision follow-up (same day, post-soak)
+
+| Item | Status |
+|---|---|
+| Git tip (pre this note) | `4f15f869` / P2b at `8592abc2` |
+| `alex_cio_synthesis` daily_cost_cap_usd | **0.15** (was 0.02) — DB + registry |
+| `~/.config/tradeai/cio-telegram.env` | allowlist set (2 chats); **TELEGRAM_CIO_BOT_TOKEN missing** |
+| Token provision script | `scripts/ops/provision_cio_telegram_token.sh` |
+| Unit `tradeai-cio-telegram` | installed; **not enabled** until token |
+| P3 thesis store | **not implemented** (next feature track) |
+
+After BotFather token:
+```bash
+printf '%s' '<token>' | bash scripts/ops/provision_cio_telegram_token.sh
+systemctl --user enable --now tradeai-cio-telegram.service
+.venv/bin/python scripts/cio_telegram_bot.py --once --json
+```
