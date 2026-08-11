@@ -537,7 +537,7 @@
       "registered_at": "2026-08-08T19:23:00Z"
     },
     {
-      "id": "steph_allocation_planning",
+      "id": "steph_allocation_review",
       "name": "Steph Allocation & Wealth Planning",
       "category": "CIO",
       "lane_policy": "deepseek_only",
@@ -565,6 +565,60 @@
       "circuit_breaker": true,
       "registered_by": "P-1.8",
       "registered_at": "2026-08-08T19:23:00Z"
+    },
+    {
+      "id": "maria_research_critique",
+      "name": "Maria Research Critique",
+      "category": "CIO",
+      "lane_policy": "deepseek_only",
+      "default_mode": "automated",
+      "description": "Maria research critique — deterministic-first fundamental and catalyst analysis reading Trade AI research data. Read-only advisory. No execution.",
+      "allowed_lanes": [
+        "fast",
+        "deepseek-v4-flash"
+      ],
+      "deepseek_default_policy": "FAST",
+      "deepseek_allowed_policies": [
+        "FAST"
+      ],
+      "max_input_tokens": 32000,
+      "max_output_tokens": 8192,
+      "daily_soft_cap": 40,
+      "daily_cost_cap_usd": 0.02,
+      "tools_allowed": true,
+      "fallback_allowed": false,
+      "advisory_only": true,
+      "dedupe_policy": "request_id_only",
+      "circuit_breaker": true,
+      "registered_by": "D1B",
+      "registered_at": "2026-08-10T20:05:00Z"
+    },
+    {
+      "id": "morgan_wealth_synthesis",
+      "name": "Morgan Wealth Synthesis",
+      "category": "CIO",
+      "lane_policy": "deepseek_only",
+      "default_mode": "automated",
+      "description": "Morgan wealth synthesis — deterministic-first multi-account wealth and goal-tracking analysis reading Trade AI portfolio/income/retirement data. Read-only advisory. No execution.",
+      "allowed_lanes": [
+        "fast",
+        "deepseek-v4-flash"
+      ],
+      "deepseek_default_policy": "FAST",
+      "deepseek_allowed_policies": [
+        "FAST"
+      ],
+      "max_input_tokens": 32000,
+      "max_output_tokens": 8192,
+      "daily_soft_cap": 30,
+      "daily_cost_cap_usd": 0.015,
+      "tools_allowed": true,
+      "fallback_allowed": false,
+      "advisory_only": true,
+      "dedupe_policy": "request_id_only",
+      "circuit_breaker": true,
+      "registered_by": "D1B",
+      "registered_at": "2026-08-10T20:05:00Z"
     }
   ],
   "default_deepseek_policy": "FAST",

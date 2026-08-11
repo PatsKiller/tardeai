@@ -1,0 +1,98 @@
+# Advisory Desk model routing (S3 — opinion layer)
+# Read by scripts/lib/advisory/advisory_opinion_engine.py
+# DeepSeek key source: Bitwarden SM → /run/user/1000/tradeai/env → portfolio-server
+
+routing:
+  lane_preference:
+    # ── Primary: DeepSeek bridge (port 8766, running 2026-08-10) ──
+    - order: 1
+      lane: deepseek-flash
+      model: deepseek-v4-flash
+      purpose: per-row opinions
+      provider: deepseek
+      endpoint: "http://127.0.0.1:8766/v1/chat/completions"
+      thinking: disabled
+    - order: 2
+      lane: deepseek-pro
+      model: deepseek-v4-pro
+      purpose: desk-level synthesis, material rows
+      provider: deepseek
+      endpoint: "http://127.0.0.1:8766/v1/chat/completions"
+      thinking: disabled
+    # ── Fallback: Ollama local (gemma3:12b) ──
+    - order: 3
+      lane: local
+      model: gemma3:12b
+      purpose: fallback
+      provider: ollama
+      endpoint: "http://127.0.0.1:11434/v1/chat/completions"
+      degraded: true
+
+  never_escalate_to:
+    - deepseek-v4-pro-think
+    - deepseek-v4-pro-max
+
+  cost:
+    max_model_rows_per_run: 20
+    daily_usd_cap: 0.05
+    per_row_usd_estimate: 0.001
+
+  bridge:
+    endpoint: "http://127.0.0.1:8766/v1/chat/completions"
+    caller: advisory_desk
+    process_id: advisory_desk_synthesis
+    task_type: advisory_opinion
+
+  opinion_prompt_template: |
+    You are a disciplined portfolio analyst writing for a sophisticated retail operator.
+
+    Below is the evidence bundle for one position. Every figure in your response
+    must already exist in the bundle — do not invent prices, percentages, dates,
+    or share counts. If the evidence is thin, say so and keep the opinion brief.
+
+    Evidence bundle:
+    {evidence_json}
+
+    Deterministic verdict (pre-computed by rules engine): {deterministic_verdict}
+
+    Return ONLY a single JSON object with these exact fields:
+
+    {{
+      "verdict": "{deterministic_verdict}",
+      "conviction": <0-100, integer>,
+      "what_changed": "<one line — what is new since the last review>",
+      "rationale": "<2-4 sentences, citing specific evidence items by their title and date>",
+      "key_risk": "<the single strongest argument AGAINST this verdict — required, not optional>",
+      "evidence_cited": ["ref_id1", "ref_id2"]
+    }}
+
+    Rules:
+    - Every number in your prose must appear verbatim in the evidence bundle.
+    - evidence_cited must contain only ref_ids present in the bundle.
+    - If you disagree with the deterministic verdict, say so in rationale and set
+      verdict to your recommendation. Both will be recorded — this is a signal, not an error.
+    - key_risk is REQUIRED. An opinion without a counter-argument is an opinion
+      that hasn't been examined.
+    - No order types, no share counts, no execution instructions.
+    - CONVICTION: measures thesis confidence (evidence quality), NOT position size.
+      A small position and a large position with the same evidence should score
+      the same conviction. Dollar exposure belongs in the portfolio-level synthesis,
+      not in per-row conviction.
+
+  synthesis_prompt_template: |
+    You are a portfolio synthesis analyst. Below are the daily advisory desk rows
+    for this operator's portfolio.
+
+    Advisory rows:
+    {rows_json}
+
+    Write ONE concise paragraph (4-6 sentences) answering:
+
+    What are the three things the operator should actually consider today, and why?
+
+    Your paragraph must:
+    - Cite row ids (symbols) for each of the three items.
+    - Cross-reference where relevant (e.g. a TRIM that could fund an allocation gap).
+    - Name the biggest thing being ignored — the blind spot the desk isn't flagging.
+    - Be actionable. Every item should give the operator something to do or verify.
+    - NOT include prices, share counts, or order types.

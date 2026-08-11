@@ -54,6 +54,7 @@ CALLER_PROCESS_MAP: dict[str, str] = {
     "guardian": "guardian_risk_critique",
     "ledger": "ledger_tax_critique",
     "morgan": "morgan_wealth_synthesis",
+    "advisory_desk": "advisory_desk_opinion",
 }
 
 # ── Server-side caller → authorized task_types ─────────────────────────
@@ -70,7 +71,7 @@ CALLER_TASK_POLICY_MAP: dict[str, dict[str, str]] = {
         "agent_narrative": "FAST",
     },
     "steph": {
-        "allocation_review": "FAST",
+        "allocation_review": "PRO",
         "wealth_review": "FAST",
     },
     "guardian": {
@@ -82,6 +83,10 @@ CALLER_TASK_POLICY_MAP: dict[str, dict[str, str]] = {
     "morgan": {
         "wealth_synthesis": "FAST",
         "goal_tracking": "FAST",
+    },
+    "advisory_desk": {
+        "advisory_opinion": "FAST",
+        "advisory_synthesis": "PRO",
     },
 }
 
@@ -198,10 +203,11 @@ def resolve_model_policy(process_id: str, task_type: str = "") -> dict[str, Any]
         "alex_cio_synthesis": "PRO",
         "alex_cio_escalation": "PRO_THINK",
         "maria_research_critique": "FAST",
-        "steph_allocation_review": "FAST",
+        "steph_allocation_review": "PRO",
         "guardian_risk_critique": "FAST",
         "ledger_tax_critique": "FAST",
         "morgan_wealth_synthesis": "FAST",
+        "advisory_desk_opinion": "FAST",
     }
     policy_name = process_policy_map.get(process_id)
     if policy_name is None:

@@ -1,0 +1,36 @@
+{
+  "specialist_id": "ledger",
+  "parent_run_id": "run-gate-d-mock-001",
+  "run_purpose": "PORTFOLIO_ALLOCATION_REVIEW",
+  "position": "DEFER",
+  "recommendation": "Cannot assess tax implications of proposed allocation change. Tax lot data and account constraints are unavailable. Defer recommendation until tax evidence is complete. Proceeding without tax review risks wash-sale violations and unknown cost-basis impact.",
+  "rationale": "tax_lots.json is unavailable — cannot determine holding periods, wash-sale proximity, or cost basis impact. account_constraints is UNSUPPORTED — cannot verify account-type eligibility for proposed positions. Tax review requires both domains to produce a reliable position. Cost basis data exists but is incomplete without lot-level detail.",
+  "evidence_sources": [
+    {"source_id": "ds-cost_basis", "domain": "cost_basis", "quality_state": "PARTIAL", "as_of": "2026-08-10T20:00:00Z", "source_ref": "canonical://cost_basis"},
+    {"source_id": "ds-portfolio", "domain": "portfolio", "quality_state": "AVAILABLE", "as_of": "2026-08-10T20:00:00Z", "source_ref": "canonical://portfolio"}
+  ],
+  "evidence_summary": "Tax lots DATA_UNAVAILABLE. Account constraints DATA_UNAVAILABLE. Cost basis available but incomplete without lot-level detail. Two of three required tax domains missing — cannot produce a tax-grounded position.",
+  "confidence": 0.30,
+  "confidence_basis": "INSUFFICIENT_EVIDENCE",
+  "material_risks": [
+    {"risk_id": "r6", "description": "Potential wash-sale violation — cannot verify without lot-level holding period data", "severity": "HIGH", "evidence_refs": []},
+    {"risk_id": "r7", "description": "Unknown tax impact — could change recommendation from SUPPORT to OPPOSE depending on holding periods", "severity": "MEDIUM", "evidence_refs": []}
+  ],
+  "alternatives_considered": [
+    "Proceed without tax review — REJECTED: violates Gate-C evidence rules requiring tax domain coverage",
+    "Limit review to non-taxable accounts only — valid fallback if operator confirms account type"
+  ],
+  "conditions_to_change_view": [
+    {"condition": "tax_lots.json becomes available AND account_constraints becomes available", "new_position_if_met": "SUPPORT or OPPOSE based on tax impact analysis", "rationale": "Full tax evidence enables definitive position"}
+  ],
+  "evidence_gaps": [
+    "tax_lots.json unavailable — cannot verify holding periods, wash-sale proximity, or cost basis",
+    "account_constraints UNSUPPORTED in registry — cannot classify account types"
+  ],
+  "deficiencies_acknowledged": [
+    "Tax review impossible without lot-level data and account-type classification",
+    "Recommendation will remain DEFER until both tax_lots.json and account_constraints are available"
+  ],
+  "advisory_artifact_id": "ledger-advisory-mock-001",
+  "created_at": "2026-08-10T20:00:00Z"
+}

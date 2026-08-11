@@ -1,0 +1,30 @@
+{
+  "specialist_id": "guardian",
+  "parent_run_id": "run-gate-d-mock-001",
+  "run_purpose": "PORTFOLIO_ALLOCATION_REVIEW",
+  "position": "OPPOSE",
+  "recommendation": "Risk envelope is unacceptable for increasing equity exposure. Portfolio heat is at 82% of risk budget, and stop coverage is unverifiable. Adding positions without verified stop coverage violates risk governance. Do not proceed until risk headroom is restored and stops are verified.",
+  "rationale": "Portfolio heat at 82% of total risk budget leaves only 18% headroom. Increasing equity allocation consumes remaining headroom without verified stop-loss protection. defense_stops_protection is DATA_UNAVAILABLE — cannot verify that new positions have adequate stops. Risk governance requires both sufficient headroom AND verified stops before adding exposure.",
+  "evidence_sources": [
+    {"source_id": "ds-portfolio", "domain": "portfolio", "quality_state": "AVAILABLE", "as_of": "2026-08-10T20:00:00Z", "source_ref": "canonical://portfolio"},
+    {"source_id": "ds-risk", "domain": "risk", "quality_state": "AVAILABLE", "as_of": "2026-08-10T20:00:00Z", "source_ref": "canonical://risk"}
+  ],
+  "evidence_summary": "Portfolio heat at 82% of risk budget. Stop coverage unverified (defense_stops_protection DATA_UNAVAILABLE). Risk envelope too tight for new positions — only 18% headroom remaining.",
+  "confidence": 0.80,
+  "confidence_basis": "PARTIAL_EVIDENCE",
+  "material_risks": [
+    {"risk_id": "r4", "description": "Portfolio heat at 82% — insufficient headroom for new positions", "severity": "HIGH", "evidence_refs": ["ds-risk"]},
+    {"risk_id": "r5", "description": "Stop-loss coverage unverifiable without defense_stops_protection — unprotected drawdown risk", "severity": "HIGH", "evidence_refs": []}
+  ],
+  "alternatives_considered": [
+    "Allow only if existing positions' stops are trimmed to free headroom",
+    "Require operator to manually verify stop coverage before approving"
+  ],
+  "conditions_to_change_view": [
+    {"condition": "Portfolio heat drops below 60% AND defense_stops_protection becomes AVAILABLE", "new_position_if_met": "SUPPORT", "rationale": "Sufficient risk headroom with verified stop coverage — risk governance satisfied"}
+  ],
+  "evidence_gaps": ["defense_stops_protection is DATA_UNAVAILABLE — cannot verify stop coverage"],
+  "deficiencies_acknowledged": ["Risk assessment incomplete without verified stop-loss data — recommendation is conservative due to evidence gap"],
+  "advisory_artifact_id": "guardian-advisory-mock-001",
+  "created_at": "2026-08-10T20:00:00Z"
+}
