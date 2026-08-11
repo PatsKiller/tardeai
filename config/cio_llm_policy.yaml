@@ -53,9 +53,9 @@ llm:
   task_type_flash: "advisory_opinion"
   caller_pro: "alex"
   task_type_pro: "cio_synthesis"
-  max_tokens: 1200
-  max_tokens_flash: 1200
-  max_tokens_pro: 1600
+  max_tokens: 1600
+  max_tokens_flash: 1600   # material multi-domain JSON needs headroom
+  max_tokens_pro: 2000
   temperature: 0.2
   # Local soft cap (in addition to bridge global daily cap)
   max_calls_per_hour: 12

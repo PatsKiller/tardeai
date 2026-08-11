@@ -158,8 +158,9 @@ def test_evidence_pack_includes_desk_thesis(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(
         ct,
         "safe_context_block",
-        lambda thesis_id="desk": tstore.context_block(thesis_id),
+        lambda thesis_id="desk", full=False: tstore.context_block(thesis_id, full=full),
     )
+    monkeypatch.setattr(ct, "safe_current_pin", lambda thesis_id="desk": tstore.current_pin(thesis_id))
     # CIOThesisStore() default still hits real paths for get_by_pin — patch class default
     monkeypatch.setattr(ct, "DEFAULT_EVENT_PATH", tmp_path / "theses.jsonl")
     monkeypatch.setattr(ct, "DEFAULT_PROJECTION_PATH", tmp_path / "theses_proj.json")
@@ -175,6 +176,7 @@ def test_evidence_pack_includes_desk_thesis(tmp_path: Path, monkeypatch):
         "evidence_refs": [{"domain": "holdings_detail", "basis": 1}],
         "thesis_version": pin,
     })
+    # Enrichment re-pins to current desk pin used for the advice
     assert pack.get("thesis_version") == pin
     assert pack.get("desk_thesis")
     assert "Observe only" in (pack["desk_thesis"].get("summary") or "")

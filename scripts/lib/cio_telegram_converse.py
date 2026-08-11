@@ -435,8 +435,34 @@ def format_structured_reply(
         if thesis_summary:
             lines.append(_clean(thesis_summary))
         lines.append("")
+    # Material long-form: pull Thesis alignment / Multi-domain blocks out of summary
+    what_body = _clean(summary) or "(no summary)"
+    thesis_align_line = ""
+    multi_dom_line = ""
+    if "Thesis alignment" in what_body:
+        parts = what_body.split("Thesis alignment", 1)
+        what_body = parts[0].strip()
+        rest = parts[1]
+        if "Multi-domain" in rest:
+            ta_part, md_part = rest.split("Multi-domain", 1)
+            thesis_align_line = ("Thesis alignment" + ta_part).strip(" :\n")
+            multi_dom_line = ("Multi-domain" + md_part).strip(" :\n")
+        else:
+            thesis_align_line = ("Thesis alignment" + rest).strip(" :\n")
+    elif "Multi-domain" in what_body:
+        parts = what_body.split("Multi-domain", 1)
+        what_body = parts[0].strip()
+        multi_dom_line = ("Multi-domain" + parts[1]).strip(" :\n")
     lines.append("📌 *What*")
-    lines.append(_clean(summary) or "(no summary)")
+    lines.append(what_body or "(no summary)")
+    if thesis_align_line:
+        lines.append("")
+        lines.append("🧭 *Thesis alignment*")
+        lines.append(_clean(thesis_align_line.replace("Thesis alignment", "").lstrip(" :()")))
+    if multi_dom_line:
+        lines.append("")
+        lines.append("🧩 *Multi-domain*")
+        lines.append(_clean(multi_dom_line.replace("Multi-domain", "").lstrip(" :")))
     if options:
         lines.append("")
         lines.append("⚖️ *Options*")

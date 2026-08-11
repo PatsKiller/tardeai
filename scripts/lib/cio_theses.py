@@ -40,7 +40,11 @@ VALID_EVENT_TYPES = frozenset({
     "THESIS_VERSION_PUBLISHED",
     "THESIS_STATUS_CHANGED",
     "THESIS_LINKED",
+    "THESIS_LEARNING_APPENDED",
 })
+
+# Operator disposition learning (durable, append-only; not a thesis version rewrite)
+DEFAULT_LEARNING_PATH = Path("data/cio/cio_operator_learning.jsonl")
 
 PIN_RE = re.compile(r"^([a-z][a-z0-9_\-]*)@v(\d+)$", re.I)
 
@@ -254,6 +258,23 @@ class CIOThesisStore:
                 # links attach to head version only
                 versions[tid][ver] = dict(head)
             return
+        if et == "THESIS_LEARNING_APPENDED":
+            head = current.get(tid)
+            if not head:
+                return
+            head = dict(head)
+            log = list(head.get("learning_log") or [])
+            entry = p.get("entry") if isinstance(p.get("entry"), dict) else dict(p)
+            if entry:
+                log.append(entry)
+            # keep last 40 on head projection
+            head["learning_log"] = log[-40:]
+            head["updated_ts"] = p.get("updated_ts") or ev.get("occurred_at") or _now()
+            current[tid] = head
+            ver = int(head.get("version") or 0)
+            if ver and tid in versions and ver in versions[tid]:
+                versions[tid][ver] = dict(head)
+            return
 
     # ── Public API ───────────────────────────────────────────────────────
 
@@ -264,6 +285,10 @@ class CIOThesisStore:
         thesis_id: str = DEFAULT_THESIS_ID,
         stance: str = "",
         bullets: Optional[list[str]] = None,
+        principles: Optional[list[str]] = None,
+        risk_posture: str = "",
+        escalation_rules: Optional[list[str]] = None,
+        learning_log: Optional[list[dict[str, Any]]] = None,
         linked_symbols: Optional[list[str]] = None,
         linked_goal_ids: Optional[list[str]] = None,
         linked_plan_ids: Optional[list[str]] = None,
@@ -271,8 +296,13 @@ class CIOThesisStore:
         owner_agent: str = "alex",
         change_note: str = "",
         actor_id: str = "cio_theses",
+        extra: Optional[dict[str, Any]] = None,
     ) -> dict[str, Any]:
-        """Publish a new version of a thesis (creates thesis_id on first publish)."""
+        """Publish a new version of a thesis (creates thesis_id on first publish).
+
+        desk@v2+ fields: principles, risk_posture, escalation_rules, learning_log (seed).
+        Ongoing operator learning also lands in cio_operator_learning.jsonl.
+        """
         tid = _normalize_thesis_id(thesis_id)
         summary = (summary or "").strip()
         if not summary:
@@ -291,6 +321,16 @@ class CIOThesisStore:
             linked_goal_ids = list(prev.get("linked_goal_ids") or [])
         if linked_plan_ids is None and prev:
             linked_plan_ids = list(prev.get("linked_plan_ids") or [])
+        # inherit desk structure fields when not re-specified
+        if principles is None and prev:
+            principles = list(prev.get("principles") or [])
+        if not risk_posture and prev:
+            risk_posture = str(prev.get("risk_posture") or "")
+        if escalation_rules is None and prev:
+            escalation_rules = list(prev.get("escalation_rules") or [])
+        if learning_log is None and prev:
+            # keep last N seed entries on version publish
+            learning_log = list(prev.get("learning_log") or [])[-20:]
 
         payload: dict[str, Any] = {
             "thesis_id": tid,
@@ -299,6 +339,12 @@ class CIOThesisStore:
             "summary": summary,
             "stance": (stance or "").strip(),
             "bullets": [str(b).strip() for b in (bullets or []) if str(b).strip()],
+            "principles": [str(p).strip() for p in (principles or []) if str(p).strip()],
+            "risk_posture": (risk_posture or "").strip(),
+            "escalation_rules": [
+                str(r).strip() for r in (escalation_rules or []) if str(r).strip()
+            ],
+            "learning_log": list(learning_log or [])[-30:],
             "linked_symbols": [str(s).upper() for s in (linked_symbols or [])],
             "linked_goal_ids": list(linked_goal_ids or []),
             "linked_plan_ids": list(linked_plan_ids or []),
@@ -312,6 +358,10 @@ class CIOThesisStore:
             "updated_ts": ts,
             "authority": "READ_ONLY_ADVISORY",
         }
+        if extra and isinstance(extra, dict):
+            for k, v in extra.items():
+                if k not in payload and v is not None:
+                    payload[k] = v
         et = "THESIS_CREATED" if next_ver == 1 else "THESIS_VERSION_PUBLISHED"
         self._append_event(et, tid, payload, actor_id=actor_id)
         return dict(self._current[tid])
@@ -409,27 +459,68 @@ class CIOThesisStore:
         self,
         thesis_id: str = DEFAULT_THESIS_ID,
         *,
-        max_summary: int = 800,
+        max_summary: int = 1200,
+        full: bool = False,
     ) -> Optional[dict[str, Any]]:
-        """Compact block for evidence packs / agent context (fail-soft shape)."""
+        """Compact (or full) block for evidence packs / agent context."""
         cur = self.get_current(thesis_id)
         if not cur or cur.get("status") == "archived":
             return None
         summary = str(cur.get("summary") or "")
-        if len(summary) > max_summary:
+        if not full and len(summary) > max_summary:
             summary = summary[: max_summary - 1] + "…"
-        return {
+        block = {
             "thesis_id": cur.get("thesis_id"),
             "thesis_version": cur.get("thesis_version"),
             "version": cur.get("version"),
-            "summary": summary,
+            "summary": summary if full else summary[:max_summary],
             "stance": cur.get("stance") or "",
             "bullets": list(cur.get("bullets") or [])[:12],
+            "principles": list(cur.get("principles") or [])[:12],
+            "risk_posture": cur.get("risk_posture") or "",
+            "escalation_rules": list(cur.get("escalation_rules") or [])[:12],
+            "learning_log": list(cur.get("learning_log") or [])[-8:],
             "linked_symbols": list(cur.get("linked_symbols") or [])[:20],
             "owner_agent": cur.get("owner_agent"),
             "published_ts": cur.get("published_ts"),
             "authority": "READ_ONLY_ADVISORY",
         }
+        return block
+
+    def append_learning(
+        self,
+        entry: dict[str, Any],
+        *,
+        thesis_id: str = DEFAULT_THESIS_ID,
+        actor_id: str = "operator",
+    ) -> Optional[dict[str, Any]]:
+        """Append a learning entry to the active thesis head (and durable JSONL)."""
+        tid = _normalize_thesis_id(thesis_id)
+        if tid not in self._current:
+            return None
+        clean = {
+            "ts": entry.get("ts") or _now(),
+            "kind": str(entry.get("kind") or "disposition"),
+            "plan_id": entry.get("plan_id"),
+            "situation_type": entry.get("situation_type"),
+            "symbols": list(entry.get("symbols") or [])[:8],
+            "disposition": entry.get("disposition") or entry.get("status"),
+            "note": str(entry.get("note") or "")[:400],
+            "thesis_version": entry.get("thesis_version") or self.current_pin(tid),
+            "authority": "READ_ONLY_ADVISORY",
+        }
+        # durable append-only log (cross-version)
+        try:
+            record_operator_learning(clean)
+        except Exception:
+            pass
+        self._append_event(
+            "THESIS_LEARNING_APPENDED",
+            tid,
+            {"entry": clean, "updated_ts": _now()},
+            actor_id=actor_id,
+        )
+        return dict(self._current[tid])
 
 
 def safe_current_pin(thesis_id: str = DEFAULT_THESIS_ID) -> Optional[str]:
@@ -440,11 +531,112 @@ def safe_current_pin(thesis_id: str = DEFAULT_THESIS_ID) -> Optional[str]:
         return None
 
 
-def safe_context_block(thesis_id: str = DEFAULT_THESIS_ID) -> Optional[dict[str, Any]]:
+def safe_context_block(
+    thesis_id: str = DEFAULT_THESIS_ID,
+    *,
+    full: bool = False,
+) -> Optional[dict[str, Any]]:
     try:
-        return CIOThesisStore().context_block(thesis_id)
+        return CIOThesisStore().context_block(thesis_id, full=full)
     except Exception:
         return None
+
+
+def record_operator_learning(
+    entry: dict[str, Any],
+    *,
+    path: Path | str | None = None,
+) -> None:
+    """Append-only operator learning log (dispositions, ratings). Fail-soft."""
+    p = Path(path) if path else DEFAULT_LEARNING_PATH
+    p.parent.mkdir(parents=True, exist_ok=True)
+    row = dict(entry)
+    row.setdefault("ts", _now())
+    row.setdefault("authority", "READ_ONLY_ADVISORY")
+    lock = _lock_path(p)
+    try:
+        with open(lock, "a") as lf:
+            fcntl.flock(lf.fileno(), fcntl.LOCK_EX)
+            try:
+                with open(p, "a", encoding="utf-8") as fh:
+                    fh.write(json.dumps(row, sort_keys=True, default=str) + "\n")
+                    fh.flush()
+            finally:
+                fcntl.flock(lf.fileno(), fcntl.LOCK_UN)
+    except Exception:
+        pass
+
+
+def recent_operator_learning(
+    *,
+    situation_type: Optional[str] = None,
+    symbol: Optional[str] = None,
+    limit: int = 8,
+    path: Path | str | None = None,
+) -> list[dict[str, Any]]:
+    """Recent operator dispositions for enrichment context. Fail-soft."""
+    p = Path(path) if path else DEFAULT_LEARNING_PATH
+    if not p.exists():
+        return []
+    rows: list[dict[str, Any]] = []
+    try:
+        with open(p, "r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rows.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+    except Exception:
+        return []
+    st = (situation_type or "").strip()
+    sym = (symbol or "").strip().upper()
+    out: list[dict[str, Any]] = []
+    for r in reversed(rows):
+        r_st = str(r.get("situation_type") or "")
+        rsyms = {str(x).upper() for x in (r.get("symbols") or [])}
+        if st and sym:
+            if r_st != st and sym not in rsyms:
+                continue
+        elif st and r_st != st:
+            continue
+        elif sym and sym not in rsyms:
+            continue
+        out.append(r)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def record_plan_disposition_learning(
+    plan: dict[str, Any],
+    disposition: str,
+    *,
+    note: str = "",
+    actor_id: str = "operator",
+) -> None:
+    """Wire plan ack/defer/done/reject into thesis learning. Fail-soft."""
+    entry = {
+        "ts": _now(),
+        "kind": "plan_disposition",
+        "plan_id": plan.get("plan_id"),
+        "situation_type": plan.get("situation_type"),
+        "symbols": list(plan.get("symbols") or []),
+        "disposition": disposition,
+        "note": note,
+        "thesis_version": plan.get("thesis_version"),
+        "narrative_source": plan.get("narrative_source"),
+    }
+    try:
+        record_operator_learning(entry)
+    except Exception:
+        pass
+    try:
+        CIOThesisStore().append_learning(entry, actor_id=actor_id)
+    except Exception:
+        pass
 
 
 def safe_pin_plan(

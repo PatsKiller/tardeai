@@ -117,55 +117,199 @@ def evidence_facts_from_plan(plan: dict[str, Any]) -> dict[str, Any]:
     return facts
 
 
+def is_material_plan(plan: dict[str, Any]) -> bool:
+    """Graduated depth: material situations get longer thesis-aware advisory."""
+    st = str(plan.get("situation_type") or "")
+    fire = [str(x) for x in (plan.get("fire_reasons") or (plan.get("extra") or {}).get("fire_reasons") or [])]
+    fire_blob = " ".join(fire).lower()
+    # Always material types
+    if st in (
+        "S5_CASH_DEPLOYMENT",
+        "S6_CONCENTRATION_OR_DISPOSITION",
+        "S8_DEFENSIVE_REGIME",
+    ):
+        return True
+    if st == "S1_POSITION_LIFECYCLE":
+        if any(
+            x.startswith("deep_drawdown") or x.startswith("partial_recovery") or "catalyst" in x
+            for x in fire
+        ):
+            return True
+        # pure reclaim is routine
+        if fire == ["basis_reclaim_zone"] or (len(fire) == 1 and "reclaim" in fire_blob):
+            return False
+        return "drawdown" in fire_blob or "recovery" in fire_blob
+    if st == "S2_STOP_GAP":
+        return False  # routine card unless flagged critical in fire
+    if plan.get("force_material"):
+        return True
+    return False
+
+
+def _domain_as_of(payload: Any) -> str:
+    if isinstance(payload, dict):
+        return str(payload.get("as_of") or payload.get("ts") or "")[:24]
+    return ""
+
+
+def augment_multi_domain_evidence(plan: dict[str, Any]) -> dict[str, Any]:
+    """Ensure holdings + cash/portfolio (and risk when available) on material plans.
+
+    Mutates a copy of the plan's evidence_refs. Fail-soft if Data Broker down.
+    """
+    updated = dict(plan)
+    refs = [dict(r) for r in (plan.get("evidence_refs") or []) if isinstance(r, dict)]
+    have = {str(r.get("domain") or "") for r in refs}
+    symbols = [str(s).upper() for s in (plan.get("symbols") or [])]
+    try:
+        try:
+            from lib.data_broker.cio_portfolio import get_cio_snapshot
+        except Exception:
+            from scripts.lib.data_broker.cio_portfolio import get_cio_snapshot  # type: ignore
+        snap = get_cio_snapshot(max_age_s=60) or {}
+        domains = snap.get("domains") or snap
+        if not isinstance(domains, dict):
+            domains = {}
+
+        def _pull(name: str, fields: list[str], extra: Optional[dict] = None) -> None:
+            nonlocal refs, have
+            if name in have:
+                return
+            raw = domains.get(name)
+            if not isinstance(raw, dict):
+                return
+            # unwrap nested data
+            body = raw.get("data") if isinstance(raw.get("data"), dict) else raw
+            if not isinstance(body, dict):
+                return
+            ref: dict[str, Any] = {
+                "domain": name,
+                "as_of": _domain_as_of(raw) or _domain_as_of(body) or _now()[:19],
+                "fields_used": [],
+                "quality_state": body.get("state") or raw.get("state") or "OK",
+            }
+            for f in fields:
+                if f in body and body[f] is not None:
+                    ref[f] = body[f]
+                    ref["fields_used"].append(f)
+            # holdings rows for symbol weight
+            if name == "holdings_detail" and symbols:
+                rows = body.get("holdings") or body.get("positions") or body.get("rows") or []
+                if isinstance(rows, list):
+                    for row in rows:
+                        if not isinstance(row, dict):
+                            continue
+                        sym = str(row.get("symbol") or row.get("ticker") or "").upper()
+                        if sym in symbols:
+                            for k in ("weight_pct", "basis", "last", "market_value", "qty", "unrealized_pl_pct"):
+                                if k in row and row[k] is not None:
+                                    ref[k] = row[k]
+                                    if k not in ref["fields_used"]:
+                                        ref["fields_used"].append(k)
+                            ref["symbol"] = sym
+                            break
+            if extra:
+                ref.update(extra)
+            if ref["fields_used"] or any(k not in ("domain", "as_of", "fields_used", "quality_state") for k in ref):
+                refs.append(ref)
+                have.add(name)
+
+        # Core pair for synthesis
+        _pull("holdings_detail", ["holdings_count", "total_value"])
+        _pull("cash_buying_power", ["cash_pct", "total_cash", "buying_power", "cash_weight_pct"])
+        # portfolio aggregate if cash domain missing fields
+        _pull("portfolio", ["total_value", "cash_pct", "day_change_pct", "holdings_count"])
+        _pull("risk", ["portfolio_heat_pct", "stops_active", "gross_exposure_pct"])
+        # concentration if present
+        _pull("concentration", ["top_weight_pct", "top_symbol", "hhi"])
+    except Exception:
+        pass
+
+    # Require at least 2 domains for material notify quality flag
+    domains_present = sorted({str(r.get("domain")) for r in refs if r.get("domain")})
+    updated["evidence_refs"] = refs
+    updated["_evidence_domains"] = domains_present
+    updated["_multi_domain_ok"] = len(domains_present) >= 2
+    return updated
+
+
 def build_evidence_pack(plan: dict[str, Any], *, extra_context: Optional[dict[str, Any]] = None) -> dict[str, Any]:
-    """Strict context block for the model."""
-    facts = evidence_facts_from_plan(plan)
-    # P3: desk thesis (pinned or current) — advisory context only, not numeric facts
+    """Strict context block for the model — full desk thesis + multi-domain evidence."""
+    # Ensure multi-domain before packing
+    plan_aug = augment_multi_domain_evidence(plan)
+    facts = evidence_facts_from_plan(plan_aug)
+    material = is_material_plan(plan_aug)
+    # Always load CURRENT desk thesis as governing context (not historical pin)
     desk_thesis = None
     try:
-        from scripts.lib.cio_theses import CIOThesisStore, safe_context_block
-        pin = plan.get("thesis_version")
-        if pin:
-            rec = CIOThesisStore().get_by_pin(str(pin))
-            if rec:
-                desk_thesis = {
-                    "thesis_version": rec.get("thesis_version"),
-                    "summary": (rec.get("summary") or "")[:800],
-                    "stance": rec.get("stance") or "",
-                    "bullets": list(rec.get("bullets") or [])[:12],
-                }
-        if desk_thesis is None:
+        from scripts.lib.cio_theses import (
+            safe_context_block,
+            safe_current_pin,
+            recent_operator_learning,
+        )
+        try:
+            desk_thesis = safe_context_block("desk", full=True)
+        except TypeError:
             desk_thesis = safe_context_block("desk")
+        current_pin = safe_current_pin("desk")
+        if desk_thesis and current_pin:
+            desk_thesis["thesis_version"] = current_pin
+        # Prefer CURRENT pin as the version used for this enrichment
+        if current_pin:
+            plan_aug["thesis_version"] = current_pin
+        elif desk_thesis and desk_thesis.get("thesis_version"):
+            plan_aug["thesis_version"] = desk_thesis.get("thesis_version")
+        # recent operator dispositions for same type/symbol
+        sym0 = (plan_aug.get("symbols") or [None])[0]
+        try:
+            recent_learn = recent_operator_learning(
+                situation_type=str(plan_aug.get("situation_type") or ""),
+                symbol=str(sym0) if sym0 else None,
+                limit=6,
+            )
+        except Exception:
+            recent_learn = []
     except Exception:
         desk_thesis = None
+        recent_learn = []
+
     pack = {
         "authority": "READ_ONLY_ADVISORY",
+        "material": material,
         "instruction": (
-            "Use ONLY the facts in this pack. If a field is missing, write DATA_UNAVAILABLE. "
-            "Never invent prices, targets, stops, or weights. Output JSON only matching the schema. "
-            "Advisory only — no order/stop execution language. "
-            "Respect desk_thesis stance when present; do not invent numbers from thesis text."
+            "You are the desk CIO. Desk thesis is BINDING governing context. "
+            "Synthesize across ALL evidence domains — never restate detector fire alone. "
+            "Use ONLY numbers present in the pack. Missing → DATA_UNAVAILABLE. "
+            "No orders/stops/broker steps. READ_ONLY_ADVISORY."
         ),
-        "situation_type": plan.get("situation_type"),
-        "symbols": plan.get("symbols") or [],
-        "plan_id": plan.get("plan_id"),
-        "title": plan.get("title"),
-        "thesis_version": plan.get("thesis_version"),
+        "situation_type": plan_aug.get("situation_type"),
+        "symbols": plan_aug.get("symbols") or [],
+        "plan_id": plan_aug.get("plan_id"),
+        "title": plan_aug.get("title"),
+        "thesis_version": plan_aug.get("thesis_version") or (desk_thesis or {}).get("thesis_version"),
         "desk_thesis": desk_thesis,
-        "existing_summary": plan.get("summary") or "",
-        "existing_recommendation": plan.get("recommendation") or "",
+        "recent_operator_learning": recent_learn,
+        "existing_summary": plan_aug.get("summary") or "",
+        "existing_recommendation": plan_aug.get("recommendation") or "",
         "options_stub": facts.get("_options_stub") or [],
         "evidence_refs": facts.get("_evidence_refs") or [],
+        "evidence_domains": plan_aug.get("_evidence_domains") or [],
+        "multi_domain_ok": bool(plan_aug.get("_multi_domain_ok")),
         "allowed_numeric_tokens": facts.get("_allowed_numeric_tokens") or [],
-        "fire_reasons": plan.get("fire_reasons") or [],
+        "fire_reasons": plan_aug.get("fire_reasons")
+        or (plan_aug.get("extra") or {}).get("fire_reasons")
+        or [],
         "extra_context": extra_context or {},
         "output_schema": {
-            "summary": "string",
+            "summary": "string — multi-domain situation, not detector echo",
+            "thesis_alignment": "string — how advice fits or tensions with desk thesis",
+            "multi_domain_summary": "string — holdings + cash/portfolio (+ risk) synthesis",
             "options": [{"id": "string", "label": "string", "pros": "string", "cons": "string"}],
-            "recommendation": "string",
+            "recommendation": "string — option_id + why highest-signal under thesis pin",
             "risks": ["string"],
             "revisit_hint": "string",
             "cited_fields": ["string"],
+            "thesis_version": "string — echo desk pin exactly",
         },
     }
     return pack
@@ -284,7 +428,14 @@ def normalize_narrative(narrative: dict[str, Any]) -> dict[str, Any]:
     elif rec is not None:
         out["recommendation"] = str(rec)[:1200]
     if out.get("summary") is not None:
-        out["summary"] = str(out.get("summary"))[:1200]
+        out["summary"] = str(out.get("summary"))[:1600]
+    # Material longer-form fields
+    if out.get("thesis_alignment") is not None:
+        out["thesis_alignment"] = str(out.get("thesis_alignment"))[:800]
+    if out.get("multi_domain_summary") is not None:
+        out["multi_domain_summary"] = str(out.get("multi_domain_summary"))[:800]
+    if out.get("thesis_version") is not None:
+        out["thesis_version"] = str(out.get("thesis_version")).strip()
     return out
 
 
@@ -346,32 +497,86 @@ def validate_narrative(
 
 
 def template_narrative_from_plan(plan: dict[str, Any], pack: dict[str, Any]) -> dict[str, Any]:
-    """Deterministic enrichment when LLM blocked."""
+    """Deterministic enrichment when LLM blocked — still thesis + multi-domain aware."""
     opts = plan.get("options") or pack.get("options_stub") or []
     if not opts:
         opts = [
             {"id": "hold", "label": "Hold", "pros": "No change", "cons": "Risk remains"},
             {"id": "review", "label": "Review with more evidence", "pros": "Safer", "cons": "Delay"},
         ]
-    summary = plan.get("summary") or plan.get("title") or "Advisory plan (template)"
-    # ensure LLM deferred marker for operator clarity
-    if "LLM deferred" not in summary and "template" not in summary.lower():
-        summary = f"{summary} [LLM deferred — deterministic view only]"
-    rec = plan.get("recommendation") or (
-        "Review evidence_refs and options. READ_ONLY_ADVISORY — no auto execution."
+    th = pack.get("desk_thesis") or {}
+    pin = pack.get("thesis_version") or th.get("thesis_version") or "desk"
+    stance = th.get("stance") or "unknown"
+    fire = pack.get("fire_reasons") or plan.get("fire_reasons") or []
+    fire_s = ", ".join(str(x) for x in fire[:4]) or "n/a"
+    domains = pack.get("evidence_domains") or []
+    dom_s = ", ".join(str(d) for d in domains[:6]) or "partial"
+    symbols = plan.get("symbols") or pack.get("symbols") or []
+    sym_s = ",".join(str(s) for s in symbols[:4]) or "book"
+    st = plan.get("situation_type") or pack.get("situation_type") or "situation"
+
+    # Multi-domain fact snips from pack refs
+    fact_bits = []
+    for r in (pack.get("evidence_refs") or [])[:6]:
+        if not isinstance(r, dict):
+            continue
+        dom = r.get("domain") or "?"
+        nums = []
+        for k, v in r.items():
+            if k in ("domain", "as_of", "fields_used", "quality_state"):
+                continue
+            if isinstance(v, (int, float)):
+                nums.append(f"{k}={v:.2f}" if isinstance(v, float) else f"{k}={v}")
+            elif isinstance(v, str) and NUM_RE.fullmatch(v.strip() or ""):
+                nums.append(f"{k}={v.strip()}")
+        if nums:
+            fact_bits.append(f"{dom}({', '.join(nums[:4])})")
+    multi = (
+        f"Domains {dom_s}: " + "; ".join(fact_bits[:5])
+        if fact_bits
+        else f"Domains available: {dom_s} (partial facts)"
     )
-    if "LLM deferred" not in rec:
-        rec = f"{rec} (LLM deferred — deterministic view only)"
-    risks = list(plan.get("risks") or ["Evidence incomplete", "No auto-execution"])
+    thesis_align = (
+        f"Under {pin} stance={stance}, escalate material concentration/cash/DD to the operator "
+        f"and avoid force-deploy; advice must preserve optionality and evidence quality."
+    )
+    base = (
+        f"{st} on {sym_s}: fire={fire_s}. "
+        f"Desk requires multi-domain synthesis ({dom_s}), not detector echo alone."
+    )
+    # Prefer prior LLM summary if it already has content without deferred marker
+    prior = str(plan.get("summary") or "").strip()
+    if prior and "LLM deferred" not in prior and len(prior) > 40:
+        summary = prior
+    else:
+        summary = base
+    # Choose default option by stance
+    opt_id = "hold"
+    if opts:
+        ids = [str(o.get("id") or "") for o in opts if isinstance(o, dict)]
+        if stance.startswith("defensive") and any("hold" in i for i in ids):
+            opt_id = next(i for i in ids if "hold" in i)
+        elif ids:
+            opt_id = ids[0]
+    rec = (
+        f"Choose {opt_id} under {pin} ({stance}): stage/observe rather than force action "
+        f"until evidence quality supports a deploy/trim size. Revisit on domain change."
+    )
+    risks = list(plan.get("risks") or [])
+    if not risks:
+        risks = ["Evidence incomplete", "No auto-execution", f"Thesis {pin} is advisory only"]
     return {
-        "summary": summary[:1200],
+        "summary": summary[:1600],
+        "thesis_alignment": thesis_align[:800],
+        "multi_domain_summary": multi[:800],
         "options": opts,
-        "recommendation": rec[:1200],
+        "recommendation": rec[:1600],
         "risks": risks[:8],
         "revisit_hint": "24h or on material evidence change",
         "cited_fields": list(
-            {f for r in (plan.get("evidence_refs") or []) for f in (r.get("fields_used") or [])}
+            {f for r in (pack.get("evidence_refs") or plan.get("evidence_refs") or []) for f in (r.get("fields_used") or [])}
         )[:20],
+        "thesis_version": pin,
         "narrative_source": "template",
         "llm_deferred": True,
     }
@@ -419,34 +624,83 @@ def _log_enrich(row: dict[str, Any], path: Path | None = None) -> None:
         pass
 
 
-def _thesis_block_for_prompt(pack: dict[str, Any], *, max_bullets: int = 4) -> str:
-    """Compact desk thesis so the model must shape the rec around stance."""
+def _thesis_block_for_prompt(pack: dict[str, Any], *, max_bullets: int = 4, full: bool = False) -> str:
+    """Desk thesis block — full text for material events."""
     th = pack.get("desk_thesis") or {}
     if not isinstance(th, dict) or not th:
         pin = pack.get("thesis_version") or ""
         return f"thesis={pin or 'none'} stance=unknown"
     pin = th.get("thesis_version") or pack.get("thesis_version") or ""
     stance = th.get("stance") or ""
-    summary = " ".join(str(th.get("summary") or "").split())[:220]
+    summary = " ".join(str(th.get("summary") or "").split())
+    # Keep thesis ultra-tight — Flash empty_content on fat prompts
+    summary = summary[:180] if full else summary[:120]
     bullets = th.get("bullets") or []
-    b_s = "; ".join(str(b).strip() for b in bullets[:max_bullets] if str(b).strip())[:280]
+    b_s = "; ".join(str(b).strip() for b in bullets[:max_bullets] if str(b).strip())[:160]
+    principles = th.get("principles") or []
+    p_s = "; ".join(str(x).strip() for x in principles[:3] if str(x).strip())[:140]
+    risk_p = str(th.get("risk_posture") or "")[:100]
+    esc = th.get("escalation_rules") or []
+    e_s = "; ".join(str(x).strip() for x in esc[:2] if str(x).strip())[:120]
     linked = th.get("linked_symbols") or []
     link_s = ",".join(str(x) for x in linked[:8])
-    return (
-        f"thesis={pin} stance={stance}\n"
-        f"thesis_summary={summary}\n"
-        f"thesis_bullets={b_s}\n"
-        f"thesis_symbols={link_s}"
-    )
+    learn = pack.get("recent_operator_learning") or th.get("learning_log") or []
+    learn_bits = []
+    for L in (learn or [])[:4]:
+        if isinstance(L, dict):
+            learn_bits.append(
+                f"{L.get('disposition') or L.get('kind')}:{L.get('situation_type') or ''}:"
+                f"{','.join(str(s) for s in (L.get('symbols') or [])[:2])}"
+            )
+    lines = [
+        f"thesis={pin} stance={stance}",
+        f"thesis_summary={summary}",
+        f"thesis_bullets={b_s}",
+        f"thesis_symbols={link_s}",
+    ]
+    if p_s:
+        lines.append(f"principles={p_s}")
+    if risk_p:
+        lines.append(f"risk_posture={risk_p}")
+    if e_s:
+        lines.append(f"escalation={e_s}")
+    if learn_bits:
+        lines.append(f"recent_operator_dispositions={';'.join(learn_bits)}")
+    return "\n".join(lines)
+
+
+def _evidence_lines(refs: list[Any], *, limit: int = 8) -> list[str]:
+    lines = []
+    for r in refs[:limit]:
+        if not isinstance(r, dict):
+            continue
+        dom = r.get("domain") or "?"
+        bits = [f"domain={dom}"]
+        for k, v in r.items():
+            if k in ("domain", "as_of", "fields_used", "quality_state"):
+                continue
+            if isinstance(v, bool):
+                continue
+            if isinstance(v, (int, float)):
+                bits.append(f"{k}={v:.4g}" if isinstance(v, float) else f"{k}={v}")
+            elif isinstance(v, str) and NUM_RE.fullmatch(v.strip() or ""):
+                bits.append(f"{k}={v.strip()}")
+            elif isinstance(v, str) and k in ("symbol", "quality_state") and v:
+                bits.append(f"{k}={v[:24]}")
+        as_of = r.get("as_of")
+        if as_of:
+            bits.append(f"as_of={str(as_of)[:10]}")
+        lines.append("- " + "; ".join(bits))
+    return lines
 
 
 def compact_user_prompt(pack: dict[str, Any], *, minimal: bool = False) -> str:
-    """Compact evidence for Flash — large JSON packs burn max_tokens on reasoning
-    and return empty content. Keep facts + desk thesis + schema only.
+    """Evidence + full thesis for Flash. Material plans get longer synthesis task.
 
-    minimal=True: ultra-short retry body after empty_content / non_json.
+    minimal=True: ultra-short retry after empty_content / non_json.
     """
     refs = pack.get("evidence_refs") or []
+    material = bool(pack.get("material"))
 
     def _strip_noise(s: str) -> str:
         for n in (
@@ -460,15 +714,17 @@ def compact_user_prompt(pack: dict[str, Any], *, minimal: bool = False) -> str:
             s = s.replace(n, "")
         return " ".join(s.split())
 
-    existing = _strip_noise(str(pack.get("existing_summary") or ""))[:240]
-    existing_rec = _strip_noise(str(pack.get("existing_recommendation") or ""))[:160]
+    existing = _strip_noise(str(pack.get("existing_summary") or ""))[:200]
+    existing_rec = _strip_noise(str(pack.get("existing_recommendation") or ""))[:120]
     fire = pack.get("fire_reasons") or []
     fire_s = ",".join(str(x) for x in fire[:4])
-    thesis = _thesis_block_for_prompt(pack, max_bullets=3 if minimal else 4)
+    thesis = _thesis_block_for_prompt(
+        pack, max_bullets=4 if material else 3, full=material and not minimal,
+    )
+    domains = ",".join(str(d) for d in (pack.get("evidence_domains") or [])[:8])
 
-    # Prefer structured numeric fields from evidence refs (not date fragments)
     key_nums: list[str] = []
-    for r in refs[:8]:
+    for r in refs[:10]:
         if not isinstance(r, dict):
             continue
         for k, v in r.items():
@@ -481,24 +737,21 @@ def compact_user_prompt(pack: dict[str, Any], *, minimal: bool = False) -> str:
             elif isinstance(v, str) and NUM_RE.fullmatch(v.strip()):
                 key_nums.append(v.strip())
     for tok in NUM_RE.findall(existing + " " + existing_rec + " " + fire_s):
-        # drop pure zero-pad / year-like noise from as_of scraping
         if tok in ("00", "0", "08", "11") or (len(tok) == 4 and tok.startswith("20")):
             continue
         key_nums.append(tok)
-    # rounded unique, stable order
     cleaned: list[str] = []
     seen: set[str] = set()
     for tok in key_nums:
         try:
             f = float(tok)
-            # prefer 2dp for non-integers
             pretty = str(int(f)) if abs(f - round(f)) < 1e-9 else f"{f:.2f}"
         except Exception:
             pretty = tok
         if pretty not in seen:
             seen.add(pretty)
             cleaned.append(pretty)
-    allowed = ",".join(cleaned[:24])
+    allowed = ",".join(cleaned[:28])
     opts = pack.get("options_stub") or []
     opt_ids = []
     for o in opts[:5]:
@@ -507,34 +760,41 @@ def compact_user_prompt(pack: dict[str, Any], *, minimal: bool = False) -> str:
         else:
             opt_ids.append(str(o))
 
-    task = (
-        "Write operator-grade advisory: summary states WHY this matters under desk thesis; "
-        "recommendation must name the chosen option_id AND cite thesis stance in one clause; "
-        "options pros/cons contrast thesis alignment vs drift; no orders/stops."
-    )
+    pin = pack.get("thesis_version") or (pack.get("desk_thesis") or {}).get("thesis_version") or ""
+    ev_lines = _evidence_lines(refs, limit=8 if material else 4)
 
+    # Single compact shape for routine + material (material only adds task emphasis).
+    # Long dumps caused Flash empty_content; evidence is one-line domain facts.
+    mat_tag = " material=1" if material else ""
+    task = (
+        f"{'MATERIAL ' if material else ''}Advisory under {pin}. Synthesize domains; never echo fire alone. "
+        f"recommendation = option_id + why under {pin}. "
+        "Include thesis_alignment and multi_domain_summary. pros/cons complete short strings."
+    )
     if minimal:
         return (
-            f"{pack.get('situation_type')} symbols={pack.get('symbols')} fire={fire_s}\n"
-            f"{thesis}\n"
-            f"facts={existing[:160]}\n"
+            f"{pack.get('situation_type')} symbols={pack.get('symbols')} fire={fire_s}{mat_tag}\n"
+            f"thesis={pin} stance={(pack.get('desk_thesis') or {}).get('stance')}\n"
+            f"domains={domains}\n"
+            f"facts={existing[:140]}\n"
             f"numbers={allowed}\n"
             f"option_ids={opt_ids}\n"
             f"{task}\n"
-            'Reply with ONLY JSON: {"summary":"...","recommendation":"...","options":'
-            '[{"id":"...","label":"...","pros":"...","cons":"..."}],"risks":["..."],'
-            '"cited_fields":[],"revisit_hint":"24h"}\n'
-            "pros/cons short strings. Numbers only from list."
+            'JSON only: summary,thesis_alignment,multi_domain_summary,recommendation,options,'
+            f'risks,revisit_hint,cited_fields,thesis_version={pin!r}\n'
+            "Numbers only from list. READ_ONLY."
         )
     return (
-        f"{pack.get('situation_type')} {pack.get('symbols')} fire={fire_s}\n"
+        f"{pack.get('situation_type')} {pack.get('symbols')} fire={fire_s}{mat_tag}\n"
+        f"domains={domains}\n"
         f"{thesis}\n"
-        f"{existing}\n"
-        f"numbers={allowed}\n"
+        + ("\n".join(ev_lines[:4]) + "\n" if ev_lines else "")
+        + f"numbers={allowed}\n"
         f"option_ids={opt_ids}\n"
         f"{task}\n"
-        "JSON only {summary,recommendation,options[{id,label,pros,cons}],risks,cited_fields,revisit_hint}\n"
-        "pros and cons are short strings. Use only listed numbers. READ_ONLY no orders."
+        "JSON only {summary,thesis_alignment,multi_domain_summary,recommendation,"
+        f"options[{{id,label,pros,cons}}],risks,cited_fields,revisit_hint,thesis_version={pin!r}}}\n"
+        "Use only listed numbers. READ_ONLY no orders."
     )
 
 
@@ -770,8 +1030,13 @@ def enrich_plan(
         )
         return {**result, "plan": plan}
 
+    # Multi-domain augmentation first so hash + pack share evidence
+    plan = augment_multi_domain_evidence(plan)
     pack = build_evidence_pack(plan, extra_context=extra_context)
     ehash = evidence_hash(plan)
+    result["material"] = bool(pack.get("material"))
+    result["multi_domain_ok"] = bool(pack.get("multi_domain_ok"))
+    result["evidence_domains"] = list(pack.get("evidence_domains") or [])
 
     use_llm = (
         not force_template
@@ -794,21 +1059,28 @@ def enrich_plan(
         use_pro = source in set(llm_cfg.get("pro_for") or []) or plan.get("situation_type") in set(
             llm_cfg.get("pro_for") or []
         )
-        # Prefer Flash for situation plans (compact JSON). Pro only when policy lists source.
+        # Prefer Flash for situation plans. Pro only when policy lists source.
+        material = is_material_plan(plan) or bool(pack.get("material"))
         system = (
             "You are Alex, Chief Investment Officer for Trade AI (READ_ONLY_ADVISORY). "
-            "Think like a senior desk partner: decisive, evidence-grounded, thesis-aware. "
+            "You manage a coherent portfolio under a living desk thesis (desk@vN). "
             "Output ONE JSON object only — first character must be '{'. "
             "No markdown fences, no chain-of-thought, no prose outside JSON. "
             "Use ONLY numbers listed in the user numbers= line. "
             "Missing → DATA_UNAVAILABLE. Never invent prices/weights/sizes. "
-            "Desk thesis (stance + bullets) is binding context: recommendation MUST "
-            "align with stance (e.g. defensive_observe → observe/stage, not force deploy) "
-            "and name which thesis bullet it applies. "
-            "Preserve option ids. options[].pros and options[].cons are short strings. "
-            "summary: 2–4 sentences (situation + materiality + thesis fit). "
-            "recommendation: one clear action path (option id + why + revisit cue). "
-            "Never invent orders, stops, or broker steps."
+            "GOVERNING CONTEXT: full desk thesis (stance, principles, risk_posture, "
+            "escalation_rules). Recommendation MUST cite the exact thesis_version pin "
+            "and explain fit or tension with that thesis. "
+            "SYNTHESIS: combine all evidence domains (holdings + cash/portfolio + risk). "
+            "Never pure-regurgitate detector fire_reasons. "
+            "Preserve option ids. options[].pros/cons are complete short strings. "
+            + (
+                "MATERIAL: include thesis_alignment and multi_domain_summary paragraphs; "
+                "summary 3–5 sentences; recommendation names option_id + why highest-signal. "
+                if material
+                else "ROUTINE: keep tight 2–3 sentence summary; still cite thesis pin. "
+            )
+            + "Never invent orders, stops, or broker steps."
         )
         # Compact user prompt — full indented JSON packs cause empty Flash content
         # (all completion tokens spent as reasoning_tokens).
@@ -908,29 +1180,57 @@ def enrich_plan(
 
     # Apply to plan fields
     updated = dict(plan)
-    updated["summary"] = narrative.get("summary") or plan.get("summary")
+    summary = str(narrative.get("summary") or plan.get("summary") or "")
+    # Fold material paragraphs into stored summary for Telegram / CC without schema change
+    ta = str(narrative.get("thesis_alignment") or "").strip()
+    md = str(narrative.get("multi_domain_summary") or "").strip()
+    if ta and "Thesis alignment" not in summary:
+        summary = f"{summary}\n\nThesis alignment: {ta}".strip()
+    if md and "Multi-domain" not in summary:
+        summary = f"{summary}\n\nMulti-domain: {md}".strip()
+    if pack.get("material"):
+        updated_material_flag = True
+    else:
+        updated_material_flag = False
+    updated["summary"] = summary[:2400]
     updated["options"] = narrative.get("options") or plan.get("options")
-    updated["recommendation"] = narrative.get("recommendation") or plan.get("recommendation")
+    rec = str(narrative.get("recommendation") or plan.get("recommendation") or "")
+    pin_echo = (
+        narrative.get("thesis_version")
+        or pack.get("thesis_version")
+        or (pack.get("desk_thesis") or {}).get("thesis_version")
+    )
+    if pin_echo and pin_echo not in rec:
+        rec = f"{rec} [{pin_echo}]".strip()
+    updated["recommendation"] = rec[:1600]
     updated["risks"] = narrative.get("risks") or plan.get("risks")
+    updated["thesis_alignment"] = ta or plan.get("thesis_alignment")
+    updated["multi_domain_summary"] = md or plan.get("multi_domain_summary")
+    updated["material"] = bool(pack.get("material")) or updated_material_flag
+    updated["evidence_domains"] = list(pack.get("evidence_domains") or [])
+    # Hermes research depth suggested for material events (operator/Hermes path)
+    if updated["material"]:
+        updated["hermes_suggested"] = True
     # revisit_at from hint if present
     if narrative.get("revisit_hint") and not plan.get("revisit_at"):
         updated["revisit_at"] = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
     updated["narrative_source"] = result["narrative_source"]
     updated["narrative_enriched_at"] = _now()
     updated["evidence_hash"] = ehash
+    updated["evidence_refs"] = plan.get("evidence_refs") or updated.get("evidence_refs")
     updated["llm_model"] = model_id
     updated["llm_status"] = result["llm"]
     if narrative.get("llm_deferred"):
         updated["llm_deferred"] = True
-    # P3: ensure thesis pin on enriched plan
-    if not updated.get("thesis_version"):
-        try:
-            from scripts.lib.cio_theses import safe_current_pin
-            pin = safe_current_pin("desk")
-            if pin:
-                updated["thesis_version"] = pin
-        except Exception:
-            pass
+    # Always pin the CURRENT desk thesis used for this enrichment
+    try:
+        from scripts.lib.cio_theses import safe_current_pin
+        pin = safe_current_pin("desk") or pin_echo
+        if pin:
+            updated["thesis_version"] = pin
+    except Exception:
+        if pin_echo:
+            updated["thesis_version"] = pin_echo
 
     # Persist
     if plan_store is not None and updated.get("plan_id"):
@@ -956,10 +1256,15 @@ def enrich_plan(
                     "narrative_source": updated.get("narrative_source"),
                     "narrative_enriched_at": updated.get("narrative_enriched_at"),
                     "evidence_hash": updated.get("evidence_hash"),
+                    "evidence_refs": updated.get("evidence_refs"),
                     "llm_model": updated.get("llm_model"),
                     "llm_status": updated.get("llm_status"),
                     "llm_deferred": updated.get("llm_deferred"),
                     "thesis_version": updated.get("thesis_version"),
+                    "thesis_alignment": updated.get("thesis_alignment"),
+                    "multi_domain_summary": updated.get("multi_domain_summary"),
+                    "material": updated.get("material"),
+                    "evidence_domains": updated.get("evidence_domains"),
                 },
             )
             refreshed = plan_store.get_plan(updated["plan_id"])

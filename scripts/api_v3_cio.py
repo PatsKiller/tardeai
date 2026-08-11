@@ -258,6 +258,17 @@ def post_plan_disposition(plan_id: str, body: dict[str, Any] | None = None) -> d
         )
     except Exception as e:
         return {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
+    # Learning loop → desk thesis learning_log + durable JSONL
+    try:
+        try:
+            from lib.cio_theses import record_plan_disposition_learning
+        except Exception:
+            from scripts.lib.cio_theses import record_plan_disposition_learning  # type: ignore
+        record_plan_disposition_learning(
+            updated or plan, disp, note=note, actor_id="cc_v3_operator",
+        )
+    except Exception:
+        pass
     return {
         "ok": True,
         "plan_id": plan_id,

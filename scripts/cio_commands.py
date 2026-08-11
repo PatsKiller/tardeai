@@ -254,10 +254,22 @@ def _plan_disposition(plan_id: str, status: str, *, note: str = "") -> str:
         if not p:
             return f"❌ Plan not found: {plan_id}"
         store.update_plan(plan_id, status=status, actor_id="operator")
+        # Learning loop: surface disposition into desk thesis learning_log
+        try:
+            try:
+                from lib.cio_theses import record_plan_disposition_learning
+            except Exception:
+                from scripts.lib.cio_theses import record_plan_disposition_learning
+            record_plan_disposition_learning(
+                p, status, note=note, actor_id="operator",
+            )
+        except Exception:
+            pass
         return (
             f"✅ Plan {plan_id} → {status}"
             + (f"\n   {note}" if note else "")
             + f"\n   situation={p.get('situation_type')} symbols={','.join(p.get('symbols') or [])}"
+            + f"\n   thesis={p.get('thesis_version') or '—'}"
             + "\n   authority: READ_ONLY_ADVISORY"
         )
     except Exception as e:
