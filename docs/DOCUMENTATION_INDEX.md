@@ -268,6 +268,7 @@ The source draft index drifted from the filesystem; corrected here per A1A:
 
 | Date | Change |
 |------|--------|
+| 2026-08-11 | **Advisory desk CIO P1–P5 docs:** indexed `docs/cio/THESIS_STORE_P3.md`, `WAKE_TRACES_P5.md`, `P2B_PLAN_ENRICHMENT.md`, Telegram converse runbook, situation catalog; desk-v1 README + CHANGELOG updated on `feature/advisory-desk-v1`. |
 | 2026-08-09 | **CIO & Wealth docs synced:** CIO Phase 3 delivery (Alex autonomous CIOrity Officer, hybrid OpenClaw+Trade AI, 9 PRs, action ledger, heartbeat, /v3/cio); 38-file `docs/architecture/cio/` indexed; OpenClaw CIO architecture feedback (2026-08-08) synced; Steph Wealth Advisor full docs created (`docs/wealth-advisor/STEPH_WEALTH_ADVISOR.md`); AGENT_ROSTER refreshed (model policy, Wave-3 states, OpenClaw heartbeats, authority boundaries, Morgan added, all qwen3:14b→gemma3:12b/DeepSeek); DOCS_ROSTER pending regeneration. |
 | 2026-07-15 | Research Intelligence v2.5: security-level RSI/RS/valuation conviction + multi-factor sizing; `RESEARCH_INTELLIGENCE_V2_5_SECURITY_MULTIFACTOR.md`. |
 | 2026-07-15 | Research Intelligence v2.4: concentration + heat actively size recs, theme capacity, funding trims; `RESEARCH_INTELLIGENCE_V2_4_CONCENTRATION_SIZING.md`. |
