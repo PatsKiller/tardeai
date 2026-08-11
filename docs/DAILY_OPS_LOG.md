@@ -7,6 +7,13 @@ cio_reactive_cycle timer every 2m; goals store + operator runbook.
 Docs: docs/ops/AUTONOMY_RUNTIME_TRUTH_2026-08-11.md, AUTONOMY_OPERATOR_RUNBOOK.md.
 READ_ONLY_ADVISORY only — not free-running traders.
 
+## 2026-08-11 — Situation Catalog v1 FREEZE (pre Phase 2)
+
+Froze S1–S8 READ_ONLY situations + shared plan schema + SpaceX-class S1/S2
+acceptance fixture. Doc: `docs/advisory/desk-v1/SITUATION_CATALOG_V1_FREEZE.md`.
+Next: P0 timer-host deploy if needed, then Grok Build slice = catalog + plan
+object + detector skeleton only (not full multi-phase stack).
+
 ## 2026-08-11 — Goal/thesis store + agent_runtime --once green (SHADOW)
 
 Fixed `AGENT_RUNTIME_PROVIDER_MODULE` inline-comment import break; alex/morgan/steph
