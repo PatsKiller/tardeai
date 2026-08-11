@@ -39,16 +39,25 @@ which falls back to `.env` / `.env.pre-sm-migration` if Bitwarden is unreachable
    Without it the DB token rows are undecryptable — recover by running one Schwab
    auto-reauth instead (see §2b).
 
-### 2b. Schwab auto-reauth (weekly OAuth login — 2026-07-22)
+### 2b. Schwab OAuth reauth (manual-first — 2026-08-11)
 
-`scripts/schwab_auto_reauth.py` re-does the Schwab browser login every 7 days (cron
-`--check` every 17 min, 08–21h; notifies Telegram+email FIRST, operator approves the 2FA
-push). Restore requirements: `sudo apt install xvfb` (headed browser — Akamai denies
-headless), `.venv/bin/python -m playwright install chromium`, Schwab brokerage login creds
-in Bitwarden SM (`SCHWAB_LOGIN_ID`/`SCHWAB_LOGIN_PASSWORD` — re-store with
-`scripts/secrets/store_schwab_login.py` if the SM project was rebuilt). The browser
-profile `data/runtime/schwab_browser_profile/` is deliberately NOT backed up — the first
-post-restore run simply prompts one extra 2FA approval. Runbook: `docs/SCHWAB_AUTO_REAUTH.md`.
+Schwab refresh tokens last **7 days from true browser login** (rotation does not extend the
+true clock). **Preferred restore / renew path:**
+
+1. Open Command Center **Ops → Schwab Reauth** (`/v3/system/schwab-reauth`)
+2. **Request renewal URL** → log in on phone + 2FA
+3. Paste full `https://127.0.0.1/?code=…` address-bar URL → **Submit**
+
+APIs: `GET /api/v2/brokers/schwab/reauth-url`, `POST /api/v2/brokers/schwab/exchange-code`.
+Requires portal env: `SCHWAB_APP_KEY`, `SCHWAB_APP_SECRET`, `SCHWAB_CALLBACK_URL=https://127.0.0.1`.
+Telegram paste of the same redirect URL still works as backup.
+
+Browser auto-login is **disabled by default** (cron commented out; script is notify-only).
+Emergency Chromium path: `scripts/schwab_auto_reauth.py --browser --now` (needs xvfb,
+playwright chromium, Bitwarden `SCHWAB_LOGIN_ID`/`SCHWAB_LOGIN_PASSWORD` via
+`scripts/secrets/store_schwab_login.py`). Browser profile
+`data/runtime/schwab_browser_profile/` is NOT backed up. Full runbook:
+`docs/SCHWAB_AUTO_REAUTH.md`.
 
 **Quoting rule (legacy env files):** Values containing parentheses, spaces, or semicolons MUST be
 wrapped in single quotes. This includes `FINVIZ_USER_AGENT` and `FINVIZ_COOKIE`.

@@ -1,3 +1,16 @@
+## 2026-08-11 — Schwab reauth: stop auto-2FA, CC manual page + banner
+
+Browser auto-reauth (`schwab_auto_reauth.py` Chromium + 2FA) was failing on Schwab
+authenticator/OTP pages (timeouts, push not completing). **Stopped auto browser path:**
+cron `--check` disabled; script default is notify-only (opt-in `--browser` only for
+emergency). **Shipped Command Center Ops → Schwab Reauth** (`/v3/system/schwab-reauth`):
+request authorize URL → operator logs in on phone → paste `127.0.0.1?code=…` → exchange.
+APIs: `GET /api/v2/brokers/schwab/reauth-url`, `POST .../exchange-code`; token-health gains
+`show_banner` / true-login clock; site-wide banner on CC shell. Live renew succeeded same
+day (true expiry advanced ~7d; live_probe ok). Docs: `docs/SCHWAB_AUTO_REAUTH.md`,
+RESTORE_GUIDE §2b. Deployed to portfolio-server CURRENT + CC v3 dist; Telegram paste remains
+backup.
+
 ## 2026-07-21 — Alpaca multi-account taxonomy R1–R5 + Drive sync
 
 Built and pushed registry/interlock unification, credential slots, label migration to

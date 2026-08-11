@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 
 // Schwab read-only integration monitor — Gate-A token health, account-hash links, capability checks,
@@ -15,13 +16,30 @@ export default function SchwabMonitor() {
   const sync: any[] = d.recent_sync ?? []
   if (!tokens.length && !sync.length) return null
 
+  const needsRenew = tokens.some((t: any) =>
+    ['degraded', 'expired', 'no_token', 'reauth_due_day6', 'reauth_due_day5'].includes(t.state)
+    || (t.days_remaining != null && Number(t.days_remaining) <= 1))
+
   return (
     <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, marginTop: 12 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4, gap: 8, flexWrap: 'wrap' }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)' }}>Schwab Integration (read-only)</div>
-        <span style={{ fontSize: 10, fontWeight: 700, color: '#22c55e', padding: '2px 8px', border: '1px solid rgba(34,197,94,.4)', borderRadius: 5 }}>
-          WRITES FENCED · api_write_enabled={String(d.api_write_enabled)}
-        </span>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <Link
+            to="/system/schwab-reauth"
+            style={{
+              fontSize: 10.5, fontWeight: 800, padding: '3px 10px', borderRadius: 5, textDecoration: 'none',
+              background: needsRenew ? 'var(--red-dim)' : 'var(--amber-dim)',
+              color: needsRenew ? 'var(--red)' : 'var(--amber)',
+              border: `1px solid ${needsRenew ? 'var(--red)' : 'var(--amber)'}`,
+            }}
+          >
+            {needsRenew ? '🔐 Renew token now →' : 'Schwab Reauth →'}
+          </Link>
+          <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--green)', padding: '2px 8px', border: '1px solid var(--green)', borderRadius: 5 }}>
+            WRITES FENCED · api_write_enabled={String(d.api_write_enabled)}
+          </span>
+        </div>
       </div>
       <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 12 }}>Gate-A token health · account-hash links · capabilities · sync. No token material is ever shown.</div>
 

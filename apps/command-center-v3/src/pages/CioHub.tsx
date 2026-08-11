@@ -61,8 +61,8 @@ export default function CioHub({ onDrill }: Props) {
 
   return (
     <div style={{ padding: '16px 24px', maxWidth: 1200 }}>
-      <div style={hubTitle}>🏦 CIO Command Center</div>
-      <div style={hubSubtitle}>
+      <div style={hubTitle()}>🏦 CIO Command Center</div>
+      <div style={hubSubtitle()}>
         Alex · Chief Investment & Wealth Officer · DeepSeek V4 Pro · Advisory Only
         {data?.as_of && <span style={{ color: 'var(--text3)', marginLeft: 16 }}>As of: {new Date(data.as_of).toLocaleString()}</span>}
       </div>
@@ -76,7 +76,7 @@ export default function CioHub({ onDrill }: Props) {
             style={{
               padding: '6px 16px', borderRadius: 6, border: '1px solid var(--border)',
               background: tab === t ? 'var(--accent)' : 'var(--bg2)',
-              color: tab === t ? '#fff' : 'var(--text2)', cursor: 'pointer',
+              color: tab === t ? 'var(--text0)' : 'var(--text2)', cursor: 'pointer',
               fontSize: 13, fontWeight: tab === t ? 600 : 400,
             }}
           >
@@ -100,7 +100,7 @@ export default function CioHub({ onDrill }: Props) {
                 <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text)' }}>{card.value}</div>
                 <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 2 }}>{card.sub}</div>
                 <div style={{ marginTop: 6 }}>
-                  <StatusBadge status={card.state === 'AVAILABLE' ? 'fresh' : 'blocked'}>{card.state}</StatusBadge>
+                  <StatusBadge status={card.state === 'AVAILABLE' ? 'fresh' : 'blocked'} label={String(card.state || 'unknown')} />
                 </div>
               </div>
             ))}
@@ -163,7 +163,7 @@ export default function CioHub({ onDrill }: Props) {
                 </span>
                 <span style={{ color: 'var(--accent)', fontSize: 12 }}>{a.cio_action_id}</span>
                 <span style={{ color: 'var(--text3)', fontSize: 11 }}>· {a.domain}</span>
-                <StatusBadge status={a.status === 'OPEN' ? 'warning' : 'fresh'}>{a.status}</StatusBadge>
+                <StatusBadge status={a.status === 'OPEN' ? 'warning' : 'fresh'} label={String(a.status || '')} />
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ color: 'var(--text)', fontSize: 13 }}>{a.title || a.recommendation}</span>

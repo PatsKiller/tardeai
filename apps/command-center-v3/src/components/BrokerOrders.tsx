@@ -243,8 +243,8 @@ function PilotConsole() {
       {/* SCHWAB TOKEN HEALTH — re-auth needed banner (shown up front; every live submit would be rejected) */}
       {needsReauth && <div style={{ marginTop: 10, padding: 10, background: '#ef535022', border: '1px solid #ef5350', borderRadius: 6 }}>
         <div style={{ fontSize: 11, fontWeight: 800, color: '#ef5350' }}>⚠ Schwab re-auth needed — orders will be rejected</div>
-        <div style={{ fontSize: 9.5, color: T.text, marginTop: 4, lineHeight: 1.45 }}>{tokenHealth?.message || 'Schwab login expired/revoked.'} The refresh token must be renewed by a manual browser login before any live order can submit. Run:</div>
-        <div style={{ marginTop: 5, padding: '5px 8px', borderRadius: 4, background: '#0d0d0d', color: '#e0e0e0', fontSize: 10.5, ...({ fontFamily: 'monospace' } as any) }}>{tokenHealth?.reauth_command || 'python3 scripts/schwab_token_manager.py reauth-url schwab_taxable'}</div>
+        <div style={{ fontSize: 9.5, color: T.text, marginTop: 4, lineHeight: 1.45 }}>{tokenHealth?.message || 'Schwab login expired/revoked.'} Renew via Command Center → Ops → Schwab Reauth (request URL, log in on phone, paste 127.0.0.1?code=… and submit).</div>
+        <a href="/v3/system/schwab-reauth" style={{ display: 'inline-block', marginTop: 6, fontSize: 10.5, fontWeight: 800, color: '#ef9a9a', textDecoration: 'underline' }}>Open Schwab Reauth page →</a>
       </div>}
       {s.pilot_armed_until && s.pilot_session_active && (
         <div style={{ fontSize: 9, color: '#66bb6a', marginTop: 4 }}>session armed until {new Date(s.pilot_armed_until).toLocaleTimeString()} · auto-expires · any restart disarms</div>

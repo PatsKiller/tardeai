@@ -1,30 +1,28 @@
 #!/usr/bin/env python3
-"""schwab_auto_reauth.py — true 7-day auto-reauth for the Schwab OAuth login.
+"""schwab_auto_reauth.py — Schwab OAuth 7-day reauth (manual-first as of 2026-08-11).
 
 Schwab refresh tokens have a FIXED 7-day lifetime from the browser login (rotation does NOT
-extend it — proven from broker_oauth_token_audit, 2026-07-22). This agent re-does the browser
-login automatically BEFORE expiry:
+extend it — proven from broker_oauth_token_audit, 2026-07-22).
 
-  1. Anchors the real 7-day clock to the last true login (audit event='reauth').
-  2. On day 6 (or immediately if the token is already degraded/dead), inside operator hours,
-     it FIRST notifies Telegram + email — the operator has Schwab 2FA and must know the
-     login is legitimate before approving the prompt on their device — then waits, then
-  3. drives a persistent-profile Chromium through the OAuth authorize flow (credentials come
-     ONLY from Bitwarden SM via the tmpfs render — never from repo files), waits for the
-     operator's 2FA approval, captures the ?code= callback, and
-  4. seeds the token manager (exchange_code → seed_token), live-probes, and reports the
-     outcome on both channels.
+DEFAULT MODE (2026-08-11): **notify-only / manual**. Browser automation of Schwab 2FA was
+unreliable (stuck on authenticator/OTP pages). When due, this script notifies Telegram +
+email with a link to Command Center where the operator:
 
-The persistent browser profile opts into "remember this device", so later weekly logins may
-skip 2FA entirely. Fail-safe: any error leaves the existing token untouched, screenshots the
-page for forensics, and sends the manual-fallback instructions.
+  1. Requests a fresh authorize URL
+  2. Logs in on their own phone/browser (completes 2FA there)
+  3. Pastes the `127.0.0.1?code=...` redirect URL back into CC and submits
+     (Telegram paste of the same URL still works as a backup)
+
+Optional browser automation is retained behind `--browser` or env SCHWAB_AUTO_REAUTH_BROWSER=1
+for rare recovery; it is OFF by default.
 
 CLI:
-  --check        cron mode: run only if due + allowed hours + rate limits (quiet otherwise)
-  --now          force an attempt immediately (still notifies first)
+  --check        cron mode: if due + hours + rate limits → notify (or --browser attempt)
+  --now          force notify / attempt immediately
+  --browser      allow Chromium auto-login (opt-in; not used by default cron)
   --status       print schedule/token state as JSON
   --notify-test  send a test message on both channels and exit
-  --no-wait      shorten the pre-login notice wait (interactive testing)
+  --no-wait      shorten the pre-login notice wait (browser mode only)
 """
 from __future__ import annotations
 
@@ -49,11 +47,17 @@ STATE_PATH = ROOT / "data" / "runtime" / "schwab_auto_reauth_state.json"
 
 REAUTH_AT_DAYS = 6.0          # proactive login on day 6 of the 7-day window
 ALLOWED_HOURS = (8, 22)       # local hours the operator can realistically approve 2FA
-MIN_GAP_MIN = 120             # between attempts
+MIN_GAP_MIN = 120             # between attempts / notifications
 MAX_PER_DAY = 4
-NOTICE_WAIT_S = 120           # heads-up lead time before the browser touches Schwab
-LOGIN_TIMEOUT_S = 420         # includes waiting for the operator's 2FA approval
+NOTICE_WAIT_S = 120           # heads-up lead time before the browser touches Schwab (browser mode)
+LOGIN_TIMEOUT_S = 420         # includes waiting for the operator's 2FA approval (browser mode)
 STEP_POLL_S = 2.0
+# Primary operator path — Command Center manual renewal page (no auto 2FA)
+CC_REAUTH_PATH = "/v3/system/schwab-reauth"
+# Browser automation is OFF unless --browser or SCHWAB_AUTO_REAUTH_BROWSER=1
+BROWSER_ENABLED_DEFAULT = os.environ.get("SCHWAB_AUTO_REAUTH_BROWSER", "").strip().lower() in (
+    "1", "true", "yes", "on",
+)
 
 # ── Chromium binary discovery ───────────────────────────────────────────────────
 # Playwright may be installed in the home cache or via system paths. Find whichever
@@ -690,7 +694,54 @@ def _attempt_login(authorize_url: str, callback_url: str) -> dict:
 
 
 # ── orchestration ────────────────────────────────────────────────────────────────────────
+def _cc_reauth_url() -> str:
+    """Absolute CC reauth page if PORTFOLIO_SERVER_URL / PUBLIC_BASE_URL set; else path-only."""
+    base = (os.environ.get("PORTFOLIO_SERVER_URL")
+            or os.environ.get("PUBLIC_BASE_URL")
+            or os.environ.get("TRADEAI_PUBLIC_URL")
+            or "").rstrip("/")
+    if base:
+        return f"{base}{CC_REAUTH_PATH}"
+    return CC_REAUTH_PATH
+
+
+def run_manual_notify() -> int:
+    """Notify-only path: point the operator at Command Center. No browser, no credentials."""
+    load_env()
+    import schwab_token_manager as tm
+    st = _token_state()
+    _mark_attempt()
+    cc = _cc_reauth_url()
+    # Pre-build authorize URL so Telegram paste backup still works without waiting for CC
+    url_info = tm.reauth_url(ACCOUNT_KEY)
+    auth_url = url_info.get("authorize_url") if url_info.get("ok") else None
+    body = (
+        f"Reason: {st['reason']}.\n"
+        f"True expiry: {st.get('true_expiry') or 'unknown'}.\n\n"
+        f"**Manual renewal (preferred)** — open Command Center:\n"
+        f"{cc}\n\n"
+        f"1) Click **Request renewal URL**\n"
+        f"2) Log in on your phone (complete 2FA there)\n"
+        f"3) Copy the full `127.0.0.1?code=...` URL from the address bar\n"
+        f"4) Paste it into Command Center and **Submit**\n"
+    )
+    if auth_url:
+        body += (
+            f"\n**Backup** — open this authorize link directly, then paste the redirect URL "
+            f"into Command Center (or reply here on Telegram):\n{auth_url}\n"
+            f"(Codes expire ~5 min after login — paste promptly.)\n"
+        )
+    else:
+        body += f"\n(Authorize URL prebuild failed: {url_info.get('reason')}; use CC Request button.)\n"
+    body += "\nBrowser auto-login is DISABLED (use --browser only for emergency recovery)."
+    _notify("Schwab reauth required — use Command Center", body)
+    _save_state({"last_result": "notified_manual", "last_error": None, "last_state": "MANUAL"})
+    _log(f"manual reauth notified → {cc}")
+    return 0
+
+
 def run_attempt(notice_wait: int = NOTICE_WAIT_S) -> int:
+    """Legacy Chromium automation — only when --browser / SCHWAB_AUTO_REAUTH_BROWSER=1."""
     load_env()
     missing = [k for k in ("SCHWAB_LOGIN_ID", "SCHWAB_LOGIN_PASSWORD") if not os.environ.get(k)]
     if missing:
@@ -706,10 +757,12 @@ def run_attempt(notice_wait: int = NOTICE_WAIT_S) -> int:
     st = _token_state()
     _mark_attempt()
     auth_url = url_info["authorize_url"]
-    _notify("Schwab auto-reauth starting",
+    cc = _cc_reauth_url()
+    _notify("Schwab auto-reauth starting (browser mode)",
             f"Reason: {st['reason']}. The browser will log in using stored credentials.\n\n"
+            f"**Prefer manual:** {cc}\n\n"
             f"**Manual override** — open this link on your phone, log in, then paste the "
-            f"`127.0.0.1?code=...` URL back here as a reply. I'll exchange it automatically:\n"
+            f"`127.0.0.1?code=...` URL into Command Center (or reply here):\n"
             f"{auth_url}\n\n"
             f"(Codes expire ~5 min after login — paste promptly.)")
     time.sleep(notice_wait)
@@ -719,15 +772,13 @@ def run_attempt(notice_wait: int = NOTICE_WAIT_S) -> int:
     res = _attempt_login(url_info["authorize_url"], cb)
     state = res.get("state", "?")
 
-    # (push notification fires inline inside _attempt_login at trigger time)
-
     if not res["ok"]:
         _save_state({"last_result": "fail", "last_error": res["error"], "last_state": state})
-        _notify("Schwab auto-reauth FAILED — use manual link",
+        _notify("Schwab auto-reauth FAILED — use Command Center",
                 f"{res['error']}\n\n"
-                f"**Manual fallback:**\n1) Open this link on your phone and log in:\n{auth_url}\n"
-                f"2) Copy the full `127.0.0.1?code=...` URL from your browser\n"
-                f"3) Paste it here as a reply — I'll auto-exchange it")
+                f"**Manual path:** {cc}\n"
+                f"Or open:\n{auth_url}\n"
+                f"then paste `127.0.0.1?code=...` into Command Center.")
         return 1
 
     ex = tm.exchange_code(ACCOUNT_KEY, res["redirect_url"])
@@ -745,8 +796,7 @@ def run_attempt(notice_wait: int = NOTICE_WAIT_S) -> int:
     nxt = (_now() + dt.timedelta(days=REAUTH_AT_DAYS)).strftime("%a %b %d %H:%M UTC")
     _notify("Schwab auto-reauth SUCCESS ✅",
             f"New 7-day token seeded and verified (live_probe ok={probe.get('live_ok', probe)}). "
-            f"Stops/quotes/journal reads are back. Next automatic login ≈ {nxt} "
-            f"(you'll get this same heads-up first).")
+            f"Stops/quotes/journal reads are back. Next proactive heads-up ≈ {nxt}.")
     return 0
 
 
@@ -754,6 +804,8 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--check", action="store_true")
     ap.add_argument("--now", action="store_true")
+    ap.add_argument("--browser", action="store_true",
+                    help="Opt-in Chromium automation (OFF by default; prefer CC manual page)")
     ap.add_argument("--status", action="store_true")
     ap.add_argument("--notify-test", action="store_true")
     ap.add_argument("--no-wait", action="store_true")
@@ -761,15 +813,20 @@ def main() -> int:
     load_env()
 
     if a.notify_test:
-        _notify("Schwab auto-reauth notification test",
-                "Both channels working. This is only a test — no login attempted.")
+        _notify("Schwab reauth notification test",
+                f"Both channels working. Manual path: {_cc_reauth_url()}")
         return 0
     if a.status:
-        print(json.dumps({**_token_state(), "state": _load_state()}, indent=2, default=str))
+        print(json.dumps({**_token_state(), "state": _load_state(),
+                          "browser_default": BROWSER_ENABLED_DEFAULT,
+                          "manual_path": CC_REAUTH_PATH}, indent=2, default=str))
         return 0
+    use_browser = bool(a.browser or BROWSER_ENABLED_DEFAULT)
     wait = 5 if a.no_wait else NOTICE_WAIT_S
     if a.now:
-        return run_attempt(notice_wait=wait)
+        if use_browser:
+            return run_attempt(notice_wait=wait)
+        return run_manual_notify()
     if a.check:
         st = _token_state()
         if not st["due_now"]:
@@ -782,8 +839,11 @@ def main() -> int:
         if rl:
             _log(f"due but rate-limited: {rl}")
             return 0
-        _log(f"due: {st['reason']} — attempting")
-        return run_attempt(notice_wait=wait)
+        if use_browser:
+            _log(f"due: {st['reason']} — browser attempt (opt-in)")
+            return run_attempt(notice_wait=wait)
+        _log(f"due: {st['reason']} — manual notify only (no browser)")
+        return run_manual_notify()
     ap.print_help()
     return 1
 

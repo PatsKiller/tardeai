@@ -30,6 +30,8 @@ import ResearchIntelligenceHub from './pages/ResearchIntelligenceHub'
 import RedeployDeskIntegrated from './pages/RedeployDeskIntegrated'
 import HealthHub from './pages/HealthHub'
 import ConsumptionHub from './pages/ConsumptionHub'
+import SchwabReauthHub from './pages/SchwabReauthHub'
+import SchwabReauthBanner from './components/SchwabReauthBanner'
 
 
 declare const __ANALYST_UI_VERSION__: string
@@ -138,6 +140,7 @@ function Shell() {
   const [drill, setDrill] = useState<DrillContext | null>(null)
   return (
     <div className="app-shell cc-terminal-ui" style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg0)', color: 'var(--text0)' }}>
+      <SchwabReauthBanner />
       <ReconnectingBar />
       <MetricStrip onDrill={setDrill} />
       <div className="app-body" style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
@@ -182,6 +185,7 @@ function Shell() {
             <Route path="health" element={<HealthHub onDrill={setDrill} />} />
             <Route path="consumption" element={<ConsumptionHub />} />
             <Route path="system" element={<SystemHub onDrill={setDrill} />} />
+            <Route path="system/schwab-reauth" element={<SchwabReauthHub />} />
           </Routes>
           <div style={{ marginTop: 18, paddingTop: 8, borderTop: '1px solid rgba(148,163,184,.16)', fontSize: 11, color: 'var(--text3)' }}>
             <BuildMarker />

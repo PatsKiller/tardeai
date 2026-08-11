@@ -37,7 +37,8 @@ const SECTIONS: { label: string; hubs: Hub[] }[] = [
       { to: '/retirement', label: 'Retirement' },
       { to: '/health', label: 'Health' },
       { to: '/consumption', label: 'Consumption' },
-      { to: '/system', label: 'System' },
+      { to: '/system', label: 'System', exact: true },
+      { to: '/system/schwab-reauth', label: 'Schwab Reauth' },
     ],
   },
 ]

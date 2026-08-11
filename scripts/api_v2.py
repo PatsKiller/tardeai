@@ -32129,12 +32129,41 @@ def _schwab_status(query=None):
 _SCHWAB_PROBE_CACHE = {"ts": 0.0, "result": None}
 
 
+def _schwab_true_login_schedule():
+    """Anchor true 7-day OAuth clock to last successful reauth audit row (not rolled DB TTL)."""
+    import datetime as _dt
+    try:
+        row = _db_query("""SELECT max(created_at) AS last_login FROM broker_oauth_token_audit
+                           WHERE broker='schwab' AND event='reauth' AND status='ok'""") or []
+        last = row[0].get("last_login") if row else None
+    except Exception:
+        last = None
+    if not last:
+        return {"last_true_login": None, "true_expiry": None, "proactive_due_at": None,
+                "due_now": None, "days_to_true_expiry": None}
+    if getattr(last, "tzinfo", None) is None:
+        last = last.replace(tzinfo=_dt.timezone.utc)
+    now = _dt.datetime.now(_dt.timezone.utc)
+    true_exp = last + _dt.timedelta(days=7)
+    due_at = last + _dt.timedelta(days=6)
+    days = round((true_exp - now).total_seconds() / 86400, 2)
+    return {
+        "last_true_login": _json_clean(last),
+        "true_expiry": _json_clean(true_exp),
+        "proactive_due_at": _json_clean(due_at),
+        "due_now": now >= due_at,
+        "days_to_true_expiry": days,
+    }
+
+
 def _schwab_token_health(query=None):
     """GET /api/v2/brokers/schwab/token-health — is the Schwab OAuth refresh token actually usable RIGHT
     NOW? Combines the DB freshness health with a CACHED ground-truth live probe (the freshness timestamp
     can read 'valid' while Schwab has revoked the token server-side). Lets the protective-stop card warn
     're-auth needed' BEFORE an order attempt. ?probe=1 forces a fresh probe (else 5-min cache). Read-only;
-    never exposes token material."""
+    never exposes token material.
+
+    Also surfaces true-login schedule fields for the site-wide CC banner + manual reauth page."""
     import time as _t
     q = query or {}
     force = str((q.get("probe") or [""])[0] if isinstance(q.get("probe"), list) else q.get("probe") or "").lower() in ("1", "true", "yes")
@@ -32160,6 +32189,15 @@ def _schwab_token_health(query=None):
             h = tm.health(key, "schwab", "live")   # re-read: live_probe may have just marked it degraded
     needs_reauth = bool((not h.get("has_token")) or h.get("degraded") or (not h.get("refresh_valid"))
                         or (probe and probe.get("needs_reauth")))
+    sched = _schwab_true_login_schedule()
+    dtr = h.get("days_to_reauth")
+    proactive = bool(sched.get("due_now") or (dtr is not None and float(dtr) <= 1.0)
+                     or (sched.get("days_to_true_expiry") is not None and float(sched["days_to_true_expiry"]) <= 1.0))
+    banner = bool(needs_reauth or proactive)
+    msg = ("Schwab login expired/revoked — re-authenticate before placing live orders."
+           if needs_reauth
+           else ("Schwab login renewal window — renew via Command Center before true expiry."
+                 if proactive else "Schwab token healthy."))
     return {"ok": not needs_reauth, "broker": "schwab", "token_key": key,
             "needs_reauth": needs_reauth, "degraded": bool(h.get("degraded")),
             "has_token": bool(h.get("has_token")), "refresh_valid": bool(h.get("refresh_valid")),
@@ -32169,8 +32207,89 @@ def _schwab_token_health(query=None):
             "live_probe": ({"probed": probe.get("probed"), "live_ok": probe.get("live_ok"),
                             "needs_reauth": probe.get("needs_reauth"), "error": probe.get("error")} if probe else None),
             "reauth_command": f"python3 scripts/schwab_token_manager.py reauth-url {key or 'schwab_taxable'}",
-            "message": ("Schwab login expired/revoked — re-authenticate before placing live orders."
-                        if needs_reauth else "Schwab token healthy.")}
+            "manual_reauth_path": "/v3/system/schwab-reauth",
+            "show_banner": banner,
+            "proactive_due": proactive,
+            "due_now": sched.get("due_now"),
+            "last_true_login": sched.get("last_true_login"),
+            "true_expiry": sched.get("true_expiry"),
+            "proactive_due_at": sched.get("proactive_due_at"),
+            "days_to_true_expiry": sched.get("days_to_true_expiry"),
+            "message": msg}
+
+
+def _schwab_reauth_url(query=None):
+    """GET /api/v2/brokers/schwab/reauth-url — build Schwab OAuth authorize URL for manual login.
+    Operator opens the URL on their phone, completes 2FA, then pastes the 127.0.0.1?code=... redirect
+    into POST /api/v2/brokers/schwab/exchange-code (or the CC reauth page). Never exposes secrets."""
+    import sys as _sys
+    _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    import schwab_token_manager as tm
+    q = query or {}
+    raw = q.get("account_key") or q.get("account")
+    if isinstance(raw, list):
+        raw = raw[0] if raw else None
+    key = (raw or "").strip() or tm.canonical_token_key("schwab", "live") or "schwab_taxable"  # hardcode-ok: canonical OAuth token row
+    info = tm.reauth_url(key)
+    if not info.get("ok"):
+        return {"ok": False, "error": info.get("reason") or "reauth_url failed", "account_key": key,
+                "manual_reauth_path": "/v3/system/schwab-reauth"}
+    return {
+        "ok": True,
+        "account_key": key,
+        "authorize_url": info.get("authorize_url"),
+        "code_ttl_hint_min": 5,
+        "note": ("Open authorize_url on your phone, log in + 2FA, then copy the FULL address-bar URL "
+                 "(https://127.0.0.1/?code=... — page may not load). Paste into Command Center → "
+                 "Schwab Reauth → Submit. Codes expire ~5 minutes."),
+        "manual_reauth_path": "/v3/system/schwab-reauth",
+        "step2": "POST /api/v2/brokers/schwab/exchange-code with {redirect_url, account_key?}",
+    }
+
+
+def _schwab_exchange_code(body=None):
+    """POST /api/v2/brokers/schwab/exchange-code — exchange operator-pasted 127.0.0.1?code=... for tokens.
+    Body: {redirect_url|code, account_key?}. Never logs the code or full redirect URL."""
+    import sys as _sys
+    _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    import schwab_token_manager as tm
+    b = body if isinstance(body, dict) else {}
+    redirect = (b.get("redirect_url") or b.get("code") or b.get("url") or "").strip()
+    if not redirect:
+        return {"ok": False, "error": "redirect_url required (full https://127.0.0.1/?code=... URL or bare code)"}
+    key = (b.get("account_key") or b.get("account") or "").strip()
+    if not key:
+        key = tm.canonical_token_key("schwab", "live") or "schwab_taxable"  # hardcode-ok: canonical OAuth token row
+    try:
+        res = tm.exchange_code(key, redirect)
+    except Exception as e:
+        return {"ok": False, "error": f"exchange failed: {str(e)[:160]}", "account_key": key}
+    if not res.get("ok"):
+        return {"ok": False, "error": res.get("reason") or "exchange failed", "account_key": key}
+    # Invalidate cached live probe so UI reflects the fresh token immediately
+    try:
+        _SCHWAB_PROBE_CACHE.update(ts=0.0, result=None)
+    except Exception:
+        pass
+    probe = {}
+    try:
+        probe = tm.live_probe(key, "schwab", "live") or {}
+        _SCHWAB_PROBE_CACHE.update(ts=__import__("time").time(), result=probe)
+    except Exception as e:
+        probe = {"error": str(e)[:120]}
+    return {
+        "ok": True,
+        "account_key": key,
+        "refresh_expires_at": res.get("refresh_expires_at"),
+        "next_reauth_due_at": res.get("next_reauth_due_at"),
+        "scope": res.get("scope"),
+        "live_ok": bool(probe.get("live_ok")),
+        "live_probe": ({"probed": probe.get("probed"), "live_ok": probe.get("live_ok"),
+                        "needs_reauth": probe.get("needs_reauth"), "error": probe.get("error")}
+                       if probe else None),
+        "message": "Schwab token renewed successfully. Stops/quotes/orders can use the new 7-day login.",
+        "manual_reauth_path": "/v3/system/schwab-reauth",
+    }
 
 
 def _fee_efficiency(query=None):
@@ -35306,6 +35425,7 @@ ROUTES = {
     "/api/v2/time-exit-proposals": _time_exit_proposals_list,
     "/api/v2/system/schwab-status": _schwab_status,
     "/api/v2/brokers/schwab/token-health": _schwab_token_health,
+    "/api/v2/brokers/schwab/reauth-url": _schwab_reauth_url,
     "/api/v2/holdings/synthetic-stops": _synthetic_stops_list,
     "/api/v2/holdings/live-stops": lambda: _holdings_live_stops(_current_query),
     "/api/v2/holdings/monitored-stops": lambda: _fidelity_monitored_stops_list(_current_query),
@@ -39658,6 +39778,49 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
 
+    # ── /v3/advisory — Advisory Desk v1 (Phase 4 surface) ─────────────────
+    if base_path.startswith("/api/v3/advisory"):
+        try:
+            import api_v3_advisory as _adv
+            p = base_path[len("/api/v3/advisory"):].strip("/")
+            if method == "GET":
+                if p in ("", "desk"):
+                    force = str((query or {}).get("force", ["0"])[0] if isinstance(query, dict) else "0") in ("1", "true")
+                    cls = None
+                    if isinstance(query, dict) and query.get("class"):
+                        cls = str(query.get("class")[0] if isinstance(query.get("class"), list) else query.get("class"))
+                    return 200, _adv.get_advisory_desk(force=force, row_class=cls or None)
+                if p == "rows":
+                    cls = None
+                    if isinstance(query, dict) and query.get("class"):
+                        cls = str(query.get("class")[0] if isinstance(query.get("class"), list) else query.get("class"))
+                    d = _adv.get_advisory_desk(row_class=cls or None)
+                    return 200, {"ok": True, "rows": d.get("rows"), "row_count": d.get("row_count")}
+                if p == "brief":
+                    return 200, _adv.get_advisory_brief()
+                if p == "calibration":
+                    return 200, _adv.get_calibration()
+                if p.startswith("history/"):
+                    sym = p[len("history/"):].strip("/").upper()
+                    acct = ""
+                    if isinstance(query, dict) and query.get("account"):
+                        acct = str(query.get("account")[0] if isinstance(query.get("account"), list) else query.get("account"))
+                    if not sym:
+                        return 400, {"ok": False, "error": "symbol required"}
+                    return 200, _adv.get_history(sym, acct)
+                return 404, {"ok": False, "error": f"unknown_advisory_path: {p}"}
+            if method == "POST":
+                if p == "rate":
+                    return 200, _adv.post_feedback(body or {}, kind="rate")
+                if p == "ack":
+                    return 200, _adv.post_feedback(body or {}, kind="ack")
+                if p == "snooze":
+                    return 200, _adv.post_feedback(body or {}, kind="snooze")
+                return 404, {"ok": False, "error": f"unknown_advisory_post: {p}"}
+            return 405, {"ok": False, "error": "method_not_allowed"}
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
+
     if base_path.startswith("/api/v3/watch/"):
         try:
             import api_v3_watch_rockville as _rv
@@ -40624,6 +40787,13 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     if method == "POST" and base_path in ("/api/v2/portfolio/sync/snaptrade", "/api/v2/portfolio/sync/schwab"):
         try:
             res = _portfolio_sync_run(base_path.rsplit("/", 1)[-1])
+            return (200 if res.get("ok") else 400), res
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:160]}
+
+    if method == "POST" and base_path == "/api/v2/brokers/schwab/exchange-code":
+        try:
+            res = _schwab_exchange_code(body if isinstance(body, dict) else {})
             return (200 if res.get("ok") else 400), res
         except Exception as e:
             return 500, {"ok": False, "error": str(e)[:160]}

@@ -283,6 +283,17 @@ New **Pipeline** tab (default) in System hub — one at-a-glance view of every p
 - **Agent jobs** — queued/processing/pending (self-healing reaper), completed/failed today.
 Freshness colored green/amber/red vs each stage's SLA. Read-only.
 
+## v3 Ops → Schwab Reauth (2026-08-11)
+
+| Route | Hub | Purpose |
+|---|---|---|
+| `/v3/system/schwab-reauth` | Ops → **Schwab Reauth** | Manual Schwab OAuth renewal: request authorize URL, paste `127.0.0.1?code=…`, submit |
+
+- **APIs:** `GET /api/v2/brokers/schwab/reauth-url`, `POST /api/v2/brokers/schwab/exchange-code`, enhanced `GET /api/v2/brokers/schwab/token-health` (`show_banner`, `true_expiry`, `days_to_true_expiry`).
+- **Site banner:** `SchwabReauthBanner` in CC shell when reauth/proactive window is due → links to this page.
+- **Related:** System hub `SchwabMonitor` CTA; order cards deep-link here when token is dead.
+- **Runbook:** `docs/SCHWAB_AUTO_REAUTH.md` (browser auto-login off by default).
+
 ## v3 System hub — Apps + Jobs tabs (2026-06-03g, v2 parity)
 
 Two v2 pages that had no v3 home are now System-hub tabs:

@@ -74,6 +74,7 @@
 | `docs/brokers/current-state-alpaca-integration.md` | 2026-06-11 equity paper code-trace (still valid) | Active |
 | `docs/architecture/SCHWAB_API_PHASE1_READONLY_FOUNDATION.md` | Schwab Phase 1 read-only — proven capabilities, fenced writes, Gate A | Active |
 | `docs/architecture/SCHWAB_API_CAPABILITY_MAP.md` | Every Schwab endpoint → BUILT / READY / FENCED / NEVER | Active |
+| `docs/SCHWAB_AUTO_REAUTH.md` | **Schwab OAuth 7-day reauth** — CC manual page (primary), token-health banner, APIs, notify-only agent; browser auto off | Active (2026-08-11) |
 | `docs/brokers/stage2a-canary-protocol.md` | Stage 2a canary runbook — gap patches, risk caps, approval flow | Active — canary date set to **2026-06-22** in `canary_gate.py` |
 | `docs/brokers/stop-management-architecture.md` | Canonical as-built stop/trailing architecture (Schwab live, Alpaca auto, Fidelity monitor) | Active (2026-06-22) |
 | `docs/brokers/snaptrade-read-only-aggregation-spec.md` | SnapTrade holdings read path (Fidelity rollover IRA) | Active |

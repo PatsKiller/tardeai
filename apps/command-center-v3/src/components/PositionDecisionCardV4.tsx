@@ -489,8 +489,8 @@ export default function PositionDecisionCardV4({ p, paMap, expanded, onToggle, o
           {/* SCHWAB TOKEN HEALTH — re-auth needed banner (shown UP FRONT, before any order attempt) */}
           {_needsReauth && !stopDone && <div style={{ marginTop: 10, padding: 11, background: 'rgba(239,68,68,.12)', border: `1px solid ${RED}`, borderRadius: 8 }}>
             <div style={{ fontSize: 11.5, fontWeight: 900, color: RED }}>⚠ Schwab re-auth needed — orders will be rejected</div>
-            <div style={{ fontSize: 10, color: TEXT2, marginTop: 5, lineHeight: 1.45 }}>{tokenHealth?.message || 'Schwab login expired/revoked.'} The refresh token must be renewed by a manual browser login before any live order can submit. Run:</div>
-            <div style={{ marginTop: 6, padding: '6px 8px', borderRadius: 6, background: '#1e293b', color: TEXT0, fontSize: 11, ...({ fontFamily: 'monospace' } as any) }}>{tokenHealth?.reauth_command || 'python3 scripts/schwab_token_manager.py reauth-url schwab_taxable'}</div>
+            <div style={{ fontSize: 10, color: TEXT2, marginTop: 5, lineHeight: 1.45 }}>{tokenHealth?.message || 'Schwab login expired/revoked.'} Renew via Command Center → Ops → Schwab Reauth (request URL, log in on phone, paste 127.0.0.1?code=… and submit).</div>
+            <a href="/v3/system/schwab-reauth" style={{ display: 'inline-block', marginTop: 8, fontSize: 11, fontWeight: 800, color: '#fecaca', textDecoration: 'underline' }}>Open Schwab Reauth page →</a>
           </div>}
 
           {/* DONE */}
