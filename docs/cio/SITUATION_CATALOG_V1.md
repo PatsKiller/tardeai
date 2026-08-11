@@ -9,6 +9,12 @@
 
 Also see freeze note: `docs/advisory/desk-v1/SITUATION_CATALOG_V1_FREEZE.md`
 
+**Related CIO desk tracks:** [P2B_PLAN_ENRICHMENT.md](P2B_PLAN_ENRICHMENT.md) ·
+[THESIS_STORE_P3.md](THESIS_STORE_P3.md) · [WAKE_TRACES_P5.md](WAKE_TRACES_P5.md) ·
+[CIO_TELEGRAM_CONVERSE_RUNBOOK.md](CIO_TELEGRAM_CONVERSE_RUNBOOK.md)
+
+Plans may carry `thesis_version` (`desk@vN`) from the P3 thesis store when a desk thesis is published.
+
 ---
 
 ## Situations

@@ -17,7 +17,11 @@ See [AUTONOMY_AND_SCHEDULING_TRUTH_2026-08-11.md](./AUTONOMY_AND_SCHEDULING_TRUT
 | [AUTONOMOUS_ADVISORY_DESK_PLAN_2026-08-10.md](./AUTONOMOUS_ADVISORY_DESK_PLAN_2026-08-10.md) | Approved end-to-end plan: CIO + wealth advisors, Flash→Pro, phases, PR DAG, pass criteria |
 | [AUTONOMY_AND_SCHEDULING_TRUTH_2026-08-11.md](./AUTONOMY_AND_SCHEDULING_TRUTH_2026-08-11.md) | **Honest answer:** brains vs timers; goal wakes; desk not self-waking |
 | [RUNTIME_TRUTH_2026-08-11.md](./RUNTIME_TRUTH_2026-08-11.md) | Host unit pass/fail (WS0) |
-| [AUTONOMY_GOAL_THESIS_COMPLETE.md](./AUTONOMY_GOAL_THESIS_COMPLETE.md) | Goal/thesis store + dispatcher acceptance |
+| [AUTONOMY_GOAL_THESIS_COMPLETE.md](./AUTONOMY_GOAL_THESIS_COMPLETE.md) | Goal store + dispatcher acceptance (per-goal thesis snippets) |
+| [../../cio/THESIS_STORE_P3.md](../../cio/THESIS_STORE_P3.md) | **P3** versioned desk thesis (`desk@vN` pins) |
+| [../../cio/WAKE_TRACES_P5.md](../../cio/WAKE_TRACES_P5.md) | **P5** lightweight wake traces (`cio_wake_traces.jsonl`) |
+| [../../cio/P2B_PLAN_ENRICHMENT.md](../../cio/P2B_PLAN_ENRICHMENT.md) | **P2b** plan enrichment under governed LLM cap |
+| [../../cio/CIO_TELEGRAM_CONVERSE_RUNBOOK.md](../../cio/CIO_TELEGRAM_CONVERSE_RUNBOOK.md) | **P1** dedicated CIO Telegram converse |
 | [SITUATION_CATALOG_V1_FREEZE.md](./SITUATION_CATALOG_V1_FREEZE.md) | **FROZEN** S1–S8 situations + plan schema + SpaceX fixture |
 | [../../cio/SITUATION_CATALOG_V1.md](../../cio/SITUATION_CATALOG_V1.md) | Phase 2a code catalog + operator commands |
 | [P0_BRIDGE_OUTCOME_2026-08-11.md](./P0_BRIDGE_OUTCOME_2026-08-11.md) | P0 outcome: governed bridge path, registry, systemd unit, tests |
@@ -42,6 +46,10 @@ See [AUTONOMY_AND_SCHEDULING_TRUTH_2026-08-11.md](./AUTONOMY_AND_SCHEDULING_TRUT
 |---|---|
 | `data/runtime/advisory_desk_latest.json` | Latest deterministic desk snapshot |
 | `data/runtime/advisory_opinion_cache.json` | Local per-row opinion cache |
+| `data/cio/cio_theses.jsonl` | P3 versioned desk thesis events |
+| `data/cio/cio_wake_traces.jsonl` | P5 wake traces (why wake / llm path) |
+| `data/cio/cio_plans.jsonl` | Situation / converse action plans |
+| `data/cio/cio_goals.jsonl` | Goal store events |
 | `/run/user/<uid>/tradeai/env` | SM-rendered secrets (Bitwarden) |
 | `logs/cio_governed_bridge.log` | Bridge stdout/stderr when unit installed |
 

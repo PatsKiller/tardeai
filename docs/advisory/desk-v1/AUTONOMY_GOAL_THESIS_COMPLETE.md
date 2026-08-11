@@ -14,12 +14,19 @@ Not a free-running autonomous trader. Heartbeat remains the safety net.
 | WS | Item | Status |
 |---|---|---|
 | 0 | Host truth (branch, --once, backup) | [RUNTIME_TRUTH_2026-08-11.md](./RUNTIME_TRUTH_2026-08-11.md) |
-| 1 | Goal + thesis store | `scripts/lib/cio_goals.py` → `data/cio/cio_goals.jsonl` |
+| 1 | Goal + per-goal thesis snippets | `scripts/lib/cio_goals.py` → `data/cio/cio_goals.jsonl` |
 | 2 | Dispatcher goal wakes | `CIOWakeDispatcher.enqueue_goal_wakes` inside `poll_and_dispatch` |
 | 3 | Wake contract (context + thesis touch) | `CIORunWorker` goal step + agent_runtime goal jobs |
 | 4 | /cio rate path | Existing `scripts/cio_commands.py rate` → action ledger (verified present) |
 | 5 | Storage follow-ups | Maintenance script + notes (no auto VACUUM) |
 | 6 | Acceptance | Commands below |
+
+### Later same day — P3 versioned desk thesis (distinct)
+
+WS1 per-goal `thesis_summary` is **not** the desk pin. **P3** adds `CIOThesisStore`
+(`scripts/lib/cio_theses.py` → `data/cio/cio_theses.jsonl`) with canonical pins
+`desk@vN`. Plans auto-pin; agent context includes `desk_thesis`.  
+Operator: `/cio thesis` · docs: [THESIS_STORE_P3.md](../../cio/THESIS_STORE_P3.md).
 
 ---
 

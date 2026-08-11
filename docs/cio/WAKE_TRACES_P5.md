@@ -23,7 +23,7 @@ One row per open / update / close. List merges by `wake_id` (last-write-wins).
 | `situation_type` | S0–S8 when known |
 | `agent_id` | e.g. `alex` |
 | `plan_id` | Linked plan if any |
-| `thesis_version` | Nullable (P3 if present) |
+| `thesis_version` | Pin e.g. `desk@v3` when plan/context has it ([THESIS_STORE_P3.md](THESIS_STORE_P3.md)) |
 | `llm` | `invoked` \| `blocked_cap` \| `blocked_provider` \| `template` \| `skipped_non_material` \| `skipped_dedup` \| `pending` |
 | `model_id` | Nullable model id from bridge |
 | `duration_ms` | Enrich / cycle duration when known |

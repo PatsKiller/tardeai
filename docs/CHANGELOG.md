@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-08-11 — Advisory desk CIO tracks P1–P5 (feature/advisory-desk-v1)
+
+READ_ONLY_ADVISORY desk continuity on `feature/advisory-desk-v1`:
+
+- **P1** dedicated CIO Telegram converse (`cio_telegram_converse`, allowlist bot unit)
+- **P2a** situation catalog S1–S8 + plan store; **P2b** plan enrichment under governed LLM cap
+- **P3** versioned desk thesis store (`CIOThesisStore`, pins `desk@vN`)
+- **P5** lightweight wake traces (`cio_wake_traces.jsonl`, `/cio traces`)
+- Docs: `docs/cio/THESIS_STORE_P3.md`, `WAKE_TRACES_P5.md`, `P2B_PLAN_ENRICHMENT.md`,
+  `CIO_TELEGRAM_CONVERSE_RUNBOOK.md`; index `docs/advisory/desk-v1/README.md`
+
+No broker/order path. SHADOW / notify off by default.
+
 ## 2026-08-06 — Defense Desk v10: cross-desk consistency audit, DeepSeek oversight fix, stop re-entry thesis
 
 Cross-desk audit across Watchlist (200 items), Defense (13 stances), Holdings (22 positions),

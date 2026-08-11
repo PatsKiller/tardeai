@@ -1,10 +1,16 @@
 
+## 2026-08-11 — Docs index refresh (P3/P5 pointers)
+
+- `docs/advisory/desk-v1/README.md` links P1/P2b/P3/P5 operator docs + CIO JSONL paths
+- `DOCUMENTATION_INDEX.md` + `CHANGELOG.md` entries for advisory desk CIO tracks
+- Stale “P3 not started” ops-log line corrected; GOAL_THESIS doc distinguishes WS1 vs P3
+
 ## 2026-08-11 — P3 versioned thesis store
 
 - `scripts/lib/cio_theses.py` → `data/cio/cio_theses.jsonl` (+ projection)
 - Canonical pins `desk@vN`; plans auto-pin; enrich pack + agent context include desk thesis
 - `/cio thesis` · `/cio thesis history` · docs/cio/THESIS_STORE_P3.md
-- Distinct from per-goal `thesis_summary` (WS1). READ_ONLY_ADVISORY.
+- Distinct from per-goal `thesis_summary` (WS1). READ_ONLY_ADVISORY. Tip: `4342f54b`.
 
 ## 2026-08-11 — P5 lightweight wake traces
 
@@ -19,7 +25,7 @@
 - Created `~/.config/tradeai/cio-telegram.env` with allowlist chat IDs (2); **token not yet set**.
 - Provision token: `printf %s '<token>' | bash scripts/ops/provision_cio_telegram_token.sh`
 - Unit installed (not started until token present).
-- P3 (versioned thesis store) **not started** — this is post-P2b ops only.
+- P3 versioned thesis store: later same day as **implemented** (see entry above / `4342f54b`).
 
 ## 2026-08-11 — P2b short soak @ 8592abc2 (template path under cap)
 

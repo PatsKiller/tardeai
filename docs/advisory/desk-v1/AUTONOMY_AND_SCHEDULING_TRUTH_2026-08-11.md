@@ -23,6 +23,10 @@
 
 **2026-08-11 update (goal/thesis gap):** Durable `CIOGoalStore` + `CIOWakeDispatcher.enqueue_goal_wakes` add **goal-due / idle** wakes beside the existing event claim path. Still timer-driven oneshots; still no self-scheduling agents. See [AUTONOMY_GOAL_THESIS_COMPLETE.md](./AUTONOMY_GOAL_THESIS_COMPLETE.md) and [RUNTIME_TRUTH_2026-08-11.md](./RUNTIME_TRUTH_2026-08-11.md).
 
+**2026-08-11 later (P3 desk thesis + P5 traces):** Versioned desk thesis pins (`desk@vN`) via
+[THESIS_STORE_P3.md](../../cio/THESIS_STORE_P3.md); wake observability via
+[WAKE_TRACES_P5.md](../../cio/WAKE_TRACES_P5.md). Still not free-running agents.
+
 ---
 
 ## How work actually runs (scheduling model)

@@ -181,6 +181,12 @@
 | `docs/agent_runtime/LANE_D_SHADOW_AGENTS.md` | Lane D shadow agent architecture and governance | Active |
 | `docs/agent_runtime/PERSISTENCE_RUNBOOK.md` | Agent runtime durable state persistence | Active |
 | `docs/architecture/cio/CIO_PHASE_3_DELIVERY.md` | **CIO Phase 3 — DELIVERED 2026-08-09**: Alex autonomous CIOrity Officer — hybrid OpenClaw+Trade AI, 9 PRs, action ledger, 30-min heartbeat, wake worker, `/v3/cio` API, Hermes challenge bridge, DeepSeek V4 Pro primary | Active |
+| `docs/advisory/desk-v1/` | **Advisory Desk v1** — phases 0–7 outcomes, autonomy/scheduling truth, situation catalog freeze, runtime truth | Active (2026-08-11) |
+| `docs/cio/THESIS_STORE_P3.md` | **CIO P3 versioned thesis store** — `desk@vN` pins, plans/enrich/context wiring, `/cio thesis` | Active (2026-08-11) |
+| `docs/cio/WAKE_TRACES_P5.md` | **CIO P5 wake traces** — append-only JSONL why-wake / llm path; fail-soft; CLI + `/cio traces` | Active (2026-08-11) |
+| `docs/cio/P2B_PLAN_ENRICHMENT.md` | **CIO P2b plan enrichment** — evidence pack, governed Flash/Pro under cap, template fail-closed | Active (2026-08-11) |
+| `docs/cio/CIO_TELEGRAM_CONVERSE_RUNBOOK.md` | **CIO P1 Telegram converse** — dedicated bot, allowlist, OPERATOR_MESSAGE wakes | Active (2026-08-11) |
+| `docs/cio/SITUATION_CATALOG_V1.md` | **Situation Catalog v1** — S1–S8 detector + plan store operator guide | Active (2026-08-11) |
 | `docs/architecture/cio/` | **CIO architecture (38 files)** — ADRs (authority, state, containment, LLM governance, scheduler, specialist calc), lab docs (action ledger, wake detector, handoff queue, health boundary, notification outbox), Phase 2 delivery/authority/canary/cost/data/runtime/triggers, Phase -1 readiness/dependency, platform readiness report, quality metrics, run budgets, operator communication, financial schedule, governed model bridge, specialist maturity catalog, Hermes challenge policy, financial domain matrix, operator IPS template, legacy inventories | Active (2026-08-09) |
 | `docs/architecture/cio/OPENCLAW_CIO_ARCHITECTURE_FEEDBACK_2026-08-08.md` | **OpenClaw CIO architecture audit** — runtime truth vs design: 3/9 specialist agents operational, memory/heartbeat disabled, Hermes bridge absent, no agent-to-agent delegation, DeepSeek auth unproven, $0.25/day cost cap concern | Active (2026-08-08) |
 | `docs/CIO_PROMPT_INPUT_AUDIT_2026_07_01.md` | CIO prompt/input audit (Stages 1+2a merged, Stage 2b pending) — synthesis v3→v5, dual-consensus fixes, DQ notes, prompt-size budget | Active (2026-07-01) |
