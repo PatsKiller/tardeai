@@ -1,4 +1,16 @@
 
+## 2026-08-11 — P1 E2E converse soak (@tradeai_cio_bot)
+
+Scripted soak via shared `cio_converse_core` (same path as unit; outbound captured).
+- Free-text + /cio status|portfolio|actions|plans: PASS
+- Multi-turn plan_id continuity (reply-to map): PASS
+- Wake traces OPERATOR_MESSAGE: PASS (llm=invoked|blocked_provider|skipped_dedup)
+- Allowlist reject: PASS
+- plan ack/defer/done: FAILED on action-ledger path (`stream_id`) → fixed plan_* routing in cio_commands
+- Artifact: data/cio/p1_e2e_soak_result.json
+- Unit tradeai-cio-telegram still active; OpenClaw main bot untouched
+
+
 ## 2026-08-11 — P4 WhatsApp mirror converse (Cloud API)
 
 - Shared core `cio_converse_core.py`; WA ingress/egress adapters; webhook on :8787

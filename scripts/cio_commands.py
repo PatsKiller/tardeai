@@ -242,11 +242,35 @@ COMMANDS = {
     "risk": cmd_risk,
 }
 
+def _plan_disposition(plan_id: str, status: str, *, note: str = "") -> str:
+    """Disposition for converse plans (plan_*). READ_ONLY_ADVISORY."""
+    try:
+        try:
+            from lib.cio_plans import CIOPlanStore
+        except Exception:
+            from scripts.lib.cio_plans import CIOPlanStore
+        store = CIOPlanStore()
+        p = store.get_plan(plan_id)
+        if not p:
+            return f"❌ Plan not found: {plan_id}"
+        store.update_plan(plan_id, status=status, actor_id="operator")
+        return (
+            f"✅ Plan {plan_id} → {status}"
+            + (f"\n   {note}" if note else "")
+            + f"\n   situation={p.get('situation_type')} symbols={','.join(p.get('symbols') or [])}"
+            + "\n   authority: READ_ONLY_ADVISORY"
+        )
+    except Exception as e:
+        return f"❌ Failed plan disposition {plan_id}: {e}"
+
+
 def cmd_ack() -> str:
-    """Acknowledge a CIO action: /cio ack <action_id>"""
+    """Acknowledge a CIO action or plan: /cio ack <action_id|plan_id>"""
     if len(sys.argv) < 3:
-        return "Usage: /cio ack <action_id>"
+        return "Usage: /cio ack <action_id|plan_id>"
     action_id = sys.argv[2]
+    if str(action_id).startswith("plan_"):
+        return _plan_disposition(action_id, "accepted", note="Acknowledged by operator")
     try:
         from lib.cio_action_ledger import CIOActionLedger
         ledger = CIOActionLedger()
@@ -289,11 +313,15 @@ def cmd_rate() -> str:
 
 
 def cmd_defer() -> str:
-    """Defer a CIO action: /cio defer <action_id> [YYYY-MM-DD|YYYY-MM-DDTHH:MM]"""
+    """Defer a CIO action or plan: /cio defer <action_id|plan_id> [date]"""
     if len(sys.argv) < 3:
-        return "Usage: /cio defer <action_id> [date]"
+        return "Usage: /cio defer <action_id|plan_id> [date]"
     action_id = sys.argv[2]
     defer_until = sys.argv[3] if len(sys.argv) >= 4 else None
+    if str(action_id).startswith("plan_"):
+        note = f"Deferred by operator" + (f" until {defer_until}" if defer_until else "")
+        # keep plan open-ish but mark proposed → accepted later; use proposed with note via status draft
+        return _plan_disposition(action_id, "proposed", note=note + " (plan stays open)")
     try:
         from lib.cio_action_ledger import CIOActionLedger
         ledger = CIOActionLedger()
@@ -320,10 +348,12 @@ def cmd_defer() -> str:
 
 
 def cmd_done() -> str:
-    """Mark a CIO action as done: /cio done <action_id>"""
+    """Mark a CIO action or plan done: /cio done <action_id|plan_id>"""
     if len(sys.argv) < 3:
-        return "Usage: /cio done <action_id>"
+        return "Usage: /cio done <action_id|plan_id>"
     action_id = sys.argv[2]
+    if str(action_id).startswith("plan_"):
+        return _plan_disposition(action_id, "accepted", note="Marked done by operator")
     try:
         from lib.cio_action_ledger import CIOActionLedger
         ledger = CIOActionLedger()
@@ -344,16 +374,17 @@ def cmd_done() -> str:
 
 
 def cmd_reject() -> str:
-    """Reject a CIO action: /cio reject <action_id>
+    """Reject a CIO action or plan: /cio reject <action_id|plan_id>
 
     The CIO Action Ledger has no dedicated REJECTED status.  Operator rejection
     is mapped to CIO_ACTION_CANCELLED (a terminal status) with an operator
-    rejection payload.  If semantically a distinct REJECTED status is needed,
-    it should be added to the ledger schema as a first-class terminal status.
+    rejection payload.  Plans map to status cancelled.
     """
     if len(sys.argv) < 3:
-        return "Usage: /cio reject <action_id>"
+        return "Usage: /cio reject <action_id|plan_id>"
     action_id = sys.argv[2]
+    if str(action_id).startswith("plan_"):
+        return _plan_disposition(action_id, "cancelled", note="Rejected by operator")
     try:
         from lib.cio_action_ledger import CIOActionLedger
         ledger = CIOActionLedger()
