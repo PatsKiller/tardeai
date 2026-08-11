@@ -84,3 +84,12 @@ systemctl --user stop tradeai-agent-runtime@alex.timer
 # should show count=1 local
 # Drive: only latest of each env_/ops_/memory_/apps_/data_/db_backup_*
 ```
+
+## Situation Catalog v1 (Phase 2a)
+
+- **Config:** `config/cio_situations.yaml` (`enabled`, `shadow`, `notify`, `dedup_hours`)
+- **List plans:** `.venv/bin/python -c "from scripts.lib.cio_plans import CIOPlanStore; print(CIOPlanStore().list_open_plans())"`
+- **Disable:** `enabled: false` or `CIO_SITUATIONS_ENABLED=0`
+- **Notify:** keep `notify: false` / `CIO_SITUATIONS_NOTIFY=0` until Telegram path proven
+- **Tests:** `pytest tests/test_cio_situations_phase2a.py -q`
+- **Doc:** `docs/cio/SITUATION_CATALOG_V1.md`

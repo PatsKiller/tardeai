@@ -19,6 +19,7 @@ See [AUTONOMY_AND_SCHEDULING_TRUTH_2026-08-11.md](./AUTONOMY_AND_SCHEDULING_TRUT
 | [RUNTIME_TRUTH_2026-08-11.md](./RUNTIME_TRUTH_2026-08-11.md) | Host unit pass/fail (WS0) |
 | [AUTONOMY_GOAL_THESIS_COMPLETE.md](./AUTONOMY_GOAL_THESIS_COMPLETE.md) | Goal/thesis store + dispatcher acceptance |
 | [SITUATION_CATALOG_V1_FREEZE.md](./SITUATION_CATALOG_V1_FREEZE.md) | **FROZEN** S1–S8 situations + plan schema + SpaceX fixture |
+| [../../cio/SITUATION_CATALOG_V1.md](../../cio/SITUATION_CATALOG_V1.md) | Phase 2a code catalog + operator commands |
 | [P0_BRIDGE_OUTCOME_2026-08-11.md](./P0_BRIDGE_OUTCOME_2026-08-11.md) | P0 outcome: governed bridge path, registry, systemd unit, tests |
 | [PHASE1_DATA_TRUTH_OUTCOME_2026-08-11.md](./PHASE1_DATA_TRUTH_OUTCOME_2026-08-11.md) | Phase 1: lots rebuild, catalyst path, validation, Risk/Tax holdings enqueue, flag |
 | [PHASE2_QUALITY_CACHE_OUTCOME_2026-08-11.md](./PHASE2_QUALITY_CACHE_OUTCOME_2026-08-11.md) | Phase 2: evidence quality, stable-prefix cache, dollars-first Pro synthesis |
