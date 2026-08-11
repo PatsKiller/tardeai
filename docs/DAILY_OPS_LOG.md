@@ -1,3 +1,9 @@
+## 2026-08-11 — P2b short soak @ 8592abc2 (template path under cap)
+
+Heartbeat/reactive green; alex process COST_CAP_EXCEEDED → enrichment
+narrative_source=template + LLM deferred, no crash; 3 plans sampled clean;
+CIO bot token unset (dry-run only); notify left off. RUNTIME_TRUTH updated.
+
 ## 2026-08-11 — P2b plan enrichment (governed Flash/Pro under cap)
 
 Evidence pack + numeric validator; material wakes enrich plans via bridge

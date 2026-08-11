@@ -120,3 +120,65 @@ PYTHONPATH=scripts .venv/bin/python -m scripts.agent_runtime.agents.run_once --a
 ---
 
 *P0 host point complete. SHADOW only. Not fully autonomous. Not production fleet activation.*
+
+---
+
+## P2b short soak (2026-08-11T15:58–15:59Z)
+
+**SHA:** `8592abc2` (includes `f9a7b971` enrichment)  
+**Result:** **PASS** (fail-closed template path under process cap; no crashes)
+
+### Flags at soak
+
+| Flag | Value |
+|---|---|
+| `CIO_LLM_ENRICH` | unset (default on) |
+| `CIO_SITUATION_NOTIFY` | 0 / config notify false |
+| situations `shadow` | true |
+| `TELEGRAM_CIO_BOT_TOKEN` | **unset** (dedicated CIO bot not provisioned) |
+| `TELEGRAM_CHAT_ID` | set (Maria/general only) |
+| `LLM_GLOBAL_DAILY_USD_CAP` | 0.25 |
+| alex process cap (bridge) | **0.02 USD** — already at spent ~0.004, further calls **COST_CAP_EXCEEDED** |
+
+### Checks
+
+| Step | Result |
+|---|---|
+| Heartbeat `--once` | exit 0; situations candidates=8, plans_created=0 (dedup 8), errors=[] |
+| Reactive `--once` | exit 0; errors=0 |
+| Bridge | active; POST → **COST_CAP_EXCEEDED** (process scope) |
+| Open plans store | **9** open plans in `data/cio/` |
+| Enrich 3 material plans | all `llm=blocked_cap`, `narrative_source=template`, “LLM deferred”, **no crash** |
+| Invented numbers vs evidence | **none** on sampled summaries |
+| Non-material `system.heartbeat_ok` | `llm=skipped_non_material` |
+| `/cio plans` + portfolio | zero-LLM OK (portfolio snapshot live) |
+| Telegram free-text live | **SKIP** — no `TELEGRAM_CIO_BOT_TOKEN`; dry-run converse path **handled** |
+| Scoped unit crash loop | **none** |
+| backup_enforcer | dumps **1**, compliant |
+
+### Wake sample log
+
+```
+soak:plan_b299ae8acecf S4_SECTOR_ROTATION llm=blocked_cap narrative=template
+soak:plan_77e48566970e S6_CONCENTRATION_OR_DISPOSITION llm=blocked_cap narrative=template
+soak:plan_79fe9e72f2d4 S6_CONCENTRATION_OR_DISPOSITION llm=blocked_cap narrative=template
+```
+
+Artifact: `data/cio/p2b_soak_wakes.json`
+
+### Observations (not retuned this soak)
+
+- **S6 on CASH / high weights** (e.g. SPCX ~42%, SCHD ~16.5%) may be noisy vs cash/ETF policy — review `concentration_weight_pct` later, not in this soak.
+- **LLM invoked path not proven live** this window because alex process cost cap (0.02) blocks further synthesis; fail-closed template path **was** proven (acceptance B).
+- To observe `narrative_source=llm` later: raise process cap for `alex_cio_synthesis` or wait for daily reset; keep notify off.
+
+### Pass criteria map
+
+| Criterion | Status |
+|---|---|
+| No unit crash loop | PASS |
+| Enrichment fail-closed on block | PASS |
+| No invented numbers (sampled) | PASS |
+| Converse dry + slash | PASS (live CIO bot token missing) |
+| RUNTIME_TRUTH updated | PASS |
+
