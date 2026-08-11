@@ -1,0 +1,50 @@
+# CIO LLM policy — Phase P2b (brain depth)
+# Authority: READ_ONLY_ADVISORY. Fail-closed. Conservative defaults.
+
+enabled: true
+shadow: true
+
+# Material wakes that MAY spend LLM budget (still under global/process caps)
+material_sources:
+  - situation.raised
+  - OPERATOR_MESSAGE
+  - GOAL_DUE_HIGH          # optional; only HIGH priority goals
+  - S0_OPERATOR_CONVERSE
+  - S1_POSITION_LIFECYCLE
+  - S2_STOP_GAP
+  - S3_REENTRY_CANDIDATE
+  - S4_SECTOR_ROTATION
+  - S5_CASH_DEPLOYMENT
+  - S6_CONCENTRATION_OR_DISPOSITION
+  - S7_WATCH_PROMOTION
+  - S8_DEFENSIVE_REGIME
+
+non_material_sources:
+  - system.heartbeat_ok
+  - pure_heartbeat_no_change
+  - cio_slash_status
+
+situation_notify_telegram: false   # CIO_SITUATION_NOTIFY=1 to enable
+
+llm:
+  enabled: true                    # CIO_LLM_ENRICH=0 to disable
+  max_llm_per_wake: 1
+  enrich_dedup_hours: 6
+  prefer_flash: true
+  pro_for:
+    - OPERATOR_MESSAGE
+    - S0_OPERATOR_CONVERSE
+    - S8_DEFENSIVE_REGIME
+  bridge_endpoint: "http://127.0.0.1:8766/v1/chat/completions"
+  caller: "alex"
+  task_type_flash: "cio_synthesis"
+  task_type_pro: "cio_synthesis"
+  max_tokens: 700
+  temperature: 0.2
+  # Local soft cap (in addition to bridge global daily cap)
+  max_calls_per_hour: 12
+  log_path: "data/cio/cio_llm_enrich_log.jsonl"
+
+validator:
+  reject_invented_numbers: true
+  max_retries: 1

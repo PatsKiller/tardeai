@@ -66,6 +66,7 @@ VALID_EVENT_TYPES = frozenset({
     "system.domain_stale",
     "situation.raised",
     "operator.message",  # dedicated CIO Telegram free-text (P1 converse)
+    "plan.enriched",     # P2b narrative enrichment
 })
 
 # Events that should wake Alex
@@ -136,6 +137,7 @@ EVENT_PRIORITY: dict[str, str] = {
     "system.domain_stale": "HIGH",
     "situation.raised": "MEDIUM",
     "operator.message": "HIGH",
+    "plan.enriched": "LOW",
 }
 
 

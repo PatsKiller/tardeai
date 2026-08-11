@@ -283,6 +283,8 @@ class CIOPlanStore:
             "title", "summary", "options", "recommendation", "risks",
             "evidence_refs", "linked_goal_ids", "linked_action_ids",
             "revisit_at", "owner_agent", "cc_deep_links", "status",
+            "narrative_source", "narrative_enriched_at", "evidence_hash",
+            "llm_model", "llm_status", "llm_deferred", "fire_reasons",
         }
         patch = {k: v for k, v in fields.items() if k in allowed and v is not None}
         if "status" in patch and patch["status"] not in VALID_STATUSES:

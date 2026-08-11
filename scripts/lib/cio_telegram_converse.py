@@ -755,10 +755,39 @@ def process_telegram_message(
     ctx = assemble_context(text, plan_id=plan_id, action_id=action_id, goal_id=goal_id)
     advisory = build_template_advisory(text, ctx)
     new_plan_id = plan_id
+    llm_deferred = True
     if not dry_run:
         new_plan_id = ensure_converse_plan(
             advisory, plan_id=plan_id, symbols=ctx.get("symbols") or [], text=text,
         )
+        # P2b: enrich plan under cap (same path as situation wakes)
+        try:
+            from scripts.lib.cio_plans import CIOPlanStore
+            from scripts.lib.cio_plan_enrichment import enrich_plan
+            store = CIOPlanStore()
+            plan_obj = store.get_plan(new_plan_id) if new_plan_id else None
+            if plan_obj:
+                enr = enrich_plan(
+                    plan_obj,
+                    source="OPERATOR_MESSAGE",
+                    wake_id=str(wake_id or message_id),
+                    extra_context={"operator_text": text[:500], "symbols": ctx.get("symbols")},
+                    plan_store=store,
+                )
+                plan_obj = enr.get("plan") or plan_obj
+                llm_deferred = plan_obj.get("narrative_source") != "llm"
+                advisory = {
+                    "summary": plan_obj.get("summary") or advisory.get("summary"),
+                    "evidence_refs": plan_obj.get("evidence_refs") or advisory.get("evidence_refs"),
+                    "options": plan_obj.get("options") or advisory.get("options"),
+                    "recommendation": plan_obj.get("recommendation") or advisory.get("recommendation"),
+                    "risks": plan_obj.get("risks") or advisory.get("risks"),
+                    "revisit_at": plan_obj.get("revisit_at") or advisory.get("revisit_at"),
+                    "llm_deferred": llm_deferred,
+                    "deep_links": plan_obj.get("cc_deep_links") or advisory.get("deep_links"),
+                }
+        except Exception:
+            llm_deferred = True
     reply = format_structured_reply(
         summary=advisory["summary"],
         evidence_refs=advisory.get("evidence_refs"),
@@ -768,7 +797,7 @@ def process_telegram_message(
         plan_id=new_plan_id,
         goal_id=goal_id,
         revisit_at=advisory.get("revisit_at"),
-        llm_deferred=bool(advisory.get("llm_deferred")),
+        llm_deferred=bool(advisory.get("llm_deferred", llm_deferred)),
         deep_links=advisory.get("deep_links"),
     )
 
@@ -788,6 +817,6 @@ def process_telegram_message(
         "attached_plan_id": plan_id,
         "telegram_out_message_id": sent_mid,
         "reply_preview": reply[:240],
-        "llm_deferred": True,
+        "llm_deferred": bool(advisory.get("llm_deferred", llm_deferred)),
     })
     return out

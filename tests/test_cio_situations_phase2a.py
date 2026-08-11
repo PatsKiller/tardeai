@@ -8,6 +8,13 @@ from pathlib import Path
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _no_live_llm(monkeypatch):
+    """Detector unit tests use template enrichment only (no bridge hang)."""
+    monkeypatch.setenv("CIO_LLM_ENRICH", "0")
+    monkeypatch.setenv("CIO_SITUATION_NOTIFY", "0")
+
+
 # ── Fixtures ────────────────────────────────────────────────────────────────
 
 

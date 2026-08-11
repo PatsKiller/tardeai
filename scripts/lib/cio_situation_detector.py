@@ -908,9 +908,26 @@ class CIOSituationDetector:
             extra={"fire_reasons": cand.get("fire_reasons") or [], "shadow": bool(self.cfg.get("shadow", True))},
         )
         self._emit_situation_raised(plan)
-        # notify only if explicitly enabled (still no broker)
-        if self.cfg.get("notify") and os.environ.get("CIO_SITUATIONS_NOTIFY", "0") == "1":
-            pass  # reserved — Phase 2a does not send
+        # P2b: enrich narrative (LLM under cap, else template)
+        # In tests, set CIO_LLM_ENRICH=0 for speed; still applies template path.
+        try:
+            from scripts.lib.cio_plan_enrichment import enrich_plan, maybe_notify_plan
+            enr = enrich_plan(
+                plan,
+                source=st,
+                wake_id=f"situation:{st}:{','.join(syms)[:40]}",
+                plan_store=self.plans,
+                force_template=os.environ.get("CIO_LLM_ENRICH", "1").strip().lower()
+                in ("0", "false", "off", "no"),
+            )
+            if enr.get("plan"):
+                plan = enr["plan"]
+            try:
+                maybe_notify_plan(plan)
+            except Exception:
+                pass
+        except Exception:
+            pass
         return plan
 
     def run(self, evidence: dict[str, Any]) -> dict[str, Any]:
