@@ -11,8 +11,10 @@ weak local retention, this produced a **backup storm** (~250 GB reported peak; r
 
 | Action | Result |
 |--------|--------|
-| Prune `~/db_backups` to newest full dump only | **1** dump kept (`trade_ai_20260811_083013.sql.gz`, 2.3G) |
+| Prune `~/db_backups` to newest full dump only | **1** dump kept (final: `trade_ai_20260811_090357.sql.gz`, **1.9G**) |
 | Disk free | **~145 GB → ~229 GB free** (≈84 GB recovered from dumps) |
+| Orphan embeddings purged | **60,460** news orphans deleted via Librarian retention |
+| Stream/history purge | **~4.1M rows** (stream book/quotes, score history, audits) |
 | Disable auto-remediate for dump findings | `never_auto_remediate` + removed from `auto_remediate.finding_types` |
 | Local interval | **1200 min (20h)** so only daily cadence should write |
 | Local max count | **1** via `backup_enforcer.py` + hourly timer |
