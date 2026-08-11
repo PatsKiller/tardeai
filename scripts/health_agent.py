@@ -1795,6 +1795,24 @@ def collect_infra_optimization_health() -> list[dict]:
                           f"re-run apply_llm_priority_guard_to_crontab.py --apply", count=len(unguarded)))
     except Exception:
         pass
+    # 4. Disk-space monitoring — prevent the Aug 2026 backup-storm outage recurrence.
+    #    Alerts at <20% (warning) and <10% (critical) so a filling disk is never invisible.
+    try:
+        import shutil
+        for mp, warn_pct, crit_pct in [("/", 20, 10)]:
+            usage = shutil.disk_usage(mp)
+            pct_used = (usage.used / usage.total) * 100
+            free_gb = usage.free / (1024 ** 3)
+            if pct_used > (100 - crit_pct):
+                out.append(_f("infra", "disk_critical", "critical",
+                              f"Disk {mp}: {free_gb:.1f}GB free ({100-pct_used:.1f}%) — below {crit_pct}% threshold",
+                              mountpoint=mp, free_gb=round(free_gb, 1), pct_free=round(100-pct_used, 1)))
+            elif pct_used > (100 - warn_pct):
+                out.append(_f("infra", "disk_low", "warning",
+                              f"Disk {mp}: {free_gb:.1f}GB free ({100-pct_used:.1f}%) — below {warn_pct}% threshold",
+                              mountpoint=mp, free_gb=round(free_gb, 1), pct_free=round(100-pct_used, 1)))
+    except Exception:
+        pass
     return out
 
 
@@ -2782,10 +2800,15 @@ def collect_backup_health() -> list[dict]:
             pass
         import glob as _g
         min_bytes = int(cfg.get("min_dump_bytes", 500 * 1024 * 1024))  # ignore partial thrash dumps
+        max_count = int(cfg.get("max_local_count", 1))  # 2026-08-11: single local dump only
+        max_total = int(cfg.get("max_local_bytes", 5 * 1024 * 1024 * 1024))
         dumps = []
+        total_bytes = 0
         for p in sorted(_g.glob(str(Path.home() / "db_backups" / "trade_ai_*.sql.gz"))):
             try:
-                if Path(p).stat().st_size >= min_bytes:
+                sz = Path(p).stat().st_size
+                total_bytes += sz
+                if sz >= min_bytes:
                     dumps.append(p)
             except OSError:
                 continue
@@ -2796,9 +2819,23 @@ def collect_backup_health() -> list[dict]:
         else:
             dump_age_h = (datetime.now().timestamp() - Path(dumps[-1]).stat().st_mtime) / 3600
             if dump_age_h > max_age_h:
+                # Notify only — NEVER auto-remediate (backup storm 2026-08). Operator runs
+                # run_pg_backup.sh or waits for tradeai-portfolio-backup-cadence.timer.
                 out.append(_f("pipeline_freshness", "db_dump_stale", "critical",
-                              f"newest full pg dump is {dump_age_h:.0f}h old (>{max_age_h:.0f}h)",
+                              f"newest full pg dump is {dump_age_h:.0f}h old (>{max_age_h:.0f}h) — "
+                              f"manual: bash linux_launchers/run_pg_backup.sh (auto-remediate disabled)",
                               age_hours=round(dump_age_h, 1)))
+        # Cap enforcement (Aug 2026 storm left 38×2.3G dumps)
+        if len(dumps) > max_count:
+            out.append(_f("pipeline_freshness", "backup_local_count_exceeded", "critical",
+                          f"{len(dumps)} full local pg dumps (max {max_count}) — "
+                          f"run: .venv/bin/python scripts/backup_enforcer.py",
+                          count=len(dumps), max_count=max_count))
+        if total_bytes > max_total:
+            out.append(_f("pipeline_freshness", "backup_local_bytes_exceeded", "critical",
+                          f"~/db_backups total {total_bytes/1e9:.1f}GB exceeds "
+                          f"{max_total/1e9:.1f}GB cap — run backup_enforcer.py",
+                          total_bytes=total_bytes, max_bytes=max_total))
     except Exception as e:
         out.append(_f("pipeline_freshness", "backup_check_error", "info", str(e)[:120]))
     return out

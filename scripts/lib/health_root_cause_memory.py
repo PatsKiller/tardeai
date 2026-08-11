@@ -201,8 +201,7 @@ SEED_RECIPES: dict[str, dict[str, Any]] = {
             {
                 "id": "drain_agent_jobs_small",
                 "cmd": (
-                    "flock -n /tmp/tradeai_watchlist_agent_jobs.lock "
-                    "env AGENT_JOBS_LOCK_HELD_EXTERNALLY=1 "
+                    "AGENT_JOBS_LOCK_HELD_EXTERNALLY=1 "
                     ".venv/bin/python scripts/process_watchlist_agent_jobs.py --limit 8"
                 ),
                 "how": "Small drain after circuit cooldown — avoid re-tripping 8-error breaker.",
@@ -210,8 +209,7 @@ SEED_RECIPES: dict[str, dict[str, Any]] = {
             {
                 "id": "drain_agent_jobs_medium",
                 "cmd": (
-                    "flock -n /tmp/tradeai_watchlist_agent_jobs.lock "
-                    "env AGENT_JOBS_LOCK_HELD_EXTERNALLY=1 "
+                    "AGENT_JOBS_LOCK_HELD_EXTERNALLY=1 "
                     ".venv/bin/python scripts/process_watchlist_agent_jobs.py --limit 25"
                 ),
                 "how": "Medium drain once small batch succeeds (circuit healthy).",

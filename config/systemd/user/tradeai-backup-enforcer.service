@@ -1,0 +1,10 @@
+[Unit]
+Description=TradeAI backup enforcer — hard-cap local pg dumps (max 1)
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/backup_enforcer.py
+StandardOutput=append:/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/backup_enforcer.log
+StandardError=append:/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/backup_enforcer.log

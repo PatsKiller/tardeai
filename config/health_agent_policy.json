@@ -169,7 +169,13 @@
     "audit_ledger_coverage_warn",
     "audit_ledger_coverage_fail",
     "audit_ledger_chain_break",
-    "kill_switch_active"
+    "kill_switch_active",
+    "backup_cadence_stale",
+    "db_dump_stale",
+    "db_dump_missing",
+    "backup_local_count_exceeded",
+    "backup_local_bytes_exceeded",
+    "backup_storm_suspected"
   ],
   "auto_remediate": {
     "_comment": "Health agent runs these allowlisted scripts immediately when matching findings fire (no 15m escalation-handler wait). Cooldown prevents repricer loops. Python path rewritten to DEV venv (live stamp has no .venv). never_auto_remediate is hard denylist for risk/credential/ledger.",
@@ -223,9 +229,6 @@
       "snaptrade_stale",
       "youtube_stale",
       "data_source_stale",
-      "backup_cadence_stale",
-      "db_dump_stale",
-      "db_dump_missing",
       "options_proposals_stale",
       "options_zero_proposals",
       "news_stale",

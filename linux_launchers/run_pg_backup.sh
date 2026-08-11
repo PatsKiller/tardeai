@@ -43,7 +43,28 @@ if [ -z "$DB_PASSWORD" ]; then
 fi
 
 BACKUP_FILE="$BACKUP_DIR/${DB_NAME}_$TIMESTAMP.sql.gz"
-PARTIAL_MIN_BYTES=$((500 * 1024 * 1024))  # full dumps are ~1.5–2.2G; <500MB = incomplete
+PARTIAL_MIN_BYTES=$((1500 * 1024 * 1024))  # full dumps ~2–2.5G; <1.5GB = incomplete thrash
+# Policy (2026-08-11): single local dump only — see config/backup_policy.yaml
+# Interval 20h so daily cadence @02:30 is the only writer; health-agent cannot storm.
+MIN_BACKUP_INTERVAL_MINUTES=1200
+MAX_RETAIN_COUNT=1
+PY="${PROJECT_ROOT}/.venv/bin/python"
+ENFORCER="${PROJECT_ROOT}/scripts/backup_enforcer.py"
+
+# ── Dedup: skip if a recent-enough full dump already exists ──
+LAST_DUMP_TS=$(find "$BACKUP_DIR" -name "${DB_NAME}_*.sql.gz" -size +1500M -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | awk '{print $1}')
+if [ -n "$LAST_DUMP_TS" ]; then
+    NOW=$(date +%s)
+    AGE_MIN=$(( (NOW - ${LAST_DUMP_TS%.*}) / 60 ))
+    if [ "$AGE_MIN" -lt "$MIN_BACKUP_INTERVAL_MINUTES" ]; then
+        echo "[$(date)] SKIP: last full dump is ${AGE_MIN}m old (< ${MIN_BACKUP_INTERVAL_MINUTES}m)" >> "$LOG_FILE"
+        # Still enforce single-dump cap (orphans from storms)
+        if [ -x "$PY" ] && [ -f "$ENFORCER" ]; then
+            "$PY" "$ENFORCER" >> "$LOG_FILE" 2>&1 || true
+        fi
+        exit 69
+    fi
+fi
 
 {
     echo "[$(date)] Starting backup of $DB_NAME@$DB_HOST:$DB_PORT..."
@@ -65,14 +86,22 @@ PARTIAL_MIN_BYTES=$((500 * 1024 * 1024))  # full dumps are ~1.5–2.2G; <500MB =
     fi
     echo "[$(date)] Backup complete: $BACKUP_FILE ($SIZE)"
 
-    # Cleanup old backups (>14 days). Tightened 30->14 on 2026-06-15: each daily dump is ~1.1 GB, so a
-    # 30-day window re-bloated to ~33 GB. 14 daily full dumps (~15 GB) + the daily encrypted offsite
-    # (Drive Trade_AI_Backups) is the retention policy. Raise the number here to widen the window.
-    find "$BACKUP_DIR" -name "${DB_NAME}_*.sql.gz" -mtime +14 -delete
-    # Drop known partials (<500MB) so health age uses full dumps only
-    find "$BACKUP_DIR" -name "${DB_NAME}_*.sql.gz" -size -500M -delete 2>/dev/null || true
+    # Hard retention: backup_enforcer keeps newest MAX_RETAIN_COUNT=1 full dump only.
+    # (Bash count loop failed under storm load — enforcer is authoritative.)
+    if [ -x "$PY" ] && [ -f "$ENFORCER" ]; then
+        echo "[$(date)] Enforcing local dump cap (max=$MAX_RETAIN_COUNT)…"
+        "$PY" "$ENFORCER" || true
+    else
+        # Fallback: keep newest 1 only
+        mapfile -t _all < <(ls -t "$BACKUP_DIR"/${DB_NAME}_*.sql.gz 2>/dev/null)
+        for ((i=1; i<${#_all[@]}; i++)); do
+            echo "[$(date)] Retention: removing ${_all[$i]}"
+            rm -f -- "${_all[$i]}"
+        done
+        find "$BACKUP_DIR" -name "${DB_NAME}_*.sql.gz" -size -500M -delete 2>/dev/null || true
+    fi
     REMAINING=$(ls -1 "$BACKUP_DIR"/${DB_NAME}_*.sql.gz 2>/dev/null | wc -l)
-    echo "[$(date)] Retention cleanup done. $REMAINING backups retained."
+    echo "[$(date)] Retention cleanup done. $REMAINING backups retained (max $MAX_RETAIN_COUNT)."
 
     # Refresh cadence summary so collect_backup_health clears without waiting for full pipeline
     SUMMARY_DIR="$PROJECT_ROOT/data/runtime"
@@ -85,7 +114,7 @@ PARTIAL_MIN_BYTES=$((500 * 1024 * 1024))  # full dumps are ~1.5–2.2G; <500MB =
   "dump_file": "$BACKUP_FILE",
   "dump_bytes": $BYTES,
   "exit_code": 0,
-  "note": "run_pg_backup.sh single-flight"
+  "note": "run_pg_backup.sh single-flight max_count=1"
 }
 EOF
 } >> "$LOG_FILE" 2>&1

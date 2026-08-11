@@ -115,6 +115,45 @@ def apply_retention(conn, *, dry_run: bool = False) -> dict:
     actions.append({"table": "hermes_embedding_queue", "action": "purge_failed",
                     "count": failed_count, "threshold_days": failed_cfg})
 
+    # 5. Purge orphan content_embeddings (source row gone) — major disk leak (2026-08-11 audit)
+    # Match rag_health.py: source_id::int join (same cast used in production orphan detection).
+    orphan_cfg = policy.get("content_embeddings", {}).get("orphan_purge_days", 30)
+    cur.execute("""
+        SELECT COUNT(*) FROM content_embeddings ce
+        WHERE ce.source_type = 'news'
+          AND NOT EXISTS (SELECT 1 FROM news_articles na WHERE na.id = ce.source_id::int)
+    """)
+    news_orphans = cur.fetchone()[0]
+    if news_orphans > 0 and not dry_run:
+        cur.execute("""
+            DELETE FROM content_embeddings ce
+            WHERE ce.source_type = 'news'
+              AND NOT EXISTS (SELECT 1 FROM news_articles na WHERE na.id = ce.source_id::int)
+        """)
+        conn.commit()
+    actions.append({"table": "content_embeddings", "action": "purge_news_orphans",
+                    "count": news_orphans, "threshold_days": orphan_cfg})
+
+    cur.execute("""
+        SELECT COUNT(*) FROM content_embeddings ce
+        WHERE ce.source_type = 'hermes_research'
+          AND NOT EXISTS (
+            SELECT 1 FROM hermes_research_intelligence hri WHERE hri.id = ce.source_id::int
+          )
+    """)
+    hermes_orphans = cur.fetchone()[0]
+    if hermes_orphans > 0 and not dry_run:
+        cur.execute("""
+            DELETE FROM content_embeddings ce
+            WHERE ce.source_type = 'hermes_research'
+              AND NOT EXISTS (
+                SELECT 1 FROM hermes_research_intelligence hri WHERE hri.id = ce.source_id::int
+              )
+        """)
+        conn.commit()
+    actions.append({"table": "content_embeddings", "action": "purge_hermes_research_orphans",
+                    "count": hermes_orphans, "threshold_days": orphan_cfg})
+
     cur.close()
     return {
         "mode": "dry-run" if dry_run else "apply",

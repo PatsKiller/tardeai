@@ -1,0 +1,34 @@
+# Backup policy — single source of truth for local + Drive caps.
+# Prevents recurrence of the Aug 2026 backup-storm (~250GB / fill-disk).
+# Enforced by: linux_launchers/run_pg_backup.sh, scripts/backup_enforcer.py,
+#              scripts/backup_secrets_state.sh (db target KEEP), health_agent.
+
+local_pg:
+  dir: "~/db_backups"
+  pattern: "trade_ai_*.sql.gz"
+  max_count: 1                 # hard cap — only one full dump on the live host
+  min_interval_minutes: 1200   # 20h — daily cadence only (portfolio backup @02:30)
+  min_bytes: 1500000000        # full dumps are ~2–2.5G; <1.5GB = incomplete thrash dump
+  max_total_bytes: 5000000000  # alert if directory exceeds ~5GB
+  max_attempts_per_hour: 2     # storm detector
+
+drive_db:
+  folder_id: "1GYbZyM8nTfwuh-h2EsWTxbMpXlEUA6Qi"  # Trade_AI_Backups
+  prefix: "db_backup"
+  max_count: 1                 # single offsite DB copy
+
+drive_other:
+  env_backup: 7
+  data_backup: 4
+  memory_backup: 7
+  ops_backup: 7
+  apps_backup: 2
+
+health:
+  # Do NOT auto-remediate dump findings by re-running pg_dump (storm root cause).
+  # Cadence timer + operator/manual only.
+  auto_remediate_dump_findings: false
+  dump_stale_warn_hours: 30
+  dump_stale_critical_hours: 54
+  disk_warn_free_pct: 20
+  disk_critical_free_pct: 10

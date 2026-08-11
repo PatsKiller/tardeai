@@ -116,7 +116,17 @@ POLICIES = [
     ("iris_run_log",                    "ran_at",           14),
     ("iris_hygiene_log",                "created_at",       14),
     ("iris_hygiene_pending",            "created_at",       14),
+
+    # EPHEMERAL / regenerative streams & caches (2026-08-11 storage audit)
+    # These were top disk consumers and missing from POLICIES — easily re-captured.
+    ("schwab_stream_book",              "captured_at",       7),
+    ("schwab_stream_quotes",            "captured_at",       7),
+    ("hermes_score_history",            "scored_at",        21),
+    ("scope_governor_audit",            "created_at",       30),
+    ("system_health_checks",            "created_at",       30),
+    ("hermes_discovery_audit",          "created_at",       30),
 ]
+# Note: market_quotes already in MEDIUM tier (90d) above.
 
 
 def run(dry_run: bool = False):

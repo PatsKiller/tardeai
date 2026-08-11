@@ -45,7 +45,8 @@ case "$TARGET" in
   # apps — the other applications on this box: OpenClaw config/credentials/agents/memory/
   #        state (NOT the 2.2G workspace) + nyc-dof-auction (which has NO git remote),
   #        minus venvs/caches. Weekly.
-  db)   PREFIX="db_backup"; KEEP=2; SOURCES=(); GLOB="" ;;
+  # KEEP=1 (2026-08-11): single offsite DB copy — multi-GB dumps must not accumulate on Drive
+  db)   PREFIX="db_backup"; KEEP=1; SOURCES=(); GLOB="" ;;
   ops)  PREFIX="ops_backup"; KEEP=7; SOURCES=(); GLOB="" ;;
   apps) PREFIX="apps_backup"; KEEP=2; TAR_BASE="$HOME"
         SOURCES=(".openclaw/credentials" ".openclaw/agents" ".openclaw/memory"
