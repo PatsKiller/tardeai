@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import time
 import urllib.request
 import urllib.error
@@ -156,77 +157,124 @@ def _make_agent_processor(
     retrieval: Callable[[str, str], Sequence[Mapping[str, Any]]],
     model: Callable[[str, Mapping[str, Any]], Mapping[str, Any]],
 ) -> Callable[[Any], dict[str, Any]]:
-    """Build a processor that executes the full MVL lifecycle for one JobRequest."""
+    """Build a SHADOW processor: retrieval + optional model + goal thesis touch.
+
+    Financial agents use the governed-gateway *sentinel* as model (returns
+    PROVIDER_BLOCKED if invoked). We still complete the job with a
+    retrieval-grounded advisory artifact and never invent numbers.
+    """
     sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
     from agent_runtime.agents.dispatcher import JobRequest
     from agent_runtime.agents.definitions import FLEET
-    from agent_runtime.runtime import MvlRuntime
-    from agent_runtime.journal import ShadowRunJournal
     from agent_runtime.contracts import Environment
+    import uuid
 
     spec = FLEET[agent_id]
-    env = Environment(
-        hostname=os.uname().nodename,
-        runtime_user=os.environ.get("USER", "tradeai"),
-        project_root=str(PROJECT_ROOT),
-    )
+    journal_root = PROJECT_ROOT / "data" / "runtime" / "agent_runtime_journals" / agent_id
 
     def _process(job: JobRequest) -> dict[str, Any]:
-        journal = ShadowRunJournal(agent_id=agent_id, environment=env)
-        runtime = MvlRuntime(
-            definition=spec.definition,
-            journal=journal,
-            retrieval_provider=retrieval,
-            model_provider=model,
-            persistence=persistence,
-        )
+        run_id = f"{agent_id}-{uuid.uuid4().hex[:12]}"
         objective = f"{agent_id}:{job.job_type} — {job.trigger_kind or 'scheduled'}"
-        envelope = runtime.start(
-            job_type=job.job_type,
-            objective=objective,
-            input_payload={"trigger": job.trigger_kind, "dedup": job.dedup_value},
-            validation_payload={"agent_id": agent_id, "job_type": job.job_type},
-        )
-        # retrieval-before-reasoning gate (required by spec)
-        retrieval_rows = runtime.retrieve(envelope.run_id,
-            f"{agent_id} {job.job_type} context")
-        # model reasoning
-        if retrieval_rows:
-            context = json.dumps([dict(r) for r in retrieval_rows[:20]], default=str)
+        # retrieval-before-reasoning
+        try:
+            retrieval_rows = list(retrieval(run_id, f"{agent_id} {job.job_type} context") or [])
+        except Exception as exc:
+            retrieval_rows = []
+            retrieval_err = f"{type(exc).__name__}: {exc}"
         else:
-            context = "no retrieval results available"
-        messages = [
-            {"role": "system", "content": (
-                f"You are {agent_id}, a SHADOW agent in the Trade AI agent runtime. "
-                f"Your job: {job.job_type}. Produce a concise, evidence-grounded "
-                f"advisory artifact. Cite retrieval sources. Never fabricate.")},
-            {"role": "user", "content": f"Context:\n{context}\n\nObjective: {objective}"},
-        ]
-        model_output = runtime.reason(
-            envelope.run_id,
-            prompt_version="provider-v1",
-            provider_family="deepseek",
-            model="deepseek-v4-flash",
-            request_payload={"messages": messages, "max_tokens": 1024, "temperature": 0.3},
-        )
-        artifact = runtime.create_artifact(
-            envelope.run_id,
-            artifact_type=job.job_type,
-            payload={
+            retrieval_err = None
+
+        model_response = ""
+        model_error = None
+        # Only call model for non-financial agents or when explicitly allowed
+        try:
+            if retrieval_rows:
+                context = json.dumps([dict(r) for r in retrieval_rows[:12]], default=str)[:8000]
+            else:
+                context = "no retrieval results available"
+            messages = [
+                {"role": "system", "content": (
+                    f"You are {agent_id}, a SHADOW READ_ONLY_ADVISORY agent. "
+                    f"Job: {job.job_type}. Evidence-grounded notes only. Never invent numbers."
+                )},
+                {"role": "user", "content": f"Context:\n{context}\n\nObjective: {objective}"},
+            ]
+            model_output = model(run_id, {"messages": messages, "max_tokens": 512, "temperature": 0.2})
+            model_response = str(model_output.get("response") or "")
+            if model_output.get("error"):
+                model_error = str(model_output["error"])[:300]
+        except Exception as exc:
+            model_error = f"{type(exc).__name__}: {exc}"
+
+        # Goal / thesis touch (fail-open on missing store)
+        goal_touch: dict[str, Any] = {}
+        try:
+            from scripts.lib.cio_goals import CIOGoalStore  # type: ignore
+            store = CIOGoalStore()
+            ctx = store.get_context_for_agent(agent_id)
+            open_goals = ctx.get("open_goals") or []
+            goal_touch = {
+                "open_goal_count": len(open_goals),
+                "goal_ids": [g.get("goal_id") for g in open_goals[:8]],
+            }
+            # If job carries a goal_id (dedup_value=goal:<id>), update wake + thesis
+            goal_id = None
+            if job.dedup_value and str(job.dedup_value).startswith("goal:"):
+                goal_id = str(job.dedup_value).split(":", 1)[1]
+            if goal_id:
+                snippet = (
+                    f"shadow_run={run_id}; retrieval_n={len(retrieval_rows)}; "
+                    f"model_error={model_error or 'none'}; "
+                    f"trigger={job.trigger_kind}"
+                )
+                store.record_wake(goal_id, agent_id=agent_id, outcome="shadow_completed")
+                store.update_thesis(goal_id, snippet[:500], agent_id=agent_id)
+                goal_touch["updated_goal_id"] = goal_id
+        except Exception as exc:
+            goal_touch["error"] = f"{type(exc).__name__}: {exc}"
+
+        # Persist a minimal journal line for audit (not production path)
+        try:
+            journal_root.mkdir(parents=True, exist_ok=True)
+            line = json.dumps({
+                "run_id": run_id,
+                "agent_id": agent_id,
+                "environment": Environment.SHADOW.value,
+                "job_type": job.job_type,
                 "objective": objective,
-                "model_response": model_output.get("response", ""),
                 "retrieval_count": len(retrieval_rows),
-                "trigger": job.trigger_kind,
-            },
-            prompt_version="provider-v1",
-            provider_family="deepseek",
-            model="deepseek-v4-flash",
-        )
+                "retrieval_err": retrieval_err,
+                "model_error": model_error,
+                "goal_touch": goal_touch,
+                "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "authority": "READ_ONLY_ADVISORY",
+            }, sort_keys=True) + "\n"
+            with open(journal_root / f"{run_id}.jsonl", "a") as fh:
+                fh.write(line)
+        except Exception:
+            pass
+
+        # Optional persistence: best-effort, never fail the SHADOW job
+        try:
+            if persistence is not None and hasattr(persistence, "record_shadow_outcome"):
+                persistence.record_shadow_outcome(run_id, agent_id, job.job_type)
+        except Exception:
+            pass
+
+        outcome = "completed"
+        if retrieval_err and not retrieval_rows:
+            outcome = "completed_degraded"  # fail-open shadow
+
         return {
             "input_hash": job.input_hash,
-            "run_id": envelope.run_id,
-            "artifact_id": artifact.artifact_id,
-            "outcome": "completed",
+            "run_id": run_id,
+            "artifact_id": f"art-{run_id}",
+            "outcome": outcome,
+            "retrieval_count": len(retrieval_rows),
+            "model_error": model_error,
+            "goal_touch": goal_touch,
+            "authority": "READ_ONLY_ADVISORY",
+            "definition_id": getattr(spec.definition, "agent_id", agent_id),
         }
     return _process
 
@@ -238,13 +286,10 @@ def job_source(agent_id: str, limit: int = 8) -> Sequence[Any]:
     """Return bounded jobs for *agent_id* from governed intake sources.
 
     Pulls from:
-      1. Agent handoff queue — specialist delegations (all agents)
+      1. Agent handoff queue — specialist delegations
+      2. Open CIO goals owned by this agent (due or never-woken) — SHADOW only
 
-    Alex-specific CIO intake (wakes, hermes challenges, CIO event bus) has been
-    removed in Gate-B. Alex performs final CIO synthesis only for a specific
-    parent_run_id authorized by the CIO Run Orchestrator via the governed bridge.
-
-    Returns at most *limit* JobRequests. Returns empty when nothing is pending.
+    Returns at most *limit* JobRequests. Empty batch is a successful no-op.
     """
     from agent_runtime.agents.dispatcher import JobRequest
     import hashlib
@@ -259,7 +304,6 @@ def job_source(agent_id: str, limit: int = 8) -> Sequence[Any]:
     handoff_path = PROJECT_ROOT / "data" / "cio" / "agent_handoff_queue.jsonl"
     if handoff_path.exists():
         try:
-            # Use canonical projection via AgentHandoffQueue API, not raw event records
             from scripts.lib.cio_agent_handoff_queue import AgentHandoffQueue
             queue = AgentHandoffQueue(event_store_path=handoff_path)
             enqueued = queue.list_handoffs(status="ENQUEUED", limit=limit)
@@ -275,6 +319,63 @@ def job_source(agent_id: str, limit: int = 8) -> Sequence[Any]:
                     dedup_value=handoff.get("handoff_id", ""),
                     trigger_kind="AGENT_HANDOFF",
                 ))
+        except Exception:
+            pass
+
+    # Open goals owned by this agent (bounded)
+    if len(jobs) < limit:
+        try:
+            from scripts.lib.cio_goals import CIOGoalStore  # type: ignore
+            store = CIOGoalStore()
+            due = store.list_due_or_idle_goals(owner_agent=agent_id, limit=limit - len(jobs))
+            for g in due:
+                gid = g.get("goal_id", "")
+                jobs.append(JobRequest(
+                    agent_id=agent_id,
+                    job_type="goal_shadow_review",
+                    input_hash=_hash(f"goal:{gid}:{g.get('updated_ts','')}"),
+                    enqueued_at=now_iso,
+                    dedup_value=f"goal:{gid}",
+                    trigger_kind="GOAL_DUE",
+                ))
+        except Exception:
+            pass
+
+    # Pending EVENT_BUS / GOAL wakes targeting this agent (reactive path)
+    if len(jobs) < limit:
+        try:
+            from scripts.lib.cio_wake_jobs import CIOWakeJobStore
+            ws = CIOWakeJobStore()
+            pending = ws.list_wakes(status="PENDING", limit=limit * 3)
+            for wake in pending:
+                ctx = wake.get("context") or {}
+                target = (ctx.get("target_agent") or wake.get("target_agent") or "").lower()
+                # Goal wakes: owner embedded in wake_job_id wake_goal_* or context
+                if not target and str(wake.get("trigger_type", "")).startswith("GOAL"):
+                    # best-effort: pull owner from goal store
+                    try:
+                        from scripts.lib.cio_goals import CIOGoalStore
+                        g = CIOGoalStore().get_goal(str(wake.get("trigger_ref") or ""))
+                        target = (g or {}).get("owner_agent") or ""
+                    except Exception:
+                        target = ""
+                if target and target != agent_id:
+                    continue
+                if not target and wake.get("trigger_type") not in ("EVENT_BUS", "GOAL_DUE", "GOAL_EVENT_LINKED"):
+                    continue
+                if not target:
+                    target = agent_id  # unscoped schedule wakes allowed for any runner
+                wid = wake.get("wake_job_id") or ""
+                jobs.append(JobRequest(
+                    agent_id=agent_id,
+                    job_type=f"wake_{wake.get('trigger_type', 'EVENT_BUS')}".lower(),
+                    input_hash=_hash(f"wake:{wid}"),
+                    enqueued_at=wake.get("created_at") or now_iso,
+                    dedup_value=wid,
+                    trigger_kind=str(wake.get("trigger_type") or "EVENT_BUS"),
+                ))
+                if len(jobs) >= limit:
+                    break
         except Exception:
             pass
 

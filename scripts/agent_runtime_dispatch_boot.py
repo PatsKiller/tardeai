@@ -114,6 +114,11 @@ def _load_provider_module():
             "canned provider (it must never fabricate evidence); wire a module that "
             "exposes build_providers(agent_id) and job_source(agent_id, limit)."
         )
+    # systemd EnvironmentFile does NOT strip inline "# comments" — operators
+    # historically pasted `module  # note` which became part of the module name.
+    name = name.split("#", 1)[0].strip()
+    if not name:
+        raise DispatchConfigError(f"{PROVIDER_MODULE_ENV} empty after comment strip.")
     return importlib.import_module(name)
 
 
