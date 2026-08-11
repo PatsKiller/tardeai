@@ -24,7 +24,14 @@ non_material_sources:
   - pure_heartbeat_no_change
   - cio_slash_status
 
-situation_notify_telegram: false   # CIO_SITUATION_NOTIFY=1 to enable
+situation_notify_telegram: false   # master; also requires CIO_SITUATION_NOTIFY=1
+# When notify is on, only these situation types go to @tradeai_cio_bot
+notify_situation_types:
+  - S1_POSITION_LIFECYCLE
+  - S2_STOP_GAP
+  - S5_CASH_DEPLOYMENT
+  - S6_CONCENTRATION_OR_DISPOSITION
+  - S8_DEFENSIVE_REGIME
 
 llm:
   enabled: true                    # CIO_LLM_ENRICH=0 to disable

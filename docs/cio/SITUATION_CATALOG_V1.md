@@ -79,3 +79,30 @@ API: `create_plan`, `update_plan`, `get_plan`, `list_open_plans`, `supersede_pla
 ## Acceptance
 
 SpaceX-class mock (basis 210, last 138, trough 108, target 200, lockup+earnings, no stop above BE) must emit **S1 and/or S2** with hold / stop-above-BE / trim advisory options, non-empty evidence_refs, zero invented numbers, zero broker calls.
+
+---
+
+## P2 live Data Broker wiring (2026-08-11)
+
+**Entry points**
+- `scripts/cio_heartbeat.py` → `build_evidence_from_snapshot` → `run_detector_safe`
+- `scripts/cio_reactive_cycle.py` → `build_evidence_from_broker()` (live `get_cio_snapshot`)
+- Manual: `CIOSituationDetector().run(build_evidence_from_broker())`
+
+**Domains used (live)**
+`holdings_detail`, `portfolio`, `cost_basis`, `cash_buying_power`, `risk`, `rotation`, `hermes_research`, `watch`/`watch_intelligence` (often empty), `sectors`, …
+
+**High-value situations on this host**
+- **S5** cash above band (~45% cash / total)
+- **S6** concentration (e.g. SCHD ~17.6% portfolio weight)
+- **S1** deep drawdown / reclaim (e.g. SPCX basis from cost_basis domain)
+
+**Telegram notify** (dedicated `@tradeai_cio_bot` only)
+```bash
+# in ~/.config/tradeai/cio-telegram.env
+CIO_SITUATION_NOTIFY=1
+# requires TELEGRAM_CIO_BOT_TOKEN (SM render) + TELEGRAM_CIO_CHAT_IDS allowlist
+```
+Policy: `config/cio_llm_policy.yaml` `notify_situation_types` (S1/S2/S5/S6/S8).
+
+**Wake traces:** `situation.raised` rows in `data/cio/cio_wake_traces.jsonl`.

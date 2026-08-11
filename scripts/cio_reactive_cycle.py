@@ -186,11 +186,15 @@ def run_once(*, max_wakes: int = 12, dispatch: bool = True) -> dict[str, Any]:
     except Exception as exc:
         out["errors"].append(f"dispatcher:{exc}")
 
-    # Situation detector (Phase 2a) — AFTER event path; fail-soft, SHADOW default
+    # Situation detector (Phase 2a/P2) — AFTER event path; live Data Broker evidence
     try:
-        from scripts.lib.cio_situation_detector import run_detector_safe
-        # Best-effort live evidence not required; empty pack is ok (no plans)
-        out["situations"] = run_detector_safe(evidence={})
+        from scripts.lib.cio_situation_detector import (
+            build_evidence_from_broker,
+            run_detector_safe,
+        )
+        evidence = build_evidence_from_broker()
+        out["situations"] = run_detector_safe(evidence=evidence or {})
+        out["situations_evidence_keys"] = sorted((evidence or {}).keys())
     except Exception as exc:
         out["situations"] = {"errors": [f"situations_hook:{exc}"], "plans_created": []}
 

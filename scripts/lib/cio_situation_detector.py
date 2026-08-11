@@ -116,25 +116,57 @@ def _links(cfg: dict[str, Any], situation_type: str) -> list[str]:
 # ── Evidence helpers (accept mock or live-shaped packs) ─────────────────────
 
 
+def _is_cash_row(row: dict[str, Any]) -> bool:
+    sym = str(row.get("symbol") or "").upper()
+    if row.get("is_cash") is True:
+        return True
+    if sym in ("CASH", "USD", "MMDA", "SPAXX", "VMFXX", "FDRXX", "SGOV"):
+        return True
+    at = str(row.get("asset_type") or row.get("type") or "").lower()
+    return at in ("cash", "money_market", "currency")
+
+
 def extract_holdings(evidence: dict[str, Any]) -> list[dict[str, Any]]:
-    """Normalize holdings from various domain shapes."""
+    """Normalize holdings from various domain shapes (live broker + mock)."""
     hd = evidence.get("holdings_detail") or evidence.get("holdings") or {}
+    rows: list[dict[str, Any]] = []
     if isinstance(hd, list):
-        return hd
-    if isinstance(hd, dict):
-        rows = hd.get("holdings") or hd.get("positions") or hd.get("data") or []
-        if isinstance(rows, list):
-            return rows
-        # map symbol -> row
-        if rows and isinstance(rows, dict):
-            out = []
-            for sym, row in rows.items():
+        rows = [r for r in hd if isinstance(r, dict)]
+    elif isinstance(hd, dict):
+        cand = hd.get("holdings") or hd.get("positions") or hd.get("data") or []
+        if isinstance(cand, list):
+            rows = [r for r in cand if isinstance(r, dict)]
+        elif isinstance(cand, dict):
+            for sym, row in cand.items():
                 if isinstance(row, dict):
                     r = dict(row)
                     r.setdefault("symbol", sym)
-                    out.append(r)
-            return out
-    return []
+                    rows.append(r)
+    # Attach portfolio totals for weight recompute
+    port = evidence.get("portfolio") or {}
+    total = None
+    if isinstance(port, dict):
+        total = _num(port.get("total_value") or port.get("portfolio_value") or port.get("total_mv"))
+    if total is None and isinstance(hd, dict):
+        total = _num(hd.get("total_value"))
+    if total is None and rows:
+        total = sum(float(_num(r.get("market_value")) or 0) for r in rows) or None
+    # Normalize last aliases; do NOT invent avg_cost from total cost_basis
+    # (holdings_detail.cost_basis is often incomplete total — use cost_basis domain).
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        row = dict(r)
+        sym = str(row.get("symbol") or row.get("ticker") or "").upper()
+        if sym:
+            row["symbol"] = sym
+        if row.get("current_price") is not None and row.get("last") is None:
+            row["last"] = row.get("current_price")
+        # portfolio weight: recompute from MV / total
+        mv = _num(row.get("market_value"))
+        if total and total > 0 and mv is not None:
+            row["portfolio_weight_pct"] = (mv / total) * 100.0
+        out.append(row)
+    return out
 
 
 def holding_row(evidence: dict[str, Any], symbol: str) -> Optional[dict[str, Any]]:
@@ -152,24 +184,41 @@ def holding_row(evidence: dict[str, Any], symbol: str) -> Optional[dict[str, Any
 
 
 def get_basis(row: dict[str, Any], evidence: dict[str, Any], symbol: str) -> Optional[float]:
-    for k in ("avg_cost", "average_cost", "cost_basis_per_share", "basis", "avg_cost_basis"):
-        v = _num(row.get(k))
-        if v is not None and v > 0:
-            return v
-    # cost_basis domain map
+    # Prefer verified cost_basis domain (avg_cost_per_share) over holdings total $
     cb = evidence.get("cost_basis") or {}
     if isinstance(cb, dict):
-        by_sym = cb.get("by_symbol") or cb.get("lots") or cb.get("data") or cb
+        positions = cb.get("positions") or cb.get("data") or []
+        if isinstance(positions, list):
+            matches = [
+                p for p in positions
+                if isinstance(p, dict) and str(p.get("symbol") or "").upper() == symbol.upper()
+            ]
+            if matches:
+                num = den = 0.0
+                for p in matches:
+                    sh = _num(p.get("shares") or p.get("quantity")) or 0.0
+                    ac = _num(p.get("avg_cost_per_share") or p.get("avg_cost") or p.get("basis"))
+                    if ac and sh > 0:
+                        num += ac * sh
+                        den += sh
+                if den > 0:
+                    return num / den
+                for k in ("avg_cost_per_share", "avg_cost", "basis", "cost_per_share"):
+                    v = _num(matches[0].get(k))
+                    if v is not None and v > 0:
+                        return v
+        by_sym = cb.get("by_symbol") or cb.get("lots") or {}
         if isinstance(by_sym, dict):
             entry = by_sym.get(symbol.upper()) or by_sym.get(symbol)
             if isinstance(entry, dict):
-                for k in ("avg_cost", "average_cost", "basis", "cost_per_share"):
+                for k in ("avg_cost_per_share", "avg_cost", "average_cost", "basis", "cost_per_share"):
                     v = _num(entry.get(k))
                     if v is not None and v > 0:
                         return v
-            v = _num(entry) if not isinstance(entry, dict) else None
-            if v and v > 0:
-                return v
+    for k in ("avg_cost", "average_cost", "cost_basis_per_share", "basis", "avg_cost_basis", "avg_cost_per_share"):
+        v = _num(row.get(k))
+        if v is not None and v > 0:
+            return v
     return None
 
 
@@ -178,6 +227,14 @@ def get_last(row: dict[str, Any], evidence: dict[str, Any], symbol: str) -> Opti
         v = _num(row.get(k))
         if v is not None and v > 0:
             return v
+    # cost_basis domain current_price
+    cb = evidence.get("cost_basis") or {}
+    if isinstance(cb, dict):
+        for p in cb.get("positions") or []:
+            if isinstance(p, dict) and str(p.get("symbol") or "").upper() == symbol.upper():
+                v = _num(p.get("current_price") or p.get("last"))
+                if v and v > 0:
+                    return v
     q = evidence.get("market_quote") or evidence.get("quotes") or {}
     if isinstance(q, dict):
         entry = q.get(symbol.upper()) or q.get("data", {}).get(symbol.upper()) if isinstance(q.get("data"), dict) else q.get(symbol.upper())
@@ -193,25 +250,41 @@ def get_last(row: dict[str, Any], evidence: dict[str, Any], symbol: str) -> Opti
 
 
 def get_weight_pct(row: dict[str, Any]) -> Optional[float]:
-    for k in ("weight_pct", "portfolio_weight_pct", "weight", "pct_of_portfolio"):
+    """Portfolio weight percent. Prefer recomputed portfolio_weight_pct.
+
+    Important: live broker rows use weight_pct already in percent (e.g. 0.70 = 0.70%,
+    not a 0–1 fraction). Only convert bare ``weight`` when clearly a fraction.
+    """
+    for k in ("portfolio_weight_pct", "pct_of_portfolio"):
         v = _num(row.get(k))
         if v is not None:
-            # if 0-1 fraction, convert
-            if 0 < v <= 1.0:
-                return v * 100.0
             return v
+    v = _num(row.get("weight_pct"))
+    if v is not None:
+        return v  # already percent on this host's holdings_detail
+    v = _num(row.get("weight"))
+    if v is not None:
+        if 0 < v <= 1.0:
+            return v * 100.0
+        return v
     return None
 
 
 def get_stop(row: dict[str, Any], evidence: dict[str, Any], symbol: str) -> Optional[float]:
+    """Return stop price, or None if known-missing. Raises nothing.
+
+    When risk domain only has aggregate stops_active (no per-symbol map),
+    return a sentinel via row metadata: callers should treat unknown as
+    DATA_UNAVAILABLE (not 'no stop').
+    """
     for k in ("stop", "stop_price", "protective_stop", "stop_level"):
         v = _num(row.get(k))
         if v is not None and v > 0:
             return v
     risk = evidence.get("risk_snapshot") or evidence.get("risk") or {}
     if isinstance(risk, dict):
-        stops = risk.get("stops") or risk.get("by_symbol") or risk.get("data") or {}
-        if isinstance(stops, dict):
+        stops = risk.get("stops") or risk.get("by_symbol") or risk.get("positions") or {}
+        if isinstance(stops, dict) and stops:
             entry = stops.get(symbol.upper()) or stops.get(symbol)
             if isinstance(entry, dict):
                 for k in ("stop", "stop_price", "price"):
@@ -221,13 +294,17 @@ def get_stop(row: dict[str, Any], evidence: dict[str, Any], symbol: str) -> Opti
             v = _num(entry) if not isinstance(entry, dict) else None
             if v and v > 0:
                 return v
-        # no_stop list
         no_stop = risk.get("no_stop_symbols") or []
         if symbol.upper() in [str(x).upper() for x in no_stop]:
             return None
+        # Aggregate-only risk domain: stop state unknown (not fireable as no_stop)
+        if risk.get("stops_active") is not None and not stops:
+            row["_stop_unknown"] = True
+            return -1.0  # sentinel: unknown (not missing)
     if row.get("has_stop") is False or row.get("stop_missing") is True:
         return None
-    return _num(row.get("stop_price"))
+    v = _num(row.get("stop_price"))
+    return v if v and v > 0 else None
 
 
 def get_mean_target(evidence: dict[str, Any], symbol: str) -> Optional[float]:
@@ -401,10 +478,15 @@ def eval_s2(evidence: dict[str, Any], cfg: dict[str, Any], symbol: str) -> Optio
     row = holding_row(evidence, symbol)
     if not row:
         return None
+    if _is_cash_row(row):
+        return None
     basis = get_basis(row, evidence, symbol)
     last = get_last(row, evidence, symbol)
     stop = get_stop(row, evidence, symbol)
     if basis is None or last is None:
+        return None
+    # Unknown stop state (aggregate risk only) → do not spam no_stop for every name
+    if stop is not None and stop < 0:
         return None
 
     reasons: list[str] = []
@@ -433,6 +515,9 @@ def eval_s2(evidence: dict[str, Any], cfg: dict[str, Any], symbol: str) -> Optio
         return None
     # Require at least a meaningful gap: no stop, or inconsistent stop
     if "no_stop" not in reasons and "stop_deep_underwater_after_recovery" not in reasons and "last_at_or_above_basis_stop_below_be" not in reasons and "no_stop_above_be_after_reclaim_path" not in reasons and "no_stop_while_materially_underwater" not in reasons:
+        return None
+    # If only bare no_stop without underwater/reclaim context, skip (noise)
+    if reasons == ["no_stop"]:
         return None
 
     refs = [
@@ -516,15 +601,28 @@ def eval_s4(evidence: dict[str, Any], cfg: dict[str, Any]) -> Optional[dict[str,
     holdings = extract_holdings(evidence)
     if not rot and not holdings:
         return None
-    # Fire if explicit material_change flag or non-empty rotation with held sectors
+    # Require explicit material flags — mere presence of sector tables is not enough
     material = False
     if isinstance(rot, dict):
-        material = bool(rot.get("material_change") or rot.get("changed") or rot.get("ladders") or rot.get("sectors"))
-    elif isinstance(rot, list) and rot:
+        material = bool(
+            rot.get("material_change")
+            or rot.get("changed")
+            or rot.get("material")
+            or rot.get("significant_change")
+        )
+        # optional: large transition list with material marker
+        transitions = rot.get("transitions") or []
+        if not material and isinstance(transitions, list) and len(transitions) >= 3 and rot.get("alert"):
+            material = True
+    elif isinstance(rot, list) and rot and isinstance(rot[0], dict) and rot[0].get("material_change"):
         material = True
     if not material:
         return None
-    held_syms = [str(h.get("symbol") or "").upper() for h in holdings if h.get("symbol")]
+    held_syms = [
+        str(h.get("symbol") or "").upper()
+        for h in holdings
+        if h.get("symbol") and not _is_cash_row(h)
+    ]
     refs = [_ref("rotation", rot if isinstance(rot, dict) else {"items": rot}, ["material_change", "ladders"])]
     if holdings:
         refs.append(_ref("holdings_detail", evidence.get("holdings_detail") or {}, ["weights"]))
@@ -547,7 +645,12 @@ def eval_s4(evidence: dict[str, Any], cfg: dict[str, Any]) -> Optional[dict[str,
 def eval_s5(evidence: dict[str, Any], cfg: dict[str, Any]) -> Optional[dict[str, Any]]:
     thr = cfg.get("thresholds") or {}
     cash_band = float(thr.get("cash_pct_band_min") or 15.0)
-    cash_pack = evidence.get("cash") or evidence.get("buying_power") or evidence.get("portfolio") or {}
+    cash_pack = (
+        evidence.get("cash_buying_power")
+        or evidence.get("cash")
+        or evidence.get("buying_power")
+        or {}
+    )
     cash_pct = None
     cash_quality = "OK"
     if isinstance(cash_pack, dict):
@@ -556,7 +659,19 @@ def eval_s5(evidence: dict[str, Any], cfg: dict[str, Any]) -> Optional[dict[str,
             cash_quality = str(cash_pack.get("quality_state"))
         if cash_pack.get("partial"):
             cash_quality = "PARTIAL"
-    # portfolio totals
+        # live domain: total_cash + portfolio.total_value
+        if cash_pct is None:
+            cash = _num(cash_pack.get("total_cash") or cash_pack.get("cash"))
+            port = evidence.get("portfolio") or {}
+            tv = _num(port.get("total_value") or port.get("portfolio_value")) if isinstance(port, dict) else None
+            if tv is None:
+                tv = _num((evidence.get("holdings_detail") or {}).get("total_value"))
+            if tv and cash is not None and tv > 0:
+                cash_pct = cash / tv * 100.0
+                # derived cash is soft
+                if "NOT_verified" in str(cash_pack.get("source") or ""):
+                    cash_quality = "PARTIAL"
+    # portfolio totals fallback
     port = evidence.get("portfolio") or {}
     if cash_pct is None and isinstance(port, dict):
         tv = _num(port.get("total_value") or port.get("portfolio_value"))
@@ -567,8 +682,8 @@ def eval_s5(evidence: dict[str, Any], cfg: dict[str, Any]) -> Optional[dict[str,
         return None
     if cash_pct < cash_band:
         return None
-    # constructive rotation or watch READY cluster
-    rot = evidence.get("rotation_ladders") or evidence.get("sector_momentum") or {}
+    # High cash alone is material for S5; rotation/watch are boosters not hard gates
+    rot = evidence.get("rotation_ladders") or evidence.get("sector_momentum") or evidence.get("rotation") or {}
     constructive = False
     if isinstance(rot, dict) and (rot.get("constructive") or rot.get("material_change") or rot.get("bias") in ("risk_on", "constructive")):
         constructive = True
@@ -582,16 +697,21 @@ def eval_s5(evidence: dict[str, Any], cfg: dict[str, Any]) -> Optional[dict[str,
                     ready_n += 1
     if ready_n >= 2:
         constructive = True
-    if not constructive and not (isinstance(rot, dict) and rot.get("ladders")):
-        # still allow fire if cash high + explicit constructive flag missing but watch cluster
-        if ready_n < 1:
-            return None
+    # Always allow fire when cash well above band (idle capital is the situation)
     refs = [
-        _ref("cash", cash_pack if isinstance(cash_pack, dict) else {"cash_pct": cash_pct}, ["cash_pct"]),
+        _ref(
+            "cash_buying_power",
+            cash_pack if isinstance(cash_pack, dict) else {"cash_pct": cash_pct},
+            ["total_cash", "cash_pct"],
+        ),
+        _ref("portfolio", port if isinstance(port, dict) else {}, ["total_value"]),
     ]
     if cash_quality != "OK":
         refs[0]["quality_state"] = cash_quality
-    summary = f"cash_pct={cash_pct:.2f} (band_min={cash_band}); quality={cash_quality}; watch_ready_go={ready_n}"
+    summary = (
+        f"cash_pct={cash_pct:.2f} (band_min={cash_band}); quality={cash_quality}; "
+        f"watch_ready_go={ready_n}; constructive_rot={constructive}"
+    )
     return {
         "situation_type": SITUATION_CODES["S5"],
         "symbols": [],
@@ -617,37 +737,74 @@ def eval_s6(evidence: dict[str, Any], cfg: dict[str, Any], symbol: str | None = 
     w_thr = float(thr.get("concentration_weight_pct") or 12.0)
     loss_thr = float(thr.get("disposition_loss_pct") or 20.0)
     months_thr = float(thr.get("disposition_hold_months") or 6.0)
-    out = []
+    # Aggregate multi-account rows by symbol for true portfolio concentration
+    by_sym: dict[str, dict[str, Any]] = {}
     for row in extract_holdings(evidence):
+        if _is_cash_row(row):
+            continue
         sym = str(row.get("symbol") or "").upper()
         if not sym:
             continue
         if symbol and sym != symbol.upper():
             continue
+        acc = by_sym.setdefault(sym, {
+            "symbol": sym,
+            "market_value": 0.0,
+            "rows": [],
+            "last": get_last(row, evidence, sym),
+        })
+        acc["market_value"] = float(acc["market_value"] or 0) + float(_num(row.get("market_value")) or 0)
+        acc["rows"].append(row)
+        if acc.get("last") is None:
+            acc["last"] = get_last(row, evidence, sym)
+
+    port = evidence.get("portfolio") or evidence.get("holdings_detail") or {}
+    total = _num(port.get("total_value") or port.get("portfolio_value")) if isinstance(port, dict) else None
+    if total is None:
+        total = sum(float(a["market_value"] or 0) for a in by_sym.values()) or None
+
+    out = []
+    for sym, acc in by_sym.items():
         reasons = []
-        w = get_weight_pct(row)
+        w = None
+        if total and total > 0:
+            w = 100.0 * float(acc["market_value"] or 0) / float(total)
+        else:
+            # fallback first row weight
+            w = get_weight_pct(acc["rows"][0]) if acc["rows"] else None
         if w is not None and w >= w_thr:
             reasons.append(f"weight_{w:.1f}pct")
-        basis = get_basis(row, evidence, sym)
-        last = get_last(row, evidence, sym)
+        basis = get_basis(acc["rows"][0] if acc["rows"] else {}, evidence, sym)
+        last = acc.get("last") or get_last(acc["rows"][0] if acc["rows"] else {}, evidence, sym)
         loss_pct = None
+        hold_m = None
+        # holding months from cost_basis domain
+        cb = evidence.get("cost_basis") or {}
+        if isinstance(cb, dict):
+            for p in cb.get("positions") or []:
+                if isinstance(p, dict) and str(p.get("symbol") or "").upper() == sym:
+                    hm = _num(p.get("holding_months"))
+                    if hm is not None:
+                        hold_m = max(hold_m or 0, hm)
         if basis and last and basis > 0 and last < basis:
             loss_pct = (basis - last) / basis * 100.0
-            hold_m = _num(row.get("holding_months") or row.get("hold_months") or row.get("months_held"))
             if loss_pct >= loss_thr and hold_m is not None and hold_m >= months_thr:
                 reasons.append(f"disposition_loss_{loss_pct:.1f}pct_hold_{hold_m}m")
-            elif loss_pct >= loss_thr and row.get("disposition_flag"):
+            elif loss_pct >= loss_thr and any(r.get("disposition_flag") for r in acc["rows"]):
                 reasons.append(f"disposition_flag_loss_{loss_pct:.1f}pct")
-        if row.get("disposition_flag") and "disposition" not in " ".join(reasons):
+        if any(r.get("disposition_flag") for r in acc["rows"]) and "disposition" not in " ".join(reasons):
             reasons.append("disposition_flag")
         if not reasons:
             continue
-        refs = [_ref("holdings_detail", row, ["weight_pct", "basis", "last", "holding_months"])]
+        refs = [
+            _ref("holdings_detail", acc["rows"][0], ["market_value", "portfolio_weight_pct", "last"]),
+            _ref("cost_basis", evidence.get("cost_basis") or {}, ["avg_cost_per_share", "holding_months"]),
+        ]
         out.append({
             "situation_type": SITUATION_CODES["S6"],
             "symbols": [sym],
             "title": f"S6 CONCENTRATION_OR_DISPOSITION — {sym}",
-            "summary": f"reasons={','.join(reasons)}; weight={w}; loss_pct={loss_pct}",
+            "summary": f"reasons={','.join(reasons)}; weight={w}; loss_pct={loss_pct}; mv={acc.get('market_value')}",
             "options": [
                 {"id": "trim", "label": "Trim concentration", "pros": "Reduce single-name risk", "cons": "Tax/feel"},
                 {"id": "hold_with_thesis", "label": "Hold with explicit thesis", "pros": "Conviction", "cons": "Bias risk"},
@@ -977,11 +1134,36 @@ class CIOSituationDetector:
             out["errors"].append(f"collect:{type(exc).__name__}:{exc}")
             return out
         out["candidates"] = len(cands)
-        for c in cands:
+        # Prefer high-value types first for cap (cash/concentration/lifecycle before mass stop noise)
+        priority = {
+            "S1_POSITION_LIFECYCLE": 0,
+            "S5_CASH_DEPLOYMENT": 1,
+            "S6_CONCENTRATION_OR_DISPOSITION": 2,
+            "S2_STOP_GAP": 3,
+            "S8_DEFENSIVE_REGIME": 4,
+            "S3_REENTRY_CANDIDATE": 5,
+            "S7_WATCH_PROMOTION": 6,
+            "S4_SECTOR_ROTATION": 7,
+        }
+        cands_sorted = sorted(
+            cands,
+            key=lambda c: (priority.get(str(c.get("situation_type")), 9), str(c.get("symbols"))),
+        )
+        max_plans = int(self.cfg.get("max_plans_per_pass") or 8)
+        for c in cands_sorted:
+            if len(out["plans_created"]) >= max_plans:
+                out["dedup_skipped"] += 1
+                continue
             try:
                 plan = self.persist_candidate(c)
                 if plan:
                     out["plans_created"].append(plan.get("plan_id"))
+                    out.setdefault("plans_detail", []).append({
+                        "plan_id": plan.get("plan_id"),
+                        "situation_type": plan.get("situation_type"),
+                        "symbols": plan.get("symbols"),
+                        "status": plan.get("status"),
+                    })
                 else:
                     out["dedup_skipped"] += 1
             except Exception as exc:
@@ -990,19 +1172,48 @@ class CIOSituationDetector:
 
 
 def build_evidence_from_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
-    """Map heartbeat-style snapshot domains into detector evidence (best-effort)."""
+    """Map heartbeat/Data Broker snapshot domains into detector evidence.
+
+    Live ``get_cio_snapshot`` domains are flat dicts with ``state`` + fields
+    (not always nested under ``data``). Preserve full domain payloads.
+    """
     domains = snapshot.get("domains") or snapshot
     evidence: dict[str, Any] = {}
     if isinstance(domains, dict):
         for k, v in domains.items():
-            if isinstance(v, dict) and "data" in v:
-                evidence[k] = v.get("data") if v.get("data") is not None else v
+            if isinstance(v, dict) and "data" in v and v.get("data") is not None:
+                # Nested envelope: prefer data but keep state/as_of on sibling keys
+                payload = dict(v.get("data") or {})
+                if isinstance(payload, dict):
+                    for sk in ("state", "as_of", "quality_state", "source"):
+                        if sk in v and sk not in payload:
+                            payload[sk] = v[sk]
+                    evidence[k] = payload
+                else:
+                    evidence[k] = v.get("data")
             else:
                 evidence[k] = v
-    # aliases
+    # aliases for detectors
     if "holdings_detail" not in evidence and "portfolio" in evidence:
         evidence.setdefault("holdings_detail", evidence.get("portfolio"))
+    if "risk_snapshot" not in evidence and "risk" in evidence:
+        evidence["risk_snapshot"] = evidence.get("risk")
+    if "cash" not in evidence and "cash_buying_power" in evidence:
+        evidence["cash"] = evidence.get("cash_buying_power")
     return evidence
+
+
+def build_evidence_from_broker() -> dict[str, Any]:
+    """Pull live CIO Data Broker snapshot → detector evidence. Fail-soft empty."""
+    try:
+        try:
+            from lib.data_broker.cio_portfolio import get_cio_snapshot
+        except Exception:
+            from scripts.lib.data_broker.cio_portfolio import get_cio_snapshot  # type: ignore
+        snap = get_cio_snapshot(max_age_s=0)
+        return build_evidence_from_snapshot(snap if isinstance(snap, dict) else {})
+    except Exception:
+        return {}
 
 
 def run_detector_safe(

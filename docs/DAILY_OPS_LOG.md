@@ -1,4 +1,14 @@
 
+## 2026-08-11 — P2 real Data Broker situations → CIO Telegram
+
+- Fixed live evidence shapes: portfolio weights, cost_basis.avg_cost_per_share, cash_buying_power
+- Suppressed S2 no_stop spam when risk domain is aggregate-only; tightened S4 material flag
+- Reactive cycle uses build_evidence_from_broker() (no longer empty evidence)
+- Enabled CIO_SITUATION_NOTIFY=1 for @tradeai_cio_bot; notified S5 cash + S1 SPCX/XLB
+- Traces: situation.raised with plan_id; unit tradeai-cio-telegram active
+- READ_ONLY; OpenClaw main bot untouched
+
+
 ## 2026-08-11 — P1 E2E converse soak (@tradeai_cio_bot)
 
 Scripted soak via shared `cio_converse_core` (same path as unit; outbound captured).

@@ -4,16 +4,20 @@
 
 enabled: true
 shadow: true
-notify: false          # CIO_SITUATIONS_NOTIFY=1 to allow notify path later
+# Notify uses dedicated CIO bot (@tradeai_cio_bot) when CIO_SITUATION_NOTIFY=1
+# (also requires situation_notify_telegram or env). Default off in yaml; enable via env.
+notify: false
 dedup_hours: 6
 detector_version: "situation-catalog-v1.0.0"
+# Cap plans created per detector pass (noise control on multi-account books)
+max_plans_per_pass: 8
 
 thresholds:
   basis_drawdown_pct: 25.0       # S1 deep drawdown from basis
   partial_recovery_pct: 15.0     # S1: recovery from trough toward basis (of drawdown span)
   reclaim_eps_pct: 1.0           # S1: last within 1% of basis = reclaim zone
   cash_pct_band_min: 15.0        # S5: cash share of portfolio above this
-  concentration_weight_pct: 12.0 # S6: single-name weight
+  concentration_weight_pct: 12.0 # S6: single-name portfolio weight (not account-scoped)
   disposition_loss_pct: 20.0     # S6 Rule-1 class loss
   disposition_hold_months: 6.0   # S6 long-held
   sector_weight_delta_pp: 2.0    # S4 material rotation vs holdings (placeholder)

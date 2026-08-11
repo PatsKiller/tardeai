@@ -763,18 +763,39 @@ def _patch_plan_meta(store: Any, plan_id: str, meta: dict[str, Any]) -> None:
 
 
 def maybe_notify_plan(plan: dict[str, Any], policy: Optional[dict[str, Any]] = None) -> bool:
-    """Optional Telegram notify for High/Critical situations. Default off."""
+    """Optional Telegram notify via dedicated CIO bot. Default off.
+
+    Requires CIO_SITUATION_NOTIFY=1 (or policy situation_notify_telegram) and
+    TELEGRAM_CIO_BOT_TOKEN + allowlist. Never uses OpenClaw main bot.
+    """
     pol = policy or load_llm_policy()
-    if not pol.get("situation_notify_telegram"):
+    env_on = os.environ.get("CIO_SITUATION_NOTIFY", "0").strip().lower() in ("1", "true", "yes", "on")
+    # Fail-closed: need env OR policy flag (prefer env for host ops)
+    if not env_on and not pol.get("situation_notify_telegram"):
         return False
-    if os.environ.get("CIO_SITUATION_NOTIFY", "0").strip() not in ("1", "true", "yes", "on"):
-        return False
-    # only proposed plans
+    # only draft/proposed plans
     if plan.get("status") not in ("proposed", "draft"):
         return False
+    # Prefer high-value situation types for notify (S1/S2/S5/S6/S8)
+    st = str(plan.get("situation_type") or "")
+    allow_types = set(pol.get("notify_situation_types") or [
+        "S1_POSITION_LIFECYCLE",
+        "S2_STOP_GAP",
+        "S5_CASH_DEPLOYMENT",
+        "S6_CONCENTRATION_OR_DISPOSITION",
+        "S8_DEFENSIVE_REGIME",
+        "S0_OPERATOR_CONVERSE",
+    ])
+    if st and allow_types and st not in allow_types:
+        return False
     try:
-        from scripts.lib.cio_telegram_converse import format_structured_reply, send_cio_message, allowlist_chat_ids
-        text = format_structured_reply(
+        from scripts.lib.cio_telegram_converse import (
+            allowlist_chat_ids,
+            format_structured_reply,
+            send_cio_message,
+        )
+        header = f"📍 Situation {st or 'plan'}\n"
+        text = header + format_structured_reply(
             summary=plan.get("summary") or plan.get("title") or "",
             evidence_refs=plan.get("evidence_refs"),
             options=plan.get("options"),
@@ -786,6 +807,8 @@ def maybe_notify_plan(plan: dict[str, Any], policy: Optional[dict[str, Any]] = N
             deep_links=plan.get("cc_deep_links"),
         )
         chats = allowlist_chat_ids()
+        if not chats:
+            return False
         ok_any = False
         for cid in chats:
             r = send_cio_message(cid, text)
