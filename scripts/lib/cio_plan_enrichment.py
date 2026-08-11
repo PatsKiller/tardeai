@@ -419,9 +419,30 @@ def _log_enrich(row: dict[str, Any], path: Path | None = None) -> None:
         pass
 
 
+def _thesis_block_for_prompt(pack: dict[str, Any], *, max_bullets: int = 4) -> str:
+    """Compact desk thesis so the model must shape the rec around stance."""
+    th = pack.get("desk_thesis") or {}
+    if not isinstance(th, dict) or not th:
+        pin = pack.get("thesis_version") or ""
+        return f"thesis={pin or 'none'} stance=unknown"
+    pin = th.get("thesis_version") or pack.get("thesis_version") or ""
+    stance = th.get("stance") or ""
+    summary = " ".join(str(th.get("summary") or "").split())[:220]
+    bullets = th.get("bullets") or []
+    b_s = "; ".join(str(b).strip() for b in bullets[:max_bullets] if str(b).strip())[:280]
+    linked = th.get("linked_symbols") or []
+    link_s = ",".join(str(x) for x in linked[:8])
+    return (
+        f"thesis={pin} stance={stance}\n"
+        f"thesis_summary={summary}\n"
+        f"thesis_bullets={b_s}\n"
+        f"thesis_symbols={link_s}"
+    )
+
+
 def compact_user_prompt(pack: dict[str, Any], *, minimal: bool = False) -> str:
     """Compact evidence for Flash — large JSON packs burn max_tokens on reasoning
-    and return empty content. Keep facts + schema only.
+    and return empty content. Keep facts + desk thesis + schema only.
 
     minimal=True: ultra-short retry body after empty_content / non_json.
     """
@@ -443,6 +464,7 @@ def compact_user_prompt(pack: dict[str, Any], *, minimal: bool = False) -> str:
     existing_rec = _strip_noise(str(pack.get("existing_recommendation") or ""))[:160]
     fire = pack.get("fire_reasons") or []
     fire_s = ",".join(str(x) for x in fire[:4])
+    thesis = _thesis_block_for_prompt(pack, max_bullets=3 if minimal else 4)
 
     # Prefer structured numeric fields from evidence refs (not date fragments)
     key_nums: list[str] = []
@@ -485,22 +507,32 @@ def compact_user_prompt(pack: dict[str, Any], *, minimal: bool = False) -> str:
         else:
             opt_ids.append(str(o))
 
+    task = (
+        "Write operator-grade advisory: summary states WHY this matters under desk thesis; "
+        "recommendation must name the chosen option_id AND cite thesis stance in one clause; "
+        "options pros/cons contrast thesis alignment vs drift; no orders/stops."
+    )
+
     if minimal:
         return (
             f"{pack.get('situation_type')} symbols={pack.get('symbols')} fire={fire_s}\n"
+            f"{thesis}\n"
             f"facts={existing[:160]}\n"
             f"numbers={allowed}\n"
             f"option_ids={opt_ids}\n"
+            f"{task}\n"
             'Reply with ONLY JSON: {"summary":"...","recommendation":"...","options":'
             '[{"id":"...","label":"...","pros":"...","cons":"..."}],"risks":["..."],'
             '"cited_fields":[],"revisit_hint":"24h"}\n'
-            "pros/cons must be short strings not arrays. Numbers only from list."
+            "pros/cons short strings. Numbers only from list."
         )
     return (
         f"{pack.get('situation_type')} {pack.get('symbols')} fire={fire_s}\n"
+        f"{thesis}\n"
         f"{existing}\n"
         f"numbers={allowed}\n"
         f"option_ids={opt_ids}\n"
+        f"{task}\n"
         "JSON only {summary,recommendation,options[{id,label,pros,cons}],risks,cited_fields,revisit_hint}\n"
         "pros and cons are short strings. Use only listed numbers. READ_ONLY no orders."
     )
@@ -764,13 +796,19 @@ def enrich_plan(
         )
         # Prefer Flash for situation plans (compact JSON). Pro only when policy lists source.
         system = (
-            "You are Alex, CIO advisory (READ_ONLY_ADVISORY). "
+            "You are Alex, Chief Investment Officer for Trade AI (READ_ONLY_ADVISORY). "
+            "Think like a senior desk partner: decisive, evidence-grounded, thesis-aware. "
             "Output ONE JSON object only — first character must be '{'. "
             "No markdown fences, no chain-of-thought, no prose outside JSON. "
             "Use ONLY numbers listed in the user numbers= line. "
-            "Missing → DATA_UNAVAILABLE. Never invent prices/weights. "
-            "Preserve option ids when provided. Be specific and operator-useful. "
-            "options[].pros and options[].cons must be short strings (not arrays)."
+            "Missing → DATA_UNAVAILABLE. Never invent prices/weights/sizes. "
+            "Desk thesis (stance + bullets) is binding context: recommendation MUST "
+            "align with stance (e.g. defensive_observe → observe/stage, not force deploy) "
+            "and name which thesis bullet it applies. "
+            "Preserve option ids. options[].pros and options[].cons are short strings. "
+            "summary: 2–4 sentences (situation + materiality + thesis fit). "
+            "recommendation: one clear action path (option id + why + revisit cue). "
+            "Never invent orders, stops, or broker steps."
         )
         # Compact user prompt — full indented JSON packs cause empty Flash content
         # (all completion tokens spent as reasoning_tokens).

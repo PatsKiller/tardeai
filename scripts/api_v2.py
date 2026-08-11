@@ -39761,20 +39761,53 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
 
-    # ── /v3/cio — CIO Command Center dashboard ────────────────────────────
-    if method == "GET" and base_path.startswith("/api/v3/cio"):
+    # ── /v3/cio — CIO Command Center dashboard + plan deep links ──────────
+    if base_path.startswith("/api/v3/cio"):
         try:
             import api_v3_cio as _cio
             p = base_path[len("/api/v3/cio"):].strip("/")
-            if p in ("", "dashboard"):
-                return 200, _cio.get_cio_dashboard()
-            if p == "snapshot":
-                return 200, _cio.get_cio_snapshot()
-            if p == "actions":
-                return 200, _cio.get_cio_actions()
-            if p == "delegation":
-                return 200, _cio.get_cio_delegation()
-            return 404, {"ok": False, "error": f"unknown_cio_path: {p}"}
+            if method == "GET":
+                if p in ("", "dashboard"):
+                    return 200, _cio.get_cio_dashboard()
+                if p == "snapshot":
+                    return 200, _cio.get_cio_snapshot()
+                if p == "actions":
+                    return 200, _cio.get_cio_actions()
+                if p == "delegation":
+                    return 200, _cio.get_cio_delegation()
+                if p == "thesis":
+                    return 200, _cio.get_cio_thesis()
+                if p == "plans":
+                    lim = 30
+                    st = None
+                    if isinstance(query, dict):
+                        if query.get("limit"):
+                            try:
+                                lim = int(query.get("limit")[0] if isinstance(query.get("limit"), list) else query.get("limit"))
+                            except Exception:
+                                lim = 30
+                        if query.get("situation_type"):
+                            st = str(query.get("situation_type")[0] if isinstance(query.get("situation_type"), list) else query.get("situation_type"))
+                    return 200, _cio.get_cio_plans(limit=lim, situation_type=st)
+                if p.startswith("plans/"):
+                    pid = p[len("plans/"):].strip("/").split("/")[0]
+                    if not pid:
+                        return 400, {"ok": False, "error": "plan_id required"}
+                    res = _cio.get_cio_plan(pid)
+                    return (200 if res.get("ok") else 404), res
+                return 404, {"ok": False, "error": f"unknown_cio_path: {p}"}
+            if method == "POST":
+                # POST /api/v3/cio/plans/{id}/disposition  — status only (READ_ONLY)
+                if p.startswith("plans/") and p.endswith("/disposition"):
+                    mid = p[len("plans/"):]
+                    pid = mid[: -len("/disposition")].strip("/")
+                    if not pid:
+                        return 400, {"ok": False, "error": "plan_id required"}
+                    res = _cio.post_plan_disposition(pid, body or {})
+                    code = 200 if res.get("ok") else (404 if res.get("error") == "plan_not_found" else 400)
+                    return code, res
+                return 404, {"ok": False, "error": f"unknown_cio_post: {p}"}
+            return 405, {"ok": False, "error": "method_not_allowed"}
         except Exception as e:
             return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
 

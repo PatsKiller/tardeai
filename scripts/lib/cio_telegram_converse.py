@@ -71,17 +71,35 @@ def wakes_per_hour() -> int:
 
 
 def cc_base() -> str:
-    """Command Center origin for deep links (no trailing slash)."""
+    """Command Center origin for deep links (no trailing slash).
+
+    Prefer explicit COMMAND_CENTER_BASE_URL / TRADEAI_CC_BASE_URL, else the same
+    Tailscale public base used by all Telegram notifications
+    (https://{TAILSCALE_HOSTNAME} via notification_url_builder). Never default
+    to LAN-only 192.168.50.16 — phones on the tailnet cannot open those.
+    """
     raw = (
         _env("COMMAND_CENTER_BASE_URL")
         or _env("TRADEAI_CC_BASE_URL")
         or _env("CC_BASE_URL")
         or _env("TRADEAI_PUBLIC_CC_URL")
+        or _env("NOTIFICATION_PUBLIC_BASE_URL")
     )
-    # Light LAN default for this host if unset (portfolio_server :7777)
     if not raw:
-        raw = _env("TRADEAI_CC_DEFAULT_BASE") or "http://192.168.50.16:7777"
-    return raw.rstrip("/")
+        try:
+            from scripts.notification_url_builder import get_public_base_url
+            raw = get_public_base_url()
+        except Exception:
+            try:
+                from notification_url_builder import get_public_base_url  # type: ignore
+                raw = get_public_base_url()
+            except Exception:
+                host = (
+                    _env("TAILSCALE_HOSTNAME")
+                    or "ms01-openclaw.tail163d14.ts.net"
+                )
+                raw = f"https://{host}"
+    return str(raw).rstrip("/")
 
 
 def active_thesis_version() -> Optional[str]:
@@ -394,6 +412,29 @@ def format_structured_reply(
             title += f" · {sym_s}"
         lines.append(title)
     lines.append("────────────────")
+    # Thesis drives the rec — surface stance, not just a footer pin
+    thesis_stance = ""
+    thesis_summary = ""
+    try:
+        from scripts.lib.cio_theses import CIOThesisStore
+        rec = CIOThesisStore().get_by_pin(str(pin)) if pin else None
+        if rec:
+            thesis_stance = str(rec.get("stance") or "")
+            thesis_summary = str(rec.get("summary") or "")[:160]
+    except Exception:
+        try:
+            from lib.cio_theses import CIOThesisStore  # type: ignore
+            rec = CIOThesisStore().get_by_pin(str(pin)) if pin else None
+            if rec:
+                thesis_stance = str(rec.get("stance") or "")
+                thesis_summary = str(rec.get("summary") or "")[:160]
+        except Exception:
+            pass
+    if pin and (thesis_stance or thesis_summary):
+        lines.append(f"🎯 *Desk thesis* `{pin}`" + (f" · {thesis_stance}" if thesis_stance else ""))
+        if thesis_summary:
+            lines.append(_clean(thesis_summary))
+        lines.append("")
     lines.append("📌 *What*")
     lines.append(_clean(summary) or "(no summary)")
     if options:

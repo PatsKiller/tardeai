@@ -33,6 +33,7 @@ import ConsumptionHub from './pages/ConsumptionHub'
 import SchwabReauthHub from './pages/SchwabReauthHub'
 import SchwabReauthBanner from './components/SchwabReauthBanner'
 import AdvisoryDeskHub from './pages/AdvisoryDeskHub'
+import CioHub from './pages/CioHub'
 
 
 declare const __ANALYST_UI_VERSION__: string
@@ -184,6 +185,7 @@ function Shell() {
             <Route path="advisor-changes" element={<Navigate to="/rotation?tab=advisor-guide" replace />} />
             <Route path="rec-intel" element={<RecommendationIntelligence />} />
             <Route path="advisory" element={<AdvisoryDeskHub onDrill={setDrill} />} />
+            <Route path="cio" element={<CioHub onDrill={setDrill} />} />
             <Route path="health" element={<HealthHub onDrill={setDrill} />} />
             <Route path="consumption" element={<ConsumptionHub />} />
             <Route path="system" element={<SystemHub onDrill={setDrill} />} />
