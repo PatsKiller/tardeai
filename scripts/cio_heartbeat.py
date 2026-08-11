@@ -431,6 +431,27 @@ def run_heartbeat(interval_minutes: int = 30, max_actions: int = 5) -> dict[str,
               f"{type(e).__name__}: {e}")
 
     elapsed = time.time() - t0
+    elapsed_ms = int(elapsed * 1000)
+
+    # P5: non-material heartbeat no-op → skipped_non_material trace (fail-soft)
+    try:
+        plans_n = len(situations_result.get("plans_created") or [])
+        material = bool(changes) or bool(behavioral_findings) or plans_n > 0
+        if not material:
+            try:
+                from lib.cio_wake_traces import emit_closed_trace
+            except Exception:
+                from scripts.lib.cio_wake_traces import emit_closed_trace  # type: ignore
+            emit_closed_trace(
+                wake_id=f"hb_{snapshot.get('snapshot_id') or int(time.time())}",
+                source="heartbeat",
+                llm="skipped_non_material",
+                outcome="ok",
+                agent_id="alex",
+                duration_ms=elapsed_ms,
+            )
+    except Exception:
+        pass
 
     summary = {
         "heartbeat_id": snapshot.get("snapshot_id"),
@@ -444,7 +465,7 @@ def run_heartbeat(interval_minutes: int = 30, max_actions: int = 5) -> dict[str,
         "behavioral_findings": len(behavioral_findings),
         "events_emitted": events_emitted,
         "situations": situations_result,
-        "elapsed_ms": int(elapsed * 1000),
+        "elapsed_ms": elapsed_ms,
         "mode": "shadow",
         "model_calls": 0,
         "provider_cost": 0.0,

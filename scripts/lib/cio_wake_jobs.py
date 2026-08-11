@@ -346,6 +346,16 @@ class CIOWakeJobStore:
         )
 
         self._append_event(event)
+        # P5: open lightweight wake trace (fail-soft, never blocks enqueue)
+        try:
+            from scripts.lib.cio_wake_traces import safe_open_from_wake_payload
+            safe_open_from_wake_payload(payload)
+        except Exception:
+            try:
+                from lib.cio_wake_traces import safe_open_from_wake_payload  # type: ignore
+                safe_open_from_wake_payload(payload)
+            except Exception:
+                pass
         return event
 
     def claim(

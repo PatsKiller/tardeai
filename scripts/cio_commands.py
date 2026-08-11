@@ -434,6 +434,19 @@ def cmd_plan() -> str:
     )
 
 
+def cmd_traces(n: int = 10, llm: str | None = None, plan_id: str | None = None) -> str:
+    """List recent wake traces — deterministic, zero LLM (P5)."""
+    try:
+        from lib.cio_wake_traces import cmd_traces_text
+        return cmd_traces_text(n, plan_id=plan_id, llm=llm)
+    except Exception:
+        try:
+            from scripts.lib.cio_wake_traces import cmd_traces_text
+            return cmd_traces_text(n, plan_id=plan_id, llm=llm)
+        except Exception as e:
+            return f"❌ traces unavailable: {e}"
+
+
 HELP = """🤖 CIO Commands:
   /cio                 — Full CIO dashboard
   /cio actions         — Open action items
@@ -442,6 +455,7 @@ HELP = """🤖 CIO Commands:
   /cio risk            — Risk overview
   /cio plans           — Open advisory plans
   /cio plan <id>       — Show one plan
+  /cio traces [n]      — Recent wake traces (why wake / llm path)
   /cio action <id>     — Detail on one action (coming soon)
   /cio ack <id>        — Acknowledge an action
   /cio defer <id> [date] — Defer an action (optionally until date)
@@ -475,6 +489,18 @@ def main() -> int:
         print(cmd_plans())
     elif subcommand == "plan":
         print(cmd_plan())
+    elif subcommand == "traces":
+        n = 10
+        llm_f = None
+        plan_f = None
+        for tok in sys.argv[2:]:
+            if tok.isdigit():
+                n = max(1, min(int(tok), 50))
+            elif tok.startswith("llm="):
+                llm_f = tok.split("=", 1)[1]
+            elif tok.startswith("plan="):
+                plan_f = tok.split("=", 1)[1]
+        print(cmd_traces(n=n, llm=llm_f, plan_id=plan_f))
     elif subcommand == "action" and len(sys.argv) > 2:
         print(f"📋 Action detail for {sys.argv[2]} — coming soon")
     else:

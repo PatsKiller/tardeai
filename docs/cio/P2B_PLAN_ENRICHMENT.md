@@ -55,3 +55,8 @@ Not an autonomous trader. No orders/stops/2FA. Heartbeat remains the safety net.
 ```bash
 .venv/bin/python -m pytest tests/test_cio_plan_enrichment_p2b.py -q
 ```
+
+## Wake traces (P5)
+
+Enrichment sets `llm=` on the wake trace (`blocked_cap`, `invoked`, `template`, …).  
+See [WAKE_TRACES_P5.md](WAKE_TRACES_P5.md) and `data/cio/cio_wake_traces.jsonl`.

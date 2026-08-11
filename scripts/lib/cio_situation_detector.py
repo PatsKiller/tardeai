@@ -908,6 +908,30 @@ class CIOSituationDetector:
             extra={"fire_reasons": cand.get("fire_reasons") or [], "shadow": bool(self.cfg.get("shadow", True))},
         )
         self._emit_situation_raised(plan)
+        # P5: open situation wake trace (synthetic wake_id; fail-soft)
+        sit_wake_id = f"situation:{st}:{','.join(syms)[:40]}"
+        try:
+            from scripts.lib.cio_wake_traces import open_trace
+            open_trace(
+                wake_id=sit_wake_id,
+                source="situation.raised",
+                situation_type=st,
+                agent_id=owner or "alex",
+                plan_id=plan.get("plan_id"),
+                thesis_version=plan.get("thesis_version"),
+            )
+        except Exception:
+            try:
+                from lib.cio_wake_traces import open_trace  # type: ignore
+                open_trace(
+                    wake_id=sit_wake_id,
+                    source="situation.raised",
+                    situation_type=st,
+                    agent_id=owner or "alex",
+                    plan_id=plan.get("plan_id"),
+                )
+            except Exception:
+                pass
         # P2b: enrich narrative (LLM under cap, else template)
         # In tests, set CIO_LLM_ENRICH=0 for speed; still applies template path.
         try:
@@ -915,7 +939,7 @@ class CIOSituationDetector:
             enr = enrich_plan(
                 plan,
                 source=st,
-                wake_id=f"situation:{st}:{','.join(syms)[:40]}",
+                wake_id=sit_wake_id,
                 plan_store=self.plans,
                 force_template=os.environ.get("CIO_LLM_ENRICH", "1").strip().lower()
                 in ("0", "false", "off", "no"),

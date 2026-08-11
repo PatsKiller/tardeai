@@ -46,6 +46,7 @@ Or one-shot poll:
 |---|---|
 | `/cio`, `/cio portfolio`, `/cio actions`, `/cio risk`, `/cio hermes` | Deterministic status — **no LLM** |
 | `/cio plans` / `/cio plan <id>` | List/show advisory plans |
+| `/cio traces [n]` | Wake traces — why wake / llm path (zero LLM; see [WAKE_TRACES_P5.md](WAKE_TRACES_P5.md)) |
 | `/cio ack\|rate\|defer\|done\|reject` | Same ledger dispositions as before |
 | Free-text | `operator.message` on bus → wake (Alex) → structured reply + draft/proposed plan |
 | Reply-to bot plan message | Continues **same `plan_id`** |

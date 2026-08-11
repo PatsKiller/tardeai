@@ -571,6 +571,24 @@ def handle_cio_slash(text: str) -> str:
         if sub in ("status", "actions", "portfolio", "hermes", "risk"):
             if sub in cc.COMMANDS:
                 return cc.COMMANDS[sub]()
+        if sub == "traces":
+            n = 10
+            llm_f = None
+            plan_f = None
+            for i, tok in enumerate(parts[1:], start=1):
+                if tok.isdigit():
+                    n = max(1, min(int(tok), 50))
+                elif tok.startswith("llm="):
+                    llm_f = tok.split("=", 1)[1]
+                elif tok.startswith("plan="):
+                    plan_f = tok.split("=", 1)[1]
+            if hasattr(cc, "cmd_traces"):
+                return cc.cmd_traces(n=n, llm=llm_f, plan_id=plan_f)
+            try:
+                from scripts.lib.cio_wake_traces import cmd_traces_text
+                return cmd_traces_text(n, llm=llm_f, plan_id=plan_f)
+            except Exception as e:
+                return f"traces unavailable: {e}"
         return f"Unknown /cio command: {sub}\nUse /cio help"
     finally:
         sys.argv = old
@@ -807,6 +825,22 @@ def process_telegram_message(
         sent_mid = sent.get("message_id")
         if sent_mid and new_plan_id:
             record_plan_message(new_plan_id, sent_mid, chat_id, path=msg_map_path)
+
+    # P5: close converse wake after reply (llm already set by enrich; fail-soft)
+    if wake_id and not dry_run:
+        try:
+            from scripts.lib.cio_wake_traces import close_trace
+            close_trace(
+                wake_id=str(wake_id),
+                outcome="deferred" if llm_deferred else "ok",
+                plan_id=new_plan_id,
+                situation_type="S0_OPERATOR_CONVERSE",
+                agent_id="alex",
+                source="OPERATOR_MESSAGE",
+                # llm left unset so merge keeps enrich_plan value
+            )
+        except Exception:
+            pass
 
     out.update({
         "handled": True,

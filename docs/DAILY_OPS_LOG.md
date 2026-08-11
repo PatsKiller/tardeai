@@ -1,4 +1,11 @@
 
+## 2026-08-11 — P5 lightweight wake traces
+
+- JSONL `data/cio/cio_wake_traces.jsonl` + `scripts/lib/cio_wake_traces.py`
+- Hooks: wake enqueue open, enrich_plan close (llm=*), converse close, heartbeat no-op
+- Query: `scripts/cio_wake_traces_cli.py` · `/cio traces [n]` · docs/cio/WAKE_TRACES_P5.md
+- Fail-soft; READ_ONLY_ADVISORY; no APM stack
+
 ## 2026-08-11 — Provision: alex LLM cap + CIO Telegram env scaffold
 
 - Raised `alex_cio_synthesis` daily_cost_cap_usd **0.02 → 0.15** (registry + DB); global still 0.25.

@@ -463,6 +463,7 @@ def enrich_plan(
     """
     pol = policy or load_llm_policy()
     llm_cfg = pol.get("llm") or {}
+    t0_enrich = time.time()
     result: dict[str, Any] = {
         "plan_id": plan.get("plan_id"),
         "source": source,
@@ -472,15 +473,68 @@ def enrich_plan(
         "authority": "READ_ONLY_ADVISORY",
     }
 
+    def _trace_update(**kw: Any) -> None:
+        try:
+            from scripts.lib.cio_wake_traces import safe_update_from_enrich
+            safe_update_from_enrich(
+                wake_id=str(wake_id or plan.get("plan_id") or ""),
+                plan=plan,
+                source=source,
+                **kw,
+            )
+        except Exception:
+            try:
+                from lib.cio_wake_traces import safe_update_from_enrich  # type: ignore
+                safe_update_from_enrich(
+                    wake_id=str(wake_id or plan.get("plan_id") or ""),
+                    plan=plan,
+                    source=source,
+                    **kw,
+                )
+            except Exception:
+                pass
+
+    def _trace_close(**kw: Any) -> None:
+        plan_arg = kw.pop("plan", None) or plan
+        dur = int((time.time() - t0_enrich) * 1000)
+        try:
+            from scripts.lib.cio_wake_traces import safe_close_from_enrich
+            safe_close_from_enrich(
+                wake_id=str(wake_id or plan_arg.get("plan_id") or plan.get("plan_id") or ""),
+                plan=plan_arg,
+                source=source,
+                duration_ms=dur,
+                **kw,
+            )
+        except Exception:
+            try:
+                from lib.cio_wake_traces import safe_close_from_enrich  # type: ignore
+                safe_close_from_enrich(
+                    wake_id=str(wake_id or plan_arg.get("plan_id") or plan.get("plan_id") or ""),
+                    plan=plan_arg,
+                    source=source,
+                    duration_ms=dur,
+                    **kw,
+                )
+            except Exception:
+                pass
+
     if not is_material_source(source, pol) and not force_llm and not force_template:
         result["llm"] = "skipped_non_material"
         _log_enrich({**result, "ts": _now()})
+        _trace_close(llm="skipped_non_material", outcome="ok")
         return result
 
     if should_skip_enrich_dedup(plan, pol) and not force_llm and not force_template:
         result["llm"] = "skipped_dedup"
         result["narrative_source"] = plan.get("narrative_source") or "template"
         _log_enrich({**result, "ts": _now()})
+        _trace_close(
+            llm="skipped_dedup",
+            narrative_source=result["narrative_source"],
+            plan=plan,
+            outcome="ok",
+        )
         return {**result, "plan": plan}
 
     pack = build_evidence_pack(plan, extra_context=extra_context)
@@ -642,6 +696,22 @@ def enrich_plan(
     result["plan"] = updated
     result["narrative_source"] = updated.get("narrative_source") or result["narrative_source"]
     _log_enrich({**{k: result[k] for k in result if k != "plan"}, "ts": _now(), "model": model_id})
+    # P5: close/update wake trace with final llm path (fail-soft)
+    _llm = result.get("llm") or "template"
+    # Prefer schema values: template when narrative is template unless already blocked_cap
+    if result.get("narrative_source") == "template" and _llm not in (
+        "blocked_cap", "blocked_provider", "blocked_disabled", "forced_template", "skipped_dedup",
+    ):
+        # keep blocked_* ; map generic provider fallthrough
+        pass
+    _trace_close(
+        llm=_llm,
+        model_id=model_id,
+        narrative_source=result.get("narrative_source"),
+        llm_error=result.get("llm_error") or result.get("persist_error"),
+        plan=updated,
+        outcome="deferred" if _llm == "blocked_cap" else "ok",
+    )
     return result
 
 
