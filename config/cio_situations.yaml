@@ -1,0 +1,48 @@
+# CIO Situation Catalog v1 — Phase 2a
+# Authority: READ_ONLY_ADVISORY. Detector SHADOW by default.
+# Env overrides: CIO_SITUATIONS_ENABLED, CIO_SITUATIONS_NOTIFY, CIO_SITUATIONS_SHADOW
+
+enabled: true
+shadow: true
+notify: false          # CIO_SITUATIONS_NOTIFY=1 to allow notify path later
+dedup_hours: 6
+detector_version: "situation-catalog-v1.0.0"
+
+thresholds:
+  basis_drawdown_pct: 25.0       # S1 deep drawdown from basis
+  partial_recovery_pct: 15.0     # S1: recovery from trough toward basis (of drawdown span)
+  reclaim_eps_pct: 1.0           # S1: last within 1% of basis = reclaim zone
+  cash_pct_band_min: 15.0        # S5: cash share of portfolio above this
+  concentration_weight_pct: 12.0 # S6: single-name weight
+  disposition_loss_pct: 20.0     # S6 Rule-1 class loss
+  disposition_hold_months: 6.0   # S6 long-held
+  sector_weight_delta_pp: 2.0    # S4 material rotation vs holdings (placeholder)
+  reentry_statuses: ["READY", "NEAR"]
+  watch_statuses: ["READY", "GO", "NEAR"]
+  watch_near_min_score: 70       # strong NEAR if score present
+  regime_risk_off_labels: ["RISK_OFF", "DEFENSIVE", "risk_off", "defensive"]
+
+owners:
+  S1_POSITION_LIFECYCLE: alex
+  S2_STOP_GAP: alex
+  S3_REENTRY_CANDIDATE: alex
+  S4_SECTOR_ROTATION: steph
+  S5_CASH_DEPLOYMENT: steph
+  S6_CONCENTRATION_OR_DISPOSITION: morgan
+  S7_WATCH_PROMOTION: alex
+  S8_DEFENSIVE_REGIME: alex
+
+cc_deep_links:
+  S1_POSITION_LIFECYCLE: ["/v3/portfolio", "/v3/risk"]
+  S2_STOP_GAP: ["/v3/risk", "/v3/portfolio"]
+  S3_REENTRY_CANDIDATE: ["/v3/portfolio/re-entry", "/v3/watch"]
+  S4_SECTOR_ROTATION: ["/v3/rotation", "/v3/portfolio"]
+  S5_CASH_DEPLOYMENT: ["/v3/portfolio", "/v3/watch"]
+  S6_CONCENTRATION_OR_DISPOSITION: ["/v3/portfolio", "/v3/advisory"]
+  S7_WATCH_PROMOTION: ["/v3/watch"]
+  S8_DEFENSIVE_REGIME: ["/v3/defense", "/v3/risk"]
+
+revisit_hours:
+  default: 24
+  S2_STOP_GAP: 12
+  S8_DEFENSIVE_REGIME: 12
