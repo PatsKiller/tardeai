@@ -48,7 +48,8 @@ llm:
   task_type_flash: "advisory_opinion"
   caller_pro: "alex"
   task_type_pro: "cio_synthesis"
-  max_tokens: 700
+  max_tokens: 1200
+  max_tokens_flash: 1200
   max_tokens_pro: 1600
   temperature: 0.2
   # Local soft cap (in addition to bridge global daily cap)

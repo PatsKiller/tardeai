@@ -359,72 +359,111 @@ def format_structured_reply(
         # prefer auto order (plan-first) then extras
         links = auto
 
+    def _clean(s: str) -> str:
+        """Strip internal deferred markers; round long floats for readability."""
+        t = (s or "").strip()
+        for noise in (
+            " [LLM deferred — deterministic view only]",
+            " (LLM deferred — deterministic view only)",
+            "[LLM deferred — deterministic view only]",
+            "(LLM deferred — deterministic view only)",
+        ):
+            t = t.replace(noise, "")
+        # soften long floats like 182.50959999999998
+        import re as _re
+        def _rnd(m):
+            try:
+                return f"{float(m.group(0)):.2f}"
+            except Exception:
+                return m.group(0)
+        t = _re.sub(r"\b\d+\.\d{3,}\b", _rnd, t)
+        return t.strip()
+
     lines: list[str] = []
-    header = "🧠 *CIO advisory* · READ_ONLY"
+    # Visual hierarchy: badge line
+    mode = "📋 template" if llm_deferred else "✨ Alex (LLM)"
+    sit_short = (situation_type or "").replace("_", " ")
+    header = f"🧠 CIO · READ_ONLY · {mode}"
     if pin:
-        header += f" · thesis `{pin}`"
+        header += f" · `{pin}`"
     lines.append(header)
-    if llm_deferred:
-        lines.append("_(LLM deferred — template reply)_")
     if situation_type:
-        lines.append(f"_situation: {situation_type}_")
-    lines.append("")
-    lines.append("*Summary*")
-    lines.append(summary.strip() or "(no summary)")
-    if evidence_refs:
-        lines.append("")
-        lines.append("*Evidence*")
-        for r in evidence_refs[:8]:
-            dom = r.get("domain") or "?"
-            as_of = r.get("as_of") or "DATA_UNAVAILABLE"
-            fields = ",".join(r.get("fields_used") or [])[:40]
-            lines.append(f"• `{dom}` as_of={as_of}" + (f" ({fields})" if fields else ""))
+        sym_s = ",".join(symbols or [])[:40]
+        title = f"📍 {sit_short}"
+        if sym_s:
+            title += f" · {sym_s}"
+        lines.append(title)
+    lines.append("────────────────")
+    lines.append("📌 *What*")
+    lines.append(_clean(summary) or "(no summary)")
     if options:
         lines.append("")
-        lines.append("*Options*")
-        for o in options[:6]:
+        lines.append("⚖️ *Options*")
+        for i, o in enumerate(options[:5], 1):
             lab = o.get("label") or o.get("id") or "?"
-            lines.append(f"• {lab}")
+            pros = (o.get("pros") or "").strip()
+            cons = (o.get("cons") or "").strip()
+            line = f"{i}. {lab}"
+            if pros or cons:
+                bits = []
+                if pros:
+                    bits.append(f"+{pros[:60]}")
+                if cons:
+                    bits.append(f"-{cons[:60]}")
+                line += f"  ({'; '.join(bits)})"
+            lines.append(line)
     if recommendation:
         lines.append("")
-        lines.append("*Recommendation*")
-        lines.append(recommendation.strip())
+        lines.append("✅ *Recommendation*")
+        lines.append(_clean(recommendation))
     if risks:
         lines.append("")
-        lines.append("*Risks*")
-        for rk in risks[:5]:
-            lines.append(f"• {rk}")
-    lines.append("")
+        lines.append("⚠️ *Risks*")
+        for rk in risks[:4]:
+            lines.append(f"• {_clean(str(rk))}")
+    # Evidence: compact, last
+    if evidence_refs:
+        lines.append("")
+        lines.append("📎 *Evidence* (Data Broker)")
+        for r in evidence_refs[:4]:
+            dom = r.get("domain") or "?"
+            as_of = str(r.get("as_of") or "")[:10] or "n/a"
+            lines.append(f"• {dom} · {as_of}")
+    lines.append("────────────────")
     meta = []
     if plan_id:
-        meta.append(f"plan_id: `{plan_id}`")
+        meta.append(f"`{plan_id}`")
     if goal_id:
-        meta.append(f"goal_id: `{goal_id}`")
-    if action_id:
-        meta.append(f"action_id: `{action_id}`")
+        meta.append(f"goal `{goal_id}`")
     if pin:
-        meta.append(f"thesis: `{pin}`")
+        meta.append(f"thesis `{pin}`")
     if revisit_at:
-        meta.append(f"revisit_at: `{revisit_at}`")
+        meta.append(f"revisit {str(revisit_at)[:10]}")
     if meta:
         lines.append(" · ".join(meta))
     base = cc_base()
     if links:
-        abs_links = []
-        for p in links[:5]:
-            p = str(p)
-            if p.startswith("http://") or p.startswith("https://"):
-                abs_links.append(p)
-            elif base:
-                abs_links.append(f"{base}{p}" if p.startswith("/") else f"{base}/{p}")
-            else:
-                abs_links.append(p)
-        lines.append("CC: " + " · ".join(abs_links))
+        # One primary deep link + optional second
+        primary = links[0]
+        p = str(primary)
+        if not (p.startswith("http://") or p.startswith("https://")):
+            p = f"{base}{p}" if p.startswith("/") else f"{base}/{p}"
+        lines.append(f"🔗 {p}")
+        if len(links) > 1 and base:
+            more = []
+            for path in links[1:3]:
+                path = str(path)
+                if path.startswith("http"):
+                    more.append(path.split("/")[-1] or path)
+                else:
+                    more.append(path)
+            if more:
+                lines.append("also: " + ", ".join(more))
     lines.append("")
-    lines.append("_Reply to this message to continue · `/cio ack " + (plan_id or "<id>") + "` or reply `ack`_")
+    lines.append(f"Reply to continue · `/cio ack {plan_id or '<id>'}` or `ack`")
     if pin:
-        lines.append(f"_Desk thesis: `/cio thesis` ({pin})_")
-    lines.append("_No orders/stops from chat. READ_ONLY_ADVISORY._")
+        lines.append(f"Thesis: `/cio thesis`")
+    lines.append("No orders/stops from chat · READ_ONLY_ADVISORY")
     return "\n".join(lines)
 
 

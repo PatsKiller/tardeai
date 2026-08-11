@@ -97,13 +97,15 @@ def test_structured_reply_formatter():
         risks=["Further drawdown"],
         plan_id="plan_test01",
         revisit_at="2026-08-12T00:00:00+00:00",
+        thesis_version="desk@v1",
         llm_deferred=True,
     )
     assert "plan_test01" in text
     assert "READ_ONLY" in text
     assert "Hold" in text
     assert "holdings" in text
-    assert "LLM deferred" in text
+    assert "template" in text  # llm_deferred badge
+    assert "desk@v1" in text
 
 
 def test_process_free_text_dry_run_creates_path(paths, monkeypatch, tmp_path):

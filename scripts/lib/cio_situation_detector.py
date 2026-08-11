@@ -430,6 +430,13 @@ def eval_s1(evidence: dict[str, Any], cfg: dict[str, Any], symbol: str) -> Optio
 
     if not reasons:
         return None
+    # Noise control: pure "near basis" without DD / recovery / catalyst is not actionable
+    material_path = any(
+        r.startswith("deep_drawdown") or r.startswith("partial_recovery") or r == "major_catalyst_while_held"
+        for r in reasons
+    )
+    if not material_path and reasons == ["basis_reclaim_zone"]:
+        return None
 
     # template summary — only cite available numbers
     bits = [f"Held {symbol}"]
@@ -1018,7 +1025,12 @@ class CIOSituationDetector:
         except Exception:
             pass
 
-    def persist_candidate(self, cand: dict[str, Any]) -> Optional[dict[str, Any]]:
+    def persist_candidate(
+        self,
+        cand: dict[str, Any],
+        *,
+        do_notify: bool = True,
+    ) -> Optional[dict[str, Any]]:
         st = cand["situation_type"]
         syms = cand.get("symbols") or []
         dedup_h = float(self.cfg.get("dedup_hours") or 6)
@@ -1089,24 +1101,37 @@ class CIOSituationDetector:
                 )
             except Exception:
                 pass
-        # P2b: enrich narrative (LLM under cap, else template)
-        # In tests, set CIO_LLM_ENRICH=0 for speed; still applies template path.
+        # P2b: enrich narrative via governed bridge (Flash default).
+        # CIO_LLM_ENRICH=0 → force_template (tests / emergency). Default ON.
         try:
             from scripts.lib.cio_plan_enrichment import enrich_plan, maybe_notify_plan
+            force_tpl = os.environ.get("CIO_LLM_ENRICH", "1").strip().lower() in (
+                "0", "false", "off", "no",
+            )
             enr = enrich_plan(
                 plan,
                 source=st,
                 wake_id=sit_wake_id,
                 plan_store=self.plans,
-                force_template=os.environ.get("CIO_LLM_ENRICH", "1").strip().lower()
-                in ("0", "false", "off", "no"),
+                force_template=force_tpl,
             )
             if enr.get("plan"):
                 plan = enr["plan"]
-            try:
-                maybe_notify_plan(plan)
-            except Exception:
-                pass
+            # attach llm status for notify clarity
+            plan.setdefault("llm_status", enr.get("llm"))
+            plan.setdefault("narrative_source", enr.get("narrative_source"))
+            # fire_reasons live in create extra — promote for Telegram "Why"
+            if not plan.get("fire_reasons"):
+                plan["fire_reasons"] = (
+                    cand.get("fire_reasons")
+                    or (plan.get("extra") or {}).get("fire_reasons")
+                    or []
+                )
+            if do_notify:
+                try:
+                    plan["_notified"] = bool(maybe_notify_plan(plan))
+                except Exception:
+                    plan["_notified"] = False
         except Exception:
             pass
         return plan
@@ -1122,6 +1147,7 @@ class CIOSituationDetector:
             "candidates": 0,
             "plans_created": [],
             "dedup_skipped": 0,
+            "notified": 0,
             "errors": [],
             "authority": "READ_ONLY_ADVISORY",
         }
@@ -1135,12 +1161,13 @@ class CIOSituationDetector:
             return out
         out["candidates"] = len(cands)
         # Prefer high-value types first for cap (cash/concentration/lifecycle before mass stop noise)
+        # S5/S6 first (book-level), then material S1 (DD), then stops/regime, then watch noise
         priority = {
-            "S1_POSITION_LIFECYCLE": 0,
-            "S5_CASH_DEPLOYMENT": 1,
-            "S6_CONCENTRATION_OR_DISPOSITION": 2,
-            "S2_STOP_GAP": 3,
-            "S8_DEFENSIVE_REGIME": 4,
+            "S5_CASH_DEPLOYMENT": 0,
+            "S6_CONCENTRATION_OR_DISPOSITION": 1,
+            "S8_DEFENSIVE_REGIME": 2,
+            "S1_POSITION_LIFECYCLE": 3,
+            "S2_STOP_GAP": 4,
             "S3_REENTRY_CANDIDATE": 5,
             "S7_WATCH_PROMOTION": 6,
             "S4_SECTOR_ROTATION": 7,
@@ -1149,25 +1176,32 @@ class CIOSituationDetector:
             cands,
             key=lambda c: (priority.get(str(c.get("situation_type")), 9), str(c.get("symbols"))),
         )
-        max_plans = int(self.cfg.get("max_plans_per_pass") or 8)
+        max_plans = int(self.cfg.get("max_plans_per_pass") or 5)
+        max_notify = int(self.cfg.get("max_notify_per_pass") or 3)
+        notified = 0
         for c in cands_sorted:
             if len(out["plans_created"]) >= max_plans:
                 out["dedup_skipped"] += 1
                 continue
             try:
-                plan = self.persist_candidate(c)
+                allow_notify = notified < max_notify
+                plan = self.persist_candidate(c, do_notify=allow_notify)
                 if plan:
                     out["plans_created"].append(plan.get("plan_id"))
+                    if plan.pop("_notified", False):
+                        notified += 1
                     out.setdefault("plans_detail", []).append({
                         "plan_id": plan.get("plan_id"),
                         "situation_type": plan.get("situation_type"),
                         "symbols": plan.get("symbols"),
                         "status": plan.get("status"),
+                        "narrative_source": plan.get("narrative_source"),
                     })
                 else:
                     out["dedup_skipped"] += 1
             except Exception as exc:
                 out["errors"].append(f"persist:{c.get('situation_type')}:{exc}")
+        out["notified"] = notified
         return out
 
 

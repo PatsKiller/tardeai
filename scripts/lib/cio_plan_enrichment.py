@@ -172,11 +172,33 @@ def build_evidence_pack(plan: dict[str, Any], *, extra_context: Optional[dict[st
 
 def collect_allowed_numbers(pack: dict[str, Any]) -> set[str]:
     allowed = set(str(x) for x in (pack.get("allowed_numeric_tokens") or []))
-    # always allow small structural ints used in counts
+    # always allow small structural ints used in counts / option indices
     allowed.update({str(i) for i in range(0, 25)})
     blob = json.dumps(pack, default=str)
     for tok in NUM_RE.findall(blob):
         allowed.add(tok)
+    # Rounded variants + simple derived % gaps (basis vs last etc.)
+    floats: list[float] = []
+    for tok in list(allowed):
+        try:
+            f = float(tok)
+            floats.append(f)
+            allowed.add(f"{f:.2f}")
+            allowed.add(f"{f:.1f}")
+            if abs(f - round(f)) < 1e-9:
+                allowed.add(str(int(round(f))))
+        except Exception:
+            continue
+    # pairwise relative drawdown / gap percents commonly cited
+    for i, a in enumerate(floats):
+        for b in floats[i + 1 :]:
+            if a == 0:
+                continue
+            pct = abs(a - b) / abs(a) * 100.0
+            if 0.1 <= pct <= 99.9:
+                allowed.add(f"{pct:.1f}")
+                allowed.add(f"{pct:.0f}")
+                allowed.add(f"{pct:.2f}")
     return allowed
 
 
@@ -184,22 +206,41 @@ def extract_json_object(text: str) -> Optional[dict[str, Any]]:
     if not text:
         return None
     text = text.strip()
-    # fenced
+    # fenced ```json ... ```
     m = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.S)
     if m:
         try:
             return json.loads(m.group(1))
         except json.JSONDecodeError:
             pass
-    # raw object
+    # Prefer first balanced object via raw_decode (tolerates trailing prose)
     start = text.find("{")
-    end = text.rfind("}")
-    if start >= 0 and end > start:
+    if start >= 0:
         try:
-            return json.loads(text[start : end + 1])
+            obj, _ = json.JSONDecoder().raw_decode(text[start:])
+            if isinstance(obj, dict):
+                return obj
         except json.JSONDecodeError:
-            return None
+            pass
+        end = text.rfind("}")
+        if end > start:
+            try:
+                return json.loads(text[start : end + 1])
+            except json.JSONDecodeError:
+                return None
     return None
+
+
+def _as_short_text(val: Any, limit: int = 200) -> str:
+    """Flatten list/dict pros/cons into a short operator-facing string."""
+    if val is None:
+        return ""
+    if isinstance(val, list):
+        parts = [str(x).strip() for x in val if str(x).strip()]
+        return "; ".join(parts)[:limit]
+    if isinstance(val, dict):
+        return json.dumps(val, default=str)[:limit]
+    return str(val).strip()[:limit]
 
 
 def normalize_narrative(narrative: dict[str, Any]) -> dict[str, Any]:
@@ -213,8 +254,8 @@ def normalize_narrative(narrative: dict[str, Any]) -> dict[str, Any]:
                 norm.append({
                     "id": str(o.get("id") or f"opt_{i}"),
                     "label": str(o.get("label") or o.get("id") or f"Option {i}"),
-                    "pros": str(o.get("pros") or ""),
-                    "cons": str(o.get("cons") or ""),
+                    "pros": _as_short_text(o.get("pros")),
+                    "cons": _as_short_text(o.get("cons")),
                 })
             elif isinstance(o, str) and o.strip():
                 norm.append({"id": f"opt_{i}", "label": o.strip(), "pros": "", "cons": ""})
@@ -222,10 +263,20 @@ def normalize_narrative(narrative: dict[str, Any]) -> dict[str, Any]:
     risks = out.get("risks")
     if isinstance(risks, str):
         out["risks"] = [risks]
-    elif not isinstance(risks, list):
+    elif isinstance(risks, list):
+        out["risks"] = [_as_short_text(r, 240) for r in risks if r is not None][:8]
+    else:
         out["risks"] = []
     if not isinstance(out.get("cited_fields"), list):
         out["cited_fields"] = []
+    # recommendation sometimes arrives as {id,label}
+    rec = out.get("recommendation")
+    if isinstance(rec, dict):
+        out["recommendation"] = str(rec.get("label") or rec.get("id") or rec)[:1200]
+    elif rec is not None:
+        out["recommendation"] = str(rec)[:1200]
+    if out.get("summary") is not None:
+        out["summary"] = str(out.get("summary"))[:1200]
     return out
 
 
@@ -260,12 +311,27 @@ def validate_narrative(
         ]
     )
     invented = []
+    allowed_f = []
+    for a in allowed:
+        try:
+            allowed_f.append(float(a))
+        except Exception:
+            pass
     for tok in NUM_RE.findall(blob):
-        if tok not in allowed:
-            # allow year-like 2026 and iso fragments already in pack
-            if len(tok) == 4 and tok.startswith("20"):
-                continue
+        if tok in allowed:
+            continue
+        # allow year-like 2026 and iso fragments already in pack
+        if len(tok) == 4 and tok.startswith("20"):
+            continue
+        # soft match: within 0.05 abs or 0.2% relative of an allowed float
+        try:
+            tf = float(tok)
+        except Exception:
             invented.append(tok)
+            continue
+        if any(abs(tf - af) <= 0.05 or (af and abs(tf - af) / abs(af) <= 0.002) for af in allowed_f):
+            continue
+        invented.append(tok)
     if invented:
         errs.append(f"invented_numbers:{sorted(set(invented))[:12]}")
     return (len(errs) == 0), errs
@@ -345,6 +411,93 @@ def _log_enrich(row: dict[str, Any], path: Path | None = None) -> None:
         pass
 
 
+def compact_user_prompt(pack: dict[str, Any], *, minimal: bool = False) -> str:
+    """Compact evidence for Flash — large JSON packs burn max_tokens on reasoning
+    and return empty content. Keep facts + schema only.
+
+    minimal=True: ultra-short retry body after empty_content / non_json.
+    """
+    refs = pack.get("evidence_refs") or []
+
+    def _strip_noise(s: str) -> str:
+        for n in (
+            "[LLM deferred — deterministic view only]",
+            "(LLM deferred — deterministic view only)",
+            "LLM deferred",
+            "deterministic view only",
+            "READ_ONLY_ADVISORY",
+            "no auto stop",
+        ):
+            s = s.replace(n, "")
+        return " ".join(s.split())
+
+    existing = _strip_noise(str(pack.get("existing_summary") or ""))[:240]
+    existing_rec = _strip_noise(str(pack.get("existing_recommendation") or ""))[:160]
+    fire = pack.get("fire_reasons") or []
+    fire_s = ",".join(str(x) for x in fire[:4])
+
+    # Prefer structured numeric fields from evidence refs (not date fragments)
+    key_nums: list[str] = []
+    for r in refs[:8]:
+        if not isinstance(r, dict):
+            continue
+        for k, v in r.items():
+            if k in ("domain", "as_of", "fields_used", "quality_state"):
+                continue
+            if isinstance(v, bool):
+                continue
+            if isinstance(v, (int, float)):
+                key_nums.append(f"{v:.4g}" if isinstance(v, float) else str(v))
+            elif isinstance(v, str) and NUM_RE.fullmatch(v.strip()):
+                key_nums.append(v.strip())
+    for tok in NUM_RE.findall(existing + " " + existing_rec + " " + fire_s):
+        # drop pure zero-pad / year-like noise from as_of scraping
+        if tok in ("00", "0", "08", "11") or (len(tok) == 4 and tok.startswith("20")):
+            continue
+        key_nums.append(tok)
+    # rounded unique, stable order
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for tok in key_nums:
+        try:
+            f = float(tok)
+            # prefer 2dp for non-integers
+            pretty = str(int(f)) if abs(f - round(f)) < 1e-9 else f"{f:.2f}"
+        except Exception:
+            pretty = tok
+        if pretty not in seen:
+            seen.add(pretty)
+            cleaned.append(pretty)
+    allowed = ",".join(cleaned[:24])
+    opts = pack.get("options_stub") or []
+    opt_ids = []
+    for o in opts[:5]:
+        if isinstance(o, dict):
+            opt_ids.append(str(o.get("id") or o.get("label") or "?"))
+        else:
+            opt_ids.append(str(o))
+
+    if minimal:
+        return (
+            f"{pack.get('situation_type')} symbols={pack.get('symbols')} fire={fire_s}\n"
+            f"facts={existing[:160]}\n"
+            f"numbers={allowed}\n"
+            f"option_ids={opt_ids}\n"
+            'Reply with ONLY JSON: {"summary":"...","recommendation":"...","options":'
+            '[{"id":"...","label":"...","pros":"...","cons":"..."}],"risks":["..."],'
+            '"cited_fields":[],"revisit_hint":"24h"}\n'
+            "pros/cons must be short strings not arrays. Numbers only from list."
+        )
+    return (
+        f"{pack.get('situation_type')} {pack.get('symbols')} fire={fire_s}\n"
+        f"{existing}\n"
+        f"numbers={allowed}\n"
+        f"option_ids={opt_ids}\n"
+        "JSON only {summary,recommendation,options[{id,label,pros,cons}],risks,cited_fields,revisit_hint}\n"
+        "pros and cons are short strings. Use only listed numbers. READ_ONLY no orders."
+    )
+
+
 def call_governed_llm(
     messages: list[dict[str, str]],
     policy: dict[str, Any],
@@ -353,9 +506,9 @@ def call_governed_llm(
 ) -> dict[str, Any]:
     """HTTP call to governed bridge. Never hits api.deepseek.com directly.
 
-    Flash path uses advisory_desk / advisory_opinion (FAST) — reliable JSON under
-    modest max_tokens. Pro path uses alex / cio_synthesis (PRO); needs higher
-    max_tokens because Pro-think can burn completion budget on reasoning.
+    Flash path uses advisory_desk / advisory_opinion (FAST). Use compact prompts —
+    large JSON evidence packs cause Flash to spend max_tokens on reasoning with
+    empty content. Pro path uses alex / cio_synthesis when required.
     """
     llm = policy.get("llm") or {}
     endpoint = llm.get("bridge_endpoint") or "http://127.0.0.1:8766/v1/chat/completions"
@@ -371,7 +524,8 @@ def call_governed_llm(
         task = llm.get("task_type_flash") or "advisory_opinion"
         process_id = "advisory_desk_opinion"
         model = "deepseek-v4-flash"
-        max_tokens = int(llm.get("max_tokens") or 700)
+        # Headroom so reasoning_tokens cannot consume entire completion budget
+        max_tokens = int(llm.get("max_tokens_flash") or llm.get("max_tokens") or 1200)
     payload = {
         "model": model,
         "messages": messages,
@@ -391,7 +545,7 @@ def call_governed_llm(
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=45) as resp:
+        with urllib.request.urlopen(req, timeout=90) as resp:
             body = json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
         try:
@@ -425,7 +579,15 @@ def call_governed_llm(
             "model": model,
         }
     try:
-        content = body["choices"][0]["message"]["content"]
+        msg = body["choices"][0]["message"]
+        content = msg.get("content") or ""
+        # Fallback: some Flash responses put text only in reasoning fields
+        if not str(content).strip():
+            content = (
+                msg.get("reasoning_content")
+                or msg.get("reasoning")
+                or ""
+            )
     except Exception:
         return {
             "ok": False,
@@ -433,6 +595,16 @@ def call_governed_llm(
             "governance_refused": True,
             "governance_code": "MALFORMED",
             "model": model,
+        }
+    if not str(content).strip():
+        usage = body.get("usage") or {}
+        return {
+            "ok": False,
+            "error": "empty_content",
+            "governance_refused": False,
+            "governance_code": "EMPTY_CONTENT",
+            "model": model,
+            "usage": usage,
         }
     return {"ok": True, "content": content, "model": model, "raw": body}
 
@@ -582,33 +754,52 @@ def enrich_plan(
         use_pro = source in set(llm_cfg.get("pro_for") or []) or plan.get("situation_type") in set(
             llm_cfg.get("pro_for") or []
         )
+        # Prefer Flash for situation plans (compact JSON). Pro only when policy lists source.
         system = (
-            "You are Alex, CIO advisory (READ_ONLY). "
-            "Use only facts in the user evidence pack. "
-            "Never invent numbers. Missing → DATA_UNAVAILABLE. "
-            "Return JSON only per output_schema."
+            "You are Alex, CIO advisory (READ_ONLY_ADVISORY). "
+            "Output ONE JSON object only — first character must be '{'. "
+            "No markdown fences, no chain-of-thought, no prose outside JSON. "
+            "Use ONLY numbers listed in the user numbers= line. "
+            "Missing → DATA_UNAVAILABLE. Never invent prices/weights. "
+            "Preserve option ids when provided. Be specific and operator-useful. "
+            "options[].pros and options[].cons must be short strings (not arrays)."
         )
-        user = json.dumps(pack, indent=2, default=str)
-        messages = [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ]
+        # Compact user prompt — full indented JSON packs cause empty Flash content
+        # (all completion tokens spent as reasoning_tokens).
         max_retries = int((pol.get("validator") or {}).get("max_retries") or 1)
-        for attempt in range(max_retries + 1):
+        # attempts: compact → (optional) minimal retry on empty/non_json → validation fix
+        attempt_modes: list[str] = ["compact"]
+        if max_retries >= 1:
+            attempt_modes.append("minimal")
+        # one more validation-fix attempt after a successful parse failure
+        for attempt, mode in enumerate(attempt_modes):
+            user = compact_user_prompt(pack, minimal=(mode == "minimal"))
+            messages = [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ]
             llm_res = call_governed_llm(messages, pol, use_pro=use_pro)
+            if llm_res.get("model"):
+                model_id = llm_res.get("model")
             if not llm_res.get("ok"):
-                result["llm"] = (
-                    "blocked_cap"
-                    if "CAP" in str(llm_res.get("governance_code") or "")
-                    else "blocked_provider"
-                )
-                result["llm_error"] = llm_res.get("error")
+                err = str(llm_res.get("error") or "")
+                code = str(llm_res.get("governance_code") or "")
+                result["llm_error"] = err
+                if "CAP" in code:
+                    result["llm"] = "blocked_cap"
+                    break
+                # empty_content / provider noise → try minimal mode if available
+                if mode == "compact" and "minimal" in attempt_modes:
+                    result["llm"] = "blocked_provider"
+                    continue
+                result["llm"] = "blocked_provider"
                 break
-            model_id = llm_res.get("model")
             parsed = extract_json_object(str(llm_res.get("content") or ""))
             if not parsed:
                 result["llm"] = "blocked_provider"
                 result["llm_error"] = "non_json_response"
+                if mode == "compact" and "minimal" in attempt_modes:
+                    continue
                 break
             parsed = normalize_narrative(parsed)
             ok, verrs = validate_narrative(
@@ -621,18 +812,42 @@ def enrich_plan(
                 narrative["narrative_source"] = "llm"
                 narrative["llm_deferred"] = False
                 result["llm"] = "invoked"
+                result.pop("llm_error", None)
                 _inc_hour_calls()
                 break
-            if attempt < max_retries:
+            # one-shot validation repair on the same conversation
+            if attempt < len(attempt_modes) - 1 or max_retries >= 1:
                 messages.append({
                     "role": "user",
                     "content": (
                         f"Validation failed: {verrs}. "
-                        f"Only use numbers from allowed_numeric_tokens={pack.get('allowed_numeric_tokens')}. "
-                        "Return corrected JSON only."
+                        f"Only use numbers from numbers= line ({','.join(str(x) for x in (pack.get('allowed_numeric_tokens') or [])[:20])}). "
+                        "Return corrected JSON only. pros/cons as strings."
                     ),
                 })
-                continue
+                llm_res2 = call_governed_llm(messages, pol, use_pro=use_pro)
+                if llm_res2.get("model"):
+                    model_id = llm_res2.get("model")
+                if llm_res2.get("ok"):
+                    parsed2 = extract_json_object(str(llm_res2.get("content") or ""))
+                    if parsed2:
+                        parsed2 = normalize_narrative(parsed2)
+                        ok2, verrs2 = validate_narrative(
+                            parsed2,
+                            pack,
+                            reject_invented=bool(
+                                (pol.get("validator") or {}).get("reject_invented_numbers", True)
+                            ),
+                        )
+                        if ok2:
+                            narrative = parsed2
+                            narrative["narrative_source"] = "llm"
+                            narrative["llm_deferred"] = False
+                            result["llm"] = "invoked"
+                            result.pop("llm_error", None)
+                            _inc_hour_calls()
+                            break
+                        verrs = verrs2
             result["llm"] = "blocked_provider"
             result["llm_error"] = f"validation_failed:{verrs}"
             break
@@ -794,9 +1009,13 @@ def maybe_notify_plan(plan: dict[str, Any], policy: Optional[dict[str, Any]] = N
             format_structured_reply,
             send_cio_message,
         )
-        header = f"📍 Situation {st or 'plan'}\n"
         goals = plan.get("linked_goal_ids") or []
-        text = header + format_structured_reply(
+        # Why this fired (from detector) — one short line for operator clarity
+        fire = plan.get("fire_reasons") or (plan.get("extra") or {}).get("fire_reasons") or []
+        why = ""
+        if fire:
+            why = "Why: " + ", ".join(str(x) for x in fire[:4]) + "\n"
+        text = why + format_structured_reply(
             summary=plan.get("summary") or plan.get("title") or "",
             evidence_refs=plan.get("evidence_refs"),
             options=plan.get("options"),

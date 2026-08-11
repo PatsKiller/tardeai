@@ -59,6 +59,15 @@ Scripted soak via shared `cio_converse_core` (same path as unit; outbound captur
 - Query: `scripts/cio_wake_traces_cli.py` · `/cio traces [n]` · docs/cio/WAKE_TRACES_P5.md
 - Fail-soft; READ_ONLY_ADVISORY; no APM stack
 
+## 2026-08-11 — CIO LLM enrichment restored (template-only fix)
+
+Root causes of “LLM deferred — template reply”: (1) `CIO_LLM_ENRICH=0` during soaks
+→ `forced_template`; (2) Flash empty_content on fat JSON packs; (3) invented_numbers
+hard reject on rounded %. Fix: `compact_user_prompt` + minimal retry, soft validator,
+`max_tokens_flash=1200`, Telegram hierarchy (✨ Alex / 📋 template), S1 reclaim-only
+drop, dedup 12h / max_plans 5 / max_notify 3. Re-enriched S5 cash, S1 SPCX, S6 SCHD
+→ `narrative_source=llm` and re-notified @tradeai_cio_bot. Docs: P2B_PLAN_ENRICHMENT.md.
+
 ## 2026-08-11 — Provision: alex LLM cap + CIO Telegram env scaffold
 
 - Raised `alex_cio_synthesis` daily_cost_cap_usd **0.02 → 0.15** (registry + DB); global still 0.25.
