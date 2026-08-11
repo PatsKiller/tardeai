@@ -76,4 +76,5 @@ Cross-check: `data/cio/cio_llm_enrich_log.jsonl` and process `daily_cost_cap_usd
 
 ## Non-goals
 
-No OpenTelemetry collectors, cloud APM, WhatsApp (P4), Mem0/LangGraph, mass Telegram notify, or CC page.
+No OpenTelemetry collectors, cloud APM, Mem0/LangGraph, mass Telegram notify, or CC page.
+WhatsApp (P4) is a separate mirror channel — see [CIO_WHATSAPP_CONVERSE_RUNBOOK.md](CIO_WHATSAPP_CONVERSE_RUNBOOK.md).

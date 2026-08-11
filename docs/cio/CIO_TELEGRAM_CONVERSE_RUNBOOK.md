@@ -7,6 +7,8 @@
 
 This is **not** autonomous trading. Path: **chat → event bus → wake → structured reply**.
 
+WhatsApp mirror (same core, transport only): [CIO_WHATSAPP_CONVERSE_RUNBOOK.md](CIO_WHATSAPP_CONVERSE_RUNBOOK.md).
+
 ---
 
 ## Setup (once)

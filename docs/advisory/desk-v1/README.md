@@ -22,6 +22,7 @@ See [AUTONOMY_AND_SCHEDULING_TRUTH_2026-08-11.md](./AUTONOMY_AND_SCHEDULING_TRUT
 | [../../cio/WAKE_TRACES_P5.md](../../cio/WAKE_TRACES_P5.md) | **P5** lightweight wake traces (`cio_wake_traces.jsonl`) |
 | [../../cio/P2B_PLAN_ENRICHMENT.md](../../cio/P2B_PLAN_ENRICHMENT.md) | **P2b** plan enrichment under governed LLM cap |
 | [../../cio/CIO_TELEGRAM_CONVERSE_RUNBOOK.md](../../cio/CIO_TELEGRAM_CONVERSE_RUNBOOK.md) | **P1** dedicated CIO Telegram converse |
+| [../../cio/CIO_WHATSAPP_CONVERSE_RUNBOOK.md](../../cio/CIO_WHATSAPP_CONVERSE_RUNBOOK.md) | **P4** WhatsApp mirror channel (Cloud API; flag default off) |
 | [SITUATION_CATALOG_V1_FREEZE.md](./SITUATION_CATALOG_V1_FREEZE.md) | **FROZEN** S1–S8 situations + plan schema + SpaceX fixture |
 | [../../cio/SITUATION_CATALOG_V1.md](../../cio/SITUATION_CATALOG_V1.md) | Phase 2a code catalog + operator commands |
 | [P0_BRIDGE_OUTCOME_2026-08-11.md](./P0_BRIDGE_OUTCOME_2026-08-11.md) | P0 outcome: governed bridge path, registry, systemd unit, tests |

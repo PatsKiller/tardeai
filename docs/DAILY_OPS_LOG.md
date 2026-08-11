@@ -1,4 +1,12 @@
 
+## 2026-08-11 — P4 WhatsApp mirror converse (Cloud API)
+
+- Shared core `cio_converse_core.py`; WA ingress/egress adapters; webhook on :8787
+- Flag `CIO_WHATSAPP_CONVERSE` default **0**; allowlist `WHATSAPP_WA_IDS`; Meta signature check
+- Same OPERATOR_MESSAGE → plan/enrich path as Telegram; plan_id map; plain commands
+- Docs: `docs/cio/CIO_WHATSAPP_CONVERSE_RUNBOOK.md`; unit disabled until provisioned
+- Tests: `tests/test_cio_whatsapp_p4.py` (mocked Meta; no live calls)
+
 ## 2026-08-11 — Docs index refresh (P3/P5 pointers)
 
 - `docs/advisory/desk-v1/README.md` links P1/P2b/P3/P5 operator docs + CIO JSONL paths

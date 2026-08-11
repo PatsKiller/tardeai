@@ -63,8 +63,8 @@ def test_message_dedup(paths, monkeypatch):
         msg, dedup_path=paths["dedup"], msg_map_path=paths["map"],
         rate_path=paths["rate"], dry_run=True,
     )
-    # dry_run does not mark seen — mark manually then second
-    c.mark_message_seen(42, "999001", path=paths["dedup"])
+    # dry_run does not mark seen — mark manually with channel-prefixed key (P4 multi-channel)
+    c.mark_message_seen("telegram:42", "999001", path=paths["dedup"])
     r2 = c.process_telegram_message(
         msg, dedup_path=paths["dedup"], msg_map_path=paths["map"],
         rate_path=paths["rate"], dry_run=True,

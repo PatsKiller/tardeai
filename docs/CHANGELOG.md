@@ -7,9 +7,11 @@ READ_ONLY_ADVISORY desk continuity on `feature/advisory-desk-v1`:
 - **P1** dedicated CIO Telegram converse (`cio_telegram_converse`, allowlist bot unit)
 - **P2a** situation catalog S1–S8 + plan store; **P2b** plan enrichment under governed LLM cap
 - **P3** versioned desk thesis store (`CIOThesisStore`, pins `desk@vN`)
+- **P4** WhatsApp mirror channel (Meta Cloud API; shared `cio_converse_core`; flag default off)
 - **P5** lightweight wake traces (`cio_wake_traces.jsonl`, `/cio traces`)
 - Docs: `docs/cio/THESIS_STORE_P3.md`, `WAKE_TRACES_P5.md`, `P2B_PLAN_ENRICHMENT.md`,
-  `CIO_TELEGRAM_CONVERSE_RUNBOOK.md`; index `docs/advisory/desk-v1/README.md`
+  `CIO_TELEGRAM_CONVERSE_RUNBOOK.md`, `CIO_WHATSAPP_CONVERSE_RUNBOOK.md`;
+  index `docs/advisory/desk-v1/README.md`
 
 No broker/order path. SHADOW / notify off by default.
 

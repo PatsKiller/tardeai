@@ -1,0 +1,23 @@
+[Unit]
+Description=Trade AI CIO WhatsApp converse webhook (READ_ONLY_ADVISORY mirror)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+Environment=PYTHONPATH=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts
+# Default OFF until allowlist + token provisioned
+Environment=CIO_WHATSAPP_CONVERSE=0
+EnvironmentFile=-/run/user/%U/tradeai/env
+EnvironmentFile=-%h/.config/tradeai/agent-operator.env
+EnvironmentFile=-%h/.config/tradeai/cio-whatsapp.env
+ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/cio_whatsapp_webhook.py --host 127.0.0.1 --port 8787
+Restart=on-failure
+RestartSec=10
+Nice=10
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target

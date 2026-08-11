@@ -120,13 +120,22 @@ def record_plan_message(
     chat_id: str,
     *,
     path: Path = DEFAULT_MSG_MAP,
+    channel: str = "telegram",
 ) -> None:
-    _append_jsonl(path, {
+    mid = str(telegram_message_id)
+    row: dict[str, Any] = {
         "plan_id": plan_id,
-        "telegram_message_id": str(telegram_message_id),
+        "message_id": mid,
         "chat_id": str(chat_id),
+        "channel": channel,
         "ts": _now(),
-    })
+    }
+    # back-compat key for Telegram reply lookup
+    if channel == "telegram":
+        row["telegram_message_id"] = mid
+    else:
+        row["outbound_message_id"] = mid
+    _append_jsonl(path, row)
 
 
 def plan_id_for_reply_message(
@@ -143,7 +152,11 @@ def plan_id_for_reply_message(
                 row = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            if str(row.get("telegram_message_id")) == rid:
+            if (
+                str(row.get("telegram_message_id") or "") == rid
+                or str(row.get("message_id") or "") == rid
+                or str(row.get("outbound_message_id") or "") == rid
+            ):
                 return row.get("plan_id")
     except Exception:
         return None
@@ -672,195 +685,38 @@ def process_telegram_message(
     rate_path: Path = DEFAULT_RATE,
     dry_run: bool = False,
 ) -> dict[str, Any]:
-    """Process one Telegram message dict. Fail-closed for non-allowlisted."""
-    out: dict[str, Any] = {
-        "handled": False,
-        "authority": "READ_ONLY_ADVISORY",
-        "reason": "",
-    }
+    """Process one Telegram message dict. Fail-closed for non-allowlisted.
+
+    Thin adapter over shared multi-channel converse core (P4).
+    """
+    from scripts.lib.cio_converse_core import process_operator_message
+
     chat = msg.get("chat") or {}
     chat_id = str(chat.get("id") or "")
     message_id = msg.get("message_id")
     text = (msg.get("text") or "").strip()
     from_user = msg.get("from") or {}
-
-    if not text or not chat_id or message_id is None:
-        out["reason"] = "empty"
-        return out
-
-    allowed = allowlist_chat_ids()
-    if not allowed or chat_id not in allowed:
-        out["reason"] = "not_allowlisted"
-        return out
-
-    if not converse_enabled() and not text.lower().startswith("/cio"):
-        out["reason"] = "converse_disabled"
-        return out
-
-    if message_seen(message_id, path=dedup_path):
-        out["reason"] = "duplicate_message_id"
-        return out
-
-    # mark seen early for idempotency
-    if not dry_run:
-        mark_message_seen(message_id, chat_id, path=dedup_path)
-
-    # slash commands (deterministic)
-    if text.lower().startswith("/cio") or text.lower().split()[0] in ("/cio",):
-        reply = handle_cio_slash(text)
-        if not dry_run:
-            send_cio_message(chat_id, reply)
-        out.update({"handled": True, "kind": "slash", "reply_preview": reply[:200]})
-        return out
-
-    # ack shortcut
-    m_ack = ACK_RE.match(text)
-    if m_ack:
-        pid = m_ack.group(2)
-        if not pid:
-            # reply-to plan
-            reply_to = msg.get("reply_to_message") or {}
-            pid = plan_id_for_reply_message(reply_to.get("message_id"), path=msg_map_path)
-            if not pid and reply_to.get("text"):
-                pid = parse_reply_footer(reply_to.get("text") or "").get("plan_id")
-        if pid:
-            reply = handle_cio_slash(f"/cio ack {pid}")
-            if not dry_run:
-                send_cio_message(chat_id, reply)
-            out.update({"handled": True, "kind": "ack", "plan_id": pid})
-            return out
-
-    # free-text converse
-    if not rate_limit_ok(chat_id, path=rate_path):
-        if not dry_run:
-            send_cio_message(chat_id, "Rate limit: too many converse wakes this hour. Try /cio status.")
-        out["reason"] = "rate_limited"
-        out["handled"] = True
-        return out
-
-    # attach ids from reply_to or text
-    plan_id = goal_id = action_id = None
     reply_to = msg.get("reply_to_message") or {}
-    if reply_to:
-        plan_id = plan_id_for_reply_message(reply_to.get("message_id"), path=msg_map_path)
-        footer = parse_reply_footer(reply_to.get("text") or "")
-        plan_id = plan_id or footer.get("plan_id")
-        goal_id = footer.get("goal_id")
-        action_id = footer.get("action_id")
-    parsed = parse_ids_from_text(text)
-    plan_id = plan_id or parsed.get("plan_id")
-    goal_id = goal_id or parsed.get("goal_id")
-    action_id = action_id or parsed.get("action_id")
 
-    payload = {
-        "text": text[:4000],
-        "chat_id": chat_id,
-        "message_id": str(message_id),
-        "reply_to_message_id": str(reply_to.get("message_id") or "") or None,
-        "ts": _now(),
-        "user_id": str(from_user.get("id") or ""),
-        "username": from_user.get("username") or from_user.get("first_name") or "",
-        "plan_id": plan_id,
-        "goal_id": goal_id,
-        "action_id": action_id,
-        "authority": "READ_ONLY_ADVISORY",
-    }
+    def _send(cid: str, body: str, reply_to: Optional[str] = None) -> dict[str, Any]:
+        return send_cio_message(cid, body, reply_to=reply_to)
 
-    event_id = None if dry_run else emit_operator_message(payload)
-    wake_id = None if dry_run else enqueue_operator_wake(
+    return process_operator_message(
+        channel="telegram",
         chat_id=chat_id,
-        message_id=str(message_id),
+        message_id=message_id if message_id is not None else "",
         text=text,
-        plan_id=plan_id,
-        goal_id=goal_id,
-        action_id=action_id,
-        event_id=event_id,
-        target_agent="alex",
+        reply_to_message_id=str(reply_to.get("message_id") or "") or None,
+        reply_to_text=reply_to.get("text") or None,
+        user_id=str(from_user.get("id") or ""),
+        username=from_user.get("username") or from_user.get("first_name") or "",
+        allowlist=allowlist_chat_ids(),
+        converse_on=converse_enabled(),
+        dedup_path=dedup_path,
+        msg_map_path=msg_map_path,
+        rate_path=rate_path,
+        dry_run=dry_run,
+        send_fn=None if dry_run else _send,
+        wakes_limit=wakes_per_hour(),
+        actor_id="cio_telegram_bot",
     )
-    if not dry_run:
-        mark_wake_rate(chat_id, path=rate_path)
-
-    ctx = assemble_context(text, plan_id=plan_id, action_id=action_id, goal_id=goal_id)
-    advisory = build_template_advisory(text, ctx)
-    new_plan_id = plan_id
-    llm_deferred = True
-    if not dry_run:
-        new_plan_id = ensure_converse_plan(
-            advisory, plan_id=plan_id, symbols=ctx.get("symbols") or [], text=text,
-        )
-        # P2b: enrich plan under cap (same path as situation wakes)
-        try:
-            from scripts.lib.cio_plans import CIOPlanStore
-            from scripts.lib.cio_plan_enrichment import enrich_plan
-            store = CIOPlanStore()
-            plan_obj = store.get_plan(new_plan_id) if new_plan_id else None
-            if plan_obj:
-                enr = enrich_plan(
-                    plan_obj,
-                    source="OPERATOR_MESSAGE",
-                    wake_id=str(wake_id or message_id),
-                    extra_context={"operator_text": text[:500], "symbols": ctx.get("symbols")},
-                    plan_store=store,
-                )
-                plan_obj = enr.get("plan") or plan_obj
-                llm_deferred = plan_obj.get("narrative_source") != "llm"
-                advisory = {
-                    "summary": plan_obj.get("summary") or advisory.get("summary"),
-                    "evidence_refs": plan_obj.get("evidence_refs") or advisory.get("evidence_refs"),
-                    "options": plan_obj.get("options") or advisory.get("options"),
-                    "recommendation": plan_obj.get("recommendation") or advisory.get("recommendation"),
-                    "risks": plan_obj.get("risks") or advisory.get("risks"),
-                    "revisit_at": plan_obj.get("revisit_at") or advisory.get("revisit_at"),
-                    "llm_deferred": llm_deferred,
-                    "deep_links": plan_obj.get("cc_deep_links") or advisory.get("deep_links"),
-                }
-        except Exception:
-            llm_deferred = True
-    reply = format_structured_reply(
-        summary=advisory["summary"],
-        evidence_refs=advisory.get("evidence_refs"),
-        options=advisory.get("options"),
-        recommendation=advisory.get("recommendation") or "",
-        risks=advisory.get("risks"),
-        plan_id=new_plan_id,
-        goal_id=goal_id,
-        revisit_at=advisory.get("revisit_at"),
-        llm_deferred=bool(advisory.get("llm_deferred", llm_deferred)),
-        deep_links=advisory.get("deep_links"),
-    )
-
-    sent_mid = None
-    if not dry_run:
-        sent = send_cio_message(chat_id, reply)
-        sent_mid = sent.get("message_id")
-        if sent_mid and new_plan_id:
-            record_plan_message(new_plan_id, sent_mid, chat_id, path=msg_map_path)
-
-    # P5: close converse wake after reply (llm already set by enrich; fail-soft)
-    if wake_id and not dry_run:
-        try:
-            from scripts.lib.cio_wake_traces import close_trace
-            close_trace(
-                wake_id=str(wake_id),
-                outcome="deferred" if llm_deferred else "ok",
-                plan_id=new_plan_id,
-                situation_type="S0_OPERATOR_CONVERSE",
-                agent_id="alex",
-                source="OPERATOR_MESSAGE",
-                # llm left unset so merge keeps enrich_plan value
-            )
-        except Exception:
-            pass
-
-    out.update({
-        "handled": True,
-        "kind": "converse",
-        "event_id": event_id,
-        "wake_job_id": wake_id,
-        "plan_id": new_plan_id,
-        "attached_plan_id": plan_id,
-        "telegram_out_message_id": sent_mid,
-        "reply_preview": reply[:240],
-        "llm_deferred": bool(advisory.get("llm_deferred", llm_deferred)),
-    })
-    return out
