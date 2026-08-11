@@ -1,4 +1,14 @@
 
+## 2026-08-11 — P3+P6 thesis pin + CC deep links in CIO replies
+
+- Bootstrapped living desk thesis `desk@v1` (CIOThesisStore)
+- format_structured_reply: header thesis desk@vN; meta thesis pin; CC absolute links
+  (default base http://192.168.50.16:7777 or COMMAND_CENTER_BASE_URL)
+- build_cc_deep_links: /v3/cio?plan=, situation paths, portfolio?symbol=
+- Converse + situation notify include thesis + links; plan_id/ack unchanged
+- Verify: message @tradeai_cio_bot free-text or `/cio thesis`
+
+
 ## 2026-08-11 — P2 real Data Broker situations → CIO Telegram
 
 - Fixed live evidence shapes: portfolio weights, cost_basis.avg_cost_per_share, cash_buying_power

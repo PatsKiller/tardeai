@@ -56,9 +56,13 @@ def format_reply_for_channel(
     risks: Optional[list[str]] = None,
     plan_id: Optional[str] = None,
     goal_id: Optional[str] = None,
+    action_id: Optional[str] = None,
     revisit_at: Optional[str] = None,
+    thesis_version: Optional[str] = None,
+    situation_type: Optional[str] = None,
     llm_deferred: bool = False,
     deep_links: Optional[list[str]] = None,
+    symbols: Optional[list[str]] = None,
 ) -> str:
     """Shared structured formatter; WhatsApp gets plain-text friendly body."""
     text = format_structured_reply(
@@ -69,9 +73,13 @@ def format_reply_for_channel(
         risks=risks,
         plan_id=plan_id,
         goal_id=goal_id,
+        action_id=action_id,
         revisit_at=revisit_at,
+        thesis_version=thesis_version,
+        situation_type=situation_type,
         llm_deferred=llm_deferred,
         deep_links=deep_links,
+        symbols=symbols,
     )
     if (channel or "").lower() == "whatsapp":
         # Plain-text friendly: drop markdown markers without eating plan_id underscores
@@ -385,6 +393,32 @@ def process_operator_message(
         except Exception:
             llm_deferred = True
 
+    # P3/P6: thesis pin + CC deep links from plan
+    thesis_pin = None
+    sit_type = "S0_OPERATOR_CONVERSE"
+    plan_links = advisory.get("deep_links")
+    plan_symbols = ctx.get("symbols") or []
+    if not dry_run and new_plan_id:
+        try:
+            from scripts.lib.cio_plans import CIOPlanStore
+            pref = CIOPlanStore().get_plan(new_plan_id)
+            if pref:
+                thesis_pin = pref.get("thesis_version")
+                sit_type = pref.get("situation_type") or sit_type
+                plan_links = pref.get("cc_deep_links") or plan_links
+                plan_symbols = pref.get("symbols") or plan_symbols
+                goal_id = goal_id or (
+                    (pref.get("linked_goal_ids") or [None])[0]
+                )
+        except Exception:
+            pass
+    if not thesis_pin:
+        try:
+            from scripts.lib.cio_theses import safe_current_pin
+            thesis_pin = safe_current_pin("desk")
+        except Exception:
+            pass
+
     reply = format_reply_for_channel(
         channel=channel,
         summary=advisory["summary"],
@@ -394,9 +428,13 @@ def process_operator_message(
         risks=advisory.get("risks"),
         plan_id=new_plan_id,
         goal_id=goal_id,
+        action_id=action_id,
         revisit_at=advisory.get("revisit_at"),
+        thesis_version=thesis_pin,
+        situation_type=sit_type,
         llm_deferred=bool(advisory.get("llm_deferred", llm_deferred)),
-        deep_links=advisory.get("deep_links"),
+        deep_links=plan_links,
+        symbols=plan_symbols,
     )
 
     sent_mid = None

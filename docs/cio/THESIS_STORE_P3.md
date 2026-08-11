@@ -97,3 +97,15 @@ PY
 ## Non-goals
 
 Mem0, LangGraph, auto-rewrite of thesis by free agents, broker path, mass Telegram notify.
+
+## Reply surface (P3 + P6)
+
+CIO Telegram / situation notify replies now include:
+
+- Header: `thesis desk@vN`
+- Meta line: `plan_id · thesis · revisit_at`
+- `CC:` absolute deep links (base from `COMMAND_CENTER_BASE_URL` / `TRADEAI_CC_BASE_URL`,
+  default `http://192.168.50.16:7777`) including `/v3/cio?plan=<plan_id>` and situation paths
+- Footer: `/cio thesis` pointer
+
+Transport unchanged (Telegram unit + BWS token).

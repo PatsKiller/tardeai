@@ -71,7 +71,82 @@ def wakes_per_hour() -> int:
 
 
 def cc_base() -> str:
-    return _env("COMMAND_CENTER_BASE_URL") or _env("TRADEAI_CC_BASE_URL") or ""
+    """Command Center origin for deep links (no trailing slash)."""
+    raw = (
+        _env("COMMAND_CENTER_BASE_URL")
+        or _env("TRADEAI_CC_BASE_URL")
+        or _env("CC_BASE_URL")
+        or _env("TRADEAI_PUBLIC_CC_URL")
+    )
+    # Light LAN default for this host if unset (portfolio_server :7777)
+    if not raw:
+        raw = _env("TRADEAI_CC_DEFAULT_BASE") or "http://192.168.50.16:7777"
+    return raw.rstrip("/")
+
+
+def active_thesis_version() -> Optional[str]:
+    """Current desk thesis pin (desk@vN) or None. Fail-soft."""
+    try:
+        from scripts.lib.cio_theses import safe_current_pin
+        return safe_current_pin("desk")
+    except Exception:
+        try:
+            from lib.cio_theses import safe_current_pin  # type: ignore
+            return safe_current_pin("desk")
+        except Exception:
+            return None
+
+
+def build_cc_deep_links(
+    *,
+    situation_type: str = "",
+    plan_id: Optional[str] = None,
+    goal_id: Optional[str] = None,
+    action_id: Optional[str] = None,
+    symbols: Optional[list[str]] = None,
+    extra: Optional[list[str]] = None,
+) -> list[str]:
+    """Relative CC paths for a plan/situation (joined with cc_base in formatter)."""
+    paths: list[str] = []
+    # Situation catalog defaults
+    try:
+        import yaml
+        cfg_path = PROJECT_ROOT / "config" / "cio_situations.yaml"
+        if cfg_path.exists() and situation_type:
+            cfg = yaml.safe_load(cfg_path.read_text()) or {}
+            for p in (cfg.get("cc_deep_links") or {}).get(situation_type) or []:
+                if p and p not in paths:
+                    paths.append(str(p))
+    except Exception:
+        pass
+    # Always include CIO + advisory desks
+    for p in ("/v3/cio", "/v3/advisory"):
+        if p not in paths:
+            paths.append(p)
+    # Plan / goal query hooks (frontends that read ?plan= / ?goal=)
+    if plan_id:
+        q = f"/v3/cio?plan={plan_id}"
+        if q not in paths:
+            paths.insert(0, q)
+    if goal_id:
+        g = f"/v3/cio?goal={goal_id}"
+        if g not in paths:
+            paths.append(g)
+    if action_id:
+        a = f"/v3/cio?action={action_id}"
+        if a not in paths:
+            paths.append(a)
+    if symbols:
+        sym = str(symbols[0]).upper()
+        if sym and len(sym) <= 8:
+            w = f"/v3/portfolio?symbol={sym}"
+            if w not in paths:
+                paths.append(w)
+    for p in extra or []:
+        if p and p not in paths:
+            paths.append(str(p))
+    # Cap length for Telegram
+    return paths[:6]
 
 
 # ── Dedup / rate / message map ──────────────────────────────────────────────
@@ -252,14 +327,47 @@ def format_structured_reply(
     risks: Optional[list[str]] = None,
     plan_id: Optional[str] = None,
     goal_id: Optional[str] = None,
+    action_id: Optional[str] = None,
     revisit_at: Optional[str] = None,
+    thesis_version: Optional[str] = None,
+    situation_type: Optional[str] = None,
     llm_deferred: bool = False,
     deep_links: Optional[list[str]] = None,
+    symbols: Optional[list[str]] = None,
 ) -> str:
+    """Structured CIO reply: summary/options/rec/risks + thesis pin + CC deep links.
+
+    Thesis pin defaults to active desk@vN when not passed.
+    Deep links: absolute URLs when cc_base() is set; always show paths as fallback.
+    """
+    # Resolve thesis pin (P3)
+    pin = thesis_version
+    if not pin:
+        pin = active_thesis_version()
+
+    # Resolve deep links (P6)
+    links = list(deep_links or [])
+    if not links or plan_id or goal_id or situation_type:
+        auto = build_cc_deep_links(
+            situation_type=situation_type or "",
+            plan_id=plan_id,
+            goal_id=goal_id,
+            action_id=action_id,
+            symbols=symbols,
+            extra=deep_links,
+        )
+        # prefer auto order (plan-first) then extras
+        links = auto
+
     lines: list[str] = []
-    lines.append("🧠 *CIO advisory* · READ_ONLY")
+    header = "🧠 *CIO advisory* · READ_ONLY"
+    if pin:
+        header += f" · thesis `{pin}`"
+    lines.append(header)
     if llm_deferred:
         lines.append("_(LLM deferred — template reply)_")
+    if situation_type:
+        lines.append(f"_situation: {situation_type}_")
     lines.append("")
     lines.append("*Summary*")
     lines.append(summary.strip() or "(no summary)")
@@ -292,16 +400,30 @@ def format_structured_reply(
         meta.append(f"plan_id: `{plan_id}`")
     if goal_id:
         meta.append(f"goal_id: `{goal_id}`")
+    if action_id:
+        meta.append(f"action_id: `{action_id}`")
+    if pin:
+        meta.append(f"thesis: `{pin}`")
     if revisit_at:
         meta.append(f"revisit_at: `{revisit_at}`")
     if meta:
         lines.append(" · ".join(meta))
-    base = cc_base().rstrip("/")
-    if deep_links and base:
-        links = " ".join(f"{base}{p}" if p.startswith("/") else p for p in deep_links[:4])
-        lines.append(f"CC: {links}")
+    base = cc_base()
+    if links:
+        abs_links = []
+        for p in links[:5]:
+            p = str(p)
+            if p.startswith("http://") or p.startswith("https://"):
+                abs_links.append(p)
+            elif base:
+                abs_links.append(f"{base}{p}" if p.startswith("/") else f"{base}/{p}")
+            else:
+                abs_links.append(p)
+        lines.append("CC: " + " · ".join(abs_links))
     lines.append("")
     lines.append("_Reply to this message to continue · `/cio ack " + (plan_id or "<id>") + "` or reply `ack`_")
+    if pin:
+        lines.append(f"_Desk thesis: `/cio thesis` ({pin})_")
     lines.append("_No orders/stops from chat. READ_ONLY_ADVISORY._")
     return "\n".join(lines)
 

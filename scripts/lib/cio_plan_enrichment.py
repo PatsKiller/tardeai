@@ -795,6 +795,7 @@ def maybe_notify_plan(plan: dict[str, Any], policy: Optional[dict[str, Any]] = N
             send_cio_message,
         )
         header = f"📍 Situation {st or 'plan'}\n"
+        goals = plan.get("linked_goal_ids") or []
         text = header + format_structured_reply(
             summary=plan.get("summary") or plan.get("title") or "",
             evidence_refs=plan.get("evidence_refs"),
@@ -802,9 +803,13 @@ def maybe_notify_plan(plan: dict[str, Any], policy: Optional[dict[str, Any]] = N
             recommendation=plan.get("recommendation") or "",
             risks=plan.get("risks"),
             plan_id=plan.get("plan_id"),
+            goal_id=(goals[0] if goals else None),
             revisit_at=plan.get("revisit_at"),
+            thesis_version=plan.get("thesis_version"),
+            situation_type=st,
             llm_deferred=plan.get("narrative_source") == "template",
             deep_links=plan.get("cc_deep_links"),
+            symbols=plan.get("symbols"),
         )
         chats = allowlist_chat_ids()
         if not chats:
