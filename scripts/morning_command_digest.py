@@ -20,6 +20,7 @@ _SECTION_ORDER = [
     ("stops", "Risk / Stops"),
     ("drafts", "Pending Review"),
     ("hermes", "Hermes Movers"),
+    ("advisory", "Advisory Desk"),  # Phase 4B — ≤5 lines; additive, never replaces other sections
     ("health", "System Health"),
 ]
 
@@ -85,6 +86,54 @@ def send_morning_command_bundle(bundle: Dict[str, str], project_root: Path | Non
 def bundle_enabled(run_type: str = "daily") -> bool:
     """True when morning sections should defer to the bundled digest."""
     return run_type == "daily" and os.getenv("MORNING_COMMAND_BUNDLE", "1").strip() == "1"
+
+
+def advisory_morning_enabled() -> bool:
+    """True when Phase 7 promotion set morning path default, or env override.
+
+    Default-on after promote; before promote, still available if ADVISORY_MORNING=1.
+    """
+    env = __import__("os").getenv("ADVISORY_MORNING", "").strip().lower()
+    if env in ("1", "true", "yes", "on"):
+        return True
+    if env in ("0", "false", "no", "off"):
+        return False
+    try:
+        sys_path_scripts = str(PROJECT_ROOT / "scripts")
+        if sys_path_scripts not in __import__("sys").path:
+            __import__("sys").path.insert(0, sys_path_scripts)
+        from lib.advisory.promotion_gate import is_morning_path_default
+        return is_morning_path_default()
+    except Exception:
+        return True  # Phase 4+ additive section stays available
+
+
+def fetch_advisory_brief_section(limit: int = 3) -> str:
+    """Additive advisory desk lines for morning digest (≤5 body lines).
+
+    After Phase 7 PROMOTED, this is the default morning advisory path section.
+    """
+    if not advisory_morning_enabled():
+        return ""
+    try:
+        sys_path_scripts = str(PROJECT_ROOT / "scripts")
+        if sys_path_scripts not in __import__("sys").path:
+            __import__("sys").path.insert(0, sys_path_scripts)
+        from api_v3_advisory import get_advisory_brief
+        brief = get_advisory_brief(max_items=limit)
+        lines = brief.get("lines") or []
+        # Cap growth: at most 5 lines in the morning section body
+        body = "\n".join(lines[:5]).strip()
+        try:
+            from lib.advisory.promotion_gate import load_promotion_state
+            st = load_promotion_state()
+            if st.get("promoted"):
+                body = (body + "\n_(default morning advisory path — PROMOTED)_").strip()
+        except Exception:
+            pass
+        return body
+    except Exception as e:
+        return f"(advisory brief unavailable: {type(e).__name__})"
 
 
 def fetch_hermes_movers(limit: int = 3) -> str:

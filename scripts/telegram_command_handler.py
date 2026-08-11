@@ -62,6 +62,12 @@ _COMMANDS = {
     "/cio portfolio": "CIO portfolio snapshot",
     "/cio hermes": "Latest Hermes research topics",
     "/cio risk": "CIO risk overview",
+    "/advisory": "Advisory desk brief (3 things / top rows)",
+    "/advisory rate SYM useful|notuseful CODE": "Rate an advisory row",
+    "/advisory ack SYM": "Acknowledge advisory row",
+    "/advisory snooze SYM": "Snooze advisory row",
+    "/advisory history SYM": "Prior verdicts + feedback",
+    "/advisory calibration": "Desk outcome hit rates",
     "/ptopen": "Show open paper trades",
     "/ptpnl": "Paper trading P&L summary",
     "halt trading": "Global halt — block all strategies",
@@ -155,6 +161,12 @@ def parse_command(text: str) -> dict:
         return {"command": "cio", "args": "hermes"}
     if lower in ("/cio risk", "cio risk"):
         return {"command": "cio", "args": "risk"}
+    # /advisory — Advisory Desk (deterministic; feedback writes JSONL only)
+    if lower in ("/advisory", "advisory"):
+        return {"command": "advisory", "args": "brief"}
+    if lower.startswith("/advisory ") or lower.startswith("advisory "):
+        raw_args = text.split(None, 1)[1] if " " in text else ""
+        return {"command": "advisory", "args": raw_args.strip()}
     # Deterministic watchlist / research / LLM actions — run the REAL skill (agents fabricate these).
     if lower.startswith("watch ") and not lower.startswith("watchlist"):
         return {"command": "wl_add", "args": text[6:].strip()}
@@ -987,6 +999,28 @@ def process_command(cmd: dict) -> str:
             return f"🤖 *CIO Alex*\n\n{output}\n\n_Zero model calls · CIO Data Broker · Shadow-advisory only_"
         except Exception as e:
             return f"CIO query error: {e}"
+
+    if command == "advisory":
+        # Advisory desk brief + rate/ack/snooze/history — zero model calls
+        import subprocess
+        py = str(PROJECT_ROOT / ".venv/bin/python")
+        a = (args or "").strip()
+        try:
+            if not a or a in ("brief", "status", "desk"):
+                result = subprocess.run(
+                    [py, str(PROJECT_ROOT / "scripts/advisory_telegram_brief.py"), "--print"],
+                    capture_output=True, text=True, timeout=20, cwd=str(PROJECT_ROOT),
+                )
+                body = result.stdout.strip()
+                return f"📋 *Advisory Desk*\n\n{body}\n\n_READ_ONLY_ADVISORY · Open /v3/advisory_"
+            # Subcommands → advisory_commands.py
+            parts = a.split()
+            cmd = [py, str(PROJECT_ROOT / "scripts/advisory_commands.py")] + parts
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=15, cwd=str(PROJECT_ROOT))
+            out = (result.stdout or result.stderr or "").strip()
+            return f"📋 *Advisory*\n\n{out}"
+        except Exception as e:
+            return f"Advisory command error: {e}"
 
     if command in ("calibration", "accuracy"):
         try:

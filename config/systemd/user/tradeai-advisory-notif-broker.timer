@@ -1,0 +1,10 @@
+[Unit]
+Description=Hourly advisory notification broker metrics (SHADOW — no egress cutover)
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+Unit=tradeai-advisory-notif-broker.service
+
+[Install]
+WantedBy=timers.target

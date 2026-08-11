@@ -39800,6 +39800,20 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     return 200, _adv.get_advisory_brief()
                 if p == "calibration":
                     return 200, _adv.get_calibration()
+                if p == "promotion":
+                    try:
+                        from lib.advisory.promotion_gate import evaluate_promotion, load_promotion_state
+                        st = load_promotion_state()
+                        # Lightweight status; full evaluate is available via CLI
+                        return 200, {
+                            "ok": True,
+                            "status": st.get("status"),
+                            "promoted": bool(st.get("promoted")),
+                            "morning_path_default": bool(st.get("morning_path_default")),
+                            "promoted_at": st.get("promoted_at"),
+                        }
+                    except Exception as e:
+                        return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
                 if p.startswith("history/"):
                     sym = p[len("history/"):].strip("/").upper()
                     acct = ""

@@ -610,6 +610,13 @@ def _derive_holding_opinion(
 
 
 # FIX-4: Confidence derived from evidence quality, not a constant.
+#
+# CONVICTION RULE (Phase 1.7 — documented contract):
+#   Deterministic confidence and model conviction measure *thesis confidence*
+#   (evidence quality / signal strength), NOT position size or account.
+#   Same instrument in two accounts may differ if gain_loss_pct / entry basis
+#   differ (loss magnitude is thesis-relevant). Market value and weight_pct
+#   must not enter this function.
 def _compute_confidence(
     *,
     signals: list[str],
@@ -626,6 +633,8 @@ def _compute_confidence(
     Verified cost basis: +0.10 if reconciliation_status is 'OK' and cost_basis present.
     Margin bonus: +0.05 if threshold crossed by >50% (strong signal).
     Unverified basis penalty: -0.15 if reconciliation_status is not OK/UNKNOWN.
+
+    Does NOT take market_value or weight_pct — conviction ≠ size.
     """
     score = 0.50
 
@@ -800,23 +809,70 @@ def _derive_closed_opinion(
     }
 
 
-# FIX-5: Compute a per-row advisory hash over material deterministic fields.
+# FIX-5 / Phase 2B: per-row advisory hash over *material* fields only.
+# Bucketing prevents $0.01 price ticks from busting the opinion cache.
+_HASH_WEIGHT_BUCKET_PP = 0.1     # weight to 0.1 percentage points
+_HASH_PNL_BUCKET_PP = 0.5        # P&L % to 0.5pp
+_HASH_MV_BUCKET_PCT = 0.5        # market value to 0.5% relative buckets
+_HASH_CONF_BUCKET = 0.05         # confidence to 0.05
+
+
+def _bucket_float(val: float | None, step: float) -> float | None:
+    if val is None:
+        return None
+    try:
+        v = float(val)
+    except (TypeError, ValueError):
+        return None
+    if step <= 0:
+        return v
+    return round(round(v / step) * step, 6)
+
+
+def _bucket_mv(mv: float | None, pct_step: float = _HASH_MV_BUCKET_PCT) -> float | None:
+    """Bucket market value by relative percent so $0.01 ticks do not change the key.
+
+    Uses geometric buckets of size (1 + pct_step/100) so the step is scale-free.
+    """
+    import math
+
+    if mv is None:
+        return None
+    try:
+        v = float(mv)
+    except (TypeError, ValueError):
+        return None
+    if v <= 0:
+        return 0.0
+    r = 1.0 + max(pct_step, 0.01) / 100.0
+    n = round(math.log(v) / math.log(r))
+    return round(r ** n, 2)
+
+
 def _row_hash(row: dict[str, Any]) -> str:
     """Compute a deterministic hash for one advisory row.
 
-    Only includes fields that materially affect the opinion — excludes
-    timestamps, computed_at, and other fields that tick without meaning.
+    Material fields only — buckets weight / P&L / MV / confidence so noise
+    does not invalidate the local opinion cache (Phase 2B cost model).
     """
-    material_keys = (
-        "symbol", "verdict", "confidence", "weight_pct", "market_value",
-        "gain_loss_pct", "days_held", "account", "source", "risk_signals",
-        "housekeeping_flag", "housekeeping_reason", "row_class",
-    )
-    material = {}
-    for k in material_keys:
-        v = row.get(k)
-        if v is not None:
-            material[k] = v
+    verdict = row.get("verdict")
+    if hasattr(verdict, "value"):
+        verdict = verdict.value
+    material = {
+        "symbol": row.get("symbol"),
+        "verdict": str(verdict) if verdict is not None else None,
+        "confidence": _bucket_float(row.get("confidence"), _HASH_CONF_BUCKET),
+        "weight_pct": _bucket_float(row.get("weight_pct"), _HASH_WEIGHT_BUCKET_PP),
+        "market_value": _bucket_mv(row.get("market_value")),
+        "gain_loss_pct": _bucket_float(row.get("gain_loss_pct"), _HASH_PNL_BUCKET_PP),
+        "days_held": int(row["days_held"]) if row.get("days_held") is not None else None,
+        "account": row.get("account"),
+        "source": row.get("source"),
+        "risk_signals": sorted(row.get("risk_signals") or []) if isinstance(row.get("risk_signals"), list) else row.get("risk_signals"),
+        "housekeeping_flag": bool(row.get("housekeeping_flag")),
+        "row_class": row.get("row_class"),
+        "lot_data_status": row.get("lot_data_status") or "",
+    }
     payload = json.dumps(material, sort_keys=True, default=str)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:12]
 
@@ -833,10 +889,18 @@ def _load_model_portfolio() -> dict[str, Any]:
     return raw.get("strategic_allocation", {}) if raw.get("strategic_allocation") else raw
 
 
+def _latest_catalyst_cache_path() -> Path | None:
+    """Resolve newest data/catalyst_cache_YYYY-MM-DD.json (never hardcode a date)."""
+    data_dir = PROJECT_ROOT / "data"
+    candidates = sorted(data_dir.glob("catalyst_cache_*.json"), key=lambda p: p.stat().st_mtime)
+    return candidates[-1] if candidates else None
+
+
 def _load_catalysts() -> dict[str, Any]:
-    """Load catalyst/news evidence from portfolio_news and catalyst_cache."""
+    """Load catalyst/news evidence from portfolio_news and latest catalyst_cache."""
     news = _load_json(STATE_DIR / "portfolio_news.json")
-    cache = _load_json(PROJECT_ROOT / "data" / f"catalyst_cache_2026-08-10.json")
+    cache_path = _latest_catalyst_cache_path()
+    cache = _load_json(cache_path) if cache_path else {}
     catalysts: dict[str, list[dict[str, Any]]] = {}
 
     # From portfolio_news (scored catalysts)
@@ -851,23 +915,36 @@ def _load_catalysts() -> dict[str, Any]:
                 "staleness_days": _age_hours(news.get("generated_at")) / 24 if news.get("generated_at") else None,
             })
 
-    # From catalyst_cache
-    for sym, data in cache.items():
-        enrichment = data.get("enrichment", {})
-        cat_list = enrichment.get("catalysts", [])
-        if cat_list:
-            sym_u = _norm_symbol(sym)
-            for c in cat_list[:5]:
-                catalysts.setdefault(sym_u, []).append({
-                    "source": "catalyst_cache",
-                    "as_of": data.get("_cached_at", ""),
-                    "title": str(c.get("headline", c.get("title", "")))[:200],
-                    "type": str(c.get("catalyst_type", "")),
-                    "tier": str(enrichment.get("catalyst_tier", "")),
-                    "staleness_days": _age_hours(data.get("_cached_at")) / 24 if data.get("_cached_at") else None,
-                })
+    # From catalyst_cache (date-agnostic latest file)
+    if isinstance(cache, dict):
+        for sym, data in cache.items():
+            if not isinstance(data, dict):
+                continue
+            enrichment = data.get("enrichment", {})
+            if not isinstance(enrichment, dict):
+                enrichment = {}
+            cat_list = enrichment.get("catalysts", [])
+            if cat_list:
+                sym_u = _norm_symbol(sym)
+                for c in cat_list[:5]:
+                    if not isinstance(c, dict):
+                        continue
+                    catalysts.setdefault(sym_u, []).append({
+                        "source": "catalyst_cache",
+                        "cache_file": cache_path.name if cache_path else "",
+                        "as_of": data.get("_cached_at", ""),
+                        "title": str(c.get("headline", c.get("title", "")))[:200],
+                        "type": str(c.get("catalyst_type", "")),
+                        "tier": str(enrichment.get("catalyst_tier", "")),
+                        "staleness_days": _age_hours(data.get("_cached_at")) / 24 if data.get("_cached_at") else None,
+                    })
 
-    return {"state": "AVAILABLE", "by_symbol": catalysts, "count": len(catalysts)}
+    return {
+        "state": "AVAILABLE" if catalysts else "EMPTY",
+        "by_symbol": catalysts,
+        "count": len(catalysts),
+        "cache_path": str(cache_path) if cache_path else None,
+    }
 
 
 def _load_earnings() -> dict[str, Any]:
@@ -1668,7 +1745,8 @@ def _build_evidence_bundle(
         items.append({
             "type": "hermes_health",
             "source": "hermes_holdings_lifecycle",
-            "as_of": datetime.now(timezone.utc).isoformat(),
+            # Prefer source as_of — never inject wall-clock (destroys cache/prefix stability)
+            "as_of": str(hlc.get("as_of") or hermes_data.get("as_of") or "")[:19],
             "health_score": hlc.get("health_score"),
             "lifecycle_stage": hlc.get("lifecycle_stage"),
             "confidence_tier": hlc.get("confidence_tier"),
@@ -1706,9 +1784,9 @@ def _build_evidence_bundle(
     elif row_class == "holding":
         gaps.append("earnings_calendar")
 
-    # ── 4. Technical indicators ──
+    # ── 4. Technical indicators (native snapshot, else price-action derived) ──
     ind = indicator_data.get("by_symbol", {}).get(symbol, {})
-    if ind:
+    if ind and any(ind.get(k) is not None for k in ("rsi", "sma_50", "macd_signal", "atr")):
         items.append({
             "type": "technicals",
             "source": "indicator_snapshot",
@@ -1721,8 +1799,30 @@ def _build_evidence_bundle(
             "atr": ind.get("atr"),
             "obv_signal": ind.get("obv_signal", ""),
         })
-    elif row_class == "holding":
-        gaps.append("technicals")
+    else:
+        # Phase 2A: derive a thin technicals proxy from price_action so the gap
+        # does not systematically starve evidence when indicator_snapshot lags.
+        pa_for_tech = all_data.get("price_action", {}).get(symbol, {}) or {}
+        derived = {}
+        for src_k, dst_k in (
+            ("price_change_pct_5d", "ret_5d_pct"),
+            ("price_change_pct_20d", "ret_20d_pct"),
+            ("trend_direction", "trend_direction"),
+            ("volatility_w_pct", "volatility_w_pct"),
+            ("pct_off_52w_high", "pct_off_52w_high"),
+        ):
+            if pa_for_tech.get(src_k) is not None:
+                derived[dst_k] = pa_for_tech.get(src_k)
+        if derived:
+            items.append({
+                "type": "technicals",
+                "source": "price_action_derived",
+                "as_of": str(pa_for_tech.get("as_of") or "")[:19],
+                "derived": True,
+                **derived,
+            })
+        elif row_class == "holding":
+            gaps.append("technicals")
 
     # ── 5. Risk / stop posture ──
     risk = risk_data.get("by_symbol", {}).get(symbol, {})
@@ -1852,11 +1952,17 @@ def _build_evidence_bundle(
 
     # ── S4/13. Analyst context ──
     an = all_data.get("analysts", {}).get(symbol, {})
-    if an and an.get("analyst_count"):
+    # Phase 2A: accept target mean OR consensus even when analyst_count is null
+    if an and (
+        an.get("analyst_count")
+        or an.get("price_target_mean") is not None
+        or an.get("consensus_rating")
+        or an.get("recommendation_mean") is not None
+    ):
         items.append({
             "type": "analyst_context",
-            "source": "yahoo_analyst_targets_history",
-            "as_of": an.get("as_of", "")[:19],
+            "source": an.get("source") or "yahoo_analyst_targets_history",
+            "as_of": str(an.get("as_of", "") or "")[:19],
             "analyst_count": an.get("analyst_count"),
             "price_target_mean": an.get("price_target_mean"),
             "price_target_high": an.get("price_target_high"),
@@ -1869,10 +1975,16 @@ def _build_evidence_bundle(
         gaps.append("analyst_context")
 
     sufficiency = len(items)
+    # Gap report for operators / Phase 2 telemetry
+    gap_report = {
+        "missing": list(gaps),
+        "item_types": sorted({str(i.get("type")) for i in items if isinstance(i, dict)}),
+    }
     return {
         "evidence_items": items,
         "evidence_count": sufficiency,
         "evidence_gaps": gaps,
+        "evidence_gap_report": gap_report,
         "sufficient": sufficiency >= MIN_EVIDENCE_ITEMS,
     }
 
@@ -2338,10 +2450,25 @@ def build_advisory_desk(*, max_age_s: float = DEFAULT_MAX_AGE_S, force: bool = F
                 ),
                 "s4_listing_dates_available": len(listing_dates),
                 "s4_instrument_identity_built": len(instrument_data),
+                "catalyst_cache_path": (evidence_data.get("catalysts") or {}).get("cache_path"),
             },
             "rows": rows,
         },
     }
+
+    # ── Plausibility / contract validation on every build (Phase 1.4) ──
+    # Soft-fail: never raise; surface in metadata for delivery hard-fail later.
+    try:
+        validation_errors = validate_advisory_output(result)
+    except Exception as e:
+        validation_errors = [f"validator_exception: {type(e).__name__}: {e}"]
+    result["data"]["metadata"]["validation_errors"] = validation_errors
+    result["data"]["metadata"]["validation_ok"] = len(validation_errors) == 0
+    result["data"]["metadata"]["plausibility_gate"] = (
+        "PASS" if not any("PLAUSIBILITY_FAIL" in e for e in validation_errors) else "FAIL"
+    )
+    if validation_errors:
+        result["data"]["metadata"]["validation_error_count"] = len(validation_errors)
 
     # ── Persist cache ──
     try:
@@ -2547,120 +2674,400 @@ def validate_advisory_output(output: dict[str, Any]) -> list[str]:
 # S3 Opinion enrichment — optional LLM layer on top of deterministic desk
 # ═══════════════════════════════════════════════════════════════════════════════
 
+def _advisory_desk_v1_enabled(config: dict[str, Any] | None = None) -> bool:
+    """Feature flag ADVISORY_DESK_V1 — default OFF. Env overrides yaml."""
+    import os
+
+    env = (os.environ.get("ADVISORY_DESK_V1") or "").strip().lower()
+    if env in ("1", "true", "yes", "on"):
+        return True
+    if env in ("0", "false", "no", "off"):
+        return False
+    if config is None:
+        try:
+            from lib.advisory.advisory_opinion_engine import _load_config
+            config = _load_config()
+        except Exception:
+            config = {}
+    return bool((config or {}).get("ADVISORY_DESK_V1"))
+
+
 def enrich_advisory_with_opinions(
     desk_result: dict[str, Any],
     *,
-    max_rows: int = 20,
+    max_rows: int | None = None,
     force: bool = False,
-    dry_run: bool = True,
+    dry_run: bool | None = None,
+    include_synthesis: bool = True,
 ) -> dict[str, Any]:
-    """Enrich advisory desk rows with LLM-generated opinions (S3).
+    """Enrich advisory desk rows with LLM-generated opinions (S3 / Phase 2).
 
-    Does not modify the deterministic desk — opinions are stored alongside
-    the deterministic verdict. Each row's advisory_row_hash determines whether
-    the model is called.
-
-    Args:
-        desk_result: Output of build_advisory_desk()
-        max_rows: Max rows to call model for (cost control)
-        force: Bypass per-row hash cache
-        dry_run: If True, uses deterministic fallback only (no live model calls).
-                 Set False in production when the bridge is confirmed running.
-
-    Returns the desk_result with 'opinions' key added.
+    Phase 2 coverage rule: **all actionable rows above materiality** are
+    model-covered first (Flash). Remaining budget may fill high-MV HOLDs.
+    Local hash cache makes a second identical run = 0 model calls.
+    One Pro synthesis (dollars-first) when not dry_run and include_synthesis.
     """
     try:
         from lib.advisory.advisory_opinion_engine import (
             generate_row_opinion,
             generate_desk_synthesis,
+            estimate_cost_usd,
+            _append_telemetry,
+            _load_config,
+        )
+        from lib.advisory.advisory_memory import (
+            append_run_history,
+            apply_thrash_penalty,
+            build_memory_for_row,
+            load_calibration,
         )
     except ImportError:
         desk_result.setdefault("opinions", {})["error"] = "opinion engine unavailable"
         return desk_result
+
+    try:
+        config = _load_config()
+    except Exception:
+        config = {}
+
+    try:
+        calibration = load_calibration()
+    except Exception:
+        calibration = {}
+
+    flag_on = _advisory_desk_v1_enabled(config)
+    if dry_run is None:
+        dry_run = not flag_on
+    if not flag_on:
+        dry_run = True
+
+    cost_cfg = (config.get("routing") or {}).get("cost") or {}
+    if max_rows is None:
+        max_rows = int(cost_cfg.get("max_model_rows_per_run") or 20)
+    max_rows = max(0, int(max_rows))
 
     rows = desk_result.get("data", {}).get("rows", [])
     if not rows:
         desk_result.setdefault("opinions", {})["error"] = "no rows"
         return desk_result
 
-    try:
-        from lib.advisory.advisory_opinion_engine import _load_config
-        config = _load_config()
-    except Exception:
-        config = {}
+    meta = (desk_result.get("data") or {}).get("metadata") or {}
+    if meta.get("validation_ok") is False:
+        desk_result.setdefault("opinions", {})["validation_warning"] = (
+            "desk failed validation; opinions may be unreliable"
+        )
 
-    opinions: dict[str, dict[str, Any]] = {}
-    called = 0
-
-    # ── S4/6.2: Prioritize by dollars at stake × verdict severity ──
-    # Every actionable verdict on a position above the materiality floor
-    # gets a model call before any HOLD does.
+    ACTIONABLE = frozenset({"EXIT", "TRIM", "ADD", "RE_ENTER"})
     VERDICT_SEVERITY = {
         "EXIT": 5, "TRIM": 4, "ADD": 3, "RE_ENTER": 2,
         "HOLD": 1, "WAIT": 0, "AVOID": 0, "INSUFFICIENT_DATA": 0,
     }
 
-    def _opinion_priority(row: dict[str, Any]) -> float:
-        mv = row.get("market_value") or 0
-        v_str = str(row["verdict"].value) if isinstance(row.get("verdict"), object) and hasattr(row["verdict"], "value") else str(row.get("verdict", "HOLD"))
-        severity = VERDICT_SEVERITY.get(v_str, 0)
-        # Only score actionable verdicts above materiality floor
-        if severity >= 2 and mv >= MATERIALITY_FLOOR_USD:
-            return mv * severity
-        # HOLD/WATCH/INSUFFICIENT_DATA below materiality floor → zero priority
-        if mv < MATERIALITY_FLOOR_USD:
-            return 0
-        return mv * severity * 0.1  # de-prioritize non-actionable
+    def _vstr(row: dict[str, Any]) -> str:
+        v = row.get("verdict")
+        if hasattr(v, "value"):
+            return str(v.value)
+        return str(v or "HOLD")
 
-    sorted_rows = sorted(rows, key=_opinion_priority, reverse=True)
+    def _is_actionable(row: dict[str, Any]) -> bool:
+        mv = float(row.get("market_value") or 0)
+        if mv < MATERIALITY_FLOOR_USD and row.get("row_class") in ("holding", "allocation", None):
+            # allocation cash gaps often have large MV — allow if MV high
+            if row.get("row_class") != "allocation":
+                return False
+        return _vstr(row) in ACTIONABLE and mv >= MATERIALITY_FLOOR_USD
 
-    for row in sorted_rows:
-        if called >= max_rows:
-            break
+    def _eligible(row: dict[str, Any]) -> tuple[bool, str]:
+        if not row.get("advisory_row_hash"):
+            return False, "no_hash"
+        if row.get("lot_data_status") == "UNTRUSTED" and _vstr(row) in ("EXIT", "TRIM"):
+            return False, "untrusted"
+        mv = float(row.get("market_value") or 0)
+        if row.get("row_class") == "holding" and mv < MATERIALITY_FLOOR_USD:
+            return False, "materiality"
+        return True, "ok"
 
-        row_hash = row.get("advisory_row_hash", "")
-        if not row_hash:
+    # Partition: actionable first (must cover), then other eligible by $ × severity
+    actionable: list[dict[str, Any]] = []
+    rest: list[dict[str, Any]] = []
+    skipped_untrusted = skipped_materiality = 0
+    for row in rows:
+        ok, why = _eligible(row)
+        if not ok:
+            if why == "untrusted":
+                skipped_untrusted += 1
+            elif why == "materiality":
+                skipped_materiality += 1
             continue
+        if _is_actionable(row):
+            actionable.append(row)
+        else:
+            rest.append(row)
 
+    actionable.sort(
+        key=lambda r: float(r.get("market_value") or 0) * VERDICT_SEVERITY.get(_vstr(r), 1),
+        reverse=True,
+    )
+    rest.sort(
+        key=lambda r: float(r.get("market_value") or 0) * VERDICT_SEVERITY.get(_vstr(r), 0),
+        reverse=True,
+    )
+    # Actionable always first; then fill remainder of max_rows from rest
+    # All actionable first (hard cover), then optional HOLDs up to max_rows.
+    ordered = list(actionable)
+    for r in rest:
+        if len(ordered) >= max(max_rows, len(actionable)):
+            break
+        ordered.append(r)
+
+    opinions: dict[str, dict[str, Any]] = {}
+    rows_model_called = 0
+    rows_cache_hit = 0
+    rows_enriched = 0
+    input_tokens = output_tokens = cached_tokens = 0
+    cost_usd = 0.0
+    rejection_count = 0
+    actionable_total = len(actionable)
+    actionable_covered = 0
+
+    memory_hits = 0
+    thrash_applied_n = 0
+    disagree_surfaced_n = 0
+
+    for row in ordered:
+        row_hash = row["advisory_row_hash"]
+        det_verdict = _vstr(row)
+        evidence = row.get("evidence_bundle") or {}
         sym = row.get("symbol", "?")
-        det_verdict = str(row["verdict"].value) if isinstance(row.get("verdict"), object) and hasattr(row["verdict"], "value") else str(row.get("verdict", "HOLD"))
-        evidence = row.get("evidence_bundle", {})
+
+        # Phase 3: load L4 memory (prior + feedback + thrash) for this row
+        try:
+            mem = build_memory_for_row(row, calibration=calibration)
+        except Exception:
+            mem = {"memory_block": "", "prior": {}, "thrash_penalty": 0, "disagree_thesis": None}
+        memory_block = mem.get("memory_block") or ""
+        if mem.get("prior", {}).get("has_prior"):
+            memory_hits += 1
+        if mem.get("disagree_thesis"):
+            disagree_surfaced_n += 1
+        # Attach compact memory onto the row for surface/API later
+        row["memory"] = {
+            "prior": mem.get("prior"),
+            "thrash_penalty": mem.get("thrash_penalty"),
+            "has_disagree_thesis": bool(mem.get("disagree_thesis")),
+        }
 
         if dry_run:
-            # Deterministic-only fallback (no live call)
+            base_conv = int((row.get("confidence") or 0.5) * 100)
+            adj, pen = apply_thrash_penalty(base_conv, int((mem.get("prior") or {}).get("verdict_changes_90d") or 0))
+            if pen:
+                thrash_applied_n += 1
+            rationale = row.get("rationale", f"Deterministic opinion for {sym}.")
+            if mem.get("disagree_thesis"):
+                d = mem["disagree_thesis"]
+                rationale = (
+                    f"{rationale} | Operator DISAGREE_THESIS on "
+                    f"{(d.get('ts') or '')[:10]}: held through prior call."
+                )
+            # Dry-run: still record lesson applications when injected
+            try:
+                from lib.advisory.kb_lessons import record_application
+                for L in (mem.get("lessons") or []):
+                    lid = str(L.get("id") or "")
+                    if lid:
+                        record_application(lid, symbol=str(sym), hit=None, cited_in_rationale=False)
+            except Exception:
+                pass
             opinion = {
                 "verdict": det_verdict,
-                "conviction": int(row.get("confidence", 0.5) * 100),
+                "conviction": adj,
+                "conviction_pre_thrash": base_conv,
+                "thrash_penalty": pen,
                 "what_changed": "Dry run — model not called.",
-                "rationale": row.get("rationale", f"Deterministic opinion for {sym}."),
-                "key_risk": f"No counter-argument analysis (dry run). Evidence gaps: {evidence.get('evidence_gaps', [])}",
-                "evidence_cited": [item.get("title", "") for item in evidence.get("evidence_items", [])[:3]],
+                "rationale": rationale,
+                "key_risk": (
+                    f"No counter-argument analysis (dry run). "
+                    f"Evidence gaps: {evidence.get('evidence_gaps', [])}"
+                ),
+                "evidence_cited": [
+                    item.get("title", "")
+                    for item in (evidence.get("evidence_items") or [])[:3]
+                    if isinstance(item, dict)
+                ],
                 "advisory_row_hash": row_hash,
                 "model_deterministic_disagreement": False,
                 "llm_rejected": False,
                 "model": "deterministic (dry_run)",
                 "cache_hit": False,
+                "memory_injected": bool(memory_block),
+                "lessons_injected": [L.get("id") for L in (mem.get("lessons") or [])],
             }
         else:
             opinion = generate_row_opinion(
                 row, evidence, det_verdict,
                 config=config, force=force,
+                memory_block=memory_block,
             )
+            # Thrash penalty on conviction (deterministic post-process)
+            base_conv = opinion.get("conviction")
+            adj, pen = apply_thrash_penalty(
+                base_conv,
+                int((mem.get("prior") or {}).get("verdict_changes_90d") or 0),
+            )
+            if pen:
+                thrash_applied_n += 1
+                opinion["conviction_pre_thrash"] = base_conv
+                opinion["conviction"] = adj
+                opinion["thrash_penalty"] = pen
+            if mem.get("disagree_thesis") and opinion.get("rationale"):
+                d = mem["disagree_thesis"]
+                opinion["rationale"] = (
+                    f"{opinion['rationale']} | Operator DISAGREE_THESIS on "
+                    f"{(d.get('ts') or '')[:10]}: held through prior call."
+                )
+                opinion["operator_disagree_thesis"] = True
+            # Phase 6: record lesson applications; mark citations in rationale
+            try:
+                from lib.advisory.kb_lessons import record_application
+                rat = str(opinion.get("rationale") or "")
+                cited_ids = []
+                for L in (mem.get("lessons") or []):
+                    title = str(L.get("title") or "")
+                    lid = str(L.get("id") or "")
+                    if not lid:
+                        continue
+                    cited = bool((title and title[:40] in rat) or (lid and lid in rat))
+                    if cited:
+                        cited_ids.append(lid)
+                    record_application(
+                        lid,
+                        symbol=str(row.get("symbol") or ""),
+                        hit=None,
+                        cited_in_rationale=cited,
+                    )
+                if cited_ids:
+                    opinion["lessons_cited"] = cited_ids
+            except Exception:
+                pass
+            opinion["memory_injected"] = bool(memory_block)
+            opinion["lessons_injected"] = [L.get("id") for L in (mem.get("lessons") or [])]
+            usage = opinion.get("usage") or {}
+            if opinion.get("cache_hit"):
+                rows_cache_hit += 1
+            else:
+                rows_model_called += 1
+                input_tokens += int(usage.get("prompt_tokens") or usage.get("input_tokens") or 0)
+                output_tokens += int(usage.get("completion_tokens") or usage.get("output_tokens") or 0)
+                cached_tokens += int(
+                    usage.get("prompt_cache_hit_tokens") or usage.get("cached_tokens") or 0
+                )
+                cost_usd += estimate_cost_usd(usage, model=str(opinion.get("model") or ""))
+            if opinion.get("llm_rejected"):
+                rejection_count += 1
 
         opinions[row_hash] = opinion
-        called += 1
+        rows_enriched += 1
+        if _is_actionable(row):
+            actionable_covered += 1
 
-    # Generate desk synthesis
-    synthesis = generate_desk_synthesis(rows, config=config) if not dry_run else (
-        f"[S3 SYNTHESIS — DRY RUN] "
-        f"Model synthesis not generated in dry-run mode. "
-        f"{len(rows)} rows, {len(opinions)} opinions populated. "
-        f"See advisory_desk_latest.json for full desk."
-    )
+    # Pro synthesis — one call, dollars-first (Phase 2C)
+    synthesis_meta: dict[str, Any]
+    if dry_run or not include_synthesis:
+        synthesis_meta = {
+            "text": (
+                f"[S3 SYNTHESIS — DRY RUN] ADVISORY_DESK_V1={flag_on}. "
+                f"{len(rows)} rows, {len(opinions)} opinions. "
+                f"Actionable covered {actionable_covered}/{actionable_total}."
+            ),
+            "cache_hit": False,
+            "degraded": True,
+            "model": "dry_run",
+        }
+    else:
+        synthesis_meta = generate_desk_synthesis(rows, config=config, force=force)
+        usage = synthesis_meta.get("usage") or {}
+        if not synthesis_meta.get("cache_hit"):
+            input_tokens += int(usage.get("prompt_tokens") or usage.get("input_tokens") or 0)
+            output_tokens += int(usage.get("completion_tokens") or usage.get("output_tokens") or 0)
+            cached_tokens += int(
+                usage.get("prompt_cache_hit_tokens") or usage.get("cached_tokens") or 0
+            )
+            cost_usd += estimate_cost_usd(
+                usage, model=str(synthesis_meta.get("model") or "deepseek-v4-pro")
+            )
 
-    desk_result.setdefault("opinions", {})["rows"] = opinions
-    desk_result["opinions"]["synthesis"] = synthesis
-    desk_result["opinions"]["rows_enriched"] = called
+    total_for_hit = rows_model_called + rows_cache_hit
+    cache_hit_rate = (rows_cache_hit / total_for_hit) if total_for_hit else 1.0
+
+    telemetry = {
+        "event": "advisory_opinion_run",
+        "dry_run": dry_run,
+        "ADVISORY_DESK_V1": flag_on,
+        "rows_enriched": rows_enriched,
+        "rows_called": rows_model_called,
+        "rows_cache_hit": rows_cache_hit,
+        "cache_hit_rate": round(cache_hit_rate, 4),
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "cached_tokens": cached_tokens,
+        "cost_usd": round(cost_usd, 6),
+        "actionable_total": actionable_total,
+        "actionable_covered": actionable_covered,
+        "actionable_coverage_pct": (
+            round(100.0 * actionable_covered / actionable_total, 1)
+            if actionable_total else 100.0
+        ),
+        "rejection_count": rejection_count,
+        "synthesis_cache_hit": bool(synthesis_meta.get("cache_hit")),
+        "synthesis_lead_symbol": synthesis_meta.get("lead_symbol"),
+        "synthesis_lead_dollars": synthesis_meta.get("lead_dollars"),
+        "skipped_untrusted": skipped_untrusted,
+        "skipped_materiality": skipped_materiality,
+        "memory_prior_hits": memory_hits,
+        "memory_prior_hit_pct": (
+            round(100.0 * memory_hits / rows_enriched, 1) if rows_enriched else 0.0
+        ),
+        "thrash_applied_n": thrash_applied_n,
+        "disagree_thesis_surfaced_n": disagree_surfaced_n,
+    }
+    try:
+        _append_telemetry(telemetry)
+    except Exception:
+        pass
+
+    # Phase 3A: append-only verdict history for this run
+    history_n = 0
+    try:
+        history_n = append_run_history(
+            ordered if ordered else rows,
+            opinions=opinions,
+            source="enrich_advisory_with_opinions",
+        )
+    except Exception:
+        history_n = 0
+    telemetry["history_rows_appended"] = history_n
+
+    desk_result.setdefault("opinions", {})
+    desk_result["opinions"]["rows"] = opinions
+    desk_result["opinions"]["synthesis"] = synthesis_meta.get("text") or ""
+    desk_result["opinions"]["synthesis_meta"] = {
+        k: v for k, v in synthesis_meta.items() if k != "text"
+    }
+    desk_result["opinions"]["rows_enriched"] = rows_enriched
     desk_result["opinions"]["dry_run"] = dry_run
+    desk_result["opinions"]["ADVISORY_DESK_V1"] = flag_on
+    desk_result["opinions"]["max_rows"] = max_rows
+    desk_result["opinions"]["skipped_untrusted"] = skipped_untrusted
+    desk_result["opinions"]["skipped_materiality"] = skipped_materiality
+    desk_result["opinions"]["telemetry"] = telemetry
+    desk_result["opinions"]["memory"] = {
+        "prior_hits": memory_hits,
+        "thrash_applied_n": thrash_applied_n,
+        "disagree_thesis_surfaced_n": disagree_surfaced_n,
+        "history_rows_appended": history_n,
+    }
+    if not dry_run:
+        desk_result["data"]["llm_in_path"] = True
+        desk_result["data"]["deterministic"] = True
 
     return desk_result

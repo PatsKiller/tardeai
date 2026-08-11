@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily advisory desk outcome scoring
+
+[Timer]
+OnCalendar=*-*-* 18:30:00
+Persistent=true
+Unit=tradeai-advisory-outcome-scorer.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,16 @@
+[Unit]
+Description=Trade AI Advisory KB lessons — nightly reflection + auto-retire
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+Environment=PATH=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin:/usr/bin
+Environment=HOME=/home/johnclaw
+ExecStart=/bin/bash -c '/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/advisory_lessons.py reflect && /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/advisory_lessons.py ratify-safe && /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/advisory_lessons.py auto-retire'
+Nice=10
+StandardOutput=append:/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/advisory_lessons.log
+StandardError=append:/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/advisory_lessons.log
+
+[Install]
+WantedBy=default.target

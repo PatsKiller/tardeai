@@ -1,0 +1,16 @@
+[Unit]
+Description=Trade AI advisory notification broker — Tier D process window
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+Environment=PATH=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin:/usr/bin
+Environment=HOME=/home/johnclaw
+ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/advisory_notification_broker.py process --hours 24
+Nice=10
+StandardOutput=append:/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/advisory_notif_broker.log
+StandardError=append:/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/advisory_notif_broker.log
+
+[Install]
+WantedBy=default.target

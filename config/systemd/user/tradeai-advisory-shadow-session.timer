@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily Advisory Desk shadow session (Phase 5 track toward 20)
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 09:15:00
+Persistent=true
+Unit=tradeai-advisory-shadow-session.service
+
+[Install]
+WantedBy=timers.target

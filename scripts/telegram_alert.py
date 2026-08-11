@@ -171,6 +171,12 @@ def send_telegram(message: str, bypass_router: bool = False) -> bool:
     """
     if not _enabled():
         return False
+    # Phase 6 Tier D broker — SHADOW ingest only; never suppresses delivery.
+    try:
+        from lib.advisory.notification_broker import wrap_send_hook
+        wrap_send_hook(message, producer="send_telegram", bypass_router=bypass_router)
+    except Exception:
+        pass
     try:
         result = publish_operator_message(message, bypass_router=bypass_router)
     except Exception as e:

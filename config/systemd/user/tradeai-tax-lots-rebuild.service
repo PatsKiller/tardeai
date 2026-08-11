@@ -1,0 +1,17 @@
+[Unit]
+Description=Trade AI tax lots rebuild from trade_transactions
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+Environment=PATH=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin:/usr/bin
+Environment=HOME=/home/johnclaw
+ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/rebuild_tax_lots_from_transactions.py
+Nice=10
+StandardOutput=append:/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/tax_lots_rebuild.log
+StandardError=append:/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/tax_lots_rebuild.log
+
+[Install]
+WantedBy=default.target

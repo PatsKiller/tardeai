@@ -57,6 +57,14 @@ CALLER_PROCESS_MAP: dict[str, str] = {
     "advisory_desk": "advisory_desk_opinion",
 }
 
+# Task-type overrides for multi-policy callers (server-side only).
+CALLER_TASK_PROCESS_MAP: dict[str, dict[str, str]] = {
+    "advisory_desk": {
+        "advisory_opinion": "advisory_desk_opinion",
+        "advisory_synthesis": "advisory_desk_synthesis",
+    },
+}
+
 # ── Server-side caller → authorized task_types ─────────────────────────
 # Caller-supplied process_id/model_id are never trusted.
 # Each caller's task_type → server-selected policy.
@@ -186,16 +194,24 @@ def _reset_circuit() -> None:
 #  IDENTITY RESOLUTION
 # ══════════════════════════════════════════════════════════════════════════
 
-def resolve_caller(caller: str | None) -> str | None:
-    """Map caller header value → process_id. Unknown callers → None."""
+def resolve_caller(caller: str | None, task_type: str | None = None) -> str | None:
+    """Map caller (+ optional task_type) → process_id. Unknown callers → None.
+
+    Client-supplied process_id is never trusted. Task type is advisory only
+    when the caller has an entry in CALLER_TASK_PROCESS_MAP.
+    """
     c = (caller or "").strip().lower()
+    t = (task_type or "").strip().lower()
+    task_map = CALLER_TASK_PROCESS_MAP.get(c) or {}
+    if t and t in task_map:
+        return task_map[t]
     return CALLER_PROCESS_MAP.get(c)
 
 
-def resolve_model_policy(process_id: str, task_type: str = "") -> dict[str, Any]:
+def resolve_model_policy(process_id: str, task_type: str = "") -> dict[str, Any] | None:
     """Look up model policy for a registered governance process.
 
-    Returns dict with provider, model_id, thinking, display_name, etc.
+    Returns dict with provider, model_id, thinking, display_name, requested_policy.
     Unknown process_id returns None → fail closed.
     """
     # Map process_id → default policy
@@ -208,11 +224,16 @@ def resolve_model_policy(process_id: str, task_type: str = "") -> dict[str, Any]
         "ledger_tax_critique": "FAST",
         "morgan_wealth_synthesis": "FAST",
         "advisory_desk_opinion": "FAST",
+        "advisory_desk_synthesis": "PRO",
     }
     policy_name = process_policy_map.get(process_id)
     if policy_name is None:
         return None  # Unknown process → fail closed
-    return POLICY_RESOLUTION.get(policy_name, POLICY_RESOLUTION["FAST"])
+    base = POLICY_RESOLUTION.get(policy_name, POLICY_RESOLUTION["FAST"])
+    out = dict(base)
+    # Required for deepseek_allowed_policies check (defaults to PRO if missing).
+    out["requested_policy"] = policy_name
+    return out
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -842,7 +863,8 @@ class GovernedBridgeHandler(http.server.BaseHTTPRequestHandler):
                              f"Missing {AUTH_HEADER} header")
             return
 
-        process_id = resolve_caller(caller)
+        task_type = self.headers.get("X-TradeAI-Task-Type") or ""
+        process_id = resolve_caller(caller, task_type=task_type)
         if not process_id:
             self._send_error(401, "UNAUTHORIZED",
                              f"Unknown caller '{caller}' — not in server-side mapping")

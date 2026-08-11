@@ -1,3 +1,25 @@
+## 2026-08-11 — Advisory Desk v1 Phases 0–7 closed (code); autonomy truth documented
+
+Branch `feature/advisory-desk-v1`: governed bridge + Flash opinions + Pro synthesis,
+lots/holdings evidence, memory/feedback/outcomes, `/v3/advisory` + Telegram, shadow
+sessions, kb_lessons + notif broker SHADOW, 30-session promotion gate. **Promotion
+status NOT_PROMOTED** (1/30 consecutive; useful-rate needs n≥5). Docs index:
+`docs/advisory/desk-v1/`. **Autonomy truth:** scheduled factory with LLM brains on
+timer-fired oneshots — not free-running agents, not autonomous traders; fleet
+`agent_runtime@*` still SHADOW/failing queue module. See
+`docs/advisory/desk-v1/AUTONOMY_AND_SCHEDULING_TRUTH_2026-08-11.md`.
+
+## 2026-08-11 — Storage safeguards: backup storm containment + retention
+
+Health-agent dump auto-remediate loop had left **38×~2.3G local dumps (86GB)**. Contained:
+pruned to **1** local dump (~84GB freed); disabled auto-remediate for `db_dump_*` /
+`backup_cadence_stale`; `config/backup_policy.yaml` + `backup_enforcer.py` (max_count=1,
+20h interval); hourly `tradeai-backup-enforcer.timer`; Drive db `KEEP=1`. DB retention
+extended for stream books/quotes + score_history; applied purge **~4.1M rows**. Docs
+hygiene pruned 120 generated dryruns. Audit: `docs/audits/STORAGE_SAFEGUARDS_AUDIT_2026-08-11.md`.
+Follow-ups: content_embeddings orphan purge (~7.7GB), FK-safe job retention, VACUUM FULL
+embeddings, fresh Drive `db_backup` on next cadence.
+
 ## 2026-08-11 — Schwab reauth: stop auto-2FA, CC manual page + banner
 
 Browser auto-reauth (`schwab_auto_reauth.py` Chromium + 2FA) was failing on Schwab

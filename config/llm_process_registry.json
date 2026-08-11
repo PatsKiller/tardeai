@@ -483,6 +483,60 @@
       "last_modified_at": "2026-08-08T14:06:00Z"
     },
     {
+      "id": "advisory_desk_opinion",
+      "name": "Advisory Desk Per-Row Opinion (Flash)",
+      "category": "AdvisoryDesk",
+      "lane_policy": "deepseek_only",
+      "default_mode": "automated",
+      "description": "Advisory Desk v1 per-row opinion via governed DeepSeek V4 Flash. READ_ONLY_ADVISORY. No execution. Must route through cio_governed_model_bridge (8766).",
+      "allowed_lanes": [
+        "fast",
+        "deepseek-v4-flash"
+      ],
+      "deepseek_default_policy": "FAST",
+      "deepseek_allowed_policies": [
+        "FAST"
+      ],
+      "max_input_tokens": 32000,
+      "max_output_tokens": 8192,
+      "daily_soft_cap": 80,
+      "daily_cost_cap_usd": 0.05,
+      "tools_allowed": false,
+      "fallback_allowed": false,
+      "advisory_only": true,
+      "dedupe_policy": "request_id_only",
+      "circuit_breaker": true,
+      "registered_by": "advisory-desk-p0",
+      "registered_at": "2026-08-11T12:00:00Z"
+    },
+    {
+      "id": "advisory_desk_synthesis",
+      "name": "Advisory Desk Synthesis (Pro)",
+      "category": "AdvisoryDesk",
+      "lane_policy": "deepseek_only",
+      "default_mode": "automated",
+      "description": "Advisory Desk v1 one-call desk synthesis (three things today) via governed DeepSeek V4 Pro. READ_ONLY_ADVISORY. No execution. One Pro call per desk run.",
+      "allowed_lanes": [
+        "pro",
+        "deepseek-v4-pro"
+      ],
+      "deepseek_default_policy": "PRO",
+      "deepseek_allowed_policies": [
+        "PRO"
+      ],
+      "max_input_tokens": 32000,
+      "max_output_tokens": 4096,
+      "daily_soft_cap": 10,
+      "daily_cost_cap_usd": 0.03,
+      "tools_allowed": false,
+      "fallback_allowed": false,
+      "advisory_only": true,
+      "dedupe_policy": "request_id_only",
+      "circuit_breaker": true,
+      "registered_by": "advisory-desk-p0",
+      "registered_at": "2026-08-11T12:00:00Z"
+    },
+    {
       "id": "guardian_risk_critique",
       "name": "Guardian Risk Critique",
       "category": "CIO",

@@ -1,0 +1,16 @@
+[Unit]
+Description=Trade AI advisory desk outcome scorer (30/60/90d, deterministic)
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+Environment=PATH=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin:/usr/bin
+Environment=HOME=/home/johnclaw
+ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/advisory_outcome_scorer.py --once
+Nice=10
+StandardOutput=append:/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/advisory_outcome_scorer.log
+StandardError=append:/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/advisory_outcome_scorer.log
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,51 @@
+# Advisory Desk v1 — Documentation Index
+
+**Branch:** `feature/advisory-desk-v1`  
+**Flag:** `ADVISORY_DESK_V1` (default OFF in `config/advisory_desk.yaml`)  
+**Authority:** READ_ONLY_ADVISORY throughout  
+**Phases 0–7:** code complete 2026-08-11 · promotion gate **NOT_PROMOTED** (wait for 30 green shadow sessions)
+
+## Autonomy in one sentence
+
+**Scheduled advisory factory with LLM brains (Flash/Pro on timer-fired jobs) — not free-running agents, not autonomous traders.**  
+See [AUTONOMY_AND_SCHEDULING_TRUTH_2026-08-11.md](./AUTONOMY_AND_SCHEDULING_TRUTH_2026-08-11.md).
+
+## Canonical documents
+
+| Doc | Purpose |
+|---|---|
+| [AUTONOMOUS_ADVISORY_DESK_PLAN_2026-08-10.md](./AUTONOMOUS_ADVISORY_DESK_PLAN_2026-08-10.md) | Approved end-to-end plan: CIO + wealth advisors, Flash→Pro, phases, PR DAG, pass criteria |
+| [AUTONOMY_AND_SCHEDULING_TRUTH_2026-08-11.md](./AUTONOMY_AND_SCHEDULING_TRUTH_2026-08-11.md) | **Honest answer:** brains vs timers; fleet SHADOW/failing; desk not self-waking |
+| [P0_BRIDGE_OUTCOME_2026-08-11.md](./P0_BRIDGE_OUTCOME_2026-08-11.md) | P0 outcome: governed bridge path, registry, systemd unit, tests |
+| [PHASE1_DATA_TRUTH_OUTCOME_2026-08-11.md](./PHASE1_DATA_TRUTH_OUTCOME_2026-08-11.md) | Phase 1: lots rebuild, catalyst path, validation, Risk/Tax holdings enqueue, flag |
+| [PHASE2_QUALITY_CACHE_OUTCOME_2026-08-11.md](./PHASE2_QUALITY_CACHE_OUTCOME_2026-08-11.md) | Phase 2: evidence quality, stable-prefix cache, dollars-first Pro synthesis |
+| [PHASE3_MEMORY_OUTCOME_2026-08-11.md](./PHASE3_MEMORY_OUTCOME_2026-08-11.md) | Phase 3: verdict history, feedback codes, thrash, outcome scoring |
+| [PHASE4_SURFACE_DELIVERY_OUTCOME_2026-08-11.md](./PHASE4_SURFACE_DELIVERY_OUTCOME_2026-08-11.md) | Phase 4: /api/v3/advisory, CC page, Telegram brief + /advisory |
+| [PHASE5_SHADOW_OUTCOME_2026-08-11.md](./PHASE5_SHADOW_OUTCOME_2026-08-11.md) | Phase 5: 20-session shadow track, Guardian/Ledger/Steph |
+| [PHASE6_LESSONS_BROKER_OUTCOME_2026-08-11.md](./PHASE6_LESSONS_BROKER_OUTCOME_2026-08-11.md) | Phase 6: kb_lessons, Iris, auto-retire, notification broker |
+| [PHASE7_PROMOTION_OUTCOME_2026-08-11.md](./PHASE7_PROMOTION_OUTCOME_2026-08-11.md) | Phase 7: 30-session promotion gate, morning default path |
+
+## Related diagnostics (repo root / prior sessions)
+
+| Doc | Notes |
+|---|---|
+| `S1_DIAGNOSIS_2026-08-10.md` | EXIT avalanche / underweight rule (historical) |
+| `S6_REPORT.md` | Data truth + Flash run quality snapshot |
+
+## Runtime artifacts
+
+| Path | Role |
+|---|---|
+| `data/runtime/advisory_desk_latest.json` | Latest deterministic desk snapshot |
+| `data/runtime/advisory_opinion_cache.json` | Local per-row opinion cache |
+| `/run/user/<uid>/tradeai/env` | SM-rendered secrets (Bitwarden) |
+| `logs/cio_governed_bridge.log` | Bridge stdout/stderr when unit installed |
+
+## Model policy (summary)
+
+| Workload | Model | Process |
+|---|---|---|
+| Per-row opinion | DeepSeek V4 **Flash** | `advisory_desk_opinion` |
+| Desk synthesis | DeepSeek V4 **Pro** | `advisory_desk_synthesis` |
+
+Both must egress only via `cio_governed_model_bridge` on `127.0.0.1:8766`.

@@ -1,0 +1,29 @@
+[Unit]
+Description=Trade AI CIO Governed Model Bridge (DeepSeek caps on :8766)
+Documentation=docs/advisory/desk-v1/AUTONOMOUS_ADVISORY_DESK_PLAN_2026-08-10.md
+After=network-online.target tradeai-sm-render.service
+Wants=network-online.target tradeai-sm-render.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+# Secrets from Bitwarden SM tmpfs render — never hardcode keys here.
+EnvironmentFile=-%t/tradeai/env
+Environment=CIO_BRIDGE_MODE=canary
+Environment=CIO_BRIDGE_PORT=8766
+Environment=CIO_BRIDGE_HOST=127.0.0.1
+Environment=PATH=/home/johnclaw/.local/bin:/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin:/usr/bin
+Environment=HOME=/home/johnclaw
+Environment=XDG_RUNTIME_DIR=%t
+# Global daily cap — override in drop-in if needed; must be set for paid canary.
+Environment=LLM_GLOBAL_DAILY_USD_CAP=0.25
+ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/lib/cio_governed_model_bridge.py
+Restart=on-failure
+RestartSec=5
+# Localhost-only server; low resource footprint.
+MemoryMax=256M
+StandardOutput=append:/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/cio_governed_bridge.log
+StandardError=append:/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/cio_governed_bridge.log
+
+[Install]
+WantedBy=default.target

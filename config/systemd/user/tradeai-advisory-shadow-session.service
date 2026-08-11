@@ -1,0 +1,22 @@
+[Unit]
+Description=Trade AI Advisory Desk Phase 5 shadow session (operator track)
+After=network-online.target cio-governed-bridge.service tradeai-sm-render.service
+Wants=tradeai-sm-render.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+Environment=PATH=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin:/usr/bin
+Environment=HOME=/home/johnclaw
+Environment=LLM_GLOBAL_DAILY_USD_CAP=0.25
+# Default dry (deterministic+specialists). Operator enables live with drop-in:
+#   Environment=ADVISORY_DESK_V1=true
+EnvironmentFile=-%t/tradeai/env
+EnvironmentFile=-%h/.config/tradeai/advisory-shadow.env
+ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/advisory_shadow_session.py --once
+Nice=10
+StandardOutput=append:/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/advisory_shadow_session.log
+StandardError=append:/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/advisory_shadow_session.log
+
+[Install]
+WantedBy=default.target

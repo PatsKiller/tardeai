@@ -1,0 +1,11 @@
+[Unit]
+Description=Holdings risk/tax agent enqueue twice daily (market window)
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 08:30:00
+OnCalendar=Mon..Fri *-*-* 13:30:00
+Persistent=true
+Unit=tradeai-holdings-agent-enqueue.service
+
+[Install]
+WantedBy=timers.target

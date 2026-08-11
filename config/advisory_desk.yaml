@@ -1,6 +1,10 @@
 # Advisory Desk model routing (S3 — opinion layer)
 # Read by scripts/lib/advisory/advisory_opinion_engine.py
-# DeepSeek key source: Bitwarden SM → /run/user/1000/tradeai/env → portfolio-server
+# DeepSeek key source: Bitwarden SM → /run/user/1000/tradeai/env → governed bridge (8766)
+# NEVER call api.deepseek.com from the opinion engine — caps live on the bridge only.
+
+# Feature flag: enrichment (Flash opinions + Pro synthesis) off by default.
+ADVISORY_DESK_V1: false
 
 routing:
   lane_preference:
@@ -36,63 +40,78 @@ routing:
     max_model_rows_per_run: 20
     daily_usd_cap: 0.05
     per_row_usd_estimate: 0.001
+    # Phase 2B: local cache is the primary lever; provider prefix cache needs stable system
+    min_provider_cache_hit_rate: 0.70
+
+  cache:
+    # Material-field bucketing (also hardcoded in advisory_desk._row_hash)
+    weight_bucket_pp: 0.1
+    pnl_bucket_pp: 0.5
+    mv_bucket_pct: 0.5
+    conf_bucket: 0.05
 
   bridge:
     endpoint: "http://127.0.0.1:8766/v1/chat/completions"
     caller: advisory_desk
-    process_id: advisory_desk_synthesis
+    # Server maps caller + task_type → process_id (client process_id is rejected).
+    # advisory_opinion → advisory_desk_opinion (FAST / flash)
+    # advisory_synthesis → advisory_desk_synthesis (PRO)
+    process_id: advisory_desk_opinion
     task_type: advisory_opinion
 
-  opinion_prompt_template: |
+  # Phase 2B: STABLE system prefix — identical across every row, every day.
+  # Never put timestamp, run_id, or symbol here (destroys DeepSeek prefix cache).
+  stable_system_prompt: |
     You are a disciplined portfolio analyst writing for a sophisticated retail operator.
+    READ_ONLY_ADVISORY only — never invent prices, percentages, dates, or share counts.
+    Every figure in your response must already exist in the evidence bundle in the user message.
+    If the evidence is thin, say so and keep the opinion brief.
 
-    Below is the evidence bundle for one position. Every figure in your response
-    must already exist in the bundle — do not invent prices, percentages, dates,
-    or share counts. If the evidence is thin, say so and keep the opinion brief.
+    Verdict taxonomy (use exactly one):
+    ADD, AVOID, EXIT, HOLD, INSUFFICIENT_DATA, RE_ENTER, TRIM, WAIT
 
-    Evidence bundle:
-    {evidence_json}
+    IPS defaults (unless evidence overrides): max single position 8%, max drawdown 25%.
 
-    Deterministic verdict (pre-computed by rules engine): {deterministic_verdict}
-
-    Return ONLY a single JSON object with these exact fields:
-
-    {{
-      "verdict": "{deterministic_verdict}",
-      "conviction": <0-100, integer>,
-      "what_changed": "<one line — what is new since the last review>",
-      "rationale": "<2-4 sentences, citing specific evidence items by their title and date>",
-      "key_risk": "<the single strongest argument AGAINST this verdict — required, not optional>",
+    Output schema — return ONLY one JSON object:
+    {
+      "verdict": "<one of taxonomy>",
+      "conviction": <0-100 integer>,
+      "what_changed": "<one line>",
+      "rationale": "<2-4 sentences citing evidence titles/dates>",
+      "key_risk": "<strongest argument AGAINST the verdict — required>",
       "evidence_cited": ["ref_id1", "ref_id2"]
-    }}
+    }
 
     Rules:
-    - Every number in your prose must appear verbatim in the evidence bundle.
-    - evidence_cited must contain only ref_ids present in the bundle.
-    - If you disagree with the deterministic verdict, say so in rationale and set
-      verdict to your recommendation. Both will be recorded — this is a signal, not an error.
-    - key_risk is REQUIRED. An opinion without a counter-argument is an opinion
-      that hasn't been examined.
+    - Every number in prose must appear verbatim in the evidence bundle.
+    - evidence_cited must only use ref_ids/titles present in the bundle.
+    - If you disagree with the deterministic verdict, say so and set verdict to your recommendation.
+    - key_risk is REQUIRED.
     - No order types, no share counts, no execution instructions.
-    - CONVICTION: measures thesis confidence (evidence quality), NOT position size.
-      A small position and a large position with the same evidence should score
-      the same conviction. Dollar exposure belongs in the portfolio-level synthesis,
-      not in per-row conviction.
+    - CONVICTION measures thesis confidence (evidence quality), NOT position size.
+
+  stable_synthesis_system_prompt: |
+    You are a portfolio synthesis analyst for a READ_ONLY_ADVISORY desk.
+    Return ONE concise paragraph (4-6 sentences), no JSON, no order tickets.
+    Lead with the largest dollars_at_stake item first. Name exactly three things for today.
+    Cite symbols. Name one blind spot. Do not invent numbers not present in the rows.
+
+  # Legacy template still accepted if stable_system_prompt absent; prefer stable + volatile split.
+  opinion_prompt_template: |
+    (deprecated — engine uses stable_system_prompt + volatile user body)
 
   synthesis_prompt_template: |
-    You are a portfolio synthesis analyst. Below are the daily advisory desk rows
-    for this operator's portfolio.
+    Rows are pre-sorted by dollars_at_stake (largest first). Lead with the first row.
 
     Advisory rows:
     {rows_json}
 
     Write ONE concise paragraph (4-6 sentences) answering:
-
     What are the three things the operator should actually consider today, and why?
 
     Your paragraph must:
-    - Cite row ids (symbols) for each of the three items.
+    - Start with the largest dollar item.
+    - Cite symbols for each of the three items.
     - Cross-reference where relevant (e.g. a TRIM that could fund an allocation gap).
-    - Name the biggest thing being ignored — the blind spot the desk isn't flagging.
-    - Be actionable. Every item should give the operator something to do or verify.
-    - NOT include prices, share counts, or order types.
+    - Name the biggest blind spot.
+    - Be actionable. NOT include invented prices, share counts, or order types.

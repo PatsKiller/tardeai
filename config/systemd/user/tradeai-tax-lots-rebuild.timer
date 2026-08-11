@@ -1,0 +1,11 @@
+[Unit]
+Description=Rebuild tax lots after holdings sync window (daily + mid-day)
+
+[Timer]
+OnCalendar=*-*-* 07:15:00
+OnCalendar=*-*-* 16:45:00
+Persistent=true
+Unit=tradeai-tax-lots-rebuild.service
+
+[Install]
+WantedBy=timers.target
