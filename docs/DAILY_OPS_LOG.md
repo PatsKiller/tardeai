@@ -1,3 +1,9 @@
+## 2026-08-11 — P0 host: timers on feature/advisory-desk-v1 @ d124b227
+
+Pointed live tree at Phase 2a tip; agent_runtime alex/morgan/steph --once COMPLETED;
+situation detector SHADOW (notify off) live heartbeat 7 plans; backup dumps=1;
+data/cio symlinked on CURRENT. RUNTIME_TRUTH updated. Unrelated host failed units left.
+
 ## 2026-08-11 — Autonomy WS0 + reactive wakes (SHADOW)
 
 Fixed agent_runtime@* ModuleNotFoundError (provider env comment + AUTH=0 override).

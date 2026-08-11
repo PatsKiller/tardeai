@@ -1,91 +1,122 @@
-# Runtime truth — host snapshot (WS0)
+# Runtime truth — host verification (P0 ops)
 
-**Date:** 2026-08-11  
-**Branch:** `feature/advisory-desk-v1` @ `acec49a6`+ (goal/thesis work in tree)  
-**Host:** ms01-openclaw (timer host)  
+**Verified at:** 2026-08-11T15:16:05Z (host local ~11:16 ET)  
+**Branch:** `feature/advisory-desk-v1`  
+**SHA:** `d124b227b480a93d30d84cc8ee60dfec8670020e`  
 **Authority:** READ_ONLY_ADVISORY  
 
-No marketing. Commands and outcomes only.
+Honest pass/fail only. No marketing.
 
 ---
 
-## Checkout
+## Layout
+
+| Item | Value |
+|---|---|
+| Live primary tree | `/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild` |
+| Timer WorkingDirectory (agent_runtime, cio-reactive, advisory, backup) | **same primary tree** |
+| portfolio-server CURRENT | `/home/johnclaw/trade-ai-releases/portfolio-server/20260811-094957` |
+| Data truth links on CURRENT | `data/portfolios/state`, `state/data_broker`, `data/runtime`, `data/health`, **`data/cio`** → canonical |
+
+Phase 2a tip commits present:
 
 ```
-$ git branch --show-current
-feature/advisory-desk-v1
-```
-
-Timers and agent units use WorkingDirectory under this tree (or CURRENT release that rsyncs from it).
-
----
-
-## backup_enforcer
-
-```
-$ .venv/bin/python scripts/backup_enforcer.py --status
-local.count = 1
-local.full_count = 1
-local.max_count = 1
-local.compliant = true
-newest full: /home/johnclaw/db_backups/trade_ai_20260811_091716.sql.gz (~1.9G)
-```
-
-`config/health_agent_policy.json` → `never_auto_remediate` includes  
-`backup_cadence_stale`, `db_dump_stale`, `db_dump_missing`, `backup_local_count_exceeded`,  
-`backup_local_bytes_exceeded`, `backup_storm_suspected`. Health agent cannot re-storm dumps.
-
----
-
-## agent_runtime@alex|morgan|steph
-
-### Root cause (fixed)
-
-`AGENT_RUNTIME_PROVIDER_MODULE` in `~/.config/tradeai/agent-operator.env` had an **inline `# comment`**.  
-systemd EnvironmentFile does **not** strip comments → module name became:
-
-`agent_runtime_live_providers  # real DeepSeek/...`
-
-**Fix:** strip comment in env file; also strip in `agent_runtime_dispatch_boot._load_provider_module`.  
-**Fix:** `agent_runtime_live_providers` missing `import sys`; broken `Environment(...)` ctor replaced with SHADOW processor.
-
-### Proof — each --once
-
-```
-$ set -a; source ~/.config/tradeai/agent-operator.env; set +a
-$ export PYTHONPATH=scripts
-$ .venv/bin/python -m scripts.agent_runtime.agents.run_once --agent alex --once --max-batch 2
-AGENT RUNTIME BOUNDED RUNNER — PREPARE-ONLY / DEFAULT-DISABLED
-agent=alex state=SHADOW enabled=True
-dispatch summary: {..., 'total': 1, 'outcomes': {'COMPLETED': 1, ...}}
-exit=0
-
-$ ... --agent morgan ...  → COMPLETED 1  exit=0
-$ ... --agent steph  ...  → COMPLETED 1  exit=0
-```
-
-Jobs sourced from open CIO goals (`goal_shadow_review`). Model path for financial agents is governed-gateway sentinel (PROVIDER_BLOCKED is recorded; job still completes with retrieval + thesis touch). No broker path.
-
-### Unit timers
-
-Timers still fire periodically; prior failure mode was CONFIG 78 from bad module name. After env fix, oneshot path is green. Operator should `systemctl --user daemon-reload` if drop-ins change.
-
----
-
-## Goal store + dispatcher (WS1–2 smoke)
-
-```
-seeded goals: alex, morgan, steph (due)
-enqueue_goal_wakes → NEW_RUN wakes with trigger_type GOAL_DUE
-dedup: second pass skips same agent+goal within 30m
-poll_and_dispatch → claims/dispatches pending wakes (run_store optional)
+d124b227 docs(cio): Situation Catalog v1 operator guide (Phase 2a)
+912ccc35 feat(cio): situation detector skeleton S1–S8 + SpaceX fixture tests
+0241722b feat(cio): action plan store + situations config (Phase 2a)
 ```
 
 ---
 
-## Explicit non-claims
+## Checks
 
-- Not “fully autonomous.”
-- Fleet SHADOW only; maturity catalog still marks morgan/steph DESIGNED for production readiness — goal wakes use FLEET SHADOW operability override.
-- 30-min heartbeat remains safety net, not sole wake source.
-- Promotion desk still NOT_PROMOTED.
+| # | Check | Result |
+|---|---|---|
+| 1 | `git log -1` Phase 2a at/after d124b227 | **PASS** `d124b227` |
+| 2 | Scoped units not failed: agent_runtime@alex/morgan/steph, tradeai-advisory-*, cio-reactive, backup-enforcer, bridge | **PASS** (timers/services active; alex/morgan/steph oneshot **inactive** after success, not failed) |
+| 3 | alex/morgan/steph `--once` | **PASS** each COMPLETED 1, exit 0 |
+| 4 | Situation detector SHADOW | **PASS** `shadow=true` `notify=false`; SpaceX fixture created S1+S2 plans; live heartbeat pass: 8 candidates, 7 plans, 0 errors |
+| 5 | Plan store writable | **PASS** `data/cio/cio_plans.jsonl` + projection; `list_open_plans` ≥ 2 |
+| 6 | `backup_enforcer --status` | **PASS** local count **1**, compliant |
+
+### Agent --once (proof)
+
+```
+agent=alex  COMPLETED 1  exit=0
+agent=morgan COMPLETED 1  exit=0
+agent=steph  COMPLETED 1  exit=0
+```
+
+Provider env: `AGENT_RUNTIME_PROVIDER_MODULE=agent_runtime_live_providers` (no inline comment).
+
+### Detector (SHADOW)
+
+```
+config: enabled=true shadow=true notify=false dedup_hours=6
+version: situation-catalog-v1.0.0
+empty evidence: candidates=0 errors=[]
+SpaceX fixture: candidates=2 plans_created=[S1,S2] errors=[]
+heartbeat live: candidates=8 plans_created=7 dedup_skipped=1 errors=[]
+```
+
+Notify left **off**. No broker path.
+
+### Reactive cycle
+
+```
+cio_reactive_cycle --once → enabled=True errors=0 exit=0
+tradeai-cio-reactive.timer: active
+```
+
+### Heartbeat
+
+Import path fixed (project root on `sys.path`) so `scripts.lib.*` resolves under timer PYTHONPATH.  
+`cio_heartbeat.py --once` → exit 0, situations block non-empty, model_calls=0.
+
+---
+
+## Unrelated host failures (out of P0 scope)
+
+Still failed on host (not advisory/alex-morgan-steph scoped):
+
+- hermes-autonomous-loop, hermes-deep-research-local  
+- mcporter-token-refresh  
+- tradeai-agent-runtime-health / producer  
+- other agent_runtime@* (aegis, atlas, …) not in P0 set  
+- portfolio cadence / governance pilots  
+
+These were **not** cleared by this deploy; leave as-is unless separately owned.
+
+---
+
+## Flags (leave as-is)
+
+| Flag | Value |
+|---|---|
+| `config/cio_situations.yaml` shadow | true |
+| notify | false |
+| `CIO_SITUATIONS_NOTIFY` | unset / 0 |
+| Desk promotion | NOT_PROMOTED (unchanged) |
+
+---
+
+## Commands used
+
+```bash
+cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+git checkout feature/advisory-desk-v1 && git pull --ff-only
+git log -1 --oneline   # d124b227
+systemctl --user daemon-reload
+systemctl --user restart tradeai-cio-reactive.timer tradeai-backup-enforcer.timer \
+  tradeai-agent-runtime@alex.timer tradeai-agent-runtime@morgan.timer tradeai-agent-runtime@steph.timer
+source ~/.config/tradeai/agent-operator.env
+PYTHONPATH=scripts .venv/bin/python -m scripts.agent_runtime.agents.run_once --agent alex --once
+# … morgan, steph
+.venv/bin/python scripts/cio_reactive_cycle.py --once
+.venv/bin/python scripts/cio_heartbeat.py --once
+.venv/bin/python scripts/backup_enforcer.py --status
+```
+
+---
+
+*P0 host point complete. SHADOW only. Not fully autonomous. Not production fleet activation.*

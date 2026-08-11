@@ -29,7 +29,9 @@ from pathlib import Path
 from typing import Any, Optional
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+# Project root first so `import scripts.lib...` works; scripts/ for `import lib...`
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+sys.path.insert(0, str(PROJECT_ROOT))
 
 # -- Constants ----------------------------------------------------------------
 

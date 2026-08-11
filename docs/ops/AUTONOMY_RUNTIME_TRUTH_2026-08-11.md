@@ -1,72 +1,122 @@
-# Autonomy Runtime Truth — 2026-08-11
+# Runtime truth — host verification (P0 ops)
 
-Honest status: **event/goal reactive advisory path is wired in SHADOW**;  
-**not** free-running traders. Authority remains **READ_ONLY_ADVISORY**.
+**Verified at:** 2026-08-11T15:16:05Z (host local ~11:16 ET)  
+**Branch:** `feature/advisory-desk-v1`  
+**SHA:** `d124b227b480a93d30d84cc8ee60dfec8670020e`  
+**Authority:** READ_ONLY_ADVISORY  
 
-## Workstream 0 — Runtime (PASS)
+Honest pass/fail only. No marketing.
 
-| Unit | Result | Evidence |
-|------|--------|----------|
-| `tradeai-agent-runtime@steph` | **PASS** | `systemctl start` → status=0/SUCCESS; dispatch total=0 (empty queue) |
-| `tradeai-agent-runtime@morgan` | **PASS** | same |
-| `tradeai-agent-runtime@alex` | **PASS** | same |
-| Root cause of prior failures | **FIXED** | Module name included inline `# comment` and unit `AGENT_RUNTIME_OPERATOR_AUTH=0` overrode EnvironmentFile. Drop-in `20-operator-auth.conf` re-asserts AUTH=1 + clean provider module. |
-| Provider module | **PASS** | `import agent_runtime_live_providers` + `build_providers` / `job_source` present |
-| Local backup | **PASS** | 1 full dump; enforcer compliant |
-| Drive backups | **PASS** | Pruned to **latest only** per family (env/ops/memory/apps/data/db) |
-| Librarian orphans | **PASS** | Orphan purge applied (66 residual news orphans this run; 60k earlier) |
+---
 
-### Commands used
+## Layout
+
+| Item | Value |
+|---|---|
+| Live primary tree | `/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild` |
+| Timer WorkingDirectory (agent_runtime, cio-reactive, advisory, backup) | **same primary tree** |
+| portfolio-server CURRENT | `/home/johnclaw/trade-ai-releases/portfolio-server/20260811-094957` |
+| Data truth links on CURRENT | `data/portfolios/state`, `state/data_broker`, `data/runtime`, `data/health`, **`data/cio`** → canonical |
+
+Phase 2a tip commits present:
+
+```
+d124b227 docs(cio): Situation Catalog v1 operator guide (Phase 2a)
+912ccc35 feat(cio): situation detector skeleton S1–S8 + SpaceX fixture tests
+0241722b feat(cio): action plan store + situations config (Phase 2a)
+```
+
+---
+
+## Checks
+
+| # | Check | Result |
+|---|---|---|
+| 1 | `git log -1` Phase 2a at/after d124b227 | **PASS** `d124b227` |
+| 2 | Scoped units not failed: agent_runtime@alex/morgan/steph, tradeai-advisory-*, cio-reactive, backup-enforcer, bridge | **PASS** (timers/services active; alex/morgan/steph oneshot **inactive** after success, not failed) |
+| 3 | alex/morgan/steph `--once` | **PASS** each COMPLETED 1, exit 0 |
+| 4 | Situation detector SHADOW | **PASS** `shadow=true` `notify=false`; SpaceX fixture created S1+S2 plans; live heartbeat pass: 8 candidates, 7 plans, 0 errors |
+| 5 | Plan store writable | **PASS** `data/cio/cio_plans.jsonl` + projection; `list_open_plans` ≥ 2 |
+| 6 | `backup_enforcer --status` | **PASS** local count **1**, compliant |
+
+### Agent --once (proof)
+
+```
+agent=alex  COMPLETED 1  exit=0
+agent=morgan COMPLETED 1  exit=0
+agent=steph  COMPLETED 1  exit=0
+```
+
+Provider env: `AGENT_RUNTIME_PROVIDER_MODULE=agent_runtime_live_providers` (no inline comment).
+
+### Detector (SHADOW)
+
+```
+config: enabled=true shadow=true notify=false dedup_hours=6
+version: situation-catalog-v1.0.0
+empty evidence: candidates=0 errors=[]
+SpaceX fixture: candidates=2 plans_created=[S1,S2] errors=[]
+heartbeat live: candidates=8 plans_created=7 dedup_skipped=1 errors=[]
+```
+
+Notify left **off**. No broker path.
+
+### Reactive cycle
+
+```
+cio_reactive_cycle --once → enabled=True errors=0 exit=0
+tradeai-cio-reactive.timer: active
+```
+
+### Heartbeat
+
+Import path fixed (project root on `sys.path`) so `scripts.lib.*` resolves under timer PYTHONPATH.  
+`cio_heartbeat.py --once` → exit 0, situations block non-empty, model_calls=0.
+
+---
+
+## Unrelated host failures (out of P0 scope)
+
+Still failed on host (not advisory/alex-morgan-steph scoped):
+
+- hermes-autonomous-loop, hermes-deep-research-local  
+- mcporter-token-refresh  
+- tradeai-agent-runtime-health / producer  
+- other agent_runtime@* (aegis, atlas, …) not in P0 set  
+- portfolio cadence / governance pilots  
+
+These were **not** cleared by this deploy; leave as-is unless separately owned.
+
+---
+
+## Flags (leave as-is)
+
+| Flag | Value |
+|---|---|
+| `config/cio_situations.yaml` shadow | true |
+| notify | false |
+| `CIO_SITUATIONS_NOTIFY` | unset / 0 |
+| Desk promotion | NOT_PROMOTED (unchanged) |
+
+---
+
+## Commands used
 
 ```bash
-systemctl --user start tradeai-agent-runtime@steph.service
-systemctl --user start tradeai-agent-runtime@morgan.service
-systemctl --user start tradeai-agent-runtime@alex.service
-# journal: dispatch summary total=0, exit 0
+cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+git checkout feature/advisory-desk-v1 && git pull --ff-only
+git log -1 --oneline   # d124b227
+systemctl --user daemon-reload
+systemctl --user restart tradeai-cio-reactive.timer tradeai-backup-enforcer.timer \
+  tradeai-agent-runtime@alex.timer tradeai-agent-runtime@morgan.timer tradeai-agent-runtime@steph.timer
+source ~/.config/tradeai/agent-operator.env
+PYTHONPATH=scripts .venv/bin/python -m scripts.agent_runtime.agents.run_once --agent alex --once
+# … morgan, steph
+.venv/bin/python scripts/cio_reactive_cycle.py --once
+.venv/bin/python scripts/cio_heartbeat.py --once
 .venv/bin/python scripts/backup_enforcer.py --status
-.venv/bin/python scripts/hermes_librarian_agent.py --scope retention --apply --json
 ```
 
-## Workstream 1 — Goals (PRESENT)
+---
 
-- Store: `scripts/lib/cio_goals.py` → `data/cio/cio_goals.jsonl` + projection
-- API: `create_goal`, `update_goal`, `close_goal`, `update_thesis`, `list_open_goals`,
-  `list_due_or_idle_goals`, `get_context_for_agent` (includes bus event snippets)
-
-## Workstream 2 — Reactive dispatcher (PRESENT + cycle)
-
-- `scripts/lib/cio_wake_dispatcher.py` — claim/dispatch + `enqueue_goal_wakes`
-- `scripts/cio_reactive_cycle.py` — poll event bus → enqueue EVENT_BUS wakes → goal wakes → optional dispatch
-- Timer: `tradeai-cio-reactive.timer` (every 2 min)
-- Kill switch: `data/runtime/CIO_REACTIVE_DISABLED` or `CIO_REACTIVE_WAKES=0`
-- 30-min heartbeat **retained** as safety net
-
-## Workstream 3 — Wake contract (PARTIAL)
-
-- `job_source` pulls handoffs + due goals + pending wake jobs
-- Agent processors remain SHADOW; financial agents use governed gateway sentinel
-- Thesis/action writing still goes through existing ledger paths when jobs exist
-
-## Workstream 4 — Learning (DEFERRED)
-
-- Outcome store + `/cio rate` path exist; full reflection loop not claimed green
-
-## Workstream 5 — Storage (PASS for incident scope)
-
-- Local max 1, Drive latest-only per prefix, dump auto-remediate disabled
-- Stream/score retention applied; embeddings orphans purged
-- VACUUM FULL embeddings **not** auto-run (maintenance flag required)
-
-## What “autonomous advisory” means here
-
-Agents may **unattended observe → reason → surface** via event/goal wakes and the action ledger.  
-They **do not** place orders, change stops, or self-modify production risk config without gates.
-
-## Emergency disable reactive wakes
-
-```bash
-touch data/runtime/CIO_REACTIVE_DISABLED
-# or
-systemctl --user stop tradeai-cio-reactive.timer
-```
-Timers for agent_runtime@* continue as backstop if still enabled.
+*P0 host point complete. SHADOW only. Not fully autonomous. Not production fleet activation.*
