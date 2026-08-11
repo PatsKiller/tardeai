@@ -119,17 +119,38 @@ def evidence_facts_from_plan(plan: dict[str, Any]) -> dict[str, Any]:
 def build_evidence_pack(plan: dict[str, Any], *, extra_context: Optional[dict[str, Any]] = None) -> dict[str, Any]:
     """Strict context block for the model."""
     facts = evidence_facts_from_plan(plan)
+    # P3: desk thesis (pinned or current) — advisory context only, not numeric facts
+    desk_thesis = None
+    try:
+        from scripts.lib.cio_theses import CIOThesisStore, safe_context_block
+        pin = plan.get("thesis_version")
+        if pin:
+            rec = CIOThesisStore().get_by_pin(str(pin))
+            if rec:
+                desk_thesis = {
+                    "thesis_version": rec.get("thesis_version"),
+                    "summary": (rec.get("summary") or "")[:800],
+                    "stance": rec.get("stance") or "",
+                    "bullets": list(rec.get("bullets") or [])[:12],
+                }
+        if desk_thesis is None:
+            desk_thesis = safe_context_block("desk")
+    except Exception:
+        desk_thesis = None
     pack = {
         "authority": "READ_ONLY_ADVISORY",
         "instruction": (
             "Use ONLY the facts in this pack. If a field is missing, write DATA_UNAVAILABLE. "
             "Never invent prices, targets, stops, or weights. Output JSON only matching the schema. "
-            "Advisory only — no order/stop execution language."
+            "Advisory only — no order/stop execution language. "
+            "Respect desk_thesis stance when present; do not invent numbers from thesis text."
         ),
         "situation_type": plan.get("situation_type"),
         "symbols": plan.get("symbols") or [],
         "plan_id": plan.get("plan_id"),
         "title": plan.get("title"),
+        "thesis_version": plan.get("thesis_version"),
+        "desk_thesis": desk_thesis,
         "existing_summary": plan.get("summary") or "",
         "existing_recommendation": plan.get("recommendation") or "",
         "options_stub": facts.get("_options_stub") or [],
@@ -640,6 +661,15 @@ def enrich_plan(
     updated["llm_status"] = result["llm"]
     if narrative.get("llm_deferred"):
         updated["llm_deferred"] = True
+    # P3: ensure thesis pin on enriched plan
+    if not updated.get("thesis_version"):
+        try:
+            from scripts.lib.cio_theses import safe_current_pin
+            pin = safe_current_pin("desk")
+            if pin:
+                updated["thesis_version"] = pin
+        except Exception:
+            pass
 
     # Persist
     if plan_store is not None and updated.get("plan_id"):
@@ -652,6 +682,7 @@ def enrich_plan(
                 risks=updated.get("risks"),
                 status="proposed" if result["narrative_source"] == "llm" else plan.get("status") or "draft",
                 actor_id="cio_plan_enrichment",
+                **({"thesis_version": updated["thesis_version"]} if updated.get("thesis_version") else {}),
             )
             # store enrichment metadata via second update using allowed fields only —
             # put extras via update that merges if we add fields... update_plan only allows certain fields.
@@ -667,6 +698,7 @@ def enrich_plan(
                     "llm_model": updated.get("llm_model"),
                     "llm_status": updated.get("llm_status"),
                     "llm_deferred": updated.get("llm_deferred"),
+                    "thesis_version": updated.get("thesis_version"),
                 },
             )
             refreshed = plan_store.get_plan(updated["plan_id"])

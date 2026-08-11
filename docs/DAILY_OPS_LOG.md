@@ -1,4 +1,11 @@
 
+## 2026-08-11 — P3 versioned thesis store
+
+- `scripts/lib/cio_theses.py` → `data/cio/cio_theses.jsonl` (+ projection)
+- Canonical pins `desk@vN`; plans auto-pin; enrich pack + agent context include desk thesis
+- `/cio thesis` · `/cio thesis history` · docs/cio/THESIS_STORE_P3.md
+- Distinct from per-goal `thesis_summary` (WS1). READ_ONLY_ADVISORY.
+
 ## 2026-08-11 — P5 lightweight wake traces
 
 - JSONL `data/cio/cio_wake_traces.jsonl` + `scripts/lib/cio_wake_traces.py`

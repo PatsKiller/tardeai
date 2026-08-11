@@ -27,6 +27,27 @@ print(json.dumps(s.get_context_for_agent("alex"), indent=2)[:2000])
 PY
 ```
 
+### Versioned desk thesis (P3)
+
+Per-goal `thesis_summary` is not the desk pin. Desk thesis lives in `CIOThesisStore`:
+
+```bash
+.venv/bin/python scripts/cio_commands.py thesis
+.venv/bin/python scripts/cio_commands.py thesis history
+.venv/bin/python - <<'PY'
+from scripts.lib.cio_theses import CIOThesisStore
+print(CIOThesisStore().publish(
+    "Risk-aware observe-only; escalate material drift to operator.",
+    owner_agent="alex",
+    stance="defensive",
+    change_note="operator bootstrap",
+    actor_id="operator",
+)["thesis_version"])
+PY
+```
+
+See `docs/cio/THESIS_STORE_P3.md`.
+
 Create a goal:
 
 ```bash

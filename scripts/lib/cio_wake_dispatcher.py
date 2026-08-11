@@ -534,9 +534,19 @@ class CIOWakeDispatcher:
                         "owner_agent": agent_id,
                         "title": g.get("title"),
                         "thesis_summary": g.get("thesis_summary"),
+                        "thesis_version": (
+                            (ctx.get("desk_thesis") or {}).get("thesis_version")
+                            if isinstance(ctx.get("desk_thesis"), dict)
+                            else None
+                        ),
                         "agent_context": {
                             "open_goal_count": len(ctx.get("open_goals") or []),
                             "thesis_snippet_count": len(ctx.get("thesis_snippets") or []),
+                            "desk_thesis_version": (
+                                (ctx.get("desk_thesis") or {}).get("thesis_version")
+                                if isinstance(ctx.get("desk_thesis"), dict)
+                                else None
+                            ),
                         },
                     },
                 }

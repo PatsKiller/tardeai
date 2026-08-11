@@ -589,6 +589,16 @@ def handle_cio_slash(text: str) -> str:
                 return cmd_traces_text(n, llm=llm_f, plan_id=plan_f)
             except Exception as e:
                 return f"traces unavailable: {e}"
+        if sub == "thesis":
+            import sys
+            old = sys.argv[:]
+            try:
+                sys.argv = ["cio_commands.py", "thesis"] + parts[1:]
+                if parts[1:2] and parts[1].lower() in ("history", "list", "versions"):
+                    return cc.cmd_thesis_history() if hasattr(cc, "cmd_thesis_history") else "thesis history unavailable"
+                return cc.cmd_thesis() if hasattr(cc, "cmd_thesis") else "thesis unavailable"
+            finally:
+                sys.argv = old
         return f"Unknown /cio command: {sub}\nUse /cio help"
     finally:
         sys.argv = old

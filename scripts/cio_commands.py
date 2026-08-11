@@ -447,6 +447,71 @@ def cmd_traces(n: int = 10, llm: str | None = None, plan_id: str | None = None) 
             return f"❌ traces unavailable: {e}"
 
 
+def cmd_thesis() -> str:
+    """Show current desk thesis (P3). Zero LLM."""
+    try:
+        from lib.cio_theses import CIOThesisStore
+    except Exception:
+        from scripts.lib.cio_theses import CIOThesisStore
+    try:
+        store = CIOThesisStore()
+        # optional: /cio thesis <id>
+        tid = "desk"
+        if len(sys.argv) >= 3 and not sys.argv[2].startswith("@"):
+            # "thesis history" handled elsewhere; bare id
+            if sys.argv[2].lower() not in ("history", "list", "versions"):
+                tid = sys.argv[2].strip().lower()
+        cur = store.get_current(tid)
+        if not cur:
+            return (
+                f"No thesis published for `{tid}`.\n"
+                "Publish: `.venv/bin/python -c \"from scripts.lib.cio_theses import CIOThesisStore; "
+                "print(CIOThesisStore().publish('...', owner_agent='alex'))\"`"
+            )
+        bullets = cur.get("bullets") or []
+        b_s = "\n".join(f"  • {b}" for b in bullets[:8]) or "  (none)"
+        return (
+            f"📌 Desk thesis `{cur.get('thesis_version')}` · {cur.get('status')}\n"
+            f"owner={cur.get('owner_agent')} published={str(cur.get('published_ts') or '')[:19]}\n"
+            f"stance: {cur.get('stance') or '—'}\n"
+            f"summary: {cur.get('summary') or ''}\n"
+            f"bullets:\n{b_s}\n"
+            f"symbols: {', '.join(cur.get('linked_symbols') or []) or '—'}\n"
+            f"authority: READ_ONLY_ADVISORY"
+        )
+    except Exception as e:
+        return f"❌ thesis unavailable: {e}"
+
+
+def cmd_thesis_history() -> str:
+    """List recent versions of a thesis. Zero LLM."""
+    try:
+        from lib.cio_theses import CIOThesisStore
+    except Exception:
+        from scripts.lib.cio_theses import CIOThesisStore
+    tid = "desk"
+    limit = 10
+    args = sys.argv[2:]
+    for a in args:
+        if a.isdigit():
+            limit = max(1, min(int(a), 50))
+        elif a.lower() not in ("history", "list", "versions"):
+            tid = a.strip().lower()
+    try:
+        rows = CIOThesisStore().list_versions(tid, limit=limit)
+        if not rows:
+            return f"No versions for `{tid}`."
+        lines = [f"📚 Thesis versions `{tid}` (newest first):"]
+        for r in rows:
+            lines.append(
+                f"• `{r.get('thesis_version')}` {str(r.get('published_ts') or '')[:19]} "
+                f"{r.get('status')} — {(r.get('summary') or '')[:80]}"
+            )
+        return "\n".join(lines)
+    except Exception as e:
+        return f"❌ thesis history unavailable: {e}"
+
+
 HELP = """🤖 CIO Commands:
   /cio                 — Full CIO dashboard
   /cio actions         — Open action items
@@ -455,6 +520,8 @@ HELP = """🤖 CIO Commands:
   /cio risk            — Risk overview
   /cio plans           — Open advisory plans
   /cio plan <id>       — Show one plan
+  /cio thesis          — Current desk thesis (versioned, P3)
+  /cio thesis history  — Thesis version list
   /cio traces [n]      — Recent wake traces (why wake / llm path)
   /cio action <id>     — Detail on one action (coming soon)
   /cio ack <id>        — Acknowledge an action
@@ -501,6 +568,12 @@ def main() -> int:
             elif tok.startswith("plan="):
                 plan_f = tok.split("=", 1)[1]
         print(cmd_traces(n=n, llm=llm_f, plan_id=plan_f))
+    elif subcommand == "thesis":
+        rest = [a.lower() for a in sys.argv[2:]]
+        if rest and rest[0] in ("history", "list", "versions"):
+            print(cmd_thesis_history())
+        else:
+            print(cmd_thesis())
     elif subcommand == "action" and len(sys.argv) > 2:
         print(f"📋 Action detail for {sys.argv[2]} — coming soon")
     else:

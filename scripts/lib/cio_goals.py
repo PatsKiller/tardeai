@@ -488,12 +488,25 @@ class CIOGoalStore:
         except Exception:
             bus_events = []
 
+        # P3: versioned desk thesis (distinct from per-goal thesis_snippets)
+        desk_thesis = None
+        try:
+            from scripts.lib.cio_theses import safe_context_block
+            desk_thesis = safe_context_block("desk")
+        except Exception:
+            try:
+                from lib.cio_theses import safe_context_block  # type: ignore
+                desk_thesis = safe_context_block("desk")
+            except Exception:
+                desk_thesis = None
+
         return {
             "agent_id": agent,
             "as_of": _now(),
             "authority": "READ_ONLY_ADVISORY",
             "open_goals": open_goals,
             "thesis_snippets": thesis_snippets,
+            "desk_thesis": desk_thesis,
             "recent_goal_events": recent_events,
             "recent_bus_events": bus_events[:limit_events],
             "open_actions": open_actions[:15],

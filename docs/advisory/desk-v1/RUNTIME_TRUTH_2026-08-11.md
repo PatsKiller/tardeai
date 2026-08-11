@@ -193,7 +193,7 @@ Artifact: `data/cio/p2b_soak_wakes.json`
 | `~/.config/tradeai/cio-telegram.env` | allowlist set (2 chats); **TELEGRAM_CIO_BOT_TOKEN missing** |
 | Token provision script | `scripts/ops/provision_cio_telegram_token.sh` |
 | Unit `tradeai-cio-telegram` | installed; **not enabled** until token |
-| P3 thesis store | **not implemented** (next feature track) |
+| P3 thesis store | **implemented** — `scripts/lib/cio_theses.py` / `docs/cio/THESIS_STORE_P3.md` |
 
 After BotFather token:
 ```bash
