@@ -337,31 +337,142 @@ def get_trough(row: dict[str, Any], evidence: dict[str, Any], symbol: str) -> Op
     return None
 
 
+def catalyst_pack_for_symbol(evidence: dict[str, Any], symbol: str) -> Optional[dict[str, Any]]:
+    """Prefer structured domain=catalyst pack for symbol; fail-soft None."""
+    sym = (symbol or "").upper()
+    by = evidence.get("catalyst_by_symbol")
+    if isinstance(by, dict) and isinstance(by.get(sym), dict):
+        return by[sym]
+    for key in ("catalyst", "catalysts", "catalyst_record"):
+        pack = evidence.get(key)
+        if not isinstance(pack, dict):
+            continue
+        # Structured calendar pack
+        if pack.get("domain") == "catalyst" or pack.get("events") is not None:
+            psym = str(pack.get("symbol") or "").upper()
+            if not psym or psym == sym or psym == "BOOK":
+                return pack
+        # Nested by symbol
+        nested = pack.get(sym)
+        if isinstance(nested, dict):
+            return nested
+    return None
+
+
 def catalyst_tags(evidence: dict[str, Any], symbol: str) -> list[str]:
-    cr = evidence.get("catalyst_record") or evidence.get("catalysts") or {}
     tags: list[str] = []
+    pack = catalyst_pack_for_symbol(evidence, symbol)
+    if isinstance(pack, dict):
+        for ev in pack.get("events") or []:
+            if isinstance(ev, dict):
+                for k in ("kind", "type", "tag", "name", "label", "event_type", "title", "severity"):
+                    if ev.get(k):
+                        tags.append(str(ev[k]).lower())
+            elif isinstance(ev, str):
+                tags.append(ev.lower())
+        if pack.get("kind"):
+            tags.append(str(pack["kind"]).lower())
+        if pack.get("catalyst_type"):
+            tags.append(str(pack["catalyst_type"]).lower())
+        if pack.get("headline"):
+            tags.append(str(pack["headline"]).lower())
+    cr = evidence.get("catalyst_record") or evidence.get("catalysts") or {}
     items: list[Any] = []
     if isinstance(cr, list):
         items = cr
-    elif isinstance(cr, dict):
-        items = cr.get(symbol.upper()) or cr.get("items") or cr.get("events") or []
-        if not items and cr.get("symbol", "").upper() == symbol.upper():
+    elif isinstance(cr, dict) and cr.get("events") is None:
+        items = cr.get(symbol.upper()) or cr.get("items") or []
+        if not items and str(cr.get("symbol") or "").upper() == symbol.upper():
             items = cr.get("catalysts") or [cr]
     for it in items or []:
         if isinstance(it, str):
             tags.append(it.lower())
         elif isinstance(it, dict):
-            for k in ("type", "tag", "name", "label", "event_type"):
+            for k in ("type", "tag", "name", "label", "event_type", "kind", "catalyst_type"):
                 if it.get(k):
                     tags.append(str(it[k]).lower())
             if it.get("description"):
                 tags.append(str(it["description"]).lower())
+            if it.get("headline"):
+                tags.append(str(it["headline"]).lower())
     return tags
 
 
 def has_major_catalyst(tags: list[str]) -> bool:
     blob = " ".join(tags)
-    return any(k in blob for k in ("earnings", "lockup", "lock-up", "fda", "merger", "offering"))
+    return any(
+        k in blob
+        for k in (
+            "earnings", "lockup", "lock-up", "fda", "merger", "offering",
+            "regulatory", "guidance", "critical", "high",
+        )
+    )
+
+
+def calendar_catalyst_material(
+    evidence: dict[str, Any],
+    symbol: str,
+) -> tuple[bool, list[str], Optional[dict[str, Any]]]:
+    """
+    Structured calendar materiality: medium+ within research horizon, or high+ within warm horizon.
+
+    Returns (is_material, fire_reason_tags, pack).
+    """
+    pack = catalyst_pack_for_symbol(evidence, symbol)
+    if not pack or pack.get("quality") == "DATA_UNAVAILABLE" or pack.get("quality_state") == "DATA_UNAVAILABLE":
+        return False, [], pack
+    try:
+        try:
+            from lib.catalyst_domain import materiality_bump, catalyst_research_gap_eligible
+            from lib.catalyst_policy import (
+                HORIZON_HERMES_RESEARCH_GAP,
+                HORIZON_HERMES_WARM,
+                MIN_SEV_MATERIALITY_BUMP,
+                MIN_SEV_RESEARCH_GAP,
+                next_relevant_event,
+                clamp_severity,
+            )
+        except Exception:
+            from scripts.lib.catalyst_domain import (  # type: ignore
+                materiality_bump,
+                catalyst_research_gap_eligible,
+            )
+            from scripts.lib.catalyst_policy import (  # type: ignore
+                HORIZON_HERMES_RESEARCH_GAP,
+                HORIZON_HERMES_WARM,
+                MIN_SEV_MATERIALITY_BUMP,
+                MIN_SEV_RESEARCH_GAP,
+                next_relevant_event,
+                clamp_severity,
+            )
+        reasons: list[str] = []
+        # High/critical ≤ warm horizon → materiality bump
+        if materiality_bump(pack):
+            ev = next_relevant_event(
+                pack.get("events") or [],
+                max_days=HORIZON_HERMES_WARM,
+                min_sev=MIN_SEV_MATERIALITY_BUMP,
+            )
+            if ev:
+                reasons.append(
+                    f"calendar_catalyst_{clamp_severity(ev.get('severity'))}"
+                    f"_{ev.get('kind')}_h{ev.get('horizon_days')}"
+                )
+        # Medium+ ≤ research gap horizon on held name → still material for S1 path
+        elif catalyst_research_gap_eligible(pack):
+            ev = next_relevant_event(
+                pack.get("events") or [],
+                max_days=HORIZON_HERMES_RESEARCH_GAP,
+                min_sev=MIN_SEV_RESEARCH_GAP,
+            )
+            if ev:
+                reasons.append(
+                    f"calendar_catalyst_{clamp_severity(ev.get('severity'))}"
+                    f"_{ev.get('kind')}_h{ev.get('horizon_days')}"
+                )
+        return bool(reasons), reasons, pack
+    except Exception:
+        return False, [], pack
 
 
 # ── Predicates ──────────────────────────────────────────────────────────────
@@ -379,6 +490,7 @@ def eval_s1(evidence: dict[str, Any], cfg: dict[str, Any], symbol: str) -> Optio
     target = get_mean_target(evidence, symbol)
     tags = catalyst_tags(evidence, symbol)
     major_cat = has_major_catalyst(tags)
+    cal_material, cal_reasons, cat_pack = calendar_catalyst_material(evidence, symbol)
 
     refs = []
     fields = []
@@ -390,7 +502,7 @@ def eval_s1(evidence: dict[str, Any], cfg: dict[str, Any], symbol: str) -> Optio
         fields.append("trough")
     if target is not None:
         fields.append("mean_target")
-    if tags:
+    if tags or cal_material:
         fields.append("catalysts")
     refs.append(_ref("holdings_detail", evidence.get("holdings_detail") or row, ["symbol", "shares"] + fields))
     if evidence.get("cost_basis"):
@@ -399,7 +511,11 @@ def eval_s1(evidence: dict[str, Any], cfg: dict[str, Any], symbol: str) -> Optio
         refs.append(_ref("market_quote", evidence["market_quote"], ["last"]))
     if evidence.get("analyst_rollup"):
         refs.append(_ref("analyst_rollup", evidence["analyst_rollup"], ["mean_target"]))
-    if evidence.get("catalyst_record") or evidence.get("catalysts"):
+    if cat_pack:
+        refs.append(cat_pack if cat_pack.get("domain") == "catalyst" else _ref(
+            "catalyst", cat_pack, ["events", "max_severity", "next_event"],
+        ))
+    elif evidence.get("catalyst_record") or evidence.get("catalysts"):
         refs.append(_ref("catalyst_record", evidence.get("catalyst_record") or evidence.get("catalysts") or {}, ["type"]))
 
     reasons: list[str] = []
@@ -427,12 +543,21 @@ def eval_s1(evidence: dict[str, Any], cfg: dict[str, Any], symbol: str) -> Optio
         pass
     if major_cat:
         reasons.append("major_catalyst_while_held")
+    # Structured calendar: medium+ ≤10d or high ≤5d elevates materiality
+    for r in cal_reasons:
+        if r not in reasons:
+            reasons.append(r)
+    if cal_material and "major_catalyst_while_held" not in reasons:
+        reasons.append("major_catalyst_while_held")
 
     if not reasons:
         return None
     # Noise control: pure "near basis" without DD / recovery / catalyst is not actionable
     material_path = any(
-        r.startswith("deep_drawdown") or r.startswith("partial_recovery") or r == "major_catalyst_while_held"
+        r.startswith("deep_drawdown")
+        or r.startswith("partial_recovery")
+        or r == "major_catalyst_while_held"
+        or r.startswith("calendar_catalyst_")
         for r in reasons
     )
     if not material_path and reasons == ["basis_reclaim_zone"]:
@@ -477,6 +602,7 @@ def eval_s1(evidence: dict[str, Any], cfg: dict[str, Any], symbol: str) -> Optio
         ],
         "evidence_refs": refs,
         "fire_reasons": reasons,
+        "catalyst_pack": cat_pack,
     }
 
 
@@ -1058,6 +1184,25 @@ class CIOSituationDetector:
             except Exception:
                 pass
 
+        revisit_at = _revisit(self.cfg, st)
+        # Tighten revisit when structured catalyst pack has medium+ within horizon
+        cat_pack = cand.get("catalyst_pack")
+        if not cat_pack and cand.get("symbols"):
+            # best-effort: pull from evidence_refs already on candidate
+            for r in cand.get("evidence_refs") or []:
+                if isinstance(r, dict) and (r.get("domain") == "catalyst" or r.get("events") is not None):
+                    cat_pack = r
+                    break
+        if cat_pack:
+            try:
+                try:
+                    from lib.catalyst_domain import adjust_revisit_at
+                except Exception:
+                    from scripts.lib.catalyst_domain import adjust_revisit_at  # type: ignore
+                revisit_at = adjust_revisit_at(revisit_at, cat_pack).isoformat()
+            except Exception:
+                pass
+
         plan = self.plans.create_plan(
             situation_type=st,
             symbols=syms,
@@ -1068,13 +1213,17 @@ class CIOSituationDetector:
             risks=cand.get("risks") or [],
             evidence_refs=cand.get("evidence_refs") or [],
             linked_goal_ids=linked_goals,
-            revisit_at=_revisit(self.cfg, st),
+            revisit_at=revisit_at,
             owner_agent=owner,
             cc_deep_links=_links(self.cfg, st),
             status="draft",
             detector_version=self.detector_version,
             actor_id="cio_situation_detector",
-            extra={"fire_reasons": cand.get("fire_reasons") or [], "shadow": bool(self.cfg.get("shadow", True))},
+            extra={
+                "fire_reasons": cand.get("fire_reasons") or [],
+                "shadow": bool(self.cfg.get("shadow", True)),
+                "catalyst_max_severity": (cat_pack or {}).get("max_severity") if isinstance(cat_pack, dict) else None,
+            },
         )
         self._emit_situation_raised(plan)
         # P5: open situation wake trace (synthetic wake_id; fail-soft)
@@ -1250,6 +1399,72 @@ def build_evidence_from_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
     return evidence
 
 
+def enrich_evidence_with_catalysts(
+    evidence: dict[str, Any],
+    *,
+    max_symbols: int = 8,
+) -> dict[str, Any]:
+    """
+    Attach structured catalyst packs for held symbols (fail-soft).
+
+    Sets evidence['catalyst_by_symbol'] and primary evidence['catalyst'] for
+    the first held name so detectors see calendar severity without enrich-only path.
+    """
+    if not isinstance(evidence, dict):
+        return evidence or {}
+    try:
+        rows = extract_holdings(evidence)
+    except Exception:
+        rows = []
+    symbols: list[str] = []
+    for r in rows:
+        if not isinstance(r, dict) or _is_cash_row(r):
+            continue
+        sym = str(r.get("symbol") or "").upper()
+        if sym and sym not in symbols:
+            symbols.append(sym)
+        if len(symbols) >= max_symbols:
+            break
+    if not symbols:
+        return evidence
+
+    try:
+        try:
+            from db_adapter import _execute as _db_exec
+        except Exception:
+            from scripts.db_adapter import _execute as _db_exec  # type: ignore
+
+        def _db(sql: str, params=None, fetch: str = "all"):
+            return _db_exec(sql, params, fetch=fetch)
+
+        try:
+            from lib.data_broker.catalyst_record import get_catalyst_record
+            from lib.catalyst_domain import pack_from_broker_record, unavailable_pack
+        except Exception:
+            from scripts.lib.data_broker.catalyst_record import get_catalyst_record  # type: ignore
+            from scripts.lib.catalyst_domain import pack_from_broker_record, unavailable_pack  # type: ignore
+    except Exception:
+        return evidence
+
+    by_sym: dict[str, dict[str, Any]] = dict(evidence.get("catalyst_by_symbol") or {})
+    for sym in symbols:
+        if sym in by_sym:
+            continue
+        try:
+            rec = get_catalyst_record(_db, sym)
+            if isinstance(rec, dict) and rec:
+                by_sym[sym] = pack_from_broker_record(rec, symbol=sym)
+            else:
+                by_sym[sym] = unavailable_pack(symbol=sym, gap_reason="no_catalyst_record")
+        except Exception as e:
+            by_sym[sym] = unavailable_pack(symbol=sym, gap_reason=type(e).__name__)
+
+    evidence["catalyst_by_symbol"] = by_sym
+    if "catalyst" not in evidence and symbols:
+        evidence["catalyst"] = by_sym.get(symbols[0]) or unavailable_pack(symbol=symbols[0])
+    return evidence
+
+
 def build_evidence_from_broker() -> dict[str, Any]:
     """Pull live CIO Data Broker snapshot → detector evidence. Fail-soft empty."""
     try:
@@ -1258,7 +1473,8 @@ def build_evidence_from_broker() -> dict[str, Any]:
         except Exception:
             from scripts.lib.data_broker.cio_portfolio import get_cio_snapshot  # type: ignore
         snap = get_cio_snapshot(max_age_s=0)
-        return build_evidence_from_snapshot(snap if isinstance(snap, dict) else {})
+        evidence = build_evidence_from_snapshot(snap if isinstance(snap, dict) else {})
+        return enrich_evidence_with_catalysts(evidence)
     except Exception:
         return {}
 

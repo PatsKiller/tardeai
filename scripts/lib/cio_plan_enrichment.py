@@ -279,15 +279,12 @@ def augment_multi_domain_evidence(plan: dict[str, Any]) -> dict[str, Any]:
             refs.append(tech_ref)
             have.add("technicals")
 
-        # ── catalysts ───────────────────────────────────────────────────
-        if "catalysts" not in have and "catalyst_record" not in have:
-            cat_ref: dict[str, Any] = {
-                "domain": "catalysts",
-                "as_of": _now()[:19],
-                "fields_used": [],
-                "quality_state": "DATA_UNAVAILABLE",
-                "symbols": symbols[:4],
-            }
+        # ── catalysts (structured domain=catalyst + legacy catalysts headline) ─
+        # Always declare catalyst domain (even DATA_UNAVAILABLE) so models never invent dates.
+        if "catalyst" not in have and "catalysts" not in have and "catalyst_record" not in have:
+            primary = symbols[0]
+            broker_row: Optional[dict[str, Any]] = None
+            gap = "no_catalyst_record"
             try:
                 try:
                     from db_adapter import _execute as _db_exec
@@ -303,32 +300,86 @@ def augment_multi_domain_evidence(plan: dict[str, Any]) -> dict[str, Any]:
                     from scripts.lib.data_broker.catalyst_record import (  # type: ignore
                         get_catalyst_record,
                     )
-                primary = symbols[0]
                 cat = get_catalyst_record(_db, primary)
                 if isinstance(cat, dict) and cat:
-                    cat_ref["symbol"] = primary
-                    for k in (
-                        "headline", "catalyst_type", "verified", "confidence",
-                        "severity", "impact_score", "source_url", "at", "event_date",
-                    ):
-                        if cat.get(k) is not None:
-                            val = cat.get(k)
-                            # Decimal → float for JSON safety
-                            try:
-                                from decimal import Decimal
-                                if isinstance(val, Decimal):
-                                    val = float(val)
-                            except Exception:
-                                pass
-                            cat_ref[k] = val
-                            cat_ref["fields_used"].append(k)
-                    cat_ref["quality_state"] = "OK" if cat_ref["fields_used"] else "PARTIAL"
-                    cat_ref["as_of"] = str(cat.get("as_of") or cat.get("at") or cat_ref["as_of"])[:19]
+                    # Decimal → float for JSON safety
+                    try:
+                        from decimal import Decimal
+                        for kk, vv in list(cat.items()):
+                            if isinstance(vv, Decimal):
+                                cat[kk] = float(vv)
+                    except Exception:
+                        pass
+                    broker_row = cat
                 else:
-                    cat_ref["gap_reason"] = "no_catalyst_record"
+                    gap = "no_catalyst_record"
             except Exception as e:
-                cat_ref["gap_reason"] = f"{type(e).__name__}"
-            refs.append(cat_ref)
+                gap = f"{type(e).__name__}"
+
+            try:
+                try:
+                    from lib.catalyst_domain import (
+                        pack_from_broker_record,
+                        unavailable_pack,
+                    )
+                except Exception:
+                    from scripts.lib.catalyst_domain import (  # type: ignore
+                        pack_from_broker_record,
+                        unavailable_pack,
+                    )
+                if broker_row:
+                    cat_pack = pack_from_broker_record(broker_row, symbol=primary)
+                else:
+                    cat_pack = unavailable_pack(symbol=primary, gap_reason=gap)
+            except Exception as e:
+                cat_pack = {
+                    "domain": "catalyst",
+                    "as_of": _now()[:19],
+                    "quality": "DATA_UNAVAILABLE",
+                    "quality_state": "DATA_UNAVAILABLE",
+                    "symbol": primary,
+                    "events": [],
+                    "fields_used": [],
+                    "gap_reason": f"{type(e).__name__}",
+                }
+
+            # Primary structured domain
+            refs.append(cat_pack)
+            have.add("catalyst")
+            updated["_catalyst_pack"] = cat_pack
+
+            # Legacy flat catalysts ref for older plan/Telegram consumers
+            legacy: dict[str, Any] = {
+                "domain": "catalysts",
+                "as_of": str(cat_pack.get("as_of") or _now())[:19],
+                "fields_used": list(cat_pack.get("fields_used") or []),
+                "quality_state": cat_pack.get("quality_state") or cat_pack.get("quality") or "DATA_UNAVAILABLE",
+                "symbols": symbols[:4],
+                "symbol": primary,
+            }
+            if broker_row:
+                for k in (
+                    "headline", "catalyst_type", "verified", "confidence",
+                    "severity", "impact_score", "source_url", "at", "event_date",
+                ):
+                    if broker_row.get(k) is not None:
+                        legacy[k] = broker_row.get(k)
+                        if k not in legacy["fields_used"]:
+                            legacy["fields_used"].append(k)
+            next_ev = cat_pack.get("next_event")
+            if isinstance(next_ev, dict):
+                legacy["next_event"] = next_ev
+                legacy["session_date"] = next_ev.get("session_date")
+                legacy["kind"] = next_ev.get("kind")
+                legacy["severity"] = next_ev.get("severity") or legacy.get("severity")
+                for fk in ("session_date", "kind", "severity"):
+                    if legacy.get(fk) is not None and fk not in legacy["fields_used"]:
+                        legacy["fields_used"].append(fk)
+            if cat_pack.get("max_severity") is not None:
+                legacy["max_severity"] = cat_pack.get("max_severity")
+            if cat_pack.get("gap_reason"):
+                legacy["gap_reason"] = cat_pack.get("gap_reason")
+            refs.append(legacy)
             have.add("catalysts")
 
     # WS3 stub: attach latest structured Hermes findings for this plan (if any)
@@ -357,6 +408,17 @@ def augment_multi_domain_evidence(plan: dict[str, Any]) -> dict[str, Any]:
     return updated
 
 
+def _catalyst_pack_from_plan(plan: dict[str, Any]) -> Optional[dict[str, Any]]:
+    """Pull structured catalyst pack from plan fields or evidence_refs."""
+    pack = plan.get("_catalyst_pack") or plan.get("catalyst")
+    if isinstance(pack, dict) and pack.get("domain") in ("catalyst", "catalysts"):
+        return pack
+    for r in plan.get("evidence_refs") or []:
+        if isinstance(r, dict) and r.get("domain") == "catalyst":
+            return r
+    return None
+
+
 def maybe_request_hermes(plan: dict[str, Any], *, reason: str = "") -> Optional[str]:
     """Enqueue Hermes research for material situations. Fail-soft.
 
@@ -365,11 +427,14 @@ def maybe_request_hermes(plan: dict[str, Any], *, reason: str = "") -> Optional[
       2) Legacy HermesChallengeQueue research_gap (best-effort)
 
     READ_ONLY — research only, no trading authority.
+    Catalyst medium+ within warm horizon can raise priority / use catalyst_map questions.
     """
     if not is_material_plan(plan) and not plan.get("hermes_requested"):
         return None
     st = str(plan.get("situation_type") or "")
-    syms = ",".join(str(s) for s in (plan.get("symbols") or [])[:4]) or "book"
+    sym_list = [str(s).upper() for s in (plan.get("symbols") or []) if s]
+    syms = ",".join(sym_list[:4]) or "book"
+    primary = sym_list[0] if sym_list else "BOOK"
     pid = plan.get("plan_id") or ""
     desc = (
         reason
@@ -389,16 +454,81 @@ def maybe_request_hermes(plan: dict[str, Any], *, reason: str = "") -> Optional[
             "S8_DEFENSIVE_REGIME",
             "S1_POSITION_LIFECYCLE",
         ) else "normal"
+        questions = None
+        # Catalyst warm / research-gap: raise priority from severity × posture
+        cat_pack = _catalyst_pack_from_plan(plan)
+        try:
+            try:
+                from lib.catalyst_domain import (
+                    catalyst_map_questions,
+                    catalyst_research_gap_eligible,
+                    catalyst_warm_decision,
+                )
+                from lib.catalyst_policy import max_priority
+            except Exception:
+                from scripts.lib.catalyst_domain import (  # type: ignore
+                    catalyst_map_questions,
+                    catalyst_research_gap_eligible,
+                    catalyst_warm_decision,
+                )
+                from scripts.lib.catalyst_policy import max_priority  # type: ignore
+            weight = None
+            fire = None
+            dd = None
+            deep_dd = 25.0  # desk S1 deep-DD threshold %
+            for r in plan.get("evidence_refs") or []:
+                if not isinstance(r, dict):
+                    continue
+                if r.get("domain") in ("holdings_detail", "concentration"):
+                    if r.get("weight_pct") is not None:
+                        weight = float(r.get("weight_pct"))
+                    if r.get("top_weight_pct") is not None and weight is None:
+                        weight = float(r.get("top_weight_pct"))
+                    if r.get("fire_pct") is not None:
+                        fire = float(r.get("fire_pct"))
+                    if r.get("dd_pct") is not None:
+                        dd = abs(float(r.get("dd_pct")))
+            warm = catalyst_warm_decision(
+                primary,
+                cat_pack,
+                plan_open=True,
+                weight_pct=weight,
+                fire_pct=fire,
+                dd_pct=dd,
+                deep_dd_pct=deep_dd,
+            )
+            if warm and warm.get("warm"):
+                pri = max_priority(pri, str(warm.get("priority") or "normal"))
+                questions = catalyst_map_questions(primary)
+                desc = (
+                    f"{desc} Catalyst warm: {warm.get('reason')} "
+                    f"event={warm.get('event_id')}."
+                )[:400]
+                plan["catalyst_warm"] = warm
+            elif catalyst_research_gap_eligible(cat_pack) and not questions:
+                # medium+ within 10d on material plan → still eligible for gap emit
+                questions = catalyst_map_questions(primary)
+        except Exception:
+            pass
         rr = enqueue_research_request(
             plan,
             reason=desc[:400],
             priority=pri,
+            questions=questions,
             actor_id="cio_plan_enrichment",
         )
         if rr.get("ok"):
             research_id = str(rr.get("research_id") or "") or None
             if research_id:
                 plan["hermes_research_id"] = research_id
+            # Surface de-dupe / reuse reason for callers; never re-notify on these
+            plan["hermes_enqueue_reason"] = rr.get("reason")
+            if rr.get("reused"):
+                plan["hermes_result_reused"] = True
+                if rr.get("result_id"):
+                    plan["hermes_result_id"] = rr.get("result_id")
+            if rr.get("deduped"):
+                plan["hermes_research_deduped"] = True
     except Exception:
         pass
     # Legacy challenge queue (worker may still consume)
@@ -1746,9 +1876,24 @@ def enrich_plan(
             result["hermes_challenge_id"] = hid
         if updated.get("hermes_research_id"):
             result["hermes_research_id"] = updated.get("hermes_research_id")
-    # revisit_at from hint if present
+    # revisit_at from hint if present; catalyst medium+ ≤5d can tighten further
     if narrative.get("revisit_hint") and not plan.get("revisit_at"):
         updated["revisit_at"] = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
+    try:
+        try:
+            from lib.catalyst_domain import adjust_revisit_at
+        except Exception:
+            from scripts.lib.catalyst_domain import adjust_revisit_at  # type: ignore
+        cat_pack = updated.get("_catalyst_pack") or _catalyst_pack_from_plan(updated) or _catalyst_pack_from_plan(plan)
+        default_rv = updated.get("revisit_at") or plan.get("revisit_at") or (
+            datetime.now(timezone.utc) + timedelta(hours=24)
+        )
+        tightened = adjust_revisit_at(default_rv, cat_pack)
+        updated["revisit_at"] = tightened.isoformat()
+        if cat_pack and cat_pack.get("next_elevated_event"):
+            updated["catalyst_revisit_bound"] = True
+    except Exception:
+        pass
     updated["narrative_source"] = result["narrative_source"]
     updated["narrative_enriched_at"] = _now()
     updated["evidence_hash"] = ehash
@@ -2177,7 +2322,20 @@ def maybe_notify_plan(
         why = ""
         if fire:
             why = "Why: " + ", ".join(str(x) for x in fire[:4]) + "\n"
-        text = why + format_structured_reply(
+        # Catalyst elevate: medium+ within 5d → summary line (not low ex-div spam)
+        cat_line = ""
+        try:
+            try:
+                from lib.catalyst_domain import catalyst_telegram_line
+            except Exception:
+                from scripts.lib.catalyst_domain import catalyst_telegram_line  # type: ignore
+            elev = catalyst_telegram_line(_catalyst_pack_from_plan(plan))
+            if elev:
+                cat_line = elev + "\n"
+                plan["catalyst_telegram_elevated"] = True
+        except Exception:
+            pass
+        text = why + cat_line + format_structured_reply(
             summary=plan.get("summary") or plan.get("title") or "",
             evidence_refs=plan.get("evidence_refs"),
             options=plan.get("options"),

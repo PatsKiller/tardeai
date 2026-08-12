@@ -118,7 +118,8 @@ Open plans (count): **35** — pins: desk@v4 ×11, desk@v1 ×24. Types: S1×11, 
 - Deep-link to Command Center `/v3/cio` plan pages  
 - Record operator dispositions into learning store + thesis `learning_log`  
 - Generate desk synthesis note (v1.1) from thesis + snapshot + material plans  
-- Enqueue Hermes research on material path (READ_ONLY research gap)
+- Enqueue Hermes research on material path (READ_ONLY research gap; fingerprint de-dupe + TTL reuse)  
+- Attach structured **catalyst calendar** on plans (severity gates revisit / warm / Telegram; never orders)
 
 ### What chat / situations **cannot** do
 

@@ -49,6 +49,13 @@ If a capability is listed here, **do not** claim it as shipped in README maturit
 |---|---|
 | Flash/bridge path with soft validator; force_template gates; `CIO_LLM_ENRICH=0` soak | Always-on high-quality LLM cards without intermittent empty/fail deferral |
 
+### 6b. Hermes closed return path (worker)
+
+| Live | Missing |
+|---|---|
+| Structured enqueue + fingerprint de-dupe + TTL reuse + manual `complete_research_result` attach | Worker auto-complete on RESOLVED → re-enrich → material notify; operator `/cio research` force path |
+| Catalyst severity → warm/invalidate | Full gold-set judge freeze for research quality |
+
 ### 7. Cross-channel parity
 
 | Live | Missing |

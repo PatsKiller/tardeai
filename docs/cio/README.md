@@ -17,9 +17,12 @@ What is **live today**:
 - Situation detector S0–S8 → durable plans → optional Telegram notify (dedicated CIO bot) and Command Center `/v3/cio` deep links
 - Plan enrichment (LLM when allowed, template otherwise) that loads `safe_context_block` and pins the live `desk@vN`
 - Multi-domain evidence packs from Data Broker (fail-soft; numbers or `DATA_UNAVAILABLE`)
+- Structured **catalyst calendar** domain (`domain=catalyst`) with severity thresholds → revisit / Hermes warm / Telegram elevate (never orders)
+- Hermes research requests with **fingerprint de-dupe**, priority bump, and TTL result reuse (invalidated on medium+ catalyst change)
 - Operator dispositions (ack / rate / defer / done / reject) into an append-only learning store
-- Portfolio-grade **desk note v1.1** synthesis for material focus (thesis + cash/concentration/DD + learning bias)
+- Portfolio-grade **desk note** synthesis for material focus (thesis + cash/concentration/DD + learning bias)
 - Parallel Gate-B path: WakeDispatcher → RunWorker → governed bridge (advisory tools only)
+- CC plan detail: Catalyst calendar table + Hermes research panel
 
 What it is **not**:
 
@@ -43,7 +46,8 @@ For operator-facing host packet (pin + as_of snapshots): see [CIO_DESK_OPERATING
 | [SITUATIONS.md](./SITUATIONS.md) | S-class catalog, fire rules, plan lifecycle, notify guard |
 | [DESK_NOTE.md](./DESK_NOTE.md) | Desk synthesis product, section schema, regenerate commands, quality bar |
 | [CLOSED_LOOP_ARCHITECTURE.md](./CLOSED_LOOP_ARCHITECTURE.md) | Closed-loop CIO plan + phase status |
-| [EVIDENCE_INVENTORY_WS0.md](./EVIDENCE_INVENTORY_WS0.md) | Phase 0 inventory: catalyst/RSI/Hermes truth |
+| [CATALYST_AND_HERMES.md](./CATALYST_AND_HERMES.md) | Catalyst severity policy + Hermes fingerprint/TTL reuse |
+| [EVIDENCE_INVENTORY_WS0.md](./EVIDENCE_INVENTORY_WS0.md) | Phase 0 inventory: catalyst/RSI/Hermes truth (historical + updates) |
 | [PROMPT_CURATION.md](./PROMPT_CURATION.md) | Prompt curation, versioning, structural eval + rubric |
 | [REENTRY_RR.md](./REENTRY_RR.md) | R:R formula `(target−price)/(price−stop)`; engine ≥2:1 vs desk core ≥1.5 |
 | [LEARNING_LOOP.md](./LEARNING_LOOP.md) | Dispositions → learning_log → enrichment bias; limits |
@@ -71,7 +75,14 @@ For operator-facing host packet (pin + as_of snapshots): see [CIO_DESK_OPERATING
 | Situation detector | [`scripts/lib/cio_situation_detector.py`](../../scripts/lib/cio_situation_detector.py) |
 | Plans | [`scripts/lib/cio_plans.py`](../../scripts/lib/cio_plans.py) |
 | Plan enrichment + notify ledger | [`scripts/lib/cio_plan_enrichment.py`](../../scripts/lib/cio_plan_enrichment.py) |
+| Catalyst severity policy | [`scripts/lib/catalyst_policy.py`](../../scripts/lib/catalyst_policy.py) |
+| Catalyst domain normalize/gates | [`scripts/lib/catalyst_domain.py`](../../scripts/lib/catalyst_domain.py) |
+| Hermes fingerprint `fp@v1` | [`scripts/lib/hermes_research_fingerprint.py`](../../scripts/lib/hermes_research_fingerprint.py) |
+| Hermes TTL / quality reuse | [`scripts/lib/hermes_research_policy.py`](../../scripts/lib/hermes_research_policy.py) |
+| Hermes enqueue core | [`scripts/lib/hermes_research_queue.py`](../../scripts/lib/hermes_research_queue.py) |
+| Hermes request/result store | [`scripts/lib/cio_hermes_research.py`](../../scripts/lib/cio_hermes_research.py) |
 | Desk note synthesis | [`scripts/lib/cio_desk_synthesis.py`](../../scripts/lib/cio_desk_synthesis.py) |
+| CC CIO hub (plan calendar/research) | [`apps/command-center-v3/src/pages/CioHub.tsx`](../../apps/command-center-v3/src/pages/CioHub.tsx) |
 | Telegram converse | [`scripts/lib/cio_telegram_converse.py`](../../scripts/lib/cio_telegram_converse.py) |
 | Wake dispatcher | [`scripts/lib/cio_wake_dispatcher.py`](../../scripts/lib/cio_wake_dispatcher.py) |
 | Run worker | [`scripts/lib/cio_run_worker.py`](../../scripts/lib/cio_run_worker.py) |

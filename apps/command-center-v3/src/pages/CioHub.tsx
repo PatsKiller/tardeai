@@ -122,6 +122,53 @@ function PlanDetailPanel({
     }
   }
 
+  const plan: Plan = payload?.plan || {}
+  const thesis = payload?.thesis
+  const opts = Array.isArray(plan.options) ? plan.options : []
+  const risks = Array.isArray(plan.risks) ? plan.risks : []
+  const refs = Array.isArray(plan.evidence_refs) ? plan.evidence_refs : []
+  const fire = Array.isArray(plan.fire_reasons) ? plan.fire_reasons : []
+  const sym = (plan.symbols && plan.symbols[0]) || ''
+  const pin = plan.thesis_version || thesis?.thesis_version || '—'
+  const stance = thesis?.stance || ''
+  const rps = thesis?.risk_posture_structured || {}
+  // Structured catalyst calendar + Hermes research from evidence_refs
+  const catalystPack =
+    refs.find(
+      (r: any) =>
+        r?.domain === 'catalyst' ||
+        (Array.isArray(r?.events) && r?.domain !== 'hermes_research_findings'),
+    ) || null
+  const catalystEvents: any[] = Array.isArray(catalystPack?.events) ? catalystPack.events : []
+  const hermesRef =
+    refs.find((r: any) => r?.domain === 'hermes_research_findings') || null
+  const sevColor = (s: string | undefined) => {
+    const k = String(s || 'low').toLowerCase()
+    if (k === 'critical') return 'var(--red)'
+    if (k === 'high') return 'var(--orange)'
+    if (k === 'medium') return 'var(--amber)'
+    return 'var(--text3)'
+  }
+  const section: CSSProperties = {
+    marginBottom: 14, paddingBottom: 12, borderBottom: '1px solid var(--border)',
+  }
+  const h: CSSProperties = {
+    fontSize: 12, fontWeight: 700, color: 'var(--text)', marginBottom: 6,
+    letterSpacing: 0.3, textTransform: 'uppercase' as const,
+  }
+  const body: CSSProperties = {
+    fontSize: 13, color: 'var(--text)', whiteSpace: 'pre-wrap', lineHeight: 1.45,
+  }
+  const muted: CSSProperties = { fontSize: 12, color: 'var(--text2)', lineHeight: 1.4 }
+  const th: CSSProperties = {
+    textAlign: 'left', padding: '4px 6px', fontSize: 11, color: 'var(--text3)',
+    borderBottom: '1px solid var(--border)', fontWeight: 600,
+  }
+  const td: CSSProperties = {
+    padding: '5px 6px', fontSize: 12, color: 'var(--text2)',
+    borderBottom: '1px solid var(--border)',
+  }
+
   if (loading) {
     return (
       <div style={{ ...card, borderColor: 'var(--accent)', color: 'var(--text2)' }} data-testid="cio-plan-loading">
@@ -141,28 +188,6 @@ function PlanDetailPanel({
       </div>
     )
   }
-
-  const plan: Plan = payload?.plan || {}
-  const thesis = payload?.thesis
-  const opts = Array.isArray(plan.options) ? plan.options : []
-  const risks = Array.isArray(plan.risks) ? plan.risks : []
-  const refs = Array.isArray(plan.evidence_refs) ? plan.evidence_refs : []
-  const fire = Array.isArray(plan.fire_reasons) ? plan.fire_reasons : []
-  const sym = (plan.symbols && plan.symbols[0]) || ''
-  const pin = plan.thesis_version || thesis?.thesis_version || '—'
-  const stance = thesis?.stance || ''
-  const rps = thesis?.risk_posture_structured || {}
-  const section: CSSProperties = {
-    marginBottom: 14, paddingBottom: 12, borderBottom: '1px solid var(--border)',
-  }
-  const h: CSSProperties = {
-    fontSize: 12, fontWeight: 700, color: 'var(--text)', marginBottom: 6,
-    letterSpacing: 0.3, textTransform: 'uppercase' as const,
-  }
-  const body: CSSProperties = {
-    fontSize: 13, color: 'var(--text)', whiteSpace: 'pre-wrap', lineHeight: 1.45,
-  }
-  const muted: CSSProperties = { fontSize: 12, color: 'var(--text2)', lineHeight: 1.4 }
 
   return (
     <div style={{ ...card, borderColor: 'var(--accent)' }} data-testid="cio-plan-detail">
@@ -272,6 +297,115 @@ function PlanDetailPanel({
         )}
       </div>
 
+      {/* Catalyst calendar */}
+      <div style={section} data-testid="cio-plan-catalyst-calendar">
+        <div style={h}>📅 Catalyst calendar</div>
+        {catalystPack && (catalystPack.quality === 'DATA_UNAVAILABLE' || catalystPack.quality_state === 'DATA_UNAVAILABLE') && catalystEvents.length === 0 ? (
+          <div style={muted}>
+            DATA_UNAVAILABLE — no structured calendar events
+            {catalystPack.gap_reason ? ` (${catalystPack.gap_reason})` : ''}.
+            Desk will not invent dates.
+          </div>
+        ) : catalystEvents.length > 0 ? (
+          <>
+            <div style={{ ...muted, marginBottom: 8, fontSize: 11 }}>
+              max severity{' '}
+              <strong style={{ color: sevColor(catalystPack?.max_severity) }}>
+                {catalystPack?.max_severity || '—'}
+              </strong>
+              {catalystPack?.open_count_medium_plus != null
+                ? ` · medium+ in 10d: ${catalystPack.open_count_medium_plus}`
+                : null}
+              {catalystPack?.next_event?.session_date
+                ? ` · next ${catalystPack.next_event.kind || ''} ${catalystPack.next_event.session_date}`
+                : null}
+              {' · '}READ_ONLY (observe / research only)
+            </div>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr>
+                    <th style={th}>Date</th>
+                    <th style={th}>Kind</th>
+                    <th style={th}>Severity</th>
+                    <th style={th}>Horizon</th>
+                    <th style={th}>Confirmed</th>
+                    <th style={th}>Source</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {catalystEvents.slice(0, 12).map((e: any, i: number) => (
+                    <tr key={e?.event_id || i}>
+                      <td style={td}>{e?.session_date || '—'}</td>
+                      <td style={td}>{e?.kind || '—'}</td>
+                      <td style={{ ...td, color: sevColor(e?.severity), fontWeight: 600 }}>
+                        {e?.severity || 'low'}
+                      </td>
+                      <td style={td}>
+                        {e?.horizon_days != null ? `${e.horizon_days}d` : '—'}
+                      </td>
+                      <td style={td}>{e?.confirmed === false ? 'no' : 'yes'}</td>
+                      <td style={{ ...td, maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {String(e?.source || e?.title || '—').slice(0, 48)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        ) : (
+          <div style={muted}>
+            No catalyst domain on plan yet — will appear after enrich / snapshot catalyst attach.
+          </div>
+        )}
+      </div>
+
+      {/* Hermes research findings */}
+      <div style={section} data-testid="cio-plan-hermes-research">
+        <div style={h}>🔬 Research (Hermes)</div>
+        {hermesRef && (hermesRef.quality_state === 'OK' || hermesRef.summary || hermesRef.findings) ? (
+          <div>
+            <div style={{ ...muted, marginBottom: 6, fontSize: 11 }}>
+              {hermesRef.result_id ? <code style={{ color: 'var(--accent)' }}>{hermesRef.result_id}</code> : null}
+              {hermesRef.research_id ? <> · {hermesRef.research_id}</> : null}
+              {hermesRef.as_of ? <> · as_of {String(hermesRef.as_of).slice(0, 19)}</> : null}
+              {hermesRef.reused ? ' · reused (TTL)' : null}
+              {hermesRef.fingerprint ? (
+                <span style={{ display: 'block', marginTop: 2, color: 'var(--text3)' }}>
+                  fp {String(hermesRef.fingerprint).slice(0, 24)}…
+                </span>
+              ) : null}
+            </div>
+            {hermesRef.summary && (
+              <div style={{ ...body, marginBottom: 8 }}>{String(hermesRef.summary)}</div>
+            )}
+            {Array.isArray(hermesRef.findings) && hermesRef.findings.length > 0 && (
+              <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: 'var(--text2)', lineHeight: 1.5 }}>
+                {hermesRef.findings.slice(0, 8).map((f: any, i: number) => (
+                  <li key={i}>{String(f)}</li>
+                ))}
+              </ul>
+            )}
+            {Array.isArray(hermesRef.open_research_ids) && hermesRef.open_research_ids.length > 0 && (
+              <div style={{ ...muted, marginTop: 8 }}>
+                Open jobs: {hermesRef.open_research_ids.join(', ')}
+              </div>
+            )}
+          </div>
+        ) : hermesRef && Array.isArray(hermesRef.open_research_ids) && hermesRef.open_research_ids.length > 0 ? (
+          <div style={muted}>
+            Research in flight: {hermesRef.open_research_ids.join(', ')}
+            {hermesRef.gap_reason ? ` · ${hermesRef.gap_reason}` : ''}
+          </div>
+        ) : (
+          <div style={muted}>
+            No completed Hermes findings on this plan
+            {hermesRef?.gap_reason ? ` (${hermesRef.gap_reason})` : ''}.
+          </div>
+        )}
+      </div>
+
       {/* Evidence */}
       <div style={section} data-testid="cio-plan-evidence">
         <div style={h}>📎 Evidence (Data Broker)</div>
@@ -281,7 +415,9 @@ function PlanDetailPanel({
               <div key={i} style={{ marginBottom: 3 }}>
                 • <span style={{ color: 'var(--text2)' }}>{r?.domain || '?'}</span>
                 {' · '}{String(r?.as_of || '').slice(0, 19) || 'n/a'}
-                {r?.quality_state ? ` · ${r.quality_state}` : ''}
+                {r?.quality_state || r?.quality ? ` · ${r.quality_state || r.quality}` : ''}
+                {r?.domain === 'catalyst' && r?.max_severity ? ` · max ${r.max_severity}` : ''}
+                {r?.domain === 'hermes_research_findings' && r?.result_id ? ` · ${r.result_id}` : ''}
               </div>
             ))}
           </div>

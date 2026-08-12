@@ -73,8 +73,8 @@ Alex enrichment (versioned prompt) ──► structural_check ──► optional
 | WS | Name | Status |
 |----|------|--------|
 | WS0 | Inventory | **Done** — this inventory |
-| WS1 | Unified evidence (catalyst/RSI) | **Done (MVP)** — assembler pulls both; snapshot still lacks them |
-| WS2 | CIO → Hermes structured requests | **MVP** — `enqueue_research_request` + fingerprint de-dupe |
+| WS1 | Unified evidence (catalyst/RSI) | **Live** — RSI + structured `domain=catalyst` (severity policy + rollups); snapshot still partial |
+| WS2 | CIO → Hermes structured requests | **Live** — `fp@v1` fingerprint de-dupe + priority bump + TTL reuse |
 | WS3 | Hermes → re-enrich | **Partial** — `complete_research_result` + evidence attach; worker auto-complete not wired |
 | WS4 | Prompt curation/versioning | **Done** |
 | WS5 | Dual surface + Tailscale | **Mostly done** |
@@ -86,22 +86,55 @@ Alex enrichment (versioned prompt) ──► structural_check ──► optional
 
 ## Hermes research contract (MVP)
 
-**Module:** `scripts/lib/cio_hermes_research.py`  
+**Modules:**
+- `scripts/lib/hermes_research_fingerprint.py` — `fp@v1` canonicalize → `sha256:…`
+- `scripts/lib/hermes_research_policy.py` — priority/situation TTL + quality gate
+- `scripts/lib/hermes_research_queue.py` — pure enqueue (in-flight → TTL reuse → create)
+- `scripts/lib/cio_hermes_research.py` — JSONL store + projection indexes
+
 **Schema:** `hermes_request@v1` / `hermes_result@v1`  
 **Files:** `data/cio/hermes_research_requests.jsonl`, `…_results.jsonl`, `…_projection.json`
 
-Minimal fields per plan §14 of the architecture prompt.  
-`maybe_request_hermes` now dual-writes structured request + legacy challenge queue.
+**Enqueue order:** fingerprint → in-flight de-dupe (optional priority bump) → TTL reuse of fresh completed → create.  
+Projection keys: `by_research_id`, `by_plan_id`, `by_fingerprint_open`, `by_fingerprint_completed`.  
+`maybe_request_hermes` dual-writes structured request + legacy challenge queue; no Telegram on `duplicate_in_flight` / pure reuse.
 
 ---
 
 ## Next builds (ordered)
 
-1. **Snapshot builder** include technicals/catalysts so detectors see them without enrich-only path  
-2. **Hermes worker** on RESOLVED call `complete_research_result` + `enrich_plan` + material notify  
-3. **CC Research section** on plan page from projection  
-4. **Gold set freeze** for judge calibration  
-5. **`/cio research`** operator force path  
+1. **Hermes worker** on RESOLVED call `complete_research_result` + `enrich_plan` + material notify  
+2. **Gold set freeze** for judge calibration  
+3. **`/cio research`** operator force path  
+4. **Snapshot domain publish** of technicals/catalyst as first-class `get_cio_snapshot` domains (detector already fail-soft enriches via broker)
+
+### Shipped this slice (fingerprint + catalyst)
+
+- `fp@v1` de-dupe + priority bump + TTL reuse + `catalyst_invalidated`  
+- `catalyst_policy` / `catalyst_domain` severity thresholds  
+- Assembler always attaches `domain=catalyst`  
+- Detector `calendar_catalyst_material` + snapshot catalyst enrich  
+- CC plan: Catalyst calendar table + Hermes research panel
+
+### Catalyst severity policy
+
+**Modules:** `scripts/lib/catalyst_policy.py` (thresholds), `scripts/lib/catalyst_domain.py` (normalize + gates)
+
+| Gate | Min severity | Horizon |
+|------|--------------|---------|
+| Telegram elevate | medium | ≤5d |
+| Revisit tighten | medium | ≤5d |
+| Hermes warm | medium | ≤5d |
+| Research gap | medium | ≤10d |
+| Cache invalidate | medium | ≤15d |
+| Materiality bump | high | ≤5d |
+
+Low ex-div / income distributions do **not** warm Hermes or elevate Telegram. Compound priority: weight near fire or deep DD can raise research priority without implying orders.
+
+**Detector:** `calendar_catalyst_material` on S1; `enrich_evidence_with_catalysts` on broker snapshot path; revisit tightened at plan create.  
+**TTL reuse:** blocked when medium+ catalyst added/changed after result `as_of` (`catalyst_invalidated`).  
+**CC plan page:** Catalyst calendar table + Hermes research panel (`CioHub` plan detail).
+
 
 ---
 

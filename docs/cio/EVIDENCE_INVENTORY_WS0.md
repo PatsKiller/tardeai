@@ -1,12 +1,25 @@
 # WS0 — CIO Evidence & Hermes Inventory (Phase 0 hard gate)
 
-**As of:** 2026-08-12  
+**As of:** 2026-08-12 (baseline inventory)  
 **Branch:** `feature/advisory-desk-v1`  
 **Live pin:** `desk@v5`  
 **Authority:** READ_ONLY_ADVISORY  
 
 This report answers “what exists before building” for the Closed-Loop Intelligence Architecture.  
 No assumptions: file paths and live probes below.
+
+### Update (post-WS1/WS2 slice)
+
+| Area | Was (WS0) | **Now** |
+|------|-----------|---------|
+| Catalyst on plan evidence | Assembler NO | **YES** — structured `domain=catalyst` + legacy `catalysts` on enrich |
+| RSI / technicals on plan | Assembler NO | **YES** — `domain=technicals` on enrich |
+| Hermes structured request | Free-text only | **`hermes_request@v1`** + `fp@v1` de-dupe + TTL reuse |
+| Hermes return path | Broken | **Partial** — `complete_research_result` + findings attach; worker auto-resolve still open |
+| CC plan research | Partial | Catalyst calendar table + Hermes findings panel |
+| Severity / warm policy | N/A | `catalyst_policy.py` + `catalyst_domain.py` |
+
+See [CATALYST_AND_HERMES.md](./CATALYST_AND_HERMES.md) and [CLOSED_LOOP_ARCHITECTURE.md](./CLOSED_LOOP_ARCHITECTURE.md).
 
 ---
 
