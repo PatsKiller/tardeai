@@ -30,3 +30,22 @@ taxonomy:
   backfill_batch_size: 200 # rows per deep pass
   min_text_length: 20      # skip rows with less text
   fallback_share_target: 0.15  # ≤15% fallback (keyword heuristic) target
+  # RETIRED 2026-08-12: content_subject axis superseded by strategy_tags
+  # (scripts/hermes_tag_engine.py). See docs/TAXONOMY_AUTHORITATIVE_CONTRACT.md.
+  status: retired
+
+# Flat-file retention (generated/artifact dirs only — never narrative runbooks)
+# Supersedes scripts/docs_retention.sh + scripts/docs_hygiene.py keep-newest-N logic.
+# Each target is either keep_newest (keep N newest files by mtime) or
+# max_age_days (remove files older than N days). Dry-run by default.
+flatfiles:
+  targets:
+    - path: docs/hermes/librarian_loop_dryruns
+      keep_newest: 10
+    - path: docs/hermes/phase3b_dryrun
+      keep_newest: 10
+    - path: docs/hermes/backlog_health
+      keep_newest: 5
+    - path: docs/hermes/observations
+      pattern: "latest_*_summary.json"
+      max_age_days: 14

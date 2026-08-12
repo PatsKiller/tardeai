@@ -1,12 +1,15 @@
-"""Content-subject taxonomy — separate from retired 3-axis taxonomy.
+"""Content-subject taxonomy — RETIRED 2026-08-12.
 
-Classifies content into a subject-based taxonomy (themes, sectors, catalysts,
-risk factors, etc.) stored in taxonomy_categories under a new 'content_subject'
-axis. Local gemma3:4b for classification (temp 0, constrained slugs, rule cues
-first), efficacy-graded via hermes_tag_efficacy pattern.
+This module's write path (`content_tags` on `hermes_research_intelligence`,
+`content_subject` axis in `taxonomy_categories`) was never scheduled and had
+zero consumers repo-wide. It is superseded by `strategy_tags`
+(`scripts/hermes_tag_engine.py`), which is the single canonical tag axis.
 
-The retired 3-axis taxonomy (category_content/sector/lifecycle) in taxonomy.py
-is NOT touched — this module writes a separate axis into taxonomy_categories.
+See docs/TAXONOMY_AUTHORITATIVE_CONTRACT.md.
+
+`classify_content` / `_keyword_classify` / `_ollama_classify` are retained
+harmlessly (no DB writes) for potential reuse. All DB-writing functions are
+now no-ops that return a "retired" status.
 """
 from __future__ import annotations
 
@@ -131,79 +134,20 @@ def classify_content(text: str, symbol: str | None = None,
 
 
 def backfill_content_tags(conn, *, batch: int = 200, dry_run: bool = False) -> dict:
-    """Tag hermes_research_intelligence rows missing content_tags.
+    """RETIRED — content_subject taxonomy superseded by strategy_tags.
 
-    Only touches rows without content_tags, processing in batches.
+    Returns a "retired" status and performs no DB writes. Kept for CLI/schedule
+    compatibility so any existing `--scope taxonomy` invocation degrades safely.
     """
-    cur = conn.cursor()
-    cur.execute("""
-        SELECT id, topic, summary, thesis, symbol
-        FROM hermes_research_intelligence
-        WHERE content_tags IS NULL AND status != 'archived'
-        ORDER BY created_at DESC
-        LIMIT %s
-    """, (batch,))
-    rows = cur.fetchall()
-    if not rows:
-        cur.close()
-        return {"tagged": 0, "note": "no rows to tag"}
-
-    tagged = 0
-    errors = 0
-    for row_id, topic, summary, thesis, symbol in rows:
-        text = " ".join(filter(None, [topic or "", summary or "", thesis or ""]))
-        if len(text) < 20:
-            continue
-        try:
-            tags = classify_content(text, symbol=symbol)
-            if tags and not dry_run:
-                cur.execute("""
-                    UPDATE hermes_research_intelligence
-                    SET content_tags = %s
-                    WHERE id = %s
-                """, (tags, row_id))
-            tagged += 1
-        except Exception as e:
-            errors += 1
-            if errors <= 3:
-                print(f"    tag error (row {row_id}): {e}")
-
-    if not dry_run:
-        conn.commit()
-    cur.close()
-    return {"tagged": tagged, "errors": errors, "batch_size": len(rows)}
+    return {"status": "retired",
+            "note": "content_subject taxonomy retired 2026-08-12; strategy_tags is canonical"} 
 
 
 def content_tag_efficacy(cur) -> dict:
-    """Per-tag efficacy: hit rate vs base rate per tag, sampled from
-    hermes_outcome_ledger join. Mirrors hermes_tag_engine efficacy pattern."""
-    cur.execute("""
-        SELECT t.tag, COUNT(*) as n,
-               COUNT(CASE WHEN l.realized_r > 0 THEN 1 END)::float / NULLIF(COUNT(*), 0) as hit_rate
-        FROM hermes_research_intelligence hri,
-             LATERAL unnest(coalesce(hri.content_tags, ARRAY[]::text[])) t(tag)
-        LEFT JOIN hermes_outcome_ledger l ON l.symbol = hri.symbol
-            AND l.created_at > hri.created_at - INTERVAL '30 days'
-            AND l.created_at < hri.created_at + INTERVAL '60 days'
-        WHERE hri.content_tags IS NOT NULL
-        GROUP BY t.tag
-        HAVING COUNT(*) >= 10
-        ORDER BY hit_rate DESC
-    """)
-    return {r["tag"]: {"n": r["n"], "hit_rate": float(r["hit_rate"])}
-            for r in [dict(row) for row in cur.fetchall()]}
+    """RETIRED — no consumer for content_subject efficacy. Returns empty dict."""
+    return {}
 
 
 def retire_tag(conn, tag: str, reason: str) -> bool:
-    """Flag a content tag as retired (low efficacy). Marker stored in taxonomy_categories."""
-    cur = conn.cursor()
-    cur.execute("""
-        UPDATE taxonomy_categories
-        SET enabled = false, notes = COALESCE(notes, '') || ' | RETIRED: ' || %s
-        WHERE axis = %s AND slug = %s
-        RETURNING id
-    """, (reason, TAXONOMY_AXIS, tag))
-    result = cur.fetchone()
-    conn.commit()
-    cur.close()
-    return result is not None
+    """RETIRED — content_subject axis never seeded; no-op."""
+    return False

@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from . import taxonomy, graph, freshness, retention, rag_health
+from . import taxonomy, graph, freshness, retention, rag_health, flatfiles
 
 ROOT = Path(__file__).resolve().parents[3]
 KILL_HERMES = ROOT / "data" / "runtime" / "HERMES_DISABLED"
@@ -24,16 +24,17 @@ KILL_LIBRARIAN = ROOT / "data" / "runtime" / "LIBRARIAN_DISABLED"
 
 
 SCOPE_CAPS = {
-    "taxonomy": 200,
+    "taxonomy": 200,  # retired — retained for CLI compatibility
     "graph": 500,
     "freshness": 50,
     "retention": 100,
     "rag_health": 10,
     "backlog": 10,
+    "flatfiles": 50,
 }
 
 SCOPE_LIGHT = {"freshness", "retention"}  # every 15-min tick
-SCOPE_DEEP = {"taxonomy", "graph", "rag_health"}  # nightly deep pass
+SCOPE_DEEP = {"graph", "rag_health", "flatfiles"}  # nightly deep pass
 SCOPE_ALL = set(SCOPE_CAPS.keys())
 
 
@@ -85,7 +86,10 @@ def run_librarian(*, apply: bool = False, scope: str = "all",
         try:
 
             if s == "taxonomy":
-                r = taxonomy.backfill_content_tags(conn, batch=cap, dry_run=dry_run)
+                # Retired 2026-08-12 — content_subject superseded by strategy_tags.
+                # No DB writes. Kept so `--scope taxonomy` degrades safely.
+                r = {"status": "retired",
+                     "note": "content_subject taxonomy retired; strategy_tags is canonical"}
             elif s == "graph":
                 r = graph.refresh_cooccurrence(conn, dry_run=dry_run)
                 # Also prune stale edges
@@ -98,6 +102,8 @@ def run_librarian(*, apply: bool = False, scope: str = "all",
                 r = {"report": report, "flagged": flagged, "reembedded": reembedded}
             elif s == "retention":
                 r = retention.apply_retention(conn, dry_run=dry_run)
+            elif s == "flatfiles":
+                r = flatfiles.apply_flatfile_retention(dry_run=dry_run)
             elif s == "rag_health":
                 health = rag_health.embedding_health(conn)
                 qa = rag_health.retrieval_qa_sample(conn, n=min(cap, 10))
