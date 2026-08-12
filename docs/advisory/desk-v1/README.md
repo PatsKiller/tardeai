@@ -39,6 +39,7 @@ See [AUTONOMY_AND_SCHEDULING_TRUTH_2026-08-11.md](./AUTONOMY_AND_SCHEDULING_TRUT
 | [CC_V3_MATURITY_CRITIQUE_2026-08-12.md](./CC_V3_MATURITY_CRITIQUE_2026-08-12.md) | **Command Center v3 critique** (1–10 per item) + polish: snapshot fix, LLM-on, de-coded labels, tooltips |
 | [LLM_SURFACE_FIX_2026-08-12.md](./LLM_SURFACE_FIX_2026-08-12.md) | **LLM flag root-cause fix**: bridge `thinking` field, relaxed validator, enrichment persistence → Flash/Pro now reach `/v3/advisory` |
 | [HEALTH_AGENT_FIXES_2026-08-12.md](./HEALTH_AGENT_FIXES_2026-08-12.md) | Health fixes: stale release-manifest FAIL + Finnhub 401 `data_source_auth_failed` |
+| [DATA_INTEGRITY_AUDIT_2026-08-12.md](./DATA_INTEGRITY_AUDIT_2026-08-12.md) | **Integrity audit**: fabricated watchlist verdicts/confidence, aggregate-evidence inflation, allocation confidence inversion, CIO watchlist stale path — all fixed |
 
 ## Related diagnostics (repo root / prior sessions)
 

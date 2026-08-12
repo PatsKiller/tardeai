@@ -37,6 +37,11 @@ OPINION_CACHE_PATH = CACHE_DIR / "advisory_opinion_cache.json"
 TELEMETRY_PATH = CACHE_DIR / "advisory_opinion_run_telemetry.jsonl"
 SYNTHESIS_CACHE_PATH = CACHE_DIR / "advisory_synthesis_cache.json"
 
+# Mirror of advisory_desk.MIN_EVIDENCE_ACTIONABLE (A2 gate). Kept local to avoid
+# a circular import: advisory_desk imports this engine, so the engine must not
+# import advisory_desk back. Used by the validator's oversight gate.
+MIN_EVIDENCE_ACTIONABLE = 3
+
 # Default stable system prefix when yaml omits stable_system_prompt
 _DEFAULT_STABLE_SYSTEM = """You are a disciplined portfolio analyst writing for a sophisticated retail operator.
 READ_ONLY_ADVISORY only — never invent prices, percentages, dates, or share counts.
@@ -67,6 +72,10 @@ Rules:
 - key_risk is REQUIRED.
 - No order types, no share counts, no execution instructions.
 - CONVICTION measures thesis confidence (evidence quality), NOT position size.
+- A `watchlist` row is NOT a held position: with no symbol-specific evidence
+  (price action, analyst, or agent opinions) the correct verdict is WAIT or
+  INSUFFICIENT_DATA — never ADD/TRIM/EXIT. An `allocation` row's evidence is
+  its drift arithmetic, not security research.
 """
 
 _DEFAULT_SYNTHESIS_SYSTEM = """You are a portfolio synthesis analyst for a READ_ONLY_ADVISORY desk.
@@ -393,12 +402,13 @@ def validate_opinion_output(
 
     Returns (annotated_opinion, errors).
 
-    Only structural violations hard-reject (invalid verdict, missing key_risk).
-    Evidence-fidelity checks (a prose number not verbatim in the bundle, a cited
-    ref id that isn't an exact key) are recorded as `validation_warnings` so a
-    clean-enough opinion still reaches the operator instead of being dropped
-    wholesale. The system prompt already forbids inventing figures; these
-    warnings are surfaced for review, not treated as fatal.
+    Only structural violations hard-reject (invalid verdict, missing key_risk,
+    and an actionable verdict with no symbol-specific evidence). Evidence-fidelity
+    checks (a prose number not verbatim in the bundle, a cited ref id that isn't
+    an exact key) are recorded as `validation_warnings` so a clean-enough opinion
+    still reaches the operator instead of being dropped wholesale. The system
+    prompt already forbids inventing figures; these warnings are surfaced for
+    review, not treated as fatal.
     """
     errors: list[str] = []
     warnings: list[str] = []
@@ -412,6 +422,25 @@ def validate_opinion_output(
 
     if not opinion.get("key_risk"):
         errors.append("key_risk is required but missing")
+
+    # Oversight gate: an actionable verdict (ADD/TRIM/EXIT/RE_ENTER) requires
+    # symbol-specific evidence. The deterministic A2 gate enforces this upstream
+    # for holdings/watchlist; this is the second line of defense against the
+    # model overriding to a buy/trim/exit on an empty evidence bundle (the
+    # "deep hallucination" failure mode). Allocation rows are exempt — their
+    # evidence is the target/actual drift arithmetic, not the symbol bundle.
+    _ACTIONABLE = {"ADD", "TRIM", "EXIT", "RE_ENTER"}
+    row_class = evidence_bundle.get("row_class", "holding")
+    symbol_specific = evidence_bundle.get("evidence_count", 0)
+    if (
+        verdict in _ACTIONABLE
+        and row_class != "allocation"
+        and symbol_specific < MIN_EVIDENCE_ACTIONABLE
+    ):
+        errors.append(
+            f"Actionable verdict '{verdict}' with only {symbol_specific} "
+            f"symbol-specific evidence items (minimum {MIN_EVIDENCE_ACTIONABLE}) — insufficient basis"
+        )
 
     # Evidence-fidelity (soft) checks — see docstring.
     evidence_items = evidence_bundle.get("evidence_items", [])

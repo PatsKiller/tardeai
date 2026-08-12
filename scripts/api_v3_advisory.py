@@ -170,7 +170,7 @@ def _row_view(row: dict[str, Any], opinions: dict[str, Any] | None = None) -> di
         }
 
     dq = {
-        "evidence_count": eb.get("evidence_count") or len(items),
+        "evidence_count": eb.get("evidence_count") if eb.get("evidence_count") is not None else len(items),
         "evidence_gaps": gaps,
         "gap_count": len(gaps),
         "sufficient": bool(eb.get("sufficient")),

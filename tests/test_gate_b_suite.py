@@ -427,9 +427,9 @@ class TestGovernedGateway:
     """B2/B3: Six financial agents registered, unknown callers fail closed."""
 
     def test_all_six_agents_registered(self):
-        """All six financial agents are in CALLER_PROCESS_MAP."""
+        """All financial agents (plus the advisory desk) are in CALLER_PROCESS_MAP."""
         from scripts.lib.cio_governed_model_bridge import CALLER_PROCESS_MAP
-        expected = {"alex", "maria", "steph", "guardian", "ledger", "morgan"}
+        expected = {"alex", "maria", "steph", "guardian", "ledger", "morgan", "advisory_desk"}
         assert set(CALLER_PROCESS_MAP.keys()) == expected
 
     def test_unknown_caller_fails_closed(self):
@@ -457,9 +457,9 @@ class TestGovernedGateway:
         assert resolve_model_policy("unknown_process") is None
 
     def test_caller_task_policy_map_exists(self):
-        """CALLER_TASK_POLICY_MAP covers all six agents."""
+        """CALLER_TASK_POLICY_MAP covers all agents (plus the advisory desk)."""
         from scripts.lib.cio_governed_model_bridge import CALLER_TASK_POLICY_MAP
-        expected = {"alex", "maria", "steph", "guardian", "ledger", "morgan"}
+        expected = {"alex", "maria", "steph", "guardian", "ledger", "morgan", "advisory_desk"}
         assert set(CALLER_TASK_POLICY_MAP.keys()) == expected
 
 

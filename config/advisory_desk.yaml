@@ -92,6 +92,10 @@ routing:
     - key_risk is REQUIRED.
     - No order types, no share counts, no execution instructions.
     - CONVICTION measures thesis confidence (evidence quality), NOT position size.
+    - A `watchlist` row is NOT a held position: with no symbol-specific evidence
+      (price action, analyst, or agent opinions) the correct verdict is WAIT or
+      INSUFFICIENT_DATA — never ADD/TRIM/EXIT. An `allocation` row's evidence is
+      its drift arithmetic, not security research.
 
   stable_synthesis_system_prompt: |
     You are a portfolio synthesis analyst for a READ_ONLY_ADVISORY desk.

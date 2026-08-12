@@ -675,46 +675,51 @@ def _derive_watchlist_opinion(
     data: dict[str, Any],
     holdings_symbols: set[str],
 ) -> dict[str, Any]:
-    """Compute an advisory opinion for a watchlist instrument (not held)."""
+    """Compute an advisory opinion for a watchlist instrument (not held).
+
+    A watchlist entry is an *intent*, not a position: it has no lots, no cost
+    basis, and usually no live price/analyst coverage. The desk must NOT turn
+    the operator's ``target_intent`` label into a directional ADD/AVOID verdict
+    with a confidence number — that would masquerade human intent as
+    evidence-backed analysis (the "deep hallucination" failure mode). The
+    honest deterministic verdict is WAIT (on watch, awaiting an entry signal),
+    or INSUFFICIENT_DATA when there is neither intent nor thesis to evaluate.
+    Intent/thesis are surfaced as rationale signals, not as a verdict.
+    """
     if symbol in holdings_symbols:
         return None
 
-    thesis = data.get("thesis", "")
-    target = data.get("target_intent", "").upper()
+    thesis = (data.get("thesis") or "").strip()
+    target = (data.get("target_intent") or "").strip().upper()
     watching_since = data.get("watching_since")
 
-    verdict = AdvisoryVerdict.WAIT
-    confidence = 0.40
     reasons: list[str] = []
 
-    # B3: Real differentiation from target_intent values in watchlist.json
-    if target in ("BUY", "ACCUMULATE", "ADD", "LONG_TERM_HOLD", "INCOME", "ETF_BROAD"):
-        verdict = AdvisoryVerdict.ADD
-        confidence = 0.45
-        reasons.append(f"Watchlist intent: {target.replace('_',' ').lower()}")
-    elif target in ("GROWTH_SPECULATIVE",):
-        verdict = AdvisoryVerdict.AVOID
-        confidence = 0.40
-        reasons.append("Speculative growth — high risk, no structural thesis edge")
-    elif target in ("MONITOR", "WATCH"):
-        verdict = AdvisoryVerdict.WAIT
-        reasons.append("Watchlist intent is monitor — wait for entry signal")
-    elif not thesis:
-        verdict = AdvisoryVerdict.INSUFFICIENT_DATA
-        confidence = 0.20
-        reasons.append("No target intent defined and no thesis — insufficient data for opinion")
-    else:
-        verdict = AdvisoryVerdict.WAIT
-        reasons.append(f"Intent '{target.lower()}' — pending review")
-
+    if target:
+        reasons.append(f"Operator watch intent: {target.replace('_', ' ').lower()}")
     if thesis:
         reasons.append(f"Thesis: {thesis[:120]}")
-        confidence += 0.05
+
+    if not target and not thesis:
+        verdict = AdvisoryVerdict.INSUFFICIENT_DATA
+        confidence = 0.20
+        reasons.append("No target intent and no thesis — insufficient data for an opinion")
+    else:
+        verdict = AdvisoryVerdict.WAIT
+        # Deliberately low confidence: a watchlist entry is an intent, not an
+        # evidence-backed trade signal. Capped well below holding confidence so
+        # the two are never visually conflated in the operator surface.
+        confidence = 0.25
+        if thesis:
+            confidence += 0.05
+        if target == "GROWTH_SPECULATIVE":
+            reasons.append("Speculative growth — treat with caution, no structural thesis edge")
+        reasons.append("On watchlist — awaiting entry signal; no active position")
 
     return {
         "symbol": symbol,
         "verdict": verdict,
-        "confidence": min(0.60, confidence),
+        "confidence": min(0.35, confidence),
         "rationale": " | ".join(reasons) if reasons else "On watchlist — no current entry/exit signal.",
         "weight_pct": None,
         "market_value": None,
@@ -1799,7 +1804,7 @@ def _build_evidence_bundle(
                 "title": c.get("title", ""),
                 "quality": str(c.get("quality", "")),
             })
-    elif row_class == "holding":
+    elif row_class in ("holding", "watchlist"):
         gaps.append("catalysts")
 
     # ── 3. Earnings ──
@@ -1812,7 +1817,7 @@ def _build_evidence_bundle(
             "staleness_days": earn.get("staleness_days"),
             "next_earnings_date": earn["next_earnings_date"],
         })
-    elif row_class == "holding":
+    elif row_class in ("holding", "watchlist"):
         gaps.append("earnings_calendar")
 
     # ── 4. Technical indicators (native snapshot, else price-action derived) ──
@@ -1852,7 +1857,7 @@ def _build_evidence_bundle(
                 "derived": True,
                 **derived,
             })
-        elif row_class == "holding":
+        elif row_class in ("holding", "watchlist"):
             gaps.append("technicals")
 
     # ── 5. Risk / stop posture ──
@@ -1876,6 +1881,7 @@ def _build_evidence_bundle(
         "as_of": str(rotation_data.get("as_of", ""))[:19],
         "signal": rotation_data.get("signal") or "not_rotated",
         "strength": rotation_data.get("strength", 0.0),
+        "aggregate": True,  # portfolio-level, not symbol-specific
     })
 
     # ── 7. Sector context ──
@@ -1887,6 +1893,7 @@ def _build_evidence_bundle(
             "top_sector": sector_data.get("top_sector", ""),
             "bottom_sector": sector_data.get("bottom_sector", ""),
             "sector_ranking": [{"name": s["name"], "rs_score": s["rs_score"]} for s in sector_data.get("sectors", [])[:3]],
+            "aggregate": True,  # portfolio-level, not symbol-specific
         })
 
     # ── 8. IPS policy (aggregate) ──
@@ -1896,6 +1903,7 @@ def _build_evidence_bundle(
             "source": "investment_policy_statement",
             "max_position_pct": ips_data.get("max_position_pct"),
             "beta_target": ips_data.get("beta_target"),
+            "aggregate": True,  # portfolio-level, not symbol-specific
         })
 
     # ── 9. Agent opinions (Maria/Risk/Tax) ──
@@ -1911,7 +1919,7 @@ def _build_evidence_bundle(
                 "confidence": a.get("confidence"),
                 "narrative": a.get("narrative","")[:120],
             })
-    elif row_class == "holding":
+    elif row_class in ("holding", "watchlist"):
         gaps.append("agent_opinions")
 
     # ── S4/10. Instrument identity ──
@@ -1927,7 +1935,7 @@ def _build_evidence_bundle(
             "market_cap": inst_data.get("market_cap"),
             "is_recent_ipo": inst_data.get("is_recent_ipo", False),
         })
-    elif row_class == "holding":
+    elif row_class in ("holding", "watchlist"):
         gaps.append("instrument_identity")
 
     # ── S4/11. Price action ──
@@ -1956,7 +1964,7 @@ def _build_evidence_bundle(
         if pa.get("volatility_w_pct") is not None:
             item["volatility_w_pct"] = pa["volatility_w_pct"]
         items.append(item)
-    elif row_class == "holding":
+    elif row_class in ("holding", "watchlist"):
         gaps.append("price_action")
 
     # ── S4/12. Lot-level basis ──
@@ -2002,10 +2010,15 @@ def _build_evidence_bundle(
             "recommendation_mean": an.get("recommendation_mean"),
             "consensus_rating": an.get("consensus_rating"),
         })
-    elif row_class == "holding":
+    elif row_class in ("holding", "watchlist"):
         gaps.append("analyst_context")
 
-    sufficiency = len(items)
+    # Evidence count is *symbol-specific* only. Portfolio-level items (rotation,
+    # sector_context, investment_policy) are context, not evidence for THIS
+    # instrument — counting them would let a watchlist row with zero symbol data
+    # masquerade as "sufficient" and inflate the operator-facing "ev N" badge.
+    symbol_specific = [i for i in items if not i.get("aggregate")]
+    sufficiency = len(symbol_specific)
     # Gap report for operators / Phase 2 telemetry
     gap_report = {
         "missing": list(gaps),
@@ -2014,9 +2027,11 @@ def _build_evidence_bundle(
     return {
         "evidence_items": items,
         "evidence_count": sufficiency,
+        "aggregate_evidence_count": len(items) - sufficiency,
         "evidence_gaps": gaps,
         "evidence_gap_report": gap_report,
         "sufficient": sufficiency >= MIN_EVIDENCE_ITEMS,
+        "row_class": row_class,
     }
 
 
@@ -2127,12 +2142,22 @@ def _derive_allocation_rows(
             else f"Model portfolio targets {target}% {desk_key.replace('_',' ')}. Actual: {actual_pct}%. Drift: {drift:+.1f}%, gap: ${dollar_gap:+,.0f}."
         )
 
+        # Confidence must agree with the verdict's evidence basis, not be a flat
+        # constant. INSUFFICIENT_DATA means we cannot measure the allocation —
+        # high confidence there is logically inverted.
+        if verdict == AdvisoryVerdict.INSUFFICIENT_DATA:
+            conf = 0.20
+        elif verdict == AdvisoryVerdict.HOLD:
+            conf = 0.55
+        else:  # ADD / TRIM — deterministic drift arithmetic, well-grounded
+            conf = 0.65
+
         row = {
             "row_class": "allocation",
             "allocation_target": desk_key,
             "symbol": f"ALLOC:{desk_key}",
             "verdict": verdict,
-            "confidence": 0.75,
+            "confidence": conf,
             "rationale": row_rationale,
             "target_pct": target,
             "actual_pct": actual_pct,
@@ -2162,7 +2187,7 @@ def _derive_allocation_rows(
             "allocation_target": "cash",
             "symbol": f"ALLOC:cash:{acct}",
             "verdict": AdvisoryVerdict.INSUFFICIENT_DATA,
-            "confidence": 0.70,
+            "confidence": 0.20,
             "rationale": f"Cash in {acct}: ${mv:,.0f} ({pct:.1f}% of portfolio). Per-account drift not evaluated against model — see aggregate cash row ($cash) for target comparison.",
             "target_pct": None,
             "actual_pct": pct,
@@ -2570,7 +2595,10 @@ def build_advisory_desk(*, max_age_s: float = DEFAULT_MAX_AGE_S, force: bool = F
         row["evidence_bundle"] = bundle
 
         # A2: Sufficiency gate — insufficient evidence → INSUFFICIENT_DATA
-        if rcls == "holding":
+        # Applies to security-like rows (holding + watchlist). Allocation rows
+        # are exempt: their evidence is the target/actual drift arithmetic in
+        # the row fields, not the symbol evidence bundle.
+        if rcls in ("holding", "watchlist"):
             actionable_verdicts = {AdvisoryVerdict.ADD.value, AdvisoryVerdict.TRIM.value,
                                    AdvisoryVerdict.EXIT.value, AdvisoryVerdict.RE_ENTER.value}
             v_val = row["verdict"].value if isinstance(row["verdict"], AdvisoryVerdict) else str(row["verdict"])

@@ -39,7 +39,7 @@ RUNTIME_DIR = PROJECT_ROOT / "data" / "runtime"
 SNAPSHOT_DIR = STATE_DIR / "data_broker"
 SNAPSHOT_PATH = SNAPSHOT_DIR / "cio_snapshot.json"
 
-WATCHLIST_PATH = PROJECT_ROOT / "data" / "watchlist" / "state" / "watchlist.json"
+WATCHLIST_PATH = STATE_DIR / "watchlist.json"
 RECONCILIATION_PATH = PROJECT_ROOT / "data" / "reconciliation" / "state" / "latest.json"
 ROTATION_LADDERS_CACHE = PROJECT_ROOT / "state" / "data_broker" / "rotation_ladders.json"
 RETIREMENT_ROADMAP_PATH = STATE_DIR / "retirement_roadmap.json"
