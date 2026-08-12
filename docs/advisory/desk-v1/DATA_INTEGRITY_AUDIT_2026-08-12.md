@@ -152,3 +152,54 @@ A watchlist entry now reads as what it is — *on watch, awaiting an entry signa
 at low confidence, with its missing data explicitly listed. It can no longer
 present as a confident "buy/avoid" recommendation. The desk's confidence numbers
 now always agree with the evidence basis behind them.
+
+---
+
+## Follow-up (2026-08-12, evening): watchlist expand cards now populated
+
+After the verdict/confidence fixes landed, the operator reported the watchlist
+rows *still* rendered hollow — the filter worked, but every expand card still
+showed "No price-action data", "No analyst coverage", "No instrument identity",
+and triplicated `agent_opinion · watchlist_agent_results` lines. Three defects:
+
+### F7 — External data loaders scoped to held positions only
+`build_advisory_desk` computed `listing_dates`, `instrument_data`, `analyst_data`,
+and `price_actions` from `holdings_symbols` alone. Watchlist and closed-journal
+symbols (MSFT, NVDA, GD, PLTR, …) were never passed to the loaders, so their
+rows had no symbol-specific evidence *at all* — even though the underlying data
+(Finviz quotes, `ticker_enrichment_cache`, `yahoo_analyst_targets_history`) was
+already present for those tickers.
+
+**Fix:** introduce `research_symbols = holdings ∪ watchlist ∪ closed` and scope
+all four loaders to it. `_load_instrument_identity` now iterates the full symbol
+set (not just positions). Price action is computed for non-held symbols too
+(OHLCV or Finviz fallback; no cost basis, by design). `price_action` and
+`instrument` are attached to watchlist/closed rows.
+
+Result: every watchlist row now carries price action, instrument identity, and
+analyst context; `ev` rose (e.g. GD 3 → 5, MSFT 8 → 12) and gaps fell.
+
+### F8 — `analyst_consensus_history` is corrupted; consensus mislabeled
+`analyst_rating` was trusted verbatim, but the table stores garbage — GD carried
+`recom_score = 160.15` and `analyst_rating = 'Strong Sell'` (a percentage return
+mis-stored in the score column). The authoritative 1–5 score lives in
+`yahoo_analyst_targets_history.recommendation_mean` (GD = 2.125 → **Buy**).
+
+**Fix:** derive `consensus_rating` from `recommendation_mean` via a 1–5 scale
+map (`_recommendation_mean_label`); `analyst_rating` is now fallback-only, and
+`consensus_score` is only kept when it is a plausible 1–5 value.
+
+### F9 — `watchlist_agent_results` duplicated per re-run
+The agent table accumulates near-identical rows (same symbol + agent, new
+`completed_at`), so GD showed three `agent_opinion · maria — HOLD` lines.
+
+**Fix:** `_load_agent_results` uses `DISTINCT ON (upper(symbol), agent) …
+ORDER BY completed_at DESC` — one latest row per agent.
+
+Frontend: `EvidenceCard` now renders `agent + recommendation` for
+`agent_opinion` items (no more three identical lines), and `OpinionCard`'s
+empty state no longer misleadingly claims "ADVISORY_DESK_V1 off".
+
+**Verification:** 33 advisory-desk tests green; live desk `validation_ok` +
+`plausibility PASS`; live `/api/v3/advisory` watchlist rows now show real price
+action, analyst consensus, instrument identity, and deduplicated agent evidence.
