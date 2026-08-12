@@ -883,6 +883,15 @@ def handle_cio_slash(text: str) -> str:
                 return cc.cmd_thesis() if hasattr(cc, "cmd_thesis") else "thesis unavailable"
             finally:
                 sys.argv = old
+        if sub == "research":
+            # /cio research <plan_id>  — operator-forced Hermes enqueue (bypass TTL)
+            if len(parts) < 2:
+                return (
+                    "Usage: `/cio research <plan_id>`\n"
+                    "Forces a Hermes research request (operator_forced; bypasses TTL). "
+                    "Confirm accepted; full card after result if material. READ_ONLY."
+                )
+            return cmd_research(parts[1])
         return f"Unknown /cio command: {sub}\nUse /cio help"
     finally:
         sys.argv = old
@@ -900,6 +909,51 @@ def cmd_plans() -> str:
             f"{','.join(p.get('symbols') or [])} — {p.get('status')}"
         )
     return "\n".join(lines)
+
+
+def cmd_research(plan_id: str) -> str:
+    """Operator-forced Hermes research enqueue for a plan (READ_ONLY)."""
+    from scripts.lib.cio_plans import CIOPlanStore
+    pid = (plan_id or "").strip()
+    p = CIOPlanStore().get_plan(pid)
+    if not p:
+        return f"Plan not found: `{pid}`"
+    try:
+        try:
+            from lib.hermes_research_loop import emit_research_for_plan
+        except Exception:
+            from scripts.lib.hermes_research_loop import emit_research_for_plan  # type: ignore
+        rr = emit_research_for_plan(
+            p,
+            reason="operator:/cio research",
+            operator_forced=True,
+            force_refresh=True,
+            actor_id="cio_telegram_operator",
+        )
+        if not rr.get("ok"):
+            return (
+                f"Research enqueue failed for `{pid}`: "
+                f"{rr.get('error') or rr.get('reason') or 'unknown'}. READ_ONLY."
+            )
+        rid = rr.get("research_id") or "—"
+        reason = rr.get("reason") or "—"
+        status = rr.get("status") or "—"
+        lines = [
+            f"🔬 *Research accepted* · plan `{pid}`",
+            f"research_id: `{rid}`",
+            f"reason: `{reason}` · status: `{status}`",
+        ]
+        if rr.get("reused"):
+            lines.append("TTL reuse — existing result attached; no new Hermes run.")
+        elif rr.get("deduped"):
+            lines.append("In-flight de-dupe — joined existing job (no double queue).")
+        else:
+            lines.append("Queued for Hermes worker. Full card after result if material changes.")
+            lines.append("Worker: `PYTHONPATH=scripts python3 -m scripts.hermes_cio_worker --once`")
+        lines.append("No orders/stops · READ_ONLY_ADVISORY")
+        return "\n".join(lines)
+    except Exception as e:
+        return f"Research enqueue error: {type(e).__name__}: {e}"
 
 
 def cmd_plan_detail(plan_id: str) -> str:

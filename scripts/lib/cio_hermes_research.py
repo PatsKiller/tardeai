@@ -66,6 +66,9 @@ EXEC_LINT = re.compile(
     re.I,
 )
 
+PRIORITY_ORDER = {"critical": 0, "high": 1, "normal": 2, "low": 3}
+CLAIM_STALE_SECONDS = 15 * 60  # reaper: running longer than this may be reclaimed once
+
 # Re-export for callers / tests
 __all__ = [
     "SCHEMA_REQUEST",
@@ -83,6 +86,12 @@ __all__ = [
     "find_in_flight_by_fingerprint",
     "find_latest_completed_by_fingerprint",
     "supersede_open_jobs_for_plan",
+    "claim_next",
+    "mark_running",
+    "mark_completed",
+    "mark_failed",
+    "get_request",
+    "reap_stale_running",
 ]
 
 
@@ -300,6 +309,10 @@ def _save_new_request(req: dict[str, Any]) -> None:
         "thesis_version": req.get("thesis_version"),
         "situation_type": req.get("situation_type"),
         "catalyst_event_ids": list(req.get("known_catalyst_event_ids") or [])[:40],
+        # Full request body for worker claim (no re-scan of JSONL required)
+        "request": req,
+        "authority": AUTHORITY,
+        "questions": req.get("questions"),
     }
     bp = proj.setdefault("by_plan_id", {}).setdefault(pid, {"open": [], "latest_result_id": None})
     opens = list(bp.get("open") or [])
@@ -503,11 +516,311 @@ def enqueue_research_request(
         return {"ok": False, "error": f"{type(e).__name__}:{e}"}
 
 
+def _recover_questions_from_jsonl(research_id: str) -> list[dict[str, Any]]:
+    if not REQUEST_PATH.exists():
+        return []
+    try:
+        for line in reversed(REQUEST_PATH.read_text(encoding="utf-8").splitlines()):
+            if not line.strip() or research_id not in line:
+                continue
+            row = json.loads(line)
+            if row.get("research_id") != research_id:
+                continue
+            if row.get("event") in ("HERMES_RESEARCH_REQUESTED", None) or row.get("questions"):
+                qs = row.get("questions") or []
+                if qs:
+                    return list(qs)[:6]
+    except Exception:
+        return []
+    return []
+
+
+def get_request(research_id: str) -> Optional[dict[str, Any]]:
+    """Return full request dict for worker (from projection.request or meta)."""
+    proj = _load_projection()
+    rec = (proj.get("by_research_id") or {}).get(research_id)
+    if not rec:
+        return None
+    body = rec.get("request")
+    if isinstance(body, dict) and body.get("research_id"):
+        merged = dict(body)
+        merged["status"] = rec.get("status") or body.get("status")
+        merged["locked_by"] = rec.get("locked_by")
+        merged["locked_ts"] = rec.get("locked_ts")
+        if not merged.get("questions"):
+            merged["questions"] = rec.get("questions") or _recover_questions_from_jsonl(research_id)
+        return merged
+    # Reconstruct minimal request from meta
+    qs = rec.get("questions") or _recover_questions_from_jsonl(research_id)
+    return {
+        "schema_version": SCHEMA_REQUEST,
+        "research_id": research_id,
+        "plan_id": rec.get("plan_id"),
+        "symbol": rec.get("symbol"),
+        "situation_type": rec.get("situation_type"),
+        "thesis_version": rec.get("thesis_version"),
+        "priority": rec.get("priority") or "normal",
+        "status": rec.get("status"),
+        "fingerprint": rec.get("fingerprint"),
+        "questions": qs or [],
+        "authority": AUTHORITY,
+        "known_catalyst_event_ids": rec.get("catalyst_event_ids") or [],
+    }
+
+
+def claim_next(*, worker_id: str, limit: int = 1) -> list[dict[str, Any]]:
+    """
+    Atomically claim up to `limit` queued jobs (priority desc, created_ts asc).
+    Sets status=running, locked_by, locked_ts.
+    """
+    reap_stale_running()
+    proj = _load_projection()
+    by_rid = proj.get("by_research_id") or {}
+    candidates: list[tuple[int, str, str, dict]] = []
+    for rid, rec in by_rid.items():
+        if not isinstance(rec, dict):
+            continue
+        if rec.get("status") != "queued":
+            continue
+        pri = str(rec.get("priority") or "normal").lower()
+        order = PRIORITY_ORDER.get(pri, 2)
+        created = str(rec.get("created_ts") or "")
+        candidates.append((order, created, rid, rec))
+    candidates.sort(key=lambda x: (x[0], x[1]))
+    claimed: list[dict[str, Any]] = []
+    now = _now()
+    for _, _, rid, rec in candidates[: max(1, limit)]:
+        # CAS-style: only claim if still queued
+        if rec.get("status") != "queued":
+            continue
+        rec["status"] = "running"
+        rec["locked_by"] = worker_id
+        rec["locked_ts"] = now
+        rec["updated_ts"] = now
+        by_rid[rid] = rec
+        fp = rec.get("fingerprint")
+        if fp:
+            open_idx = proj.setdefault("by_fingerprint_open", {})
+            open_idx[fp] = {
+                "research_id": rid,
+                "plan_id": rec.get("plan_id"),
+                "symbol": rec.get("symbol"),
+                "status": "running",
+                "fingerprint": fp,
+                "priority": rec.get("priority"),
+                "created_ts": rec.get("created_ts"),
+                "thesis_version": rec.get("thesis_version"),
+            }
+        # Build full request from in-memory rec (do not re-load projection mid-claim)
+        if isinstance(rec.get("request"), dict) and rec["request"].get("research_id"):
+            full = dict(rec["request"])
+        else:
+            full = {
+                "schema_version": SCHEMA_REQUEST,
+                "research_id": rid,
+                "plan_id": rec.get("plan_id"),
+                "symbol": rec.get("symbol"),
+                "situation_type": rec.get("situation_type"),
+                "thesis_version": rec.get("thesis_version"),
+                "priority": rec.get("priority") or "normal",
+                "fingerprint": rec.get("fingerprint"),
+                "questions": rec.get("questions") or [],
+                "authority": AUTHORITY,
+                "known_catalyst_event_ids": rec.get("catalyst_event_ids") or [],
+            }
+        full["status"] = "running"
+        full["locked_by"] = worker_id
+        full["locked_ts"] = now
+        # Recover questions if older projection rows lack request body
+        if not full.get("questions"):
+            full["questions"] = rec.get("questions") or _recover_questions_from_jsonl(rid) or []
+        if not full.get("questions"):
+            # Cannot process — leave failed rather than claim forever
+            rec["status"] = "failed"
+            rec["error"] = "questions_required"
+            by_rid[rid] = rec
+            _append_jsonl(REQUEST_PATH, {
+                "event": "HERMES_RESEARCH_FAILED",
+                "research_id": rid,
+                "error": "questions_required",
+                "updated_ts": now,
+            })
+            continue
+        if isinstance(rec.get("request"), dict):
+            rec["request"]["status"] = "running"
+            rec["request"]["locked_by"] = worker_id
+            rec["request"]["questions"] = full.get("questions")
+        claimed.append(full)
+        _append_jsonl(REQUEST_PATH, {
+            "event": "HERMES_RESEARCH_CLAIMED",
+            "research_id": rid,
+            "worker_id": worker_id,
+            "plan_id": rec.get("plan_id"),
+            "status": "running",
+            "updated_ts": now,
+        })
+    proj["by_research_id"] = by_rid
+    if claimed:
+        _save_projection(proj)
+    return claimed
+
+
+def mark_running(research_id: str, *, worker_id: str) -> None:
+    _patch_request(research_id, {
+        "status": "running",
+        "locked_by": worker_id,
+        "locked_ts": _now(),
+        "updated_ts": _now(),
+    })
+    proj = _load_projection()
+    rec = (proj.get("by_research_id") or {}).get(research_id)
+    if rec and isinstance(rec.get("request"), dict):
+        rec["request"]["status"] = "running"
+        proj["by_research_id"][research_id] = rec
+        _save_projection(proj)
+
+
+def mark_failed(research_id: str, error: str) -> None:
+    now = _now()
+    proj = _load_projection()
+    rec = (proj.get("by_research_id") or {}).get(research_id)
+    if not rec:
+        return
+    rec["status"] = "failed"
+    rec["error"] = (error or "")[:500]
+    rec["updated_ts"] = now
+    rec["locked_by"] = None
+    fp = rec.get("fingerprint")
+    if fp:
+        open_idx = proj.setdefault("by_fingerprint_open", {})
+        cur = open_idx.get(fp)
+        if cur and cur.get("research_id") == research_id:
+            open_idx.pop(fp, None)
+    pid = rec.get("plan_id")
+    if pid:
+        bp = proj.setdefault("by_plan_id", {}).setdefault(pid, {"open": [], "latest_result_id": None})
+        bp["open"] = [x for x in (bp.get("open") or []) if x != research_id]
+    proj["by_research_id"][research_id] = rec
+    _save_projection(proj)
+    _append_jsonl(REQUEST_PATH, {
+        "event": "HERMES_RESEARCH_FAILED",
+        "research_id": research_id,
+        "plan_id": pid,
+        "error": (error or "")[:500],
+        "status": "failed",
+        "updated_ts": now,
+    })
+
+
+def mark_completed(research_id: str, result: dict[str, Any]) -> dict[str, Any]:
+    """
+    Persist a pre-stamped result body (from worker) or build via complete_research_result.
+    Idempotent on result_id when already latest for this research_id.
+    """
+    # Prefer complete_research_result fields when result is partial answers-style
+    if result.get("answers") is not None or result.get("findings") is not None:
+        # If already stamped with result_id, write directly
+        if result.get("result_id") and result.get("research_id"):
+            return _persist_stamped_result(research_id, result)
+        return complete_research_result(
+            research_id,
+            answers=list(result.get("answers") or []),
+            findings=result.get("findings"),
+            desk_implications=result.get("desk_implications"),
+            summary=str(result.get("summary") or ""),
+            actor_id=str((result.get("provenance") or {}).get("worker_id") or "hermes_worker"),
+        )
+    return {"ok": False, "error": "empty_result_body"}
+
+
+def _persist_stamped_result(research_id: str, result: dict[str, Any]) -> dict[str, Any]:
+    try:
+        proj = _load_projection()
+        req_meta = (proj.get("by_research_id") or {}).get(research_id)
+        if not req_meta:
+            return {"ok": False, "error": "unknown_research_id"}
+        # Idempotent: same result_id already latest
+        if req_meta.get("latest_result_id") == result.get("result_id") and req_meta.get("status") == "completed":
+            return {"ok": True, "result_id": result.get("result_id"), "result": result, "idempotent": True}
+
+        blob = json.dumps(result, default=str)
+        if EXEC_LINT.search(blob):
+            mark_failed(research_id, "execution_language_in_result")
+            return {"ok": False, "error": "execution_language_in_result"}
+
+        as_of = str(result.get("as_of") or result.get("completed_ts") or _now())
+        result = dict(result)
+        result.setdefault("schema_version", SCHEMA_RESULT)
+        result.setdefault("research_id", research_id)
+        result.setdefault("plan_id", req_meta.get("plan_id"))
+        result.setdefault("fingerprint", req_meta.get("fingerprint"))
+        result.setdefault("status", "completed")
+        result.setdefault("authority", AUTHORITY)
+        result["as_of"] = as_of
+        result["completed_ts"] = as_of
+
+        _append_jsonl(RESULT_PATH, {"event": "HERMES_RESEARCH_COMPLETED", **result})
+
+        req_meta["status"] = "completed"
+        req_meta["latest_result_id"] = result.get("result_id")
+        req_meta["completed_ts"] = as_of
+        req_meta["locked_by"] = None
+        proj["by_research_id"][research_id] = req_meta
+
+        fp = req_meta.get("fingerprint")
+        if fp:
+            open_idx = proj.setdefault("by_fingerprint_open", {})
+            cur = open_idx.get(fp)
+            if cur and cur.get("research_id") == research_id:
+                open_idx.pop(fp, None)
+            completed_idx = proj.setdefault("by_fingerprint_completed", {})
+            prev = completed_idx.get(fp)
+            prev_ts = parse_ts((prev or {}).get("as_of") or (prev or {}).get("completed_ts"))
+            new_ts = parse_ts(as_of)
+            if prev is None or (new_ts and (prev_ts is None or new_ts >= prev_ts)):
+                completed_idx[fp] = {
+                    "result_id": result.get("result_id"),
+                    "research_id": research_id,
+                    "plan_id": req_meta.get("plan_id"),
+                    "symbol": req_meta.get("symbol"),
+                    "fingerprint": fp,
+                    "status": "completed",
+                    "as_of": as_of,
+                    "completed_ts": as_of,
+                    "summary": result.get("summary"),
+                    "findings": result.get("findings"),
+                    "answers": result.get("answers"),
+                    "desk_implications": result.get("desk_implications"),
+                    "catalyst_event_ids": list(result.get("catalyst_event_ids") or []),
+                }
+
+        pid = req_meta.get("plan_id")
+        if pid:
+            bp = proj.setdefault("by_plan_id", {}).setdefault(pid, {"open": [], "latest_result_id": None})
+            bp["latest_result_id"] = result.get("result_id")
+            bp["latest_as_of"] = as_of
+            bp["open"] = [x for x in (bp.get("open") or []) if x != research_id]
+        _save_projection(proj)
+
+        _append_jsonl(REQUEST_PATH, {
+            "event": "HERMES_RESEARCH_COMPLETED",
+            "research_id": research_id,
+            "result_id": result.get("result_id"),
+            "plan_id": pid,
+            "fingerprint": fp,
+            "status": "completed",
+            "updated_ts": as_of,
+        })
+        return {"ok": True, "result_id": result.get("result_id"), "result": result}
+    except Exception as e:
+        return {"ok": False, "error": f"{type(e).__name__}:{e}"}
+
+
 def complete_research_result(
     research_id: str,
     *,
     answers: list[dict[str, Any]],
-    findings: Optional[list[str]] = None,
+    findings: Optional[list] = None,
     desk_implications: Optional[dict[str, Any]] = None,
     summary: str = "",
     actor_id: str = "hermes_worker",
@@ -523,11 +836,8 @@ def complete_research_result(
             return {"ok": False, "error": "execution_language_in_result"}
         result_id = _new_id("rr")
         as_of = _now()
-        # Stamp catalyst event ids seen at completion (for TTL invalidation diffs)
         cat_event_ids: list[str] = []
-        for src in (
-            req_meta.get("catalyst_event_ids"),
-        ):
+        for src in (req_meta.get("catalyst_event_ids"),):
             if isinstance(src, list):
                 cat_event_ids.extend(str(x) for x in src if x)
         result = {
@@ -549,61 +859,60 @@ def complete_research_result(
             "actor_id": actor_id,
             "catalyst_event_ids": cat_event_ids[:40],
         }
-        _append_jsonl(RESULT_PATH, {"event": "HERMES_RESEARCH_COMPLETED", **result})
-
-        # Update request meta → terminal
-        req_meta["status"] = "completed"
-        req_meta["latest_result_id"] = result_id
-        req_meta["completed_ts"] = as_of
-        proj["by_research_id"][research_id] = req_meta
-
-        fp = req_meta.get("fingerprint")
-        if fp:
-            # remove from in-flight index
-            open_idx = proj.setdefault("by_fingerprint_open", {})
-            cur = open_idx.get(fp)
-            if cur and cur.get("research_id") == research_id:
-                open_idx.pop(fp, None)
-            # upsert completed-by-fingerprint (keep newest as_of)
-            completed_idx = proj.setdefault("by_fingerprint_completed", {})
-            prev = completed_idx.get(fp)
-            prev_ts = parse_ts((prev or {}).get("as_of") or (prev or {}).get("completed_ts"))
-            new_ts = parse_ts(as_of)
-            if prev is None or (new_ts and (prev_ts is None or new_ts >= prev_ts)):
-                completed_idx[fp] = {
-                    "result_id": result_id,
-                    "research_id": research_id,
-                    "plan_id": req_meta.get("plan_id"),
-                    "symbol": req_meta.get("symbol"),
-                    "fingerprint": fp,
-                    "status": "completed",
-                    "as_of": as_of,
-                    "completed_ts": as_of,
-                    "summary": result.get("summary"),
-                    "findings": result.get("findings"),
-                    "catalyst_event_ids": list(result.get("catalyst_event_ids") or []),
-                }
-
-        pid = req_meta.get("plan_id")
-        if pid:
-            bp = proj.setdefault("by_plan_id", {}).setdefault(pid, {"open": [], "latest_result_id": None})
-            bp["latest_result_id"] = result_id
-            bp["latest_as_of"] = as_of
-            bp["open"] = [x for x in (bp.get("open") or []) if x != research_id]
-        _save_projection(proj)
-
-        _append_jsonl(REQUEST_PATH, {
-            "event": "HERMES_RESEARCH_COMPLETED",
-            "research_id": research_id,
-            "result_id": result_id,
-            "plan_id": pid,
-            "fingerprint": fp,
-            "status": "completed",
-            "updated_ts": as_of,
-        })
-        return {"ok": True, "result_id": result_id, "result": result}
+        return _persist_stamped_result(research_id, result)
     except Exception as e:
         return {"ok": False, "error": f"{type(e).__name__}:{e}"}
+
+
+def reap_stale_running(*, max_age_seconds: int = CLAIM_STALE_SECONDS) -> list[str]:
+    """Reset stale running jobs to queued once (or fail after reclaim)."""
+    proj = _load_projection()
+    by_rid = proj.get("by_research_id") or {}
+    now = datetime.now(timezone.utc)
+    reclaimed: list[str] = []
+    for rid, rec in list(by_rid.items()):
+        if not isinstance(rec, dict) or rec.get("status") != "running":
+            continue
+        locked = parse_ts(rec.get("locked_ts") or rec.get("updated_ts"))
+        if locked is None:
+            continue
+        age = (now - locked).total_seconds()
+        if age < max_age_seconds:
+            continue
+        reclaim_count = int(rec.get("reclaim_count") or 0)
+        if reclaim_count >= 1:
+            rec["status"] = "failed"
+            rec["error"] = "stale_running_timeout"
+            rec["locked_by"] = None
+            reclaimed.append(rid)
+            fp = rec.get("fingerprint")
+            if fp:
+                open_idx = proj.setdefault("by_fingerprint_open", {})
+                cur = open_idx.get(fp)
+                if cur and cur.get("research_id") == rid:
+                    open_idx.pop(fp, None)
+            pid = rec.get("plan_id")
+            if pid:
+                bp = proj.setdefault("by_plan_id", {}).setdefault(pid, {"open": [], "latest_result_id": None})
+                bp["open"] = [x for x in (bp.get("open") or []) if x != rid]
+        else:
+            rec["status"] = "queued"
+            rec["reclaim_count"] = reclaim_count + 1
+            rec["locked_by"] = None
+            rec["locked_ts"] = None
+            reclaimed.append(rid)
+        rec["updated_ts"] = _now()
+        by_rid[rid] = rec
+    if reclaimed:
+        proj["by_research_id"] = by_rid
+        _save_projection(proj)
+        for rid in reclaimed:
+            _append_jsonl(REQUEST_PATH, {
+                "event": "HERMES_RESEARCH_REAPED",
+                "research_id": rid,
+                "updated_ts": _now(),
+            })
+    return reclaimed
 
 
 def latest_research_for_plan(plan_id: str) -> dict[str, Any]:

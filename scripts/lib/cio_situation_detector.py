@@ -1294,6 +1294,27 @@ class CIOSituationDetector:
                     plan["_notified"] = bool(maybe_notify_plan(plan))
                 except Exception:
                     plan["_notified"] = False
+            # Hermes research loop: S1/S6/S8 material gaps → fingerprint enqueue (fail-soft)
+            try:
+                try:
+                    from lib.hermes_research_loop import emit_research_for_plan
+                except Exception:
+                    from scripts.lib.hermes_research_loop import emit_research_for_plan  # type: ignore
+                # Promote fire_reasons for escalation heuristics
+                if not plan.get("fire_reasons"):
+                    plan["fire_reasons"] = cand.get("fire_reasons") or []
+                hr = emit_research_for_plan(
+                    plan,
+                    reason=f"situation.raised:{st}",
+                    actor_id="cio_situation_detector",
+                )
+                plan["hermes_enqueue"] = {
+                    k: hr.get(k)
+                    for k in ("ok", "reason", "research_id", "status", "skipped", "reused", "deduped")
+                    if hr.get(k) is not None
+                }
+            except Exception:
+                pass
         except Exception:
             pass
         return plan

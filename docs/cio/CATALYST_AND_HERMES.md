@@ -147,16 +147,26 @@ data/cio/hermes_research_projection.json
 | File | Coverage |
 |------|----------|
 | `tests/test_hermes_research_fingerprint.py` | Normalize, de-dupe, priority bump, TTL reuse |
+| `tests/test_hermes_research_loop.py` | Worker claim/complete, TTL, force, order lint, double-claim |
 | `tests/test_catalyst_severity.py` | Severity matrix + gates |
 | `tests/test_catalyst_integrations.py` | Detector fire, TTL catalyst invalidate |
 
 ---
 
-## 4. Still open
+## 4. Hermes loop (worker)
 
-- Hermes **worker** auto `complete_research_result` → re-enrich → material notify  
-- Gold-set judge freeze  
-- Operator `/cio research` force path  
-- First-class catalyst/technicals on `get_cio_snapshot` domains (detector already fail-soft enriches)
+| Piece | Status |
+|-------|--------|
+| Claim → run → complete → `on_hermes_completed` | **Live** (`hermes_worker` + `hermes_research_loop`) |
+| Stub / CatalystFirst backends | **Live** (swap for full bridge later) |
+| `/cio research <plan_id>` | **Live** (operator_forced, TTL bypass) |
+| S1/S6 detector emit on plan create | **Live** |
+| Gold-set judge freeze | Open |
+| Full governed HermesBridgeBackend | Open (backend pluggable) |
+
+```bash
+PYTHONPATH=scripts python3 -m scripts.hermes_cio_worker --once
+PYTHONPATH=scripts python3 -m scripts.hermes_cio_worker --drain --max 5 --backend catalyst
+```
 
 **Bottom line:** Catalyst severity is a small policy table plus `sev_at_least` at four gates. Hermes never double-queues the same ask; fresh completed results reuse until TTL expires or a material calendar change invalidates them.

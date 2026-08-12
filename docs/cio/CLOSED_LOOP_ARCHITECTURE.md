@@ -75,7 +75,7 @@ Alex enrichment (versioned prompt) ──► structural_check ──► optional
 | WS0 | Inventory | **Done** — this inventory |
 | WS1 | Unified evidence (catalyst/RSI) | **Live** — RSI + structured `domain=catalyst` (severity policy + rollups); snapshot still partial |
 | WS2 | CIO → Hermes structured requests | **Live** — `fp@v1` fingerprint de-dupe + priority bump + TTL reuse |
-| WS3 | Hermes → re-enrich | **Partial** — `complete_research_result` + evidence attach; worker auto-complete not wired |
+| WS3 | Hermes → re-enrich | **Live** — worker claim→result→`on_hermes_completed` attach + re-synth + guarded notify |
 | WS4 | Prompt curation/versioning | **Done** |
 | WS5 | Dual surface + Tailscale | **Mostly done** |
 | WS6 | Eval/gold/judge | **Shadow judge live**; gold set not frozen |
@@ -103,10 +103,28 @@ Projection keys: `by_research_id`, `by_plan_id`, `by_fingerprint_open`, `by_fing
 
 ## Next builds (ordered)
 
-1. **Hermes worker** on RESOLVED call `complete_research_result` + `enrich_plan` + material notify  
-2. **Gold set freeze** for judge calibration  
-3. **`/cio research`** operator force path  
-4. **Snapshot domain publish** of technicals/catalyst as first-class `get_cio_snapshot` domains (detector already fail-soft enriches via broker)
+1. **Gold set freeze** for judge calibration  
+2. **Live HermesBridgeBackend** (replace stub/catalyst-first with full governed pipeline when ready)  
+3. **Snapshot domain publish** of technicals/catalyst as first-class `get_cio_snapshot` domains  
+
+### Hermes loop (worker + CIO hook)
+
+```text
+material gap / /cio research
+  → enqueue_research_request (fingerprint de-dupe / TTL)
+  → hermes_cio_worker claim → Stub|CatalystFirst backend → validate
+  → mark_completed → on_hermes_completed (attach evidence → enrich once → notify if material change)
+```
+
+| Module | Role |
+|--------|------|
+| `hermes_research_schema.py` | request/result validate + evidence domain |
+| `hermes_research_loop.py` | emit_research_for_plan, on_hermes_completed |
+| `hermes_worker.py` | HermesWorker + backends |
+| `scripts/hermes_cio_worker.py` | CLI `--once` / `--drain` / `--research-id` |
+| `cio_hermes_research.py` | claim_next / mark_* / store |
+
+Operator: `/cio research <plan_id>` forces enqueue (`operator_forced`, bypass TTL).
 
 ### Shipped this slice (fingerprint + catalyst)
 
