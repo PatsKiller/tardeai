@@ -276,11 +276,16 @@ export default function AdvisoryDeskHub({ onDrill }: Props) {
   const rows: DeskRow[] = useMemo(() => data?.rows ?? [], [data?.rows])
   const banners: Banner[] = useMemo(() => data?.banners ?? [], [data?.banners])
 
+  // The materiality floor hides sub-$500 close-out remnants — but ONLY for real
+  // holdings. Watchlist / allocation / closed_journal rows have no market_value
+  // (None → 0) and are not "remnants", so they must always pass through.
   const visibleRows = useMemo(
-    () => rows.filter(r => showRemnants || (r.market_value ?? 0) >= MATERIALITY_FLOOR),
+    () => rows.filter(r =>
+      r.row_class !== 'holding' || showRemnants || (r.market_value ?? 0) >= MATERIALITY_FLOOR,
+    ),
     [rows, showRemnants],
   )
-  const hiddenRemnants = rows.length - visibleRows.length
+  const hiddenRemnants = rows.filter(r => r.row_class === 'holding' && !showRemnants && (r.market_value ?? 0) < MATERIALITY_FLOOR).length
 
   async function postFeedback(kind: 'rate' | 'ack' | 'snooze', row: DeskRow, extra?: Record<string, string>) {
     try {
