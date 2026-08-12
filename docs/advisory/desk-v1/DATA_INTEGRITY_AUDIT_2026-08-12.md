@@ -203,3 +203,29 @@ empty state no longer misleadingly claims "ADVISORY_DESK_V1 off".
 **Verification:** 33 advisory-desk tests green; live desk `validation_ok` +
 `plausibility PASS`; live `/api/v3/advisory` watchlist rows now show real price
 action, analyst consensus, instrument identity, and deduplicated agent evidence.
+
+---
+
+## Follow-up (2026-08-12, night): market cap unit + price-action gap closure
+
+After the watchlist cards populated, the operator still saw two defects in the
+GD expand card: `Market cap $104926140.00M` and empty `1d` / `Off 52w high/low`.
+
+### F10 — `market_cap_b` is in millions, not billions
+The enrichment field is named `market_cap_b` but stores **millions** of dollars
+(GD = `104,926.14` → $104.9B). `_load_instrument_identity` multiplied by `1e9`,
+inflating every market cap 1000× (GD rendered as `$104,926,140M` ≈ $104.9T).
+
+**Fix:** multiply by `1e6`. Frontend `fmtUSD` now emits `B`/`T` suffixes, so the
+value reads `$104.93B`.
+
+### F11 — 1d and 52-week distance were left empty in the Finviz fallback
+For symbols without OHLCV, the Finviz fallback hardcoded `price_change_pct_1d`,
+`pct_off_52w_high`, and `pct_off_52w_low` to `None` — even though the data was
+already cached (`finviz_quote_cache.change_pct` for 1d;
+`ticker_enrichment_cache.week52_high_pct` / `week52_low_pct` for 52w distance).
+
+**Fix:** map those three fields in `_load_price_action`'s Finviz fallback.
+
+**Result:** GD now reads `1d +0.6%`, `Off 52w high -3.1%`, `Off 52w low +26.3%`,
+`Market cap $104.93B` — no empty fields remain on watchlist rows.
