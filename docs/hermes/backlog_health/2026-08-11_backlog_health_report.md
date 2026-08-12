@@ -1,6 +1,6 @@
-# Research Backlog Health Report — 2026-08-02
+# Research Backlog Health Report — 2026-08-11
 
-**Generated:** 2026-08-02 06:45 UTC
+**Generated:** 2026-08-11 06:45 UTC
 **Total backlog:** 30
 **Open (staged):** 0
 **High priority:** 19
@@ -34,22 +34,22 @@ None
 - id=25 may duplicate id=27 (NULL:backtest_contradiction)
 - id=32 may duplicate id=34 (NULL:unknown)
 - id=33 may duplicate id=34 (NULL:unknown)
-- id=54 may duplicate id=34 (NULL:unknown)
 - id=53 may duplicate id=34 (NULL:unknown)
-- id=3727 may duplicate id=34 (NULL:unknown)
+- id=54 may duplicate id=34 (NULL:unknown)
 - id=3726 may duplicate id=34 (NULL:unknown)
+- id=3727 may duplicate id=34 (NULL:unknown)
+- id=5330 may duplicate id=34 (NULL:unknown)
 - id=5329 may duplicate id=34 (NULL:unknown)
 - id=5331 may duplicate id=34 (NULL:unknown)
-- id=5330 may duplicate id=34 (NULL:unknown)
 - id=5478 may duplicate id=34 (NULL:unknown)
 - id=6024 may duplicate id=34 (NULL:unknown)
 - id=7106 may duplicate id=34 (NULL:unknown)
 - id=7986 may duplicate id=34 (NULL:unknown)
 - id=9061 may duplicate id=34 (NULL:unknown)
-- id=9057 may duplicate id=34 (NULL:unknown)
-- id=9059 may duplicate id=34 (NULL:unknown)
 - id=9060 may duplicate id=34 (NULL:unknown)
+- id=9057 may duplicate id=34 (NULL:unknown)
 - id=9058 may duplicate id=34 (NULL:unknown)
+- id=9059 may duplicate id=34 (NULL:unknown)
 - id=9666 may duplicate id=34 (NULL:unknown)
 
 ## Operator Review Recommendations
