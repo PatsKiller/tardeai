@@ -228,6 +228,124 @@ def augment_multi_domain_evidence(plan: dict[str, Any]) -> dict[str, Any]:
     except Exception:
         pass
 
+    # WS1: technicals (RSI/SMA/MACD) + catalysts from Data Broker — not always on snapshot
+    # Explicit DATA_UNAVAILABLE refs when symbols present but pull fails (no invention).
+    if symbols:
+        # ── technicals / RSI ────────────────────────────────────────────
+        if "technicals" not in have and "indicators" not in have:
+            tech_ref: dict[str, Any] = {
+                "domain": "technicals",
+                "as_of": _now()[:19],
+                "fields_used": [],
+                "quality_state": "DATA_UNAVAILABLE",
+                "symbols": symbols[:4],
+            }
+            try:
+                try:
+                    from lib.data_broker.indicator_snapshot import get_indicator_snapshot
+                except Exception:
+                    from scripts.lib.data_broker.indicator_snapshot import (  # type: ignore
+                        get_indicator_snapshot,
+                    )
+                ind = get_indicator_snapshot(symbols[:6]) or {}
+                by = ind.get("by_symbol") or {}
+                # Prefer first plan symbol for primary fields; attach multi if present
+                primary = symbols[0]
+                row = by.get(primary) or {}
+                if isinstance(row, dict) and row:
+                    tech_ref["symbol"] = primary
+                    for k in (
+                        "rsi", "rsi_status", "sma_20", "sma_50", "sma_200",
+                        "sma20_pct", "sma50_pct", "sma200_pct",
+                        "macd_signal", "macd_histogram_direction", "atr",
+                    ):
+                        if row.get(k) is not None:
+                            tech_ref[k] = row.get(k)
+                            tech_ref["fields_used"].append(k)
+                    tech_ref["quality_state"] = "OK" if tech_ref["fields_used"] else "PARTIAL"
+                    tech_ref["as_of"] = str(ind.get("as_of") or ind.get("computed_at") or tech_ref["as_of"])[:19]
+                    # compact multi-symbol RSI map (bounded)
+                    rsi_map = {}
+                    for sym in symbols[:4]:
+                        r2 = by.get(sym) or {}
+                        if isinstance(r2, dict) and r2.get("rsi") is not None:
+                            rsi_map[sym] = r2.get("rsi")
+                    if rsi_map:
+                        tech_ref["rsi_by_symbol"] = rsi_map
+                else:
+                    tech_ref["gap_reason"] = "indicator_snapshot_empty_for_symbols"
+            except Exception as e:
+                tech_ref["gap_reason"] = f"{type(e).__name__}"
+            refs.append(tech_ref)
+            have.add("technicals")
+
+        # ── catalysts ───────────────────────────────────────────────────
+        if "catalysts" not in have and "catalyst_record" not in have:
+            cat_ref: dict[str, Any] = {
+                "domain": "catalysts",
+                "as_of": _now()[:19],
+                "fields_used": [],
+                "quality_state": "DATA_UNAVAILABLE",
+                "symbols": symbols[:4],
+            }
+            try:
+                try:
+                    from db_adapter import _execute as _db_exec
+                except Exception:
+                    from scripts.db_adapter import _execute as _db_exec  # type: ignore
+
+                def _db(sql: str, params=None, fetch: str = "all"):
+                    return _db_exec(sql, params, fetch=fetch)
+
+                try:
+                    from lib.data_broker.catalyst_record import get_catalyst_record
+                except Exception:
+                    from scripts.lib.data_broker.catalyst_record import (  # type: ignore
+                        get_catalyst_record,
+                    )
+                primary = symbols[0]
+                cat = get_catalyst_record(_db, primary)
+                if isinstance(cat, dict) and cat:
+                    cat_ref["symbol"] = primary
+                    for k in (
+                        "headline", "catalyst_type", "verified", "confidence",
+                        "severity", "impact_score", "source_url", "at", "event_date",
+                    ):
+                        if cat.get(k) is not None:
+                            val = cat.get(k)
+                            # Decimal → float for JSON safety
+                            try:
+                                from decimal import Decimal
+                                if isinstance(val, Decimal):
+                                    val = float(val)
+                            except Exception:
+                                pass
+                            cat_ref[k] = val
+                            cat_ref["fields_used"].append(k)
+                    cat_ref["quality_state"] = "OK" if cat_ref["fields_used"] else "PARTIAL"
+                    cat_ref["as_of"] = str(cat.get("as_of") or cat.get("at") or cat_ref["as_of"])[:19]
+                else:
+                    cat_ref["gap_reason"] = "no_catalyst_record"
+            except Exception as e:
+                cat_ref["gap_reason"] = f"{type(e).__name__}"
+            refs.append(cat_ref)
+            have.add("catalysts")
+
+    # WS3 stub: attach latest structured Hermes findings for this plan (if any)
+    pid_for_research = str(plan.get("plan_id") or "")
+    if pid_for_research and "hermes_research_findings" not in have:
+        try:
+            try:
+                from lib.cio_hermes_research import hermes_research_evidence_ref
+            except Exception:
+                from scripts.lib.cio_hermes_research import hermes_research_evidence_ref  # type: ignore
+            href = hermes_research_evidence_ref(pid_for_research)
+            if isinstance(href, dict):
+                refs.append(href)
+                have.add("hermes_research_findings")
+        except Exception:
+            pass
+
     # Require at least 2 domains for material notify quality flag
     domains_present = sorted({str(r.get("domain")) for r in refs if r.get("domain")})
     # Triggering domain + holdings or cash is preferred
@@ -240,7 +358,11 @@ def augment_multi_domain_evidence(plan: dict[str, Any]) -> dict[str, Any]:
 
 
 def maybe_request_hermes(plan: dict[str, Any], *, reason: str = "") -> Optional[str]:
-    """Enqueue Hermes research challenge for material situations. Fail-soft.
+    """Enqueue Hermes research for material situations. Fail-soft.
+
+    Dual path:
+      1) Structured ResearchRequest (hermes_request@v1) — plan-correlated, fingerprint de-dupe
+      2) Legacy HermesChallengeQueue research_gap (best-effort)
 
     READ_ONLY — research only, no trading authority.
     """
@@ -255,6 +377,31 @@ def maybe_request_hermes(plan: dict[str, Any], *, reason: str = "") -> Optional[
         f"Independently verify multi-domain evidence vs desk thesis; "
         f"flag contradictions or research gaps. READ_ONLY_ADVISORY."
     )
+    research_id: Optional[str] = None
+    # Structured contract (WS2 MVP)
+    try:
+        try:
+            from lib.cio_hermes_research import enqueue_research_request
+        except Exception:
+            from scripts.lib.cio_hermes_research import enqueue_research_request  # type: ignore
+        pri = "high" if st in (
+            "S6_CONCENTRATION_OR_DISPOSITION",
+            "S8_DEFENSIVE_REGIME",
+            "S1_POSITION_LIFECYCLE",
+        ) else "normal"
+        rr = enqueue_research_request(
+            plan,
+            reason=desc[:400],
+            priority=pri,
+            actor_id="cio_plan_enrichment",
+        )
+        if rr.get("ok"):
+            research_id = str(rr.get("research_id") or "") or None
+            if research_id:
+                plan["hermes_research_id"] = research_id
+    except Exception:
+        pass
+    # Legacy challenge queue (worker may still consume)
     try:
         try:
             from lib.cio_hermes_challenge_queue import HermesChallengeQueue
@@ -276,12 +423,14 @@ def maybe_request_hermes(plan: dict[str, Any], *, reason: str = "") -> Optional[
                 "situation_type": st,
                 "symbols": list(plan.get("symbols") or []),
                 "thesis_version": plan.get("thesis_version"),
+                "research_id": research_id,
                 "authority": "READ_ONLY_ADVISORY",
             },
         )
-        return (ev.get("stream_id") if isinstance(ev, dict) else None) or "enqueued"
+        legacy_id = (ev.get("stream_id") if isinstance(ev, dict) else None) or "enqueued"
+        return research_id or legacy_id
     except Exception:
-        return None
+        return research_id
 
 
 def build_evidence_pack(plan: dict[str, Any], *, extra_context: Optional[dict[str, Any]] = None) -> dict[str, Any]:
@@ -1580,12 +1729,23 @@ def enrich_plan(
     updated["material"] = bool(pack.get("material")) or updated_material_flag
     updated["evidence_domains"] = list(pack.get("evidence_domains") or [])
     # Hermes research depth for material events
+    # Prefer pack-augmented evidence_refs (includes technicals/catalysts/findings)
+    if plan.get("evidence_refs"):
+        updated["evidence_refs"] = plan.get("evidence_refs")
+    if plan.get("_evidence_domains"):
+        updated["evidence_domains"] = list(plan.get("_evidence_domains") or updated.get("evidence_domains") or [])
     if updated["material"]:
         updated["hermes_suggested"] = True
         hid = maybe_request_hermes(updated)
         if hid:
+            # may be structured research_id (res_*) or legacy stream id
+            if str(hid).startswith("res_"):
+                updated["hermes_research_id"] = hid
+                result["hermes_research_id"] = hid
             updated["hermes_challenge_id"] = hid
             result["hermes_challenge_id"] = hid
+        if updated.get("hermes_research_id"):
+            result["hermes_research_id"] = updated.get("hermes_research_id")
     # revisit_at from hint if present
     if narrative.get("revisit_hint") and not plan.get("revisit_at"):
         updated["revisit_at"] = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
@@ -1673,6 +1833,9 @@ def enrich_plan(
                 prompt_alias=updated.get("prompt_alias") or result.get("prompt_alias"),
                 eval_structural_score=updated.get("eval_structural_score"),
                 eval_quality_total=updated.get("eval_quality_total"),
+                hermes_suggested=updated.get("hermes_suggested"),
+                hermes_challenge_id=updated.get("hermes_challenge_id"),
+                hermes_research_id=updated.get("hermes_research_id"),
             )
             # store enrichment metadata via second update using allowed fields only —
             # put extras via update that merges if we add fields... update_plan only allows certain fields.
