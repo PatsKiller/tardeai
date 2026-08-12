@@ -1,0 +1,95 @@
+{
+  "golden_id": "hermes_s6_schd_v1",
+  "request": {
+    "authority": "READ_ONLY_ADVISORY",
+    "research_id": "res_golden_s6_schd",
+    "plan_id": "plan_golden_s6_schd",
+    "thesis_version": "desk@v5",
+    "subject": {
+      "symbol": "SCHD",
+      "scope": "symbol",
+      "situation_type": "S6_CONCENTRATION_OR_DISPOSITION"
+    },
+    "priority": "high",
+    "questions": [
+      {
+        "id": "q1",
+        "text": "What catalysts in the next 10 sessions could push SCHD weight through concentration fire (~16.5%)?",
+        "intent": "catalyst_map"
+      },
+      {
+        "id": "q2",
+        "text": "Is SCHD weight drift primarily price- or flow-driven under the current book?",
+        "intent": "drift_attribution"
+      },
+      {
+        "id": "q3",
+        "text": "What invalidation keeps hold_with_thesis valid under desk@v5 given operator defer wait-for-price-buffer?",
+        "intent": "invalidation"
+      }
+    ],
+    "context_snapshot": {
+      "weight_pct": 17.55,
+      "cash_pct": 45.2,
+      "concentration_fire_pct": 16.5,
+      "disposition": "defer wait for price buffer"
+    },
+    "constraints": {
+      "read_only": true,
+      "no_order_language": true
+    }
+  },
+  "reference_body": {
+    "as_of": "2026-08-12T16:00:00+00:00",
+    "symbol": "SCHD",
+    "thesis_version_at_request": "desk@v5",
+    "answers": [
+      {
+        "question_id": "q1",
+        "status": "answered",
+        "summary": "Near-term SCHD weight pressure is mostly macro/rotation and dividend/DRIP mechanics rather than a single binary catalyst; already above fire at 17.55%.",
+        "detail": "Observe through calendar; no size change from catalyst alone.",
+        "confidence": 0.65,
+        "citations": []
+      },
+      {
+        "question_id": "q2",
+        "status": "answered",
+        "summary": "Drift is more price/relative-strength driven than discrete flow without new buy evidence in context_snapshot.",
+        "detail": "Without flow data, prefer price-path hypothesis.",
+        "confidence": 0.55,
+        "citations": []
+      },
+      {
+        "question_id": "q3",
+        "status": "answered",
+        "summary": "Hold_with_thesis remains valid while defer/price-buffer stands and no dividend-quality break; ordinary day moves do not invalidate.",
+        "detail": "Invalidation would require sustained fire breach without buffer thesis or operator revisiting defer.",
+        "confidence": 0.7,
+        "citations": []
+      }
+    ],
+    "findings": [
+      {
+        "id": "f1",
+        "kind": "risk",
+        "severity": "medium",
+        "text": "SCHD weight already above concentration fire; primary path is HOLD/buffer-watch under defer.",
+        "confidence": 0.7
+      }
+    ],
+    "desk_implications": {
+      "suggestion_bias": "hold_with_thesis",
+      "changes_materiality": false,
+      "recommended_revisit": null,
+      "watch_triggers": ["weight_pct >= 16.5"],
+      "notes": "Honor operator defer; no trim-now language."
+    },
+    "limitations": ["no_live_flow_attribution"],
+    "evidence_links": []
+  },
+  "rubric_notes": "Must respect defer/hold_with_thesis; no trim-now language; use weight 17.55 and fire 16.5 from snapshot only.",
+  "min_total": 3.5,
+  "judge_prompt_version": "judge_hermes@v1",
+  "enforce_structural_total": true
+}

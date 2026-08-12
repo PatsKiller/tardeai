@@ -148,8 +148,12 @@ data/cio/hermes_research_projection.json
 |------|----------|
 | `tests/test_hermes_research_fingerprint.py` | Normalize, de-dupe, priority bump, TTL reuse |
 | `tests/test_hermes_research_loop.py` | Worker claim/complete, TTL, force, order lint, double-claim |
+| `tests/test_hermes_goldens.py` | Golden fixtures: hard structure + structural/LLM judge |
+| `tests/goldens/hermes/*.json` | Reference bodies (S6 SCHD, S1 SPCX, S5 cash) |
 | `tests/test_catalyst_severity.py` | Severity matrix + gates |
 | `tests/test_catalyst_integrations.py` | Detector fire, TTL catalyst invalidate |
+
+**Golden judge:** hard schema asserts always; CI uses `StructuralGoldenJudge`; host/nightly `HERMES_GOLDEN_LLM_JUDGE=1` (+ optional `HERMES_GOLDEN_LIVE_BACKEND=1`) uses `BridgeGoldenJudge`.
 
 ---
 

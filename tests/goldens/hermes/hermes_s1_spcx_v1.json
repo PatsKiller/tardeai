@@ -1,0 +1,92 @@
+{
+  "golden_id": "hermes_s1_spcx_v1",
+  "request": {
+    "authority": "READ_ONLY_ADVISORY",
+    "research_id": "res_golden_s1_spcx",
+    "plan_id": "plan_golden_s1_spcx",
+    "thesis_version": "desk@v5",
+    "subject": {
+      "symbol": "SPCX",
+      "scope": "symbol",
+      "situation_type": "S1_POSITION_LIFECYCLE"
+    },
+    "priority": "high",
+    "questions": [
+      {
+        "id": "q1",
+        "text": "What changed vs basis since entry for SPCX under the current desk pin?",
+        "intent": "thesis_check"
+      },
+      {
+        "id": "q2",
+        "text": "What material catalysts or risk path matter over the next revisit window?",
+        "intent": "catalyst_map"
+      },
+      {
+        "id": "q3",
+        "text": "What conditions keep awareness-only hold correct at this book weight?",
+        "intent": "invalidation"
+      }
+    ],
+    "context_snapshot": {
+      "weight_pct": 2.26,
+      "last": 144.68,
+      "dd_from_basis_pct": 20.73,
+      "deep_dd_threshold_pct": 25.0,
+      "cash_pct": 45.2
+    },
+    "constraints": {
+      "read_only": true,
+      "no_order_language": true
+    }
+  },
+  "reference_body": {
+    "as_of": "2026-08-12T16:00:00+00:00",
+    "symbol": "SPCX",
+    "thesis_version_at_request": "desk@v5",
+    "answers": [
+      {
+        "question_id": "q1",
+        "status": "answered",
+        "summary": "SPCX shows material drawdown from basis (~20.7%) while book weight remains small (~2.3%).",
+        "confidence": 0.7,
+        "citations": []
+      },
+      {
+        "question_id": "q2",
+        "status": "answered",
+        "summary": "Calendar/headline catalysts may reprice sentiment; at this weight they stay awareness-only unless severity and weight both rise.",
+        "confidence": 0.55,
+        "citations": []
+      },
+      {
+        "question_id": "q3",
+        "status": "answered",
+        "summary": "Awareness-only hold remains correct while weight stays well below max_name and heat is low; escalate if weight enters concentration band or new high-severity catalyst ≤5d.",
+        "confidence": 0.65,
+        "citations": []
+      }
+    ],
+    "findings": [
+      {
+        "id": "f1",
+        "kind": "risk",
+        "severity": "medium",
+        "text": "Deep path is material as signal; portfolio impact is small at ~2.3% weight.",
+        "confidence": 0.7
+      }
+    ],
+    "desk_implications": {
+      "suggestion_bias": "observe",
+      "changes_materiality": false,
+      "watch_triggers": ["weight_pct rising toward max_name", "high severity catalyst <=5d"],
+      "notes": "No auto-stop; options remain operator-owned."
+    },
+    "limitations": ["basis_may_be_partial"],
+    "evidence_links": []
+  },
+  "rubric_notes": "Awareness-only at small weight; DD is material signal not force-trim; no order language.",
+  "min_total": 3.5,
+  "judge_prompt_version": "judge_hermes@v1",
+  "enforce_structural_total": true
+}

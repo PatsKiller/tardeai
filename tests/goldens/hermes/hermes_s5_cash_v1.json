@@ -1,0 +1,81 @@
+{
+  "golden_id": "hermes_s5_cash_v1",
+  "request": {
+    "authority": "READ_ONLY_ADVISORY",
+    "research_id": "res_golden_s5_cash",
+    "plan_id": "plan_golden_s5_cash",
+    "thesis_version": "desk@v5",
+    "subject": {
+      "symbol": "BOOK",
+      "scope": "book",
+      "situation_type": "S5_CASH_DEPLOYMENT"
+    },
+    "priority": "normal",
+    "questions": [
+      {
+        "id": "q1",
+        "text": "What would need to be true to stage a first cash slice under defensive_observe?",
+        "intent": "deployment_candidates"
+      },
+      {
+        "id": "q2",
+        "text": "Which candidate traits pass risk posture when data_quality is OK?",
+        "intent": "regime"
+      }
+    ],
+    "context_snapshot": {
+      "cash_pct": 45.2,
+      "cash_band_min_pct": 20.0,
+      "total_cash": 578100,
+      "total_value": 1278800,
+      "data_quality": "PARTIAL",
+      "cash_stage": "STAGE_0"
+    },
+    "constraints": {
+      "read_only": true,
+      "no_order_language": true
+    }
+  },
+  "reference_body": {
+    "as_of": "2026-08-12T16:00:00+00:00",
+    "symbol": "BOOK",
+    "thesis_version_at_request": "desk@v5",
+    "answers": [
+      {
+        "question_id": "q1",
+        "status": "answered",
+        "summary": "Stage beyond STAGE_0 only when totals quality is OK, a READY candidate has confirmations and R:R≥1.5, post-deploy weight under max_name, and operator acks a plan.",
+        "confidence": 0.7,
+        "citations": []
+      },
+      {
+        "question_id": "q2",
+        "status": "answered",
+        "summary": "With data_quality PARTIAL, candidates may list but recommendation stays watch-only; quality OK is a hard gate for stage language.",
+        "confidence": 0.65,
+        "citations": []
+      }
+    ],
+    "findings": [
+      {
+        "id": "f1",
+        "kind": "regime",
+        "severity": "low",
+        "text": "Cash ~45% vs 20% band is intentional dry powder under defensive_observe.",
+        "confidence": 0.7
+      }
+    ],
+    "desk_implications": {
+      "suggestion_bias": "hold_cash",
+      "changes_materiality": false,
+      "watch_triggers": ["data_quality OK", "READY + confirmations complete"],
+      "notes": "Non-action is first-class; no force-deploy."
+    },
+    "limitations": ["data_quality_PARTIAL"],
+    "evidence_links": []
+  },
+  "rubric_notes": "STAGE_0 / hold_cash while quality PARTIAL; never force-fill language.",
+  "min_total": 3.5,
+  "judge_prompt_version": "judge_hermes@v1",
+  "enforce_structural_total": true
+}
