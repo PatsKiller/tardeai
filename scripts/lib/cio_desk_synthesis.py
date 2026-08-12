@@ -1,12 +1,11 @@
-"""CIO desk synthesis v1.2.2 — portfolio-grade advisory note under live desk@vN.
+"""CIO desk synthesis v1.3.0 — institutional book memo under live desk@vN.
 
-READ_ONLY_ADVISORY. Combines thesis + Data Broker snapshot + material plans +
-operator learning + re-entry book + sector defensive posture into one
-operator-facing desk note (Telegram + /v3/cio).
+READ_ONLY_ADVISORY. One thesis-governed portfolio advisory memo (not siloed
+S-cards): cash × concentration × drawdown in a single argument, with evidence
+spine, Hermes research agenda, and operator dispositions as hard constraints.
 
-v1.2.2: re-entry book (desk-governed stage 0/1/2), sector posture (lookthrough),
-disposition-conditioned recommendation text, section order extended,
-no mid-sentence truncation, CLI/API parity.
+v1.3.0: 9-section institutional bar; shared evidence spine (catalyst/technicals/
+Hermes); integrated narrative; Telegram memo spine; CLI/API parity.
 """
 from __future__ import annotations
 
@@ -385,6 +384,10 @@ def collect_desk_inputs() -> dict[str, Any]:
         if upls:
             spcx_meta["upl_pct_min"] = min(upls)
             spcx_meta["upl_pct_max"] = max(upls)
+            neg = [u for u in upls if u < 0]
+            if neg and spcx_meta.get("dd_from_basis_pct") is None:
+                # Prefer most underwater lot as drawdown signal when basis missing
+                spcx_meta["dd_from_basis_pct"] = abs(min(neg))
 
     # Snapshot quality for cash-stage
     quality = "OK"
@@ -466,6 +469,35 @@ def collect_desk_inputs() -> dict[str, Any]:
         except Exception:
             pass
 
+    # Shared multi-domain evidence spine (catalyst / technicals / hermes)
+    spine: dict[str, Any] = {}
+    try:
+        try:
+            from lib.cio_evidence_spine import build_evidence_spine  # type: ignore
+        except Exception:
+            from scripts.lib.cio_evidence_spine import build_evidence_spine  # type: ignore
+        spine = build_evidence_spine(
+            snapshot=snap,
+            thesis=thesis,
+            pin=pin,
+            material_plans=materials,
+            learning=learning,
+            focus_symbols=["SCHD", "SPCX"] + [s for s, _ in top[:6]],
+            include_broker_enrich=True,
+        )
+        # Prefer spine name meta for SPCX DD
+        nm = (spine.get("name_meta") or {}).get("SPCX") or {}
+        if nm.get("dd_from_basis_pct") is not None:
+            spcx_meta["dd_from_basis_pct"] = nm.get("dd_from_basis_pct")
+        if nm.get("basis") is not None:
+            spcx_meta["basis"] = nm.get("basis")
+        if nm.get("last") is not None:
+            spcx_meta["last"] = nm.get("last")
+        if nm.get("market_value") is not None:
+            spcx_meta["market_value"] = nm.get("market_value")
+    except Exception as e:
+        spine = {"gaps": [f"spine:{type(e).__name__}"], "domains_present": []}
+
     return {
         "as_of": _now(),
         "pin": pin,
@@ -492,6 +524,7 @@ def collect_desk_inputs() -> dict[str, Any]:
         "reentry_book": reentry_book,
         "material_plans": materials,
         "learning": learning,
+        "evidence_spine": spine,
         "authority": "READ_ONLY_ADVISORY",
     }
 
@@ -691,7 +724,7 @@ def _is_residual_dead_name(
 
 
 def render_desk_note(data: Optional[dict[str, Any]] = None, *, telegram: bool = True) -> str:
-    """Render operator-facing desk note v1.2.2 (complete sentences, disposition-aware)."""
+    """Render institutional book memo v1.3.0 (complete sentences, integrated narrative)."""
     d = data or collect_desk_inputs()
     pin = d.get("pin") or "desk@?"
     th = d.get("thesis") or {}
@@ -702,13 +735,14 @@ def render_desk_note(data: Optional[dict[str, Any]] = None, *, telegram: bool = 
     cash_stage = d.get("cash_stage") or {}
     sector_posture = d.get("sector_posture") or {}
     reentry = d.get("reentry_book") or {}
+    spine = d.get("evidence_spine") or {}
 
     stance = th.get("stance") or "unknown"
     rps = th.get("risk_posture_structured") or thr
-    cash_band = thr.get("cash_band_min_pct") or rps.get("cash_band_min_pct") or 20
-    max_name = thr.get("max_single_name_weight_pct") or rps.get("max_single_name_weight_pct") or 12
-    conc_fire = thr.get("concentration_fire_pct") or rps.get("concentration_fire_pct") or 16.5
-    deep_dd = thr.get("deep_dd_threshold_pct") or rps.get("deep_dd_threshold_pct") or 25
+    cash_band = float(thr.get("cash_band_min_pct") or rps.get("cash_band_min_pct") or 20)
+    max_name = float(thr.get("max_single_name_weight_pct") or rps.get("max_single_name_weight_pct") or 12)
+    conc_fire = float(thr.get("concentration_fire_pct") or rps.get("concentration_fire_pct") or 16.5)
+    deep_dd = float(thr.get("deep_dd_threshold_pct") or rps.get("deep_dd_threshold_pct") or 25)
 
     cash_pct = port.get("cash_pct")
     total_value = port.get("total_value")
@@ -719,12 +753,9 @@ def render_desk_note(data: Optional[dict[str, Any]] = None, *, telegram: bool = 
     schd_w = port.get("schd_weight_pct")
     spcx = port.get("spcx") or {}
     quality = port.get("data_quality") or "OK"
+    stage_label = cash_stage.get("label") or "STAGE_?"
+    cash_gap = (cash_pct - cash_band) if cash_pct is not None else None
 
-    cash_gap = None
-    if cash_pct is not None:
-        cash_gap = cash_pct - float(cash_band)
-
-    # Disposition helpers
     try:
         try:
             from lib.cio_desk_depth import active_disposition_phrase  # type: ignore
@@ -734,137 +765,47 @@ def render_desk_note(data: Optional[dict[str, Any]] = None, *, telegram: bool = 
         def active_disposition_phrase(learning, symbols):  # type: ignore
             return None
 
-    def _rec_for_plan(p: dict[str, Any]) -> str:
-        """Disposition-aware recommendation first line (must mention prior when present)."""
-        syms = [str(s).upper() for s in (p.get("symbols") or [])]
-        prior = active_disposition_phrase(learning, syms)
-        raw = (p.get("recommendation") or "").strip()
-        raw1 = _full_sentence(raw.split("\n")[0], max_len=280) if raw else ""
-        st = str(p.get("situation_type") or "")
-        if prior:
-            # Lead with operator prior; never primary-trim on active defer
-            if "defer" in prior.lower() and st.startswith("S6"):
-                return _full_sentence(
-                    f"{prior} Primary under {pin}: HOLD / size-watch — not trim/dispose — "
-                    f"while defer is active and no stronger rule breach.",
-                    max_len=500,
-                )
-            return _full_sentence(
-                f"{prior} Desk path under {pin}: observe/stage; no auto-execute.",
-                max_len=400,
-            )
-        if raw1:
-            return raw1
-        return _full_sentence(
-            f"Highest-signal under {pin} ({stance}): observe/stage — never auto-execute.",
-            max_len=280,
-        )
+    try:
+        try:
+            from lib.cio_evidence_spine import evidence_map_lines  # type: ignore
+        except Exception:
+            from scripts.lib.cio_evidence_spine import evidence_map_lines  # type: ignore
+    except Exception:
+        def evidence_map_lines(spine):  # type: ignore
+            return ["Evidence map DATA_UNAVAILABLE."]
 
-    lines: list[str] = []
-    stage_label = cash_stage.get("label") or "STAGE_?"
-    if telegram:
-        lines.append(f"🏦 *CIO desk note v1.2.2* · READ_ONLY · `{pin}`")
-        lines.append(
-            f"stance: *{stance}* · cash {stage_label} · as_of {str(d.get('as_of') or '')[:19]}Z"
-        )
-    else:
-        lines.append(f"# CIO desk note v1.2.2 · {pin}")
-        lines.append(f"stance: {stance} · cash {stage_label} · as_of {d.get('as_of')}")
-    lines.append("────────────────")
+    schd_prior = active_disposition_phrase(learning, ["SCHD"])
+    spcx_prior = active_disposition_phrase(learning, ["SPCX"])
+    name_meta = spine.get("name_meta") or {}
+    schd_meta = name_meta.get("SCHD") or {}
+    spcx_meta = {**(name_meta.get("SPCX") or {}), **spcx}
+    cat_by = spine.get("catalyst_by_symbol") or {}
+    tech_by = spine.get("technicals_by_symbol") or {}
 
-    # 1 Thesis header
-    lines.append("🎯 *1. Thesis header*")
-    lines.append(_full_sentence(th.get("summary") or "(no thesis summary)", max_len=700))
-    lines.append(
-        f"Risk posture (structured): max single-name {max_name}% · "
-        f"cash band min {cash_band}% · deep DD {deep_dd}% · concentration fire ≈{conc_fire}%."
-    )
-    principles = th.get("principles") or []
-    if principles:
-        lines.append("Principles: " + " ".join(f"({i+1}) {p}" for i, p in enumerate(principles[:5])))
-    lines.append("")
-
-    # 2 Portfolio snapshot
-    lines.append("📊 *2. Portfolio snapshot*")
-    lines.append(
-        f"Book {_fmt_usd(total_value)} · day {_fmt_pct(day, signed=True)} · "
-        f"holdings {port.get('holdings_count') or '—'} · data_quality={quality}."
-    )
-    lines.append(
-        f"Cash {_fmt_usd(total_cash)} ({_fmt_pct(cash_pct)}) vs band {cash_band}% "
-        + (f"(gap {_fmt_pct(cash_gap, signed=True)})." if cash_gap is not None else ".")
-    )
-    lines.append(
-        f"Heat {_fmt_pct(heat)} · stops_active "
-        f"{port.get('stops_active') if port.get('stops_active') is not None else '—'}."
-    )
-    if top:
-        top_s = ", ".join(f"{t['symbol']} {t['weight_pct']:.1f}%" for t in top[:8])
-        lines.append(f"Top weights (book-aggregated): {top_s}.")
-    lines.append(
-        f"Cash stage: *{stage_label}* — {cash_stage.get('name') or ''}. "
-        f"{cash_stage.get('recommendation') or ''} "
-        f"({cash_stage.get('reason') or ''})."
-    )
-    lines.append("")
-
-    # 3 Sector defensive posture (NEW)
-    lines.append(f"🛡️ *3. Sector posture* · `{pin}`")
-    if not sector_posture:
-        lines.append("Sector posture DATA_UNAVAILABLE (depth module did not load).")
-    else:
-        tb = sector_posture.get("tilt_book_pct") or {}
-        lines.append(
-            f"Book defensive share ≈ {tb.get('DEFENSIVE', 0):.1f}% | "
-            f"offensive/cyclical ≈ {tb.get('OFFENSIVE', 0):.1f}% | "
-            f"unclassified ≈ {tb.get('UNCLASSIFIED', 0):.1f}% "
-            f"(quality={sector_posture.get('quality') or '—'})."
-        )
-        top3 = sector_posture.get("top3") or []
-        if top3:
-            lines.append(
-                "Largest sector concentrations (lookthrough-aware when available): "
-                + ", ".join(f"{x['sector']} {x['weight_pct']}%" for x in top3)
-                + "."
-            )
-        lines.append(
-            f"Sector policy: {sector_posture.get('sector_cap_policy') or 'no formal sector cap in desk@v4 yet'} "
-            f"(soft report cap {sector_posture.get('sector_soft_cap_pct')}%)."
-        )
-        for t in (sector_posture.get("tensions") or [])[:4]:
-            lines.append(f"• {_full_sentence(t, max_len=280)}")
-        sleeves = sector_posture.get("correlated_sleeves") or {}
-        if sleeves:
-            lines.append(
-                "Correlated sleeves: "
-                + ", ".join(f"{k.replace('_', '/')} ≈{v}%" for k, v in sleeves.items())
-                + "."
-            )
-        improve = sector_posture.get("improve") or []
-        if improve:
-            lines.append("What would improve posture without force-deploy: " + "; ".join(improve[:3]) + ".")
-        qn = sector_posture.get("quality_notes") or []
-        if qn:
-            lines.append("Data notes: " + "; ".join(qn[:2]) + ".")
-    lines.append("")
-
-    # 4 Material situations — disposition-aware; residual dead names → appendix
-    lines.append("📍 *4. Material situations* (desk-filtered, disposition-aware)")
+    # Focus plans (book-real, not test/dead)
     focus: list[dict[str, Any]] = []
-    appendix: list[dict[str, Any]] = []
-    seen_keys: set[str] = set()
+    seen: set[str] = set()
     for p in materials:
         st = str(p.get("situation_type") or "")
         syms = [str(s).upper() for s in (p.get("symbols") or [])]
         if "TEST" in "".join(syms) or "SPACEX_TEST" in syms:
             continue
-        key = f"{st}:{','.join(syms)}"
-        if key in seen_keys:
-            continue
         if st.startswith("S6") and syms == ["CASH"]:
             continue
-        book_w = _book_weight_for_plan(p, top, port)
+        if st not in (
+            "S5_CASH_DEPLOYMENT",
+            "S6_CONCENTRATION_OR_DISPOSITION",
+            "S1_POSITION_LIFECYCLE",
+            "S8_DEFENSIVE_REGIME",
+        ):
+            continue
+        # Drop account-scoped concentration artifacts that disagree with book weights
         if st.startswith("S6") and syms:
+            book_w = None
+            for t in top:
+                if t.get("symbol") in syms:
+                    book_w = float(t.get("weight_pct") or 0)
+                    break
             fire = " ".join(str(x) for x in (p.get("fire_reasons") or []))
             claimed = None
             for tok in fire.replace(",", " ").split():
@@ -873,371 +814,443 @@ def render_desk_note(data: Optional[dict[str, Any]] = None, *, telegram: bool = 
                         claimed = float(tok.replace("weight_", "").replace("pct", ""))
                     except Exception:
                         pass
-            if claimed is not None and claimed >= 25:
-                if book_w is None or book_w < float(max_name) * 0.5:
-                    # account-scoped artifact — skip entirely (not even appendix)
-                    continue
-            if book_w is not None and book_w < 5 and claimed and claimed >= 30:
+            if claimed is not None and claimed >= 25 and (book_w is None or book_w < max_name * 0.5):
                 continue
-        if st not in ("S5_CASH_DEPLOYMENT", "S6_CONCENTRATION_OR_DISPOSITION", "S1_POSITION_LIFECYCLE"):
+        key = f"{st}:{','.join(syms)}"
+        if key in seen:
             continue
-        seen_keys.add(key)
-        if _is_residual_dead_name(p, book_w=book_w):
-            appendix.append({**p, "_book_w": book_w})
-            continue
+        seen.add(key)
         focus.append(p)
-        if len(focus) >= 5:
-            # keep scanning for appendix demotions
-            pass
-    focus = focus[:5]
+        if len(focus) >= 6:
+            break
 
-    if not focus:
-        lines.append("No open material plans after desk filters.")
-    for p in focus:
-        st = (p.get("situation_type") or "").replace("_", " ")
-        syms = ",".join(p.get("symbols") or []) or "book"
-        pid = p.get("plan_id")
-        fire = ", ".join(str(x) for x in (p.get("fire_reasons") or [])[:4])
-        lines.append(f"• *{st}* · {syms}")
-        lines.append(f"  Fire: {fire or '—'}.")
-        lines.append(f"  Rec: {_rec_for_plan(p)}")
-        ta = _thesis_fit_for_plan(
-            p, pin=pin, stance=stance, thr=thr, port=port, learning=learning,
+    lines: list[str] = []
+    as_of = str(d.get("as_of") or "")[:19]
+    if telegram:
+        lines.append(f"🏦 *CIO book memo v1.3* · READ_ONLY · `{pin}`")
+        lines.append(f"stance *{stance}* · cash {stage_label} · as_of {as_of}Z")
+    else:
+        lines.append(f"# CIO book memo v1.3.0 · {pin}")
+        lines.append(f"stance: {stance} · cash {stage_label} · as_of {as_of}")
+    lines.append("────────────────")
+
+    # ── 1. Executive thesis ──────────────────────────────────────────────
+    lines.append("🎯 *1. Executive thesis*")
+    thesis_sum = _full_sentence(th.get("summary") or "", max_len=900)
+    if not thesis_sum:
+        thesis_sum = (
+            f"Living pin `{pin}` stands on {stance}: preserve capital and optionality; "
+            "size only when multi-domain evidence and cash quality support it."
         )
-        ta_out = ta[len("Thesis fit: "):] if ta.startswith("Thesis fit:") else ta
-        lines.append(f"  Thesis fit: {ta_out}")
-        lines.append(f"  Multi-domain: {_multi_domain_line(p, port)}")
-        lines.append(f"  Plan: `{pid}` · pin `{p.get('thesis_version') or pin}`.")
-    if appendix:
+    lines.append(thesis_sum)
+    exec_bits = [
+        f"Under `{pin}` ({stance}), the book is not forced to deploy: cash at "
+        f"{_fmt_pct(cash_pct)} vs a {cash_band:.0f}% band is intentional dry powder "
+        f"({stage_label}), not a mandate to fill."
+    ]
+    if schd_w is not None:
+        exec_bits.append(
+            f"SCHD at {_fmt_pct(schd_w)} sits near concentration fire ≈{conc_fire:.1f}% "
+            f"({'operator defer active: wait for price buffer' if schd_prior else 'size-watch without defer on file'}); "
+            "primary path is HOLD / buffer-watch, not dispose-for-optics."
+        )
+    if spcx_meta.get("dd_from_basis_pct") is not None or spcx_meta.get("book_weight_pct") is not None:
+        exec_bits.append(
+            f"SPCX is a lifecycle awareness sleeve "
+            f"(weight {_fmt_pct(spcx_meta.get('book_weight_pct') or spcx_meta.get('weight_pct'))}, "
+            f"DD from basis {_fmt_pct(spcx_meta.get('dd_from_basis_pct'))}) — material as signal, "
+            "small as portfolio risk; no auto-stop."
+        )
+    exec_bits.append(
+        f"Heat {_fmt_pct(heat)} and stops_active "
+        f"{port.get('stops_active') if port.get('stops_active') is not None else '—'} "
+        "support observe. Non-action is first-class under defensive_observe. "
+        "All of this is READ_ONLY_ADVISORY — no orders or stops from desk or chat."
+    )
+    lines.append(_full_sentence(" ".join(exec_bits), max_len=1600))
+    principles = th.get("principles") or []
+    if principles:
         lines.append(
-            f"📎 *Appendix — residual / dead-name situations* ({len(appendix)}; "
-            "book weight missing or ≈0 — not main material)"
+            "Governing principles: "
+            + " ".join(f"({i+1}) {_full_sentence(p, max_len=160)}" for i, p in enumerate(principles[:5]))
         )
-        for p in appendix[:8]:
-            st = (p.get("situation_type") or "").replace("_", " ")
-            syms = ",".join(p.get("symbols") or []) or "—"
-            fire = ", ".join(str(x) for x in (p.get("fire_reasons") or [])[:3])
-            bw = p.get("_book_w")
-            lines.append(
-                f"• {st} · {syms} · fire={fire or '—'} · "
-                f"book_w={_fmt_pct(bw) if bw is not None else 'missing/≈0'} · "
-                f"`{p.get('plan_id')}` — demoted (residual disposition/DD)."
-            )
+    lines.append(
+        f"Risk posture: max single-name {max_name:.0f}% · cash band min {cash_band:.0f}% · "
+        f"deep DD {deep_dd:.0f}% · concentration fire ≈{conc_fire:.1f}%."
+    )
     lines.append("")
 
-    # 5 Re-entry book — core R:R≥1.5 / sub / micro (v1.2.2)
-    core_full_n = reentry.get("core_full", reentry.get("core_count"))
-    sub_rr_n = reentry.get("sub_rr")
-    micro_n = reentry.get("micro_count")
-    dropped_n = reentry.get("dropped_bad_rr")
+    # ── 2. Portfolio state ───────────────────────────────────────────────
+    lines.append("📊 *2. Portfolio state*")
     lines.append(
-        f"📋 *5. Re-entry book* · `{pin}` · stage={cash_stage.get('stage', '?')} ({stage_label}) · "
-        f"core_full={core_full_n if core_full_n is not None else '?'} "
-        f"sub_rr={sub_rr_n if sub_rr_n is not None else '?'} "
-        f"micro={micro_n if micro_n is not None else '?'} "
-        f"dropped_bad_rr={dropped_n if dropped_n is not None else '?'}"
+        f"Book {_fmt_usd(total_value)} · day {_fmt_pct(day, signed=True)} · "
+        f"holdings {port.get('holdings_count') or '—'} · data_quality={quality}."
     )
-    if reentry.get("error"):
-        lines.append(f"Re-entry desk error: {reentry.get('error')} (fail-soft).")
+    lines.append(
+        f"Cash {_fmt_usd(total_cash)} ({_fmt_pct(cash_pct)}) vs band {cash_band:.0f}% "
+        + (f"(gap {_fmt_pct(cash_gap, signed=True)})." if cash_gap is not None else ".")
+    )
+    lines.append(
+        f"Heat {_fmt_pct(heat)} · stops_active "
+        f"{port.get('stops_active') if port.get('stops_active') is not None else 'DATA_UNAVAILABLE'}."
+    )
+    lines.append(
+        f"Cash stage *{stage_label}* — {cash_stage.get('name') or ''}. "
+        f"{_full_sentence(cash_stage.get('recommendation') or '', max_len=280)} "
+        f"({_full_sentence(cash_stage.get('reason') or '', max_len=200)})"
+    )
+    lines.append("")
+
+    # ── 3. Allocation & concentration ────────────────────────────────────
+    lines.append("📐 *3. Allocation & concentration*")
+    if top:
+        top_s = ", ".join(f"{t['symbol']} {t['weight_pct']:.1f}%" for t in top[:10])
+        lines.append(f"Top weights (book-aggregated): {top_s}.")
+    heavy = [t for t in top if t["weight_pct"] >= 12.0]
+    if heavy:
+        lines.append(
+            "Names ≥12%: "
+            + ", ".join(
+                f"{t['symbol']} {t['weight_pct']:.1f}% "
+                f"(fire distance {_fmt_pct(t['weight_pct'] - conc_fire, signed=True)})"
+                for t in heavy
+            )
+            + "."
+        )
+    else:
+        lines.append(f"No book names at or above 12% (max_name {max_name:.0f}%).")
+    if schd_w is not None:
+        lines.append(
+            f"SCHD book {_fmt_pct(schd_w)} vs fire ≈{conc_fire:.1f}% "
+            f"(distance {_fmt_pct((schd_w - conc_fire), signed=True)})."
+        )
+    if sector_posture:
+        tb = sector_posture.get("tilt_book_pct") or {}
+        lines.append(
+            f"Sector tilt: defensive ≈{tb.get('DEFENSIVE', 0):.1f}% · "
+            f"offensive/cyclical ≈{tb.get('OFFENSIVE', 0):.1f}% · "
+            f"unclassified ≈{tb.get('UNCLASSIFIED', 0):.1f}% "
+            f"(quality={sector_posture.get('quality') or '—'})."
+        )
+        top3 = sector_posture.get("top3") or []
+        if top3:
+            lines.append(
+                "Largest sectors: "
+                + ", ".join(f"{x['sector']} {x['weight_pct']}%" for x in top3[:4])
+                + "."
+            )
+    else:
+        lines.append("Sector posture DATA_UNAVAILABLE.")
+    lines.append("")
+
+    # ── 4. Material situations — ONE integrated narrative ────────────────
+    lines.append("📍 *4. Material situations (integrated)*")
+    story = []
+    story.append(
+        f"The live book story under `{pin}` is not three separate cards — it is one posture: "
+        f"cash {_fmt_pct(cash_pct)} creates optionality while quality={quality} and {stage_label} "
+        f"block force-deploy; concentration risk is dominated by SCHD at {_fmt_pct(schd_w)}; "
+        f"and SPCX deep drawdown is an awareness sleeve at "
+        f"{_fmt_pct(spcx_meta.get('book_weight_pct') or spcx_meta.get('weight_pct'))} weight."
+    )
+    if cash_pct is not None and cash_pct >= cash_band:
+        story.append(
+            f"Cash sits {_fmt_pct(cash_gap, signed=True) if cash_gap is not None else 'above'} "
+            f"the {cash_band:.0f}% band ({_fmt_usd(total_cash)} on {_fmt_usd(total_value)}). "
+            f"Under defensive_observe that is intentional dry powder: the desk holds/stages "
+            f"rather than chasing band optics. Interaction: high cash *reduces* pressure to "
+            f"trim winners solely for rebalance theater — size review still applies near fire."
+        )
+    if schd_w is not None:
+        if schd_prior:
+            story.append(
+                f"SCHD concentration is real (book {_fmt_pct(schd_w)} near fire ≈{conc_fire:.1f}%), "
+                f"but the operator already deferred with '{schd_prior}'. "
+                f"That disposition is a hard constraint: primary path is HOLD / wait for price buffer, "
+                f"not trim-into-weakness, unless weight sustainably breaches fire without buffer thesis "
+                f"or the operator revisits the defer. Cash abundance does not authorize auto-trim of SCHD."
+            )
+        else:
+            story.append(
+                f"SCHD book {_fmt_pct(schd_w)} vs fire ≈{conc_fire:.1f}% warrants size-watch under "
+                f"{pin}; no SCHD defer on file this pass — still prefer thesis-aware hold over force dispose."
+            )
+    if spcx_meta.get("dd_from_basis_pct") is not None or any(
+        "SPCX" in [str(s).upper() for s in (p.get("symbols") or [])] for p in focus
+    ):
+        story.append(
+            f"SPCX lifecycle: last={spcx_meta.get('last') if spcx_meta.get('last') is not None else 'DATA_UNAVAILABLE'}, "
+            f"basis={spcx_meta.get('basis') if spcx_meta.get('basis') is not None else 'DATA_UNAVAILABLE'}, "
+            f"DD from basis {_fmt_pct(spcx_meta.get('dd_from_basis_pct'))} "
+            f"(deep-DD threshold {deep_dd:.0f}%). "
+            f"Because weight is only "
+            f"{_fmt_pct(spcx_meta.get('book_weight_pct') or spcx_meta.get('weight_pct'))}, "
+            f"severity is awareness-only: escalate for judgment, keep hold / stop-above-BE / trim as "
+            f"*options*, never auto-execute. Interaction with cash: small sleeve + low heat "
+            f"({_fmt_pct(heat)}) means SPCX does not compete with SCHD size policy for operator attention."
+        )
+    # Catalyst / technicals one-liners for focus names
+    for sym in ("SCHD", "SPCX"):
+        cat = cat_by.get(sym) or {}
+        tech = tech_by.get(sym) or {}
+        ne = cat.get("next_event") if isinstance(cat.get("next_event"), dict) else None
+        cat_s = (
+            f"next {ne.get('kind')} {ne.get('session_date')} ({ne.get('severity')})"
+            if ne and ne.get("session_date")
+            else (cat.get("quality") or cat.get("quality_state") or "DATA_UNAVAILABLE")
+        )
+        tech_s = (
+            f"RSI={tech.get('rsi')}"
+            if tech.get("rsi") is not None
+            else (tech.get("quality") or "DATA_UNAVAILABLE")
+        )
+        story.append(f"{sym} micro-context: catalyst {cat_s}; technicals {tech_s}.")
+    lines.append(_full_sentence(" ".join(story), max_len=2400))
+    if focus:
+        lines.append("Open material plan anchors (context, not siloed essays):")
+        for p in focus[:5]:
+            st = (p.get("situation_type") or "").replace("_", " ")
+            syms = ",".join(p.get("symbols") or []) or "book"
+            fire = ", ".join(str(x) for x in (p.get("fire_reasons") or [])[:3])
+            lines.append(f"• {st} · {syms} · fire={fire or '—'} · `{p.get('plan_id')}`")
+    else:
+        lines.append("No open material plans after desk filters (book memo still governs from live state).")
+    lines.append("")
+
+    # ── 5. What we are doing and why ─────────────────────────────────────
+    lines.append(f"✅ *5. What we are doing and why* (under `{pin}`)")
+    n = 1
+    if cash_pct is not None and cash_pct >= cash_band:
+        lines.append(
+            f"{n}. *HOLD / STAGE cash* (high conviction) — {_fmt_pct(cash_pct)} ≫ band {cash_band:.0f}%. "
+            f"{stage_label}: {_full_sentence(cash_stage.get('recommendation') or 'paper plan only', max_len=200)}. "
+            f"Non-action is first-class: we are *choosing* optionality while data_quality={quality}."
+        )
+        n += 1
+    if schd_w is not None and schd_w >= max_name * 0.7:
+        if schd_prior:
+            lines.append(
+                f"{n}. *HOLD SCHD — disposition-bound* (high conviction on non-trim) — {schd_prior}. "
+                f"Book {_fmt_pct(schd_w)} vs fire ≈{conc_fire:.1f}%. "
+                f"Primary: HOLD / wait for price buffer. Override only with explicit new evidence language "
+                f"(sustained ≥ fire without buffer thesis, or operator revisits defer)."
+            )
+        else:
+            lines.append(
+                f"{n}. *HOLD SCHD with size-watch* (medium conviction) — book {_fmt_pct(schd_w)} "
+                f"vs fire ≈{conc_fire:.1f}%. Prefer thesis-aware hold over force dispose."
+            )
+        n += 1
+    if any("SPCX" in [str(s).upper() for s in (p.get("symbols") or [])] for p in focus) or spcx_meta.get(
+        "dd_from_basis_pct"
+    ):
+        lines.append(
+            f"{n}. *HOLD SPCX lifecycle / awareness* (medium conviction on observe) — "
+            + (f"{spcx_prior}. " if spcx_prior else "")
+            + f"DD {_fmt_pct(spcx_meta.get('dd_from_basis_pct'))} is material as path signal; "
+            f"weight {_fmt_pct(spcx_meta.get('book_weight_pct') or spcx_meta.get('weight_pct'))} keeps "
+            f"portfolio impact small. Options (hold / stop-above-BE once reclaimed / trim) stay operator-owned."
+        )
+        n += 1
+    # Re-entry brief
     core_cards = reentry.get("core_cards") or [
         c for c in (reentry.get("cards") or []) if c.get("tier") in (None, "core")
     ]
-    if not core_cards and reentry.get("cards"):
-        # only tiers marked core; never promote sub-quality
-        core_cards = [c for c in reentry["cards"] if c.get("tier") == "core"]
-    micro_ready = reentry.get("micro_expanded") or [
-        c for c in (reentry.get("cards") or []) if c.get("tier") == "micro_ready"
+    conf_ready = [
+        c
+        for c in core_cards
+        if c.get("confirmations_complete")
+        and c.get("state") in ("READY TO REVIEW", "NEAR ENTRY")
+        and isinstance(c.get("rr"), (int, float))
+        and float(c.get("rr")) >= 1.5
     ]
-
-    def _emit_card(c: dict[str, Any]) -> None:
-        zone = c.get("entry_zone") or "—"
-        if c.get("rr_error"):
-            rr_s = "DATA_ERROR (suppressed absurd R:R)"
-        elif c.get("rr") is not None:
-            rr_s = f"{c.get('rr')}"
-        else:
-            rr_s = "—"
-        sz = c.get("sizing") or {}
-        size_s = "—"
-        if sz.get("shares") is not None:
-            alloc = sz.get("allocation")
-            alloc_s = _fmt_usd(alloc) if isinstance(alloc, (int, float)) else str(alloc or "—")
-            size_s = f"{sz.get('shares')} sh · {alloc_s}"
-            if sz.get("note"):
-                size_s += f" ({_full_sentence(sz.get('note'), max_len=60)})"
-        px = c.get("price")
-        if isinstance(px, (int, float)):
-            px_s = f"${px:.2f}" if px < 1000 else _fmt_usd(px)
-        else:
-            px_s = str(px or "—")
+    if conf_ready and int(cash_stage.get("stage") or 0) >= 1:
+        c0 = conf_ready[0]
         lines.append(
-            f"• *{c.get('symbol')}* · {c.get('state')} · px {px_s} · "
-            f"zone {zone} · R:R {rr_s} · RSI {c.get('rsi') if c.get('rsi') is not None else '—'} · "
-            f"size {size_s}"
-        )
-        lines.append(f"  Stage gate: {_full_sentence(c.get('stage_gate') or '', max_len=320)}")
-        lines.append(f"  Desk fit: {_full_sentence(c.get('desk_fit') or '', max_len=400)}")
-        why = c.get("why") or []
-        if why:
-            lines.append(f"  Why: {_full_sentence('; '.join(str(x) for x in why[:2]), max_len=240)}")
-        gaps = c.get("confirmation_gaps") or []
-        if gaps:
-            lines.append(f"  Confirmation gaps: {', '.join(str(g) for g in gaps[:4])}.")
-        lines.append(f"  Pin `{c.get('thesis_version') or pin}` · READ_ONLY.")
-
-    if core_cards:
-        lines.append(
-            f"*Core full* (px≥$5/ADV, not wash, confirmations eval, R:R≥1.5) — {len(core_cards)} shown:"
-        )
-        for c in core_cards[:10]:
-            # safety: never emit R:R < 1.5 as full card
-            rr = c.get("rr")
-            if isinstance(rr, (int, float)) and rr < 1.5:
-                continue
-            _emit_card(c)
-    else:
-        lines.append(
-            "No core full cards this pass (need px≥$5/ADV + 1.5≤R:R≤12 after quality filter) "
-            f"(actionable_raw={reentry.get('actionable_count', 0)}, "
-            f"core_full={core_full_n}, sub_rr={sub_rr_n}, micro={micro_n}, dropped_bad_rr={dropped_n})."
-        )
-    if reentry.get("sub_rr_line"):
-        lines.append("• " + _full_sentence(reentry.get("sub_rr_line"), max_len=420))
-    if micro_ready:
-        lines.append(
-            f"*Micro READY + confirmations_complete* (exception expand) — {len(micro_ready)}:"
-        )
-        for c in micro_ready[:3]:
-            _emit_card(c)
-    if reentry.get("micro_line"):
-        lines.append("• " + _full_sentence(reentry.get("micro_line"), max_len=500))
-    watch = reentry.get("watch") or []
-    if watch:
-        lines.append(
-            "Watch-only (WAIT/OVERBOUGHT with plan): "
-            + ", ".join(f"{w.get('symbol')}={w.get('state')}" for w in watch[:4])
-            + "."
-        )
-    lines.append(_full_sentence(reentry.get("footer") or (
-        f"Candidates from Data Broker reentry_decision_desk; READY is deterministic; {pin} governs stage."
-    ), max_len=400))
-    lines.append("")
-    # cards for later rec — only core full (R:R≥1.5)
-    cards = list(core_cards)
-
-    # 6 Cross-position
-    lines.append("🔗 *6. Cross-position / correlated sleeves*")
-    near = [t for t in top if t["weight_pct"] >= float(max_name)]
-    watch_band = [t for t in top if float(max_name) * 0.7 <= t["weight_pct"] < float(max_name)]
-    if near:
-        lines.append(
-            "Concentration cluster (book ≥ max_name): "
-            + ", ".join(f"{t['symbol']} {t['weight_pct']:.1f}%" for t in near)
-            + "."
+            f"{n}. *Re-entry watch (not buy-now)* — {c0.get('symbol')} {c0.get('state')} "
+            f"R:R {c0.get('rr')} under {stage_label}: "
+            f"{_full_sentence(c0.get('stage_gate') or 'watch only', max_len=160)}. "
+            "No buy-now language."
         )
     else:
-        lines.append(f"No book names at or above max_name {max_name}%.")
-    if watch_band:
         lines.append(
-            "Approaching band: "
-            + ", ".join(f"{t['symbol']} {t['weight_pct']:.1f}%" for t in watch_band[:5])
-            + "."
+            f"{n}. *Re-entry book* — No STAGE-eligible core name with R:R≥1.5 and complete "
+            f"confirmations under {stage_label} (core_full={reentry.get('core_full')}, "
+            f"sub_rr={reentry.get('sub_rr')}). Watch-only; no buy-now language."
         )
-    if cash_pct is not None:
-        if cash_pct >= float(cash_band) + 15:
-            runway = "elevated multi-quarter optionality; stage only with complete totals"
-        elif cash_pct >= float(cash_band):
-            runway = "above band — dry powder intentional under defensive_observe"
-        else:
-            runway = "inside/below band — less buffer"
-        lines.append(f"Cash runway: {_fmt_pct(cash_pct)} ({runway}).")
-    sleeve = [t for t in top if t["symbol"] in ("ARKX", "XAR", "XLI", "SPCX", "XLB")]
-    if sleeve:
-        sleeve_sum = sum(t["weight_pct"] for t in sleeve)
-        lines.append(
-            "Industrial/aero sleeve: "
-            + ", ".join(f"{t['symbol']} {t['weight_pct']:.1f}%" for t in sleeve)
-            + f" (≈{sleeve_sum:.1f}% combined) — correlated if space/industrials re-rate together."
-        )
-    if heat is not None:
-        lines.append(
-            f"Portfolio heat {_fmt_pct(heat)} with {port.get('stops_active')} stops marked active — "
-            "low heat supports observe and does not authorize new risk from chat."
-        )
-    lines.append("")
-
-    # 7 Desk recommendations (disposition-aware)
-    lines.append(f"✅ *7. Desk recommendations* (under `{pin}`)")
-    n = 1
-    if cash_pct is not None and cash_pct >= float(cash_band):
-        lines.append(
-            f"{n}. *HOLD / STAGE cash* — {_fmt_pct(cash_pct)} ≫ band {cash_band}%. "
-            f"Cash {stage_label}: {cash_stage.get('recommendation') or 'paper plan only'}. "
-            f"Under {pin}, cash is a feature; do not force deploy while quality is {quality}."
-        )
-        n += 1
-    if schd_w is not None and schd_w >= float(max_name):
-        prior = active_disposition_phrase(learning, ["SCHD"])
-        if prior:
-            lines.append(
-                f"{n}. *HOLD SCHD (disposition-bound)* — {prior} "
-                f"Book {_fmt_pct(schd_w)} vs fire ≈{conc_fire}%. "
-                f"Primary action is HOLD / buffer-watch — not trim — while defer is active."
-            )
-        else:
-            lines.append(
-                f"{n}. *HOLD SCHD with size review* — book {_fmt_pct(schd_w)} vs fire ≈{conc_fire}%. "
-                "No operator defer on file; still prefer thesis-aware hold over forced dispose."
-            )
-        n += 1
-    spcx_plan = next(
-        (
-            p
-            for p in materials
-            if p.get("situation_type") == "S1_POSITION_LIFECYCLE"
-            and "SPCX" in [str(s).upper() for s in (p.get("symbols") or [])]
-        ),
-        None,
-    )
-    if spcx_plan:
-        prior_s = active_disposition_phrase(learning, ["SPCX"])
-        lines.append(
-            f"{n}. *HOLD SPCX (lifecycle)* — "
-            + (f"{prior_s} " if prior_s else "")
-            + f"deep DD is material as signal but book weight ~{_fmt_pct(spcx.get('book_weight_pct'))} is small. "
-            f"Awareness-only under {pin}; no auto-stop."
-        )
-        n += 1
-    # Re-entry stage guidance (v1.2.2)
-    stage_eligible = bool(reentry.get("has_stage_eligible_core"))
-    # Eligible = core full with confirmations_complete among READY/NEAR
-    if cards:
-        conf_ready = [
-            c for c in cards
-            if c.get("confirmations_complete")
-            and c.get("state") in ("READY TO REVIEW", "NEAR ENTRY")
-            and isinstance(c.get("rr"), (int, float))
-            and float(c.get("rr")) >= 1.5
-        ]
-        if conf_ready or stage_eligible:
-            top_c = conf_ready[0] if conf_ready else cards[0]
-            lines.append(
-                f"{n}. *Re-entry book top* — {top_c.get('symbol')} is {top_c.get('state')} "
-                f"R:R {top_c.get('rr')} under {stage_label}: "
-                f"{_full_sentence(top_c.get('stage_gate') or 'watch only', max_len=180)} "
-                "No buy-now language."
-            )
-        else:
-            lines.append(
-                f"{n}. *Re-entry book* — No STAGE-eligible core name with R:R ≥ 1.5 and complete "
-                f"confirmations under {stage_label}. Core full cards may still list NEAR with gaps; "
-                "do not treat weak R:R or incomplete confirmations as stage candidates. No buy-now language."
-            )
-        n += 1
-    else:
-        lines.append(
-            f"{n}. *Re-entry book* — No STAGE-eligible core name with R:R ≥ 1.5 and complete "
-            f"confirmations under {stage_label}. No buy-now language."
-        )
-        n += 1
+    n += 1
     lines.append(
-        f"{n}. *ESCALATE to operator* any new single-name book weight ≥{max_name}% or cash regime "
-        "change ≥3pp. Ignore account-scoped 40%+ concentration artifacts that disagree with book weights."
+        f"{n}. *ESCALATE to operator* if cash moves ≥3pp, SCHD book weight ≥{conc_fire:.1f}%, "
+        f"SPCX makes new lows vs basis, or a re-entry card flips READY with confirmations complete."
     )
-    lines.append("All actions remain READ_ONLY_ADVISORY — no orders or stops from this note.")
+    lines.append("All recommendations remain READ_ONLY_ADVISORY — no orders or stops from this memo.")
     lines.append("")
 
-    lines.append("🔬 *7b. Deeper analysis* (what would change the call)")
+    # ── 6. What would change the call ────────────────────────────────────
+    lines.append("🔬 *6. What would change the call*")
     lines.append(
         _full_sentence(
-            f"Cash — To advance beyond {stage_label} under {pin}: "
-            f"(1) total_cash and total_value quality OK (not PARTIAL), "
-            f"(2) a named READY candidate with confirmations_complete, "
-            f"(3) post-deploy weight < max_single_name {max_name}% and sector posture not worsened unchecked, "
-            f"(4) operator explicitly acks a plan_id / stage opt-in. "
-            f"Until then, highest-signal is HOLD cash at {_fmt_pct(cash_pct)} "
-            f"({_fmt_usd(total_cash)} on a {_fmt_usd(total_value)} book).",
-            max_len=700,
-        )
-    )
-    dist = (float(schd_w) - float(conc_fire)) if schd_w is not None else None
-    prior_schd = active_disposition_phrase(learning, ["SCHD"])
-    lines.append(
-        _full_sentence(
-            f"SCHD — Book weight {_fmt_pct(schd_w)} vs fire ≈{conc_fire}% "
-            f"(distance {_fmt_pct(dist, signed=True) if dist is not None else 'n/a'}). "
-            f"{prior_schd or 'No SCHD defer on file.'} "
-            f"What changes the hold: (a) operator revisits/rejects the defer, "
-            f"(b) book weight sustainably above fire with no buffer thesis, "
-            f"(c) dividend/credit thesis break. "
-            f"What does not change the hold: routine day moves or account-scoped % that disagree with book weight. "
-            f"Primary action while defer active: HOLD — not trim.",
-            max_len=700,
+            f"Cash — Advance beyond {stage_label} only if: (1) total_cash/total_value quality OK "
+            f"(not PARTIAL), (2) a named READY candidate with confirmations_complete and R:R≥1.5, "
+            f"(3) post-deploy weight < max_name {max_name:.0f}% and sector posture not worsened unchecked, "
+            f"(4) operator acks a plan_id / stage opt-in. Until then HOLD cash at {_fmt_pct(cash_pct)} "
+            f"({_fmt_usd(total_cash)} on {_fmt_usd(total_value)}).",
+            max_len=900,
         )
     )
     lines.append(
         _full_sentence(
-            f"SPCX — Severity vs size: deep drawdown from basis is above the {deep_dd}% posture threshold, "
-            f"but portfolio weight is only {_fmt_pct(spcx.get('book_weight_pct'))} "
-            f"(~{_fmt_usd(spcx.get('market_value'))}). "
-            f"Awareness-only under {pin}: escalate for operator judgment, "
-            f"keep hold/stop-above-BE/trim as *options*, never auto-execute. "
-            f"What upgrades priority: book weight rising into the max_name band, new catalyst stack, "
-            f"or operator request for Hermes research. What keeps it quiet: small sleeve + low portfolio heat "
-            f"({_fmt_pct(heat)}).",
+            f"SCHD — What changes HOLD: (a) operator revisits/rejects the defer, "
+            f"(b) book weight sustainably ≥ fire ≈{conc_fire:.1f}% with no buffer thesis, "
+            f"(c) dividend/credit thesis break. What does *not*: routine day moves or account-scoped % "
+            f"that disagree with book weight. Active disposition: "
+            f"{schd_prior or 'none on file'}.",
+            max_len=900,
+        )
+    )
+    lines.append(
+        _full_sentence(
+            f"SPCX — What upgrades priority: book weight rising into max_name band, high-severity catalyst "
+            f"≤5 sessions, or operator Hermes request. What keeps quiet: small sleeve + heat "
+            f"{_fmt_pct(heat)}. DD threshold {deep_dd:.0f}% is already in view as awareness.",
             max_len=700,
         )
     )
+    lines.append(
+        "Quality flip — any domain that was OK → DATA_UNAVAILABLE on cash totals freezes stage advance."
+    )
     lines.append("")
 
-    # 8 Learning log — only entries that biased this note
-    lines.append("🧠 *8. Learning log* (entries that biased this note)")
-    biased: list[dict[str, Any]] = []
-    focus_syms = set()
+    # ── 7. Research agenda (Hermes) ──────────────────────────────────────
+    lines.append("🔬 *7. Research agenda*")
+    agenda: list[str] = []
+    hermes_by = spine.get("hermes_by_plan") or {}
+    open_jobs = []
+    for pid, h in hermes_by.items():
+        ref = (h or {}).get("ref") or {}
+        for oid in ref.get("open_research_ids") or []:
+            open_jobs.append(f"{oid} (plan {pid})")
+        if ref.get("quality_state") == "OK" and ref.get("summary"):
+            agenda.append(
+                f"Ingested: plan `{pid}` result `{ref.get('result_id')}` — "
+                f"{_full_sentence(ref.get('summary'), max_len=200)}"
+            )
+    if schd_w is not None and schd_w >= max_name:
+        agenda.append(
+            "Commission / keep warm: SCHD catalyst_map + invalidation levels under hold_with_thesis "
+            "while defer is active (does calendar force size-review language?)."
+        )
+    if spcx_meta.get("dd_from_basis_pct") is not None and float(spcx_meta.get("dd_from_basis_pct") or 0) >= deep_dd * 0.8:
+        agenda.append(
+            "Commission / keep warm: SPCX multi-domain thesis check — what would upgrade awareness-only "
+            "to size-review; cite calendar + technicals without inventing targets."
+        )
+    if cash_pct is not None and cash_pct >= cash_band + 10:
+        agenda.append(
+            "S5 research gap: deployment candidates with multi-domain support *without* force-fill; "
+            "regime fit for first stage slice only when quality OK."
+        )
+    if not agenda:
+        agenda.append("No urgent Hermes commissions; maintain observe. Gaps listed in evidence map.")
+    for a in agenda[:6]:
+        lines.append(f"• {_full_sentence(a, max_len=320)}")
+    if open_jobs:
+        lines.append("Open Hermes jobs: " + ", ".join(open_jobs[:6]) + ".")
+    lines.append(
+        "Fingerprint de-dupe + TTL reuse apply; Telegram only on material change — not on pure re-ask."
+    )
+    lines.append("")
+
+    # ── 8. Operator loop ─────────────────────────────────────────────────
+    lines.append("👤 *8. Operator loop*")
+    if schd_prior or spcx_prior:
+        if schd_prior:
+            lines.append(f"• Active disposition SCHD: {schd_prior} (hard constraint on recs).")
+        if spcx_prior:
+            lines.append(f"• Active disposition SPCX: {spcx_prior}.")
+    else:
+        lines.append("• No SCHD/SPCX dispositions matched this pass (check learning store for others).")
+    biased = []
+    focus_syms = {"SCHD", "SPCX"}
     for p in focus:
-        for s in (p.get("symbols") or []):
+        for s in p.get("symbols") or []:
             focus_syms.add(str(s).upper())
-    focus_syms.update({"SCHD", "SPCX"})
     for L in learning:
         Lsyms = {str(s).upper() for s in (L.get("symbols") or [])}
         if Lsyms & focus_syms or str(L.get("disposition") or "").lower() in ("defer", "reject"):
             biased.append(L)
-    if not biased and not learning:
-        lines.append("No recent operator dispositions recorded.")
-    elif not biased:
-        lines.append("Dispositions on file but none matched this note's focus symbols.")
-        for L in learning[:3]:
-            note = _full_sentence(L.get("note") or "", max_len=120)
-            lines.append(
-                f"• {L.get('disposition')} · {L.get('situation_type')} · "
-                f"{','.join(L.get('symbols') or []) or '—'} · {note or '—'} · pin {L.get('thesis_version') or '—'}"
-            )
-    else:
-        for L in biased[:6]:
-            note = _full_sentence(L.get("note") or "", max_len=120)
-            lines.append(
-                f"• {L.get('disposition')} · {L.get('situation_type')} · "
-                f"{','.join(L.get('symbols') or []) or '—'} · {note or '—'} · pin {L.get('thesis_version') or '—'} "
-                f"→ applied as hard constraint on matching recs"
-            )
-    lines.append("")
-
-    # 9 Revisit + ack
-    lines.append("🔄 *9. Revisit + ack*")
+    for L in biased[:5]:
+        lines.append(
+            f"• {L.get('disposition')} · {','.join(L.get('symbols') or []) or '—'} · "
+            f"{_full_sentence(L.get('note') or '', max_len=100)} · "
+            f"plan `{L.get('plan_id') or '—'}` · pin {L.get('thesis_version') or '—'}"
+        )
     plan_ids = [p.get("plan_id") for p in focus if p.get("plan_id")]
     if plan_ids:
-        lines.append("Plans: " + " · ".join(f"`{x}`" for x in plan_ids[:6]))
-        lines.append("Ack: `/cio ack <plan_id>` or reply `ack` on the Telegram thread.")
+        lines.append("Plans: " + " · ".join(f"`{x}`" for x in plan_ids[:8]))
+        lines.append("Ack path: `/cio ack <plan_id>` or reply `ack` on Telegram CIO thread.")
     else:
-        lines.append("No material plan_ids in focus set.")
+        lines.append("No material plan_ids in focus set this pass.")
     lines.append(
-        f"Revisit: 24h, or earlier if cash moves ≥3pp, SCHD book weight ≥{conc_fire}%, "
-        "or SPCX makes new lows vs basis, or a re-entry card flips to READY with confirmations complete."
+        f"Revisit: 24h, or earlier on cash ±3pp, SCHD ≥{conc_fire:.1f}%, SPCX new lows vs basis, "
+        "or READY re-entry with confirmations complete."
     )
     lines.append(f"Thesis: `/cio thesis` ({pin})")
+    lines.append("")
+
+    # ── 9. Evidence map ──────────────────────────────────────────────────
+    lines.append("📎 *9. Evidence map*")
+    for row in evidence_map_lines(spine)[:16]:
+        lines.append(f"• {row}")
+    if not spine:
+        lines.append("• evidence_spine missing — portfolio/cash/risk from collect_desk_inputs only.")
+    lines.append("Material numbers above are grounded in Data Broker / thesis / learning or labeled DATA_UNAVAILABLE.")
     lines.append("No orders/stops from chat · READ_ONLY_ADVISORY")
     return "\n".join(lines)
 
+
+def render_memo_spine_telegram(data: Optional[dict[str, Any]] = None) -> str:
+    """Short Telegram default: exec thesis + 3 material points + recs + links."""
+    d = data or collect_desk_inputs()
+    pin = d.get("pin") or "desk@?"
+    th = d.get("thesis") or {}
+    thr = d.get("thresholds") or {}
+    port = d.get("portfolio") or {}
+    learning = d.get("learning") or []
+    cash_stage = d.get("cash_stage") or {}
+    stance = th.get("stance") or "defensive_observe"
+    cash_band = float(thr.get("cash_band_min_pct") or 20)
+    conc_fire = float(thr.get("concentration_fire_pct") or 16.5)
+    cash_pct = port.get("cash_pct")
+    schd_w = port.get("schd_weight_pct")
+    spcx = port.get("spcx") or {}
+    try:
+        try:
+            from lib.cio_desk_depth import active_disposition_phrase  # type: ignore
+        except Exception:
+            from scripts.lib.cio_desk_depth import active_disposition_phrase  # type: ignore
+    except Exception:
+        def active_disposition_phrase(learning, symbols):  # type: ignore
+            return None
+    schd_prior = active_disposition_phrase(learning, ["SCHD"])
+    lines = [
+        f"🏦 *CIO memo spine* · `{pin}` · {stance} · READ_ONLY",
+        _full_sentence(th.get("summary") or f"{pin} governs observe/stage.", max_len=320),
+        "────────────────",
+        f"1) Cash {_fmt_pct(cash_pct)} vs band {cash_band:.0f}% · "
+        f"{cash_stage.get('label') or 'STAGE_?'} · {_fmt_usd(port.get('total_cash'))} / {_fmt_usd(port.get('total_value'))}",
+        f"2) SCHD {_fmt_pct(schd_w)} vs fire ≈{conc_fire:.1f}% · "
+        + (f"{schd_prior}" if schd_prior else "size-watch"),
+        f"3) SPCX weight {_fmt_pct(spcx.get('book_weight_pct'))} · "
+        f"DD {_fmt_pct(spcx.get('dd_from_basis_pct'))} · awareness-only",
+        "────────────────",
+        f"*Recs:* HOLD/STAGE cash · HOLD SCHD"
+        + (" (defer bound)" if schd_prior else "")
+        + " · HOLD SPCX observe · no buy-now.",
+        "Full memo: `/v3/cio` desk note · plans via `/cio plans`",
+        "No orders/stops · READ_ONLY_ADVISORY",
+    ]
+    return "\n".join(lines)
 
 def render_situation_card_contrast(plan: dict[str, Any]) -> str:
     """Short current-style situation card for side-by-side quality contrast."""
@@ -1257,9 +1270,11 @@ def render_situation_card_contrast(plan: dict[str, Any]) -> str:
 
 
 def generate_desk_synthesis_v1() -> dict[str, Any]:
-    """Return structured payload + rendered note + contrast sample (CLI = API)."""
+    """Return structured payload + rendered institutional memo (CLI = API)."""
     data = collect_desk_inputs()
-    note = render_desk_note(data, telegram=True)
+    note = render_desk_note(data, telegram=False)
+    note_tg = render_desk_note(data, telegram=True)
+    spine_tg = render_memo_spine_telegram(data)
     sample = None
     for p in data.get("material_plans") or []:
         if p.get("plan_id") == "plan_79fe9e72f2d4":
@@ -1269,7 +1284,17 @@ def generate_desk_synthesis_v1() -> dict[str, Any]:
         sample = data["material_plans"][0]
     contrast = render_situation_card_contrast(sample) if sample else "(no plan)"
 
-    # Side-by-side disposition demo for SCHD (quality bar C)
+    # Side-by-side: legacy thin cards vs integrated memo spine
+    thin_cards = []
+    for p in (data.get("material_plans") or [])[:3]:
+        st = str(p.get("situation_type") or "")
+        if st.startswith(("S5", "S6", "S1")):
+            thin_cards.append(render_situation_card_contrast(p))
+    before_after = {
+        "legacy_s_cards": "\n\n".join(thin_cards) if thin_cards else "(no S5/S6/S1 open)",
+        "memo_spine": spine_tg,
+    }
+
     schd_before = (
         "Highest-signal under desk: choose hold_with_thesis — stage/observe rather than force action."
     )
@@ -1282,24 +1307,25 @@ def generate_desk_synthesis_v1() -> dict[str, Any]:
     except Exception:
         prior = None
     schd_after = (
-        f"{prior} Primary under {data.get('pin')}: HOLD / size-watch — not trim/dispose — "
+        f"{prior} Primary under {data.get('pin')}: HOLD / wait for price buffer — not trim/dispose — "
         "while defer is active and no stronger rule breach."
         if prior
         else schd_before + " (no SCHD disposition on file)"
     )
 
     port = data.get("portfolio") or {}
+    spine = data.get("evidence_spine") or {}
     return {
         "ok": True,
         "as_of": data.get("as_of"),
         "thesis_version": data.get("pin"),
-        "version": "desk-note-v1.2.2",
+        "version": "desk-note-v1.3.0",
         "portfolio": {
             k: port.get(k)
             for k in (
                 "total_value", "total_cash", "cash_pct", "day_change_pct",
                 "holdings_count", "heat_pct", "stops_active", "top_weights",
-                "data_quality", "schd_weight_pct",
+                "data_quality", "schd_weight_pct", "spcx",
             )
         },
         "cash_stage": data.get("cash_stage"),
@@ -1319,19 +1345,34 @@ def generate_desk_synthesis_v1() -> dict[str, Any]:
             "micro_count": (data.get("reentry_book") or {}).get("micro_count"),
             "dropped_bad_rr": (data.get("reentry_book") or {}).get("dropped_bad_rr"),
             "core_count": (data.get("reentry_book") or {}).get("core_count"),
-            "core_display": (data.get("reentry_book") or {}).get("core_display"),
             "has_stage_eligible_core": (data.get("reentry_book") or {}).get("has_stage_eligible_core"),
-            "micro_expanded_count": (data.get("reentry_book") or {}).get("micro_expanded_count"),
-            "micro_collapsed_count": (data.get("reentry_book") or {}).get("micro_collapsed_count"),
             "cards": (data.get("reentry_book") or {}).get("cards") or [],
             "core_cards": (data.get("reentry_book") or {}).get("core_cards") or [],
-            "micro_line": (data.get("reentry_book") or {}).get("micro_line"),
-            "sub_rr_line": (data.get("reentry_book") or {}).get("sub_rr_line"),
-            "footer": (data.get("reentry_book") or {}).get("footer"),
             "error": (data.get("reentry_book") or {}).get("error"),
         },
+        "evidence_spine": {
+            "domains_present": spine.get("domains_present"),
+            "gaps": spine.get("gaps"),
+            "focus_symbols": spine.get("focus_symbols"),
+            "name_meta": spine.get("name_meta"),
+            "catalyst_summary": {
+                s: {
+                    "quality": (p or {}).get("quality") or (p or {}).get("quality_state"),
+                    "max_severity": (p or {}).get("max_severity"),
+                    "next": (p or {}).get("next_event"),
+                }
+                for s, p in (spine.get("catalyst_by_symbol") or {}).items()
+            },
+            "technicals_summary": {
+                s: {"rsi": t.get("rsi"), "quality": t.get("quality")}
+                for s, t in (spine.get("technicals_by_symbol") or {}).items()
+            },
+        },
         "note": note,
+        "note_telegram": note_tg,
+        "memo_spine_telegram": spine_tg,
         "contrast_card": contrast,
+        "before_after": before_after,
         "schd_disposition_demo": {"before": schd_before, "after": schd_after},
         "material_plan_ids": [p.get("plan_id") for p in (data.get("material_plans") or [])][:12],
         "learning_count": len(data.get("learning") or []),
@@ -1344,8 +1385,13 @@ if __name__ == "__main__":
     out = generate_desk_synthesis_v1()
     note = out.get("note") or ""
     print(note)
-    print("\n======== CONTRAST ========\n")
-    print(out.get("contrast_card"))
+    print("\n======== TELEGRAM SPINE ========\n")
+    print(out.get("memo_spine_telegram"))
+    print("\n======== BEFORE (legacy S-cards) ========\n")
+    ba = out.get("before_after") or {}
+    print(ba.get("legacy_s_cards") or "(none)")
+    print("\n======== AFTER (memo spine) ========\n")
+    print(ba.get("memo_spine") or "")
     print("\n======== SCHD DISPOSITION ========\n")
     demo = out.get("schd_disposition_demo") or {}
     print("BEFORE:", demo.get("before"))
@@ -1354,8 +1400,14 @@ if __name__ == "__main__":
     print(out.get("portfolio"))
     print("--- cash_stage ---")
     print(out.get("cash_stage"))
+    print("--- evidence spine domains ---")
+    print((out.get("evidence_spine") or {}).get("domains_present"))
+    print("--- catalyst ---")
+    print((out.get("evidence_spine") or {}).get("catalyst_summary"))
+    print("--- technicals ---")
+    print((out.get("evidence_spine") or {}).get("technicals_summary"))
     rb = out.get("reentry_book") or {}
-    print("--- reentry counts v1.2.2 ---")
+    print("--- reentry counts ---")
     print(
         "core_full", rb.get("core_full"),
         "sub_rr", rb.get("sub_rr"),
@@ -1365,11 +1417,7 @@ if __name__ == "__main__":
     for c in rb.get("core_cards") or []:
         print("CORE_FULL", c.get("symbol"), c.get("state"), "rr", c.get("rr"), (c.get("stage_gate") or "")[:50])
         assert c.get("rr") is None or float(c.get("rr")) >= 1.5, c
-    if rb.get("sub_rr_line"):
-        print("SUB_RR", (rb.get("sub_rr_line") or "")[:220])
-    if rb.get("micro_line"):
-        print("MICRO_LINE", (rb.get("micro_line") or "")[:200])
-    # Persist latest note for operators / Telegram
+    # Persist latest full memo + spine
     try:
         root = Path("/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild")
         for r in _candidate_project_roots():
@@ -1377,7 +1425,10 @@ if __name__ == "__main__":
                 root = r
                 break
         out_path = root / "data" / "cio" / "cio_desk_note_latest.md"
+        spine_path = root / "data" / "cio" / "cio_desk_memo_spine_latest.md"
         out_path.write_text(note + "\n", encoding="utf-8")
+        spine_path.write_text((out.get("memo_spine_telegram") or "") + "\n", encoding="utf-8")
         print(f"\n[wrote {out_path}]")
+        print(f"[wrote {spine_path}]")
     except Exception as e:
         print(f"[persist skipped: {e}]")

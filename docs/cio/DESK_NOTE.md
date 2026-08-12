@@ -1,28 +1,29 @@
-# Desk note product (synthesis v1.2)
+# Desk note product (synthesis v1.3 — institutional book memo)
 
-**Code:** [`scripts/lib/cio_desk_synthesis.py`](../../scripts/lib/cio_desk_synthesis.py) + [`scripts/lib/cio_desk_depth.py`](../../scripts/lib/cio_desk_depth.py)  
-**Artifact (host):** `data/cio/cio_desk_note_latest.md`  
+**Code:** [`scripts/lib/cio_desk_synthesis.py`](../../scripts/lib/cio_desk_synthesis.py) + [`scripts/lib/cio_desk_depth.py`](../../scripts/lib/cio_desk_depth.py) + [`scripts/lib/cio_evidence_spine.py`](../../scripts/lib/cio_evidence_spine.py)  
+**Artifact (host):** `data/cio/cio_desk_note_latest.md` · spine `cio_desk_memo_spine_latest.md`  
 **Authority:** READ_ONLY · pins live `desk@vN`  
 **API:** `GET /api/v3/cio/desk-note` → same `generate_desk_synthesis_v1()` payload as CLI
 
-Portfolio-grade advisory memo under `desk@vN` — not a full wealth-management report.
+**Institutional portfolio advisory memo** under `desk@vN` — one thesis-governed book narrative (cash × concentration × DD), not three siloed S-cards. Not a 40-page PDF clone.
 
 ---
 
-## Section schema (v1.2)
+## Section schema (v1.3)
 
 | # | Section | Content |
 |---|---|---|
-| 1 | Thesis header | Full summary, structured risk posture, principles |
-| 2 | Portfolio snapshot | Book, cash vs band, heat, stops, top weights, **cash STAGE_0/1/2** |
-| 3 | Sector posture | Defensive vs offensive share, lookthrough sectors, correlated sleeves |
-| 4 | Material situations | Distinct thesis-fit; **disposition-aware Rec** |
-| 5 | Re-entry book | `build_decision_desk` READY/NEAR/OVERSOLD; zone/R:R/size; stage gate; desk fit |
-| 6 | Cross-position | Concentration, cash runway, industrial/aero sleeve |
-| 7 | Desk recommendations | Disposition-bound holds; re-entry top under stage |
-| 7b | Deeper analysis | What would change cash / SCHD / SPCX calls |
-| 8 | Learning log | Only entries that biased this note |
-| 9 | Revisit + ack | Plan ids, revisit triggers, READ_ONLY footer |
+| 1 | Executive thesis | Stance, pin, 5–8 line book argument + principles + risk posture |
+| 2 | Portfolio state | Book, day P/L, cash $/%, band gap, holdings, heat, stops, quality, cash stage |
+| 3 | Allocation & concentration | Top weights, names ≥12%, fire distance, sector tilt |
+| 4 | Material situations (**integrated**) | One narrative: cash × SCHD × SPCX + catalyst/RSI micro-context; plan anchors only |
+| 5 | What we are doing and why | Named recs with conviction; non-action first-class; disposition-bound |
+| 6 | What would change the call | Explicit triggers per cash / SCHD / SPCX / quality |
+| 7 | Research agenda | Hermes questions + open jobs + ingested results |
+| 8 | Operator loop | Dispositions, plan_ids, ack path, revisit |
+| 9 | Evidence map | Domains + as_of; catalyst/technicals/Hermes; DATA_UNAVAILABLE explicit |
+
+Telegram default preference: **memo spine** (`render_memo_spine_telegram`) — exec thesis + 3 material points + recs — not three disconnected detector dumps.
 
 ### Cash stage gates (bind re-entry language)
 
