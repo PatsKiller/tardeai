@@ -1,10 +1,10 @@
-"""CIO desk synthesis v1.2 — portfolio-grade advisory note under live desk@vN.
+"""CIO desk synthesis v1.2.1 — portfolio-grade advisory note under live desk@vN.
 
 READ_ONLY_ADVISORY. Combines thesis + Data Broker snapshot + material plans +
 operator learning + re-entry book + sector defensive posture into one
 operator-facing desk note (Telegram + /v3/cio).
 
-v1.2: re-entry book (desk-governed stage 0/1/2), sector posture (lookthrough),
+v1.2.1: re-entry book (desk-governed stage 0/1/2), sector posture (lookthrough),
 disposition-conditioned recommendation text, section order extended,
 no mid-sentence truncation, CLI/API parity.
 """
@@ -626,6 +626,70 @@ def _multi_domain_line(p: dict[str, Any], port: dict[str, Any]) -> str:
     return core
 
 
+
+def _book_weight_for_plan(p: dict[str, Any], top: list[dict[str, Any]], port: dict[str, Any]) -> Optional[float]:
+    syms = [str(s).upper() for s in (p.get("symbols") or [])]
+    if not syms:
+        return None
+    # top_weights
+    for t in top:
+        if t.get("symbol") == syms[0]:
+            return _f(t.get("weight_pct"))
+    sw = port.get("symbol_weights") or {}
+    if syms[0] in sw:
+        return _f(sw.get(syms[0]))
+    # by_symbol_rows aggregate
+    rows = (port.get("by_symbol_rows") or {}).get(syms[0]) or []
+    if rows:
+        total = 0.0
+        any_w = False
+        for r in rows:
+            w = _f(r.get("weight_pct") or r.get("weight"))
+            if w is not None:
+                total += w
+                any_w = True
+        if any_w:
+            return total
+    return None
+
+
+def _is_residual_dead_name(
+    p: dict[str, Any],
+    *,
+    book_w: Optional[float],
+) -> bool:
+    """True when fire is residual disposition/DD and book weight missing or ≈0."""
+    if book_w is not None and book_w >= 0.25:
+        return False
+    fire = " ".join(str(x) for x in (p.get("fire_reasons") or [])).lower()
+    st = str(p.get("situation_type") or "")
+    residual_tokens = (
+        "disposition_loss_100",
+        "deep_drawdown_from_basis_100",
+        "disposition_loss_99",
+        "weight_0",
+        "dead",
+        "worthless",
+    )
+    if any(tok in fire for tok in residual_tokens):
+        return True
+    # 100% style DD/loss with no meaningful book weight
+    if re.search(r"(drawdown|loss|dd)[_ ].*100", fire) or "100.0pct" in fire or "100pct" in fire:
+        if book_w is None or book_w < 0.25:
+            return True
+    # S1/S6 on name not in book at all
+    if st in ("S1_POSITION_LIFECYCLE", "S6_CONCENTRATION_OR_DISPOSITION"):
+        if book_w is None or book_w < 0.05:
+            # keep SCHD always in main if somehow zero - safety
+            syms = [str(s).upper() for s in (p.get("symbols") or [])]
+            if "SCHD" in syms or "SPCX" in syms:
+                return False
+            # residual if fire claims huge loss/DD or disposition
+            if "disposition" in fire or "drawdown" in fire or "100" in fire:
+                return True
+    return False
+
+
 def render_desk_note(data: Optional[dict[str, Any]] = None, *, telegram: bool = True) -> str:
     """Render operator-facing desk note v1.2 (complete sentences, disposition-aware)."""
     d = data or collect_desk_inputs()
@@ -699,12 +763,12 @@ def render_desk_note(data: Optional[dict[str, Any]] = None, *, telegram: bool = 
     lines: list[str] = []
     stage_label = cash_stage.get("label") or "STAGE_?"
     if telegram:
-        lines.append(f"🏦 *CIO desk note v1.2* · READ_ONLY · `{pin}`")
+        lines.append(f"🏦 *CIO desk note v1.2.1* · READ_ONLY · `{pin}`")
         lines.append(
             f"stance: *{stance}* · cash {stage_label} · as_of {str(d.get('as_of') or '')[:19]}Z"
         )
     else:
-        lines.append(f"# CIO desk note v1.2 · {pin}")
+        lines.append(f"# CIO desk note v1.2.1 · {pin}")
         lines.append(f"stance: {stance} · cash {stage_label} · as_of {d.get('as_of')}")
     lines.append("────────────────")
 
@@ -784,9 +848,10 @@ def render_desk_note(data: Optional[dict[str, Any]] = None, *, telegram: bool = 
             lines.append("Data notes: " + "; ".join(qn[:2]) + ".")
     lines.append("")
 
-    # 4 Material situations — disposition-aware
+    # 4 Material situations — disposition-aware; residual dead names → appendix
     lines.append("📍 *4. Material situations* (desk-filtered, disposition-aware)")
     focus: list[dict[str, Any]] = []
+    appendix: list[dict[str, Any]] = []
     seen_keys: set[str] = set()
     for p in materials:
         st = str(p.get("situation_type") or "")
@@ -798,8 +863,8 @@ def render_desk_note(data: Optional[dict[str, Any]] = None, *, telegram: bool = 
             continue
         if st.startswith("S6") and syms == ["CASH"]:
             continue
+        book_w = _book_weight_for_plan(p, top, port)
         if st.startswith("S6") and syms:
-            book_w = next((t["weight_pct"] for t in top if t["symbol"] == syms[0]), None)
             fire = " ".join(str(x) for x in (p.get("fire_reasons") or []))
             claimed = None
             for tok in fire.replace(",", " ").split():
@@ -810,14 +875,21 @@ def render_desk_note(data: Optional[dict[str, Any]] = None, *, telegram: bool = 
                         pass
             if claimed is not None and claimed >= 25:
                 if book_w is None or book_w < float(max_name) * 0.5:
+                    # account-scoped artifact — skip entirely (not even appendix)
                     continue
             if book_w is not None and book_w < 5 and claimed and claimed >= 30:
                 continue
-        if st in ("S5_CASH_DEPLOYMENT", "S6_CONCENTRATION_OR_DISPOSITION", "S1_POSITION_LIFECYCLE"):
-            focus.append(p)
-            seen_keys.add(key)
+        if st not in ("S5_CASH_DEPLOYMENT", "S6_CONCENTRATION_OR_DISPOSITION", "S1_POSITION_LIFECYCLE"):
+            continue
+        seen_keys.add(key)
+        if _is_residual_dead_name(p, book_w=book_w):
+            appendix.append({**p, "_book_w": book_w})
+            continue
+        focus.append(p)
         if len(focus) >= 5:
-            break
+            # keep scanning for appendix demotions
+            pass
+    focus = focus[:5]
 
     if not focus:
         lines.append("No open material plans after desk filters.")
@@ -836,50 +908,101 @@ def render_desk_note(data: Optional[dict[str, Any]] = None, *, telegram: bool = 
         lines.append(f"  Thesis fit: {ta_out}")
         lines.append(f"  Multi-domain: {_multi_domain_line(p, port)}")
         lines.append(f"  Plan: `{pid}` · pin `{p.get('thesis_version') or pin}`.")
+    if appendix:
+        lines.append(
+            f"📎 *Appendix — residual / dead-name situations* ({len(appendix)}; "
+            "book weight missing or ≈0 — not main material)"
+        )
+        for p in appendix[:8]:
+            st = (p.get("situation_type") or "").replace("_", " ")
+            syms = ",".join(p.get("symbols") or []) or "—"
+            fire = ", ".join(str(x) for x in (p.get("fire_reasons") or [])[:3])
+            bw = p.get("_book_w")
+            lines.append(
+                f"• {st} · {syms} · fire={fire or '—'} · "
+                f"book_w={_fmt_pct(bw) if bw is not None else 'missing/≈0'} · "
+                f"`{p.get('plan_id')}` — demoted (residual disposition/DD)."
+            )
     lines.append("")
 
-    # 5 Re-entry book (NEW)
+    # 5 Re-entry book — core vs micro (v1.2.1)
+    core_n = reentry.get("core_count")
+    micro_n = reentry.get("micro_count")
     lines.append(
-        f"📋 *5. Re-entry book* · `{pin}` · stage={cash_stage.get('stage', '?')} ({stage_label})"
+        f"📋 *5. Re-entry book* · `{pin}` · stage={cash_stage.get('stage', '?')} ({stage_label}) · "
+        f"core={core_n if core_n is not None else '?'} micro={micro_n if micro_n is not None else '?'}"
     )
-    cards = reentry.get("cards") or []
     if reentry.get("error"):
         lines.append(f"Re-entry desk error: {reentry.get('error')} (fail-soft).")
-    if not cards:
+    core_cards = reentry.get("core_cards") or [
+        c for c in (reentry.get("cards") or []) if c.get("tier") in (None, "core")
+    ]
+    # Prefer core_cards; fall back to cards filtered
+    if not core_cards and reentry.get("cards"):
+        core_cards = [c for c in reentry["cards"] if c.get("tier") != "micro_ready"]
+    micro_ready = reentry.get("micro_expanded") or [
+        c for c in (reentry.get("cards") or []) if c.get("tier") == "micro_ready"
+    ]
+
+    def _emit_card(c: dict[str, Any]) -> None:
+        zone = c.get("entry_zone") or "—"
+        if c.get("rr_error"):
+            rr_s = "DATA_ERROR (suppressed absurd R:R)"
+        elif c.get("rr") is not None:
+            rr_s = f"{c.get('rr')}"
+        else:
+            rr_s = "—"
+        sz = c.get("sizing") or {}
+        size_s = "—"
+        if sz.get("shares") is not None:
+            alloc = sz.get("allocation")
+            alloc_s = _fmt_usd(alloc) if isinstance(alloc, (int, float)) else str(alloc or "—")
+            size_s = f"{sz.get('shares')} sh · {alloc_s}"
+            if sz.get("note"):
+                size_s += f" ({_full_sentence(sz.get('note'), max_len=60)})"
+        px = c.get("price")
+        if isinstance(px, (int, float)):
+            px_s = f"${px:.2f}" if px < 1000 else _fmt_usd(px)
+        else:
+            px_s = str(px or "—")
         lines.append(
-            "No actionable READY/NEAR/OVERSOLD candidates after desk filters "
-            f"(actionable_raw={reentry.get('actionable_count', 0)})."
+            f"• *{c.get('symbol')}* · {c.get('state')} · px {px_s} · "
+            f"zone {zone} · R:R {rr_s} · RSI {c.get('rsi') if c.get('rsi') is not None else '—'} · "
+            f"size {size_s}"
+        )
+        lines.append(f"  Stage gate: {_full_sentence(c.get('stage_gate') or '', max_len=320)}")
+        lines.append(f"  Desk fit: {_full_sentence(c.get('desk_fit') or '', max_len=400)}")
+        why = c.get("why") or []
+        if why:
+            lines.append(f"  Why: {_full_sentence('; '.join(str(x) for x in why[:2]), max_len=240)}")
+        gaps = c.get("confirmation_gaps") or []
+        if gaps:
+            lines.append(f"  Confirmation gaps: {', '.join(str(g) for g in gaps[:4])}.")
+        lines.append(f"  Pin `{c.get('thesis_version') or pin}` · READ_ONLY.")
+
+    if not core_cards and not micro_ready:
+        lines.append(
+            "No core-relevant READY/NEAR/OVERSOLD candidates after quality filter "
+            f"(actionable_raw={reentry.get('actionable_count', 0)}, "
+            f"core={core_n}, micro={micro_n})."
         )
     else:
-        lines.append(
-            "Symbol | State | Zone | R:R | Size sketch | Stage gate"
-        )
-        for c in cards[:10]:
-            zone = c.get("entry_zone") or "—"
-            rr = c.get("rr")
-            rr_s = f"{rr}" if rr is not None else "—"
-            sz = c.get("sizing") or {}
-            size_s = "—"
-            if sz.get("shares") is not None:
-                alloc = sz.get("allocation")
-                alloc_s = _fmt_usd(alloc) if isinstance(alloc, (int, float)) else str(alloc or "—")
-                size_s = f"{sz.get('shares')} sh · {alloc_s}"
-                if sz.get("note"):
-                    size_s += f" ({_full_sentence(sz.get('note'), max_len=60)})"
+        if core_cards:
             lines.append(
-                f"• *{c.get('symbol')}* · {c.get('state')} · px {_fmt_usd(c.get('price')) if isinstance(c.get('price'), (int, float)) else c.get('price')} · "
-                f"zone {zone} · R:R {rr_s} · RSI {c.get('rsi') if c.get('rsi') is not None else '—'} · "
-                f"size {size_s}"
+                f"*Core-relevant* (px≥$5 or liquid ADV; not wash-blocked; confirmations evaluated) — {len(core_cards)} shown:"
             )
-            lines.append(f"  Stage gate: {_full_sentence(c.get('stage_gate') or '', max_len=320)}")
-            lines.append(f"  Desk fit: {_full_sentence(c.get('desk_fit') or '', max_len=400)}")
-            why = c.get("why") or []
-            if why:
-                lines.append(f"  Why: {_full_sentence('; '.join(str(x) for x in why[:2]), max_len=240)}")
-            gaps = c.get("confirmation_gaps") or []
-            if gaps:
-                lines.append(f"  Confirmation gaps: {', '.join(str(g) for g in gaps[:4])}.")
-            lines.append(f"  Pin `{c.get('thesis_version') or pin}` · READ_ONLY.")
+            for c in core_cards[:10]:
+                _emit_card(c)
+        else:
+            lines.append("No core-relevant names this pass (all actionable were micro/speculative or filtered).")
+        if micro_ready:
+            lines.append(
+                f"*Micro READY + confirmations_complete* (exception expand) — {len(micro_ready)}:"
+            )
+            for c in micro_ready[:3]:
+                _emit_card(c)
+    if reentry.get("micro_line"):
+        lines.append("• " + _full_sentence(reentry.get("micro_line"), max_len=500))
     watch = reentry.get("watch") or []
     if watch:
         lines.append(
@@ -889,8 +1012,10 @@ def render_desk_note(data: Optional[dict[str, Any]] = None, *, telegram: bool = 
         )
     lines.append(_full_sentence(reentry.get("footer") or (
         f"Candidates from Data Broker reentry_decision_desk; READY is deterministic; {pin} governs stage."
-    ), max_len=280))
+    ), max_len=360))
     lines.append("")
+    # cards variable for later rec section — prefer core
+    cards = core_cards or micro_ready or (reentry.get("cards") or [])
 
     # 6 Cross-position
     lines.append("🔗 *6. Cross-position / correlated sleeves*")
@@ -1137,7 +1262,7 @@ def generate_desk_synthesis_v1() -> dict[str, Any]:
         "ok": True,
         "as_of": data.get("as_of"),
         "thesis_version": data.get("pin"),
-        "version": "desk-note-v1.2",
+        "version": "desk-note-v1.2.1",
         "portfolio": {
             k: port.get(k)
             for k in (
@@ -1158,7 +1283,14 @@ def generate_desk_synthesis_v1() -> dict[str, Any]:
             "ok": (data.get("reentry_book") or {}).get("ok"),
             "stage": (data.get("reentry_book") or {}).get("stage"),
             "actionable_count": (data.get("reentry_book") or {}).get("actionable_count"),
+            "core_count": (data.get("reentry_book") or {}).get("core_count"),
+            "micro_count": (data.get("reentry_book") or {}).get("micro_count"),
+            "core_display": (data.get("reentry_book") or {}).get("core_display"),
+            "micro_expanded_count": (data.get("reentry_book") or {}).get("micro_expanded_count"),
+            "micro_collapsed_count": (data.get("reentry_book") or {}).get("micro_collapsed_count"),
             "cards": (data.get("reentry_book") or {}).get("cards") or [],
+            "core_cards": (data.get("reentry_book") or {}).get("core_cards") or [],
+            "micro_line": (data.get("reentry_book") or {}).get("micro_line"),
             "footer": (data.get("reentry_book") or {}).get("footer"),
             "error": (data.get("reentry_book") or {}).get("error"),
         },
@@ -1186,9 +1318,14 @@ if __name__ == "__main__":
     print(out.get("portfolio"))
     print("--- cash_stage ---")
     print(out.get("cash_stage"))
-    print("--- reentry cards ---")
-    for c in (out.get("reentry_book") or {}).get("cards") or []:
-        print(c.get("symbol"), c.get("state"), c.get("stage_gate", "")[:80])
+    rb = out.get("reentry_book") or {}
+    print("--- reentry core/micro ---")
+    print("core_count", rb.get("core_count"), "micro_count", rb.get("micro_count"))
+    print("core_display", rb.get("core_display"), "micro_expanded", rb.get("micro_expanded_count"))
+    for c in rb.get("core_cards") or rb.get("cards") or []:
+        print("CORE", c.get("symbol"), c.get("state"), "rr", c.get("rr"), c.get("rr_error"), (c.get("stage_gate") or "")[:60])
+    if rb.get("micro_line"):
+        print("MICRO_LINE", (rb.get("micro_line") or "")[:200])
     # Persist latest note for operators / Telegram
     try:
         root = Path("/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild")

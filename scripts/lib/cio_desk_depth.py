@@ -43,6 +43,12 @@ EXCLUDE_FROM_ACTIONABLE = frozenset({
     "CURRENTLY HELD", "WASH BLOCK", "STALE", "MISSING MARKET", "MISSING PLAN",
 })
 
+# Re-entry quality filter (v1.2.1)
+CORE_MIN_PRICE = 5.0          # $ — below this is micro/speculative by default
+CORE_MIN_ADV = 1_000_000.0    # optional avg dollar volume threshold when present
+MAX_SANE_RR = 12.0            # R:R above this is treated as data error (not displayed as N:1)
+
+
 STATE_RANK = {
     "READY TO REVIEW": 0,
     "NEAR ENTRY": 1,
@@ -578,6 +584,161 @@ def _desk_fit_for_candidate(
     return " ".join(bits)
 
 
+
+def sanitize_rr(rr: Any) -> tuple[Optional[float], Optional[str]]:
+    """Return (display_rr, error_flag). Absurd R:R is suppressed as data error."""
+    v = _f(rr)
+    if v is None:
+        return None, None
+    if v <= 0:
+        return None, "rr_non_positive"
+    if v > MAX_SANE_RR:
+        return None, f"rr_absurd_{v:.1f}"
+    return round(v, 2), None
+
+
+def _adv_from_row(row: dict[str, Any]) -> Optional[float]:
+    """Best-effort average dollar volume if broker/advisory attached it."""
+    for key in ("adv", "avg_dollar_volume", "dollar_volume", "avg_volume_usd"):
+        v = _f(row.get(key))
+        if v is not None:
+            return v
+    adv = row.get("advisory") or {}
+    if isinstance(adv, dict):
+        for key in ("adv", "avg_dollar_volume", "dollar_volume"):
+            v = _f(adv.get(key))
+            if v is not None:
+                return v
+        sizing = adv.get("sizing") or {}
+        if isinstance(sizing, dict):
+            v = _f(sizing.get("adv") or sizing.get("avg_dollar_volume"))
+            if v is not None:
+                return v
+    return None
+
+
+def is_core_relevant(row: dict[str, Any]) -> bool:
+    """Core-relevant re-entry: price≥$5 (or ADV ok), not wash-blocked, confirmations evaluated."""
+    price = _f(row.get("price"))
+    if row.get("wash_blocked"):
+        return False
+    adv = row.get("advisory") or {}
+    # Confirmations must have been evaluated (complete OR non-empty gap list OR criteria present)
+    conf_ok = bool(adv.get("confirmations_complete"))
+    gaps = adv.get("confirmation_gaps")
+    criteria = adv.get("criteria")
+    conf_evaluated = (
+        conf_ok
+        or (isinstance(gaps, list) and len(gaps) > 0)
+        or (isinstance(criteria, list) and len(criteria) > 0)
+        or gaps is not None
+    )
+    if not conf_evaluated:
+        return False
+    adv_usd = _adv_from_row(row)
+    if price is not None and price >= CORE_MIN_PRICE:
+        return True
+    if adv_usd is not None and adv_usd >= CORE_MIN_ADV and price is not None and price >= 1.0:
+        # Liquid name under $5 still can be core if ADV is institutional
+        return True
+    return False
+
+
+def _row_to_card(
+    r: dict[str, Any],
+    *,
+    pin: str,
+    stage_n: int,
+    cash_stage: dict[str, Any],
+    thr: dict[str, Any],
+    cash_pct: Optional[float],
+    symbol_weights: dict[str, float],
+    sector_posture: Optional[dict[str, Any]],
+    heat_pct: Optional[float],
+    tier: str,
+) -> dict[str, Any]:
+    intel = r.get("intel") or {}
+    adv = r.get("advisory") or {}
+    sizing = adv.get("sizing") or {}
+    state = str(intel.get("state") or "")
+    conf_ok = bool(adv.get("confirmations_complete"))
+    if stage_n == 0:
+        gate = "STAGE_0 watch only; no stage"
+    elif stage_n == 1:
+        gate = "STAGE_1 paper plan only — sized sketch OK; operator ack required; no execution"
+    else:
+        alloc = _f(sizing.get("allocation"))
+        book = _f(sizing.get("book_equity"))
+        post_w = (alloc / book * 100.0) if alloc and book else None
+        max_name = float(thr.get("max_single_name_weight_pct") or 12)
+        heat_ok = heat_pct is None or float(heat_pct) < 5.0
+        if (
+            state == "READY TO REVIEW"
+            and conf_ok
+            and (post_w is None or post_w < max_name)
+            and heat_ok
+        ):
+            gate = (
+                "STAGE_2 advisory first-slice eligible — "
+                f"if you authorize, first slice ≈ {sizing.get('shares')} sh / "
+                f"${_fmt(alloc, 0) if alloc else 'n/a'} "
+                f"({sizing.get('note') or '1% risk / 10% cap'}); still READ_ONLY"
+            )
+        else:
+            gate = (
+                "STAGE_2 not met — treat as STAGE_1 paper plan "
+                "(need READY + confirmations + size under max_name + heat OK)"
+            )
+
+    zone = None
+    if r.get("entry_low") is not None and r.get("entry_high") is not None:
+        zone = f"${_fmt(r.get('entry_low'))}–${_fmt(r.get('entry_high'))}"
+    rr_disp, rr_err = sanitize_rr(r.get("rr"))
+    return {
+        "symbol": r.get("symbol"),
+        "state": state,
+        "action": intel.get("action") or adv.get("action"),
+        "price": r.get("price"),
+        "entry_zone": zone,
+        "entry_low": r.get("entry_low"),
+        "entry_high": r.get("entry_high"),
+        "stop": r.get("stop"),
+        "target": r.get("target"),
+        "rr": rr_disp,
+        "rr_raw": _f(r.get("rr")),
+        "rr_error": rr_err,
+        "rsi": r.get("rsi"),
+        "rsi_band": "40≤RSI<70",
+        "distance_pct": intel.get("distance_pct"),
+        "sizing": {
+            "shares": sizing.get("shares"),
+            "allocation": sizing.get("allocation"),
+            "note": sizing.get("note"),
+            "risk_pct": sizing.get("risk_pct"),
+            "max_alloc_pct": sizing.get("max_alloc_pct"),
+        },
+        "wash_blocked": r.get("wash_blocked"),
+        "wash_until": r.get("wash_until"),
+        "earnings_date": r.get("earnings_date"),
+        "confirmation_gaps": adv.get("confirmation_gaps") or [],
+        "confirmations_complete": conf_ok,
+        "why": list(r.get("why") or [])[:4],
+        "desk_fit": _desk_fit_for_candidate(
+            r,
+            pin=pin,
+            stage=cash_stage,
+            thr=thr,
+            cash_pct=cash_pct,
+            symbol_weights=symbol_weights,
+            sector_posture=sector_posture,
+        ),
+        "stage_gate": gate,
+        "tier": tier,
+        "thesis_version": pin,
+        "authority": "READ_ONLY_ADVISORY",
+    }
+
+
 def build_reentry_book(
     *,
     pin: str,
@@ -589,6 +750,7 @@ def build_reentry_book(
     heat_pct: Optional[float] = None,
     max_display: int = 10,
 ) -> dict[str, Any]:
+    """Build desk-governed re-entry book with core vs micro quality split (v1.2.1)."""
     raw = fetch_reentry_rows()
     rows = raw.get("rows") or []
     actionable: list[dict[str, Any]] = []
@@ -609,12 +771,13 @@ def build_reentry_book(
 
     def _sort_key(r: dict[str, Any]) -> tuple:
         state = str((r.get("intel") or {}).get("state") or "")
-        rr = _f(r.get("rr"))
+        rr_disp, _err = sanitize_rr(r.get("rr"))
         dist = _f((r.get("intel") or {}).get("distance_pct"))
-        # better R:R first, closer distance first
+        # Prefer sane R:R; absurd R:R sorts last among peers
+        rr_key = -(rr_disp if rr_disp is not None else -1)
         return (
             STATE_RANK.get(state, 50),
-            -(rr if rr is not None else -1),
+            rr_key,
             abs(dist) if dist is not None else 999,
             str(r.get("symbol") or ""),
         )
@@ -622,95 +785,79 @@ def build_reentry_book(
     actionable.sort(key=_sort_key)
     watch.sort(key=_sort_key)
 
-    stage_n = int(cash_stage.get("stage") or 0)
-    cards: list[dict[str, Any]] = []
-    for r in actionable[:max_display]:
-        intel = r.get("intel") or {}
-        adv = r.get("advisory") or {}
-        sizing = adv.get("sizing") or {}
-        state = str(intel.get("state") or "")
-        conf_ok = bool(adv.get("confirmations_complete"))
-        # Stage gate per row
-        if stage_n == 0:
-            gate = "STAGE_0 watch only; no stage"
-        elif stage_n == 1:
-            gate = "STAGE_1 paper plan only — sized sketch OK; operator ack required; no execution"
+    core_rows: list[dict[str, Any]] = []
+    micro_rows: list[dict[str, Any]] = []
+    for r in actionable:
+        if is_core_relevant(r):
+            core_rows.append(r)
         else:
-            # STAGE_2 eligibility
-            alloc = _f(sizing.get("allocation"))
-            book = _f(sizing.get("book_equity"))
-            post_w = (alloc / book * 100.0) if alloc and book else None
-            max_name = float(thr.get("max_single_name_weight_pct") or 12)
-            heat_ok = heat_pct is None or float(heat_pct) < 5.0
-            if (
-                state == "READY TO REVIEW"
-                and conf_ok
-                and (post_w is None or post_w < max_name)
-                and heat_ok
-            ):
-                gate = (
-                    "STAGE_2 advisory first-slice eligible — "
-                    f"if you authorize, first slice ≈ {sizing.get('shares')} sh / "
-                    f"${_fmt(alloc, 0) if alloc else 'n/a'} "
-                    f"({sizing.get('note') or '1% risk / 10% cap'}); still READ_ONLY"
-                )
-            else:
-                gate = "STAGE_2 not met — treat as STAGE_1 paper plan (need READY + confirmations + size under max_name + heat OK)"
+            micro_rows.append(r)
 
-        zone = None
-        if r.get("entry_low") is not None and r.get("entry_high") is not None:
-            zone = f"${_fmt(r.get('entry_low'))}–${_fmt(r.get('entry_high'))}"
-        cards.append({
-            "symbol": r.get("symbol"),
-            "state": state,
-            "action": intel.get("action") or adv.get("action"),
-            "price": r.get("price"),
-            "entry_zone": zone,
-            "entry_low": r.get("entry_low"),
-            "entry_high": r.get("entry_high"),
-            "stop": r.get("stop"),
-            "target": r.get("target"),
-            "rr": r.get("rr"),
-            "rsi": r.get("rsi"),
-            "rsi_band": "40≤RSI<70",
-            "distance_pct": intel.get("distance_pct"),
-            "sizing": {
-                "shares": sizing.get("shares"),
-                "allocation": sizing.get("allocation"),
-                "note": sizing.get("note"),
-                "risk_pct": sizing.get("risk_pct"),
-                "max_alloc_pct": sizing.get("max_alloc_pct"),
-            },
-            "wash_blocked": r.get("wash_blocked"),
-            "wash_until": r.get("wash_until"),
-            "earnings_date": r.get("earnings_date"),
-            "confirmation_gaps": adv.get("confirmation_gaps") or [],
-            "confirmations_complete": conf_ok,
-            "why": list(r.get("why") or [])[:4],
-            "desk_fit": _desk_fit_for_candidate(
-                r,
-                pin=pin,
-                stage=cash_stage,
-                thr=thr,
-                cash_pct=cash_pct,
-                symbol_weights=symbol_weights,
-                sector_posture=sector_posture,
-            ),
-            "stage_gate": gate,
-            "thesis_version": pin,
-            "authority": "READ_ONLY_ADVISORY",
-        })
+    stage_n = int(cash_stage.get("stage") or 0)
+    card_kw = dict(
+        pin=pin,
+        stage_n=stage_n,
+        cash_stage=cash_stage,
+        thr=thr,
+        cash_pct=cash_pct,
+        symbol_weights=symbol_weights,
+        sector_posture=sector_posture,
+        heat_pct=heat_pct,
+    )
+
+    # Full cards for core (capped)
+    core_cards = [
+        _row_to_card(r, tier="core", **card_kw) for r in core_rows[:max_display]
+    ]
+
+    # Micro: expand only READY + confirmations_complete; rest collapsed
+    micro_expanded: list[dict[str, Any]] = []
+    micro_collapsed: list[dict[str, Any]] = []
+    for r in micro_rows:
+        adv = r.get("advisory") or {}
+        state = str((r.get("intel") or {}).get("state") or "")
+        if state == "READY TO REVIEW" and bool(adv.get("confirmations_complete")):
+            micro_expanded.append(_row_to_card(r, tier="micro_ready", **card_kw))
+        else:
+            micro_collapsed.append(r)
+
+    # Primary cards list = core first (backward compatible "cards")
+    cards = list(core_cards)
+    # Optionally surface micro READY at end (still limited)
+    for c in micro_expanded[:3]:
+        cards.append(c)
+
+    micro_summary_parts = []
+    for r in micro_collapsed[:24]:
+        sym = r.get("symbol")
+        st = str((r.get("intel") or {}).get("state") or "")
+        px = _f(r.get("price"))
+        px_s = f"${px:.2f}" if px is not None else "?"
+        micro_summary_parts.append(f"{sym}({st}@{px_s})")
+    micro_line = None
+    if micro_collapsed or micro_expanded:
+        n_micro = len(micro_rows)
+        n_ready = len(micro_expanded)
+        micro_line = (
+            f"Micro / speculative watch ({n_micro} names, price < ${CORE_MIN_PRICE:.0f} "
+            f"or wash/confirmations thin): "
+            + (", ".join(micro_summary_parts[:18]) if micro_summary_parts else "—")
+            + (f" · +{n_ready} READY+confirmed expanded above" if n_ready else "")
+            + ". Not core-relevant under desk quality filter."
+        )
 
     watch_cards = []
     for r in watch[:4]:
         intel = r.get("intel") or {}
+        rr_disp, rr_err = sanitize_rr(r.get("rr"))
         watch_cards.append({
             "symbol": r.get("symbol"),
             "state": intel.get("state"),
             "price": r.get("price"),
             "entry_low": r.get("entry_low"),
             "entry_high": r.get("entry_high"),
-            "rr": r.get("rr"),
+            "rr": rr_disp,
+            "rr_error": rr_err,
             "note": "watch only — not in actionable book",
         })
 
@@ -721,13 +868,28 @@ def build_reentry_book(
         "pin": pin,
         "stage": cash_stage,
         "actionable_count": len(actionable),
+        "core_count": len(core_rows),
+        "micro_count": len(micro_rows),
+        "core_display": len(core_cards),
+        "micro_expanded_count": len(micro_expanded),
+        "micro_collapsed_count": len(micro_collapsed),
         "cards": cards,
+        "core_cards": core_cards,
+        "micro_expanded": micro_expanded,
+        "micro_line": micro_line,
         "watch": watch_cards,
         "freshness": raw.get("freshness") or {},
-        "criteria": raw.get("criteria") or {},
+        "criteria": {
+            **(raw.get("criteria") or {}),
+            "core_min_price": CORE_MIN_PRICE,
+            "core_min_adv": CORE_MIN_ADV,
+            "max_sane_rr": MAX_SANE_RR,
+        },
         "footer": (
             "Candidates from Data Broker reentry_decision_desk; READY is deterministic; "
-            f"{pin} governs stage. READ_ONLY_ADVISORY — never buy-now / no orders."
+            f"{pin} governs stage. Core filter: px≥${CORE_MIN_PRICE:.0f} (or ADV≥${CORE_MIN_ADV/1e6:.0f}M), "
+            f"not wash-blocked, confirmations evaluated; R:R > {MAX_SANE_RR:.0f} suppressed as data error. "
+            "READ_ONLY_ADVISORY — never buy-now / no orders."
         ),
         "as_of": raw.get("computed_at") or _now(),
         "authority": "READ_ONLY_ADVISORY",
