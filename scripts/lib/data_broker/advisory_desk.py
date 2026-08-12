@@ -1249,9 +1249,11 @@ def _load_instrument_identity(
         # Sector: DB > Finviz
         sector = str(dbp.get("sector") or finv.get("sector") or "")
 
-        # Market cap from Finviz (billions → numeric)
-        mcap_b = _f(finv.get("market_cap_b"))
-        mcap = mcap_b * 1_000_000_000 if mcap_b else None
+        # Market cap from Finviz. Despite the "_b" suffix, the field is stored
+        # in MILLIONS of dollars (GD = 104,926.14 → $104.9B), not billions.
+        # Multiplying by 1e9 inflated every market cap 1000×.
+        mcap_m = _f(finv.get("market_cap_b"))
+        mcap = mcap_m * 1_000_000 if mcap_m else None
 
         # Listing date: curated > ipo_lockups > None
         ld_str = listing_dates.get(sym)
@@ -1454,6 +1456,15 @@ def _load_price_action(
             perf_halfyr = _f(finviz.get("perf_halfyr"))
             vol_w = _f(finviz.get("volatility_w"))
             current_price = _f(finviz.get("price"))
+            chg_1d = _f(finviz.get("change_pct"))
+
+            # 52-week distance lives in the enrichment cache (week52_high_pct is
+            # the % below the 52w high, e.g. -3.12; week52_low_pct is the % above
+            # the 52w low). Semantics match the OHLCV-derived values.
+            enrich_cache = _load_json(STATE_DIR / "ticker_enrichment_cache.json")
+            enrich = enrich_cache.get(symbol, {}) if isinstance(enrich_cache, dict) else {}
+            off_high = _f(enrich.get("week52_high_pct"))
+            off_low = _f(enrich.get("week52_low_pct"))
 
             dist_from_basis = None
             if cost_basis and shares and shares > 0 and current_price:
@@ -1461,11 +1472,11 @@ def _load_price_action(
                 dist_from_basis = round((current_price / cbps - 1) * 100, 2)
 
             result: dict[str, Any] = {
-                "price_change_pct_1d": None,
+                "price_change_pct_1d": chg_1d,
                 "price_change_pct_5d": perf_week,
                 "price_change_pct_20d": perf_month,
-                "pct_off_52w_high": None,
-                "pct_off_52w_low": None,
+                "pct_off_52w_high": off_high,
+                "pct_off_52w_low": off_low,
                 "distance_from_cost_basis_pct": dist_from_basis,
                 "trend_direction": "rising" if (perf_week or 0) > 2 else ("falling" if (perf_week or 0) < -2 else "flat"),
                 "data_window_days": 0,
