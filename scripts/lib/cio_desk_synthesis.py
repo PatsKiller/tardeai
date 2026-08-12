@@ -50,25 +50,50 @@ def _fmt_pct(n: Optional[float], signed: bool = False) -> str:
     return f"{n:.2f}%"
 
 
+def _import_cio():
+    """Import CIO libs whether PYTHONPATH is repo root or scripts/."""
+    try:
+        from lib.cio_theses import (  # type: ignore
+            safe_current_pin,
+            safe_context_block,
+            recent_operator_learning,
+        )
+        from lib.cio_plans import CIOPlanStore  # type: ignore
+        from lib.cio_plan_enrichment import is_material_plan  # type: ignore
+        return safe_current_pin, safe_context_block, recent_operator_learning, CIOPlanStore, is_material_plan
+    except Exception:
+        from scripts.lib.cio_theses import (
+            safe_current_pin,
+            safe_context_block,
+            recent_operator_learning,
+        )
+        from scripts.lib.cio_plans import CIOPlanStore
+        from scripts.lib.cio_plan_enrichment import is_material_plan
+        return safe_current_pin, safe_context_block, recent_operator_learning, CIOPlanStore, is_material_plan
+
+
 def collect_desk_inputs() -> dict[str, Any]:
     """Live desk@vN + portfolio + material plans + learning (fail-soft)."""
-    from scripts.lib.cio_theses import (
+    (
         safe_current_pin,
         safe_context_block,
         recent_operator_learning,
-    )
-    from scripts.lib.cio_plans import CIOPlanStore
-    from scripts.lib.cio_plan_enrichment import is_material_plan
+        CIOPlanStore,
+        is_material_plan,
+    ) = _import_cio()
 
     pin = safe_current_pin("desk")
-    thesis = safe_context_block("desk", full=True) or {}
+    try:
+        thesis = safe_context_block("desk", full=True) or {}
+    except TypeError:
+        thesis = safe_context_block("desk") or {}
 
     domains: dict[str, Any] = {}
     try:
         try:
-            from scripts.lib.data_broker.cio_portfolio import get_cio_snapshot
-        except Exception:
             from lib.data_broker.cio_portfolio import get_cio_snapshot  # type: ignore
+        except Exception:
+            from scripts.lib.data_broker.cio_portfolio import get_cio_snapshot
         snap = get_cio_snapshot(max_age_s=60) or {}
         domains = snap.get("domains") or snap or {}
         if not isinstance(domains, dict):
