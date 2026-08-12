@@ -1,10 +1,10 @@
-"""CIO desk synthesis v1.2.1 — portfolio-grade advisory note under live desk@vN.
+"""CIO desk synthesis v1.2.2 — portfolio-grade advisory note under live desk@vN.
 
 READ_ONLY_ADVISORY. Combines thesis + Data Broker snapshot + material plans +
 operator learning + re-entry book + sector defensive posture into one
 operator-facing desk note (Telegram + /v3/cio).
 
-v1.2.1: re-entry book (desk-governed stage 0/1/2), sector posture (lookthrough),
+v1.2.2: re-entry book (desk-governed stage 0/1/2), sector posture (lookthrough),
 disposition-conditioned recommendation text, section order extended,
 no mid-sentence truncation, CLI/API parity.
 """
@@ -691,7 +691,7 @@ def _is_residual_dead_name(
 
 
 def render_desk_note(data: Optional[dict[str, Any]] = None, *, telegram: bool = True) -> str:
-    """Render operator-facing desk note v1.2 (complete sentences, disposition-aware)."""
+    """Render operator-facing desk note v1.2.2 (complete sentences, disposition-aware)."""
     d = data or collect_desk_inputs()
     pin = d.get("pin") or "desk@?"
     th = d.get("thesis") or {}
@@ -763,12 +763,12 @@ def render_desk_note(data: Optional[dict[str, Any]] = None, *, telegram: bool = 
     lines: list[str] = []
     stage_label = cash_stage.get("label") or "STAGE_?"
     if telegram:
-        lines.append(f"🏦 *CIO desk note v1.2.1* · READ_ONLY · `{pin}`")
+        lines.append(f"🏦 *CIO desk note v1.2.2* · READ_ONLY · `{pin}`")
         lines.append(
             f"stance: *{stance}* · cash {stage_label} · as_of {str(d.get('as_of') or '')[:19]}Z"
         )
     else:
-        lines.append(f"# CIO desk note v1.2.1 · {pin}")
+        lines.append(f"# CIO desk note v1.2.2 · {pin}")
         lines.append(f"stance: {stance} · cash {stage_label} · as_of {d.get('as_of')}")
     lines.append("────────────────")
 
@@ -925,21 +925,26 @@ def render_desk_note(data: Optional[dict[str, Any]] = None, *, telegram: bool = 
             )
     lines.append("")
 
-    # 5 Re-entry book — core vs micro (v1.2.1)
-    core_n = reentry.get("core_count")
+    # 5 Re-entry book — core R:R≥1.5 / sub / micro (v1.2.2)
+    core_full_n = reentry.get("core_full", reentry.get("core_count"))
+    sub_rr_n = reentry.get("sub_rr")
     micro_n = reentry.get("micro_count")
+    dropped_n = reentry.get("dropped_bad_rr")
     lines.append(
         f"📋 *5. Re-entry book* · `{pin}` · stage={cash_stage.get('stage', '?')} ({stage_label}) · "
-        f"core={core_n if core_n is not None else '?'} micro={micro_n if micro_n is not None else '?'}"
+        f"core_full={core_full_n if core_full_n is not None else '?'} "
+        f"sub_rr={sub_rr_n if sub_rr_n is not None else '?'} "
+        f"micro={micro_n if micro_n is not None else '?'} "
+        f"dropped_bad_rr={dropped_n if dropped_n is not None else '?'}"
     )
     if reentry.get("error"):
         lines.append(f"Re-entry desk error: {reentry.get('error')} (fail-soft).")
     core_cards = reentry.get("core_cards") or [
         c for c in (reentry.get("cards") or []) if c.get("tier") in (None, "core")
     ]
-    # Prefer core_cards; fall back to cards filtered
     if not core_cards and reentry.get("cards"):
-        core_cards = [c for c in reentry["cards"] if c.get("tier") != "micro_ready"]
+        # only tiers marked core; never promote sub-quality
+        core_cards = [c for c in reentry["cards"] if c.get("tier") == "core"]
     micro_ready = reentry.get("micro_expanded") or [
         c for c in (reentry.get("cards") or []) if c.get("tier") == "micro_ready"
     ]
@@ -980,27 +985,30 @@ def render_desk_note(data: Optional[dict[str, Any]] = None, *, telegram: bool = 
             lines.append(f"  Confirmation gaps: {', '.join(str(g) for g in gaps[:4])}.")
         lines.append(f"  Pin `{c.get('thesis_version') or pin}` · READ_ONLY.")
 
-    if not core_cards and not micro_ready:
+    if core_cards:
         lines.append(
-            "No core-relevant READY/NEAR/OVERSOLD candidates after quality filter "
-            f"(actionable_raw={reentry.get('actionable_count', 0)}, "
-            f"core={core_n}, micro={micro_n})."
+            f"*Core full* (px≥$5/ADV, not wash, confirmations eval, R:R≥1.5) — {len(core_cards)} shown:"
         )
+        for c in core_cards[:10]:
+            # safety: never emit R:R < 1.5 as full card
+            rr = c.get("rr")
+            if isinstance(rr, (int, float)) and rr < 1.5:
+                continue
+            _emit_card(c)
     else:
-        if core_cards:
-            lines.append(
-                f"*Core-relevant* (px≥$5 or liquid ADV; not wash-blocked; confirmations evaluated) — {len(core_cards)} shown:"
-            )
-            for c in core_cards[:10]:
-                _emit_card(c)
-        else:
-            lines.append("No core-relevant names this pass (all actionable were micro/speculative or filtered).")
-        if micro_ready:
-            lines.append(
-                f"*Micro READY + confirmations_complete* (exception expand) — {len(micro_ready)}:"
-            )
-            for c in micro_ready[:3]:
-                _emit_card(c)
+        lines.append(
+            "No core full cards this pass (need px≥$5/ADV + 1.5≤R:R≤12 after quality filter) "
+            f"(actionable_raw={reentry.get('actionable_count', 0)}, "
+            f"core_full={core_full_n}, sub_rr={sub_rr_n}, micro={micro_n}, dropped_bad_rr={dropped_n})."
+        )
+    if reentry.get("sub_rr_line"):
+        lines.append("• " + _full_sentence(reentry.get("sub_rr_line"), max_len=420))
+    if micro_ready:
+        lines.append(
+            f"*Micro READY + confirmations_complete* (exception expand) — {len(micro_ready)}:"
+        )
+        for c in micro_ready[:3]:
+            _emit_card(c)
     if reentry.get("micro_line"):
         lines.append("• " + _full_sentence(reentry.get("micro_line"), max_len=500))
     watch = reentry.get("watch") or []
@@ -1012,10 +1020,10 @@ def render_desk_note(data: Optional[dict[str, Any]] = None, *, telegram: bool = 
         )
     lines.append(_full_sentence(reentry.get("footer") or (
         f"Candidates from Data Broker reentry_decision_desk; READY is deterministic; {pin} governs stage."
-    ), max_len=360))
+    ), max_len=400))
     lines.append("")
-    # cards variable for later rec section — prefer core
-    cards = core_cards or micro_ready or (reentry.get("cards") or [])
+    # cards for later rec — only core full (R:R≥1.5)
+    cards = list(core_cards)
 
     # 6 Cross-position
     lines.append("🔗 *6. Cross-position / correlated sleeves*")
@@ -1100,13 +1108,36 @@ def render_desk_note(data: Optional[dict[str, Any]] = None, *, telegram: bool = 
             f"Awareness-only under {pin}; no auto-stop."
         )
         n += 1
-    # Re-entry stage guidance
+    # Re-entry stage guidance (v1.2.2)
+    stage_eligible = bool(reentry.get("has_stage_eligible_core"))
+    # Eligible = core full with confirmations_complete among READY/NEAR
     if cards:
-        top_c = cards[0]
+        conf_ready = [
+            c for c in cards
+            if c.get("confirmations_complete")
+            and c.get("state") in ("READY TO REVIEW", "NEAR ENTRY")
+            and isinstance(c.get("rr"), (int, float))
+            and float(c.get("rr")) >= 1.5
+        ]
+        if conf_ready or stage_eligible:
+            top_c = conf_ready[0] if conf_ready else cards[0]
+            lines.append(
+                f"{n}. *Re-entry book top* — {top_c.get('symbol')} is {top_c.get('state')} "
+                f"R:R {top_c.get('rr')} under {stage_label}: "
+                f"{_full_sentence(top_c.get('stage_gate') or 'watch only', max_len=180)} "
+                "No buy-now language."
+            )
+        else:
+            lines.append(
+                f"{n}. *Re-entry book* — No STAGE-eligible core name with R:R ≥ 1.5 and complete "
+                f"confirmations under {stage_label}. Core full cards may still list NEAR with gaps; "
+                "do not treat weak R:R or incomplete confirmations as stage candidates. No buy-now language."
+            )
+        n += 1
+    else:
         lines.append(
-            f"{n}. *Re-entry book top* — {top_c.get('symbol')} is {top_c.get('state')} "
-            f"under {stage_label}: {_full_sentence(top_c.get('stage_gate') or 'watch only', max_len=200)} "
-            "No buy-now language."
+            f"{n}. *Re-entry book* — No STAGE-eligible core name with R:R ≥ 1.5 and complete "
+            f"confirmations under {stage_label}. No buy-now language."
         )
         n += 1
     lines.append(
@@ -1262,7 +1293,7 @@ def generate_desk_synthesis_v1() -> dict[str, Any]:
         "ok": True,
         "as_of": data.get("as_of"),
         "thesis_version": data.get("pin"),
-        "version": "desk-note-v1.2.1",
+        "version": "desk-note-v1.2.2",
         "portfolio": {
             k: port.get(k)
             for k in (
@@ -1283,14 +1314,19 @@ def generate_desk_synthesis_v1() -> dict[str, Any]:
             "ok": (data.get("reentry_book") or {}).get("ok"),
             "stage": (data.get("reentry_book") or {}).get("stage"),
             "actionable_count": (data.get("reentry_book") or {}).get("actionable_count"),
-            "core_count": (data.get("reentry_book") or {}).get("core_count"),
+            "core_full": (data.get("reentry_book") or {}).get("core_full"),
+            "sub_rr": (data.get("reentry_book") or {}).get("sub_rr"),
             "micro_count": (data.get("reentry_book") or {}).get("micro_count"),
+            "dropped_bad_rr": (data.get("reentry_book") or {}).get("dropped_bad_rr"),
+            "core_count": (data.get("reentry_book") or {}).get("core_count"),
             "core_display": (data.get("reentry_book") or {}).get("core_display"),
+            "has_stage_eligible_core": (data.get("reentry_book") or {}).get("has_stage_eligible_core"),
             "micro_expanded_count": (data.get("reentry_book") or {}).get("micro_expanded_count"),
             "micro_collapsed_count": (data.get("reentry_book") or {}).get("micro_collapsed_count"),
             "cards": (data.get("reentry_book") or {}).get("cards") or [],
             "core_cards": (data.get("reentry_book") or {}).get("core_cards") or [],
             "micro_line": (data.get("reentry_book") or {}).get("micro_line"),
+            "sub_rr_line": (data.get("reentry_book") or {}).get("sub_rr_line"),
             "footer": (data.get("reentry_book") or {}).get("footer"),
             "error": (data.get("reentry_book") or {}).get("error"),
         },
@@ -1319,11 +1355,18 @@ if __name__ == "__main__":
     print("--- cash_stage ---")
     print(out.get("cash_stage"))
     rb = out.get("reentry_book") or {}
-    print("--- reentry core/micro ---")
-    print("core_count", rb.get("core_count"), "micro_count", rb.get("micro_count"))
-    print("core_display", rb.get("core_display"), "micro_expanded", rb.get("micro_expanded_count"))
-    for c in rb.get("core_cards") or rb.get("cards") or []:
-        print("CORE", c.get("symbol"), c.get("state"), "rr", c.get("rr"), c.get("rr_error"), (c.get("stage_gate") or "")[:60])
+    print("--- reentry counts v1.2.2 ---")
+    print(
+        "core_full", rb.get("core_full"),
+        "sub_rr", rb.get("sub_rr"),
+        "micro", rb.get("micro_count"),
+        "dropped_bad_rr", rb.get("dropped_bad_rr"),
+    )
+    for c in rb.get("core_cards") or []:
+        print("CORE_FULL", c.get("symbol"), c.get("state"), "rr", c.get("rr"), (c.get("stage_gate") or "")[:50])
+        assert c.get("rr") is None or float(c.get("rr")) >= 1.5, c
+    if rb.get("sub_rr_line"):
+        print("SUB_RR", (rb.get("sub_rr_line") or "")[:220])
     if rb.get("micro_line"):
         print("MICRO_LINE", (rb.get("micro_line") or "")[:200])
     # Persist latest note for operators / Telegram

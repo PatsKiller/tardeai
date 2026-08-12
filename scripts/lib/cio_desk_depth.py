@@ -43,9 +43,10 @@ EXCLUDE_FROM_ACTIONABLE = frozenset({
     "CURRENTLY HELD", "WASH BLOCK", "STALE", "MISSING MARKET", "MISSING PLAN",
 })
 
-# Re-entry quality filter (v1.2.1)
+# Re-entry quality filter (v1.2.2)
 CORE_MIN_PRICE = 5.0          # $ — below this is micro/speculative by default
 CORE_MIN_ADV = 1_000_000.0    # optional avg dollar volume threshold when present
+CORE_MIN_RR = 1.5             # full core card requires R:R >= this
 MAX_SANE_RR = 12.0            # R:R above this is treated as data error (not displayed as N:1)
 
 
@@ -586,15 +587,36 @@ def _desk_fit_for_candidate(
 
 
 def sanitize_rr(rr: Any) -> tuple[Optional[float], Optional[str]]:
-    """Return (display_rr, error_flag). Absurd R:R is suppressed as data error."""
+    """Return (display_rr, error_flag).
+
+    - missing → (None, "rr_missing")
+    - non-finite / <=0 → (None, "rr_invalid")
+    - > MAX_SANE_RR → (None, "rr_absurd")  # data error, excluded
+    - else → (rounded, None)
+    """
     v = _f(rr)
     if v is None:
-        return None, None
+        return None, "rr_missing"
+    if v != v:  # NaN
+        return None, "rr_invalid"
     if v <= 0:
-        return None, "rr_non_positive"
+        return None, "rr_invalid"
     if v > MAX_SANE_RR:
         return None, f"rr_absurd_{v:.1f}"
     return round(v, 2), None
+
+
+def classify_core_rr(rr: Any) -> str:
+    """Classify R:R for core-liquidity names: full | sub | dropped."""
+    rr_disp, rr_err = sanitize_rr(rr)
+    if rr_err and str(rr_err).startswith("rr_absurd"):
+        return "dropped_bad_rr"
+    if rr_disp is None:
+        return "dropped_bad_rr"  # missing / invalid / non-positive
+    if rr_disp >= CORE_MIN_RR:
+        return "full"
+    # 0 < R:R < CORE_MIN_RR
+    return "sub_rr"
 
 
 def _adv_from_row(row: dict[str, Any]) -> Optional[float]:
@@ -750,7 +772,7 @@ def build_reentry_book(
     heat_pct: Optional[float] = None,
     max_display: int = 10,
 ) -> dict[str, Any]:
-    """Build desk-governed re-entry book with core vs micro quality split (v1.2.1)."""
+    """Build desk-governed re-entry book with core R:R≥1.5 / sub / micro split (v1.2.2)."""
     raw = fetch_reentry_rows()
     rows = raw.get("rows") or []
     actionable: list[dict[str, Any]] = []
@@ -785,13 +807,27 @@ def build_reentry_book(
     actionable.sort(key=_sort_key)
     watch.sort(key=_sort_key)
 
-    core_rows: list[dict[str, Any]] = []
+    # Liquidity/price core vs micro first
+    core_liq_rows: list[dict[str, Any]] = []
     micro_rows: list[dict[str, Any]] = []
     for r in actionable:
         if is_core_relevant(r):
-            core_rows.append(r)
+            core_liq_rows.append(r)
         else:
             micro_rows.append(r)
+
+    # Split core-liquidity by R:R quality (presentation layer only)
+    core_full_rows: list[dict[str, Any]] = []
+    sub_rr_rows: list[dict[str, Any]] = []
+    dropped_bad_rr_rows: list[dict[str, Any]] = []
+    for r in core_liq_rows:
+        cls = classify_core_rr(r.get("rr"))
+        if cls == "full":
+            core_full_rows.append(r)
+        elif cls == "sub_rr":
+            sub_rr_rows.append(r)
+        else:
+            dropped_bad_rr_rows.append(r)
 
     stage_n = int(cash_stage.get("stage") or 0)
     card_kw = dict(
@@ -805,10 +841,25 @@ def build_reentry_book(
         heat_pct=heat_pct,
     )
 
-    # Full cards for core (capped)
+    # Full cards only for R:R >= CORE_MIN_RR
     core_cards = [
-        _row_to_card(r, tier="core", **card_kw) for r in core_rows[:max_display]
+        _row_to_card(r, tier="core", **card_kw) for r in core_full_rows[:max_display]
     ]
+
+    # Sub-quality NEAR: collapse (no full cards)
+    sub_rr_parts = []
+    for r in sub_rr_rows[:20]:
+        rr_disp, _ = sanitize_rr(r.get("rr"))
+        sym = r.get("symbol")
+        sub_rr_parts.append(f"{sym} {rr_disp}" if rr_disp is not None else f"{sym} ?")
+    sub_rr_line = None
+    if sub_rr_rows:
+        stage_label = cash_stage.get("label") or f"STAGE_{stage_n}"
+        sub_rr_line = (
+            f"Near but R:R < {CORE_MIN_RR:g} ({len(sub_rr_rows)}): "
+            + ", ".join(sub_rr_parts[:16])
+            + f" — watch only under {stage_label}."
+        )
 
     # Micro: expand only READY + confirmations_complete; rest collapsed
     micro_expanded: list[dict[str, Any]] = []
@@ -821,9 +872,8 @@ def build_reentry_book(
         else:
             micro_collapsed.append(r)
 
-    # Primary cards list = core first (backward compatible "cards")
+    # Primary cards list = core full only (+ optional micro READY)
     cards = list(core_cards)
-    # Optionally surface micro READY at end (still limited)
     for c in micro_expanded[:3]:
         cards.append(c)
 
@@ -845,6 +895,15 @@ def build_reentry_book(
             + (f" · +{n_ready} READY+confirmed expanded above" if n_ready else "")
             + ". Not core-relevant under desk quality filter."
         )
+
+    # Stage-eligible core: READY/NEAR with confirmations complete + full R:R
+    stage_eligible_core = []
+    for r in core_full_rows:
+        adv = r.get("advisory") or {}
+        state = str((r.get("intel") or {}).get("state") or "")
+        if state in ("READY TO REVIEW", "NEAR ENTRY") and bool(adv.get("confirmations_complete")):
+            stage_eligible_core.append(r)
+    has_stage_eligible_core = len(stage_eligible_core) > 0
 
     watch_cards = []
     for r in watch[:4]:
@@ -868,27 +927,45 @@ def build_reentry_book(
         "pin": pin,
         "stage": cash_stage,
         "actionable_count": len(actionable),
-        "core_count": len(core_rows),
+        # v1.2.2 counts
+        "core_full": len(core_full_rows),
+        "sub_rr": len(sub_rr_rows),
         "micro_count": len(micro_rows),
+        "dropped_bad_rr": len(dropped_bad_rr_rows),
+        # back-compat aliases
+        "core_count": len(core_full_rows),
         "core_display": len(core_cards),
+        "core_liq_count": len(core_liq_rows),
         "micro_expanded_count": len(micro_expanded),
         "micro_collapsed_count": len(micro_collapsed),
+        "has_stage_eligible_core": has_stage_eligible_core,
         "cards": cards,
         "core_cards": core_cards,
         "micro_expanded": micro_expanded,
         "micro_line": micro_line,
+        "sub_rr_line": sub_rr_line,
+        "sub_rr_symbols": [
+            {
+                "symbol": r.get("symbol"),
+                "rr": sanitize_rr(r.get("rr"))[0],
+                "state": (r.get("intel") or {}).get("state"),
+            }
+            for r in sub_rr_rows[:20]
+        ],
         "watch": watch_cards,
         "freshness": raw.get("freshness") or {},
         "criteria": {
             **(raw.get("criteria") or {}),
             "core_min_price": CORE_MIN_PRICE,
             "core_min_adv": CORE_MIN_ADV,
+            "core_min_rr": CORE_MIN_RR,
             "max_sane_rr": MAX_SANE_RR,
         },
         "footer": (
             "Candidates from Data Broker reentry_decision_desk; READY is deterministic; "
-            f"{pin} governs stage. Core filter: px≥${CORE_MIN_PRICE:.0f} (or ADV≥${CORE_MIN_ADV/1e6:.0f}M), "
-            f"not wash-blocked, confirmations evaluated; R:R > {MAX_SANE_RR:.0f} suppressed as data error. "
+            f"{pin} governs stage. Core full card: px≥${CORE_MIN_PRICE:.0f} (or ADV≥${CORE_MIN_ADV/1e6:.0f}M), "
+            f"not wash-blocked, confirmations evaluated, {CORE_MIN_RR:g}≤R:R≤{MAX_SANE_RR:.0f}. "
+            f"0<R:R<{CORE_MIN_RR:g} collapsed as sub-quality; R:R missing/>{MAX_SANE_RR:.0f} dropped. "
             "READ_ONLY_ADVISORY — never buy-now / no orders."
         ),
         "as_of": raw.get("computed_at") or _now(),
