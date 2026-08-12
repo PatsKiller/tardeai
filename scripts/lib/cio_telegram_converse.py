@@ -78,13 +78,31 @@ def cc_base() -> str:
     (https://{TAILSCALE_HOSTNAME} via notification_url_builder). Never default
     to LAN-only 192.168.50.16 — phones on the tailnet cannot open those.
     """
-    raw = (
-        _env("COMMAND_CENTER_BASE_URL")
-        or _env("TRADEAI_CC_BASE_URL")
-        or _env("CC_BASE_URL")
-        or _env("TRADEAI_PUBLIC_CC_URL")
-        or _env("NOTIFICATION_PUBLIC_BASE_URL")
-    )
+    def _reject_lan(url: str) -> bool:
+        u = (url or "").lower()
+        return any(
+            bad in u
+            for bad in (
+                "192.168.",
+                "127.0.0.1",
+                "localhost",
+                "0.0.0.0",
+                "10.0.",
+            )
+        )
+
+    candidates = [
+        _env("COMMAND_CENTER_BASE_URL"),
+        _env("TRADEAI_CC_BASE_URL"),
+        _env("CC_BASE_URL"),
+        _env("TRADEAI_PUBLIC_CC_URL"),
+        _env("NOTIFICATION_PUBLIC_BASE_URL"),
+    ]
+    raw = ""
+    for c in candidates:
+        if c and not _reject_lan(c):
+            raw = c
+            break
     if not raw:
         try:
             from scripts.notification_url_builder import get_public_base_url
@@ -99,6 +117,9 @@ def cc_base() -> str:
                     or "ms01-openclaw.tail163d14.ts.net"
                 )
                 raw = f"https://{host}"
+    if _reject_lan(str(raw)):
+        host = _env("TAILSCALE_HOSTNAME") or "ms01-openclaw.tail163d14.ts.net"
+        raw = f"https://{host}"
     return str(raw).rstrip("/")
 
 
@@ -352,6 +373,8 @@ def format_structured_reply(
     llm_deferred: bool = False,
     deep_links: Optional[list[str]] = None,
     symbols: Optional[list[str]] = None,
+    thesis_alignment: Optional[str] = None,
+    multi_domain_summary: Optional[str] = None,
 ) -> str:
     """Structured CIO reply: summary/options/rec/risks + thesis pin + CC deep links.
 
@@ -435,11 +458,11 @@ def format_structured_reply(
         if thesis_summary:
             lines.append(_clean(thesis_summary))
         lines.append("")
-    # Material long-form: pull Thesis alignment / Multi-domain blocks out of summary
+    # Prefer structured fields; fall back to embedded summary markers
     what_body = _clean(summary) or "(no summary)"
-    thesis_align_line = ""
-    multi_dom_line = ""
-    if "Thesis alignment" in what_body:
+    thesis_align_line = _clean(thesis_alignment or "")
+    multi_dom_line = _clean(multi_domain_summary or "")
+    if not thesis_align_line and "Thesis alignment" in what_body:
         parts = what_body.split("Thesis alignment", 1)
         what_body = parts[0].strip()
         rest = parts[1]
@@ -479,7 +502,7 @@ def format_structured_reply(
         lines.append("")
         lines.append("⚖️ *Options*")
 
-        def _opt_clause(s: str, limit: int = 180) -> str:
+        def _opt_clause(s: str, limit: int = 240) -> str:
             """Full clause up to limit; break at word boundary, no mid-word cut."""
             t = _clean(s)
             if len(t) <= limit:
@@ -892,8 +915,13 @@ def cmd_plan_detail(plan_id: str) -> str:
         risks=p.get("risks"),
         plan_id=p.get("plan_id"),
         revisit_at=p.get("revisit_at"),
-        llm_deferred=False,
+        thesis_version=p.get("thesis_version"),
+        situation_type=p.get("situation_type"),
+        llm_deferred=p.get("narrative_source") == "template",
         deep_links=p.get("cc_deep_links"),
+        symbols=p.get("symbols"),
+        thesis_alignment=p.get("thesis_alignment"),
+        multi_domain_summary=p.get("multi_domain_summary"),
     )
 
 

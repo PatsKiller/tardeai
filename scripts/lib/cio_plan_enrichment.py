@@ -328,9 +328,12 @@ def build_evidence_pack(plan: dict[str, Any], *, extra_context: Optional[dict[st
         "authority": "READ_ONLY_ADVISORY",
         "material": material,
         "instruction": (
-            "You are the desk CIO. Desk thesis is BINDING governing context. "
-            "Synthesize across ALL evidence domains — never restate detector fire alone. "
+            "You are Alex, CIO of Trade AI — a mature institutional READ_ONLY advisory colleague. "
+            "Desk thesis is BINDING governing context (not a footer). "
+            "Synthesize holdings + cash/portfolio + risk (+ Hermes when present). "
+            "Illegal: pure detector echo or single-domain restatement. "
             "Use ONLY numbers present in the pack. Missing → DATA_UNAVAILABLE. "
+            "Non-action (hold/stage/monitor) is first-class under defensive_observe. "
             "No orders/stops/broker steps. READ_ONLY_ADVISORY."
         ),
         "situation_type": plan_aug.get("situation_type"),
@@ -597,16 +600,58 @@ def template_narrative_from_plan(plan: dict[str, Any], pack: dict[str, Any]) -> 
             f"cash_min={rps.get('cash_band_min_pct')}% "
             f"dd={rps.get('deep_dd_threshold_pct')}%."
         )
-    thesis_align = (
-        f"Fits {pin} ({stance}): {p0}. "
-        f"Escalate material concentration/cash/DD to the operator; avoid force-deploy; "
-        f"preserve optionality and evidence quality.{risk_note}"
-    )
-    base = (
-        f"{st} on {sym_s}: fire={fire_s}. "
-        f"Under {pin}, synthesize {dom_s} — not detector echo alone."
-    )
-    # Prefer prior LLM summary if it already has content without deferred marker
+    # Situation-aware institutional framing (template path when LLM blocked)
+    st_u = str(st)
+    if "S5" in st_u or "CASH" in st_u:
+        thesis_align = (
+            f"Under {pin} ({stance}): elevated cash is consistent with cash-as-feature — "
+            f"not idle waste. Fire={fire_s}.{risk_note} "
+            f"Fit: stage/observe until totals quality supports a sized first slice and operator acks. "
+            f"Tension: large cash can lag if risk assets re-rate; resolved by staging, not force-fills. "
+            f"Principle: {p0}."
+        )
+        base = (
+            f"Under {pin} ({stance}): cash deployment situation on {sym_s}. "
+            f"Fire={fire_s}. Multi-domain view ({dom_s}) is required before any stage language. "
+            f"Highest-signal under defensive_observe is HOLD/STAGE cash — never force deploy."
+        )
+    elif "S6" in st_u or "CONCENTRATION" in st_u:
+        thesis_align = (
+            f"Under {pin} ({stance}): concentration review on {sym_s} is a size-honesty signal, "
+            f"not automatic disposal. Fire={fire_s}.{risk_note} "
+            f"Fit: thesis-aware hold when name is a core sleeve; escalate when book weight "
+            f"clearly exceeds posture. Tension: single-name risk is real above fire. "
+            f"Principle: {p0}."
+        )
+        base = (
+            f"Under {pin} ({stance}): concentration/disposition on {sym_s}. "
+            f"Fire={fire_s}. Synthesize portfolio weight with cash and risk domains ({dom_s}) — "
+            f"not detector echo. Prefer hold/size-watch over forced trim under defensive_observe."
+        )
+    elif "S1" in st_u or "LIFECYCLE" in st_u:
+        thesis_align = (
+            f"Under {pin} ({stance}): lifecycle DD is material as a signal when above deep-DD posture, "
+            f"but portfolio priority scales with book weight. Fire={fire_s}.{risk_note} "
+            f"Fit: escalate awareness; keep hold/stop-above-BE/trim as options only. "
+            f"Tension: emotional noise on small sleeves must not drive auto-action. "
+            f"Principle: {p0}."
+        )
+        base = (
+            f"Under {pin} ({stance}): position lifecycle on {sym_s}. "
+            f"Fire={fire_s}. Multi-domain ({dom_s}): severity of DD vs book weight. "
+            f"Awareness-only is valid when sleeve is small; no auto-stops from chat."
+        )
+    else:
+        thesis_align = (
+            f"Under {pin} ({stance}): situation escalated for operator judgment. "
+            f"Fire={fire_s}.{risk_note} Fit: observe/stage by default. "
+            f"Tension: do not invent urgency. Principle: {p0}."
+        )
+        base = (
+            f"Under {pin} ({stance}): {st} on {sym_s}. Fire={fire_s}. "
+            f"Synthesize {dom_s} — not detector echo alone. Default is observe/stage."
+        )
+    # Prefer prior LLM summary only if already mature under the *current* pin
     prior = str(plan.get("summary") or "").strip()
     for noise in (
         "[LLM deferred — deterministic view only]",
@@ -616,7 +661,21 @@ def template_narrative_from_plan(plan: dict[str, Any], pack: dict[str, Any]) -> 
     ):
         prior = prior.replace(noise, "")
     prior = " ".join(prior.split())
-    if prior and len(prior) > 40 and "LLM deferred" not in prior:
+    prior_pin = str(plan.get("thesis_version") or "")
+    pin_stale = bool(pin and prior_pin and prior_pin != pin)
+    opens_with_thesis = prior.lower().startswith("under desk@") or f"under {pin}".lower() in prior.lower()[:80]
+    if (
+        prior
+        and len(prior) > 40
+        and "LLM deferred" not in prior
+        and not pin_stale
+        and opens_with_thesis
+        and "fire=" not in prior[:40].lower()  # reject detector-echo openers
+        and not prior.lower().startswith("reasons=")
+        and not prior.lower().startswith("position weight")
+        and not prior.lower().startswith("cash_pct=")
+        and not prior.lower().startswith("spcx down")
+    ):
         summary = prior
     else:
         summary = base
@@ -629,18 +688,39 @@ def template_narrative_from_plan(plan: dict[str, Any], pack: dict[str, Any]) -> 
         elif ids:
             opt_id = ids[0]
     # Disposition hard constraint — must change rec text when present
-    learn = pack.get("recent_operator_learning") or th.get("learning_log") or []
+    # Prefer recent_operator_learning; fall back to thesis learning_log only if empty list
+    learn = list(pack.get("recent_operator_learning") or [])
+    if not learn:
+        learn = [x for x in (th.get("learning_log") or []) if isinstance(x, dict)]
     prior_bits = []
-    syms_u = {str(s).upper() for s in symbols}
+    # Normalize book-level situations (no ticker) so SCHD dispositions never bind
+    raw_syms = [str(s).upper() for s in symbols if s and str(s).upper() not in ("BOOK", "CASH", "PORTFOLIO", "—")]
+    syms_u = set(raw_syms)
     for L in learn:
         if not isinstance(L, dict):
             continue
-        Lsyms = {str(s).upper() for s in (L.get("symbols") or [])}
-        if syms_u and not (syms_u & Lsyms):
-            continue
+        Lsyms = {
+            str(s).upper()
+            for s in (L.get("symbols") or [])
+            if s and str(s).upper() not in ("BOOK", "CASH", "PORTFOLIO")
+        }
+        Lst = str(L.get("situation_type") or "")
         disp = str(L.get("disposition") or "").lower()
         if not disp or disp in ("seed",):
             continue
+        # Symbol plans: require symbol overlap
+        if syms_u:
+            if not Lsyms or not (syms_u & Lsyms):
+                continue
+        else:
+            # Book-level (S5 etc.): only same situation_type, never symbol-specific rows
+            if Lsyms:
+                continue
+            if Lst and str(st) and Lst != str(st):
+                continue
+            # No free-floating dispositions without situation match on book plans
+            if not Lst:
+                continue
         note = str(L.get("note") or "").strip()
         prior_bits.append((disp, note, L.get("ts"), L.get("plan_id")))
     if prior_bits:
@@ -683,9 +763,10 @@ def template_narrative_from_plan(plan: dict[str, Any], pack: dict[str, Any]) -> 
             )
     else:
         rec = (
-            f"Highest-signal under {pin} ({stance}): choose {opt_id} — stage/observe rather than "
-            f"force action until multi-domain evidence supports size. "
-            f"This is non-action as a feature of defensive_observe, not a detector restatement."
+            f"Under {pin} ({stance}): choose {opt_id} as highest-signal — "
+            f"stage/observe rather than force action until multi-domain evidence supports size. "
+            f"Non-action is a feature of defensive_observe, not a detector restatement. "
+            f"READ_ONLY_ADVISORY — no orders/stops."
         )
     risks = list(plan.get("risks") or [])
     # strip deferred markers from risks
@@ -768,11 +849,11 @@ def _thesis_block_for_prompt(pack: dict[str, Any], *, max_bullets: int = 4, full
     stance = th.get("stance") or ""
     summary = " ".join(str(th.get("summary") or "").split())
     # Keep thesis ultra-tight — Flash empty_content on fat prompts
-    summary = summary[:180] if full else summary[:120]
+    summary = summary[:280] if full else summary[:160]
     bullets = th.get("bullets") or []
-    b_s = "; ".join(str(b).strip() for b in bullets[:max_bullets] if str(b).strip())[:160]
+    b_s = "; ".join(str(b).strip() for b in bullets[:max_bullets] if str(b).strip())[:200]
     principles = th.get("principles") or []
-    p_s = "; ".join(str(x).strip() for x in principles[:3] if str(x).strip())[:140]
+    p_s = "; ".join(str(x).strip() for x in principles[:5 if full else 3] if str(x).strip())[:220]
     risk_p = str(th.get("risk_posture") or "")[:100]
     rps = th.get("risk_posture_structured") or {}
     if isinstance(rps, dict) and rps:
@@ -922,9 +1003,11 @@ def compact_user_prompt(pack: dict[str, Any], *, minimal: bool = False) -> str:
     # Long dumps caused Flash empty_content; evidence is one-line domain facts.
     mat_tag = " material=1" if material else ""
     task = (
-        f"{'MATERIAL ' if material else ''}Advisory under {pin}. Synthesize domains; never echo fire alone. "
-        f"recommendation = option_id + why under {pin}. "
-        "Include thesis_alignment and multi_domain_summary. pros/cons complete short strings."
+        f"{'MATERIAL ' if material else ''}Institutional advisory under {pin}. "
+        f"Open summary with 'Under {pin} …'. Synthesize ≥2 domains; never echo fire alone. "
+        f"thesis_alignment = fit AND tension with stance/principles/risk_posture. "
+        f"recommendation = option_id + conviction + thesis fit under {pin}. "
+        "pros/cons complete short sentences. Hold/stage is valid under defensive_observe."
     )
     if minimal:
         return (
@@ -1109,6 +1192,16 @@ def enrich_plan(
     Returns result with keys: plan, narrative_source, llm, log fields.
     Never raises to callers for provider failures.
     """
+    if plan_store is None:
+        try:
+            from scripts.lib.cio_plans import CIOPlanStore
+            plan_store = CIOPlanStore()
+        except Exception:
+            try:
+                from lib.cio_plans import CIOPlanStore  # type: ignore
+                plan_store = CIOPlanStore()
+            except Exception:
+                plan_store = None
     pol = policy or load_llm_policy()
     llm_cfg = pol.get("llm") or {}
     t0_enrich = time.time()
@@ -1213,8 +1306,10 @@ def enrich_plan(
     hard_tpl = os.environ.get("CIO_LLM_FORCE_TEMPLATE", "").strip().lower() in (
         "1", "true", "yes", "on",
     )
+    # Material defaults to LLM; explicit force_template still honored (caller intent / re-pin).
+    # hard_tpl (env) also forces. Previously material always cleared force_template.
     if force_template and pack.get("material") and not hard_tpl:
-        force_template = False
+        pass  # keep force_template=True when caller asked
 
     use_llm = (
         not force_template
@@ -1240,28 +1335,40 @@ def enrich_plan(
         # Prefer Flash for situation plans. Pro only when policy lists source.
         material = is_material_plan(plan) or bool(pack.get("material"))
         system = (
-            "You are Alex, Chief Investment Officer for Trade AI (READ_ONLY_ADVISORY). "
-            "You manage a coherent portfolio under a living desk thesis (desk@vN). "
-            "Output ONE JSON object only — first character must be '{'. "
+            "You are Alex, Chief Investment Officer for Trade AI — a mature institutional "
+            "READ_ONLY_ADVISORY colleague (never a detector echo bot). "
+            "Output ONE JSON object only; first character must be '{'. "
             "No markdown fences, no chain-of-thought, no prose outside JSON. "
             "Use ONLY numbers listed in the user numbers= line. "
-            "Missing → DATA_UNAVAILABLE. Never invent prices/weights/sizes. "
-            "GOVERNING CONTEXT: full desk thesis (stance, principles, risk_posture, "
-            "escalation_rules). Recommendation MUST cite the exact thesis_version pin "
-            "and explain fit or tension with that thesis. "
-            "SYNTHESIS: combine all evidence domains (holdings + cash/portfolio + risk). "
-            "Never pure-regurgitate detector fire_reasons. "
-            "Preserve option ids. options[].pros/cons are complete short strings. "
-            + (
-                "MATERIAL: include thesis_alignment and multi_domain_summary paragraphs; "
-                "summary 3–5 sentences; recommendation names option_id + why highest-signal. "
-                if material
-                else "ROUTINE: keep tight 2–3 sentence summary; still cite thesis pin. "
-            )
-            + "Never invent orders, stops, or broker steps. "
-            "If CONSTRAINT or recent_operator_dispositions appear for the symbol, "
+            "Missing → DATA_UNAVAILABLE. Never invent prices/weights/sizes/R:R. "
+            "\n\n"
+            "DESK OS CONTRACT (binding):\n"
+            "1) Open summary with thesis lens: 'Under {pin} / stance …' where pin is thesis_version.\n"
+            "2) Thesis is GOVERNING CONTEXT — not a footer tag. Every rec must state fit OR tension "
+            "with principles and risk_posture_structured.\n"
+            "3) Multi-domain synthesis is mandatory: holdings + cash/portfolio + risk "
+            "(+ Hermes counts if present). Pure fire_reasons restatement is INVALID.\n"
+            "4) What/Why: explain why this is material under the current stance "
+            "(cash is a feature; concentration may warrant hold with buffer; DD may be "
+            "awareness-only when book weight is small).\n"
+            "5) Options: exactly 2–3; preserve option ids; each pros and cons must be complete "
+            "short sentences (no truncation mid-word).\n"
+            "6) Recommendation: name option_id + conviction + explicit thesis alignment/tension. "
+            "Under defensive_observe, hold/stage/monitor is often highest-signal.\n"
+            "7) Risks: concrete, evidence-linked. revisit_hint: clear monitoring triggers.\n"
+            "8) Echo thesis_version pin exactly.\n"
+            "9) Never invent orders, stops, broker steps, or 'buy now' language.\n"
+            "10) If CONSTRAINT or recent_operator_dispositions appear for the symbol, "
             "recommendation FIRST sentence MUST cite Operator prior (defer/ack/reject) "
-            "and must not reverse an active defer into trim/dispose as primary."
+            "and must not reverse an active defer into trim/dispose as primary.\n"
+            "Tone: calm, precise, institutional. No hype.\n"
+            + (
+                "MATERIAL: summary 4–6 sentences; thesis_alignment 3–5 sentences with explicit "
+                "fit AND tension; multi_domain_summary must cite ≥2 domains with numbers; "
+                "recommendation is the 'so-what for the operator'. "
+                if material
+                else "ROUTINE: summary 2–3 sentences; still open with thesis pin and multi-domain so-what. "
+            )
         )
         # Compact prompts — material tries minimal first (higher Flash success rate).
         max_retries = int((pol.get("validator") or {}).get("max_retries") or 1)
@@ -1792,6 +1899,8 @@ def maybe_notify_plan(
             llm_deferred=plan.get("narrative_source") == "template",
             deep_links=plan.get("cc_deep_links"),
             symbols=plan.get("symbols"),
+            thesis_alignment=plan.get("thesis_alignment"),
+            multi_domain_summary=plan.get("multi_domain_summary"),
         )
         chats = allowlist_chat_ids()
         if not chats:

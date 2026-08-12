@@ -53,11 +53,15 @@ type Plan = {
   evidence_refs?: any[]
   fire_reasons?: string[]
   thesis_version?: string
+  thesis_alignment?: string
+  multi_domain_summary?: string
   narrative_source?: string
   llm_model?: string
   revisit_at?: string
   owner_agent?: string
   authority?: string
+  created_ts?: string
+  updated_ts?: string
 }
 
 const card: CSSProperties = {
@@ -145,121 +149,173 @@ function PlanDetailPanel({
   const refs = Array.isArray(plan.evidence_refs) ? plan.evidence_refs : []
   const fire = Array.isArray(plan.fire_reasons) ? plan.fire_reasons : []
   const sym = (plan.symbols && plan.symbols[0]) || ''
+  const pin = plan.thesis_version || thesis?.thesis_version || '—'
+  const stance = thesis?.stance || ''
+  const rps = thesis?.risk_posture_structured || {}
+  const section: CSSProperties = {
+    marginBottom: 14, paddingBottom: 12, borderBottom: '1px solid var(--border)',
+  }
+  const h: CSSProperties = {
+    fontSize: 12, fontWeight: 700, color: 'var(--text)', marginBottom: 6,
+    letterSpacing: 0.3, textTransform: 'uppercase' as const,
+  }
+  const body: CSSProperties = {
+    fontSize: 13, color: 'var(--text)', whiteSpace: 'pre-wrap', lineHeight: 1.45,
+  }
+  const muted: CSSProperties = { fontSize: 12, color: 'var(--text2)', lineHeight: 1.4 }
 
   return (
     <div style={{ ...card, borderColor: 'var(--accent)' }} data-testid="cio-plan-detail">
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 10 }}>
-        <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>📋 Plan</span>
-        <code style={{ fontSize: 12, color: 'var(--accent)' }}>{plan.plan_id || planId}</code>
-        <StatusBadge status={plan.status === 'accepted' ? 'fresh' : 'warning'} label={String(plan.status || '—')} />
-        {plan.narrative_source && (
-          <span style={{ fontSize: 11, color: plan.narrative_source === 'llm' ? 'var(--accent)' : 'var(--text3)' }}>
-            {plan.narrative_source === 'llm' ? '✨ Alex (LLM)' : '📋 template'}
+      {/* Header */}
+      <div style={{ marginBottom: 14 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+          <span style={{ fontSize: 17, fontWeight: 700, color: 'var(--text)' }}>
+            {(plan.situation_type || 'Situation').replace(/_/g, ' ')}
           </span>
-        )}
-        {plan.thesis_version && (
-          <span style={{ fontSize: 11, color: 'var(--text2)' }}>thesis {plan.thesis_version}</span>
-        )}
-      </div>
-
-      <div style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 8 }}>
-        {(plan.situation_type || '').replace(/_/g, ' ')}
-        {plan.symbols?.length ? ` · ${plan.symbols.join(', ')}` : ''}
-        {plan.owner_agent ? ` · owner ${plan.owner_agent}` : ''}
-      </div>
-
-      {thesis && (
-        <div style={{
-          background: 'var(--bg)', borderRadius: 6, padding: 10, marginBottom: 12,
-          border: '1px solid var(--border)',
-        }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>
-            🎯 Desk thesis {thesis.thesis_version || plan.thesis_version}
-            {thesis.stance ? ` · ${thesis.stance}` : ''}
-          </div>
-          <div style={{ fontSize: 12, color: 'var(--text2)' }}>{thesis.summary}</div>
-          {Array.isArray(thesis.bullets) && thesis.bullets.length > 0 && (
-            <ul style={{ margin: '6px 0 0', paddingLeft: 18, fontSize: 11, color: 'var(--text3)' }}>
-              {thesis.bullets.slice(0, 4).map((b: string, i: number) => <li key={i}>{b}</li>)}
-            </ul>
+          {plan.symbols?.length ? (
+            <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--accent)' }}>
+              {plan.symbols.join(', ')}
+            </span>
+          ) : null}
+          <StatusBadge status={plan.status === 'accepted' ? 'fresh' : 'warning'} label={String(plan.status || '—')} />
+          {plan.narrative_source && (
+            <span style={{ fontSize: 11, color: plan.narrative_source === 'llm' ? 'var(--accent)' : 'var(--text3)' }}>
+              {plan.narrative_source === 'llm' ? '✨ Alex (LLM)' : '📋 template'}
+            </span>
           )}
         </div>
-      )}
+        <div style={{ fontSize: 12, color: 'var(--text2)', display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+          <code style={{ color: 'var(--accent)' }}>{plan.plan_id || planId}</code>
+          <span>thesis <strong style={{ color: 'var(--text)' }}>{pin}</strong>{stance ? ` · ${stance}` : ''}</span>
+          {plan.owner_agent ? <span>owner {plan.owner_agent}</span> : null}
+          {plan.revisit_at ? <span>revisit {String(plan.revisit_at).slice(0, 16)}</span> : null}
+          <span style={{ color: 'var(--text3)' }}>READ_ONLY_ADVISORY</span>
+        </div>
+      </div>
 
-      {fire.length > 0 && (
-        <div style={{ fontSize: 12, color: 'var(--amber)', marginBottom: 8 }}>
-          Why: {fire.join(', ')}
+      {/* Thesis alignment */}
+      <div style={section} data-testid="cio-plan-thesis-align">
+        <div style={h}>🎯 Thesis alignment · {pin}</div>
+        {thesis?.summary && (
+          <div style={{ ...muted, marginBottom: 8 }}>{thesis.summary}</div>
+        )}
+        {(rps.max_single_name_weight_pct != null || rps.cash_band_min_pct != null) && (
+          <div style={{ ...muted, marginBottom: 8, fontSize: 11 }}>
+            Risk posture: max_name {rps.max_single_name_weight_pct ?? '—'}% · cash band min {rps.cash_band_min_pct ?? '—'}%
+            · deep DD {rps.deep_dd_threshold_pct ?? '—'}% · conc fire {rps.concentration_fire_pct ?? '—'}%
+          </div>
+        )}
+        <div style={body}>
+          {plan.thesis_alignment || 'Thesis alignment will appear after enrichment under the live desk pin.'}
+        </div>
+      </div>
+
+      {/* Multi-domain synthesis */}
+      <div style={section} data-testid="cio-plan-multi-domain">
+        <div style={h}>🧩 Multi-domain synthesis</div>
+        <div style={body}>
+          {plan.multi_domain_summary || 'Multi-domain synthesis pending (holdings + cash/portfolio + risk).'}
+        </div>
+        {fire.length > 0 && (
+          <div style={{ fontSize: 12, color: 'var(--amber)', marginTop: 8 }}>
+            Detector fire (context only): {fire.join(', ')}
+          </div>
+        )}
+      </div>
+
+      {/* Position / situation context */}
+      <div style={section} data-testid="cio-plan-what">
+        <div style={h}>📌 Situation brief</div>
+        <div style={body}>{plan.summary || plan.title || '—'}</div>
+      </div>
+
+      {/* Options */}
+      {opts.length > 0 && (
+        <div style={section} data-testid="cio-plan-options">
+          <div style={h}>⚖️ Options analysis</div>
+          {opts.map((o, i) => (
+            <div key={i} style={{
+              padding: '10px 12px', marginBottom: 8, borderRadius: 6,
+              background: 'var(--bg)', border: '1px solid var(--border)',
+            }}>
+              <div style={{ color: 'var(--text)', fontWeight: 700, fontSize: 13 }}>
+                {i + 1}. {o.label || o.id || 'Option'}
+                {o.id ? <span style={{ color: 'var(--text3)', fontWeight: 500, marginLeft: 8, fontSize: 11 }}>({o.id})</span> : null}
+              </div>
+              {o.pros && <div style={{ color: 'var(--green)', marginTop: 4, fontSize: 12, lineHeight: 1.4 }}>+ {o.pros}</div>}
+              {o.cons && <div style={{ color: 'var(--red)', marginTop: 3, fontSize: 12, lineHeight: 1.4 }}>− {o.cons}</div>}
+            </div>
+          ))}
         </div>
       )}
 
-      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>What</div>
-      <div style={{ fontSize: 13, color: 'var(--text)', marginBottom: 12, whiteSpace: 'pre-wrap' }}>
-        {plan.summary || plan.title || '—'}
+      {/* Recommendation */}
+      <div style={section} data-testid="cio-plan-recommendation">
+        <div style={h}>✅ Recommendation rationale</div>
+        <div style={{ ...body, color: 'var(--accent)', fontWeight: 500 }}>
+          {plan.recommendation || '—'}
+        </div>
       </div>
 
-      {opts.length > 0 && (
-        <>
-          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>Options</div>
-          <div style={{ marginBottom: 12 }}>
-            {opts.map((o, i) => (
-              <div key={i} style={{ padding: '6px 0', borderBottom: '1px solid var(--border)', fontSize: 12 }}>
-                <div style={{ color: 'var(--text)', fontWeight: 600 }}>
-                  {i + 1}. {o.label || o.id || 'Option'}
-                </div>
-                {o.pros && <div style={{ color: 'var(--green)', marginTop: 2 }}>+ {o.pros}</div>}
-                {o.cons && <div style={{ color: 'var(--red)', marginTop: 2 }}>− {o.cons}</div>}
+      {/* Risks & monitoring */}
+      <div style={section} data-testid="cio-plan-risks">
+        <div style={h}>⚠️ Risks & monitoring triggers</div>
+        {risks.length > 0 ? (
+          <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: 'var(--text2)', lineHeight: 1.5 }}>
+            {risks.map((r, i) => <li key={i}>{String(r)}</li>)}
+          </ul>
+        ) : (
+          <div style={muted}>No explicit risks listed — revisit on material evidence change.</div>
+        )}
+        {plan.revisit_at && (
+          <div style={{ ...muted, marginTop: 8 }}>Revisit: {String(plan.revisit_at)}</div>
+        )}
+      </div>
+
+      {/* Evidence */}
+      <div style={section} data-testid="cio-plan-evidence">
+        <div style={h}>📎 Evidence (Data Broker)</div>
+        {refs.length > 0 ? (
+          <div style={{ fontSize: 12, color: 'var(--text3)' }}>
+            {refs.slice(0, 12).map((r: any, i: number) => (
+              <div key={i} style={{ marginBottom: 3 }}>
+                • <span style={{ color: 'var(--text2)' }}>{r?.domain || '?'}</span>
+                {' · '}{String(r?.as_of || '').slice(0, 19) || 'n/a'}
+                {r?.quality_state ? ` · ${r.quality_state}` : ''}
               </div>
             ))}
           </div>
-        </>
-      )}
-
-      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>Recommendation</div>
-      <div style={{ fontSize: 13, color: 'var(--accent)', marginBottom: 12, whiteSpace: 'pre-wrap' }}>
-        {plan.recommendation || '—'}
-      </div>
-
-      {risks.length > 0 && (
-        <>
-          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>Risks</div>
-          <ul style={{ margin: '0 0 12px', paddingLeft: 18, fontSize: 12, color: 'var(--text2)' }}>
-            {risks.map((r, i) => <li key={i}>{String(r)}</li>)}
-          </ul>
-        </>
-      )}
-
-      {refs.length > 0 && (
-        <>
-          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>Evidence</div>
-          <div style={{ marginBottom: 12, fontSize: 12, color: 'var(--text3)' }}>
-            {refs.slice(0, 8).map((r: any, i: number) => (
-              <div key={i}>• {r?.domain || '?'} · {String(r?.as_of || '').slice(0, 10) || 'n/a'}</div>
-            ))}
-          </div>
-        </>
-      )}
-
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8, alignItems: 'center' }}>
-        <button type="button" style={{ ...btnBase, background: 'var(--accent)', color: 'var(--text0)' }} disabled={busy}
-          onClick={() => disposition('ack')}>Ack</button>
-        <button type="button" style={btnBase} disabled={busy} onClick={() => disposition('defer')}>Defer</button>
-        <button type="button" style={btnBase} disabled={busy} onClick={() => disposition('done')}>Done</button>
-        <button type="button" style={{ ...btnBase, color: 'var(--red)' }} disabled={busy}
-          onClick={() => disposition('reject')}>Reject</button>
-        <button type="button" style={btnBase} disabled={busy} onClick={load}>Refresh</button>
-        <Link to="/portfolio" style={{ color: 'var(--accent)', fontSize: 12, marginLeft: 4 }}>Portfolio</Link>
-        {sym && (
-          <Link to={`/portfolio?symbol=${encodeURIComponent(sym)}`} style={{ color: 'var(--accent)', fontSize: 12 }}>
-            {sym}
-          </Link>
+        ) : (
+          <div style={muted}>No evidence_refs on plan.</div>
         )}
-        <Link to="/advisory" style={{ color: 'var(--accent)', fontSize: 12 }}>Advisory</Link>
       </div>
-      <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 8 }}>
-        Disposition updates plan status only · READ_ONLY_ADVISORY · no orders/stops
-        {plan.revisit_at ? ` · revisit ${String(plan.revisit_at).slice(0, 10)}` : ''}
+
+      {/* Operator actions */}
+      <div data-testid="cio-plan-actions">
+        <div style={h}>👤 Operator actions</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+          <button type="button" style={{ ...btnBase, background: 'var(--accent)', color: 'var(--text0)' }} disabled={busy}
+            onClick={() => disposition('ack')}>Ack</button>
+          <button type="button" style={btnBase} disabled={busy} onClick={() => disposition('defer')}>Defer</button>
+          <button type="button" style={btnBase} disabled={busy} onClick={() => disposition('done')}>Done</button>
+          <button type="button" style={{ ...btnBase, color: 'var(--red)' }} disabled={busy}
+            onClick={() => disposition('reject')}>Reject</button>
+          <button type="button" style={btnBase} disabled={busy} onClick={load}>Refresh</button>
+          <Link to="/portfolio" style={{ color: 'var(--accent)', fontSize: 12, marginLeft: 4 }}>Portfolio</Link>
+          {sym && (
+            <Link to={`/portfolio?symbol=${encodeURIComponent(sym)}`} style={{ color: 'var(--accent)', fontSize: 12 }}>
+              {sym}
+            </Link>
+          )}
+          <Link to="/advisory" style={{ color: 'var(--accent)', fontSize: 12 }}>Advisory</Link>
+          <Link to="/risk" style={{ color: 'var(--accent)', fontSize: 12 }}>Risk</Link>
+        </div>
+        <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 8 }}>
+          Disposition updates plan status + learning log only · READ_ONLY_ADVISORY · no orders/stops
+          {plan.llm_model ? ` · model ${plan.llm_model}` : ''}
+        </div>
+        {msg && <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 6 }}>{msg}</div>}
       </div>
-      {msg && <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 6 }}>{msg}</div>}
     </div>
   )
 }

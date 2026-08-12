@@ -63,6 +63,8 @@ def format_reply_for_channel(
     llm_deferred: bool = False,
     deep_links: Optional[list[str]] = None,
     symbols: Optional[list[str]] = None,
+    thesis_alignment: Optional[str] = None,
+    multi_domain_summary: Optional[str] = None,
 ) -> str:
     """Shared structured formatter; WhatsApp gets plain-text friendly body."""
     text = format_structured_reply(
@@ -80,6 +82,8 @@ def format_reply_for_channel(
         llm_deferred=llm_deferred,
         deep_links=deep_links,
         symbols=symbols,
+        thesis_alignment=thesis_alignment,
+        multi_domain_summary=multi_domain_summary,
     )
     if (channel or "").lower() == "whatsapp":
         # Plain-text friendly: drop markdown markers without eating plan_id underscores
