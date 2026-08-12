@@ -628,11 +628,65 @@ def template_narrative_from_plan(plan: dict[str, Any], pack: dict[str, Any]) -> 
             opt_id = next(i for i in ids if "hold" in i)
         elif ids:
             opt_id = ids[0]
-    rec = (
-        f"Highest-signal under {pin} ({stance}): choose {opt_id} — stage/observe rather than "
-        f"force action until multi-domain evidence supports size. "
-        f"This is non-action as a feature of defensive_observe, not a detector restatement."
-    )
+    # Disposition hard constraint — must change rec text when present
+    learn = pack.get("recent_operator_learning") or th.get("learning_log") or []
+    prior_bits = []
+    syms_u = {str(s).upper() for s in symbols}
+    for L in learn:
+        if not isinstance(L, dict):
+            continue
+        Lsyms = {str(s).upper() for s in (L.get("symbols") or [])}
+        if syms_u and not (syms_u & Lsyms):
+            continue
+        disp = str(L.get("disposition") or "").lower()
+        if not disp or disp in ("seed",):
+            continue
+        note = str(L.get("note") or "").strip()
+        prior_bits.append((disp, note, L.get("ts"), L.get("plan_id")))
+    if prior_bits:
+        disp, note, ts, pid = prior_bits[0]
+        day = str(ts or "")[:10]
+        prior_line = (
+            f"Operator prior: {disp}"
+            + (f" ({note})" if note else "")
+            + (f" as of {day}" if day else "")
+            + ". "
+        )
+        if disp == "defer" and "S6" in str(st):
+            hold_ids = [str(o.get("id") or "") for o in opts if isinstance(o, dict) and "hold" in str(o.get("id") or "")]
+            if hold_ids:
+                opt_id = hold_ids[0]
+            rec = (
+                f"{prior_line}"
+                f"CONSTRAINT honored under {pin}: do not recommend trim/dispose as primary "
+                f"while defer is active and weight has not newly breached a stronger rule. "
+                f"Highest-signal: choose {opt_id} / HOLD with buffer watch — stage/observe only. "
+                f"READ_ONLY_ADVISORY."
+            )
+            thesis_align = (
+                f"CONSTRAINT: Operator {disp} on {sym_s}"
+                + (f" — {note}" if note else "")
+                + f". Honor bias under {pin}; recommendation leads with disposition. "
+                + thesis_align
+            )
+        else:
+            rec = (
+                f"{prior_line}"
+                f"Highest-signal under {pin} ({stance}): choose {opt_id} — stage/observe rather than "
+                f"force action until multi-domain evidence supports size. "
+                f"Disposition must appear in this rec, not only in a footer."
+            )
+            thesis_align = (
+                f"CONSTRAINT: Operator {disp} on {sym_s}"
+                + (f" — {note}" if note else "")
+                + f". {thesis_align}"
+            )
+    else:
+        rec = (
+            f"Highest-signal under {pin} ({stance}): choose {opt_id} — stage/observe rather than "
+            f"force action until multi-domain evidence supports size. "
+            f"This is non-action as a feature of defensive_observe, not a detector restatement."
+        )
     risks = list(plan.get("risks") or [])
     # strip deferred markers from risks
     risks = [
@@ -754,6 +808,19 @@ def _thesis_block_for_prompt(pack: dict[str, Any], *, max_bullets: int = 4, full
         lines.append(f"escalation={e_s}")
     if learn_bits:
         lines.append(f"recent_operator_dispositions={';'.join(learn_bits)}")
+        # Hard constraints for model
+        for L in (learn or [])[:3]:
+            if not isinstance(L, dict):
+                continue
+            disp = str(L.get("disposition") or "").lower()
+            if disp in ("defer", "reject", "ack", "done"):
+                lines.append(
+                    "CONSTRAINT: Operator "
+                    f"{disp} {L.get('situation_type') or ''} "
+                    f"{','.join(str(s) for s in (L.get('symbols') or [])[:3])} "
+                    f"— reason: {str(L.get('note') or '')[:80]}. "
+                    "Do not reverse this in recommendation."
+                )
     return "\n".join(lines)
 
 
@@ -1191,7 +1258,10 @@ def enrich_plan(
                 if material
                 else "ROUTINE: keep tight 2–3 sentence summary; still cite thesis pin. "
             )
-            + "Never invent orders, stops, or broker steps."
+            + "Never invent orders, stops, or broker steps. "
+            "If CONSTRAINT or recent_operator_dispositions appear for the symbol, "
+            "recommendation FIRST sentence MUST cite Operator prior (defer/ack/reject) "
+            "and must not reverse an active defer into trim/dispose as primary."
         )
         # Compact prompts — material tries minimal first (higher Flash success rate).
         max_retries = int((pol.get("validator") or {}).get("max_retries") or 1)

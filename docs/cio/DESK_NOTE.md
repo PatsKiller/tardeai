@@ -1,100 +1,67 @@
-# Desk note product (synthesis v1.1)
+# Desk note product (synthesis v1.2)
 
-**Code:** [`scripts/lib/cio_desk_synthesis.py`](../../scripts/lib/cio_desk_synthesis.py)  
+**Code:** [`scripts/lib/cio_desk_synthesis.py`](../../scripts/lib/cio_desk_synthesis.py) + [`scripts/lib/cio_desk_depth.py`](../../scripts/lib/cio_desk_depth.py)  
 **Artifact (host):** `data/cio/cio_desk_note_latest.md`  
-**Authority:** READ_ONLY · pins live `desk@vN`
+**Authority:** READ_ONLY · pins live `desk@vN`  
+**API:** `GET /api/v3/cio/desk-note` → same `generate_desk_synthesis_v1()` payload as CLI
 
-The desk note is a **portfolio-grade advisory memo** for material focus: thesis header, book snapshot, filtered situations with distinct thesis-fit, cross-position view, recommendations, learning bias, and revisit/ack. It is meant for operators and Telegram/API surfaces — not a full wealth-management report.
+Portfolio-grade advisory memo under `desk@vN` — not a full wealth-management report.
 
 ---
 
-## Section schema (v1.1)
+## Section schema (v1.2)
 
 | # | Section | Content |
 |---|---|---|
 | 1 | Thesis header | Full summary, structured risk posture, principles |
-| 2 | Portfolio snapshot | Book value, cash vs band, heat, stops_active, top weights |
-| 3 | Material situations | Desk-filtered; **distinct** thesis-fit per situation; multi-domain; plan_id + pin |
-| 4 | Cross-position view | Concentration cluster, cash runway, correlated sleeves, heat interpretation |
-| 5 | Desk recommendations | Numbered hold/stage/escalate under current pin |
-| 5b | Deeper analysis | What would change the call (cash / SCHD-class / DD names) |
-| 6 | Learning log | Active operator biases (deduped) |
-| 7 | Revisit + ack | Plan ids, revisit triggers, `/cio thesis`, READ_ONLY footer |
+| 2 | Portfolio snapshot | Book, cash vs band, heat, stops, top weights, **cash STAGE_0/1/2** |
+| 3 | Sector posture | Defensive vs offensive share, lookthrough sectors, correlated sleeves |
+| 4 | Material situations | Distinct thesis-fit; **disposition-aware Rec** |
+| 5 | Re-entry book | `build_decision_desk` READY/NEAR/OVERSOLD; zone/R:R/size; stage gate; desk fit |
+| 6 | Cross-position | Concentration, cash runway, industrial/aero sleeve |
+| 7 | Desk recommendations | Disposition-bound holds; re-entry top under stage |
+| 7b | Deeper analysis | What would change cash / SCHD / SPCX calls |
+| 8 | Learning log | Only entries that biased this note |
+| 9 | Revisit + ack | Plan ids, revisit triggers, READ_ONLY footer |
 
-v1.1 quality fixes (live in code):
+### Cash stage gates (bind re-entry language)
 
-- No mid-sentence truncation (`_full_sentence`)  
-- Distinct thesis-fit per situation (not one boilerplate for all)  
-- API/CLI snapshot parity intent  
-- Deduped learning log rows  
-- Deeper analysis subsection  
+| Stage | When | Language |
+|---|---|---|
+| STAGE_0 | Missing totals or quality PARTIAL | List candidates; **watch only; no stage** |
+| STAGE_1 | Cash > band, quality OK, no opt-in | Sized **paper plan** text; operator ack required |
+| STAGE_2 | Opt-in + READY + confirmations + size under max_name + heat OK | Advisory first-slice description only — still READ_ONLY |
 
-Optional contrast: thin single-situation card vs full desk note (`render_situation_card_contrast`).
-
----
-
-## Inputs collected
-
-From `collect_desk_inputs()` / related helpers:
-
-- Live pin + thesis context (`safe_current_pin`, thesis store)  
-- Data Broker / snapshot: portfolio, cash, holdings, risk  
-- Open material plans (S1/S5/S6/S8 class focus typical)  
-- Operator learning rows  
-
-Fail-closed behavior: missing domains degrade to `DATA_UNAVAILABLE` rather than inventing numbers. Without thesis, note still labels READ_ONLY but depth suffers.
+Never emit buy-now / order / stop instructions.
 
 ---
 
-## Regenerate commands
+## Regenerate
 
 ```bash
-cd <repo-root>
-
-# Render to stdout (same generator used for structured payload)
+PYTHONPATH=scripts python3 -m scripts.lib.cio_desk_synthesis
+# or
 PYTHONPATH=scripts python3 scripts/lib/cio_desk_synthesis.py
 
-# Structured payload + persist latest note
-PYTHONPATH=scripts python3 -c "
-from scripts.lib.cio_desk_synthesis import generate_desk_synthesis_v1
-from pathlib import Path
-out = generate_desk_synthesis_v1()
-Path('data/cio/cio_desk_note_latest.md').write_text(out['note'] + '\n')
-print(out.get('thesis_version'), out.get('as_of'), out.get('authority'))
-"
-
-# Pin check
-PYTHONPATH=scripts python3 -c "
-from scripts.lib.cio_theses import safe_current_pin, safe_context_block
-print(safe_current_pin())
-print((safe_context_block(full=True) or {}).get('stance'))
-"
+curl -s http://127.0.0.1:7777/api/v3/cio/desk-note | head -c 2000
 ```
 
-API/UI: Command Center `/v3/cio` may surface plans and desk hub when the release tree includes the route + `api_v3_cio` handlers. Deep links use path form `/v3/cio?plan=<plan_id>`; absolute URLs are deployment config (Tailscale/LAN pattern), not a public CDN story.
-
-Telegram push of the full desk note is optional host ops — do not assume every regenerate auto-sends.
+Persists `data/cio/cio_desk_note_latest.md` on CLI run.
 
 ---
 
-## Quality bar vs MS / Schwab-style reports
+## Quality bar (v1.2)
 
-| Desk note v1.1 **does** | **Does not** (see ROADMAP_GAPS) |
-|---|---|
-| Thesis-aware multi-situation synthesis | Full IPS / policy portfolio construction |
-| Book-level cash, concentration, heat | Tax-lot, estate, liability matching |
-| Explicit hold/stage under defensive_observe | Order tickets or auto-rebalance |
-| Learning-informed bias (e.g. defer SCHD) | Guaranteed LLM prose on every plan |
-| Hermes research **counts** when domain present | Continuous MS-grade research narratives |
-| Clear READ_ONLY footer | Suitability letters / compliance packages |
-
-Treat the desk note as **operator advisory depth**, not client-facing wealth reporting.
+1. Re-entry section lists real READY/NEAR candidates with zones, R:R, sizing, stage gate  
+2. Sector posture has defensive/offensive % and sector weights (lookthrough when available)  
+3. SCHD (or deferred names) rec text cites operator prior and does not primary-trim while defer active  
+4. Cash-stage explicit STAGE_0/1/2  
+5. No mid-sentence truncation; distinct thesis-fit  
+6. CLI and API same payload  
+7. READ_ONLY preserved  
 
 ---
 
 ## Related
 
-- [THESIS.md](./THESIS.md)  
-- [LEARNING_LOOP.md](./LEARNING_LOOP.md)  
-- [ROADMAP_GAPS.md](./ROADMAP_GAPS.md)  
-- Operator snapshot packet: [CIO_DESK_OPERATING_PACKET.md](./CIO_DESK_OPERATING_PACKET.md)  
+- [THESIS.md](./THESIS.md) · [SITUATIONS.md](./SITUATIONS.md) · [LEARNING_LOOP.md](./LEARNING_LOOP.md) · [ROADMAP_GAPS.md](./ROADMAP_GAPS.md)  
