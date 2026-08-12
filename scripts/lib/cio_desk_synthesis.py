@@ -279,6 +279,23 @@ def _get_snapshot() -> dict[str, Any]:
         return {}
 
 
+def _collect_advisory_desk() -> dict[str, Any]:
+    """Compact, deterministic Advisory Desk context for the CIO memo.
+
+    Read-only: pulls the desk's top actionable rows + portfolio analytics +
+    performance so the CIO/wealth/advisor actors can reason over the same
+    verdict table. No LLM call, no writes, fail-soft.
+    """
+    try:
+        try:
+            from lib.cio_advisory_bridge import advisory_desk_context  # type: ignore
+        except Exception:
+            from scripts.lib.cio_advisory_bridge import advisory_desk_context  # type: ignore
+        return advisory_desk_context() or {}
+    except Exception as e:
+        return {"ok": False, "error": f"{type(e).__name__}:{str(e)[:120]}"}
+
+
 def collect_desk_inputs() -> dict[str, Any]:
     """Live desk@vN + portfolio + material plans + learning (fail-soft)."""
     (
@@ -525,6 +542,7 @@ def collect_desk_inputs() -> dict[str, Any]:
         "material_plans": materials,
         "learning": learning,
         "evidence_spine": spine,
+        "advisory_desk": _collect_advisory_desk(),
         "authority": "READ_ONLY_ADVISORY",
     }
 
@@ -942,6 +960,24 @@ def render_desk_note(data: Optional[dict[str, Any]] = None, *, telegram: bool = 
     else:
         lines.append("Sector posture DATA_UNAVAILABLE.")
     lines.append("")
+
+    # ── 3b. Advisory desk verdicts (deterministic, read-only) ─────────────
+    adesk = d.get("advisory_desk") or {}
+    actionable = [
+        r for r in (adesk.get("top_actionable") or [])
+        if str(r.get("verdict")) in ("TRIM", "EXIT", "ADD", "RE_ENTER")
+    ][:4]
+    if actionable:
+        lines.append("📋 *Desk verdicts (read-only)*")
+        for r in actionable:
+            mv = r.get("market_value")
+            mv_s = f"${mv:,.0f}" if mv is not None else "—"
+            why = (r.get("rationale") or "").strip()
+            lines.append(
+                f"• {r.get('symbol')} {r.get('verdict')} {mv_s}"
+                + (f" — {why[:90]}" if why else "")
+            )
+        lines.append("")
 
     # ── 4. Material situations — ONE integrated narrative ────────────────
     lines.append("📍 *4. Material situations (integrated)*")

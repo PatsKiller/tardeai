@@ -1,0 +1,10 @@
+[Unit]
+Description=Monthly Morgan Stanley-style portfolio report (READ_ONLY)
+
+[Timer]
+OnCalendar=*-*-01 07:35:00
+Persistent=true
+Unit=tradeai-portfolio-report-ms.service
+
+[Install]
+WantedBy=timers.target

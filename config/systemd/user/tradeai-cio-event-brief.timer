@@ -1,0 +1,10 @@
+[Unit]
+Description=Event-driven CIO brief (thesis-grounded, material-change gated)
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 07:50:00
+Persistent=true
+Unit=tradeai-cio-event-brief.service
+
+[Install]
+WantedBy=timers.target

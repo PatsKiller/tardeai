@@ -35,6 +35,7 @@ See [AUTONOMY_AND_SCHEDULING_TRUTH_2026-08-11.md](./AUTONOMY_AND_SCHEDULING_TRUT
 | [PHASE7_PROMOTION_OUTCOME_2026-08-11.md](./PHASE7_PROMOTION_OUTCOME_2026-08-11.md) | Phase 7: 30-session promotion gate, morning default path |
 | [MATURITY_BASELINE_2026-08-12.md](./MATURITY_BASELINE_2026-08-12.md) | Field-gap map vs Morgan Stanley report + 4/10 maturity rubric |
 | [DEEPSEEK_USAGE_2026-08-12.md](./DEEPSEEK_USAGE_2026-08-12.md) | DeepSeek routing, key path, cost controls, prompt curation (read-only) |
+| [SURFACE_REPORT_AND_ACTORS_2026-08-12.md](./SURFACE_REPORT_AND_ACTORS_2026-08-12.md) | **Who consumes the desk** (CIO/wealth/advisor), Telegram map, MS-style report + CIO event brief + timers |
 
 ## Related diagnostics (repo root / prior sessions)
 
