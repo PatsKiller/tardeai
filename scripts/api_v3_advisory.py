@@ -132,6 +132,19 @@ def compute_banners(meta: dict[str, Any], data: dict[str, Any]) -> list[dict[str
     return banners[:5]
 
 
+def _split_rationale_signals(raw: str) -> list[str]:
+    """Deterministic split of the pipe-joined rationale into clean, deduped signals."""
+    if not raw:
+        return []
+    seen: list[str] = []
+    for part in str(raw).split("|"):
+        s = part.strip().rstrip(" —").strip()
+        if not s or s in seen:
+            continue
+        seen.append(s)
+    return seen
+
+
 def _row_view(row: dict[str, Any], opinions: dict[str, Any] | None = None) -> dict[str, Any]:
     """Surface-friendly row with expand payload + data_quality column."""
     opinions = opinions or {}
@@ -180,6 +193,7 @@ def _row_view(row: dict[str, Any], opinions: dict[str, Any] | None = None) -> di
         "adjusted_cost": row.get("adjusted_cost"),
         "cost_basis_source": row.get("cost_basis_source"),
         "rationale": row.get("rationale"),
+        "rationale_signals": _split_rationale_signals(row.get("rationale") or ""),
         "risk_signals": row.get("risk_signals") or [],
         "advisory_row_hash": rh,
         "row_id": f"{row.get('symbol')}:{row.get('account') or ''}|{(row.get('computed_at') or '')[:10]}|{rh[:12]}",

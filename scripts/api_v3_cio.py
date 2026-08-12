@@ -17,11 +17,95 @@ Routes:
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+# ── Operator-facing label normalization ───────────────────────────────────────
+# Internal sprint/situation codes (S0–S6) mean nothing to an operator; map them
+# to plain language. Fire reasons are telemetry strings; render them as English.
+
+SITUATION_LABELS: dict[str, str] = {
+    "S0_OPERATOR_CONVERSE": "Operator conversation",
+    "S1_POSITION_LIFECYCLE": "Position lifecycle",
+    "S2_STOP_GAP": "Stop gap",
+    "S4_SECTOR_ROTATION": "Sector rotation",
+    "S5_CASH_DEPLOYMENT": "Cash deployment",
+    "S6_CONCENTRATION_OR_DISPOSITION": "Concentration / disposition",
+}
+
+_STANCE_TITLE: dict[str, str] = {
+    "defensive_observe": "Defensive · observe",
+    "defensive_trim": "Defensive · trim",
+    "neutral_hold": "Neutral · hold",
+    "offensive_add": "Offensive · add",
+}
+
+_FIRE_REASON_OVERRIDES: dict[str, str] = {
+    "cash_pct_above_band": "Cash above policy band",
+    "no_stop": "No stop in place",
+    "no_stop_above_be_after_reclaim_path": "No stop above break-even after reclaim",
+    "no_stop_while_materially_underwater": "No stop while materially underwater",
+    "major_catalyst_while_held": "Major catalyst while held",
+    "basis_reclaim_zone": "Basis reclaim zone",
+    "rotation_material_change": "Material rotation change",
+    "probe": "Probe",
+}
+
+
+def _human_stance(raw: str | None) -> str:
+    if not raw:
+        return ""
+    return _STANCE_TITLE.get(raw) or raw.replace("_", " ").title()
+
+
+def _human_fire_reason(code: str) -> str:
+    """Render an internal fire-reason code as a plain-English phrase."""
+    c = str(code or "")
+    if c in _FIRE_REASON_OVERRIDES:
+        return _FIRE_REASON_OVERRIDES[c]
+    m = re.match(r"^weight_(\d+(?:\.\d+)?)pct$", c)
+    if m:
+        return f"Single-name weight {float(m.group(1)):.1f}%"
+    m = re.match(r"^deep_drawdown_from_basis_(\d+(?:\.\d+)?)pct$", c)
+    if m:
+        return f"Deep drawdown {float(m.group(1)):.1f}% from basis"
+    m = re.match(r"^disposition_loss_(\d+(?:\.\d+)?)pct_hold_(\d+(?:\.\d+)?)m$", c)
+    if m:
+        return f"Disposition loss {float(m.group(1)):.1f}% / {float(m.group(2)):.0f}mo hold"
+    m = re.match(r"^partial_recovery_from_trough_(\d+(?:\.\d+)?)pct_of_span$", c)
+    if m:
+        return f"Partial recovery from trough ({float(m.group(1)):.1f}% of span)"
+    m = re.match(r"^calendar_catalyst_(\w+)_(\w+)_h(\d+)$", c)
+    if m:
+        sev = m.group(1).replace("_", " ").title()
+        kind = m.group(2).replace("_", " ").title()
+        horizon = "today" if m.group(3) == "0" else f"h{m.group(3)}"
+        return f"Calendar catalyst: {sev} {kind} ({horizon})"
+    m = re.match(r"^quality_(\w+)$", c)
+    if m:
+        return f"Data quality: {m.group(1).title()}"
+    return c.replace("_", " ").replace("  ", " ").strip().capitalize()
+
+
+def _clean_summary(raw: str | None) -> str:
+    """Strip internal telemetry from an LLM summary for operator display.
+
+    Removes ``Fire=<...>`` token lists, an inline ``Thesis alignment:`` clause
+    (surfaced separately), and a leading ``Under desk@vN (stance):`` prefix.
+    """
+    s = str(raw or "").strip()
+    if not s:
+        return ""
+    s = re.split(r"\s+Thesis alignment\s*:", s, maxsplit=1)[0]
+    s = re.sub(r"Fire=[A-Za-z0-9_.]+(?:\s*,\s*[A-Za-z0-9_.]+)*\s*\.?", "", s)
+    s = re.sub(r"^Under\s+desk@v?\d+\s*\([^)]*\)\s*:\s*", "", s)
+    s = re.sub(r"\s{2,}", " ", s).strip(" .,;:-")
+    return s
 
 
 def _now_iso() -> str:
@@ -48,8 +132,8 @@ def _cio_snapshot_data() -> dict[str, Any]:
     try:
         from lib.data_broker.cio_portfolio import get_cio_snapshot
         return get_cio_snapshot(max_age_s=30)
-    except Exception:
-        return {"error": "Data Broker unavailable", "domains": {}, "health": {}}
+    except Exception as e:
+        return {"error": "Data Broker unavailable", "detail": str(e)[:200], "domains": {}, "health": {}}
 
 
 def _cio_actions_data(limit: int = 20) -> list[dict[str, Any]]:
@@ -159,6 +243,13 @@ def _public_plan(plan: dict[str, Any]) -> dict[str, Any]:
         if isinstance(extra, dict) and extra.get("fire_reasons"):
             out["fire_reasons"] = extra["fire_reasons"]
     out.setdefault("authority", "READ_ONLY_ADVISORY")
+    # Operator-facing normalization (deterministic, no narrative invention)
+    st = out.get("situation_type")
+    out["situation_label"] = SITUATION_LABELS.get(st, (st or "").replace("_", " ").strip())
+    out["fire_reasons_human"] = [_human_fire_reason(f) for f in (out.get("fire_reasons") or [])]
+    out["stance_label"] = _human_stance(plan.get("stance"))
+    out["summary_clean"] = _clean_summary(out.get("summary"))
+    out["recommendation_clean"] = _clean_summary(out.get("recommendation"))
     return out
 
 

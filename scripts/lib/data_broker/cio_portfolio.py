@@ -28,7 +28,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from scripts.lib.cio_domain_evidence import DomainEvidence, ReasonCode
+try:
+    from lib.cio_domain_evidence import DomainEvidence, ReasonCode
+except Exception:  # pragma: no cover - dev-tree fallback when scripts/ is on path but lib/ is not
+    from scripts.lib.cio_domain_evidence import DomainEvidence, ReasonCode
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"

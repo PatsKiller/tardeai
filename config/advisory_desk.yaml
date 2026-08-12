@@ -4,7 +4,7 @@
 # NEVER call api.deepseek.com from the opinion engine — caps live on the bridge only.
 
 # Feature flag: enrichment (Flash opinions + Pro synthesis) off by default.
-ADVISORY_DESK_V1: false
+ADVISORY_DESK_V1: true
 
 routing:
   lane_preference:

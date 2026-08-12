@@ -26,6 +26,25 @@ const STATE_COLOR: Record<string, string> = {
   AVAILABLE: 'var(--green)', DATA_UNAVAILABLE: 'var(--red)', STALE: 'var(--amber)',
 }
 
+const DOMAIN_HELP: Record<string, string> = {
+  portfolio: 'Total value, cost, day change, holdings count.',
+  risk: 'Portfolio heat, capital at risk, drawdown, active stops.',
+  watch: 'Watchlist state (file-backed; DB fallback).',
+  rotation: 'Sector rotation ladders / regime signal.',
+  income: 'Dividend income estimate and yield.',
+  reconciliation: 'Broker reconciliation result.',
+  hermes_research: 'Hermes autonomous research (promoted/staged).',
+  investment_policy: 'Investment Policy Statement (IPS).',
+  model_portfolio: 'Strategic model allocation + drift.',
+  cost_basis: 'Per-lot cost basis (reconciled vs holdings).',
+  transactions: 'Recent trades / closed positions.',
+  sectors: 'Sector weights + concentration flags.',
+  holdings_detail: 'Full position enumeration.',
+  cash_buying_power: 'Cash estimate from holdings (not broker-verified).',
+  retirement: 'Retirement roadmap.',
+  watch_intelligence: 'Watchlist intelligence (alias of watch).',
+}
+
 function fmtUSD(n: number | null | undefined) {
   if (n == null) return '—'
   const abs = Math.abs(n)
@@ -39,19 +58,35 @@ function fmtPct(n: number | null | undefined) {
   return `${n >= 0 ? '+' : ''}${n.toFixed(1)}%`
 }
 
+const STANCE_TITLE: Record<string, string> = {
+  defensive_observe: 'Defensive · observe',
+  defensive_trim: 'Defensive · trim',
+  neutral_hold: 'Neutral · hold',
+  offensive_add: 'Offensive · add',
+}
+function humanStance(s: string | null | undefined) {
+  if (!s) return ''
+  return STANCE_TITLE[s] || s.replace(/_/g, ' ')
+}
+
 type PlanOpt = { id?: string; label?: string; pros?: string; cons?: string }
 type Plan = {
   plan_id?: string
   situation_type?: string
+  situation_label?: string
   symbols?: string[]
   status?: string
   title?: string
   summary?: string
-  options?: PlanOpt[]
+  summary_clean?: string
   recommendation?: string
+  recommendation_clean?: string
+  options?: PlanOpt[]
   risks?: string[]
   evidence_refs?: any[]
   fire_reasons?: string[]
+  fire_reasons_human?: string[]
+  stance_label?: string
   thesis_version?: string
   thesis_alignment?: string
   multi_domain_summary?: string
@@ -195,7 +230,7 @@ function PlanDetailPanel({
       <div style={{ marginBottom: 14 }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 8 }}>
           <span style={{ fontSize: 17, fontWeight: 700, color: 'var(--text)' }}>
-            {(plan.situation_type || 'Situation').replace(/_/g, ' ')}
+            {plan.situation_label || (plan.situation_type || 'Situation').replace(/_/g, ' ')}
           </span>
           {plan.symbols?.length ? (
             <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--accent)' }}>
@@ -211,7 +246,7 @@ function PlanDetailPanel({
         </div>
         <div style={{ fontSize: 12, color: 'var(--text2)', display: 'flex', flexWrap: 'wrap', gap: 10 }}>
           <code style={{ color: 'var(--accent)' }}>{plan.plan_id || planId}</code>
-          <span>thesis <strong style={{ color: 'var(--text)' }}>{pin}</strong>{stance ? ` · ${stance}` : ''}</span>
+          <span>thesis <strong style={{ color: 'var(--text)' }}>{pin}</strong>{stance ? ` · ${humanStance(stance)}` : ''}</span>
           {plan.owner_agent ? <span>owner {plan.owner_agent}</span> : null}
           {plan.revisit_at ? <span>revisit {String(plan.revisit_at).slice(0, 16)}</span> : null}
           <span style={{ color: 'var(--text3)' }}>READ_ONLY_ADVISORY</span>
@@ -243,7 +278,10 @@ function PlanDetailPanel({
         </div>
         {fire.length > 0 && (
           <div style={{ fontSize: 12, color: 'var(--amber)', marginTop: 8 }}>
-            Detector fire (context only): {fire.join(', ')}
+            Detector fire (context only):{' '}
+            {(plan.fire_reasons_human && plan.fire_reasons_human.length > 0
+              ? plan.fire_reasons_human
+              : fire).join(' · ')}
           </div>
         )}
       </div>
@@ -251,7 +289,7 @@ function PlanDetailPanel({
       {/* Position / situation context */}
       <div style={section} data-testid="cio-plan-what">
         <div style={h}>📌 Situation brief</div>
-        <div style={body}>{plan.summary || plan.title || '—'}</div>
+        <div style={body}>{plan.summary_clean || plan.summary || plan.title || '—'}</div>
       </div>
 
       {/* Options */}
@@ -278,7 +316,7 @@ function PlanDetailPanel({
       <div style={section} data-testid="cio-plan-recommendation">
         <div style={h}>✅ Recommendation rationale</div>
         <div style={{ ...body, color: 'var(--accent)', fontWeight: 500 }}>
-          {plan.recommendation || '—'}
+          {plan.recommendation_clean || plan.recommendation || '—'}
         </div>
       </div>
 
@@ -543,11 +581,18 @@ export default function CioHub({ onDrill }: Props) {
 
       {tab === 'overview' && data && (
         <div>
+          {snapshot?.error && (
+            <div style={{ ...card, borderColor: 'var(--red)', color: 'var(--red)', fontSize: 13 }}>
+              CIO Data Broker snapshot unavailable: {snapshot.error}
+              {snapshot.detail ? <span style={{ color: 'var(--text3)', marginLeft: 8 }}>({snapshot.detail})</span> : null}
+            </div>
+          )}
+
           {thesis && (
             <div style={card}>
               <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6, color: 'var(--text)' }}>
                 🎯 Active desk thesis · {thesisVersion}
-                {thesis.stance ? ` · ${thesis.stance}` : ''}
+                {thesis.stance ? ` · ${humanStance(thesis.stance)}` : ''}
               </div>
               <div style={{ fontSize: 13, color: 'var(--text2)' }}>{thesis.summary}</div>
             </div>
@@ -555,12 +600,12 @@ export default function CioHub({ onDrill }: Props) {
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 20 }}>
             {[
-              { label: 'Portfolio', value: fmtUSD(domains.portfolio?.total_value), sub: fmtPct(domains.portfolio?.day_change_pct), state: domains.portfolio?.state },
-              { label: 'Portfolio Heat', value: domains.risk?.portfolio_heat_pct != null ? `${domains.risk.portfolio_heat_pct.toFixed(1)}%` : '—', sub: `${domains.risk?.stops_active ?? 0} stops`, state: domains.risk?.state },
-              { label: 'Holdings', value: domains.portfolio?.holdings_count ?? '—', sub: 'positions', state: domains.portfolio?.state },
-              { label: 'Open plans', value: plans.length, sub: 'advisory', state: 'AVAILABLE' },
+              { label: 'Portfolio', value: fmtUSD(domains.portfolio?.total_value), sub: fmtPct(domains.portfolio?.day_change_pct), state: domains.portfolio?.state, help: 'Total market value across all accounts; day change below.' },
+              { label: 'Portfolio Heat', value: domains.risk?.portfolio_heat_pct != null ? `${domains.risk.portfolio_heat_pct.toFixed(1)}%` : '—', sub: `${domains.risk?.stops_active ?? 0} stops`, state: domains.risk?.state, help: 'Capital at risk vs stop levels; count of active stop orders.' },
+              { label: 'Holdings', value: domains.portfolio?.holdings_count ?? '—', sub: 'positions', state: domains.portfolio?.state, help: 'Number of open positions in the book.' },
+              { label: 'Open plans', value: plans.length, sub: 'advisory', state: 'AVAILABLE', help: 'Open advisory plans awaiting operator disposition.' },
             ].map((c, i) => (
-              <div key={i} style={{ background: 'var(--bg2)', borderRadius: 8, padding: '12px 16px', border: '1px solid var(--border)' }}>
+              <div key={i} title={c.help} style={{ background: 'var(--bg2)', borderRadius: 8, padding: '12px 16px', border: '1px solid var(--border)', cursor: 'help' }}>
                 <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>{c.label}</div>
                 <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text)' }}>{c.value}</div>
                 <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 2 }}>{c.sub}</div>
@@ -577,8 +622,8 @@ export default function CioHub({ onDrill }: Props) {
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               {Object.entries(domains).map(([domain, d]: [string, any]) => (
-                <span key={domain} style={{
-                  padding: '4px 10px', borderRadius: 4, fontSize: 12,
+                <span key={domain} title={DOMAIN_HELP[domain] || domain} style={{
+                  padding: '4px 10px', borderRadius: 4, fontSize: 12, cursor: 'help',
                   background: d.state === 'AVAILABLE' ? 'var(--green-ghost)' : d.state === 'STALE' ? 'var(--amber-ghost)' : 'var(--red-ghost)',
                   color: STATE_COLOR[d.state] ?? 'var(--text3)',
                 }}>
@@ -602,11 +647,16 @@ export default function CioHub({ onDrill }: Props) {
                 >
                   <span style={{ color: 'var(--accent)', fontSize: 12, fontWeight: 600 }}>{p.plan_id}</span>
                   <span style={{ color: 'var(--text2)', fontSize: 12, marginLeft: 8 }}>
-                    {(p.situation_type || '').replace(/_/g, ' ')}
+                    {p.situation_label || (p.situation_type || '').replace(/_/g, ' ')}
                     {p.symbols?.length ? ` · ${p.symbols.join(',')}` : ''}
                   </span>
+                  {p.fire_reasons_human?.length ? (
+                    <span style={{ color: 'var(--amber)', fontSize: 11, marginLeft: 8 }}>
+                      {p.fire_reasons_human.join(' · ')}
+                    </span>
+                  ) : null}
                   <div style={{ color: 'var(--text)', fontSize: 13, marginTop: 2 }}>
-                    {(p.summary || p.recommendation || '').slice(0, 140)}
+                    {(p.summary_clean || p.summary || p.recommendation || '').slice(0, 140)}
                   </div>
                 </div>
               ))}
@@ -644,16 +694,21 @@ export default function CioHub({ onDrill }: Props) {
                   <code style={{ fontSize: 12, color: 'var(--accent)' }}>{p.plan_id}</code>
                   <StatusBadge status={p.status === 'accepted' ? 'fresh' : 'warning'} label={String(p.status || '')} />
                   <span style={{ fontSize: 12, color: 'var(--text2)' }}>
-                    {(p.situation_type || '').replace(/_/g, ' ')}
+                    {p.situation_label || (p.situation_type || '').replace(/_/g, ' ')}
                     {p.symbols?.length ? ` · ${p.symbols.join(', ')}` : ''}
                   </span>
+                  {p.fire_reasons_human?.length ? (
+                    <span style={{ fontSize: 11, color: 'var(--amber)' }}>
+                      {p.fire_reasons_human.join(' · ')}
+                    </span>
+                  ) : null}
                 </div>
                 <div style={{ fontSize: 13, color: 'var(--text)', marginTop: 4 }}>
-                  {(p.summary || '').slice(0, 200)}
+                  {(p.summary_clean || p.summary || '').slice(0, 200)}
                 </div>
                 {p.recommendation && (
                   <div style={{ fontSize: 12, color: 'var(--accent)', marginTop: 2 }}>
-                    → {(p.recommendation || '').slice(0, 160)}
+                    → {(p.recommendation_clean || p.recommendation || '').slice(0, 160)}
                   </div>
                 )}
               </div>

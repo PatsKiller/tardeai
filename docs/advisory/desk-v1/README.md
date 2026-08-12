@@ -1,7 +1,7 @@
 # Advisory Desk v1 — Documentation Index
 
 **Branch:** `feature/advisory-desk-v1`  
-**Flag:** `ADVISORY_DESK_V1` (default OFF in `config/advisory_desk.yaml`)  
+**Flag:** `ADVISORY_DESK_V1` (enabled 2026-08-12 in `config/advisory_desk.yaml`; systemd timer live via drop-in)  
 **Authority:** READ_ONLY_ADVISORY throughout  
 **Phases 0–7:** code complete 2026-08-11 · promotion gate **NOT_PROMOTED** (wait for 30 green shadow sessions)
 
@@ -36,6 +36,7 @@ See [AUTONOMY_AND_SCHEDULING_TRUTH_2026-08-11.md](./AUTONOMY_AND_SCHEDULING_TRUT
 | [MATURITY_BASELINE_2026-08-12.md](./MATURITY_BASELINE_2026-08-12.md) | Field-gap map vs Morgan Stanley report + 4/10 maturity rubric |
 | [DEEPSEEK_USAGE_2026-08-12.md](./DEEPSEEK_USAGE_2026-08-12.md) | DeepSeek routing, key path, cost controls, prompt curation (read-only) |
 | [SURFACE_REPORT_AND_ACTORS_2026-08-12.md](./SURFACE_REPORT_AND_ACTORS_2026-08-12.md) | **Who consumes the desk** (CIO/wealth/advisor), Telegram map, MS-style report + CIO event brief + timers |
+| [CC_V3_MATURITY_CRITIQUE_2026-08-12.md](./CC_V3_MATURITY_CRITIQUE_2026-08-12.md) | **Command Center v3 critique** (1–10 per item) + polish: snapshot fix, LLM-on, de-coded labels, tooltips |
 
 ## Related diagnostics (repo root / prior sessions)
 
