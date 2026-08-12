@@ -351,6 +351,9 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     sub.add_parser("probe", help="Score fixed probe set")
     sub.add_parser("rubric", help="Print rubric template")
+    p_j = sub.add_parser("judge", help="LLM-as-judge (DeepSeek Flash) one plan")
+    p_j.add_argument("--plan", required=True)
+    sub.add_parser("judge-probe", help="LLM-as-judge on fixed probe set")
 
     args = ap.parse_args(argv)
     if args.cmd == "rubric":
@@ -377,6 +380,26 @@ def main(argv: Optional[list[str]] = None) -> int:
             print(json.dumps(structural_check(plan), indent=2, default=str))
         else:
             print(json.dumps(evaluate_plan(plan), indent=2, default=str))
+        return 0
+
+    if args.cmd == "judge":
+        try:
+            from scripts.lib.cio_prompt_judge import llm_judge_plan
+        except Exception:
+            from lib.cio_prompt_judge import llm_judge_plan  # type: ignore
+        plan = store.get_plan(args.plan)
+        if not plan:
+            print(json.dumps({"ok": False, "error": "plan_not_found", "plan_id": args.plan}))
+            return 1
+        print(json.dumps(llm_judge_plan(plan, plan_store=store), indent=2, default=str))
+        return 0
+
+    if args.cmd == "judge-probe":
+        try:
+            from scripts.lib.cio_prompt_judge import judge_probe_set
+        except Exception:
+            from lib.cio_prompt_judge import judge_probe_set  # type: ignore
+        print(json.dumps(judge_probe_set(), indent=2, default=str))
         return 0
 
     ap.print_help()

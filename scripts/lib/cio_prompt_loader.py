@@ -227,3 +227,79 @@ def build_learning_block(pack: dict[str, Any], *, limit: int = 5) -> str:
         pid = L.get("plan_id") or ""
         lines.append(f"- {pid} ({st} {syms}): {disp}" + (f" — {note}" if note else ""))
     return "\n".join(lines) if lines else "(none)"
+
+
+# ── Judge prompt loader (separate from Alex) ────────────────────────────────
+
+JUDGE_DIR_NAME = "cio_judge"
+
+
+def load_active_judge(*, force_alias: Optional[str] = None) -> dict[str, Any]:
+    """Load active LLM-as-judge prompt bundle (DeepSeek Flash grader)."""
+    roots: list[Path] = []
+    env = (os.environ.get("TRADEAI_PROJECT_ROOT") or os.environ.get("TRADEAI_ROOT") or "").strip()
+    if env:
+        roots.append(Path(env))
+    roots.append(Path("/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"))
+    try:
+        roots.append(Path(__file__).resolve().parents[2])
+    except Exception:
+        pass
+    roots.append(Path.cwd())
+    d = None
+    for root in roots:
+        cand = root / "prompts" / JUDGE_DIR_NAME
+        if cand.is_dir():
+            d = cand
+            break
+    meta: dict[str, Any] = {}
+    if d and (d / "active.json").exists():
+        try:
+            meta = json.loads((d / "active.json").read_text(encoding="utf-8"))
+        except Exception:
+            meta = {}
+    alias = force_alias or str(meta.get("alias") or "v1")
+    version = str(meta.get("judge_prompt_version") or f"cio_judge@{alias}")
+    sys_name = str(meta.get("system_file") or f"{alias}_system.md")
+    user_name = str(meta.get("user_template_file") or f"{alias}_user_template.md")
+
+    def _strip(s: str) -> str:
+        lines = s.splitlines()
+        out = []
+        for i, ln in enumerate(lines):
+            if i == 0 and ln.startswith("#"):
+                continue
+            out.append(ln)
+        return "\n".join(out).strip()
+
+    system = (
+        "You are an evaluation judge for CIO advisory messages. Score 1-5 per rubric. "
+        "JSON only. READ_ONLY defects: execution language, invented numbers."
+    )
+    user_template = (
+        "THESIS:\n{{thesis_block}}\nSITUATION: {{situation_type}} {{symbol}} {{plan_id}}\n"
+        "EVIDENCE:\n{{evidence_pack}}\nADVISORY:\n{{advisory_text}}\n"
+        "Return JSON scores thesis_use,synthesis,options,recommendation,evidence,tone + rationales + critical_defects."
+    )
+    source = "fallback"
+    if d:
+        sp, up = d / sys_name, d / user_name
+        if sp.exists():
+            system = _strip(sp.read_text(encoding="utf-8"))
+            source = "files"
+        if up.exists():
+            user_template = _strip(up.read_text(encoding="utf-8"))
+            source = "files"
+    bundle = system + "\n---\n" + user_template
+    return {
+        "judge_prompt_version": version,
+        "alias": alias,
+        "system": system,
+        "user_template": user_template,
+        "content_hash": _sha256_text(bundle),
+        "model": meta.get("model") or "deepseek-v4-flash",
+        "temperature": float(meta.get("temperature") if meta.get("temperature") is not None else 0.1),
+        "max_tokens": int(meta.get("max_tokens") or 900),
+        "source": source,
+        "bundle_dir": str(d) if d else None,
+    }

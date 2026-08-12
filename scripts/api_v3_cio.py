@@ -147,7 +147,7 @@ def _public_plan(plan: dict[str, Any]) -> dict[str, Any]:
         "options", "recommendation", "risks", "evidence_refs", "fire_reasons",
         "owner_agent", "thesis_version", "thesis_alignment", "multi_domain_summary",
         "prompt_version", "prompt_content_hash", "prompt_alias",
-        "eval_structural_score", "eval_quality_total",
+        "eval_structural_score", "eval_quality_total", "eval_judge_total", "eval_judge_scores", "judge_prompt_version",
         "narrative_source", "llm_model", "llm_status", "revisit_at",
         "cc_deep_links", "linked_goal_ids",
         "created_ts", "updated_ts", "narrative_enriched_at", "authority",

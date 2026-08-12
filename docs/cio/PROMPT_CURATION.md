@@ -80,3 +80,29 @@ for pid in ['plan_1b8d534354fb','plan_05a414a3d105','plan_51e03253ba2d']:
 | Tone | 10% |
 
 Target promotion: mean ≥ 3.5/5, no dimension &lt; 2, no critical structural fails.
+
+
+## LLM-as-judge (DeepSeek Flash)
+
+Separate grader — not a second CIO. Never sends Telegram or rewrites advisories.
+
+```
+prompts/cio_judge/
+  active.json          # cio_judge@v1
+  v1_system.md
+  v1_user_template.md
+```
+
+Runner: `scripts/lib/cio_prompt_judge.py` (Flash via governed bridge; max_tokens ≥ 4096 to avoid empty_content from reasoning tokens).
+
+```bash
+PYTHONPATH=scripts python3 -m scripts.lib.cio_prompt_judge probe
+PYTHONPATH=scripts python3 -m scripts.lib.cio_prompt_judge score plan_05a414a3d105
+PYTHONPATH=scripts python3 -m scripts.lib.cio_prompt_eval judge-probe
+```
+
+Plan fields: `eval_judge_total`, `eval_judge_scores`, `judge_prompt_version`, `judge_scored_ts`.
+
+Weighted total is **recomputed in code** from dimension scores. Critical defects `execution_language` / `invented_numbers` / `missing_recommendation` set `structural_fail_from_judge`.
+
+**Calibration status: shadow** until a human gold set freezes promotion use. Operator `/cio rate` remains ground truth.

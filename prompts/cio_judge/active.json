@@ -1,0 +1,11 @@
+{
+  "judge_prompt_version": "cio_judge@v1",
+  "alias": "v1",
+  "system_file": "v1_system.md",
+  "user_template_file": "v1_user_template.md",
+  "model": "deepseek-v4-flash",
+  "temperature": 0.0,
+  "max_tokens": 4096,
+  "published_ts": "2026-08-12T00:00:00+00:00",
+  "notes": "LLM-as-judge for Alex advisories. Non-authoritative; operator rate wins. No Telegram/plan mutation."
+}

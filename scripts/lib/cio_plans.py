@@ -303,7 +303,7 @@ class CIOPlanStore:
             "thesis_version", "thesis_alignment", "multi_domain_summary",
             "material", "evidence_domains", "hermes_suggested", "hermes_challenge_id",
             "prompt_version", "prompt_content_hash", "prompt_alias",
-            "eval_structural_score", "eval_quality_total",
+            "eval_structural_score", "eval_quality_total", "eval_judge_total", "eval_judge_scores", "judge_prompt_version", "judge_scored_ts",
         }
         patch = {k: v for k, v in fields.items() if k in allowed and v is not None}
         if "status" in patch and patch["status"] not in VALID_STATUSES:
