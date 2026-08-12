@@ -1301,6 +1301,26 @@ def enrich_plan(
     result["evidence_domains"] = list(pack.get("evidence_domains") or [])
     result["thesis_version"] = pack.get("thesis_version")
 
+    # Versioned prompt bundle (prompts/cio_alex_enrich)
+    prompt_meta: dict[str, Any] = {}
+    try:
+        try:
+            from scripts.lib.cio_prompt_loader import load_active_prompt, thesis_compatible
+        except Exception:
+            from lib.cio_prompt_loader import load_active_prompt, thesis_compatible  # type: ignore
+        prompt_meta = load_active_prompt()
+        result["prompt_version"] = prompt_meta.get("prompt_version")
+        result["prompt_content_hash"] = prompt_meta.get("content_hash")
+        result["prompt_alias"] = prompt_meta.get("alias")
+        pin_live = str(pack.get("thesis_version") or "")
+        if not thesis_compatible(prompt_meta, pin_live):
+            result["prompt_compat_warning"] = (
+                f"thesis {pin_live} not in {prompt_meta.get('compatible_thesis')}"
+            )
+    except Exception as e:
+        prompt_meta = {}
+        result["prompt_load_error"] = f"{type(e).__name__}:{e}"
+
     # Material situations: never skip LLM for routine force_template / tests
     # unless CIO_LLM_FORCE_TEMPLATE=1 (true emergency).
     hard_tpl = os.environ.get("CIO_LLM_FORCE_TEMPLATE", "").strip().lower() in (
@@ -1334,42 +1354,33 @@ def enrich_plan(
         )
         # Prefer Flash for situation plans. Pro only when policy lists source.
         material = is_material_plan(plan) or bool(pack.get("material"))
-        system = (
-            "You are Alex, Chief Investment Officer for Trade AI — a mature institutional "
-            "READ_ONLY_ADVISORY colleague (never a detector echo bot). "
-            "Output ONE JSON object only; first character must be '{'. "
-            "No markdown fences, no chain-of-thought, no prose outside JSON. "
-            "Use ONLY numbers listed in the user numbers= line. "
-            "Missing → DATA_UNAVAILABLE. Never invent prices/weights/sizes/R:R. "
-            "\n\n"
-            "DESK OS CONTRACT (binding):\n"
-            "1) Open summary with thesis lens: 'Under {pin} / stance …' where pin is thesis_version.\n"
-            "2) Thesis is GOVERNING CONTEXT — not a footer tag. Every rec must state fit OR tension "
-            "with principles and risk_posture_structured.\n"
-            "3) Multi-domain synthesis is mandatory: holdings + cash/portfolio + risk "
-            "(+ Hermes counts if present). Pure fire_reasons restatement is INVALID.\n"
-            "4) What/Why: explain why this is material under the current stance "
-            "(cash is a feature; concentration may warrant hold with buffer; DD may be "
-            "awareness-only when book weight is small).\n"
-            "5) Options: exactly 2–3; preserve option ids; each pros and cons must be complete "
-            "short sentences (no truncation mid-word).\n"
-            "6) Recommendation: name option_id + conviction + explicit thesis alignment/tension. "
-            "Under defensive_observe, hold/stage/monitor is often highest-signal.\n"
-            "7) Risks: concrete, evidence-linked. revisit_hint: clear monitoring triggers.\n"
-            "8) Echo thesis_version pin exactly.\n"
-            "9) Never invent orders, stops, broker steps, or 'buy now' language.\n"
-            "10) If CONSTRAINT or recent_operator_dispositions appear for the symbol, "
-            "recommendation FIRST sentence MUST cite Operator prior (defer/ack/reject) "
-            "and must not reverse an active defer into trim/dispose as primary.\n"
-            "Tone: calm, precise, institutional. No hype.\n"
-            + (
-                "MATERIAL: summary 4–6 sentences; thesis_alignment 3–5 sentences with explicit "
-                "fit AND tension; multi_domain_summary must cite ≥2 domains with numbers; "
-                "recommendation is the 'so-what for the operator'. "
-                if material
-                else "ROUTINE: summary 2–3 sentences; still open with thesis pin and multi-domain so-what. "
+        # Prefer versioned prompt files; fall back to short embedded contract
+        if prompt_meta.get("system"):
+            system = str(prompt_meta.get("system") or "")
+            if prompt_meta.get("fewshot"):
+                system = system + "\n\n## FEW-SHOT CONTRAST\n" + str(prompt_meta.get("fewshot"))
+            pin_rt = str(pack.get("thesis_version") or "")
+            stance_rt = str((pack.get("desk_thesis") or {}).get("stance") or "defensive_observe")
+            system = (
+                f"Live pin: {pin_rt}. Live stance: {stance_rt}. "
+                f"Material={1 if material else 0}.\n\n" + system
             )
-        )
+            if material:
+                system += (
+                    "\nMATERIAL this call: summary 4–6 sentences; thesis_alignment 3–5 with fit AND tension; "
+                    "multi_domain_summary cites ≥2 domains with numbers."
+                )
+            else:
+                system += (
+                    "\nROUTINE this call: summary 2–3 sentences; still open with thesis pin."
+                )
+        else:
+            system = (
+                "You are Alex, CIO for Trade AI — mature READ_ONLY_ADVISORY. "
+                "Output ONE JSON object only. Use only numbers in evidence. "
+                "Open with Under pin/stance; multi-domain mandatory; options complete pros/cons; "
+                "rec names option_id + fit/tension; honor dispositions; no orders/stops."
+            )
         # Compact prompts — material tries minimal first (higher Flash success rate).
         max_retries = int((pol.get("validator") or {}).get("max_retries") or 1)
         if material:
@@ -1380,6 +1391,67 @@ def enrich_plan(
                 attempt_modes.append("minimal")
         for attempt, mode in enumerate(attempt_modes):
             user = compact_user_prompt(pack, minimal=(mode == "minimal"))
+            # Prefer file user template when it has desk_context slots (v2+)
+            if prompt_meta.get("user_template") and "{{desk_context}}" in str(prompt_meta.get("user_template") or ""):
+                try:
+                    try:
+                        from scripts.lib.cio_prompt_loader import (
+                            render_user_prompt as _rup,
+                            build_desk_context_block as _bdc,
+                            build_learning_block as _blb,
+                        )
+                    except Exception:
+                        from lib.cio_prompt_loader import (  # type: ignore
+                            render_user_prompt as _rup,
+                            build_desk_context_block as _bdc,
+                            build_learning_block as _blb,
+                        )
+                    pin_u = str(pack.get("thesis_version") or "")
+                    fire_s = ",".join(str(x) for x in (pack.get("fire_reasons") or [])[:4])
+                    domains = ",".join(str(d) for d in (pack.get("evidence_domains") or [])[:8])
+                    opts = pack.get("options_stub") or []
+                    opt_ids = []
+                    for o in opts[:5]:
+                        if isinstance(o, dict):
+                            opt_ids.append(str(o.get("id") or o.get("label") or "?"))
+                        else:
+                            opt_ids.append(str(o))
+                    numbers = ""
+                    for ln in user.splitlines():
+                        if ln.startswith("numbers="):
+                            numbers = ln.split("=", 1)[-1]
+                            break
+                    try:
+                        ev_lines = "\n".join(_evidence_lines(pack.get("evidence_refs") or [], limit=8 if material else 4))
+                    except Exception:
+                        ev_lines = user[:400]
+                    task = (
+                        f"{'MATERIAL ' if material else ''}Institutional advisory under {pin_u}. "
+                        f"Open summary with 'Under {pin_u} …'. Synthesize ≥2 domains; never echo fire alone. "
+                        f"thesis_alignment = fit AND tension. recommendation = option_id + conviction + thesis fit."
+                    )
+                    user = _rup(
+                        str(prompt_meta.get("user_template")),
+                        variables={
+                            "desk_context": _bdc(pack),
+                            "situation_type": pack.get("situation_type"),
+                            "symbols": pack.get("symbols"),
+                            "plan_id": pack.get("plan_id"),
+                            "fire": fire_s,
+                            "mat_tag": " material=1" if material else "",
+                            "domains": domains,
+                            "evidence_facts": ev_lines or "(none)",
+                            "numbers": numbers or "see evidence",
+                            "option_ids": opt_ids,
+                            "learning_block": _blb(pack),
+                            "task": task,
+                            "pin": pin_u,
+                            "stance": (pack.get("desk_thesis") or {}).get("stance") or "",
+                            "existing_summary": (pack.get("existing_summary") or "")[:200],
+                        },
+                    )
+                except Exception:
+                    pass  # keep compact user
             messages = [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
@@ -1536,6 +1608,35 @@ def enrich_plan(
         if pin_echo:
             updated["thesis_version"] = pin_echo
             result["thesis_version"] = pin_echo
+    # Prompt provenance
+    if result.get("prompt_version"):
+        updated["prompt_version"] = result.get("prompt_version")
+        updated["prompt_content_hash"] = result.get("prompt_content_hash")
+        updated["prompt_alias"] = result.get("prompt_alias")
+    # Structural + heuristic quality eval (Layer A + proxy B)
+    try:
+        try:
+            from scripts.lib.cio_prompt_eval import structural_check, heuristic_quality_score, record_eval
+        except Exception:
+            from lib.cio_prompt_eval import structural_check, heuristic_quality_score, record_eval  # type: ignore
+        st_eval = structural_check(updated)
+        q_eval = heuristic_quality_score(updated)
+        updated["eval_structural_score"] = st_eval.get("structural_score")
+        updated["eval_quality_total"] = q_eval.get("total")
+        result["eval"] = {"structural": st_eval, "quality": q_eval}
+        if updated.get("plan_id"):
+            record_eval(
+                str(updated.get("plan_id")),
+                str(updated.get("prompt_version") or "unknown"),
+                structural=st_eval,
+                quality=q_eval,
+                thesis_version=str(updated.get("thesis_version") or ""),
+            )
+        if st_eval.get("block_notify"):
+            result["notify_blocked_structural"] = True
+            result["structural_fails"] = st_eval.get("critical_fails")
+    except Exception as e:
+        result["eval_error"] = f"{type(e).__name__}:{e}"
     # Strip any residual deferred markers from stored text
     for fld in ("summary", "recommendation"):
         val = str(updated.get(fld) or "")
@@ -1567,6 +1668,11 @@ def enrich_plan(
                 narrative_source=updated.get("narrative_source"),
                 llm_status=updated.get("llm_status") or result.get("llm"),
                 llm_model=updated.get("llm_model"),
+                prompt_version=updated.get("prompt_version") or result.get("prompt_version"),
+                prompt_content_hash=updated.get("prompt_content_hash") or result.get("prompt_content_hash"),
+                prompt_alias=updated.get("prompt_alias") or result.get("prompt_alias"),
+                eval_structural_score=updated.get("eval_structural_score"),
+                eval_quality_total=updated.get("eval_quality_total"),
             )
             # store enrichment metadata via second update using allowed fields only —
             # put extras via update that merges if we add fields... update_plan only allows certain fields.
@@ -1813,6 +1919,29 @@ def maybe_notify_plan(
     # only draft/proposed plans
     if plan.get("status") not in ("proposed", "draft"):
         return False
+    # Structural critical fails (execution language / missing rec) block notify
+    if not force:
+        try:
+            try:
+                from scripts.lib.cio_prompt_eval import structural_check
+            except Exception:
+                from lib.cio_prompt_eval import structural_check  # type: ignore
+            stc = structural_check(plan)
+            if stc.get("block_notify"):
+                try:
+                    _log_enrich({
+                        "ts": _now(),
+                        "plan_id": plan.get("plan_id"),
+                        "llm": "notify_skipped",
+                        "notify_skip": "structural_critical",
+                        "structural_fails": stc.get("critical_fails"),
+                        "authority": "READ_ONLY_ADVISORY",
+                    })
+                except Exception:
+                    pass
+                return False
+        except Exception:
+            pass
     # Prefer high-value situation types for notify (S1/S2/S5/S6/S8)
     st = str(plan.get("situation_type") or "")
     allow_types = set(pol.get("notify_situation_types") or [

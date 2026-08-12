@@ -42,6 +42,7 @@ For operator-facing host packet (pin + as_of snapshots): see [CIO_DESK_OPERATING
 | [AUTHORITY.md](./AUTHORITY.md) | READ_ONLY_ADVISORY contract; forbidden actions; Telegram vs UI |
 | [SITUATIONS.md](./SITUATIONS.md) | S-class catalog, fire rules, plan lifecycle, notify guard |
 | [DESK_NOTE.md](./DESK_NOTE.md) | Desk synthesis product, section schema, regenerate commands, quality bar |
+| [PROMPT_CURATION.md](./PROMPT_CURATION.md) | Prompt curation, versioning, structural eval + rubric |
 | [REENTRY_RR.md](./REENTRY_RR.md) | R:R formula `(target−price)/(price−stop)`; engine ≥2:1 vs desk core ≥1.5 |
 | [LEARNING_LOOP.md](./LEARNING_LOOP.md) | Dispositions → learning_log → enrichment bias; limits |
 | [ROADMAP_GAPS.md](./ROADMAP_GAPS.md) | Explicit missing product (aspirational only here) |

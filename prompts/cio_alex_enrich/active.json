@@ -1,0 +1,10 @@
+{
+  "prompt_version": "cio_alex_enrich@v2",
+  "alias": "v2",
+  "system_file": "v2_system.md",
+  "user_template_file": "v2_user_template.md",
+  "fewshot_file": "v2_fewshot.md",
+  "compatible_thesis": ["desk@v4", "desk@v5"],
+  "published_ts": "2026-08-12T00:00:00+00:00",
+  "notes": "Desk OS v2 curated contract: context injection, hard schema, thesis-tension, forbidden list, contrast few-shot."
+}
