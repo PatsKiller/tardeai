@@ -32,6 +32,7 @@ from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
+CIO_DIR = PROJECT_ROOT / "data" / "cio"
 CACHE_DIR = PROJECT_ROOT / "data" / "runtime"
 CACHE_FILE = CACHE_DIR / "advisory_desk_latest.json"
 SNAPSHOT_VERSION = "advisory-desk-v1-data-broker"
@@ -237,6 +238,9 @@ def _load_holdings() -> dict[str, Any]:
             "name": str(h.get("name", "")),
             "gain_loss_pct": canonical_gl,
             "reconciliation_status": str(h.get("reconciliation_status", "")),
+            "cost_basis_source": str(h.get("cost_basis_source", "")),
+            "basis_partial": bool(h.get("basis_partial")),
+            "cost_basis_note": str(h.get("cost_basis_note", "")),
         }
         positions.append(pos)
         total_value += mv
@@ -1577,6 +1581,9 @@ def _load_lot_basis(
     lots_in_profit = 0
     lots_underwater = 0
     oldest_open = ""
+    lots_long = 0
+    lots_short = 0
+    as_of = datetime.now(timezone.utc).date()
 
     for lot in source:
         shares = float(lot.get("shares_remaining", 0) or lot.get("shares", 0))
@@ -1586,6 +1593,20 @@ def _load_lot_basis(
         total_cost += shares * cps
         if cps > 0:
             basis_prices.append(cps)
+
+        # Holding-period classification (LT ≥ 365 days held, else ST)
+        lot_term = ""
+        if lot_dt:
+            try:
+                lot_day = datetime.strptime(str(lot_dt)[:10], "%Y-%m-%d").date()
+                if (as_of - lot_day).days >= 365:
+                    lot_term = "LT"
+                    lots_long += 1
+                else:
+                    lot_term = "ST"
+                    lots_short += 1
+            except ValueError:
+                pass
 
         # Profit/underwater check
         if current_price and cps > 0 and shares > 0:
@@ -1600,6 +1621,7 @@ def _load_lot_basis(
             "cost_per_share": cps,
             "account": str(lot.get("account", "")),
             "action": str(lot.get("action", "")),
+            "holding_period": lot_term or None,
         })
 
         # Track oldest open lot date
@@ -1623,6 +1645,14 @@ def _load_lot_basis(
         "weighted_avg_basis": wavg_basis,
         "oldest_open_lot_date": oldest_open or None,
         "lots": lot_details,
+        "lots_long": lots_long,
+        "lots_short": lots_short,
+        "holding_period": (
+            "MIXED" if lots_long and lots_short
+            else "LONG" if lots_long
+            else "SHORT" if lots_short
+            else None
+        ),
     }
 
     if lot_data_status == "VERIFIED":
@@ -2153,6 +2183,202 @@ def _derive_allocation_rows(
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# Portfolio-level analytics + performance (read-model projections, JSON only)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _load_portfolio_analytics(holdings: dict[str, Any]) -> dict[str, Any]:
+    """Asset-weighted valuation multiples + sector concentration + top-10.
+
+    Sources ticker_enrichment_cache.json (PE/PB/PS/PC/sector) over current
+    holdings. Only *direct equity* positions (both PE and PB populated — a
+    reliable common-stock signal) feed the weighted multiples and sector
+    breakdown. Funds/ETFs are excluded because the cache has no look-through
+    multiples and carries a generic "Financial / Exchange Traded Fund" tag for
+    them; that portion is reported as a coverage percentage instead of being
+    mis-attributed.
+    """
+    enrich = _load_json(STATE_DIR / "ticker_enrichment_cache.json")
+    positions = holdings.get("positions", [])
+    if not positions:
+        return {"state": "DATA_UNAVAILABLE", "reason": "no positions"}
+
+    metrics = ("pe", "pb", "ps", "pc")
+    totals = {m: 0.0 for m in metrics}
+    covered_mv = 0.0
+    fund_mv = 0.0
+    total_mv = 0.0
+    sector_mv: dict[str, float] = {}
+    rows_by_mv: list[tuple[float, dict]] = []
+    direct_equity_symbols: list[str] = []
+    unclassified: list[dict[str, Any]] = []
+
+    for p in positions:
+        sym = p.get("symbol", "")
+        mv = float(p.get("market_value") or 0)
+        if mv <= 0:
+            continue
+        total_mv += mv
+        rows_by_mv.append((mv, p))
+        rec = enrich.get(sym) or {}
+        if not isinstance(rec, dict):
+            continue
+        pe = _f(rec.get("pe"))
+        pb = _f(rec.get("pb"))
+        is_direct_equity = pe is not None and pe > 0 and pb is not None and pb > 0
+        if not is_direct_equity:
+            # Funds/ETFs and data-less instruments — excluded from valuation
+            # and sector (no reliable look-through at this tier).
+            fund_mv += mv
+            industry = rec.get("industry")
+            if industry in ("Exchange Traded Fund", "Closed-End Fund", "Mutual Fund", "Index Fund"):
+                reason = "fund_or_etf"
+            elif not rec.get("sector") and not rec.get("industry"):
+                reason = "no_enrichment_data"
+            else:
+                reason = "no_direct_equity_multiples"
+            unclassified.append({
+                "symbol": sym,
+                "market_value": round(mv, 2),
+                "reason": reason,
+                "style_classification": "requires_lookthrough",
+            })
+            continue
+        covered_mv += mv
+        direct_equity_symbols.append(sym)
+        sector = rec.get("sector")
+        if sector:
+            sector_mv[str(sector)] = sector_mv.get(str(sector), 0.0) + mv
+        for m in metrics:
+            v = _f(rec.get(m))
+            if v is not None and v > 0:
+                totals[m] += mv * v
+
+    weighted = {}
+    for m in metrics:
+        weighted[m] = round(totals[m] / covered_mv, 2) if covered_mv > 0 else None
+
+    coverage_pct = round(covered_mv / total_mv * 100, 1) if total_mv > 0 else 0.0
+    fund_pct = round(fund_mv / total_mv * 100, 1) if total_mv > 0 else 0.0
+
+    # Top-10 holdings by market value (Morgan Stanley "Top 10")
+    rows_by_mv.sort(key=lambda x: x[0], reverse=True)
+    top_10 = []
+    for mv, p in rows_by_mv[:10]:
+        top_10.append({
+            "symbol": p.get("symbol", ""),
+            "account": p.get("account", ""),
+            "market_value": round(mv, 2),
+            "weight_pct": round(mv / total_mv * 100, 2) if total_mv > 0 else None,
+        })
+
+    sector_sorted = sorted(sector_mv.items(), key=lambda kv: kv[1], reverse=True)
+    sector_breakdown = [
+        {"sector": s, "market_value": round(v, 2),
+         "weight_pct": round(v / total_mv * 100, 2) if total_mv > 0 else None}
+        for s, v in sector_sorted
+    ]
+
+    return {
+        "state": "AVAILABLE",
+        "weighted_pe": weighted["pe"],
+        "weighted_pb": weighted["pb"],
+        "weighted_ps": weighted["ps"],
+        "weighted_pcf": weighted["pc"],
+        "valuation_coverage_pct": coverage_pct,
+        "fund_etf_pct": fund_pct,
+        "valuation_coverage_note": (
+            "Multiples and sector weights are over direct equity holdings only; "
+            f"{fund_pct:.1f}% of market value is in funds/ETFs and requires "
+            "look-through (not yet wired)."
+        ) if fund_pct > 0 else None,
+        "sector_breakdown": sector_breakdown,
+        "top_10": top_10,
+        "style_classification": {
+            "style_box_available": False,
+            "style_method": (
+                "Direct-equity multiples only (no Morningstar-style 3x3 "
+                "value/blend/growth look-through)."
+            ),
+            "direct_equity_symbols": sorted(set(direct_equity_symbols)),
+            "unclassified": unclassified,
+            "unclassified_count": len(unclassified),
+            "hermes_research_recommended": bool(unclassified),
+        },
+    }
+
+
+def _load_performance() -> dict[str, Any]:
+    """Performance returns + attribution from precomputed caches.
+
+    performance_history.json supplies period returns (1D..1Y); the desk uses a
+    money-weighted CAGR from performance_attribution.json (a true time-weighted
+    return is a documented non-goal — see ROADMAP_GAPS.md).
+    """
+    hist = _load_json(STATE_DIR / "performance_history.json")
+    attr = _load_json(STATE_DIR / "performance_attribution.json")
+
+    periods_raw = hist.get("periods", {}) if isinstance(hist, dict) else {}
+    period_returns: dict[str, Any] = {}
+    for pname in ("1D", "1W", "1M", "3M", "6M", "YTD", "1Y"):
+        pr = periods_raw.get(pname) or {}
+        period_returns[pname] = {
+            "change_pct": _f(pr.get("change_pct")),
+            "source": pr.get("source"),
+        }
+
+    return {
+        "state": "AVAILABLE" if hist.get("has_data") else "DATA_UNAVAILABLE",
+        "period_returns": period_returns,
+        "ytd_return": _f(periods_raw.get("YTD", {}).get("change_pct")),
+        "building": hist.get("building", []) if isinstance(hist, dict) else [],
+        "reconstructed": hist.get("reconstructed", []) if isinstance(hist, dict) else [],
+        "current_value": _f(hist.get("current_value")),
+        # Money-weighted attribution (not TWR)
+        "inception_return": _f(attr.get("inception_return")),
+        "port_cagr": _f(attr.get("port_cagr")),
+        "bench_cagr": _f(attr.get("bench_cagr")),
+        "alpha_annualized": _f(attr.get("alpha_annualized")),
+        "bench_3yr_return": _f(attr.get("bench_3yr_return")),
+        "sharpe": _f(attr.get("port_sharpe")),
+        "sortino": _f(attr.get("port_sortino")),
+        "max_drawdown": _f(attr.get("port_maxdd")),
+        "benchmark_label": attr.get("benchmark_label"),
+    }
+
+
+def _load_living_thesis() -> dict[str, Any]:
+    """Current desk governing thesis from the CIO versioned thesis store.
+
+    Reads the rebuildable projection directly (JSON only — no store
+    instantiation, no writes). Surfaces the desk@vN pin + governing context so
+    the desk's output can state fit/tension with the live thesis.
+    """
+    proj = _load_json(CIO_DIR / "cio_theses_projection.json")
+    cur = (proj.get("current") or {}) if isinstance(proj, dict) else {}
+    desk = cur.get("desk")
+    if not isinstance(desk, dict):
+        return {"state": "DATA_UNAVAILABLE", "reason": "no desk thesis published"}
+
+    return {
+        "state": "AVAILABLE",
+        "thesis_id": desk.get("thesis_id"),
+        "thesis_version": desk.get("thesis_version"),
+        "version": desk.get("version"),
+        "stance": desk.get("stance"),
+        "status": desk.get("status"),
+        "summary": (desk.get("summary") or "")[:1200],
+        "risk_posture": desk.get("risk_posture") or "",
+        "principles": list(desk.get("principles") or [])[:12],
+        "escalation_rules": list(desk.get("escalation_rules") or [])[:12],
+        "linked_symbols": list(desk.get("linked_symbols") or [])[:20],
+        "watch_symbols": list(desk.get("watch_symbols") or desk.get("linked_symbols") or [])[:20],
+        "published_ts": desk.get("published_ts"),
+        "owner_agent": desk.get("owner_agent"),
+        "authority": "READ_ONLY_ADVISORY",
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # Main builder — the single entry point
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -2188,6 +2414,9 @@ def build_advisory_desk(*, max_age_s: float = DEFAULT_MAX_AGE_S, force: bool = F
     watchlist = _load_watchlist()
     closed = _load_trade_journal()
     tax_lots = _load_tax_lots()
+    analytics = _load_portfolio_analytics(holdings)
+    performance = _load_performance()
+    living_thesis = _load_living_thesis()
 
     total_value = holdings.get("total_value") or 0
     holdings_symbols = {p["symbol"] for p in holdings.get("positions", [])}
@@ -2252,6 +2481,11 @@ def build_advisory_desk(*, max_age_s: float = DEFAULT_MAX_AGE_S, force: bool = F
             opinion["instrument"] = instrument_data.get(sym, {})
             opinion["invariant_violations"] = invariant_results.get(sym, {}).get("violations", [])
             opinion["lot_data_status"] = invariant_results.get(sym, {}).get("lot_data_status", "")
+            # Tax truth: broker-adjusted cost basis + provenance + holding period
+            opinion["adjusted_cost"] = _f(pos.get("cost_basis"))
+            opinion["cost_basis_source"] = pos.get("cost_basis_source", "")
+            opinion["basis_partial"] = bool(pos.get("basis_partial"))
+            opinion["holding_period"] = lot_basis_data.get(sym, {}).get("holding_period")
 
             # S4: is_recent_ipo limitation — indicate unreliable technicals
             if instrument_data.get(sym, {}).get("is_recent_ipo"):
@@ -2440,16 +2674,19 @@ def build_advisory_desk(*, max_age_s: float = DEFAULT_MAX_AGE_S, force: bool = F
                 "closed_rows_suppressed": len(closed_rows_suppressed),
                 "degenerate_classes": degenerate_report,
                 "verdict_counts": verdict_counts,
-                "s4_invariant_violations": sum(
+                "invariant_violation_count": sum(
                     1 for r in rows
                     if r.get("invariant_violations") and len(r.get("invariant_violations", [])) > 0
                 ),
-                "s4_untrusted_lots": sum(
+                "untrusted_lot_count": sum(
                     1 for r in rows
                     if r.get("lot_data_status") == "UNTRUSTED"
                 ),
-                "s4_listing_dates_available": len(listing_dates),
-                "s4_instrument_identity_built": len(instrument_data),
+                "listing_date_coverage": len(listing_dates),
+                "instrument_identity_coverage": len(instrument_data),
+                "portfolio_analytics": analytics,
+                "performance": performance,
+                "living_thesis": living_thesis,
                 "catalyst_cache_path": (evidence_data.get("catalysts") or {}).get("cache_path"),
             },
             "rows": rows,
@@ -2975,7 +3212,8 @@ def enrich_advisory_with_opinions(
     if dry_run or not include_synthesis:
         synthesis_meta = {
             "text": (
-                f"[S3 SYNTHESIS — DRY RUN] ADVISORY_DESK_V1={flag_on}. "
+                f"Desk synthesis preview — opinion layer is not enabled for this run "
+                f"(ADVISORY_DESK_V1={flag_on}). "
                 f"{len(rows)} rows, {len(opinions)} opinions. "
                 f"Actionable covered {actionable_covered}/{actionable_total}."
             ),

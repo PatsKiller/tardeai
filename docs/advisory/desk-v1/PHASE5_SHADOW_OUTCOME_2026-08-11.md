@@ -76,7 +76,7 @@ All must hold:
 
 1. `validation_ok`  
 2. `plausibility_gate == PASS`  
-3. `s4_invariant_violations == 0`  
+3. `invariant_violation_count == 0`  
 4. `spend_usd ≤ budget` (default $0.05)  
 
 ---

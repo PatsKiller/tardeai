@@ -35,7 +35,7 @@ def _verdict_str(v: Any) -> str:
 
 
 def compute_banners(meta: dict[str, Any], data: dict[str, Any]) -> list[dict[str, str]]:
-    """Five banner states for the desk surface (Phase 4.2)."""
+    """Five banner states for the desk surface."""
     banners: list[dict[str, str]] = []
     # 1 OK / health
     if meta.get("validation_ok") and meta.get("plausibility_gate") == "PASS":
@@ -68,7 +68,7 @@ def compute_banners(meta: dict[str, Any], data: dict[str, Any]) -> list[dict[str
             "detail": "Verdict mix and weight sum within bounds",
         })
     # 3 Untrusted lots
-    n_untrusted = int(meta.get("s4_untrusted_lots") or 0)
+    n_untrusted = int(meta.get("untrusted_lot_count") or 0)
     if n_untrusted > 0:
         banners.append({
             "id": "UNTRUSTED_LOTS",
@@ -113,7 +113,7 @@ def compute_banners(meta: dict[str, Any], data: dict[str, Any]) -> list[dict[str
             "detail": "Flash row opinions and/or Pro synthesis present",
         })
     # 5 Invariants
-    n_inv = int(meta.get("s4_invariant_violations") or 0)
+    n_inv = int(meta.get("invariant_violation_count") or 0)
     if n_inv > 0:
         banners.append({
             "id": "INVARIANT_VIOLATIONS",
@@ -163,6 +163,7 @@ def _row_view(row: dict[str, Any], opinions: dict[str, Any] | None = None) -> di
         "sufficient": bool(eb.get("sufficient")),
         "lot_data_status": row.get("lot_data_status") or lot.get("lot_data_status") or "",
         "invariant_violations": row.get("invariant_violations") or [],
+        "basis_partial": bool(row.get("basis_partial")),
     }
 
     return {
@@ -175,6 +176,9 @@ def _row_view(row: dict[str, Any], opinions: dict[str, Any] | None = None) -> di
         "weight_pct": row.get("weight_pct"),
         "gain_loss_pct": row.get("gain_loss_pct"),
         "days_held": row.get("days_held"),
+        "holding_period": row.get("holding_period"),
+        "adjusted_cost": row.get("adjusted_cost"),
+        "cost_basis_source": row.get("cost_basis_source"),
         "rationale": row.get("rationale"),
         "risk_signals": row.get("risk_signals") or [],
         "advisory_row_hash": rh,
@@ -259,6 +263,8 @@ def get_advisory_desk(*, force: bool = False, row_class: str | None = None) -> d
         "version": data.get("version"),
         "banners": banners,
         "metadata": meta,
+        "portfolio_analytics": meta.get("portfolio_analytics") or {},
+        "performance": meta.get("performance") or {},
         "by_class": by_class,
         "verdict_counts": meta.get("verdict_counts") or {},
         "synthesis": synthesis,

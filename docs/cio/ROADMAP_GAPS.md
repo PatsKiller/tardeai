@@ -37,6 +37,18 @@ If a capability is listed here, **do not** claim it as shipped in README maturit
 | Desk note v1.1 multi-section advisory memo | IPS documents, multi-horizon projections, tax-aware lots, household aggregation, compliance-grade narratives, client-ready PDFs |
 | Book cash / concentration / heat | Full factor, stress, and liability-matched analytics |
 
+### 4b. Report-grade analytics — verified deltas (2026-08-12)
+
+Measured against the Morgan Stanley Full Portfolio Report field template:
+
+| Field | Gap |
+|---|---|
+| True TWR | **Non-goal.** Money-weighted CAGR + attribution used instead |
+| Per-lot adjusted cost + per-lot term | **Partial.** Aggregate broker-adjusted cost captured; `schwab_cost_basis_lots` has `opened_date` NULL → no per-lot adjusted cost or per-lot LT/ST |
+| QTD return | **Absent.** `performance_history.json` computes 1D/1W/1M/3M/6M/YTD/1Y only |
+| Style box (value/blend/growth) | **Absent.** Direct-equity multiples only (~21% coverage); ~79% of MV is funds/ETFs needing look-through |
+| Performance 3M/1Y quality | **Flagged.** `3M.change_pct=73.31` internally inconsistent with its `$56,156` change; `1Y` still `building`; both `source: account-aggregated` |
+
 ### 5. Plan pin hygiene at scale
 
 | Live | Missing |

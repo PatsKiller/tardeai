@@ -153,8 +153,8 @@ def run_shadow_session(
     gates = {
         "validation_ok": bool(meta.get("validation_ok")),
         "plausibility_pass": meta.get("plausibility_gate") == "PASS",
-        "invariant_violations": int(meta.get("s4_invariant_violations") or 0),
-        "invariants_green": int(meta.get("s4_invariant_violations") or 0) == 0,
+        "invariant_violations": int(meta.get("invariant_violation_count") or 0),
+        "invariants_green": int(meta.get("invariant_violation_count") or 0) == 0,
         "spend_usd": spend,
         "budget_usd": budget_usd,
         "spend_within_budget": spend <= budget_usd + 1e-9,

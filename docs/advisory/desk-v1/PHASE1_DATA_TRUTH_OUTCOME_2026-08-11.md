@@ -145,7 +145,7 @@ Report: `data/runtime/tax_lots_rebuild_latest.json`
 ### Desk build after Phase 1
 ```
 validation_ok=True  plausibility_gate=PASS  validation_errors=[]
-s4_invariant_violations=0  s4_untrusted_lots=0
+invariant_violation_count=0  untrusted_lot_count=0
 catalyst_cache_path=.../data/catalyst_cache_2026-08-11.json
 holdings_rows=29
 ```
