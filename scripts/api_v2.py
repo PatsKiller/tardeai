@@ -39777,6 +39777,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     return 200, _cio.get_cio_delegation()
                 if p == "thesis":
                     return 200, _cio.get_cio_thesis()
+                if p in ("desk-note", "desk_note", "synthesis"):
+                    return 200, _cio.get_cio_desk_note()
                 if p == "plans":
                     lim = 30
                     st = None

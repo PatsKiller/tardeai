@@ -201,12 +201,12 @@ def get_cio_thesis() -> dict[str, Any]:
     try:
         from lib.cio_theses import safe_context_block, safe_current_pin
         pin = safe_current_pin("desk")
-        block = safe_context_block("desk")
+        block = safe_context_block("desk", full=True)
     except Exception:
         try:
             from scripts.lib.cio_theses import safe_context_block, safe_current_pin  # type: ignore
             pin = safe_current_pin("desk")
-            block = safe_context_block("desk")
+            block = safe_context_block("desk", full=True)
         except Exception:
             pin, block = None, None
     return {
@@ -216,6 +216,24 @@ def get_cio_thesis() -> dict[str, Any]:
         "thesis": block,
         "authority": "READ_ONLY_ADVISORY",
     }
+
+
+def get_cio_desk_note() -> dict[str, Any]:
+    """Portfolio-grade desk synthesis note under live desk@vN."""
+    try:
+        try:
+            from lib.cio_desk_synthesis import generate_desk_synthesis_v1
+        except Exception:
+            from scripts.lib.cio_desk_synthesis import generate_desk_synthesis_v1  # type: ignore
+        return generate_desk_synthesis_v1()
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": type(e).__name__,
+            "detail": str(e)[:200],
+            "authority": "READ_ONLY_ADVISORY",
+            "as_of": _now_iso(),
+        }
 
 
 def post_plan_disposition(plan_id: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
