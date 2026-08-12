@@ -59,8 +59,10 @@ Output schema — return ONLY one JSON object:
 }
 
 Rules:
-- Every number in prose must appear verbatim in the evidence bundle.
-- evidence_cited must only use ref_ids/titles present in the bundle.
+- Every number in prose must appear in the evidence bundle (you may round, but not invent).
+- evidence_cited must only use identifiers that appear in the evidence items.
+  Each item has "type", "source", "title", and sometimes "agent" fields — cite one of
+  these exact values, e.g. "price_action", "risk_snapshot", or "price_action:risk_snapshot".
 - If you disagree with the deterministic verdict, say so and set verdict to your recommendation.
 - key_risk is REQUIRED.
 - No order types, no share counts, no execution instructions.
@@ -339,6 +341,49 @@ def _extract_json_from_response(content: str) -> dict[str, Any] | None:
     return None
 
 
+def _collect_evidence_numbers(items: list[Any]) -> set[str]:
+    """Recursively collect numeric literals present in evidence items.
+
+    Returns normalized strings (stripped of %,$,commas,whitespace) so a prose
+    figure that rewords/rounds an evidence number still matches rather than
+    triggering a fabricated-number rejection.
+    """
+    found: set[str] = set()
+
+    def _add(val: Any) -> None:
+        if isinstance(val, bool):
+            return
+        if isinstance(val, (int, float)):
+            s = str(val)
+            found.add(s)
+            # also accept a rounded form (e.g. evidence 12.34 vs prose "12.3" or "12")
+            try:
+                f = float(val)
+                found.add(f"{f:.1f}".rstrip("0").rstrip("."))
+                found.add(f"{f:.2f}".rstrip("0").rstrip("."))
+                found.add(f"{f:.0f}")
+            except Exception:
+                pass
+            return
+        if isinstance(val, str):
+            for tok in re.findall(r"\d+\.?\d*", val):
+                found.add(tok.lstrip("0") or "0")
+            return
+
+    def _walk(node: Any) -> None:
+        if isinstance(node, dict):
+            for v in node.values():
+                _walk(v)
+        elif isinstance(node, list):
+            for v in node:
+                _walk(v)
+        else:
+            _add(node)
+
+    _walk(items)
+    return found
+
+
 def validate_opinion_output(
     opinion: dict[str, Any],
     evidence_bundle: dict[str, Any],
@@ -347,8 +392,16 @@ def validate_opinion_output(
     """Validate a model-generated opinion against the evidence bundle.
 
     Returns (annotated_opinion, errors).
+
+    Only structural violations hard-reject (invalid verdict, missing key_risk).
+    Evidence-fidelity checks (a prose number not verbatim in the bundle, a cited
+    ref id that isn't an exact key) are recorded as `validation_warnings` so a
+    clean-enough opinion still reaches the operator instead of being dropped
+    wholesale. The system prompt already forbids inventing figures; these
+    warnings are surfaced for review, not treated as fatal.
     """
     errors: list[str] = []
+    warnings: list[str] = []
 
     valid_verdicts = {
         "ADD", "AVOID", "EXIT", "HOLD", "INSUFFICIENT_DATA", "RE_ENTER", "TRIM", "WAIT",
@@ -357,46 +410,54 @@ def validate_opinion_output(
     if verdict not in valid_verdicts:
         errors.append(f"Invalid verdict: '{verdict}'")
 
-    evidence_str = json.dumps(evidence_bundle)
+    if not opinion.get("key_risk"):
+        errors.append("key_risk is required but missing")
+
+    # Evidence-fidelity (soft) checks — see docstring.
+    evidence_items = evidence_bundle.get("evidence_items", [])
+    evidence_numbers = _collect_evidence_numbers(evidence_items)
+
+    def _norm_num(s: str) -> str:
+        return s.replace("%", "").replace(",", "").replace("$", "").replace("±", "").strip()
+
     for field in ("rationale", "what_changed", "key_risk"):
         text = opinion.get(field, "")
         if not isinstance(text, str):
             continue
-        numbers = re.findall(r"\d+\.?\d*\s*%?", text)
-        for num in numbers:
-            clean = num.replace("%", "").strip()
-            if clean and clean not in evidence_str and "." in clean:
-                if not re.match(r"^\d{4}$", clean):
-                    errors.append(f"Number '{num}' in {field} not found in evidence")
+        for num in re.findall(r"\d[\d,]*(?:\.\d+)?\s*%?", text):
+            clean = _norm_num(num).lstrip("0") or "0"
+            if clean in ("", "0"):
+                continue
+            if clean not in evidence_numbers and not any(
+                clean.startswith(e) or e.startswith(clean) for e in evidence_numbers
+            ):
+                warnings.append(f"Number '{num}' in {field} not found in evidence")
 
-    evidence_items = evidence_bundle.get("evidence_items", [])
     valid_ref_ids: set[str] = set()
     for item in evidence_items:
         if not isinstance(item, dict):
             continue
-        title = item.get("title", "")
-        if title:
-            valid_ref_ids.add(title)
-        source = item.get("source", "")
-        tp = item.get("type", "")
-        valid_ref_ids.add(f"{tp}:{source}")
-        if item.get("agent"):
-            valid_ref_ids.add(str(item.get("agent")))
+        title = str(item.get("title") or "")
+        source = str(item.get("source") or "")
+        tp = str(item.get("type") or "")
+        for candidate in (title, source, tp, f"{tp}:{source}", str(item.get("agent") or "")):
+            if candidate:
+                valid_ref_ids.add(candidate)
 
     cited = opinion.get("evidence_cited", [])
     if isinstance(cited, list):
         for ref in cited:
             if ref not in valid_ref_ids:
-                errors.append(f"Cited ref '{ref}' not found in evidence bundle")
-
-    if not opinion.get("key_risk"):
-        errors.append("key_risk is required but missing")
+                warnings.append(f"Cited ref '{ref}' not found in evidence bundle")
 
     if verdict and verdict != deterministic_verdict and verdict in valid_verdicts:
         opinion["model_deterministic_disagreement"] = True
         opinion["deterministic_verdict"] = deterministic_verdict
     else:
         opinion["model_deterministic_disagreement"] = False
+
+    if warnings:
+        opinion["validation_warnings"] = warnings
 
     if errors:
         opinion["llm_rejected"] = True

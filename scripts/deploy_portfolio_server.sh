@@ -145,6 +145,21 @@ else
     echo "  WARNING: Integrity manifest generation had issues (continuing)"
 fi
 
+# --- Step 4b: Refresh release manifest (never re-serve a stale FAIL) ---
+# docs/project/RELEASE_MANIFEST_LATEST.md carries a Status line the health agent
+# mirrors. It is regenerated in the canonical tree by validate_release_readiness.py
+# as part of pre-deploy diligence; if that step is skipped the release would carry a
+# stale FAIL forever. Copy the canonical (fresh) copy over the rsync snapshot.
+echo "[4b/8] Refreshing release manifest..."
+if [ -f "${CANONICAL_SOURCE}/docs/project/RELEASE_MANIFEST_LATEST.md" ]; then
+    mkdir -p "${RELEASE_DIR}/docs/project"
+    cp -f "${CANONICAL_SOURCE}/docs/project/RELEASE_MANIFEST_LATEST.md" \
+        "${RELEASE_DIR}/docs/project/RELEASE_MANIFEST_LATEST.md"
+    echo "  Copied canonical release manifest (Status: $(grep -m1 '^Status:' "${RELEASE_DIR}/docs/project/RELEASE_MANIFEST_LATEST.md" | cut -d' ' -f2))."
+else
+    echo "  WARNING: canonical release manifest missing — release will carry the rsync snapshot."
+fi
+
 # --- Step 5: Update CURRENT symlink ---
 echo "[5/8] Updating CURRENT symlink..."
 ln -sfn "$RELEASE_DIR" "${RELEASES_BASE}/CURRENT"

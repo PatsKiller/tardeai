@@ -37,6 +37,8 @@ See [AUTONOMY_AND_SCHEDULING_TRUTH_2026-08-11.md](./AUTONOMY_AND_SCHEDULING_TRUT
 | [DEEPSEEK_USAGE_2026-08-12.md](./DEEPSEEK_USAGE_2026-08-12.md) | DeepSeek routing, key path, cost controls, prompt curation (read-only) |
 | [SURFACE_REPORT_AND_ACTORS_2026-08-12.md](./SURFACE_REPORT_AND_ACTORS_2026-08-12.md) | **Who consumes the desk** (CIO/wealth/advisor), Telegram map, MS-style report + CIO event brief + timers |
 | [CC_V3_MATURITY_CRITIQUE_2026-08-12.md](./CC_V3_MATURITY_CRITIQUE_2026-08-12.md) | **Command Center v3 critique** (1–10 per item) + polish: snapshot fix, LLM-on, de-coded labels, tooltips |
+| [LLM_SURFACE_FIX_2026-08-12.md](./LLM_SURFACE_FIX_2026-08-12.md) | **LLM flag root-cause fix**: bridge `thinking` field, relaxed validator, enrichment persistence → Flash/Pro now reach `/v3/advisory` |
+| [HEALTH_AGENT_FIXES_2026-08-12.md](./HEALTH_AGENT_FIXES_2026-08-12.md) | Health fixes: stale release-manifest FAIL + Finnhub 401 `data_source_auth_failed` |
 
 ## Related diagnostics (repo root / prior sessions)
 
@@ -50,6 +52,7 @@ See [AUTONOMY_AND_SCHEDULING_TRUTH_2026-08-11.md](./AUTONOMY_AND_SCHEDULING_TRUT
 | Path | Role |
 |---|---|
 | `data/runtime/advisory_desk_latest.json` | Latest deterministic desk snapshot |
+| `data/runtime/advisory_opinions_latest.json` | Live Flash opinions + Pro synthesis (enrichment → read path) |
 | `data/runtime/advisory_opinion_cache.json` | Local per-row opinion cache |
 | `data/cio/cio_theses.jsonl` | P3 versioned desk thesis events |
 | `data/cio/cio_wake_traces.jsonl` | P5 wake traces (why wake / llm path) |

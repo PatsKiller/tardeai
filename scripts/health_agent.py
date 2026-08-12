@@ -2630,8 +2630,21 @@ def collect_data_source_health() -> list[dict]:
                     continue
             except Exception:
                 pass
+        last_err = (r.get("last_error") or "")[:120]
+        if "401" in last_err or "403" in last_err:
+            # Auth failure = a rotated/expired API key, not a transient ingestion stall.
+            # Auto-retrying the producer can never clear a 401, so surface it as a distinct
+            # operator action (never auto) — mirrors finviz_cookie_expired.
+            out.append(_f("data_quality", "data_source_auth_failed", "critical",
+                          f"data source '{src}' auth failed ({last_err.strip()}) — key invalid/expired; "
+                          f"operator must rotate {src.upper()}_API_KEY in Bitwarden",
+                          source=src, last_error=last_err,
+                          operator_action=True,
+                          reauth_cmd=(f".venv/bin/python scripts/secrets/render_env.py --now && "
+                                      f".venv/bin/python scripts/secret_validators.py {src.upper()}_API_KEY")))
+            continue
         out.append(_f("data_quality", "data_source_stale", sev, msg,
-                      source=src, last_error=(r.get("last_error") or "")[:120]))
+                      source=src, last_error=last_err))
     return out
 
 

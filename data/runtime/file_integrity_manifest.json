@@ -1,13 +1,13 @@
 {
   "version": "1",
-  "generated": "2026-08-07T16:38:56.410773+00:00",
+  "generated": "2026-08-12T20:33:23.539969+00:00",
   "description": "File Integrity Manifest — canonical paths, expected hashes, and staleness thresholds for all critical state files. Regenerate on every deployment via scripts/generate_integrity_manifest.py.",
   "files": {
     "finviz_quote_cache": {
       "canonical_path": "data/portfolios/state/finviz_quote_cache.json",
-      "sha256": "16e2e7d9e52bfd5551cd3709777b85d8be6e8a659c415942b498d7d83411a739",
-      "size": 29834,
-      "last_validated": "2026-08-07T16:38:56.410773+00:00",
+      "sha256": "30173ff9b5a40c668a54dc4a32ce780c12e2b9d12565f1a19ba0648e30ce2f4e",
+      "size": 29848,
+      "last_validated": "2026-08-12T20:33:23.539969+00:00",
       "source_pipeline": "external_market_data_ingest.py",
       "max_age_minutes": 30,
       "consumers": [
@@ -18,9 +18,9 @@
     },
     "trade_ai_cache": {
       "canonical_path": "data/runtime/trade_ai_cache.json",
-      "sha256": "1495b0caa447e2f56e812ca244abf776c0cf5783b5543229896de4d57ed0bb48",
-      "size": 194830,
-      "last_validated": "2026-08-07T16:38:56.410773+00:00",
+      "sha256": "5e13fe9eb11cf271cf9a16a21ab648b052bc6b3e4529d5c6146fe0f4268c0d01",
+      "size": 1494277,
+      "last_validated": "2026-08-12T20:33:23.539969+00:00",
       "source_pipeline": "trade_ai_orchestrator.py",
       "max_age_minutes": 180,
       "consumers": [
@@ -31,9 +31,9 @@
     },
     "holdings": {
       "canonical_path": "data/portfolios/state/holdings.json",
-      "sha256": "4b768ed07550712c5144238149725c5385ec1d832e51bfda1ff8687c2be53f06",
-      "size": 218035,
-      "last_validated": "2026-08-07T16:38:56.410773+00:00",
+      "sha256": "f69ff0353f017b549a4b4f34fdd96a2d8a993d5d0109bc98671041af755d1714",
+      "size": 217924,
+      "last_validated": "2026-08-12T20:33:23.539969+00:00",
       "source_pipeline": "portfolio_repricer.py",
       "max_age_minutes": 30,
       "consumers": [
@@ -45,9 +45,9 @@
     },
     "ai_analysis_cache": {
       "canonical_path": "data/portfolios/state/ai_analysis_cache.json",
-      "sha256": "b151a712fc88f5b302778d1ef786aac8ed17dccc54a934b9e5cb07fe1a1b2445",
-      "size": 26625,
-      "last_validated": "2026-08-07T16:38:56.410773+00:00",
+      "sha256": "4fa4e18d840963f8bd04ca1f765e6e2b97e15d1a56cd49dc9deb0aa74fc81835",
+      "size": 24958,
+      "last_validated": "2026-08-12T20:33:23.539969+00:00",
       "source_pipeline": "ai_portfolio_analyzer.py",
       "max_age_minutes": 720,
       "consumers": [
@@ -57,9 +57,9 @@
     },
     "ai_deep_holdings": {
       "canonical_path": "data/portfolios/state/ai_deep_holdings.json",
-      "sha256": "2979a6c056f666e9195e44491c71e4f45f72887aa1f319f17a696deefb2feb6a",
-      "size": 4241,
-      "last_validated": "2026-08-07T16:38:56.410773+00:00",
+      "sha256": "2c9aef7081deb54684c5b34e75d0620fa306eb23ae39fbce94db68645352ee0b",
+      "size": 3669,
+      "last_validated": "2026-08-12T20:33:23.539969+00:00",
       "source_pipeline": "ai_deep_holdings_analyzer.py",
       "max_age_minutes": 720,
       "consumers": [
@@ -69,9 +69,9 @@
     },
     "ticker_enrichment_cache": {
       "canonical_path": "data/portfolios/state/ticker_enrichment_cache.json",
-      "sha256": "700aeb00186b8213cad03dd4cdb5c6d68aab64a6c63b796fc23a7044d28f1552",
-      "size": 8293836,
-      "last_validated": "2026-08-07T16:38:56.410773+00:00",
+      "sha256": "f866066c5e7f132505cd233300366dc006f426058838b40cf9f465b5b09365b8",
+      "size": 8679332,
+      "last_validated": "2026-08-12T20:33:23.539969+00:00",
       "source_pipeline": "ticker_enrichment_engine.py",
       "max_age_minutes": 360,
       "consumers": [
@@ -82,9 +82,9 @@
     },
     "price_cache": {
       "canonical_path": "data/portfolios/state/price_cache.json",
-      "sha256": "ff786991b38e4dbe59c2a7802f00e7bf082af308ad49ce3c46fe611140c63ddd",
-      "size": 3131381,
-      "last_validated": "2026-08-07T16:38:56.410773+00:00",
+      "sha256": "da6071c2dfee944249680178feb928f33597832c16d08786eb74ad0b6cb43e3e",
+      "size": 3133661,
+      "last_validated": "2026-08-12T20:33:23.539969+00:00",
       "source_pipeline": "market_quote_ingest.py",
       "max_age_minutes": 30,
       "consumers": [
@@ -94,9 +94,9 @@
     },
     "price_ohlc_cache": {
       "canonical_path": "data/portfolios/state/price_ohlc_cache.json",
-      "sha256": "43219458807cfc38587a65ca2e2e04fd7be6b118a10d713f0ab72be6c0bc3147",
-      "size": 24213747,
-      "last_validated": "2026-08-07T16:38:56.410773+00:00",
+      "sha256": "2acaa155eabbd3f53cf5c791986c4a9134ed2d6b1c55138b8ccac2f8af8a6fa7",
+      "size": 24872140,
+      "last_validated": "2026-08-12T20:33:23.539969+00:00",
       "source_pipeline": "ohlc_ingest.py",
       "max_age_minutes": 60,
       "consumers": [
@@ -109,7 +109,7 @@
       "canonical_path": "data/runtime/staleness_escalation_queue.json",
       "sha256": "11d54dd7c086989de434a6b12e1c422e71fa5e7c8e261c711bee5ab64b654f65",
       "size": 3224,
-      "last_validated": "2026-08-07T16:38:56.410773+00:00",
+      "last_validated": "2026-08-12T20:33:23.539969+00:00",
       "source_pipeline": "system_health_agent.py",
       "max_age_minutes": 1440,
       "consumers": [
@@ -121,7 +121,7 @@
       "canonical_path": "data/portfolios/state/trade_ai_health.json",
       "sha256": "f185ebf6dbba5558948e1ef58d3c896596925cd6ec3c73434920f1a9bbee40f3",
       "size": 2187,
-      "last_validated": "2026-08-07T16:38:56.410773+00:00",
+      "last_validated": "2026-08-12T20:33:23.539969+00:00",
       "source_pipeline": "trade_ai_health.py",
       "max_age_minutes": 60,
       "consumers": [
@@ -131,9 +131,9 @@
     },
     "risk_management": {
       "canonical_path": "data/portfolios/state/risk_management.json",
-      "sha256": "70145e4ecb58ae01c63ea9bdba9ddce3987b46ed3f12f127a46748184c9abae6",
-      "size": 13612,
-      "last_validated": "2026-08-07T16:38:56.410773+00:00",
+      "sha256": "2f70c0b4b0adf23073420db09559aac63ed7f1ca1e82672c756bbe64851236fe",
+      "size": 13616,
+      "last_validated": "2026-08-12T20:33:23.539969+00:00",
       "source_pipeline": "risk_autopilot.py",
       "max_age_minutes": 120,
       "consumers": [

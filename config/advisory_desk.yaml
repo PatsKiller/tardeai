@@ -83,8 +83,11 @@ routing:
     }
 
     Rules:
-    - Every number in prose must appear verbatim in the evidence bundle.
-    - evidence_cited must only use ref_ids/titles present in the bundle.
+    - Every number in prose must appear in the evidence bundle (you may round, but not invent).
+    - evidence_cited must only use identifiers that appear in the evidence items.
+      Each item has "type", "source", "title", and sometimes "agent" fields — cite one of
+      these exact values, e.g. "price_action", "risk_snapshot", or "price_action:risk_snapshot".
+      Do not fabricate a ref id that is not present.
     - If you disagree with the deterministic verdict, say so and set verdict to your recommendation.
     - key_risk is REQUIRED.
     - No order types, no share counts, no execution instructions.

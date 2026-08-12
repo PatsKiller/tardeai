@@ -35,6 +35,7 @@ STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
 CIO_DIR = PROJECT_ROOT / "data" / "cio"
 CACHE_DIR = PROJECT_ROOT / "data" / "runtime"
 CACHE_FILE = CACHE_DIR / "advisory_desk_latest.json"
+OPINIONS_LATEST_FILE = CACHE_DIR / "advisory_opinions_latest.json"
 SNAPSHOT_VERSION = "advisory-desk-v1-data-broker"
 DEFAULT_MAX_AGE_S = 300  # 5-minute default cache window
 
@@ -3307,5 +3308,44 @@ def enrich_advisory_with_opinions(
     if not dry_run:
         desk_result["data"]["llm_in_path"] = True
         desk_result["data"]["deterministic"] = True
+        _persist_opinions_latest(
+            opinions=opinions,
+            synthesis=synthesis_meta.get("text") or "",
+            synthesis_meta={k: v for k, v in synthesis_meta.items() if k != "text"},
+        )
 
     return desk_result
+
+
+def _persist_opinions_latest(
+    *,
+    opinions: dict[str, dict[str, Any]],
+    synthesis: str,
+    synthesis_meta: dict[str, Any],
+) -> None:
+    """Write the live enrichment result to the served read path.
+
+    The deterministic desk snapshot (advisory_desk_latest.json) is produced by a
+    different process than the shadow-session enrichment, so get_advisory_desk
+    would otherwise never see Flash/Pro output. This artifact bridges the two.
+    """
+    from datetime import datetime, timezone
+
+    try:
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        OPINIONS_LATEST_FILE.write_text(
+            json.dumps(
+                {
+                    "rows": opinions,
+                    "synthesis": synthesis,
+                    "synthesis_meta": synthesis_meta,
+                    "llm_in_path": True,
+                    "computed_at": datetime.now(timezone.utc).isoformat(),
+                },
+                indent=2,
+                default=str,
+            ),
+            encoding="utf-8",
+        )
+    except Exception:
+        pass

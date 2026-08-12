@@ -291,7 +291,9 @@ class MockProvider:
                  tool_choice: str | None = None,
                  response_format: dict | None = None,
                  stream: bool = False,
-                 max_tokens: int = 16384) -> dict[str, Any]:
+                 max_tokens: int = 16384,
+                 thinking: str = "disabled",
+                 reasoning_effort: str | None = None) -> dict[str, Any]:
         with self._lock:
             self.call_count += 1
 
@@ -441,7 +443,9 @@ class RealProvider:
                  response_format: dict | None = None,
                  stream: bool = False,
                  max_tokens: int = 16384,
-                 temperature: float = 0.3) -> dict[str, Any]:
+                 temperature: float = 0.3,
+                 thinking: str = "disabled",
+                 reasoning_effort: str | None = None) -> dict[str, Any]:
         if stream:
             raise NotImplementedError("RealProvider does not support streaming in P-1.2B")
 
@@ -473,18 +477,22 @@ class RealProvider:
             "max_tokens": max_tokens,
         }
 
+        # deepseek-v4-* default to reasoning mode when `thinking` is omitted, which
+        # returns the whole budget as reasoning_content and an EMPTY content — breaking
+        # every non-think caller (advisory FAST/PRO, steph, guardian, ledger, morgan).
+        # Respect the resolved policy exactly like deepseek_client.chat() does.
+        thinking_on = (thinking or "disabled").lower() in ("enabled", "on", "true", "1")
+        body["thinking"] = {"type": "enabled"} if thinking_on else {"type": "disabled"}
+        if thinking_on and reasoning_effort:
+            body["reasoning_effort"] = reasoning_effort
+
         if tools:
             body["tools"] = tools
             if tool_choice:
                 body["tool_choice"] = tool_choice
 
         # Temperature only in non-thinking mode
-        thinking_present = any(
-            m.get("reasoning_content") is not None or
-            (isinstance(m.get("content"), type(None)) and m.get("tool_calls"))
-            for m in messages
-        )
-        if temperature is not None:
+        if temperature is not None and not thinking_on:
             body["temperature"] = temperature
 
         # Response format
@@ -537,6 +545,13 @@ class RealProvider:
         msg = choice.get("message") or {}
         finish_reason = choice.get("finish_reason")
 
+        content = msg.get("content")
+        # If the model still returned reasoning-only output (thinking ignored / budget
+        # exhausted in reasoning), fall back to reasoning_content so the caller never
+        # receives an empty answer.
+        if not content:
+            content = msg.get("reasoning_content") or msg.get("reasoning") or None
+
         usage = payload.get("usage") or {}
         import hashlib
         raw_hash = hashlib.sha256(r.content).hexdigest()[:24]
@@ -550,7 +565,7 @@ class RealProvider:
                 "index": 0,
                 "message": {
                     "role": "assistant",
-                    "content": msg.get("content"),
+                    "content": content,
                     **({"tool_calls": msg["tool_calls"]} if msg.get("tool_calls") else {}),
                 },
                 "finish_reason": finish_reason,
@@ -733,6 +748,8 @@ def execute_governed_call(
             response_format=response_format,
             stream=False,
             max_tokens=max_tokens,
+            thinking=policy.get("thinking", "disabled"),
+            reasoning_effort=policy.get("reasoning_effort"),
         )
     except Exception as e:
         provider_name = "RealProvider" if BIND_MODE == "canary" else "MockProvider"

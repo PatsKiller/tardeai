@@ -223,7 +223,17 @@ def _load_desk(*, force: bool = False) -> dict[str, Any]:
 
 
 def _load_opinions_blob() -> dict[str, Any]:
-    """Opinions may live on desk cache or separate opinion cache file."""
+    """Opinions may live on desk cache, the live enrichment artifact, or the
+    per-row opinion cache file (in that preference order)."""
+    try:
+        from lib.data_broker.advisory_desk import OPINIONS_LATEST_FILE
+
+        if OPINIONS_LATEST_FILE.exists():
+            d = json.loads(OPINIONS_LATEST_FILE.read_text(encoding="utf-8"))
+            if d.get("rows") or d.get("synthesis"):
+                return d
+    except Exception:
+        pass
     try:
         if CACHE_FILE.exists():
             d = json.loads(CACHE_FILE.read_text(encoding="utf-8"))
@@ -258,6 +268,11 @@ def get_advisory_desk(*, force: bool = False, row_class: str | None = None) -> d
         c = str(r.get("row_class") or "unknown")
         by_class[c] = by_class.get(c, 0) + 1
 
+    llm_in_path = bool(data.get("llm_in_path")) or bool(
+        opinions.get("llm_in_path") if isinstance(opinions, dict) else False
+    )
+    # compute_banners reads data.get("llm_in_path") — surface the enriched value.
+    data["llm_in_path"] = llm_in_path
     banners = compute_banners(meta, data)
     synthesis = ""
     if isinstance(opinions, dict):
@@ -285,7 +300,7 @@ def get_advisory_desk(*, force: bool = False, row_class: str | None = None) -> d
         "rows": rows,
         "row_count": len(rows),
         "content_hash": data.get("content_hash"),
-        "llm_in_path": data.get("llm_in_path"),
+        "llm_in_path": llm_in_path,
         "deterministic": data.get("deterministic", True),
         "promotion": {
             "status": promotion.get("status"),

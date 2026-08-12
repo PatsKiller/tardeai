@@ -166,6 +166,7 @@
     "siem_p0p1",
     "schwab_token_revoked",
     "finviz_cookie_expired",
+    "data_source_auth_failed",
     "audit_ledger_coverage_warn",
     "audit_ledger_coverage_fail",
     "audit_ledger_chain_break",
