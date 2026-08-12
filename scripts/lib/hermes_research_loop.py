@@ -338,20 +338,25 @@ def on_hermes_failed(request: dict[str, Any], error: str) -> dict[str, Any]:
     return {"ok": True, "attached": plan is not None, "status": "failed", "error": error[:200]}
 
 
-def process_queue_once(*, worker_id: str = "cio-hermes-loop", limit: int = 1, use_stub: bool = True) -> dict[str, Any]:
-    """Convenience: run worker once with default backend + completion hook."""
+def process_queue_once(
+    *,
+    worker_id: str = "cio-hermes-loop",
+    limit: int = 1,
+    backend_name: str | None = None,
+) -> dict[str, Any]:
+    """Convenience: run worker once with factory backend + completion hook."""
     try:
-        from lib.hermes_worker import HermesWorker, StubResearchBackend
+        from lib.hermes_worker import HermesWorker
+        from lib.hermes_research_backend import build_hermes_backend
     except Exception:
-        from scripts.lib.hermes_worker import HermesWorker, StubResearchBackend  # type: ignore
+        from scripts.lib.hermes_worker import HermesWorker  # type: ignore
+        from scripts.lib.hermes_research_backend import build_hermes_backend  # type: ignore
     hr = _import_store()
-    backend = StubResearchBackend()
-    if not use_stub:
-        try:
-            from lib.hermes_worker import CatalystFirstBackend
-            backend = CatalystFirstBackend()
-        except Exception:
-            pass
+    # Default stub unless HERMES_BACKEND or explicit name
+    name = backend_name
+    if name is None:
+        name = "stub"
+    backend = build_hermes_backend(name)
     worker = HermesWorker(
         store=hr,
         backend=backend,

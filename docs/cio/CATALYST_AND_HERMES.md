@@ -158,7 +158,7 @@ data/cio/hermes_research_projection.json
 | Piece | Status |
 |-------|--------|
 | Claim → run → complete → `on_hermes_completed` | **Live** (`hermes_worker` + `hermes_research_loop`) |
-| Stub / CatalystFirst backends | **Live** (swap for full bridge later) |
+| Stub / CatalystFirst / **Bridge** backends | **Live** (`HERMES_BACKEND=stub|catalyst|bridge`) |
 | `/cio research <plan_id>` | **Live** (operator_forced, TTL bypass) |
 | S1/S6 detector emit on plan create | **Live** |
 | Gold-set judge freeze | Open |
@@ -167,6 +167,12 @@ data/cio/hermes_research_projection.json
 ```bash
 PYTHONPATH=scripts python3 -m scripts.hermes_cio_worker --once
 PYTHONPATH=scripts python3 -m scripts.hermes_cio_worker --drain --max 5 --backend catalyst
+# Live bridge (governed :8766) when proven:
+# export HERMES_BACKEND=bridge
+# export HERMES_BRIDGE_URL=http://127.0.0.1:8766
+PYTHONPATH=scripts python3 -m scripts.hermes_cio_worker --once --backend bridge
 ```
+
+**Backend modules:** `hermes_research_backend.py` (protocol + stub + factory), `hermes_bridge_backend.py` (governed chat/completions).
 
 **Bottom line:** Catalyst severity is a small policy table plus `sev_at_least` at four gates. Hermes never double-queues the same ask; fresh completed results reuse until TTL expires or a material calendar change invalidates them.

@@ -25,10 +25,27 @@ class HermesResearchStore(Protocol):
     def get_request(self, research_id: str) -> Optional[dict]: ...
 
 
-class HermesResearchBackend(Protocol):
-    def run(self, request: dict) -> dict:
-        """Return ResearchResult body without identity stamping."""
-        ...
+# Canonical protocol + stubs live in hermes_research_backend (re-exported for workers)
+try:
+    from lib.hermes_research_backend import (  # noqa: F401
+        HermesBackendError,
+        HermesResearchBackend,
+        StubHermesResearchBackend,
+        CatalystFirstHermesBackend,
+        build_hermes_backend,
+    )
+except ImportError:  # pragma: no cover
+    from scripts.lib.hermes_research_backend import (  # type: ignore  # noqa: F401
+        HermesBackendError,
+        HermesResearchBackend,
+        StubHermesResearchBackend,
+        CatalystFirstHermesBackend,
+        build_hermes_backend,
+    )
+
+# Back-compat aliases used by older tests / CLI
+StubResearchBackend = StubHermesResearchBackend
+CatalystFirstBackend = CatalystFirstHermesBackend
 
 
 def _now() -> str:
@@ -44,91 +61,6 @@ def _log_job(**fields: Any) -> None:
             fh.write(json.dumps(row, sort_keys=True, default=str) + "\n")
     except Exception:
         pass
-
-
-class StubResearchBackend:
-    """Deterministic answers from request questions — for tests and dry-run."""
-
-    def run(self, request: dict) -> dict:
-        auth = str(request.get("authority") or "READ_ONLY_ADVISORY")
-        if auth != "READ_ONLY_ADVISORY":
-            raise HermesWorkerError("authority_must_be_read_only_advisory", retryable=False)
-        sym = request.get("symbol") or (request.get("subject") or {}).get("symbol") or "BOOK"
-        pin = request.get("thesis_version") or "desk@?"
-        answers = []
-        findings = []
-        for q in request.get("questions") or []:
-            if not isinstance(q, dict):
-                continue
-            qid = q.get("question_id") or q.get("id") or "q"
-            text = str(q.get("text") or "")
-            intent = str(q.get("intent") or "thesis_check")
-            summary = (
-                f"[{intent}] Under {pin}, research for {sym}: "
-                f"no execution path; hold/observe language only. Q: {text[:120]}"
-            )
-            answers.append({
-                "question_id": qid,
-                "status": "answered",
-                "summary": summary[:400],
-                "detail": summary[:800],
-                "confidence": 0.55,
-                "citations": [],
-            })
-            findings.append({
-                "id": f"f_{qid}",
-                "kind": "other",
-                "severity": "low",
-                "text": summary[:240],
-                "confidence": 0.55,
-            })
-        if not answers:
-            raise HermesWorkerError("no_questions", retryable=False)
-        return {
-            "as_of": _now(),
-            "answers": answers,
-            "findings": findings,
-            "summary": f"Stub research for {sym} under {pin}: observe/hold bias; no orders.",
-            "desk_implications": {
-                "suggestion_bias": "hold_with_thesis",
-                "changes_materiality": False,
-                "watch_triggers": [],
-                "notes": "Stub backend — replace with HermesBridgeBackend for live intel.",
-            },
-            "limitations": ["stub_backend"],
-            "provenance": {"model_or_pipeline": "stub"},
-        }
-
-
-class CatalystFirstBackend:
-    """Light narrative when catalyst_map intents dominate; falls back to stub."""
-
-    def run(self, request: dict) -> dict:
-        stub = StubResearchBackend().run(request)
-        intents = [
-            str(q.get("intent") or "")
-            for q in (request.get("questions") or [])
-            if isinstance(q, dict)
-        ]
-        if any("catalyst" in i for i in intents):
-            cat = request.get("catalyst") or request.get("catalyst_pack") or {}
-            ne = cat.get("next_event") if isinstance(cat, dict) else None
-            if isinstance(ne, dict) and ne.get("session_date"):
-                line = (
-                    f"Calendar: {ne.get('kind')} on {ne.get('session_date')} "
-                    f"severity={ne.get('severity')} — observe through event; "
-                    f"does not alone authorize size change under READ_ONLY."
-                )
-                stub["findings"].insert(0, {
-                    "id": "f_catalyst",
-                    "kind": "catalyst",
-                    "severity": ne.get("severity") or "low",
-                    "text": line,
-                    "confidence": 0.65,
-                })
-                stub["summary"] = line + " " + str(stub.get("summary") or "")
-                stub["provenance"] = {"model_or_pipeline": "catalyst_first+stub"}
-        return stub
 
 
 class HermesWorker:
@@ -224,11 +156,36 @@ class HermesWorker:
 
         t0 = time.time()
         try:
-            body = self.backend.run(request)
+            try:
+                body = self.backend.run(request)
+            except HermesBackendError as be:
+                err = str(be)[:500]
+                self.store.mark_failed(rid, error=err)
+                if self.on_failed:
+                    try:
+                        self.on_failed(request, err)
+                    except Exception:
+                        pass
+                _log_job(
+                    research_id=rid,
+                    plan_id=request.get("plan_id"),
+                    worker_id=self.worker_id,
+                    status="failed",
+                    error=err,
+                    priority=request.get("priority"),
+                    retryable=bool(getattr(be, "retryable", False)),
+                    backend=type(self.backend).__name__,
+                )
+                raise HermesWorkerError(err, retryable=bool(be.retryable)) from be
+
             latency_ms = int((time.time() - t0) * 1000)
             result = stamp_result(
                 request, body, worker_id=self.worker_id, t0_ms=latency_ms,
             )
+            # provenance: name the backend class
+            prov = result.setdefault("provenance", {})
+            if isinstance(prov, dict):
+                prov.setdefault("model_or_pipeline", type(self.backend).__name__)
             vok, vwhy = validate_result(result, request)
             if not vok:
                 self.store.mark_failed(rid, error=vwhy)
@@ -248,7 +205,6 @@ class HermesWorker:
                 )
                 raise HermesWorkerError(vwhy)
 
-            # Persist via store (complete_research_result path)
             stored = self.store.mark_completed(rid, result)
             if isinstance(stored, dict) and stored.get("result"):
                 result = stored["result"]
@@ -275,6 +231,7 @@ class HermesWorker:
                 status="completed",
                 latency_ms=latency_ms,
                 priority=request.get("priority"),
+                backend=type(self.backend).__name__,
                 error=None,
             )
             return result

@@ -30,9 +30,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--worker-id", type=str, default="hermes-cio-worker-1")
     p.add_argument(
         "--backend",
-        choices=("stub", "catalyst"),
-        default="stub",
-        help="Research backend (stub for tests; catalyst adds calendar context)",
+        choices=("stub", "catalyst", "bridge", "live"),
+        default=None,
+        help="Research backend (default: HERMES_BACKEND env or stub)",
     )
     p.add_argument("--no-callback", action="store_true", help="Skip CIO attach/resynth hook")
     p.add_argument("--json", action="store_true", help="Print JSON summary")
@@ -40,18 +40,16 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         from lib import cio_hermes_research as store
-        from lib.hermes_worker import HermesWorker, StubResearchBackend, CatalystFirstBackend
+        from lib.hermes_worker import HermesWorker
+        from lib.hermes_research_backend import build_hermes_backend
         from lib.hermes_research_loop import on_hermes_completed, on_hermes_failed
     except Exception:
         from scripts.lib import cio_hermes_research as store  # type: ignore
-        from scripts.lib.hermes_worker import (  # type: ignore
-            HermesWorker,
-            StubResearchBackend,
-            CatalystFirstBackend,
-        )
+        from scripts.lib.hermes_worker import HermesWorker  # type: ignore
+        from scripts.lib.hermes_research_backend import build_hermes_backend  # type: ignore
         from scripts.lib.hermes_research_loop import on_hermes_completed, on_hermes_failed  # type: ignore
 
-    backend = CatalystFirstBackend() if args.backend == "catalyst" else StubResearchBackend()
+    backend = build_hermes_backend(args.backend)
     worker = HermesWorker(
         store=store,
         backend=backend,
