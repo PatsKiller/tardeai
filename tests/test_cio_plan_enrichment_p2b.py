@@ -219,7 +219,14 @@ def test_cap_blocked_template_path(plan_store, monkeypatch, tmp_path):
     assert res["narrative_source"] == "template"
     p = res["plan"]
     assert p is not None
-    assert "LLM deferred" in (p.get("summary") or "") or p.get("llm_deferred") or "deterministic" in (p.get("recommendation") or "").lower()
+    # Material template is desk-synthesis (no "LLM deferred" spam); still thesis-aware
+    rec = (p.get("recommendation") or "").lower()
+    assert (
+        "desk@" in (p.get("thesis_version") or "")
+        or "desk@" in rec
+        or "highest-signal" in rec
+        or p.get("thesis_alignment")
+    )
     # still updated
     got = plan_store.get_plan(plan["plan_id"])
     assert got is not None

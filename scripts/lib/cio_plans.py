@@ -239,18 +239,19 @@ class CIOPlanStore:
             raise ValueError(f"invalid status: {status}")
         pid = plan_id or _plan_id()
         ts = _now()
-        # P3: pin current desk thesis when not provided (fail-soft)
-        pin = thesis_version
-        if not pin:
+        # Always pin LIVE desk@vN (safe_current_pin). Stale caller pins are ignored.
+        pin = None
+        try:
+            from scripts.lib.cio_theses import safe_current_pin
+            pin = safe_current_pin("desk")
+        except Exception:
             try:
-                from scripts.lib.cio_theses import safe_current_pin
+                from lib.cio_theses import safe_current_pin  # type: ignore
                 pin = safe_current_pin("desk")
             except Exception:
-                try:
-                    from lib.cio_theses import safe_current_pin  # type: ignore
-                    pin = safe_current_pin("desk")
-                except Exception:
-                    pin = None
+                pin = thesis_version  # last resort only
+        if not pin:
+            pin = thesis_version
         payload: dict[str, Any] = {
             "plan_id": pid,
             "situation_type": situation_type,
@@ -299,7 +300,8 @@ class CIOPlanStore:
             "revisit_at", "owner_agent", "cc_deep_links", "status",
             "narrative_source", "narrative_enriched_at", "evidence_hash",
             "llm_model", "llm_status", "llm_deferred", "fire_reasons",
-            "thesis_version",
+            "thesis_version", "thesis_alignment", "multi_domain_summary",
+            "material", "evidence_domains", "hermes_suggested", "hermes_challenge_id",
         }
         patch = {k: v for k, v in fields.items() if k in allowed and v is not None}
         if "status" in patch and patch["status"] not in VALID_STATUSES:

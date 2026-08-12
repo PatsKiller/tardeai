@@ -1101,13 +1101,26 @@ class CIOSituationDetector:
                 )
             except Exception:
                 pass
-        # P2b: enrich narrative via governed bridge (Flash default).
-        # CIO_LLM_ENRICH=0 → force_template (tests / emergency). Default ON.
+        # P2b: enrich under LIVE desk@vN (safe_context_block + safe_current_pin).
+        # Material situations always attempt LLM unless CIO_LLM_FORCE_TEMPLATE=1.
+        # CIO_LLM_ENRICH=0 still forces template for routine tests only.
         try:
-            from scripts.lib.cio_plan_enrichment import enrich_plan, maybe_notify_plan
+            from scripts.lib.cio_plan_enrichment import (
+                enrich_plan, maybe_notify_plan, is_material_plan,
+            )
             force_tpl = os.environ.get("CIO_LLM_ENRICH", "1").strip().lower() in (
                 "0", "false", "off", "no",
             )
+            force_hard = os.environ.get("CIO_LLM_FORCE_TEMPLATE", "").strip().lower() in (
+                "1", "true", "yes", "on",
+            )
+            # Gate deferred path: material plans still get enrichment under live pin
+            if force_tpl and not force_hard:
+                try:
+                    if is_material_plan({**plan, "fire_reasons": cand.get("fire_reasons") or []}):
+                        force_tpl = False
+                except Exception:
+                    pass
             enr = enrich_plan(
                 plan,
                 source=st,

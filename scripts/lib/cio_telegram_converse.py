@@ -458,7 +458,19 @@ def format_structured_reply(
     if thesis_align_line:
         lines.append("")
         lines.append("🧭 *Thesis alignment*")
-        lines.append(_clean(thesis_align_line.replace("Thesis alignment", "").lstrip(" :()")))
+        body = thesis_align_line
+        for prefix in ("Thesis alignment", "desk@v",):
+            pass
+        # Drop leading "Thesis alignment:" / "(desk@vN):" leftovers
+        body = body.replace("Thesis alignment", "", 1)
+        body = body.lstrip(" :\n(")
+        if body.startswith("desk@"):
+            # strip "desk@vN):" or "desk@vN:"
+            if "):" in body[:20]:
+                body = body.split("):", 1)[-1]
+            elif ":" in body[:16]:
+                body = body.split(":", 1)[-1]
+        lines.append(_clean(body))
     if multi_dom_line:
         lines.append("")
         lines.append("🧩 *Multi-domain*")

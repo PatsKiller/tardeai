@@ -250,18 +250,20 @@ def test_spacex_integration_fixture(plan_store, cfg):
         for ref in p["evidence_refs"]:
             assert ref.get("domain")
             assert ref.get("as_of")
-        # no invented numbers: every number in summary/rec must be from fixture set or short ints from reasons
+        # no invented numbers in detector/option core text; multi-domain synthesis may
+        # append live Data Broker cash/portfolio facts after "Thesis alignment"/"Multi-domain"
         blob = f"{p.get('summary','')} {p.get('recommendation','')}"
-        for num in _numbers_in_text(blob):
+        core = blob.split("Thesis alignment")[0].split("Multi-domain")[0]
+        for num in _numbers_in_text(core):
             # allow small integers used in formatting / pct truncated
             if num in allowed_nums:
                 continue
             f = float(num)
             # derived pct from fixture math is ok if between 0 and 100
-            if 0 <= f <= 100 and ("pct" in blob or "drawdown" in blob or "recovery" in blob or "reasons" in blob):
+            if 0 <= f <= 100 and ("pct" in core or "drawdown" in core or "recovery" in core or "reasons" in core):
                 continue
             # hours revisit etc not in summary typically
-            pytest.fail(f"unexpected number {num} in plan text: {blob[:200]}")
+            pytest.fail(f"unexpected number {num} in plan text: {core[:200]}")
 
 
 def test_fail_soft_unavailable_domain(plan_store, cfg):
