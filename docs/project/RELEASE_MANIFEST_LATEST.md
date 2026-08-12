@@ -1,13 +1,13 @@
 # Release Manifest (auto-generated)
 
-Status: WARN
+Status: PASS
 
-_Generated: 2026-08-12T20:54:01.285586+00:00_  
+_Generated: 2026-08-12T22:44:00.763372+00:00_  
 _Source: `python3 scripts/validate_release_readiness.py --json --skip-build`_
 
 ## Checks
 
-- [WARN] repo_hygiene_report: dirty_count=5, no live-broker/secrets dirty files
+- [PASS] repo_hygiene_report: working tree clean
 - [PASS] python3 scripts/validate_metric_consistency.py --strict: Ambiguous label hits: 0
 - [PASS] symbol_card_quality_validator: validator present; run with /api/v2/symbol-cards export during deployment
 - [PASS] python3 scripts/validate_schwab_write_policy.py:   27/27 guards green
@@ -22,7 +22,7 @@ _Source: `python3 scripts/validate_release_readiness.py --json --skip-build`_
 
 - live-adjacent (would FAIL): none
 - documented runtime/generated (WARN_NON_LIVE_ADJACENT only):
-  - `data/runtime/file_integrity_manifest.json`
-- other untracked-by-policy: ['config/advisory_desk.yaml', 'scripts/api_v3_advisory.py', 'scripts/lib/advisory/advisory_opinion_engine.py', 'scripts/lib/data_broker/advisory_desk.py']
+  - (none)
+- other untracked-by-policy: none
 
 *Does not authorize live trading. Operator-approved path only.*

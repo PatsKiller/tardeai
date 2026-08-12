@@ -1099,16 +1099,23 @@ def _load_sector_rotation() -> dict[str, Any]:
 
 
 def _load_agent_results() -> dict[str, Any]:
-    """Load per-symbol agent opinions from watchlist_agent_results via DB."""
+    """Load per-symbol agent opinions from watchlist_agent_results via DB.
+
+    Deduplicated to one row per (symbol, agent) — the table accumulates
+    near-identical re-runs (same agent, same recommendation, new completed_at),
+    which previously surfaced as triplicated "agent_opinion · maria — HOLD"
+    evidence lines. Keep only the latest completed_at per agent.
+    """
     by_symbol: dict[str, list[dict[str, Any]]] = {}
     try:
         from db_adapter import _execute
         rows = _execute(
-            """SELECT upper(symbol) AS symbol, agent, recommendation, confidence,
+            """SELECT DISTINCT ON (upper(symbol), agent)
+                      upper(symbol) AS symbol, agent, recommendation, confidence,
                       full_narrative, completed_at
                FROM watchlist_agent_results
                WHERE completed_at > now() - make_interval(days => 14)
-               ORDER BY completed_at DESC""",
+               ORDER BY upper(symbol), agent, completed_at DESC""",
             fetch="all",
         ) or []
         for row in rows:
@@ -1209,8 +1216,21 @@ def _load_instrument_identity(
     result: dict[str, dict[str, Any]] = {}
     today = datetime.now(timezone.utc).date()
 
-    for pos in holdings.get("positions", []):
-        sym = pos["symbol"]
+    # Iterate the *research* symbol set — held positions plus watchlist/closed
+    # symbols. A watchlist ticker (e.g. MSFT, NVDA) deserves the same instrument
+    # identity evidence as a holding; limiting this to positions left every
+    # watchlist expand card showing "No instrument identity".
+    positions = holdings.get("positions", [])
+    pos_by_symbol: dict[str, dict[str, Any]] = {
+        _norm_symbol(p.get("symbol", "")): p for p in positions if p.get("symbol")
+    }
+    symbols: set[str] = set(holdings.get("symbols") or set())
+    for p in positions:
+        symbols.add(_norm_symbol(p.get("symbol", "")))
+    symbols.discard("")
+
+    for sym in sorted(symbols):
+        pos = pos_by_symbol.get(sym, {})
         finv = finviz_by_sym.get(sym, {})
         dbp = db_profiles.get(sym, {})
 
@@ -1677,6 +1697,32 @@ def _load_lot_basis(
 
 # ── S4: Analyst context loader ───────────────────────────────────────────
 
+def _recommendation_mean_label(mean: float | None) -> str:
+    """Map Yahoo's recommendation_mean (1=Strong Buy .. 5=Strong Sell) to a label.
+
+    Yahoo convention: 1.0 Strong Buy, 2.0 Buy, 3.0 Hold, 4.0 Underperform,
+    5.0 Sell. The ``analyst_consensus_history`` columns are unreliable — a
+    percentage return has been observed stored in ``recom_score`` (e.g. 160.15),
+    producing nonsense ratings like "Strong Sell" for GD. Derive the label from
+    ``recommendation_mean`` (the authoritative 1–5 score) instead.
+    """
+    if mean is None:
+        return ""
+    try:
+        m = float(mean)
+    except (TypeError, ValueError):
+        return ""
+    if m <= 1.5:
+        return "Strong Buy"
+    if m <= 2.5:
+        return "Buy"
+    if m <= 3.5:
+        return "Hold"
+    if m <= 4.5:
+        return "Underperform"
+    return "Sell"
+
+
 def _load_analyst_context(holdings_symbols: set[str]) -> dict[str, dict[str, Any]]:
     """Load analyst consensus, targets, and revisions from DB.
 
@@ -1714,18 +1760,21 @@ def _load_analyst_context(holdings_symbols: set[str]) -> dict[str, dict[str, Any
                 round((mean_t / cp - 1) * 100, 2)
                 if mean_t and cp and cp > 0 else None
             )
+            rec_mean = _f(t.get("recommendation_mean"))
             result[sym] = {
                 "analyst_count": t.get("number_of_analyst_opinions"),
                 "price_target_mean": mean_t,
                 "price_target_high": _f(t.get("target_high_price")),
                 "price_target_low": _f(t.get("target_low_price")),
                 "target_vs_current_pct": target_vs_current,
-                "recommendation_mean": _f(t.get("recommendation_mean")),
+                "recommendation_mean": rec_mean,
+                "consensus_rating": _recommendation_mean_label(rec_mean),
                 "as_of": str(t.get("snapshot_date", ""))[:10],
                 "source": "yahoo_analyst_targets_history",
             }
 
-        # Latest consensus ratings
+        # Latest consensus ratings — fallback only, and only when the numeric
+        # score is a plausible 1–5 recommendation (guards corrupted % returns).
         consensus = _execute(
             """SELECT DISTINCT ON (upper(symbol))
                        upper(symbol) AS sym, recom_raw, recom_score,
@@ -1741,9 +1790,15 @@ def _load_analyst_context(holdings_symbols: set[str]) -> dict[str, dict[str, Any
             sym = _norm_symbol(str(c.get("sym") or ""))
             if not sym:
                 continue
-            if sym in result:
-                result[sym]["consensus_rating"] = c.get("analyst_rating", "")
-                result[sym]["consensus_score"] = _f(c.get("recom_score"))
+            if sym not in result:
+                continue
+            if not result[sym].get("consensus_rating"):
+                rating = str(c.get("analyst_rating") or "")
+                if rating:
+                    result[sym]["consensus_rating"] = rating
+            score = _f(c.get("recom_score"))
+            if score is not None and 1.0 <= score <= 5.0:
+                result[sym]["consensus_score"] = score
                 result[sym]["rating_updated"] = str(c.get("snapshot_date", ""))[:10]
 
         return result
@@ -2446,16 +2501,22 @@ def build_advisory_desk(*, max_age_s: float = DEFAULT_MAX_AGE_S, force: bool = F
 
     total_value = holdings.get("total_value") or 0
     holdings_symbols = {p["symbol"] for p in holdings.get("positions", [])}
+    watchlist_symbols = set(watchlist.get("items", {}).keys())
+    closed_symbols = set(closed.get("closed_by_symbol", {}).keys())
+    research_symbols = holdings_symbols | watchlist_symbols | closed_symbols
     portfolio_heat_pct = risk.get("portfolio_heat_pct")
 
     # ── S4: Load external data sources ──
-    listing_dates = _load_listing_dates(holdings_symbols)
+    # Scope to *research* symbols, not just held positions, so watchlist and
+    # closed-journal rows also receive price action, analyst, and instrument
+    # evidence (the data exists for liquid tickers like MSFT/NVDA/GD).
+    listing_dates = _load_listing_dates(research_symbols)
     ohlcv_data = _load_ohlcv_data()
     instrument_data = _load_instrument_identity(
-        {"positions": holdings.get("positions", []), "symbols": holdings_symbols},
+        {"positions": holdings.get("positions", []), "symbols": research_symbols},
         listing_dates,
     )
-    analyst_data = _load_analyst_context(holdings_symbols)
+    analyst_data = _load_analyst_context(research_symbols)
 
     # ── S4: Pre-compute price action + lot basis per holding ──
     price_actions: dict[str, dict[str, Any]] = {}
@@ -2477,6 +2538,14 @@ def build_advisory_desk(*, max_age_s: float = DEFAULT_MAX_AGE_S, force: bool = F
         # Lot basis
         lb = _load_lot_basis(sym, tax_lots, price, ld_str)
         lot_basis_data[sym] = lb
+
+    # Watchlist + closed symbols also get price action (OHLCV or Finviz fallback).
+    # No cost basis / shares — these are not held positions, so the
+    # distance-from-basis metric is intentionally absent.
+    for sym in research_symbols - holdings_symbols:
+        inst = instrument_data.get(sym, {})
+        ld_str = inst.get("listing_date")
+        price_actions[sym] = _load_price_action(sym, None, None, None, ohlcv_data, ld_str)
 
     # First pass: compute invariants per holding (before opinions)
     for pos in holdings.get("positions", []):
@@ -2549,6 +2618,18 @@ def build_advisory_desk(*, max_age_s: float = DEFAULT_MAX_AGE_S, force: bool = F
         holdings.get("portfolio_total_value"),
     )
     rows.extend(allocation_rows)
+
+    # S4: Attach price action + instrument identity to non-holding security rows
+    # (watchlist + closed). Holdings carry these from the loop above; allocation
+    # rows have synthetic symbols (ALLOC:...) with no price action by design.
+    for row in rows:
+        sym = row.get("symbol", "")
+        if not sym:
+            continue
+        if not row.get("price_action") and sym in price_actions:
+            row["price_action"] = price_actions[sym]
+        if not row.get("instrument") and sym in instrument_data:
+            row["instrument"] = instrument_data[sym]
 
     # ── Part A: Evidence enrichment ──
     # Load all available evidence sources (may fail individually)

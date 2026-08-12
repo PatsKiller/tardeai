@@ -194,7 +194,7 @@ function MemoryCard({ d }: { d: any }) {
 
 function OpinionCard({ d }: { d: any }) {
   if (!d || typeof d !== 'object' || Object.keys(d).length === 0) {
-    return <span style={emptyStyle}>No LLM opinion on this row (ADVISORY_DESK_V1 off or not yet enriched).</span>
+    return <span style={emptyStyle}>No Flash row opinion — LLM enrichment covers actionable holdings first; WAIT/watchlist rows are filled only if budget remains.</span>
   }
   return (
     <div>
@@ -227,12 +227,20 @@ function EvidenceCard({ items }: { items: any[] }) {
   if (!Array.isArray(items) || items.length === 0) return <span style={emptyStyle}>No evidence items.</span>
   return (
     <div>
-      {items.slice(0, 12).map((it, i) => (
-        <div key={i} style={{ padding: '2px 0', fontSize: 11, color: 'var(--text2)' }}>
-          • <span style={{ color: 'var(--text3)' }}>{it?.type || 'evidence'}</span>
-          {it?.source ? ` · ${String(it.source).slice(0, 40)}` : ''}
-        </div>
-      ))}
+      {items.slice(0, 12).map((it, i) => {
+        const isAgent = it?.type === 'agent_opinion'
+        const agent = it?.agent ? String(it.agent) : ''
+        const rec = it?.recommendation ? ` — ${String(it.recommendation)}` : ''
+        const label = isAgent
+          ? `agent_opinion · ${agent || it?.source || 'unknown'}${rec}`
+          : `${it?.type || 'evidence'}`
+        const source = !isAgent && it?.source ? ` · ${String(it.source).slice(0, 40)}` : ''
+        return (
+          <div key={i} style={{ padding: '2px 0', fontSize: 11, color: 'var(--text2)' }}>
+            • <span style={{ color: 'var(--text3)' }}>{label}</span>{source}
+          </div>
+        )
+      })}
     </div>
   )
 }
