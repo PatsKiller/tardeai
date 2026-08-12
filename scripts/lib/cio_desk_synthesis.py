@@ -295,25 +295,6 @@ def collect_desk_inputs() -> dict[str, Any]:
     if cash_pct is None and total_value and total_cash is not None and total_value > 0:
         cash_pct = total_cash / total_value * 100.0
 
-    # Debug breadcrumb for API/CLI parity (safe, local only)
-    try:
-        Path("/tmp/cio_desk_synth_debug.json").write_text(
-            __import__("json").dumps(
-                {
-                    "cwd": str(Path.cwd()),
-                    "domain_keys": list(domains.keys())[:20],
-                    "port_keys": list(port.keys())[:12],
-                    "total_value": total_value,
-                    "total_cash": total_cash,
-                    "cash_pct": cash_pct,
-                    "hold_rows": len(hold.get("holdings") or hold.get("positions") or hold.get("rows") or []),
-                },
-                default=str,
-            )
-        )
-    except Exception:
-        pass
-
     rows = hold.get("holdings") or hold.get("positions") or hold.get("rows") or []
     if not isinstance(rows, list):
         rows = []
