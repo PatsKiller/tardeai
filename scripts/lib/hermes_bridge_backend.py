@@ -36,8 +36,9 @@ DEFAULT_BRIDGE_URL = os.getenv("HERMES_BRIDGE_URL") or os.getenv(
     "CIO_GOVERNED_BRIDGE_URL", "http://127.0.0.1:8766"
 )
 DEFAULT_MODEL = os.getenv("HERMES_BRIDGE_MODEL", "deepseek-v4-flash")
-DEFAULT_MAX_TOKENS = int(os.getenv("HERMES_BRIDGE_MAX_TOKENS", "1800"))
-DEFAULT_TIMEOUT_S = float(os.getenv("HERMES_BRIDGE_TIMEOUT_S", "120"))
+# Flash often spends budget on reasoning_tokens; keep headroom so content is non-empty
+DEFAULT_MAX_TOKENS = int(os.getenv("HERMES_BRIDGE_MAX_TOKENS", "8192"))
+DEFAULT_TIMEOUT_S = float(os.getenv("HERMES_BRIDGE_TIMEOUT_S", "180"))
 
 
 class BridgeHermesResearchBackend:
@@ -64,11 +65,12 @@ class BridgeHermesResearchBackend:
         self.model = model or DEFAULT_MODEL
         self.max_tokens = max_tokens if max_tokens is not None else DEFAULT_MAX_TOKENS
         self.timeout_s = timeout_s if timeout_s is not None else DEFAULT_TIMEOUT_S
-        # Prefer advisory_desk if hermes_research not yet on registry
+        # Use registered advisory_desk caller; process_id hermes_research_job
+        # produced non-empty Flash content in host smokes (vs empty with long prompts).
         self.agent = agent or os.getenv("HERMES_BRIDGE_AGENT", "advisory_desk")
         self.task_type = task_type or os.getenv("HERMES_BRIDGE_TASK", "advisory_opinion")
         self.process_id = process_id or os.getenv(
-            "HERMES_BRIDGE_PROCESS", "hermes_research_job",
+            "HERMES_BRIDGE_PROCESS", "advisory_desk_opinion",
         )
 
     def run(self, request: dict[str, Any]) -> dict[str, Any]:
@@ -111,51 +113,40 @@ class BridgeHermesResearchBackend:
         return body
 
     def _system_prompt(self) -> str:
+        # Keep compact: Flash can spend entire max_tokens on reasoning with long prompts.
         return (
-            "You are Hermes, a READ_ONLY research worker for a CIO advisory desk.\n"
-            "You never recommend placing orders or stops. You never invent portfolio "
-            "weights, cash, or prices not present in context_snapshot.\n"
-            "Answer EACH question separately. Prefer evidence and uncertainty over hype.\n"
-            "Return ONLY valid JSON with keys:\n"
-            "  as_of (ISO timestamp),\n"
-            "  answers: [{question_id, status, summary, detail, confidence, citations}],\n"
-            "  findings: [{id, kind, severity, text, confidence}],\n"
-            "  desk_implications: {suggestion_bias, changes_materiality, "
-            "recommended_revisit, watch_triggers, notes},\n"
-            "  limitations: [string]\n"
-            "status for answers: answered | partial | unanswered\n"
-            "suggestion_bias: hold_with_thesis | hold_cash | review | observe\n"
-            "confidence: 0..1 when known\n"
-            "kind: catalyst | risk | regime | other\n"
-            "severity: low | medium | high\n"
+            "Hermes READ_ONLY research for CIO desk. No orders/stops language. "
+            "Do not invent portfolio numbers outside context_snapshot. "
+            "Reply with JSON only (no markdown, no preamble). Schema:\n"
+            '{"as_of":"ISO","answers":[{"question_id":"","status":"answered|partial|unanswered",'
+            '"summary":"","detail":"","confidence":0.0,"citations":[]}],'
+            '"findings":[{"id":"","kind":"catalyst|risk|regime|other","severity":"low|medium|high",'
+            '"text":"","confidence":0.0}],'
+            '"desk_implications":{"suggestion_bias":"hold_with_thesis|hold_cash|review|observe",'
+            '"changes_materiality":false,"recommended_revisit":null,"watch_triggers":[],"notes":""},'
+            '"limitations":[]}\n'
+            "Answer every question_id. Keep each summary under 40 words. JSON only."
         )
 
     def _build_messages(self, request: dict, qs: list[dict]) -> list[dict]:
+        # Compact user payload — only fields the model needs
+        subject = request.get("subject") or {}
         user_payload = {
-            "research_id": request.get("research_id"),
-            "plan_id": request.get("plan_id"),
-            "thesis_version": request.get("thesis_version"),
-            "stance": request.get("stance"),
-            "subject": request.get("subject") or {},
-            "trigger": request.get("trigger") or {},
-            "priority": request.get("priority"),
-            "questions": qs,
-            "success_criteria": request.get("success_criteria") or [],
-            "context_snapshot": request.get("context_snapshot") or {},
-            "constraints": {
-                "read_only": True,
-                "no_order_language": True,
-                **(request.get("constraints") or {}),
-            },
+            "pin": request.get("thesis_version"),
+            "symbol": subject.get("symbol") or request.get("symbol"),
+            "situation": subject.get("situation_type") or request.get("situation_type"),
+            "questions": [{"id": q["id"], "text": q["text"][:220], "intent": q["intent"]} for q in qs],
+            "context": request.get("context_snapshot") or {},
+            "criteria": (request.get("success_criteria") or "")[:200]
+            if isinstance(request.get("success_criteria"), str)
+            else (request.get("success_criteria") or [])[:4],
         }
         return [
             {"role": "system", "content": self._system_prompt()},
             {
                 "role": "user",
-                "content": (
-                    "Research request JSON follows. Answer every question_id.\n\n"
-                    + json.dumps(user_payload, ensure_ascii=False, separators=(",", ":"))
-                ),
+                "content": "JSON only. Request:\n"
+                + json.dumps(user_payload, ensure_ascii=False, separators=(",", ":")),
             },
         ]
 
@@ -207,20 +198,23 @@ class BridgeHermesResearchBackend:
         if text.startswith("```"):
             text = re.sub(r"^```(?:json)?\s*", "", text)
             text = re.sub(r"\s*```$", "", text)
+        # Prefer outermost JSON object
+        if not text.startswith("{"):
+            m = re.search(r"\{.*\}", text, re.S)
+            if m:
+                text = m.group(0)
         try:
             obj = json.loads(text)
-        except json.JSONDecodeError:
-            m = re.search(r"\{.*\}", text, re.S)
-            if not m:
+        except json.JSONDecodeError as e:
+            # Truncated model output is common when reasoning ate budget — retryable
+            if text.lstrip().startswith("{"):
                 raise HermesBackendError(
-                    f"model content not JSON: {text[:200]}", retryable=False,
-                )
-            try:
-                obj = json.loads(m.group(0))
-            except json.JSONDecodeError as e:
-                raise HermesBackendError(
-                    f"model content not JSON: {text[:200]}", retryable=False,
+                    f"model JSON truncated/incomplete: {text[:200]}",
+                    retryable=True,
                 ) from e
+            raise HermesBackendError(
+                f"model content not JSON: {text[:200]}", retryable=False,
+            ) from e
         if not isinstance(obj, dict):
             raise HermesBackendError("model JSON root must be object", retryable=False)
         return obj
