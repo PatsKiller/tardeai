@@ -214,7 +214,7 @@ def augment_multi_domain_evidence(plan: dict[str, Any]) -> dict[str, Any]:
                 refs.append(ref)
                 have.add(name)
 
-        # Core pair for synthesis
+        # Core pair for synthesis (notify requires multi-domain)
         _pull("holdings_detail", ["holdings_count", "total_value"])
         _pull("cash_buying_power", ["cash_pct", "total_cash", "buying_power", "cash_weight_pct"])
         # portfolio aggregate if cash domain missing fields
@@ -222,15 +222,66 @@ def augment_multi_domain_evidence(plan: dict[str, Any]) -> dict[str, Any]:
         _pull("risk", ["portfolio_heat_pct", "stops_active", "gross_exposure_pct"])
         # concentration if present
         _pull("concentration", ["top_weight_pct", "top_symbol", "hhi"])
+        # recent activity / hermes research when available
+        _pull("recent_activity", ["trade_count", "last_trade_ts", "turnover_pct"])
+        _pull("hermes_research", ["promoted_research_count", "staged_research_count", "model_provider"])
     except Exception:
         pass
 
     # Require at least 2 domains for material notify quality flag
     domains_present = sorted({str(r.get("domain")) for r in refs if r.get("domain")})
+    # Triggering domain + holdings or cash is preferred
+    has_holdings = "holdings_detail" in domains_present
+    has_cash_or_port = bool({"cash_buying_power", "portfolio"} & set(domains_present))
     updated["evidence_refs"] = refs
     updated["_evidence_domains"] = domains_present
-    updated["_multi_domain_ok"] = len(domains_present) >= 2
+    updated["_multi_domain_ok"] = len(domains_present) >= 2 and (has_holdings or has_cash_or_port)
     return updated
+
+
+def maybe_request_hermes(plan: dict[str, Any], *, reason: str = "") -> Optional[str]:
+    """Enqueue Hermes research challenge for material situations. Fail-soft.
+
+    READ_ONLY — research only, no trading authority.
+    """
+    if not is_material_plan(plan) and not plan.get("hermes_requested"):
+        return None
+    st = str(plan.get("situation_type") or "")
+    syms = ",".join(str(s) for s in (plan.get("symbols") or [])[:4]) or "book"
+    pid = plan.get("plan_id") or ""
+    desc = (
+        reason
+        or f"Material CIO situation {st} ({syms}) plan={pid}. "
+        f"Independently verify multi-domain evidence vs desk thesis; "
+        f"flag contradictions or research gaps. READ_ONLY_ADVISORY."
+    )
+    try:
+        try:
+            from lib.cio_hermes_challenge_queue import HermesChallengeQueue
+        except Exception:
+            from scripts.lib.cio_hermes_challenge_queue import HermesChallengeQueue  # type: ignore
+        q = HermesChallengeQueue()
+        ev = q.enqueue(
+            challenge_type="research_gap",
+            description=desc[:800],
+            source=f"cio_plan:{pid or st}",
+            priority="high" if st in ("S6_CONCENTRATION_OR_DISPOSITION", "S8_DEFENSIVE_REGIME") else "normal",
+            evidence_refs=[
+                f"plan:{pid}" if pid else f"situation:{st}",
+                *[f"domain:{d}" for d in (plan.get("evidence_domains") or plan.get("_evidence_domains") or [])[:4]],
+            ],
+            actor_id="cio_plan_enrichment",
+            metadata={
+                "plan_id": pid,
+                "situation_type": st,
+                "symbols": list(plan.get("symbols") or []),
+                "thesis_version": plan.get("thesis_version"),
+                "authority": "READ_ONLY_ADVISORY",
+            },
+        )
+        return (ev.get("stream_id") if isinstance(ev, dict) else None) or "enqueued"
+    except Exception:
+        return None
 
 
 def build_evidence_pack(plan: dict[str, Any], *, extra_context: Optional[dict[str, Any]] = None) -> dict[str, Any]:
@@ -640,6 +691,14 @@ def _thesis_block_for_prompt(pack: dict[str, Any], *, max_bullets: int = 4, full
     principles = th.get("principles") or []
     p_s = "; ".join(str(x).strip() for x in principles[:3] if str(x).strip())[:140]
     risk_p = str(th.get("risk_posture") or "")[:100]
+    rps = th.get("risk_posture_structured") or {}
+    if isinstance(rps, dict) and rps:
+        risk_p = (
+            f"max_name={rps.get('max_single_name_weight_pct')} "
+            f"cash_min={rps.get('cash_band_min_pct')} "
+            f"dd={rps.get('deep_dd_threshold_pct')} "
+            f"conc_fire={rps.get('concentration_fire_pct')}"
+        )[:120]
     esc = th.get("escalation_rules") or []
     e_s = "; ".join(str(x).strip() for x in esc[:2] if str(x).strip())[:120]
     linked = th.get("linked_symbols") or []
@@ -1200,7 +1259,7 @@ def enrich_plan(
         or pack.get("thesis_version")
         or (pack.get("desk_thesis") or {}).get("thesis_version")
     )
-    if pin_echo and pin_echo not in rec:
+    if pin_echo and str(pin_echo) not in rec:
         rec = f"{rec} [{pin_echo}]".strip()
     updated["recommendation"] = rec[:1600]
     updated["risks"] = narrative.get("risks") or plan.get("risks")
@@ -1208,9 +1267,13 @@ def enrich_plan(
     updated["multi_domain_summary"] = md or plan.get("multi_domain_summary")
     updated["material"] = bool(pack.get("material")) or updated_material_flag
     updated["evidence_domains"] = list(pack.get("evidence_domains") or [])
-    # Hermes research depth suggested for material events (operator/Hermes path)
+    # Hermes research depth for material events
     if updated["material"]:
         updated["hermes_suggested"] = True
+        hid = maybe_request_hermes(updated)
+        if hid:
+            updated["hermes_challenge_id"] = hid
+            result["hermes_challenge_id"] = hid
     # revisit_at from hint if present
     if narrative.get("revisit_hint") and not plan.get("revisit_at"):
         updated["revisit_at"] = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
@@ -1502,6 +1565,35 @@ def maybe_notify_plan(
     ])
     if st and allow_types and st not in allow_types:
         return False
+
+    # Multi-domain synthesis required for notified material plans (desk@v2+)
+    # Routine converse (S0) exempt; force bypasses.
+    if not force and st != "S0_OPERATOR_CONVERSE":
+        domains = plan.get("evidence_domains") or []
+        if not domains:
+            domains = [
+                str(r.get("domain"))
+                for r in (plan.get("evidence_refs") or [])
+                if isinstance(r, dict) and r.get("domain")
+            ]
+        multi_ok = plan.get("_multi_domain_ok")
+        if multi_ok is None:
+            multi_ok = len(set(domains)) >= 2
+        if is_material_plan(plan) and not multi_ok:
+            try:
+                _log_enrich({
+                    "ts": _now(),
+                    "plan_id": plan.get("plan_id"),
+                    "llm": "notify_skipped",
+                    "narrative_source": plan.get("narrative_source"),
+                    "source": st,
+                    "notify_skip": "multi_domain_required",
+                    "evidence_domains": domains,
+                    "authority": "READ_ONLY_ADVISORY",
+                })
+            except Exception:
+                pass
+            return False
 
     skip, skip_reason = should_skip_notify(
         plan, force=force, policy=pol, ledger_path=ledger_path,

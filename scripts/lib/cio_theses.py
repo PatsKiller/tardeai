@@ -478,11 +478,15 @@ class CIOThesisStore:
             "bullets": list(cur.get("bullets") or [])[:12],
             "principles": list(cur.get("principles") or [])[:12],
             "risk_posture": cur.get("risk_posture") or "",
+            "risk_posture_structured": cur.get("risk_posture_structured") or {},
             "escalation_rules": list(cur.get("escalation_rules") or [])[:12],
             "learning_log": list(cur.get("learning_log") or [])[-8:],
             "linked_symbols": list(cur.get("linked_symbols") or [])[:20],
+            "watch_symbols": list(cur.get("watch_symbols") or cur.get("linked_symbols") or [])[:20],
+            "last_reviewed": cur.get("last_reviewed") or cur.get("published_ts"),
             "owner_agent": cur.get("owner_agent"),
             "published_ts": cur.get("published_ts"),
+            "intelligence_layer": cur.get("intelligence_layer") or "",
             "authority": "READ_ONLY_ADVISORY",
         }
         return block
