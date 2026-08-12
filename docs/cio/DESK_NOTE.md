@@ -50,6 +50,12 @@ Persists `data/cio/cio_desk_note_latest.md` on CLI run.
 
 ---
 
+## R:R methodology
+
+Engine and desk-note display filters: see [REENTRY_RR.md](./REENTRY_RR.md).
+
+**Engine:** `R:R = (target − price) / (price − stop)` from `reentry_decision_desk` (criterion prefers ≥2:1). **Desk core full card:** `1.5 ≤ R:R ≤ 12` (`CORE_MIN_RR`).
+
 ## Quality bar (v1.2)
 
 1. Re-entry section lists real READY/NEAR candidates with zones, R:R, sizing, stage gate  

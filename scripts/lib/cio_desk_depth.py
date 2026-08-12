@@ -43,10 +43,12 @@ EXCLUDE_FROM_ACTIONABLE = frozenset({
     "CURRENTLY HELD", "WASH BLOCK", "STALE", "MISSING MARKET", "MISSING PLAN",
 })
 
-# Re-entry quality filter (v1.2.2)
+# Re-entry quality filter (v1.2.2) — presentation only; does not change READY/NEAR.
+# Engine R:R (reentry_decision_desk): (target - price) / (price - stop); criterion prefers >= 2.0.
+# See docs/cio/REENTRY_RR.md.
 CORE_MIN_PRICE = 5.0          # $ — below this is micro/speculative by default
 CORE_MIN_ADV = 1_000_000.0    # optional avg dollar volume threshold when present
-CORE_MIN_RR = 1.5             # full core card requires R:R >= this
+CORE_MIN_RR = 1.5             # full core card requires R:R >= this (engine criterion uses 2.0)
 MAX_SANE_RR = 12.0            # R:R above this is treated as data error (not displayed as N:1)
 
 
