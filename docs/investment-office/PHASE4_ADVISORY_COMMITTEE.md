@@ -91,27 +91,70 @@ still pinned.
 (one verdict → one action → one notification, never duplicates). Non-ready
 decisions are recorded as actions but produce no notification.
 
+## 4b. Committee synthesis wiring (`scripts/lib/cio_committee_synthesis.py`)
+
+The bridge that turns produced specialist advisories into a decision the live
+`CIORunWorker` can consume:
+
+```
+[SpecialistAdvisory...] → vote_from_specialist_advisory → CommitteeVote...
+  → convene → CommitteeResult → reconcile_committee → final position
+  → build_decision → InvestmentDecision@v1 → recommendations_from_decision
+  → recommendation rows consumed by CIORunWorker._write_actions
+```
+
+Key pieces:
+
+- `reconcile_committee(intended_position, committee_result, ...)` — Alex is the
+  chair; he proposes an `intended_position` and the committee gates it (see §2
+  fail-closed rules). Returns `{final_position, actionability, resolution,
+  overridden}`.
+- `synthesize_decision(...)` — the full deterministic pipeline: advisories →
+  committee → reconciled decision. Raises on a malformed advisory (fail-closed).
+- `recommendations_from_decision(decision)` — maps a decision to the
+  `recommendations` rows `CIORunWorker._write_actions` expects, with `action` +
+  `action_type` so `determine_action_type` and `create_action` both resolve.
+- `build_committee_synthesis_fn(...)` — returns a `synthesis_fn` callable
+  drop-in for `CIORunWorker(synthesis_fn=...)`. It produces a decision and, when
+  the decision is **valid**, the recommendation rows; when the decision is
+  **invalid** (defense veto, quorum block, evidence gap, unresolved MIXED), it
+  returns `recommendations: []` + `blocked: True` so the worker creates a STATUS
+  action — never an execution action.
+
 ## 5. Checkpoint 4 canaries
 
-`tests/test_cio_checkpoint4_committee.py` — 26 hermetic tests (0 provider calls,
-0 live side effects) covering quorum, unanimity, super-majority, MIXED, defense
-veto, neutral consensus, deterministic `decision_id`, evidence gate, disagreement
-resolution, fact-dump rejection, action-payload idempotency, pipeline
-deduplication, a real `CIOActionLedger` roundtrip (temp path), and the
-`SpecialistAdvisory` → `CommitteeVote` bridge.
+- `tests/test_cio_checkpoint4_committee.py` — 26 hermetic tests: quorum,
+  unanimity, super-majority, MIXED, defense veto, neutral consensus, deterministic
+  `decision_id`, evidence gate, disagreement resolution, fact-dump rejection,
+  action-payload idempotency, pipeline deduplication, a real `CIOActionLedger`
+  roundtrip (temp path), and the `SpecialistAdvisory` → `CommitteeVote` bridge.
+- `tests/test_cio_checkpoint4_synthesis.py` — 17 hermetic tests: `reconcile_committee`
+  rules, `synthesize_decision` (valid hold, defense-veto block, defer mapping),
+  `recommendations_from_decision` shape, `build_committee_synthesis_fn` (valid
+  decision, defense-veto no-recommendations, malformed-advisory fail-closed,
+  evidence-refs-from-snapshot), and two end-to-end `CIORunWorker.execute()`
+  runs — one producing a HOLD action, one proving a defense veto yields a STATUS
+  action and **no** execution action.
 
 Run:
 
 ```bash
-python3 -m pytest tests/test_cio_checkpoint4_committee.py -q
+python3 -m pytest tests/test_cio_checkpoint4_committee.py tests/test_cio_checkpoint4_synthesis.py -q
 ```
 
 ## 6. Known gaps (honest, not hidden)
 
-- The committee is wired as a **deterministic engine**; the specialist *LLM*
-  production of `SpecialistAdvisory` artifacts into real `CommitteeVote`s is the
-  next integration step (ties the opinion engine + governed model bridge to the
-  committee). The bridge function (`vote_from_specialist_advisory`) is ready for it.
+- **Specialist-artifact resolution into the committee is the remaining live
+  integration.** `CIORunWorker._route_specialists` hardcodes `artifacts: []`;
+  the committee engine, `synthesize_decision`, and the `synthesis_fn` factory are
+  fully wired and tested, but the worker must be extended to read completed
+  `SpecialistAdvisory` artifacts (from the handoff queue / run store
+  `specialist_artifact_refs`) into `specialist_result["artifacts"]` before
+  synthesis. The tests inject artifacts via a thin wrapper to prove the
+  worker→committee→decision→action path is correct end-to-end.
+- The specialist *LLM* production of `SpecialistAdvisory` artifacts (opinion
+  engine + governed model bridge) is not yet routed through the committee; the
+  `vote_from_specialist_advisory` bridge is ready for it.
 - `final_position` enum is chair-level; mapping from the legacy synthesis
   `recommendation` vocabulary (`ADD/ADD_ON_PULLBACK/REBALANCE_TRIM/…`) to the
   canonical enum is a follow-up normalization, not done here.
