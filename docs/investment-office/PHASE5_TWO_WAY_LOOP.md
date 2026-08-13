@@ -201,21 +201,68 @@ Canaries (`tests/test_cio_opportunity_queue.py`, 23 tests):
 python3 -m pytest tests/test_cio_opportunity_queue.py -q
 ```
 
+### 4e. Sector-opportunity synthesis (increment 5 — this change)
+
+Alex's "Sector X is improving…" statement, built as a pure, dry-testable synthesis
+that composes existing read models (never re-reads raw files or calls a model).
+
+- **Pure module** (`scripts/lib/cio_sector_opportunity.py`, no I/O at import):
+  - `canonical_sector(...)` — 11-sector GICS normalization with alias tolerance
+    (Communication Services → Communications, Consumer Cyclical → Discretionary, …);
+    unknown names pass through title-cased, never silently collapsed.
+  - `classify_state(rs20, slope)` — exact replica of
+    `sector_momentum_engine.classify` (LEADING / WEAKENING / LAGGING / IMPROVING).
+  - `normalize_sector_row(...)` / `normalize_candidate(...)` — canonical envelopes
+    accepting both the momentum-engine shape (`state`) and the rotation-ladder shape
+    (`rs_score`), deriving `state` when absent.
+  - `classify_candidate_readiness(...)` — WATCH_READY / NEEDS_RESEARCH / TOO_EXTENDED
+    (RSI ≥ 70 or price ≥ 1.03·VWAP ⇒ too extended; `researched`/research-score ⇒ ready;
+    else needs research), with an explicit `readiness` override.
+  - `deployment_recommendation(...)` — fail-closed: over-target or no capital ⇒
+    NO_DEPLOYMENT; ready candidate + capital ⇒ STAGED_DEPLOYMENT; else RESEARCH_FIRST.
+  - `build_sector_opportunity(...)` — the full acceptance-shape envelope
+    (exposure % / target % / capital $ / candidate counts / recommendation / rendered
+    statement) with a hash-pinned `opportunity_key` for idempotent dedup.
+  - `synthesize_sector_opportunities(...)` — orders LEADING before IMPROVING, filters
+    non-opportunity sectors by default, and produces a deterministic digest.
+  - `fetch_sector_opportunity_inputs(executor)` / `build_synthesis_from_executor(...)`
+    — fail-soft live reader separated from the pure logic.
+- **Read surface** (`api_v2.py`):
+  - New endpoint `GET /api/v2/cio/sector-opportunities` (READ_ONLY_ADVISORY) returning
+    the synthesis + deployable capital (`redeploy_capital_book.build_opportunity_set`).
+  - `sector_opportunities` compact block added to `_two_way_curation_health` (digest /
+    count / opportunity_count / per-sector statement).
+  - `_sector_target_map()` reads `config/rotation_sector_targets.json` themes and keeps
+    only names that canonicalize to a real GICS sector (thematic sleeves are skipped).
+
+Canaries (`tests/test_cio_sector_opportunity.py`, 29 tests): alias normalization,
+`classify_state` replication, row/candidate normalization (momentum + rotation-ladder
+shapes), readiness truth table (override / RSI / VWAP / researched / research-score /
+default / unknown), recommendation truth table, acceptance-shape envelope + statement,
+`opportunity_key` determinism, ordering/filtering/digest, target lookup, and the
+fail-soft executor reader.
+
+```bash
+python3 -m pytest tests/test_cio_sector_opportunity.py -q
+```
+
 ## 5. Next increments (in order)
 
-1. **Sector opportunity behavior** (§6) — Alex's "Sector X is improving…" synthesis.
-2. **Lock/contention remediation** under full promote load (benchmark + fix).
+1. **Lock/contention remediation** under full promote load (benchmark + fix).
 
 ## 6. Required sector opportunity behavior (Checkpoint 5 target)
 
-When Rotation/Defense detects a material sector shift, Alex must be able to state:
+SATISFIED by increment 5 (§4e). When Rotation/Defense detects a material sector shift,
+Alex can now state:
 
 > Sector X is improving. Current portfolio exposure = Y%. Policy/target posture =
 > Z%. Potential incremental capital = $A. Best current candidates = B/C/D. B is
 > Watch READY, C needs research, D is too extended. I recommend no deployment /
 > staged deployment / research first.
 
-This is the acceptance shape for the sector-opportunity synthesis (increment 3).
+The synthesis is a read-only advisory projection: it ranks LEADING/IMPROVING sectors,
+computes exposure vs target, attaches deployable capital, classifies candidates by
+readiness, and emits a deterministic recommendation — never mutating or executing.
 
 ## 7. Checkpoint 5
 
@@ -235,8 +282,7 @@ sector/defense or CIO event → staged Watch idea → research → Watch state c
   present; `reentry` emit reads `reentry_decision_desk_latest.json` (written by the
   re-entry decision desk). Both fail-soft with a clear "missing snapshot" result so
   the cron never blocks on absent producer output.
-- The Alex opportunity queue is wired and wakes on material new opportunities, but it
-  only surfaces what the desks have already staged; the sector-opportunity synthesis
-  (Alex's "Sector X is improving…" statement, §6) and the load lock/contention
-  remediation remain unimplemented.
+- The Alex opportunity queue is wired and wakes on material new opportunities, and the
+  sector-opportunity synthesis (§4e) is delivered as a read-only advisory projection.
+  The load lock/contention remediation under full promote load remains unimplemented.
 - Checkpoint 5 (organic loop) has not been run; it requires live data flow.

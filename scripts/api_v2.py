@@ -27393,6 +27393,76 @@ def _opportunity_queue_summary():
         return {"digest": None, "count": 0, "material": False, "top": []}
 
 
+def _sector_target_map() -> dict:
+    """Read config/rotation_sector_targets.json themes → GICS target map (fail-soft).
+
+    Only theme names that canonicalize to one of the 11 canonical GICS sectors
+    contribute a sector target; thematic sleeves (Magnificent 7, AI mega-cap,
+    Semiconductors, etc.) are skipped because they are not sector-level targets.
+    Returns {} on any error.
+    """
+    try:
+        from scripts.lib.cio_sector_opportunity import CANONICAL_SECTORS, canonical_sector
+        raw = _load_json(PROJECT_ROOT / "config" / "rotation_sector_targets.json") or {}
+        themes = raw.get("themes") or {}
+        out: dict[str, float] = {}
+        for theme, cfg in themes.items():
+            target = (cfg or {}).get("target")
+            if target is None:
+                continue
+            canon = canonical_sector(theme)
+            if canon in CANONICAL_SECTORS:
+                out[canon] = float(target)
+        return out
+    except Exception:
+        return {}
+
+
+def _cio_sector_opportunities(query=None):
+    """GET /api/v2/cio/sector-opportunities — Alex's sector-opportunity synthesis (read-only)."""
+    try:
+        from scripts.lib.cio_sector_opportunity import build_synthesis_from_executor
+        capital = None
+        try:
+            capital = (_redeploy_opportunity_set() or {}).get("deployable_capital_usd")
+        except Exception:
+            capital = None
+        return {
+            "ok": True,
+            "authority": "READ_ONLY_ADVISORY",
+            **build_synthesis_from_executor(
+                _db_query, sector_targets=_sector_target_map(), capital_usd=capital
+            ),
+        }
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)[:200], "authority": "READ_ONLY_ADVISORY"}
+
+
+def _sector_opportunities_compact():
+    """Compact sector-opportunity summary for the health endpoint (fail-soft)."""
+    try:
+        full = _cio_sector_opportunities()
+        return {
+            "digest": full.get("digest"),
+            "count": full.get("count", 0),
+            "opportunity_count": full.get("opportunity_count", 0),
+            "capital_usd": full.get("capital_usd"),
+            "opportunities": [
+                {
+                    "sector": o.get("sector"),
+                    "state": o.get("state"),
+                    "exposure_pct": o.get("current_exposure_pct"),
+                    "target_pct": o.get("target_posture_pct"),
+                    "recommendation": o.get("recommendation"),
+                    "statement": o.get("statement"),
+                }
+                for o in full.get("opportunities", [])
+            ],
+        }
+    except Exception:
+        return {"digest": None, "count": 0, "opportunity_count": 0, "opportunities": []}
+
+
 def _two_way_curation_health(query=None):
     """GET /api/v2/watch/two-way-curation — loop health KPIs (read-only advisory).
 
@@ -27472,6 +27542,8 @@ def _two_way_curation_health(query=None):
             # Alex-consumable opportunity queue: one deterministic digest fed by
             # staged/undrained desk suggestions (cio/advisory/defense/rotation/reentry).
             "opportunity_queue": _opportunity_queue_summary(),
+            # Alex's sector-opportunity synthesis (Sector X is improving…).
+            "sector_opportunities": _sector_opportunities_compact(),
             # Operator interactive inbox: desk staged suggestions ready for one-tap promote
             "suggestions": _db_query(
                 """SELECT h.id AS hit_id, h.directive_id, d.label AS directive_label,
@@ -35592,6 +35664,7 @@ ROUTES = {
     "/api/v2/system/llm-retry-health": _llm_retry_health,
     "/api/v2/watch-directives": _watch_directives,
     "/api/v2/watch/two-way-curation": _two_way_curation_health,
+    "/api/v2/cio/sector-opportunities": _cio_sector_opportunities,
     "/api/v2/watch/directives/detail": _watch_directive_detail,
     "/api/v2/watch/directives/merge-plan": _watch_directive_merge_plan,
     "/api/v2/watchpool": _watchpool_list,
