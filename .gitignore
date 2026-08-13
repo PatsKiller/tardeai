@@ -58,8 +58,13 @@ sandbox/
 
 # ── All portfolio/personal data — PII, holdings, AI outputs, CSVs ──────────
 # Option A: state stays out of git
-data/
-# Exceptions: integrity manifest is a deployment artifact (source of truth)
+data/*
+# Exceptions: integrity manifest is a deployment artifact (source of truth).
+# A bare `data/` excludes the whole tree, which makes the file-level negation
+# below ineffective (git won't descend into an excluded directory). Un-ignore
+# the runtime dir, re-ignore its contents, then exempt the one tracked file.
+!data/runtime/
+data/runtime/*
 !data/runtime/file_integrity_manifest.json
 
 # ── Generated reports (regenerable from code + state) ──────────────────────
