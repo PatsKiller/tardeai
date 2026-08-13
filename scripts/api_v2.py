@@ -27541,6 +27541,130 @@ def _capital_plan_compact():
         return {"digest": None, "portfolio_value_usd": 0.0, "decision_count": 0, "top_decisions": []}
 
 
+def _source_sha() -> Optional[str]:
+    """Current git HEAD SHA (fail-soft; used in the report manifest)."""
+    try:
+        import subprocess
+        out = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=str(PROJECT_ROOT),
+            capture_output=True, text=True, timeout=5,
+        )
+        if out.returncode == 0:
+            return out.stdout.strip() or None
+    except Exception:
+        pass
+    return None
+
+
+def _cio_report_v2(query=None):
+    """GET /api/v2/cio/report-v2 — Trade AI Institutional Report v2.
+
+    READ_ONLY_ADVISORY. Part A (CIO front matter) + Part B (MS-completeness
+    book) + field-coverage matrix + immutable manifest + Checkpoint 7 summary.
+    HTML is embedded; PDF is generated only when a renderer is present.
+    """
+    try:
+        from scripts.lib.cio_report_v2 import build_report_v2
+        from scripts.lib.cio_opportunity_queue import build_queue_from_executor
+
+        holdings = _load_json(
+            PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json"
+        ) or {}
+        thesis = (_load_json(PROJECT_ROOT / "data" / "cio" / "cio_theses_projection.json") or {}).get("current", {}).get("desk") or {}
+        perf_attr = _load_json(
+            PROJECT_ROOT / "data" / "portfolios" / "state" / "performance_attribution.json"
+        ) or {}
+        perf_hist = _load_json(
+            PROJECT_ROOT / "data" / "portfolios" / "state" / "performance_history.json"
+        ) or {}
+
+        queue = build_queue_from_executor(_db_query)
+        sectors = (_cio_sector_opportunities() or {}).get("opportunities") or []
+        plan = _cio_capital_plan() or {}
+
+        # Part B context from the existing MS-style assembler (fail-soft).
+        part_b = {}
+        try:
+            import sys as _sys
+            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            from portfolio_report_ms import assemble as _ms_assemble
+            part_b = _ms_assemble() or {}
+        except Exception:
+            part_b = {"portfolio": {
+                "total_value": plan.get("portfolio_value_usd"),
+                "cash_value": plan.get("cash_total_usd"),
+                "positions_count": len(plan.get("position_decisions") or []),
+            }}
+
+        part_a_inputs = {
+            "thesis": thesis,
+            "capital_plan": plan,
+            "sector_opportunities": sectors,
+            "opportunity_queue": queue,
+            "performance_attribution": perf_attr,
+            "performance": {"periods": perf_hist.get("periods") or {}},
+        }
+
+        # Immutable manifest input payloads (raw bytes of canonical inputs).
+        state = PROJECT_ROOT / "data" / "portfolios" / "state"
+        payloads: dict[str, Any] = {}
+        for name, path in (
+            ("holdings.json", state / "holdings.json"),
+            ("performance_history.json", state / "performance_history.json"),
+            ("performance_attribution.json", state / "performance_attribution.json"),
+            ("tax_lots.json", state / "tax_lots.json"),
+            ("fund_lookthrough.json", state / "fund_lookthrough.json"),
+            ("cio_theses_projection.json", PROJECT_ROOT / "data" / "cio" / "cio_theses_projection.json"),
+        ):
+            try:
+                payloads[name] = path.read_bytes()
+            except Exception:
+                payloads[name] = "unavailable"
+
+        model = build_report_v2(
+            part_b_ctx=part_b,
+            part_a_inputs=part_a_inputs,
+            source_sha=_source_sha(),
+            input_payloads=payloads,
+            render_errors=["pdf renderer unavailable in this environment"] if not _has_pdf_renderer() else [],
+        )
+        return {"ok": True, **model}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)[:200], "authority": "READ_ONLY_ADVISORY"}
+
+
+def _has_pdf_renderer() -> bool:
+    try:
+        import subprocess
+        for cmd in ("weasyprint", "wkhtmltopdf", "chromium", "chromium-browser", "google-chrome"):
+            out = subprocess.run(["which", cmd], capture_output=True, text=True, timeout=3)
+            if out.returncode == 0:
+                return True
+        return False
+    except Exception:
+        return False
+
+
+def _report_v2_compact():
+    """Compact v2-report summary for the health endpoint (fail-soft)."""
+    try:
+        full = _cio_report_v2()
+        cp = full.get("checkpoint") or {}
+        return {
+            "as_of": full.get("as_of"),
+            "source_sha": (full.get("manifest") or {}).get("source_sha"),
+            "field_count": (full.get("coverage") or {}).get("field_count"),
+            "source_traceability_pct": cp.get("source_traceability_pct"),
+            "fields_present": len(cp.get("fields_present") or []),
+            "fields_unavailable": cp.get("fields_unavailable"),
+            "quality_flag_count": len(cp.get("quality_flags") or []),
+            "render_errors": cp.get("render_errors"),
+            "pdf_pages": cp.get("pdf_pages"),
+        }
+    except Exception:
+        return {"field_count": 0, "source_traceability_pct": None, "fields_unavailable": []}
+
+
 def _two_way_curation_health(query=None):
     """GET /api/v2/watch/two-way-curation — loop health KPIs (read-only advisory).
 
@@ -27624,6 +27748,8 @@ def _two_way_curation_health(query=None):
             "sector_opportunities": _sector_opportunities_compact(),
             # Alex's capital plan (sources/uses, net deploy/raise, position decisions).
             "capital_plan": _capital_plan_compact(),
+            # Institutional Report v2 (Part A + Part B + coverage matrix + manifest).
+            "report_v2": _report_v2_compact(),
             # Operator interactive inbox: desk staged suggestions ready for one-tap promote
             "suggestions": _db_query(
                 """SELECT h.id AS hit_id, h.directive_id, d.label AS directive_label,
@@ -35746,6 +35872,7 @@ ROUTES = {
     "/api/v2/watch/two-way-curation": _two_way_curation_health,
     "/api/v2/cio/sector-opportunities": _cio_sector_opportunities,
     "/api/v2/cio/capital-plan": _cio_capital_plan,
+    "/api/v2/cio/report-v2": _cio_report_v2,
     "/api/v2/watch/directives/detail": _watch_directive_detail,
     "/api/v2/watch/directives/merge-plan": _watch_directive_merge_plan,
     "/api/v2/watchpool": _watchpool_list,
