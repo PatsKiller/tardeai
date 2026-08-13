@@ -40232,6 +40232,15 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             if method == "GET":
                 if p in ("", "dashboard"):
                     return 200, _cio.get_cio_dashboard()
+                if p == "home":
+                    return 200, _cio.get_cio_home()
+                if p == "dispositions":
+                    return 200, _cio.get_decision_dispositions()
+                if p.startswith("decision/"):
+                    key = p[len("decision/"):].strip("/")
+                    if not key:
+                        return 400, {"ok": False, "error": "decision_key required"}
+                    return 200, _cio.get_decision_dispositions()
                 if p == "snapshot":
                     return 200, _cio.get_cio_snapshot()
                 if p == "actions":
@@ -40262,6 +40271,15 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     return (200 if res.get("ok") else 404), res
                 return 404, {"ok": False, "error": f"unknown_cio_path: {p}"}
             if method == "POST":
+                # POST /api/v3/cio/decision/{key}/disposition — operator ACK/DEFER/DONE/REJECT/RATE
+                if p.startswith("decision/") and p.endswith("/disposition"):
+                    mid = p[len("decision/"):]
+                    key = mid[: -len("/disposition")].strip("/")
+                    if not key:
+                        return 400, {"ok": False, "error": "decision_key required"}
+                    res = _cio.post_decision_disposition(key, body or {})
+                    code = 200 if res.get("ok") else 400
+                    return code, res
                 # POST /api/v3/cio/plans/{id}/disposition  — status only (READ_ONLY)
                 if p.startswith("plans/") and p.endswith("/disposition"):
                     mid = p[len("plans/"):]

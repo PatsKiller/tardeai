@@ -392,6 +392,185 @@ def post_plan_disposition(plan_id: str, body: dict[str, Any] | None = None) -> d
     }
 
 
+def get_cio_home() -> dict[str, Any]:
+    """GET /api/v3/cio/home — Phase 8 office-home payload (6 sections, decision-first).
+
+    Composes CIO NOW / CAPITAL PLAN / PORTFOLIO POSTURE / OPPORTUNITIES /
+    REPORT / EVIDENCE from the canonical Phases 5–7 surfaces. READ_ONLY_ADVISORY.
+    """
+    try:
+        from scripts.lib.cio_command_center import build_office_home
+        import api_v2 as _v2
+    except Exception as e:
+        return {"ok": False, "error": type(e).__name__, "detail": str(e)[:200],
+                "authority": "READ_ONLY_ADVISORY", "as_of": _now_iso()}
+
+    capital_plan = None
+    sector_opportunities = None
+    opportunity_queue = None
+    report = None
+    attribution = None
+    income = None
+
+    # Fail-soft per domain — a missing surface must not blank the whole home.
+    try:
+        capital_plan = _v2._cio_capital_plan()
+        capital_plan = capital_plan if capital_plan and capital_plan.get("ok") is not False else None
+    except Exception:
+        capital_plan = None
+    try:
+        sector_opportunities = _v2._cio_sector_opportunities()
+        sector_opportunities = sector_opportunities if sector_opportunities and sector_opportunities.get("ok") is not False else None
+    except Exception:
+        sector_opportunities = None
+    try:
+        from scripts.lib.cio_opportunity_queue import build_queue_from_executor
+        opportunity_queue = build_queue_from_executor(_v2._db_query)
+    except Exception:
+        opportunity_queue = None
+    try:
+        report = _v2._cio_report_v2()
+        report = report if report and report.get("ok") is not False else None
+    except Exception:
+        report = None
+    try:
+        attribution = _v2._load_json(
+            PROJECT_ROOT / "data" / "portfolios" / "state" / "performance_attribution.json"
+        ) or {}
+    except Exception:
+        attribution = None
+    try:
+        income = _v2._load_json(
+            PROJECT_ROOT / "data" / "portfolios" / "state" / "income_ledger.json"
+        ) or {}
+    except Exception:
+        income = None
+
+    thesis = (get_cio_thesis() or {}).get("thesis") or None
+    actions = _cio_actions_data(20)
+    plans = (get_cio_plans(limit=12) or {}).get("plans") or []
+
+    # Evidence / audit block.
+    source_refs = [
+        {"name": name, "sha256": h}
+        for name, h in sorted((((report or {}).get("manifest") or {}).get("input_hashes") or {}).items())
+    ]
+    validator_states = []
+    for rev in _read_jsonl(PROJECT_ROOT / "data" / "cio" / "sentinel_reviews.jsonl")[-3:]:
+        validator_states.append({
+            "reviewer": rev.get("reviewer"),
+            "status": rev.get("status"),
+            "contradictions": rev.get("contradictions"),
+            "ts": rev.get("timestamp"),
+        })
+    for sc in _read_jsonl(PROJECT_ROOT / "data" / "cio" / "darwin_scorecards.jsonl")[-2:]:
+        validator_states.append({
+            "reviewer": sc.get("scorer"),
+            "status": sc.get("event_type"),
+            "ts": sc.get("timestamp"),
+        })
+    run_ids = []
+    for w in _read_jsonl(PROJECT_ROOT / "data" / "cio" / "cio_wake_jobs.jsonl")[-4:]:
+        run_ids.append({
+            "id": w.get("wake_id") or w.get("event_id"),
+            "state": w.get("state") or w.get("event_type"),
+            "ts": w.get("ts") or w.get("timestamp"),
+        })
+    handoff = _delegation_data().get("handoffs") or {}
+    if handoff.get("latest"):
+        run_ids.append({
+            "id": handoff["latest"].get("stream_id"),
+            "state": handoff["latest"].get("event_type"),
+            "ts": handoff["latest"].get("timestamp"),
+        })
+
+    home = build_office_home(
+        capital_plan=capital_plan,
+        sector_opportunities=sector_opportunities,
+        opportunity_queue=opportunity_queue,
+        report=report,
+        thesis=thesis,
+        attribution=attribution,
+        income=income,
+        actions=actions,
+        plans=plans,
+        source_refs=source_refs,
+        validator_states=validator_states,
+        run_ids=run_ids,
+    )
+    home["ok"] = True
+    return home
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Decision dispositions (Phase 8): durable advisory operator actions
+# ─────────────────────────────────────────────────────────────────────────────
+# ACK / DEFER / DONE / REJECT / RATE are appended to an event ledger, never to
+# broker/order/stop state. This is durable advisory state (not conversational
+# memory), so it survives restarts and feeds Phase 10 outcome learning.
+
+_DISPOSITION_PATH = PROJECT_ROOT / "data" / "cio" / "decision_dispositions.jsonl"
+_VALID_DISPOSITIONS = {"ack", "defer", "done", "reject"}
+
+
+def get_decision_dispositions() -> dict[str, Any]:
+    """Latest disposition per decision_key (read-only)."""
+    latest: dict[str, dict[str, Any]] = {}
+    for entry in _read_jsonl(_DISPOSITION_PATH):
+        key = entry.get("decision_key")
+        if not key:
+            continue
+        latest[key] = entry
+    return {"ok": True, "as_of": _now_iso(), "dispositions": latest,
+            "authority": "READ_ONLY_ADVISORY"}
+
+
+def post_decision_disposition(decision_key: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Record an operator disposition on a decision. No broker/order/stop authority.
+
+    body.disposition: ack | defer | done | reject (required)
+    body.rating:       1..5 usefulness rating (optional)
+    body.note:         free-text advisory note (optional)
+    """
+    body = body or {}
+    key = str(decision_key or "").strip()
+    if not key or len(key) > 160:
+        return {"ok": False, "error": "invalid_decision_key", "as_of": _now_iso()}
+    disp = str(body.get("disposition") or "").strip().lower()
+    if disp not in _VALID_DISPOSITIONS:
+        return {"ok": False, "error": "invalid_disposition",
+                "allowed": sorted(_VALID_DISPOSITIONS), "as_of": _now_iso()}
+
+    rating = body.get("rating")
+    if rating is not None:
+        try:
+            rating = int(rating)
+        except (TypeError, ValueError):
+            rating = None
+        if rating is not None and not (1 <= rating <= 5):
+            return {"ok": False, "error": "invalid_rating", "as_of": _now_iso()}
+
+    note = str(body.get("note") or "").strip()[:500]
+    entry = {
+        "decision_key": key,
+        "disposition": disp,
+        "rating": rating,
+        "note": note,
+        "occurred_at": _now_iso(),
+        "authority": "READ_ONLY_ADVISORY",
+    }
+    try:
+        _DISPOSITION_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with open(_DISPOSITION_PATH, "a") as f:
+            f.write(json.dumps(entry, sort_keys=True) + "\n")
+    except Exception as e:
+        return {"ok": False, "error": type(e).__name__, "detail": str(e)[:200],
+                "as_of": _now_iso()}
+
+    return {"ok": True, "as_of": entry["occurred_at"], "disposition": entry,
+            "authority": "READ_ONLY_ADVISORY"}
+
+
 def get_cio_dashboard() -> dict[str, Any]:
     """Full CIO dashboard payload for /v3/cio."""
     snapshot = _cio_snapshot_data()
