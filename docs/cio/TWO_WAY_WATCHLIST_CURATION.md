@@ -1,8 +1,9 @@
 # Two-Way Watchlist Curation
 
-**Status:** Implemented + schema-live + P0–P2 remediation (2026-08-13) · advisory · firewall-preserved  
-**Maturity (honest):** ~6.5–7.5/10 after remediation path (forward smoke + reverse writers + scorer thesis factor + KPIs)  
-**Authority:** sources `READ_ONLY_ADVISORY`; only the app role drains staging
+**Status:** Schema-live · production-proven · interactive desk inbox (2026-08-13) · advisory · firewall-preserved  
+**Branch:** `feat/two-way-watchlist-curation`  
+**Maturity (honest):** ~7.5/10 — reverse scoring live; CIO forward circulating; interactive promote inbox live; advisory/defense organic volume still ramping; options edge empty until paper outcomes exist  
+**Authority:** sources `READ_ONLY_ADVISORY`; only the app role drains staging  
 
 This document records the due-diligence audit of the watch-list / proposal life cycle and the remediation that turns it from a one-way pipeline into a **closed, two-way, self-reinforcing curation loop** — CIO (Alex), the Advisory Desk, and the Defense Desk feed *into* the watch list, and realized outcomes feed *back* to re-score it.
 
@@ -10,14 +11,15 @@ This document records the due-diligence audit of the watch-list / proposal life 
 
 ## 1. Audit verdict (maturity rating)
 
-| Dimension | Before | After |
+| Dimension | Before | After (live 2026-08-13) |
 |-----------|--------|-------|
 | Forward pipeline (ingest → watchlist → proposal → risk-gated execution → outcome ledger) | 4 / 5 | 4 / 5 |
-| Reverse / feedback loop (outcome → watchlist; desks → watchlist) | 1 / 5 | **4 / 5** |
-| Options integration (paper outcomes → underlying conviction) | 1 / 5 | **4 / 5** |
+| Reverse / feedback loop (outcome → watchlist; desks → watchlist) | 1 / 5 | **4.5 / 5** |
+| Options integration (paper outcomes → underlying conviction) | 1 / 5 | **3 / 5** (wired; 0 rows until paper outcomes) |
 | Instrument coverage (equity vs bond/CUSIP vs ETF/fund) | 2 / 5 | 3 / 5 |
-| Autonomy / self-learning gates | 2 / 5 | 3 / 5 |
-| **Overall** | **2.5 / 5** | **~3.7 / 5** |
+| Autonomy / self-learning gates | 2 / 5 | 3.5 / 5 |
+| Operator interactive surface (suggestions → one-tap promote) | 0 / 5 | **4 / 5** |
+| **Overall** | **2.5 / 5** | **~3.9 / 5 (~7.5/10)** |
 
 The one-way problem: the CIO, Defense Desk, and Advisory Desk **read** the watch list and broker holdings but never **wrote back** to curation; Hermes research was not a scoring input; bonds were unresolved; and the options pipeline consumed the watch list (bullish → call, bearish → put, entry-plan → CSP strike) but its paper outcomes never fed back into it.
 
@@ -133,19 +135,28 @@ Options remain derivatives on equity underlyings — no new `option` asset type.
 
 ## 8. Database changes
 
-`migrations/2026-08-13_two_way_curation.sql` — **additive only** (no DROP / rename / destructive DDL):
+### 8.1 Core (applied)
 
-- 3 staging tables + partial `drained=false` indexes
-- 6 reverse-edge columns on `watchlist_items` (`IF NOT EXISTS`)
-- `curation_loop_audit` + index
+`migrations/2026-08-13_two_way_curation.sql` — **additive only**:
 
-Run `scripts/db_migrate.py` (or the project's migration runner) to apply.
+- 3 staging tables + partial `drained=false` indexes  
+- 6 reverse-edge columns on `watchlist_items` (`IF NOT EXISTS`)  
+- `curation_loop_audit` + index  
+
+### 8.2 Provenance (applied)
+
+`migrations/2026-08-13_two_way_curation_p0_surfaced_by.sql` — expands  
+`watch_directive_hits.surfaced_by` CHECK to:
+
+`trade_ai | hermes | operator | cio | advisory | defense`
+
+Desk hits no longer collapse to `hermes`.
 
 ---
 
 ## 9. Dry-test coverage
 
-`tests/test_two_way_curation.py` — **40 deterministic tests**, no live DB / broker / LLM, using `FakeExecutor` / fake cursors:
+`tests/test_two_way_curation.py` — **41 deterministic tests**, no live DB / broker / LLM, using `FakeExecutor` / fake cursors:
 
 | Area | Coverage |
 |------|----------|
@@ -168,34 +179,100 @@ Run:
 .venv/bin/python -m pytest tests/test_two_way_curation.py -q
 ```
 
-### Ops (post-remediation)
+### Ops (production)
 
 ```bash
-# Expand surfaced_by CHECK (cio|advisory|defense)
-psql … -f migrations/2026-08-13_two_way_curation_p0_surfaced_by.sql
+# Light smoke: stage synthetic S5 + stage-only drain (safe; no Finviz)
+.venv/bin/python scripts/ops/two_way_curation_smoke.py --apply-drain --stage-only
 
-# Light smoke: stage synthetic S5 + optional dry drain
-.venv/bin/python scripts/ops/two_way_curation_smoke.py
-.venv/bin/python scripts/ops/two_way_curation_smoke.py --drain
-.venv/bin/python scripts/ops/two_way_curation_smoke.py --apply-drain   # real promote
+# Clear Hermes directive staging backlog (fast; stage hits only)
+.venv/bin/python scripts/ops/drain_hermes_directive_staging.py --apply --max 500 --stage-only
+.venv/bin/python scripts/ops/drain_hermes_directive_staging.py --apply --max 100 --stage-only --touch-quiet
 
 # Options reverse backfill (no-op if options_paper_outcomes empty)
 .venv/bin/python scripts/ops/fold_options_edge_backfill.py
 
-# Loop KPIs
+# Loop KPIs / ACTIVE status
 .venv/bin/python scripts/watch_directives_monitor.py --dry-run
-# GET /api/v2/watch/two-way-curation
+
+# Interactive API (portfolio server :7777)
+curl -sS http://127.0.0.1:7777/api/v2/watch/two-way-curation | python3 -m json.tool | head -80
+curl -sS http://127.0.0.1:7777/api/v2/watch-directives | python3 -c \
+  "import sys,json; d=json.load(sys.stdin); print('desk_suggestions', d.get('desk_suggestions_count'))"
 ```
 
 Env knobs: `CURATION_DRAIN_LIMIT` (default 25), `CURATION_AUTO_APPLY_GATE=1`,  
 `CURATION_AUTO_APPLY=1` + `CURATION_HIT_RATE_DEFAULT=0.65` to allow auto-apply soak.
 
+**SM env source:** `/run/user/1000/tradeai/env` is shell-sourceable after `render_env.py`  
+omits non-shell `openclaw/...` keys. Prefer:
+
+```bash
+set -a; . /run/user/1000/tradeai/env; set +a
+```
+
 ---
 
-## 10. Safety invariants (preserved)
+## 11. Operator interactive surface (2026-08-13)
+
+| Surface | Role |
+|---------|------|
+| **WatchpoolHub → Desk suggestions** | Inbox of `STAGED_FOR_REVIEW` hits from `cio` / `advisory` / `defense` with filter chips + **Promote** |
+| `GET /api/v2/watch/two-way-curation` | Loop health + `suggestions[]` + undrained staging samples |
+| `GET /api/v2/watch-directives` | Adds `desk_suggestions` / `desk_suggestions_count` (not drowned by Hermes volume) |
+| `POST /api/v2/watch/directives/promote` | Operator one-tap; `auto=True` override; scalp firewall still applies |
+
+Promote remains **advisory** (watchlist / watchpool registration) — never orders / 2FA.
+
+### Emit wiring (forward)
+
+| Source | Module | Notes |
+|--------|--------|-------|
+| CIO | `cio_reactive_cycle.py` | New plans + **open S4/S5/S8** re-seed (rate-limited) |
+| Advisory | `advisory_opinion_engine.emit_watchlist_feedback` | Also on **cache hit** (no longer starved); ADD/RE_ENTER need evidence ≥ 2; TRIM/EXIT ≥ 3 |
+| Defense | `defense_recommendations.py` | `get_into` / `income` / `short_side` only |
+
+### Reverse wiring
+
+| Writer | Columns | Scorer factor |
+|--------|---------|---------------|
+| Outcome grader via lib writers | `realized_outcome`, `thesis_win` | `thesis_outcome` (weights v8) |
+| Outcome grader | `hermes_research_score` | `hermes_research` |
+| Options `fold_options_to_underlying` | `options_edge_score` | `options_edge` |
+
+---
+
+## 12. Live verification snapshot (2026-08-13)
+
+| Signal | Value |
+|--------|------:|
+| Monitor status | **ACTIVE** |
+| Hermes staging undrained | **0** (after fast drain) |
+| Desk suggestions (API) | **9** CIO staged (SCHD/VTI/XLU family) |
+| Desk hits 24h | **cio ≥ 9** honest `surfaced_by` |
+| Reverse: hermes_research / realized / options | **1115 / 111 / 0** |
+| Audit trail 24h | **~18k** (research + outcome + cio) |
+| Unit tests | **41 passed** |
+
+---
+
+## 13. Safety invariants (preserved)
 
 - **Firewall**: sources write staging only; the app role drains and evaluates.
 - **Read-only authority**: desks remain `READ_ONLY_ADVISORY`.
 - **No auto-execution**: curation writes are reversible and provenance-stamped; live execution still requires operator 2FA.
 - **Fail-soft loops**: every emit/fold is try/except-guarded so the loop can never wedge a heartbeat or grader.
 - **Auto-blacklist on pause** and the scalp firewall remain untouched.
+- **Stage-only drain** available for backlog clear without Finviz lock storms.
+
+---
+
+## 14. Key commits (branch `feat/two-way-watchlist-curation`)
+
+| Commit | Summary |
+|--------|---------|
+| `b2e451f1` / `a971f9a5` | Initial two-way loop + reactive emit |
+| `30d3e05d` | SM env shell-sourceable (skip `openclaw/...` keys) |
+| `c1d9046a` | P0–P2: provenance, reverse writers, scorer, KPIs |
+| `bfc8f674` | Fast Hermes staging drain |
+| `67946947` | Interactive desk suggestions + promote UI/API |
