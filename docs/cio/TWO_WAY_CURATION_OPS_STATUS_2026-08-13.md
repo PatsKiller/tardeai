@@ -14,7 +14,9 @@
 | `surfaced_by` allows cio/advisory/defense | Live |
 | Monitor | **ACTIVE** |
 | Hermes directive staging undrained | **0** |
-| Desk suggestions inbox (API + WatchpoolHub) | Live |
+| Desk suggestions inbox (API + WatchpoolHub) | Live — **26** multi-desk staged |
+| Desk hits 24h | **cio:12 · advisory:7 · defense:7** |
+| Desk staging undrained | **0 / 0 / 0** |
 | One-tap Promote | Live (`POST /api/v2/watch/directives/promote`) |
 | Reverse research / outcomes on watchlist | 1115 / 111 names |
 | Options edge reverse | Wired; **0** rows (no paper outcomes yet) |
