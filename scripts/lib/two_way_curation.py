@@ -571,100 +571,128 @@ def write_realized_outcome(symbol: str, realized_outcome: Optional[str],
                            thesis_win: Optional[bool],
                            executor: Optional[Executor] = None,
                            *,
-                           overwrite: bool = True) -> Dict[str, Any]:
+                           overwrite: bool = True,
+                           n: Optional[int] = None) -> Dict[str, Any]:
     """Reverse edge: realized trade outcome -> watchlist_items conviction ledger.
 
     Default overwrite=True so the latest graded verdict wins (avoids first-win freeze).
     Set overwrite=False to keep COALESCE first-wins semantics for back-compat tests.
+
+    ``n`` is the number of graded trade/paper outcomes backing this verdict — the
+    sample size the scorer's reliability gate reads as ``thesis_outcome_n``.
     """
     sym = str(symbol or "").upper().strip()
     if not sym:
         return {"ok": False, "error": "symbol required"}
-    if realized_outcome is None and thesis_win is None:
+    if realized_outcome is None and thesis_win is None and n is None:
         return {"ok": False, "error": "nothing to write"}
     ex = executor or _default_executor()
+    # thesis_outcome_n is always written via COALESCE so an explicit n overwrites
+    # while a missing n preserves the prior sample count (no accidental zero-out).
     if overwrite:
-        sql = """UPDATE watchlist_items SET
-                 realized_outcome = COALESCE(%s, realized_outcome),
-                 thesis_win = CASE WHEN %s::boolean IS NULL THEN thesis_win ELSE %s::boolean END,
-                 last_validated_at = NOW(),
-                 updated_at = NOW()
-               WHERE symbol = %s AND status IN ('active','researched')"""
-        # realized_outcome always overwrites when provided; thesis_win overwrites when not None
-        params = (
-            realized_outcome,
-            thesis_win, thesis_win,
-            sym,
-        )
         if realized_outcome is not None:
             sql = """UPDATE watchlist_items SET
                      realized_outcome = %s,
+                     thesis_outcome_n = COALESCE(%s, thesis_outcome_n),
                      thesis_win = CASE WHEN %s::boolean IS NULL THEN thesis_win ELSE %s::boolean END,
                      last_validated_at = NOW(),
                      updated_at = NOW()
                    WHERE symbol = %s AND status IN ('active','researched')"""
-            params = (realized_outcome, thesis_win, thesis_win, sym)
+            params = (realized_outcome, n, thesis_win, thesis_win, sym)
+        else:
+            sql = """UPDATE watchlist_items SET
+                     realized_outcome = COALESCE(%s, realized_outcome),
+                     thesis_outcome_n = COALESCE(%s, thesis_outcome_n),
+                     thesis_win = CASE WHEN %s::boolean IS NULL THEN thesis_win ELSE %s::boolean END,
+                     last_validated_at = NOW(),
+                     updated_at = NOW()
+                   WHERE symbol = %s AND status IN ('active','researched')"""
+            params = (realized_outcome, n, thesis_win, thesis_win, sym)
     else:
         sql = """UPDATE watchlist_items SET
                  realized_outcome = COALESCE(%s, realized_outcome),
+                 thesis_outcome_n = COALESCE(%s, thesis_outcome_n),
                  thesis_win = COALESCE(%s, thesis_win),
                  last_validated_at = NOW(),
                  updated_at = NOW()
                WHERE symbol = %s AND status IN ('active','researched')"""
-        params = (realized_outcome, thesis_win, sym)
+        params = (realized_outcome, n, thesis_win, sym)
     res = ex(sql, params)
     if res is None:
         return {"ok": False, "error": "db unavailable — outcome NOT written"}
     audit("outcome", "folded", {"symbol": sym, "realized_outcome": realized_outcome,
-                                "thesis_win": thesis_win}, executor=ex)
+                                "thesis_win": thesis_win, "n": n}, executor=ex)
     return {"ok": True, "symbol": sym, "realized_outcome": realized_outcome,
-            "thesis_win": thesis_win}
+            "thesis_win": thesis_win, "n": n}
 
 
 def write_options_edge(symbol: str, options_edge: Optional[float],
                        detail: Optional[Dict[str, Any]] = None,
-                       executor: Optional[Executor] = None) -> Dict[str, Any]:
-    """Reverse edge: options paper outcomes -> underlying symbol's options_edge."""
+                       executor: Optional[Executor] = None,
+                       *,
+                       n: Optional[int] = None,
+                       evidence_class: Optional[str] = None) -> Dict[str, Any]:
+    """Reverse edge: options paper outcomes -> underlying symbol's options_edge.
+
+    ``n`` is the sample size backing the edge (closed outcomes = realized,
+    approval-queue = proxy); ``evidence_class`` labels it realized vs proxy.
+    """
     sym = str(symbol or "").upper().strip()
     if not sym:
         return {"ok": False, "error": "symbol required"}
+    d = dict(detail or {})
+    if n is not None:
+        d.setdefault("n", n)
+    if evidence_class is not None:
+        d.setdefault("evidence_class", evidence_class)
     ex = executor or _default_executor()
     res = ex(
         """UPDATE watchlist_items SET
              options_edge_score = %s,
+             options_edge_n = COALESCE(%s, options_edge_n),
              options_edge_detail = COALESCE(%s::jsonb, options_edge_detail),
              last_validated_at = NOW(),
              updated_at = NOW()
            WHERE symbol = %s AND status IN ('active','researched')""",
-        (options_edge, _json(detail or {}), sym),
+        (options_edge, n, _json(d), sym),
     )
     if res is None:
         return {"ok": False, "error": "db unavailable — options_edge NOT written"}
-    audit("options", "folded", {"symbol": sym, "options_edge": options_edge}, executor=ex)
-    return {"ok": True, "symbol": sym, "options_edge": options_edge}
+    audit("options", "folded", {"symbol": sym, "options_edge": options_edge, "n": n}, executor=ex)
+    return {"ok": True, "symbol": sym, "options_edge": options_edge, "n": n}
 
 
 def write_hermes_research(symbol: str, score: Optional[float],
                           detail: Optional[Dict[str, Any]] = None,
-                          executor: Optional[Executor] = None) -> Dict[str, Any]:
-    """Reverse edge: Hermes research intelligence -> watchlist_items research score."""
+                          executor: Optional[Executor] = None,
+                          *,
+                          n: Optional[int] = None) -> Dict[str, Any]:
+    """Reverse edge: Hermes research intelligence -> watchlist_items research score.
+
+    ``n`` is the number of graded research rows backing the score (sample size
+    for the hermes_research reliability gate).
+    """
     sym = str(symbol or "").upper().strip()
     if not sym:
         return {"ok": False, "error": "symbol required"}
+    d = dict(detail or {})
+    if n is not None:
+        d.setdefault("n", n)
     ex = executor or _default_executor()
     res = ex(
         """UPDATE watchlist_items SET
              hermes_research_score = %s,
+             hermes_research_n = COALESCE(%s, hermes_research_n),
              hermes_research_detail = COALESCE(%s::jsonb, hermes_research_detail),
              last_validated_at = NOW(),
              updated_at = NOW()
            WHERE symbol = %s AND status IN ('active','researched')""",
-        (score, _json(detail or {}), sym),
+        (score, n, _json(d), sym),
     )
     if res is None:
         return {"ok": False, "error": "db unavailable — hermes_research NOT written"}
-    audit("hermes_research", "folded", {"symbol": sym, "score": score}, executor=ex)
-    return {"ok": True, "symbol": sym, "hermes_research_score": score}
+    audit("hermes_research", "folded", {"symbol": sym, "score": score, "n": n}, executor=ex)
+    return {"ok": True, "symbol": sym, "hermes_research_score": score, "n": n}
 
 
 def ensure_directive(source: str, feedback: Dict[str, Any],
@@ -772,6 +800,10 @@ FACTOR_EVIDENCE_CLASS = {
     "options_edge": "realized",
     "hermes_research": "proxy",
 }
+
+# Single source of truth for the reverse-learning factors the scorer reliability-gates.
+# The scorer reads `<factor>_n` from watchlist_items to damp each below its n_min.
+REVERSE_FACTORS = ("thesis_outcome", "options_edge", "hermes_research")
 
 
 def evidence_class_for(factor: str, *, override: Optional[str] = None) -> str:

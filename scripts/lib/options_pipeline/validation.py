@@ -173,6 +173,8 @@ def fold_options_to_underlying(symbol: str, *,
         return {"ok": False, "error": "symbol required"}
 
     closed_edge = None
+    n_for_gate: Optional[int] = None
+    evidence_class: Optional[str] = None
     detail: Dict[str, Any] = {"sources": []}
     rows = ex(
         """SELECT symbol, outcome, pnl, meta->>'edge_score' AS edge_score,
@@ -185,6 +187,8 @@ def fold_options_to_underlying(symbol: str, *,
         conv = options_outcomes_to_conviction(outcomes)
         c = conv.get(sym, {})
         closed_edge = c.get("options_edge")
+        n_for_gate = c.get("n")
+        evidence_class = "realized"
         detail["closed"] = {
             "n": c.get("n"), "win_rate": c.get("win_rate"),
             "net_pnl": c.get("net_pnl"), "conviction_delta": c.get("conviction_delta"),
@@ -223,6 +227,8 @@ def fold_options_to_underlying(symbol: str, *,
             row = _as_dict(q)
             if row.get("avg_edge") is not None:
                 queue_edge = float(row["avg_edge"])
+                n_for_gate = int(row.get("n") or 0)
+                evidence_class = "proxy"
                 detail["queue"] = {
                     "avg_edge": queue_edge,
                     "max_edge": float(row["max_edge"]) if row.get("max_edge") is not None else None,
@@ -271,7 +277,8 @@ def fold_options_to_underlying(symbol: str, *,
     if edge is None:
         return {"ok": True, "symbol": sym, "folded": False, "reason": "no_options_evidence"}
     detail["options_edge"] = edge
-    res = write_options_edge(sym, edge, detail, executor=ex)
+    res = write_options_edge(sym, edge, detail, executor=ex, n=n_for_gate,
+                             evidence_class=evidence_class)
     return {
         "ok": True, "symbol": sym, "folded": True, "options_edge": edge,
         "detail": detail, "written": bool(res.get("ok")),

@@ -526,3 +526,140 @@ def test_writeback_hermes_research_roundtrip():
     assert "GME" not in by_sym
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase 5 increment 2 — sample-size (n) persistence + scorer reliability gate
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _last_update(ex, needle="UPDATE WATCHLIST_ITEMS"):
+    return [e for e in ex.log if e[0] and needle in e[0].upper()][-1]
+
+
+def test_write_realized_outcome_persists_n():
+    ex = FakeExecutor()
+    res = tc.write_realized_outcome("NVDA", "win", True, executor=ex, n=5)
+    assert res["n"] == 5
+    sql, params, _ = _last_update(ex)
+    assert "thesis_outcome_n" in sql
+    assert params[1] == 5          # n slot, before thesis_win
+    assert params[-1] == "NVDA"    # symbol stays last
+
+
+def test_write_realized_outcome_missing_n_preserves():
+    ex = FakeExecutor()
+    res = tc.write_realized_outcome("NVDA", "win", True, executor=ex)
+    assert res["n"] is None
+    sql, params, _ = _last_update(ex)
+    assert params[1] is None       # COALESCE(NULL, thesis_outcome_n) = no-op
+
+
+def test_write_options_edge_persists_n_and_evidence_class():
+    ex = FakeExecutor()
+    res = tc.write_options_edge("NVDA", 85.0, executor=ex, n=3, evidence_class="realized")
+    assert res["n"] == 3
+    sql, params, _ = _last_update(ex)
+    assert "options_edge_n" in sql
+    assert params[1] == 3
+    assert params[-1] == "NVDA"
+    detail = params[2]
+    assert '"evidence_class": "realized"' in detail
+
+
+def test_write_hermes_research_persists_n():
+    ex = FakeExecutor()
+    res = tc.write_hermes_research("NVDA", 90.0, executor=ex, n=4)
+    assert res["n"] == 4
+    sql, params, _ = _last_update(ex)
+    assert "hermes_research_n" in sql
+    assert params[0] == 90.0       # score stays first
+    assert params[1] == 4
+    assert params[-1] == "NVDA"
+
+
+def test_writeback_trade_outcomes_aggregates_n_per_symbol():
+    import hermes_outcome_grader as hg
+    # NVDA has 3 graded outcomes → n=3; MSTR has 1 → n=1
+    cur = OutcomeLedgerCursor([
+        ("NVDA", "hit"), ("NVDA", "miss"), ("NVDA", "hit"),
+        ("MSTR", "miss"),
+    ])
+    res = hg.writeback_trade_outcomes(cur)
+    assert res["outcomes_written"] == 2
+    updates = [u for u in cur.updates if u[0] and "UPDATE WATCHLIST_ITEMS" in u[0].upper()]
+    by_sym = {u[1][-1]: u[1][1] for u in updates}  # symbol -> n slot
+    assert by_sym["NVDA"] == 3
+    assert by_sym["MSTR"] == 1
+
+
+def test_writeback_hermes_research_aggregates_n_per_symbol():
+    import hermes_outcome_grader as hg
+    cur = OutcomeLedgerCursor([
+        ("NVDA", "trade"), ("NVDA", "proposal"), ("NVDA", "none"),
+        ("IBM", "none"),
+    ])
+    res = hg.writeback_hermes_research(cur)
+    assert res["hermes_research_written"] == 2
+    updates = [u for u in cur.updates if u[0] and "UPDATE WATCHLIST_ITEMS" in u[0].upper()]
+    by_sym = {u[1][-1]: u[1][1] for u in updates}
+    assert by_sym["NVDA"] == 3
+    assert by_sym["IBM"] == 1
+
+
+def test_scorer_reverse_factor_damped_below_nmin():
+    import hermes_watchlist_scorer as hs
+    weights = {"technical_momentum": 0.5, "options_edge": 0.5}
+    wi = {"symbol": "NVDA", "rsi": 55, "trend": "bullish",
+          "options_edge_score": 85.0, "options_edge_n": 2}
+    comp, components = hs.score_symbol(wi, {}, None, {}, weights)
+    assert "options_edge" in components                    # score is real, still reported
+    rel = components["_reverse_reliability"]["options_edge"]
+    assert rel["trusted"] is False
+    assert rel["reliability"] == 0.4                       # 2 / 5
+    # effective weight = 0.5 * 0.4 = 0.2 → normalized 0.2 / 0.7 ≈ 0.286,
+    # strictly below the full-trust weight it would carry at n_min (0.5).
+    assert components["options_edge"]["weight"] == round(0.2 / 0.7, 3)
+    assert components["options_edge"]["weight"] < 0.5
+
+
+def test_scorer_reverse_factor_full_at_nmin():
+    import hermes_watchlist_scorer as hs
+    weights = {"technical_momentum": 0.5, "options_edge": 0.5}
+    wi = {"symbol": "NVDA", "rsi": 55, "trend": "bullish",
+          "options_edge_score": 85.0, "options_edge_n": 5}
+    comp, components = hs.score_symbol(wi, {}, None, {}, weights)
+    rel = components["_reverse_reliability"]["options_edge"]
+    assert rel["trusted"] is True
+    assert rel["reliability"] == 1.0
+    assert components["options_edge"]["weight"] == 0.5     # full trust, 0.5 / 1.0
+
+
+def test_scorer_missing_n_damps_to_zero():
+    import hermes_watchlist_scorer as hs
+    weights = {"technical_momentum": 0.5, "hermes_research": 0.5}
+    wi = {"symbol": "NVDA", "rsi": 55, "trend": "bullish", "hermes_research_score": 80.0}
+    comp, components = hs.score_symbol(wi, {}, None, {}, weights)
+    rel = components["_reverse_reliability"]["hermes_research"]
+    assert rel["trusted"] is False and rel["n"] == 0
+    assert components["hermes_research"]["weight"] == 0.0
+
+
+def test_fold_options_to_underlying_passes_n_and_evidence_class():
+    from lib.options_pipeline import validation as v
+    ex = FakeExecutor()
+
+    def fold_executor(sql, params=None, fetch=None):
+        su = sql.upper()
+        if "OPTIONS_PAPER_OUTCOMES" in su and "SELECT" in su:
+            return [
+                {"symbol": "NVDA", "outcome": "win", "pnl": 100, "edge_score": "70", "iv_rank": "50"},
+                {"symbol": "NVDA", "outcome": "loss", "pnl": -20, "edge_score": "70", "iv_rank": "50"},
+            ]
+        return ex(sql, params, fetch=fetch)
+
+    res = v.fold_options_to_underlying("NVDA", executor=fold_executor)
+    assert res["source_priority"] == "closed"
+    sql, params, _ = _last_update(ex)
+    assert params[1] == 2                                   # n = 2 closed outcomes
+    assert params[-1] == "NVDA"
+    assert '"evidence_class": "realized"' in params[2]
+
+

@@ -42,21 +42,20 @@ REVERSE  operator disposition · trade/paper outcome · re-entry outcome
    governor brain; `auto_apply_gate` requires trusted tier + non-divergent +
    hit-rate floor).
 3. **Lock/contention under full promote load** — NOT ADDRESSED (needs load test).
-4. **Do not inflate reverse-learning weights before calibration** — PARTIAL.
-   Weights are already tiny (`hermes_research 0.02`, `options_edge 0.01`), but there
-   was no explicit sample-size gate. **Delivered this phase (§4).**
-5. **Label proxy vs realized distinctly** — PARTIAL. `blend_options_edge_sources`
-   already orders closed (realized) > queue > IV-only (proxy), but the label was
-   implicit. **Delivered explicit `evidence_class` this phase (§4).**
-6. **Add sample-size/reliability fields to reverse factors** — PARTIAL. The pure
-   gate exists now (§4); the schema columns + scorer wiring are the next step (§5).
+4. **Do not inflate reverse-learning weights before calibration** — SATISFIED.
+   `calibrate_reverse_weight` / `calibrate_reverse_weights` gate every reverse factor
+   by `n / n_min`, so effective weight can never exceed the base (§4).
+5. **Label proxy vs realized distinctly** — SATISFIED. `evidence_class_for` +
+   the `options_edge` `evidence_class` detail field label each reverse signal
+   `realized` vs `proxy` (§4).
+6. **Add sample-size/reliability fields to reverse factors** — SATISFIED. `*_n`
+   columns + `_reverse_reliability` metadata on the scorer intel card (§4b).
 7. **"Desk suggestions" → Alex opportunity queue** — NOT ADDRESSED.
 8. **Sector opportunity behavior** — NOT ADDRESSED (see §6).
 
-## 4. Delivered this phase — reverse-factor reliability & calibration gate
+## 4. Delivered — reverse-factor reliability, calibration, sample-size `n`, and scorer wiring
 
-`scripts/lib/two_way_curation.py` gains a pure, no-I/O reliability gate (Phase 5
-increment 1):
+### 4a. Pure reliability gate (`scripts/lib/two_way_curation.py`, increment 1)
 
 - `evidence_class_for(factor, *, override)` — labels a reverse factor `realized`
   (graded against an outcome) vs `proxy` (IV rank / queue edge / research intent).
@@ -70,14 +69,45 @@ increment 1):
   so effective weight can **never exceed** the configured base.
 - `calibrate_reverse_weights(base_weights, sample_sizes, *)` — applies the gate to
   a whole reverse-weight map and reports `all_trusted`.
+- `REVERSE_FACTORS = ("thesis_outcome", "options_edge", "hermes_research")` — the
+  single source of truth the scorer reads.
 
 `n_min` defaults: `thesis_outcome=3`, `options_edge=5`, `hermes_research=5`.
 
-Canaries: `tests/test_two_way_reliability.py` (13 tests) — ramp linearity,
-never-exceeds-one, None/negative/invalid → 0, unknown-factor default, evidence-class
-defaults + override, realized-vs-proxy label distinction, weight-never-inflated,
-full-weight-at-n_min, zero-below-min, map calibration, missing-sample → drop,
-all-trusted. Run:
+### 4b. Sample-size `n` persistence + scorer wiring (increment 2 — this change)
+
+- **Schema** (`migrations/2026-08-13_two_way_reliability_n.sql`, additive):
+  `watchlist_items.thesis_outcome_n`, `options_edge_n`, `hermes_research_n` INTEGER.
+- **Writers** now accept and persist `n` (and `evidence_class` for options):
+  - `write_realized_outcome(..., n=)` → `thesis_outcome_n`
+  - `write_options_edge(..., n=, evidence_class=)` → `options_edge_n` + `evidence_class` in detail
+  - `write_hermes_research(..., n=)` → `hermes_research_n`
+  Each uses `COALESCE(%s, <col>)` so a missing `n` preserves the prior sample count
+  (never an accidental zero-out). `symbol` remains the last positional param; `score`
+  stays first in the research writer (back-compat).
+- **Callers aggregate `n` per symbol**:
+  - `hermes_outcome_grader.writeback_trade_outcomes` / `writeback_hermes_research`
+    now group by symbol and pass `n = len(verdicts)`, latest-graded wins.
+  - `options_pipeline.validation.fold_options_to_underlying` threads `n` (closed
+    outcomes = realized, approval-queue = proxy) + `evidence_class` into
+    `write_options_edge`.
+- **Scorer** (`hermes_watchlist_scorer.score_symbol`) reliability-gates every reverse
+  factor before blending: `eff_weight = base * reliability`; a factor at `n=0`/unknown
+  is damped to zero and dropped from the blend/coverage, a below-`n_min` factor is
+  partially damped, an `n≥n_min` factor is full weight. Emits `_reverse_reliability`
+  metadata (reliability / n / n_min / evidence_class / trusted) on the intel card.
+  `_BASE_SELECT` + the off-hours select now fetch the three `_n` columns.
+
+Canaries:
+- `tests/test_two_way_reliability.py` (13 tests) — pure gate: ramp linearity,
+  never-exceeds-one, None/negative/invalid → 0, unknown-factor default, evidence-class
+  defaults + override, realized-vs-proxy label distinction, weight-never-inflated,
+  full-weight-at-n_min, zero-below-min, map calibration, missing-sample → drop,
+  all-trusted.
+- `tests/test_two_way_curation.py` (+10 tests) — `n` persistence on all three writers
+  (param slot + symbol-last invariant), per-symbol aggregation in both writebacks,
+  scorer damp-below-n_min / full-at-n_min / missing-n → zero, and the fold path
+  passing `n` + `evidence_class` (closed = realized).
 
 ```bash
 python3 -m pytest tests/test_two_way_reliability.py tests/test_two_way_curation.py -q
@@ -85,18 +115,12 @@ python3 -m pytest tests/test_two_way_reliability.py tests/test_two_way_curation.
 
 ## 5. Next increments (in order)
 
-1. **Sample-size schema + scorer wiring.** Persist `n` per reverse factor (either
-   new `watchlist_items` columns `thesis_outcome_n`, `options_edge_n`,
-   `hermes_research_n`, or the existing `*_detail` JSONB) and have
-   `hermes_watchlist_scorer` call `calibrate_reverse_weights` so a below-`n_min`
-   factor is damped. `options_outcomes_to_conviction` already computes `n`; thread
-   it through `write_options_edge`/`write_hermes_research` detail payloads.
-2. **`rotation` / `reentry` first-class sources.** Add staging tables + `SURFACED_BY`
+1. **`rotation` / `reentry` first-class sources.** Add staging tables + `SURFACED_BY`
    entries + drain inclusion so their provenance is preserved end-to-end.
-3. **Desk suggestions → Alex opportunity queue.** A single Alex-consumable surface
+2. **Desk suggestions → Alex opportunity queue.** A single Alex-consumable surface
    (not a page the operator monitors all day) fed by staged/undrained curation.
-4. **Sector opportunity behavior** (§6) — Alex's "Sector X is improving…" synthesis.
-5. **Lock/contention remediation** under full promote load (benchmark + fix).
+3. **Sector opportunity behavior** (§6) — Alex's "Sector X is improving…" synthesis.
+4. **Lock/contention remediation** under full promote load (benchmark + fix).
 
 ## 6. Required sector opportunity behavior (Checkpoint 5 target)
 
@@ -107,7 +131,7 @@ When Rotation/Defense detects a material sector shift, Alex must be able to stat
 > Watch READY, C needs research, D is too extended. I recommend no deployment /
 > staged deployment / research first.
 
-This is the acceptance shape for the sector-opportunity synthesis (increment 4).
+This is the acceptance shape for the sector-opportunity synthesis (increment 3).
 
 ## 7. Checkpoint 5
 
@@ -120,9 +144,9 @@ sector/defense or CIO event → staged Watch idea → research → Watch state c
 
 ## 8. Known gaps (honest, not hidden)
 
-- The reliability gate is pure logic; it is **not yet wired into the live scorer**
-  until sample-size `n` is persisted (increment 1). Until then the tiny base
-  weights remain the only inflation guard.
+- The reliability gate + `n` persistence are wired; the gate is only as good as the
+  `n` writers produce — a backfill is not yet run, so existing rows have `_n = NULL`
+  (damped to zero) until the outcome graders / options fold run and populate them.
 - `rotation`/`reentry` provenance, the Alex opportunity queue, sector-opportunity
-  synthesis, and load lock/contention are unimplemented (increments 2–5).
+  synthesis, and load lock/contention are unimplemented (increments 1–4).
 - Checkpoint 5 (organic loop) has not been run; it requires live data flow.

@@ -31,6 +31,7 @@ from watchlist_priority import (
     sql_scoring_priority_exists,
     sql_daily_priority_exists,
 )
+from lib.two_way_curation import REVERSE_FACTORS, calibrated_reverse_weight
 PILLS = PROJECT_ROOT / "data" / "runtime" / "pro_analyst_pills_latest.json"
 WEIGHTS_FILE = PROJECT_ROOT / "config" / "hermes_score_weights.yaml"
 SCALP_WEIGHTS_FILE = PROJECT_ROOT / "config" / "hermes_score_weights_scalp.yaml"
@@ -218,18 +219,44 @@ def score_symbol(wi, ie, pill, secmap, weights):
     present = {k: (v[0], v[1]) for k, v in factors.items() if v[0] is not None}
     if not present:
         return None, {}
-    wsum = sum(weights.get(k, 0) for k in present) or 1.0
-    raw = sum(weights.get(k, 0) * v[0] for k, v in present.items()) / wsum
+
+    # Phase 5: reliability-gate reverse factors — below n_min the weight is damped
+    # toward zero so an uncalibrated reverse signal never outranks a calibrated one.
+    eff = dict(weights)
+    gates = {}
+    for f in REVERSE_FACTORS:
+        if f not in present:
+            continue
+        base = float(weights.get(f, 0.0) or 0.0)
+        if base <= 0:
+            continue
+        g = calibrated_reverse_weight(base, f, wi.get(f"{f}_n"))
+        eff[f] = g["effective_weight"]
+        gates[f] = g
+
+    # A reverse factor damped to zero weight contributes nothing to the blend
+    # (and is not counted toward coverage). Fall back to the raw factor set only
+    # if every factor got damped out, so a scored name never returns empty.
+    blend = {k: v for k, v in present.items() if eff.get(k, 0.0) > 0} or present
+
+    wsum = sum(eff.get(k, 0.0) for k in blend) or 1.0
+    raw = sum(eff.get(k, 0.0) * v[0] for k, v in blend.items()) / wsum
     # Coverage-confidence: the spec rewards the strongest COMBINATION across dimensions, so penalize
     # names scored on only 1-2 factors (a 2-dim high-RVOL pop shouldn't outrank a broad 6-dim setup).
-    coverage = len(present) / len(factors)
-    confidence = round(0.4 + 0.6 * coverage, 2)            # 1 factor → ~0.49, all 7 → 1.0
+    coverage = len(blend) / len(factors)
+    confidence = round(0.4 + 0.6 * coverage, 2)            # 1 factor → ~0.49, all 10 → 1.0
     composite = raw * (0.55 + 0.45 * coverage)
-    components = {k: {"score": round(v[0], 1), "weight": round(weights.get(k, 0) / wsum, 3), "detail": v[1]}
+    components = {k: {"score": round(v[0], 1), "weight": round(eff.get(k, 0.0) / wsum, 3), "detail": v[1]}
                  for k, v in present.items()}
     components["_coverage"] = round(coverage, 2)
     components["_confidence"] = confidence
     components["_raw_score"] = round(raw, 1)
+    if gates:
+        components["_reverse_reliability"] = {
+            f: {"reliability": g["reliability"], "n": g["n"], "n_min": g["n_min"],
+                "evidence_class": g["evidence_class"], "trusted": g["trusted"]}
+            for f, g in gates.items()
+        }
     return round(_clamp(composite), 1), components
 
 
@@ -280,6 +307,7 @@ _BASE_SELECT = """SELECT wi.symbol, wi.rsi, wi.trend, wi.score, wi.watch_score_k
                      wi.realized_outcome, wi.thesis_win,
                      sc.target_price, sc.stop_loss,
                      wi.hermes_research_score, wi.options_edge_score,
+                     wi.thesis_outcome_n, wi.options_edge_n, wi.hermes_research_n,
                      ie.social_score, ie.social_sentiment, ie.rvol, ie.confluence_score,
                      ie.catalyst, ie.catalyst_verified, ie.sector
                    FROM watchlist_items wi
@@ -378,6 +406,7 @@ def _fetch_watchlist_rows(cur, limit=None, off_hours=False):
                      wi.realized_outcome, wi.thesis_win,
                      sc.target_price, sc.stop_loss,
                      wi.hermes_research_score, wi.options_edge_score,
+                     wi.thesis_outcome_n, wi.options_edge_n, wi.hermes_research_n,
                      ie.social_score, ie.social_sentiment, ie.rvol, ie.confluence_score,
                      ie.catalyst, ie.catalyst_verified, ie.sector
                    FROM candidates c
@@ -420,15 +449,20 @@ def run(limit=None):
     for r in rows:
         wi = {k: r[k] for k in ("symbol", "rsi", "trend", "score", "watch_score_kind", "price",
                                 "target_price", "stop_loss", "hermes_research_score", "options_edge_score",
-                                "realized_outcome", "thesis_win")
+                                "realized_outcome", "thesis_win",
+                                "thesis_outcome_n", "options_edge_n", "hermes_research_n")
               if k in r or k in ("symbol", "rsi", "trend", "score", "watch_score_kind", "price",
                                  "target_price", "stop_loss", "hermes_research_score", "options_edge_score",
-                                 "realized_outcome", "thesis_win")}
+                                 "realized_outcome", "thesis_win",
+                                 "thesis_outcome_n", "options_edge_n", "hermes_research_n")}
         # ensure keys exist even if SELECT older path omitted them
         wi.setdefault("realized_outcome", r.get("realized_outcome"))
         wi.setdefault("thesis_win", r.get("thesis_win"))
         wi.setdefault("hermes_research_score", r.get("hermes_research_score"))
         wi.setdefault("options_edge_score", r.get("options_edge_score"))
+        wi.setdefault("thesis_outcome_n", r.get("thesis_outcome_n"))
+        wi.setdefault("options_edge_n", r.get("options_edge_n"))
+        wi.setdefault("hermes_research_n", r.get("hermes_research_n"))
         ie = {k: r[k] for k in ("social_score", "social_sentiment", "rvol", "confluence_score", "catalyst", "catalyst_verified", "sector")}
         comp, components = score_symbol(wi, ie, pills.get(str(r["symbol"]).upper()), secmap, weights)
         if comp is not None:

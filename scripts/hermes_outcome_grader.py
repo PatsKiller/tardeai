@@ -298,7 +298,9 @@ def writeback_trade_outcomes(cur) -> dict:
     """P2 reverse edge: fold graded trade outcomes back into the watchlist conviction ledger.
 
     Routes through lib.two_way_curation.write_realized_outcome so audit + overwrite
-    semantics stay single-sourced. Advisory only.
+    semantics stay single-sourced. Aggregates per symbol so the sample size ``n``
+    (the thesis_outcome reliability gate) is the count of graded outcomes.
+    Advisory only.
     """
     from lib.two_way_curation import outcome_verdict_to_ledger, write_realized_outcome
 
@@ -310,19 +312,26 @@ def writeback_trade_outcomes(cur) -> dict:
             return cur.fetchall()
         return True
 
-    cur.execute("""SELECT UPPER(l.symbol) AS symbol, l.verdict
+    cur.execute("""SELECT UPPER(l.symbol) AS symbol, l.verdict, l.graded_at
                    FROM hermes_outcome_ledger l
                    WHERE l.subject_type='trade' AND l.verdict IN ('hit','miss','neutral')
-                     AND l.symbol IS NOT NULL""")
+                     AND l.symbol IS NOT NULL
+                   ORDER BY l.symbol, l.graded_at NULLS LAST""")
     rows = cur.fetchall()
-    written = 0
+    by_sym: dict = {}
     for row in rows:
         symbol = row["symbol"] if isinstance(row, dict) else row[0]
         verdict = row["verdict"] if isinstance(row, dict) else row[1]
-        realized, thesis = outcome_verdict_to_ledger(verdict)
+        by_sym.setdefault(symbol, []).append(verdict)
+    written = 0
+    for symbol, verdicts in by_sym.items():
+        # latest graded verdict is the current thesis state; n = total graded outcomes
+        realized, thesis = outcome_verdict_to_ledger(verdicts[-1])
         if realized is None:
             continue
-        res = write_realized_outcome(symbol, realized, thesis, executor=_ex, overwrite=True)
+        res = write_realized_outcome(
+            symbol, realized, thesis, executor=_ex, overwrite=True, n=len(verdicts),
+        )
         if res.get("ok"):
             written += 1
     return {"outcomes_written": written}
@@ -332,6 +341,7 @@ def writeback_hermes_research(cur) -> dict:
     """P1 reverse edge: fold graded Hermes research action-outcomes into watchlist conviction.
 
     Routes through lib.two_way_curation.write_hermes_research (audit + single writer).
+    Aggregates per symbol so ``n`` is the count of graded research rows.
     """
     from lib.two_way_curation import hermes_research_score_from_action, write_hermes_research
 
@@ -343,22 +353,27 @@ def writeback_hermes_research(cur) -> dict:
             return cur.fetchall()
         return True
 
-    cur.execute("""SELECT UPPER(l.symbol) AS symbol, l.actioned
+    cur.execute("""SELECT UPPER(l.symbol) AS symbol, l.actioned, l.graded_at
                    FROM hermes_outcome_ledger l
                    WHERE l.subject_type='research_row' AND l.actioned IS NOT NULL
-                     AND l.symbol IS NOT NULL""")
+                     AND l.symbol IS NOT NULL
+                   ORDER BY l.symbol, l.graded_at NULLS LAST""")
     rows = cur.fetchall()
-    written = 0
+    by_sym: dict = {}
     for row in rows:
         symbol = row["symbol"] if isinstance(row, dict) else row[0]
         action = row["actioned"] if isinstance(row, dict) else row[1]
-        score = hermes_research_score_from_action(action)
+        by_sym.setdefault(symbol, []).append(action)
+    written = 0
+    for symbol, actions in by_sym.items():
+        # latest graded action wins (matches prior per-row overwrite); n = total rows
+        score = hermes_research_score_from_action(actions[-1])
         if score is None:
             continue
         res = write_hermes_research(
             symbol, score,
-            detail={"actioned": action, "source": "hermes_outcome_ledger"},
-            executor=_ex,
+            detail={"actioned": actions[-1], "source": "hermes_outcome_ledger"},
+            executor=_ex, n=len(actions),
         )
         if res.get("ok"):
             written += 1
