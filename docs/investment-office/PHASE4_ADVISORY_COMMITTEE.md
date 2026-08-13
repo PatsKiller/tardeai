@@ -121,6 +121,41 @@ Key pieces:
   returns `recommendations: []` + `blocked: True` so the worker creates a STATUS
   action — never an execution action.
 
+## 4c. Closing the specialist→committee resume loop (`scripts/lib/cio_specialist_artifacts.py`)
+
+The previously-open gap — that a resumed run convened the committee from an
+empty `artifacts: []` — is now closed end-to-end:
+
+1. **Durable advisory persistence** — `AgentHandoffQueue.complete()` now persists
+   the full `specialist_advisory` envelope (a `SpecialistAdvisory`-shaped dict) on
+   `HANDOFF_COMPLETED`, and the projection surfaces it. Legacy completions that
+   carry only `summary`/`evidence_refs` still convene as a `NEUTRAL` vote (never a
+   fabricated position).
+2. **Resolver** — `resolve_run_specialist_advisories(run, get_handoff)` folds the
+   run's `parent_handoff_ids` + `specialist_requests` into `{advisories,
+   completed_handoff_ids, pending_handoff_ids, covered_specialists}` by reading
+   the authoritative handoff queue. `extract_advisory_from_handoff` reconstructs
+   the committee input.
+3. **Worker wiring** — `CIORunWorker._route_specialists` now consumes resolved
+   advisories into `specialist_result["artifacts"]`, skips re-routing specialists
+   already requested or completed, and only waits on genuinely-outstanding
+   handoffs. `execute()` auto-resumes a run parked in `WAITING_FOR_SPECIALISTS` /
+   `WAITING_FOR_HERMES` back to `EVIDENCE_BUILD` so a RESUME_RUN wake re-runs the
+   cycle against fresh output.
+4. **Wake linkage** — `CIOEventDetector._check_handoff_completions` now emits a
+   `RESUME_RUN` wake targeting `handoff.parent_run_id` (falling back to a
+   `NEW_RUN` `SPECIALIST_COMPLETION` run for orphaned handoffs), so a completed
+   specialist re-opens *its own* parent run rather than spawning an unrelated one.
+
+```
+specialist completes handoff ──► HANDOFF_COMPLETED (with specialist_advisory)
+   ──► RESUME_RUN wake (target = parent run)
+   ──► CIORunWorker.execute() auto-resumes → EVIDENCE_BUILD
+   ──► _route_specialists resolves advisories → specialist_result["artifacts"]
+   ──► build_committee_synthesis_fn convenes committee from real output
+   ──► InvestmentDecision@v1 → action / notification
+```
+
 ## 5. Checkpoint 4 canaries
 
 - `tests/test_cio_checkpoint4_committee.py` — 26 hermetic tests: quorum,
@@ -135,23 +170,29 @@ Key pieces:
   evidence-refs-from-snapshot), and two end-to-end `CIORunWorker.execute()`
   runs — one producing a HOLD action, one proving a defense veto yields a STATUS
   action and **no** execution action.
+- `tests/test_cio_checkpoint4_resume.py` — 12 hermetic tests for the §4c loop:
+  advisory extraction (full + legacy fallback + non-completed), run resolution
+  (mixed completed/pending/failed, parent-handoff inclusion, ghost handoffs),
+  handoff-completion persistence, `_route_specialists` artifact consumption
+  (covered vs uncovered), a full two-phase `execute()` resume that convenes the
+  committee from **real** resolved output and emits a HOLD action, and the
+  `HANDOFF_COMPLETED` → `RESUME_RUN` wake linkage (with orphan fallback).
 
 Run:
 
 ```bash
-python3 -m pytest tests/test_cio_checkpoint4_committee.py tests/test_cio_checkpoint4_synthesis.py -q
+python3 -m pytest tests/test_cio_checkpoint4_committee.py tests/test_cio_checkpoint4_synthesis.py tests/test_cio_checkpoint4_resume.py -q
 ```
 
 ## 6. Known gaps (honest, not hidden)
 
-- **Specialist-artifact resolution into the committee is the remaining live
-  integration.** `CIORunWorker._route_specialists` hardcodes `artifacts: []`;
-  the committee engine, `synthesize_decision`, and the `synthesis_fn` factory are
-  fully wired and tested, but the worker must be extended to read completed
-  `SpecialistAdvisory` artifacts (from the handoff queue / run store
-  `specialist_artifact_refs`) into `specialist_result["artifacts"]` before
-  synthesis. The tests inject artifacts via a thin wrapper to prove the
-  worker→committee→decision→action path is correct end-to-end.
+- **The resume loop is code-closed but agent-readiness-gated.** The resolver,
+  auto-resume, and `RESUME_RUN` wake linkage are delivered and canaried; however
+  the specialist *agents* (`maria`, `steph`, `guardian`, `ledger`) are still
+  `DESIGNED`/`NOT_READY` in `config/agent_maturity_catalog.json`, so handoffs to
+  them are `BLOCKED` (fail-closed) and no real `SpecialistAdvisory` can yet flow.
+  Promoting those agents past `NOT_READY` (shadow canary → handoff-capable) is
+  the gating prerequisite for live committee output, not a code defect.
 - The specialist *LLM* production of `SpecialistAdvisory` artifacts (opinion
   engine + governed model bridge) is not yet routed through the committee; the
   `vote_from_specialist_advisory` bridge is ready for it.

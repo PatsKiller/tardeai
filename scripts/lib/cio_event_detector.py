@@ -376,6 +376,7 @@ class CIOEventDetector:
 
             handoff_id = handoff["handoff_id"]
             artifact_hash = handoff.get("artifact_hash", "")
+            parent_run_id = handoff.get("parent_run_id", "")
 
             idem_key = hashlib.sha256(
                 f"{handoff_id}|completed|{artifact_hash}|{self.POLICY_VERSION}".encode()
@@ -386,6 +387,10 @@ class CIOEventDetector:
 
             wake_id = f"wake-handoff-{handoff_id[:16]}"
 
+            # A completed specialist handoff must RE-OPEN its parent CIO run so the
+            # committee can convene from real specialist output. Use RESUME_RUN when
+            # the parent run is known; fall back to NEW_RUN (SPECIALIST_COMPLETION)
+            # for orphaned handoffs.
             wake = self._create_wake(
                 wake_id=wake_id,
                 trigger_type="HANDOFF_COMPLETED",
@@ -396,6 +401,8 @@ class CIOEventDetector:
                 reason_codes=["HANDOFF_COMPLETED"],
                 required_domains=[],
                 idempotency_key=idem_key,
+                wake_intent=("RESUME_RUN" if parent_run_id else "NEW_RUN"),
+                target_run_id=(parent_run_id or None),
             )
             if wake:
                 wakes.append(wake)
@@ -428,6 +435,8 @@ class CIOEventDetector:
         parent_handoff_id=None,
         health_decision_id=None,
         source_snapshot_id=None,
+        wake_intent=None,
+        target_run_id=None,
     ) -> Optional[dict]:
         """Create a wake job if store is available."""
         if not self._wake_store:
@@ -455,6 +464,8 @@ class CIOEventDetector:
             "parent_handoff_id": parent_handoff_id,
             "health_decision_id": health_decision_id,
             "source_snapshot_id": source_snapshot_id,
+            "wake_intent": wake_intent or "NEW_RUN",
+            "target_run_id": target_run_id,
             "idempotency_key": idempotency_key,
         }
 

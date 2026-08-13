@@ -487,6 +487,7 @@ class AgentHandoffQueue:
                 state["current_status"] = "COMPLETED"
                 state["artifact_id"] = p.get("artifact_id")
                 state["artifact_hash"] = p.get("artifact_hash")
+                state["specialist_advisory"] = p.get("specialist_advisory") or {}
                 state["updated_at"] = event["occurred_at"]
 
             elif et == "HANDOFF_FAILED":
@@ -890,6 +891,10 @@ class AgentHandoffQueue:
             "summary": artifact.get("summary", ""),
             "evidence_refs": artifact.get("evidence_refs", []),
             "model_provenance_ref": artifact.get("model_provenance_ref", ""),
+            # Full specialist advisory envelope (SpecialistAdvisory-shaped dict)
+            # persisted so the CIO run worker can convene the committee from real
+            # specialist output on a resumed SPECIALIST_COMPLETION run.
+            "specialist_advisory": artifact.get("specialist_advisory") or {},
             "completed_at": datetime.now(timezone.utc).isoformat(),
             "idempotency_key": idempotency_key,
         }

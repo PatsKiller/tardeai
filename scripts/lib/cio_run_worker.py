@@ -30,6 +30,7 @@ from typing import Any, Optional, Callable
 
 from scripts.lib.cio_domain_registry import CIODomainRegistry, VALID_RUN_PURPOSES
 from scripts.lib.cio_domain_evidence import DomainEvidence, BLOCKING_QUALITY_STATES, QUALITY_STATE_NOT_APPLICABLE
+from scripts.lib.cio_specialist_artifacts import resolve_run_specialist_advisories
 
 log = logging.getLogger("tradeai.cio_run_worker")
 
@@ -219,6 +220,19 @@ class CIORunWorker:
         current_status = run.get("status", "QUEUED")
         trigger_type = run.get("trigger_type", "SYSTEM")
 
+        # Auto-resume a run parked in a waiting state. A RESUME_RUN wake (e.g. a
+        # completed specialist handoff or Hermes challenge) points the worker back
+        # at the parent run; transition it to EVIDENCE_BUILD so the cycle re-runs
+        # with freshly-completed specialist/Heres output rather than blocking on
+        # stale evidence.
+        if current_status in ("WAITING_FOR_SPECIALISTS", "WAITING_FOR_HERMES"):
+            try:
+                self.run_store.resume(run_id, "auto_resume", actor="cio_run_worker")
+                run = self.run_store.get_run(run_id) or run
+                current_status = run.get("status", "QUEUED")
+            except Exception as e:
+                log.warning("Auto-resume of run %s failed (continuing): %s", run_id, e)
+
         result: dict[str, Any] = {
             "run_id": run_id,
             "mode": self.mode,
@@ -313,14 +327,17 @@ class CIORunWorker:
 
             # Step 3: Route specialists if needed
             required_domains = run.get("required_domains", [])
-            specialist_result = self._route_specialists(run_id, required_domains, snapshot_result)
+            specialist_result = self._route_specialists(run_id, run, required_domains, snapshot_result)
             result["specialist_handoffs"] = specialist_result.get("handoff_ids", [])
 
             # Check if we need to wait for specialists
             if specialist_result.get("should_wait"):
                 self.run_store.wait_for_specialists(
                     run_id,
-                    specialist_result["handoff_ids"],
+                    specialist_result.get(
+                        "outstanding_handoff_ids",
+                        specialist_result.get("handoff_ids", []),
+                    ),
                     actor="cio_run_worker",
                 )
                 result["status"] = "WAITING_FOR_SPECIALISTS"
@@ -518,14 +535,43 @@ class CIORunWorker:
     def _route_specialists(
         self,
         run_id: str,
+        run: dict[str, Any],
         required_domains: list[str],
         snapshot: dict[str, Any],
     ) -> dict[str, Any]:
-        """Route specialists. Returns should_wait=True if specialists need to complete."""
+        """Route specialists, consuming completed advisories from a resumed run.
+
+        On resume (SPECIALIST_COMPLETION / EVIDENCE_BUILD), completed specialist
+        handoffs are resolved back into `artifacts` so the committee synthesizes
+        from real output. Only specialists not already requested or completed are
+        re-routed. Returns should_wait=True if any specialist is still outstanding.
+        """
         handoff_ids: list[str] = []
+        artifacts: list[dict[str, Any]] = []
+
+        resolved: dict[str, Any] = {
+            "advisories": [],
+            "completed_handoff_ids": [],
+            "pending_handoff_ids": [],
+            "covered_specialists": set(),
+        }
+
+        if self.handoff_queue is not None:
+            try:
+                resolved = resolve_run_specialist_advisories(
+                    run, self.handoff_queue.get_handoff
+                )
+                artifacts = list(resolved["advisories"])
+            except Exception as e:
+                log.warning("Specialist artifact resolution failed: %s", e)
 
         if not self.handoff_queue or not required_domains:
-            return {"handoff_ids": handoff_ids, "should_wait": False, "artifacts": []}
+            return {
+                "handoff_ids": handoff_ids,
+                "outstanding_handoff_ids": list(resolved.get("pending_handoff_ids", [])),
+                "should_wait": bool(resolved.get("pending_handoff_ids", [])),
+                "artifacts": artifacts,
+            }
 
         domain_specialists: dict[str, str] = {
             "portfolio": "maria",
@@ -558,6 +604,9 @@ class CIORunWorker:
             if spec:
                 specialists_needed.add(spec)
 
+        # Do not re-route specialists already requested or completed on this run.
+        specialists_needed -= resolved.get("covered_specialists", set())
+
         for spec in specialists_needed:
             try:
                 task_type = agent_task_types.get(spec, "cio_question")
@@ -584,8 +633,14 @@ class CIORunWorker:
             except Exception as e:
                 log.warning("Specialist enqueue failed for %s: %s", spec, e)
 
-        should_wait = len(handoff_ids) > 0
-        return {"handoff_ids": handoff_ids, "should_wait": should_wait, "artifacts": []}
+        outstanding = list(resolved.get("pending_handoff_ids", [])) + handoff_ids
+        should_wait = bool(outstanding)
+        return {
+            "handoff_ids": handoff_ids,
+            "outstanding_handoff_ids": outstanding,
+            "should_wait": should_wait,
+            "artifacts": artifacts,
+        }
 
     # ── Step: Hermes Challenge ──────────────────────────────────────────────
 
