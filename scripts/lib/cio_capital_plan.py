@@ -1,0 +1,783 @@
+"""cio_capital_plan.py — Alex's capital plan + portfolio decision engine (Phase 6).
+
+Turns "what should I do with my money?" into a deterministic, advisory-only
+Capital Plan projection expressed in explicit dollars, with sources and uses of
+funds shown together and a per-holding Position Decision table.
+
+The plan composes canonical state that already exists elsewhere:
+
+  * holdings.json            → portfolio value, cash, positions, account tax type
+  * redeploy_capital_book    → sale proceeds awaiting redeploy (maturities/distributions)
+  * cio_opportunity_queue    → desk verdicts (ADD / TRIM / EXIT / RE_ENTER)
+  * cio_sector_opportunity   → sector rotation (underweight canonical GICS sectors)
+  * risk posture (thesis)    → cash band floor, single-name / concentration caps
+
+Every pure function is deterministic and separated from the live readers, so the
+whole engine is dry-testable with no live DB / broker / LLM. It never promotes,
+mutates, or executes — `READ_ONLY_ADVISORY` only.
+
+Arithmetic model (deterministic, fail-closed toward caution):
+
+  reserve_usd      = portfolio_value * cash_band_min_pct / 100      (policy floor)
+  investable_usd   = max(0, cash_total - reserve_usd)               (dry powder above floor)
+
+  sources of funds (raise):
+    trims          = advisory TRIM  → trim_fraction of each trimmed position value
+    exits          = advisory EXIT  → 100% of each exited position value
+    maturities     = open redeploy remaining_usd (sale proceeds awaiting redeploy)
+    total_raise    = trims + exits + maturities
+
+  uses of funds (deploy requests):
+    adds           = advisory ADD   → bounded by single-name headroom
+    new_positions  = reentry READY / NEAR ENTRY → starting size, bounded
+    reentry        = advisory RE_ENTER → bounded like adds
+    sector_rotation= underweight opportunity sector → rotate-in $, bounded
+    reserve        = reserve_usd (held back, not deployed)
+
+  net_recommended_deploy_usd = min(total_uses, investable_usd + total_raise)
+  net_recommended_raise_usd  = total_raise
+  post_plan_cash_usd         = cash_total + total_raise - net_deploy
+  post_plan_cash_pct         = post_plan_cash_usd / portfolio_value * 100
+
+Cash is never force-deployed: if there are no uses (no adds/new/reentry/rotation
+signal), `net_recommended_deploy_usd` is 0 even when investable cash exists.
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+from datetime import datetime, timezone
+from typing import Any, Callable, Optional
+
+# Executor signature matches db_adapter._execute(sql, params=None, fetch=None).
+Executor = Callable[..., Any]
+
+CAPITAL_PLAN_VERSION = "capital_plan_1.0.0"
+
+# ── Policy defaults (overridden by thesis risk_posture_structured when present) ──
+CASH_BAND_DEFAULT_MIN_PCT = 20.0
+CASH_BAND_DEFAULT_MAX_PCT = 25.0
+MAX_SINGLE_NAME_WEIGHT_PCT_DEFAULT = 12.0
+CONCENTRATION_FIRE_PCT_DEFAULT = 16.5
+
+# Advisory trim sizing: a TRIM verdict reduces a position by this fraction of its
+# current value (rotation_sector_targets.trim_band low/high are 5-15%; use the
+# midpoint when no explicit dollar target is supplied).
+TRIM_FRACTION = 0.10
+TRIM_BAND_LOW = 0.05
+TRIM_BAND_HIGH = 0.15
+
+# Default advisory starting size for a brand-new position / re-entry when the
+# desk gives no dollar target. Bounded later by single-name headroom.
+NEW_POSITION_DEFAULT_USD = 5_000.0
+
+# Verdicts the desks can emit (mirror cio_opportunity_queue.ACTIONABLE_VERDICTS).
+ACTIONABLE_VERDICTS = frozenset({"ADD", "TRIM", "EXIT", "RE_ENTER"})
+
+# Re-entry states that count as a new-position use (mirror cio_opportunity_queue).
+ACTIONABLE_REENTRY_STATES = frozenset({"READY TO REVIEW", "NEAR ENTRY", "OVERSOLD REVIEW"})
+
+# Account `type` values that are tax-advantaged; everything else (or unknown) is
+# treated as taxable so tax/lot constraints are never silently waived.
+TAX_ADVANTAGED_TYPES = frozenset({
+    "rollover_ira", "roth_ira", "ira", "traditional_ira", "401k", "401(k)", "sep_ira",
+})
+
+# Default review cadence for the Position Decision table when no last-review date
+# is on the holding.
+REVIEW_CADENCE_DAYS = 30
+
+# Stance → recommended delta direction (used to compute the per-holding $ delta).
+_STANCE_TO_DIRECTION = {
+    "ADD": +1,
+    "RE_ENTER": +1,
+    "TRIM": -1,
+    "EXIT": -1,
+    "HOLD": 0,
+    "REVIEW": 0,
+}
+
+
+def _num(value: Any, default: Optional[float] = None) -> Optional[float]:
+    try:
+        return float(value) if value is not None else default
+    except (TypeError, ValueError):
+        return default
+
+
+def _fnum(value: Any, default: float = 0.0) -> float:
+    v = _num(value, default)
+    return default if v is None else v
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Pure policy helpers (no I/O)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def cash_policy_band(
+    portfolio_value: float,
+    min_pct: Optional[float] = None,
+    max_pct: Optional[float] = None,
+) -> dict[str, Any]:
+    """Cash policy band in dollars. `min` is the floor; `max` is a soft ceiling."""
+    value = max(0.0, _fnum(portfolio_value))
+    lo = _fnum(min_pct, CASH_BAND_DEFAULT_MIN_PCT) if min_pct is not None else CASH_BAND_DEFAULT_MIN_PCT
+    hi = _fnum(max_pct, CASH_BAND_DEFAULT_MAX_PCT) if max_pct is not None else CASH_BAND_DEFAULT_MAX_PCT
+    hi = max(hi, lo)
+    return {
+        "min_pct": round(lo, 2),
+        "max_pct": round(hi, 2),
+        "min_usd": round(value * lo / 100.0, 2),
+        "max_usd": round(value * hi / 100.0, 2),
+    }
+
+
+def cash_posture(
+    cash_total: float,
+    portfolio_value: float,
+    min_pct: Optional[float] = None,
+) -> dict[str, Any]:
+    """Classify current cash vs the policy band and split into reserve vs investable.
+
+    ABOVE_BAND  — cash above the floor → the excess is investable dry powder.
+    IN_BAND     — cash at/below floor but non-trivial → no force deploy.
+    BELOW_BAND  — cash below floor → raise cash, do not deploy.
+    """
+    cash = max(0.0, _fnum(cash_total))
+    value = max(0.0, _fnum(portfolio_value))
+    band = cash_policy_band(value, min_pct=min_pct)
+    cash_pct = round(cash / value * 100.0, 2) if value > 0 else 0.0
+    reserve = band["min_usd"]
+    investable = max(0.0, cash - reserve)
+
+    if value <= 0:
+        status = "NO_PORTFOLIO"
+    elif cash_pct >= band["min_pct"]:
+        status = "ABOVE_BAND"
+    elif cash >= reserve * 0.5:
+        status = "IN_BAND"
+    else:
+        status = "BELOW_BAND"
+
+    return {
+        "cash_usd": round(cash, 2),
+        "cash_pct": cash_pct,
+        "band_min_pct": band["min_pct"],
+        "band_max_pct": band["max_pct"],
+        "band_min_usd": band["min_usd"],
+        "band_max_usd": band["max_usd"],
+        "reserve_usd": round(reserve, 2),
+        "investable_usd": round(investable, 2),
+        "status": status,
+    }
+
+
+def classify_account_tax(account: str, accounts: Optional[dict[str, Any]] = None) -> str:
+    """TAXABLE / TAX_ADVANTAGED / UNKNOWN for one account, from holdings config.
+
+    Unknown accounts are treated as taxable (fail toward applying tax constraints)
+    so a tax/lot constraint is never silently waived.
+    """
+    acct = str(account or "")
+    cfg = (accounts or {}).get(acct) or {}
+    if isinstance(cfg, dict):
+        if cfg.get("taxable") is False:
+            return "TAX_ADVANTAGED"
+        if cfg.get("taxable") is True:
+            return "TAXABLE"
+        if str(cfg.get("type") or "").lower() in TAX_ADVANTAGED_TYPES:
+            return "TAX_ADVANTAGED"
+    # Fallback: infer from the account name itself (ira/roth/401k hints).
+    if any(k in acct.lower() for k in ("ira", "roth", "401k", "401(k)")):
+        return "TAX_ADVANTAGED"
+    return "TAXABLE" if acct else "UNKNOWN"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Pure normalization (no I/O)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def normalize_position(
+    h: dict[str, Any],
+    portfolio_value: float,
+    accounts: Optional[dict[str, Any]] = None,
+) -> Optional[dict[str, Any]]:
+    """Normalize one holdings row into a canonical position, or None (cash/empty).
+
+    Idempotent: accepts a raw holdings row (`market_value`) or an already
+    normalized position (`market_value_usd`) and returns the canonical shape.
+    """
+    if not isinstance(h, dict):
+        return None
+    if h.get("is_cash"):
+        return None
+    symbol = str(h.get("symbol") or "").strip().upper()
+    if not symbol:
+        return None
+    mv = _fnum(h.get("market_value_usd") if h.get("market_value_usd") is not None
+               else h.get("market_value"))
+    if mv <= 0:
+        return None
+    value = max(0.0, _fnum(portfolio_value))
+    weight = round(mv / value * 100.0, 2) if value > 0 else 0.0
+    account = str(h.get("account") or "")
+    return {
+        "symbol": symbol,
+        "name": h.get("name"),
+        "account": account,
+        "tax_class": classify_account_tax(account, accounts),
+        "market_value_usd": round(mv, 2),
+        "weight_pct": weight,
+        "quantity": h.get("quantity") or h.get("shares"),
+        "asset_type": h.get("asset_type"),
+        "last_updated": str(h.get("updated_at") or h.get("as_of") or "") or None,
+    }
+
+
+def _verdict_for(symbol: str, queue: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
+    """Best desk verdict/state for one symbol from the opportunity queue (or None)."""
+    for it in ((queue or {}).get("items") or (queue or {}).get("top") or []):
+        if str(it.get("symbol") or "").upper() == symbol.upper():
+            return it
+    return None
+
+
+def stance_for(symbol: str, queue: Optional[dict[str, Any]]) -> str:
+    """CIO stance for a symbol: desk verdict → RE_ENTER → HOLD.
+
+    Precedence: EXIT > TRIM > RE_ENTER > ADD > reentry state (READY/NEAR) > HOLD.
+    """
+    item = _verdict_for(symbol, queue)
+    if not item:
+        return "HOLD"
+    verdict = str(item.get("verdict") or "").upper().strip() or None
+    state = str(item.get("state") or "").upper().strip() or None
+    if verdict in ("EXIT", "TRIM", "RE_ENTER", "ADD"):
+        return verdict
+    if state and state in ACTIONABLE_REENTRY_STATES:
+        return "RE_ENTER"
+    return "HOLD"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Pure sources & uses (no I/O)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def build_capital_sources(
+    positions: list[dict[str, Any]],
+    queue: Optional[dict[str, Any]] = None,
+    redeploy_open_events: Optional[list[dict[str, Any]]] = None,
+    trim_fraction: float = TRIM_FRACTION,
+) -> dict[str, Any]:
+    """Sources of funds: trims, exits, maturities/distributions (raise side).
+
+    `redeploy_open_events` entries carry `remaining_usd` (sale proceeds awaiting
+    redeploy) and an optional `symbol`. Only events with a positive remaining
+    count as a maturity/distribution source.
+    """
+    by_symbol = {p["symbol"]: p for p in positions}
+    trims: list[dict[str, Any]] = []
+    exits: list[dict[str, Any]] = []
+
+    for p in positions:
+        stance = stance_for(p["symbol"], queue)
+        if stance == "TRIM":
+            amt = round(p["market_value_usd"] * trim_fraction, 2)
+            if amt > 0:
+                trims.append({
+                    "symbol": p["symbol"],
+                    "account": p.get("account"),
+                    "current_value_usd": p["market_value_usd"],
+                    "amount_usd": amt,
+                    "note": f"advisory TRIM at {trim_fraction:.0%} of position value",
+                })
+        elif stance == "EXIT":
+            exits.append({
+                "symbol": p["symbol"],
+                "account": p.get("account"),
+                "current_value_usd": p["market_value_usd"],
+                "amount_usd": p["market_value_usd"],
+                "note": "advisory EXIT — full position value released",
+            })
+
+    maturities: list[dict[str, Any]] = []
+    for ev in redeploy_open_events or []:
+        remaining = _fnum((ev or {}).get("remaining_usd"))
+        if remaining > 0:
+            maturities.append({
+                "symbol": str((ev or {}).get("symbol") or "").upper() or None,
+                "event_id": (ev or {}).get("event_id"),
+                "amount_usd": round(remaining, 2),
+                "note": "sale proceeds awaiting redeploy",
+            })
+
+    trims_usd = round(sum(t["amount_usd"] for t in trims), 2)
+    exits_usd = round(sum(e["amount_usd"] for e in exits), 2)
+    maturities_usd = round(sum(m["amount_usd"] for m in maturities), 2)
+    total_raise = round(trims_usd + exits_usd + maturities_usd, 2)
+
+    return {
+        "trims": trims,
+        "exits": exits,
+        "maturities_distributions": maturities,
+        "trims_usd": trims_usd,
+        "exits_usd": exits_usd,
+        "maturities_usd": maturities_usd,
+        "total_raise_usd": total_raise,
+    }
+
+
+def _single_name_headroom(
+    symbol: str,
+    positions: list[dict[str, Any]],
+    portfolio_value: float,
+    max_single_name_pct: float,
+) -> float:
+    """Dollar headroom to the single-name cap for a symbol (0 if not applicable)."""
+    value = max(0.0, _fnum(portfolio_value))
+    cap = max(0.0, _fnum(max_single_name_pct, MAX_SINGLE_NAME_WEIGHT_PCT_DEFAULT))
+    existing = next((p for p in positions if p["symbol"] == symbol), None)
+    current_usd = existing["market_value_usd"] if existing else 0.0
+    cap_usd = value * cap / 100.0
+    return max(0.0, cap_usd - current_usd)
+
+
+def build_capital_uses(
+    queue: Optional[dict[str, Any]],
+    positions: list[dict[str, Any]],
+    sector_opportunities: Optional[list[dict[str, Any]]],
+    posture: dict[str, Any],
+    portfolio_value: float,
+    *,
+    max_single_name_pct: Optional[float] = None,
+    new_position_default_usd: float = NEW_POSITION_DEFAULT_USD,
+) -> dict[str, Any]:
+    """Uses of funds: adds, new_positions, reentry, sector_rotation, reserve.
+
+    Every deployment use is bounded by single-name headroom (or, for sector
+    rotation, by the sector's underweight gap). Reserve is the cash policy floor
+    held back — it is a use (cash retained) but never counts as deployment.
+    """
+    value = max(0.0, _fnum(portfolio_value))
+    cap_pct = _fnum(max_single_name_pct, MAX_SINGLE_NAME_WEIGHT_PCT_DEFAULT) \
+        if max_single_name_pct is not None else MAX_SINGLE_NAME_WEIGHT_PCT_DEFAULT
+
+    items = (queue or {}).get("items") or (queue or {}).get("top") or []
+    adds: list[dict[str, Any]] = []
+    reentry: list[dict[str, Any]] = []
+    new_positions: list[dict[str, Any]] = []
+
+    for it in items:
+        symbol = str(it.get("symbol") or "").upper()
+        verdict = str(it.get("verdict") or "").upper().strip() or None
+        state = str(it.get("state") or "").upper().strip() or None
+        headroom = _single_name_headroom(symbol, positions, value, cap_pct)
+
+        if verdict == "ADD":
+            amt = round(min(new_position_default_usd, headroom) if headroom > 0 else 0.0, 2)
+            if amt > 0:
+                adds.append({
+                    "symbol": symbol,
+                    "source": it.get("source"),
+                    "amount_usd": amt,
+                    "note": it.get("directive_label"),
+                })
+        elif verdict == "RE_ENTER" or (state and state in ACTIONABLE_REENTRY_STATES):
+            amt = round(min(new_position_default_usd, headroom) if headroom > 0 else 0.0, 2)
+            if amt > 0:
+                reentry.append({
+                    "symbol": symbol,
+                    "source": it.get("source"),
+                    "state": state,
+                    "amount_usd": amt,
+                    "note": it.get("directive_label"),
+                })
+        elif verdict is None and state is None:
+            # desk suggestion without an explicit verdict → candidate for a new
+            # position only if it has no existing holding and headroom exists.
+            if not any(p["symbol"] == symbol for p in positions) and headroom > 0:
+                amt = round(min(new_position_default_usd, headroom), 2)
+                new_positions.append({
+                    "symbol": symbol,
+                    "source": it.get("source"),
+                    "amount_usd": amt,
+                    "note": it.get("directive_label"),
+                })
+
+    rotation: list[dict[str, Any]] = []
+    for opp in sector_opportunities or []:
+        if not opp.get("opportunity"):
+            continue
+        current = _num(opp.get("current_exposure_pct"))
+        target = _num(opp.get("target_posture_pct"))
+        if current is None or target is None or current >= target:
+            continue
+        gap_pct = target - current
+        gap_usd = value * gap_pct / 100.0
+        rec = opp.get("recommendation")
+        if rec not in ("STAGED_DEPLOYMENT", "RESEARCH_FIRST"):
+            continue
+        # Sector rotation is a top-up, not a full rebalance; cap the rotate-in at
+        # the sector gap (deterministic, advisory).
+        if gap_usd > 0:
+            rotation.append({
+                "sector": opp.get("sector"),
+                "etf": opp.get("etf"),
+                "state": opp.get("state"),
+                "current_pct": round(current, 2),
+                "target_pct": round(target, 2),
+                "amount_usd": round(gap_usd, 2),
+                "recommendation": rec,
+            })
+
+    adds_usd = round(sum(a["amount_usd"] for a in adds), 2)
+    reentry_usd = round(sum(r["amount_usd"] for r in reentry), 2)
+    new_usd = round(sum(n["amount_usd"] for n in new_positions), 2)
+    rotation_usd = round(sum(s["amount_usd"] for s in rotation), 2)
+    reserve_usd = round(_fnum(posture.get("reserve_usd")), 2)
+    total_use_usd = round(adds_usd + reentry_usd + new_usd + rotation_usd, 2)
+
+    return {
+        "adds": adds,
+        "new_positions": new_positions,
+        "reentry": reentry,
+        "sector_rotation": rotation,
+        "reserve": reserve_usd,
+        "adds_usd": adds_usd,
+        "reentry_usd": reentry_usd,
+        "new_positions_usd": new_usd,
+        "sector_rotation_usd": rotation_usd,
+        "total_deploy_request_usd": total_use_usd,
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Pure plan composition (no I/O)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def build_capital_plan(
+    *,
+    portfolio_value: float,
+    cash_total: float,
+    positions: list[dict[str, Any]],
+    queue: Optional[dict[str, Any]] = None,
+    redeploy_open_events: Optional[list[dict[str, Any]]] = None,
+    sector_opportunities: Optional[list[dict[str, Any]]] = None,
+    accounts: Optional[dict[str, Any]] = None,
+    risk_posture: Optional[dict[str, Any]] = None,
+    divergence_map: Optional[dict[str, Any]] = None,
+    now: Optional[datetime] = None,
+    cash_band_min_pct: Optional[float] = None,
+    max_single_name_pct: Optional[float] = None,
+    concentration_fire_pct: Optional[float] = None,
+) -> dict[str, Any]:
+    """Build the full Capital Plan projection (advisory only).
+
+    All dollars are deterministic arithmetic over the supplied canonical state.
+    Returns the acceptance-shape envelope with a hash-pinned `digest`.
+    """
+    now = now or datetime.now(timezone.utc)
+    rps = risk_posture or {}
+    value = max(0.0, _fnum(portfolio_value))
+    cash = max(0.0, _fnum(cash_total))
+
+    min_pct = cash_band_min_pct if cash_band_min_pct is not None else _num(
+        rps.get("cash_band_min_pct"), CASH_BAND_DEFAULT_MIN_PCT)
+    max_name_pct = max_single_name_pct if max_single_name_pct is not None else _num(
+        rps.get("max_single_name_weight_pct"), MAX_SINGLE_NAME_WEIGHT_PCT_DEFAULT)
+    conc_pct = concentration_fire_pct if concentration_fire_pct is not None else _num(
+        rps.get("concentration_fire_pct"), CONCENTRATION_FIRE_PCT_DEFAULT)
+
+    # Accept raw or normalized positions; normalize once for all sub-computations.
+    norm_positions = [
+        p for p in (normalize_position(h, value, accounts) for h in positions)
+        if p is not None
+    ]
+
+    posture = cash_posture(cash, value, min_pct=min_pct)
+    sources = build_capital_sources(norm_positions, queue=queue, redeploy_open_events=redeploy_open_events)
+    uses = build_capital_uses(
+        queue, norm_positions, sector_opportunities, posture, value,
+        max_single_name_pct=max_name_pct,
+    )
+
+    # Never deploy more than (investable cash + cash raised by trims/exits).
+    deployable = round(posture["investable_usd"] + sources["total_raise_usd"], 2)
+    net_deploy = round(min(uses["total_deploy_request_usd"], deployable), 2)
+    net_raise = sources["total_raise_usd"]
+    post_cash = round(cash + net_raise - net_deploy, 2)
+    post_cash_pct = round(post_cash / value * 100.0, 2) if value > 0 else 0.0
+
+    position_decisions = build_position_decisions(
+        norm_positions, queue=queue, divergence_map=divergence_map,
+        portfolio_value=value, max_single_name_pct=max_name_pct,
+        accounts=accounts, now=now,
+    )
+
+    constraints: list[dict[str, Any]] = [
+        {"kind": "cash_band_min_pct", "value": round(_fnum(min_pct), 2),
+         "note": "cash held to policy floor before any deployment"},
+        {"kind": "max_single_name_weight_pct", "value": round(_fnum(max_name_pct), 2),
+         "note": "single-name cap bound for adds/new positions"},
+        {"kind": "concentration_fire_pct", "value": round(_fnum(conc_pct), 2),
+         "note": "concentration fire threshold"},
+        {"kind": "tax_class", "value": "TAXABLE/TAX_ADVANTAGED",
+         "note": "taxable accounts carry lot/tax constraints on trims/exits"},
+    ]
+
+    plan = {
+        "computed_at": now.isoformat(),
+        "plan_version": CAPITAL_PLAN_VERSION,
+        "authority": "READ_ONLY_ADVISORY",
+        "as_of": now.isoformat(),
+        "portfolio_value_usd": round(value, 2),
+        "cash_total_usd": round(cash, 2),
+        "cash_reserved_usd": posture["reserve_usd"],
+        "cash_investable_usd": posture["investable_usd"],
+        "cash_policy_band": {
+            "min_pct": posture["band_min_pct"],
+            "max_pct": posture["band_max_pct"],
+            "min_usd": posture["band_min_usd"],
+            "max_usd": posture["band_max_usd"],
+        },
+        "cash_posture_status": posture["status"],
+        "capital_sources": {
+            "trims": sources["trims"],
+            "exits": sources["exits"],
+            "maturities_distributions": sources["maturities_distributions"],
+            "trims_usd": sources["trims_usd"],
+            "exits_usd": sources["exits_usd"],
+            "maturities_usd": sources["maturities_usd"],
+            "total_raise_usd": sources["total_raise_usd"],
+        },
+        "capital_uses": {
+            "adds": uses["adds"],
+            "new_positions": uses["new_positions"],
+            "reentry": uses["reentry"],
+            "sector_rotation": uses["sector_rotation"],
+            "reserve": uses["reserve"],
+            "adds_usd": uses["adds_usd"],
+            "reentry_usd": uses["reentry_usd"],
+            "new_positions_usd": uses["new_positions_usd"],
+            "sector_rotation_usd": uses["sector_rotation_usd"],
+            "total_deploy_request_usd": uses["total_deploy_request_usd"],
+        },
+        "net_recommended_deploy_usd": net_deploy,
+        "net_recommended_raise_usd": net_raise,
+        "post_plan_cash_usd": post_cash,
+        "post_plan_cash_pct": post_cash_pct,
+        "portfolio_constraints": constraints,
+        "alternatives": _alternatives(plan_deploy=net_deploy, plan_raise=net_raise,
+                                      deploy_request=uses["total_deploy_request_usd"],
+                                      uncertainty_high=_uncertainty_high(queue, sector_opportunities)),
+        "position_decisions": position_decisions,
+    }
+
+    key_raw = json.dumps({
+        "value": plan["portfolio_value_usd"],
+        "cash": plan["cash_total_usd"],
+        "reserve": plan["cash_reserved_usd"],
+        "raise": plan["net_recommended_raise_usd"],
+        "deploy": plan["net_recommended_deploy_usd"],
+        "post_cash": plan["post_plan_cash_usd"],
+        "positions": [p["symbol"] for p in position_decisions if p.get("recommended_delta_usd")],
+        "uses": plan["capital_uses"]["total_deploy_request_usd"],
+    }, sort_keys=True, separators=(",", ":"))
+    plan["digest"] = hashlib.sha256(key_raw.encode("utf-8")).hexdigest()
+    return plan
+
+
+def _uncertainty_high(queue: Optional[dict[str, Any]],
+                      sector_opportunities: Optional[list[dict[str, Any]]]) -> bool:
+    """Uncertainty is 'high' when there is no material multi-desk signal at all."""
+    distinct = (queue or {}).get("distinct_sources") or 0
+    opp_count = len([o for o in (sector_opportunities or []) if o.get("opportunity")])
+    return distinct < 2 and opp_count == 0
+
+
+def _alternatives(*, plan_deploy: float, plan_raise: float,
+                  deploy_request: float, uncertainty_high: bool) -> list[dict[str, Any]]:
+    """Provide the 'do nothing' alternative always, plus an implementation variant."""
+    alts: list[dict[str, Any]] = [
+        {
+            "name": "do_nothing",
+            "deploy_usd": 0.0,
+            "raise_usd": 0.0,
+            "post_cash_usd": None,  # filled by caller if needed; kept semantic
+            "note": "hold current cash and positions; no new deployment, no trims",
+        },
+    ]
+    if deploy_request > 0 and plan_deploy > 0:
+        alts.append({
+            "name": "half_sized",
+            "deploy_usd": round(plan_deploy * 0.5, 2),
+            "raise_usd": round(plan_raise * 0.5, 2),
+            "post_cash_usd": None,
+            "note": "deploy half the recommended amount to preserve dry powder",
+        })
+    if uncertainty_high:
+        alts.append({
+            "name": "await_confluence",
+            "deploy_usd": 0.0,
+            "raise_usd": 0.0,
+            "post_cash_usd": None,
+            "note": "wait for multi-desk or sector confluence before sizing any deployment",
+        })
+    return alts
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Position Decision table (pure)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def build_position_decisions(
+    positions: list[dict[str, Any]],
+    *,
+    queue: Optional[dict[str, Any]] = None,
+    divergence_map: Optional[dict[str, Any]] = None,
+    portfolio_value: float = 0.0,
+    max_single_name_pct: Optional[float] = None,
+    accounts: Optional[dict[str, Any]] = None,
+    now: Optional[datetime] = None,
+) -> list[dict[str, Any]]:
+    """Per-holding decision rows for the Position Decision table.
+
+    Every material holding is included. The recommended $ delta is positive for
+    ADD/RE_ENTER (bounded by single-name headroom) and negative for TRIM/EXIT.
+    """
+    now = now or datetime.now(timezone.utc)
+    value = max(0.0, _fnum(portfolio_value))
+    cap_pct = _fnum(max_single_name_pct, MAX_SINGLE_NAME_WEIGHT_PCT_DEFAULT) \
+        if max_single_name_pct is not None else MAX_SINGLE_NAME_WEIGHT_PCT_DEFAULT
+
+    rows: list[dict[str, Any]] = []
+    for p in positions:
+        symbol = p["symbol"]
+        stance = stance_for(symbol, queue)
+        headroom = _single_name_headroom(symbol, positions, value, cap_pct)
+        div = (divergence_map or {}).get(symbol) or (divergence_map or {}).get(symbol.lower())
+
+        if stance == "EXIT":
+            delta = -p["market_value_usd"]
+        elif stance == "TRIM":
+            delta = -round(p["market_value_usd"] * TRIM_FRACTION, 2)
+        elif stance in ("ADD", "RE_ENTER"):
+            delta = round(min(NEW_POSITION_DEFAULT_USD, headroom), 2)
+        else:
+            delta = 0.0
+
+        item = _verdict_for(symbol, queue)
+        tax_class = p.get("tax_class") or classify_account_tax(p.get("account"), accounts)
+        rows.append({
+            "symbol": symbol,
+            "name": p.get("name"),
+            "account": p.get("account"),
+            "current_value_usd": p["market_value_usd"],
+            "current_weight_pct": p["weight_pct"],
+            "cio_stance": stance,
+            "target_range_pct": {"min": 0.0, "max": round(cap_pct, 2)},
+            "recommended_delta_usd": round(delta, 2),
+            "funding": _funding_for(stance, delta),
+            "why_now": (item or {}).get("directive_label") or "no new desk signal; hold",
+            "risk": "concentration > cap" if p["weight_pct"] > cap_pct else "within single-name cap",
+            "tax_account_constraint": _tax_constraint(tax_class, stance),
+            "counter_thesis": str(div) if div else "no Street/desk disagreement on record",
+            "next_review": _next_review(p.get("last_updated"), now),
+        })
+
+    rows.sort(key=lambda r: (-abs(r["recommended_delta_usd"]), -r["current_value_usd"]))
+    return rows
+
+
+def _funding_for(stance: str, delta: float) -> str:
+    if stance == "EXIT":
+        return "release to cash (source of funds)"
+    if stance == "TRIM":
+        return "trim to cash (source of funds)"
+    if stance in ("ADD", "RE_ENTER"):
+        return "investable cash / raised cash (use of funds)"
+    return "none"
+
+
+def _tax_constraint(tax_class: str, stance: str) -> str:
+    if tax_class == "TAX_ADVANTAGED":
+        return "tax-advantaged: no lot/tax drag on rebalance"
+    if stance in ("TRIM", "EXIT"):
+        return "taxable: lot/tax-basis review before realizing"
+    return "taxable: buy side only, no gain realization"
+
+
+def _next_review(last_updated: Optional[str], now: datetime) -> Optional[str]:
+    if not last_updated:
+        return None
+    try:
+        ts = datetime.fromisoformat(str(last_updated).replace("Z", "+00:00"))
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        from datetime import timedelta
+        return (ts + timedelta(days=REVIEW_CADENCE_DAYS)).date().isoformat()
+    except Exception:
+        return None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Live reader (injectable sources; separated from pure logic)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def load_holdings_snapshot(holdings_doc: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+    """Read holdings.json into the normalized portfolio dict (fail-soft)."""
+    doc = holdings_doc or {}
+    holdings = doc.get("holdings") or []
+    totals = doc.get("portfolio_totals") or {}
+    config = doc.get("config") or {}
+    accounts_raw = config.get("accounts") or {}
+
+    accounts: dict[str, Any] = {}
+    for name, cfg in accounts_raw.items():
+        if isinstance(cfg, dict):
+            accounts[str(name)] = cfg
+
+    total_value = _fnum(totals.get("total_value"))
+    cash = sum(_fnum(h.get("market_value")) for h in holdings if h.get("is_cash"))
+    # Portfolio value may exclude some MV; use holdings-derived total as fallback.
+    derived_total = sum(_fnum(h.get("market_value")) for h in holdings)
+    if total_value <= 0 and derived_total > 0:
+        total_value = derived_total
+    if total_value <= 0:
+        total_value = cash  # all-cash edge
+
+    positions = [normalize_position(h, total_value, accounts) for h in holdings]
+    positions = [p for p in positions if p is not None]
+
+    return {
+        "portfolio_value": total_value,
+        "cash_total": cash,
+        "positions": positions,
+        "accounts": accounts,
+    }
+
+
+def build_capital_plan_from_sources(
+    *,
+    holdings_doc: Optional[dict[str, Any]] = None,
+    queue: Optional[dict[str, Any]] = None,
+    redeploy_open_events: Optional[list[dict[str, Any]]] = None,
+    sector_opportunities: Optional[list[dict[str, Any]]] = None,
+    risk_posture: Optional[dict[str, Any]] = None,
+    divergence_map: Optional[dict[str, Any]] = None,
+    now: Optional[datetime] = None,
+) -> dict[str, Any]:
+    """Compose the full plan from already-fetched canonical state (convenience)."""
+    snap = load_holdings_snapshot(holdings_doc)
+    return build_capital_plan(
+        portfolio_value=snap["portfolio_value"],
+        cash_total=snap["cash_total"],
+        positions=snap["positions"],
+        accounts=snap["accounts"],
+        queue=queue,
+        redeploy_open_events=redeploy_open_events,
+        sector_opportunities=sector_opportunities,
+        risk_posture=risk_posture,
+        divergence_map=divergence_map,
+        now=now,
+    )

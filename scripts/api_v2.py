@@ -27463,6 +27463,84 @@ def _sector_opportunities_compact():
         return {"digest": None, "count": 0, "opportunity_count": 0, "opportunities": []}
 
 
+def _risk_posture() -> dict:
+    """Read the desk thesis risk_posture_structured (cash band / caps) fail-soft.
+
+    The thesis store is file-backed (data/cio/cio_theses_projection.json); this
+    reads only the current `desk` head's structured posture. Returns {} on any
+    error so the capital plan falls back to policy defaults.
+    """
+    try:
+        proj = _load_json(PROJECT_ROOT / "data" / "cio" / "cio_theses_projection.json") or {}
+        current = proj.get("current") or {}
+        desk = current.get("desk") or {}
+        return desk.get("risk_posture_structured") or {}
+    except Exception:
+        return {}
+
+
+def _cio_capital_plan(query=None):
+    """GET /api/v2/cio/capital-plan — Alex's Capital Plan + Position Decision table.
+
+    READ_ONLY_ADVISORY. Deterministic sources-and-uses arithmetic composed from
+    canonical state (holdings.json + redeploy capital book + opportunity queue +
+    sector opportunities + thesis risk posture). Never promotes or executes.
+    """
+    try:
+        from scripts.lib.cio_capital_plan import build_capital_plan_from_sources
+        from scripts.lib.cio_opportunity_queue import build_queue_from_executor
+
+        holdings = _load_json(
+            PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json"
+        ) or {}
+        queue = build_queue_from_executor(_db_query)
+        redeploy = _redeploy_opportunity_set() or {}
+        open_events = redeploy.get("open_events") or []
+        sectors = (_cio_sector_opportunities() or {}).get("opportunities") or []
+        plan = build_capital_plan_from_sources(
+            holdings_doc=holdings,
+            queue=queue,
+            redeploy_open_events=open_events,
+            sector_opportunities=sectors,
+            risk_posture=_risk_posture(),
+        )
+        return {"ok": True, **plan}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)[:200], "authority": "READ_ONLY_ADVISORY"}
+
+
+def _capital_plan_compact():
+    """Compact capital-plan summary for the health endpoint (fail-soft)."""
+    try:
+        full = _cio_capital_plan()
+        return {
+            "digest": full.get("digest"),
+            "portfolio_value_usd": full.get("portfolio_value_usd"),
+            "cash_total_usd": full.get("cash_total_usd"),
+            "cash_reserved_usd": full.get("cash_reserved_usd"),
+            "cash_investable_usd": full.get("cash_investable_usd"),
+            "cash_posture_status": full.get("cash_posture_status"),
+            "total_raise_usd": (full.get("capital_sources") or {}).get("total_raise_usd"),
+            "deploy_request_usd": (full.get("capital_uses") or {}).get("total_deploy_request_usd"),
+            "net_recommended_deploy_usd": full.get("net_recommended_deploy_usd"),
+            "net_recommended_raise_usd": full.get("net_recommended_raise_usd"),
+            "post_plan_cash_usd": full.get("post_plan_cash_usd"),
+            "post_plan_cash_pct": full.get("post_plan_cash_pct"),
+            "decision_count": len(full.get("position_decisions") or []),
+            "top_decisions": [
+                {
+                    "symbol": d.get("symbol"),
+                    "stance": d.get("cio_stance"),
+                    "recommended_delta_usd": d.get("recommended_delta_usd"),
+                    "tax_account_constraint": d.get("tax_account_constraint"),
+                }
+                for d in (full.get("position_decisions") or [])[:8]
+            ],
+        }
+    except Exception:
+        return {"digest": None, "portfolio_value_usd": 0.0, "decision_count": 0, "top_decisions": []}
+
+
 def _two_way_curation_health(query=None):
     """GET /api/v2/watch/two-way-curation — loop health KPIs (read-only advisory).
 
@@ -27544,6 +27622,8 @@ def _two_way_curation_health(query=None):
             "opportunity_queue": _opportunity_queue_summary(),
             # Alex's sector-opportunity synthesis (Sector X is improving…).
             "sector_opportunities": _sector_opportunities_compact(),
+            # Alex's capital plan (sources/uses, net deploy/raise, position decisions).
+            "capital_plan": _capital_plan_compact(),
             # Operator interactive inbox: desk staged suggestions ready for one-tap promote
             "suggestions": _db_query(
                 """SELECT h.id AS hit_id, h.directive_id, d.label AS directive_label,
@@ -35665,6 +35745,7 @@ ROUTES = {
     "/api/v2/watch-directives": _watch_directives,
     "/api/v2/watch/two-way-curation": _two_way_curation_health,
     "/api/v2/cio/sector-opportunities": _cio_sector_opportunities,
+    "/api/v2/cio/capital-plan": _cio_capital_plan,
     "/api/v2/watch/directives/detail": _watch_directive_detail,
     "/api/v2/watch/directives/merge-plan": _watch_directive_merge_plan,
     "/api/v2/watchpool": _watchpool_list,
