@@ -81,14 +81,35 @@ CIO residual staging is also auto-drained (stage-only) after reactive emit when
 .venv/bin/python scripts/hermes_watchlist_scorer.py --once
 ```
 
+### Cron (installed on MS-01)
+
+Wrapper: `scripts/run_scheduled_two_way_curation.sh`  
+Logs: `logs/two_way_curation_cron.log`, `logs/two_way_options_edge.log`, `logs/two_way_desk_emit.log`
+
+| Schedule (ET, Mon–Fri) | Job |
+|------------------------|-----|
+| **15:50** | `options-edge` — after IV snapshot (15:45) |
+| **16:25** | `options-edge` — after EOD options monitor |
+| **10:20** | `desk-emit` — after morning defense recs (10:10) |
+| **18:05** | `desk-emit` — after evening defense recs (17:50) |
+
+```bash
+# Manual
+bash scripts/run_scheduled_two_way_curation.sh options-edge
+bash scripts/run_scheduled_two_way_curation.sh desk-emit
+bash scripts/run_scheduled_two_way_curation.sh all
+crontab -l | sed -n '/two-way-curation-cron/,/END two-way/p'
+```
+
 ---
 
 ## Residual / next
 
 - ~~Organic advisory + defense staging~~ **proven**  
-- ~~Options edge reverse empty~~ **populated via proxies** (278 names); closed paper still preferred  
+- ~~Options edge reverse empty~~ **populated via proxies** (~278 names)  
 - ~~Scorer reverse too weak~~ **v9 ~15.7% reverse weight**  
+- ~~Cron for edge + multi-desk emit~~ **installed**  
 - Full promote under load can hit locks — stage-only for bulk; one-tap for intentional promotes  
-- Optional: cron for `emit_and_drain_desk_curation.py` + `fold_options_edge_backfill.py` after desk/options jobs  
+
 
 
