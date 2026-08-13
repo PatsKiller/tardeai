@@ -24,6 +24,18 @@ Each agent has exactly one queue and one templated unit instance:
 Second-wave instances remain refused by the runner even if a timer is created,
 because the agent definition is `enabled=false` / `DESIGNED`.
 
+## Model routing (2026-08-12)
+
+The three LLM-using wave-1 reflective critics (`sentinel`, `iris`, `reflection`)
+route through **governed DeepSeek V4 Flash** (`reflective_critic_flash`, FAST,
+$0.10/day cap) via `lib.llm_lane.generate` → `gate_and_generate` — no silent
+Ollama/Grok fallback. `darwin` is deterministic (`max_model_calls=0`) and makes
+no LLM call. `argus` is deterministic; `vigil` and the disabled wave-2 agents
+(`vega`, `risk_agent`, `aegis`) still use local Ollama. The agent-runtime runner
+is a separate process from the governed bridge, so it requires its own
+`LLM_GLOBAL_DAILY_USD_CAP` in the service environment.
+
+
 ## Deterministic controls (enforced in code, not by the model)
 
 Implemented in `scripts/agent_runtime/agents/dispatcher.py`

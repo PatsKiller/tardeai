@@ -86,6 +86,43 @@ def _build_ollama_provider(model_name: str = "gemma3:12b") -> Callable[[str, Map
     return _call
 
 
+def _build_governed_flash_provider() -> Callable[[str, Mapping[str, Any]], Mapping[str, Any]]:
+    """Governed DeepSeek V4 Flash provider for the reflective critics.
+
+    Routes through lib.llm_lane.generate → gate_and_generate, so every call is
+    cost-governed (process cap + global daily cap), circuit-breakered, and
+    fail-closed (no silent Ollama/Grok/Claude fallback). Replaces the raw Ollama
+    path that previously served sentinel/iris/reflection.
+    """
+    def _call(run_id: str, request: Mapping[str, Any]) -> Mapping[str, Any]:
+        try:
+            sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            from lib.llm_lane import generate
+            msgs = request.get("messages") or []
+            prompt = "\n\n".join(
+                str(m.get("content") or "") for m in msgs if m.get("content")
+            ).strip()
+            if not prompt:
+                return {"response": "", "provider": "deepseek",
+                        "model": "deepseek-v4-flash", "error": "empty prompt"}
+            max_tokens = int(request.get("max_tokens") or 512)
+            text = generate(
+                prompt,
+                lane="deepseek-flash",
+                process_id="reflective_critic_flash",
+                task_summary=f"reflective:{run_id}"[:160],
+                timeout=90,
+                max_tokens=max_tokens,
+            )
+            return {"response": str(text or "").strip(),
+                    "provider": "deepseek", "model": "deepseek-v4-flash"}
+        except Exception as exc:
+            return {"response": "", "provider": "deepseek",
+                    "model": "deepseek-v4-flash",
+                    "error": f"{type(exc).__name__}: {exc}"}
+    return _call
+
+
 # ---------------------------------------------------------------------------
 # Retrieval providers
 # ---------------------------------------------------------------------------
@@ -403,8 +440,11 @@ class _AgentProviders:
 # financial agents have been removed. PRO/PRO_THINK for Alex; FAST/Flash for
 # specialists.
 #
-# Non-financial reflective critics (sentinel, darwin, iris, reflection) retain
-# Ollama for their independent analytical work.
+# Reflective critics (sentinel, iris, reflection) route through governed
+# DeepSeek V4 Flash (reflective_critic_flash). darwin is deterministic
+# (BudgetPolicy max_model_calls=0) and keeps an Ollama factory that is never
+# invoked — it performs pure artifact scoring with no LLM call.
+_REFLECTIVE_FLASH = lambda: _build_governed_flash_provider()
 _AGENT_MODEL_MAP: dict[str, Callable[[], Callable]] = {
     # Financial agents — governed gateway only; no model factory here
     "alex":      lambda: _build_governed_gateway_provider(),
@@ -413,21 +453,26 @@ _AGENT_MODEL_MAP: dict[str, Callable[[], Callable]] = {
     "guardian":  lambda: _build_governed_gateway_provider(),
     "ledger":    lambda: _build_governed_gateway_provider(),
     "morgan":    lambda: _build_governed_gateway_provider(),
-    # Reflective critics — local Ollama
-    "sentinel":  lambda: _build_ollama_provider("gemma3:12b"),
+    # Reflective critics — governed DeepSeek V4 Flash
+    "sentinel":  _REFLECTIVE_FLASH,
+    "iris":      _REFLECTIVE_FLASH,
+    "reflection": _REFLECTIVE_FLASH,
+    # darwin is deterministic (0 model calls) — Ollama factory retained but unused.
     "darwin":    lambda: _build_ollama_provider("gemma3:4b"),
-    "iris":      lambda: _build_ollama_provider("gemma3:12b"),
-    "reflection": lambda: _build_ollama_provider("gemma3:12b"),
 }
+# Default for any fleet agent not explicitly mapped above (argus, vigil, vega,
+# risk_agent, aegis). Unchanged — vigil still uses local Ollama for its health
+# fusion; argus is deterministic (0 model calls). Only the three LLM-using
+# reflective critics (sentinel/iris/reflection) are migrated above.
 _DEFAULT_MODEL = lambda: _build_ollama_provider("gemma3:4b")
 
 
 def build_providers(agent_id: str):
     """Return governed provider set for *agent_id*.
 
-    DeepSeek V4 Pro/Flash for Alex (CIO synthesis); local Ollama for wave-1
-    reflective critics (sentinel, darwin, iris, reflection). Retrieval uses
-    Data Broker read APIs with filesystem fallback.
+    DeepSeek V4 Pro/Flash for Alex (CIO synthesis) and Flash for the reflective
+    critics (sentinel, iris, reflection). darwin is deterministic and never calls
+    a model. Retrieval uses Data Broker read APIs with filesystem fallback.
     """
     model_factory = _AGENT_MODEL_MAP.get(agent_id, _DEFAULT_MODEL)
     retrieval = _build_data_broker_retrieval(agent_id)

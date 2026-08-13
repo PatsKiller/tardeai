@@ -23,14 +23,12 @@ routing:
       provider: deepseek
       endpoint: "http://127.0.0.1:8766/v1/chat/completions"
       thinking: disabled
-    # ── Fallback: Ollama local (gemma3:12b) ──
-    - order: 3
-      lane: local
-      model: gemma3:12b
-      purpose: fallback
-      provider: ollama
-      endpoint: "http://127.0.0.1:11434/v1/chat/completions"
-      degraded: true
+    # ── No local/Ollama fallback lane ──
+    # Removed 2026-08-12: the gemma3:12b "fallback" was producing and CACHING
+    # authoritative per-row opinions when DeepSeek hit its cost cap, so a
+    # watchlist row (MSFT) ended up served from the local model instead of
+    # DeepSeek. DeepSeek is the sole/default lane. If it is unreachable, the
+    # engine falls through to the deterministic (no-LLM) fallback — fail-closed.
 
   never_escalate_to:
     - deepseek-v4-pro-think
@@ -38,8 +36,16 @@ routing:
 
   cost:
     max_model_rows_per_run: 20
-    daily_usd_cap: 0.05
-    per_row_usd_estimate: 0.001
+    # Dedicated Flash budget for watchlist rows. Watchlist names are non-held and
+    # rank at the bottom of the dollars-first queue (verdict WAIT, no MV), so they
+    # were never reached by the holdings budget. Give them their own coverage so
+    # the operator gets an evidence-backed WAIT opinion (entry trigger, thesis, risk).
+    max_watchlist_rows_per_run: 12
+    # NOTE: authoritative USD/request caps live in llm_process_registry.json +
+    # Postgres llm_process_config (enforced by cio_governed_model_bridge). This
+    # field is informational and kept in sync for operator visibility.
+    daily_usd_cap: 0.30
+    per_row_usd_estimate: 0.0054
     # Phase 2B: local cache is the primary lever; provider prefix cache needs stable system
     min_provider_cache_hit_rate: 0.70
 

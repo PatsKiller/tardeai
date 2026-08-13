@@ -410,7 +410,7 @@ def get_cio_dashboard() -> dict[str, Any]:
         "thesis": thesis_payload.get("thesis"),
         "thesis_version": thesis_payload.get("thesis_version"),
         "model_provider": "deepseek-v4-pro",
-        "fallback": "deepseek-v4-flash → free-oauth (grok/chatgpt)",
+        "fallback": "none — fail-closed (VISIBLE_FAILURE_NO_SILENT_FALLBACK)",
         "authority": "READ_ONLY_ADVISORY",
     }
 

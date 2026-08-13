@@ -196,7 +196,7 @@ function MemoryCard({ d }: { d: any }) {
 
 function OpinionCard({ d }: { d: any }) {
   if (!d || typeof d !== 'object' || Object.keys(d).length === 0) {
-    return <span style={emptyStyle}>No Flash row opinion — LLM enrichment covers actionable holdings first; WAIT/watchlist rows are filled only if budget remains.</span>
+    return <span style={emptyStyle}>No Flash row opinion — this row wasn't covered in the latest enrichment run.</span>
   }
   return (
     <div>

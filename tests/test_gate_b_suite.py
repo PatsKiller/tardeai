@@ -490,11 +490,16 @@ class TestNoFinancialAgentFallback:
         assert result.get("response") == ""
         assert "PROVIDER_BLOCKED" in result.get("error", "")
 
-    def test_reflective_critics_retain_ollama(self):
-        """Non-financial agents (sentinel, darwin) still use Ollama."""
-        from scripts.agent_runtime_live_providers import _AGENT_MODEL_MAP
-        assert "sentinel" in _AGENT_MODEL_MAP
-        assert "darwin" in _AGENT_MODEL_MAP
+    def test_reflective_critics_use_governed_flash(self):
+        """sentinel/iris/reflection use governed Flash; darwin stays deterministic."""
+        from scripts.agent_runtime_live_providers import _AGENT_MODEL_MAP, _build_governed_flash_provider
+        assert set(("sentinel", "iris", "reflection", "darwin")) <= set(_AGENT_MODEL_MAP)
+        # The three LLM-using reflective critics share the same governed-Flash factory.
+        assert _AGENT_MODEL_MAP["sentinel"] is _AGENT_MODEL_MAP["iris"]
+        assert _AGENT_MODEL_MAP["sentinel"] is _AGENT_MODEL_MAP["reflection"]
+        # darwin keeps its own (unused) Ollama factory — deterministic scorer.
+        assert _AGENT_MODEL_MAP["darwin"] is not _AGENT_MODEL_MAP["sentinel"]
+        assert callable(_build_governed_flash_provider)
 
     def test_no_broken_route_llm_call_import(self):
         """_build_deepseek_provider with broken route_llm_call no longer exists."""

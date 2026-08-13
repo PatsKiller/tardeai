@@ -9,7 +9,7 @@ WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
 Environment=PATH=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin:/usr/bin
 Environment=HOME=/home/johnclaw
 # Paid Flash narratives require a configured global cap (validate_paid_cap_config).
-Environment=LLM_GLOBAL_DAILY_USD_CAP=0.25
+Environment=LLM_GLOBAL_DAILY_USD_CAP=0.50
 EnvironmentFile=-%t/tradeai/env
 ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/enqueue_holdings_agent_opinions.py --apply
 Nice=10

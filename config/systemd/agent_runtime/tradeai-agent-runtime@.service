@@ -31,6 +31,11 @@ Environment=AGENT_RUNTIME_OPERATOR_AUTH=0
 # A real queue backend module must be supplied by the operator before dispatch runs.
 # Environment=AGENT_RUNTIME_QUEUE_MODULE=<operator-supplied>
 ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.agent_runtime.agents.run_once --agent %i --once --max-batch 8
+# 2026-08-12: reflective critics (sentinel/iris/reflection) route through governed
+# DeepSeek Flash. The governed path (lib.llm_consumption.gate_and_generate) requires
+# a global daily USD cap for any non-smoke paid process. Set this (or rely on the
+# operator's EnvironmentFile) before those critics process real jobs:
+#   Environment=LLM_GLOBAL_DAILY_USD_CAP=0.50
 # Bounded resource envelope; the runner also enforces its own per-agent deadline/budget.
 TimeoutStartSec=900
 Nice=10

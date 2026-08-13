@@ -16,7 +16,7 @@ Environment=PATH=/home/johnclaw/.local/bin:/home/johnclaw/trade-ai-v12-rebuild/t
 Environment=HOME=/home/johnclaw
 Environment=XDG_RUNTIME_DIR=%t
 # Global daily cap — override in drop-in if needed; must be set for paid canary.
-Environment=LLM_GLOBAL_DAILY_USD_CAP=0.25
+Environment=LLM_GLOBAL_DAILY_USD_CAP=0.50
 ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/lib/cio_governed_model_bridge.py
 Restart=on-failure
 RestartSec=5

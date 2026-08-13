@@ -172,7 +172,7 @@ cat > "$SYSTEMD_DROPIN" << DROPIN
 [Service]
 WorkingDirectory=${RELEASE_DIR}
 Environment=PYTHONPATH=${RELEASE_DIR}/scripts
-Environment=LLM_GLOBAL_DAILY_USD_CAP=0.25
+Environment=LLM_GLOBAL_DAILY_USD_CAP=0.50
 Environment=TRADEAI_CC_DEPLOYED_SHA=${GIT_SHA}
 Environment=TRADEAI_CC_SOURCE_PR=296
 Environment=TRADEAI_WATCH_DEFAULT_WORKSPACE=intelligence

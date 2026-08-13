@@ -3103,6 +3103,7 @@ def enrich_advisory_with_opinions(
     if max_rows is None:
         max_rows = int(cost_cfg.get("max_model_rows_per_run") or 20)
     max_rows = max(0, int(max_rows))
+    max_watchlist_rows = max(0, int(cost_cfg.get("max_watchlist_rows_per_run") or 12))
 
     rows = desk_result.get("data", {}).get("rows", [])
     if not rows:
@@ -3145,9 +3146,12 @@ def enrich_advisory_with_opinions(
             return False, "materiality"
         return True, "ok"
 
-    # Partition: actionable first (must cover), then other eligible by $ × severity
+    # Partition: actionable first (must cover), then other eligible by $ × severity.
+    # Watchlist rows get their own bucket — they are non-held (WAIT, no MV) and
+    # would otherwise be starved by the dollars-first queue.
     actionable: list[dict[str, Any]] = []
     rest: list[dict[str, Any]] = []
+    watchlist_rows: list[dict[str, Any]] = []
     skipped_untrusted = skipped_materiality = 0
     for row in rows:
         ok, why = _eligible(row)
@@ -3157,7 +3161,9 @@ def enrich_advisory_with_opinions(
             elif why == "materiality":
                 skipped_materiality += 1
             continue
-        if _is_actionable(row):
+        if row.get("row_class") == "watchlist":
+            watchlist_rows.append(row)
+        elif _is_actionable(row):
             actionable.append(row)
         else:
             rest.append(row)
@@ -3170,6 +3176,16 @@ def enrich_advisory_with_opinions(
         key=lambda r: float(r.get("market_value") or 0) * VERDICT_SEVERITY.get(_vstr(r), 0),
         reverse=True,
     )
+    # Watchlist: cover the most-evidenced names first. A watchlist entry with
+    # thin evidence (ev < MIN_EVIDENCE_ACTIONABLE) still gets a Flash WAIT but is
+    # deprioritized behind names that carry real price/analyst/agent context.
+    watchlist_rows.sort(
+        key=lambda r: (
+            (r.get("evidence_bundle") or {}).get("evidence_count", 0),
+            r.get("symbol", ""),
+        ),
+        reverse=True,
+    )
     # Actionable always first; then fill remainder of max_rows from rest
     # All actionable first (hard cover), then optional HOLDs up to max_rows.
     ordered = list(actionable)
@@ -3177,6 +3193,14 @@ def enrich_advisory_with_opinions(
         if len(ordered) >= max(max_rows, len(actionable)):
             break
         ordered.append(r)
+
+    # Watchlist coverage is independent of the holdings budget.
+    watchlist_covered: list[dict[str, Any]] = []
+    for r in watchlist_rows:
+        if len(watchlist_covered) >= max_watchlist_rows:
+            break
+        watchlist_covered.append(r)
+    ordered.extend(watchlist_covered)
 
     opinions: dict[str, dict[str, Any]] = {}
     rows_model_called = 0
@@ -3323,6 +3347,25 @@ def enrich_advisory_with_opinions(
             if opinion.get("llm_rejected"):
                 rejection_count += 1
 
+        # Watchlist guard: a non-held name must never receive a directional
+        # ADD/TRIM/EXIT/RE_ENTER call. The deterministic verdict is WAIT, and the
+        # model may reason about the watch thesis, but cannot recommend a buy/sell
+        # on something the operator does not own. Coerce any actionable verdict
+        # back to WAIT (mirrors the deterministic A2 gate philosophy).
+        if row.get("row_class") == "watchlist":
+            wv = str(opinion.get("verdict") or "").upper()
+            if wv in ACTIONABLE:
+                opinion["verdict"] = "WAIT"
+                opinion["model_deterministic_disagreement"] = True
+                opinion["what_changed"] = (
+                    f"Model returned {wv}; overridden to WAIT — watchlist rows "
+                    "are non-held and cannot carry a directional call."
+                )
+                if opinion.get("rationale"):
+                    opinion["rationale"] = (
+                        f"{opinion['rationale']} [watchlist override: {wv}→WAIT]"
+                    )
+
         opinions[row_hash] = opinion
         rows_enriched += 1
         if _is_actionable(row):
@@ -3376,6 +3419,8 @@ def enrich_advisory_with_opinions(
             round(100.0 * actionable_covered / actionable_total, 1)
             if actionable_total else 100.0
         ),
+        "watchlist_total": len(watchlist_rows),
+        "watchlist_covered": len(watchlist_covered),
         "rejection_count": rejection_count,
         "synthesis_cache_hit": bool(synthesis_meta.get("cache_hit")),
         "synthesis_lead_symbol": synthesis_meta.get("lead_symbol"),

@@ -59,7 +59,7 @@ _SENTINEL = ShadowAgentSpec(
         retrieval_required=True,
         enabled=True,
         state=DeploymentState.SHADOW,
-        budget=BudgetPolicy(max_model_calls=3, max_tool_calls=12, max_cost_usd=0.0, deadline_seconds=360),
+        budget=BudgetPolicy(max_model_calls=3, max_tool_calls=12, max_cost_usd=0.01, deadline_seconds=360),
     ),
     summary=(
         "Independently challenges each Watch artifact after deterministic validation: "
@@ -119,7 +119,7 @@ _IRIS = ShadowAgentSpec(
         retrieval_required=True,
         enabled=True,
         state=DeploymentState.SHADOW,
-        budget=BudgetPolicy(max_model_calls=3, max_tool_calls=16, max_cost_usd=0.0, deadline_seconds=600),
+        budget=BudgetPolicy(max_model_calls=3, max_tool_calls=16, max_cost_usd=0.01, deadline_seconds=600),
     ),
     summary=(
         "Reviews provenance and temporal validity of candidate lessons, finds "
@@ -150,7 +150,7 @@ _REFLECTION = ShadowAgentSpec(
         retrieval_required=True,
         enabled=True,
         state=DeploymentState.SHADOW,
-        budget=BudgetPolicy(max_model_calls=3, max_tool_calls=20, max_cost_usd=0.0, deadline_seconds=1200),
+        budget=BudgetPolicy(max_model_calls=3, max_tool_calls=20, max_cost_usd=0.01, deadline_seconds=1200),
     ),
     summary=(
         "On a bounded nightly batch of completed cases, exceptions and scored "

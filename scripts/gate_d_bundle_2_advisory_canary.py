@@ -12,7 +12,7 @@ Invariants:
   - Uses Financial Agent Governed Gateway only (no direct/OAuth fallback)
 
 Usage:
-    CIO_BRIDGE_MODE=canary LLM_GLOBAL_DAILY_USD_CAP=0.25 \
+    CIO_BRIDGE_MODE=canary LLM_GLOBAL_DAILY_USD_CAP=0.50 \
         python3 scripts/gate_d_bundle_2_advisory_canary.py
 """
 from __future__ import annotations

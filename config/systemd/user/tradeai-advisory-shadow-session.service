@@ -8,7 +8,7 @@ Type=oneshot
 WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
 Environment=PATH=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin:/usr/bin
 Environment=HOME=/home/johnclaw
-Environment=LLM_GLOBAL_DAILY_USD_CAP=0.25
+Environment=LLM_GLOBAL_DAILY_USD_CAP=0.50
 # Default dry (deterministic+specialists). Operator enables live with drop-in:
 #   Environment=ADVISORY_DESK_V1=true
 EnvironmentFile=-%t/tradeai/env
