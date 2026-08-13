@@ -227,6 +227,50 @@ def options_edge_factor(iv_rank: Optional[float], edge_score: Optional[float]) -
     return round(sum(parts) / len(parts), 1)
 
 
+def iv_pct_to_rank(iv_pct: Optional[float], universe_ivs: List[float]) -> Optional[float]:
+    """Map a raw IV% into a 0-100 rank vs a universe of peer IVs (percentile * 100)."""
+    if iv_pct is None or not universe_ivs:
+        return None
+    try:
+        iv = float(iv_pct)
+    except (TypeError, ValueError):
+        return None
+    xs = sorted(float(x) for x in universe_ivs if x is not None)
+    if not xs:
+        return None
+    below = sum(1 for x in xs if x <= iv)
+    return round(100.0 * below / len(xs), 1)
+
+
+def blend_options_edge_sources(
+    *,
+    closed_edge: Optional[float] = None,
+    queue_edge: Optional[float] = None,
+    iv_rank: Optional[float] = None,
+) -> Optional[float]:
+    """Priority blend for reverse-edge options score.
+
+    1) Closed paper outcomes dominate when present (realized edge).
+    2) Else blend approval-queue edge_score + IV-rank factor.
+    3) Else queue-only or dampened IV-only (IV alone is a weaker proxy —
+       mid-rank must not score a perfect 100).
+    Never fabricates a neutral 50 when all missing.
+    """
+    if closed_edge is not None:
+        return round(max(0.0, min(100.0, float(closed_edge))), 1)
+    if queue_edge is not None and iv_rank is not None:
+        return options_edge_factor(iv_rank, queue_edge)
+    if queue_edge is not None:
+        return round(max(0.0, min(100.0, float(queue_edge))), 1)
+    if iv_rank is not None:
+        raw = options_edge_factor(float(iv_rank), None)
+        if raw is None:
+            return None
+        # dampen: map 0-100 → ~20-75 so IV-only never dominates ranks
+        return round(20.0 + 0.55 * raw, 1)
+    return None
+
+
 def hermes_research_factor(signal: Optional[float]) -> Optional[float]:
     """Hermes research intelligence signal -> 0-100 factor. None drops the factor."""
     if signal is None:

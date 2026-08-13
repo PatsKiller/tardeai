@@ -151,19 +151,29 @@ def record_outcome(
 
 
 def fold_options_to_underlying(symbol: str, *,
-                               executor: Optional[Executor] = None) -> dict:
-    """P5 reverse edge: fold a symbol's closed options paper outcomes back into the
-    UNDERLYING symbol's watchlist_items conviction (options_edge_score).
+                               executor: Optional[Executor] = None,
+                               allow_proxies: bool = True) -> dict:
+    """P5 reverse edge: fold options evidence back onto the UNDERLYING watchlist row.
 
-    The options play is a derivative of the underlying, so its paper results inform
-    the underlying's watchlist edge — closing the loop the plan's P5 targets. Advisory
-    only: writes a single 0-100 options_edge_score column, never a trade signal.
+    Priority:
+      1) Closed paper outcomes in options_paper_outcomes (realized)
+      2) If allow_proxies: approval-queue avg edge_score + IV rank from options_iv_history
+
+    Advisory only — writes options_edge_score / detail; never a trade signal.
     """
-    from lib.two_way_curation import options_outcomes_to_conviction, write_options_edge
+    from lib.two_way_curation import (
+        blend_options_edge_sources,
+        iv_pct_to_rank,
+        options_outcomes_to_conviction,
+        write_options_edge,
+    )
     ex = executor or _default_executor()
     sym = (symbol or "").upper().strip()
     if not sym:
         return {"ok": False, "error": "symbol required"}
+
+    closed_edge = None
+    detail: Dict[str, Any] = {"sources": []}
     rows = ex(
         """SELECT symbol, outcome, pnl, meta->>'edge_score' AS edge_score,
                   meta->>'iv_rank' AS iv_rank
@@ -171,16 +181,148 @@ def fold_options_to_underlying(symbol: str, *,
         (sym,), fetch="all",
     )
     outcomes = [dict(r) for r in rows] if rows else []
-    if not outcomes:
-        return {"ok": True, "symbol": sym, "folded": False, "reason": "no outcomes"}
-    conv = options_outcomes_to_conviction(outcomes)
-    c = conv.get(sym, {})
-    edge = c.get("options_edge")
-    detail = {"n": c.get("n"), "win_rate": c.get("win_rate"),
-              "net_pnl": c.get("net_pnl"), "conviction_delta": c.get("conviction_delta")}
+    if outcomes:
+        conv = options_outcomes_to_conviction(outcomes)
+        c = conv.get(sym, {})
+        closed_edge = c.get("options_edge")
+        detail["closed"] = {
+            "n": c.get("n"), "win_rate": c.get("win_rate"),
+            "net_pnl": c.get("net_pnl"), "conviction_delta": c.get("conviction_delta"),
+            "options_edge": closed_edge,
+        }
+        detail["sources"].append("closed_outcomes")
+
+    queue_edge = None
+    iv_rank = None
+    if allow_proxies and closed_edge is None:
+        def _as_dict(row):
+            if row is None:
+                return {}
+            if isinstance(row, dict):
+                return row
+            if isinstance(row, (list, tuple)):
+                if row and isinstance(row[0], dict):
+                    return row[0]
+                # positional avg_edge, max_edge, n
+                return {
+                    "avg_edge": row[0] if len(row) > 0 else None,
+                    "max_edge": row[1] if len(row) > 1 else None,
+                    "n": row[2] if len(row) > 2 else None,
+                    "iv_pct": row[0] if len(row) == 1 else (row[0] if len(row) > 0 else None),
+                }
+            return {}
+
+        q = ex(
+            """SELECT round(avg(edge_score)::numeric, 1) AS avg_edge,
+                      max(edge_score) AS max_edge, count(*) AS n
+               FROM options_approval_queue
+               WHERE UPPER(symbol) = %s AND edge_score IS NOT NULL""",
+            (sym,), fetch="one",
+        )
+        try:
+            row = _as_dict(q)
+            if row.get("avg_edge") is not None:
+                queue_edge = float(row["avg_edge"])
+                detail["queue"] = {
+                    "avg_edge": queue_edge,
+                    "max_edge": float(row["max_edge"]) if row.get("max_edge") is not None else None,
+                    "n": int(row.get("n") or 0),
+                }
+                detail["sources"].append("approval_queue")
+        except (TypeError, ValueError, AttributeError):
+            pass
+
+        # Latest IV for symbol + universe latest IVs for rank
+        iv_row = ex(
+            """SELECT iv_pct FROM options_iv_history
+               WHERE UPPER(symbol) = %s ORDER BY captured_at DESC LIMIT 1""",
+            (sym,), fetch="one",
+        )
+        univ = ex(
+            """SELECT DISTINCT ON (UPPER(symbol)) iv_pct
+               FROM options_iv_history
+               ORDER BY UPPER(symbol), captured_at DESC""",
+            fetch="all",
+        ) or []
+        try:
+            ivd = _as_dict(iv_row)
+            iv_pct = ivd.get("iv_pct")
+            universe = []
+            for u in univ:
+                if isinstance(u, dict):
+                    universe.append(u.get("iv_pct"))
+                elif isinstance(u, (list, tuple)):
+                    universe.append(u[0] if not isinstance(u[0], dict) else u[0].get("iv_pct"))
+                else:
+                    universe.append(u)
+            universe = [float(x) for x in universe if x is not None]
+            if iv_pct is not None:
+                iv_rank = iv_pct_to_rank(float(iv_pct), universe)
+                detail["iv"] = {
+                    "iv_pct": float(iv_pct), "iv_rank": iv_rank, "universe_n": len(universe),
+                }
+                detail["sources"].append("iv_history")
+        except (TypeError, ValueError, AttributeError):
+            pass
+
+    edge = blend_options_edge_sources(
+        closed_edge=closed_edge, queue_edge=queue_edge, iv_rank=iv_rank
+    )
+    if edge is None:
+        return {"ok": True, "symbol": sym, "folded": False, "reason": "no_options_evidence"}
+    detail["options_edge"] = edge
     res = write_options_edge(sym, edge, detail, executor=ex)
-    return {"ok": True, "symbol": sym, "folded": True, "options_edge": edge,
-            "detail": detail, "written": bool(res.get("ok"))}
+    return {
+        "ok": True, "symbol": sym, "folded": True, "options_edge": edge,
+        "detail": detail, "written": bool(res.get("ok")),
+        "source_priority": "closed" if closed_edge is not None else "proxy",
+    }
+
+
+def backfill_options_edge_universe(*, executor: Optional[Executor] = None,
+                                   limit: int = 500) -> dict:
+    """Backfill options_edge_score for underlyings that have queue edge and/or IV history
+    (and any closed paper outcomes). Safe to re-run. Advisory only.
+    """
+    ex = executor or _default_executor()
+    rows = ex(
+        """
+        SELECT symbol FROM (
+          SELECT DISTINCT UPPER(symbol) AS symbol FROM options_paper_outcomes WHERE symbol IS NOT NULL
+          UNION
+          SELECT DISTINCT UPPER(symbol) FROM options_approval_queue
+            WHERE symbol IS NOT NULL AND edge_score IS NOT NULL
+          UNION
+          SELECT DISTINCT UPPER(symbol) FROM options_iv_history WHERE symbol IS NOT NULL
+        ) u
+        WHERE symbol IN (
+          SELECT UPPER(symbol) FROM watchlist_items WHERE status IN ('active','researched')
+        )
+        ORDER BY 1
+        LIMIT %s
+        """,
+        (limit,), fetch="all",
+    ) or []
+    folded = skipped = errors = 0
+    samples = []
+    for r in rows:
+        sym = r["symbol"] if isinstance(r, dict) else r[0]
+        try:
+            res = fold_options_to_underlying(str(sym), executor=ex, allow_proxies=True)
+            if res.get("folded"):
+                folded += 1
+                if len(samples) < 8:
+                    samples.append({"symbol": sym, "edge": res.get("options_edge"),
+                                    "priority": res.get("source_priority"),
+                                    "sources": (res.get("detail") or {}).get("sources")})
+            else:
+                skipped += 1
+        except Exception:
+            errors += 1
+    return {
+        "ok": True, "candidates": len(rows), "folded": folded,
+        "skipped": skipped, "errors": errors, "samples": samples,
+    }
 
 
 def fetch_outcomes(strategy_id: str = STRATEGY_ID,

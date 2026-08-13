@@ -19,7 +19,8 @@
 | Desk staging undrained | **0 / 0 / 0** |
 | One-tap Promote | Live (`POST /api/v2/watch/directives/promote`) |
 | Reverse research / outcomes on watchlist | 1115 / 111 names |
-| Options edge reverse | Wired; **0** rows (no paper outcomes yet) |
+| Options edge reverse | **~278 names** via queue edge + IV rank proxies (closed paper still preferred when present) |
+| Scorer reverse weights | **v9** — research 5.5% · options 4.5% · thesis 5.7% (~15.7% combined) |
 
 ---
 
@@ -70,10 +71,24 @@ CIO residual staging is also auto-drained (stage-only) after reactive emit when
 
 ---
 
+### Options edge + scorer (P1)
+
+```bash
+# Backfill options_edge from closed outcomes → queue edge → IV rank
+.venv/bin/python scripts/ops/fold_options_edge_backfill.py --limit 500
+
+# Scorer picks up hermes_score_weights.yaml v9 automatically
+.venv/bin/python scripts/hermes_watchlist_scorer.py --once
+```
+
+---
+
 ## Residual / next
 
-- ~~Organic advisory + defense staging~~ **proven** via latest-snapshot emit (2026-08-13)  
-- Options paper outcomes → `options_edge_score`  
-- Full promote under load can hit `watchlist_items` locks — use stage-only for bulk; one-tap for intentional promotes  
-- Wire `emit_and_drain_desk_curation.py` onto a daily cron after advisory/defense jobs if desired  
+- ~~Organic advisory + defense staging~~ **proven**  
+- ~~Options edge reverse empty~~ **populated via proxies** (278 names); closed paper still preferred  
+- ~~Scorer reverse too weak~~ **v9 ~15.7% reverse weight**  
+- Full promote under load can hit locks — stage-only for bulk; one-tap for intentional promotes  
+- Optional: cron for `emit_and_drain_desk_curation.py` + `fold_options_edge_backfill.py` after desk/options jobs  
+
 

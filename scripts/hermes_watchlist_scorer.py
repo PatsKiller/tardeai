@@ -419,7 +419,16 @@ def run(limit=None):
     scored = []
     for r in rows:
         wi = {k: r[k] for k in ("symbol", "rsi", "trend", "score", "watch_score_kind", "price",
-                                "target_price", "stop_loss", "hermes_research_score", "options_edge_score")}
+                                "target_price", "stop_loss", "hermes_research_score", "options_edge_score",
+                                "realized_outcome", "thesis_win")
+              if k in r or k in ("symbol", "rsi", "trend", "score", "watch_score_kind", "price",
+                                 "target_price", "stop_loss", "hermes_research_score", "options_edge_score",
+                                 "realized_outcome", "thesis_win")}
+        # ensure keys exist even if SELECT older path omitted them
+        wi.setdefault("realized_outcome", r.get("realized_outcome"))
+        wi.setdefault("thesis_win", r.get("thesis_win"))
+        wi.setdefault("hermes_research_score", r.get("hermes_research_score"))
+        wi.setdefault("options_edge_score", r.get("options_edge_score"))
         ie = {k: r[k] for k in ("social_score", "social_sentiment", "rvol", "confluence_score", "catalyst", "catalyst_verified", "sector")}
         comp, components = score_symbol(wi, ie, pills.get(str(r["symbol"]).upper()), secmap, weights)
         if comp is not None:

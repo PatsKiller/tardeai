@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
-"""Backfill options_edge_score onto watchlist underlyings from options_paper_outcomes.
+"""Backfill options_edge_score onto watchlist underlyings.
 
-Advisory only. No-op when the table is empty. Safe to re-run.
+Sources (priority):
+  1) options_paper_outcomes (closed paper)
+  2) options_approval_queue.edge_score (prime-rubric proposals)
+  3) options_iv_history → IV rank vs peers
+
+Advisory only. Safe to re-run.
 
   .venv/bin/python scripts/ops/fold_options_edge_backfill.py
-  .venv/bin/python scripts/ops/fold_options_edge_backfill.py --limit 50
+  .venv/bin/python scripts/ops/fold_options_edge_backfill.py --limit 500
 """
 from __future__ import annotations
 
@@ -23,13 +28,17 @@ os.chdir(ROOT)
 def _load_env() -> None:
     env_file = Path(os.environ.get("TRADEAI_ENV_FILE", f"/run/user/{os.getuid()}/tradeai/env"))
     if not env_file.is_file():
+        env_file = ROOT / ".env"
+    if not env_file.is_file():
         return
     for line in env_file.read_text(encoding="utf-8", errors="replace").splitlines():
         if not line or line.lstrip().startswith("#") or "=" not in line:
             continue
         k, _, v = line.partition("=")
         k = k.strip()
-        if not k or not (k[0].isalpha() or k[0] == "_") or not all(c.isalnum() or c == "_" for c in k):
+        if not k or not (k[0].isalpha() or k[0] == "_") or not all(
+            c.isalnum() or c == "_" for c in k
+        ):
             continue
         v = v.strip()
         if len(v) >= 2 and v[0] == v[-1] and v[0] in ("'", '"'):
@@ -39,45 +48,34 @@ def _load_env() -> None:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--limit", type=int, default=200)
+    ap.add_argument("--limit", type=int, default=500)
     args = ap.parse_args()
     _load_env()
 
-    from db_adapter import _execute
-    from lib.options_pipeline.validation import fold_options_to_underlying
+    from lib.options_pipeline.validation import backfill_options_edge_universe
 
-    rows = _execute(
-        """SELECT DISTINCT UPPER(symbol) AS symbol
-           FROM options_paper_outcomes
-           WHERE symbol IS NOT NULL
-           ORDER BY 1
-           LIMIT %s""",
-        (args.limit,),
-        fetch="all",
-    ) or []
-    folded = 0
-    skipped = 0
-    errors = []
-    for r in rows:
-        sym = r["symbol"] if isinstance(r, dict) else r[0]
-        try:
-            res = fold_options_to_underlying(str(sym))
-            if res.get("folded"):
-                folded += 1
-            else:
-                skipped += 1
-        except Exception as exc:
-            errors.append({"symbol": sym, "error": str(exc)[:120]})
-    out = {
-        "ok": True,
-        "symbols_seen": len(rows),
-        "folded": folded,
-        "skipped": skipped,
-        "errors": errors[:10],
-        "note": "zero symbols is normal if options_paper_outcomes is empty",
-    }
-    print(json.dumps(out, indent=2))
-    return 0
+    out = backfill_options_edge_universe(limit=args.limit)
+    # Coverage snapshot
+    try:
+        from db_adapter import _execute
+        cov = _execute(
+            """SELECT count(*) FILTER (WHERE options_edge_score IS NOT NULL) AS with_edge,
+                      count(*) AS active
+               FROM watchlist_items WHERE status IN ('active','researched')""",
+            fetch="one",
+        )
+        if cov:
+            row = cov if isinstance(cov, dict) else {"with_edge": cov[0], "active": cov[1]}
+            if isinstance(cov, (list, tuple)) and cov and isinstance(cov[0], dict):
+                row = cov[0]
+            out["coverage"] = {
+                "with_options_edge": row.get("with_edge") if isinstance(row, dict) else None,
+                "active_researched": row.get("active") if isinstance(row, dict) else None,
+            }
+    except Exception as exc:
+        out["coverage_error"] = str(exc)[:120]
+    print(json.dumps(out, indent=2, default=str))
+    return 0 if out.get("ok") else 1
 
 
 if __name__ == "__main__":

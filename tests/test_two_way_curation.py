@@ -277,6 +277,17 @@ def test_options_edge_factor_bounds():
     assert 0 <= tc.options_edge_factor(100, 0) <= 100
 
 
+def test_iv_pct_to_rank_and_blend_priority():
+    rank = tc.iv_pct_to_rank(50, [10, 20, 30, 40, 50, 60, 70, 80, 90, 100])
+    assert rank == 50.0
+    # closed outcomes dominate proxies
+    assert tc.blend_options_edge_sources(closed_edge=88, queue_edge=10, iv_rank=10) == 88.0
+    # proxy blend when no closed
+    blended = tc.blend_options_edge_sources(queue_edge=80, iv_rank=50)
+    assert blended is not None and 0 <= blended <= 100
+    assert tc.blend_options_edge_sources() is None
+
+
 def test_hermes_research_factor():
     assert tc.hermes_research_factor(None) is None
     assert tc.hermes_research_factor(120) == 100.0
@@ -422,7 +433,8 @@ def test_fold_options_to_underlying():
     ex = FakeExecutor()
 
     def fold_executor(sql, params=None, fetch=None):
-        if "SELECT SYMBOL, OUTCOME" in sql.upper():
+        su = sql.upper()
+        if "OPTIONS_PAPER_OUTCOMES" in su and "SELECT" in su:
             return [
                 {"symbol": "NVDA", "outcome": "win", "pnl": 100,
                  "edge_score": "70", "iv_rank": "50"},
@@ -432,6 +444,29 @@ def test_fold_options_to_underlying():
     res = v.fold_options_to_underlying("NVDA", executor=fold_executor)
     assert res["ok"] is True and res["folded"] is True
     assert res["options_edge"] == 85.0
+    assert res.get("source_priority") == "closed"
+
+
+def test_fold_options_proxy_queue_and_iv():
+    from lib.options_pipeline import validation as v
+    ex = FakeExecutor()
+
+    def fold_executor(sql, params=None, fetch=None):
+        su = sql.upper()
+        if "OPTIONS_PAPER_OUTCOMES" in su:
+            return []
+        if "OPTIONS_APPROVAL_QUEUE" in su:
+            return {"avg_edge": 80.0, "max_edge": 90.0, "n": 5}
+        if "OPTIONS_IV_HISTORY" in su and "DISTINCT ON" in su:
+            return [{"iv_pct": 20}, {"iv_pct": 40}, {"iv_pct": 60}, {"iv_pct": 80}]
+        if "OPTIONS_IV_HISTORY" in su:
+            return {"iv_pct": 60.0}
+        return ex(sql, params, fetch=fetch)
+
+    res = v.fold_options_to_underlying("SCHD", executor=fold_executor, allow_proxies=True)
+    assert res["ok"] is True and res["folded"] is True
+    assert res.get("source_priority") == "proxy"
+    assert res["options_edge"] is not None
 
 
 # ─────────────────────────────────────────────────────────────────────────────

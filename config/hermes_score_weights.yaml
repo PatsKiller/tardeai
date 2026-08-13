@@ -1,15 +1,20 @@
-version: 8
+version: 9
 weights:
-  technical_momentum: 0.065
-  setup_quality: 0.009
-  analyst: 0.49
-  social_sentiment: 0.11
-  sector_strength: 0.05
-  news_catalyst: 0.11
-  risk_reward: 0.1
-  hermes_research: 0.025
-  options_edge: 0.015
-  thesis_outcome: 0.026
-auto_grafted_at: '2026-08-13T15:00:00+00:00'
+  # Core forward factors (renormalized after reverse lift)
+  technical_momentum: 0.06
+  setup_quality: 0.008
+  analyst: 0.44
+  social_sentiment: 0.10
+  sector_strength: 0.045
+  news_catalyst: 0.10
+  risk_reward: 0.09
+  # Reverse edge (P1 soak) — ~14% combined, still non-dominant
+  hermes_research: 0.055
+  options_edge: 0.045
+  thesis_outcome: 0.057
+auto_grafted_at: '2026-08-13T16:30:00+00:00'
 graft_source: outcome_ledger
-notes: v8 adds thesis_outcome reverse-edge factor; modest reverse weights until soak
+notes: >
+  v9 P1: lift reverse factors (research/options/thesis) to ~15.7% total so closed-loop
+  learning is visible in ranks without overwhelming analyst/technical. Drop-if-null
+  preserved — missing reverse columns never fabricate neutrals.
