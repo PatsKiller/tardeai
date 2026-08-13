@@ -330,7 +330,7 @@ def _format_report(measurements: dict[str, Any]) -> str:
 
     lines = [
         "═══ CIO 12-Gate Maturity Measurement ═══",
-        f"Agent:    {measurements['agent_id']} (Alex — Chief Investment & Wealth Officer)",
+        f"Agent:    {measurements['agent_id']} (Alex — Chief Investment Officer)",
         f"Measured: {measurements['measured_at']}",
         "",
         "── Evidence ──",

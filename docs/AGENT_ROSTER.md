@@ -12,13 +12,13 @@
 |-------|---------|------|-------|----------|----------|-----------|
 | Maria | 🔬 Maria | Research analyst / catalyst verification | gemma3:12b (local) | Trade AI LLM | */10-15 via agent job worker | advisory |
 | Maria Research | 🔬 Maria Research | Deep research / two-pass RAG analysis | gemma3:12b (local) | Trade AI LLM | */10-15 via agent job worker | advisory |
-| Steph | 📊 Steph | Wealth & Income Advisor | DeepSeek V4 Flash → Pro | OpenClaw + Trade AI Wave-3 | OpenClaw cron: weekly Sun 9am + monthly 1st 9am | READ_ONLY_ADVISORY |
+| Steph | 📊 Steph | Senior Portfolio & Wealth Strategist | DeepSeek V4 Flash → Pro | OpenClaw + Trade AI Wave-3 | OpenClaw cron: weekly Sun 9am + monthly 1st 9am | READ_ONLY_ADVISORY |
 | Risk Agent | 🛡️ Risk | Risk management / stop coverage / portfolio heat | gemma3:12b (local) | Trade AI LLM | */10-15 via agent job worker | advisory |
 | Tax Agent (Ledger) | 💰 Tax | Tax optimization / Roth conversion / harvest | gemma3:12b (local) | Trade AI LLM + Wave-3 | */10-15 via agent job worker | advisory |
-| Alex | 👔 Alex | Chief Investment & Wealth Officer | DeepSeek V4 Pro (PRO) / V4 Flash (FAST) | OpenClaw + Trade AI Wave-3 (SHADOW) | 30-min heartbeat + 5-min wake worker + scheduled briefs | READ_ONLY_ADVISORY |
+| Alex | 👔 Alex | Chief Investment Officer | DeepSeek V4 Pro (PRO) / V4 Flash (FAST) | OpenClaw + Trade AI Wave-3 (SHADOW) | 30-min heartbeat + 5-min wake worker + scheduled briefs | READ_ONLY_ADVISORY |
 | Aegis | 🏛️ Aegis | Portfolio surveillance / overnight analysis | gemma3:27b (overnight) | Trade AI LLM + OpenClaw | Overnight 8 PM + surveillance 8 AM + social 11/3 PM + nightly 7 PM + synthesis 9 PM + transcript 9 AM + brief 8:05 AM | advisory |
 | Iris | 📚 Iris | Intelligence librarian / RAG coverage / taxonomy | gemma3:12b (local) | Trade AI LLM + OpenClaw | Weekly Sun 10 AM + daily gap 7 AM | advisory |
-| Morgan | 🏦 Morgan | Senior Wealth Advisor — total financial life planning | Ollama gemma3:12b | Trade AI Wave-3 + OpenClaw | CIO scheduled briefs + material changes + behavioral flags | READ_ONLY_ADVISORY (SHADOW) |
+| Morgan | 🏦 Morgan | Chief Wealth Officer — total financial life planning | Ollama gemma3:12b | Trade AI Wave-3 + OpenClaw | CIO scheduled briefs + material changes + behavioral flags | READ_ONLY_ADVISORY (SHADOW) |
 | Social Scalp | 📡 Social Scalp | Social mention scanner / GO-WAIT-AVOID | gemma3:12b (local) | Trade AI LLM | Part of scalp pipeline | advisory |
 | Scalp Critic | 🎯 Scalp Critic | Post-scan critic / catalyst validation | gemma3:12b (local) | Trade AI LLM | Part of scalp pipeline | advisory |
 
@@ -33,8 +33,8 @@
 - **RACI:** R (Responsible) for daily watchlist batch, CIO analysis
 - **Scripts:** process_watchlist_agent_jobs.py (agent=maria)
 
-### Steph (Wealth & Income Advisor)
-- **Identity:** Direct practical financial and wealth advisor — separate from Maria, shared-channel explicit routing
+### Steph (Senior Portfolio & Wealth Strategist)
+- **Identity:** Senior Portfolio & Wealth Strategist — allocation construction, income, account fit, and CIO/CWO support
 - **Model:** DeepSeek V4 Flash (FAST) → V4 Pro (complex); fallback: deepseek-chat → gpt-5.4
 - **Platform:** OpenClaw (primary dialogue) + Trade AI Wave-3 agent_runtime (SHADOW, DISABLED pending CIO maturity)
 - **Tasks:** Portfolio snapshot, ticker/sector performance, portfolio vs benchmark, Roth conversion headroom, concentration risk, rebalancing, analyst/technical summaries, watchlist summary
@@ -65,12 +65,12 @@
 - **Scripts:** process_watchlist_agent_jobs.py (agent=tax_agent)
 - **Wave-3:** `scripts/agent_runtime/agents/definitions.py` — id `ledger`, "Tax Optimization & Lot Selection", DISABLED pending CIO maturity
 
-### Alex (Chief Investment & Wealth Officer)
-- **Identity:** Chief Investment & Wealth Officer — autonomous advisory synthesis, escalation arbiter, strategic oversight
+### Alex (Chief Investment Officer)
+- **Identity:** Chief Investment Officer — autonomous advisory synthesis, escalation arbiter, strategic oversight
 - **Model:** DeepSeek V4 Pro (PRO) for CIO synthesis/complex escalation; DeepSeek V4 Flash (FAST) for routine; secondary: ChatGPT/gpt-5.4 (free OAuth lane, material disagreement only)
 - **Platform:** HYBRID — OpenClaw (agent identity, Telegram dialogue, delegation contracts) + Trade AI Wave-3 agent_runtime (SHADOW, durable state, action ledger, governance)
 - **Tasks:** CIO synthesis (watchlist committee: Maria/Steph/Risk → final verdict), portfolio governance, retirement/IRMAA review, specialist delegation (Steph/Guardian/Ledger), Hermes research challenge, action ledger management, operator communication
-- **Trade AI Wave-3:** `scripts/agent_runtime/agents/definitions.py` — id `alex`, "Chief Investment & Wealth Officer — autonomous advisory synthesis", SHADOW, enabled, 4 triggers (CIO_SCHEDULED_BRIEF, MATERIAL_PORTFOLIO_CHANGE, WATCH_ARTIFACT_CHANGED, SCHEDULED_SWEEP), denied: broker.write, order.*, risk_policy.write, position.*, config.promote, 2fa.*, secret.*, broker.submit, stop.*, approval.*
+- **Trade AI Wave-3:** `scripts/agent_runtime/agents/definitions.py` — id `alex`, "Chief Investment Officer — autonomous advisory synthesis", SHADOW, enabled, 4 triggers (CIO_SCHEDULED_BRIEF, MATERIAL_PORTFOLIO_CHANGE, WATCH_ARTIFACT_CHANGED, SCHEDULED_SWEEP), denied: broker.write, order.*, risk_policy.write, position.*, config.promote, 2fa.*, secret.*, broker.submit, stop.*, approval.*
 - **Durable state (Trade AI):** action ledger (`data/cio/cio_action_ledger.jsonl`, 104 entries), heartbeat snapshots (`cio_heartbeat_snapshots.jsonl`, 52 snapshots), wake jobs (`cio_wake_jobs.jsonl`), handoff queue (`agent_handoff_queue.jsonl`), notification outbox (`operator_notification_outbox.jsonl`), Hermes challenge queue (`hermes_challenge_queue.jsonl`), Darwin scorecards (`darwin_scorecards.jsonl`, 88 graded), sentinel reviews (`sentinel_reviews.jsonl`, 5 reviews), event bus (`cio_events.jsonl`, 15 event types, 5 agents routed: alex/steph/hermes/morgan/sentinel)
 - **Data Broker domains (13):** portfolio, risk, watch, rotation, income, reconciliation, hermes_research, investment_policy, model_portfolio, cost_basis, **transactions** (trade history — 121 closed, 102 open lots), **sectors** (computed sector weights with concentration flags), **holdings_detail** (per-position sector, weight, cost basis, unrealized P&L)
 - **Runtime:** 30-min heartbeat (`cio_heartbeat.py` — 17-domain financial snapshot, material change detection, deterministic, zero model calls) · 5-min wake worker (`CIORunWorker mode=shadow`) · agent_runtime@alex.timer (~2.5-min cadence) · overnight dual-consensus backfill (`rerun_cio_dual_consensus.py` 9:30 PM, cap CIO_DUAL_CHATGPT_CAP=1100)

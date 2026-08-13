@@ -177,7 +177,7 @@ _MARIA = ShadowAgentSpec(
     definition=_def(
         "maria",
         "Maria",
-        "Evidence-bound fundamental and catalyst research critic",
+        "Research Director — evidence-bound fundamental and catalyst research critic",
         allowed_job_types=("fundamental_research_review", "catalyst_review"),
         allowed_tools=("kb.search", "kb.get_lesson", "filing.read", "catalyst.read", "fundamentals.read", "artifact.write"),
         denied_tools=("proposal.authorize", "config.promote", "ticket.write"),
@@ -233,8 +233,8 @@ _VEGA = ShadowAgentSpec(
 _RISK_AGENT = ShadowAgentSpec(
     definition=_def(
         "risk_agent",
-        "Guardian Risk",
-        "Critic of deterministic risk evidence",
+        "Guardian",
+        "Independent Risk Officer — deterministic-first risk critique",
         allowed_job_types=("risk_evidence_review",),
         allowed_tools=("kb.search", "risk_evidence.read", "exposure.read", "artifact.write"),
         denied_tools=("risk_policy.write", "position.close", "config.promote", "limit.write"),
@@ -333,9 +333,10 @@ _VIGIL = ShadowAgentSpec(
 # ---------------------------------------------------------------------------
 # Wave 3 — CIO + Wealth Advisory agents (enabled in SHADOW, advisory-only)
 # ---------------------------------------------------------------------------
-# Alex: Chief Investment & Wealth Officer — autonomous synthesis agent.
-# Steph: Portfolio allocation & wealth planning strategist.
-# Ledger: Tax-lot & account-constraint critic.
+# Alex (CIO): Chief Investment Officer — owns the final investment recommendation.
+# Morgan (CWO): Chief Wealth Officer — total financial life planning.
+# Steph: Senior Portfolio & Wealth Strategist — allocation, rotation, sizing.
+# Ledger (stable id `tax_agent` in the watch pipeline): Tax & account-constraint critic.
 # Guardian role is served by the existing risk_agent (Wave 2); enable separately.
 # ---------------------------------------------------------------------------
 
@@ -343,7 +344,7 @@ _ALEX = ShadowAgentSpec(
     definition=_def(
         "alex",
         "Alex",
-        "Chief Investment & Wealth Officer — autonomous advisory synthesis",
+        "Chief Investment Officer — autonomous advisory synthesis",
         allowed_job_types=("cio_synthesis", "action_ledger_management", "specialist_delegation", "portfolio_review"),
         allowed_tools=(
             "data_broker.read", "portfolio.read", "risk.read", "allocation.read",
@@ -387,7 +388,7 @@ _STEPH = ShadowAgentSpec(
     definition=_def(
         "steph",
         "Steph",
-        "Senior Portfolio Advisor — allocation, rotation, position sizing",
+        "Senior Portfolio & Wealth Strategist — allocation, rotation, position sizing",
         allowed_job_types=(
             "allocation_review", "wealth_scenario_analysis", "income_sleeve_review",
             "drift_monitoring", "rotation_proposal", "position_sizing",
@@ -432,7 +433,7 @@ _LEDGER = ShadowAgentSpec(
     definition=_def(
         "ledger",
         "Ledger",
-        "Tax-lot and account-constraint critic",
+        "Tax & Account-Constraint Specialist — tax-lot and account-constraint critic",
         allowed_job_types=("tax_lot_review", "account_constraint_review", "wash_sale_check"),
         allowed_tools=(
             "tax_lot.read", "holding_period.read", "account_type.read",
@@ -469,7 +470,7 @@ _MORGAN = ShadowAgentSpec(
     definition=_def(
         "morgan",
         "Morgan",
-        "Senior Wealth Advisor — total financial life planning",
+        "Chief Wealth Officer — total financial life planning",
         allowed_job_types=(
             "wealth_synthesis", "goal_tracking", "liquidity_planning",
             "tax_coordination", "estate_review", "multi_account_coordination",

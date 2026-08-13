@@ -116,7 +116,7 @@
       "disable_control": "disable Alex synthesis jobs",
       "display_name": "Alex",
       "maturity_target": "After lower layers reliable",
-      "objective": "Synthesize unresolved trade-offs for the operator after lower-layer evidence is complete.",
+      "objective": "Chief Investment Officer — synthesize unresolved trade-offs for the operator after lower-layer evidence is complete.",
       "owner": "architecture-owner",
       "retrieval_policy": {
         "contradiction_search_required": true,
@@ -570,7 +570,7 @@
       "disable_control": "disable durable Maria jobs; existing deterministic research remains",
       "display_name": "Maria",
       "maturity_target": "Durable integration later",
-      "objective": "Produce evidence-grounded fundamental and catalyst research artifacts.",
+      "objective": "Research Director — produce evidence-grounded fundamental and catalyst research artifacts.",
       "owner": "architecture-owner",
       "retrieval_policy": {
         "contradiction_search_required": true,
@@ -590,8 +590,8 @@
     "morgan": {
       "agent_id": "morgan",
       "canonical_identity": "morgan",
-      "display_name": "Morgan Wealth Strategist",
-      "objective": "Coordinate the operator's total financial life — spending needs, tax location, estate/liquidity planning, and long-term goal tracking — into advisory wealth-synthesis evidence.",
+      "display_name": "Morgan",
+      "objective": "Chief Wealth Officer (CWO) — coordinate the operator's total financial life — spending needs, tax location, estate/liquidity planning, and long-term goal tracking — into advisory wealth-synthesis evidence.",
       "owner": "architecture-owner",
       "version": "1.0.0-designed",
       "deployment_state": "DESIGNED",
@@ -809,9 +809,9 @@
       ],
       "deployment_state": "DESIGNED",
       "disable_control": "disable reflective risk critic; deterministic risk remains active",
-      "display_name": "Guardian Risk",
+      "display_name": "Guardian",
       "maturity_target": "Durable integration later",
-      "objective": "Challenge portfolio and ticket risk without overriding the deterministic risk gate.",
+      "objective": "Independent Risk Officer — challenge portfolio and ticket risk without overriding the deterministic risk gate.",
       "owner": "architecture-owner",
       "retrieval_policy": {
         "contradiction_search_required": true,
@@ -946,7 +946,7 @@
       "disable_control": "disable Steph durable jobs",
       "display_name": "Steph",
       "maturity_target": "Durable integration later",
-      "objective": "Produce portfolio and account-allocation critiques from canonical position and account facts.",
+      "objective": "Senior Portfolio & Wealth Strategist — produce portfolio and account-allocation critiques from canonical position and account facts.",
       "owner": "architecture-owner",
       "retrieval_policy": {
         "contradiction_search_required": true,
@@ -1008,9 +1008,9 @@
       ],
       "deployment_state": "DESIGNED",
       "disable_control": "disable tax review jobs",
-      "display_name": "Ledger Tax",
+      "display_name": "Ledger",
       "maturity_target": "Durable integration later",
-      "objective": "Produce tax and account-constraint review evidence from canonical lot data.",
+      "objective": "Tax & Account-Constraint Specialist — produce tax and account-constraint review evidence from canonical lot data.",
       "owner": "architecture-owner",
       "retrieval_policy": {
         "contradiction_search_required": true,

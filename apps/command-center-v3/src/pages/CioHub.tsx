@@ -535,7 +535,7 @@ export default function CioHub({ onDrill }: Props) {
     <div style={{ padding: '16px 24px', maxWidth: 1200 }} data-testid="cio-hub">
       <div style={hubTitle()}>🏦 CIO Command Center</div>
       <div style={hubSubtitle()}>
-        Alex · Chief Investment & Wealth Officer · READ_ONLY_ADVISORY
+        Alex · Chief Investment Officer · READ_ONLY_ADVISORY
         {thesisVersion && <span style={{ color: 'var(--accent)', marginLeft: 12 }}>thesis {thesisVersion}</span>}
         {data?.as_of && <span style={{ color: 'var(--text3)', marginLeft: 16 }}>As of: {new Date(data.as_of).toLocaleString()}</span>}
       </div>

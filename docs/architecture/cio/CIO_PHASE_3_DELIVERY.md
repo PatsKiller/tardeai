@@ -1,4 +1,4 @@
-# CIO Phase 3 — Autonomous Chief Investment & Wealth Officer — DELIVERED
+# CIO Phase 3 — Autonomous Chief Investment Officer — DELIVERED
 
 **Date:** 2026-08-09
 **Branch:** main
@@ -165,4 +165,4 @@ Alex/OpenClaw may NOT:
 - Silently promote its own lessons
 - Treat LLM text as account/market truth
 
-OPENCLAW + HERMES CIO ARCHITECTURE GATE: Trade AI will use one durable autonomous Chief Investment & Wealth Officer in the OpenClaw agent ecosystem, backed by canonical Trade AI Data Broker truth and durable financial state, with Hermes operating autonomously as the independent research challenger; DeepSeek is the primary intelligence provider, OpenAI is an explicit secondary/independent reviewer, Codex is the engineering agent, and no LLM or autonomous agent receives broker, order, risk, approval, 2FA, secret, or self-promotion authority.
+OPENCLAW + HERMES CIO ARCHITECTURE GATE: Trade AI will use one durable autonomous Chief Investment Officer in the OpenClaw agent ecosystem, backed by canonical Trade AI Data Broker truth and durable financial state, with Hermes operating autonomously as the independent research challenger; DeepSeek is the primary intelligence provider, OpenAI is an explicit secondary/independent reviewer, Codex is the engineering agent, and no LLM or autonomous agent receives broker, order, risk, approval, 2FA, secret, or self-promotion authority.
