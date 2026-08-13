@@ -145,6 +145,68 @@ def test_defense_protect_never_emits():
     assert tc.defense_card_to_feedback({"group": "protect", "symbol": "AAPL"}) is None
 
 
+def test_rotation_signal_maps_sector():
+    fb = tc.rotation_signal_to_feedback(
+        {"name": "Technology", "etf": "XLK", "rs_score": 82, "data_quality": 3}
+    )
+    assert fb["directive_kind"] == "sector"
+    assert fb["spec"]["gics_sector"] == "Technology"
+    assert fb["spec"]["etf"] == "XLK"
+    assert fb["rs_score"] == 82
+
+
+def test_rotation_signal_requires_sector():
+    assert tc.rotation_signal_to_feedback({"etf": "XLK", "rs_score": 82}) is None
+
+
+def test_rotation_signal_falls_back_rationale():
+    fb = tc.rotation_signal_to_feedback({"sector": "Energy"})
+    assert fb is not None and "Rotation" in fb["rationale"]
+
+
+def test_reentry_ready_maps_ticker():
+    fb = tc.reentry_signal_to_feedback(
+        {"symbol": "NVDA", "intel": {"state": "READY TO REVIEW"},
+         "why": ["Price in zone", "RSI constructive"]}
+    )
+    assert fb["directive_kind"] == "ticker"
+    assert fb["spec"]["symbol"] == "NVDA"
+    assert fb["state"] == "READY TO REVIEW"
+
+
+def test_reentry_near_and_oversold_map():
+    for state in ("NEAR ENTRY", "OVERSOLD REVIEW"):
+        fb = tc.reentry_signal_to_feedback({"symbol": "AAPL", "state": state})
+        assert fb is not None and fb["state"] == state
+
+
+def test_reentry_non_actionable_never_emits():
+    for state in ("WAIT", "STALE", "MISSING MARKET", "WASH BLOCK", "CURRENTLY HELD", "OVERBOUGHT WAIT"):
+        assert tc.reentry_signal_to_feedback({"symbol": "AAPL", "state": state}) is None
+
+
+def test_reentry_requires_symbol():
+    assert tc.reentry_signal_to_feedback({"intel": {"state": "READY TO REVIEW"}}) is None
+
+
+def test_sources_include_rotation_and_reentry():
+    assert "rotation" in tc.SOURCES and "reentry" in tc.SOURCES
+    assert tc.STAGING_TABLE["rotation"] == "rotation_directive_hits_staging"
+    assert tc.STAGING_TABLE["reentry"] == "reentry_directive_hits_staging"
+    assert tc.SURFACED_BY["rotation"] == "rotation"
+    assert tc.DESK_PROMOTION_TIER["rotation"] == "trusted"
+
+
+def test_emit_rotation_and_reentry_stage_to_own_tables():
+    ex = FakeExecutor()
+    rot = tc.rotation_signal_to_feedback({"name": "Financials", "rs_score": 70})
+    reent = tc.reentry_signal_to_feedback({"symbol": "MSFT", "state": "NEAR ENTRY"})
+    assert tc.emit_feedback("rotation", rot, executor=ex)["ok"] is True
+    assert tc.emit_feedback("reentry", reent, executor=ex)["ok"] is True
+    assert len(ex.staged["rotation_directive_hits_staging"]) == 1
+    assert len(ex.staged["reentry_directive_hits_staging"]) == 1
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # FORWARD edge — emit + ensure_directive + round-trip
 # ─────────────────────────────────────────────────────────────────────────────
@@ -248,7 +310,7 @@ def test_drain_skips_row_without_kind():
         raise AssertionError("must not evaluate a kind-less row")
 
     tc.drain_curation_sources(cur, False, report, evaluate, lambda d: [])
-    assert report["curation_skipped_no_kind"] == 3
+    assert report["curation_skipped_no_kind"] == len(tc.SOURCES)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

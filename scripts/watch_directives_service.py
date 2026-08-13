@@ -148,7 +148,7 @@ def _drain_orphan_staging(cur, dry, report):
 
 
 def _drain_curation_sources(c, cur, dry, report, evaluate, resolve_fn):
-    """Drain CIO/advisory/defense curation feedback (two-way loop, forward edge).
+    """Drain CIO/advisory/defense/rotation/reentry curation feedback (two-way loop, forward edge).
 
     Each source stages feedback via lib.two_way_curation.emit_feedback(); this app-role
     service drains it through the SAME governor path as Hermes (promote_directive_lead).

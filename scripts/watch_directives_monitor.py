@@ -73,21 +73,25 @@ def main():
                     "cio": _safe_one("SELECT count(*) FROM cio_directive_hits_staging WHERE NOT drained"),
                     "advisory": _safe_one("SELECT count(*) FROM advisory_directive_hits_staging WHERE NOT drained"),
                     "defense": _safe_one("SELECT count(*) FROM defense_directive_hits_staging WHERE NOT drained"),
+                    "rotation": _safe_one("SELECT count(*) FROM rotation_directive_hits_staging WHERE NOT drained"),
+                    "reentry": _safe_one("SELECT count(*) FROM reentry_directive_hits_staging WHERE NOT drained"),
                     "hermes": one("SELECT count(*) FROM hermes_directive_hits_staging WHERE NOT drained"),
                 },
                 "staging_total": {
                     "cio": _safe_one("SELECT count(*) FROM cio_directive_hits_staging"),
                     "advisory": _safe_one("SELECT count(*) FROM advisory_directive_hits_staging"),
                     "defense": _safe_one("SELECT count(*) FROM defense_directive_hits_staging"),
+                    "rotation": _safe_one("SELECT count(*) FROM rotation_directive_hits_staging"),
+                    "reentry": _safe_one("SELECT count(*) FROM reentry_directive_hits_staging"),
                 },
                 "desk_directives_active": _safe_one(
                     "SELECT count(*) FROM watch_directives WHERE status='active' "
-                    "AND created_by IN ('cio','advisory','defense')"
+                    "AND created_by IN ('cio','advisory','defense','rotation','reentry')"
                 ),
                 "desk_hits_24h": _safe_kv(
                     "SELECT surfaced_by k, count(*) n FROM watch_directive_hits "
                     "WHERE surfaced_at>now()-interval '24 hours' "
-                    "AND surfaced_by IN ('cio','advisory','defense') GROUP BY 1"
+                    "AND surfaced_by IN ('cio','advisory','defense','rotation','reentry') GROUP BY 1"
                 ),
                 "audit_events_24h": _safe_one(
                     "SELECT count(*) FROM curation_loop_audit WHERE created_at>now()-interval '24 hours'"

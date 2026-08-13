@@ -146,6 +146,59 @@ def _defense_feedback_list() -> tuple[list, dict]:
     return feedback, meta
 
 
+def _rotation_feedback_list() -> tuple[list, dict]:
+    from lib.two_way_curation import rotation_signal_to_feedback
+
+    path = ROOT / "state" / "data_broker" / "rotation_ladders.json"
+    if not path.is_file():
+        return [], {"error": "missing rotation_ladders.json"}
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return [], {"error": "rotation_ladders.json unreadable"}
+    sectors = raw.get("sectors") or []
+    if not isinstance(sectors, list):
+        sectors = []
+    # Leading sectors (sufficient data, top RS) drive rotate-in curation.
+    ranked = [
+        s for s in sectors
+        if isinstance(s, dict) and str(s.get("name") or "").strip()
+        and (s.get("data_quality") or 0) >= 1
+    ]
+    ranked.sort(key=lambda s: -(s.get("rs_score") if s.get("rs_score") is not None else -1))
+    feedback = []
+    for s in ranked[:3]:
+        if s.get("rs_score") is None or float(s["rs_score"]) < 50:
+            continue
+        fb = rotation_signal_to_feedback(s)
+        if fb:
+            feedback.append(fb)
+    return feedback, {"ladder_sectors": len(sectors), "leading_considered": len(ranked)}
+
+
+def _reentry_feedback_list() -> tuple[list, dict]:
+    from lib.two_way_curation import reentry_signal_to_feedback
+
+    path = ROOT / "data" / "runtime" / "reentry_decision_desk_latest.json"
+    if not path.is_file():
+        return [], {"error": "missing reentry_decision_desk_latest.json"}
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return [], {"error": "reentry_decision_desk_latest.json unreadable"}
+    rows = raw.get("rows") or []
+    if isinstance(rows, dict):
+        rows = list(rows.values())
+    feedback = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        fb = reentry_signal_to_feedback(row)
+        if fb:
+            feedback.append(fb)
+    return feedback, {"desk_rows": len(rows)}
+
+
 def _emit_advisory() -> dict:
     from lib.two_way_curation import emit_all
 
@@ -177,6 +230,42 @@ def _emit_defense() -> dict:
             **meta,
         }
     res = emit_all("defense", feedback)
+    res["feedback_n"] = len(feedback)
+    res.update(meta)
+    return res
+
+
+def _emit_rotation() -> dict:
+    from lib.two_way_curation import emit_all
+
+    feedback, meta = _rotation_feedback_list()
+    if not feedback:
+        return {
+            "ok": True,
+            "source": "rotation",
+            "staged": 0,
+            "feedback_n": 0,
+            **meta,
+        }
+    res = emit_all("rotation", feedback)
+    res["feedback_n"] = len(feedback)
+    res.update(meta)
+    return res
+
+
+def _emit_reentry() -> dict:
+    from lib.two_way_curation import emit_all
+
+    feedback, meta = _reentry_feedback_list()
+    if not feedback:
+        return {
+            "ok": True,
+            "source": "reentry",
+            "staged": 0,
+            "feedback_n": 0,
+            **meta,
+        }
+    res = emit_all("reentry", feedback)
     res["feedback_n"] = len(feedback)
     res.update(meta)
     return res
@@ -261,6 +350,8 @@ def _kpis() -> dict:
         ("cio", "cio_directive_hits_staging"),
         ("advisory", "advisory_directive_hits_staging"),
         ("defense", "defense_directive_hits_staging"),
+        ("rotation", "rotation_directive_hits_staging"),
+        ("reentry", "reentry_directive_hits_staging"),
     ):
         cur.execute(
             f"SELECT count(*) total, count(*) FILTER (WHERE NOT drained) undrained FROM {tbl}"
@@ -269,7 +360,7 @@ def _kpis() -> dict:
         out[src] = {"total": r["total"], "undrained": r["undrained"]}
     cur.execute(
         """SELECT surfaced_by, count(*) n FROM watch_directive_hits
-           WHERE surfaced_by IN ('cio','advisory','defense')
+           WHERE surfaced_by IN ('cio','advisory','defense','rotation','reentry')
              AND surfaced_at > now() - interval '24 hours'
            GROUP BY 1"""
     )
@@ -277,7 +368,7 @@ def _kpis() -> dict:
     cur.execute(
         """SELECT count(*) n FROM watch_directive_hits
            WHERE promotion_status='STAGED_FOR_REVIEW'
-             AND surfaced_by IN ('cio','advisory','defense')
+             AND surfaced_by IN ('cio','advisory','defense','rotation','reentry')
              AND surfaced_at > now() - interval '7 days'"""
     )
     out["suggestions_7d"] = cur.fetchone()["n"]
@@ -301,14 +392,22 @@ def main() -> int:
         if args.apply:
             out["advisory_emit"] = _emit_advisory()
             out["defense_emit"] = _emit_defense()
+            out["rotation_emit"] = _emit_rotation()
+            out["reentry_emit"] = _emit_reentry()
         else:
             afb, askip = _advisory_feedback_list()
             dfb, dmeta = _defense_feedback_list()
+            rfb, rmeta = _rotation_feedback_list()
+            efb, emeta = _reentry_feedback_list()
             out["preview"] = {
                 "advisory_candidates": len(afb),
                 "defense_candidates": len(dfb),
+                "rotation_candidates": len(rfb),
+                "reentry_candidates": len(efb),
                 "advisory_skipped": askip,
                 "defense_meta": dmeta,
+                "rotation_meta": rmeta,
+                "reentry_meta": emeta,
                 "advisory_sample": [
                     {"symbol": f.get("spec", {}).get("symbol"), "verdict": f.get("verdict")}
                     for f in afb[:8]
@@ -316,6 +415,14 @@ def main() -> int:
                 "defense_sample": [
                     {"symbol": f.get("spec", {}).get("symbol"), "label": f.get("directive_label")}
                     for f in dfb[:8]
+                ],
+                "rotation_sample": [
+                    {"sector": f.get("spec", {}).get("gics_sector"), "label": f.get("directive_label")}
+                    for f in rfb[:8]
+                ],
+                "reentry_sample": [
+                    {"symbol": f.get("spec", {}).get("symbol"), "label": f.get("directive_label")}
+                    for f in efb[:8]
                 ],
             }
 

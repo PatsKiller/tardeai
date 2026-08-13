@@ -65,14 +65,17 @@ Each source writes **only** its own staging table; none touch `watch_directives`
 - `cio_directive_hits_staging`
 - `advisory_directive_hits_staging`
 - `defense_directive_hits_staging`
+- `rotation_directive_hits_staging`
+- `reentry_directive_hits_staging`
 
-`watch_directives_service.py` drains all three via `lib.two_way_curation.drain_curation_sources()`, which mints a `watch_directives` row (deduped by `kind`+`label`, `created_by = source`) when a signal carries its own mandate, then resolves symbols and routes each through `promote_directive_lead()` under the app role. This is what makes curation **self-thinking**: desks mint their own standing directives rather than waiting for the operator.
+`watch_directives_service.py` drains all five via `lib.two_way_curation.drain_curation_sources()`, which mints a `watch_directives` row (deduped by `kind`+`label`, `created_by = source`) when a signal carries its own mandate, then resolves symbols and routes each through `promote_directive_lead()` under the app role. This is what makes curation **self-thinking**: desks mint their own standing directives rather than waiting for the operator.
 
 ### 3.3 Emit wiring
 
 - `scripts/cio_heartbeat.py` — emits CIO situation feedback (shadow, fail-soft).
 - `scripts/lib/advisory/advisory_opinion_engine.py` — emits actionable advisory verdicts.
 - `scripts/defense_recommendations.py` — emits rotate-in / income / short-side cards.
+- `scripts/ops/emit_and_drain_desk_curation.py` — emits rotation (ladder snapshot) and re-entry (decision-desk snapshot) feedback alongside advisory/defense.
 
 All emit calls are **fail-soft** (a broken loop can never wedge the heartbeat) and gated behind the same non-dry-run flag as the snapshot writes.
 
@@ -156,7 +159,7 @@ Options remain derivatives on equity underlyings — no new `option` asset type.
 `migrations/2026-08-13_two_way_curation_p0_surfaced_by.sql` — expands  
 `watch_directive_hits.surfaced_by` CHECK to:
 
-`trade_ai | hermes | operator | cio | advisory | defense`
+`trade_ai | hermes | operator | cio | advisory | defense | rotation | reentry`
 
 Desk hits no longer collapse to `hermes`.
 

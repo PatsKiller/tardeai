@@ -33,14 +33,22 @@ from typing import Any, Callable, Dict, List, Optional
 Executor = Callable[..., Any]
 
 # ── source / table taxonomy (single source of truth) ──────────────────────────
-SOURCES = ("cio", "advisory", "defense")
+SOURCES = ("cio", "advisory", "defense", "rotation", "reentry")
 STAGING_TABLE = {
     "cio": "cio_directive_hits_staging",
     "advisory": "advisory_directive_hits_staging",
     "defense": "defense_directive_hits_staging",
+    "rotation": "rotation_directive_hits_staging",
+    "reentry": "reentry_directive_hits_staging",
 }
 # Honest desk provenance (CHECK expanded in 2026-08-13_two_way_curation_p0_surfaced_by)
-SURFACED_BY = {"cio": "cio", "advisory": "advisory", "defense": "defense"}
+SURFACED_BY = {
+    "cio": "cio",
+    "advisory": "advisory",
+    "defense": "defense",
+    "rotation": "rotation",
+    "reentry": "reentry",
+}
 # Desk-minted directives get a default TTL so auto-minted volume is bounded.
 DESK_DIRECTIVE_TTL_DAYS = 14
 # Cap per-source drain rows per service pass (cost control; rest wait next cycle).
@@ -50,6 +58,8 @@ DESK_PROMOTION_TIER = {
     "cio": "trusted",
     "advisory": "trusted",
     "defense": "trusted",
+    "rotation": "trusted",
+    "reentry": "trusted",
     "operator": "core",
     "trade_ai": "trusted",
     "hermes": "trusted",
@@ -201,6 +211,73 @@ def defense_card_to_feedback(card: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         "rationale": str(card.get("note") or f"Defense {group}")[:300],
         "thesis": f"Defense {group}: {sym}",
         "group": group,
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Pure mapping — rotation / reentry first-class forward sources
+# ─────────────────────────────────────────────────────────────────────────────
+
+REENTRY_ACTIONABLE_STATES = ("READY TO REVIEW", "NEAR ENTRY", "OVERSOLD REVIEW")
+
+
+def rotation_signal_to_feedback(signal: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Map one rotation signal (sector RS ladder entry / rotate-in target) to
+    sector feedback, or None when the signal lacks a sector name.
+
+    Provenance is preserved under the `rotation` source so the watchlist credits
+    rotate-in curations to the rotation ladder rather than the defense desk.
+    """
+    sector = str(signal.get("sector") or signal.get("name") or "").strip()
+    if not sector:
+        return None
+    etf = str(signal.get("etf") or signal.get("symbol") or "").upper().strip() or None
+    rs = signal.get("rs_score")
+    spec: Dict[str, Any] = {"gics_sector": sector, "finviz_sector": sector}
+    if etf:
+        spec["etf"] = etf
+    rationale = str(signal.get("rationale") or "").strip()
+    if not rationale:
+        rationale = (
+            f"Rotation ladder: {sector} RS {rs}" if rs is not None
+            else f"Rotation ladder: {sector} leading"
+        )
+    return {
+        "directive_kind": "sector",
+        "directive_label": f"Rotation — {sector}",
+        "spec": spec,
+        "rationale": rationale[:300],
+        "thesis": f"Rotation: overweight {sector}",
+        "rs_score": rs,
+    }
+
+
+def reentry_signal_to_feedback(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Map one re-entry decision-desk row to ticker feedback, or None to skip.
+
+    Only actionable states (READY TO REVIEW / NEAR ENTRY / OVERSOLD REVIEW)
+    curate the watchlist; WAIT / STALE / MISSING / WASH BLOCK / CURRENTLY HELD
+    rows never mint a lead.
+    """
+    sym = str(row.get("symbol") or "").upper().strip()
+    if not sym:
+        return None
+    state = str(
+        (row.get("intel") or {}).get("state") or row.get("state") or ""
+    ).upper()
+    if state not in REENTRY_ACTIONABLE_STATES:
+        return None
+    why = row.get("why") or (row.get("intel") or {}).get("reason") or ""
+    if isinstance(why, list):
+        why = " ".join(str(w) for w in why)
+    rationale = str(why or "").strip()[:300] or f"Re-entry {state} — {sym}"
+    return {
+        "directive_kind": "ticker",
+        "directive_label": f"Re-entry {state} — {sym}",
+        "spec": {"symbol": sym},
+        "rationale": rationale,
+        "thesis": f"Re-entry {state}: {sym}",
+        "state": state,
     }
 
 
@@ -480,7 +557,7 @@ def drain_curation_sources(cur, dry: bool, report: Dict[str, Any],
     report.setdefault("promoted", 0)
     report.setdefault("staged", 0)
     limit = max(1, int(drain_limit or DEFAULT_DRAIN_LIMIT))
-    for source in ("cio", "advisory", "defense"):
+    for source in SOURCES:
         tbl = STAGING_TABLE[source]
         cur.execute(
             f"SELECT * FROM {tbl} WHERE drained=false ORDER BY proposed_at LIMIT %s",

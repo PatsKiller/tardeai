@@ -998,7 +998,7 @@ def build_decision_desk(
     for r in rows_out:
         src = str(r.get("price_source") or "none")
         quote_sources[src] = quote_sources.get(src, 0) + 1
-    return {
+    result = {
         "ok": True,
         "version": "reentry-decision-desk-v2-data-broker",
         "computed_at": datetime.now(timezone.utc).isoformat(),
@@ -1042,3 +1042,18 @@ def build_decision_desk(
         },
         "rows": rows_out,
     }
+
+    # Persist a lightweight snapshot so the two-way curation cron can emit
+    # `reentry` first-class staging without re-running the heavy desk per tick.
+    try:
+        from lib.data_broker.atomic_json import atomic_write_json_soft
+        _snap = PROJECT_ROOT / "data" / "runtime" / "reentry_decision_desk_latest.json"
+        atomic_write_json_soft(_snap, result)
+    except Exception:
+        try:
+            _snap.parent.mkdir(parents=True, exist_ok=True)
+            _snap.write_text(json.dumps(result, indent=2, default=str), encoding="utf-8")
+        except Exception:
+            pass  # fail-soft — never block the read path
+
+    return result

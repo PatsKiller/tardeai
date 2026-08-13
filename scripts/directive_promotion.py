@@ -257,6 +257,7 @@ def _insert_watchpool_row(conn, strategy_id, symbol, snapshot, cfg, origin_syste
 # Honest desk provenance (migration 2026-08-13_two_way_curation_p0_surfaced_by).
 _SURFACED_BY_ALLOWED = frozenset({
     "trade_ai", "hermes", "operator", "cio", "advisory", "defense",
+    "rotation", "reentry",
 })
 
 

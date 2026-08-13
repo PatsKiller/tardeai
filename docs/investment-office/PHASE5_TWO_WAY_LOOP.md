@@ -34,10 +34,11 @@ REVERSE  operator disposition · trade/paper outcome · re-entry outcome
 
 ## 3. Gap analysis (requirements → status)
 
-1. **Preserve source provenance** — `SOURCES` covers `cio/advisory/defense` plus
-   `operator/trade_ai/hermes` in `DESK_PROMOTION_TIER`. **`rotation` and `reentry`
-   are not yet first-class sources** — they flow indirectly via CIO S4 / advisory
-   RE_ENTER. GAP: add `rotation`/`reentry` provenance.
+1. **Preserve source provenance** — SATISFIED. `SOURCES` now covers
+   `cio/advisory/defense/rotation/reentry`; `rotation` and `reentry` are first-class
+   with their own staging tables, `SURFACED_BY`, `DESK_PROMOTION_TIER`, drain
+   inclusion, and pure mappers `rotation_signal_to_feedback` / `reentry_signal_to_feedback`
+   (§4c).
 2. **Bulk staging must not bypass promotion governance** — SATISFIED (single
    governor brain; `auto_apply_gate` requires trusted tier + non-divergent +
    hit-rate floor).
@@ -113,14 +114,49 @@ Canaries:
 python3 -m pytest tests/test_two_way_reliability.py tests/test_two_way_curation.py -q
 ```
 
+### 4c. `rotation` / `reentry` first-class sources (increment 3 — this change)
+
+- **Taxonomy** (`scripts/lib/two_way_curation.py`): `SOURCES` → 5 sources;
+  `STAGING_TABLE`, `SURFACED_BY`, `DESK_PROMOTION_TIER` each gain `rotation` +
+  `reentry` (both `trusted`, matching the other desks). `drain_curation_sources`
+  now iterates `SOURCES` (no hardcoded tuple), so the app role drains all five
+  sources through the same governed `promote_directive_lead` path.
+- **Pure mappers** (no I/O):
+  - `rotation_signal_to_feedback(signal)` — sector RS ladder entry → `sector`
+    feedback (sector/name, optional `etf`, `rs_score`); requires a sector name.
+  - `reentry_signal_to_feedback(row)` — re-entry decision-desk row → `ticker`
+    feedback; only `READY TO REVIEW` / `NEAR ENTRY` / `OVERSOLD REVIEW` emit
+    (WAIT/STALE/MISSING/WASH BLOCK/CURRENTLY HELD never mint a lead).
+- **Schema** (`migrations/2026-08-13_two_way_curation_sources.sql`, additive):
+  `rotation_directive_hits_staging` + `reentry_directive_hits_staging` (mirror the
+  existing desk staging tables; partial undrained indexes included).
+- **Provenance allowlist** (`scripts/directive_promotion.py`): `_SURFACED_BY_ALLOWED`
+  gains `rotation` + `reentry` so hits surface honestly instead of collapsing to
+  `hermes`.
+- **Emission** (`scripts/ops/emit_and_drain_desk_curation.py`): `_emit_rotation`
+  (reads `state/data_broker/rotation_ladders.json`, top-3 leading sectors ≥ RS 50)
+  and `_emit_reentry` (reads `data/runtime/reentry_decision_desk_latest.json`) feed
+  the cron `desk-emit` path alongside advisory/defense; `_kpis` + preview report the
+  new sources.
+- **Snapshot** (`scripts/lib/data_broker/reentry_decision_desk.py`):
+  `build_decision_desk` now persists `data/runtime/reentry_decision_desk_latest.json`
+  (fail-soft), so the cron emit doesn't re-run the heavy desk per tick.
+- **Health surfaces**: `watch_directives_monitor.py` + `api_v2._two_way_curation_health`
+  + `_watch_directives` now report `rotation`/`reentry` staging, active directives,
+  hits, and staged suggestions.
+
+Canaries (`tests/test_two_way_curation.py`, +10):
+- mapper shape/gating for rotation + reentry (sector/etf/rs, ready/near/oversold
+  emit, non-actionable/missing-symbol never emit, source taxonomy present)
+- emit stages to the correct per-source tables
+- `drain_curation_sources` iteration count updated to `len(SOURCES)`.
+
 ## 5. Next increments (in order)
 
-1. **`rotation` / `reentry` first-class sources.** Add staging tables + `SURFACED_BY`
-   entries + drain inclusion so their provenance is preserved end-to-end.
-2. **Desk suggestions → Alex opportunity queue.** A single Alex-consumable surface
+1. **Desk suggestions → Alex opportunity queue.** A single Alex-consumable surface
    (not a page the operator monitors all day) fed by staged/undrained curation.
-3. **Sector opportunity behavior** (§6) — Alex's "Sector X is improving…" synthesis.
-4. **Lock/contention remediation** under full promote load (benchmark + fix).
+2. **Sector opportunity behavior** (§6) — Alex's "Sector X is improving…" synthesis.
+3. **Lock/contention remediation** under full promote load (benchmark + fix).
 
 ## 6. Required sector opportunity behavior (Checkpoint 5 target)
 
@@ -147,6 +183,10 @@ sector/defense or CIO event → staged Watch idea → research → Watch state c
 - The reliability gate + `n` persistence are wired; the gate is only as good as the
   `n` writers produce — a backfill is not yet run, so existing rows have `_n = NULL`
   (damped to zero) until the outcome graders / options fold run and populate them.
-- `rotation`/`reentry` provenance, the Alex opportunity queue, sector-opportunity
-  synthesis, and load lock/contention are unimplemented (increments 1–4).
+- The `rotation` emit reads `rotation_ladders.json` only when the ladder snapshot is
+  present; `reentry` emit reads `reentry_decision_desk_latest.json` (written by the
+  re-entry decision desk). Both fail-soft with a clear "missing snapshot" result so
+  the cron never blocks on absent producer output.
+- The Alex opportunity queue, sector-opportunity synthesis, and load lock/contention
+  are unimplemented (remaining increments).
 - Checkpoint 5 (organic loop) has not been run; it requires live data flow.

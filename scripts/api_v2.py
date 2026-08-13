@@ -27395,16 +27395,18 @@ def _two_way_curation_health(query=None):
                     "cio": q1("SELECT count(*) AS n FROM cio_directive_hits_staging WHERE NOT drained"),
                     "advisory": q1("SELECT count(*) AS n FROM advisory_directive_hits_staging WHERE NOT drained"),
                     "defense": q1("SELECT count(*) AS n FROM defense_directive_hits_staging WHERE NOT drained"),
+                    "rotation": q1("SELECT count(*) AS n FROM rotation_directive_hits_staging WHERE NOT drained"),
+                    "reentry": q1("SELECT count(*) AS n FROM reentry_directive_hits_staging WHERE NOT drained"),
                     "hermes": q1("SELECT count(*) AS n FROM hermes_directive_hits_staging WHERE NOT drained"),
                 },
                 "desk_directives_active": q1(
                     "SELECT count(*) AS n FROM watch_directives WHERE status='active' "
-                    "AND created_by IN ('cio','advisory','defense')"
+                    "AND created_by IN ('cio','advisory','defense','rotation','reentry')"
                 ),
                 "desk_hits_24h": qkv(
                     "SELECT surfaced_by AS k, count(*) AS n FROM watch_directive_hits "
                     "WHERE surfaced_at > now() - interval '24 hours' "
-                    "AND surfaced_by IN ('cio','advisory','defense') GROUP BY 1"
+                    "AND surfaced_by IN ('cio','advisory','defense','rotation','reentry') GROUP BY 1"
                 ),
                 "audit_events_24h": q1(
                     "SELECT count(*) AS n FROM curation_loop_audit "
@@ -27445,7 +27447,7 @@ def _two_way_curation_health(query=None):
                    FROM watch_directive_hits h
                    JOIN watch_directives d ON d.id = h.directive_id
                    WHERE h.promotion_status = 'STAGED_FOR_REVIEW'
-                     AND h.surfaced_by IN ('cio','advisory','defense')
+                     AND h.surfaced_by IN ('cio','advisory','defense','rotation','reentry')
                      AND h.surfaced_at > now() - interval '7 days'
                    ORDER BY h.surfaced_at DESC
                    LIMIT 50"""
@@ -27461,6 +27463,14 @@ def _two_way_curation_health(query=None):
                 ) or [],
                 "defense": _db_query(
                     """SELECT id, symbol, thesis, proposed_at FROM defense_directive_hits_staging
+                       WHERE NOT drained ORDER BY proposed_at DESC LIMIT 10"""
+                ) or [],
+                "rotation": _db_query(
+                    """SELECT id, symbol, thesis, proposed_at FROM rotation_directive_hits_staging
+                       WHERE NOT drained ORDER BY proposed_at DESC LIMIT 10"""
+                ) or [],
+                "reentry": _db_query(
+                    """SELECT id, symbol, thesis, proposed_at FROM reentry_directive_hits_staging
                        WHERE NOT drained ORDER BY proposed_at DESC LIMIT 10"""
                 ) or [],
             },
@@ -27505,7 +27515,7 @@ def _watch_directives(query=None):
         FROM watch_directive_hits h
         JOIN watch_directives d ON d.id = h.directive_id
         WHERE h.promotion_status = 'STAGED_FOR_REVIEW'
-          AND h.surfaced_by IN ('cio','advisory','defense')
+          AND h.surfaced_by IN ('cio','advisory','defense','rotation','reentry')
           AND h.surfaced_at > now() - interval '7 days'
         ORDER BY h.surfaced_at DESC
         LIMIT 40
