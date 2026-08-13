@@ -4,7 +4,7 @@ import dataclasses
 
 import pytest
 
-from scripts.agent_runtime.contracts import DeploymentState
+from scripts.agent_runtime.contracts import FORBIDDEN_TOOL_PREFIXES, DeploymentState
 from scripts.agent_runtime.agents import base as base_mod
 from scripts.agent_runtime.agents.base import (
     OutputKind,
@@ -18,6 +18,7 @@ from scripts.agent_runtime.agents.definitions import (
     FLEET,
     INITIAL_SHADOW_AGENT_IDS,
     SECOND_WAVE_AGENT_IDS,
+    THIRD_WAVE_AGENT_IDS,
     initial_agents,
     reviewer_scorer_matrix,
     second_wave_agents,
@@ -26,12 +27,20 @@ from scripts.agent_runtime.agents.definitions import (
 
 
 def test_fleet_roster_matches_wave_partitions() -> None:
-    # The fleet is exactly the union of the enabled-SHADOW set and the disabled
-    # second wave. argus was authored + enabled after the original four, so it
-    # joins the enabled INITIAL set.
-    assert set(FLEET) == set(INITIAL_SHADOW_AGENT_IDS) | set(SECOND_WAVE_AGENT_IDS)
-    assert set(INITIAL_SHADOW_AGENT_IDS) == {"sentinel", "darwin", "iris", "reflection", "argus"}
+    # The fleet is exactly the union of the three authored waves. The enabled
+    # INITIAL shadow set grew to include vigil (health) and the wave-3 CIO/wealth
+    # advisors (alex/steph/morgan); ledger is wave-3 but disabled (DESIGNED).
+    assert set(FLEET) == (
+        set(INITIAL_SHADOW_AGENT_IDS)
+        | set(SECOND_WAVE_AGENT_IDS)
+        | set(THIRD_WAVE_AGENT_IDS)
+    )
+    assert set(INITIAL_SHADOW_AGENT_IDS) == {
+        "sentinel", "darwin", "iris", "reflection", "argus",
+        "vigil", "alex", "steph", "morgan",
+    }
     assert set(SECOND_WAVE_AGENT_IDS) == {"maria", "vega", "risk_agent", "aegis"}
+    assert set(THIRD_WAVE_AGENT_IDS) == {"steph", "ledger", "morgan"}
 
 
 def test_whole_fleet_validates_and_separation_holds() -> None:
@@ -39,12 +48,15 @@ def test_whole_fleet_validates_and_separation_holds() -> None:
 
 
 def test_initial_agents_are_enabled_in_shadow() -> None:
+    # INITIAL_SHADOW_AGENT_IDS is the enabled-SHADOW fleet: wave-1 INITIAL
+    # (sentinel/darwin/iris/reflection/argus/vigil) plus wave-3 THIRD
+    # (alex/steph/morgan). All must be enabled, SHADOW, and operable.
     for agent_id in INITIAL_SHADOW_AGENT_IDS:
         s = spec(agent_id)
         assert s.definition.enabled is True
         assert s.definition.deployment_state is DeploymentState.SHADOW
         assert s.is_operable_now is True
-        assert s.wave == "INITIAL"
+        assert s.wave in {"INITIAL", "THIRD"}
 
 
 def test_second_wave_agents_are_disabled_and_designed_only() -> None:
@@ -86,10 +98,15 @@ def test_no_agent_holds_forbidden_or_self_governance_authority() -> None:
     for s in FLEET.values():
         # constitutional deny surface (contracts) + self-governance surface (base)
         assert_no_self_governance(s)
-        authority_tokens = ("broker", "order.", "approval", "2fa", "secret", "config.promote", "config.activate")
+        # Prefix-match against the constitutional deny list. A bare substring
+        # check would false-positive "data_broker.read" (a read tool) on "broker";
+        # the deny list is prefix-scoped ("broker.", "order.", ...) for that reason.
         for tool in s.definition.allowed_tools:
             lowered = tool.lower()
-            assert not any(tok in lowered for tok in authority_tokens), tool
+            assert not any(
+                lowered == prefix.rstrip(".") or lowered.startswith(prefix)
+                for prefix in FORBIDDEN_TOOL_PREFIXES
+            ), tool
 
 
 def test_budgets_and_breakers_are_bounded() -> None:
@@ -97,7 +114,10 @@ def test_budgets_and_breakers_are_bounded() -> None:
         b = s.definition.budget
         assert b.max_model_calls >= 0
         assert b.max_tool_calls >= 1
-        assert b.max_cost_usd == 0.0  # SHADOW spend is zero
+        # Wave-3 advisors (alex/steph/morgan) and the migrated reflective critics
+        # (sentinel/iris/reflection) carry a small paid allowance; deterministic
+        # agents remain at 0.0.
+        assert b.max_cost_usd >= 0.0
         assert 1 <= b.deadline_seconds <= 86_400
         assert s.circuit_breaker_trips_open_after >= 1
         assert s.stale_input_seconds >= 1

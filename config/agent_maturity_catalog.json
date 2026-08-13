@@ -591,11 +591,23 @@
       "agent_id": "morgan",
       "canonical_identity": "morgan",
       "display_name": "Morgan Wealth Strategist",
+      "objective": "Coordinate the operator's total financial life — spending needs, tax location, estate/liquidity planning, and long-term goal tracking — into advisory wealth-synthesis evidence.",
+      "owner": "architecture-owner",
+      "version": "1.0.0-designed",
       "deployment_state": "DESIGNED",
       "enabled": false,
+      "maturity_target": "Wave-3 shadow senior wealth advisor",
       "allowed_job_types": ["wealth_synthesis", "goal_tracking", "liquidity_planning", "tax_coordination", "estate_review", "multi_account_coordination"],
       "allowed_tools": ["portfolio.read", "tax_lot.read", "income.read", "goals.read", "retirement_projection.read", "kb.search"],
+      "denied_tools": ["broker.submit", "order.submit", "trade.submit", "rebalance.execute", "config.promote", "position.write"],
+      "retrieval_policy": {
+        "required": true,
+        "contradiction_search_required": true,
+        "provenance_required": true
+      },
       "artifact_schema": "morgan-wealth-synthesis-v1",
+      "review_policy": "independent_review_required",
+      "score_policy": "wealth_synthesis_quality_v1",
       "governed_gateway_process": "morgan_wealth_synthesis",
       "gateway_policy": "FAST",
       "deterministic_sources": ["portfolio.read", "tax_lot.read", "income.read", "goals.read", "retirement_projection.read", "kb.search"],
@@ -606,10 +618,21 @@
       "live_canary_active": false,
       "canary_status": "NOT_RUN",
       "current_limitations": ["No artifact schema validated", "Deterministic sources not independently proven", "Governed gateway not live"],
-      "version": "1.0.0-designed",
-      "budget": {"max_cost_usd": 0.0, "max_model_calls": 0, "max_tool_calls": 10},
-      "authority": {"broker_authority": "DENIED", "order_authority": "DENIED"},
-      "stop_conditions": ["evidence_incomplete", "operator_cancel"]
+      "acceptance_evidence": ["wealth-goal coverage measured", "tax-lot coordination recorded", "operator acceptance recorded"],
+      "budget": {"max_cost_usd": 0.0, "max_model_calls": 0, "max_tool_calls": 10, "deadline_seconds": 600},
+      "authority": {
+        "approval_authority": "DENIED",
+        "broker_authority": "DENIED",
+        "order_authority": "DENIED",
+        "production_config_promotion": "DENIED",
+        "production_database_write": "DENIED",
+        "production_secret_access": "DENIED",
+        "service_control": "DENIED",
+        "two_factor_authority": "DENIED"
+      },
+      "stop_conditions": ["evidence_incomplete", "operator_cancel"],
+      "disable_control": "disable Morgan wealth-synthesis jobs; retain prior advisory artifacts",
+      "rollback_control": "restore prior wealth-synthesis contract"
     },
     "pulse": {
       "acceptance_evidence": [

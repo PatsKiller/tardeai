@@ -40,6 +40,7 @@ CANONICAL_AGENT_IDS = frozenset(
         "hermes",
         "aegis",
         "alex",
+        "morgan",
         "concierge",
         "atlas",
     }

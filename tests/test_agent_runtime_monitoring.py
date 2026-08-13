@@ -39,7 +39,7 @@ def test_maturity_catalog_is_complete_shadow_only_and_authority_denied():
         agent_id
         for agent_id, record in catalog.items()
         if record.deployment_state == "SHADOW"
-    } == {"sentinel", "darwin", "iris", "reflection", "argus"}
+    } == {"sentinel", "darwin", "iris", "reflection", "argus", "alex"}
     assert all(
         set(record.authority.values()) == {"DENIED"}
         for record in catalog.values()
@@ -65,8 +65,8 @@ def test_monitoring_summary_and_fixture_are_honest_about_unavailable_runtime():
         ],
     )
 
-    assert summary["agent_count"] == 16
-    assert summary["lifecycle_counts"]["SHADOW"] == 5
+    assert summary["agent_count"] == 17
+    assert summary["lifecycle_counts"]["SHADOW"] == 6
     assert summary["lifecycle_counts"]["DESIGNED"] == 11
     assert summary["run_counts"]["RUNNING"] == 1
     assert summary["run_counts"]["FAILED"] == 1
