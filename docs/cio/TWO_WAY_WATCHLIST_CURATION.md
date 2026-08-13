@@ -79,6 +79,15 @@ Each source writes **only** its own staging table; none touch `watch_directives`
 
 All emit calls are **fail-soft** (a broken loop can never wedge the heartbeat) and gated behind the same non-dry-run flag as the snapshot writes.
 
+### 3.4 Alex opportunity queue
+
+`scripts/lib/cio_opportunity_queue.py` collapses the staged/undrained desk pool into
+one deterministic, hash-pinned digest Alex consumes (rather than the operator watching
+a page all day). `cio_event_detector` wakes Alex (`OPPORTUNITY_QUEUE`) on material new
+opportunities (≥ 2 distinct desk sources); the digest is surfaced read-only via
+`api_v2._two_way_curation_health.opportunity_queue`. The queue is a projection only —
+it never promotes; Alex acts through the governed `promote_directive_lead` path.
+
 ---
 
 ## 4. Reverse edge — outcomes → watchlist

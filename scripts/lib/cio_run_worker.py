@@ -134,6 +134,7 @@ def resolve_run_budget(trigger_type: str) -> dict[str, Any]:
         "HERMES_RESOLVED": "action_followup",
         "OPERATOR_MESSAGE": "operator_request",
         "MANUAL": "operator_request",
+        "OPPORTUNITY_QUEUE": "material_event",
         "SYSTEM": "default",
     }
     budget_key = mapping.get(trigger_type, "default")
@@ -726,6 +727,18 @@ class CIORunWorker:
             "health_state": "UNKNOWN",
         }
 
+        # Surface the desk-suggestion opportunity queue to Alex when present so the
+        # CIO can act on staged/undrained curation rather than an empty brief.
+        opp_ctx = (run.get("context") or {}).get("opportunity_digest")
+        if opp_ctx or (run.get("context") or {}).get("top"):
+            synthesis["opportunity_queue"] = {
+                "opportunity_digest": (run.get("context") or {}).get("opportunity_digest"),
+                "opportunity_count": (run.get("context") or {}).get("opportunity_count"),
+                "distinct_sources": (run.get("context") or {}).get("distinct_sources"),
+                "by_source": (run.get("context") or {}).get("by_source"),
+                "top": (run.get("context") or {}).get("top", []),
+            }
+
         if self.run_store and self._run_id:
             try:
                 self.run_store.record_model_call(
@@ -931,6 +944,7 @@ class CIORunWorker:
             "HEALTH_EVENT": "RISK_OR_STOP_EVENT",
             "OPERATOR_MESSAGE": "OPERATOR_REQUEST",
             "MANUAL": "OPERATOR_REQUEST",
+            "OPPORTUNITY_QUEUE": "WATCH_OR_CATALYST_REVIEW",
             "SYSTEM": "SCHEDULED_CIO_BRIEF",
         }
         # SPECIALIST_COMPLETION and HERMES_RESOLVED use the original purpose

@@ -51,7 +51,10 @@ REVERSE  operator disposition · trade/paper outcome · re-entry outcome
    `realized` vs `proxy` (§4).
 6. **Add sample-size/reliability fields to reverse factors** — SATISFIED. `*_n`
    columns + `_reverse_reliability` metadata on the scorer intel card (§4b).
-7. **"Desk suggestions" → Alex opportunity queue** — NOT ADDRESSED.
+7. **"Desk suggestions" → Alex opportunity queue** — SATISFIED. A single
+   deterministic, hash-pinned digest (`scripts/lib/cio_opportunity_queue.py`) fed by
+   staged/undrained curation; the CIO event detector wakes Alex (`OPPORTUNITY_QUEUE`)
+   on material new opportunities (§4d).
 8. **Sector opportunity behavior** — NOT ADDRESSED (see §6).
 
 ## 4. Delivered — reverse-factor reliability, calibration, sample-size `n`, and scorer wiring
@@ -151,12 +154,57 @@ Canaries (`tests/test_two_way_curation.py`, +10):
 - emit stages to the correct per-source tables
 - `drain_curation_sources` iteration count updated to `len(SOURCES)`.
 
+### 4d. Desk suggestions → Alex opportunity queue (increment 4 — this change)
+
+One Alex-consumable surface instead of a page the operator watches all day.
+
+- **Pure queue** (`scripts/lib/cio_opportunity_queue.py`, no I/O at import):
+  - `normalize_opportunity(raw)` — canonical `opportunity` envelope; drops rows with
+    no symbol, unknown source, or non-actionable verdict/state (fail-closed: thin
+    rows never mint a lead).
+  - `opportunity_key(...)` — deterministic SHA-256 dedup key (source+symbol+label+verdict).
+  - `build_opportunity_queue(rows)` — normalize → dedupe (latest `surfaced_at` wins) →
+    rank (reentry > rotation > advisory > cio > defense, rs_score desc) → hash-pinned
+    `digest`. `material` is True only with ≥ 2 distinct desk sources (a single-source
+    trickle never pages the CIO).
+  - `material_new_opportunities(digest, prev)` — digest changed AND non-empty.
+  - `fetch_desk_suggestions(executor)` / `build_queue_from_executor(executor)` — the
+    live DB reader, fail-soft, separated from the pure logic.
+- **Wake wiring** (`scripts/lib/cio_event_detector.py`): new injected
+  `opportunity_source` callable + `_check_opportunity_queue` step. Creates ONE
+  `OPPORTUNITY_QUEUE` wake (idempotent on the queue digest) carrying
+  `context.opportunity_digest / count / distinct_sources / by_source / top` so Alex's
+  synthesis sees the actual candidates. `run_cio_event_detector_once` wires a
+  fail-soft default source (`build_queue_from_executor(_default_executor)`).
+- **Constants**: `OPPORTUNITY_QUEUE` added to `cio_wake_jobs.TRIGGER_TYPES` /
+  `WAKE_REASON_CODES` / `PRIORITY_MAP`; `cio_run.VALID_TRIGGER_TYPES`; dispatcher
+  `_map_wake_to_run_trigger` → `OPPORTUNITY_QUEUE`; run worker
+  `resolve_run_budget` → `material_event` and `_classify_run_purpose` →
+  `WATCH_OR_CATALYST_REVIEW`.
+- **Run context thread**: `CIORunStore.create_run` + projection now carry `context`
+  (dispatcher passes `wake.context`); `CIORunWorker._cio_synthesis` exposes
+  `opportunity_queue` to Alex when present.
+- **Health surface** (`api_v2._two_way_curation_health`): new `opportunity_queue`
+  block (digest / count / material / by_source / top) — the read-only digest Alex and
+  the operator both consume.
+
+Canaries (`tests/test_cio_opportunity_queue.py`, 23 tests):
+- normalize happy/skip paths (unknown source, missing symbol, non-actionable
+  verdict/state, rs_score parse), key determinism.
+- queue dedupe/rank/digest-determinism, `material` threshold (≥2 sources).
+- `material_new_opportunities` truth table; `fetch_desk_suggestions` shape + fail-soft.
+- detector wake-on-material / idempotency-per-digest / skip-non-material /
+  skip-on-source-raise / skip-when-absent.
+- constants + dispatcher/run-worker mapping canaries.
+
+```bash
+python3 -m pytest tests/test_cio_opportunity_queue.py -q
+```
+
 ## 5. Next increments (in order)
 
-1. **Desk suggestions → Alex opportunity queue.** A single Alex-consumable surface
-   (not a page the operator monitors all day) fed by staged/undrained curation.
-2. **Sector opportunity behavior** (§6) — Alex's "Sector X is improving…" synthesis.
-3. **Lock/contention remediation** under full promote load (benchmark + fix).
+1. **Sector opportunity behavior** (§6) — Alex's "Sector X is improving…" synthesis.
+2. **Lock/contention remediation** under full promote load (benchmark + fix).
 
 ## 6. Required sector opportunity behavior (Checkpoint 5 target)
 
@@ -187,6 +235,8 @@ sector/defense or CIO event → staged Watch idea → research → Watch state c
   present; `reentry` emit reads `reentry_decision_desk_latest.json` (written by the
   re-entry decision desk). Both fail-soft with a clear "missing snapshot" result so
   the cron never blocks on absent producer output.
-- The Alex opportunity queue, sector-opportunity synthesis, and load lock/contention
-  are unimplemented (remaining increments).
+- The Alex opportunity queue is wired and wakes on material new opportunities, but it
+  only surfaces what the desks have already staged; the sector-opportunity synthesis
+  (Alex's "Sector X is improving…" statement, §6) and the load lock/contention
+  remediation remain unimplemented.
 - Checkpoint 5 (organic loop) has not been run; it requires live data flow.

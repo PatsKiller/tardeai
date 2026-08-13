@@ -121,6 +121,7 @@ VALID_TRIGGER_TYPES = frozenset({
     "OPERATOR_MESSAGE",
     "MANUAL",
     "SYSTEM",
+    "OPPORTUNITY_QUEUE",
 })
 
 VALID_PRIORITIES = frozenset({"LOW", "NORMAL", "HIGH", "CRITICAL"})
@@ -344,6 +345,7 @@ class CIORunStore:
                         "notification_ids": [],
                         "failure_code": None,
                         "next_check_at": None,
+                        "context": payload.get("context") or {},
                         "last_event_hash": event["event_hash"],
                         "last_event_type": etype,
                     }
@@ -457,6 +459,7 @@ class CIORunStore:
         max_wall_time_minutes: int = DEFAULT_MAX_WALL_TIME_MINUTES,
         max_specialist_calls: int = DEFAULT_MAX_SPECIALIST_CALLS,
         max_hermes_challenges: int = DEFAULT_MAX_HERMES_CHALLENGES,
+        context: Optional[dict[str, Any]] = None,
         actor: str = "system",
     ) -> dict[str, Any]:
         """Create a new CIO advisory run."""
@@ -491,6 +494,7 @@ class CIORunStore:
             "max_wall_time_minutes": max_wall_time_minutes,
             "max_specialist_calls": max_specialist_calls,
             "max_hermes_challenges": max_hermes_challenges,
+            "context": context or {},
         }
 
         fd = self._acquire_lock()

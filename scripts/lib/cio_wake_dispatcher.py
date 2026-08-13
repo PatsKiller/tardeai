@@ -283,6 +283,7 @@ class CIOWakeDispatcher:
                                 [wake["parent_handoff_id"]]
                                 if wake.get("parent_handoff_id") else []
                             ),
+                            context=wake.get("context") or {},
                             actor="cio_wake_dispatcher",
                         )
                         run_id = event["payload"]["run_id"]
@@ -625,6 +626,7 @@ class CIOWakeDispatcher:
             "HEALTH_BLOCK_CLEARED": "HEALTH_EVENT",
             "GOAL_DUE": "SYSTEM",
             "GOAL_EVENT_LINKED": "SYSTEM",
+            "OPPORTUNITY_QUEUE": "OPPORTUNITY_QUEUE",
         }
         return mapping.get(wake_trigger, "SYSTEM")
 

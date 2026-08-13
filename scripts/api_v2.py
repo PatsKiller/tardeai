@@ -27363,6 +27363,36 @@ def _watch_directive_update(body=None):
     return {"ok": True, "id": did, "action": action}
 
 
+def _opportunity_queue_summary():
+    """Build the Alex opportunity-queue digest for the health endpoint (read-only).
+
+    Fails soft: any DB/import error returns an empty queue rather than raising.
+    """
+    try:
+        from scripts.lib.cio_opportunity_queue import build_queue_from_executor
+        q = build_queue_from_executor(_db_query)
+        return {
+            "digest": q.get("digest"),
+            "count": q.get("count", 0),
+            "material": q.get("material", False),
+            "distinct_sources": q.get("distinct_sources", 0),
+            "by_source": q.get("by_source", {}),
+            "top": [
+                {
+                    "source": it.get("source"),
+                    "symbol": it.get("symbol"),
+                    "directive_label": it.get("directive_label"),
+                    "verdict": it.get("verdict"),
+                    "state": it.get("state"),
+                    "rs_score": it.get("rs_score"),
+                }
+                for it in q.get("top", [])
+            ],
+        }
+    except Exception:
+        return {"digest": None, "count": 0, "material": False, "top": []}
+
+
 def _two_way_curation_health(query=None):
     """GET /api/v2/watch/two-way-curation — loop health KPIs (read-only advisory).
 
@@ -27439,6 +27469,9 @@ def _two_way_curation_health(query=None):
                 "SELECT id, source, event, payload, created_at FROM curation_loop_audit "
                 "ORDER BY created_at DESC LIMIT 15"
             ) or [],
+            # Alex-consumable opportunity queue: one deterministic digest fed by
+            # staged/undrained desk suggestions (cio/advisory/defense/rotation/reentry).
+            "opportunity_queue": _opportunity_queue_summary(),
             # Operator interactive inbox: desk staged suggestions ready for one-tap promote
             "suggestions": _db_query(
                 """SELECT h.id AS hit_id, h.directive_id, d.label AS directive_label,

@@ -104,12 +104,14 @@ class CIOEventDetector:
         action_ledger=None,
         handoff_queue=None,
         health_boundary=None,
+        opportunity_source=None,
     ):
         self.schedules = schedules or LEGACY_SCHEDULES
         self._wake_store = wake_store
         self._action_ledger = action_ledger
         self._handoff_queue = handoff_queue
         self._health_boundary = health_boundary
+        self._opportunity_source = opportunity_source
         self._now = None
         self._timezone = None
 
@@ -142,6 +144,11 @@ class CIOEventDetector:
         if self._handoff_queue:
             handoff_wakes = self._check_handoff_completions(now)
             wakes.extend(handoff_wakes)
+
+        # E. Check desk-suggestion opportunity queue (Phase 5)
+        if self._opportunity_source:
+            opportunity_wakes = self._check_opportunity_queue(now)
+            wakes.extend(opportunity_wakes)
 
         return {
             "run_at": now.isoformat(),
@@ -409,6 +416,58 @@ class CIOEventDetector:
 
         return wakes
 
+    def _check_opportunity_queue(self, now: datetime) -> List[dict]:
+        """Create ONE wake when the desk-suggestion queue has material new work.
+
+        The opportunity_source is an injected callable returning a queue digest
+        (see lib.cio_opportunity_queue.build_opportunity_queue). It must be
+        fail-soft: if it raises, we skip (never wedge the detector). The wake is
+        idempotent on the queue digest, so Alex is woken at most once per digest.
+        """
+        wakes: List[dict] = []
+        try:
+            queue = self._opportunity_source() if callable(self._opportunity_source) else {}
+        except Exception:
+            return wakes
+
+        if not isinstance(queue, dict):
+            return wakes
+
+        digest = queue.get("digest")
+        if not digest or not queue.get("material"):
+            return wakes
+
+        idem_key = hashlib.sha256(
+            f"oppqueue|{digest}|{self.POLICY_VERSION}".encode()
+        ).hexdigest()[:32]
+        if self._wake_store and self._wake_idempotent_exists(idem_key):
+            return wakes
+
+        wake_id = f"wake-opportunity-{digest[:16]}"
+        by_source = queue.get("by_source") or {}
+        context = {
+            "opportunity_digest": digest,
+            "opportunity_count": queue.get("count", 0),
+            "distinct_sources": queue.get("distinct_sources", 0),
+            "by_source": by_source,
+            "top": queue.get("top", [])[:8],
+        }
+
+        wake = self._create_wake(
+            wake_id=wake_id,
+            trigger_type="OPPORTUNITY_QUEUE",
+            trigger_ref=f"oppqueue:{digest[:16]}",
+            trigger_hash=digest,
+            reason_codes=["OPPORTUNITY_QUEUE"],
+            required_domains=["watch"],
+            idempotency_key=idem_key,
+            wake_intent="NEW_RUN",
+            context=context,
+        )
+        if wake:
+            wakes.append(wake)
+        return wakes
+
     def _wake_idempotent_exists(self, idempotency_key: str) -> bool:
         """Check if a wake with this idempotency key already exists."""
         if not self._wake_store:
@@ -437,6 +496,7 @@ class CIOEventDetector:
         source_snapshot_id=None,
         wake_intent=None,
         target_run_id=None,
+        context=None,
     ) -> Optional[dict]:
         """Create a wake job if store is available."""
         if not self._wake_store:
@@ -467,6 +527,7 @@ class CIOEventDetector:
             "wake_intent": wake_intent or "NEW_RUN",
             "target_run_id": target_run_id,
             "idempotency_key": idempotency_key,
+            "context": context or {},
         }
 
         try:
@@ -491,10 +552,22 @@ def run_cio_event_detector_once(wake_store_path=None, action_ledger_path=None, h
     action_ledger = CIOActionLedger(event_store_path=ledger_path) if ledger_path else CIOActionLedger()
     handoff_queue = AgentHandoffQueue(event_store_path=queue_path) if queue_path else AgentHandoffQueue()
 
+    # Fail-soft opportunity source: read desk suggestions from the live DB when
+    # available, else return a cold/empty digest. The detector never wedges on
+    # DB unavailability.
+    def _opportunity_source():
+        try:
+            from scripts.lib.cio_opportunity_queue import build_queue_from_executor
+            from scripts.lib.two_way_curation import _default_executor
+            return build_queue_from_executor(_default_executor())
+        except Exception:
+            return {"digest": None, "material": False, "count": 0}
+
     detector = CIOEventDetector(
         wake_store=wake_store,
         action_ledger=action_ledger,
         handoff_queue=handoff_queue,
+        opportunity_source=_opportunity_source,
     )
 
     result = detector.run_once()

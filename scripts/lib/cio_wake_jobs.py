@@ -140,6 +140,7 @@ TRIGGER_TYPES = frozenset({
     "GOAL_EVENT_LINKED",
     "EVENT_BUS",  # reactive CIO event bus (WS2)
     "OPERATOR_MESSAGE",  # dedicated CIO Telegram converse
+    "OPPORTUNITY_QUEUE",  # desk-suggestion opportunity queue (Phase 5)
 })
 
 WAKE_REASON_CODES = frozenset({
@@ -163,6 +164,7 @@ WAKE_REASON_CODES = frozenset({
     "MARKET_REGIME_CHANGE",
     "HERMES_CONTRADICTION_FOUND",
     "SYSTEM_DOMAIN_STALE",
+    "OPPORTUNITY_QUEUE",
 })
 
 PRIORITY_MAP: dict[str, str] = {
@@ -177,6 +179,7 @@ PRIORITY_MAP: dict[str, str] = {
     "GOAL_EVENT_LINKED": "normal",
     "EVENT_BUS": "normal",
     "OPERATOR_MESSAGE": "high",
+    "OPPORTUNITY_QUEUE": "normal",
 }
 
 GENESIS_PREV_HASH = "0000000000000000000000000000000000000000000000000000000000000000"
