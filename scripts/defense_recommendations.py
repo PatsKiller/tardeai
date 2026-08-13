@@ -1085,6 +1085,25 @@ def main() -> int:
     groups = {g: sorted([c for c in ok if c["group"] == g],
                         key=lambda c: -(c.get("impact_dollars") or 0))
               for g in ("get_into", "protect", "short_side", "income")}
+
+    # Two-way curation emit (forward edge) — rotate-in / income / short-side cards seed
+    # watchlist directives via lib.two_way_curation (firewalled staging only). Advisory,
+    # fail-soft, and gated behind the same non-dry-run flag as the snapshot write.
+    if not args.dry_run:
+        try:
+            from lib.two_way_curation import defense_card_to_feedback, emit_all
+            _fb = []
+            for _g in ("get_into", "income", "short_side"):
+                for _c in groups.get(_g) or []:
+                    _f = defense_card_to_feedback(_c)
+                    if _f:
+                        _fb.append(_f)
+            if _fb:
+                _summary = emit_all("defense", _fb)
+                print(f"[recs] curation emit: {_summary.get('staged')} staged")
+        except Exception as e:
+            print(f"[recs] curation emit skipped: {str(e).splitlines()[0][:90]}")
+
     empty_reasons = {
         "get_into": ("DEFENSIVE LEAN active: cyclical rotate-ins excluded — no defensive sector "
                      "(Utilities/Staples/Healthcare) is LEADING+underweight right now"

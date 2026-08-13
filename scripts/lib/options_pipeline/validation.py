@@ -145,8 +145,42 @@ def record_outcome(
     )
     if res is None:
         return {"ok": False, "error": "db unavailable — outcome NOT recorded"}
+    fold_options_to_underlying(symbol, executor=ex)
     return {"ok": True, "proposal_id": proposal_id, "strategy_id": strategy_id,
             "outcome": oc}
+
+
+def fold_options_to_underlying(symbol: str, *,
+                               executor: Optional[Executor] = None) -> dict:
+    """P5 reverse edge: fold a symbol's closed options paper outcomes back into the
+    UNDERLYING symbol's watchlist_items conviction (options_edge_score).
+
+    The options play is a derivative of the underlying, so its paper results inform
+    the underlying's watchlist edge — closing the loop the plan's P5 targets. Advisory
+    only: writes a single 0-100 options_edge_score column, never a trade signal.
+    """
+    from lib.two_way_curation import options_outcomes_to_conviction, write_options_edge
+    ex = executor or _default_executor()
+    sym = (symbol or "").upper().strip()
+    if not sym:
+        return {"ok": False, "error": "symbol required"}
+    rows = ex(
+        """SELECT symbol, outcome, pnl, meta->>'edge_score' AS edge_score,
+                  meta->>'iv_rank' AS iv_rank
+           FROM options_paper_outcomes WHERE UPPER(symbol) = %s ORDER BY closed_at""",
+        (sym,), fetch="all",
+    )
+    outcomes = [dict(r) for r in rows] if rows else []
+    if not outcomes:
+        return {"ok": True, "symbol": sym, "folded": False, "reason": "no outcomes"}
+    conv = options_outcomes_to_conviction(outcomes)
+    c = conv.get(sym, {})
+    edge = c.get("options_edge")
+    detail = {"n": c.get("n"), "win_rate": c.get("win_rate"),
+              "net_pnl": c.get("net_pnl"), "conviction_delta": c.get("conviction_delta")}
+    res = write_options_edge(sym, edge, detail, executor=ex)
+    return {"ok": True, "symbol": sym, "folded": True, "options_edge": edge,
+            "detail": detail, "written": bool(res.get("ok"))}
 
 
 def fetch_outcomes(strategy_id: str = STRATEGY_ID,

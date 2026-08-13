@@ -1,11 +1,13 @@
-version: 6
+version: 7
 weights:
   technical_momentum: 0.069
   setup_quality: 0.0098
-  analyst: 0.5363
+  analyst: 0.5063
   social_sentiment: 0.1148
   sector_strength: 0.0515
   news_catalyst: 0.1148
   risk_reward: 0.1038
+  hermes_research: 0.02
+  options_edge: 0.01
 auto_grafted_at: '2026-08-12T21:00:01.575308+00:00'
 graft_source: outcome_ledger

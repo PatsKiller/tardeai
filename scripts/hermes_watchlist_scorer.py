@@ -167,6 +167,24 @@ def _f_rr(wi):
     return _clamp(rr * 33), f"R:R {rr:.1f}:1"
 
 
+def _f_hermes_research(wi):
+    """Reverse-edge factor: Hermes research intelligence folded back onto the name.
+    Absent (not yet written) → factor DROPPED, never a fabricated neutral."""
+    s = wi.get("hermes_research_score")
+    if s is None:
+        return None, None
+    return _clamp(float(s)), f"hermes research {float(s):.0f}"
+
+
+def _f_options_edge(wi):
+    """Reverse-edge factor: options paper-outcome edge folded onto the UNDERLYING symbol.
+    Absent (no closed options outcomes yet) → factor DROPPED, never a fabricated neutral."""
+    s = wi.get("options_edge_score")
+    if s is None:
+        return None, None
+    return _clamp(float(s)), f"options edge {float(s):.0f}"
+
+
 def score_symbol(wi, ie, pill, secmap, weights):
     factors = {
         "technical_momentum": _f_technical(wi, ie),
@@ -176,6 +194,8 @@ def score_symbol(wi, ie, pill, secmap, weights):
         "sector_strength": _f_sector(ie, secmap),
         "news_catalyst": _f_catalyst(ie),
         "risk_reward": _f_rr(wi),
+        "hermes_research": _f_hermes_research(wi),
+        "options_edge": _f_options_edge(wi),
     }
     present = {k: (v[0], v[1]) for k, v in factors.items() if v[0] is not None}
     if not present:
@@ -240,6 +260,7 @@ def _regime_weights(weights, vix):
 
 _BASE_SELECT = """SELECT wi.symbol, wi.rsi, wi.trend, wi.score, wi.watch_score_kind, wi.price,
                      sc.target_price, sc.stop_loss,
+                     wi.hermes_research_score, wi.options_edge_score,
                      ie.social_score, ie.social_sentiment, ie.rvol, ie.confluence_score,
                      ie.catalyst, ie.catalyst_verified, ie.sector
                    FROM watchlist_items wi
@@ -336,6 +357,7 @@ def _fetch_watchlist_rows(cur, limit=None, off_hours=False):
                    )
                    SELECT wi.symbol, wi.rsi, wi.trend, wi.score, wi.watch_score_kind, wi.price,
                      sc.target_price, sc.stop_loss,
+                     wi.hermes_research_score, wi.options_edge_score,
                      ie.social_score, ie.social_sentiment, ie.rvol, ie.confluence_score,
                      ie.catalyst, ie.catalyst_verified, ie.sector
                    FROM candidates c
@@ -376,7 +398,8 @@ def run(limit=None):
     rows = [dict(zip(cols, r)) for r in cur.fetchall()]
     scored = []
     for r in rows:
-        wi = {k: r[k] for k in ("symbol", "rsi", "trend", "score", "watch_score_kind", "price", "target_price", "stop_loss")}
+        wi = {k: r[k] for k in ("symbol", "rsi", "trend", "score", "watch_score_kind", "price",
+                                "target_price", "stop_loss", "hermes_research_score", "options_edge_score")}
         ie = {k: r[k] for k in ("social_score", "social_sentiment", "rvol", "confluence_score", "catalyst", "catalyst_verified", "sector")}
         comp, components = score_symbol(wi, ie, pills.get(str(r["symbol"]).upper()), secmap, weights)
         if comp is not None:

@@ -294,6 +294,63 @@ def grade_trades(cur) -> dict:
     return {"trades_graded": cur.rowcount}
 
 
+def writeback_trade_outcomes(cur) -> dict:
+    """P2 reverse edge: fold graded trade outcomes back into the watchlist conviction ledger.
+
+    A 'trade' outcome row whose symbol is also on the watchlist updates
+    realized_outcome (win/loss/scratch) + thesis_win (hit->True, miss->False, neutral->unchanged)
+    so the watchlist learns whether its theses actually resolved. Advisory only.
+    """
+    from lib.two_way_curation import outcome_verdict_to_ledger
+    cur.execute("""SELECT UPPER(l.symbol) AS symbol, l.verdict
+                   FROM hermes_outcome_ledger l
+                   WHERE l.subject_type='trade' AND l.verdict IN ('hit','miss','neutral')
+                     AND l.symbol IS NOT NULL""")
+    rows = cur.fetchall()
+    written = 0
+    for symbol, verdict in rows:
+        realized, thesis = outcome_verdict_to_ledger(verdict)
+        if realized is None:
+            continue
+        cur.execute("""UPDATE watchlist_items SET
+                         realized_outcome = COALESCE(%s, realized_outcome),
+                         thesis_win = COALESCE(%s, thesis_win),
+                         last_validated_at = NOW(), updated_at = NOW()
+                       WHERE symbol = %s AND status IN ('active','researched')""",
+                    (realized, thesis, symbol))
+        written += cur.rowcount
+    return {"outcomes_written": written}
+
+
+def writeback_hermes_research(cur) -> dict:
+    """P1 reverse edge: fold graded Hermes research action-outcomes into watchlist conviction.
+
+    Reads the outcome ledger's research_row actioned/verdict, maps it to a 0-100
+    hermes_research_score, and writes it onto the symbol's watchlist_items row so the
+    scorer's hermes_research factor actually activates. Advisory only (UPDATE, no promotion).
+    """
+    from lib.two_way_curation import hermes_research_score_from_action
+    cur.execute("""SELECT UPPER(l.symbol) AS symbol, l.actioned
+                   FROM hermes_outcome_ledger l
+                   WHERE l.subject_type='research_row' AND l.actioned IS NOT NULL
+                     AND l.symbol IS NOT NULL""")
+    rows = cur.fetchall()
+    written = 0
+    for symbol, action in rows:
+        score = hermes_research_score_from_action(action)
+        if score is None:
+            continue
+        cur.execute("""UPDATE watchlist_items SET
+                         hermes_research_score = %s,
+                         hermes_research_detail = COALESCE(hermes_research_detail, %s::jsonb),
+                         last_validated_at = NOW(), updated_at = NOW()
+                       WHERE symbol = %s AND status IN ('active','researched')""",
+                    (score, json.dumps({"actioned": action, "source": "hermes_outcome_ledger"}),
+                     symbol))
+        written += cur.rowcount
+    return {"hermes_research_written": written}
+
+
 def run(apply=False, backfill_closes=False, max_rows=None) -> dict:
     if KILL_SWITCH.exists():
         out = {"ok": False, "reason": "HERMES_DISABLED kill switch present — grader idle"}
@@ -327,6 +384,8 @@ def run(apply=False, backfill_closes=False, max_rows=None) -> dict:
     out["priced"] = grade(cur, cfg, max_rows=max_rows); conn.commit()
     out["research"] = grade_research_actions(cur, cfg); conn.commit()
     out["trades"] = grade_trades(cur); conn.commit()
+    out["outcome_writeback"] = writeback_trade_outcomes(cur); conn.commit()
+    out["research_writeback"] = writeback_hermes_research(cur); conn.commit()
     cur.execute("SELECT subject_type, verdict, count(*) FROM hermes_outcome_ledger GROUP BY 1,2 ORDER BY 1,2")
     out["ledger"] = [f"{r[0]}/{r[1]}={r[2]}" for r in cur.fetchall()]
     out["ts"] = datetime.now(timezone.utc).isoformat()

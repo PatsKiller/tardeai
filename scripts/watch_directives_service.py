@@ -147,6 +147,18 @@ def _drain_orphan_staging(cur, dry, report):
     report["orphan_staging_cleared"] = orphans
 
 
+def _drain_curation_sources(c, cur, dry, report, evaluate, resolve_fn):
+    """Drain CIO/advisory/defense curation feedback (two-way loop, forward edge).
+
+    Each source stages feedback via lib.two_way_curation.emit_feedback(); this app-role
+    service drains it through the SAME governor path as Hermes (promote_directive_lead).
+    Self-thinking: a feedback record that carries directive_kind/spec mints its own
+    watch_directives row (deduped by kind+label) — no operator hand-creation required.
+    """
+    from lib.two_way_curation import drain_curation_sources
+    drain_curation_sources(cur, dry, report, evaluate, resolve_fn)
+
+
 def _max_hermes_drain():
     for i, a in enumerate(sys.argv):
         if a == "--max-hermes-drain" and i + 1 < len(sys.argv):
@@ -245,6 +257,8 @@ def main():
                 report["hermes_drained"] += 1
         if not dry:
             cur.execute("UPDATE watch_directives SET last_serviced_at=now(), updated_at=now() WHERE id=%s", (did,))
+    # ── Two-way curation drain (CIO/advisory/defense → watchlist, forward edge) ──
+    _drain_curation_sources(c, cur, dry, report, evaluate, _resolve)
     # Trend cold-detector (advisory): reconfirm / start-clock / auto-pause-on-cold
     pause_cold_trends(c, cur, dry, report)
     if not dry:

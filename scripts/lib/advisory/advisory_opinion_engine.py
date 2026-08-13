@@ -497,6 +497,35 @@ def validate_opinion_output(
     return opinion, errors
 
 
+def emit_watchlist_feedback(
+    row: dict[str, Any],
+    evidence_bundle: dict[str, Any],
+    verdict: str,
+    conviction: float | int | None,
+) -> None:
+    """Two-way loop (forward edge): route actionable advisory verdicts into watchlist curation.
+
+    Advisory-only and firewalled — writes ONLY to advisory_directive_hits_staging via
+    lib.two_way_curation; the app role drains it later. Fail-soft: never raises, never
+    blocks the opinion path. The A2 evidence gate (>=3 symbol-specific items, non-allocation)
+    lives inside advisory_verdict_to_feedback so a thin bundle can never mint a lead.
+    """
+    try:
+        from lib.two_way_curation import advisory_verdict_to_feedback, emit_all
+        fb = advisory_verdict_to_feedback(
+            verdict,
+            str(row.get("symbol") or ""),
+            row_class=str(row.get("row_class") or "holding"),
+            conviction=conviction,
+            rationale=str(row.get("rationale") or ""),
+            evidence_count=int((evidence_bundle or {}).get("evidence_count") or 0),
+        )
+        if fb:
+            emit_all("advisory", [fb])
+    except Exception:
+        pass
+
+
 def generate_row_opinion(
     row: dict[str, Any],
     evidence_bundle: dict[str, Any],
@@ -555,6 +584,10 @@ def generate_row_opinion(
                 break
 
     if not result or not result.get("ok"):
+        emit_watchlist_feedback(
+            row, evidence_bundle, deterministic_verdict,
+            int((row.get("confidence") or 0.5) * 100),
+        )
         return {
             "verdict": deterministic_verdict,
             "conviction": int((row.get("confidence") or 0.5) * 100),
@@ -581,6 +614,10 @@ def generate_row_opinion(
     opinion = _extract_json_from_response(content)
 
     if not opinion:
+        emit_watchlist_feedback(
+            row, evidence_bundle, deterministic_verdict,
+            int((row.get("confidence") or 0.5) * 100),
+        )
         return {
             "verdict": deterministic_verdict,
             "conviction": int((row.get("confidence") or 0.5) * 100),
@@ -606,6 +643,12 @@ def generate_row_opinion(
     validated["cache_hit"] = False
     validated["usage"] = result.get("usage") or {}
     validated["via_bridge"] = bool(result.get("via_bridge"))
+
+    emit_watchlist_feedback(
+        row, evidence_bundle,
+        str(validated.get("verdict") or deterministic_verdict),
+        validated.get("conviction"),
+    )
 
     # Only cache clean (non-rejected) opinions so bad prose does not stick
     if row_hash and not validated.get("llm_rejected"):

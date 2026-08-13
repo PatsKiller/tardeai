@@ -180,6 +180,7 @@ After the promotion health gate has been active ≥7d (config: `evaluation.min_d
 
 ## Related
 
+- `TWO_WAY_WATCHLIST_CURATION.md` — two-way curation loop (CIO/advisory/defense → watchlist; outcomes → watchlist)
 - `HERMES_SCOPE_GOVERNOR.md` — tier owner
 - `HERMES_THRESHOLD_EVALUATION_ENGINE.md` — threshold before/after engine
 - `OUTCOME_BUS_IMPLEMENTATION.md` — `feedback_to_governor`

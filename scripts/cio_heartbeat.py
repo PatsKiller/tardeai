@@ -430,6 +430,18 @@ def run_heartbeat(interval_minutes: int = 30, max_actions: int = 5) -> dict[str,
         print(f"  [cio-hb] Situation detector failed (non-fatal): "
               f"{type(e).__name__}: {e}")
 
+    # 5b. Two-way curation emit (SHADOW, advisory) — CIO situations seed watchlist directives.
+    #     Fail-soft: the loop must never wedge the heartbeat. Only material situations
+    #     (S4/S5/S8) emit; everything else is ignored by the pure mapper.
+    curation_emitted = 0
+    try:
+        from lib.two_way_curation import cio_situation_to_feedback, emit_all
+        for plan in (situations_result.get("plans_detail") or []):
+            emitted = emit_all("cio", cio_situation_to_feedback(plan))
+            curation_emitted += emitted.get("staged", 0)
+    except Exception as e:
+        print(f"  [cio-hb] Curation emit failed (non-fatal): {type(e).__name__}: {e}")
+
     elapsed = time.time() - t0
     elapsed_ms = int(elapsed * 1000)
 
@@ -465,6 +477,7 @@ def run_heartbeat(interval_minutes: int = 30, max_actions: int = 5) -> dict[str,
         "behavioral_findings": len(behavioral_findings),
         "events_emitted": events_emitted,
         "situations": situations_result,
+        "curation_emitted": curation_emitted,
         "elapsed_ms": elapsed_ms,
         "mode": "shadow",
         "model_calls": 0,
