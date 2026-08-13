@@ -39,28 +39,30 @@ CALL_TIMEOUT    = int(os.getenv("RESEARCH_CALL_TIMEOUT", "150"))
 
 # ── Hermes lane registry (the whole 24/7 fleet, cheapest→scarcest) ────────────
 # Symbol-level research producers. local-gemma is the broad workhorse (enqueued, drained by the
-# always-on watchlist_agent_jobs workers); internal-deep is the overnight gemma3:27b window; grok/
-# chatgpt are the free but rate-limited external OAuth skeptics; claude is METERED → arbitration only,
-# never auto-dispatched here. Topic/source/news lanes run on their own cadence (see the doc) and are
-# governed by the same tier priorities but not symbol-fanned-out by this scheduler.
+# always-on watchlist_agent_jobs workers); internal-deep is the overnight gemma3:27b window; deepseek
+# is the governed V4 Flash external challenge (paid, no fallback) — the primary automated external lane
+# as of 2026-08-13; claude is METERED → arbitration only, never auto-dispatched here. The free OAuth
+# grok/chatgpt lanes are retained in LANES but no longer auto-dispatched by this scheduler (they were
+# the source of hourly near-duplicate "research update" noise).
 LANES = {
     "local-gemma":   {"cost": "free-fast",    "dispatch": "queue",    "auto": True},
     "internal-deep": {"cost": "free-slow",    "dispatch": "queue",    "auto": True},
-    "grok":          {"cost": "free-limited", "dispatch": "external", "auto": True},
-    "chatgpt":       {"cost": "free-limited", "dispatch": "external", "auto": True},
+    "deepseek":      {"cost": "metered",      "dispatch": "external", "auto": True},
+    "grok":          {"cost": "free-limited", "dispatch": "external", "auto": False},
+    "chatgpt":       {"cost": "free-limited", "dispatch": "external", "auto": False},
     "claude":        {"cost": "metered",      "dispatch": "external", "auto": False},  # arbitration only
 }
 
 # tier → (sla_refreshes, sla_window_days, lanes[]).  Local always covers; externals are tier-gated.
 TIER_SLA = {
-    "T0-HOLD":  (3, 1,  ["local-gemma", "internal-deep", "grok", "chatgpt"]),
-    "T0-PROP":  (2, 1,  ["local-gemma", "grok", "chatgpt"]),
-    "T1-WATCH": (4, 7,  ["local-gemma", "grok", "chatgpt"]),   # externals rotated (one per refresh)
-    "T2-INCUB": (1, 7,  ["local-gemma", "chatgpt"]),           # external only on catalyst
-    "T3-COLD":  (1, 14, ["local-gemma"]),                      # external only on catalyst
+    "T0-HOLD":  (3, 1,  ["local-gemma", "internal-deep", "deepseek"]),
+    "T0-PROP":  (2, 1,  ["local-gemma", "deepseek"]),
+    "T1-WATCH": (4, 7,  ["local-gemma", "deepseek"]),       # externals rotated (one per refresh)
+    "T2-INCUB": (1, 7,  ["local-gemma", "deepseek"]),       # external only on catalyst
+    "T3-COLD":  (1, 14, ["local-gemma"]),                   # external only on catalyst
 }
 TIER_WEIGHT = {"T0-HOLD": 1.0, "T0-PROP": 0.9, "T1-WATCH": 0.6, "T2-INCUB": 0.3, "T3-COLD": 0.1}
-EXTERNAL_LANES = {"grok", "chatgpt", "claude"}
+EXTERNAL_LANES = {"deepseek", "claude"}
 
 
 def _q(sql, params=()):
@@ -371,7 +373,7 @@ def dispatch(sym, lane, tier, apply) -> dict:
         if not apply:
             return {"ok": True, "tail": f"would enqueue {lane}"}
         return _enqueue_local(sym, tier, deep=(lane == "internal-deep"))
-    # external (grok/chatgpt)
+    # external (deepseek)
     kind = "position to hold" if tier == "T0-HOLD" else ("proposal to trade" if tier == "T0-PROP" else "candidate")
     q = QUESTION.format(sym=sym, kind=kind)
     prio = "P0" if tier.startswith("T0") else ("P1" if tier == "T1-WATCH" else "P2")
@@ -390,29 +392,40 @@ def dispatch(sym, lane, tier, apply) -> dict:
 
 
 def surface_holding_event(sym):
-    """Diff latest two chatgpt opinions for a holding; alert on material change."""
+    """Detect a material change in the latest governed DeepSeek opinion for a holding.
+
+    2026-08-13: no longer pushes raw research prose to Telegram. The near-identical
+    hourly "📊 {sym} (holding) — ChatGPT research update" spam came from a first-letter
+    comparison + `_raw_send_telegram` (which bypassed the dedup router). The research
+    now lands in `hermes_external_research` (the desk store) and is surfaced by the
+    Advisory Desk `external_research` evidence loader — no per-symbol Telegram. This
+    function only fingerprints the change (content hash) so downstream synthesis can
+    decide when a *thesis* materially changed.
+    """
     rows = _q("""SELECT recommendation, confidence, created_at FROM hermes_external_research
-                 WHERE symbol=%s AND lane='chatgpt' AND recommendation NOT LIKE '[%%'
+                 WHERE symbol=%s AND lane='deepseek' AND recommendation NOT LIKE '[%%'
                  ORDER BY created_at DESC LIMIT 2""", (sym,))
     if len(rows) < 1:
-        return
+        return False
     new = dict(rows[0])
     prev = dict(rows[1]) if len(rows) > 1 else {}
-    new_rec = (new.get("recommendation") or "")[:1].upper()
-    old_rec = (prev.get("recommendation") or "")[:1].upper()
-    conf_delta = abs(float(new.get("confidence") or 0) - float(prev.get("confidence") or 0))
-    material = (not prev) or (new_rec != old_rec) or conf_delta >= 0.2
-    if not material:
-        return
-    msg = (f"\U0001f4ca {sym} (holding) — ChatGPT research update\n"
-           f"{(new.get('recommendation') or '')[:240]}\n(conf {new.get('confidence')})")
-    try:
-        from telegram_alert import _raw_send_telegram
-        cid = (os.environ.get("TRADEAI_PROPOSAL_ALERT_CHAT_ID") or os.environ.get("TELEGRAM_CHAT_ID") or "").split(",")[0].strip()
-        if cid:
-            _raw_send_telegram(msg, chat_ids=[cid])
-    except Exception:
-        pass
+    new_hash = _research_fingerprint(new)
+    old_hash = _research_fingerprint(prev) if prev else None
+    material = (not prev) or (new_hash != old_hash)
+    if material:
+        # Research change is surfaced via the desk, not Telegram. Log it for the
+        # shadow run so a material-change signal is observable without phone noise.
+        print(f"[scheduler] material research change: {sym} "
+              f"(deepseek conf={new.get('confidence')}) — surfaced via advisory desk (no Telegram)")
+    return material
+
+
+def _research_fingerprint(row: dict) -> str:
+    """Content hash of a research row — stable across re-runs that only rephrase prose."""
+    import hashlib
+    rec = (row.get("recommendation") or "").strip()
+    conf = str(row.get("confidence") or "")
+    return hashlib.sha256(f"{rec[:240]}|{conf}".encode()).hexdigest()[:16]
 
 
 def run(mode, apply, budget):
@@ -424,10 +437,10 @@ def run(mode, apply, budget):
 
     if mode == "holdings":
         targets = [s for s, v in uni.items() if v["tier"] == "T0-HOLD"]
-        lanes_for = lambda t: TIER_SLA[t][2]   # full T0 fleet: local-gemma + internal-deep + grok + chatgpt
+        lanes_for = lambda t: TIER_SLA[t][2]   # full T0 fleet: local-gemma + internal-deep + deepseek
         ordered = [{"symbol": s, "tier": "T0-HOLD"} for s in targets]
     else:
-        lane = "chatgpt"  # primary ordering lane; gemma assumed broad/elsewhere
+        lane = "deepseek"  # primary ordering lane; gemma assumed broad/elsewhere
         due = build_due(uni, lane, force_all=(mode == "backfill"))
         if mode == "priority":
             due = [d for d in due if d["tier"].startswith("T0") or d["tier"] == "T1-WATCH" or d["catalyst"]]
@@ -447,13 +460,13 @@ def run(mode, apply, budget):
     fresh_ext = {}
     if mode == "backfill":
         skip_h = int(os.getenv("RESEARCH_BACKFILL_SKIP_FRESH_HOURS", "6"))
-        for ln in ("chatgpt", "grok"):
+        for ln in ("deepseek",):
             rows = _q("""SELECT DISTINCT symbol FROM hermes_external_research
                          WHERE lane=%s AND recommendation NOT LIKE '[%%'
                          AND created_at > NOW() - (%s||' hours')::interval""", (ln, skip_h))
             fresh_ext[ln] = {dict(r)["symbol"] for r in rows}
         print(f"[scheduler] backfill resume: skipping externals covered in last {skip_h}h "
-              f"(chatgpt {len(fresh_ext.get('chatgpt', set()))}, grok {len(fresh_ext.get('grok', set()))})")
+              f"(deepseek {len(fresh_ext.get('deepseek', set()))})")
     spent = 0      # external calls only
     done = 0
     ext_rot = 0

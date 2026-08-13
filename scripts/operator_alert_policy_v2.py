@@ -153,6 +153,10 @@ def route_event(event: AlertEvent) -> RoutingDecision:
         return RoutingDecision(ROUTE_DIGEST, None, "RISK", 24 * 3600, 3600, None)
     if atype in {"proposal_revalidated_or_cancelled"}:
         return RoutingDecision(ROUTE_DIGEST, None, "TRADING", 24 * 3600, 3600, None)
+    if atype == "thesis_update":
+        # A material thesis change is the one piece the operator wants as text (not
+        # noise). Immediate to the general channel; deduped on the 60-min window.
+        return RoutingDecision(ROUTE_IMMEDIATE, CRITICAL_OPERATIONS, None, 24 * 3600, 3600, None)
     if atype in {"siem_without_trading_impact", "system_health", "job_telemetry"}:
         return RoutingDecision(ROUTE_DIGEST, None, "OPS", DEFAULT_TTLS.get(atype, 7 * 86400), 3600, None)
     if atype in {"debug_or_success"}:
@@ -231,6 +235,8 @@ def classify_legacy_message(message: str, *, source_producer: str = "legacy_send
         return ev("research_update", "info")
     if re.search(r"investigating \d+ escalation|topic curator|incubator promoter|trade ai critique", text, re.I):
         return ev("research_update", "info")
+    if re.search(r"\bthesis\b.*\b(?:updated|version|published|changed)\b|\bdesk@v\d+\b", text, re.I):
+        return ev("thesis_update", "info")
     if re.search(r"\b(?:new go|wait|avoid|entry alert|entry candidate|scanner|social scalp setup|trade ai live)\b", text, re.I):
         return ev("scanner_candidate", "info")
     if re.search(r"orphan(?:ed|s)|naked .*position|position.*unprotected|unprotected live position", text, re.I):

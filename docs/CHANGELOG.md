@@ -1,5 +1,30 @@
 # Changelog
 
+## 2026-08-13 — Telegram noise suppression + research lane migrated to governed DeepSeek
+
+Telegram thread audited for non-actionable noise (hourly "ChatGPT research update" per-symbol spam,
+near-duplicate entry/stop alerts, pipeline-failure spam). Outcome: raw research prose is suppressed from
+Telegram and routed desk-side; only synthesized thesis changes text the operator.
+
+- **Research lane → DeepSeek** (`hermes_external_researcher.py`, `research_scheduler.py`,
+  `config/llm_process_registry.json`): the automated external skeptic is now the governed DeepSeek V4 Flash
+  lane (`deepseek_only`, FAST policy, daily cap 120 calls / $0.30 via `hermes_external_research` process).
+  Free OAuth `grok`/`chatgpt` lanes retained but `auto: False` (no longer auto-dispatched).
+- **Raw research-update Telegram suppressed** (`research_scheduler.surface_holding_event`): no longer sends
+  per-symbol `📊 ChatGPT research update` messages. It now fingerprints material change (content hash) and
+  leaves surfacing to the Advisory Desk `external_research` evidence loader
+  (`advisory_desk._load_external_research`, reading `hermes_external_research`).
+- **Producers routed through the chokepoint**: `watchlist_entry_planner._alert` (entry alerts) and
+  `morning_eval_check.sh` now go through `telegram_alert.send_telegram` / `send_operator_alert.py`;
+  `alert_dispatcher_unified` uses the approved low-level `_raw_send_telegram` for pipeline-critical
+  (immediate) delivery. Chokepoint baseline re-ratcheted.
+- **Thesis change surfaces on Telegram** (`cio_theses.publish` → `_notify_thesis_publish`): a versioned
+  CIO thesis publish now emits a concise `thesis_update` notification (classified `ROUTE_IMMEDIATE`,
+  1-hr dedupe in `operator_alert_policy_v2`).
+- Docs: `docs/RESEARCH_PRIORITIZATION.md` updated (lanes, SLA, event surfacing).
+
+No broker/order path. SHADOW / notify-on-thesis-change only.
+
 ## 2026-08-11 — Advisory desk CIO tracks P1–P5 (feature/advisory-desk-v1)
 
 READ_ONLY_ADVISORY desk continuity on `feature/advisory-desk-v1`:

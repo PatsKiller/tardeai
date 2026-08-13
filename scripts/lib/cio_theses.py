@@ -78,6 +78,27 @@ def _normalize_thesis_id(thesis_id: str) -> str:
     return tid
 
 
+def _notify_thesis_publish(thesis_id: str, version: int, summary: str) -> None:
+    """Best-effort: emit ONE concise Telegram when a CIO thesis version is published.
+
+    2026-08-13 (telegram noise suppression): a thesis version bump is the *signal*
+    that replaces the raw research-update spam. It is material and low-frequency
+    (agent/operator-gated, monotonic version), so it is surfaced as a short text via
+    the central chokepoint (`send_telegram` classifies it `thesis_update` → immediate).
+    Never blocks the store write; any failure is swallowed.
+    """
+    try:
+        import sys as _sys
+        _scripts = str(Path(__file__).resolve().parents[1])
+        if _scripts not in _sys.path:
+            _sys.path.insert(0, _scripts)
+        from telegram_alert import send_telegram
+        body = (summary or "").strip().replace("\n", " ")[:240]
+        send_telegram(f"\U0001f9e0 CIO thesis updated \u2014 {thesis_id}@v{version}\n{body}")
+    except Exception:
+        pass
+
+
 class CIOThesisStore:
     """Versioned thesis store with rebuildable projection."""
 
@@ -364,6 +385,7 @@ class CIOThesisStore:
                     payload[k] = v
         et = "THESIS_CREATED" if next_ver == 1 else "THESIS_VERSION_PUBLISHED"
         self._append_event(et, tid, payload, actor_id=actor_id)
+        _notify_thesis_publish(tid, next_ver, summary)
         return dict(self._current[tid])
 
     def get_current(self, thesis_id: str = DEFAULT_THESIS_ID) -> Optional[dict[str, Any]]:

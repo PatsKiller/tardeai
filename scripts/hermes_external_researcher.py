@@ -27,12 +27,15 @@ HERMES_CLI = str(Path.home() / ".local" / "bin" / "hermes")
 LANE_CFG = {
     # Claude: Anthropic API (key from env). ChatGPT: FREE ChatGPT-subscription OAuth via Hermes Codex CLI
     # (provider openai-codex) — NOT the metered OpenAI API. Grok: xAI API key (or the free xai-oauth proxy).
+    # DeepSeek: governed V4 Flash via lib.llm_lane (cost-governed, no fallback) — the primary automated lane.
     "claude":  {"kind": "anthropic", "url": ANTHROPIC_URL, "key_env": "ANTHROPIC_API_KEY", "default_model": "claude-sonnet-4-6"},
     "chatgpt": {"kind": "codex_cli", "provider": "openai-codex", "default_model": "gpt-5.4",
                 "auth_hint": "hermes auth add openai-codex --type oauth   (operator OAuth — free under your ChatGPT subscription)"},
     "grok":    {"kind": "xai_proxy", "url": os.environ.get("HERMES_XAI_PROXY_URL", "http://127.0.0.1:8645/v1/chat/completions"),
                 "default_model": "grok-3-mini",
                 "auth_hint": "hermes auth add xai-oauth --type oauth  then  hermes proxy start --provider xai  (free xAI OAuth, no API key)"},
+    "deepseek": {"kind": "governed_deepseek", "default_model": "deepseek-v4-flash",
+                 "auth_hint": "governed DeepSeek V4 Flash via lib.llm_lane (process hermes_external_research) — no OAuth"},
 }
 DEFAULT_MODEL = "claude-sonnet-4-6"
 
@@ -96,7 +99,7 @@ def safe_context(symbol):
     return ctx
 
 
-PROMPT = """You are an external high-stakes research analyst (Anthropic/Claude lane) advising a PAPER-trading
+PROMPT = """You are an external high-stakes research analyst (governed DeepSeek lane) advising a PAPER-trading
 research system. This is ADVISORY ONLY — you do not execute or recommend executing any live trade. You are
 given a REDACTED packet (no dollar amounts, account ids, or secrets). Provide a careful external challenge.
 
@@ -202,12 +205,34 @@ def call_xai_proxy(url, model, prompt, max_tokens=1500):
     return resp.get("choices", [{}])[0].get("message", {}).get("content", "")
 
 
+def call_governed_deepseek(model, prompt, max_tokens=1500):
+    """DeepSeek V4 Flash via the governed bridge (lib.llm_lane → gate_and_generate).
+
+    Cost-governed, circuit-breakered, and fail-closed (no silent Ollama/Grok/ChatGPT fallback).
+    Mirrors the reflective-critic migration (scripts/agent_runtime_live_providers.py).
+    """
+    import sys as _sys
+    _sys.path.insert(0, str(ROOT / "scripts"))
+    from lib.llm_lane import generate
+    text = generate(
+        prompt,
+        lane="deepseek-flash",
+        process_id="hermes_external_research",
+        task_summary="hermes_external_research"[:160],
+        timeout=120,
+        max_tokens=int(max_tokens or 1024),
+    )
+    return str(text or "").strip()
+
+
 def call_external(lane, model, prompt, max_tokens=1500):
     cfg = LANE_CFG[lane]
     if cfg["kind"] == "codex_cli":
         return call_codex_cli(model, prompt)
     if cfg["kind"] == "xai_proxy":
         return call_xai_proxy(cfg["url"], model, prompt)
+    if cfg["kind"] == "governed_deepseek":
+        return call_governed_deepseek(model, prompt, max_tokens=max_tokens)
     key = _get_key(cfg["key_env"])
     if cfg["kind"] == "anthropic":
         body = json.dumps({"model": model, "max_tokens": max_tokens,
@@ -290,7 +315,7 @@ def cache_blocks_lane(cap, force_retest):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--lane", default="claude", choices=["claude", "chatgpt", "grok"])
+    ap.add_argument("--lane", default="claude", choices=["claude", "chatgpt", "grok", "deepseek"])
     ap.add_argument("--question", required=True)
     ap.add_argument("--symbol", default=None)
     ap.add_argument("--priority", default="P1")
@@ -311,7 +336,7 @@ def main():
     try:
         from hermes_research_budget_guard import decide as _bdecide
         _trig = (args.trigger or "manual").split(":")[0]   # normalize 'paper_postmortem:13' -> 'paper_postmortem'
-        _lk = "cloud_paid" if args.lane == "claude" else "cloud_" + args.lane
+        _lk = "cloud_paid" if args.lane in ("claude", "deepseek") else "cloud_" + args.lane
         _gd = _bdecide(symbol=args.symbol or "_", trigger_source=_trig, research_type="external_research",
                        lane=_lk, urgency=args.priority)
         args.budget_decision = _gd["decision"]

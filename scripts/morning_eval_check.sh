@@ -76,13 +76,10 @@ echo "===== end ====="
 
 echo "$REPORT" | tee -a "$LOG"
 
-# Best-effort Telegram (uses .env TELEGRAM_BOT_TOKEN + a chat id if present)
-TOKEN=$(grep -E '^TELEGRAM_BOT_TOKEN=' .env 2>/dev/null | cut -d= -f2-)
-CHAT=$(grep -E '^TELEGRAM_(ALERT_)?CHAT_ID=|^TELEGRAM_CHAT_ID=' .env 2>/dev/null | head -1 | cut -d= -f2-)
-if [ -n "${TOKEN:-}" ] && [ -n "${CHAT:-}" ]; then
-  curl -s --max-time 15 "https://api.telegram.org/bot${TOKEN}/sendMessage" \
-    --data-urlencode "chat_id=${CHAT}" \
-    --data-urlencode "text=$REPORT" >/dev/null 2>&1 && echo "(telegram sent)" || echo "(telegram failed)"
+# Best-effort Telegram via the safe shell sender (stdin body → central chokepoint).
+# No raw curl / token interpolation — routes + dedupes like every other producer.
+if printf '%s' "$REPORT" | "$PY" "$PROJ/scripts/send_operator_alert.py" --quiet; then
+  echo "(telegram accepted)"
 else
-  echo "(telegram token/chat not in .env — report logged only)"
+  echo "(telegram skipped — report logged only)"
 fi

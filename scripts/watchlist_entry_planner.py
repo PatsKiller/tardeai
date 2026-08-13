@@ -582,22 +582,6 @@ def run(lane="local", symbols=None, limit=25, alert=True, scope="watchlist", buy
 
 
 def _alert(sym, p, urg, price) -> bool:
-    import os
-    tok = os.getenv("TELEGRAM_BOT_TOKEN", "")
-    if not tok:
-        try:
-            for l in (PROJECT_ROOT / ".env").read_text().splitlines():
-                if l.startswith("TELEGRAM_BOT_TOKEN="):
-                    tok = l.split("=", 1)[1].strip()
-        except Exception:
-            pass
-    try:
-        from tg_chat_ids import chat_ids
-        chat = (chat_ids() or [None])[0]
-    except Exception:
-        chat = None
-    if not (tok and chat):
-        return False
     icon = "🟢 READY" if urg == "ready" else "🟡 NEAR-ENTRY"
     prop = p.get("proposal") or {}
     lad = p.get("exit_ladder")
@@ -615,11 +599,12 @@ def _alert(sym, p, urg, price) -> bool:
             f"invalidation: {str(p.get('invalidation',''))[:120]}\n"
             f"proposal advice: *{prop.get('tag','WAIT')}* — {str(prop.get('sizing_rationale',''))[:100]}\n"
             f"_advisory only — nothing queued, nothing executed_")
+    # Route through the central chokepoint (classification + dedup) instead of a raw
+    # requests.post. Advisory-only near-entry/ready alerts classify as scanner_candidate
+    # and land on the Command Center dashboard rather than interrupting the phone.
     try:
-        import requests
-        requests.post(f"https://api.telegram.org/bot{tok}/sendMessage",
-                      json={"chat_id": chat, "text": text, "parse_mode": "Markdown"}, timeout=10)
-        return True
+        from telegram_alert import send_telegram
+        return bool(send_telegram(text))
     except Exception:
         return False
 

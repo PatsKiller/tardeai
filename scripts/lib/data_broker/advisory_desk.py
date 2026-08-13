@@ -1133,6 +1133,45 @@ def _load_agent_results() -> dict[str, Any]:
         return {"state": "UNAVAILABLE", "by_symbol": {}, "count": 0}
 
 
+def _load_external_research() -> dict[str, Any]:
+    """Load latest governed DeepSeek external-research opinion per symbol from
+    hermes_external_research via DB.
+
+    2026-08-13: the external research lane migrated from free ChatGPT OAuth to
+    governed DeepSeek (lane='deepseek'). This surfaces that per-symbol challenge
+    as advisory `external_research` evidence — replacing the hourly raw Telegram
+    "research update" spam with a desk-side evidence line the Flash/Pro opinions
+    and the CIO synthesis can actually reason over.
+    """
+    by_symbol: dict[str, list[dict[str, Any]]] = {}
+    try:
+        from db_adapter import _execute
+        rows = _execute(
+            """SELECT DISTINCT ON (upper(symbol))
+                      upper(symbol) AS symbol, recommendation, confidence,
+                      model, created_at
+               FROM hermes_external_research
+               WHERE lane = 'deepseek'
+                 AND recommendation IS NOT NULL
+                 AND recommendation NOT LIKE '[%%'
+                 AND created_at > now() - make_interval(days => 14)
+               ORDER BY upper(symbol), created_at DESC""",
+            fetch="all",
+        ) or []
+        for row in rows:
+            sym = _norm_symbol(str(row.get("symbol") or ""))
+            if sym:
+                by_symbol.setdefault(sym, []).append({
+                    "recommendation": str(row.get("recommendation") or "")[:240],
+                    "confidence": _f(row.get("confidence")),
+                    "model": row.get("model", ""),
+                    "created_at": str(row.get("created_at", "")),
+                })
+        return {"state": "AVAILABLE", "by_symbol": by_symbol, "count": len(by_symbol)}
+    except Exception:
+        return {"state": "UNAVAILABLE", "by_symbol": {}, "count": 0}
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # S4: External data loaders — listing dates, instrument identity, OHLCV,
 #     price action, lot-level basis, analyst context
@@ -1988,6 +2027,21 @@ def _build_evidence_bundle(
     elif row_class in ("holding", "watchlist"):
         gaps.append("agent_opinions")
 
+    # ── 9b. External research (governed DeepSeek challenge) ──
+    external_list = all_data.get("external_research", {}).get("by_symbol", {}).get(symbol, [])
+    if external_list:
+        for e in external_list[:1]:
+            items.append({
+                "type": "external_research",
+                "source": "hermes_external_research",
+                "as_of": str(e.get("created_at",""))[:19],
+                "model": e.get("model",""),
+                "recommendation": e.get("recommendation","")[:240],
+                "confidence": e.get("confidence"),
+            })
+    elif row_class in ("holding", "watchlist"):
+        gaps.append("external_research")
+
     # ── S4/10. Instrument identity ──
     inst_data = all_data.get("instruments", {}).get(symbol, {})
     if inst_data:
@@ -2655,6 +2709,7 @@ def build_advisory_desk(*, max_age_s: float = DEFAULT_MAX_AGE_S, force: bool = F
         ("risk_snapshot", _load_risk_snapshot),
         ("sectors", _load_sector_rotation),
         ("agent_results", _load_agent_results),
+        ("external_research", _load_external_research),
     ]:
         try:
             evidence_data[name] = loader()
@@ -2780,6 +2835,7 @@ def build_advisory_desk(*, max_age_s: float = DEFAULT_MAX_AGE_S, force: bool = F
                     "risk_snapshot": "lib.data_broker.advisory_desk._load_risk_snapshot",
                     "sector_rotation": "lib.data_broker.advisory_desk._load_sector_rotation",
                     "agent_results": "lib.data_broker.advisory_desk._load_agent_results",
+                    "external_research": "lib.data_broker.advisory_desk._load_external_research",
                 },
                 "holdings_count": holdings.get("count", 0),
                 "watchlist_count": watchlist.get("count", 0),

@@ -38,25 +38,17 @@ def _load_env():
 
 
 def _send_telegram(message: str):
-    token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-    if not token:
-        print("  [telegram] No bot token")
-        return
-    try:  # FQDN/v3 normalization chokepoint (rewrite internal IPs + legacy /v2/ dashboard links)
-        from notification_url_builder import publicize_message
-        message = publicize_message(message)
-    except Exception:
-        pass
-    import urllib.request
-    for chat_id in TELEGRAM_CHAT_IDS:
-        try:
-            data = json.dumps({"chat_id": chat_id, "text": message}).encode()
-            req = urllib.request.Request(
-                f"https://api.telegram.org/bot{token}/sendMessage",
-                data=data, headers={"Content-Type": "application/json"})
-            urllib.request.urlopen(req, timeout=10)
-        except Exception as e:
-            print(f"  [telegram] Error sending to {chat_id}: {e}")
+    # Route through the audited transport chokepoint (FQDN/v3 normalization, smart split,
+    # report capture) instead of a raw urllib request. Pipeline-failure alerts are critical
+    # ops — delivered immediately, not gated by the router — so this uses the approved
+    # low-level sender directly with the exact configured recipients.
+    try:
+        from telegram_alert import _raw_send_telegram
+        ok = _raw_send_telegram(message, chat_ids=TELEGRAM_CHAT_IDS)
+        if not ok:
+            print("  [telegram] No bot token or recipients configured")
+    except Exception as e:
+        print(f"  [telegram] Error: {e}")
 
 
 def _send_email(subject: str, body: str):

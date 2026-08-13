@@ -255,10 +255,32 @@
     },
     {
       "id": "hermes_external_research",
-      "name": "Hermes External Research",
+      "name": "Hermes External Research (DeepSeek)",
       "category": "Hermes",
-      "lane_policy": "either",
-      "description": "Escalation \u2014 first available OAuth lane"
+      "lane_policy": "deepseek_only",
+      "default_mode": "automated",
+      "description": "Symbol-level external research challenge via governed DeepSeek V4 Flash. Replaces the free ChatGPT OAuth lane (gpt-5.4) that produced hourly near-duplicate 'research update' Telegram noise. Read-only advisory. No tools. No fallback.",
+      "allowed_lanes": [
+        "fast",
+        "deepseek-flash",
+        "deepseek-v4-flash"
+      ],
+      "deepseek_default_policy": "FAST",
+      "deepseek_allowed_policies": [
+        "FAST"
+      ],
+      "max_input_tokens": 8000,
+      "max_output_tokens": 1024,
+      "daily_soft_cap": 120,
+      "daily_cost_cap_usd": 0.30,
+      "tools_allowed": false,
+      "fallback_allowed": false,
+      "advisory_only": true,
+      "dedupe_policy": "request_id_only",
+      "circuit_breaker": true,
+      "registered_by": "telegram-noise-suppression",
+      "registered_at": "2026-08-13T12:00:00Z",
+      "notes": "2026-08-13: research lane migrated from free ChatGPT OAuth (gpt-5.4) to governed DeepSeek V4 Flash. Small payloads (~8000 in x ~512-1024 out, ~$0.0015/call). Holdings (T0) refresh several times/day, so a 120-call soft cap / $0.30 daily cap is ample and bounds the daily desk cross-check cost."
     },
     {
       "id": "multi_tier_trade_reviewer",
