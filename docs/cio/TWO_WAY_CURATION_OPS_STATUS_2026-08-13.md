@@ -67,7 +67,9 @@ CIO residual staging is also auto-drained (stage-only) after reactive emit when
 - `bfc8f674` — Hermes staging fast drain  
 - `67946947` — Desk suggestions inbox + promote  
 - `db6b4825` — docs production status  
-- multi-desk emit+drain ops + CIO residual auto-drain  
+- `69f6d268` — multi-desk emit+drain + CIO residual auto-drain  
+- `06d91cba` — options edge proxies + scorer v9  
+- `ad305f87` — scheduled cron (options-edge + desk-emit)  
 
 ---
 

@@ -92,12 +92,16 @@ New `watchlist_items` columns (`migrations/2026-08-13_two_way_curation.sql`, add
 
 ### 4.1 Scorer integration (`hermes_watchlist_scorer.py`)
 
-Two new factors fold into `score_symbol`:
+Reverse factors fold into `score_symbol` (`config/hermes_score_weights.yaml` **v9**):
 
-- `hermes_research` — weighted `0.02` (config `hermes_score_weights.yaml` v7)
-- `options_edge` — weighted `0.01`
+| Factor | Weight | Column |
+|--------|-------:|--------|
+| `hermes_research` | **0.055** | `hermes_research_score` |
+| `options_edge` | **0.045** | `options_edge_score` |
+| `thesis_outcome` | **0.057** | `realized_outcome` / `thesis_win` |
+| **Reverse total** | **~15.7%** | drop-if-null |
 
-Both factors are **dropped** (not fabricated) when their column is NULL, so a symbol without Hermes research or options history simply scores without those terms. `config/hermes_score_weights.yaml` gained `graft_source: outcome_ledger` provenance.
+All reverse factors are **dropped** (not fabricated) when their column is NULL. Analyst remains the largest single forward factor (~44%).
 
 ### 4.2 Outcome verdict mapping
 
@@ -105,17 +109,20 @@ Both factors are **dropped** (not fabricated) when their column is NULL, so a sy
 
 ### 4.3 Hermes research write-back (P1)
 
-`grade_research_actions` already resolves each research row to `trade` / `proposal` / `directive_hit` / `none`. `writeback_hermes_research` maps that to a 0–100 score (90 / 75 / 60 / 15) and writes it onto the symbol's `watchlist_items` row — closing the previously half-wired loop where the scorer *read* the column but nothing *wrote* it.
+`grade_research_actions` already resolves each research row to `trade` / `proposal` / `directive_hit` / `none`. `writeback_hermes_research` maps that to a 0–100 score (90 / 75 / 60 / 15) and writes it onto the symbol's `watchlist_items` row — closing the previously half-wired loop where the scorer *read* the column but nothing *wrote* it. Graders route through lib writers so `curation_loop_audit` stays single-sourced.
 
 ---
 
-## 5. Options feedback loop (P5)
+## 5. Options feedback loop (P5 / P1 proxies)
 
-`lib/options_pipeline/validation.record_outcome()` calls `fold_options_to_underlying()` after recording a paper outcome. That function:
+`lib/options_pipeline/validation.fold_options_to_underlying()` writes `options_edge_score` on the **underlying** with this priority:
 
-1. Fetches a symbol's **closed** options paper outcomes.
-2. Aggregates them with `options_outcomes_to_conviction()` → `{n, win_rate, net_pnl, options_edge, conviction_delta}` (delta bounded ±20 so options inform but never dominate the thesis).
-3. Writes `options_edge_score` onto the **underlying** symbol's `watchlist_items` row via `write_options_edge()`.
+1. **Closed** `options_paper_outcomes` (realized) — preferred when present  
+2. **`options_approval_queue.edge_score`** average (prime-rubric proposals)  
+3. **`options_iv_history`** → IV rank vs peers (dampened so mid-IV ≠ perfect 100)
+
+`record_outcome()` still calls fold after a closed paper trade.  
+`scripts/ops/fold_options_edge_backfill.py` / `backfill_options_edge_universe()` refresh the watchlist in bulk (cron-driven).
 
 Options remain derivatives on equity underlyings — no new `option` asset type.
 
@@ -157,7 +164,7 @@ Desk hits no longer collapse to `hermes`.
 
 ## 9. Dry-test coverage
 
-`tests/test_two_way_curation.py` — **41 deterministic tests**, no live DB / broker / LLM, using `FakeExecutor` / fake cursors:
+`tests/test_two_way_curation.py` — **43 deterministic tests**, no live DB / broker / LLM, using `FakeExecutor` / fake cursors:
 
 | Area | Coverage |
 |------|----------|
@@ -186,12 +193,15 @@ Run:
 # Light smoke: stage synthetic S5 + stage-only drain (safe; no Finviz)
 .venv/bin/python scripts/ops/two_way_curation_smoke.py --apply-drain --stage-only
 
+# Multi-desk emit (advisory + defense from latest snaps) + drain residual
+.venv/bin/python scripts/ops/emit_and_drain_desk_curation.py --apply
+
 # Clear Hermes directive staging backlog (fast; stage hits only)
 .venv/bin/python scripts/ops/drain_hermes_directive_staging.py --apply --max 500 --stage-only
 .venv/bin/python scripts/ops/drain_hermes_directive_staging.py --apply --max 100 --stage-only --touch-quiet
 
-# Options reverse backfill (no-op if options_paper_outcomes empty)
-.venv/bin/python scripts/ops/fold_options_edge_backfill.py
+# Options reverse backfill (closed → queue edge → IV rank)
+.venv/bin/python scripts/ops/fold_options_edge_backfill.py --limit 500
 
 # Loop KPIs / ACTIVE status
 .venv/bin/python scripts/watch_directives_monitor.py --dry-run
@@ -202,8 +212,26 @@ curl -sS http://127.0.0.1:7777/api/v2/watch-directives | python3 -c \
   "import sys,json; d=json.load(sys.stdin); print('desk_suggestions', d.get('desk_suggestions_count'))"
 ```
 
-Env knobs: `CURATION_DRAIN_LIMIT` (default 25), `CURATION_AUTO_APPLY_GATE=1`,  
-`CURATION_AUTO_APPLY=1` + `CURATION_HIT_RATE_DEFAULT=0.65` to allow auto-apply soak.
+### Scheduled cron (MS-01, Mon–Fri)
+
+Wrapper: `scripts/run_scheduled_two_way_curation.sh`  
+Logs: `logs/two_way_curation_cron.log`, `two_way_options_edge.log`, `two_way_desk_emit.log`
+
+| Time (ET) | Mode | After |
+|-----------|------|-------|
+| 15:50 | `options-edge` | IV snapshot 15:45 |
+| 16:25 | `options-edge` | EOD options monitor |
+| 10:20 | `desk-emit` | Morning defense recs 10:10 |
+| 18:05 | `desk-emit` | Evening defense recs 17:50 |
+
+```bash
+bash scripts/run_scheduled_two_way_curation.sh options-edge
+bash scripts/run_scheduled_two_way_curation.sh desk-emit
+crontab -l | sed -n '/two-way-curation-cron/,/END two-way/p'
+```
+
+Env knobs: `CURATION_DRAIN_LIMIT` (default 25), `CURATION_DRAIN_AFTER_EMIT=1`,  
+`CURATION_AUTO_APPLY_GATE=1`, `OPTIONS_EDGE_LIMIT=500`.
 
 **SM env source:** `/run/user/1000/tradeai/env` is shell-sourceable after `render_env.py`  
 omits non-shell `openclaw/...` keys. Prefer:
@@ -229,17 +257,18 @@ Promote remains **advisory** (watchlist / watchpool registration) — never orde
 
 | Source | Module | Notes |
 |--------|--------|-------|
-| CIO | `cio_reactive_cycle.py` | New plans + **open S4/S5/S8** re-seed (rate-limited) |
-| Advisory | `advisory_opinion_engine.emit_watchlist_feedback` | Also on **cache hit** (no longer starved); ADD/RE_ENTER need evidence ≥ 2; TRIM/EXIT ≥ 3 |
+| CIO | `cio_reactive_cycle.py` | New plans + **open S4/S5/S8** re-seed; light stage-only drain after emit |
+| Advisory | `advisory_opinion_engine.emit_watchlist_feedback` | Cache hits emit too; ADD/RE_ENTER evidence ≥ 2; TRIM/EXIT ≥ 3 |
 | Defense | `defense_recommendations.py` | `get_into` / `income` / `short_side` only |
+| Ops batch | `emit_and_drain_desk_curation.py` | From latest desk snaps (cron after defense) |
 
 ### Reverse wiring
 
-| Writer | Columns | Scorer factor |
+| Writer | Columns | Scorer factor (v9) |
 |--------|---------|---------------|
-| Outcome grader via lib writers | `realized_outcome`, `thesis_win` | `thesis_outcome` (weights v8) |
-| Outcome grader | `hermes_research_score` | `hermes_research` |
-| Options `fold_options_to_underlying` | `options_edge_score` | `options_edge` |
+| Outcome grader via lib writers | `realized_outcome`, `thesis_win` | `thesis_outcome` 5.7% |
+| Outcome grader | `hermes_research_score` | `hermes_research` 5.5% |
+| Options fold (closed / queue / IV) | `options_edge_score` | `options_edge` 4.5% |
 
 ---
 
@@ -248,12 +277,15 @@ Promote remains **advisory** (watchlist / watchpool registration) — never orde
 | Signal | Value |
 |--------|------:|
 | Monitor status | **ACTIVE** |
-| Hermes staging undrained | **0** (after fast drain) |
-| Desk suggestions (API) | **9** CIO staged (SCHD/VTI/XLU family) |
-| Desk hits 24h | **cio ≥ 9** honest `surfaced_by` |
-| Reverse: hermes_research / realized / options | **1115 / 111 / 0** |
-| Audit trail 24h | **~18k** (research + outcome + cio) |
-| Unit tests | **41 passed** |
+| API loop | **CIRCULATING** |
+| Hermes staging undrained | **0** |
+| Desk staging undrained | **0 / 0 / 0** |
+| Desk suggestions (API) | **~26** multi-desk (cio + advisory + defense) |
+| Desk hits 24h | **cio / advisory / defense** all non-zero |
+| Reverse: research / realized / options_edge | **~1115 / ~111 / ~278** |
+| Scorer reverse weights | **v9 ~15.7%** |
+| Cron | **options-edge + desk-emit** installed |
+| Unit tests | **43 passed** |
 
 ---
 
@@ -277,3 +309,8 @@ Promote remains **advisory** (watchlist / watchpool registration) — never orde
 | `c1d9046a` | P0–P2: provenance, reverse writers, scorer, KPIs |
 | `bfc8f674` | Fast Hermes staging drain |
 | `67946947` | Interactive desk suggestions + promote UI/API |
+| `69f6d268` | Multi-desk emit+drain; CIO residual auto-drain |
+| `06d91cba` | Options edge proxies + scorer reverse weights v9 |
+| `ad305f87` | Cron: options-edge + multi-desk emit |
+
+Also see: [TWO_WAY_CURATION_OPS_STATUS_2026-08-13.md](./TWO_WAY_CURATION_OPS_STATUS_2026-08-13.md)
