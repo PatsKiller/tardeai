@@ -30,8 +30,10 @@ def test_accepts_real_prose():
 
 
 def test_extract_prose_from_json_blob():
-    blob = '{"content": "The market is risk-off today with VIX near 16 and "
-           "financials weakening. Focus on defense of existing book."}'
+    blob = (
+        '{"content": "The market is risk-off today with VIX near 16 and '
+        'financials weakening. Focus on defense of existing book."}'
+    )
     prose = extract_prose(blob)
     assert "risk-off" in prose
     assert is_valid_prose(prose) is True
