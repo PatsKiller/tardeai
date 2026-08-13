@@ -16,13 +16,19 @@ Each agent has exactly one queue and one templated unit instance:
 | `tradeai-agent-runtime@iris`       | Iris (curation)        | 1 | SHADOW |
 | `tradeai-agent-runtime@reflection` | Nightly Reflection     | 1 | SHADOW |
 | `tradeai-agent-runtime@argus`      | Argus (population scan) | 1 | SHADOW |
+| `tradeai-agent-runtime@vigil`      | Vigil (health fusion)  | 1 | SHADOW |
 | `tradeai-agent-runtime@maria`      | Maria (research)       | 2 | DISABLED |
 | `tradeai-agent-runtime@vega`       | Vega (technical)       | 2 | DISABLED |
 | `tradeai-agent-runtime@risk_agent` | Guardian Risk          | 2 | DISABLED |
 | `tradeai-agent-runtime@aegis`      | Aegis (incidents)      | 2 | DISABLED |
+| `tradeai-agent-runtime@alex`       | Alex (CIO synthesis)   | 3 | SHADOW |
+| `tradeai-agent-runtime@steph`      | Steph (allocation)     | 3 | SHADOW |
+| `tradeai-agent-runtime@ledger`     | Ledger (tax critic)    | 3 | DISABLED |
+| `tradeai-agent-runtime@morgan`     | Morgan (wealth)        | 3 | SHADOW |
 
-Second-wave instances remain refused by the runner even if a timer is created,
-because the agent definition is `enabled=false` / `DESIGNED`.
+Second-wave and disabled wave-3 (`ledger`) instances remain refused by the runner
+even if a timer is created, because the agent definition is `enabled=false` /
+`DESIGNED`.
 
 ## Model routing (2026-08-12)
 
