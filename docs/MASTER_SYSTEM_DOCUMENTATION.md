@@ -263,7 +263,7 @@ The pipeline runs **31 stages organized into 7 groups**. Each group has a design
 |-------|--------|--------|---------|
 | Sentiment Processor | `sentiment_processor.py` | Unscored news_articles | sentiment + sentiment_score on each article; sentiment_observations |
 | Signal Fusion | `signal_fusion.py` | catalyst + news + social + sentiment | `fused_signals` (strategy-weighted composite per symbol) |
-| Topic Curator | `topic_curator.py --improve-queries` | Recent articles + LLM | Content ratings, entity links, improved search queries → auto-ingestion |
+| Topic Curator | `topic_curator.py --improve-queries` | Recent articles + LLM | Content ratings, entity links, improved search queries → auto-ingestion (loop-capped: re-ingest passes `--no-auto-curate`) |
 
 ### Group 4 -- Intelligence (Continuous)
 

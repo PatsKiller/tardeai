@@ -1172,6 +1172,44 @@ def _load_external_research() -> dict[str, Any]:
         return {"state": "UNAVAILABLE", "by_symbol": {}, "count": 0}
 
 
+def _load_ingestion_health() -> dict[str, Any]:
+    """Load topic ingestion/curation health from the desk-side projections.
+
+    2026-08-13: topic_ingestion.py and topic_curator.py stopped texting per-run
+    counts to Telegram and now write `data/runtime/topic_ingestion_latest.json`
+    and `topic_curator_latest.json`. This surfaces that health as a
+    portfolio-level `ingestion_health` evidence item so the desk still sees the
+    freshness of the research pipeline that was previously only visible as spam.
+    """
+    runtime = PROJECT_ROOT / "data" / "runtime"
+    ingestion = _load_json(runtime / "topic_ingestion_latest.json") or {}
+    curation = _load_json(runtime / "topic_curator_latest.json") or {}
+
+    has_ingestion = bool(ingestion.get("generated_at"))
+    has_curation = bool(curation.get("generated_at"))
+    if not has_ingestion and not has_curation:
+        return {"state": "UNAVAILABLE"}
+
+    return {
+        "state": "AVAILABLE",
+        "ingestion": ({
+            "as_of": str(ingestion.get("generated_at", ""))[:19],
+            "articles": ingestion.get("articles"),
+            "transcripts": ingestion.get("transcripts"),
+            "topics_processed": ingestion.get("topics_processed"),
+            "topics_skipped": ingestion.get("topics_skipped"),
+        } if has_ingestion else None),
+        "curation": ({
+            "as_of": str(curation.get("generated_at", ""))[:19],
+            "rated": curation.get("rated"),
+            "approved": curation.get("approved"),
+            "blocked": curation.get("blocked"),
+            "entity_links": curation.get("entity_links"),
+            "agent_events": curation.get("agent_events"),
+        } if has_curation else None),
+    }
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # S4: External data loaders — listing dates, instrument identity, OHLCV,
 #     price action, lot-level basis, analyst context
@@ -2011,6 +2049,17 @@ def _build_evidence_bundle(
             "aggregate": True,  # portfolio-level, not symbol-specific
         })
 
+    # ── 8b. Research ingestion/curation health (aggregate) ──
+    ingest_health = all_data.get("ingestion_health", {})
+    if ingest_health.get("state") == "AVAILABLE":
+        items.append({
+            "type": "ingestion_health",
+            "source": "topic_ingestion_latest_json",
+            "ingestion": ingest_health.get("ingestion"),
+            "curation": ingest_health.get("curation"),
+            "aggregate": True,  # portfolio-level, not symbol-specific
+        })
+
     # ── 9. Agent opinions (Maria/Risk/Tax) ──
     agent_list = agent_data.get("by_symbol", {}).get(symbol, [])
     if agent_list:
@@ -2710,6 +2759,7 @@ def build_advisory_desk(*, max_age_s: float = DEFAULT_MAX_AGE_S, force: bool = F
         ("sectors", _load_sector_rotation),
         ("agent_results", _load_agent_results),
         ("external_research", _load_external_research),
+        ("ingestion_health", _load_ingestion_health),
     ]:
         try:
             evidence_data[name] = loader()
@@ -2836,6 +2886,7 @@ def build_advisory_desk(*, max_age_s: float = DEFAULT_MAX_AGE_S, force: bool = F
                     "sector_rotation": "lib.data_broker.advisory_desk._load_sector_rotation",
                     "agent_results": "lib.data_broker.advisory_desk._load_agent_results",
                     "external_research": "lib.data_broker.advisory_desk._load_external_research",
+                    "ingestion_health": "lib.data_broker.advisory_desk._load_ingestion_health",
                 },
                 "holdings_count": holdings.get("count", 0),
                 "watchlist_count": watchlist.get("count", 0),

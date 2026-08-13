@@ -632,12 +632,14 @@ def main():
         improve_queries(conn, args.topic)
 
         # Step 3b: AUTO-RUN improved queries through topic_ingestion
-        # This closes the loop: curate → improve queries → ingest new content → curate again
+        # --no-auto-curate breaks the ingest<->curate loop: this re-ingest must NOT
+        # spawn another curator, or a run that keeps finding new articles would loop
+        # until the external APIs throttle (the 8/3 110-message burst).
         print("\n[3b/5] Running improved queries through topic_ingestion...")
         try:
             import subprocess
             ingest_cmd = [sys.executable, str(PROJECT_ROOT / "scripts" / "topic_ingestion.py"),
-                          "--use-llm-queries"]
+                          "--use-llm-queries", "--no-auto-curate"]
             if args.topic:
                 ingest_cmd += ["--topic", args.topic]
             r = subprocess.run(ingest_cmd, capture_output=True, text=True, timeout=300,

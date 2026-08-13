@@ -83,6 +83,35 @@ def _write_desk_projection(total_stats: dict) -> None:
         print(f"  [topic_ingestion] desk projection write failed: {e}")
 
 
+# ── Global min-interval re-entry guard ───────────────────────────────────
+# Belt-and-braces against sub-minute re-invocation (loop defense + any parent
+# that fires this script faster than the external APIs can be safely hit). Uses
+# a timestamp file rather than a held flock so legitimate sequential drains
+# (RI queue, iris --gaps, reground) — which run one topic per subprocess at
+# >30s spacing — are never skipped.
+_INGESTION_GATE_PATH = "/tmp/topic_ingestion.interval"
+_INGESTION_MIN_INTERVAL_S = 30.0
+
+
+def _interval_gate_ok() -> bool:
+    """Return True if enough time has elapsed since the last ingestion start."""
+    try:
+        p = Path(_INGESTION_GATE_PATH)
+        now = time.time()
+        if p.exists():
+            try:
+                last = float(p.read_text().strip() or "0")
+            except ValueError:
+                last = 0.0
+            if now - last < _INGESTION_MIN_INTERVAL_S:
+                return False
+        p.write_text(str(now), encoding="utf-8")
+        return True
+    except Exception:
+        # Guard must never block ingestion on an I/O edge case.
+        return True
+
+
 # ── Content scoring (reuse existing) ────────────────────────────────────
 try:
     from content_scoring import score_content, tag_content
@@ -1386,7 +1415,18 @@ def main():
                              "cleanly within a timeout; staleest topics (NULLS FIRST) go first.")
     parser.add_argument("--owner", default="",
                         help="Restrict to a single owner (e.g. 'shared'). Default: tradeai+shared.")
+    parser.add_argument("--no-auto-curate", action="store_true",
+                        help="Do NOT auto-spawn topic_curator.py after ingestion. Used by the "
+                             "curator's own re-ingest step to break the ingest<->curate loop.")
     args = parser.parse_args()
+
+    # Global min-interval guard: skip (clean exit) if a prior ingestion started
+    # too recently. Protects external news/YouTube APIs from sub-minute hammering.
+    # --dry-run never hits the external APIs, so it is exempt.
+    if not args.dry_run and not _interval_gate_ok():
+        print(f"  [topic_ingestion] skipped — within {_INGESTION_MIN_INTERVAL_S:.0f}s "
+              f"of the previous run (re-entry guard)")
+        return
 
     conn = _get_conn()
     cur = conn.cursor()
@@ -1503,8 +1543,11 @@ def main():
 
     conn.close()
 
-    # Auto-trigger curation pipeline after ingestion
-    if total_stats["articles"] + total_stats["transcripts"] > 0 and not args.dry_run:
+    # Auto-trigger curation pipeline after ingestion (unless the caller is the
+    # curator's own re-ingest step — that would form an unbounded ingest<->curate
+    # loop; see --no-auto-curate).
+    if (total_stats["articles"] + total_stats["transcripts"] > 0
+            and not args.dry_run and not args.no_auto_curate):
         print("\n  >> Triggering post-ingestion curation pipeline...")
         try:
             import subprocess

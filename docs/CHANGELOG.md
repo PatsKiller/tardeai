@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-08-13 — Topic ingest<->curate loop broken + projections surfaced to desk
+
+Root-caused the 8/3 burst: `topic_ingestion.py` auto-spawned `topic_curator.py --improve-queries`
+after every run that saved articles, and the curator's "Step 3b" re-ran `topic_ingestion.py`
+unconditionally — so a run that kept finding fresh articles looped until the external APIs
+throttled (~110 cycles / 2.5h, one "across 1 topics" message every 2-3 min).
+
+- **`topic_ingestion.py`**: added `--no-auto-curate` (skip the post-ingestion curator spawn) and a
+  global min-interval re-entry guard (`/tmp/topic_ingestion.interval`, 30s) that skips sub-interval
+  re-invocation without blocking legitimate sequential drains (RI queue, iris `--gaps`, reground —
+  all run one topic per subprocess at >30s spacing). `--dry-run` is exempt.
+- **`topic_curator.py`**: Step 3b now passes `--no-auto-curate` to the re-ingest, capping the chain
+  at exactly one curator hop per ingestion.
+- **`advisory_desk.py`**: new `_load_ingestion_health` loader surfaces the silenced
+  `data/runtime/topic_ingestion_latest.json` / `topic_curator_latest.json` projections as a
+  portfolio-level `ingestion_health` evidence item.
+- Tests: `tests/test_topic_ingestion_loop_break.py` (5 checks pinning the loop-break + guard).
+
+No broker/order path. Data truth unchanged; only the ingest/curate feedback loop narrowed.
+
 ## 2026-08-13 — Topic ingestion/curation count noise routed to desk (no Telegram)
 
 The hourly "Topic Ingestion: N articles + 0 transcripts saved across 1 topics" and
