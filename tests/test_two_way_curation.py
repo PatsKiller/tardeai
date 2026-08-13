@@ -381,20 +381,33 @@ def test_resolve_instrument_class():
 def test_scorer_hermes_research_and_options_edge_factors():
     import hermes_watchlist_scorer as hs
     weights = {"technical_momentum": 0.2, "hermes_research": 0.1, "options_edge": 0.1,
-               "risk_reward": 0.2, "analyst": 0.4}
+               "risk_reward": 0.2, "analyst": 0.3, "thesis_outcome": 0.1}
     wi = {"symbol": "NVDA", "rsi": 55, "trend": "bullish", "price": 100,
           "target_price": 130, "stop_loss": 90}
     comp, components = hs.score_symbol(wi, {}, None, {}, weights)
     assert comp is not None
     assert "hermes_research" not in components
     assert "options_edge" not in components
+    assert "thesis_outcome" not in components
 
-    wi2 = dict(wi, hermes_research_score=80, options_edge_score=85)
+    wi2 = dict(wi, hermes_research_score=80, options_edge_score=85,
+               realized_outcome="win", thesis_win=True)
     comp2, components2 = hs.score_symbol(wi2, {}, None, {}, weights)
     assert "hermes_research" in components2
     assert "options_edge" in components2
+    assert "thesis_outcome" in components2
     assert components2["hermes_research"]["score"] == 80.0
     assert components2["options_edge"]["score"] == 85.0
+    assert components2["thesis_outcome"]["score"] == 78.0
+
+
+def test_scorer_thesis_loss_penalty():
+    import hermes_watchlist_scorer as hs
+    weights = {"thesis_outcome": 1.0, "analyst": 0.0}
+    wi = {"symbol": "X", "realized_outcome": "loss", "thesis_win": False}
+    comp, components = hs.score_symbol(wi, {}, None, {}, weights)
+    assert "thesis_outcome" in components
+    assert components["thesis_outcome"]["score"] == 22.0
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -448,10 +461,13 @@ def test_writeback_trade_outcomes_roundtrip():
     ])
     res = hg.writeback_trade_outcomes(cur)
     assert res["outcomes_written"] == 3
-    # ungradeable verdict must NOT write realized_outcome/thesis_win
-    written_symbols = {u[1][2] for u in cur.updates}
+    # Updates go through write_realized_outcome (UPDATE + audit INSERT)
+    updates = [u for u in cur.updates if u[0] and "UPDATE WATCHLIST_ITEMS" in u[0].upper()]
+    written_symbols = {u[1][-1] for u in updates}
     assert "NVDA" in written_symbols and "MSTR" in written_symbols and "COIN" in written_symbols
     assert "PFE" not in written_symbols
+    audits = [u for u in cur.updates if u[0] and "CURATION_LOOP_AUDIT" in u[0].upper()]
+    assert len(audits) >= 3
 
 
 def test_writeback_hermes_research_roundtrip():
@@ -464,7 +480,8 @@ def test_writeback_hermes_research_roundtrip():
     ])
     res = hg.writeback_hermes_research(cur)
     assert res["hermes_research_written"] == 3
-    by_sym = {u[1][2]: u[1][0] for u in cur.updates}
+    updates = [u for u in cur.updates if u[0] and "UPDATE WATCHLIST_ITEMS" in u[0].upper()]
+    by_sym = {u[1][-1]: u[1][0] for u in updates}
     assert by_sym["NVDA"] == 90.0
     assert by_sym["MSFT"] == 75.0
     assert by_sym["IBM"] == 15.0

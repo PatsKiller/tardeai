@@ -39,8 +39,21 @@ STAGING_TABLE = {
     "advisory": "advisory_directive_hits_staging",
     "defense": "defense_directive_hits_staging",
 }
-# surfaced_by must stay inside the watch_directive_hits CHECK constraint
-SURFACED_BY = {"cio": "hermes", "advisory": "hermes", "defense": "hermes"}
+# Honest desk provenance (CHECK expanded in 2026-08-13_two_way_curation_p0_surfaced_by)
+SURFACED_BY = {"cio": "cio", "advisory": "advisory", "defense": "defense"}
+# Desk-minted directives get a default TTL so auto-minted volume is bounded.
+DESK_DIRECTIVE_TTL_DAYS = 14
+# Cap per-source drain rows per service pass (cost control; rest wait next cycle).
+DEFAULT_DRAIN_LIMIT = 25
+# Desk sources are trusted for promotion policy when not in research_sources registry.
+DESK_PROMOTION_TIER = {
+    "cio": "trusted",
+    "advisory": "trusted",
+    "defense": "trusted",
+    "operator": "core",
+    "trade_ai": "trusted",
+    "hermes": "trusted",
+}
 
 # Advisory verdicts that justify a watchlist curation signal (the S3 taxonomy).
 ACTIONABLE_ADVISORY_VERDICTS = ("ADD", "TRIM", "EXIT", "RE_ENTER")
@@ -401,20 +414,31 @@ def mark_staging_drained(source: str, row_id: int,
 
 def drain_curation_sources(cur, dry: bool, report: Dict[str, Any],
                            evaluate: Callable[..., Dict[str, Any]],
-                           resolve_fn: Callable[..., List[str]]) -> None:
+                           resolve_fn: Callable[..., List[str]],
+                           *,
+                           drain_limit: int = DEFAULT_DRAIN_LIMIT,
+                           auto_apply: Optional[Callable[..., Dict[str, Any]]] = None) -> None:
     """Drain CIO/advisory/defense curation feedback (forward edge) via a cursor.
 
     Self-contained (no psycopg2 / .env at import) so it is dry-testable with a fake
     cursor. `evaluate(symbol, directive_id, reason, source, auto)` and
     `resolve_fn(directive_dict) -> [symbol]` are supplied by the caller (the service
     wraps the real promote_directive_lead governor + directive resolver).
+
+    ``auto_apply(source, symbol, did) -> gate dict`` is optional: when present and
+    gate.auto_apply is False, evaluate is forced to stage (auto=False). When True,
+    auto=None lets the governor decide. Never bypasses governor for auto=True.
     """
     report.setdefault("detail", [])
     report.setdefault("promoted", 0)
     report.setdefault("staged", 0)
+    limit = max(1, int(drain_limit or DEFAULT_DRAIN_LIMIT))
     for source in ("cio", "advisory", "defense"):
         tbl = STAGING_TABLE[source]
-        cur.execute(f"SELECT * FROM {tbl} WHERE drained=false ORDER BY proposed_at")
+        cur.execute(
+            f"SELECT * FROM {tbl} WHERE drained=false ORDER BY proposed_at LIMIT %s",
+            (limit,),
+        )
         rows = cur.fetchall() or []
         for h in rows:
             hid = h["id"]
@@ -435,53 +459,117 @@ def drain_curation_sources(cur, dry: bool, report: Dict[str, Any],
                             (kind, label))
                 r = cur.fetchone()
                 if r:
-                    did = r["id"]
+                    did = r["id"] if isinstance(r, dict) else r[0]
                 elif not dry:
                     cur.execute("""INSERT INTO watch_directives
-                        (kind,label,spec,rationale,created_by,status,priority,trade_ai_enabled,hermes_enabled)
-                        VALUES (%s,%s,%s::jsonb,%s,%s,'active','normal',true,true) RETURNING id""",
+                        (kind,label,spec,rationale,created_by,status,priority,
+                         trade_ai_enabled,hermes_enabled,ttl_days)
+                        VALUES (%s,%s,%s::jsonb,%s,%s,'active','normal',true,true,%s)
+                        RETURNING id""",
                         (kind, label, json.dumps(spec, default=str),
-                         str(detail.get("rationale") or "")[:500] or None, source))
-                    did = cur.fetchone()["id"]
+                         str(detail.get("rationale") or "")[:500] or None, source,
+                         DESK_DIRECTIVE_TTL_DAYS))
+                    row = cur.fetchone()
+                    did = row["id"] if isinstance(row, dict) else row[0]
             syms = resolve_fn({"id": did, "kind": kind, "spec": spec, "label": label})
-            for sym in syms:
+            for sym in (syms or []):
                 if not dry and did:
-                    res = evaluate(sym, did, f"{source}:{(str(detail.get('thesis') or '')[:60])}",
-                                   source, None)
+                    auto_flag = None  # governor decides by default
+                    if auto_apply is not None:
+                        try:
+                            gate = auto_apply(source, sym, did) or {}
+                            if not gate.get("auto_apply", False):
+                                auto_flag = False  # force stage_for_review path
+                            report.setdefault("auto_apply_decisions", []).append({
+                                "source": source, "symbol": sym,
+                                "action": gate.get("action"), "auto_apply": gate.get("auto_apply"),
+                            })
+                        except Exception as exc:
+                            auto_flag = False
+                            report.setdefault("auto_apply_errors", 0)
+                            report["auto_apply_errors"] = report.get("auto_apply_errors", 0) + 1
+                            report["detail"].append({
+                                "source": source, "symbol": sym,
+                                "event": "auto_apply_error", "error": str(exc)[:120],
+                            })
+                    res = evaluate(
+                        sym, did,
+                        f"{source}:{(str(detail.get('thesis') or '')[:60])}",
+                        source, auto_flag,
+                    )
                     st = res.get("status")
                     report["promoted"] = report.get("promoted", 0) + (1 if st == "PROMOTED" else 0)
                     report["staged"] = report.get("staged", 0) + (1 if st == "STAGED_FOR_REVIEW" else 0)
                     report["detail"].append({"source": source, "symbol": sym, "status": st,
-                                             "directive": label})
+                                             "directive": label, "surfaced_by": SURFACED_BY.get(source, source)})
                 else:
                     report["detail"].append({"source": source, "symbol": sym,
                                              "directive": label, "dry": True})
             if not dry:
                 cur.execute(f"UPDATE {tbl} SET drained=true, drained_at=now() WHERE id=%s", (hid,))
+                try:
+                    cur.execute(
+                        """INSERT INTO curation_loop_audit (source, event, payload)
+                           VALUES (%s, %s, %s::jsonb)""",
+                        (source, "drained",
+                         json.dumps({"id": hid, "directive_id": did, "label": label}, default=str)),
+                    )
+                except Exception:
+                    pass  # audit fail-soft — never block drain
             report.setdefault("curation_drained", 0)
             report["curation_drained"] += 1
 
 
 def write_realized_outcome(symbol: str, realized_outcome: Optional[str],
                            thesis_win: Optional[bool],
-                           executor: Optional[Executor] = None) -> Dict[str, Any]:
-    """Reverse edge: realized trade outcome -> watchlist_items conviction ledger."""
+                           executor: Optional[Executor] = None,
+                           *,
+                           overwrite: bool = True) -> Dict[str, Any]:
+    """Reverse edge: realized trade outcome -> watchlist_items conviction ledger.
+
+    Default overwrite=True so the latest graded verdict wins (avoids first-win freeze).
+    Set overwrite=False to keep COALESCE first-wins semantics for back-compat tests.
+    """
     sym = str(symbol or "").upper().strip()
     if not sym:
         return {"ok": False, "error": "symbol required"}
+    if realized_outcome is None and thesis_win is None:
+        return {"ok": False, "error": "nothing to write"}
     ex = executor or _default_executor()
-    res = ex(
-        """UPDATE watchlist_items SET
-             realized_outcome = COALESCE(%s, realized_outcome),
-             thesis_win = COALESCE(%s, thesis_win),
-             last_validated_at = NOW(),
-             updated_at = NOW()
-           WHERE symbol = %s AND status IN ('active','researched')""",
-        (realized_outcome, thesis_win, sym),
-    )
+    if overwrite:
+        sql = """UPDATE watchlist_items SET
+                 realized_outcome = COALESCE(%s, realized_outcome),
+                 thesis_win = CASE WHEN %s::boolean IS NULL THEN thesis_win ELSE %s::boolean END,
+                 last_validated_at = NOW(),
+                 updated_at = NOW()
+               WHERE symbol = %s AND status IN ('active','researched')"""
+        # realized_outcome always overwrites when provided; thesis_win overwrites when not None
+        params = (
+            realized_outcome,
+            thesis_win, thesis_win,
+            sym,
+        )
+        if realized_outcome is not None:
+            sql = """UPDATE watchlist_items SET
+                     realized_outcome = %s,
+                     thesis_win = CASE WHEN %s::boolean IS NULL THEN thesis_win ELSE %s::boolean END,
+                     last_validated_at = NOW(),
+                     updated_at = NOW()
+                   WHERE symbol = %s AND status IN ('active','researched')"""
+            params = (realized_outcome, thesis_win, thesis_win, sym)
+    else:
+        sql = """UPDATE watchlist_items SET
+                 realized_outcome = COALESCE(%s, realized_outcome),
+                 thesis_win = COALESCE(%s, thesis_win),
+                 last_validated_at = NOW(),
+                 updated_at = NOW()
+               WHERE symbol = %s AND status IN ('active','researched')"""
+        params = (realized_outcome, thesis_win, sym)
+    res = ex(sql, params)
     if res is None:
         return {"ok": False, "error": "db unavailable — outcome NOT written"}
-    audit("outcome", "folded", {"symbol": sym, "realized_outcome": realized_outcome}, executor=ex)
+    audit("outcome", "folded", {"symbol": sym, "realized_outcome": realized_outcome,
+                                "thesis_win": thesis_win}, executor=ex)
     return {"ok": True, "symbol": sym, "realized_outcome": realized_outcome,
             "thesis_win": thesis_win}
 
@@ -557,10 +645,11 @@ def ensure_directive(source: str, feedback: Dict[str, Any],
         return int(row)
     ins = ex(
         """INSERT INTO watch_directives
-             (kind, label, spec, rationale, created_by, status, priority, trade_ai_enabled, hermes_enabled)
-           VALUES (%s, %s, %s::jsonb, %s, %s, 'active', 'normal', true, true)
+             (kind, label, spec, rationale, created_by, status, priority,
+              trade_ai_enabled, hermes_enabled, ttl_days)
+           VALUES (%s, %s, %s::jsonb, %s, %s, 'active', 'normal', true, true, %s)
            RETURNING id""",
-        (kind, label, _json(spec), rationale, source),
+        (kind, label, _json(spec), rationale, source, DESK_DIRECTIVE_TTL_DAYS),
     )
     if not ins:
         return None

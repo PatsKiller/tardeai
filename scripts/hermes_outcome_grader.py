@@ -297,57 +297,71 @@ def grade_trades(cur) -> dict:
 def writeback_trade_outcomes(cur) -> dict:
     """P2 reverse edge: fold graded trade outcomes back into the watchlist conviction ledger.
 
-    A 'trade' outcome row whose symbol is also on the watchlist updates
-    realized_outcome (win/loss/scratch) + thesis_win (hit->True, miss->False, neutral->unchanged)
-    so the watchlist learns whether its theses actually resolved. Advisory only.
+    Routes through lib.two_way_curation.write_realized_outcome so audit + overwrite
+    semantics stay single-sourced. Advisory only.
     """
-    from lib.two_way_curation import outcome_verdict_to_ledger
+    from lib.two_way_curation import outcome_verdict_to_ledger, write_realized_outcome
+
+    def _ex(sql, params=None, fetch=None):
+        cur.execute(sql, params or ())
+        if fetch == "one":
+            return cur.fetchone()
+        if fetch == "all":
+            return cur.fetchall()
+        return True
+
     cur.execute("""SELECT UPPER(l.symbol) AS symbol, l.verdict
                    FROM hermes_outcome_ledger l
                    WHERE l.subject_type='trade' AND l.verdict IN ('hit','miss','neutral')
                      AND l.symbol IS NOT NULL""")
     rows = cur.fetchall()
     written = 0
-    for symbol, verdict in rows:
+    for row in rows:
+        symbol = row["symbol"] if isinstance(row, dict) else row[0]
+        verdict = row["verdict"] if isinstance(row, dict) else row[1]
         realized, thesis = outcome_verdict_to_ledger(verdict)
         if realized is None:
             continue
-        cur.execute("""UPDATE watchlist_items SET
-                         realized_outcome = COALESCE(%s, realized_outcome),
-                         thesis_win = COALESCE(%s, thesis_win),
-                         last_validated_at = NOW(), updated_at = NOW()
-                       WHERE symbol = %s AND status IN ('active','researched')""",
-                    (realized, thesis, symbol))
-        written += cur.rowcount
+        res = write_realized_outcome(symbol, realized, thesis, executor=_ex, overwrite=True)
+        if res.get("ok"):
+            written += 1
     return {"outcomes_written": written}
 
 
 def writeback_hermes_research(cur) -> dict:
     """P1 reverse edge: fold graded Hermes research action-outcomes into watchlist conviction.
 
-    Reads the outcome ledger's research_row actioned/verdict, maps it to a 0-100
-    hermes_research_score, and writes it onto the symbol's watchlist_items row so the
-    scorer's hermes_research factor actually activates. Advisory only (UPDATE, no promotion).
+    Routes through lib.two_way_curation.write_hermes_research (audit + single writer).
     """
-    from lib.two_way_curation import hermes_research_score_from_action
+    from lib.two_way_curation import hermes_research_score_from_action, write_hermes_research
+
+    def _ex(sql, params=None, fetch=None):
+        cur.execute(sql, params or ())
+        if fetch == "one":
+            return cur.fetchone()
+        if fetch == "all":
+            return cur.fetchall()
+        return True
+
     cur.execute("""SELECT UPPER(l.symbol) AS symbol, l.actioned
                    FROM hermes_outcome_ledger l
                    WHERE l.subject_type='research_row' AND l.actioned IS NOT NULL
                      AND l.symbol IS NOT NULL""")
     rows = cur.fetchall()
     written = 0
-    for symbol, action in rows:
+    for row in rows:
+        symbol = row["symbol"] if isinstance(row, dict) else row[0]
+        action = row["actioned"] if isinstance(row, dict) else row[1]
         score = hermes_research_score_from_action(action)
         if score is None:
             continue
-        cur.execute("""UPDATE watchlist_items SET
-                         hermes_research_score = %s,
-                         hermes_research_detail = COALESCE(hermes_research_detail, %s::jsonb),
-                         last_validated_at = NOW(), updated_at = NOW()
-                       WHERE symbol = %s AND status IN ('active','researched')""",
-                    (score, json.dumps({"actioned": action, "source": "hermes_outcome_ledger"}),
-                     symbol))
-        written += cur.rowcount
+        res = write_hermes_research(
+            symbol, score,
+            detail={"actioned": action, "source": "hermes_outcome_ledger"},
+            executor=_ex,
+        )
+        if res.get("ok"):
+            written += 1
     return {"hermes_research_written": written}
 
 

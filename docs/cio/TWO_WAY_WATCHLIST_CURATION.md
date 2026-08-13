@@ -1,6 +1,7 @@
 # Two-Way Watchlist Curation
 
-**Status:** Implemented + dry-tested (2026-08-13) · advisory · firewall-preserved
+**Status:** Implemented + schema-live + P0–P2 remediation (2026-08-13) · advisory · firewall-preserved  
+**Maturity (honest):** ~6.5–7.5/10 after remediation path (forward smoke + reverse writers + scorer thesis factor + KPIs)  
 **Authority:** sources `READ_ONLY_ADVISORY`; only the app role drains staging
 
 This document records the due-diligence audit of the watch-list / proposal life cycle and the remediation that turns it from a one-way pipeline into a **closed, two-way, self-reinforcing curation loop** — CIO (Alex), the Advisory Desk, and the Defense Desk feed *into* the watch list, and realized outcomes feed *back* to re-score it.
@@ -166,6 +167,28 @@ Run:
 ```bash
 .venv/bin/python -m pytest tests/test_two_way_curation.py -q
 ```
+
+### Ops (post-remediation)
+
+```bash
+# Expand surfaced_by CHECK (cio|advisory|defense)
+psql … -f migrations/2026-08-13_two_way_curation_p0_surfaced_by.sql
+
+# Light smoke: stage synthetic S5 + optional dry drain
+.venv/bin/python scripts/ops/two_way_curation_smoke.py
+.venv/bin/python scripts/ops/two_way_curation_smoke.py --drain
+.venv/bin/python scripts/ops/two_way_curation_smoke.py --apply-drain   # real promote
+
+# Options reverse backfill (no-op if options_paper_outcomes empty)
+.venv/bin/python scripts/ops/fold_options_edge_backfill.py
+
+# Loop KPIs
+.venv/bin/python scripts/watch_directives_monitor.py --dry-run
+# GET /api/v2/watch/two-way-curation
+```
+
+Env knobs: `CURATION_DRAIN_LIMIT` (default 25), `CURATION_AUTO_APPLY_GATE=1`,  
+`CURATION_AUTO_APPLY=1` + `CURATION_HIT_RATE_DEFAULT=0.65` to allow auto-apply soak.
 
 ---
 

@@ -154,9 +154,52 @@ def _drain_curation_sources(c, cur, dry, report, evaluate, resolve_fn):
     service drains it through the SAME governor path as Hermes (promote_directive_lead).
     Self-thinking: a feedback record that carries directive_kind/spec mints its own
     watch_directives row (deduped by kind+label) — no operator hand-creation required.
+
+    auto_apply_gate is AND-ed with the governor: gate False forces stage; gate True
+    still lets promote_directive_lead decide (never force auto=True).
     """
-    from lib.two_way_curation import drain_curation_sources
-    drain_curation_sources(cur, dry, report, evaluate, resolve_fn)
+    from lib.two_way_curation import (
+        DEFAULT_DRAIN_LIMIT,
+        DESK_PROMOTION_TIER,
+        auto_apply_gate,
+        drain_curation_sources,
+    )
+    import os
+
+    try:
+        limit = max(1, int(os.environ.get("CURATION_DRAIN_LIMIT", DEFAULT_DRAIN_LIMIT)))
+    except ValueError:
+        limit = DEFAULT_DRAIN_LIMIT
+
+    def _auto_apply(source, symbol, did):
+        # Hit-rate floor starts open (None) until calibration exists; gate then
+        # requires trusted tier + non-divergent. Divergence is read inside promote.
+        tier = DESK_PROMOTION_TIER.get(source, "candidate")
+        # Prefer live divergence when available
+        try:
+            import directive_promotion as dp
+            div = dp.get_divergence_status(symbol, c) or "unavailable"
+        except Exception:
+            div = "unavailable"
+        # No calibrated hit-rate yet → pass None so hit_rate_ok is False unless
+        # CURATION_HIT_RATE_DEFAULT is set (bootstrap soak).
+        hr_raw = os.environ.get("CURATION_HIT_RATE_DEFAULT", "").strip()
+        try:
+            hr = float(hr_raw) if hr_raw else None
+        except ValueError:
+            hr = None
+        # During bootstrap (no hit-rate), treat missing hit-rate as meeting floor
+        # only when CURATION_AUTO_APPLY=1; default is stage-for-review (safer).
+        if hr is None and os.environ.get("CURATION_AUTO_APPLY", "0").strip() in ("1", "true", "yes"):
+            hr = 0.65
+        return auto_apply_gate(tier, div, hr)
+
+    drain_curation_sources(
+        cur, dry, report, evaluate, resolve_fn,
+        drain_limit=limit,
+        auto_apply=_auto_apply if os.environ.get("CURATION_AUTO_APPLY_GATE", "1").strip()
+        not in ("0", "false", "no") else None,
+    )
 
 
 def _max_hermes_drain():

@@ -40,7 +40,19 @@ def _conn():
 
 # ── tier + divergence reads (advisory read-models; fail-closed) ──────────────────
 def get_source_tier(source_system, conn=None):
-    """research_sources + operator activation -> effective promotion tier."""
+    """research_sources + operator activation -> effective promotion tier.
+
+    Desk sources (cio/advisory/defense) default to trusted so forward curation
+    is not stuck at candidate when absent from the Hermes source registry.
+    """
+    src = str(source_system or "").strip().lower()
+    try:
+        from lib.two_way_curation import DESK_PROMOTION_TIER
+        if src in DESK_PROMOTION_TIER:
+            return DESK_PROMOTION_TIER[src]
+    except Exception:
+        if src in ("cio", "advisory", "defense", "operator", "trade_ai", "hermes"):
+            return "trusted" if src != "operator" else "core"
     try:
         from hermes_source_policy import get_source_tier as _policy_tier
         return _policy_tier(source_system, for_promotion=True)
@@ -49,7 +61,7 @@ def get_source_tier(source_system, conn=None):
     try:
         d = json.loads(_TIER_JSON.read_text())
         for r in d.get("sources", []):
-            if str(r.get("source", "")).lower() == str(source_system or "").lower():
+            if str(r.get("source", "")).lower() == src:
                 tier = r.get("tier") or "candidate"
                 if tier == "core":
                     return "trusted"
@@ -242,6 +254,17 @@ def _insert_watchpool_row(conn, strategy_id, symbol, snapshot, cfg, origin_syste
     return row[0] if row else None
 
 
+# Honest desk provenance (migration 2026-08-13_two_way_curation_p0_surfaced_by).
+_SURFACED_BY_ALLOWED = frozenset({
+    "trade_ai", "hermes", "operator", "cio", "advisory", "defense",
+})
+
+
+def _normalize_surfaced_by(surfaced_by: str | None) -> str:
+    s = str(surfaced_by or "").strip().lower()
+    return s if s in _SURFACED_BY_ALLOWED else "hermes"
+
+
 def _record_hit(conn, directive_id, symbol, surfaced_by, tier, reason, divergence,
                 promoted, promotion_status, qualified_strategies=None):
     cur = conn.cursor()
@@ -251,7 +274,7 @@ def _record_hit(conn, directive_id, symbol, surfaced_by, tier, reason, divergenc
              promoted, promotion_status, qualified_strategies, promoted_at)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, CASE WHEN %s THEN NOW() END)
         ON CONFLICT (directive_id, symbol, surfaced_at) DO NOTHING
-    """, (directive_id, symbol, surfaced_by if surfaced_by in ('trade_ai', 'hermes', 'operator') else 'hermes',
+    """, (directive_id, symbol, _normalize_surfaced_by(surfaced_by),
           tier, reason, divergence, promoted, promotion_status,
           qualified_strategies or None, promoted))
     conn.commit()

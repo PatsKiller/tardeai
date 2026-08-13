@@ -199,15 +199,50 @@ def run_once(*, max_wakes: int = 12, dispatch: bool = True) -> dict[str, Any]:
         out["situations"] = {"errors": [f"situations_hook:{exc}"], "plans_created": []}
 
     # Two-way curation emit (forward edge) — CIO situations seed watchlist directives.
+    # Emits from (1) newly created plans this pass AND (2) open S4/S5/S8 plans so
+    # deduped-but-still-open situations keep the loop circulating (rate-limited).
     # Shadow/advisory + fail-soft: stages feedback only (firewalled); the app-role
     # drain (watch_directives_service) governs promotion. Never wedges the cycle.
     try:
-        from lib.two_way_curation import cio_situation_to_feedback, emit_all
+        from lib.two_way_curation import (
+            CIO_CURATION_SITUATIONS,
+            cio_situation_to_feedback,
+            emit_all,
+        )
         _situations = out.get("situations") or {}
         _curation_emitted = 0
-        for _plan in (_situations.get("plans_detail") or []):
+        _seen_keys: set[str] = set()
+        plans_to_emit: list[dict] = list(_situations.get("plans_detail") or [])
+        # Re-seed from open plans of curation types (materiality + rate limit).
+        try:
+            from lib.cio_plans import CIOPlanStore
+            for _op in CIOPlanStore().list_open_plans(limit=40) or []:
+                st = str(_op.get("situation_type") or "")
+                if st not in CIO_CURATION_SITUATIONS:
+                    continue
+                plans_to_emit.append({
+                    "plan_id": _op.get("plan_id"),
+                    "situation_type": st,
+                    "symbols": _op.get("symbols") or [],
+                    "status": _op.get("status"),
+                    "rationale": (_op.get("summary") or _op.get("narrative") or "")[:300],
+                    "sectors": (_op.get("extra") or {}).get("sectors")
+                               or (_op.get("extra") or {}).get("rotation_targets"),
+                    "seed_symbols": (_op.get("extra") or {}).get("seed_symbols"),
+                })
+        except Exception as _open_exc:
+            out.setdefault("curation_open_plan_errors", str(_open_exc)[:120])
+        for _plan in plans_to_emit:
+            st = str(_plan.get("situation_type") or "")
+            if st not in CIO_CURATION_SITUATIONS:
+                continue
+            key = f"{st}|{','.join(sorted(str(s).upper() for s in (_plan.get('symbols') or [])[:5]))}"
+            if key in _seen_keys:
+                continue
+            _seen_keys.add(key)
             _curation_emitted += emit_all("cio", cio_situation_to_feedback(_plan)).get("staged", 0)
         out["curation_emitted"] = _curation_emitted
+        out["curation_plans_considered"] = len(_seen_keys)
     except Exception as exc:
         out["curation_emitted"] = 0
         out["errors"].append(f"curation_emit:{exc}")

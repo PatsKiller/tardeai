@@ -27363,6 +27363,100 @@ def _watch_directive_update(body=None):
     return {"ok": True, "id": did, "action": action}
 
 
+def _two_way_curation_health(query=None):
+    """GET /api/v2/watch/two-way-curation — loop health KPIs (read-only advisory).
+
+    Forward: staging undrained / desk directives / desk hits / audit.
+    Reverse: realized_outcome / hermes_research / options_edge coverage.
+    """
+    def q1(sql):
+        rows = _db_query(sql) or []
+        if not rows:
+            return 0
+        r = rows[0]
+        return list(r.values())[0] if isinstance(r, dict) else r[0]
+
+    def qkv(sql):
+        rows = _db_query(sql) or []
+        out = {}
+        for r in rows:
+            if isinstance(r, dict):
+                out[str(r.get("k"))] = r.get("n")
+            else:
+                out[str(r[0])] = r[1]
+        return out
+
+    try:
+        body = {
+            "ok": True,
+            "authority": "READ_ONLY_ADVISORY",
+            "forward": {
+                "staging_undrained": {
+                    "cio": q1("SELECT count(*) AS n FROM cio_directive_hits_staging WHERE NOT drained"),
+                    "advisory": q1("SELECT count(*) AS n FROM advisory_directive_hits_staging WHERE NOT drained"),
+                    "defense": q1("SELECT count(*) AS n FROM defense_directive_hits_staging WHERE NOT drained"),
+                    "hermes": q1("SELECT count(*) AS n FROM hermes_directive_hits_staging WHERE NOT drained"),
+                },
+                "desk_directives_active": q1(
+                    "SELECT count(*) AS n FROM watch_directives WHERE status='active' "
+                    "AND created_by IN ('cio','advisory','defense')"
+                ),
+                "desk_hits_24h": qkv(
+                    "SELECT surfaced_by AS k, count(*) AS n FROM watch_directive_hits "
+                    "WHERE surfaced_at > now() - interval '24 hours' "
+                    "AND surfaced_by IN ('cio','advisory','defense') GROUP BY 1"
+                ),
+                "audit_events_24h": q1(
+                    "SELECT count(*) AS n FROM curation_loop_audit "
+                    "WHERE created_at > now() - interval '24 hours'"
+                ),
+                "audit_by_source_24h": qkv(
+                    "SELECT source AS k, count(*) AS n FROM curation_loop_audit "
+                    "WHERE created_at > now() - interval '24 hours' GROUP BY 1"
+                ),
+            },
+            "reverse": {
+                "with_realized_outcome": q1(
+                    "SELECT count(*) AS n FROM watchlist_items "
+                    "WHERE status IN ('active','researched') AND realized_outcome IS NOT NULL"
+                ),
+                "with_hermes_research": q1(
+                    "SELECT count(*) AS n FROM watchlist_items "
+                    "WHERE status IN ('active','researched') AND hermes_research_score IS NOT NULL"
+                ),
+                "with_options_edge": q1(
+                    "SELECT count(*) AS n FROM watchlist_items "
+                    "WHERE status IN ('active','researched') AND options_edge_score IS NOT NULL"
+                ),
+                "active_researched": q1(
+                    "SELECT count(*) AS n FROM watchlist_items "
+                    "WHERE status IN ('active','researched')"
+                ),
+            },
+            "recent_audit": _db_query(
+                "SELECT id, source, event, payload, created_at FROM curation_loop_audit "
+                "ORDER BY created_at DESC LIMIT 15"
+            ) or [],
+        }
+        # Simple maturity hint for operator
+        f, r = body["forward"], body["reverse"]
+        circulating = (
+            (f.get("desk_directives_active") or 0) > 0
+            or (f.get("audit_events_24h") or 0) > 0
+            or sum((f.get("staging_undrained") or {}).values()) > 0
+        )
+        reverse_ok = (r.get("with_hermes_research") or 0) > 0
+        body["loop_status"] = (
+            "CIRCULATING" if circulating and reverse_ok
+            else "REVERSE_ONLY" if reverse_ok and not circulating
+            else "FORWARD_ONLY" if circulating
+            else "COLD"
+        )
+        return body
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)[:200], "authority": "READ_ONLY_ADVISORY"}
+
+
 def _watch_directives(query=None):
     """GET /api/v2/watch-directives — operator watch directives + recent hits + Hermes staging (read-only)."""
     directives = _db_query("""SELECT id, kind, label, status, priority, trade_ai_enabled, hermes_enabled,
@@ -35410,6 +35504,7 @@ ROUTES = {
     "/api/v2/hermes/llm-auth-status": _hermes_llm_auth_status,
     "/api/v2/system/llm-retry-health": _llm_retry_health,
     "/api/v2/watch-directives": _watch_directives,
+    "/api/v2/watch/two-way-curation": _two_way_curation_health,
     "/api/v2/watch/directives/detail": _watch_directive_detail,
     "/api/v2/watch/directives/merge-plan": _watch_directive_merge_plan,
     "/api/v2/watchpool": _watchpool_list,

@@ -35,6 +35,27 @@ def main():
         cur.execute(q, a); return {str(r["k"]): r["n"] for r in cur.fetchall()}
 
     active = one("SELECT count(*) FROM watch_directives WHERE status='active'")
+    # Two-way curation KPIs (forward + reverse)
+    def _safe_one(q, *a):
+        try:
+            return one(q, *a)
+        except Exception:
+            try:
+                c.rollback()
+            except Exception:
+                pass
+            return 0
+
+    def _safe_kv(q, *a):
+        try:
+            return kv(q, *a)
+        except Exception:
+            try:
+                c.rollback()
+            except Exception:
+                pass
+            return {}
+
     snap = {"date": datetime.now(timezone.utc).strftime("%Y-%m-%d"), "ts": datetime.now(timezone.utc).isoformat(),
             "directives_active": active,
             "hits_24h": one("SELECT count(*) FROM watch_directive_hits WHERE surfaced_at>now()-interval '24 hours'"),
@@ -46,7 +67,53 @@ def main():
             "watchpool_from_directives": one("SELECT count(*) FROM strategy_watchpool WHERE directive_id IS NOT NULL"),
             "staging_undrained": one("SELECT count(*) FROM hermes_directive_hits_staging WHERE NOT drained"),
             "stale_directives": one("""SELECT count(*) FROM watch_directives WHERE status='active'
-                                       AND (last_serviced_at IS NULL OR last_serviced_at < now()-interval '24 hours')""")}
+                                       AND (last_serviced_at IS NULL OR last_serviced_at < now()-interval '24 hours')"""),
+            "two_way_curation": {
+                "staging_undrained": {
+                    "cio": _safe_one("SELECT count(*) FROM cio_directive_hits_staging WHERE NOT drained"),
+                    "advisory": _safe_one("SELECT count(*) FROM advisory_directive_hits_staging WHERE NOT drained"),
+                    "defense": _safe_one("SELECT count(*) FROM defense_directive_hits_staging WHERE NOT drained"),
+                    "hermes": one("SELECT count(*) FROM hermes_directive_hits_staging WHERE NOT drained"),
+                },
+                "staging_total": {
+                    "cio": _safe_one("SELECT count(*) FROM cio_directive_hits_staging"),
+                    "advisory": _safe_one("SELECT count(*) FROM advisory_directive_hits_staging"),
+                    "defense": _safe_one("SELECT count(*) FROM defense_directive_hits_staging"),
+                },
+                "desk_directives_active": _safe_one(
+                    "SELECT count(*) FROM watch_directives WHERE status='active' "
+                    "AND created_by IN ('cio','advisory','defense')"
+                ),
+                "desk_hits_24h": _safe_kv(
+                    "SELECT surfaced_by k, count(*) n FROM watch_directive_hits "
+                    "WHERE surfaced_at>now()-interval '24 hours' "
+                    "AND surfaced_by IN ('cio','advisory','defense') GROUP BY 1"
+                ),
+                "audit_events_24h": _safe_one(
+                    "SELECT count(*) FROM curation_loop_audit WHERE created_at>now()-interval '24 hours'"
+                ),
+                "audit_by_source_24h": _safe_kv(
+                    "SELECT source k, count(*) n FROM curation_loop_audit "
+                    "WHERE created_at>now()-interval '24 hours' GROUP BY 1"
+                ),
+                "reverse_coverage": {
+                    "with_realized_outcome": _safe_one(
+                        "SELECT count(*) FROM watchlist_items WHERE status IN ('active','researched') "
+                        "AND realized_outcome IS NOT NULL"
+                    ),
+                    "with_hermes_research": _safe_one(
+                        "SELECT count(*) FROM watchlist_items WHERE status IN ('active','researched') "
+                        "AND hermes_research_score IS NOT NULL"
+                    ),
+                    "with_options_edge": _safe_one(
+                        "SELECT count(*) FROM watchlist_items WHERE status IN ('active','researched') "
+                        "AND options_edge_score IS NOT NULL"
+                    ),
+                    "active_researched": _safe_one(
+                        "SELECT count(*) FROM watchlist_items WHERE status IN ('active','researched')"
+                    ),
+                },
+            }}
     c.close()
 
     hist = []
@@ -78,7 +145,7 @@ def main():
         HIST.write_text(json.dumps({"updated_at": snap["ts"], "snapshots": hist}, indent=2))
     print(json.dumps({k: snap[k] for k in ("date", "directives_active", "hits_24h", "hits_7d", "by_surfaced_24h",
           "by_status_24h", "promoted_total", "promoted_24h", "watchpool_from_directives", "staging_undrained",
-          "status", "notes")}, indent=2))
+          "two_way_curation", "status", "notes")}, indent=2, default=str))
 
 
 if __name__ == "__main__":

@@ -185,6 +185,23 @@ def _f_options_edge(wi):
     return _clamp(float(s)), f"options edge {float(s):.0f}"
 
 
+def _f_thesis_outcome(wi):
+    """Reverse-edge factor: realized thesis outcome on the watchlist name.
+
+    win/thesis_win True → reward; loss/False → penalty; scratch/null → drop factor
+    (never fabricate neutral). Bounded 0-100 scores for the composite scorer.
+    """
+    ro = (wi.get("realized_outcome") or "").strip().lower()
+    tw = wi.get("thesis_win")
+    if tw is True or ro == "win":
+        return 78.0, "thesis win"
+    if tw is False or ro == "loss":
+        return 22.0, "thesis loss"
+    if ro == "scratch":
+        return 50.0, "thesis scratch"
+    return None, None
+
+
 def score_symbol(wi, ie, pill, secmap, weights):
     factors = {
         "technical_momentum": _f_technical(wi, ie),
@@ -196,6 +213,7 @@ def score_symbol(wi, ie, pill, secmap, weights):
         "risk_reward": _f_rr(wi),
         "hermes_research": _f_hermes_research(wi),
         "options_edge": _f_options_edge(wi),
+        "thesis_outcome": _f_thesis_outcome(wi),
     }
     present = {k: (v[0], v[1]) for k, v in factors.items() if v[0] is not None}
     if not present:
@@ -259,6 +277,7 @@ def _regime_weights(weights, vix):
 
 
 _BASE_SELECT = """SELECT wi.symbol, wi.rsi, wi.trend, wi.score, wi.watch_score_kind, wi.price,
+                     wi.realized_outcome, wi.thesis_win,
                      sc.target_price, sc.stop_loss,
                      wi.hermes_research_score, wi.options_edge_score,
                      ie.social_score, ie.social_sentiment, ie.rvol, ie.confluence_score,
@@ -356,6 +375,7 @@ def _fetch_watchlist_rows(cur, limit=None, off_hours=False):
                      ) capped WHERE rn <= %s
                    )
                    SELECT wi.symbol, wi.rsi, wi.trend, wi.score, wi.watch_score_kind, wi.price,
+                     wi.realized_outcome, wi.thesis_win,
                      sc.target_price, sc.stop_loss,
                      wi.hermes_research_score, wi.options_edge_score,
                      ie.social_score, ie.social_sentiment, ie.rvol, ie.confluence_score,
