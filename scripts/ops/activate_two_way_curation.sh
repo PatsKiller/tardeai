@@ -80,12 +80,43 @@ ORDER BY 1;
 "
 
 if [[ "$SMOKE" -eq 1 ]]; then
-  echo "== smoke: cio_reactive_cycle --once =="
+  # Light smoke only — do NOT run watch_directives_service --apply here.
+  # Full apply walks every active directive + Finviz enrich (minutes–hours) and is
+  # normal production load, not activation verification.
+  echo "== smoke: cio_reactive_cycle --once (read-only advisory) =="
   .venv/bin/python scripts/cio_reactive_cycle.py --once --json || true
-  echo "== smoke: watch_directives_service --apply =="
-  .venv/bin/python scripts/watch_directives_service.py --apply || true
-  echo "== smoke: hermes_outcome_grader --apply =="
-  .venv/bin/python scripts/hermes_outcome_grader.py --apply --max-rows 1000 || true
+
+  echo "== smoke: reverse-edge population snapshot =="
+  "${PSQL[@]}" -c "
+SELECT
+  count(*) FILTER (WHERE realized_outcome IS NOT NULL) AS with_outcome,
+  count(*) FILTER (WHERE thesis_win IS NOT NULL) AS with_thesis_win,
+  count(*) FILTER (WHERE hermes_research_score IS NOT NULL) AS with_hermes_score,
+  count(*) FILTER (WHERE options_edge_score IS NOT NULL) AS with_options_edge
+FROM watchlist_items
+WHERE status IN ('active','researched');
+"
+
+  echo "== smoke: staging undrained counts =="
+  "${PSQL[@]}" -c "
+SELECT 'cio' AS src, count(*) FILTER (WHERE NOT drained) AS undrained, count(*) AS total
+  FROM cio_directive_hits_staging
+UNION ALL
+SELECT 'advisory', count(*) FILTER (WHERE NOT drained), count(*)
+  FROM advisory_directive_hits_staging
+UNION ALL
+SELECT 'defense', count(*) FILTER (WHERE NOT drained), count(*)
+  FROM defense_directive_hits_staging;
+"
+
+  if [[ "${SMOKE_FULL:-0}" == "1" ]]; then
+    echo "== smoke FULL: watch_directives_service --apply (slow; Finviz) =="
+    .venv/bin/python scripts/watch_directives_service.py --apply || true
+    echo "== smoke FULL: hermes_outcome_grader --apply =="
+    .venv/bin/python scripts/hermes_outcome_grader.py --apply --max-rows 1000 || true
+  else
+    echo "NOTE: skipped heavy --apply smoke. For full drain: SMOKE_FULL=1 bash scripts/ops/activate_two_way_curation.sh --smoke"
+  fi
 fi
 
 echo "DONE. If verify listed 4 tables + reverse columns, the loop is schema-live."
