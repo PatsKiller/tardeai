@@ -68,6 +68,16 @@ DESK_PROMOTION_TIER = {
 # Advisory verdicts that justify a watchlist curation signal (the S3 taxonomy).
 ACTIONABLE_ADVISORY_VERDICTS = ("ADD", "TRIM", "EXIT", "RE_ENTER")
 
+# Promote outcomes that fully processed a staging row (safe to mark `drained`).
+# ERROR and any unknown status are non-terminal: the row stays undrained so the
+# next cycle retries it — contention/lock-timeout must never silently drop a lead.
+TERMINAL_PROMOTE_STATUSES = frozenset({
+    "PROMOTED",
+    "MONITORED_NO_QUALIFY",
+    "REGISTERED_NO_TECH",
+    "STAGED_FOR_REVIEW",
+})
+
 # Defense recommendation groups that prescribe a rotate-in / hedge / income stance.
 DEFENSE_ROTATE_GROUPS = ("get_into", "income", "short_side")
 
@@ -536,6 +546,24 @@ def mark_staging_drained(source: str, row_id: int,
     return res is not None
 
 
+def _release_savepoint(cur, sp: str) -> None:
+    """Release a savepoint, swallowing any error (e.g. transaction already aborted)."""
+    try:
+        cur.execute(f"RELEASE SAVEPOINT {sp}")
+    except Exception:
+        pass
+
+
+def _rollback_savepoint(cur, sp: str) -> None:
+    """Roll back to a savepoint then release it. ROLLBACK TO SAVEPOINT clears an aborted
+    transaction (lock_timeout contention) so the drainer keeps processing the batch."""
+    try:
+        cur.execute(f"ROLLBACK TO SAVEPOINT {sp}")
+    except Exception:
+        pass
+    _release_savepoint(cur, sp)
+
+
 def drain_curation_sources(cur, dry: bool, report: Dict[str, Any],
                            evaluate: Callable[..., Dict[str, Any]],
                            resolve_fn: Callable[..., List[str]],
@@ -556,11 +584,20 @@ def drain_curation_sources(cur, dry: bool, report: Dict[str, Any],
     report.setdefault("detail", [])
     report.setdefault("promoted", 0)
     report.setdefault("staged", 0)
+    report.setdefault("curation_drained", 0)
+    report.setdefault("curation_retry", 0)
+    report.setdefault("curation_errors", 0)
     limit = max(1, int(drain_limit or DEFAULT_DRAIN_LIMIT))
     for source in SOURCES:
         tbl = STAGING_TABLE[source]
+        # FOR UPDATE SKIP LOCKED gives concurrent drainers an atomic claim: each row is
+        # locked-and-processed by exactly one worker, so N workers never double-promote
+        # the same staging row (which was the source of row-lock contention on the shared
+        # watchlist_items / watch_directive_hits hot rows). The claim is released at the
+        # caller's single commit/rollback — no worker blocks on a peer's in-flight row.
         cur.execute(
-            f"SELECT * FROM {tbl} WHERE drained=false ORDER BY proposed_at LIMIT %s",
+            f"SELECT * FROM {tbl} WHERE drained=false ORDER BY proposed_at "
+            f"LIMIT %s FOR UPDATE SKIP LOCKED",
             (limit,),
         )
         rows = cur.fetchall() or []
@@ -571,6 +608,11 @@ def drain_curation_sources(cur, dry: bool, report: Dict[str, Any],
             kind = str(detail.get("directive_kind") or "").lower()
             spec = detail.get("spec") or {}
             label = str(detail.get("directive_label") or "")[:200] or f"{source} directive"
+            # A row is marked drained ONLY when fully processed (terminal). Any ERROR or
+            # failed directive mint leaves drained=false so a later cycle retries it — this
+            # closes the data-loss bug where a lock_timeout/contention error still drained
+            # the row and silently dropped the lead.
+            row_terminal = True
             if kind not in ("ticker", "sector", "trend"):
                 if not dry:
                     cur.execute(f"UPDATE {tbl} SET drained=true, drained_at=now() WHERE id=%s", (hid,))
@@ -595,6 +637,12 @@ def drain_curation_sources(cur, dry: bool, report: Dict[str, Any],
                          DESK_DIRECTIVE_TTL_DAYS))
                     row = cur.fetchone()
                     did = row["id"] if isinstance(row, dict) else row[0]
+            if not dry and not did:
+                # directive could not be resolved or minted — leave undrained for retry,
+                # do NOT silently drop the lead.
+                row_terminal = False
+                report["detail"].append({"source": source, "symbol": None, "event": "directive_unresolved",
+                                         "directive": label, "surfaced_by": SURFACED_BY.get(source, source)})
             syms = resolve_fn({"id": did, "kind": kind, "spec": spec, "label": label})
             for sym in (syms or []):
                 if not dry and did:
@@ -616,32 +664,56 @@ def drain_curation_sources(cur, dry: bool, report: Dict[str, Any],
                                 "source": source, "symbol": sym,
                                 "event": "auto_apply_error", "error": str(exc)[:120],
                             })
-                    res = evaluate(
-                        sym, did,
-                        f"{source}:{(str(detail.get('thesis') or '')[:60])}",
-                        source, auto_flag,
-                    )
+                    # Savepoint-isolate each promote so a lock_timeout/contention abort
+                    # (InFailedSqlTransaction) is contained to this ONE lead: rollback to
+                    # the savepoint clears the aborted state + undoes partial writes, so the
+                    # drainer keeps processing the rest of the batch without crashing and the
+                    # failed row is retried next cycle. On a shared connection (desk drain)
+                    # this is what stops one contention error from poisoning the whole run.
+                    sp = f"sp_{source}_{hid}"
+                    try:
+                        cur.execute(f"SAVEPOINT {sp}")
+                        res = evaluate(
+                            sym, did,
+                            f"{source}:{(str(detail.get('thesis') or '')[:60])}",
+                            source, auto_flag,
+                        )
+                    except Exception as exc:
+                        _rollback_savepoint(cur, sp)
+                        res = {"status": "ERROR", "error": str(exc)[:120]}
                     st = res.get("status")
                     report["promoted"] = report.get("promoted", 0) + (1 if st == "PROMOTED" else 0)
                     report["staged"] = report.get("staged", 0) + (1 if st == "STAGED_FOR_REVIEW" else 0)
                     report["detail"].append({"source": source, "symbol": sym, "status": st,
                                              "directive": label, "surfaced_by": SURFACED_BY.get(source, source)})
+                    if st not in TERMINAL_PROMOTE_STATUSES:
+                        # ERROR (contention/timeout) or unknown → keep the row for retry, and
+                        # roll back to the savepoint (if it still exists) to clear any aborted
+                        # transaction + discard partial writes from the failed promote.
+                        _rollback_savepoint(cur, sp)
+                        row_terminal = False
+                        report["curation_errors"] += 1
+                    else:
+                        _release_savepoint(cur, sp)
                 else:
                     report["detail"].append({"source": source, "symbol": sym,
                                              "directive": label, "dry": True})
             if not dry:
-                cur.execute(f"UPDATE {tbl} SET drained=true, drained_at=now() WHERE id=%s", (hid,))
-                try:
-                    cur.execute(
-                        """INSERT INTO curation_loop_audit (source, event, payload)
-                           VALUES (%s, %s, %s::jsonb)""",
-                        (source, "drained",
-                         json.dumps({"id": hid, "directive_id": did, "label": label}, default=str)),
-                    )
-                except Exception:
-                    pass  # audit fail-soft — never block drain
-            report.setdefault("curation_drained", 0)
-            report["curation_drained"] += 1
+                if row_terminal:
+                    cur.execute(f"UPDATE {tbl} SET drained=true, drained_at=now() WHERE id=%s", (hid,))
+                    report["curation_drained"] += 1
+                    try:
+                        cur.execute(
+                            """INSERT INTO curation_loop_audit (source, event, payload)
+                               VALUES (%s, %s, %s::jsonb)""",
+                            (source, "drained",
+                             json.dumps({"id": hid, "directive_id": did, "label": label}, default=str)),
+                        )
+                    except Exception:
+                        pass  # audit fail-soft — never block drain
+                else:
+                    # non-terminal: leave drained=false for the next cycle; record for visibility
+                    report["curation_retry"] += 1
 
 
 def write_realized_outcome(symbol: str, realized_outcome: Optional[str],

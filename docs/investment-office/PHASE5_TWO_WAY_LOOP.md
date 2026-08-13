@@ -42,7 +42,11 @@ REVERSE  operator disposition · trade/paper outcome · re-entry outcome
 2. **Bulk staging must not bypass promotion governance** — SATISFIED (single
    governor brain; `auto_apply_gate` requires trusted tier + non-divergent +
    hit-rate floor).
-3. **Lock/contention under full promote load** — NOT ADDRESSED (needs load test).
+3. **Lock/contention under full promote load** — SATISFIED. `drain_curation_sources`
+   uses `FOR UPDATE SKIP LOCKED` (atomic per-row claim), savepoint-isolates each
+   promote (a lock-timeout abort is contained to one lead), marks a staging row
+   `drained` only on a terminal outcome (errors are retried, never dropped), and
+   `promote_directive_lead` is now a single transaction per promote (§4f).
 4. **Do not inflate reverse-learning weights before calibration** — SATISFIED.
    `calibrate_reverse_weight` / `calibrate_reverse_weights` gate every reverse factor
    by `n / n_min`, so effective weight can never exceed the base (§4).
@@ -246,9 +250,55 @@ fail-soft executor reader.
 python3 -m pytest tests/test_cio_sector_opportunity.py -q
 ```
 
-## 5. Next increments (in order)
+### 4f. Lock/contention remediation under full promote load (increment 6 — this change)
 
-1. **Lock/contention remediation** under full promote load (benchmark + fix).
+Three concrete defects fixed, each dry-proven, plus a deterministic benchmark.
+
+- **Atomic claim** (`drain_curation_sources`): the undrained SELECT is now
+  `SELECT … WHERE drained=false ORDER BY proposed_at LIMIT %s FOR UPDATE SKIP LOCKED`.
+  Each staging row is locked-and-claimed by exactly one drainer, so N concurrent
+  workers can no longer double-promote the same row (the source of row-lock
+  contention on the shared `watchlist_items` / `watch_directive_hits` hot rows).
+- **No data loss on contention**: a row is marked `drained=true` only when its promote
+  reached a terminal outcome (`PROMOTED` / `MONITORED_NO_QUALIFY` /
+  `REGISTERED_NO_TECH` / `STAGED_FOR_REVIEW`, via `TERMINAL_PROMOTE_STATUSES`). An
+  `ERROR` (lock-timeout / contention) or a failed directive mint leaves the row
+  `drained=false` for the next cycle (`curation_retry` / `curation_errors` counters) —
+  previously a contention error still drained the row and silently dropped the lead.
+- **Savepoint isolation**: each promote runs inside `SAVEPOINT sp_{source}_{id}` and is
+  released on success or `ROLLBACK TO SAVEPOINT` on failure. This clears the aborted
+  transaction (`InFailedSqlTransaction`) a lock timeout leaves behind, so one contended
+  lead no longer poisons the whole batch.
+- **Single transaction per promote** (`directive_promotion.promote_directive_lead`): the
+  persistence helpers no longer commit; the promote commits once at the end (own
+  connection) or defers to the caller (shared `conn`, e.g. the desk-drain batch). This
+  collapses the previous ~5 commits/symbol into one — the actual lock-hold window under
+  load. `commit=None` auto-selects: own-conn → single commit + rollback-on-error; shared
+  conn → defer to caller.
+
+Benchmark + canaries:
+- `scripts/ops/benchmark_drain_contention.py` — a deterministic contention model
+  (legacy vs fixed) plus a dry statement census of the real drain. Fixed: 0
+  double-claims, 0 dropped leads, 1.0 commits/item (vs legacy ~0.75 double-claim rate,
+  ~5% drop rate, ~4.76 commits/item).
+- `tests/test_drain_contention.py` (11 tests) — SKIP-LOCKED claim emitted; terminal
+  marks drained; ERROR leaves undrained + retry; savepoint rollback on error (and on a
+  raised exception); success releases without rollback; unresolved directive leaves
+  undrained; promote defers commit on shared conn / commits exactly once when asked;
+  benchmark fixed-policy superiority.
+
+```bash
+python3 -m pytest tests/test_drain_contention.py -q
+python3 scripts/ops/benchmark_drain_contention.py
+```
+
+## 5. Next increments
+
+Phase 5 is complete. All eight gap-analysis items are SATISFIED (§3): provenance,
+governed promote, reverse-factor calibration, proxy/realized labeling, sample-size
+persistence, the Alex opportunity queue, sector-opportunity synthesis, and the
+lock/contention remediation (§4f). Remaining work is cross-phase (Checkpoint 5 organic
+loop + a live `n` backfill — see §8).
 
 ## 6. Required sector opportunity behavior (Checkpoint 5 target)
 
@@ -284,5 +334,6 @@ sector/defense or CIO event → staged Watch idea → research → Watch state c
   the cron never blocks on absent producer output.
 - The Alex opportunity queue is wired and wakes on material new opportunities, and the
   sector-opportunity synthesis (§4e) is delivered as a read-only advisory projection.
-  The load lock/contention remediation under full promote load remains unimplemented.
+  The lock/contention remediation (§4f) is delivered and dry-proven; it has not yet been
+  exercised under a real multi-process promote load against the live DB.
 - Checkpoint 5 (organic loop) has not been run; it requires live data flow.

@@ -180,10 +180,14 @@ def classify_tradeable(symbol, tech):
 
 
 # ── persistence helpers (app role) ───────────────────────────────────────────────
+# Helpers NEVER commit. promote_directive_lead owns the single transaction boundary:
+# it commits once at the end (or defers to the caller when a shared conn is passed).
+# This keeps one promote = one transaction, so concurrent promote load holds row
+# locks for the shortest possible window instead of committing ~5x per symbol.
 def _upsert_watchlist_master(conn, symbol, origin_system, origin_detail, directive_id,
                              source_tier, provenance_reason):
     """UPSERT curated provenance onto watchlist_items (base table of the master VIEW).
-    No unique-constraint dependency: UPDATE then INSERT-if-absent."""
+    No unique-constraint dependency: UPDATE then INSERT-if-absent. No commit — caller owns."""
     cur = conn.cursor()
     cur.execute("""
         UPDATE watchlist_items SET
@@ -224,7 +228,6 @@ def _upsert_watchlist_master(conn, symbol, origin_system, origin_detail, directi
             VALUES (%s, %s, 'active', %s, %s::jsonb, %s, true, %s, NOW(), NOW(), 1, %s)
         """, (symbol, origin_system, origin_system, json.dumps(origin_detail, default=str),
               directive_id, source_tier, provenance_reason))
-    conn.commit()
 
 
 def _insert_watchpool_row(conn, strategy_id, symbol, snapshot, cfg, origin_system, directive_id):
@@ -250,7 +253,6 @@ def _insert_watchpool_row(conn, strategy_id, symbol, snapshot, cfg, origin_syste
     """, (strategy_id, symbol, "hermes_directive", json.dumps(snapshot, default=str),
           str(ttl_days), bucket, origin_system, directive_id, strategy_id, symbol))
     row = cur.fetchone()
-    conn.commit()
     return row[0] if row else None
 
 
@@ -278,85 +280,101 @@ def _record_hit(conn, directive_id, symbol, surfaced_by, tier, reason, divergenc
     """, (directive_id, symbol, _normalize_surfaced_by(surfaced_by),
           tier, reason, divergence, promoted, promotion_status,
           qualified_strategies or None, promoted))
-    conn.commit()
 
 
 def _mark_needs_review(conn, symbol, directive_id, why):
     cur = conn.cursor()
     cur.execute("UPDATE watchlist_items SET provenance_reason = COALESCE(provenance_reason,'')||%s WHERE symbol=%s",
                 (f" [needs_review:{why}]", symbol))
-    conn.commit()
 
 
 def _touch_directive_serviced(conn, directive_id):
     cur = conn.cursor()
     cur.execute("UPDATE watch_directives SET last_serviced_at=NOW(), updated_at=NOW() WHERE id=%s",
                 (directive_id,))
-    conn.commit()
 
 
 # ── the centerpiece ──────────────────────────────────────────────────────────────
 def promote_directive_lead(symbol, directive_id, reason, source_system, conn=None,
-                           *, auto=None, actor="system"):
+                           *, auto=None, actor="system", commit=None):
     """
     Returns dict: status, registered, evaluated, qualified_strategies, watchpool_rows,
     tier, divergence.  status ∈ {PROMOTED, MONITORED_NO_QUALIFY, REGISTERED_NO_TECH,
     STAGED_FOR_REVIEW}.
+
+    Transaction boundary: the whole promote is ONE transaction (commit at the end,
+    rollback on error). ``commit`` (None → auto) means: commit once at the end when this
+    function owns its connection (`conn is None`); DEFER to the caller when a shared
+    `conn` is passed (the caller commits the batch once). This collapses the previous
+    ~5 commits-per-symbol into one, which is the lock-hold window that caused row-lock
+    contention under full promote load.
     """
     own = conn is None
     conn = conn or _conn()
+    should_commit = own if commit is None else commit
     symbol = symbol.upper().strip()
     tier = get_source_tier(source_system, conn)
     divergence = get_divergence_status(symbol, conn)
     if auto is None:
         auto = auto_promote_allowed(tier, divergence)
 
-    # Governor: non-core/trusted OR fighting the Street -> stage, do not register/evaluate.
-    # (Operator one-tap passes auto=True, overriding the governor — but the scalp firewall
-    #  and fail-closed checks below still apply.)
-    if not auto:
-        _record_hit(conn, directive_id, symbol, surfaced_by=source_system, tier=tier,
-                    reason=reason, divergence=divergence, promoted=False,
-                    promotion_status="STAGED_FOR_REVIEW")
-        return {"status": "STAGED_FOR_REVIEW", "tier": tier, "divergence": divergence,
-                "registered": False, "evaluated": False, "actor": actor}
+    try:
+        # Governor: non-core/trusted OR fighting the Street -> stage, do not register/evaluate.
+        # (Operator one-tap passes auto=True, overriding the governor — but the scalp firewall
+        #  and fail-closed checks below still apply.)
+        if not auto:
+            _record_hit(conn, directive_id, symbol, surfaced_by=source_system, tier=tier,
+                        reason=reason, divergence=divergence, promoted=False,
+                        promotion_status="STAGED_FOR_REVIEW")
+            if should_commit:
+                conn.commit()
+            return {"status": "STAGED_FOR_REVIEW", "tier": tier, "divergence": divergence,
+                    "registered": False, "evaluated": False, "actor": actor}
 
-    # 1. Register provenance on the curated master (base table).
-    _upsert_watchlist_master(conn, symbol, origin_system=source_system,
-                             origin_detail={"directive_id": directive_id, "thesis": reason},
-                             directive_id=directive_id, source_tier=tier,
-                             provenance_reason=reason)
+        # 1. Register provenance on the curated master (base table).
+        _upsert_watchlist_master(conn, symbol, origin_system=source_system,
+                                 origin_detail={"directive_id": directive_id, "thesis": reason},
+                                 directive_id=directive_id, source_tier=tier,
+                                 provenance_reason=reason)
 
-    # 2. Inject as candidate: fetch technicals ON DEMAND (not a screener export).
-    tech = enrich_symbol_on_demand(symbol, conn=conn)
-    if not tech or _tech_price(tech) is None:
-        # fail-closed: keep monitored, flag, no fabricated data, NO proposal.
+        # 2. Inject as candidate: fetch technicals ON DEMAND (not a screener export).
+        tech = enrich_symbol_on_demand(symbol, conn=conn)
+        if not tech or _tech_price(tech) is None:
+            # fail-closed: keep monitored, flag, no fabricated data, NO proposal.
+            _record_hit(conn, directive_id, symbol, surfaced_by=source_system, tier=tier,
+                        reason=reason, divergence=divergence, promoted=True,
+                        promotion_status="REGISTERED_NO_TECH")
+            _mark_needs_review(conn, symbol, directive_id, "enrichment_unavailable")
+            if should_commit:
+                conn.commit()
+            return {"status": "REGISTERED_NO_TECH", "registered": True, "evaluated": False,
+                    "tier": tier, "divergence": divergence, "actor": actor}
+
+        # 3. Real strategy classifier — Bucket 2/3 only, scalp excluded HARD.
+        qualified = classify_tradeable(symbol, tech)
+
+        # 4. Qualifying names enter the watchpool exactly like a screener candidate.
+        rows = []
+        for sid, cfg, _bucket in qualified:
+            rid = _insert_watchpool_row(conn, sid, symbol, tech, cfg,
+                                        origin_system=source_system, directive_id=directive_id)
+            if rid:
+                rows.append(rid)
+
+        status = "PROMOTED" if rows else "MONITORED_NO_QUALIFY"
         _record_hit(conn, directive_id, symbol, surfaced_by=source_system, tier=tier,
                     reason=reason, divergence=divergence, promoted=True,
-                    promotion_status="REGISTERED_NO_TECH")
-        _mark_needs_review(conn, symbol, directive_id, "enrichment_unavailable")
-        return {"status": "REGISTERED_NO_TECH", "registered": True, "evaluated": False,
-                "tier": tier, "divergence": divergence, "actor": actor}
-
-    # 3. Real strategy classifier — Bucket 2/3 only, scalp excluded HARD.
-    qualified = classify_tradeable(symbol, tech)
-
-    # 4. Qualifying names enter the watchpool exactly like a screener candidate.
-    rows = []
-    for sid, cfg, _bucket in qualified:
-        rid = _insert_watchpool_row(conn, sid, symbol, tech, cfg,
-                                    origin_system=source_system, directive_id=directive_id)
-        if rid:
-            rows.append(rid)
-
-    status = "PROMOTED" if rows else "MONITORED_NO_QUALIFY"
-    _record_hit(conn, directive_id, symbol, surfaced_by=source_system, tier=tier,
-                reason=reason, divergence=divergence, promoted=True,
-                promotion_status=status, qualified_strategies=[s for s, _, _ in qualified])
-    _touch_directive_serviced(conn, directive_id)
-    return {"status": status, "registered": True, "evaluated": True,
-            "qualified_strategies": [s for s, _, _ in qualified],
-            "watchpool_rows": rows, "tier": tier, "divergence": divergence, "actor": actor}
+                    promotion_status=status, qualified_strategies=[s for s, _, _ in qualified])
+        _touch_directive_serviced(conn, directive_id)
+        if should_commit:
+            conn.commit()
+        return {"status": status, "registered": True, "evaluated": True,
+                "qualified_strategies": [s for s, _, _ in qualified],
+                "watchpool_rows": rows, "tier": tier, "divergence": divergence, "actor": actor}
+    except Exception:
+        if should_commit:
+            conn.rollback()
+        raise
 
 
 if __name__ == "__main__":
