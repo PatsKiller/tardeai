@@ -38,6 +38,9 @@ BWS = os.environ.get("BWS_BIN") or str(Path.home() / ".local" / "bin" / "bws")
 READ_TOKEN = Path.home() / ".openclaw" / "credentials" / "bws_read_token"
 PROJECT_NAME = "trade-ai-prod"
 BWS_SKIP_RE = re.compile(r"^BWS_", re.I)
+# bash `source` / `export` only accept [A-Za-z_][A-Za-z0-9_]* — SM keys with
+# slashes (e.g. openclaw/providers/...) must not be written into the env file.
+SHELL_VAR_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 STALE_HOURS = 6
 
 UID = os.getuid()
@@ -105,9 +108,30 @@ def _fetch_secrets(token: str) -> dict[str, str]:
     return out
 
 
-def _format_env(d: dict[str, str]) -> str:
-    lines = []
+def _shell_exportable(secrets: dict[str, str]) -> tuple[dict[str, str], list[str]]:
+    """Split SM secrets into shell-sourceable keys vs non-shell names (keys only)."""
+    ok: dict[str, str] = {}
+    skipped: list[str] = []
+    for k, v in secrets.items():
+        if SHELL_VAR_RE.match(k):
+            ok[k] = v
+        else:
+            skipped.append(k)
+    return ok, sorted(skipped)
+
+
+def _format_env(d: dict[str, str], *, skipped_keys: list[str] | None = None) -> str:
+    """Write KEY=value lines that are safe for `set -a; . file; set +a`."""
+    lines = [
+        "# Bitwarden SM render — shell-sourceable only",
+        "# Non-shell SM key names (e.g. openclaw/...) are omitted so bash source works.",
+    ]
+    if skipped_keys:
+        # names only — never values
+        lines.append(f"# skipped_nonshell_keys={len(skipped_keys)}: {', '.join(skipped_keys)}")
     for k in sorted(d.keys()):
+        if not SHELL_VAR_RE.match(k):
+            continue
         v = d[k]
         # empty values allowed in env file
         if v == "":
@@ -204,7 +228,11 @@ def render(*, force: bool = False) -> dict:
         tok = ""
         if not secrets:
             raise RuntimeError("SM returned zero secrets")
-        text = _format_env(secrets)
+        shell_secrets, skipped_keys = _shell_exportable(secrets)
+        if not shell_secrets:
+            raise RuntimeError("SM returned zero shell-exportable secrets")
+        text = _format_env(shell_secrets, skipped_keys=skipped_keys)
+        # Hash all SM keys (incl. nonshell) for drift; values never logged
         hashes = _hashes(secrets)
         _atomic_write(RENDER_PATH, text, 0o600)
         _atomic_write(
@@ -212,7 +240,9 @@ def render(*, force: bool = False) -> dict:
             json.dumps(
                 {
                     "rendered_at": datetime.now(timezone.utc).isoformat(),
-                    "n_keys": len(secrets),
+                    "n_keys": len(shell_secrets),
+                    "n_sm_keys": len(secrets),
+                    "skipped_nonshell_keys": skipped_keys,
                     "hashes": hashes,
                     "project": PROJECT_NAME,
                 },
@@ -225,14 +255,18 @@ def render(*, force: bool = False) -> dict:
         disk_mirrored = 0
         try:
             from resolve_secret import mirror_rendered_keys_to_disk
-            disk_mirrored = mirror_rendered_keys_to_disk(secrets, disk_env_path=DISK_ENV, project_root=ROOT)
+            disk_mirrored = mirror_rendered_keys_to_disk(
+                shell_secrets, disk_env_path=DISK_ENV, project_root=ROOT
+            )
         except Exception:
             disk_mirrored = 0
         st.update(
             {
                 "last_ok_at": datetime.now(timezone.utc).isoformat(),
                 "last_error": None,
-                "n_keys": len(secrets),
+                "n_keys": len(shell_secrets),
+                "n_sm_keys": len(secrets),
+                "skipped_nonshell_keys": skipped_keys,
                 "render_path": str(RENDER_PATH),
                 "disk_mirrored_keys": disk_mirrored,
             }
@@ -241,7 +275,9 @@ def render(*, force: bool = False) -> dict:
         result.update(
             ok=True,
             source="bitwarden_sm",
-            n_keys=len(secrets),
+            n_keys=len(shell_secrets),
+            n_sm_keys=len(secrets),
+            skipped_nonshell=len(skipped_keys),
             stale_hours=0.0,
             disk_mirrored_keys=disk_mirrored,
         )

@@ -23,8 +23,30 @@ if [[ ! -f "$MIG" ]]; then
   exit 1
 fi
 
-# shellcheck disable=SC1090
-set -a; . "$ENV_FILE"; set +a
+# Load only shell-valid KEY=value lines. SM may contain openclaw/... names that
+# break `source` / `.` (bash treats slashes as path components).
+_load_tradeai_env() {
+  local f="$1" line key val
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
+    [[ "$line" != *=* ]] && continue
+    key="${line%%=*}"
+    val="${line#*=}"
+    # strip surrounding single/double quotes (render_env style)
+    if [[ ${#val} -ge 2 ]]; then
+      if [[ "${val:0:1}" == "'" && "${val: -1}" == "'" ]]; then
+        val="${val:1:${#val}-2}"
+        val="${val//\'\"\'\"\'/\'}"
+      elif [[ "${val:0:1}" == '"' && "${val: -1}" == '"' ]]; then
+        val="${val:1:${#val}-2}"
+      fi
+    fi
+    if [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+      export "${key}=${val}"
+    fi
+  done < "$f"
+}
+_load_tradeai_env "$ENV_FILE"
 : "${DB_HOST:?DB_HOST missing}" "${DB_PORT:?}" "${DB_USER:?}" "${DB_NAME:?}" "${DB_PASSWORD:?}"
 
 export PGPASSWORD="$DB_PASSWORD"
