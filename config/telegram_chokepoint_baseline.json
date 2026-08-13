@@ -60,7 +60,6 @@
     "scripts/system_freshness_monitor.py": 4,
     "scripts/system_health_alerts.py": 1,
     "scripts/technicals_gap_backfill.py": 3,
-    "scripts/topic_ingestion.py": 1,
     "scripts/trade_ai_news_monitor.py": 4,
     "scripts/watch_directives_service.py": 3,
     "scripts/youtube_cookie_health_check.py": 4

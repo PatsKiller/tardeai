@@ -135,7 +135,7 @@ def test_telegram_chokepoint_enforcement_ratchet():
     behaviour (transport import, endpoint constant, raw endpoint, HTTP call aimed at
     Telegram, chat-id selection, token read) and ratchets against a recorded baseline:
     a NEW bypassing file fails, an existing one may never grow. It does not claim zero
-    — 47 files currently bypass the chokepoint and that is a tracked release blocker.
+    — 46 files currently bypass the chokepoint and that is a tracked release blocker.
     """
     import subprocess
     r = subprocess.run(

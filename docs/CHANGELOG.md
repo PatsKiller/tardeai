@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-08-13 — Topic ingestion/curation count noise routed to desk (no Telegram)
+
+The hourly "Topic Ingestion: N articles + 0 transcripts saved across 1 topics" and
+"Topic Curator: N approved, M blocked" messages are non-actionable count spam. The
+underlying data (articles/transcripts) already lands in `news_articles` /
+`youtube_transcripts` — the canonical desk store the CIO/advisory/analyst lanes read —
+so the Telegram text was pure redundancy.
+
+- **`topic_ingestion.py`**: removed the direct `urllib.request` Telegram send (a
+  chokepoint bypass). Per-run counts now write `data/runtime/topic_ingestion_latest.json`
+  (desk-side projection) instead of texting. Chokepoint baseline re-ratcheted 47→46 files.
+- **`topic_curator.py`**: removed the "Topic Curator:" Telegram summary; curation counts
+  now write `data/runtime/topic_curator_latest.json`.
+- `research_intelligence_queue.py` drain digest (🔬 RI queue drained: ok/failed) retained
+  — it is a once-per-drain, actionable summary, not count spam.
+
+No broker/order path. Data truth unchanged; only notification surface narrowed.
+
 ## 2026-08-13 — Telegram noise suppression + research lane migrated to governed DeepSeek
 
 Telegram thread audited for non-actionable noise (hourly "ChatGPT research update" per-symbol spam,

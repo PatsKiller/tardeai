@@ -62,26 +62,25 @@ def _get_conn():
     )
 
 
-# ── Telegram alert ───────────────────────────────────────────────────────
-def _send_telegram(message: str):
-    token = _env("TELEGRAM_BOT_TOKEN")
-    chat_ids = _env("TELEGRAM_CHAT_ID")
-    if not token or not chat_ids:
-        return
-    for cid in chat_ids.split(","):
-        cid = cid.strip()
-        if not cid:
-            continue
-        try:
-            data = urllib.parse.urlencode(
-                {"chat_id": cid, "text": message[:4000]}
-            ).encode()
-            req = urllib.request.Request(
-                f"https://api.telegram.org/bot{token}/sendMessage", data=data
-            )
-            urllib.request.urlopen(req, timeout=10)
-        except Exception:
-            pass
+# ── Desk-side projection (no Telegram) ───────────────────────────────────
+# Per-run ingestion counts are non-actionable noise on Telegram; the articles
+# themselves already land in news_articles / youtube_transcripts (the canonical
+# desk store). Write a small projection the CIO / Advisory Desk can read for
+# ingestion health instead of texting a count.
+def _write_desk_projection(total_stats: dict) -> None:
+    try:
+        out = PROJECT_ROOT / "data" / "runtime" / "topic_ingestion_latest.json"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "articles": total_stats.get("articles", 0),
+            "transcripts": total_stats.get("transcripts", 0),
+            "topics_processed": total_stats.get("topics_processed", 0),
+            "topics_skipped": total_stats.get("topics_skipped", 0),
+        }
+        out.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    except Exception as e:
+        print(f"  [topic_ingestion] desk projection write failed: {e}")
 
 
 # ── Content scoring (reuse existing) ────────────────────────────────────
@@ -1497,14 +1496,10 @@ def main():
     print(f"  Transcripts saved: {total_stats['transcripts']}")
     print(f"{'='*60}")
 
-    # Telegram summary if anything was found
+    # Desk-side projection if anything was found (no Telegram — counts are noise;
+    # the articles themselves land in news_articles / youtube_transcripts).
     if total_stats["articles"] + total_stats["transcripts"] > 0 and not args.dry_run:
-        msg = (
-            f"Topic Ingestion: {total_stats['articles']} articles + "
-            f"{total_stats['transcripts']} transcripts saved across "
-            f"{total_stats['topics_processed']} topics."
-        )
-        _send_telegram(msg)
+        _write_desk_projection(total_stats)
 
     conn.close()
 

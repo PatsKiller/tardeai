@@ -45,12 +45,23 @@ def _get_conn():
     return psycopg2.connect(host="localhost", dbname="trade_ai",
                             user="trade_ai", password=_env("DB_PASSWORD"))
 
-def _send_telegram(msg):
+def _write_desk_projection(stats):
+    """Persist curation counts to a desk-side projection (no Telegram)."""
     try:
-        from telegram_alert import send_telegram
-        send_telegram(msg)
-    except Exception:
-        pass
+        from datetime import datetime, timezone
+        out = PROJECT_ROOT / "data" / "runtime" / "topic_curator_latest.json"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "rated": stats.get("rated", 0),
+            "approved": stats.get("approved", 0),
+            "blocked": stats.get("blocked", 0),
+            "entity_links": stats.get("entity_links", 0),
+            "agent_events": stats.get("agent_events", 0),
+        }
+        out.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    except Exception as e:
+        print(f"  [topic_curator] desk projection write failed: {e}")
 
 
 # ════════════════════════════════════════════════════════════
@@ -681,18 +692,9 @@ def main():
     except Exception:
         pass
 
-    # Telegram summary
-    tg_parts = []
-    if stats.get('approved', 0) > 0:
-        tg_parts.append(f"{stats['approved']} approved")
-    if stats.get('blocked', 0) > 0:
-        tg_parts.append(f"{stats['blocked']} blocked")
-    if stats.get('entity_links', 0) > 0:
-        tg_parts.append(f"{stats['entity_links']} entity links")
-    if stats.get('agent_events', 0) > 0:
-        tg_parts.append(f"{stats['agent_events']} agent events")
-    if tg_parts:
-        _send_telegram(f"Topic Curator: {', '.join(tg_parts)}")
+    # Desk-side projection (no Telegram — curation counts are noise; the rated
+    # articles/links are already persisted to news_articles / content_entity_links).
+    _write_desk_projection(stats)
 
     conn.close()
 
