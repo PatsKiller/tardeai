@@ -156,8 +156,11 @@ def advisory_verdict_to_feedback(
         return None
     if row_class == "allocation":
         return None  # allocation drift is portfolio rebalancing, never a watchlist lead
-    if evidence_count < 3:
-        return None  # A2 gate: actionable requires symbol-specific evidence
+    # A2 gate: prefer symbol-specific evidence, but allow high-conviction ADD/RE_ENTER
+    # with 2+ items so the two-way loop is not starved on thin-but-actionable bundles.
+    min_ev = 2 if v in ("ADD", "RE_ENTER") else 3
+    if evidence_count < min_ev:
+        return None
     return {
         "directive_kind": "ticker",
         "directive_label": f"Advisory {v} — {sym}",

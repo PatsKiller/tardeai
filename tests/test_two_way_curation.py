@@ -114,6 +114,9 @@ def test_advisory_actionable_with_evidence_emits():
 def test_advisory_actionable_without_evidence_is_gated():
     assert tc.advisory_verdict_to_feedback("ADD", "NVDA", evidence_count=1) is None
     assert tc.advisory_verdict_to_feedback("TRIM", "NVDA", evidence_count=0) is None
+    # ADD/RE_ENTER allow 2+; TRIM/EXIT still require 3
+    assert tc.advisory_verdict_to_feedback("ADD", "NVDA", evidence_count=2) is not None
+    assert tc.advisory_verdict_to_feedback("TRIM", "NVDA", evidence_count=2) is None
 
 
 def test_advisory_non_actionable_never_emits():

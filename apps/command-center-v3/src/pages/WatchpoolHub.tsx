@@ -107,6 +107,7 @@ export default function WatchpoolHub({ onDrill, embedded }: Props) {
   const [terminalUi] = useTerminalUi()
   const card = hubPanel(terminalUi)
   const { data: wd, refetch: refetchWd } = useApi<any>('/api/v2/watch-directives', 60_000)
+  const { data: tw, refetch: refetchTw } = useApi<any>('/api/v2/watch/two-way-curation', 60_000)
   const { data: wp, refetch: refetchWp } = useApi<any>('/api/v2/watchpool', 60_000)
   const { data: mergePlan, refetch: refetchPlan } = useApi<any>('/api/v2/watch/directives/merge-plan', 0)
   const { data: finds } = useApi<any>('/api/v2/screener-finds/candidates', 300_000)
@@ -118,6 +119,7 @@ export default function WatchpoolHub({ onDrill, embedded }: Props) {
   const [rationale, setRationale] = useState('')
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
+  const [deskFilter, setDeskFilter] = useState<'all' | 'cio' | 'advisory' | 'defense'>('all')
   const [fStatus, setFStatus] = useState('all')   // watchpool status filter (clickable top row)
   const [page, setPage] = useState(0)
   const PER_PAGE = 50
@@ -139,19 +141,47 @@ export default function WatchpoolHub({ onDrill, embedded }: Props) {
     setBusy(false)
   }
 
-  const promote = async (symbol: string, directive_id: number) => {
+  const promote = async (symbol: string, directive_id: number, source_system?: string) => {
     setBusy(true); setMsg(null)
     try {
-      const r = await fetch('/api/v2/watch/directives/promote', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ symbol, directive_id }) })
+      const r = await fetch('/api/v2/watch/directives/promote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          symbol,
+          directive_id,
+          reason: `operator one-tap promote${source_system ? ` (${source_system})` : ''}`,
+          source_system: source_system || 'operator',
+        }),
+      })
       const j = await r.json()
-      setMsg(j.ok ? `${symbol}: ${j.result?.status}${j.result?.qualified_strategies?.length ? ' → ' + j.result.qualified_strategies.join(', ') : ''}` : `Error: ${j.error}`)
-      refetchWd(); refetchWp()
+      const st = j.result?.status || j.data?.result?.status
+      const qs = j.result?.qualified_strategies || j.data?.result?.qualified_strategies
+      const ok = j.ok ?? j.data?.ok
+      setMsg(ok
+        ? `${symbol}: ${st}${qs?.length ? ' → ' + qs.join(', ') : ''}`
+        : `Error: ${j.error || j.data?.error || 'promote failed'}`)
+      refetchWd(); refetchWp(); refetchTw()
     } catch (e: any) { setMsg('Error: ' + e.message) }
     setBusy(false)
   }
 
   const directives = wd?.directives ?? []
   const hits = wd?.recent_hits ?? []
+  // Desk two-way suggestions: prefer dedicated API field, fall back to two-way-curation
+  const deskSuggestionsRaw: any[] =
+    (wd?.desk_suggestions?.length ? wd.desk_suggestions : null)
+    || (tw?.suggestions?.length ? tw.suggestions : null)
+    || (tw?.data?.suggestions?.length ? tw.data.suggestions : null)
+    || hits.filter((h: any) =>
+      ['cio', 'advisory', 'defense'].includes(String(h.surfaced_by || '').toLowerCase())
+      && h.promotion_status === 'STAGED_FOR_REVIEW')
+  const deskSuggestions = deskFilter === 'all'
+    ? deskSuggestionsRaw
+    : deskSuggestionsRaw.filter((h: any) => String(h.surfaced_by || '').toLowerCase() === deskFilter)
+  const twHealth = tw?.loop_status || tw?.data?.loop_status
+  const twForward = tw?.forward || tw?.data?.forward
+  const twReverse = tw?.reverse || tw?.data?.reverse
   const allRows = wp?.rows ?? []
   const pool = fStatus === 'all' ? allRows : allRows.filter((r: any) => String(r.current_status).toUpperCase() === fStatus.toUpperCase())
   const pageCount = Math.max(1, Math.ceil(pool.length / PER_PAGE))
@@ -213,6 +243,80 @@ export default function WatchpoolHub({ onDrill, embedded }: Props) {
         </div>
         {msg && <div style={{ fontSize: TYPE.xs, color: msg.startsWith('Error') ? BB.red : BB.green, marginTop: 8 }}>{msg}</div>}
         <div style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 6 }}>Ticker = exact symbol (auto-evaluated). Sector = ETF + Finviz constituents. Trend = keywords (Hermes discovers → stages). Sector/trend hits stage for one-tap.</div>
+      </div>
+
+      {/* Two-way desk suggestions inbox — CIO / Advisory / Defense staged candidates */}
+      <div style={{ ...card, borderLeft: `3px solid ${T.extIntel.hermes}` }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: TYPE.base, fontWeight: 800, color: BB.text0 }}>Desk suggestions</span>
+          <Chip kind="metric" title="Two-way watchlist curation — desks stage suggestions; operator promotes">
+            {deskSuggestionsRaw.length} staged
+          </Chip>
+          {twHealth && (
+            <Chip kind="state" tone={twHealth === 'CIRCULATING' ? 'green' : twHealth === 'COLD' ? 'slate' : 'amber'}
+              title="two-way loop health">{twHealth}</Chip>
+          )}
+          {twReverse && (
+            <span style={{ fontSize: TYPE.xs, color: BB.text3 }}>
+              reverse · outcome {twReverse.with_realized_outcome ?? 0} · research {twReverse.with_hermes_research ?? 0}
+              {(twForward?.desk_hits_24h && Object.keys(twForward.desk_hits_24h).length > 0)
+                ? ` · 24h desk hits ${Object.entries(twForward.desk_hits_24h).map(([k, v]) => `${k}:${v}`).join(' ')}`
+                : ''}
+            </span>
+          )}
+          <span style={{ flex: 1 }} />
+          {(['all', 'cio', 'advisory', 'defense'] as const).map(f => (
+            <button key={f} onClick={() => setDeskFilter(f)}
+              style={{
+                fontSize: TYPE.xs, fontWeight: deskFilter === f ? 800 : 500, padding: '2px 8px', borderRadius: 2, cursor: 'pointer',
+                textTransform: 'uppercase', letterSpacing: 0.3,
+                background: deskFilter === f ? BB.amberDim : BB.bgShift,
+                color: deskFilter === f ? BB.amber : BB.text2,
+                border: `1px solid ${deskFilter === f ? BB.amber : BB.border}`,
+              }}>{f}</button>
+          ))}
+        </div>
+        {deskSuggestions.length === 0 ? (
+          <div style={{ fontSize: TYPE.sm, color: BB.text3 }}>
+            No desk-staged candidates right now. CIO reactive / advisory opinions / defense recs emit into staging; the app drain surfaces them here for one-tap promote.
+          </div>
+        ) : (
+          <div>
+            {deskSuggestions.map((h: any, i: number) => (
+              <div key={`${h.hit_id || h.symbol}-${i}`}
+                style={{
+                  display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap',
+                  padding: '6px 4px', borderBottom: `1px solid ${BB.borderHair}`,
+                  borderLeft: `3px solid ${RAIL.attention}`,
+                }}>
+                <b style={{ ...numStyle, minWidth: 52, color: BB.text0, cursor: 'pointer' }}
+                  onClick={() => onDrill({
+                    title: `${h.symbol} — desk suggestion`,
+                    subtitle: `${h.surfaced_by} · ${h.label || h.directive_label || ''}`,
+                    endpoint: `/api/v2/watch/provenance/${h.symbol}`,
+                    rows: [h],
+                  })}>{h.symbol}</b>
+                <Chip kind="metric">{h.surfaced_by}</Chip>
+                <span style={{ fontSize: TYPE.xs, color: BB.text2, flex: '1 1 160px' }}>
+                  {h.label || h.directive_label || `directive #${h.directive_id}`}
+                </span>
+                {h.divergence && <Chip kind="state" tone={divTone(h.divergence)}>{h.divergence}</Chip>}
+                <span style={{ fontSize: TYPE.xs, color: BB.text3 }}>
+                  {String(h.surfaced_at || '').slice(0, 16).replace('T', ' ')}
+                </span>
+                <button
+                  disabled={busy || !h.directive_id}
+                  onClick={() => promote(h.symbol, h.directive_id, h.surfaced_by)}
+                  style={{ ...terminalButton('primary'), marginLeft: 'auto', opacity: busy ? 0.5 : 1, cursor: busy ? 'wait' : 'pointer' }}
+                  title="Operator one-tap promote — still advisory; scalp firewall applies"
+                >Promote</button>
+              </div>
+            ))}
+          </div>
+        )}
+        <div style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 8 }}>
+          Two-way curation · READ_ONLY_ADVISORY · Promote uses the governor path (no orders). Source: CIO / Advisory / Defense desks.
+        </div>
       </div>
 
       {/* v4 (C3): tier-3 family-merge approvals — same governed merge_into as the Telegram/CLI path */}

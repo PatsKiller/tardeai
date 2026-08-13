@@ -549,6 +549,12 @@ def generate_row_opinion(
         cached = dict(opinion_cache[row_hash]) if isinstance(opinion_cache[row_hash], dict) else {}
         if cached:
             cached["cache_hit"] = True
+            # Still emit forward-edge curation (cache must not starve the two-way loop)
+            emit_watchlist_feedback(
+                row, evidence_bundle,
+                str(cached.get("verdict") or deterministic_verdict),
+                cached.get("conviction"),
+            )
             return cached
 
     messages = _build_opinion_messages(

@@ -27437,11 +27437,40 @@ def _two_way_curation_health(query=None):
                 "SELECT id, source, event, payload, created_at FROM curation_loop_audit "
                 "ORDER BY created_at DESC LIMIT 15"
             ) or [],
+            # Operator interactive inbox: desk staged suggestions ready for one-tap promote
+            "suggestions": _db_query(
+                """SELECT h.id AS hit_id, h.directive_id, d.label AS directive_label,
+                          d.created_by AS directive_created_by, h.symbol, h.surfaced_by,
+                          h.divergence, h.promotion_status, h.hit_reason, h.surfaced_at
+                   FROM watch_directive_hits h
+                   JOIN watch_directives d ON d.id = h.directive_id
+                   WHERE h.promotion_status = 'STAGED_FOR_REVIEW'
+                     AND h.surfaced_by IN ('cio','advisory','defense')
+                     AND h.surfaced_at > now() - interval '7 days'
+                   ORDER BY h.surfaced_at DESC
+                   LIMIT 50"""
+            ) or [],
+            "undrained_staging_rows": {
+                "cio": _db_query(
+                    """SELECT id, symbol, thesis, proposed_at FROM cio_directive_hits_staging
+                       WHERE NOT drained ORDER BY proposed_at DESC LIMIT 10"""
+                ) or [],
+                "advisory": _db_query(
+                    """SELECT id, symbol, thesis, proposed_at FROM advisory_directive_hits_staging
+                       WHERE NOT drained ORDER BY proposed_at DESC LIMIT 10"""
+                ) or [],
+                "defense": _db_query(
+                    """SELECT id, symbol, thesis, proposed_at FROM defense_directive_hits_staging
+                       WHERE NOT drained ORDER BY proposed_at DESC LIMIT 10"""
+                ) or [],
+            },
         }
         # Simple maturity hint for operator
         f, r = body["forward"], body["reverse"]
+        desk_hits = sum((f.get("desk_hits_24h") or {}).values()) if isinstance(f.get("desk_hits_24h"), dict) else 0
         circulating = (
             (f.get("desk_directives_active") or 0) > 0
+            or desk_hits > 0
             or (f.get("audit_events_24h") or 0) > 0
             or sum((f.get("staging_undrained") or {}).values()) > 0
         )
@@ -27452,6 +27481,7 @@ def _two_way_curation_health(query=None):
             else "FORWARD_ONLY" if circulating
             else "COLD"
         )
+        body["suggestions_count"] = len(body.get("suggestions") or [])
         return body
     except Exception as exc:
         return {"ok": False, "error": str(exc)[:200], "authority": "READ_ONLY_ADVISORY"}
@@ -27468,6 +27498,18 @@ def _watch_directives(query=None):
     hits = _db_query("""SELECT h.directive_id, d.label, h.symbol, h.surfaced_by, h.divergence, h.promotion_status,
                         h.surfaced_at FROM watch_directive_hits h JOIN watch_directives d ON d.id=h.directive_id
                         ORDER BY h.surfaced_at DESC LIMIT 40""") or []
+    # Dedicated desk-suggestions inbox (not drowned by Hermes volume in recent_hits)
+    desk_suggestions = _db_query("""
+        SELECT h.id AS hit_id, h.directive_id, d.label, d.created_by, h.symbol, h.surfaced_by,
+               h.divergence, h.promotion_status, h.hit_reason, h.surfaced_at
+        FROM watch_directive_hits h
+        JOIN watch_directives d ON d.id = h.directive_id
+        WHERE h.promotion_status = 'STAGED_FOR_REVIEW'
+          AND h.surfaced_by IN ('cio','advisory','defense')
+          AND h.surfaced_at > now() - interval '7 days'
+        ORDER BY h.surfaced_at DESC
+        LIMIT 40
+    """) or []
     # Per-directive surfaced symbols (fix 2026-06-19): trend/sector directives link items via hits, NOT
     # by setting directive_id on the item — so the Watchlist directive filter must match on these symbols.
     _hs = _db_query("""SELECT directive_id, array_agg(DISTINCT upper(symbol)) syms,
@@ -27574,6 +27616,8 @@ def _watch_directives(query=None):
                             } for r in directives],
             "proposed_count": sum(1 for r in directives if r.get("status") == "proposed"),
             "recent_hits": [{k: _json_clean(v) for k, v in r.items()} for r in hits],
+            "desk_suggestions": [{k: _json_clean(v) for k, v in r.items()} for r in desk_suggestions],
+            "desk_suggestions_count": len(desk_suggestions),
             "hermes_staging": {"total": staging.get("c"), "undrained": staging.get("undrained")},
             "promoted_to_watchlist": promoted.get("c"), "health": health}
 
