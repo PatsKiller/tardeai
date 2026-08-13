@@ -42,6 +42,19 @@
 .venv/bin/python scripts/ops/two_way_curation_smoke.py --apply-drain --stage-only
 ```
 
+### Multi-desk emit from latest snapshots + drain residual
+
+```bash
+# Preview candidates from advisory_desk_latest + defense_recommendations_latest
+.venv/bin/python scripts/ops/emit_and_drain_desk_curation.py
+
+# Emit advisory+defense + drain cio/advisory/defense (stage-only)
+.venv/bin/python scripts/ops/emit_and_drain_desk_curation.py --apply
+```
+
+CIO residual staging is also auto-drained (stage-only) after reactive emit when
+`CURATION_DRAIN_AFTER_EMIT=1` (default).
+
 ---
 
 ## Commits landed this session
@@ -50,12 +63,15 @@
 - `c1d9046a` — P0–P2 closed loop  
 - `bfc8f674` — Hermes staging fast drain  
 - `67946947` — Desk suggestions inbox + promote  
-- (docs refresh) — this status + design doc update  
+- `db6b4825` — docs production status  
+- multi-desk emit+drain ops + CIO residual auto-drain  
 
 ---
 
 ## Residual / next
 
-- Organic advisory + defense staging volume (gates + schedule dependent)  
+- ~~Organic advisory + defense staging~~ **proven** via latest-snapshot emit (2026-08-13)  
 - Options paper outcomes → `options_edge_score`  
 - Full promote under load can hit `watchlist_items` locks — use stage-only for bulk; one-tap for intentional promotes  
+- Wire `emit_and_drain_desk_curation.py` onto a daily cron after advisory/defense jobs if desired  
+

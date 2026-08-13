@@ -243,6 +243,58 @@ def run_once(*, max_wakes: int = 12, dispatch: bool = True) -> dict[str, Any]:
             _curation_emitted += emit_all("cio", cio_situation_to_feedback(_plan)).get("staged", 0)
         out["curation_emitted"] = _curation_emitted
         out["curation_plans_considered"] = len(_seen_keys)
+        # Keep residual staging small: light stage-only drain of desk sources after emit
+        # so CIO re-seed does not wait for the 30m full watch_directives --apply.
+        if _curation_emitted > 0 or os.environ.get("CURATION_DRAIN_AFTER_EMIT", "1").strip() not in (
+            "0", "false", "no",
+        ):
+            try:
+                import psycopg2
+                import psycopg2.extras
+                import directive_promotion as _dp
+                from lib.two_way_curation import drain_curation_sources as _drain_cs
+
+                _conn = psycopg2.connect(
+                    host=os.getenv("DB_HOST", "localhost"),
+                    port=os.getenv("DB_PORT", "5432"),
+                    dbname=os.getenv("DB_NAME", "trade_ai"),
+                    user=os.getenv("DB_USER", "trade_ai"),
+                    password=os.getenv("DB_PASSWORD"),
+                    cursor_factory=psycopg2.extras.RealDictCursor,
+                )
+                _cur = _conn.cursor()
+                _cur.execute("SET lock_timeout = '2s'")
+                _rep: dict = {"detail": [], "promoted": 0, "staged": 0}
+
+                def _resolve(d):
+                    sp = d.get("spec") or {}
+                    if d.get("kind") == "ticker" and sp.get("symbol"):
+                        return [str(sp["symbol"]).upper()]
+                    seeds = list(sp.get("seed_symbols") or [])
+                    if sp.get("symbol"):
+                        seeds.insert(0, sp["symbol"])
+                    return [str(s).upper() for s in seeds if s][:5]
+
+                def _eval(sym, did, reason, source, auto):
+                    try:
+                        # stage-only: record hit, avoid Finviz lock storms on the reactive timer
+                        return _dp.promote_directive_lead(
+                            sym, did, reason, source, conn=_conn, auto=False
+                        )
+                    except Exception as _e:
+                        return {"status": "ERROR", "error": str(_e)[:120]}
+
+                _drain_cs(
+                    _cur, False, _rep, _eval, _resolve,
+                    drain_limit=int(os.environ.get("CURATION_DRAIN_LIMIT", "15")),
+                    auto_apply=None,
+                )
+                _conn.commit()
+                _conn.close()
+                out["curation_drained"] = _rep.get("curation_drained", 0)
+                out["curation_staged_hits"] = _rep.get("staged", 0)
+            except Exception as _drain_exc:
+                out["curation_drain_error"] = str(_drain_exc)[:160]
     except Exception as exc:
         out["curation_emitted"] = 0
         out["errors"].append(f"curation_emit:{exc}")

@@ -2,7 +2,7 @@
 
 **Status:** Schema-live · production-proven · interactive desk inbox (2026-08-13) · advisory · firewall-preserved  
 **Branch:** `feat/two-way-watchlist-curation`  
-**Maturity (honest):** ~7.5/10 — reverse scoring live; CIO forward circulating; interactive promote inbox live; advisory/defense organic volume still ramping; options edge empty until paper outcomes exist  
+**Maturity (honest):** ~8.0/10 — reverse scoring live; **multi-desk forward proven** (cio+advisory+defense hits); interactive promote inbox live; CIO residual auto-drain; options edge empty until paper outcomes exist  
 **Authority:** sources `READ_ONLY_ADVISORY`; only the app role drains staging  
 
 This document records the due-diligence audit of the watch-list / proposal life cycle and the remediation that turns it from a one-way pipeline into a **closed, two-way, self-reinforcing curation loop** — CIO (Alex), the Advisory Desk, and the Defense Desk feed *into* the watch list, and realized outcomes feed *back* to re-score it.
