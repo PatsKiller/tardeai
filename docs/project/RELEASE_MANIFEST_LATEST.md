@@ -1,13 +1,13 @@
 # Release Manifest (auto-generated)
 
-Status: PASS
+Status: WARN_NON_LIVE_ADJACENT
 
-_Generated: 2026-08-13T02:36:12.009061+00:00_  
+_Generated: 2026-08-13T02:46:29.834692+00:00_  
 _Source: `python3 scripts/validate_release_readiness.py --json --skip-build`_
 
 ## Checks
 
-- [PASS] repo_hygiene_report: working tree clean
+- [WARN] repo_hygiene_report: dirty_count=1, no live-broker/secrets dirty files
 - [PASS] python3 scripts/validate_metric_consistency.py --strict: Ambiguous label hits: 0
 - [PASS] symbol_card_quality_validator: validator present; run with /api/v2/symbol-cards export during deployment
 - [PASS] python3 scripts/validate_schwab_write_policy.py:   27/27 guards green
@@ -22,7 +22,9 @@ _Source: `python3 scripts/validate_release_readiness.py --json --skip-build`_
 
 - live-adjacent (would FAIL): none
 - documented runtime/generated (WARN_NON_LIVE_ADJACENT only):
-  - (none)
+  - `docs/diligence/current/OPTIONS_RISK_BLOCK_MATRIX.md`
 - other untracked-by-policy: none
+
+**Justification:** Remaining dirty files are regenerated evidence/runtime artifacts (diligence pack, runtime caches). No live-broker, secrets, or execution-adjacent source is dirty.
 
 *Does not authorize live trading. Operator-approved path only.*
