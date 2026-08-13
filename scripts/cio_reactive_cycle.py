@@ -198,6 +198,20 @@ def run_once(*, max_wakes: int = 12, dispatch: bool = True) -> dict[str, Any]:
     except Exception as exc:
         out["situations"] = {"errors": [f"situations_hook:{exc}"], "plans_created": []}
 
+    # Two-way curation emit (forward edge) — CIO situations seed watchlist directives.
+    # Shadow/advisory + fail-soft: stages feedback only (firewalled); the app-role
+    # drain (watch_directives_service) governs promotion. Never wedges the cycle.
+    try:
+        from lib.two_way_curation import cio_situation_to_feedback, emit_all
+        _situations = out.get("situations") or {}
+        _curation_emitted = 0
+        for _plan in (_situations.get("plans_detail") or []):
+            _curation_emitted += emit_all("cio", cio_situation_to_feedback(_plan)).get("staged", 0)
+        out["curation_emitted"] = _curation_emitted
+    except Exception as exc:
+        out["curation_emitted"] = 0
+        out["errors"].append(f"curation_emit:{exc}")
+
     try:
         STATUS_PATH.parent.mkdir(parents=True, exist_ok=True)
         STATUS_PATH.write_text(json.dumps(out, indent=2, default=str))
