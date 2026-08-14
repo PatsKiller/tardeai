@@ -14,16 +14,19 @@ Procedure:
      complement is out-of-sample (OOS).
   3. For each combination: select the IS-best configuration(s) n* (TIES select
      ALL tied-best configs and average their omegas), compute the OOS relative
-     rank omega = average_rank / (N+1) where average_rank = 1 is WORST OOS and
-     N is BEST OOS (ties share the AVERAGE rank, so reordering economically
-     identical configs does not change the result), and the logit
-     lambda = ln(omega / (1 - omega)).
-  4. PBO = fraction of combinations with lambda < 0 (IS winner below OOS median).
+     rank omega = average_rank / (N+1), and logit lambda = ln(omega/(1-omega)).
+  4. PBO = fraction of combinations with lambda < 0.
 
-Approximation governance: the default is FULL enumeration. Approximation is an
-EXPLICIT opt-in via max_combinations; when active, the result reports
-`approx=True`, the sampling method/seed, the sampling fraction, and explicit
-limitations. A confirmatory gate must not silently accept an approximate result.
+Edge governance (P1-2):
+  * zero-variance return streams have an UNDEFINED Sharpe (a constant positive
+    stream is not Sharpe 0) -> the split is UNAVAILABLE, never silently 0.
+  * n_subsets must be >= 2, even, and <= n_observations (no div/mod-by-zero).
+  * full enumeration is the default; approximation is explicit opt-in and is
+    sampled via reservoir sampling WITHOUT materializing the full combination
+    list (no memory explosion). An over-large full enumeration returns
+    COMPUTATION_INFEASIBLE.
+  * tie rate is reported (is_tie_split_count / tie_fraction) because a high tie
+    rate weakens PBO interpretation.
 
 Pure stdlib. Deterministic given a seed.
 """
@@ -34,29 +37,28 @@ import math
 import random
 from typing import Optional, Sequence
 
+_SAFE_FULL_ENUMERATION_LIMIT = 1_000_000
+
 
 def _is_finite(x: float) -> bool:
     return isinstance(x, (int, float)) and math.isfinite(float(x))
 
 
-def _sharpe(returns: Sequence[float]) -> float:
+def _sharpe(returns: Sequence[float]) -> Optional[float]:
+    """Sharpe of a return series; None (undefined) on zero variance."""
     n = len(returns)
     if n < 2:
-        return 0.0
+        return None
     mean = sum(returns) / n
     var = sum((r - mean) ** 2 for r in returns) / (n - 1)
     std = math.sqrt(var)
     if std == 0.0:
-        return 0.0
+        return None  # undefined, NOT zero
     return mean / std
 
 
 def average_ranks(values: Sequence[float]) -> list[float]:
-    """Average ranks of `values`, 1-indexed ascending (1 = smallest = WORST).
-
-    Ties share the average of the ranks they span, so reordering equal values
-    does not change the assigned rank.
-    """
+    """Average ranks of `values`, 1-indexed ascending (1 = smallest = WORST)."""
     order = sorted(range(len(values)), key=lambda i: values[i])
     ranks = [0.0] * len(values)
     i = 0
@@ -65,7 +67,6 @@ def average_ranks(values: Sequence[float]) -> list[float]:
         j = i
         while j + 1 < n and values[order[j + 1]] == values[order[i]]:
             j += 1
-        # positions i..j (0-indexed) -> ranks (i+1)..(j+1)
         avg = ((i + 1) + (j + 1)) / 2.0
         for k in range(i, j + 1):
             ranks[order[k]] = avg
@@ -75,12 +76,22 @@ def average_ranks(values: Sequence[float]) -> list[float]:
 
 def _cscv_combinations(n_subsets: int, subset_size: int,
                        max_combinations: Optional[int], seed: int):
-    all_combos = list(itertools.combinations(range(n_subsets), subset_size))
-    if max_combinations is None or len(all_combos) <= max_combinations:
-        yield from all_combos
+    """Yield IS combinations; full enumeration streams, subsample uses reservoir
+    sampling without materializing the full combination list."""
+    total = math.comb(n_subsets, subset_size)
+    if max_combinations is None or max_combinations >= total:
+        yield from itertools.combinations(range(n_subsets), subset_size)
         return
     rng = random.Random(seed)
-    yield from rng.sample(all_combos, max_combinations)
+    reservoir: list = []
+    for i, c in enumerate(itertools.combinations(range(n_subsets), subset_size)):
+        if i < max_combinations:
+            reservoir.append(c)
+        else:
+            j = rng.randint(0, i)
+            if j < max_combinations:
+                reservoir[j] = c
+    yield from reservoir
 
 
 def cscv_probability_of_backtest_overfitting(
@@ -90,11 +101,7 @@ def cscv_probability_of_backtest_overfitting(
     seed: int = 0,
     performance: str = "sharpe",
 ) -> dict:
-    """Return PBO and logit diagnostics for an N x T configuration-return matrix.
-
-    Full enumeration is the default. Set max_combinations to opt in to a
-    deterministic subsample (reported as approx=True).
-    """
+    """Return PBO and logit diagnostics for an N x T configuration-return matrix."""
     configs = [list(col) for col in config_returns]
     n_configs = len(configs)
     if n_configs < 2:
@@ -111,8 +118,12 @@ def cscv_probability_of_backtest_overfitting(
             if not _is_finite(v):
                 return {"status": "UNAVAILABLE", "reason": "non-finite return in matrix"}
 
+    if n_subsets < 2:
+        return {"status": "UNAVAILABLE", "reason": "n_subsets must be >= 2"}
     if n_subsets % 2 != 0:
         return {"status": "UNAVAILABLE", "reason": "n_subsets must be even"}
+    if n_subsets > n_obs:
+        return {"status": "UNAVAILABLE", "reason": "n_subsets must be <= n_observations"}
     if n_obs % n_subsets != 0:
         return {"status": "UNAVAILABLE",
                 "reason": f"T={n_obs} not divisible by S={n_subsets}"}
@@ -120,35 +131,48 @@ def cscv_probability_of_backtest_overfitting(
     if sub_len < 1:
         return {"status": "UNAVAILABLE", "reason": "empty submatrices"}
 
-    def perf(vals: Sequence[float]) -> float:
+    def perf(vals: Sequence[float]) -> Optional[float]:
         if performance == "sharpe":
             return _sharpe(vals)
         if performance == "mean":
+            if len(vals) == 0:
+                return None
             return sum(vals) / len(vals)
         raise ValueError(f"unknown performance metric: {performance}")
 
-    def flat_perf(col: Sequence[float], idx: Sequence[int]) -> float:
+    def flat_perf(col: Sequence[float], idx: Sequence[int]) -> Optional[float]:
         flat = [v for i in idx for v in col[i * sub_len:(i + 1) * sub_len]]
         return perf(flat)
 
     total_combos = math.comb(n_subsets, n_subsets // 2)
+    if max_combinations is None and total_combos > _SAFE_FULL_ENUMERATION_LIMIT:
+        return {"status": "COMPUTATION_INFEASIBLE",
+                "reason": f"full enumeration of C({n_subsets},{n_subsets // 2})={total_combos} "
+                          "exceeds safe limit; opt in to approximation via max_combinations"}
     combos = list(_cscv_combinations(n_subsets, n_subsets // 2, max_combinations, seed))
     if not combos:
         return {"status": "UNAVAILABLE", "reason": "no combinations generated"}
 
     logits = []
+    tie_splits = 0
     for combo in combos:
         is_idx = list(combo)
         oos_idx = [i for i in range(n_subsets) if i not in set(is_idx)]
 
         is_perf = [flat_perf(col, is_idx) for col in configs]
-        best_is = max(is_perf)
-        # Ties select ALL IS-best configs; average their omegas.
-        is_best_configs = [k for k in range(n_configs) if is_perf[k] == best_is]
-
         oos_perf = [flat_perf(col, oos_idx) for col in configs]
-        oos_ranks = average_ranks(oos_perf)
+        if any(p is None for p in is_perf) or any(p is None for p in oos_perf):
+            return {"status": "UNAVAILABLE",
+                    "reason": "zero-variance return stream: Sharpe undefined (not 0)"}
 
+        is_perf = [float(p) for p in is_perf]
+        oos_perf = [float(p) for p in oos_perf]
+        best_is = max(is_perf)
+        is_best_configs = [k for k in range(n_configs) if is_perf[k] == best_is]
+        if len(is_best_configs) > 1:
+            tie_splits += 1
+
+        oos_ranks = average_ranks(oos_perf)
         omega_sum = sum(oos_ranks[k] / (n_configs + 1) for k in is_best_configs)
         omega = omega_sum / len(is_best_configs)
         logits.append(math.log(omega / (1.0 - omega)))
@@ -165,8 +189,11 @@ def cscv_probability_of_backtest_overfitting(
         "combinations_evaluated": len(logits),
         "sampling_fraction": len(logits) / total_combos,
         "approx": approx,
-        "sampling_method": "deterministic_subsample" if approx else "full_enumeration",
+        "sampling_method": "reservoir_subsample" if approx else "full_enumeration",
         "sampling_seed": seed if approx else None,
+        "tie_policy": "average_rank",
+        "is_tie_split_count": tie_splits,
+        "tie_fraction": tie_splits / len(logits),
         "approximation_limitations": (
             "Subsampled CSCV: PBO is an estimate over a random subset of splits; "
             "uncertainty is not quantified. Full enumeration required for "

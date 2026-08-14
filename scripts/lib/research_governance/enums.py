@@ -84,6 +84,48 @@ class TrialTerminalStatus(str, Enum):
 TERMINAL_STATUSES = frozenset(s.value for s in TrialTerminalStatus)
 
 
+class FullTextStatus(str, Enum):
+    """Whether lawful full text is actually available and its access status."""
+    NOT_FOUND_IN_FILE_LIBRARY = "NOT_FOUND_IN_FILE_LIBRARY"
+    AVAILABLE_LAWFUL_PRIVATE = "AVAILABLE_LAWFUL_PRIVATE"
+    AVAILABLE_PUBLIC_DOMAIN = "AVAILABLE_PUBLIC_DOMAIN"
+    AVAILABLE_LICENSED = "AVAILABLE_LICENSED"
+
+
+class ReturnFrequency(str, Enum):
+    """Sampling frequency of the underlying return series (coherent convention)."""
+    DAILY = "DAILY"
+    WEEKLY = "WEEKLY"
+    MONTHLY = "MONTHLY"
+    QUARTERLY = "QUARTERLY"
+    ANNUAL = "ANNUAL"
+
+
+class SharpeFrequency(str, Enum):
+    """Whether a Sharpe is per-period or annualized (must match its sample count)."""
+    PER_PERIOD = "PER_PERIOD"
+    ANNUALIZED = "ANNUALIZED"
+
+
+class ResultStorage(str, Enum):
+    INLINE_PAYLOAD_HASH = "INLINE_PAYLOAD_HASH"
+    EXTERNAL_ARTIFACT = "EXTERNAL_ARTIFACT"
+
+
+class VerificationStatus(str, Enum):
+    VERIFIED = "VERIFIED"
+    UNVERIFIED = "UNVERIFIED"
+    MISMATCH = "MISMATCH"
+
+
+# Terminal statuses that REQUIRE a terminal_reason (cannot dispose a trial cheaply).
+REASON_REQUIRED_STATUSES = frozenset({
+    TrialTerminalStatus.INVALID.value,
+    TrialTerminalStatus.FAILED.value,
+    TrialTerminalStatus.CANCELED_WITH_REASON.value,
+})
+
+
 # A linear promotion ladder for a single hypothesis/fact (RG-0..RG-11 use these
 # as the "current position" a fact holds). Ordering is meaningful: a fact may
 # only move forward, never silently leap backward without an invalidation event.

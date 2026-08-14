@@ -10,38 +10,11 @@ sys.path.insert(0, str(ROOT / "scripts" / "lib"))
 
 from scripts.lib.research_governance import promotion_gate as pg  # noqa: E402
 from scripts.lib.research_governance.enums import GateState  # noqa: E402
+from scripts.lib.research_governance.results import make_typed_empirical_context  # noqa: E402
 
 
 def _empirical_base():
-    return {
-        "source_id": "s", "claim": "c", "page_or_section": "p", "scope": "us",
-        "evidence_type": "EMPIRICAL_STRATEGY",
-        "protocol_hash": "ph", "trial_family_id": "f", "family_frozen": True,
-        "family_definition_hash": "fdh", "hypothesis_id": "h1",
-        "code_sha": "c0", "dataset_hash": "d0",
-        "in_sample_metric": 1.0, "in_sample_threshold": 0.0,
-        "oos_supported": True, "oos_untouched": True,
-        "multiple_testing": {
-            "status": "OK", "method": "bonferroni", "alpha": 0.05,
-            "family_id": "f", "family_definition_hash": "fdh",
-            "trial_family_id": "f", "tested_hypothesis_id": "h1",
-            "raw_pvalue": 0.001, "adjusted_pvalue": 0.004, "rejected": True,
-            "complete_family": True,
-        },
-        "reality_check": {
-            "status": "OK", "family_id": "f", "family_definition_hash": "fdh",
-            "trial_family_id": "f", "bootstrap_pvalue": 0.01,
-            "n_rules": 5, "n_observations": 100, "n_bootstrap": 1000,
-            "bootstrap_method": "stationary", "mean_block_length": 5.0,
-        },
-        "robustness": {
-            "sample_n": True, "benchmark": True, "subperiods": True, "regimes": True,
-            "costs": True, "outlier_dependence": True, "lookahead_control": True,
-            "survivorship_control": True, "limitations": True,
-        },
-        "evidence_grade": "A",
-        "influence_class": "VALUATION_INPUT",
-    }
+    return make_typed_empirical_context()
 
 
 def test_rg_ladder_restored_rg10_rg11():

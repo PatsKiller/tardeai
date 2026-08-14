@@ -107,6 +107,14 @@ def reality_check_pvalue(
         if not family_id or not family_definition_hash:
             return {"status": "UNAVAILABLE",
                     "reason": "confirmatory Reality Check requires family_id + family_definition_hash"}
+        if not trial_family_id:
+            return {"status": "UNAVAILABLE",
+                    "reason": "confirmatory Reality Check requires trial_family_id"}
+        resolution = 1.0 / (n_bootstrap + 1)
+        if resolution >= 0.05:
+            return {"status": "UNAVAILABLE",
+                    "reason": f"n_bootstrap={n_bootstrap} cannot resolve alpha=0.05 "
+                              f"(resolution={resolution:.4f} >= 0.05)"}
 
     means = [sum(d) / n for d in family]
     observed_v = math.sqrt(n) * max(means)
@@ -136,6 +144,8 @@ def reality_check_pvalue(
         "n_bootstrap": n_bootstrap,
         "mean_block_length": mean_block_length,
         "bootstrap_method": "stationary",
+        "bootstrap_seed": seed,
+        "pvalue_resolution": 1.0 / (n_bootstrap + 1),
     }
     if family_id is not None:
         result["family_id"] = family_id

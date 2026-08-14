@@ -8,7 +8,7 @@ Canonical RGA mapping (single source of truth — keep plan, docs, runner, and
 result packet consistent with this):
 
   RGA-1  source_registry_exact_manifest
-  RGA-2  provenance_complete
+  RGA-2  provenance_state_coherent
   RGA-3  lifecycle_grade_separated
   RGA-4  trial_registry_frozen_complete
   RGA-5  no_lookahead_contract
@@ -44,7 +44,7 @@ RGA_IDS: tuple[str, ...] = tuple(f"RGA-{i}" for i in range(1, 17))
 
 GATE_NAMES: dict[str, str] = {
     "RGA-1": "source_registry_exact_manifest",
-    "RGA-2": "provenance_complete",
+    "RGA-2": "provenance_state_coherent",
     "RGA-3": "lifecycle_grade_separated",
     "RGA-4": "trial_registry_frozen_complete",
     "RGA-5": "no_lookahead_contract",

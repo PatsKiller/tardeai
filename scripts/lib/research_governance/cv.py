@@ -6,7 +6,10 @@ split. Three distinct procedures are provided:
 
   * purged_walk_forward       — chronological; training is only BEFORE test.
   * purged_kfold              — training exists BOTH before and after test.
-  * combinatorial_purged_cv   — full CPCV over all test-group combinations.
+  * combinatorial_purged_splits — all purged/embargoed train/test split
+    combinations over the chosen test-group subsets. (CPCV PATH construction —
+    i.e. chaining splits into full backtest/P&L paths — is DEFERRED to a later
+    PR; this function only generates the purged splits, not the paths.)
 
 Purging removes training samples whose label interval overlaps a test sample's
 label. An EMBARGO removes only POST-test training samples whose label begins
@@ -159,10 +162,10 @@ def _group_combinations(n_groups: int, n_test_groups: int) -> list[list[int]]:
     return [list(c) for c in itertools.combinations(range(n_groups), n_test_groups)]
 
 
-def combinatorial_purged_cv(n_samples: int, labels: Sequence[Interval],
-                            n_groups: int, n_test_groups: int,
-                            embargo: object = 0) -> list[dict]:
-    """Combinatorially-symmetric Purged CV (CPCV).
+def combinatorial_purged_splits(n_samples: int, labels: Sequence[Interval],
+                                n_groups: int, n_test_groups: int,
+                                embargo: object = 0) -> list[dict]:
+    """Combinatorially-symmetric purged train/test SPLITS (CPCV step 1).
 
     Partitions the index axis into n_groups contiguous groups; for every
     combination of n_test_groups test groups, training is all other groups with
@@ -172,6 +175,9 @@ def combinatorial_purged_cv(n_samples: int, labels: Sequence[Interval],
     The test set is a UNION of (possibly non-contiguous) test groups; embargo is
     applied after EACH test block, so a training group sandwiched between two test
     groups is embargoed relative to the earlier one.
+
+    NOTE: this generates the purged SPLITS only. CPCV PATH construction (chaining
+    the splits into full backtest/P&L paths/scenarios) is DEFERRED to a later PR.
     """
     if n_samples < n_groups:
         raise ValueError("n_samples must be >= n_groups (no empty groups)")
@@ -197,3 +203,10 @@ def combinatorial_purged_cv(n_samples: int, labels: Sequence[Interval],
         train = [i for i in range(n_samples) if i not in excl]
         partitions.append({"train": train, "test": test})
     return partitions
+
+
+def combinatorial_purged_cv(n_samples: int, labels: Sequence[Interval],
+                            n_groups: int, n_test_groups: int,
+                            embargo: object = 0) -> list[dict]:
+    """Legacy alias for `combinatorial_purged_splits` (split generation only)."""
+    return combinatorial_purged_splits(n_samples, labels, n_groups, n_test_groups, embargo)

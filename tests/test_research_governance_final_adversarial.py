@@ -129,8 +129,8 @@ def test_promotion_policy_expired_fails():
         "evidence_type": "POLICY_OR_REGULATORY", "evidence_grade": "B",
         "influence_class": "RISK_VETO", "authoritative_source": "IRS",
         "effective_date": "2026-01-01", "jurisdiction": "US",
-        "verified_at": "2026-01-01", "current_as_of": "2026-08-01",
-        "freshness_expired": True,
+        "verified_at": "2019-01-01", "current_as_of": "2026-08-01",
+        "next_reverify_at": "2020-01-01",
     }
     assert promotion_gate.run_promotion_gate(ctx)["overall"] == GateState.FAIL.value
 
@@ -178,6 +178,8 @@ def test_consumed_oos_segment_alias_blocked():
 def test_selection_event_id_unique():
     reg = trial_registry.TrialRegistry()
     reg.freeze_family("f", "h", protocol_hash="ph", planned_trials=[("a", "c1"), ("b", "c2")])
+    reg.record_trial("f", "a", config_hash="c1", result_payload={"x": 1})
+    reg.record_trial("f", "b", config_hash="c2", result_payload={"x": 2})
     reg.record_selection("f", "a", True, selection_event_id="ev1")
     with pytest.raises(ValueError):
         reg.record_selection("f", "b", False, selection_event_id="ev1")
@@ -207,7 +209,7 @@ def test_pbo_approximation_is_explicit():
         [[0.02 + ((t * 7 + c * 13) % 5 - 2) * 0.001 for t in range(16)] for c in range(3)],
         n_subsets=8, max_combinations=10)
     assert r["approx"] is True
-    assert r["sampling_method"] == "deterministic_subsample"
+    assert r["sampling_method"] == "reservoir_subsample"
     assert r["approximation_limitations"]
 
 

@@ -77,6 +77,19 @@ EXPECTED_PAPER_IDS = [
     "harvey_2017_p_hacking",
 ]
 
+FULL_TEXT_STATUSES = frozenset({
+    "NOT_FOUND_IN_FILE_LIBRARY",
+    "AVAILABLE_LAWFUL_PRIVATE",
+    "AVAILABLE_PUBLIC_DOMAIN",
+    "AVAILABLE_LICENSED",
+})
+
+# A permitted license class must be a specific, verifiable access class — never
+# "UNKNOWN" — before a source may claim lawful full text is available.
+PERMITTED_LICENSE_CLASSES = frozenset({
+    "LAWFUL_PRIVATE", "PUBLIC_DOMAIN", "LICENSED",
+})
+
 
 def _load() -> dict:
     return json.loads(_CATALOG_PATH.read_text(encoding="utf-8"))
@@ -107,34 +120,45 @@ def expected_required_ids() -> List[str]:
 def provenance_coherence_report() -> dict:
     """State/provenance coherence: status must match the available evidence.
 
-    A source with full_text_status=NOT_FOUND_IN_FILE_LIBRARY must be
-    claim_status=SOURCE_CLAIM_INCOMPLETE. A source claiming lawful full text must
-    provide a location/reference, a source hash, a permitted license class, and a
-    verified_at timestamp.
+    * `full_text_status` must be a known enum value (unknown/malformed => FAIL).
+    * A source with full_text_status=NOT_FOUND_IN_FILE_LIBRARY must be
+      claim_status=SOURCE_CLAIM_INCOMPLETE.
+    * A source claiming lawful full text must provide a location/reference, a
+      source hash, a PERMITTED (specific, non-UNKNOWN) license class, and a
+      verified_at timestamp.
     """
     sources = load_sources()
-    missing_status = []
+    invalid_status = []
     missing_claim_status = []
     available_incomplete = []
+    disallowed_license = []
     for s in sources:
         fts = s.get("full_text_status")
         cs = s.get("claim_status")
+        if fts not in FULL_TEXT_STATUSES:
+            invalid_status.append(s["source_id"])
+            continue
         if fts == "NOT_FOUND_IN_FILE_LIBRARY":
             if cs != "SOURCE_CLAIM_INCOMPLETE":
                 missing_claim_status.append(s["source_id"])
         else:
             # Claims full text is available -> must prove it.
             if not s.get("source_location") and not s.get("source_hash"):
-                missing_status.append(s["source_id"])
+                available_incomplete.append(s["source_id"])
             if not s.get("source_hash"):
                 available_incomplete.append(s["source_id"])
             if not s.get("verified_at"):
                 available_incomplete.append(s["source_id"])
+            if s.get("license_class", "UNKNOWN") not in PERMITTED_LICENSE_CLASSES:
+                disallowed_license.append(s["source_id"])
     return {
+        "sources_with_invalid_full_text_status": invalid_status,
         "sources_without_claim_status": missing_claim_status,
-        "sources_claiming_full_text_without_location_or_hash": missing_status,
+        "sources_claiming_full_text_without_location_or_hash": available_incomplete,
         "sources_claiming_full_text_incomplete_proof": sorted(set(available_incomplete)),
-        "coherent": not missing_claim_status and not missing_status and not available_incomplete,
+        "sources_claiming_full_text_without_permitted_license": disallowed_license,
+        "coherent": (not invalid_status and not missing_claim_status
+                     and not available_incomplete and not disallowed_license),
     }
 
 

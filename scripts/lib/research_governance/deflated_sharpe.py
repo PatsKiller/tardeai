@@ -187,20 +187,48 @@ def deflated_sharpe(
     n_trials: Optional[int],
     sharpe_frequency: Optional[str] = None,
     trial_sharpe_frequency: Optional[str] = None,
+    return_frequency: Optional[str] = None,
+    confirmatory: bool = False,
 ) -> dict:
     """Deflated Sharpe Ratio: PSR against the deflated benchmark SR*.
 
-    Sharpe convention contract: `sharpe_frequency` describes the observed Sharpe
-    and `trial_sharpe_frequency` the trial distribution. If BOTH are provided and
-    differ, the call is rejected (an annualized Sharpe cannot be compared against
-    a per-period trial distribution). Either may be omitted (frequencies are then
-    recorded as unknown and the caller is responsible for consistency).
+    Sharpe convention contract:
+      * `sharpe_frequency` / `trial_sharpe_frequency` (PER_PERIOD | ANNUALIZED)
+        must MATCH (an annualized Sharpe cannot be compared against a per-period
+        trial distribution).
+      * `return_frequency` (DAILY | WEEKLY | MONTHLY | ...) is the sampling
+        frequency of the underlying returns.
+
+    FAIL-CLOSED: a confirmatory result requires an explicit, fully-specified
+    convention (all three present and coherent); otherwise UNAVAILABLE. The
+    wrapper NEVER upgrades an underlying PSR UNAVAILABLE to OK.
     """
-    if (sharpe_frequency is not None and trial_sharpe_frequency is not None
-            and sharpe_frequency != trial_sharpe_frequency):
+    if confirmatory:
+        missing = []
+        if not sharpe_frequency:
+            missing.append("sharpe_frequency")
+        if not trial_sharpe_frequency:
+            missing.append("trial_sharpe_frequency")
+        if not return_frequency:
+            missing.append("return_frequency")
+        if missing:
+            return {"status": "UNAVAILABLE",
+                    "reason": f"confirmatory DSR requires explicit convention: {missing}",
+                    "deflated_benchmark_sr": None, "psr_z": None,
+                    "probability_sr_exceeds_deflated_benchmark": None}
+        if sharpe_frequency != trial_sharpe_frequency:
+            return {"status": "UNAVAILABLE",
+                    "reason": f"Sharpe frequency mismatch: observed={sharpe_frequency} "
+                              f"vs trial={trial_sharpe_frequency}",
+                    "deflated_benchmark_sr": None, "psr_z": None,
+                    "probability_sr_exceeds_deflated_benchmark": None}
+    elif (sharpe_frequency is not None and trial_sharpe_frequency is not None
+          and sharpe_frequency != trial_sharpe_frequency):
         return {"status": "UNAVAILABLE",
                 "reason": f"Sharpe frequency mismatch: observed={sharpe_frequency} "
-                          f"vs trial={trial_sharpe_frequency}"}
+                          f"vs trial={trial_sharpe_frequency}",
+                "deflated_benchmark_sr": None, "psr_z": None,
+                "probability_sr_exceeds_deflated_benchmark": None}
 
     benchmark = deflated_benchmark_sr(trial_sharpes, n_trials)
     if benchmark["status"] != "OK":
@@ -210,13 +238,20 @@ def deflated_sharpe(
     psr_res = psr(observed_sharpe, benchmark["deflated_benchmark_sr"],
                   n_observations, skewness, kurtosis,
                   sharpe_frequency=sharpe_frequency)
+    if psr_res["status"] != "OK":
+        # FAIL-CLOSED: never upgrade an underlying PSR failure to a DSR OK.
+        return {"status": "UNAVAILABLE", "reason": psr_res.get("reason", "PSR unavailable"),
+                "deflated_benchmark_sr": benchmark["deflated_benchmark_sr"],
+                "psr_z": None, "probability_sr_exceeds_deflated_benchmark": None}
     result = {
         "status": "OK",
         "deflated_benchmark_sr": benchmark["deflated_benchmark_sr"],
-        "psr_z": psr_res.get("psr_z"),
-        "probability_sr_exceeds_deflated_benchmark": psr_res.get("probability"),
+        "psr_z": psr_res["psr_z"],
+        "probability_sr_exceeds_deflated_benchmark": psr_res["probability"],
         "n_trials": n_trials,
         "sharpe_frequency": sharpe_frequency,
         "trial_sharpe_frequency": trial_sharpe_frequency,
+        "return_frequency": return_frequency,
+        "confirmatory": confirmatory,
     }
     return result

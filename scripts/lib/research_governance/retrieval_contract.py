@@ -42,6 +42,8 @@ class ResearchQuery:
     evidence_min_grade: EvidenceGrade = EvidenceGrade.D
     max_facts: int = 20
     free_text: str | None = None
+    as_of: str | None = None
+    max_source_age: str | None = None
 
     def __post_init__(self) -> None:
         if isinstance(self.evidence_min_grade, str):
@@ -50,12 +52,18 @@ class ResearchQuery:
 
 @dataclass
 class ContradictionResult:
-    """Structured contradiction/support output for a fact."""
+    """Structured contradiction/support output for a fact.
+
+    Carries full `ResearchEvidence` objects (never prose) so the CIO synthesis
+    layer keeps provenance — fact_id, source_id, research_status, evidence_grade,
+    and reproduction ids/digests — for every supporting/counterevidence/conflict
+    entry.
+    """
 
     fact_id: str
-    supporting: list[str] = field(default_factory=list)
-    counterevidence: list[str] = field(default_factory=list)
-    unresolved_conflicts: list[str] = field(default_factory=list)
+    supporting: list[ResearchEvidence] = field(default_factory=list)
+    counterevidence: list[ResearchEvidence] = field(default_factory=list)
+    unresolved_conflicts: list[ResearchEvidence] = field(default_factory=list)
     synthesis_constraints: list[str] = field(default_factory=list)
 
 

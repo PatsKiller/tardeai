@@ -90,7 +90,7 @@ Grade ceiling (never bypassable): A/B → `CIO_CONTEXT_ELIGIBLE`; C →
 
 ```text
 RGA-1  source_registry_exact_manifest
-RGA-2  provenance_complete
+RGA-2  provenance_state_coherent
 RGA-3  lifecycle_grade_separated
 RGA-4  trial_registry_frozen_complete
 RGA-5  no_lookahead_contract
@@ -124,13 +124,28 @@ until actual R2 mechanics acceptance exists.
 PREDETERMINED variant universe (`planned_trial_ids` + `planned_config_hashes` +
 `protocol_hash`; confirmatory families additionally require
 `family_definition_hash`). Trial records are immutable; selection is an
-append-only event with unique ids; `result_hash` hashes the actual result
-artifact (an opaque caller-supplied hash requires an external artifact
-reference + size + algorithm); completeness means EVERY planned variant has a
-terminal disposition; OOS windows are immutable and a consumed segment cannot be
-re-registered as fresh under a new id; the first `oos_consumed_at` is immutable.
-Persistence is in-process and immutable; durable append-only persistence is
-deferred to a later PR.
+append-only event with unique ids pointing at a RECORDED (executed) trial, and
+conflicting dispositions are surfaced explicitly (never silently resolved).
+`result_hash` hashes the actual result artifact:
+
+- inline payloads are hashed by the registry;
+- external artifacts require `result_artifact_ref` + `result_artifact_size` +
+  `hash_algorithm=sha256` and an injectable `ArtifactVerifier`; the verification
+  result (`VERIFIED`/`UNVERIFIED` + `result_verified_at`) is RETAINED on the
+  record. A confirmatory `COMPLETED` trial must be `VERIFIED` and carry full
+  execution lineage (`code_sha`, `dataset_hash`, `started_at`, `completed_at`).
+
+Terminal dispositions `INVALID` / `FAILED` / `CANCELED_WITH_REASON` require a
+`terminal_reason` (+ optional `failure_stage`); completeness means EVERY planned
+variant has a terminal disposition and every non-COMPLETED variant has a reason.
+
+OOS windows are immutable and separate two concepts: **economic segment
+identity** (`dataset_id` + segment + protocol family) from **dataset snapshot
+lineage** (`dataset_hash`). A consumed economic segment cannot become fresh by
+changing the snapshot; corrected data is classified `CORRECTED_DATA_RERUN`,
+never a fresh untouched OOS generation. The first `oos_consumed_at` is
+immutable. Persistence is in-process and immutable; durable append-only
+persistence is deferred to a later PR.
 
 ## Scope guard
 
@@ -167,15 +182,29 @@ license class, and a `verified_at` timestamp.
 Formulas independently reimplemented from (not copied wholesale from):
 
 - Bailey & López de Prado (2014), *The Deflated Sharpe Ratio* (SSRN 2460551).
-- Bailey, Borwein, López de Prado & Zhu (2017), *The Probability of Backtest
+- Bailey, Borwein, López de Prado & Zhu (2015/2017), *The Probability of Backtest
   Overfitting* (SSRN 2326253).
 - White (2000), *A Reality Check for Data Snooping*, Econometrica.
 - Sullivan, Timmermann & White (1999), *Data-Snooping, Technical Trading Rule
   Performance, and the Bootstrap*, Journal of Finance.
 - Sullivan, Timmermann & White (2001), *Dangers of Data Mining: The Case of
   Calendar Effects in Stock Returns*, Journal of Econometrics.
-- López de Prado (2018), *Advances in Financial Machine Learning* (purging /
-  embargo / CPCV).
+- López de Prado (2018), *Advances in Financial Machine Learning*, Wiley
+  (purging / embargo / CSCV, Chapter 12).
+
+## Primary-source validation
+
+Each method's primary source, formula/contract, implementation choice, and any
+Trade AI deviation are documented so a non-paper detail is never misattributed
+to the paper.
+
+| method | primary_source | formula_or_contract | implementation_choice | deviation_or_extension | reason | known_limitation |
+| --- | --- | --- | --- | --- | --- | --- |
+| Deflated Sharpe Ratio (DSR/PSR) | Bailey & López de Prado (2014), SSRN 2460551 | `SR* = mu + sigma·maxZ`; PSR denominator-square validated before `sqrt` | Acklam inverse-normal CDF; raw-Pearson kurtosis | None | stdlib-only | skew/kurtosis degenerate ⇒ `UNAVAILABLE` |
+| PBO / CSCV | Bailey, Borwein, López de Prado & Zhu (SSRN 2326253) | CSCV over `C(S, S/2)` IS/OOS splits; `omega = avg_rank/(N+1)` | average-rank ties; full enumeration default; reservoir-sampled approximation | tie policy + safe-limit `COMPUTATION_INFEASIBLE` are Trade AI policy, not paper | anti-gaming / resource guard | zero-variance Sharpe is `UNAVAILABLE`, not 0 |
+| White Reality Check | White (2000), Econometrica | recentered `V* = sqrt(n)·max mean(f*)` under the null | stationary bootstrap, shared index across rules | `p = (count+1)/(B+1)` + MC resolution floor are Trade AI policy | conservative p | block length ≥ 1 required |
+| Calendar data-mining | Sullivan, Timmermann & White (2001), J. Econometrics | whole searched family test, never winner-only | named calendar families | None | challenge Almanac claims | pre/post-publication may be `DATA_UNAVAILABLE` |
+| Purged / embargoed CV + CPCV | López de Prado (2018), AFML Ch. 12 | purge label overlap; embargo post-test boundary; combinatorial splits | `combinatorial_purged_splits()` (split generation) | CPCV PATH construction deferred to a later PR | R1 scope | path/backtest-path layer not yet built |
 
 ## Authority boundary
 
