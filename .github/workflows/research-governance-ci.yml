@@ -1,0 +1,47 @@
+name: research-governance
+
+on:
+  pull_request:
+    paths:
+      - "scripts/lib/research_governance/**"
+      - "tests/test_research_governance*"
+      - ".github/workflows/research-governance-ci.yml"
+      - "config/cio_research_source_catalog.json"
+      - "scripts/run_research_governance_acceptance.py"
+  push:
+    branches:
+      - "feature/research-governance-v1"
+
+permissions:
+  contents: read
+
+jobs:
+  research-governance:
+    runs-on: ubuntu-latest
+    env:
+      READ_ONLY_ADVISORY: "1"
+      ENABLE_TELEGRAM: "0"
+      CIO_TELEGRAM_INTERDICT: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: PR scope guard
+        run: python scripts/lib/research_governance/pr_scope_guard.py
+
+      - name: Research governance tests
+        run: |
+          python -m pytest tests/test_research_governance* -q
+
+      - name: RGA acceptance (R1_foundation)
+        run: python scripts/run_research_governance_acceptance.py R1_foundation
