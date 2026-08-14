@@ -1,4 +1,4 @@
-"""cio_decision_semantics.py — Phase 3 decision hygiene (READ_ONLY_ADVISORY).
+"""cio_decision_semantics.py — Phase 3 decision hygiene + Phase 8 identity (READ_ONLY_ADVISORY).
 
 Canonical operator-facing decision semantics for Alex / Command Center / reports:
 
@@ -7,14 +7,16 @@ Canonical operator-facing decision semantics for Alex / Command Center / reports
   * Reject pseudo-sectors (e.g. Iwm−Spy spread pairs) outside GICS
   * Map internal enums to professional prose
   * Require ticker identity proof before a symbol enters CIO output
+  * Stable decision_id so CIO NOW / report / Telegram share one identity
 
 Pure and deterministic. No broker / order / stop / 2FA / Telegram side effects.
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 from typing import Any, Optional
-
 # ── Stance taxonomy (aligned with capital plan / opportunity queue) ──────────
 
 STANCE_EXIT = "EXIT"
@@ -93,6 +95,83 @@ _AMBIGUOUS_TICKERS = frozenset({
 })
 
 _NEUTRAL_WHY = "no new desk signal; hold"
+
+
+def make_decision_id(
+    symbol: Any,
+    stance_code: Any,
+    recommended_delta_usd: Any = 0.0,
+    why_now: Any = None,
+) -> str:
+    """Stable, content-addressed decision id shared by CC / report / Telegram.
+
+    Material fields only — not timestamps. Format: `dec_<16 hex>`.
+    """
+    body = {
+        "symbol": str(symbol or "").upper().strip(),
+        "stance": str(stance_code or "").upper().strip(),
+        "delta": round(float(recommended_delta_usd or 0.0), 2),
+        "why": str(why_now or "").strip()[:200],
+    }
+    raw = json.dumps(body, sort_keys=True, separators=(",", ":"))
+    return "dec_" + hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
+
+
+def capital_plan_surface_digest(plan: Optional[dict[str, Any]]) -> str:
+    """Digest of capital-plan dollars that must match across office home + report."""
+    p = plan or {}
+    src = p.get("capital_sources") or {}
+    key = {
+        "cash": round(float(p.get("cash_total_usd") or 0.0), 2),
+        "reserve": round(float(p.get("cash_reserved_usd") or 0.0), 2),
+        "investable": round(float(p.get("cash_investable_usd") or 0.0), 2),
+        "earmark": round(float(
+            p.get("cash_earmarked_redeploy_usd")
+            or src.get("earmarked_redeploy_usd")
+            or src.get("maturities_usd")
+            or 0.0
+        ), 2),
+        "raise": round(float(
+            p.get("net_recommended_raise_usd")
+            or src.get("total_prospective_raise_usd")
+            or src.get("total_raise_usd")
+            or 0.0
+        ), 2),
+        "deploy": round(float(p.get("net_recommended_deploy_usd") or 0.0), 2),
+        "post": round(float(p.get("post_plan_cash_usd") or 0.0), 2),
+        "v": str(p.get("plan_version") or p.get("digest") or "")[:32],
+    }
+    # Prefer engine digest when present (stronger consistency)
+    if p.get("digest"):
+        return str(p["digest"])
+    raw = json.dumps(key, sort_keys=True, separators=(",", ":"))
+    return "cp_" + hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
+
+
+def what_changes_the_call(stance_code: str, risk: Any = None, counter_thesis: Any = None) -> str:
+    """CIO-speak condition that would reverse the call (not a state-machine code)."""
+    stance = str(stance_code or "").upper()
+    risk_s = str(risk or "")
+    if "concentration" in risk_s.lower():
+        return "Single-name weight falls back under the concentration cap, or the desk thesis invalidates the trim."
+    if stance in ("TRIM", "EXIT"):
+        return "Thesis re-validates on multi-desk evidence, or risk/reward reopens above the policy hurdle."
+    if stance in ("ADD", "RE_ENTER", "BUY"):
+        return "Setup breaks (price/structure), evidence quality drops below the gate, or cash policy requires reserve."
+    if counter_thesis and "no Street" not in str(counter_thesis):
+        return f"Counter-thesis resolves: {str(counter_thesis)[:120]}"
+    return "Material new evidence arrives from multiple desks, or the cash/risk band forces a review."
+
+
+def operator_action_affordances() -> list[dict[str, str]]:
+    """Client-facing actions available on a CIO NOW card (no execution authority)."""
+    return [
+        {"code": "ACK", "label": "Acknowledge"},
+        {"code": "DEFER", "label": "Defer"},
+        {"code": "DONE", "label": "Mark done"},
+        {"code": "REJECT", "label": "Reject"},
+        {"code": "RATE", "label": "Rate"},
+    ]
 
 
 def professional_stance(stance: Any) -> str:
@@ -403,6 +482,14 @@ def aggregate_position_decisions(
         agg["current_value_usd"] = round(value, 2)
         agg["recommended_delta_usd"] = round(float(agg.get("recommended_delta_usd") or 0.0), 2)
         agg["account_count"] = len(agg.get("accounts") or [])
+        tr = agg.get("target_range_pct") or {}
+        agg["target_weight_pct"] = tr.get("max") if isinstance(tr, dict) else None
+        agg["decision_id"] = make_decision_id(
+            sym, stance, agg["recommended_delta_usd"], agg.get("why_now"),
+        )
+        agg["what_changes_call"] = what_changes_the_call(
+            stance, agg.get("risk"), agg.get("counter_thesis"),
+        )
         out.append(agg)
 
     out.sort(key=lambda r: (-abs(float(r.get("recommended_delta_usd") or 0.0)),
@@ -416,7 +503,10 @@ def sanitize_decisions_now(
     portfolio_value: float = 0.0,
     limit: int = 8,
 ) -> list[dict[str, Any]]:
-    """Operator-facing decisions: aggregate, resolve stance, professional labels."""
+    """Operator-facing decisions: aggregate, resolve stance, professional labels + IDs.
+
+    Phase 8: every card carries a stable `decision_id` shared with CIO NOW / report.
+    """
     aggregated = aggregate_position_decisions(rows, portfolio_value=portfolio_value)
     neutral = _NEUTRAL_WHY
     decisions: list[dict[str, Any]] = []
@@ -429,19 +519,35 @@ def sanitize_decisions_now(
         has_breach = "concentration >" in str(risk).lower() or "breach" in str(risk).lower()
         if not (has_delta or has_signal or has_breach):
             continue
+        stance_code = d.get("stance_code") or d.get("cio_stance")
+        did = d.get("decision_id") or make_decision_id(
+            d.get("symbol"), stance_code, delta, why,
+        )
+        tr = d.get("target_range_pct") or {}
+        target_w = d.get("target_weight_pct")
+        if target_w is None and isinstance(tr, dict):
+            target_w = tr.get("max")
         decisions.append({
+            "decision_id": did,
             "symbol": d.get("symbol"),
             "name": d.get("name"),
-            "stance": d.get("stance"),            # professional
-            "stance_code": d.get("stance_code"),  # EXIT/TRIM/...
+            "action": d.get("stance") or professional_stance(stance_code),
+            "stance": d.get("stance") or professional_stance(stance_code),
+            "stance_code": stance_code,
             "current_value_usd": d.get("current_value_usd"),
             "current_weight_pct": d.get("current_weight_pct"),
+            "target_weight_pct": target_w,
             "recommended_delta_usd": d.get("recommended_delta_usd"),
             "why_now": why,
+            "counter_thesis": d.get("counter_thesis") or "no Street/desk disagreement on record",
+            "what_changes_call": d.get("what_changes_call") or what_changes_the_call(
+                str(stance_code or ""), risk, d.get("counter_thesis"),
+            ),
             "risk": risk,
             "next_review": d.get("next_review"),
             "accounts": d.get("accounts"),
             "account_count": d.get("account_count"),
+            "operator_actions": operator_action_affordances(),
         })
     decisions.sort(
         key=lambda d: (

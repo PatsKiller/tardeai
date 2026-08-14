@@ -38,7 +38,7 @@ from typing import Any, Callable, Optional
 
 Executor = Callable[..., Any]
 
-REPORT_VERSION = "report_v2_1.4.0"  # Phase 7: output pipeline + immutable instance manifest
+REPORT_VERSION = "report_v2_1.5.0"  # Phase 8: office/report decision-id + plan digest parity
 
 # ── Taxonomy ─────────────────────────────────────────────────────────────────
 
@@ -403,6 +403,11 @@ def build_part_a(
     decisions = _decisions_now(cap)
 
     # 3. Capital Plan (pass-through projection — Phase 2 earmark fields included)
+    try:
+        from scripts.lib.cio_decision_semantics import capital_plan_surface_digest
+        _cp_digest = capital_plan_surface_digest(cap)
+    except Exception:
+        _cp_digest = cap.get("digest")
     capital = {
         "cash_total_usd": cap.get("cash_total_usd"),
         "cash_reserved_usd": cap.get("cash_reserved_usd"),
@@ -419,6 +424,10 @@ def build_part_a(
         "post_plan_cash_pct": cap.get("post_plan_cash_pct"),
         "portfolio_value_usd": cap.get("portfolio_value_usd"),
         "plan_version": cap.get("plan_version"),
+        "plan_digest": _cp_digest,
+        "digest": cap.get("digest") or _cp_digest,
+        "account_cash": cap.get("account_cash") or (cap.get("cash_ledger") or {}).get("account_cash"),
+        "double_count_guard": (cap.get("capital_sources") or {}).get("double_count_guard"),
     }
     # 4. Portfolio Posture
     posture = _portfolio_posture(cap, attr, sector_opportunities, thesis, perf)
@@ -429,14 +438,21 @@ def build_part_a(
     # 6. Counter-Thesis / Risks
     risks = _counter_thesis(thesis, attr, cap, sector_opportunities)
 
+    decision_ids = [d.get("decision_id") for d in decisions if isinstance(d, dict) and d.get("decision_id")]
     return {
         "computed_at": _now_iso(now),
         "letter": letter,
         "decisions_now": decisions,
+        "decision_ids": decision_ids,
         "capital_plan": capital,
         "portfolio_posture": posture,
         "opportunity_funnel": funnel,
         "counter_thesis_risks": risks,
+        "consistency": {
+            "decision_ids": decision_ids,
+            "capital_plan_digest": capital.get("plan_digest") or capital.get("digest"),
+            "plan_version": capital.get("plan_version"),
+        },
     }
 
 
