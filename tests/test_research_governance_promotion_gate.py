@@ -17,12 +17,28 @@ def _empirical_base():
         "source_id": "s", "claim": "c", "page_or_section": "p", "scope": "us",
         "evidence_type": "EMPIRICAL_STRATEGY",
         "protocol_hash": "ph", "trial_family_id": "f", "family_frozen": True,
+        "family_definition_hash": "fdh", "hypothesis_id": "h1",
         "code_sha": "c0", "dataset_hash": "d0",
         "in_sample_metric": 1.0, "in_sample_threshold": 0.0,
         "oos_supported": True, "oos_untouched": True,
-        "multiple_testing": {"rejected_any": True},
-        "reality_check": {"bootstrap_pvalue": 0.01},
-        "robustness": {"subperiods": True, "regimes": True, "costs": True},
+        "multiple_testing": {
+            "status": "OK", "method": "bonferroni", "alpha": 0.05,
+            "family_id": "f", "family_definition_hash": "fdh",
+            "trial_family_id": "f", "tested_hypothesis_id": "h1",
+            "raw_pvalue": 0.001, "adjusted_pvalue": 0.004, "rejected": True,
+            "complete_family": True,
+        },
+        "reality_check": {
+            "status": "OK", "family_id": "f", "family_definition_hash": "fdh",
+            "trial_family_id": "f", "bootstrap_pvalue": 0.01,
+            "n_rules": 5, "n_observations": 100, "n_bootstrap": 1000,
+            "bootstrap_method": "stationary", "mean_block_length": 5.0,
+        },
+        "robustness": {
+            "sample_n": True, "benchmark": True, "subperiods": True, "regimes": True,
+            "costs": True, "outlier_dependence": True, "lookahead_control": True,
+            "survivorship_control": True, "limitations": True,
+        },
         "evidence_grade": "A",
         "influence_class": "VALUATION_INPUT",
     }
@@ -72,7 +88,6 @@ def test_empirical_requires_full_ladder():
 
 def test_seasonality_cannot_bypass_empirical_gates():
     ctx = dict(_empirical_base(), evidence_type="SEASONALITY")
-    # Remove reality check: seasonality must still fail.
     ctx["reality_check"] = None
     r = pg.run_promotion_gate(ctx)
     assert r["overall"] == GateState.FAIL.value
@@ -86,12 +101,24 @@ def test_deterministic_mechanics_do_not_require_fake_oos():
         "evidence_grade": "A", "influence_class": "DETERMINISTIC_MECHANICS",
         "mechanics_definition": "duration", "units_convention": "years",
         "reference_tests_passed": True, "source_as_of": "2026-01-01",
+        "implementation_validation": True,
     }
     r = pg.run_promotion_gate(ctx)
     assert r["overall"] == GateState.PASS.value
-    # Empirical gates must be NOT_APPLICABLE, not failed.
     assert r["gate_results"]["RG-4"]["state"] == GateState.NOT_APPLICABLE.value
     assert r["gate_results"]["RG-7"]["state"] == GateState.NOT_APPLICABLE.value
+
+
+def test_deterministic_mechanics_require_implementation_validation():
+    ctx = {
+        "source_id": "s", "claim": "c", "page_or_section": "p", "scope": "us",
+        "evidence_type": "DETERMINISTIC_MECHANICS",
+        "evidence_grade": "A", "influence_class": "DETERMINISTIC_MECHANICS",
+        "mechanics_definition": "duration", "units_convention": "years",
+        "reference_tests_passed": True, "source_as_of": "2026-01-01",
+    }
+    r = pg.run_promotion_gate(ctx)
+    assert r["overall"] == GateState.FAIL.value
 
 
 def test_policy_requires_jurisdiction_not_sharpe():
@@ -100,14 +127,27 @@ def test_policy_requires_jurisdiction_not_sharpe():
         "evidence_type": "POLICY_OR_REGULATORY",
         "evidence_grade": "B", "influence_class": "RISK_VETO",
         "authoritative_source": "IRS", "effective_date": "2026-01-01",
-        "jurisdiction": "US", "freshness": "2026-08-01",
+        "jurisdiction": "US",
+        "verified_at": "2026-01-01", "current_as_of": "2026-08-01",
     }
     r = pg.run_promotion_gate(ctx)
     assert r["overall"] == GateState.PASS.value
-    # Missing jurisdiction must fail (not a statistical requirement).
+    assert r["gate_results"]["RG-7"]["state"] == GateState.NOT_APPLICABLE.value
     bad = dict(ctx, jurisdiction=None)
     rb = pg.run_promotion_gate(bad)
     assert rb["overall"] == GateState.FAIL.value
+
+
+def test_policy_freshness_not_a_truthy_string():
+    ctx = {
+        "source_id": "s", "claim": "c", "page_or_section": "p", "scope": "us",
+        "evidence_type": "POLICY_OR_REGULATORY",
+        "evidence_grade": "B", "influence_class": "RISK_VETO",
+        "authoritative_source": "IRS", "effective_date": "2026-01-01",
+        "jurisdiction": "US", "freshness": "2026-08-01",
+    }
+    r = pg.run_promotion_gate(ctx)
+    assert r["overall"] == GateState.FAIL.value
 
 
 def test_valuation_model_requires_assumptions_not_cscv():
@@ -116,11 +156,25 @@ def test_valuation_model_requires_assumptions_not_cscv():
         "evidence_type": "VALUATION_MODEL",
         "evidence_grade": "B", "influence_class": "VALUATION_INPUT",
         "model_identity": "dcf", "assumption_provenance": "x",
-        "scenario_sensitivity": "y", "calibration": "z",
+        "scenario_sensitivity": "y",
+        "calibration": {"calibration_dataset": "d", "calibration_metric": "m",
+                        "validation_split": "v"},
     }
     r = pg.run_promotion_gate(ctx)
     assert r["overall"] == GateState.PASS.value
     assert r["gate_results"]["RG-7"]["state"] == GateState.NOT_APPLICABLE.value
+
+
+def test_valuation_calibration_not_arbitrary_text():
+    ctx = {
+        "source_id": "s", "claim": "c", "page_or_section": "p", "scope": "us",
+        "evidence_type": "VALUATION_MODEL",
+        "evidence_grade": "B", "influence_class": "VALUATION_INPUT",
+        "model_identity": "dcf", "assumption_provenance": "x",
+        "scenario_sensitivity": "y", "calibration": "z",
+    }
+    r = pg.run_promotion_gate(ctx)
+    assert r["overall"] == GateState.FAIL.value
 
 
 def test_source_narrative_is_source_only():

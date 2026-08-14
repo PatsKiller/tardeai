@@ -12,16 +12,18 @@ Procedure:
   1. Split the T observations into S disjoint, equal-size submatrices (S even).
   2. Form all C(S, S/2) combinations of S/2 submatrices as in-sample (IS); the
      complement is out-of-sample (OOS).
-  3. For each combination: pick the IS-best configuration n* (ties broken by
-     lowest index, deterministic), then compute its OOS relative rank
-     omega = rank / (N+1) where rank = 1 is WORST OOS and rank = N is BEST OOS,
-     and logit lambda = ln(omega / (1 - omega)).
-  4. PBO = fraction of combinations with lambda < 0 (IS winner is below the OOS
-     median).
+  3. For each combination: select the IS-best configuration(s) n* (TIES select
+     ALL tied-best configs and average their omegas), compute the OOS relative
+     rank omega = average_rank / (N+1) where average_rank = 1 is WORST OOS and
+     N is BEST OOS (ties share the AVERAGE rank, so reordering economically
+     identical configs does not change the result), and the logit
+     lambda = ln(omega / (1 - omega)).
+  4. PBO = fraction of combinations with lambda < 0 (IS winner below OOS median).
 
-Applicability: N >= 2 (one config has no "selection"), T divisible by S, S even.
-When C(S, S/2) is impractically large we subsample combinations deterministically
-(seeded) and report `approx=True` with the sampling fraction.
+Approximation governance: the default is FULL enumeration. Approximation is an
+EXPLICIT opt-in via max_combinations; when active, the result reports
+`approx=True`, the sampling method/seed, the sampling fraction, and explicit
+limitations. A confirmatory gate must not silently accept an approximate result.
 
 Pure stdlib. Deterministic given a seed.
 """
@@ -49,6 +51,28 @@ def _sharpe(returns: Sequence[float]) -> float:
     return mean / std
 
 
+def average_ranks(values: Sequence[float]) -> list[float]:
+    """Average ranks of `values`, 1-indexed ascending (1 = smallest = WORST).
+
+    Ties share the average of the ranks they span, so reordering equal values
+    does not change the assigned rank.
+    """
+    order = sorted(range(len(values)), key=lambda i: values[i])
+    ranks = [0.0] * len(values)
+    i = 0
+    n = len(order)
+    while i < n:
+        j = i
+        while j + 1 < n and values[order[j + 1]] == values[order[i]]:
+            j += 1
+        # positions i..j (0-indexed) -> ranks (i+1)..(j+1)
+        avg = ((i + 1) + (j + 1)) / 2.0
+        for k in range(i, j + 1):
+            ranks[order[k]] = avg
+        i = j + 1
+    return ranks
+
+
 def _cscv_combinations(n_subsets: int, subset_size: int,
                        max_combinations: Optional[int], seed: int):
     all_combos = list(itertools.combinations(range(n_subsets), subset_size))
@@ -62,11 +86,15 @@ def _cscv_combinations(n_subsets: int, subset_size: int,
 def cscv_probability_of_backtest_overfitting(
     config_returns: Sequence[Sequence[float]],
     n_subsets: int = 16,
-    max_combinations: Optional[int] = 2000,
+    max_combinations: Optional[int] = None,
     seed: int = 0,
     performance: str = "sharpe",
 ) -> dict:
-    """Return PBO and logit diagnostics for an N x T configuration-return matrix."""
+    """Return PBO and logit diagnostics for an N x T configuration-return matrix.
+
+    Full enumeration is the default. Set max_combinations to opt in to a
+    deterministic subsample (reported as approx=True).
+    """
     configs = [list(col) for col in config_returns]
     n_configs = len(configs)
     if n_configs < 2:
@@ -99,23 +127,9 @@ def cscv_probability_of_backtest_overfitting(
             return sum(vals) / len(vals)
         raise ValueError(f"unknown performance metric: {performance}")
 
-    def is_best_config(is_idx: Sequence[int]) -> int:
-        is_perf = []
-        for col in configs:
-            flat = [v for i in is_idx for v in col[i * sub_len:(i + 1) * sub_len]]
-            is_perf.append(perf(flat))
-        # Deterministic tie-break: lowest index wins on equal IS performance.
-        return max(range(n_configs), key=lambda k: (is_perf[k], -k))
-
-    def oos_rank(best: int, oos_idx: Sequence[int]) -> tuple[int, int]:
-        oos_perf = []
-        for col in configs:
-            flat = [v for i in oos_idx for v in col[i * sub_len:(i + 1) * sub_len]]
-            oos_perf.append(perf(flat))
-        # rank 1 = WORST OOS, N = BEST OOS; ties broken by lower index ranking higher.
-        rank = 1 + sum(1 for k in range(n_configs)
-                       if (oos_perf[k], k) < (oos_perf[best], best))
-        return rank, n_configs
+    def flat_perf(col: Sequence[float], idx: Sequence[int]) -> float:
+        flat = [v for i in idx for v in col[i * sub_len:(i + 1) * sub_len]]
+        return perf(flat)
 
     total_combos = math.comb(n_subsets, n_subsets // 2)
     combos = list(_cscv_combinations(n_subsets, n_subsets // 2, max_combinations, seed))
@@ -126,12 +140,21 @@ def cscv_probability_of_backtest_overfitting(
     for combo in combos:
         is_idx = list(combo)
         oos_idx = [i for i in range(n_subsets) if i not in set(is_idx)]
-        best = is_best_config(is_idx)
-        rank, ncfg = oos_rank(best, oos_idx)
-        omega = rank / (ncfg + 1)
+
+        is_perf = [flat_perf(col, is_idx) for col in configs]
+        best_is = max(is_perf)
+        # Ties select ALL IS-best configs; average their omegas.
+        is_best_configs = [k for k in range(n_configs) if is_perf[k] == best_is]
+
+        oos_perf = [flat_perf(col, oos_idx) for col in configs]
+        oos_ranks = average_ranks(oos_perf)
+
+        omega_sum = sum(oos_ranks[k] / (n_configs + 1) for k in is_best_configs)
+        omega = omega_sum / len(is_best_configs)
         logits.append(math.log(omega / (1.0 - omega)))
 
     pbo = sum(1 for l in logits if l < 0) / len(logits)
+    approx = len(logits) < total_combos
     return {
         "status": "OK",
         "pbo": pbo,
@@ -141,6 +164,13 @@ def cscv_probability_of_backtest_overfitting(
         "total_combinations": total_combos,
         "combinations_evaluated": len(logits),
         "sampling_fraction": len(logits) / total_combos,
-        "approx": len(logits) < total_combos,
+        "approx": approx,
+        "sampling_method": "deterministic_subsample" if approx else "full_enumeration",
+        "sampling_seed": seed if approx else None,
+        "approximation_limitations": (
+            "Subsampled CSCV: PBO is an estimate over a random subset of splits; "
+            "uncertainty is not quantified. Full enumeration required for "
+            "confirmatory use." if approx else None),
+        "lambda_distribution": logits,
         "logit_mean": sum(logits) / len(logits),
     }

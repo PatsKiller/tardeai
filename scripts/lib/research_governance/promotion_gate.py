@@ -26,17 +26,13 @@ RG ladder (restored to the approved plan):
   RG-10 decision_use_audit         (contract-only in R1; live in R4)
   RG-11 live_degradation_retirement(contract-only in R1; live in R4)
 
-Type-specific requirements (replacing the empirical ladder for non-empirical
-facts — a bond-duration formula must NOT be forced through a fake Reality Check):
+FAIL-CLOSED semantics (the point of this subsystem): a gate is PASS only when
+the evidence it requires is positively present and correctly bound to the
+hypothesis being promoted. A MISSING field is a FAIL, never a PASS. In
+particular, statistical evidence (multiple-testing, Reality Check) must be
+BOUND to the current frozen trial family by ID + hash, not merely present.
 
-  DETERMINISTIC_MECHANICS: definition, units/conventions, deterministic reference
-                           tests, source/as-of for inputs, implementation validation.
-  POLICY_OR_REGULATORY:    authoritative source, effective date, jurisdiction/scope,
-                           freshness/reverification.
-  VALUATION_MODEL:         model identity, assumption provenance, scenario/sensitivity,
-                           calibration/validation.
-  SOURCE_NARRATIVE / BEHAVIORAL_FRAMEWORK: source-only unless independently
-                           operationalized/tested.
+Type-specific requirements replace the empirical ladder for non-empirical facts.
 
 Grade ceiling (never bypassable):
   A/B -> CIO_CONTEXT_ELIGIBLE (only if the profile fully passes)
@@ -57,8 +53,6 @@ GATE_IDS: tuple[str, ...] = tuple(f"RG-{i}" for i in range(12))
 _EMPIRICAL_TYPES = {EvidenceType.EMPIRICAL_STRATEGY, EvidenceType.EMPIRICAL_FACTOR,
                     EvidenceType.SEASONALITY}
 
-_TIER_ORDER = ["INVALIDATED", "SOURCE_ONLY", "EXPLORATORY_SHADOW", "CIO_CONTEXT_ELIGIBLE"]
-
 _GRADE_CEILING = {
     EvidenceGrade.A.value: "CIO_CONTEXT_ELIGIBLE",
     EvidenceGrade.B.value: "CIO_CONTEXT_ELIGIBLE",
@@ -66,6 +60,20 @@ _GRADE_CEILING = {
     EvidenceGrade.D.value: "SOURCE_ONLY",
     EvidenceGrade.X.value: "INVALIDATED",
 }
+
+# Required institutional evidence checklist for Grade A/B empirical/seasonality
+# robustness. Each key maps to whether it is required (True) for promotion.
+_ROBUSTNESS_REQUIRED = [
+    "sample_n",
+    "benchmark",
+    "subperiods",
+    "regimes",
+    "costs",
+    "outlier_dependence",
+    "lookahead_control",
+    "survivorship_control",
+    "limitations",
+]
 
 
 def _has(ctx: dict, key: str) -> bool:
@@ -86,6 +94,30 @@ def _evidence_type(ctx: dict) -> Optional[EvidenceType]:
 
 def _is_empirical(ctx: dict) -> bool:
     return _evidence_type(ctx) in _EMPIRICAL_TYPES
+
+
+def _family_matches(ctx: dict, evidence: dict) -> bool:
+    """Statistical evidence must be bound to the current frozen trial family.
+
+    Checks every binding field that is present on BOTH the context and the
+    evidence. If the context declares a family/hypothesis/hash and the evidence
+    declares a different one, it fails. If the evidence omits the binding field,
+    the gate's own required-field check catches that omission.
+    """
+    ctx_fam = ctx.get("trial_family_id")
+    ctx_hash = ctx.get("family_definition_hash")
+    ctx_hyp = ctx.get("hypothesis_id")
+
+    if ctx_fam:
+        if evidence.get("trial_family_id") and evidence["trial_family_id"] != ctx_fam:
+            return False
+        if evidence.get("family_id") and evidence["family_id"] != ctx_fam:
+            return False
+    if ctx_hash and evidence.get("family_definition_hash") and evidence["family_definition_hash"] != ctx_hash:
+        return False
+    if ctx_hyp and evidence.get("tested_hypothesis_id") and evidence["tested_hypothesis_id"] != ctx_hyp:
+        return False
+    return True
 
 
 # -- RG gates ----------------------------------------------------------------
@@ -116,9 +148,15 @@ def _gate_2_hypothesis_frozen(ctx: dict) -> tuple[GateState, str]:
     na = _empirical_only(ctx)
     if na:
         return na
-    if _has(ctx, "protocol_hash") and _has(ctx, "trial_family_id") and ctx.get("family_frozen"):
-        return GateState.PASS, "hypothesis frozen in trial registry"
-    return GateState.FAIL, "no frozen protocol_hash/trial_family_id/family_frozen"
+    if not _has(ctx, "protocol_hash"):
+        return GateState.FAIL, "no protocol_hash"
+    if not _has(ctx, "trial_family_id"):
+        return GateState.FAIL, "no trial_family_id"
+    if ctx.get("family_frozen") is not True:
+        return GateState.FAIL, "family not frozen"
+    if not _has(ctx, "family_definition_hash"):
+        return GateState.FAIL, "family_definition_hash required for confirmatory family"
+    return GateState.PASS, "hypothesis frozen in trial registry"
 
 
 def _gate_3_reproducible(ctx: dict) -> tuple[GateState, str]:
@@ -148,9 +186,9 @@ def _gate_5_oos_supported(ctx: dict) -> tuple[GateState, str]:
     if na:
         return na
     if ctx.get("oos_supported") is not True:
-        return GateState.FAIL, "OOS did not support the hypothesis"
-    if ctx.get("oos_untouched") is False:
-        return GateState.FAIL, "OOS segment was consumed/tuned — not valid untouched evidence"
+        return GateState.FAIL, "oos_supported must be True"
+    if ctx.get("oos_untouched") is not True:
+        return GateState.FAIL, "oos_untouched must be True (missing or consumed => FAIL)"
     return GateState.PASS, "untouched OOS segment supports hypothesis"
 
 
@@ -159,11 +197,24 @@ def _gate_6_multiple_testing_applied(ctx: dict) -> tuple[GateState, str]:
     if na:
         return na
     mt = ctx.get("multiple_testing")
-    if mt is None:
-        return GateState.FAIL, "no multiple-testing result"
-    if mt.get("rejected_any") is True:
-        return GateState.PASS, "survives multiple-testing correction"
-    return GateState.FAIL, "does not survive multiple-testing correction"
+    if not isinstance(mt, dict):
+        return GateState.FAIL, "multiple_testing result missing"
+    for key in ("status", "method", "alpha", "family_id", "family_definition_hash",
+                "trial_family_id", "tested_hypothesis_id", "raw_pvalue",
+                "adjusted_pvalue", "rejected", "complete_family"):
+        if key not in mt:
+            return GateState.FAIL, f"multiple_testing missing required field: {key}"
+    if mt.get("status") != "OK":
+        return GateState.FAIL, f"multiple_testing status != OK: {mt.get('status')}"
+    if mt.get("rejected") is not True:
+        return GateState.FAIL, "hypothesis did not survive multiple-testing correction"
+    if mt.get("complete_family") is not True:
+        return GateState.FAIL, "multiple_testing family incomplete"
+    if mt.get("approx") not in (None, False):
+        return GateState.FAIL, "multiple_testing approximation not governed for confirmatory use"
+    if not _family_matches(ctx, mt):
+        return GateState.FAIL, "multiple_testing result bound to a different family/hypothesis"
+    return GateState.PASS, "survives multiple-testing correction on the correct frozen family"
 
 
 def _gate_7_reality_check_passed(ctx: dict) -> tuple[GateState, str]:
@@ -171,15 +222,44 @@ def _gate_7_reality_check_passed(ctx: dict) -> tuple[GateState, str]:
     if na:
         return na
     rc = ctx.get("reality_check")
-    if rc is None:
+    if not isinstance(rc, dict):
         return GateState.FAIL, "no reality-check / data-snooping result"
+    for key in ("status", "family_id", "family_definition_hash", "trial_family_id",
+                "bootstrap_pvalue", "n_rules", "n_observations", "n_bootstrap",
+                "bootstrap_method", "mean_block_length"):
+        if key not in rc:
+            return GateState.FAIL, f"reality_check missing required field: {key}"
+    if rc.get("status") != "OK":
+        return GateState.FAIL, f"reality_check status != OK: {rc.get('status')}"
+    if rc.get("n_rules", 0) < 2:
+        return GateState.FAIL, "reality_check is not a full searched family (>= 2 rules required)"
+    if not _family_matches(ctx, rc):
+        return GateState.FAIL, "reality_check bound to a different family/hypothesis"
     alpha = ctx.get("reality_check_alpha", 0.05)
     p = rc.get("bootstrap_pvalue")
     if p is None:
         return GateState.FAIL, "reality check produced no p-value"
     if p <= alpha:
-        return GateState.PASS, f"reality check p={p:.4f} <= alpha={alpha}"
+        return GateState.PASS, f"reality check p={p:.4f} <= alpha={alpha} on frozen family"
     return GateState.FAIL, f"reality check p={p:.4f} > alpha={alpha}"
+
+
+def _robustness_state(ctx: dict, key: str) -> str:
+    """Return PASS / FAIL / NOT_APPLICABLE-with-reason for a checklist item."""
+    rob = ctx.get("robustness")
+    if not isinstance(rob, dict):
+        return "FAIL"
+    val = rob.get(key)
+    if val is True:
+        return "PASS"
+    if val is False or val is None:
+        return "FAIL"
+    if isinstance(val, str):
+        # A string reason is accepted only as an explicit NOT_APPLICABLE-with-reason.
+        reason = val.strip().lower()
+        if reason.startswith("not_applicable") or reason.startswith("not applicable") or reason.startswith("na:"):
+            return "NOT_APPLICABLE"
+    return "FAIL"
 
 
 def _gate_8_robust(ctx: dict) -> tuple[GateState, str]:
@@ -187,12 +267,16 @@ def _gate_8_robust(ctx: dict) -> tuple[GateState, str]:
     if na:
         return na
     rob = ctx.get("robustness")
-    if not isinstance(rob, dict):
-        return GateState.FAIL, "no robustness/subperiod/regime evidence"
-    failures = [k for k, v in rob.items() if v is False]
-    if failures:
-        return GateState.FAIL, f"robustness failed: {failures}"
-    return GateState.PASS, "robust across subperiods, regimes, and costs"
+    if not isinstance(rob, dict) or not rob:
+        return GateState.FAIL, "robustness evidence empty/missing"
+    fails = []
+    for key in _ROBUSTNESS_REQUIRED:
+        state = _robustness_state(ctx, key)
+        if state == "FAIL":
+            fails.append(key)
+    if fails:
+        return GateState.FAIL, f"robustness missing/unsatisfied: {fails}"
+    return GateState.PASS, "robustness checklist satisfied (sample N, benchmark, subperiods, regimes, costs, outlier, lookahead, survivorship, limitations)"
 
 
 def _gate_9_graded_and_influence(ctx: dict) -> tuple[GateState, str]:
@@ -238,8 +322,6 @@ _GATES: list[tuple[str, str, Callable[[dict], tuple[GateState, str]]]] = [
     ("RG-11", "live_degradation_retirement", _gate_11_live_degradation),
 ]
 
-# Shared gates required for every evidence type. RG-10/RG-11 are contract-only
-# in R1 and not required for the advisory eligibility tier.
 _REQUIRED_SHARED = ("RG-0", "RG-1", "RG-9")
 _EMPIRICAL_GATES = ("RG-2", "RG-3", "RG-4", "RG-5", "RG-6", "RG-7", "RG-8")
 
@@ -260,6 +342,9 @@ def _type_specific_gates(ctx: dict) -> list[tuple[str, str, Callable[[dict], tup
             ("source_as_of", "source_as_of",
              lambda c: (GateState.PASS, "source/as-of present") if _has(c, "source_as_of")
              else (GateState.FAIL, "no source/as-of for inputs")),
+            ("implementation_validation", "implementation_validation",
+             lambda c: (GateState.PASS, "implementation validated") if c.get("implementation_validation") is True
+             else (GateState.FAIL, "implementation not validated against independent reference")),
         ]
     if et == EvidenceType.POLICY_OR_REGULATORY:
         return [
@@ -272,9 +357,8 @@ def _type_specific_gates(ctx: dict) -> list[tuple[str, str, Callable[[dict], tup
             ("jurisdiction", "jurisdiction",
              lambda c: (GateState.PASS, "jurisdiction present") if _has(c, "jurisdiction")
              else (GateState.FAIL, "no jurisdiction/scope")),
-            ("freshness", "freshness",
-             lambda c: (GateState.PASS, "freshness present") if _has(c, "freshness")
-             else (GateState.FAIL, "no freshness/reverification")),
+            ("freshness_policy", "freshness_policy",
+             lambda c: _policy_freshness(c)),
         ]
     if et == EvidenceType.VALUATION_MODEL:
         return [
@@ -288,18 +372,33 @@ def _type_specific_gates(ctx: dict) -> list[tuple[str, str, Callable[[dict], tup
              lambda c: (GateState.PASS, "sensitivity present") if _has(c, "scenario_sensitivity")
              else (GateState.FAIL, "no scenario/sensitivity")),
             ("calibration", "calibration",
-             lambda c: (GateState.PASS, "calibration present") if _has(c, "calibration")
-             else (GateState.FAIL, "no calibration/validation")),
+             lambda c: _valuation_calibration(c)),
         ]
-    # SOURCE_NARRATIVE / BEHAVIORAL_FRAMEWORK / EMPIRICAL: no extra type gates.
     return []
 
 
-def run_promotion_gate(ctx: dict) -> dict:
-    """Run RG-0..RG-11 plus type-specific gates; apply the grade ceiling.
+def _policy_freshness(ctx: dict) -> tuple[GateState, str]:
+    if not _has(ctx, "verified_at"):
+        return GateState.FAIL, "policy missing verified_at"
+    if not _has(ctx, "current_as_of"):
+        return GateState.FAIL, "policy missing current_as_of"
+    if ctx.get("freshness_expired") is True:
+        return GateState.FAIL, "policy freshness expired (reverification overdue)"
+    return GateState.PASS, "policy fresh (verified_at + current_as_of present, not expired)"
 
-    Returns a full report including promotion_state (grade-ceiled) and overall.
-    """
+
+def _valuation_calibration(ctx: dict) -> tuple[GateState, str]:
+    cal = ctx.get("calibration")
+    if not isinstance(cal, dict) or not cal:
+        return GateState.FAIL, "valuation calibration must be structured evidence"
+    for key in ("calibration_dataset", "calibration_metric", "validation_split"):
+        if not cal.get(key):
+            return GateState.FAIL, f"valuation calibration missing {key}"
+    return GateState.PASS, "valuation calibration structured (dataset + metric + split)"
+
+
+def run_promotion_gate(ctx: dict) -> dict:
+    """Run RG-0..RG-11 plus type-specific gates; apply the grade ceiling."""
     report: dict[str, Any] = {"gate_results": {}, "overall": GateState.PASS.value,
                               "promotion_state": None, "grade_ceiling": None}
 
@@ -310,18 +409,15 @@ def run_promotion_gate(ctx: dict) -> dict:
         report["_reason"] = "evidence_type missing/invalid"
         return report
 
-    # Run RG gates.
     for gid, name, fn in _GATES:
         state, reason = fn(ctx)
         report["gate_results"][gid] = {"name": name, "state": state.value, "reason": reason}
 
-    # Run type-specific gates.
     type_gates = _type_specific_gates(ctx)
     for key, name, fn in type_gates:
         state, reason = fn(ctx)
         report["gate_results"][key] = {"name": name, "state": state.value, "reason": reason}
 
-    # Required gate set for this evidence type.
     required = list(_REQUIRED_SHARED)
     if _is_empirical(ctx):
         required.extend(_EMPIRICAL_GATES)
@@ -343,13 +439,11 @@ def run_promotion_gate(ctx: dict) -> dict:
         return report
 
     if failed:
-        # Failing a required gate downgrades to source-only at best.
         report["promotion_state"] = "SOURCE_ONLY"
         report["overall"] = GateState.FAIL.value
         report["_failed_required"] = failed
         return report
 
-    # All required gates pass; promotion is grade-ceiled.
     report["promotion_state"] = ceiling
     report["overall"] = GateState.PASS.value
     return report

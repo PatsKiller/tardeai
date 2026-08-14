@@ -11,6 +11,7 @@ on:
   push:
     branches:
       - "feature/research-governance-v1"
+      - "main"
 
 permissions:
   contents: read

@@ -107,17 +107,30 @@ RGA-15 almanac_reproduction             (R3)
 RGA-16 research_decision_use_audit      (R4)
 ```
 
-R1 requires RGA-1..10, 13, 14; RGA-11/12 are contract-only; RGA-15/16 are not in
-scope until R3/R4.
+R1 splits acceptance into three disjoint collections:
+
+- `required_runtime` — RGA-1..10, 13, 14 (golden vectors + fail-closed behavior).
+- `required_contract` — RGA-11 (promotion-gate contract) and RGA-12 (retrieval
+  contract). These must ALSO pass: a broken contract-only gate still fails R1.
+- `not_in_scope` — RGA-15 (R3) and RGA-16 (R4); NEVER counted as a PASS.
+
+Overall PASS requires EVERY required_runtime gate to pass AND EVERY
+required_contract gate to pass. `R2_mechanics` is `NOT_IMPLEMENTED` (fail-closed)
+until actual R2 mechanics acceptance exists.
 
 ## Trial registry
 
 `trial_registry.py` enforces the anti-gaming invariant: freeze binds a
 PREDETERMINED variant universe (`planned_trial_ids` + `planned_config_hashes` +
-`protocol_hash` + `family_definition_hash`). Trial records are immutable;
-selection is an append-only event; `result_hash` hashes the actual result
-artifact (no parameter-hash fallback); completeness means EVERY planned variant
-has a terminal disposition; the first `oos_consumed_at` is immutable.
+`protocol_hash`; confirmatory families additionally require
+`family_definition_hash`). Trial records are immutable; selection is an
+append-only event with unique ids; `result_hash` hashes the actual result
+artifact (an opaque caller-supplied hash requires an external artifact
+reference + size + algorithm); completeness means EVERY planned variant has a
+terminal disposition; OOS windows are immutable and a consumed segment cannot be
+re-registered as fresh under a new id; the first `oos_consumed_at` is immutable.
+Persistence is in-process and immutable; durable append-only persistence is
+deferred to a later PR.
 
 ## Scope guard
 
@@ -127,10 +140,27 @@ fail the guard.
 
 ## Source catalog
 
-Single canonical data file `config/cio_research_source_catalog.json` (20 books +
-12 primary research papers), loaded by `source_catalog.py` with a parity/hash and
-exact-manifest report. Missing full text is honestly recorded as
-`NOT_FOUND_IN_FILE_LIBRARY`; unread sources remain `SOURCE_CLAIM_INCOMPLETE`.
+Single canonical data file `config/cio_research_source_catalog.json`, loaded by
+`source_catalog.py` with a parity/hash and exact-manifest report. The manifest
+matches the governing master canon:
+
+- **20 institutional canon books** — Core Ten (Malkiel, Graham/Zweig, Housel,
+  Bogle, Ferri, Thau, Harris, McMillan, Natenberg, Aronson) + #11–#20 (López de
+  Prado AFML, Ilmanen, Grinold/Kahn, Damodaran, Marks, Hull, Tuckman/Serrat, Lo,
+  Schilit/Perler, **Expectations Investing**).
+- **1 separately governed practitioner/seasonality source** — Stock Trader's
+  Almanac (not a substitute for institutional book #20).
+- **13 primary research papers** — including Sullivan–Timmermann–White's
+  *Dangers of Data Mining: The Case of Calendar Effects in Stock Returns*
+  (required to challenge Almanac/calendar claims) alongside their
+  trading-rule/bootstrap paper.
+
+Provenance honesty is STATE/PROVENANCE coherent, not "everything is permanently
+missing": a source lacking lawful full text must carry
+`full_text_status=NOT_FOUND_IN_FILE_LIBRARY` AND
+`claim_status=SOURCE_CLAIM_INCOMPLETE`. A source that later acquires lawful full
+text must instead provide a location/reference, a source hash, a permitted
+license class, and a `verified_at` timestamp.
 
 ## Reference materials
 
@@ -142,6 +172,8 @@ Formulas independently reimplemented from (not copied wholesale from):
 - White (2000), *A Reality Check for Data Snooping*, Econometrica.
 - Sullivan, Timmermann & White (1999), *Data-Snooping, Technical Trading Rule
   Performance, and the Bootstrap*, Journal of Finance.
+- Sullivan, Timmermann & White (2001), *Dangers of Data Mining: The Case of
+  Calendar Effects in Stock Returns*, Journal of Econometrics.
 - López de Prado (2018), *Advances in Financial Machine Learning* (purging /
   embargo / CPCV).
 
@@ -149,3 +181,4 @@ Formulas independently reimplemented from (not copied wholesale from):
 
 Every promotion terminates in READ_ONLY_ADVISORY. No provider calls, no broker
 calls, no production DB writes, no change to live Alex behavior in R1.
+

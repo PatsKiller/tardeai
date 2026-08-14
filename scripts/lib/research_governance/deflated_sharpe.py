@@ -93,10 +93,15 @@ def psr(
     n_observations: int,
     skewness: float,
     kurtosis: float,
+    sharpe_frequency: Optional[str] = None,
 ) -> dict:
     """Probabilistic Sharpe Ratio (non-normal adjusted).
 
     `kurtosis` is PEARSON (raw) kurtosis (normal = 3).
+
+    The denominator square is validated BEFORE sqrt: pathological skew/kurtosis
+    that make `1 - gamma3*SR + ((gamma4-1)/4)*SR^2` non-positive or non-finite
+    return UNAVAILABLE rather than raising.
     """
     for name, v in (("observed_sharpe", observed_sharpe), ("benchmark_sharpe", benchmark_sharpe),
                     ("skewness", skewness), ("kurtosis", kurtosis)):
@@ -104,23 +109,27 @@ def psr(
             return {"status": "UNAVAILABLE", "reason": f"non-finite input: {name}"}
     if n_observations < 2:
         return {"status": "UNAVAILABLE", "reason": "need >= 2 observations"}
-    denominator = math.sqrt(
+    denominator_sq = (
         1.0 - skewness * observed_sharpe
         + ((kurtosis - 1.0) / 4.0) * (observed_sharpe ** 2)
     )
-    if denominator <= 0.0 or not _is_finite(denominator):
-        return {"status": "UNAVAILABLE", "reason": "degenerate higher moments"}
+    if not _is_finite(denominator_sq) or denominator_sq <= 0.0:
+        return {"status": "UNAVAILABLE", "reason": "degenerate higher moments (denominator <= 0)"}
+    denominator = math.sqrt(denominator_sq)
     z_stat = (
         (observed_sharpe - benchmark_sharpe)
         * math.sqrt(n_observations - 1)
         / denominator
     )
-    return {
+    result = {
         "status": "OK",
         "psr_z": z_stat,
         "probability": norm_cdf(z_stat),
         "benchmark_sharpe": benchmark_sharpe,
     }
+    if sharpe_frequency is not None:
+        result["sharpe_frequency"] = sharpe_frequency
+    return result
 
 
 def deflated_benchmark_sr(
@@ -176,19 +185,38 @@ def deflated_sharpe(
     kurtosis: float,
     trial_sharpes: Sequence[float],
     n_trials: Optional[int],
+    sharpe_frequency: Optional[str] = None,
+    trial_sharpe_frequency: Optional[str] = None,
 ) -> dict:
-    """Deflated Sharpe Ratio: PSR against the deflated benchmark SR*."""
+    """Deflated Sharpe Ratio: PSR against the deflated benchmark SR*.
+
+    Sharpe convention contract: `sharpe_frequency` describes the observed Sharpe
+    and `trial_sharpe_frequency` the trial distribution. If BOTH are provided and
+    differ, the call is rejected (an annualized Sharpe cannot be compared against
+    a per-period trial distribution). Either may be omitted (frequencies are then
+    recorded as unknown and the caller is responsible for consistency).
+    """
+    if (sharpe_frequency is not None and trial_sharpe_frequency is not None
+            and sharpe_frequency != trial_sharpe_frequency):
+        return {"status": "UNAVAILABLE",
+                "reason": f"Sharpe frequency mismatch: observed={sharpe_frequency} "
+                          f"vs trial={trial_sharpe_frequency}"}
+
     benchmark = deflated_benchmark_sr(trial_sharpes, n_trials)
     if benchmark["status"] != "OK":
         return {"status": "UNAVAILABLE", "reason": benchmark["reason"],
                 "deflated_benchmark_sr": None, "psr_z": None,
                 "probability_sr_exceeds_deflated_benchmark": None}
     psr_res = psr(observed_sharpe, benchmark["deflated_benchmark_sr"],
-                  n_observations, skewness, kurtosis)
-    return {
+                  n_observations, skewness, kurtosis,
+                  sharpe_frequency=sharpe_frequency)
+    result = {
         "status": "OK",
         "deflated_benchmark_sr": benchmark["deflated_benchmark_sr"],
         "psr_z": psr_res.get("psr_z"),
         "probability_sr_exceeds_deflated_benchmark": psr_res.get("probability"),
         "n_trials": n_trials,
+        "sharpe_frequency": sharpe_frequency,
+        "trial_sharpe_frequency": trial_sharpe_frequency,
     }
+    return result

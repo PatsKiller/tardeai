@@ -68,11 +68,18 @@ def reality_check_pvalue(
     seed: int = 0,
     family_id: Optional[str] = None,
     family_definition_hash: Optional[str] = None,
+    trial_family_id: Optional[str] = None,
+    confirmatory: bool = False,
 ) -> dict:
     """White Reality Check p-value over a family of performance differentials.
 
     `differentials[k]` is the time series (f_{k,t}) of rule k's performance
     relative to the benchmark (excess returns). Positive = rule beats benchmark.
+
+    A single-rule invocation is a plain bootstrap mean test. It must not be
+    labelled a completed full-family data-snooping Reality Check; for
+    confirmatory use, pass `confirmatory=True`, which requires a multi-rule
+    searched family bound to a frozen family by id + definition hash.
     """
     family = [list(d) for d in differentials]
     n_rules = len(family)
@@ -90,8 +97,16 @@ def reality_check_pvalue(
                 return {"status": "UNAVAILABLE", "reason": "non-finite differential"}
     if n_bootstrap < 1:
         return {"status": "UNAVAILABLE", "reason": "n_bootstrap must be >= 1"}
-    if mean_block_length <= 0:
-        return {"status": "UNAVAILABLE", "reason": "mean_block_length must be > 0"}
+    if mean_block_length < 1:
+        return {"status": "UNAVAILABLE",
+                "reason": f"mean_block_length must be >= 1 (stationary bootstrap p=1/L); got {mean_block_length}"}
+    if confirmatory:
+        if n_rules < 2:
+            return {"status": "UNAVAILABLE",
+                    "reason": "confirmatory Reality Check requires a searched family (>= 2 rules)"}
+        if not family_id or not family_definition_hash:
+            return {"status": "UNAVAILABLE",
+                    "reason": "confirmatory Reality Check requires family_id + family_definition_hash"}
 
     means = [sum(d) / n for d in family]
     observed_v = math.sqrt(n) * max(means)
@@ -120,11 +135,14 @@ def reality_check_pvalue(
         "bootstrap_pvalue": p_value,
         "n_bootstrap": n_bootstrap,
         "mean_block_length": mean_block_length,
+        "bootstrap_method": "stationary",
     }
     if family_id is not None:
         result["family_id"] = family_id
     if family_definition_hash is not None:
         result["family_definition_hash"] = family_definition_hash
+    if trial_family_id is not None:
+        result["trial_family_id"] = trial_family_id
     return result
 
 
@@ -135,14 +153,17 @@ def calendar_family_reality_check(
     mean_block_length: float = 5.0,
     seed: int = 0,
     family_definition_hash: Optional[str] = None,
+    trial_family_id: Optional[str] = None,
+    confirmatory: bool = False,
 ) -> dict:
     """Sullivan–Timmermann–White calendar-family test.
 
     Tests the ENTIRE frozen searched family of a calendar rule, never only the
     selected winner. Returns the Reality Check p-value plus family provenance.
+    Confirmatory use must pass family_definition_hash and confirmatory=True.
     """
-    res = reality_check_pvalue(
+    return reality_check_pvalue(
         calendar_differentials, n_bootstrap, mean_block_length, seed,
         family_id=family_id, family_definition_hash=family_definition_hash,
+        trial_family_id=trial_family_id, confirmatory=confirmatory,
     )
-    return res

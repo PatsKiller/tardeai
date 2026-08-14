@@ -10,21 +10,28 @@ Canonical machine-readable seed: `config/cio_research_source_catalog.json` and
 
 - Original ten: Malkiel, Graham/Zweig, Housel, Bogle, Ferri, Thau, Harris,
   McMillan, Natenberg, Aronson.
-- Additions (10): López de Prado (AFML), Ilmanen, Grinold/Kahn, Damodaran, Marks,
-  Stock Trader's Almanac, Hull (derivatives mechanics), Tuckman/Serrat (fixed
-  income), Lo (Adaptive Markets), Schilit/Perler (Financial Shenanigans).
-- Primary research (12): White (2000), Sullivan/Timmermann/White (1999),
-  Bailey/López de Prado (2014), Bailey/Borwein/López de Prado/Zhu (2017),
-  Harvey/Liu/Zhu (2016), López de Prado CPCV (2017), Kyle (1985), Amihud (2002),
-  Lee/Ready (1991), Almgren/Chriss (2001), Corwin/Schultz (2012), Harvey (2017).
+- Additional institutional canon (10): López de Prado (AFML), Ilmanen,
+  Grinold/Kahn, Damodaran, Marks, Hull (derivatives mechanics), Tuckman/Serrat
+  (fixed income), Lo (Adaptive Markets), Schilit/Perler (Financial Shenanigans),
+  **Expectations Investing (Rappaport & Mauboussin)**.
+- Separately governed practitioner/seasonality source: **Stock Trader's
+  Almanac** (special calendar governance; not a substitute for institutional
+  book #20).
+- Primary research (13): White (2000), Sullivan/Timmermann/White (1999),
+  Sullivan/Timmermann/White calendar-effects (2001), Bailey/López de Prado
+  (2014), Bailey/Borwein/López de Prado/Zhu (2017), Harvey/Liu/Zhu (2016),
+  López de Prado CPCV (2017), Kyle (1985), Amihud (2002), Lee/Ready (1991),
+  Almgren/Chriss (2001), Corwin/Schultz (2012), Harvey (2017).
 
-Total canonical catalog: 20 books + 12 primary research papers. `source_catalog.py`
-enforces an exact expected-ID manifest with a parity/hash check; a missing or
-duplicate ID fails RGA-1.
+Total canonical catalog: 20 institutional books + 1 practitioner source + 13
+primary research papers. `source_catalog.py` enforces an exact expected-ID
+manifest with a parity/hash check; a missing or duplicate ID fails RGA-1.
 
-`full_text_status` is `NOT_FOUND_IN_FILE_LIBRARY` for every source. Missing full
-text is never treated as read; claims are registered as SOURCE_CLAIM_INCOMPLETE
-until a lawful copy is ingested.
+`full_text_status` is `NOT_FOUND_IN_FILE_LIBRARY` for every current source, and
+each such source carries `claim_status=SOURCE_CLAIM_INCOMPLETE`. The validator
+checks STATE/PROVENANCE coherence (status matches the evidence), not permanent
+absence: a source that later acquires lawful full text must instead provide a
+location/reference, source hash, permitted license class, and `verified_at`.
 
 ## Existing-code map (what already exists in the repo)
 

@@ -252,3 +252,42 @@ class ResearchEvidence:
     valid_to: Optional[str] = None
     counterevidence_refs: list[str] = field(default_factory=list)
     contradicts_refs: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class SampleTimingContract:
+    """Canonical sample-timing provenance for no-lookahead validation.
+
+    A feature/decision sample is only valid if its feature_as_of is not AFTER the
+    decision/sample cutoff. `feature_as_of` is the timestamp at which the feature
+    value would have been knowable; `decision_as_of` is the point in time the
+    decision is made. If `feature_as_of > decision_as_of` the sample leaks future
+    information and must be rejected.
+    """
+
+    event_start: Optional[str] = None
+    event_end: Optional[str] = None
+    label_end: Optional[str] = None
+    feature_as_of: Optional[str] = None
+    decision_as_of: Optional[str] = None
+
+
+def validate_no_lookahead(timing: SampleTimingContract) -> list[str]:
+    """Return problems ([] = OK). Fail-closed on missing required fields.
+
+    A feature whose `feature_as_of` is after the decision cutoff uses information
+    not available at decision time — lookahead leakage. Both timestamps must be
+    present and comparable; otherwise the sample cannot be certified clean.
+    """
+    problems: list[str] = []
+    if not timing.feature_as_of:
+        problems.append("feature_as_of missing")
+    if not timing.decision_as_of:
+        problems.append("decision_as_of missing")
+    if problems:
+        return problems
+    if timing.feature_as_of > timing.decision_as_of:
+        problems.append(
+            f"lookahead: feature_as_of={timing.feature_as_of} > "
+            f"decision_as_of={timing.decision_as_of}")
+    return problems

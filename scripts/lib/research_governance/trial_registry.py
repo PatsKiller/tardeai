@@ -13,22 +13,30 @@ Invariant (enforced):
 Anti-gaming properties enforced by this registry:
 
   * freeze binds a PREDETERMINED universe of planned trial ids + config hashes,
-    a protocol hash, and a family definition hash. After freeze:
+    a protocol hash, and (for confirmatory families) a family definition hash.
+    After freeze:
       - no unplanned trial ids may be recorded,
       - a trial's config hash must match its frozen planned config hash.
   * trial records are IMMUTABLE: same trial_id + identical payload is idempotent,
     same trial_id + changed payload is a hard error.
   * selection is a separate append-only event, so a loser cannot be rewritten
-    into a winner.
-  * result_hash hashes the ACTUAL result payload; there is no parameter-hash
-    fallback.
-  * a family is COMPLETE only when every planned trial has an explicit terminal
-    disposition (COMPLETED / INVALID / CANCELED_WITH_REASON / FAILED) and a
-    protocol hash is present.
-  * OOS consumption is terminal: the first `oos_consumed_at` is immutable and a
-    consumed window can never be reported as untouched OOS evidence.
+    into a winner. Selection event ids are unique.
+  * result_hash hashes the ACTUAL result payload; a caller-supplied opaque hash
+    is accepted only with a verifiable external-artifact reference (ref + size +
+    algorithm), and a supplied hash that disagrees with a supplied payload is a
+    hard error.
+  * a family is COMPLETE only when frozen, has a protocol hash (and, for
+    confirmatory families, a family definition hash), and every planned trial has
+    an explicit terminal disposition.
+  * OOS windows are immutable like trials (same id + changed payload => error),
+    and a consumed segment cannot be re-registered as "fresh" under a new id (a
+    canonical OOS fingerprint blocks alias reuse).
+  * first OOS consumption timestamp is immutable.
 
-Pure, in-memory, injectable. No I/O here — persistence is the caller's concern.
+Persistence scope: this registry is an IN-MEMORY, INJECTABLE, IMMUTABLE
+in-process contract. Durable append-only persistence is DEFERRED to a later PR.
+Until that persistent store exists, records are not "durable" — they are
+in-process immutable.
 """
 from __future__ import annotations
 
@@ -53,10 +61,13 @@ class TrialFamily:
     planned_trial_ids: list[str]
     planned_config_hashes: dict[str, str]
     family_definition_hash: Optional[str] = None
+    confirmatory: bool = False
     frozen: bool = True
     trials: dict[str, TrialRecord] = field(default_factory=dict)
     selection_events: list[SelectionEvent] = field(default_factory=list)
+    selection_event_ids: set = field(default_factory=set)
     oos_windows: dict[str, OOSWindow] = field(default_factory=dict)
+    oos_fingerprints: set = field(default_factory=set)
 
     @property
     def trial_count(self) -> int:
@@ -84,9 +95,25 @@ def _normalize_planned_trials(planned_trials: Iterable[Any]) -> tuple[list[str],
             raise ValueError(f"invalid planned trial spec: {item!r}")
         if tid in hashes:
             raise ValueError(f"duplicate planned trial id: {tid}")
+        if not chash or not str(chash).strip():
+            raise ValueError(f"empty config hash for planned trial: {tid}")
         ids.append(tid)
         hashes[tid] = chash
     return ids, hashes
+
+
+def _oos_fingerprint(family_id: str, protocol_hash: str, dataset_hash: Optional[str],
+                     segment_start: Optional[str], segment_end: Optional[str],
+                     oos_generation: int) -> str:
+    payload = {
+        "family_id": family_id,
+        "protocol_hash": protocol_hash,
+        "dataset_hash": dataset_hash,
+        "segment_start": segment_start,
+        "segment_end": segment_end,
+        "oos_generation": oos_generation,
+    }
+    return _stable_hash(payload)
 
 
 class TrialRegistry:
@@ -103,10 +130,15 @@ class TrialRegistry:
         protocol_hash: str,
         planned_trials: Iterable[Any],
         family_definition_hash: Optional[str] = None,
+        confirmatory: bool = False,
     ) -> TrialFamily:
         """Freeze a family BEFORE confirmatory testing, binding the variant universe."""
         if not protocol_hash or not protocol_hash.strip():
             raise ValueError("protocol_hash is required to freeze a family")
+        if not hypothesis_id or not hypothesis_id.strip():
+            raise ValueError("hypothesis_id is required to freeze a family")
+        if confirmatory and (not family_definition_hash or not family_definition_hash.strip()):
+            raise ValueError("family_definition_hash is required for a confirmatory family")
         ids, hashes = _normalize_planned_trials(planned_trials)
         if not ids:
             raise ValueError("planned_trials must be non-empty")
@@ -121,6 +153,7 @@ class TrialRegistry:
             planned_trial_ids=ids,
             planned_config_hashes=hashes,
             family_definition_hash=family_definition_hash,
+            confirmatory=confirmatory,
         )
         self._families[family_id] = fam
         return fam
@@ -141,13 +174,22 @@ class TrialRegistry:
         config_hash: str,
         result_hash: Optional[str] = None,
         result_payload: Optional[dict[str, Any]] = None,
+        result_artifact_ref: Optional[str] = None,
+        result_artifact_size: Optional[int] = None,
+        hash_algorithm: str = "sha256",
         code_sha: Optional[str] = None,
         dataset_hash: Optional[str] = None,
         started_at: Optional[str] = None,
         completed_at: Optional[str] = None,
         terminal_status: str = "COMPLETED",
     ) -> TrialRecord:
-        """Record (immutably) a trial. Only preregistered ids/configs are allowed."""
+        """Record (immutably) a trial. Only preregistered ids/configs are allowed.
+
+        Result lineage: either an inline `result_payload` (registry computes the
+        hash) or a verified external artifact reference. A caller-supplied opaque
+        hash with no payload and no artifact reference is NOT a completed
+        confirmatory result.
+        """
         fam = self._families.get(family_id)
         if fam is None or not fam.frozen:
             raise ValueError(f"family {family_id} not frozen")
@@ -161,12 +203,24 @@ class TrialRegistry:
                 f"frozen={fam.planned_config_hashes[trial_id]!r} got={config_hash!r}")
         if terminal_status not in TERMINAL_STATUSES:
             raise ValueError(f"invalid terminal_status {terminal_status!r}")
-        if result_hash is None:
-            if result_payload is None:
+
+        if result_payload is not None:
+            computed = _stable_hash(result_payload)
+            if result_hash is not None and result_hash != computed:
+                raise ValueError("supplied result_hash does not match result_payload")
+            result_hash = computed
+        elif result_hash is not None:
+            # External artifact: must be verifiable, not an opaque hash.
+            if hash_algorithm != "sha256":
+                raise ValueError("only sha256 result hashes are supported")
+            if not result_artifact_ref or result_artifact_size is None:
                 raise ValueError(
-                    "result_hash (or result_payload to hash) is required; "
-                    "parameter hashing is NOT a result hash")
-            result_hash = _stable_hash(result_payload)
+                    "caller-supplied result_hash requires result_artifact_ref + "
+                    "result_artifact_size (no opaque hash as a completed result)")
+        else:
+            raise ValueError(
+                "result_payload or a verifiable result_hash+artifact reference is required; "
+                "parameter hashing is NOT a result hash")
 
         rec = TrialRecord(
             trial_id=trial_id,
@@ -198,27 +252,35 @@ class TrialRegistry:
         reason: Optional[str] = None,
         selection_event_id: Optional[str] = None,
     ) -> SelectionEvent:
-        """Append a selection disposition. Does NOT mutate the trial record."""
+        """Append a selection disposition. Does NOT mutate the trial record.
+
+        `selection_event_id` must be unique within the family; the caller may
+        supply its own durable id or receive an auto-generated one.
+        """
         fam = self._families.get(family_id)
         if fam is None:
             raise ValueError(f"unknown family {family_id}")
         if trial_id not in fam.planned_config_hashes:
             raise ValueError(f"unknown trial {trial_id} in family {family_id}")
+        eid = selection_event_id or f"{family_id}:{trial_id}:{len(fam.selection_events)}"
+        if eid in fam.selection_event_ids:
+            raise ValueError(f"duplicate selection_event_id: {eid}")
         event = SelectionEvent(
-            selection_event_id=selection_event_id
-            or f"{family_id}:{trial_id}:{len(fam.selection_events)}",
+            selection_event_id=eid,
             trial_id=trial_id,
             selected=selected,
             reason=reason,
             timestamp=_now_iso(),
         )
+        fam.selection_event_ids.add(eid)
         fam.selection_events.append(event)
         return event
 
     # -- completeness -----------------------------------------------------
     def completeness_report(self, family_id: str) -> dict[str, Any]:
-        """A family is complete only when frozen, has a protocol hash, and every
-        planned trial has an explicit terminal disposition."""
+        """A family is complete only when frozen, has a protocol hash (and, for
+        confirmatory families, a family definition hash), and every planned trial
+        has an explicit terminal disposition."""
         fam = self._families.get(family_id)
         if fam is None:
             return {"family_id": family_id, "frozen": False, "complete": False,
@@ -229,6 +291,8 @@ class TrialRegistry:
             problems.append("family not frozen")
         if not fam.protocol_hash:
             problems.append("protocol_hash absent")
+        if fam.confirmatory and not fam.family_definition_hash:
+            problems.append("confirmatory family missing family_definition_hash")
         for tid in fam.planned_trial_ids:
             rec = fam.trials.get(tid)
             if rec is None:
@@ -236,12 +300,12 @@ class TrialRegistry:
             elif rec.terminal_status not in TERMINAL_STATUSES:
                 problems.append(f"planned trial {tid} lacks a terminal disposition")
 
-        # Anti-gaming: a complete family must account for ALL planned variants,
-        # not merely contain at least one losing variant.
         return {
             "family_id": family_id,
             "frozen": fam.frozen,
+            "confirmatory": fam.confirmatory,
             "protocol_hash_present": bool(fam.protocol_hash),
+            "family_definition_hash_present": bool(fam.family_definition_hash),
             "planned_trial_count": len(fam.planned_trial_ids),
             "recorded_trial_count": fam.trial_count,
             "selected_count": fam.selected_count,
@@ -258,13 +322,40 @@ class TrialRegistry:
         oos_generation: int,
         segment_start: Optional[str] = None,
         segment_end: Optional[str] = None,
+        dataset_hash: Optional[str] = None,
     ) -> OOSWindow:
+        """Register an OOS segment. Same id + changed payload => hard error.
+
+        A consumed segment cannot be re-registered as "fresh" under a new id:
+        a canonical OOS fingerprint (family/protocol/dataset/segment/generation)
+        blocks alias reuse.
+        """
         fam = self._families.get(family_id)
         if fam is None or not fam.frozen:
             raise ValueError(f"OOS window requires a frozen family: {family_id}")
+
         existing = fam.oos_windows.get(oos_window_id)
         if existing is not None:
-            return existing  # idempotent; never resets consumed timestamp
+            # Immutable payload semantics: exact match => idempotent; changed => error.
+            same_payload = (
+                existing.oos_generation == oos_generation
+                and existing.segment_start == segment_start
+                and existing.segment_end == segment_end
+            )
+            if same_payload:
+                return existing
+            raise ValueError(
+                f"OOS window {oos_window_id} already registered with different payload; "
+                "OOS windows are immutable")
+
+        fingerprint = _oos_fingerprint(
+            family_id, fam.protocol_hash, dataset_hash,
+            segment_start, segment_end, oos_generation)
+        if fingerprint in fam.oos_fingerprints:
+            raise ValueError(
+                "OOS segment already registered (same fingerprint) under another id; "
+                "a consumed segment cannot be re-registered as fresh OOS")
+
         win = OOSWindow(
             oos_window_id=oos_window_id,
             oos_generation=oos_generation,
@@ -272,6 +363,7 @@ class TrialRegistry:
             segment_end=segment_end,
         )
         fam.oos_windows[oos_window_id] = win
+        fam.oos_fingerprints.add(fingerprint)
         return win
 
     def consume_oos_window(

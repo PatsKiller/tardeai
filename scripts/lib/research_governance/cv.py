@@ -10,9 +10,16 @@ split. Three distinct procedures are provided:
 
 Purging removes training samples whose label interval overlaps a test sample's
 label. An EMBARGO removes only POST-test training samples whose label begins
-within the embargo window after the test period's end. Pre-test (earlier)
-training samples are NEVER embargoed — embargo is a future-direction leakage
-control, not a blanket window.
+within the embargo window after the test period's end.
+
+The test set is treated as a UNION of contiguous test blocks. Embargo is applied
+AFTER EACH test block, not just after the globally-last test index. This is the
+correct geometry for CPCV partitions with non-contiguous test groups (e.g. test
+groups {0, 2}: a training group sitting between them must still be embargoed
+relative to block 0 even though it precedes the final test block 2).
+
+Pre-test (earlier) training samples are NEVER embargoed — embargo is a
+future-direction leakage control, not a blanket window.
 
 Embargo contract: `embargo` is a value addable to a label end (an integer number
 of index steps for integer labels, or a timedelta for datetime labels). `0`
@@ -23,7 +30,7 @@ Pure stdlib. Deterministic.
 from __future__ import annotations
 
 import itertools
-from typing import Sequence, Tuple
+from typing import List, Sequence, Tuple
 
 Interval = Tuple[object, object]
 
@@ -47,35 +54,56 @@ def _validate(n_samples: int, labels: Sequence[Interval],
             raise ValueError(f"invalid interval {s!r} > {e!r}")
 
 
-def _test_end_label(labels: Sequence[Interval], test_indices: Sequence[int]) -> object:
-    return max(e for (_s, e) in (labels[i] for i in test_indices))
+def _contiguous_blocks(test_indices: Sequence[int]) -> List[List[int]]:
+    """Split a sorted set of test indices into contiguous runs (test blocks)."""
+    ordered = sorted(set(test_indices))
+    blocks: List[List[int]] = []
+    current: List[int] = []
+    for i in ordered:
+        if current and i != current[-1] + 1:
+            blocks.append(current)
+            current = []
+        current.append(i)
+    if current:
+        blocks.append(current)
+    return blocks
 
 
 def _excluded_indices(labels: Sequence[Interval], test_indices: Sequence[int],
                       embargo: object = 0) -> set:
-    """Indices EXCLUDED from training: test itself + purged overlaps + post-test embargo."""
-    test_labels = [labels[i] for i in test_indices]
-    test_end = _test_end_label(labels, test_indices)
-    max_test_idx = max(test_indices)
+    """Indices EXCLUDED from training: test itself + purged overlaps + per-block embargo.
+
+    The test set is treated as a union of contiguous blocks. A training sample is
+    embargoed if it lies chronologically AFTER any test block AND its label begins
+    within that block's end + embargo. Pre-test samples are only removed for label
+    overlap, never for embargo.
+    """
     excluded: set = set(test_indices)
+    test_labels = {i: labels[i] for i in test_indices}
+    blocks = _contiguous_blocks(test_indices)
+
     for i, lab in enumerate(labels):
         if i in excluded:
             continue
-        if any(_overlaps(lab, tl) for tl in test_labels):
+        # Purging: label overlaps any test label.
+        if any(_overlaps(lab, test_labels[t]) for t in test_indices):
             excluded.add(i)
-        elif i > max_test_idx and embargo != 0:
-            buffer_end = test_end + embargo  # type: ignore[operator]
-            if lab[0] < buffer_end:
-                excluded.add(i)
+            continue
+        # Embargo: after ANY test block within the embargo window.
+        if embargo != 0:
+            for block in blocks:
+                block_max = max(block)
+                block_end = max(labels[j][1] for j in block)
+                buffer_end = block_end + embargo  # type: ignore[operator]
+                if i > block_max and lab[0] < buffer_end:
+                    excluded.add(i)
+                    break
     return excluded
 
 
 def purge_train_indices(n_samples: int, labels: Sequence[Interval],
                         test_indices: Sequence[int], embargo: object = 0) -> list[int]:
-    """Return training indices KEPT after purging + embargo (excludes test set).
-
-    Pre-test samples are only removed for label overlap, never for embargo.
-    """
+    """Return training indices KEPT after purging + embargo (excludes test set)."""
     _validate(n_samples, labels, test_indices)
     excl = _excluded_indices(labels, test_indices, embargo)
     return [i for i in range(n_samples) if i not in excl]
@@ -138,13 +166,24 @@ def combinatorial_purged_cv(n_samples: int, labels: Sequence[Interval],
 
     Partitions the index axis into n_groups contiguous groups; for every
     combination of n_test_groups test groups, training is all other groups with
-    label-overlap purging and post-test embargo applied. Returns one
-    {train, test} partition per combination (C(n_groups, n_test_groups) total).
+    label-overlap purging and per-block embargo applied. Returns one {train, test}
+    partition per combination (C(n_groups, n_test_groups) total).
+
+    The test set is a UNION of (possibly non-contiguous) test groups; embargo is
+    applied after EACH test block, so a training group sandwiched between two test
+    groups is embargoed relative to the earlier one.
     """
+    if n_samples < n_groups:
+        raise ValueError("n_samples must be >= n_groups (no empty groups)")
     if len(labels) != n_samples:
         raise ValueError("labels length must equal n_samples")
     if n_groups < 2:
         raise ValueError("n_groups must be >= 2")
+    if n_test_groups <= 0:
+        raise ValueError("n_test_groups must be >= 1")
+    if n_test_groups >= n_groups:
+        raise ValueError("require 1 <= n_test_groups < n_groups")
+
     group_size = n_samples // n_groups
     partitions: list[dict] = []
     for combo in _group_combinations(n_groups, n_test_groups):

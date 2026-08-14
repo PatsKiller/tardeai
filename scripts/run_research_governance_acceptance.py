@@ -23,13 +23,19 @@ from scripts.lib.research_governance.acceptance import run_acceptance  # noqa: E
 def main(argv: list[str]) -> int:
     profile = argv[0] if argv else "R1_foundation"
     report = run_acceptance(profile)
-    print(json.dumps({
+    out = {
         "acceptance_profile": report["profile"],
         "overall": report["overall"],
-        "required_pass": report["required_pass"],
-        "required_fail": report["required_fail"],
-        "not_in_scope": report["not_in_scope"],
-    }, indent=2))
+    }
+    if report.get("not_implemented"):
+        out["not_implemented"] = True
+    else:
+        out["required_runtime_pass"] = report["required_runtime_pass"]
+        out["required_runtime_fail"] = report["required_runtime_fail"]
+        out["required_contract_pass"] = report["required_contract_pass"]
+        out["required_contract_fail"] = report["required_contract_fail"]
+    out["not_in_scope"] = report.get("not_in_scope", [])
+    print(json.dumps(out, indent=2))
     return 0 if report["overall"] == "PASS" else 1
 
 
