@@ -996,10 +996,15 @@ def build_capital_plan_from_sources(
     risk_posture: Optional[dict[str, Any]] = None,
     divergence_map: Optional[dict[str, Any]] = None,
     now: Optional[datetime] = None,
+    attach_financial_truth_gate: bool = True,
 ) -> dict[str, Any]:
-    """Compose the full plan from already-fetched canonical state (convenience)."""
+    """Compose the full plan from already-fetched canonical state (convenience).
+
+    Phase 2 (acceptance): optionally attaches FinancialTruthGate so ACT NOW
+    consumers can suppress conflicted symbols without formatting around errors.
+    """
     snap = load_holdings_snapshot(holdings_doc)
-    return build_capital_plan(
+    plan = build_capital_plan(
         portfolio_value=snap["portfolio_value"],
         cash_total=snap["cash_total"],
         positions=snap["positions"],
@@ -1012,3 +1017,24 @@ def build_capital_plan_from_sources(
         now=now,
         account_cash=snap.get("account_cash"),
     )
+    if attach_financial_truth_gate and holdings_doc is not None:
+        try:
+            from scripts.lib.cio_financial_truth_gate import (
+                evaluate_holdings_document,
+                attach_gate_to_capital_plan,
+            )
+            gate = evaluate_holdings_document(
+                holdings_doc,
+                now=now,
+                portfolio_value_override=snap.get("portfolio_value"),
+            )
+            plan = attach_gate_to_capital_plan(plan, gate)
+        except Exception as exc:  # fail-soft — plan still returns
+            plan = dict(plan)
+            plan["financial_truth_gate"] = {
+                "ok": False,
+                "overall_quality": "ERROR",
+                "error": str(exc)[:200],
+                "authority": "READ_ONLY_ADVISORY",
+            }
+    return plan

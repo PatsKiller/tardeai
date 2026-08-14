@@ -25,6 +25,9 @@ GATES = [
     ("capital_ledger", [
         "tests/test_cio_capital_plan.py",
     ]),
+    ("financial_truth_gate", [
+        "tests/test_cio_financial_truth_gate.py",
+    ]),
     ("decision_semantics", [
         "tests/test_cio_decision_semantics.py",
         "tests/test_cio_office_consistency.py",
