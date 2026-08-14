@@ -76,20 +76,45 @@ SECTOR_ALIASES = {
 }
 
 
+def is_pseudo_sector(name: Any) -> bool:
+    """True for non-GICS pseudo-sectors (e.g. Iwm−Spy relative-strength pairs)."""
+    try:
+        from scripts.lib.cio_decision_semantics import is_pseudo_sector as _ips
+        return _ips(name)
+    except Exception:
+        raw = str(name or "").strip()
+        if not raw:
+            return True
+        if raw in CANONICAL_SECTORS or raw.title() in CANONICAL_SECTORS:
+            return False
+        # Pair joiners with short tokens → pseudo
+        import re
+        if re.match(r"^[A-Za-z]{1,5}[−\-–—/\\|][A-Za-z]{1,5}$", raw):
+            return True
+        return False
+
+
 def canonical_sector(name: Any) -> str:
     """Normalize a sector name to the momentum engine's 11 canonical GICS labels.
 
-    Unknown names pass through title-cased (never silently collapsed), so an
-    unmapped sector stays visible as itself rather than being miscategorized.
+    Phase 3: pseudo-sectors (Iwm−Spy, Spy/Qqq, …) return "" so they never enter
+    CIO sector opportunity output. Unknown non-pseudo names pass through
+    title-cased (never silently collapsed into a wrong GICS bucket).
     """
     raw = str(name or "").strip()
     if not raw:
         return ""
+    if is_pseudo_sector(raw):
+        return ""
     key = raw.lower()
     if key in SECTOR_ALIASES:
         return SECTOR_ALIASES[key]
-    return raw.title()
-
+    titled = raw.title()
+    if titled in CANONICAL_SECTORS:
+        return titled
+    # Non-GICS thematic sleeves stay visible as themselves for research,
+    # but opportunity synthesis filters them when require_canonical is on.
+    return titled
 
 def classify_state(rs20: Optional[float], slope: Optional[float]) -> Optional[str]:
     """Replicate sector_momentum_engine.classify — pure, no I/O."""

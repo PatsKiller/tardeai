@@ -251,10 +251,18 @@ def _verdict_for(symbol: str, queue: Optional[dict[str, Any]]) -> Optional[dict[
 
 
 def stance_for(symbol: str, queue: Optional[dict[str, Any]]) -> str:
-    """CIO stance for a symbol: desk verdict → RE_ENTER → HOLD.
+    """CIO stance for a symbol across all queue items (Phase 3 semantics).
 
     Precedence: EXIT > TRIM > RE_ENTER > ADD > reentry state (READY/NEAR) > HOLD.
+    Directive labels like "Advisory TRIM — SCHD" count even when verdict is null
+    (eliminates HOLD + TRIM contradictions).
     """
+    try:
+        from scripts.lib.cio_decision_semantics import stance_for_symbol
+        return stance_for_symbol(symbol, queue)
+    except Exception:
+        pass
+    # Fail-soft local fallback (single item, verdict/state only)
     item = _verdict_for(symbol, queue)
     if not item:
         return "HOLD"
@@ -264,8 +272,15 @@ def stance_for(symbol: str, queue: Optional[dict[str, Any]]) -> str:
         return verdict
     if state and state in ACTIONABLE_REENTRY_STATES:
         return "RE_ENTER"
+    # Label inference fallback without importing
+    label = str(item.get("directive_label") or item.get("label") or "").upper()
+    for needle, stance in (
+        ("EXIT", "EXIT"), ("TRIM", "TRIM"), ("RE_ENTER", "RE_ENTER"),
+        ("RE-ENTER", "RE_ENTER"), ("ADD", "ADD"),
+    ):
+        if needle in label:
+            return stance
     return "HOLD"
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Pure sources & uses (no I/O)
@@ -833,6 +848,43 @@ def build_position_decisions(
 
         item = _verdict_for(symbol, queue)
         tax_class = p.get("tax_class") or classify_account_tax(p.get("account"), accounts)
+        why = (item or {}).get("directive_label") or "no new desk signal; hold"
+        # Prefer a label that matches the resolved stance when multi-desk noise exists.
+        try:
+            from scripts.lib.cio_decision_semantics import (
+                resolve_display_stance, professional_stance, symbol_identity_status,
+            )
+            stance = resolve_display_stance(stance, why)
+            # If primary item is neutral but stance is actionable, find a matching label.
+            if stance in ("TRIM", "EXIT", "ADD", "RE_ENTER"):
+                for it in ((queue or {}).get("items") or (queue or {}).get("top") or []):
+                    if str((it or {}).get("symbol") or "").upper() != symbol:
+                        continue
+                    lab = (it or {}).get("directive_label") or ""
+                    if stance in str(lab).upper() or (
+                        stance == "RE_ENTER" and "RE-ENTER" in str(lab).upper()
+                    ):
+                        why = lab
+                        break
+            ident = symbol_identity_status(symbol, name=p.get("name"))
+            if not ident.get("ok") and not p.get("name"):
+                # Unproven identity (CUSIP/ambiguous) without name — skip CIO table
+                continue
+            stance_display = professional_stance(stance)
+        except Exception:
+            stance_display = stance
+            ident = None
+
+        # Recompute delta after stance resolution (label may upgrade HOLD → TRIM)
+        if stance == "EXIT":
+            delta = -p["market_value_usd"]
+        elif stance == "TRIM":
+            delta = -round(p["market_value_usd"] * TRIM_FRACTION, 2)
+        elif stance in ("ADD", "RE_ENTER"):
+            delta = round(min(NEW_POSITION_DEFAULT_USD, headroom), 2)
+        else:
+            delta = 0.0
+
         rows.append({
             "symbol": symbol,
             "name": p.get("name"),
@@ -840,19 +892,30 @@ def build_position_decisions(
             "current_value_usd": p["market_value_usd"],
             "current_weight_pct": p["weight_pct"],
             "cio_stance": stance,
+            "stance": stance_display,
+            "stance_code": stance,
             "target_range_pct": {"min": 0.0, "max": round(cap_pct, 2)},
             "recommended_delta_usd": round(delta, 2),
             "funding": _funding_for(stance, delta),
-            "why_now": (item or {}).get("directive_label") or "no new desk signal; hold",
+            "why_now": why,
             "risk": "concentration > cap" if p["weight_pct"] > cap_pct else "within single-name cap",
             "tax_account_constraint": _tax_constraint(tax_class, stance),
             "counter_thesis": str(div) if div else "no Street/desk disagreement on record",
             "next_review": _next_review(p.get("last_updated"), now),
+            "identity": ident,
         })
 
     rows.sort(key=lambda r: (-abs(r["recommended_delta_usd"]), -r["current_value_usd"]))
+    # Phase 3: also attach aggregated-by-symbol view for operator surfaces
+    try:
+        from scripts.lib.cio_decision_semantics import aggregate_position_decisions
+        aggregated = aggregate_position_decisions(rows, portfolio_value=value)
+        # Prefer aggregated list as the primary decision table (one row per symbol)
+        if aggregated:
+            return aggregated
+    except Exception:
+        pass
     return rows
-
 
 def _funding_for(stance: str, delta: float) -> str:
     if stance == "EXIT":

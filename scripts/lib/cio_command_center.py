@@ -89,12 +89,18 @@ def _action_hint(why_now: Any, stance: Any) -> str:
     over the formal CIO stance, so a "Hold" stance paired with a "Trim" signal
     reads as "Trim" rather than the contradictory "Hold".
     """
+    try:
+        from scripts.lib.cio_decision_semantics import (
+            resolve_display_stance, professional_stance,
+        )
+        return professional_stance(resolve_display_stance(stance, why_now))
+    except Exception:
+        pass
     text = _str(why_now).upper()
     for kw, label in _ACTION_KEYWORDS:
         if kw in text:
             return label
     return _human_stance(stance)
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Section 1 — CIO NOW

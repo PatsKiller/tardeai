@@ -457,16 +457,90 @@ def _priorities(cap: dict[str, Any], queue: dict[str, Any],
     deploy = cap.get("net_recommended_deploy_usd") or 0
     if deploy > 0:
         pri.append(f"deploy up to ${float(deploy):,.0f} against explicit desk signals")
-    for opp in (sectors or [])[:2]:
-        if opp.get("opportunity"):
-            pri.append(f"watch {opp.get('sector')} ({opp.get('state')}): {opp.get('recommendation')}")
-    top = (queue.get("top") or (queue.get("items") or []))[:3]
-    for it in top:
-        pri.append(f"evaluate {it.get('symbol')} ({it.get('verdict') or it.get('state') or 'signal'})")
+    try:
+        from scripts.lib.cio_decision_semantics import (
+            filter_sector_opportunities, professional_label, stance_from_queue_item,
+            professional_stance, is_pseudo_sector,
+        )
+        clean = filter_sector_opportunities(sectors, require_canonical_gics=True)
+        for opp in clean[:2]:
+            if opp.get("opportunity"):
+                pri.append(
+                    f"watch {opp.get('sector')} ({opp.get('state_display') or professional_label(opp.get('state'))}): "
+                    f"{opp.get('recommendation')}"
+                )
+        top = (queue.get("top") or (queue.get("items") or []))[:3]
+        for it in top:
+            st = professional_stance(stance_from_queue_item(it))
+            pri.append(f"evaluate {it.get('symbol')} ({st})")
+    except Exception:
+        for opp in (sectors or [])[:2]:
+            if opp.get("opportunity") and not str(opp.get("sector") or "").startswith("Iwm"):
+                pri.append(
+                    f"watch {opp.get('sector')} ({opp.get('state')}): {opp.get('recommendation')}"
+                )
+        top = (queue.get("top") or (queue.get("items") or []))[:3]
+        for it in top:
+            pri.append(
+                f"evaluate {it.get('symbol')} ({it.get('verdict') or it.get('state') or 'signal'})"
+            )
     if not pri:
         pri.append("preserve dry powder; no forced deployment without a desk signal")
     return pri[:5]
 
+
+def _sector_posture_rows(sectors: Optional[list[dict[str, Any]]]) -> list[dict[str, Any]]:
+    try:
+        from scripts.lib.cio_decision_semantics import filter_sector_opportunities
+        clean = filter_sector_opportunities(sectors, require_canonical_gics=True)
+        return [
+            {
+                "sector": o.get("sector"),
+                "state": o.get("state_display") or o.get("state"),
+                "state_code": o.get("state_code") or o.get("state"),
+                "exposure_pct": o.get("current_exposure_pct") or o.get("exposure_pct"),
+                "target_pct": o.get("target_posture_pct") or o.get("target_pct"),
+                "recommendation": o.get("recommendation"),
+                "recommendation_code": o.get("recommendation_code"),
+            }
+            for o in clean
+        ][:6]
+    except Exception:
+        return [
+            {
+                "sector": o.get("sector"),
+                "state": o.get("state"),
+                "exposure_pct": o.get("current_exposure_pct"),
+                "target_pct": o.get("target_posture_pct"),
+                "recommendation": o.get("recommendation"),
+            }
+            for o in (sectors or [])
+            if "−" not in str(o.get("sector") or "") and "-" not in str(o.get("sector") or "")
+        ][:6]
+
+
+def _sector_opportunity_rows(sectors: Optional[list[dict[str, Any]]]) -> list[dict[str, Any]]:
+    try:
+        from scripts.lib.cio_decision_semantics import filter_sector_opportunities
+        clean = filter_sector_opportunities(
+            [o for o in (sectors or []) if o.get("opportunity")],
+            require_canonical_gics=True,
+        )
+        return [
+            {
+                "sector": o.get("sector"),
+                "state": o.get("state_display") or o.get("state"),
+                "recommendation": o.get("recommendation"),
+            }
+            for o in clean
+        ][:6]
+    except Exception:
+        return [
+            {"sector": o.get("sector"), "state": o.get("state"),
+             "recommendation": o.get("recommendation")}
+            for o in (sectors or [])
+            if o.get("opportunity") and "−" not in str(o.get("sector") or "")
+        ][:6]
 
 def _what_not_to_do(thesis: dict[str, Any], attr: dict[str, Any]) -> list[str]:
     out = list(thesis.get("escalation_rules") or [])[:4]
@@ -478,6 +552,16 @@ def _what_not_to_do(thesis: dict[str, Any], attr: dict[str, Any]) -> list[str]:
 
 
 def _decisions_now(cap: dict[str, Any]) -> list[dict[str, Any]]:
+    """Phase 3: aggregate, resolve HOLD+TRIM, professional stance labels."""
+    try:
+        from scripts.lib.cio_decision_semantics import sanitize_decisions_now
+        return sanitize_decisions_now(
+            cap.get("position_decisions") or [],
+            portfolio_value=float(cap.get("portfolio_value_usd") or 0.0),
+            limit=8,
+        )
+    except Exception:
+        pass
     decisions = []
     neutral = "no new desk signal; hold"
     for d in (cap.get("position_decisions") or []):
@@ -490,7 +574,7 @@ def _decisions_now(cap: dict[str, Any]) -> list[dict[str, Any]]:
         if has_delta or has_signal or has_breach:
             decisions.append({
                 "symbol": d.get("symbol"),
-                "stance": d.get("cio_stance"),
+                "stance": d.get("stance") or d.get("cio_stance"),
                 "current_value_usd": d.get("current_value_usd"),
                 "current_weight_pct": d.get("current_weight_pct"),
                 "recommended_delta_usd": delta,
@@ -498,11 +582,9 @@ def _decisions_now(cap: dict[str, Any]) -> list[dict[str, Any]]:
                 "risk": risk,
                 "next_review": d.get("next_review"),
             })
-    # concentration breaches first, then by |delta|.
     decisions.sort(key=lambda d: (-1 if "concentration >" in (d.get("risk") or "").lower()
                                    else 0, -abs(d.get("recommended_delta_usd") or 0)))
     return decisions[:8]
-
 
 def _compact_sources(sources: Optional[dict[str, Any]]) -> dict[str, Any]:
     s = sources or {}
@@ -551,16 +633,7 @@ def _portfolio_posture(
             "sharpe": attr.get("port_sharpe"),
             "sortino": attr.get("port_sortino"),
         },
-        "sector_posture": [
-            {
-                "sector": o.get("sector"),
-                "state": o.get("state"),
-                "exposure_pct": o.get("current_exposure_pct"),
-                "target_pct": o.get("target_posture_pct"),
-                "recommendation": o.get("recommendation"),
-            }
-            for o in (sectors or [])
-        ][:6],
+        "sector_posture": _sector_posture_rows(sectors),
         "benchmark_posture": {
             "label": attr.get("benchmark_label"),
             "port_cagr": attr.get("port_cagr"),
@@ -619,11 +692,7 @@ def _opportunity_funnel(
              "source": it.get("source"), "label": it.get("directive_label")}
             for it in reentry[:8]
         ],
-        "sector_opportunities": [
-            {"sector": o.get("sector"), "state": o.get("state"),
-             "recommendation": o.get("recommendation")}
-            for o in (sectors or []) if o.get("opportunity")
-        ][:6],
+        "sector_opportunities": _sector_opportunity_rows(sectors),
         "research_gaps": research_gaps[:8],
         "prior_recommendation_status": [
             {

@@ -237,7 +237,29 @@ def build_docx(model: dict, out: pathlib.Path) -> None:
     alloc = pb.get("allocation") or {}
     if alloc:
         doc.add_heading("Asset Allocation", level=2)
-        _rows_to_table(doc, ["Class", "Weight"], [(k, _pct(v)) for k, v in alloc.items()])
+        # Phase 3: model allocation is USD dollars — never format $ as weight %.
+        weights = pb.get("allocation_weight_pct") or {}
+        if not weights:
+            try:
+                from scripts.lib.cio_decision_semantics import (
+                    allocation_weights_from_usd, looks_like_dollar_allocation,
+                )
+                if looks_like_dollar_allocation(alloc):
+                    weights = allocation_weights_from_usd(alloc)
+            except Exception:
+                weights = {}
+        if weights:
+            rows = []
+            for k, w in weights.items():
+                usd = alloc.get(k)
+                try:
+                    usd_s = f"${float(usd):,.2f}" if usd is not None else "—"
+                except (TypeError, ValueError):
+                    usd_s = "—"
+                rows.append((k, usd_s, _pct(w)))
+            _rows_to_table(doc, ["Class", "Value (USD)", "Weight"], rows)
+        else:
+            _rows_to_table(doc, ["Class", "Weight"], [(k, _pct(v)) for k, v in alloc.items()])
 
     perf = pb.get("performance") or {}
     if perf:
