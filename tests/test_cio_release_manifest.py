@@ -74,6 +74,39 @@ def test_stale_disk_manifest_fails_validate(tmp_path, monkeypatch):
     assert any("mismatch" in e or "stale" in e for e in result["errors"])
 
 
+def test_validate_committed_is_read_only_and_does_not_require_head_pin():
+    from cio_release_manifest import validate_committed, MANIFEST_JSON
+    before = MANIFEST_JSON.read_bytes() if MANIFEST_JSON.is_file() else b""
+    r = validate_committed()
+    after = MANIFEST_JSON.read_bytes() if MANIFEST_JSON.is_file() else b""
+    assert after == before
+    assert r["mutated"] is False
+    assert r["mode"] == "committed_integrity"
+    # Current main pin may be RC/stale vs HEAD; integrity can still pass.
+    assert "ok" in r
+
+
+def test_candidate_does_not_mutate_committed(tmp_path):
+    from cio_release_manifest import MANIFEST_JSON, main as manifest_main
+    before = MANIFEST_JSON.read_bytes() if MANIFEST_JSON.is_file() else b""
+    dest = tmp_path / "cand"
+    rc = manifest_main(["candidate", "--out-dir", str(dest)])
+    assert rc == 0
+    after = MANIFEST_JSON.read_bytes() if MANIFEST_JSON.is_file() else b""
+    assert after == before
+    assert (dest / "RELEASE_MANIFEST.json").is_file()
+    assert (dest / "RELEASE_MANIFEST.md").is_file()
+
+
+def test_ci_runner_does_not_regenerate_committed_manifest():
+    text = (ROOT / "scripts" / "run_cio_hardening_ci.py").read_text()
+    assert "check-committed" in text
+    assert "generate_candidate_manifest" in text
+    # Forbidden: generate --write of the committed docs pin before check
+    assert 'generate", "--write"' not in text
+    assert "regenerated RELEASE_MANIFEST for CI HEAD" not in text
+
+
 def test_render_markdown_contains_pin_table():
     m = build_manifest()
     md = render_markdown(m)
