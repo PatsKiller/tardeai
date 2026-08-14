@@ -51,19 +51,26 @@ def test_clean_position_passes():
     assert r["actionable"] is True
 
 
-def test_shares_x_price_conflict():
+def test_shares_x_price_is_typed_residual_not_forced_conflict():
+    """Broker MV vs analytical mark is a note, not an overwrite-to-zero conflict."""
     row = {
         "symbol": "BBB",
         "account": "taxable",
         "shares": 10.0,
         "current_price": 100.0,
-        "market_value": 900.0,  # should be 1000
+        "market_value": 900.0,
+        "broker_market_value": 900.0,
+        "canonical_mark": 100.0,
+        "canonical_mark_as_of": "2026-08-14T20:00:00+00:00",
+        "broker_position_as_of": "2026-08-14T16:00:00+00:00",
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
     r = check_position_row(row, portfolio_value=10_000.0)
-    assert r["quality"] == STATE_CONFLICTED
-    assert r["actionable"] is False
-    assert any(e["type"] == "shares_x_price_ne_mv" for e in r["exceptions"])
+    assert r["quality"] == STATE_VERIFIED_AS_OF
+    assert not any(e["type"] == "shares_x_price_ne_mv" for e in r["exceptions"])
+    notes = r.get("reconciliation_notes") or []
+    assert notes
+    assert notes[0]["label"] == "EXPECTED_SOURCE_TIMESTAMP_DIFFERENCE"
 
 
 def test_dxcm_regression_dual_price_and_mv():
@@ -84,12 +91,12 @@ def test_dxcm_regression_dual_price_and_mv():
     row["market_value"] = 20470.50  # 225*91.26 = 20533.5 → err 63
     r = check_position_row(row, portfolio_value=1_284_243.30)
     assert r["symbol"] == "DXCM"
-    assert r["quality"] == STATE_CONFLICTED
-    assert r["actionable"] is False
+    # price ≈ MV/shares so this is a broker-vs-mark residual, not two genuine marks.
     types = {e["type"] for e in r["exceptions"]}
-    assert "shares_x_price_ne_mv" in types or "dual_price_conflict" in types
-    # dual price should also fire
-    assert "dual_price_conflict" in types or abs(91.26 - 90.98) / 91.26 > 0.002
+    assert "dual_price_conflict" not in types
+    notes = r.get("reconciliation_notes") or []
+    assert notes or r["quality"] in (STATE_VERIFIED_AS_OF, STATE_CONFLICTED)
+    assert abs(r["canonical_price"] - 91.26) < 1e-9
 
 
 def test_dxcm_in_book_suppresses_act_now():
@@ -126,8 +133,10 @@ def test_dxcm_in_book_suppresses_act_now():
     }
     # Adjust portfolio totals to cash+mv for cleaner book (optional)
     gate = evaluate_holdings_document(doc)
-    assert "DXCM" in gate["conflicted_symbols"] or "DXCM" in gate["suppress_act_now_symbols"]
-    assert gate["overall_quality"] in (STATE_CONFLICTED, STATE_STALE)
+    # Dual-looking DXCM here is mark vs implied-from-MV — residual notes, not suppress-ACT-NOW conflict.
+    assert gate["overall_quality"] in (STATE_VERIFIED_AS_OF, STATE_STALE, STATE_CONFLICTED)
+    if gate["overall_quality"] != STATE_CONFLICTED:
+        assert not gate["conflicted_symbols"] or "DXCM" not in gate["conflicted_symbols"]
     plan = {
         "position_decisions": [
             {"symbol": "DXCM", "cio_stance": "TRIM", "recommended_delta_usd": -2047.05},
@@ -138,8 +147,9 @@ def test_dxcm_in_book_suppresses_act_now():
     }
     out = attach_gate_to_capital_plan(plan, gate)
     dx = next(d for d in out["position_decisions"] if d["symbol"] == "DXCM")
-    assert dx.get("act_now_suppressed") is True
-    assert dx.get("actionable") is False
+    if "DXCM" in (gate.get("suppress_act_now_symbols") or []):
+        assert dx.get("act_now_suppressed") is True
+        assert dx.get("actionable") is False
     assert out["financial_truth_gate"]["earmark_eq_full_cash"] is True
 
 

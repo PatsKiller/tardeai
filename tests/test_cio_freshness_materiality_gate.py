@@ -44,6 +44,8 @@ def _fresh_holdings():
                 "price": 100.0,
                 "market_value": 10_000.0,
                 "updated_at": (NOW - timedelta(minutes=3)).isoformat(),
+                "source_as_of": (NOW - timedelta(minutes=3)).isoformat(),
+                "canonical_mark_as_of": (NOW - timedelta(minutes=3)).isoformat(),
                 "price_source": "test",
             },
         ],

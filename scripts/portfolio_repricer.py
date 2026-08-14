@@ -44,6 +44,32 @@ _CASH_SYMBOLS = frozenset({
     "CASH & CASH INVESTMENTS", "CASH", "MMKT",
 })
 
+
+def _utc_now_iso() -> str:
+    from datetime import timezone
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _preserve_broker_snapshot(h: Dict[str, Any], shares: float) -> None:
+    """Capture broker facts once. Never overwrite them with a later mark."""
+    if h.get("broker_shares") is None and shares:
+        h["broker_shares"] = shares
+    if h.get("broker_market_value") is None:
+        # Only snapshot an existing MV if it is not already an analytical rewrite.
+        if str(h.get("mv_basis") or "") != "shares_x_canonical_mark" and h.get("market_value") is not None:
+            h["broker_market_value"] = h.get("market_value")
+            h["broker_source"] = h.get("broker_source") or "broker_position_snapshot"
+            h["broker_ingested_at"] = h.get("broker_ingested_at") or h.get("as_of") or _utc_now_iso()
+    if h.get("broker_position_price") is None:
+        implied = None
+        try:
+            if shares and h.get("broker_market_value") is not None:
+                implied = float(h["broker_market_value"]) / float(shares)
+        except (TypeError, ValueError, ZeroDivisionError):
+            implied = None
+        h["broker_position_price"] = implied
+        h["broker_position_as_of"] = h.get("broker_position_as_of") or h.get("as_of")
+
 # ── ET time helpers ────────────────────────────────────────────────────────────
 def _et_now() -> datetime:
     try:
@@ -221,11 +247,20 @@ def _fetch_fidelity_from_cache(fid_syms: List[str], root: Path) -> Dict[str, flo
 
         for fid_sym in fid_syms:
             pub_sym = fid_map.get(fid_sym, fid_sym)
+            is_proxy = str(pub_sym).upper() != str(fid_sym).upper()
             sym_data = prices.get(pub_sym, {})
             for d in dates:
                 val = sym_data.get(d)
                 if val is not None:
-                    result[fid_sym] = float(val) if not isinstance(val, dict) else float(val.get("close", 0))
+                    px = float(val) if not isinstance(val, dict) else float(val.get("close", 0) or 0)
+                    result[fid_sym] = {
+                        "price": px,
+                        "source": "proxy_public_ticker" if is_proxy else "price_cache_nav",
+                        "source_as_of": d,
+                        "proxy": is_proxy,
+                        "not_for_valuation": is_proxy,
+                        "mapped_symbol": pub_sym if is_proxy else fid_sym,
+                    }
                     break
     except Exception as e:
         print(f"  [repricer] Fidelity cache error: {e}")
@@ -337,40 +372,54 @@ def _apply_to_holdings(
         acct = str(h.get("account") or "")
 
         if broker == "fidelity" and sym not in live_prices:
-            if sym in fidelity_prices and shares > 0:
-                new_price = fidelity_prices[sym]
-                old_price = float(h.get("price") or new_price)
-                # Sanity: reject price jumps > 50% in a single reprice
-                if old_price > 0 and abs(new_price - old_price) / old_price > 0.50:
-                    print(f"  [repricer] ⛔ REJECTED {sym}: price jump {old_price:.2f} → {new_price:.2f} ({abs(new_price-old_price)/old_price*100:.0f}%) exceeds 50% guard")
+            meta = fidelity_prices.get(sym) if isinstance(fidelity_prices.get(sym), dict) else None
+            raw_px = (meta or {}).get("price") if meta else fidelity_prices.get(sym)
+            if raw_px and shares > 0:
+                new_price = float(raw_px)
+                if (meta or {}).get("proxy") or (meta or {}).get("not_for_valuation"):
+                    h["proxy"] = True
+                    h["not_for_valuation"] = True
+                    h["canonical_mark_type"] = "proxy"
+                    h["canonical_mark"] = round(new_price, 4)
+                    h["canonical_mark_source"] = (meta or {}).get("source") or "proxy"
+                    h["canonical_mark_as_of"] = (meta or {}).get("source_as_of")
+                    # Never set market_value / UPL / weight from a proxy.
+                    updated += 1
                     continue
-                h["price"]          = round(new_price, 4)
-                h["market_value"]   = round(new_price * shares, 2)
-                h["day_change"]     = round((new_price - old_price) * shares, 2)
-                h["day_change_pct"] = round(((new_price - old_price) / old_price * 100) if old_price else 0, 4)
+                _preserve_broker_snapshot(h, shares)
+                src = (meta or {}).get("source") or "nav"
+                h["canonical_mark"] = round(new_price, 4)
+                h["canonical_mark_source"] = src
+                h["canonical_mark_as_of"] = (meta or {}).get("source_as_of")
+                h["canonical_mark_ingested_at"] = _utc_now_iso()
+                h["analytical_market_value"] = round(new_price * shares, 2)
+                h["price_source"] = src
                 updated += 1
         elif sym in live_prices and shares > 0:
             p          = live_prices[sym]
             new_price  = p["price"]
-            prev_close = p["prev_close"]
-            chg_pct    = p["change_pct"]
-            old_price  = float(h.get("price") or h.get("current_price") or new_price)
-            if old_price > 0 and abs(new_price - old_price) / old_price > 0.50:
-                print(f"  [repricer] ⛔ REJECTED {sym}: price jump {old_price:.2f} → {new_price:.2f} ({abs(new_price-old_price)/old_price*100:.0f}%) exceeds 50% guard")
+            prev_close = p.get("prev_close") or new_price
+            chg_pct    = p.get("change_pct") or 0
+            old_mark   = float(h.get("canonical_mark") or h.get("current_price") or new_price)
+            if old_mark > 0 and abs(new_price - old_mark) / old_mark > 0.50:
+                print(f"  [repricer] ⛔ REJECTED {sym}: price jump {old_mark:.2f} → {new_price:.2f} ({abs(new_price-old_mark)/old_mark*100:.0f}%) exceeds 50% guard")
                 continue
-            h["price"]          = round(new_price, 4)
-            h["current_price"]  = round(new_price, 4)  # always keep in sync — guard must not split these
-            h["market_value"]   = round(new_price * shares, 2)
+            _preserve_broker_snapshot(h, shares)
+            src = str(p.get("source") or "unknown")
+            h["canonical_mark"] = round(new_price, 4)
+            h["canonical_mark_source"] = src
+            h["canonical_mark_type"] = p.get("mark_type") or "unknown"
+            h["canonical_mark_as_of"] = p.get("source_as_of") or p.get("as_of")
+            h["canonical_mark_ingested_at"] = _utc_now_iso()
+            h["analytical_market_value"] = round(new_price * shares, 2)
+            h["analytical_unrealized_pl_usd"] = None
+            cost = h.get("cost_basis") or 0
+            if cost:
+                h["analytical_unrealized_pl_usd"] = round(h["analytical_market_value"] - float(cost), 2)
+            # Day change is an analytical display field, not a broker fact.
             h["day_change"]     = round((new_price - prev_close) * shares, 2)
             h["day_change_pct"] = round(chg_pct, 4)
-            h["price_source"]   = "finviz"
-            cost = h.get("cost_basis") or 0
-            if not cost and h.get("avg_cost"):
-                cost = float(h["avg_cost"]) * shares
-                h["cost_basis"] = round(cost, 2)
-            if cost:
-                h["gain_loss"]     = round(h["market_value"] - float(cost), 2)
-                h["gain_loss_pct"] = round(h["gain_loss"] / float(cost) * 100, 4) if float(cost) else None
+            h["price_source"]   = src
             updated += 1
     _annotate_canonical_quotes(holdings)
     return updated
@@ -400,9 +449,13 @@ def _annotate_canonical_quotes(holdings: List[Dict]) -> None:
             continue
         try:
             named = apply_canonical_quote_fields(h)
+            stamped = bool(h.get("canonical_mark_ingested_at"))
             for k in CANONICAL_QUOTE_OUTPUT_FIELDS:
-                if k in named:
-                    h[k] = named[k]
+                if k not in named:
+                    continue
+                if stamped and k.startswith("canonical_"):
+                    continue
+                h[k] = named[k]
             n += 1
         except Exception as e:
             print(f"  [repricer] canonical quote annotate skip {h.get('symbol')}: {e}")
@@ -457,42 +510,23 @@ def _recalc_totals(portfolio: Dict) -> None:
 
         if reported_total > 0 and is_fidelity:
             drift = round(reported_total - derived_total, 2)
+            acct["broker_reported_total_usd"] = reported_total
+            acct["derived_broker_component_total_usd"] = derived_total
             if abs(drift) >= 0.01:
+                # Residual is NON_SECURITY / NON_ACTIONABLE. Never inject into cash or a fund.
+                acct["reconciliation_residual_usd"] = drift
+                acct["residual_source"] = "broker_reported_vs_derived_holdings"
+                acct["residual_as_of"] = now.isoformat() if hasattr(now, "isoformat") else str(now)
+                acct["residual_quality"] = "UNEXPLAINED" if abs(drift) >= 1.0 else "IMMATERIAL"
+                acct["residual_class"] = "NON_SECURITY"
+                acct_total = derived_total
                 if _reported_total_stale(acct, now) and not is_401k:
-                    acct_total = derived_total
                     acct["reported_total_stale"] = True
-                    print(f"  [repricer][guard] {acct_key}: reported ${reported_total:,.2f} stale "
-                          f"(as_of {acct.get('reported_total_as_of') or acct.get('as_of')}) — using derived ${derived_total:,.2f}")
-                else:
-                    anchor = _choose_cash_anchor(ah) if not is_401k else _choose_fund_anchor(ah)
-                    if anchor and (anchor.get("is_cash") or str(anchor.get("symbol") or "").upper() in _CASH_SYMBOLS):
-                        before = round(anchor.get("market_value", 0) or 0, 2)
-                        after = round(before + drift, 2)
-                        if after >= 0:
-                            anchor["market_value"] = after
-                            anchor["shares"] = after
-                            anchor["price"] = 1.0
-                            anchor["current_price"] = 1.0
-                            acct_total = reported_total
-                            print(f"  [repricer][guard] {acct_key}: derived ${derived_total:,.2f} vs reported "
-                                  f"${reported_total:,.2f} → residual ${drift:+,.2f} applied to cash {anchor.get('symbol')}")
-                        else:
-                            acct_total = derived_total
-                            print(f"  [repricer][guard] {acct_key}: cash residual ${drift:+,.2f} would go negative — "
-                                  f"using derived ${derived_total:,.2f}")
-                    elif anchor and is_401k:
-                        before = round(anchor.get("market_value", 0) or 0, 2)
-                        anchor["market_value"] = round(before + drift, 2)
-                        shares = float(anchor.get("shares") or 0)
-                        if shares > 0:
-                            anchor["price"] = round(anchor["market_value"] / shares, 6)
-                        acct_total = reported_total
-                        print(f"  [repricer][guard] {acct_key}: residual ${drift:+,.2f} applied to fund {anchor.get('symbol')}")
-                    else:
-                        acct_total = derived_total
-                        print(f"  [repricer][guard] {acct_key}: no cash anchor for drift ${drift:+,.2f} — "
-                              f"using derived ${derived_total:,.2f}")
+                print(f"  [repricer][residual] {acct_key}: ACCOUNT_RECONCILIATION_RESIDUAL "
+                      f"${drift:+,.2f} (reported ${reported_total:,.2f} vs derived ${derived_total:,.2f}) "
+                      f"— not injected into cash or a fund")
             else:
+                acct["reconciliation_residual_usd"] = 0.0
                 acct_total = reported_total
 
         acct["total_value"] = round(acct_total, 2)
@@ -504,6 +538,8 @@ def _recalc_totals(portfolio: Dict) -> None:
         acct["total_gain"]     = round(gain, 2)
         acct["total_gain_pct"] = round((gain / cost * 100) if cost else 0, 4)
 
+    if "portfolio_totals" not in portfolio or not isinstance(portfolio.get("portfolio_totals"), dict):
+        portfolio["portfolio_totals"] = {}
     gt = round(sum((acct.get("total_value") or 0) for acct in account_summaries.values()), 2)
     valid = [h for h in holdings if not h.get("is_loan")]
     # Only include positions WITH cost basis in gain calculation
@@ -603,13 +639,17 @@ def reprice_portfolio(portfolio: Dict[str, Any], state_dir: Path) -> Dict[str, A
     missing_schwab = [s for s in sym_groups["schwab"] if s not in live_prices]
     if missing_schwab:
         yahoo_prices = _fetch_fidelity_from_cache(missing_schwab, root)
-        for sym, price in yahoo_prices.items():
+        for sym, rec in yahoo_prices.items():
+            rec = rec if isinstance(rec, dict) else {"price": rec, "source": "yahoo_cache_fallback"}
+            price = float(rec.get("price") or 0)
             if price > 0:
                 live_prices[sym] = {
                     "price":      round(price, 4),
                     "change_pct": 0.0,
                     "prev_close": round(price, 4),
-                    "source":     "yahoo_cache_fallback",
+                    "source":     rec.get("source") or "yahoo_cache_fallback",
+                    "source_as_of": rec.get("source_as_of"),
+                    "mark_type": "unknown",
                 }
         if yahoo_prices:
             print(f"  [repricer] Yahoo fallback: {len(yahoo_prices)} symbols "
