@@ -5,24 +5,24 @@
 > Authority: **READ_ONLY_ADVISORY** — no broker / order / stop / 2FA.
 
 **Status:** `production`  
-**Branch:** `main`  
-**Created:** `2026-08-14T20:44:53.295671+00:00`  
-**Manifest hash:** `6c3578d59efb9b3e7b917a5fb0f02a5be408e19b3fc41a4e8349a106417e8912`
+**Branch:** `chore/cio-pin-7986e923`  
+**Created:** `2026-08-14T22:14:24.454952+00:00`  
+**Manifest hash:** `806327d04c0f78df1e2c28750486a5f04025ee3652248f5966d4383a3e606f3d`
 
 ## Pin
 
 | Field | Value |
 | --- | --- |
-| canonical_source_sha | `9a06cf39f0662c7edf5b96cc08f3a712a46bf865` |
-| frontend_build_sha | `9a06cf39f0662c7edf5b96cc08f3a712a46bf865` |
-| backend_release_sha | `9a06cf39f0662c7edf5b96cc08f3a712a46bf865` |
-| deployed_release_path | `/home/johnclaw/trade-ai-releases/portfolio-server/9a06cf39-main-exact-accept-20260814-164407` |
+| canonical_source_sha | `7986e923bc29c863a27bf41a40bf1aefca3b1da8` |
+| frontend_build_sha | `7986e923bc29c863a27bf41a40bf1aefca3b1da8` |
+| backend_release_sha | `7986e923bc29c863a27bf41a40bf1aefca3b1da8` |
+| deployed_release_path | `/home/johnclaw/trade-ai-releases/portfolio-server/7986e923-main-exact-pin-20260814-180617` |
 | migration_head | `2026-08-13_two_way_reliability_n.sql` |
 | docs_pin | `956038c628b3a3a66fdd6ae5` |
 | runtime_config_hash | `1171100c678822858d2c6c6f938abf15` |
 | report_version | `report_v2_1.5.0` |
-| rollback_sha | `c653314957271dad4f498e5c94a02b0423eac3ac` |
-| created_at | `2026-08-14T20:44:53.295671+00:00` |
+| rollback_sha | `e20dc5eb80565ced4fa8203291057f34a12af0b3` |
+| created_at | `2026-08-14T22:14:24.454952+00:00` |
 
 ## Product versions
 
