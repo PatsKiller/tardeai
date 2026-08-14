@@ -2,6 +2,7 @@
 
 **UTC:** 2026-08-14  
 **Branch:** `wt/cio-phase1-notify`  
+**Content SHA:** `18587528` (pin tip may be pin-only `RELEASE_MANIFEST` follow-up)  
 **Authority:** `READ_ONLY_ADVISORY` unchanged  
 
 ## Goal
