@@ -206,4 +206,5 @@ def test_manifest_hash_stable_for_same_body():
 
 
 def test_report_version_phase7():
-    assert _model()["report_version"] == "report_v2_1.4.0"
+    # Bumped in Phase 8 for office/report decision-id + plan digest parity.
+    assert _model()["report_version"] == "report_v2_1.5.0"
