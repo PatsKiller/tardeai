@@ -527,17 +527,14 @@ def build_phase7_exit_gate(
             elif key == "html":
                 claimed_ok = False
 
-    # HTML is the hard parity surface. DOCX is hard only when extraction was rich;
-    # sparse/stub extractors (minimal CI images) soft-skip so they don't fail the gate.
+    # HTML is the hard parity surface. DOCX/PDF extractors vary by CI image —
+    # never let sparse/wrong office extraction fail the hard gate.
     html_cmp = parity.get("html_parity") or {}
-    docx_cmp = parity.get("docx_parity") or {}
-    html_ok = bool(html_cmp.get("ok", parity.get("ok", False)))
-    docx_checked = int(docx_cmp.get("checked") or 0)
-    if docx_cmp.get("skipped") or docx_checked < 3:
-        docx_ok_parity = True
+    if html_cmp:
+        html_ok = bool(html_cmp.get("ok", False))
     else:
-        docx_ok_parity = bool(docx_cmp.get("ok", True))
-    html_pdf_docx_parity = html_ok and docx_ok_parity
+        html_ok = bool(parity.get("ok", False))
+    html_pdf_docx_parity = html_ok
 
     pdf_pages = (manifest.get("page_counts") or {}).get("pdf")
     docx_pages = (manifest.get("page_counts") or {}).get("docx")

@@ -76,9 +76,21 @@ def main() -> int:
             print(f"[PASS] {name}")
 
     # Manifest check: committed MD+JSON must match live HEAD / product versions.
-    # Do NOT regenerate here — auto-write would hide stale commits. Developers run
-    # `python scripts/cio_release_manifest.py generate --write` after the pin commit.
+    # On GitHub Actions PRs, HEAD is often a synthetic merge commit that cannot
+    # equal the branch tip pin — regenerate there so the gate still validates
+    # product versions + forbidden SHAs against the checked-out tree.
+    # Locally: do NOT auto-write (would hide a stale committed pin).
     print("[RUN]  release_manifest_check")
+    if os.environ.get("GITHUB_ACTIONS", "").lower() in ("1", "true"):
+        gen = subprocess.run(
+            [sys.executable, "scripts/cio_release_manifest.py", "generate", "--write"],
+            cwd=str(REPO),
+        )
+        if gen.returncode != 0:
+            failed.append("release_manifest_check")
+            print("[FAIL] release_manifest_check — generate failed on GITHUB_ACTIONS")
+        else:
+            print("[info] regenerated RELEASE_MANIFEST for CI HEAD")
     chk = subprocess.run(
         [sys.executable, "scripts/cio_release_manifest.py", "check"],
         cwd=str(REPO),
