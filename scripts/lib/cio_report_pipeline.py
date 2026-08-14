@@ -538,23 +538,29 @@ def build_phase7_exit_gate(
 
     pdf_pages = (manifest.get("page_counts") or {}).get("pdf")
     docx_pages = (manifest.get("page_counts") or {}).get("docx")
+    import os as _os
+    production_mode = (
+        str(_os.environ.get("REPORT_VALIDATION_MODE") or "").upper() == "PRODUCTION_ACCEPTANCE"
+        or bool(manifest.get("production_acceptance_mode"))
+    )
     pdf_ok = True
     docx_ok = True
     if "pdf" in formats_requested:
         if paths.get("pdf"):
-            # Stub/empty PDF writers (no chromium) may emit a file with 0 pages —
-            # treat as env soft-skip, not pipeline logic failure.
             if pdf_pages and pdf_pages > 0:
                 pdf_ok = True
             else:
-                pdf_ok = True  # soft: file present but unpaginated / stub
+                pdf_ok = not production_mode  # CI_SMOKE may soft-skip stubs
         else:
-            pdf_ok = True  # environment limitation, not pipeline logic failure
+            pdf_ok = not production_mode
     if "docx" in formats_requested:
         if paths.get("docx"):
-            docx_ok = bool(docx_pages and docx_pages > 0) if docx_pages is not None else True
+            if docx_pages is None:
+                docx_ok = not production_mode
+            else:
+                docx_ok = bool(docx_pages and docx_pages > 0)
         else:
-            docx_ok = True
+            docx_ok = not production_mode
 
     charts_html = html_has_charts(html)
     charts_docx = False
@@ -576,4 +582,5 @@ def build_phase7_exit_gate(
     }
     gate["ALL_PASS"] = all(v == "PASS" for k, v in gate.items() if k != "ALL_PASS")
     gate["file_check"] = file_check
+    gate["validation_mode"] = "PRODUCTION_ACCEPTANCE" if production_mode else "CI_SMOKE"
     return gate

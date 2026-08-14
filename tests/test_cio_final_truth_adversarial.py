@@ -331,6 +331,7 @@ def test_g13_qa_sha_must_equal_actual_pdf_bytes(tmp_path):
         qa_instance_id="r1",
         report_instance_id="r1",
         pdf_path=str(pdf),
+        page_image_hashes=[f"p{i}" for i in range(8)],
     )
     assert g2["status"] == "PASS"
 

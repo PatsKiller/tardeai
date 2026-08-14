@@ -477,14 +477,17 @@ def eval_g2_release_manifest_parity(
     now: Optional[datetime] = None,
 ) -> dict:
     man = manifest or {}
-    canon = _full_sha(man.get("canonical_source_sha"))
+    content = _full_sha(man.get("release_content_sha") or man.get("canonical_source_sha"))
+    attest = _full_sha(man.get("release_attestation_sha"))
+    remote_at = _full_sha(man.get("remote_main_sha_at_manifest") or man.get("origin_main_sha"))
+    canon = _full_sha(man.get("canonical_source_sha")) or content
     backend = _full_sha(man.get("backend_release_sha"))
     status = str(man.get("status") or "")
-    origin = _full_sha(man.get("origin_main_sha"))
+    origin = remote_at
     pin = {"ok": False}
     try:
         from scripts.cio_release_manifest import pin_only_parent
-        pin = pin_only_parent(_full_sha(main_sha), canon)
+        pin = pin_only_parent(_full_sha(main_sha), content or canon)
     except Exception:
         pin = {"ok": False, "reason": "pin_helper_unavailable"}
     checks = {
@@ -494,10 +497,28 @@ def eval_g2_release_manifest_parity(
         "backend_eq_live": bool(backend) and backend == _full_sha(live_sha),
         "origin_eq_main": bool(origin) and origin == _full_sha(main_sha),
         "live_eq_main": bool(live_sha) and _full_sha(live_sha) == _full_sha(main_sha),
+        "live_eq_content": bool(live_sha) and bool(content) and _full_sha(live_sha) == content,
+        "content_eq_main": bool(content) and content == _full_sha(main_sha),
+        "attest_eq_main": bool(attest) and attest == _full_sha(main_sha),
         "pin_only_parent": bool(pin.get("ok")),
+        "v2_fields": bool(man.get("release_content_sha")),
     }
-    # Allowed: exact 5-way match, OR production pin-only parent when live==main
-    # (the self-referential pin commit cannot contain its own SHA).
+    # Runtime-content main: content == remote main == live; no attestation SHA.
+    v2_runtime = (
+        checks["status_production"]
+        and checks["live_eq_content"]
+        and checks["content_eq_main"]
+        and not attest
+    )
+    # Attestation-only main: attestation == remote main; live == content; pin-only.
+    v2_attest = (
+        checks["status_production"]
+        and checks["pin_only_parent"]
+        and checks["live_eq_content"]
+        and checks["attest_eq_main"]
+        and bool(content)
+        and content != _full_sha(main_sha)
+    )
     exact = (
         checks["status_production"]
         and checks["canonical_eq_main"]
@@ -508,17 +529,15 @@ def eval_g2_release_manifest_parity(
     pin_ok = (
         checks["status_production"]
         and checks["pin_only_parent"]
-        and (checks["canonical_eq_live"] or checks["backend_eq_live"])
-        and (checks["live_eq_main"] or checks["canonical_eq_live"])
+        and (checks["canonical_eq_live"] or checks["backend_eq_live"] or checks["live_eq_content"])
+        and (checks["live_eq_main"] or checks["canonical_eq_live"] or checks["live_eq_content"])
     )
-    # After a pin-only merge, backend/canonical name the content SHA; live/main are the pin.
-    if pin_ok and not checks["backend_eq_live"]:
-        pin_ok = True  # parent pin is the documented exception
-    ok = exact or pin_ok
+    ok = exact or pin_ok or v2_runtime or v2_attest
     return make_gate(
         "G2_release_manifest_parity",
-        expected="committed production manifest SHAs == live == origin/main",
+        expected="production manifest: live==release_content_sha; attestation SHA distinct when pin-only",
         actual={"status": status, "canonical": _sha12(canon), "backend": _sha12(backend),
+                "content": _sha12(content), "attestation": _sha12(attest),
                 "origin_main": _sha12(origin), "checks": checks},
         status="PASS" if ok else "FAIL",
         reason=(
@@ -743,38 +762,29 @@ def eval_g7_capital_plan_invariants(
     plan: dict[str, Any],
     now: Optional[datetime] = None,
 ) -> dict:
-    p = plan or {}
-    ledger = p.get("account_capital_ledger") or {}
-    inv = ledger.get("invariants") if isinstance(ledger, dict) else {}
-    if not isinstance(inv, dict):
-        inv = {}
-    cash = float(p.get("cash_total_usd") or 0)
-    earmark = float(p.get("cash_earmarked_redeploy_usd") or 0)
-    deploy = float(p.get("net_recommended_deploy_usd") or 0)
-    investable = float(p.get("cash_investable_usd") or 0)
-    prospective = float((p.get("capital_sources") or {}).get("total_prospective_raise_usd") or 0)
-    auth = str(p.get("authority") or "")
-    checks = {
-        "has_ledger": bool(ledger.get("accounts") or ledger.get("portfolio_aggregate")),
-        "earmark_le_cash": earmark <= cash + 0.02,
-        "deploy_bounded": deploy <= investable + prospective + 0.02,
-        "authority": auth == AUTHORITY,
-        "ledger_invariants_ok": False,
-    }
-    required_inv = ("earmark_le_settled_cash", "deploy_le_free_plus_prospective")
-    missing_inv = [k for k in required_inv if k not in inv]
-    if missing_inv:
-        checks["ledger_invariants_ok"] = False
-        checks["missing_required_invariants"] = missing_inv
-    else:
-        checks["ledger_invariants_ok"] = all(inv.get(k) is True for k in required_inv)
-    ok = all(v is True for k, v in checks.items() if k != "missing_required_invariants")
+    from scripts.lib.cio_capital_invariants import (
+        REQUIRED_CAPITAL_INVARIANTS,
+        capital_invariants_ok,
+        evaluate_capital_invariants,
+    )
+
+    recs = evaluate_capital_invariants(plan or {})
+    ok = capital_invariants_ok(plan or {})
+    failed = [r["name"] for r in recs if not r.get("pass")]
     return make_gate(
         "G7_capital_plan_invariants",
-        expected="ledger present; earmark≤cash; deploy≤investable+prospective; READ_ONLY_ADVISORY",
-        actual={"checks": checks, "cash": cash, "earmark": earmark, "deploy": deploy},
+        expected="all REQUIRED_CAPITAL_INVARIANTS present with operands; missing => FAIL",
+        actual={
+            "failed": failed,
+            "required": list(REQUIRED_CAPITAL_INVARIANTS),
+            "records": recs,
+        },
         status="PASS" if ok else "FAIL",
-        reason="Capital-plan invariants hold." if ok else f"Invariant failure: {checks}",
+        reason=(
+            "Capital-plan identities hold."
+            if ok
+            else "Invariant failure: " + ",".join(failed[:8])
+        ),
         severity="P0",
         path="/api/v2/cio/capital-plan",
         now=now,
@@ -786,17 +796,49 @@ def eval_g8_decision_parity(
     parity: dict[str, Any],
     now: Optional[datetime] = None,
 ) -> dict:
-    ok = bool((parity or {}).get("ok") is True)
+    p = parity or {}
+    surfaces = p.get("surfaces")
+    if isinstance(surfaces, dict):
+        from scripts.lib.cio_decision_parity import compare_decision_surfaces
+        cmp = compare_decision_surfaces(
+            plan=surfaces.get("capital_plan", surfaces.get("plan")),
+            cio_home=surfaces.get("cio_home"),
+            report=surfaces.get("report"),
+            telegram_payload=surfaces.get("telegram", surfaces.get("telegram_payload")),
+        )
+        ok = bool(cmp.get("ok"))
+        return make_gate(
+            "G8_decision_cross_surface_parity",
+            expected="same material decision across capital_plan, cio_home, report, telegram",
+            actual=cmp,
+            status="PASS" if ok else "FAIL",
+            reason=(
+                "Plan = CIO NOW = report = Telegram."
+                if ok
+                else "Cross-surface decision parity failed "
+                     f"missing={cmp.get('missing_from_surface')} "
+                     f"mismatch={len(cmp.get('field_mismatch') or [])}."
+            ),
+            severity="P0",
+            path="capital_plan / cio_home / report / telegram",
+            now=now,
+        )
+    ok = bool(p.get("ok") is True) and bool(p.get("surfaces_complete") is True)
     return make_gate(
         "G8_decision_cross_surface_parity",
-        expected="decision_field_parity.ok == true across plan and CIO NOW",
+        expected="decision parity across plan, CIO NOW, report, telegram",
         actual={
-            "ok": (parity or {}).get("ok"),
-            "mismatches": (parity or {}).get("field_mismatches"),
-            "missing_required": (parity or {}).get("missing_required"),
+            "ok": p.get("ok"),
+            "surfaces_complete": p.get("surfaces_complete"),
+            "mismatches": p.get("field_mismatches"),
+            "missing_required": p.get("missing_required"),
         },
         status="PASS" if ok else "FAIL",
-        reason="Cross-surface decision fields match." if ok else "Plan ↔ CIO NOW field parity failed.",
+        reason=(
+            "Cross-surface decision fields match."
+            if ok
+            else "Plan/CIO/report/Telegram parity not proven (surfaces_complete required)."
+        ),
         severity="P0",
         path="/api/v3/cio/home#consistency.decision_field_parity",
         now=now,
@@ -824,7 +866,13 @@ def eval_g9_advisory_ui_provenance(
     )
     # Both Advisory provenance on the page/API AND CIO attention labels in UI.
     # Missing either is FAIL — backend-only helper is not "live".
-    ok = has_api and has_bundle and cio_ui
+    office = advisory_payload.get("office_audit") if isinstance(advisory_payload, dict) else None
+    if office is None:
+        office = None
+    office_ok = True
+    if isinstance(office, dict):
+        office_ok = office.get("ok") is True
+    ok = has_api and has_bundle and cio_ui and office_ok
     return make_gate(
         "G9_advisory_ui_provenance_live",
         expected="Advisory API+bundle render provenance; CIO UI renders four attention KPIs",
@@ -963,9 +1011,11 @@ def eval_g13_visual_qa(
     qa_instance_id: str = "",
     report_instance_id: str = "",
     pdf_path: str = "",
+    page_image_hashes: Optional[list[str]] = None,
     now: Optional[datetime] = None,
 ) -> dict:
     """G13 — QA must be bound to the actual PDF bytes on disk."""
+    snap_page_hashes = page_image_hashes
     pdf_facts = inspect_report_file(pdf_path, report_pdf_sha256)
     actual_pdf_sha = pdf_facts["sha256"]
     art = Path(visual_qa_artifact) if visual_qa_artifact else None
@@ -979,7 +1029,9 @@ def eval_g13_visual_qa(
     pages_ok = bool(pdf_page_count) and pages_inspected == pdf_page_count and pages_inspected > 0
     inst_ok = bool(qa_instance_id) and qa_instance_id == report_instance_id
     result_ok = str(qa_result or "").upper() == "PASS"
-    ok = art_ok and qa_hash_ok and instance_hash_ok and pages_ok and inst_ok and result_ok
+    page_hashes = list(snap_page_hashes or [])
+    hashes_ok = bool(page_hashes) and len(page_hashes) == pages_inspected == pdf_page_count
+    ok = art_ok and qa_hash_ok and instance_hash_ok and pages_ok and inst_ok and result_ok and hashes_ok
     return make_gate(
         "G13_report_visual_qa",
         expected=(
@@ -996,6 +1048,7 @@ def eval_g13_visual_qa(
             "actual_pdf_sha256": (actual_pdf_sha or "")[:16] or None,
             "instance_match": inst_ok,
             "result": qa_result or None,
+            "page_image_hash_count": len(page_hashes),
         },
         status="PASS" if ok else "FAIL",
         reason=(
@@ -1070,13 +1123,18 @@ def eval_g15_real_canary(
     now: Optional[datetime] = None,
 ) -> dict:
     ev = canary_evidence or {}
-    sha_ok = bool(ev.get("release_sha")) and _full_sha(ev.get("release_sha")) == _full_sha(live_sha)
+    release = _full_sha(ev.get("release_content_sha") or ev.get("release_sha"))
+    sha_ok = bool(release) and release == _full_sha(live_sha)
+    bound = bool(ev.get("decision_id")) and bool(
+        ev.get("decision_input_digest") or ev.get("decision_digest") or ev.get("decision_evidence_digest")
+    )
     ok = (
         ev.get("sent") is True
         and ev.get("operator_approved") is True
         and ev.get("cio_chat_confirmed") is True
         and ev.get("duplicate") is False
         and sha_ok
+        and bound
     )
     return make_gate(
         "G15_real_cio_e2e_canary",
@@ -1163,17 +1221,43 @@ def eval_g18_ci_green(
     cio_hardening_green_on_sha: bool,
     sha: str = "",
     now: Optional[datetime] = None,
+    content_sha: str = "",
+    attestation_sha: str = "",
+    content_hardening_green: Optional[bool] = None,
+    attestation_hardening_green: Optional[bool] = None,
 ) -> dict:
-    ok = cio_hardening_required and cio_hardening_green_on_sha
+    content = _full_sha(content_sha or sha)
+    attest = _full_sha(attestation_sha)
+    content_green = (
+        cio_hardening_green_on_sha if content_hardening_green is None else bool(content_hardening_green)
+    )
+    ok = bool(cio_hardening_required) and content_green and bool(content)
+    reasons = []
+    if not cio_hardening_required:
+        reasons.append("cio-hardening not required")
+    if not content_green:
+        reasons.append("cio-hardening not green on content SHA")
+    if attest and attest != content:
+        if attestation_hardening_green is False or attestation_hardening_green is None:
+            ok = False
+            reasons.append("cio-hardening not proven green on attestation SHA")
     return make_gate(
         "G18_required_ci_green",
-        expected="cio-hardening required on main and green on the accepted SHA",
-        actual={"required": cio_hardening_required, "green_on_sha": cio_hardening_green_on_sha, "sha": _sha12(sha)},
+        expected="cio-hardening required and green on content SHA and attestation SHA when distinct",
+        actual={
+            "required": cio_hardening_required,
+            "green_on_sha": cio_hardening_green_on_sha,
+            "content_sha": _sha12(content),
+            "attestation_sha": _sha12(attest) or None,
+            "content_hardening_green": content_green,
+            "attestation_hardening_green": attestation_hardening_green,
+            "sha": _sha12(sha),
+        },
         status="PASS" if ok else "FAIL",
         reason=(
             "cio-hardening required and green."
             if ok
-            else "Cannot accept: cio-hardening not required or not proven green on this SHA."
+            else "Cannot accept: " + "; ".join(reasons or ["CI not proven"])
         ),
         severity="P1",
         now=now,
@@ -1278,7 +1362,10 @@ def evaluate_live_snapshot(snap: dict[str, Any], *, now: Optional[datetime] = No
     decs = plan.get("position_decisions") or []
     gates.append(eval_g6_required_freshness(decisions=decs, now=now))
     gates.append(eval_g7_capital_plan_invariants(plan=plan, now=now))
-    gates.append(eval_g8_decision_parity(parity=snap.get("decision_parity") or {}, now=now))
+    parity = dict(snap.get("decision_parity") or {})
+    if snap.get("decision_surfaces") and "surfaces" not in parity:
+        parity["surfaces"] = snap["decision_surfaces"]
+    gates.append(eval_g8_decision_parity(parity=parity, now=now))
     gates.append(eval_g9_advisory_ui_provenance(
         advisory_payload=snap.get("advisory_payload"),
         frontend_bundle_text=str(snap.get("frontend_bundle_text") or ""),
@@ -1322,6 +1409,7 @@ def evaluate_live_snapshot(snap: dict[str, Any], *, now: Optional[datetime] = No
         qa_instance_id=str(snap.get("qa_instance_id") or ""),
         report_instance_id=str(inst.get("report_instance_id") or ""),
         pdf_path=str(snap.get("report_pdf_path") or ""),
+        page_image_hashes=list(snap.get("qa_page_image_hashes") or inst.get("page_image_hashes") or []),
         now=now,
     ))
     gates.append(eval_g14_telegram_isolation(
@@ -1340,6 +1428,10 @@ def evaluate_live_snapshot(snap: dict[str, Any], *, now: Optional[datetime] = No
         cio_hardening_required=bool(snap.get("cio_hardening_required")),
         cio_hardening_green_on_sha=bool(snap.get("cio_hardening_green_on_sha")),
         sha=live,
+        content_sha=str(snap.get("ci_content_sha") or live),
+        attestation_sha=str(snap.get("ci_attestation_sha") or ""),
+        content_hardening_green=snap.get("ci_content_hardening_green"),
+        attestation_hardening_green=snap.get("ci_attestation_hardening_green"),
         now=now,
     ))
     gates.append(eval_g20_strategy_honest(
