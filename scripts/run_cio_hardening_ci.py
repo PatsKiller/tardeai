@@ -45,6 +45,9 @@ GATES = [
     ("release_manifest", [
         "tests/test_cio_release_manifest.py",
     ]),
+    ("adversarial_phase11", [
+        "tests/test_cio_phase11_adversarial.py",
+    ]),
 ]
 
 

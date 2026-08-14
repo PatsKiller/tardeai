@@ -2,9 +2,9 @@
   "manifest_schema": "investment_office_release_manifest_v1",
   "status": "release_candidate",
   "branch": "wt/cio-phase1-notify",
-  "canonical_source_sha": "777cb8fd8f53816f1156e07eca0e98b4fc06d2d6",
+  "canonical_source_sha": "cbf21f7ae6658dfe4ced4b90383b1084c01340a7",
   "frontend_build_sha": "3.0.0",
-  "backend_release_sha": "UNKNOWN_NOT_STAMPED_IN_RELEASE_DIR",
+  "backend_release_sha": "8f11a642f90e52a111b94772dcadc24c8a3876ac",
   "deployed_release_path": "/home/johnclaw/trade-ai-releases/portfolio-server/20260813-210818",
   "deployed_release_name": "20260813-210818",
   "deploy_exists": true,
@@ -15,10 +15,11 @@
     "2026-08-13_two_way_curation_sources.sql",
     "2026-08-13_two_way_reliability_n.sql"
   ],
-  "docs_pin": "1256df921d58a9e5662e2298",
+  "docs_pin": "55eb322df4d2189aa9fedf91",
   "docs_files_sample": [
     "PHASE10_GIT_RELEASE_CI_DRIVE.md",
     "PHASE10_OUTCOME_LEARNING.md",
+    "PHASE11_ADVERSARIAL_SUITE.md",
     "PHASE1_NOTIFICATION_CONTAINMENT.md",
     "PHASE2_CASH_CAPITAL_LEDGER.md",
     "PHASE3_DECISION_SEMANTICS.md",
@@ -46,7 +47,7 @@
   },
   "rollback_sha": "c330a117ee2bce657257e7acbbeb6c7cfdb8e8f9",
   "origin_main_sha": "c330a117ee2bce657257e7acbbeb6c7cfdb8e8f9",
-  "created_at": "2026-08-14T12:23:45.562403+00:00",
+  "created_at": "2026-08-14T12:28:55.801200+00:00",
   "financial_authority": "READ_ONLY_ADVISORY",
   "broker_write_paths_added": 0,
   "notes": "Release candidate for CIO production hardening Phases 0\u201310 on this branch. backend_release_sha reflects currently deployed portfolio-server CURRENT (may lag this RC until controlled deployment). Stale preliminary SHAs are forbidden. Drive investment-office mirror may lag git until operator sync.",
@@ -56,15 +57,21 @@
     "rule": "Seed defaults may be version-controlled; auto_grafted_at and live weight mutations are runtime state and may dirty the worktree. Do not treat runtime grafts as undeclared source drift without an ownership note."
   },
   "branch_protection": {
-    "main_observed": "unprotected (Phase 0)",
+    "main_observed": "protected (Phase 11 operator enablement)",
+    "enabled_rules": [
+      "required_pull_request_reviews (0 approving, dismiss stale)",
+      "allow_force_pushes=false",
+      "allow_deletions=false"
+    ],
     "recommendation": [
       "require pull request before merge",
-      "require CIO hardening CI + release-readiness checks",
+      "require CIO hardening CI + release-readiness checks as required status contexts once stable on main",
       "block force-push to main",
       "block merge with failing required checks"
     ],
-    "operator_approval_required": true,
-    "auto_enforced_by_this_script": false
+    "operator_approval_required": false,
+    "auto_enforced_by_this_script": false,
+    "note": "Status-check contexts left empty so first main PR is not blocked before the workflow runs."
   },
-  "manifest_hash": "7a74a64382b74763a47f4a670aafe86516ad08bc391d373b9dfe765c46ec32f6"
+  "manifest_hash": "4e973626658a854cd6714172829c4d0192d16deabdb080b0d913cf721fec0aa0"
 }

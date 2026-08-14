@@ -6,23 +6,23 @@
 
 **Status:** `release_candidate`  
 **Branch:** `wt/cio-phase1-notify`  
-**Created:** `2026-08-14T12:23:45.562403+00:00`  
-**Manifest hash:** `7a74a64382b74763a47f4a670aafe86516ad08bc391d373b9dfe765c46ec32f6`
+**Created:** `2026-08-14T12:28:55.801200+00:00`  
+**Manifest hash:** `4e973626658a854cd6714172829c4d0192d16deabdb080b0d913cf721fec0aa0`
 
 ## Pin
 
 | Field | Value |
 | --- | --- |
-| canonical_source_sha | `777cb8fd8f53816f1156e07eca0e98b4fc06d2d6` |
+| canonical_source_sha | `cbf21f7ae6658dfe4ced4b90383b1084c01340a7` |
 | frontend_build_sha | `3.0.0` |
-| backend_release_sha | `UNKNOWN_NOT_STAMPED_IN_RELEASE_DIR` |
+| backend_release_sha | `8f11a642f90e52a111b94772dcadc24c8a3876ac` |
 | deployed_release_path | `/home/johnclaw/trade-ai-releases/portfolio-server/20260813-210818` |
 | migration_head | `2026-08-13_two_way_reliability_n.sql` |
-| docs_pin | `1256df921d58a9e5662e2298` |
+| docs_pin | `55eb322df4d2189aa9fedf91` |
 | runtime_config_hash | `1171100c678822858d2c6c6f938abf15` |
 | report_version | `report_v2_1.5.0` |
 | rollback_sha | `c330a117ee2bce657257e7acbbeb6c7cfdb8e8f9` |
-| created_at | `2026-08-14T12:23:45.562403+00:00` |
+| created_at | `2026-08-14T12:28:55.801200+00:00` |
 
 ## Product versions
 
@@ -54,11 +54,11 @@
 
 ## Branch protection (operator action)
 
-Observed: main unprotected (Phase 0).
-Recommended (requires operator repo-governance approval — not auto-applied):
+Observed: protected (Phase 11 operator enablement).
+Recommended / residual:
 
 - require pull request before merge
-- require CIO hardening CI + release-readiness checks
+- require CIO hardening CI + release-readiness checks as required status contexts once stable on main
 - block force-push to main
 - block merge with failing required checks
 

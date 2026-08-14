@@ -284,15 +284,21 @@ def build_manifest(*, note: str = "") -> dict[str, Any]:
             ),
         },
         "branch_protection": {
-            "main_observed": "unprotected (Phase 0)",
+            "main_observed": "protected (Phase 11 operator enablement)",
+            "enabled_rules": [
+                "required_pull_request_reviews (0 approving, dismiss stale)",
+                "allow_force_pushes=false",
+                "allow_deletions=false",
+            ],
             "recommendation": [
                 "require pull request before merge",
-                "require CIO hardening CI + release-readiness checks",
+                "require CIO hardening CI + release-readiness checks as required status contexts once stable on main",
                 "block force-push to main",
                 "block merge with failing required checks",
             ],
-            "operator_approval_required": True,
+            "operator_approval_required": False,
             "auto_enforced_by_this_script": False,
+            "note": "Status-check contexts left empty so first main PR is not blocked before the workflow runs.",
         },
     }
     # Content hash excluding created_at for stable compare of material pins
@@ -362,8 +368,8 @@ def render_markdown(m: dict[str, Any]) -> str:
         "",
         "## Branch protection (operator action)",
         "",
-        "Observed: main unprotected (Phase 0).",
-        "Recommended (requires operator repo-governance approval — not auto-applied):",
+        f"Observed: {m.get('branch_protection', {}).get('main_observed', 'unknown')}.",
+        "Recommended / residual:",
         "",
     ]
     for rec in (m.get("branch_protection") or {}).get("recommendation") or []:
