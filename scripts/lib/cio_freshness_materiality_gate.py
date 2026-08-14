@@ -28,16 +28,18 @@ from typing import Any, Optional
 
 # Reuse timestamp helpers from financial truth gate
 from scripts.lib.cio_financial_truth_gate import (  # noqa: E402
+    PROCESS_CLOCK_FIELDS,
     STATE_CONFLICTED,
     STATE_DATA_UNAVAILABLE,
     STATE_STALE,
     STATE_VERIFIED_AS_OF,
     STATE_VERIFIED_CURRENT,
     age_seconds,
+    extract_source_observation_time,
     parse_ts,
 )
 
-FRESHNESS_MATERIALITY_VERSION = "freshness_materiality_1.1.0"
+FRESHNESS_MATERIALITY_VERSION = "freshness_materiality_1.2.0"
 
 # Operator-facing action labels (Phase 3)
 LABEL_ACT_NOW = "ACT_NOW"
@@ -181,16 +183,24 @@ def _merge_position_rows(
     return list(by_acct.values())
 
 
+def _is_process_clock_value(row: dict[str, Any], ts: Any) -> bool:
+    """True when `ts` only appears on a process-clock field of the row."""
+    if ts is None:
+        return False
+    on_source, on_process = False, False
+    _n, _d, src_raw = extract_source_observation_time(row, include_aliases=True)
+    if src_raw is not None and str(src_raw) == str(ts):
+        on_source = True
+    for key in PROCESS_CLOCK_FIELDS:
+        if row.get(key) is not None and str(row.get(key)) == str(ts):
+            on_process = True
+    return on_process and not on_source
+
+
 def _row_quote_ts(row: dict[str, Any]) -> Any:
-    """Quote clock is source_as_of. Transform/reconcile clocks are not freshness."""
-    return (
-        row.get("source_as_of")
-        or row.get("canonical_mark_as_of")
-        or row.get("price_as_of")
-        or row.get("quote_time")
-        or row.get("quote_as_of")
-        # Generic updated_at / reconciled_at / generated_at are NOT quote time.
-    )
+    """Quote clock is a source observation time. Process clocks are not freshness."""
+    _name, _dt, raw = extract_source_observation_time(row, include_aliases=True)
+    return raw
 
 
 def inspect_account_row_quotes(
@@ -264,7 +274,7 @@ def _market_price_from_holdings_snapshot(
         or pos.get("price_as_of")
         or pos.get("quote_time")
     )
-    holdings_ts = stamps.get("holdings")
+    holdings_ts = stamps.get("holdings_snapshot") or stamps.get("holdings")
     if live_ts and not _holdings_like_source(live_source):
         if not _clocks_equal(live_ts, holdings_ts):
             return False
@@ -285,7 +295,8 @@ def _risk_from_book(
     independent = (decision or {}).get("risk_as_of") or (extra or {}).get("risk_as_of")
     if not independent:
         return True
-    return _clocks_equal(independent, stamps.get("holdings"))
+    book = stamps.get("holdings_snapshot") or stamps.get("holdings")
+    return _clocks_equal(independent, book) or _clocks_equal(independent, stamps.get("holdings"))
 
 
 def _tax_from_book(
@@ -296,7 +307,8 @@ def _tax_from_book(
     independent = (decision or {}).get("tax_as_of") or (extra or {}).get("tax_as_of")
     if not independent:
         return True
-    return _clocks_equal(independent, stamps.get("holdings"))
+    book = stamps.get("holdings_snapshot") or stamps.get("holdings")
+    return _clocks_equal(independent, book) or _clocks_equal(independent, stamps.get("holdings"))
 
 
 def _record_ok(rec: Optional[dict[str, Any]]) -> bool:
@@ -319,21 +331,47 @@ def _fnum(v: Any, default: float = 0.0) -> float:
 
 
 def _session_context(now: datetime) -> dict[str, Any]:
-    """Rough US equity session flag (UTC). Not a full calendar."""
-    # US RTH ~ 13:30–20:00 UTC (EDT) / 14:30–21:00 (EST) — use 13:30–21:00 window
-    hour = now.hour + now.minute / 60.0
-    weekday = now.weekday()  # 0=Mon
-    is_weekday = weekday < 5
-    rth = is_weekday and 13.5 <= hour < 21.0
+    """NYSE session flag via injectable deterministic calendar (no network)."""
+    try:
+        from scripts.lib.cio_market_session import get_market_session
+        sess = get_market_session(now)
+    except Exception:
+        sess = {
+            "exchange": "XNYS",
+            "session_date": None,
+            "state": "CLOSED",
+            "official_open": None,
+            "official_close": None,
+            "early_close": False,
+            "source": "cio_market_session_unavailable",
+        }
+    state = str(sess.get("state") or "CLOSED").upper()
+    rth = state == "RTH"
+    is_weekday = False
+    if sess.get("session_date"):
+        try:
+            from datetime import date as _date
+            is_weekday = _date.fromisoformat(str(sess["session_date"])[:10]).weekday() < 5
+        except ValueError:
+            is_weekday = False
     return {
         "is_weekday": is_weekday,
         "likely_rth": rth,
         "quote_policy": "rth_15m" if rth else "after_hours_latest_supported",
+        "market_session": {
+            "exchange": sess.get("exchange"),
+            "session_date": sess.get("session_date"),
+            "state": state if state in ("PRE", "RTH", "POST", "CLOSED") else "CLOSED",
+            "official_open": sess.get("official_open"),
+            "official_close": sess.get("official_close"),
+            "early_close": bool(sess.get("early_close")),
+            "source": sess.get("source"),
+        },
         "note": (
-            "Regular session: quote/MV age <= 15m where live marks exist. "
-            "After-hours/weekend: use latest supported mark and label as_of."
-            if not rth else
             "Regular session quote freshness window active (15 minutes)."
+            if rth else
+            "Regular session: quote/MV age <= 15m where live marks exist. "
+            "After-hours/weekend/holiday: use latest supported mark and label as_of."
         ),
     }
 
@@ -433,24 +471,27 @@ def collect_evidence_timestamps(
     )
     pos = rows[0] if rows else (position_row or {})
     row_quotes = inspect_account_row_quotes(rows)
-    # holdings book
-    holdings_ts = doc.get("updated_at") or doc.get("as_of") or doc.get("generated_at")
+    # holdings book: source as_of is freshness. updated_at is snapshot identity
+    # only — it must never make an old source look fresh.
+    holdings_source_ts = (
+        doc.get("as_of") or doc.get("generated_at") or doc.get("source_as_of")
+    )
+    holdings_updated_at = doc.get("updated_at") or doc.get("ingested_at")
+    # Identity of this holdings.json write (grouping), not a freshness clock.
+    holdings_snapshot_ts = holdings_updated_at or holdings_source_ts
+    holdings_ts = holdings_source_ts  # freshness clock; None if missing
     # quote / MV: worst account row, then explicit live quote, never invent now
+    # and never a process clock.
     quote_ts = row_quotes.get("worst_ts")
     if quote_ts is None:
-        quote_ts = (
-            extra.get("quote_as_of")
-            or decision.get("quote_as_of")
-            or pos.get("source_as_of")
-            or pos.get("canonical_mark_as_of")
-            or pos.get("price_as_of")
-            or pos.get("quote_time")
-        )
-    mv_ts = (
-        quote_ts
-        or pos.get("broker_position_as_of")
-        or pos.get("source_as_of")
-    )
+        quote_ts = extra.get("quote_as_of") or decision.get("quote_as_of")
+        if quote_ts is None:
+            _n, _d, quote_ts = extract_source_observation_time(pos, include_aliases=True)
+        elif _is_process_clock_value(pos, quote_ts):
+            quote_ts = None
+    mv_ts = quote_ts
+    if mv_ts is None:
+        mv_ts = pos.get("broker_position_as_of") or pos.get("source_as_of")
     cash_ts = holdings_ts
     # advisory / desk
     advisory_ts = (
@@ -488,6 +529,8 @@ def collect_evidence_timestamps(
     )
     return {
         "holdings": holdings_ts,
+        "holdings_snapshot": holdings_snapshot_ts,
+        "holdings_updated_at": holdings_updated_at,
         "quote": quote_ts,
         "market_value": mv_ts,
         "cash": cash_ts,

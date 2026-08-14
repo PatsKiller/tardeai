@@ -715,7 +715,21 @@ def build_capital_plan(
         "v": CAPITAL_PLAN_VERSION,
     }, sort_keys=True, separators=(",", ":"))
     plan["digest"] = hashlib.sha256(key_raw.encode("utf-8")).hexdigest()
+    # G7 ledger identities — attached after digest so they cannot change it.
+    try:
+        from scripts.lib.cio_capital_invariants import evaluate_capital_invariants
+        invs = evaluate_capital_invariants(plan)
+        plan["capital_invariants"] = invs
+        plan["capital_invariants_ok"] = all(bool(i.get("pass")) for i in invs)
+    except Exception:
+        pass
     return plan
+
+
+def capital_invariant_operands(plan: Optional[dict[str, Any]]) -> dict[str, Any]:
+    """Expose G7 invariant operands without rewriting sizing."""
+    from scripts.lib.cio_capital_invariants import extract_capital_operands
+    return extract_capital_operands(plan)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -14,6 +14,7 @@ from scripts.lib.cio_financial_truth_gate import (  # noqa: E402
     STATE_CONFLICTED,
     STATE_STALE,
     STATE_VERIFIED_AS_OF,
+    STATE_VERIFIED_CURRENT,
     STATE_DATA_UNAVAILABLE,
     analyst_upside_vs_canonical,
     attach_gate_to_capital_plan,
@@ -32,6 +33,7 @@ def test_version_and_dollar_tol():
 
 
 def test_clean_position_passes():
+    now = datetime(2026, 8, 14, 15, 5, tzinfo=timezone.utc)
     row = {
         "symbol": "AAA",
         "account": "ira",
@@ -43,9 +45,10 @@ def test_clean_position_passes():
         "gain_loss": 200.0,
         "gain_loss_pct": 25.0,
         "portfolio_pct": 10.0,
-        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "source_as_of": (now - timedelta(minutes=2)).isoformat(),
+        "updated_at": now.isoformat(),
     }
-    r = check_position_row(row, portfolio_value=10_000.0)
+    r = check_position_row(row, portfolio_value=10_000.0, now=now)
     assert r["exceptions"] == []
     assert r["quality"] == STATE_VERIFIED_AS_OF
     assert r["actionable"] is True
@@ -63,9 +66,10 @@ def test_shares_x_price_is_typed_residual_not_forced_conflict():
         "canonical_mark": 100.0,
         "canonical_mark_as_of": "2026-08-14T20:00:00+00:00",
         "broker_position_as_of": "2026-08-14T16:00:00+00:00",
-        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": "2026-08-14T20:05:00+00:00",
     }
-    r = check_position_row(row, portfolio_value=10_000.0)
+    now = datetime(2026, 8, 14, 20, 5, tzinfo=timezone.utc)
+    r = check_position_row(row, portfolio_value=10_000.0, now=now)
     assert r["quality"] == STATE_VERIFIED_AS_OF
     assert not any(e["type"] == "shares_x_price_ne_mv" for e in r["exceptions"])
     notes = r.get("reconciliation_notes") or []
@@ -189,6 +193,62 @@ def test_field_meta_contract():
     assert m["age_seconds"] is not None
 
 
+def test_field_meta_critical_source_time_does_not_fall_back_to_ingested_at():
+    now = datetime(2026, 8, 14, 16, 0, tzinfo=timezone.utc)
+    m = field_meta(
+        value=100.0,
+        source="quote",
+        source_as_of=None,
+        ingested_at=now.isoformat(),
+        quality=STATE_VERIFIED_CURRENT,
+        now=now,
+        critical_source_time=True,
+    )
+    assert m["quality"] == STATE_DATA_UNAVAILABLE
+    assert m["age_seconds"] is None
+    assert m["critical_source_time"] is True
+    assert m["clock_kind"] is None
+
+
+def test_old_source_as_of_new_updated_at_remains_stale():
+    """P0-7: process clocks must never make an old source fresh."""
+    now = datetime(2026, 8, 14, 16, 0, tzinfo=timezone.utc)
+    old = (now - timedelta(days=7)).isoformat()
+    m = field_meta(
+        value=91.26,
+        source="finviz",
+        source_as_of=old,
+        ingested_at=now.isoformat(),
+        quality=STATE_VERIFIED_CURRENT,
+        now=now,
+        critical_source_time=True,
+    )
+    assert m["quality"] != STATE_VERIFIED_CURRENT
+    assert m["quality"] == STATE_STALE
+    assert m["age_seconds"] is not None
+    assert m["age_seconds"] > 24 * 3600
+
+    row = {
+        "symbol": "OLD",
+        "account": "ira",
+        "shares": 10.0,
+        "current_price": 100.0,
+        "price": 100.0,
+        "market_value": 1000.0,
+        "source_as_of": old,
+        "updated_at": now.isoformat(),
+        "ingested_at": now.isoformat(),
+        "fetched_at": now.isoformat(),
+        "reconciled_at": now.isoformat(),
+    }
+    r = check_position_row(row, portfolio_value=10_000.0, now=now)
+    assert r["quality"] == STATE_STALE
+    assert r["quality"] != STATE_VERIFIED_CURRENT
+    assert r["source_observation_quality"] == STATE_STALE
+    assert any(e["type"] == "source_observation_stale" for e in r["exceptions"])
+    assert not any(e["type"] == "row_timestamp_stale" for e in r["exceptions"])
+
+
 def test_meta_timestamp_conflict_stale_updated_at():
     doc = {
         "as_of": "2026-08-14",
@@ -270,3 +330,32 @@ def test_unavailable_without_price():
     r = check_position_row(row, portfolio_value=1000.0)
     # no price → cannot prove shares*px; may be VERIFIED_AS_OF on mv alone or unavailable pieces
     assert r["canonical_price"] is None
+
+
+def test_holdings_old_source_not_refreshed_by_updated_at():
+    now = datetime(2026, 8, 14, 16, 0, tzinfo=timezone.utc)
+    doc = {
+        "as_of": (now - timedelta(days=10)).isoformat(),
+        "updated_at": now.isoformat(),
+        "portfolio_totals": {"total_value": 2000.0},
+        "holdings": [
+            {"symbol": "CASH", "is_cash": True, "market_value": 1000.0, "account": "a"},
+            {
+                "symbol": "XYZ",
+                "account": "a",
+                "shares": 10,
+                "current_price": 100,
+                "price": 100,
+                "market_value": 1000,
+                "source_as_of": (now - timedelta(days=10)).isoformat(),
+                "updated_at": now.isoformat(),
+            },
+        ],
+    }
+    gate = evaluate_holdings_document(doc, now=now)
+    assert gate["overall_quality"] != STATE_VERIFIED_CURRENT
+    assert gate["overall_quality"] == STATE_STALE
+    assert gate["meta"]["quality"] == STATE_STALE
+    assert gate["meta"]["critical_source_time"] is True
+    types = {e["type"] for e in gate["exceptions"]}
+    assert "holdings_meta_stale" in types or "source_observation_stale" in types

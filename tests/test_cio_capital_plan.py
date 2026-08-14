@@ -605,3 +605,116 @@ def test_phase2_live_shape_578k_regeneration():
     assert plan["cash_ledger"]["invariants_ok"] is True
     # Account cash sums to settled cash
     assert abs(sum(a["settled_cash_usd"] for a in plan["cash_ledger"]["account_cash"]) - cash) < 0.02
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# G7 — full ledger identities
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_g7_required_invariants_missing_operands_fail():
+    from scripts.lib.cio_capital_invariants import (
+        REQUIRED_CAPITAL_INVARIANTS,
+        evaluate_capital_invariants,
+    )
+    assert len(REQUIRED_CAPITAL_INVARIANTS) == 14
+    assert REQUIRED_CAPITAL_INVARIANTS[0] == "sum_account_cash_eq_portfolio_cash"
+    assert "authority_read_only_advisory" in REQUIRED_CAPITAL_INVARIANTS
+    recs = evaluate_capital_invariants({})
+    assert [r["name"] for r in recs] == list(REQUIRED_CAPITAL_INVARIANTS)
+    assert all(r["pass"] is False for r in recs)
+    for r in recs:
+        for key in ("name", "lhs", "rhs", "residual", "tolerance", "pass"):
+            assert key in r
+
+
+def test_g7_consistent_full_book_passes():
+    from scripts.lib.cio_capital_invariants import (
+        capital_invariants_ok,
+        evaluate_capital_invariants,
+    )
+    plan = cp.build_capital_plan(
+        portfolio_value=200_000.0,
+        cash_total=50_000.0,
+        positions=[{"symbol": "AAA", "market_value": 150_000.0, "account": "ira"}],
+        account_cash=[{"account": "ira", "settled_cash_usd": 50_000.0}],
+        queue=None,
+    )
+    recs = evaluate_capital_invariants(plan)
+    failed = [r["name"] for r in recs if not r["pass"]]
+    assert failed == []
+    assert capital_invariants_ok(plan) is True
+    assert plan.get("capital_invariants_ok") is True
+    ops = cp.capital_invariant_operands(plan)
+    assert ops["cash"] == 50_000.0
+    assert ops["reserve"] == 40_000.0
+
+
+def test_g7_earmark_over_cash_fails():
+    from scripts.lib.cio_capital_invariants import evaluate_capital_invariants
+    recs = evaluate_capital_invariants({
+        "authority": "READ_ONLY_ADVISORY",
+        "portfolio_value_usd": 1000.0,
+        "cash_total_usd": 100.0,
+        "cash_reserved_usd": 20.0,
+        "cash_investable_usd": 80.0,
+        "cash_earmarked_redeploy_usd": 500.0,
+        "net_recommended_deploy_usd": 0.0,
+        "net_recommended_raise_usd": 0.0,
+        "deployable_usd": 80.0,
+        "post_plan_cash_usd": 100.0,
+        "capital_sources": {
+            "trims_usd": 0.0,
+            "exits_usd": 0.0,
+            "maturities_usd": 500.0,
+            "earmarked_redeploy_usd": 500.0,
+            "total_prospective_raise_usd": 0.0,
+            "total_raise_usd": 0.0,
+        },
+        "account_capital_ledger": {
+            "accounts": [{
+                "account": "a",
+                "settled_cash_usd": 100.0,
+                "positions_mv_usd": 900.0,
+                "post_plan_cash_usd": 100.0,
+            }],
+        },
+    })
+    by = {r["name"]: r for r in recs}
+    assert by["earmark_le_settled_cash"]["pass"] is False
+    assert by["authority_read_only_advisory"]["pass"] is True
+
+
+def test_g7_double_count_and_prospective_inclusion_fail():
+    from scripts.lib.cio_capital_invariants import evaluate_capital_invariants
+    recs = evaluate_capital_invariants({
+        "authority": "READ_ONLY_ADVISORY",
+        "portfolio_value_usd": 200.0,
+        "cash_total_usd": 100.0,
+        "cash_reserved_usd": 20.0,
+        "cash_investable_usd": 80.0,
+        "cash_earmarked_redeploy_usd": 50.0,
+        "net_recommended_deploy_usd": 0.0,
+        "net_recommended_raise_usd": 60.0,
+        "deployable_usd": 190.0,  # investable + earmark + inflated prospective
+        "post_plan_cash_usd": 160.0,
+        "capital_sources": {
+            "trims_usd": 10.0,
+            "exits_usd": 0.0,
+            "maturities_usd": 50.0,
+            "earmarked_redeploy_usd": 50.0,
+            "total_prospective_raise_usd": 60.0,  # includes earmark
+            "total_raise_usd": 60.0,
+        },
+        "account_capital_ledger": {
+            "accounts": [{
+                "account": "a",
+                "settled_cash_usd": 100.0,
+                "positions_mv_usd": 100.0,
+                "post_plan_cash_usd": 160.0,
+            }],
+        },
+    })
+    by = {r["name"]: r for r in recs}
+    assert by["no_capital_source_double_count"]["pass"] is False
+    assert by["prospective_raise_excludes_earmarked_existing_cash"]["pass"] is False
+    assert by["prospective_raise_excludes_realized_historical_proceeds"]["pass"] is False

@@ -86,7 +86,8 @@ def test_nonzero_delta_alone_not_act_now_without_freshness():
 
 def test_stale_holdings_forces_stale_refresh():
     doc = _fresh_holdings()
-    doc["updated_at"] = (NOW - timedelta(days=10)).isoformat()
+    doc["as_of"] = (NOW - timedelta(days=10)).isoformat()
+    doc["updated_at"] = NOW.isoformat()  # process clock must not refresh
     decision = {
         "symbol": "SCHD",
         "stance_code": "TRIM",
@@ -397,3 +398,42 @@ def test_every_contributing_account_row_is_checked():
     assert "taxable" in accounts
     quote = next(r for r in ev["freshness_board"] if r["name"] == "quote")
     assert quote["pass"] is False
+
+
+def test_old_source_as_of_new_updated_at_quote_not_current():
+    """P0-7: old source_as_of + new updated_at remains STALE / not VERIFIED_CURRENT."""
+    doc = _fresh_holdings()
+    pos = doc["holdings"][1]
+    pos["source_as_of"] = (NOW - timedelta(days=5)).isoformat()
+    pos["canonical_mark_as_of"] = pos["source_as_of"]
+    pos["updated_at"] = NOW.isoformat()
+    pos["ingested_at"] = NOW.isoformat()
+    pos["fetched_at"] = NOW.isoformat()
+    pos["reconciled_at"] = NOW.isoformat()
+    decision = _trim_fire_decision(
+        generated_at=NOW.isoformat(),
+        revalidated_at=NOW.isoformat(),
+        risk_as_of=(NOW - timedelta(minutes=10)).isoformat(),
+        thesis_as_of=(NOW - timedelta(hours=2)).isoformat(),
+        hermes_as_of=(NOW - timedelta(hours=3)).isoformat(),
+    )
+    ev = evaluate_decision_actionability(
+        decision, holdings_doc=doc, position_row=pos, financial_truth=_ft_ok(), now=NOW,
+    )
+    assert ev["act_now"] is False
+    assert ev["action_label"] != LABEL_ACT_NOW
+    quote = next(r for r in ev["freshness_board"] if r["name"] == "quote")
+    assert quote["quality"] != "VERIFIED_CURRENT"
+    assert quote["quality"] in ("STALE", "DATA_UNAVAILABLE")
+    assert quote["pass"] is False
+    assert ev["session"]["market_session"]["exchange"] == "XNYS"
+    assert ev["session"]["market_session"]["state"] in ("PRE", "RTH", "POST", "CLOSED")
+
+
+def test_session_context_uses_nyse_calendar_not_utc_weekday_window():
+    """Labor Day 2026 is a weekday but the NYSE is closed — not RTH."""
+    labor = datetime(2026, 9, 7, 15, 0, tzinfo=timezone.utc)  # 11:00 ET
+    ev = evaluate_decision_actionability(_trim_fire_decision(), now=labor)
+    sess = ev["session"]["market_session"]
+    assert sess["state"] == "CLOSED"
+    assert ev["session"]["likely_rth"] is False
