@@ -1037,4 +1037,15 @@ def build_capital_plan_from_sources(
                 "error": str(exc)[:200],
                 "authority": "READ_ONLY_ADVISORY",
             }
+        # Phase 3: freshness + materiality — ACT NOW never from delta alone
+        try:
+            from scripts.lib.cio_freshness_materiality_gate import attach_to_capital_plan as _attach_fm
+            plan = _attach_fm(plan, holdings_doc=holdings_doc, now=now)
+        except Exception as exc:
+            plan = dict(plan)
+            plan["freshness_materiality_gate"] = {
+                "version": "freshness_materiality_1.0.0",
+                "error": str(exc)[:200],
+                "authority": "READ_ONLY_ADVISORY",
+            }
     return plan
