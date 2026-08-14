@@ -46,7 +46,7 @@ jobs:
       - name: Install test deps
         run: |
           python3 -m pip install --upgrade pip
-          pip install pytest pyyaml || true
+          pip install pytest pyyaml requests
           # Optional render smoke deps (fail-soft if unavailable)
           pip install python-docx || true
 

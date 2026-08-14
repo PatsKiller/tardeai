@@ -187,8 +187,15 @@ def test_cli_legacy_positional(tmp_path: Path):
     model_path.write_text(json.dumps(model, default=str))
     out = tmp_path / "legacy_out"
     rc = cli.main([str(model_path), str(out)])
-    assert rc == 0
+    assert rc == 0, "legacy positional CLI must succeed with HTML-only default"
     assert (out / "cio_institutional_report_v2.html").exists()
+    # Explicit multi-format still works; PDF page soft-skip must not fail HTML parity gate
+    out2 = tmp_path / "legacy_out2"
+    rc2 = cli.main([
+        "--source", "file", "--model", str(model_path),
+        "--formats", "html,pdf,docx", "--out", str(out2), "--basename", "multi",
+    ])
+    assert rc2 == 0
 
 
 def test_manifest_hash_stable_for_same_body():

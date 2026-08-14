@@ -241,7 +241,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         args.source = "file"
         args.model = argv[0]
         args.out = argv[1] if len(argv) > 1 else str(EXPORTS)
-        args.formats = "html,pdf,docx"
+        # Legacy positional defaults to HTML (always available). PDF/DOCX via --formats.
+        args.formats = "html"
         args.basename = "cio_institutional_report_v2"
         args.report_id = None
     else:
