@@ -243,12 +243,49 @@ def build_manifest(*, note: str = "") -> dict[str, Any]:
     docs = docs_pin()
     created = datetime.now(timezone.utc).isoformat()
 
-    # Rollback = origin/main tip (safe known good for this RC branch work)
+    # Prefer previous production release as rollback when we are on main production.
+    # Fall back to origin/main tip for RC branch work.
     rollback = origin_main or deploy.get("backend_release_sha") or head
+    prev_env = os.environ.get("CIO_ROLLBACK_SHA", "").strip()
+    if prev_env:
+        rollback = prev_env
+
+    # Production when HEAD == origin/main and live backend SHA matches HEAD,
+    # or when operator forces CIO_RELEASE_STATUS=production.
+    forced = os.environ.get("CIO_RELEASE_STATUS", "").strip().lower()
+    backend = str(deploy.get("backend_release_sha") or "")
+    live_matches_head = bool(
+        backend
+        and head
+        and (backend == head or head.startswith(backend) or backend.startswith(head[:12]))
+    )
+    on_main_tip = bool(head and origin_main and head == origin_main)
+    if forced in ("production", "prod"):
+        status = "production"
+    elif forced in ("release_candidate", "rc"):
+        status = "release_candidate"
+    elif on_main_tip and live_matches_head:
+        status = "production"
+    else:
+        status = "release_candidate"
+
+    if status == "production":
+        default_note = (
+            "Production investment-office release: Git main, portfolio-server CURRENT, "
+            "and this manifest pin the same full SHA. Stale preliminary SHAs are forbidden. "
+            "Authority remains READ_ONLY_ADVISORY."
+        )
+    else:
+        default_note = (
+            "Release candidate for CIO production hardening on this branch. "
+            "backend_release_sha reflects currently deployed portfolio-server CURRENT "
+            "(may lag this RC until controlled deployment). Stale preliminary SHAs are forbidden. "
+            "Drive investment-office mirror may lag git until operator sync."
+        )
 
     manifest = {
         "manifest_schema": "investment_office_release_manifest_v1",
-        "status": "release_candidate",
+        "status": status,
         "branch": git_branch(),
         "canonical_source_sha": head,
         "frontend_build_sha": frontend_build_sha(),
@@ -268,12 +305,7 @@ def build_manifest(*, note: str = "") -> dict[str, Any]:
         "created_at": created,
         "financial_authority": "READ_ONLY_ADVISORY",
         "broker_write_paths_added": 0,
-        "notes": note or (
-            "Release candidate for CIO production hardening Phases 0–10 on this branch. "
-            "backend_release_sha reflects currently deployed portfolio-server CURRENT "
-            "(may lag this RC until controlled deployment). Stale preliminary SHAs are forbidden. "
-            "Drive investment-office mirror may lag git until operator sync."
-        ),
+        "notes": note or default_note,
         "hermes_score_weights_ownership": {
             "path": "config/hermes_score_weights.yaml",
             "classification": "runtime_state_with_release_seed",
