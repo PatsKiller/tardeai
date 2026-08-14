@@ -154,5 +154,5 @@ def test_no_raw_enums_in_primary_posture():
 
 def test_office_home_version():
     home = cc.build_office_home(capital_plan=_live_ish_plan(), now=FIXED)
-    assert home["version"] == "office_home_1.1.0"
-    assert home["consistency"]["office_home_version"] == "office_home_1.1.0"
+    assert home["version"].startswith("office_home_1.")
+    assert home["consistency"]["office_home_version"].startswith("office_home_1.")

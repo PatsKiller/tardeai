@@ -60,7 +60,7 @@ from typing import Any, Callable, Optional
 # Executor signature matches db_adapter._execute(sql, params=None, fetch=None).
 Executor = Callable[..., Any]
 
-CAPITAL_PLAN_VERSION = "capital_plan_1.1.0"
+CAPITAL_PLAN_VERSION = "capital_plan_1.2.0"  # Phase 5: objective-driven institutional sizing
 
 # ── Policy defaults (overridden by thesis risk_posture_structured when present) ──
 CASH_BAND_DEFAULT_MIN_PCT = 20.0
@@ -293,6 +293,9 @@ def build_capital_sources(
     trim_fraction: float = TRIM_FRACTION,
     *,
     cash_total: Optional[float] = None,
+    portfolio_value: Optional[float] = None,
+    policy_cap_pct: Optional[float] = None,
+    fire_pct: Optional[float] = None,
 ) -> dict[str, Any]:
     """Sources of funds: trims, exits, and earmarked redeploy proceeds.
 
@@ -301,23 +304,48 @@ def build_capital_sources(
       * redeploy remaining_usd is **earmarked cash already in cash_total** — tracked
         as maturities_usd / earmarked_redeploy_usd but NOT added to total_raise_usd
 
+    Phase 5: trim dollars use institutional sizing when portfolio_value is known;
+    10% remains only a fallback candidate note.
+
     `cash_total` when provided caps earmarked dollars (cannot earmark more than cash).
     """
     trims: list[dict[str, Any]] = []
     exits: list[dict[str, Any]] = []
+    port = _fnum(portfolio_value)
+    cap = _fnum(policy_cap_pct, MAX_SINGLE_NAME_WEIGHT_PCT_DEFAULT)
+    fire = _fnum(fire_pct, CONCENTRATION_FIRE_PCT_DEFAULT)
 
     for p in positions:
         stance = stance_for(p["symbol"], queue)
         if stance == "TRIM":
+            note = f"advisory TRIM at {trim_fraction:.0%} of position value (fallback)"
             amt = round(p["market_value_usd"] * trim_fraction, 2)
+            if port > 0:
+                try:
+                    from scripts.lib.cio_institutional_sizing import size_decision
+                    sz = size_decision(
+                        stance="TRIM",
+                        market_value_usd=p["market_value_usd"],
+                        weight_pct=p.get("weight_pct") or 0.0,
+                        portfolio_value_usd=port,
+                        policy_cap_pct=cap,
+                        fire_pct=fire,
+                        tax_class=str(p.get("tax_class") or "TAXABLE"),
+                    )
+                    amt = abs(_fnum(sz.get("recommended_delta_usd")))
+                    note = str(sz.get("objective_summary") or note)
+                    if sz.get("fallback_candidate_only"):
+                        note = f"{note} [fallback_10pct]"
+                except Exception:
+                    pass
             if amt > 0:
                 trims.append({
                     "symbol": p["symbol"],
                     "account": p.get("account"),
                     "current_value_usd": p["market_value_usd"],
-                    "amount_usd": amt,
+                    "amount_usd": round(amt, 2),
                     "already_in_cash": False,
-                    "note": f"advisory TRIM at {trim_fraction:.0%} of position value",
+                    "note": note,
                 })
         elif stance == "EXIT":
             exits.append({
@@ -546,6 +574,9 @@ def build_capital_plan(
     sources = build_capital_sources(
         norm_positions, queue=queue, redeploy_open_events=redeploy_open_events,
         cash_total=cash,
+        portfolio_value=value,
+        policy_cap_pct=max_name_pct,
+        fire_pct=conc_pct,
     )
     uses = build_capital_uses(
         queue, norm_positions, sector_opportunities, posture, value,
@@ -580,6 +611,7 @@ def build_capital_plan(
     position_decisions = build_position_decisions(
         norm_positions, queue=queue, divergence_map=divergence_map,
         portfolio_value=value, max_single_name_pct=max_name_pct,
+        concentration_fire_pct=conc_pct,
         accounts=accounts, now=now,
     )
 
@@ -817,18 +849,21 @@ def build_position_decisions(
     divergence_map: Optional[dict[str, Any]] = None,
     portfolio_value: float = 0.0,
     max_single_name_pct: Optional[float] = None,
+    concentration_fire_pct: Optional[float] = None,
     accounts: Optional[dict[str, Any]] = None,
     now: Optional[datetime] = None,
 ) -> list[dict[str, Any]]:
     """Per-holding decision rows for the Position Decision table.
 
-    Every material holding is included. The recommended $ delta is positive for
-    ADD/RE_ENTER (bounded by single-name headroom) and negative for TRIM/EXIT.
+    Every material holding is included. Recommended $ delta uses Phase 5
+    institutional sizing (fire/policy objectives; 10% only as fallback).
     """
     now = now or datetime.now(timezone.utc)
     value = max(0.0, _fnum(portfolio_value))
     cap_pct = _fnum(max_single_name_pct, MAX_SINGLE_NAME_WEIGHT_PCT_DEFAULT) \
         if max_single_name_pct is not None else MAX_SINGLE_NAME_WEIGHT_PCT_DEFAULT
+    fire_pct = _fnum(concentration_fire_pct, CONCENTRATION_FIRE_PCT_DEFAULT) \
+        if concentration_fire_pct is not None else CONCENTRATION_FIRE_PCT_DEFAULT
 
     rows: list[dict[str, Any]] = []
     for p in positions:
@@ -836,15 +871,6 @@ def build_position_decisions(
         stance = stance_for(symbol, queue)
         headroom = _single_name_headroom(symbol, positions, value, cap_pct)
         div = (divergence_map or {}).get(symbol) or (divergence_map or {}).get(symbol.lower())
-
-        if stance == "EXIT":
-            delta = -p["market_value_usd"]
-        elif stance == "TRIM":
-            delta = -round(p["market_value_usd"] * TRIM_FRACTION, 2)
-        elif stance in ("ADD", "RE_ENTER"):
-            delta = round(min(NEW_POSITION_DEFAULT_USD, headroom), 2)
-        else:
-            delta = 0.0
 
         item = _verdict_for(symbol, queue)
         tax_class = p.get("tax_class") or classify_account_tax(p.get("account"), accounts)
@@ -875,16 +901,44 @@ def build_position_decisions(
             stance_display = stance
             ident = None
 
-        # Recompute delta after stance resolution (label may upgrade HOLD → TRIM)
-        if stance == "EXIT":
-            delta = -p["market_value_usd"]
-        elif stance == "TRIM":
-            delta = -round(p["market_value_usd"] * TRIM_FRACTION, 2)
-        elif stance in ("ADD", "RE_ENTER"):
-            delta = round(min(NEW_POSITION_DEFAULT_USD, headroom), 2)
-        else:
-            delta = 0.0
+        # Phase 5: objective-driven sizing (10% is fallback candidate only)
+        try:
+            from scripts.lib.cio_institutional_sizing import size_decision
+            sizing = size_decision(
+                stance=stance,
+                market_value_usd=p["market_value_usd"],
+                weight_pct=p["weight_pct"],
+                portfolio_value_usd=value,
+                policy_cap_pct=cap_pct,
+                fire_pct=fire_pct,
+                tax_class=str(tax_class or "TAXABLE"),
+                headroom_usd=headroom,
+            )
+            delta = float(sizing.get("recommended_delta_usd") or 0.0)
+            target_w = sizing.get("target_weight_pct")
+            if target_w is None:
+                target_w = cap_pct
+        except Exception:
+            sizing = {"method": "legacy_fallback", "fallback_candidate_only": True}
+            if stance == "EXIT":
+                delta = -p["market_value_usd"]
+            elif stance == "TRIM":
+                delta = -round(p["market_value_usd"] * TRIM_FRACTION, 2)
+            elif stance in ("ADD", "RE_ENTER"):
+                delta = round(min(NEW_POSITION_DEFAULT_USD, headroom), 2)
+            else:
+                delta = 0.0
+            target_w = cap_pct
 
+        risk_txt = (
+            "concentration > fire"
+            if p["weight_pct"] > fire_pct
+            else (
+                "concentration > cap"
+                if p["weight_pct"] > cap_pct
+                else "within single-name cap"
+            )
+        )
         rows.append({
             "symbol": symbol,
             "name": p.get("name"),
@@ -895,14 +949,23 @@ def build_position_decisions(
             "stance": stance_display,
             "stance_code": stance,
             "target_range_pct": {"min": 0.0, "max": round(cap_pct, 2)},
+            "target_weight_pct": round(float(target_w), 2) if target_w is not None else round(cap_pct, 2),
             "recommended_delta_usd": round(delta, 2),
             "funding": _funding_for(stance, delta),
             "why_now": why,
-            "risk": "concentration > cap" if p["weight_pct"] > cap_pct else "within single-name cap",
+            "risk": risk_txt,
             "tax_account_constraint": _tax_constraint(tax_class, stance),
             "counter_thesis": str(div) if div else "no Street/desk disagreement on record",
             "next_review": _next_review(p.get("last_updated"), now),
             "identity": ident,
+            "sizing": sizing,
+            "sizing_method": sizing.get("method"),
+            "sizing_objective": sizing.get("objective_summary"),
+            "sizing_why_not_min": sizing.get("why_not_min"),
+            "sizing_why_not_max": sizing.get("why_not_max"),
+            "trim_to_clear_fire_usd": sizing.get("trim_to_clear_fire_usd"),
+            "trim_to_policy_usd": sizing.get("trim_to_policy_usd"),
+            "fallback_candidate_only": bool(sizing.get("fallback_candidate_only")),
         })
 
     rows.sort(key=lambda r: (-abs(r["recommended_delta_usd"]), -r["current_value_usd"]))

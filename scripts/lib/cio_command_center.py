@@ -19,7 +19,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-OFFICE_HOME_VERSION = "office_home_1.1.0"  # Phase 8: decision IDs + capital digest parity
+OFFICE_HOME_VERSION = "office_home_1.2.0"  # Phase 4: disjoint attention KPIs
 
 # Human labels for stance / posture / readiness codes surfaced in primary views.
 STANCE_LABELS: dict[str, str] = {
@@ -109,6 +109,58 @@ def _action_hint(why_now: Any, stance: Any) -> str:
 _NEUTRAL_WHY = "no new desk signal; hold"
 
 
+# Phase 4: action labels that mean "investment decision needs operator"
+_INVESTMENT_ATTENTION_LABELS = frozenset({
+    "ACT_NOW", "REVIEW", "REVALIDATE", "DATA_CONFLICT", "STALE_REFRESH_REQUIRED",
+})
+_OPEN_PLAN_STATUSES = frozenset({
+    "open", "active", "pending", "proposed", "in_progress", "draft",
+})
+
+
+def _investment_needs_attention(d: dict[str, Any]) -> bool:
+    """True CIO InvestmentDecision needing operator — not workflow noise."""
+    label = _str(d.get("action_label") or "").upper()
+    if label in _INVESTMENT_ATTENTION_LABELS:
+        return True
+    if d.get("act_now") is True:
+        return True
+    risk = _str(d.get("risk")).lower()
+    if "concentration" in risk and (">" in risk or "fire" in risk or "breach" in risk):
+        return True
+    stance = _str(d.get("stance_code") or d.get("cio_stance") or d.get("stance")).upper()
+    delta = abs(_num(d.get("recommended_delta_usd") if d.get("recommended_delta_usd") is not None else d.get("delta_usd")) or 0.0)
+    why = _str(d.get("why_now"))
+    if stance in ("TRIM", "EXIT", "ADD", "RE_ENTER") and delta >= 0.01:
+        return True
+    if why and _NEUTRAL_WHY not in why.lower() and delta >= 0.01:
+        return True
+    # Explicit WATCH / thin hold → not investment attention
+    if label == "WATCH" or stance in ("HOLD", ""):
+        return False
+    return False
+
+
+def _plan_is_open(p: Any) -> bool:
+    if not isinstance(p, dict):
+        return False
+    st = _str(p.get("status") or p.get("state") or "open").lower()
+    if st in ("cancelled", "canceled", "closed", "done", "rejected", "accepted", "complete", "completed"):
+        return False
+    if st in _OPEN_PLAN_STATUSES or not st:
+        return True
+    return st not in ("unknown",)
+
+
+def _action_is_open(a: Any) -> bool:
+    if not isinstance(a, dict):
+        return False
+    st = _str(a.get("status") or a.get("state") or "open").lower()
+    if st in ("done", "closed", "cancelled", "canceled", "rejected", "complete", "completed"):
+        return False
+    return True
+
+
 def build_cio_now(
     *,
     position_decisions: Optional[list[dict[str, Any]]] = None,
@@ -116,33 +168,58 @@ def build_cio_now(
     plans: Optional[list[dict[str, Any]]] = None,
     portfolio_value: Optional[float] = None,
 ) -> dict[str, Any]:
-    """CIO NOW cards — at most 5 material items, shared decision_ids with the report.
+    """CIO NOW — at most 5 investment decision cards + disjoint attention KPIs.
 
-    Each card (Phase 8.1):
-      action · symbol · dollar delta · current/target weight · why now ·
-      counter-thesis · what changes the call · next review · operator actions
+    Phase 4 attention model (no double-count across KPI buckets):
+      INVESTMENT DECISIONS — true InvestmentDecision objects needing attention
+      WORKFLOW ACTIONS     — open action-ledger items only
+      OPEN PLANS           — durable plans still open
+      MATERIAL TODAY       — deduped unique high-priority items (target 0–5)
+
+    Cards shown are investment decisions only (not workflow actions).
     """
     cards: list[dict[str, Any]] = []
+    investment_pool: list[dict[str, Any]] = []
 
-    # Prefer Phase 3 sanitizer so IDs match the institutional report.
+    # Prefer sanitizer so IDs match the institutional report.
     try:
         from scripts.lib.cio_decision_semantics import (
-            sanitize_decisions_now, make_decision_id, operator_action_affordances,
-            what_changes_the_call, professional_stance, resolve_display_stance,
+            sanitize_decisions_now, operator_action_affordances,
         )
         sanitized = sanitize_decisions_now(
             position_decisions or [],
             portfolio_value=float(portfolio_value or 0.0),
-            limit=12,
+            limit=24,
         )
+        # Preserve Phase 3/5 annotations from capital-plan rows by symbol
+        by_sym = {
+            _str(d.get("symbol")).upper(): d
+            for d in (position_decisions or [])
+            if isinstance(d, dict) and d.get("symbol")
+        }
         for d in sanitized:
-            risk = _str(d.get("risk"))
+            raw = by_sym.get(_str(d.get("symbol")).upper()) or {}
+            # merge annotation fields from plan row
+            for k in (
+                "action_label", "action_label_display", "act_now", "actionable",
+                "freshness", "sizing", "sizing_method", "sizing_objective",
+                "sizing_why_not_min", "sizing_why_not_max",
+                "trim_to_clear_fire_usd", "trim_to_policy_usd",
+                "fallback_candidate_only", "financial_truth_quality",
+            ):
+                if k in raw and k not in d:
+                    d[k] = raw[k]
+                elif k in raw and not d.get(k):
+                    d[k] = raw[k]
+            risk = _str(d.get("risk") or raw.get("risk"))
             delta = _num(d.get("recommended_delta_usd")) or 0.0
             urgency = (
-                "high" if "concentration >" in risk.lower() or "breach" in risk.lower()
+                "high" if "fire" in risk.lower() or "concentration >" in risk.lower() or "breach" in risk.lower()
                 else ("medium" if delta else "low")
             )
-            cards.append({
+            if d.get("act_now") or _str(d.get("action_label")) == "ACT_NOW":
+                urgency = "high"
+            card = {
                 "kind": "position",
                 "decision_id": d.get("decision_id"),
                 "symbol": d.get("symbol"),
@@ -162,19 +239,29 @@ def build_cio_now(
                 "next_review": d.get("next_review"),
                 "tax_note": d.get("tax_account_constraint"),
                 "operator_actions": d.get("operator_actions") or operator_action_affordances(),
-            })
+                "action_label": d.get("action_label") or raw.get("action_label"),
+                "action_label_display": d.get("action_label_display") or raw.get("action_label_display"),
+                "act_now": d.get("act_now") if d.get("act_now") is not None else raw.get("act_now"),
+                "sizing_objective": d.get("sizing_objective") or raw.get("sizing_objective"),
+                "sizing_method": d.get("sizing_method") or raw.get("sizing_method"),
+                "trim_to_clear_fire_usd": d.get("trim_to_clear_fire_usd") or raw.get("trim_to_clear_fire_usd"),
+                "trim_to_policy_usd": d.get("trim_to_policy_usd") or raw.get("trim_to_policy_usd"),
+            }
+            investment_pool.append(card)
     except Exception:
         for d in position_decisions or []:
+            if not isinstance(d, dict):
+                continue
             why = _str(d.get("why_now"))
             risk = _str(d.get("risk"))
             delta = _num(d.get("recommended_delta_usd")) or 0.0
             has_signal = bool(why) and _NEUTRAL_WHY not in why
-            has_breach = "concentration >" in risk.lower() or "breach" in risk.lower()
-            if not (delta or has_signal or has_breach):
+            has_breach = "concentration" in risk.lower() or "breach" in risk.lower() or "fire" in risk.lower()
+            if not (delta or has_signal or has_breach or d.get("act_now") or d.get("action_label")):
                 continue
-            urgency = "high" if has_breach else ("medium" if delta else "low")
+            urgency = "high" if has_breach or d.get("act_now") else ("medium" if delta else "low")
             stance = _action_hint(why, d.get("cio_stance") or d.get("stance_code"))
-            cards.append({
+            investment_pool.append({
                 "kind": "position",
                 "decision_id": d.get("decision_id") or f"dec_fallback_{d.get('symbol')}",
                 "symbol": d.get("symbol"),
@@ -201,46 +288,88 @@ def build_cio_now(
                     {"code": "REJECT", "label": "Reject"},
                     {"code": "RATE", "label": "Rate"},
                 ],
+                "action_label": d.get("action_label"),
+                "action_label_display": d.get("action_label_display"),
+                "act_now": d.get("act_now"),
+                "sizing_objective": d.get("sizing_objective"),
+                "sizing_method": d.get("sizing_method"),
             })
 
-    for a in actions or []:
-        aid = a.get("cio_action_id") or a.get("action_id")
-        why = _str(a.get("why_now") or a.get("title") or a.get("recommendation"))
-        cards.append({
-            "kind": "action",
-            "decision_id": f"act_{aid}" if aid else "act_unknown",
-            "symbol": a.get("symbol"),
-            "action": "Action",
-            "stance": "Action",
-            "delta_usd": 0.0,
-            "value_usd": None,
-            "weight_pct": None,
-            "why_now": why,
-            "counter_thesis": None,
-            "what_changes_call": "Operator closes or defers the action; material new evidence arrives.",
-            "risk": None,
-            "urgency": "high" if a.get("notification_priority") in ("Critical", "High") else "medium",
-            "next_review": None,
-            "action_id": aid,
-            "domain": a.get("domain"),  # kept for evidence linkage; not primary narrative
-            "operator_actions": [
-                {"code": "ACK", "label": "Acknowledge"},
-                {"code": "DEFER", "label": "Defer"},
-                {"code": "DONE", "label": "Mark done"},
-                {"code": "REJECT", "label": "Reject"},
-                {"code": "RATE", "label": "Rate"},
-            ],
-        })
+    # Phase 4: investment decisions needing attention (disjoint from actions/plans)
+    needing = [c for c in investment_pool if _investment_needs_attention(c)]
+    # Sort: ACT NOW first, then high urgency, then |delta|
+    def _sort_key(c: dict[str, Any]) -> tuple:
+        lab = _str(c.get("action_label"))
+        act = 0 if (c.get("act_now") or lab == "ACT_NOW") else 1
+        urg = {"high": 0, "medium": 1, "low": 2}.get(c.get("urgency") or "low", 3)
+        return (act, urg, -abs(c.get("delta_usd") or 0.0))
 
-    _URG = {"high": 0, "medium": 1, "low": 2}
-    cards.sort(key=lambda c: (_URG.get(c["urgency"], 3), -abs(c.get("delta_usd") or 0.0)))
-    top = cards[:5]
+    needing.sort(key=_sort_key)
+    cards = needing[:5]  # CIO NOW shows at most five investment decisions
+
+    open_actions = [a for a in (actions or []) if _action_is_open(a)]
+    # plans may be list or dict
+    plan_list: list[Any] = []
+    if isinstance(plans, dict):
+        plan_list = list(plans.values()) if not isinstance(plans.get("plans"), (list, dict)) else (
+            plans.get("plans") if isinstance(plans.get("plans"), list)
+            else list((plans.get("plans") or {}).values())
+        )
+    elif isinstance(plans, list):
+        plan_list = plans
+    open_plans = [p for p in plan_list if _plan_is_open(p)]
+
+    # Material Today: deduped unique high-priority items (investment ACT_NOW/REVIEW/DATA_CONFLICT
+    # + critical workflow actions). Not a sum of the three KPIs.
+    material_keys: list[str] = []
+    for c in needing:
+        lab = _str(c.get("action_label"))
+        if c.get("act_now") or lab in ("ACT_NOW", "DATA_CONFLICT", "STALE_REFRESH_REQUIRED") or c.get("urgency") == "high":
+            key = _str(c.get("decision_id") or c.get("symbol"))
+            if key and key not in material_keys:
+                material_keys.append(key)
+    for a in open_actions:
+        if a.get("notification_priority") in ("Critical", "High") or _str(a.get("urgency")).lower() == "high":
+            aid = _str(a.get("cio_action_id") or a.get("action_id") or a.get("symbol"))
+            key = f"act:{aid}"
+            if key not in material_keys and not any(
+                _str(c.get("symbol")) == _str(a.get("symbol")) for c in needing if a.get("symbol")
+            ):
+                material_keys.append(key)
+
+    material_today = len(material_keys)
+    # Operator UX target: Material Today normally 0–5 (we still report true count)
+    investment_decisions_count = len(needing)
+    workflow_actions_count = len(open_actions)
+    open_plans_count = len(open_plans)
+
     return {
-        "decisions": top,
-        "decision_ids": [c.get("decision_id") for c in top if c.get("decision_id")],
-        "decision_count": len(cards),
-        "open_actions_count": len(actions or []),
-        "open_plans_count": len(plans or []),
+        "decisions": cards,
+        "decision_ids": [c.get("decision_id") for c in cards if c.get("decision_id")],
+        # Phase 4 primary attention KPIs (disjoint semantics)
+        "attention": {
+            "investment_decisions": investment_decisions_count,
+            "workflow_actions": workflow_actions_count,
+            "open_plans": open_plans_count,
+            "material_today": material_today,
+            "material_today_ids": material_keys[:12],
+            "labels": {
+                "investment_decisions": "Investment decisions",
+                "workflow_actions": "Workflow actions",
+                "open_plans": "Open plans",
+                "material_today": "Material today",
+            },
+            "note": (
+                "KPIs are disjoint: investment decisions are InvestmentDecision objects; "
+                "workflow actions are action-ledger items; open plans are durable plans. "
+                "Material today is a deduped priority set — not the sum of the three."
+            ),
+        },
+        # Backward-compatible aliases (investment attention, not total card mix)
+        "decision_count": investment_decisions_count,
+        "open_actions_count": workflow_actions_count,
+        "open_plans_count": open_plans_count,
+        "material_today_count": material_today,
     }
 
 
