@@ -325,9 +325,18 @@ sector/defense or CIO event → staged Watch idea → research → Watch state c
 
 ## 8. Known gaps (honest, not hidden)
 
-- The reliability gate + `n` persistence are wired; the gate is only as good as the
+- ~~The reliability gate + `n` persistence are wired; the gate is only as good as the
   `n` writers produce — a backfill is not yet run, so existing rows have `_n = NULL`
-  (damped to zero) until the outcome graders / options fold run and populate them.
+  (damped to zero) until the outcome graders / options fold run and populate them.~~
+  **RESOLVED.** `migrations/2026-08-13_two_way_reliability_n.sql` was applied (the
+  `thesis_outcome_n` / `options_edge_n` / `hermes_research_n` columns were missing
+  from `watchlist_items` — the additive migration had never been run), and the
+  one-shot `scripts/reverse_factor_backfill.py` backfill folded the sample sizes from
+  their canonical sources (`hermes_outcome_ledger` trades/research rows; closed
+  options paper outcomes + approval-queue/IV proxy). Result: 71 thesis-outcome, 641
+  hermes-research, and 159 options-edge symbols backfilled. Logic lives in
+  `scripts/lib/cio_reverse_factor_backfill.py` (pure derivation + injectable executor,
+  dry-tested in `tests/test_cio_reverse_factor_backfill.py`).
 - The `rotation` emit reads `rotation_ladders.json` only when the ladder snapshot is
   present; `reentry` emit reads `reentry_decision_desk_latest.json` (written by the
   re-entry decision desk). Both fail-soft with a clear "missing snapshot" result so
