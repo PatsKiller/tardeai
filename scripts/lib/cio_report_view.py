@@ -26,6 +26,29 @@ from typing import Any, Optional
 REPORT_ARCHITECTURE_VERSION = "report_arch_1.0.0"
 
 
+def _prose(v: Any) -> Any:
+    """Map internal enums to professional labels when possible."""
+    try:
+        from scripts.lib.cio_decision_semantics import professional_label
+        s = str(v or "")
+        if s and s.upper() == s and "_" in s:
+            return professional_label(s)
+        if s in ("LEADING", "IMPROVING", "WEAKENING", "LAGGING",
+                 "STAGED_DEPLOYMENT", "RESEARCH_FIRST", "NO_DEPLOYMENT"):
+            return professional_label(s)
+        return v
+    except Exception:
+        return v
+
+
+def _is_pseudo_sector(name: Any) -> bool:
+    try:
+        from scripts.lib.cio_decision_semantics import is_pseudo_sector
+        return is_pseudo_sector(name)
+    except Exception:
+        return "−" in str(name or "") or (str(name or "").count("-") == 1 and len(str(name)) < 12)
+
+
 def _num(v: Any) -> Optional[float]:
     try:
         return float(v) if v is not None else None
@@ -163,12 +186,13 @@ def build_report_view(model: dict[str, Any]) -> dict[str, Any]:
         "sector_posture": [
             {
                 "sector": s.get("sector"),
-                "state": s.get("state"),
+                "state": _prose(s.get("state")),
                 "exposure_pct": _num(s.get("exposure_pct")),
                 "target_pct": _num(s.get("target_pct")),
-                "recommendation": s.get("recommendation"),
+                "recommendation": _prose(s.get("recommendation")),
             }
             for s in (posture.get("sector_posture") or [])
+            if "−" not in str(s.get("sector") or "") and not _is_pseudo_sector(s.get("sector"))
         ],
         "source_traceability_pct": _num(coverage.get("source_traceability_pct")),
         "field_count": coverage.get("field_count"),

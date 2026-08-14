@@ -129,7 +129,7 @@ def _sample_model() -> dict:
 
 def test_model_has_architecture_and_view():
     model = _sample_model()
-    assert model["report_version"] == "report_v2_1.1.0"
+    assert model["report_version"].startswith("report_v2_1.")
     assert model.get("architecture_version") == "report_arch_1.0.0"
     assert model.get("view")
     assert model.get("facts_fingerprint")

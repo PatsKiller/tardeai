@@ -38,8 +38,7 @@ from typing import Any, Callable, Optional
 
 Executor = Callable[..., Any]
 
-REPORT_VERSION = "report_v2_1.1.0"  # Phase 4: shared view → HTML/PDF/DOCX
-
+REPORT_VERSION = "report_v2_1.2.0"  # Phase 5: institutional visuals + chart suite
 # ── Taxonomy ─────────────────────────────────────────────────────────────────
 
 IMPLEMENTED = "IMPLEMENTED_WITH_SOURCE_PROOF"
