@@ -16,28 +16,36 @@ Every pure function is deterministic and separated from the live readers, so the
 whole engine is dry-testable with no live DB / broker / LLM. It never promotes,
 mutates, or executes — `READ_ONLY_ADVISORY` only.
 
-Arithmetic model (deterministic, fail-closed toward caution):
+Arithmetic model (deterministic, fail-closed toward caution) — capital_plan_1.1.0:
 
+  cash_total       = settled cash from holdings (canonical; includes earmarked proceeds)
   reserve_usd      = portfolio_value * cash_band_min_pct / 100      (policy floor)
   investable_usd   = max(0, cash_total - reserve_usd)               (dry powder above floor)
 
-  sources of funds (raise):
-    trims          = advisory TRIM  → trim_fraction of each trimmed position value
-    exits          = advisory EXIT  → 100% of each exited position value
-    maturities     = open redeploy remaining_usd (sale proceeds awaiting redeploy)
-    total_raise    = trims + exits + maturities
+  Earmarked vs prospective (Phase 2 double-count fix):
+    earmarked_redeploy_usd = open redeploy remaining_usd already sitting IN cash_total
+                             → LABEL only, never added again as "raise"
+    prospective_trims/exits = not yet cash (true future raise)
+
+  sources of funds:
+    trims          = advisory TRIM  → trim_fraction of each trimmed position value (prospective)
+    exits          = advisory EXIT  → 100% of each exited position value (prospective)
+    maturities     = open redeploy remaining_usd (earmarked; already in cash)
+    total_prospective_raise_usd = trims + exits
+    total_raise_usd             = total_prospective_raise_usd   (NOT + maturities)
 
   uses of funds (deploy requests):
-    adds           = advisory ADD   → bounded by single-name headroom
-    new_positions  = reentry READY / NEAR ENTRY → starting size, bounded
-    reentry        = advisory RE_ENTER → bounded like adds
-    sector_rotation= underweight opportunity sector → rotate-in $, bounded
-    reserve        = reserve_usd (held back, not deployed)
+    adds / new_positions / reentry / sector_rotation (as before)
+    reserve = reserve_usd (held back, not deployed)
 
-  net_recommended_deploy_usd = min(total_uses, investable_usd + total_raise)
-  net_recommended_raise_usd  = total_raise
-  post_plan_cash_usd         = cash_total + total_raise - net_deploy
-  post_plan_cash_pct         = post_plan_cash_usd / portfolio_value * 100
+  deployable                   = investable_usd + total_prospective_raise_usd
+  net_recommended_deploy_usd   = min(total_uses, deployable)
+  net_recommended_raise_usd    = total_prospective_raise_usd
+  post_plan_cash_usd           = cash_total + prospective_raise - net_deploy
+  post_plan_cash_pct           = post_plan_cash_usd / portfolio_value * 100
+
+Invariant: earmarked_redeploy_usd <= cash_total + 0.01
+Invariant: post_plan_cash_usd ≈ cash_total + net_raise - net_deploy
 
 Cash is never force-deployed: if there are no uses (no adds/new/reentry/rotation
 signal), `net_recommended_deploy_usd` is 0 even when investable cash exists.
@@ -52,7 +60,7 @@ from typing import Any, Callable, Optional
 # Executor signature matches db_adapter._execute(sql, params=None, fetch=None).
 Executor = Callable[..., Any]
 
-CAPITAL_PLAN_VERSION = "capital_plan_1.0.0"
+CAPITAL_PLAN_VERSION = "capital_plan_1.1.0"
 
 # ── Policy defaults (overridden by thesis risk_posture_structured when present) ──
 CASH_BAND_DEFAULT_MIN_PCT = 20.0
@@ -268,14 +276,18 @@ def build_capital_sources(
     queue: Optional[dict[str, Any]] = None,
     redeploy_open_events: Optional[list[dict[str, Any]]] = None,
     trim_fraction: float = TRIM_FRACTION,
+    *,
+    cash_total: Optional[float] = None,
 ) -> dict[str, Any]:
-    """Sources of funds: trims, exits, maturities/distributions (raise side).
+    """Sources of funds: trims, exits, and earmarked redeploy proceeds.
 
-    `redeploy_open_events` entries carry `remaining_usd` (sale proceeds awaiting
-    redeploy) and an optional `symbol`. Only events with a positive remaining
-    count as a maturity/distribution source.
+    Phase 2 (double-count fix):
+      * trims/exits are **prospective** (not yet cash) — they add to total_raise_usd
+      * redeploy remaining_usd is **earmarked cash already in cash_total** — tracked
+        as maturities_usd / earmarked_redeploy_usd but NOT added to total_raise_usd
+
+    `cash_total` when provided caps earmarked dollars (cannot earmark more than cash).
     """
-    by_symbol = {p["symbol"]: p for p in positions}
     trims: list[dict[str, Any]] = []
     exits: list[dict[str, Any]] = []
 
@@ -289,6 +301,7 @@ def build_capital_sources(
                     "account": p.get("account"),
                     "current_value_usd": p["market_value_usd"],
                     "amount_usd": amt,
+                    "already_in_cash": False,
                     "note": f"advisory TRIM at {trim_fraction:.0%} of position value",
                 })
         elif stance == "EXIT":
@@ -297,6 +310,7 @@ def build_capital_sources(
                 "account": p.get("account"),
                 "current_value_usd": p["market_value_usd"],
                 "amount_usd": p["market_value_usd"],
+                "already_in_cash": False,
                 "note": "advisory EXIT — full position value released",
             })
 
@@ -306,15 +320,28 @@ def build_capital_sources(
         if remaining > 0:
             maturities.append({
                 "symbol": str((ev or {}).get("symbol") or "").upper() or None,
-                "event_id": (ev or {}).get("event_id"),
+                "event_id": (ev or {}).get("event_id") or (ev or {}).get("id"),
+                "account": (ev or {}).get("account"),
                 "amount_usd": round(remaining, 2),
-                "note": "sale proceeds awaiting redeploy",
+                "already_in_cash": True,
+                "note": "sale proceeds awaiting redeploy — already counted in cash_total",
             })
 
     trims_usd = round(sum(t["amount_usd"] for t in trims), 2)
     exits_usd = round(sum(e["amount_usd"] for e in exits), 2)
-    maturities_usd = round(sum(m["amount_usd"] for m in maturities), 2)
-    total_raise = round(trims_usd + exits_usd + maturities_usd, 2)
+    maturities_raw = round(sum(m["amount_usd"] for m in maturities), 2)
+    # Cap earmark at cash on hand (cannot label more redeploy $ than exists as cash)
+    cash = _fnum(cash_total) if cash_total is not None else None
+    if cash is not None and maturities_raw > cash + 0.01:
+        maturities_usd = round(cash, 2)
+        capped = True
+    else:
+        maturities_usd = maturities_raw
+        capped = False
+
+    # Prospective only — does NOT include earmarked redeploy
+    total_prospective = round(trims_usd + exits_usd, 2)
+    total_raise = total_prospective  # alias for deployable arithmetic
 
     return {
         "trims": trims,
@@ -323,7 +350,12 @@ def build_capital_sources(
         "trims_usd": trims_usd,
         "exits_usd": exits_usd,
         "maturities_usd": maturities_usd,
+        "maturities_raw_usd": maturities_raw,
+        "maturities_capped_to_cash": capped,
+        "earmarked_redeploy_usd": maturities_usd,
+        "total_prospective_raise_usd": total_prospective,
         "total_raise_usd": total_raise,
+        "double_count_guard": "earmarked_redeploy_excluded_from_raise",
     }
 
 
@@ -470,6 +502,7 @@ def build_capital_plan(
     cash_band_min_pct: Optional[float] = None,
     max_single_name_pct: Optional[float] = None,
     concentration_fire_pct: Optional[float] = None,
+    account_cash: Optional[list[dict[str, Any]]] = None,
 ) -> dict[str, Any]:
     """Build the full Capital Plan projection (advisory only).
 
@@ -495,18 +528,39 @@ def build_capital_plan(
     ]
 
     posture = cash_posture(cash, value, min_pct=min_pct)
-    sources = build_capital_sources(norm_positions, queue=queue, redeploy_open_events=redeploy_open_events)
+    sources = build_capital_sources(
+        norm_positions, queue=queue, redeploy_open_events=redeploy_open_events,
+        cash_total=cash,
+    )
     uses = build_capital_uses(
         queue, norm_positions, sector_opportunities, posture, value,
         max_single_name_pct=max_name_pct,
     )
 
-    # Never deploy more than (investable cash + cash raised by trims/exits).
-    deployable = round(posture["investable_usd"] + sources["total_raise_usd"], 2)
+    # Phase 2: deployable = investable free cash + prospective trims/exits only.
+    # Earmarked redeploy $ is already inside cash_total / investable.
+    prospective_raise = sources["total_prospective_raise_usd"]
+    earmarked = sources["earmarked_redeploy_usd"]
+    deployable = round(posture["investable_usd"] + prospective_raise, 2)
     net_deploy = round(min(uses["total_deploy_request_usd"], deployable), 2)
-    net_raise = sources["total_raise_usd"]
+    net_raise = prospective_raise
     post_cash = round(cash + net_raise - net_deploy, 2)
     post_cash_pct = round(post_cash / value * 100.0, 2) if value > 0 else 0.0
+
+    # Free cash above earmark (still subject to reserve via investable)
+    free_above_earmark = round(max(0.0, cash - earmarked), 2)
+    acct_cash = account_cash if account_cash is not None else []
+    ledger = build_cash_ledger(
+        cash_total=cash,
+        portfolio_value=value,
+        reserve_usd=posture["reserve_usd"],
+        investable_usd=posture["investable_usd"],
+        earmarked_redeploy_usd=earmarked,
+        prospective_raise_usd=prospective_raise,
+        net_deploy_usd=net_deploy,
+        post_plan_cash_usd=post_cash,
+        account_cash=acct_cash,
+    )
 
     position_decisions = build_position_decisions(
         norm_positions, queue=queue, divergence_map=divergence_map,
@@ -523,6 +577,8 @@ def build_capital_plan(
          "note": "concentration fire threshold"},
         {"kind": "tax_class", "value": "TAXABLE/TAX_ADVANTAGED",
          "note": "taxable accounts carry lot/tax constraints on trims/exits"},
+        {"kind": "earmarked_redeploy_not_double_counted", "value": 1,
+         "note": "redeploy remaining_usd is labeled earmark inside cash; not added to raise"},
     ]
 
     plan = {
@@ -534,6 +590,8 @@ def build_capital_plan(
         "cash_total_usd": round(cash, 2),
         "cash_reserved_usd": posture["reserve_usd"],
         "cash_investable_usd": posture["investable_usd"],
+        "cash_earmarked_redeploy_usd": earmarked,
+        "cash_free_unearmarked_usd": free_above_earmark,
         "cash_policy_band": {
             "min_pct": posture["band_min_pct"],
             "max_pct": posture["band_max_pct"],
@@ -548,7 +606,11 @@ def build_capital_plan(
             "trims_usd": sources["trims_usd"],
             "exits_usd": sources["exits_usd"],
             "maturities_usd": sources["maturities_usd"],
+            "earmarked_redeploy_usd": earmarked,
+            "total_prospective_raise_usd": prospective_raise,
             "total_raise_usd": sources["total_raise_usd"],
+            "double_count_guard": sources.get("double_count_guard"),
+            "maturities_capped_to_cash": sources.get("maturities_capped_to_cash"),
         },
         "capital_uses": {
             "adds": uses["adds"],
@@ -564,8 +626,11 @@ def build_capital_plan(
         },
         "net_recommended_deploy_usd": net_deploy,
         "net_recommended_raise_usd": net_raise,
+        "deployable_usd": deployable,
         "post_plan_cash_usd": post_cash,
         "post_plan_cash_pct": post_cash_pct,
+        "cash_ledger": ledger,
+        "ledger_invariants": ledger.get("invariants") or [],
         "portfolio_constraints": constraints,
         "alternatives": _alternatives(plan_deploy=net_deploy, plan_raise=net_raise,
                                       deploy_request=uses["total_deploy_request_usd"],
@@ -577,14 +642,114 @@ def build_capital_plan(
         "value": plan["portfolio_value_usd"],
         "cash": plan["cash_total_usd"],
         "reserve": plan["cash_reserved_usd"],
+        "earmark": plan["cash_earmarked_redeploy_usd"],
         "raise": plan["net_recommended_raise_usd"],
         "deploy": plan["net_recommended_deploy_usd"],
         "post_cash": plan["post_plan_cash_usd"],
         "positions": [p["symbol"] for p in position_decisions if p.get("recommended_delta_usd")],
         "uses": plan["capital_uses"]["total_deploy_request_usd"],
+        "v": CAPITAL_PLAN_VERSION,
     }, sort_keys=True, separators=(",", ":"))
     plan["digest"] = hashlib.sha256(key_raw.encode("utf-8")).hexdigest()
     return plan
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Cash ledger + double-count invariants (Phase 2)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def account_cash_breakdown(
+    holdings_rows: Optional[list[dict[str, Any]]],
+) -> list[dict[str, Any]]:
+    """Per-account settled cash from holdings rows (is_cash=True)."""
+    by: dict[str, float] = {}
+    for h in holdings_rows or []:
+        if not isinstance(h, dict) or not h.get("is_cash"):
+            continue
+        acct = str(h.get("account") or h.get("account_id") or "unknown")
+        by[acct] = round(by.get(acct, 0.0) + _fnum(h.get("market_value")), 2)
+    return [{"account": a, "settled_cash_usd": v} for a, v in sorted(by.items())]
+
+
+def build_cash_ledger(
+    *,
+    cash_total: float,
+    portfolio_value: float,
+    reserve_usd: float,
+    investable_usd: float,
+    earmarked_redeploy_usd: float,
+    prospective_raise_usd: float,
+    net_deploy_usd: float,
+    post_plan_cash_usd: float,
+    account_cash: Optional[list[dict[str, Any]]] = None,
+    unsettled_cash_usd: float = 0.0,
+) -> dict[str, Any]:
+    """First-principles cash layers with double-count invariants.
+
+    Layers (each dollar of cash_total appears once):
+      settled_cash_usd     = cash_total (canonical holdings cash)
+      unsettled_cash_usd   = optional pending settlement (default 0)
+      policy_reserve_usd   = band floor
+      earmarked_redeploy   = subset of settled labeled as redeploy proceeds
+      free_investable_usd  = investable (settled - reserve), which *includes* earmark
+    """
+    cash = max(0.0, _fnum(cash_total))
+    reserve = max(0.0, _fnum(reserve_usd))
+    investable = max(0.0, _fnum(investable_usd))
+    earmark = max(0.0, _fnum(earmarked_redeploy_usd))
+    prospective = max(0.0, _fnum(prospective_raise_usd))
+    deploy = max(0.0, _fnum(net_deploy_usd))
+    post = _fnum(post_plan_cash_usd)
+    unsettled = max(0.0, _fnum(unsettled_cash_usd))
+
+    invariants: list[dict[str, Any]] = []
+
+    def _inv(name: str, ok: bool, detail: str) -> None:
+        invariants.append({"name": name, "ok": ok, "detail": detail})
+
+    _inv(
+        "earmark_le_cash",
+        earmark <= cash + 0.02,
+        f"earmarked_redeploy {earmark:.2f} <= cash {cash:.2f}",
+    )
+    _inv(
+        "investable_eq_cash_minus_reserve",
+        abs(investable - max(0.0, cash - reserve)) < 0.02,
+        f"investable {investable:.2f} == cash-reserve {max(0.0, cash - reserve):.2f}",
+    )
+    _inv(
+        "post_cash_identity",
+        abs(post - (cash + prospective - deploy)) < 0.02,
+        f"post {post:.2f} == cash+prospective-deploy "
+        f"{cash + prospective - deploy:.2f}",
+    )
+    _inv(
+        "deploy_le_investable_plus_prospective",
+        deploy <= investable + prospective + 0.02,
+        f"deploy {deploy:.2f} <= investable+prospective {investable + prospective:.2f}",
+    )
+    # Free unearmarked (informational): cash not labeled redeploy
+    free_unearmarked = round(max(0.0, cash - earmark), 2)
+
+    return {
+        "settled_cash_usd": round(cash, 2),
+        "unsettled_cash_usd": round(unsettled, 2),
+        "policy_reserve_usd": round(reserve, 2),
+        "earmarked_redeploy_usd": round(earmark, 2),
+        "free_unearmarked_usd": free_unearmarked,
+        "investable_usd": round(investable, 2),
+        "prospective_raise_usd": round(prospective, 2),
+        "net_deploy_usd": round(deploy, 2),
+        "post_plan_cash_usd": round(post, 2),
+        "portfolio_value_usd": round(_fnum(portfolio_value), 2),
+        "account_cash": account_cash or [],
+        "invariants": invariants,
+        "invariants_ok": all(i["ok"] for i in invariants),
+        "note": (
+            "Earmarked redeploy proceeds are a label on settled cash, not new money. "
+            "Prospective trims/exits are the only additive raise."
+        ),
+    }
 
 
 def _uncertainty_high(queue: Optional[dict[str, Any]],
@@ -748,12 +913,14 @@ def load_holdings_snapshot(holdings_doc: Optional[dict[str, Any]] = None) -> dic
 
     positions = [normalize_position(h, total_value, accounts) for h in holdings]
     positions = [p for p in positions if p is not None]
+    acct_cash = account_cash_breakdown(holdings)
 
     return {
         "portfolio_value": total_value,
         "cash_total": cash,
         "positions": positions,
         "accounts": accounts,
+        "account_cash": acct_cash,
     }
 
 
@@ -780,4 +947,5 @@ def build_capital_plan_from_sources(
         risk_posture=risk_posture,
         divergence_map=divergence_map,
         now=now,
+        account_cash=snap.get("account_cash"),
     )

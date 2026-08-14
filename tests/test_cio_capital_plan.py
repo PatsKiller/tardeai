@@ -167,12 +167,44 @@ def test_sources_maturities_positive_only():
     src = cp.build_capital_sources(_positions(), redeploy_open_events=events)
     assert src["maturities_usd"] == 5_000.0
     assert len(src["maturities_distributions"]) == 1
+    # Phase 2: earmarked redeploy is NOT part of total_raise
+    assert src["earmarked_redeploy_usd"] == 5_000.0
+    assert src["total_raise_usd"] == 0.0
+    assert src["total_prospective_raise_usd"] == 0.0
+    assert src["double_count_guard"] == "earmarked_redeploy_excluded_from_raise"
+    assert src["maturities_distributions"][0]["already_in_cash"] is True
 
 
 def test_sources_empty():
     src = cp.build_capital_sources(_positions())
     assert src["total_raise_usd"] == 0.0
     assert src["trims"] == [] and src["exits"] == [] and src["maturities_distributions"] == []
+
+
+def test_sources_maturities_excluded_from_raise_even_with_trims():
+    """Phase 2 double-count fix: total_raise = trims+exits only."""
+    queue = {"items": [{"symbol": "V", "verdict": "TRIM", "source": "cio"}]}
+    events = [{"event_id": 9, "symbol": "AAPL", "remaining_usd": 50_000.0}]
+    src = cp.build_capital_sources(
+        _positions(), queue=queue, redeploy_open_events=events, cash_total=100_000.0,
+    )
+    assert src["trims_usd"] == 4_000.0
+    assert src["maturities_usd"] == 50_000.0
+    assert src["earmarked_redeploy_usd"] == 50_000.0
+    assert src["total_prospective_raise_usd"] == 4_000.0
+    assert src["total_raise_usd"] == 4_000.0  # NOT 54_000
+    assert src["double_count_guard"] == "earmarked_redeploy_excluded_from_raise"
+
+
+def test_sources_earmark_capped_to_cash():
+    events = [{"event_id": 1, "symbol": "X", "remaining_usd": 200_000.0}]
+    src = cp.build_capital_sources(
+        _positions(), redeploy_open_events=events, cash_total=50_000.0,
+    )
+    assert src["maturities_raw_usd"] == 200_000.0
+    assert src["maturities_usd"] == 50_000.0
+    assert src["maturities_capped_to_cash"] is True
+    assert src["total_raise_usd"] == 0.0
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -431,3 +463,145 @@ def test_build_capital_plan_from_sources_fails_soft():
     assert plan["cash_total_usd"] == 0.0
     assert plan["net_recommended_deploy_usd"] == 0.0
     assert plan["digest"]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase 2 — double-count guard + cash ledger invariants
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_phase2_redeploy_not_double_counted_in_deployable():
+    """Open redeploy remaining is already in cash; must not inflate deployable twice.
+
+    Scenario mirrors Phase 0 live bug shape:
+      cash 578k, earmark ~560k (inside cash), trim/exit raise ~63k
+    Old: total_raise = 623k, deployable = investable + 623k  (double-count)
+    New: total_raise = 63k,  deployable = investable + 63k
+    """
+    cash = 578_107.50
+    value = 1_282_425.99
+    # reserve at ~20% default ≈ 256485.20; investable ≈ 321622.30
+    earmark = 560_009.02
+    prospective = 63_000.0  # trims+exits only
+    events = [{"event_id": 1, "symbol": "MATURE", "remaining_usd": earmark}]
+    # One EXIT of 63k to create prospective raise without relying on trim math
+    positions = [
+        {"symbol": "EXITME", "market_value": prospective, "account": "schwab_rollover_ira"},
+        {"symbol": "HOLD", "market_value": 100_000.0, "account": "schwab_taxable"},
+    ]
+    queue = {"items": [{"symbol": "EXITME", "verdict": "EXIT", "source": "cio"}]}
+    plan = cp.build_capital_plan(
+        portfolio_value=value, cash_total=cash,
+        positions=positions, queue=queue, redeploy_open_events=events,
+    )
+    assert plan["plan_version"] == "capital_plan_1.1.0"
+    assert plan["capital_sources"]["maturities_usd"] == earmark
+    assert plan["capital_sources"]["earmarked_redeploy_usd"] == earmark
+    assert plan["capital_sources"]["total_raise_usd"] == prospective
+    assert plan["capital_sources"]["total_prospective_raise_usd"] == prospective
+    assert plan["net_recommended_raise_usd"] == prospective
+    # deployable must NOT be investable + earmark + prospective
+    investable = plan["cash_investable_usd"]
+    assert plan["deployable_usd"] == round(investable + prospective, 2)
+    # Old buggy formula would have been investable + earmark + prospective
+    old_buggy = round(investable + earmark + prospective, 2)
+    assert plan["deployable_usd"] < old_buggy
+    assert plan["cash_ledger"]["invariants_ok"] is True
+    assert all(i["ok"] for i in plan["ledger_invariants"])
+
+
+def test_phase2_cash_ledger_invariants():
+    plan = cp.build_capital_plan(
+        portfolio_value=500_000.0, cash_total=150_000.0,
+        positions=[{"symbol": "V", "market_value": 40_000.0, "account": "schwab_rollover_ira"}],
+        queue={"items": [{"symbol": "V", "verdict": "TRIM", "source": "cio"},
+                         {"symbol": "TSLA", "verdict": "ADD", "source": "advisory"}]},
+        redeploy_open_events=[{"event_id": 1, "remaining_usd": 40_000.0}],
+    )
+    ledger = plan["cash_ledger"]
+    assert ledger["settled_cash_usd"] == 150_000.0
+    assert ledger["earmarked_redeploy_usd"] == 40_000.0
+    assert ledger["free_unearmarked_usd"] == 110_000.0
+    assert ledger["prospective_raise_usd"] == 4_000.0
+    assert ledger["invariants_ok"] is True
+    names = {i["name"] for i in ledger["invariants"]}
+    assert names == {
+        "earmark_le_cash",
+        "investable_eq_cash_minus_reserve",
+        "post_cash_identity",
+        "deploy_le_investable_plus_prospective",
+    }
+    # post cash identity: cash + prospective - deploy
+    assert abs(
+        plan["post_plan_cash_usd"]
+        - (plan["cash_total_usd"] + plan["net_recommended_raise_usd"]
+           - plan["net_recommended_deploy_usd"])
+    ) < 0.02
+
+
+def test_phase2_account_cash_breakdown():
+    rows = [
+        {"symbol": "CASH", "is_cash": True, "market_value": 500.0, "account": "moomoo"},
+        {"symbol": "CASH", "is_cash": True, "market_value": 37_894.31, "account": "schwab_taxable"},
+        {"symbol": "NVDA", "market_value": 10_000.0, "account": "schwab_taxable"},
+    ]
+    ac = cp.account_cash_breakdown(rows)
+    assert ac == [
+        {"account": "moomoo", "settled_cash_usd": 500.0},
+        {"account": "schwab_taxable", "settled_cash_usd": 37_894.31},
+    ]
+
+
+def test_phase2_live_shape_578k_regeneration():
+    """First-principles regen of Phase 0 reported cash layers (no DB).
+
+    Phase 0 live report (buggy v1.0.0):
+      cash 578107.50, reserved 256485.20, investable 321622.30,
+      raise 623009.02 (included maturities), deploy 603114.70
+
+    Correct v1.1.0 with earmark 560009.02 and prospective 63000:
+      raise = 63000 only; deployable = investable + 63000 (not +560k again)
+    """
+    cash = 578_107.50
+    value = 1_282_425.99  # cash + equities shape from Phase 0
+    reserved = round(value * 20.0 / 100.0, 2)  # default 20% band
+    investable = round(max(0.0, cash - reserved), 2)
+    assert reserved == 256_485.20
+    assert investable == 321_622.30
+
+    earmark = 560_009.02
+    prospective = 63_000.0  # 623009.02 - 560009.02 from Phase 0 fixtures
+    events = [{"event_id": 1, "symbol": "REDEPLOY", "remaining_usd": earmark}]
+    positions = [
+        {"symbol": "EXITME", "market_value": prospective, "account": "schwab_rollover_ira"},
+    ]
+    # Large deploy request to surface deployable cap (not force-deploy)
+    queue = {"items": [
+        {"symbol": "EXITME", "verdict": "EXIT", "source": "cio"},
+        *[{"symbol": f"ADD{i}", "verdict": "ADD", "source": "advisory"} for i in range(80)],
+    ]}
+    plan = cp.build_capital_plan(
+        portfolio_value=value, cash_total=cash,
+        positions=positions, queue=queue, redeploy_open_events=events,
+        account_cash=[
+            {"account": "moomoo_taxable_live", "settled_cash_usd": 500.0},
+            {"account": "alpaca_taxable_live", "settled_cash_usd": 5_000.0},
+            {"account": "schwab_taxable", "settled_cash_usd": 37_894.31},
+            {"account": "schwab_roth", "settled_cash_usd": 1_469.22},
+            {"account": "schwab_rollover_ira", "settled_cash_usd": 533_243.97},
+        ],
+    )
+    assert plan["cash_total_usd"] == cash
+    assert plan["cash_reserved_usd"] == reserved
+    assert plan["cash_investable_usd"] == investable
+    assert plan["cash_earmarked_redeploy_usd"] == earmark
+    assert plan["net_recommended_raise_usd"] == prospective
+    # Correct deployable (NOT 321622 + 623009)
+    assert plan["deployable_usd"] == round(investable + prospective, 2)
+    assert plan["deployable_usd"] == 384_622.30
+    # Old buggy deployable would be ~944k
+    old_buggy_deployable = round(investable + earmark + prospective, 2)
+    assert old_buggy_deployable == 944_631.32
+    assert plan["net_recommended_deploy_usd"] <= plan["deployable_usd"] + 0.02
+    assert plan["cash_ledger"]["invariants_ok"] is True
+    # Account cash sums to settled cash
+    assert abs(sum(a["settled_cash_usd"] for a in plan["cash_ledger"]["account_cash"]) - cash) < 0.02
