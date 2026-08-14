@@ -5,8 +5,8 @@ production-hardening CIO remediation agent.
 
 - branch: `feature/research-governance-v1`
 - worktree: `/home/johnclaw/tradeai-wt-research-governance`
-- base_sha: `9783faf1c1e8ef89a52d5e1e6d4e676669a776af`
-- base captured at worktree creation (2026-08-14, live `origin/main`)
+- base_sha: `e20dc5eb80565ced4fa8203291057f34a12af0b3`
+- base captured at R1 remediation rebase (2026-08-14, live `origin/main`)
 - authority: `READ_ONLY_ADVISORY`
 
 Rule: `origin/main` is moving under the parallel remediation agent. Re-read it
