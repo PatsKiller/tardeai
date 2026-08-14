@@ -27556,7 +27556,37 @@ def _capital_plan_compact():
 
 
 def _source_sha() -> Optional[str]:
-    """Current git HEAD SHA (fail-soft; used in the report manifest)."""
+    """Instance release SHA for report stamps (prefer BUILD_SHA, else git HEAD).
+
+    Phase report acceptance: operators must see the *running* instance SHA,
+    not a silent UNKNOWN. Order: env → release BUILD_SHA → git HEAD.
+    """
+    import os as _os
+    for key in ("BUILD_SHA", "CIO_SOURCE_SHA", "SOURCE_SHA", "GIT_SHA"):
+        v = (_os.environ.get(key) or "").strip()
+        if v:
+            return v
+    for rel in (
+        Path("/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/BUILD_SHA"),
+        PROJECT_ROOT / "BUILD_SHA",
+        PROJECT_ROOT / "BUILD_STAMP.json",
+    ):
+        try:
+            p = Path(rel) if not isinstance(rel, Path) else rel
+            if not p.is_file():
+                continue
+            if p.name.endswith(".json"):
+                import json as _json
+                blob = _json.loads(p.read_text(encoding="utf-8"))
+                for k in ("build_sha", "source_sha", "git_sha", "sha"):
+                    if blob.get(k):
+                        return str(blob[k]).strip()
+            else:
+                txt = p.read_text(encoding="utf-8").strip().splitlines()[0].strip()
+                if txt:
+                    return txt
+        except Exception:
+            continue
     try:
         import subprocess
         out = subprocess.run(

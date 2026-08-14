@@ -1,9 +1,9 @@
 {
   "manifest_schema": "investment_office_release_manifest_v1",
-  "status": "production",
-  "branch": "main",
-  "canonical_source_sha": "361ef6d27895e176deecf8061dbe405bf4d7bcab",
-  "frontend_build_sha": "361ef6d27895e176deecf8061dbe405bf4d7bcab",
+  "status": "release_candidate",
+  "branch": "wt/cio-acceptance-rest",
+  "canonical_source_sha": "ac194296b8dde8c4523fd643c3bd9346f24e54bb",
+  "frontend_build_sha": "e7b722b3b0a84baa41dfb202765d7c744faf128e",
   "backend_release_sha": "361ef6d27895e176deecf8061dbe405bf4d7bcab",
   "deployed_release_path": "/home/johnclaw/trade-ai-releases/portfolio-server/361ef6d2-main-exact-phase1-20260814-095316",
   "deployed_release_name": "361ef6d2-main-exact-phase1-20260814-095316",
@@ -15,7 +15,7 @@
     "2026-08-13_two_way_curation_sources.sql",
     "2026-08-13_two_way_reliability_n.sql"
   ],
-  "docs_pin": "0ecc252d891dc65609bbfa7a",
+  "docs_pin": "23184f6bf5c80470034ae0fe",
   "docs_files_sample": [
     "PHASE10_GIT_RELEASE_CI_DRIVE.md",
     "PHASE10_OUTCOME_LEARNING.md",
@@ -25,11 +25,15 @@
     "PHASE1_EXACT_RELEASE_CONVERGENCE.md",
     "PHASE1_NOTIFICATION_CONTAINMENT.md",
     "PHASE2_CASH_CAPITAL_LEDGER.md",
+    "PHASE2_FINANCIAL_TRUTH_GATE.md",
     "PHASE3_DECISION_SEMANTICS.md",
+    "PHASE3_FRESHNESS_MATERIALITY_GATE.md",
+    "PHASE4_5_ATTENTION_AND_SIZING.md",
     "PHASE4_ADVISORY_COMMITTEE.md",
     "PHASE4_REPORT_ARCHITECTURE.md",
     "PHASE5_INSTITUTIONAL_VISUALS.md",
     "PHASE5_TWO_WAY_LOOP.md",
+    "PHASE6_21_REST_CLOSEOUT.md",
     "PHASE6_ANALYTIC_COMPLETENESS.md",
     "PHASE6_CAPITAL_PLAN.md",
     "PHASE7_INSTITUTIONAL_REPORT.md",
@@ -43,17 +47,17 @@
   "report_version": "report_v2_1.5.0",
   "product_versions": {
     "report_version": "report_v2_1.5.0",
-    "capital_plan_version": "capital_plan_1.1.0",
-    "office_home_version": "office_home_1.1.0",
+    "capital_plan_version": "capital_plan_1.3.0",
+    "office_home_version": "office_home_1.3.0",
     "alex_telegram_version": "alex_telegram_1.0.0",
     "pipeline_version": "pipeline_1.0.0"
   },
-  "rollback_sha": "e7b722b3b0a84baa41dfb202765d7c744faf128e",
-  "origin_main_sha": "361ef6d27895e176deecf8061dbe405bf4d7bcab",
-  "created_at": "2026-08-14T13:53:20.157260+00:00",
+  "rollback_sha": "f50bae145189cd5d09de7c7873894cf7ef1bc58a",
+  "origin_main_sha": "f50bae145189cd5d09de7c7873894cf7ef1bc58a",
+  "created_at": "2026-08-14T14:48:17.544112+00:00",
   "financial_authority": "READ_ONLY_ADVISORY",
   "broker_write_paths_added": 0,
-  "notes": "Production investment-office release: Git main, portfolio-server CURRENT, and this manifest pin the same full SHA. Stale preliminary SHAs are forbidden. Authority remains READ_ONLY_ADVISORY.",
+  "notes": "Release candidate for CIO production hardening on this branch. backend_release_sha reflects currently deployed portfolio-server CURRENT (may lag this RC until controlled deployment). Stale preliminary SHAs are forbidden. Drive investment-office mirror may lag git until operator sync.",
   "hermes_score_weights_ownership": {
     "path": "config/hermes_score_weights.yaml",
     "classification": "runtime_state_with_release_seed",
@@ -76,5 +80,5 @@
     "auto_enforced_by_this_script": false,
     "note": "Status-check contexts left empty so first main PR is not blocked before the workflow runs."
   },
-  "manifest_hash": "450a18ad1d00ee063e7c91a82b31377ae9d11404693f5014c5ddd850501184a0"
+  "manifest_hash": "dca12679be2c878f6690cecef35059051ef9f21ba598639c43e33be5825cd6b2"
 }

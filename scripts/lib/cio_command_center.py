@@ -19,7 +19,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-OFFICE_HOME_VERSION = "office_home_1.2.0"  # Phase 4: disjoint attention KPIs
+OFFICE_HOME_VERSION = "office_home_1.3.0"  # Phase 6–13: strategy context on home
 
 # Human labels for stance / posture / readiness codes surfaced in primary views.
 STANCE_LABELS: dict[str, str] = {
@@ -766,4 +766,35 @@ def build_office_home(
             "office_home_version": OFFICE_HOME_VERSION,
         },
     }
+    # Phases 12–13: surface strategy/seasonality context (risk modifier only)
+    sc = plan.get("strategy_context")
+    if not sc:
+        try:
+            from scripts.lib.cio_seasonality_engine import build_seasonality_context
+            from scripts.lib.cio_strategy_knowledge import (
+                load_strategy_store,
+                compose_strategy_context,
+            )
+            season = plan.get("seasonality") or build_seasonality_context(now)
+            sc = compose_strategy_context(
+                now=now, store=load_strategy_store(), seasonality=season,
+            )
+        except Exception as exc:
+            sc = {"error": str(exc)[:160], "role": "risk_modifier_or_context"}
+    home["strategy_context"] = sc
+    home["seasonality"] = plan.get("seasonality") or (sc or {}).get("seasonality")
+    home["earmark_narrative"] = plan.get("earmark_narrative") or (
+        (plan.get("account_capital_ledger") or {}).get("narrative")
+    )
+    # Phase 7 parity across plan decisions and CIO NOW cards
+    try:
+        from scripts.lib.cio_decision_semantics import decision_field_parity
+        home["consistency"]["decision_field_parity"] = decision_field_parity(
+            plan.get("position_decisions") or [],
+            cio_now.get("decisions") or [],
+        )
+    except Exception as exc:
+        home["consistency"]["decision_field_parity"] = {
+            "ok": False, "error": str(exc)[:160],
+        }
     return home
