@@ -11,8 +11,10 @@ p0_p1_open empty). Evidence is still written on FAIL.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -93,6 +95,17 @@ def _collect_live(now: datetime, ev: Path) -> dict[str, Any]:
     (ev / "remote_git_truth.json").write_text(json.dumps(remote_truth, indent=2, default=str))
     main = remote_truth.get("remote_main_sha") or _git_sha("origin/main")
 
+    from scripts.lib.cio_remote_sha_truth import collect_evaluator_attestation
+    evaluator_attestation = collect_evaluator_attestation(REPO, remote_truth=remote_truth)
+    (ev / "acceptance_evaluator_attestation.json").write_text(
+        json.dumps(evaluator_attestation, indent=2, default=str), encoding="utf-8",
+    )
+
+    # Holdings SHA must be taken from the live file BEFORE the report is loaded.
+    current_holdings_sha256 = ""
+    if HOLDINGS.is_file():
+        current_holdings_sha256 = hashlib.sha256(HOLDINGS.read_bytes()).hexdigest()
+
     man_path = REPO / "docs/investment-office/RELEASE_MANIFEST.json"
     manifest = json.loads(man_path.read_text()) if man_path.is_file() else {}
 
@@ -148,6 +161,8 @@ def _collect_live(now: datetime, ev: Path) -> dict[str, Any]:
     if rel_cio.is_file():
         cio_src = rel_cio.read_text(encoding="utf-8", errors="replace")
 
+    report_dir = ev / "report"
+    report_dir.mkdir(parents=True, exist_ok=True)
     report_html = ""
     report_pdf = ""
     report_docx = ""
@@ -155,10 +170,10 @@ def _collect_live(now: datetime, ev: Path) -> dict[str, Any]:
     if isinstance(report, dict):
         report_sha = str((report.get("manifest") or {}).get("source_sha") or report.get("source_sha") or "")
         if report.get("html"):
-            hp = ev / "report_live.html"
+            hp = report_dir / "cio_live_report.html"
             hp.write_text(str(report["html"]), encoding="utf-8")
             report_html = str(hp)
-    # Prefer live-book export artifacts (same SHA) over API-only HTML
+    # Copy live-book export artifacts into this run's evidence dir (not only shared dry).
     live_rep = REPO / "data" / "audit" / "cio_live_report_dry"
     for name, attr in (
         ("cio_live_report.html", "html"),
@@ -167,19 +182,28 @@ def _collect_live(now: datetime, ev: Path) -> dict[str, Any]:
     ):
         p = live_rep / name
         if p.is_file() and p.stat().st_size > 100:
-            if attr == "html" and not report_html:
-                report_html = str(p)
-            elif attr == "pdf":
-                report_pdf = str(p)
-            elif attr == "docx":
-                report_docx = str(p)
-    qa_json = live_rep / "visual_qa" / "VISUAL_QA.json"
+            dest = report_dir / name
+            if attr == "html" and report_html:
+                # API HTML already written into the run dir; keep it.
+                pass
+            else:
+                shutil.copy2(p, dest)
+                if attr == "html":
+                    report_html = str(dest)
+                elif attr == "pdf":
+                    report_pdf = str(dest)
+                elif attr == "docx":
+                    report_docx = str(dest)
+    qa_src = live_rep / "visual_qa" / "VISUAL_QA.json"
+    qa_json = report_dir / "VISUAL_QA.json"
+    if qa_src.is_file():
+        shutil.copy2(qa_src, qa_json)
     visual_artifact = ""
     visual_pages = 0
     if qa_json.is_file():
         try:
             qa = json.loads(qa_json.read_text(encoding="utf-8"))
-            visual_artifact = str(qa.get("artifact") or qa_json)
+            visual_artifact = str(qa_json)
             visual_pages = int(qa.get("pages_inspected") or 0)
         except Exception:
             pass
@@ -304,6 +328,9 @@ def _collect_live(now: datetime, ev: Path) -> dict[str, Any]:
     if inst_path.is_file():
         try:
             report_instance = json.loads(inst_path.read_text(encoding="utf-8"))
+            (report_dir / "cio_live_report.instance_manifest.json").write_text(
+                json.dumps(report_instance, indent=2, default=str), encoding="utf-8",
+            )
         except Exception:
             report_instance = {}
     qa_pdf = ""
@@ -317,6 +344,15 @@ def _collect_live(now: datetime, ev: Path) -> dict[str, Any]:
             qa_instance = str(qa.get("report_instance_id") or "")
         except Exception:
             pass
+    live_plan_digest = ""
+    live_decision_digest = ""
+    if isinstance(plan, dict):
+        live_plan_digest = str(plan.get("digest") or plan.get("plan_digest") or "")
+        live_decision_digest = str(plan.get("decision_digest") or "")
+        if not live_decision_digest:
+            cons = (home or {}).get("consistency") if isinstance(home, dict) else {}
+            if isinstance(cons, dict):
+                live_decision_digest = str(cons.get("decision_digest") or "")
 
     audited_after = snapshot_audited_files(extra=[man_path], holdings=HOLDINGS)
     purity = compare_audited(audited_before, audited_after)
@@ -328,6 +364,10 @@ def _collect_live(now: datetime, ev: Path) -> dict[str, Any]:
         "live_sha": live,
         "main_sha": main,
         "remote_sha_truth": remote_truth,
+        "evaluator_attestation": evaluator_attestation,
+        "current_holdings_sha256": current_holdings_sha256,
+        "live_capital_plan_digest": live_plan_digest,
+        "live_decision_digest": live_decision_digest,
         "manifest": manifest,
         "git_manifest_hash": git_sha256 if git_bytes.is_file() else str(manifest.get("manifest_hash") or ""),
         "drive_proven": drive_proven,
@@ -341,6 +381,9 @@ def _collect_live(now: datetime, ev: Path) -> dict[str, Any]:
             "pdf_sha256": (report_instance.get("output_sha256") or {}).get("pdf"),
             "docx_sha256": (report_instance.get("output_sha256") or {}).get("docx"),
             "portfolio_snapshot_hash": (report_instance.get("input_hashes") or {}).get("holdings.json"),
+            "expected_portfolio_snapshot_hash": current_holdings_sha256,
+            "capital_plan_digest": report_instance.get("capital_plan_digest"),
+            "decision_digest": report_instance.get("decision_digest"),
         },
         "report_pdf_sha256": (report_instance.get("output_sha256") or {}).get("pdf") or "",
         "pdf_page_count": int((report_instance.get("page_counts") or {}).get("pdf") or 0),
@@ -388,6 +431,8 @@ def _collect_live(now: datetime, ev: Path) -> dict[str, Any]:
         "plan_ok": bool(plan), "home_ok": bool(home),
         "report_ok": bool(report), "advisory_ok": bool(advisory),
         "bundle_chars": len(bundle_text),
+        "current_holdings_sha256": current_holdings_sha256,
+        "report_dir": str(report_dir),
         "errors": snap["build_capability"]["collect_errors"],
     }, indent=2))
     return snap

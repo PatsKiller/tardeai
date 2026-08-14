@@ -7,6 +7,7 @@ Authority: READ_ONLY_ADVISORY. No book mutation. No Telegram.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
@@ -20,6 +21,16 @@ AUTHORITY = "READ_ONLY_ADVISORY"
 CLASS_RUNTIME = "RUNTIME_CONTENT"
 CLASS_ATTESTATION = "RELEASE_ATTESTATION_ONLY"
 CLASS_UNKNOWN = "UNKNOWN"
+
+# Canonical acceptance auditor files. G0 compares these blobs to remote main
+# (attestation-only pin commits may touch RELEASE_MANIFEST* only).
+ACCEPTANCE_EVALUATOR_RELPATH = "scripts/lib/cio_acceptance_v4.py"
+ACCEPTANCE_RUNNER_RELPATH = "scripts/run_cio_acceptance.py"
+ACCEPTANCE_EVALUATOR_FILES = (
+    ACCEPTANCE_EVALUATOR_RELPATH,
+    ACCEPTANCE_RUNNER_RELPATH,
+)
+ATTESTATION_ALLOWLIST_PATHS = frozenset(PIN_ONLY_PATHS)
 
 
 def _now_iso() -> str:
@@ -149,6 +160,137 @@ def resolve_remote_sha_truth(repo: Path, *, fetch: bool = True) -> dict[str, Any
                 "fetch_failed" if not fetched.get("ok") else
                 "ls_remote_failed" if not remote.get("ok") else
                 "remote_sha_empty"
+            )
+        ),
+    }
+
+
+def _sha256_bytes(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def _sha256_file(path: Path) -> str:
+    try:
+        return _sha256_bytes(path.read_bytes())
+    except Exception:
+        return ""
+
+
+def _git_bytes(repo: Path, *args: str, timeout: int = 40) -> tuple[int, bytes]:
+    try:
+        p = subprocess.run(
+            ["git", "-C", str(repo), *args],
+            capture_output=True,
+            timeout=timeout,
+        )
+        return p.returncode, p.stdout or b""
+    except Exception:
+        return 1, b""
+
+
+def blob_sha256_at(repo: Path, ref: str, relpath: str) -> str:
+    """SHA-256 of the file bytes at ref:relpath (not the git blob id)."""
+    if not ref or not relpath:
+        return ""
+    code, raw = _git_bytes(repo, "show", f"{ref}:{relpath}")
+    if code != 0 or not raw:
+        return ""
+    return _sha256_bytes(raw)
+
+
+def collect_evaluator_attestation(
+    repo: Path,
+    *,
+    remote_truth: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
+    """Evidence packet for G0_CANONICAL_ACCEPTANCE_EVALUATOR.
+
+    Required fields:
+      acceptance_evaluator_commit_sha, git_branch, worktree_clean,
+      untracked_count, evaluator_file_sha256, runner_file_sha256,
+      remote_main_sha, main_commit_class, attested_runtime_content_sha,
+      evaluator_diff_vs_remote_main
+    """
+    repo = Path(repo)
+    truth = remote_truth or {}
+    _code, head, _ = _run(["git", "-C", str(repo), "rev-parse", "HEAD"])
+    _code, branch, _ = _run(["git", "-C", str(repo), "rev-parse", "--abbrev-ref", "HEAD"])
+    _code, porcelain_all, _ = _run(
+        ["git", "-C", str(repo), "status", "--porcelain", "-uall"],
+    )
+    all_lines = [ln for ln in (porcelain_all or "").splitlines() if ln.strip()]
+    untracked_count = sum(1 for ln in all_lines if ln.startswith("??"))
+
+    _code, porcelain_eval, _ = _run(
+        ["git", "-C", str(repo), "status", "--porcelain", "-uall", "--",
+         *ACCEPTANCE_EVALUATOR_FILES],
+    )
+    eval_lines = [ln for ln in (porcelain_eval or "").splitlines() if ln.strip()]
+    evaluator_files_dirty = bool(eval_lines)
+    untracked_evaluator_count = sum(1 for ln in eval_lines if ln.startswith("??"))
+    # Pass condition: no dirty/untracked evaluator/runner files.
+    worktree_clean = not evaluator_files_dirty
+
+    ev_path = repo / ACCEPTANCE_EVALUATOR_RELPATH
+    run_path = repo / ACCEPTANCE_RUNNER_RELPATH
+    evaluator_file_sha256 = _sha256_file(ev_path)
+    runner_file_sha256 = _sha256_file(run_path)
+
+    remote = str(truth.get("remote_main_sha") or "").strip()
+    content = str(truth.get("attested_runtime_content_sha") or "").strip()
+    klass = str(truth.get("main_commit_class") or "") or CLASS_UNKNOWN
+
+    disk_by_rel = {
+        ACCEPTANCE_EVALUATOR_RELPATH: evaluator_file_sha256,
+        ACCEPTANCE_RUNNER_RELPATH: runner_file_sha256,
+    }
+    diff_vs_remote: list[str] = []
+    for rel, disk_sha in disk_by_rel.items():
+        remote_sha = blob_sha256_at(repo, remote, rel) if remote else ""
+        if not disk_sha or not remote_sha or disk_sha != remote_sha:
+            diff_vs_remote.append(rel)
+
+    match_content = bool(content)
+    if content:
+        for rel, disk_sha in disk_by_rel.items():
+            parent_sha = blob_sha256_at(repo, content, rel)
+            if not disk_sha or not parent_sha or disk_sha != parent_sha:
+                match_content = False
+                break
+
+    proven = bool(
+        truth.get("proven")
+        and remote
+        and head
+        and evaluator_file_sha256
+        and runner_file_sha256
+    )
+    return {
+        "authority": AUTHORITY,
+        "resolved_at": _now_iso(),
+        "acceptance_evaluator_commit_sha": head,
+        "git_branch": branch or "unknown",
+        "worktree_clean": worktree_clean,
+        "untracked_count": untracked_count,
+        "evaluator_file_sha256": evaluator_file_sha256,
+        "runner_file_sha256": runner_file_sha256,
+        "remote_main_sha": remote,
+        "main_commit_class": klass,
+        "attested_runtime_content_sha": content,
+        "evaluator_diff_vs_remote_main": diff_vs_remote,
+        "evaluator_files_match_remote_main": not diff_vs_remote,
+        "evaluator_files_match_attested_content": match_content,
+        "evaluator_files_dirty": evaluator_files_dirty,
+        "untracked_evaluator_count": untracked_evaluator_count,
+        "full_worktree_clean": len(all_lines) == 0,
+        "attestation_allowlist": sorted(ATTESTATION_ALLOWLIST_PATHS),
+        "proven": proven,
+        "unproven_reason": (
+            None if proven else (
+                "remote_sha_unproven" if not truth.get("proven") else
+                "remote_main_sha_empty" if not remote else
+                "head_empty" if not head else
+                "evaluator_bytes_missing"
             )
         ),
     }

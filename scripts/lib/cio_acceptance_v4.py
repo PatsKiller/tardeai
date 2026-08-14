@@ -16,15 +16,17 @@ import hashlib
 import json
 import re
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Optional
 
-ACCEPTANCE_VERSION = "cio_acceptance_v4.1.0"
+ACCEPTANCE_VERSION = "cio_acceptance_v4.2.0"
 AUTHORITY = "READ_ONLY_ADVISORY"
 EXPECTED_AUTHORITY_SURFACES = (
     "capital_plan", "cio_home", "report", "advisory", "telegram_payload",
 )
 
 HARD_GATE_IDS = (
+    "G0_CANONICAL_ACCEPTANCE_EVALUATOR",
     "G1_exact_live_sha",
     "G2_release_manifest_parity",
     "G3_drive_manifest_parity",
@@ -202,7 +204,12 @@ def finalize_verdict(
 
     categories = {
         "FINANCIAL_TRUTH": _cat(by_id, ["G4_financial_book_reconciliation", "G5_zero_material_price_conflicts"]),
-        "RELEASE_TRUTH": _cat(by_id, ["G1_exact_live_sha", "G2_release_manifest_parity", "G3_drive_manifest_parity"]),
+        "RELEASE_TRUTH": _cat(by_id, [
+            "G0_CANONICAL_ACCEPTANCE_EVALUATOR",
+            "G1_exact_live_sha",
+            "G2_release_manifest_parity",
+            "G3_drive_manifest_parity",
+        ]),
         "CIO_UX": _cat(by_id, ["G8_decision_cross_surface_parity", "G9_advisory_ui_provenance_live"]),
         "REPORT": _cat(by_id, ["G10_report_live_html", "G11_report_live_pdf", "G12_report_live_docx", "G13_report_visual_qa"]),
         "TELEGRAM": _cat(by_id, ["G14_cio_telegram_isolation", "G15_real_cio_e2e_canary", "G16_zero_duplicate_notification"]),
@@ -218,15 +225,20 @@ def finalize_verdict(
     # Almanac / research brain stay FAIL until dedicated later phases prove them.
     # Honesty (G20) passing does not mean integration.
 
+    core = "PASS" if production_pass else "FAIL"
+    research = "NOT_YET_INTEGRATED"
+    # FULL is PASS only when both core and research pass. Research is not integrated.
+    full = "PASS" if (core == "PASS" and research == "PASS") else "FAIL"
+
     result = {
         "acceptance_version": ACCEPTANCE_VERSION,
         "as_of": _now_iso(now),
         "authority": AUTHORITY,
-        "CORE_CIO_PRODUCTION_ACCEPTANCE": "PASS" if production_pass else "FAIL",
-        "RESEARCH_GOVERNANCE_ACCEPTANCE": "NOT_YET_INTEGRATED",
-        "FULL_INVESTMENT_OFFICE_ACCEPTANCE": "FAIL",
+        "CORE_CIO_PRODUCTION_ACCEPTANCE": core,
+        "RESEARCH_GOVERNANCE_ACCEPTANCE": research,
+        "FULL_INVESTMENT_OFFICE_ACCEPTANCE": full,
         # Legacy alias — core only. Does not imply Almanac / research-brain integration.
-        "PRODUCTION_ACCEPTANCE": "PASS" if production_pass else "FAIL",
+        "PRODUCTION_ACCEPTANCE": core,
         "PRODUCTION_ACCEPTANCE_ALIAS_OF": "CORE_CIO_PRODUCTION_ACCEPTANCE",
         "pass_threshold": production_pass,  # kept for CLI compat; equals CORE_CIO_PRODUCTION_ACCEPTANCE
         "categories": categories,
@@ -261,6 +273,139 @@ def _cat(by_id: dict[str, dict], ids: list[str]) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 # Pure evaluators (snapshots in, gates out). No network.
 # ─────────────────────────────────────────────────────────────────────────────
+
+def _file_sha256(path: Path) -> str:
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    except Exception:
+        return ""
+
+
+def inspect_report_file(path: str, expected_sha256: str = "") -> dict[str, Any]:
+    """Byte-level report artifact facts. Path string presence is not proof."""
+    p = Path(path) if path else None
+    exists = bool(p) and p.is_file()
+    size = int(p.stat().st_size) if exists else 0
+    actual = _file_sha256(p) if exists else ""
+    expected = str(expected_sha256 or "")
+    return {
+        "path": str(p) if p else "",
+        "exists": exists,
+        "size": size,
+        "sha256": actual,
+        "expected_sha256": expected,
+        "size_ok": exists and size > 100,
+        "hash_ok": bool(actual) and bool(expected) and actual == expected,
+    }
+
+
+def eval_g0_canonical_acceptance_evaluator(
+    *,
+    attestation: Optional[dict[str, Any]] = None,
+    now: Optional[datetime] = None,
+) -> dict:
+    """G0 — the auditor running this scorecard must be the canonical main evaluator.
+
+    PASS only when:
+      * evaluator/runner files are clean (no dirty/untracked)
+      * HEAD == remote main, OR (attestation-only main AND files match
+        the attested runtime content parent)
+      * cio_acceptance_v4.py and run_cio_acceptance.py blobs match remote main
+        (RELEASE_MANIFEST* pin-only diffs are allowlisted and ignored)
+
+    A feature-branch-only G2 fix (unmerged evaluator) is FAIL.
+    Missing attestation is FAIL (fail-closed).
+    """
+    att = attestation or {}
+    head = _full_sha(att.get("acceptance_evaluator_commit_sha"))
+    remote = _full_sha(att.get("remote_main_sha"))
+    content = _full_sha(att.get("attested_runtime_content_sha"))
+    klass = str(att.get("main_commit_class") or "")
+    diff = list(att.get("evaluator_diff_vs_remote_main") or [])
+    worktree_clean = bool(att.get("worktree_clean"))
+    dirty = bool(att.get("evaluator_files_dirty"))
+    untracked_eval = int(att.get("untracked_evaluator_count") or 0)
+    files_match_remote = (
+        bool(att.get("evaluator_files_match_remote_main", not diff))
+        and not diff
+    )
+    files_match_content = bool(att.get("evaluator_files_match_attested_content"))
+    attestation_only = klass in ("RELEASE_ATTESTATION_ONLY",)
+
+    reasons: list[str] = []
+    if not att:
+        reasons.append("evaluator attestation missing")
+    if not att.get("proven", True) and att:
+        # Explicit unproven remote/head/bytes cannot certify the evaluator.
+        if att.get("proven") is False:
+            reasons.append(f"evaluator attestation unproven ({att.get('unproven_reason') or 'unknown'})")
+    if not worktree_clean or dirty or untracked_eval:
+        reasons.append("dirty/untracked evaluator/runner files")
+    head_eq_remote = bool(head) and bool(remote) and head == remote
+    on_attested_parent = (
+        attestation_only
+        and bool(content)
+        and files_match_content
+        and files_match_remote
+    )
+    if not head_eq_remote and not on_attested_parent:
+        reasons.append(
+            "unmerged/feature-branch evaluator (HEAD != remote main; "
+            "not attestation-only content parent)"
+        )
+    if not files_match_remote:
+        reasons.append(
+            "evaluator/runner blobs differ from remote main: "
+            + ",".join(diff or ["unknown"])
+        )
+    if not remote:
+        reasons.append("remote main SHA missing")
+
+    ok = not reasons
+    return make_gate(
+        "G0_CANONICAL_ACCEPTANCE_EVALUATOR",
+        expected=(
+            "clean worktree evaluator/runner; HEAD==remote main "
+            "or attestation-only files==content parent; blobs match remote main"
+        ),
+        actual={
+            "acceptance_evaluator_commit_sha": _sha12(head),
+            "git_branch": att.get("git_branch"),
+            "worktree_clean": worktree_clean,
+            "untracked_count": att.get("untracked_count"),
+            "evaluator_file_sha256": (att.get("evaluator_file_sha256") or "")[:16] or None,
+            "runner_file_sha256": (att.get("runner_file_sha256") or "")[:16] or None,
+            "remote_main_sha": _sha12(remote),
+            "main_commit_class": klass or None,
+            "attested_runtime_content_sha": _sha12(content),
+            "evaluator_diff_vs_remote_main": diff,
+            "head_eq_remote": head_eq_remote,
+            "attestation_only_parent_ok": on_attested_parent,
+        },
+        status="PASS" if ok else "FAIL",
+        reason=(
+            "Canonical acceptance evaluator matches remote main."
+            if ok
+            else "G0 FAIL: " + "; ".join(reasons)
+        ),
+        severity="P0",
+        path="scripts/lib/cio_acceptance_v4.py + scripts/run_cio_acceptance.py",
+        sha=head,
+        now=now,
+        extra={
+            "acceptance_evaluator_commit_sha": head,
+            "git_branch": att.get("git_branch"),
+            "worktree_clean": worktree_clean,
+            "untracked_count": att.get("untracked_count"),
+            "evaluator_file_sha256": att.get("evaluator_file_sha256"),
+            "runner_file_sha256": att.get("runner_file_sha256"),
+            "remote_main_sha": remote,
+            "main_commit_class": klass,
+            "attested_runtime_content_sha": content,
+            "evaluator_diff_vs_remote_main": diff,
+        },
+    )
+
 
 def eval_g1_exact_live_sha(
     *,
@@ -710,8 +855,15 @@ def eval_g10_g12_report_formats(
     live_sha: str = "",
     synthetic: bool = False,
     report_instance: Optional[dict[str, Any]] = None,
+    current_holdings_sha256: str = "",
+    live_capital_plan_digest: str = "",
+    live_decision_digest: str = "",
     now: Optional[datetime] = None,
 ) -> list[dict]:
+    """G10–G12 require real files + matching instance sha256 of actual bytes.
+
+    Do not pass on a nonempty path string or a hash field that is merely present.
+    """
     gates = []
     if synthetic:
         reason_prefix = "Synthetic/toy portfolio cannot prove live report. "
@@ -719,35 +871,78 @@ def eval_g10_g12_report_formats(
         reason_prefix = ""
     sha_ok = bool(source_sha) and bool(live_sha) and _full_sha(source_sha) == _full_sha(live_sha)
     inst = report_instance or {}
+    inst_id = str(inst.get("report_instance_id") or "")
+    inst_holdings = str(inst.get("portfolio_snapshot_hash") or "")
+    expected_holdings = str(
+        current_holdings_sha256
+        or inst.get("expected_portfolio_snapshot_hash")
+        or ""
+    )
+    holdings_ok = (
+        bool(expected_holdings)
+        and bool(inst_holdings)
+        and inst_holdings == expected_holdings
+    )
+    digest_ok = True
+    digest_reasons: list[str] = []
+    if inst.get("capital_plan_digest"):
+        if str(inst.get("capital_plan_digest")) != str(live_capital_plan_digest or ""):
+            digest_ok = False
+            digest_reasons.append("capital_plan_digest mismatch vs live plan")
+    if inst.get("decision_digest"):
+        if str(inst.get("decision_digest")) != str(live_decision_digest or ""):
+            digest_ok = False
+            digest_reasons.append("decision_digest mismatch vs live plan")
 
     def _fmt(gid: str, path: str, label: str, sev: str = "P0") -> dict:
-        exists = bool(path)
         key = {"HTML": "html_sha256", "PDF": "pdf_sha256", "DOCX": "docx_sha256"}[label]
-        hash_ok = bool(inst.get(key)) if inst else True
-        inst_ok = bool(inst.get("report_instance_id")) if inst else True
-        snap_ok = True
-        if inst.get("portfolio_snapshot_hash") and inst.get("expected_portfolio_snapshot_hash"):
-            snap_ok = inst.get("portfolio_snapshot_hash") == inst.get("expected_portfolio_snapshot_hash")
-        ok = exists and (not synthetic) and sha_ok and hash_ok and inst_ok and snap_ok
+        facts = inspect_report_file(path, str(inst.get(key) or ""))
+        fails: list[str] = []
+        if synthetic:
+            fails.append("toy/synthetic portfolio")
+        if not facts["exists"]:
+            fails.append(f"missing production {label} file")
+        elif not facts["size_ok"]:
+            fails.append(f"{label} size {facts['size']} <= 100")
+        if not facts["hash_ok"]:
+            fails.append(f"{label} sha256(actual bytes) != instance manifest sha256")
+        if not inst_id:
+            fails.append("report_instance_id missing")
+        if not holdings_ok:
+            fails.append("portfolio_snapshot_hash != current_holdings_sha256")
+        if not sha_ok:
+            fails.append("source_sha does not match live SHA")
+        if not digest_ok:
+            fails.extend(digest_reasons)
+        ok = not fails
         return make_gate(
             gid,
-            expected=f"live-portfolio {label} bound to report_instance; source_sha == live SHA",
-            actual={"path": path or None, "synthetic": synthetic, "source_sha": _sha12(source_sha),
-                    "live_sha": _sha12(live_sha), "instance": inst.get("report_instance_id"),
-                    "hash": inst.get(key)},
+            expected=(
+                f"live-portfolio {label} file exists, size>100, "
+                f"sha256(bytes)==instance.{key}; holdings snapshot bound"
+            ),
+            actual={
+                "path": facts["path"] or None,
+                "exists": facts["exists"],
+                "size": facts["size"],
+                "sha256": (facts["sha256"] or "")[:16] or None,
+                "instance_sha256": (facts["expected_sha256"] or "")[:16] or None,
+                "synthetic": synthetic,
+                "source_sha": _sha12(source_sha),
+                "live_sha": _sha12(live_sha),
+                "instance": inst_id or None,
+                "holdings_ok": holdings_ok,
+                "digest_ok": digest_ok,
+            },
             status="PASS" if ok else "FAIL",
             reason=(
-                f"Live {label} present with matching source SHA."
+                f"Live {label} bytes match instance manifest."
                 if ok
-                else reason_prefix + (
-                    f"Missing production {label}."
-                    if not exists
-                    else ("Toy portfolio used." if synthetic else "source_sha does not match live SHA.")
-                )
+                else reason_prefix + "; ".join(fails)
             ),
             severity=sev,
-            path=path or f"live {label}",
-            sha=source_sha,
+            path=facts["path"] or f"live {label}",
+            sha=facts["sha256"] or source_sha,
             now=now,
         )
 
@@ -767,28 +962,44 @@ def eval_g13_visual_qa(
     qa_result: str = "",
     qa_instance_id: str = "",
     report_instance_id: str = "",
+    pdf_path: str = "",
     now: Optional[datetime] = None,
 ) -> dict:
-    hash_ok = bool(qa_pdf_sha256) and qa_pdf_sha256 == report_pdf_sha256
+    """G13 — QA must be bound to the actual PDF bytes on disk."""
+    pdf_facts = inspect_report_file(pdf_path, report_pdf_sha256)
+    actual_pdf_sha = pdf_facts["sha256"]
+    art = Path(visual_qa_artifact) if visual_qa_artifact else None
+    art_ok = bool(art) and art.is_file() and art.stat().st_size > 0
+    qa_hash_ok = bool(qa_pdf_sha256) and bool(actual_pdf_sha) and qa_pdf_sha256 == actual_pdf_sha
+    instance_hash_ok = (
+        bool(report_pdf_sha256)
+        and bool(actual_pdf_sha)
+        and report_pdf_sha256 == actual_pdf_sha
+    )
     pages_ok = bool(pdf_page_count) and pages_inspected == pdf_page_count and pages_inspected > 0
     inst_ok = bool(qa_instance_id) and qa_instance_id == report_instance_id
     result_ok = str(qa_result or "").upper() == "PASS"
-    ok = bool(visual_qa_artifact) and hash_ok and pages_ok and inst_ok and result_ok
+    ok = art_ok and qa_hash_ok and instance_hash_ok and pages_ok and inst_ok and result_ok
     return make_gate(
         "G13_report_visual_qa",
-        expected="QA bound to this PDF hash/instance; every page inspected; result=PASS",
+        expected=(
+            "pages_inspected==pdf_page_count; qa.pdf_sha256==actual PDF bytes; "
+            "instance match; result=PASS"
+        ),
         actual={
             "artifact": visual_qa_artifact or None,
+            "artifact_is_file": art_ok,
             "pages_inspected": pages_inspected,
             "pdf_page_count": pdf_page_count,
             "qa_pdf_sha256": (qa_pdf_sha256 or "")[:16] or None,
             "report_pdf_sha256": (report_pdf_sha256 or "")[:16] or None,
+            "actual_pdf_sha256": (actual_pdf_sha or "")[:16] or None,
             "instance_match": inst_ok,
             "result": qa_result or None,
         },
         status="PASS" if ok else "FAIL",
         reason=(
-            f"Visual QA bound to PDF {report_pdf_sha256[:12]} ({pages_inspected}/{pdf_page_count} pages)."
+            f"Visual QA bound to PDF {actual_pdf_sha[:12]} ({pages_inspected}/{pdf_page_count} pages)."
             if ok
             else "Visual QA not bound to the current PDF instance/hash/all pages."
         ),
@@ -1031,6 +1242,12 @@ def evaluate_live_snapshot(snap: dict[str, Any], *, now: Optional[datetime] = No
     live = _full_sha(snap.get("live_sha"))
     main = _full_sha(snap.get("main_sha"))
     gates: list[dict[str, Any]] = []
+    att = (
+        snap.get("evaluator_attestation")
+        or snap.get("acceptance_evaluator_attestation")
+        or {}
+    )
+    gates.append(eval_g0_canonical_acceptance_evaluator(attestation=att, now=now))
     gates.append(eval_g1_exact_live_sha(
         live_sha=live, main_sha=main, remote_truth=snap.get("remote_sha_truth") or {}, now=now,
     ))
@@ -1068,6 +1285,20 @@ def evaluate_live_snapshot(snap: dict[str, Any], *, now: Optional[datetime] = No
         cio_hub_source=str(snap.get("cio_hub_source") or ""),
         now=now,
     ))
+    inst = dict(snap.get("report_instance") or {})
+    current_holdings = str(
+        snap.get("current_holdings_sha256")
+        or inst.get("expected_portfolio_snapshot_hash")
+        or ""
+    )
+    live_cpd = str(
+        snap.get("live_capital_plan_digest")
+        or (plan.get("digest") or plan.get("plan_digest") or "")
+    )
+    live_dd = str(
+        snap.get("live_decision_digest")
+        or (plan.get("decision_digest") or "")
+    )
     gates.extend(eval_g10_g12_report_formats(
         html_path=str(snap.get("report_html_path") or ""),
         pdf_path=str(snap.get("report_pdf_path") or ""),
@@ -1075,18 +1306,22 @@ def evaluate_live_snapshot(snap: dict[str, Any], *, now: Optional[datetime] = No
         source_sha=str(snap.get("report_source_sha") or ""),
         live_sha=live,
         synthetic=bool(snap.get("report_synthetic")),
-        report_instance=snap.get("report_instance") or None,
+        report_instance=inst or None,
+        current_holdings_sha256=current_holdings,
+        live_capital_plan_digest=live_cpd,
+        live_decision_digest=live_dd,
         now=now,
     ))
     gates.append(eval_g13_visual_qa(
         visual_qa_artifact=str(snap.get("visual_qa_artifact") or ""),
         pages_inspected=int(snap.get("visual_qa_pages") or 0),
         qa_pdf_sha256=str(snap.get("qa_pdf_sha256") or ""),
-        report_pdf_sha256=str(snap.get("report_pdf_sha256") or ""),
+        report_pdf_sha256=str(snap.get("report_pdf_sha256") or inst.get("pdf_sha256") or ""),
         pdf_page_count=int(snap.get("pdf_page_count") or 0),
         qa_result=str(snap.get("qa_result") or ""),
         qa_instance_id=str(snap.get("qa_instance_id") or ""),
-        report_instance_id=str((snap.get("report_instance") or {}).get("report_instance_id") or ""),
+        report_instance_id=str(inst.get("report_instance_id") or ""),
+        pdf_path=str(snap.get("report_pdf_path") or ""),
         now=now,
     ))
     gates.append(eval_g14_telegram_isolation(
@@ -1118,5 +1353,8 @@ def evaluate_live_snapshot(snap: dict[str, Any], *, now: Optional[datetime] = No
         now=now,
         live_sha=live,
         main_sha=main,
-        extra={"build_capability": snap.get("build_capability") or {"note": "not used for live verdict"}},
+        extra={
+            "build_capability": snap.get("build_capability") or {"note": "not used for live verdict"},
+            "acceptance_evaluator_attestation": att,
+        },
     )
