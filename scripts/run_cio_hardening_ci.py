@@ -69,6 +69,9 @@ GATES = [
     ("strategy_seasonality", [
         "tests/test_cio_strategy_seasonality.py",
     ]),
+    ("acceptance_harness_v4", [
+        "tests/test_cio_acceptance_v4.py",
+    ]),
 ]
 
 
