@@ -92,11 +92,31 @@ def _base_sha_from_baseline(repo_root: Path) -> str:
     return m.group(1)
 
 
+def _resolve_effective_base(repo_root: Path, frozen_base: str) -> str:
+    """Choose the diff base that isolates THIS branch's changes.
+
+    `origin/main` may have moved under the parallel CIO remediation agent. A
+    three-dot diff against live `origin/main` therefore isolates only this
+    branch's own commits (the merge-base logic excludes main's new files),
+    whereas diffing against the frozen BASE_SHA would, in a PR merge-commit
+    context, also pick up main's post-fork commits. Fall back to the frozen base
+    when `origin/main` is not available (e.g. a local pre-push check).
+    """
+    proc = subprocess.run(
+        ["git", "rev-parse", "--verify", "--quiet", "origin/main"],
+        cwd=str(repo_root), capture_output=True, text=True,
+    )
+    if proc.returncode == 0 and proc.stdout.strip():
+        return proc.stdout.strip()
+    return frozen_base
+
+
 def main(argv: Sequence[str] = ()) -> int:
     repo_root = Path(__file__).resolve().parents[3]
-    base_sha = _base_sha_from_baseline(repo_root)
+    frozen_base = _base_sha_from_baseline(repo_root)
+    base = _resolve_effective_base(repo_root, frozen_base)
     proc = subprocess.run(
-        ["git", "diff", "--name-only", f"{base_sha}...HEAD"],
+        ["git", "diff", "--name-only", f"{base}...HEAD"],
         cwd=str(repo_root), capture_output=True, text=True,
     )
     if proc.returncode != 0:
@@ -104,7 +124,8 @@ def main(argv: Sequence[str] = ()) -> int:
         return 1
     changed = [l for l in proc.stdout.splitlines() if l.strip()]
     result = evaluate(changed)
-    print(f"base_sha={base_sha}")
+    print(f"frozen_base_sha={frozen_base}")
+    print(f"effective_base={base}")
     print(f"changed_files={len(changed)}")
     print(f"denied={result['denied']}")
     print(f"unexpected={result['unexpected']}")
