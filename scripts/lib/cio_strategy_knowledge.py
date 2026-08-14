@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
-STRATEGY_KNOWLEDGE_VERSION = "strategy_knowledge_1.0.0"
+STRATEGY_KNOWLEDGE_VERSION = "strategy_knowledge_1.1.0"
 
 # Influence policy: how strategy facts may affect CIO language (never auto-trade)
 INFLUENCE_POLICY = {
@@ -131,12 +131,50 @@ def make_research_fact(
     return body
 
 
+def _validation_from_grade(grade: str) -> str:
+    g = (grade or "").upper()
+    if g == "A":
+        return "reproduced_oos"
+    if g == "B":
+        return "partially_reproduced"
+    if g == "C":
+        return "partially_reproduced"
+    if g == "X":
+        return "failed_reproduction"
+    return "unverified_source_claim"
+
+
+def _almanac_seed_overlay(fn_name: str) -> dict[str, Any]:
+    """Pull independent reproduction stats when the fixture/engine is available."""
+    try:
+        from scripts.lib import cio_seasonality_analytics as _sa
+
+        rec = getattr(_sa, fn_name)()
+    except Exception:
+        return {}
+    status = _validation_from_grade(str(rec.get("evidence_grade") or ""))
+    return {
+        "sample_n": rec.get("n"),
+        "average_return": rec.get("mean"),
+        "win_rate": rec.get("win_rate"),
+        "reproduction_status": status,
+        "internal_validation_status": status,
+        "internal_result": rec.get("trade_ai_reproduction") or "",
+        "out_of_sample_result": rec.get("oos_note") or "",
+        "evidence_grade": rec.get("evidence_grade"),
+    }
+
+
 def default_seed_facts() -> list[dict[str, Any]]:
-    """Seed registry: public/historical claims as SOURCE CLAIM only until reproduced.
+    """Seed registry: STA public-alert citations + independent reproductions.
 
     Stock Trader's Almanac-style facts are structured summaries for internal
     analysis — not full-text republication of copyrighted books.
+    Layers are never collapsed: source_claim ≠ reproduction ≠ application.
     """
+    sep = _almanac_seed_overlay("september_general")
+    aug = _almanac_seed_overlay("august_general")
+    b6 = _almanac_seed_overlay("best_six_months")
     return [
         make_research_fact(
             source_id="sta_september_seasonality_summary",
@@ -155,13 +193,63 @@ def default_seed_facts() -> list[dict[str, Any]]:
             conditions=["broad_us_equity_index", "long_sample_historical"],
             exceptions=["trend_and_breadth_can_dominate", "sample_dependent"],
             source_confidence=0.55,
-            reproduction_status="unverified_source_claim",
-            internal_validation_status="unverified_source_claim",
-            internal_result="Not yet independently reproduced in Trade AI from raw returns.",
-            current_applicability=(
-                "Context / risk modifier only. Never a standalone sell signal."
+            reproduction_status=sep.get("reproduction_status", "unverified_source_claim"),
+            internal_validation_status=sep.get(
+                "internal_validation_status", "unverified_source_claim"
             ),
-            citation="Operator-structured summary of widely cited September seasonality literature.",
+            internal_result=sep.get(
+                "internal_result",
+                "Not yet independently reproduced in Trade AI from raw returns.",
+            ),
+            out_of_sample_result=sep.get("out_of_sample_result", ""),
+            sample_n=sep.get("sample_n"),
+            average_return=sep.get("average_return"),
+            win_rate=sep.get("win_rate"),
+            current_applicability=(
+                "Context / risk modifier only (≤10% conviction/sizing language). "
+                "Never a standalone sell signal."
+            ),
+            citation=(
+                "Operator-structured summary of public STA September alerts "
+                "(title/URL/date only). Not a verbatim book extract."
+            ),
+        ),
+        make_research_fact(
+            source_id="sta_august_seasonality_summary",
+            source_type="book",
+            title="Stock Trader's Almanac August (operator structured note)",
+            author="Hirsch / Stock Trader's Almanac tradition",
+            claim=(
+                "August is described in public STA alerts as among the weaker modern-sample "
+                "months for broad US indexes — a source claim until independently reproduced."
+            ),
+            claim_type="seasonality_month",
+            license_class="operator_structured_summary_no_fulltext",
+            time_horizon="month_of_year",
+            cycle_context="none",
+            conditions=["broad_us_equity_index", "long_sample_historical"],
+            exceptions=["trend_and_breadth_can_dominate", "sample_dependent"],
+            source_confidence=0.5,
+            reproduction_status=aug.get("reproduction_status", "unverified_source_claim"),
+            internal_validation_status=aug.get(
+                "internal_validation_status", "unverified_source_claim"
+            ),
+            internal_result=aug.get(
+                "internal_result",
+                "Awaiting Trade AI independent monthly-return reproduction.",
+            ),
+            out_of_sample_result=aug.get("out_of_sample_result", ""),
+            sample_n=aug.get("sample_n"),
+            average_return=aug.get("average_return"),
+            win_rate=aug.get("win_rate"),
+            current_applicability=(
+                "Context / risk modifier only (≤10% conviction/sizing language). "
+                "Never a standalone sell. Does not create TRIM."
+            ),
+            citation=(
+                "Operator-structured summary of public STA August alerts "
+                "(title/URL/date only). Not a verbatim book extract."
+            ),
         ),
         make_research_fact(
             source_id="sta_best_six_months_summary",
@@ -178,9 +266,18 @@ def default_seed_facts() -> list[dict[str, Any]]:
             conditions=["broad_us_equity_index"],
             exceptions=["regime_breaks", "crisis_years"],
             source_confidence=0.5,
-            reproduction_status="unverified_source_claim",
-            internal_validation_status="unverified_source_claim",
-            internal_result="Awaiting Trade AI independent monthly-return reproduction.",
+            reproduction_status=b6.get("reproduction_status", "unverified_source_claim"),
+            internal_validation_status=b6.get(
+                "internal_validation_status", "unverified_source_claim"
+            ),
+            internal_result=b6.get(
+                "internal_result",
+                "Awaiting Trade AI independent monthly-return reproduction.",
+            ),
+            out_of_sample_result=b6.get("out_of_sample_result", ""),
+            sample_n=b6.get("sample_n"),
+            average_return=b6.get("average_return"),
+            win_rate=b6.get("win_rate"),
             current_applicability="Context only; not an automatic portfolio rule.",
             citation="Operator-structured summary; not a verbatim book extract.",
         ),
@@ -237,20 +334,38 @@ def compose_strategy_context(
     now: Optional[datetime] = None,
     store: Optional[dict[str, Any]] = None,
     seasonality: Optional[dict[str, Any]] = None,
+    research_context: Optional[dict[str, Any]] = None,
+    symbols: Optional[list[str]] = None,
 ) -> dict[str, Any]:
-    """CIO context composer: seasonality + knowledge facts for report/Telegram."""
+    """CIO context composer: retrieve research first, then seasonality + facts."""
     now = now or datetime.now(timezone.utc)
     store = store or load_strategy_store()
+    if research_context is None:
+        try:
+            from scripts.lib.cio_research_retriever import retrieve_research_context
+
+            research_context = retrieve_research_context(now, symbols=symbols)
+        except Exception as exc:
+            research_context = {
+                "error": str(exc)[:200],
+                "role": "risk_modifier_or_context",
+                "authority": "READ_ONLY_ADVISORY",
+                "execution_engine": False,
+            }
     facts = store.get("facts") or []
     month = now.month
     month_facts = [
         f for f in facts
         if f.get("claim_type") in ("seasonality_month", "seasonality_six_month")
         or (month == 9 and "September" in str(f.get("claim") or ""))
+        or (month == 8 and "August" in str(f.get("claim") or ""))
     ]
     lines = []
     for f in (seasonality.get("narrative_lines") if seasonality else None) or []:
         lines.append(f)
+    modifier = (research_context or {}).get("modifier_note")
+    if modifier:
+        lines.append(modifier)
     for f in month_facts[:3]:
         layers = f.get("layers") or {}
         lines.append(
@@ -258,17 +373,24 @@ def compose_strategy_context(
             f"| Reproduction: {layers.get('trade_ai_reproduction')} "
             f"| Application: {layers.get('current_application')}"
         )
+    influence = dict(store.get("influence_policy") or INFLUENCE_POLICY)
+    influence["max_conviction_sizing_modifier_pct"] = 10.0
     return {
         "version": STRATEGY_KNOWLEDGE_VERSION,
         "as_of": now.isoformat(),
-        "influence_policy": store.get("influence_policy") or INFLUENCE_POLICY,
+        "influence_policy": influence,
         "seasonality": seasonality,
+        "research_context": research_context,
         "relevant_facts": month_facts[:5],
-        "context_lines": lines[:8],
+        "context_lines": lines[:10],
         "role": "risk_modifier_or_context",
         "authority": "READ_ONLY_ADVISORY",
+        "execution_engine": False,
+        "creates_trim": False,
+        "standalone_sell": False,
         "disclaimer": (
             "Strategy context is not a trade instruction. "
-            "Do not collapse source claims into Trade AI facts without validation."
+            "Do not collapse source claims into Trade AI facts without validation. "
+            "August/September seasonality is a ≤10% language modifier, never a standalone sell."
         ),
     }

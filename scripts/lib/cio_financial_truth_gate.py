@@ -16,6 +16,11 @@ import json
 from datetime import datetime, timezone
 from typing import Any, Optional
 
+from scripts.lib.cio_canonical_quote import (  # noqa: E402
+    apply_canonical_quote_fields,
+    classify_row_conflicts,
+)
+
 FINANCIAL_TRUTH_GATE_VERSION = "financial_truth_gate_1.0.0"
 
 # Publication states (operator-facing)
@@ -134,38 +139,46 @@ def field_meta(
 
 
 def classify_price_fields(row: dict[str, Any]) -> dict[str, Any]:
-    """Detect dual / conflicting price snapshots on one holdings row."""
-    prices: dict[str, float] = {}
+    """Detect dual / conflicting *genuine marks* on one holdings row.
+
+    Implied-from-MV and MV stuffed into `price` are not marks. Dual-price
+    fires only when two genuine marks disagree (see cio_canonical_quote).
+    """
+    named = apply_canonical_quote_fields(row)
+    conflicts = classify_row_conflicts(named)
+    genuine = dict(conflicts.get("genuine_marks") or {})
+    # Keep a raw map for diagnostics (includes non-marks) without using it
+    # for conflict — callers that need lineage should use named fields.
+    raw_prices: dict[str, float] = {}
     for key in ("current_price", "price", "last", "mark", "close"):
         v = _opt_fnum(row.get(key))
         if v is not None and v > 0:
-            prices[key] = v
-    if not prices:
+            raw_prices[key] = v
+    canon = named.get("canonical_mark")
+    if canon is None and not raw_prices:
         return {
             "canonical_price": None,
             "canonical_price_key": None,
             "conflicted": False,
             "prices": {},
             "quality": STATE_DATA_UNAVAILABLE,
+            "implied_price_from_mv": named.get("implied_price_from_mv"),
+            "mv_basis": named.get("mv_basis"),
+            "genuine_marks": {},
         }
-    # Prefer current_price as display quote; keep others for conflict check
-    canon_key = "current_price" if "current_price" in prices else next(iter(prices))
-    canon = prices[canon_key]
-    conflicted = False
-    for k, v in prices.items():
-        if k == canon_key:
-            continue
-        # relative tolerance
-        if abs(v - canon) > max(0.01, abs(canon) * PRICE_DERIVED_PCT_TOL * 10):
-            # 1% hard dual-price conflict for quote fields (stricter than 0.1% mv)
-            if abs(v - canon) / max(abs(canon), 1e-9) > 0.002:  # >0.2%
-                conflicted = True
+    conflicted = bool(conflicts.get("dual_price_conflict"))
     return {
         "canonical_price": canon,
-        "canonical_price_key": canon_key,
+        "canonical_price_key": named.get("canonical_mark_source"),
         "conflicted": conflicted,
-        "prices": prices,
-        "quality": STATE_CONFLICTED if conflicted else STATE_VERIFIED_AS_OF,
+        "prices": genuine or raw_prices,
+        "quality": STATE_CONFLICTED if conflicted else (
+            STATE_VERIFIED_AS_OF if canon is not None else STATE_DATA_UNAVAILABLE
+        ),
+        "implied_price_from_mv": named.get("implied_price_from_mv"),
+        "mv_basis": named.get("mv_basis"),
+        "genuine_marks": genuine,
+        "price_field_role": named.get("price_field_role"),
     }
 
 
@@ -189,43 +202,60 @@ def check_position_row(
     )
     upl_pct_reported = _opt_fnum(row.get("gain_loss_pct") or row.get("unrealized_pl_pct"))
 
-    price_info = classify_price_fields(row)
-    px = price_info["canonical_price"]
+    named = apply_canonical_quote_fields(row)
+    conflicts = classify_row_conflicts(named)
+    price_info = classify_price_fields(named)
+    px = named.get("canonical_mark")
+    if px is None:
+        px = price_info["canonical_price"]
 
     exceptions: list[dict[str, Any]] = []
     quality = STATE_VERIFIED_AS_OF
+    mv_basis = named.get("mv_basis")
 
     if mv is None:
         exceptions.append({"type": "market_value_missing", "symbol": symbol, "account": account})
         quality = STATE_DATA_UNAVAILABLE
         mv = 0.0
+        if shares is not None and px is not None:
+            mv_basis = "shares_x_canonical_mark"
 
-    # shares × price ≈ market_value
+    # shares × CANONICAL MARK ≈ market_value.
+    # When they disagree the broker MV is on a different mark — label that
+    # honestly instead of pretending price/current_price are one "current".
     if shares is not None and shares > 0 and px is not None and px > 0:
         implied = shares * px
         tol = dollar_tol(mv or implied)
         if abs(implied - (mv or 0.0)) > tol:
             exceptions.append({
                 "type": "shares_x_price_ne_mv",
+                "label": "broker_mv_uses_different_mark",
                 "symbol": symbol,
                 "account": account,
                 "shares": shares,
                 "canonical_price": px,
-                "canonical_price_key": price_info["canonical_price_key"],
-                "prices": price_info["prices"],
+                "canonical_mark": px,
+                "canonical_price_key": named.get("canonical_mark_source") or price_info["canonical_price_key"],
+                "canonical_mark_source": named.get("canonical_mark_source"),
+                "prices": price_info.get("genuine_marks") or price_info["prices"],
+                "implied_price_from_mv": named.get("implied_price_from_mv"),
                 "implied_mv": round(implied, 4),
                 "market_value": mv,
+                "mv_basis": "broker",
                 "abs_err": round(abs(implied - (mv or 0.0)), 4),
                 "tol": round(tol, 4),
             })
             quality = STATE_CONFLICTED
+            mv_basis = "broker"
 
-    if price_info["conflicted"]:
+    # dual_price only for two genuine marks — not mark vs implied-from-MV
+    if conflicts.get("dual_price_conflict") or price_info["conflicted"]:
         exceptions.append({
             "type": "dual_price_conflict",
             "symbol": symbol,
             "account": account,
-            "prices": price_info["prices"],
+            "prices": price_info.get("genuine_marks") or price_info["prices"],
+            "price_field_role": named.get("price_field_role"),
         })
         quality = STATE_CONFLICTED
 
@@ -298,7 +328,12 @@ def check_position_row(
         "shares": shares,
         "market_value": mv,
         "canonical_price": px,
-        "canonical_price_key": price_info.get("canonical_price_key"),
+        "canonical_mark": px,
+        "canonical_price_key": named.get("canonical_mark_source") or price_info.get("canonical_price_key"),
+        "canonical_mark_source": named.get("canonical_mark_source"),
+        "canonical_mark_type": named.get("canonical_mark_type"),
+        "implied_price_from_mv": named.get("implied_price_from_mv"),
+        "mv_basis": mv_basis,
         "cost_basis": basis,
         "weight_pct_reported": weight_reported,
         "weight_pct_computed": round(weight_computed, 4) if weight_computed is not None else None,
@@ -307,7 +342,7 @@ def check_position_row(
         "quality": quality,
         "actionable": actionable,
         "exceptions": exceptions,
-        "price_fields": price_info.get("prices") or {},
+        "price_fields": price_info.get("genuine_marks") or price_info.get("prices") or {},
         "source": row.get("source") or row.get("price_source"),
         "as_of": as_of,
         "updated_at": updated,

@@ -19,6 +19,24 @@ import { hubTitle, hubSubtitle } from '../lib/terminalHubChrome'
 
 interface Props { onDrill?: (ctx: any) => void }
 
+type DecisionFreshnessBoard = {
+  name?: string
+  detail?: string
+  status?: string
+  age_seconds?: number | null
+}
+
+type DecisionFreshness = {
+  version?: string
+  reasons?: string[]
+  evidence_source_count?: number
+  session?: string
+  board?: DecisionFreshnessBoard[]
+  financial_truth_quality?: string
+  state?: string
+  label?: string
+}
+
 type Decision = {
   kind: 'position' | 'action'
   symbol?: string | null
@@ -35,6 +53,37 @@ type Decision = {
   counter_thesis?: string | null
   action_id?: string
   domain?: string
+  // Phase 5 — institutional card fields (render only when present)
+  decision_id?: string | null
+  action_label?: string | null
+  action_label_display?: string | null
+  current_weight_pct?: number | null
+  target_weight_pct?: number | null
+  recommended_delta_usd?: number | null
+  trim_to_clear_fire_usd?: number | null
+  trim_to_policy_usd?: number | null
+  sizing_method?: string | null
+  sizing_objective?: string | null
+  freshness?: DecisionFreshness | string | null
+}
+
+type CioAttention = {
+  investment_decisions?: number
+  workflow_actions?: number
+  open_plans?: number
+  material_today?: number
+  material_today_ids?: string[]
+  labels?: Record<string, string>
+  note?: string
+}
+
+type CioNow = {
+  decisions: Decision[]
+  decision_count: number
+  open_actions_count: number
+  open_plans_count: number
+  material_today_count?: number
+  attention?: CioAttention
 }
 
 type Home = {
@@ -42,7 +91,7 @@ type Home = {
   as_of?: string
   authority?: string
   version?: string
-  cio_now: { decisions: Decision[]; decision_count: number; open_actions_count: number; open_plans_count: number }
+  cio_now: CioNow
   capital_plan: CapitalPlan
   posture: Posture
   opportunities: Opportunities
@@ -148,6 +197,52 @@ function fmtNum(n: number | null | undefined, digits = 2): string {
   return n.toFixed(digits)
 }
 
+const CODE_LABEL: Record<string, string> = {
+  ACT_NOW: 'ACT NOW',
+  REVIEW: 'REVIEW',
+  WATCH: 'WATCH',
+  REVALIDATE: 'REVALIDATE',
+  DATA_CONFLICT: 'DATA CONFLICT',
+  STALE_REFRESH_REQUIRED: 'STALE — REFRESH REQUIRED',
+  clear_fire_staged: 'Clear fire, staged',
+  policy_normalize_staged: 'Policy normalize, staged',
+  advisory_fallback_10pct: 'Advisory fallback (10%)',
+  full_exit: 'Full exit',
+  headroom_bounded_default: 'Headroom-bounded default',
+}
+
+function proseCode(s: string | null | undefined): string {
+  if (!s) return ''
+  return CODE_LABEL[s] || s.replace(/_/g, ' ')
+}
+
+function shortDecisionId(id: string): string {
+  if (id.startsWith('dec_') && id.length > 16) return `dec_${id.slice(4, 16)}`
+  return id.length > 16 ? `${id.slice(0, 16)}…` : id
+}
+
+function freshnessLine(f: Decision['freshness']): string | null {
+  if (f == null || f === '') return null
+  if (typeof f === 'string') return f
+  if (f.label) return String(f.label)
+  if (f.state) return proseCode(f.state)
+  const board = Array.isArray(f.board) ? f.board : []
+  const notable = board.filter(b => {
+    const d = String(b.detail || b.status || '').toLowerCase()
+    return d && d !== 'ok' && d !== 'pass'
+  })
+  if (notable.length) {
+    return notable.slice(0, 2).map(b => {
+      const name = b.name ? proseCode(b.name) : 'Source'
+      const det = proseCode(String(b.detail || b.status || ''))
+      return det ? `${name}: ${det}` : name
+    }).join(' · ')
+  }
+  if (f.financial_truth_quality) return `Truth ${proseCode(f.financial_truth_quality)}`
+  if (board.length) return 'Fresh'
+  return null
+}
+
 // ── Shared style tokens ────────────────────────────────────────────────────────
 const card: CSSProperties = {
   background: 'var(--bg2)', borderRadius: 8, padding: 16,
@@ -236,9 +331,14 @@ function DecisionCard({ d, dispositions, onAct }: {
 }) {
   const [open, setOpen] = useState(false)
   const urgency = d.urgency || 'low'
-  const delta = d.delta_usd
+  const delta = d.recommended_delta_usd ?? d.delta_usd
+  const weight = d.current_weight_pct ?? d.weight_pct
   const deltaColor = delta == null ? 'var(--text3)' : delta >= 0 ? 'var(--green)' : 'var(--red)'
   const title = d.kind === 'action' ? (d.why_now || d.action_id || 'Action') : `${d.symbol} · ${d.stance || 'Hold'}`
+  const actionText = d.action_label_display || (d.action_label ? proseCode(d.action_label) : '')
+  const sizingMethod = d.sizing_method ? proseCode(d.sizing_method) : ''
+  const fresh = freshnessLine(d.freshness)
+  const hasSizing = d.trim_to_clear_fire_usd != null || d.trim_to_policy_usd != null || !!sizingMethod || !!d.sizing_objective
 
   return (
     <div style={{ ...card, borderLeft: `3px solid ${URGENCY_COLOR[urgency]}` }} data-testid="cio-decision-card">
@@ -248,6 +348,14 @@ function DecisionCard({ d, dispositions, onAct }: {
         <span style={{ fontSize: 11, fontWeight: 700, color: URGENCY_COLOR[urgency], letterSpacing: '.3px', textTransform: 'uppercase' }}>
           {URGENCY_LABEL[urgency]}
         </span>
+        {actionText && (
+          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)', letterSpacing: '.3px', textTransform: 'uppercase' }}>
+            {actionText}
+          </span>
+        )}
+        {d.decision_id && (
+          <span style={faint} title={d.decision_id}>ID {shortDecisionId(d.decision_id)}</span>
+        )}
       </div>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 18, marginTop: 8 }}>
@@ -260,9 +368,15 @@ function DecisionCard({ d, dispositions, onAct }: {
           <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text0)' }}>{fmtUsd(d.value_usd)}</div>
         </div>
         <div>
-          <div style={kLabel}>Weight</div>
-          <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text0)' }}>{fmtPct(d.weight_pct)}</div>
+          <div style={kLabel}>Current weight</div>
+          <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text0)' }}>{fmtPct(weight)}</div>
         </div>
+        {d.target_weight_pct != null && (
+          <div>
+            <div style={kLabel}>Target weight</div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text0)' }}>{fmtPct(d.target_weight_pct)}</div>
+          </div>
+        )}
         {d.next_review && (
           <div>
             <div style={kLabel}>Next review</div>
@@ -271,9 +385,43 @@ function DecisionCard({ d, dispositions, onAct }: {
         )}
       </div>
 
+      {hasSizing && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 18, marginTop: 8 }}>
+          {d.trim_to_clear_fire_usd != null && (
+            <div>
+              <div style={kLabel}>Trim to clear fire</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text0)' }}>{fmtUsd(d.trim_to_clear_fire_usd)}</div>
+            </div>
+          )}
+          {d.trim_to_policy_usd != null && (
+            <div>
+              <div style={kLabel}>Trim to policy</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text0)' }}>{fmtUsd(d.trim_to_policy_usd)}</div>
+            </div>
+          )}
+          {sizingMethod && (
+            <div>
+              <div style={kLabel}>Sizing method</div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text2)' }}>{sizingMethod}</div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {d.sizing_objective && (
+        <div style={{ marginTop: 8, fontSize: 13, color: 'var(--text1)' }}>
+          <span style={{ color: 'var(--text3)' }}>Sizing: </span>{d.sizing_objective}
+        </div>
+      )}
+
       <div style={{ marginTop: 8, fontSize: 13, color: 'var(--text1)' }}>
         <span style={{ color: 'var(--text3)' }}>Why now: </span>{d.why_now || '—'}
       </div>
+      {fresh && (
+        <div style={{ marginTop: 4, fontSize: 12, color: 'var(--text2)' }}>
+          <span style={{ color: 'var(--text3)' }}>Freshness: </span>{fresh}
+        </div>
+      )}
 
       <button type="button" onClick={() => setOpen(v => !v)} aria-expanded={open}
         style={{ background: 'transparent', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 12, fontWeight: 600, padding: '4px 0' }}>
@@ -296,13 +444,20 @@ function DecisionCard({ d, dispositions, onAct }: {
 // ── Section renderers ─────────────────────────────────────────────────────────
 
 function CioNowSection({ home, dispositions, onAct }: { home: Home; dispositions: DispositionMap; onAct: (k: string, d: string, r?: number) => void }) {
-  const { decisions, decision_count, open_actions_count, open_plans_count } = home.cio_now
+  const now = home.cio_now
+  const att = now.attention
+  const investmentDecisions = att?.investment_decisions ?? now.decision_count
+  const workflowActions = att?.workflow_actions ?? now.open_actions_count
+  const openPlans = att?.open_plans ?? now.open_plans_count
+  const materialToday = att?.material_today ?? now.material_today_count
+  const { decisions } = now
   return (
     <div data-testid="cio-now-section">
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, marginBottom: 16 }}>
-        <Stat label="Decisions needing you" value={decision_count} help="Decisions with a live signal, concentration breach, or non-zero change." />
-        <Stat label="Open actions" value={open_actions_count} help="Open items in the CIO action ledger." />
-        <Stat label="Open plans" value={open_plans_count} help="Open advisory plans awaiting disposition." />
+        <Stat label="Investment decisions" value={investmentDecisions} help="True investment decisions needing attention. Disjoint from workflow actions and plans." />
+        <Stat label="Workflow actions" value={workflowActions} help="Open items in the CIO action ledger only — not mixed into decision cards." />
+        <Stat label="Open plans" value={openPlans} help="Open advisory plans awaiting disposition." />
+        <Stat label="Material Today" value={materialToday ?? '—'} help="Deduped priority set (not the sum of the other three). Cards show at most 5." />
       </div>
       {decisions.length === 0 ? (
         <Empty text="Nothing needs a decision right now. Portfolio is stable." />
@@ -322,7 +477,7 @@ function CapitalPlanSection({ cp }: { cp: CapitalPlan }) {
         <Stat label="Investable cash" value={fmtUsd(cp.cash_investable_usd)} help="Cash above the reserve available to deploy." />
         <Stat label="Target band" value={cp.cash_band.min_pct != null && cp.cash_band.max_pct != null ? `${cp.cash_band.min_pct}–${cp.cash_band.max_pct}%` : '—'} help="Policy cash floor-to-ceiling as a share of portfolio." />
         <Stat label="Recommended deploy" value={fmtUsd(cp.recommended_deploy_usd)} help="Net dollars the desk recommends putting to work." />
-        <Stat label="Recommended raise" value={fmtUsd(cp.recommended_raise_usd)} help="Net dollars the desk recommends raising (trims/exits/maturities)." />
+        <Stat label="Recommended raise" value={fmtUsd(cp.recommended_raise_usd)} help="Prospective raise = future trims/exits not yet cash. Earmarked redeploy already in cash is not new capital." />
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>

@@ -322,7 +322,10 @@ def build_capital_sources(
             amt = round(p["market_value_usd"] * trim_fraction, 2)
             if port > 0:
                 try:
-                    from scripts.lib.cio_institutional_sizing import size_decision
+                    from scripts.lib.cio_institutional_sizing import (
+                        extract_sizing_inputs,
+                        size_decision,
+                    )
                     sz = size_decision(
                         stance="TRIM",
                         market_value_usd=p["market_value_usd"],
@@ -331,6 +334,7 @@ def build_capital_sources(
                         policy_cap_pct=cap,
                         fire_pct=fire,
                         tax_class=str(p.get("tax_class") or "TAXABLE"),
+                        **extract_sizing_inputs(p),
                     )
                     amt = abs(_fnum(sz.get("recommended_delta_usd")))
                     note = str(sz.get("objective_summary") or note)
@@ -1013,9 +1017,12 @@ def build_position_decisions(
             stance_display = stance
             ident = None
 
-        # Phase 5: objective-driven sizing (10% is fallback candidate only)
+        # Phase 6: candidate-set sizing (10% / $5k are fallback candidates only)
         try:
-            from scripts.lib.cio_institutional_sizing import size_decision
+            from scripts.lib.cio_institutional_sizing import (
+                extract_sizing_inputs,
+                size_decision,
+            )
             sizing = size_decision(
                 stance=stance,
                 market_value_usd=p["market_value_usd"],
@@ -1025,13 +1032,15 @@ def build_position_decisions(
                 fire_pct=fire_pct,
                 tax_class=str(tax_class or "TAXABLE"),
                 headroom_usd=headroom,
+                **extract_sizing_inputs(p),
             )
             delta = float(sizing.get("recommended_delta_usd") or 0.0)
             target_w = sizing.get("target_weight_pct")
             if target_w is None:
                 target_w = cap_pct
         except Exception:
-            sizing = {"method": "legacy_fallback", "fallback_candidate_only": True}
+            sizing = {"method": "legacy_fallback", "fallback_candidate_only": True,
+                      "sizing_quality": "HEURISTIC", "candidates": {}}
             if stance == "EXIT":
                 delta = -p["market_value_usd"]
             elif stance == "TRIM":
@@ -1078,6 +1087,12 @@ def build_position_decisions(
             "trim_to_clear_fire_usd": sizing.get("trim_to_clear_fire_usd"),
             "trim_to_policy_usd": sizing.get("trim_to_policy_usd"),
             "fallback_candidate_only": bool(sizing.get("fallback_candidate_only")),
+            "candidates": sizing.get("candidates"),
+            "sizing_quality": sizing.get("sizing_quality"),
+            "selected_candidate": sizing.get("selected_candidate"),
+            "selection_rationale": sizing.get("selection_rationale"),
+            "tranches": sizing.get("tranches"),
+            "tax_class": tax_class,
         })
 
     rows.sort(key=lambda r: (-abs(r["recommended_delta_usd"]), -r["current_value_usd"]))
@@ -1223,19 +1238,32 @@ def build_capital_plan_from_sources(
                 "error": str(exc)[:200],
                 "authority": "READ_ONLY_ADVISORY",
             }
-    # Phases 12–13: strategy knowledge + seasonality (context only, never execution)
+    # Phases 11–16: retrieve research/seasonality BEFORE strategy_context.
+    # research_context is a modifier note only — never creates TRIM from August.
     try:
         from scripts.lib.cio_seasonality_engine import build_seasonality_context
         from scripts.lib.cio_strategy_knowledge import (
             load_strategy_store,
             compose_strategy_context,
         )
+        from scripts.lib.cio_research_retriever import retrieve_research_context
         season = build_seasonality_context(now)
+        symbols = [
+            str(p.get("symbol"))
+            for p in (snap.get("positions") or [])
+            if p.get("symbol")
+        ]
+        research = retrieve_research_context(now, symbols=symbols)
         store = load_strategy_store()
         plan = dict(plan)
         plan["seasonality"] = season
+        plan["research_context"] = research
         plan["strategy_context"] = compose_strategy_context(
-            now=now, store=store, seasonality=season,
+            now=now,
+            store=store,
+            seasonality=season,
+            research_context=research,
+            symbols=symbols,
         )
     except Exception as exc:
         plan = dict(plan)

@@ -21,12 +21,14 @@ GATES = [
     ("notification_no_network", [
         "tests/test_cio_phase1_notification_containment.py",
         "tests/test_cio_phase9_alex_telegram.py",
+        "tests/test_cio_telegram_canary_dry.py",
     ]),
     ("capital_ledger", [
         "tests/test_cio_capital_plan.py",
     ]),
     ("financial_truth_gate", [
         "tests/test_cio_financial_truth_gate.py",
+        "tests/test_cio_canonical_quote.py",
     ]),
     ("freshness_materiality", [
         "tests/test_cio_freshness_materiality_gate.py",
@@ -63,11 +65,15 @@ GATES = [
     ("decision_field_parity", [
         "tests/test_cio_decision_parity.py",
     ]),
+    ("live_report_parity", [
+        "tests/test_cio_live_report_parity.py",
+    ]),
     ("advisory_provenance", [
         "tests/test_cio_advisory_provenance.py",
     ]),
     ("strategy_seasonality", [
         "tests/test_cio_strategy_seasonality.py",
+        "tests/test_cio_research_brain.py",
     ]),
     ("acceptance_harness_v4", [
         "tests/test_cio_acceptance_v4.py",

@@ -1233,3 +1233,13 @@ def build_report_v2(
         model["facts_fingerprint"] = None
     model["html"] = render_html(model)
     return model
+
+
+def build_report_from_live_sources(**kwargs: Any) -> dict[str, Any]:
+    """Compose report v2 from live holdings / capital-plan sources.
+
+    Thin wrapper around ``cio_live_report.build_report_from_live_sources``.
+    Refuses a synthetic $100k book. READ_ONLY_ADVISORY.
+    """
+    from scripts.lib.cio_live_report import build_report_from_live_sources as _live
+    return _live(**kwargs)

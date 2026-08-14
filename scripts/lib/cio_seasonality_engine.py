@@ -1,23 +1,61 @@
 """cio_seasonality_engine.py — Phase 13 calendar / presidential-cycle context.
 
 Mechanical labels only. No partisan hard-codes. Not an execution engine.
+
+Weak/strong month buckets are filled AFTER independent reproduction
+(see cio_seasonality_analytics). August is never hardcoded bearish.
 """
 from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-SEASONALITY_VERSION = "seasonality_engine_1.0.0"
+SEASONALITY_VERSION = "seasonality_engine_1.1.0"
 
 MONTH_NAMES = (
     "", "January", "February", "March", "April", "May", "June",
     "July", "August", "September", "October", "November", "December",
 )
 
-# Weak/strong month *hypotheses* for context (not automatic portfolio rules)
-# Literature-cited tendencies as SOURCE CONTEXT only.
-WEAK_MONTHS_HYPOTHESIS = {9}  # September
-STRONG_MONTHS_HYPOTHESIS = {11, 12, 1, 4}  # best-six-months adjacent
+# Literature-only fallback if reproduction is unavailable.
+# September is the classic published hypothesis. August is NOT listed here —
+# it may join the weak set only after Trade AI reproduces monthly returns.
+LITERATURE_WEAK_MONTHS_UNVERIFIED = {9}
+LITERATURE_STRONG_MONTHS_UNVERIFIED = {11, 12, 1, 4}
+
+
+def weak_months_hypothesis() -> set[int]:
+    """Weak months from reproduction; literature September only as fallback."""
+    try:
+        from scripts.lib.cio_seasonality_analytics import reproduced_weak_months
+
+        reproduced = reproduced_weak_months()
+        if reproduced:
+            return set(reproduced)
+    except Exception:
+        pass
+    return set(LITERATURE_WEAK_MONTHS_UNVERIFIED)
+
+
+def strong_months_hypothesis() -> set[int]:
+    try:
+        from scripts.lib.cio_seasonality_analytics import reproduced_strong_months
+
+        reproduced = reproduced_strong_months()
+        if reproduced:
+            return set(reproduced)
+    except Exception:
+        pass
+    return set(LITERATURE_STRONG_MONTHS_UNVERIFIED)
+
+
+def __getattr__(name: str) -> Any:
+    # Backward-compatible module attributes, computed after reproduction.
+    if name == "WEAK_MONTHS_HYPOTHESIS":
+        return weak_months_hypothesis()
+    if name == "STRONG_MONTHS_HYPOTHESIS":
+        return strong_months_hypothesis()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def presidential_cycle_year(year: int) -> dict[str, Any]:
@@ -52,25 +90,29 @@ def presidential_cycle_year(year: int) -> dict[str, Any]:
 
 def month_context(month: int) -> dict[str, Any]:
     name = MONTH_NAMES[month] if 1 <= month <= 12 else "unknown"
+    weak = weak_months_hypothesis()
+    strong = strong_months_hypothesis()
     return {
         "month": month,
         "month_name": name,
         "hypothesis_bucket": (
             "historically_weaker_in_almanac_literature"
-            if month in WEAK_MONTHS_HYPOTHESIS
+            if month in weak
             else (
                 "historically_stronger_in_almanac_literature"
-                if month in STRONG_MONTHS_HYPOTHESIS
+                if month in strong
                 else "neutral_or_mixed_hypothesis"
             )
         ),
+        "weak_months_reproduced": sorted(weak),
+        "strong_months_reproduced": sorted(strong),
         "best_six_months_window": month in (11, 12, 1, 2, 3, 4),
         "worst_six_months_window": month in (5, 6, 7, 8, 9, 10),
     }
 
 
 def calendar_effects(now: datetime) -> list[str]:
-    """Lightweight calendar tags (not full market calendar)."""
+    """Lightweight calendar tags. Options expiration is 3rd Friday, not day 15–21."""
     tags: list[str] = []
     d = now.day
     if d <= 3:
@@ -83,9 +125,18 @@ def calendar_effects(now: datetime) -> list[str]:
         tags.append("year_end_window")
     if now.month == 12 or (now.month == 1 and d <= 15):
         tags.append("tax_loss_adjacent_window")
-    # Options expiration week approximation: 3rd Friday week
-    if 15 <= d <= 21:
-        tags.append("mid_month_options_window_approx")
+    try:
+        from scripts.lib.cio_market_calendar import (
+            is_options_expiration,
+            is_options_expiration_week,
+        )
+
+        if is_options_expiration(now):
+            tags.append("options_expiration")
+        if is_options_expiration_week(now):
+            tags.append("options_expiration_week")
+    except Exception:
+        pass
     return tags
 
 

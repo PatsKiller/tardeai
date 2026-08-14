@@ -35,8 +35,22 @@ def _verdict_str(v: Any) -> str:
 
 
 def compute_banners(meta: dict[str, Any], data: dict[str, Any]) -> list[dict[str, str]]:
-    """Five banner states for the desk surface."""
+    """Banner states for the desk surface (5 health + optional DATA CONFLICT)."""
     banners: list[dict[str, str]] = []
+    conflicted_n = int(meta.get("conflicted_count") or 0)
+    conflicted_syms = [str(s) for s in (meta.get("conflicted_symbols") or []) if s]
+    if conflicted_n > 0 or conflicted_syms:
+        shown = ", ".join(conflicted_syms[:8])
+        extra = f" (+{conflicted_n - 8} more)" if conflicted_n > 8 else ""
+        banners.append({
+            "id": "DATA_CONFLICT",
+            "severity": "critical",
+            "title": "DATA CONFLICT — ACTION SUPPRESSED",
+            "detail": (
+                f"{conflicted_n or len(conflicted_syms)} row(s) have conflicting "
+                f"marks/MV/targets{': ' + shown if shown else ''}{extra}"
+            ),
+        })
     # 1 OK / health
     if meta.get("validation_ok") and meta.get("plausibility_gate") == "PASS":
         banners.append({
@@ -128,8 +142,9 @@ def compute_banners(meta: dict[str, Any], data: dict[str, Any]) -> list[dict[str
             "title": "External invariants green",
             "detail": "0 listing/price/basis reality failures",
         })
-    # Ensure exactly 5 (pad/truncate)
-    return banners[:5]
+    # Base contract is 5 health banners; DATA CONFLICT may prepend a 6th.
+    cap = 6 if banners and banners[0].get("id") == "DATA_CONFLICT" else 5
+    return banners[:cap]
 
 
 def _split_rationale_signals(raw: str) -> list[str]:
@@ -145,6 +160,30 @@ def _split_rationale_signals(raw: str) -> list[str]:
     return seen
 
 
+def _ensure_row_provenance(row: dict[str, Any], analyst: dict[str, Any] | None) -> dict[str, Any]:
+    """Idempotent attach so cached desk payloads still grow expand.provenance."""
+    pre = row.get("expand") if isinstance(row.get("expand"), dict) else {}
+    if pre.get("canonical_financial_facts") and pre.get("advisory_provenance"):
+        return row
+    if row.get("canonical_financial_facts") and row.get("advisory_provenance"):
+        expand = dict(pre)
+        expand.setdefault("canonical_financial_facts", row["canonical_financial_facts"])
+        expand.setdefault("advisory_provenance", row["advisory_provenance"])
+        if analyst and not expand.get("analyst"):
+            expand["analyst"] = analyst
+        row["expand"] = expand
+        return row
+    try:
+        from lib.data_broker.advisory_desk import attach_advisory_row_provenance
+        return attach_advisory_row_provenance(row, analyst=analyst)
+    except Exception:
+        try:
+            from lib.cio_advisory_provenance import attach_expand_provenance
+            return attach_expand_provenance(row, analyst=analyst)
+        except Exception:
+            return row
+
+
 def _row_view(row: dict[str, Any], opinions: dict[str, Any] | None = None) -> dict[str, Any]:
     """Surface-friendly row with expand payload + data_quality column."""
     opinions = opinions or {}
@@ -158,8 +197,19 @@ def _row_view(row: dict[str, Any], opinions: dict[str, Any] | None = None) -> di
 
     lot = row.get("lot_basis") or {}
     pa = row.get("price_action") or {}
-    # Analyst from evidence items
-    analyst = next((i for i in items if isinstance(i, dict) and i.get("type") == "analyst_context"), None)
+    pre_expand = row.get("expand") if isinstance(row.get("expand"), dict) else {}
+    # Prefer attached analyst (honest denominators) over raw evidence item
+    analyst = pre_expand.get("analyst") or row.get("analyst")
+    if not isinstance(analyst, dict):
+        analyst = next((i for i in items if isinstance(i, dict) and i.get("type") == "analyst_context"), None)
+    row = _ensure_row_provenance(row, analyst if isinstance(analyst, dict) else None)
+    pre_expand = row.get("expand") if isinstance(row.get("expand"), dict) else {}
+    facts = pre_expand.get("canonical_financial_facts") or row.get("canonical_financial_facts")
+    provenance = pre_expand.get("advisory_provenance") or row.get("advisory_provenance")
+    analyst = pre_expand.get("analyst") or analyst
+    if isinstance(pre_expand.get("price_action"), dict):
+        pa = {**pa, **pre_expand["price_action"]}
+
     memory = row.get("memory") or {}
     if opinion and opinion.get("thrash_penalty"):
         memory = {
@@ -169,6 +219,24 @@ def _row_view(row: dict[str, Any], opinions: dict[str, Any] | None = None) -> di
             "conviction_pre_thrash": opinion.get("conviction_pre_thrash"),
         }
 
+    conflicts = []
+    if isinstance(facts, dict):
+        conflicts.extend(facts.get("conflicts") or [])
+    if isinstance(provenance, dict):
+        for c in provenance.get("conflicts") or []:
+            if c not in conflicts:
+                conflicts.append(c)
+    action_suppressed = bool(
+        (isinstance(facts, dict) and facts.get("action_suppressed"))
+        or (isinstance(provenance, dict) and provenance.get("action_suppressed"))
+        or conflicts
+    )
+    quality = None
+    if isinstance(facts, dict):
+        quality = facts.get("quality")
+    elif isinstance(row.get("data_quality"), dict):
+        quality = row["data_quality"].get("quality")
+
     dq = {
         "evidence_count": eb.get("evidence_count") if eb.get("evidence_count") is not None else len(items),
         "evidence_gaps": gaps,
@@ -177,7 +245,12 @@ def _row_view(row: dict[str, Any], opinions: dict[str, Any] | None = None) -> di
         "lot_data_status": row.get("lot_data_status") or lot.get("lot_data_status") or "",
         "invariant_violations": row.get("invariant_violations") or [],
         "basis_partial": bool(row.get("basis_partial")),
+        "conflicts": conflicts,
+        "quality": quality,
+        "action_suppressed": action_suppressed,
     }
+    if action_suppressed:
+        dq["banner"] = "DATA CONFLICT — ACTION SUPPRESSED"
 
     return {
         "symbol": row.get("symbol"),
@@ -198,8 +271,12 @@ def _row_view(row: dict[str, Any], opinions: dict[str, Any] | None = None) -> di
         "advisory_row_hash": rh,
         "row_id": f"{row.get('symbol')}:{row.get('account') or ''}|{(row.get('computed_at') or '')[:10]}|{rh[:12]}",
         "data_quality": dq,
+        "canonical_financial_facts": facts,
+        "advisory_provenance": provenance,
         "expand": {
             "lots": lot,
+            "canonical_financial_facts": facts,
+            "advisory_provenance": provenance,
             "price_action": pa,
             "analyst": analyst,
             "memory": memory,
@@ -267,6 +344,17 @@ def get_advisory_desk(*, force: bool = False, row_class: str | None = None) -> d
     for r in rows:
         c = str(r.get("row_class") or "unknown")
         by_class[c] = by_class.get(c, 0) + 1
+
+    conflicted_syms = [
+        str(r.get("symbol"))
+        for r in rows
+        if (r.get("data_quality") or {}).get("action_suppressed")
+        or (r.get("canonical_financial_facts") or {}).get("conflicts")
+    ]
+    if conflicted_syms:
+        meta = dict(meta)
+        meta["conflicted_symbols"] = conflicted_syms
+        meta["conflicted_count"] = len(conflicted_syms)
 
     llm_in_path = bool(data.get("llm_in_path")) or bool(
         opinions.get("llm_in_path") if isinstance(opinions, dict) else False

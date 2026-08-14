@@ -1,15 +1,18 @@
-"""cio_freshness_materiality_gate.py — Phase 3 Freshness & Materiality (acceptance).
+"""cio_freshness_materiality_gate.py — Freshness & Materiality (acceptance).
 
 Nothing may say ACT NOW merely because recommended_delta_usd != 0.
 
 ACT NOW requires:
   * financial-truth gate not CONFLICTED for the symbol / book
-  * holdings freshness PASS
-  * quote / market-value freshness PASS
-  * minimum evidence source count
+  * current financial state (holdings freshness PASS)
+  * current market price (quote / MV freshness PASS)
+  * real decision generated_at / revalidated_at — never an undated clock
+  * relevant current risk when concentration is cited
+  * at least one independent thesis/research/risk source beyond the book
   * no unresolved contradiction affecting sizing
-  * risk trigger considered current when used
-  * decision generated/revalidated within horizon
+
+Holdings + quote from the same holdings.json snapshot are ONE evidence group
+(financial_state), not two. Missing generated_at / revalidated_at is REVALIDATE.
 
 Otherwise labels:
   REVIEW | WATCH | REVALIDATE | DATA_CONFLICT | STALE_REFRESH_REQUIRED
@@ -34,7 +37,7 @@ from scripts.lib.cio_financial_truth_gate import (  # noqa: E402
     parse_ts,
 )
 
-FRESHNESS_MATERIALITY_VERSION = "freshness_materiality_1.0.0"
+FRESHNESS_MATERIALITY_VERSION = "freshness_materiality_1.1.0"
 
 # Operator-facing action labels (Phase 3)
 LABEL_ACT_NOW = "ACT_NOW"
@@ -66,7 +69,241 @@ RISK_FRESH_SEC = 48 * 3600
 HERMES_FRESH_SEC = 14 * 24 * 3600
 MIN_EVIDENCE_SOURCES_ACT_NOW = 2
 
+# Canonical evidence groups (Phase 4). Same-snapshot book marks collapse.
+GROUP_FINANCIAL_STATE = "financial_state"
+GROUP_MARKET_PRICE = "market_price"
+GROUP_RISK = "risk"
+GROUP_FUNDAMENTAL = "fundamental"
+GROUP_TECHNICAL = "technical"
+GROUP_SECTOR = "sector"
+GROUP_ANALYST = "analyst"
+GROUP_HERMES = "hermes"
+GROUP_TAX_LOT = "tax_lot"
+GROUP_STRATEGY = "strategy_context"
+
+EVIDENCE_GROUPS = (
+    GROUP_FINANCIAL_STATE,
+    GROUP_MARKET_PRICE,
+    GROUP_RISK,
+    GROUP_FUNDAMENTAL,
+    GROUP_TECHNICAL,
+    GROUP_SECTOR,
+    GROUP_ANALYST,
+    GROUP_HERMES,
+    GROUP_TAX_LOT,
+    GROUP_STRATEGY,
+)
+
+# Independent thesis / research / risk sources that may justify ACT NOW
+# beyond the holdings book itself.
+INDEPENDENT_THESIS_RESEARCH_RISK = frozenset({
+    GROUP_RISK,
+    GROUP_FUNDAMENTAL,
+    GROUP_TECHNICAL,
+    GROUP_SECTOR,
+    GROUP_ANALYST,
+    GROUP_HERMES,
+})
+
+_HOLDINGS_SNAPSHOT_SOURCES = frozenset({
+    "holdings.json",
+    "holdings_quote",
+    "holdings.market_value",
+    "holdings.cash",
+    "holdings",
+    "holdings.updated_at",
+})
+
 _NEUTRAL_WHY = "no new desk signal"
+
+
+def _holdings_like_source(source: Any) -> bool:
+    s = str(source or "").strip().lower()
+    if not s:
+        return True
+    if s in _HOLDINGS_SNAPSHOT_SOURCES:
+        return True
+    return s.startswith("holdings")
+
+
+def _clocks_equal(a: Any, b: Any) -> bool:
+    """True when two stamps are the same snapshot clock."""
+    if a is None or b is None:
+        return False
+    if str(a) == str(b):
+        return True
+    da, db = parse_ts(a), parse_ts(b)
+    if da is None or db is None:
+        return False
+    return abs((da - db).total_seconds()) < 1.0
+
+
+def contributing_account_rows(
+    holdings_doc: Optional[dict[str, Any]],
+    symbol: str,
+) -> list[dict[str, Any]]:
+    """Every non-cash holdings row for `symbol` (all accounts, not first only)."""
+    want = str(symbol or "").upper()
+    if not want:
+        return []
+    out: list[dict[str, Any]] = []
+    for r in (holdings_doc or {}).get("holdings") or []:
+        if not isinstance(r, dict) or r.get("is_cash"):
+            continue
+        if str(r.get("symbol") or "").upper() == want:
+            out.append(r)
+    return out
+
+
+def _merge_position_rows(
+    *,
+    holdings_doc: Optional[dict[str, Any]],
+    symbol: str,
+    position_row: Optional[dict[str, Any]] = None,
+    position_rows: Optional[list[dict[str, Any]]] = None,
+) -> list[dict[str, Any]]:
+    """Dedupe contributing rows by account; never drop a book account."""
+    by_acct: dict[str, dict[str, Any]] = {}
+
+    def _add(row: Optional[dict[str, Any]]) -> None:
+        if not isinstance(row, dict):
+            return
+        acct = str(row.get("account") or row.get("account_id") or "")
+        key = acct or f"__anon_{len(by_acct)}"
+        if key not in by_acct:
+            by_acct[key] = row
+
+    for r in position_rows or []:
+        _add(r)
+    _add(position_row)
+    for r in contributing_account_rows(holdings_doc, symbol):
+        _add(r)
+    return list(by_acct.values())
+
+
+def _row_quote_ts(row: dict[str, Any]) -> Any:
+    return (
+        row.get("price_as_of")
+        or row.get("quote_time")
+        or row.get("updated_at")
+        or row.get("as_of")
+    )
+
+
+def inspect_account_row_quotes(
+    rows: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Fail-closed quote clock across every contributing account row."""
+    reports: list[dict[str, Any]] = []
+    worst_dt: Optional[datetime] = None
+    worst_ts: Any = None
+    worst_src: Any = None
+    any_undated = False
+    any_present = False
+    for r in rows:
+        ts = _row_quote_ts(r)
+        dt = parse_ts(ts)
+        has_mark = any(
+            r.get(k) is not None
+            for k in ("current_price", "price", "market_value", "last", "quote")
+        )
+        rec = {
+            "account": r.get("account") or r.get("account_id"),
+            "symbol": r.get("symbol"),
+            "source_as_of": str(ts) if ts else None,
+            "price_source": r.get("price_source"),
+        }
+        if dt is None:
+            rec["pass"] = False
+            rec["detail"] = "undated" if (ts or has_mark) else "missing"
+            if rec["detail"] != "missing":
+                any_undated = True
+                any_present = True
+        else:
+            any_present = True
+            rec["pass"] = True
+            rec["detail"] = "ok"
+            if worst_dt is None or dt < worst_dt:
+                worst_dt = dt
+                worst_ts = ts
+                worst_src = r.get("price_source")
+        reports.append(rec)
+    return {
+        "rows": reports,
+        "worst_ts": worst_ts,
+        "worst_source": worst_src,
+        "any_undated": any_undated,
+        "any_present": any_present,
+        "row_count": len(rows),
+    }
+
+
+def _market_price_from_holdings_snapshot(
+    *,
+    stamps: dict[str, Any],
+    src: dict[str, Any],
+    extra: Optional[dict[str, Any]],
+    decision: dict[str, Any],
+    position_row: Optional[dict[str, Any]],
+) -> bool:
+    """True when quote/MV rode in on the holdings.json snapshot."""
+    extra = extra or {}
+    pos = position_row or {}
+    live_source = (
+        extra.get("quote_source")
+        or decision.get("quote_source")
+        or pos.get("price_source")
+        or src.get("quote")
+    )
+    live_ts = (
+        extra.get("quote_as_of")
+        or decision.get("quote_as_of")
+        or pos.get("price_as_of")
+        or pos.get("quote_time")
+    )
+    holdings_ts = stamps.get("holdings")
+    if live_ts and not _holdings_like_source(live_source):
+        if not _clocks_equal(live_ts, holdings_ts):
+            return False
+    if not _holdings_like_source(live_source) and not _clocks_equal(
+        stamps.get("quote"), holdings_ts
+    ):
+        # Distinct non-holdings source with a distinct clock.
+        if live_ts or extra.get("quote_as_of") or decision.get("quote_as_of"):
+            return False
+    return True
+
+
+def _risk_from_book(
+    stamps: dict[str, Any],
+    extra: Optional[dict[str, Any]],
+    decision: dict[str, Any],
+) -> bool:
+    independent = (decision or {}).get("risk_as_of") or (extra or {}).get("risk_as_of")
+    if not independent:
+        return True
+    return _clocks_equal(independent, stamps.get("holdings"))
+
+
+def _tax_from_book(
+    stamps: dict[str, Any],
+    extra: Optional[dict[str, Any]],
+    decision: dict[str, Any],
+) -> bool:
+    independent = (decision or {}).get("tax_as_of") or (extra or {}).get("tax_as_of")
+    if not independent:
+        return True
+    return _clocks_equal(independent, stamps.get("holdings"))
+
+
+def _record_ok(rec: Optional[dict[str, Any]]) -> bool:
+    if not rec:
+        return False
+    if not rec.get("present"):
+        return False
+    if rec.get("detail") in ("missing", "undated"):
+        return False
+    return bool(rec.get("pass"))
 
 
 def _fnum(v: Any, default: float = 0.0) -> float:
@@ -172,25 +409,41 @@ def collect_evidence_timestamps(
     decision: dict[str, Any],
     holdings_doc: Optional[dict[str, Any]] = None,
     position_row: Optional[dict[str, Any]] = None,
+    position_rows: Optional[list[dict[str, Any]]] = None,
     financial_truth: Optional[dict[str, Any]] = None,
     extra: Optional[dict[str, Any]] = None,
+    symbol: str = "",
 ) -> dict[str, Any]:
-    """Pull best-effort timestamps for each evidence class."""
+    """Pull best-effort timestamps for each evidence class.
+
+    Decision clock is *only* generated_at / revalidated_at. Plan computed_at
+    is not a substitute. Quote clock is the worst contributing account row.
+    """
     extra = extra or {}
     doc = holdings_doc or {}
-    pos = position_row or {}
+    sym = str(symbol or decision.get("symbol") or "").upper()
+    rows = _merge_position_rows(
+        holdings_doc=doc,
+        symbol=sym,
+        position_row=position_row,
+        position_rows=position_rows,
+    )
+    pos = rows[0] if rows else (position_row or {})
+    row_quotes = inspect_account_row_quotes(rows)
     # holdings book
     holdings_ts = doc.get("updated_at") or doc.get("as_of") or doc.get("generated_at")
-    # quote / MV from position or decision
-    quote_ts = (
-        pos.get("updated_at")
-        or pos.get("price_as_of")
-        or pos.get("quote_time")
-        or pos.get("as_of")
-        or decision.get("quote_as_of")
-        or decision.get("as_of")
-    )
-    mv_ts = pos.get("updated_at") or pos.get("as_of") or quote_ts
+    # quote / MV: worst account row, then explicit live quote, never invent now
+    quote_ts = row_quotes.get("worst_ts")
+    if quote_ts is None:
+        quote_ts = (
+            extra.get("quote_as_of")
+            or decision.get("quote_as_of")
+            or pos.get("price_as_of")
+            or pos.get("quote_time")
+            or pos.get("updated_at")
+            or pos.get("as_of")
+        )
+    mv_ts = quote_ts or pos.get("updated_at") or pos.get("as_of")
     cash_ts = holdings_ts
     # advisory / desk
     advisory_ts = (
@@ -200,16 +453,31 @@ def collect_evidence_timestamps(
         or extra.get("advisory_as_of")
     )
     analyst_ts = decision.get("analyst_as_of") or extra.get("analyst_as_of")
-    thesis_ts = decision.get("thesis_as_of") or extra.get("thesis_as_of")
+    thesis_ts = (
+        decision.get("thesis_as_of")
+        or extra.get("thesis_as_of")
+        or decision.get("research_as_of")
+        or extra.get("research_as_of")
+    )
     hermes_ts = decision.get("hermes_as_of") or extra.get("hermes_as_of")
     sector_ts = decision.get("sector_as_of") or extra.get("sector_as_of")
+    technical_ts = decision.get("technical_as_of") or extra.get("technical_as_of")
+    research_ts = decision.get("research_as_of") or extra.get("research_as_of")
+    strategy_ts = (
+        decision.get("strategy_as_of")
+        or extra.get("strategy_as_of")
+        or extra.get("strategy_context_as_of")
+    )
     risk_ts = decision.get("risk_as_of") or extra.get("risk_as_of") or holdings_ts
     tax_ts = decision.get("tax_as_of") or pos.get("last_reconciled_at") or extra.get("tax_as_of")
-    decision_ts = (
-        decision.get("revalidated_at")
-        or decision.get("generated_at")
-        or decision.get("computed_at")
-        or extra.get("plan_computed_at")
+    # Real decision clock only — never computed_at / plan_computed_at / now.
+    decision_ts = decision.get("revalidated_at") or decision.get("generated_at")
+    quote_source = (
+        extra.get("quote_source")
+        or decision.get("quote_source")
+        or row_quotes.get("worst_source")
+        or pos.get("price_source")
+        or "holdings_quote"
     )
     return {
         "holdings": holdings_ts,
@@ -221,12 +489,16 @@ def collect_evidence_timestamps(
         "thesis": thesis_ts,
         "hermes": hermes_ts,
         "sector": sector_ts,
+        "technical": technical_ts,
+        "research": research_ts,
+        "strategy": strategy_ts,
         "risk": risk_ts,
         "tax": tax_ts,
         "decision": decision_ts,
+        "account_row_quotes": row_quotes,
         "sources": {
             "holdings": "holdings.json",
-            "quote": pos.get("price_source") or "holdings_quote",
+            "quote": quote_source,
             "market_value": "holdings.market_value",
             "cash": "holdings.cash",
             "advisory": "opportunity_queue/directive",
@@ -234,6 +506,9 @@ def collect_evidence_timestamps(
             "thesis": "cio_thesis",
             "hermes": "hermes_research",
             "sector": "sector_opportunity",
+            "technical": "technicals",
+            "research": "fundamental_research",
+            "strategy": "strategy_context",
             "risk": "risk_posture/concentration",
             "tax": "tax_lots/cost_basis",
             "decision": "capital_plan/decision",
@@ -246,6 +521,7 @@ def evaluate_decision_actionability(
     *,
     holdings_doc: Optional[dict[str, Any]] = None,
     position_row: Optional[dict[str, Any]] = None,
+    position_rows: Optional[list[dict[str, Any]]] = None,
     financial_truth: Optional[dict[str, Any]] = None,
     extra: Optional[dict[str, Any]] = None,
     now: Optional[datetime] = None,
@@ -255,7 +531,15 @@ def evaluate_decision_actionability(
     now = now or datetime.now(timezone.utc)
     session = _session_context(now)
     d = decision or {}
+    extra = extra or {}
     symbol = str(d.get("symbol") or "").upper()
+    rows = _merge_position_rows(
+        holdings_doc=holdings_doc,
+        symbol=symbol,
+        position_row=position_row,
+        position_rows=position_rows,
+    )
+    primary_row = rows[0] if rows else position_row
     stance = str(d.get("stance_code") or d.get("cio_stance") or d.get("stance") or "HOLD").upper()
     if stance in ("TRIM", "EXIT", "ADD", "RE_ENTER", "HOLD", "REVIEW"):
         pass
@@ -291,11 +575,22 @@ def evaluate_decision_actionability(
     stamps = collect_evidence_timestamps(
         decision=d,
         holdings_doc=holdings_doc,
-        position_row=position_row,
+        position_row=primary_row,
+        position_rows=rows,
         financial_truth=ft,
         extra=extra,
+        symbol=symbol,
     )
     src = stamps.get("sources") or {}
+    row_quotes = stamps.get("account_row_quotes") or inspect_account_row_quotes(rows)
+    # Any undated contributing mark fails the quote/MV clock (never invent now).
+    quote_ts = stamps["quote"]
+    mv_ts = stamps["market_value"]
+    quote_present = bool(quote_ts or primary_row or row_quotes.get("any_present"))
+    mv_present = bool(mv_ts or d.get("current_value_usd") is not None or row_quotes.get("any_present"))
+    if row_quotes.get("any_undated"):
+        quote_ts = None
+        mv_ts = None
 
     # Evidence classes
     board = [
@@ -306,15 +601,15 @@ def evaluate_decision_actionability(
             session=session,
         ),
         _freshness_record(
-            name="quote", ts=stamps["quote"], max_age_sec=QUOTE_FRESH_SEC,
+            name="quote", ts=quote_ts, max_age_sec=QUOTE_FRESH_SEC,
             now=now, required_for_act_now=True, source=str(src.get("quote") or ""),
-            present=bool(stamps["quote"] or position_row),
+            present=quote_present,
             after_hours_ok=True, session=session,
         ),
         _freshness_record(
-            name="market_value", ts=stamps["market_value"], max_age_sec=QUOTE_FRESH_SEC,
+            name="market_value", ts=mv_ts, max_age_sec=QUOTE_FRESH_SEC,
             now=now, required_for_act_now=True, source=str(src.get("market_value") or ""),
-            present=bool(stamps["market_value"] or d.get("current_value_usd") is not None),
+            present=mv_present,
             after_hours_ok=True, session=session,
         ),
         _freshness_record(
@@ -368,6 +663,20 @@ def evaluate_decision_actionability(
             session=session,
         ),
         _freshness_record(
+            name="technical", ts=stamps.get("technical"), max_age_sec=SECTOR_FRESH_SEC,
+            now=now, required_for_act_now=False,
+            source=str(src.get("technical") or ""),
+            present=bool(stamps.get("technical")),
+            session=session,
+        ),
+        _freshness_record(
+            name="research", ts=stamps.get("research"), max_age_sec=THESIS_FRESH_SEC,
+            now=now, required_for_act_now=False,
+            source=str(src.get("research") or ""),
+            present=bool(stamps.get("research")),
+            session=session,
+        ),
+        _freshness_record(
             name="tax", ts=stamps["tax"], max_age_sec=HOLDINGS_FRESH_SEC,
             now=now, required_for_act_now=False,
             source=str(src.get("tax") or ""),
@@ -378,45 +687,67 @@ def evaluate_decision_actionability(
             name="decision", ts=stamps["decision"], max_age_sec=DECISION_REVALIDATE_SEC,
             now=now, required_for_act_now=True,
             source=str(src.get("decision") or ""),
-            present=True,  # evaluated now counts if undated → fail undated path
+            present=bool(stamps["decision"]),
             session=session,
         ),
     ]
-    # If decision undated, treat as freshly generated at `now` (this evaluation)
-    for rec in board:
-        if rec["name"] == "decision" and rec.get("detail") == "undated":
-            rec["pass"] = True
-            rec["quality"] = STATE_VERIFIED_CURRENT
-            rec["age_seconds"] = 0.0
-            rec["source_as_of"] = now.isoformat()
-            rec["detail"] = "evaluated_now"
+    # Undated decision clocks stay undated. Never mint a fresh-now pass.
 
     by_name = {r["name"]: r for r in board}
 
-    # Evidence source count: present classes with pass or dated advisory/research
-    evidence_sources = [
-        r for r in board
-        if r["present"] and r["name"] not in ("decision",)
-        and r.get("detail") not in ("missing",)
+    same_snapshot_quote = _market_price_from_holdings_snapshot(
+        stamps=stamps, src=src, extra=extra, decision=d, position_row=primary_row,
+    )
+    risk_book_derived = _risk_from_book(stamps, extra, d)
+    tax_book_derived = _tax_from_book(stamps, extra, d)
+
+    # Collapse same-snapshot holdings + quote + cash into financial_state.
+    groups: dict[str, dict[str, Any]] = {}
+
+    def _add_group(name: str, member: str, *, independent: bool) -> None:
+        rec = by_name.get(member)
+        if rec is None:
+            return
+        g = groups.setdefault(name, {
+            "name": name,
+            "members": [],
+            "independent": independent,
+            "ok": False,
+        })
+        if member not in g["members"]:
+            g["members"].append(member)
+        if not independent:
+            g["independent"] = False
+        if _record_ok(rec):
+            g["ok"] = True
+
+    _add_group(GROUP_FINANCIAL_STATE, "holdings", independent=False)
+    _add_group(GROUP_FINANCIAL_STATE, "cash", independent=False)
+    if same_snapshot_quote:
+        _add_group(GROUP_FINANCIAL_STATE, "quote", independent=False)
+        _add_group(GROUP_FINANCIAL_STATE, "market_value", independent=False)
+    else:
+        _add_group(GROUP_MARKET_PRICE, "quote", independent=True)
+        _add_group(GROUP_MARKET_PRICE, "market_value", independent=True)
+    _add_group(GROUP_RISK, "risk", independent=not risk_book_derived)
+    _add_group(GROUP_FUNDAMENTAL, "thesis", independent=True)
+    _add_group(GROUP_FUNDAMENTAL, "research", independent=True)
+    _add_group(GROUP_HERMES, "hermes", independent=True)
+    _add_group(GROUP_SECTOR, "sector", independent=True)
+    _add_group(GROUP_ANALYST, "analyst", independent=True)
+    _add_group(GROUP_TECHNICAL, "technical", independent=True)
+    _add_group(GROUP_TAX_LOT, "tax", independent=not tax_book_derived)
+    if by_name.get("advisory") and _record_ok(by_name["advisory"]) and _NEUTRAL_WHY not in why.lower():
+        _add_group(GROUP_STRATEGY, "advisory", independent=True)
+
+    evidence_groups = [groups[k] for k in EVIDENCE_GROUPS if k in groups and groups[k]["members"]]
+    ok_groups = [g for g in evidence_groups if g["ok"]]
+    source_count = len(ok_groups)
+    independent_groups = [
+        g["name"] for g in ok_groups
+        if g["independent"] and g["name"] in INDEPENDENT_THESIS_RESEARCH_RISK
     ]
-    # Count only those with some signal
-    source_count = 0
-    if by_name["holdings"]["present"]:
-        source_count += 1
-    if by_name["quote"]["present"] or by_name["market_value"]["present"]:
-        source_count += 1
-    if by_name["advisory"]["present"] and _NEUTRAL_WHY not in why.lower():
-        source_count += 1
-    if by_name["risk"]["present"] and "concentration" in risk.lower():
-        source_count += 1
-    if by_name["thesis"]["present"]:
-        source_count += 1
-    if by_name["hermes"]["present"]:
-        source_count += 1
-    if by_name["sector"]["present"]:
-        source_count += 1
-    if by_name["analyst"]["present"]:
-        source_count += 1
+    independent_count = len(independent_groups)
 
     required = [r for r in board if r["required_for_act_now"]]
     required_pass = all(r["pass"] for r in required)
@@ -451,11 +782,17 @@ def evaluate_decision_actionability(
     elif thin_hold or not is_action_stance:
         label = LABEL_WATCH
         reasons.append("non_actionable_stance_or_thin_signal")
-    # 4) Insufficient evidence sources
+    # 4) Insufficient distinct evidence groups (after same-snapshot collapse)
     elif source_count < min_evidence_sources:
         label = LABEL_REVIEW
         reasons.append(f"insufficient_evidence_sources:{source_count}<{min_evidence_sources}")
-    # 5) Action stance + delta but needs operator review when only single desk label
+    # 5) Book-only evidence (holdings+quote same snapshot, no independent thesis/research/risk)
+    elif independent_count < 1:
+        label = LABEL_REVIEW
+        reasons.append("insufficient_independent_evidence_beyond_book")
+        if same_snapshot_quote:
+            reasons.append("holdings_quote_same_snapshot_collapsed")
+    # 6) Action stance + delta + independent evidence
     elif is_action_stance and has_delta and source_count >= min_evidence_sources and required_pass and ft_ok_for_act:
         # ACT NOW only if financial truth ok AND not overall STALE book
         if ft_quality == STATE_STALE:
@@ -488,6 +825,11 @@ def evaluate_decision_actionability(
         "reasons": reasons,
         "evidence_source_count": source_count,
         "min_evidence_sources": min_evidence_sources,
+        "evidence_groups": evidence_groups,
+        "independent_evidence_groups": independent_groups,
+        "independent_evidence_count": independent_count,
+        "same_snapshot_quote": same_snapshot_quote,
+        "account_rows_checked": row_quotes.get("rows") or [],
         "financial_truth_quality": ft_quality,
         "financial_truth_ok_for_act_now": ft_ok_for_act,
         "session": session,
@@ -506,14 +848,14 @@ def apply_to_decisions(
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Annotate each decision; return (decisions, summary)."""
     now = now or datetime.now(timezone.utc)
-    # Index holdings rows by symbol (first match)
-    by_sym: dict[str, dict[str, Any]] = {}
+    # Index every contributing holdings row by symbol (not first-row only)
+    by_sym_rows: dict[str, list[dict[str, Any]]] = {}
     for r in (holdings_doc or {}).get("holdings") or []:
         if not isinstance(r, dict) or r.get("is_cash"):
             continue
         sym = str(r.get("symbol") or "").upper()
-        if sym and sym not in by_sym:
-            by_sym[sym] = r
+        if sym:
+            by_sym_rows.setdefault(sym, []).append(r)
 
     out: list[dict[str, Any]] = []
     counts: dict[str, int] = {k: 0 for k in ACTION_LABELS}
@@ -524,10 +866,12 @@ def apply_to_decisions(
             continue
         dd = dict(d)
         sym = str(dd.get("symbol") or "").upper()
+        rows = by_sym_rows.get(sym) or []
         ev = evaluate_decision_actionability(
             dd,
             holdings_doc=holdings_doc,
-            position_row=by_sym.get(sym),
+            position_row=rows[0] if rows else None,
+            position_rows=rows,
             financial_truth=financial_truth,
             extra=extra,
             now=now,
@@ -539,6 +883,11 @@ def apply_to_decisions(
             "version": ev["version"],
             "reasons": ev["reasons"],
             "evidence_source_count": ev["evidence_source_count"],
+            "evidence_groups": ev.get("evidence_groups"),
+            "independent_evidence_groups": ev.get("independent_evidence_groups"),
+            "independent_evidence_count": ev.get("independent_evidence_count"),
+            "same_snapshot_quote": ev.get("same_snapshot_quote"),
+            "account_rows_checked": ev.get("account_rows_checked"),
             "session": ev["session"],
             "board": ev["freshness_board"],
             "financial_truth_quality": ev["financial_truth_quality"],
