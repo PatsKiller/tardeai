@@ -41,6 +41,7 @@ from scripts.lib.cio_committee_synthesis import build_committee_synthesis_fn
 from scripts.lib.cio_domain_registry import CIODomainRegistry
 from scripts.lib.cio_evidence_ref import make_ref
 from scripts.lib.cio_investment_decision import POSITION_HOLD
+from scripts.lib.cio_outcome_learning import grade_and_learn
 from scripts.lib.cio_report_v2 import build_report_v2
 
 AUTHORITY = "READ_ONLY_ADVISORY"
@@ -289,11 +290,13 @@ def _ensure_stores(
     action_ledger: Any,
     notification_outbox: Any,
     outcome_store: Any,
+    learning_store: Any,
 ) -> dict[str, Any]:
     """Return a dict of store instances, creating sandboxed defaults as needed."""
     from scripts.lib.cio_action_ledger import CIOActionLedger
     from scripts.lib.cio_agent_handoff_queue import AgentHandoffQueue
     from scripts.lib.cio_hermes_challenge_queue import HermesChallengeQueue
+    from scripts.lib.cio_learning_candidate import CIOLearningCandidateStore
     from scripts.lib.cio_notification_outbox import NotificationOutbox
     from scripts.lib.cio_outcome_store import CIOOutcomeStore
     from scripts.lib.cio_run import CIORunStore
@@ -316,6 +319,8 @@ def _ensure_stores(
         notification_outbox = NotificationOutbox(event_store_path=store_dir / "cio_notification_outbox.jsonl")
     if outcome_store is None:
         outcome_store = CIOOutcomeStore(store_path=str(store_dir / "cio_outcomes.jsonl"))
+    if learning_store is None:
+        learning_store = CIOLearningCandidateStore(store_path=str(store_dir / "cio_learning_candidates.jsonl"))
 
     return {
         "run_store": run_store,
@@ -325,6 +330,7 @@ def _ensure_stores(
         "action_ledger": action_ledger,
         "notification_outbox": notification_outbox,
         "outcome_store": outcome_store,
+        "learning_store": learning_store,
     }
 
 
@@ -343,6 +349,7 @@ def run_full_cycle(
     action_ledger: Any = None,
     notification_outbox: Any = None,
     outcome_store: Any = None,
+    learning_store: Any = None,
     goal_store: Any = None,
     readiness_registry: Any = None,
     synthesis_fn: Any = None,
@@ -359,6 +366,11 @@ def run_full_cycle(
     disposition: str = "ACKNOWLEDGED",
     rating: Optional[int] = None,
     note: str = "",
+    outcome_status: str = "UNKNOWN",
+    what_was_right: str = "",
+    what_was_wrong: str = "",
+    unknowns: str = "",
+    outcome_symbol: Optional[str] = None,
     now: Optional[datetime] = None,
 ) -> dict[str, Any]:
     """Run one autonomous advisory cycle end-to-end and assert the evidence spine.
@@ -382,6 +394,7 @@ def run_full_cycle(
         action_ledger,
         notification_outbox,
         outcome_store,
+        learning_store,
     )
     run_store = stores["run_store"]
     wake_store = stores["wake_store"]
@@ -390,6 +403,7 @@ def run_full_cycle(
     action_ledger = stores["action_ledger"]
     notification_outbox = stores["notification_outbox"]
     outcome_store = stores["outcome_store"]
+    learning_store = stores["learning_store"]
 
     snapshot = force_snapshot or default_snapshot(now)
 
@@ -528,19 +542,32 @@ def run_full_cycle(
     decision_id = captured.get("decision_id") or ""
     final_position = captured.get("final_position") or ""
 
-    # ── Operator disposition on the first generated action (advisory-only) ──
+    # ── Operator disposition + outcome learning (advisory-only) ──────────────
+    # Phase 9 closed the loop to a durable disposition. Phase 10 closes it the
+    # rest of the way: the disposition + a measured outcome derive learning
+    # candidates (effect-constrained) and reverse-factor writebacks that feed the
+    # scorer's reliability gate. An unmeasured outcome is fail-closed: no
+    # candidates and no writebacks are fabricated.
     disposition_record = None
+    learning = None
     disposition_target = action_ids[0] if action_ids else None
     if disposition_target:
-        disposition_record = outcome_store.record_outcome(
+        learning = grade_and_learn(
+            outcome_store=outcome_store,
+            learning_store=learning_store,
             cio_action_id=disposition_target,
             operator_disposition=disposition,
-            confirmed_operator_action=f"rating:{rating}" if rating else "",
-            outcome_status="UNKNOWN",
-            context_refs=[decision_id] if decision_id else [],
+            outcome_status=outcome_status,
             result_summary=note,
+            what_was_right=what_was_right,
+            what_was_wrong=what_was_wrong,
+            unknowns=unknowns,
+            symbol=(outcome_symbol or (symbols[0] if symbols else None)),
+            context_refs=[decision_id] if decision_id else [],
             actor="operator",
         )
+        if learning.get("ok"):
+            disposition_record = learning.get("outcome")
 
     # ── Downstream composition (Phases 6, 7, 8) ─────────────────────────────
     capital_plan = build_capital_plan_from_sources(
@@ -617,6 +644,19 @@ def run_full_cycle(
             if disposition_target
             else None
         ),
+        "learning": (
+            {
+                "outcome_id": learning.get("outcome_id"),
+                "signal": learning.get("signal"),
+                "candidate_ids": [c.get("event_id") for c in (learning.get("candidates") or [])],
+                "candidate_count": learning.get("candidate_count"),
+                "writeback_count": learning.get("writeback_count"),
+                "sample_sizes": learning.get("sample_sizes"),
+                "calibration": learning.get("calibration"),
+            }
+            if learning
+            else None
+        ),
         "as_of": now.isoformat(),
     }
 
@@ -627,6 +667,7 @@ def run_full_cycle(
         action_ledger=action_ledger,
         notification_outbox=notification_outbox,
         outcome_store=outcome_store,
+        learning_store=learning_store,
         spine=spine,
     )
 
@@ -641,6 +682,7 @@ def run_full_cycle(
         "office_home": office_home,
         "capital_plan": capital_plan,
         "report_v2": report_v2,
+        "learning": learning,
         "run_projection": run_projection,
         "dispatch_result": dispatch_result,
         "pass1_status": pass1.get("status"),
@@ -663,6 +705,7 @@ def _verify_spine(
     action_ledger: Any,
     notification_outbox: Any,
     outcome_store: Any,
+    learning_store: Any,
     spine: dict[str, Any],
 ) -> dict[str, Any]:
     """Assert the full evidence spine and store integrity. Returns check results."""
@@ -772,6 +815,44 @@ def _verify_spine(
         outcomes = outcome_store.get_outcomes(disp["cio_action_id"])
         disp_ok = bool(outcomes)
     _check("disposition_recorded", disp_ok, str(disp))
+
+    # 9b. outcome learning loop closed (Phase 10). A measured outcome derives
+    #     effect-constrained learning candidates + reverse writebacks; an
+    #     unmeasured outcome is fail-closed (no candidates, no writebacks).
+    learning = spine.get("learning") or {}
+    if learning:
+        _check("learning_loop_closed", bool(learning.get("outcome_id")), str(learning.get("signal")))
+        cand_ids = learning.get("candidate_ids") or []
+        if cand_ids:
+            cand_ok = True
+            cand_detail = ""
+            by_id = {e.get("event_id"): e for e in learning_store.list_candidates()}
+            for cid in cand_ids:
+                ev = by_id.get(cid)
+                if not ev:
+                    cand_ok = False
+                    cand_detail = f"candidate {cid} missing from store"
+                    break
+                p = ev.get("payload") or {}
+                if p.get("parent_outcome_id") != learning.get("outcome_id"):
+                    cand_ok = False
+                    cand_detail = f"candidate {cid} parent_outcome_id mismatch"
+                    break
+                if p.get("parent_action_id") != disp.get("cio_action_id"):
+                    cand_ok = False
+                    cand_detail = f"candidate {cid} parent_action_id mismatch"
+                    break
+            _check("learning_candidates_linked", cand_ok, cand_detail or f"candidates={len(cand_ids)}")
+        else:
+            _note("no_learning_candidates", True, "no measurable signal — no candidates minted")
+        gates = (learning.get("calibration") or {}).get("gates") or {}
+        inflated = [
+            f for f, g in gates.items()
+            if g.get("effective_weight", 0.0) > g.get("base_weight", 0.0) + 1e-9
+        ]
+        _check("calibration_not_inflated", not inflated, "inflated=%s" % inflated or "ok")
+    else:
+        _note("learning_loop_not_run", False, "no disposition target")
 
     # 10. store integrity (hash chains)
     if hasattr(run_store, "verify_integrity"):

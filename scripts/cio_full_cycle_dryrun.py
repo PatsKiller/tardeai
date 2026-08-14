@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""cio_full_cycle_dryrun.py — Phase 9 full-system integration dry-run CLI.
+"""cio_full_cycle_dryrun.py — Phase 9/10 full-system integration dry-run CLI.
 
 Runs one autonomous advisory cycle end-to-end (wake → snapshot → specialists →
-synthesis → capital plan → report v2 → office home → disposition) and prints
-the complete evidence spine + store integrity.
+synthesis → capital plan → report v2 → office home → disposition → outcome
+learning) and prints the complete evidence spine + store integrity + learning.
 
 Modes:
   --sandbox (default)  self-contained run in a fresh temp directory.
@@ -18,6 +18,8 @@ would, but using deterministic dry-run fixtures for inputs.
 Examples:
   python3 scripts/cio_full_cycle_dryrun.py
   python3 scripts/cio_full_cycle_dryrun.py --disposition ACCEPTED --rating 4
+  python3 scripts/cio_full_cycle_dryrun.py --disposition REJECTED --outcome-status NEGATIVE \\
+      --wrong "Overweighted energy" --symbol XOM
   python3 scripts/cio_full_cycle_dryrun.py --json
   python3 scripts/cio_full_cycle_dryrun.py --live
 """
@@ -97,6 +99,32 @@ def render_text(res: dict) -> str:
     lines.append(f"  report_v2 rendered   : {bool(report_v2.get('html'))}")
     coverage = report_v2.get("coverage") or {}
     lines.append(f"  report coverage      : {coverage.get('source_traceability_pct', '—')}")
+    lines.append("")
+
+    learning = res.get("learning") or {}
+    lines.append("─ Outcome learning (Phase 10) ─" + "─" * 41)
+    lines.append(f"  signal          : {learning.get('signal') or '—'}")
+    lines.append(f"  candidates      : {learning.get('candidate_count', 0)}")
+    for c in (learning.get("candidates") or []):
+        p = c.get("payload") or {}
+        lines.append(f"    · {p.get('lesson_title', '—')}  [{p.get('proposed_effect', '—')}]")
+    lines.append(f"  writebacks      : {learning.get('writeback_count', 0)}")
+    for wb in (learning.get("writebacks") or []):
+        lines.append(
+            f"    · {wb.get('factor')} {wb.get('symbol', '—')} "
+            f"{wb.get('realized_outcome') or wb.get('options_edge') or wb.get('score') or '—'} "
+            f"({wb.get('evidence_class', '—')})"
+        )
+    cal = learning.get("calibration") or {}
+    cal_gates = cal.get("gates") or {}
+    if cal_gates:
+        for f, g in cal_gates.items():
+            lines.append(
+                f"    · {f}: base={g.get('base_weight')} eff={g.get('effective_weight')} "
+                f"n={g.get('n')}/{g.get('n_min')} trusted={g.get('trusted')} ({g.get('evidence_class')})"
+            )
+    else:
+        lines.append("    · (no reverse samples — all factors damped to zero)")
     lines.append("=" * 72)
     return "\n".join(lines)
 
@@ -110,6 +138,13 @@ def main(argv: list[str] | None = None) -> int:
                         help="operator disposition (ACKNOWLEDGED/ACCEPTED/DEFERRED/REJECTED/DONE)")
     parser.add_argument("--rating", type=int, default=None, help="operator rating (1-5)")
     parser.add_argument("--note", type=str, default="", help="operator note")
+    parser.add_argument("--outcome-status", type=str, default="UNKNOWN",
+                        help="measured outcome status (POSITIVE/NEGATIVE/MIXED/UNKNOWN/NOT_MEASURABLE)")
+    parser.add_argument("--right", type=str, default="", help="what went right (drives retrieval learning)")
+    parser.add_argument("--wrong", type=str, default="", help="what went wrong (drives calibration learning)")
+    parser.add_argument("--unknowns", type=str, default="", help="open questions (drives research checklist)")
+    parser.add_argument("--symbol", type=str, default=None,
+                        help="symbol to fold a reverse writeback onto (default: first holding)")
     parser.add_argument("--json", action="store_true", help="emit JSON instead of text")
     args = parser.parse_args(argv)
 
@@ -131,6 +166,11 @@ def main(argv: list[str] | None = None) -> int:
         disposition=args.disposition,
         rating=args.rating,
         note=args.note,
+        outcome_status=args.outcome_status,
+        what_was_right=args.right,
+        what_was_wrong=args.wrong,
+        unknowns=args.unknowns,
+        outcome_symbol=args.symbol,
         now=datetime.now(timezone.utc),
     )
 

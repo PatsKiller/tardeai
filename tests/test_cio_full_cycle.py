@@ -114,6 +114,45 @@ def test_full_cycle_run_store_specialist_counter_is_clean(tmp_path):
     assert run["counters"]["specialist_calls"] == 3
 
 
+# ── Phase 10 outcome learning ─────────────────────────────────────────────────
+
+
+def test_full_cycle_learning_loop_closes_with_graded_outcome(tmp_path):
+    res = _run(
+        store_dir=tmp_path,
+        disposition="REJECTED",
+        outcome_status="NEGATIVE",
+        what_was_wrong="Overweighted energy ahead of a supply glut",
+        unknowns="Supply/demand balance timing",
+        outcome_symbol="XOM",
+    )
+    assert res["ok"] is True
+    learning = res["learning"]
+    assert learning["signal"] == "miss"
+    assert learning["candidate_count"] >= 1
+    assert learning["writeback_count"] >= 1
+
+    # Reverse writeback folds the graded outcome onto the symbol (realized).
+    wb = next(w for w in learning["writebacks"] if w["factor"] == "thesis_outcome")
+    assert wb["symbol"] == "XOM"
+    assert wb["realized_outcome"] == "loss"
+    assert wb["evidence_class"] == "realized"
+
+    # Spine carries the learning block and integrity still fully passes.
+    assert res["spine"]["learning"]["candidate_count"] >= 1
+    assert res["integrity"]["passed"] is True
+    assert res["integrity"]["passed_count"] == res["integrity"]["total_count"]
+
+
+def test_full_cycle_learning_fail_closed_on_unmeasured(tmp_path):
+    res = _run(store_dir=tmp_path, disposition="ACKNOWLEDGED", outcome_status="UNKNOWN")
+    assert res["ok"] is True
+    assert res["learning"]["signal"] == "skip"
+    assert res["learning"]["candidate_count"] == 0
+    assert res["learning"]["writeback_count"] == 0
+    assert res["integrity"]["passed"] is True
+
+
 # ── Fail-soft behavior ─────────────────────────────────────────────────────────
 
 
