@@ -1093,8 +1093,15 @@ def build_position_decisions(
             "selection_rationale": sizing.get("selection_rationale"),
             "tranches": sizing.get("tranches"),
             "tax_class": tax_class,
-            "generated_at": now.isoformat(),
-            "revalidated_at": now.isoformat(),
+            "decision_generated_at": _decision_source_clock(p, now),
+            "decision_revalidated_at": None,
+            "decision_input_digest": _decision_digest(symbol, stance, delta, p),
+            "decision_evidence_digest": _decision_digest(symbol, stance, delta, p, extra="evidence"),
+            "decision_policy_version": "capital_plan_1.3.0",
+            "decision_revalidation_reason": "builder_ran_not_evidence_revalidation",
+            # Keep generated_at as the evidence clock, never "now".
+            "generated_at": _decision_source_clock(p, now),
+            "revalidated_at": None,
         })
 
     rows.sort(key=lambda r: (-abs(r["recommended_delta_usd"]), -r["current_value_usd"]))
@@ -1105,12 +1112,40 @@ def build_position_decisions(
         # Prefer aggregated list as the primary decision table (one row per symbol)
         if aggregated:
             for a in aggregated:
-                a.setdefault("generated_at", now.isoformat())
-                a.setdefault("revalidated_at", now.isoformat())
+                a.setdefault("generated_at", a.get("decision_generated_at") or _decision_source_clock(a, now))
+                a.setdefault("revalidated_at", a.get("decision_revalidated_at"))
+                a.setdefault("decision_input_digest", a.get("decision_input_digest"))
             return aggregated
     except Exception:
         pass
     return rows
+
+def _decision_source_clock(pos: dict[str, Any], now: datetime) -> str:
+    """Evidence clock — never 'builder ran now'."""
+    for key in (
+        "canonical_mark_as_of", "source_as_of", "price_as_of", "quote_time",
+        "broker_position_as_of", "last_updated",
+    ):
+        v = pos.get(key)
+        if v:
+            return str(v)
+    # Last resort: date-only as-of, still not wall-clock now.
+    return now.date().isoformat()
+
+
+def _decision_digest(symbol: str, stance: str, delta: float, pos: dict[str, Any], extra: str = "") -> str:
+    raw = json.dumps({
+        "symbol": symbol,
+        "stance": stance,
+        "delta": round(float(delta or 0), 2),
+        "mv": pos.get("market_value_usd") or pos.get("current_value_usd"),
+        "mark": pos.get("canonical_mark") or pos.get("current_price"),
+        "mark_as_of": pos.get("canonical_mark_as_of") or pos.get("source_as_of"),
+        "broker_mv": pos.get("broker_market_value"),
+        "extra": extra,
+    }, sort_keys=True, default=str)
+    return hashlib.sha256(raw.encode()).hexdigest()[:32]
+
 
 def _funding_for(stance: str, delta: float) -> str:
     if stance == "EXIT":

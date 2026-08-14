@@ -220,33 +220,55 @@ def check_position_row(
         if shares is not None and px is not None:
             mv_basis = "shares_x_canonical_mark"
 
-    # shares × CANONICAL MARK ≈ market_value.
-    # When they disagree the broker MV is on a different mark — label that
-    # honestly instead of pretending price/current_price are one "current".
-    if shares is not None and shares > 0 and px is not None and px > 0:
-        implied = shares * px
-        tol = dollar_tol(mv or implied)
-        if abs(implied - (mv or 0.0)) > tol:
-            exceptions.append({
-                "type": "shares_x_price_ne_mv",
-                "label": "broker_mv_uses_different_mark",
-                "symbol": symbol,
-                "account": account,
-                "shares": shares,
-                "canonical_price": px,
-                "canonical_mark": px,
-                "canonical_price_key": named.get("canonical_mark_source") or price_info["canonical_price_key"],
-                "canonical_mark_source": named.get("canonical_mark_source"),
-                "prices": price_info.get("genuine_marks") or price_info["prices"],
-                "implied_price_from_mv": named.get("implied_price_from_mv"),
-                "implied_mv": round(implied, 4),
-                "market_value": mv,
-                "mv_basis": "broker",
-                "abs_err": round(abs(implied - (mv or 0.0)), 4),
-                "tol": round(tol, 4),
-            })
-            quality = STATE_CONFLICTED
-            mv_basis = "broker"
+    # Independent source truth: broker MV and analytical MV (shares × mark)
+    # may differ. That is a typed residual, not automatically CONFLICTED.
+    notes: list[dict[str, Any]] = []
+    try:
+        from scripts.lib.cio_source_residual import (
+            MATERIAL_RESIDUALS,
+            classify_valuation_residual,
+        )
+        residual = classify_valuation_residual(named)
+    except Exception:
+        residual = {}
+    if residual.get("residual_status") in (MATERIAL_RESIDUALS if residual else ()):
+        exceptions.append({
+            "type": "valuation_residual_material",
+            "label": residual.get("residual_status"),
+            "symbol": symbol,
+            "account": account,
+            **{k: residual.get(k) for k in (
+                "broker_market_value", "analytical_market_value",
+                "valuation_residual_usd", "canonical_mark",
+                "canonical_mark_source",
+            )},
+        })
+        quality = STATE_CONFLICTED
+        mv_basis = "broker"
+    elif residual.get("valuation_residual_usd") not in (None, 0, 0.0):
+        notes.append({
+            "type": "source_time_residual",
+            "label": residual.get("residual_status") or "EXPECTED_SOURCE_TIMESTAMP_DIFFERENCE",
+            "symbol": symbol,
+            "account": account,
+            "broker_market_value": residual.get("broker_market_value"),
+            "analytical_market_value": residual.get("analytical_market_value"),
+            "valuation_residual_usd": residual.get("valuation_residual_usd"),
+            "canonical_mark": residual.get("canonical_mark"),
+            "canonical_mark_source": residual.get("canonical_mark_source"),
+            "broker_position_as_of": residual.get("broker_position_as_of"),
+            "canonical_mark_as_of": residual.get("canonical_mark_as_of"),
+            "material": False,
+        })
+        mv_basis = "broker"
+    # Proxy used as exact valuation is always material.
+    if bool(row.get("proxy") or row.get("not_for_valuation")) and str(row.get("mv_basis") or "") == "shares_x_canonical_mark":
+        exceptions.append({
+            "type": "proxy_used_for_valuation",
+            "symbol": symbol,
+            "account": account,
+        })
+        quality = STATE_CONFLICTED
 
     # dual_price only for two genuine marks — not mark vs implied-from-MV
     if conflicts.get("dual_price_conflict") or price_info["conflicted"]:
@@ -342,6 +364,7 @@ def check_position_row(
         "quality": quality,
         "actionable": actionable,
         "exceptions": exceptions,
+        "reconciliation_notes": notes,
         "price_fields": price_info.get("genuine_marks") or price_info.get("prices") or {},
         "source": row.get("source") or row.get("price_source"),
         "as_of": as_of,
@@ -531,20 +554,27 @@ def evaluate_holdings_document(
         for r in pos_rows
     ]
     pos_exceptions = [e for pr in position_results for e in pr["exceptions"]]
+    reconciliation_notes = [n for pr in position_results for n in (pr.get("reconciliation_notes") or [])]
     conflicted_symbols = sorted({
         pr["symbol"] for pr in position_results if pr["quality"] == STATE_CONFLICTED and pr["symbol"]
     })
     non_actionable = [pr for pr in position_results if not pr["actionable"]]
 
     all_exceptions = book_exceptions + meta_exceptions + account_exceptions + pos_exceptions
+    material_types = (
+        "dual_price_conflict", "valuation_residual_material", "proxy_used_for_valuation",
+        "weight_mismatch", "hidden_residual_injection",
+        "upl_mismatch",
+    )
     ok = len(book_exceptions) == 0 and meta_quality not in (STATE_CONFLICTED,) and len(
-        [e for e in pos_exceptions if e.get("type") in (
-            "shares_x_price_ne_mv", "dual_price_conflict", "weight_mismatch", "upl_mismatch",
-        )]
+        [e for e in pos_exceptions if e.get("type") in material_types]
     ) == 0
 
-    # overall quality
-    if any(e.get("type") == "dual_price_conflict" or e.get("type") == "shares_x_price_ne_mv" for e in all_exceptions):
+    # overall quality — source-time residuals are notes, not CONFLICTED
+    if any(e.get("type") in (
+        "dual_price_conflict", "valuation_residual_material", "proxy_used_for_valuation",
+        "hidden_residual_injection",
+    ) for e in all_exceptions):
         overall = STATE_CONFLICTED
     elif meta_quality == STATE_STALE or any(e.get("type") == "holdings_meta_stale" for e in all_exceptions):
         overall = STATE_STALE
@@ -591,6 +621,12 @@ def evaluate_holdings_document(
         "positions": position_results,
         "exceptions": all_exceptions,
         "exception_count": len(all_exceptions),
+        "material_exception_count": len([e for e in all_exceptions if e.get("type") in (
+            "dual_price_conflict", "valuation_residual_material", "proxy_used_for_valuation",
+            "hidden_residual_injection", "weight_mismatch",
+        )]),
+        "reconciliation_notes": reconciliation_notes,
+        "nonmaterial_reconciliation_note_count": len(reconciliation_notes),
         "conflicted_symbols": conflicted_symbols,
         "suppress_act_now_symbols": suppress_act_now_symbols,
         "non_actionable_position_count": len(non_actionable),

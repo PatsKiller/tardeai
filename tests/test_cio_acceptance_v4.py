@@ -44,9 +44,20 @@ def _clean_snap(**overrides):
             "origin_main_sha": sha,
         },
         "git_manifest_hash": "abc",
+        "remote_sha_truth": {
+            "proven": True,
+            "fetch_ok": True,
+            "ls_remote_ok": True,
+            "local_matches_remote": True,
+            "remote_main_sha": sha,
+            "local_origin_main_sha": sha,
+            "main_commit_class": "RUNTIME_CONTENT",
+            "attested_runtime_content_sha": sha,
+        },
         "drive_proven": True,
         "drive_canonical_hash": "abc",
         "drive_duplicate_count": 1,
+        "drive_canonical_file_id": "file-abc",
         "financial_truth_gate": {
             "overall_quality": "VERIFIED_CURRENT",
             "ok": True,
@@ -92,6 +103,17 @@ def _clean_snap(**overrides):
         "report_synthetic": False,
         "visual_qa_artifact": "/tmp/qa",
         "visual_qa_pages": 8,
+        "qa_pdf_sha256": "pdf" + "a" * 60,
+        "report_pdf_sha256": "pdf" + "a" * 60,
+        "pdf_page_count": 8,
+        "qa_result": "PASS",
+        "qa_instance_id": "inst-1",
+        "report_instance": {
+            "report_instance_id": "inst-1",
+            "html_sha256": "h" * 64,
+            "pdf_sha256": "pdf" + "a" * 60,
+            "docx_sha256": "d" * 64,
+        },
         "cio_token_env_set": True,
         "general_token_used_in_cio_transport": False,
         "telegram_interdict_on": False,
@@ -104,9 +126,14 @@ def _clean_snap(**overrides):
             "duplicate": False,
             "release_sha": sha,
             "repeat_unchanged_sends": 0,
+            "repeat_attempted": True,
         },
         "authority_surfaces": [
             {"name": "capital_plan", "authority": "READ_ONLY_ADVISORY"},
+            {"name": "cio_home", "authority": "READ_ONLY_ADVISORY"},
+            {"name": "report", "authority": "READ_ONLY_ADVISORY"},
+            {"name": "advisory", "authority": "READ_ONLY_ADVISORY"},
+            {"name": "telegram_payload", "authority": "READ_ONLY_ADVISORY"},
         ],
         "cio_hardening_required": True,
         "cio_hardening_green_on_sha": True,
@@ -319,6 +346,9 @@ def test_p0_open_forces_acceptance_fail():
 def test_all_green_snapshot_can_pass():
     v = evaluate_live_snapshot(_clean_snap())
     assert v["PRODUCTION_ACCEPTANCE"] == "PASS"
+    assert v["CORE_CIO_PRODUCTION_ACCEPTANCE"] == "PASS"
+    assert v["RESEARCH_GOVERNANCE_ACCEPTANCE"] == "NOT_YET_INTEGRATED"
+    assert v["FULL_INVESTMENT_OFFICE_ACCEPTANCE"] == "FAIL"
     assert v["OPEN_P0"] == 0
     assert v["OPEN_P1"] == 0
     assert v["categories"]["STOCK_ALMANAC_INTEGRATION"] == "FAIL"  # never auto-pass

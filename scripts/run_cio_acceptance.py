@@ -36,7 +36,8 @@ ADVISORY_HUB = REPO / "apps/command-center-v3/src/pages/AdvisoryDeskHub.tsx"
 
 
 def _evidence_dir(now: datetime) -> Path:
-    d = REPO / "data" / "audit" / f"cio_acceptance_{now.strftime('%Y%m%d')}"
+    run_id = now.strftime("%Y%m%dT%H%M%SZ")
+    d = REPO / "data" / "audit" / "cio_acceptance" / run_id
     d.mkdir(parents=True, exist_ok=True)
     return d
 
@@ -79,10 +80,18 @@ def _transport_uses_general_token() -> bool:
 
 
 def _collect_live(now: datetime, ev: Path) -> dict[str, Any]:
+    from scripts.lib.cio_acceptance_purity import compare_audited, snapshot_audited_files
+    from scripts.lib.cio_remote_sha_truth import resolve_remote_sha_truth
+
+    man_path = REPO / "docs/investment-office/RELEASE_MANIFEST.json"
+    audited_before = snapshot_audited_files(extra=[man_path], holdings=HOLDINGS)
+
     live = ""
     if (LIVE_ROOT / "BUILD_SHA").is_file():
         live = (LIVE_ROOT / "BUILD_SHA").read_text(encoding="utf-8").strip().splitlines()[0].strip()
-    main = _git_sha("origin/main")
+    remote_truth = resolve_remote_sha_truth(REPO, fetch=True)
+    (ev / "remote_git_truth.json").write_text(json.dumps(remote_truth, indent=2, default=str))
+    main = remote_truth.get("remote_main_sha") or _git_sha("origin/main")
 
     man_path = REPO / "docs/investment-office/RELEASE_MANIFEST.json"
     manifest = json.loads(man_path.read_text()) if man_path.is_file() else {}
@@ -179,16 +188,25 @@ def _collect_live(now: datetime, ev: Path) -> dict[str, Any]:
     cio_token_set = bool(os.environ.get("TELEGRAM_CIO_BOT_TOKEN"))
     interdict = os.environ.get("CIO_TELEGRAM_INTERDICT", "").lower() in ("1", "true", "yes", "on")
     general_used = _transport_uses_general_token()
-    # Prefer the per-run evidence copy; else the Phase 10 canonical DRY receipt.
+    live_canary = REPO / "data" / "audit" / "cio_telegram_canary_receipt_live.json"
     canonical_canary = REPO / "data" / "audit" / "cio_telegram_canary_receipt.json"
+    ev_live = ev / "cio_telegram_canary_receipt_live.json"
     ev_canary = ev / "cio_telegram_canary_receipt.json"
-    canary_path = ev_canary if ev_canary.is_file() else canonical_canary
     canary = None
-    if canary_path.is_file():
+    for p in (live_canary, ev_live, ev_canary, canonical_canary):
+        if not p.is_file():
+            continue
         try:
-            canary = json.loads(canary_path.read_text(encoding="utf-8"))
+            cand = json.loads(p.read_text(encoding="utf-8"))
         except Exception:
-            canary = None
+            continue
+        if not isinstance(cand, dict):
+            continue
+        if cand.get("proof") == "live" and cand.get("sent") is True:
+            canary = cand
+            break
+        if canary is None:
+            canary = cand
     proof_general = None
     if isinstance(canary, dict) and "general_sends" in canary:
         try:
@@ -251,10 +269,16 @@ def _collect_live(now: datetime, ev: Path) -> dict[str, Any]:
     ):
         if isinstance(obj, dict):
             surfaces.append({"name": name, "authority": obj.get("authority")})
+    if isinstance(canary, dict):
+        surfaces.append({
+            "name": "telegram_payload",
+            "authority": canary.get("authority") or "READ_ONLY_ADVISORY",
+        })
 
     drive_proven = False
     drive_hash = ""
-    drive_dups = 0
+    drive_dups = None  # unknown must not become 0
+    drive_file_id = "1yGys5GswSQWNzimGvTZh71I1sC9EtUaM"
     git_sha256 = ""
     git_bytes = (REPO / "docs/investment-office/RELEASE_MANIFEST.json")
     try:
@@ -264,25 +288,65 @@ def _collect_live(now: datetime, ev: Path) -> dict[str, Any]:
         env.setdefault("GOG_ACCOUNT", "john@jwwhiting.com")
         tmp = ev / "drive_RELEASE_MANIFEST.json"
         dl = subprocess.run(
-            ["gog", "drive", "download", "1yGys5GswSQWNzimGvTZh71I1sC9EtUaM",
+            ["gog", "drive", "download", drive_file_id,
              "--out", str(tmp), "--account", env["GOG_ACCOUNT"], "--no-input"],
             capture_output=True, text=True, timeout=40, env=env,
         )
-        if tmp.is_file():
+        if tmp.is_file() and tmp.stat().st_size > 20:
             drive_hash = hashlib.sha256(tmp.read_bytes()).hexdigest()
             drive_proven = bool(git_sha256) and drive_hash == git_sha256
-        # Count identically named current files via search is optional
+        # Name-uniqueness is not queried here — leave count unknown.
     except Exception:
         drive_proven = False
+
+    inst_path = REPO / "data" / "audit" / "cio_live_report_dry" / "cio_live_report.instance_manifest.json"
+    report_instance = {}
+    if inst_path.is_file():
+        try:
+            report_instance = json.loads(inst_path.read_text(encoding="utf-8"))
+        except Exception:
+            report_instance = {}
+    qa_pdf = ""
+    qa_result = ""
+    qa_instance = ""
+    if qa_json.is_file():
+        try:
+            qa = json.loads(qa_json.read_text(encoding="utf-8"))
+            qa_pdf = str(qa.get("pdf_sha256") or "")
+            qa_result = str(qa.get("result") or "")
+            qa_instance = str(qa.get("report_instance_id") or "")
+        except Exception:
+            pass
+
+    audited_after = snapshot_audited_files(extra=[man_path], holdings=HOLDINGS)
+    purity = compare_audited(audited_before, audited_after)
+    (ev / "holdings_source_snapshot.json").write_text(json.dumps({
+        "before": audited_before, "after": audited_after, "purity": purity,
+    }, indent=2, default=str)[:200_000])
 
     snap = {
         "live_sha": live,
         "main_sha": main,
+        "remote_sha_truth": remote_truth,
         "manifest": manifest,
         "git_manifest_hash": git_sha256 if git_bytes.is_file() else str(manifest.get("manifest_hash") or ""),
         "drive_proven": drive_proven,
         "drive_canonical_hash": drive_hash,
         "drive_duplicate_count": drive_dups,
+        "drive_canonical_file_id": drive_file_id,
+        "acceptance_mutated_audited_book": not purity.get("audited_state_unchanged", True),
+        "report_instance": {
+            "report_instance_id": report_instance.get("report_id") or report_instance.get("report_instance_id"),
+            "html_sha256": (report_instance.get("output_sha256") or {}).get("html"),
+            "pdf_sha256": (report_instance.get("output_sha256") or {}).get("pdf"),
+            "docx_sha256": (report_instance.get("output_sha256") or {}).get("docx"),
+            "portfolio_snapshot_hash": (report_instance.get("input_hashes") or {}).get("holdings.json"),
+        },
+        "report_pdf_sha256": (report_instance.get("output_sha256") or {}).get("pdf") or "",
+        "pdf_page_count": int((report_instance.get("page_counts") or {}).get("pdf") or 0),
+        "qa_pdf_sha256": qa_pdf,
+        "qa_result": qa_result,
+        "qa_instance_id": qa_instance,
         "financial_truth_gate": ft,
         "financial_exceptions": exceptions,
         "capital_plan": plan or {},
@@ -343,7 +407,11 @@ def main() -> int:
     )
     summary = {
         "acceptance_version": ACCEPTANCE_VERSION,
+        "CORE_CIO_PRODUCTION_ACCEPTANCE": result.get("CORE_CIO_PRODUCTION_ACCEPTANCE"),
+        "RESEARCH_GOVERNANCE_ACCEPTANCE": result.get("RESEARCH_GOVERNANCE_ACCEPTANCE"),
+        "FULL_INVESTMENT_OFFICE_ACCEPTANCE": result.get("FULL_INVESTMENT_OFFICE_ACCEPTANCE"),
         "PRODUCTION_ACCEPTANCE": result["PRODUCTION_ACCEPTANCE"],
+        "PRODUCTION_ACCEPTANCE_ALIAS_OF": result.get("PRODUCTION_ACCEPTANCE_ALIAS_OF"),
         "categories": result["categories"],
         "OPEN_P0": result["OPEN_P0"],
         "OPEN_P1": result["OPEN_P1"],

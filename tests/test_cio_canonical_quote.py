@@ -60,12 +60,13 @@ def test_dxcm_shape_implied_from_mv_not_dual_price():
 
     r = check_position_row(row, portfolio_value=1_284_243.30)
     types = _types(r)
-    labels = _labels(r)
     assert "dual_price_conflict" not in types
-    assert "shares_x_price_ne_mv" in types
-    assert "broker_mv_uses_different_mark" in labels
+    # Independent broker MV vs mark is a typed residual note, not CONFLICTED.
+    assert "shares_x_price_ne_mv" not in types
+    notes = r.get("reconciliation_notes") or []
+    assert notes
     assert r["mv_basis"] == "broker"
-    assert r["quality"] == STATE_CONFLICTED
+    assert r["quality"] == STATE_VERIFIED_AS_OF
     assert abs(r["canonical_price"] - 89.73) < 1e-9
 
 

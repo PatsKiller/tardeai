@@ -182,11 +182,14 @@ def _merge_position_rows(
 
 
 def _row_quote_ts(row: dict[str, Any]) -> Any:
+    """Quote clock is source_as_of. Transform/reconcile clocks are not freshness."""
     return (
-        row.get("price_as_of")
+        row.get("source_as_of")
+        or row.get("canonical_mark_as_of")
+        or row.get("price_as_of")
         or row.get("quote_time")
-        or row.get("updated_at")
-        or row.get("as_of")
+        or row.get("quote_as_of")
+        # Generic updated_at / reconciled_at / generated_at are NOT quote time.
     )
 
 
@@ -438,12 +441,16 @@ def collect_evidence_timestamps(
         quote_ts = (
             extra.get("quote_as_of")
             or decision.get("quote_as_of")
+            or pos.get("source_as_of")
+            or pos.get("canonical_mark_as_of")
             or pos.get("price_as_of")
             or pos.get("quote_time")
-            or pos.get("updated_at")
-            or pos.get("as_of")
         )
-    mv_ts = quote_ts or pos.get("updated_at") or pos.get("as_of")
+    mv_ts = (
+        quote_ts
+        or pos.get("broker_position_as_of")
+        or pos.get("source_as_of")
+    )
     cash_ts = holdings_ts
     # advisory / desk
     advisory_ts = (

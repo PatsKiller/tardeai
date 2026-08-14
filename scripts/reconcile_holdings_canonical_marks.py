@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Align holdings marks/MV/UPL/timestamps to the named-quote contract.
+"""Repair/migration utility — NOT an acceptance step.
+
+Stamps analytical mark/MV fields. Must preserve raw broker values and
+source timestamps. Must not mint quote freshness via updated_at=now.
+
+Acceptance must never invoke this script to turn G4/G5 green.
 
 READ_ONLY_ADVISORY. Does not call brokers. Writes a timestamped backup first.
 """
@@ -45,21 +50,19 @@ def reconcile(doc: dict, now: datetime) -> dict:
             continue
         shares = _f(row.get("shares") if row.get("shares") is not None else row.get("quantity"))
         mark = _f(row.get("canonical_mark"))
+        # Preserve broker facts. Do not overwrite market_value / price with the mark.
+        if row.get("broker_market_value") is None and row.get("market_value") is not None:
+            if str(row.get("mv_basis") or "") != "shares_x_canonical_mark":
+                row["broker_market_value"] = row.get("market_value")
+                row["broker_source"] = row.get("broker_source") or "broker_position_snapshot"
+                row["broker_ingested_at"] = row.get("broker_ingested_at") or row.get("as_of")
         if shares is not None and mark is not None and shares > 0:
-            mv = round(shares * mark, 2)
-            row["current_price"] = mark
-            row["price"] = mark
-            row["market_value"] = mv
-            row["canonical_mark"] = mark
+            row["analytical_market_value"] = round(shares * mark, 2)
             basis = _f(row.get("cost_basis"))
             if basis is not None:
-                upl = round(mv - basis, 2)
-                row["gain_loss"] = upl
-                row["unrealized_pl"] = upl
-                if basis != 0:
-                    row["gain_loss_pct"] = round(upl / basis * 100.0, 4)
-            row["mv_basis"] = "shares_x_canonical_mark"
-        row["updated_at"] = iso
+                row["analytical_unrealized_pl_usd"] = round(row["analytical_market_value"] - basis, 2)
+        row["transformed_at"] = iso
+        row["reconciled_at"] = iso
         new_rows.append(row)
     out["holdings"] = new_rows
 
@@ -72,11 +75,10 @@ def reconcile(doc: dict, now: datetime) -> dict:
         elif not r.get("is_loan"):
             long_mv += mv
     derived = round(cash + long_mv, 2)
-    out["as_of"] = now.date().isoformat()
-    out["generated_at"] = iso
-    out["updated_at"] = iso
-    out["last_repriced"] = iso
     out["reconciled_at"] = iso
+    out["transformed_at"] = iso
+    # Do not stamp updated_at / generated_at / last_repriced — those are not
+    # source clocks and must not mint freshness.
     totals = dict(out.get("portfolio_totals") or {})
     totals["total_value"] = derived
     totals["total_cash"] = round(cash, 2)
