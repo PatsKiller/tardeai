@@ -4,33 +4,33 @@
 > `validate` fails if HEAD or product versions disagree with this file.
 > Authority: **READ_ONLY_ADVISORY** — no broker / order / stop / 2FA.
 
-**Status:** `production`  
-**Branch:** `main`  
-**Created:** `2026-08-14T13:53:20.157260+00:00`  
-**Manifest hash:** `450a18ad1d00ee063e7c91a82b31377ae9d11404693f5014c5ddd850501184a0`
+**Status:** `release_candidate`  
+**Branch:** `wt/cio-acceptance-rest`  
+**Created:** `2026-08-14T14:44:50.445850+00:00`  
+**Manifest hash:** `5024b2bd4eb855ebd76b3d562430ccd935efb45eaa51a59e169ef5d1642f8aa2`
 
 ## Pin
 
 | Field | Value |
 | --- | --- |
-| canonical_source_sha | `361ef6d27895e176deecf8061dbe405bf4d7bcab` |
+| canonical_source_sha | `f50bae145189cd5d09de7c7873894cf7ef1bc58a` |
 | frontend_build_sha | `361ef6d27895e176deecf8061dbe405bf4d7bcab` |
 | backend_release_sha | `361ef6d27895e176deecf8061dbe405bf4d7bcab` |
 | deployed_release_path | `/home/johnclaw/trade-ai-releases/portfolio-server/361ef6d2-main-exact-phase1-20260814-095316` |
 | migration_head | `2026-08-13_two_way_reliability_n.sql` |
-| docs_pin | `0ecc252d891dc65609bbfa7a` |
+| docs_pin | `26aa49b12aa8869ded513029` |
 | runtime_config_hash | `1171100c678822858d2c6c6f938abf15` |
 | report_version | `report_v2_1.5.0` |
-| rollback_sha | `e7b722b3b0a84baa41dfb202765d7c744faf128e` |
-| created_at | `2026-08-14T13:53:20.157260+00:00` |
+| rollback_sha | `f50bae145189cd5d09de7c7873894cf7ef1bc58a` |
+| created_at | `2026-08-14T14:44:50.445850+00:00` |
 
 ## Product versions
 
 | Component | Version |
 | --- | --- |
 | alex_telegram_version | `alex_telegram_1.0.0` |
-| capital_plan_version | `capital_plan_1.1.0` |
-| office_home_version | `office_home_1.1.0` |
+| capital_plan_version | `capital_plan_1.3.0` |
+| office_home_version | `office_home_1.3.0` |
 | pipeline_version | `pipeline_1.0.0` |
 | report_version | `report_v2_1.5.0` |
 
@@ -64,7 +64,7 @@ Recommended / residual:
 
 ## Notes
 
-Production investment-office release: Git main, portfolio-server CURRENT, and this manifest pin the same full SHA. Stale preliminary SHAs are forbidden. Authority remains READ_ONLY_ADVISORY.
+Release candidate for CIO production hardening on this branch. backend_release_sha reflects currently deployed portfolio-server CURRENT (may lag this RC until controlled deployment). Stale preliminary SHAs are forbidden. Drive investment-office mirror may lag git until operator sync.
 
 ## Validation
 

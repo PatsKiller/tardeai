@@ -117,6 +117,135 @@ def make_decision_id(
     return "dec_" + hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
 
 
+# Phase 7 — required fields shared by capital plan / CIO NOW / report / Telegram
+REQUIRED_DECISION_FIELDS = (
+    "decision_id",
+    "symbol",
+    "stance_code",
+    "recommended_delta_usd",
+    "why_now",
+    "current_value_usd",
+    "current_weight_pct",
+)
+
+OPTIONAL_SIZING_FIELDS = (
+    "sizing_method",
+    "sizing_objective",
+    "sizing_why_not_min",
+    "sizing_why_not_max",
+    "trim_to_clear_fire_usd",
+    "trim_to_policy_usd",
+    "fallback_candidate_only",
+    "action_label",
+    "action_label_display",
+    "act_now",
+    "financial_truth_quality",
+    "freshness",
+)
+
+
+def decision_field_parity(
+    *surfaces: Optional[list[dict[str, Any]]],
+    require_sizing_on_actionable: bool = True,
+) -> dict[str, Any]:
+    """Phase 7: assert the same decision_id carries the same material fields.
+
+    Surfaces are lists of decision dicts (capital plan rows, CIO NOW cards,
+    report Part A decisions, Telegram prepare payloads). Returns a parity report
+    — never raises; consumers decide whether to hard-fail.
+    """
+    by_id: dict[str, list[dict[str, Any]]] = {}
+    for surface_idx, rows in enumerate(surfaces):
+        for r in rows or []:
+            if not isinstance(r, dict):
+                continue
+            did = str(r.get("decision_id") or "").strip()
+            if not did:
+                # Attempt reconstruct
+                did = make_decision_id(
+                    r.get("symbol"),
+                    r.get("stance_code") or r.get("cio_stance") or r.get("action"),
+                    r.get("recommended_delta_usd"),
+                    r.get("why_now"),
+                )
+            by_id.setdefault(did, []).append({"surface": surface_idx, "row": r})
+
+    missing_required: list[dict[str, Any]] = []
+    field_mismatches: list[dict[str, Any]] = []
+    missing_sizing: list[str] = []
+    for did, entries in by_id.items():
+        # Required presence on every surface entry
+        for e in entries:
+            row = e["row"]
+            miss = [f for f in REQUIRED_DECISION_FIELDS if row.get(f) is None and f != "why_now"]
+            # why_now may be empty string but key should exist ideally — allow missing with note
+            if miss:
+                missing_required.append({"decision_id": did, "surface": e["surface"], "missing": miss})
+        # Cross-surface material equality for delta + symbol + stance
+        if len(entries) < 2:
+            continue
+        base = entries[0]["row"]
+        for e in entries[1:]:
+            row = e["row"]
+            for fld in ("symbol", "recommended_delta_usd", "stance_code"):
+                bv = base.get(fld)
+                rv = row.get(fld)
+                if bv is None or rv is None:
+                    continue
+                if fld == "recommended_delta_usd":
+                    try:
+                        if abs(float(bv) - float(rv)) > 0.02:
+                            field_mismatches.append({
+                                "decision_id": did, "field": fld,
+                                "values": [bv, rv],
+                            })
+                    except (TypeError, ValueError):
+                        field_mismatches.append({
+                            "decision_id": did, "field": fld, "values": [bv, rv],
+                        })
+                elif str(bv).upper() != str(rv).upper():
+                    field_mismatches.append({
+                        "decision_id": did, "field": fld, "values": [bv, rv],
+                    })
+        # Sizing on actionable stances
+        if require_sizing_on_actionable:
+            for e in entries:
+                row = e["row"]
+                code = str(row.get("stance_code") or row.get("cio_stance") or "").upper()
+                if code in ACTIONABLE_STANCES and row.get("sizing_method") is None:
+                    missing_sizing.append(did)
+
+    ok = not missing_required and not field_mismatches
+    return {
+        "version": "decision_field_parity_1.0.0",
+        "ok": ok,
+        "decision_count": len(by_id),
+        "surfaces_checked": len(surfaces),
+        "missing_required": missing_required[:20],
+        "field_mismatches": field_mismatches[:20],
+        "missing_sizing_on_actionable": sorted(set(missing_sizing))[:20],
+        "required_fields": list(REQUIRED_DECISION_FIELDS),
+        "authority": "READ_ONLY_ADVISORY",
+    }
+
+
+def ensure_decision_fields(row: dict[str, Any]) -> dict[str, Any]:
+    """Fill stable identity fields so parity checks pass across surfaces."""
+    out = dict(row)
+    stance = out.get("stance_code") or out.get("cio_stance") or out.get("action")
+    out.setdefault("stance_code", str(stance or "HOLD").upper() if stance else "HOLD")
+    if out.get("decision_id") is None:
+        out["decision_id"] = make_decision_id(
+            out.get("symbol"),
+            out.get("stance_code"),
+            out.get("recommended_delta_usd"),
+            out.get("why_now"),
+        )
+    if out.get("stance") is None:
+        out["stance"] = professional_stance(out.get("stance_code"))
+    return out
+
+
 def capital_plan_surface_digest(plan: Optional[dict[str, Any]]) -> str:
     """Digest of capital-plan dollars that must match across office home + report."""
     p = plan or {}

@@ -60,7 +60,7 @@ from typing import Any, Callable, Optional
 # Executor signature matches db_adapter._execute(sql, params=None, fetch=None).
 Executor = Callable[..., Any]
 
-CAPITAL_PLAN_VERSION = "capital_plan_1.2.0"  # Phase 5: objective-driven institutional sizing
+CAPITAL_PLAN_VERSION = "capital_plan_1.3.0"  # Phase 6–13: account ledger + strategy context
 
 # ── Policy defaults (overridden by thesis risk_posture_structured when present) ──
 CASH_BAND_DEFAULT_MIN_PCT = 20.0
@@ -607,6 +607,17 @@ def build_capital_plan(
         post_plan_cash_usd=post_cash,
         account_cash=acct_cash,
     )
+    account_ledger = build_account_capital_ledger(
+        account_cash=acct_cash,
+        positions=norm_positions,
+        portfolio_value=value,
+        cash_total=cash,
+        reserve_usd=posture["reserve_usd"],
+        earmarked_redeploy_usd=earmarked,
+        prospective_raise_usd=prospective_raise,
+        net_deploy_usd=net_deploy,
+        post_plan_cash_usd=post_cash,
+    )
 
     position_decisions = build_position_decisions(
         norm_positions, queue=queue, divergence_map=divergence_map,
@@ -677,6 +688,8 @@ def build_capital_plan(
         "post_plan_cash_usd": post_cash,
         "post_plan_cash_pct": post_cash_pct,
         "cash_ledger": ledger,
+        "account_capital_ledger": account_ledger,
+        "earmark_narrative": account_ledger.get("narrative"),
         "ledger_invariants": ledger.get("invariants") or [],
         "portfolio_constraints": constraints,
         "alternatives": _alternatives(plan_deploy=net_deploy, plan_raise=net_raise,
@@ -716,6 +729,105 @@ def account_cash_breakdown(
         acct = str(h.get("account") or h.get("account_id") or "unknown")
         by[acct] = round(by.get(acct, 0.0) + _fnum(h.get("market_value")), 2)
     return [{"account": a, "settled_cash_usd": v} for a, v in sorted(by.items())]
+
+
+def build_account_capital_ledger(
+    *,
+    account_cash: Optional[list[dict[str, Any]]],
+    positions: list[dict[str, Any]],
+    portfolio_value: float,
+    cash_total: float,
+    reserve_usd: float,
+    earmarked_redeploy_usd: float,
+    prospective_raise_usd: float,
+    net_deploy_usd: float,
+    post_plan_cash_usd: float,
+) -> dict[str, Any]:
+    """Phase 6 — account-level capital ledger for institutional audit.
+
+    Language: earmark is a label on settled cash, never a 'new raise'.
+    """
+    value = max(0.0, _fnum(portfolio_value))
+    cash = max(0.0, _fnum(cash_total))
+    reserve = max(0.0, _fnum(reserve_usd))
+    earmark = max(0.0, _fnum(earmarked_redeploy_usd))
+    prospective = max(0.0, _fnum(prospective_raise_usd))
+    deploy = max(0.0, _fnum(net_deploy_usd))
+    post = _fnum(post_plan_cash_usd)
+
+    # Index positions by account
+    pos_by: dict[str, float] = {}
+    for p in positions or []:
+        acct = str(p.get("account") or "unknown")
+        pos_by[acct] = pos_by.get(acct, 0.0) + _fnum(p.get("market_value_usd") or p.get("market_value"))
+
+    cash_by: dict[str, float] = {}
+    for row in account_cash or []:
+        if not isinstance(row, dict):
+            continue
+        acct = str(row.get("account") or "unknown")
+        cash_by[acct] = cash_by.get(acct, 0.0) + _fnum(
+            row.get("settled_cash_usd") if row.get("settled_cash_usd") is not None else row.get("market_value")
+        )
+
+    accounts = sorted(set(list(cash_by.keys()) + list(pos_by.keys())))
+    if not accounts:
+        accounts = ["portfolio"]
+        cash_by["portfolio"] = cash
+
+    # Allocate reserve / earmark / free / prospective / deploy / post by cash share
+    rows: list[dict[str, Any]] = []
+    for acct in accounts:
+        settled = cash_by.get(acct, 0.0)
+        share = (settled / cash) if cash > 0 else 0.0
+        r_res = round(reserve * share, 2)
+        r_ear = round(min(earmark * share, settled), 2)
+        r_free = round(max(0.0, settled - r_res), 2)  # investable share proxy
+        r_prosp = round(prospective * share, 2)
+        r_use = round(deploy * share, 2)
+        r_post = round(settled + r_prosp - r_use, 2)
+        rows.append({
+            "account": acct,
+            "settled_cash_usd": round(settled, 2),
+            "reserve_allocation_usd": r_res,
+            "earmarked_usd": r_ear,
+            "free_investable_usd": r_free,
+            "prospective_raise_usd": r_prosp,
+            "planned_use_usd": r_use,
+            "post_plan_cash_usd": r_post,
+            "positions_mv_usd": round(pos_by.get(acct, 0.0), 2),
+            "negative_cash": r_post < -0.02,
+        })
+
+    narrative = (
+        f"${earmark:,.0f} of current cash is earmarked from prior exits/redeploy; "
+        f"it is not new capital. Prospective raise is ${prospective:,.0f} from "
+        f"trims/exits not yet cash. Recommended deploy ${deploy:,.0f} is bounded by "
+        f"investable free cash plus prospective raise only."
+    )
+    return {
+        "accounts": rows,
+        "portfolio_aggregate": {
+            "settled_cash_usd": round(cash, 2),
+            "reserve_usd": round(reserve, 2),
+            "earmarked_usd": round(earmark, 2),
+            "free_unearmarked_usd": round(max(0.0, cash - earmark), 2),
+            "prospective_raise_usd": round(prospective, 2),
+            "recommended_deploy_usd": round(deploy, 2),
+            "post_plan_cash_usd": round(post, 2),
+            "portfolio_value_usd": round(value, 2),
+        },
+        "narrative": narrative,
+        "earmark_language": (
+            "Do not say 'recommended raise = maturities' when those dollars are already in cash. "
+            + narrative
+        ),
+        "invariants": {
+            "earmark_le_settled_cash": earmark <= cash + 0.02,
+            "no_negative_account_post_cash": not any(r.get("negative_cash") for r in rows),
+            "deploy_le_free_plus_prospective": deploy <= max(0.0, cash - reserve) + prospective + 0.02,
+        },
+    }
 
 
 def build_cash_ledger(
@@ -1111,4 +1223,66 @@ def build_capital_plan_from_sources(
                 "error": str(exc)[:200],
                 "authority": "READ_ONLY_ADVISORY",
             }
+    # Phases 12–13: strategy knowledge + seasonality (context only, never execution)
+    try:
+        from scripts.lib.cio_seasonality_engine import build_seasonality_context
+        from scripts.lib.cio_strategy_knowledge import (
+            load_strategy_store,
+            compose_strategy_context,
+        )
+        season = build_seasonality_context(now)
+        store = load_strategy_store()
+        plan = dict(plan)
+        plan["seasonality"] = season
+        plan["strategy_context"] = compose_strategy_context(
+            now=now, store=store, seasonality=season,
+        )
+    except Exception as exc:
+        plan = dict(plan)
+        plan["strategy_context"] = {
+            "error": str(exc)[:200],
+            "role": "risk_modifier_or_context",
+            "authority": "READ_ONLY_ADVISORY",
+        }
+    # Phase 7: decision field parity self-check on plan surface
+    try:
+        from scripts.lib.cio_decision_semantics import decision_field_parity
+        plan = dict(plan)
+        plan["decision_field_parity"] = decision_field_parity(
+            plan.get("position_decisions") or [],
+        )
+    except Exception as exc:
+        plan = dict(plan)
+        plan["decision_field_parity"] = {
+            "ok": False, "error": str(exc)[:200], "authority": "READ_ONLY_ADVISORY",
+        }
+    # Phase 8: attach compact provenance on top material decisions
+    try:
+        from scripts.lib.cio_advisory_provenance import build_expanded_row_provenance
+        plan = dict(plan)
+        rows = list(plan.get("position_decisions") or [])
+        # Build a holdings lookup by symbol for price/MV facts
+        hmap: dict[str, dict] = {}
+        if holdings_doc and isinstance(holdings_doc, dict):
+            for h in holdings_doc.get("holdings") or holdings_doc.get("positions") or []:
+                if isinstance(h, dict) and h.get("symbol"):
+                    sym = str(h["symbol"]).upper()
+                    # Prefer highest MV row if multi-account
+                    prev = hmap.get(sym)
+                    if prev is None or float(h.get("market_value") or 0) > float(prev.get("market_value") or 0):
+                        hmap[sym] = h
+        enriched = []
+        for d in rows:
+            dd = dict(d)
+            base = hmap.get(str(d.get("symbol") or "").upper()) or {}
+            merged = {**base, **{k: v for k, v in d.items() if v is not None}}
+            try:
+                dd["advisory_provenance"] = build_expanded_row_provenance(merged)
+            except Exception:
+                pass
+            enriched.append(dd)
+        plan["position_decisions"] = enriched
+    except Exception as exc:
+        plan = dict(plan)
+        plan["advisory_provenance_error"] = str(exc)[:200]
     return plan

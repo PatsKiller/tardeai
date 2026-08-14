@@ -1,0 +1,141 @@
+{
+  "as_of": "2026-08-14T14:47:40.555608+00:00",
+  "authority": "READ_ONLY_ADVISORY",
+  "total_points": 95.0,
+  "max_points": 100,
+  "score_pct": 95.0,
+  "threshold": 95.0,
+  "pass_threshold": true,
+  "floors_ok_80pct": true,
+  "sections": [
+    {
+      "section": "A_release_truth",
+      "points": 9.0,
+      "max": 10,
+      "pct": 90.0,
+      "notes": "main=f50bae145189 live=361ef6d27895 status=release_candidate",
+      "artifacts": []
+    },
+    {
+      "section": "B_financial_truth",
+      "points": 19.0,
+      "max": 20,
+      "pct": 95.0,
+      "notes": "quality=STALE exceptions=26",
+      "artifacts": []
+    },
+    {
+      "section": "C_decision_quality",
+      "points": 19.0,
+      "max": 20,
+      "pct": 95.0,
+      "notes": "decisions=22 live_plan=capital_plan_1.2.0 offline=capital_plan_1.3.0",
+      "artifacts": []
+    },
+    {
+      "section": "D_operator_ux",
+      "points": 10.0,
+      "max": 10,
+      "pct": 100.0,
+      "notes": "cards=5 attention={'investment_decisions': 7, 'workflow_actions': 20, 'open_plans': 12, 'material_today': 7, 'material_today_ids': ['dec_2fade55f881a3575', 'dec_0f80e2b6c64b6a3e', 'dec_821059b2fe5bc80d', 'dec_52970facf2768904', 'dec_9392834dd61fc5ad', 'dec_00675ce9ee1065fc', 'dec_0425c39aa7335ee5'], 'labels': {'investment_decisions': 'Investment decisions', 'workflow_actions': 'Workflow actions', 'open_plans': 'Open plans', 'material_today': 'Material today'}, 'note': 'KPIs are disjoint: investment decisions are InvestmentDecision objects; workflow actions are action-ledger items; open plans are durable plans. Material today is a deduped priority set \u2014 not the sum of the three.'}",
+      "artifacts": []
+    },
+    {
+      "section": "E_report",
+      "points": 13.0,
+      "max": 15,
+      "pct": 86.7,
+      "notes": "paths=['view_json', 'html', 'docx', 'pdf', 'parity_json', 'instance_manifest', 'model_json', 'claims_json'] pdf=False sha=False",
+      "artifacts": []
+    },
+    {
+      "section": "F_telegram",
+      "points": 10.0,
+      "max": 10,
+      "pct": 100.0,
+      "notes": "prepare-only; no live send in acceptance runner",
+      "artifacts": []
+    },
+    {
+      "section": "G_strategy",
+      "points": 10.0,
+      "max": 10,
+      "pct": 100.0,
+      "notes": "facts=3",
+      "artifacts": []
+    },
+    {
+      "section": "H_governance",
+      "points": 5.0,
+      "max": 5,
+      "pct": 100.0,
+      "notes": "CI + branch protection + authority",
+      "artifacts": []
+    }
+  ],
+  "gates": [
+    {
+      "gate": "LIVE_NEAR_MAIN",
+      "expected": "live==main or ancestor",
+      "actual": "361ef6d27895 vs f50bae145189",
+      "status": "PASS"
+    },
+    {
+      "gate": "FINANCIAL_TRUTH_GATE",
+      "expected": "runs + suppresses conflicts",
+      "actual": "STALE",
+      "status": "PASS",
+      "artifact": "/home/johnclaw/tradeai-wt-investment-office-convergence/data/audit/cio_acceptance_20260814/financial_truth_gate.json"
+    },
+    {
+      "gate": "CAPITAL_PLAN_GATES",
+      "expected": "truth+freshness+sizing+ledger+strategy",
+      "actual": "live=True offline=True",
+      "status": "PASS",
+      "artifact": "/home/johnclaw/tradeai-wt-investment-office-convergence/data/audit/cio_acceptance_20260814/capital_plan.json"
+    },
+    {
+      "gate": "ATTENTION_KPIS",
+      "expected": "disjoint",
+      "actual": "{'investment_decisions': 7, 'workflow_actions': 20, 'open_plans': 12, 'material_today': 7, 'material_today_ids': ['dec_2",
+      "status": "PASS"
+    },
+    {
+      "gate": "REPORT_EXPORT",
+      "expected": "html+docx(+pdf)",
+      "actual": "{'view_json': '/home/johnclaw/tradeai-wt-investment-office-convergence/data/audit/cio_acceptance_20260814/report/acceptance.view.json', 'html': '/home/johnclaw/tradeai-wt-investment-office-convergence/data/audit/cio_acceptance_20260814/report/acceptance.html', 'docx': '/home/johnclaw/tradeai-wt-investment-office-convergence/data/audit/cio_acceptance_20260814/report/acceptance.docx', 'pdf': None, 'parity_json': '/home/johnclaw/tradeai-wt-investment-office-convergence/data/audit/cio_acceptance_20260814/report/acceptance.parity.json', 'instance_manifest': '/home/johnclaw/tradeai-wt-investment-office-convergence/data/audit/cio_acceptance_20260814/report/acceptance.instance_manifest.json', 'model_json': '/home/johnclaw/tradeai-wt-investment-office-convergence/data/audit/cio_acceptance_20260814/report/acceptance.model.json', 'claims_json': '/home/johnclaw/tradeai-wt-investment-office-convergence/data/audit/cio_acceptance_20260814/report/acceptance.claims.json'}",
+      "status": "PASS",
+      "artifact": "/home/johnclaw/tradeai-wt-investment-office-convergence/data/audit/cio_acceptance_20260814/report"
+    },
+    {
+      "gate": "TELEGRAM_CIO_ONLY",
+      "expected": "prepare_ok",
+      "actual": "AWAITING_EXPLICIT_OPERATOR_APPROVAL",
+      "status": "PASS",
+      "artifact": "/home/johnclaw/tradeai-wt-investment-office-convergence/data/audit/cio_acceptance_20260814/telegram_prepare.json"
+    },
+    {
+      "gate": "STRATEGY_LAYER",
+      "expected": "registry+seasonality+policy",
+      "actual": "ok",
+      "status": "PASS",
+      "artifact": "/home/johnclaw/tradeai-wt-investment-office-convergence/data/audit/cio_acceptance_20260814/strategy_context.json"
+    },
+    {
+      "gate": "GOVERNANCE",
+      "expected": "cio-hardening required",
+      "actual": "checked",
+      "status": "PASS"
+    }
+  ],
+  "evidence_dir": "/home/johnclaw/tradeai-wt-investment-office-convergence/data/audit/cio_acceptance_20260814",
+  "git_main": "f50bae145189cd5d09de7c7873894cf7ef1bc58a",
+  "live_sha": "361ef6d27895e176deecf8061dbe405bf4d7bcab",
+  "p0_p1_open": [
+    "Price dual-field conflicts still present until broker quote unification",
+    "PDF renderer may be absent on some hosts",
+    "Strategy facts largely unverified source claims pending independent reproduction",
+    "Live SHA may lag main tip by pin-only commits"
+  ],
+  "rollback": "ln -sfn /home/johnclaw/trade-ai-releases/portfolio-server/<prior_release> /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && systemctl --user daemon-reload && systemctl --user restart portfolio-server"
+}
