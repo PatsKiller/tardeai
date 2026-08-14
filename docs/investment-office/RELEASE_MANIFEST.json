@@ -2,7 +2,7 @@
   "manifest_schema": "investment_office_release_manifest_v1",
   "status": "release_candidate",
   "branch": "wt/cio-phase1-notify",
-  "canonical_source_sha": "cbf21f7ae6658dfe4ced4b90383b1084c01340a7",
+  "canonical_source_sha": "8675dfd06809e4c1418885019138d5b2497e0e94",
   "frontend_build_sha": "3.0.0",
   "backend_release_sha": "8f11a642f90e52a111b94772dcadc24c8a3876ac",
   "deployed_release_path": "/home/johnclaw/trade-ai-releases/portfolio-server/20260813-210818",
@@ -47,7 +47,7 @@
   },
   "rollback_sha": "c330a117ee2bce657257e7acbbeb6c7cfdb8e8f9",
   "origin_main_sha": "c330a117ee2bce657257e7acbbeb6c7cfdb8e8f9",
-  "created_at": "2026-08-14T12:28:55.801200+00:00",
+  "created_at": "2026-08-14T12:29:05.796050+00:00",
   "financial_authority": "READ_ONLY_ADVISORY",
   "broker_write_paths_added": 0,
   "notes": "Release candidate for CIO production hardening Phases 0\u201310 on this branch. backend_release_sha reflects currently deployed portfolio-server CURRENT (may lag this RC until controlled deployment). Stale preliminary SHAs are forbidden. Drive investment-office mirror may lag git until operator sync.",
@@ -73,5 +73,5 @@
     "auto_enforced_by_this_script": false,
     "note": "Status-check contexts left empty so first main PR is not blocked before the workflow runs."
   },
-  "manifest_hash": "4e973626658a854cd6714172829c4d0192d16deabdb080b0d913cf721fec0aa0"
+  "manifest_hash": "a8aedfee65b5d2c6cfe9feff9dc066231e442cf3083e8dfbf3a4855e89cb1029"
 }
