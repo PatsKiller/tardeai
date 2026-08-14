@@ -55,6 +55,9 @@ type Decision = {
   domain?: string
   // Phase 5 — institutional card fields (render only when present)
   decision_id?: string | null
+  decision_input_digest?: string | null
+  decision_evidence_digest?: string | null
+  action?: string | null
   action_label?: string | null
   action_label_display?: string | null
   current_weight_pct?: number | null
@@ -156,7 +159,14 @@ type Evidence = {
   internal_codes: string[]
 }
 
-type DispositionMap = Record<string, { disposition: string; rating?: number | null }>
+type DispositionRec = {
+  disposition: string
+  rating?: number | null
+  identity_class?: string
+  note?: string
+  occurred_at?: string
+}
+type DispositionMap = Record<string, DispositionRec>
 
 const TABS = ['cio-now', 'capital-plan', 'posture', 'opportunities', 'report', 'evidence'] as const
 type Tab = typeof TABS[number]
@@ -280,17 +290,24 @@ function Empty({ text }: { text: string }) {
 // ── Decision card with operator actions ───────────────────────────────────────
 
 function decisionKey(d: Decision): string {
+  // Canonical key is decision_id. Never POST position:symbol:account.
+  return (d.decision_id || '').trim()
+}
+
+function legacyDispositionKey(d: Decision): string {
   if (d.kind === 'action') return `action:${d.action_id || 'unknown'}`
   return `position:${d.symbol || '?'}:${d.account || 'any'}`
 }
 
-function DecisionActions({ d, dispositions, onAct }: {
+function DecisionActions({ d, dispositions, legacyUnversioned, onAct }: {
   d: Decision
   dispositions: DispositionMap
-  onAct: (key: string, disposition: string, rating?: number) => void
+  legacyUnversioned: DispositionMap
+  onAct: (d: Decision, disposition: string, rating?: number) => void
 }) {
   const key = decisionKey(d)
-  const cur = dispositions[key]?.disposition
+  const cur = key ? dispositions[key]?.disposition : undefined
+  const legacy = legacyUnversioned[legacyDispositionKey(d)]
   const [rating, setRating] = useState<number>(0)
   const [showRate, setShowRate] = useState(false)
 
@@ -301,16 +318,17 @@ function DecisionActions({ d, dispositions, onAct }: {
   }
   const active: CSSProperties = { ...btn, background: 'var(--accent-dim)', borderColor: 'var(--accent)', color: 'var(--accent)' }
 
-  const act = (disp: string) => { onAct(key, disp, rating || undefined) }
-  const rate = (n: number) => { setRating(n); setShowRate(false); onAct(key, cur || 'ack', n) }
+  const canAct = Boolean(key)
+  const act = (disp: string) => { if (canAct) onAct(d, disp, rating || undefined) }
+  const rate = (n: number) => { setRating(n); setShowRate(false); if (canAct) onAct(d, cur || 'ack', n) }
 
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', marginTop: 10 }}>
-      <button type="button" style={cur === 'ack' ? active : btn} onClick={() => act('ack')} aria-label={`Acknowledge ${d.symbol || d.action_id}`}>ACK</button>
-      <button type="button" style={cur === 'defer' ? active : btn} onClick={() => act('defer')} aria-label={`Defer ${d.symbol || d.action_id}`}>DEFER</button>
-      <button type="button" style={cur === 'done' ? active : btn} onClick={() => act('done')} aria-label={`Mark done ${d.symbol || d.action_id}`}>DONE</button>
-      <button type="button" style={cur === 'reject' ? { ...active, borderColor: 'var(--red)', color: 'var(--red)', background: 'var(--red-dim)' } : btn} onClick={() => act('reject')} aria-label={`Reject ${d.symbol || d.action_id}`}>REJECT</button>
-      <button type="button" style={showRate ? active : btn} onClick={() => setShowRate(v => !v)} aria-label={`Rate ${d.symbol || d.action_id}`}>RATE</button>
+      <button type="button" disabled={!canAct} style={cur === 'ack' ? active : btn} onClick={() => act('ack')} aria-label={`Acknowledge ${d.symbol || d.action_id}`}>ACK</button>
+      <button type="button" disabled={!canAct} style={cur === 'defer' ? active : btn} onClick={() => act('defer')} aria-label={`Defer ${d.symbol || d.action_id}`}>DEFER</button>
+      <button type="button" disabled={!canAct} style={cur === 'done' ? active : btn} onClick={() => act('done')} aria-label={`Mark done ${d.symbol || d.action_id}`}>DONE</button>
+      <button type="button" disabled={!canAct} style={cur === 'reject' ? { ...active, borderColor: 'var(--red)', color: 'var(--red)', background: 'var(--red-dim)' } : btn} onClick={() => act('reject')} aria-label={`Reject ${d.symbol || d.action_id}`}>REJECT</button>
+      <button type="button" disabled={!canAct} style={showRate ? active : btn} onClick={() => setShowRate(v => !v)} aria-label={`Rate ${d.symbol || d.action_id}`}>RATE</button>
       {showRate && (
         <span style={{ display: 'inline-flex', gap: 4 }} role="radiogroup" aria-label="Usefulness rating">
           {[1, 2, 3, 4, 5].map(n => (
@@ -320,14 +338,21 @@ function DecisionActions({ d, dispositions, onAct }: {
         </span>
       )}
       {rating > 0 && <span style={{ ...faint, fontSize: 11 }}>rated {rating}/5</span>}
+      {!canAct && <span style={{ ...faint, fontSize: 11 }}>No decision id — disposition not recorded</span>}
+      {legacy && (
+        <span style={{ ...faint, fontSize: 11 }} title="Legacy position:symbol:account record is not applied to this decision">
+          Legacy unversioned: {legacy.disposition} — not applied
+        </span>
+      )}
     </div>
   )
 }
 
-function DecisionCard({ d, dispositions, onAct }: {
+function DecisionCard({ d, dispositions, legacyUnversioned, onAct }: {
   d: Decision
   dispositions: DispositionMap
-  onAct: (key: string, disposition: string, rating?: number) => void
+  legacyUnversioned: DispositionMap
+  onAct: (d: Decision, disposition: string, rating?: number) => void
 }) {
   const [open, setOpen] = useState(false)
   const urgency = d.urgency || 'low'
@@ -436,14 +461,19 @@ function DecisionCard({ d, dispositions, onAct }: {
         </div>
       )}
 
-      <DecisionActions d={d} dispositions={dispositions} onAct={onAct} />
+      <DecisionActions d={d} dispositions={dispositions} legacyUnversioned={legacyUnversioned} onAct={onAct} />
     </div>
   )
 }
 
 // ── Section renderers ─────────────────────────────────────────────────────────
 
-function CioNowSection({ home, dispositions, onAct }: { home: Home; dispositions: DispositionMap; onAct: (k: string, d: string, r?: number) => void }) {
+function CioNowSection({ home, dispositions, legacyUnversioned, onAct }: {
+  home: Home
+  dispositions: DispositionMap
+  legacyUnversioned: DispositionMap
+  onAct: (d: Decision, disp: string, r?: number) => void
+}) {
   const now = home.cio_now
   const att = now.attention
   const investmentDecisions = att?.investment_decisions ?? now.decision_count
@@ -462,7 +492,7 @@ function CioNowSection({ home, dispositions, onAct }: { home: Home; dispositions
       {decisions.length === 0 ? (
         <Empty text="Nothing needs a decision right now. Portfolio is stable." />
       ) : (
-        decisions.map((d, i) => <DecisionCard key={decisionKey(d) + i} d={d} dispositions={dispositions} onAct={onAct} />)
+        decisions.map((d, i) => <DecisionCard key={(decisionKey(d) || legacyDispositionKey(d)) + i} d={d} dispositions={dispositions} legacyUnversioned={legacyUnversioned} onAct={onAct} />)
       )}
     </div>
   )
@@ -848,6 +878,7 @@ export default function CioHub({ onDrill }: Props) {
   const initialTab: Tab = TABS.includes(tabParam) ? tabParam : 'cio-now'
   const [tab, setTab] = useState<Tab>(initialTab)
   const [dispositions, setDispositions] = useState<DispositionMap>({})
+  const [legacyUnversioned, setLegacyUnversioned] = useState<DispositionMap>({})
   const { data, loading, error } = useApi<Home>('/api/v3/cio/home')
 
   useEffect(() => {
@@ -858,21 +889,36 @@ export default function CioHub({ onDrill }: Props) {
     fetch('/api/v3/cio/dispositions', { cache: 'no-store' })
       .then(r => r.json())
       .then(j => {
-        if (j?.ok) setDispositions(j.dispositions || {})
+        if (j?.ok) {
+          setDispositions(j.dispositions || {})
+          setLegacyUnversioned(j.legacy_unversioned || {})
+        }
       })
       .catch(() => { /* advisory-only; dispositions just won't pre-fill */ })
   }, [])
 
-  const onAct = useCallback((key: string, disposition: string, rating?: number) => {
-    fetch(`/api/v3/cio/decision/${encodeURIComponent(key)}/disposition`, {
+  const onAct = useCallback((d: Decision, disposition: string, rating?: number) => {
+    const decisionId = (d.decision_id || '').trim()
+    if (!decisionId) return
+    const body: Record<string, unknown> = {
+      disposition,
+      rating,
+      decision_id: decisionId,
+      symbol: d.symbol ?? null,
+      account: d.account ?? null,
+      action: d.action || d.stance || null,
+    }
+    if (d.decision_input_digest) body.decision_input_digest = d.decision_input_digest
+    if (d.decision_evidence_digest) body.decision_evidence_digest = d.decision_evidence_digest
+    fetch(`/api/v3/cio/decision/${encodeURIComponent(decisionId)}/disposition`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ disposition, rating }),
+      body: JSON.stringify(body),
     })
       .then(r => r.json())
       .then(j => {
         if (j?.ok) {
-          setDispositions(prev => ({ ...prev, [key]: { disposition: j.disposition.disposition, rating: j.disposition.rating } }))
+          setDispositions(prev => ({ ...prev, [decisionId]: { disposition: j.disposition.disposition, rating: j.disposition.rating, identity_class: j.disposition.identity_class } }))
         }
       })
       .catch(() => { /* keep last state; no fake success */ })
@@ -929,7 +975,7 @@ export default function CioHub({ onDrill }: Props) {
 
       {home && (
         <div role="tabpanel" aria-label={TAB_LABEL[tab]}>
-          {tab === 'cio-now' && <CioNowSection home={home} dispositions={dispositions} onAct={onAct} />}
+          {tab === 'cio-now' && <CioNowSection home={home} dispositions={dispositions} legacyUnversioned={legacyUnversioned} onAct={onAct} />}
           {tab === 'capital-plan' && <CapitalPlanSection cp={home.capital_plan} />}
           {tab === 'posture' && <PostureSection posture={home.posture} />}
           {tab === 'opportunities' && <OpportunitiesSection opp={home.opportunities} />}

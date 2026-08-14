@@ -33,6 +33,47 @@ if [[ "${1:-}" == "--dry-run" ]]; then
     echo "[DRY RUN] No changes will be made."
 fi
 
+PREV_RELEASE=""
+if [[ -L "${RELEASES_BASE}/CURRENT" || -d "${RELEASES_BASE}/CURRENT" ]]; then
+    PREV_RELEASE="$(readlink -f "${RELEASES_BASE}/CURRENT" 2>/dev/null || true)"
+fi
+RECEIPT_FILE="${RELEASES_BASE}/deploy_receipt.json"
+
+write_deploy_receipt() {
+    local ok_flag="${1:-false}"
+    local health="${2:-unknown}"
+    local rolled="${3:-false}"
+    local extra="${4:-}"
+    local dest="${5:-$RECEIPT_FILE}"
+    OK_FLAG="$ok_flag" HEALTH="$health" ROLLED="$rolled" EXTRA="$extra" \
+    SHA="$GIT_SHA" DIR="${RELEASE_DIR:-}" PREV="${PREV_RELEASE:-}" \
+    PR="${CIO_SOURCE_PR:-}" DEST="$dest" python3 - <<'PY'
+import json, os
+from datetime import datetime, timezone
+from pathlib import Path
+pr = os.environ.get("PR") or None
+rec = {
+    "ok": os.environ.get("OK_FLAG") == "true",
+    "mode": "deploy",
+    "health": os.environ.get("HEALTH") or "unknown",
+    "rolled_back": os.environ.get("ROLLED") == "true",
+    "content_sha": os.environ.get("SHA") or "",
+    "deployed_sha": os.environ.get("SHA") or "",
+    "source_pr": pr,
+    "release_dir": os.environ.get("DIR") or "",
+    "prev_release": os.environ.get("PREV") or "",
+    "extra": os.environ.get("EXTRA") or "",
+    "at": datetime.now(timezone.utc).isoformat(),
+    "authority": "READ_ONLY_ADVISORY",
+    "script": "deploy_portfolio_server.sh",
+}
+p = Path(os.environ["DEST"])
+p.parent.mkdir(parents=True, exist_ok=True)
+p.write_text(json.dumps(rec, indent=2) + "\n")
+print("  wrote deploy receipt", p)
+PY
+}
+
 # --- Validate prerequisites ---
 if [[ ! -d "$CANONICAL_SOURCE" ]]; then
     echo "ERROR: Canonical source not found at $CANONICAL_SOURCE"
@@ -154,7 +195,9 @@ cd "$RELEASE_DIR"
 if "$VENV_PYTHON" scripts/generate_integrity_manifest.py 2>&1; then
     echo "  Manifest regenerated."
 else
-    echo "  WARNING: Integrity manifest generation had issues (continuing)"
+    echo "  ERROR: Integrity manifest generation failed — refuse to continue"
+    write_deploy_receipt false integrity_failed false "generate_integrity_manifest_failed"
+    exit 1
 fi
 
 # --- Step 4b: Refresh release manifest (never re-serve a stale FAIL) ---
@@ -186,12 +229,12 @@ WorkingDirectory=${RELEASE_DIR}
 Environment=PYTHONPATH=${RELEASE_DIR}/scripts
 Environment=LLM_GLOBAL_DAILY_USD_CAP=0.50
 Environment=TRADEAI_CC_DEPLOYED_SHA=${GIT_SHA}
-Environment=TRADEAI_CC_SOURCE_PR=296
+${CIO_SOURCE_PR:+Environment=TRADEAI_CC_SOURCE_PR=${CIO_SOURCE_PR}}
 Environment=TRADEAI_WATCH_DEFAULT_WORKSPACE=intelligence
 ExecStart=
 ExecStart=${VENV_PYTHON} ${RELEASE_DIR}/scripts/portfolio_server.py
 DROPIN
-echo "  Drop-in written."
+echo "  Drop-in written (TRADEAI_CC_DEPLOYED_SHA=${GIT_SHA}; PR=${CIO_SOURCE_PR:-omitted})."
 
 # --- Step 7: Reload systemd and restart service ---
 echo "[7/8] Reloading systemd and restarting service..."
@@ -202,14 +245,45 @@ echo "  Service restarted."
 # --- Wait for startup ---
 echo ""
 echo "Waiting for server to start..."
+HEALTH_OK=false
 for i in $(seq 1 15); do
     sleep 2
     if curl -s "$HEALTH_URL" 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); sys.exit(0 if d.get('ok') else 1)" 2>/dev/null; then
         echo "  Health check OK after $((i*2))s"
+        HEALTH_OK=true
         break
     fi
     echo "  ... waiting ($((i*2))s)"
 done
+
+if ! $HEALTH_OK; then
+    echo "ERROR: health timeout — not claiming deploy OK"
+    if [[ -n "$PREV_RELEASE" && -d "$PREV_RELEASE" ]]; then
+        echo "  Rolling back CURRENT → $PREV_RELEASE"
+        PREV_SHA="$(tr -d '[:space:]' < "${PREV_RELEASE}/BUILD_SHA" 2>/dev/null || echo "$GIT_SHA")"
+        ln -sfn "$PREV_RELEASE" "${RELEASES_BASE}/CURRENT"
+        mkdir -p "$(dirname "$SYSTEMD_DROPIN")"
+        cat > "$SYSTEMD_DROPIN" << DROPIN
+[Service]
+WorkingDirectory=${PREV_RELEASE}
+Environment=PYTHONPATH=${PREV_RELEASE}/scripts
+Environment=LLM_GLOBAL_DAILY_USD_CAP=0.50
+Environment=TRADEAI_CC_DEPLOYED_SHA=${PREV_SHA}
+${CIO_SOURCE_PR:+Environment=TRADEAI_CC_SOURCE_PR=${CIO_SOURCE_PR}}
+Environment=TRADEAI_WATCH_DEFAULT_WORKSPACE=intelligence
+ExecStart=
+ExecStart=${VENV_PYTHON} ${PREV_RELEASE}/scripts/portfolio_server.py
+DROPIN
+        systemctl --user daemon-reload
+        systemctl --user restart "$SERVICE_NAME"
+        write_deploy_receipt false timeout true "rolled_back_to_prev" "${RELEASE_DIR}/DEPLOY_RECEIPT.json"
+        write_deploy_receipt false timeout true "rolled_back_to_prev"
+    else
+        write_deploy_receipt false timeout false "prev_missing" "${RELEASE_DIR}/DEPLOY_RECEIPT.json"
+        write_deploy_receipt false timeout false "prev_missing"
+    fi
+    exit 1
+fi
 
 # --- Final status ---
 echo ""
@@ -219,3 +293,5 @@ echo ""
 echo "New release: $RELEASE_DIR"
 echo "Git SHA:     $GIT_SHA"
 echo "CURRENT:     $(readlink -f ${RELEASES_BASE}/CURRENT)"
+write_deploy_receipt true ok false "deploy_ok" "${RELEASE_DIR}/DEPLOY_RECEIPT.json"
+write_deploy_receipt true ok false "deploy_ok"

@@ -13,6 +13,8 @@ Routes:
   GET /api/v3/cio/plans/{id}    — Single plan detail for deep links ?plan=
   GET /api/v3/cio/thesis        — Active desk@vN thesis
   POST /api/v3/cio/plans/{id}/disposition — ack/defer/done/reject (status only)
+  GET  /api/v3/cio/dispositions — latest operator dispositions (decision_id key)
+  POST /api/v3/cio/decision/{decision_id}/disposition — ACK/DEFER/DONE/REJECT
 """
 from __future__ import annotations
 
@@ -499,47 +501,245 @@ def get_cio_home() -> dict[str, Any]:
         run_ids=run_ids,
     )
     home["ok"] = True
+    stamp_decision_identity(home, capital_plan)
     return home
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Decision dispositions (Phase 8): durable advisory operator actions
+# Decision dispositions (Phase 8 + P0-11 identity): durable advisory actions
 # ─────────────────────────────────────────────────────────────────────────────
 # ACK / DEFER / DONE / REJECT / RATE are appended to an event ledger, never to
-# broker/order/stop state. This is durable advisory state (not conversational
-# memory), so it survives restarts and feeds Phase 10 outcome learning.
+# broker/order/stop state. Canonical key is decision_id. Legacy
+# position:symbol:account events remain readable as LEGACY_UNVERSIONED and
+# must never auto-apply to a newer decision.
 
 _DISPOSITION_PATH = PROJECT_ROOT / "data" / "cio" / "decision_dispositions.jsonl"
 _VALID_DISPOSITIONS = {"ack", "defer", "done", "reject"}
+AUTHORITY_ADVISORY = "READ_ONLY_ADVISORY"
+IDENTITY_DECISION_ID = "DECISION_ID"
+IDENTITY_LEGACY = "LEGACY_UNVERSIONED"
+IDENTITY_ARCHIVED = "ARCHIVED_FEEDBACK"
+_LEGACY_PREFIXES = ("position:", "action:")
+_DECISION_ID_RE = re.compile(r"^(dec_[A-Za-z0-9._:-]{8,80}|[0-9a-fA-F]{32,64})$")
+
+
+def is_legacy_disposition_key(key: str) -> bool:
+    s = str(key or "").strip()
+    return any(s.startswith(p) for p in _LEGACY_PREFIXES)
+
+
+def is_decision_id(key: str) -> bool:
+    s = str(key or "").strip()
+    if not s or is_legacy_disposition_key(s) or len(s) > 160:
+        return False
+    return bool(_DECISION_ID_RE.match(s))
+
+
+def classify_disposition_identity(entry: dict[str, Any]) -> str:
+    """Classify a stored event. Legacy keys never become current decisions."""
+    if not isinstance(entry, dict):
+        return IDENTITY_LEGACY
+    tagged = str(entry.get("identity_class") or "").strip().upper()
+    if tagged == IDENTITY_ARCHIVED:
+        return IDENTITY_ARCHIVED
+    if tagged == IDENTITY_LEGACY:
+        return IDENTITY_LEGACY
+    did = str(entry.get("decision_id") or "").strip()
+    key = str(entry.get("decision_key") or "").strip()
+    if is_legacy_disposition_key(key) or is_legacy_disposition_key(did):
+        return IDENTITY_LEGACY
+    if is_decision_id(did) or (not did and is_decision_id(key)):
+        return IDENTITY_DECISION_ID
+    return IDENTITY_LEGACY
+
+
+def catalog_from_position_decisions(rows: Any) -> dict[str, dict[str, Any]]:
+    """Map decision_id → identity fields from capital-plan / CIO NOW rows."""
+    out: dict[str, dict[str, Any]] = {}
+    if not isinstance(rows, list):
+        return out
+    for d in rows:
+        if not isinstance(d, dict):
+            continue
+        did = str(d.get("decision_id") or "").strip()
+        if not is_decision_id(did):
+            continue
+        acct = d.get("account")
+        if not acct and isinstance(d.get("accounts"), list) and d.get("accounts"):
+            acct = d["accounts"][0]
+        out[did] = {
+            "decision_id": did,
+            "decision_input_digest": str(d.get("decision_input_digest") or ""),
+            "decision_evidence_digest": str(d.get("decision_evidence_digest") or ""),
+            "symbol": d.get("symbol"),
+            "account": acct,
+            "action": d.get("action") or d.get("stance") or d.get("stance_code"),
+        }
+    return out
+
+
+def load_known_decision_catalog() -> dict[str, dict[str, Any]]:
+    """Current decision catalog. Fail-closed to empty on load error."""
+    try:
+        import api_v2 as _v2
+        plan = _v2._cio_capital_plan()
+        if not plan or plan.get("ok") is False:
+            return {}
+        return catalog_from_position_decisions(plan.get("position_decisions") or [])
+    except Exception:
+        return {}
+
+
+def stamp_decision_identity(
+    home: dict[str, Any] | None,
+    capital_plan: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Attach digests from the capital-plan catalog onto CIO NOW cards."""
+    home = home if isinstance(home, dict) else {}
+    catalog = catalog_from_position_decisions(
+        (capital_plan or {}).get("position_decisions") if isinstance(capital_plan, dict) else []
+    )
+    cards = ((home.get("cio_now") or {}).get("decisions") or [])
+    if not isinstance(cards, list):
+        return home
+    for card in cards:
+        if not isinstance(card, dict):
+            continue
+        did = str(card.get("decision_id") or "").strip()
+        known = catalog.get(did) or {}
+        for fld in ("decision_input_digest", "decision_evidence_digest"):
+            if not card.get(fld) and known.get(fld):
+                card[fld] = known[fld]
+    return home
+
+
+def _truthy(val: Any) -> bool:
+    if val is True:
+        return True
+    s = str(val or "").strip().lower()
+    return s in {"1", "true", "yes", "on", "archived-feedback", "archived_feedback"}
+
+
+def _archived_feedback_requested(body: dict[str, Any]) -> bool:
+    if _truthy(body.get("archived_feedback")):
+        return True
+    mode = str(body.get("mode") or "").strip().lower().replace("_", "-")
+    return mode == "archived-feedback"
+
+
+def _norm_digest(val: Any) -> str:
+    return str(val or "").strip().lower()
+
+
+def _digests_match(supplied: str, known: str) -> bool:
+    """Supplied digest (when present) must equal the catalog digest."""
+    s = _norm_digest(supplied)
+    if not s:
+        return True
+    k = _norm_digest(known)
+    if not k:
+        return False
+    return s == k
 
 
 def get_decision_dispositions() -> dict[str, Any]:
-    """Latest disposition per decision_key (read-only)."""
-    latest: dict[str, dict[str, Any]] = {}
+    """Latest disposition per identity class (read-only).
+
+    ``dispositions`` is keyed by decision_id and contains only versioned
+    current-applicable events. Legacy ``position:symbol:account`` rows are
+    returned under ``legacy_unversioned`` and are never folded into a new
+    decision_id.
+    """
+    current: dict[str, dict[str, Any]] = {}
+    legacy: dict[str, dict[str, Any]] = {}
+    archived: dict[str, dict[str, Any]] = {}
     for entry in _read_jsonl(_DISPOSITION_PATH):
-        key = entry.get("decision_key")
-        if not key:
+        if not isinstance(entry, dict):
             continue
-        latest[key] = entry
-    return {"ok": True, "as_of": _now_iso(), "dispositions": latest,
-            "authority": "READ_ONLY_ADVISORY"}
+        cls = classify_disposition_identity(entry)
+        view = dict(entry)
+        view["identity_class"] = cls
+        if cls == IDENTITY_ARCHIVED:
+            key = str(entry.get("decision_id") or entry.get("decision_key") or "").strip()
+            if key:
+                archived[key] = view
+            continue
+        if cls == IDENTITY_DECISION_ID:
+            key = str(entry.get("decision_id") or entry.get("decision_key") or "").strip()
+            if key and not is_legacy_disposition_key(key):
+                current[key] = view
+            continue
+        key = str(entry.get("decision_key") or entry.get("decision_id") or "").strip()
+        if key:
+            view.setdefault("decision_id", None)
+            legacy[key] = view
+    return {
+        "ok": True,
+        "as_of": _now_iso(),
+        "dispositions": current,
+        "legacy_unversioned": legacy,
+        "archived_feedback": archived,
+        "canonical_key": "decision_id",
+        "authority": AUTHORITY_ADVISORY,
+    }
 
 
 def post_decision_disposition(decision_key: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Record an operator disposition on a decision. No broker/order/stop authority.
+    """Record an operator disposition on a versioned decision.
+
+    Canonical key is ``decision_id``. Rejects missing IDs, digest mismatch,
+    stale/unknown IDs (unless archived-feedback), and legacy position keys.
+    No broker/order/stop authority.
 
     body.disposition: ack | defer | done | reject (required)
     body.rating:       1..5 usefulness rating (optional)
     body.note:         free-text advisory note (optional)
+    body.decision_id / decision_input_digest / decision_evidence_digest
+    body.symbol / account / action
+    body.mode=archived-feedback | archived_feedback=true — allow stale IDs
     """
     body = body or {}
-    key = str(decision_key or "").strip()
-    if not key or len(key) > 160:
-        return {"ok": False, "error": "invalid_decision_key", "as_of": _now_iso()}
+    path_key = str(decision_key or "").strip()
+    body_id = str(body.get("decision_id") or "").strip()
+
+    if is_legacy_disposition_key(path_key):
+        return {
+            "ok": False,
+            "error": "legacy_unversioned_key_not_applicable",
+            "detail": "POST requires decision_id; position:symbol:account is not applied to a new decision",
+            "identity_class": IDENTITY_LEGACY,
+            "as_of": _now_iso(),
+            "authority": AUTHORITY_ADVISORY,
+        }
+
+    did = body_id or path_key
+    if not did:
+        return {
+            "ok": False,
+            "error": "missing_decision_id",
+            "as_of": _now_iso(),
+            "authority": AUTHORITY_ADVISORY,
+        }
+    if body_id and path_key and body_id != path_key:
+        return {
+            "ok": False,
+            "error": "decision_id_mismatch",
+            "as_of": _now_iso(),
+            "authority": AUTHORITY_ADVISORY,
+        }
+    if not is_decision_id(did):
+        return {
+            "ok": False,
+            "error": "invalid_decision_id",
+            "as_of": _now_iso(),
+            "authority": AUTHORITY_ADVISORY,
+        }
+
     disp = str(body.get("disposition") or "").strip().lower()
     if disp not in _VALID_DISPOSITIONS:
         return {"ok": False, "error": "invalid_disposition",
-                "allowed": sorted(_VALID_DISPOSITIONS), "as_of": _now_iso()}
+                "allowed": sorted(_VALID_DISPOSITIONS), "as_of": _now_iso(),
+                "authority": AUTHORITY_ADVISORY}
 
     rating = body.get("rating")
     if rating is not None:
@@ -548,16 +748,68 @@ def post_decision_disposition(decision_key: str, body: dict[str, Any] | None = N
         except (TypeError, ValueError):
             rating = None
         if rating is not None and not (1 <= rating <= 5):
-            return {"ok": False, "error": "invalid_rating", "as_of": _now_iso()}
+            return {"ok": False, "error": "invalid_rating", "as_of": _now_iso(),
+                    "authority": AUTHORITY_ADVISORY}
 
+    archived = _archived_feedback_requested(body)
+    catalog = load_known_decision_catalog()
+    known = catalog.get(did)
+    if known is None and not archived:
+        return {
+            "ok": False,
+            "error": "unknown_or_stale_decision_id",
+            "detail": "decision_id is not in the current catalog; use archived-feedback mode for historical notes",
+            "as_of": _now_iso(),
+            "authority": AUTHORITY_ADVISORY,
+        }
+    known = known or {}
+    in_catalog = bool(catalog.get(did))
+
+    supplied_in = body.get("decision_input_digest")
+    supplied_ev = body.get("decision_evidence_digest")
+    # Digest binding applies to current catalog entries only. Archived-feedback
+    # on an unknown ID records whatever the operator supplied.
+    if in_catalog and not _digests_match(supplied_in, known.get("decision_input_digest")):
+        return {
+            "ok": False,
+            "error": "digest_mismatch",
+            "field": "decision_input_digest",
+            "as_of": _now_iso(),
+            "authority": AUTHORITY_ADVISORY,
+        }
+    if in_catalog and not _digests_match(supplied_ev, known.get("decision_evidence_digest")):
+        return {
+            "ok": False,
+            "error": "digest_mismatch",
+            "field": "decision_evidence_digest",
+            "as_of": _now_iso(),
+            "authority": AUTHORITY_ADVISORY,
+        }
+
+    # Archived-feedback is only for IDs absent from the current catalog.
+    identity_class = IDENTITY_ARCHIVED if (archived and not catalog.get(did)) else IDENTITY_DECISION_ID
+
+    input_digest = _norm_digest(supplied_in) or _norm_digest(known.get("decision_input_digest"))
+    evidence_digest = _norm_digest(supplied_ev) or _norm_digest(known.get("decision_evidence_digest"))
+    symbol = body.get("symbol") if body.get("symbol") is not None else known.get("symbol")
+    account = body.get("account") if body.get("account") is not None else known.get("account")
+    action = body.get("action") if body.get("action") is not None else known.get("action")
     note = str(body.get("note") or "").strip()[:500]
+
     entry = {
-        "decision_key": key,
+        "decision_id": did,
+        "decision_key": did,
+        "decision_input_digest": input_digest,
+        "decision_evidence_digest": evidence_digest,
+        "symbol": symbol,
+        "account": account,
+        "action": action,
         "disposition": disp,
         "rating": rating,
         "note": note,
         "occurred_at": _now_iso(),
-        "authority": "READ_ONLY_ADVISORY",
+        "authority": AUTHORITY_ADVISORY,
+        "identity_class": identity_class,
     }
     try:
         _DISPOSITION_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -565,10 +817,10 @@ def post_decision_disposition(decision_key: str, body: dict[str, Any] | None = N
             f.write(json.dumps(entry, sort_keys=True) + "\n")
     except Exception as e:
         return {"ok": False, "error": type(e).__name__, "detail": str(e)[:200],
-                "as_of": _now_iso()}
+                "as_of": _now_iso(), "authority": AUTHORITY_ADVISORY}
 
     return {"ok": True, "as_of": entry["occurred_at"], "disposition": entry,
-            "authority": "READ_ONLY_ADVISORY"}
+            "authority": AUTHORITY_ADVISORY}
 
 
 def get_cio_dashboard() -> dict[str, Any]:
