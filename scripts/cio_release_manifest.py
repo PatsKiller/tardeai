@@ -7,9 +7,11 @@ from the live git worktree, deploy path, and product versions.
 A stale or hand-edited manifest that disagrees with HEAD fails validation.
 
 Usage:
-  python scripts/cio_release_manifest.py generate [--write]
+  python scripts/cio_release_manifest.py generate [--write] [--out-dir DIR]
   python scripts/cio_release_manifest.py validate
-  python scripts/cio_release_manifest.py check   # validate + exit 1 on fail
+  python scripts/cio_release_manifest.py check              # full pin vs HEAD
+  python scripts/cio_release_manifest.py check-committed    # read-only integrity
+  python scripts/cio_release_manifest.py candidate          # write candidate only
 
 READ_ONLY_ADVISORY. No broker / Telegram / deploy mutations.
 """
@@ -549,16 +551,141 @@ def validate(m_live: Optional[dict[str, Any]] = None) -> dict[str, Any]:
     }
 
 
+PIN_ONLY_PATHS = frozenset({
+    "docs/investment-office/RELEASE_MANIFEST.md",
+    "docs/investment-office/RELEASE_MANIFEST.json",
+})
+
+
+def pin_only_parent(head_sha: str, disk_sha: str) -> dict[str, Any]:
+    """True when HEAD^1..HEAD only touches RELEASE_MANIFEST* and disk pins that parent."""
+    head = (head_sha or "").strip()
+    disk = (disk_sha or "").strip()
+    if not head or not disk or head == disk:
+        return {"ok": head == disk and bool(head), "reason": "equal_or_empty"}
+    parent = _run(["git", "rev-parse", f"{head}^1"])
+    if not parent:
+        return {"ok": False, "reason": "no_parent"}
+    if parent != disk and not (disk.startswith(parent[:12]) or parent.startswith(disk[:12])):
+        return {"ok": False, "reason": "disk_not_parent", "parent": parent}
+    changed = {
+        ln.strip()
+        for ln in _run(["git", "diff", "--name-only", f"{parent}..{head}"]).splitlines()
+        if ln.strip()
+    }
+    extra = sorted(changed - PIN_ONLY_PATHS)
+    return {
+        "ok": bool(changed) and not extra,
+        "parent": parent,
+        "changed": sorted(changed),
+        "extra": extra,
+        "reason": "pin_only" if (changed and not extra) else "non_manifest_changes",
+    }
+
+
+def validate_committed() -> dict[str, Any]:
+    """Read-only integrity of the committed manifest. Does NOT require HEAD pin.
+
+    Phase 2: this is what CI must run. It must never rewrite the files.
+    """
+    errors: list[str] = []
+    warnings: list[str] = []
+    disk = load_json_manifest()
+    md_text = MANIFEST_MD.read_text(encoding="utf-8") if MANIFEST_MD.is_file() else ""
+    md_pins = parse_md_pins(md_text) if md_text else {}
+    if not disk:
+        errors.append("RELEASE_MANIFEST.json missing")
+    if not md_text:
+        errors.append("RELEASE_MANIFEST.md missing")
+    live_versions = product_versions()
+    if disk:
+        for f in REQUIRED_FIELDS:
+            if not disk.get(f):
+                errors.append(f"missing_json_field:{f}")
+        if disk.get("financial_authority") not in (None, "READ_ONLY_ADVISORY"):
+            errors.append(f"bad_authority:{disk.get('financial_authority')}")
+        drv = disk.get("report_version")
+        if drv and live_versions.get("report_version") and drv != live_versions["report_version"]:
+            errors.append(
+                f"report_version mismatch: disk={drv} code={live_versions['report_version']}"
+            )
+        pv = disk.get("product_versions") or {}
+        for k, code_v in live_versions.items():
+            if pv.get(k) and pv.get(k) != code_v:
+                warnings.append(f"product_version_lag:{k} disk={pv.get(k)} code={code_v}")
+        for field in ("canonical_source_sha", "docs_pin", "backend_release_sha"):
+            val = str(disk.get(field) or "")
+            for stale in FORBIDDEN_STALE_SHAS:
+                if val and (val.startswith(stale) or stale.startswith(val[:8])):
+                    errors.append(f"stale_forbidden_sha:{field}={val[:12]}")
+        if md_pins:
+            for k in ("canonical_source_sha", "report_version"):
+                if md_pins.get(k) and disk.get(k) and md_pins[k] != disk[k]:
+                    errors.append(f"md_json_pin_mismatch:{k}")
+    return {
+        "ok": len(errors) == 0,
+        "mode": "committed_integrity",
+        "mutated": False,
+        "errors": errors,
+        "warnings": warnings,
+        "disk_canonical_source_sha": (disk or {}).get("canonical_source_sha"),
+        "disk_status": (disk or {}).get("status"),
+        "code_report_version": live_versions.get("report_version"),
+    }
+
+
+def write_manifest_to(m: dict[str, Any], out_dir: Path) -> dict[str, Path]:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    md = out_dir / "RELEASE_MANIFEST.md"
+    js = out_dir / "RELEASE_MANIFEST.json"
+    md.write_text(render_markdown(m), encoding="utf-8")
+    payload = {k: v for k, v in m.items() if k != "docs_files_sample"}
+    js.write_text(json.dumps(payload, indent=2, default=str) + "\n", encoding="utf-8")
+    return {"md": md, "json": js}
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Investment-office release manifest")
-    parser.add_argument("command", choices=("generate", "validate", "check", "print-json"))
-    parser.add_argument("--write", action="store_true", help="Write MD+JSON (generate)")
+    parser.add_argument(
+        "command",
+        choices=("generate", "validate", "check", "check-committed", "candidate", "print-json"),
+    )
+    parser.add_argument("--write", action="store_true", help="Write MD+JSON (generate → committed paths)")
+    parser.add_argument(
+        "--out-dir",
+        default="",
+        help="Write generate/candidate output here instead of docs/ (never mutates committed files)",
+    )
     args = parser.parse_args(argv)
 
-    if args.command in ("generate", "print-json"):
+    if args.command in ("generate", "print-json", "candidate"):
         m = build_manifest()
-        if args.command == "print-json" or not args.write:
+        if args.command == "print-json" or (args.command == "generate" and not args.write and not args.out_dir):
             print(json.dumps(m, indent=2, default=str))
+        out_dir = Path(args.out_dir) if args.out_dir else None
+        if args.command == "candidate":
+            dest = out_dir or (REPO / "data" / "audit" / "manifest_candidate")
+            paths = write_manifest_to(m, dest)
+            print(json.dumps({
+                "written": True,
+                "mode": "candidate",
+                "mutated_committed": False,
+                "md": str(paths["md"]),
+                "json": str(paths["json"]),
+                "canonical_source_sha": m["canonical_source_sha"],
+                "manifest_hash": m["manifest_hash"],
+                "status": m.get("status"),
+            }, indent=2))
+            return 0
+        if args.write and out_dir:
+            paths = write_manifest_to(m, out_dir)
+            print(json.dumps({
+                "written": True, "mode": "out_dir", "mutated_committed": False,
+                "md": str(paths["md"]), "json": str(paths["json"]),
+                "canonical_source_sha": m["canonical_source_sha"],
+                "manifest_hash": m["manifest_hash"],
+            }, indent=2))
+            return 0
         if args.write:
             write_manifest(m)
             print(json.dumps({"written": True, "md": str(MANIFEST_MD), "json": str(MANIFEST_JSON),
@@ -566,7 +693,12 @@ def main(argv: Optional[list[str]] = None) -> int:
                               "manifest_hash": m["manifest_hash"]}, indent=2))
         return 0
 
-    # validate / check
+    if args.command == "check-committed":
+        result = validate_committed()
+        print(json.dumps(result, indent=2, default=str))
+        return 0 if result["ok"] else 1
+
+    # validate / check (full HEAD pin)
     result = validate()
     print(json.dumps(result, indent=2))
     if args.command == "check":

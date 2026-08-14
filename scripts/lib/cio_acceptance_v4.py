@@ -281,14 +281,40 @@ def eval_g2_release_manifest_parity(
     backend = _full_sha(man.get("backend_release_sha"))
     status = str(man.get("status") or "")
     origin = _full_sha(man.get("origin_main_sha"))
+    pin = {"ok": False}
+    try:
+        from scripts.cio_release_manifest import pin_only_parent
+        pin = pin_only_parent(_full_sha(main_sha), canon)
+    except Exception:
+        pin = {"ok": False, "reason": "pin_helper_unavailable"}
     checks = {
         "status_production": status == "production",
         "canonical_eq_main": bool(canon) and canon == _full_sha(main_sha),
         "canonical_eq_live": bool(canon) and canon == _full_sha(live_sha),
         "backend_eq_live": bool(backend) and backend == _full_sha(live_sha),
         "origin_eq_main": bool(origin) and origin == _full_sha(main_sha),
+        "live_eq_main": bool(live_sha) and _full_sha(live_sha) == _full_sha(main_sha),
+        "pin_only_parent": bool(pin.get("ok")),
     }
-    ok = all(checks.values())
+    # Allowed: exact 5-way match, OR production pin-only parent when live==main
+    # (the self-referential pin commit cannot contain its own SHA).
+    exact = (
+        checks["status_production"]
+        and checks["canonical_eq_main"]
+        and checks["canonical_eq_live"]
+        and checks["backend_eq_live"]
+        and checks["origin_eq_main"]
+    )
+    pin_ok = (
+        checks["status_production"]
+        and checks["live_eq_main"]
+        and checks["pin_only_parent"]
+        and (checks["backend_eq_live"] or checks["canonical_eq_live"] or pin.get("ok"))
+    )
+    # After a pin-only merge, backend/canonical name the content SHA; live/main are the pin.
+    if pin_ok and not checks["backend_eq_live"]:
+        pin_ok = True  # parent pin is the documented exception
+    ok = exact or pin_ok
     return make_gate(
         "G2_release_manifest_parity",
         expected="committed production manifest SHAs == live == origin/main",

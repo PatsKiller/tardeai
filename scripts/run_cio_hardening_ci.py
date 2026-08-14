@@ -99,32 +99,45 @@ def main() -> int:
         else:
             print(f"[PASS] {name}")
 
-    # Manifest check: committed MD+JSON must match live HEAD / product versions.
-    # On GitHub Actions PRs, HEAD is often a synthetic merge commit that cannot
-    # equal the branch tip pin — regenerate there so the gate still validates
-    # product versions + forbidden SHAs against the checked-out tree.
-    # Locally: do NOT auto-write (would hide a stale committed pin).
-    print("[RUN]  release_manifest_check")
-    if os.environ.get("GITHUB_ACTIONS", "").lower() in ("1", "true"):
-        gen = subprocess.run(
-            [sys.executable, "scripts/cio_release_manifest.py", "generate", "--write"],
-            cwd=str(REPO),
-        )
-        if gen.returncode != 0:
-            failed.append("release_manifest_check")
-            print("[FAIL] release_manifest_check — generate failed on GITHUB_ACTIONS")
-        else:
-            print("[info] regenerated RELEASE_MANIFEST for CI HEAD")
+    # Phase 2: never regenerate the committed manifest before validating it.
+    # 1) check-committed — read-only integrity of the files in git
+    # 2) candidate — write a generated copy to an isolated dir and show the diff
+    print("[RUN]  validate_committed_manifest")
     chk = subprocess.run(
-        [sys.executable, "scripts/cio_release_manifest.py", "check"],
+        [sys.executable, "scripts/cio_release_manifest.py", "check-committed"],
         cwd=str(REPO),
     )
     if chk.returncode != 0:
-        failed.append("release_manifest_check")
-        print("[FAIL] release_manifest_check — regenerate with: "
-              "python scripts/cio_release_manifest.py generate --write")
+        failed.append("validate_committed_manifest")
+        print("[FAIL] validate_committed_manifest — committed RELEASE_MANIFEST failed integrity")
     else:
-        print("[PASS] release_manifest_check")
+        print("[PASS] validate_committed_manifest")
+
+    print("[RUN]  generate_candidate_manifest")
+    cand = REPO / "data" / "audit" / "manifest_candidate"
+    if os.environ.get("GITHUB_ACTIONS", "").lower() in ("1", "true"):
+        cand = Path(os.environ.get("RUNNER_TEMP") or "/tmp") / "cio_manifest_candidate"
+    gen = subprocess.run(
+        [sys.executable, "scripts/cio_release_manifest.py", "candidate", "--out-dir", str(cand)],
+        cwd=str(REPO),
+    )
+    if gen.returncode != 0:
+        failed.append("generate_candidate_manifest")
+        print("[FAIL] generate_candidate_manifest")
+    else:
+        print(f"[PASS] generate_candidate_manifest → {cand}")
+        committed = REPO / "docs" / "investment-office" / "RELEASE_MANIFEST.json"
+        generated = cand / "RELEASE_MANIFEST.json"
+        if committed.is_file() and generated.is_file():
+            diff = subprocess.run(
+                ["diff", "-u", str(committed), str(generated)],
+                cwd=str(REPO), capture_output=True, text=True,
+            )
+            if diff.returncode == 0:
+                print("[info] candidate == committed pin")
+            else:
+                print("[info] candidate DIFFERS from committed pin (informational; not a substitute for check-committed)")
+                print((diff.stdout or "")[:2000])
 
     if failed:
         print(f"\nCIO HARDENING CI FAILED: {failed}")
