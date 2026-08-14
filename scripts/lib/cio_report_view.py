@@ -385,6 +385,240 @@ def build_report_view(model: dict[str, Any]) -> dict[str, Any]:
             ],
         })
 
+    # ── Phase 6 analytic completeness sections ──
+    packet = pb.get("analytics_packet") or {}
+    if not packet:
+        try:
+            from scripts.lib.cio_report_analytics import build_analytics_packet
+            packet = build_analytics_packet(pb, as_of=model.get("as_of"))
+        except Exception:
+            packet = {}
+
+    # Performance definitions table
+    pdefs = packet.get("performance_definitions") or pb.get("performance_definitions") or {}
+    if pdefs.get("metrics"):
+        sections.append({
+            "id": "performance_definitions",
+            "title": "Performance Definitions (methodology truth)",
+            "kind": "table",
+            "headers": ["Metric", "Value", "Methodology", "Source", "Quality", "Note"],
+            "rows": [
+                [
+                    m.get("metric") or "—",
+                    (
+                        "DATA_UNAVAILABLE" if m.get("is_unavailable")
+                        else (fmt_pct(m.get("value")) if m.get("unit") == "percent"
+                              else fmt_num(m.get("value")))
+                    ),
+                    str(m.get("methodology") or "—").replace("_", " "),
+                    m.get("source") or "—",
+                    m.get("quality") or "—",
+                    (m.get("note") or "")[:80],
+                ]
+                for m in (pdefs.get("metrics") or [])
+            ],
+            "source_note": "Every figure carries methodology + source + quality. TWR/QTD not fabricated.",
+        })
+
+    # Change in value
+    civ = packet.get("change_in_value") or pb.get("change_in_value") or {}
+    if civ:
+        civ_rows = []
+        if civ.get("displayed"):
+            c = civ.get("components") or {}
+            civ_rows = [
+                ("Beginning value", fmt_usd(c.get("beginning_value"))),
+                ("Net contributions / withdrawals", fmt_usd(c.get("net_contributions_withdrawals"), signed=True)),
+                ("Investment earnings", fmt_usd(c.get("investment_earnings"), signed=True)),
+                ("Ending value", fmt_usd(c.get("ending_value"))),
+                ("Residual", fmt_usd(civ.get("residual_usd"))),
+                ("Status", "Reconciled ✓" if civ.get("reconciles") else str(civ.get("status"))),
+            ]
+        else:
+            civ_rows = [
+                ("Status", str(civ.get("status") or "not_displayed")),
+                ("Note", str(civ.get("note") or "Bridge withheld — inputs insufficient or non-reconciling.")),
+            ]
+        sections.append({
+            "id": "change_in_value",
+            "title": "Change in Portfolio Value",
+            "kind": "kv",
+            "rows": civ_rows,
+            "source_note": civ.get("equation") or "",
+        })
+
+    # Benchmark alignment
+    ba = packet.get("benchmark_alignment") or pb.get("benchmark_alignment") or {}
+    if ba:
+        sections.append({
+            "id": "benchmark_alignment",
+            "title": "Benchmark Comparability",
+            "kind": "kv",
+            "rows": [
+                ("Benchmark", str(ba.get("benchmark_label") or "—")),
+                ("Portfolio CAGR", fmt_pct(ba.get("portfolio_cagr"))),
+                ("Benchmark CAGR", fmt_pct(ba.get("benchmark_cagr"))),
+                ("Portfolio period", str(ba.get("portfolio_period") or "—")),
+                ("Benchmark period", str(ba.get("benchmark_period") or "—")),
+                ("Comparability", str(ba.get("comparability_label") or "—").replace("_", " ")),
+                ("Note", str(ba.get("note") or "")),
+            ],
+        })
+
+    # Look-through coverage (must be impossible to miss)
+    lt = packet.get("lookthrough") or pb.get("lookthrough_coverage") or {}
+    if lt:
+        lt_rows = [
+            ("Coverage", str(lt.get("coverage_label") or "—")),
+            ("Quality", str(lt.get("quality") or "—")),
+            ("Note", str(lt.get("note") or "")),
+        ]
+        sections.append({
+            "id": "lookthrough_coverage",
+            "title": "Look-Through / X-Ray Coverage",
+            "kind": "kv",
+            "rows": lt_rows,
+            "source_note": lt.get("coverage_label"),
+        })
+        if lt.get("sectors"):
+            sections.append({
+                "id": "lookthrough_sectors",
+                "title": "Sector Exposure (look-through)",
+                "kind": "table",
+                "headers": ["Sector", "Weight %", "Source"],
+                "rows": [
+                    [s.get("sector"), fmt_pct(s.get("pct")), s.get("source") or "—"]
+                    for s in (lt.get("sectors") or [])[:12]
+                ],
+            })
+
+    # Valuation with coverage
+    val = packet.get("valuation") or pb.get("valuation_coverage") or {}
+    if val:
+        vrows = [
+            ("Coverage", str(val.get("coverage_label") or "—")),
+            ("Status", str(val.get("status") or "—")),
+            ("Fund/ETF share of book", fmt_pct(val.get("fund_etf_pct"))),
+            ("Note", str(val.get("note") or "")),
+        ]
+        for m in val.get("multiples") or []:
+            vrows.append((
+                m.get("label") or m.get("metric"),
+                f"{m.get('value')}x  (cov {m.get('coverage_pct')}%)" if m.get("coverage_pct") is not None
+                else f"{m.get('value')}x",
+            ))
+        if not val.get("multiples"):
+            vrows.append(("Multiples", "DATA_UNAVAILABLE — not shown without coverage"))
+        sections.append({
+            "id": "valuation_coverage",
+            "title": "Valuation (coverage required)",
+            "kind": "kv",
+            "rows": vrows,
+            "source_note": val.get("coverage_label"),
+        })
+
+    # Attribution honesty
+    attr = packet.get("attribution") or pb.get("attribution_section") or {}
+    if attr.get("components"):
+        sections.append({
+            "id": "attribution",
+            "title": "Attribution (no overstatement)",
+            "kind": "table",
+            "headers": ["Component", "Value", "Methodology", "Quality", "Note"],
+            "rows": [
+                [
+                    c.get("component"),
+                    (
+                        "DATA_UNAVAILABLE" if c.get("value") is None
+                        else fmt_pct(c.get("value"))
+                    ),
+                    str(c.get("methodology") or "—").replace("_", " "),
+                    c.get("quality") or "—",
+                    (c.get("note") or "")[:70],
+                ]
+                for c in (attr.get("components") or [])
+            ],
+            "source_note": attr.get("note"),
+        })
+
+    # Tax lots
+    tax = packet.get("tax_lots") or pb.get("tax_lot_section") or {}
+    if tax:
+        sections.append({
+            "id": "tax_lots_summary",
+            "title": "Unrealized / Tax Lots (advisory — not filing truth)",
+            "kind": "kv",
+            "rows": [
+                ("Long-term unrealized", fmt_usd(tax.get("lt_unrealized_usd"), signed=True)),
+                ("Short-term unrealized", fmt_usd(tax.get("st_unrealized_usd"), signed=True)),
+                ("Lots shown", str(tax.get("row_count") or 0)),
+                ("Quality", str(tax.get("quality") or "—")),
+                ("Disclaimer", str(tax.get("disclaimer") or "")),
+            ],
+        })
+        if tax.get("rows"):
+            sections.append({
+                "id": "tax_lots_detail",
+                "title": "Open Lot Detail (top by |unrealized|)",
+                "kind": "table",
+                "headers": [
+                    "Symbol", "Account", "Qty", "Cost", "MV", "Unrealized $", "Term", "Quality",
+                ],
+                "rows": [
+                    [
+                        r.get("symbol") or "—",
+                        r.get("account") or "—",
+                        fmt_num(r.get("quantity"), 2),
+                        fmt_usd(r.get("cost_basis")),
+                        fmt_usd(r.get("market_value")),
+                        fmt_usd(r.get("unrealized_gl_usd"), signed=True),
+                        r.get("holding_period") or "—",
+                        r.get("quality_flag") or "ok",
+                    ]
+                    for r in (tax.get("rows") or [])[:15]
+                ],
+                "source_note": tax.get("disclaimer"),
+            })
+
+    # Income
+    income = packet.get("income") or pb.get("income_section") or {}
+    if income:
+        if income.get("status") == "unavailable":
+            sections.append({
+                "id": "income",
+                "title": "Income",
+                "kind": "kv",
+                "rows": [
+                    ("Status", "DATA_UNAVAILABLE"),
+                    ("Note", str(income.get("note") or "")),
+                ],
+            })
+        else:
+            sections.append({
+                "id": "income",
+                "title": "Income",
+                "kind": "kv",
+                "rows": [
+                    ("Trailing income", fmt_usd(income.get("trailing_income_usd"))),
+                    ("Forward / estimated", fmt_usd(income.get("forward_income_usd"))),
+                    ("Yield", fmt_pct(income.get("yield_pct"))),
+                    ("Quality", str(income.get("quality") or "—")),
+                    ("Note", str(income.get("note") or "")),
+                ],
+            })
+
+    # Phase 6 exit gate summary
+    gate = packet.get("exit_gate") or {}
+    if gate:
+        sections.append({
+            "id": "phase6_exit_gate",
+            "title": "Analytic Completeness Gate",
+            "kind": "table",
+            "headers": ["Gate", "Result"],
+            "rows": [[k, str(v)] for k, v in gate.items() if k != "ALL_PASS"]
+                    + [["ALL_PASS", str(gate.get("ALL_PASS"))]],
+        })
+
     sections.append({
         "id": "coverage",
         "title": "Data Coverage & Provenance",
@@ -399,7 +633,6 @@ def build_report_view(model: dict[str, Any]) -> dict[str, Any]:
         ],
         "unavailable": list(coverage.get("fields_unavailable") or []),
     })
-
     # Field-coverage matrix + known gaps (same facts as model.fields / KNOWN_GAPS)
     field_rows = []
     for f in (model.get("fields") or [])[:40]:

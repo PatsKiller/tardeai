@@ -38,8 +38,7 @@ from typing import Any, Callable, Optional
 
 Executor = Callable[..., Any]
 
-REPORT_VERSION = "report_v2_1.2.0"  # Phase 5: institutional visuals + chart suite
-# ── Taxonomy ─────────────────────────────────────────────────────────────────
+REPORT_VERSION = "report_v2_1.3.0"  # Phase 6: analytic completeness + methodology truth# ── Taxonomy ─────────────────────────────────────────────────────────────────
 
 IMPLEMENTED = "IMPLEMENTED_WITH_SOURCE_PROOF"
 UNAVAILABLE = "EXPLICITLY_UNAVAILABLE"
@@ -1177,7 +1176,21 @@ def build_report_v2(
             part_b["allocation_weight_pct"] = alloc_norm["allocation_weight_pct"]
     except Exception:
         pass
-
+    # Phase 6: methodology-truth analytics packet (never fabricates TWR/QTD/effects).
+    try:
+        from scripts.lib.cio_report_analytics import enrich_part_b
+        hist = None
+        if part_a_inputs and isinstance(part_a_inputs.get("performance"), dict):
+            hist = (part_a_inputs["performance"].get("periods")
+                    or part_a_inputs["performance"].get("period_returns"))
+        part_b = enrich_part_b(
+            part_b,
+            performance_attribution=part_a_inputs.get("performance_attribution") if part_a_inputs else None,
+            history_periods=hist,
+            as_of=_now_iso(now),
+        )
+    except Exception:
+        pass
     model = {
         "report_version": REPORT_VERSION,
         "architecture_version": "report_arch_1.0.0",

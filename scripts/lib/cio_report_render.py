@@ -196,10 +196,20 @@ def render_html_from_view(view: dict[str, Any]) -> str:
         ("Disclosure", "#disclosure"),
     ]
     sections_html.append('<div class="page"><h2>Contents</h2><div class="toc">')
+    # Extend TOC with Phase 6 analytic sections when present
+    for sid, title in (
+        ("performance_definitions", "Performance Definitions"),
+        ("change_in_value", "Change in Portfolio Value"),
+        ("lookthrough_coverage", "Look-Through Coverage"),
+        ("valuation_coverage", "Valuation Coverage"),
+        ("tax_lots_summary", "Tax Lots / Unrealized"),
+        ("phase6_exit_gate", "Analytic Completeness Gate"),
+    ):
+        if section_by_id(view, sid):
+            toc_items.append((title, f"#{sid}"))
     for label, href in toc_items:
         sections_html.append(f'<div><a href="{href}">{_e(label)}</a></div>')
     sections_html.append("</div></div>")
-
     sections_html.append('<div class="page">')
     sections_html.append(
         f'<div class="meta"><span>as_of {_e(meta.get("as_of"))}</span>'
@@ -351,7 +361,12 @@ def render_html_from_view(view: dict[str, Any]) -> str:
     sections_html.append('<div class="page">')
     sections_html.append('<h2 id="part-b">Part B — Institutional Portfolio Book</h2>')
     for sid in (
-        "portfolio_book", "accounts", "allocation", "performance", "coverage",
+        "portfolio_book", "accounts", "allocation", "performance",
+        "performance_definitions", "change_in_value", "benchmark_alignment",
+        "lookthrough_coverage", "lookthrough_sectors", "valuation_coverage",
+        "attribution", "tax_lots_summary", "tax_lots_detail", "income",
+        "phase6_exit_gate",
+        "coverage",
         "field_coverage_matrix", "known_gap_resolutions", "quality_flags",
     ):
         sec = section_by_id(view, sid)
@@ -598,7 +613,12 @@ def render_docx_from_view(view: dict[str, Any], out: Path) -> Path:
     for sid in (
         "decisions_now", "capital_plan", "portfolio_posture",
         "opportunity_funnel", "counter_thesis",
-        "portfolio_book", "accounts", "allocation", "performance", "coverage",
+        "portfolio_book", "accounts", "allocation", "performance",
+        "performance_definitions", "change_in_value", "benchmark_alignment",
+        "lookthrough_coverage", "lookthrough_sectors", "valuation_coverage",
+        "attribution", "tax_lots_summary", "tax_lots_detail", "income",
+        "phase6_exit_gate",
+        "coverage",
         "disclosure",
     ):
         sec = section_by_id(view, sid)
