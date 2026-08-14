@@ -59,7 +59,8 @@ def cio_bot_token() -> str:
 
 
 def allowlist_chat_ids() -> set[str]:
-    raw = _env("TELEGRAM_CIO_CHAT_IDS") or _env("TELEGRAM_CIO_ALLOWLIST") or _env("TELEGRAM_CHAT_ID")
+    # Phase 1: never fall back to general TELEGRAM_CHAT_ID (Maria channel).
+    raw = _env("TELEGRAM_CIO_CHAT_IDS") or _env("TELEGRAM_CIO_ALLOWLIST")
     return {c.strip() for c in raw.split(",") if c.strip()}
 
 

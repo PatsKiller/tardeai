@@ -35,6 +35,17 @@ def smart_split(text: str, limit: int = MAX_MSG_LEN) -> list[str]:
 
 
 def send_message(*, token: str, chat_id: str, text: str, thread_id: str | None = None) -> dict:
+    # Phase 1 network interdiction: never hit Telegram API under pytest / CI flags
+    import os
+    if os.environ.get("PYTEST_CURRENT_TEST") or os.environ.get("CIO_TELEGRAM_INTERDICT", "").lower() in (
+        "1", "true", "yes", "on",
+    ):
+        return {
+            "ok": False,
+            "status_code": 0,
+            "response": {"ok": False, "description": "INTERDICTED_TEST_OR_FLAG"},
+            "interdicted": True,
+        }
     payload = {"chat_id": chat_id, "text": text, "parse_mode": "Markdown"}
     if thread_id:
         payload["message_thread_id"] = thread_id
