@@ -6,23 +6,23 @@
 
 **Status:** `release_candidate`  
 **Branch:** `wt/cio-phase1-notify`  
-**Created:** `2026-08-14T12:23:28.577810+00:00`  
-**Manifest hash:** `eeedf3f0aa7f50385686ccf970b71ae5f12ca29cfb464121b0dfdd9d8d2efdf3`
+**Created:** `2026-08-14T12:23:45.562403+00:00`  
+**Manifest hash:** `7a74a64382b74763a47f4a670aafe86516ad08bc391d373b9dfe765c46ec32f6`
 
 ## Pin
 
 | Field | Value |
 | --- | --- |
-| canonical_source_sha | `185875285df51a88142f1dfcba8e795df8e14d96` |
+| canonical_source_sha | `777cb8fd8f53816f1156e07eca0e98b4fc06d2d6` |
 | frontend_build_sha | `3.0.0` |
 | backend_release_sha | `UNKNOWN_NOT_STAMPED_IN_RELEASE_DIR` |
 | deployed_release_path | `/home/johnclaw/trade-ai-releases/portfolio-server/20260813-210818` |
 | migration_head | `2026-08-13_two_way_reliability_n.sql` |
-| docs_pin | `c51d0aa87aa3a56f29c820fc` |
+| docs_pin | `1256df921d58a9e5662e2298` |
 | runtime_config_hash | `1171100c678822858d2c6c6f938abf15` |
 | report_version | `report_v2_1.5.0` |
 | rollback_sha | `c330a117ee2bce657257e7acbbeb6c7cfdb8e8f9` |
-| created_at | `2026-08-14T12:23:28.577810+00:00` |
+| created_at | `2026-08-14T12:23:45.562403+00:00` |
 
 ## Product versions
 
