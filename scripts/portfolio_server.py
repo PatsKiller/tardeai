@@ -45,6 +45,14 @@ from urllib.parse import urlparse, parse_qs
 PORT = 7777
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 
+# Make the repo ROOT importable so `from scripts.lib.X` resolves alongside the
+# existing `from lib.X` convention (scripts/ and scripts/lib are also on sys.path).
+# The CIO subsystem (Phases 0-10) uses the `scripts.`-prefixed form; without the
+# root on sys.path the web server raises "No module named 'scripts'".
+import sys as _sys_root  # noqa: E402
+if str(PROJECT_ROOT) not in _sys_root.path:
+    _sys_root.path.insert(0, str(PROJECT_ROOT))
+
 # CC v3 stale-bundle check. The injected inline script and /v3/cc-boot.js BOTH compare
 # this against sessionStorage['cc_v3_build'] and reload when it differs. They must
 # therefore resolve to the SAME string — one shared fallback, never two literals.
