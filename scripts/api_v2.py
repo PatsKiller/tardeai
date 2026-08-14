@@ -27533,12 +27533,16 @@ def _capital_plan_compact():
             "post_plan_cash_pct": full.get("post_plan_cash_pct"),
             "ledger_invariants_ok": (full.get("cash_ledger") or {}).get("invariants_ok"),
             "decision_count": len(full.get("position_decisions") or []),
+            "financial_truth_gate": full.get("financial_truth_gate"),
             "top_decisions": [
                 {
                     "symbol": d.get("symbol"),
                     "stance": d.get("cio_stance"),
                     "recommended_delta_usd": d.get("recommended_delta_usd"),
                     "tax_account_constraint": d.get("tax_account_constraint"),
+                    "actionable": d.get("actionable"),
+                    "act_now_suppressed": d.get("act_now_suppressed"),
+                    "financial_truth_quality": d.get("financial_truth_quality"),
                 }
                 for d in (full.get("position_decisions") or [])[:8]
             ],
