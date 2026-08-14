@@ -28,6 +28,9 @@ GATES = [
     ("financial_truth_gate", [
         "tests/test_cio_financial_truth_gate.py",
     ]),
+    ("freshness_materiality", [
+        "tests/test_cio_freshness_materiality_gate.py",
+    ]),
     ("decision_semantics", [
         "tests/test_cio_decision_semantics.py",
         "tests/test_cio_office_consistency.py",

@@ -27534,6 +27534,7 @@ def _capital_plan_compact():
             "ledger_invariants_ok": (full.get("cash_ledger") or {}).get("invariants_ok"),
             "decision_count": len(full.get("position_decisions") or []),
             "financial_truth_gate": full.get("financial_truth_gate"),
+            "freshness_materiality_gate": full.get("freshness_materiality_gate"),
             "top_decisions": [
                 {
                     "symbol": d.get("symbol"),
@@ -27541,6 +27542,9 @@ def _capital_plan_compact():
                     "recommended_delta_usd": d.get("recommended_delta_usd"),
                     "tax_account_constraint": d.get("tax_account_constraint"),
                     "actionable": d.get("actionable"),
+                    "act_now": d.get("act_now"),
+                    "action_label": d.get("action_label"),
+                    "action_label_display": d.get("action_label_display"),
                     "act_now_suppressed": d.get("act_now_suppressed"),
                     "financial_truth_quality": d.get("financial_truth_quality"),
                 }
