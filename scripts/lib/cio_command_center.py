@@ -219,6 +219,8 @@ def build_cio_now(
             )
             if d.get("act_now") or _str(d.get("action_label")) == "ACT_NOW":
                 urgency = "high"
+            value_usd = _num(d.get("current_value_usd"))
+            weight_pct = _num(d.get("current_weight_pct"))
             card = {
                 "kind": "position",
                 "decision_id": d.get("decision_id"),
@@ -227,9 +229,13 @@ def build_cio_now(
                 "action": d.get("action") or d.get("stance"),
                 "stance": d.get("stance"),
                 "stance_code": d.get("stance_code"),
+                # Short card keys (UI) + full parity aliases (Phase 7)
                 "delta_usd": delta,
-                "value_usd": _num(d.get("current_value_usd")),
-                "weight_pct": _num(d.get("current_weight_pct")),
+                "value_usd": value_usd,
+                "weight_pct": weight_pct,
+                "recommended_delta_usd": delta,
+                "current_value_usd": value_usd,
+                "current_weight_pct": weight_pct,
                 "target_weight_pct": _num(d.get("target_weight_pct")),
                 "why_now": d.get("why_now"),
                 "counter_thesis": d.get("counter_thesis"),
@@ -261,6 +267,8 @@ def build_cio_now(
                 continue
             urgency = "high" if has_breach or d.get("act_now") else ("medium" if delta else "low")
             stance = _action_hint(why, d.get("cio_stance") or d.get("stance_code"))
+            value_usd = _num(d.get("current_value_usd"))
+            weight_pct = _num(d.get("current_weight_pct"))
             investment_pool.append({
                 "kind": "position",
                 "decision_id": d.get("decision_id") or f"dec_fallback_{d.get('symbol')}",
@@ -270,8 +278,11 @@ def build_cio_now(
                 "stance": stance,
                 "stance_code": d.get("stance_code") or d.get("cio_stance"),
                 "delta_usd": delta,
-                "value_usd": _num(d.get("current_value_usd")),
-                "weight_pct": _num(d.get("current_weight_pct")),
+                "value_usd": value_usd,
+                "weight_pct": weight_pct,
+                "recommended_delta_usd": delta,
+                "current_value_usd": value_usd,
+                "current_weight_pct": weight_pct,
                 "target_weight_pct": _num((d.get("target_range_pct") or {}).get("max"))
                 if isinstance(d.get("target_range_pct"), dict) else _num(d.get("target_weight_pct")),
                 "why_now": why,
