@@ -84,3 +84,37 @@ def test_render_markdown_contains_pin_table():
     pins = parse_md_pins(md)
     assert pins["canonical_source_sha"] == m["canonical_source_sha"]
     assert not pins["canonical_source_sha"].startswith("0a9b6c41")
+
+
+def test_parent_pin_only_manifest_commit_is_ok(tmp_path, monkeypatch):
+    """Pin commit may trail one step when only RELEASE_MANIFEST* changed."""
+    import cio_release_manifest as mod
+
+    monkeypatch.setattr(mod, "MANIFEST_MD", tmp_path / "RELEASE_MANIFEST.md")
+    monkeypatch.setattr(mod, "MANIFEST_JSON", tmp_path / "RELEASE_MANIFEST.json")
+    parent = mod._run(["git", "rev-parse", "HEAD^"])
+    head = mod.git_head()
+    if not parent or not head or parent == head:
+        pytest.skip("need at least two commits")
+    # Simulate disk pin = parent (content), live HEAD = tip
+    m = mod.build_manifest()
+    m["canonical_source_sha"] = parent
+    mod.write_manifest(m)
+    # Only allow if git says tip vs parent is pin-only — if tip has more changes, expect fail
+    changed = {
+        ln.strip()
+        for ln in mod._run(["git", "diff", "--name-only", f"{parent}..{head}"]).splitlines()
+        if ln.strip()
+    }
+    allowed = {
+        "docs/investment-office/RELEASE_MANIFEST.md",
+        "docs/investment-office/RELEASE_MANIFEST.json",
+    }
+    result = mod.validate()
+    if changed and changed <= allowed:
+        assert result["ok"] is True, result
+        assert any("pin-only" in w for w in result["warnings"])
+    else:
+        # Current tip is not a pin-only commit — mismatch must still fail
+        assert result["ok"] is False
+        assert any("mismatch" in e for e in result["errors"])

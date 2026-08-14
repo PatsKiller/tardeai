@@ -443,13 +443,37 @@ def validate(m_live: Optional[dict[str, Any]] = None) -> dict[str, Any]:
                 if field == "canonical_source_sha" or field == "docs_pin":
                     errors.append(f"stale_forbidden_sha:{field}={val[:12]}")
 
-    # HEAD must match canonical_source_sha on disk
+    # HEAD must match canonical_source_sha on disk, OR disk may pin the
+    # immediate parent when HEAD is a pin-only commit (only RELEASE_MANIFEST*).
+    # That breaks the chicken-and-egg of committing a self-referential SHA.
     head = live["canonical_source_sha"]
     disk_sha = (disk or {}).get("canonical_source_sha") or md_pins.get("canonical_source_sha")
     if disk_sha and disk_sha != head:
-        errors.append(
-            f"canonical_source_sha mismatch: disk={disk_sha[:12]} head={head[:12]} — regenerate"
-        )
+        parent = _run(["git", "rev-parse", "HEAD^"])
+        pin_only_allowed = {
+            "docs/investment-office/RELEASE_MANIFEST.md",
+            "docs/investment-office/RELEASE_MANIFEST.json",
+        }
+        if parent and disk_sha == parent:
+            changed = {
+                ln.strip()
+                for ln in _run(["git", "diff", "--name-only", f"{parent}..{head}"]).splitlines()
+                if ln.strip()
+            }
+            if changed and changed <= pin_only_allowed:
+                warnings.append(
+                    "canonical_source_sha pins parent content commit; "
+                    "HEAD is pin-only RELEASE_MANIFEST update (OK)"
+                )
+            else:
+                errors.append(
+                    f"canonical_source_sha mismatch: disk={disk_sha[:12]} head={head[:12]} "
+                    f"— parent pin but non-manifest changes {sorted(changed - pin_only_allowed)[:5]}"
+                )
+        else:
+            errors.append(
+                f"canonical_source_sha mismatch: disk={disk_sha[:12]} head={head[:12]} — regenerate"
+            )
 
     # report_version must match code
     code_rv = live.get("report_version")
