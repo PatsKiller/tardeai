@@ -293,6 +293,7 @@ class CIOActionLedger:
             "cio_artifact_id": action.get("cio_artifact_id", ""),
             "origin_run_id": action.get("origin_run_id", ""),
             "legacy_cio_decision_id": action.get("legacy_cio_decision_id"),
+            "cio_decision_id": action.get("cio_decision_id", ""),
             "idempotency_key": idempotency_key,
         }
 
@@ -465,6 +466,7 @@ class CIOActionLedger:
                         "cio_artifact_id": payload.get("cio_artifact_id"),
                         "origin_run_id": payload.get("origin_run_id"),
                         "legacy_cio_decision_id": payload.get("legacy_cio_decision_id"),
+                        "cio_decision_id": payload.get("cio_decision_id"),
                         "created_at": event["occurred_at"],
                         "updated_at": event["occurred_at"],
                         "operator_decision": None,

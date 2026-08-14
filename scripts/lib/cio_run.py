@@ -382,8 +382,12 @@ class CIORunStore:
             run["waiting_since"] = event["occurred_at"]
         elif etype == "CIO_RUN_SPECIALIST_REQUESTED":
             run["status"] = "SPECIALIST_REVIEW"
-            run["specialist_requests"].append(payload.get("handoff_id"))
-            run["counters"]["specialist_calls"] += 1
+            if payload.get("input_snapshot_id"):
+                run["input_snapshot_id"] = payload["input_snapshot_id"]
+            hid = payload.get("handoff_id")
+            if hid:
+                run["specialist_requests"].append(hid)
+                run["counters"]["specialist_calls"] += 1
         elif etype == "CIO_RUN_SPECIALIST_COMPLETED":
             run["specialist_artifact_refs"].append(payload.get("artifact_id"))
         elif etype == "CIO_RUN_HERMES_REQUESTED":
@@ -394,6 +398,8 @@ class CIORunStore:
             pass
         elif etype == "CIO_RUN_SYNTHESIS_STARTED":
             run["status"] = "CIO_SYNTHESIS"
+            if payload.get("input_snapshot_id"):
+                run["input_snapshot_id"] = payload["input_snapshot_id"]
         elif etype == "CIO_RUN_SYNTHESIS_COMPLETED":
             run["cio_artifact_id"] = payload.get("cio_artifact_id")
         elif etype == "CIO_RUN_ACTION_CREATED":

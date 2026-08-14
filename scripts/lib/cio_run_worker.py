@@ -358,6 +358,16 @@ class CIORunWorker:
                 return result
 
             # Step 5: Governed CIO synthesis (via Alex)
+            # A resumed run sits in SPECIALIST_REVIEW after consuming completed
+            # specialists. Advance it to CIO_SYNTHESIS so the run reaches a clean
+            # terminal state (ACTION_WRITE → NOTIFICATION_ENQUEUE → COMPLETED)
+            # instead of being left parked in SPECIALIST_REVIEW.
+            _run_proj = self.run_store.get_run(run_id) if self.run_store else None
+            if _run_proj and _run_proj.get("status") == "SPECIALIST_REVIEW":
+                try:
+                    self.run_store.transition(run_id, "CIO_SYNTHESIS", actor="cio_run_worker")
+                except Exception:
+                    pass
             synthesis_result = self._cio_synthesis(run, snapshot_result, specialist_result, hermes_result)
             result["synthesis_artifact_id"] = synthesis_result.get("artifact_id")
 
@@ -818,6 +828,8 @@ class CIORunWorker:
                     "domain": rec.get("domain", "GENERAL"),
                     "priority": rec.get("priority", "NORMAL"),
                     "parent_run_id": self._run_id,
+                    "origin_run_id": self._run_id,
+                    "cio_decision_id": rec.get("cio_decision_id", ""),
                     "recommended_action": rec.get("recommended_action", ""),
                     "rationale": rec.get("rationale", ""),
                     "evidence_refs": rec.get("evidence_refs", []),
@@ -849,6 +861,7 @@ class CIORunWorker:
                     "domain": "GENERAL",
                     "priority": "LOW",
                     "parent_run_id": self._run_id,
+                    "origin_run_id": self._run_id,
                 }
                 event = self.action_ledger.create_action(
                     action,
@@ -859,6 +872,11 @@ class CIORunWorker:
                 aid = event.get("payload", {}).get("cio_action_id")
                 if aid:
                     action_ids.append(aid)
+                    if self.run_store:
+                        self.run_store.transition(
+                            self._run_id, "ACTION_WRITE",
+                            action_id=aid, actor="cio_run_worker",
+                        )
             except Exception:
                 pass
 
