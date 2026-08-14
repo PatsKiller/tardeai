@@ -2,11 +2,11 @@
   "manifest_schema": "investment_office_release_manifest_v1",
   "status": "production",
   "branch": "main",
-  "canonical_source_sha": "e7b722b3b0a84baa41dfb202765d7c744faf128e",
-  "frontend_build_sha": "e7b722b3b0a84baa41dfb202765d7c744faf128e",
-  "backend_release_sha": "e7b722b3b0a84baa41dfb202765d7c744faf128e",
-  "deployed_release_path": "/home/johnclaw/trade-ai-releases/portfolio-server/e7b722b3-main-exact-phase1-20260814-094715",
-  "deployed_release_name": "e7b722b3-main-exact-phase1-20260814-094715",
+  "canonical_source_sha": "361ef6d27895e176deecf8061dbe405bf4d7bcab",
+  "frontend_build_sha": "361ef6d27895e176deecf8061dbe405bf4d7bcab",
+  "backend_release_sha": "361ef6d27895e176deecf8061dbe405bf4d7bcab",
+  "deployed_release_path": "/home/johnclaw/trade-ai-releases/portfolio-server/361ef6d2-main-exact-phase1-20260814-095316",
+  "deployed_release_name": "361ef6d2-main-exact-phase1-20260814-095316",
   "deploy_exists": true,
   "migration_head": "2026-08-13_two_way_reliability_n.sql",
   "migration_set": [
@@ -15,13 +15,14 @@
     "2026-08-13_two_way_curation_sources.sql",
     "2026-08-13_two_way_reliability_n.sql"
   ],
-  "docs_pin": "83c37648d1acaee40970901d",
+  "docs_pin": "0ecc252d891dc65609bbfa7a",
   "docs_files_sample": [
     "PHASE10_GIT_RELEASE_CI_DRIVE.md",
     "PHASE10_OUTCOME_LEARNING.md",
     "PHASE11_ADVERSARIAL_SUITE.md",
     "PHASE12_ARCHITECTURE_REVIEW.md",
     "PHASE13_CONTROLLED_CANARY.md",
+    "PHASE1_EXACT_RELEASE_CONVERGENCE.md",
     "PHASE1_NOTIFICATION_CONTAINMENT.md",
     "PHASE2_CASH_CAPITAL_LEDGER.md",
     "PHASE3_DECISION_SEMANTICS.md",
@@ -47,9 +48,9 @@
     "alex_telegram_version": "alex_telegram_1.0.0",
     "pipeline_version": "pipeline_1.0.0"
   },
-  "rollback_sha": "ac997871d91280aefe9e41608c6cb8ec6a2ce421",
-  "origin_main_sha": "e7b722b3b0a84baa41dfb202765d7c744faf128e",
-  "created_at": "2026-08-14T13:48:35.393544+00:00",
+  "rollback_sha": "e7b722b3b0a84baa41dfb202765d7c744faf128e",
+  "origin_main_sha": "361ef6d27895e176deecf8061dbe405bf4d7bcab",
+  "created_at": "2026-08-14T13:53:20.157260+00:00",
   "financial_authority": "READ_ONLY_ADVISORY",
   "broker_write_paths_added": 0,
   "notes": "Production investment-office release: Git main, portfolio-server CURRENT, and this manifest pin the same full SHA. Stale preliminary SHAs are forbidden. Authority remains READ_ONLY_ADVISORY.",
@@ -75,5 +76,5 @@
     "auto_enforced_by_this_script": false,
     "note": "Status-check contexts left empty so first main PR is not blocked before the workflow runs."
   },
-  "manifest_hash": "0c2971fdf72547adc715a453c5b10b8d1a3310e33daff58839bb52b48f13c70f"
+  "manifest_hash": "450a18ad1d00ee063e7c91a82b31377ae9d11404693f5014c5ddd850501184a0"
 }

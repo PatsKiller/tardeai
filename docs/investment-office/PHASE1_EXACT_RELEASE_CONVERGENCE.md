@@ -84,3 +84,12 @@ Overlay canary is no longer CURRENT; exact main tree is.
 ## REAL TELEGRAM SENDS: 0 (this phase)  
 ## BROKER CALLS: 0  
 ## FINANCIAL AUTHORITY CHANGED: NO  
+
+## Post-merge tip (final)
+
+After merging PR #300, CURRENT was rebuilt at main tip:
+
+- **LIVE / Git / Manifest:** `361ef6d27895e176deecf8061dbe405bf4d7bcab`
+- **Release dir:** `361ef6d2-main-exact-phase1-20260814-095316`
+- **Manifest hash:** `450a18ad1d00ee063e7c91a82b31377ae9d11404693f5014c5ddd850501184a0`
+- **Status:** `production`
