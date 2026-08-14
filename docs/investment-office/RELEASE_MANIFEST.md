@@ -4,25 +4,25 @@
 > `validate` fails if HEAD or product versions disagree with this file.
 > Authority: **READ_ONLY_ADVISORY** — no broker / order / stop / 2FA.
 
-**Status:** `release_candidate`  
-**Branch:** `wt/cio-acceptance-rest`  
-**Created:** `2026-08-14T14:48:17.544112+00:00`  
-**Manifest hash:** `dca12679be2c878f6690cecef35059051ef9f21ba598639c43e33be5825cd6b2`
+**Status:** `production`  
+**Branch:** `main`  
+**Created:** `2026-08-14T19:21:53.932171+00:00`  
+**Manifest hash:** `acb76a0212862cabee2bccd1ece1ad890fc3ae35069ef17c456fb6dc97adc473`
 
 ## Pin
 
 | Field | Value |
 | --- | --- |
-| canonical_source_sha | `ac194296b8dde8c4523fd643c3bd9346f24e54bb` |
-| frontend_build_sha | `e7b722b3b0a84baa41dfb202765d7c744faf128e` |
-| backend_release_sha | `361ef6d27895e176deecf8061dbe405bf4d7bcab` |
-| deployed_release_path | `/home/johnclaw/trade-ai-releases/portfolio-server/361ef6d2-main-exact-phase1-20260814-095316` |
+| canonical_source_sha | `2bbd8848b1f7f32bff6eae8b9d1fcf93d640852e` |
+| frontend_build_sha | `2bbd8848b1f7f32bff6eae8b9d1fcf93d640852e` |
+| backend_release_sha | `2bbd8848b1f7f32bff6eae8b9d1fcf93d640852e` |
+| deployed_release_path | `/home/johnclaw/trade-ai-releases/portfolio-server/2bbd8848-main-exact-phase2-20260814-152053` |
 | migration_head | `2026-08-13_two_way_reliability_n.sql` |
-| docs_pin | `23184f6bf5c80470034ae0fe` |
+| docs_pin | `3533475ca3e2f7a9174f2143` |
 | runtime_config_hash | `1171100c678822858d2c6c6f938abf15` |
 | report_version | `report_v2_1.5.0` |
-| rollback_sha | `f50bae145189cd5d09de7c7873894cf7ef1bc58a` |
-| created_at | `2026-08-14T14:48:17.544112+00:00` |
+| rollback_sha | `fff9253a6e3b7373a2109a64767c8a40eaec7066` |
+| created_at | `2026-08-14T19:21:53.932171+00:00` |
 
 ## Product versions
 
@@ -64,7 +64,7 @@ Recommended / residual:
 
 ## Notes
 
-Release candidate for CIO production hardening on this branch. backend_release_sha reflects currently deployed portfolio-server CURRENT (may lag this RC until controlled deployment). Stale preliminary SHAs are forbidden. Drive investment-office mirror may lag git until operator sync.
+Production investment-office release: Git main, portfolio-server CURRENT, and this manifest pin the same full SHA. Stale preliminary SHAs are forbidden. Authority remains READ_ONLY_ADVISORY.
 
 ## Validation
 
