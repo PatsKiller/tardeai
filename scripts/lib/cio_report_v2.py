@@ -38,7 +38,9 @@ from typing import Any, Callable, Optional
 
 Executor = Callable[..., Any]
 
-REPORT_VERSION = "report_v2_1.3.0"  # Phase 6: analytic completeness + methodology truth# ── Taxonomy ─────────────────────────────────────────────────────────────────
+REPORT_VERSION = "report_v2_1.4.0"  # Phase 7: output pipeline + immutable instance manifest
+
+# ── Taxonomy ─────────────────────────────────────────────────────────────────
 
 IMPLEMENTED = "IMPLEMENTED_WITH_SOURCE_PROOF"
 UNAVAILABLE = "EXPLICITLY_UNAVAILABLE"

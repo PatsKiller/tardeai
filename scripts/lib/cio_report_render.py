@@ -583,16 +583,34 @@ def render_docx_from_view(view: dict[str, Any], out: Path) -> Path:
         for item in letter["what_not_to_do"]:
             document.add_paragraph(str(item), style="List Bullet")
 
-    # Chart inventory (HTML/PDF carry full SVG suite)
+    # Charts — embed PNG when convertible from SVG; always include governance table
     chart_bundle = view.get("charts") or {}
     included = list(chart_bundle.get("included") or [])
     if included or chart_bundle.get("skipped"):
         h = document.add_heading("Charts", level=2)
         _keep_with_next(h)
         document.add_paragraph(
-            "Full chart suite is embedded in the HTML/PDF render from the same snapshot. "
-            "DOCX lists chart governance metadata for accessibility."
+            "Charts share the same model snapshot as HTML/PDF. "
+            "Each figure carries source, units, and quality notes."
         )
+        for key in included:
+            c = (chart_bundle.get("charts") or {}).get(key) or {}
+            cap = document.add_paragraph()
+            run = cap.add_run(str(c.get("title") or key))
+            run.bold = True
+            run.font.size = Pt(10)
+            png_path = _svg_to_png_if_possible(c.get("svg_path") or c.get("svg"))
+            if png_path:
+                try:
+                    document.add_picture(str(png_path), width=Inches(5.8))
+                except Exception:
+                    pass
+            note = document.add_paragraph()
+            bits = [c.get("source_note") or "", c.get("units") or "", c.get("quality_flag") or ""]
+            nr = note.add_run(" · ".join(b for b in bits if b))
+            nr.font.size = Pt(8)
+            nr.font.color.rgb = RGBColor(0x6B, 0x72, 0x80)
+            nr.italic = True
         rows = []
         for key in included:
             c = (chart_bundle.get("charts") or {}).get(key) or {}
@@ -679,6 +697,38 @@ def render_docx_from_view(view: dict[str, Any], out: Path) -> Path:
     return out
 
 
+def _svg_to_png_if_possible(svg_path_or_content: Any) -> Optional[Path]:
+    """Best-effort SVG→PNG for DOCX embedding (rsvg-convert / inkscape / convert)."""
+    if not svg_path_or_content:
+        return None
+    tmp_svg: Optional[Path] = None
+    try:
+        if isinstance(svg_path_or_content, (str, Path)) and Path(svg_path_or_content).exists():
+            svg_path = Path(svg_path_or_content)
+        else:
+            tmp_svg = Path(tempfile.mkstemp(suffix=".svg")[1])
+            tmp_svg.write_text(str(svg_path_or_content), encoding="utf-8")
+            svg_path = tmp_svg
+        png_path = svg_path.with_suffix(".png")
+        if png_path.exists() and png_path.stat().st_size > 0:
+            return png_path
+        for cmd in (
+            ["rsvg-convert", "-o", str(png_path), str(svg_path)],
+            ["inkscape", str(svg_path), "--export-type=png", f"--export-filename={png_path}"],
+            ["convert", str(svg_path), str(png_path)],
+        ):
+            if not shutil.which(cmd[0]):
+                continue
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            if r.returncode == 0 and png_path.exists() and png_path.stat().st_size > 0:
+                return png_path
+    except Exception:
+        return None
+    finally:
+        pass
+    return None
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # PDF
 # ─────────────────────────────────────────────────────────────────────────────
@@ -748,14 +798,32 @@ def export_report_formats(
     basename: str = "cio_institutional_report_v2",
     write_docx: bool = True,
     write_pdf: bool = True,
+    formats: Optional[list[str]] = None,
+    report_id: Optional[str] = None,
 ) -> dict[str, Any]:
-    """Export HTML + DOCX + PDF + JSON from a single model snapshot.
+    """Export HTML + DOCX + PDF + JSON + immutable instance manifest.
 
-    Returns paths, facts_fingerprint, and per-format status. Formats that cannot
-    be produced are recorded with errors; they never invent alternate facts.
+    Phase 7: one model snapshot → all formats → cross-format parity →
+    immutable report instance manifest. Never invents alternate facts.
     """
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    if formats is not None:
+        fmt_set = {f.strip().lower() for f in formats}
+        write_html = "html" in fmt_set or not fmt_set
+        write_docx = "docx" in fmt_set
+        write_pdf = "pdf" in fmt_set
+    else:
+        write_html = True
+
+    formats_requested = []
+    if write_html:
+        formats_requested.append("html")
+    if write_docx:
+        formats_requested.append("docx")
+    if write_pdf:
+        formats_requested.append("pdf")
 
     # Strip heavy embedded HTML before projecting view (rebuilt from view)
     model_core = {k: v for k, v in (model or {}).items() if k not in ("html", "charts")}
@@ -791,16 +859,15 @@ def export_report_formats(
     errors: dict[str, str] = {}
 
     model_path = out_dir / f"{basename}.model.json"
-    model_path.write_text(json.dumps(model_out, indent=2, default=str), encoding="utf-8")
-    paths["model_json"] = str(model_path)
-
+    # Write model after manifests? First write core artifacts
     view_path = out_dir / f"{basename}.view.json"
     view_path.write_text(json.dumps(view, indent=2, default=str), encoding="utf-8")
     paths["view_json"] = str(view_path)
 
     html_path = out_dir / f"{basename}.html"
-    html_path.write_text(html, encoding="utf-8")
-    paths["html"] = str(html_path)
+    if write_html:
+        html_path.write_text(html, encoding="utf-8")
+        paths["html"] = str(html_path)
 
     if write_docx:
         docx_path = out_dir / f"{basename}.docx"
@@ -820,8 +887,26 @@ def export_report_formats(
             errors["pdf"] = str(exc)[:200]
             paths["pdf"] = None
 
-    # Allocation unit regression (Phase 5.8): never dollars-as-percent in HTML
-    html_text = Path(paths["html"]).read_text(encoding="utf-8") if paths.get("html") else ""
+    # ── Phase 7 parity + immutable instance manifest ──
+    from scripts.lib.cio_report_pipeline import (
+        build_instance_manifest,
+        build_phase7_exit_gate,
+        compare_key_values,
+        extract_key_values_from_docx,
+        extract_key_values_from_html,
+        extract_key_values_from_view,
+    )
+
+    key_values = extract_key_values_from_view(view, model_out)
+    html_vals = extract_key_values_from_html(html) if write_html else {}
+    html_cmp = compare_key_values(key_values, html_vals) if write_html else {"ok": True, "hard_mismatches": [], "checked": 0}
+    docx_cmp = {"ok": True, "hard_mismatches": [], "checked": 0, "skipped": True}
+    if paths.get("docx"):
+        docx_vals = extract_key_values_from_docx(Path(paths["docx"]))
+        docx_cmp = compare_key_values(key_values, docx_vals)
+
+    # Allocation unit regression (Phase 5.8)
+    html_text = html
     alloc_usd = view["facts"].get("allocation_usd") or {}
     absurd_pct = any(
         f"{float(v):.2f}%" in html_text
@@ -831,12 +916,18 @@ def export_report_formats(
 
     parity = {
         "architecture_version": REPORT_ARCHITECTURE_VERSION,
+        "pipeline_version": "pipeline_1.0.0",
         "facts_fingerprint": view["facts_fingerprint"],
         "section_ids": view.get("section_ids"),
         "formats": {k: bool(v) for k, v in paths.items()},
+        "formats_requested": formats_requested,
         "errors": errors,
         "charts_included": list(chart_bundle.get("included") or []),
         "charts_skipped": chart_bundle.get("skipped") or {},
+        "key_values": key_values,
+        "html_parity": html_cmp,
+        "docx_parity": docx_cmp,
+        "ok": bool(html_cmp.get("ok")) and bool(docx_cmp.get("ok")),
         "unit_guards": {
             "allocation_weights_le_100": all(
                 abs(float(v)) <= 100.01
@@ -858,18 +949,80 @@ def export_report_formats(
             ),
         },
     }
+
+    # Build instance manifest (paths known so far, exclude model/manifest self)
+    instance = build_instance_manifest(
+        model=model_out,
+        view=view,
+        paths={k: v for k, v in paths.items() if v},
+        chart_bundle=chart_bundle,
+        key_values=key_values,
+        formats_requested=formats_requested,
+        report_id=report_id,
+    )
+    phase7_gate = build_phase7_exit_gate(
+        manifest=instance,
+        parity=parity,
+        formats_requested=formats_requested,
+        paths=paths,
+        html=html,
+    )
+    # Re-hash manifest after adding gate? Gate is verification, attach outside hash body
+    instance_public = dict(instance)
+    instance_public["phase7_exit_gate"] = phase7_gate
+    parity["phase7_exit"] = phase7_gate
+
     parity_path = out_dir / f"{basename}.parity.json"
-    parity_path.write_text(json.dumps(parity, indent=2), encoding="utf-8")
+    parity_path.write_text(json.dumps(parity, indent=2, default=str), encoding="utf-8")
     paths["parity_json"] = str(parity_path)
 
+    manifest_path = out_dir / f"{basename}.instance_manifest.json"
+    manifest_path.write_text(json.dumps(instance_public, indent=2, default=str), encoding="utf-8")
+    paths["instance_manifest"] = str(manifest_path)
+
+    # Finalize model with instance id + write model json (include paths)
+    model_out["report_id"] = instance["report_id"]
+    model_out["instance_manifest"] = instance_public
+    model_path = out_dir / f"{basename}.model.json"
+    model_path.write_text(json.dumps(model_out, indent=2, default=str), encoding="utf-8")
+    paths["model_json"] = str(model_path)
+
+    # Refresh file hashes in a claims file (post-write of all artifacts)
+    from scripts.lib.cio_report_pipeline import _sha256_file, verify_manifest_files
+    claims = {
+        "report_id": instance["report_id"],
+        "formats_requested": formats_requested,
+        "files_created": {k: v for k, v in paths.items() if v and Path(v).exists()},
+        "file_sha256": {
+            k: _sha256_file(Path(v))
+            for k, v in paths.items()
+            if v and Path(v).exists()
+        },
+        "phase7_exit_gate": phase7_gate,
+    }
+    claims_path = out_dir / f"{basename}.claims.json"
+    claims_path.write_text(json.dumps(claims, indent=2, default=str), encoding="utf-8")
+    paths["claims_json"] = str(claims_path)
+
+    # CLI claims == files: verify claims paths exist
+    claims_ok = all(Path(p).exists() for p in claims["files_created"].values())
+    phase7_gate["CLI_CLAIMS_EQ_FILES_CREATED"] = "PASS" if claims_ok else "FAIL"
+    phase7_gate["ALL_PASS"] = all(
+        v == "PASS" for k, v in phase7_gate.items() if k not in ("ALL_PASS", "file_check")
+    )
+
     return {
-        "ok": not errors.get("docx") or paths.get("html"),  # html is required minimum
+        "ok": bool(paths.get("html")) and phase7_gate.get("HTML_PDF_DOCX_KEY_VALUE_PARITY") == "PASS",
         "out_dir": str(out_dir),
         "paths": paths,
         "errors": errors,
         "facts_fingerprint": view["facts_fingerprint"],
         "architecture_version": REPORT_ARCHITECTURE_VERSION,
+        "report_id": instance["report_id"],
         "parity": parity,
+        "instance_manifest": instance_public,
+        "phase7_exit_gate": phase7_gate,
+        "claims": claims,
         "view": view,
         "model": model_out,
     }

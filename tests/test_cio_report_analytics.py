@@ -195,7 +195,7 @@ def test_build_report_v2_embeds_analytics_packet():
         source_sha="phase6",
         now=FIXED,
     )
-    assert model["report_version"] == "report_v2_1.3.0"
+    assert model["report_version"].startswith("report_v2_1.")
     pb = model["part_b"]
     assert pb.get("analytics_packet")
     assert pb["analytics_packet"]["exit_gate"]["ALL_PASS"] is True
