@@ -138,6 +138,16 @@ for rel in "${DATA_DIRS_TO_LINK[@]}"; do
 done
 echo "  Data symlinks verified."
 
+# --- Step 3b: Stamp BUILD_SHA / GIT_SHA (Phase 10–11 release truth) ---
+# portfolio-server CURRENT must carry a readable git pin for cio_release_manifest.
+echo "[3b/8] Stamping BUILD_SHA into release..."
+printf '%s\n' "$GIT_SHA" > "${RELEASE_DIR}/BUILD_SHA"
+printf '%s\n' "$GIT_SHA" > "${RELEASE_DIR}/GIT_SHA"
+printf '%s\n' "$GIT_BRANCH" > "${RELEASE_DIR}/BUILD_BRANCH"
+printf '%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "${RELEASE_DIR}/BUILD_STAMPED_AT"
+printf '%s\n' "stamped_by=deploy_portfolio_server.sh" > "${RELEASE_DIR}/BUILD_STAMP_NOTE"
+echo "  BUILD_SHA=$GIT_SHA"
+
 # --- Step 4: Regenerate integrity manifest ---
 echo "[4/8] Regenerating integrity manifest..."
 cd "$RELEASE_DIR"

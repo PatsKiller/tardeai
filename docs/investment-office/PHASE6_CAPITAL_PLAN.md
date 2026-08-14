@@ -11,18 +11,25 @@ deterministic **Capital Plan projection** (sources and uses of funds shown
 together) plus a **Position Decision table** for every material holding:
 
 ```
-sources of funds (raise)          uses of funds (deploy)
-  trims     advisory TRIM           adds            advisory ADD
-  exits     advisory EXIT           new_positions   reentry READY/NEAR
-  maturities/distributions          reentry         advisory RE_ENTER
-            (sale proceeds)         sector_rotation underweight opportunity
-                                    reserve         cash policy floor (held back)
+cash_total = settled holdings cash (includes earmarked redeploy proceeds)
 
-net_recommended_deploy_usd = min(total_uses, investable_cash + total_raise)
-net_recommended_raise_usd  = total_raise
-post_plan_cash_usd         = cash + raise - deploy
-post_plan_cash_pct         = post_plan_cash / portfolio_value
+sources of funds:
+  trims / exits     = prospective raise (not yet cash)  → total_raise_usd
+  maturities        = open redeploy remaining_usd       → EARMARK label only
+                      (already in cash_total; capped to cash; NOT in total_raise)
+
+uses of funds (deploy):
+  adds / new_positions / reentry / sector_rotation
+  reserve = cash policy floor (held back)
+
+deployable                 = investable_cash + total_prospective_raise
+net_recommended_deploy_usd = min(total_uses, deployable)
+net_recommended_raise_usd  = total_prospective_raise   (trims+exits only)
+post_plan_cash_usd         = cash + prospective_raise - deploy
 ```
+
+**Phase 2 (`capital_plan_1.1.0`):** earmarked redeploy is never double-counted as
+raise. See `PHASE2_CASH_CAPITAL_LEDGER.md`.
 
 Cash is **never force-deployed**: with no uses (no add/new/reentry/rotation
 signal), `net_recommended_deploy_usd` is 0 even when investable cash exists.
@@ -51,17 +58,20 @@ signal), `net_recommended_deploy_usd` is 0 even when investable cash exists.
   or normalized `market_value_usd`), `stance_for` (verdict → reentry state →
   HOLD, precedence EXIT > TRIM > RE_ENTER > ADD > state).
 - **Sources of funds** — `build_capital_sources`: TRIM → `trim_fraction` (10%) of
-  position value; EXIT → full value; open redeploy events → `maturities`.
+  position value; EXIT → full value (**prospective raise**); open redeploy events →
+  `maturities` / `earmarked_redeploy_usd` (**label on cash**, excluded from
+  `total_raise_usd`, capped to `cash_total`).
+- **Cash ledger** — `build_cash_ledger` + `account_cash_breakdown` with double-count
+  invariants (`earmark_le_cash`, `investable_eq_cash_minus_reserve`,
+  `post_cash_identity`, `deploy_le_investable_plus_prospective`).
 - **Uses of funds** — `build_capital_uses`: ADD/RE_ENTER/new-position are bounded
   by single-name headroom (`max_single_name_weight_pct` cap); sector rotation is
   bounded by the sector's underweight gap and requires a STAGED/RESEARCH
   recommendation; reserve is the cash floor held back.
-- **Plan composition** — `build_capital_plan`: full acceptance-shape envelope
-  (`as_of`, `portfolio_value_usd`, `cash_total_usd`, `cash_reserved_usd`,
-  `cash_investable_usd`, `cash_policy_band`, `capital_sources`, `capital_uses`,
-  `net_recommended_deploy_usd`, `net_recommended_raise_usd`, `post_plan_cash_usd`,
-  `post_plan_cash_pct`, `portfolio_constraints`, `alternatives`,
-  `position_decisions`) with a hash-pinned `digest`.
+- **Plan composition** — `build_capital_plan` (`capital_plan_1.1.0`): full envelope
+  including `cash_earmarked_redeploy_usd`, `deployable_usd`, `cash_ledger`,
+  `ledger_invariants`, sources/uses, net deploy/raise, post-plan cash, alternatives,
+  position decisions, hash-pinned `digest`.
 - **Alternatives** — `do_nothing` always present; `half_sized` when a deployment is
   recommended; `await_confluence` when uncertainty is high (no multi-desk/sector
   signal).

@@ -138,10 +138,13 @@ def test_capital_plan_projection():
     assert cp["cash_total_usd"] == 578107.5
     assert cp["cash_band"]["min_pct"] == 20.0
     assert cp["recommended_deploy_usd"] == 603114.7
+    # Phase 8 / Phase 2: recommended raise is prospective; earmark is labeled separately
     assert cp["recommended_raise_usd"] == 623009.02
     assert cp["cash_posture"] == "above policy band"
-    assert any(s["label"] == "Total raise" and s["usd"] == 623009.02 for s in cp["sources"])
+    assert any("Prospective raise" in s["label"] and s["usd"] == 623009.02 for s in cp["sources"])
+    assert any("Earmarked" in s["label"] and s["usd"] == 560009.02 for s in cp["sources"])
     assert any(u["label"] == "Total deploy request" and u["usd"] == 603114.7 for u in cp["uses"])
+    assert cp.get("plan_digest")
 
 
 def test_capital_plan_empty_fail_soft():

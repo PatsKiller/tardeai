@@ -40,6 +40,32 @@ def _block_options_monitor_live_telegram(monkeypatch):
 
     monkeypatch.setattr(ppa, "send_telegram", lambda _message: False)
 
+
+@pytest.fixture(autouse=True)
+def _block_all_telegram_http(monkeypatch):
+    """Phase 1: hard-interdict telegram_transport.send_message for entire suite.
+
+    No unit test may open api.telegram.org. Returns a structured blocked result.
+    """
+    def _blocked(**kwargs):
+        return {
+            "ok": False,
+            "status_code": 0,
+            "response": {"ok": False, "description": "PYTEST_INTERDICTED"},
+            "interdicted": True,
+        }
+
+    try:
+        import telegram_transport as tt
+        monkeypatch.setattr(tt, "send_message", _blocked)
+    except Exception:
+        pass
+    try:
+        import scripts.telegram_transport as tt2  # type: ignore
+        monkeypatch.setattr(tt2, "send_message", _blocked)
+    except Exception:
+        pass
+
 @pytest.fixture(autouse=True)
 def _block_alert_outbox_production_writes(monkeypatch):
     """Keep the alert outbox off the PRODUCTION database during unit tests.

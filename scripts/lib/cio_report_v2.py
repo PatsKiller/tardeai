@@ -38,7 +38,7 @@ from typing import Any, Callable, Optional
 
 Executor = Callable[..., Any]
 
-REPORT_VERSION = "report_v2_1.0.0"
+REPORT_VERSION = "report_v2_1.5.0"  # Phase 8: office/report decision-id + plan digest parity
 
 # ── Taxonomy ─────────────────────────────────────────────────────────────────
 
@@ -402,20 +402,33 @@ def build_part_a(
     # 2. Decisions Now
     decisions = _decisions_now(cap)
 
-    # 3. Capital Plan (pass-through projection)
+    # 3. Capital Plan (pass-through projection — Phase 2 earmark fields included)
+    try:
+        from scripts.lib.cio_decision_semantics import capital_plan_surface_digest
+        _cp_digest = capital_plan_surface_digest(cap)
+    except Exception:
+        _cp_digest = cap.get("digest")
     capital = {
         "cash_total_usd": cap.get("cash_total_usd"),
         "cash_reserved_usd": cap.get("cash_reserved_usd"),
         "cash_investable_usd": cap.get("cash_investable_usd"),
+        "cash_earmarked_redeploy_usd": cap.get("cash_earmarked_redeploy_usd"),
+        "cash_free_unearmarked_usd": cap.get("cash_free_unearmarked_usd"),
         "cash_policy_band": cap.get("cash_policy_band"),
         "recommended_deploy_usd": cap.get("net_recommended_deploy_usd"),
         "recommended_raise_usd": cap.get("net_recommended_raise_usd"),
+        "deployable_usd": cap.get("deployable_usd"),
         "sources": _compact_sources(cap.get("capital_sources")),
         "uses": _compact_uses(cap.get("capital_uses")),
         "post_plan_cash_usd": cap.get("post_plan_cash_usd"),
         "post_plan_cash_pct": cap.get("post_plan_cash_pct"),
+        "portfolio_value_usd": cap.get("portfolio_value_usd"),
+        "plan_version": cap.get("plan_version"),
+        "plan_digest": _cp_digest,
+        "digest": cap.get("digest") or _cp_digest,
+        "account_cash": cap.get("account_cash") or (cap.get("cash_ledger") or {}).get("account_cash"),
+        "double_count_guard": (cap.get("capital_sources") or {}).get("double_count_guard"),
     }
-
     # 4. Portfolio Posture
     posture = _portfolio_posture(cap, attr, sector_opportunities, thesis, perf)
 
@@ -425,14 +438,21 @@ def build_part_a(
     # 6. Counter-Thesis / Risks
     risks = _counter_thesis(thesis, attr, cap, sector_opportunities)
 
+    decision_ids = [d.get("decision_id") for d in decisions if isinstance(d, dict) and d.get("decision_id")]
     return {
         "computed_at": _now_iso(now),
         "letter": letter,
         "decisions_now": decisions,
+        "decision_ids": decision_ids,
         "capital_plan": capital,
         "portfolio_posture": posture,
         "opportunity_funnel": funnel,
         "counter_thesis_risks": risks,
+        "consistency": {
+            "decision_ids": decision_ids,
+            "capital_plan_digest": capital.get("plan_digest") or capital.get("digest"),
+            "plan_version": capital.get("plan_version"),
+        },
     }
 
 
@@ -457,16 +477,90 @@ def _priorities(cap: dict[str, Any], queue: dict[str, Any],
     deploy = cap.get("net_recommended_deploy_usd") or 0
     if deploy > 0:
         pri.append(f"deploy up to ${float(deploy):,.0f} against explicit desk signals")
-    for opp in (sectors or [])[:2]:
-        if opp.get("opportunity"):
-            pri.append(f"watch {opp.get('sector')} ({opp.get('state')}): {opp.get('recommendation')}")
-    top = (queue.get("top") or (queue.get("items") or []))[:3]
-    for it in top:
-        pri.append(f"evaluate {it.get('symbol')} ({it.get('verdict') or it.get('state') or 'signal'})")
+    try:
+        from scripts.lib.cio_decision_semantics import (
+            filter_sector_opportunities, professional_label, stance_from_queue_item,
+            professional_stance, is_pseudo_sector,
+        )
+        clean = filter_sector_opportunities(sectors, require_canonical_gics=True)
+        for opp in clean[:2]:
+            if opp.get("opportunity"):
+                pri.append(
+                    f"watch {opp.get('sector')} ({opp.get('state_display') or professional_label(opp.get('state'))}): "
+                    f"{opp.get('recommendation')}"
+                )
+        top = (queue.get("top") or (queue.get("items") or []))[:3]
+        for it in top:
+            st = professional_stance(stance_from_queue_item(it))
+            pri.append(f"evaluate {it.get('symbol')} ({st})")
+    except Exception:
+        for opp in (sectors or [])[:2]:
+            if opp.get("opportunity") and not str(opp.get("sector") or "").startswith("Iwm"):
+                pri.append(
+                    f"watch {opp.get('sector')} ({opp.get('state')}): {opp.get('recommendation')}"
+                )
+        top = (queue.get("top") or (queue.get("items") or []))[:3]
+        for it in top:
+            pri.append(
+                f"evaluate {it.get('symbol')} ({it.get('verdict') or it.get('state') or 'signal'})"
+            )
     if not pri:
         pri.append("preserve dry powder; no forced deployment without a desk signal")
     return pri[:5]
 
+
+def _sector_posture_rows(sectors: Optional[list[dict[str, Any]]]) -> list[dict[str, Any]]:
+    try:
+        from scripts.lib.cio_decision_semantics import filter_sector_opportunities
+        clean = filter_sector_opportunities(sectors, require_canonical_gics=True)
+        return [
+            {
+                "sector": o.get("sector"),
+                "state": o.get("state_display") or o.get("state"),
+                "state_code": o.get("state_code") or o.get("state"),
+                "exposure_pct": o.get("current_exposure_pct") or o.get("exposure_pct"),
+                "target_pct": o.get("target_posture_pct") or o.get("target_pct"),
+                "recommendation": o.get("recommendation"),
+                "recommendation_code": o.get("recommendation_code"),
+            }
+            for o in clean
+        ][:6]
+    except Exception:
+        return [
+            {
+                "sector": o.get("sector"),
+                "state": o.get("state"),
+                "exposure_pct": o.get("current_exposure_pct"),
+                "target_pct": o.get("target_posture_pct"),
+                "recommendation": o.get("recommendation"),
+            }
+            for o in (sectors or [])
+            if "−" not in str(o.get("sector") or "") and "-" not in str(o.get("sector") or "")
+        ][:6]
+
+
+def _sector_opportunity_rows(sectors: Optional[list[dict[str, Any]]]) -> list[dict[str, Any]]:
+    try:
+        from scripts.lib.cio_decision_semantics import filter_sector_opportunities
+        clean = filter_sector_opportunities(
+            [o for o in (sectors or []) if o.get("opportunity")],
+            require_canonical_gics=True,
+        )
+        return [
+            {
+                "sector": o.get("sector"),
+                "state": o.get("state_display") or o.get("state"),
+                "recommendation": o.get("recommendation"),
+            }
+            for o in clean
+        ][:6]
+    except Exception:
+        return [
+            {"sector": o.get("sector"), "state": o.get("state"),
+             "recommendation": o.get("recommendation")}
+            for o in (sectors or [])
+            if o.get("opportunity") and "−" not in str(o.get("sector") or "")
+        ][:6]
 
 def _what_not_to_do(thesis: dict[str, Any], attr: dict[str, Any]) -> list[str]:
     out = list(thesis.get("escalation_rules") or [])[:4]
@@ -478,6 +572,16 @@ def _what_not_to_do(thesis: dict[str, Any], attr: dict[str, Any]) -> list[str]:
 
 
 def _decisions_now(cap: dict[str, Any]) -> list[dict[str, Any]]:
+    """Phase 3: aggregate, resolve HOLD+TRIM, professional stance labels."""
+    try:
+        from scripts.lib.cio_decision_semantics import sanitize_decisions_now
+        return sanitize_decisions_now(
+            cap.get("position_decisions") or [],
+            portfolio_value=float(cap.get("portfolio_value_usd") or 0.0),
+            limit=8,
+        )
+    except Exception:
+        pass
     decisions = []
     neutral = "no new desk signal; hold"
     for d in (cap.get("position_decisions") or []):
@@ -490,7 +594,7 @@ def _decisions_now(cap: dict[str, Any]) -> list[dict[str, Any]]:
         if has_delta or has_signal or has_breach:
             decisions.append({
                 "symbol": d.get("symbol"),
-                "stance": d.get("cio_stance"),
+                "stance": d.get("stance") or d.get("cio_stance"),
                 "current_value_usd": d.get("current_value_usd"),
                 "current_weight_pct": d.get("current_weight_pct"),
                 "recommended_delta_usd": delta,
@@ -498,11 +602,9 @@ def _decisions_now(cap: dict[str, Any]) -> list[dict[str, Any]]:
                 "risk": risk,
                 "next_review": d.get("next_review"),
             })
-    # concentration breaches first, then by |delta|.
     decisions.sort(key=lambda d: (-1 if "concentration >" in (d.get("risk") or "").lower()
                                    else 0, -abs(d.get("recommended_delta_usd") or 0)))
     return decisions[:8]
-
 
 def _compact_sources(sources: Optional[dict[str, Any]]) -> dict[str, Any]:
     s = sources or {}
@@ -510,9 +612,11 @@ def _compact_sources(sources: Optional[dict[str, Any]]) -> dict[str, Any]:
         "trims_usd": s.get("trims_usd"),
         "exits_usd": s.get("exits_usd"),
         "maturities_usd": s.get("maturities_usd"),
+        "earmarked_redeploy_usd": s.get("earmarked_redeploy_usd") or s.get("maturities_usd"),
+        "total_prospective_raise_usd": s.get("total_prospective_raise_usd"),
         "total_raise_usd": s.get("total_raise_usd"),
+        "double_count_guard": s.get("double_count_guard"),
     }
-
 
 def _compact_uses(uses: Optional[dict[str, Any]]) -> dict[str, Any]:
     u = uses or {}
@@ -551,16 +655,7 @@ def _portfolio_posture(
             "sharpe": attr.get("port_sharpe"),
             "sortino": attr.get("port_sortino"),
         },
-        "sector_posture": [
-            {
-                "sector": o.get("sector"),
-                "state": o.get("state"),
-                "exposure_pct": o.get("current_exposure_pct"),
-                "target_pct": o.get("target_posture_pct"),
-                "recommendation": o.get("recommendation"),
-            }
-            for o in (sectors or [])
-        ][:6],
+        "sector_posture": _sector_posture_rows(sectors),
         "benchmark_posture": {
             "label": attr.get("benchmark_label"),
             "port_cagr": attr.get("port_cagr"),
@@ -619,11 +714,7 @@ def _opportunity_funnel(
              "source": it.get("source"), "label": it.get("directive_label")}
             for it in reentry[:8]
         ],
-        "sector_opportunities": [
-            {"sector": o.get("sector"), "state": o.get("state"),
-             "recommendation": o.get("recommendation")}
-            for o in (sectors or []) if o.get("opportunity")
-        ][:6],
+        "sector_opportunities": _sector_opportunity_rows(sectors),
         "research_gaps": research_gaps[:8],
         "prior_recommendation_status": [
             {
@@ -808,14 +899,25 @@ def _fmt_pct(v: Any, signed: bool = False) -> str:
 
 
 def render_html(model: dict[str, Any]) -> str:
-    """Render the full v2 report (Part A + Part B) to self-contained HTML."""
+    """Render the full v2 report (Part A + Part B) to self-contained HTML.
+
+    Phase 4: prefers the shared view layer (`cio_report_render.render_html_from_view`)
+    so HTML / DOCX / PDF never diverge on facts. Falls back to the legacy inline
+    renderer only if the view package is unavailable.
+    """
+    try:
+        from scripts.lib.cio_report_render import render_html_from_view
+        from scripts.lib.cio_report_view import build_report_view
+        view = model.get("view") if isinstance(model.get("view"), dict) else build_report_view(model)
+        return render_html_from_view(view)
+    except Exception:
+        pass
     a = model.get("part_a") or {}
     b = model.get("part_b") or {}
     coverage = model.get("coverage") or {}
     manifest = model.get("manifest") or {}
     checkpoint = model.get("checkpoint") or {}
     as_of = model.get("as_of") or ""
-
     sections: list[str] = []
     sections.append(f"<h1>Trade AI — Institutional Report v2</h1>")
     sections.append(
@@ -1079,17 +1181,55 @@ def build_report_v2(
         pdf_pages=pdf_pages,
         render_errors=render_errors,
     )
+    part_b = dict(part_b_ctx or {})
+    # Phase 4: normalize allocation units on the model itself (USD + weight %).
+    try:
+        from scripts.lib.cio_report_view import normalize_allocation
+        alloc_norm = normalize_allocation(part_b)
+        if alloc_norm.get("allocation_usd"):
+            part_b["allocation"] = {
+                k: v for k, v in (alloc_norm["allocation_usd"] or {}).items() if v is not None
+            }
+        if alloc_norm.get("allocation_weight_pct"):
+            part_b["allocation_weight_pct"] = alloc_norm["allocation_weight_pct"]
+    except Exception:
+        pass
+    # Phase 6: methodology-truth analytics packet (never fabricates TWR/QTD/effects).
+    try:
+        from scripts.lib.cio_report_analytics import enrich_part_b
+        hist = None
+        if part_a_inputs and isinstance(part_a_inputs.get("performance"), dict):
+            hist = (part_a_inputs["performance"].get("periods")
+                    or part_a_inputs["performance"].get("period_returns"))
+        part_b = enrich_part_b(
+            part_b,
+            performance_attribution=part_a_inputs.get("performance_attribution") if part_a_inputs else None,
+            history_periods=hist,
+            as_of=_now_iso(now),
+        )
+    except Exception:
+        pass
     model = {
         "report_version": REPORT_VERSION,
+        "architecture_version": "report_arch_1.0.0",
         "authority": "READ_ONLY_ADVISORY",
         "as_of": _now_iso(now),
         "part_a": part_a,
-        "part_b": part_b_ctx or {},
+        "part_b": part_b,
         "fields": fields,
         "coverage": coverage,
         "manifest": manifest,
         "checkpoint": checkpoint,
         "quality_flags": flags,
     }
+    # Shared view first — single fact surface for all formats
+    try:
+        from scripts.lib.cio_report_view import build_report_view
+        view = build_report_view(model)
+        model["view"] = view
+        model["facts_fingerprint"] = view.get("facts_fingerprint")
+    except Exception:
+        model["view"] = None
+        model["facts_fingerprint"] = None
     model["html"] = render_html(model)
     return model

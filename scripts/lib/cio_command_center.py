@@ -19,7 +19,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-OFFICE_HOME_VERSION = "office_home_1.0.0"
+OFFICE_HOME_VERSION = "office_home_1.1.0"  # Phase 8: decision IDs + capital digest parity
 
 # Human labels for stance / posture / readiness codes surfaced in primary views.
 STANCE_LABELS: dict[str, str] = {
@@ -89,12 +89,18 @@ def _action_hint(why_now: Any, stance: Any) -> str:
     over the formal CIO stance, so a "Hold" stance paired with a "Trim" signal
     reads as "Trim" rather than the contradictory "Hold".
     """
+    try:
+        from scripts.lib.cio_decision_semantics import (
+            resolve_display_stance, professional_stance,
+        )
+        return professional_stance(resolve_display_stance(stance, why_now))
+    except Exception:
+        pass
     text = _str(why_now).upper()
     for kw, label in _ACTION_KEYWORDS:
         if kw in text:
             return label
     return _human_stance(stance)
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Section 1 — CIO NOW
@@ -108,61 +114,130 @@ def build_cio_now(
     position_decisions: Optional[list[dict[str, Any]]] = None,
     actions: Optional[list[dict[str, Any]]] = None,
     plans: Optional[list[dict[str, Any]]] = None,
+    portfolio_value: Optional[float] = None,
 ) -> dict[str, Any]:
-    """Decision cards from position decisions + open actions, sorted by urgency.
+    """CIO NOW cards — at most 5 material items, shared decision_ids with the report.
 
-    A decision surfaces when it carries a real signal: a non-zero recommended
-    delta, a non-neutral "why now", or a concentration/risk breach. Pure "hold
-    because nothing changed" rows are omitted (they are not decisions).
+    Each card (Phase 8.1):
+      action · symbol · dollar delta · current/target weight · why now ·
+      counter-thesis · what changes the call · next review · operator actions
     """
     cards: list[dict[str, Any]] = []
 
-    for d in position_decisions or []:
-        why = _str(d.get("why_now"))
-        risk = _str(d.get("risk"))
-        delta = _num(d.get("recommended_delta_usd")) or 0.0
-        has_signal = bool(why) and _NEUTRAL_WHY not in why
-        has_breach = "concentration >" in risk.lower() or "breach" in risk.lower()
-        if not (delta or has_signal or has_breach):
-            continue
-        urgency = "high" if has_breach else ("medium" if delta else "low")
-        cards.append({
-            "kind": "position",
-            "symbol": d.get("symbol"),
-            "account": d.get("account"),
-            "stance": _action_hint(why, d.get("cio_stance")),
-            "delta_usd": delta,
-            "value_usd": _num(d.get("current_value_usd")),
-            "weight_pct": _num(d.get("current_weight_pct")),
-            "why_now": why,
-            "risk": risk,
-            "urgency": urgency,
-            "next_review": d.get("next_review"),
-            "tax_note": d.get("tax_account_constraint"),
-            "counter_thesis": d.get("counter_thesis"),
-        })
+    # Prefer Phase 3 sanitizer so IDs match the institutional report.
+    try:
+        from scripts.lib.cio_decision_semantics import (
+            sanitize_decisions_now, make_decision_id, operator_action_affordances,
+            what_changes_the_call, professional_stance, resolve_display_stance,
+        )
+        sanitized = sanitize_decisions_now(
+            position_decisions or [],
+            portfolio_value=float(portfolio_value or 0.0),
+            limit=12,
+        )
+        for d in sanitized:
+            risk = _str(d.get("risk"))
+            delta = _num(d.get("recommended_delta_usd")) or 0.0
+            urgency = (
+                "high" if "concentration >" in risk.lower() or "breach" in risk.lower()
+                else ("medium" if delta else "low")
+            )
+            cards.append({
+                "kind": "position",
+                "decision_id": d.get("decision_id"),
+                "symbol": d.get("symbol"),
+                "account": (d.get("accounts") or [None])[0] if d.get("accounts") else d.get("account"),
+                "action": d.get("action") or d.get("stance"),
+                "stance": d.get("stance"),
+                "stance_code": d.get("stance_code"),
+                "delta_usd": delta,
+                "value_usd": _num(d.get("current_value_usd")),
+                "weight_pct": _num(d.get("current_weight_pct")),
+                "target_weight_pct": _num(d.get("target_weight_pct")),
+                "why_now": d.get("why_now"),
+                "counter_thesis": d.get("counter_thesis"),
+                "what_changes_call": d.get("what_changes_call"),
+                "risk": risk,
+                "urgency": urgency,
+                "next_review": d.get("next_review"),
+                "tax_note": d.get("tax_account_constraint"),
+                "operator_actions": d.get("operator_actions") or operator_action_affordances(),
+            })
+    except Exception:
+        for d in position_decisions or []:
+            why = _str(d.get("why_now"))
+            risk = _str(d.get("risk"))
+            delta = _num(d.get("recommended_delta_usd")) or 0.0
+            has_signal = bool(why) and _NEUTRAL_WHY not in why
+            has_breach = "concentration >" in risk.lower() or "breach" in risk.lower()
+            if not (delta or has_signal or has_breach):
+                continue
+            urgency = "high" if has_breach else ("medium" if delta else "low")
+            stance = _action_hint(why, d.get("cio_stance") or d.get("stance_code"))
+            cards.append({
+                "kind": "position",
+                "decision_id": d.get("decision_id") or f"dec_fallback_{d.get('symbol')}",
+                "symbol": d.get("symbol"),
+                "account": d.get("account"),
+                "action": stance,
+                "stance": stance,
+                "stance_code": d.get("stance_code") or d.get("cio_stance"),
+                "delta_usd": delta,
+                "value_usd": _num(d.get("current_value_usd")),
+                "weight_pct": _num(d.get("current_weight_pct")),
+                "target_weight_pct": _num((d.get("target_range_pct") or {}).get("max"))
+                if isinstance(d.get("target_range_pct"), dict) else _num(d.get("target_weight_pct")),
+                "why_now": why,
+                "counter_thesis": d.get("counter_thesis"),
+                "what_changes_call": d.get("what_changes_call"),
+                "risk": risk,
+                "urgency": urgency,
+                "next_review": d.get("next_review"),
+                "tax_note": d.get("tax_account_constraint"),
+                "operator_actions": [
+                    {"code": "ACK", "label": "Acknowledge"},
+                    {"code": "DEFER", "label": "Defer"},
+                    {"code": "DONE", "label": "Mark done"},
+                    {"code": "REJECT", "label": "Reject"},
+                    {"code": "RATE", "label": "Rate"},
+                ],
+            })
 
     for a in actions or []:
+        aid = a.get("cio_action_id") or a.get("action_id")
+        why = _str(a.get("why_now") or a.get("title") or a.get("recommendation"))
         cards.append({
             "kind": "action",
-            "symbol": None,
+            "decision_id": f"act_{aid}" if aid else "act_unknown",
+            "symbol": a.get("symbol"),
+            "action": "Action",
             "stance": "Action",
             "delta_usd": 0.0,
             "value_usd": None,
             "weight_pct": None,
-            "why_now": _str(a.get("why_now") or a.get("title") or a.get("recommendation")),
+            "why_now": why,
+            "counter_thesis": None,
+            "what_changes_call": "Operator closes or defers the action; material new evidence arrives.",
             "risk": None,
             "urgency": "high" if a.get("notification_priority") in ("Critical", "High") else "medium",
             "next_review": None,
-            "action_id": a.get("cio_action_id"),
-            "domain": a.get("domain"),
+            "action_id": aid,
+            "domain": a.get("domain"),  # kept for evidence linkage; not primary narrative
+            "operator_actions": [
+                {"code": "ACK", "label": "Acknowledge"},
+                {"code": "DEFER", "label": "Defer"},
+                {"code": "DONE", "label": "Mark done"},
+                {"code": "REJECT", "label": "Reject"},
+                {"code": "RATE", "label": "Rate"},
+            ],
         })
 
     _URG = {"high": 0, "medium": 1, "low": 2}
-    cards.sort(key=lambda c: (_URG.get(c["urgency"], 3), -abs(c["delta_usd"] or 0.0)))
-
+    cards.sort(key=lambda c: (_URG.get(c["urgency"], 3), -abs(c.get("delta_usd") or 0.0)))
+    top = cards[:5]
     return {
-        "decisions": cards[:5],
+        "decisions": top,
+        "decision_ids": [c.get("decision_id") for c in top if c.get("decision_id")],
         "decision_count": len(cards),
         "open_actions_count": len(actions or []),
         "open_plans_count": len(plans or []),
@@ -184,13 +259,40 @@ def _money_rows(rows: Optional[dict[str, Any]], keys: tuple[str, ...],
 
 
 def build_capital_plan(plan: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+    """Capital plan surface for /v3/cio — Phase 2 semantics, shared digest with report.
+
+    Shows settled cash, reserve, earmark (label on cash — not a raise), free
+    investable, prospective sources, recommended deploy, post-plan cash, accounts.
+    """
     p = plan or {}
     band = p.get("cash_policy_band") or {}
-    sources = _money_rows(
-        p.get("capital_sources"),
-        ("trims_usd", "exits_usd", "maturities_usd", "total_raise_usd"),
-        ("Trims", "Exits", "Maturities", "Total raise"),
+    src = p.get("capital_sources") or {}
+    earmark = _num(
+        p.get("cash_earmarked_redeploy_usd")
+        or src.get("earmarked_redeploy_usd")
+        or src.get("maturities_usd")
     )
+    prospective = _num(
+        src.get("total_prospective_raise_usd")
+        if src.get("total_prospective_raise_usd") is not None
+        else p.get("net_recommended_raise_usd")
+        if p.get("net_recommended_raise_usd") is not None
+        else src.get("total_raise_usd")
+    )
+    # Sources: never present earmarked cash as "new raise"
+    sources = _money_rows(
+        {
+            **src,
+            "earmarked_redeploy_usd": earmark,
+            "total_prospective_raise_usd": prospective,
+        },
+        ("trims_usd", "exits_usd", "earmarked_redeploy_usd", "total_prospective_raise_usd"),
+        ("Trims (prospective)", "Exits (prospective)",
+         "Earmarked redeploy (already in cash)", "Prospective raise"),
+    )
+    # Backward-compat: if only total_raise_usd present without prospective field
+    if not any(s["label"] == "Prospective raise" for s in sources) and _num(src.get("total_raise_usd")) is not None:
+        sources.append({"label": "Prospective raise", "usd": _num(src.get("total_raise_usd"))})
     uses = _money_rows(
         p.get("capital_uses"),
         ("adds_usd", "new_positions_usd", "reentry_usd", "sector_rotation_usd",
@@ -198,20 +300,36 @@ def build_capital_plan(plan: Optional[dict[str, Any]] = None) -> dict[str, Any]:
         ("Add to holdings", "New positions", "Re-entry", "Sector rotation",
          "Reserve", "Total deploy request"),
     )
+    try:
+        from scripts.lib.cio_decision_semantics import capital_plan_surface_digest
+        digest = capital_plan_surface_digest(p)
+    except Exception:
+        digest = p.get("digest")
+    account_cash = p.get("account_cash") or (p.get("cash_ledger") or {}).get("account_cash") or []
+    free_unearmarked = _num(p.get("cash_free_unearmarked_usd"))
+    if free_unearmarked is None and _num(p.get("cash_total_usd")) is not None:
+        free_unearmarked = max(0.0, float(p.get("cash_total_usd") or 0) - float(earmark or 0))
     return {
         "cash_total_usd": _num(p.get("cash_total_usd")),
         "cash_reserved_usd": _num(p.get("cash_reserved_usd")),
+        "cash_earmarked_redeploy_usd": earmark,
+        "cash_free_unearmarked_usd": free_unearmarked,
         "cash_investable_usd": _num(p.get("cash_investable_usd")),
+        "deployable_usd": _num(p.get("deployable_usd")),
         "cash_band": {
             "min_pct": _num(band.get("min_pct")),
             "max_pct": _num(band.get("max_pct")),
         },
         "recommended_deploy_usd": _num(p.get("net_recommended_deploy_usd")),
-        "recommended_raise_usd": _num(p.get("net_recommended_raise_usd")),
+        "recommended_raise_usd": prospective,  # prospective only
         "sources": sources,
         "uses": uses,
         "post_plan_cash_usd": _num(p.get("post_plan_cash_usd")),
         "post_plan_cash_pct": _num(p.get("post_plan_cash_pct")),
+        "account_cash": account_cash,
+        "plan_version": p.get("plan_version"),
+        "plan_digest": digest,
+        "double_count_guard": src.get("double_count_guard") or "earmarked_redeploy_excluded_from_raise",
         "cash_posture": CASH_POSTURE_LABELS.get(
             _str(p.get("cash_posture_status")), _str(p.get("cash_posture_status") or "—")
         ),
@@ -251,12 +369,23 @@ def build_posture(
     for o in opportunities:
         if not isinstance(o, dict):
             continue
+        # Professional prose only in primary posture (raw codes stay in evidence)
+        rec = o.get("recommendation")
+        state = o.get("state")
+        try:
+            from scripts.lib.cio_decision_semantics import professional_label, is_pseudo_sector
+            if is_pseudo_sector(o.get("sector")):
+                continue
+            rec = professional_label(rec) if rec else rec
+            state = professional_label(state) if state else state
+        except Exception:
+            pass
         sector_tilts.append({
             "sector": o.get("sector"),
-            "state": o.get("state"),
+            "state": state,
             "exposure_pct": _num(o.get("current_exposure_pct")),
             "target_pct": _num(o.get("target_posture_pct")),
-            "recommendation": o.get("recommendation"),
+            "recommendation": rec,
         })
 
     tax_issues: list[str] = []
@@ -347,11 +476,22 @@ def build_opportunities(
     for o in (sector_opportunities or {}).get("opportunities") or []:
         if not isinstance(o, dict):
             continue
-        rotation.append({
-            "sector": o.get("sector"),
-            "state": o.get("state"),
-            "recommendation": o.get("recommendation"),
-        })
+        try:
+            from scripts.lib.cio_decision_semantics import professional_label, is_pseudo_sector
+            if is_pseudo_sector(o.get("sector")):
+                continue
+            rotation.append({
+                "sector": o.get("sector"),
+                "state": professional_label(o.get("state")) if o.get("state") else o.get("state"),
+                "recommendation": professional_label(o.get("recommendation"))
+                if o.get("recommendation") else o.get("recommendation"),
+            })
+        except Exception:
+            rotation.append({
+                "sector": o.get("sector"),
+                "state": o.get("state"),
+                "recommendation": o.get("recommendation"),
+            })
         for c in o.get("candidates") or []:
             if not isinstance(c, dict):
                 continue
@@ -398,26 +538,39 @@ def build_report_section(report: Optional[dict[str, Any]] = None) -> dict[str, A
 def build_evidence(
     *,
     report: Optional[dict[str, Any]] = None,
+    capital_plan: Optional[dict[str, Any]] = None,
     source_refs: Optional[list[dict[str, Any]]] = None,
     validator_states: Optional[list[dict[str, Any]]] = None,
     run_ids: Optional[list[dict[str, Any]]] = None,
     now: Optional[datetime] = None,
 ) -> dict[str, Any]:
+    """Evidence / Audit drawer — internal codes, digests, run ids (not primary narrative)."""
     r = report or {}
     manifest = r.get("manifest") or {}
+    plan = capital_plan or {}
     internal_codes: list[str] = []
     for fid in (r.get("checkpoint") or {}).get("fields_unavailable") or []:
         internal_codes.append(fid)
+    # Surface process/raw enums only here
+    for c in plan.get("portfolio_constraints") or []:
+        if isinstance(c, dict) and c.get("kind"):
+            internal_codes.append(str(c.get("kind")))
 
     return {
         "as_of": r.get("as_of") or _now_iso(now),
         "report_version": r.get("report_version") or OFFICE_HOME_VERSION,
         "authority": r.get("authority") or "READ_ONLY_ADVISORY",
         "source_sha": manifest.get("source_sha"),
+        "manifest_hash": manifest.get("manifest_hash"),
+        "facts_fingerprint": r.get("facts_fingerprint") or (r.get("view") or {}).get("facts_fingerprint"),
+        "capital_plan_digest": plan.get("digest"),
+        "plan_version": plan.get("plan_version"),
+        "report_id": r.get("report_id"),
         "source_refs": source_refs or [],
         "validator_states": validator_states or [],
         "run_ids": run_ids or [],
         "internal_codes": internal_codes,
+        "note": "Internal digests, run ids, and raw field codes live here — not in CIO NOW narrative.",
     }
 
 
@@ -442,18 +595,22 @@ def build_office_home(
     now: Optional[datetime] = None,
 ) -> dict[str, Any]:
     now = now or datetime.now(timezone.utc)
-    return {
+    plan = capital_plan or {}
+    cio_now = build_cio_now(
+        position_decisions=plan.get("position_decisions"),
+        actions=actions,
+        plans=plans,
+        portfolio_value=_num(plan.get("portfolio_value_usd")),
+    )
+    capital_surface = build_capital_plan(plan)
+    home = {
         "version": OFFICE_HOME_VERSION,
         "authority": "READ_ONLY_ADVISORY",
         "as_of": _now_iso(now),
-        "cio_now": build_cio_now(
-            position_decisions=(capital_plan or {}).get("position_decisions"),
-            actions=actions,
-            plans=plans,
-        ),
-        "capital_plan": build_capital_plan(capital_plan),
+        "cio_now": cio_now,
+        "capital_plan": capital_surface,
         "posture": build_posture(
-            capital_plan=capital_plan,
+            capital_plan=plan,
             sector_opportunities=sector_opportunities,
             attribution=attribution,
             thesis=thesis,
@@ -466,9 +623,18 @@ def build_office_home(
         "report": build_report_section(report),
         "evidence": build_evidence(
             report=report,
+            capital_plan=plan,
             source_refs=source_refs,
             validator_states=validator_states,
             run_ids=run_ids,
             now=now,
         ),
+        # Phase 8 consistency anchors for report/Telegram alignment tests
+        "consistency": {
+            "decision_ids": list(cio_now.get("decision_ids") or []),
+            "capital_plan_digest": capital_surface.get("plan_digest"),
+            "plan_version": capital_surface.get("plan_version") or plan.get("plan_version"),
+            "office_home_version": OFFICE_HOME_VERSION,
+        },
     }
+    return home

@@ -1,0 +1,163 @@
+name: cio-production-hardening-ci
+
+# Phase 10 — required gates for Investment Office / Alex CIO hardening.
+# READ_ONLY_ADVISORY: no broker writes, no live Telegram (pytest interdict).
+
+on:
+  push:
+    branches: ["main", "wt/**", "hardening/**", "feat/**"]
+    paths:
+      - "scripts/lib/cio_*.py"
+      - "scripts/render_cio_report_files.py"
+      - "scripts/cio_release_manifest.py"
+      - "scripts/run_cio_hardening_ci.py"
+      - "scripts/telegram_transport.py"
+      - "tests/test_cio_*.py"
+      - "docs/investment-office/**"
+      - ".github/workflows/cio-production-hardening-ci.yml"
+  pull_request:
+    paths:
+      - "scripts/lib/cio_*.py"
+      - "scripts/render_cio_report_files.py"
+      - "scripts/cio_release_manifest.py"
+      - "scripts/run_cio_hardening_ci.py"
+      - "tests/test_cio_*.py"
+      - "docs/investment-office/**"
+  workflow_dispatch:
+
+jobs:
+  cio-hardening:
+    runs-on: ubuntu-latest
+    env:
+      TRADE_AI_CI: "1"
+      CIO_TELEGRAM_INTERDICT: "1"
+      ENABLE_TELEGRAM: "0"
+      ALPACA_MODE: paper
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install test deps
+        run: |
+          python3 -m pip install --upgrade pip
+          pip install pytest pyyaml requests
+          # Optional render smoke deps (fail-soft if unavailable)
+          pip install python-docx || true
+
+      - name: CIO hardening gates (unit + manifest)
+        run: python3 scripts/run_cio_hardening_ci.py
+
+      - name: Phase 11 adversarial suite
+        run: python3 scripts/run_cio_adversarial_suite.py
+
+      - name: Report HTML export smoke
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from datetime import datetime, timezone
+          import sys
+          sys.path.insert(0, ".")
+          sys.path.insert(0, "scripts")
+          from scripts.lib.cio_report_v2 import build_report_v2
+          from scripts.lib.cio_report_render import export_report_formats
+          model = build_report_v2(
+              part_b_ctx={
+                  "portfolio": {"total_value": 100000.0, "cash_value": 20000.0, "cash_pct": 20.0},
+                  "allocation": {"Cash & Equivalents": 20000.0, "Equities": 80000.0},
+                  "performance": {"ytd_return": 1.0, "port_cagr": 5.0},
+              },
+              part_a_inputs={"capital_plan": {
+                  "portfolio_value_usd": 100000.0, "cash_total_usd": 20000.0,
+                  "cash_reserved_usd": 20000.0, "cash_investable_usd": 0.0,
+                  "net_recommended_deploy_usd": 0.0, "net_recommended_raise_usd": 0.0,
+                  "post_plan_cash_usd": 20000.0, "position_decisions": [],
+              }},
+              source_sha="ci",
+              now=datetime.now(timezone.utc),
+          )
+          out = Path("exports/ci_smoke")
+          res = export_report_formats(model, out, basename="ci_smoke", formats=["html"])
+          assert res.get("paths", {}).get("html"), res
+          html = Path(res["paths"]["html"]).read_text()
+          assert "578107.50%" not in html
+          assert "READ_ONLY_ADVISORY" in html
+          print("HTML smoke OK", res["paths"]["html"])
+          PY
+
+      - name: DOCX smoke (optional)
+        continue-on-error: true
+        run: |
+          python3 - <<'PY'
+          try:
+              import docx  # noqa: F401
+          except ImportError:
+              print("python-docx not installed — skip DOCX smoke")
+              raise SystemExit(0)
+          from pathlib import Path
+          from datetime import datetime, timezone
+          import sys
+          sys.path.insert(0, ".")
+          sys.path.insert(0, "scripts")
+          from scripts.lib.cio_report_v2 import build_report_v2
+          from scripts.lib.cio_report_render import export_report_formats
+          model = build_report_v2(
+              part_b_ctx={"portfolio": {"total_value": 1.0, "cash_value": 0.5},
+                          "allocation": {"Cash & Equivalents": 0.5, "Equities": 0.5}},
+              part_a_inputs={"capital_plan": {
+                  "portfolio_value_usd": 1.0, "cash_total_usd": 0.5,
+                  "cash_reserved_usd": 0.2, "cash_investable_usd": 0.3,
+                  "net_recommended_deploy_usd": 0, "net_recommended_raise_usd": 0,
+                  "post_plan_cash_usd": 0.5, "position_decisions": [],
+              }},
+              source_sha="ci", now=datetime.now(timezone.utc),
+          )
+          res = export_report_formats(model, Path("exports/ci_smoke"), basename="ci_docx", formats=["html","docx"])
+          assert res.get("paths", {}).get("docx") or res.get("errors", {}).get("docx")
+          print("DOCX smoke:", res.get("paths", {}).get("docx"), res.get("errors"))
+          PY
+
+      - name: PDF smoke (optional — needs chromium/weasyprint)
+        continue-on-error: true
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from datetime import datetime, timezone
+          import sys
+          sys.path.insert(0, ".")
+          sys.path.insert(0, "scripts")
+          from scripts.lib.cio_report_v2 import build_report_v2
+          from scripts.lib.cio_report_render import export_report_formats, has_pdf_renderer
+          if not has_pdf_renderer():
+              print("No PDF renderer in CI image — skip")
+              raise SystemExit(0)
+          model = build_report_v2(
+              part_b_ctx={"portfolio": {"total_value": 1.0, "cash_value": 0.5},
+                          "allocation": {"Cash & Equivalents": 0.5, "Equities": 0.5}},
+              part_a_inputs={"capital_plan": {
+                  "portfolio_value_usd": 1.0, "cash_total_usd": 0.5,
+                  "cash_reserved_usd": 0.2, "cash_investable_usd": 0.3,
+                  "net_recommended_deploy_usd": 0, "net_recommended_raise_usd": 0,
+                  "post_plan_cash_usd": 0.5, "position_decisions": [],
+              }},
+              source_sha="ci", now=datetime.now(timezone.utc),
+          )
+          res = export_report_formats(model, Path("exports/ci_smoke"), basename="ci_pdf", formats=["html","pdf"])
+          print("PDF smoke:", res.get("paths", {}).get("pdf"), res.get("errors"))
+          PY
+
+      - name: Upload CIO CI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cio-hardening-evidence
+          path: |
+            docs/investment-office/RELEASE_MANIFEST.md
+            docs/investment-office/RELEASE_MANIFEST.json
+            exports/ci_smoke/
+          if-no-files-found: ignore
