@@ -737,15 +737,78 @@ def _which(cmd: str) -> Optional[str]:
     return shutil.which(cmd)
 
 
+PDF_RENDERER_COMMANDS = (
+    "weasyprint",
+    "wkhtmltopdf",
+    "chromium",
+    "chromium-browser",
+    "google-chrome",
+    "google-chrome-stable",
+)
+
+
+def has_docx_library() -> bool:
+    """True only when python-docx is actually importable. Never guessed."""
+    try:
+        import docx  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+def _weasyprint_python_available() -> bool:
+    try:
+        import weasyprint  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+def detect_renderers() -> dict[str, Any]:
+    """Honest capability probe for HTML / DOCX / PDF.
+
+    PDF is available only when weasyprint (CLI or Python), wkhtmltopdf, or a
+    Chromium/Chrome binary is on PATH. Playwright's cached browser is *not*
+    counted — that would fake production PDF readiness.
+    """
+    commands = {cmd: bool(_which(cmd)) for cmd in PDF_RENDERER_COMMANDS}
+    weasy_py = _weasyprint_python_available()
+    engines = [cmd for cmd, present in commands.items() if present]
+    if weasy_py and "weasyprint" not in engines:
+        engines.append("weasyprint-python")
+    pdf_ok = bool(engines)
+    docx_ok = has_docx_library()
+    return {
+        "html": {"available": True, "status": "ok", "ok": True},
+        "docx": {
+            "available": docx_ok,
+            "status": "ok" if docx_ok else "missing",
+            "ok": docx_ok,
+            "library": "python-docx",
+            "reason": None if docx_ok else "python-docx is not installed",
+        },
+        "pdf": {
+            "available": pdf_ok,
+            "status": "ok" if pdf_ok else "missing",
+            "ok": pdf_ok,
+            "commands": commands,
+            "weasyprint_python": weasy_py,
+            "engines": engines,
+            "reason": (
+                None if pdf_ok
+                else "No PDF renderer (weasyprint/wkhtmltopdf/chromium)"
+            ),
+        },
+    }
+
+
 def has_pdf_renderer() -> bool:
-    for cmd in ("weasyprint", "wkhtmltopdf", "chromium", "chromium-browser", "google-chrome"):
-        if _which(cmd):
-            return True
-    return False
+    """True only when a real weasyprint / wkhtmltopdf / chromium engine exists."""
+    return bool((detect_renderers().get("pdf") or {}).get("available"))
 
 
 def render_pdf_from_html(html: str, out: Path) -> Path:
-    """Render HTML to PDF via the first available engine."""
+    """Render HTML to PDF via the first available engine. Never fakes a PDF."""
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
     html_path = out.with_suffix(".print.html")
@@ -760,7 +823,17 @@ def render_pdf_from_html(html: str, out: Path) -> Path:
         if r.returncode == 0 and out.exists() and out.stat().st_size > 0:
             return out
 
-    # 2) wkhtmltopdf
+    # 2) weasyprint Python API (same engine, no CLI wrapper)
+    if _weasyprint_python_available():
+        try:
+            from weasyprint import HTML as WeasyHTML  # type: ignore
+            WeasyHTML(filename=str(html_path)).write_pdf(str(out))
+            if out.exists() and out.stat().st_size > 0:
+                return out
+        except Exception:
+            pass
+
+    # 3) wkhtmltopdf
     if _which("wkhtmltopdf"):
         r = subprocess.run(
             ["wkhtmltopdf", "--quiet", str(html_path), str(out)],
@@ -769,8 +842,8 @@ def render_pdf_from_html(html: str, out: Path) -> Path:
         if r.returncode == 0 and out.exists() and out.stat().st_size > 0:
             return out
 
-    # 3) Chromium / Chrome headless
-    for browser in ("chromium", "chromium-browser", "google-chrome"):
+    # 4) Chromium / Chrome headless
+    for browser in ("chromium", "chromium-browser", "google-chrome", "google-chrome-stable"):
         bin_path = _which(browser)
         if not bin_path:
             continue

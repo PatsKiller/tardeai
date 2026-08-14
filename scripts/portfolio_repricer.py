@@ -372,7 +372,42 @@ def _apply_to_holdings(
                 h["gain_loss"]     = round(h["market_value"] - float(cost), 2)
                 h["gain_loss_pct"] = round(h["gain_loss"] / float(cost) * 100, 4) if float(cost) else None
             updated += 1
+    _annotate_canonical_quotes(holdings)
     return updated
+
+
+def _annotate_canonical_quotes(holdings: List[Dict]) -> None:
+    """Stamp named quote lineage onto holdings. Fail-soft — never breaks reprice."""
+    try:
+        try:
+            from lib.cio_canonical_quote import (  # type: ignore
+                CANONICAL_QUOTE_OUTPUT_FIELDS,
+                apply_canonical_quote_fields,
+            )
+        except ImportError:
+            from scripts.lib.cio_canonical_quote import (
+                CANONICAL_QUOTE_OUTPUT_FIELDS,
+                apply_canonical_quote_fields,
+            )
+    except Exception as e:
+        print(f"  [repricer] canonical quote annotate unavailable: {e}")
+        return
+    n = 0
+    for h in holdings:
+        if not isinstance(h, dict):
+            continue
+        if h.get("is_loan") or h.get("is_cash"):
+            continue
+        try:
+            named = apply_canonical_quote_fields(h)
+            for k in CANONICAL_QUOTE_OUTPUT_FIELDS:
+                if k in named:
+                    h[k] = named[k]
+            n += 1
+        except Exception as e:
+            print(f"  [repricer] canonical quote annotate skip {h.get('symbol')}: {e}")
+    if n:
+        print(f"  [repricer] canonical quote fields annotated on {n} holdings")
 
 
 # ── Recalculate totals ─────────────────────────────────────────────────────────
@@ -585,6 +620,8 @@ def reprice_portfolio(portfolio: Dict[str, Any], state_dir: Path) -> Dict[str, A
 
     # ── 4. Recalculate totals ─────────────────────────────────────────────────
     _recalc_totals(portfolio)
+    # Residual 401k/cash guards may rewrite a fund `price`; re-stamp lineage.
+    _annotate_canonical_quotes(portfolio.get("holdings") or [])
 
     portfolio["last_repriced"]  = now_str
     portfolio["reprice_source"] = "finviz_live" if _is_market_hours(now) else "finviz_afterhours"

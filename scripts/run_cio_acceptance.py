@@ -153,12 +153,14 @@ def _collect_live(now: datetime, ev: Path) -> dict[str, Any]:
         # Live API currently does not emit PDF/DOCX files.
         synthetic = False  # endpoint is live book, but formats may be missing
 
-    # Telegram: measure, do not invent
+    # Telegram: measure, do not invent (no `or True` credit).
     cio_token_set = bool(os.environ.get("TELEGRAM_CIO_BOT_TOKEN"))
     interdict = os.environ.get("CIO_TELEGRAM_INTERDICT", "").lower() in ("1", "true", "yes", "on")
     general_used = _transport_uses_general_token()
-    # No send this run. proof_general_sends left None unless a receipt exists.
-    canary_path = ev / "cio_telegram_canary_receipt.json"
+    # Prefer the per-run evidence copy; else the Phase 10 canonical DRY receipt.
+    canonical_canary = REPO / "data" / "audit" / "cio_telegram_canary_receipt.json"
+    ev_canary = ev / "cio_telegram_canary_receipt.json"
+    canary_path = ev_canary if ev_canary.is_file() else canonical_canary
     canary = None
     if canary_path.is_file():
         try:

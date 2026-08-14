@@ -21,7 +21,9 @@ class TestAdvisoryApi(unittest.TestCase):
         self.assertTrue(d.get("ok"))
         self.assertEqual(d.get("authority"), "READ_ONLY_ADVISORY")
         self.assertIsInstance(d.get("rows"), list)
-        self.assertEqual(len(d.get("banners") or []), 5)
+        # 5 health banners; Phase 7 may prepend DATA CONFLICT.
+        self.assertGreaterEqual(len(d.get("banners") or []), 5)
+        self.assertLessEqual(len(d.get("banners") or []), 6)
         banner_ids = {b["id"] for b in d["banners"]}
         self.assertTrue(banner_ids)  # non-empty set of 5 states
         # data_quality column present
@@ -32,6 +34,8 @@ class TestAdvisoryApi(unittest.TestCase):
             self.assertIn("lots", r["expand"])
             self.assertIn("price_action", r["expand"])
             self.assertIn("memory", r["expand"])
+            self.assertIn("canonical_financial_facts", r["expand"])
+            self.assertIn("advisory_provenance", r["expand"])
 
     def test_class_filter(self) -> None:
         import api_v3_advisory as adv
@@ -95,7 +99,9 @@ class TestHandleRouting(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertTrue(body.get("ok"))
         self.assertIn("rows", body)
-        self.assertEqual(len(body.get("banners") or []), 5)
+        banners = body.get("banners") or []
+        self.assertGreaterEqual(len(banners), 5)
+        self.assertLessEqual(len(banners), 6)
 
     def test_api_v2_advisory_brief(self) -> None:
         import api_v2

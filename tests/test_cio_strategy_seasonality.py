@@ -63,9 +63,17 @@ def test_seed_facts_layered_not_collapsed():
         assert "source_claim" in layers
         assert "trade_ai_reproduction" in layers
         assert "current_application" in layers
-        # STA-style claims start unverified until independently reproduced
+        # STA layers stay distinct. Fixture reproduction may lift unverified →
+        # partially_reproduced; do not require seeds to stay unverified.
         if "sta_" in str(f.get("source_id")):
-            assert f["internal_validation_status"] == "unverified_source_claim"
+            assert f["internal_validation_status"] in {
+                "unverified_source_claim",
+                "partially_reproduced",
+                "reproduced",
+                "reproduced_oos",
+            }
+            assert layers["source_claim"] != layers["trade_ai_reproduction"]
+            assert layers["current_application"] != layers["source_claim"]
             assert "fulltext" not in (f.get("claim") or "").lower()
 
 

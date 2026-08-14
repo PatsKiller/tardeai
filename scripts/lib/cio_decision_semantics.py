@@ -136,6 +136,11 @@ OPTIONAL_SIZING_FIELDS = (
     "trim_to_clear_fire_usd",
     "trim_to_policy_usd",
     "fallback_candidate_only",
+    "candidates",
+    "sizing_quality",
+    "selected_candidate",
+    "selection_rationale",
+    "tranches",
     "action_label",
     "action_label_display",
     "act_now",
@@ -538,6 +543,8 @@ def aggregate_position_decisions(
         "sizing", "sizing_method", "sizing_objective", "sizing_why_not_min",
         "sizing_why_not_max", "trim_to_clear_fire_usd", "trim_to_policy_usd",
         "fallback_candidate_only", "target_weight_pct",
+        "candidates", "sizing_quality", "selected_candidate",
+        "selection_rationale", "tranches", "tax_class",
         "action_label", "action_label_display", "act_now", "actionable",
         "freshness", "financial_truth_quality",
     )
@@ -612,7 +619,9 @@ def aggregate_position_decisions(
             elif k == "fallback_candidate_only" and r.get(k) is False:
                 agg[k] = False
                 for sk in ("sizing", "sizing_method", "sizing_objective",
-                           "trim_to_clear_fire_usd", "trim_to_policy_usd"):
+                           "trim_to_clear_fire_usd", "trim_to_policy_usd",
+                           "candidates", "sizing_quality", "selected_candidate",
+                           "selection_rationale", "tranches"):
                     if r.get(sk) is not None:
                         agg[sk] = r.get(sk)
 
@@ -630,12 +639,16 @@ def aggregate_position_decisions(
         # Re-size at symbol aggregate when portfolio value known (Phase 5)
         if stance in ("TRIM", "EXIT", "ADD", "RE_ENTER") and pv > 0:
             try:
-                from scripts.lib.cio_institutional_sizing import size_decision
+                from scripts.lib.cio_institutional_sizing import (
+                    extract_sizing_inputs,
+                    size_decision,
+                )
                 tr = agg.get("target_range_pct") or {}
                 cap = float(tr.get("max") or 12.0) if isinstance(tr, dict) else 12.0
                 fire = 16.5
                 if "fire" in str(agg.get("risk") or "").lower():
                     fire = 16.5
+                extras = extract_sizing_inputs(agg)
                 sz = size_decision(
                     stance=stance,
                     market_value_usd=value,
@@ -643,7 +656,12 @@ def aggregate_position_decisions(
                     portfolio_value_usd=pv,
                     policy_cap_pct=cap,
                     fire_pct=fire,
-                    tax_class=str(agg.get("tax_account_constraint") or "TAXABLE"),
+                    tax_class=str(
+                        agg.get("tax_class")
+                        or agg.get("tax_account_constraint")
+                        or "TAXABLE"
+                    ),
+                    **extras,
                 )
                 agg["recommended_delta_usd"] = float(sz.get("recommended_delta_usd") or 0.0)
                 agg["sizing"] = sz
@@ -654,6 +672,11 @@ def aggregate_position_decisions(
                 agg["trim_to_clear_fire_usd"] = sz.get("trim_to_clear_fire_usd")
                 agg["trim_to_policy_usd"] = sz.get("trim_to_policy_usd")
                 agg["fallback_candidate_only"] = bool(sz.get("fallback_candidate_only"))
+                agg["candidates"] = sz.get("candidates")
+                agg["sizing_quality"] = sz.get("sizing_quality")
+                agg["selected_candidate"] = sz.get("selected_candidate")
+                agg["selection_rationale"] = sz.get("selection_rationale")
+                agg["tranches"] = sz.get("tranches")
                 if sz.get("target_weight_pct") is not None:
                     agg["target_weight_pct"] = sz.get("target_weight_pct")
             except Exception:
@@ -740,7 +763,9 @@ def sanitize_decisions_now(
         for k in (
             "sizing", "sizing_method", "sizing_objective", "sizing_why_not_min",
             "sizing_why_not_max", "trim_to_clear_fire_usd", "trim_to_policy_usd",
-            "fallback_candidate_only", "action_label", "action_label_display",
+            "fallback_candidate_only", "candidates", "sizing_quality",
+            "selected_candidate", "selection_rationale", "tranches",
+            "action_label", "action_label_display",
             "act_now", "actionable", "freshness", "financial_truth_quality",
         ):
             if d.get(k) is not None:

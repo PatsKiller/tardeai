@@ -206,6 +206,8 @@ def build_cio_now(
                 "sizing_why_not_min", "sizing_why_not_max",
                 "trim_to_clear_fire_usd", "trim_to_policy_usd",
                 "fallback_candidate_only", "financial_truth_quality",
+                "candidates", "sizing_quality", "selected_candidate",
+                "selection_rationale", "tranches",
             ):
                 if k in raw and k not in d:
                     d[k] = raw[k]
@@ -777,7 +779,7 @@ def build_office_home(
             "office_home_version": OFFICE_HOME_VERSION,
         },
     }
-    # Phases 12–13: surface strategy/seasonality context (risk modifier only)
+    # Phases 11–16: surface strategy/seasonality/research context (risk modifier only)
     sc = plan.get("strategy_context")
     if not sc:
         try:
@@ -786,14 +788,20 @@ def build_office_home(
                 load_strategy_store,
                 compose_strategy_context,
             )
+            from scripts.lib.cio_research_retriever import retrieve_research_context
             season = plan.get("seasonality") or build_seasonality_context(now)
+            research = plan.get("research_context") or retrieve_research_context(now)
             sc = compose_strategy_context(
-                now=now, store=load_strategy_store(), seasonality=season,
+                now=now,
+                store=load_strategy_store(),
+                seasonality=season,
+                research_context=research,
             )
         except Exception as exc:
             sc = {"error": str(exc)[:160], "role": "risk_modifier_or_context"}
     home["strategy_context"] = sc
     home["seasonality"] = plan.get("seasonality") or (sc or {}).get("seasonality")
+    home["research_context"] = plan.get("research_context") or (sc or {}).get("research_context")
     home["earmark_narrative"] = plan.get("earmark_narrative") or (
         (plan.get("account_capital_ledger") or {}).get("narrative")
     )

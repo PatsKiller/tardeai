@@ -172,6 +172,7 @@ def build_report_view(model: dict[str, Any]) -> dict[str, Any]:
         "allocation_weight_pct": alloc_norm["allocation_weight_pct"],
         "decisions": [
             {
+                "decision_id": d.get("decision_id"),
                 "symbol": d.get("symbol"),
                 "stance": d.get("stance") or d.get("stance_code") or d.get("cio_stance"),
                 "stance_code": d.get("stance_code"),

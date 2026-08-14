@@ -24,7 +24,13 @@ type DeskRow = {
     lot_data_status?: string
     sufficient?: boolean
     evidence_gaps?: string[]
+    conflicts?: string[]
+    quality?: string
+    action_suppressed?: boolean
+    banner?: string
   }
+  canonical_financial_facts?: any
+  advisory_provenance?: any
   expand?: {
     lots?: any
     price_action?: any
@@ -33,6 +39,8 @@ type DeskRow = {
     evidence_items?: any[]
     opinion?: any
     instrument?: any
+    canonical_financial_facts?: any
+    advisory_provenance?: any
   }
 }
 
@@ -76,6 +84,7 @@ const BANNER_ACTION: Record<string, string> = {
   LLM_OFF: 'Enable ADVISORY_DESK_V1 to run Flash/Pro enrichment.',
   INVARIANTS_OK: 'No external reality failures.',
   INVARIANT_VIOLATIONS: 'Rows forced to INSUFFICIENT_DATA — resolve data gaps.',
+  DATA_CONFLICT: 'Do not act on conflicted marks — ACTION SUPPRESSED until prices/MV reconcile.',
 }
 
 // Sub-materiality close-out remnants ($500 floor) clutter the table; hide by default.
@@ -94,6 +103,19 @@ function fmtUSD(n: number | null | undefined) {
 function fmtPct(n: number | null | undefined) {
   if (n == null) return '—'
   return `${n >= 0 ? '+' : ''}${Number(n).toFixed(1)}%`
+}
+
+function fmtPrice(n: number | null | undefined) {
+  if (n == null || Number.isNaN(Number(n))) return '—'
+  return `$${Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
+function qualityTone(q: string | undefined) {
+  const u = String(q || '').toUpperCase()
+  if (u === 'CONFLICTED') return 'var(--red)'
+  if (u === 'STALE' || u === 'DATA_UNAVAILABLE') return 'var(--amber)'
+  if (u.startsWith('VERIFIED')) return 'var(--green)'
+  return undefined
 }
 
 const CLASSES = ['all', 'holding', 'watchlist', 'allocation', 'closed_journal'] as const
@@ -153,16 +175,44 @@ function LotsCard({ d }: { d: any }) {
   )
 }
 
+function CurrentFinancialFactsCard({ d }: { d: any }) {
+  if (!d || typeof d !== 'object') return <span style={emptyStyle}>No canonical mark.</span>
+  const q = String(d.quality || '—')
+  return (
+    <div>
+      <Field label="Current mark" value={d.current_mark_display || fmtPrice(d.current_mark)} />
+      <Field label="As of" value={d.as_of ? String(d.as_of).replace('T', ' ').slice(0, 19) : '—'} />
+      <Field label="Source" value={String(d.source || '—')} />
+      <Field label="Shares" value={d.shares != null ? Number(d.shares).toLocaleString() : '—'} />
+      <Field label="Market value" value={d.market_value_display || fmtUSD(d.market_value)} />
+      {d.implied_price_from_mv != null && (
+        <Field label="Implied from MV" value={fmtPrice(d.implied_price_from_mv)} />
+      )}
+      <Field label="Total cost basis" value={d.total_cost_basis_display || fmtUSD(d.total_cost_basis)} />
+      <Field label="Avg cost/share" value={d.avg_cost_per_share_display || fmtPrice(d.avg_cost_per_share)} />
+      <Field label="Unrealized P/L" value={d.unrealized_pl_display || fmtUSD(d.unrealized_pl)} />
+      <Field label="Quality" value={q} tone={qualityTone(q)} />
+    </div>
+  )
+}
+
 function PriceActionCard({ d }: { d: any }) {
   if (!d || typeof d !== 'object') return <span style={emptyStyle}>No price-action data.</span>
   const dir = d.trend_direction
   return (
     <div>
+      {(d.current_mark != null || d.as_of || d.source) && (
+        <>
+          {d.current_mark != null && <Field label="Mark used" value={fmtPrice(d.current_mark)} />}
+          {d.as_of && <Field label="As of" value={String(d.as_of).replace('T', ' ').slice(0, 19)} />}
+          {d.source && <Field label="Source" value={String(d.source)} />}
+        </>
+      )}
       <Field label="1d / 5d / 20d" value={`${fmtPct(d.price_change_pct_1d)} / ${fmtPct(d.price_change_pct_5d)} / ${fmtPct(d.price_change_pct_20d)}`} />
       <Field label="Off 52w high" value={fmtPct(d.pct_off_52w_high)} />
       <Field label="Off 52w low" value={fmtPct(d.pct_off_52w_low)} />
       <Field label="From cost basis" value={fmtPct(d.distance_from_cost_basis_pct)} />
-      <Field label="Trend" value={dir ? String(dir) : '—'} tone={dir === 'down' ? 'var(--red)' : dir === 'up' ? 'var(--green)' : undefined} />
+      <Field label="Trend" value={dir ? String(dir) : '—'} tone={dir === 'down' || dir === 'falling' ? 'var(--red)' : dir === 'up' || dir === 'rising' ? 'var(--green)' : undefined} />
       <Field label="Volatility (1w)" value={fmtPct(d.volatility_w_pct)} />
     </div>
   )
@@ -170,14 +220,46 @@ function PriceActionCard({ d }: { d: any }) {
 
 function AnalystCard({ d }: { d: any }) {
   if (!d || typeof d !== 'object') return <span style={emptyStyle}>No analyst coverage.</span>
+  const target = d.target ?? d.price_target_mean
+  const denomIsCurrent = Boolean(d.denominator_is_canonical_current)
+  const vsCanonical = d.target_upside_vs_current
+  const vsProvider = d.target_upside_vs_provider_snapshot
+  const denomPx = d.denominator_price
+  const denomAsOf = d.denominator_as_of
   return (
     <div>
-      <Field label="Consensus" value={String(d.consensus_rating || d.recommendation_mean) || '—'} />
-      <Field label="Target" value={d.price_target_mean != null ? fmtUSD(d.price_target_mean) : '—'} />
-      <Field label="Target range" value={d.price_target_low != null && d.price_target_high != null ? `${fmtUSD(d.price_target_low)} – ${fmtUSD(d.price_target_high)}` : '—'} />
-      <Field label="vs current" value={fmtPct(d.target_vs_current_pct)} />
+      <Field label="Consensus" value={String(d.consensus_rating || d.recommendation_mean || '—')} />
+      <Field label="Target" value={target != null ? fmtPrice(target) : '—'} />
+      <Field label="Target as of" value={String(d.target_as_of || d.as_of || '—').slice(0, 10)} />
+      <Field
+        label="Target range"
+        value={d.price_target_low != null && d.price_target_high != null
+          ? `${fmtPrice(d.price_target_low)} – ${fmtPrice(d.price_target_high)}`
+          : '—'}
+      />
+      <Field
+        label="Upside vs canonical current"
+        value={vsCanonical != null ? fmtPct(vsCanonical) : '—'}
+        tone={denomIsCurrent ? undefined : 'var(--text3)'}
+      />
+      <Field
+        label="Upside vs provider snapshot"
+        value={vsProvider != null ? fmtPct(vsProvider) : '—'}
+      />
+      <Field
+        label="Denominator"
+        value={
+          denomPx != null
+            ? `${fmtPrice(denomPx)}${denomAsOf ? ` · ${String(denomAsOf).slice(0, 10)}` : ''}${denomIsCurrent ? ' · canonical' : ' · provider snapshot'}`
+            : '—'
+        }
+      />
+      {!denomIsCurrent && (vsProvider != null || denomPx != null) && (
+        <div style={{ fontSize: 10.5, color: 'var(--amber)', marginTop: 6, lineHeight: 1.35 }}>
+          Provider snapshot is not the canonical current mark — not labeled as current.
+        </div>
+      )}
       <Field label="Analysts" value={d.analyst_count ?? '—'} />
-      <Field label="As of" value={String(d.as_of || '—').slice(0, 10)} />
     </div>
   )
 }
@@ -196,7 +278,7 @@ function MemoryCard({ d }: { d: any }) {
 
 function OpinionCard({ d }: { d: any }) {
   if (!d || typeof d !== 'object' || Object.keys(d).length === 0) {
-    return <span style={emptyStyle}>No Flash row opinion — this row wasn't covered in the latest enrichment run.</span>
+    return <span style={emptyStyle}>No Flash row opinion — missing opinion is not HOLD. This row was not covered in the latest enrichment run.</span>
   }
   return (
     <div>
@@ -248,7 +330,8 @@ function EvidenceCard({ items }: { items: any[] }) {
 }
 
 function ExpandCard({ title, data }: { title: string; data: any }) {
-  const body = title === 'Lots' ? <LotsCard d={data} />
+  const body = title === 'Current financial facts' ? <CurrentFinancialFactsCard d={data} />
+    : title === 'Lots' ? <LotsCard d={data} />
     : title === 'Price action' ? <PriceActionCard d={data} />
     : title === 'Analyst' ? <AnalystCard d={data} />
     : title === 'Memory' ? <MemoryCard d={data} />
@@ -434,11 +517,14 @@ export default function AdvisoryDeskHub({ onDrill }: Props) {
                     <td style={{ padding: '8px 10px' }}>{fmtUSD(r.market_value)}</td>
                     <td style={{ padding: '8px 10px' }}>{r.weight_pct != null ? `${Number(r.weight_pct).toFixed(2)}%` : '—'}</td>
                     <td style={{ padding: '8px 10px' }}>{fmtPct(r.gain_loss_pct)}</td>
-                    <td style={{ padding: '8px 10px' }} data-testid="data-quality" title={(dq.evidence_gaps || []).join('\n') || 'No data gaps'}>
+                    <td style={{ padding: '8px 10px' }} data-testid="data-quality" title={(dq.conflicts || []).join('\n') || (dq.evidence_gaps || []).join('\n') || 'No data gaps'}>
                       <span>
                         ev {dq.evidence_count ?? 0}
                         {dq.gap_count ? ` · gaps ${dq.gap_count}` : ''}
                         {dq.lot_data_status ? ` · ${dq.lot_data_status}` : ''}
+                        {dq.action_suppressed ? (
+                          <span style={{ color: 'var(--red)', fontWeight: 700 }}> · DATA CONFLICT</span>
+                        ) : dq.quality ? ` · ${dq.quality}` : ''}
                       </span>
                     </td>
                     <td style={{ padding: '8px 10px', color: 'var(--text2)', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
@@ -450,15 +536,53 @@ export default function AdvisoryDeskHub({ onDrill }: Props) {
                   {open && (
                     <tr style={{ background: 'var(--bg2)' }}>
                       <td colSpan={10} style={{ padding: 14 }}>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: 12 }}>
-                          <ExpandCard title="Lots" data={r.expand?.lots} />
-                          <ExpandCard title="Price action" data={r.expand?.price_action} />
-                          <ExpandCard title="Analyst" data={r.expand?.analyst} />
-                          <ExpandCard title="Memory" data={r.expand?.memory} />
-                          <ExpandCard title="Opinion" data={r.expand?.opinion} />
-                          <ExpandCard title="Instrument" data={r.expand?.instrument} />
-                          <ExpandCard title="Evidence" data={r.expand?.evidence_items} />
-                        </div>
+                        {(() => {
+                          const facts = r.expand?.canonical_financial_facts || r.canonical_financial_facts
+                          const prov = r.expand?.advisory_provenance || r.advisory_provenance
+                          const conflicts: string[] = [
+                            ...((dq.conflicts as string[]) || []),
+                            ...((facts?.conflicts as string[]) || []),
+                            ...((prov?.conflicts as string[]) || []),
+                          ].filter((c, i, a) => c && a.indexOf(c) === i)
+                          const suppressed = Boolean(dq.action_suppressed || facts?.action_suppressed || prov?.action_suppressed || conflicts.length)
+                          const synthesis = prov?.opinion_synthesis
+                          return (
+                            <>
+                              {suppressed && (
+                                <div style={{
+                                  background: 'var(--red-ghost)', border: '1px solid var(--red)',
+                                  borderRadius: 6, padding: '8px 10px', marginBottom: 10,
+                                  color: 'var(--red)', fontSize: 12, fontWeight: 700,
+                                }}>
+                                  DATA CONFLICT — ACTION SUPPRESSED
+                                  <div style={{ fontWeight: 500, marginTop: 4, color: 'var(--text2)', fontSize: 11, lineHeight: 1.4 }}>
+                                    {conflicts.filter(c => c !== 'DATA CONFLICT — ACTION SUPPRESSED').join(' · ') || 'Mark / MV / target denominators disagree.'}
+                                  </div>
+                                </div>
+                              )}
+                              {synthesis && (
+                                <div style={{
+                                  background: 'var(--bg)', border: '1px solid var(--border)',
+                                  borderRadius: 6, padding: '8px 10px', marginBottom: 10,
+                                  fontSize: 12, color: 'var(--text)', lineHeight: 1.4,
+                                }}>
+                                  <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text3)', letterSpacing: 0.3, marginBottom: 4 }}>OPINION SYNTHESIS</div>
+                                  {synthesis}
+                                </div>
+                              )}
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: 12 }}>
+                                <ExpandCard title="Current financial facts" data={facts} />
+                                <ExpandCard title="Lots" data={r.expand?.lots} />
+                                <ExpandCard title="Price action" data={r.expand?.price_action} />
+                                <ExpandCard title="Analyst" data={r.expand?.analyst} />
+                                <ExpandCard title="Memory" data={r.expand?.memory} />
+                                <ExpandCard title="Opinion" data={r.expand?.opinion} />
+                                <ExpandCard title="Instrument" data={r.expand?.instrument} />
+                                <ExpandCard title="Evidence" data={r.expand?.evidence_items} />
+                              </div>
+                            </>
+                          )
+                        })()}
                         <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                           <button type="button" style={btnStyle} onClick={(e) => { e.stopPropagation(); postFeedback('ack', r) }}>Ack</button>
                           <button type="button" style={btnStyle} onClick={(e) => { e.stopPropagation(); postFeedback('snooze', r) }}>Snooze</button>

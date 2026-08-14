@@ -226,14 +226,19 @@ def _load_holdings() -> dict[str, Any]:
         mv = _f(h.get("market_value")) or 0
         # FIX-6: Consume the canonical gain_loss_pct from holdings.json
         canonical_gl = _f(h.get("gain_loss_pct"))
+        raw_price = _f(h.get("price"))
+        raw_current = _f(h.get("current_price"))
         pos = {
             "symbol": symbol,
             "shares": _f(h.get("shares")) or 0,
             "market_value": mv,
-            "price": _f(h.get("price")) or _f(h.get("current_price")),
+            # Keep both prints so dual-price conflicts are visible (DXCM).
+            "price": raw_price or raw_current,
+            "current_price": raw_current or raw_price,
             "account": str(h.get("account", "")),
             "portfolio_pct": _f(h.get("portfolio_pct")),
             "cost_basis": _f(h.get("cost_basis")),
+            "average_cost": _f(h.get("average_cost") or h.get("avg_cost")),
             "day_change_pct": _f(h.get("day_change_pct")),
             "bucket": str(h.get("bucket", "")),
             "name": str(h.get("name", "")),
@@ -242,6 +247,10 @@ def _load_holdings() -> dict[str, Any]:
             "cost_basis_source": str(h.get("cost_basis_source", "")),
             "basis_partial": bool(h.get("basis_partial")),
             "cost_basis_note": str(h.get("cost_basis_note", "")),
+            "as_of": h.get("as_of") or h.get("price_as_of") or raw.get("as_of"),
+            "updated_at": h.get("updated_at") or h.get("as_of") or raw.get("updated_at"),
+            "price_as_of": h.get("price_as_of") or h.get("as_of"),
+            "price_source": str(h.get("price_source") or h.get("source") or "holdings.json"),
         }
         positions.append(pos)
         total_value += mv
@@ -857,6 +866,54 @@ def _bucket_mv(mv: float | None, pct_step: float = _HASH_MV_BUCKET_PCT) -> float
     r = 1.0 + max(pct_step, 0.01) / 100.0
     n = round(math.log(v) / math.log(r))
     return round(r ** n, 2)
+
+
+def attach_advisory_row_provenance(
+    row: dict[str, Any],
+    *,
+    holdings: dict[str, Any] | None = None,
+    analyst: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Attach expand.canonical_financial_facts + expand.advisory_provenance.
+
+    Also rewrites expand.analyst so a stale provider snapshot is never labeled
+    "vs current". Mutates and returns ``row``. Safe on incomplete mock rows.
+    """
+    _scripts_path()
+    try:
+        from lib.cio_advisory_provenance import attach_expand_provenance
+    except ImportError:  # pragma: no cover
+        from scripts.lib.cio_advisory_provenance import attach_expand_provenance
+    analyst_in = analyst if analyst is not None else (row.get("analyst") or None)
+    if isinstance(analyst_in, dict) and analyst_in.get("type") == "analyst_context":
+        # evidence-item shape is fine — attach_expand_provenance reads target fields
+        pass
+    out = attach_expand_provenance(row, holdings=holdings, analyst=analyst_in)
+    # Keep evidence-bundle analyst item honest after attach
+    an = (out.get("expand") or {}).get("analyst") or {}
+    eb = out.get("evidence_bundle")
+    if isinstance(eb, dict) and an:
+        for item in eb.get("evidence_items") or []:
+            if not isinstance(item, dict) or item.get("type") != "analyst_context":
+                continue
+            item["target"] = an.get("target") or item.get("target")
+            item["target_as_of"] = an.get("target_as_of") or item.get("target_as_of")
+            item["target_upside_vs_current"] = an.get("target_upside_vs_current")
+            item["target_upside_vs_provider_snapshot"] = an.get(
+                "target_upside_vs_provider_snapshot"
+            )
+            item["denominator_price"] = an.get("denominator_price")
+            item["denominator_as_of"] = an.get("denominator_as_of")
+            item["denominator_is_canonical_current"] = bool(
+                an.get("denominator_is_canonical_current")
+            )
+            item["target_vs_current_pct"] = (
+                an.get("target_vs_current_pct")
+                if an.get("denominator_is_canonical_current")
+                else None
+            )
+            item["provider_snapshot_price"] = an.get("provider_snapshot_price")
+    return out
 
 
 def _row_hash(row: dict[str, Any]) -> str:
@@ -1558,7 +1615,9 @@ def _load_price_action(
                 "trend_direction": "rising" if (perf_week or 0) > 2 else ("falling" if (perf_week or 0) < -2 else "flat"),
                 "data_window_days": 0,
                 "last_close": current_price,
+                "current_mark": current_price,
                 "source": "finviz_snapshot",
+                "as_of": str(finviz.get("as_of") or finviz.get("updated") or ""),
             }
             if vol_w is not None:
                 result["volatility_w_pct"] = vol_w
@@ -1636,6 +1695,9 @@ def _load_price_action(
         "trend_direction": trend,
         "data_window_days": data_window_days,
         "last_close": current,
+        "current_mark": last_price if last_price is not None else current,
+        "as_of": dates[-1] if dates else None,
+        "source": "price_ohlc_cache",
     }
 
 
@@ -1843,21 +1905,34 @@ def _load_analyst_context(holdings_symbols: set[str]) -> dict[str, dict[str, Any
             if not sym:
                 continue
             mean_t = _f(t.get("target_mean_price"))
-            cp = _f(t.get("current_price"))
-            target_vs_current = (
-                round((mean_t / cp - 1) * 100, 2)
-                if mean_t and cp and cp > 0 else None
+            # Yahoo `current_price` is the provider snapshot print, NOT the
+            # holdings canonical mark. Never label upside vs this as "vs current".
+            provider_px = _f(t.get("current_price"))
+            snapshot_date = str(t.get("snapshot_date", "") or "")[:10]
+            vs_provider = (
+                round((mean_t / provider_px - 1) * 100, 2)
+                if mean_t and provider_px and provider_px > 0 else None
             )
             rec_mean = _f(t.get("recommendation_mean"))
             result[sym] = {
                 "analyst_count": t.get("number_of_analyst_opinions"),
                 "price_target_mean": mean_t,
+                "target": mean_t,
                 "price_target_high": _f(t.get("target_high_price")),
                 "price_target_low": _f(t.get("target_low_price")),
-                "target_vs_current_pct": target_vs_current,
+                "target_as_of": snapshot_date or None,
+                "provider_snapshot_price": provider_px,
+                "provider_snapshot_as_of": snapshot_date or None,
+                "analyst_snapshot_price": provider_px,
+                "denominator_price": provider_px,
+                "denominator_as_of": snapshot_date or None,
+                "target_upside_vs_provider_snapshot": vs_provider,
+                "target_upside_vs_current": None,  # filled when canonical mark is known
+                "target_vs_current_pct": None,  # never set from a stale snapshot
+                "denominator_is_canonical_current": False,
                 "recommendation_mean": rec_mean,
                 "consensus_rating": _recommendation_mean_label(rec_mean),
-                "as_of": str(t.get("snapshot_date", ""))[:10],
+                "as_of": snapshot_date,
                 "source": "yahoo_analyst_targets_history",
             }
 
@@ -2172,10 +2247,23 @@ def _build_evidence_bundle(
             "source": an.get("source") or "yahoo_analyst_targets_history",
             "as_of": str(an.get("as_of", "") or "")[:19],
             "analyst_count": an.get("analyst_count"),
-            "price_target_mean": an.get("price_target_mean"),
+            "price_target_mean": an.get("price_target_mean") or an.get("target"),
+            "target": an.get("target") or an.get("price_target_mean"),
+            "target_as_of": an.get("target_as_of") or an.get("as_of"),
             "price_target_high": an.get("price_target_high"),
             "price_target_low": an.get("price_target_low"),
-            "target_vs_current_pct": an.get("target_vs_current_pct"),
+            # Honest fields — never a stale "vs current"
+            "target_upside_vs_current": an.get("target_upside_vs_current"),
+            "target_upside_vs_provider_snapshot": an.get("target_upside_vs_provider_snapshot"),
+            "denominator_price": an.get("denominator_price") or an.get("provider_snapshot_price"),
+            "denominator_as_of": an.get("denominator_as_of") or an.get("provider_snapshot_as_of"),
+            "denominator_is_canonical_current": bool(an.get("denominator_is_canonical_current")),
+            "target_vs_current_pct": (
+                an.get("target_vs_current_pct")
+                if an.get("denominator_is_canonical_current")
+                else None
+            ),
+            "provider_snapshot_price": an.get("provider_snapshot_price"),
             "recommendation_mean": an.get("recommendation_mean"),
             "consensus_rating": an.get("consensus_rating"),
         })
@@ -2695,6 +2783,16 @@ def build_advisory_desk(*, max_age_s: float = DEFAULT_MAX_AGE_S, force: bool = F
             opinion["cost_basis_source"] = pos.get("cost_basis_source", "")
             opinion["basis_partial"] = bool(pos.get("basis_partial"))
             opinion["holding_period"] = lot_basis_data.get(sym, {}).get("holding_period")
+            # Holdings arithmetic needed for canonical mark / dual-price detection
+            opinion["shares"] = pos.get("shares")
+            opinion["price"] = pos.get("price")
+            opinion["current_price"] = pos.get("current_price")
+            opinion["cost_basis"] = pos.get("cost_basis")
+            opinion["average_cost"] = pos.get("average_cost")
+            opinion["as_of"] = pos.get("as_of") or holdings.get("as_of")
+            opinion["updated_at"] = pos.get("updated_at")
+            opinion["price_as_of"] = pos.get("price_as_of")
+            opinion["price_source"] = pos.get("price_source") or "holdings.json"
 
             # S4: is_recent_ipo limitation — indicate unreliable technicals
             if instrument_data.get(sym, {}).get("is_recent_ipo"):
@@ -2784,12 +2882,27 @@ def build_advisory_desk(*, max_age_s: float = DEFAULT_MAX_AGE_S, force: bool = F
         if not row.get("row_class"):
             row["row_class"] = source_to_class.get(row.get("source", ""), "unknown")
 
+    # Holdings lookup for provenance (canonical mark / dual price)
+    pos_by_symbol: dict[str, dict[str, Any]] = {
+        p["symbol"]: p for p in holdings.get("positions", []) if p.get("symbol")
+    }
+
     # Attach evidence bundles to each row
     for row in rows:
         sym = row.get("symbol", "")
         rcls = row.get("row_class", "unknown")
         bundle = _build_evidence_bundle(sym, rcls, evidence_data)
         row["evidence_bundle"] = bundle
+
+        # Phase 7: attach canonical mark + honest analyst denominators
+        try:
+            attach_advisory_row_provenance(
+                row,
+                holdings=pos_by_symbol.get(sym) if rcls == "holding" else None,
+                analyst=analyst_data.get(sym),
+            )
+        except Exception:
+            pass
 
         # A2: Sufficiency gate — insufficient evidence → INSUFFICIENT_DATA
         # Applies to security-like rows (holding + watchlist). Allocation rows
@@ -2909,6 +3022,16 @@ def build_advisory_desk(*, max_age_s: float = DEFAULT_MAX_AGE_S, force: bool = F
                 "untrusted_lot_count": sum(
                     1 for r in rows
                     if r.get("lot_data_status") == "UNTRUSTED"
+                ),
+                "conflicted_symbols": [
+                    r.get("symbol") for r in rows
+                    if (r.get("canonical_financial_facts") or {}).get("conflicts")
+                    or (r.get("data_quality") or {}).get("action_suppressed")
+                ],
+                "conflicted_count": sum(
+                    1 for r in rows
+                    if (r.get("canonical_financial_facts") or {}).get("conflicts")
+                    or (r.get("data_quality") or {}).get("action_suppressed")
                 ),
                 "listing_date_coverage": len(listing_dates),
                 "instrument_identity_coverage": len(instrument_data),
