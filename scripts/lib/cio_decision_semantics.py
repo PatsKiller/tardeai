@@ -404,6 +404,14 @@ def aggregate_position_decisions(
     unless they already carry a name.
     """
     by: dict[str, dict[str, Any]] = {}
+    # Phase 5 sizing / Phase 3 freshness annotations to preserve on aggregate
+    _size_keys = (
+        "sizing", "sizing_method", "sizing_objective", "sizing_why_not_min",
+        "sizing_why_not_max", "trim_to_clear_fire_usd", "trim_to_policy_usd",
+        "fallback_candidate_only", "target_weight_pct",
+        "action_label", "action_label_display", "act_now", "actionable",
+        "freshness", "financial_truth_quality",
+    )
     for r in rows or []:
         if not isinstance(r, dict):
             continue
@@ -439,6 +447,9 @@ def aggregate_position_decisions(
                 "identity": ident,
                 "_acct_values": {acct: value} if acct else {},
             }
+            for k in _size_keys:
+                if r.get(k) is not None:
+                    by[sym][k] = r.get(k)
             continue
         agg = by[sym]
         agg["current_value_usd"] = round(float(agg["current_value_usd"]) + value, 2)
@@ -461,8 +472,20 @@ def aggregate_position_decisions(
         if r.get("name") and not agg.get("name"):
             agg["name"] = r.get("name")
         # Escalate risk if any lot is over cap
-        if "concentration >" in str(r.get("risk") or "").lower():
+        if "concentration >" in str(r.get("risk") or "").lower() or "fire" in str(r.get("risk") or "").lower():
             agg["risk"] = r.get("risk")
+        # Prefer richer sizing annotation (non-fallback wins)
+        for k in _size_keys:
+            if r.get(k) is None:
+                continue
+            if k not in agg or agg.get(k) is None:
+                agg[k] = r.get(k)
+            elif k == "fallback_candidate_only" and r.get(k) is False:
+                agg[k] = False
+                for sk in ("sizing", "sizing_method", "sizing_objective",
+                           "trim_to_clear_fire_usd", "trim_to_policy_usd"):
+                    if r.get(sk) is not None:
+                        agg[sk] = r.get(sk)
 
     pv = max(0.0, float(portfolio_value or 0.0))
     out: list[dict[str, Any]] = []
@@ -475,6 +498,37 @@ def aggregate_position_decisions(
         value = float(agg["current_value_usd"] or 0.0)
         weight = round(value / pv * 100.0, 2) if pv > 0 else float(agg.get("current_weight_pct") or 0.0)
         stance = resolve_display_stance(agg.get("cio_stance"), agg.get("why_now"))
+        # Re-size at symbol aggregate when portfolio value known (Phase 5)
+        if stance in ("TRIM", "EXIT", "ADD", "RE_ENTER") and pv > 0:
+            try:
+                from scripts.lib.cio_institutional_sizing import size_decision
+                tr = agg.get("target_range_pct") or {}
+                cap = float(tr.get("max") or 12.0) if isinstance(tr, dict) else 12.0
+                fire = 16.5
+                if "fire" in str(agg.get("risk") or "").lower():
+                    fire = 16.5
+                sz = size_decision(
+                    stance=stance,
+                    market_value_usd=value,
+                    weight_pct=weight,
+                    portfolio_value_usd=pv,
+                    policy_cap_pct=cap,
+                    fire_pct=fire,
+                    tax_class=str(agg.get("tax_account_constraint") or "TAXABLE"),
+                )
+                agg["recommended_delta_usd"] = float(sz.get("recommended_delta_usd") or 0.0)
+                agg["sizing"] = sz
+                agg["sizing_method"] = sz.get("method")
+                agg["sizing_objective"] = sz.get("objective_summary")
+                agg["sizing_why_not_min"] = sz.get("why_not_min")
+                agg["sizing_why_not_max"] = sz.get("why_not_max")
+                agg["trim_to_clear_fire_usd"] = sz.get("trim_to_clear_fire_usd")
+                agg["trim_to_policy_usd"] = sz.get("trim_to_policy_usd")
+                agg["fallback_candidate_only"] = bool(sz.get("fallback_candidate_only"))
+                if sz.get("target_weight_pct") is not None:
+                    agg["target_weight_pct"] = sz.get("target_weight_pct")
+            except Exception:
+                pass
         agg["cio_stance"] = stance
         agg["stance"] = professional_stance(stance)  # operator-facing
         agg["stance_code"] = stance
@@ -483,7 +537,8 @@ def aggregate_position_decisions(
         agg["recommended_delta_usd"] = round(float(agg.get("recommended_delta_usd") or 0.0), 2)
         agg["account_count"] = len(agg.get("accounts") or [])
         tr = agg.get("target_range_pct") or {}
-        agg["target_weight_pct"] = tr.get("max") if isinstance(tr, dict) else None
+        if agg.get("target_weight_pct") is None:
+            agg["target_weight_pct"] = tr.get("max") if isinstance(tr, dict) else None
         agg["decision_id"] = make_decision_id(
             sym, stance, agg["recommended_delta_usd"], agg.get("why_now"),
         )
@@ -516,7 +571,11 @@ def sanitize_decisions_now(
         delta = d.get("recommended_delta_usd") or 0.0
         has_delta = abs(float(delta)) > 0.005
         has_signal = bool(why) and neutral not in str(why).lower()
-        has_breach = "concentration >" in str(risk).lower() or "breach" in str(risk).lower()
+        has_breach = (
+            "concentration >" in str(risk).lower()
+            or "fire" in str(risk).lower()
+            or "breach" in str(risk).lower()
+        )
         if not (has_delta or has_signal or has_breach):
             continue
         stance_code = d.get("stance_code") or d.get("cio_stance")
@@ -527,7 +586,7 @@ def sanitize_decisions_now(
         target_w = d.get("target_weight_pct")
         if target_w is None and isinstance(tr, dict):
             target_w = tr.get("max")
-        decisions.append({
+        row = {
             "decision_id": did,
             "symbol": d.get("symbol"),
             "name": d.get("name"),
@@ -548,10 +607,22 @@ def sanitize_decisions_now(
             "accounts": d.get("accounts"),
             "account_count": d.get("account_count"),
             "operator_actions": operator_action_affordances(),
-        })
+        }
+        for k in (
+            "sizing", "sizing_method", "sizing_objective", "sizing_why_not_min",
+            "sizing_why_not_max", "trim_to_clear_fire_usd", "trim_to_policy_usd",
+            "fallback_candidate_only", "action_label", "action_label_display",
+            "act_now", "actionable", "freshness", "financial_truth_quality",
+        ):
+            if d.get(k) is not None:
+                row[k] = d.get(k)
+        decisions.append(row)
     decisions.sort(
         key=lambda d: (
-            -1 if "concentration >" in str(d.get("risk") or "").lower() else 0,
+            -1 if (
+                "concentration >" in str(d.get("risk") or "").lower()
+                or "fire" in str(d.get("risk") or "").lower()
+            ) else 0,
             -abs(float(d.get("recommended_delta_usd") or 0.0)),
             -float(d.get("current_value_usd") or 0.0),
         )

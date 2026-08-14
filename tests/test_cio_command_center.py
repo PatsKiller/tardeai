@@ -118,18 +118,51 @@ def test_cio_now_orders_breach_first():
 
 def test_cio_now_caps_at_five():
     decs = [{"symbol": f"S{i}", "cio_stance": "TRIM", "recommended_delta_usd": 1.0,
-             "why_now": "signal", "risk": "within single-name cap"} for i in range(12)]
+             "why_now": f"Advisory TRIM — S{i}", "risk": "within single-name cap",
+             "action_label": "REVIEW"} for i in range(12)]
     now = c.build_cio_now(position_decisions=decs)
     assert len(now["decisions"]) == 5
+    # Phase 4: decision_count = investment decisions needing attention (all 12)
     assert now["decision_count"] == 12
+    assert now["attention"]["investment_decisions"] == 12
 
 
-def test_cio_now_includes_actions():
+def test_cio_now_actions_are_disjoint_kpi_not_decision_cards():
+    """Phase 4: workflow actions count separately; not mixed into decision cards."""
     actions = [{"cio_action_id": "A1", "why_now": "cash deployment", "notification_priority": "Critical"}]
     now = c.build_cio_now(actions=actions)
     assert now["open_actions_count"] == 1
-    assert any(d["kind"] == "action" and d["action_id"] == "A1" for d in now["decisions"])
+    assert now["attention"]["workflow_actions"] == 1
+    assert not any(d.get("kind") == "action" for d in now["decisions"])
 
+
+def test_cio_now_attention_kpis_disjoint():
+    decs = [
+        {"symbol": "SCHD", "cio_stance": "TRIM", "recommended_delta_usd": -20000,
+         "why_now": "Advisory TRIM — SCHD", "risk": "concentration > fire",
+         "action_label": "ACT_NOW", "act_now": True, "current_weight_pct": 17.5},
+        {"symbol": "AAA", "cio_stance": "HOLD", "recommended_delta_usd": 0,
+         "why_now": "no new desk signal; hold", "risk": "within single-name cap",
+         "action_label": "WATCH"},
+    ]
+    actions = [
+        {"cio_action_id": "A1", "status": "open", "notification_priority": "High", "symbol": "BBB"},
+        {"cio_action_id": "A2", "status": "done"},
+    ]
+    plans = [
+        {"plan_id": "p1", "status": "proposed"},
+        {"plan_id": "p2", "status": "cancelled"},
+    ]
+    now = c.build_cio_now(position_decisions=decs, actions=actions, plans=plans)
+    att = now["attention"]
+    assert att["investment_decisions"] == 1  # SCHD only
+    assert att["workflow_actions"] == 1  # A1 only
+    assert att["open_plans"] == 1  # p1 only
+    assert att["material_today"] >= 1
+    # Material today is not the arithmetic sum of the three buckets
+    assert att["material_today"] != (
+        att["investment_decisions"] + att["workflow_actions"] + att["open_plans"]
+    )
 
 # ── Capital Plan ─────────────────────────────────────────────────────────────
 

@@ -54,6 +54,9 @@ GATES = [
     ("adversarial_phase11", [
         "tests/test_cio_phase11_adversarial.py",
     ]),
+    ("institutional_sizing", [
+        "tests/test_cio_institutional_sizing.py",
+    ]),
 ]
 
 
