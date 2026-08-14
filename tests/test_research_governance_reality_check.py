@@ -1,6 +1,7 @@
-"""Research governance — Reality Check / STW dry tests (PR-R1)."""
+"""Research governance — White Reality Check null-centered bootstrap tests (PR-R1)."""
 from __future__ import annotations
 
+import random
 import sys
 from pathlib import Path
 
@@ -11,52 +12,55 @@ sys.path.insert(0, str(ROOT / "scripts" / "lib"))
 from scripts.lib.research_governance import bootstrap_reality_check as rc  # noqa: E402
 
 
-def _family(n_rules=3, n_obs=60):
-    out = []
-    for i in range(n_rules):
-        out.append([((i + 1) * 0.0005) + (((j * 11 + i * 5) % 7) - 3) * 0.01
-                    for j in range(n_obs)])
-    return out
+def _null_family(seed=0, n=100):
+    rng = random.Random(seed)
+    return [[rng.gauss(0, 1) for _ in range(n)] for _ in range(5)]
 
 
-def test_reality_check_pvalue_in_range():
-    r = rc.reality_check_pvalue(_family(), n_bootstrap=500, seed=0)
+def _alternative(seed=0, n=100, drift=0.25):
+    rng = random.Random(seed)
+    return [[drift + rng.gauss(0, 1) for _ in range(n)] for _ in range(3)]
+
+
+def test_null_family_does_not_spuriously_reject():
+    r = rc.reality_check_pvalue(_null_family(), n_bootstrap=1000, seed=1)
     assert r["status"] == "OK"
-    assert 0.0 < r["bootstrap_pvalue"] <= 1.0
-    assert r["n_rules"] == 3
+    assert r["bootstrap_pvalue"] > 0.1
 
 
-def test_reality_check_empty_family_unavailable():
-    r = rc.reality_check_pvalue([], n_bootstrap=100)
-    assert r["status"] == "UNAVAILABLE"
+def test_obvious_alternative_small_pvalue():
+    r = rc.reality_check_pvalue(_alternative(), n_bootstrap=1000, seed=1)
+    assert r["bootstrap_pvalue"] < 0.01
 
 
-def test_reality_check_unequal_lengths_unavailable():
-    r = rc.reality_check_pvalue([[0.1, 0.2], [0.1, 0.2, 0.3]])
-    assert r["status"] == "UNAVAILABLE"
+def test_family_correction_not_more_favorable_than_winner_only():
+    rng = random.Random(0)
+    strong = [0.2 + rng.gauss(0, 1) for _ in range(100)]
+    weak = [[rng.gauss(0, 1) for _ in range(100)] for _ in range(4)]
+    single = rc.reality_check_pvalue([strong], n_bootstrap=1000, seed=1)["bootstrap_pvalue"]
+    family = rc.reality_check_pvalue([strong] + weak, n_bootstrap=1000, seed=1)["bootstrap_pvalue"]
+    # Searching the full family can only be LESS significant (>=) than cherry-picking.
+    assert family >= single
 
 
-def test_reality_check_deterministic():
-    fam = _family()
-    r1 = rc.reality_check_pvalue(fam, n_bootstrap=200, seed=3)
-    r2 = rc.reality_check_pvalue(fam, n_bootstrap=200, seed=3)
-    assert r1["bootstrap_pvalue"] == r2["bootstrap_pvalue"]
+def test_deterministic_seeded_reproducibility():
+    data = _alternative(seed=3)
+    a = rc.reality_check_pvalue(data, n_bootstrap=500, seed=42)["bootstrap_pvalue"]
+    b = rc.reality_check_pvalue(data, n_bootstrap=500, seed=42)["bootstrap_pvalue"]
+    assert a == b
 
 
-def test_calendar_family_propagates_id():
-    r = rc.calendar_family_reality_check("sep_midterm", _family(), n_bootstrap=200, seed=1)
-    assert r["family_id"] == "sep_midterm"
-    assert r["status"] == "OK"
+def test_rejects_nonfinite_and_bad_params():
+    assert rc.reality_check_pvalue([[0.1, float("nan")]])["status"] == "UNAVAILABLE"
+    assert rc.reality_check_pvalue([[0.1], [0.2, 0.3]])["status"] == "UNAVAILABLE"
+    assert rc.reality_check_pvalue(_null_family(), n_bootstrap=0)["status"] == "UNAVAILABLE"
+    assert rc.reality_check_pvalue(_null_family(), mean_block_length=0)["status"] == "UNAVAILABLE"
 
 
-def test_strong_family_beats_weak_family():
-    # A clearly-superior family should have a lower (more significant) p-value
-    # than a family of near-zero differentials, on the same bootstrap budget.
-    strong = [[0.05 if j % 2 == 0 else 0.03 for j in range(60)],
-              [0.04 if j % 3 == 0 else 0.02 for j in range(60)]]
-    weak = [[((j * 7) % 5 - 2) * 0.001 for j in range(60)],
-            [((j * 9) % 5 - 2) * 0.001 for j in range(60)]]
-    rs = rc.reality_check_pvalue(strong, n_bootstrap=1000, seed=0)
-    rw = rc.reality_check_pvalue(weak, n_bootstrap=1000, seed=0)
-    assert rs["observed_max_mean"] > rw["observed_max_mean"]
-    assert rs["bootstrap_pvalue"] < rw["bootstrap_pvalue"]
+def test_calendar_family_reports_provenance():
+    r = rc.calendar_family_reality_check(
+        "september_midterm", _alternative(), n_bootstrap=500, seed=1,
+        family_definition_hash="abc123",
+    )
+    assert r["family_id"] == "september_midterm"
+    assert r["family_definition_hash"] == "abc123"

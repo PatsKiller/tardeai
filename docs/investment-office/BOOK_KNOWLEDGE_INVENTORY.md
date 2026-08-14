@@ -10,11 +10,17 @@ Canonical machine-readable seed: `config/cio_research_source_catalog.json` and
 
 - Original ten: Malkiel, Graham/Zweig, Housel, Bogle, Ferri, Thau, Harris,
   McMillan, Natenberg, Aronson.
-- Additions: López de Prado (AFML), Ilmanen, Grinold/Kahn, Damodaran, Marks,
-  Stock Trader's Almanac.
-- Primary research: White (2000), Sullivan/Timmermann/White (1999),
+- Additions (10): López de Prado (AFML), Ilmanen, Grinold/Kahn, Damodaran, Marks,
+  Stock Trader's Almanac, Hull (derivatives mechanics), Tuckman/Serrat (fixed
+  income), Lo (Adaptive Markets), Schilit/Perler (Financial Shenanigans).
+- Primary research (12): White (2000), Sullivan/Timmermann/White (1999),
   Bailey/López de Prado (2014), Bailey/Borwein/López de Prado/Zhu (2017),
-  Harvey/Liu/Zhu (2016).
+  Harvey/Liu/Zhu (2016), López de Prado CPCV (2017), Kyle (1985), Amihud (2002),
+  Lee/Ready (1991), Almgren/Chriss (2001), Corwin/Schultz (2012), Harvey (2017).
+
+Total canonical catalog: 20 books + 12 primary research papers. `source_catalog.py`
+enforces an exact expected-ID manifest with a parity/hash check; a missing or
+duplicate ID fails RGA-1.
 
 `full_text_status` is `NOT_FOUND_IN_FILE_LIBRARY` for every source. Missing full
 text is never treated as read; claims are registered as SOURCE_CLAIM_INCOMPLETE

@@ -89,27 +89,108 @@ class ResearchHypothesis:
     protocol_hash: Optional[str] = None
 
     def compute_protocol_hash(self) -> str:
+        """Return the deterministic protocol hash WITHOUT mutating this object.
+
+        A hypothesis must be FROZEN before confirmatory testing; use `freeze()`
+        to obtain an immutable snapshot whose hash cannot silently go stale when
+        the mutable original is later edited.
+        """
         d = asdict(self)
         d.pop("protocol_hash", None)
-        self.protocol_hash = _stable_hash(d)
-        return self.protocol_hash
+        return _stable_hash(d)
+
+    def freeze(self) -> "FrozenHypothesis":
+        """Return an immutable snapshot with a bound protocol hash."""
+        d = asdict(self)
+        d.pop("protocol_hash", None)
+        return FrozenHypothesis(
+            protocol_hash=_stable_hash(d),
+            hypothesis_id=self.hypothesis_id,
+            source_claim_ids=list(self.source_claim_ids),
+            universe=self.universe,
+            signal_definition=self.signal_definition,
+            benchmark=self.benchmark,
+            primary_metric=self.primary_metric,
+            secondary_metrics=list(self.secondary_metrics),
+            entry_time=self.entry_time,
+            exit_time=self.exit_time,
+            holding_period=self.holding_period,
+            transaction_cost_model=self.transaction_cost_model,
+            tax_model_if_relevant=self.tax_model_if_relevant,
+            sample_start=self.sample_start,
+            sample_end=self.sample_end,
+            oos_design=self.oos_design,
+            subperiods=list(self.subperiods),
+            regime_tests=list(self.regime_tests),
+            lookahead_controls=list(self.lookahead_controls),
+            survivorship_controls=list(self.survivorship_controls),
+            multiple_test_family_id=self.multiple_test_family_id,
+            planned_variants=[dict(v) for v in self.planned_variants],
+            preregistered_at=self.preregistered_at,
+        )
 
 
-@dataclass
+@dataclass(frozen=True)
+class FrozenHypothesis:
+    """Immutable protocol snapshot. The protocol_hash is bound to this snapshot.
+
+    A later mutation of the source `ResearchHypothesis` does not change this
+    snapshot, so a family frozen against this hash cannot be silently retargeted.
+    """
+
+    protocol_hash: str
+    hypothesis_id: str
+    source_claim_ids: list[str] = field(default_factory=list)
+    universe: Optional[str] = None
+    signal_definition: Optional[str] = None
+    benchmark: Optional[str] = None
+    primary_metric: Optional[str] = None
+    secondary_metrics: list[str] = field(default_factory=list)
+    entry_time: Optional[str] = None
+    exit_time: Optional[str] = None
+    holding_period: Optional[str] = None
+    transaction_cost_model: Optional[str] = None
+    tax_model_if_relevant: Optional[str] = None
+    sample_start: Optional[str] = None
+    sample_end: Optional[str] = None
+    oos_design: Optional[str] = None
+    subperiods: list[str] = field(default_factory=list)
+    regime_tests: list[str] = field(default_factory=list)
+    lookahead_controls: list[str] = field(default_factory=list)
+    survivorship_controls: list[str] = field(default_factory=list)
+    multiple_test_family_id: Optional[str] = None
+    planned_variants: list[dict[str, Any]] = field(default_factory=list)
+    preregistered_at: Optional[str] = None
+
+
+@dataclass(frozen=True)
 class TrialRecord:
-    """One attempted variant — including losers. Never register only winners."""
+    """One attempted variant — including losers. IMMUTABLE once recorded.
+
+    `result_hash` hashes the ACTUAL result artifact; it is never a parameter
+    hash. Selection status is NOT a field here — it is a separate append-only
+    `SelectionEvent`, so a loser cannot be rewritten as a winner.
+    """
 
     trial_id: str
-    family_id: str
-    hypothesis_id: str
-    parameters: dict[str, Any] = field(default_factory=dict)
+    config_hash: str
+    result_hash: str
+    terminal_status: str
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
     code_sha: Optional[str] = None
     dataset_hash: Optional[str] = None
-    result_hash: Optional[str] = None
-    selected_for_followup: bool = False
-    selection_reason: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class SelectionEvent:
+    """Append-only selection disposition for a single trial."""
+
+    selection_event_id: str
+    trial_id: str
+    selected: bool
+    reason: Optional[str] = None
+    timestamp: Optional[str] = None
 
 
 @dataclass

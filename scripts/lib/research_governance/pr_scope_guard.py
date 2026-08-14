@@ -65,10 +65,15 @@ def is_allowed(path: str, allow_patterns: Sequence[str] = ALLOWLIST_PATTERNS) ->
 
 
 def evaluate(changed_files: Iterable[str]) -> dict:
-    """Pure evaluation. Returns PASS/FAIL with the offending files."""
+    """Pure evaluation. Returns PASS/FAIL with the offending files.
+
+    The iterable is normalized to a list ONCE at entry so generators are
+    consumed a single time and the reported count is correct.
+    """
+    files: list[str] = list(changed_files)
     denied: list[str] = []
     unexpected: list[str] = []
-    for f in changed_files:
+    for f in files:
         if is_denied(f):
             denied.append(f)
         elif not is_allowed(f):
@@ -79,7 +84,7 @@ def evaluate(changed_files: Iterable[str]) -> dict:
         "state": state,
         "denied": denied,
         "unexpected": unexpected,
-        "changed_count": len(list(changed_files)),
+        "changed_count": len(files),
     }
 
 

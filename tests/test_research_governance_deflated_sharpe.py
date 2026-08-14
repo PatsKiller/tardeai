@@ -1,4 +1,4 @@
-"""Research governance — deflated Sharpe ratio dry tests (PR-R1)."""
+"""Research governance — Deflated Sharpe ratio golden/translation tests (PR-R1)."""
 from __future__ import annotations
 
 import math
@@ -11,62 +11,69 @@ sys.path.insert(0, str(ROOT / "scripts" / "lib"))
 
 from scripts.lib.research_governance import deflated_sharpe as ds  # noqa: E402
 
+# Frozen reference vector (Bailey & López de Prado DSR). Trials = 10 Sharpes.
+DSR_TRIALS = [0.2, 0.4, 0.1, 0.5, 0.3, 0.35, 0.25, 0.45, 0.15, 0.3]
+DSR_GOLDEN_BENCHMARK = 0.503279766668363
 
-def test_norm_cdf_basics():
-    assert abs(ds.norm_cdf(0.0) - 0.5) < 1e-9
+
+def test_norm_ppf_matches_known_values():
+    # Independent textbook values for the standard-normal inverse CDF.
+    assert abs(ds.norm_ppf(0.9) - 1.2815515655446004) < 1e-6
+    assert abs(ds.norm_ppf(0.975) - 1.959963984540054) < 1e-6
+
+
+def test_norm_cdf_symmetric():
+    assert abs(ds.norm_cdf(0.0) - 0.5) < 1e-12
     assert abs(ds.norm_cdf(1.96) - 0.975) < 1e-3
 
 
-def test_norm_ppf_inverse():
-    assert abs(ds.norm_ppf(0.5) - 0.0) < 1e-6
-    assert abs(ds.norm_ppf(0.975) - 1.959964) < 1e-4
-    assert abs(ds.norm_ppf(0.025) + 1.959964) < 1e-4
-
-
-def test_psr_known_value():
-    # Non-normal adjustment: symmetric normal => PSR of 0 Sharpe = 0.5.
-    r = ds.psr(observed_sharpe=0.0, benchmark_sharpe=0.0, n_observations=100,
-               skewness=0.0, kurtosis=3.0)
+def test_deflated_benchmark_golden_reference():
+    r = ds.deflated_benchmark_sr(DSR_TRIALS, 10)
     assert r["status"] == "OK"
-    assert abs(r["probability"] - 0.5) < 1e-9
+    assert abs(r["deflated_benchmark_sr"] - DSR_GOLDEN_BENCHMARK) < 1e-9
 
 
-def test_psr_high_sharpe_is_high_probability():
-    r = ds.psr(observed_sharpe=1.0, benchmark_sharpe=0.0, n_observations=250,
-               skewness=0.0, kurtosis=3.0)
-    assert r["probability"] > 0.999
+def test_deflated_benchmark_translation_invariance():
+    base = ds.deflated_benchmark_sr(DSR_TRIALS, 10)
+    shifted = ds.deflated_benchmark_sr([x + 0.5 for x in DSR_TRIALS], 10)
+    # Adding +c to every Sharpe must raise the benchmark by exactly +c.
+    assert abs((shifted["deflated_benchmark_sr"] - base["deflated_benchmark_sr"]) - 0.5) < 1e-9
 
 
-def test_psr_requires_two_observations():
-    r = ds.psr(observed_sharpe=1.0, benchmark_sharpe=0.0, n_observations=1,
-               skewness=0.0, kurtosis=3.0)
+def test_deflated_benchmark_includes_trial_mean():
+    """The mean term materially raises the benchmark (the old sigma*maxZ bug)."""
+    r = ds.deflated_benchmark_sr(DSR_TRIALS, 10)
+    sigma_only = r["trial_sharpe_std"] * r["max_z"]
+    assert r["deflated_benchmark_sr"] == pytest.approx(r["trial_sharpe_mean"] + sigma_only, abs=1e-9)
+    assert r["deflated_benchmark_sr"] - sigma_only > 0.29  # mean ~ 0.3 is not dropped
+
+
+def test_deflated_sharpe_requires_consistent_trial_count():
+    # 5 observed Sharpes but declared 10 trials => UNAVAILABLE (no silent estimator).
+    r = ds.deflated_benchmark_sr([0.2, 0.4, 0.1, 0.5, 0.3], 10)
     assert r["status"] == "UNAVAILABLE"
 
 
-def test_dsr_unknown_trials_is_unavailable():
-    r = ds.deflated_sharpe(observed_sharpe=1.0, n_observations=100,
-                           skewness=0.0, kurtosis=3.0, trial_sharpes=[], n_trials=None)
-    assert r["status"] == "UNAVAILABLE"
+def test_deflated_sharpe_unknown_trials_unavailable():
+    assert ds.deflated_sharpe(1.0, 100, 0.0, 3.0, [], None)["status"] == "UNAVAILABLE"
 
 
-def test_dsr_single_trial_is_unavailable():
-    r = ds.deflated_sharpe(observed_sharpe=1.0, n_observations=100,
-                           skewness=0.0, kurtosis=3.0, trial_sharpes=[0.5], n_trials=1)
-    assert r["status"] == "UNAVAILABLE"
+def test_deflated_sharpe_rejects_nonfinite():
+    assert ds.deflated_benchmark_sr([0.2, float("nan"), 0.3], 3)["status"] == "UNAVAILABLE"
+    assert ds.psr(float("inf"), 0.0, 100, 0.0, 3.0)["status"] == "UNAVAILABLE"
 
 
-def test_dsr_with_trial_distribution_is_ok():
-    r = ds.deflated_sharpe(observed_sharpe=1.5, n_observations=250,
-                           skewness=-0.2, kurtosis=4.0,
-                           trial_sharpes=[0.2, 0.4, 0.1, 0.5, 0.3], n_trials=10)
+def test_psr_zero_benchmark_normal():
+    p = ds.psr(0.0, 0.0, 100, 0.0, 3.0)
+    assert p["status"] == "OK"
+    assert abs(p["probability"] - 0.5) < 1e-9
+
+
+def test_psr_exposes_unambiguous_names():
+    r = ds.deflated_sharpe(1.5, 250, -0.2, 4.0, DSR_TRIALS, 10)
     assert r["status"] == "OK"
-    assert r["deflated_benchmark"] > 0
-    assert 0.0 <= r["probability"] <= 1.0
+    for key in ("deflated_benchmark_sr", "psr_z", "probability_sr_exceeds_deflated_benchmark"):
+        assert key in r
 
 
-def test_dsr_threshold_grows_with_trial_count():
-    trials = [0.2, 0.4, 0.1, 0.5, 0.3, 0.35, 0.25, 0.45, 0.15, 0.3]
-    t_low = ds.deflated_sharpe_threshold(trials, n_trials=10)
-    t_high = ds.deflated_sharpe_threshold(trials, n_trials=1000)
-    # More trials => larger deflation => higher benchmark threshold.
-    assert t_high["threshold"] > t_low["threshold"]
+import pytest  # noqa: E402

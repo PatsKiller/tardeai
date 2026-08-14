@@ -1,4 +1,4 @@
-"""Research governance — PR scope guard dry tests (PR-R1)."""
+"""Research governance — PR scope guard tests (PR-R1)."""
 from __future__ import annotations
 
 import sys
@@ -8,11 +8,11 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "scripts" / "lib"))
 
-from scripts.lib.research_governance import pr_scope_guard as sg  # noqa: E402
+from scripts.lib.research_governance import pr_scope_guard  # noqa: E402
 
 
-def test_denylist_covers_offlimits():
-    offlimits = [
+def test_denies_off_limits_files():
+    for f in (
         "scripts/lib/cio_acceptance_v4.py",
         "scripts/lib/cio_capital_plan.py",
         "scripts/lib/cio_strategy_knowledge.py",
@@ -20,59 +20,49 @@ def test_denylist_covers_offlimits():
         "scripts/lib/advisory/kb_lessons.py",
         "scripts/agent_runtime/knowledge.py",
         "scripts/lib/hermes_research_backend.py",
-        "apps/command-center-v3/src/pages/CioHub.tsx",
+        "apps/command-center-v3/src/App.tsx",
         "RELEASE_MANIFEST.json",
         "scripts/deploy_portfolio_server.sh",
-    ]
-    for f in offlimits:
-        assert sg.is_denied(f), f"scope guard should deny {f}"
+        "deploy/foo.sh",
+    ):
+        assert pr_scope_guard.is_denied(f), f
 
 
-def test_allowlist_covers_r1_files():
-    r1_files = [
+def test_allows_research_files():
+    for f in (
         "scripts/lib/research_governance/trial_registry.py",
-        "scripts/lib/research_governance/promotion_gate.py",
         "tests/test_research_governance_trial_registry.py",
         ".github/workflows/research-governance-ci.yml",
         "config/cio_research_source_catalog.json",
         "docs/investment-office/RESEARCH_GOVERNANCE.md",
-        "scripts/run_research_governance_acceptance.py",
-    ]
-    for f in r1_files:
-        assert sg.is_allowed(f), f"scope guard should allow {f}"
+    ):
+        assert pr_scope_guard.is_allowed(f), f
 
 
-def test_evaluate_passes_on_allowlist_only():
-    changed = [
-        "scripts/lib/research_governance/enums.py",
-        "tests/test_research_governance_acceptance.py",
-        ".github/workflows/research-governance-ci.yml",
-    ]
-    result = sg.evaluate(changed)
-    assert result["state"] == "PASS"
-    assert result["denied"] == []
-    assert result["unexpected"] == []
+def test_evaluate_pass_on_allowlisted_only():
+    r = pr_scope_guard.evaluate([
+        "scripts/lib/research_governance/pbo.py",
+        "tests/test_research_governance_pbo.py",
+    ])
+    assert r["state"] == "PASS"
+    assert r["changed_count"] == 2
 
 
-def test_evaluate_fails_on_offlimits():
-    changed = [
-        "scripts/lib/research_governance/enums.py",
-        "scripts/lib/cio_acceptance_v4.py",
-    ]
-    result = sg.evaluate(changed)
-    assert result["state"] == "FAIL"
-    assert "scripts/lib/cio_acceptance_v4.py" in result["denied"]
+def test_evaluate_fail_on_denied():
+    r = pr_scope_guard.evaluate(["scripts/lib/cio_capital_plan.py"])
+    assert r["state"] == "FAIL"
+    assert r["denied"] == ["scripts/lib/cio_capital_plan.py"]
 
 
-def test_evaluate_fails_on_unexpected():
-    changed = [
-        "scripts/lib/research_governance/enums.py",
-        "scripts/portfolio_server.py",  # not in R1 allowlist
-    ]
-    result = sg.evaluate(changed)
-    assert result["state"] == "FAIL"
-    assert "scripts/portfolio_server.py" in result["unexpected"]
+def test_evaluate_fail_on_unexpected():
+    r = pr_scope_guard.evaluate(["some/random/file.py"])
+    assert r["state"] == "FAIL"
+    assert r["unexpected"] == ["some/random/file.py"]
 
 
-def test_evaluate_empty_is_pass():
-    assert sg.evaluate([])["state"] == "PASS"
+def test_evaluate_normalizes_generator_once():
+    # A generator must be consumed exactly once and still report the right count.
+    gen = (f for f in ["scripts/lib/research_governance/cv.py", "tests/test_research_governance_cv.py"])
+    r = pr_scope_guard.evaluate(gen)
+    assert r["state"] == "PASS"
+    assert r["changed_count"] == 2

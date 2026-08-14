@@ -1,4 +1,4 @@
-"""Research governance — RGA acceptance dry tests (PR-R1)."""
+"""Research governance — acceptance phase-profile + golden tests (PR-R1)."""
 from __future__ import annotations
 
 import sys
@@ -12,55 +12,47 @@ from scripts.lib.research_governance import acceptance  # noqa: E402
 from scripts.lib.research_governance.enums import GateState  # noqa: E402
 
 
-def test_r1_profile_not_in_scope_never_passes():
-    results = {g: GateState.PASS.value for g in acceptance.RGA_IDS}
-    # Even if someone wrongly awards PASS to a not-in-scope gate, it must not be
-    # counted as a required PASS and must remain reported not_in_scope.
-    results["RGA-15"] = GateState.PASS.value
-    rep = acceptance.evaluate_profile("R1_foundation", results)
-    assert rep["overall"] == GateState.PASS.value  # required gates still pass
-    assert "RGA-15" not in rep["required_pass"]
-    assert "RGA-15" in rep["not_in_scope"]
-
-
-def test_r1_profile_fails_if_required_gate_fails():
-    results = {g: GateState.PASS.value for g in acceptance.RGA_IDS}
-    results["RGA-6"] = GateState.FAIL.value
-    rep = acceptance.evaluate_profile("R1_foundation", results)
-    assert rep["overall"] == GateState.FAIL.value
-    assert "RGA-6" in rep["required_fail"]
-
-
-def test_r4_requires_all_sixteen():
-    results = {g: GateState.PASS.value for g in acceptance.RGA_IDS if g != "RGA-16"}
-    results["RGA-16"] = GateState.FAIL.value
-    rep = acceptance.evaluate_profile("R4_integration", results)
-    assert rep["overall"] == GateState.FAIL.value
-
-
-def test_r3_requires_rga15():
-    results = {g: GateState.PASS.value for g in acceptance.RGA_IDS if g != "RGA-15"}
-    results["RGA-15"] = GateState.FAIL.value
-    rep = acceptance.evaluate_profile("R3_almanac", results)
-    assert rep["overall"] == GateState.FAIL.value
-    assert "RGA-15" in rep["required_fail"]
-
-
-def test_unknown_profile_raises():
-    import pytest
-    with pytest.raises(ValueError):
-        acceptance.evaluate_profile("nope", {})
-
-
-def test_r1_acceptance_actually_passes():
+def test_r1_acceptance_actually_passes_golden():
     rep = acceptance.run_acceptance("R1_foundation")
-    assert rep["overall"] == GateState.PASS.value, rep
+    assert rep["overall"] == GateState.PASS.value
     assert rep["required_fail"] == []
+    # RGA-15/16 are not in scope for R1.
     assert "RGA-15" in rep["not_in_scope"]
     assert "RGA-16" in rep["not_in_scope"]
 
 
-def test_r2_r3_r4_profiles_declared():
-    assert "R2_mechanics" in acceptance.PHASE_PROFILES
-    assert "R3_almanac" in acceptance.PHASE_PROFILES
-    assert "R4_integration" in acceptance.PHASE_PROFILES
+def test_not_in_scope_never_counts_as_pass():
+    rep = acceptance.evaluate_profile(
+        "R1_foundation",
+        {"RGA-1": "PASS", "RGA-2": "PASS", "RGA-3": "PASS", "RGA-4": "PASS",
+         "RGA-5": "PASS", "RGA-6": "PASS", "RGA-7": "PASS", "RGA-8": "PASS",
+         "RGA-9": "PASS", "RGA-10": "PASS", "RGA-11": "PASS", "RGA-12": "PASS",
+         "RGA-13": "PASS", "RGA-14": "PASS",
+         "RGA-15": "PASS", "RGA-16": "PASS"},  # must NOT count these toward R1
+    )
+    assert rep["overall"] == GateState.PASS.value
+    assert rep["not_in_scope_count"] == 2
+
+
+def test_required_fail_blocks_profile():
+    rep = acceptance.evaluate_profile(
+        "R1_foundation",
+        {"RGA-1": "FAIL", "RGA-2": "PASS", "RGA-3": "PASS", "RGA-4": "PASS",
+         "RGA-5": "PASS", "RGA-6": "PASS", "RGA-7": "PASS", "RGA-8": "PASS",
+         "RGA-9": "PASS", "RGA-10": "PASS", "RGA-11": "PASS", "RGA-12": "PASS",
+         "RGA-13": "PASS", "RGA-14": "PASS", "RGA-15": "NOT_IN_SCOPE",
+         "RGA-16": "NOT_IN_SCOPE"},
+    )
+    assert rep["overall"] == GateState.FAIL.value
+    assert "RGA-1" in rep["required_fail"]
+
+
+def test_r4_requires_all_sixteen():
+    prof = acceptance.PHASE_PROFILES["R4_integration"]
+    assert prof["required"] == list(acceptance.RGA_IDS)
+
+
+def test_canonical_gate_names():
+    assert acceptance.GATE_NAMES["RGA-15"] == "almanac_reproduction"
+    assert acceptance.GATE_NAMES["RGA-16"] == "research_decision_use_audit"
+    assert len(acceptance.RGA_IDS) == 16

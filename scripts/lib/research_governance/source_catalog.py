@@ -1,89 +1,116 @@
-"""Research governance — canonical source catalog seed (PR-R1).
+"""Research governance — canonical source catalog (PR-R1).
 
-Machine-readable registry of the sources the research subsystem intends to
-govern. `full_text_status` records honestly whether a lawful full text is in the
-file library; a source whose full text is missing must never be treated as if it
-had been read. The original ten books are listed first, then the recommended
-additions, then the primary-research layer.
+Single source of truth: `config/cio_research_source_catalog.json`. This module
+loads it and exposes parity/manifest helpers so the acceptance gate can assert
+an EXACT expected-ID manifest (not merely "non-empty").
+
+`full_text_status` records honestly whether a lawful full text is in the file
+library; a source whose full text is missing must never be treated as read.
 """
 from __future__ import annotations
 
+import hashlib
+import json
+from pathlib import Path
 from typing import Any, Dict, List
 
-SOURCES: List[Dict[str, Any]] = [
-    # --- original ten ---
-    {"source_id": "malkiel_random_walk", "source_type": "book",
-     "title": "A Random Walk Down Wall Street",
-     "authors": ["Burton G. Malkiel"], "license_class": "COPYRIGHT",
-     "full_text_status": "NOT_FOUND_IN_FILE_LIBRARY"},
-    {"source_id": "graham_zweig_intelligent_investor", "source_type": "book",
-     "title": "The Intelligent Investor", "authors": ["Benjamin Graham", "Jason Zweig"],
-     "license_class": "COPYRIGHT", "full_text_status": "NOT_FOUND_IN_FILE_LIBRARY"},
-    {"source_id": "housel_psychology_of_money", "source_type": "book",
-     "title": "The Psychology of Money", "authors": ["Morgan Housel"],
-     "license_class": "COPYRIGHT", "full_text_status": "NOT_FOUND_IN_FILE_LIBRARY"},
-    {"source_id": "bogle_common_sense", "source_type": "book",
-     "title": "The Little Book of Common Sense Investing", "authors": ["John C. Bogle"],
-     "license_class": "COPYRIGHT", "full_text_status": "NOT_FOUND_IN_FILE_LIBRARY"},
-    {"source_id": "ferri_etf_book", "source_type": "book",
-     "title": "The ETF Book", "authors": ["Richard A. Ferri"],
-     "license_class": "COPYRIGHT", "full_text_status": "NOT_FOUND_IN_FILE_LIBRARY"},
-    {"source_id": "thau_bond_book", "source_type": "book",
-     "title": "The Bond Book", "authors": ["Annette Thau"],
-     "license_class": "COPYRIGHT", "full_text_status": "NOT_FOUND_IN_FILE_LIBRARY"},
-    {"source_id": "harris_trading_exchanges", "source_type": "book",
-     "title": "Trading and Exchanges", "authors": ["Larry Harris"],
-     "license_class": "COPYRIGHT", "full_text_status": "NOT_FOUND_IN_FILE_LIBRARY"},
-    {"source_id": "mcmillan_options", "source_type": "book",
-     "title": "Options as a Strategic Investment", "authors": ["Lawrence G. McMillan"],
-     "license_class": "COPYRIGHT", "full_text_status": "NOT_FOUND_IN_FILE_LIBRARY"},
-    {"source_id": "natenberg_option_volatility", "source_type": "book",
-     "title": "Option Volatility and Pricing", "authors": ["Sheldon Natenberg"],
-     "license_class": "COPYRIGHT", "full_text_status": "NOT_FOUND_IN_FILE_LIBRARY"},
-    {"source_id": "aronson_evidence_based_ta", "source_type": "book",
-     "title": "Evidence-Based Technical Analysis", "authors": ["David Aronson"],
-     "license_class": "COPYRIGHT", "full_text_status": "NOT_FOUND_IN_FILE_LIBRARY"},
-    # --- additions ---
-    {"source_id": "lopez_de_prado_afml", "source_type": "book",
-     "title": "Advances in Financial Machine Learning", "authors": ["Marcos López de Prado"],
-     "license_class": "COPYRIGHT", "full_text_status": "NOT_FOUND_IN_FILE_LIBRARY"},
-    {"source_id": "ilmanen_expected_returns", "source_type": "book",
-     "title": "Expected Returns", "authors": ["Antti Ilmanen"],
-     "license_class": "COPYRIGHT", "full_text_status": "NOT_FOUND_IN_FILE_LIBRARY"},
-    {"source_id": "grinold_kahn_active_pm", "source_type": "book",
-     "title": "Active Portfolio Management", "authors": ["Richard C. Grinold", "Ronald N. Kahn"],
-     "license_class": "COPYRIGHT", "full_text_status": "NOT_FOUND_IN_FILE_LIBRARY"},
-    {"source_id": "damodaran_on_valuation", "source_type": "book",
-     "title": "Damodaran on Valuation", "authors": ["Aswath Damodaran"],
-     "license_class": "COPYRIGHT", "full_text_status": "NOT_FOUND_IN_FILE_LIBRARY"},
-    {"source_id": "marks_most_important_thing", "source_type": "book",
-     "title": "The Most Important Thing", "authors": ["Howard Marks"],
-     "license_class": "COPYRIGHT", "full_text_status": "NOT_FOUND_IN_FILE_LIBRARY"},
-    {"source_id": "stock_traders_almanac", "source_type": "book",
-     "title": "Stock Trader's Almanac", "authors": ["Jeffrey A. Hirsch"],
-     "license_class": "COPYRIGHT", "full_text_status": "NOT_FOUND_IN_FILE_LIBRARY"},
-    # --- primary research layer ---
-    {"source_id": "white_reality_check_2000", "source_type": "paper",
-     "title": "A Reality Check for Data Snooping",
-     "authors": ["Halbert White"],
-     "publisher_or_journal": "Econometrica", "license_class": "COPYRIGHT",
-     "full_text_status": "NOT_FOUND_IN_FILE_LIBRARY"},
-    {"source_id": "sullivan_timmermann_white_1999", "source_type": "paper",
-     "title": "Data-Snooping, Technical Trading Rule Performance, and the Bootstrap",
-     "authors": ["Ryan Sullivan", "Allan Timmermann", "Halbert White"],
-     "publisher_or_journal": "Journal of Finance", "license_class": "COPYRIGHT",
-     "full_text_status": "NOT_FOUND_IN_FILE_LIBRARY"},
-    {"source_id": "bailey_lopez_de_prado_2014", "source_type": "paper",
-     "title": "The Deflated Sharpe Ratio: Correcting for Selection Bias, Backtest Overfitting and Non-Normality",
-     "authors": ["David H. Bailey", "Marcos López de Prado"],
-     "license_class": "COPYRIGHT", "full_text_status": "NOT_FOUND_IN_FILE_LIBRARY"},
-    {"source_id": "bailey_borwein_lopez_de_prado_zhu_2017", "source_type": "paper",
-     "title": "The Probability of Backtest Overfitting",
-     "authors": ["David H. Bailey", "Jonathan Borwein", "Marcos López de Prado", "Qiji Jim Zhu"],
-     "license_class": "COPYRIGHT", "full_text_status": "NOT_FOUND_IN_FILE_LIBRARY"},
-    {"source_id": "harvey_liu_zhu_2016", "source_type": "paper",
-     "title": "... and the Cross-Section of Expected Returns",
-     "authors": ["Campbell R. Harvey", "Yan Liu", "Heqing Zhu"],
-     "publisher_or_journal": "Review of Financial Studies", "license_class": "COPYRIGHT",
-     "full_text_status": "NOT_FOUND_IN_FILE_LIBRARY"},
+_CATALOG_PATH = Path(__file__).resolve().parents[3] / "config" / "cio_research_source_catalog.json"
+
+_EXPECTED_BOOK_IDS = [
+    "malkiel_random_walk",
+    "graham_zweig_intelligent_investor",
+    "housel_psychology_of_money",
+    "bogle_common_sense",
+    "ferri_etf_book",
+    "thau_bond_book",
+    "harris_trading_exchanges",
+    "mcmillan_options",
+    "natenberg_option_volatility",
+    "aronson_evidence_based_ta",
+    "lopez_de_prado_afml",
+    "ilmanen_expected_returns",
+    "grinold_kahn_active_pm",
+    "damodaran_on_valuation",
+    "marks_most_important_thing",
+    "stock_traders_almanac",
+    "hull_options_futures_derivatives",
+    "tuckman_serrat_fixed_income",
+    "lo_adaptive_markets",
+    "schilit_perler_financial_shenanigans",
 ]
+
+_EXPECTED_PAPER_IDS = [
+    "white_reality_check_2000",
+    "sullivan_timmermann_white_1999",
+    "bailey_lopez_de_prado_2014",
+    "bailey_borwein_lopez_de_prado_zhu_2017",
+    "harvey_liu_zhu_2016",
+    "lopez_de_prado_cpcv_2017",
+    "kyle_1985",
+    "amihud_2002",
+    "lee_ready_1991",
+    "almgren_chriss_2001",
+    "corwin_schultz_2012",
+    "harvey_2017_p_hacking",
+]
+
+
+def _load() -> dict:
+    raw = _CATALOG_PATH.read_text(encoding="utf-8")
+    return json.loads(raw)
+
+
+def catalog_json_bytes() -> bytes:
+    return _CATALOG_PATH.read_bytes()
+
+
+def catalog_json_hash() -> str:
+    return hashlib.sha256(catalog_json_bytes()).hexdigest()
+
+
+def load_sources() -> List[Dict[str, Any]]:
+    return _load()["sources"]
+
+
+def load_raw() -> dict:
+    return _load()
+
+
+def expected_required_ids() -> List[str]:
+    return _EXPECTED_BOOK_IDS + _EXPECTED_PAPER_IDS
+
+
+def manifest_report() -> dict:
+    """Exact-manifest reconciliation for RGA evidence."""
+    sources = load_sources()
+    ids = [s["source_id"] for s in sources]
+    expected = expected_required_ids()
+
+    missing = [i for i in expected if i not in ids]
+    duplicate = sorted({i for i in ids if ids.count(i) > 1})
+    extra = [i for i in ids if i not in expected]
+
+    books = [s for s in sources if s.get("source_type") == "book"]
+    papers = [s for s in sources if s.get("source_type") == "paper"]
+    # A book/paper whose full text is missing must remain SOURCE_CLAIM_INCOMPLETE.
+    honest = all(s.get("full_text_status") == "NOT_FOUND_IN_FILE_LIBRARY" for s in sources)
+
+    return {
+        "catalog_json_hash": catalog_json_hash(),
+        "catalog_loaded_count": len(sources),
+        "expected_required_ids": expected,
+        "expected_books": len(_EXPECTED_BOOK_IDS),
+        "expected_primary_research": len(_EXPECTED_PAPER_IDS),
+        "actual_books": len(books),
+        "actual_primary_research": len(papers),
+        "missing_ids": missing,
+        "duplicate_ids": duplicate,
+        "extra_ids": extra,
+        "honest_full_text_status": honest,
+        "manifest_ok": (not missing) and (not duplicate) and (not extra)
+        and len(_EXPECTED_BOOK_IDS) == len(books) and len(_EXPECTED_PAPER_IDS) == len(papers),
+    }
+
+
+# Backward-compatible alias used by the previous acceptance checks.
+SOURCES: List[Dict[str, Any]] = load_sources()

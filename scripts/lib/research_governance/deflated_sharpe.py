@@ -1,16 +1,32 @@
 """Research governance — Probabilistic & Deflated Sharpe Ratio (PR-R1).
 
-Implements Bailey & López de Prado (2014) "The Deflated Sharpe Ratio" and the
-earlier Probabilistic Sharpe Ratio (PSR).
+Implements Bailey & López de Prado (2014) "The Deflated Sharpe Ratio: Correcting
+for Selection Bias, Backtest Overfitting and Non-Normality" and the earlier
+Probabilistic Sharpe Ratio (PSR).
 
-- PSR(SR*) = probability that the observed Sharpe exceeds a benchmark SR*, given
-  the sample's skewness and kurtosis (non-normal adjustment).
-- DSR replaces SR* with a deflated threshold that accounts for the number of
-  trials and the variance of their Sharpe ratios, so a strategy that "won" a
-  big search is not credited with the naive probability.
+Formulas (independent reimplementation; not copied from any reference code):
 
-Applicability rule (enforced): if the trial count / trial-Sharpe distribution is
-UNKNOWN, the result is UNAVAILABLE — never silently treated as a single trial.
+  PSR(SR*) = Phi( z ), with
+
+      z = (SR_hat - SR*) * sqrt(n-1) / sqrt(1 - gamma3*SR_hat + ((gamma4 - 1)/4)*SR_hat^2)
+
+  where gamma3 is skewness and gamma4 is PEARSON (raw) kurtosis (normal = 3).
+  Excess kurtosis = raw - 3.
+
+  Deflated benchmark SR* (expected maximum Sharpe over the search family):
+
+      SR* = mu + sigma * maxZ
+
+      maxZ = (1 - gamma) * Z^{-1}(1 - 1/N) + gamma * Z^{-1}(1 - 1/(N*e))
+
+  where mu/sigma are the mean/std of the N trial Sharpe ratios, gamma is the
+  Euler-Mascheroni constant, e is Euler's number, and Z^{-1} is the standard
+  normal inverse CDF. The trial-distribution MEAN is part of the benchmark: a
+  search family whose Sharpes are all shifted up by +c must raise the deflated
+  benchmark by +c (translation invariance).
+
+Applicability: DSR requires a KNOWN trial count AND the trial-Sharpe
+distribution; otherwise UNAVAILABLE (never silently treated as a single trial).
 
 Pure stdlib. Deterministic.
 """
@@ -27,7 +43,7 @@ def norm_cdf(x: float) -> float:
     return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
 
 
-# Acklam's rational approximation of the standard-normal inverse CDF.
+# Acklam's rational approximation of the standard-normal inverse CDF (~1e-9).
 _NPPF_A = [-3.969683028665376e01, 2.209460984245205e02, -2.759285104469687e02,
            1.383577518672690e02, -3.066479806614716e01, 2.506628277459239e00]
 _NPPF_B = [-5.447609879822406e01, 1.615858368580409e02, -1.556989798598866e02,
@@ -67,6 +83,10 @@ def norm_ppf(p: float) -> float:
     return num / den
 
 
+def _is_finite(x: float) -> bool:
+    return isinstance(x, (int, float)) and math.isfinite(float(x))
+
+
 def psr(
     observed_sharpe: float,
     benchmark_sharpe: float,
@@ -74,14 +94,21 @@ def psr(
     skewness: float,
     kurtosis: float,
 ) -> dict:
-    """Probabilistic Sharpe Ratio (non-normal adjusted)."""
+    """Probabilistic Sharpe Ratio (non-normal adjusted).
+
+    `kurtosis` is PEARSON (raw) kurtosis (normal = 3).
+    """
+    for name, v in (("observed_sharpe", observed_sharpe), ("benchmark_sharpe", benchmark_sharpe),
+                    ("skewness", skewness), ("kurtosis", kurtosis)):
+        if not _is_finite(v):
+            return {"status": "UNAVAILABLE", "reason": f"non-finite input: {name}"}
     if n_observations < 2:
         return {"status": "UNAVAILABLE", "reason": "need >= 2 observations"}
     denominator = math.sqrt(
         1.0 - skewness * observed_sharpe
         + ((kurtosis - 1.0) / 4.0) * (observed_sharpe ** 2)
     )
-    if denominator <= 0.0:
+    if denominator <= 0.0 or not _is_finite(denominator):
         return {"status": "UNAVAILABLE", "reason": "degenerate higher moments"}
     z_stat = (
         (observed_sharpe - benchmark_sharpe)
@@ -90,44 +117,56 @@ def psr(
     )
     return {
         "status": "OK",
-        "z_stat": z_stat,
+        "psr_z": z_stat,
         "probability": norm_cdf(z_stat),
         "benchmark_sharpe": benchmark_sharpe,
     }
 
 
-def deflated_sharpe_threshold(
+def deflated_benchmark_sr(
     trial_sharpes: Sequence[float],
     n_trials: Optional[int],
 ) -> dict:
-    """Bailey & López de Prado deflated benchmark SR*.
+    """Deflated benchmark SR* = mu + sigma * maxZ (Bailey & López de Prado).
 
-    Requires the trial-Sharpe distribution; unknown trial count => UNAVAILABLE.
+    Requires the trial-Sharpe distribution and a KNOWN, CONSISTENT trial count.
     """
     if n_trials is None:
         return {"status": "UNAVAILABLE", "reason": "trial count unknown"}
-    if n_trials < 1:
-        return {"status": "UNAVAILABLE", "reason": "trial count must be >= 1"}
-    if len(trial_sharpes) == 0:
-        return {"status": "UNAVAILABLE", "reason": "no trial-Sharpe distribution"}
-    if len(trial_sharpes) == 1:
-        return {
-            "status": "UNAVAILABLE",
-            "reason": "single trial has no Sharpe variance; DSR not meaningful",
-        }
-    mean = sum(trial_sharpes) / len(trial_sharpes)
-    var = sum((s - mean) ** 2 for s in trial_sharpes) / (len(trial_sharpes) - 1)
-    std = math.sqrt(var)
-    if std <= 0.0:
+    if n_trials < 2:
+        return {"status": "UNAVAILABLE", "reason": "trial count must be >= 2"}
+    sharpe_list = [float(s) for s in trial_sharpes]
+    for s in sharpe_list:
+        if not _is_finite(s):
+            return {"status": "UNAVAILABLE", "reason": "non-finite trial Sharpe"}
+    # Consistency: the observed trial-Sharpe count must match the declared count.
+    if len(sharpe_list) != n_trials:
+        return {"status": "UNAVAILABLE",
+                "reason": f"declared n_trials={n_trials} != observed {len(sharpe_list)}"
+                          " trial Sharpes (no effective-trials estimator documented)"}
+    if len(sharpe_list) < 2:
+        return {"status": "UNAVAILABLE",
+                "reason": "single trial has no Sharpe variance; DSR not meaningful"}
+
+    mu = sum(sharpe_list) / len(sharpe_list)
+    var = sum((s - mu) ** 2 for s in sharpe_list) / (len(sharpe_list) - 1)
+    sigma = math.sqrt(var)
+    if sigma <= 0.0 or not _is_finite(sigma):
         return {"status": "UNAVAILABLE", "reason": "zero Sharpe variance"}
+
     p_k = 1.0 - 1.0 / n_trials
     p_ke = 1.0 - 1.0 / (n_trials * EULER_NUMBER)
-    threshold = std * (
-        (1.0 - EULER_MASCHERONI) * norm_ppf(p_k)
+    max_z = (1.0 - EULER_MASCHERONI) * norm_ppf(p_k) \
         + EULER_MASCHERONI * norm_ppf(p_ke)
-    )
-    return {"status": "OK", "threshold": threshold, "n_trials": n_trials,
-            "trial_sharpe_std": std}
+    threshold = mu + sigma * max_z
+    return {
+        "status": "OK",
+        "deflated_benchmark_sr": threshold,
+        "trial_sharpe_mean": mu,
+        "trial_sharpe_std": sigma,
+        "n_trials": n_trials,
+        "max_z": max_z,
+    }
 
 
 def deflated_sharpe(
@@ -138,18 +177,18 @@ def deflated_sharpe(
     trial_sharpes: Sequence[float],
     n_trials: Optional[int],
 ) -> dict:
-    """Deflated Sharpe Ratio: PSR against the deflated benchmark."""
-    threshold_res = deflated_sharpe_threshold(trial_sharpes, n_trials)
-    if threshold_res["status"] != "OK":
-        return {"status": "UNAVAILABLE", "reason": threshold_res["reason"],
-                "deflated_benchmark": None, "deflated_sharpe_ratio": None,
-                "probability": None}
-    psr_res = psr(observed_sharpe, threshold_res["threshold"], n_observations,
-                  skewness, kurtosis)
+    """Deflated Sharpe Ratio: PSR against the deflated benchmark SR*."""
+    benchmark = deflated_benchmark_sr(trial_sharpes, n_trials)
+    if benchmark["status"] != "OK":
+        return {"status": "UNAVAILABLE", "reason": benchmark["reason"],
+                "deflated_benchmark_sr": None, "psr_z": None,
+                "probability_sr_exceeds_deflated_benchmark": None}
+    psr_res = psr(observed_sharpe, benchmark["deflated_benchmark_sr"],
+                  n_observations, skewness, kurtosis)
     return {
         "status": "OK",
-        "deflated_benchmark": threshold_res["threshold"],
-        "deflated_sharpe_ratio": psr_res.get("z_stat"),
-        "probability": psr_res.get("probability"),
+        "deflated_benchmark_sr": benchmark["deflated_benchmark_sr"],
+        "psr_z": psr_res.get("psr_z"),
+        "probability_sr_exceeds_deflated_benchmark": psr_res.get("probability"),
         "n_trials": n_trials,
     }

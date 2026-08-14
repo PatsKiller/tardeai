@@ -4,35 +4,50 @@ Separate namespace from the promotion ladder (RG-*). RG gates govern the
 lifecycle of a particular hypothesis/fact; RGA gates govern whether the research
 SUBSYSTEM ITSELF is production-quality.
 
-Phase-aware acceptance: an early PR cannot honestly pass gates that belong to a
-later phase. Each gate is PASS / FAIL / NOT_IN_SCOPE. `NOT_IN_SCOPE` is NEVER
-counted as a PASS. A profile passes only when every gate it *requires* passes.
+Canonical RGA mapping (single source of truth — keep plan, docs, runner, and
+result packet consistent with this):
 
-Profiles:
-  R1_foundation  required RGA-1..10, 13, 14; contract_only 11, 12; not_in_scope 15, 16
-  R2_mechanics   inherits R1; adds fixed_income/etf/valuation mechanics
-  R3_almanac     inherits R1; requires RGA-15 (almanac reproduction)
-  R4_integration requires all RGA-1..16
+  RGA-1  source_registry_exact_manifest
+  RGA-2  provenance_complete
+  RGA-3  lifecycle_grade_separated
+  RGA-4  trial_registry_frozen_complete
+  RGA-5  no_lookahead_contract
+  RGA-6  multiple_testing_validated
+  RGA-7  deflated_sharpe_golden
+  RGA-8  pbo_golden
+  RGA-9  reality_check_golden
+  RGA-10 cv_purging_golden
+  RGA-11 promotion_gate_contract
+  RGA-12 retrieval_contract
+  RGA-13 authority_boundary
+  RGA-14 scope_guard
+  RGA-15 almanac_reproduction             (R3)
+  RGA-16 research_decision_use_audit      (R4)
+
+Phase-aware acceptance: PASS / FAIL / NOT_IN_SCOPE. `NOT_IN_SCOPE` is NEVER
+counted as a PASS. A profile passes only when every gate it *requires* passes.
+The R1 profile validates STATISTICAL CORRECTNESS via golden/reference vectors,
+not merely value ranges.
 """
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable
 
 from .enums import GateState
 
 RGA_IDS: tuple[str, ...] = tuple(f"RGA-{i}" for i in range(1, 17))
 
 GATE_NAMES: dict[str, str] = {
-    "RGA-1": "source_registry",
-    "RGA-2": "claim_model",
-    "RGA-3": "hypothesis_model",
-    "RGA-4": "trial_registry",
-    "RGA-5": "oos_consumption",
-    "RGA-6": "multiple_testing",
-    "RGA-7": "deflated_sharpe",
-    "RGA-8": "pbo",
-    "RGA-9": "reality_check",
-    "RGA-10": "cv_purging",
+    "RGA-1": "source_registry_exact_manifest",
+    "RGA-2": "provenance_complete",
+    "RGA-3": "lifecycle_grade_separated",
+    "RGA-4": "trial_registry_frozen_complete",
+    "RGA-5": "no_lookahead_contract",
+    "RGA-6": "multiple_testing_validated",
+    "RGA-7": "deflated_sharpe_golden",
+    "RGA-8": "pbo_golden",
+    "RGA-9": "reality_check_golden",
+    "RGA-10": "cv_purging_golden",
     "RGA-11": "promotion_gate_contract",
     "RGA-12": "retrieval_contract",
     "RGA-13": "authority_boundary",
@@ -41,10 +56,6 @@ GATE_NAMES: dict[str, str] = {
     "RGA-16": "research_decision_use_audit",
 }
 
-
-# Phase profiles. `required` gates must PASS. `contract_only` gates must have a
-# present contract but are not live-integrated yet. `not_in_scope` are explicitly
-# out of scope and never count as PASS.
 PHASE_PROFILES: dict[str, dict[str, list[str]]] = {
     "R1_foundation": {
         "required": ["RGA-1", "RGA-2", "RGA-3", "RGA-4", "RGA-5", "RGA-6",
@@ -57,7 +68,6 @@ PHASE_PROFILES: dict[str, dict[str, list[str]]] = {
                      "RGA-7", "RGA-8", "RGA-9", "RGA-10", "RGA-13", "RGA-14"],
         "contract_only": ["RGA-11", "RGA-12"],
         "not_in_scope": ["RGA-15", "RGA-16"],
-        "adds": ["fixed_income_mechanics", "etf_mechanics", "valuation_framework"],
     },
     "R3_almanac": {
         "required": ["RGA-1", "RGA-2", "RGA-3", "RGA-4", "RGA-5", "RGA-6",
@@ -89,8 +99,6 @@ def evaluate_profile(profile_name: str, results: dict[str, str]) -> dict[str, An
     required = profile["required"]
     not_in_scope = profile["not_in_scope"]
 
-    # Never let a declared-not-in-scope gate leak into the required accounting,
-    # and never count it as a PASS.
     required_pass = [gid for gid in required
                      if results.get(gid) == GateState.PASS.value]
     fails = [gid for gid in required
@@ -113,7 +121,7 @@ Check = Callable[[], tuple[str, str]]
 
 
 def run_acceptance(profile_name: str = "R1_foundation") -> dict[str, Any]:
-    """Run the actual R1 acceptance checks and fold through a phase profile."""
+    """Run the actual acceptance checks and fold through a phase profile."""
     from . import acceptance_checks
 
     checks: dict[str, Check] = acceptance_checks.R1_CHECKS
@@ -129,11 +137,10 @@ def run_acceptance(profile_name: str = "R1_foundation") -> dict[str, Any]:
             results[gid] = GateState.NOT_IN_SCOPE.value
             continue
         try:
-            state, detail = check()
+            state, _detail = check()
             results[gid] = state
-        except Exception as exc:  # noqa: BLE001 - fail-closed on any check error
+        except Exception:  # noqa: BLE001 - fail-closed on any check error
             results[gid] = GateState.FAIL.value
 
     report = evaluate_profile(profile_name, results)
-    report["_detail"] = {gid: checks.get(gid) for gid in RGA_IDS}
     return report

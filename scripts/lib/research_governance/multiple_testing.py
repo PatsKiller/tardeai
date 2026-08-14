@@ -4,11 +4,37 @@ Bonferroni and Holm are confirmatory / high-consequence family controls;
 Benjamini-Hochberg controls the false-discovery rate and is suited to
 exploratory discovery screens. Usage must be classified, not chosen blindly.
 
+Strict input validation: malformed p-values or alpha are NOT silently clamped —
+they raise a fail-closed ValueError.
+
 Pure stdlib. Deterministic.
 """
 from __future__ import annotations
 
+import math
 from typing import Sequence
+
+
+def validate_pvalues(pvalues: Sequence[float]) -> list[float]:
+    """Return a validated list of p-values, or raise on malformed input."""
+    out = []
+    for p in pvalues:
+        f = float(p)
+        if not math.isfinite(f):
+            raise ValueError(f"non-finite p-value: {p!r}")
+        if f < 0.0 or f > 1.0:
+            raise ValueError(f"p-value out of [0,1]: {p!r}")
+        out.append(f)
+    return out
+
+
+def validate_alpha(alpha: float) -> float:
+    f = float(alpha)
+    if not math.isfinite(f):
+        raise ValueError(f"non-finite alpha: {alpha!r}")
+    if f <= 0.0 or f >= 1.0:
+        raise ValueError(f"alpha must be in (0,1): {alpha!r}")
+    return f
 
 
 def _clamp01(x: float) -> float:
@@ -17,7 +43,8 @@ def _clamp01(x: float) -> float:
 
 def bonferroni(pvalues: Sequence[float], alpha: float = 0.05) -> dict:
     """Bonferroni: adjusted p = min(1, m * p_i). Controls family-wise error."""
-    p = list(pvalues)
+    p = validate_pvalues(pvalues)
+    alpha = validate_alpha(alpha)
     m = len(p)
     if m == 0:
         return {"method": "bonferroni", "adjusted": [], "rejected": [], "alpha": alpha}
@@ -28,14 +55,14 @@ def bonferroni(pvalues: Sequence[float], alpha: float = 0.05) -> dict:
 
 def holm(pvalues: Sequence[float], alpha: float = 0.05) -> dict:
     """Holm-Bonferroni step-down. More powerful than Bonferroni, still FWER."""
-    p = list(pvalues)
+    p = validate_pvalues(pvalues)
+    alpha = validate_alpha(alpha)
     m = len(p)
     if m == 0:
         return {"method": "holm", "adjusted": [], "rejected": [], "alpha": alpha}
     order = sorted(range(m), key=lambda i: p[i])
     adjusted = [0.0] * m
     for rank, idx in enumerate(order):
-        # step-down: adjust by (m - rank); enforce monotonicity
         candidate = (m - rank) * p[idx]
         if rank > 0:
             candidate = max(candidate, adjusted[order[rank - 1]])
@@ -46,12 +73,12 @@ def holm(pvalues: Sequence[float], alpha: float = 0.05) -> dict:
 
 def benjamini_hochberg(pvalues: Sequence[float], alpha: float = 0.05) -> dict:
     """Benjamini-Hochberg FDR step-up. Controls false-discovery rate."""
-    p = list(pvalues)
+    p = validate_pvalues(pvalues)
+    alpha = validate_alpha(alpha)
     m = len(p)
     if m == 0:
         return {"method": "bh_fdr", "adjusted": [], "rejected": [], "alpha": alpha}
     order = sorted(range(m), key=lambda i: p[i])
-    # q-values (step-up)
     qvals = [0.0] * m
     running_min = 1.0
     for rank in range(m - 1, -1, -1):

@@ -49,10 +49,16 @@ class EvidenceGrade(str, Enum):
 
 
 class GateState(str, Enum):
-    """Promotion-gate and acceptance-gate verdicts."""
+    """Promotion-gate and acceptance-gate verdicts.
+
+    `NOT_APPLICABLE` is a promotion-gate verdict (a gate not required for this
+    evidence type, with a reason). `NOT_IN_SCOPE` is an acceptance-gate verdict
+    (a subsystem gate that belongs to a later phase). Neither is a PASS.
+    """
     PASS = "PASS"
     FAIL = "FAIL"
     NOT_IN_SCOPE = "NOT_IN_SCOPE"
+    NOT_APPLICABLE = "NOT_APPLICABLE"
     BLOCKED = "BLOCKED"
 
 
@@ -64,6 +70,17 @@ class InfluenceClass(str, Enum):
     VALUATION_INPUT = "VALUATION_INPUT"
     PORTFOLIO_CONSTRUCTION = "PORTFOLIO_CONSTRUCTION"
     CONTEXT_MODIFIER = "CONTEXT_MODIFIER"
+
+
+class TrialTerminalStatus(str, Enum):
+    """Terminal disposition of a trial record (required for completeness)."""
+    COMPLETED = "COMPLETED"
+    INVALID = "INVALID"
+    CANCELED_WITH_REASON = "CANCELED_WITH_REASON"
+    FAILED = "FAILED"
+
+
+TERMINAL_STATUSES = frozenset(s.value for s in TrialTerminalStatus)
 
 
 # A linear promotion ladder for a single hypothesis/fact (RG-0..RG-11 use these
