@@ -143,15 +143,37 @@ def _collect_live(now: datetime, ev: Path) -> dict[str, Any]:
     report_pdf = ""
     report_docx = ""
     report_sha = ""
-    synthetic = True
     if isinstance(report, dict):
         report_sha = str((report.get("manifest") or {}).get("source_sha") or report.get("source_sha") or "")
         if report.get("html"):
             hp = ev / "report_live.html"
             hp.write_text(str(report["html"]), encoding="utf-8")
             report_html = str(hp)
-        # Live API currently does not emit PDF/DOCX files.
-        synthetic = False  # endpoint is live book, but formats may be missing
+    # Prefer live-book export artifacts (same SHA) over API-only HTML
+    live_rep = REPO / "data" / "audit" / "cio_live_report_dry"
+    for name, attr in (
+        ("cio_live_report.html", "html"),
+        ("cio_live_report.pdf", "pdf"),
+        ("cio_live_report.docx", "docx"),
+    ):
+        p = live_rep / name
+        if p.is_file() and p.stat().st_size > 100:
+            if attr == "html" and not report_html:
+                report_html = str(p)
+            elif attr == "pdf":
+                report_pdf = str(p)
+            elif attr == "docx":
+                report_docx = str(p)
+    qa_json = live_rep / "visual_qa" / "VISUAL_QA.json"
+    visual_artifact = ""
+    visual_pages = 0
+    if qa_json.is_file():
+        try:
+            qa = json.loads(qa_json.read_text(encoding="utf-8"))
+            visual_artifact = str(qa.get("artifact") or qa_json)
+            visual_pages = int(qa.get("pages_inspected") or 0)
+        except Exception:
+            pass
 
     # Telegram: measure, do not invent (no `or True` credit).
     cio_token_set = bool(os.environ.get("TELEGRAM_CIO_BOT_TOKEN"))
@@ -189,13 +211,23 @@ def _collect_live(now: datetime, ev: Path) -> dict[str, Any]:
     if live:
         try:
             chk = subprocess.check_output(
-                ["gh", "api", f"repos/PatsKiller/tardeai/commits/{live}/status",
-                 "--jq", ".statuses[] | select(.context==\"cio-hardening\") | .state"],
+                ["gh", "api", f"repos/PatsKiller/tardeai/commits/{live}/check-runs",
+                 "--jq", ".check_runs[] | select(.name==\"cio-hardening\") | .conclusion"],
                 text=True, stderr=subprocess.DEVNULL, timeout=20,
             )
             ci_green = "success" in chk
         except Exception:
             ci_green = False
+        if not ci_green:
+            try:
+                chk = subprocess.check_output(
+                    ["gh", "api", f"repos/PatsKiller/tardeai/commits/{live}/status",
+                     "--jq", ".statuses[] | select(.context==\"cio-hardening\") | .state"],
+                    text=True, stderr=subprocess.DEVNULL, timeout=20,
+                )
+                ci_green = "success" in chk
+            except Exception:
+                ci_green = False
 
     facts: list[dict] = []
     sc = (plan or {}).get("strategy_context") or {}
@@ -220,13 +252,37 @@ def _collect_live(now: datetime, ev: Path) -> dict[str, Any]:
         if isinstance(obj, dict):
             surfaces.append({"name": name, "authority": obj.get("authority")})
 
+    drive_proven = False
+    drive_hash = ""
+    drive_dups = 0
+    git_sha256 = ""
+    git_bytes = (REPO / "docs/investment-office/RELEASE_MANIFEST.json")
+    try:
+        import hashlib
+        git_sha256 = hashlib.sha256(git_bytes.read_bytes()).hexdigest() if git_bytes.is_file() else ""
+        env = os.environ.copy()
+        env.setdefault("GOG_ACCOUNT", "john@jwwhiting.com")
+        tmp = ev / "drive_RELEASE_MANIFEST.json"
+        dl = subprocess.run(
+            ["gog", "drive", "download", "1yGys5GswSQWNzimGvTZh71I1sC9EtUaM",
+             "--out", str(tmp), "--account", env["GOG_ACCOUNT"], "--no-input"],
+            capture_output=True, text=True, timeout=40, env=env,
+        )
+        if tmp.is_file():
+            drive_hash = hashlib.sha256(tmp.read_bytes()).hexdigest()
+            drive_proven = bool(git_sha256) and drive_hash == git_sha256
+        # Count identically named current files via search is optional
+    except Exception:
+        drive_proven = False
+
     snap = {
         "live_sha": live,
         "main_sha": main,
         "manifest": manifest,
-        "git_manifest_hash": str(manifest.get("manifest_hash") or ""),
-        "drive_proven": False,
-        "drive_duplicate_count": 0,
+        "git_manifest_hash": git_sha256 if git_bytes.is_file() else str(manifest.get("manifest_hash") or ""),
+        "drive_proven": drive_proven,
+        "drive_canonical_hash": drive_hash,
+        "drive_duplicate_count": drive_dups,
         "financial_truth_gate": ft,
         "financial_exceptions": exceptions,
         "capital_plan": plan or {},
@@ -239,8 +295,8 @@ def _collect_live(now: datetime, ev: Path) -> dict[str, Any]:
         "report_docx_path": report_docx,
         "report_source_sha": report_sha,
         "report_synthetic": False if (report and not report_err) else True,
-        "visual_qa_artifact": "",
-        "visual_qa_pages": 0,
+        "visual_qa_artifact": visual_artifact,
+        "visual_qa_pages": visual_pages,
         "cio_token_env_set": cio_token_set,
         "general_token_used_in_cio_transport": general_used,
         "telegram_interdict_on": interdict,

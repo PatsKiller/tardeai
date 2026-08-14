@@ -1093,6 +1093,8 @@ def build_position_decisions(
             "selection_rationale": sizing.get("selection_rationale"),
             "tranches": sizing.get("tranches"),
             "tax_class": tax_class,
+            "generated_at": now.isoformat(),
+            "revalidated_at": now.isoformat(),
         })
 
     rows.sort(key=lambda r: (-abs(r["recommended_delta_usd"]), -r["current_value_usd"]))
@@ -1102,6 +1104,9 @@ def build_position_decisions(
         aggregated = aggregate_position_decisions(rows, portfolio_value=value)
         # Prefer aggregated list as the primary decision table (one row per symbol)
         if aggregated:
+            for a in aggregated:
+                a.setdefault("generated_at", now.isoformat())
+                a.setdefault("revalidated_at", now.isoformat())
             return aggregated
     except Exception:
         pass

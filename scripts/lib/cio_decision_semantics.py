@@ -547,6 +547,7 @@ def aggregate_position_decisions(
         "selection_rationale", "tranches", "tax_class",
         "action_label", "action_label_display", "act_now", "actionable",
         "freshness", "financial_truth_quality",
+        "generated_at", "revalidated_at",
     )
     for r in rows or []:
         if not isinstance(r, dict):
