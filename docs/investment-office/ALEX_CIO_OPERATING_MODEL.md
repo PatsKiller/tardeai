@@ -185,15 +185,23 @@ Invariants: **exactly one run per semantic event** (dispatcher idempotency) and
 
 ## 9. Known gaps (honest, not hidden)
 
-1. **Handoff readiness drift** — `tests/test_cio_wake_detector.py` handoff tests
-   (Section E) fail because the handoff queue now `BLOCK`s handoffs to
-   `NOT_READY` agents (correct fail-closed behavior), while the tests still
-   assume `enqueue → PENDING → claim`. Tests need updating, not the queue.
-2. **Outbox dedupe is per-stream** — `NotificationOutbox._check_dedupe` and
-   `_check_idempotency` search only within a single `notification_id` stream.
-   This is sufficient given I1 (one run → one action → one notification), but a
-   global cross-stream dedupe would be a stronger guard for the case where two
-   producers enqueue different `notification_id`s for the same semantic event.
-3. **`test_outbox_process_crash.py` requires live Postgres** — 4 integration
+1. **`test_outbox_process_crash.py` requires live Postgres** — 4 integration
    tests error in this environment (password auth) because they target
    `localhost:5432`. They are DB-gated, not unit tests.
+
+Resolved (no longer gaps):
+
+- **Handoff readiness drift** — handoff tests that assumed
+  `enqueue → PENDING → claim` were updated to pin the target specialist `maria`
+  as `AVAILABLE` (monkeypatching the maturity-catalog registry and the
+  `can_claim` readiness gate, mirroring the canary pattern in
+  `tests/test_cio_checkpoint4_resume.py`). `steph` stays `NOT_READY` so the
+  explicit `BLOCKED` fail-closed tests keep exercising that path. The queue's
+  fail-closed `BLOCK`-to-`NOT_READY` behavior is unchanged; only the tests were
+  corrected. Fixed in `tests/test_cio_wake_detector.py` (Section E, 3 tests) and
+  `tests/test_cio_agent_handoff_queue.py` (22 tests).
+- **Outbox dedupe was per-stream** — `NotificationOutbox._check_dedupe` and
+  `_check_idempotency` now search globally across all streams (via
+  `_iter_all_events`), so two producers enqueueing different `notification_id`s
+  for the same semantic event collapse to a single notification. Covered by
+  `test_cross_stream_dedupe` and `test_cross_stream_idempotency`.

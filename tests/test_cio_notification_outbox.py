@@ -54,9 +54,13 @@ def make_notification(**overrides):
         "body_hash": hashlib.sha256(body.encode()).hexdigest(),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "expires_at": (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat(),
-        "dedupe_key": "test-key-001",
     }
     base.update(overrides)
+    # Unique-per-notification dedupe key by default. Distinct notification_ids
+    # are distinct events; a shared key would trip the global cross-stream dedupe
+    # guard. Tests that exercise dedupe override this explicitly.
+    if "dedupe_key" not in overrides:
+        base["dedupe_key"] = f"test-key-{base['notification_id']}"
     return base
 
 
@@ -178,6 +182,56 @@ def test_idempotency_key_enqueue(outbox):
     e1 = outbox.enqueue(n, actor_id="system")
     e2 = outbox.enqueue(n, actor_id="system")
     assert e1["event_hash"] == e2["event_hash"]
+
+
+def test_cross_stream_dedupe(outbox):
+    """Different notification_ids + same semantic dedupe_key collapse globally."""
+    body = "Cross-stream dedupe body"
+    body_hash = hashlib.sha256(body.encode()).hexdigest()
+    n1 = make_notification(
+        notification_id="xs-1",
+        dedupe_key="semantic-xs-001",
+        body=body,
+        body_hash=body_hash,
+    )
+    n2 = make_notification(
+        notification_id="xs-2",
+        dedupe_key="semantic-xs-001",
+        body=body,
+        body_hash=body_hash,
+    )
+    e1 = outbox.enqueue(n1, actor_id="system")
+    e2 = outbox.enqueue(n2, actor_id="system")
+
+    # Second enqueue returns the FIRST event (no duplicate notification created).
+    assert e1["event_hash"] == e2["event_hash"]
+    assert outbox.get_notification("xs-2") is None
+    assert outbox.get_notification("xs-1") is not None
+
+
+def test_cross_stream_idempotency(outbox):
+    """Different notification_ids + same idempotency_key collapse globally."""
+    body = "Cross-stream idem body"
+    body_hash = hashlib.sha256(body.encode()).hexdigest()
+    n1 = make_notification(
+        notification_id="xsidem-1",
+        idempotency_key="xs-idem-001",
+        dedupe_key="xs-dk-1",
+        body=body,
+        body_hash=body_hash,
+    )
+    n2 = make_notification(
+        notification_id="xsidem-2",
+        idempotency_key="xs-idem-001",
+        dedupe_key="xs-dk-2",
+        body=body,
+        body_hash=body_hash,
+    )
+    e1 = outbox.enqueue(n1, actor_id="system")
+    e2 = outbox.enqueue(n2, actor_id="system")
+
+    assert e1["event_hash"] == e2["event_hash"]
+    assert outbox.get_notification("xsidem-2") is None
 
 
 def test_semantic_dedupe(outbox):

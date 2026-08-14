@@ -400,26 +400,53 @@ class NotificationOutbox:
 
     # ── Idempotency ────────────────────────────────────────────────────────
 
+    def _iter_all_events(self):
+        """Yield every event in the outbox across all streams, in append order.
+
+        Skips malformed lines so a corrupt tail record can never break the
+        dedupe/idempotency guard (fail-safe: we still return existing matches).
+        """
+        if not self.event_store_path.exists():
+            return
+        with open(self.event_store_path, "r") as f:
+            for line in f:
+                stripped = line.strip()
+                if not stripped:
+                    continue
+                try:
+                    yield json.loads(stripped)
+                except json.JSONDecodeError:
+                    continue
+
     def _check_idempotency(
-        self, idempotency_key: str, stream_id: str
+        self, idempotency_key: str, stream_id: str | None = None
     ) -> dict[str, Any] | None:
-        """Check if a notification with the same idempotency_key already exists."""
+        """Check if a notification with the same idempotency_key already exists.
+
+        Searches globally across all streams (not just `stream_id`). Idempotency
+        keys are producer-scoped and must be unique across the outbox, so a
+        cross-stream lookup is the stronger guard against two producers enqueueing
+        different `notification_id`s for the same operation.
+        """
         if not idempotency_key:
             return None
-        events = self._get_stream_events(stream_id)
-        for e in events:
+        for e in self._iter_all_events():
             if e.get("payload", {}).get("idempotency_key") == idempotency_key:
                 return e
         return None
 
     def _check_dedupe(
-        self, dedupe_key: str, stream_id: str
+        self, dedupe_key: str, stream_id: str | None = None
     ) -> dict[str, Any] | None:
-        """Check if a notification with the same dedupe_key already exists."""
+        """Check if a semantically-identical notification already exists.
+
+        Searches globally across all streams (not just `stream_id`) so two
+        producers that enqueue different `notification_id`s for the same semantic
+        event (same `dedupe_key`) collapse to a single notification.
+        """
         if not dedupe_key:
             return None
-        events = self._get_stream_events(stream_id)
-        for e in events:
+        for e in self._iter_all_events():
             payload = e.get("payload", {})
             if payload.get("dedupe_key") == dedupe_key:
                 return e
@@ -657,21 +684,17 @@ class NotificationOutbox:
         if "dedupe_key" not in notification or not notification.get("dedupe_key"):
             notification["dedupe_key"] = build_dedupe_key(notification)
 
-        # Idempotency guard — check BEFORE validation
+        # Idempotency guard — check BEFORE validation (global cross-stream)
         idempotency_key = str(notification.get("idempotency_key", ""))
         if idempotency_key:
-            existing = self._check_idempotency(
-                idempotency_key, notification["notification_id"]
-            )
+            existing = self._check_idempotency(idempotency_key)
             if existing is not None:
                 return existing
 
         # Dedupe guard — check if semantically identical notification exists
         dedupe_key = notification.get("dedupe_key", "")
         if dedupe_key:
-            existing_dedupe = self._check_dedupe(
-                dedupe_key, notification["notification_id"]
-            )
+            existing_dedupe = self._check_dedupe(dedupe_key)
             if existing_dedupe is not None:
                 return existing_dedupe
 

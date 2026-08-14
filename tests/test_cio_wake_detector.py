@@ -434,7 +434,38 @@ def test_health_recovery_transition_wake(temp_wake_store):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def test_handoff_completed_wake(temp_detector_with_ledgers, temp_wake_store):
+@pytest.fixture
+def ready_handoff_agents(monkeypatch):
+    """Make `maria` claimable so Section E exercises PENDING→CLAIMED→COMPLETED.
+
+    The live maturity catalog keeps specialists NOT_READY (correct fail-closed
+    behavior), so handoffs to them are BLOCKED and cannot be claimed. Section E
+    tests the completion *detector*, not the readiness gate — so pin the target
+    agent available. This mirrors the canary pattern in
+    tests/test_cio_checkpoint4_resume.py.
+    """
+    from scripts.lib.cio_agent_handoff_queue import AGENT_REGISTRY
+
+    def _patched_registry():
+        return {
+            "alex": {"status": "REGISTERED", "role": "cio"},
+            "maria": {"status": "AVAILABLE", "role": "research"},
+        }
+
+    monkeypatch.setattr(
+        "scripts.lib.cio_agent_handoff_queue._build_agent_registry_from_catalog",
+        _patched_registry,
+    )
+    monkeypatch.setattr(
+        "scripts.lib.cio_agent_readiness.AgentReadinessRegistry.can_claim",
+        lambda self, agent_id, claimed_at_catalog_hash=None: (True, "READY"),
+    )
+    AGENT_REGISTRY._loaded = False
+    yield
+    AGENT_REGISTRY._loaded = False
+
+
+def test_handoff_completed_wake(temp_detector_with_ledgers, temp_wake_store, ready_handoff_agents):
     """Completed handoff = wake created."""
     detector = temp_detector_with_ledgers
     queue = detector._handoff_queue
@@ -488,7 +519,7 @@ def test_handoff_completed_wake(temp_detector_with_ledgers, temp_wake_store):
     assert len(handoff_wakes) >= 1
 
 
-def test_handoff_nonterminal_no_wake(temp_detector_with_ledgers, temp_wake_store):
+def test_handoff_nonterminal_no_wake(temp_detector_with_ledgers, temp_wake_store, ready_handoff_agents):
     """Non-terminal handoff should NOT create a wake."""
     detector = temp_detector_with_ledgers
     queue = detector._handoff_queue
@@ -526,7 +557,7 @@ def test_handoff_nonterminal_no_wake(temp_detector_with_ledgers, temp_wake_store
     assert len(handoff_wakes) == 0
 
 
-def test_handoff_completion_idempotency(temp_detector_with_ledgers, temp_wake_store):
+def test_handoff_completion_idempotency(temp_detector_with_ledgers, temp_wake_store, ready_handoff_agents):
     """Repeat detector, no duplicate handoff wakes."""
     detector = temp_detector_with_ledgers
     queue = detector._handoff_queue
@@ -1139,7 +1170,7 @@ def test_no_hidden_action_mutation(temp_detector_with_ledgers):
     assert events_before == events_after, "Detector mutated action events"
 
 
-def test_no_hidden_handoff_mutation(temp_detector_with_ledgers):
+def test_no_hidden_handoff_mutation(temp_detector_with_ledgers, ready_handoff_agents):
     """Detector reads handoffs, doesn't write them."""
     detector = temp_detector_with_ledgers
     queue = detector._handoff_queue

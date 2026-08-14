@@ -32,6 +32,40 @@ def q():
         yield AgentHandoffQueue(event_store_path=Path(d) / "test_handoff.jsonl")
 
 
+@pytest.fixture(autouse=True)
+def _ready_test_agents(monkeypatch):
+    """Pin the agent registry so claim/complete flows target an AVAILABLE `maria`.
+
+    The live maturity catalog keeps every specialist NOT_READY (correct
+    fail-closed behavior), so handoffs to them are BLOCKED and cannot be
+    claimed — which breaks the PENDING→CLAIMED→COMPLETED tests. `maria` is the
+    "ready" test double here; `steph` stays NOT_READY so the explicit BLOCKED
+    tests keep exercising the fail-closed path.
+    """
+
+    def _patched_registry():
+        return {
+            "alex": {"status": "REGISTERED", "role": "cio"},
+            "maria": {"status": "AVAILABLE", "role": "research"},
+            "steph": {"status": "NOT_READY", "role": "allocation"},
+            "guardian": {"status": "NOT_READY", "role": "risk"},
+            "ledger": {"status": "NOT_READY", "role": "tax"},
+            "morgan": {"status": "AVAILABLE", "role": "wealth"},
+        }
+
+    monkeypatch.setattr(
+        "scripts.lib.cio_agent_handoff_queue._build_agent_registry_from_catalog",
+        _patched_registry,
+    )
+    monkeypatch.setattr(
+        "scripts.lib.cio_agent_readiness.AgentReadinessRegistry.can_claim",
+        lambda self, agent_id, claimed_at_catalog_hash=None: (True, "READY"),
+    )
+    AGENT_REGISTRY._loaded = False
+    yield
+    AGENT_REGISTRY._loaded = False
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # Schema validation tests
 # ═══════════════════════════════════════════════════════════════════════════════

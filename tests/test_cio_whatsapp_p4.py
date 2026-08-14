@@ -146,7 +146,7 @@ def test_outbound_chunking_and_formatter():
         plan_id="plan_x",
         llm_deferred=True,
     )
-    assert "plan_id" in text
+    assert "plan_x" in text  # plan_id value surfaces in the /cio ack hint
     assert "*" not in text  # plain WA
     assert "READ_ONLY" in text
 
