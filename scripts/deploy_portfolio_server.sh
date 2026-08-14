@@ -108,12 +108,14 @@ echo "  Rsync complete."
 # - state/data_broker      — broker projection cache
 # - data/runtime           — advisory desk, defense, calibration, shadow (1.5G live)
 # - data/health            — health agent findings / history
+# - data/cio               — CIO event-sourced stores (wake/action/outcome/plans) + projections
 echo "[3/8] Linking pipeline data to canonical source..."
 DATA_DIRS_TO_LINK=(
     "data/portfolios/state"
     "state/data_broker"
     "data/runtime"
     "data/health"
+    "data/cio"
 )
 for rel in "${DATA_DIRS_TO_LINK[@]}"; do
     target="${RELEASE_DIR}/${rel}"
