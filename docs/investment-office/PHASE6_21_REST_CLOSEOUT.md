@@ -62,22 +62,25 @@ python3 scripts/run_cio_acceptance.py
 
 **Pass threshold:** ≥ 95/100 with each major section ≥ 80%.
 
-### Scorecard (2026-08-14 evidence run)
+### Scorecard (2026-08-14)
 
-| Section | Score |
-| --- | --- |
-| A Release truth | 9.0 / 10 |
-| B Financial truth | 19.0 / 20 |
-| C Decision quality | 19.0 / 20 |
-| D Operator UX | 10.0 / 10 |
-| E Report | 13.0 / 15 |
-| F Telegram | 10.0 / 10 |
-| G Strategy | 10.0 / 10 |
-| H Governance | 5.0 / 5 |
-| **Total** | **95.0 / 100 — PASS** |
+| Section | Pre-deploy | Post live deploy (`fff9253a`) |
+| --- | --- | --- |
+| A Release truth | 9.0 / 10 | **10.0 / 10** |
+| B Financial truth | 19.0 / 20 | 19.0 / 20 |
+| C Decision quality | 19.0 / 20 | **20.0 / 20** |
+| D Operator UX | 10.0 / 10 | 10.0 / 10 |
+| E Report | 13.0 / 15 | 13.0 / 15 |
+| F Telegram | 10.0 / 10 | 10.0 / 10 |
+| G Strategy | 10.0 / 10 | 10.0 / 10 |
+| H Governance | 5.0 / 5 | 5.0 / 5 |
+| **Total** | **95.0 PASS** | **97.0 PASS** |
 
 Evidence: `data/audit/cio_acceptance_20260814/ACCEPTANCE_SCORECARD.json`  
 (Run with project venv so `python-docx` is available; PDF remains soft when renderer absent.)
+
+**Live release:** `fff9253a-main-exact-phase6-21-rest-*` → CURRENT  
+**Live fields:** `capital_plan_1.3.0`, `office_home_1.3.0`, account ledger, strategy_context, advisory_provenance on 22 decisions, decision_field_parity ok.
 
 Honest residuals (expected until quote unification / full strategy OOS):
 

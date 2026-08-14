@@ -113,6 +113,7 @@ overlay_rc() {
     scripts/cio_release_manifest.py \
     scripts/run_cio_hardening_ci.py \
     scripts/run_cio_adversarial_suite.py \
+    scripts/run_cio_acceptance.py \
     scripts/telegram_transport.py \
     scripts/deploy_portfolio_server.sh \
     scripts/make_release.sh \
