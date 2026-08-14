@@ -362,9 +362,9 @@ def eval_g2_release_manifest_parity(
     )
     pin_ok = (
         checks["status_production"]
-        and checks["live_eq_main"]
         and checks["pin_only_parent"]
-        and (checks["backend_eq_live"] or checks["canonical_eq_live"] or pin.get("ok"))
+        and (checks["canonical_eq_live"] or checks["backend_eq_live"])
+        and (checks["live_eq_main"] or checks["canonical_eq_live"])
     )
     # After a pin-only merge, backend/canonical name the content SHA; live/main are the pin.
     if pin_ok and not checks["backend_eq_live"]:
