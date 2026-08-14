@@ -130,8 +130,27 @@ ALLOWED_DEEP_LINK_SCHEMES = frozenset({"http", "https", "cmd-center", ""})
 
 
 def build_dedupe_key(notification: dict[str, Any]) -> str:
-    """Build semantic dedupe key from source references."""
+    """Build semantic dedupe key from source references.
+
+    Phase 9: prefer InvestmentDecision / CIO decision_id + material state so the
+    same unchanged decision does not re-page; notification_id alone is not enough.
+    """
     parts: list[str] = []
+    # Phase 8/9 decision identity (preferred)
+    did = (
+        notification.get("decision_id")
+        or notification.get("investment_decision_id")
+        or (notification.get("payload") or {}).get("decision_id")
+    )
+    if did:
+        parts.append(f"decision:{did}")
+        state = (
+            notification.get("material_state")
+            or (notification.get("payload") or {}).get("material_state")
+            or ""
+        )
+        if state:
+            parts.append(f"state:{state}")
     if notification.get("cio_action_id"):
         parts.append(f"action:{notification['cio_action_id']}")
     if notification.get("wake_job_id"):

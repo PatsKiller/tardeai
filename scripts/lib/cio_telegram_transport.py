@@ -162,8 +162,13 @@ def send_cio_message(
     kind: str = "cio_advisory",
     require_live_auth: bool = True,
     force: bool = False,
+    dedupe_key: Optional[str] = None,
+    decision_id: Optional[str] = None,
 ) -> dict[str, Any]:
     """Send via CIO-only bot/allowlist. Never uses general Maria credentials.
+
+    Phase 9: optional `dedupe_key` / `decision_id` for decision-state dedupe
+    (preferred over body-only fingerprint when provided).
 
     Returns a structured result; never raises for delivery failures.
     """
@@ -175,6 +180,7 @@ def send_cio_message(
         "interdicted": False,
         "deduped": False,
         "reason": "",
+        "decision_id": decision_id,
     }
 
     if not text:
@@ -201,7 +207,7 @@ def send_cio_message(
         )
         return result
 
-    dkey = semantic_body_key(text, kind=kind)
+    dkey = dedupe_key or semantic_body_key(text, kind=kind)
     result["dedupe_key"] = dkey
     if was_recently_sent(dkey) and not force:
         result["deduped"] = True
@@ -237,7 +243,7 @@ def send_cio_message(
             errors.append(f"chat={cid}:{type(e).__name__}")
 
     if ok_any:
-        mark_sent(dkey, meta={"kind": kind})
+        mark_sent(dkey, meta={"kind": kind, "decision_id": decision_id})
         result["delivered"] = True
         result["reason"] = "sent"
         result["message_ids"] = message_ids
