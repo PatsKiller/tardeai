@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
-"""run_cio_acceptance.py — Phases 18–21 acceptance scorecard + evidence pack.
+"""run_cio_acceptance.py — CIO LIVE acceptance auditor (v4, fail-closed).
 
-READ_ONLY_ADVISORY. Never sends Telegram unless --telegram-canary with env gates.
-Never places broker orders.
+Queries production endpoints and production artifacts only for LIVE_ACCEPTANCE.
+Offline/tree composition is recorded under BUILD_CAPABILITY and cannot PASS
+a live gate.
+
+Never sends Telegram. Never places broker orders.
+Exit 0 only when PRODUCTION_ACCEPTANCE == PASS (all hard gates green,
+p0_p1_open empty). Evidence is still written on FAIL.
 """
 from __future__ import annotations
 
@@ -12,368 +17,287 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any, Optional
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "scripts"))
 
-EVIDENCE = REPO / "data" / "audit" / f"cio_acceptance_{datetime.now(timezone.utc).strftime('%Y%m%d')}"
+from scripts.lib.cio_acceptance_v4 import (  # noqa: E402
+    ACCEPTANCE_VERSION,
+    AUTHORITY,
+    evaluate_live_snapshot,
+)
+
+LIVE_ROOT = Path("/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT")
+HOLDINGS = Path("/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/data/portfolios/state/holdings.json")
+CIO_HUB = REPO / "apps/command-center-v3/src/pages/CioHub.tsx"
+ADVISORY_HUB = REPO / "apps/command-center-v3/src/pages/AdvisoryDeskHub.tsx"
 
 
-def _score(section: str, points: float, max_pts: float, notes: str, artifacts: list | None = None) -> dict:
-    return {
-        "section": section,
-        "points": round(points, 1),
-        "max": max_pts,
-        "pct": round(100.0 * points / max_pts, 1) if max_pts else 0,
-        "notes": notes,
-        "artifacts": artifacts or [],
-    }
+def _evidence_dir(now: datetime) -> Path:
+    d = REPO / "data" / "audit" / f"cio_acceptance_{now.strftime('%Y%m%d')}"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
 
 
-def run_scorecard() -> dict:
-    now = datetime.now(timezone.utc)
-    EVIDENCE.mkdir(parents=True, exist_ok=True)
-    scores: list[dict] = []
-    gates: list[dict] = []
-
-    # A. Release truth (10)
-    main = subprocess.check_output(
-        ["git", "-C", str(REPO), "rev-parse", "origin/main"], text=True
-    ).strip()
-    live_path = Path("/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/BUILD_SHA")
-    live = live_path.read_text().strip() if live_path.is_file() else ""
-    man_path = REPO / "docs" / "investment-office" / "RELEASE_MANIFEST.json"
-    man = json.loads(man_path.read_text()) if man_path.is_file() else {}
-    a = 0.0
-    if live and main and (live == main or main.startswith(live[:12]) or live.startswith(main[:12])):
-        a += 3
-    elif live and main and subprocess.call(
-        ["git", "-C", str(REPO), "merge-base", "--is-ancestor", live[:40], main],
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-    ) == 0:
-        a += 2  # live is ancestor of main (docs-only lag)
-    if man.get("status") == "production":
-        a += 2
-    elif man.get("status") == "release_candidate":
-        a += 1  # documented RC — not full production credit
-    if man.get("canonical_source_sha"):
-        a += 1
-    pv = man.get("product_versions") or {}
-    if pv.get("capital_plan_version") and pv.get("office_home_version"):
-        a += 1  # product pins present in committed manifest
-    if Path("/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT").is_symlink():
-        a += 2
-    a += 2  # rollback targets exist historically
-    scores.append(_score("A_release_truth", min(a, 10), 10,
-                         f"main={main[:12]} live={live[:12]} status={man.get('status')}"))
-    gates.append({"gate": "LIVE_NEAR_MAIN", "expected": "live==main or ancestor", "actual": f"{live[:12]} vs {main[:12]}",
-                  "status": "PASS" if a >= 8 else "PARTIAL"})
-
-    # B. Financial truth (20)
-    b = 0.0
+def _git_sha(ref: str, cwd: Path = REPO) -> str:
     try:
-        from scripts.lib.cio_financial_truth_gate import evaluate_holdings_document
-        hpath = Path("/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/data/portfolios/state/holdings.json")
-        doc = json.loads(hpath.read_text()) if hpath.is_file() else {}
-        gate = evaluate_holdings_document(doc)
-        (EVIDENCE / "financial_truth_gate.json").write_text(json.dumps(gate, indent=2, default=str))
-        b += 8  # gate exists and runs
-        if gate.get("book_invariants", {}).get("cash_plus_mv_eq_reported_total"):
-            b += 3
-        if gate.get("book_invariants", {}).get("sum_accounts_eq_derived"):
-            b += 2
-        if gate.get("suppress_act_now_symbols") is not None:
-            b += 3  # contradiction suppression wired
-        if gate.get("meta"):
-            b += 2
-        # partial points when overall not clean — honesty counts
-        if gate.get("overall_quality") in ("VERIFIED_AS_OF", "VERIFIED_CURRENT"):
-            b += 2
-        else:
-            b += 1  # detects conflicts
-        scores.append(_score("B_financial_truth", min(b, 20), 20,
-                             f"quality={gate.get('overall_quality')} exceptions={gate.get('exception_count')}"))
-        gates.append({"gate": "FINANCIAL_TRUTH_GATE", "expected": "runs + suppresses conflicts",
-                      "actual": gate.get("overall_quality"), "status": "PASS",
-                      "artifact": str(EVIDENCE / "financial_truth_gate.json")})
+        return subprocess.check_output(
+            ["git", "-C", str(cwd), "rev-parse", ref], text=True, stderr=subprocess.DEVNULL,
+        ).strip()
+    except Exception:
+        return ""
+
+
+def _http_json(url: str, timeout: int = 45) -> tuple[Optional[dict], str]:
+    import urllib.request
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as r:
+            raw = r.read()
+        d = json.loads(raw.decode())
+        return (d.get("data") if isinstance(d, dict) and "data" in d and isinstance(d["data"], dict) else d), ""
     except Exception as e:
-        scores.append(_score("B_financial_truth", 5, 20, f"error={e}"))
-        gates.append({"gate": "FINANCIAL_TRUTH_GATE", "expected": "runs", "actual": str(e)[:80], "status": "FAIL"})
+        return None, str(e)[:200]
 
-    # C. Decision quality (20) — live preferred; tree offline composition fills gaps
-    c = 0.0
-    data: dict = {}
-    try:
-        import urllib.request
-        with urllib.request.urlopen("http://localhost:7777/api/v2/cio/capital-plan", timeout=30) as r:
-            cp = json.loads(r.read().decode())
-        data = cp.get("data") or cp
-        c += 4  # capital plan live
-    except Exception as e:
-        data = {}
-        c += 0
-        gates.append({"gate": "CAPITAL_PLAN_LIVE", "expected": "live", "actual": str(e)[:80], "status": "PARTIAL"})
-    # Offline composition from tree (proves Phases 6–13 wiring even if live lags)
-    offline: dict = {}
-    try:
-        from scripts.lib.cio_capital_plan import build_capital_plan_from_sources
-        hpath = Path("/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/data/portfolios/state/holdings.json")
-        hdoc = json.loads(hpath.read_text()) if hpath.is_file() else {}
-        offline = build_capital_plan_from_sources(holdings_doc=hdoc, now=now)
-        (EVIDENCE / "capital_plan_offline.json").write_text(
-            json.dumps(offline, indent=2, default=str)[:2_000_000]
-        )
-    except Exception as e:
-        offline = {"error": str(e)[:200]}
-    # Prefer richest of live/offline for feature checks
-    def _has(key: str) -> bool:
-        return bool(data.get(key) or offline.get(key))
 
-    plan_ver = str(data.get("plan_version") or offline.get("plan_version") or "")
-    if plan_ver.startswith("capital_plan_1.2") or plan_ver.startswith("capital_plan_1.3"):
-        c += 2
-    if _has("account_capital_ledger"):
-        c += 2
-    if _has("financial_truth_gate"):
-        c += 2
-    if _has("freshness_materiality_gate"):
-        c += 2
-    if _has("strategy_context"):
-        c += 1
-    if _has("decision_field_parity"):
-        c += 1
-    decs = data.get("position_decisions") or offline.get("position_decisions") or []
-    if decs and any(d.get("sizing_method") for d in decs):
-        c += 2
-    if decs and any(d.get("decision_id") or d.get("sizing_objective") for d in decs):
-        c += 1
-    if decs and any(d.get("action_label") for d in decs):
-        c += 1
-    if any(str(d.get("decision_id") or "").startswith("dec_") for d in decs):
-        c += 1
-    if any(d.get("advisory_provenance") for d in decs):
-        c += 1
-    (EVIDENCE / "capital_plan.json").write_text(
-        json.dumps(data or offline, indent=2, default=str)[:2_000_000]
-    )
-    scores.append(_score("C_decision_quality", min(c, 20), 20,
-                         f"decisions={len(decs)} live_plan={data.get('plan_version')} offline={offline.get('plan_version')}"))
-    gates.append({"gate": "CAPITAL_PLAN_GATES", "expected": "truth+freshness+sizing+ledger+strategy",
-                  "actual": f"live={bool(data)} offline={bool(offline.get('plan_version'))}",
-                  "status": "PASS" if c >= 14 else "PARTIAL",
-                  "artifact": str(EVIDENCE / "capital_plan.json")})
+def _transport_uses_general_token() -> bool:
+    p = REPO / "scripts/lib/cio_telegram_transport.py"
+    if not p.is_file():
+        return True
+    text = p.read_text(encoding="utf-8", errors="replace")
+    # Allowed: comments that say NEVER use TELEGRAM_BOT_TOKEN
+    # Forbidden: reading os.environ of the general token for send.
+    for line in text.splitlines():
+        s = line.strip()
+        if s.startswith("#") or s.startswith('"""') or s.startswith("'"):
+            continue
+        if "TELEGRAM_BOT_TOKEN" in s and "NEVER" not in s.upper() and "never" not in s:
+            if "os.environ" in s or "_env(" in s or "getenv" in s:
+                return True
+    return False
 
-    # D. Operator UX (10)
-    dpts = 0.0
-    try:
-        import urllib.request
-        with urllib.request.urlopen("http://localhost:7777/api/v3/cio/home", timeout=30) as r:
-            home = json.loads(r.read().decode())
-        h = home.get("data") or home
-        (EVIDENCE / "cio_home.json").write_text(json.dumps(h, indent=2, default=str)[:1_000_000])
-        cn = h.get("cio_now") or {}
-        att = cn.get("attention") or {}
-        cards = cn.get("decisions") or []
-        if len(cards) <= 5:
-            dpts += 3
-        if att.get("investment_decisions") is not None and att.get("workflow_actions") is not None:
-            dpts += 3
-        if att.get("material_today") is not None:
-            dpts += 2
-        # not double-count: material != sum
-        if att:
-            s = (att.get("investment_decisions") or 0) + (att.get("workflow_actions") or 0) + (att.get("open_plans") or 0)
-            if att.get("material_today") != s:
-                dpts += 2
-        scores.append(_score("D_operator_ux", min(dpts, 10), 10,
-                             f"cards={len(cards)} attention={att}"))
-        gates.append({"gate": "ATTENTION_KPIS", "expected": "disjoint", "actual": str(att)[:120], "status": "PASS"})
-    except Exception as e:
-        scores.append(_score("D_operator_ux", 2, 10, f"error={e}"))
-        gates.append({"gate": "ATTENTION_KPIS", "expected": "live home", "actual": str(e)[:80], "status": "FAIL"})
 
-    # E. Report (15)
-    e = 0.0
-    try:
-        from scripts.lib.cio_report_v2 import build_report_v2
-        from scripts.lib.cio_report_render import export_report_formats
-        model = build_report_v2(
-            part_b_ctx={
-                "portfolio": {"total_value": 100000, "cash_value": 20000, "cash_pct": 20},
-                "allocation": {"Cash & Equivalents": 20000, "Equities": 80000},
-                "performance": {"ytd_return": 1, "port_cagr": 5},
-            },
-            part_a_inputs={"capital_plan": {
-                "portfolio_value_usd": 100000, "cash_total_usd": 20000,
-                "cash_reserved_usd": 20000, "cash_investable_usd": 0,
-                "net_recommended_deploy_usd": 0, "net_recommended_raise_usd": 0,
-                "post_plan_cash_usd": 20000, "position_decisions": [],
-            }},
-            source_sha=main[:12],
-            now=now,
-        )
-        out = EVIDENCE / "report"
-        out.mkdir(exist_ok=True)
-        res = export_report_formats(model, out, basename="acceptance", formats=["html", "pdf", "docx"])
-        e += 4  # model builds
-        if model.get("source_sha") or (model.get("manifest") or {}).get("source_sha"):
-            e += 1  # instance SHA stamp present
-        if res.get("paths", {}).get("html"):
-            e += 3
-        if res.get("paths", {}).get("docx"):
-            e += 2
-        if res.get("paths", {}).get("pdf"):
-            e += 3
-        else:
-            e += 1  # soft partial — PDF optional when renderer absent
-        gate = res.get("phase7_exit_gate") or res.get("parity", {}).get("phase7_exit") or {}
-        parity = res.get("parity") or {}
-        if (
-            gate.get("HTML_PDF_DOCX_KEY_VALUE_PARITY") == "PASS"
-            or gate.get("CLI_CLAIMS_EQ_FILES_CREATED") == "PASS"
-            or parity.get("ok") is True
-            or (parity.get("html_parity") or {}).get("ok") is True
-        ):
-            e += 2
-        scores.append(_score("E_report", min(e, 15), 15,
-                             f"paths={list((res.get('paths') or {}).keys())} pdf={bool(res.get('paths',{}).get('pdf'))} sha={bool(model.get('source_sha'))}"))
-        gates.append({"gate": "REPORT_EXPORT", "expected": "html+docx(+pdf)", "actual": str(res.get("paths")),
-                      "status": "PASS" if res.get("paths", {}).get("html") else "FAIL",
-                      "artifact": str(out)})
-    except Exception as ex:
-        scores.append(_score("E_report", 3, 15, f"error={ex}"))
-        gates.append({"gate": "REPORT_EXPORT", "expected": "html", "actual": str(ex)[:80], "status": "FAIL"})
+def _collect_live(now: datetime, ev: Path) -> dict[str, Any]:
+    live = ""
+    if (LIVE_ROOT / "BUILD_SHA").is_file():
+        live = (LIVE_ROOT / "BUILD_SHA").read_text(encoding="utf-8").strip().splitlines()[0].strip()
+    main = _git_sha("origin/main")
 
-    # F. Telegram (10)
-    f = 0.0
-    try:
-        from scripts.lib import cio_telegram_transport as tg
-        from scripts.lib import cio_alex_telegram as alex
-        f += 3  # modules
-        if not tg.cio_bot_token() or True:
-            f += 2  # design: CIO-only (token may be empty in bare env)
-        # materiality + dual gate design
-        mat = alex.is_material_event(kind="heartbeat", decision={})
-        if mat.get("material") is False:
-            f += 2
-        pkg = alex.prepare_canary_package(decision={
-            "decision_id": "dec_accept",
-            "symbol": "CANARY",
-            "action": "Review",
-            "why_now": "Acceptance prepare-only — not a portfolio call.",
-            "recommended_delta_usd": 0,
-        })
-        f += 2
-        (EVIDENCE / "telegram_prepare.json").write_text(json.dumps({
-            "status": pkg.get("status"),
-            "REAL_TELEGRAM_SENDS": 0,
-            "general_not_used": True,
-        }, indent=2))
-        f += 1
-        scores.append(_score("F_telegram", min(f, 10), 10, "prepare-only; no live send in acceptance runner"))
-        gates.append({"gate": "TELEGRAM_CIO_ONLY", "expected": "prepare_ok", "actual": pkg.get("status"),
-                      "status": "PASS", "artifact": str(EVIDENCE / "telegram_prepare.json")})
-    except Exception as ex:
-        scores.append(_score("F_telegram", 3, 10, f"error={ex}"))
-        gates.append({"gate": "TELEGRAM_CIO_ONLY", "expected": "modules", "actual": str(ex)[:80], "status": "PARTIAL"})
+    man_path = REPO / "docs/investment-office/RELEASE_MANIFEST.json"
+    manifest = json.loads(man_path.read_text()) if man_path.is_file() else {}
 
-    # G. Strategy intelligence (10)
-    g = 0.0
-    try:
-        from scripts.lib.cio_strategy_knowledge import load_strategy_store, compose_strategy_context, INFLUENCE_POLICY
-        from scripts.lib.cio_seasonality_engine import build_seasonality_context
-        season = build_seasonality_context(now)
-        store = load_strategy_store()
-        ctx = compose_strategy_context(now=now, store=store, seasonality=season)
-        (EVIDENCE / "strategy_context.json").write_text(json.dumps(ctx, indent=2, default=str))
-        (EVIDENCE / "strategy_store.json").write_text(json.dumps(store, indent=2, default=str))
-        g += 3  # registry
-        if store.get("facts"):
-            g += 2
-        if season.get("presidential_cycle", {}).get("partisan_conclusion") is None:
-            g += 2
-        if INFLUENCE_POLICY.get("max_role") == "risk_modifier_or_context":
-            g += 2
-        if any(f.get("layers") for f in store.get("facts") or []):
-            g += 1
-        scores.append(_score("G_strategy", min(g, 10), 10, f"facts={store.get('fact_count')}"))
-        gates.append({"gate": "STRATEGY_LAYER", "expected": "registry+seasonality+policy", "actual": "ok",
-                      "status": "PASS", "artifact": str(EVIDENCE / "strategy_context.json")})
-    except Exception as ex:
-        scores.append(_score("G_strategy", 2, 10, f"error={ex}"))
-        gates.append({"gate": "STRATEGY_LAYER", "expected": "modules", "actual": str(ex)[:80], "status": "FAIL"})
+    plan, plan_err = _http_json("http://localhost:7777/api/v2/cio/capital-plan")
+    home, home_err = _http_json("http://localhost:7777/api/v3/cio/home")
+    report, report_err = _http_json("http://localhost:7777/api/v2/cio/report-v2", timeout=60)
+    advisory, adv_err = _http_json("http://localhost:7777/api/v3/advisory", timeout=40)
 
-    # H. Governance (5)
-    h = 0.0
-    h += 1.5  # CI workflow exists
-    if (REPO / ".github/workflows/cio-production-hardening-ci.yml").is_file():
-        h += 1
+    if plan:
+        (ev / "capital_plan_live.json").write_text(json.dumps(plan, indent=2, default=str)[:2_000_000])
+    if home:
+        (ev / "cio_home_live.json").write_text(json.dumps(home, indent=2, default=str)[:1_000_000])
+    if advisory:
+        (ev / "advisory_live.json").write_text(json.dumps(advisory, indent=2, default=str)[:1_500_000])
+
+    ft = (plan or {}).get("financial_truth_gate") or {}
+    # Prefer live gate exceptions; if only counts, keep conflicted_symbols
+    exceptions = ft.get("exceptions") or []
+    if not exceptions and HOLDINGS.is_file():
+        # Classify from the same production holdings file the server uses
+        # (canonical data symlink). This is production data, not a toy book.
+        try:
+            from scripts.lib.cio_financial_truth_gate import evaluate_holdings_document
+            doc = json.loads(HOLDINGS.read_text(encoding="utf-8"))
+            g = evaluate_holdings_document(doc)
+            exceptions = g.get("exceptions") or []
+            if not ft:
+                ft = g
+            (ev / "financial_truth_gate.json").write_text(json.dumps(g, indent=2, default=str)[:1_000_000])
+        except Exception:
+            pass
+
+    parity = ((home or {}).get("consistency") or {}).get("decision_field_parity") or {}
+
+    # Live frontend bundle (production asset, not an offline rebuild)
+    bundle_text = ""
+    dist = LIVE_ROOT / "apps/command-center-v3/dist"
+    index = dist / "index.html"
+    if index.is_file():
+        html = index.read_text(encoding="utf-8", errors="replace")
+        import re
+        m = re.search(r'src="(/v3/assets/index-[^"]+\.js)"', html)
+        if m:
+            js = dist / "assets" / Path(m.group(1)).name
+            if js.is_file():
+                bundle_text = js.read_text(encoding="utf-8", errors="replace")[:8_000_000]
+
+    cio_src = CIO_HUB.read_text(encoding="utf-8", errors="replace") if CIO_HUB.is_file() else ""
+    # Product truth is the *served* bundle. Source is extra signal only.
+    # G9 uses bundle + advisory API; also pass live CioHub source if present
+    # in the *release* tree (what operators actually run).
+    rel_cio = LIVE_ROOT / "apps/command-center-v3/src/pages/CioHub.tsx"
+    if rel_cio.is_file():
+        cio_src = rel_cio.read_text(encoding="utf-8", errors="replace")
+
+    report_html = ""
+    report_pdf = ""
+    report_docx = ""
+    report_sha = ""
+    synthetic = True
+    if isinstance(report, dict):
+        report_sha = str((report.get("manifest") or {}).get("source_sha") or report.get("source_sha") or "")
+        if report.get("html"):
+            hp = ev / "report_live.html"
+            hp.write_text(str(report["html"]), encoding="utf-8")
+            report_html = str(hp)
+        # Live API currently does not emit PDF/DOCX files.
+        synthetic = False  # endpoint is live book, but formats may be missing
+
+    # Telegram: measure, do not invent
+    cio_token_set = bool(os.environ.get("TELEGRAM_CIO_BOT_TOKEN"))
+    interdict = os.environ.get("CIO_TELEGRAM_INTERDICT", "").lower() in ("1", "true", "yes", "on")
+    general_used = _transport_uses_general_token()
+    # No send this run. proof_general_sends left None unless a receipt exists.
+    canary_path = ev / "cio_telegram_canary_receipt.json"
+    canary = None
+    if canary_path.is_file():
+        try:
+            canary = json.loads(canary_path.read_text(encoding="utf-8"))
+        except Exception:
+            canary = None
+    proof_general = None
+    if isinstance(canary, dict) and "general_sends" in canary:
+        try:
+            proof_general = int(canary["general_sends"])
+        except (TypeError, ValueError):
+            proof_general = None
+
+    # CI status on live SHA (best-effort; unproven → FAIL)
+    ci_required = False
+    ci_green = False
     try:
-        import subprocess as sp
-        pr = sp.check_output(
+        prot = subprocess.check_output(
             ["gh", "api", "repos/PatsKiller/tardeai/branches/main/protection",
              "--jq", ".required_status_checks.contexts[]"],
-            text=True, stderr=sp.DEVNULL,
+            text=True, stderr=subprocess.DEVNULL, timeout=20,
         )
-        if "cio-hardening" in pr:
-            h += 1.5
+        ci_required = "cio-hardening" in prot
     except Exception:
-        h += 0.5
-    h += 1  # authority READ_ONLY_ADVISORY preserved in modules
-    scores.append(_score("H_governance", min(h, 5), 5, "CI + branch protection + authority"))
-    gates.append({"gate": "GOVERNANCE", "expected": "cio-hardening required", "actual": "checked", "status": "PASS"})
+        ci_required = False
+    if live:
+        try:
+            chk = subprocess.check_output(
+                ["gh", "api", f"repos/PatsKiller/tardeai/commits/{live}/status",
+                 "--jq", ".statuses[] | select(.context==\"cio-hardening\") | .state"],
+                text=True, stderr=subprocess.DEVNULL, timeout=20,
+            )
+            ci_green = "success" in chk
+        except Exception:
+            ci_green = False
 
-    total = sum(s["points"] for s in scores)
-    max_total = sum(s["max"] for s in scores)
-    # section floors
-    floors_ok = all(s["pct"] >= 80 or s["max"] < 10 for s in scores)  # soft for small sections
-    # stricter: all sections with max>=10 need >=80%
-    floors_ok = all(s["pct"] >= 80 for s in scores if s["max"] >= 10)
+    facts: list[dict] = []
+    sc = (plan or {}).get("strategy_context") or {}
+    facts = list(sc.get("relevant_facts") or [])
+    if not facts:
+        store = {}
+        try:
+            from scripts.lib.cio_strategy_knowledge import load_strategy_store
+            store = load_strategy_store()
+            facts = list(store.get("facts") or [])
+            (ev / "strategy_store.json").write_text(json.dumps(store, indent=2, default=str))
+        except Exception:
+            pass
 
-    result = {
-        "as_of": now.isoformat(),
-        "authority": "READ_ONLY_ADVISORY",
-        "total_points": round(total, 1),
-        "max_points": max_total,
-        "score_pct": round(100.0 * total / max_total, 1),
-        "threshold": 95.0,
-        "pass_threshold": total >= 95 and floors_ok,
-        "floors_ok_80pct": floors_ok,
-        "sections": scores,
-        "gates": gates,
-        "evidence_dir": str(EVIDENCE),
-        "git_main": main,
+    surfaces = []
+    for name, obj in (
+        ("capital_plan", plan),
+        ("cio_home", home),
+        ("report", report),
+        ("advisory", advisory),
+    ):
+        if isinstance(obj, dict):
+            surfaces.append({"name": name, "authority": obj.get("authority")})
+
+    snap = {
         "live_sha": live,
-        "p0_p1_open": [
-            "Price dual-field conflicts still present until broker quote unification",
-            "PDF renderer may be absent on some hosts",
-            "Strategy facts largely unverified source claims pending independent reproduction",
-            "Live SHA may lag main tip by pin-only commits",
-        ],
-        "rollback": (
-            "ln -sfn /home/johnclaw/trade-ai-releases/portfolio-server/"
-            "<prior_release> /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT "
-            "&& systemctl --user daemon-reload && systemctl --user restart portfolio-server"
-        ),
+        "main_sha": main,
+        "manifest": manifest,
+        "git_manifest_hash": str(manifest.get("manifest_hash") or ""),
+        "drive_proven": False,
+        "drive_duplicate_count": 0,
+        "financial_truth_gate": ft,
+        "financial_exceptions": exceptions,
+        "capital_plan": plan or {},
+        "decision_parity": parity,
+        "advisory_payload": advisory,
+        "frontend_bundle_text": bundle_text,
+        "cio_hub_source": cio_src,
+        "report_html_path": report_html,
+        "report_pdf_path": report_pdf,
+        "report_docx_path": report_docx,
+        "report_source_sha": report_sha,
+        "report_synthetic": False if (report and not report_err) else True,
+        "visual_qa_artifact": "",
+        "visual_qa_pages": 0,
+        "cio_token_env_set": cio_token_set,
+        "general_token_used_in_cio_transport": general_used,
+        "telegram_interdict_on": interdict,
+        "telegram_sends_this_run": 0,
+        "proof_general_sends": proof_general,
+        "canary_evidence": canary,
+        "authority_surfaces": surfaces,
+        "cio_hardening_required": ci_required,
+        "cio_hardening_green_on_sha": ci_green,
+        "strategy_facts": facts,
+        "claims_almanac_integrated": False,
+        "claims_research_brain_integrated": False,
+        "build_capability": {
+            "note": "Offline/tree composition is not used for LIVE_ACCEPTANCE.",
+            "collect_errors": {
+                k: v for k, v in {
+                    "capital_plan": plan_err, "home": home_err,
+                    "report": report_err, "advisory": adv_err,
+                }.items() if v
+            },
+        },
     }
-    (EVIDENCE / "ACCEPTANCE_SCORECARD.json").write_text(json.dumps(result, indent=2, default=str))
-    return result
+    (ev / "live_snapshot_meta.json").write_text(json.dumps({
+        "live_sha": live, "main_sha": main,
+        "plan_ok": bool(plan), "home_ok": bool(home),
+        "report_ok": bool(report), "advisory_ok": bool(advisory),
+        "bundle_chars": len(bundle_text),
+        "errors": snap["build_capability"]["collect_errors"],
+    }, indent=2))
+    return snap
 
 
 def main() -> int:
     os.chdir(REPO)
-    result = run_scorecard()
-    print(json.dumps({
-        "score_pct": result["score_pct"],
-        "total_points": result["total_points"],
-        "pass_threshold": result["pass_threshold"],
-        "sections": {s["section"]: f"{s['points']}/{s['max']}" for s in result["sections"]},
-        "evidence_dir": result["evidence_dir"],
+    now = datetime.now(timezone.utc)
+    ev = _evidence_dir(now)
+    snap = _collect_live(now, ev)
+    result = evaluate_live_snapshot(snap, now=now)
+    result["evidence_dir"] = str(ev)
+    result["acceptance_version"] = ACCEPTANCE_VERSION
+    result["authority"] = AUTHORITY
+    (ev / "ACCEPTANCE_SCORECARD.json").write_text(
+        json.dumps(result, indent=2, default=str), encoding="utf-8",
+    )
+    summary = {
+        "acceptance_version": ACCEPTANCE_VERSION,
+        "PRODUCTION_ACCEPTANCE": result["PRODUCTION_ACCEPTANCE"],
+        "categories": result["categories"],
+        "OPEN_P0": result["OPEN_P0"],
+        "OPEN_P1": result["OPEN_P1"],
+        "OPEN_P2": result["OPEN_P2"],
         "p0_p1_open": result["p0_p1_open"],
-    }, indent=2))
-    # Always exit 0 for evidence generation; threshold is reported honestly
-    return 0
+        "git_main": result.get("git_main"),
+        "live_sha": result.get("live_sha"),
+        "gates": {g["gate"]: g["status"] for g in result["gates"]},
+        "evidence_dir": str(ev),
+    }
+    print(json.dumps(summary, indent=2))
+    return 0 if result["PRODUCTION_ACCEPTANCE"] == "PASS" else 1
 
 
 if __name__ == "__main__":
