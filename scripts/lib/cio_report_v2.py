@@ -38,7 +38,7 @@ from typing import Any, Callable, Optional
 
 Executor = Callable[..., Any]
 
-REPORT_VERSION = "report_v2_1.0.0"
+REPORT_VERSION = "report_v2_1.1.0"  # Phase 4: shared view → HTML/PDF/DOCX
 
 # ── Taxonomy ─────────────────────────────────────────────────────────────────
 
@@ -402,20 +402,24 @@ def build_part_a(
     # 2. Decisions Now
     decisions = _decisions_now(cap)
 
-    # 3. Capital Plan (pass-through projection)
+    # 3. Capital Plan (pass-through projection — Phase 2 earmark fields included)
     capital = {
         "cash_total_usd": cap.get("cash_total_usd"),
         "cash_reserved_usd": cap.get("cash_reserved_usd"),
         "cash_investable_usd": cap.get("cash_investable_usd"),
+        "cash_earmarked_redeploy_usd": cap.get("cash_earmarked_redeploy_usd"),
+        "cash_free_unearmarked_usd": cap.get("cash_free_unearmarked_usd"),
         "cash_policy_band": cap.get("cash_policy_band"),
         "recommended_deploy_usd": cap.get("net_recommended_deploy_usd"),
         "recommended_raise_usd": cap.get("net_recommended_raise_usd"),
+        "deployable_usd": cap.get("deployable_usd"),
         "sources": _compact_sources(cap.get("capital_sources")),
         "uses": _compact_uses(cap.get("capital_uses")),
         "post_plan_cash_usd": cap.get("post_plan_cash_usd"),
         "post_plan_cash_pct": cap.get("post_plan_cash_pct"),
+        "portfolio_value_usd": cap.get("portfolio_value_usd"),
+        "plan_version": cap.get("plan_version"),
     }
-
     # 4. Portfolio Posture
     posture = _portfolio_posture(cap, attr, sector_opportunities, thesis, perf)
 
@@ -592,9 +596,11 @@ def _compact_sources(sources: Optional[dict[str, Any]]) -> dict[str, Any]:
         "trims_usd": s.get("trims_usd"),
         "exits_usd": s.get("exits_usd"),
         "maturities_usd": s.get("maturities_usd"),
+        "earmarked_redeploy_usd": s.get("earmarked_redeploy_usd") or s.get("maturities_usd"),
+        "total_prospective_raise_usd": s.get("total_prospective_raise_usd"),
         "total_raise_usd": s.get("total_raise_usd"),
+        "double_count_guard": s.get("double_count_guard"),
     }
-
 
 def _compact_uses(uses: Optional[dict[str, Any]]) -> dict[str, Any]:
     u = uses or {}
@@ -877,14 +883,25 @@ def _fmt_pct(v: Any, signed: bool = False) -> str:
 
 
 def render_html(model: dict[str, Any]) -> str:
-    """Render the full v2 report (Part A + Part B) to self-contained HTML."""
+    """Render the full v2 report (Part A + Part B) to self-contained HTML.
+
+    Phase 4: prefers the shared view layer (`cio_report_render.render_html_from_view`)
+    so HTML / DOCX / PDF never diverge on facts. Falls back to the legacy inline
+    renderer only if the view package is unavailable.
+    """
+    try:
+        from scripts.lib.cio_report_render import render_html_from_view
+        from scripts.lib.cio_report_view import build_report_view
+        view = model.get("view") if isinstance(model.get("view"), dict) else build_report_view(model)
+        return render_html_from_view(view)
+    except Exception:
+        pass
     a = model.get("part_a") or {}
     b = model.get("part_b") or {}
     coverage = model.get("coverage") or {}
     manifest = model.get("manifest") or {}
     checkpoint = model.get("checkpoint") or {}
     as_of = model.get("as_of") or ""
-
     sections: list[str] = []
     sections.append(f"<h1>Trade AI — Institutional Report v2</h1>")
     sections.append(
@@ -1148,17 +1165,41 @@ def build_report_v2(
         pdf_pages=pdf_pages,
         render_errors=render_errors,
     )
+    part_b = dict(part_b_ctx or {})
+    # Phase 4: normalize allocation units on the model itself (USD + weight %).
+    try:
+        from scripts.lib.cio_report_view import normalize_allocation
+        alloc_norm = normalize_allocation(part_b)
+        if alloc_norm.get("allocation_usd"):
+            part_b["allocation"] = {
+                k: v for k, v in (alloc_norm["allocation_usd"] or {}).items() if v is not None
+            }
+        if alloc_norm.get("allocation_weight_pct"):
+            part_b["allocation_weight_pct"] = alloc_norm["allocation_weight_pct"]
+    except Exception:
+        pass
+
     model = {
         "report_version": REPORT_VERSION,
+        "architecture_version": "report_arch_1.0.0",
         "authority": "READ_ONLY_ADVISORY",
         "as_of": _now_iso(now),
         "part_a": part_a,
-        "part_b": part_b_ctx or {},
+        "part_b": part_b,
         "fields": fields,
         "coverage": coverage,
         "manifest": manifest,
         "checkpoint": checkpoint,
         "quality_flags": flags,
     }
+    # Shared view first — single fact surface for all formats
+    try:
+        from scripts.lib.cio_report_view import build_report_view
+        view = build_report_view(model)
+        model["view"] = view
+        model["facts_fingerprint"] = view.get("facts_fingerprint")
+    except Exception:
+        model["view"] = None
+        model["facts_fingerprint"] = None
     model["html"] = render_html(model)
     return model
