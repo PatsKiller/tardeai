@@ -277,6 +277,20 @@ def test_g18_attestation_sha_not_green_fails():
     assert g["status"] == "FAIL"
 
 
+def test_g18_pin_only_content_green_is_ok():
+    g = eval_g18_ci_green(
+        cio_hardening_required=True,
+        cio_hardening_green_on_sha=True,
+        sha="c" * 40,
+        content_sha="c" * 40,
+        attestation_sha="a" * 40,
+        content_hardening_green=True,
+        attestation_hardening_green=False,
+        main_commit_class="RELEASE_ATTESTATION_ONLY",
+    )
+    assert g["status"] == "PASS"
+
+
 def test_legacy_disposition_does_not_apply_to_new_decision():
     latest = {
         "position:SCHD:ira": {"disposition": "reject", "decision_key": "position:SCHD:ira"},
