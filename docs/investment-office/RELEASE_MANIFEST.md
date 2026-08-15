@@ -5,32 +5,32 @@
 > Authority: **READ_ONLY_ADVISORY** — no broker / order / stop / 2FA.
 
 **Status:** `production`  
-**Branch:** `chore/cio-pin-f1f9fb20`  
-**Created:** `2026-08-15T01:33:13.831282+00:00`  
-**Manifest hash:** `f95f5ee3b98b514dc55e7e96cddd0285c9a7c2f845a65f3e8d61a21e159d1302`
+**Branch:** `chore/cio-pin-dafb8c1b`  
+**Created:** `2026-08-15T01:55:21.259421+00:00`  
+**Manifest hash:** `be73a04595d77ffe50a25ad7c2c7e20de5bd3aef4fb84a5b88c676a83a48e4b2`
 
 ## Pin
 
 | Field | Value |
 | --- | --- |
-| canonical_source_sha | `f1f9fb20edc1e6785e9582afeec662f58b76ce08` |
-| release_content_sha | `f1f9fb20edc1e6785e9582afeec662f58b76ce08` |
-| release_attestation_sha | `f1f9fb20edc1e6785e9582afeec662f58b76ce08` |
-| remote_main_sha_at_manifest | `f1f9fb20edc1e6785e9582afeec662f58b76ce08` |
+| canonical_source_sha | `dafb8c1b8143f1c07c22bc00ed517dcde87bc98b` |
+| release_content_sha | `dafb8c1b8143f1c07c22bc00ed517dcde87bc98b` |
+| release_attestation_sha | `dafb8c1b8143f1c07c22bc00ed517dcde87bc98b` |
+| remote_main_sha_at_manifest | `dafb8c1b8143f1c07c22bc00ed517dcde87bc98b` |
 | frontend_build_sha | `e7b722b3b0a84baa41dfb202765d7c744faf128e` |
-| backend_release_sha | `f1f9fb20edc1e6785e9582afeec662f58b76ce08` |
-| report_source_sha | `f1f9fb20edc1e6785e9582afeec662f58b76ce08` |
-| deployed_release_path | `/home/johnclaw/trade-ai-releases/portfolio-server/f1f9fb20-main-exact-phase2-20260814-213144` |
-| deployed_release_name | `f1f9fb20-main-exact-phase2-20260814-213144` |
+| backend_release_sha | `dafb8c1b8143f1c07c22bc00ed517dcde87bc98b` |
+| report_source_sha | `dafb8c1b8143f1c07c22bc00ed517dcde87bc98b` |
+| deployed_release_path | `/home/johnclaw/trade-ai-releases/portfolio-server/dafb8c1b-main-exact-phase2-20260814-215418` |
+| deployed_release_name | `dafb8c1b-main-exact-phase2-20260814-215418` |
 | migration_head | `2026-08-13_two_way_reliability_n.sql` |
 | docs_pin | `956038c628b3a3a66fdd6ae5` |
 | runtime_config_hash | `1171100c678822858d2c6c6f938abf15` |
 | report_version | `report_v2_1.5.0` |
-| rollback_sha | `f1f9fb20edc1e6785e9582afeec662f58b76ce08` |
-| rollback_content_sha | `f1f9fb20edc1e6785e9582afeec662f58b76ce08` |
-| manifest_generated_from_sha | `f1f9fb20edc1e6785e9582afeec662f58b76ce08` |
-| manifest_created_at | `2026-08-15T01:33:13.831282+00:00` |
-| created_at | `2026-08-15T01:33:13.831282+00:00` |
+| rollback_sha | `dafb8c1b8143f1c07c22bc00ed517dcde87bc98b` |
+| rollback_content_sha | `dafb8c1b8143f1c07c22bc00ed517dcde87bc98b` |
+| manifest_generated_from_sha | `dafb8c1b8143f1c07c22bc00ed517dcde87bc98b` |
+| manifest_created_at | `2026-08-15T01:55:21.259421+00:00` |
+| created_at | `2026-08-15T01:55:21.259421+00:00` |
 | financial_authority | `READ_ONLY_ADVISORY` |
 
 ## Product versions
