@@ -392,10 +392,16 @@ def _collect_live(now: datetime, ev: Path) -> dict[str, Any]:
                 qa_page_hashes = [str(h) for h in raw_hashes if h]
         except Exception:
             pass
-    # Report-builder capital_plan_digest is not the API plan.digest.
-    # Only compare when the instance and collector share the same digest family.
+    # Same family as report-builder capital_plan_digest (cio_capital_plan digest).
     live_plan_digest = ""
     live_decision_digest = ""
+    if isinstance(plan, dict):
+        live_plan_digest = str(plan.get("digest") or plan.get("plan_digest") or "")
+        live_decision_digest = str(plan.get("decision_digest") or "")
+        if not live_decision_digest:
+            cons = (home or {}).get("consistency") if isinstance(home, dict) else {}
+            if isinstance(cons, dict):
+                live_decision_digest = str(cons.get("decision_digest") or "")
 
     audited_after = snapshot_audited_files(extra=[man_path], holdings=HOLDINGS)
     purity = compare_audited(audited_before, audited_after)
