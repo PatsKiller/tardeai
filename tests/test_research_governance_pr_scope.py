@@ -40,8 +40,16 @@ def test_allows_research_files():
         "docs/investment-office/R2_DETERMINISTIC_MECHANICS.md",
         "docs/investment-office/R3_ALMANAC_REPRODUCTION.md",
         "docs/investment-office/R4_RETRIEVAL_INTEGRATION.md",
+        "docs/investment-office/R5_CPCV_PATHS.md",
+        "docs/investment-office/R6_DURABLE_STORE.md",
+        "docs/investment-office/R7_POLICY_BEHAVIORAL.md",
+        "docs/investment-office/R8_EMPIRICAL_FAMILY.md",
         "tests/test_research_almanac.py",
         "tests/test_research_r4_integration.py",
+        "tests/test_research_cpcv_paths.py",
+        "tests/test_research_durable_store.py",
+        "tests/test_research_policy.py",
+        "tests/test_research_empirical.py",
     ):
         assert pr_scope_guard.is_allowed(f), f
 

@@ -14,10 +14,18 @@ on:
       - "docs/investment-office/R2_*"
       - "docs/investment-office/R3_*"
       - "docs/investment-office/R4_*"
+      - "docs/investment-office/R5_*"
+      - "docs/investment-office/R6_*"
+      - "docs/investment-office/R7_*"
+      - "docs/investment-office/R8_*"
       - "tests/test_research_mechanics*"
       - "tests/test_research_almanac*"
       - "tests/test_research_r3*"
       - "tests/test_research_r4*"
+      - "tests/test_research_cpcv*"
+      - "tests/test_research_durable*"
+      - "tests/test_research_policy*"
+      - "tests/test_research_empirical*"
   push:
     branches:
       - "feature/research-governance-v1"
@@ -53,7 +61,7 @@ jobs:
 
       - name: Research governance tests
         run: |
-          python -m pytest tests/test_research_governance* tests/test_research_mechanics* tests/test_research_almanac* tests/test_research_r4* -q
+          python -m pytest tests/test_research_governance* tests/test_research_mechanics* tests/test_research_almanac* tests/test_research_r4* tests/test_research_cpcv* tests/test_research_durable* tests/test_research_policy* tests/test_research_empirical* -q
 
       - name: RGA acceptance (R1_foundation)
         run: python scripts/run_research_governance_acceptance.py R1_foundation
@@ -66,3 +74,15 @@ jobs:
 
       - name: R4 integration acceptance
         run: python scripts/run_research_governance_acceptance.py R4_integration
+
+      - name: R5 CPCV paths acceptance
+        run: python scripts/run_research_governance_acceptance.py R5_cpcv
+
+      - name: R6 durable store acceptance
+        run: python scripts/run_research_governance_acceptance.py R6_durable
+
+      - name: R7 policy/behavioral acceptance
+        run: python scripts/run_research_governance_acceptance.py R7_policy
+
+      - name: R8 empirical family acceptance
+        run: python scripts/run_research_governance_acceptance.py R8_empirical

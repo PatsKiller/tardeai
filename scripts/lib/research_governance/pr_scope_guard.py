@@ -35,6 +35,10 @@ ALLOWLIST_PATTERNS: List[str] = [
     "docs/investment-office/R2_*",
     "docs/investment-office/R3_*",
     "docs/investment-office/R4_*",
+    "docs/investment-office/R5_*",
+    "docs/investment-office/R6_*",
+    "docs/investment-office/R7_*",
+    "docs/investment-office/R8_*",
     "scripts/run_research_governance_acceptance.py",
     "scripts/lib/research_governance/mechanics/*",
     "scripts/lib/research_governance/mechanics/**",
@@ -42,6 +46,15 @@ ALLOWLIST_PATTERNS: List[str] = [
     "tests/test_research_almanac*",
     "tests/test_research_r3*",
     "tests/test_research_r4*",
+    "tests/test_research_cpcv*",
+    "tests/test_research_durable*",
+    "tests/test_research_policy*",
+    "tests/test_research_behavioral*",
+    "tests/test_research_empirical*",
+    "tests/test_research_r5*",
+    "tests/test_research_r6*",
+    "tests/test_research_r7*",
+    "tests/test_research_r8*",
 ]
 
 # Off-limits shared CIO / retrieval / release files. Deferred to R4.
