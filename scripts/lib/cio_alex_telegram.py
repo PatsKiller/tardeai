@@ -122,36 +122,48 @@ def is_material_event(
 
 
 def format_cio_message(decision: dict[str, Any]) -> str:
-    """Alex speaks like a CIO: call, dollars, why, counter-thesis, what changes mind."""
+    """Decision-first CIO card. Buttons are inline, not plaintext actions."""
     sym = decision.get("symbol") or decision.get("scope") or "—"
     action = decision.get("action") or decision.get("stance") or "Review"
     delta = _num(decision.get("delta_usd") if decision.get("delta_usd") is not None
                  else decision.get("recommended_delta_usd"))
-    weight = decision.get("weight_pct") or decision.get("current_weight_pct")
-    why = (decision.get("why_now") or "").strip()
+    why = (decision.get("why_now") or decision.get("what_changed") or "").strip()
     counter = (decision.get("counter_thesis") or "").strip()
     change = (decision.get("what_changes_call") or "").strip()
     nxt = decision.get("next_review") or "—"
-    did = decision.get("decision_id") or "—"
+    cash = decision.get("capital") if isinstance(decision.get("capital"), dict) else {}
+    free = cash.get("free_investable")
+    deploy = cash.get("deploy_now")
+    remain = cash.get("remain_cash")
 
     lines = [
-        f"Alex · CIO call: {action} {sym}",
-        f"Dollars: ${delta:+,.0f}" if delta else "Dollars: no size change",
+        "Alex · CIO NOW",
+        "",
+        "WHAT CHANGED",
+        why[:280] or f"{action} {sym}",
+        "",
+        "MY CALL",
+        f"{action} {sym}" + (f"  ${delta:+,.0f}" if abs(delta) >= 1 else ""),
+        "",
+        "CAPITAL",
+        f"Free investable: ${float(free):,.0f}" if free is not None else "Free investable: see capital plan",
+        f"Deploy now: ${float(deploy):,.0f}" if deploy is not None else "Deploy now: —",
+        f"Remain cash: ${float(remain):,.0f}" if remain is not None else "Remain cash: —",
+        "",
+        "WHY",
+        why[:240] or "See evidence in CIO.",
+        "",
+        "COUNTER-THESIS",
+        (counter[:200] if counter else "None on record."),
+        "",
+        "WHAT CHANGES MY MIND",
+        change[:200] or "Material new multi-desk evidence or cash-band breach.",
+        "",
+        "NEXT REVIEW",
+        str(nxt),
+        "",
+        f"Decision: {decision.get('decision_id') or '—'}",
     ]
-    if weight is not None:
-        try:
-            lines.append(f"Weight: {float(weight):.1f}% of book")
-        except (TypeError, ValueError):
-            pass
-    if why:
-        lines.append(f"Why now: {why[:200]}")
-    if counter and "no Street" not in counter:
-        lines.append(f"Counter-thesis: {counter[:160]}")
-    if change:
-        lines.append(f"What changes my mind: {change[:180]}")
-    lines.append(f"Next review: {nxt}")
-    lines.append(f"Decision: {did}")
-    lines.append("Actions: ACK · DEFER · DONE · REJECT · RATE (advisory only)")
     return "\n".join(lines)
 
 
@@ -174,10 +186,12 @@ def material_state_fingerprint(decision: dict[str, Any]) -> str:
 
 
 def decision_dedupe_key(decision: dict[str, Any]) -> str:
-    """Dedupe key: decision identity + material state (not notification id alone)."""
+    """Dedupe: decision_id + input digest + evidence digest + material state."""
     did = str(decision.get("decision_id") or "none")
+    inp = str(decision.get("decision_input_digest") or "")
+    evd = str(decision.get("decision_evidence_digest") or "")
     state = material_state_fingerprint(decision)
-    return hashlib.sha256(f"alex_dec|{did}|{state}".encode()).hexdigest()[:32]
+    return hashlib.sha256(f"alex_dec|{did}|{inp}|{evd}|{state}".encode()).hexdigest()[:32]
 
 
 def would_duplicate(decision: dict[str, Any]) -> bool:
@@ -341,10 +355,19 @@ def deliver_decision(
         # Still mark dry-run as if we would send — do NOT mark_sent unless real send
         return out
 
+    markup = None
+    try:
+        from scripts.lib.cio_telegram_keyboard import build_decision_inline_keyboard
+        markup = build_decision_inline_keyboard(decision)
+    except Exception:
+        markup = None
     res = tg.send_cio_message(
         ev["body"],
         kind="alex_decision",
         require_live_auth=True,
+        reply_markup=markup,
+        decision_id=str(decision.get("decision_id") or "") or None,
+        dedupe_key=ev.get("dedupe_key"),
     )
     # Prefer decision-state key for future dedupe
     if res.get("delivered"):

@@ -1752,6 +1752,36 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
                 self.end_headers()
             return
 
+        # Signed CIO action links — must run BEFORE the SPA catch-all.
+        if path.startswith("/v3/go/cio/"):
+            try:
+                from scripts.lib.cio_go_handler import handle_cio_go
+                qs = parse_qs(urlparse(self.path).query)
+                body = None
+                if self.command == "POST":
+                    ln = int(self.headers.get("Content-Length") or 0)
+                    raw = self.rfile.read(ln) if ln else b""
+                    ctype = (self.headers.get("Content-Type") or "")
+                    if "json" in ctype:
+                        body = json.loads(raw.decode() or "{}")
+                    else:
+                        body = {k: v[0] if v else "" for k, v in parse_qs(raw.decode()).items()}
+                status, ctype, payload = handle_cio_go(self.command, path, qs, body)
+                self.send_response(status)
+                self.send_header("Content-Type", ctype)
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+            except Exception as exc:
+                msg = f"cio go handler failed: {type(exc).__name__}".encode()
+                self.send_response(500)
+                self.send_header("Content-Type", "text/plain")
+                self.send_header("Content-Length", str(len(msg)))
+                self.end_headers()
+                self.wfile.write(msg)
+            return
+
         # Command Center v3 — serve built app at /v3/
         if path == "/v3" or path.startswith("/v3/"):
             _v3_dist = PROJECT_ROOT / "apps" / "command-center-v3" / "dist"
@@ -2082,6 +2112,33 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
 
         parsed = urlparse(self.path)
         path = parsed.path
+
+        if path.startswith("/v3/go/cio/"):
+            try:
+                from scripts.lib.cio_go_handler import handle_cio_go
+                qs = parse_qs(parsed.query)
+                ln = int(self.headers.get("Content-Length") or 0)
+                raw = self.rfile.read(ln) if ln else b""
+                ctype = (self.headers.get("Content-Type") or "")
+                if "json" in ctype:
+                    body = json.loads(raw.decode() or "{}")
+                else:
+                    body = {k: v[0] if v else "" for k, v in parse_qs(raw.decode()).items()}
+                status, ctype, payload = handle_cio_go("POST", path, qs, body)
+                self.send_response(status)
+                self.send_header("Content-Type", ctype)
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+            except Exception as exc:
+                msg = f"cio go handler failed: {type(exc).__name__}".encode()
+                self.send_response(500)
+                self.send_header("Content-Type", "text/plain")
+                self.send_header("Content-Length", str(len(msg)))
+                self.end_headers()
+                self.wfile.write(msg)
+            return
 
         # Agent-runtime read surface is GET-only: any POST here is 405, never a write.
         _ar_path = path.rstrip("/") or "/"

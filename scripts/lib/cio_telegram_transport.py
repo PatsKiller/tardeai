@@ -196,6 +196,7 @@ def send_cio_message(
     force: bool = False,
     dedupe_key: Optional[str] = None,
     decision_id: Optional[str] = None,
+    reply_markup: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     """Send via CIO-only bot/allowlist. Never uses general Maria credentials.
 
@@ -263,7 +264,10 @@ def send_cio_message(
     message_ids: list[Any] = []
     for cid in cio_chat_ids():
         try:
-            resp = send_message(token=token, chat_id=cid, text=text[:4000])
+            resp = send_message(
+                token=token, chat_id=cid, text=text[:4000],
+                reply_markup=reply_markup,
+            )
             if resp.get("ok"):
                 ok_any = True
                 mid = (resp.get("response") or {}).get("result", {}).get("message_id")
