@@ -344,10 +344,10 @@ def _check_scope() -> tuple[str, str]:
         return _fail("R2 tests not allowlisted")
     if not pr_scope_guard.is_allowed("docs/investment-office/R2_DETERMINISTIC_MECHANICS.md"):
         return _fail("R2 docs not allowlisted")
-    r3 = Path(__file__).resolve().parents[3] / "scripts" / "lib" / "research_governance" / "almanac.py"
-    if r3.is_file():
-        return _fail("R3 almanac module present")
-    return _pass("R2 allowlist + denylist; no R3 files")
+    live_wire = Path(__file__).resolve().parents[3] / "scripts" / "lib" / "research_governance" / "live_alex.py"
+    if live_wire.is_file():
+        return _fail("live Alex wire module present")
+    return _pass("R2 allowlist + denylist; no live Alex wire")
 
 
 R2A_CHECKS = {

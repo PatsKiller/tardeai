@@ -8,6 +8,15 @@ production-hardening CIO remediation agent.
 - base: see `RESEARCH_GOVERNANCE_BUILD_BASELINE.md`
 - authority: `READ_ONLY_ADVISORY` — nothing here grants broker/order/stop authority.
 
+## Program state
+
+```text
+R1 — FOUNDATION                    MERGED  #312 / c005551a
+R2 — DETERMINISTIC MECHANICS       MERGED  #329 / f1cc17e5
+R3 — ALMANAC REPRODUCTION          THIS PR (RGA-15)
+R4 — RETRIEVAL / DECISION-USE      THIS PR (RGA-16, dry adapter)
+```
+
 ## Purpose
 
 Govern the promotion of research knowledge (books, primary papers, reproduced
