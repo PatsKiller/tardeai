@@ -7,6 +7,7 @@ Authority: READ_ONLY_ADVISORY. Methodology may block; nothing trades.
 """
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -147,10 +148,16 @@ def retrieve_symbol_research(
     ))
 
     if holdings_row:
+        try:
+            mv = float(holdings_row.get("market_value") or holdings_row.get("current_value_usd") or 0)
+        except (TypeError, ValueError):
+            mv = 0.0
+        residual = mv > 0 and mv < 100
         items.append(_item(
             fact=(
                 f"{sym} held {holdings_row.get('shares') or holdings_row.get('quantity')} sh "
                 f"in {holdings_row.get('account')} value={holdings_row.get('market_value')}"
+                + ("; residual sleeve — not a new purchase" if residual else "")
             ),
             source="verified_holdings",
             source_type="PORTFOLIO_TRUTH",
@@ -160,7 +167,89 @@ def retrieve_symbol_research(
             status="VERIFIED",
             specialist="portfolio construction / residual-size awareness",
             cio_use="portfolio_construction",
+            counter="Do not treat a leftover fractional sleeve as a fresh buy.",
         ))
+
+    # Portfolio overlap (holdings.json overlap_analysis) — honest if empty
+    try:
+        from scripts.lib.cio_office_state import load_holdings_document
+        hdoc = load_holdings_document()
+        oa = (hdoc.get("overlap_analysis") or {}) if isinstance(hdoc, dict) else {}
+        overlaps = oa.get("overlaps") if isinstance(oa, dict) else []
+        hits = []
+        if isinstance(overlaps, list):
+            for o in overlaps:
+                blob = json.dumps(o, default=str).upper() if not isinstance(o, str) else o.upper()
+                if sym and sym in blob:
+                    hits.append(o)
+        if hits:
+            items.append(_item(
+                fact=f"{sym} appears in overlap_analysis ({len(hits)} hit(s)).",
+                source="holdings_overlap_analysis",
+                source_type="PORTFOLIO_TRUTH",
+                as_of=str((oa or {}).get("generated_at") or as_of),
+                quality="computed",
+                grade="C",
+                status="VERIFIED",
+                specialist="sleeve overlap / concentration",
+                cio_use="portfolio_construction",
+            ))
+        else:
+            items.append(_item(
+                fact=f"{sym} overlap_analysis has no computed pairs (count={oa.get('overlap_count') if isinstance(oa, dict) else 'n/a'}).",
+                source="holdings_overlap_analysis",
+                source_type="PORTFOLIO_TRUTH",
+                as_of=str((oa or {}).get("generated_at") or as_of) if isinstance(oa, dict) else as_of,
+                quality="empty_or_unavailable",
+                grade="D",
+                status="UNAVAILABLE",
+                specialist="Steph overlap packet not present",
+                cio_use="unavailable",
+            ))
+    except Exception as exc:
+        items.append(_item(
+            fact="overlap_analysis unavailable",
+            source="holdings_overlap_analysis",
+            source_type="PORTFOLIO_TRUTH",
+            as_of=as_of,
+            quality="unavailable",
+            grade="D",
+            status="UNAVAILABLE",
+            specialist=str(exc)[:160],
+            cio_use="unavailable",
+        ))
+
+    # Prior production cases for this symbol
+    try:
+        from scripts.lib.cio_production_case import load_cases
+        prior = [c for c in load_cases() if str(c.get("symbol") or "").upper() == sym][-3:]
+        if prior:
+            items.append(_item(
+                fact=f"{len(prior)} prior production case(s) for {sym}: " +
+                     ", ".join(str(c.get("case_id")) for c in prior),
+                source="cio_production_cases",
+                source_type="PORTFOLIO_TRUTH",
+                as_of=as_of,
+                quality="ledger",
+                grade="C",
+                status="VERIFIED",
+                specialist="prior case context",
+                cio_use="context_modifier",
+            ))
+        else:
+            items.append(_item(
+                fact=f"No prior production case for {sym}.",
+                source="cio_production_cases",
+                source_type="PORTFOLIO_TRUTH",
+                as_of=as_of,
+                quality="empty",
+                grade="D",
+                status="UNAVAILABLE",
+                specialist="learning evidence still accumulating",
+                cio_use="context_modifier",
+            ))
+    except Exception:
+        pass
 
     # R4 audit over these items
     audit = {"status": "UNAVAILABLE"}
