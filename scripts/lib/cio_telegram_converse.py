@@ -34,6 +34,11 @@ FOOTER_RE = re.compile(
     r"|(?:goal_id|goal)\s*[:=]\s*`?(goal_[a-z0-9_\-]+)`?",
     re.I,
 )
+DECISION_ID_RE = re.compile(
+    r"(?:Decision|decision_id)\s*[:=]\s*`?(dec_[A-Za-z0-9._:-]{8,80})`?"
+    r"|\b(dec_[A-Za-z0-9._:-]{8,80})\b",
+    re.I,
+)
 SYMBOL_RE = re.compile(r"\b([A-Z]{1,5})\b")
 ACK_RE = re.compile(r"^\s*(ack|acknowledge)\s*(plan_[a-z0-9_\-]+|plan-[a-z0-9_\-]+)?\s*$", re.I)
 
@@ -315,7 +320,7 @@ def mark_wake_rate(chat_id: str, *, path: Path = DEFAULT_RATE) -> None:
 
 
 def parse_ids_from_text(text: str) -> dict[str, Optional[str]]:
-    out = {"plan_id": None, "action_id": None, "goal_id": None}
+    out = {"plan_id": None, "action_id": None, "goal_id": None, "decision_id": None}
     for m in FOOTER_RE.finditer(text or ""):
         if m.group(1):
             out["plan_id"] = m.group(1)
@@ -323,13 +328,20 @@ def parse_ids_from_text(text: str) -> dict[str, Optional[str]]:
             out["action_id"] = m.group(2)
         if m.group(3):
             out["goal_id"] = m.group(3)
-    # re: PLAN-… patterns
+    # re: PLAN-… patterns and bare `plan_…` footers
     m = re.search(r"re:\s*(plan_[a-z0-9_\-]+)", text or "", re.I)
     if m:
         out["plan_id"] = m.group(1)
+    if not out["plan_id"]:
+        m = re.search(r"`?(plan_[a-z0-9_\-]{6,})`?", text or "", re.I)
+        if m:
+            out["plan_id"] = m.group(1)
     m = re.search(r"\bgoal\s+(goal_[a-z0-9_\-]+)", text or "", re.I)
     if m:
         out["goal_id"] = m.group(1)
+    dm = DECISION_ID_RE.search(text or "")
+    if dm:
+        out["decision_id"] = dm.group(1) or dm.group(2)
     return out
 
 
@@ -353,6 +365,129 @@ def extract_symbols(text: str) -> list[str]:
 
 def parse_reply_footer(bot_text: str) -> dict[str, Optional[str]]:
     return parse_ids_from_text(bot_text or "")
+
+
+def load_decision_thread_context(decision_id: str) -> dict[str, Any]:
+    """Live catalog + latest operator disposition for a decision-card thread."""
+    did = str(decision_id or "").strip()
+    ctx: dict[str, Any] = {
+        "decision_id": did,
+        "symbol": "",
+        "stance": "",
+        "disposition": None,
+        "why_now": "",
+        "delta_usd": None,
+        "authority": "READ_ONLY_ADVISORY",
+    }
+    if not did:
+        return ctx
+    try:
+        from scripts.api_v3_cio import load_known_decision_catalog, get_decision_dispositions
+        known = (load_known_decision_catalog() or {}).get(did) or {}
+        ctx["symbol"] = str(known.get("symbol") or "")
+        ctx["stance"] = str(known.get("action") or known.get("stance") or "")
+        disp = ((get_decision_dispositions() or {}).get("dispositions") or {}).get(did)
+        if isinstance(disp, dict):
+            ctx["disposition"] = str(disp.get("disposition") or "")
+            ctx["disposition_at"] = disp.get("occurred_at")
+    except Exception as exc:
+        ctx["catalog_error"] = f"{type(exc).__name__}"
+    # Prefer capital-plan row facts when the catalog is thin
+    try:
+        from scripts.lib.cio_office_state import fetch_capital_plan
+        plan = fetch_capital_plan()
+        for row in plan.get("position_decisions") or []:
+            if not isinstance(row, dict):
+                continue
+            if str(row.get("decision_id") or "") != did:
+                continue
+            ctx["symbol"] = ctx["symbol"] or str(row.get("symbol") or "")
+            ctx["stance"] = ctx["stance"] or str(row.get("stance") or row.get("stance_code") or "")
+            ctx["why_now"] = str(row.get("why_now") or "")
+            ctx["delta_usd"] = row.get("recommended_delta_usd")
+            ctx["weight_pct"] = row.get("current_weight_pct") or row.get("weight_pct")
+            ctx["action_label"] = row.get("action_label")
+            ctx["act_now"] = row.get("act_now")
+            break
+    except Exception:
+        pass
+    return ctx
+
+
+def format_decision_thread_reply(
+    *,
+    decision_id: str,
+    operator_text: str,
+    thread: Optional[dict[str, Any]] = None,
+) -> str:
+    """CIO-speak reply that keeps the same decision_id. Not a new S0 plan."""
+    thread = thread or load_decision_thread_context(decision_id)
+    did = thread.get("decision_id") or decision_id
+    sym = thread.get("symbol") or "this name"
+    stance = (thread.get("stance") or "the standing call").upper()
+    disp = str(thread.get("disposition") or "").upper() or "NONE"
+    why = (thread.get("why_now") or "").strip()
+    label = thread.get("action_label") or ""
+    note = (operator_text or "").strip()[:400]
+    act_now = thread.get("act_now")
+    lines = [
+        "Alex · CIO NOW",
+        "",
+        "THREAD",
+        f"Same decision {did} · {sym} · standing {stance}.",
+        f"Latest disposition on record: {disp}.",
+        "",
+        "I HEARD YOU",
+        note or "(no note)",
+        "",
+        "WHAT THAT MEANS",
+    ]
+    if disp == "REJECT":
+        lines.append(
+            f"REJECT is recorded. I will not keep asking you to take the {stance} "
+            f"on {sym}. The book fact is unchanged: {why or 'see capital plan'}."
+        )
+        if label:
+            lines.append(f"Freshness={label}; ACT_NOW={act_now}.")
+        lines.append(
+            "Your counter-thesis (income / staple / it is working) is now on the case. "
+            "It does not clear a concentration fire by itself."
+        )
+    else:
+        lines.append(
+            f"Standing call remains {stance} on {sym}. "
+            f"{why or 'See capital plan.'}"
+        )
+    lines.extend([
+        "",
+        "WHAT I WILL NOT DO",
+        "Place, cancel, or change any order or stop. Invent ACT_NOW. Open a new S0 chat plan.",
+        "",
+        "NEXT",
+        "TRIM/HOLD stays the office call until weight or thesis changes. "
+        "Reply here to add evidence; I will stay on this decision_id.",
+        "",
+        f"Decision: {did}",
+    ])
+    return "\n".join(lines)
+
+
+def record_decision_thread_note(decision_id: str, note: str, *, disposition: str = "") -> None:
+    """Append operator free-text onto the production case. Fail-soft."""
+    try:
+        from scripts.lib.cio_production_case import append_case
+        append_case({
+            "case_id": f"note_{decision_id}",
+            "status": "OPERATOR_NOTE",
+            "decision_id": decision_id,
+            "operator_disposition": {
+                "disposition": disposition or None,
+                "note": (note or "")[:800],
+                "source": "telegram_decision_thread",
+            },
+        })
+    except Exception:
+        pass
 
 
 # ── Structured reply formatter ──────────────────────────────────────────────

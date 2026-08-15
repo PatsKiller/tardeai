@@ -33,6 +33,9 @@ from scripts.lib.cio_telegram_converse import (
     plan_id_for_reply_message,
     rate_limit_ok,
     record_plan_message,
+    format_decision_thread_reply,
+    load_decision_thread_context,
+    record_decision_thread_note,
     _now,
 )
 
@@ -301,16 +304,50 @@ def process_operator_message(
         return out
 
     plan_id = goal_id = action_id = None
+    decision_id = None
     if reply_to_message_id:
         plan_id = plan_id_for_reply_message(reply_to_message_id, path=msg_map_path)
         footer = parse_reply_footer(reply_to_text or "")
         plan_id = plan_id or footer.get("plan_id")
         goal_id = footer.get("goal_id")
         action_id = footer.get("action_id")
+        decision_id = footer.get("decision_id")
     parsed = parse_ids_from_text(text)
     plan_id = plan_id or parsed.get("plan_id")
     goal_id = goal_id or parsed.get("goal_id")
     action_id = action_id or parsed.get("action_id")
+    decision_id = decision_id or parsed.get("decision_id")
+    # A quoted CIO card is a decision thread, not a new S0 converse plan.
+    if not decision_id and reply_to_text:
+        decision_id = parse_ids_from_text(reply_to_text).get("decision_id")
+
+    if decision_id and str(decision_id).startswith("dec_"):
+        thread = load_decision_thread_context(decision_id)
+        reply = format_decision_thread_reply(
+            decision_id=decision_id,
+            operator_text=text,
+            thread=thread,
+        )
+        if channel == "whatsapp":
+            reply = re.sub(r"\*([^*]+)\*", r"\1", reply).replace("`", "")
+        sent = _send(reply, reply_to=reply_to_message_id)
+        if not dry_run:
+            record_decision_thread_note(
+                decision_id,
+                text,
+                disposition=str(thread.get("disposition") or ""),
+            )
+        out.update({
+            "handled": True,
+            "kind": "decision_thread",
+            "decision_id": decision_id,
+            "plan_id": None,
+            "attached_plan_id": plan_id,
+            "reply_preview": reply[:500],
+            "outbound_message_id": sent.get("message_id"),
+            "telegram_out_message_id": sent.get("message_id") if channel == "telegram" else None,
+        })
+        return out
 
     payload = {
         "text": text[:4000],
