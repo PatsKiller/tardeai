@@ -38,6 +38,10 @@ def test_allows_research_files():
         "scripts/lib/research_governance/mechanics/fixed_income.py",
         "tests/test_research_mechanics_etf.py",
         "docs/investment-office/R2_DETERMINISTIC_MECHANICS.md",
+        "docs/investment-office/R3_ALMANAC_REPRODUCTION.md",
+        "docs/investment-office/R4_RETRIEVAL_INTEGRATION.md",
+        "tests/test_research_almanac.py",
+        "tests/test_research_r4_integration.py",
     ):
         assert pr_scope_guard.is_allowed(f), f
 

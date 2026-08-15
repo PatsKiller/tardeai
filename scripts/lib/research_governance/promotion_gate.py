@@ -390,15 +390,29 @@ def _gate_9_graded_and_influence(ctx: dict) -> tuple[GateState, str]:
 
 
 def _gate_10_decision_use_audit(ctx: dict) -> tuple[GateState, str]:
+    if ctx.get("live_research_use") is True:
+        rec = ctx.get("decision_use_audit")
+        try:
+            from .decision_use_audit import is_authentic_audit
+        except Exception:
+            return GateState.FAIL, "decision-use audit module missing"
+        if not is_authentic_audit(rec):
+            return GateState.FAIL, "live research use without authentic decision-use audit"
+        return GateState.PASS, "live decision-use audited"
     if ctx.get("decision_use_audit_contract") is True:
         return GateState.PASS, "decision-use audit contract present"
-    return GateState.NOT_APPLICABLE, "live decision-use audit deferred to R4"
+    return GateState.NOT_APPLICABLE, "no live research use in this context"
 
 
 def _gate_11_live_degradation(ctx: dict) -> tuple[GateState, str]:
+    if ctx.get("live_research_use") is True:
+        deg = ctx.get("degradation_decision")
+        if not isinstance(deg, dict) or deg.get("action") not in {"keep", "degrade", "retire"}:
+            return GateState.FAIL, "live research use without degradation decision"
+        return GateState.PASS, f"degradation {deg.get('action')}"
     if ctx.get("live_degradation_contract") is True:
         return GateState.PASS, "live degradation/retirement monitoring contract present"
-    return GateState.NOT_APPLICABLE, "live degradation/retirement deferred to R4"
+    return GateState.NOT_APPLICABLE, "no live research use in this context"
 
 
 _GATES: list[tuple[str, str, Callable[[dict], tuple[GateState, str]]]] = [

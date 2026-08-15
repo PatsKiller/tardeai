@@ -149,8 +149,8 @@ def test_valuation_profile_requires_sensitivity():
     assert "scenario_sensitivity" in names
 
 
-def test_r3_almanac_files_absent():
-    assert not (ROOT / "scripts/lib/research_governance/almanac.py").exists()
+def test_live_alex_wire_absent():
+    assert not (ROOT / "scripts/lib/research_governance/live_alex.py").exists()
 
 
 def test_r4_live_integration_absent():

@@ -164,6 +164,9 @@ def run_acceptance(profile_name: str = "R1_foundation") -> dict[str, Any]:
         from . import r2_acceptance
         checks.update(r2_acceptance.R2A_CHECKS)
         extra_ids = list(r2_acceptance.R2A_IDS)
+    from . import r3_acceptance, r4_acceptance
+    checks.update(r3_acceptance.CHECKS)
+    checks.update(r4_acceptance.CHECKS)
 
     results: dict[str, str] = {}
 
