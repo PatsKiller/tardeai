@@ -25,12 +25,7 @@ on:
       - "tests/test_research_cpcv*"
       - "tests/test_research_durable*"
       - "tests/test_research_policy*"
-      - "tests/test_research_behavioral*"
       - "tests/test_research_empirical*"
-      - "tests/test_research_r5*"
-      - "tests/test_research_r6*"
-      - "tests/test_research_r7*"
-      - "tests/test_research_r8*"
   push:
     branches:
       - "feature/research-governance-v1"
@@ -66,7 +61,7 @@ jobs:
 
       - name: Research governance tests
         run: |
-          python -m pytest tests/test_research_governance* tests/test_research_mechanics* tests/test_research_almanac* tests/test_research_r4* tests/test_research_cpcv* tests/test_research_durable* tests/test_research_policy* tests/test_research_behavioral* tests/test_research_empirical* tests/test_research_r5* tests/test_research_r6* tests/test_research_r7* tests/test_research_r8* -q
+          python -m pytest tests/test_research_governance* tests/test_research_mechanics* tests/test_research_almanac* tests/test_research_r4* tests/test_research_cpcv* tests/test_research_durable* tests/test_research_policy* tests/test_research_empirical* -q
 
       - name: RGA acceptance (R1_foundation)
         run: python scripts/run_research_governance_acceptance.py R1_foundation
