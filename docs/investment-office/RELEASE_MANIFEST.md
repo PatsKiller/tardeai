@@ -5,24 +5,32 @@
 > Authority: **READ_ONLY_ADVISORY** — no broker / order / stop / 2FA.
 
 **Status:** `production`  
-**Branch:** `chore/cio-pin-7986e923`  
-**Created:** `2026-08-14T22:14:24.454952+00:00`  
-**Manifest hash:** `806327d04c0f78df1e2c28750486a5f04025ee3652248f5966d4383a3e606f3d`
+**Branch:** `chore/cio-pin-a69d432d`  
+**Created:** `2026-08-15T01:22:24.528325+00:00`  
+**Manifest hash:** `ac7545f085994c728d6a9eb5d0050e10fab9609a7ea2e2f88f4ec3cb33fa9bc3`
 
 ## Pin
 
 | Field | Value |
 | --- | --- |
-| canonical_source_sha | `7986e923bc29c863a27bf41a40bf1aefca3b1da8` |
-| frontend_build_sha | `7986e923bc29c863a27bf41a40bf1aefca3b1da8` |
-| backend_release_sha | `7986e923bc29c863a27bf41a40bf1aefca3b1da8` |
-| deployed_release_path | `/home/johnclaw/trade-ai-releases/portfolio-server/7986e923-main-exact-pin-20260814-180617` |
+| canonical_source_sha | `a69d432d67fde471d6be76ffc79740d754289fa3` |
+| release_content_sha | `a69d432d67fde471d6be76ffc79740d754289fa3` |
+| release_attestation_sha | `a69d432d67fde471d6be76ffc79740d754289fa3` |
+| remote_main_sha_at_manifest | `a69d432d67fde471d6be76ffc79740d754289fa3` |
+| frontend_build_sha | `a69d432d67fde471d6be76ffc79740d754289fa3` |
+| backend_release_sha | `a69d432d67fde471d6be76ffc79740d754289fa3` |
+| report_source_sha | `a69d432d67fde471d6be76ffc79740d754289fa3` |
+| deployed_release_path | `/home/johnclaw/trade-ai-releases/portfolio-server/a69d432d-main-exact-phase2-20260814-212122` |
+| deployed_release_name | `a69d432d-main-exact-phase2-20260814-212122` |
 | migration_head | `2026-08-13_two_way_reliability_n.sql` |
 | docs_pin | `956038c628b3a3a66fdd6ae5` |
 | runtime_config_hash | `1171100c678822858d2c6c6f938abf15` |
 | report_version | `report_v2_1.5.0` |
-| rollback_sha | `e20dc5eb80565ced4fa8203291057f34a12af0b3` |
-| created_at | `2026-08-14T22:14:24.454952+00:00` |
+| rollback_sha | `fc957c8180b1f7415baf941d189d31f02839a279`a69d432d67fde471d6be76ffc79740d754289fa3` |
+| manifest_generated_from_sha | `a69d432d67fde471d6be76ffc79740d754289fa3` |
+| manifest_created_at | `2026-08-15T01:22:24.528325+00:00` |
+| created_at | `2026-08-15T01:22:24.528325+00:00` |
+| financial_authority | `READ_ONLY_ADVISORY` |
 
 ## Product versions
 
