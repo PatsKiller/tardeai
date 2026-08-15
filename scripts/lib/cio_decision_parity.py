@@ -194,6 +194,7 @@ def compare_decision_surfaces(
     telegram_payload: Any = None,
     extra_surfaces: Optional[dict[str, Any]] = None,
     require_digests: bool = True,
+    subset_surfaces: tuple[str, ...] = ("telegram_payload",),
 ) -> dict[str, Any]:
     """Compare material decisions across provided surfaces.
 
@@ -244,18 +245,22 @@ def compare_decision_surfaces(
         all_ids |= set(idx.keys())
         if name == canonical:
             continue
+        # A canary/telegram payload is a subset: it need not repeat every plan card.
+        if name in subset_surfaces:
+            continue
         for did in canon_ids - set(idx.keys()):
             missing_from_surface.append({
                 "decision_id": did,
                 "surface": name,
                 "symbol": _norm_symbol(indexed[canonical][did]),
             })
-        for did in set(idx.keys()) - canon_ids:
-            extra_on_surface.append({
-                "decision_id": did,
-                "surface": name,
-                "symbol": _norm_symbol(idx[did]),
-            })
+        if name not in subset_surfaces:
+            for did in set(idx.keys()) - canon_ids:
+                extra_on_surface.append({
+                    "decision_id": did,
+                    "surface": name,
+                    "symbol": _norm_symbol(idx[did]),
+                })
 
     surface_names = list(indexed.keys())
     for did in sorted(all_ids):
