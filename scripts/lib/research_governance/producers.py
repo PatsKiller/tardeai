@@ -335,3 +335,124 @@ def run_governed_robustness(inp: RobustnessInput) -> GovernedResult:
     governed = issue_governed_receipt("robustness", result, input_artifact=inp)
     _assert_clean(governed, "robustness")
     return governed
+
+
+# ---------------------------------------------------------------------------
+# R2 deterministic producers (raw inputs only — never a caller-built result)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class FixedIncomeInput:
+    instrument_id: str
+    settlement: str
+    maturity: str
+    coupon_rate: float
+    frequency: str
+    day_count: str
+    clean_price: Optional[float] = None
+    dirty_price: Optional[float] = None
+    yield_to_maturity: Optional[float] = None
+    callable: bool = False
+    call_schedule: Optional[tuple] = None
+    face: Optional[float] = None
+    hypothesis_id: str = "r2-fi"
+    protocol_hash: str = "r2-fi"
+
+
+@dataclass(frozen=True)
+class EtfPremiumInput:
+    instrument_id: str
+    market_price: float
+    market_price_as_of: str
+    market_currency: str
+    nav: float
+    nav_as_of: str
+    nav_currency: str
+    nav_kind: str
+    requested_nav_role: str = "OFFICIAL_NAV"
+    hypothesis_id: str = "r2-etf"
+    protocol_hash: str = "r2-etf"
+
+
+@dataclass(frozen=True)
+class ValuationInput:
+    instrument_id: str
+    fcfs: tuple
+    wacc: float
+    terminal_growth: float
+    debt: float
+    cash: float
+    shares: Optional[float] = None
+    hypothesis_id: str = "r2-val"
+    protocol_hash: str = "r2-val"
+
+
+def run_governed_fixed_income(inp: FixedIncomeInput) -> GovernedResult:
+    from .mechanics.fixed_income import analyze_bond
+    from .mechanics.results import wrap_mechanic
+    calc = analyze_bond(
+        instrument_id=inp.instrument_id,
+        settlement=inp.settlement,
+        maturity=inp.maturity,
+        coupon_rate=inp.coupon_rate,
+        frequency=inp.frequency,
+        day_count=inp.day_count,
+        clean_price=inp.clean_price,
+        dirty_price=inp.dirty_price,
+        yield_to_maturity=inp.yield_to_maturity,
+        callable=inp.callable,
+        call_schedule=None if inp.call_schedule is None else list(inp.call_schedule),
+        face=inp.face,
+    )
+    typed = wrap_mechanic("fixed_income", calc)
+    typed = finalize(typed)
+    if typed.validate():
+        raise RuntimeError(f"fixed-income producer invalid: {typed.validate()}")
+    governed = issue_governed_receipt("fixed_income", typed, input_artifact=inp)
+    _assert_clean(governed, "fixed_income")
+    return governed
+
+
+def run_governed_etf_premium(inp: EtfPremiumInput) -> GovernedResult:
+    from .mechanics.etf import premium_discount
+    from .mechanics.results import wrap_mechanic
+    calc = premium_discount(
+        instrument_id=inp.instrument_id,
+        market_price=inp.market_price,
+        market_price_as_of=inp.market_price_as_of,
+        market_currency=inp.market_currency,
+        nav=inp.nav,
+        nav_as_of=inp.nav_as_of,
+        nav_currency=inp.nav_currency,
+        nav_kind=inp.nav_kind,
+        requested_nav_role=inp.requested_nav_role,
+    )
+    typed = wrap_mechanic("etf_mechanics", calc)
+    typed = finalize(typed)
+    if typed.validate():
+        raise RuntimeError(f"etf producer invalid: {typed.validate()}")
+    governed = issue_governed_receipt("etf_mechanics", typed, input_artifact=inp)
+    _assert_clean(governed, "etf_mechanics")
+    return governed
+
+
+def run_governed_valuation(inp: ValuationInput) -> GovernedResult:
+    from .mechanics.valuation import dcf_value
+    from .mechanics.results import wrap_mechanic
+    calc = dcf_value(
+        instrument_id=inp.instrument_id,
+        fcfs=inp.fcfs,
+        wacc=inp.wacc,
+        terminal_growth=inp.terminal_growth,
+        debt=inp.debt,
+        cash=inp.cash,
+        shares=inp.shares,
+    )
+    typed = wrap_mechanic("valuation_model", calc)
+    typed = finalize(typed)
+    if typed.validate():
+        raise RuntimeError(f"valuation producer invalid: {typed.validate()}")
+    governed = issue_governed_receipt("valuation_model", typed, input_artifact=inp)
+    _assert_clean(governed, "valuation_model")
+    return governed

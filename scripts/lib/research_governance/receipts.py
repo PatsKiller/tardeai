@@ -116,6 +116,9 @@ PRODUCER_REGISTRY: dict[str, str] = {
     "holm": "multiple_testing.py",
     "bh_fdr": "multiple_testing.py",
     "robustness": "robustness.py",
+    "fixed_income": "mechanics/fixed_income.py",
+    "etf_mechanics": "mechanics/etf.py",
+    "valuation_model": "mechanics/valuation.py",
 }
 
 PRODUCER_MODULE_NAMES: dict[str, str] = {
@@ -126,6 +129,9 @@ PRODUCER_MODULE_NAMES: dict[str, str] = {
     "holm": "research_governance.multiple_testing",
     "bh_fdr": "research_governance.multiple_testing",
     "robustness": "research_governance.robustness",
+    "fixed_income": "research_governance.mechanics.fixed_income",
+    "etf_mechanics": "research_governance.mechanics.etf",
+    "valuation_model": "research_governance.mechanics.valuation",
 }
 
 

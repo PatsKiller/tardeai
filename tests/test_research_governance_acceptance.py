@@ -61,10 +61,11 @@ def test_contract_only_fail_blocks_profile():
     assert "RGA-11" in rep["required_contract_fail"]
 
 
-def test_r2_not_implemented_fail_closed():
+def test_r2_mechanics_profile_implemented():
     rep = acceptance.run_acceptance("R2_mechanics")
-    assert rep["overall"] == GateState.NOT_IMPLEMENTED.value
-    assert rep["not_implemented"] is True
+    assert rep.get("not_implemented") is not True
+    assert rep["overall"] == GateState.PASS.value
+    assert "R2A-1" in rep["required_runtime_pass"]
 
 
 def test_r4_requires_all_sixteen():

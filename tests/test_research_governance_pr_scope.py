@@ -35,6 +35,9 @@ def test_allows_research_files():
         ".github/workflows/research-governance-ci.yml",
         "config/cio_research_source_catalog.json",
         "docs/investment-office/RESEARCH_GOVERNANCE.md",
+        "scripts/lib/research_governance/mechanics/fixed_income.py",
+        "tests/test_research_mechanics_etf.py",
+        "docs/investment-office/R2_DETERMINISTIC_MECHANICS.md",
     ):
         assert pr_scope_guard.is_allowed(f), f
 
