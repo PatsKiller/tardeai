@@ -103,6 +103,43 @@ def test_sta_source_claims_remain_layered():
         assert rec["creates_trim"] is False
 
 
+def test_retrieve_research_context_attaches_governed_audit():
+    ctx = retrieve_research_context(
+        datetime(2026, 8, 14, tzinfo=timezone.utc),
+        decision_id="dec_cio_wire_dry",
+    )
+    audit = ctx.get("governed_audit") or {}
+    assert audit.get("status") == "OK", audit
+    assert audit.get("signature_ok") is True
+    assert audit.get("decision_id") == "dec_cio_wire_dry"
+    assert float(audit.get("influence_cap_pct") or 99) <= 10.0
+    assert audit.get("creates_trim") is False
+    assert audit.get("standalone_sell") is False
+    assert audit.get("partisan_conclusion") is None
+    assert "standalone_sell" in (audit.get("forbidden_actions") or [])
+    almanac = ctx.get("governed_almanac") or {}
+    slices = almanac.get("slices") or {}
+    assert "september_general" in slices
+    layers = (slices["september_general"].get("layers") or {})
+    assert set(layers) == {"source_claim", "trade_ai_reproduction", "current_application"}
+    assert layers["source_claim"].get("citation_only") is True
+    assert layers["source_claim"].get("fulltext") is False
+
+
+def test_governed_audit_fail_soft_when_bundle_raises(monkeypatch):
+    import scripts.lib.research_governance.almanac as almanac
+
+    def _boom(*_a, **_k):
+        raise RuntimeError("fixture missing")
+
+    monkeypatch.setattr(almanac, "bundle", _boom)
+    ctx = retrieve_research_context(datetime(2026, 8, 14, tzinfo=timezone.utc))
+    assert ctx["authority"] == "READ_ONLY_ADVISORY"
+    assert ctx["influence"]["creates_trim"] is False
+    assert ctx["governed_audit"]["status"] == "UNAVAILABLE"
+    assert "fixture missing" in str(ctx["governed_audit"].get("reason") or "")
+
+
 def test_retrieve_does_not_emit_autonomous_execution():
     ctx = retrieve_for_decision(now=datetime(2026, 8, 14, tzinfo=timezone.utc))
     compact = retrieve_research_context(datetime(2026, 8, 14, tzinfo=timezone.utc))

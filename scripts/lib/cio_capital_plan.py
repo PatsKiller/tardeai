@@ -1307,7 +1307,11 @@ def build_capital_plan_from_sources(
             for p in (snap.get("positions") or [])
             if p.get("symbol")
         ]
-        research = retrieve_research_context(now, symbols=symbols)
+        research = retrieve_research_context(
+            now,
+            symbols=symbols,
+            decision_id=str(plan.get("decision_id") or plan.get("digest") or "") or None,
+        )
         store = load_strategy_store()
         plan = dict(plan)
         plan["seasonality"] = season

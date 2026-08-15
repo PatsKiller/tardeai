@@ -143,14 +143,94 @@ def retrieve_for_decision(
     }
 
 
+def _attach_governed_audit(
+    ctx: dict[str, Any],
+    *,
+    now: datetime,
+    decision_id: Optional[str] = None,
+) -> dict[str, Any]:
+    """Attach R3/R4 governed Almanac + HMAC decision-use audit.
+
+    Fail-soft: compact CIO context still returns if governance import/fixture
+    is unavailable. Never creates TRIM. Never a standalone sell.
+    Does not call ``cio_retriever_adapter.retrieve_for_decision`` (that adapter
+    imports this module — recursion is forbidden).
+    """
+    try:
+        from scripts.lib.research_governance.almanac import as_research_evidence, bundle
+        from scripts.lib.research_governance.decision_use_audit import DecisionUseLedger
+        from scripts.lib.research_governance.degradation import evaluate_fact
+
+        pack = bundle(as_of_year=int(now.year))
+        evidence = []
+        for sl in (pack.get("slices") or {}).values():
+            ev = as_research_evidence(sl)
+            if ev.evidence_grade.value != "X":
+                evidence.append(ev)
+        did = (decision_id or "").strip() or f"cio_research_{now.strftime('%Y%m%dT%H%M%SZ')}"
+        rec = DecisionUseLedger().record(
+            decision_id=did,
+            query={"hook": "cio_research_retriever", "month": int(now.month)},
+            evidence=evidence,
+            influence_cap_pct=float(pack.get("max_influence_pct") or MAX_INFLUENCE_PCT),
+            as_of=now.isoformat(),
+        )
+        deg = evaluate_fact(evidence[0]) if evidence else None
+        ctx["governed_audit"] = {
+            "status": "OK",
+            "decision_id": rec.decision_id,
+            "record_digest": rec.record_digest,
+            "signature_ok": rec.verify(),
+            "influence_cap_pct": rec.influence_cap_pct,
+            "forbidden_actions": list(rec.forbidden_actions),
+            "fact_ids": list(rec.fact_ids),
+            "degradation": (
+                {"action": deg.action, "reason": deg.reason} if deg is not None else None
+            ),
+            "authority": AUTHORITY,
+            "creates_trim": False,
+            "standalone_sell": False,
+            "partisan_conclusion": pack.get("partisan_conclusion"),
+            "august_hardcoded_bearish": bool(pack.get("august_hardcoded_bearish")),
+        }
+        ctx["governed_almanac"] = {
+            "version": pack.get("version"),
+            "cycle_label": pack.get("cycle_label"),
+            "weak_months": pack.get("reproduced_weak_months"),
+            "max_influence_pct": pack.get("max_influence_pct"),
+            "standalone_sell": False,
+            "creates_trim": False,
+            "slices": {
+                k: {
+                    "n": sl.get("n"),
+                    "mean": sl.get("mean"),
+                    "evidence_grade": sl.get("evidence_grade"),
+                    "layers": sl.get("layers"),
+                }
+                for k, sl in (pack.get("slices") or {}).items()
+            },
+        }
+    except Exception as exc:  # noqa: BLE001 — fail-soft; compact context still usable
+        ctx["governed_audit"] = {
+            "status": "UNAVAILABLE",
+            "reason": str(exc)[:240],
+            "authority": AUTHORITY,
+            "creates_trim": False,
+            "standalone_sell": False,
+        }
+    return ctx
+
+
 def retrieve_research_context(
     now: Optional[datetime] = None,
     symbols: Optional[Sequence[str]] = None,
+    decision_id: Optional[str] = None,
 ) -> dict[str, Any]:
     """Hook used by compose_strategy_context / capital plan (modifier note only)."""
-    payload = retrieve_for_decision(now=now, symbols=symbols)
+    now = now or datetime.now(timezone.utc)
+    payload = retrieve_for_decision(now=now, symbols=symbols, decision_id=decision_id)
     # Surface a stable, compact context object for the plan envelope.
-    return {
+    ctx = {
         "version": RETRIEVER_VERSION,
         "as_of": payload["as_of"],
         "authority": AUTHORITY,
@@ -167,3 +247,8 @@ def retrieve_research_context(
         "disclaimer": payload["disclaimer"],
         "symbols": payload["symbols"],
     }
+    return _attach_governed_audit(
+        ctx,
+        now=now,
+        decision_id=decision_id or payload.get("decision_id"),
+    )
