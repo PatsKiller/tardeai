@@ -269,7 +269,11 @@ def _canonical_decisions(plan: dict[str, Any]) -> list[dict[str, Any]]:
             except (TypeError, ValueError):
                 continue
         extra = {
-            "decision_input_digest": row.get("decision_input_digest") or "",
+            # Copy catalog identity exactly. Do not invent a local evidence
+            # digest — that made signed Telegram buttons fail digest_mismatch
+            # when the live catalog is decision_id-only (empty hashes).
+            "decision_input_digest": str(row.get("decision_input_digest") or ""),
+            "decision_evidence_digest": str(row.get("decision_evidence_digest") or ""),
             "weight_pct": row.get("current_weight_pct") or row.get("weight_pct"),
             "current_value_usd": row.get("current_value_usd"),
             "act_now": row.get("act_now"),

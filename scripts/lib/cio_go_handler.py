@@ -77,5 +77,17 @@ def handle_cio_go(method: str, path: str, query: dict[str, list[str]], body: dic
         note = str(body.get("note") or "")
     result = apply_signed_disposition(payload, rating=rating, note=note)
     if not result.get("ok"):
-        return _page("Not applied", f"<h1>Disposition not applied</h1><p>{html.escape(str(result.get('error')))}</p>", 409)
+        err = html.escape(str(result.get("error") or "unknown"))
+        field = html.escape(str(result.get("field") or ""))
+        detail = html.escape(str(result.get("detail") or ""))
+        extra = f"<p class=\"muted\">{field}</p>" if field else ""
+        if detail:
+            extra += f"<p class=\"muted\">{detail}</p>"
+        if err == "digest_mismatch":
+            extra += (
+                "<p>This button was minted against a different evidence hash than "
+                "the live capital-plan catalog. Open CIO and retry, or wait for a "
+                "refreshed card. Nothing was recorded.</p>"
+            )
+        return _page("Not applied", f"<h1>Disposition not applied</h1><p>{err}</p>{extra}", 409)
     return _page("Recorded", f"<h1>{html.escape(action.upper())} recorded</h1><p>Decision {html.escape(did)} · idempotent advisory write only.</p>")
