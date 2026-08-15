@@ -173,6 +173,7 @@ def _attach_governed_audit(
             query={"hook": "cio_research_retriever", "month": int(now.month)},
             evidence=evidence,
             influence_cap_pct=float(pack.get("max_influence_pct") or MAX_INFLUENCE_PCT),
+            as_of=now.isoformat(),
         )
         deg = evaluate_fact(evidence[0]) if evidence else None
         ctx["governed_audit"] = {
