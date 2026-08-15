@@ -5,7 +5,7 @@ production-hardening CIO remediation agent.
 
 - branch: `feature/research-governance-v1`
 - worktree: `/home/johnclaw/tradeai-wt-research-governance`
-- base_sha: `dafb8c1b8143f1c07c22bc00ed517dcde87bc98b`
+- base_sha: `aa037b738bf5792b81b4ff174dda04b62c2ee2d4`
 - base captured at R1 true-provenance rebase (2026-08-14, live `origin/main`)
 - authority: `READ_ONLY_ADVISORY`
 
