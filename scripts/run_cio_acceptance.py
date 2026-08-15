@@ -138,7 +138,8 @@ def _collect_live(now: datetime, ev: Path) -> dict[str, Any]:
         except Exception:
             pass
 
-    parity = ((home or {}).get("consistency") or {}).get("decision_field_parity") or {}
+    home_parity = ((home or {}).get("consistency") or {}).get("decision_field_parity") or {}
+    parity = dict(home_parity) if isinstance(home_parity, dict) else {}
 
     # Live frontend bundle (production asset, not an offline rebuild)
     bundle_text = ""
@@ -238,9 +239,64 @@ def _collect_live(now: datetime, ev: Path) -> dict[str, Any]:
         except (TypeError, ValueError):
             proof_general = None
 
-    # CI status on live SHA (best-effort; unproven → FAIL)
+    # G8: compare the live payloads already collected. Home-only parity.ok is not enough.
+    try:
+        from scripts.lib.cio_decision_parity import compare_decision_surfaces
+        g8 = compare_decision_surfaces(
+            plan=plan, cio_home=home, report=report, telegram_payload=canary,
+        )
+        parity = {
+            **parity,
+            "ok": bool(g8.get("ok")),
+            "surfaces_complete": True,
+            "surfaces": {
+                "capital_plan": plan,
+                "cio_home": home,
+                "report": report,
+                "telegram": canary,
+            },
+            "missing_from_surface": g8.get("missing_from_surface"),
+            "extra_on_surface": g8.get("extra_on_surface"),
+            "field_mismatch": g8.get("field_mismatch"),
+            "digest_mismatch": g8.get("digest_mismatch"),
+            "surface_decision_counts": g8.get("decision_count"),
+        }
+        (ev / "decision_parity.json").write_text(
+            json.dumps(g8, indent=2, default=str)[:200_000], encoding="utf-8",
+        )
+    except Exception as e:
+        parity = {
+            **parity,
+            "ok": False,
+            "surfaces_complete": False,
+            "error": f"{type(e).__name__}:{e}"[:200],
+        }
+
+    def _hardening_green(sha: str) -> bool:
+        if not sha:
+            return False
+        try:
+            chk = subprocess.check_output(
+                ["gh", "api", f"repos/PatsKiller/tardeai/commits/{sha}/check-runs",
+                 "--jq", ".check_runs[] | select(.name==\"cio-hardening\") | .conclusion"],
+                text=True, stderr=subprocess.DEVNULL, timeout=20,
+            )
+            if "success" in chk:
+                return True
+        except Exception:
+            pass
+        try:
+            chk = subprocess.check_output(
+                ["gh", "api", f"repos/PatsKiller/tardeai/commits/{sha}/status",
+                 "--jq", ".statuses[] | select(.context==\"cio-hardening\") | .state"],
+                text=True, stderr=subprocess.DEVNULL, timeout=20,
+            )
+            return "success" in chk
+        except Exception:
+            return False
+
+    # CI status on live content SHA and attestation SHA when distinct.
     ci_required = False
-    ci_green = False
     try:
         prot = subprocess.check_output(
             ["gh", "api", "repos/PatsKiller/tardeai/branches/main/protection",
@@ -250,26 +306,9 @@ def _collect_live(now: datetime, ev: Path) -> dict[str, Any]:
         ci_required = "cio-hardening" in prot
     except Exception:
         ci_required = False
-    if live:
-        try:
-            chk = subprocess.check_output(
-                ["gh", "api", f"repos/PatsKiller/tardeai/commits/{live}/check-runs",
-                 "--jq", ".check_runs[] | select(.name==\"cio-hardening\") | .conclusion"],
-                text=True, stderr=subprocess.DEVNULL, timeout=20,
-            )
-            ci_green = "success" in chk
-        except Exception:
-            ci_green = False
-        if not ci_green:
-            try:
-                chk = subprocess.check_output(
-                    ["gh", "api", f"repos/PatsKiller/tardeai/commits/{live}/status",
-                     "--jq", ".statuses[] | select(.context==\"cio-hardening\") | .state"],
-                    text=True, stderr=subprocess.DEVNULL, timeout=20,
-                )
-                ci_green = "success" in chk
-            except Exception:
-                ci_green = False
+    ci_green = _hardening_green(live)
+    ci_attestation_sha = main if (main and live and main != live) else ""
+    ci_attestation_green = _hardening_green(ci_attestation_sha) if ci_attestation_sha else None
 
     facts: list[dict] = []
     sc = (plan or {}).get("strategy_context") or {}
@@ -336,12 +375,16 @@ def _collect_live(now: datetime, ev: Path) -> dict[str, Any]:
     qa_pdf = ""
     qa_result = ""
     qa_instance = ""
+    qa_page_hashes: list[str] = []
     if qa_json.is_file():
         try:
             qa = json.loads(qa_json.read_text(encoding="utf-8"))
             qa_pdf = str(qa.get("pdf_sha256") or "")
             qa_result = str(qa.get("result") or "")
             qa_instance = str(qa.get("report_instance_id") or "")
+            raw_hashes = qa.get("page_image_hashes") or qa.get("page_hashes") or []
+            if isinstance(raw_hashes, list):
+                qa_page_hashes = [str(h) for h in raw_hashes if h]
         except Exception:
             pass
     live_plan_digest = ""
@@ -390,6 +433,7 @@ def _collect_live(now: datetime, ev: Path) -> dict[str, Any]:
         "qa_pdf_sha256": qa_pdf,
         "qa_result": qa_result,
         "qa_instance_id": qa_instance,
+        "qa_page_image_hashes": qa_page_hashes,
         "financial_truth_gate": ft,
         "financial_exceptions": exceptions,
         "capital_plan": plan or {},
@@ -413,6 +457,10 @@ def _collect_live(now: datetime, ev: Path) -> dict[str, Any]:
         "authority_surfaces": surfaces,
         "cio_hardening_required": ci_required,
         "cio_hardening_green_on_sha": ci_green,
+        "ci_content_sha": live,
+        "ci_content_hardening_green": ci_green,
+        "ci_attestation_sha": ci_attestation_sha,
+        "ci_attestation_hardening_green": ci_attestation_green,
         "strategy_facts": facts,
         "claims_almanac_integrated": False,
         "claims_research_brain_integrated": False,
