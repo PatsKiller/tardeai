@@ -1,12 +1,17 @@
 {
-  "manifest_schema": "investment_office_release_manifest_v1",
+  "manifest_schema": "investment_office_release_manifest_v2",
   "status": "production",
-  "branch": "chore/cio-pin-7986e923",
-  "canonical_source_sha": "7986e923bc29c863a27bf41a40bf1aefca3b1da8",
-  "frontend_build_sha": "7986e923bc29c863a27bf41a40bf1aefca3b1da8",
-  "backend_release_sha": "7986e923bc29c863a27bf41a40bf1aefca3b1da8",
-  "deployed_release_path": "/home/johnclaw/trade-ai-releases/portfolio-server/7986e923-main-exact-pin-20260814-180617",
-  "deployed_release_name": "7986e923-main-exact-pin-20260814-180617",
+  "branch": "chore/cio-pin-fc957c81",
+  "release_content_sha": "fc957c8180b1f7415baf941d189d31f02839a279",
+  "release_attestation_sha": "fc957c8180b1f7415baf941d189d31f02839a279",
+  "remote_main_sha_at_manifest": "fc957c8180b1f7415baf941d189d31f02839a279",
+  "canonical_source_sha": "fc957c8180b1f7415baf941d189d31f02839a279",
+  "origin_main_sha": "fc957c8180b1f7415baf941d189d31f02839a279",
+  "frontend_build_sha": "fc957c8180b1f7415baf941d189d31f02839a279",
+  "backend_release_sha": "fc957c8180b1f7415baf941d189d31f02839a279",
+  "report_source_sha": "fc957c8180b1f7415baf941d189d31f02839a279",
+  "deployed_release_path": "/home/johnclaw/trade-ai-releases/portfolio-server/fc957c81-main-exact-phase2-20260814-211406",
+  "deployed_release_name": "fc957c81-main-exact-phase2-20260814-211406",
   "deploy_exists": true,
   "migration_head": "2026-08-13_two_way_reliability_n.sql",
   "migration_set": [
@@ -57,12 +62,16 @@
     "alex_telegram_version": "alex_telegram_1.0.0",
     "pipeline_version": "pipeline_1.0.0"
   },
-  "rollback_sha": "e20dc5eb80565ced4fa8203291057f34a12af0b3",
-  "origin_main_sha": "7986e923bc29c863a27bf41a40bf1aefca3b1da8",
-  "created_at": "2026-08-14T22:14:24.454952+00:00",
+  "rollback_sha": "7986e923bc29c863a27bf41a40bf1aefca3b1da8",
+  "rollback_content_sha": "7986e923bc29c863a27bf41a40bf1aefca3b1da8",
+  "manifest_generated_from_sha": "fc957c8180b1f7415baf941d189d31f02839a279",
+  "manifest_created_at": "2026-08-15T01:15:17.053400+00:00",
+  "created_at": "2026-08-15T01:15:17.053400+00:00",
   "financial_authority": "READ_ONLY_ADVISORY",
   "broker_write_paths_added": 0,
-  "notes": "Production investment-office release: Git main, portfolio-server CURRENT, and this manifest pin the same full SHA. Stale preliminary SHAs are forbidden. Authority remains READ_ONLY_ADVISORY.",
+  "attestation_only": false,
+  "head_commit_class": "RUNTIME_CONTENT",
+  "notes": "Git main is the release-attestation commit after this pin merges; CURRENT runs the attested content SHA fc957c8180b1. Stale preliminary SHAs are forbidden. Authority remains READ_ONLY_ADVISORY.",
   "hermes_score_weights_ownership": {
     "path": "config/hermes_score_weights.yaml",
     "classification": "runtime_state_with_release_seed",
@@ -85,5 +94,5 @@
     "auto_enforced_by_this_script": false,
     "note": "Status-check contexts left empty so first main PR is not blocked before the workflow runs."
   },
-  "manifest_hash": "806327d04c0f78df1e2c28750486a5f04025ee3652248f5966d4383a3e606f3d"
+  "manifest_hash": "e8d406d026669e13f7ab7b917e75c81f1f5e2a3cd9d7b5b947a81ce78e28e099"
 }
