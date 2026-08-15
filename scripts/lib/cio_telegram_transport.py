@@ -264,9 +264,11 @@ def send_cio_message(
     message_ids: list[Any] = []
     for cid in cio_chat_ids():
         try:
+            # Plain text: Markdown parse_mode eats underscores in dec_… / ACT_NOW.
             resp = send_message(
                 token=token, chat_id=cid, text=text[:4000],
                 reply_markup=reply_markup,
+                parse_mode=None,
             )
             if resp.get("ok"):
                 ok_any = True
