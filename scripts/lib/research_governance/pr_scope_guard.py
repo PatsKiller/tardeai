@@ -32,7 +32,11 @@ ALLOWLIST_PATTERNS: List[str] = [
     "docs/investment-office/RESEARCH_GOVERNANCE*",
     "docs/investment-office/BOOK_KNOWLEDGE_INVENTORY.md",
     "docs/investment-office/R1_FORMULA_AND_REFERENCE_AUDIT.md",
+    "docs/investment-office/R2_*",
     "scripts/run_research_governance_acceptance.py",
+    "scripts/lib/research_governance/mechanics/*",
+    "scripts/lib/research_governance/mechanics/**",
+    "tests/test_research_mechanics*",
 ]
 
 # Off-limits shared CIO / retrieval / release files. Deferred to R4.

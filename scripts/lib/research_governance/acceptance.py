@@ -71,10 +71,15 @@ PHASE_PROFILES: dict[str, dict[str, list[str]]] = {
         "not_in_scope": ["RGA-15", "RGA-16"],
     },
     "R2_mechanics": {
-        "required_runtime": [],
-        "required_contract": [],
-        "not_in_scope": [],
-        "not_implemented": True,
+        "required_runtime": [
+            "RGA-1", "RGA-2", "RGA-3", "RGA-4", "RGA-5", "RGA-6",
+            "RGA-7", "RGA-8", "RGA-9", "RGA-10", "RGA-13", "RGA-14",
+            "R2A-1", "R2A-2", "R2A-3", "R2A-4", "R2A-5", "R2A-6", "R2A-7",
+            "R2A-8", "R2A-9", "R2A-10", "R2A-11", "R2A-12", "R2A-13",
+            "R2A-14", "R2A-15",
+        ],
+        "required_contract": ["RGA-11", "RGA-12"],
+        "not_in_scope": ["RGA-15", "RGA-16"],
     },
     "R3_almanac": {
         "required_runtime": ["RGA-1", "RGA-2", "RGA-3", "RGA-4", "RGA-5", "RGA-6",
@@ -153,10 +158,16 @@ def run_acceptance(profile_name: str = "R1_foundation") -> dict[str, Any]:
 
     from . import acceptance_checks
 
-    checks: dict[str, Check] = acceptance_checks.R1_CHECKS
+    checks: dict[str, Check] = dict(acceptance_checks.R1_CHECKS)
+    extra_ids: list[str] = []
+    if profile_name == "R2_mechanics":
+        from . import r2_acceptance
+        checks.update(r2_acceptance.R2A_CHECKS)
+        extra_ids = list(r2_acceptance.R2A_IDS)
+
     results: dict[str, str] = {}
 
-    for gid in RGA_IDS:
+    for gid in list(RGA_IDS) + extra_ids:
         if gid in profile["not_in_scope"]:
             results[gid] = GateState.NOT_IN_SCOPE.value
             continue

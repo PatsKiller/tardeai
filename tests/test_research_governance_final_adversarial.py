@@ -265,5 +265,5 @@ def test_contract_only_failure_blocks_r1():
     assert "RGA-11" in rep["required_contract_fail"]
 
 
-def test_r2_cannot_pass_before_it_exists():
-    assert acceptance.run_acceptance("R2_mechanics")["overall"] == GateState.NOT_IMPLEMENTED.value
+def test_r2_mechanics_acceptance_passes_when_implemented():
+    assert acceptance.run_acceptance("R2_mechanics")["overall"] == GateState.PASS.value

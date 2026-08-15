@@ -115,8 +115,9 @@ R1 splits acceptance into three disjoint collections:
 - `not_in_scope` — RGA-15 (R3) and RGA-16 (R4); NEVER counted as a PASS.
 
 Overall PASS requires EVERY required_runtime gate to pass AND EVERY
-required_contract gate to pass. `R2_mechanics` is `NOT_IMPLEMENTED` (fail-closed)
-until actual R2 mechanics acceptance exists.
+required_contract gate to pass. `R2_mechanics` inherits the R1 foundation and
+adds R2A-1..R2A-15 (fixed-income / ETF / valuation mechanics). R3/R4 remain
+out of scope.
 
 ## Trial registry
 
