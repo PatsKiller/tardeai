@@ -1,17 +1,17 @@
 {
   "manifest_schema": "investment_office_release_manifest_v2",
   "status": "production",
-  "branch": "chore/cio-pin-a69d432d",
-  "release_content_sha": "a69d432d67fde471d6be76ffc79740d754289fa3",
-  "release_attestation_sha": "a69d432d67fde471d6be76ffc79740d754289fa3",
-  "remote_main_sha_at_manifest": "a69d432d67fde471d6be76ffc79740d754289fa3",
-  "canonical_source_sha": "a69d432d67fde471d6be76ffc79740d754289fa3",
-  "origin_main_sha": "a69d432d67fde471d6be76ffc79740d754289fa3",
-  "frontend_build_sha": "a69d432d67fde471d6be76ffc79740d754289fa3",
-  "backend_release_sha": "a69d432d67fde471d6be76ffc79740d754289fa3",
-  "report_source_sha": "a69d432d67fde471d6be76ffc79740d754289fa3",
-  "deployed_release_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a69d432d-main-exact-phase2-20260814-212122",
-  "deployed_release_name": "a69d432d-main-exact-phase2-20260814-212122",
+  "branch": "chore/cio-pin-f1f9fb20",
+  "release_content_sha": "f1f9fb20edc1e6785e9582afeec662f58b76ce08",
+  "release_attestation_sha": "f1f9fb20edc1e6785e9582afeec662f58b76ce08",
+  "remote_main_sha_at_manifest": "f1f9fb20edc1e6785e9582afeec662f58b76ce08",
+  "canonical_source_sha": "f1f9fb20edc1e6785e9582afeec662f58b76ce08",
+  "origin_main_sha": "f1f9fb20edc1e6785e9582afeec662f58b76ce08",
+  "frontend_build_sha": "e7b722b3b0a84baa41dfb202765d7c744faf128e",
+  "backend_release_sha": "f1f9fb20edc1e6785e9582afeec662f58b76ce08",
+  "report_source_sha": "f1f9fb20edc1e6785e9582afeec662f58b76ce08",
+  "deployed_release_path": "/home/johnclaw/trade-ai-releases/portfolio-server/f1f9fb20-main-exact-phase2-20260814-213144",
+  "deployed_release_name": "f1f9fb20-main-exact-phase2-20260814-213144",
   "deploy_exists": true,
   "migration_head": "2026-08-13_two_way_reliability_n.sql",
   "migration_set": [
@@ -62,11 +62,11 @@
     "alex_telegram_version": "alex_telegram_1.0.0",
     "pipeline_version": "pipeline_1.0.0"
   },
-  "rollback_sha": "fc957c8180b1f7415baf941d189d31f02839a279",
-  "rollback_content_sha": "fc957c8180b1f7415baf941d189d31f02839a279",
-  "manifest_generated_from_sha": "a69d432d67fde471d6be76ffc79740d754289fa3",
-  "manifest_created_at": "2026-08-15T01:22:24.528325+00:00",
-  "created_at": "2026-08-15T01:22:24.528325+00:00",
+  "rollback_sha": "f1f9fb20edc1e6785e9582afeec662f58b76ce08",
+  "rollback_content_sha": "f1f9fb20edc1e6785e9582afeec662f58b76ce08",
+  "manifest_generated_from_sha": "f1f9fb20edc1e6785e9582afeec662f58b76ce08",
+  "manifest_created_at": "2026-08-15T01:33:13.831282+00:00",
+  "created_at": "2026-08-15T01:33:13.831282+00:00",
   "financial_authority": "READ_ONLY_ADVISORY",
   "broker_write_paths_added": 0,
   "attestation_only": false,
@@ -94,5 +94,5 @@
     "auto_enforced_by_this_script": false,
     "note": "Status-check contexts left empty so first main PR is not blocked before the workflow runs."
   },
-  "manifest_hash": "ac7545f085994c728d6a9eb5d0050e10fab9609a7ea2e2f88f4ec3cb33fa9bc3"
+  "manifest_hash": "f95f5ee3b98b514dc55e7e96cddd0285c9a7c2f845a65f3e8d61a21e159d1302"
 }
