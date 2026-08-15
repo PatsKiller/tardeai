@@ -195,4 +195,17 @@ def apply_signed_disposition(payload: dict[str, Any], *, rating: Optional[int] =
         "rating": rating,
         "note": note,
     }
-    return post_decision_disposition(str(payload.get("decision_id") or ""), body)
+    result = post_decision_disposition(str(payload.get("decision_id") or ""), body)
+    try:
+        from scripts.lib.cio_production_case import record_disposition
+        record_disposition(str(payload.get("decision_id") or ""), {
+            "disposition": action,
+            "rating": rating,
+            "note": note,
+            "decision_input_digest": payload.get("decision_input_digest") or "",
+            "decision_evidence_digest": payload.get("decision_evidence_digest") or "",
+            "source": "signed_action_link",
+        })
+    except Exception:
+        pass
+    return result
