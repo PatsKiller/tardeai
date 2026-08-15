@@ -206,7 +206,7 @@ retrieval wiring, and the knowledge-base integration are **deferred** (R2+).
 ## 11. Combinatorial purged splits (CPCV step 1)
 
 - **method**: combinatorially-symmetric purged train/test splits
-- **version_of_record**: López de Prado (2018) *AFML*, Wiley, Ch. 12 (ISBN `9781119482089`)
+- **version_of_record**: López de Prado (2018) *AFML*, Wiley, Ch. 12 (hardcover ISBN `9781119482086`, e-book ISBN `9781119482109`)
 - **working_paper**: none
 - **formula/algorithm**: partition the index axis into G contiguous groups; for every combination of `n_test_groups`, produce one `{train, test}` partition with label-overlap purging and per-block embargo.
 - **code location**: `scripts/lib/research_governance/cv.py::combinatorial_purged_splits` (+ legacy alias `combinatorial_purged_cv`)

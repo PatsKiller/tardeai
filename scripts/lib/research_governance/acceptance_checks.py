@@ -161,6 +161,17 @@ def _check_provenance() -> tuple[str, str]:
         return _fail("AFML CPCV must be a book/chapter source, not a paper")
     if cpcv[0].get("title") == "Combinatorially Symmetric Cross-Validation (CSCV)":
         return _fail("CPCV must not be conflated with PBO's CSCV paper")
+    # P1-1: the old, incorrect AFML ISBN must be absent; Wiley hardcover/ebook are canonical.
+    if cpcv[0].get("doi_or_isbn") == "9781119482089":
+        return _fail("old incorrect AFML ISBN 9781119482089 must be rejected")
+    if cpcv[0].get("isbn_hardcover") != "9781119482086":
+        return _fail("AFML CPCV must record Wiley hardcover ISBN 9781119482086")
+    if cpcv[0].get("isbn_ebook") != "9781119482109":
+        return _fail("AFML CPCV must record Wiley e-book ISBN 9781119482109")
+    afml_book = [s for s in sources if s["source_id"] == "lopez_de_prado_afml"]
+    if not afml_book or afml_book[0].get("isbn_hardcover") != "9781119482086" \
+            or afml_book[0].get("isbn_ebook") != "9781119482109":
+        return _fail("AFML book entry must record Wiley hardcover/ebook ISBNs")
     return _pass("provenance coherent + exact method references + full-text all-fields + CPCV book/chapter")
 
 
@@ -323,8 +334,42 @@ def _check_trial_registry() -> tuple[str, str]:
     if reg_imm.get_family("fi") is None:
         return _fail("get_family must expose the frozen receipt")
 
+    # P0-3/P0-4: registry receipts are ISSUED (trusted-issuer signed) and bind the
+    # exact frozen family definition; OOS receipt binds its dataset.
+    fam_receipt = reg.family_receipt("fam")
+    comp_receipt = reg.completeness_receipt("fam")
+    if not fam_receipt.verify():
+        return _fail("frozen family receipt must verify (issuer-signed)")
+    if not fam_receipt.issuer_id or not fam_receipt.signature:
+        return _fail("frozen family receipt must carry issuer_id + signature")
+    if not comp_receipt.verify():
+        return _fail("completeness receipt must verify (issuer-signed)")
+    if comp_receipt.definition_digest != fam_receipt.definition_digest:
+        return _fail("completeness receipt must bind the exact frozen family definition digest")
+    if comp_receipt.planned_trial_count != len(fam_receipt.planned_trial_ids):
+        return _fail("completeness planned_trial_count must equal frozen planned trials")
+    if comp_receipt.complete and comp_receipt.recorded_trial_count != comp_receipt.planned_trial_count:
+        return _fail("complete family recorded count must equal planned count")
+    if sum(comp_receipt.terminal_counts.values()) != comp_receipt.recorded_trial_count:
+        return _fail("terminal_counts sum must equal recorded count")
+
+    reg_oos2 = trial_registry.TrialRegistry()
+    reg_oos2.freeze_family("fx", "h", protocol_hash="ph", family_definition_hash="fdh",
+                           planned_trials=[("a", "c1")], confirmatory=True)
+    reg_oos2.record_trial("fx", "a", config_hash="c1", result_payload={"s": 0.5},
+                          code_sha="c0", dataset_hash="d0", started_at="2026-01-01",
+                          completed_at="2026-01-02")
+    reg_oos2.register_oos_window("fx", "w1", oos_generation=1, segment_start="2027-01-01",
+                                 segment_end="2027-12-31", dataset_id="ds", dataset_hash="d0")
+    oos_rec = reg_oos2.oos_receipt("fx", "w1")
+    if not oos_rec.verify():
+        return _fail("OOS receipt must verify (issuer-signed)")
+    if oos_rec.dataset_hash != "d0":
+        return _fail("OOS receipt must bind its dataset hash")
+
     return _pass("frozen confirmatory family + verifiable lineage + terminal reasons + "
-                 "OOS identity/generation anti-gaming + deep immutability enforced")
+                 "OOS identity/generation anti-gaming + deep immutability enforced + "
+                 "issued (signed) family/completeness/OOS receipts")
 
 
 def _check_no_lookahead() -> tuple[str, str]:
@@ -624,8 +669,25 @@ def _check_promotion_contract() -> tuple[str, str]:
     if variant_app["evidence_bundle"].verify() is not True:
         return _fail("mutated-applicability bundle digest must recompute (verify true)")
 
+    # (6) P0-1/P0-3: the canonical bundle's children are PRODUCER-issued (trusted-issuer
+    # signed) — a self-digest alone is NOT provenance — and a prebuilt result wrapped
+    # by the generic wrapper is NOT promotable.
+    from . import receipts as _receipts
+    b = ctx["evidence_bundle"]
+    for name in ("multiple_testing", "dsr", "pbo", "reality_check", "robustness"):
+        gr = getattr(b, name)
+        if not gr.receipt.verify():
+            return _fail(f"{name} receipt must verify (issuer-signed)")
+        if not gr.receipt.issuer_id or not gr.receipt.signature:
+            return _fail(f"{name} receipt must carry issuer_id + signature")
+    fake = _receipts.governed_result(b.dsr.result, input_artifact=dict(
+        hypothesis_id="h1", protocol_hash="ph", trial_family_id="f",
+        family_definition_hash="fdh", dataset_hash="d0", code_sha="c0"))
+    if fake.receipt.verify():
+        return _fail("generic wrapper must NOT produce a verifiable (promotable) receipt")
+
     return _pass("promotion runtime contract: governed-only evidence + exact cross-result "
-                 "identity + applicability in digest")
+                 "identity + applicability in digest + producer-issued (signed) receipts")
 
 
 def _check_retrieval_contract() -> tuple[str, str]:
@@ -675,6 +737,22 @@ def _check_retrieval_contract() -> tuple[str, str]:
     # Fresh, within-window evidence => PASS.
     if retrieval_contract.validate_evidence_for_query(_ev("2026-08-01"), fresh_q):
         return _fail("fresh evidence within max age must pass")
+
+    # P1-2: datetime object / mixed-precision fail-closed edges.
+    from datetime import datetime, timezone as _tz
+    # naive datetime source_date => controlled FAIL (no uncontrolled TypeError).
+    if not retrieval_contract.validate_evidence_for_query(
+            _ev(datetime(2026, 8, 1)), fresh_q):
+        return _fail("naive datetime source_date must fail closed")
+    # aware datetime source_date vs date-only as_of => controlled mixed-precision FAIL.
+    if not retrieval_contract.validate_evidence_for_query(
+            _ev(datetime(2026, 8, 1, tzinfo=_tz.utc)), fresh_q):
+        return _fail("aware datetime source_date vs date-only as_of must fail (mixed precision)")
+    # date-only source_date vs aware datetime as_of => controlled mixed-precision FAIL.
+    aware_q = retrieval_contract.ResearchQuery(asset_class="equity", symbols=["SPY"],
+                                               as_of="2026-08-14T00:00:00+00:00")
+    if not retrieval_contract.validate_evidence_for_query(_ev("2026-08-01"), aware_q):
+        return _fail("date-only source_date vs aware datetime as_of must fail (mixed precision)")
 
     ev = _ev("2026-08-01")
     if not retrieval_contract.validate_retrieval_result(ev):

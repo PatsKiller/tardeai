@@ -103,12 +103,18 @@ class MultipleTestingResult:
     tested_hypothesis_ids: tuple = ()
     raw_pvalues: tuple = ()
     family_input_digest: Optional[str] = None
+    # P0-5: the EXACT frozen trial/config family the correction covers.
+    tested_trial_ids: tuple = ()
+    tested_config_hashes: tuple = ()
+    focal_trial_id: Optional[str] = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "parameters", _deep_freeze(self.parameters))
         object.__setattr__(self, "tested_hypothesis_ids",
                            tuple(self.tested_hypothesis_ids))
         object.__setattr__(self, "raw_pvalues", tuple(float(p) for p in self.raw_pvalues))
+        object.__setattr__(self, "tested_trial_ids", tuple(self.tested_trial_ids))
+        object.__setattr__(self, "tested_config_hashes", tuple(self.tested_config_hashes))
 
     def to_payload(self) -> dict:
         return {
@@ -126,6 +132,9 @@ class MultipleTestingResult:
             "tested_hypothesis_ids": list(self.tested_hypothesis_ids),
             "raw_pvalues": list(self.raw_pvalues),
             "family_input_digest": self.family_input_digest,
+            "tested_trial_ids": list(self.tested_trial_ids),
+            "tested_config_hashes": list(self.tested_config_hashes),
+            "focal_trial_id": self.focal_trial_id,
         }
 
     def compute_digest(self) -> str:
@@ -135,11 +144,13 @@ class MultipleTestingResult:
         return self.result_digest is not None and self.result_digest == self.compute_digest()
 
     def recompute(self) -> Optional[dict]:
-        """Recompute Bonferroni/Holm over the complete family (None if unsupported)."""
+        """Recompute Bonferroni/Holm over the complete trial family (None if unsupported)."""
         from . import multiple_testing
-        if not self.tested_hypothesis_ids or not self.raw_pvalues:
+        if not self.tested_trial_ids or not self.raw_pvalues:
             return None
-        if len(self.tested_hypothesis_ids) != len(self.raw_pvalues):
+        if len(self.tested_trial_ids) != len(self.raw_pvalues):
+            return None
+        if len(self.tested_config_hashes) != len(self.tested_trial_ids):
             return None
         if self.method == "bonferroni":
             return multiple_testing.bonferroni(self.raw_pvalues, self.alpha)
@@ -148,38 +159,45 @@ class MultipleTestingResult:
         return None
 
     def family_consistency_problems(self) -> list[str]:
-        """P0-8: the complete family must reproduce the claimed focal result."""
+        """P0-5/P0-8: the complete family must reproduce the claimed focal result
+        and bind to the exact frozen trial/config family (no file-drawer attack)."""
         problems: list[str] = []
         if self.complete_family:
-            if not self.tested_hypothesis_ids:
-                problems.append("complete_family=True but no tested_hypothesis_ids")
+            if not self.tested_trial_ids:
+                problems.append("complete_family=True but no tested_trial_ids")
+            if not self.tested_config_hashes:
+                problems.append("complete_family=True but no tested_config_hashes")
             if not self.raw_pvalues:
                 problems.append("complete_family=True but no raw_pvalues")
-            if self.tested_hypothesis_id not in self.tested_hypothesis_ids:
-                problems.append("focal tested_hypothesis_id not in tested_hypothesis_ids")
+            if self.focal_trial_id is None:
+                problems.append("complete_family=True but no focal_trial_id")
+            elif self.focal_trial_id not in self.tested_trial_ids:
+                problems.append("focal_trial_id not in tested_trial_ids")
             if not _alpha_ok(self.alpha):
                 # alpha invalid — already reported by validate(); cannot recompute.
                 return problems
-            # The family_input_digest binds the EXACT complete family. If a trial is
-            # silently omitted (file-drawer) without updating this binding digest, the
-            # result no longer matches the governed family and must fail.
+            # The family_input_digest binds the EXACT complete trial/config family.
+            # If a trial is silently omitted (file-drawer) without updating this
+            # binding digest, the result no longer matches the governed family.
             if self.family_input_digest is None:
                 problems.append("complete_family=True but no family_input_digest")
             else:
                 want_digest = _stable_hash({
-                    "family": self.family_id, "ids": self.tested_hypothesis_ids,
+                    "family": self.family_id,
+                    "trial_ids": self.tested_trial_ids,
+                    "config_hashes": self.tested_config_hashes,
                     "pvalues": self.raw_pvalues,
                 })
                 if self.family_input_digest != want_digest:
                     problems.append(
-                        "family_input_digest does not match tested_hypothesis_ids + "
-                        "raw_pvalues (omitted/altered trial)")
+                        "family_input_digest does not match tested_trial_ids + "
+                        "tested_config_hashes + raw_pvalues (omitted/altered trial)")
             out = self.recompute()
             if out is None:
                 problems.append("complete_family=True but method not recomputable (Bonferroni/Holm only)")
             else:
-                idx = self.tested_hypothesis_ids.index(self.tested_hypothesis_id) \
-                    if self.tested_hypothesis_id in self.tested_hypothesis_ids else -1
+                idx = self.tested_trial_ids.index(self.focal_trial_id) \
+                    if (self.focal_trial_id in self.tested_trial_ids) else -1
                 if idx >= 0:
                     want_adj = out["adjusted"][idx]
                     want_rej = out["rejected"][idx]
@@ -268,12 +286,18 @@ class DSRResult:
             problems.append("n_observations must be >= 2")
         if self.n_trials is None or not isinstance(self.n_trials, int) or self.n_trials < 2:
             problems.append("n_trials must be an integer >= 2 for a confirmatory family")
-        if self.deflated_benchmark_sr is not None and not _is_finite(self.deflated_benchmark_sr):
+        # P1-4: status="OK" must carry material outputs.
+        if self.deflated_benchmark_sr is None:
+            problems.append("status OK missing deflated_benchmark_sr")
+        elif not _is_finite(self.deflated_benchmark_sr):
             problems.append("deflated_benchmark_sr non-finite")
-        if self.psr_z is not None and not _is_finite(self.psr_z):
+        if self.psr_z is None:
+            problems.append("status OK missing psr_z")
+        elif not _is_finite(self.psr_z):
             problems.append("psr_z non-finite")
-        if (self.probability_sr_exceeds_deflated_benchmark is not None
-                and not _pvalue_ok(self.probability_sr_exceeds_deflated_benchmark)):
+        if self.probability_sr_exceeds_deflated_benchmark is None:
+            problems.append("status OK missing probability_sr_exceeds_deflated_benchmark")
+        elif not _pvalue_ok(self.probability_sr_exceeds_deflated_benchmark):
             problems.append("probability out of [0,1]")
         # Confirmatory frequency contract (P0-10): per-period Sharpe only.
         if self.confirmatory:
@@ -441,7 +465,10 @@ class RealityCheckResult:
             problems.append("mean_block_length must be >= 1")
         if self.bootstrap_method != "stationary":
             problems.append("bootstrap_method must be 'stationary' for this implementation")
-        if self.pvalue_resolution is not None and not _is_finite(self.pvalue_resolution):
+        # P1-4: status="OK" must carry the resolution.
+        if self.pvalue_resolution is None:
+            problems.append("status OK missing pvalue_resolution")
+        elif not _is_finite(self.pvalue_resolution):
             problems.append("pvalue_resolution non-finite")
         # P0-9: resolution must equal 1/(n_bootstrap+1) under this implementation.
         if isinstance(self.n_bootstrap, int) and self.n_bootstrap >= 1:

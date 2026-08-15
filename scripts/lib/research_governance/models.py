@@ -126,10 +126,14 @@ def _canon(obj: Any) -> Any:
     return obj
 
 
+def canonical_json(obj: Any) -> str:
+    """JSON-canonicalized string (sorted keys) used for stable hashing and signing."""
+    return json.dumps(_canon(obj), sort_keys=True, separators=(",", ":"))
+
+
 def _stable_hash(obj: Any) -> str:
     """Deterministic sha256 of a JSON-canonicalized object (sorted keys)."""
-    canonical = json.dumps(_canon(obj), sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    return hashlib.sha256(canonical_json(obj).encode("utf-8")).hexdigest()
 
 
 def _now_iso() -> str:

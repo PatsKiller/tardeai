@@ -43,8 +43,14 @@ def _parse_as_of(value: str):
 
 
 def _coerce_date(value: Any):
-    """Coerce a source_date to a comparable date/datetime (raises if malformed)."""
+    """Coerce a source_date to a comparable date/datetime (raises if malformed).
+
+    A naive datetime is rejected (fail-closed) — an unaware timestamp cannot be
+    safely compared against an aware cutoff.
+    """
     if isinstance(value, datetime):
+        if value.tzinfo is None:
+            raise ValueError("naive datetime source_date (timezone required)")
         return value.astimezone(timezone.utc)
     if isinstance(value, date):
         return value
@@ -206,15 +212,16 @@ def validate_evidence_for_query(evidence: ResearchEvidence,
         problems.append(f"malformed source_date: {exc}")
         return problems
 
+    # Mixed date/datetime precision is not safely comparable => controlled FAIL
+    # (never an uncontrolled TypeError).
+    if isinstance(cutoff, datetime) != isinstance(src, datetime):
+        problems.append("source_date and as_of have mixed date/datetime precision")
+        return problems
+
     if src > cutoff:
         problems.append(f"future evidence: source_date {evidence.source_date} > as_of {query.as_of}")
     if query.max_source_age_days is not None:
-        try:
-            age = (cutoff - src).days
-        except TypeError:
-            # mixed date/datetime precision is not comparable -> fail closed
-            problems.append("source_date and as_of have mixed precision")
-            return problems
+        age = (cutoff - src).days
         if age > query.max_source_age_days:
             problems.append(
                 f"stale evidence: age {age}d > max_source_age_days {query.max_source_age_days}")

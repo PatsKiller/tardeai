@@ -66,6 +66,10 @@ _ROBUSTNESS_FIELDS = [
 _CRITICAL_NA_BLOCKED = {"sample_n", "benchmark", "lookahead_control", "limitations"}
 _CONDITIONAL_NA = {"survivorship_control", "costs", "outlier_dependence", "subperiods", "regimes"}
 
+# Canonical checklist evaluator (single source of truth shared with the governed
+# robustness producer so a governed result cannot diverge from what the gate checks).
+from . import robustness as _robustness_evaluator
+
 
 def _has(ctx: dict, key: str) -> bool:
     return bool(ctx.get(key))
@@ -336,29 +340,7 @@ def _gate_7_reality_check_passed(ctx: dict) -> tuple[GateState, str]:
 
 
 def _robustness_problems(rob: RobustnessResult) -> list[str]:
-    fails = []
-    for field in _ROBUSTNESS_FIELDS:
-        item = rob.items.get(field)
-        if item is None:
-            fails.append(f"{field}:missing")
-            continue
-        state = item.state
-        if state == "PASS":
-            continue
-        if state == "FAIL":
-            fails.append(f"{field}:FAIL")
-            continue
-        if state == "NOT_APPLICABLE":
-            if field in _CRITICAL_NA_BLOCKED:
-                fails.append(f"{field}:NOT_APPLICABLE (critical, cannot be NA)")
-            elif field in _CONDITIONAL_NA:
-                if not item.reason:
-                    fails.append(f"{field}:NOT_APPLICABLE without reason")
-            else:
-                fails.append(f"{field}:unknown state")
-        else:
-            fails.append(f"{field}:invalid state {state!r}")
-    return fails
+    return _robustness_evaluator.evaluate_robustness(rob.items)
 
 
 def _gate_8_robust(ctx: dict) -> tuple[GateState, str]:

@@ -66,6 +66,7 @@ from .receipts import (
     FrozenTrialFamilyReceipt,
     OOSReceipt,
     RegistryCompletenessReceipt,
+    sign_receipt,
 )
 
 
@@ -193,7 +194,7 @@ class TrialRegistry:
 
     @staticmethod
     def _receipt_from_definition(definition: TrialFamilyDefinition) -> FrozenTrialFamilyReceipt:
-        return FrozenTrialFamilyReceipt(
+        receipt = FrozenTrialFamilyReceipt(
             family_id=definition.family_id, hypothesis_id=definition.hypothesis_id,
             protocol_hash=definition.protocol_hash,
             family_definition_hash=definition.family_definition_hash or "",
@@ -203,6 +204,9 @@ class TrialRegistry:
             frozen_at=definition.frozen_at,
             definition_digest=definition.definition_digest,
         )
+        # P0-3: the frozen family receipt is ISSUED (trusted-issuer signed), so a
+        # caller recomputing the public definition digest cannot forge provenance.
+        return sign_receipt(receipt)
 
     def family_receipt(self, family_id: str) -> Optional[FrozenTrialFamilyReceipt]:
         state = self._families.get(family_id)
@@ -459,7 +463,7 @@ class TrialRegistry:
             definition_digest=state.definition.definition_digest,
             generated_at=_now_iso(),
         )
-        return replace(receipt, receipt_digest=receipt.compute_digest())
+        return sign_receipt(receipt)
 
     # -- OOS consumption --------------------------------------------------
     def register_oos_window(
@@ -482,6 +486,23 @@ class TrialRegistry:
         state = self._families.get(family_id)
         if state is None:
             raise ValueError(f"OOS window requires a frozen family: {family_id}")
+
+        # P0-6: confirmatory OOS requires non-empty dataset + date identity fields.
+        # They define the economic segment; a confirmatory Grade A/B promotion must
+        # never receive a receipt with blank identity fields.
+        if state.definition.confirmatory:
+            missing = []
+            if not dataset_id or not str(dataset_id).strip():
+                missing.append("dataset_id")
+            if not dataset_hash or not str(dataset_hash).strip():
+                missing.append("dataset_hash")
+            if not segment_start or not str(segment_start).strip():
+                missing.append("segment_start")
+            if not segment_end or not str(segment_end).strip():
+                missing.append("segment_end")
+            if missing:
+                raise ValueError(
+                    f"confirmatory OOS window requires non-empty {missing}")
 
         existing = state.oos_windows.get(oos_window_id)
         if existing is not None:
@@ -578,4 +599,4 @@ class TrialRegistry:
             rerun_classification=win.rerun_classification,
             untouched=(win.oos_consumed_at is None and win.rerun_classification is None),
         )
-        return replace(receipt, receipt_digest=receipt.compute_digest())
+        return sign_receipt(receipt)

@@ -98,23 +98,27 @@ def _base_sha_from_baseline(repo_root: Path) -> str:
     return m.group(1)
 
 
-def _resolve_effective_base(repo_root: Path, frozen_base: str) -> str:
-    """Resolve the diff base against FRESH remote-main truth (P2-2).
+def _resolve_effective_base(repo_root: Path, frozen_base: str, *,
+                            require_remote: bool = True) -> str:
+    """Resolve the diff base (P2-1/P2-2).
 
-    Order of preference:
-      1. Freshly-fetched remote main SHA via `git ls-remote origin refs/heads/main`
-         (network truth — does NOT trust a potentially stale local tracking ref).
-      2. The local merge-base with `origin/main` as a fallback, but only after
-         the fresh fetch failed, and still recorded as a fallback.
-      3. The frozen BASE_SHA (last resort).
+    For CI / merge acceptance (``require_remote=True``), a freshly-resolved remote
+    ``origin/main`` SHA is MANDATORY. If remote truth cannot be resolved or parsed,
+    this RAISES so the guard FAILS CLOSED rather than silently diffing against a
+    local ref or a frozen baseline.
 
-    If NO resolvable base truth exists, this raises so the guard FAILS closed
-    rather than silently diffing against an arbitrary ref.
+    An explicit local/offline developer mode (``require_remote=False``) may fall
+    back to the local merge-base and then the frozen baseline, but offline mode is
+    NEVER merge acceptance.
     """
     remote_main_sha = _fresh_remote_main_sha(repo_root)
     if remote_main_sha:
         return remote_main_sha
-    # Fallback: resolved local merge-base (recorded as fallback truth).
+    if require_remote:
+        raise RuntimeError(
+            "fresh remote-main truth is mandatory for merge acceptance; could not "
+            "resolve origin/main via git ls-remote")
+    # Explicit local/offline developer mode only.
     proc = subprocess.run(
         ["git", "merge-base", "HEAD", "origin/main"],
         cwd=str(repo_root), capture_output=True, text=True,
@@ -144,7 +148,11 @@ def _fresh_remote_main_sha(repo_root: Path) -> str | None:
 def main(argv: Sequence[str] = ()) -> int:
     repo_root = Path(__file__).resolve().parents[3]
     frozen_base = _base_sha_from_baseline(repo_root)
-    base = _resolve_effective_base(repo_root, frozen_base)
+    offline = "--offline" in argv
+    # Resolve remote truth ONCE (P2-1: do not call ls-remote a second time just to
+    # print status). require_remote=True means the guard fails closed if remote
+    # truth is unavailable (merge acceptance); --offline is explicit dev mode only.
+    base = _resolve_effective_base(repo_root, frozen_base, require_remote=not offline)
     proc = subprocess.run(
         ["git", "diff", "--name-only", f"{base}...HEAD"],
         cwd=str(repo_root), capture_output=True, text=True,
@@ -156,7 +164,7 @@ def main(argv: Sequence[str] = ()) -> int:
     result = evaluate(changed)
     print(f"frozen_base_sha={frozen_base}")
     print(f"effective_base={base}")
-    print(f"base_truth={'remote' if _fresh_remote_main_sha(repo_root) else 'local'}")
+    print(f"base_truth={'offline' if offline else 'remote'}")
     print(f"changed_files={len(changed)}")
     print(f"denied={result['denied']}")
     print(f"unexpected={result['unexpected']}")

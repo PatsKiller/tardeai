@@ -112,13 +112,13 @@ def test_receipt_output_result_hash_mismatch_fails():
     assert "does not bind its result digest" in r["evidence_bundle"]
 
 
-def test_receipt_input_hash_mismatch_fails():
+def test_generic_wrapper_unsigned_rejected():
     b = make_governed_empirical_bundle()
     res = b.dsr.result
     child = governed_result(res, input_artifact=dict(_IDENTITY, dataset_hash="dX"))
     r = promotion_gate.run_promotion_gate(_bundle_with_child("dsr", child))
     assert r["overall"] == GateState.FAIL.value
-    assert "input_artifact_hash" in r["evidence_bundle"]
+    assert "does not verify" in r["evidence_bundle"]
 
 
 @pytest.mark.parametrize("field", ["dataset_hash", "code_sha", "family_definition_hash"])

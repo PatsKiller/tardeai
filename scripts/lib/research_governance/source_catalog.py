@@ -281,7 +281,10 @@ CRITICAL_METHOD_REFERENCES: Dict[str, Dict[str, Any]] = {
         "source_type": "book_chapter",
         "book": "Advances in Financial Machine Learning, Wiley",
         "chapter": "12",
-        "isbn": "9781119482089",
+        # Wiley canonical ISBNs (February 2018): hardcover and e-book.
+        "isbn": "9781119482086",
+        "isbn_hardcover": "9781119482086",
+        "isbn_ebook": "9781119482109",
     },
 }
 
@@ -337,6 +340,12 @@ def critical_reference_report() -> dict:
                 problems.append("chapter mismatch")
             if expected.get("isbn") and rec.get("doi_or_isbn") != expected["isbn"]:
                 problems.append(f"isbn {rec.get('doi_or_isbn')!r} != {expected['isbn']!r}")
+            if expected.get("isbn_hardcover") and rec.get("isbn_hardcover") != expected["isbn_hardcover"]:
+                problems.append(
+                    f"isbn_hardcover {rec.get('isbn_hardcover')!r} != {expected['isbn_hardcover']!r}")
+            if expected.get("isbn_ebook") and rec.get("isbn_ebook") != expected["isbn_ebook"]:
+                problems.append(
+                    f"isbn_ebook {rec.get('isbn_ebook')!r} != {expected['isbn_ebook']!r}")
         problems_by_method[method] = problems
     return {
         "problems_by_method": problems_by_method,
