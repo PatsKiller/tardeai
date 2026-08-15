@@ -23,6 +23,10 @@ result packet consistent with this):
   RGA-14 scope_guard
   RGA-15 almanac_reproduction             (R3)
   RGA-16 research_decision_use_audit      (R4)
+  R5A-1  cpcv_path_construction           (R5)
+  R6A-1  durable_append_only_store        (R6)
+  R7A-1  policy_behavioral_frameworks     (R7)
+  R8A-1  empirical_factor_strategy        (R8)
 
 Phase-aware acceptance with three disjoint collections:
 
@@ -59,7 +63,13 @@ GATE_NAMES: dict[str, str] = {
     "RGA-14": "scope_guard",
     "RGA-15": "almanac_reproduction",
     "RGA-16": "research_decision_use_audit",
+    "R5A-1": "cpcv_path_construction",
+    "R6A-1": "durable_append_only_store",
+    "R7A-1": "policy_behavioral_frameworks",
+    "R8A-1": "empirical_factor_strategy",
 }
+
+R5_PLUS_IDS: tuple[str, ...] = ("R5A-1", "R6A-1", "R7A-1", "R8A-1")
 
 # R2 mechanics acceptance does not exist yet; it must fail closed rather than
 # silently pass by reusing the R1 gate set. R2 is NOT authorized.
@@ -90,6 +100,26 @@ PHASE_PROFILES: dict[str, dict[str, list[str]]] = {
     },
     "R4_integration": {
         "required_runtime": list(RGA_IDS),
+        "required_contract": [],
+        "not_in_scope": [],
+    },
+    "R5_cpcv": {
+        "required_runtime": list(RGA_IDS) + ["R5A-1"],
+        "required_contract": [],
+        "not_in_scope": ["R6A-1", "R7A-1", "R8A-1"],
+    },
+    "R6_durable": {
+        "required_runtime": list(RGA_IDS) + ["R5A-1", "R6A-1"],
+        "required_contract": [],
+        "not_in_scope": ["R7A-1", "R8A-1"],
+    },
+    "R7_policy": {
+        "required_runtime": list(RGA_IDS) + ["R5A-1", "R6A-1", "R7A-1"],
+        "required_contract": [],
+        "not_in_scope": ["R8A-1"],
+    },
+    "R8_empirical": {
+        "required_runtime": list(RGA_IDS) + list(R5_PLUS_IDS),
         "required_contract": [],
         "not_in_scope": [],
     },
@@ -167,10 +197,25 @@ def run_acceptance(profile_name: str = "R1_foundation") -> dict[str, Any]:
     from . import r3_acceptance, r4_acceptance
     checks.update(r3_acceptance.CHECKS)
     checks.update(r4_acceptance.CHECKS)
+    for mod_name in ("r5_acceptance", "r6_acceptance", "r7_acceptance", "r8_acceptance"):
+        try:
+            mod = __import__(f"{__package__}.{mod_name}", fromlist=["CHECKS"])
+            checks.update(getattr(mod, "CHECKS", {}))
+            extra_ids.extend(list(getattr(mod, "CHECKS", {})))
+        except Exception:  # noqa: BLE001 — missing later-phase module is fail-closed below
+            pass
 
     results: dict[str, str] = {}
 
-    for gid in list(RGA_IDS) + extra_ids:
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for gid in list(RGA_IDS) + extra_ids + list(R5_PLUS_IDS):
+        if gid in seen:
+            continue
+        seen.add(gid)
+        ordered.append(gid)
+
+    for gid in ordered:
         if gid in profile["not_in_scope"]:
             results[gid] = GateState.NOT_IN_SCOPE.value
             continue

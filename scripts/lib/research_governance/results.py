@@ -535,7 +535,8 @@ class RobustnessResult:
 _INFLUENCE_MATRIX = {
     "SEASONALITY": {InfluenceClass.CONTEXT_MODIFIER.value},
     "POLICY_OR_REGULATORY": {InfluenceClass.RISK_VETO.value,
-                             InfluenceClass.DETERMINISTIC_MECHANICS.value},
+                             InfluenceClass.DETERMINISTIC_MECHANICS.value,
+                             InfluenceClass.CONTEXT_MODIFIER.value},
     "DETERMINISTIC_MECHANICS": {InfluenceClass.DETERMINISTIC_MECHANICS.value},
     "VALUATION_MODEL": {InfluenceClass.VALUATION_INPUT.value},
     "EMPIRICAL_STRATEGY": {InfluenceClass.CONTEXT_MODIFIER.value,
