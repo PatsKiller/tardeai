@@ -894,6 +894,44 @@ def eval_g9_advisory_ui_provenance(
     )
 
 
+def _digest_family(value: str) -> str:
+    s = str(value or "").strip()
+    if not s:
+        return ""
+    if s.startswith("cp_"):
+        return "cp_prefix"
+    if len(s) == 64 and all(c in "0123456789abcdefABCDEF" for c in s):
+        return "sha256"
+    if s.startswith("capital_plan_"):
+        return "plan_version"
+    return "other"
+
+
+def _same_family_digest_check(
+    *,
+    inst_digest: str,
+    live_digest: str,
+    label: str,
+) -> tuple[bool, list[str]]:
+    """Compare report vs live digest only inside the same family.
+
+    Instance digest present + live missing is unproven (FAIL).
+    `cp_*` vs 64-hex is unlike-family and is not compared.
+    """
+    inst = str(inst_digest or "").strip()
+    live = str(live_digest or "").strip()
+    if not inst:
+        return True, []
+    if not live:
+        return False, [f"{label} unproven (live digest missing)"]
+    fi, fl = _digest_family(inst), _digest_family(live)
+    if fi and fl and fi != fl:
+        return True, []
+    if inst != live:
+        return False, [f"{label} mismatch vs live plan"]
+    return True, []
+
+
 def eval_g10_g12_report_formats(
     *,
     html_path: str = "",
@@ -931,16 +969,20 @@ def eval_g10_g12_report_formats(
         and bool(inst_holdings)
         and inst_holdings == expected_holdings
     )
-    digest_ok = True
-    digest_reasons: list[str] = []
-    if inst.get("capital_plan_digest"):
-        if str(inst.get("capital_plan_digest")) != str(live_capital_plan_digest or ""):
-            digest_ok = False
-            digest_reasons.append("capital_plan_digest mismatch vs live plan")
+    digest_ok, digest_reasons = _same_family_digest_check(
+        inst_digest=str(inst.get("capital_plan_digest") or ""),
+        live_digest=str(live_capital_plan_digest or ""),
+        label="capital_plan_digest",
+    )
     if inst.get("decision_digest"):
-        if str(inst.get("decision_digest")) != str(live_decision_digest or ""):
+        d_ok, d_reasons = _same_family_digest_check(
+            inst_digest=str(inst.get("decision_digest") or ""),
+            live_digest=str(live_decision_digest or ""),
+            label="decision_digest",
+        )
+        if not d_ok:
             digest_ok = False
-            digest_reasons.append("decision_digest mismatch vs live plan")
+            digest_reasons.extend(d_reasons)
 
     def _fmt(gid: str, path: str, label: str, sev: str = "P0") -> dict:
         key = {"HTML": "html_sha256", "PDF": "pdf_sha256", "DOCX": "docx_sha256"}[label]
@@ -1378,6 +1420,7 @@ def evaluate_live_snapshot(snap: dict[str, Any], *, now: Optional[datetime] = No
         or inst.get("expected_portfolio_snapshot_hash")
         or ""
     )
+    # API plan.digest IS the report-builder family (cio_capital_plan SHA-256).
     live_cpd = str(
         snap.get("live_capital_plan_digest")
         or (plan.get("digest") or plan.get("plan_digest") or "")

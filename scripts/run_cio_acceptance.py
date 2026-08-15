@@ -193,17 +193,14 @@ def _collect_live(now: datetime, ev: Path) -> dict[str, Any]:
         p = live_rep / name
         if p.is_file() and p.stat().st_size > 100:
             dest = report_dir / name
-            if attr == "html" and report_html:
-                # API HTML already written into the run dir; keep it.
-                pass
-            else:
-                shutil.copy2(p, dest)
-                if attr == "html":
-                    report_html = str(dest)
-                elif attr == "pdf":
-                    report_pdf = str(dest)
-                elif attr == "docx":
-                    report_docx = str(dest)
+            # Prefer the hashed live-book export (instance manifest) over API HTML.
+            shutil.copy2(p, dest)
+            if attr == "html":
+                report_html = str(dest)
+            elif attr == "pdf":
+                report_pdf = str(dest)
+            elif attr == "docx":
+                report_docx = str(dest)
     qa_src = live_rep / "visual_qa" / "VISUAL_QA.json"
     qa_json = report_dir / "VISUAL_QA.json"
     if qa_src.is_file():
@@ -395,6 +392,7 @@ def _collect_live(now: datetime, ev: Path) -> dict[str, Any]:
                 qa_page_hashes = [str(h) for h in raw_hashes if h]
         except Exception:
             pass
+    # Same family as report-builder capital_plan_digest (cio_capital_plan digest).
     live_plan_digest = ""
     live_decision_digest = ""
     if isinstance(plan, dict):
