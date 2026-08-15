@@ -123,17 +123,26 @@ def _collect_live(now: datetime, ev: Path) -> dict[str, Any]:
 
     ft = (plan or {}).get("financial_truth_gate") or {}
     # Prefer live gate exceptions; if only counts, keep conflicted_symbols
-    exceptions = ft.get("exceptions") or []
-    if not exceptions and HOLDINGS.is_file():
+    exceptions = list(ft.get("exceptions") or [])
+    if HOLDINGS.is_file():
         # Classify from the same production holdings file the server uses
         # (canonical data symlink). This is production data, not a toy book.
         try:
             from scripts.lib.cio_financial_truth_gate import evaluate_holdings_document
             doc = json.loads(HOLDINGS.read_text(encoding="utf-8"))
             g = evaluate_holdings_document(doc)
-            exceptions = g.get("exceptions") or []
-            if not ft:
-                ft = g
+            rows = list(g.get("exceptions") or []) + [
+                n for n in (g.get("reconciliation_notes") or []) if isinstance(n, dict)
+            ]
+            if rows:
+                exceptions = rows
+            # Keep live quality/ok; attach rows so G5 is not an opaque count.
+            ft = dict(ft or {})
+            ft.setdefault("overall_quality", g.get("overall_quality"))
+            ft.setdefault("ok", g.get("ok"))
+            ft["exceptions"] = exceptions
+            ft["exception_count"] = g.get("exception_count", len(exceptions))
+            ft["nonmaterial_reconciliation_note_count"] = g.get("nonmaterial_reconciliation_note_count")
             (ev / "financial_truth_gate.json").write_text(json.dumps(g, indent=2, default=str)[:1_000_000])
         except Exception:
             pass
