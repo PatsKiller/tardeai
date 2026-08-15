@@ -1148,17 +1148,10 @@ def _decision_source_clock(pos: dict[str, Any], now: datetime) -> str:
 
 
 def _decision_digest(symbol: str, stance: str, delta: float, pos: dict[str, Any], extra: str = "") -> str:
-    raw = json.dumps({
-        "symbol": symbol,
-        "stance": stance,
-        "delta": round(float(delta or 0), 2),
-        "mv": pos.get("market_value_usd") or pos.get("current_value_usd"),
-        "mark": pos.get("canonical_mark") or pos.get("current_price"),
-        "mark_as_of": pos.get("canonical_mark_as_of") or pos.get("source_as_of"),
-        "broker_mv": pos.get("broker_market_value"),
-        "extra": extra,
-    }, sort_keys=True, default=str)
-    return hashlib.sha256(raw.encode()).hexdigest()[:32]
+    # Single recipe lives in cio_decision_semantics (no cycle: semantics never
+    # imports this module).
+    from scripts.lib.cio_decision_semantics import decision_content_digest
+    return decision_content_digest(symbol, stance, delta, pos, extra=extra)
 
 
 def _funding_for(stance: str, delta: float) -> str:

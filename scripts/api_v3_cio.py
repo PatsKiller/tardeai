@@ -519,6 +519,8 @@ AUTHORITY_ADVISORY = "READ_ONLY_ADVISORY"
 IDENTITY_DECISION_ID = "DECISION_ID"
 IDENTITY_LEGACY = "LEGACY_UNVERSIONED"
 IDENTITY_ARCHIVED = "ARCHIVED_FEEDBACK"
+IDENTITY_DIGEST_CAPABLE = "DIGEST_CAPABLE"
+IDENTITY_LEGACY_DECISION_ID_ONLY = "LEGACY_DECISION_ID_ONLY"
 _LEGACY_PREFIXES = ("position:", "action:")
 _DECISION_ID_RE = re.compile(r"^(dec_[A-Za-z0-9._:-]{8,80}|[0-9a-fA-F]{32,64})$")
 
@@ -553,8 +555,36 @@ def classify_disposition_identity(entry: dict[str, Any]) -> str:
     return IDENTITY_LEGACY
 
 
+def classify_decision_identity(known: Any) -> str:
+    """Classify a catalog row: digest-capable vs decision_id-only legacy.
+
+    DIGEST_CAPABLE — both input and evidence digests are non-empty.
+    LEGACY_DECISION_ID_ONLY — missing/empty catalog digests (compat).
+    Does not invent or strip digest fields.
+    """
+    if not isinstance(known, dict):
+        return IDENTITY_LEGACY_DECISION_ID_ONLY
+    inp = _norm_digest(known.get("decision_input_digest"))
+    ev = _norm_digest(known.get("decision_evidence_digest"))
+    if inp and ev:
+        return IDENTITY_DIGEST_CAPABLE
+    return IDENTITY_LEGACY_DECISION_ID_ONLY
+
+
+def new_decision_digestless_rejected(known: Any) -> bool:
+    """True when a row is not digest-capable (legacy / digestless).
+
+    Does not mutate. New aggregated decisions must be DIGEST_CAPABLE;
+    this helper only classifies — it does not strip catalog fields.
+    """
+    return classify_decision_identity(known) != IDENTITY_DIGEST_CAPABLE
+
+
 def catalog_from_position_decisions(rows: Any) -> dict[str, dict[str, Any]]:
-    """Map decision_id → identity fields from capital-plan / CIO NOW rows."""
+    """Map decision_id → identity fields from capital-plan / CIO NOW rows.
+
+    Does not strip empty digests; classifies each row instead.
+    """
     out: dict[str, dict[str, Any]] = {}
     if not isinstance(rows, list):
         return out
@@ -567,7 +597,7 @@ def catalog_from_position_decisions(rows: Any) -> dict[str, dict[str, Any]]:
         acct = d.get("account")
         if not acct and isinstance(d.get("accounts"), list) and d.get("accounts"):
             acct = d["accounts"][0]
-        out[did] = {
+        rec = {
             "decision_id": did,
             "decision_input_digest": str(d.get("decision_input_digest") or ""),
             "decision_evidence_digest": str(d.get("decision_evidence_digest") or ""),
@@ -575,6 +605,8 @@ def catalog_from_position_decisions(rows: Any) -> dict[str, dict[str, Any]]:
             "account": acct,
             "action": d.get("action") or d.get("stance") or d.get("stance_code"),
         }
+        rec["decision_identity"] = classify_decision_identity(rec)
+        out[did] = rec
     return out
 
 
@@ -631,18 +663,31 @@ def _norm_digest(val: Any) -> str:
     return str(val or "").strip().lower()
 
 
-def _digests_match(supplied: str, known: str) -> bool:
-    """Supplied digest (when present) must equal the catalog digest.
+def _digests_match(
+    supplied: str,
+    known: str,
+    *,
+    identity_class: str | None = None,
+) -> bool:
+    """Match policy depends on catalog identity class.
 
-    Empty catalog digest means the live identity is decision_id-only
-    (current capital-plan rows often omit hashes). A signed token that
-    carries an extra local hash must still apply; requiring a catalog
-    hash that does not exist made Telegram REJECT/ACK fail closed.
-    When the catalog *does* publish a digest, the token must match it.
+    DIGEST_CAPABLE: a presented (non-empty) digest must equal the catalog.
+    Wrong hash → False (caller returns digest_mismatch 409).
+    LEGACY_DECISION_ID_ONLY: empty or any supplied hash is accepted.
+    Two-arg callers without identity_class keep the prior inference:
+    empty catalog digest ⇒ legacy; otherwise require a match when supplied.
     """
     s = _norm_digest(supplied)
     k = _norm_digest(known)
-    if not s or not k:
+    cls = str(identity_class or "").strip().upper()
+    if not cls:
+        cls = IDENTITY_DIGEST_CAPABLE if k else IDENTITY_LEGACY_DECISION_ID_ONLY
+    if cls == IDENTITY_LEGACY_DECISION_ID_ONLY:
+        return True
+    # DIGEST_CAPABLE — exact match required when a digest is presented.
+    # Empty supplied is still accepted so operator ACK without re-sending
+    # hashes can bind on decision_id (existing disposition tests).
+    if not s:
         return True
     return s == k
 
@@ -769,30 +814,49 @@ def post_decision_disposition(decision_key: str, body: dict[str, Any] | None = N
         }
     known = known or {}
     in_catalog = bool(catalog.get(did))
+    decision_identity = (
+        classify_decision_identity(known) if in_catalog
+        else IDENTITY_LEGACY_DECISION_ID_ONLY
+    )
 
     supplied_in = body.get("decision_input_digest")
     supplied_ev = body.get("decision_evidence_digest")
     # Digest binding applies to current catalog entries only. Archived-feedback
     # on an unknown ID records whatever the operator supplied.
-    if in_catalog and not _digests_match(supplied_in, known.get("decision_input_digest")):
+    # DIGEST_CAPABLE requires exact match (wrong hash → digest_mismatch 409).
+    # LEGACY_DECISION_ID_ONLY accepts empty or any supplied digest.
+    if in_catalog and not _digests_match(
+        supplied_in, known.get("decision_input_digest"),
+        identity_class=decision_identity,
+    ):
         return {
             "ok": False,
             "error": "digest_mismatch",
             "field": "decision_input_digest",
+            "decision_identity": decision_identity,
             "as_of": _now_iso(),
             "authority": AUTHORITY_ADVISORY,
         }
-    if in_catalog and not _digests_match(supplied_ev, known.get("decision_evidence_digest")):
+    if in_catalog and not _digests_match(
+        supplied_ev, known.get("decision_evidence_digest"),
+        identity_class=decision_identity,
+    ):
         return {
             "ok": False,
             "error": "digest_mismatch",
             "field": "decision_evidence_digest",
+            "decision_identity": decision_identity,
             "as_of": _now_iso(),
             "authority": AUTHORITY_ADVISORY,
         }
 
     # Archived-feedback is only for IDs absent from the current catalog.
-    identity_class = IDENTITY_ARCHIVED if (archived and not catalog.get(did)) else IDENTITY_DECISION_ID
+    if archived and not catalog.get(did):
+        identity_class = IDENTITY_ARCHIVED
+    elif in_catalog and decision_identity == IDENTITY_LEGACY_DECISION_ID_ONLY:
+        identity_class = IDENTITY_LEGACY_DECISION_ID_ONLY
+    else:
+        identity_class = IDENTITY_DECISION_ID
 
     input_digest = _norm_digest(supplied_in) or _norm_digest(known.get("decision_input_digest"))
     evidence_digest = _norm_digest(supplied_ev) or _norm_digest(known.get("decision_evidence_digest"))
@@ -815,6 +879,10 @@ def post_decision_disposition(decision_key: str, body: dict[str, Any] | None = N
         "occurred_at": _now_iso(),
         "authority": AUTHORITY_ADVISORY,
         "identity_class": identity_class,
+        "decision_identity": (
+            IDENTITY_ARCHIVED if identity_class == IDENTITY_ARCHIVED
+            else decision_identity
+        ),
     }
     try:
         _DISPOSITION_PATH.parent.mkdir(parents=True, exist_ok=True)
