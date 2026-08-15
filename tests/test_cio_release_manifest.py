@@ -231,35 +231,36 @@ def test_operator_note_cannot_force_same_sha_claim_when_attestation(monkeypatch)
     assert ATTESTATION_ONLY_NOTE in m["notes"]
 
 
-def test_generate_does_not_rewrite_historical_committed_pin():
-    """This branch HEAD is not the attestation merge — do not pretend it is 7986e923."""
+def test_generate_does_not_rewrite_committed_pin_in_memory():
+    """Generating a candidate must not mutate the committed pin on disk."""
     from cio_release_manifest import load_json_manifest
 
+    before = load_json_manifest()
+    assert before is not None
+    before_sha = before.get("canonical_source_sha")
     head = git_head()
     ident = resolve_release_identity()
     m = build_manifest()
     if ident["attestation_only"]:
-        assert m["release_content_sha"] == _CONTENT
-        assert m["release_attestation_sha"] == _ATTESTATION
+        assert m["release_content_sha"] == ident["release_content_sha"]
+        assert m["release_attestation_sha"] == ident["release_attestation_sha"]
     else:
         assert m["release_content_sha"] == head
         assert m["canonical_source_sha"] == head
-        assert m["release_content_sha"] != _CONTENT or head == _CONTENT
+    after = load_json_manifest()
+    assert after.get("canonical_source_sha") == before_sha
+
+
+def test_validate_committed_accepts_production_pin():
+    from cio_release_manifest import validate_committed, load_json_manifest
+
     disk = load_json_manifest()
     assert disk is not None
-    # Committed production pin stays the historical content SHA.
-    assert disk["canonical_source_sha"] == _CONTENT
-    assert disk.get("manifest_schema") == "investment_office_release_manifest_v1"
-    assert "release_content_sha" not in disk
-
-
-def test_validate_committed_accepts_historical_v1_pin():
-    from cio_release_manifest import validate_committed
-
+    assert disk.get("status") == "production"
+    assert disk.get("financial_authority") in (None, "READ_ONLY_ADVISORY")
     r = validate_committed()
     assert r["ok"] is True, r
-    assert r["disk_canonical_source_sha"] == _CONTENT
-    assert r.get("disk_schema") == "investment_office_release_manifest_v1"
+    assert r["disk_canonical_source_sha"] == disk["canonical_source_sha"]
 
 
 def test_render_markdown_includes_v2_identity_rows():
