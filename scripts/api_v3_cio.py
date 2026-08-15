@@ -514,7 +514,7 @@ def get_cio_home() -> dict[str, Any]:
 # must never auto-apply to a newer decision.
 
 _DISPOSITION_PATH = PROJECT_ROOT / "data" / "cio" / "decision_dispositions.jsonl"
-_VALID_DISPOSITIONS = {"ack", "defer", "done", "reject"}
+_VALID_DISPOSITIONS = {"ack", "defer", "done", "reject", "rate"}
 AUTHORITY_ADVISORY = "READ_ONLY_ADVISORY"
 IDENTITY_DECISION_ID = "DECISION_ID"
 IDENTITY_LEGACY = "LEGACY_UNVERSIONED"
@@ -632,13 +632,18 @@ def _norm_digest(val: Any) -> str:
 
 
 def _digests_match(supplied: str, known: str) -> bool:
-    """Supplied digest (when present) must equal the catalog digest."""
+    """Supplied digest (when present) must equal the catalog digest.
+
+    Empty catalog digest means the live identity is decision_id-only
+    (current capital-plan rows often omit hashes). A signed token that
+    carries an extra local hash must still apply; requiring a catalog
+    hash that does not exist made Telegram REJECT/ACK fail closed.
+    When the catalog *does* publish a digest, the token must match it.
+    """
     s = _norm_digest(supplied)
-    if not s:
-        return True
     k = _norm_digest(known)
-    if not k:
-        return False
+    if not s or not k:
+        return True
     return s == k
 
 
