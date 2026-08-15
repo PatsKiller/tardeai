@@ -1,138 +1,93 @@
 {
-  "date": "2026-08-13",
-  "timestamp": "2026-08-13T08:15:51.448063+00:00",
+  "date": "2026-08-14",
+  "timestamp": "2026-08-14T08:15:18.431109+00:00",
   "embedding_recommendations": [
     {
-      "id": 20695,
-      "symbol": "V",
-      "type": "options_desk",
-      "confidence": 0.95,
+      "id": 21415,
+      "symbol": "RTX",
+      "type": "stop_curation",
+      "confidence": 0.8,
       "has_url": false,
       "reason": "staged, has evidence, not embedded"
     },
     {
-      "id": 20694,
-      "symbol": "FATN",
-      "type": "options_desk",
-      "confidence": 0.95,
+      "id": 18406,
+      "symbol": "JEPI",
+      "type": "stop_curation",
+      "confidence": 0.8,
       "has_url": false,
       "reason": "staged, has evidence, not embedded"
     },
     {
-      "id": 20679,
-      "symbol": "DXCM",
-      "type": "options_desk",
-      "confidence": 0.95,
+      "id": 18420,
+      "symbol": "JEPI",
+      "type": "stop_curation",
+      "confidence": 0.8,
       "has_url": false,
       "reason": "staged, has evidence, not embedded"
     },
     {
-      "id": 20882,
-      "symbol": "FATN",
-      "type": "options_desk",
-      "confidence": 0.95,
+      "id": 19348,
+      "symbol": "XLI",
+      "type": "stop_curation",
+      "confidence": 0.8,
       "has_url": false,
       "reason": "staged, has evidence, not embedded"
     },
     {
-      "id": 20168,
-      "symbol": "FATN",
-      "type": "options_desk",
-      "confidence": 0.95,
+      "id": 19345,
+      "symbol": "JEPI",
+      "type": "stop_curation",
+      "confidence": 0.8,
       "has_url": false,
       "reason": "staged, has evidence, not embedded"
     }
   ],
   "promotion_recommendations": [
     {
-      "id": 20695,
-      "symbol": "V",
-      "type": "options_desk",
-      "confidence": 0.95,
+      "id": 21415,
+      "symbol": "RTX",
+      "type": "stop_curation",
+      "confidence": 0.8,
       "has_url": false,
       "reason": "staged, high conf, has evidence"
     },
     {
-      "id": 20694,
-      "symbol": "FATN",
-      "type": "options_desk",
-      "confidence": 0.95,
+      "id": 18406,
+      "symbol": "JEPI",
+      "type": "stop_curation",
+      "confidence": 0.8,
       "has_url": false,
       "reason": "staged, high conf, has evidence"
     },
     {
-      "id": 20679,
-      "symbol": "DXCM",
-      "type": "options_desk",
-      "confidence": 0.95,
+      "id": 18420,
+      "symbol": "JEPI",
+      "type": "stop_curation",
+      "confidence": 0.8,
       "has_url": false,
       "reason": "staged, high conf, has evidence"
     },
     {
-      "id": 20882,
-      "symbol": "FATN",
-      "type": "options_desk",
-      "confidence": 0.95,
+      "id": 19348,
+      "symbol": "XLI",
+      "type": "stop_curation",
+      "confidence": 0.8,
       "has_url": false,
       "reason": "staged, high conf, has evidence"
     },
     {
-      "id": 20168,
-      "symbol": "FATN",
-      "type": "options_desk",
-      "confidence": 0.95,
+      "id": 19345,
+      "symbol": "JEPI",
+      "type": "stop_curation",
+      "confidence": 0.8,
       "has_url": false,
       "reason": "staged, high conf, has evidence"
     }
   ],
   "rejected": [
     {
-      "id": 19826,
-      "symbol": null,
-      "reason": "confidence 0.25 too low"
-    },
-    {
-      "id": 20925,
-      "symbol": null,
-      "reason": "confidence 0.25 too low"
-    },
-    {
-      "id": 19124,
-      "symbol": null,
-      "reason": "confidence 0.25 too low"
-    },
-    {
-      "id": 17873,
-      "symbol": null,
-      "reason": "confidence 0.25 too low"
-    },
-    {
-      "id": 17858,
-      "symbol": null,
-      "reason": "confidence 0.25 too low"
-    },
-    {
-      "id": 20038,
-      "symbol": null,
-      "reason": "confidence 0.25 too low"
-    },
-    {
-      "id": 18893,
-      "symbol": null,
-      "reason": "confidence 0.25 too low"
-    },
-    {
-      "id": 18882,
-      "symbol": null,
-      "reason": "confidence 0.25 too low"
-    },
-    {
-      "id": 19828,
-      "symbol": null,
-      "reason": "confidence 0.25 too low"
-    },
-    {
-      "id": 18669,
+      "id": 20759,
       "symbol": null,
       "reason": "confidence 0.25 too low"
     },
@@ -142,27 +97,7 @@
       "reason": "confidence 0.25 too low"
     },
     {
-      "id": 20039,
-      "symbol": null,
-      "reason": "confidence 0.25 too low"
-    },
-    {
-      "id": 18668,
-      "symbol": null,
-      "reason": "confidence 0.25 too low"
-    },
-    {
-      "id": 20762,
-      "symbol": null,
-      "reason": "confidence 0.25 too low"
-    },
-    {
-      "id": 17876,
-      "symbol": null,
-      "reason": "confidence 0.25 too low"
-    },
-    {
-      "id": 20214,
+      "id": 18882,
       "symbol": null,
       "reason": "confidence 0.25 too low"
     },
@@ -172,42 +107,12 @@
       "reason": "confidence 0.25 too low"
     },
     {
-      "id": 18892,
-      "symbol": null,
-      "reason": "confidence 0.25 too low"
-    },
-    {
-      "id": 18874,
-      "symbol": null,
-      "reason": "confidence 0.25 too low"
-    },
-    {
-      "id": 18875,
-      "symbol": null,
-      "reason": "confidence 0.25 too low"
-    },
-    {
-      "id": 20759,
-      "symbol": null,
-      "reason": "confidence 0.25 too low"
-    },
-    {
-      "id": 17889,
+      "id": 17851,
       "symbol": null,
       "reason": "confidence 0.25 too low"
     },
     {
       "id": 18903,
-      "symbol": null,
-      "reason": "confidence 0.25 too low"
-    },
-    {
-      "id": 17870,
-      "symbol": null,
-      "reason": "confidence 0.25 too low"
-    },
-    {
-      "id": 18894,
       "symbol": null,
       "reason": "confidence 0.25 too low"
     },
@@ -222,7 +127,52 @@
       "reason": "confidence 0.25 too low"
     },
     {
-      "id": 19817,
+      "id": 17858,
+      "symbol": null,
+      "reason": "confidence 0.25 too low"
+    },
+    {
+      "id": 21101,
+      "symbol": null,
+      "reason": "confidence 0.25 too low"
+    },
+    {
+      "id": 18892,
+      "symbol": null,
+      "reason": "confidence 0.25 too low"
+    },
+    {
+      "id": 18893,
+      "symbol": null,
+      "reason": "confidence 0.25 too low"
+    },
+    {
+      "id": 18894,
+      "symbol": null,
+      "reason": "confidence 0.25 too low"
+    },
+    {
+      "id": 21110,
+      "symbol": null,
+      "reason": "confidence 0.25 too low"
+    },
+    {
+      "id": 17873,
+      "symbol": null,
+      "reason": "confidence 0.25 too low"
+    },
+    {
+      "id": 21746,
+      "symbol": null,
+      "reason": "confidence 0.25 too low"
+    },
+    {
+      "id": 20038,
+      "symbol": null,
+      "reason": "confidence 0.25 too low"
+    },
+    {
+      "id": 20039,
       "symbol": null,
       "reason": "confidence 0.25 too low"
     },
@@ -232,12 +182,82 @@
       "reason": "confidence 0.25 too low"
     },
     {
+      "id": 20214,
+      "symbol": null,
+      "reason": "confidence 0.25 too low"
+    },
+    {
       "id": 20035,
       "symbol": null,
       "reason": "confidence 0.25 too low"
     },
     {
-      "id": 17851,
+      "id": 19124,
+      "symbol": null,
+      "reason": "confidence 0.25 too low"
+    },
+    {
+      "id": 20926,
+      "symbol": null,
+      "reason": "confidence 0.25 too low"
+    },
+    {
+      "id": 18668,
+      "symbol": null,
+      "reason": "confidence 0.25 too low"
+    },
+    {
+      "id": 18669,
+      "symbol": null,
+      "reason": "confidence 0.25 too low"
+    },
+    {
+      "id": 17889,
+      "symbol": null,
+      "reason": "confidence 0.25 too low"
+    },
+    {
+      "id": 19828,
+      "symbol": null,
+      "reason": "confidence 0.25 too low"
+    },
+    {
+      "id": 17876,
+      "symbol": null,
+      "reason": "confidence 0.25 too low"
+    },
+    {
+      "id": 19826,
+      "symbol": null,
+      "reason": "confidence 0.25 too low"
+    },
+    {
+      "id": 18874,
+      "symbol": null,
+      "reason": "confidence 0.25 too low"
+    },
+    {
+      "id": 18875,
+      "symbol": null,
+      "reason": "confidence 0.25 too low"
+    },
+    {
+      "id": 20925,
+      "symbol": null,
+      "reason": "confidence 0.25 too low"
+    },
+    {
+      "id": 20762,
+      "symbol": null,
+      "reason": "confidence 0.25 too low"
+    },
+    {
+      "id": 19818,
+      "symbol": null,
+      "reason": "confidence 0.25 too low"
+    },
+    {
+      "id": 17870,
       "symbol": null,
       "reason": "confidence 0.25 too low"
     },
@@ -247,52 +267,17 @@
       "reason": "confidence 0.22 too low"
     },
     {
-      "id": 17872,
-      "symbol": null,
-      "reason": "confidence 0.22 too low"
-    },
-    {
       "id": 18878,
       "symbol": null,
       "reason": "confidence 0.22 too low"
     },
     {
-      "id": 20036,
+      "id": 17872,
       "symbol": null,
-      "reason": "confidence 0.2 too low"
+      "reason": "confidence 0.22 too low"
     },
     {
-      "id": 17869,
-      "symbol": null,
-      "reason": "confidence 0.2 too low"
-    },
-    {
-      "id": 20031,
-      "symbol": null,
-      "reason": "confidence 0.2 too low"
-    },
-    {
-      "id": 17856,
-      "symbol": null,
-      "reason": "confidence 0.2 too low"
-    },
-    {
-      "id": 17871,
-      "symbol": null,
-      "reason": "confidence 0.2 too low"
-    },
-    {
-      "id": 20211,
-      "symbol": null,
-      "reason": "confidence 0.2 too low"
-    },
-    {
-      "id": 17854,
-      "symbol": null,
-      "reason": "confidence 0.2 too low"
-    },
-    {
-      "id": 19827,
+      "id": 21751,
       "symbol": null,
       "reason": "confidence 0.2 too low"
     },
@@ -302,32 +287,7 @@
       "reason": "confidence 0.2 too low"
     },
     {
-      "id": 19119,
-      "symbol": null,
-      "reason": "confidence 0.2 too low"
-    },
-    {
       "id": 17875,
-      "symbol": null,
-      "reason": "confidence 0.2 too low"
-    },
-    {
-      "id": 19822,
-      "symbol": null,
-      "reason": "confidence 0.2 too low"
-    },
-    {
-      "id": 19820,
-      "symbol": null,
-      "reason": "confidence 0.2 too low"
-    },
-    {
-      "id": 17852,
-      "symbol": null,
-      "reason": "confidence 0.2 too low"
-    },
-    {
-      "id": 20765,
       "symbol": null,
       "reason": "confidence 0.2 too low"
     },
@@ -337,47 +297,107 @@
       "reason": "confidence 0.2 too low"
     },
     {
-      "id": 20034,
+      "id": 20036,
+      "symbol": null,
+      "reason": "confidence 0.2 too low"
+    },
+    {
+      "id": 20031,
+      "symbol": null,
+      "reason": "confidence 0.2 too low"
+    },
+    {
+      "id": 17871,
+      "symbol": null,
+      "reason": "confidence 0.2 too low"
+    },
+    {
+      "id": 19827,
+      "symbol": null,
+      "reason": "confidence 0.2 too low"
+    },
+    {
+      "id": 19822,
+      "symbol": null,
+      "reason": "confidence 0.2 too low"
+    },
+    {
+      "id": 17869,
+      "symbol": null,
+      "reason": "confidence 0.2 too low"
+    },
+    {
+      "id": 17856,
+      "symbol": null,
+      "reason": "confidence 0.2 too low"
+    },
+    {
+      "id": 17854,
+      "symbol": null,
+      "reason": "confidence 0.2 too low"
+    },
+    {
+      "id": 19119,
+      "symbol": null,
+      "reason": "confidence 0.2 too low"
+    },
+    {
+      "id": 17852,
+      "symbol": null,
+      "reason": "confidence 0.2 too low"
+    },
+    {
+      "id": 19820,
+      "symbol": null,
+      "reason": "confidence 0.2 too low"
+    },
+    {
+      "id": 21605,
+      "symbol": null,
+      "reason": "confidence 0.2 too low"
+    },
+    {
+      "id": 20765,
+      "symbol": null,
+      "reason": "confidence 0.2 too low"
+    },
+    {
+      "id": 20927,
+      "symbol": null,
+      "reason": "confidence 0.2 too low"
+    },
+    {
+      "id": 21108,
+      "symbol": null,
+      "reason": "confidence 0.2 too low"
+    },
+    {
+      "id": 21107,
+      "symbol": null,
+      "reason": "confidence 0.2 too low"
+    },
+    {
+      "id": 20211,
+      "symbol": null,
+      "reason": "confidence 0.2 too low"
+    },
+    {
+      "id": 21102,
+      "symbol": null,
+      "reason": "confidence 0.18 too low"
+    },
+    {
+      "id": 18906,
       "symbol": null,
       "reason": "confidence 0.15 too low"
     },
     {
-      "id": 17865,
+      "id": 21103,
       "symbol": null,
       "reason": "confidence 0.15 too low"
     },
     {
-      "id": 17866,
-      "symbol": null,
-      "reason": "confidence 0.15 too low"
-    },
-    {
-      "id": 18895,
-      "symbol": null,
-      "reason": "confidence 0.15 too low"
-    },
-    {
-      "id": 19818,
-      "symbol": null,
-      "reason": "confidence 0.15 too low"
-    },
-    {
-      "id": 19819,
-      "symbol": null,
-      "reason": "confidence 0.15 too low"
-    },
-    {
-      "id": 18674,
-      "symbol": null,
-      "reason": "confidence 0.15 too low"
-    },
-    {
-      "id": 18676,
-      "symbol": null,
-      "reason": "confidence 0.15 too low"
-    },
-    {
-      "id": 18665,
+      "id": 21100,
       "symbol": null,
       "reason": "confidence 0.15 too low"
     },
@@ -387,22 +407,7 @@
       "reason": "confidence 0.15 too low"
     },
     {
-      "id": 18876,
-      "symbol": null,
-      "reason": "confidence 0.15 too low"
-    },
-    {
-      "id": 18877,
-      "symbol": null,
-      "reason": "confidence 0.15 too low"
-    },
-    {
-      "id": 18906,
-      "symbol": null,
-      "reason": "confidence 0.15 too low"
-    },
-    {
-      "id": 18889,
+      "id": 19819,
       "symbol": null,
       "reason": "confidence 0.15 too low"
     },
@@ -412,12 +417,22 @@
       "reason": "confidence 0.15 too low"
     },
     {
-      "id": 20764,
+      "id": 18676,
       "symbol": null,
       "reason": "confidence 0.15 too low"
     },
     {
-      "id": 20927,
+      "id": 18895,
+      "symbol": null,
+      "reason": "confidence 0.15 too low"
+    },
+    {
+      "id": 21104,
+      "symbol": null,
+      "reason": "confidence 0.15 too low"
+    },
+    {
+      "id": 18674,
       "symbol": null,
       "reason": "confidence 0.15 too low"
     },
@@ -427,12 +442,107 @@
       "reason": "confidence 0.15 too low"
     },
     {
+      "id": 18889,
+      "symbol": null,
+      "reason": "confidence 0.15 too low"
+    },
+    {
+      "id": 17865,
+      "symbol": null,
+      "reason": "confidence 0.15 too low"
+    },
+    {
       "id": 17853,
       "symbol": null,
       "reason": "confidence 0.15 too low"
     },
     {
+      "id": 17866,
+      "symbol": null,
+      "reason": "confidence 0.15 too low"
+    },
+    {
+      "id": 19817,
+      "symbol": null,
+      "reason": "confidence 0.15 too low"
+    },
+    {
+      "id": 18877,
+      "symbol": null,
+      "reason": "confidence 0.15 too low"
+    },
+    {
+      "id": 21752,
+      "symbol": null,
+      "reason": "confidence 0.15 too low"
+    },
+    {
+      "id": 20764,
+      "symbol": null,
+      "reason": "confidence 0.15 too low"
+    },
+    {
+      "id": 21745,
+      "symbol": null,
+      "reason": "confidence 0.15 too low"
+    },
+    {
+      "id": 18876,
+      "symbol": null,
+      "reason": "confidence 0.15 too low"
+    },
+    {
+      "id": 21608,
+      "symbol": null,
+      "reason": "confidence 0.15 too low"
+    },
+    {
+      "id": 21600,
+      "symbol": null,
+      "reason": "confidence 0.15 too low"
+    },
+    {
+      "id": 18665,
+      "symbol": null,
+      "reason": "confidence 0.15 too low"
+    },
+    {
+      "id": 20034,
+      "symbol": null,
+      "reason": "confidence 0.15 too low"
+    },
+    {
+      "id": 21749,
+      "symbol": null,
+      "reason": "confidence 0.15 too low"
+    },
+    {
+      "id": 18667,
+      "symbol": null,
+      "reason": "confidence 0.1 too low"
+    },
+    {
+      "id": 19125,
+      "symbol": null,
+      "reason": "confidence 0.1 too low"
+    },
+    {
+      "id": 18879,
+      "symbol": null,
+      "reason": "confidence 0.1 too low"
+    },
+    {
       "id": 19120,
+      "symbol": null,
+      "reason": "confidence 0.1 too low"
+    },
+    {
+      "id": 18678,
+      "symbol": null,
+      "reason": "confidence 0.1 too low"
+    },
+    {
+      "id": 21109,
       "symbol": null,
       "reason": "confidence 0.1 too low"
     },
@@ -447,32 +557,12 @@
       "reason": "confidence 0.1 too low"
     },
     {
-      "id": 18879,
-      "symbol": null,
-      "reason": "confidence 0.1 too low"
-    },
-    {
-      "id": 18678,
-      "symbol": null,
-      "reason": "confidence 0.1 too low"
-    },
-    {
-      "id": 18667,
-      "symbol": null,
-      "reason": "confidence 0.1 too low"
-    },
-    {
-      "id": 19125,
-      "symbol": null,
-      "reason": "confidence 0.1 too low"
-    },
-    {
       "id": 17874,
       "symbol": null,
       "reason": "confidence 0.05 too low"
     }
   ],
-  "total_staged_non_backlog": 1206,
+  "total_staged_non_backlog": 1253,
   "embeddings_created": 0,
   "promotions_created": 0
 }

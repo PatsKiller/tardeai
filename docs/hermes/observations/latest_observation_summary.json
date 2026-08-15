@@ -1,11 +1,10 @@
 {
-  "date": "2026-08-13",
-  "timestamp": "2026-08-13T06:31:09.332782+00:00",
+  "date": "2026-08-14",
+  "timestamp": "2026-08-14T06:31:29.839313+00:00",
   "total_checks": 12,
-  "passed": 10,
+  "passed": 11,
   "warnings": [
-    "hermes_gateway",
-    "hermes_loop_last_log"
+    "hermes_gateway"
   ],
   "checks": {
     "hermes_gateway": {
@@ -17,11 +16,11 @@
       "ok": true
     },
     "hermes_loop_last_log": {
-      "log": "Command 'journalctl --user -u hermes-autonomous-loop.service -n 3 --no-pager 2>/dev/null | tail -3' timed out after 10 seconds",
-      "ok": false
+      "log": "Aug 13 21:00:40 ms01-openclaw systemd[2779]: hermes-autonomous-loop.service: Main process exited, code=exited, status=1/FAILURE\nAug 13 21:00:40 ms01-openclaw systemd[2779]: hermes-autonomous-loop.service: Failed with result 'exit-code'.\nAug 13 21:00:40 ms01-openclaw systemd[2779]: Failed to start he",
+      "ok": true
     },
     "searxng_container": {
-      "status": "Up 3 days",
+      "status": "Up 4 days",
       "ok": true
     },
     "searxng_endpoint": {
@@ -33,13 +32,13 @@
       "ok": true
     },
     "hermes_rows": {
-      "total": 20732,
-      "staged": 1249,
-      "promoted": 5892,
+      "total": 21557,
+      "staged": 1335,
+      "promoted": 6494,
       "ok": true
     },
     "hermes_embeddings": {
-      "count": 16026,
+      "count": 16736,
       "ok": true
     },
     "kill_switch": {
@@ -55,7 +54,7 @@
       "ok": true
     },
     "cron_count": {
-      "count": 481,
+      "count": 485,
       "ok": true
     }
   }
