@@ -5,6 +5,7 @@ consistency it certifies. Authority: READ_ONLY_ADVISORY.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -15,6 +16,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from scripts.lib.cio_acceptance_purity import compare_audited, snapshot_audited_files
 from scripts.lib.cio_acceptance_v4 import (
+    eval_g0_canonical_acceptance_evaluator,
     eval_g1_exact_live_sha,
     eval_g3_drive_manifest_parity,
     eval_g5_zero_material_conflicts,
@@ -36,7 +38,7 @@ from scripts.lib.cio_source_residual import (
 )
 from scripts.portfolio_repricer import _apply_to_holdings, _recalc_totals
 sys.path.insert(0, str(ROOT / "tests"))
-from test_cio_acceptance_v4 import _clean_snap  # noqa: E402
+from test_cio_acceptance_v4 import HOLDINGS_SHA, _clean_snap, _write_bytes  # noqa: E402
 
 
 def test_01_stale_local_origin_fails_g1():
@@ -233,7 +235,105 @@ def test_24_canary_without_repeat_attempt_fails_g16():
 def test_26_research_unintegrated_means_full_office_not_pass():
     v = evaluate_live_snapshot(_clean_snap())
     assert v["CORE_CIO_PRODUCTION_ACCEPTANCE"] == "PASS"
+    assert v["RESEARCH_GOVERNANCE_ACCEPTANCE"] == "NOT_YET_INTEGRATED"
     assert v["FULL_INVESTMENT_OFFICE_ACCEPTANCE"] != "PASS"
+    assert v["PRODUCTION_ACCEPTANCE"] == v["CORE_CIO_PRODUCTION_ACCEPTANCE"]
+    assert v["PRODUCTION_ACCEPTANCE_ALIAS_OF"] == "CORE_CIO_PRODUCTION_ACCEPTANCE"
+
+
+def test_g0_unmerged_evaluator_cannot_pass_core():
+    snap = _clean_snap()
+    att = dict(snap["evaluator_attestation"])
+    att["acceptance_evaluator_commit_sha"] = "f" * 40
+    att["remote_main_sha"] = "b" * 40
+    att["evaluator_diff_vs_remote_main"] = ["scripts/lib/cio_acceptance_v4.py"]
+    att["evaluator_files_match_remote_main"] = False
+    att["git_branch"] = "fix/cio-g2-attestation-pin"
+    snap["evaluator_attestation"] = att
+    g = eval_g0_canonical_acceptance_evaluator(attestation=att)
+    assert g["status"] == "FAIL"
+    v = evaluate_live_snapshot(snap)
+    assert v["CORE_CIO_PRODUCTION_ACCEPTANCE"] == "FAIL"
+
+
+def test_report_bytes_must_match_instance_manifest(tmp_path):
+    html = tmp_path / "r.html"
+    html_sha = _write_bytes(html, b"HTML")
+    gates = eval_g10_g12_report_formats(
+        html_path=str(html),
+        pdf_path=str(tmp_path / "missing.pdf"),
+        docx_path="",
+        source_sha="a" * 40,
+        live_sha="a" * 40,
+        current_holdings_sha256=HOLDINGS_SHA,
+        report_instance={
+            "report_instance_id": "r1",
+            "html_sha256": html_sha,
+            "pdf_sha256": "p" * 64,
+            "docx_sha256": "d" * 64,
+            "portfolio_snapshot_hash": HOLDINGS_SHA,
+        },
+    )
+    by = {g["gate"]: g for g in gates}
+    assert by["G10_report_live_html"]["status"] == "PASS"
+    assert by["G11_report_live_pdf"]["status"] == "FAIL"
+    assert by["G12_report_live_docx"]["status"] == "FAIL"
+
+
+def test_holdings_sha_mismatch_fails_report_gates(tmp_path):
+    html = tmp_path / "r.html"
+    pdf = tmp_path / "r.pdf"
+    docx = tmp_path / "r.docx"
+    h = _write_bytes(html, b"H")
+    p = _write_bytes(pdf, b"P")
+    d = _write_bytes(docx, b"D")
+    gates = eval_g10_g12_report_formats(
+        html_path=str(html), pdf_path=str(pdf), docx_path=str(docx),
+        source_sha="a" * 40, live_sha="a" * 40,
+        current_holdings_sha256="live" + "0" * 60,
+        report_instance={
+            "report_instance_id": "r1",
+            "html_sha256": h,
+            "pdf_sha256": p,
+            "docx_sha256": d,
+            "portfolio_snapshot_hash": "stale" + "1" * 59,
+        },
+    )
+    assert all(g["status"] == "FAIL" for g in gates)
+    assert any("holdings" in g["reason"] for g in gates)
+
+
+def test_g13_qa_sha_must_equal_actual_pdf_bytes(tmp_path):
+    pdf = tmp_path / "live.pdf"
+    pdf.write_bytes(b"%PDF" + (b"x" * 200))
+    actual = hashlib.sha256(pdf.read_bytes()).hexdigest()
+    qa = tmp_path / "VISUAL_QA.json"
+    qa.write_text('{"result":"PASS"}', encoding="utf-8")
+    g = eval_g13_visual_qa(
+        visual_qa_artifact=str(qa),
+        pages_inspected=8,
+        qa_pdf_sha256="not-the-file-hash",
+        report_pdf_sha256=actual,
+        pdf_page_count=8,
+        qa_result="PASS",
+        qa_instance_id="r1",
+        report_instance_id="r1",
+        pdf_path=str(pdf),
+    )
+    assert g["status"] == "FAIL"
+    g2 = eval_g13_visual_qa(
+        visual_qa_artifact=str(qa),
+        pages_inspected=8,
+        qa_pdf_sha256=actual,
+        report_pdf_sha256=actual,
+        pdf_page_count=8,
+        qa_result="PASS",
+        qa_instance_id="r1",
+        report_instance_id="r1",
+        pdf_path=str(pdf),
+        page_image_hashes=[f"p{i}" for i in range(8)],
+    )
+    assert g2["status"] == "PASS"
 
 
 def test_purity_detects_holdings_hash_change(tmp_path):

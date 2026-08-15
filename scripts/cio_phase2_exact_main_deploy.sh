@@ -21,6 +21,7 @@ HEALTH_URL="${HEALTH_URL:-http://localhost:7777/api/v2/health}"
 CIO_URL="${CIO_URL:-http://localhost:7777/v3/cio}"
 STATE_DIR="${HOME}/.local/state/cio-phase2-exact-main"
 STATE_FILE="${STATE_DIR}/state.env"
+RECEIPT_FILE="${STATE_DIR}/deploy_receipt.json"
 LABEL="${CIO_EXACT_LABEL:-main-exact-phase2}"
 
 MODE="${1:-status}"
@@ -48,6 +49,59 @@ load_state() {
   [[ -f "$STATE_FILE" ]] && source "$STATE_FILE" || true
 }
 
+write_deploy_receipt() {
+  local ok_flag="${1:-false}"
+  local mode="${2:-unknown}"
+  local health="${3:-unknown}"
+  local rolled="${4:-false}"
+  local extra="${5:-}"
+  mkdir -p "$STATE_DIR"
+  local sha="${CONTENT_SHA:-}"
+  local dir="${NEW_RELEASE:-}"
+  local prev="${PREV_RELEASE:-}"
+  local pr="${CIO_SOURCE_PR:-}"
+  OK_FLAG="$ok_flag" MODE="$mode" HEALTH="$health" ROLLED="$rolled" EXTRA="$extra" \
+  SHA="$sha" DIR="$dir" PREV="$prev" PR="$pr" RECEIPT_FILE="$RECEIPT_FILE" python3 - <<'PY'
+import json, os
+from datetime import datetime, timezone
+from pathlib import Path
+pr = os.environ.get("PR") or None
+rec = {
+    "ok": os.environ.get("OK_FLAG") == "true",
+    "mode": os.environ.get("MODE") or "unknown",
+    "health": os.environ.get("HEALTH") or "unknown",
+    "rolled_back": os.environ.get("ROLLED") == "true",
+    "content_sha": os.environ.get("SHA") or "",
+    "deployed_sha": os.environ.get("SHA") or "",
+    "source_pr": pr,
+    "release_dir": os.environ.get("DIR") or "",
+    "prev_release": os.environ.get("PREV") or "",
+    "extra": os.environ.get("EXTRA") or "",
+    "at": datetime.now(timezone.utc).isoformat(),
+    "authority": "READ_ONLY_ADVISORY",
+    "script": "cio_phase2_exact_main_deploy.sh",
+}
+Path(os.environ["RECEIPT_FILE"]).write_text(json.dumps(rec, indent=2) + "\n")
+print("wrote deploy receipt", os.environ["RECEIPT_FILE"])
+PY
+}
+
+run_integrity_hook() {
+  # Hard optional hook: if generate_integrity_manifest.py exists, it MUST succeed.
+  local dir="$1"
+  local script="${dir}/scripts/generate_integrity_manifest.py"
+  if [[ ! -f "$script" ]]; then
+    log "integrity hook skipped (script not present)"
+    return 0
+  fi
+  [[ -x "$VENV_PYTHON" ]] || die "venv python missing for integrity hook: $VENV_PYTHON"
+  log "Running integrity manifest hook in $dir"
+  if ! (cd "$dir" && "$VENV_PYTHON" scripts/generate_integrity_manifest.py); then
+    die "integrity manifest generation failed — refuse to continue"
+  fi
+  log "integrity manifest OK"
+}
+
 health_check() {
   local label="${1:-health}"
   local ok=0
@@ -62,7 +116,7 @@ health_check() {
   local code_cio
   code_cio=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 8 "$CIO_URL" || echo 000)
   if [[ "$ok" -ne 1 ]]; then
-    log "FAIL $label: health endpoint not ok"
+    log "FAIL $label: health endpoint not ok (timeout)"
     return 1
   fi
   if [[ "$code_cio" != "200" ]]; then
@@ -188,19 +242,23 @@ overlay_main() {
 write_systemd() {
   local dir="$1" sha="$2"
   mkdir -p "$(dirname "$SYSTEMD_DROPIN")"
+  local pr_line=""
+  if [[ -n "${CIO_SOURCE_PR:-}" ]]; then
+    pr_line="Environment=TRADEAI_CC_SOURCE_PR=${CIO_SOURCE_PR}"
+  fi
   cat >"$SYSTEMD_DROPIN" <<DROPIN
 [Service]
 WorkingDirectory=${dir}
 Environment=PYTHONPATH=${dir}/scripts
 Environment=LLM_GLOBAL_DAILY_USD_CAP=0.50
 Environment=TRADEAI_CC_DEPLOYED_SHA=${sha}
-Environment=TRADEAI_CC_SOURCE_PR=cio-phase2-exact-main
+${pr_line}
 Environment=TRADEAI_WATCH_DEFAULT_WORKSPACE=intelligence
 Environment=CIO_TELEGRAM_INTERDICT=1
 ExecStart=
 ExecStart=${VENV_PYTHON} ${dir}/scripts/portfolio_server.py
 DROPIN
-  log "systemd drop-in → $dir (CIO_TELEGRAM_INTERDICT=1)"
+  log "systemd drop-in → $dir sha=${sha} (CIO_TELEGRAM_INTERDICT=1; PR=${CIO_SOURCE_PR:-omitted})"
 }
 
 activate_release() {
@@ -237,6 +295,7 @@ cmd_prepare() {
   link_pipeline_data "$NEW_RELEASE"
   build_frontend "$ROOT" "$NEW_RELEASE"
   stamp_build "$NEW_RELEASE" "$CONTENT_SHA"
+  run_integrity_hook "$NEW_RELEASE"
   for p in \
     "scripts/portfolio_server.py" \
     "scripts/api_v2.py" \
@@ -250,6 +309,7 @@ cmd_prepare() {
   stamped="$(tr -d '[:space:]' <"${NEW_RELEASE}/BUILD_SHA")"
   [[ "$stamped" == "$CONTENT_SHA" ]] || die "BUILD_SHA mismatch $stamped != $CONTENT_SHA"
   write_state
+  write_deploy_receipt true prepare skipped false "prepare_ok"
   log "PREPARE OK: $NEW_RELEASE"
   echo "$NEW_RELEASE"
 }
@@ -265,7 +325,20 @@ cmd_promote() {
   CONTENT_SHA="$sha"
   write_state
   activate_release "$dir" "$sha"
-  health_check "promote" || die "promote health failed — $0 rollback"
+  if ! health_check "promote"; then
+    log "promote health failed — rolling back to $PREV_RELEASE (do not claim PROMOTE OK)"
+    local rb_sha="unknown"
+    if [[ -n "$PREV_RELEASE" && -d "$PREV_RELEASE" ]]; then
+      [[ -f "${PREV_RELEASE}/BUILD_SHA" ]] && rb_sha="$(tr -d '[:space:]' <"${PREV_RELEASE}/BUILD_SHA")"
+      activate_release "$PREV_RELEASE" "$rb_sha"
+      health_check "rollback-after-failed-promote" || log "rollback health also failed"
+      write_deploy_receipt false promote timeout true "rolled_back_to_prev"
+    else
+      write_deploy_receipt false promote timeout false "prev_missing"
+    fi
+    die "promote health failed — not claiming promote OK"
+  fi
+  write_deploy_receipt true promote ok false "promote_ok"
   log "PROMOTE OK live=$sha"
 }
 
@@ -277,7 +350,11 @@ cmd_rollback() {
   [[ -f "${target}/BUILD_SHA" ]] && sha="$(tr -d '[:space:]' <"${target}/BUILD_SHA")"
   log "Rolling back to $target (sha=$sha)"
   activate_release "$target" "$sha"
-  health_check "rollback" || die "rollback health failed"
+  if ! health_check "rollback"; then
+    write_deploy_receipt false rollback fail false "rollback_health_failed"
+    die "rollback health failed"
+  fi
+  write_deploy_receipt true rollback ok false "rollback_ok"
   log "ROLLBACK OK → $target"
 }
 

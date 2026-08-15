@@ -21,7 +21,29 @@ from scripts.lib.cio_canonical_quote import (  # noqa: E402
     classify_row_conflicts,
 )
 
-FINANCIAL_TRUTH_GATE_VERSION = "financial_truth_gate_1.0.0"
+FINANCIAL_TRUTH_GATE_VERSION = "financial_truth_gate_1.1.0"
+
+# Valuation / quote source clocks. Process clocks must never mint freshness.
+SOURCE_CLOCK_FIELDS = (
+    "source_as_of",
+    "canonical_mark_as_of",
+    "provider_as_of",
+    "official_close_as_of",
+    "broker_position_as_of",
+)
+# Quote-observation aliases (still source clocks, never process).
+QUOTE_SOURCE_CLOCK_ALIASES = (
+    "price_as_of",
+    "quote_time",
+    "quote_as_of",
+)
+PROCESS_CLOCK_FIELDS = (
+    "fetched_at",
+    "ingested_at",
+    "transformed_at",
+    "reconciled_at",
+    "updated_at",
+)
 
 # Publication states (operator-facing)
 STATE_VERIFIED_CURRENT = "VERIFIED_CURRENT"
@@ -110,6 +132,51 @@ def age_seconds(ts: Optional[datetime], *, now: Optional[datetime] = None) -> Op
     return max(0.0, (n - ts).total_seconds())
 
 
+def first_present(row: Optional[dict[str, Any]], fields: tuple[str, ...]) -> tuple[Optional[str], Any]:
+    """Return (field_name, raw_value) for the first non-empty field."""
+    if not isinstance(row, dict):
+        return None, None
+    for key in fields:
+        v = row.get(key)
+        if v is not None and v != "":
+            return key, v
+    return None, None
+
+
+def extract_source_observation_time(
+    row: Optional[dict[str, Any]],
+    *,
+    include_aliases: bool = True,
+) -> tuple[Optional[str], Optional[datetime], Any]:
+    """Source observation clock only. Process clocks are ignored."""
+    fields = SOURCE_CLOCK_FIELDS + (QUOTE_SOURCE_CLOCK_ALIASES if include_aliases else ())
+    name, raw = first_present(row, fields)
+    return name, parse_ts(raw), raw
+
+
+def extract_process_time(
+    row: Optional[dict[str, Any]],
+) -> tuple[Optional[str], Optional[datetime], Any]:
+    name, raw = first_present(row, PROCESS_CLOCK_FIELDS)
+    return name, parse_ts(raw), raw
+
+
+def is_process_clock_field(name: Any) -> bool:
+    return str(name or "") in PROCESS_CLOCK_FIELDS
+
+
+def quote_stale_threshold_seconds(now: Optional[datetime] = None) -> float:
+    """RTH live marks: 15m. Outside RTH: last supported mark (24h)."""
+    try:
+        from scripts.lib.cio_market_session import get_market_session
+        sess = get_market_session(now)
+        if sess.get("state") == "RTH":
+            return float(QUOTE_STALE_SEC_RTH)
+        return 24 * 3600.0
+    except Exception:
+        return float(QUOTE_STALE_SEC_RTH * 8)
+
+
 def field_meta(
     *,
     value: Any,
@@ -120,12 +187,32 @@ def field_meta(
     calculation_version: str = FINANCIAL_TRUTH_GATE_VERSION,
     snapshot_id: Optional[str] = None,
     now: Optional[datetime] = None,
+    critical_source_time: bool = False,
 ) -> dict[str, Any]:
-    """Timestamp contract for one operator-facing financial field."""
+    """Timestamp contract for one operator-facing financial field.
+
+    When ``critical_source_time=True`` age is computed from ``source_as_of``
+    only — never ``ingested_at`` / other process clocks. Missing source time
+    is DATA_UNAVAILABLE (not current).
+    """
     sa = parse_ts(source_as_of)
     ia = parse_ts(ingested_at)
-    age = age_seconds(sa or ia, now=now)
     q = quality if quality in PUBLICATION_STATES else STATE_DATA_UNAVAILABLE
+    if critical_source_time:
+        age = age_seconds(sa, now=now)
+        if sa is None:
+            q = STATE_DATA_UNAVAILABLE
+        else:
+            # A process clock must never upgrade an old source to current.
+            if q == STATE_VERIFIED_CURRENT:
+                thresh = quote_stale_threshold_seconds(now)
+                if age is not None and age > thresh:
+                    q = STATE_STALE if age > DEFAULT_AS_OF_STALE_SEC else STATE_VERIFIED_AS_OF
+            if q in (STATE_VERIFIED_CURRENT, STATE_VERIFIED_AS_OF):
+                if age is not None and age > DEFAULT_AS_OF_STALE_SEC:
+                    q = STATE_STALE
+    else:
+        age = age_seconds(sa or ia, now=now)
     return {
         "value": value,
         "source": source,
@@ -135,6 +222,10 @@ def field_meta(
         "quality": q,
         "calculation_version": calculation_version,
         "snapshot_id": snapshot_id,
+        "critical_source_time": bool(critical_source_time),
+        "clock_kind": "source" if sa is not None else (
+            None if critical_source_time else ("process" if ia is not None else None)
+        ),
     }
 
 
@@ -327,21 +418,48 @@ def check_position_row(
                     "computed_pct": round(upl_pct_computed, 4),
                 })
 
-    # timestamps on row
-    as_of = row.get("as_of") or row.get("price_as_of") or row.get("quote_time")
-    updated = row.get("updated_at") or row.get("ingested_at")
-    ts_updated = parse_ts(updated)
-    age = age_seconds(ts_updated, now=now)
-    if age is not None and age > QUOTE_STALE_SEC_RTH * 8:  # >2h hard stale for row update
-        if quality == STATE_VERIFIED_AS_OF:
-            quality = STATE_STALE
-        exceptions.append({
-            "type": "row_timestamp_stale",
-            "symbol": symbol,
-            "account": account,
-            "age_seconds": round(age, 1),
-            "updated_at": updated,
-        })
+    # Quote / valuation freshness uses SOURCE clocks only.
+    # Process clocks (updated_at / ingested_at / fetched_at / …) never mint freshness.
+    src_name, src_dt, src_raw = extract_source_observation_time(row)
+    proc_name, proc_dt, proc_raw = extract_process_time(row)
+    as_of = src_raw or row.get("as_of")
+    updated = proc_raw
+    source_observation_quality = STATE_DATA_UNAVAILABLE
+    if src_dt is None:
+        source_observation_quality = STATE_DATA_UNAVAILABLE
+        # Missing critical source time cannot be current. Do not fall back
+        # to process clocks. Leave arithmetic VERIFIED_AS_OF rows as-of
+        # (not VERIFIED_CURRENT) so legacy fixtures without clocks stay dated.
+        if quality == STATE_VERIFIED_CURRENT:
+            quality = STATE_DATA_UNAVAILABLE
+    else:
+        age = age_seconds(src_dt, now=now)
+        thresh = quote_stale_threshold_seconds(now)
+        if age is not None and age > thresh:
+            source_observation_quality = STATE_STALE
+            if quality in (STATE_VERIFIED_CURRENT, STATE_VERIFIED_AS_OF):
+                quality = STATE_STALE
+            exceptions.append({
+                "type": "source_observation_stale",
+                "symbol": symbol,
+                "account": account,
+                "age_seconds": round(age, 1),
+                "source_clock": src_name,
+                "source_as_of": src_raw,
+                "process_clock": proc_name,
+                "process_as_of": proc_raw,
+            })
+        else:
+            source_observation_quality = (
+                STATE_VERIFIED_CURRENT if (age is not None and age <= QUOTE_STALE_SEC_RTH)
+                else STATE_VERIFIED_AS_OF
+            )
+            if quality == STATE_VERIFIED_CURRENT and source_observation_quality != STATE_VERIFIED_CURRENT:
+                quality = source_observation_quality
+    # A newer process clock must never upgrade an old source.
+    if src_dt is not None and proc_dt is not None and proc_dt > src_dt:
+        if quality == STATE_VERIFIED_CURRENT and source_observation_quality != STATE_VERIFIED_CURRENT:
+            quality = source_observation_quality
 
     actionable = quality in (STATE_VERIFIED_CURRENT, STATE_VERIFIED_AS_OF)
     return {
@@ -369,6 +487,11 @@ def check_position_row(
         "source": row.get("source") or row.get("price_source"),
         "as_of": as_of,
         "updated_at": updated,
+        "source_as_of": src_raw,
+        "source_clock": src_name,
+        "process_as_of": proc_raw,
+        "process_clock": proc_name,
+        "source_observation_quality": source_observation_quality,
     }
 
 
@@ -522,13 +645,20 @@ def evaluate_holdings_document(
             "abs_err": round(abs(sum_acct - derived_portfolio), 4),
         })
 
-    # Meta timestamp contract
-    meta_as_of = doc.get("as_of") or doc.get("generated_at")
-    meta_updated = doc.get("updated_at")
+    # Meta timestamp contract — source as_of, never process clocks for freshness
+    meta_as_of = doc.get("as_of") or doc.get("generated_at") or doc.get("source_as_of")
+    meta_updated = doc.get("updated_at") or doc.get("ingested_at") or doc.get("fetched_at")
     meta_ts = parse_ts(meta_updated)
     meta_as_of_ts = parse_ts(meta_as_of)
     meta_exceptions: list[dict[str, Any]] = []
     meta_quality = STATE_VERIFIED_AS_OF
+    if meta_as_of_ts is None:
+        meta_quality = STATE_DATA_UNAVAILABLE
+        meta_exceptions.append({
+            "type": "missing_source_observation_time",
+            "detail": "holdings document missing critical source as_of",
+            "updated_at": meta_updated,
+        })
     if meta_ts and meta_as_of_ts:
         # if updated_at much older than as_of label → conflict
         if meta_ts < meta_as_of_ts and (meta_as_of_ts - meta_ts).total_seconds() > 12 * 3600:
@@ -539,11 +669,13 @@ def evaluate_holdings_document(
                 "detail": "updated_at lags as_of/generated_at by >12h",
             })
             meta_quality = STATE_CONFLICTED
-    age_meta = age_seconds(meta_ts, now=now)
+    # Freshness from source as_of only — a new updated_at cannot refresh an old source.
+    age_meta = age_seconds(meta_as_of_ts, now=now)
     if age_meta is not None and age_meta > HOLDINGS_META_STALE_SEC:
         meta_exceptions.append({
             "type": "holdings_meta_stale",
             "age_seconds": round(age_meta, 1),
+            "source_as_of": meta_as_of,
             "updated_at": meta_updated,
         })
         if meta_quality != STATE_CONFLICTED:
@@ -617,6 +749,7 @@ def evaluate_holdings_document(
             ingested_at=meta_updated,
             quality=meta_quality,
             now=now,
+            critical_source_time=True,
         ),
         "positions": position_results,
         "exceptions": all_exceptions,

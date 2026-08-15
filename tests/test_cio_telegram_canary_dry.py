@@ -203,6 +203,31 @@ def test_script_never_sets_authorize_p2():
                     raise AssertionError(f"{p} must not set AUTHORIZE_P2: {seg}")
 
 
+def test_receipt_includes_optional_identity_fields(canary_iso):
+    from scripts.lib.cio_telegram_canary import extra_live_receipt_fields, run_canary
+
+    out = run_canary(dry_run=True, receipt_path=canary_iso["receipt"])
+    rec = out["receipt"]
+    assert rec["sent"] is False
+    assert rec["decision_id"]
+    assert rec["canary_run_id"]
+    assert rec["release_content_sha"] == "c" * 40
+    assert rec["repeat_attempted"] is False
+    assert rec["repeat_extra_send_count"] == 0
+    extras = extra_live_receipt_fields(
+        decision={"decision_id": "dec_test"},
+        release_sha="d" * 40,
+        canary_run_id="canary_test_1",
+        repeat_attempted=True,
+        repeat_extra_send_count=2,
+    )
+    assert extras["canary_run_id"] == "canary_test_1"
+    assert extras["decision_id"] == "dec_test"
+    assert extras["release_content_sha"] == "d" * 40
+    assert extras["repeat_attempted"] is True
+    assert extras["repeat_extra_send_count"] == 2
+
+
 def test_no_or_true_in_canary_or_transport():
     for p in (CANARY_LIB, CANARY_CLI, TRANSPORT):
         tree = ast.parse(p.read_text(encoding="utf-8"))

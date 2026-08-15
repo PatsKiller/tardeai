@@ -62,6 +62,38 @@ def live_authorized() -> bool:
     return _env(ENV_AUTHORIZE_LIVE) == "1"
 
 
+# Delivery-mode classification (P1-6). This is a flag readout, NOT an isolation proof.
+MODE_INTERDICTED = "INTERDICTED"
+MODE_PREPARE_ONLY = "PREPARE_ONLY"
+MODE_CIO_ONLY_LIVE = "CIO_ONLY_LIVE"
+
+
+def cio_delivery_mode() -> str:
+    """Classify intended CIO Telegram delivery from process flags.
+
+    Returns one of: INTERDICTED | PREPARE_ONLY | CIO_ONLY_LIVE.
+
+    Inputs: CIO_TELEGRAM_INTERDICT, ENABLE_TELEGRAM, AUTHORIZE_P2_LIVE_OPERATOR_DELIVERY.
+    Pytest is treated as INTERDICTED so unit tests cannot open a live path.
+
+    INTERDICTED is not an isolation-pass. Isolation-pass is a *measured* canary
+    proof (CIO-only token/chat, general_sends==0). INTERDICTED != isolation-pass
+    and does not by itself mean live delivery is impossible in every process —
+    another process with different flags can still be CIO_ONLY_LIVE.
+    CIO_ONLY_LIVE is the only mode that may perform live CIO delivery.
+    This helper never mutates env.
+    """
+    if under_pytest():
+        return MODE_INTERDICTED
+    if _env(ENV_INTERDICT, "0").lower() in ("1", "true", "yes", "on"):
+        return MODE_INTERDICTED
+    if _env("ENABLE_TELEGRAM", "true").lower() in ("0", "false", "no", "off"):
+        return MODE_INTERDICTED
+    if not live_authorized():
+        return MODE_PREPARE_ONLY
+    return MODE_CIO_ONLY_LIVE
+
+
 def cio_bot_token() -> str:
     return _env(ENV_CIO_TOKEN)
 

@@ -6,7 +6,9 @@ detecting a failure, using offline/toy data, or while P0/P1 remain open.
 from __future__ import annotations
 
 import ast
+import hashlib
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -16,12 +18,14 @@ sys.path.insert(0, str(ROOT))
 from scripts.lib.cio_acceptance_v4 import (  # noqa: E402
     ACCEPTANCE_VERSION,
     HARD_GATE_IDS,
+    eval_g0_canonical_acceptance_evaluator,
     eval_g1_exact_live_sha,
     eval_g2_release_manifest_parity,
     eval_g4_financial_book,
     eval_g5_zero_material_conflicts,
     eval_g6_required_freshness,
     eval_g10_g12_report_formats,
+    eval_g13_visual_qa,
     eval_g14_telegram_isolation,
     eval_g15_real_canary,
     eval_g20_strategy_honest,
@@ -30,10 +34,61 @@ from scripts.lib.cio_acceptance_v4 import (  # noqa: E402
     make_gate,
 )
 
+_ARTIFACT_DIR = Path(tempfile.mkdtemp(prefix="cio_acc_v4_"))
+HOLDINGS_SHA = "hold" + "b" * 60
+
+
+def _write_bytes(path: Path, tag: bytes) -> str:
+    path.write_bytes(b"%PDF-REPORT\n" + tag + (b"\n" * 120))
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _report_bundle(dest: Path | None = None) -> dict:
+    d = dest or _ARTIFACT_DIR
+    d.mkdir(parents=True, exist_ok=True)
+    html_p = d / "cio_live_report.html"
+    pdf_p = d / "cio_live_report.pdf"
+    docx_p = d / "cio_live_report.docx"
+    qa_p = d / "VISUAL_QA.json"
+    html_sha = _write_bytes(html_p, b"HTML")
+    pdf_sha = _write_bytes(pdf_p, b"PDF")
+    docx_sha = _write_bytes(docx_p, b"DOCX")
+    qa_p.write_text('{"result":"PASS","pages_inspected":8}', encoding="utf-8")
+    return {
+        "html_path": str(html_p),
+        "pdf_path": str(pdf_p),
+        "docx_path": str(docx_p),
+        "qa_path": str(qa_p),
+        "html_sha256": html_sha,
+        "pdf_sha256": pdf_sha,
+        "docx_sha256": docx_sha,
+    }
+
+
+def _pass_g0_attestation(sha: str) -> dict:
+    return {
+        "proven": True,
+        "acceptance_evaluator_commit_sha": sha,
+        "git_branch": "main",
+        "worktree_clean": True,
+        "untracked_count": 0,
+        "evaluator_file_sha256": "e" * 64,
+        "runner_file_sha256": "r" * 64,
+        "remote_main_sha": sha,
+        "main_commit_class": "RUNTIME_CONTENT",
+        "attested_runtime_content_sha": sha,
+        "evaluator_diff_vs_remote_main": [],
+        "evaluator_files_match_remote_main": True,
+        "evaluator_files_match_attested_content": True,
+        "evaluator_files_dirty": False,
+        "untracked_evaluator_count": 0,
+    }
+
 
 def _clean_snap(**overrides):
     """A snapshot that *could* pass if all fields were green — tests flip one."""
     sha = "a" * 40
+    bundle = _report_bundle()
     base = {
         "live_sha": sha,
         "main_sha": sha,
@@ -72,47 +127,111 @@ def _clean_snap(**overrides):
         "capital_plan": {
             "authority": "READ_ONLY_ADVISORY",
             "cash_total_usd": 100.0,
+            "portfolio_value_usd": 1000.0,
             "cash_earmarked_redeploy_usd": 10.0,
-            "cash_investable_usd": 50.0,
+            "cash_reserved_usd": 20.0,
+            "cash_investable_usd": 80.0,
+            "deployable_usd": 80.0,
             "net_recommended_deploy_usd": 20.0,
-            "capital_sources": {"total_prospective_raise_usd": 0},
+            "post_plan_cash_usd": 80.0,
+            "capital_sources": {
+                "total_prospective_raise_usd": 0,
+                "total_raise_usd": 0,
+                "trims_usd": 0,
+                "exits_usd": 0,
+                "maturities_usd": 0,
+                "includes_current_cash": False,
+                "includes_earmarked_existing_cash": False,
+                "realized_historical_proceeds_usd": 0,
+            },
             "account_capital_ledger": {
-                "accounts": [{"account": "a"}],
-                "portfolio_aggregate": {},
+                "accounts": [{
+                    "account": "a",
+                    "settled_cash_usd": 100.0,
+                    "positions_mv_usd": 900.0,
+                    "post_plan_cash_usd": 80.0,
+                    "negative_cash": False,
+                }],
+                "portfolio_aggregate": {
+                    "settled_cash_usd": 100.0,
+                    "reserve_usd": 20.0,
+                    "earmarked_usd": 10.0,
+                    "prospective_raise_usd": 0.0,
+                    "recommended_deploy_usd": 20.0,
+                    "post_plan_cash_usd": 80.0,
+                    "portfolio_value_usd": 1000.0,
+                },
                 "invariants": {
                     "earmark_le_settled_cash": True,
                     "deploy_le_free_plus_prospective": True,
                 },
             },
             "position_decisions": [{
+                "decision_id": "dec-aaa",
                 "symbol": "AAA",
+                "account": "any",
+                "action": "HOLD",
                 "action_label": "REVIEW",
                 "act_now": False,
+                "decision_input_digest": "in1",
+                "decision_evidence_digest": "ev1",
                 "generated_at": "2026-08-14T00:00:00+00:00",
                 "freshness": {"board": [{"name": "decision", "detail": "ok"}]},
             }],
         },
-        "decision_parity": {"ok": True, "field_mismatches": [], "missing_required": []},
+        "decision_parity": {
+            "ok": True,
+            "surfaces_complete": True,
+            "field_mismatches": [],
+            "missing_required": [],
+            "surfaces": {
+                "capital_plan": [{
+                    "decision_id": "dec-aaa", "symbol": "AAA", "account": "any",
+                    "action": "HOLD", "decision_input_digest": "in1",
+                    "decision_evidence_digest": "ev1",
+                }],
+                "cio_home": [{
+                    "decision_id": "dec-aaa", "symbol": "AAA", "account": "any",
+                    "action": "HOLD", "decision_input_digest": "in1",
+                    "decision_evidence_digest": "ev1",
+                }],
+                "report": [{
+                    "decision_id": "dec-aaa", "symbol": "AAA", "account": "any",
+                    "action": "HOLD", "decision_input_digest": "in1",
+                    "decision_evidence_digest": "ev1",
+                }],
+                "telegram": [{
+                    "decision_id": "dec-aaa", "symbol": "AAA", "account": "any",
+                    "action": "HOLD", "decision_input_digest": "in1",
+                    "decision_evidence_digest": "ev1",
+                }],
+            },
+        },
         "advisory_payload": {"advisory_provenance": {"symbol": "AAA"}},
         "frontend_bundle_text": "advisory_provenance Current mark Material Today",
         "cio_hub_source": "Investment decisions / Material Today",
-        "report_html_path": "/tmp/live.html",
-        "report_pdf_path": "/tmp/live.pdf",
-        "report_docx_path": "/tmp/live.docx",
+        "evaluator_attestation": _pass_g0_attestation(sha),
+        "current_holdings_sha256": HOLDINGS_SHA,
+        "report_html_path": bundle["html_path"],
+        "report_pdf_path": bundle["pdf_path"],
+        "report_docx_path": bundle["docx_path"],
         "report_source_sha": sha,
         "report_synthetic": False,
-        "visual_qa_artifact": "/tmp/qa",
+        "visual_qa_artifact": bundle["qa_path"],
         "visual_qa_pages": 8,
-        "qa_pdf_sha256": "pdf" + "a" * 60,
-        "report_pdf_sha256": "pdf" + "a" * 60,
+        "qa_page_image_hashes": [f"p{i:02d}" + "c" * 60 for i in range(8)],
+        "qa_pdf_sha256": bundle["pdf_sha256"],
+        "report_pdf_sha256": bundle["pdf_sha256"],
         "pdf_page_count": 8,
         "qa_result": "PASS",
         "qa_instance_id": "inst-1",
         "report_instance": {
             "report_instance_id": "inst-1",
-            "html_sha256": "h" * 64,
-            "pdf_sha256": "pdf" + "a" * 60,
-            "docx_sha256": "d" * 64,
+            "html_sha256": bundle["html_sha256"],
+            "pdf_sha256": bundle["pdf_sha256"],
+            "docx_sha256": bundle["docx_sha256"],
+            "portfolio_snapshot_hash": HOLDINGS_SHA,
+            "expected_portfolio_snapshot_hash": HOLDINGS_SHA,
         },
         "cio_token_env_set": True,
         "general_token_used_in_cio_transport": False,
@@ -125,6 +244,10 @@ def _clean_snap(**overrides):
             "cio_chat_confirmed": True,
             "duplicate": False,
             "release_sha": sha,
+            "release_content_sha": sha,
+            "decision_id": "dec-aaa",
+            "decision_input_digest": "in1",
+            "decision_evidence_digest": "ev1",
             "repeat_unchanged_sends": 0,
             "repeat_attempted": True,
         },
@@ -153,9 +276,11 @@ def _clean_snap(**overrides):
     return base
 
 
-def test_version_and_twenty_gates():
+def test_version_and_hard_gates():
     assert ACCEPTANCE_VERSION.startswith("cio_acceptance_v4")
-    assert len(HARD_GATE_IDS) == 20
+    assert HARD_GATE_IDS[0] == "G0_CANONICAL_ACCEPTANCE_EVALUATOR"
+    assert "G1_exact_live_sha" in HARD_GATE_IDS
+    assert len(HARD_GATE_IDS) == 21
 
 
 def test_conflicted_book_is_fail_not_pass():
@@ -249,18 +374,134 @@ def test_synthetic_report_cannot_pass_pdf():
 
 
 def test_html_only_does_not_pass_pdf_or_docx():
+    d = _ARTIFACT_DIR / "html_only"
+    d.mkdir(parents=True, exist_ok=True)
+    html_p = d / "only.html"
+    html_sha = _write_bytes(html_p, b"HTML-ONLY")
     gates = eval_g10_g12_report_formats(
-        html_path="/tmp/x.html",
+        html_path=str(html_p),
         pdf_path="",
         docx_path="",
         source_sha="a" * 40,
         live_sha="a" * 40,
         synthetic=False,
+        current_holdings_sha256=HOLDINGS_SHA,
+        report_instance={
+            "report_instance_id": "inst-html",
+            "html_sha256": html_sha,
+            "pdf_sha256": "",
+            "docx_sha256": "",
+            "portfolio_snapshot_hash": HOLDINGS_SHA,
+        },
     )
     by = {g["gate"]: g for g in gates}
     assert by["G10_report_live_html"]["status"] == "PASS"
     assert by["G11_report_live_pdf"]["status"] == "FAIL"
     assert by["G12_report_live_docx"]["status"] == "FAIL"
+
+
+def test_nonempty_path_or_hash_field_is_not_enough():
+    """G10–G12 must not pass on a path string or hash-field-present."""
+    gates = eval_g10_g12_report_formats(
+        html_path="/tmp/does-not-exist-cio.html",
+        pdf_path="/tmp/does-not-exist-cio.pdf",
+        docx_path="/tmp/does-not-exist-cio.docx",
+        source_sha="a" * 40,
+        live_sha="a" * 40,
+        synthetic=False,
+        current_holdings_sha256=HOLDINGS_SHA,
+        report_instance={
+            "report_instance_id": "inst-1",
+            "html_sha256": "h" * 64,
+            "pdf_sha256": "p" * 64,
+            "docx_sha256": "d" * 64,
+            "portfolio_snapshot_hash": HOLDINGS_SHA,
+        },
+    )
+    assert all(g["status"] == "FAIL" for g in gates)
+    assert any("missing" in g["reason"] for g in gates)
+
+
+def test_tiny_or_hash_mismatch_report_bytes_fail(tmp_path):
+    tiny = tmp_path / "tiny.html"
+    tiny.write_bytes(b"<html>nope</html>")
+    big = tmp_path / "big.html"
+    payload = b"<html>" + (b"x" * 200) + b"</html>"
+    big.write_bytes(payload)
+    wrong = eval_g10_g12_report_formats(
+        html_path=str(tiny),
+        pdf_path="",
+        docx_path="",
+        source_sha="a" * 40,
+        live_sha="a" * 40,
+        current_holdings_sha256=HOLDINGS_SHA,
+        report_instance={
+            "report_instance_id": "i",
+            "html_sha256": "a" * 64,
+            "portfolio_snapshot_hash": HOLDINGS_SHA,
+        },
+    )
+    assert wrong[0]["status"] == "FAIL"
+    mismatch = eval_g10_g12_report_formats(
+        html_path=str(big),
+        pdf_path="",
+        docx_path="",
+        source_sha="a" * 40,
+        live_sha="a" * 40,
+        current_holdings_sha256=HOLDINGS_SHA,
+        report_instance={
+            "report_instance_id": "i",
+            "html_sha256": "f" * 64,
+            "portfolio_snapshot_hash": HOLDINGS_SHA,
+        },
+    )
+    assert mismatch[0]["status"] == "FAIL"
+    assert "sha256" in mismatch[0]["reason"]
+
+
+def test_g13_requires_actual_pdf_bytes_and_all_pages(tmp_path):
+    pdf = tmp_path / "r.pdf"
+    pdf.write_bytes(b"%PDF" + (b"p" * 200))
+    actual = hashlib.sha256(pdf.read_bytes()).hexdigest()
+    qa = tmp_path / "VISUAL_QA.json"
+    qa.write_text('{"result":"PASS"}', encoding="utf-8")
+    fail_hash = eval_g13_visual_qa(
+        visual_qa_artifact=str(qa),
+        pages_inspected=8,
+        qa_pdf_sha256="deadbeef" * 8,
+        report_pdf_sha256=actual,
+        pdf_page_count=8,
+        qa_result="PASS",
+        qa_instance_id="inst-1",
+        report_instance_id="inst-1",
+        pdf_path=str(pdf),
+    )
+    assert fail_hash["status"] == "FAIL"
+    fail_pages = eval_g13_visual_qa(
+        visual_qa_artifact=str(qa),
+        pages_inspected=3,
+        qa_pdf_sha256=actual,
+        report_pdf_sha256=actual,
+        pdf_page_count=8,
+        qa_result="PASS",
+        qa_instance_id="inst-1",
+        report_instance_id="inst-1",
+        pdf_path=str(pdf),
+    )
+    assert fail_pages["status"] == "FAIL"
+    ok = eval_g13_visual_qa(
+        visual_qa_artifact=str(qa),
+        pages_inspected=8,
+        qa_pdf_sha256=actual,
+        report_pdf_sha256=actual,
+        pdf_page_count=8,
+        qa_result="PASS",
+        qa_instance_id="inst-1",
+        report_instance_id="inst-1",
+        pdf_path=str(pdf),
+        page_image_hashes=[f"p{i}" for i in range(8)],
+    )
+    assert ok["status"] == "PASS"
 
 
 def test_telegram_unproven_general_not_used_fails():
@@ -396,3 +637,39 @@ def test_not_run_is_fail_closed():
                   status="NOT_RUN", reason="no artifact", severity="P1")
     assert g["status"] == "FAIL"
     assert "NOT_RUN" in g["reason"]
+
+
+def test_missing_g0_attestation_fails_core():
+    snap = _clean_snap()
+    snap["evaluator_attestation"] = {}
+    v = evaluate_live_snapshot(snap)
+    by = {g["gate"]: g for g in v["gates"]}
+    assert by["G0_CANONICAL_ACCEPTANCE_EVALUATOR"]["status"] == "FAIL"
+    assert v["CORE_CIO_PRODUCTION_ACCEPTANCE"] == "FAIL"
+    assert v["PRODUCTION_ACCEPTANCE"] == "FAIL"
+
+
+def test_g2_pin_allows_live_equal_attested_content(monkeypatch):
+    """Already-applied parent-pin: live may equal canonical content SHA."""
+    monkeypatch.setattr(
+        "scripts.cio_release_manifest.pin_only_parent",
+        lambda head, canon: {"ok": True, "reason": "pin_only", "parent": canon},
+    )
+    content = "c" * 40
+    pin = "p" * 40
+    g = eval_g2_release_manifest_parity(
+        manifest={
+            "status": "production",
+            "canonical_source_sha": content,
+            "backend_release_sha": content,
+            "origin_main_sha": pin,
+        },
+        live_sha=content,
+        main_sha=pin,
+    )
+    assert g["status"] == "PASS"
+
+
+def test_g0_pass_attestation_green():
+    g = eval_g0_canonical_acceptance_evaluator(attestation=_pass_g0_attestation("a" * 40))
+    assert g["status"] == "PASS"

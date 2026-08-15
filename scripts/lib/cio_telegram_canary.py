@@ -20,6 +20,7 @@ import ast
 import hashlib
 import json
 import os
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
@@ -74,6 +75,33 @@ def _env(k: str, default: str = "") -> str:
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def new_canary_run_id() -> str:
+    return f"canary_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}_{uuid.uuid4().hex[:8]}"
+
+
+def extra_live_receipt_fields(
+    *,
+    decision: dict[str, Any],
+    release_sha: str,
+    canary_run_id: Optional[str] = None,
+    repeat_attempted: bool = False,
+    repeat_extra_send_count: int = 0,
+    extra: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
+    """Optional live-receipt identity fields. Never implies a send occurred."""
+    fields = {
+        "canary_run_id": canary_run_id or new_canary_run_id(),
+        "decision_id": decision.get("decision_id"),
+        "release_content_sha": release_sha or "",
+        "repeat_attempted": bool(repeat_attempted),
+        "repeat_extra_send_count": int(repeat_extra_send_count or 0),
+        "delivery_mode": tg.cio_delivery_mode(),
+    }
+    if extra:
+        fields.update(extra)
+    return fields
 
 
 def schd_trim_decision() -> dict[str, Any]:
@@ -288,9 +316,10 @@ def _dry_receipt(
     cred_reads: dict[str, int],
     live_reason: str,
     release_sha: str,
+    extras: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     """Canonical DRY receipt. `general_sends` is the measured counter."""
-    return {
+    rec = {
         "sent": False,
         "dry_run": True,
         "operator_approved": False,
@@ -321,6 +350,9 @@ def _dry_receipt(
         "channel": "telegram_cio_only",
         "REAL_TELEGRAM_SENDS": 0,
     }
+    if extras:
+        rec.update(extras)
+    return rec
 
 
 def write_receipt(receipt: dict[str, Any], path: Path) -> Path:
@@ -354,6 +386,7 @@ def run_canary(
     d = decision or schd_trim_decision()
     path = Path(receipt_path) if receipt_path else default_receipt_path()
     release_sha = read_release_sha()
+    extras = extra_live_receipt_fields(decision=d, release_sha=release_sha)
 
     if dry_run:
         # Defense in depth: interdict this process for the dry path.
@@ -384,6 +417,7 @@ def run_canary(
                 "REAL_TELEGRAM_SENDS": int(live_res.get("REAL_TELEGRAM_SENDS") or 0),
                 "reason": live_res.get("reason"),
             }
+            live_receipt.update(extras)
             live_path = LIVE_RECEIPT_PATH
             write_receipt(live_receipt, live_path)
             return {
@@ -411,6 +445,7 @@ def run_canary(
             cred_reads=cred_reads,
             live_reason=live_reason,
             release_sha=release_sha,
+            extras=extras,
         )
         write_receipt(receipt, path)
         return {
