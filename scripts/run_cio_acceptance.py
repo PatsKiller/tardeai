@@ -345,7 +345,6 @@ def _collect_live(now: datetime, ev: Path) -> dict[str, Any]:
     git_sha256 = ""
     git_bytes = (REPO / "docs/investment-office/RELEASE_MANIFEST.json")
     try:
-        import hashlib
         git_sha256 = hashlib.sha256(git_bytes.read_bytes()).hexdigest() if git_bytes.is_file() else ""
         env = os.environ.copy()
         env.setdefault("GOG_ACCOUNT", "john@jwwhiting.com")
