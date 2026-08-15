@@ -176,7 +176,7 @@ def test_schd_trim_package_is_real_shaped(canary_iso):
     out = run_canary(dry_run=True, receipt_path=canary_iso["receipt"], decision=d)
     body = (out.get("package") or {}).get("message_body") or ""
     assert "SCHD" in body
-    assert "Alex · CIO call" in body
+    assert "Alex · CIO NOW" in body
     assert out["evaluation"]["material"] is True
     assert out["evaluation"]["would_send"] is True
     assert out["receipt"]["chat_target_type"] == "cio"

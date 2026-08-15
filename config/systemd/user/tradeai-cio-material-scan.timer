@@ -1,0 +1,12 @@
+[Unit]
+Description=Trade AI CIO material scan every 10 minutes (event backstop)
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=10min
+AccuracySec=30s
+Persistent=true
+Unit=tradeai-cio-material-scan.service
+
+[Install]
+WantedBy=timers.target

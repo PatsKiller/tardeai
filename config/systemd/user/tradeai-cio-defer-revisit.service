@@ -1,0 +1,10 @@
+[Unit]
+Description=Trade AI CIO defer/revisit scanner
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT
+Environment=PYTHONPATH=/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts
+ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -c "from scripts.lib.cio_alex_telegram import due_defers; print(len(due_defers()))"
+Nice=10

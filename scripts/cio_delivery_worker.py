@@ -38,21 +38,24 @@ def main() -> int:
     worker = CIONotificationDeliveryWorker(notification_outbox=outbox, mode=args.mode)
 
     print(f"CIO Delivery Worker — mode={args.mode} max={args.max_deliveries}")
-    delivered = 0
-
     try:
-        notification = worker.poll_and_deliver()
-        while notification and delivered < args.max_deliveries:
-            delivered += 1
-            nid = notification.get("notification_id", "?") if isinstance(notification, dict) else "?"
-            print(f"  delivered: {nid}")
-            notification = worker.poll_and_deliver()
+        summary = worker.poll_and_deliver(max_deliveries=args.max_deliveries)
     except Exception as e:
         print(f"  delivery error: {type(e).__name__}: {e}")
         return 1
 
-    print(f"  summary: {delivered} delivered, mode={args.mode}")
-    return 0
+    if not isinstance(summary, dict):
+        print(f"  unexpected_result={type(summary).__name__}")
+        return 1
+    delivered = summary.get("delivered") or summary.get("delivered_count") or 0
+    failed = summary.get("failed") or summary.get("failed_count") or 0
+    if isinstance(delivered, list):
+        delivered = len(delivered)
+    if isinstance(failed, list):
+        failed = len(failed)
+    print(f"  delivered_count={int(delivered)} failed_count={int(failed)} mode={args.mode}")
+    print(f"  summary: {int(delivered)} delivered, mode={args.mode}")
+    return 0 if int(failed) == 0 else 1
 
 
 if __name__ == "__main__":

@@ -94,12 +94,13 @@ def test_cio_message_is_cio_speak(alex_iso):
     from lib import cio_alex_telegram as ax
 
     body = ax.format_cio_message(_decision())
-    assert "Alex · CIO call" in body
+    assert "Alex · CIO NOW" in body
     assert "SCHD" in body
-    assert "Why now" in body
-    assert "What changes my mind" in body
+    assert "WHY" in body
+    assert "WHAT CHANGES MY MIND" in body
     assert "dec_abc123phase9test" in body
-    assert "ACK" in body
+    # Actions are inline URL buttons, not plaintext ACK · DEFER
+    assert "ACK · DEFER" not in body
 
 
 def test_second_identical_cycle_dedupes(alex_iso):

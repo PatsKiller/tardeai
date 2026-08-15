@@ -34,7 +34,7 @@ def smart_split(text: str, limit: int = MAX_MSG_LEN) -> list[str]:
     return chunks
 
 
-def send_message(*, token: str, chat_id: str, text: str, thread_id: str | None = None) -> dict:
+def send_message(*, token: str, chat_id: str, text: str, thread_id: str | None = None, reply_markup: dict | None = None) -> dict:
     # Phase 1 network interdiction: never hit Telegram API under pytest / CI flags
     import os
     if os.environ.get("PYTEST_CURRENT_TEST") or os.environ.get("CIO_TELEGRAM_INTERDICT", "").lower() in (
@@ -49,12 +49,16 @@ def send_message(*, token: str, chat_id: str, text: str, thread_id: str | None =
     payload = {"chat_id": chat_id, "text": text, "parse_mode": "Markdown"}
     if thread_id:
         payload["message_thread_id"] = thread_id
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
     resp = requests.post(TELEGRAM_SEND_MESSAGE_API.format(token=token), json=payload, timeout=10)
     if resp.ok:
         return {"ok": True, "status_code": resp.status_code, "response": _safe_json(resp)}
     fallback = {"chat_id": chat_id, "text": text}
     if thread_id:
         fallback["message_thread_id"] = thread_id
+    if reply_markup:
+        fallback["reply_markup"] = reply_markup
     resp2 = requests.post(TELEGRAM_SEND_MESSAGE_API.format(token=token), json=fallback, timeout=10)
     return {"ok": bool(resp2.ok), "status_code": resp2.status_code, "response": _safe_json(resp2)}
 

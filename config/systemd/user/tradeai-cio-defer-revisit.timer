@@ -1,0 +1,11 @@
+[Unit]
+Description=Trade AI CIO defer revisit hourly
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=1h
+Persistent=true
+Unit=tradeai-cio-defer-revisit.service
+
+[Install]
+WantedBy=timers.target
