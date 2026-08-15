@@ -11,6 +11,7 @@ on:
       - "scripts/render_cio_report_files.py"
       - "scripts/cio_release_manifest.py"
       - "scripts/run_cio_hardening_ci.py"
+      - "scripts/run_cio_acceptance.py"
       - "scripts/telegram_transport.py"
       - "tests/test_cio_*.py"
       - "docs/investment-office/**"
@@ -21,8 +22,10 @@ on:
       - "scripts/render_cio_report_files.py"
       - "scripts/cio_release_manifest.py"
       - "scripts/run_cio_hardening_ci.py"
+      - "scripts/run_cio_acceptance.py"
       - "tests/test_cio_*.py"
       - "docs/investment-office/**"
+      - ".github/workflows/cio-production-hardening-ci.yml"
   workflow_dispatch:
 
 jobs:

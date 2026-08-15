@@ -422,6 +422,73 @@ def test_nonempty_path_or_hash_field_is_not_enough():
     assert any("missing" in g["reason"] for g in gates)
 
 
+def test_unlike_digest_family_does_not_fail_report_gates(tmp_path):
+    """Report-builder digest vs missing/empty live digest is not comparable."""
+    html = tmp_path / "r.html"
+    pdf = tmp_path / "r.pdf"
+    docx = tmp_path / "r.docx"
+    h = _write_bytes(html, b"H")
+    p = _write_bytes(pdf, b"P")
+    d = _write_bytes(docx, b"D")
+    gates = eval_g10_g12_report_formats(
+        html_path=str(html), pdf_path=str(pdf), docx_path=str(docx),
+        source_sha="a" * 40, live_sha="a" * 40,
+        current_holdings_sha256=HOLDINGS_SHA,
+        live_capital_plan_digest="",
+        live_decision_digest="",
+        report_instance={
+            "report_instance_id": "r1",
+            "html_sha256": h,
+            "pdf_sha256": p,
+            "docx_sha256": d,
+            "portfolio_snapshot_hash": HOLDINGS_SHA,
+            "capital_plan_digest": "report-family-" + "e" * 48,
+        },
+    )
+    assert all(g["status"] == "PASS" for g in gates)
+
+
+def test_same_family_digest_mismatch_fails_report_gates(tmp_path):
+    html = tmp_path / "r.html"
+    pdf = tmp_path / "r.pdf"
+    docx = tmp_path / "r.docx"
+    h = _write_bytes(html, b"H")
+    p = _write_bytes(pdf, b"P")
+    d = _write_bytes(docx, b"D")
+    gates = eval_g10_g12_report_formats(
+        html_path=str(html), pdf_path=str(pdf), docx_path=str(docx),
+        source_sha="a" * 40, live_sha="a" * 40,
+        current_holdings_sha256=HOLDINGS_SHA,
+        live_capital_plan_digest="api-family-" + "a" * 52,
+        report_instance={
+            "report_instance_id": "r1",
+            "html_sha256": h,
+            "pdf_sha256": p,
+            "docx_sha256": d,
+            "portfolio_snapshot_hash": HOLDINGS_SHA,
+            "capital_plan_digest": "report-family-" + "e" * 48,
+        },
+    )
+    assert all(g["status"] == "FAIL" for g in gates)
+    assert any("capital_plan_digest mismatch" in g["reason"] for g in gates)
+
+
+def test_evaluate_snapshot_does_not_use_api_plan_digest(tmp_path):
+    """Collector-empty live digest must not fall back to API plan.digest."""
+    snap = _clean_snap()
+    snap["live_capital_plan_digest"] = ""
+    snap["live_decision_digest"] = ""
+    snap["capital_plan"] = dict(snap["capital_plan"] or {})
+    snap["capital_plan"]["digest"] = "api-family-" + "a" * 52
+    snap["report_instance"] = dict(snap["report_instance"])
+    snap["report_instance"]["capital_plan_digest"] = "report-family-" + "e" * 48
+    v = evaluate_live_snapshot(snap)
+    by = {g["gate"]: g for g in v["gates"]}
+    assert by["G10_report_live_html"]["status"] == "PASS", by["G10_report_live_html"]
+    assert by["G11_report_live_pdf"]["status"] == "PASS"
+    assert by["G12_report_live_docx"]["status"] == "PASS"
+
+
 def test_tiny_or_hash_mismatch_report_bytes_fail(tmp_path):
     tiny = tmp_path / "tiny.html"
     tiny.write_bytes(b"<html>nope</html>")

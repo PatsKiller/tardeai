@@ -933,12 +933,15 @@ def eval_g10_g12_report_formats(
     )
     digest_ok = True
     digest_reasons: list[str] = []
-    if inst.get("capital_plan_digest"):
-        if str(inst.get("capital_plan_digest")) != str(live_capital_plan_digest or ""):
+    # Only compare when both sides are present and therefore same-family.
+    # API plan.digest and report-builder capital_plan_digest are different
+    # families — an empty live digest means "not comparable", not FAIL.
+    if live_capital_plan_digest and inst.get("capital_plan_digest"):
+        if str(inst.get("capital_plan_digest")) != str(live_capital_plan_digest):
             digest_ok = False
             digest_reasons.append("capital_plan_digest mismatch vs live plan")
-    if inst.get("decision_digest"):
-        if str(inst.get("decision_digest")) != str(live_decision_digest or ""):
+    if live_decision_digest and inst.get("decision_digest"):
+        if str(inst.get("decision_digest")) != str(live_decision_digest):
             digest_ok = False
             digest_reasons.append("decision_digest mismatch vs live plan")
 
@@ -1378,14 +1381,10 @@ def evaluate_live_snapshot(snap: dict[str, Any], *, now: Optional[datetime] = No
         or inst.get("expected_portfolio_snapshot_hash")
         or ""
     )
-    live_cpd = str(
-        snap.get("live_capital_plan_digest")
-        or (plan.get("digest") or plan.get("plan_digest") or "")
-    )
-    live_dd = str(
-        snap.get("live_decision_digest")
-        or (plan.get("decision_digest") or "")
-    )
+    # Do not fall back to API plan.digest — that is a different digest family
+    # than report-builder capital_plan_digest. Empty means skip comparison.
+    live_cpd = str(snap.get("live_capital_plan_digest") or "")
+    live_dd = str(snap.get("live_decision_digest") or "")
     gates.extend(eval_g10_g12_report_formats(
         html_path=str(snap.get("report_html_path") or ""),
         pdf_path=str(snap.get("report_pdf_path") or ""),

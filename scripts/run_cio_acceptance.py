@@ -199,8 +199,8 @@ def _collect_live(now: datetime, ev: Path) -> dict[str, Any]:
                 report_html = str(dest)
             elif attr == "pdf":
                 report_pdf = str(dest)
-                elif attr == "docx":
-                    report_docx = str(dest)
+            elif attr == "docx":
+                report_docx = str(dest)
     qa_src = live_rep / "visual_qa" / "VISUAL_QA.json"
     qa_json = report_dir / "VISUAL_QA.json"
     if qa_src.is_file():
