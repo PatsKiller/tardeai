@@ -189,19 +189,23 @@ def deflated_sharpe(
     trial_sharpe_frequency: Optional[str] = None,
     return_frequency: Optional[str] = None,
     confirmatory: bool = False,
+    periods_per_year: Optional[int] = None,
 ) -> dict:
     """Deflated Sharpe Ratio: PSR against the deflated benchmark SR*.
 
-    Sharpe convention contract:
+    Sharpe convention contract (P0-10):
       * `sharpe_frequency` / `trial_sharpe_frequency` (PER_PERIOD | ANNUALIZED)
-        must MATCH (an annualized Sharpe cannot be compared against a per-period
-        trial distribution).
-      * `return_frequency` (DAILY | WEEKLY | MONTHLY | ...) is the sampling
-        frequency of the underlying returns.
+        must MATCH. The PSR/DSR equation contains NONLINEAR terms in the Sharpe,
+        so an annualized Sharpe is not merely a unit re-label of a per-period
+        Sharpe. Confirmatory use therefore operates on PER_PERIOD Sharpe:
+        - PER_PERIOD input => used directly;
+        - ANNUALIZED input => requires a positive integer `periods_per_year` and
+          is normalized back to per-period (divide by sqrt(periods_per_year))
+          BEFORE computing PSR/DSR, so economically equivalent inputs produce
+          identical results;
+        - mixed or missing conventions => UNAVAILABLE.
 
-    FAIL-CLOSED: a confirmatory result requires an explicit, fully-specified
-    convention (all three present and coherent); otherwise UNAVAILABLE. The
-    wrapper NEVER upgrades an underlying PSR UNAVAILABLE to OK.
+    FAIL-CLOSED: the wrapper NEVER upgrades an underlying PSR UNAVAILABLE to OK.
     """
     if confirmatory:
         missing = []
@@ -222,6 +226,22 @@ def deflated_sharpe(
                               f"vs trial={trial_sharpe_frequency}",
                     "deflated_benchmark_sr": None, "psr_z": None,
                     "probability_sr_exceeds_deflated_benchmark": None}
+        if sharpe_frequency not in ("PER_PERIOD", "ANNUALIZED"):
+            return {"status": "UNAVAILABLE",
+                    "reason": f"unsupported sharpe_frequency: {sharpe_frequency!r}",
+                    "deflated_benchmark_sr": None, "psr_z": None,
+                    "probability_sr_exceeds_deflated_benchmark": None}
+        if sharpe_frequency == "ANNUALIZED":
+            if not isinstance(periods_per_year, int) or isinstance(periods_per_year, bool) \
+                    or periods_per_year < 1:
+                return {"status": "UNAVAILABLE",
+                        "reason": "confirmatory DSR with ANNUALIZED Sharpe requires a "
+                                  "positive integer periods_per_year to normalize to per-period",
+                        "deflated_benchmark_sr": None, "psr_z": None,
+                        "probability_sr_exceeds_deflated_benchmark": None}
+            factor = math.sqrt(periods_per_year)
+            observed_sharpe = observed_sharpe / factor
+            trial_sharpes = [s / factor for s in trial_sharpes]
     elif (sharpe_frequency is not None and trial_sharpe_frequency is not None
           and sharpe_frequency != trial_sharpe_frequency):
         return {"status": "UNAVAILABLE",

@@ -17,6 +17,13 @@ Procedure:
      rank omega = average_rank / (N+1), and logit lambda = ln(omega/(1-omega)).
   4. PBO = fraction of combinations with lambda < 0.
 
+Lambda-zero boundary (P1-1): ``lambda = ln(omega/(1-omega))``. ``omega`` is the
+average OOS rank / (N+1), so ``omega`` is in (0,1). ``lambda == 0`` exactly when
+``omega == 0.5`` — i.e. the selected configuration performs at the exact MEDIAN
+of the OOS configurations. Trade AI policy (fail-closed but not over-strict):
+``lambda < 0`` (strictly below median) counts as overfit; ``lambda == 0`` counts
+as NOT overfit. This is recorded in ``lambda_zero_policy``.
+
 Edge governance (P1-2):
   * zero-variance return streams have an UNDEFINED Sharpe (a constant positive
     stream is not Sharpe 0) -> the split is UNAVAILABLE, never silently 0.
@@ -194,6 +201,7 @@ def cscv_probability_of_backtest_overfitting(
         "tie_policy": "average_rank",
         "is_tie_split_count": tie_splits,
         "tie_fraction": tie_splits / len(logits),
+        "lambda_zero_policy": "counts_as_not_overfit",
         "approximation_limitations": (
             "Subsampled CSCV: PBO is an estimate over a random subset of splits; "
             "uncertainty is not quantified. Full enumeration required for "

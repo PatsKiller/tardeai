@@ -55,6 +55,15 @@ def _validate(n_samples: int, labels: Sequence[Interval],
     for (s, e) in labels:
         if s > e:
             raise ValueError(f"invalid interval {s!r} > {e!r}")
+    # Chronological-ordering precondition (P1-8): sample indices are assumed to
+    # map to chronological order. Enforce that label starts are monotonic
+    # non-decreasing, otherwise index-relative embargo/purging is meaningless.
+    for k in range(1, len(labels)):
+        if labels[k][0] < labels[k - 1][0]:
+            raise ValueError(
+                "sample indices must be chronologically ordered by label start; "
+                f"label {k} starts at {labels[k][0]!r} before label {k - 1} "
+                f"start {labels[k - 1][0]!r}")
 
 
 def _contiguous_blocks(test_indices: Sequence[int]) -> List[List[int]]:

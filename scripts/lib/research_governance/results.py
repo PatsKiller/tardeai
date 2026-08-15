@@ -1,33 +1,33 @@
 """Research governance — typed, digested statistical result contracts (PR-R1).
 
-The promotion gate must consume VERIFIED evidence, not arbitrary caller-built
-dicts. Each statistical result is an immutable dataclass carrying:
+The promotion gate must consume GOVERNED evidence, not arbitrary caller-built
+dicts and not even self-digested typed objects. Each statistical result is an
+immutable dataclass carrying:
 
   * a canonical `result_digest` (hash of the full payload), and
   * a `verify()` method that recomputes the digest, and
-  * a `validate()` method that checks NUMERIC self-consistency (P0-6).
+  * a `validate()` method that checks NUMERIC self-consistency (P0-9).
 
-A result produced by the governed statistical functions should be wrapped in
-these contracts (or serialized and re-verified against their digest) before it
-can support a Grade A/B promotion. Arbitrary unverified dicts are rejected.
+The governed provenance wrapper (``receipts.GovernedResultReceipt``) binds these
+results to exact inputs, dataset, code and family. A bare typed result — even
+with a valid self-digest — is NOT evidence provenance and is rejected for a
+Grade A/B promotion. See `receipts.py` and `promotion_gate.py`.
 
-Cross-result identity is enforced by `ReproductionEvidenceBundle`, which checks
-that every bundled result agrees on hypothesis / protocol / trial family /
-dataset / code generation.
+Nested collections are DEEP-FROZEN in `__post_init__`: `@dataclass(frozen=True)`
+alone does not freeze a nested plain dict, so canonical constructors convert any
+mapping/list into `FrozenDict`/tuple.
 """
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any, Mapping, Optional
 
 from .enums import (
     InfluenceClass,
-    ReturnFrequency,
-    SharpeFrequency,
 )
-from .models import FrozenDict, _stable_hash
+from .models import FrozenDict, _deep_freeze, _stable_hash
 
 
 def _now_iso() -> str:
@@ -52,7 +52,6 @@ def _digest(payload: dict) -> str:
 
 def finalize(result: Any) -> Any:
     """Return a copy of a typed result with its canonical `result_digest` set."""
-    from dataclasses import replace
     return replace(result, result_digest=result.compute_digest())
 
 
@@ -100,6 +99,16 @@ class MultipleTestingResult:
     approx: bool = False
     generated_at: Optional[str] = None
     result_digest: Optional[str] = None
+    # P0-8: the COMPLETE tested family, so Bonferroni/Holm is recomputable.
+    tested_hypothesis_ids: tuple = ()
+    raw_pvalues: tuple = ()
+    family_input_digest: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "parameters", _deep_freeze(self.parameters))
+        object.__setattr__(self, "tested_hypothesis_ids",
+                           tuple(self.tested_hypothesis_ids))
+        object.__setattr__(self, "raw_pvalues", tuple(float(p) for p in self.raw_pvalues))
 
     def to_payload(self) -> dict:
         return {
@@ -114,6 +123,9 @@ class MultipleTestingResult:
             "dataset_hash": self.dataset_hash, "code_sha": self.code_sha,
             "parameters": self.parameters.to_dict(), "approx": self.approx,
             "generated_at": self.generated_at,
+            "tested_hypothesis_ids": list(self.tested_hypothesis_ids),
+            "raw_pvalues": list(self.raw_pvalues),
+            "family_input_digest": self.family_input_digest,
         }
 
     def compute_digest(self) -> str:
@@ -121,6 +133,63 @@ class MultipleTestingResult:
 
     def verify(self) -> bool:
         return self.result_digest is not None and self.result_digest == self.compute_digest()
+
+    def recompute(self) -> Optional[dict]:
+        """Recompute Bonferroni/Holm over the complete family (None if unsupported)."""
+        from . import multiple_testing
+        if not self.tested_hypothesis_ids or not self.raw_pvalues:
+            return None
+        if len(self.tested_hypothesis_ids) != len(self.raw_pvalues):
+            return None
+        if self.method == "bonferroni":
+            return multiple_testing.bonferroni(self.raw_pvalues, self.alpha)
+        if self.method == "holm":
+            return multiple_testing.holm(self.raw_pvalues, self.alpha)
+        return None
+
+    def family_consistency_problems(self) -> list[str]:
+        """P0-8: the complete family must reproduce the claimed focal result."""
+        problems: list[str] = []
+        if self.complete_family:
+            if not self.tested_hypothesis_ids:
+                problems.append("complete_family=True but no tested_hypothesis_ids")
+            if not self.raw_pvalues:
+                problems.append("complete_family=True but no raw_pvalues")
+            if self.tested_hypothesis_id not in self.tested_hypothesis_ids:
+                problems.append("focal tested_hypothesis_id not in tested_hypothesis_ids")
+            if not _alpha_ok(self.alpha):
+                # alpha invalid — already reported by validate(); cannot recompute.
+                return problems
+            # The family_input_digest binds the EXACT complete family. If a trial is
+            # silently omitted (file-drawer) without updating this binding digest, the
+            # result no longer matches the governed family and must fail.
+            if self.family_input_digest is None:
+                problems.append("complete_family=True but no family_input_digest")
+            else:
+                want_digest = _stable_hash({
+                    "family": self.family_id, "ids": self.tested_hypothesis_ids,
+                    "pvalues": self.raw_pvalues,
+                })
+                if self.family_input_digest != want_digest:
+                    problems.append(
+                        "family_input_digest does not match tested_hypothesis_ids + "
+                        "raw_pvalues (omitted/altered trial)")
+            out = self.recompute()
+            if out is None:
+                problems.append("complete_family=True but method not recomputable (Bonferroni/Holm only)")
+            else:
+                idx = self.tested_hypothesis_ids.index(self.tested_hypothesis_id) \
+                    if self.tested_hypothesis_id in self.tested_hypothesis_ids else -1
+                if idx >= 0:
+                    want_adj = out["adjusted"][idx]
+                    want_rej = out["rejected"][idx]
+                    if abs(float(want_adj) - float(self.adjusted_pvalue)) > 1e-12:
+                        problems.append(
+                            f"adjusted_pvalue {self.adjusted_pvalue!r} != recomputed {want_adj!r}")
+                    if bool(want_rej) != bool(self.rejected):
+                        problems.append(
+                            f"rejected {self.rejected!r} != recomputed {want_rej!r}")
+        return problems
 
     def validate(self) -> list[str]:
         problems: list[str] = []
@@ -130,13 +199,13 @@ class MultipleTestingResult:
             problems.append("raw_pvalue must be in [0,1] and finite")
         if not _pvalue_ok(self.adjusted_pvalue):
             problems.append("adjusted_pvalue must be in [0,1] and finite")
-        # Rejection consistency: rejected must agree with adjusted_pvalue <= alpha.
         if _pvalue_ok(self.adjusted_pvalue) and _alpha_ok(self.alpha):
             expected = self.adjusted_pvalue <= self.alpha
             if self.rejected != expected:
                 problems.append(
                     f"rejection inconsistency: adjusted_pvalue={self.adjusted_pvalue}, "
                     f"alpha={self.alpha}, rejected={self.rejected}")
+        problems.extend(self.family_consistency_problems())
         return problems
 
 
@@ -189,6 +258,24 @@ class DSRResult:
         problems: list[str] = []
         if self.status != "OK":
             return problems  # unavailable results carry their own reason
+        if not _is_finite(self.observed_sharpe):
+            problems.append("observed_sharpe non-finite")
+        if not _is_finite(self.skewness):
+            problems.append("skewness non-finite")
+        if not _is_finite(self.kurtosis):
+            problems.append("kurtosis non-finite")
+        if not isinstance(self.n_observations, int) or self.n_observations < 2:
+            problems.append("n_observations must be >= 2")
+        if self.n_trials is None or not isinstance(self.n_trials, int) or self.n_trials < 2:
+            problems.append("n_trials must be an integer >= 2 for a confirmatory family")
+        if self.deflated_benchmark_sr is not None and not _is_finite(self.deflated_benchmark_sr):
+            problems.append("deflated_benchmark_sr non-finite")
+        if self.psr_z is not None and not _is_finite(self.psr_z):
+            problems.append("psr_z non-finite")
+        if (self.probability_sr_exceeds_deflated_benchmark is not None
+                and not _pvalue_ok(self.probability_sr_exceeds_deflated_benchmark)):
+            problems.append("probability out of [0,1]")
+        # Confirmatory frequency contract (P0-10): per-period Sharpe only.
         if self.confirmatory:
             if not self.sharpe_frequency:
                 problems.append("confirmatory DSR missing sharpe_frequency")
@@ -196,14 +283,16 @@ class DSRResult:
                 problems.append("confirmatory DSR missing trial_sharpe_frequency")
             if not self.return_frequency:
                 problems.append("confirmatory DSR missing return_frequency")
-            if self.sharpe_frequency and self.trial_sharpe_frequency \
-                    and self.sharpe_frequency != self.trial_sharpe_frequency:
+            if self.sharpe_frequency and self.sharpe_frequency != "PER_PERIOD":
+                problems.append(
+                    f"confirmatory DSR requires PER_PERIOD Sharpe, got {self.sharpe_frequency!r}")
+            if self.trial_sharpe_frequency and self.trial_sharpe_frequency != "PER_PERIOD":
+                problems.append(
+                    f"confirmatory DSR requires PER_PERIOD trial Sharpe, got "
+                    f"{self.trial_sharpe_frequency!r}")
+            if (self.sharpe_frequency and self.trial_sharpe_frequency
+                    and self.sharpe_frequency != self.trial_sharpe_frequency):
                 problems.append("sharpe frequency mismatch")
-        if self.psr_z is not None and not _is_finite(self.psr_z):
-            problems.append("psr_z non-finite")
-        if self.probability_sr_exceeds_deflated_benchmark is not None \
-                and not _pvalue_ok(self.probability_sr_exceeds_deflated_benchmark):
-            problems.append("probability out of [0,1]")
         return problems
 
 
@@ -229,6 +318,7 @@ class PBOResult:
     tie_policy: str = "average_rank"
     is_tie_split_count: int = 0
     tie_fraction: float = 0.0
+    lambda_zero_policy: str = "counts_as_not_overfit"
     protocol_hash: str = ""
     hypothesis_id: str = ""
     trial_family_id: str = ""
@@ -243,8 +333,8 @@ class PBOResult:
             "result_id", "method", "status", "pbo", "n_configs", "n_observations",
             "n_subsets", "total_combinations", "combinations_evaluated",
             "sampling_fraction", "approx", "sampling_method", "sampling_seed",
-            "tie_policy", "is_tie_split_count", "tie_fraction", "protocol_hash",
-            "hypothesis_id", "trial_family_id", "family_definition_hash",
+            "tie_policy", "is_tie_split_count", "tie_fraction", "lambda_zero_policy",
+            "protocol_hash", "hypothesis_id", "trial_family_id", "family_definition_hash",
             "dataset_hash", "code_sha", "generated_at")}
 
     def compute_digest(self) -> str:
@@ -259,12 +349,35 @@ class PBOResult:
             return problems
         if not _is_finite(self.pbo) or not (0.0 <= self.pbo <= 1.0):
             problems.append("pbo must be in [0,1] and finite")
-        if self.n_subsets < 2 or self.n_subsets % 2 != 0:
+        if not isinstance(self.n_configs, int) or self.n_configs < 2:
+            problems.append("n_configs must be >= 2")
+        if not isinstance(self.n_subsets, int) or self.n_subsets < 2 or self.n_subsets % 2 != 0:
             problems.append("n_subsets must be even and >= 2")
-        if self.combinations_evaluated <= 0:
-            problems.append("no combinations evaluated")
+        if self.n_subsets > self.n_observations:
+            problems.append("n_subsets must be <= n_observations")
+        expect_total = math.comb(self.n_subsets, self.n_subsets // 2) if self.n_subsets >= 2 else 0
+        if self.total_combinations != expect_total:
+            problems.append(
+                f"total_combinations {self.total_combinations} != C(S,S/2)={expect_total}")
+        if not (0 < self.combinations_evaluated <= self.total_combinations):
+            problems.append(
+                f"combinations_evaluated {self.combinations_evaluated} out of range")
         if self.approx and self.sampling_method is None:
             problems.append("approximate PBO missing sampling_method")
+        if self.approx and self.sampling_method == "full_enumeration":
+            problems.append("approx=True but sampling_method=full_enumeration")
+        if not self.approx and self.sampling_method != "full_enumeration":
+            problems.append("approx=False but sampling_method != full_enumeration")
+        if self.total_combinations > 0:
+            frac = self.combinations_evaluated / self.total_combinations
+            if abs(frac - self.sampling_fraction) > 1e-12:
+                problems.append(
+                    f"sampling_fraction {self.sampling_fraction} != evaluated/total {frac}")
+        if self.combinations_evaluated > 0:
+            tf = self.is_tie_split_count / self.combinations_evaluated
+            if abs(tf - self.tie_fraction) > 1e-12:
+                problems.append(
+                    f"tie_fraction {self.tie_fraction} != is_tie_split_count/evaluated {tf}")
         return problems
 
 
@@ -322,12 +435,20 @@ class RealityCheckResult:
             problems.append("n_rules must be >= 2 for a searched family")
         if self.n_observations <= 1:
             problems.append("n_observations must be > 1")
+        if not isinstance(self.n_bootstrap, int) or self.n_bootstrap < 1:
+            problems.append("n_bootstrap must be an integer >= 1")
         if self.mean_block_length < 1:
             problems.append("mean_block_length must be >= 1")
         if self.bootstrap_method != "stationary":
             problems.append("bootstrap_method must be 'stationary' for this implementation")
         if self.pvalue_resolution is not None and not _is_finite(self.pvalue_resolution):
             problems.append("pvalue_resolution non-finite")
+        # P0-9: resolution must equal 1/(n_bootstrap+1) under this implementation.
+        if isinstance(self.n_bootstrap, int) and self.n_bootstrap >= 1:
+            want = 1.0 / (self.n_bootstrap + 1)
+            if self.pvalue_resolution is not None and abs(self.pvalue_resolution - want) > 1e-12:
+                problems.append(
+                    f"pvalue_resolution {self.pvalue_resolution!r} != 1/(n_bootstrap+1)={want!r}")
         if (self.pvalue_resolution is not None and _alpha_ok(self.alpha)
                 and self.pvalue_resolution >= self.alpha):
             problems.append(
@@ -349,6 +470,7 @@ class RobustnessItem:
 @dataclass(frozen=True)
 class RobustnessResult:
     result_id: str
+    method: str = "robustness"
     items: FrozenDict = field(default_factory=FrozenDict)  # field -> RobustnessItem
     protocol_hash: str = ""
     hypothesis_id: str = ""
@@ -359,11 +481,14 @@ class RobustnessResult:
     generated_at: Optional[str] = None
     result_digest: Optional[str] = None
 
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "items", _deep_freeze(self.items))
+
     def to_payload(self) -> dict:
         items = {k: {"state": v.state, "reason": v.reason, "evidence_ref": v.evidence_ref}
                  for k, v in self.items.items()}
         return {
-            "result_id": self.result_id, "items": items,
+            "result_id": self.result_id, "method": self.method, "items": items,
             "protocol_hash": self.protocol_hash, "hypothesis_id": self.hypothesis_id,
             "trial_family_id": self.trial_family_id,
             "family_definition_hash": self.family_definition_hash,
@@ -376,72 +501,6 @@ class RobustnessResult:
 
     def verify(self) -> bool:
         return self.result_digest is not None and self.result_digest == self.compute_digest()
-
-
-# ---------------------------------------------------------------------------
-# Reproduction evidence bundle (cross-result identity)
-# ---------------------------------------------------------------------------
-
-@dataclass(frozen=True)
-class ReproductionEvidenceBundle:
-    result_id: str
-    hypothesis_id: str
-    protocol_hash: str
-    trial_family_id: str
-    family_definition_hash: str
-    dataset_hash: Optional[str] = None
-    code_sha: Optional[str] = None
-    multiple_testing: Optional[MultipleTestingResult] = None
-    dsr: Optional[DSRResult] = None
-    pbo: Optional[PBOResult] = None
-    reality_check: Optional[RealityCheckResult] = None
-    robustness: Optional[RobustnessResult] = None
-    applicability: Optional[MethodApplicability] = None
-    generated_at: Optional[str] = None
-    result_digest: Optional[str] = None
-
-    def cross_result_identity_problems(self) -> list[str]:
-        """Verify every bundled result agrees on the shared identity fields."""
-        problems: list[str] = []
-        for name, res in (("multiple_testing", self.multiple_testing),
-                          ("dsr", self.dsr), ("pbo", self.pbo),
-                          ("reality_check", self.reality_check),
-                          ("robustness", self.robustness)):
-            if res is None:
-                continue
-            if res.hypothesis_id and res.hypothesis_id != self.hypothesis_id:
-                problems.append(f"{name} hypothesis_id mismatch")
-            if res.protocol_hash and res.protocol_hash != self.protocol_hash:
-                problems.append(f"{name} protocol_hash mismatch")
-            if res.trial_family_id and res.trial_family_id != self.trial_family_id:
-                problems.append(f"{name} trial_family_id mismatch")
-            if res.family_definition_hash and res.family_definition_hash != self.family_definition_hash:
-                problems.append(f"{name} family_definition_hash mismatch")
-            if res.dataset_hash and res.dataset_hash != self.dataset_hash:
-                problems.append(f"{name} dataset_hash mismatch")
-            if res.code_sha and res.code_sha != self.code_sha:
-                problems.append(f"{name} code_sha mismatch")
-        return problems
-
-    def verify(self) -> bool:
-        if self.result_digest is None:
-            return False
-        return self.result_digest == self.compute_digest()
-
-    def compute_digest(self) -> str:
-        payload = {
-            "result_id": self.result_id, "hypothesis_id": self.hypothesis_id,
-            "protocol_hash": self.protocol_hash, "trial_family_id": self.trial_family_id,
-            "family_definition_hash": self.family_definition_hash,
-            "dataset_hash": self.dataset_hash, "code_sha": self.code_sha,
-            "multiple_testing": self.multiple_testing.to_payload() if self.multiple_testing else None,
-            "dsr": self.dsr.to_payload() if self.dsr else None,
-            "pbo": self.pbo.to_payload() if self.pbo else None,
-            "reality_check": self.reality_check.to_payload() if self.reality_check else None,
-            "robustness": self.robustness.to_payload() if self.robustness else None,
-            "generated_at": self.generated_at,
-        }
-        return _digest(payload)
 
 
 # -- Influence class compatibility matrix (P1-6) -----------------------------
@@ -469,79 +528,10 @@ def influence_allowed(evidence_type: str, influence_class: str) -> bool:
 
 
 def make_typed_empirical_context() -> dict:
-    """Build a fully valid, typed/digested A-grade empirical promotion context.
+    """Backward-compatible alias for the governed bundle-backed promotion context.
 
-    Shared test/acceptance fixture: proves the promotion gate passes ONLY when
-    all statistical evidence is typed, digested, numeric-consistent, and bound to
-    the frozen family, and when DSR/PBO applicability is satisfied.
+    The canonical builder lives in ``governed_bundle``; this re-export keeps older
+    import sites working while the promotion gate consumes ``evidence_bundle``.
     """
-    mt = finalize(MultipleTestingResult(
-        result_id="mt1", method="bonferroni", status="OK", alpha=0.05,
-        family_id="f", family_definition_hash="fdh", trial_family_id="f",
-        tested_hypothesis_id="h1", raw_pvalue=0.001, adjusted_pvalue=0.004,
-        rejected=True, complete_family=True, protocol_hash="ph", hypothesis_id="h1",
-        dataset_hash="d0", code_sha="c0",
-    ))
-    rc = finalize(RealityCheckResult(
-        result_id="rc1", status="OK", bootstrap_pvalue=0.01, n_rules=5,
-        n_observations=100, n_bootstrap=1000, bootstrap_method="stationary",
-        mean_block_length=5.0, bootstrap_seed=1, alpha=0.05,
-        pvalue_resolution=1 / 1001, protocol_hash="ph", hypothesis_id="h1",
-        trial_family_id="f", family_definition_hash="fdh", family_id="f",
-        dataset_hash="d0", code_sha="c0",
-    ))
-    rob = finalize(RobustnessResult(
-        result_id="rob1",
-        items={
-            "sample_n": RobustnessItem("PASS", "n=100", "e1"),
-            "benchmark": RobustnessItem("PASS", "SPX", "e2"),
-            "subperiods": RobustnessItem("PASS", "5y", "e3"),
-            "regimes": RobustnessItem("PASS", "bull/bear", "e4"),
-            "costs": RobustnessItem("PASS", "bps=5", "e5"),
-            "outlier_dependence": RobustnessItem("PASS", "winsorized", "e6"),
-            "lookahead_control": RobustnessItem("PASS", "point-in-time", "e7"),
-            "survivorship_control": RobustnessItem("PASS", "point-in-time universe", "e8"),
-            "limitations": RobustnessItem("PASS", "stated", "e9"),
-        },
-        protocol_hash="ph", hypothesis_id="h1", trial_family_id="f",
-        family_definition_hash="fdh", dataset_hash="d0", code_sha="c0",
-    ))
-    dsr = finalize(DSRResult(
-        result_id="dsr1", status="OK", observed_sharpe=1.2, n_observations=250,
-        skewness=-0.2, kurtosis=4.0, n_trials=10, deflated_benchmark_sr=0.5,
-        psr_z=2.5, probability_sr_exceeds_deflated_benchmark=0.99,
-        sharpe_frequency="PER_PERIOD", trial_sharpe_frequency="PER_PERIOD",
-        return_frequency="DAILY", confirmatory=True, protocol_hash="ph",
-        hypothesis_id="h1", trial_family_id="f", family_definition_hash="fdh",
-        dataset_hash="d0", code_sha="c0",
-    ))
-    pbo_res = finalize(PBOResult(
-        result_id="pbo1", status="OK", pbo=0.1, n_configs=3, n_observations=16,
-        n_subsets=4, total_combinations=6, combinations_evaluated=6,
-        sampling_fraction=1.0, approx=False, sampling_method="full_enumeration",
-        protocol_hash="ph", hypothesis_id="h1", trial_family_id="f",
-        family_definition_hash="fdh", dataset_hash="d0", code_sha="c0",
-    ))
-    app = MethodApplicability(
-        dsr=MethodRequirement("REQUIRED"),
-        pbo=MethodRequirement("REQUIRED"),
-        reality_check=MethodRequirement("REQUIRED"),
-        purged_cv=MethodRequirement("NOT_APPLICABLE", reason="non-overlapping fixed-period"),
-    )
-    return {
-        "source_id": "s", "claim": "c", "page_or_section": "p", "scope": "us",
-        "evidence_type": "EMPIRICAL_STRATEGY",
-        "protocol_hash": "ph", "trial_family_id": "f", "family_frozen": True,
-        "family_definition_hash": "fdh", "hypothesis_id": "h1",
-        "code_sha": "c0", "dataset_hash": "d0",
-        "in_sample_metric": 1.0, "in_sample_threshold": 0.0,
-        "oos_supported": True, "oos_untouched": True,
-        "multiple_testing": mt,
-        "reality_check": rc,
-        "robustness": rob,
-        "dsr_result": dsr,
-        "pbo_result": pbo_res,
-        "method_applicability": app,
-        "purged_cv_applied": False,
-        "evidence_grade": "A", "influence_class": "PORTFOLIO_CONSTRUCTION",
-    }
+    from . import governed_bundle
+    return governed_bundle.make_typed_empirical_context()

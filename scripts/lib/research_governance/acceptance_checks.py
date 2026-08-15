@@ -17,6 +17,7 @@ parsing, and fail-closed promotion — not toy objects.
 """
 from __future__ import annotations
 
+import math
 import random
 from dataclasses import replace
 from typing import Callable
@@ -47,11 +48,13 @@ from .results import (
     RobustnessResult,
     finalize,
     influence_allowed,
+    make_typed_empirical_context,
 )
 from . import (
     bootstrap_reality_check,
     cv,
     deflated_sharpe,
+    governed_bundle,
     multiple_testing,
     pbo,
     promotion_gate,
@@ -87,78 +90,17 @@ def _overfit_matrix():
              + ((t * 7 + c * 13) % 5 - 2) * 0.001 for t in range(16)] for c in range(3)]
 
 
-def _typed_empirical_ctx() -> dict:
-    """A fully valid, typed/digested A-grade empirical promotion context."""
-    mt = finalize(MultipleTestingResult(
-        result_id="mt1", method="bonferroni", status="OK", alpha=0.05,
-        family_id="f", family_definition_hash="fdh", trial_family_id="f",
-        tested_hypothesis_id="h1", raw_pvalue=0.001, adjusted_pvalue=0.004,
-        rejected=True, complete_family=True, protocol_hash="ph", hypothesis_id="h1",
-        dataset_hash="d0", code_sha="c0",
-    ))
-    rc = finalize(RealityCheckResult(
-        result_id="rc1", status="OK", bootstrap_pvalue=0.01, n_rules=5,
-        n_observations=100, n_bootstrap=1000, bootstrap_method="stationary",
-        mean_block_length=5.0, bootstrap_seed=1, alpha=0.05,
-        pvalue_resolution=1 / 1001, protocol_hash="ph", hypothesis_id="h1",
-        trial_family_id="f", family_definition_hash="fdh", family_id="f",
-        dataset_hash="d0", code_sha="c0",
-    ))
-    rob = finalize(RobustnessResult(
-        result_id="rob1",
-        items={
-            "sample_n": RobustnessItem("PASS", "n=100", "e1"),
-            "benchmark": RobustnessItem("PASS", "SPX", "e2"),
-            "subperiods": RobustnessItem("PASS", "5y", "e3"),
-            "regimes": RobustnessItem("PASS", "bull/bear", "e4"),
-            "costs": RobustnessItem("PASS", "bps=5", "e5"),
-            "outlier_dependence": RobustnessItem("PASS", "winsorized", "e6"),
-            "lookahead_control": RobustnessItem("PASS", "point-in-time", "e7"),
-            "survivorship_control": RobustnessItem("PASS", "point-in-time universe", "e8"),
-            "limitations": RobustnessItem("PASS", "stated", "e9"),
-        },
-        protocol_hash="ph", hypothesis_id="h1", trial_family_id="f",
-        family_definition_hash="fdh", dataset_hash="d0", code_sha="c0",
-    ))
-    dsr = finalize(DSRResult(
-        result_id="dsr1", status="OK", observed_sharpe=1.2, n_observations=250,
-        skewness=-0.2, kurtosis=4.0, n_trials=10, deflated_benchmark_sr=0.5,
-        psr_z=2.5, probability_sr_exceeds_deflated_benchmark=0.99,
-        sharpe_frequency="PER_PERIOD", trial_sharpe_frequency="PER_PERIOD",
-        return_frequency="DAILY", confirmatory=True, protocol_hash="ph",
-        hypothesis_id="h1", trial_family_id="f", family_definition_hash="fdh",
-        dataset_hash="d0", code_sha="c0",
-    ))
-    pbo_res = finalize(PBOResult(
-        result_id="pbo1", status="OK", pbo=0.1, n_configs=3, n_observations=16,
-        n_subsets=4, total_combinations=6, combinations_evaluated=6,
-        sampling_fraction=1.0, approx=False, sampling_method="full_enumeration",
-        protocol_hash="ph", hypothesis_id="h1", trial_family_id="f",
-        family_definition_hash="fdh", dataset_hash="d0", code_sha="c0",
-    ))
-    app = MethodApplicability(
-        dsr=MethodRequirement("REQUIRED"),
-        pbo=MethodRequirement("REQUIRED"),
-        reality_check=MethodRequirement("REQUIRED"),
-        purged_cv=MethodRequirement("NOT_APPLICABLE", reason="non-overlapping fixed-period"),
-    )
-    return {
-        "source_id": "s", "claim": "c", "page_or_section": "p", "scope": "us",
-        "evidence_type": "EMPIRICAL_STRATEGY",
-        "protocol_hash": "ph", "trial_family_id": "f", "family_frozen": True,
-        "family_definition_hash": "fdh", "hypothesis_id": "h1",
-        "code_sha": "c0", "dataset_hash": "d0",
-        "in_sample_metric": 1.0, "in_sample_threshold": 0.0,
-        "oos_supported": True, "oos_untouched": True,
-        "multiple_testing": mt,
-        "reality_check": rc,
-        "robustness": rob,
-        "dsr_result": dsr,
-        "pbo_result": pbo_res,
-        "method_applicability": app,
-        "purged_cv_applied": False,
-        "evidence_grade": "A", "influence_class": "PORTFOLIO_CONSTRUCTION",
-    }
+def _bundle_variant(ctx: dict, **field_changes) -> dict:
+    """Return a context whose governed bundle has `field_changes` applied, digest recomputed."""
+    b = ctx["evidence_bundle"]
+    b2 = replace(b, **field_changes)
+    b2 = replace(b2, bundle_digest=b2.compute_digest())
+    return dict(ctx, evidence_bundle=b2)
+
+
+def _context() -> dict:
+    """A fully valid, registry-generated governed A-grade empirical context."""
+    return make_typed_empirical_context()
 
 
 # --------------------------------------------------------------------------
@@ -187,6 +129,10 @@ def _check_provenance() -> tuple[str, str]:
     rep = source_catalog.manifest_report()
     if not rep["provenance_coherent"]:
         return _fail(f"catalog provenance incoherent: {rep['provenance_issues']}")
+    # P1-2: EXACT critical-method reference metadata (not merely one phantom title).
+    ref_rep = source_catalog.critical_reference_report()
+    if not ref_rep["coherent"]:
+        return _fail(f"critical method reference manifest mismatch: {ref_rep['problems_by_method']}")
     sources = source_catalog.load_sources()
     for s in sources:
         if not s.get("source_id") or not s.get("source_type") or not s.get("title"):
@@ -198,17 +144,24 @@ def _check_provenance() -> tuple[str, str]:
         if fts == "NOT_FOUND_IN_FILE_LIBRARY" and cs != "SOURCE_CLAIM_INCOMPLETE":
             return _fail(f"{s['source_id']} missing full text but not SOURCE_CLAIM_INCOMPLETE")
         if fts != "NOT_FOUND_IN_FILE_LIBRARY":
-            if not s.get("source_hash") or not s.get("verified_at"):
-                return _fail(f"{s['source_id']} claims full text without hash/verified_at")
+            # P1-3: ALL full-text provenance fields required (location, hash, date, license).
+            if not s.get("source_location"):
+                return _fail(f"{s['source_id']} claims full text without source_location")
+            if not s.get("source_hash"):
+                return _fail(f"{s['source_id']} claims full text without source_hash")
+            if not s.get("verified_at"):
+                return _fail(f"{s['source_id']} claims full text without verified_at")
             if s.get("license_class", "UNKNOWN") not in source_catalog.PERMITTED_LICENSE_CLASSES:
                 return _fail(f"{s['source_id']} claims full text without permitted license")
-    # CPCV citation must be a real primary source (AFML chapter, not a phantom title).
+    # CPCV source must be a book/chapter, not conflated with the PBO/CSCV paper.
     cpcv = [s for s in sources if s["source_id"] == "lopez_de_prado_cpcv_2017"]
     if not cpcv:
         return _fail("CPCV source entry missing")
-    if cpcv[0].get("title") == "A Practical Approach to Backtest Overfitting":
-        return _fail("phantom CPCV citation still present (unverifiable title)")
-    return _pass("provenance coherent + full-text enum/license validated + CPCV citation is primary")
+    if cpcv[0].get("source_type") == "paper":
+        return _fail("AFML CPCV must be a book/chapter source, not a paper")
+    if cpcv[0].get("title") == "Combinatorially Symmetric Cross-Validation (CSCV)":
+        return _fail("CPCV must not be conflated with PBO's CSCV paper")
+    return _pass("provenance coherent + exact method references + full-text all-fields + CPCV book/chapter")
 
 
 def _check_lifecycle_separated() -> tuple[str, str]:
@@ -320,7 +273,58 @@ def _check_trial_registry() -> tuple[str, str]:
     if reg_oos.oos_is_untouched("fo", "w2"):
         return _fail("corrected-data rerun must NOT be untouched OOS")
 
-    return _pass("frozen confirmatory family + verifiable lineage + terminal reasons + OOS identity enforced")
+    # P0-7: same consumed segment under a NEW GENERATION must not become fresh.
+    reg_gen = trial_registry.TrialRegistry()
+    reg_gen.freeze_family("fg", "h", protocol_hash="ph", planned_trials=[("a", "c1")])
+    reg_gen.register_oos_window("fg", "g1", oos_generation=1, segment_start="2020",
+                                segment_end="2021", dataset_id="ds", dataset_hash="dh1")
+    reg_gen.consume_oos_window("fg", "g1")
+    try:
+        reg_gen.register_oos_window("fg", "g2", oos_generation=2, segment_start="2020",
+                                    segment_end="2021", dataset_id="ds", dataset_hash="dh1")
+        return _fail("consumed segment re-registered under a new generation must be rejected")
+    except ValueError:
+        pass
+    # New generation + corrected snapshot => CORRECTED_DATA_RERUN (still not fresh).
+    rerun_gen = reg_gen.register_oos_window("fg", "g3", oos_generation=2,
+                                            segment_start="2020", segment_end="2021",
+                                            dataset_id="ds", dataset_hash="dh2")
+    if rerun_gen.rerun_classification != "CORRECTED_DATA_RERUN":
+        return _fail("new generation + corrected snapshot must be CORRECTED_DATA_RERUN")
+    if reg_gen.oos_is_untouched("fg", "g3"):
+        return _fail("corrected-data rerun under new generation must NOT be untouched")
+
+    # P0-4: the frozen family definition is DEEPLY IMMUTABLE (receipt, not mutable state).
+    reg_imm = trial_registry.TrialRegistry()
+    planned = [("t1", "c1"), ("t2", "c2")]
+    fr = reg_imm.freeze_family("fi", "h", protocol_hash="ph", family_definition_hash="fdh",
+                               planned_trials=planned, confirmatory=True)
+    # Mutating the original caller list after freeze must have no effect.
+    planned.append(("t3", "c3"))
+    if len(fr.planned_trial_ids) != 2:
+        return _fail("mutating caller inputs after freeze must not change the frozen family")
+    try:
+        fr.planned_trial_ids[0] = "X"
+        return _fail("planned_trial_ids must be immutable")
+    except TypeError:
+        pass
+    try:
+        fr.planned_config_hashes["t1"] = "X"
+        return _fail("planned_config_hashes must be immutable")
+    except TypeError:
+        pass
+    try:
+        fr.protocol_hash = "evil"
+        return _fail("protocol_hash must be immutable on the receipt")
+    except Exception:  # frozen dataclass raises FrozenInstanceError (dataclasses.FrozenInstanceError)
+        pass
+    if not fr.verify():
+        return _fail("frozen family receipt definition_digest must verify")
+    if reg_imm.get_family("fi") is None:
+        return _fail("get_family must expose the frozen receipt")
+
+    return _pass("frozen confirmatory family + verifiable lineage + terminal reasons + "
+                 "OOS identity/generation anti-gaming + deep immutability enforced")
 
 
 def _check_no_lookahead() -> tuple[str, str]:
@@ -404,7 +408,37 @@ def _check_deflated_sharpe() -> tuple[str, str]:
                                          return_frequency="DAILY", confirmatory=True)
     if ok["status"] != "OK":
         return _fail("fully-specified confirmatory DSR must be OK")
-    return _pass("DSR golden + translation invariance + wrapper fail-closed + convention contract")
+    # P0-10: annualized inputs normalize back to the per-period result (golden equivalence).
+    ppy = 252
+    pp = deflated_sharpe.deflated_sharpe(
+        0.075, 250, -0.2, 4.0, trials, 10,
+        sharpe_frequency="PER_PERIOD", trial_sharpe_frequency="PER_PERIOD",
+        return_frequency="DAILY", confirmatory=True)
+    ann = deflated_sharpe.deflated_sharpe(
+        0.075 * math.sqrt(ppy), 250, -0.2, 4.0,
+        [t * math.sqrt(ppy) for t in trials], 10,
+        sharpe_frequency="ANNUALIZED", trial_sharpe_frequency="ANNUALIZED",
+        return_frequency="DAILY", confirmatory=True, periods_per_year=ppy)
+    if pp["status"] != "OK" or ann["status"] != "OK":
+        return _fail("per-period and normalized-annualized DSR must both be OK")
+    if abs(pp["deflated_benchmark_sr"] - ann["deflated_benchmark_sr"]) > 1e-9:
+        return _fail("annualized input must normalize to the identical per-period benchmark")
+    if abs(pp["psr_z"] - ann["psr_z"]) > 1e-9:
+        return _fail("annualized input must normalize to the identical per-period PSR z")
+    # ANNUALIZED without periods_per_year => UNAVAILABLE (fail-closed).
+    if deflated_sharpe.deflated_sharpe(
+            0.075 * math.sqrt(ppy), 250, -0.2, 4.0, trials, 10,
+            sharpe_frequency="ANNUALIZED", trial_sharpe_frequency="ANNUALIZED",
+            return_frequency="DAILY", confirmatory=True)["status"] != "UNAVAILABLE":
+        return _fail("ANNUALIZED confirmatory DSR without periods_per_year must be UNAVAILABLE")
+    # Mixed conventions => UNAVAILABLE.
+    if deflated_sharpe.deflated_sharpe(
+            0.075, 250, -0.2, 4.0, trials, 10,
+            sharpe_frequency="ANNUALIZED", trial_sharpe_frequency="PER_PERIOD",
+            return_frequency="DAILY", confirmatory=True, periods_per_year=ppy)["status"] != "UNAVAILABLE":
+        return _fail("mixed Sharpe conventions must be UNAVAILABLE")
+    return _pass("DSR golden + translation invariance + wrapper fail-closed + "
+                 "frequency normalization golden equivalence")
 
 
 def _check_pbo() -> tuple[str, str]:
@@ -446,7 +480,17 @@ def _check_pbo() -> tuple[str, str]:
     huge = pbo.cscv_probability_of_backtest_overfitting(big, n_subsets=2)
     # n_subsets=2 => C(2,1)=2 combinations, small; use an explicit large-S guard via approx path.
     # Full enumeration stays fine for small S; verify approx path reports approx.
-    return _pass(f"PBO rank/tie/zero-var/n_subsets semantics correct "
+
+    # P1-1: lambda == 0 (exact median OOS) counts as NOT overfit (documented policy).
+    identical = [[0.01, -0.02, 0.03, -0.01, 0.02, -0.03, 0.01, -0.02]] * 3
+    lz = pbo.cscv_probability_of_backtest_overfitting(identical, n_subsets=2)
+    if lz["status"] != "OK":
+        return _fail(f"lambda-zero (all-tie) fixture must be OK: {lz}")
+    if lz.get("lambda_zero_policy") != "counts_as_not_overfit":
+        return _fail("lambda_zero_policy must be documented as 'counts_as_not_overfit'")
+    if lz["pbo"] != 0.0:
+        return _fail(f"all-tie (lambda==0) must yield pbo==0, got {lz['pbo']!r}")
+    return _pass(f"PBO rank/tie/zero-var/n_subsets/lambda-zero semantics correct "
                  f"(stable={stable['pbo']:.2f}, overfit={overfit['pbo']:.2f})")
 
 
@@ -521,6 +565,7 @@ def _check_cv_purging() -> tuple[str, str]:
 
 
 def _check_promotion_contract() -> tuple[str, str]:
+    # Schema: RG-0..RG-11 exist and RG-10/11 have the expected names.
     if set(promotion_gate.GATE_IDS) != {f"RG-{i}" for i in range(12)}:
         return _fail("promotion gate must define RG-0..RG-11")
     names = {gid: promotion_gate._GATES[i][1] for i, gid in enumerate(f"RG-{k}" for k in range(12))}
@@ -528,7 +573,59 @@ def _check_promotion_contract() -> tuple[str, str]:
         return _fail("RG-10 must be decision_use_audit")
     if names.get("RG-11") != "live_degradation_retirement":
         return _fail("RG-11 must be live_degradation_retirement")
-    return _pass("promotion-gate contract present; RG-10/11 mapping restored")
+
+    # Runtime contract: the REAL promotion claims (P1-6).
+    ctx = _context()
+    # (1) A registry-generated governed bundle is accepted.
+    r = promotion_gate.run_promotion_gate(ctx)
+    if r["overall"] != GateState.PASS.value or r["promotion_state"] != "CIO_CONTEXT_ELIGIBLE":
+        return _fail(f"governed bundle must reach CIO_CONTEXT_ELIGIBLE: {r}")
+
+    # (2) Raw dict statistical evidence is rejected.
+    raw = dict(ctx, evidence_bundle=None, multiple_testing={
+        "status": "OK", "method": "bonferroni", "alpha": 0.05,
+        "family_id": "f", "family_definition_hash": "fdh", "trial_family_id": "f",
+        "tested_hypothesis_id": "h1", "raw_pvalue": 0.001, "adjusted_pvalue": 0.003,
+        "rejected": True, "complete_family": True})
+    if promotion_gate.run_promotion_gate(raw)["overall"] != GateState.FAIL.value:
+        return _fail("raw dict statistical evidence must be rejected")
+
+    # (3) Caller-built self-digested typed result (no governed receipt) is rejected.
+    caller_mt = finalize(MultipleTestingResult(
+        result_id="mtfake", method="bonferroni", status="OK", alpha=0.05,
+        family_id="f", family_definition_hash="fdh", trial_family_id="f",
+        tested_hypothesis_id="h1", raw_pvalue=0.001, adjusted_pvalue=0.003,
+        rejected=True, complete_family=True, protocol_hash="ph", hypothesis_id="h1",
+        dataset_hash="d0", code_sha="c0",
+        tested_hypothesis_ids=("h1", "h2", "h3"), raw_pvalues=(0.001, 0.2, 0.5)))
+    if caller_mt.verify() is not True:
+        return _fail("caller-built self-digest should verify (it only proves self-consistency)")
+    fake = dict(ctx, evidence_bundle=None, multiple_testing=caller_mt)
+    if promotion_gate.run_promotion_gate(fake)["overall"] != GateState.FAIL.value:
+        return _fail("caller-built self-digested typed result must be rejected (not provenance)")
+
+    # (4) Cross-result identity is exact: mutating one bundle identity field fails.
+    for field, bad in (("hypothesis_id", "hX"), ("protocol_hash", "phX"),
+                       ("trial_family_id", "fX"), ("family_definition_hash", "fdhX"),
+                       ("dataset_hash", "dX"), ("code_sha", "cX")):
+        variant = _bundle_variant(ctx, **{field: bad})
+        if promotion_gate.run_promotion_gate(variant)["overall"] != GateState.FAIL.value:
+            return _fail(f"cross-result identity field {field} mismatch must fail")
+
+    # (5) Method applicability is folded into the bundle digest.
+    base_digest = ctx["evidence_bundle"].bundle_digest
+    mutated_app = MethodApplicability(
+        dsr=MethodRequirement("REQUIRED"), pbo=MethodRequirement("REQUIRED"),
+        reality_check=MethodRequirement("REQUIRED"),
+        purged_cv=MethodRequirement("REQUIRED"))  # changed purged_cv state
+    variant_app = _bundle_variant(ctx, method_applicability=mutated_app)
+    if variant_app["evidence_bundle"].bundle_digest == base_digest:
+        return _fail("method applicability must be part of the bundle digest")
+    if variant_app["evidence_bundle"].verify() is not True:
+        return _fail("mutated-applicability bundle digest must recompute (verify true)")
+
+    return _pass("promotion runtime contract: governed-only evidence + exact cross-result "
+                 "identity + applicability in digest")
 
 
 def _check_retrieval_contract() -> tuple[str, str]:
@@ -539,69 +636,120 @@ def _check_retrieval_contract() -> tuple[str, str]:
         return _fail("valid structured query must pass validation")
     if not retrieval_contract.validate_research_query(retrieval_contract.ResearchQuery()):
         return _fail("empty query must be invalid")
-    ev = ResearchEvidence(
-        fact_id="f1", fact="fact", source_id="s1",
-        evidence_type=EvidenceType.SEASONALITY,
-        research_status=ResearchStatus.OOS_SUPPORTED,
-        evidence_grade=EvidenceGrade.D,
-        influence_class=InfluenceClass.CONTEXT_MODIFIER,
-    )
+
+    # P1-4: freshness contract is operational (as_of / max_source_age_days enforced).
+    def _ev(source_date):
+        return ResearchEvidence(
+            fact_id="f1", fact="fact", source_id="s1",
+            evidence_type=EvidenceType.SEASONALITY,
+            research_status=ResearchStatus.OOS_SUPPORTED,
+            evidence_grade=EvidenceGrade.D,
+            influence_class=InfluenceClass.CONTEXT_MODIFIER,
+            source_date=source_date,
+        )
+
+    if not retrieval_contract.validate_research_query(
+            retrieval_contract.ResearchQuery(asset_class="equity", as_of="2026-8-4")):  # malformed
+        return _fail("malformed as_of must be rejected")
+    if not retrieval_contract.validate_research_query(
+            retrieval_contract.ResearchQuery(asset_class="equity", as_of="2026-08-14",
+                                             max_source_age_days=-1)):
+        return _fail("negative max_source_age_days must be rejected")
+    if not retrieval_contract.validate_research_query(
+            retrieval_contract.ResearchQuery(asset_class="equity", as_of="2026-08-14",
+                                             max_source_age_days="5")):
+        return _fail("non-integer max_source_age_days must be rejected")
+
+    fresh_q = retrieval_contract.ResearchQuery(asset_class="equity", symbols=["SPY"],
+                                               as_of="2026-08-14", max_source_age_days=30)
+    # Future evidence => FAIL.
+    if not retrieval_contract.validate_evidence_for_query(_ev("2026-09-01"), fresh_q):
+        return _fail("future evidence (source_date > as_of) must fail")
+    # Stale evidence => FAIL.
+    if not retrieval_contract.validate_evidence_for_query(_ev("2020-01-01"), fresh_q):
+        return _fail("stale evidence (age > max age) must fail")
+    # Missing source date with a required max age => FAIL.
+    if not retrieval_contract.validate_evidence_for_query(
+            _ev(None), fresh_q):
+        return _fail("max age required + missing source_date must fail")
+    # Fresh, within-window evidence => PASS.
+    if retrieval_contract.validate_evidence_for_query(_ev("2026-08-01"), fresh_q):
+        return _fail("fresh evidence within max age must pass")
+
+    ev = _ev("2026-08-01")
     if not retrieval_contract.validate_retrieval_result(ev):
         return _fail("OOS_SUPPORTED with grade D should fail validation")
     if not hasattr(retrieval_contract, "ContradictionResult"):
         return _fail("ContradictionResult contract missing")
-    # Contradiction result must preserve evidence objects (not prose).
     cr = retrieval_contract.ContradictionResult(
         fact_id="f1", counterevidence=[ev],
         supporting=[ResearchEvidence(fact_id="f2", fact="s", source_id="s2",
                                      evidence_type=EvidenceType.SEASONALITY)])
     if not isinstance(cr.counterevidence[0], ResearchEvidence):
         return _fail("contradiction counterevidence must carry ResearchEvidence (provenance)")
-    return _pass("retrieval contract: structured query + as_of + contradiction evidence refs + fail-closed validation")
+    return _pass("retrieval contract: structured query + freshness enforcement + "
+                 "contradiction evidence refs + fail-closed validation")
 
 
 def _check_authority_boundary() -> tuple[str, str]:
-    ok = promotion_gate.run_promotion_gate(_typed_empirical_ctx())
+    ctx = _context()
+    ok = promotion_gate.run_promotion_gate(ctx)
     if ok["promotion_state"] != "CIO_CONTEXT_ELIGIBLE":
         return _fail(f"valid A-grade empirical should reach CIO_CONTEXT_ELIGIBLE: {ok}")
 
-    x = promotion_gate.run_promotion_gate(dict(_typed_empirical_ctx(), evidence_grade="X"))
+    x = promotion_gate.run_promotion_gate(dict(ctx, evidence_grade="X"))
     if x["promotion_state"] != "INVALIDATED" or x["overall"] != GateState.FAIL.value:
         return _fail("grade X must be INVALIDATED/FAIL")
-    d = promotion_gate.run_promotion_gate(dict(_typed_empirical_ctx(), evidence_grade="D"))
+    d = promotion_gate.run_promotion_gate(dict(ctx, evidence_grade="D"))
     if d["promotion_state"] != "SOURCE_ONLY":
         return _fail("grade D must cap at SOURCE_ONLY")
-    ta = promotion_gate.run_promotion_gate(dict(_typed_empirical_ctx(), claims_trade_authority=True))
+    ta = promotion_gate.run_promotion_gate(dict(ctx, claims_trade_authority=True))
     if ta["overall"] != GateState.FAIL.value:
         return _fail("claiming trade authority must fail")
 
-    # Missing oos_untouched => FAIL (fail-closed).
-    missing = promotion_gate.run_promotion_gate(dict(_typed_empirical_ctx(), oos_untouched=None))
-    if missing["overall"] != GateState.FAIL.value:
-        return _fail("missing oos_untouched must FAIL")
+    # P0-5: family_frozen=True without a governed frozen-family receipt => FAIL.
+    raw_frozen = dict(ctx, evidence_bundle=None, family_frozen=True)
+    rf = promotion_gate.run_promotion_gate(raw_frozen)
+    if rf["overall"] != GateState.FAIL.value:
+        return _fail("family_frozen raw boolean without a receipt must FAIL")
+    if rf["gate_results"]["RG-2"]["state"] != GateState.FAIL.value:
+        return _fail("RG-2 must fail on caller-supplied family_frozen boolean")
 
-    # Spoofable dict rejected (typed result required).
-    spoof = dict(_typed_empirical_ctx(), multiple_testing={
-        "status": "OK", "method": "bonferroni", "alpha": 0.05,
-        "family_id": "f", "family_definition_hash": "fdh", "trial_family_id": "f",
-        "tested_hypothesis_id": "h1", "raw_pvalue": 0.001, "adjusted_pvalue": 0.004,
-        "rejected": True, "complete_family": True})
-    if promotion_gate.run_promotion_gate(spoof)["overall"] != GateState.FAIL.value:
-        return _fail("arbitrary dict statistical evidence must be rejected")
+    # P0-6: oos_supported/oos_untouched raw booleans without a receipt => FAIL.
+    raw_oos = dict(ctx, evidence_bundle=None, oos_supported=True, oos_untouched=True)
+    ro = promotion_gate.run_promotion_gate(raw_oos)
+    if ro["overall"] != GateState.FAIL.value:
+        return _fail("oos raw booleans without a receipt must FAIL")
+    if ro["gate_results"]["RG-5"]["state"] != GateState.FAIL.value:
+        return _fail("RG-5 must fail on caller-supplied OOS booleans")
+
+    # P0-1: caller-built self-digested typed result (no governed receipt) => FAIL.
+    caller_dsr = finalize(DSRResult(
+        result_id="dsrfake", status="OK", observed_sharpe=1.2, n_observations=250,
+        skewness=-0.2, kurtosis=4.0, n_trials=3, deflated_benchmark_sr=0.5,
+        psr_z=2.5, probability_sr_exceeds_deflated_benchmark=0.99,
+        sharpe_frequency="PER_PERIOD", trial_sharpe_frequency="PER_PERIOD",
+        return_frequency="DAILY", confirmatory=True, protocol_hash="ph",
+        hypothesis_id="h1", trial_family_id="f", family_definition_hash="fdh",
+        dataset_hash="d0", code_sha="c0"))
+    if caller_dsr.verify() is not True:
+        return _fail("self-digest should verify (only proves self-consistency)")
+    fake = dict(ctx, evidence_bundle=None, dsr_result=caller_dsr)
+    if promotion_gate.run_promotion_gate(fake)["overall"] != GateState.FAIL.value:
+        return _fail("caller-built self-digested DSR must be rejected (not provenance)")
 
     # Influence class vs evidence type: SEASONALITY + RISK_VETO => FAIL.
-    season = dict(_typed_empirical_ctx(), evidence_type="SEASONALITY",
-                  influence_class="RISK_VETO")
+    season = dict(ctx, evidence_type="SEASONALITY", influence_class="RISK_VETO")
     if promotion_gate.run_promotion_gate(season)["overall"] != GateState.FAIL.value:
         return _fail("SEASONALITY cannot claim RISK_VETO")
 
-    # Method applicability: DSR REQUIRED but absent => FAIL.
-    no_dsr = dict(_typed_empirical_ctx(), dsr_result=None)
+    # Method applicability: DSR/PBO REQUIRED but absent from the bundle => FAIL.
+    no_dsr = _bundle_variant(ctx, dsr=None)
     if promotion_gate.run_promotion_gate(no_dsr)["overall"] != GateState.FAIL.value:
-        return _fail("DSR REQUIRED but absent must FAIL")
-    no_pbo = dict(_typed_empirical_ctx(), pbo_result=None)
+        return _fail("DSR REQUIRED but absent from the bundle must FAIL")
+    no_pbo = _bundle_variant(ctx, pbo=None)
     if promotion_gate.run_promotion_gate(no_pbo)["overall"] != GateState.FAIL.value:
-        return _fail("PBO REQUIRED but absent must FAIL")
+        return _fail("PBO REQUIRED but absent from the bundle must FAIL")
 
     # Single fixed strategy: PBO NOT_APPLICABLE with reason => allowed.
     single_app = MethodApplicability(
@@ -610,11 +758,13 @@ def _check_authority_boundary() -> tuple[str, str]:
         reality_check=MethodRequirement("NOT_APPLICABLE", "single strategy"),
         purged_cv=MethodRequirement("NOT_APPLICABLE", "fixed-period"),
     )
-    single = dict(_typed_empirical_ctx(), method_applicability=single_app,
-                  dsr_result=None, pbo_result=None)
+    single = _bundle_variant(ctx, method_applicability=single_app, dsr=None, pbo=None)
+    if promotion_gate.run_promotion_gate(single)["overall"] != GateState.PASS.value:
+        return _fail("single-fixed-strategy PBO NOT_APPLICABLE profile must pass")
     if not influence_allowed(EvidenceType.EMPIRICAL_STRATEGY.value, "PORTFOLIO_CONSTRUCTION"):
         return _fail("EMPIRICAL_STRATEGY + PORTFOLIO_CONSTRUCTION must be allowed")
-    return _pass("authority boundary + typed evidence + applicability + influence matrix enforced")
+    return _pass("authority boundary + governed-only evidence + raw boolean rejection + "
+                 "applicability + influence matrix enforced")
 
 
 def _check_scope_guard() -> tuple[str, str]:

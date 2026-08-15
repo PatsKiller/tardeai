@@ -80,15 +80,17 @@ class FrozenDict(Mapping):
 
 
 def _deep_freeze(obj: Any) -> Any:
-    """Convert mutable containers to immutable equivalents, recursively."""
+    """Convert mutable containers to immutable equivalents, recursively.
+
+    Frozen dataclasses and scalars pass through unchanged: a frozen dataclass is
+    already immutable, and converting it to a dict would destroy its methods/fields.
+    """
     if isinstance(obj, Mapping):
         return FrozenDict(obj)
     if isinstance(obj, (list, tuple)):
         return tuple(_deep_freeze(v) for v in obj)
     if isinstance(obj, set):
         return frozenset(_deep_freeze(v) for v in obj)
-    if is_dataclass(obj) and not isinstance(obj, type):
-        return FrozenDict(asdict(obj))
     if isinstance(obj, Enum):
         return obj.value
     return obj

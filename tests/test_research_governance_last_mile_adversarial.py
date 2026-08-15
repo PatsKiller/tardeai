@@ -50,6 +50,26 @@ from scripts.lib.research_governance.results import (  # noqa: E402
     finalize,
     make_typed_empirical_context,
 )
+from scripts.lib.research_governance.receipts import governed_result  # noqa: E402
+from scripts.lib.research_governance.governed_bundle import (  # noqa: E402
+    make_governed_empirical_bundle,
+)
+
+
+_IDENTITY_INPUT = {
+    "hypothesis_id": "h1", "protocol_hash": "ph", "trial_family_id": "f",
+    "family_definition_hash": "fdh", "dataset_hash": "d0", "code_sha": "c0",
+}
+
+
+def _bundle_with(name, mutated_result):
+    """Re-govern a mutated typed result and swap it into a fresh canonical bundle."""
+    bundle = make_governed_empirical_bundle()
+    mutated = finalize(mutated_result)
+    child = governed_result(mutated, input_artifact=_IDENTITY_INPUT)
+    b2 = replace(bundle, **{name: child})
+    b2 = replace(b2, bundle_digest=b2.compute_digest())
+    return dict(make_typed_empirical_context(), evidence_bundle=b2)
 
 
 # ---------------------------------------------------------------------------
@@ -207,49 +227,55 @@ def test_consumed_segment_changed_dataset_not_fresh():
 # ---------------------------------------------------------------------------
 
 def test_arbitrary_dict_statistics_rejected():
-    ctx = dict(make_typed_empirical_context(), multiple_testing={
+    ctx = dict(make_typed_empirical_context(), evidence_bundle=None, multiple_testing={
         "status": "OK", "method": "bonferroni", "alpha": 0.05,
         "family_id": "f", "family_definition_hash": "fdh", "trial_family_id": "f",
-        "tested_hypothesis_id": "h1", "raw_pvalue": 0.001, "adjusted_pvalue": 0.004,
+        "tested_hypothesis_id": "h1", "raw_pvalue": 0.001, "adjusted_pvalue": 0.003,
         "rejected": True, "complete_family": True})
     assert promotion_gate.run_promotion_gate(ctx)["overall"] == GateState.FAIL.value
 
 
 def test_mt_rejection_inconsistency_fails():
-    ctx = make_typed_empirical_context()
-    mt = replace(ctx["multiple_testing"], adjusted_pvalue=0.90, alpha=0.05, rejected=True)
-    mt = finalize(mt)
-    assert promotion_gate.run_promotion_gate(dict(ctx, multiple_testing=mt))["overall"] == GateState.FAIL.value
+    bundle = make_governed_empirical_bundle()
+    mt = replace(bundle.multiple_testing.result, adjusted_pvalue=0.90, rejected=True)
+    r = promotion_gate.run_promotion_gate(_bundle_with("multiple_testing", mt))
+    assert r["overall"] == GateState.FAIL.value
+    assert "rejection inconsistency" in r["gate_results"]["RG-6"]["reason"]
 
 
 def test_mt_alpha_out_of_range_fails():
-    ctx = make_typed_empirical_context()
-    mt = finalize(replace(ctx["multiple_testing"], alpha=2.0))
-    assert promotion_gate.run_promotion_gate(dict(ctx, multiple_testing=mt))["overall"] == GateState.FAIL.value
+    bundle = make_governed_empirical_bundle()
+    mt = replace(bundle.multiple_testing.result, alpha=2.0)
+    assert promotion_gate.run_promotion_gate(
+        _bundle_with("multiple_testing", mt))["overall"] == GateState.FAIL.value
 
 
 def test_mt_bh_fdr_rejected_for_grade_ab():
-    ctx = make_typed_empirical_context()
-    mt = finalize(replace(ctx["multiple_testing"], method="bh_fdr"))
-    assert promotion_gate.run_promotion_gate(dict(ctx, multiple_testing=mt))["overall"] == GateState.FAIL.value
+    bundle = make_governed_empirical_bundle()
+    mt = replace(bundle.multiple_testing.result, method="bh_fdr")
+    assert promotion_gate.run_promotion_gate(
+        _bundle_with("multiple_testing", mt))["overall"] == GateState.FAIL.value
 
 
 def test_rc_negative_pvalue_fails():
-    ctx = make_typed_empirical_context()
-    rc = finalize(replace(ctx["reality_check"], bootstrap_pvalue=-0.1))
-    assert promotion_gate.run_promotion_gate(dict(ctx, reality_check=rc))["overall"] == GateState.FAIL.value
+    bundle = make_governed_empirical_bundle()
+    rc = replace(bundle.reality_check.result, bootstrap_pvalue=-0.1)
+    assert promotion_gate.run_promotion_gate(
+        _bundle_with("reality_check", rc))["overall"] == GateState.FAIL.value
 
 
 def test_rc_alpha_out_of_range_fails():
-    ctx = make_typed_empirical_context()
-    rc = finalize(replace(ctx["reality_check"], alpha=2.0))
-    assert promotion_gate.run_promotion_gate(dict(ctx, reality_check=rc))["overall"] == GateState.FAIL.value
+    bundle = make_governed_empirical_bundle()
+    rc = replace(bundle.reality_check.result, alpha=2.0)
+    assert promotion_gate.run_promotion_gate(
+        _bundle_with("reality_check", rc))["overall"] == GateState.FAIL.value
 
 
 def test_rc_bootstrap_too_coarse_fails():
-    ctx = make_typed_empirical_context()
-    rc = finalize(replace(ctx["reality_check"], n_bootstrap=9, pvalue_resolution=1 / 10))
-    assert promotion_gate.run_promotion_gate(dict(ctx, reality_check=rc))["overall"] == GateState.FAIL.value
+    bundle = make_governed_empirical_bundle()
+    rc = replace(bundle.reality_check.result, n_bootstrap=9, pvalue_resolution=1 / 10)
+    assert promotion_gate.run_promotion_gate(
+        _bundle_with("reality_check", rc))["overall"] == GateState.FAIL.value
 
 
 def test_in_sample_threshold_missing_fails():
@@ -267,13 +293,21 @@ def test_in_sample_metric_nan_fails():
 # ---------------------------------------------------------------------------
 
 def test_dsr_required_absent_fails():
-    ctx = dict(make_typed_empirical_context(), dsr_result=None)
-    assert promotion_gate.run_promotion_gate(ctx)["overall"] == GateState.FAIL.value
+    ctx = make_typed_empirical_context()
+    b = ctx["evidence_bundle"]
+    b2 = replace(b, dsr=None)
+    b2 = replace(b2, bundle_digest=b2.compute_digest())
+    assert promotion_gate.run_promotion_gate(
+        dict(ctx, evidence_bundle=b2))["overall"] == GateState.FAIL.value
 
 
 def test_pbo_required_absent_fails():
-    ctx = dict(make_typed_empirical_context(), pbo_result=None)
-    assert promotion_gate.run_promotion_gate(ctx)["overall"] == GateState.FAIL.value
+    ctx = make_typed_empirical_context()
+    b = ctx["evidence_bundle"]
+    b2 = replace(b, pbo=None)
+    b2 = replace(b2, bundle_digest=b2.compute_digest())
+    assert promotion_gate.run_promotion_gate(
+        dict(ctx, evidence_bundle=b2))["overall"] == GateState.FAIL.value
 
 
 def test_single_fixed_strategy_pbo_not_applicable_allowed():
@@ -284,8 +318,11 @@ def test_single_fixed_strategy_pbo_not_applicable_allowed():
         reality_check=MethodRequirement("REQUIRED"),
         purged_cv=MethodRequirement("NOT_APPLICABLE", "fixed-period"),
     )
-    ctx2 = dict(ctx, method_applicability=app, dsr_result=None, pbo_result=None)
-    assert promotion_gate.run_promotion_gate(ctx2)["overall"] == GateState.PASS.value
+    b = ctx["evidence_bundle"]
+    b2 = replace(b, method_applicability=app, dsr=None, pbo=None)
+    b2 = replace(b2, bundle_digest=b2.compute_digest())
+    assert promotion_gate.run_promotion_gate(
+        dict(ctx, evidence_bundle=b2))["overall"] == GateState.PASS.value
 
 
 # ---------------------------------------------------------------------------
@@ -294,15 +331,18 @@ def test_single_fixed_strategy_pbo_not_applicable_allowed():
 
 def _ctx_with_robustness(**overrides):
     ctx = make_typed_empirical_context()
-    rob = ctx["robustness"]
-    items = dict(rob.items)
+    b = ctx["evidence_bundle"]
+    items = dict(b.robustness.result.items)
     for k, v in overrides.items():
         items[k] = v
-    new_rob = finalize(RobustnessResult(
+    new_rob = RobustnessResult(
         result_id="rob2", items=items, protocol_hash="ph", hypothesis_id="h1",
         trial_family_id="f", family_definition_hash="fdh",
-        dataset_hash="d0", code_sha="c0"))
-    return dict(ctx, robustness=new_rob)
+        dataset_hash="d0", code_sha="c0")
+    rob_child = governed_result(new_rob, input_artifact=_IDENTITY_INPUT)
+    b2 = replace(b, robustness=rob_child)
+    b2 = replace(b2, bundle_digest=b2.compute_digest())
+    return dict(ctx, evidence_bundle=b2)
 
 
 def test_robustness_sample_n_na_blocked():

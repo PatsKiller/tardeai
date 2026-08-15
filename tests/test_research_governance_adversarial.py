@@ -167,7 +167,7 @@ def test_oos_first_consumption_immutable():
     reg.register_oos_window("f", "w", oos_generation=1)
     reg.consume_oos_window("f", "w", at="T1")
     reg.consume_oos_window("f", "w", at="T2")
-    assert reg.get_family("f").oos_windows["w"].oos_consumed_at == "T1"
+    assert reg.get_oos_window("f", "w").oos_consumed_at == "T1"
 
 
 # -- Promotion governance -----------------------------------------------------

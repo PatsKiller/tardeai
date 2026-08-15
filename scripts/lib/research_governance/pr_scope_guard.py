@@ -31,6 +31,7 @@ ALLOWLIST_PATTERNS: List[str] = [
     "config/cio_research_source_catalog.json",
     "docs/investment-office/RESEARCH_GOVERNANCE*",
     "docs/investment-office/BOOK_KNOWLEDGE_INVENTORY.md",
+    "docs/investment-office/R1_FORMULA_AND_REFERENCE_AUDIT.md",
     "scripts/run_research_governance_acceptance.py",
 ]
 
@@ -98,22 +99,46 @@ def _base_sha_from_baseline(repo_root: Path) -> str:
 
 
 def _resolve_effective_base(repo_root: Path, frozen_base: str) -> str:
-    """Choose the diff base that isolates THIS branch's changes.
+    """Resolve the diff base against FRESH remote-main truth (P2-2).
 
-    `origin/main` may have moved under the parallel CIO remediation agent. A
-    three-dot diff against live `origin/main` therefore isolates only this
-    branch's own commits (the merge-base logic excludes main's new files),
-    whereas diffing against the frozen BASE_SHA would, in a PR merge-commit
-    context, also pick up main's post-fork commits. Fall back to the frozen base
-    when `origin/main` is not available (e.g. a local pre-push check).
+    Order of preference:
+      1. Freshly-fetched remote main SHA via `git ls-remote origin refs/heads/main`
+         (network truth — does NOT trust a potentially stale local tracking ref).
+      2. The local merge-base with `origin/main` as a fallback, but only after
+         the fresh fetch failed, and still recorded as a fallback.
+      3. The frozen BASE_SHA (last resort).
+
+    If NO resolvable base truth exists, this raises so the guard FAILS closed
+    rather than silently diffing against an arbitrary ref.
     """
+    remote_main_sha = _fresh_remote_main_sha(repo_root)
+    if remote_main_sha:
+        return remote_main_sha
+    # Fallback: resolved local merge-base (recorded as fallback truth).
     proc = subprocess.run(
-        ["git", "rev-parse", "--verify", "--quiet", "origin/main"],
+        ["git", "merge-base", "HEAD", "origin/main"],
         cwd=str(repo_root), capture_output=True, text=True,
     )
     if proc.returncode == 0 and proc.stdout.strip():
         return proc.stdout.strip()
     return frozen_base
+
+
+def _fresh_remote_main_sha(repo_root: Path) -> str | None:
+    """Return the freshly-fetched remote `main` SHA, or None if unresolvable."""
+    proc = subprocess.run(
+        ["git", "ls-remote", "origin", "refs/heads/main"],
+        cwd=str(repo_root), capture_output=True, text=True,
+    )
+    if proc.returncode != 0:
+        return None
+    for line in proc.stdout.splitlines():
+        parts = line.split()
+        if len(parts) >= 2 and parts[1] == "refs/heads/main":
+            sha = parts[0]
+            if re.fullmatch(r"[0-9a-f]{40}", sha):
+                return sha
+    return None
 
 
 def main(argv: Sequence[str] = ()) -> int:
@@ -131,6 +156,7 @@ def main(argv: Sequence[str] = ()) -> int:
     result = evaluate(changed)
     print(f"frozen_base_sha={frozen_base}")
     print(f"effective_base={base}")
+    print(f"base_truth={'remote' if _fresh_remote_main_sha(repo_root) else 'local'}")
     print(f"changed_files={len(changed)}")
     print(f"denied={result['denied']}")
     print(f"unexpected={result['unexpected']}")

@@ -8,6 +8,9 @@ on:
       - ".github/workflows/research-governance-ci.yml"
       - "config/cio_research_source_catalog.json"
       - "scripts/run_research_governance_acceptance.py"
+      - "docs/investment-office/RESEARCH_GOVERNANCE*"
+      - "docs/investment-office/BOOK_KNOWLEDGE_INVENTORY.md"
+      - "docs/investment-office/R1_FORMULA_AND_REFERENCE_AUDIT.md"
   push:
     branches:
       - "feature/research-governance-v1"

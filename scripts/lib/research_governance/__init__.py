@@ -27,4 +27,7 @@ __all__ = [
     "acceptance",
     "acceptance_checks",
     "pr_scope_guard",
+    "results",
+    "receipts",
+    "governed_bundle",
 ]

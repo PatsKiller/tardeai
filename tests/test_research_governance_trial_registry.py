@@ -81,8 +81,8 @@ def test_selection_is_separate_append_only_event():
     rec = reg.record_trial("fam", "t1", config_hash="cfg1", result_payload={"sharpe": -0.5})
     reg.record_selection("fam", "t1", False, reason="loser")
     # Recording a selection does not mutate the immutable trial record.
-    assert rec.result_hash == reg.get_family("fam").trials["t1"].result_hash
-    assert len(reg.get_family("fam").selection_events) == 1
+    assert rec.result_hash == reg.get_trial("fam", "t1").result_hash
+    assert len(reg.selection_events("fam")) == 1
 
 
 def test_loser_cannot_be_rewritten_as_winner():
@@ -121,7 +121,7 @@ def test_first_oos_consumption_timestamp_is_immutable():
     reg.register_oos_window("fam", "w1", oos_generation=1)
     reg.consume_oos_window("fam", "w1", at="2026-01-01T00:00:00Z")
     reg.consume_oos_window("fam", "w1", at="2026-12-31T00:00:00Z")
-    win = reg.get_family("fam").oos_windows["w1"]
+    win = reg.get_oos_window("fam", "w1")
     assert win.oos_consumed_at == "2026-01-01T00:00:00Z"
     assert reg.oos_is_untouched("fam", "w1") is False
 

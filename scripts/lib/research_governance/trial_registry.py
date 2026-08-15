@@ -14,7 +14,9 @@ Anti-gaming properties enforced by this registry:
 
   * freeze binds a PREDETERMINED universe of planned trial ids + config hashes,
     a protocol hash, and (for confirmatory families) a family definition hash.
-    After freeze: no unplanned ids, no config-hash mutation.
+    After freeze: no unplanned ids, no config-hash mutation. The canonical
+    definition is exposed ONLY as a deeply immutable ``FrozenTrialFamilyReceipt``;
+    the registry's mutable execution state stays private.
   * trial records are IMMUTABLE: same id + identical payload is idempotent,
     same id + changed payload is a hard error.
   * result lineage is VERIFIABLE: inline payloads are hashed by the registry;
@@ -30,10 +32,11 @@ Anti-gaming properties enforced by this registry:
   * a family is COMPLETE only when frozen, has a protocol hash (and, for
     confirmatory families, a family definition hash), every planned trial has an
     explicit terminal disposition, and every non-COMPLETED trial has a reason.
-  * OOS windows are immutable; identity = economic segment (dataset identity +
-    segment + protocol family). Dataset snapshot lineage (`dataset_hash`) is
-    stored but a consumed economic segment cannot become fresh by changing the
-    snapshot; corrected data is classified CORRECTED_DATA_RERUN, never fresh OOS.
+  * OOS windows are immutable; ECONOMIC identity = (family/protocol + dataset
+    identity + segment start/end). ``oos_generation`` and the dataset snapshot
+    hash are LINEAGE METADATA ONLY: a consumed economic segment cannot become
+    fresh by changing the id, generation, or snapshot; corrected data is
+    classified CORRECTED_DATA_RERUN, never fresh OOS.
 
 Persistence scope: this registry is an IN-MEMORY, INJECTABLE, IMMUTABLE
 in-process contract. Durable append-only persistence is DEFERRED to a later PR.
@@ -53,10 +56,16 @@ from .enums import (
 from .models import (
     ArtifactVerification,
     ArtifactVerifier,
+    FrozenDict,
     OOSWindow,
     SelectionEvent,
     TrialRecord,
     _stable_hash,
+)
+from .receipts import (
+    FrozenTrialFamilyReceipt,
+    OOSReceipt,
+    RegistryCompletenessReceipt,
 )
 
 
@@ -64,37 +73,34 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-@dataclass
-class TrialFamily:
+@dataclass(frozen=True)
+class TrialFamilyDefinition:
+    """Deeply immutable canonical definition of a frozen trial family."""
+
     family_id: str
     hypothesis_id: str
     protocol_hash: str
+    family_definition_hash: Optional[str]
+    confirmatory: bool
+    planned_trial_ids: tuple
+    planned_config_hashes: FrozenDict
     frozen_at: str
-    planned_trial_ids: list[str]
-    planned_config_hashes: dict[str, str]
-    family_definition_hash: Optional[str] = None
-    confirmatory: bool = False
-    frozen: bool = True
+    definition_digest: str
+
+
+@dataclass
+class _FamilyState:
+    """Private mutable execution state. Never exposed outside the registry."""
+
+    definition: TrialFamilyDefinition
     trials: dict[str, TrialRecord] = field(default_factory=dict)
     selection_events: list[SelectionEvent] = field(default_factory=list)
     selection_event_ids: set = field(default_factory=set)
     oos_windows: dict[str, OOSWindow] = field(default_factory=dict)
     oos_economic_segments: dict[str, str] = field(default_factory=dict)
 
-    @property
-    def trial_count(self) -> int:
-        return len(self.trials)
 
-    @property
-    def selected_count(self) -> int:
-        return sum(1 for e in self.selection_events if e.selected)
-
-    @property
-    def losing_count(self) -> int:
-        return sum(1 for e in self.selection_events if not e.selected)
-
-
-def _normalize_planned_trials(planned_trials: Iterable[Any]) -> tuple[list[str], dict[str, str]]:
+def _normalize_planned_trials(planned_trials: Iterable[Any]) -> tuple[tuple[str, ...], FrozenDict]:
     ids: list[str] = []
     hashes: dict[str, str] = {}
     for item in planned_trials:
@@ -110,17 +116,30 @@ def _normalize_planned_trials(planned_trials: Iterable[Any]) -> tuple[list[str],
             raise ValueError(f"empty config hash for planned trial: {tid}")
         ids.append(tid)
         hashes[tid] = chash
-    return ids, hashes
+    return tuple(ids), FrozenDict(hashes)
+
+
+def _definition_digest(family_id: str, hypothesis_id: str, protocol_hash: str,
+                       family_definition_hash: Optional[str], confirmatory: bool,
+                       planned_trial_ids: tuple, planned_config_hashes: FrozenDict,
+                       frozen_at: str) -> str:
+    return _stable_hash({
+        "family_id": family_id, "hypothesis_id": hypothesis_id,
+        "protocol_hash": protocol_hash, "family_definition_hash": family_definition_hash,
+        "confirmatory": confirmatory, "planned_trial_ids": list(planned_trial_ids),
+        "planned_config_hashes": planned_config_hashes.to_dict(), "frozen_at": frozen_at,
+    })
 
 
 def _oos_economic_identity(family_id: str, protocol_hash: str, dataset_id: Optional[str],
-                           segment_start: Optional[str], segment_end: Optional[str],
-                           oos_generation: int) -> str:
-    """Economic/time segment identity — NOT dataset snapshot hash.
+                           segment_start: Optional[str], segment_end: Optional[str]) -> str:
+    """Economic/time segment identity — the economic period ITSELF.
 
-    Changing the dataset snapshot hash must NOT produce a fresh OOS identity;
-    the same economic period stays the same segment. Snapshot lineage is stored
-    separately (`dataset_hash`) so corrected data is a rerun, not a new segment.
+    Excludes ``oos_generation`` AND the dataset snapshot hash: the same historical
+    period is the same economic segment regardless of how many generations have
+    consumed it or which snapshot of the dataset was used. ``oos_generation`` and
+    ``dataset_hash`` are lineage metadata; corrected data is a rerun, not a fresh
+    segment.
     """
     return _stable_hash({
         "family_id": family_id,
@@ -128,7 +147,6 @@ def _oos_economic_identity(family_id: str, protocol_hash: str, dataset_id: Optio
         "dataset_id": dataset_id,
         "segment_start": segment_start,
         "segment_end": segment_end,
-        "oos_generation": oos_generation,
     })
 
 
@@ -136,7 +154,7 @@ class TrialRegistry:
     """Records every attempted variant for every hypothesis family."""
 
     def __init__(self, verifier: Optional[ArtifactVerifier] = None) -> None:
-        self._families: dict[str, TrialFamily] = {}
+        self._families: dict[str, _FamilyState] = {}
         self._verifier = verifier
 
     # -- family lifecycle -------------------------------------------------
@@ -148,7 +166,7 @@ class TrialRegistry:
         planned_trials: Iterable[Any],
         family_definition_hash: Optional[str] = None,
         confirmatory: bool = False,
-    ) -> TrialFamily:
+    ) -> FrozenTrialFamilyReceipt:
         if not protocol_hash or not protocol_hash.strip():
             raise ValueError("protocol_hash is required to freeze a family")
         if not hypothesis_id or not hypothesis_id.strip():
@@ -161,25 +179,53 @@ class TrialRegistry:
         if family_id in self._families:
             raise ValueError(f"family {family_id} already frozen")
 
-        fam = TrialFamily(
-            family_id=family_id,
-            hypothesis_id=hypothesis_id,
-            protocol_hash=protocol_hash,
-            frozen_at=_now_iso(),
-            planned_trial_ids=ids,
-            planned_config_hashes=hashes,
-            family_definition_hash=family_definition_hash,
-            confirmatory=confirmatory,
+        frozen_at = _now_iso()
+        definition = TrialFamilyDefinition(
+            family_id=family_id, hypothesis_id=hypothesis_id, protocol_hash=protocol_hash,
+            family_definition_hash=family_definition_hash, confirmatory=confirmatory,
+            planned_trial_ids=ids, planned_config_hashes=hashes, frozen_at=frozen_at,
+            definition_digest=_definition_digest(
+                family_id, hypothesis_id, protocol_hash, family_definition_hash,
+                confirmatory, ids, hashes, frozen_at),
         )
-        self._families[family_id] = fam
-        return fam
+        self._families[family_id] = _FamilyState(definition=definition)
+        return self._receipt_from_definition(definition)
+
+    @staticmethod
+    def _receipt_from_definition(definition: TrialFamilyDefinition) -> FrozenTrialFamilyReceipt:
+        return FrozenTrialFamilyReceipt(
+            family_id=definition.family_id, hypothesis_id=definition.hypothesis_id,
+            protocol_hash=definition.protocol_hash,
+            family_definition_hash=definition.family_definition_hash or "",
+            confirmatory=definition.confirmatory,
+            planned_trial_ids=definition.planned_trial_ids,
+            planned_config_hashes=definition.planned_config_hashes,
+            frozen_at=definition.frozen_at,
+            definition_digest=definition.definition_digest,
+        )
+
+    def family_receipt(self, family_id: str) -> Optional[FrozenTrialFamilyReceipt]:
+        state = self._families.get(family_id)
+        return self._receipt_from_definition(state.definition) if state else None
 
     def is_frozen(self, family_id: str) -> bool:
-        fam = self._families.get(family_id)
-        return bool(fam and fam.frozen)
+        return family_id in self._families
 
-    def get_family(self, family_id: str) -> Optional[TrialFamily]:
-        return self._families.get(family_id)
+    def get_family(self, family_id: str) -> Optional[FrozenTrialFamilyReceipt]:
+        """Expose the immutable canonical definition (never mutable runtime state)."""
+        return self.family_receipt(family_id)
+
+    def get_trial(self, family_id: str, trial_id: str) -> Optional[TrialRecord]:
+        state = self._families.get(family_id)
+        return state.trials.get(trial_id) if state else None
+
+    def selection_events(self, family_id: str) -> tuple[SelectionEvent, ...]:
+        state = self._families.get(family_id)
+        return tuple(state.selection_events) if state else ()
+
+    def get_oos_window(self, family_id: str, oos_window_id: str) -> Optional[OOSWindow]:
+        state = self._families.get(family_id)
+        return state.oos_windows.get(oos_window_id) if state else None
 
     # -- trial recording --------------------------------------------------
     def record_trial(
@@ -201,17 +247,18 @@ class TrialRegistry:
         terminal_reason: Optional[str] = None,
         failure_stage: Optional[str] = None,
     ) -> TrialRecord:
-        fam = self._families.get(family_id)
-        if fam is None or not fam.frozen:
+        state = self._families.get(family_id)
+        if state is None:
             raise ValueError(f"family {family_id} not frozen")
-        if trial_id not in fam.planned_config_hashes:
+        definition = state.definition
+        if trial_id not in definition.planned_config_hashes:
             raise ValueError(
                 f"unplanned trial {trial_id} for family {family_id}; "
-                f"planned={fam.planned_trial_ids}")
-        if config_hash != fam.planned_config_hashes[trial_id]:
+                f"planned={list(definition.planned_trial_ids)}")
+        if config_hash != definition.planned_config_hashes[trial_id]:
             raise ValueError(
                 f"config_hash mismatch for {trial_id}: "
-                f"frozen={fam.planned_config_hashes[trial_id]!r} got={config_hash!r}")
+                f"frozen={definition.planned_config_hashes[trial_id]!r} got={config_hash!r}")
         if terminal_status not in TERMINAL_STATUSES:
             raise ValueError(f"invalid terminal_status {terminal_status!r}")
         if terminal_status in REASON_REQUIRED_STATUSES and not (terminal_reason or "").strip():
@@ -255,7 +302,7 @@ class TrialRegistry:
                 "result_payload or a verifiable result_hash+artifact reference is required")
 
         # -- confirmatory execution lineage ----------------------------------
-        if fam.confirmatory and terminal_status == "COMPLETED":
+        if definition.confirmatory and terminal_status == "COMPLETED":
             missing = []
             if not code_sha:
                 missing.append("code_sha")
@@ -290,14 +337,14 @@ class TrialRegistry:
             dataset_hash=dataset_hash,
         )
 
-        existing = fam.trials.get(trial_id)
+        existing = state.trials.get(trial_id)
         if existing is not None:
             if existing == rec:
                 return existing
             raise ValueError(
                 f"trial {trial_id} already recorded with different content; "
                 "trial records are immutable")
-        fam.trials[trial_id] = rec
+        state.trials[trial_id] = rec
         return rec
 
     # -- selection ---------------------------------------------------------
@@ -311,17 +358,17 @@ class TrialRegistry:
         selection_event_id: Optional[str] = None,
     ) -> SelectionEvent:
         """Append a selection disposition for a RECORDED (terminal) trial."""
-        fam = self._families.get(family_id)
-        if fam is None:
+        state = self._families.get(family_id)
+        if state is None:
             raise ValueError(f"unknown family {family_id}")
-        if trial_id not in fam.planned_config_hashes:
+        if trial_id not in state.definition.planned_config_hashes:
             raise ValueError(f"unknown trial {trial_id} in family {family_id}")
-        if trial_id not in fam.trials:
+        if trial_id not in state.trials:
             raise ValueError(
                 f"trial {trial_id} has no recorded terminal result; selection must "
                 "point to an executed trial")
-        eid = selection_event_id or f"{family_id}:{trial_id}:{len(fam.selection_events)}"
-        if eid in fam.selection_event_ids:
+        eid = selection_event_id or f"{family_id}:{trial_id}:{len(state.selection_events)}"
+        if eid in state.selection_event_ids:
             raise ValueError(f"duplicate selection_event_id: {eid}")
         event = SelectionEvent(
             selection_event_id=eid,
@@ -330,23 +377,18 @@ class TrialRegistry:
             reason=reason,
             timestamp=_now_iso(),
         )
-        fam.selection_event_ids.add(eid)
-        fam.selection_events.append(event)
+        state.selection_event_ids.add(eid)
+        state.selection_events.append(event)
         return event
 
     def selection_disposition(self, family_id: str, trial_id: str) -> dict:
-        """Expose the current disposition and any conflict explicitly.
-
-        Consumers must NOT infer "selected" by finding any selected=true event;
-        contradictory events are reported as a conflict.
-        """
-        fam = self._families.get(family_id)
-        events = [e for e in fam.selection_events if e.trial_id == trial_id] if fam else []
+        """Expose the current disposition and any conflict explicitly."""
+        state = self._families.get(family_id)
+        events = [e for e in state.selection_events if e.trial_id == trial_id] if state else []
         if not events:
             return {"trial_id": trial_id, "selected": None, "conflict": False, "events": []}
         selected_vals = {e.selected for e in events}
         conflict = len(selected_vals) > 1
-        # Last event wins only when there is no conflict.
         current = events[-1].selected if not conflict else None
         return {
             "trial_id": trial_id,
@@ -358,22 +400,21 @@ class TrialRegistry:
 
     # -- completeness -----------------------------------------------------
     def completeness_report(self, family_id: str) -> dict[str, Any]:
-        fam = self._families.get(family_id)
-        if fam is None:
+        state = self._families.get(family_id)
+        if state is None:
             return {"family_id": family_id, "frozen": False, "complete": False,
                     "reason": "family not found"}
+        definition = state.definition
 
         problems: list[str] = []
-        if not fam.frozen:
-            problems.append("family not frozen")
-        if not fam.protocol_hash:
+        if not definition.protocol_hash:
             problems.append("protocol_hash absent")
-        if fam.confirmatory and not fam.family_definition_hash:
+        if definition.confirmatory and not definition.family_definition_hash:
             problems.append("confirmatory family missing family_definition_hash")
 
         terminal_counts: dict[str, int] = {}
-        for tid in fam.planned_trial_ids:
-            rec = fam.trials.get(tid)
+        for tid in definition.planned_trial_ids:
+            rec = state.trials.get(tid)
             if rec is None:
                 problems.append(f"planned trial {tid} has no recorded outcome")
                 continue
@@ -382,24 +423,43 @@ class TrialRegistry:
                 problems.append(f"planned trial {tid} lacks a terminal disposition")
             if rec.terminal_status in REASON_REQUIRED_STATUSES and not rec.terminal_reason:
                 problems.append(f"planned trial {tid} disposed as {rec.terminal_status} without terminal_reason")
-            if fam.confirmatory and rec.terminal_status == "COMPLETED" \
+            if definition.confirmatory and rec.terminal_status == "COMPLETED" \
                     and rec.result_verification_status != VerificationStatus.VERIFIED.value:
                 problems.append(f"confirmatory COMPLETED trial {tid} has unverified result lineage")
 
+        selected_count = sum(1 for e in state.selection_events if e.selected)
+        losing_count = sum(1 for e in state.selection_events if not e.selected)
+
         return {
             "family_id": family_id,
-            "frozen": fam.frozen,
-            "confirmatory": fam.confirmatory,
-            "protocol_hash_present": bool(fam.protocol_hash),
-            "family_definition_hash_present": bool(fam.family_definition_hash),
-            "planned_trial_count": len(fam.planned_trial_ids),
-            "recorded_trial_count": fam.trial_count,
-            "selected_count": fam.selected_count,
-            "losing_count": fam.losing_count,
+            "frozen": True,
+            "confirmatory": definition.confirmatory,
+            "protocol_hash_present": bool(definition.protocol_hash),
+            "family_definition_hash_present": bool(definition.family_definition_hash),
+            "planned_trial_count": len(definition.planned_trial_ids),
+            "recorded_trial_count": len(state.trials),
+            "selected_count": selected_count,
+            "losing_count": losing_count,
             "terminal_counts": terminal_counts,
             "complete": len(problems) == 0,
             "problems": problems,
         }
+
+    def completeness_receipt(self, family_id: str) -> Optional[RegistryCompletenessReceipt]:
+        state = self._families.get(family_id)
+        if state is None:
+            return None
+        rep = self.completeness_report(family_id)
+        receipt = RegistryCompletenessReceipt(
+            family_id=family_id,
+            complete=rep["complete"],
+            planned_trial_count=rep["planned_trial_count"],
+            recorded_trial_count=rep["recorded_trial_count"],
+            terminal_counts=FrozenDict(rep["terminal_counts"]),
+            definition_digest=state.definition.definition_digest,
+            generated_at=_now_iso(),
+        )
+        return replace(receipt, receipt_digest=receipt.compute_digest())
 
     # -- OOS consumption --------------------------------------------------
     def register_oos_window(
@@ -414,15 +474,16 @@ class TrialRegistry:
     ) -> OOSWindow:
         """Register an OOS segment. Same id + changed payload => hard error.
 
-        Economic segment identity is (dataset_id + segment + protocol family).
-        A consumed economic segment cannot become fresh by changing `dataset_hash`;
-        corrected data is classified CORRECTED_DATA_RERUN.
+        Economic segment identity = (family/protocol + dataset identity + segment
+        start/end). ``oos_generation`` and ``dataset_hash`` are lineage only: a
+        consumed economic segment cannot become fresh by changing id, generation,
+        or snapshot; corrected data is CORRECTED_DATA_RERUN.
         """
-        fam = self._families.get(family_id)
-        if fam is None or not fam.frozen:
+        state = self._families.get(family_id)
+        if state is None:
             raise ValueError(f"OOS window requires a frozen family: {family_id}")
 
-        existing = fam.oos_windows.get(oos_window_id)
+        existing = state.oos_windows.get(oos_window_id)
         if existing is not None:
             same_payload = (
                 existing.oos_generation == oos_generation
@@ -438,12 +499,12 @@ class TrialRegistry:
                 "OOS windows are immutable")
 
         economic_fp = _oos_economic_identity(
-            family_id, fam.protocol_hash, dataset_id,
-            segment_start, segment_end, oos_generation)
+            family_id, state.definition.protocol_hash, dataset_id,
+            segment_start, segment_end)
 
         rerun_classification: Optional[str] = None
-        if economic_fp in fam.oos_economic_segments:
-            prev_ds = fam.oos_economic_segments[economic_fp]
+        if economic_fp in state.oos_economic_segments:
+            prev_ds = state.oos_economic_segments[economic_fp]
             if dataset_hash == prev_ds:
                 raise ValueError(
                     "OOS economic segment already registered (same identity + dataset "
@@ -452,7 +513,7 @@ class TrialRegistry:
             # Same economic segment, different dataset snapshot => corrected rerun.
             rerun_classification = "CORRECTED_DATA_RERUN"
 
-        fam.oos_economic_segments[economic_fp] = dataset_hash
+        state.oos_economic_segments[economic_fp] = dataset_hash
 
         win = OOSWindow(
             oos_window_id=oos_window_id,
@@ -461,37 +522,60 @@ class TrialRegistry:
             segment_end=segment_end,
             dataset_id=dataset_id,
             dataset_hash=dataset_hash,
-            protocol_hash=fam.protocol_hash,
-            family_definition_hash=fam.family_definition_hash,
+            protocol_hash=state.definition.protocol_hash,
+            family_definition_hash=state.definition.family_definition_hash,
             registered_at=_now_iso(),
             oos_consumed_at=None,
             rerun_classification=rerun_classification,
         )
-        fam.oos_windows[oos_window_id] = win
+        state.oos_windows[oos_window_id] = win
         return win
 
     def consume_oos_window(
         self, family_id: str, oos_window_id: str, at: Optional[str] = None
     ) -> OOSWindow:
-        """Mark an OOS segment consumed. The first timestamp is immutable.
-
-        OOSWindow is frozen, so consumption REPLACES the record with a new one
-        carrying the immutable first-consumption timestamp.
-        """
-        fam = self._families.get(family_id)
-        if fam is None or oos_window_id not in fam.oos_windows:
+        """Mark an OOS segment consumed. The first timestamp is immutable."""
+        state = self._families.get(family_id)
+        if state is None or oos_window_id not in state.oos_windows:
             raise KeyError(f"unknown OOS window {family_id}/{oos_window_id}")
-        win = fam.oos_windows[oos_window_id]
+        win = state.oos_windows[oos_window_id]
         if win.oos_consumed_at is None:
             consumed = replace(win, oos_consumed_at=at or _now_iso())
-            fam.oos_windows[oos_window_id] = consumed
+            state.oos_windows[oos_window_id] = consumed
             return consumed
         return win
 
     def oos_is_untouched(self, family_id: str, oos_window_id: str) -> bool:
         """Fresh untouched OOS only when not consumed and not a corrected rerun."""
-        fam = self._families.get(family_id)
-        if fam is None or oos_window_id not in fam.oos_windows:
+        state = self._families.get(family_id)
+        if state is None or oos_window_id not in state.oos_windows:
             return False
-        win = fam.oos_windows[oos_window_id]
+        win = state.oos_windows[oos_window_id]
         return win.oos_consumed_at is None and win.rerun_classification is None
+
+    def oos_receipt(self, family_id: str, oos_window_id: str) -> Optional[OOSReceipt]:
+        """Registry-generated immutable OOS receipt (never caller booleans)."""
+        state = self._families.get(family_id)
+        if state is None or oos_window_id not in state.oos_windows:
+            return None
+        win = state.oos_windows[oos_window_id]
+        economic_segment_id = _oos_economic_identity(
+            family_id, state.definition.protocol_hash, win.dataset_id,
+            win.segment_start, win.segment_end)
+        receipt = OOSReceipt(
+            oos_window_id=win.oos_window_id,
+            economic_segment_id=economic_segment_id,
+            dataset_id=win.dataset_id or "",
+            dataset_hash=win.dataset_hash or "",
+            segment_start=win.segment_start or "",
+            segment_end=win.segment_end or "",
+            oos_generation=win.oos_generation,
+            protocol_hash=state.definition.protocol_hash,
+            trial_family_id=family_id,
+            family_definition_hash=state.definition.family_definition_hash or "",
+            registered_at=win.registered_at or "",
+            consumed_at=win.oos_consumed_at,
+            rerun_classification=win.rerun_classification,
+            untouched=(win.oos_consumed_at is None and win.rerun_classification is None),
+        )
+        return replace(receipt, receipt_digest=receipt.compute_digest())

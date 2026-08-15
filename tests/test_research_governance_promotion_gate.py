@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -15,6 +16,15 @@ from scripts.lib.research_governance.results import make_typed_empirical_context
 
 def _empirical_base():
     return make_typed_empirical_context()
+
+
+def _bundle_variant(**changes):
+    ctx = _empirical_base()
+    b = ctx["evidence_bundle"]
+    b2 = replace(b, **changes)
+    b2 = replace(b2, bundle_digest=b2.compute_digest())
+    ctx["evidence_bundle"] = b2
+    return ctx
 
 
 def test_rg_ladder_restored_rg10_rg11():
@@ -54,14 +64,14 @@ def test_claiming_trade_authority_blocks():
 
 def test_empirical_requires_full_ladder():
     # Missing reality check -> a required empirical gate fails.
-    r = pg.run_promotion_gate(dict(_empirical_base(), reality_check=None))
+    r = pg.run_promotion_gate(_bundle_variant(reality_check=None))
     assert r["overall"] == GateState.FAIL.value
     assert "RG-7" in r["_failed_required"]
 
 
 def test_seasonality_cannot_bypass_empirical_gates():
-    ctx = dict(_empirical_base(), evidence_type="SEASONALITY")
-    ctx["reality_check"] = None
+    ctx = _bundle_variant(reality_check=None)
+    ctx["evidence_type"] = "SEASONALITY"
     r = pg.run_promotion_gate(ctx)
     assert r["overall"] == GateState.FAIL.value
     assert "RG-7" in r["_failed_required"]
