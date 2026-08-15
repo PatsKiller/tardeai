@@ -8,6 +8,29 @@ production-hardening CIO remediation agent.
 - base: see `RESEARCH_GOVERNANCE_BUILD_BASELINE.md`
 - authority: `READ_ONLY_ADVISORY` — nothing here grants broker/order/stop authority.
 
+## Program state
+
+```text
+R1 — RESEARCH GOVERNANCE FOUNDATION
+MERGED:                 YES
+MAIN SHA:               c005551a1e5da5a8d3f46d9e3018bff9bd516e7c
+SUBSTANTIVE P0/P1/P2:   0
+READ_ONLY_ADVISORY:     PRESERVED
+
+R2 — DETERMINISTIC MECHANICS       AUTHORIZED: YES (TO BEGIN)
+R3 — ALMANAC REPRODUCTION          AUTHORIZED: NO
+R4 — CIO/RETRIEVAL INTEGRATION     AUTHORIZED: NO
+```
+
+R1 closed via PR #312 (merge commit `c005551a`). Post-merge push workflows on the
+merge commit all green: `research-governance`, `cio-production-hardening-ci`,
+`release-readiness`.
+
+**Explicit R1 known limitation (carried forward):** the trial registry and
+receipt issuer are an **in-process governance contract**, not durable append-only
+production persistence. This was intentionally deferred and is not a defect in
+the R1 merge, but it must not disappear from future integration planning (R4).
+
 ## Purpose
 
 Govern the promotion of research knowledge (books, primary papers, reproduced
