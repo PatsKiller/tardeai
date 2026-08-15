@@ -229,6 +229,17 @@ overlay_main() {
   for f in "${ROOT}"/tests/test_cio_*.py "${ROOT}/tests/conftest.py"; do
     [[ -f "$f" ]] && cp -a "$f" "${dest}/tests/" || true
   done
+  # Governed Almanac fixture + source catalog (R3/R4 live attach; fail-soft if absent).
+  mkdir -p "${dest}/tests/fixtures" "${dest}/config"
+  if [[ -f "${ROOT}/tests/fixtures/us_equity_monthly_sample.csv" ]]; then
+    cp -a "${ROOT}/tests/fixtures/us_equity_monthly_sample.csv" \
+      "${dest}/tests/fixtures/"
+    log "  overlay almanac fixture"
+  fi
+  if [[ -f "${ROOT}/config/cio_research_source_catalog.json" ]]; then
+    cp -a "${ROOT}/config/cio_research_source_catalog.json" "${dest}/config/"
+    log "  overlay research source catalog"
+  fi
   if [[ -f "${ROOT}/.github/workflows/cio-production-hardening-ci.yml" ]]; then
     cp -a "${ROOT}/.github/workflows/cio-production-hardening-ci.yml" \
       "${dest}/.github/workflows/"
