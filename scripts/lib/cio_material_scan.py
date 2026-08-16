@@ -17,7 +17,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
-from scripts.lib.cio_alex_telegram import due_defers
+from scripts.lib.cio_alex_telegram import (
+    apply_actionability,
+    due_defers,
+    rejected_unchanged,
+)
 from scripts.lib.cio_holdings_delta import diff_holdings
 from scripts.lib.cio_material_publisher import publish_material_decision
 from scripts.lib.cio_office_state import (
@@ -77,6 +81,7 @@ def _decision(
         "id": decision_id, "action": action, "why": why, "delta": delta,
     }))
     body.setdefault("decision_evidence_digest", _digest(extra or {"symbol": symbol}))
+    apply_actionability(body)
     return body
 
 
@@ -176,6 +181,7 @@ def _cash_decision(plan: dict[str, Any], reclass: dict[str, Any]) -> dict[str, A
             why += " Ranked candidate uses (not authorized): " + "; ".join(ranked[:5]) + "."
         change = "A READY re-entry or concentration ACT_NOW survives freshness, or cash re-enters band."
     did = f"dec_cash_{_digest({'status': status, 'action': action, 'd': cash.get('digest')})}"
+    act_now_flag = action == "DEPLOY_CASH"
     return _decision(
         decision_id=did,
         symbol="CASH",
@@ -193,6 +199,10 @@ def _cash_decision(plan: dict[str, Any], reclass: dict[str, Any]) -> dict[str, A
             },
             "cash_posture": cash,
             "reentry_call": reclass.get("call"),
+            "act_now": act_now_flag,
+            "action_label": "ACT_NOW" if act_now_flag else "NO_ACTION",
+            "standing_recommendation": action,
+            "current_action": action,
         },
     )
 
@@ -232,6 +242,8 @@ def _reentry_decision(reclass: dict[str, Any], plan: dict[str, Any]) -> dict[str
         )
         change = "Desk prints READY with fresh marks and a capital-plan use."
         delta = 0.0
+    act_now_flag = action == "RE_ENTER"
+    standing = "RE_ENTER" if (ready or action == "RE_ENTER") else "WAIT"
     return _decision(
         decision_id=f"dec_reentry_{_digest({'action': action, 'ready': ready[:12], 'near': near[:12], 'act_now': act_now})}",
         symbol="REENTRY",
@@ -240,7 +252,13 @@ def _reentry_decision(reclass: dict[str, Any], plan: dict[str, Any]) -> dict[str
         counter="A subset of WAIT names may be near-trigger on a different desk definition.",
         change=change,
         delta=delta,
-        extra={"reentry": reclass},
+        extra={
+            "reentry": reclass,
+            "act_now": act_now_flag,
+            "action_label": "ACT_NOW" if act_now_flag else "NO_ACTION",
+            "standing_recommendation": standing,
+            "current_action": action,
+        },
     )
 
 
@@ -280,11 +298,20 @@ def _canonical_decisions(plan: dict[str, Any]) -> list[dict[str, Any]]:
             "actionable": row.get("actionable"),
             "action_label": row.get("action_label"),
             "account": row.get("account"),
+            "standing_recommendation": stance,
         }
         # Freshness is STALE → do not pretend ACT NOW.
         label = str(row.get("action_label") or "")
-        if label and "STALE" in label.upper():
+        stale = bool(label) and "STALE" in label.upper()
+        if stale:
             why = f"{why} Freshness={label}; not ACT NOW."
+            extra["act_now"] = False
+            extra["current_action"] = "REVALIDATE"
+            extra["actionability"] = "STALE_REFRESH_REQUIRED"
+        elif row.get("act_now") is False:
+            extra["current_action"] = "WAIT"
+        else:
+            extra["current_action"] = stance
         out.append(_decision(
             decision_id=str(row.get("decision_id") or f"dec_{row.get('symbol')}_{stance.lower()}"),
             symbol=str(row.get("symbol") or ""),
@@ -321,8 +348,42 @@ def _freshness_decision(plan: dict[str, Any], prev: Optional[dict[str, Any]]) ->
         ),
         counter="Weekend/holiday marks can look stale without a real book change.",
         change="Required quote/MV evidence refreshes inside policy age.",
-        extra={"freshness_counts": counts, "prior": prev_counts},
+        extra={
+            "freshness_counts": counts,
+            "prior": prev_counts,
+            "act_now": False,
+            "standing_recommendation": "WAIT",
+            "current_action": "WAIT",
+        },
     )
+
+
+def _latest_dispositions() -> dict[str, Any]:
+    try:
+        from scripts.api_v3_cio import get_decision_dispositions
+        blob = get_decision_dispositions() or {}
+        dmap = blob.get("dispositions") or {}
+        return dmap if isinstance(dmap, dict) else {}
+    except Exception:
+        return {}
+
+
+def _attach_operator_state(decision: dict[str, Any], dispositions: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+    """Stamp latest operator disposition / challenge fields. Fail-soft."""
+    if not isinstance(decision, dict):
+        return decision
+    did = str(decision.get("decision_id") or "")
+    dmap = dispositions if dispositions is not None else _latest_dispositions()
+    disp = dmap.get(did) if did else None
+    if isinstance(disp, dict):
+        decision["operator_disposition"] = disp.get("disposition")
+        if disp.get("note") is not None:
+            decision["operator_note"] = disp.get("note")
+        if str(disp.get("disposition") or "").strip().lower() == "reject":
+            decision["operator_challenge_status"] = "OPEN"
+            decision.setdefault("challenge_review", "DATA_UNAVAILABLE")
+    apply_actionability(decision)
+    return decision
 
 
 def select_publications(
@@ -330,14 +391,25 @@ def select_publications(
     *,
     max_publish: int = 3,
 ) -> list[dict[str, Any]]:
-    """Prefer book events, then cash, then one standing TRIM. Avoid flood."""
-    opened = [c for c in candidates if str(c.get("extra_event") or c.get("event") or "") == "POSITION_OPENED"
+    """Prefer book events, then cash, then one standing TRIM. Avoid flood.
+
+    Duplicate TRIM that was REJECTED with unchanged input/evidence digests
+    is not selected (empty==empty is the same identity).
+    """
+    live: list[dict[str, Any]] = []
+    for c in candidates:
+        if not isinstance(c, dict):
+            continue
+        if rejected_unchanged(c):
+            continue
+        live.append(c)
+    opened = [c for c in live if str(c.get("extra_event") or c.get("event") or "") == "POSITION_OPENED"
               or str(c.get("decision_id") or "").startswith("dec_open_")]
-    xfer = [c for c in candidates if str(c.get("decision_id") or "").startswith("dec_xfer_")]
-    cash = [c for c in candidates if c.get("symbol") == "CASH"]
-    reentry = [c for c in candidates if c.get("symbol") == "REENTRY"]
-    trims = [c for c in candidates if str(c.get("action") or "").upper() == "TRIM"]
-    other = [c for c in candidates if c not in opened + xfer + cash + reentry + trims]
+    xfer = [c for c in live if str(c.get("decision_id") or "").startswith("dec_xfer_")]
+    cash = [c for c in live if c.get("symbol") == "CASH"]
+    reentry = [c for c in live if c.get("symbol") == "REENTRY"]
+    trims = [c for c in live if str(c.get("action") or c.get("standing_recommendation") or "").upper() == "TRIM"]
+    other = [c for c in live if c not in opened + xfer + cash + reentry + trims]
     ordered = opened + xfer + cash + reentry + trims[:1] + other
     seen: set[str] = set()
     out: list[dict[str, Any]] = []
@@ -393,6 +465,10 @@ def scan_office(
     # Due defers are reopened by cio_defer_revisit (same lineage, revalidate,
     # publish-if-material). The scanner only records the count so we do not
     # double-consume lineage here.
+
+    dispositions = _latest_dispositions()
+    for cand in candidates:
+        _attach_operator_state(cand, dispositions)
 
     selected = select_publications(candidates, max_publish=max_publish)
     results = []

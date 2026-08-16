@@ -117,6 +117,65 @@ def make_decision_id(
     return "dec_" + hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
 
 
+def decision_content_digest(
+    symbol: Any,
+    stance: Any,
+    delta: Any,
+    row: Optional[dict[str, Any]] = None,
+    extra: str = "",
+) -> str:
+    """32-hex sha256 of the capital-plan decision identity payload.
+
+    Recipe is the single source of truth (copied from the original
+    ``cio_capital_plan._decision_digest``). Do not invent a second hash.
+    """
+    pos = row if isinstance(row, dict) else {}
+    raw = json.dumps({
+        "symbol": symbol,
+        "stance": stance,
+        "delta": round(float(delta or 0), 2),
+        "mv": pos.get("market_value_usd") or pos.get("current_value_usd"),
+        "mark": pos.get("canonical_mark") or pos.get("current_price"),
+        "mark_as_of": pos.get("canonical_mark_as_of") or pos.get("source_as_of"),
+        "broker_mv": pos.get("broker_market_value"),
+        "extra": extra,
+    }, sort_keys=True, default=str)
+    return hashlib.sha256(raw.encode()).hexdigest()[:32]
+
+
+def canonical_decision_digests(
+    symbol: Any,
+    stance: Any,
+    delta: Any,
+    row: Optional[dict[str, Any]] = None,
+) -> dict[str, str]:
+    """Return ``{input, evidence}`` 32-hex digests for one decision row."""
+    pos = row if isinstance(row, dict) else {}
+    return {
+        "input": decision_content_digest(symbol, stance, delta, pos, extra=""),
+        "evidence": decision_content_digest(symbol, stance, delta, pos, extra="evidence"),
+    }
+
+
+def assert_digest_capable(row: Any) -> dict[str, Any]:
+    """FAIL if a new aggregated decision is missing either digest.
+
+    Used by tests (and any fail-closed caller). Does not invent digests.
+    """
+    if not isinstance(row, dict):
+        raise AssertionError("digest_capable_row_missing: row is not a dict")
+    inp = str(row.get("decision_input_digest") or "").strip()
+    ev = str(row.get("decision_evidence_digest") or "").strip()
+    if not inp or not ev:
+        raise AssertionError(
+            "digest_capable_row_missing_digests: "
+            f"symbol={row.get('symbol')!r} "
+            f"decision_input_digest={inp!r} "
+            f"decision_evidence_digest={ev!r}"
+        )
+    return row
+
+
 # Phase 7 — required fields shared by capital plan / CIO NOW / report / Telegram
 REQUIRED_DECISION_FIELDS = (
     "decision_id",
@@ -549,6 +608,13 @@ def aggregate_position_decisions(
         "freshness", "financial_truth_quality",
         "generated_at", "revalidated_at",
     )
+    # P0-3: keep source identity through the merge; recomputed after sizing.
+    _identity_keys = (
+        "decision_input_digest",
+        "decision_evidence_digest",
+        "decision_id",
+    )
+    _preserve_keys = _size_keys + _identity_keys
     for r in rows or []:
         if not isinstance(r, dict):
             continue
@@ -584,7 +650,7 @@ def aggregate_position_decisions(
                 "identity": ident,
                 "_acct_values": {acct: value} if acct else {},
             }
-            for k in _size_keys:
+            for k in _preserve_keys:
                 if r.get(k) is not None:
                     by[sym][k] = r.get(k)
             continue
@@ -612,7 +678,7 @@ def aggregate_position_decisions(
         if "concentration >" in str(r.get("risk") or "").lower() or "fire" in str(r.get("risk") or "").lower():
             agg["risk"] = r.get("risk")
         # Prefer richer sizing annotation (non-fallback wins)
-        for k in _size_keys:
+        for k in _preserve_keys:
             if r.get(k) is None:
                 continue
             if k not in agg or agg.get(k) is None:
@@ -695,6 +761,13 @@ def aggregate_position_decisions(
         agg["decision_id"] = make_decision_id(
             sym, stance, agg["recommended_delta_usd"], agg.get("why_now"),
         )
+        # P0-3: recompute after aggregate + sizing — delta/mv may have changed.
+        # Never leave a new row digestless. Do not invent in scanners.
+        digests = canonical_decision_digests(
+            sym, stance, agg["recommended_delta_usd"], agg,
+        )
+        agg["decision_input_digest"] = digests["input"]
+        agg["decision_evidence_digest"] = digests["evidence"]
         agg["what_changes_call"] = what_changes_the_call(
             stance, agg.get("risk"), agg.get("counter_thesis"),
         )
@@ -760,6 +833,8 @@ def sanitize_decisions_now(
             "accounts": d.get("accounts"),
             "account_count": d.get("account_count"),
             "operator_actions": operator_action_affordances(),
+            "decision_input_digest": d.get("decision_input_digest") or "",
+            "decision_evidence_digest": d.get("decision_evidence_digest") or "",
         }
         for k in (
             "sizing", "sizing_method", "sizing_objective", "sizing_why_not_min",

@@ -121,10 +121,179 @@ def is_material_event(
     return {"material": True, "reason": "material_body"}
 
 
+CURRENT_ACTIONS = frozenset({
+    "WAIT", "REVALIDATE", "NO_ACTION", "DEPLOY_CASH", "HOLD_CASH", "RE_ENTER",
+})
+ACTIONABILITY_NOW = "ACT_NOW"
+ACTIONABILITY_STALE = "STALE_REFRESH_REQUIRED"
+_STALE_CURRENT_LINE = "WAIT / REVALIDATE — marks are stale; ACT_NOW=false."
+
+
+def _norm_digest(val: Any) -> str:
+    return str(val or "").strip().lower()
+
+
+def _disposition_text(decision: dict[str, Any]) -> str:
+    raw = decision.get("operator_disposition")
+    if isinstance(raw, dict):
+        return str(raw.get("disposition") or "").strip()
+    if raw:
+        return str(raw).strip()
+    return str(decision.get("disposition") or "").strip()
+
+
+def _label_text(decision: dict[str, Any]) -> str:
+    return str(
+        decision.get("action_label")
+        or decision.get("actionability")
+        or ""
+    ).strip()
+
+
+def _is_stale_label(label: str) -> bool:
+    return "STALE" in (label or "").upper()
+
+
+def _coerce_act_now(decision: dict[str, Any], *, stale: bool, standing: str) -> bool:
+    if stale:
+        return False
+    raw = decision.get("act_now")
+    if raw is False:
+        return False
+    if raw is True:
+        return True
+    if isinstance(raw, str):
+        s = raw.strip().lower()
+        if s in {"0", "false", "no", "off"}:
+            return False
+        if s in {"1", "true", "yes", "on"}:
+            return True
+    if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+        return raw > 0
+    if standing in {"DEPLOY_CASH", "RE_ENTER"}:
+        return True
+    if standing in {"WAIT", "HOLD_CASH", "NO_ACTION", "HOLD", "REVALIDATE", "RESEARCH"}:
+        return False
+    # TRIM / EXIT / ADD / ROTATE with no flag are standing views, not ACT_NOW.
+    return False
+
+
+def classify_actionability(decision: dict[str, Any]) -> dict[str, Any]:
+    """Split standing recommendation from current action.
+
+    Stale TRIM stays TRIM as standing_recommendation. Current action becomes
+    WAIT / REVALIDATE with act_now False — never an unqualified MY CALL.
+    """
+    d = decision if isinstance(decision, dict) else {}
+    standing = (
+        str(d.get("standing_recommendation") or "").strip().upper()
+        or str(d.get("stance_code") or "").strip().upper()
+        or str(d.get("action") or d.get("stance") or "").strip().upper()
+        or "REVIEW"
+    )
+    label = _label_text(d)
+    stale = _is_stale_label(label)
+    act_now = _coerce_act_now(d, stale=stale, standing=standing)
+    if stale or ACTIONABILITY_STALE in label.upper():
+        actionability = ACTIONABILITY_STALE
+    elif act_now:
+        actionability = ACTIONABILITY_NOW
+    elif label.upper() in {ACTIONABILITY_NOW, ACTIONABILITY_STALE, "WATCH", "NO_ACTION"}:
+        actionability = label.upper()
+    elif standing in {"HOLD_CASH", "WAIT", "NO_ACTION"}:
+        actionability = "NO_ACTION"
+    else:
+        actionability = str(d.get("actionability") or "NO_ACTION").upper() or "NO_ACTION"
+
+    explicit = str(d.get("current_action") or "").strip().upper()
+    if stale or actionability == ACTIONABILITY_STALE:
+        current = explicit if explicit in {"WAIT", "REVALIDATE"} else "REVALIDATE"
+        act_now = False
+        actionability = ACTIONABILITY_STALE
+    elif act_now:
+        current = explicit or standing
+    elif explicit in CURRENT_ACTIONS:
+        current = explicit
+    elif standing in {"HOLD_CASH", "WAIT", "NO_ACTION"}:
+        current = standing
+    elif standing == "HOLD":
+        current = "NO_ACTION"
+    else:
+        current = "WAIT"
+
+    disp = _disposition_text(d)
+    challenge = str(d.get("operator_challenge_status") or "").strip()
+    if disp.upper() == "REJECT" or challenge.upper() == "OPEN":
+        challenge = "OPEN"
+    else:
+        challenge = challenge or "none"
+
+    out: dict[str, Any] = {
+        "standing_recommendation": standing,
+        "current_action": current,
+        "actionability": actionability,
+        "act_now": bool(act_now),
+        "operator_challenge_status": challenge,
+    }
+    if disp:
+        out["operator_disposition"] = disp
+    if challenge == "OPEN":
+        out["challenge_review"] = d.get("challenge_review") or "DATA_UNAVAILABLE"
+    return out
+
+
+def apply_actionability(decision: dict[str, Any]) -> dict[str, Any]:
+    """Stamp classify_actionability fields onto the decision (in place)."""
+    if not isinstance(decision, dict):
+        return decision
+    decision.update(classify_actionability(decision))
+    return decision
+
+
+def rejected_unchanged(decision: dict[str, Any]) -> bool:
+    """True when latest REJECT is still bound to the same input/evidence identity.
+
+    empty==empty is the same identity (decision_id-only catalog rows).
+    Fail-soft: missing API / missing disposition → False (do not suppress).
+    """
+    if not isinstance(decision, dict):
+        return False
+    did = str(decision.get("decision_id") or "").strip()
+    if not did:
+        return False
+    try:
+        from scripts.api_v3_cio import get_decision_dispositions
+        blob = get_decision_dispositions() or {}
+        disp = (blob.get("dispositions") or {}).get(did)
+    except Exception:
+        return False
+    if not isinstance(disp, dict):
+        return False
+    if str(disp.get("disposition") or "").strip().lower() != "reject":
+        return False
+    return (
+        _norm_digest(decision.get("decision_input_digest"))
+        == _norm_digest(disp.get("decision_input_digest"))
+        and _norm_digest(decision.get("decision_evidence_digest"))
+        == _norm_digest(disp.get("decision_evidence_digest"))
+    )
+
+
 def format_cio_message(decision: dict[str, Any]) -> str:
-    """Decision-first CIO card. Buttons are inline, not plaintext actions."""
+    """Decision-first CIO card. Buttons are inline, not plaintext actions.
+
+    When ACT_NOW is false (or freshness is STALE), headline STANDING VIEW +
+    CURRENT ACTION. Never emit an unqualified MY CALL: TRIM in that case.
+    """
+    decision = decision if isinstance(decision, dict) else {}
+    cls = classify_actionability(decision)
+    standing = cls["standing_recommendation"]
+    current = cls["current_action"]
+    act_now = bool(cls["act_now"])
+    stale = cls["actionability"] == ACTIONABILITY_STALE or _is_stale_label(_label_text(decision))
+    use_standing = (not act_now) or stale
+
     sym = decision.get("symbol") or decision.get("scope") or "—"
-    action = decision.get("action") or decision.get("stance") or "Review"
     delta = _num(decision.get("delta_usd") if decision.get("delta_usd") is not None
                  else decision.get("recommended_delta_usd"))
     why = (decision.get("why_now") or decision.get("what_changed") or "").strip()
@@ -135,23 +304,57 @@ def format_cio_message(decision: dict[str, Any]) -> str:
     free = cash.get("free_investable")
     deploy = cash.get("deploy_now")
     remain = cash.get("remain_cash")
+    risk = str(decision.get("risk") or "").strip()
+    weight = decision.get("weight_pct")
+    if weight is None:
+        weight = decision.get("current_weight_pct")
+
+    call_core = f"{standing} {sym}" + (f"  ${delta:+,.0f}" if abs(delta) >= 1 else "")
+    why_block = why[:240] or "See evidence in CIO."
+    if risk and risk.lower() not in why_block.lower():
+        why_block = f"{why_block} {risk}".strip()
+    if weight is not None:
+        try:
+            wtxt = f"weight {float(weight):.1f}%"
+            if "weight" not in why_block.lower():
+                why_block = f"{why_block} ({wtxt})"
+        except (TypeError, ValueError):
+            pass
 
     lines = [
         "Alex · CIO NOW",
         "",
         "WHAT CHANGED",
-        why[:280] or f"{action} {sym}",
+        why[:280] or f"{standing} {sym}",
         "",
-        "MY CALL",
-        f"{action} {sym}" + (f"  ${delta:+,.0f}" if abs(delta) >= 1 else ""),
-        "",
+    ]
+    if use_standing:
+        stand_line = call_core
+        if why:
+            stand_line = f"{call_core} because {why[:240]}"
+        lines.extend([
+            "STANDING VIEW",
+            stand_line,
+            "",
+            "CURRENT ACTION",
+            _STALE_CURRENT_LINE if stale else f"{current} — ACT_NOW=false.",
+            "",
+        ])
+    else:
+        lines.extend([
+            "MY CALL",
+            call_core,
+            "",
+        ])
+
+    lines.extend([
         "CAPITAL",
         f"Free investable: ${float(free):,.0f}" if free is not None else "Free investable: see capital plan",
         f"Deploy now: ${float(deploy):,.0f}" if deploy is not None else "Deploy now: —",
         f"Remain cash: ${float(remain):,.0f}" if remain is not None else "Remain cash: —",
         "",
         "WHY",
-        why[:240] or "See evidence in CIO.",
+        why_block,
         "",
         "COUNTER-THESIS",
         (counter[:200] if counter else "None on record."),
@@ -161,9 +364,24 @@ def format_cio_message(decision: dict[str, Any]) -> str:
         "",
         "NEXT REVIEW",
         str(nxt),
-        "",
-        f"Decision: {decision.get('decision_id') or '—'}",
-    ]
+    ])
+
+    disp = cls.get("operator_disposition") or _disposition_text(decision)
+    if disp:
+        note = ""
+        raw = decision.get("operator_disposition")
+        if isinstance(raw, dict):
+            note = str(raw.get("note") or "")
+        note = (note or str(decision.get("operator_note") or "")).strip()
+        rec = f"{str(disp).upper()} recorded."
+        if note:
+            rec = f"{rec} {note[:400]}"
+        lines.extend(["", "OPERATOR", rec])
+        if str(disp).upper() == "REJECT":
+            lines.append("operator_challenge_status=OPEN")
+            lines.append("challenge_review=DATA_UNAVAILABLE")
+
+    lines.extend(["", f"Decision: {decision.get('decision_id') or '—'}"])
     return "\n".join(lines)
 
 

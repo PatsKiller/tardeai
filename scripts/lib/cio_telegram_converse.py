@@ -389,7 +389,16 @@ def load_decision_thread_context(decision_id: str) -> dict[str, Any]:
         disp = ((get_decision_dispositions() or {}).get("dispositions") or {}).get(did)
         if isinstance(disp, dict):
             ctx["disposition"] = str(disp.get("disposition") or "")
+            ctx["operator_disposition"] = ctx["disposition"]
             ctx["disposition_at"] = disp.get("occurred_at")
+            ctx["operator_note"] = str(disp.get("note") or "")
+            ctx["decision_input_digest"] = str(disp.get("decision_input_digest") or "")
+            ctx["decision_evidence_digest"] = str(disp.get("decision_evidence_digest") or "")
+            if str(ctx["disposition"] or "").upper() == "REJECT":
+                ctx["operator_challenge_status"] = "OPEN"
+                ctx["challenge_review"] = "DATA_UNAVAILABLE"
+            else:
+                ctx["operator_challenge_status"] = "none"
     except Exception as exc:
         ctx["catalog_error"] = f"{type(exc).__name__}"
     # Prefer capital-plan row facts when the catalog is thin
@@ -414,22 +423,133 @@ def load_decision_thread_context(decision_id: str) -> dict[str, Any]:
     return ctx
 
 
+_REJECT_RE = re.compile(r"\breject(?:ed|ing)?\b", re.I)
+
+
+def _looks_like_reject(text: str) -> bool:
+    return bool(_REJECT_RE.search(text or ""))
+
+
+def persist_operator_challenge(decision_id: str, note: str, disposition: str) -> dict[str, Any]:
+    """Persist the exact operator free-text note as a governed challenge.
+
+    Prefers append_case_event when the case store exposes it; else append_case
+    with case_id_for (same decision_id); else record_disposition. Never rewrites
+    the note into a canned staple phrase.
+    """
+    did = str(decision_id or "").strip()
+    note_s = str(note or "")
+    disp = str(disposition or "").strip()
+    challenge = "OPEN" if disp.upper() == "REJECT" else "none"
+    out: dict[str, Any] = {
+        "ok": False,
+        "decision_id": did,
+        "note": note_s,
+        "disposition": disp,
+        "operator_challenge_status": challenge,
+        "challenge_review": "DATA_UNAVAILABLE" if challenge == "OPEN" else None,
+        "via": None,
+    }
+    if not did:
+        out["reason"] = "missing_decision_id"
+        return out
+    payload = {
+        "decision_id": did,
+        "status": "OPERATOR_CHALLENGE" if challenge == "OPEN" else "OPERATOR_NOTE",
+        "operator_challenge_status": challenge,
+        "challenge_review": "DATA_UNAVAILABLE" if challenge == "OPEN" else None,
+        "operator_disposition": {
+            "disposition": disp or None,
+            "note": note_s,
+            "source": "persist_operator_challenge",
+        },
+    }
+    try:
+        from scripts.lib.cio_production_case import append_case_event
+        rec = append_case_event(did, payload)
+        out["ok"] = True
+        out["via"] = "append_case_event"
+        out["record"] = rec
+        return out
+    except Exception:
+        pass
+    try:
+        from scripts.lib.cio_production_case import append_case, case_id_for
+        rec = append_case({
+            "case_id": case_id_for(did, "", ""),
+            **payload,
+        })
+        out["ok"] = True
+        out["via"] = "append_case"
+        out["record"] = rec
+        return out
+    except Exception:
+        pass
+    try:
+        from scripts.lib.cio_production_case import record_disposition
+        rec = record_disposition(did, payload["operator_disposition"])
+        out["ok"] = True
+        out["via"] = "record_disposition"
+        out["record"] = rec
+        return out
+    except Exception as exc:
+        out["reason"] = f"{type(exc).__name__}"
+        return out
+
+
+def open_thesis_challenge(decision: dict[str, Any], note: str) -> dict[str, Any]:
+    """Open a REJECT challenge. Desks are not called here — review is honest."""
+    d = dict(decision or {})
+    did = str(d.get("decision_id") or "").strip()
+    d["operator_challenge_status"] = "OPEN"
+    d["challenge_review"] = "DATA_UNAVAILABLE"
+    d["operator_disposition"] = d.get("operator_disposition") or "REJECT"
+    persisted = persist_operator_challenge(did, note, "REJECT")
+    return {
+        "ok": bool(persisted.get("ok")),
+        "decision_id": did,
+        "operator_challenge_status": "OPEN",
+        "challenge_review": "DATA_UNAVAILABLE",
+        "note": str(note or ""),
+        "persist": persisted,
+        "decision": d,
+    }
+
+
 def format_decision_thread_reply(
     *,
     decision_id: str,
     operator_text: str,
     thread: Optional[dict[str, Any]] = None,
 ) -> str:
-    """CIO-speak reply that keeps the same decision_id. Not a new S0 plan."""
+    """CIO-speak reply that keeps the same decision_id. Not a new S0 plan.
+
+    Uses the actual operator free-text note. Does not invent a staple phrase.
+    """
     thread = thread or load_decision_thread_context(decision_id)
     did = thread.get("decision_id") or decision_id
     sym = thread.get("symbol") or "this name"
-    stance = (thread.get("stance") or "the standing call").upper()
-    disp = str(thread.get("disposition") or "").upper() or "NONE"
+    stance = (
+        thread.get("standing_recommendation")
+        or thread.get("stance")
+        or thread.get("stance_code")
+        or "the standing call"
+    )
+    stance = str(stance).upper()
+    disp = str(
+        thread.get("disposition")
+        or thread.get("operator_disposition")
+        or ""
+    ).upper() or "NONE"
     why = (thread.get("why_now") or "").strip()
     label = thread.get("action_label") or ""
-    note = (operator_text or "").strip()[:400]
+    note = (operator_text or "").strip()
+    if not note:
+        note = str(thread.get("operator_note") or "").strip()
+    note_show = note[:400] if note else "(no note)"
     act_now = thread.get("act_now")
+    if disp != "REJECT" and _looks_like_reject(note):
+        disp = "REJECT"
     lines = [
         "Alex · CIO NOW",
         "",
@@ -438,7 +558,7 @@ def format_decision_thread_reply(
         f"Latest disposition on record: {disp}.",
         "",
         "I HEARD YOU",
-        note or "(no note)",
+        note_show,
         "",
         "WHAT THAT MEANS",
     ]
@@ -449,10 +569,13 @@ def format_decision_thread_reply(
         )
         if label:
             lines.append(f"Freshness={label}; ACT_NOW={act_now}.")
-        lines.append(
-            "Your counter-thesis (income / staple / it is working) is now on the case. "
-            "It does not clear a concentration fire by itself."
-        )
+        if note:
+            lines.append(f"Your counter-thesis is now on the case: {note[:400]}")
+        else:
+            lines.append("Your counter-thesis is now on the case.")
+        lines.append("It does not clear a concentration fire by itself.")
+        lines.append("operator_challenge_status=OPEN")
+        lines.append("challenge_review=DATA_UNAVAILABLE")
     else:
         lines.append(
             f"Standing call remains {stance} on {sym}. "
@@ -473,19 +596,16 @@ def format_decision_thread_reply(
 
 
 def record_decision_thread_note(decision_id: str, note: str, *, disposition: str = "") -> None:
-    """Append operator free-text onto the production case. Fail-soft."""
+    """Append the exact operator free-text onto the production case. Fail-soft."""
+    text = str(note or "")
+    disp = str(disposition or "")
+    if not disp and _looks_like_reject(text):
+        disp = "REJECT"
     try:
-        from scripts.lib.cio_production_case import append_case
-        append_case({
-            "case_id": f"note_{decision_id}",
-            "status": "OPERATOR_NOTE",
-            "decision_id": decision_id,
-            "operator_disposition": {
-                "disposition": disposition or None,
-                "note": (note or "")[:800],
-                "source": "telegram_decision_thread",
-            },
-        })
+        if str(disp).upper() == "REJECT":
+            open_thesis_challenge({"decision_id": decision_id}, text)
+        else:
+            persist_operator_challenge(decision_id, text, disp)
     except Exception:
         pass
 

@@ -12,7 +12,12 @@ import hashlib
 import json
 from typing import Any, Optional
 
-from scripts.lib.cio_alex_telegram import deliver_decision, evaluate_outbound, is_material_event
+from scripts.lib.cio_alex_telegram import (
+    deliver_decision,
+    evaluate_outbound,
+    is_material_event,
+    rejected_unchanged,
+)
 from scripts.lib.cio_production_case import open_case_from_decision
 from scripts.lib.cio_symbol_research import retrieve_symbol_research
 
@@ -55,6 +60,15 @@ def publish_material_decision(
     did = str(decision.get("decision_id") or "").strip()
     if not did:
         return {"ok": False, "error": "missing_decision_id", "authority": AUTHORITY}
+
+    if rejected_unchanged(decision):
+        return {
+            "ok": True,
+            "published": False,
+            "reason": "rejected_unchanged",
+            "decision_id": did,
+            "authority": AUTHORITY,
+        }
 
     action = str(decision.get("stance_code") or decision.get("action") or "").upper()
     mat = is_material_event(kind="decision", decision=decision)
