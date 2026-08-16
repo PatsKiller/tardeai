@@ -60,6 +60,7 @@ type Decision = {
   action?: string | null
   action_label?: string | null
   action_label_display?: string | null
+  act_now?: boolean | null
   current_weight_pct?: number | null
   target_weight_pct?: number | null
   recommended_delta_usd?: number | null
@@ -180,9 +181,6 @@ const TAB_LABEL: Record<Tab, string> = {
   evidence: 'EVIDENCE / AUDIT',
 }
 
-const URGENCY_LABEL: Record<string, string> = { high: 'Act now', medium: 'Review', low: 'Watch' }
-const URGENCY_COLOR: Record<string, string> = { high: 'var(--red)', medium: 'var(--amber)', low: 'var(--text3)' }
-
 function fmtUsd(n: number | null | undefined): string {
   if (n == null) return '—'
   const sign = n < 0 ? '−' : ''
@@ -216,7 +214,7 @@ const CODE_LABEL: Record<string, string> = {
   STALE_REFRESH_REQUIRED: 'STALE — REFRESH REQUIRED',
   clear_fire_staged: 'Clear fire, staged',
   policy_normalize_staged: 'Policy normalize, staged',
-  advisory_fallback_10pct: 'Advisory fallback (10%)',
+  scenario_only: 'Scenario only',
   full_exit: 'Full exit',
   headroom_bounded_default: 'Headroom-bounded default',
 }
@@ -251,6 +249,18 @@ function freshnessLine(f: Decision['freshness']): string | null {
   if (f.financial_truth_quality) return `Truth ${proseCode(f.financial_truth_quality)}`
   if (board.length) return 'Fresh'
   return null
+}
+
+// Canonical actionability: act_now > explicit label. Risk text never renders
+// ACT NOW; stale/conflict render REVALIDATE / DATA CONFLICT, not Act now.
+function actionability(d: Decision): { label: string; color: string } {
+  if (d.act_now) return { label: 'ACT NOW', color: 'var(--red)' }
+  const al = (d.action_label || '').toUpperCase()
+  if (al === 'ACT_NOW') return { label: 'ACT NOW', color: 'var(--red)' }
+  if (al === 'STALE_REFRESH_REQUIRED' || al === 'REVALIDATE') return { label: 'REVALIDATE', color: 'var(--amber)' }
+  if (al === 'DATA_CONFLICT') return { label: 'DATA CONFLICT', color: 'var(--amber)' }
+  if (al === 'REVIEW') return { label: 'REVIEW', color: 'var(--amber)' }
+  return { label: 'WATCH', color: 'var(--text3)' }
 }
 
 // ── Shared style tokens ────────────────────────────────────────────────────────
@@ -355,7 +365,7 @@ function DecisionCard({ d, dispositions, legacyUnversioned, onAct }: {
   onAct: (d: Decision, disposition: string, rating?: number) => void
 }) {
   const [open, setOpen] = useState(false)
-  const urgency = d.urgency || 'low'
+  const act = actionability(d)
   const delta = d.recommended_delta_usd ?? d.delta_usd
   const weight = d.current_weight_pct ?? d.weight_pct
   const deltaColor = delta == null ? 'var(--text3)' : delta >= 0 ? 'var(--green)' : 'var(--red)'
@@ -366,12 +376,12 @@ function DecisionCard({ d, dispositions, legacyUnversioned, onAct }: {
   const hasSizing = d.trim_to_clear_fire_usd != null || d.trim_to_policy_usd != null || !!sizingMethod || !!d.sizing_objective
 
   return (
-    <div style={{ ...card, borderLeft: `3px solid ${URGENCY_COLOR[urgency]}` }} data-testid="cio-decision-card">
+    <div style={{ ...card, borderLeft: `3px solid ${act.color}` }} data-testid="cio-decision-card">
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'baseline' }}>
         <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--text0)' }}>{title}</span>
         {d.account && d.kind === 'position' && <span style={faint}>{d.account.replace(/_/g, ' ')}</span>}
-        <span style={{ fontSize: 11, fontWeight: 700, color: URGENCY_COLOR[urgency], letterSpacing: '.3px', textTransform: 'uppercase' }}>
-          {URGENCY_LABEL[urgency]}
+        <span style={{ fontSize: 11, fontWeight: 700, color: act.color, letterSpacing: '.3px', textTransform: 'uppercase' }}>
+          {act.label}
         </span>
         {actionText && (
           <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)', letterSpacing: '.3px', textTransform: 'uppercase' }}>

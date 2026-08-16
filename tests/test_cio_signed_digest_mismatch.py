@@ -12,12 +12,14 @@ from scripts.api_v3_cio import _digests_match, _VALID_DISPOSITIONS, post_decisio
 from scripts.lib.cio_material_scan import _canonical_decisions
 
 
-def test_empty_catalog_digest_accepts_token_hash():
+def test_digest_capable_requires_exact_pair():
+    # LEGACY decision-id-only catalog rows (empty digest) still accept token
+    # hashes — keyed by decision_id, not by exact generated content.
     assert _digests_match("", "") is True
-    assert _digests_match("", "abc") is True
-    # Live Telegram buttons minted a local evidence hash while capital-plan
-    # catalog rows have no digest. That must not 409.
     assert _digests_match("1e855bdb25f63ceb", "") is True
+    # DIGEST_CAPABLE rows (non-empty catalog digest) require an exact pair;
+    # a missing supplied digest fails closed (409) — no empty/self-signed bypass.
+    assert _digests_match("", "abc") is False
     assert _digests_match("1e855bdb25f63ceb", "1e855bdb25f63ceb") is True
     assert _digests_match("1e855bdb25f63ceb", "deadbeef") is False
 

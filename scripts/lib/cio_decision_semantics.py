@@ -40,6 +40,17 @@ STANCE_PRECEDENCE: dict[str, int] = {
     STANCE_HOLD: 0,
 }
 
+# Canonical re-entry lifecycle. Desk readiness states are NOT re-entry authority.
+# Only an explicit RE_ENTER verdict — passing the governed-eligibility ladder —
+# may become STANCE_RE_ENTER on an operator surface.
+REENTRY_LIFECYCLE = (
+    "WATCH_REENTRY",
+    "DESK_READY_TO_REVIEW",
+    "NEAR_TRIGGER",
+    "GOVERNED_ELIGIBLE",
+    "RE_ENTER",
+)
+
 # Professional labels for operator surfaces (never leak SCREAMING_SNAKE enums).
 STANCE_PROSE: dict[str, str] = {
     STANCE_EXIT: "Exit",
@@ -440,8 +451,35 @@ def merge_stances(*stances: Optional[str]) -> str:
     return best
 
 
+def reentry_state_from_desk(state: Any = None, verdict: Any = None) -> Optional[str]:
+    """Map raw desk readiness to a canonical re-entry lifecycle state.
+
+    READY TO REVIEW / NEAR ENTRY / OVERSOLD REVIEW are NOT RE_ENTER. Only an
+    explicit RE_ENTER verdict grants re-entry authority; everything else is a
+    readiness/blocked state that surfaces as REVIEW (or WATCH), never as a buy.
+    """
+    v = str(verdict or "").upper().strip()
+    if v == "RE_ENTER":
+        return "RE_ENTER"
+    s = str(state or "").upper().strip().replace("_", " ")
+    if s in {"READY TO REVIEW", "READY_TO_REVIEW"}:
+        return "DESK_READY_TO_REVIEW"
+    if s in {"NEAR ENTRY", "NEAR_TRIGGER", "OVERSOLD REVIEW"}:
+        return "NEAR_TRIGGER"
+    if s in {"WATCH REENTRY", "WATCH_REENTRY", "WATCH"}:
+        return "WATCH_REENTRY"
+    if s in {"WAIT", "BLOCKED", "STALE", "INVALIDATED", "DATA_UNAVAILABLE"}:
+        return s
+    return None
+
+
 def stance_from_queue_item(item: Optional[dict[str, Any]]) -> str:
-    """Stance for one queue item: explicit verdict > state > directive label."""
+    """Stance for one queue item: explicit verdict > state > directive label.
+
+    Desk readiness states (READY TO REVIEW / NEAR ENTRY / OVERSOLD REVIEW) map to
+    REVIEW — ready to review is not ready to buy. Only an explicit RE_ENTER
+    verdict produces STANCE_RE_ENTER.
+    """
     if not item:
         return STANCE_HOLD
     verdict = str(item.get("verdict") or "").upper().strip() or None
@@ -449,8 +487,11 @@ def stance_from_queue_item(item: Optional[dict[str, Any]]) -> str:
     label = item.get("directive_label") or item.get("label") or item.get("note")
     from_verdict = verdict if verdict in ACTIONABLE_STANCES else None
     from_state = None
-    if state in {"READY TO REVIEW", "NEAR ENTRY", "OVERSOLD REVIEW"}:
+    reentry = reentry_state_from_desk(state, verdict)
+    if reentry == "RE_ENTER":
         from_state = STANCE_RE_ENTER
+    elif reentry:
+        from_state = STANCE_REVIEW
     from_label = infer_stance_from_text(label)
     return merge_stances(from_verdict, from_state, from_label)
 

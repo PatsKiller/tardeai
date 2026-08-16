@@ -113,7 +113,8 @@ def test_legacy_events_readable_not_applied_as_current(iso):
         "occurred_at": "2026-08-01T00:00:00+00:00",
         "authority": "READ_ONLY_ADVISORY",
     }) + "\n", encoding="utf-8")
-    _post(iso, DID, disposition="ack")
+    _post(iso, DID, disposition="ack", decision_id=DID,
+          decision_input_digest=IN_DIGEST, decision_evidence_digest=EV_DIGEST)
     got = cio.get_decision_dispositions()
     assert got["ok"] is True
     assert got["canonical_key"] == "decision_id"

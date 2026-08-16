@@ -131,9 +131,13 @@ def _investment_needs_attention(d: dict[str, Any]) -> bool:
     stance = _str(d.get("stance_code") or d.get("cio_stance") or d.get("stance")).upper()
     delta = abs(_num(d.get("recommended_delta_usd") if d.get("recommended_delta_usd") is not None else d.get("delta_usd")) or 0.0)
     why = _str(d.get("why_now"))
-    if stance in ("TRIM", "EXIT", "ADD", "RE_ENTER") and delta >= 0.01:
+    non_neutral = bool(why) and _NEUTRAL_WHY not in why.lower()
+    if stance in ("TRIM", "EXIT", "ADD", "RE_ENTER") and (delta >= 0.01 or non_neutral):
+        # A TRIM/EXIT/ADD/RE_ENTER directive with $0 recommended delta is a
+        # scenario-only / declined decision (no verified objective). It still
+        # needs operator REVIEW, so it must surface rather than vanish.
         return True
-    if why and _NEUTRAL_WHY not in why.lower() and delta >= 0.01:
+    if non_neutral and delta >= 0.01:
         return True
     # Explicit WATCH / thin hold → not investment attention
     if label == "WATCH" or stance in ("HOLD", ""):
@@ -159,6 +163,20 @@ def _action_is_open(a: Any) -> bool:
     if st in ("done", "closed", "cancelled", "canceled", "rejected", "complete", "completed"):
         return False
     return True
+
+
+def _actionability_urgency(d: dict[str, Any]) -> str:
+    """Actionability-derived urgency — stale/conflict/risk text never render ACT NOW.
+
+    ACT_NOW requires act_now=True or an explicit ACT_NOW label. Risk text such as
+    "concentration > fire" is a fact, not an action — it must not set high urgency.
+    """
+    label = _str(d.get("action_label") or "").upper()
+    if d.get("act_now") is True or label == "ACT_NOW":
+        return "high"
+    if label in ("STALE_REFRESH_REQUIRED", "REVALIDATE", "DATA_CONFLICT", "REVIEW"):
+        return "medium"
+    return "low"
 
 
 def build_cio_now(
@@ -215,12 +233,7 @@ def build_cio_now(
                     d[k] = raw[k]
             risk = _str(d.get("risk") or raw.get("risk"))
             delta = _num(d.get("recommended_delta_usd")) or 0.0
-            urgency = (
-                "high" if "fire" in risk.lower() or "concentration >" in risk.lower() or "breach" in risk.lower()
-                else ("medium" if delta else "low")
-            )
-            if d.get("act_now") or _str(d.get("action_label")) == "ACT_NOW":
-                urgency = "high"
+            urgency = _actionability_urgency(d)
             value_usd = _num(d.get("current_value_usd"))
             weight_pct = _num(d.get("current_weight_pct"))
             card = {
@@ -254,6 +267,8 @@ def build_cio_now(
                 "sizing_method": d.get("sizing_method") or raw.get("sizing_method"),
                 "trim_to_clear_fire_usd": d.get("trim_to_clear_fire_usd") or raw.get("trim_to_clear_fire_usd"),
                 "trim_to_policy_usd": d.get("trim_to_policy_usd") or raw.get("trim_to_policy_usd"),
+                "decision_input_digest": d.get("decision_input_digest") or raw.get("decision_input_digest") or "",
+                "decision_evidence_digest": d.get("decision_evidence_digest") or raw.get("decision_evidence_digest") or "",
             }
             investment_pool.append(card)
     except Exception:
@@ -267,7 +282,7 @@ def build_cio_now(
             has_breach = "concentration" in risk.lower() or "breach" in risk.lower() or "fire" in risk.lower()
             if not (delta or has_signal or has_breach or d.get("act_now") or d.get("action_label")):
                 continue
-            urgency = "high" if has_breach or d.get("act_now") else ("medium" if delta else "low")
+            urgency = "high" if d.get("act_now") else ("medium" if delta else "low")
             stance = _action_hint(why, d.get("cio_stance") or d.get("stance_code"))
             value_usd = _num(d.get("current_value_usd"))
             weight_pct = _num(d.get("current_weight_pct"))
@@ -306,6 +321,8 @@ def build_cio_now(
                 "act_now": d.get("act_now"),
                 "sizing_objective": d.get("sizing_objective"),
                 "sizing_method": d.get("sizing_method"),
+                "decision_input_digest": d.get("decision_input_digest") or "",
+                "decision_evidence_digest": d.get("decision_evidence_digest") or "",
             })
 
     # Phase 4: investment decisions needing attention (disjoint from actions/plans)

@@ -564,6 +564,7 @@ def recommend_trim(
     selected_candidate = "default_fallback"
     selection_rationale = ""
     objective = False
+    scenario_trim_usd: Optional[float] = None
 
     if obj["above_fire"]:
         method = "clear_fire_staged"
@@ -644,19 +645,26 @@ def recommend_trim(
         if portfolio_value_usd > 0:
             target_weight = max(0.0, (v - recommended) / portfolio_value_usd * 100.0)
     elif advisory_trim:
-        method = "advisory_fallback_10pct"
-        recommended = fb
+        # No verified sizing objective survives (within policy and fire, no
+        # risk/liquidity/rotation/account objective). A 10% trim is a SCENARIO,
+        # not a recommendation — recommended delta must be $0.
+        method = "scenario_only"
+        recommended = 0.0
+        scenario_trim_usd = fb
         selected_candidate = "default_fallback"
-        why_not_min = "No concentration fire; advisory trim uses the 10% fallback candidate only."
-        why_not_max = "Position is within policy cap; larger cuts need a stronger objective."
+        why_not_min = (
+            "No verified sizing objective (within policy and fire). "
+            "A 10% tranche is a scenario, not a recommendation."
+        )
+        why_not_max = "Position is within policy cap; a trim needs a verified objective."
         if tc == "TAXABLE":
             why_not_max += " Taxable: lot/tax review still applies."
         elif tc == "TAX_ADVANTAGED":
             why_not_max += " IRA: no tax drag, but no concentration objective either."
-        target_weight = obj["weight_pct"] * (1.0 - FALLBACK_TRIM_FRACTION)
+        target_weight = obj["weight_pct"]
         selection_rationale = (
-            f"Chose default_fallback ${recommended:,.0f} — within policy and fire, "
-            f"so 10% is only a fallback candidate, not an optimized size."
+            f"No verified sizing objective — recommended delta $0. "
+            f"Scenario only: a 10% trim would be ${fb:,.0f}."
         )
     else:
         method = "none"
@@ -693,7 +701,22 @@ def recommend_trim(
 
     recommended = round(max(0.0, min(recommended, v)), 2)
     quality = _quality(ev, objective=objective)
-    fallback_only = method == "advisory_fallback_10pct"
+    fallback_only = method == "scenario_only"
+
+    if method == "scenario_only":
+        objective_summary = (
+            f"Current weight {obj['weight_pct']:.2f}% · within policy and fire · "
+            f"no verified sizing objective (recommended $0) · "
+            f"scenario: a 10% trim would be ${scenario_trim_usd:,.0f}"
+        )
+    else:
+        objective_summary = (
+            f"Current weight {obj['weight_pct']:.2f}% · Fire {obj['fire_pct']}% · "
+            f"Policy max {obj['policy_cap_pct']}% · "
+            f"Min clear fire ${obj['trim_to_clear_fire_usd']:,.0f} · "
+            f"Full to policy ${obj['trim_to_policy_usd']:,.0f} · "
+            f"Alex recommend ${recommended:,.0f} ({method})"
+        )
 
     return {
         **obj,
@@ -703,14 +726,9 @@ def recommend_trim(
         "method": method,
         "why_not_min": why_not_min,
         "why_not_max": why_not_max,
-        "objective_summary": (
-            f"Current weight {obj['weight_pct']:.2f}% · Fire {obj['fire_pct']}% · "
-            f"Policy max {obj['policy_cap_pct']}% · "
-            f"Min clear fire ${obj['trim_to_clear_fire_usd']:,.0f} · "
-            f"Full to policy ${obj['trim_to_policy_usd']:,.0f} · "
-            f"Alex recommend ${recommended:,.0f} ({method})"
-        ),
+        "objective_summary": objective_summary,
         "fallback_candidate_only": fallback_only,
+        "scenario_trim_usd": scenario_trim_usd,
         "candidates": candidates,
         "selected_candidate": selected_candidate,
         "selection_rationale": selection_rationale.strip(),

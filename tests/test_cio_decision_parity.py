@@ -55,13 +55,13 @@ def test_parity_detects_delta_mismatch():
         "decision_id": did, "symbol": "AAA", "stance_code": "TRIM",
         "recommended_delta_usd": -1000.0, "why_now": "x",
         "current_value_usd": 10000, "current_weight_pct": 1.0,
-        "sizing_method": "advisory_fallback_10pct",
+        "sizing_method": "scenario_only",
     }]
     b = [{
         "decision_id": did, "symbol": "AAA", "stance_code": "TRIM",
         "recommended_delta_usd": -500.0, "why_now": "x",  # mismatch
         "current_value_usd": 10000, "current_weight_pct": 1.0,
-        "sizing_method": "advisory_fallback_10pct",
+        "sizing_method": "scenario_only",
     }]
     r = decision_field_parity(a, b)
     assert r["ok"] is False

@@ -83,7 +83,9 @@ NEW_POSITION_DEFAULT_USD = 5_000.0
 ACTIONABLE_VERDICTS = frozenset({"ADD", "TRIM", "EXIT", "RE_ENTER"})
 
 # Re-entry states that count as a new-position use (mirror cio_opportunity_queue).
-ACTIONABLE_REENTRY_STATES = frozenset({"READY TO REVIEW", "NEAR ENTRY", "OVERSOLD REVIEW"})
+# Desk readiness states (READY TO REVIEW / NEAR ENTRY / OVERSOLD REVIEW) are NOT
+# re-entry authority. Only an explicit RE_ENTER verdict authorizes re-entry.
+ACTIONABLE_REENTRY_STATES: frozenset[str] = frozenset()
 
 # Account `type` values that are tax-advantaged; everything else (or unknown) is
 # treated as taxable so tax/lot constraints are never silently waived.
@@ -270,8 +272,7 @@ def stance_for(symbol: str, queue: Optional[dict[str, Any]]) -> str:
     state = str(item.get("state") or "").upper().strip() or None
     if verdict in ("EXIT", "TRIM", "RE_ENTER", "ADD"):
         return verdict
-    if state and state in ACTIONABLE_REENTRY_STATES:
-        return "RE_ENTER"
+    # Desk readiness states are not auto-promoted to RE_ENTER.
     # Label inference fallback without importing
     label = str(item.get("directive_label") or item.get("label") or "").upper()
     for needle, stance in (
@@ -318,8 +319,14 @@ def build_capital_sources(
     for p in positions:
         stance = stance_for(p["symbol"], queue)
         if stance == "TRIM":
-            note = f"advisory TRIM at {trim_fraction:.0%} of position value (fallback)"
-            amt = round(p["market_value_usd"] * trim_fraction, 2)
+            # No verified sizing objective (no portfolio context / no fire /
+            # no policy breach) means no recommended dollar delta. The tranche
+            # size is scenario-only and must not contribute to capital sources.
+            note = (
+                f"advisory TRIM — no verified sizing objective; "
+                f"{trim_fraction:.0%} tranche is scenario-only, recommended delta $0"
+            )
+            amt = 0.0
             if port > 0:
                 try:
                     from scripts.lib.cio_institutional_sizing import (
@@ -461,7 +468,7 @@ def build_capital_uses(
                     "amount_usd": amt,
                     "note": it.get("directive_label"),
                 })
-        elif verdict == "RE_ENTER" or (state and state in ACTIONABLE_REENTRY_STATES):
+        elif verdict == "RE_ENTER":
             amt = round(min(new_position_default_usd, headroom) if headroom > 0 else 0.0, 2)
             if amt > 0:
                 reentry.append({
