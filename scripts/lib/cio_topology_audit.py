@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 AUTHORITY = "READ_ONLY_ADVISORY"
-TOPO_VERSION = "cio_topology_audit_1.1.0"
+TOPO_VERSION = "cio_topology_audit_1.2.0"
 
 # The approved production release root. Deprecated development/worktree trees
 # must NOT be here — only the deployed CURRENT release tree is an approved root.
@@ -77,6 +77,37 @@ CIO_SCHEDULE_PATTERNS = (
 )
 
 _ABS_PATH_RE = re.compile(r"(?:cd\s+)?(/[\w@+./~-]+)")
+
+# Runtime artifacts are NOT executable/code provenance. A lock/pid/log/data
+# file living under /tmp (or anywhere) must never produce a CDQ-26 ownership
+# violation — only the code that launches it does.
+_ARTIFACT_SUFFIXES = (
+    ".lock", ".pid", ".log", ".json", ".jsonl", ".sock", ".socket",
+    ".out", ".err", ".tmp", ".swp", ".txt", ".csv", ".html", ".pdf",
+    ".docx", ".md",
+)
+
+_SCRIPT_EXT = (".py", ".sh", ".bash", ".zsh", ".rb")
+
+
+def _is_artifact_path(path: str) -> bool:
+    """True when a path is a runtime artifact rather than code/checkout."""
+    p = (path or "").strip().rstrip("/")
+    if not p:
+        return False
+    name = Path(p).name.lower()
+    return any(name.endswith(s) for s in _ARTIFACT_SUFFIXES)
+
+
+def _looks_like_script(path: str) -> bool:
+    name = Path((path or "").strip()).name.lower()
+    return name.endswith(_SCRIPT_EXT)
+
+
+def _code_paths_from_text(text: str) -> list[str]:
+    """Absolute executable/code paths in a command/schedule line (no artifacts)."""
+    return [p for p in _ABS_PATH_RE.findall(text or "") if not _is_artifact_path(p)]
+
 
 
 def _run(args: list[str], timeout: int = 15) -> str:
@@ -191,8 +222,20 @@ def enumerate_processes() -> list[dict[str, Any]]:
             cwd = os.readlink(f"/proc/{pid}/cwd")
         except Exception:
             cwd = ""
-        rec = resolve_checkout(cwd or Path(cmd.split()[0]).parent.as_posix())
-        rec.update({"pid": int(pid), "cmd": cmd, "cwd": cwd})
+        # Code provenance = cwd + absolute executable/script paths on the command
+        # line. An old-tree script launched from an approved cwd must fail even
+        # though cwd looks fine, so we classify every code path independently.
+        code_paths = _code_paths_from_text(cmd)
+        argv0 = (cmd.split() or [""])[0]
+        if argv0.startswith("/") and argv0 not in code_paths and not _is_artifact_path(argv0):
+            code_paths.insert(0, argv0)
+        rec = resolve_checkout(cwd or (code_paths[0] if code_paths else ""))
+        rec.update({
+            "pid": int(pid),
+            "cmd": cmd,
+            "cwd": cwd,
+            "code_paths": code_paths,
+        })
         out.append(rec)
     return out
 
@@ -231,11 +274,11 @@ def enumerate_cron() -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for entry in _cron_lines():
         s = entry["line"]
-        paths = _ABS_PATH_RE.findall(s)
-        # Prefer a directory checkout (cd target), else the parent of a script.
+        # Only code paths (cd targets + scripts); locks/logs/data are artifacts.
+        paths = _code_paths_from_text(s)
         checkout = next(
-            (p for p in paths if not p.endswith((".py", ".sh", ".lock", ".log"))),
-            next((str(Path(p).parent) for p in paths), ""),
+            (p for p in paths if not _looks_like_script(p)),
+            next((str(Path(p).parent) for p in paths if _looks_like_script(p)), ""),
         )
         out.append({
             "source": entry["source"],
@@ -286,6 +329,31 @@ def enumerate_systemd() -> list[dict[str, Any]]:
     return out
 
 
+def _classify_path(
+    path: str,
+    *,
+    expected: str,
+    approved_roots: tuple[str, ...],
+    deprecated_roots: tuple[str, ...],
+    deprecated_markers: tuple[str, ...],
+    extra: Optional[dict[str, Any]] = None,
+) -> Optional[dict[str, Any]]:
+    """Resolve + classify a single code-provenance path."""
+    if _is_artifact_path(path):
+        return None
+    resolved = resolve_checkout(path)
+    return _classify(
+        path=path,
+        root=resolved.get("git_root", ""),
+        head=resolved.get("head_sha", ""),
+        expected=expected,
+        approved_roots=approved_roots,
+        deprecated_roots=deprecated_roots,
+        deprecated_markers=deprecated_markers,
+        extra=extra,
+    )
+
+
 def _validate_scheduled_entries(
     entries: list[dict[str, Any]],
     *,
@@ -299,17 +367,14 @@ def _validate_scheduled_entries(
     violations: list[dict[str, Any]] = []
     for e in entries:
         # Candidate paths to validate: cron checkout + all paths, or systemd
-        # ExecStart / WorkingDirectory.
-        candidates = key_fn(e)
+        # ExecStart / WorkingDirectory. Artifacts are skipped (not code).
+        candidates = [c for c in key_fn(e) if c and not _is_artifact_path(c)]
         flagged = False
         for c in candidates:
             if not c:
                 continue
-            resolved = resolve_checkout(c)
-            v = _classify(
-                path=c,
-                root=resolved.get("git_root", ""),
-                head=resolved.get("head_sha", ""),
+            v = _classify_path(
+                c,
                 expected=expected,
                 approved_roots=approved_roots,
                 deprecated_roots=deprecated_roots,
@@ -372,18 +437,27 @@ def audit_topology(
     violations: list[dict[str, Any]] = []
 
     for p in processes:
-        v = _classify(
-            path=p.get("cwd") or p.get("path") or "",
-            root=p.get("git_root") or "",
-            head=p.get("head_sha") or "",
-            expected=expected_content_sha,
-            approved_roots=approved,
-            deprecated_roots=deprecated,
-            deprecated_markers=markers,
-            extra={"kind": "process", "pid": p.get("pid"), "cmd": p.get("cmd")},
-        )
-        if v:
-            violations.append(v)
+        # Classify every execution-provenance path independently (cwd + the
+        # actual executable/script/module paths), not just cwd. An old-tree
+        # script launched from an approved cwd must still fail.
+        seen: set[str] = set()
+        candidates: list[str] = []
+        for c in ([p.get("cwd") or ""] + list(p.get("code_paths") or [])):
+            c = str(c or "").strip()
+            if c and c not in seen and not _is_artifact_path(c):
+                seen.add(c)
+                candidates.append(c)
+        for c in candidates:
+            v = _classify_path(
+                c,
+                expected=expected_content_sha,
+                approved_roots=approved,
+                deprecated_roots=deprecated,
+                deprecated_markers=markers,
+                extra={"kind": "process", "pid": p.get("pid"), "cmd": p.get("cmd")},
+            )
+            if v:
+                violations.append(v)
 
     # Cron: validate scheduled-job paths, not merely return them.
     violations.extend(_validate_scheduled_entries(
@@ -400,8 +474,8 @@ def audit_topology(
         cands: list[str] = []
         for field in ("working_directory", "exec_start"):
             val = e.get(field) or ""
-            cands.extend(_ABS_PATH_RE.findall(val))
-        return [c for c in cands if c]
+            cands.extend(_code_paths_from_text(val))
+        return [c for c in cands if c and not _is_artifact_path(c)]
 
     violations.extend(_validate_scheduled_entries(
         systemd,

@@ -168,13 +168,17 @@ def _action_is_open(a: Any) -> bool:
 def _freshness_flag(d: dict[str, Any]) -> str:
     """Normalize a decision's freshness field to an upper-case state string.
 
-    Freshness may be a plain string or a dict carrying ``state``/``label``/
-    ``status``. Returns "" when absent so callers can treat it as non-blocking.
+    Delegates to the canonical semantics helper so Command Center and Telegram
+    share one freshness interpretation.
     """
-    f = d.get("freshness")
-    if isinstance(f, dict):
-        return _str(f.get("state") or f.get("label") or f.get("status") or "").upper()
-    return _str(f).upper()
+    from scripts.lib.cio_decision_semantics import freshness_flag
+    return freshness_flag(d)
+
+
+def _canonical_action(d: dict[str, Any]) -> tuple[bool, Optional[str]]:
+    """(effective_act_now, blocking_state) via the shared canonical classifier."""
+    from scripts.lib.cio_decision_semantics import canonical_act_now
+    return canonical_act_now(d)
 
 
 def _actionability_urgency(d: dict[str, Any]) -> str:
@@ -185,12 +189,11 @@ def _actionability_urgency(d: dict[str, Any]) -> str:
     that is explicitly actionable (act_now=True or ACT_NOW label) is "high".
     Risk text such as "concentration > fire" is a fact, never an action.
     """
+    act_now, blocking = _canonical_action(d)
     label = _str(d.get("action_label") or "").upper()
-    freshness = _freshness_flag(d)
-    blocking = {"STALE_REFRESH_REQUIRED", "REVALIDATE", "DATA_CONFLICT"}
-    if label in blocking or freshness in blocking or freshness in {"STALE", "EXPIRED"}:
+    if blocking:
         return "medium"
-    if d.get("act_now") is True or label == "ACT_NOW":
+    if act_now:
         return "high"
     if label == "REVIEW":
         return "medium"
@@ -281,10 +284,13 @@ def build_cio_now(
                 "action_label": d.get("action_label") or raw.get("action_label"),
                 "action_label_display": d.get("action_label_display") or raw.get("action_label_display"),
                 "act_now": d.get("act_now") if d.get("act_now") is not None else raw.get("act_now"),
+                "freshness": d.get("freshness") if d.get("freshness") is not None else raw.get("freshness"),
                 "sizing_objective": d.get("sizing_objective") or raw.get("sizing_objective"),
                 "sizing_method": d.get("sizing_method") or raw.get("sizing_method"),
                 "trim_to_clear_fire_usd": d.get("trim_to_clear_fire_usd") or raw.get("trim_to_clear_fire_usd"),
                 "trim_to_policy_usd": d.get("trim_to_policy_usd") or raw.get("trim_to_policy_usd"),
+                "scenario_trim_usd": d.get("scenario_trim_usd") if d.get("scenario_trim_usd") is not None else raw.get("scenario_trim_usd"),
+                "target_status": d.get("target_status") if d.get("target_status") is not None else raw.get("target_status"),
                 "decision_input_digest": d.get("decision_input_digest") or raw.get("decision_input_digest") or "",
                 "decision_evidence_digest": d.get("decision_evidence_digest") or raw.get("decision_evidence_digest") or "",
             }
@@ -300,7 +306,8 @@ def build_cio_now(
             has_breach = "concentration" in risk.lower() or "breach" in risk.lower() or "fire" in risk.lower()
             if not (delta or has_signal or has_breach or d.get("act_now") or d.get("action_label")):
                 continue
-            urgency = "high" if d.get("act_now") else ("medium" if delta else "low")
+            # Fail-closed: the same freshness-aware classifier as the normal path.
+            urgency = _actionability_urgency(d)
             stance = _action_hint(why, d.get("cio_stance") or d.get("stance_code"))
             value_usd = _num(d.get("current_value_usd"))
             weight_pct = _num(d.get("current_weight_pct"))
@@ -337,18 +344,22 @@ def build_cio_now(
                 "action_label": d.get("action_label"),
                 "action_label_display": d.get("action_label_display"),
                 "act_now": d.get("act_now"),
+                "freshness": d.get("freshness"),
                 "sizing_objective": d.get("sizing_objective"),
                 "sizing_method": d.get("sizing_method"),
+                "scenario_trim_usd": d.get("scenario_trim_usd"),
+                "target_status": d.get("target_status"),
                 "decision_input_digest": d.get("decision_input_digest") or "",
                 "decision_evidence_digest": d.get("decision_evidence_digest") or "",
             })
 
     # Phase 4: investment decisions needing attention (disjoint from actions/plans)
     needing = [c for c in investment_pool if _investment_needs_attention(c)]
-    # Sort: ACT NOW first, then high urgency, then |delta|
+    # Sort from the derived, freshness-aware current action — never raw act_now.
     def _sort_key(c: dict[str, Any]) -> tuple:
-        lab = _str(c.get("action_label"))
-        act = 0 if (c.get("act_now") or lab == "ACT_NOW") else 1
+        act_now, blocking = _canonical_action(c)
+        # ACT-NOW tier only when explicitly actionable AND unblocked.
+        act = 0 if act_now else 1
         urg = {"high": 0, "medium": 1, "low": 2}.get(c.get("urgency") or "low", 3)
         return (act, urg, -abs(c.get("delta_usd") or 0.0))
 
@@ -367,12 +378,13 @@ def build_cio_now(
         plan_list = plans
     open_plans = [p for p in plan_list if _plan_is_open(p)]
 
-    # Material Today: deduped unique high-priority items (investment ACT_NOW/REVIEW/DATA_CONFLICT
-    # + critical workflow actions). Not a sum of the three KPIs.
+    # Material Today: deduped unique high-priority items. Uses the derived,
+    # freshness-aware current action; a stale act_now=True record may remain
+    # material (it needs revalidation) but never occupies the ACT-NOW tier.
     material_keys: list[str] = []
     for c in needing:
-        lab = _str(c.get("action_label"))
-        if c.get("act_now") or lab in ("ACT_NOW", "DATA_CONFLICT", "STALE_REFRESH_REQUIRED") or c.get("urgency") == "high":
+        act_now, blocking = _canonical_action(c)
+        if act_now or blocking or c.get("urgency") == "high":
             key = _str(c.get("decision_id") or c.get("symbol"))
             if key and key not in material_keys:
                 material_keys.append(key)

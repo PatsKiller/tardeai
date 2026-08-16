@@ -294,13 +294,15 @@ def evaluate_pr1_reentry_canonical() -> tuple[str, list[str]]:
 
 
 def evaluate_pr1_standing_current_parity() -> tuple[str, list[str]]:
-    """PR1_STANDING_CURRENT_PARITY — one canonical input through real transforms.
+    """PR1_STANDING_CURRENT_PARITY — canonical input through all four surfaces.
 
-    Builds a capital plan, then propagates it through CIO NOW and the
-    institutional report. Proves that the same decision_id carries the same
-    standing stance and recommended delta across surfaces, and that current
-    action (actionability) never contradicts the standing stance: a stale
-    decision never surfaces as ACT NOW.
+    Builds a capital plan, propagates it through CIO NOW, the institutional
+    report, and the real Telegram material-scan path, then compares them with
+    the existing ``compare_plan_home_report_telegram`` material parity contract
+    (decision ID, both digests, action/standing stance, recommended dollars).
+
+    Also exercises the real Telegram ``classify_actionability`` /
+    ``format_cio_message`` path for the stale/conflict contradiction case.
 
     Returns (status, violations).
     """
@@ -309,6 +311,12 @@ def evaluate_pr1_standing_current_parity() -> tuple[str, list[str]]:
     from scripts.lib import cio_capital_plan as cp
     from scripts.lib import cio_command_center as cc
     from scripts.lib import cio_report_v2 as r
+    from scripts.lib.cio_alex_telegram import (
+        classify_actionability,
+        format_cio_message,
+    )
+    from scripts.lib.cio_decision_parity import compare_plan_home_report_telegram
+    from scripts.lib.cio_material_scan import _canonical_decisions
 
     now = datetime(2026, 8, 14, 21, 0, 0, tzinfo=timezone.utc)
     plan = cp.build_capital_plan(
@@ -344,44 +352,74 @@ def evaluate_pr1_standing_current_parity() -> tuple[str, list[str]]:
         source_sha="cdq_parity",
         now=now,
     )
-    report_decisions = report.get("part_a", {}).get("decisions_now") or []
 
     violations: list[str] = []
-    plan_by_id = {d.get("decision_id"): d for d in positions if d.get("decision_id")}
-    now_by_id = {d.get("decision_id"): d for d in cio_now.get("decisions", []) if d.get("decision_id")}
-    report_ids = {d.get("decision_id") for d in report_decisions if d.get("decision_id")}
 
-    # 1) identity parity: every surfaced CIO NOW card must also exist in the
-    #    capital plan and the institutional report.
-    for did, d in now_by_id.items():
-        if did not in plan_by_id:
-            violations.append(f"CIO NOW decision_id {did} missing from capital plan")
-        if did not in report_ids:
-            violations.append(f"CIO NOW decision_id {did} missing from report")
+    # 1) Four-surface material parity via the real Telegram path.
+    telegram_decisions = _canonical_decisions(plan)
+    telegram_payload = {"decisions": telegram_decisions}
+    cmp = compare_plan_home_report_telegram(
+        plan=plan,
+        cio_home=cio_now,
+        report=report,
+        telegram_payload=telegram_payload,
+    )
+    if not cmp.get("ok"):
+        violations.append(
+            "four_surface_parity failed: "
+            f"missing={len(cmp.get('missing_from_surface') or [])} "
+            f"extra={len(cmp.get('extra_on_surface') or [])} "
+            f"field={len(cmp.get('field_mismatch') or [])} "
+            f"digest={len(cmp.get('digest_mismatch') or [])}"
+        )
 
-    # 2) standing stance + recommended delta parity across surfaces.
-    for did, d in now_by_id.items():
-        pr = plan_by_id.get(did)
-        if not pr:
-            continue
-        sc_plan = str(pr.get("stance_code") or pr.get("cio_stance") or "").upper()
-        sc_now = str(d.get("stance_code") or "").upper()
-        if sc_plan and sc_now and sc_plan != sc_now:
-            violations.append(
-                f"{did}: standing stance mismatch plan={sc_plan} now={sc_now}"
-            )
-        dp = float(pr.get("recommended_delta_usd") or 0.0)
-        dn = float(d.get("recommended_delta_usd") or 0.0)
-        if abs(dp - dn) > 0.02:
-            violations.append(f"{did}: delta mismatch plan={dp} now={dn}")
+    # 2) Real Telegram contradiction: act_now=True + DATA_CONFLICT → no MY CALL.
+    conflict = {
+        "decision_id": "dec_parity_conflict",
+        "symbol": "SCHD",
+        "stance_code": "RE_ENTER",
+        "action": "RE_ENTER",
+        "act_now": True,
+        "action_label": "DATA_CONFLICT",
+        "recommended_delta_usd": 0.0,
+        "why_now": "conflicting input: act_now with DATA_CONFLICT",
+        "decision_input_digest": "in",
+        "decision_evidence_digest": "ev",
+    }
+    cls = classify_actionability(conflict)
+    if cls.get("act_now"):
+        violations.append("DATA_CONFLICT + act_now=True still act_now")
+    if "MY CALL" in format_cio_message(conflict):
+        violations.append("DATA_CONFLICT + act_now=True rendered MY CALL")
 
-    # 3) current action never contradicts standing: no ACT NOW without explicit
-    #    actionability signal, and stale/conflict overrides it.
-    for did, d in now_by_id.items():
-        from scripts.lib.cio_command_center import _actionability_urgency
-        urg = _actionability_urgency(d)
-        if urg == "high" and not (d.get("act_now") or str(d.get("action_label") or "").upper() == "ACT_NOW"):
-            violations.append(f"{did}: high urgency without explicit ACT_NOW")
+    # 3) Real Telegram standing RE_ENTER alone never implies ACT_NOW.
+    reenter_only = {
+        "decision_id": "dec_parity_reenter",
+        "symbol": "X",
+        "stance_code": "RE_ENTER",
+        "action": "RE_ENTER",
+        "recommended_delta_usd": 5000.0,
+        "why_now": "standing re-enter, no explicit act_now",
+    }
+    if classify_actionability(reenter_only).get("act_now"):
+        violations.append("RE_ENTER alone implied ACT_NOW")
+    if "MY CALL" in format_cio_message(reenter_only):
+        violations.append("RE_ENTER alone rendered MY CALL")
+
+    # 4) Real Telegram fresh RE_ENTER + act_now=True still produces MY CALL.
+    fresh = {
+        "decision_id": "dec_parity_fresh",
+        "symbol": "X",
+        "stance_code": "RE_ENTER",
+        "action": "RE_ENTER",
+        "act_now": True,
+        "recommended_delta_usd": 5000.0,
+        "why_now": "fresh re-enter with explicit act_now",
+    }
+    if not classify_actionability(fresh).get("act_now"):
+        violations.append("fresh RE_ENTER + act_now=True not act_now")
+    if "MY CALL" not in format_cio_message(fresh):
+        violations.append("fresh RE_ENTER + act_now=True missing MY CALL")
 
     status = "PASS" if not violations else "FAIL"
     return status, violations

@@ -1039,6 +1039,7 @@ def build_position_decisions(
             ident = None
 
         # Phase 6: candidate-set sizing (10% / $5k are fallback candidates only)
+        target_status = None
         try:
             from scripts.lib.cio_institutional_sizing import (
                 extract_sizing_inputs,
@@ -1082,7 +1083,8 @@ def build_position_decisions(
             stance = "REVIEW"
             stance_display = "Review"
             delta = 0.0
-            target_w = cap_pct
+            target_w = None
+            target_status = "UNAVAILABLE"
 
         risk_txt = (
             "concentration > fire"
@@ -1103,7 +1105,12 @@ def build_position_decisions(
             "stance": stance_display,
             "stance_code": stance,
             "target_range_pct": {"min": 0.0, "max": round(cap_pct, 2)},
-            "target_weight_pct": round(float(target_w), 2) if target_w is not None else round(cap_pct, 2),
+            "target_weight_pct": (
+                None
+                if target_status == "UNAVAILABLE"
+                else (round(float(target_w), 2) if target_w is not None else round(cap_pct, 2))
+            ),
+            "target_status": target_status,
             "recommended_delta_usd": round(delta, 2),
             "funding": _funding_for(stance, delta),
             "why_now": why,
@@ -1119,6 +1126,7 @@ def build_position_decisions(
             "sizing_why_not_max": sizing.get("why_not_max"),
             "trim_to_clear_fire_usd": sizing.get("trim_to_clear_fire_usd"),
             "trim_to_policy_usd": sizing.get("trim_to_policy_usd"),
+            "scenario_trim_usd": sizing.get("scenario_trim_usd"),
             "fallback_candidate_only": bool(sizing.get("fallback_candidate_only")),
             "candidates": sizing.get("candidates"),
             "sizing_quality": sizing.get("sizing_quality"),

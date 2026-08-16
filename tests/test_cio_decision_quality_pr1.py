@@ -2,10 +2,14 @@
 
 Covers the PR1-scoped CDQ gates: actionability (stale never ACT NOW),
 no-objective trim => $0, exact digest pair 409, canonical re-entry lifecycle,
-scenario-only trim $0 (CDQ-27), and phase-aware CDQ profile semantics
-(NOT_IN_SCOPE never counts as PASS; required gates must PASS).
+scenario-only trim $0 (CDQ-27), phase-aware CDQ profile semantics
+(NOT_IN_SCOPE never counts as PASS; required gates must PASS), plus the
+final-closure invariants: Telegram actionability parity, Command Center
+fallback fail-closed, derived ranking, re-entry idempotence, SIZING_UNAVAILABLE
+target truth, and topology provenance precision.
 
-No broker, no Telegram, no network.
+No broker, no network. Telegram classify/format are exercised in-process only
+(REAL_TELEGRAM_SENDS: 0).
 """
 from __future__ import annotations
 
@@ -347,3 +351,297 @@ def test_topology_audit_deprecated_root_flagged_even_on_sha_match():
     )
     assert v is not None
     assert v["deprecated"] is True
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PR1 final closure — Telegram parity, fallback fail-closed, derived ranking,
+# re-entry idempotence, SIZING_UNAVAILABLE target truth, topology provenance
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_telegram_actionability_parity_fixtures():
+    """P0-1: Telegram shares the web/backend canonical actionability semantics."""
+    from scripts.lib.cio_alex_telegram import (
+        classify_actionability,
+        format_cio_message,
+    )
+
+    # act_now=True + DATA_CONFLICT → DATA CONFLICT / no MY CALL
+    c = classify_actionability({"stance_code": "RE_ENTER", "act_now": True,
+                                "action_label": "DATA_CONFLICT"})
+    assert c["act_now"] is False
+    assert c["actionability"] == "DATA_CONFLICT"
+    body = format_cio_message({"stance_code": "RE_ENTER", "symbol": "X",
+                               "act_now": True, "action_label": "DATA_CONFLICT",
+                               "recommended_delta_usd": 0.0})
+    assert "MY CALL" not in body
+
+    # act_now=True + REVALIDATE → REVALIDATE / no MY CALL
+    c = classify_actionability({"stance_code": "TRIM", "act_now": True,
+                                "action_label": "REVALIDATE"})
+    assert c["act_now"] is False
+    assert c["actionability"] == "STALE_REFRESH_REQUIRED"
+
+    # act_now=True + STALE → REVALIDATE / no MY CALL
+    c = classify_actionability({"stance_code": "TRIM", "act_now": True,
+                                "freshness": "STALE"})
+    assert c["act_now"] is False
+    assert c["current_action"] in ("REVALIDATE", "WAIT")
+
+    # RE_ENTER + no explicit act_now → WAIT/REVIEW, not ACT NOW
+    c = classify_actionability({"stance_code": "RE_ENTER",
+                                "recommended_delta_usd": 5000.0})
+    assert c["act_now"] is False
+    body = format_cio_message({"stance_code": "RE_ENTER", "symbol": "X",
+                               "recommended_delta_usd": 5000.0,
+                               "why_now": "standing re-enter"})
+    assert "MY CALL" not in body
+
+    # fresh RE_ENTER + act_now=True → ACT NOW
+    c = classify_actionability({"stance_code": "RE_ENTER", "act_now": True,
+                                "recommended_delta_usd": 5000.0})
+    assert c["act_now"] is True
+    body = format_cio_message({"stance_code": "RE_ENTER", "symbol": "X",
+                               "act_now": True, "recommended_delta_usd": 5000.0,
+                               "why_now": "fresh re-enter"})
+    assert "MY CALL" in body
+
+
+def test_command_center_fallback_fail_closed(monkeypatch):
+    """P0-2: sanitizer-exception fallback uses the canonical classifier."""
+    import scripts.lib.cio_decision_semantics as sem
+    import scripts.lib.cio_command_center as cc
+
+    def _boom(*a, **k):
+        raise RuntimeError("injected sanitizer failure")
+
+    monkeypatch.setattr(sem, "sanitize_decisions_now", _boom)
+    stale_conflict = {
+        "symbol": "SCHD",
+        "why_now": "Advisory TRIM — SCHD",
+        "risk": "concentration > fire",
+        "recommended_delta_usd": -44000.0,
+        "act_now": True,
+        "action_label": "DATA_CONFLICT",
+        "freshness": "STALE",
+        "stance_code": "TRIM",
+    }
+    out = cc.build_cio_now(position_decisions=[stale_conflict],
+                           portfolio_value=1_000_000.0)
+    cards = out["decisions"]
+    card = next(c for c in cards if c["symbol"] == "SCHD")
+    assert card["urgency"] == "medium"  # blocked, never high
+    from scripts.lib.cio_decision_semantics import canonical_act_now
+    act_now, blocking = canonical_act_now(card)
+    assert act_now is False
+    assert blocking == "DATA_CONFLICT"
+    assert card.get("freshness") == "STALE"  # freshness preserved through fallback
+
+
+def test_derived_actionability_owns_priority(monkeypatch):
+    """P0-3: sort + Material Today use derived action, not raw act_now."""
+    from scripts.lib.cio_command_center import _actionability_urgency, _canonical_action
+    for blocked in (
+        {"freshness": "STALE"},
+        {"freshness": "EXPIRED"},
+        {"action_label": "DATA_CONFLICT"},
+        {"action_label": "REVALIDATE"},
+        {"action_label": "STALE_REFRESH_REQUIRED"},
+    ):
+        d = {"act_now": True, "action_label": "ACT_NOW", **blocked}
+        act_now, state = _canonical_action(d)
+        assert act_now is False, d
+        assert state is not None
+        assert _actionability_urgency(d) == "medium"
+    assert _actionability_urgency({"act_now": True}) == "high"
+    assert _actionability_urgency({"act_now": True, "action_label": "ACT_NOW"}) == "high"
+
+
+def test_stale_act_now_ranked_below_fresh(monkeypatch):
+    """P0-3: a stale act_now=True record may stay material but not ACT-NOW tier."""
+    import scripts.lib.cio_command_center as cc
+    stale = {
+        "symbol": "STALE1", "stance_code": "TRIM",
+        "why_now": "Advisory TRIM — STALE1 concentration fire",
+        "risk": "concentration > fire",
+        "recommended_delta_usd": 900000.0,
+        "act_now": True, "action_label": "ACT_NOW", "freshness": "STALE",
+    }
+    fresh = {
+        "symbol": "FRESH1", "stance_code": "ADD",
+        "why_now": "buy signal",
+        "recommended_delta_usd": 1.0,
+        "act_now": True, "action_label": "ACT_NOW",
+    }
+    out = cc.build_cio_now(position_decisions=[stale, fresh],
+                           portfolio_value=1_000_000.0)
+    cards = out["decisions"]
+    assert cards
+    # Fresh ACT NOW outranks stale ACT NOW (blocked) regardless of |delta|.
+    assert cards[0]["symbol"] == "FRESH1", [c["symbol"] for c in cards]
+    stale_card = next(c for c in cards if c["symbol"] == "STALE1")
+    assert stale_card["urgency"] == "medium"
+    # Stale decision stays material (it needs revalidation) — but not ACT-NOW tier.
+    assert stale_card["decision_id"] in out["attention"]["material_today_ids"]
+
+
+def test_reentry_lifecycle_idempotent_on_canonical_states():
+    """P1-1: canonical lifecycle states are recognized after normalization."""
+    from scripts.lib.cio_decision_semantics import reentry_state_from_desk
+    table = {
+        "WATCH_REENTRY": "WATCH_REENTRY",
+        "DESK_READY_TO_REVIEW": "DESK_READY_TO_REVIEW",
+        "NEAR_TRIGGER": "NEAR_TRIGGER",
+        "GOVERNED_ELIGIBLE": "GOVERNED_ELIGIBLE",
+        # raw desk strings must normalize to the same canonical states
+        "READY TO REVIEW": "DESK_READY_TO_REVIEW",
+        "READY_TO_REVIEW": "DESK_READY_TO_REVIEW",
+        "NEAR ENTRY": "NEAR_TRIGGER",
+        "OVERSOLD REVIEW": "NEAR_TRIGGER",
+        "WATCH REENTRY": "WATCH_REENTRY",
+    }
+    for state, expected in table.items():
+        got = reentry_state_from_desk(state)
+        assert got == expected, f"{state!r} -> {got!r} != {expected!r}"
+    # A bare state claiming RE_ENTER is non-authoritative.
+    assert reentry_state_from_desk("RE_ENTER") == "GOVERNED_ELIGIBLE"
+    # Only explicit governed verdict grants RE_ENTER.
+    assert reentry_state_from_desk("GOVERNED_ELIGIBLE", "RE_ENTER") == "RE_ENTER"
+    assert reentry_state_from_desk("NEAR_TRIGGER", "RE_ENTER") == "RE_ENTER"
+
+
+def test_reentry_canonical_states_not_reenter():
+    from scripts.lib.cio_decision_semantics import stance_from_queue_item
+    for state in ("WATCH_REENTRY", "DESK_READY_TO_REVIEW",
+                  "NEAR_TRIGGER", "GOVERNED_ELIGIBLE"):
+        assert stance_from_queue_item({"symbol": "X", "state": state}) == "REVIEW", state
+
+
+def test_sizing_unavailable_target_is_null_not_cap(monkeypatch):
+    """P1-2: SIZING_UNAVAILABLE must not masquerade policy cap as target."""
+    import scripts.lib.cio_institutional_sizing as sizing
+
+    def _boom(**kwargs):
+        raise RuntimeError("injected sizing failure")
+
+    monkeypatch.setattr(sizing, "size_decision", _boom)
+    plan = cp.build_capital_plan(
+        portfolio_value=500_000.0,
+        cash_total=100_000.0,
+        positions=[{
+            "symbol": "V", "market_value": 40_000.0,
+            "account": "schwab_rollover_ira", "weight_pct": 8.0,
+        }],
+        queue={"items": [{"symbol": "V", "verdict": "TRIM",
+                          "directive_label": "Advisory TRIM — V"}]},
+        redeploy_open_events=[],
+    )
+    dec = next(d for d in plan["position_decisions"] if d["symbol"] == "V")
+    assert dec["recommended_delta_usd"] == 0.0
+    assert dec["target_weight_pct"] is None, dec["target_weight_pct"]
+    assert dec.get("target_status") == "UNAVAILABLE"
+    assert dec.get("scenario_trim_usd") == round(40_000.0 * 0.10, 2)
+    # Policy cap stays as a separate constraint, not the recommended target.
+    assert (dec.get("target_range_pct") or {}).get("max") == 12.0
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# P1-3 — topology audit provenance precision (code vs artifact)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_topology_artifact_paths_not_code():
+    from scripts.lib.cio_topology_audit import (
+        _code_paths_from_text,
+        _is_artifact_path,
+    )
+    line = (
+        "cd /home/johnclaw/trade-ai-releases/portfolio-server && "
+        "python scripts/cio_worker.py >> /tmp/cio_worker.lock 2>&1"
+    )
+    paths = _code_paths_from_text(line)
+    assert "/tmp/cio_worker.lock" not in paths
+    assert "/home/johnclaw/trade-ai-releases/portfolio-server" in paths
+    assert _is_artifact_path("/tmp/cio_worker.lock") is True
+    assert _is_artifact_path("/tmp/cio_worker.log") is True
+    assert _is_artifact_path("/tmp/cio_worker.jsonl") is True
+    assert _is_artifact_path("/tmp/cio_worker.pid") is True
+
+
+def test_topology_old_tree_script_approved_cwd_fails():
+    from scripts.lib.cio_topology_audit import (
+        DEPRECATED_MARKERS,
+        DEPRECATED_ROOTS,
+        _classify_path,
+        _code_paths_from_text,
+    )
+    approved = ("/home/johnclaw/trade-ai-releases/portfolio-server",)
+    # Old-tree script launched from an approved cwd must still fail.
+    cmd = "python /home/johnclaw/trade-ai-v12-rebuild/cio_worker.py"
+    code = _code_paths_from_text(cmd)
+    assert code == ["/home/johnclaw/trade-ai-v12-rebuild/cio_worker.py"]
+    v = _classify_path(
+        code[0],
+        expected="6f7009794e5178a7926f5b1c84ae16d0ee7b2bc6",
+        approved_roots=approved,
+        deprecated_roots=DEPRECATED_ROOTS,
+        deprecated_markers=DEPRECATED_MARKERS,
+    )
+    assert v is not None
+    assert v["deprecated"] is True
+    # The approved cwd alone is clean.
+    cwd_v = _classify_path(
+        "/home/johnclaw/trade-ai-releases/portfolio-server",
+        expected="6f7009794e5178a7926f5b1c84ae16d0ee7b2bc6",
+        approved_roots=approved,
+        deprecated_roots=DEPRECATED_ROOTS,
+        deprecated_markers=DEPRECATED_MARKERS,
+    )
+    assert cwd_v is None
+
+
+def test_topology_old_tree_cron_one_violation_not_artifact():
+    from scripts.lib.cio_topology_audit import (
+        DEPRECATED_MARKERS,
+        DEPRECATED_ROOTS,
+        _validate_scheduled_entries,
+    )
+    entry = {
+        "source": "test",
+        "line": "*/5 * * * * cd /home/johnclaw/trade-ai-v12-rebuild && python cio_worker.py >> /tmp/foo.lock 2>&1",
+        "checkout": "/home/johnclaw/trade-ai-v12-rebuild",
+        "paths": [
+            "/home/johnclaw/trade-ai-v12-rebuild",
+            "/home/johnclaw/trade-ai-v12-rebuild/cio_worker.py",
+        ],
+    }
+    violations = _validate_scheduled_entries(
+        [entry],
+        expected="6f7009794e5178a7926f5b1c84ae16d0ee7b2bc6",
+        approved_roots=("/home/johnclaw/trade-ai-releases/portfolio-server",),
+        deprecated_roots=DEPRECATED_ROOTS,
+        deprecated_markers=DEPRECATED_MARKERS,
+        key_fn=lambda e: [e["checkout"]] + list(e["paths"]),
+    )
+    assert len(violations) == 1, violations
+    # The violation is the old code, not the /tmp lock artifact.
+    assert "/tmp/foo.lock" not in violations[0]["path"]
+
+
+def test_topology_approved_script_working_dir_pass():
+    from scripts.lib.cio_topology_audit import (
+        DEPRECATED_MARKERS,
+        DEPRECATED_ROOTS,
+        _classify_path,
+    )
+    approved = ("/home/johnclaw/trade-ai-releases/portfolio-server",)
+    for p in (
+        "/home/johnclaw/trade-ai-releases/portfolio-server",
+        "/home/johnclaw/trade-ai-releases/portfolio-server/scripts/cio_worker.py",
+    ):
+        v = _classify_path(
+            p,
+            expected="6f7009794e5178a7926f5b1c84ae16d0ee7b2bc6",
+            approved_roots=approved,
+            deprecated_roots=DEPRECATED_ROOTS,
+            deprecated_markers=DEPRECATED_MARKERS,
+        )
+        assert v is None, (p, v)

@@ -66,6 +66,8 @@ type Decision = {
   recommended_delta_usd?: number | null
   trim_to_clear_fire_usd?: number | null
   trim_to_policy_usd?: number | null
+  scenario_trim_usd?: number | null
+  target_status?: string | null
   sizing_method?: string | null
   sizing_objective?: string | null
   freshness?: DecisionFreshness | string | null
@@ -451,6 +453,18 @@ function DecisionCard({ d, dispositions, legacyUnversioned, onAct }: {
               <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text2)' }}>{sizingMethod}</div>
             </div>
           )}
+          {d.scenario_trim_usd != null && (
+            <div>
+              <div style={kLabel}>Scenario trim (hypothetical)</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text2)' }}>{fmtUsd(d.scenario_trim_usd)}</div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {d.target_status === 'UNAVAILABLE' && (
+        <div style={{ marginTop: 8, fontSize: 13, color: 'var(--text2)' }}>
+          Target weight unavailable — sizing did not produce a verified target.
         </div>
       )}
 
