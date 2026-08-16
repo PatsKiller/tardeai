@@ -404,18 +404,22 @@ def professional_label(value: Any) -> str:
 
 
 def infer_stance_from_text(text: Any) -> Optional[str]:
-    """Extract the strongest actionable stance keyword from free text / labels."""
+    """Extract the strongest actionable stance keyword from free text / labels.
+
+    RE_ENTER is deliberately absent: free text saying "re-enter" is
+    non-authoritative. Only an explicit governed ``verdict="RE_ENTER"`` may
+    create STANCE_RE_ENTER (see stance_from_queue_item). This prevents a
+    "READY TO REVIEW" readiness item with a "Re-enter ADBE" label/note from
+    being promoted to a buy.
+    """
     raw = str(text or "")
     if not raw:
         return None
     upper = raw.upper()
-    # Order: most decisive first. RE_ENTER before ENTER; EXIT before TRIM.
+    # Order: most decisive first. EXIT before TRIM.
     checks: list[tuple[str, str]] = [
         ("EXIT", STANCE_EXIT),
         ("SELL", STANCE_EXIT),
-        ("RE_ENTER", STANCE_RE_ENTER),
-        ("RE-ENTER", STANCE_RE_ENTER),
-        ("REENTER", STANCE_RE_ENTER),
         ("TRIM", STANCE_TRIM),
         ("ADD", STANCE_ADD),
         ("BUY", STANCE_ADD),
@@ -788,7 +792,17 @@ def aggregate_position_decisions(
                 if sz.get("target_weight_pct") is not None:
                     agg["target_weight_pct"] = sz.get("target_weight_pct")
             except Exception:
-                pass
+                # Sizing failure is fail-closed: never resurrect a heuristic
+                # dollar (e.g. a -10% TRIM). Downgrade to REVIEW with $0.
+                stance = STANCE_REVIEW
+                agg["recommended_delta_usd"] = 0.0
+                agg["sizing_method"] = "SIZING_UNAVAILABLE"
+                agg["sizing_quality"] = "UNAVAILABLE"
+                agg["fallback_candidate_only"] = True
+                agg["sizing_objective"] = (
+                    "Sizing unavailable — recommendation downgraded to REVIEW "
+                    "(no verified dollar delta)."
+                )
         agg["cio_stance"] = stance
         agg["stance"] = professional_stance(stance)  # operator-facing
         agg["stance_code"] = stance

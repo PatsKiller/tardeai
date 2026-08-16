@@ -147,7 +147,7 @@ def test_capital_plan_schd_not_exactly_10pct_when_over_fire():
     blind = round(schd_val * 0.10, 2)
     # Objective path should set sizing method
     assert dec.get("sizing_method") in (
-        "clear_fire_staged", "policy_normalize_staged", "scenario_only", "legacy_fallback",
+        "clear_fire_staged", "policy_normalize_staged", "scenario_only", "SIZING_UNAVAILABLE",
     )
     if dec.get("sizing_method") == "clear_fire_staged":
         assert abs(delta - blind) > 1.0 or dec.get("trim_to_clear_fire_usd", 0) > 0

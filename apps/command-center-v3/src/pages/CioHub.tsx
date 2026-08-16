@@ -251,14 +251,25 @@ function freshnessLine(f: Decision['freshness']): string | null {
   return null
 }
 
-// Canonical actionability: act_now > explicit label. Risk text never renders
-// ACT NOW; stale/conflict render REVALIDATE / DATA CONFLICT, not Act now.
+// Canonical actionability (fail-closed): stale / conflict / revalidate override
+// ACT_NOW. Risk text never renders ACT NOW. Only a fresh decision that is
+// explicitly actionable (act_now or ACT_NOW label) may render ACT NOW.
+function freshnessFlag(f: Decision['freshness']): string {
+  if (f == null || f === '') return ''
+  if (typeof f === 'string') return f.toUpperCase()
+  const obj = f as any
+  return String(obj.state || obj.label || obj.status || '').toUpperCase()
+}
+
 function actionability(d: Decision): { label: string; color: string } {
-  if (d.act_now) return { label: 'ACT NOW', color: 'var(--red)' }
   const al = (d.action_label || '').toUpperCase()
-  if (al === 'ACT_NOW') return { label: 'ACT NOW', color: 'var(--red)' }
-  if (al === 'STALE_REFRESH_REQUIRED' || al === 'REVALIDATE') return { label: 'REVALIDATE', color: 'var(--amber)' }
-  if (al === 'DATA_CONFLICT') return { label: 'DATA CONFLICT', color: 'var(--amber)' }
+  const ff = freshnessFlag(d.freshness)
+  // Blocking states override ACT_NOW (fail-closed).
+  if (al === 'DATA_CONFLICT' || ff === 'DATA_CONFLICT') return { label: 'DATA CONFLICT', color: 'var(--amber)' }
+  if (al === 'STALE_REFRESH_REQUIRED' || al === 'REVALIDATE' || ff === 'STALE_REFRESH_REQUIRED' || ff === 'REVALIDATE' || ff === 'STALE' || ff === 'EXPIRED') {
+    return { label: 'REVALIDATE', color: 'var(--amber)' }
+  }
+  if (d.act_now || al === 'ACT_NOW') return { label: 'ACT NOW', color: 'var(--red)' }
   if (al === 'REVIEW') return { label: 'REVIEW', color: 'var(--amber)' }
   return { label: 'WATCH', color: 'var(--text3)' }
 }

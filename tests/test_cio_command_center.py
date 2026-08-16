@@ -128,6 +128,14 @@ def test_actionability_urgency_act_now_only_when_explicit():
     assert c._actionability_urgency({}) == "low"
 
 
+def test_actionability_urgency_stale_overrides_act_now():
+    # P0-3 fail-closed: stale/conflict overrides act_now=True and stale ACT_NOW.
+    assert c._actionability_urgency({"act_now": True, "action_label": "STALE_REFRESH_REQUIRED"}) == "medium"
+    assert c._actionability_urgency({"act_now": True, "freshness": "STALE"}) == "medium"
+    assert c._actionability_urgency({"act_now": True, "action_label": "DATA_CONFLICT"}) == "medium"
+    assert c._actionability_urgency({"action_label": "ACT_NOW", "freshness": "EXPIRED"}) == "medium"
+
+
 def test_cio_now_caps_at_five():
     decs = [{"symbol": f"S{i}", "cio_stance": "TRIM", "recommended_delta_usd": 1.0,
              "why_now": f"Advisory TRIM — S{i}", "risk": "within single-name cap",

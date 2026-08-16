@@ -154,24 +154,30 @@ def evaluate_profile(
 # ─────────────────────────────────────────────────────────────────────────────
 
 def evaluate_pr1_actionability(decision: dict[str, Any]) -> tuple[str, list[str]]:
-    """PR1_ACTIONABILITY — stale/risk text never renders ACT NOW.
+    """PR1_ACTIONABILITY — fail-closed: stale/conflict override ACT_NOW.
 
-    Returns (status, violations). PASS only when a decision whose risk text
-    screams breach does not surface as ACT NOW unless act_now/label demand it.
+    Returns (status, violations). PASS only when:
+      * a blocking freshness/conflict state never renders "high" (even if
+        act_now=True or ACT_NOW label is present — the contradiction case);
+      * an explicit ACT_NOW (with no blocking state) renders "high";
+      * otherwise risk text / nothing never renders "high".
     """
-    from scripts.lib.cio_command_center import _actionability_urgency
+    from scripts.lib.cio_command_center import _actionability_urgency, _freshness_flag
     label = str(decision.get("action_label") or "").upper()
-    act_now = decision.get("act_now") is True or label == "ACT_NOW"
+    freshness = _freshness_flag(decision)
+    blocking = {"STALE_REFRESH_REQUIRED", "REVALIDATE", "DATA_CONFLICT"}
+    is_blocking = label in blocking or freshness in blocking or freshness in {"STALE", "EXPIRED"}
+    explicit_act = decision.get("act_now") is True or label == "ACT_NOW"
     urgency = _actionability_urgency(decision)
     violations: list[str] = []
-    if act_now and urgency != "high":
-        violations.append("ACT_NOW did not map to high urgency")
-    if not act_now and urgency == "high":
+    if is_blocking:
+        if urgency == "high":
+            violations.append("blocking freshness/conflict still rendered high urgency")
+    elif explicit_act:
+        if urgency != "high":
+            violations.append("explicit ACT_NOW did not map to high urgency")
+    elif urgency == "high":
         violations.append("high urgency without explicit ACT_NOW")
-    # Risk text alone must never elevate actionability.
-    risk = str(decision.get("risk") or "").lower()
-    if not act_now and urgency == "high" and ("concentration" in risk or "fire" in risk or "breach" in risk):
-        violations.append("risk text elevated urgency to high without ACT_NOW")
     status = "PASS" if not violations else "FAIL"
     return status, violations
 
@@ -233,21 +239,150 @@ def evaluate_pr1_digest_409(catalog_digest: str, supplied_digest: Optional[str])
 
 
 def evaluate_pr1_reentry_canonical() -> tuple[str, list[str]]:
-    """PR1_REENTRY_CANONICAL — READY_TO_REVIEW / NEAR ENTRY never grant RE_ENTER.
+    """PR1_REENTRY_CANONICAL — desk readiness never grants RE_ENTER authority.
+
+    Exercises the real transforms (stance_from_queue_item + resolve_display_stance)
+    against both state-only records and the label/why-now bypasses. Only an
+    explicit governed ``verdict="RE_ENTER"`` may produce STANCE_RE_ENTER.
 
     Returns (status, violations).
     """
     from scripts.lib.cio_decision_semantics import (
         REENTRY_LIFECYCLE,
+        resolve_display_stance,
         stance_from_queue_item,
     )
     violations: list[str] = []
     if "RE_ENTER" not in REENTRY_LIFECYCLE:
         violations.append("REENTRY_LIFECYCLE missing RE_ENTER terminal state")
+
+    # State-only records: never RE_ENTER.
     for state in ("READY TO REVIEW", "NEAR ENTRY", "OVERSOLD REVIEW", "DESK READY"):
         got = stance_from_queue_item({"symbol": "TST", "state": state})
         if got == "RE_ENTER":
             violations.append(f"{state!r} mapped to RE_ENTER")
+
+    # Label bypass: readiness + "Re-enter" directive_label/note must stay REVIEW.
+    for label in ("Re-enter ADBE", "RE-ENTER ADBE", "Reenter ADBE"):
+        got = stance_from_queue_item({
+            "symbol": "TST", "state": "READY TO REVIEW", "directive_label": label,
+        })
+        if got == "RE_ENTER":
+            violations.append(f"READY TO REVIEW + label {label!r} mapped to RE_ENTER")
+        got2 = stance_from_queue_item({
+            "symbol": "TST", "state": "NEAR ENTRY", "note": label,
+        })
+        if got2 == "RE_ENTER":
+            violations.append(f"NEAR ENTRY + note {label!r} mapped to RE_ENTER")
+
+    # why_now bypass: free-text "re-enter" is non-authoritative for a REVIEW
+    # standing stance.
+    for why in ("ready to re-enter ADBE", "consider re-enter on trigger"):
+        got = resolve_display_stance("REVIEW", why)
+        if got == "RE_ENTER":
+            violations.append(f"resolve_display_stance(REVIEW, {why!r}) -> RE_ENTER")
+
+    # Only an explicit governed verdict=RE_ENTER grants RE_ENTER.
+    got = stance_from_queue_item({
+        "symbol": "TST", "state": "READY TO REVIEW", "verdict": "RE_ENTER",
+    })
+    if got != "RE_ENTER":
+        violations.append("explicit verdict=RE_ENTER did not produce RE_ENTER")
+
+    status = "PASS" if not violations else "FAIL"
+    return status, violations
+
+
+def evaluate_pr1_standing_current_parity() -> tuple[str, list[str]]:
+    """PR1_STANDING_CURRENT_PARITY — one canonical input through real transforms.
+
+    Builds a capital plan, then propagates it through CIO NOW and the
+    institutional report. Proves that the same decision_id carries the same
+    standing stance and recommended delta across surfaces, and that current
+    action (actionability) never contradicts the standing stance: a stale
+    decision never surfaces as ACT NOW.
+
+    Returns (status, violations).
+    """
+    from datetime import datetime, timezone
+
+    from scripts.lib import cio_capital_plan as cp
+    from scripts.lib import cio_command_center as cc
+    from scripts.lib import cio_report_v2 as r
+
+    now = datetime(2026, 8, 14, 21, 0, 0, tzinfo=timezone.utc)
+    plan = cp.build_capital_plan(
+        portfolio_value=1_282_425.99,
+        cash_total=578_107.50,
+        positions=[
+            {"symbol": "SCHD", "market_value": 225_789.79,
+             "account": "schwab_rollover_ira", "weight_pct": 17.58},
+            {"symbol": "V", "market_value": 70_000.0,
+             "account": "schwab_rollover_ira", "weight_pct": 5.0},
+        ],
+        queue={"items": [
+            {"symbol": "SCHD", "verdict": "TRIM", "directive_label": "Advisory TRIM — SCHD"},
+            {"symbol": "V", "verdict": None, "directive_label": "Advisory TRIM — V"},
+        ]},
+        concentration_fire_pct=16.5,
+        max_single_name_pct=12.0,
+        now=now,
+    )
+    positions = plan["position_decisions"]
+    cio_now = cc.build_cio_now(
+        position_decisions=positions,
+        portfolio_value=plan["portfolio_value_usd"],
+    )
+    report = r.build_report_v2(
+        part_b_ctx={
+            "portfolio": {
+                "total_value": plan["portfolio_value_usd"],
+                "cash_value": plan["cash_total_usd"],
+            },
+        },
+        part_a_inputs={"capital_plan": plan},
+        source_sha="cdq_parity",
+        now=now,
+    )
+    report_decisions = report.get("part_a", {}).get("decisions_now") or []
+
+    violations: list[str] = []
+    plan_by_id = {d.get("decision_id"): d for d in positions if d.get("decision_id")}
+    now_by_id = {d.get("decision_id"): d for d in cio_now.get("decisions", []) if d.get("decision_id")}
+    report_ids = {d.get("decision_id") for d in report_decisions if d.get("decision_id")}
+
+    # 1) identity parity: every surfaced CIO NOW card must also exist in the
+    #    capital plan and the institutional report.
+    for did, d in now_by_id.items():
+        if did not in plan_by_id:
+            violations.append(f"CIO NOW decision_id {did} missing from capital plan")
+        if did not in report_ids:
+            violations.append(f"CIO NOW decision_id {did} missing from report")
+
+    # 2) standing stance + recommended delta parity across surfaces.
+    for did, d in now_by_id.items():
+        pr = plan_by_id.get(did)
+        if not pr:
+            continue
+        sc_plan = str(pr.get("stance_code") or pr.get("cio_stance") or "").upper()
+        sc_now = str(d.get("stance_code") or "").upper()
+        if sc_plan and sc_now and sc_plan != sc_now:
+            violations.append(
+                f"{did}: standing stance mismatch plan={sc_plan} now={sc_now}"
+            )
+        dp = float(pr.get("recommended_delta_usd") or 0.0)
+        dn = float(d.get("recommended_delta_usd") or 0.0)
+        if abs(dp - dn) > 0.02:
+            violations.append(f"{did}: delta mismatch plan={dp} now={dn}")
+
+    # 3) current action never contradicts standing: no ACT NOW without explicit
+    #    actionability signal, and stale/conflict overrides it.
+    for did, d in now_by_id.items():
+        from scripts.lib.cio_command_center import _actionability_urgency
+        urg = _actionability_urgency(d)
+        if urg == "high" and not (d.get("act_now") or str(d.get("action_label") or "").upper() == "ACT_NOW"):
+            violations.append(f"{did}: high urgency without explicit ACT_NOW")
+
     status = "PASS" if not violations else "FAIL"
     return status, violations
 

@@ -22,6 +22,7 @@ from scripts.lib.cio_decision_quality import (  # noqa: E402
     evaluate_pr1_digest_409,
     evaluate_pr1_reentry_canonical,
     evaluate_pr1_sizing_zero,
+    evaluate_pr1_standing_current_parity,
     evaluate_profile,
 )
 from scripts.lib import cio_capital_plan as cp  # noqa: E402
@@ -59,6 +60,27 @@ def test_actionability_stale_is_not_high():
         "risk": "concentration > fire",
         "action_label": "STALE_REFRESH_REQUIRED",
         "act_now": False,
+    })
+    assert status == "PASS", violations
+
+
+def test_actionability_stale_overrides_act_now():
+    # Contradiction: act_now=True (or ACT_NOW label) must NOT render ACT NOW when
+    # the freshness/conflict state blocks it (P0-3 fail-closed).
+    status, violations = evaluate_pr1_actionability({
+        "act_now": True, "action_label": "STALE_REFRESH_REQUIRED",
+    })
+    assert status == "PASS", violations
+    status, violations = evaluate_pr1_actionability({
+        "act_now": True, "freshness": "STALE",
+    })
+    assert status == "PASS", violations
+    status, violations = evaluate_pr1_actionability({
+        "act_now": True, "action_label": "DATA_CONFLICT",
+    })
+    assert status == "PASS", violations
+    status, violations = evaluate_pr1_actionability({
+        "action_label": "ACT_NOW", "freshness": "EXPIRED",
     })
     assert status == "PASS", violations
 
@@ -139,6 +161,35 @@ def test_reentry_stance_for_ready_to_review_is_review():
     assert stance_from_queue_item({"symbol": "NVDA", "state": "NEAR ENTRY"}) == "REVIEW"
 
 
+def test_reentry_label_and_why_bypass_never_reenter():
+    # P0-1: "Re-enter" in directive_label / note / why_now is non-authoritative
+    # below GOVERNED_ELIGIBLE. Only explicit verdict=RE_ENTER grants RE_ENTER.
+    from scripts.lib.cio_decision_semantics import (
+        resolve_display_stance,
+        stance_from_queue_item,
+    )
+    assert stance_from_queue_item({
+        "symbol": "ADBE", "state": "READY TO REVIEW", "directive_label": "Re-enter ADBE",
+    }) == "REVIEW"
+    assert stance_from_queue_item({
+        "symbol": "ADBE", "state": "NEAR ENTRY", "note": "Re-enter",
+    }) == "REVIEW"
+    assert stance_from_queue_item({
+        "symbol": "ADBE", "state": "OVERSOLD REVIEW", "directive_label": "REENTER",
+    }) == "REVIEW"
+    assert resolve_display_stance("REVIEW", "ready to re-enter ADBE") == "REVIEW"
+    assert resolve_display_stance("REVIEW", "consider re-enter on trigger") == "REVIEW"
+    # Explicit governed verdict still wins.
+    assert stance_from_queue_item({
+        "symbol": "ADBE", "state": "READY TO REVIEW", "verdict": "RE_ENTER",
+    }) == "RE_ENTER"
+
+
+def test_standing_current_parity_evaluator():
+    status, violations = evaluate_pr1_standing_current_parity()
+    assert status == "PASS", violations
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # CDQ-27 — scenario-only trim contributes $0 to capital sources
 # ─────────────────────────────────────────────────────────────────────────────
@@ -153,6 +204,36 @@ def test_cdq27_scenario_only_trim_zero_to_sources():
     queue = {"items": [{"symbol": "V", "verdict": "TRIM", "source": "cio"}]}
     status, violations = evaluate_cdq27_scenario_only_zero(positions, queue)
     assert status == "PASS", violations
+
+
+def test_sizing_exception_fails_closed_no_10pct(monkeypatch):
+    """P0-2: a TRIM sizing exception must not resurrect the -10% heuristic."""
+    import scripts.lib.cio_institutional_sizing as sizing
+
+    def _boom(**kwargs):
+        raise RuntimeError("injected sizing failure")
+
+    monkeypatch.setattr(sizing, "size_decision", _boom)
+    plan = cp.build_capital_plan(
+        portfolio_value=500_000.0,
+        cash_total=100_000.0,
+        positions=[{
+            "symbol": "V", "market_value": 40_000.0,
+            "account": "schwab_rollover_ira", "weight_pct": 8.0,
+        }],
+        queue={"items": [{"symbol": "V", "verdict": "TRIM", "directive_label": "Advisory TRIM — V"}]},
+        redeploy_open_events=[],
+    )
+    dec = next(d for d in plan["position_decisions"] if d["symbol"] == "V")
+    assert dec["recommended_delta_usd"] == 0.0
+    assert dec["sizing_method"] == "SIZING_UNAVAILABLE"
+    assert dec["stance_code"] == "REVIEW"
+    # Scenario amount retained, but not a recommendation.
+    scenario = (dec.get("sizing") or {}).get("scenario_trim_usd")
+    assert scenario == round(40_000.0 * 0.10, 2)
+    # No prospective trim capital from the failed sizing.
+    src = plan.get("capital_sources") or {}
+    assert float(src.get("trims_usd") or 0.0) == 0.0
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -234,3 +315,35 @@ def test_topology_audit_deprecated_markers_present():
     from scripts.lib.cio_topology_audit import DEPRECATED_MARKERS
     assert DEPRECATED_MARKERS
     assert any("agent-jobs/" in m or "/tmp/" in m for m in DEPRECATED_MARKERS)
+
+
+def test_topology_audit_rebuild_tree_is_deprecated_not_approved():
+    from scripts.lib.cio_topology_audit import (
+        APPROVED_ROOT_DEFAULT,
+        DEPRECATED_MARKERS,
+        DEPRECATED_ROOTS,
+        _is_deprecated_path,
+    )
+    assert "/home/johnclaw/trade-ai-v12-rebuild" in DEPRECATED_ROOTS
+    assert "/home/johnclaw/trade-ai-v12-rebuild" not in APPROVED_ROOT_DEFAULT
+    assert _is_deprecated_path(
+        "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild",
+        DEPRECATED_ROOTS,
+        DEPRECATED_MARKERS,
+    ) is True
+
+
+def test_topology_audit_deprecated_root_flagged_even_on_sha_match():
+    from scripts.lib.cio_topology_audit import _classify
+    # A deprecated root must be flagged even if its SHA matches the expected one.
+    v = _classify(
+        path="/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild",
+        root="/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild",
+        head="6f7009794e5178a7926f5b1c84ae16d0ee7b2bc6",
+        expected="6f7009794e5178a7926f5b1c84ae16d0ee7b2bc6",
+        approved_roots=("/home/johnclaw/trade-ai-releases/portfolio-server",),
+        deprecated_roots=("/home/johnclaw/trade-ai-v12-rebuild",),
+        deprecated_markers=("/tmp/",),
+    )
+    assert v is not None
+    assert v["deprecated"] is True

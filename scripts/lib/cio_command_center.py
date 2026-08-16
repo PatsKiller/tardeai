@@ -165,16 +165,34 @@ def _action_is_open(a: Any) -> bool:
     return True
 
 
-def _actionability_urgency(d: dict[str, Any]) -> str:
-    """Actionability-derived urgency — stale/conflict/risk text never render ACT NOW.
+def _freshness_flag(d: dict[str, Any]) -> str:
+    """Normalize a decision's freshness field to an upper-case state string.
 
-    ACT_NOW requires act_now=True or an explicit ACT_NOW label. Risk text such as
-    "concentration > fire" is a fact, not an action — it must not set high urgency.
+    Freshness may be a plain string or a dict carrying ``state``/``label``/
+    ``status``. Returns "" when absent so callers can treat it as non-blocking.
+    """
+    f = d.get("freshness")
+    if isinstance(f, dict):
+        return _str(f.get("state") or f.get("label") or f.get("status") or "").upper()
+    return _str(f).upper()
+
+
+def _actionability_urgency(d: dict[str, Any]) -> str:
+    """Actionability-derived urgency — fail-closed against stale/conflict.
+
+    Priority: DATA_CONFLICT / STALE_REFRESH_REQUIRED / REVALIDATE (and a stale/
+    expired freshness flag) override any ACT_NOW signal. Only a fresh decision
+    that is explicitly actionable (act_now=True or ACT_NOW label) is "high".
+    Risk text such as "concentration > fire" is a fact, never an action.
     """
     label = _str(d.get("action_label") or "").upper()
+    freshness = _freshness_flag(d)
+    blocking = {"STALE_REFRESH_REQUIRED", "REVALIDATE", "DATA_CONFLICT"}
+    if label in blocking or freshness in blocking or freshness in {"STALE", "EXPIRED"}:
+        return "medium"
     if d.get("act_now") is True or label == "ACT_NOW":
         return "high"
-    if label in ("STALE_REFRESH_REQUIRED", "REVALIDATE", "DATA_CONFLICT", "REVIEW"):
+    if label == "REVIEW":
         return "medium"
     return "low"
 

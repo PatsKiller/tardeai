@@ -1060,16 +1060,28 @@ def build_position_decisions(
             if target_w is None:
                 target_w = cap_pct
         except Exception:
-            sizing = {"method": "legacy_fallback", "fallback_candidate_only": True,
-                      "sizing_quality": "HEURISTIC", "candidates": {}}
-            if stance == "EXIT":
-                delta = -p["market_value_usd"]
-            elif stance == "TRIM":
-                delta = -round(p["market_value_usd"] * TRIM_FRACTION, 2)
-            elif stance in ("ADD", "RE_ENTER"):
-                delta = round(min(NEW_POSITION_DEFAULT_USD, headroom), 2)
-            else:
-                delta = 0.0
+            # Sizing failure must make the recommendation LESS actionable, never
+            # resurrect the old 10% heuristic. A failed sizing engine cannot
+            # authorize a TRIM/EXIT/ADD/RE_ENTER dollar delta, so the row
+            # downgrades to REVIEW with $0 (scenario-only note kept for TRIM).
+            scenario_trim_usd = (
+                round(p["market_value_usd"] * TRIM_FRACTION, 2)
+                if stance == "TRIM" else None
+            )
+            sizing = {
+                "method": "SIZING_UNAVAILABLE",
+                "fallback_candidate_only": True,
+                "sizing_quality": "UNAVAILABLE",
+                "candidates": {},
+                "scenario_trim_usd": scenario_trim_usd,
+                "objective_summary": (
+                    "Sizing unavailable — recommendation downgraded to REVIEW "
+                    "(no verified dollar delta)."
+                ),
+            }
+            stance = "REVIEW"
+            stance_display = "Review"
+            delta = 0.0
             target_w = cap_pct
 
         risk_txt = (
