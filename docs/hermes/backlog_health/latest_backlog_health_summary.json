@@ -1,6 +1,6 @@
 {
-  "date": "2026-08-14",
-  "timestamp": "2026-08-14T06:45:28.674227+00:00",
+  "date": "2026-08-15",
+  "timestamp": "2026-08-15T06:45:44.925810+00:00",
   "checks": {
     "total_backlog": 30,
     "open_count": 0,
@@ -10,17 +10,17 @@
     "duplicate_risk_count": 20,
     "duplicate_risks": [
       {
-        "id": 27,
-        "duplicate_of": 25,
+        "id": 25,
+        "duplicate_of": 27,
         "key": "NULL:backtest_contradiction"
       },
       {
-        "id": 34,
+        "id": 33,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
       {
-        "id": 33,
+        "id": 34,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
@@ -50,12 +50,12 @@
         "key": "NULL:unknown"
       },
       {
-        "id": 5331,
+        "id": 5330,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
       {
-        "id": 5330,
+        "id": 5331,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
@@ -85,12 +85,12 @@
         "key": "NULL:unknown"
       },
       {
-        "id": 9060,
+        "id": 9057,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
       {
-        "id": 9057,
+        "id": 9058,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
@@ -100,7 +100,7 @@
         "key": "NULL:unknown"
       },
       {
-        "id": 9058,
+        "id": 9060,
         "duplicate_of": 32,
         "key": "NULL:unknown"
       },
@@ -116,22 +116,22 @@
     "missing_symbol": 27,
     "source_surfaces": {
       "librarian_loop": 5,
+      "catalyst": 1,
       "backtest": 3,
       "journal": 1,
-      "catalyst": 1,
       "backtest_results": 18,
       "screener_registry": 1,
       "catalyst_quality": 1
     },
     "oldest_item": {
-      "id": 20,
+      "id": 21,
       "created": "2026-05-31 21:36:31",
-      "age_days": 74
+      "age_days": 75
     },
     "newest_item": {
       "id": 9666,
       "created": "2026-07-14 12:03:57",
-      "age_days": 30
+      "age_days": 31
     },
     "ready_for_discovery": 0,
     "not_ready_for_discovery": 0,
