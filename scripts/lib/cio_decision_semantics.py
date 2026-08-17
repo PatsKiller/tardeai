@@ -463,6 +463,8 @@ BLOCKING_ACTIONABILITY = frozenset({
     "DATA_CONFLICT",
     "STALE_REFRESH_REQUIRED",
     "REVALIDATE",
+    "STALE",
+    "EXPIRED",
 })
 
 
@@ -477,17 +479,22 @@ def freshness_flag(decision: Any) -> str:
 
 
 def actionability_blocking_state(decision: Any) -> Optional[str]:
-    """The blocking state that overrides ACT_NOW, or None when unblocked."""
+    """The blocking state that overrides ACT_NOW, or None when unblocked.
+
+    Honors every canonical representation of the same state — ``action_label``,
+    ``actionability``, and ``freshness`` — so the result is
+    representation-independent. Exact membership only (no substring guesses):
+
+      DATA_CONFLICT / STALE_REFRESH_REQUIRED / REVALIDATE / STALE / EXPIRED
+    """
     if not isinstance(decision, dict):
         return None
     label = str(decision.get("action_label") or "").upper()
+    ability = str(decision.get("actionability") or "").upper()
     freshness = freshness_flag(decision)
-    if label in BLOCKING_ACTIONABILITY:
-        return label
-    if freshness in BLOCKING_ACTIONABILITY:
-        return freshness
-    if freshness in {"STALE", "EXPIRED"}:
-        return "REVALIDATE"
+    for value in (label, ability, freshness):
+        if value in BLOCKING_ACTIONABILITY:
+            return value
     return None
 
 

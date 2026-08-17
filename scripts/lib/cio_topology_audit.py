@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 AUTHORITY = "READ_ONLY_ADVISORY"
-TOPO_VERSION = "cio_topology_audit_1.2.0"
+TOPO_VERSION = "cio_topology_audit_1.3.0"
 
 # The approved production release root. Deprecated development/worktree trees
 # must NOT be here — only the deployed CURRENT release tree is an approved root.
@@ -90,6 +90,12 @@ _ARTIFACT_SUFFIXES = (
 _SCRIPT_EXT = (".py", ".sh", ".bash", ".zsh", ".rb")
 
 
+def _normalize_name(name: str) -> str:
+    """Normalize a unit/file name so hyphenated systemd unit names match the
+    underscore-based CIO pattern set (e.g. tradeai-cio-telegram → cio_)."""
+    return re.sub(r"[^a-z0-9]+", "_", (name or "").lower())
+
+
 def _is_artifact_path(path: str) -> bool:
     """True when a path is a runtime artifact rather than code/checkout."""
     p = (path or "").strip().rstrip("/")
@@ -117,6 +123,26 @@ def _run(args: list[str], timeout: int = 15) -> str:
         ).strip()
     except Exception:
         return ""
+
+
+def _run_status(args: list[str], timeout: int = 15) -> tuple[str, bool]:
+    """Like _run but also reports whether the command could be queried.
+
+    A non-OK result must never silently equal PASS: the caller records it as
+    a visibility gap for merge/deployment acceptance.
+    """
+    try:
+        out = subprocess.check_output(
+            args, text=True, stderr=subprocess.DEVNULL, timeout=timeout,
+        ).strip()
+        return out, True
+    except Exception:
+        return "", False
+
+
+def _systemctl(scope: str) -> list[str]:
+    """systemctl argv for the system or user manager."""
+    return ["systemctl"] if scope == "system" else ["systemctl", "--user"]
 
 
 def _git_root(path: str) -> str:
@@ -290,43 +316,72 @@ def enumerate_cron() -> list[dict[str, Any]]:
 
 
 def enumerate_systemd() -> list[dict[str, Any]]:
-    """Collect CIO-relevant systemd services + timers with their exec/working dirs."""
+    """Collect CIO-relevant systemd services + timers with their exec/working dirs.
+
+    Queries BOTH the system manager (``systemctl``) and the user manager
+    (``systemctl --user``) because the CIO runbook installs
+    ``tradeai-cio-telegram.service`` under ``config/systemd/user`` and starts it
+    with ``systemctl --user``. Every entry records its ``systemd_scope``.
+    """
     out: list[dict[str, Any]] = []
-    for unit_type in ("service", "timer"):
-        listing = _run(
-            ["systemctl", "list-units", f"--type={unit_type}",
-             "--no-pager", "--no-legend", "--all"],
-            timeout=20,
-        )
-        for line in listing.splitlines():
-            if not line.strip():
-                continue
-            fields = line.split()
-            if not fields:
-                continue
-            unit = fields[0]
-            if not any(pat in unit for pat in CIO_SCHEDULE_PATTERNS):
-                continue
-            show = _run(
-                ["systemctl", "show", unit, "--no-pager",
-                 "-p", "ExecStart", "-p", "WorkingDirectory",
-                 "-p", "ActiveState", "-p", "LoadState"],
+    for scope in ("system", "user"):
+        cmd = _systemctl(scope)
+        for unit_type in ("service", "timer"):
+            listing = _run(
+                cmd + ["list-units", f"--type={unit_type}",
+                       "--no-pager", "--no-legend", "--all"],
                 timeout=20,
             )
-            props: dict[str, str] = {}
-            for s in show.splitlines():
-                if "=" in s:
-                    k, v = s.split("=", 1)
-                    props[k] = v
-            out.append({
-                "unit": unit,
-                "unit_type": unit_type,
-                "active_state": props.get("ActiveState", ""),
-                "load_state": props.get("LoadState", ""),
-                "exec_start": props.get("ExecStart", ""),
-                "working_directory": props.get("WorkingDirectory", ""),
-            })
+            for line in listing.splitlines():
+                if not line.strip():
+                    continue
+                fields = line.split()
+                if not fields:
+                    continue
+                unit = fields[0]
+                # Match on both raw name and its normalized (hyphen→underscore)
+                # form so tradeai-cio-telegram.service matches CIO patterns.
+                norm = _normalize_name(unit)
+                if not any(pat in unit or pat in norm for pat in CIO_SCHEDULE_PATTERNS):
+                    continue
+                show = _run(
+                    cmd + ["show", unit, "--no-pager",
+                           "-p", "ExecStart", "-p", "WorkingDirectory",
+                           "-p", "ActiveState", "-p", "LoadState"],
+                    timeout=20,
+                )
+                props: dict[str, str] = {}
+                for s in show.splitlines():
+                    if "=" in s:
+                        k, v = s.split("=", 1)
+                        props[k] = v
+                out.append({
+                    "unit": unit,
+                    "unit_type": unit_type,
+                    "systemd_scope": scope,
+                    "active_state": props.get("ActiveState", ""),
+                    "load_state": props.get("LoadState", ""),
+                    "exec_start": props.get("ExecStart", ""),
+                    "working_directory": props.get("WorkingDirectory", ""),
+                })
     return out
+
+
+def systemd_scope_visibility() -> dict[str, Any]:
+    """Per-scope systemd query visibility (system + user).
+
+    A scope that cannot be queried must be reported explicitly so absence of
+    visibility can never silently equal PASS for merge/deployment acceptance.
+    """
+    vis: dict[str, Any] = {}
+    for scope in ("system", "user"):
+        _, ok = _run_status(
+            _systemctl(scope) + ["list-units", "--type=service",
+                                 "--no-pager", "--no-legend", "--all"],
+            timeout=20,
+        )
+        vis[scope] = {"queried": True, "ok": ok}
+    return vis
 
 
 def _classify_path(
@@ -362,6 +417,7 @@ def _validate_scheduled_entries(
     deprecated_roots: tuple[str, ...],
     deprecated_markers: tuple[str, ...],
     key_fn,
+    extra_fn=None,
 ) -> list[dict[str, Any]]:
     """Validate cron/systemd entries: resolve checkout, flag deprecated/SHA/root."""
     violations: list[dict[str, Any]] = []
@@ -373,13 +429,16 @@ def _validate_scheduled_entries(
         for c in candidates:
             if not c:
                 continue
+            extra = {"source": e}
+            if extra_fn:
+                extra.update(extra_fn(e) or {})
             v = _classify_path(
                 c,
                 expected=expected,
                 approved_roots=approved_roots,
                 deprecated_roots=deprecated_roots,
                 deprecated_markers=deprecated_markers,
-                extra={"source": e},
+                extra=extra,
             )
             if v:
                 violations.append(v)
@@ -427,6 +486,7 @@ def audit_topology(
             "processes": [],
             "cron": [],
             "systemd": [],
+            "systemd_scope_visibility": {},
             "violations": [],
             "deprecated_roots": list(deprecated),
         }
@@ -434,6 +494,7 @@ def audit_topology(
     processes = enumerate_processes()
     cron = enumerate_cron()
     systemd = enumerate_systemd()
+    scope_visibility = systemd_scope_visibility()
     violations: list[dict[str, Any]] = []
 
     for p in processes:
@@ -467,9 +528,11 @@ def audit_topology(
         deprecated_roots=deprecated,
         deprecated_markers=markers,
         key_fn=lambda e: [e.get("checkout", "")] + list(e.get("paths", [])),
+        extra_fn=lambda e: {"kind": "cron"},
     ))
 
-    # systemd services/timers: validate ExecStart + WorkingDirectory.
+    # systemd services/timers: validate ExecStart + WorkingDirectory, in both
+    # system and user scopes. The scope is surfaced on every finding.
     def _systemd_candidates(e: dict[str, Any]) -> list[str]:
         cands: list[str] = []
         for field in ("working_directory", "exec_start"):
@@ -484,6 +547,7 @@ def audit_topology(
         deprecated_roots=deprecated,
         deprecated_markers=markers,
         key_fn=_systemd_candidates,
+        extra_fn=lambda e: {"kind": "systemd", "systemd_scope": e.get("systemd_scope")},
     ))
 
     ok = len(violations) == 0
@@ -503,6 +567,7 @@ def audit_topology(
         "process_count": len(processes),
         "cron_count": len(cron),
         "systemd_count": len(systemd),
+        "systemd_scope_visibility": scope_visibility,
         "approved_roots": list(approved),
         "deprecated_roots": list(deprecated),
         "processes": processes,

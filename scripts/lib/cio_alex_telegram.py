@@ -130,7 +130,6 @@ CURRENT_ACTIONS = frozenset({
 })
 ACTIONABILITY_NOW = "ACT_NOW"
 ACTIONABILITY_STALE = "STALE_REFRESH_REQUIRED"
-_STALE_CURRENT_LINE = "WAIT / REVALIDATE — marks are stale; ACT_NOW=false."
 
 
 def _norm_digest(val: Any) -> str:
@@ -154,9 +153,17 @@ def _label_text(decision: dict[str, Any]) -> str:
     ).strip()
 
 
-def _is_stale_label(label: str) -> bool:
-    up = (label or "").upper()
-    return any(m in up for m in ("STALE", "DATA_CONFLICT", "REVALIDATE"))
+def _current_action_line(actionability: str, current: str) -> str:
+    """Distinct prose per blocking state — never collapse DATA_CONFLICT into
+    "marks are stale". STALE/EXPIRED/STALE_REFRESH_REQUIRED share the stale
+    line; REVALIDATE has its own; everything else is generic WAIT."""
+    if actionability == "DATA_CONFLICT" or current == "DATA_CONFLICT":
+        return "DATA CONFLICT — ACT_NOW=false."
+    if actionability == ACTIONABILITY_STALE:
+        return "REVALIDATE — marks are stale; ACT_NOW=false."
+    if current == "REVALIDATE":
+        return "REVALIDATE — ACT_NOW=false."
+    return f"{current} — ACT_NOW=false."
 
 
 def classify_actionability(decision: dict[str, Any]) -> dict[str, Any]:
@@ -180,9 +187,12 @@ def classify_actionability(decision: dict[str, Any]) -> dict[str, Any]:
 
     if blocking == "DATA_CONFLICT":
         actionability = "DATA_CONFLICT"
-    elif blocking:
-        # STALE_REFRESH_REQUIRED / REVALIDATE / stale / expired → stale family.
+    elif blocking in {"STALE", "EXPIRED", ACTIONABILITY_STALE}:
+        # STALE / EXPIRED / STALE_REFRESH_REQUIRED → stale family.
         actionability = ACTIONABILITY_STALE
+    elif blocking == "REVALIDATE":
+        # Explicit REVALIDATE is a distinct state from "marks are stale".
+        actionability = "REVALIDATE"
     elif act_now:
         actionability = ACTIONABILITY_NOW
     elif label.upper() in {
@@ -281,8 +291,7 @@ def format_cio_message(decision: dict[str, Any]) -> str:
     standing = cls["standing_recommendation"]
     current = cls["current_action"]
     act_now = bool(cls["act_now"])
-    stale = cls["actionability"] == ACTIONABILITY_STALE or _is_stale_label(_label_text(decision))
-    use_standing = (not act_now) or stale
+    use_standing = not act_now
 
     sym = decision.get("symbol") or decision.get("scope") or "—"
     delta = _num(decision.get("delta_usd") if decision.get("delta_usd") is not None
@@ -328,7 +337,7 @@ def format_cio_message(decision: dict[str, Any]) -> str:
             stand_line,
             "",
             "CURRENT ACTION",
-            _STALE_CURRENT_LINE if stale else f"{current} — ACT_NOW=false.",
+            _current_action_line(cls["actionability"], current),
             "",
         ])
     else:

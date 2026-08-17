@@ -264,20 +264,22 @@ def stance_for(symbol: str, queue: Optional[dict[str, Any]]) -> str:
         return stance_for_symbol(symbol, queue)
     except Exception:
         pass
-    # Fail-soft local fallback (single item, verdict/state only)
+    # Fail-soft local fallback (single item, verdict/state only).
+    # LESS authoritative than the canonical path: free text may NEVER create
+    # RE_ENTER here either. Only an explicit governed verdict=RE_ENTER returns
+    # RE_ENTER; READY/NEAR/"Re-enter ADBE" text maps to HOLD, never RE_ENTER.
     item = _verdict_for(symbol, queue)
     if not item:
         return "HOLD"
     verdict = str(item.get("verdict") or "").upper().strip() or None
-    state = str(item.get("state") or "").upper().strip() or None
     if verdict in ("EXIT", "TRIM", "RE_ENTER", "ADD"):
         return verdict
     # Desk readiness states are not auto-promoted to RE_ENTER.
-    # Label inference fallback without importing
+    # Label inference fallback without importing — RE_ENTER is deliberately
+    # absent so free text can never manufacture a governed re-entry.
     label = str(item.get("directive_label") or item.get("label") or "").upper()
     for needle, stance in (
-        ("EXIT", "EXIT"), ("TRIM", "TRIM"), ("RE_ENTER", "RE_ENTER"),
-        ("RE-ENTER", "RE_ENTER"), ("ADD", "ADD"),
+        ("EXIT", "EXIT"), ("TRIM", "TRIM"), ("ADD", "ADD"),
     ):
         if needle in label:
             return stance

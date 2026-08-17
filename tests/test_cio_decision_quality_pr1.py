@@ -379,7 +379,7 @@ def test_telegram_actionability_parity_fixtures():
     c = classify_actionability({"stance_code": "TRIM", "act_now": True,
                                 "action_label": "REVALIDATE"})
     assert c["act_now"] is False
-    assert c["actionability"] == "STALE_REFRESH_REQUIRED"
+    assert c["actionability"] == "REVALIDATE"
 
     # act_now=True + STALE → REVALIDATE / no MY CALL
     c = classify_actionability({"stance_code": "TRIM", "act_now": True,
@@ -645,3 +645,203 @@ def test_topology_approved_script_working_dir_pass():
             deprecated_markers=DEPRECATED_MARKERS,
         )
         assert v is None, (p, v)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TRUE FINAL CLOSURE — production-path defects
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_capital_plan_fallback_never_infers_reenter(monkeypatch):
+    """P0-1: the fail-soft fallback must never manufacture RE_ENTER from text."""
+    import scripts.lib.cio_decision_semantics as sem
+
+    def _boom(*a, **k):
+        raise RuntimeError("forced canonical resolver failure")
+
+    monkeypatch.setattr(sem, "stance_for_symbol", _boom)
+
+    # verdict=None + label "Re-enter ADBE" → NOT RE_ENTER
+    q = {"items": [{"symbol": "ADBE", "verdict": None,
+                    "directive_label": "Re-enter ADBE"}]}
+    assert cp.stance_for("ADBE", q) != "RE_ENTER"
+
+    # state="READY TO REVIEW" + label "RE_ENTER" → NOT RE_ENTER
+    q2 = {"items": [{"symbol": "ADBE", "verdict": None, "state": "READY TO REVIEW",
+                     "directive_label": "RE_ENTER"}]}
+    assert cp.stance_for("ADBE", q2) != "RE_ENTER"
+
+    # explicit verdict=RE_ENTER → RE_ENTER (structured verdict, not text)
+    q3 = {"items": [{"symbol": "ADBE", "verdict": "RE_ENTER"}]}
+    assert cp.stance_for("ADBE", q3) == "RE_ENTER"
+
+
+def test_canonical_blocking_honors_actionability_field():
+    """P0-3: actionability is a canonical blocking representation."""
+    from scripts.lib.cio_decision_semantics import canonical_act_now
+    cases = [
+        {"act_now": True, "actionability": "DATA_CONFLICT"},
+        {"act_now": True, "actionability": "REVALIDATE"},
+        {"act_now": True, "actionability": "STALE_REFRESH_REQUIRED"},
+        {"act_now": True, "freshness": "STALE"},
+        {"act_now": True, "action_label": "DATA_CONFLICT"},
+    ]
+    for d in cases:
+        act_now, blocking = canonical_act_now(d)
+        assert act_now is False, d
+        assert blocking is not None
+    assert canonical_act_now({"act_now": True}) == (True, None)
+    assert canonical_act_now({"act_now": True, "action_label": "ACT_NOW"}) == (True, None)
+
+
+def _material_scan_row(freshness=None, action_label="ACT_NOW", act_now=True):
+    return {
+        "symbol": "SCHD",
+        "stance_code": "TRIM",
+        "stance": "TRIM",
+        "decision_id": "dec_material_freshness",
+        "act_now": act_now,
+        "action_label": action_label,
+        "freshness": freshness,
+        "recommended_delta_usd": -20000.0,
+        "why_now": "Advisory TRIM — SCHD concentration above single-name fire.",
+        "decision_input_digest": "in_digest",
+        "decision_evidence_digest": "ev_digest",
+        "account": "schwab_rollover_ira",
+        "current_weight_pct": 17.5,
+        "current_value_usd": 225000.0,
+    }
+
+
+def test_material_scan_preserves_freshness_and_blocks_act_now():
+    """P0-2: the real material-scan projection must not drop freshness."""
+    from scripts.lib.cio_material_scan import _canonical_decisions
+    from scripts.lib.cio_alex_telegram import format_cio_message
+
+    for freshness in ("STALE", "EXPIRED"):
+        proj = _canonical_decisions(
+            {"position_decisions": [_material_scan_row(freshness=freshness)]}
+        )[0]
+        assert proj.get("freshness") == freshness, proj.get("freshness")
+        assert proj.get("act_now") is False
+        assert proj.get("current_action") in ("REVALIDATE", "WAIT")
+        assert "MY CALL" not in format_cio_message(proj)
+
+    # DATA_CONFLICT via action_label must also survive projection.
+    proj = _canonical_decisions(
+        {"position_decisions": [_material_scan_row(action_label="DATA_CONFLICT")]}
+    )[0]
+    assert proj.get("act_now") is False
+    assert proj.get("actionability") == "DATA_CONFLICT"
+    assert "MY CALL" not in format_cio_message(proj)
+
+
+def test_reentry_unrelated_act_now_cannot_activate_ready():
+    """P0-4: an unrelated ACT_NOW must never authorize a READY re-entry name."""
+    from scripts.lib.cio_material_scan import _reentry_decision
+    from scripts.lib.cio_alex_telegram import format_cio_message
+
+    reclass = {"ready": ["ADBE"], "near": [], "wait": [], "n": 1, "call": "RE_ENTER"}
+    plan = {
+        "cash_posture_status": "ABOVE_BAND",
+        "capital_uses": {"reentry_usd": 5000.0},
+        "freshness_materiality_gate": {"act_now_count": 1, "counts": {"ACT_NOW": 1}},
+        "position_decisions": [
+            {"symbol": "SCHD", "stance_code": "TRIM", "act_now": True,
+             "action_label": "ACT_NOW", "recommended_delta_usd": -20000.0,
+             "why_now": "Advisory TRIM — SCHD concentration fire"},
+        ],
+    }
+    dec = _reentry_decision(reclass, plan)
+    assert dec["action"] == "WAIT"
+    assert dec["stance_code"] == "WAIT"
+    assert dec["act_now"] is False
+    assert dec["recommended_delta_usd"] == 0.0
+    assert "MY CALL" not in format_cio_message(dec)
+
+
+def test_reentry_governed_positive_fixture():
+    """P0-4: candidate-specific governed RE_ENTER + ACT_NOW may re-enter."""
+    from scripts.lib.cio_material_scan import _reentry_decision
+
+    reclass = {"ready": ["ADBE"], "near": [], "wait": [], "n": 1, "call": "RE_ENTER"}
+    plan = {
+        "cash_posture_status": "ABOVE_BAND",
+        "capital_uses": {"reentry_usd": 5000.0},
+        "freshness_materiality_gate": {"act_now_count": 0, "counts": {"ACT_NOW": 0}},
+        "position_decisions": [
+            {"symbol": "ADBE", "stance_code": "RE_ENTER", "act_now": True,
+             "action_label": "ACT_NOW", "recommended_delta_usd": 5000.0,
+             "why_now": "governed re-enter"},
+        ],
+    }
+    dec = _reentry_decision(reclass, plan)
+    assert dec["action"] == "RE_ENTER"
+    assert dec["act_now"] is True
+    assert dec["recommended_delta_usd"] == 5000.0
+
+
+def test_telegram_data_conflict_prose_distinct():
+    """P1-1: DATA_CONFLICT prose must not collapse into 'marks are stale'."""
+    from scripts.lib.cio_alex_telegram import classify_actionability, format_cio_message
+
+    conflict = {
+        "decision_id": "dec_conflict", "symbol": "SCHD", "stance_code": "TRIM",
+        "action": "TRIM", "act_now": True, "action_label": "DATA_CONFLICT",
+        "recommended_delta_usd": -20000.0, "why_now": "concentration fire",
+        "decision_input_digest": "in", "decision_evidence_digest": "ev",
+    }
+    cls = classify_actionability(conflict)
+    assert cls["actionability"] == "DATA_CONFLICT"
+    assert cls["act_now"] is False
+    msg = format_cio_message(conflict)
+    assert "DATA CONFLICT — ACT_NOW=false." in msg
+    assert "marks are stale" not in msg
+
+    stale = dict(conflict, action_label="STALE_REFRESH_REQUIRED", decision_id="dec_stale")
+    assert "marks are stale" in format_cio_message(stale)
+
+    rev = dict(conflict, action_label="REVALIDATE", decision_id="dec_rev")
+    msg3 = format_cio_message(rev)
+    assert "REVALIDATE — ACT_NOW=false." in msg3
+    assert "marks are stale" not in msg3
+
+
+def test_topology_systemd_enumerates_user_scope(monkeypatch):
+    """P1-2: systemd enumeration must cover both system and user managers."""
+    from scripts.lib import cio_topology_audit as topo
+
+    def fake_run(args, timeout=15):
+        argv = list(args)
+        is_user = "--user" in argv
+        if "list-units" in argv:
+            if is_user:
+                return "tradeai-cio-telegram.service loaded active running CIO Telegram\n"
+            return "cio-governed-bridge.service loaded active running CIO bridge\n"
+        if "show" in argv:
+            return "ExecStart=/usr/bin/python3 /home/johnclaw/trade-ai-releases/portfolio-server/scripts/cio_worker.py\nWorkingDirectory=/home/johnclaw/trade-ai-releases/portfolio-server\nActiveState=active\nLoadState=loaded"
+        return ""
+
+    monkeypatch.setattr(topo, "_run", fake_run)
+    units = topo.enumerate_systemd()
+    scopes = {u["systemd_scope"] for u in units}
+    assert scopes == {"system", "user"}
+    user_units = [u for u in units if u["systemd_scope"] == "user"]
+    assert user_units and user_units[0]["unit"] == "tradeai-cio-telegram.service"
+    sys_units = [u for u in units if u["systemd_scope"] == "system"]
+    assert sys_units and sys_units[0]["unit"] == "cio-governed-bridge.service"
+
+
+def test_topology_systemd_scope_visibility_fail_soft(monkeypatch):
+    """P1-2: inability to query a scope is reported, never silently PASS."""
+    from scripts.lib import cio_topology_audit as topo
+
+    def fake_status(args, timeout=15):
+        if "--user" in list(args):
+            return "", False
+        return "unit list", True
+
+    monkeypatch.setattr(topo, "_run_status", fake_status)
+    vis = topo.systemd_scope_visibility()
+    assert vis["system"]["ok"] is True
+    assert vis["user"]["ok"] is False
+    assert vis["user"]["queried"] is True
