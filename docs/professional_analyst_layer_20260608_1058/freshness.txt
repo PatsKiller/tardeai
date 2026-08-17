@@ -1,6 +1,0 @@
-              tbl              | rows  | syms |   newest   
--------------------------------+-------+------+------------
- analyst_consensus_history     | 32124 | 1685 | 2026-06-08
- yahoo_analyst_targets_history |  1499 |   36 | 2026-06-08
-(2 rows)
-

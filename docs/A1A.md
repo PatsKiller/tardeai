@@ -57,7 +57,7 @@ If a section is inaccurate, **rewrite it**. Do not:
 
 If something is no longer true:
 - Remove it from the active document
-- If historical context is needed, move it to `docs/_archive/` or `docs/archive/`
+- If historical context is needed, rely on git history or Google Drive (the in-repo `docs/_archive/` was purged 2026-08-16)
 - Update the index to reflect the removal
 
 Do not hide stale content in appendices.
@@ -113,11 +113,8 @@ After A1A runs:
 |----------|---------|
 | `docs/` | Active top-level docs (master docs, operational guides, audits) |
 | `docs/project/` | Project-specific docs (strategies, agents, skills, architecture) |
-| `docs/v4_1_discovery/` | LLM fleet v4.1 discovery artifacts and crontab backups |
-| `docs/_archive/` | Archived session-specific and superseded docs |
-| `docs/archive/` | Older archived docs (pre-session-29) |
-| `docs/backups/` | System backups |
-| `docs/project/PROJECT_DOC_INDEX.md` | **The index** — single source of truth for what is current |
+| *(removed 2026-08-16)* | `docs/_archive/`, `docs/archive/`, `docs/backups/`, `docs/v4_1_discovery/` were purged — superseded/backup content now lives in git history + Google Drive |
+| `docs/DOCUMENTATION_INDEX.md` | **The index** — single source of truth for what is current (supersedes `docs/project/PROJECT_DOC_INDEX.md`) |
 | `docs/A1A.md` | **This file** — the protocol governing all doc changes |
 
 ---

@@ -1,2 +1,0 @@
-[freshness] 1/12 issues; 1 SIEM; 0 auto-fix; 0 P0/P1
-  [P2] topic_ingestion: topic_monitor oldest item 72.1h (max 72h)

@@ -1,8 +1,0 @@
-{
-  "timestamp": "2026-05-15T02:31:21.087638+00:00",
-  "since_hours": 72,
-  "log_calls": 0,
-  "pilot_available": false,
-  "pilot_count": 0,
-  "recommendation": "observe_after_more_usage"
-}

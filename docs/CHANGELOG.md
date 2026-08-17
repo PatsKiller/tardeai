@@ -1,5 +1,34 @@
 # Changelog
 
+## 2026-08-16 — Deep docs/ cleanup (3,436 → 1,779 files; 2.30 GB → 17 MB)
+
+Due-diligence pass over `docs/` to purge "version one/two" snapshots, stale backups, and
+troubleshooting screenshots that had accumulated across sessions. No broker/order path, no code
+change — documentation only.
+
+- **Stale binary backups (2.13 GB):** `docs/backups/trade_ai_backup_20260619.zip` (2.08 GB),
+  `docs/playwright/journal_audit_20260606_1353.tgz`, `docs/ui_review/journal_audit_20260611.tar.gz`.
+- **`docs/_archive/` removed (1,232 files, 10 MB):** session 17–43 / phase A/B1 / pre-cloud-rebuild /
+  2026-05-24-cleanup snapshots. Recoverable via git history.
+- **`.bak_*` DOCX backups (31 files):** duplicate `Trade_AI_v12_Reference_Architecture.docx` snapshots.
+- **Troubleshooting screenshots (~94 images, ~30 MB):** `ui_review/`, `_findings/{watch_v4_shots,
+  sector_leaders_s1, defense_redesign, inverse_stoplight_screens, options_lifecycle_screens}`,
+  `hermes/PHASE206H_v3_hermes_legacy.png`, 2 unreferenced `architecture/v3_*.png`. Referenced
+  architecture diagrams and `design/ActiveTrader_Implementation_Pack` graphics were kept.
+- **23 dated snapshot dirs (1.2 MB):** `atm_lifecycle_v1_2026_05_*` and the 2026-06-08 monitor/audit
+  folders. `atm_audit_2026_05_26/` was kept (canonical, TIER 1).
+- **Morning briefs:** kept latest 7 `openclaw_aegis_morning_brief_*.md`, removed 75 older.
+- **`DOCS_ROSTER.md` removed:** self-labeled "stale, last full scan 2026-05-26", superseded by
+  `DOCUMENTATION_INDEX.md`.
+
+Canonical docs updated to drop the now-removed `docs/_archive/` / `docs/backups/` pointers:
+`DOCUMENTATION_INDEX.md`, `A1A.md`, `LIVE_SYSTEM_FACTS.md`, `operations/DOCUMENTATION_STANDARDS.md`.
+
+Note: grok/chatgpt references were left intact — those lanes remain in active production use
+(top-20 external curation, subject enhancement, protection advisor, grok stop review per live
+crontab). Only the `research_scheduler.py` position-research lane migrated to DeepSeek (already
+documented in `RESEARCH_PRIORITIZATION.md`).
+
 ## 2026-08-13 — Topic ingest<->curate loop broken + projections surfaced to desk
 
 Root-caused the 8/3 burst: `topic_ingestion.py` auto-spawned `topic_curator.py --improve-queries`
