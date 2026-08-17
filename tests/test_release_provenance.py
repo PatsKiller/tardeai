@@ -151,6 +151,15 @@ def test_validator_fails_source_commit_build_sha_mismatch(tmp_path):
     assert any("BUILD_SHA" in e and "canonical" in e for e in errors)
 
 
+def test_validator_fails_git_sha_mismatch(tmp_path):
+    rel = tmp_path / "rel"
+    _write_artifacts(rel, OLD_SHA)
+    (rel / "GIT_SHA").write_text(NEW_SHA + "\n", encoding="utf-8")
+    ok, errors = validator.validate(rel)
+    assert not ok
+    assert any("GIT_SHA" in e and "canonical" in e for e in errors)
+
+
 def test_validator_fails_build_stamp_mismatch(tmp_path):
     rel = tmp_path / "rel"
     _write_artifacts(rel, OLD_SHA)
