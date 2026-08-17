@@ -8,28 +8,52 @@ from financial_senses.result import STATUS_NOT_CONFIGURED, STATUS_OK
 
 
 class FakeFredClient:
-    """Simulates FRED/ALFRED with vintage-aware responses."""
+    """Models FRED with optional per-observation vintages.
 
-    def __init__(self, observations, vintage_by_date=None, vintages=None):
-        self._observations = observations  # list of {date, value}
-        self.vintage_by_date = vintage_by_date or {}
-        self.vintages = vintages or []
+    latest_observations: list of {date, value} under the LATEST vintage.
+    as_of: dict keyed by (observation_date, realtime_end) -> value, modeling
+           "what value was known as-of realtime_end for observation_date".
+    _vintage_dates: list of date strings (official shape).
+    """
 
-    def observations(self, series_id, realtime_start=None, realtime_end=None):
-        # Vintage path: return only observations known as of realtime_end.
+    def __init__(self, latest_observations=None, as_of=None, vintage_dates=None):
+        self.latest_observations = latest_observations or []
+        self.as_of = as_of or {}
+        self._vintage_dates = vintage_dates or []
+
+    def observations(self, series_id, realtime_start=None, realtime_end=None,
+                     observation_start=None, observation_end=None):
+        obs = list(self.latest_observations)
+        if observation_start:
+            obs = [o for o in obs if o["date"] >= observation_start]
+        if observation_end:
+            obs = [o for o in obs if o["date"] <= observation_end]
         if realtime_end:
-            return [o for o in self._observations if o["date"] <= realtime_end]
-        return list(self._observations)
-
-    def vintage_dates(self, series_id, limit=10):
-        return self.vintages
+            obs = [
+                {"date": o["date"], "value": self.as_of.get((o["date"], realtime_end), o["value"])}
+                for o in obs
+            ]
+        return obs
 
     def latest(self, series_id):
-        return self._observations[-1] if self._observations else None
+        return self.latest_observations[-1] if self.latest_observations else None
 
-    def value_as_of(self, series_id, decision_date):
-        eligible = [o for o in self._observations if o["date"] <= decision_date]
-        return eligible[-1] if eligible else None
+    def latest_as_of(self, series_id, decision_date):
+        obs = [o for o in self.latest_observations if o["date"] <= decision_date]
+        if not obs:
+            return None
+        o = obs[-1]
+        value = self.as_of.get((o["date"], decision_date), o["value"])
+        return {"date": o["date"], "value": value}
+
+    def observation_value(self, series_id, observation_date, realtime_end=None):
+        for o in self.latest_observations:
+            if o["date"] == observation_date:
+                return self.as_of.get((observation_date, realtime_end), o["value"])
+        return None
+
+    def vintage_dates(self, series_id, limit=10):
+        return self._vintage_dates
 
 
 def test_not_configured_without_key():
@@ -55,8 +79,15 @@ def test_latest_observation_has_provenance():
     assert r.facts[0].source_type == "PRIMARY_GOVERNMENT"
 
 
+def test_get_series_result_validates():
+    client = FakeFredClient([{"date": "2024-02-01", "value": 5.5}])
+    p = FredAlfredProvider(api_key="k", client=client)
+    r = p.query("macro.get_series", {"series_id": "DFF"})
+    assert r.validate() == []
+
+
 def test_vintage_does_not_leak_future_revision():
-    # A later revision (5.9 on 2025-01-01) must not appear in a 2024 decision.
+    # A later observation (2025-01-01 = 5.9) must not appear in a 2024 decision.
     client = FakeFredClient(
         [
             {"date": "2024-01-01", "value": 5.25},
@@ -71,7 +102,23 @@ def test_vintage_does_not_leak_future_revision():
     assert r.data["decision_time_value"]["value"] != 5.9
 
 
-def test_compare_vintages_reports_revision_delta():
+def test_compare_vintages_same_observation_revision():
+    # A TRUE revision: same observation date, two vintages.
+    client = FakeFredClient(
+        latest_observations=[{"date": "2024-06-01", "value": 5.7}],  # latest revised
+        as_of={("2024-06-01", "2024-07-01"): 5.5},                   # as-of decision time
+    )
+    p = FredAlfredProvider(api_key="k", client=client)
+    r = p.query("macro.compare_vintages", {"series_id": "DFF", "decision_date": "2024-07-01"})
+    assert r.status == STATUS_OK
+    assert r.data["observation_date"] == "2024-06-01"
+    assert r.data["decision_time_value"] == 5.5
+    assert r.data["latest_revised_value"] == 5.7
+    assert r.data["revision_delta"] == 0.2
+
+
+def test_compare_vintages_no_future_leak():
+    # Different observation dates are NOT a revision.
     client = FakeFredClient(
         [
             {"date": "2024-06-01", "value": 5.5},
@@ -80,9 +127,24 @@ def test_compare_vintages_reports_revision_delta():
     )
     p = FredAlfredProvider(api_key="k", client=client)
     r = p.query("macro.compare_vintages", {"series_id": "DFF", "decision_date": "2024-12-31"})
-    assert r.data["decision_time_value"] == 5.5
-    assert r.data["latest_revised_value"] == 5.9
-    assert r.data["revision_delta"] == 0.4
+    assert r.data["observation_date"] == "2024-06-01"
+    # Same observation date (2024-06-01) has no revision => delta 0, not 0.4.
+    assert r.data["revision_delta"] == 0.0
+
+
+def test_vintage_dates_official_shape():
+    client = FakeFredClient(vintage_dates=["2024-06-01", "2024-07-01"])
+    p = FredAlfredProvider(api_key="k", client=client)
+    r = p.query("macro.get_vintage_dates", {"series_id": "DFF"})
+    assert r.status == STATUS_OK
+    assert r.data["vintage_dates"] == ["2024-06-01", "2024-07-01"]
+
+
+def test_no_release_dates_capability():
+    p = FredAlfredProvider(api_key="k", client=FakeFredClient())
+    names = [c.name for c in p.capabilities()]
+    assert "macro.get_release_dates" not in names
+    assert "macro.get_vintage_dates" in names
 
 
 def test_decision_time_snapshot():
@@ -107,4 +169,11 @@ def test_requires_series_id():
     client = FakeFredClient([])
     p = FredAlfredProvider(api_key="k", client=client)
     r = p.query("macro.get_series", {})
+    assert r.status == "INVALID_REQUEST"
+
+
+def test_malformed_decision_date_rejected():
+    client = FakeFredClient([{"date": "2024-06-01", "value": 5.5}])
+    p = FredAlfredProvider(api_key="k", client=client)
+    r = p.query("macro.compare_vintages", {"series_id": "DFF", "decision_date": "not-a-date"})
     assert r.status == "INVALID_REQUEST"

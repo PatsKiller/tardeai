@@ -129,11 +129,15 @@ def get_company_concept(
     tag: str,
     fetcher: Optional[Callable[[str], dict]] = None,
 ) -> dict:
-    """Return a single XBRL concept time series (us-gaap default)."""
+    """Return a single XBRL concept time series (us-gaap default).
+
+    The `tag` is a taxonomy concept name (e.g. "AccountsPayableCurrent") and its
+    exact casing is preserved — it is NOT lowercased.
+    """
     cik = _normalize_cik(cik)
     if not cik:
         return {}
-    tag = (tag or "").strip().lower()
+    tag = (tag or "").strip()
     fetcher = fetcher or _default_fetcher
     return fetcher(f"{SEC_EDGAR}/api/xbrl/companyconcept/CIK{cik}/us-gaap/{tag}.json") or {}
 
@@ -147,10 +151,11 @@ def _normalize_cik(cik: str) -> str:
 
 
 def latest_values(facts: dict) -> dict:
-    """Flatten companyfacts JSON into tag -> latest {value, units, end, filed}.
+    """Flatten companyfacts JSON into tag -> latest context dict.
 
-    For each tag, picks the most recent unit entry by end date. Returns a dict
-    keyed by US-GAAP tag. This is a pure, deterministic transform.
+    Preserves the full XBRL context (value, units, start, end, form, fp, fy,
+    frame, filed) so downstream filing-diff can establish like-for-like period
+    semantics. For a tag, the most recent row by (end, filed) is selected.
     """
     out: dict = {}
     units_by_tag = (facts or {}).get("facts", facts or {})
@@ -169,16 +174,18 @@ def latest_values(facts: dict) -> dict:
                 if not isinstance(row, dict) or row.get("val") is None:
                     continue
                 end = row.get("end") or ""
-                if best is None or end > best["end"]:
+                filed = row.get("filed") or ""
+                if best is None or (end, filed) > (best["end"], best.get("filed") or ""):
                     best = {
                         "value": row.get("val"),
                         "units": unit,
-                        "end": end,
                         "start": row.get("start"),
-                        "filed": row.get("filed"),
+                        "end": end,
                         "form": row.get("form"),
-                        "fy": row.get("fy"),
                         "fp": row.get("fp"),
+                        "fy": row.get("fy"),
+                        "frame": row.get("frame"),
+                        "filed": filed,
                     }
         if best is not None:
             out[tag] = best

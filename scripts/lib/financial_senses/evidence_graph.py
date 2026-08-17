@@ -21,6 +21,7 @@ from typing import Any, Optional
 from .provider import BaseProvider, Capability
 from .result import FinancialSenseResult, STATUS_OK
 from .source_governance import (
+    FRESHNESS_STALE,
     SOURCE_MEMORY_CONTEXT,
     SOURCE_MODEL_INFERENCE,
     can_back_fact,
@@ -65,6 +66,9 @@ VALID_EDGE_RELATIONS = frozenset(
 )
 
 UNSUPPORTED = "UNSUPPORTED"
+CONTEXTUAL_ONLY = "CONTEXTUAL_ONLY"
+SUPPORTED = "SUPPORTED"
+CONTESTED = "CONTESTED"
 
 # Edges that count as positive evidence for a claim.
 _EVIDENCE_IN = frozenset({EDGE_SUPPORTS, EDGE_DERIVED_FROM, EDGE_QUALIFIES})
@@ -84,6 +88,7 @@ class GraphNode:
     quality: Optional[str] = None
     source: Optional[str] = None
     observed_at: Optional[str] = None
+    freshness: Optional[str] = None
     fields: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
@@ -156,24 +161,64 @@ class ClaimEvidenceGraph:
             if e.id in seen_edges:
                 errors.append(f"edge {e.id}: duplicate edge id")
             seen_edges.add(e.id)
-        # Unsupported claims: a CLAIM with no incoming evidence.
+        # Claims: classify evidence and assign a support status.
         for nid, node in self.nodes.items():
             if node.type == NODE_CLAIM:
-                has_evidence = any(
-                    e.to_id == nid and e.relation in _EVIDENCE_IN for e in self.edges
-                )
-                if not has_evidence and node.status != UNSUPPORTED:
+                authoritative, contextual, contradiction, _stale = self._evidence_classification(nid)
+                if not authoritative and not contextual and not contradiction:
                     node.status = UNSUPPORTED
+                elif not authoritative and contextual:
+                    # MEMORY_REF is context, not a substitute for a FACT.
+                    node.status = CONTEXTUAL_ONLY
+                elif contradiction:
+                    node.status = CONTESTED
+                else:
+                    node.status = SUPPORTED
         return errors
 
+    def _evidence_classification(self, claim_id: str):
+        """Split a claim's incoming evidence into authority classes.
+
+        Returns (authoritative_fact_support, contextual_support, contradiction,
+        stale_fact_support). A MEMORY_REF source is contextual, never
+        authoritative.
+        """
+        authoritative = []
+        contextual = []
+        contradiction = []
+        stale_support = []
+        for e in self.edges:
+            if e.to_id != claim_id:
+                continue
+            src = self.nodes.get(e.from_id)
+            src_type = src.type if src else None
+            src_fresh = (src.freshness or "").upper() if src else ""
+            if e.relation == EDGE_CONTRADICTS:
+                contradiction.append(e.to_dict())
+            elif e.relation in _EVIDENCE_IN:
+                if src_type == NODE_MEMORY_REF:
+                    contextual.append(e.to_dict())
+                else:
+                    authoritative.append(e.to_dict())
+                if src_fresh == FRESHNESS_STALE:
+                    stale_support.append(e.to_dict())
+        return authoritative, contextual, contradiction, stale_support
+
     def claim_evidence(self, claim_id: str) -> dict:
-        supporting = [e.to_dict() for e in self.edges if e.to_id == claim_id and e.relation in _EVIDENCE_IN]
-        contradicting = [e.to_dict() for e in self.edges if e.to_id == claim_id and e.relation == EDGE_CONTRADICTS]
+        authoritative, contextual, contradiction, stale_support = self._evidence_classification(claim_id)
         node = self.nodes.get(claim_id)
+        # A claim is actionable only with authoritative (fact-backed) support
+        # that is not stale. Stale facts remain historical evidence.
+        actionable = bool(authoritative) and not stale_support
         return {
             "claim": node.to_dict() if node else None,
-            "supporting": supporting,
-            "contradicting": contradicting,
+            "authoritative_fact_support": authoritative,
+            "contextual_support": contextual,
+            "contradiction": contradiction,
+            "supporting": authoritative + contextual,
+            "contradicting": contradiction,
+            "stale_fact_support": stale_support,
+            "actionable": actionable,
             "status": node.status if node else UNSUPPORTED,
         }
 
@@ -217,6 +262,15 @@ class ClaimEvidenceGraph:
             "cycles": self.detect_cycles(),
             "unsupported_claims": [
                 nid for nid, n in self.nodes.items() if n.type == NODE_CLAIM and n.status == UNSUPPORTED
+            ],
+            "contextual_only_claims": [
+                nid for nid, n in self.nodes.items() if n.type == NODE_CLAIM and n.status == CONTEXTUAL_ONLY
+            ],
+            # Stale facts are preserved but never silently treated as current.
+            "stale_facts": [
+                nid
+                for nid, n in self.nodes.items()
+                if n.type == NODE_FACT and (n.freshness or "").upper() == FRESHNESS_STALE
             ],
         }
 

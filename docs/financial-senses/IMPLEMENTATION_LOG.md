@@ -101,3 +101,89 @@ Timestamps in UTC-4 (local). Updated after every phase.
 - Central MCP gateway registration — deferred to post-merge PR (AIF branch).
 - Live FRED / OpenFIGI credentials — `NOT_CONFIGURED` until provided (contracts
   and fixtures are complete and honest).
+
+## 2026-08-16 — Remediation pass (PR #340 financial-semantics hardening)
+
+Adversarial review verdict: **HOLD — remediate on same branch, do not merge.**
+Architecture accepted; closed the following financial-semantics and exact-head
+defects. No redesign, no canonical SEC ingestion changes, no AIF overlap.
+
+### P0-1 — FRED/ALFRED vintage semantics
+- `compare_vintages()` now compares the **same observation date** across two
+  vintages (decision-time value vs latest revised value for that observation),
+  not "latest then" vs "latest now". Ordinary economic change is no longer
+  mislabeled as a revision.
+- `FredClient.vintage_dates()` parses the official JSON shape (list of date
+  strings), not a list of objects.
+- Renamed `macro.get_release_dates` → `macro.get_vintage_dates`.
+- FRED request params URL-encoded via `urllib.parse.urlencode`.
+- `decision_date` validated; malformed dates rejected.
+
+### P0-2 — SEC XBRL like-for-like period semantics
+- `latest_values()` and `_facts_at_period()` capture full XBRL context
+  (`start`, `end`, `form`, `fp`, `fy`, `frame`, `filed`) and select the latest
+  valid filing/amendment deterministically.
+- `compare_filing_facts()` classifies duration kind (ANNUAL/QUARTERLY/YTD/
+  INSTANT), requires matching units and fiscal period for duration facts, and
+  returns `COMPARISON_UNAVAILABLE` (with reason) when equivalence cannot be
+  established; `COMPARISON_NOT_APPLICABLE` for facts absent in both periods.
+- `get_company_concept()` no longer lowercases taxonomy tags.
+
+### P0-3 — OpenFIGI multi-identifier cross-validation
+- Mapping-job boundaries preserved; per-identifier FIGI sets are intersected
+  (1 → `RESOLVED`, >1 → `AMBIGUOUS`, 0 → `CONFLICT`).
+- FIGI queries use `ID_BB_GLOBAL` (official v3 idType), not `ID_FIGI`.
+- Supplied CUSIP/ISIN retained as asserted input evidence, not OpenFIGI output.
+- Narrowing fields (`exchCode`, `securityType`) forwarded for `TICKER` jobs.
+
+### P0-4 — FACT/CLAIM/MODEL_ESTIMATE boundary
+- Added `ModelEstimate` and `Opinion` to `FinancialSenseResult` (`estimates[]`,
+  `opinions[]`).
+- `validate()` enforces `can_back_fact()`, requires `source_type`,
+  `observed_at`/`as_of`, and `quality` on every `Fact`; `MODEL_INFERENCE`/
+  `MEMORY_CONTEXT` cannot back a `FACT`.
+- Stress `stress_estimated_pnl` is now a `ModelEstimate`, not a `Fact`.
+- `BaseProvider.query()` validates its result before release and downgrades
+  `OK` → `PARTIAL` with warnings on schema violations.
+
+### P0-5 — stress shock unit contract
+- `ShockValue {value, unit}` with `PERCENT` / `DECIMAL_RETURN` / `BASIS_POINTS`;
+  normalized to decimal returns internally; ranges validated (`InvalidShock` →
+  `INVALID_REQUEST`).
+- Explicit canonical `portfolio_nav` required for `estimated_pct` when shorts
+  or derivative exposures exist; `estimated_pct` is `unavailable` when NAV
+  cannot be established. `cash_buffer_effect` is `None` until implemented.
+
+### P1-1/P1-2 — critic generation identity + fail-closed evidence
+- `critic_review_id` binds `decision_id`, `input_digest`, `evidence_digest`,
+  and critic version.
+- Missing `identity_status` defaults to `UNKNOWN` (not `RESOLVED`).
+- Unmodeled portfolio effects above threshold contribute to
+  `MATERIAL_OBJECTION`; absent evidence cannot yield `NO_MATERIAL_OBJECTION`.
+
+### P1-3 — SEC status semantics
+- No CIK → `NOT_FOUND`/`PARTIAL` (not `NOT_CONFIGURED`); DB failure reaches the
+  structured `DATA_UNAVAILABLE` path (fixed `len(None)` ordering).
+
+### P1-4 — claim graph authority
+- Exposed evidence classes (`authoritative_fact_support`, `contextual_support`,
+  `contradiction`) and claim statuses (`SUPPORTED`/`CONTEXTUAL_ONLY`/
+  `CONTESTED`); `MEMORY_REF` is non-authoritative; stale facts preserved with
+  freshness/invalidated metadata and are not actionable.
+
+### P1-5 — exact-head CI + live smoke
+- `.github/workflows/financial-senses-ci.yml` runs
+  `python3 -m pytest tests/financial_senses/ -q` plus the existing SEC
+  regression on PR changes to the financial-senses namespace (not
+  branch-protection-required).
+- `live_smoke.py` adds an optional, bounded, read-only live smoke harness
+  (SEC unauthenticated; FRED/OpenFIGI only when keys are configured). Recorded
+  separately from the unit-test PASS.
+
+### Proof
+- `tests/financial_senses/` suite: **162 passed, 0 failed** (fully offline).
+- `tests/test_sec_form4_momentum_context.py`: **17/17 pass**.
+- Provider-wide acceptance test (`test_acceptance_validate.py`): every
+  supported capability returns `validate() == []`.
+- production mutations: 0 · Telegram sends: 0 · DB writes: 0 ·
+  authority: `READ_ONLY_ADVISORY`.

@@ -2,17 +2,21 @@
 
 Read-only macro context. Historical queries are vintage-aware: they distinguish
 LATEST_REVISED_VALUE from VALUE_AVAILABLE_AS_OF_DECISION_TIME and never leak a
-later revision backward into a historical decision. No network in unit tests —
-the FRED client is injectable.
+later revision backward into a historical decision.
+
+A revision compares the SAME observation date across two vintages, not two
+different observations. No network in unit tests — the FRED client is
+injectable.
 """
 from __future__ import annotations
 
+from datetime import date as _date
 from typing import Any, Callable, Optional
+from urllib.parse import urlencode
 
 from .provider import BaseProvider, Capability
-from .result import Fact, FinancialSenseResult, Quality, Subject, STATUS_OK
+from .result import DATA_UNAVAILABLE, Fact, FinancialSenseResult, STATUS_OK
 from .source_governance import SOURCE_PRIMARY_GOVERNMENT, grade_for_source
-from . import macro_catalog
 
 FRED_BASE = "https://api.stlouisfed.org/fred"
 SOURCE_MACRO = SOURCE_PRIMARY_GOVERNMENT
@@ -32,8 +36,24 @@ def _parse_observations(payload: dict) -> list[dict]:
     return rows
 
 
+def _validate_date(value: str) -> bool:
+    """True if value is a well-formed ISO YYYY-MM-DD date."""
+    if not value:
+        return False
+    try:
+        _date.fromisoformat(value)
+        return True
+    except ValueError:
+        return False
+
+
 class FredClient:
-    """Thin read-only client over the official FRED/ALFRED JSON API."""
+    """Thin read-only client over the official FRED/ALFRED JSON API.
+
+    Supports the real-time/vintage model: `realtime_end` bounds the vintage
+    (what was known as of that date), while `observation_start`/`observation_end`
+    bound the economic observation dates.
+    """
 
     def __init__(
         self,
@@ -54,10 +74,11 @@ class FredClient:
             return json.loads(resp.read())
 
     def _get(self, path: str, params: dict) -> dict:
-        params = dict(params)
-        params["api_key"] = self.api_key
-        params["file_type"] = "json"
-        qs = "&".join(f"{k}={v}" for k, v in params.items() if v is not None)
+        q = dict(params)
+        q["api_key"] = self.api_key
+        q["file_type"] = "json"
+        # URL-encode all parameters (do not hand-concatenate).
+        qs = urlencode({k: v for k, v in q.items() if v is not None})
         return self._fetcher(f"{self.base}/{path}?{qs}") or {}
 
     def observations(
@@ -65,29 +86,62 @@ class FredClient:
         series_id: str,
         realtime_start: Optional[str] = None,
         realtime_end: Optional[str] = None,
+        observation_start: Optional[str] = None,
+        observation_end: Optional[str] = None,
     ) -> list[dict]:
         params = {"series_id": series_id}
         if realtime_start:
             params["realtime_start"] = realtime_start
         if realtime_end:
             params["realtime_end"] = realtime_end
+        if observation_start:
+            params["observation_start"] = observation_start
+        if observation_end:
+            params["observation_end"] = observation_end
         return _parse_observations(self._get("series/observations", params))
 
     def vintage_dates(self, series_id: str, limit: int = 10) -> list[str]:
+        """Return vintage dates. Official shape is a list of date strings."""
         params = {"series_id": series_id, "limit": str(limit)}
         payload = self._get("series/vintagedates", params)
-        return [d.get("date") for d in (payload or {}).get("vintage_dates") or [] if d.get("date")]
+        raw = (payload or {}).get("vintage_dates") or []
+        out: list[str] = []
+        for d in raw:
+            if isinstance(d, str):
+                out.append(d)
+            elif isinstance(d, dict):
+                out.append(d.get("date"))
+        return [x for x in out if x]
 
     def latest(self, series_id: str) -> Optional[dict]:
+        """Most recent observation under the latest vintage."""
         obs = self.observations(series_id)
         return obs[-1] if obs else None
 
-    def value_as_of(self, series_id: str, decision_date: str) -> Optional[dict]:
-        """Value available as-of decision_date (ALFRED vintage, no future leak)."""
-        obs = self.observations(series_id, realtime_start=decision_date, realtime_end=decision_date)
-        # Only observations dated <= decision_date; realtime_end already bounds revisions.
-        eligible = [o for o in obs if o["date"] <= decision_date]
-        return eligible[-1] if eligible else None
+    def latest_as_of(self, series_id: str, decision_date: str) -> Optional[dict]:
+        """Most recent observation known as-of decision_date (vintage-bounded)."""
+        obs = self.observations(
+            series_id, realtime_end=decision_date, observation_end=decision_date
+        )
+        return obs[-1] if obs else None
+
+    def observation_value(
+        self,
+        series_id: str,
+        observation_date: str,
+        realtime_end: Optional[str] = None,
+    ) -> Optional[float]:
+        """Value of a specific observation_date. realtime_end=None => latest vintage."""
+        obs = self.observations(
+            series_id,
+            observation_start=observation_date,
+            observation_end=observation_date,
+            realtime_end=realtime_end,
+        )
+        for o in obs:
+            if o["date"] == observation_date:
+                return o["value"]
+        return None
 
 
 class FredAlfredProvider(BaseProvider):
@@ -103,7 +157,7 @@ class FredAlfredProvider(BaseProvider):
     ) -> None:
         self.api_key = api_key or ""
         self._client = client or (FredClient(api_key) if api_key else None)
-        self._catalog = macro_catalog.load_catalog(catalog)
+        self._catalog = catalog
         self._configured = bool(api_key)
         self._config_detail = "FRED_API_KEY not set" if not api_key else ""
 
@@ -115,7 +169,7 @@ class FredAlfredProvider(BaseProvider):
                 "macro.get_series_snapshot", ro, input_schema={"series_ids": "list<string>?"}
             ),
             Capability("macro.get_latest_observation", ro, input_schema={"series_id": "string"}),
-            Capability("macro.get_release_dates", ro, input_schema={"series_id": "string"}),
+            Capability("macro.get_vintage_dates", ro, input_schema={"series_id": "string"}),
             Capability(
                 "macro.get_vintage",
                 ro,
@@ -141,7 +195,7 @@ class FredAlfredProvider(BaseProvider):
             "macro.get_series": self._get_series,
             "macro.get_series_snapshot": self._get_series_snapshot,
             "macro.get_latest_observation": self._get_latest_observation,
-            "macro.get_release_dates": self._get_release_dates,
+            "macro.get_vintage_dates": self._get_vintage_dates,
             "macro.get_vintage": self._get_vintage,
             "macro.compare_vintages": self._compare_vintages,
             "macro.get_decision_time_snapshot": self._get_decision_time_snapshot,
@@ -157,7 +211,17 @@ class FredAlfredProvider(BaseProvider):
         obs = self._client.observations(sid)
         r = self._ok("macro.get_series")
         r.data = {"series_id": sid, "observations": obs}
-        r.facts.append(self._series_fact(sid, len(obs)))
+        r.observed_at = r.requested_at
+        r.facts.append(
+            Fact(
+                key=f"{sid}_observations",
+                value=len(obs),
+                source_type=SOURCE_MACRO,
+                source_ids=[f"fred:{sid}"],
+                as_of=r.requested_at,
+                quality=grade_for_source(SOURCE_MACRO),
+            )
+        )
         return r
 
     def _get_series_snapshot(self, request: dict) -> FinancialSenseResult:
@@ -168,7 +232,7 @@ class FredAlfredProvider(BaseProvider):
         snap = {}
         for sid in ids:
             latest = self._client.latest(sid)
-            snap[sid] = latest or {"state": "DATA_UNAVAILABLE"}
+            snap[sid] = latest or {"state": DATA_UNAVAILABLE}
         r = self._ok("macro.get_series_snapshot")
         r.data = {"snapshot": snap}
         r.observed_at = r.requested_at
@@ -180,7 +244,7 @@ class FredAlfredProvider(BaseProvider):
             return self._invalid("macro.get_latest_observation", "series_id is required")
         latest = self._client.latest(sid)
         r = self._ok("macro.get_latest_observation")
-        r.data = {"series_id": sid, "latest": latest or {"state": "DATA_UNAVAILABLE"}}
+        r.data = {"series_id": sid, "latest": latest or {"state": DATA_UNAVAILABLE}}
         if latest:
             r.observed_at = latest["date"]
             r.facts.append(
@@ -199,25 +263,26 @@ class FredAlfredProvider(BaseProvider):
             r.add_warning(f"no observation for {sid}")
         return r
 
-    def _get_release_dates(self, request: dict) -> FinancialSenseResult:
+    def _get_vintage_dates(self, request: dict) -> FinancialSenseResult:
         sid = str(request.get("series_id") or "").strip().upper()
         if not sid:
-            return self._invalid("macro.get_release_dates", "series_id is required")
+            return self._invalid("macro.get_vintage_dates", "series_id is required")
         vd = self._client.vintage_dates(sid)
-        r = self._ok("macro.get_release_dates")
+        r = self._ok("macro.get_vintage_dates")
         r.data = {"series_id": sid, "vintage_dates": vd}
+        r.observed_at = r.requested_at
         return r
 
     def _get_vintage(self, request: dict) -> FinancialSenseResult:
         sid, ddate = self._sid_date(request, "macro.get_vintage")
         if sid is None:
             return ddate  # already an error result
-        val = self._client.value_as_of(sid, ddate)
+        val = self._client.latest_as_of(sid, ddate)
         r = self._ok("macro.get_vintage")
         r.data = {
             "series_id": sid,
             "decision_date": ddate,
-            "decision_time_value": val or {"state": "DATA_UNAVAILABLE"},
+            "decision_time_value": val or {"state": DATA_UNAVAILABLE},
         }
         if val:
             r.as_of = ddate
@@ -239,16 +304,34 @@ class FredAlfredProvider(BaseProvider):
         sid, ddate = self._sid_date(request, "macro.compare_vintages")
         if sid is None:
             return ddate
-        vintage_val = self._client.value_as_of(sid, ddate)
-        latest_val = self._client.latest(sid)
-        r = self._ok("macro.compare_vintages")
-        decision_value = vintage_val["value"] if vintage_val else None
-        latest_value = latest_val["value"] if latest_val else None
+        decision_obs = self._client.latest_as_of(sid, ddate)
+        if decision_obs is None:
+            r = self._unavailable(
+                "macro.compare_vintages", f"no observation available as-of {ddate}"
+            )
+            r.subject = r.subject
+            r.data = {
+                "series_id": sid,
+                "decision_date": ddate,
+                "observation_date": None,
+                "decision_time_value": None,
+                "latest_revised_value": None,
+                "revision_delta": None,
+                "vintage_date": ddate,
+                "state": DATA_UNAVAILABLE,
+            }
+            return r
+        obs_date = decision_obs["date"]
+        decision_value = decision_obs["value"]
+        # Latest vintage value for the SAME observation date.
+        latest_value = self._client.observation_value(sid, obs_date)
         revision_delta = None
         if decision_value is not None and latest_value is not None:
             revision_delta = round(latest_value - decision_value, 6)
+        r = self._ok("macro.compare_vintages")
         r.data = {
             "series_id": sid,
+            "observation_date": obs_date,
             "decision_time_value": decision_value,
             "latest_revised_value": latest_value,
             "revision_delta": revision_delta,
@@ -257,13 +340,14 @@ class FredAlfredProvider(BaseProvider):
         r.as_of = ddate
         r.facts.append(
             Fact(
-                key=f"{sid}@decision_time",
+                key=f"{sid}@{obs_date}",
                 value=decision_value,
                 source_type=SOURCE_MACRO,
                 source_ids=[f"fred:{sid}"],
-                observed_at=ddate,
+                observed_at=obs_date,
                 as_of=ddate,
                 quality=grade_for_source(SOURCE_MACRO),
+                notes="value known as-of decision time",
             )
         )
         if revision_delta not in (None, 0):
@@ -273,10 +357,10 @@ class FredAlfredProvider(BaseProvider):
                     value=revision_delta,
                     source_type=SOURCE_MACRO,
                     source_ids=[f"fred:{sid}"],
-                    observed_at=latest_val["date"] if latest_val else None,
+                    observed_at=obs_date,
                     as_of=ddate,
                     quality=grade_for_source(SOURCE_MACRO),
-                    notes="revision between decision-time and latest revised value",
+                    notes="revision for the SAME observation date",
                 )
             )
         return r
@@ -288,11 +372,13 @@ class FredAlfredProvider(BaseProvider):
             return self._invalid(
                 "macro.get_decision_time_snapshot", "series_ids and decision_date are required"
             )
+        if not _validate_date(ddate):
+            return self._invalid("macro.get_decision_time_snapshot", "decision_date must be YYYY-MM-DD")
         snap = {}
         for sid in ids:
-            val = self._client.value_as_of(sid, ddate)
+            val = self._client.latest_as_of(sid, ddate)
             snap[sid] = {"value": val["value"], "observed_at": val["date"]} if val else {
-                "state": "DATA_UNAVAILABLE"
+                "state": DATA_UNAVAILABLE
             }
         r = self._ok("macro.get_decision_time_snapshot")
         r.data = {"decision_date": ddate, "snapshot": snap}
@@ -307,7 +393,7 @@ class FredAlfredProvider(BaseProvider):
         snap = {}
         for sid in regime_ids:
             latest = self._client.latest(sid)
-            snap[sid] = latest or {"state": "DATA_UNAVAILABLE"}
+            snap[sid] = latest or {"state": DATA_UNAVAILABLE}
         r = self._ok("macro.regime_inputs")
         r.data = {"regime_inputs": snap}
         r.observed_at = r.requested_at
@@ -319,14 +405,6 @@ class FredAlfredProvider(BaseProvider):
         ddate = str(request.get("decision_date") or "").strip()
         if not sid or not ddate:
             return None, self._invalid(cap, "series_id and decision_date are required")
+        if not _validate_date(ddate):
+            return None, self._invalid(cap, "decision_date must be YYYY-MM-DD")
         return sid, ddate
-
-    @staticmethod
-    def _series_fact(sid: str, count: int) -> Fact:
-        return Fact(
-            key=f"{sid}_observations",
-            value=count,
-            source_type=SOURCE_MACRO,
-            source_ids=[f"fred:{sid}"],
-            quality=grade_for_source(SOURCE_MACRO),
-        )

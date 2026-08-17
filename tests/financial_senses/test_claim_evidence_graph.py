@@ -121,3 +121,48 @@ def test_decision_used_by_claim():
     )
     assert g.validate() == [] or True
     assert g.nodes["d1"].type == "DECISION"
+
+
+def test_memory_ref_support_is_contextual_only():
+    g = build_graph(
+        [
+            {"id": "m1", "type": "MEMORY_REF", "text": "past note"},
+            _claim("c1"),
+        ],
+        [_edge("e1", "m1", "c1", "SUPPORTS")],
+    )
+    g.validate()
+    assert g.nodes["c1"].status == "CONTEXTUAL_ONLY"
+    ev = g.claim_evidence("c1")
+    assert ev["contextual_support"]
+    assert not ev["authoritative_fact_support"]
+    assert ev["actionable"] is False
+
+
+def test_fact_support_is_authoritative():
+    g = build_graph([_fact("f1"), _claim("c1")], [_edge("e1", "f1", "c1", "SUPPORTS")])
+    g.validate()
+    ev = g.claim_evidence("c1")
+    assert ev["authoritative_fact_support"]
+    assert not ev["contextual_support"]
+    assert ev["actionable"] is True
+
+
+def test_stale_fact_preserved_not_actionable():
+    g = build_graph(
+        [
+            {"id": "f1", "type": NODE_FACT, "text": "old revenue", "source": "PRIMARY_REGULATORY",
+             "observed_at": "2024-01-01", "quality": "HIGH", "freshness": "STALE"},
+            _claim("c1"),
+        ],
+        [_edge("e1", "f1", "c1", "SUPPORTS")],
+    )
+    g.validate()
+    # Stale fact is preserved (not deleted) and marked stale.
+    assert g.nodes["f1"].type == NODE_FACT
+    d = g.to_dict()
+    assert "f1" in d["stale_facts"]
+    # The claim is non-actionable while its only support is stale.
+    ev = g.claim_evidence("c1")
+    assert ev["stale_fact_support"]
+    assert ev["actionable"] is False

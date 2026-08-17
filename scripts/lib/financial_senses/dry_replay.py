@@ -23,17 +23,29 @@ class _ReplayMacro:
         {"date": "2025-01-01", "value": 5.9},
     ]
 
-    def observations(self, series_id, realtime_start=None, realtime_end=None):
+    def observations(self, series_id, realtime_start=None, realtime_end=None,
+                     observation_start=None, observation_end=None):
+        obs = list(self._obs)
+        if observation_start:
+            obs = [o for o in obs if o["date"] >= observation_start]
+        if observation_end:
+            obs = [o for o in obs if o["date"] <= observation_end]
         if realtime_end:
-            return [o for o in self._obs if o["date"] <= realtime_end]
-        return list(self._obs)
+            obs = [o for o in obs if o["date"] <= realtime_end]
+        return obs
 
     def latest(self, series_id):
         return self._obs[-1]
 
-    def value_as_of(self, series_id, decision_date):
+    def latest_as_of(self, series_id, decision_date):
         e = [o for o in self._obs if o["date"] <= decision_date]
         return e[-1] if e else None
+
+    def observation_value(self, series_id, observation_date, realtime_end=None):
+        for o in self._obs:
+            if o["date"] == observation_date:
+                return o["value"]
+        return None
 
     def vintage_dates(self, series_id, limit=10):
         return ["2024-06-01", "2025-01-01"]

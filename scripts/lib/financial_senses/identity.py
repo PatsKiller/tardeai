@@ -2,8 +2,11 @@
 
 A financial agent must know exactly what instrument it reasons about. This
 module produces a canonical InstrumentIdentity@v1 and fails closed on
-ambiguity — it never guesses when multiple instruments match. Pure resolution
-logic is separate from the network resolver so it is unit-testable offline.
+ambiguity — it never guesses when multiple instruments match.
+
+Multiple identifiers (ticker + CUSIP + ISIN + FIGI) are cross-validated by
+intersecting the FIGI sets produced by each OpenFIGI mapping job. Conflicting
+inputs produce CONFLICT, never a silent RESOLVED.
 """
 from __future__ import annotations
 
@@ -35,6 +38,9 @@ VALID_IDENTITY_STATUSES = frozenset(
         IDENTITY_NOT_CONFIGURED,
     }
 )
+
+# Current OpenFIGI v3 identifier type for a FIGI lookup.
+ID_BB_GLOBAL = "ID_BB_GLOBAL"
 
 
 @dataclass
@@ -75,9 +81,43 @@ def normalize_ticker(ticker: str) -> str:
     t = (ticker or "").strip().upper()
     if not t:
         return ""
-    # Share-class delimiter normalization only ('.' and '-' are ambiguous in
-    # broker feeds; '/' is the canonical delimiter form used here).
     return t.replace("-", "/").replace(".", "/")
+
+
+def _identity_from_candidate(cand: dict, query: dict) -> InstrumentIdentity:
+    identity = InstrumentIdentity(
+        figi=cand.get("figi"),
+        composite_figi=cand.get("composite_figi"),
+        share_class_figi=cand.get("share_class_figi"),
+        ticker=cand.get("ticker") or query.get("ticker"),
+        name=cand.get("name"),
+        security_type=cand.get("security_type"),
+        market_sector=cand.get("market_sector"),
+        exchange=cand.get("exchange"),
+        currency=cand.get("currency"),
+        cusip=query.get("cusip") or cand.get("cusip"),
+        isin=query.get("isin") or cand.get("isin"),
+        cik=cand.get("cik"),
+        broker_symbols=list(cand.get("broker_symbols") or []),
+        underlying_id=cand.get("underlying_id"),
+        identity_status=IDENTITY_RESOLVED,
+        identity_confidence=cand.get("confidence"),
+        source_refs=["openfigi"],
+        as_of=query.get("as_of"),
+    )
+    identity.instrument_id = identity.figi or f"ticker:{normalize_ticker(identity.ticker or '')}"
+    return identity
+
+
+def _compose_existing(identity: InstrumentIdentity, cand: dict, existing: dict) -> None:
+    """Reconcile with an existing canonical identity, never silently overwrite."""
+    if existing.get("figi") and cand.get("figi") and existing["figi"] != cand.get("figi"):
+        identity.identity_status = IDENTITY_CONFLICT
+        identity.source_refs = ["openfigi", "canonical_internal"]
+    elif existing.get("figi"):
+        identity.figi = existing["figi"]
+        identity.instrument_id = existing["figi"]
+        identity.source_refs = ["openfigi", "canonical_internal"]
 
 
 def resolve_identity(
@@ -85,17 +125,7 @@ def resolve_identity(
     query: Optional[dict] = None,
     existing: Optional[dict] = None,
 ) -> InstrumentIdentity:
-    """Fail-closed resolution of candidate identities into a canonical identity.
-
-    candidates: normalized candidate dicts (each may carry figi, ticker, name,
-        security_type, market_sector, exchange, currency, cusip, isin, ...).
-    query: optional constraints {ticker, exchange, security_type, share_class}.
-    existing: optional existing canonical identity to prefer/compose.
-
-    Returns an InstrumentIdentity whose status is RESOLVED (unique or
-    constraint-narrowed to exactly one), AMBIGUOUS (still >1), NOT_FOUND (0),
-    or CONFLICT (existing canonical id disagrees).
-    """
+    """Fail-closed resolution of a single identifier's candidate set."""
     query = query or {}
     pool = [dict(c) for c in candidates]
 
@@ -113,60 +143,154 @@ def resolve_identity(
     if not pool:
         return InstrumentIdentity(
             ticker=query.get("ticker"),
+            cusip=query.get("cusip"),
+            isin=query.get("isin"),
             identity_status=IDENTITY_NOT_FOUND,
             source_refs=["openfigi"],
             as_of=query.get("as_of"),
         )
 
     if len(pool) > 1:
-        # Try narrowing by share-class / composite to disambiguate.
         by_figi = {c.get("figi") for c in pool if c.get("figi")}
         if len(by_figi) == 1:
             pool = [pool[0]]
         else:
             return InstrumentIdentity(
                 ticker=query.get("ticker"),
+                cusip=query.get("cusip"),
+                isin=query.get("isin"),
                 identity_status=IDENTITY_AMBIGUOUS,
                 identity_confidence=None,
                 source_refs=["openfigi"],
                 as_of=query.get("as_of"),
             )
 
-    cand = pool[0]
-    identity = InstrumentIdentity(
-        figi=cand.get("figi"),
-        composite_figi=cand.get("composite_figi"),
-        share_class_figi=cand.get("share_class_figi"),
-        ticker=cand.get("ticker") or query.get("ticker"),
-        name=cand.get("name"),
-        security_type=cand.get("security_type"),
-        market_sector=cand.get("market_sector"),
-        exchange=cand.get("exchange"),
-        currency=cand.get("currency"),
-        cusip=cand.get("cusip"),
-        isin=cand.get("isin"),
-        cik=cand.get("cik"),
-        broker_symbols=list(cand.get("broker_symbols") or []),
-        underlying_id=cand.get("underlying_id"),
-        identity_status=IDENTITY_RESOLVED,
-        identity_confidence=cand.get("confidence"),
+    identity = _identity_from_candidate(pool[0], query)
+    if existing:
+        _compose_existing(identity, pool[0], existing)
+    return identity
+
+
+def cross_validate_identities(
+    jobs: list[dict],
+    query: Optional[dict] = None,
+    existing: Optional[dict] = None,
+):
+    """Cross-validate multiple identifier mapping jobs.
+
+    Each job is {"identifier", "id_type", "id_value", "candidates", "warning"}.
+    Returns (InstrumentIdentity, notes).
+
+    exactly one common FIGI -> RESOLVED
+    >1 common FIGI          -> AMBIGUOUS
+    empty intersection      -> CONFLICT
+    an identifier with no candidates -> noted (PARTIAL) but not silently dropped
+    """
+    query = query or {}
+    provided = [j for j in jobs if j.get("id_value")]
+    notes: list[str] = []
+
+    base = InstrumentIdentity(
+        ticker=query.get("ticker"),
+        cusip=query.get("cusip"),
+        isin=query.get("isin"),
         source_refs=["openfigi"],
         as_of=query.get("as_of"),
     )
-    identity.instrument_id = identity.figi or f"ticker:{normalize_ticker(identity.ticker or '')}"
 
-    # Compose with an existing canonical identity: reconcile, never silently
-    # overwrite a working canonical id.
-    if existing:
-        if existing.get("figi") and cand.get("figi") and existing["figi"] != cand.get("figi"):
-            identity.identity_status = IDENTITY_CONFLICT
-            identity.source_refs = ["openfigi", "canonical_internal"]
-        elif existing.get("figi"):
-            identity.figi = existing["figi"]
-            identity.instrument_id = existing["figi"]
-            identity.source_refs = ["openfigi", "canonical_internal"]
+    if not provided:
+        base.identity_status = IDENTITY_NOT_FOUND
+        return base, ["no identifiers"]
 
-    return identity
+    figi_sets: dict[str, set] = {}
+    by_figi: dict[str, dict] = {}
+    for j in provided:
+        figis = {c.get("figi") for c in (j.get("candidates") or []) if c.get("figi")}
+        figi_sets[j["identifier"]] = figis
+        for c in (j.get("candidates") or []):
+            if c.get("figi"):
+                by_figi.setdefault(c["figi"], c)
+
+    unavailable = [j for j in provided if not figi_sets[j["identifier"]] and not j.get("warning")]
+
+    # Single identifier falls back to classic resolution.
+    if len(provided) == 1:
+        j = provided[0]
+        return resolve_identity(j.get("candidates") or [], query, existing), notes
+
+    non_empty = [figi_sets[j["identifier"]] for j in provided if figi_sets[j["identifier"]]]
+    common = set.intersection(*non_empty) if non_empty else set()
+
+    if unavailable:
+        notes.append(f"identifiers unresolved: {[j['identifier'] for j in unavailable]}")
+
+    if len(common) == 1:
+        figi = next(iter(common))
+        identity = _identity_from_candidate(by_figi[figi], query)
+        # Supplied CUSIP/ISIN are asserted inputs, not OpenFIGI returns.
+        identity.cusip = query.get("cusip")
+        identity.isin = query.get("isin")
+        identity.identity_status = IDENTITY_RESOLVED
+        identity.source_refs = ["openfigi"]
+        if existing:
+            _compose_existing(identity, by_figi[figi], existing)
+        return identity, notes
+    elif len(common) > 1:
+        base.identity_status = IDENTITY_AMBIGUOUS
+        return base, notes
+    else:
+        base.identity_status = IDENTITY_CONFLICT
+        return base, notes
+
+
+def build_mapping_jobs(query: dict) -> list[dict]:
+    """Build OpenFIGI v3 mapping request jobs (pure; unit-testable offline).
+
+    Preserves input order so response index i maps to job i. FIGI lookups use
+    the current official identifier type ID_BB_GLOBAL. Narrowing fields
+    (exchCode, securityType) are forwarded for TICKER jobs.
+    """
+    jobs: list[dict] = []
+    if query.get("ticker"):
+        job = {"idType": "TICKER", "idValue": str(query["ticker"])}
+        if query.get("exchange"):
+            job["exchCode"] = str(query["exchange"])
+        if query.get("security_type"):
+            job["securityType"] = str(query["security_type"])
+        jobs.append(job)
+    if query.get("cusip"):
+        jobs.append({"idType": "ID_CUSIP", "idValue": str(query["cusip"])})
+    if query.get("isin"):
+        jobs.append({"idType": "ID_ISIN", "idValue": str(query["isin"])})
+    if query.get("figi"):
+        jobs.append({"idType": ID_BB_GLOBAL, "idValue": str(query["figi"])})
+    return jobs
+
+
+def _parse_openfigi_job(identifier: str, id_type: str, id_value: str, item: dict) -> dict:
+    candidates = []
+    for d in item.get("data") or []:
+        candidates.append(
+            {
+                "figi": d.get("figi"),
+                "composite_figi": d.get("compositeFIGI"),
+                "share_class_figi": d.get("shareClassFIGI"),
+                "ticker": d.get("ticker"),
+                "name": d.get("name"),
+                "security_type": d.get("securityType"),
+                "market_sector": d.get("marketSector"),
+                "exchange": d.get("exchCode"),
+                "currency": d.get("currency"),
+                "confidence": 0.9,
+            }
+        )
+    return {
+        "identifier": identifier,
+        "id_type": id_type,
+        "id_value": id_value,
+        "candidates": candidates,
+        "warning": item.get("warning") or item.get("error"),
+    }
 
 
 class OpenFigiProvider(BaseProvider):
@@ -213,12 +337,20 @@ class OpenFigiProvider(BaseProvider):
         existing = None
         if self._existing_identity:
             existing = self._existing_identity(query)
-        candidates = self._resolver(query) or []
-        identity = resolve_identity(candidates, query, existing)
+        jobs = self._resolver(query) or []
+        provided = [j for j in jobs if j.get("id_value")]
+        if len(provided) > 1:
+            identity, notes = cross_validate_identities(jobs, query, existing)
+        else:
+            candidates = (jobs[0].get("candidates") or []) if jobs else []
+            identity = resolve_identity(candidates, query, existing)
+            notes = []
+
         r = self._ok("identity.resolve")
         r.subject = Subject(symbol=identity.ticker, figi=identity.figi)
-        r.data = {"identity": identity.to_dict()}
+        r.data = {"identity": identity.to_dict(), "notes": notes}
         r.as_of = identity.as_of
+        partial = bool(notes)
         if identity.identity_status == IDENTITY_RESOLVED:
             r.quality = Quality(
                 grade=grade_for_source(SOURCE_APPROVED_MARKET_DATA),
@@ -230,10 +362,14 @@ class OpenFigiProvider(BaseProvider):
                     value=identity.figi or identity.instrument_id,
                     source_type=SOURCE_APPROVED_MARKET_DATA,
                     source_ids=identity.source_refs,
-                    as_of=identity.as_of,
+                    as_of=identity.as_of or r.requested_at,
                     quality=grade_for_source(SOURCE_APPROVED_MARKET_DATA),
                 )
             )
+            if partial:
+                r.set_status("PARTIAL")
+                for n in notes:
+                    r.add_warning(n)
         elif identity.identity_status == IDENTITY_AMBIGUOUS:
             r.set_status("PARTIAL")
             r.add_warning("identity is AMBIGUOUS; refusing to guess")
@@ -242,25 +378,32 @@ class OpenFigiProvider(BaseProvider):
             r.add_warning("identity NOT_FOUND")
         elif identity.identity_status == IDENTITY_CONFLICT:
             r.set_status("CONFLICT")
-            r.add_warning("identity CONFLICT with existing canonical identity")
+            r.add_warning("identity CONFLICT between supplied identifiers")
         return r
 
     def _openfigi_resolve(self, query: dict) -> list[dict]:
-        """Call the OpenFIGI mapping API (used only when configured)."""
+        """Call OpenFIGI mapping, preserving per-job boundaries.
+
+        Returns one job dict per supplied identifier, in input order, so
+        callers can cross-validate rather than union the candidate pools.
+        """
         import json
         import urllib.request
 
-        body = []
+        id_specs: list[tuple[str, str, str]] = []
         if query.get("ticker"):
-            body.append({"idType": "TICKER", "idValue": query["ticker"]})
+            id_specs.append(("ticker", "TICKER", str(query["ticker"])))
         if query.get("cusip"):
-            body.append({"idType": "ID_CUSIP", "idValue": query["cusip"]})
+            id_specs.append(("cusip", "ID_CUSIP", str(query["cusip"])))
         if query.get("isin"):
-            body.append({"idType": "ID_ISIN", "idValue": query["isin"]})
+            id_specs.append(("isin", "ID_ISIN", str(query["isin"])))
         if query.get("figi"):
-            body.append({"idType": "ID_FIGI", "idValue": query["figi"]})
-        if not body:
+            id_specs.append(("figi", ID_BB_GLOBAL, str(query["figi"])))
+        if not id_specs:
             return []
+
+        body = build_mapping_jobs(query)
+
         req = urllib.request.Request(
             "https://api.openfigi.com/v3/mapping",
             data=json.dumps(body).encode(),
@@ -268,23 +411,9 @@ class OpenFigiProvider(BaseProvider):
         )
         with urllib.request.urlopen(req, timeout=15.0) as resp:
             payload = json.loads(resp.read())
-        out = []
-        for item in payload or []:
-            for d in item.get("data") or []:
-                out.append(
-                    {
-                        "figi": d.get("figi"),
-                        "composite_figi": d.get("compositeFIGI"),
-                        "share_class_figi": d.get("shareClassFIGI"),
-                        "ticker": d.get("ticker"),
-                        "name": d.get("name"),
-                        "security_type": d.get("securityType"),
-                        "market_sector": d.get("marketSector"),
-                        "exchange": d.get("exchCode"),
-                        "currency": d.get("currency"),
-                        "cusip": d.get("cusip"),
-                        "isin": d.get("isin"),
-                        "confidence": 0.9,
-                    }
-                )
-        return out
+
+        jobs = []
+        for i, (identifier, id_type, id_value) in enumerate(id_specs):
+            item = (payload or [])[i] if i < len(payload or []) else {}
+            jobs.append(_parse_openfigi_job(identifier, id_type, id_value, item))
+        return jobs

@@ -17,6 +17,7 @@ from .provider import BaseProvider, Capability
 from .result import (
     DATA_UNAVAILABLE,
     NOT_APPLICABLE,
+    NOT_FOUND,
     NOT_INGESTED,
     Fact,
     FinancialSenseResult,
@@ -112,7 +113,7 @@ class SecEdgarProvider(BaseProvider):
         r = self._ok("sec.resolve_cik")
         r.subject = Subject(symbol=symbol)
         if not cik:
-            r.data = {"cik": None}
+            r.data = {"cik": None, "state": NOT_FOUND}
             r.add_warning(f"no CIK resolved for {symbol}")
             r.set_status("PARTIAL")
             return r
@@ -137,7 +138,14 @@ class SecEdgarProvider(BaseProvider):
         limit = int(request.get("limit") or 10)
         cik = self._safe_cik(symbol)
         if not cik:
-            return self._not_configured("sec.get_recent_filings", f"no CIK for {symbol}")
+            # No CIK for a symbol is a data state, not a provider configuration
+            # problem. Reserve NOT_CONFIGURED for a missing provider config.
+            r = self._ok("sec.get_recent_filings")
+            r.subject = Subject(symbol=symbol)
+            r.data = {"filings": [], "state": NOT_FOUND}
+            r.set_status("PARTIAL")
+            r.add_warning(f"no CIK resolved for {symbol}")
+            return r
         try:
             filings = reader.list_filings(cik, form=form, limit=limit, fetcher=self._fetcher)
         except Exception as exc:
@@ -171,24 +179,26 @@ class SecEdgarProvider(BaseProvider):
         )
         r = self._ok("sec.get_form4_context")
         r.subject = Subject(symbol=symbol)
-        r.data = {"rows": rows}
-        r.facts.append(
-            Fact(
-                key="form4_rows",
-                value=len(rows),
-                source_type=SOURCE_PRIMARY_REGULATORY,
-                source_ids=["sec_form4_table"],
-                as_of=r.requested_at,
-                quality=grade_for_source(SOURCE_PRIMARY_REGULATORY),
-            )
-        )
         if rows is None:
             r.set_status("UNAVAILABLE")
             r.add_warning("sec_form4 store unavailable")
             r.data = {"rows": [], "state": DATA_UNAVAILABLE}
-        elif not rows:
+            return r
+        r.data = {"rows": rows}
+        if not rows:
             r.data = {"rows": [], "state": NOT_INGESTED}
             r.add_warning(f"no Form 4 rows ingested for {symbol}")
+        else:
+            r.facts.append(
+                Fact(
+                    key="form4_rows",
+                    value=len(rows),
+                    source_type=SOURCE_PRIMARY_REGULATORY,
+                    source_ids=["sec_form4_table"],
+                    as_of=r.requested_at,
+                    quality=grade_for_source(SOURCE_PRIMARY_REGULATORY),
+                )
+            )
         return r
 
     def _get_13f_context(self, request: dict) -> FinancialSenseResult:
@@ -310,16 +320,16 @@ class SecEdgarProvider(BaseProvider):
         r.subject = Subject(cik=cik)
         r.data = compared
         r.as_of = period_b
-        r.quality = Quality(grade=compared.get("quality", "MEDIUM"), freshness="FRESH")
+        r.quality = Quality(grade=grade_for_source(SOURCE_PRIMARY_REGULATORY), freshness="FRESH")
         r.facts.append(
             Fact(
                 key="compared_fact_keys",
-                value=len(compared.get("changed_facts", {})),
+                value=len(compared.get("comparisons", {})),
                 source_type=SOURCE_PRIMARY_REGULATORY,
                 source_ids=[f"sec_companyfacts_CIK{cik}"],
                 observed_at=period_b,
                 as_of=period_b,
-                quality=compared.get("quality", "MEDIUM"),
+                quality=grade_for_source(SOURCE_PRIMARY_REGULATORY),
             )
         )
         return r
@@ -406,7 +416,15 @@ class SecEdgarProvider(BaseProvider):
 
     @staticmethod
     def _facts_at_period(raw: dict, period: str) -> dict:
-        """Extract tag -> {value, units} as of a given period from companyfacts JSON."""
+        """Extract tag -> full XBRL context dict as of a given period.
+
+        Selection policy (documented, deterministic): for each tag+unit, among
+        rows whose `end` equals `period` (exact) or starts with `period`
+        (prefix), select the row with the latest `filed` date, preferring exact
+        end matches. The full context (start, end, form, fp, fy, frame, filed)
+        is preserved so the filing-diff layer can establish like-for-like
+        duration semantics.
+        """
         out: dict = {}
         body = (raw or {}).get("facts", raw or {})
         if isinstance(body, dict) and "us-gaap" in body:
@@ -418,13 +436,32 @@ class SecEdgarProvider(BaseProvider):
             for unit, rows in units.items():
                 if not isinstance(rows, list):
                     continue
+                candidates = []
                 for row in rows:
                     if not isinstance(row, dict):
                         continue
                     end = str(row.get("end") or "")
-                    if end.startswith(period):
-                        out[tag] = {"value": row.get("val"), "units": unit}
-                        break
-                if tag in out:
-                    break
+                    if end == period:
+                        candidates.append((0, row))
+                    elif end.startswith(period):
+                        candidates.append((1, row))
+                if not candidates:
+                    continue
+                # Latest filed first (descending), then stable-sort exact matches
+                # (0) before prefix matches (1).
+                candidates.sort(key=lambda t: str(t[1].get("filed") or ""), reverse=True)
+                candidates.sort(key=lambda t: t[0])
+                row = candidates[0][1]
+                out[tag] = {
+                    "value": row.get("val"),
+                    "units": unit,
+                    "start": row.get("start"),
+                    "end": str(row.get("end") or ""),
+                    "form": row.get("form"),
+                    "fp": row.get("fp"),
+                    "fy": row.get("fy"),
+                    "frame": row.get("frame"),
+                    "filed": row.get("filed"),
+                }
+                break
         return out

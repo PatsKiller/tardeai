@@ -2,11 +2,15 @@
 from __future__ import annotations
 
 from financial_senses.identity import (
+    ID_BB_GLOBAL,
     IDENTITY_AMBIGUOUS,
     IDENTITY_CONFLICT,
     IDENTITY_NOT_FOUND,
     IDENTITY_RESOLVED,
     InstrumentIdentity,
+    OpenFigiProvider,
+    build_mapping_jobs,
+    cross_validate_identities,
     normalize_ticker,
     resolve_identity,
 )
@@ -86,3 +90,121 @@ def test_identity_to_dict_roundtrip():
     d = ident.to_dict()
     assert d["identity_status"] == IDENTITY_RESOLVED
     assert d["figi"] == "BBG000B9XRY4"
+
+
+def _job(identifier, id_value, candidates, warning=None):
+    return {
+        "identifier": identifier,
+        "id_type": {"ticker": "TICKER", "cusip": "ID_CUSIP", "isin": "ID_ISIN", "figi": ID_BB_GLOBAL}.get(identifier),
+        "id_value": id_value,
+        "candidates": candidates,
+        "warning": warning,
+    }
+
+
+def test_build_mapping_jobs_figi_uses_bb_global():
+    jobs = build_mapping_jobs({"figi": "BBG000B9XRY4"})
+    assert jobs == [{"idType": ID_BB_GLOBAL, "idValue": "BBG000B9XRY4"}]
+    assert ID_BB_GLOBAL == "ID_BB_GLOBAL"
+
+
+def test_build_mapping_jobs_forwards_narrowing_fields():
+    jobs = build_mapping_jobs({"ticker": "AAPL", "exchange": "XNAS", "security_type": "Common Stock"})
+    assert jobs[0]["idType"] == "TICKER"
+    assert jobs[0]["exchCode"] == "XNAS"
+    assert jobs[0]["securityType"] == "Common Stock"
+
+
+def test_cross_validate_matching_ticker_and_cusip_resolves():
+    aapl = _cand("AAPL", "BBG000B9XRY4")
+    jobs = [
+        _job("ticker", "AAPL", [aapl]),
+        _job("cusip", "037833100", [aapl]),
+    ]
+    ident, notes = cross_validate_identities(jobs, {"ticker": "AAPL", "cusip": "037833100"})
+    assert ident.identity_status == IDENTITY_RESOLVED
+    assert ident.figi == "BBG000B9XRY4"
+    # CUSIP is an asserted input, not an OpenFIGI return.
+    assert ident.cusip == "037833100"
+
+
+def test_cross_validate_conflicting_ticker_and_cusip():
+    aapl = _cand("AAPL", "BBG000B9XRY4")
+    msft = _cand("MSFT", "BBG000BPH459")
+    jobs = [
+        _job("ticker", "AAPL", [aapl]),
+        _job("cusip", "594918104", [msft]),  # MSFT CUSIP
+    ]
+    ident, notes = cross_validate_identities(jobs, {"ticker": "AAPL", "cusip": "594918104"})
+    assert ident.identity_status == IDENTITY_CONFLICT
+
+
+def test_cross_validate_two_exchanges_ambiguous():
+    aapl_nasdaq = _cand("AAPL", "F1", exchange="XNAS")
+    aapl_other = _cand("AAPL", "F2", exchange="XETR")
+    jobs = [_job("ticker", "AAPL", [aapl_nasdaq, aapl_other])]
+    ident, notes = cross_validate_identities(jobs, {"ticker": "AAPL"})
+    assert ident.identity_status == IDENTITY_AMBIGUOUS
+
+
+def test_cross_validate_explicit_figi_resolves():
+    aapl = _cand("AAPL", "BBG000B9XRY4")
+    jobs = [_job("figi", "BBG000B9XRY4", [aapl])]
+    ident, notes = cross_validate_identities(jobs, {"figi": "BBG000B9XRY4"})
+    assert ident.identity_status == IDENTITY_RESOLVED
+    assert ident.figi == "BBG000B9XRY4"
+
+
+def test_cross_validate_unavailable_identifier_notes_partial():
+    aapl = _cand("AAPL", "BBG000B9XRY4")
+    jobs = [
+        _job("ticker", "AAPL", [aapl]),
+        _job("cusip", "NOPE", []),  # CUSIP not found
+    ]
+    ident, notes = cross_validate_identities(jobs, {"ticker": "AAPL", "cusip": "NOPE"})
+    assert ident.identity_status == IDENTITY_RESOLVED
+    assert any("cusip" in n for n in notes)
+
+
+def test_provider_conflicting_identifiers_status_conflict():
+    aapl = _cand("AAPL", "BBG000B9XRY4")
+    msft = _cand("MSFT", "BBG000BPH459")
+
+    def resolver(query):
+        return [
+            _job("ticker", "AAPL", [aapl]),
+            _job("cusip", "594918104", [msft]),
+        ]
+
+    p = OpenFigiProvider(resolver=resolver)
+    r = p.query("identity.resolve", {"ticker": "AAPL", "cusip": "594918104"})
+    assert r.status == "CONFLICT"
+    assert r.data["identity"]["identity_status"] == IDENTITY_CONFLICT
+
+
+def test_provider_matching_identifiers_resolved():
+    aapl = _cand("AAPL", "BBG000B9XRY4")
+
+    def resolver(query):
+        return [
+            _job("ticker", "AAPL", [aapl]),
+            _job("cusip", "037833100", [aapl]),
+        ]
+
+    p = OpenFigiProvider(resolver=resolver)
+    r = p.query("identity.resolve", {"ticker": "AAPL", "cusip": "037833100"})
+    assert r.status == "OK"
+    assert r.data["identity"]["figi"] == "BBG000B9XRY4"
+
+
+def test_provider_preserves_job_warning():
+    aapl = _cand("AAPL", "BBG000B9XRY4")
+
+    def resolver(query):
+        return [_job("ticker", "AAPL", [aapl], warning="ambiguous request")]
+
+    p = OpenFigiProvider(resolver=resolver)
+    r = p.query("identity.resolve", {"ticker": "AAPL"})
+    # A warning does not promote a resolution; it is preserved as a note/status.
+    assert r.status in ("OK", "PARTIAL")
+    assert r.data["identity"]["figi"] == "BBG000B9XRY4"

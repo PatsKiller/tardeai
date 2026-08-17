@@ -33,9 +33,13 @@ def test_replay_vintage_does_not_leak():
     report = run_dry_replay()
     filing_case = next(c for c in report["cases"] if c["case"] == "company with recent SEC filing")
     mv = filing_case["macro_vintage"]
+    # As-of 2024-12-31, the latest observation was 2024-06-01 = 5.5.
+    assert mv["observation_date"] == "2024-06-01"
     assert mv["decision_time_value"] == 5.5
-    assert mv["latest_revised_value"] == 5.9
-    assert mv["revision_delta"] == 0.4
+    # Same observation date has not been revised; the 2025 observation (5.9)
+    # is a different economic date and must NOT leak in as a "revision".
+    assert mv["latest_revised_value"] == 5.5
+    assert mv["revision_delta"] == 0.0
 
 
 def test_replay_stress_coverage_invariant():

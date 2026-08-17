@@ -87,6 +87,12 @@ TOOLS: dict[str, dict[str, Any]] = {
         "tools": [
             {"name": "macro.get_series_snapshot", "mutability": MUTABILITY_READ_ONLY},
             {"name": "macro.get_decision_time_snapshot", "mutability": MUTABILITY_READ_ONLY},
+            {"name": "macro.get_vintage", "mutability": MUTABILITY_READ_ONLY},
+            {"name": "macro.compare_vintages", "mutability": MUTABILITY_READ_ONLY},
+            {"name": "macro.get_vintage_dates", "mutability": MUTABILITY_READ_ONLY},
+            {"name": "macro.get_latest_observation", "mutability": MUTABILITY_READ_ONLY},
+            {"name": "macro.get_series", "mutability": MUTABILITY_READ_ONLY},
+            {"name": "macro.regime_inputs", "mutability": MUTABILITY_READ_ONLY},
         ]
     },
     "identity": {

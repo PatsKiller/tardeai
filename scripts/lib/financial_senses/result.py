@@ -2,7 +2,14 @@
 
 Every provider result carries provenance, as-of, quality, and a fixed
 READ_ONLY_ADVISORY authority. No source may emit an unqualified fact without
-provenance. This module is pure and has no network or database access.
+provenance. The envelope now distinguishes:
+
+  facts[]      deterministic / world observations (provenance + quality)
+  claims[]     derived interpretations (source-typed, or UNSUPPORTED)
+  estimates[]  model estimates / scenarios (MODEL_INFERENCE only)
+  opinions[]   critic / specialist output (non-factual)
+
+This module is pure and has no network or database access.
 """
 from __future__ import annotations
 
@@ -11,6 +18,12 @@ import uuid
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
 from typing import Any, Optional
+
+from .source_governance import (
+    SOURCE_MEMORY_CONTEXT,
+    SOURCE_MODEL_INFERENCE,
+    can_back_fact,
+)
 
 AUTHORITY = "READ_ONLY_ADVISORY"
 
@@ -38,6 +51,7 @@ VALID_STATUSES = frozenset(
 DATA_UNAVAILABLE = "DATA_UNAVAILABLE"
 NOT_INGESTED = "NOT_INGESTED"
 NOT_APPLICABLE = "NOT_APPLICABLE"
+NOT_FOUND = "NOT_FOUND"
 
 
 def utcnow_iso() -> str:
@@ -77,9 +91,7 @@ class Provenance:
 
 @dataclass
 class Quality:
-    """Qualitative assessment of a result. `grade` is a coarse HIGH/MEDIUM/LOW/
-    UNKNOWN; `freshness` and `completeness` are coarse labels; `conflict` is set
-    when sources disagree."""
+    """Qualitative assessment of a result."""
 
     grade: str = "UNKNOWN"
     freshness: Optional[str] = None
@@ -92,10 +104,11 @@ class Quality:
 
 @dataclass
 class Fact:
-    """A single qualified fact. Every fact must carry source + observed_at/as_of.
+    """A deterministic / world observation. Provenance is mandatory.
 
-    Facts are the canonical, provenance-bound unit of a result. Claims and
-    opinions are derived, not facts, and never replace a Fact node."""
+    A Fact MUST be backed by a fact-capable source (never MODEL_INFERENCE or
+    MEMORY_CONTEXT) and MUST carry observed_at or as_of plus quality.
+    """
 
     key: str
     value: Any
@@ -132,6 +145,38 @@ class Claim:
 
 
 @dataclass
+class ModelEstimate:
+    """A model-produced estimate / scenario. Explicitly NOT a world fact.
+
+    source_type is fixed to MODEL_INFERENCE; it can never be promoted to Fact.
+    """
+
+    key: str
+    value: Any
+    method: Optional[str] = None
+    source_type: str = SOURCE_MODEL_INFERENCE
+    as_of: Optional[str] = None
+    quality: Optional[str] = None
+    notes: Optional[str] = None
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+@dataclass
+class Opinion:
+    """Critic / specialist output. Non-factual by construction."""
+
+    text: str
+    source_type: Optional[str] = None
+    as_of: Optional[str] = None
+    quality: Optional[str] = None
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+@dataclass
 class FinancialSenseResult:
     """The single normalized envelope returned by every provider query."""
 
@@ -148,6 +193,8 @@ class FinancialSenseResult:
     source_age_seconds: Optional[float] = None
     facts: list[Fact] = field(default_factory=list)
     claims: list[Claim] = field(default_factory=list)
+    estimates: list[ModelEstimate] = field(default_factory=list)
+    opinions: list[Opinion] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     provenance: Optional[Provenance] = None
     quality: Quality = field(default_factory=Quality)
@@ -176,14 +223,20 @@ class FinancialSenseResult:
         self.claims.append(claim)
         return self
 
+    def add_estimate(self, estimate: ModelEstimate) -> "FinancialSenseResult":
+        self.estimates.append(estimate)
+        return self
+
     def validate(self) -> list[str]:
         """Return a list of violations. Empty list == valid.
 
-        Invariants enforced here (fail closed on provenance):
-          * status must be one of the known statuses
+        Enforced here (fail closed):
+          * status must be a known status
           * authority is fixed to READ_ONLY_ADVISORY
-          * any fact must carry a source_type and (observed_at or as_of)
-          * any claim must carry a source_type (or be explicitly UNSUPPORTED)
+          * a FACT must be backed by a fact-capable source (NOT MODEL_INFERENCE /
+            MEMORY_CONTEXT), and must carry observed_at or as_of AND quality
+          * a CLAIM must carry a source_type (or be explicitly UNSUPPORTED)
+          * a ModelEstimate must be MODEL_INFERENCE (never a Fact)
         """
         errors: list[str] = []
         if self.status not in VALID_STATUSES:
@@ -191,13 +244,26 @@ class FinancialSenseResult:
         if self.authority != AUTHORITY:
             errors.append(f"authority must be {AUTHORITY}, got {self.authority!r}")
         for i, fact in enumerate(self.facts):
-            if not fact.is_provenanced():
+            if not fact.source_type:
+                errors.append(f"facts[{i}] ({fact.key}) lacks source_type")
+            elif not can_back_fact(fact.source_type):
                 errors.append(
-                    f"facts[{i}] ({fact.key}) lacks source_type and/or observed_at/as_of"
+                    f"facts[{i}] ({fact.key}) source_type {fact.source_type!r} "
+                    f"cannot back a FACT"
                 )
+            if not (fact.observed_at or fact.as_of):
+                errors.append(f"facts[{i}] ({fact.key}) lacks observed_at/as_of")
+            if not fact.quality:
+                errors.append(f"facts[{i}] ({fact.key}) lacks quality")
         for i, claim in enumerate(self.claims):
             if not claim.source_type and claim.claim_type != "UNSUPPORTED":
                 errors.append(f"claims[{i}] lacks source_type")
+        for i, est in enumerate(self.estimates):
+            if est.source_type != SOURCE_MODEL_INFERENCE:
+                errors.append(
+                    f"estimates[{i}] ({est.key}) must be MODEL_INFERENCE, got "
+                    f"{est.source_type!r}"
+                )
         return errors
 
     def to_dict(self) -> dict:
@@ -215,6 +281,8 @@ class FinancialSenseResult:
             "source_age_seconds": self.source_age_seconds,
             "facts": [f.to_dict() for f in self.facts],
             "claims": [c.to_dict() for c in self.claims],
+            "estimates": [e.to_dict() for e in self.estimates],
+            "opinions": [o.to_dict() for o in self.opinions],
             "warnings": list(self.warnings),
             "provenance": self.provenance.to_dict() if self.provenance else None,
             "quality": self.quality.to_dict(),

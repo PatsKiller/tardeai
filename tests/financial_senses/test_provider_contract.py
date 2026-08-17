@@ -57,9 +57,48 @@ def test_fact_requires_provenance():
 def test_fact_with_source_and_as_of_is_valid():
     r = make_result("x", "y")
     r.facts.append(
-        Fact(key="revenue", value=100.0, source_type=SOURCE_PRIMARY_REGULATORY, as_of="2024-12-31")
+        Fact(
+            key="revenue",
+            value=100.0,
+            source_type=SOURCE_PRIMARY_REGULATORY,
+            as_of="2024-12-31",
+            quality="HIGH",
+        )
     )
     assert r.validate() == []
+
+
+def test_fact_missing_quality_is_rejected():
+    r = make_result("x", "y")
+    r.facts.append(
+        Fact(key="revenue", value=100.0, source_type=SOURCE_PRIMARY_REGULATORY, as_of="2024-12-31")
+    )
+    assert any("quality" in e for e in r.validate())
+
+
+def test_model_inference_cannot_back_fact():
+    r = make_result("x", "y")
+    r.facts.append(
+        Fact(
+            key="stress_pnl",
+            value=-5000.0,
+            source_type=SOURCE_MODEL_INFERENCE,
+            as_of="2024-12-31",
+            quality="MEDIUM",
+        )
+    )
+    assert any("cannot back a FACT" in e for e in r.validate())
+
+
+def test_model_estimate_is_valid_and_not_a_fact():
+    from financial_senses.result import ModelEstimate
+
+    r = make_result("x", "y")
+    r.add_estimate(
+        ModelEstimate(key="stress_pnl", value=-5000.0, as_of="2024-12-31", quality="MEDIUM")
+    )
+    assert r.validate() == []
+    assert len(r.facts) == 0
 
 
 def test_claim_requires_source_type():

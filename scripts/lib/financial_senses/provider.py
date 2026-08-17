@@ -112,11 +112,21 @@ class BaseProvider:
             r.add_warning(f"{self.name} is not configured: {self._config_detail}")
             return r.complete()
         try:
-            return self._query(capability, request).complete()
+            result = self._query(capability, request).complete()
         except Exception as exc:  # fail-soft: never raise out of query()
             r = self._new(STATUS_UNAVAILABLE, capability)
             r.add_warning(f"{self.name}.{capability} failed: {exc}")
             return r.complete()
+        # Fail closed: a provider must not release an internally invalid
+        # envelope while still claiming OK. Schema violations downgrade to
+        # PARTIAL and surface as warnings.
+        errors = result.validate()
+        if errors:
+            if result.status == STATUS_OK:
+                result.set_status(STATUS_PARTIAL)
+            for err in errors:
+                result.add_warning(f"validation: {err}")
+        return result
 
     def _query(self, capability: str, request: dict) -> FinancialSenseResult:
         raise NotImplementedError

@@ -1,22 +1,25 @@
-"""Deterministic filing-fact comparison (filing diff intelligence).
+"""sec_filing_diff — deterministic like-for-like comparison of SEC XBRL facts.
 
-Compares two periods of SEC company facts and returns structured changed_facts,
-not prose. If a fact cannot be safely mapped across taxonomy/unit changes it is
-reported as COMPARISON_UNAVAILABLE rather than silently compared. Pure module:
-no network, no database.
+Two facts are comparable only when their reporting *context* is equivalent.
+For duration facts (revenue, net income, operating cash flow, capex, ...) this
+means the same duration kind (annual vs quarterly vs YTD) and, where present,
+the same fiscal period (fp) and frame type. Instantaneous facts (cash, debt,
+shares) use point-in-time semantics keyed by end date.
+
+When equivalence cannot be established the result is COMPARISON_UNAVAILABLE,
+never a silently mismatched delta.
 """
 from __future__ import annotations
 
-from typing import Optional
+from datetime import date as _date
+from typing import Any
 
-COMPARISON_UNAVAILABLE = "COMPARISON_UNAVAILABLE"
 COMPARISON_OK = "OK"
-MISSING = "MISSING"
+COMPARISON_UNAVAILABLE = "COMPARISON_UNAVAILABLE"
+COMPARISON_NOT_APPLICABLE = "NOT_APPLICABLE"
 
-# Canonical financial-advisory fact keys -> representative US-GAAP XBRL tags.
-# These are display keys for structured comparison only; they carry no
-# directional trade authority.
-FACT_TAGS: dict[str, str] = {
+# Canonical financial-advisory keys -> US-GAAP tags.
+FACT_TAGS = {
     "revenue": "Revenues",
     "operating_income": "OperatingIncomeLoss",
     "net_income": "NetIncomeLoss",
@@ -24,11 +27,27 @@ FACT_TAGS: dict[str, str] = {
     "capex": "PaymentsToAcquirePropertyPlantAndEquipment",
     "cash": "CashAndCashEquivalentsAtCarryingValue",
     "debt": "LongTermDebtNoncurrent",
-    "shares": "CommonStockSharesOutstanding",
+    "shares": "EntityCommonStockSharesOutstanding",
+    "segment_metrics": "SegmentReportingInformation",
 }
 
-# Relative-change thresholds (%) above which a change is flagged material.
-MATERIALITY_THRESHOLDS: dict[str, float] = {
+# Nature of each canonical fact: duration (flow) or instantaneous (stock).
+FACT_KINDS = {
+    "revenue": "DURATION",
+    "operating_income": "DURATION",
+    "net_income": "DURATION",
+    "operating_cash_flow": "DURATION",
+    "capex": "DURATION",
+    "segment_metrics": "DURATION",
+    "cash": "INSTANT",
+    "debt": "INSTANT",
+    "shares": "INSTANT",
+}
+
+# Sign conventions so a delta is meaningful even when one period is negative.
+SIGN_FLIP_KEYS = {"net_income", "operating_income", "operating_cash_flow"}
+
+MATERIALITY_THRESHOLDS = {
     "revenue": 5.0,
     "operating_income": 10.0,
     "net_income": 10.0,
@@ -36,125 +55,186 @@ MATERIALITY_THRESHOLDS: dict[str, float] = {
     "capex": 15.0,
     "cash": 10.0,
     "debt": 10.0,
-    "shares": 2.0,
+    "shares": 5.0,
+    "segment_metrics": 10.0,
 }
 
+_QTRS = ("Q1", "Q2", "Q3", "Q4")
 
-def _as_float(value) -> Optional[float]:
-    if value is None:
+
+def _frame_type(frame: Any) -> str | None:
+    """Classify an SEC `frame` string (e.g. CY2024, Q3CY2024) where possible."""
+    if not frame:
+        return None
+    f = str(frame).upper()
+    if f.startswith("CY") and len(f) == 6 and f[2:].isdigit():
+        return "ANNUAL"
+    if f.startswith("Q") and "CY" in f:
+        return "QUARTERLY"
+    if "YTD" in f or "YTD" in str(frame).upper():
+        return "YTD"
+    return None
+
+
+def duration_kind(fact: Any) -> str | None:
+    """Return the duration kind of a fact, or None if it cannot be established.
+
+    Returns ANNUAL / QUARTERLY / YTD / INSTANT / None (unknown).
+    """
+    if not isinstance(fact, dict):
+        return None
+    start = fact.get("start")
+    if not start:
+        # No start date means an instantaneous (point-in-time) fact.
+        return "INSTANT"
+    ft = _frame_type(fact.get("frame"))
+    if ft:
+        return ft
+    fp = str(fact.get("fp") or "").upper()
+    if fp == "FY":
+        return "ANNUAL"
+    if fp in _QTRS:
+        return "QUARTERLY"
+    end = fact.get("end")
+    if end:
+        try:
+            days = (_date.fromisoformat(str(end)) - _date.fromisoformat(str(start))).days
+            if days >= 270:
+                return "ANNUAL"
+            if days >= 120:
+                return "YTD"
+            if days >= 60:
+                return "QUARTERLY"
+        except ValueError:
+            pass
+    return None
+
+
+def _fp(fact: Any) -> str | None:
+    if not isinstance(fact, dict):
+        return None
+    fp = str(fact.get("fp") or "").strip().upper()
+    return fp or None
+
+
+def _numeric(fact: Any):
+    if not isinstance(fact, dict):
         return None
     try:
-        return float(value)
+        return float(fact.get("value"))
     except (TypeError, ValueError):
         return None
 
 
-def _units_of(fact) -> Optional[str]:
-    if isinstance(fact, dict):
-        return fact.get("units")
+def _select_by_key(facts: dict, key: str):
+    """Look up a fact by canonical key then by tag."""
+    if not isinstance(facts, dict):
+        return None
+    if key in facts:
+        return facts[key]
+    tag = FACT_TAGS.get(key)
+    if tag and tag in facts:
+        return facts[tag]
     return None
 
 
-def _value_of(fact):
-    if isinstance(fact, dict):
-        return fact.get("value")
-    return fact
+def compare_filing_facts(facts_a: dict, facts_b: dict) -> dict:
+    """Compare two filing fact sets with like-for-like context enforcement."""
+    out: dict = {
+        "comparisons": {},
+        "comparison_status": COMPARISON_OK,
+        "unavailable_keys": [],
+        "notes": [],
+    }
 
-
-def compare_filing_facts(
-    facts_a: dict,
-    facts_b: dict,
-    fact_map: Optional[dict[str, str]] = None,
-) -> dict:
-    """Compare flattened fact dicts for two periods.
-
-    facts_a/facts_b may be keyed either by XBRL tag (default) or by canonical
-    fact key (when `fact_map` is provided mapping canonical key -> tag).
-
-    Returns:
-        changed_facts: {key: {period_a, period_b, delta, delta_pct, units,
-                              comparison_status}}
-        materiality:    {key: bool}
-        unmapped:       [tags present but without a canonical mapping]
-        source_refs:    []
-        quality:        "HIGH" | "MEDIUM" | "LOW"
-    """
-    fact_map = fact_map or FACT_TAGS
-    changed: dict = {}
-    materiality: dict = {}
-    unmapped: list[str] = []
-
-    # Determine whether inputs are tag-keyed or canonical-key-keyed.
-    tag_keys = set(fact_map.values())
-    a_keys = set(facts_a or {})
-    b_keys = set(facts_b or {})
-
-    for key, tag in fact_map.items():
-        a_fact = None
-        b_fact = None
-        if key in a_keys:
-            a_fact = facts_a[key]
-        elif tag in a_keys:
-            a_fact = facts_a[tag]
-        if key in b_keys:
-            b_fact = facts_b[key]
-        elif tag in b_keys:
-            b_fact = facts_b[tag]
-
-        a_val = _value_of(a_fact)
-        b_val = _value_of(b_fact)
-        a_units = _units_of(a_fact)
-        b_units = _units_of(b_fact)
-
-        entry: dict = {
-            "period_a": a_val,
-            "period_b": b_val,
+    for key in FACT_TAGS:
+        fact_a = _select_by_key(facts_a, key)
+        fact_b = _select_by_key(facts_b, key)
+        entry: dict[str, Any] = {
+            "key": key,
+            "tag": FACT_TAGS[key],
+            "a": _numeric(fact_a),
+            "b": _numeric(fact_b),
+            "comparison_status": COMPARISON_OK,
+            "reason": None,
             "delta": None,
             "delta_pct": None,
-            "units": a_units or b_units,
-            "comparison_status": COMPARISON_OK,
+            "material": None,
         }
 
-        if a_val is None and b_val is None:
-            entry["comparison_status"] = MISSING
-        elif a_val is None or b_val is None:
+        if fact_a is None and fact_b is None:
+            # Absent from both periods: not a comparison failure.
+            entry["comparison_status"] = COMPARISON_NOT_APPLICABLE
+            entry["reason"] = "not_present_either_period"
+            out["comparisons"][key] = entry
+            continue
+
+        if fact_a is None or fact_b is None:
             entry["comparison_status"] = COMPARISON_UNAVAILABLE
-            entry["reason"] = "one period missing"
-        elif a_units is not None and b_units is not None and a_units != b_units:
+            entry["reason"] = "missing_fact"
+            out["unavailable_keys"].append(key)
+            out["comparisons"][key] = entry
+            continue
+
+        # Unit must match.
+        unit_a = (fact_a.get("units") if isinstance(fact_a, dict) else None)
+        unit_b = (fact_b.get("units") if isinstance(fact_b, dict) else None)
+        if unit_a and unit_b and unit_a != unit_b:
             entry["comparison_status"] = COMPARISON_UNAVAILABLE
-            entry["reason"] = f"unit mismatch: {a_units} vs {b_units}"
-        else:
-            fa = _as_float(a_val)
-            fb = _as_float(b_val)
-            if fa is None or fb is None:
+            entry["reason"] = f"unit_mismatch {unit_a} vs {unit_b}"
+            out["unavailable_keys"].append(key)
+            out["comparisons"][key] = entry
+            continue
+
+        # Duration facts require like-for-like duration context.
+        if FACT_KINDS.get(key) == "DURATION":
+            ka = duration_kind(fact_a)
+            kb = duration_kind(fact_b)
+            if ka is None or kb is None or ka == "INSTANT" or kb == "INSTANT":
                 entry["comparison_status"] = COMPARISON_UNAVAILABLE
-                entry["reason"] = "non-numeric value"
-            else:
-                entry["delta"] = fb - fa
-                if fa != 0:
-                    entry["delta_pct"] = round(((fb - fa) / abs(fa)) * 100.0, 4)
+                entry["reason"] = f"duration_context_unavailable ({ka} vs {kb})"
+                out["unavailable_keys"].append(key)
+                out["comparisons"][key] = entry
+                continue
+            if ka != kb:
+                entry["comparison_status"] = COMPARISON_UNAVAILABLE
+                entry["reason"] = f"duration_context_mismatch {ka} vs {kb}"
+                out["unavailable_keys"].append(key)
+                out["comparisons"][key] = entry
+                continue
+            if ka == "QUARTERLY":
+                fpa = _fp(fact_a)
+                fpb = _fp(fact_b)
+                if fpa and fpb and fpa != fpb:
+                    entry["comparison_status"] = COMPARISON_UNAVAILABLE
+                    entry["reason"] = f"fiscal_period_mismatch {fpa} vs {fpb}"
+                    out["unavailable_keys"].append(key)
+                    out["comparisons"][key] = entry
+                    continue
 
-        is_material = False
-        if entry["comparison_status"] == COMPARISON_OK and entry["delta_pct"] is not None:
-            thr = MATERIALITY_THRESHOLDS.get(key, 10.0)
-            is_material = abs(entry["delta_pct"]) >= thr
-            # net income sign flip is always material
-            fa = _as_float(a_val)
-            fb = _as_float(b_val)
-            if key == "net_income" and fa is not None and fb is not None and (fa < 0) != (fb < 0):
-                is_material = True
-        materiality[key] = is_material
-        changed[key] = entry
+        a = entry["a"]
+        b = entry["b"]
+        if a is None or b is None:
+            entry["comparison_status"] = COMPARISON_UNAVAILABLE
+            entry["reason"] = "non_numeric_value"
+            out["unavailable_keys"].append(key)
+            out["comparisons"][key] = entry
+            continue
 
-    # Unmapped tags: present in either input but without a canonical mapping.
-    all_input_keys = a_keys | b_keys
-    mapped = set(fact_map.keys()) | tag_keys
-    unmapped = sorted(all_input_keys - mapped)
+        delta = round(b - a, 6)
+        entry["delta"] = delta
+        if a != 0:
+            entry["delta_pct"] = round((delta / abs(a)) * 100.0, 4)
+        else:
+            entry["delta_pct"] = None
+        threshold = MATERIALITY_THRESHOLDS.get(key)
+        if threshold is not None and entry["delta_pct"] is not None:
+            entry["material"] = abs(entry["delta_pct"]) >= threshold
+        out["comparisons"][key] = entry
 
-    return {
-        "changed_facts": changed,
-        "materiality": materiality,
-        "unmapped": unmapped,
-        "source_refs": [],
-        "quality": "HIGH" if not unmapped else "MEDIUM",
-    }
+    if out["unavailable_keys"]:
+        out["comparison_status"] = COMPARISON_UNAVAILABLE
+        out["notes"].append(
+            f"{len(out['unavailable_keys'])} keys unavailable for like-for-like comparison"
+        )
+    return out

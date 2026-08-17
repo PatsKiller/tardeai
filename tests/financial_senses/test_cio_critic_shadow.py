@@ -81,3 +81,44 @@ def test_critic_never_changes_live_state():
     assert r.data["shadow_only"] is True
     assert r.data["behavior_influence"] is False
     assert r.data["review"]["result"] == RESULT_MATERIAL_OBJECTION
+
+
+def test_review_id_binds_evidence():
+    action = {"action": "trim", "objective": "reduce concentration"}
+    r1 = review_decision({"identity_status": "RESOLVED", "facts": [{"key": "a"}]}, action)
+    r2 = review_decision({"identity_status": "RESOLVED", "facts": [{"key": "b"}]}, action)
+    assert r1.critic_review_id != r2.critic_review_id
+    assert r1.evidence_digest != r2.evidence_digest
+
+
+def test_missing_identity_is_not_resolved():
+    review = review_decision({"facts": []}, {"action": "hold"})
+    assert review.identity_risks
+    assert any("UNKNOWN" in r for r in review.identity_risks)
+    assert review.result == RESULT_MATERIAL_OBJECTION
+
+
+def test_unmodeled_portfolio_is_material_objection():
+    review = review_decision(
+        {"identity_status": "RESOLVED", "coverage_pct": 50.0, "facts": []},
+        {"action": "hold"},
+    )
+    assert review.portfolio_effects
+    assert review.result == RESULT_MATERIAL_OBJECTION
+
+
+def test_small_unmodeled_below_threshold_not_material():
+    review = review_decision(
+        {"identity_status": "RESOLVED", "coverage_pct": 98.0, "facts": []},
+        {"action": "hold"},
+    )
+    assert review.result == RESULT_NO_MATERIAL_OBJECTION
+
+
+def test_material_action_no_evidence_not_no_objection():
+    review = review_decision(
+        {"identity_status": "RESOLVED", "facts": []},
+        {"action": "trim", "objective": "reduce concentration"},
+    )
+    assert review.result == RESULT_MATERIAL_OBJECTION
+    assert any("substantive evidence" in m for m in review.missing_evidence)

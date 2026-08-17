@@ -67,16 +67,28 @@ def _facts_payload():
                 "Revenues": {
                     "units": {
                         "USD": [
-                            {"end": "2023-12-31", "val": 383285000000},
-                            {"end": "2024-12-31", "val": 391035000000},
+                            {
+                                "start": "2023-01-01", "end": "2023-12-31", "val": 383285000000,
+                                "fp": "FY", "form": "10-K", "frame": "CY2023", "filed": "2024-02-01",
+                            },
+                            {
+                                "start": "2024-01-01", "end": "2024-12-31", "val": 391035000000,
+                                "fp": "FY", "form": "10-K", "frame": "CY2024", "filed": "2025-02-01",
+                            },
                         ]
                     }
                 },
                 "NetIncomeLoss": {
                     "units": {
                         "USD": [
-                            {"end": "2023-12-31", "val": 96995000000},
-                            {"end": "2024-12-31", "val": 93736000000},
+                            {
+                                "start": "2023-01-01", "end": "2023-12-31", "val": 96995000000,
+                                "fp": "FY", "form": "10-K", "frame": "CY2023", "filed": "2024-02-01",
+                            },
+                            {
+                                "start": "2024-01-01", "end": "2024-12-31", "val": 93736000000,
+                                "fp": "FY", "form": "10-K", "frame": "CY2024", "filed": "2025-02-01",
+                            },
                         ]
                     }
                 },
@@ -195,8 +207,9 @@ def test_compare_filing_facts():
         {"cik": "0000320193", "period_a": "2023-12-31", "period_b": "2024-12-31"},
     )
     assert r.status == STATUS_OK
-    assert "revenue" in r.data["changed_facts"]
-    assert r.data["changed_facts"]["revenue"]["comparison_status"] == "OK"
+    assert "revenue" in r.data["comparisons"]
+    assert r.data["comparisons"]["revenue"]["comparison_status"] == "OK"
+    assert r.data["comparisons"]["revenue"]["delta"] != 0
 
 
 def test_get_decision_evidence():
@@ -220,3 +233,47 @@ def test_malformed_company_facts_does_not_crash():
     p = _make_provider(fetcher=bad_fetcher)
     r = p.query("sec.get_company_facts", {"symbol": "AAPL"})
     assert r.status in (STATUS_OK, STATUS_PARTIAL)
+
+
+def test_no_cik_symbol_is_not_found_not_not_configured():
+    p = _make_provider()
+    r = p.query("sec.get_recent_filings", {"symbol": "ZZZZ"})
+    assert r.status == STATUS_PARTIAL
+    assert r.data["state"] == "NOT_FOUND"
+    assert r.status != "NOT_CONFIGURED"
+
+
+def test_companyconcept_preserves_tag_case():
+    from financial_senses import sec_companyfacts_reader as reader
+
+    captured = {}
+
+    def fetcher(url):
+        captured["url"] = url
+        return {"units": {"USD": [{"end": "2024-12-31", "val": 100}]}}
+
+    reader.get_company_concept("0000320193", "AccountsPayableCurrent", fetcher=fetcher)
+    assert "AccountsPayableCurrent" in captured["url"]
+    assert "accountspayablecurrent" not in captured["url"]
+
+
+def test_facts_at_period_prefers_latest_filed_amendment():
+    from financial_senses.sec_provider import SecEdgarProvider
+
+    raw = {
+        "facts": {
+            "us-gaap": {
+                "Revenues": {
+                    "units": {
+                        "USD": [
+                            {"start": "2024-01-01", "end": "2024-12-31", "val": 100, "fp": "FY", "form": "10-K", "filed": "2025-02-01"},
+                            {"start": "2024-01-01", "end": "2024-12-31", "val": 105, "fp": "FY", "form": "10-K/A", "filed": "2025-03-15"},
+                        ]
+                    }
+                }
+            }
+        }
+    }
+    out = SecEdgarProvider._facts_at_period(raw, "2024-12-31")
+    assert out["Revenues"]["value"] == 105
+    assert out["Revenues"]["form"] == "10-K/A"

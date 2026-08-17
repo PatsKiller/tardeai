@@ -1,0 +1,39 @@
+name: financial-senses-ci
+
+# Read-only financial-senses provider-layer proof. No broker writes, no DB
+# writes, no network in unit tests. This is NOT a branch-protection gate yet;
+# it only proves the reviewed head passes the suite in the repository.
+
+on:
+  push:
+    branches: ["feature/financial-senses-parallel-v1", "main"]
+  pull_request:
+    paths:
+      - "scripts/lib/financial_senses/**"
+      - "tests/financial_senses/**"
+      - "config/financial_senses/**"
+  workflow_dispatch:
+
+jobs:
+  financial-senses:
+    runs-on: ubuntu-latest
+    env:
+      TRADE_AI_CI: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install pytest
+        run: |
+          python3 -m pip install --upgrade pip
+          pip install pytest
+
+      - name: Run financial-senses unit suite
+        run: python3 -m pytest tests/financial_senses/ -q
+
+      - name: Run existing SEC regression
+        run: python3 tests/test_sec_form4_momentum_context.py
