@@ -1,0 +1,79 @@
+{
+  "version": "1.0",
+  "authority": "READ_ONLY_ADVISORY",
+  "note": "Static inventory of paid-model call sites. UNKNOWN repository sites must be 0.",
+  "sites": [
+    {
+      "call_site_id": "deepseek_client.chat",
+      "file": "scripts/lib/deepseek_client.py",
+      "runtime_service": "portfolio-server / governed callers",
+      "provider": "deepseek",
+      "key_source": "deepseek_tradeai env",
+      "instrumented": "CANONICAL_INSTRUMENTED",
+      "reservation_used": "via llm_consumption.gate_and_generate",
+      "notes": "canonical wrapper; emit_paid_call hooked fail-soft"
+    },
+    {
+      "call_site_id": "llm_consumption.gate_and_generate",
+      "file": "scripts/lib/llm_consumption.py",
+      "runtime_service": "watch/hermes/advisory",
+      "provider": "deepseek",
+      "instrumented": "CANONICAL_INSTRUMENTED",
+      "reservation_used": true
+    },
+    {
+      "call_site_id": "cio_governed_model_bridge",
+      "file": "scripts/lib/cio_governed_model_bridge.py",
+      "runtime_service": "cio-governed-bridge:8766",
+      "provider": "deepseek",
+      "instrumented": "INSTRUMENTED_BUT_INCOMPLETE",
+      "notes": "reserves/settles; historical log_call after return was dead"
+    },
+    {
+      "call_site_id": "local_llm._try_deepseek",
+      "file": "scripts/local_llm.py",
+      "provider": "deepseek",
+      "instrumented": "KNOWN_BYPASS",
+      "reservation_used": false
+    },
+    {
+      "call_site_id": "blind_review_runner",
+      "file": "scripts/blind_review_runner.py",
+      "provider": "deepseek",
+      "instrumented": "KNOWN_BYPASS"
+    },
+    {
+      "call_site_id": "reentry_llm_insight",
+      "file": "scripts/lib/reentry_llm_insight.py",
+      "provider": "deepseek",
+      "instrumented": "KNOWN_BYPASS"
+    },
+    {
+      "call_site_id": "defense_oversight_urllib",
+      "file": "scripts/defense_oversight.py",
+      "provider": "deepseek",
+      "instrumented": "KNOWN_BYPASS"
+    },
+    {
+      "call_site_id": "llm_lane.foreign_worktree",
+      "file": "tradeai-wt-cursor-guardrails/scripts/llm_lane.py",
+      "provider": "deepseek",
+      "instrumented": "KNOWN_BYPASS",
+      "notes": "outside this repo tree; systemd flash timers may still point here"
+    },
+    {
+      "call_site_id": "openclaw.deepseek",
+      "file": "~/.openclaw",
+      "provider": "deepseek",
+      "instrumented": "THIRD_PARTY_TOOL",
+      "key_source": "openclaw/providers/deepseek/apiKey (BWS)"
+    },
+    {
+      "call_site_id": "claude_code.anthropic_compat",
+      "file": "~/.claude/projects/**/*.jsonl",
+      "provider": "deepseek",
+      "instrumented": "DEVELOPER_TOOL",
+      "notes": "Anthropic-compat api.deepseek.com/anthropic; not Trade AI ledger"
+    }
+  ]
+}
