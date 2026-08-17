@@ -83,7 +83,9 @@ NEW_POSITION_DEFAULT_USD = 5_000.0
 ACTIONABLE_VERDICTS = frozenset({"ADD", "TRIM", "EXIT", "RE_ENTER"})
 
 # Re-entry states that count as a new-position use (mirror cio_opportunity_queue).
-ACTIONABLE_REENTRY_STATES = frozenset({"READY TO REVIEW", "NEAR ENTRY", "OVERSOLD REVIEW"})
+# Desk readiness states (READY TO REVIEW / NEAR ENTRY / OVERSOLD REVIEW) are NOT
+# re-entry authority. Only an explicit RE_ENTER verdict authorizes re-entry.
+ACTIONABLE_REENTRY_STATES: frozenset[str] = frozenset()
 
 # Account `type` values that are tax-advantaged; everything else (or unknown) is
 # treated as taxable so tax/lot constraints are never silently waived.
@@ -262,21 +264,22 @@ def stance_for(symbol: str, queue: Optional[dict[str, Any]]) -> str:
         return stance_for_symbol(symbol, queue)
     except Exception:
         pass
-    # Fail-soft local fallback (single item, verdict/state only)
+    # Fail-soft local fallback (single item, verdict/state only).
+    # LESS authoritative than the canonical path: free text may NEVER create
+    # RE_ENTER here either. Only an explicit governed verdict=RE_ENTER returns
+    # RE_ENTER; READY/NEAR/"Re-enter ADBE" text maps to HOLD, never RE_ENTER.
     item = _verdict_for(symbol, queue)
     if not item:
         return "HOLD"
     verdict = str(item.get("verdict") or "").upper().strip() or None
-    state = str(item.get("state") or "").upper().strip() or None
     if verdict in ("EXIT", "TRIM", "RE_ENTER", "ADD"):
         return verdict
-    if state and state in ACTIONABLE_REENTRY_STATES:
-        return "RE_ENTER"
-    # Label inference fallback without importing
+    # Desk readiness states are not auto-promoted to RE_ENTER.
+    # Label inference fallback without importing — RE_ENTER is deliberately
+    # absent so free text can never manufacture a governed re-entry.
     label = str(item.get("directive_label") or item.get("label") or "").upper()
     for needle, stance in (
-        ("EXIT", "EXIT"), ("TRIM", "TRIM"), ("RE_ENTER", "RE_ENTER"),
-        ("RE-ENTER", "RE_ENTER"), ("ADD", "ADD"),
+        ("EXIT", "EXIT"), ("TRIM", "TRIM"), ("ADD", "ADD"),
     ):
         if needle in label:
             return stance
@@ -318,8 +321,14 @@ def build_capital_sources(
     for p in positions:
         stance = stance_for(p["symbol"], queue)
         if stance == "TRIM":
-            note = f"advisory TRIM at {trim_fraction:.0%} of position value (fallback)"
-            amt = round(p["market_value_usd"] * trim_fraction, 2)
+            # No verified sizing objective (no portfolio context / no fire /
+            # no policy breach) means no recommended dollar delta. The tranche
+            # size is scenario-only and must not contribute to capital sources.
+            note = (
+                f"advisory TRIM — no verified sizing objective; "
+                f"{trim_fraction:.0%} tranche is scenario-only, recommended delta $0"
+            )
+            amt = 0.0
             if port > 0:
                 try:
                     from scripts.lib.cio_institutional_sizing import (
@@ -461,7 +470,7 @@ def build_capital_uses(
                     "amount_usd": amt,
                     "note": it.get("directive_label"),
                 })
-        elif verdict == "RE_ENTER" or (state and state in ACTIONABLE_REENTRY_STATES):
+        elif verdict == "RE_ENTER":
             amt = round(min(new_position_default_usd, headroom) if headroom > 0 else 0.0, 2)
             if amt > 0:
                 reentry.append({
@@ -1032,6 +1041,7 @@ def build_position_decisions(
             ident = None
 
         # Phase 6: candidate-set sizing (10% / $5k are fallback candidates only)
+        target_status = None
         try:
             from scripts.lib.cio_institutional_sizing import (
                 extract_sizing_inputs,
@@ -1053,17 +1063,30 @@ def build_position_decisions(
             if target_w is None:
                 target_w = cap_pct
         except Exception:
-            sizing = {"method": "legacy_fallback", "fallback_candidate_only": True,
-                      "sizing_quality": "HEURISTIC", "candidates": {}}
-            if stance == "EXIT":
-                delta = -p["market_value_usd"]
-            elif stance == "TRIM":
-                delta = -round(p["market_value_usd"] * TRIM_FRACTION, 2)
-            elif stance in ("ADD", "RE_ENTER"):
-                delta = round(min(NEW_POSITION_DEFAULT_USD, headroom), 2)
-            else:
-                delta = 0.0
-            target_w = cap_pct
+            # Sizing failure must make the recommendation LESS actionable, never
+            # resurrect the old 10% heuristic. A failed sizing engine cannot
+            # authorize a TRIM/EXIT/ADD/RE_ENTER dollar delta, so the row
+            # downgrades to REVIEW with $0 (scenario-only note kept for TRIM).
+            scenario_trim_usd = (
+                round(p["market_value_usd"] * TRIM_FRACTION, 2)
+                if stance == "TRIM" else None
+            )
+            sizing = {
+                "method": "SIZING_UNAVAILABLE",
+                "fallback_candidate_only": True,
+                "sizing_quality": "UNAVAILABLE",
+                "candidates": {},
+                "scenario_trim_usd": scenario_trim_usd,
+                "objective_summary": (
+                    "Sizing unavailable — recommendation downgraded to REVIEW "
+                    "(no verified dollar delta)."
+                ),
+            }
+            stance = "REVIEW"
+            stance_display = "Review"
+            delta = 0.0
+            target_w = None
+            target_status = "UNAVAILABLE"
 
         risk_txt = (
             "concentration > fire"
@@ -1084,7 +1107,12 @@ def build_position_decisions(
             "stance": stance_display,
             "stance_code": stance,
             "target_range_pct": {"min": 0.0, "max": round(cap_pct, 2)},
-            "target_weight_pct": round(float(target_w), 2) if target_w is not None else round(cap_pct, 2),
+            "target_weight_pct": (
+                None
+                if target_status == "UNAVAILABLE"
+                else (round(float(target_w), 2) if target_w is not None else round(cap_pct, 2))
+            ),
+            "target_status": target_status,
             "recommended_delta_usd": round(delta, 2),
             "funding": _funding_for(stance, delta),
             "why_now": why,
@@ -1100,6 +1128,7 @@ def build_position_decisions(
             "sizing_why_not_max": sizing.get("why_not_max"),
             "trim_to_clear_fire_usd": sizing.get("trim_to_clear_fire_usd"),
             "trim_to_policy_usd": sizing.get("trim_to_policy_usd"),
+            "scenario_trim_usd": sizing.get("scenario_trim_usd"),
             "fallback_candidate_only": bool(sizing.get("fallback_candidate_only")),
             "candidates": sizing.get("candidates"),
             "sizing_quality": sizing.get("sizing_quality"),

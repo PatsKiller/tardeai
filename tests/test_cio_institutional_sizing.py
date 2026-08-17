@@ -69,7 +69,8 @@ def test_schd_style_fire_not_blind_10pct():
     _ = blind  # available for debugging
 
 
-def test_within_policy_advisory_uses_fallback_10pct():
+def test_within_policy_advisory_is_scenario_only_zero_delta():
+    """Within policy/fire with no objective: 10% is a scenario, NOT a recommendation."""
     r = recommend_trim(
         market_value_usd=20_000.0,
         weight_pct=2.0,
@@ -78,12 +79,17 @@ def test_within_policy_advisory_uses_fallback_10pct():
         fire_pct=16.5,
         advisory_trim=True,
     )
-    assert r["method"] == "advisory_fallback_10pct"
-    assert abs(r["recommended_trim_usd"] - 2000.0) < 0.02
+    assert r["method"] == "scenario_only"
+    assert r["recommended_trim_usd"] == 0.0
+    assert r["recommended_delta_usd"] == 0.0
     assert r["fallback_candidate_only"] is True
+    assert r["scenario_trim_usd"] == 2000.0
     _assert_candidates(r)
     assert r["sizing_quality"] == SIZING_QUALITY_HEURISTIC
     assert r["selected_candidate"] == "default_fallback"
+    assert "recommended delta $0" in r["selection_rationale"]
+    assert "Scenario only" in r["selection_rationale"]
+    assert "recommended $0" in r["objective_summary"]
 
 
 def test_above_policy_below_fire_staged():
@@ -141,7 +147,7 @@ def test_capital_plan_schd_not_exactly_10pct_when_over_fire():
     blind = round(schd_val * 0.10, 2)
     # Objective path should set sizing method
     assert dec.get("sizing_method") in (
-        "clear_fire_staged", "policy_normalize_staged", "advisory_fallback_10pct", "legacy_fallback",
+        "clear_fire_staged", "policy_normalize_staged", "scenario_only", "SIZING_UNAVAILABLE",
     )
     if dec.get("sizing_method") == "clear_fire_staged":
         assert abs(delta - blind) > 1.0 or dec.get("trim_to_clear_fire_usd", 0) > 0

@@ -59,6 +59,9 @@ GATES = [
     ("institutional_sizing", [
         "tests/test_cio_institutional_sizing.py",
     ]),
+    ("decision_quality", [
+        "tests/test_cio_decision_quality_pr1.py",
+    ]),
     ("account_capital_ledger", [
         "tests/test_cio_account_capital_ledger.py",
     ]),

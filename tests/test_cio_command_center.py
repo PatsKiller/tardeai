@@ -110,10 +110,30 @@ def test_cio_now_surfaces_signal_and_breach_but_not_neutral():
     assert "AAA" not in symbols       # neutral hold — omitted
 
 
-def test_cio_now_orders_breach_first():
+def test_cio_now_breach_not_high_without_action():
     now = c.build_cio_now(position_decisions=_plan()["position_decisions"])
-    assert now["decisions"][0]["symbol"] == "SCHD"
-    assert now["decisions"][0]["urgency"] == "high"
+    by_symbol = {d["symbol"]: d for d in now["decisions"]}
+    # Concentration breach is a risk fact, never actionability: without an
+    # explicit ACT_NOW it must not surface as "high" / "Act now".
+    assert by_symbol["SCHD"]["urgency"] != "high"
+    assert by_symbol["SCHD"].get("action_label") != "ACT_NOW"
+
+
+def test_actionability_urgency_act_now_only_when_explicit():
+    assert c._actionability_urgency({"act_now": True}) == "high"
+    assert c._actionability_urgency({"action_label": "ACT_NOW"}) == "high"
+    assert c._actionability_urgency({"risk": "concentration > fire"}) == "low"
+    assert c._actionability_urgency({"action_label": "STALE_REFRESH_REQUIRED"}) == "medium"
+    assert c._actionability_urgency({"action_label": "REVIEW"}) == "medium"
+    assert c._actionability_urgency({}) == "low"
+
+
+def test_actionability_urgency_stale_overrides_act_now():
+    # P0-3 fail-closed: stale/conflict overrides act_now=True and stale ACT_NOW.
+    assert c._actionability_urgency({"act_now": True, "action_label": "STALE_REFRESH_REQUIRED"}) == "medium"
+    assert c._actionability_urgency({"act_now": True, "freshness": "STALE"}) == "medium"
+    assert c._actionability_urgency({"act_now": True, "action_label": "DATA_CONFLICT"}) == "medium"
+    assert c._actionability_urgency({"action_label": "ACT_NOW", "freshness": "EXPIRED"}) == "medium"
 
 
 def test_cio_now_caps_at_five():

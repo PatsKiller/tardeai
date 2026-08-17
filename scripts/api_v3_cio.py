@@ -684,11 +684,11 @@ def _digests_match(
         cls = IDENTITY_DIGEST_CAPABLE if k else IDENTITY_LEGACY_DECISION_ID_ONLY
     if cls == IDENTITY_LEGACY_DECISION_ID_ONLY:
         return True
-    # DIGEST_CAPABLE — exact match required when a digest is presented.
-    # Empty supplied is still accepted so operator ACK without re-sending
-    # hashes can bind on decision_id (existing disposition tests).
+    # DIGEST_CAPABLE — exact match REQUIRED. Missing or wrong digest fails closed
+    # (caller returns digest_mismatch 409). Only LEGACY_DECISION_ID_ONLY keeps
+    # decision-id-only binding for pre-existing cards.
     if not s:
-        return True
+        return False
     return s == k
 
 

@@ -40,6 +40,17 @@ STANCE_PRECEDENCE: dict[str, int] = {
     STANCE_HOLD: 0,
 }
 
+# Canonical re-entry lifecycle. Desk readiness states are NOT re-entry authority.
+# Only an explicit RE_ENTER verdict — passing the governed-eligibility ladder —
+# may become STANCE_RE_ENTER on an operator surface.
+REENTRY_LIFECYCLE = (
+    "WATCH_REENTRY",
+    "DESK_READY_TO_REVIEW",
+    "NEAR_TRIGGER",
+    "GOVERNED_ELIGIBLE",
+    "RE_ENTER",
+)
+
 # Professional labels for operator surfaces (never leak SCREAMING_SNAKE enums).
 STANCE_PROSE: dict[str, str] = {
     STANCE_EXIT: "Exit",
@@ -393,18 +404,22 @@ def professional_label(value: Any) -> str:
 
 
 def infer_stance_from_text(text: Any) -> Optional[str]:
-    """Extract the strongest actionable stance keyword from free text / labels."""
+    """Extract the strongest actionable stance keyword from free text / labels.
+
+    RE_ENTER is deliberately absent: free text saying "re-enter" is
+    non-authoritative. Only an explicit governed ``verdict="RE_ENTER"`` may
+    create STANCE_RE_ENTER (see stance_from_queue_item). This prevents a
+    "READY TO REVIEW" readiness item with a "Re-enter ADBE" label/note from
+    being promoted to a buy.
+    """
     raw = str(text or "")
     if not raw:
         return None
     upper = raw.upper()
-    # Order: most decisive first. RE_ENTER before ENTER; EXIT before TRIM.
+    # Order: most decisive first. EXIT before TRIM.
     checks: list[tuple[str, str]] = [
         ("EXIT", STANCE_EXIT),
         ("SELL", STANCE_EXIT),
-        ("RE_ENTER", STANCE_RE_ENTER),
-        ("RE-ENTER", STANCE_RE_ENTER),
-        ("REENTER", STANCE_RE_ENTER),
         ("TRIM", STANCE_TRIM),
         ("ADD", STANCE_ADD),
         ("BUY", STANCE_ADD),
@@ -440,8 +455,115 @@ def merge_stances(*stances: Optional[str]) -> str:
     return best
 
 
+# ── Canonical current-action semantics (single source of truth) ─────────────
+# Shared by Command Center (urgency/ranking) and Alex Telegram (MY CALL), so a
+# decision can never render ACT NOW on one surface and WAIT on another.
+
+BLOCKING_ACTIONABILITY = frozenset({
+    "DATA_CONFLICT",
+    "STALE_REFRESH_REQUIRED",
+    "REVALIDATE",
+    "STALE",
+    "EXPIRED",
+})
+
+
+def freshness_flag(decision: Any) -> str:
+    """Upper-case freshness state from a plain string or {state,label,status} dict."""
+    if not isinstance(decision, dict):
+        return ""
+    f = decision.get("freshness")
+    if isinstance(f, dict):
+        return str(f.get("state") or f.get("label") or f.get("status") or "").upper()
+    return str(f or "").upper()
+
+
+def actionability_blocking_state(decision: Any) -> Optional[str]:
+    """The blocking state that overrides ACT_NOW, or None when unblocked.
+
+    Honors every canonical representation of the same state — ``action_label``,
+    ``actionability``, and ``freshness`` — so the result is
+    representation-independent. Exact membership only (no substring guesses):
+
+      DATA_CONFLICT / STALE_REFRESH_REQUIRED / REVALIDATE / STALE / EXPIRED
+    """
+    if not isinstance(decision, dict):
+        return None
+    label = str(decision.get("action_label") or "").upper()
+    ability = str(decision.get("actionability") or "").upper()
+    freshness = freshness_flag(decision)
+    for value in (label, ability, freshness):
+        if value in BLOCKING_ACTIONABILITY:
+            return value
+    return None
+
+
+def canonical_act_now(decision: Any) -> tuple[bool, Optional[str]]:
+    """(effective_act_now, blocking_state).
+
+    A blocking freshness/conflict state overrides any raw ``act_now=True`` or
+    ``ACT_NOW`` label. Standing RE_ENTER / DEPLOY_CASH alone never implies
+    ACT_NOW — only explicit, non-blocked actionability does.
+    """
+    if not isinstance(decision, dict):
+        return False, None
+    blocking = actionability_blocking_state(decision)
+    if blocking:
+        return False, blocking
+    label = str(decision.get("action_label") or "").upper()
+    raw = decision.get("act_now")
+    truthy = (
+        raw is True
+        or (isinstance(raw, str) and raw.strip().lower() in {"1", "true", "yes", "on"})
+        or (isinstance(raw, (int, float)) and not isinstance(raw, bool) and raw > 0)
+    )
+    return (truthy or label == "ACT_NOW"), None
+
+
+def _reentry_token(state: Any) -> str:
+    return re.sub(r"[^A-Z0-9]+", "_", str(state or "").upper().strip())
+
+
+def reentry_state_from_desk(state: Any = None, verdict: Any = None) -> Optional[str]:
+    """Map raw desk readiness (or a canonical lifecycle token) to a lifecycle state.
+
+    Idempotent over its own canonical states: WATCH_REENTRY,
+    DESK_READY_TO_REVIEW, NEAR_TRIGGER, GOVERNED_ELIGIBLE. Only an explicit
+    governed ``verdict=RE_ENTER`` returns RE_ENTER; a bare state claiming
+    RE_ENTER is downgraded to GOVERNED_ELIGIBLE (non-actionable).
+    """
+    v = str(verdict or "").upper().strip()
+    if v == "RE_ENTER":
+        return "RE_ENTER"
+    key = _reentry_token(state)
+    if key == "RE_ENTER":
+        # State claiming RE_ENTER without a governed verdict is non-authoritative.
+        return "GOVERNED_ELIGIBLE"
+    mapping = {
+        "READY_TO_REVIEW": "DESK_READY_TO_REVIEW",
+        "DESK_READY_TO_REVIEW": "DESK_READY_TO_REVIEW",
+        "NEAR_ENTRY": "NEAR_TRIGGER",
+        "NEAR_TRIGGER": "NEAR_TRIGGER",
+        "OVERSOLD_REVIEW": "NEAR_TRIGGER",
+        "WATCH_REENTRY": "WATCH_REENTRY",
+        "WATCH": "WATCH_REENTRY",
+        "GOVERNED_ELIGIBLE": "GOVERNED_ELIGIBLE",
+        "WAIT": "WAIT",
+        "BLOCKED": "BLOCKED",
+        "STALE": "STALE",
+        "INVALIDATED": "INVALIDATED",
+        "DATA_UNAVAILABLE": "DATA_UNAVAILABLE",
+    }
+    return mapping.get(key)
+
+
 def stance_from_queue_item(item: Optional[dict[str, Any]]) -> str:
-    """Stance for one queue item: explicit verdict > state > directive label."""
+    """Stance for one queue item: explicit verdict > state > directive label.
+
+    Desk readiness states (READY TO REVIEW / NEAR ENTRY / OVERSOLD REVIEW) map to
+    REVIEW — ready to review is not ready to buy. Only an explicit RE_ENTER
+    verdict produces STANCE_RE_ENTER.
+    """
     if not item:
         return STANCE_HOLD
     verdict = str(item.get("verdict") or "").upper().strip() or None
@@ -449,8 +571,11 @@ def stance_from_queue_item(item: Optional[dict[str, Any]]) -> str:
     label = item.get("directive_label") or item.get("label") or item.get("note")
     from_verdict = verdict if verdict in ACTIONABLE_STANCES else None
     from_state = None
-    if state in {"READY TO REVIEW", "NEAR ENTRY", "OVERSOLD REVIEW"}:
+    reentry = reentry_state_from_desk(state, verdict)
+    if reentry == "RE_ENTER":
         from_state = STANCE_RE_ENTER
+    elif reentry:
+        from_state = STANCE_REVIEW
     from_label = infer_stance_from_text(label)
     return merge_stances(from_verdict, from_state, from_label)
 
@@ -601,7 +726,8 @@ def aggregate_position_decisions(
     _size_keys = (
         "sizing", "sizing_method", "sizing_objective", "sizing_why_not_min",
         "sizing_why_not_max", "trim_to_clear_fire_usd", "trim_to_policy_usd",
-        "fallback_candidate_only", "target_weight_pct",
+        "fallback_candidate_only", "target_weight_pct", "scenario_trim_usd",
+        "target_status",
         "candidates", "sizing_quality", "selected_candidate",
         "selection_rationale", "tranches", "tax_class",
         "action_label", "action_label_display", "act_now", "actionable",
@@ -707,6 +833,7 @@ def aggregate_position_decisions(
         if stance in ("TRIM", "EXIT", "ADD", "RE_ENTER") and pv > 0:
             try:
                 from scripts.lib.cio_institutional_sizing import (
+                    FALLBACK_TRIM_FRACTION,
                     extract_sizing_inputs,
                     size_decision,
                 )
@@ -738,16 +865,36 @@ def aggregate_position_decisions(
                 agg["sizing_why_not_max"] = sz.get("why_not_max")
                 agg["trim_to_clear_fire_usd"] = sz.get("trim_to_clear_fire_usd")
                 agg["trim_to_policy_usd"] = sz.get("trim_to_policy_usd")
+                agg["scenario_trim_usd"] = sz.get("scenario_trim_usd")
                 agg["fallback_candidate_only"] = bool(sz.get("fallback_candidate_only"))
                 agg["candidates"] = sz.get("candidates")
                 agg["sizing_quality"] = sz.get("sizing_quality")
                 agg["selected_candidate"] = sz.get("selected_candidate")
                 agg["selection_rationale"] = sz.get("selection_rationale")
                 agg["tranches"] = sz.get("tranches")
+                agg["target_status"] = None
                 if sz.get("target_weight_pct") is not None:
                     agg["target_weight_pct"] = sz.get("target_weight_pct")
             except Exception:
-                pass
+                # Sizing failure is fail-closed: never resurrect a heuristic
+                # dollar (e.g. a -10% TRIM). Downgrade to REVIEW with $0, but
+                # keep the hypothetical 10% as scenario-only metadata.
+                scenario_trim_usd = (
+                    round(value * FALLBACK_TRIM_FRACTION, 2)
+                    if stance == "TRIM" else None
+                )
+                stance = STANCE_REVIEW
+                agg["recommended_delta_usd"] = 0.0
+                agg["sizing_method"] = "SIZING_UNAVAILABLE"
+                agg["sizing_quality"] = "UNAVAILABLE"
+                agg["fallback_candidate_only"] = True
+                agg["target_weight_pct"] = None
+                agg["target_status"] = "UNAVAILABLE"
+                agg["scenario_trim_usd"] = scenario_trim_usd
+                agg["sizing_objective"] = (
+                    "Sizing unavailable — recommendation downgraded to REVIEW "
+                    "(no verified dollar delta)."
+                )
         agg["cio_stance"] = stance
         agg["stance"] = professional_stance(stance)  # operator-facing
         agg["stance_code"] = stance
@@ -756,7 +903,7 @@ def aggregate_position_decisions(
         agg["recommended_delta_usd"] = round(float(agg.get("recommended_delta_usd") or 0.0), 2)
         agg["account_count"] = len(agg.get("accounts") or [])
         tr = agg.get("target_range_pct") or {}
-        if agg.get("target_weight_pct") is None:
+        if agg.get("target_weight_pct") is None and agg.get("target_status") != "UNAVAILABLE":
             agg["target_weight_pct"] = tr.get("max") if isinstance(tr, dict) else None
         agg["decision_id"] = make_decision_id(
             sym, stance, agg["recommended_delta_usd"], agg.get("why_now"),
@@ -810,7 +957,7 @@ def sanitize_decisions_now(
         )
         tr = d.get("target_range_pct") or {}
         target_w = d.get("target_weight_pct")
-        if target_w is None and isinstance(tr, dict):
+        if target_w is None and isinstance(tr, dict) and d.get("target_status") != "UNAVAILABLE":
             target_w = tr.get("max")
         row = {
             "decision_id": did,
@@ -839,6 +986,7 @@ def sanitize_decisions_now(
         for k in (
             "sizing", "sizing_method", "sizing_objective", "sizing_why_not_min",
             "sizing_why_not_max", "trim_to_clear_fire_usd", "trim_to_policy_usd",
+            "scenario_trim_usd", "target_status",
             "fallback_candidate_only", "candidates", "sizing_quality",
             "selected_candidate", "selection_rationale", "tranches",
             "action_label", "action_label_display",

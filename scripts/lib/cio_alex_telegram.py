@@ -30,6 +30,10 @@ from pathlib import Path
 from typing import Any, Optional
 
 from scripts.lib import cio_telegram_transport as tg
+from scripts.lib.cio_decision_semantics import (
+    actionability_blocking_state,
+    canonical_act_now,
+)
 
 ALEX_TELEGRAM_VERSION = "alex_telegram_1.0.0"
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -126,7 +130,6 @@ CURRENT_ACTIONS = frozenset({
 })
 ACTIONABILITY_NOW = "ACT_NOW"
 ACTIONABILITY_STALE = "STALE_REFRESH_REQUIRED"
-_STALE_CURRENT_LINE = "WAIT / REVALIDATE — marks are stale; ACT_NOW=false."
 
 
 def _norm_digest(val: Any) -> str:
@@ -150,39 +153,27 @@ def _label_text(decision: dict[str, Any]) -> str:
     ).strip()
 
 
-def _is_stale_label(label: str) -> bool:
-    return "STALE" in (label or "").upper()
-
-
-def _coerce_act_now(decision: dict[str, Any], *, stale: bool, standing: str) -> bool:
-    if stale:
-        return False
-    raw = decision.get("act_now")
-    if raw is False:
-        return False
-    if raw is True:
-        return True
-    if isinstance(raw, str):
-        s = raw.strip().lower()
-        if s in {"0", "false", "no", "off"}:
-            return False
-        if s in {"1", "true", "yes", "on"}:
-            return True
-    if isinstance(raw, (int, float)) and not isinstance(raw, bool):
-        return raw > 0
-    if standing in {"DEPLOY_CASH", "RE_ENTER"}:
-        return True
-    if standing in {"WAIT", "HOLD_CASH", "NO_ACTION", "HOLD", "REVALIDATE", "RESEARCH"}:
-        return False
-    # TRIM / EXIT / ADD / ROTATE with no flag are standing views, not ACT_NOW.
-    return False
+def _current_action_line(actionability: str, current: str) -> str:
+    """Distinct prose per blocking state — never collapse DATA_CONFLICT into
+    "marks are stale". STALE/EXPIRED/STALE_REFRESH_REQUIRED share the stale
+    line; REVALIDATE has its own; everything else is generic WAIT."""
+    if actionability == "DATA_CONFLICT" or current == "DATA_CONFLICT":
+        return "DATA CONFLICT — ACT_NOW=false."
+    if actionability == ACTIONABILITY_STALE:
+        return "REVALIDATE — marks are stale; ACT_NOW=false."
+    if current == "REVALIDATE":
+        return "REVALIDATE — ACT_NOW=false."
+    return f"{current} — ACT_NOW=false."
 
 
 def classify_actionability(decision: dict[str, Any]) -> dict[str, Any]:
     """Split standing recommendation from current action.
 
-    Stale TRIM stays TRIM as standing_recommendation. Current action becomes
-    WAIT / REVALIDATE with act_now False — never an unqualified MY CALL.
+    Uses the shared canonical classifier so Telegram agrees with Command Center:
+    a blocking state (DATA_CONFLICT / STALE_REFRESH_REQUIRED / REVALIDATE /
+    stale/expired freshness) overrides any raw act_now=True. Standing
+    RE_ENTER / DEPLOY_CASH alone never implies ACT_NOW. Only explicit,
+    non-blocked actionability produces a MY CALL.
     """
     d = decision if isinstance(decision, dict) else {}
     standing = (
@@ -192,13 +183,22 @@ def classify_actionability(decision: dict[str, Any]) -> dict[str, Any]:
         or "REVIEW"
     )
     label = _label_text(d)
-    stale = _is_stale_label(label)
-    act_now = _coerce_act_now(d, stale=stale, standing=standing)
-    if stale or ACTIONABILITY_STALE in label.upper():
+    act_now, blocking = canonical_act_now(d)
+
+    if blocking == "DATA_CONFLICT":
+        actionability = "DATA_CONFLICT"
+    elif blocking in {"STALE", "EXPIRED", ACTIONABILITY_STALE}:
+        # STALE / EXPIRED / STALE_REFRESH_REQUIRED → stale family.
         actionability = ACTIONABILITY_STALE
+    elif blocking == "REVALIDATE":
+        # Explicit REVALIDATE is a distinct state from "marks are stale".
+        actionability = "REVALIDATE"
     elif act_now:
         actionability = ACTIONABILITY_NOW
-    elif label.upper() in {ACTIONABILITY_NOW, ACTIONABILITY_STALE, "WATCH", "NO_ACTION"}:
+    elif label.upper() in {
+        ACTIONABILITY_NOW, ACTIONABILITY_STALE, "WATCH", "NO_ACTION",
+        "DATA_CONFLICT", "REVALIDATE",
+    }:
         actionability = label.upper()
     elif standing in {"HOLD_CASH", "WAIT", "NO_ACTION"}:
         actionability = "NO_ACTION"
@@ -206,10 +206,11 @@ def classify_actionability(decision: dict[str, Any]) -> dict[str, Any]:
         actionability = str(d.get("actionability") or "NO_ACTION").upper() or "NO_ACTION"
 
     explicit = str(d.get("current_action") or "").strip().upper()
-    if stale or actionability == ACTIONABILITY_STALE:
-        current = explicit if explicit in {"WAIT", "REVALIDATE"} else "REVALIDATE"
+    if blocking:
+        current = explicit if explicit in {"WAIT", "REVALIDATE", "DATA_CONFLICT"} else (
+            "DATA_CONFLICT" if blocking == "DATA_CONFLICT" else "REVALIDATE"
+        )
         act_now = False
-        actionability = ACTIONABILITY_STALE
     elif act_now:
         current = explicit or standing
     elif explicit in CURRENT_ACTIONS:
@@ -290,8 +291,7 @@ def format_cio_message(decision: dict[str, Any]) -> str:
     standing = cls["standing_recommendation"]
     current = cls["current_action"]
     act_now = bool(cls["act_now"])
-    stale = cls["actionability"] == ACTIONABILITY_STALE or _is_stale_label(_label_text(decision))
-    use_standing = (not act_now) or stale
+    use_standing = not act_now
 
     sym = decision.get("symbol") or decision.get("scope") or "—"
     delta = _num(decision.get("delta_usd") if decision.get("delta_usd") is not None
@@ -337,7 +337,7 @@ def format_cio_message(decision: dict[str, Any]) -> str:
             stand_line,
             "",
             "CURRENT ACTION",
-            _STALE_CURRENT_LINE if stale else f"{current} — ACT_NOW=false.",
+            _current_action_line(cls["actionability"], current),
             "",
         ])
     else:

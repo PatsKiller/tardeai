@@ -124,7 +124,7 @@ def test_stance_precedence():
     assert cp.stance_for("B", queue) == "EXIT"
     assert cp.stance_for("A", queue) == "TRIM"
     assert cp.stance_for("D", queue) == "ADD"
-    assert cp.stance_for("C", queue) == "RE_ENTER"  # reentry state
+    assert cp.stance_for("C", queue) == "REVIEW"  # readiness ≠ re-entry authority
     assert cp.stance_for("ZZZ", queue) == "HOLD"
 
 
@@ -150,11 +150,12 @@ def test_sources_trims_and_exits():
         {"symbol": "NVDA", "verdict": "EXIT", "source": "advisory"},
     ]}
     src = cp.build_capital_sources(_positions(), queue=queue)
-    # V trim 10% of 40k = 4k; NVDA exit = full 60k
-    assert src["trims_usd"] == 4_000.0
+    # Advisory TRIM with no verified objective => $0 (scenario-only).
+    # NVDA exit = full 60k.
+    assert src["trims_usd"] == 0.0
     assert src["exits_usd"] == 60_000.0
-    assert src["total_raise_usd"] == 64_000.0
-    assert len(src["trims"]) == 1 and src["trims"][0]["symbol"] == "V"
+    assert src["total_raise_usd"] == 60_000.0
+    assert src["trims"] == []
     assert len(src["exits"]) == 1 and src["exits"][0]["symbol"] == "NVDA"
 
 
@@ -188,11 +189,12 @@ def test_sources_maturities_excluded_from_raise_even_with_trims():
     src = cp.build_capital_sources(
         _positions(), queue=queue, redeploy_open_events=events, cash_total=100_000.0,
     )
-    assert src["trims_usd"] == 4_000.0
+    # Advisory TRIM with no objective => $0; maturity is excluded from raise.
+    assert src["trims_usd"] == 0.0
     assert src["maturities_usd"] == 50_000.0
     assert src["earmarked_redeploy_usd"] == 50_000.0
-    assert src["total_prospective_raise_usd"] == 4_000.0
-    assert src["total_raise_usd"] == 4_000.0  # NOT 54_000
+    assert src["total_prospective_raise_usd"] == 0.0
+    assert src["total_raise_usd"] == 0.0  # NOT 54_000 and NOT 4_000
     assert src["double_count_guard"] == "earmarked_redeploy_excluded_from_raise"
 
 
@@ -231,7 +233,8 @@ def test_uses_reentry_and_new_positions():
     ]}
     posture = cp.cash_posture(100_000.0, 500_000.0, min_pct=20.0)
     uses = cp.build_capital_uses(queue, [], [], posture, 500_000.0)
-    assert uses["reentry_usd"] == cp.NEW_POSITION_DEFAULT_USD * 2  # AA + CC
+    # READY TO REVIEW is not re-entry authority: only explicit RE_ENTER deploys.
+    assert uses["reentry_usd"] == cp.NEW_POSITION_DEFAULT_USD * 1  # CC only
     assert uses["new_positions_usd"] == cp.NEW_POSITION_DEFAULT_USD  # BB
 
 
@@ -296,10 +299,11 @@ def test_build_capital_plan_arithmetic_sums():
         queue={"items": [{"symbol": "V", "verdict": "TRIM", "source": "cio"},
                          {"symbol": "TSLA", "verdict": "ADD", "source": "advisory"}]},
     )
-    # trim V = 4k; add TSLA = 5k; deploy = min(5k, investable 0 + raise 4k) = 4k
-    assert plan["capital_sources"]["total_raise_usd"] == 4_000.0
-    assert plan["net_recommended_raise_usd"] == 4_000.0
-    assert plan["net_recommended_deploy_usd"] == 4_000.0
+    # advisory TRIM with no objective => $0; add TSLA = 5k; deploy = min(5k,
+    # investable 0 + raise 0) = 0 (cash at floor is not force-deployed).
+    assert plan["capital_sources"]["total_raise_usd"] == 0.0
+    assert plan["net_recommended_raise_usd"] == 0.0
+    assert plan["net_recommended_deploy_usd"] == 0.0
     assert plan["post_plan_cash_usd"] == 100_000.0
     assert plan["post_plan_cash_pct"] == 20.0
 
@@ -401,7 +405,8 @@ def test_position_decisions_trim_delta():
     rows = cp.build_position_decisions(
         _positions(), queue=queue, portfolio_value=500_000.0)
     v = next(r for r in rows if r["symbol"] == "V")
-    assert v["recommended_delta_usd"] == -4_000.0  # 10% of 40k
+    # V is 8% (below policy/fire): no objective => $0, scenario-only.
+    assert v["recommended_delta_usd"] == 0.0
 
 
 def test_position_decisions_hold_default():
@@ -521,7 +526,7 @@ def test_phase2_cash_ledger_invariants():
     assert ledger["settled_cash_usd"] == 150_000.0
     assert ledger["earmarked_redeploy_usd"] == 40_000.0
     assert ledger["free_unearmarked_usd"] == 110_000.0
-    assert ledger["prospective_raise_usd"] == 4_000.0
+    assert ledger["prospective_raise_usd"] == 0.0
     assert ledger["invariants_ok"] is True
     names = {i["name"] for i in ledger["invariants"]}
     assert names == {

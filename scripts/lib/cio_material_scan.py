@@ -207,45 +207,66 @@ def _cash_decision(plan: dict[str, Any], reclass: dict[str, Any]) -> dict[str, A
     )
 
 
+def _governed_reentry_symbols(plan: dict[str, Any]) -> set[str]:
+    """Candidate-specific governed RE_ENTER identity.
+
+    Only a symbol whose own capital-plan decision carries stance RE_ENTER
+    (produced by an explicit governed verdict) AND a non-blocked ACT_NOW is
+    authorized to re-enter. A global ACT_NOW count from an unrelated symbol
+    (e.g. SCHD TRIM) never authorizes re-entry for a merely-READY name.
+    """
+    from scripts.lib.cio_decision_semantics import canonical_act_now
+    authorized: set[str] = set()
+    for row in plan.get("position_decisions") or []:
+        if not isinstance(row, dict):
+            continue
+        stance = str(row.get("stance_code") or row.get("stance") or "").upper()
+        if stance != "RE_ENTER":
+            continue
+        act_now, blocking = canonical_act_now(row)
+        if act_now and not blocking:
+            authorized.add(str(row.get("symbol") or "").upper())
+    return authorized
+
+
 def _reentry_decision(reclass: dict[str, Any], plan: dict[str, Any]) -> dict[str, Any]:
     ready = reclass.get("ready") or []
     near = reclass.get("near") or []
-    act_now = 0
-    gate = plan.get("freshness_materiality_gate") if isinstance(plan.get("freshness_materiality_gate"), dict) else {}
-    try:
-        act_now = int(gate.get("act_now_count") or 0)
-    except (TypeError, ValueError):
-        act_now = 0
-    # Desk "READY TO REVIEW" is not ACT_NOW. Without fresh marks, WAIT.
-    if ready and act_now > 0:
+    # Candidate-specific governed eligibility only. A global ACT_NOW count from
+    # an unrelated decision must NEVER authorize re-entry for a merely-READY
+    # name — READY/NEAR/OVERSOLD desk state alone is REVIEW/WAIT.
+    governed = _governed_reentry_symbols(plan)
+    authorized = [s for s in ready if s in governed]
+    if authorized:
         action = "RE_ENTER"
         why = (
-            f"Re-entry desk has READY names: {', '.join(ready[:8])}. "
-            f"ACT_NOW={act_now}. Advisory only."
+            f"Re-entry authorized by candidate-specific governed verdicts: "
+            f"{', '.join(authorized[:8])}. Advisory only."
         )
-        change = "READY names leave the zone or wash/freshness blocks them."
+        change = "Governed re-entry verdict is revoked or freshness blocks it."
         delta = float((cash_posture(plan).get("reentry_usd") or 0))
     elif ready or near:
         action = "WAIT"
         why = (
             f"Re-entry WAIT. Desk READY={', '.join(ready[:6]) or 'none'} "
-            f"NEAR={', '.join(near[:6]) or 'none'} but ACT_NOW={act_now}. "
-            "Do not chase stale marks."
+            f"NEAR={', '.join(near[:6]) or 'none'} but no candidate-specific "
+            "governed RE_ENTER verdict. Do not chase ready marks without "
+            "governed authorization."
         )
-        change = "READY names survive freshness and a capital-plan use is ACT_NOW."
+        change = "A candidate-specific governed RE_ENTER verdict is produced."
         delta = 0.0
     else:
         action = "WAIT"
         why = (
             f"Re-entry WAIT. READY=0 NEAR={len(near)} WAIT={len(reclass.get('wait') or [])} "
-            f"of {reclass.get('n') or 0} desk rows. No re-entry dollars in the capital plan."
+            f"of {reclass.get('n') or 0} desk rows. No governed re-entry verdicts."
         )
-        change = "Desk prints READY with fresh marks and a capital-plan use."
+        change = "A candidate-specific governed RE_ENTER verdict is produced."
         delta = 0.0
     act_now_flag = action == "RE_ENTER"
-    standing = "RE_ENTER" if (ready or action == "RE_ENTER") else "WAIT"
+    standing = "RE_ENTER" if authorized else "WAIT"
     return _decision(
-        decision_id=f"dec_reentry_{_digest({'action': action, 'ready': ready[:12], 'near': near[:12], 'act_now': act_now})}",
+        decision_id=f"dec_reentry_{_digest({'action': action, 'ready': ready[:12], 'near': near[:12], 'authorized': authorized[:12]})}",
         symbol="REENTRY",
         action=action,
         why=why,
@@ -299,15 +320,25 @@ def _canonical_decisions(plan: dict[str, Any]) -> list[dict[str, Any]]:
             "action_label": row.get("action_label"),
             "account": row.get("account"),
             "standing_recommendation": stance,
+            # Preserve freshness and any pre-stamped actionability so a blocking
+            # state survives the material-scan projection exactly as it does in
+            # Command Center / Telegram.
+            "freshness": row.get("freshness"),
+            "actionability": row.get("actionability"),
         }
-        # Freshness is STALE → do not pretend ACT NOW.
-        label = str(row.get("action_label") or "")
-        stale = bool(label) and "STALE" in label.upper()
-        if stale:
-            why = f"{why} Freshness={label}; not ACT NOW."
+        # Canonical classifier, not a local "STALE" substring. A blocking state
+        # (DATA_CONFLICT / REVALIDATE / STALE_REFRESH_REQUIRED / STALE / EXPIRED)
+        # overrides act_now=True across this projection; a blocked row can never
+        # be reclassified as actionable.
+        from scripts.lib.cio_decision_semantics import actionability_blocking_state
+        blocking = actionability_blocking_state(row)
+        if blocking:
+            why = f"{why} Blocked by {blocking}; not ACT NOW."
             extra["act_now"] = False
-            extra["current_action"] = "REVALIDATE"
-            extra["actionability"] = "STALE_REFRESH_REQUIRED"
+            extra["current_action"] = (
+                "DATA_CONFLICT" if blocking == "DATA_CONFLICT" else "REVALIDATE"
+            )
+            extra["actionability"] = blocking
         elif row.get("act_now") is False:
             extra["current_action"] = "WAIT"
         else:

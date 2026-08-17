@@ -15,7 +15,10 @@ from scripts.lib import cio_sector_opportunity as so  # noqa: E402
 
 def test_infer_stance_from_advisory_trim_label():
     assert ds.infer_stance_from_text("Advisory TRIM — SCHD") == "TRIM"
-    assert ds.infer_stance_from_text("Advisory RE_ENTER — ADBE") == "RE_ENTER"
+    # RE_ENTER is non-authoritative in free text: only explicit verdict=RE_ENTER
+    # creates RE_ENTER (P0-1 re-entry text bypass closure).
+    assert ds.infer_stance_from_text("Advisory RE_ENTER — ADBE") is None
+    assert ds.infer_stance_from_text("Re-enter ADBE") is None
     assert ds.infer_stance_from_text("Defense income — XLI") is None
 
 
