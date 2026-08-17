@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 AUTHORITY = "READ_ONLY_ADVISORY"
-TOPO_VERSION = "cio_topology_audit_1.3.0"
+TOPO_VERSION = "cio_topology_audit_1.6.0"
 
 # The approved production release root. Deprecated development/worktree trees
 # must NOT be here — only the deployed CURRENT release tree is an approved root.
@@ -42,6 +42,21 @@ DEPRECATED_ROOTS = (
 # Path substrings that always indicate a throwaway / non-production checkout.
 DEPRECATED_MARKERS = (
     "/tmp/", "agent-jobs/", "claude/worktrees/", "codex/", "/dev/shm/",
+)
+
+# Separate approved components with their OWN expected content SHAs. These are
+# components that legitimately live OUTSIDE the CIO main tree and release
+# snapshots (e.g. the watch-review automation repo, which produces CIO review
+# outcomes but is its own git repo). A process/job resolving to one of these
+# roots is clean ONLY if (a) its root is listed here (so it is not flagged
+# root_not_approved) and (b) its HEAD matches the pinned expected_sha. Pinning
+# is explicit operator approval; bump expected_sha when the component advances.
+ADDITIONAL_APPROVED_COMPONENTS: tuple[dict[str, str], ...] = (
+    {
+        "label": "watch-review-automation",
+        "root": "/home/johnclaw/tradeai-wt-watch-review-automation",
+        "expected_sha": "cbabd9feba700edfbea02f0d0cef65936b73fd40",
+    },
 )
 
 # CIO-producing entrypoints whose runtime provenance we audit. Covers the
@@ -89,6 +104,42 @@ _ARTIFACT_SUFFIXES = (
 
 _SCRIPT_EXT = (".py", ".sh", ".bash", ".zsh", ".rb")
 
+# Python interpreter binaries are RUNTIME, not code ownership. A venv living
+# under a deprecated root (e.g. trade-ai-v12-rebuild/.venv) is shared runtime
+# infrastructure (interpreter + third-party deps only; CIO code is loaded from
+# the tree cwd/PYTHONPATH, never installed into the venv). It must NOT produce
+# a CDQ-26 code-provenance violation any more than /usr/bin/python3 would.
+_RUNTIME_INTERPRETER_RE = re.compile(
+    r"(?:^|/)(?:\.?venv|venv|env)/bin/python[\d.]*$|"
+    r"(?:^|/)bin/python[\d.]*$|"
+    r"(?:^|/)usr/bin/python[\d.]*$"
+)
+
+
+def _is_runtime_interpreter(path: str) -> bool:
+    """True when a path is a Python interpreter binary (runtime, not code)."""
+    p = (path or "").strip().rstrip("/")
+    if not p:
+        return False
+    name = Path(p).name.lower()
+    if not (name.startswith("python") or name == "python"):
+        return False
+    return bool(_RUNTIME_INTERPRETER_RE.search(p))
+
+
+# Runtime DATA directories are state, not code ownership. A data/log root that
+# physically lives under a deprecated tree (e.g. the canonical data/runtime
+# referenced via TRADEAI_RUNTIME_ROOT=/home/.../trade-ai-v12-rebuild/data/runtime)
+# is shared runtime state — symlinked from every release — not a checkout of old
+# code. It must not produce a CDQ-26 violation any more than a .lock file does.
+_DATA_PATH_COMPONENTS = ("/data/", "/logs/", "/log/")
+
+
+def _is_data_path(path: str) -> bool:
+    """True when a path is a runtime-data directory (state, not code)."""
+    p = (path or "").strip().rstrip("/") + "/"
+    return any(comp in p for comp in _DATA_PATH_COMPONENTS)
+
 
 def _normalize_name(name: str) -> str:
     """Normalize a unit/file name so hyphenated systemd unit names match the
@@ -111,8 +162,14 @@ def _looks_like_script(path: str) -> bool:
 
 
 def _code_paths_from_text(text: str) -> list[str]:
-    """Absolute executable/code paths in a command/schedule line (no artifacts)."""
-    return [p for p in _ABS_PATH_RE.findall(text or "") if not _is_artifact_path(p)]
+    """Absolute executable/code paths in a command/schedule line (no artifacts,
+    interpreter binaries, or data directories)."""
+    return [
+        p for p in _ABS_PATH_RE.findall(text or "")
+        if not _is_artifact_path(p)
+        and not _is_runtime_interpreter(p)
+        and not _is_data_path(p)
+    ]
 
 
 
@@ -153,8 +210,39 @@ def _git_rev(path: str) -> str:
     return _run(["git", "-C", path, "rev-parse", "HEAD"])
 
 
+def _build_sha_root(path: str) -> tuple[str, str]:
+    """Resolve a release-dir snapshot (no .git) to its BUILD_SHA root + sha.
+
+    Deployment release trees are copied WITHOUT a .git dir; their content SHA
+    is recorded in a BUILD_SHA file at the release root. Without this fallback,
+    a process running from a stale release dir (e.g. 6f700979 vs current
+    968dafb6) resolves to an empty head and evades the CDQ-25 SHA-mismatch
+    check — exactly the "mixed-release runtime" condition CDQ-25 exists to
+    catch. Return (root, sha) or ("", "") when no BUILD_SHA is found.
+    """
+    p = Path(path)
+    if not p.is_absolute():
+        return "", ""
+    cur = p if p.is_dir() else p.parent
+    for _ in range(8):
+        bs = cur / "BUILD_SHA"
+        if bs.is_file():
+            try:
+                return str(cur), bs.read_text().strip()
+            except Exception:
+                return "", ""
+        if cur.parent == cur:
+            break
+        cur = cur.parent
+    return "", ""
+
+
 def resolve_checkout(path: str) -> dict[str, Any]:
-    """Resolve a filesystem path to its enclosing git root + HEAD revision."""
+    """Resolve a filesystem path to its enclosing git root + HEAD revision.
+
+    Falls back to a release tree's BUILD_SHA when the path lives in a copied
+    deployment snapshot that has no .git directory.
+    """
     p = Path(path)
     if not p.exists():
         return {"path": path, "exists": False, "git_root": "", "head_sha": ""}
@@ -163,6 +251,8 @@ def resolve_checkout(path: str) -> dict[str, Any]:
     except Exception:
         root = ""
     head = _git_rev(path) if root else ""
+    if not root:
+        root, head = _build_sha_root(path)
     return {
         "path": path,
         "exists": True,
@@ -253,7 +343,12 @@ def enumerate_processes() -> list[dict[str, Any]]:
         # though cwd looks fine, so we classify every code path independently.
         code_paths = _code_paths_from_text(cmd)
         argv0 = (cmd.split() or [""])[0]
-        if argv0.startswith("/") and argv0 not in code_paths and not _is_artifact_path(argv0):
+        if (
+            argv0.startswith("/")
+            and argv0 not in code_paths
+            and not _is_artifact_path(argv0)
+            and not _is_runtime_interpreter(argv0)
+        ):
             code_paths.insert(0, argv0)
         rec = resolve_checkout(cwd or (code_paths[0] if code_paths else ""))
         rec.update({
@@ -392,16 +487,26 @@ def _classify_path(
     deprecated_roots: tuple[str, ...],
     deprecated_markers: tuple[str, ...],
     extra: Optional[dict[str, Any]] = None,
+    expected_by_root: Optional[dict[str, str]] = None,
 ) -> Optional[dict[str, Any]]:
-    """Resolve + classify a single code-provenance path."""
-    if _is_artifact_path(path):
+    """Resolve + classify a single code-provenance path.
+
+    `expected_by_root` maps a git root to its own expected content SHA (for
+    separately-approved components); when the resolved root is present there,
+    that component's SHA is used instead of the global `expected`.
+    """
+    if _is_artifact_path(path) or _is_runtime_interpreter(path) or _is_data_path(path):
         return None
     resolved = resolve_checkout(path)
+    root = resolved.get("git_root", "")
+    exp = expected
+    if expected_by_root and root in expected_by_root:
+        exp = expected_by_root[root]
     return _classify(
         path=path,
-        root=resolved.get("git_root", ""),
+        root=root,
         head=resolved.get("head_sha", ""),
-        expected=expected,
+        expected=exp,
         approved_roots=approved_roots,
         deprecated_roots=deprecated_roots,
         deprecated_markers=deprecated_markers,
@@ -418,13 +523,21 @@ def _validate_scheduled_entries(
     deprecated_markers: tuple[str, ...],
     key_fn,
     extra_fn=None,
+    expected_by_root: Optional[dict[str, str]] = None,
 ) -> list[dict[str, Any]]:
     """Validate cron/systemd entries: resolve checkout, flag deprecated/SHA/root."""
     violations: list[dict[str, Any]] = []
     for e in entries:
         # Candidate paths to validate: cron checkout + all paths, or systemd
-        # ExecStart / WorkingDirectory. Artifacts are skipped (not code).
-        candidates = [c for c in key_fn(e) if c and not _is_artifact_path(c)]
+        # ExecStart / WorkingDirectory. Artifacts, interpreter binaries, and
+        # data directories are skipped (not code).
+        candidates = [
+            c for c in key_fn(e)
+            if c
+            and not _is_artifact_path(c)
+            and not _is_runtime_interpreter(c)
+            and not _is_data_path(c)
+        ]
         flagged = False
         for c in candidates:
             if not c:
@@ -439,6 +552,7 @@ def _validate_scheduled_entries(
                 deprecated_roots=deprecated_roots,
                 deprecated_markers=deprecated_markers,
                 extra=extra,
+                expected_by_root=expected_by_root,
             )
             if v:
                 violations.append(v)
@@ -468,9 +582,23 @@ def audit_topology(
     offline: bool = False,
     approved_roots: Optional[list[str]] = None,
     deprecated_roots: Optional[list[str]] = None,
+    additional_components: Optional[list[dict[str, str]]] = None,
 ) -> dict[str, Any]:
-    """CDQ-25/26 audit. offline=True short-circuits NOT_RUN (fail-closed)."""
-    approved = tuple(approved_roots) if approved_roots else (APPROVED_ROOT_DEFAULT,)
+    """CDQ-25/26 audit. offline=True short-circuits NOT_RUN (fail-closed).
+
+    `additional_components` are separately-approved components with their own
+    roots + expected SHAs (see ADDITIONAL_APPROVED_COMPONENTS). Their roots are
+    added to the approved set, and each is classified against its own pinned
+    SHA instead of the global expected content SHA.
+    """
+    components = (
+        tuple(additional_components)
+        if additional_components is not None
+        else ADDITIONAL_APPROVED_COMPONENTS
+    )
+    base_approved = tuple(approved_roots) if approved_roots else (APPROVED_ROOT_DEFAULT,)
+    approved = base_approved + tuple(c["root"] for c in components)
+    expected_by_root = {c["root"]: c["expected_sha"] for c in components}
     deprecated = tuple(deprecated_roots) if deprecated_roots else DEPRECATED_ROOTS
     markers = DEPRECATED_MARKERS
 
@@ -505,7 +633,13 @@ def audit_topology(
         candidates: list[str] = []
         for c in ([p.get("cwd") or ""] + list(p.get("code_paths") or [])):
             c = str(c or "").strip()
-            if c and c not in seen and not _is_artifact_path(c):
+            if (
+                c
+                and c not in seen
+                and not _is_artifact_path(c)
+                and not _is_runtime_interpreter(c)
+                and not _is_data_path(c)
+            ):
                 seen.add(c)
                 candidates.append(c)
         for c in candidates:
@@ -516,6 +650,7 @@ def audit_topology(
                 deprecated_roots=deprecated,
                 deprecated_markers=markers,
                 extra={"kind": "process", "pid": p.get("pid"), "cmd": p.get("cmd")},
+                expected_by_root=expected_by_root,
             )
             if v:
                 violations.append(v)
@@ -529,6 +664,7 @@ def audit_topology(
         deprecated_markers=markers,
         key_fn=lambda e: [e.get("checkout", "")] + list(e.get("paths", [])),
         extra_fn=lambda e: {"kind": "cron"},
+        expected_by_root=expected_by_root,
     ))
 
     # systemd services/timers: validate ExecStart + WorkingDirectory, in both
@@ -548,6 +684,7 @@ def audit_topology(
         deprecated_markers=markers,
         key_fn=_systemd_candidates,
         extra_fn=lambda e: {"kind": "systemd", "systemd_scope": e.get("systemd_scope")},
+        expected_by_root=expected_by_root,
     ))
 
     ok = len(violations) == 0
