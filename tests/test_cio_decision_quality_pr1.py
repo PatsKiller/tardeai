@@ -566,6 +566,56 @@ def test_topology_artifact_paths_not_code():
     assert _is_artifact_path("/tmp/cio_worker.pid") is True
 
 
+def test_topology_build_sha_fallback_detects_stale_release():
+    """A copied release dir (no .git) must resolve via BUILD_SHA so a stale
+    release process is flagged as sha_mismatch, not silently skipped."""
+    import tempfile
+    import os
+    from scripts.lib.cio_topology_audit import (
+        DEPRECATED_MARKERS,
+        DEPRECATED_ROOTS,
+        _classify_path,
+        resolve_checkout,
+    )
+    with tempfile.TemporaryDirectory() as td:
+        # Simulate a copied release snapshot: no .git, only BUILD_SHA.
+        stale = os.path.join(td, "6f700979-main-exact-phase2-20260815-212024")
+        os.makedirs(stale)
+        with open(os.path.join(stale, "BUILD_SHA"), "w") as f:
+            f.write("6f7009794e5178a7926f5b1c84ae16d0ee7b2bc6")
+        script = os.path.join(stale, "scripts", "cio_telegram_bot.py")
+        os.makedirs(os.path.dirname(script))
+        open(script, "w").close()
+
+        resolved = resolve_checkout(script)
+        assert resolved["head_sha"] == "6f7009794e5178a7926f5b1c84ae16d0ee7b2bc6", resolved
+        assert resolved["git_root"] == stale, resolved
+
+        # Stale release script must be flagged (sha mismatch vs current).
+        v = _classify_path(
+            script,
+            expected="968dafb6beda21aa11aa4cedeb7c9c3920c3fec4",
+            approved_roots=(td,),
+            deprecated_roots=(),
+            deprecated_markers=(),
+        )
+        assert v is not None, v
+        assert v["sha_mismatch"] is True, v
+        # Current release (matching BUILD_SHA) is clean.
+        cur = os.path.join(td, "968dafb6-main-exact-phase2-20260816-215459")
+        os.makedirs(cur)
+        with open(os.path.join(cur, "BUILD_SHA"), "w") as f:
+            f.write("968dafb6beda21aa11aa4cedeb7c9c3920c3fec4")
+        ok = _classify_path(
+            cur,
+            expected="968dafb6beda21aa11aa4cedeb7c9c3920c3fec4",
+            approved_roots=(td,),
+            deprecated_roots=(),
+            deprecated_markers=(),
+        )
+        assert ok is None, ok
+
+
 def test_topology_interpreter_is_runtime_not_code():
     """A venv python binary is runtime, never a CDQ-26 code-provenance violation."""
     from scripts.lib.cio_topology_audit import (

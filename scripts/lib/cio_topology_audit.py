@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 AUTHORITY = "READ_ONLY_ADVISORY"
-TOPO_VERSION = "cio_topology_audit_1.4.0"
+TOPO_VERSION = "cio_topology_audit_1.5.0"
 
 # The approved production release root. Deprecated development/worktree trees
 # must NOT be here — only the deployed CURRENT release tree is an approved root.
@@ -179,8 +179,39 @@ def _git_rev(path: str) -> str:
     return _run(["git", "-C", path, "rev-parse", "HEAD"])
 
 
+def _build_sha_root(path: str) -> tuple[str, str]:
+    """Resolve a release-dir snapshot (no .git) to its BUILD_SHA root + sha.
+
+    Deployment release trees are copied WITHOUT a .git dir; their content SHA
+    is recorded in a BUILD_SHA file at the release root. Without this fallback,
+    a process running from a stale release dir (e.g. 6f700979 vs current
+    968dafb6) resolves to an empty head and evades the CDQ-25 SHA-mismatch
+    check — exactly the "mixed-release runtime" condition CDQ-25 exists to
+    catch. Return (root, sha) or ("", "") when no BUILD_SHA is found.
+    """
+    p = Path(path)
+    if not p.is_absolute():
+        return "", ""
+    cur = p if p.is_dir() else p.parent
+    for _ in range(8):
+        bs = cur / "BUILD_SHA"
+        if bs.is_file():
+            try:
+                return str(cur), bs.read_text().strip()
+            except Exception:
+                return "", ""
+        if cur.parent == cur:
+            break
+        cur = cur.parent
+    return "", ""
+
+
 def resolve_checkout(path: str) -> dict[str, Any]:
-    """Resolve a filesystem path to its enclosing git root + HEAD revision."""
+    """Resolve a filesystem path to its enclosing git root + HEAD revision.
+
+    Falls back to a release tree's BUILD_SHA when the path lives in a copied
+    deployment snapshot that has no .git directory.
+    """
     p = Path(path)
     if not p.exists():
         return {"path": path, "exists": False, "git_root": "", "head_sha": ""}
@@ -189,6 +220,8 @@ def resolve_checkout(path: str) -> dict[str, Any]:
     except Exception:
         root = ""
     head = _git_rev(path) if root else ""
+    if not root:
+        root, head = _build_sha_root(path)
     return {
         "path": path,
         "exists": True,
