@@ -566,6 +566,165 @@ def test_topology_artifact_paths_not_code():
     assert _is_artifact_path("/tmp/cio_worker.pid") is True
 
 
+def test_topology_build_sha_fallback_detects_stale_release():
+    """A copied release dir (no .git) must resolve via BUILD_SHA so a stale
+    release process is flagged as sha_mismatch, not silently skipped."""
+    import tempfile
+    import os
+    from scripts.lib.cio_topology_audit import (
+        DEPRECATED_MARKERS,
+        DEPRECATED_ROOTS,
+        _classify_path,
+        resolve_checkout,
+    )
+    with tempfile.TemporaryDirectory() as td:
+        # Simulate a copied release snapshot: no .git, only BUILD_SHA.
+        stale = os.path.join(td, "6f700979-main-exact-phase2-20260815-212024")
+        os.makedirs(stale)
+        with open(os.path.join(stale, "BUILD_SHA"), "w") as f:
+            f.write("6f7009794e5178a7926f5b1c84ae16d0ee7b2bc6")
+        script = os.path.join(stale, "scripts", "cio_telegram_bot.py")
+        os.makedirs(os.path.dirname(script))
+        open(script, "w").close()
+
+        resolved = resolve_checkout(script)
+        assert resolved["head_sha"] == "6f7009794e5178a7926f5b1c84ae16d0ee7b2bc6", resolved
+        assert resolved["git_root"] == stale, resolved
+
+        # Stale release script must be flagged (sha mismatch vs current).
+        v = _classify_path(
+            script,
+            expected="968dafb6beda21aa11aa4cedeb7c9c3920c3fec4",
+            approved_roots=(td,),
+            deprecated_roots=(),
+            deprecated_markers=(),
+        )
+        assert v is not None, v
+        assert v["sha_mismatch"] is True, v
+        # Current release (matching BUILD_SHA) is clean.
+        cur = os.path.join(td, "968dafb6-main-exact-phase2-20260816-215459")
+        os.makedirs(cur)
+        with open(os.path.join(cur, "BUILD_SHA"), "w") as f:
+            f.write("968dafb6beda21aa11aa4cedeb7c9c3920c3fec4")
+        ok = _classify_path(
+            cur,
+            expected="968dafb6beda21aa11aa4cedeb7c9c3920c3fec4",
+            approved_roots=(td,),
+            deprecated_roots=(),
+            deprecated_markers=(),
+        )
+        assert ok is None, ok
+
+
+def test_topology_data_path_not_code():
+    """TRADEAI_RUNTIME_ROOT=/old/data/runtime is runtime state, not code."""
+    from scripts.lib.cio_topology_audit import (
+        _code_paths_from_text,
+        _is_data_path,
+    )
+    assert _is_data_path("/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/data/runtime") is True
+    assert _is_data_path("/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/x.log") is True
+    assert _is_data_path("/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/cio.py") is False
+
+    line = (
+        "cd /home/johnclaw/tradeai-wt-watch-review-automation && "
+        "TRADEAI_RUNTIME_ROOT=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/data/runtime "
+        "python scripts/run_watch_review_workers.py"
+    )
+    paths = _code_paths_from_text(line)
+    assert "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/data/runtime" not in paths
+    assert "/home/johnclaw/tradeai-wt-watch-review-automation" in paths
+
+
+def test_topology_additional_component_clean_and_stale():
+    """A separately-approved component resolves against its own pinned SHA."""
+    from scripts.lib.cio_topology_audit import _classify
+
+    comp = {
+        "label": "watch-review-automation",
+        "root": "/home/johnclaw/tradeai-wt-watch-review-automation",
+        "expected_sha": "cbabd9feba700edfbea02f0d0cef65936b73fd40",
+    }
+    approved = ("/home/johnclaw/trade-ai-releases/portfolio-server", comp["root"])
+
+    # A path under the component root with no sha mismatch must be clean even
+    # though it is not under the CIO approved root.
+    clean = _classify(
+        path="/home/johnclaw/tradeai-wt-watch-review-automation/scripts/run_watch_review_workers.py",
+        root=comp["root"],
+        head=comp["expected_sha"],
+        expected=comp["expected_sha"],
+        approved_roots=approved,
+        deprecated_roots=(),
+        deprecated_markers=(),
+    )
+    assert clean is None, clean
+
+    stale = _classify(
+        path="/home/johnclaw/tradeai-wt-watch-review-automation/scripts/run_watch_review_workers.py",
+        root=comp["root"],
+        head="0000000000000000000000000000000000000000",
+        expected=comp["expected_sha"],
+        approved_roots=approved,
+        deprecated_roots=(),
+        deprecated_markers=(),
+    )
+    assert stale is not None
+    assert stale["sha_mismatch"] is True
+
+    # A root NOT in approved must still flag root_not_approved.
+    other = _classify(
+        path="/home/johnclaw/some/other/repo/x.py",
+        root="/home/johnclaw/some/other/repo",
+        head=comp["expected_sha"],
+        expected=comp["expected_sha"],
+        approved_roots=approved,
+        deprecated_roots=(),
+        deprecated_markers=(),
+    )
+    assert other is not None
+    assert other["root_not_approved"] is True
+
+
+def test_topology_interpreter_is_runtime_not_code():
+    """A venv python binary is runtime, never a CDQ-26 code-provenance violation."""
+    from scripts.lib.cio_topology_audit import (
+        DEPRECATED_MARKERS,
+        DEPRECATED_ROOTS,
+        _classify_path,
+        _code_paths_from_text,
+        _is_runtime_interpreter,
+    )
+    approved = ("/home/johnclaw/trade-ai-releases/portfolio-server",)
+    # Interpreter binary under the deprecated root → runtime, not code.
+    venv_py = "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python"
+    assert _is_runtime_interpreter(venv_py) is True
+    assert _is_runtime_interpreter("/usr/bin/python3") is True
+    assert _is_runtime_interpreter("/home/johnclaw/trade-ai-releases/portfolio-server/scripts/cio_worker.py") is False
+
+    # The interpreter must not appear in extracted code paths.
+    cmd = f"{venv_py} /home/johnclaw/trade-ai-releases/portfolio-server/scripts/portfolio_server.py"
+    code = _code_paths_from_text(cmd)
+    assert venv_py not in code
+    assert "/home/johnclaw/trade-ai-releases/portfolio-server/scripts/portfolio_server.py" in code
+
+    # Classifying the interpreter yields no violation, but the old-tree script does.
+    assert _classify_path(
+        venv_py,
+        expected="6f7009794e5178a7926f5b1c84ae16d0ee7b2bc6",
+        approved_roots=approved,
+        deprecated_roots=DEPRECATED_ROOTS,
+        deprecated_markers=DEPRECATED_MARKERS,
+    ) is None
+    assert _classify_path(
+        "/home/johnclaw/trade-ai-v12-rebuild/cio_worker.py",
+        expected="6f7009794e5178a7926f5b1c84ae16d0ee7b2bc6",
+        approved_roots=approved,
+        deprecated_roots=DEPRECATED_ROOTS,
+        deprecated_markers=DEPRECATED_MARKERS,
+    ) is not None
+
+
 def test_topology_old_tree_script_approved_cwd_fails():
     from scripts.lib.cio_topology_audit import (
         DEPRECATED_MARKERS,
