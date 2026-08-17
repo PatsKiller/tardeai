@@ -1,0 +1,10 @@
+[Unit]
+Description=Trade AI provider-spend daily reconciliation (read-only)
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/trade-ai-releases/portfolio-server/CURRENT/linux_launchers/run_provider_cost_daily.sh
+Nice=10
+# Observability only — never disable keys or mutate trading.
+Environment=MEMORY_BEHAVIOR_INFLUENCE=0

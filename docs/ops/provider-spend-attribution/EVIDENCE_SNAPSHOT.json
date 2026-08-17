@@ -1,0 +1,41 @@
+{
+  "snapshotted_at": "2026-08-17T22:17:23.159429+00:00",
+  "files": [
+    {
+      "path": "/home/johnclaw/tardeai-deepseek-cost-scheduling-v1/docs/ops/deepseek-cost-scheduling-2026-08-17/DEEPSEEK_ACCOUNT_RECONCILIATION.csv",
+      "size": 3223,
+      "mtime": "2026-08-17T13:16:44.850794+00:00",
+      "sha256": "6b765f692f3e35c61518eb588223a67a7802217998f388011f862fd448f00391"
+    },
+    {
+      "path": "/home/johnclaw/tardeai-deepseek-cost-scheduling-v1/docs/ops/deepseek-cost-scheduling-2026-08-17/DEEPSEEK_PRICING_SNAPSHOT.json",
+      "size": 2263,
+      "mtime": "2026-08-17T12:50:23.387643+00:00",
+      "sha256": "366f67eb02ad44c5f08b76335e53c1d580136c47e21adefeb3aeffca3a944317"
+    },
+    {
+      "path": "/home/johnclaw/tardeai-deepseek-cost-scheduling-v1/docs/ops/deepseek-cost-scheduling-2026-08-17/17_ACCOUNT_RECONCILIATION_RESULT.md",
+      "size": 3728,
+      "mtime": "2026-08-17T13:16:44.850726+00:00",
+      "sha256": "babcddbb036bb7c2cf5d49e06cce7735b5b76aa024fc04cfe76f335117c7116c"
+    },
+    {
+      "path": "/home/johnclaw/.cursor/projects/home-johnclaw/canvases/deepseek-cost-scheduling-audit.canvas.tsx",
+      "size": 6491,
+      "mtime": "2026-08-17T22:17:23.149449+00:00",
+      "sha256": "af170882c9c08faef548cf42a36143d55cf64b2c8d0358b140e20638438d132c"
+    },
+    {
+      "path": "/home/johnclaw/tradeai-wt-provider-spend-v1/tests/fixtures/provider_cost/period_ab.json",
+      "size": 2746,
+      "mtime": "2026-08-17T22:14:55.622957+00:00",
+      "sha256": "4bf2696d9e3f4c071f8dcd5b3de7dda9d4c3ba4dea896581625eecf24014005b"
+    },
+    {
+      "path": "/home/johnclaw/tradeai-wt-provider-spend-v1/docs/ops/provider-spend-attribution/latest_reconciliation.json",
+      "size": 2088,
+      "mtime": "2026-08-17T22:16:51.408098+00:00",
+      "sha256": "3d4c7e4830b7285665e7cb57be02f389194bdf4540a9cbf51652078ebb404f10"
+    }
+  ]
+}

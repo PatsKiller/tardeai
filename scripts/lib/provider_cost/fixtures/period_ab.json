@@ -1,0 +1,96 @@
+{
+  "description": "Immutable Period A+B forensic fixture. Token rows compute $0.5338 at 2026-08-03 schedule, not the 2026-08-16 table.",
+  "console": [
+    {
+      "is_console_total": true,
+      "api_key_label": "console_total",
+      "attributed_system": "DEEPSEEK_ACCOUNT_BILLED_SPEND",
+      "date": "2026-08-01T00:00:00-04:00",
+      "billed_cost_usd": 48.32,
+      "total_tokens": 2382477612,
+      "provider": "deepseek"
+    },
+    {
+      "is_console_total": true,
+      "api_key_label": "console_total",
+      "attributed_system": "DEEPSEEK_ACCOUNT_BILLED_SPEND",
+      "date": "2026-08-16T00:00:00-04:00",
+      "billed_cost_usd": 12.62,
+      "total_tokens": 117234368,
+      "provider": "deepseek"
+    }
+  ],
+  "reservations": [
+    {
+      "id": 1,
+      "process_id": "advisory_desk_opinion",
+      "created_at": "2026-08-08T15:00:00+00:00",
+      "actual_usd": 0.2268,
+      "reserved_usd": 0.30,
+      "model": "deepseek-v4-flash"
+    },
+    {
+      "id": 2,
+      "process_id": "advisory_desk_opinion",
+      "created_at": "2026-08-16T18:00:00-04:00",
+      "actual_usd": 0.0181,
+      "reserved_usd": 0.02,
+      "model": "deepseek-v4-flash"
+    },
+    {
+      "id": 99,
+      "process_id": "test_smoke_bridge",
+      "created_at": "2026-08-10T12:00:00+00:00",
+      "actual_usd": 4.85,
+      "reserved_usd": 5.00,
+      "model": "deepseek-v4-flash"
+    }
+  ],
+  "consumption": [],
+  "bypass": [
+    {
+      "call_site_id": "llm_router+ticket_review",
+      "usage_start": "2026-08-08T17:00:00+00:00",
+      "calculated_cost_usd": 0.3735,
+      "provider_reported_cost_usd": 0.3735,
+      "attribution_confidence": "STRONG",
+      "model": "deepseek-v4-flash"
+    },
+    {
+      "call_site_id": "ticket_review",
+      "usage_start": "2026-08-16T18:15:00-04:00",
+      "calculated_cost_usd": 0.0014,
+      "provider_reported_cost_usd": 0.0014,
+      "input_tokens": 3227,
+      "output_tokens": 1056,
+      "attribution_confidence": "EXACT",
+      "model": "deepseek-v4-flash"
+    }
+  ],
+  "openclaw_inline": [
+    {
+      "timestamp": "2026-08-09T14:00:00+00:00",
+      "provider": "deepseek",
+      "model": "deepseek-v4-pro",
+      "usage": {"input_tokens": 4000000, "output_tokens": 561809},
+      "cost": 0.2327,
+      "id": "oc_a"
+    },
+    {
+      "timestamp": "2026-08-16T10:00:00-04:00",
+      "provider": "deepseek",
+      "model": "deepseek-v4-pro",
+      "usage": {"input_tokens": 100000, "output_tokens": 23193},
+      "cost": 0.0148,
+      "id": "oc_b"
+    }
+  ],
+  "claude_inline": [
+    {
+      "timestamp": "2026-08-10T18:00:00+00:00",
+      "model": "deepseek-v4-pro[1m]",
+      "usage": {"input_tokens": 1139191680, "output_tokens": 2633195, "cache_read_input_tokens": 0},
+      "costUsd": 10.30
+    }
+  ]
+}

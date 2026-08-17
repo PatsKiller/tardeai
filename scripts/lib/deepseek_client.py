@@ -390,6 +390,26 @@ def chat(
         cache_miss_tokens=(usage.get("prompt_cache_miss_tokens") or usage.get("cache_miss_tokens")),
     )
 
+    try:
+        try:
+            from scripts.lib.provider_cost.emit import emit_paid_call
+        except ImportError:
+            from lib.provider_cost.emit import emit_paid_call
+        _k, _env, _ = get_deepseek_api_key()
+        emit_paid_call(
+            provider="deepseek",
+            model=str(model_id),
+            request_id=req_id,
+            prompt_tokens=int(usage.get("prompt_tokens") or 0),
+            completion_tokens=int(usage.get("completion_tokens") or 0),
+            cache_hit_tokens=int(usage.get("prompt_cache_hit_tokens") or usage.get("cache_hit_tokens") or 0),
+            cache_miss_tokens=usage.get("prompt_cache_miss_tokens") or usage.get("cache_miss_tokens"),
+            raw_key=_k,
+        )
+        del _k
+    except Exception:
+        pass
+
     return DeepSeekResponse(
         ok=err is None,
         requested_policy=requested_policy,
