@@ -549,12 +549,19 @@ def deliver_decision(
     *,
     kind: str = "decision",
     dry_run: bool = True,
+    body: Optional[str] = None,
 ) -> dict[str, Any]:
     """Deliver a decision message via CIO transport (dry_run default).
+
+    ``body`` is an optional human-rendered message override. When provided it is
+    used verbatim (the notification-signal renderer/linter path) instead of
+    ``format_cio_message``; the old renderer remains the default for parity.
 
     dry_run=True or interdict/pytest → never HTTP.
     """
     ev = evaluate_outbound(decision, kind=kind)
+    if body:
+        ev["body"] = body
     out = {
         **ev,
         "delivered": False,

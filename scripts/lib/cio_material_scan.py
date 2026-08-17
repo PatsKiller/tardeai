@@ -497,6 +497,7 @@ def scan_office(
     office: Optional[dict[str, Any]] = None,
     persist: bool = True,
     max_publish: int = 3,
+    notification_gate: bool = True,
 ) -> dict[str, Any]:
     mode = cio_delivery_mode()
     if not dry_run and mode != "CIO_ONLY_LIVE":
@@ -537,16 +538,47 @@ def scan_office(
     for cand in candidates:
         _attach_operator_state(cand, dispositions)
 
+    # Canonical notification decision gate (signal-over-spam). OFF by default is
+    # NOT the production posture — it is a parity escape hatch only.
+    nd_map: dict[str, dict[str, Any]] = {}
+    store = None
+    if notification_gate:
+        from scripts.lib.cio_notification_signal import (
+            DELIVERY_IMMEDIATE,
+            NotificationStateStore,
+            decide_notification,
+            render_cio_card,
+        )
+        from scripts.lib.cio_office_state import office_state_path
+        state_dir = office_state_path().parent
+        store = NotificationStateStore(
+            state_path=state_dir / "cio_notification_state.jsonl",
+            audit_path=state_dir / "cio_notification_audit.jsonl",
+            metrics_path=state_dir / "cio_notification_metrics.jsonl",
+        )
+        for cand in candidates:
+            nd = decide_notification(cand, store=store)
+            key = str(cand.get("decision_id") or "")
+            nd_map[key] = nd
+            if persist:
+                store.record(nd)
+
     selected = select_publications(candidates, max_publish=max_publish)
     results = []
     for dec in selected:
+        nd = nd_map.get(str(dec.get("decision_id") or ""))
+        is_immediate = nd is not None and nd.get("notification_class") == DELIVERY_IMMEDIATE
+        effective_dry = dry_run if nd is None else (dry_run or not is_immediate)
+        body = render_cio_card(dec, nd) if (is_immediate and nd is not None) else None
         holdings_row = next((r for r in curr_rows if r.get("symbol") == dec.get("symbol")), None)
         results.append(publish_material_decision(
             dec,
             capital_plan=plan if isinstance(plan, dict) else None,
             holdings_row=holdings_row,
-            dry_run=dry_run,
+            dry_run=effective_dry,
             event_type=str(dec.get("action") or "DECISION"),
+            body=body,
+            notification=nd,
         ))
 
     if persist and holdings.get("ok") is not False:
@@ -563,6 +595,34 @@ def scan_office(
             "published_ids": [d.get("decision_id") for d in selected],
         })
 
+    notification_counts: dict[str, int] = {}
+    suppressed_by_reason: dict[str, int] = {}
+    immediate_ids: list[str] = []
+    if nd_map:
+        for nd in nd_map.values():
+            cls = str(nd.get("notification_class") or "UNKNOWN")
+            notification_counts[cls] = notification_counts.get(cls, 0) + 1
+            if cls == "IMMEDIATE":
+                immediate_ids.append(str(nd.get("decision_id") or ""))
+            reason = nd.get("suppressed_reason")
+            if reason:
+                suppressed_by_reason[reason] = suppressed_by_reason.get(reason, 0) + 1
+    if store is not None and persist:
+        try:
+            store.record_metrics({
+                "scanner_wakes": 1,
+                "candidate_decisions": len(candidates),
+                "immediate_notifications": notification_counts.get("IMMEDIATE", 0),
+                "digest_notifications": notification_counts.get("DIGEST", 0),
+                "command_center_only": notification_counts.get("COMMAND_CENTER_ONLY", 0),
+                "suppressed_unchanged": notification_counts.get("SUPPRESSED", 0),
+                "suppressed_post_reject": sum(
+                    v for k, v in suppressed_by_reason.items() if "reject" in k
+                ),
+            })
+        except Exception:
+            pass
+
     receipt = {
         "ok": True,
         "dry_run": dry_run,
@@ -578,6 +638,10 @@ def scan_office(
         "reentry": reclass,
         "due_defers": len(due),
         "schg": next((r for r in curr_rows if r.get("symbol") == "SCHG"), None),
+        "notification_gate": notification_gate,
+        "notification_counts": notification_counts,
+        "suppressed_by_reason": suppressed_by_reason,
+        "immediate_decision_ids": immediate_ids,
         "note": (
             "Baseline captured — no POSITION_OPENED invented from first snapshot."
             if baseline else

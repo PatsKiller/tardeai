@@ -56,6 +56,8 @@ def publish_material_decision(
     holdings_row: Optional[dict[str, Any]] = None,
     dry_run: bool = True,
     event_type: str = "DECISION",
+    body: Optional[str] = None,
+    notification: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     did = str(decision.get("decision_id") or "").strip()
     if not did:
@@ -83,8 +85,11 @@ def publish_material_decision(
     )
     case = open_case_from_decision(decision, research=research)
     ev = evaluate_outbound(decision, kind="decision")
-    delivered = deliver_decision(decision, kind="decision", dry_run=dry_run)
-    return {
+    delivered = deliver_decision(decision, kind="decision", dry_run=dry_run, body=body)
+
+    # Notification-gate awareness: a non-IMMEDIATE decision is never delivered,
+    # even though its canonical decision is still opened/evaluated for parity.
+    result: dict[str, Any] = {
         "ok": True,
         "published": bool(delivered.get("delivered") or (dry_run and ev.get("would_send"))),
         "dry_run": dry_run,
@@ -97,3 +102,10 @@ def publish_material_decision(
         "capital_plan_digest": (capital_plan or {}).get("digest"),
         "authority": AUTHORITY,
     }
+    if notification is not None:
+        result["notification"] = notification
+        result["delivery_class"] = notification.get("notification_class")
+        result["suppressed_reason"] = notification.get("suppressed_reason")
+        if notification.get("notification_class") != "IMMEDIATE":
+            result["published"] = False
+    return result
