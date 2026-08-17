@@ -87,3 +87,28 @@ remaining risks, and deployment/rollback status.
   - `build_next_review()` default incorrectly asserted as invalid in a test; clarified that a bare schedule degrades to an explicit-unavailable record (valid), while a truly blank dict is rejected.
 - **remaining risks**: 2.1 (instrument live material wakes) and 2.5 (dry replay harness) not yet done — both touch existing production paths; deferred pending Phase 0 promote/topology go-ahead.
 - **deployment/rollback status**: additive code only; not wired to production.
+
+---
+
+## Phase 0 — Exact-main promote + topology convergence (partial)
+
+- **date/time**: 2026-08-17T02:25Z (UTC)
+- **merged main**: `968dafb6beda21aa11aa4cedeb7c9c3920c3fec4` (PR #339 merged)
+- **base SHA**: `328be9df` (Phase 2 primitives head)
+- **deployment**:
+  - `cio_phase2_exact_main_deploy.sh promote` → `CURRENT` now resolves to `968dafb6-...-phase2-20260816-215459`; portfolio-server restarted, `/v3/cio` = 200.
+  - `cio-governed-bridge.service` repointed `WorkingDirectory` → `CURRENT` + restarted (was 124 commits behind on old tree); healthy (REAL/canary, caller map intact).
+  - `tradeai-cio-telegram.service` restarted onto `CURRENT` — it had been silently running the **stale** `6f700979` release (pre-PR339) because promote only restarts portfolio-server. This was the "one truthful decision across web + Telegram" gap.
+  - 4 inactive oneshot/timer services repointed `WorkingDirectory` → `CURRENT`: `tradeai-cio-reactive`, `tradeai-advisory-outcome-scorer`, `tradeai-maturity-feeds`, `tradeai-agent-runtime@` (template).
+- **audit fixes (2 bugs found during convergence)**:
+  - `cio_topology_audit.py` now treats the venv Python interpreter as **runtime**, not code ownership (the `trade-ai-v12-rebuild/.venv` has no editable install / egg-link; `scripts.__file__ is None`). Removed 8 false-positive violations.
+  - `resolve_checkout()` now falls back to `BUILD_SHA` for copied release trees (which have **no `.git`**); without this, a stale-release process (Telegram on `6f700979`) evaded the CDQ-25 SHA-mismatch check. `TOPO_VERSION` → `1.5.0`.
+  - `tests/test_cio_decision_quality_pr1.py` → 46 passed (added `test_topology_interpreter_is_runtime_not_code`, `test_topology_build_sha_fallback_detects_stale_release`).
+- **cron convergence**:
+  - Repointed 15 CIO cron entries (hardcoded `cd`/watchdog paths) from the deprecated old tree → `CURRENT`. Full crontab backed up to `/tmp/crontab.backup.*`.
+  - Left untouched: `PROJ`/`PY` header, the `reconcile_alpaca_paper_options.sh` broker reconciler, and all non-CIO (Hermes/watchpool/finviz) jobs.
+- **topology result**: 30 → **2** violations. Remaining 2 are the `tradeai-wt-watch-review-automation` worktree (`feat/watch-review-automation`, SHA `cbabd9fe`) — a **separate repo**, not the CIO main tree.
+- **remaining risks / open decisions**:
+  1. **watch-review scope**: `run_watch_review_workers.py` lives in a separate repo, not in `CURRENT`; repointing it into the CIO tree is impossible. Needs an operator decision: (a) treat as a separate approved component with its own expected SHA, or (b) exclude from CIO topology scope.
+  2. **`$PROJ`/`$PY` blind spot**: the crontab header `PROJ=/home/johnclaw/trade-ai-v12-rebuild/...` means ~13 CIO-matching cron entries (and 347 total) run old-tree code invisibly to the audit's literal-path matching. The old tree is the system-wide runtime (936-line crontab, 482 old-tree references). Full convergence is a separate, larger migration.
+- **rollback**: portfolio-server rollback via `cio_phase2_exact_main_deploy.sh rollback`; bridge unit backup at `/tmp/cio-governed-bridge.service.pre-topo-*`; crontab backup at `/tmp/crontab.backup.*`; systemd `daemon-reload` re-applies.
