@@ -131,6 +131,7 @@ stamp_build() {
   local dir="$1" sha="$2"
   printf '%s\n' "$sha" >"${dir}/BUILD_SHA"
   printf '%s\n' "$sha" >"${dir}/GIT_SHA"
+  printf '%s\n' "$sha" >"${dir}/SOURCE_COMMIT"
   printf '%s\n' "main" >"${dir}/BUILD_BRANCH"
   printf '%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"${dir}/BUILD_STAMPED_AT"
   printf '%s\n' "stamped_by=cio_phase2_exact_main_deploy.sh" >"${dir}/BUILD_STAMP_NOTE"
