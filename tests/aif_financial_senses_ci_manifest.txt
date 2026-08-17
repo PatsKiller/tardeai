@@ -1,0 +1,18 @@
+# AIF ↔ Financial Senses integration-critical tests.
+# Pinned explicitly so CI cannot silently drop a required suite.
+tests/test_release_provenance.py
+tests/test_schwab_enc_key_fallback.py
+tests/test_aif_financial_senses_unit.py
+tests/test_aif_financial_senses_contract.py
+tests/test_aif_financial_senses_adversarial.py
+tests/test_aif_financial_senses_replay.py
+tests/test_mcp_read_only_gateway.py
+tests/test_mcp_security.py
+tests/test_mcp_timeout_rate.py
+tests/test_agent_context_envelope.py
+tests/test_agent_run_trace.py
+tests/test_agent_feature_flags.py
+tests/test_no_broker_write_bypass.py
+tests/financial_senses/test_manifest.py
+tests/financial_senses/test_provider_contract.py
+tests/financial_senses/test_security_source_governance.py
