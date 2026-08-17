@@ -176,6 +176,38 @@ def _is_live(record: dict[str, Any]) -> bool:
     return True
 
 
+def _scope_matches(record: dict[str, Any], requested: Any) -> bool:
+    """True when a record is visible under the requested scope.
+
+    ``None``/empty means "no restriction". A record whose ``scope`` carries
+    ``shared_scope=True`` is visible across operators. Otherwise every requested
+    constraint key must either match the record's value or be unconstrained by
+    the record (missing key == shared on that dimension). This enforces
+    cross-operator/cross-agent isolation so a specialist or account cannot read
+    another scope's memory.
+    """
+    if requested is None:
+        return True
+    rec_scope = record.get("scope") or {}
+    if isinstance(rec_scope, str):
+        rec_scope = {"operator_id": rec_scope}
+    if not isinstance(rec_scope, dict):
+        rec_scope = {}
+    if isinstance(requested, str):
+        requested = {"operator_id": requested}
+    if not isinstance(requested, dict) or not requested:
+        return True
+    if rec_scope.get("shared_scope") is True:
+        return True
+    for key, want in requested.items():
+        got = rec_scope.get(key)
+        if got is None:
+            continue  # record does not constrain this dimension -> shared
+        if got != want:
+            return False
+    return True
+
+
 def _score(record: dict[str, Any], query: Any, symbols: Optional[list[str]]) -> float:
     """Simple relevance: substring hits (weight 2 each) + confidence (0..1)."""
     hay = " ".join(
@@ -293,6 +325,8 @@ class LocalTestMemoryProvider:
     ) -> dict[str, Any]:
         top_k = int(top_k or DEFAULT_TOP_K)
         live = [r for r in self._store.values() if _is_live(r)]
+        if scope is not None:
+            live = [r for r in live if _scope_matches(r, scope)]
         ranked = sorted(
             live,
             key=lambda r: (-_score(r, query, symbols), -_recency(r), str(r.get("memory_id", ""))),
