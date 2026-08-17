@@ -96,6 +96,7 @@ class MemoryProvider(Protocol):
         query: Any = None,
         scope: Any = None,
         symbols: Optional[list[str]] = None,
+        plan_id: Optional[str] = None,
         top_k: int = DEFAULT_TOP_K,
         budget_tokens: int = DEFAULT_BUDGET_TOKENS,
     ) -> dict[str, Any]:
@@ -133,6 +134,7 @@ class NullMemoryProvider:
         query: Any = None,
         scope: Any = None,
         symbols: Optional[list[str]] = None,
+        plan_id: Optional[str] = None,
         top_k: int = DEFAULT_TOP_K,
         budget_tokens: int = DEFAULT_BUDGET_TOKENS,
     ) -> dict[str, Any]:
@@ -140,6 +142,7 @@ class NullMemoryProvider:
             "query": query,
             "scope": scope,
             "symbols": list(symbols or []),
+            "plan_id": plan_id,
             "records": [],
             "supporting": [],
             "counter_memory": [],
@@ -206,6 +209,18 @@ def _scope_matches(record: dict[str, Any], requested: Any) -> bool:
         if got != want:
             return False
     return True
+
+
+def _plan_matches(record: dict[str, Any], plan_id: str) -> bool:
+    """True when a record is relevant to the requested plan.
+
+    A record with an empty ``plan_ids`` is unconstrained (general context) and
+    matches any plan; otherwise the requested ``plan_id`` must be present.
+    """
+    plan_ids = record.get("plan_ids") or []
+    if not plan_ids:
+        return True
+    return plan_id in plan_ids
 
 
 def _score(record: dict[str, Any], query: Any, symbols: Optional[list[str]]) -> float:
@@ -320,6 +335,7 @@ class LocalTestMemoryProvider:
         query: Any = None,
         scope: Any = None,
         symbols: Optional[list[str]] = None,
+        plan_id: Optional[str] = None,
         top_k: int = DEFAULT_TOP_K,
         budget_tokens: int = DEFAULT_BUDGET_TOKENS,
     ) -> dict[str, Any]:
@@ -327,6 +343,8 @@ class LocalTestMemoryProvider:
         live = [r for r in self._store.values() if _is_live(r)]
         if scope is not None:
             live = [r for r in live if _scope_matches(r, scope)]
+        if plan_id is not None:
+            live = [r for r in live if _plan_matches(r, plan_id)]
         ranked = sorted(
             live,
             key=lambda r: (-_score(r, query, symbols), -_recency(r), str(r.get("memory_id", ""))),

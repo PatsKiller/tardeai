@@ -344,3 +344,42 @@ def test_dryrun_reentry_wait_envelope():
     assert ok, errs
     # A WAIT re-entry must never be represented as RE_ENTER.
     assert e["decision"]["current_action"] != "RE_ENTER"
+
+
+# ── Provider contract: plan_id filter (Phase 1 ⇄ Phase 4 alignment) ───────
+
+
+def test_get_context_with_local_provider_accepts_plan_id():
+    """The chokepoint must work with the shipped local provider (no RETRIEVAL_ERROR).
+
+    Regression: _retrieve_episodic passes plan_id= to provider.search(); the
+    MemoryProvider protocol and LocalTestMemoryProvider must accept it.
+    """
+    from scripts.lib.agent_memory_provider import LocalTestMemoryProvider  # noqa: E402
+    from scripts.lib.agent_memory_governance import (  # noqa: E402
+        MEMORY_TYPE_OPERATOR_EXPLICIT_PREFERENCE,
+        STATUS_ACTIVE,
+        build_memory_record,
+    )
+
+    provider = LocalTestMemoryProvider(
+        records=[
+            build_memory_record(
+                memory_type=MEMORY_TYPE_OPERATOR_EXPLICIT_PREFERENCE,
+                subject="preference",
+                content="operator prefers SCHD",
+                source_event_ids=["evt_1"],
+                plan_ids=["plan_1"],
+                status=STATUS_ACTIVE,
+            )
+        ]
+    )
+    e = get_context_for_agent(
+        agent="alex",
+        wake={"wake_id": "w1"},
+        memory_provider=provider,
+        plan_id="plan_1",
+    )
+    assert e["episodic_memory"]["retrieval_status"] == RETRIEVAL_OK
+    assert e["episodic_memory"]["records"]
+
