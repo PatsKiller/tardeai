@@ -203,3 +203,69 @@ def test_coverage_pct_100_means_zero_unmodeled_no_objection():
         {"action": "hold"},
     )
     assert review.result == RESULT_NO_MATERIAL_OBJECTION
+
+
+def test_non_fresh_fact_never_satisfies_material_action():
+    # A material action backed only by a non-FRESH fact must NOT pass with
+    # NO_MATERIAL_OBJECTION: non-fresh evidence cannot satisfy the
+    # substantive-evidence requirement, and it generates a freshness risk.
+    for freshness in (None, "", "UNKNOWN", "NOT_A_REAL_VALUE"):
+        review = review_decision(
+            {
+                "identity_status": "RESOLVED",
+                "facts": [{"key": "revenue", "freshness": freshness}],
+            },
+            {"action": "trim", "objective": "reduce concentration"},
+        )
+        assert review.result == RESULT_MATERIAL_OBJECTION, freshness
+        assert review.freshness_risks, freshness
+        assert any(
+            "substantive evidence" in m for m in review.missing_evidence
+        ), freshness
+
+
+def test_missing_freshness_fact_flagged():
+    review = review_decision(
+        {"identity_status": "RESOLVED", "facts": [{"key": "revenue"}]},
+        {"action": "hold"},
+    )
+    assert review.result == RESULT_MATERIAL_OBJECTION
+    assert any("MISSING" in r or "not FRESH" in r for r in review.freshness_risks)
+
+
+def test_unknown_freshness_fact_flagged():
+    review = review_decision(
+        {"identity_status": "RESOLVED", "facts": [{"key": "revenue", "freshness": "UNKNOWN"}]},
+        {"action": "hold"},
+    )
+    assert review.result == RESULT_MATERIAL_OBJECTION
+    assert any("not FRESH" in r for r in review.freshness_risks)
+
+
+def test_invalid_freshness_token_fact_flagged():
+    review = review_decision(
+        {"identity_status": "RESOLVED", "facts": [{"key": "revenue", "freshness": "BOGUS"}]},
+        {"action": "hold"},
+    )
+    assert review.result == RESULT_MATERIAL_OBJECTION
+    assert any("not FRESH" in r for r in review.freshness_risks)
+
+
+def test_fresh_fact_counts_as_current_evidence():
+    # An explicit FRESH fact counts as substantive evidence and generates no
+    # freshness risk (identity is RESOLVED, so a hold yields no objection).
+    review = review_decision(
+        {"identity_status": "RESOLVED", "facts": [{"key": "revenue", "freshness": "FRESH"}]},
+        {"action": "hold"},
+    )
+    assert not review.freshness_risks
+    assert review.result == RESULT_NO_MATERIAL_OBJECTION
+
+
+def test_stale_fact_is_freshness_risk_not_current():
+    review = review_decision(
+        {"identity_status": "RESOLVED", "facts": [{"key": "revenue", "freshness": "STALE"}]},
+        {"action": "hold"},
+    )
+    assert any("stale" in r.lower() for r in review.freshness_risks)
+    assert review.result == RESULT_MATERIAL_OBJECTION

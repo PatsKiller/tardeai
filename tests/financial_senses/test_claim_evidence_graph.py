@@ -359,6 +359,33 @@ def test_fact_explicit_stale_is_stale_not_actionable():
     assert ev["actionable"] is False
 
 
+def test_fact_invalid_quality_not_authoritative_not_actionable():
+    # A fact-capable source + as_of + FRESH but BOGUS quality must not validate
+    # and must not become authoritative.
+    g = build_graph(
+        [_invalid_fact("f1", source="PRIMARY_REGULATORY", observed_at="2024-01-01", quality="BOGUS", freshness="FRESH"), _claim("c1")],
+        [_edge("e1", "f1", "c1", "SUPPORTS")],
+    )
+    errs = g.validate()
+    assert any("invalid quality" in e and "f1" in e for e in errs)
+    ev = g.claim_evidence("c1")
+    assert not ev["authoritative_fact_support"]
+    assert ev["invalid_fact_support"]
+    assert ev["actionable"] is False
+
+
+def test_fact_valid_quality_fresh_is_authoritative():
+    for grade in ("HIGH", "MEDIUM", "LOW", "UNKNOWN"):
+        g = build_graph(
+            [_invalid_fact("f1", source="PRIMARY_REGULATORY", observed_at="2024-01-01", quality=grade, freshness="FRESH"), _claim("c1")],
+            [_edge("e1", "f1", "c1", "SUPPORTS")],
+        )
+        g.validate()
+        ev = g.claim_evidence("c1")
+        assert ev["authoritative_fact_support"], grade
+        assert ev["actionable"] is True, grade
+
+
 def test_fact_missing_source_not_authoritative_not_actionable():
     g = build_graph(
         [_invalid_fact("f1", observed_at="2024-01-01", quality="HIGH"), _claim("c1")],

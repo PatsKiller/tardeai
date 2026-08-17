@@ -76,6 +76,43 @@ def test_fact_missing_quality_is_rejected():
     assert any("quality" in e for e in r.validate())
 
 
+def test_fact_invalid_quality_is_rejected():
+    from financial_senses.source_governance import VALID_QUALITY
+
+    for bogus in ("BOGUS", "NOT_VALID", "HIGH_CONFIDENCE", "HIGHEST"):
+        r = make_result("x", "y")
+        r.facts.append(
+            Fact(
+                key="revenue",
+                value=100.0,
+                source_type=SOURCE_PRIMARY_REGULATORY,
+                as_of="2024-12-31",
+                quality=bogus,
+            )
+        )
+        errs = r.validate()
+        assert any("invalid quality" in e for e in errs), bogus
+        assert not any("lacks quality" in e for e in errs), bogus
+
+
+def test_fact_valid_quality_values_accepted():
+    from financial_senses.source_governance import VALID_QUALITY
+
+    for grade in ("HIGH", "MEDIUM", "LOW", "UNKNOWN"):
+        r = make_result("x", "y")
+        r.facts.append(
+            Fact(
+                key="revenue",
+                value=100.0,
+                source_type=SOURCE_PRIMARY_REGULATORY,
+                as_of="2024-12-31",
+                quality=grade,
+            )
+        )
+        assert r.validate() == [], grade
+    assert VALID_QUALITY == {"HIGH", "MEDIUM", "LOW", "UNKNOWN"}
+
+
 def test_model_inference_cannot_back_fact():
     r = make_result("x", "y")
     r.facts.append(

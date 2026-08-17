@@ -19,6 +19,7 @@ from typing import Any, Optional
 
 from .provider import BaseProvider, Capability
 from .result import FinancialSenseResult, STATUS_OK
+from .source_governance import FRESHNESS_FRESH, FRESHNESS_STALE
 
 # Shadow-only flags (fixed in this branch).
 CRITIC_SHADOW = 1
@@ -136,10 +137,22 @@ def review_decision(evidence_packet: dict, proposed_action: dict) -> CriticRevie
 
     act = str(action.get("action") or "").lower()
 
-    # 1. Freshness: stale facts or vintage leak.
+    # 1. Freshness: only explicit FRESH is current authoritative evidence.
+    # STALE is a freshness risk; missing / empty / UNKNOWN / unrecognized
+    # freshness is also NOT current evidence and must not silently pass. The
+    # critic therefore agrees with the claim graph's FACT authority rule.
+    fresh_fact_count = 0
     for fact in evidence.get("facts") or []:
-        if (fact.get("freshness") or "").upper() == "STALE":
+        freshness = str(fact.get("freshness") or "").upper()
+        if freshness == FRESHNESS_FRESH:
+            fresh_fact_count += 1
+        elif freshness == FRESHNESS_STALE:
             review.freshness_risks.append(f"stale fact: {fact.get('key')}")
+        else:
+            review.freshness_risks.append(
+                f"fact {fact.get('key')}: freshness is "
+                f"{freshness or 'MISSING'} (not FRESH)"
+            )
     if evidence.get("vintage_leak"):
         review.freshness_risks.append("macro vintage leak: a later revision used at decision time")
 
@@ -203,8 +216,10 @@ def review_decision(evidence_packet: dict, proposed_action: dict) -> CriticRevie
         review.missing_evidence.append("concentration trim without concentration evidence")
 
     # 6. Evidence packet absent/incomplete must not silently pass a material action.
+    # Only FRESH facts count as substantive evidence content; a non-fresh fact
+    # alone must not satisfy the substantive-evidence requirement.
     has_evidence_content = bool(
-        evidence.get("facts")
+        fresh_fact_count > 0
         or evidence.get("coverage_pct") is not None
         or evidence.get("unmodeled_coverage_pct") is not None
         or evidence.get("contradictions")

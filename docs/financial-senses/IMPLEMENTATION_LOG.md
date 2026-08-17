@@ -383,3 +383,44 @@ merge/deploy, no AIF integration.
 - `run_release_ci_equivalent.py --source-only`: **PASS (17/17)**.
 - production mutations: 0 · Telegram sends: 0 · DB writes: 0 ·
   authority: `READ_ONLY_ADVISORY`.
+
+## 2026-08-17 — Fifth closeout (merge-gate remediation)
+
+Targets the 2 P1 defects and 1 P2 from the merge-acceptance review of
+`159dd7aa`. One narrow semantic/manifest commit; no redesign, no CRLF
+normalization, no merge/deploy, no AIF integration.
+
+### P1 — governed quality enforced for FACT authority
+- `FinancialSenseResult.validate()` and `ClaimEvidenceGraph.validate()` /
+  `_is_authoritative_fact()` now require a `Fact`'s quality to be one of the
+  governed `VALID_QUALITY` values (`HIGH`/`MEDIUM`/`LOW`/`UNKNOWN`). A non-empty
+  but unrecognized quality (`BOGUS`, `NOT_VALID`, `HIGH_CONFIDENCE`) no longer
+  validates as a governed Fact and can never enter `authoritative_fact_support`
+  or make a claim actionable. Uses the existing `source_governance.VALID_QUALITY`
+  constants — no new vocabulary.
+- Added adversarial tests at both the envelope (`validate()`) and claim-graph
+  authority layers.
+
+### P1 — critic freshness semantics agree with FACT authority
+- `review_decision()` now treats only explicit `FRESH` as current evidence.
+  `STALE` is a freshness risk; `None`/`""`/`UNKNOWN`/unrecognized freshness is
+  also flagged as not-current and does NOT count toward substantive-evidence
+  content. A material action can no longer receive `NO_MATERIAL_OBJECTION`
+  backed only by unclassified/non-fresh facts.
+- Added adversarial tests for missing, `None`, `""`, `UNKNOWN`, invalid token,
+  `FRESH`, and `STALE`, including a material-action case.
+
+### P2 — registration manifest completeness
+- `manifest.py` now registers `factor.overlap` and `critic.review` as
+  `READ_ONLY` tools, matching the architecture's provider list.
+- Added `tests/financial_senses/test_manifest.py` to prevent drift: every
+  first-class provider and capability must appear in the manifest, and all
+  manifest tools must be `READ_ONLY`.
+
+### Proof (fifth closeout)
+- `tests/financial_senses/` suite: **256 passed, 0 failed** (fully offline).
+- `tests/test_sec_form4_momentum_context.py`: **17/17 pass**.
+- Broader CIO/research representative regression: **81 passed**.
+- `run_release_ci_equivalent.py --source-only`: **PASS (17/17)**.
+- production mutations: 0 · Telegram sends: 0 · DB writes: 0 ·
+  authority: `READ_ONLY_ADVISORY`.

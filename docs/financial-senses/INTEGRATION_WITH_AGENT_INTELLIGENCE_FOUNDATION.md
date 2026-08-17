@@ -37,6 +37,10 @@ providers:
     tools: [risk.stress_portfolio]
   evidence:
     tools: [evidence.build_graph]
+  factor:
+    tools: [factor.overlap]
+  critic:
+    tools: [critic.review]
 ```
 
 For each tool: `READ_ONLY`, input schema, output schema, source policy, timeout,

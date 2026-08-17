@@ -110,6 +110,16 @@ TOOLS: dict[str, dict[str, Any]] = {
             {"name": "evidence.build_graph", "mutability": MUTABILITY_READ_ONLY},
         ]
     },
+    "factor": {
+        "tools": [
+            {"name": "factor.overlap", "mutability": MUTABILITY_READ_ONLY},
+        ]
+    },
+    "critic": {
+        "tools": [
+            {"name": "critic.review", "mutability": MUTABILITY_READ_ONLY},
+        ]
+    },
 }
 
 

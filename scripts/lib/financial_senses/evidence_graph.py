@@ -25,6 +25,7 @@ from .source_governance import (
     FRESHNESS_STALE,
     SOURCE_MEMORY_CONTEXT,
     SOURCE_MODEL_INFERENCE,
+    VALID_QUALITY,
     can_back_fact,
 )
 
@@ -146,6 +147,11 @@ class ClaimEvidenceGraph:
                     errors.append(f"FACT {nid}: observed_at or as_of required")
                 if not node.quality:
                     errors.append(f"FACT {nid}: quality required")
+                elif str(node.quality).upper() not in VALID_QUALITY:
+                    errors.append(
+                        f"FACT {nid}: invalid quality {node.quality!r} "
+                        f"(expected one of {sorted(VALID_QUALITY)})"
+                    )
             if node.type == NODE_CLAIM:
                 if not node.text:
                     errors.append(f"CLAIM {nid}: text required")
@@ -206,7 +212,7 @@ class ClaimEvidenceGraph:
             return False
         if not (node.observed_at or node.as_of):
             return False
-        if not node.quality:
+        if not node.quality or str(node.quality).upper() not in VALID_QUALITY:
             return False
         if (node.freshness or "").upper() != FRESHNESS_FRESH:
             return False

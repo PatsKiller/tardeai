@@ -26,6 +26,14 @@ portfolio constraints. Output: `CriticReview@v1`.
 non-numeric, or out-of-range value is `DATA_UNAVAILABLE` and never silently
 passes.
 
+## Evidence freshness semantics
+
+The critic agrees with the claim graph's FACT authority rule: only an explicit
+`FRESH` fact is current authoritative evidence. `STALE` is a freshness risk;
+`None`, `""`, `UNKNOWN`, or an unrecognized freshness value is also not-current
+and flagged. A material action can never receive `NO_MATERIAL_OBJECTION` when its
+only supporting fact is non-fresh.
+
 ## Shadow flags
 
 `CRITIC_SHADOW = 1`, `CRITIC_BEHAVIOR_INFLUENCE = 0`. No live decision changes,

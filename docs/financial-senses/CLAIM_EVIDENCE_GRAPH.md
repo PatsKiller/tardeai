@@ -22,12 +22,14 @@ Exposes the causal evidence behind a recommendation.
 ## Authority
 
 Only a valid, **explicitly FRESH** FACT is authoritative. A FACT must have a
-fact-capable source, `observed_at`/`as_of`, quality, AND an explicit
-`freshness == "FRESH"`. Missing freshness (`None` / `""`), `UNKNOWN`, or an
-unrecognized freshness value are NOT fresh and can never be authoritative: they
-are classified `invalid_fact_support` (or `stale_fact_support` for `STALE`),
-preserved for diagnostics but never counted as authority and never able to make
-a claim actionable. Specialist opinions, claims, cases, memory refs, and source
+fact-capable source, `observed_at`/`as_of`, a **governed `quality`** (one of
+`HIGH`/`MEDIUM`/`LOW`/`UNKNOWN`), AND an explicit `freshness == "FRESH"`.
+Missing freshness (`None` / `""`), `UNKNOWN`, or an unrecognized freshness value
+are NOT fresh and can never be authoritative: they are classified
+`invalid_fact_support` (or `stale_fact_support` for `STALE`), preserved for
+diagnostics but never counted as authority and never able to make a claim
+actionable. An unrecognized quality token is likewise rejected, never treated as
+governed quality. Specialist opinions, claims, cases, memory refs, and source
 nodes are non-authoritative by construction.
 
 ## Validation

@@ -22,6 +22,7 @@ from typing import Any, Optional
 from .source_governance import (
     SOURCE_MEMORY_CONTEXT,
     SOURCE_MODEL_INFERENCE,
+    VALID_QUALITY,
     can_back_fact,
 )
 
@@ -255,6 +256,11 @@ class FinancialSenseResult:
                 errors.append(f"facts[{i}] ({fact.key}) lacks observed_at/as_of")
             if not fact.quality:
                 errors.append(f"facts[{i}] ({fact.key}) lacks quality")
+            elif str(fact.quality).upper() not in VALID_QUALITY:
+                errors.append(
+                    f"facts[{i}] ({fact.key}) invalid quality {fact.quality!r} "
+                    f"(expected one of {sorted(VALID_QUALITY)})"
+                )
         for i, claim in enumerate(self.claims):
             if not claim.source_type and claim.claim_type != "UNSUPPORTED":
                 errors.append(f"claims[{i}] lacks source_type")
