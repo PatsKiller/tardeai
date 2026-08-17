@@ -1,0 +1,121 @@
+name: agent-intelligence-foundation-ci
+
+# Agent Intelligence Foundation (AIF) exact-head test gate.
+#
+# READ_ONLY_ADVISORY: no broker writes, no live Telegram (pytest interdict),
+# no live credentials, no network-dependent provider calls. This workflow runs
+# the COMPLETE AIF test manifest — the ContextEnvelope / AgentRunTrace /
+# read-only MCP gateway / memory governance / autonomous office / learning /
+# shadow acceptance / feature-flags surfaces — NOT the CIO hardening suite.
+#
+# The manifest is pinned explicitly so pre-existing, unrelated subsystems
+# (e.g. `test_agent_runtime_*`, `test_agent_flash_*`, `test_agent_jobs_*`) that
+# may require Postgres/network are excluded from this read-only gate.
+
+on:
+  push:
+    branches: ["main", "feature/**", "wt/**", "aif/**"]
+    paths:
+      - "scripts/lib/agent_*.py"
+      - "scripts/lib/mcp_*.py"
+      - "tests/test_agent_*.py"
+      - "tests/test_mcp_*.py"
+      - "tests/test_langgraph_complexity_gate.py"
+      - "docs/agent-intelligence/**"
+      - ".github/workflows/agent-intelligence-foundation-ci.yml"
+  pull_request:
+    paths:
+      - "scripts/lib/agent_*.py"
+      - "scripts/lib/mcp_*.py"
+      - "tests/test_agent_*.py"
+      - "tests/test_mcp_*.py"
+      - "tests/test_langgraph_complexity_gate.py"
+      - "docs/agent-intelligence/**"
+      - ".github/workflows/agent-intelligence-foundation-ci.yml"
+  workflow_dispatch:
+
+jobs:
+  aif-foundation:
+    runs-on: ubuntu-latest
+    env:
+      TRADE_AI_CI: "1"
+      CIO_TELEGRAM_INTERDICT: "1"
+      ENABLE_TELEGRAM: "0"
+      ALPACA_MODE: paper
+      # Conservative defaults are already the code default; pin them so a stray
+      # runner env can never flip behavior-influence on during CI.
+      AGENT_CONTEXT_ENVELOPE: "0"
+      AGENT_RUN_TRACE: "0"
+      MCP_READ_ONLY_GATEWAY: "0"
+      MEMORY_PROVIDER: "null"
+      MEMORY_SHADOW: "0"
+      MEMORY_BEHAVIOR_INFLUENCE: "0"
+      LANGGRAPH_WORKER_PILOT: "0"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install test deps
+        run: |
+          python3 -m pip install --upgrade pip
+          pip install pytest pyyaml
+
+      - name: Enumerate exact AIF test manifest
+        run: |
+          python3 -m pytest --collect-only -q \
+            tests/test_agent_context_envelope.py \
+            tests/test_agent_context_integration.py \
+            tests/test_agent_feature_flags.py \
+            tests/test_agent_followup.py \
+            tests/test_agent_intelligence_adversarial.py \
+            tests/test_agent_intelligence_failure_injection.py \
+            tests/test_agent_intelligence_integration.py \
+            tests/test_agent_learning_linkage.py \
+            tests/test_agent_mem0_provider.py \
+            tests/test_agent_memory_governance.py \
+            tests/test_agent_observability.py \
+            tests/test_agent_perf_bench.py \
+            tests/test_agent_replay_harness.py \
+            tests/test_agent_run_trace.py \
+            tests/test_agent_shadow_acceptance.py \
+            tests/test_agent_wake_taxonomy.py \
+            tests/test_agent_runtime_instrumentation.py \
+            tests/test_langgraph_complexity_gate.py \
+            tests/test_mcp_read_only_gateway.py \
+            tests/test_mcp_security.py \
+            tests/test_mcp_timeout_rate.py \
+            tests/test_agent_trace_retention.py \
+            tests/test_agent_untrusted_data.py
+
+      - name: Run AIF test manifest
+        run: |
+          python3 -m pytest -q \
+            tests/test_agent_context_envelope.py \
+            tests/test_agent_context_integration.py \
+            tests/test_agent_feature_flags.py \
+            tests/test_agent_followup.py \
+            tests/test_agent_intelligence_adversarial.py \
+            tests/test_agent_intelligence_failure_injection.py \
+            tests/test_agent_intelligence_integration.py \
+            tests/test_agent_learning_linkage.py \
+            tests/test_agent_mem0_provider.py \
+            tests/test_agent_memory_governance.py \
+            tests/test_agent_observability.py \
+            tests/test_agent_perf_bench.py \
+            tests/test_agent_replay_harness.py \
+            tests/test_agent_run_trace.py \
+            tests/test_agent_shadow_acceptance.py \
+            tests/test_agent_wake_taxonomy.py \
+            tests/test_agent_runtime_instrumentation.py \
+            tests/test_langgraph_complexity_gate.py \
+            tests/test_mcp_read_only_gateway.py \
+            tests/test_mcp_security.py \
+            tests/test_mcp_timeout_rate.py \
+            tests/test_agent_trace_retention.py \
+            tests/test_agent_untrusted_data.py
