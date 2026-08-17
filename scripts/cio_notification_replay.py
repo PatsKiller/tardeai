@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -34,6 +35,15 @@ def main(argv: list[str] | None = None) -> int:
             state_path=sp / "state.jsonl",
             audit_path=sp / "audit.jsonl",
             metrics_path=sp / "metrics.jsonl",
+        )
+    else:
+        # Deterministic replay: default to a fresh, isolated state directory so
+        # repeated runs yield identical results regardless of prior state.
+        _tmp = tempfile.TemporaryDirectory(prefix="cio-replay-")
+        store = NotificationStateStore(
+            state_path=Path(_tmp.name) / "state.jsonl",
+            audit_path=Path(_tmp.name) / "audit.jsonl",
+            metrics_path=Path(_tmp.name) / "metrics.jsonl",
         )
     result = run_aug17_replay(store=store)
     result["authority"] = "READ_ONLY_ADVISORY"
