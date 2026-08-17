@@ -10,6 +10,7 @@ PRICE_UNKNOWN = "PRICE_UNKNOWN"
 
 _ROOT = Path(__file__).resolve().parents[3]
 _DEFAULT_SCHEDULES = _ROOT / "config" / "provider_pricing_schedules.json"
+_SCRIPTS_FALLBACK = Path(__file__).resolve().parent / "fixtures" / "provider_pricing_schedules.json"
 
 
 class PriceUnknownError(ValueError):
@@ -28,9 +29,16 @@ def parse_dt(value: Any) -> datetime:
 
 
 def load_schedules(path: Path | None = None) -> list[dict[str, Any]]:
-    p = Path(path) if path else _DEFAULT_SCHEDULES
-    data = json.loads(p.read_text(encoding="utf-8"))
-    return list(data.get("schedules") or [])
+    candidates = []
+    if path:
+        candidates.append(Path(path))
+    else:
+        candidates.extend([_DEFAULT_SCHEDULES, _SCRIPTS_FALLBACK])
+    for p in candidates:
+        if p.is_file():
+            data = json.loads(p.read_text(encoding="utf-8"))
+            return list(data.get("schedules") or [])
+    raise FileNotFoundError(f"pricing schedules not found in {candidates}")
 
 
 def _in_window(dt: datetime, start: str, end: Optional[str]) -> bool:
