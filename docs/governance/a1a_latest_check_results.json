@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-14T11:40:00.255831+00:00",
+  "generated_at": "2026-08-16T22:00:00.262603+00:00",
   "git_head": "8f11a642",
   "files_checked": 1,
   "findings_count": 3,
@@ -17,7 +17,7 @@
     {
       "severity": "P2",
       "check": "stale_facts",
-      "message": "System facts 240h old (>48h)"
+      "message": "System facts 58h old (>48h)"
     },
     {
       "severity": "P2",
