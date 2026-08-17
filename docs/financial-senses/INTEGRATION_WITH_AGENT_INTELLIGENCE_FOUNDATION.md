@@ -1,8 +1,9 @@
 # Integration with the Agent Intelligence Foundation
 
-The other branch owns the central MCP gateway. This branch provides the
-provider contracts and a registration manifest for later consumption. No AIF
-code is imported; the integration is deferred until both branches are stable.
+Both subsystems are now on main. Financial Senses still owns provider
+contracts and the registration manifest. AIF owns the central MCP gateway.
+The post-merge adapter (`scripts/lib/financial_senses_aif.py`) registers the
+manifest tools on that **existing** gateway. No second MCP is created.
 
 ## Registration contract
 
@@ -47,11 +48,13 @@ For each tool: `READ_ONLY`, input schema, output schema, source policy, timeout,
 rate limit, and expected trace metadata (`request_id`, `provider`, `capability`,
 `as_of`, `observed_at`).
 
-## Deferred integration files
+## Integration files (this program)
 
-- Central MCP gateway registration (AIF owns it).
-- `ContextEnvelope` / `AgentRunTrace` / memory hooks (AIF owns them).
-- Wiring providers → gateway (post-merge PR).
+- `scripts/lib/financial_senses_aif.py` — adapter / registry / envelope mapping
+- `scripts/lib/aif_financial_senses_replay.py` — deterministic dry replay
+- Gateway allowlist + provider registry registration (AIF owns the chokepoint)
+- `specialist_context.financial_senses` on ContextEnvelope@v1
+- Tool receipts on the existing AgentRunTrace / tool-trace ledger
 
 ## Boundary
 

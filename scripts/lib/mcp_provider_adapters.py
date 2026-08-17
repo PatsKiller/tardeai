@@ -199,7 +199,7 @@ def build_local_provider_registry() -> dict[str, object]:
     documents = LocalDocumentsProvider()
     calendar = LocalCalendarProvider()
     goals_plans = LocalGoalsPlansProvider()
-    return {
+    registry: dict[str, object] = {
         "portfolio.get_verified_snapshot": portfolio,
         "portfolio.get_cash_snapshot": portfolio,
         "portfolio.get_risk_snapshot": portfolio,
@@ -214,6 +214,15 @@ def build_local_provider_registry() -> dict[str, object]:
         "goals.list": goals_plans,
         "plans.get": goals_plans,
     }
+    # Financial Senses: same gateway. Live constructors fail-soft to
+    # NOT_CONFIGURED when FRED/OpenFIGI/SEC are not configured. Tests that
+    # need deterministic provider data inject build_fixture_providers().
+    try:
+        from scripts.lib.financial_senses_aif import build_financial_senses_registry
+        registry.update(build_financial_senses_registry())
+    except Exception:
+        pass
+    return registry
 
 
 def build_external_not_configured_registry() -> dict[str, object]:

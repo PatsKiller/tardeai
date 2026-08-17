@@ -183,10 +183,23 @@ def _empty_external() -> dict[str, Any]:
     }
 
 
+def _empty_financial_senses() -> dict[str, Any]:
+    return {
+        "enabled": False,
+        "shadow_only": True,
+        "behavior_influence": False,
+        "availability": RETRIEVAL_NOT_CONFIGURED,
+        "items": [],
+        "warnings": [],
+        "dropped_for_budget": [],
+    }
+
+
 def _empty_specialist() -> dict[str, Any]:
     return {
         "prior_views": [],
         "requested_views": [],
+        "financial_senses": _empty_financial_senses(),
     }
 
 

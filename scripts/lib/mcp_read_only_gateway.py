@@ -329,6 +329,19 @@ _TOOL_REQUEST_FIELDS: dict[str, set[str]] = {
     "plans.get": {"plan_id"},
 }
 
+
+def _register_financial_senses_tools() -> None:
+    """Register governed FS tools on THIS gateway. No second MCP."""
+    try:
+        from scripts.lib.financial_senses_aif import AIF_REQUEST_FIELDS, aif_exposed_tools
+    except Exception:  # noqa: BLE001 — fail closed: FS tools stay unregistered
+        return
+    ALLOWED_TOOLS.update(aif_exposed_tools())
+    _TOOL_REQUEST_FIELDS.update(AIF_REQUEST_FIELDS)
+
+
+_register_financial_senses_tools()
+
 _URL_RE = re.compile(r"https?://([^\s/\"'<>?#]+)")
 _HOST_KEYS = frozenset(
     {
@@ -582,6 +595,22 @@ def call_mcp_tool(
         receipt["bounded"] = bool(bounded)
         if reason is not None:
             receipt["reason"] = reason
+        # Financial Senses receipts ride the existing tool-trace ledger.
+        if isinstance(redacted_response, dict) and isinstance(
+            redacted_response.get("financial_senses"), dict
+        ):
+            fs = redacted_response["financial_senses"]
+            receipt["request_id"] = fs.get("request_id")
+            receipt["fs_provider"] = fs.get("provider")
+            receipt["fs_capability"] = fs.get("capability")
+            receipt["validation_ok"] = fs.get("validation_ok")
+            receipt["freshness_summary"] = fs.get("freshness")
+            receipt["quality_summary"] = fs.get("quality")
+            receipt["fact_count"] = fs.get("fact_count")
+            receipt["estimate_count"] = fs.get("estimate_count")
+            receipt["source_provenance"] = fs.get("provenance")
+            receipt["shadow_only"] = True
+            receipt["behavior_influence"] = False
         append_tool_call(receipt, path=trace_path)
         return {
             "ok": ok,
