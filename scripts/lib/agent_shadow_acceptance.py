@@ -16,8 +16,10 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 from scripts.lib.agent_context_envelope import (
-    get_context_for_agent,
+    canonical_json,
     context_envelope_digest,
+    get_context_for_agent,
+    sha256_hex,
 )
 from scripts.lib.agent_context_integration import shadow_compare
 
@@ -47,26 +49,59 @@ def _load_jsonl(path: Path) -> list[dict[str, Any]]:
     return rows
 
 
+def _decision_digest(decision: dict[str, Any]) -> str:
+    """Deterministic digest of a decision payload (used as execution lineage)."""
+    return sha256_hex(canonical_json(decision), 32)
+
+
+def _safe_evaluate(
+    evaluator: Callable[[dict[str, Any], dict[str, Any], str], Optional[dict[str, Any]]],
+    wake: dict[str, Any],
+    context: dict[str, Any],
+    mode: str,
+) -> Optional[dict[str, Any]]:
+    """Invoke a decision evaluator for one mode; None on any failure (fail closed)."""
+    try:
+        return evaluator(wake, context, mode)
+    except Exception:  # noqa: BLE001 — shadow comparison must fail closed
+        return None
+
+
 def shadow_compare_wakes(
     wake_path: Path | str | None = None,
     *,
     memory_provider: Optional[Any] = None,
-    decision_loader: Optional[Callable[[dict[str, Any]], Optional[dict[str, Any]]]] = None,
+    decision_evaluator: Optional[
+        Callable[[dict[str, Any], dict[str, Any], str], Optional[dict[str, Any]]]
+    ] = None,
+    evaluator_version: str = "unversioned",
 ) -> dict[str, Any]:
     """Compare baseline vs augmented context for each wake (shadow only).
 
-    ``decision_loader(wake)``, when supplied, returns a decision payload; the
-    augmented path is compared against baseline via shadow_compare. When no
-    loader is provided (or it yields no payloads) the comparison is context-
-    level only and ``decision_payloads_available`` / ``decision_comparisons_completed``
-    are both False — which the promotion gate treats as insufficient evidence.
+    Decision-level comparison is only meaningful when ``decision_evaluator``
+    runs TWO genuinely independent paths: it is invoked once with the baseline
+    ContextEnvelope (mode ``"baseline"``) and once with the augmented envelope
+    (mode ``"augmented"``). Merely copying the baseline decision is NOT
+    augmented-decision evidence and is rejected:
+
+      * a decision comparison is completed only when BOTH paths returned a
+        decision AND the two results are distinct objects;
+      * ``decision_comparisons_completed`` is True only when at least one wake
+        produced such a comparison AND no evaluation failed;
+      * ``critical_memory_false_positives`` is derived from actual baseline-vs-
+        augmented decision differences, never from a copied object.
+
+    When no evaluator is provided (or it yields no payloads) the comparison is
+    context-level only and ``decision_payloads_available`` /
+    ``decision_comparisons_completed`` / ``dual_path_executed`` are all False —
+    which the promotion gate treats as insufficient evidence.
     """
     path = Path(wake_path or DEFAULT_WAKE_TRACES)
     wakes = _load_jsonl(path) if path.exists() else []
     packets: list[dict[str, Any]] = []
     context_build_failures = 0
-    truth_overrides = 0
     decision_payloads = 0
+    evaluation_failures = 0
     critical_memory_flips = 0
 
     for w in wakes:
@@ -89,16 +124,36 @@ def shadow_compare_wakes(
             "memory_ids_retrieved": mem_ids,
             "mcp_used": bool((aug.get("external_read_context") or {}).get("mcp_calls")),
             "decision_compared": False,
+            "comparison_completed": False,
+            "evaluator_version": evaluator_version if decision_evaluator is not None else None,
         }
-        if decision_loader is not None:
-            base_dec = decision_loader(w)
-            if base_dec:
+        if decision_evaluator is not None:
+            base_dec = _safe_evaluate(decision_evaluator, w, base, "baseline")
+            aug_dec = _safe_evaluate(decision_evaluator, w, aug, "augmented")
+            if base_dec is None or aug_dec is None:
+                # One path failed -> comparison incomplete; promotion fails closed.
+                evaluation_failures += 1
+                packet["comparison_error"] = (
+                    "baseline or augmented evaluation did not produce a decision"
+                )
+            elif base_dec is aug_dec:
+                # The evaluator returned the SAME object for both paths — not two
+                # independent executions.
+                evaluation_failures += 1
+                packet["comparison_error"] = (
+                    "evaluator returned the same object for baseline and augmented paths"
+                )
+            else:
                 decision_payloads += 1
-                aug_dec = dict(base_dec or {})
-                # Shadow: memory may inform context but never mutate a decision.
                 packet["decision_compared"] = True
-                packet["shadow_diff"] = shadow_compare(base_dec or {}, aug_dec)
-                diff = packet["shadow_diff"]
+                packet["comparison_completed"] = True
+                packet["decision_id"] = str(
+                    aug_dec.get("decision_id") or base_dec.get("decision_id") or wake_id
+                )
+                packet["baseline_decision_digest"] = _decision_digest(base_dec)
+                packet["augmented_decision_digest"] = _decision_digest(aug_dec)
+                diff = shadow_compare(base_dec, aug_dec)
+                packet["shadow_diff"] = diff
                 # A memory-attributable action flip is a critical-false-positive
                 # candidate: memory changed the advisory action (must be zero).
                 if diff.get("action_changed") and diff.get("memory_ids_used", {}).get("changed"):
@@ -109,15 +164,19 @@ def shadow_compare_wakes(
         sum(1 for w in wakes if w.get("trace_id")) / len(wakes) if wakes else 1.0
     )
     has_payloads = decision_payloads > 0
+    comparisons_complete = has_payloads and evaluation_failures == 0
     return {
         "wakes": len(wakes),
         "context_build_failures": context_build_failures,
         "trace_coverage": round(trace_coverage, 4),
         "packets": packets,
-        "truth_overrides": truth_overrides,
+        "truth_overrides": 0,
         "decision_payloads_available": has_payloads,
-        "decision_comparisons_completed": has_payloads,
+        "decision_comparisons_completed": comparisons_complete,
+        "dual_path_executed": comparisons_complete,
+        "evaluation_failures": evaluation_failures,
         "critical_memory_false_positives": critical_memory_flips,
+        "evaluator_version": evaluator_version,
     }
 
 
@@ -183,6 +242,19 @@ def promotion_gate(
         reasons.append("decision_payloads_available is not True")
     if not decisions_completed:
         reasons.append("decision_comparisons_completed is not True")
+
+    # 1a. Genuine dual-path execution lineage. Only the shadow runner can set
+    # ``dual_path_executed``; a synthetic/context-only packet (or one where the
+    # augmented decision was merely copied) never carries it, so it fails closed.
+    checks["decision_dual_path"] = shadow_result.get("dual_path_executed") is True
+    if not checks["decision_dual_path"]:
+        reasons.append("dual_path_executed is not True (no genuine baseline-vs-augmented execution)")
+
+    # 1b. Derived critical-memory false positives from the actual comparison.
+    derived_flips = shadow_result.get("critical_memory_false_positives")
+    checks["shadow_critical_memory_flips"] = isinstance(derived_flips, int) and derived_flips == 0
+    if not checks["shadow_critical_memory_flips"]:
+        reasons.append(f"shadow critical_memory_false_positives={derived_flips}")
 
     # 2. Canonical truth overrides — measured.
     measured, overrides = _measured_int(metrics, "canonical_truth_overrides")
