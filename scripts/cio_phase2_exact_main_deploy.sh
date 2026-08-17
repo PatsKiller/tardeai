@@ -168,6 +168,27 @@ link_pipeline_data() {
       log "  symlink $rel → canonical"
     fi
   done
+  # Gitignored Fernet key for Schwab OAuth ciphertext. Never rsync from git.
+  # Prefer the stable home copy so a rebuild checkout wipe cannot drop it.
+  local cred_dest="${dest}/config/broker_credentials.env"
+  local cred_src=""
+  for cand in \
+    "${HOME}/.config/tradeai/broker_credentials.env" \
+    "${CANONICAL_SOURCE}/config/broker_credentials.env"
+  do
+    if [[ -f "$cand" ]]; then
+      cred_src="$cand"
+      break
+    fi
+  done
+  if [[ -n "$cred_src" ]]; then
+    mkdir -p "$(dirname "$cred_dest")"
+    ln -sfn "$cred_src" "$cred_dest"
+    chmod 600 "$cred_src" || true
+    log "  symlink config/broker_credentials.env → stable secrets file"
+  else
+    log "  WARN config/broker_credentials.env missing — Schwab token encrypt will fail closed"
+  fi
 }
 
 build_frontend() {

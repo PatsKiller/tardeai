@@ -39,20 +39,35 @@ ENC_KEY_NAME = "SCHWAB_TOKEN_ENC_KEY"
 def _load_broker_secrets_env() -> None:
     """Load local broker credential env names without overriding systemd/tmpfs values.
 
-    The Schwab token encryption key is intentionally kept out of the general .env file.
-    Release copies therefore need this module to read its own 0600 broker_credentials.env
-    before decrypting OAuth rows. Values are never logged.
+    Exact-main releases do not copy gitignored broker_credentials.env. Resolve
+    the Fernet key from ~/.config/tradeai, this tree, CURRENT, then the
+    canonical rebuild file. Values are never logged. Never mint a key here.
     """
     try:
-        for line in SECRETS_FILE.read_text(errors="replace").splitlines():
-            if not line.strip() or line.lstrip().startswith("#") or "=" not in line:
-                continue
-            key, _, value = line.partition("=")
-            key = key.strip()
-            if key and key not in os.environ:
-                os.environ[key] = value.strip().strip(chr(39) + chr(34))
-    except OSError:
+        import broker_secrets
+        broker_secrets.load_into_env(force=True)
+        return
+    except Exception:
         pass
+    for path in (
+        Path.home() / ".config" / "tradeai" / "broker_credentials.env",
+        SECRETS_FILE,
+        Path.home() / "trade-ai-releases" / "portfolio-server" / "CURRENT" / "config" / "broker_credentials.env",
+        Path("/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/config/broker_credentials.env"),
+    ):
+        try:
+            if not path.is_file():
+                continue
+            for line in path.read_text(errors="replace").splitlines():
+                if not line.strip() or line.lstrip().startswith("#") or "=" not in line:
+                    continue
+                key, _, value = line.partition("=")
+                key = key.strip()
+                if key and key not in os.environ:
+                    os.environ[key] = value.strip().strip(chr(39) + chr(34))
+            break
+        except OSError:
+            continue
 
 
 _load_broker_secrets_env()
