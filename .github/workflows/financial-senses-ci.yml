@@ -10,8 +10,12 @@ on:
   pull_request:
     paths:
       - "scripts/lib/financial_senses/**"
+      - "scripts/lib/financial_senses_aif.py"
+      - "scripts/lib/aif_financial_senses_replay.py"
       - "tests/financial_senses/**"
+      - "tests/test_aif_financial_senses_*.py"
       - "config/financial_senses/**"
+      - ".github/workflows/financial-senses-ci.yml"
   workflow_dispatch:
 
 jobs:

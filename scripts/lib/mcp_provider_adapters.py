@@ -214,13 +214,12 @@ def build_local_provider_registry() -> dict[str, object]:
         "goals.list": goals_plans,
         "plans.get": goals_plans,
     }
-    # Financial Senses: same gateway, fixture providers (no network).
+    # Financial Senses: same gateway. Live constructors fail-soft to
+    # NOT_CONFIGURED when FRED/OpenFIGI/SEC are not configured. Tests that
+    # need deterministic provider data inject build_fixture_providers().
     try:
-        from scripts.lib.financial_senses_aif import (
-            build_financial_senses_registry,
-            build_fixture_providers,
-        )
-        registry.update(build_financial_senses_registry(build_fixture_providers()))
+        from scripts.lib.financial_senses_aif import build_financial_senses_registry
+        registry.update(build_financial_senses_registry())
     except Exception:
         pass
     return registry
