@@ -417,6 +417,42 @@ def _attach_operator_state(decision: dict[str, Any], dispositions: Optional[dict
     return decision
 
 
+def _instrument_scan(
+    selected: list[dict[str, Any]],
+    *,
+    at: str,
+) -> Optional[dict[str, Any]]:
+    """Flag-gated AIF observability hook. Returns None when flags are off.
+
+    OFF (default): exact pre-AIF behavior — nothing is built, appended, or
+    returned. ON: builds ContextEnvelope@v1 and/or appends one redacted
+    AgentRunTrace@v1 with a single wake_id/trace_id lineage. Fail-soft.
+    """
+    from scripts.lib.agent_runtime_instrumentation import (
+        default_trace_path,
+        instrument_material_wake,
+    )
+
+    decision_ids = [str(d.get("decision_id") or "") for d in selected]
+    decision_ids = [d for d in decision_ids if d]
+    wake_id = f"wake_scan_{at}"
+    result = instrument_material_wake(
+        {"wake_id": wake_id, "selected_decision_ids": decision_ids},
+        decision_ids=decision_ids,
+        trace_path=default_trace_path(),
+    )
+    if not result.get("instrumented"):
+        return None
+    return {
+        "wake_id": result["wake_id"],
+        "trace_id": result["trace_id"],
+        "envelope": result.get("envelope"),
+        "trace": result.get("trace"),
+        "trace_appended": result.get("trace_appended"),
+        "errors": result.get("errors"),
+    }
+
+
 def select_publications(
     candidates: list[dict[str, Any]],
     *,
@@ -548,6 +584,12 @@ def scan_office(
             "Diffed against persisted verified holdings snapshot."
         ),
     }
+
+    # Additive flag-gated observability (AIF). OFF by default => no key added,
+    # so the receipt is byte-for-byte the pre-AIF shape.
+    aif = _instrument_scan(selected, at=receipt["at"])
+    if aif:
+        receipt["aif_observability"] = aif
     if persist:
         RECEIPT_PATH.parent.mkdir(parents=True, exist_ok=True)
         RECEIPT_PATH.write_text(json.dumps(receipt, indent=2, default=str) + "\n", encoding="utf-8")
