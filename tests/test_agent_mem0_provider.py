@@ -13,10 +13,21 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import pytest  # noqa: E402
 
-from scripts.lib.agent_context_envelope import RETRIEVAL_NOT_CONFIGURED  # noqa: E402
+from scripts.lib.agent_context_envelope import (  # noqa: E402
+    MEMORY_AUTHORITY_NON_AUTHORITATIVE,
+    RETRIEVAL_NOT_CONFIGURED,
+)
 from scripts.lib.agent_memory_provider import (  # noqa: E402
     LocalTestMemoryProvider,
     NullMemoryProvider,
+)
+from scripts.lib.agent_memory_governance import (  # noqa: E402
+    MEMORY_TYPE_OPERATOR_EXPLICIT_PREFERENCE,
+    MEMORY_TYPE_OPERATOR_INFERRED_PREFERENCE,
+    STATUS_ACTIVE,
+    STATUS_CANDIDATE,
+    build_memory_record,
+    resolve_conflict,
 )
 from scripts.lib.agent_mem0_provider import (  # noqa: E402
     MEM0_DUE_DILIGENCE,
@@ -149,3 +160,124 @@ def test_canonical_flags_default_all_off():
     assert flags["MEMORY_SHADOW"] == 0
     assert flags["MEMORY_BEHAVIOR_INFLUENCE"] == 0
     assert flags["LANGGRAPH_WORKER_PILOT"] == 0
+
+
+# ── Forced admission privilege fields (P1 regression) ─────────────────────
+
+
+def _forged_pref(**kw):
+    """An inferred preference the caller tries to elevate to ACTIVE/AUTHORITATIVE."""
+    kw.setdefault("memory_type", MEMORY_TYPE_OPERATOR_INFERRED_PREFERENCE)
+    kw.setdefault("subject", "SCHD preference")
+    kw.setdefault("content", "seems to like SCHD")
+    kw.setdefault("source_event_ids", ["evt_1"])
+    return kw
+
+
+def test_forged_authority_class_is_downgraded():
+    p = LocalTestMemoryProvider()
+    mid = p.add_candidate(_forged_pref(authority_class="AUTHORITATIVE"))
+    assert mid is not None
+    got = p.get(mid)
+    assert got["authority_class"] == MEMORY_AUTHORITY_NON_AUTHORITATIVE
+
+
+def test_inferred_preference_forged_active_is_downgraded():
+    p = LocalTestMemoryProvider()
+    mid = p.add_candidate(_forged_pref(status=STATUS_ACTIVE))
+    assert mid is not None
+    got = p.get(mid)
+    assert got["status"] == STATUS_CANDIDATE
+
+
+def test_explicit_preference_may_be_active_under_canonical_rule():
+    p = LocalTestMemoryProvider()
+    mid = p.add_candidate(
+        {
+            "memory_type": MEMORY_TYPE_OPERATOR_EXPLICIT_PREFERENCE,
+            "subject": "SCHD",
+            "content": "operator wants SCHD core",
+            "source_event_ids": ["evt_1"],
+            "status": STATUS_ACTIVE,
+        }
+    )
+    assert mid is not None
+    assert p.get(mid)["status"] == STATUS_ACTIVE
+    assert p.get(mid)["authority_class"] == MEMORY_AUTHORITY_NON_AUTHORITATIVE
+
+
+def test_builder_created_record_follows_same_admission():
+    # Even a canonical builder record cannot elevate a forbidden/inferred type.
+    rec = build_memory_record(
+        memory_type=MEMORY_TYPE_OPERATOR_INFERRED_PREFERENCE,
+        subject="SCHD",
+        content="seems to like SCHD",
+        source_event_ids=["evt_1"],
+        status=STATUS_ACTIVE,  # forged escalation on the builder
+    )
+    p = LocalTestMemoryProvider()
+    mid = p.add_candidate(rec)
+    assert mid is not None
+    assert p.get(mid)["status"] == STATUS_CANDIDATE
+    assert p.get(mid)["authority_class"] == MEMORY_AUTHORITY_NON_AUTHORITATIVE
+
+
+def test_no_provenance_raw_dict_not_retrievable():
+    p = LocalTestMemoryProvider()
+    assert p.add_candidate({"content": "x", "subject": "SCHD"}) is None
+    # Defense-in-depth: even if a malformed record reached storage, search won't
+    # surface it as supporting memory.
+    p._store["mem_bogus"] = {
+        "memory_id": "mem_bogus",
+        "subject": "SCHD",
+        "content": "no provenance",
+        "authority_class": MEMORY_AUTHORITY_NON_AUTHORITATIVE,
+    }
+    res = p.search(query="SCHD")
+    ids = [r["memory_id"] for r in res["records"] + res["counter_memory"]]
+    assert "mem_bogus" not in ids
+
+
+def test_forbidden_subject_raw_dict_not_retrievable():
+    p = LocalTestMemoryProvider()
+    assert p.add_candidate(_ok("cash is $1,000,000", subject="cash")) is None
+    p._store["mem_cash"] = {
+        "memory_id": "mem_cash",
+        "subject": "cash",
+        "content": "cash is $1,000,000",
+        "source_event_ids": ["evt_1"],
+        "authority_class": MEMORY_AUTHORITY_NON_AUTHORITATIVE,
+    }
+    res = p.search(query="cash")
+    ids = [r["memory_id"] for r in res["records"] + res["counter_memory"]]
+    assert "mem_cash" not in ids
+
+
+def test_valid_explicit_preference_remains_retrievable():
+    p = LocalTestMemoryProvider()
+    mid = p.add_candidate(
+        {
+            "memory_type": MEMORY_TYPE_OPERATOR_EXPLICIT_PREFERENCE,
+            "subject": "SCHD",
+            "content": "operator wants SCHD core",
+            "source_event_ids": ["evt_1"],
+        }
+    )
+    res = p.search(query="SCHD")
+    ids = [r["memory_id"] for r in res["records"]]
+    assert mid in ids
+
+
+def test_canonical_truth_override_still_wins():
+    p = LocalTestMemoryProvider()
+    mid = p.add_candidate(
+        {
+            "memory_type": MEMORY_TYPE_OPERATOR_EXPLICIT_PREFERENCE,
+            "subject": "SCHD",
+            "content": "operator wants SCHD core",
+            "source_event_ids": ["evt_1"],
+        }
+    )
+    out = resolve_conflict([p.get(mid)], canonical_truth_override=True)
+    assert out["primary"] is None
+    assert out["canonical_truth_override"] is True

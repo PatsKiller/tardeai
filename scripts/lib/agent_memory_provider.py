@@ -26,6 +26,12 @@ from scripts.lib.agent_context_envelope import (
     sha256_hex,
 )
 from scripts.lib.agent_memory_governance import (
+    STATUS_ACTIVE,
+    STATUS_CANDIDATE,
+    STATUS_DISPUTED,
+    STATUS_EXPIRED,
+    STATUS_RETRACTED,
+    STATUS_SUPERSEDED,
     admit_status,
     is_forbidden_authoritative,
 )
@@ -183,6 +189,45 @@ def _is_live(record: dict[str, Any]) -> bool:
     return True
 
 
+# Lifecycle downgrades (DISPUTED/EXPIRED/RETRACTED/SUPERSEDED) are non-active and
+# may only be reached through governed transitions (dispute/expire/supersedes).
+_LIFECYCLE_STATUSES = frozenset(
+    {STATUS_DISPUTED, STATUS_EXPIRED, STATUS_RETRACTED, STATUS_SUPERSEDED}
+)
+
+
+def _forced_status(caller_status: Any, canonical_status: str) -> str:
+    """Return the status a record may be stored under.
+
+    Caller input may never ESCALATE beyond the canonical admission result:
+
+      * lifecycle downgrades (DISPUTED/EXPIRED/RETRACTED/SUPERSEDED) are
+        preserved (they are non-active, so not an escalation);
+      * ACTIVE is downgraded to the canonical status when the canonical rule
+        only permits CANDIDATE (e.g. an inferred preference cannot become ACTIVE
+        merely because the caller supplied ACTIVE);
+      * otherwise the caller's (non-escalating) status is preserved.
+    """
+    if caller_status in _LIFECYCLE_STATUSES:
+        return caller_status
+    if caller_status == STATUS_ACTIVE and canonical_status != STATUS_ACTIVE:
+        return canonical_status
+    return caller_status or canonical_status
+
+
+def _retrievable(record: dict[str, Any]) -> bool:
+    """Defense-in-depth: a malformed/historical record must never surface as
+    supporting context, even if it somehow reached storage."""
+    authority = record.get("authority_class")
+    if authority is not None and authority != MEMORY_AUTHORITY:
+        return False
+    if not (record.get("source_event_ids") or record.get("source_refs")):
+        return False
+    if is_forbidden_authoritative(record.get("subject")):
+        return False
+    return True
+
+
 def _scope_matches(record: dict[str, Any], requested: Any) -> bool:
     """True when a record is visible under the requested scope.
 
@@ -303,15 +348,16 @@ class LocalTestMemoryProvider:
             memory_id = "mem_" + digest
             rec["memory_id"] = memory_id
         rec.setdefault("memory_version", "1.0")
-        # Default status via canonical admission (never a silent CANDIDATE for an
-        # explicit operator statement, never ACTIVE for an inferred one).
-        if not rec.get("status"):
-            rec["status"] = admit_status(
-                rec.get("memory_type"),
-                subject=rec.get("subject"),
-                provenance_ok=True,
-            )
-        rec.setdefault("authority_class", MEMORY_AUTHORITY)
+        # Governed admission: privilege fields are FORCED, never merely defaulted.
+        # Caller input cannot elevate authority or status beyond the canonical
+        # admission rule (the ONE admission policy lives in agent_memory_governance).
+        canonical_status = admit_status(
+            rec.get("memory_type"),
+            subject=rec.get("subject"),
+            provenance_ok=True,
+        )
+        rec["status"] = _forced_status(rec.get("status"), canonical_status)
+        rec["authority_class"] = MEMORY_AUTHORITY
         rec.setdefault("confidence", 0.5)
         rec.setdefault("created_at", _now_iso())
         if digest in self._by_digest:
@@ -359,7 +405,7 @@ class LocalTestMemoryProvider:
         budget_tokens: int = DEFAULT_BUDGET_TOKENS,
     ) -> dict[str, Any]:
         top_k = int(top_k or DEFAULT_TOP_K)
-        live = [r for r in self._store.values() if _is_live(r)]
+        live = [r for r in self._store.values() if _is_live(r) and _retrievable(r)]
         if scope is not None:
             live = [r for r in live if _scope_matches(r, scope)]
         if plan_id is not None:
