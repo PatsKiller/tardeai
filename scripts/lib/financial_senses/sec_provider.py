@@ -416,14 +416,15 @@ class SecEdgarProvider(BaseProvider):
 
     @staticmethod
     def _facts_at_period(raw: dict, period: str) -> dict:
-        """Extract tag -> full XBRL context dict as of a given period.
+        """Extract tag -> list of full XBRL context dicts as of a given period.
 
-        Selection policy (documented, deterministic): for each tag+unit, among
-        rows whose `end` equals `period` (exact) or starts with `period`
-        (prefix), select the row with the latest `filed` date, preferring exact
-        end matches. The full context (start, end, form, fp, fy, frame, filed)
-        is preserved so the filing-diff layer can establish like-for-like
-        duration semantics.
+        This does NOT prematurely reduce a tag to one row. A single end date can
+        carry multiple duration contexts (e.g. a QTD and a YTD row both ending
+        2026-06-30). All candidate contexts are preserved and the filing-diff
+        layer pairs equivalent contexts like-for-like. Rows whose `end` equals
+        `period` (exact) or starts with `period` (prefix) are included; exact
+        matches are preferred only when the diff layer later narrows on a unique
+        pair.
         """
         out: dict = {}
         body = (raw or {}).get("facts", raw or {})
@@ -433,35 +434,28 @@ class SecEdgarProvider(BaseProvider):
             if not isinstance(entry, dict):
                 continue
             units = entry.get("units") or {}
+            rows_out: list = []
             for unit, rows in units.items():
                 if not isinstance(rows, list):
                     continue
-                candidates = []
                 for row in rows:
                     if not isinstance(row, dict):
                         continue
                     end = str(row.get("end") or "")
-                    if end == period:
-                        candidates.append((0, row))
-                    elif end.startswith(period):
-                        candidates.append((1, row))
-                if not candidates:
-                    continue
-                # Latest filed first (descending), then stable-sort exact matches
-                # (0) before prefix matches (1).
-                candidates.sort(key=lambda t: str(t[1].get("filed") or ""), reverse=True)
-                candidates.sort(key=lambda t: t[0])
-                row = candidates[0][1]
-                out[tag] = {
-                    "value": row.get("val"),
-                    "units": unit,
-                    "start": row.get("start"),
-                    "end": str(row.get("end") or ""),
-                    "form": row.get("form"),
-                    "fp": row.get("fp"),
-                    "fy": row.get("fy"),
-                    "frame": row.get("frame"),
-                    "filed": row.get("filed"),
-                }
-                break
+                    if end == period or end.startswith(period):
+                        rows_out.append(
+                            {
+                                "value": row.get("val"),
+                                "units": unit,
+                                "start": row.get("start"),
+                                "end": end,
+                                "form": row.get("form"),
+                                "fp": row.get("fp"),
+                                "fy": row.get("fy"),
+                                "frame": row.get("frame"),
+                                "filed": row.get("filed"),
+                            }
+                        )
+            if rows_out:
+                out[tag] = rows_out
         return out

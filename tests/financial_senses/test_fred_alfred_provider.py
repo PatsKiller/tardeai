@@ -117,6 +117,22 @@ def test_compare_vintages_same_observation_revision():
     assert r.data["revision_delta"] == 0.2
 
 
+def test_revision_fact_as_of_not_decision_date():
+    # The decision observation and the later revision are two distinct knowledge
+    # times: the revision must NOT be stamped as_of=decision_date.
+    client = FakeFredClient(
+        latest_observations=[{"date": "2024-06-01", "value": 5.7}],
+        as_of={("2024-06-01", "2024-07-01"): 5.5},
+    )
+    p = FredAlfredProvider(api_key="k", client=client)
+    r = p.query("macro.compare_vintages", {"series_id": "DFF", "decision_date": "2024-07-01"})
+    decision_fact = next(f for f in r.facts if f.key == "DFF@2024-06-01")
+    revision_fact = next(f for f in r.facts if f.key == "DFF@revision_delta")
+    assert decision_fact.as_of == "2024-07-01"
+    assert revision_fact.as_of != "2024-07-01"
+    assert revision_fact.as_of == r.requested_at
+
+
 def test_compare_vintages_no_future_leak():
     # Different observation dates are NOT a revision.
     client = FakeFredClient(

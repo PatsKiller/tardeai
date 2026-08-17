@@ -28,6 +28,7 @@ IDENTITY_AMBIGUOUS = "AMBIGUOUS"
 IDENTITY_NOT_FOUND = "NOT_FOUND"
 IDENTITY_CONFLICT = "CONFLICT"
 IDENTITY_NOT_CONFIGURED = "NOT_CONFIGURED"
+IDENTITY_UNVERIFIED = "UNVERIFIED_IDENTIFIER"
 
 VALID_IDENTITY_STATUSES = frozenset(
     {
@@ -36,6 +37,7 @@ VALID_IDENTITY_STATUSES = frozenset(
         IDENTITY_NOT_FOUND,
         IDENTITY_CONFLICT,
         IDENTITY_NOT_CONFIGURED,
+        IDENTITY_UNVERIFIED,
     }
 )
 
@@ -178,13 +180,18 @@ def cross_validate_identities(
 ):
     """Cross-validate multiple identifier mapping jobs.
 
-    Each job is {"identifier", "id_type", "id_value", "candidates", "warning"}.
-    Returns (InstrumentIdentity, notes).
+    Each job is {"identifier", "id_type", "id_value", "candidates", "warning",
+    "error"}. Returns (InstrumentIdentity, notes).
 
-    exactly one common FIGI -> RESOLVED
-    >1 common FIGI          -> AMBIGUOUS
-    empty intersection      -> CONFLICT
-    an identifier with no candidates -> noted (PARTIAL) but not silently dropped
+    Every asserted identifier is first-class: a job that returns a warning /
+    error / no candidates is surfaced as a note and downgrades the result —
+    it never silently disappears.
+
+    exactly one common FIGI, all resolved      -> RESOLVED
+    exactly one common FIGI, some unresolved   -> UNVERIFIED_IDENTIFIER
+    >1 common FIGI                             -> AMBIGUOUS
+    empty intersection                         -> CONFLICT
+    all jobs no-result                         -> NOT_FOUND
     """
     query = query or {}
     provided = [j for j in jobs if j.get("id_value")]
@@ -204,43 +211,68 @@ def cross_validate_identities(
 
     figi_sets: dict[str, set] = {}
     by_figi: dict[str, dict] = {}
+    diagnostics: dict[str, str] = {}
     for j in provided:
+        ident = j["identifier"]
         figis = {c.get("figi") for c in (j.get("candidates") or []) if c.get("figi")}
-        figi_sets[j["identifier"]] = figis
+        figi_sets[ident] = figis
         for c in (j.get("candidates") or []):
             if c.get("figi"):
                 by_figi.setdefault(c["figi"], c)
+        if j.get("error"):
+            diagnostics[ident] = f"{ident}: error: {j['error']}"
+        elif j.get("warning"):
+            diagnostics[ident] = f"{ident}: {j['warning']}"
 
-    unavailable = [j for j in provided if not figi_sets[j["identifier"]] and not j.get("warning")]
-
-    # Single identifier falls back to classic resolution.
+    # Single identifier falls back to classic resolution, preserving diagnostics.
     if len(provided) == 1:
         j = provided[0]
-        return resolve_identity(j.get("candidates") or [], query, existing), notes
+        if j["identifier"] in diagnostics:
+            notes.append(diagnostics[j["identifier"]])
+        identity = resolve_identity(j.get("candidates") or [], query, existing)
+        return identity, notes
 
-    non_empty = [figi_sets[j["identifier"]] for j in provided if figi_sets[j["identifier"]]]
-    common = set.intersection(*non_empty) if non_empty else set()
+    resolved = [j for j in provided if figi_sets[j["identifier"]]]
+    unresolved = [j for j in provided if not figi_sets[j["identifier"]]]
 
-    if unavailable:
-        notes.append(f"identifiers unresolved: {[j['identifier'] for j in unavailable]}")
+    for j in unresolved:
+        ident = j["identifier"]
+        notes.append(diagnostics.get(ident, f"{ident}: no identifier found"))
 
-    if len(common) == 1:
-        figi = next(iter(common))
+    if not resolved:
+        base.identity_status = IDENTITY_NOT_FOUND
+        return base, notes
+
+    common = set.intersection(*(figi_sets[j["identifier"]] for j in resolved))
+
+    def _resolved_identity(figi: str, status: str) -> InstrumentIdentity:
         identity = _identity_from_candidate(by_figi[figi], query)
         # Supplied CUSIP/ISIN are asserted inputs, not OpenFIGI returns.
         identity.cusip = query.get("cusip")
         identity.isin = query.get("isin")
-        identity.identity_status = IDENTITY_RESOLVED
+        identity.identity_status = status
         identity.source_refs = ["openfigi"]
         if existing:
             _compose_existing(identity, by_figi[figi], existing)
-        return identity, notes
-    elif len(common) > 1:
-        base.identity_status = IDENTITY_AMBIGUOUS
-        return base, notes
-    else:
+        return identity
+
+    if unresolved:
+        # Some asserted identifiers did not resolve: never a clean RESOLVED.
+        if len(common) == 1:
+            return _resolved_identity(next(iter(common)), IDENTITY_UNVERIFIED), notes
+        if len(common) > 1:
+            base.identity_status = IDENTITY_AMBIGUOUS
+            return base, notes
         base.identity_status = IDENTITY_CONFLICT
         return base, notes
+
+    if len(common) == 1:
+        return _resolved_identity(next(iter(common)), IDENTITY_RESOLVED), notes
+    if len(common) > 1:
+        base.identity_status = IDENTITY_AMBIGUOUS
+        return base, notes
+    base.identity_status = IDENTITY_CONFLICT
+    return base, notes
 
 
 def build_mapping_jobs(query: dict) -> list[dict]:
@@ -289,7 +321,8 @@ def _parse_openfigi_job(identifier: str, id_type: str, id_value: str, item: dict
         "id_type": id_type,
         "id_value": id_value,
         "candidates": candidates,
-        "warning": item.get("warning") or item.get("error"),
+        "warning": item.get("warning"),
+        "error": item.get("error"),
     }
 
 
@@ -345,12 +378,34 @@ class OpenFigiProvider(BaseProvider):
             candidates = (jobs[0].get("candidates") or []) if jobs else []
             identity = resolve_identity(candidates, query, existing)
             notes = []
+            # A single job may still carry a warning/error diagnostic.
+            for j in jobs:
+                if j.get("error"):
+                    notes.append(f"{j['identifier']}: error: {j['error']}")
+                elif j.get("warning"):
+                    notes.append(f"{j['identifier']}: {j['warning']}")
 
         r = self._ok("identity.resolve")
         r.subject = Subject(symbol=identity.ticker, figi=identity.figi)
-        r.data = {"identity": identity.to_dict(), "notes": notes}
+        job_dispositions = [
+            {
+                "identifier": j.get("identifier"),
+                "id_type": j.get("id_type"),
+                "id_value": j.get("id_value"),
+                "candidate_count": len(j.get("candidates") or []),
+                "warning": j.get("warning"),
+                "error": j.get("error"),
+            }
+            for j in jobs
+        ]
+        r.data = {
+            "identity": identity.to_dict(),
+            "notes": notes,
+            "job_dispositions": job_dispositions,
+        }
         r.as_of = identity.as_of
-        partial = bool(notes)
+        for n in notes:
+            r.add_warning(n)
         if identity.identity_status == IDENTITY_RESOLVED:
             r.quality = Quality(
                 grade=grade_for_source(SOURCE_APPROVED_MARKET_DATA),
@@ -366,10 +421,11 @@ class OpenFigiProvider(BaseProvider):
                     quality=grade_for_source(SOURCE_APPROVED_MARKET_DATA),
                 )
             )
-            if partial:
-                r.set_status("PARTIAL")
-                for n in notes:
-                    r.add_warning(n)
+        elif identity.identity_status == IDENTITY_UNVERIFIED:
+            # One or more asserted identifiers did not resolve: the surviving
+            # FIGI is flagged, never presented as a clean resolution.
+            r.set_status("PARTIAL")
+            r.add_warning("identity UNVERIFIED_IDENTIFIER: not all supplied identifiers resolved")
         elif identity.identity_status == IDENTITY_AMBIGUOUS:
             r.set_status("PARTIAL")
             r.add_warning("identity is AMBIGUOUS; refusing to guess")

@@ -357,6 +357,7 @@ def stress_portfolio(
     gross_exposure = 0.0
     net_exposure = 0.0
     unmodeled_gross = 0.0
+    modeled_gross = 0.0
     has_shorts = False
 
     for pos in positions:
@@ -384,6 +385,7 @@ def stress_portfolio(
             entry["pnl"] = pnl
             modeled_pnl += pnl
             modeled_value += mv
+            modeled_gross += abs(mv)
             if res["tier"] == TIER_SECTOR and pos.get("sector"):
                 sector_contribution[pos["sector"]] = (
                     sector_contribution.get(pos["sector"], 0.0) + pnl
@@ -437,6 +439,10 @@ def stress_portfolio(
         "net_exposure": round(net_exposure, 4),
         "modeled_value": round(modeled_value, 4),
         "unmodeled_value": round(unmodeled_value, 4),
+        "modeled_net_exposure": round(modeled_value, 4),
+        "modeled_gross_exposure": round(modeled_gross, 4),
+        "unmodeled_net_exposure": round(unmodeled_value, 4),
+        "unmodeled_gross_exposure": round(unmodeled_gross, 4),
         "estimated_pnl": estimated_pnl,
         "estimated_pct": estimated_pct,
         "cash_buffer_effect": None,
@@ -495,9 +501,15 @@ class PortfolioStressProvider(BaseProvider):
             return self._unavailable("risk.stress_portfolio", f"stress failed: {exc}")
         r = self._ok("risk.stress_portfolio")
         r.data = result
+        # Completeness derives from GROSS unmodeled exposure, never signed net
+        # exposure: an unmodeled short (or an offsetting unmodeled long/short)
+        # must still be reported as PARTIAL, not COMPLETE.
+        completeness = (
+            "PARTIAL" if result["unmodeled_gross_exposure"] > 0 else "COMPLETE"
+        )
         r.quality = Quality(
             grade=grade_for_source(SOURCE_APPROVED_MARKET_DATA),
-            completeness="PARTIAL" if result["unmodeled_value"] > 0 else "COMPLETE",
+            completeness=completeness,
         )
         # Stress estimated P&L is a MODEL ESTIMATE, never a world fact.
         r.add_estimate(

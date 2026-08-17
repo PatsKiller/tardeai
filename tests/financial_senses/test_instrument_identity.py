@@ -92,13 +92,14 @@ def test_identity_to_dict_roundtrip():
     assert d["figi"] == "BBG000B9XRY4"
 
 
-def _job(identifier, id_value, candidates, warning=None):
+def _job(identifier, id_value, candidates, warning=None, error=None):
     return {
         "identifier": identifier,
         "id_type": {"ticker": "TICKER", "cusip": "ID_CUSIP", "isin": "ID_ISIN", "figi": ID_BB_GLOBAL}.get(identifier),
         "id_value": id_value,
         "candidates": candidates,
         "warning": warning,
+        "error": error,
     }
 
 
@@ -156,14 +157,52 @@ def test_cross_validate_explicit_figi_resolves():
 
 
 def test_cross_validate_unavailable_identifier_notes_partial():
+    from financial_senses.identity import IDENTITY_UNVERIFIED
+
     aapl = _cand("AAPL", "BBG000B9XRY4")
     jobs = [
         _job("ticker", "AAPL", [aapl]),
         _job("cusip", "NOPE", []),  # CUSIP not found
     ]
     ident, notes = cross_validate_identities(jobs, {"ticker": "AAPL", "cusip": "NOPE"})
-    assert ident.identity_status == IDENTITY_RESOLVED
+    # A non-resolving asserted identifier must never yield a clean RESOLVED.
+    assert ident.identity_status == IDENTITY_UNVERIFIED
     assert any("cusip" in n for n in notes)
+
+
+def test_cross_validate_warning_job_not_silently_dropped():
+    from financial_senses.identity import IDENTITY_UNVERIFIED
+
+    aapl = _cand("AAPL", "BBG000B9XRY4")
+    jobs = [
+        _job("ticker", "AAPL", [aapl]),
+        _job("cusip", "NOPE", [], warning="No identifier found."),
+    ]
+    ident, notes = cross_validate_identities(jobs, {"ticker": "AAPL", "cusip": "NOPE"})
+    assert ident.identity_status == IDENTITY_UNVERIFIED
+    assert any("No identifier found." in n for n in notes)
+
+
+def test_cross_validate_error_job_not_silently_dropped():
+    from financial_senses.identity import IDENTITY_UNVERIFIED
+
+    aapl = _cand("AAPL", "BBG000B9XRY4")
+    jobs = [
+        _job("ticker", "AAPL", [aapl]),
+        _job("cusip", "NOPE", [], error="API rate limit exceeded"),
+    ]
+    ident, notes = cross_validate_identities(jobs, {"ticker": "AAPL", "cusip": "NOPE"})
+    assert ident.identity_status == IDENTITY_UNVERIFIED
+    assert any("rate limit" in n for n in notes)
+
+
+def test_cross_validate_all_jobs_no_result_not_found():
+    jobs = [
+        _job("ticker", "NOPE", []),
+        _job("cusip", "NOPE2", []),
+    ]
+    ident, notes = cross_validate_identities(jobs, {"ticker": "NOPE", "cusip": "NOPE2"})
+    assert ident.identity_status == IDENTITY_NOT_FOUND
 
 
 def test_provider_conflicting_identifiers_status_conflict():
@@ -205,6 +244,54 @@ def test_provider_preserves_job_warning():
 
     p = OpenFigiProvider(resolver=resolver)
     r = p.query("identity.resolve", {"ticker": "AAPL"})
-    # A warning does not promote a resolution; it is preserved as a note/status.
-    assert r.status in ("OK", "PARTIAL")
-    assert r.data["identity"]["figi"] == "BBG000B9XRY4"
+    # A warning diagnostic is preserved verbatim and surfaced as a warning.
+    assert any("ambiguous request" in w for w in r.warnings)
+    assert r.data["job_dispositions"][0]["warning"] == "ambiguous request"
+
+
+def test_provider_warning_job_unverified_not_clean_ok():
+    aapl = _cand("AAPL", "BBG000B9XRY4")
+
+    def resolver(query):
+        return [
+            _job("ticker", "AAPL", [aapl]),
+            _job("cusip", "NOPE", [], warning="No identifier found."),
+        ]
+
+    p = OpenFigiProvider(resolver=resolver)
+    r = p.query("identity.resolve", {"ticker": "AAPL", "cusip": "NOPE"})
+    # Not a clean OK: the unresolved CUSIP makes the identity UNVERIFIED.
+    assert r.status == "PARTIAL"
+    assert r.data["identity"]["identity_status"] == "UNVERIFIED_IDENTIFIER"
+    assert any("No identifier found." in w for w in r.warnings)
+
+
+def test_provider_error_job_unverified_not_clean_ok():
+    aapl = _cand("AAPL", "BBG000B9XRY4")
+
+    def resolver(query):
+        return [
+            _job("ticker", "AAPL", [aapl]),
+            _job("cusip", "NOPE", [], error="upstream timeout"),
+        ]
+
+    p = OpenFigiProvider(resolver=resolver)
+    r = p.query("identity.resolve", {"ticker": "AAPL", "cusip": "NOPE"})
+    assert r.status == "PARTIAL"
+    assert r.data["identity"]["identity_status"] == "UNVERIFIED_IDENTIFIER"
+    assert any("upstream timeout" in w for w in r.warnings)
+
+
+def test_provider_matching_identifiers_still_resolved():
+    aapl = _cand("AAPL", "BBG000B9XRY4")
+
+    def resolver(query):
+        return [
+            _job("ticker", "AAPL", [aapl]),
+            _job("cusip", "037833100", [aapl]),
+        ]
+
+    p = OpenFigiProvider(resolver=resolver)
+    r = p.query("identity.resolve", {"ticker": "AAPL", "cusip": "037833100"})
+    assert r.status == "OK"
+    assert r.data["identity"]["identity_status"] == "RESOLVED"

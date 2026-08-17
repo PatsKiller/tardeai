@@ -20,6 +20,7 @@ from .result import (
     STATUS_INVALID_REQUEST,
     STATUS_NOT_CONFIGURED,
     STATUS_OK,
+    STATUS_PARTIAL,
     STATUS_UNAVAILABLE,
     make_result,
     utcnow_iso,

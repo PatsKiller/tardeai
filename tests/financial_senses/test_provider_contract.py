@@ -176,8 +176,65 @@ def test_invalid_request_status():
     assert r.status == STATUS_INVALID_REQUEST
 
 
-def test_model_inference_cannot_back_fact():
+def test_source_governance_assert_no_inference_as_fact():
     from financial_senses.source_governance import assert_no_inference_as_fact
 
     assert assert_no_inference_as_fact(SOURCE_MODEL_INFERENCE) is not None
     assert assert_no_inference_as_fact(SOURCE_PRIMARY_REGULATORY) is None
+
+
+class _InvalidOkProvider(BaseProvider):
+    """Deliberately returns STATUS_OK with an invalid envelope.
+
+    Proves the public query() fail-closed path: no exception escapes, the
+    status is downgraded to PARTIAL, and validation warnings are present.
+    """
+
+    name = "invalid_ok"
+    version = "1.0.0"
+
+    def _capabilities(self):
+        return [Capability("invalid_ok.read", "READ_ONLY")]
+
+    def _query(self, capability, request):
+        r = self._ok(capability)
+        r.facts.append(
+            Fact(
+                key="stress_pnl",
+                value=-5000.0,
+                source_type=SOURCE_MODEL_INFERENCE,
+                as_of="2024-12-31",
+                quality="MEDIUM",
+            )
+        )
+        return r
+
+
+def test_invalid_ok_envelope_fails_closed_via_public_query():
+    p = _InvalidOkProvider()
+    # Must not raise (no NameError, no escaping exception).
+    r = p.query("invalid_ok.read", {})
+    assert r.status == STATUS_PARTIAL
+    assert any("validation:" in w for w in r.warnings)
+    assert any("cannot back a FACT" in w for w in r.warnings)
+    assert r.authority == AUTHORITY
+
+
+def test_invalid_ok_envelope_missing_quality_downgrades():
+    class _MissingQuality(_InvalidOkProvider):
+        def _query(self, capability, request):
+            r = self._ok(capability)
+            r.facts.append(
+                Fact(
+                    key="revenue",
+                    value=100.0,
+                    source_type=SOURCE_PRIMARY_REGULATORY,
+                    as_of="2024-12-31",
+                )
+            )
+            return r
+
+    p = _MissingQuality()
+    r = p.query("invalid_ok.read", {})
+    assert r.status == STATUS_PARTIAL
+    assert any("lacks quality" in w for w in r.warnings)

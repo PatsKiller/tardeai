@@ -329,6 +329,7 @@ class FredAlfredProvider(BaseProvider):
         if decision_value is not None and latest_value is not None:
             revision_delta = round(latest_value - decision_value, 6)
         r = self._ok("macro.compare_vintages")
+        retrieval_date = r.requested_at
         r.data = {
             "series_id": sid,
             "observation_date": obs_date,
@@ -336,6 +337,7 @@ class FredAlfredProvider(BaseProvider):
             "latest_revised_value": latest_value,
             "revision_delta": revision_delta,
             "vintage_date": ddate,
+            "retrieval_date": retrieval_date,
         }
         r.as_of = ddate
         r.facts.append(
@@ -351,6 +353,9 @@ class FredAlfredProvider(BaseProvider):
             )
         )
         if revision_delta not in (None, 0):
+            # The revision was, by definition, learned AFTER the decision-time
+            # vintage. Its as_of must be the retrieval/latest-vintage time, never
+            # the historical decision date.
             r.facts.append(
                 Fact(
                     key=f"{sid}@revision_delta",
@@ -358,9 +363,9 @@ class FredAlfredProvider(BaseProvider):
                     source_type=SOURCE_MACRO,
                     source_ids=[f"fred:{sid}"],
                     observed_at=obs_date,
-                    as_of=ddate,
+                    as_of=retrieval_date,
                     quality=grade_for_source(SOURCE_MACRO),
-                    notes="revision for the SAME observation date",
+                    notes="revision for the SAME observation date; known at retrieval time",
                 )
             )
         return r

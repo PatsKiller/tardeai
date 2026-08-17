@@ -224,6 +224,67 @@ def test_provider_requires_positions():
     assert r.status == "INVALID_REQUEST"
 
 
+def test_unmodeled_short_completeness_partial():
+    # An unmodeled short: signed unmodeled net is negative, gross is positive.
+    p = PortfolioStressProvider()
+    r = p.query(
+        "risk.stress_portfolio",
+        {"portfolio": {"positions": [_pos("AAPL", -100000)]},
+         "scenario": {"scenario_id": "x", "shocks": {"sector_shocks": {"technology": -0.10}}}},
+    )
+    assert r.data["unmodeled_gross_exposure"] == pytest.approx(100000.0)
+    assert r.data["unmodeled_net_exposure"] == pytest.approx(-100000.0)
+    assert r.data["coverage_pct"] == pytest.approx(0.0)
+    assert r.quality.completeness == "PARTIAL"
+
+
+def test_offsetting_unmodeled_long_short_completeness_partial():
+    # +100k long and -100k short, both unmodeled: signed net is 0, gross is 200k.
+    port = {"positions": [_pos("LONG", 100000), _pos("SHORT", -100000)]}
+    sc = {"scenario_id": "x", "shocks": {"sector_shocks": {"technology": -0.10}}}
+    res = stress_portfolio(port, sc)
+    assert res["unmodeled_net_exposure"] == pytest.approx(0.0)
+    assert res["unmodeled_gross_exposure"] == pytest.approx(200000.0)
+    assert res["coverage_pct"] == pytest.approx(0.0)
+
+    p = PortfolioStressProvider()
+    r = p.query("risk.stress_portfolio", {"portfolio": port, "scenario": sc})
+    assert r.quality.completeness == "PARTIAL"
+
+
+def test_fully_modeled_long_short_completeness_complete():
+    port = {
+        "positions": [
+            _pos("LONG", 100000, sector="technology"),
+            _pos("SHORT", -100000, sector="technology"),
+        ]
+    }
+    sc = {"scenario_id": "x", "shocks": {"sector_shocks": {"technology": -0.10}}}
+    p = PortfolioStressProvider()
+    r = p.query("risk.stress_portfolio", {"portfolio": port, "scenario": sc})
+    assert r.data["unmodeled_gross_exposure"] == 0.0
+    assert r.data["coverage_pct"] == pytest.approx(100.0)
+    assert r.quality.completeness == "COMPLETE"
+
+
+def test_exposure_fields_separate():
+    port = {
+        "positions": [
+            _pos("CASH", 50000, cash_like=True),
+            _pos("AAPL", 50000, sector="technology"),
+            _pos("UNKNOWN", 100000),
+        ]
+    }
+    sc = {"scenario_id": "x", "shocks": {"sector_shocks": {"technology": -0.10}}}
+    r = stress_portfolio(port, sc)
+    assert r["modeled_net_exposure"] == pytest.approx(100000.0)
+    assert r["modeled_gross_exposure"] == pytest.approx(100000.0)
+    assert r["unmodeled_net_exposure"] == pytest.approx(100000.0)
+    assert r["unmodeled_gross_exposure"] == pytest.approx(100000.0)
+    assert r["net_exposure"] == pytest.approx(200000.0)
+    assert r["gross_exposure"] == pytest.approx(200000.0)
+
+
 def test_stress_estimate_is_model_estimate_not_fact():
     p = PortfolioStressProvider()
     r = p.query(

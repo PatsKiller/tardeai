@@ -257,7 +257,7 @@ def test_companyconcept_preserves_tag_case():
     assert "accountspayablecurrent" not in captured["url"]
 
 
-def test_facts_at_period_prefers_latest_filed_amendment():
+def test_facts_at_period_preserves_all_candidate_contexts():
     from financial_senses.sec_provider import SecEdgarProvider
 
     raw = {
@@ -275,5 +275,121 @@ def test_facts_at_period_prefers_latest_filed_amendment():
         }
     }
     out = SecEdgarProvider._facts_at_period(raw, "2024-12-31")
-    assert out["Revenues"]["value"] == 105
-    assert out["Revenues"]["form"] == "10-K/A"
+    # Both candidate rows are preserved; selection happens at the pairing layer.
+    assert isinstance(out["Revenues"], list)
+    assert len(out["Revenues"]) == 2
+    assert {r["value"] for r in out["Revenues"]} == {100, 105}
+
+
+def test_same_end_quarter_and_ytd_ambiguous_not_cross_matched():
+    """Same end date carries a QTD and a YTD row in both periods. Two equally
+    valid pairings (QTD↔QTD, YTD↔YTD) remain, so the result must be ambiguous
+    rather than silently picking one context."""
+    from financial_senses.sec_filing_diff import compare_filing_facts, COMPARISON_UNAVAILABLE
+
+    a = {
+        "Revenues": [
+            {"value": 100.0, "units": "USD", "start": "2026-04-01", "end": "2026-06-30", "fp": "Q2", "form": "10-Q"},
+            {"value": 200.0, "units": "USD", "start": "2026-01-01", "end": "2026-06-30", "fp": "Q2", "form": "10-Q"},
+        ]
+    }
+    b = {
+        "Revenues": [
+            {"value": 110.0, "units": "USD", "start": "2025-04-01", "end": "2025-06-30", "fp": "Q2", "form": "10-Q"},
+            {"value": 220.0, "units": "USD", "start": "2025-01-01", "end": "2025-06-30", "fp": "Q2", "form": "10-Q"},
+        ]
+    }
+    r = compare_filing_facts(a, b)
+    rev = r["comparisons"]["revenue"]
+    assert rev["comparison_status"] == COMPARISON_UNAVAILABLE
+    assert rev["reason"] == "ambiguous_context"
+
+
+def test_quarter_pair_single_context_ok():
+    """A unique quarter-length pairing across periods compares cleanly."""
+    from financial_senses.sec_filing_diff import compare_filing_facts, COMPARISON_OK
+
+    a = {
+        "Revenues": [
+            {"value": 100.0, "units": "USD", "start": "2026-04-01", "end": "2026-06-30", "fp": "Q2", "form": "10-Q"},
+        ]
+    }
+    b = {
+        "Revenues": [
+            {"value": 110.0, "units": "USD", "start": "2025-04-01", "end": "2025-06-30", "fp": "Q2", "form": "10-Q"},
+        ]
+    }
+    r = compare_filing_facts(a, b)
+    rev = r["comparisons"]["revenue"]
+    assert rev["comparison_status"] == COMPARISON_OK
+    assert rev["delta"] == 10.0
+
+
+def test_amended_rows_latest_filed_wins_after_context_equivalence():
+    """Two rows in the SAME context (10-K vs 10-K/A): the latest filed wins."""
+    from financial_senses.sec_filing_diff import compare_filing_facts
+
+    a = {
+        "Revenues": [
+            {"value": 100.0, "units": "USD", "start": "2024-01-01", "end": "2024-12-31", "fp": "FY", "form": "10-K", "filed": "2025-02-01"},
+            {"value": 105.0, "units": "USD", "start": "2024-01-01", "end": "2024-12-31", "fp": "FY", "form": "10-K/A", "filed": "2025-03-15"},
+        ]
+    }
+    b = {
+        "Revenues": [
+            {"value": 120.0, "units": "USD", "start": "2023-01-01", "end": "2023-12-31", "fp": "FY", "form": "10-K", "filed": "2024-02-01"},
+        ]
+    }
+    r = compare_filing_facts(a, b)
+    rev = r["comparisons"]["revenue"]
+    # Both A rows are ANNUAL context; latest filed (105) is selected.
+    assert rev["a"] == 105.0
+    assert rev["b"] == 120.0
+
+
+def test_mixed_context_no_clean_pair_unavailable():
+    """A period with QTD+YTD vs a period with only YTD leaves the QTD fact
+    unmatched, so the result is fail-closed rather than a partial comparison."""
+    from financial_senses.sec_filing_diff import (
+        compare_filing_facts,
+        COMPARISON_UNAVAILABLE,
+    )
+
+    a = {
+        "Revenues": [
+            {"value": 100.0, "units": "USD", "start": "2026-04-01", "end": "2026-06-30", "fp": "Q2", "form": "10-Q"},
+            {"value": 200.0, "units": "USD", "start": "2026-01-01", "end": "2026-06-30", "fp": "Q2", "form": "10-Q"},
+        ]
+    }
+    b = {
+        "Revenues": [
+            {"value": 220.0, "units": "USD", "start": "2026-01-01", "end": "2026-06-30", "fp": "Q2", "form": "10-Q"},
+        ]
+    }
+    r = compare_filing_facts(a, b)
+    rev = r["comparisons"]["revenue"]
+    assert rev["comparison_status"] == COMPARISON_UNAVAILABLE
+    assert rev["reason"] == "no_like_for_like_pair"
+
+
+def test_quarter_only_vs_ytd_only_unavailable():
+    """A quarter-only period vs a YTD-only period cannot be compared."""
+    from financial_senses.sec_filing_diff import (
+        compare_filing_facts,
+        COMPARISON_UNAVAILABLE,
+    )
+
+    a = {
+        "Revenues": [
+            {"value": 100.0, "units": "USD", "start": "2026-04-01", "end": "2026-06-30", "fp": "Q2", "form": "10-Q"},
+        ]
+    }
+    b = {
+        "Revenues": [
+            {"value": 220.0, "units": "USD", "start": "2026-01-01", "end": "2026-06-30", "fp": "Q2", "form": "10-Q"},
+        ]
+    }
+    r = compare_filing_facts(a, b)
+    rev = r["comparisons"]["revenue"]
+    assert rev["comparison_status"] == COMPARISON_UNAVAILABLE
+    assert rev["reason"] == "duration_context_mismatch QUARTERLY vs YTD"

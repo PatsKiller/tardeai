@@ -164,60 +164,141 @@ class ClaimEvidenceGraph:
         # Claims: classify evidence and assign a support status.
         for nid, node in self.nodes.items():
             if node.type == NODE_CLAIM:
-                authoritative, contextual, contradiction, _stale = self._evidence_classification(nid)
-                if not authoritative and not contextual and not contradiction:
+                ev = self._evidence_classification(nid)
+                has_any = any(
+                    [
+                        ev["authoritative_fact_support"],
+                        ev["contextual_support"],
+                        ev["opinion_support"],
+                        ev["derived_claim_support"],
+                        ev["provenance_support"],
+                        ev["decision_support"],
+                        ev["contradiction"],
+                    ]
+                )
+                if not has_any:
                     node.status = UNSUPPORTED
-                elif not authoritative and contextual:
-                    # MEMORY_REF is context, not a substitute for a FACT.
-                    node.status = CONTEXTUAL_ONLY
-                elif contradiction:
+                elif ev["contradiction"]:
                     node.status = CONTESTED
-                else:
+                elif ev["authoritative_fact_support"]:
                     node.status = SUPPORTED
+                else:
+                    # MEMORY_REF / CASE_REF / SPECIALIST_OPINION / CLAIM /
+                    # SOURCE / DECISION are non-factual and cannot stand in
+                    # for a FACT.
+                    node.status = CONTEXTUAL_ONLY
         return errors
 
-    def _evidence_classification(self, claim_id: str):
+    def _is_authoritative_fact(self, node: Optional[GraphNode]) -> bool:
+        """A source node is authoritative only if it is a valid, fresh FACT.
+
+        Only a FACT that itself validates as fact-capable (fact-capable source,
+        observed_at/as_of, quality) and is not stale may back a claim as
+        authoritative evidence.
+        """
+        if node is None or node.type != NODE_FACT:
+            return False
+        if not node.source or not can_back_fact(node.source):
+            return False
+        if not (node.observed_at or node.as_of):
+            return False
+        if not node.quality:
+            return False
+        if (node.freshness or "").upper() == FRESHNESS_STALE:
+            return False
+        return True
+
+    def _source_class(self, src: Optional[GraphNode]) -> str:
+        """Map an incoming-support source node to an authority class."""
+        if src is None:
+            return "provenance_support"
+        t = src.type
+        if t == NODE_FACT:
+            fresh = (src.freshness or "").upper() == FRESHNESS_STALE
+            return "stale_fact_support" if fresh else "authoritative_fact_support"
+        if t == NODE_MEMORY_REF:
+            return "contextual_support"
+        if t == NODE_CASE_REF:
+            return "contextual_support"
+        if t == NODE_SPECIALIST_OPINION:
+            return "opinion_support"
+        if t == NODE_CLAIM:
+            return "derived_claim_support"
+        if t == NODE_SOURCE:
+            return "provenance_support"
+        if t == NODE_DECISION:
+            return "decision_support"
+        return "contextual_support"
+
+    def _evidence_classification(self, claim_id: str) -> dict:
         """Split a claim's incoming evidence into authority classes.
 
-        Returns (authoritative_fact_support, contextual_support, contradiction,
-        stale_fact_support). A MEMORY_REF source is contextual, never
-        authoritative.
+        Only a valid, fresh FACT is authoritative. MEMORY_REF / CASE_REF are
+        contextual; SPECIALIST_OPINION is opinion; CLAIM is derived claim
+        support; SOURCE is provenance; DECISION is decision lineage. None of
+        the non-FACT classes is authoritative_fact_support.
         """
-        authoritative = []
-        contextual = []
-        contradiction = []
-        stale_support = []
+        buckets = {
+            "authoritative_fact_support": [],
+            "contextual_support": [],
+            "opinion_support": [],
+            "derived_claim_support": [],
+            "provenance_support": [],
+            "decision_support": [],
+            "contradiction": [],
+            "stale_fact_support": [],
+        }
         for e in self.edges:
             if e.to_id != claim_id:
                 continue
             src = self.nodes.get(e.from_id)
-            src_type = src.type if src else None
-            src_fresh = (src.freshness or "").upper() if src else ""
             if e.relation == EDGE_CONTRADICTS:
-                contradiction.append(e.to_dict())
+                buckets["contradiction"].append(e.to_dict())
+            elif e.relation == EDGE_INVALIDATES:
+                # An invalidation is a blocking negative like a contradiction.
+                buckets["contradiction"].append(e.to_dict())
             elif e.relation in _EVIDENCE_IN:
-                if src_type == NODE_MEMORY_REF:
-                    contextual.append(e.to_dict())
+                cls = self._source_class(src)
+                # Only FACT nodes may be authoritative; other classes cannot
+                # masquerade as fact authority even if they pass _is_authoritative_fact.
+                if cls == "authoritative_fact_support" and self._is_authoritative_fact(src):
+                    buckets["authoritative_fact_support"].append(e.to_dict())
+                elif cls == "stale_fact_support":
+                    buckets["stale_fact_support"].append(e.to_dict())
                 else:
-                    authoritative.append(e.to_dict())
-                if src_fresh == FRESHNESS_STALE:
-                    stale_support.append(e.to_dict())
-        return authoritative, contextual, contradiction, stale_support
+                    buckets[cls].append(e.to_dict())
+        return buckets
 
     def claim_evidence(self, claim_id: str) -> dict:
-        authoritative, contextual, contradiction, stale_support = self._evidence_classification(claim_id)
+        ev = self._evidence_classification(claim_id)
         node = self.nodes.get(claim_id)
-        # A claim is actionable only with authoritative (fact-backed) support
-        # that is not stale. Stale facts remain historical evidence.
-        actionable = bool(authoritative) and not stale_support
+        claim_valid = bool(node) and bool(node.text) and bool(node.claim_type)
+        # Actionable requires >=1 valid FRESH authoritative FACT, no
+        # contradiction/invalidation, a valid claim, and is not blocked by a
+        # stale-only evidence condition. Stale facts remain historical evidence
+        # but never make a claim actionable on their own.
+        actionable = (
+            claim_valid
+            and bool(ev["authoritative_fact_support"])
+            and not ev["contradiction"]
+        )
         return {
             "claim": node.to_dict() if node else None,
-            "authoritative_fact_support": authoritative,
-            "contextual_support": contextual,
-            "contradiction": contradiction,
-            "supporting": authoritative + contextual,
-            "contradicting": contradiction,
-            "stale_fact_support": stale_support,
+            "authoritative_fact_support": ev["authoritative_fact_support"],
+            "contextual_support": ev["contextual_support"],
+            "opinion_support": ev["opinion_support"],
+            "derived_claim_support": ev["derived_claim_support"],
+            "provenance_support": ev["provenance_support"],
+            "decision_support": ev["decision_support"],
+            "contradiction": ev["contradiction"],
+            "supporting": ev["authoritative_fact_support"]
+            + ev["contextual_support"]
+            + ev["opinion_support"]
+            + ev["derived_claim_support"]
+            + ev["provenance_support"]
+            + ev["decision_support"],
+            "contradicting": ev["contradiction"],
+            "stale_fact_support": ev["stale_fact_support"],
             "actionable": actionable,
             "status": node.status if node else UNSUPPORTED,
         }

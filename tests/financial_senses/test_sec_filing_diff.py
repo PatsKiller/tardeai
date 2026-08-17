@@ -6,6 +6,7 @@ from financial_senses.sec_filing_diff import (
     COMPARISON_UNAVAILABLE,
     FACT_TAGS,
     compare_filing_facts,
+    duration_kind,
 )
 
 
@@ -103,6 +104,19 @@ def test_canonical_key_input_supported():
     b = {"revenue": d(120.0, start="2024-01-01", end="2024-12-31")}
     r = compare_filing_facts(a, b)
     assert r["comparisons"]["revenue"]["delta"] == 20.0
+
+
+def test_duration_first_classification():
+    # fp=Q2/Q3 must not override the actual start/end duration.
+    assert duration_kind({"start": "2026-01-01", "end": "2026-06-30", "fp": "Q2"}) == "YTD"
+    assert duration_kind({"start": "2026-04-01", "end": "2026-06-30", "fp": "Q2"}) == "QUARTERLY"
+    assert duration_kind({"start": "2026-01-01", "end": "2026-09-30", "fp": "Q3"}) == "YTD"
+    assert duration_kind({"start": "2026-07-01", "end": "2026-09-30", "fp": "Q3"}) == "QUARTERLY"
+    assert duration_kind({"start": "2026-01-01", "end": "2026-12-31", "fp": "FY"}) == "ANNUAL"
+
+
+def test_duration_kind_instant_without_start():
+    assert duration_kind({"end": "2024-12-31"}) == "INSTANT"
 
 
 def test_all_canonical_keys_present():

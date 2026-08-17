@@ -119,8 +119,109 @@ def test_decision_used_by_claim():
         [_claim("c1"), {"id": "d1", "type": "DECISION", "text": "trim"}],
         [_edge("e1", "c1", "d1", "USED_BY")],
     )
-    assert g.validate() == [] or True
+    assert g.validate() == []
     assert g.nodes["d1"].type == "DECISION"
+
+
+def test_specialist_opinion_alone_not_actionable():
+    g = build_graph(
+        [
+            {"id": "o1", "type": "SPECIALIST_OPINION", "text": "I think it will grow"},
+            _claim("c1"),
+        ],
+        [_edge("e1", "o1", "c1", "SUPPORTS")],
+    )
+    g.validate()
+    ev = g.claim_evidence("c1")
+    assert not ev["authoritative_fact_support"]
+    assert ev["opinion_support"]
+    assert ev["actionable"] is False
+    assert g.nodes["c1"].status == "CONTEXTUAL_ONLY"
+
+
+def test_claim_alone_not_authoritative():
+    g = build_graph(
+        [_claim("c1"), _claim("c2")],
+        [_edge("e1", "c2", "c1", "SUPPORTS")],
+    )
+    g.validate()
+    ev = g.claim_evidence("c1")
+    assert not ev["authoritative_fact_support"]
+    assert ev["derived_claim_support"]
+    assert ev["actionable"] is False
+
+
+def test_case_ref_alone_not_authoritative():
+    g = build_graph(
+        [
+            {"id": "k1", "type": "CASE_REF", "text": "similar past case"},
+            _claim("c1"),
+        ],
+        [_edge("e1", "k1", "c1", "SUPPORTS")],
+    )
+    g.validate()
+    ev = g.claim_evidence("c1")
+    assert not ev["authoritative_fact_support"]
+    assert ev["contextual_support"]
+    assert ev["actionable"] is False
+
+
+def test_source_node_alone_not_authoritative():
+    g = build_graph(
+        [
+            {"id": "s1", "type": "SOURCE", "text": "SEC EDGAR"},
+            _claim("c1"),
+        ],
+        [_edge("e1", "s1", "c1", "SUPPORTS")],
+    )
+    g.validate()
+    ev = g.claim_evidence("c1")
+    assert not ev["authoritative_fact_support"]
+    assert ev["provenance_support"]
+    assert ev["actionable"] is False
+
+
+def test_fresh_fact_plus_contradiction_not_actionable():
+    g = build_graph(
+        [_fact("f1"), _fact("f2"), _claim("c1")],
+        [_edge("e1", "f1", "c1", "SUPPORTS"), _edge("e2", "f2", "c1", "CONTRADICTS")],
+    )
+    g.validate()
+    assert g.nodes["c1"].status == "CONTESTED"
+    ev = g.claim_evidence("c1")
+    assert ev["authoritative_fact_support"]
+    assert ev["contradiction"]
+    assert ev["actionable"] is False
+
+
+def test_fresh_fact_plus_stale_historical_fact_actionable():
+    # A fresh authoritative FACT governs; the stale historical FACT is preserved
+    # but does not block actionability.
+    g = build_graph(
+        [
+            _fact("f1"),
+            {"id": "f2", "type": NODE_FACT, "text": "old revenue", "source": "PRIMARY_REGULATORY",
+             "observed_at": "2023-01-01", "quality": "HIGH", "freshness": "STALE"},
+            _claim("c1"),
+        ],
+        [_edge("e1", "f1", "c1", "SUPPORTS"), _edge("e2", "f2", "c1", "SUPPORTS")],
+    )
+    g.validate()
+    ev = g.claim_evidence("c1")
+    assert ev["authoritative_fact_support"]
+    assert ev["stale_fact_support"]
+    assert ev["actionable"] is True
+
+
+def test_invalidation_blocks_actionability():
+    g = build_graph(
+        [_fact("f1"), _fact("f2"), _claim("c1")],
+        [_edge("e1", "f1", "c1", "SUPPORTS"), _edge("e2", "f2", "c1", "INVALIDATES")],
+    )
+    g.validate()
+    ev = g.claim_evidence("c1")
+    assert ev["contradiction"]
+    assert ev["actionable"] is False
 
 
 def test_memory_ref_support_is_contextual_only():

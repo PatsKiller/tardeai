@@ -187,3 +187,77 @@ defects. No redesign, no canonical SEC ingestion changes, no AIF overlap.
   supported capability returns `validate() == []`.
 - production mutations: 0 · Telegram sends: 0 · DB writes: 0 ·
   authority: `READ_ONLY_ADVISORY`.
+
+## 2026-08-17 — Second adversarial closeout (tight semantic defects)
+
+Verdict: **HOLD — close narrow semantic defects; architecture still accepted.**
+No redesign, no canonical SEC ingestion changes, no AIF overlap. These close
+first-wave-vs-actual-semantics gaps that a green 162-test suite did not exercise.
+
+### P0-1 — `BaseProvider` invalid-envelope fail-closed path
+- `provider.py` now imports `STATUS_PARTIAL`; the fail-closed downgrade path can
+  no longer raise `NameError` outside the fail-soft handler.
+- New `test_invalid_ok_envelope_fails_closed_via_public_query` (and a
+  missing-quality variant) exercise the **public** `query()` with a provider
+  that returns `STATUS_OK` plus an invalid `Fact` (MODEL_INFERENCE source /
+  missing quality) and prove: no exception escapes, status downgrades to
+  `PARTIAL`, validation warnings are present, authority stays
+  `READ_ONLY_ADVISORY`.
+
+### P0-2 — evidence graph authority requires FACT
+- `_evidence_classification()` now treats **only** a valid, fresh `FACT` as
+  `authoritative_fact_support`. `SPECIALIST_OPINION`, `CLAIM`, `CASE_REF`,
+  `SOURCE`, `DECISION`, and `MEMORY_REF` are each classified into their own
+  non-authoritative buckets (`opinion_support`, `derived_claim_support`,
+  `contextual_support`, `provenance_support`, `decision_support`).
+- `claim_evidence()` `actionable` now requires ≥1 fresh authoritative FACT,
+  no contradiction/invalidation, and a valid claim; `CONTESTED` can never be
+  `actionable=true`. `INVALIDATES` edges are treated as blocking.
+
+### P0-3 — SEC real QTD/YTD context pairing
+- `duration_kind()` is now duration-first: actual `start`→`end` days classify
+  ANNUAL/QUARTERLY/YTD before any `fp`/`frame` corroboration, so an `fp=Q2/Q3`
+  six/nine-month YTD fact is no longer misread as quarterly.
+- `_facts_at_period()` now returns a **list** of candidate contexts per tag
+  instead of collapsing to one row; `compare_filing_facts()` pairs contexts
+  like-for-like (annual↔annual, quarter↔quarter, YTD↔YTD, instant↔instant),
+  collapses same-context amendments to the latest filing, and reports
+  `ambiguous_context` / `no_like_for_like_pair` when no unique pairing exists.
+
+### P0-4 — OpenFIGI warning/error jobs cannot disappear
+- `cross_validate_identities()` gives every asserted identifier a first-class
+  disposition; warning/error/no-result jobs surface as notes and yield
+  `UNVERIFIED_IDENTIFIER` (never a clean `RESOLVED`) when others resolve.
+  All-not-found yields `NOT_FOUND`.
+- Provider exposes `job_dispositions` and surfaces warning/error text verbatim
+  as warnings.
+
+### P0-5 — stress completeness uses gross unmodeled exposure
+- Added `modeled_gross_exposure`, `modeled_net_exposure`,
+  `unmodeled_gross_exposure`, `unmodeled_net_exposure`; `unmodeled_value`
+  remains as the documented signed-net alias.
+- Provider `completeness` derives from `unmodeled_gross_exposure` (never signed
+  net), so an unmodeled short or offsetting unmodeled long/short reports
+  `PARTIAL`.
+
+### P1-1 — ALFRED revision temporal provenance
+- The revision-delta `Fact` now carries `as_of = retrieval_time` (when the
+  latest vintage was read), not the historical `decision_date`; the
+  decision-time value keeps `as_of = decision_date`. `retrieval_date` is exposed
+  in the result data.
+
+### P1-2 — test hygiene
+- Removed the duplicate `test_model_inference_cannot_back_fact` (renamed one to
+  `test_source_governance_assert_no_inference_as_fact`).
+- Replaced the always-true `assert g.validate() == [] or True` with the real
+  invariant `assert g.validate() == []`.
+- `pytest --collect-only tests/financial_senses/` → 190 tests; within-file
+  duplicate-name scan clean; always-true assertion scan clean.
+
+### Proof (second closeout)
+- `tests/financial_senses/` suite: **190 passed, 0 failed** (fully offline).
+- `tests/test_sec_form4_momentum_context.py`: **17/17 pass**.
+- CIO/research regression (representative): **81 passed**.
+- `run_release_ci_equivalent.py --source-only`: **PASS (17/17)**.
+- production mutations: 0 · Telegram sends: 0 · DB writes: 0 ·
+  authority: `READ_ONLY_ADVISORY`.
