@@ -64,3 +64,26 @@ remaining risks, and deployment/rollback status.
   - Unused `hashlib` import in `agent_run_trace.py` → removed.
 - **remaining risks**: no live entrypoint migrated yet (Phase 5); trace store is additive, no retention policy applied (Phase 10).
 - **deployment/rollback status**: additive code only; not wired to production.
+
+---
+
+## Phase 2 — Lightweight Observability Instrumentation (primitives)
+
+- **date/time**: 2026-08-17T02:02Z (UTC)
+- **base SHA**: `cc692bd4` (Phase 1 head)
+- **head SHA**: `328be9df`
+- **files changed**:
+  - `scripts/lib/agent_tool_trace.py` (new) — governed tool-call trace (2.2)
+  - `scripts/lib/agent_notification_intelligence.py` (new) — notification reasoning + follow-up binding (2.3/2.4)
+  - `tests/test_agent_observability.py` (new)
+- **design decisions**:
+  - Tool-call trace stores redacted request/response **digests**, never raw payloads; capability class + read/write classification from the tool name.
+  - Notification reasoning models `same_identity` vs `same_decision` + `evidence_changed` separately: an exact unchanged replay is suppressed, but the same decision with new evidence may reopen a prior REJECT with `WHAT CHANGED SINCE YOUR REJECT`.
+  - Durable next-review: `build_next_review()` degrades a missing schedule to an explicit `NEXT_REVIEW_UNAVAILABLE` + reason; `validate_next_review()` rejects blank/unknown kinds. No bare `NEXT REVIEW`.
+- **tests run**: `pytest tests/test_agent_observability.py tests/test_agent_context_envelope.py tests/test_agent_run_trace.py` → 63 passed; existing `test_cio_decision_quality_pr1.py` → 44 passed (no regression).
+- **dry-run evidence**: notification suppression/reopen exercised with fixed fixtures.
+- **failures found / fixed**:
+  - `evaluate_notification` conflated `same_generation` (dedupe-key) with `same_decision`; reworked to separate identity vs decision+evidence change → fixed reopen-on-new-evidence case.
+  - `build_next_review()` default incorrectly asserted as invalid in a test; clarified that a bare schedule degrades to an explicit-unavailable record (valid), while a truly blank dict is rejected.
+- **remaining risks**: 2.1 (instrument live material wakes) and 2.5 (dry replay harness) not yet done — both touch existing production paths; deferred pending Phase 0 promote/topology go-ahead.
+- **deployment/rollback status**: additive code only; not wired to production.
