@@ -209,13 +209,19 @@ class ClaimEvidenceGraph:
         return True
 
     def _source_class(self, src: Optional[GraphNode]) -> str:
-        """Map an incoming-support source node to an authority class."""
+        """Map a NON-FACT incoming-support source node to an authority class.
+
+        FACT nodes are classified separately in `_evidence_classification`,
+        which proves fact authority via `_is_authoritative_fact` instead of
+        trusting node type alone.
+        """
         if src is None:
             return "provenance_support"
         t = src.type
         if t == NODE_FACT:
-            fresh = (src.freshness or "").upper() == FRESHNESS_STALE
-            return "stale_fact_support" if fresh else "authoritative_fact_support"
+            # Fallback (should not be reached): treat as non-authoritative so an
+            # invalid FACT can never masquerade as authority.
+            return "invalid_fact_support"
         if t == NODE_MEMORY_REF:
             return "contextual_support"
         if t == NODE_CASE_REF:
@@ -247,6 +253,7 @@ class ClaimEvidenceGraph:
             "decision_support": [],
             "contradiction": [],
             "stale_fact_support": [],
+            "invalid_fact_support": [],
         }
         for e in self.edges:
             if e.to_id != claim_id:
@@ -258,14 +265,18 @@ class ClaimEvidenceGraph:
                 # An invalidation is a blocking negative like a contradiction.
                 buckets["contradiction"].append(e.to_dict())
             elif e.relation in _EVIDENCE_IN:
-                cls = self._source_class(src)
-                # Only FACT nodes may be authoritative; other classes cannot
-                # masquerade as fact authority even if they pass _is_authoritative_fact.
-                if cls == "authoritative_fact_support" and self._is_authoritative_fact(src):
-                    buckets["authoritative_fact_support"].append(e.to_dict())
-                elif cls == "stale_fact_support":
-                    buckets["stale_fact_support"].append(e.to_dict())
+                if src is not None and src.type == NODE_FACT:
+                    # A FACT is authoritative only if it validates as fact-capable
+                    # and fresh. A non-stale but invalid FACT is preserved for
+                    # diagnostics but must NEVER enter the authoritative bucket.
+                    if self._is_authoritative_fact(src):
+                        buckets["authoritative_fact_support"].append(e.to_dict())
+                    elif (src.freshness or "").upper() == FRESHNESS_STALE:
+                        buckets["stale_fact_support"].append(e.to_dict())
+                    else:
+                        buckets["invalid_fact_support"].append(e.to_dict())
                 else:
+                    cls = self._source_class(src)
                     buckets[cls].append(e.to_dict())
         return buckets
 
@@ -299,6 +310,7 @@ class ClaimEvidenceGraph:
             + ev["decision_support"],
             "contradicting": ev["contradiction"],
             "stale_fact_support": ev["stale_fact_support"],
+            "invalid_fact_support": ev["invalid_fact_support"],
             "actionable": actionable,
             "status": node.status if node else UNSUPPORTED,
         }

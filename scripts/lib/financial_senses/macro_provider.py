@@ -119,9 +119,19 @@ class FredClient:
         return obs[-1] if obs else None
 
     def latest_as_of(self, series_id: str, decision_date: str) -> Optional[dict]:
-        """Most recent observation known as-of decision_date (vintage-bounded)."""
+        """Most recent observation known as-of decision_date (vintage-bounded).
+
+        FRED's `series/observations` defaults BOTH `realtime_start` and
+        `realtime_end` to today. A historical decision-time query therefore
+        must pin the real-time period on BOTH ends to request the vintage that
+        existed as-of `decision_date`, and must bound `observation_end` so a
+        future economic observation is never injected into the decision.
+        """
         obs = self.observations(
-            series_id, realtime_end=decision_date, observation_end=decision_date
+            series_id,
+            realtime_start=decision_date,
+            realtime_end=decision_date,
+            observation_end=decision_date,
         )
         return obs[-1] if obs else None
 

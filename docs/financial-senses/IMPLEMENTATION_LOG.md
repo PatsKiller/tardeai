@@ -261,3 +261,77 @@ first-wave-vs-actual-semantics gaps that a green 162-test suite did not exercise
 - `run_release_ci_equivalent.py --source-only`: **PASS (17/17)**.
 - production mutations: 0 · Telegram sends: 0 · DB writes: 0 ·
   authority: `READ_ONLY_ADVISORY`.
+
+## 2026-08-17 — Third closeout (final independent-review remediation)
+
+Targets the 6 P1 merge blockers and the P2 critic/documentation defects from the
+final independent review. Narrow semantic closeout, not a redesign.
+
+### P1 — FRED/ALFRED real-time period semantics
+- `FredClient.latest_as_of()` now bounds the real-time period on BOTH ends:
+  `realtime_start = decision_date` **and** `realtime_end = decision_date`, plus
+  `observation_end = decision_date`. A one-sided `realtime_end` is incorrect
+  because FRED defaults both real-time bounds to today.
+- Added REAL `FredClient` URL-capture tests (`test_latest_as_of_pins_realtime_period_both_ends`,
+  `test_latest_as_of_no_realtime_period_by_default`,
+  `test_observation_value_latest_vintage_unbounded_realtime`) that assert the
+  actual HTTP query parameters, not the `FakeFredClient` abstraction.
+
+### P1 — evidence-graph invalid-FACT authority bypass
+- `_evidence_classification` now classifies FACT support via `_is_authoritative_fact`
+  before bucketing; a non-stale but invalid FACT lands in a new
+  `invalid_fact_support` bucket and can never enter `authoritative_fact_support`.
+- Added adversarial tests: FACT missing source / `MODEL_INFERENCE` source /
+  missing quality / missing `observed_at`/`as_of` are all non-authoritative and
+  non-actionable; specialist opinion + invalid FACT remains non-actionable.
+
+### P1 — OpenFIGI warning/error must prevent clean OK
+- `cross_validate_identities` now treats any warning/error job (even with
+  candidates) as non-clean; a single asserted identifier with warning/error is
+  downgraded to `IDENTITY_UNVERIFIED`; the provider single-job path routes
+  through `cross_validate_identities` too. Added `disposition` per job.
+- Added single- and multi-job tests asserting BOTH `identity_status` and
+  `FinancialSenseResult.status` (e.g. candidate+warning, candidate+error).
+
+### P1 — factor/overlap missing data is not zero
+- `holdings_overlap` / `sector_overlap` now return `UNAVAILABLE` when holdings
+  or sector data is missing/empty — never a fabricated `0.0`.
+- `FactorOverlapProvider` only emits a `holdings_jaccard` `Fact` when both inputs
+  carry fact-capable `source`/`as_of`/`quality`; otherwise it emits a
+  `ModelEstimate` (derived) and warns, so raw caller fixtures cannot be laundered
+  into an `APPROVED_MARKET_DATA` world fact.
+
+### P1 — SEC aggregate decision-evidence honest status
+- `sec.get_decision_evidence` distinguishes `OK` / `NOT_INGESTED` /
+  `NOT_APPLICABLE` / `DATA_UNAVAILABLE` per source and derives aggregate status
+  (`OK` all read, `PARTIAL` partial, `UNAVAILABLE` all failed) + `quality.completeness`.
+- `decision_evidence_subject` is emitted only with `source_ids` naming sources
+  that were successfully consulted; the all-failed case emits no fabricated fact.
+
+### P1 — broader cross-regression on exact-head CI
+- `financial-senses-ci.yml` gains a second read-only `broader-regression` job
+  running the exact deterministic representative set
+  (`test_cio_decision_semantics`, `test_cio_decision_quality_pr1`,
+  `test_research_governance_promotion_gate`, `test_research_empirical`) = 81 tests.
+
+### P2 — shadow critic canonical actions + coverage semantics
+- `_MATERIAL_ACTIONS` expanded to the canonical material vocabulary (ADD, EXIT,
+  ROTATE, RAISE_CASH, RE_ENTER, DEPLOY_CASH, TRIM, ...) so they receive the same
+  missing-evidence check.
+- Fixed the coverage inversion: `coverage_pct` is modeled (unmodeled = 100 - v);
+  `unmodeled_coverage_pct` is already unmodeled and is no longer subtracted.
+
+### P2 — documentation truth
+- `ACCEPTANCE.md` FS-24 → 222 tests; `FRED_ALFRED_PROVIDER.md`, `README.md`,
+  `INTEGRATION_WITH_AGENT_INTELLIGENCE_FOUNDATION.md` renamed
+  `macro.get_release_dates` → `macro.get_vintage_dates`; `MACRO_VINTAGE_POLICY.md`
+  and ADR-003 now describe the two-ended real-time period; `TEST_AND_DRY_RUN_PLAN.md`
+  → 222 tests.
+
+### Proof (third closeout)
+- `tests/financial_senses/` suite: **222 passed, 0 failed** (fully offline).
+- `tests/test_sec_form4_momentum_context.py`: **17/17 pass**.
+- Broader CIO/research representative regression: **81 passed**.
+- `run_release_ci_equivalent.py --source-only`: **PASS (17/17)**.
+- production mutations: 0 · Telegram sends: 0 · DB writes: 0 ·
+  authority: `READ_ONLY_ADVISORY`.

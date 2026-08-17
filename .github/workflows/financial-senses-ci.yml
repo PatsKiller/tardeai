@@ -37,3 +37,33 @@ jobs:
 
       - name: Run existing SEC regression
         run: python3 tests/test_sec_form4_momentum_context.py
+
+  broader-regression:
+    # Deterministic, offline representative cross-system regression (CIO
+    # decision semantics/quality + research governance/empirical). No live
+    # network, no broker writes, no DB writes. This reproduces the exact
+    # "81 passed" broader regression proof on the PR head.
+    runs-on: ubuntu-latest
+    env:
+      TRADE_AI_CI: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install pytest
+        run: |
+          python3 -m pip install --upgrade pip
+          pip install pytest
+
+      - name: Run broader CIO/research representative regression
+        run: >
+          python3 -m pytest
+          tests/test_cio_decision_semantics.py
+          tests/test_cio_decision_quality_pr1.py
+          tests/test_research_governance_promotion_gate.py
+          tests/test_research_empirical.py
+          -q

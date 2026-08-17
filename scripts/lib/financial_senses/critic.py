@@ -32,8 +32,24 @@ RESULT_NO_MATERIAL_OBJECTION = "NO_MATERIAL_OBJECTION"
 RESULT_MATERIAL_OBJECTION = "MATERIAL_OBJECTION"
 RESULT_DATA_UNAVAILABLE = "DATA_UNAVAILABLE"
 
+# Material advisory actions: those that move capital or change positions, and
+# therefore require substantive evidence before they may pass a shadow review.
+# Aligned with the canonical InvestmentDecision action vocabulary (lowercased
+# to match the normalized `act` in review_decision).
 _MATERIAL_ACTIONS = frozenset(
-    {"trim", "deploy_cash", "deploy", "reentry", "re-enter", "trim_concentration"}
+    {
+        "add",
+        "trim",
+        "exit",
+        "rotate",
+        "raise_cash",
+        "deploy_cash",
+        "re_enter",
+        "re-enter",
+        "reentry",
+        "deploy",
+        "trim_concentration",
+    }
 )
 
 
@@ -130,24 +146,32 @@ def review_decision(evidence_packet: dict, proposed_action: dict) -> CriticRevie
         review.objections.append("contradictory evidence present; decision must address it")
 
     # 4. Unmodeled portfolio effects — material above the documented threshold.
-    coverage = evidence.get("coverage_pct", evidence.get("unmodeled_coverage_pct"))
-    if coverage is not None:
+    # `coverage_pct` is MODELED coverage (unmodeled = 100 - value);
+    # `unmodeled_coverage_pct` is already the UNMODELED fraction and must not be
+    # subtracted from 100 again.
+    if "coverage_pct" in evidence and evidence.get("coverage_pct") is not None:
         try:
-            cov = float(coverage)
-            unmodeled = 100.0 - cov
-            if unmodeled > UNMODELED_MATERIALITY_THRESHOLD_PCT:
-                review.portfolio_effects.append(f"{unmodeled:.2f}% of portfolio is unmodeled")
-                review.objections.append(
-                    f"material unmodeled portfolio exposure ({unmodeled:.2f}%)"
-                )
+            unmodeled = 100.0 - float(evidence["coverage_pct"])
         except (TypeError, ValueError):
-            pass
+            unmodeled = None
+    elif "unmodeled_coverage_pct" in evidence and evidence.get("unmodeled_coverage_pct") is not None:
+        try:
+            unmodeled = float(evidence["unmodeled_coverage_pct"])
+        except (TypeError, ValueError):
+            unmodeled = None
+    else:
+        unmodeled = None
+
+    if unmodeled is not None and unmodeled > UNMODELED_MATERIALITY_THRESHOLD_PCT:
+        review.portfolio_effects.append(f"{unmodeled:.2f}% of portfolio is unmodeled")
+        review.objections.append(
+            f"material unmodeled portfolio exposure ({unmodeled:.2f}%)"
+        )
 
     # 5. Missing evidence by action type.
-    if act in ("trim", "deploy_cash", "deploy", "reentry", "re-enter"):
-        if not action.get("objective"):
-            review.missing_evidence.append("no stated objective for a material action")
-    if act in ("reentry", "re-enter") and not action.get("candidate_authority"):
+    if act in _MATERIAL_ACTIONS and not action.get("objective"):
+        review.missing_evidence.append("no stated objective for a material action")
+    if act in ("reentry", "re-enter", "re_enter") and not action.get("candidate_authority"):
         review.missing_evidence.append("re-entry without candidate-specific authority")
     if act in ("trim", "trim_concentration") and not evidence.get("concentration_evidence"):
         review.missing_evidence.append("concentration trim without concentration evidence")

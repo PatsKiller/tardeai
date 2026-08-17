@@ -28,7 +28,7 @@ providers:
       - macro.get_vintage
       - macro.compare_vintages
       - macro.get_latest_observation
-      - macro.get_release_dates
+      - macro.get_vintage_dates
       - macro.get_series
       - macro.regime_inputs
   identity:

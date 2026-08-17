@@ -76,3 +76,81 @@ def test_overlap_report_has_transparent_components():
         "sector_overlap",
         "factor_similarity",
     }
+
+
+def test_holdings_overlap_missing_both_unavailable():
+    r = holdings_overlap(None, None)
+    assert r["state"] == UNAVAILABLE
+    assert "jaccard" not in r
+
+
+def test_holdings_overlap_missing_one_side_unavailable():
+    r = holdings_overlap([{"symbol": "AAPL", "weight": 1.0}], None)
+    assert r["state"] == UNAVAILABLE
+    assert "jaccard" not in r
+
+
+def test_holdings_overlap_empty_list_unavailable():
+    r = holdings_overlap([], [])
+    assert r["state"] == UNAVAILABLE
+
+
+def test_sector_overlap_missing_unavailable():
+    r = sector_overlap(None, {"tech": 0.5})
+    assert r["state"] == UNAVAILABLE
+    assert "overlap_by_weight" not in r
+
+
+def test_provider_raw_inputs_not_promoted_to_fact():
+    from financial_senses.factor_exposure import FactorOverlapProvider
+
+    p = FactorOverlapProvider()
+    r = p.query("factor.overlap", {
+        "instrument_a": {"holdings": [{"symbol": "AAPL", "weight": 0.1}]},
+        "instrument_b": {"holdings": [{"symbol": "AAPL", "weight": 0.08}]},
+    })
+    # Unsourced caller inputs must NOT become an APPROVED_MARKET_DATA FACT.
+    assert not r.facts
+    assert r.estimates
+    assert r.estimates[0].source_type == "MODEL_INFERENCE"
+    assert r.validate() == []
+
+
+def test_provider_provenanced_inputs_propagate_fact():
+    from financial_senses.factor_exposure import FactorOverlapProvider
+
+    p = FactorOverlapProvider()
+    r = p.query("factor.overlap", {
+        "instrument_a": {
+            "holdings": [{"symbol": "AAPL", "weight": 0.1}],
+            "source_type": "APPROVED_MARKET_DATA",
+            "as_of": "2024-06-01",
+            "quality": "MEDIUM",
+        },
+        "instrument_b": {
+            "holdings": [{"symbol": "AAPL", "weight": 0.08}],
+            "source_type": "APPROVED_MARKET_DATA",
+            "as_of": "2024-06-01",
+            "quality": "MEDIUM",
+        },
+    })
+    assert r.facts
+    fact = r.facts[0]
+    assert fact.key == "holdings_jaccard"
+    assert fact.source_type == "APPROVED_MARKET_DATA"
+    assert fact.as_of == "2024-06-01"
+    assert fact.quality == "MEDIUM"
+    assert r.validate() == []
+
+
+def test_provider_missing_holdings_partial_not_fact():
+    from financial_senses.factor_exposure import FactorOverlapProvider
+
+    p = FactorOverlapProvider()
+    r = p.query("factor.overlap", {
+        "instrument_a": {"holdings": None},
+        "instrument_b": {"holdings": None},
+    })
+    assert r.status == "PARTIAL"
+    assert not r.facts
+    assert r.validate() == []

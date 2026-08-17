@@ -267,3 +267,75 @@ def test_stale_fact_preserved_not_actionable():
     ev = g.claim_evidence("c1")
     assert ev["stale_fact_support"]
     assert ev["actionable"] is False
+
+
+def _invalid_fact(nid, **overrides):
+    base = {"id": nid, "type": NODE_FACT, "text": "invalid fact"}
+    base.update(overrides)
+    return base
+
+
+def test_fact_missing_source_not_authoritative_not_actionable():
+    g = build_graph(
+        [_invalid_fact("f1", observed_at="2024-01-01", quality="HIGH"), _claim("c1")],
+        [_edge("e1", "f1", "c1", "SUPPORTS")],
+    )
+    errs = g.validate()
+    assert any("f1" in e for e in errs)
+    ev = g.claim_evidence("c1")
+    assert not ev["authoritative_fact_support"]
+    assert ev["invalid_fact_support"]
+    assert ev["actionable"] is False
+
+
+def test_fact_model_inference_source_not_authoritative():
+    g = build_graph(
+        [_invalid_fact("f1", source="MODEL_INFERENCE", observed_at="2024-01-01", quality="HIGH"), _claim("c1")],
+        [_edge("e1", "f1", "c1", "SUPPORTS")],
+    )
+    assert any("f1" in e for e in g.validate())
+    ev = g.claim_evidence("c1")
+    assert not ev["authoritative_fact_support"]
+    assert ev["actionable"] is False
+
+
+def test_fact_missing_quality_not_authoritative():
+    g = build_graph(
+        [_invalid_fact("f1", source="PRIMARY_REGULATORY", observed_at="2024-01-01"), _claim("c1")],
+        [_edge("e1", "f1", "c1", "SUPPORTS")],
+    )
+    assert any("f1" in e for e in g.validate())
+    ev = g.claim_evidence("c1")
+    assert not ev["authoritative_fact_support"]
+    assert ev["actionable"] is False
+
+
+def test_fact_missing_observed_at_not_authoritative():
+    g = build_graph(
+        [_invalid_fact("f1", source="PRIMARY_REGULATORY", quality="HIGH"), _claim("c1")],
+        [_edge("e1", "f1", "c1", "SUPPORTS")],
+    )
+    assert any("f1" in e for e in g.validate())
+    ev = g.claim_evidence("c1")
+    assert not ev["authoritative_fact_support"]
+    assert ev["actionable"] is False
+
+
+def test_specialist_opinion_plus_invalid_fact_not_actionable():
+    g = build_graph(
+        [
+            {"id": "o1", "type": "SPECIALIST_OPINION", "text": "opinion"},
+            _invalid_fact("f1", source="MODEL_INFERENCE", observed_at="2024-01-01", quality="HIGH"),
+            _claim("c1"),
+        ],
+        [
+            _edge("e1", "o1", "c1", "SUPPORTS"),
+            _edge("e2", "f1", "c1", "SUPPORTS"),
+        ],
+    )
+    g.validate()
+    ev = g.claim_evidence("c1")
+    assert not ev["authoritative_fact_support"]
+    assert ev["opinion_support"]
+    assert ev["invalid_fact_support"]
+    assert ev["actionable"] is False

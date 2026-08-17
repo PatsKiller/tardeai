@@ -295,3 +295,98 @@ def test_provider_matching_identifiers_still_resolved():
     r = p.query("identity.resolve", {"ticker": "AAPL", "cusip": "037833100"})
     assert r.status == "OK"
     assert r.data["identity"]["identity_status"] == "RESOLVED"
+
+
+def test_single_candidate_plus_warning_not_clean_ok():
+    from financial_senses.identity import IDENTITY_UNVERIFIED
+
+    aapl = _cand("AAPL", "BBG000B9XRY4")
+
+    def resolver(query):
+        return [_job("ticker", "AAPL", [aapl], warning="ambiguous request")]
+
+    p = OpenFigiProvider(resolver=resolver)
+    r = p.query("identity.resolve", {"ticker": "AAPL"})
+    # A warning on the only asserted identifier prevents a clean resolution.
+    assert r.data["identity"]["identity_status"] == IDENTITY_UNVERIFIED
+    assert r.status == "PARTIAL"
+    assert any("ambiguous request" in w for w in r.warnings)
+
+
+def test_single_candidate_plus_error_not_clean_ok():
+    from financial_senses.identity import IDENTITY_UNVERIFIED
+
+    aapl = _cand("AAPL", "BBG000B9XRY4")
+
+    def resolver(query):
+        return [_job("ticker", "AAPL", [aapl], error="upstream timeout")]
+
+    p = OpenFigiProvider(resolver=resolver)
+    r = p.query("identity.resolve", {"ticker": "AAPL"})
+    assert r.data["identity"]["identity_status"] == IDENTITY_UNVERIFIED
+    assert r.status == "PARTIAL"
+    assert any("upstream timeout" in w for w in r.warnings)
+
+
+def test_single_warning_no_candidate_not_found():
+    from financial_senses.identity import IDENTITY_NOT_FOUND
+
+    def resolver(query):
+        return [_job("ticker", "NOPE", [], warning="No identifier found.")]
+
+    p = OpenFigiProvider(resolver=resolver)
+    r = p.query("identity.resolve", {"ticker": "NOPE"})
+    assert r.data["identity"]["identity_status"] == IDENTITY_NOT_FOUND
+    assert r.status == "PARTIAL"
+
+
+def test_single_error_no_candidate_not_found():
+    from financial_senses.identity import IDENTITY_NOT_FOUND
+
+    def resolver(query):
+        return [_job("ticker", "NOPE", [], error="rate limited")]
+
+    p = OpenFigiProvider(resolver=resolver)
+    r = p.query("identity.resolve", {"ticker": "NOPE"})
+    assert r.data["identity"]["identity_status"] == IDENTITY_NOT_FOUND
+    assert r.status == "PARTIAL"
+
+
+def test_one_clean_one_warning_with_candidate_unverified():
+    from financial_senses.identity import IDENTITY_UNVERIFIED
+
+    aapl = _cand("AAPL", "BBG000B9XRY4")
+
+    def resolver(query):
+        return [
+            _job("ticker", "AAPL", [aapl]),
+            _job("cusip", "037833100", [aapl], warning="partial mapping"),
+        ]
+
+    p = OpenFigiProvider(resolver=resolver)
+    r = p.query("identity.resolve", {"ticker": "AAPL", "cusip": "037833100"})
+    # A warning on one asserted identifier (even with candidates) prevents a
+    # clean OK.
+    assert r.data["identity"]["identity_status"] == IDENTITY_UNVERIFIED
+    assert r.status == "PARTIAL"
+    assert any("partial mapping" in w for w in r.warnings)
+    assert r.data["job_dispositions"][1]["disposition"] == "WARNING"
+
+
+def test_one_clean_one_error_with_candidate_unverified():
+    from financial_senses.identity import IDENTITY_UNVERIFIED
+
+    aapl = _cand("AAPL", "BBG000B9XRY4")
+
+    def resolver(query):
+        return [
+            _job("ticker", "AAPL", [aapl]),
+            _job("cusip", "037833100", [aapl], error="upstream error"),
+        ]
+
+    p = OpenFigiProvider(resolver=resolver)
+    r = p.query("identity.resolve", {"ticker": "AAPL", "cusip": "037833100"})
+    assert r.data["identity"]["identity_status"] == IDENTITY_UNVERIFIED
+    assert r.status == "PARTIAL"
+    assert any("upstream error" in w for w in r.warnings)
+    assert r.data["job_dispositions"][1]["disposition"] == "ERROR"

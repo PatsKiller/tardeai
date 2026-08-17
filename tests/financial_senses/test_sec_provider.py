@@ -224,6 +224,124 @@ def test_get_decision_evidence():
     assert "recent_filings" in r.data["evidence"]
 
 
+class _SeqConnFactory:
+    """Connection factory returning a programmed sequence of conns / 'boom'."""
+
+    def __init__(self, seq):
+        self._seq = seq
+        self._i = 0
+
+    def __call__(self):
+        item = self._seq[min(self._i, len(self._seq) - 1)]
+        self._i += 1
+        if item == "boom":
+            return BoomConn()
+        return item
+
+
+def _empty_conn(cols):
+    return FakeConn([], cols)
+
+
+def _seq_provider(seq, fetcher=None, cik=None):
+    return SecEdgarProvider(
+        conn_factory=_SeqConnFactory(seq),
+        cik_resolver=cik or _cik,
+        fetcher=fetcher or _fetcher,
+    )
+
+
+def test_decision_evidence_all_sources_ok_complete():
+    p = _seq_provider([
+        FakeConn([("John", "P", "2024-09-10", "url")],
+                 ["filer_name", "transaction_type", "filing_date", "sec_url"]),
+        FakeConn([("Vanguard", 1000, 50000, 2.5, "2024-09-30")],
+                 ["institution", "shares", "value_thousands", "change_pct", "report_date"]),
+    ])
+    r = p.query("sec.get_decision_evidence", {"symbol": "AAPL"})
+    assert r.status == STATUS_OK
+    assert r.quality.completeness == "COMPLETE"
+    fact = r.facts[0]
+    assert "sec_form4_table" in fact.source_ids
+    assert "sec_13f_table" in fact.source_ids
+    assert any("sec_submissions_CIK" in s for s in fact.source_ids)
+
+
+def test_decision_evidence_form4_failure_partial():
+    p = _seq_provider([
+        "boom",
+        _empty_conn(["institution", "shares", "value_thousands", "change_pct", "report_date"]),
+    ])
+    r = p.query("sec.get_decision_evidence", {"symbol": "AAPL"})
+    assert r.status == STATUS_PARTIAL
+    assert r.quality.completeness == "PARTIAL"
+    assert r.data["states"]["form4"] == "DATA_UNAVAILABLE"
+    fact = r.facts[0]
+    assert "sec_form4_table" not in fact.source_ids
+    assert "sec_13f_table" in fact.source_ids
+
+
+def test_decision_evidence_13f_failure_partial():
+    p = _seq_provider([
+        _empty_conn(["filer_name", "transaction_type", "filing_date", "sec_url"]),
+        "boom",
+    ])
+    r = p.query("sec.get_decision_evidence", {"symbol": "AAPL"})
+    assert r.status == STATUS_PARTIAL
+    assert r.data["states"]["13f"] == "DATA_UNAVAILABLE"
+    fact = r.facts[0]
+    assert "sec_13f_table" not in fact.source_ids
+    assert "sec_form4_table" in fact.source_ids
+
+
+def test_decision_evidence_filings_timeout_partial():
+    def boom_fetcher(url):
+        raise TimeoutError("timeout")
+
+    p = _seq_provider([
+        _empty_conn(["filer_name", "transaction_type", "filing_date", "sec_url"]),
+        _empty_conn(["institution", "shares", "value_thousands", "change_pct", "report_date"]),
+    ], fetcher=boom_fetcher)
+    r = p.query("sec.get_decision_evidence", {"symbol": "AAPL"})
+    assert r.status == STATUS_PARTIAL
+    assert r.data["states"]["recent_filings"] == "DATA_UNAVAILABLE"
+    fact = r.facts[0]
+    assert not any("sec_submissions_CIK" in s for s in fact.source_ids)
+
+
+def test_decision_evidence_all_sources_unavailable():
+    def boom_fetcher(url):
+        raise TimeoutError("timeout")
+
+    p = _seq_provider(["boom", "boom"], fetcher=boom_fetcher)
+    r = p.query("sec.get_decision_evidence", {"symbol": "AAPL"})
+    assert r.status == STATUS_UNAVAILABLE
+    assert r.quality.completeness == "UNAVAILABLE"
+    assert not r.facts  # no fabricated provenance from failed sources
+
+
+def test_decision_evidence_no_rows_not_ingested_not_failure():
+    p = _seq_provider([
+        _empty_conn(["filer_name", "transaction_type", "filing_date", "sec_url"]),
+        _empty_conn(["institution", "shares", "value_thousands", "change_pct", "report_date"]),
+    ])
+    r = p.query("sec.get_decision_evidence", {"symbol": "AAPL"})
+    # Empty-but-successful reads are NOT_INGESTED, not a transport failure.
+    assert r.data["states"]["form4"] == "NOT_INGESTED"
+    assert r.data["states"]["13f"] == "NOT_INGESTED"
+    assert r.status != STATUS_UNAVAILABLE
+
+
+def test_decision_evidence_no_cik_not_applicable():
+    p = _seq_provider([
+        _empty_conn(["filer_name", "transaction_type", "filing_date", "sec_url"]),
+        _empty_conn(["institution", "shares", "value_thousands", "change_pct", "report_date"]),
+    ], cik=lambda s: "")
+    r = p.query("sec.get_decision_evidence", {"symbol": "ETF"})
+    assert r.data["states"]["recent_filings"] == "NOT_APPLICABLE"
+    assert r.status != STATUS_UNAVAILABLE
+
+
 def test_malformed_company_facts_does_not_crash():
     def bad_fetcher(url):
         if "companyfacts" in url:

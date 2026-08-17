@@ -5,7 +5,7 @@ Read-only macro provider over the official FRED/ALFRED JSON API.
 ## Capabilities
 
 `macro.get_series`, `macro.get_series_snapshot`, `macro.get_latest_observation`,
-`macro.get_release_dates`, `macro.get_vintage`, `macro.compare_vintages`,
+`macro.get_vintage_dates`, `macro.get_vintage`, `macro.compare_vintages`,
 `macro.get_decision_time_snapshot`, `macro.regime_inputs`.
 
 ## Configuration

@@ -342,41 +342,107 @@ class SecEdgarProvider(BaseProvider):
         r = self._ok("sec.get_decision_evidence")
         r.subject = Subject(symbol=symbol, cik=cik)
         evidence: dict = {"cik": cik}
-        # Form 4 (canonical store)
+
+        # Form 4 (canonical store). None => DB/transport failure; [] => read OK
+        # but nothing ingested for this symbol.
         form4 = self._read_sec_table(
             "sec_form4",
             ["filer_name", "transaction_type", "filing_date", "sec_url"],
             "symbol=%s ORDER BY filing_date DESC LIMIT 3",
             (symbol, 3),
         )
-        evidence["form4"] = form4 if form4 is not None else {"state": DATA_UNAVAILABLE}
-        # 13F (canonical store)
+        if form4 is None:
+            form4_state = DATA_UNAVAILABLE
+            evidence["form4"] = {"state": DATA_UNAVAILABLE}
+        elif not form4:
+            form4_state = NOT_INGESTED
+            evidence["form4"] = {"state": NOT_INGESTED}
+        else:
+            form4_state = "OK"
+            evidence["form4"] = form4
+
+        # 13F (canonical store).
         f13 = self._read_sec_table(
             "sec_13f",
             ["institution", "shares", "value_thousands", "change_pct", "report_date"],
             "symbol=%s ORDER BY report_date DESC LIMIT 3",
             (symbol, 3),
         )
-        evidence["13f"] = f13 if f13 is not None else {"state": DATA_UNAVAILABLE}
-        # Recent filings (read-only EDGAR extension)
+        if f13 is None:
+            f13_state = DATA_UNAVAILABLE
+            evidence["13f"] = {"state": DATA_UNAVAILABLE}
+        elif not f13:
+            f13_state = NOT_INGESTED
+            evidence["13f"] = {"state": NOT_INGESTED}
+        else:
+            f13_state = "OK"
+            evidence["13f"] = f13
+
+        # Recent filings (read-only EDGAR extension). No CIK => NOT_APPLICABLE,
+        # not a failure; a raised read is DATA_UNAVAILABLE.
         if cik:
             try:
-                evidence["recent_filings"] = reader.list_filings(cik, limit=5, fetcher=self._fetcher)
+                evidence["recent_filings"] = reader.list_filings(
+                    cik, limit=5, fetcher=self._fetcher
+                )
+                recent_state = "OK"
             except Exception:
                 evidence["recent_filings"] = {"state": DATA_UNAVAILABLE}
+                recent_state = DATA_UNAVAILABLE
         else:
             evidence["recent_filings"] = {"state": NOT_APPLICABLE}
-        r.data = {"evidence": evidence}
-        r.facts.append(
-            Fact(
-                key="decision_evidence_subject",
-                value=symbol,
-                source_type=SOURCE_PRIMARY_REGULATORY,
-                source_ids=["sec_form4_table", "sec_13f_table"],
-                as_of=r.requested_at,
-                quality=grade_for_source(SOURCE_PRIMARY_REGULATORY),
+            recent_state = NOT_APPLICABLE
+
+        states = [form4_state, f13_state, recent_state]
+        unavailable = states.count(DATA_UNAVAILABLE)
+        ok_count = states.count("OK")
+
+        # Aggregate completeness/status semantics:
+        #   OK          -> all required sources successfully read with data
+        #   PARTIAL     -> some read, some unavailable/not-ingested/not-applicable
+        #   UNAVAILABLE -> no source could be read (all transport/DB failures)
+        if unavailable == len(states):
+            r.set_status("UNAVAILABLE")
+            r.add_warning("no SEC decision-evidence source could be read")
+            completeness = "UNAVAILABLE"
+        elif ok_count == len(states):
+            completeness = "COMPLETE"
+        else:
+            r.set_status("PARTIAL")
+            r.add_warning(
+                f"{ok_count} source(s) OK; {len(states) - ok_count} "
+                "unavailable/not-ingested/not-applicable"
             )
+            completeness = "PARTIAL"
+
+        r.data = {"evidence": evidence, "states": {
+            "form4": form4_state, "13f": f13_state, "recent_filings": recent_state
+        }}
+        r.quality = Quality(
+            grade=grade_for_source(SOURCE_PRIMARY_REGULATORY),
+            completeness=completeness,
         )
+
+        # Provenance-bearing facts name ONLY sources that were successfully
+        # consulted. A transport/DB failure is never a factual source.
+        source_ids: list[str] = []
+        if form4_state in ("OK", NOT_INGESTED):
+            source_ids.append("sec_form4_table")
+        if f13_state in ("OK", NOT_INGESTED):
+            source_ids.append("sec_13f_table")
+        if recent_state == "OK":
+            source_ids.append(f"sec_submissions_CIK{cik}")
+        if source_ids:
+            r.facts.append(
+                Fact(
+                    key="decision_evidence_subject",
+                    value=symbol,
+                    source_type=SOURCE_PRIMARY_REGULATORY,
+                    source_ids=source_ids,
+                    as_of=r.requested_at,
+                    quality=grade_for_source(SOURCE_PRIMARY_REGULATORY),
+                )
+            )
         return r
 
     # ── internal helpers ────────────────────────────────────────────────────

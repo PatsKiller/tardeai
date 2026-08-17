@@ -183,15 +183,16 @@ def cross_validate_identities(
     Each job is {"identifier", "id_type", "id_value", "candidates", "warning",
     "error"}. Returns (InstrumentIdentity, notes).
 
-    Every asserted identifier is first-class: a job that returns a warning /
-    error / no candidates is surfaced as a note and downgrades the result —
-    it never silently disappears.
+    Every asserted identifier is first-class. A job with a warning or error is
+    uncertain/incomplete even if it returned candidates, and must never yield a
+    clean RESOLVED. No-result jobs, warning jobs, and error jobs all surface as
+    notes and downgrade the result — nothing silently disappears.
 
-    exactly one common FIGI, all resolved      -> RESOLVED
-    exactly one common FIGI, some unresolved   -> UNVERIFIED_IDENTIFIER
-    >1 common FIGI                             -> AMBIGUOUS
-    empty intersection                         -> CONFLICT
-    all jobs no-result                         -> NOT_FOUND
+    all jobs clean + exactly one common FIGI       -> RESOLVED
+    some jobs warning/error/no-result + one FIGI   -> UNVERIFIED_IDENTIFIER
+    >1 common FIGI                                 -> AMBIGUOUS
+    empty intersection (differing resolved FIGIs)  -> CONFLICT
+    all jobs no-result (no candidates anywhere)    -> NOT_FOUND
     """
     query = query or {}
     provided = [j for j in jobs if j.get("id_value")]
@@ -211,7 +212,6 @@ def cross_validate_identities(
 
     figi_sets: dict[str, set] = {}
     by_figi: dict[str, dict] = {}
-    diagnostics: dict[str, str] = {}
     for j in provided:
         ident = j["identifier"]
         figis = {c.get("figi") for c in (j.get("candidates") or []) if c.get("figi")}
@@ -219,31 +219,30 @@ def cross_validate_identities(
         for c in (j.get("candidates") or []):
             if c.get("figi"):
                 by_figi.setdefault(c["figi"], c)
-        if j.get("error"):
-            diagnostics[ident] = f"{ident}: error: {j['error']}"
-        elif j.get("warning"):
-            diagnostics[ident] = f"{ident}: {j['warning']}"
 
-    # Single identifier falls back to classic resolution, preserving diagnostics.
+    # Per-job disposition + diagnostics. Every asserted identifier is surfaced.
+    def _is_clean(j: dict) -> bool:
+        return bool(figi_sets[j["identifier"]]) and not j.get("warning") and not j.get("error")
+
+    clean = [j for j in provided if _is_clean(j)]
+    for j in provided:
+        ident = j["identifier"]
+        if j.get("error"):
+            notes.append(f"{ident}: error: {j['error']}")
+        elif j.get("warning"):
+            notes.append(f"{ident}: {j['warning']}")
+        elif not figi_sets[ident]:
+            notes.append(f"{ident}: no identifier found")
+
+    # Single identifier: keep classic resolution but downgrade on warning/error.
     if len(provided) == 1:
         j = provided[0]
-        if j["identifier"] in diagnostics:
-            notes.append(diagnostics[j["identifier"]])
         identity = resolve_identity(j.get("candidates") or [], query, existing)
+        if (j.get("warning") or j.get("error")) and identity.identity_status == IDENTITY_RESOLVED:
+            identity.identity_status = IDENTITY_UNVERIFIED
         return identity, notes
 
-    resolved = [j for j in provided if figi_sets[j["identifier"]]]
-    unresolved = [j for j in provided if not figi_sets[j["identifier"]]]
-
-    for j in unresolved:
-        ident = j["identifier"]
-        notes.append(diagnostics.get(ident, f"{ident}: no identifier found"))
-
-    if not resolved:
-        base.identity_status = IDENTITY_NOT_FOUND
-        return base, notes
-
-    common = set.intersection(*(figi_sets[j["identifier"]] for j in resolved))
+    with_candidates = [j for j in provided if figi_sets[j["identifier"]]]
 
     def _resolved_identity(figi: str, status: str) -> InstrumentIdentity:
         identity = _identity_from_candidate(by_figi[figi], query)
@@ -256,23 +255,27 @@ def cross_validate_identities(
             _compose_existing(identity, by_figi[figi], existing)
         return identity
 
-    if unresolved:
-        # Some asserted identifiers did not resolve: never a clean RESOLVED.
-        if len(common) == 1:
-            return _resolved_identity(next(iter(common)), IDENTITY_UNVERIFIED), notes
-        if len(common) > 1:
-            base.identity_status = IDENTITY_AMBIGUOUS
-            return base, notes
-        base.identity_status = IDENTITY_CONFLICT
+    # No job produced any candidate -> NOT_FOUND (a warning/error alone is not
+    # a resolved identity).
+    if not with_candidates:
+        base.identity_status = IDENTITY_NOT_FOUND
         return base, notes
 
-    if len(common) == 1:
-        return _resolved_identity(next(iter(common)), IDENTITY_RESOLVED), notes
+    common = set.intersection(*(figi_sets[j["identifier"]] for j in with_candidates))
+
+    # Differing resolved FIGIs -> CONFLICT (empty intersection).
+    if not common:
+        base.identity_status = IDENTITY_CONFLICT
+        return base, notes
     if len(common) > 1:
         base.identity_status = IDENTITY_AMBIGUOUS
         return base, notes
-    base.identity_status = IDENTITY_CONFLICT
-    return base, notes
+
+    # Exactly one common FIGI. Clean resolution only if every asserted
+    # identifier was clean; otherwise the surviving FIGI is UNVERIFIED.
+    if len(clean) == len(provided):
+        return _resolved_identity(next(iter(common)), IDENTITY_RESOLVED), notes
+    return _resolved_identity(next(iter(common)), IDENTITY_UNVERIFIED), notes
 
 
 def build_mapping_jobs(query: dict) -> list[dict]:
@@ -371,22 +374,20 @@ class OpenFigiProvider(BaseProvider):
         if self._existing_identity:
             existing = self._existing_identity(query)
         jobs = self._resolver(query) or []
-        provided = [j for j in jobs if j.get("id_value")]
-        if len(provided) > 1:
-            identity, notes = cross_validate_identities(jobs, query, existing)
-        else:
-            candidates = (jobs[0].get("candidates") or []) if jobs else []
-            identity = resolve_identity(candidates, query, existing)
-            notes = []
-            # A single job may still carry a warning/error diagnostic.
-            for j in jobs:
-                if j.get("error"):
-                    notes.append(f"{j['identifier']}: error: {j['error']}")
-                elif j.get("warning"):
-                    notes.append(f"{j['identifier']}: {j['warning']}")
+        identity, notes = cross_validate_identities(jobs, query, existing)
 
         r = self._ok("identity.resolve")
         r.subject = Subject(symbol=identity.ticker, figi=identity.figi)
+
+        def _disposition(j: dict) -> str:
+            if j.get("error"):
+                return "ERROR"
+            if j.get("warning"):
+                return "WARNING"
+            if not (j.get("candidates") or []):
+                return "NOT_FOUND"
+            return "RESOLVED_SET"
+
         job_dispositions = [
             {
                 "identifier": j.get("identifier"),
@@ -395,6 +396,7 @@ class OpenFigiProvider(BaseProvider):
                 "candidate_count": len(j.get("candidates") or []),
                 "warning": j.get("warning"),
                 "error": j.get("error"),
+                "disposition": _disposition(j),
             }
             for j in jobs
         ]

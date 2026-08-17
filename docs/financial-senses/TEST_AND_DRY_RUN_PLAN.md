@@ -6,7 +6,7 @@
 python3 -m pytest tests/financial_senses/ -q
 ```
 
-103 tests, all offline (SEC/FRED/OpenFIGI/LLM mocked, live DB + network blocked
+222 tests, all offline (SEC/FRED/OpenFIGI/LLM mocked, live DB + network blocked
 by `tests/financial_senses/conftest.py`).
 
 Coverage:

@@ -193,3 +193,68 @@ def test_malformed_decision_date_rejected():
     p = FredAlfredProvider(api_key="k", client=client)
     r = p.query("macro.compare_vintages", {"series_id": "DFF", "decision_date": "not-a-date"})
     assert r.status == "INVALID_REQUEST"
+
+
+def test_latest_as_of_pins_realtime_period_both_ends():
+    """The REAL FredClient must bound the real-time period on BOTH ends.
+
+    FRED defaults realtime_start/realtime_end to today, so a one-sided
+    realtime_end does not produce the historical decision-time vintage.
+    """
+    from urllib.parse import parse_qs, urlparse
+
+    captured = {}
+
+    def fetcher(url):
+        captured["url"] = url
+        return {"observations": [{"date": "2024-06-01", "value": "5.5"}]}
+
+    client = FredClient(api_key="k", fetcher=fetcher)
+    val = client.latest_as_of("DFF", "2024-07-01")
+
+    q = parse_qs(urlparse(captured["url"]).query)
+    assert q["realtime_start"] == ["2024-07-01"]
+    assert q["realtime_end"] == ["2024-07-01"]
+    # observation_end must be bounded so future observations cannot leak in.
+    assert q["observation_end"] == ["2024-07-01"]
+    assert val == {"date": "2024-06-01", "value": 5.5}
+
+
+def test_latest_as_of_no_realtime_period_by_default():
+    """A latest-vintage query (no decision date) leaves the real-time period to
+    FRED's default (today), which is correct for `latest()`."""
+    from urllib.parse import parse_qs, urlparse
+
+    captured = {}
+
+    def fetcher(url):
+        captured["url"] = url
+        return {"observations": []}
+
+    client = FredClient(api_key="k", fetcher=fetcher)
+    client.latest("DFF")
+
+    q = parse_qs(urlparse(captured["url"]).query)
+    assert "realtime_start" not in q
+    assert "realtime_end" not in q
+
+
+def test_observation_value_latest_vintage_unbounded_realtime():
+    """The latest revised value is fetched under the latest vintage, with the
+    observation date pinned and no real-time bound."""
+    from urllib.parse import parse_qs, urlparse
+
+    captured = {}
+
+    def fetcher(url):
+        captured["url"] = url
+        return {"observations": [{"date": "2024-06-01", "value": "5.7"}]}
+
+    client = FredClient(api_key="k", fetcher=fetcher)
+    val = client.observation_value("DFF", "2024-06-01")
+
+    q = parse_qs(urlparse(captured["url"]).query)
+    assert q["observation_start"] == ["2024-06-01"]
+    assert q["observation_end"] == ["2024-06-01"]
+    assert "realtime_start" not in q
+    assert val == 5.7

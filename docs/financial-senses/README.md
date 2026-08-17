@@ -12,7 +12,7 @@ only after both are stable.
 | Provider | Capabilities | Source |
 |---|---|---|
 | `sec_edgar` | `sec.resolve_cik`, `sec.get_recent_filings`, `sec.get_form4_context`, `sec.get_13f_context`, `sec.get_company_facts`, `sec.get_filing_metadata`, `sec.compare_filing_facts`, `sec.get_decision_evidence` | existing SEC pipeline + read-only EDGAR extension |
-| `macro` | `macro.get_series`, `macro.get_series_snapshot`, `macro.get_latest_observation`, `macro.get_release_dates`, `macro.get_vintage`, `macro.compare_vintages`, `macro.get_decision_time_snapshot`, `macro.regime_inputs` | FRED / ALFRED (vintage-aware) |
+| `macro` | `macro.get_series`, `macro.get_series_snapshot`, `macro.get_latest_observation`, `macro.get_vintage_dates`, `macro.get_vintage`, `macro.compare_vintages`, `macro.get_decision_time_snapshot`, `macro.regime_inputs` | FRED / ALFRED (vintage-aware) |
 | `identity` | `identity.resolve` | OpenFIGI (fail-closed) |
 | `stress` | `risk.stress_portfolio` | deterministic scenarios |
 | `factor` | `factor.overlap` | sourced factor loadings |

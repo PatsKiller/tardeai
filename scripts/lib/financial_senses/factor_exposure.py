@@ -14,8 +14,13 @@ from dataclasses import dataclass, field, asdict
 from typing import Optional
 
 from .provider import BaseProvider, Capability
-from .result import Fact, FinancialSenseResult, Quality, STATUS_OK
-from .source_governance import SOURCE_APPROVED_MARKET_DATA, grade_for_source
+from .result import Fact, FinancialSenseResult, ModelEstimate, Quality, STATUS_OK
+from .source_governance import (
+    SOURCE_APPROVED_MARKET_DATA,
+    best_source,
+    can_back_fact,
+    grade_for_source,
+)
 
 UNAVAILABLE = "UNAVAILABLE"
 
@@ -93,9 +98,18 @@ def _pearson(a: list, b: list) -> Optional[float]:
 
 
 def holdings_overlap(a: list, b: list) -> dict:
-    """Holdings overlap between two funds (list of {symbol, weight})."""
-    wa = {h.get("symbol"): float(h.get("weight") or 0.0) for h in (a or []) if h.get("symbol")}
-    wb = {h.get("symbol"): float(h.get("weight") or 0.0) for h in (b or []) if h.get("symbol")}
+    """Holdings overlap between two funds (list of {symbol, weight}).
+
+    Missing holdings data (None or empty) is DATA_UNAVAILABLE — never a false
+    zero. A measured 0.0 is only reported when both sides actually carried
+    holdings and none overlapped.
+    """
+    if not a or not b:
+        return {"state": UNAVAILABLE, "reason": "holdings missing on one or both sides"}
+    wa = {h.get("symbol"): float(h.get("weight") or 0.0) for h in a if h.get("symbol")}
+    wb = {h.get("symbol"): float(h.get("weight") or 0.0) for h in b if h.get("symbol")}
+    if not wa or not wb:
+        return {"state": UNAVAILABLE, "reason": "no usable holdings symbols"}
     common = set(wa) & set(wb)
     union = set(wa) | set(wb)
     jaccard = len(common) / len(union) if union else 0.0
@@ -104,6 +118,7 @@ def holdings_overlap(a: list, b: list) -> dict:
         "jaccard": round(jaccard, 4),
         "overlap_by_weight": round(overlap_by_weight, 4),
         "common_symbols": sorted(common),
+        "state": "OK",
     }
 
 
@@ -115,14 +130,18 @@ def return_correlation(a: list, b: list) -> dict:
 
 
 def sector_overlap(a: dict, b: dict) -> dict:
-    """Sector overlap between two {sector: weight} maps."""
-    a = a or {}
-    b = b or {}
+    """Sector overlap between two {sector: weight} maps.
+
+    Missing sector data is DATA_UNAVAILABLE, not a false zero.
+    """
+    if not a or not b:
+        return {"state": UNAVAILABLE, "reason": "sector data missing on one or both sides"}
     common = set(a) & set(b)
     overlap = sum(min(float(a[s]), float(b[s])) for s in common)
     return {
         "overlap_by_weight": round(overlap, 4),
         "common_sectors": sorted(common),
+        "state": "OK",
     }
 
 
@@ -171,6 +190,18 @@ def overlap_report(instrument_a: dict, instrument_b: dict) -> dict:
     }
 
 
+def _input_provenance(instrument: dict):
+    """Return (source_type, as_of, quality) if `instrument` carries fact-capable
+    provenance, else None. A raw caller dict without source/as_of/quality cannot
+    manufacture APPROVED_MARKET_DATA authority."""
+    src = instrument.get("source_type") or instrument.get("source")
+    as_of = instrument.get("as_of")
+    quality = instrument.get("quality")
+    if src and as_of and quality and can_back_fact(str(src)):
+        return str(src), as_of, quality
+    return None
+
+
 class FactorOverlapProvider(BaseProvider):
     name = "factor"
     version = "1.0.0"
@@ -195,15 +226,56 @@ class FactorOverlapProvider(BaseProvider):
         report = overlap_report(a, b)
         r = self._ok("factor.overlap")
         r.data = report
-        r.quality = Quality(grade=grade_for_source(SOURCE_APPROVED_MARKET_DATA))
-        r.facts.append(
-            Fact(
-                key="holdings_jaccard",
-                value=report["holdings_overlap"]["jaccard"],
-                source_type=SOURCE_APPROVED_MARKET_DATA,
-                source_ids=["holdings_overlap"],
-                as_of=r.requested_at,
-                quality=grade_for_source(SOURCE_APPROVED_MARKET_DATA),
+
+        ho = report["holdings_overlap"]
+        prov_a = _input_provenance(a)
+        prov_b = _input_provenance(b)
+
+        # Missing holdings data is honest UNAVAILABLE, never a fabricated zero.
+        if ho.get("state") == UNAVAILABLE:
+            r.set_status("PARTIAL")
+            r.add_warning(f"holdings overlap unavailable: {ho.get('reason')}")
+            r.quality = Quality(grade="UNKNOWN", completeness="UNKNOWN")
+            return r
+
+        jaccard = ho.get("jaccard")
+        if jaccard is None:
+            r.set_status("PARTIAL")
+            r.add_warning("holdings overlap produced no measurable value")
+            return r
+
+        if prov_a and prov_b:
+            # Both inputs carry fact-capable provenance -> propagate the real
+            # source (best-ranked) and the later as_of; emit a governed FACT.
+            src = best_source([prov_a[0], prov_b[0]], "portfolio_holding")
+            as_of = prov_a[1] if (prov_b[1] or "") <= (prov_a[1] or "") else prov_b[1]
+            r.quality = Quality(grade=grade_for_source(src))
+            r.facts.append(
+                Fact(
+                    key="holdings_jaccard",
+                    value=jaccard,
+                    source_type=src,
+                    source_ids=["holdings_overlap", "instrument_a", "instrument_b"],
+                    as_of=as_of,
+                    quality=grade_for_source(src),
+                )
             )
-        )
+        else:
+            # Caller-supplied overlap is deterministic derived data; it is NOT an
+            # APPROVED_MARKET_DATA world FACT unless inputs prove provenance.
+            r.quality = Quality(grade="UNKNOWN")
+            r.estimates.append(
+                ModelEstimate(
+                    key="holdings_jaccard",
+                    value=jaccard,
+                    method="holdings_overlap",
+                    as_of=r.requested_at,
+                    quality="UNKNOWN",
+                    notes="derived from caller inputs without source/as_of/quality",
+                )
+            )
+            r.add_warning(
+                "overlap is derived data; inputs lack source/as_of/quality provenance "
+                "and are not emitted as an APPROVED_MARKET_DATA fact"
+            )
         return r

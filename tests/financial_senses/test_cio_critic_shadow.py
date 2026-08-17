@@ -122,3 +122,42 @@ def test_material_action_no_evidence_not_no_objection():
     )
     assert review.result == RESULT_MATERIAL_OBJECTION
     assert any("substantive evidence" in m for m in review.missing_evidence)
+
+
+def test_coverage_pct_90_means_10_unmodeled():
+    review = review_decision(
+        {"identity_status": "RESOLVED", "coverage_pct": 90.0, "facts": []},
+        {"action": "hold"},
+    )
+    assert any("10.00%" in e for e in review.portfolio_effects)
+    assert not any("90.00%" in e for e in review.portfolio_effects)
+
+
+def test_unmodeled_coverage_pct_10_not_inverted():
+    review = review_decision(
+        {"identity_status": "RESOLVED", "unmodeled_coverage_pct": 10.0, "facts": []},
+        {"action": "hold"},
+    )
+    # unmodeled_coverage_pct is already the unmodeled fraction; it must NOT be
+    # subtracted from 100 (which would report 90% unmodeled).
+    assert any("10.00%" in e for e in review.portfolio_effects)
+    assert not any("90.00%" in e for e in review.portfolio_effects)
+
+
+def test_material_actions_missing_evidence_flagged():
+    for action in ["ADD", "EXIT", "ROTATE", "RAISE_CASH", "RE_ENTER", "DEPLOY_CASH", "TRIM"]:
+        review = review_decision(
+            {"identity_status": "RESOLVED", "facts": []},
+            {"action": action, "objective": "rebalance"},
+        )
+        assert any("substantive evidence" in m for m in review.missing_evidence), action
+        assert review.result == RESULT_MATERIAL_OBJECTION, action
+
+
+def test_non_material_actions_not_flagged_for_missing_evidence():
+    for action in ["HOLD", "WAIT", "RESEARCH", "NO_ACTION", "DEFER"]:
+        review = review_decision(
+            {"identity_status": "RESOLVED", "facts": []},
+            {"action": action},
+        )
+        assert not any("substantive evidence" in m for m in review.missing_evidence), action

@@ -11,7 +11,8 @@ Canonical instrument identity via OpenFIGI, fail-closed on ambiguity.
 
 ## Statuses
 
-`RESOLVED`, `AMBIGUOUS`, `NOT_FOUND`, `CONFLICT`, `NOT_CONFIGURED`.
+`RESOLVED`, `UNVERIFIED_IDENTIFIER`, `AMBIGUOUS`, `NOT_FOUND`, `CONFLICT`,
+`NOT_CONFIGURED`.
 
 ## Policy
 
@@ -21,5 +22,11 @@ Canonical instrument identity via OpenFIGI, fail-closed on ambiguity.
   is `CONFLICT`.
 - `normalize_ticker` handles `BRK.B` / `BRK-B` / `BRK/B`; GOOG vs GOOGL remain
   distinct.
+- Fail-closed on uncertainty: any asserted identifier job that returns a
+  warning or error — even with candidates — cannot yield a clean `RESOLVED`;
+  it downgrades to `UNVERIFIED_IDENTIFIER`. A no-result job prevents
+  `RESOLVED`, and every asserted identifier is surfaced as a note/diagnostic,
+  never silently dropped. Only when all asserted identifiers are clean and
+  agree on exactly one FIGI does the result become `RESOLVED`.
 
 See `INSTRUMENT_IDENTITY_CONTRACT.md`.

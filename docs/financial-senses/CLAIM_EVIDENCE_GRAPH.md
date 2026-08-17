@@ -19,6 +19,15 @@ Exposes the causal evidence behind a recommendation.
 - Contradictions are preserved (support AND counterevidence).
 - `MEMORY_REF` edges are `NON_AUTHORITATIVE_CONTEXT`; they cannot replace a FACT.
 
+## Authority
+
+Only a valid, fresh FACT is authoritative: it must have a fact-capable source,
+`observed_at`/`as_of`, quality, and not be stale. A FACT that fails these checks
+(e.g. `MODEL_INFERENCE` source, missing quality or timestamp) is classified
+`invalid_fact_support` — preserved for diagnostics but never counted as
+authoritative — and cannot make a claim actionable. Specialist opinions, claims,
+cases, memory refs, and source nodes are non-authoritative by construction.
+
 ## Validation
 
 `build_graph` runs `validate()` (provenance, edge endpoints, duplicate edge IDs)

@@ -23,3 +23,13 @@ Read-only adapter over the existing SEC pipeline.
 
 `DATA_UNAVAILABLE` (store/network unavailable), `NOT_INGESTED` (table empty),
 `NOT_APPLICABLE` (e.g. no CIK). Missing is never reported as zero.
+
+## Aggregate decision-evidence status
+
+`sec.get_decision_evidence` derives an honest aggregate from its component
+sources (Form 4, 13F, recent filings): `OK` when all were successfully read,
+`PARTIAL` when some succeeded and some were unavailable/not-ingested/
+not-applicable, and `UNAVAILABLE` when no source could be read. The provenance
+`source_ids` on the emitted `decision_evidence_subject` FACT name only the
+sources that were actually consulted successfully — a failed read never
+manufactures a fact from a source that was unavailable.

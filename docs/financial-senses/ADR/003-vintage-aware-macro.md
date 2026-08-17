@@ -11,7 +11,10 @@ decision time, not revised future data.
 
 The macro provider always distinguishes `LATEST_REVISED_VALUE` from
 `VALUE_AVAILABLE_AS_OF_DECISION_TIME`, and returns `revision_delta` and
-`vintage_date`. Historical reads use ALFRED `realtime_end = decision_date`.
+`vintage_date`. Historical reads bound the FRED/ALFRED real-time period on BOTH
+ends (`realtime_start = decision_date`, `realtime_end = decision_date`) and pin
+`observation_end = decision_date` so only observations known as-of the decision
+date are returned.
 
 ## Consequences
 
