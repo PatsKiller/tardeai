@@ -566,6 +566,45 @@ def test_topology_artifact_paths_not_code():
     assert _is_artifact_path("/tmp/cio_worker.pid") is True
 
 
+def test_topology_interpreter_is_runtime_not_code():
+    """A venv python binary is runtime, never a CDQ-26 code-provenance violation."""
+    from scripts.lib.cio_topology_audit import (
+        DEPRECATED_MARKERS,
+        DEPRECATED_ROOTS,
+        _classify_path,
+        _code_paths_from_text,
+        _is_runtime_interpreter,
+    )
+    approved = ("/home/johnclaw/trade-ai-releases/portfolio-server",)
+    # Interpreter binary under the deprecated root → runtime, not code.
+    venv_py = "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python"
+    assert _is_runtime_interpreter(venv_py) is True
+    assert _is_runtime_interpreter("/usr/bin/python3") is True
+    assert _is_runtime_interpreter("/home/johnclaw/trade-ai-releases/portfolio-server/scripts/cio_worker.py") is False
+
+    # The interpreter must not appear in extracted code paths.
+    cmd = f"{venv_py} /home/johnclaw/trade-ai-releases/portfolio-server/scripts/portfolio_server.py"
+    code = _code_paths_from_text(cmd)
+    assert venv_py not in code
+    assert "/home/johnclaw/trade-ai-releases/portfolio-server/scripts/portfolio_server.py" in code
+
+    # Classifying the interpreter yields no violation, but the old-tree script does.
+    assert _classify_path(
+        venv_py,
+        expected="6f7009794e5178a7926f5b1c84ae16d0ee7b2bc6",
+        approved_roots=approved,
+        deprecated_roots=DEPRECATED_ROOTS,
+        deprecated_markers=DEPRECATED_MARKERS,
+    ) is None
+    assert _classify_path(
+        "/home/johnclaw/trade-ai-v12-rebuild/cio_worker.py",
+        expected="6f7009794e5178a7926f5b1c84ae16d0ee7b2bc6",
+        approved_roots=approved,
+        deprecated_roots=DEPRECATED_ROOTS,
+        deprecated_markers=DEPRECATED_MARKERS,
+    ) is not None
+
+
 def test_topology_old_tree_script_approved_cwd_fails():
     from scripts.lib.cio_topology_audit import (
         DEPRECATED_MARKERS,

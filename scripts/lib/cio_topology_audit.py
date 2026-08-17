@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 AUTHORITY = "READ_ONLY_ADVISORY"
-TOPO_VERSION = "cio_topology_audit_1.3.0"
+TOPO_VERSION = "cio_topology_audit_1.4.0"
 
 # The approved production release root. Deprecated development/worktree trees
 # must NOT be here — only the deployed CURRENT release tree is an approved root.
@@ -89,6 +89,28 @@ _ARTIFACT_SUFFIXES = (
 
 _SCRIPT_EXT = (".py", ".sh", ".bash", ".zsh", ".rb")
 
+# Python interpreter binaries are RUNTIME, not code ownership. A venv living
+# under a deprecated root (e.g. trade-ai-v12-rebuild/.venv) is shared runtime
+# infrastructure (interpreter + third-party deps only; CIO code is loaded from
+# the tree cwd/PYTHONPATH, never installed into the venv). It must NOT produce
+# a CDQ-26 code-provenance violation any more than /usr/bin/python3 would.
+_RUNTIME_INTERPRETER_RE = re.compile(
+    r"(?:^|/)(?:\.?venv|venv|env)/bin/python[\d.]*$|"
+    r"(?:^|/)bin/python[\d.]*$|"
+    r"(?:^|/)usr/bin/python[\d.]*$"
+)
+
+
+def _is_runtime_interpreter(path: str) -> bool:
+    """True when a path is a Python interpreter binary (runtime, not code)."""
+    p = (path or "").strip().rstrip("/")
+    if not p:
+        return False
+    name = Path(p).name.lower()
+    if not (name.startswith("python") or name == "python"):
+        return False
+    return bool(_RUNTIME_INTERPRETER_RE.search(p))
+
 
 def _normalize_name(name: str) -> str:
     """Normalize a unit/file name so hyphenated systemd unit names match the
@@ -111,8 +133,12 @@ def _looks_like_script(path: str) -> bool:
 
 
 def _code_paths_from_text(text: str) -> list[str]:
-    """Absolute executable/code paths in a command/schedule line (no artifacts)."""
-    return [p for p in _ABS_PATH_RE.findall(text or "") if not _is_artifact_path(p)]
+    """Absolute executable/code paths in a command/schedule line (no artifacts
+    or interpreter binaries)."""
+    return [
+        p for p in _ABS_PATH_RE.findall(text or "")
+        if not _is_artifact_path(p) and not _is_runtime_interpreter(p)
+    ]
 
 
 
@@ -253,7 +279,12 @@ def enumerate_processes() -> list[dict[str, Any]]:
         # though cwd looks fine, so we classify every code path independently.
         code_paths = _code_paths_from_text(cmd)
         argv0 = (cmd.split() or [""])[0]
-        if argv0.startswith("/") and argv0 not in code_paths and not _is_artifact_path(argv0):
+        if (
+            argv0.startswith("/")
+            and argv0 not in code_paths
+            and not _is_artifact_path(argv0)
+            and not _is_runtime_interpreter(argv0)
+        ):
             code_paths.insert(0, argv0)
         rec = resolve_checkout(cwd or (code_paths[0] if code_paths else ""))
         rec.update({
@@ -394,7 +425,7 @@ def _classify_path(
     extra: Optional[dict[str, Any]] = None,
 ) -> Optional[dict[str, Any]]:
     """Resolve + classify a single code-provenance path."""
-    if _is_artifact_path(path):
+    if _is_artifact_path(path) or _is_runtime_interpreter(path):
         return None
     resolved = resolve_checkout(path)
     return _classify(
@@ -423,8 +454,12 @@ def _validate_scheduled_entries(
     violations: list[dict[str, Any]] = []
     for e in entries:
         # Candidate paths to validate: cron checkout + all paths, or systemd
-        # ExecStart / WorkingDirectory. Artifacts are skipped (not code).
-        candidates = [c for c in key_fn(e) if c and not _is_artifact_path(c)]
+        # ExecStart / WorkingDirectory. Artifacts and interpreter binaries are
+        # skipped (not code).
+        candidates = [
+            c for c in key_fn(e)
+            if c and not _is_artifact_path(c) and not _is_runtime_interpreter(c)
+        ]
         flagged = False
         for c in candidates:
             if not c:
@@ -505,7 +540,7 @@ def audit_topology(
         candidates: list[str] = []
         for c in ([p.get("cwd") or ""] + list(p.get("code_paths") or [])):
             c = str(c or "").strip()
-            if c and c not in seen and not _is_artifact_path(c):
+            if c and c not in seen and not _is_artifact_path(c) and not _is_runtime_interpreter(c):
                 seen.add(c)
                 candidates.append(c)
         for c in candidates:
