@@ -144,23 +144,41 @@ def _deepseek_generate(
     operator_confirmed: bool = False,
     response_json: bool = False,
     max_tokens: int = 2048,
+    process_id: str | None = None,
 ):
     """Call exact DeepSeek V4 models via canonical client. Raises on failure — no Gemma fallback."""
     from lib.deepseek_client import DeepSeekError, chat
     from lib.llm_model_registry import RegistryError
 
     try:
+        from lib.provider_cost.context import cost_attribution
+    except Exception:  # pragma: no cover — fail-soft if FinOps module absent
+        from contextlib import contextmanager as _cm
+
+        @_cm
+        def cost_attribution(**_kw):
+            yield {}
+
+    try:
         policy = _resolve_deepseek_policy(lane, model)
         # max_tokens must be the process-capped effective limit from the caller
         mt = max(1, int(max_tokens or 2048))
-        resp = chat(
-            policy=policy,
-            prompt=prompt,
-            timeout=timeout,
-            operator_confirmed=operator_confirmed,
-            response_json=response_json,
-            max_tokens=mt,
-        )
+        with cost_attribution(
+            source_service="llm_lane",
+            source_lane=str(lane),
+            source_process=process_id,
+        ):
+            resp = chat(
+                policy=policy,
+                prompt=prompt,
+                timeout=timeout,
+                operator_confirmed=operator_confirmed,
+                response_json=response_json,
+                max_tokens=mt,
+                source_service="llm_lane",
+                source_lane=str(lane),
+                source_process=process_id,
+            )
     except (RegistryError, DeepSeekError) as e:
         code = getattr(e, "code", "POLICY_BLOCKED")
         raise RuntimeError(f"{code}: {e}") from e
@@ -253,6 +271,7 @@ def generate(
             operator_confirmed=operator_confirmed or bool((metadata or {}).get("operator_cost_confirmed")),
             response_json=response_json,
             max_tokens=max_tokens,
+            process_id=process_id,
         )
         provenance = {
             "usage": {k: v for k, v in usage.items() if k != "_tradeai"},

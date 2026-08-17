@@ -96,19 +96,21 @@ def instrument_material_wake(
     trace_appended = False
     if trace_on:
         try:
+            wake_d = wake if isinstance(wake, dict) else {}
             trace = build_trace(
                 trace_id=trace_id,
                 wake_id=wake_id,
                 agent="alex",
                 role=ROLE_MATERIAL_SCAN,
+                trigger=wake_d.get("trigger") or wake_d.get("category") or wake_d.get("wake_type"),
                 context_digest=(
                     envelope.get("provenance", {}).get("context_digest")
                     if isinstance(envelope, dict) else None
                 ),
                 decision_ids=list(decision_ids or []) or None,
             )
-            if trace_path is not None:
-                trace_appended = append_trace(trace, path=trace_path)
+            dest = Path(trace_path) if trace_path is not None else DEFAULT_TRACE_PATH
+            trace_appended = append_trace(trace, path=dest)
         except Exception as exc:  # noqa: BLE001 — fail-soft observability boundary
             errors.append(f"trace:{type(exc).__name__}")
             trace = None

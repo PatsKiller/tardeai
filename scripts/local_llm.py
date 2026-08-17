@@ -345,7 +345,20 @@ def _try_deepseek(prompt: str, timeout: int = 120) -> str | None:
         if not available(lane):
             print(f"  [local-llm] DeepSeek Flash not available — skipping")
             return None
-        result = ds_generate(prompt, lane=lane, timeout=timeout)
+        try:
+            from lib.provider_cost.context import cost_attribution
+        except Exception:
+            from contextlib import contextmanager as _cm
+
+            @_cm
+            def cost_attribution(**_kw):
+                yield {}
+        with cost_attribution(
+            source_service="local_llm._try_deepseek",
+            source_process="local_llm",
+            source_lane=lane,
+        ):
+            result = ds_generate(prompt, lane=lane, timeout=timeout, process_id="local_llm")
         if result and len(result.strip()) > 10:
             print(f"  [local-llm] DeepSeek Flash OK — {len(result)} chars")
             return result.strip()

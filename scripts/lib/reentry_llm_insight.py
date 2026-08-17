@@ -67,14 +67,30 @@ def _call_deepseek_flash(
             }
 
         started = time.time()
-        resp = chat(
-            policy="FAST",
-            prompt=prompt,
-            timeout=timeout,
-            max_tokens=max_tokens,
-            thinking="disabled",
-            response_json=False,  # parse manually for robustness
-        )
+        try:
+            from lib.provider_cost.context import cost_attribution
+        except Exception:  # pragma: no cover
+            from contextlib import contextmanager as _cm
+
+            @_cm
+            def cost_attribution(**_kw):
+                yield {}
+        with cost_attribution(
+            source_service="reentry_llm_insight",
+            source_process="reentry_llm_insight",
+            source_lane="FAST",
+        ):
+            resp = chat(
+                policy="FAST",
+                prompt=prompt,
+                timeout=timeout,
+                max_tokens=max_tokens,
+                thinking="disabled",
+                response_json=False,  # parse manually for robustness
+                source_service="reentry_llm_insight",
+                source_process="reentry_llm_insight",
+                source_lane="FAST",
+            )
         latency = int((time.time() - started) * 1000)
 
         if not resp.ok or not resp.content:

@@ -1,0 +1,10 @@
+[Unit]
+Description=Nightly CIO reflection candidate generation (READ_ONLY_ADVISORY)
+
+[Timer]
+OnCalendar=*-*-* 21:50:00
+Persistent=true
+Unit=tradeai-cio-nightly-reflection.service
+
+[Install]
+WantedBy=timers.target

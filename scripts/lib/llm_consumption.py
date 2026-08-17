@@ -978,13 +978,28 @@ def gate_and_generate(
     # Billable only if DeepSeek client reports request_sent / possibly_billable
     billable_attempt = False
     try:
-        result = llm_lane.generate(
-            prompt, lane=lane, timeout=timeout, model=model, _skip_consumption=True,
-            operator_confirmed=operator_confirmed or bool(meta.get("operator_cost_confirmed")),
-            response_json=response_json or bool(output_schema_id),
-            metadata=meta, return_provenance=True,
-            max_tokens=effective_out,
-        )
+        try:
+            from lib.provider_cost.context import cost_attribution
+        except Exception:  # pragma: no cover
+            from contextlib import contextmanager as _cm
+
+            @_cm
+            def cost_attribution(**_kw):
+                yield {}
+        with cost_attribution(
+            source_service="llm_consumption.gate_and_generate",
+            source_process=process_id,
+            source_lane=lane,
+            reservation_id=str(reservation_id) if reservation_id is not None else None,
+        ):
+            result = llm_lane.generate(
+                prompt, lane=lane, timeout=timeout, model=model, _skip_consumption=True,
+                operator_confirmed=operator_confirmed or bool(meta.get("operator_cost_confirmed")),
+                response_json=response_json or bool(output_schema_id),
+                metadata=meta, return_provenance=True,
+                max_tokens=effective_out,
+                process_id=process_id,
+            )
         if isinstance(result, tuple):
             text, prov = result[0], (result[1] or {})
         else:

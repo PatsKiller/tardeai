@@ -1,0 +1,15 @@
+[Unit]
+Description=Trade AI CIO nightly reflection (READ_ONLY_ADVISORY, no auto-promote)
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
+Environment=MEMORY_BEHAVIOR_INFLUENCE=0
+Environment=PYTHONPATH=%h/trade-ai-releases/portfolio-server/CURRENT
+ExecStart=%h/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python %h/trade-ai-releases/portfolio-server/CURRENT/scripts/lib/cio_nightly_reflection.py
+Nice=10
+# Observation only — never ratifies, never mutates production policy.
+
+[Install]
+WantedBy=default.target

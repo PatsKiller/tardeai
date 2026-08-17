@@ -58,6 +58,20 @@ _REQUIRED_TOP = (
     "status",
 )
 
+# Reconstructable lineage for completed traces. Values may be None; keys must exist.
+LINEAGE_LINKS = (
+    "wake_id",
+    "trigger",
+    "context",
+    "tool_receipts",
+    "evidence",
+    "decision",
+    "notification",
+    "operator",
+    "outcome",
+    "learning",
+)
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -185,7 +199,24 @@ def close_trace(
     for k, v in extra.items():
         if v is not None:
             out[k] = v
+    return ensure_lineage_fields(out)
+
+
+def ensure_lineage_fields(trace: dict[str, Any]) -> dict[str, Any]:
+    """Guarantee lineage keys exist on a completed trace (values may be None)."""
+    out = dict(trace)
+    for key in LINEAGE_LINKS:
+        if key not in out:
+            out[key] = None
     return out
+
+
+def validate_lineage(trace: Any) -> tuple[bool, list[str]]:
+    """Lineage completeness for explainability — no chain-of-thought required."""
+    if not isinstance(trace, dict):
+        return False, ["trace is not a dict"]
+    missing = [k for k in LINEAGE_LINKS if k not in trace]
+    return (len(missing) == 0, missing)
 
 
 def _read_rows(path: Path) -> list[dict[str, Any]]:

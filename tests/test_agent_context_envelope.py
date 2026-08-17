@@ -230,6 +230,14 @@ def test_redact_secret_values():
     assert out["note"] == "[REDACTED]"
 
 
+def test_redact_preserves_request_id_hex():
+    rid = "deadbeefdeadbeefdeadbeefdeadbeef"
+    out = redact_secrets({"request_id": rid, "trace_id": "tr_" + rid, "api_key": "sk-hidden-xxxxx"})
+    assert out["request_id"] == rid
+    assert out["trace_id"] == "tr_" + rid
+    assert out["api_key"] == "[REDACTED]"
+
+
 def test_redact_is_non_mutating():
     v = {"api_key": "sk-1234567890"}
     redact_secrets(v)

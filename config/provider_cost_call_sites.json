@@ -1,7 +1,7 @@
 {
-  "version": "1.0",
+  "version": "1.1",
   "authority": "READ_ONLY_ADVISORY",
-  "note": "Static inventory of paid-model call sites. UNKNOWN repository sites must be 0.",
+  "note": "Static inventory of paid-model call sites. ACTIVE repository-controlled paid paths must be CANONICAL_INSTRUMENTED. UNKNOWN/KNOWN_BYPASS/INSTRUMENTED_BUT_INCOMPLETE must be 0.",
   "sites": [
     {
       "call_site_id": "deepseek_client.chat",
@@ -11,7 +11,7 @@
       "key_source": "deepseek_tradeai env",
       "instrumented": "CANONICAL_INSTRUMENTED",
       "reservation_used": "via llm_consumption.gate_and_generate",
-      "notes": "canonical wrapper; emit_paid_call hooked fail-soft"
+      "notes": "canonical wrapper; success + possibly_billable attempts emit once"
     },
     {
       "call_site_id": "llm_consumption.gate_and_generate",
@@ -19,47 +19,67 @@
       "runtime_service": "watch/hermes/advisory",
       "provider": "deepseek",
       "instrumented": "CANONICAL_INSTRUMENTED",
-      "reservation_used": true
+      "reservation_used": true,
+      "notes": "wrapper → llm_lane → deepseek_client.chat; attribution context only; no second emit"
     },
     {
       "call_site_id": "cio_governed_model_bridge",
       "file": "scripts/lib/cio_governed_model_bridge.py",
       "runtime_service": "cio-governed-bridge:8766",
       "provider": "deepseek",
-      "instrumented": "INSTRUMENTED_BUT_INCOMPLETE",
-      "notes": "reserves/settles; historical log_call after return was dead"
+      "instrumented": "CANONICAL_INSTRUMENTED",
+      "notes": "direct HTTP (tools/tool_choice); emits own event; does not call chat(); log_call restored before return"
     },
     {
       "call_site_id": "local_llm._try_deepseek",
       "file": "scripts/local_llm.py",
       "provider": "deepseek",
-      "instrumented": "KNOWN_BYPASS",
-      "reservation_used": false
+      "instrumented": "CANONICAL_INSTRUMENTED",
+      "reservation_used": false,
+      "notes": "wrapper → llm_lane → deepseek_client.chat; attribution context only"
     },
     {
       "call_site_id": "blind_review_runner",
       "file": "scripts/blind_review_runner.py",
       "provider": "deepseek",
-      "instrumented": "KNOWN_BYPASS"
+      "instrumented": "CANONICAL_INSTRUMENTED",
+      "notes": "wrapper → llm_lane → deepseek_client.chat; attribution context only"
     },
     {
       "call_site_id": "reentry_llm_insight",
       "file": "scripts/lib/reentry_llm_insight.py",
       "provider": "deepseek",
-      "instrumented": "KNOWN_BYPASS"
+      "instrumented": "CANONICAL_INSTRUMENTED",
+      "notes": "wrapper → deepseek_client.chat; attribution context only"
     },
     {
       "call_site_id": "defense_oversight_urllib",
       "file": "scripts/defense_oversight.py",
       "provider": "deepseek",
-      "instrumented": "KNOWN_BYPASS"
+      "instrumented": "CANONICAL_INSTRUMENTED",
+      "notes": "direct urllib DeepSeek seat; emits own event; does not call chat()"
+    },
+    {
+      "call_site_id": "llm_lane.in_repo",
+      "file": "scripts/llm_lane.py",
+      "provider": "deepseek",
+      "instrumented": "CANONICAL_INSTRUMENTED",
+      "notes": "wrapper → deepseek_client.chat; GET /v1/models is NON_BILLABLE"
     },
     {
       "call_site_id": "llm_lane.foreign_worktree",
       "file": "tradeai-wt-cursor-guardrails/scripts/llm_lane.py",
+      "runtime_service": "tradeai-flash-*.timer",
       "provider": "deepseek",
-      "instrumented": "KNOWN_BYPASS",
-      "notes": "outside this repo tree; systemd flash timers may still point here"
+      "instrumented": "THIRD_PARTY_TOOL",
+      "notes": "outside this repo tree; flash timers may still ExecStart the foreign worktree. Not repository-controlled."
+    },
+    {
+      "call_site_id": "deepseek_client.list_models",
+      "file": "scripts/lib/deepseek_client.py",
+      "provider": "deepseek",
+      "instrumented": "NON_BILLABLE",
+      "notes": "GET /v1/models — not a chat completion"
     },
     {
       "call_site_id": "openclaw.deepseek",

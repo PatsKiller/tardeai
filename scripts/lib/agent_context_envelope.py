@@ -76,8 +76,20 @@ _SECRET_KEY_RE = re.compile(
 )
 _SECRET_VALUE_RE = re.compile(
     r"(?i)(sk-[a-z0-9]{8,}|ghp_[a-z0-9]{10,}|xox[baprs]-[a-z0-9-]{8,}|"
-    r"AKIA[0-9A-Z]{16}|[0-9a-f]{32,})"
+    r"AKIA[0-9A-Z]{16})"
 )
+# Identity / join keys must survive redaction (UUIDs and 32-hex ids are not secrets).
+_IDENTITY_KEYS = frozenset({
+    "request_id",
+    "client_request_id",
+    "provider_request_id",
+    "trace_id",
+    "wake_id",
+    "event_id",
+    "reservation_id",
+    "run_id",
+    "parent_trace_id",
+})
 _REDACTED = "[REDACTED]"
 
 
@@ -94,22 +106,29 @@ def sha256_hex(text: str, n: int = 32) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:n]
 
 
-def redact_secrets(value: Any) -> Any:
+def redact_secrets(value: Any, *, _key: str | None = None) -> Any:
     """Recursively redact credential-shaped keys and values.
 
     Never mutates the input. Returns a deep copy with secrets removed.
+    Identity fields (request_id / trace_id / wake_id / …) are preserved even
+    when their values are 32-hex UUIDs — those are join keys, not secrets.
     """
     if isinstance(value, dict):
         out: dict[str, Any] = {}
         for k, v in value.items():
-            if _SECRET_KEY_RE.search(str(k)):
+            key_l = str(k).lower()
+            if key_l in _IDENTITY_KEYS:
+                out[str(k)] = redact_secrets(v, _key=key_l)
+            elif _SECRET_KEY_RE.search(str(k)):
                 out[str(k)] = _REDACTED
             else:
-                out[str(k)] = redact_secrets(v)
+                out[str(k)] = redact_secrets(v, _key=str(k))
         return out
     if isinstance(value, list):
-        return [redact_secrets(item) for item in value]
+        return [redact_secrets(item, _key=_key) for item in value]
     if isinstance(value, str):
+        if _key and str(_key).lower() in _IDENTITY_KEYS:
+            return value
         if _SECRET_KEY_RE.search(value) or _SECRET_VALUE_RE.search(value):
             return _REDACTED
         return value
