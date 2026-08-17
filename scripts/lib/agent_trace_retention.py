@@ -60,12 +60,17 @@ def _row_ts(record: dict[str, Any]) -> float:
     return 0.0
 
 
-def _read_rows(path: Path) -> list[tuple[str, dict[str, Any]]]:
-    """Return (raw_line, parsed_dict) pairs for every VALID JSON line, in file
-    order. Invalid lines are dropped (never silently preserved as corrupt)."""
+def _read_rows(path: Path) -> tuple[list[tuple[str, dict[str, Any]]], int]:
+    """Return (valid_rows, invalid_count) in file order.
+
+    Valid rows are (raw_line, parsed_dict) pairs for every valid JSON-object
+    line. Invalid lines (malformed JSON or non-object JSON) are dropped but
+    COUNTED so the retention receipt can report honest discard accounting.
+    """
     out: list[tuple[str, dict[str, Any]]] = []
+    invalid = 0
     if not path.exists():
-        return out
+        return out, 0
     try:
         for line in path.read_text(encoding="utf-8").splitlines():
             line = line.strip()
@@ -74,12 +79,15 @@ def _read_rows(path: Path) -> list[tuple[str, dict[str, Any]]]:
             try:
                 rec = json.loads(line)
             except json.JSONDecodeError:
+                invalid += 1
                 continue
             if isinstance(rec, dict):
                 out.append((line, rec))
+            else:
+                invalid += 1
     except OSError:
-        return out
-    return out
+        return out, invalid
+    return out, invalid
 
 
 def _is_governed(path: Path) -> bool:
@@ -110,28 +118,34 @@ def _select_newest(
     max_age_days: Optional[float],
     max_bytes: Optional[int],
     max_rows: Optional[int],
+    now: Optional[float] = None,
 ) -> list[tuple[str, dict[str, Any]]]:
     """Select the newest VALID rows subject to age/byte/row budgets.
 
     Rows are ordered newest-first (by embedded timestamp when present, else by
-    file order — later lines are treated as newer). Age is measured relative to
-    the NEWEST row so a fully-stale corpus still retains its most recent rows.
+    file order — later lines are treated as newer). Age is measured against the
+    CURRENT WALL CLOCK (``now``), not the newest record, so a file that stops
+    receiving traces still ages out its stale records with real time. A record
+    with no usable timestamp cannot prove it is fresh, so under an active age
+    policy it is treated as age-expired (never allowed to live forever).
     """
     # Newest-first: higher timestamp wins; ties keep later file position first.
     indexed = list(enumerate(rows))
     indexed.sort(key=lambda e: (_row_ts(e[1][1]), e[0]), reverse=True)
 
-    newest_ts = _row_ts(indexed[0][1][1]) if indexed else 0.0
+    now = _now_epoch() if now is None else float(now)
     cutoff = 0.0
-    if max_age_days is not None and max_age_days > 0 and newest_ts > 0.0:
-        cutoff = newest_ts - (max_age_days * 86400.0)
+    age_active = max_age_days is not None and max_age_days > 0
+    if age_active:
+        cutoff = now - (max_age_days * 86400.0)
 
     kept: list[tuple[str, dict[str, Any]]] = []
     used_bytes = 0
     for _, (raw, rec) in indexed:
-        if max_age_days is not None and max_age_days > 0:
+        if age_active:
             ts = _row_ts(rec)
-            if ts > 0.0 and ts < cutoff:
+            # No timestamp (ts <= 0) cannot satisfy an active age policy.
+            if ts <= 0.0 or ts < cutoff:
                 continue
         if max_rows is not None and len(kept) >= max_rows:
             break
@@ -151,13 +165,15 @@ def enforce_trace_retention(
     max_rows: Optional[int] = None,
     dry_run: bool = True,
     allow_unlisted: bool = False,
+    now: Optional[float] = None,
 ) -> dict[str, Any]:
     """Enforce bounded retention on one governed trace path.
 
     Returns a report. Defaults to dry-run (no write). Fails closed (``ok=False``)
     when the path is not a governed trace path and ``allow_unlisted`` is False,
-    so this can never delete an arbitrary file. Invalid JSON lines are dropped;
-    the newest valid rows are preserved.
+    so this can never delete an arbitrary file. Invalid JSON lines are dropped
+    and counted; the newest valid rows (relative to the current wall clock) are
+    preserved. ``now`` is an injectable UTC epoch for deterministic tests.
     """
     p = Path(path)
     if not allow_unlisted and not _is_governed(p):
@@ -167,15 +183,21 @@ def enforce_trace_retention(
             "path": str(p),
             "dry_run": dry_run,
             "removed": 0,
+            "removed_total": 0,
         }
 
-    rows = _read_rows(p)
-    if not rows:
+    rows, invalid_count = _read_rows(p)
+    if not rows and invalid_count == 0:
         return {
             "ok": True,
             "path": str(p),
             "dry_run": dry_run,
             "removed": 0,
+            "removed_valid": 0,
+            "removed_invalid": 0,
+            "removed_total": 0,
+            "valid_rows_before": 0,
+            "invalid_rows": 0,
             "rotated": False,
             "kept": 0,
             "bytes_before": p.stat().st_size if p.exists() else 0,
@@ -184,11 +206,16 @@ def enforce_trace_retention(
 
     bytes_before = p.stat().st_size if p.exists() else 0
     kept = _select_newest(
-        rows, max_age_days=max_age_days, max_bytes=max_bytes, max_rows=max_rows
+        rows,
+        max_age_days=max_age_days,
+        max_bytes=max_bytes,
+        max_rows=max_rows,
+        now=now,
     )
-    removed = len(rows) - len(kept)
+    removed_valid = len(rows) - len(kept)
+    removed_total = removed_valid + invalid_count
     rotated = False
-    if removed > 0 and not dry_run:
+    if removed_valid > 0 and not dry_run:
         _write_atomic(p, [raw for raw, _ in kept])
         rotated = True
 
@@ -196,7 +223,12 @@ def enforce_trace_retention(
         "ok": True,
         "path": str(p),
         "dry_run": dry_run,
-        "removed": removed,
+        "removed": removed_total,
+        "removed_valid": removed_valid,
+        "removed_invalid": invalid_count,
+        "removed_total": removed_total,
+        "valid_rows_before": len(rows),
+        "invalid_rows": invalid_count,
         "rotated": rotated,
         "kept": len(kept),
         "bytes_before": bytes_before,
