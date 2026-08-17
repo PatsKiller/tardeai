@@ -58,7 +58,7 @@ def test_validate_source_type():
     assert validate_source_type(None) is not None
 
 
-def test_model_inference_cannot_back_fact():
+def test_source_governance_can_back_fact_rules():
     assert not can_back_fact(SOURCE_MODEL_INFERENCE)
     assert not can_back_fact(SOURCE_MEMORY_CONTEXT)
     assert can_back_fact(SOURCE_PRIMARY_REGULATORY)
