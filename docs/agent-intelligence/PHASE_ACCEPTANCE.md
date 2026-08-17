@@ -100,8 +100,13 @@ Notable honest caveats (not "PASS"):
   packages installed, no external credentials); local test doubles are used.
 - **Behavior influence is NOT_PROMOTED** by design; wake traces carry no
   decision payloads, so shadow comparison is context-level, not notification-level.
-- **AIF-24 external-content trust is PARTIAL**: the UNTRUSTED_DATA envelope is
-  structural typing + delimiting, not a model-level prompt-injection defense.
+- **AIF-24 external-content trust is PARTIAL**: the `UNTRUSTED_DATA` envelope +
+  partition utilities exist (`agent_untrusted_data.py`), but they are NOT
+  automatically enforced by `agent_context_envelope.py` or
+  `mcp_read_only_gateway.py`; this is structural typing, not a model-level
+  prompt-injection defense, and external calendar/documents providers remain
+  `NOT_CONFIGURED`. No claim is made that all external content is automatically
+  wrapped.
 - **AIF exact-head CI** is authored but its green run on the final PR head is
   still pending at the time of this writing (see IMPLEMENTATION_LOG).
 - Pre-existing `test_agent_runtime_host_proof_wrapper.py` failures are unrelated

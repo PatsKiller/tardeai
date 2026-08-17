@@ -57,9 +57,11 @@ memory governance, and redaction in the context envelope / traces.
 1. **Prompt-injection text still reaches model context.** The gateway blocks
    mutation, and external content is now structurally typed as `UNTRUSTED_DATA`
    (`agent_untrusted_data.py`: explicit envelope + delimiter + partition guard
-   that keeps untrusted data out of instruction sections). This is a structural
-   boundary, not a model-level prompt-injection defense; the injected text is
-   still visible to the model. AIF-24 is therefore `PARTIAL`, not `PASS`.
+   that keeps untrusted data out of instruction sections). This utility is NOT
+   automatically wired through `agent_context_envelope.py` or
+   `mcp_read_only_gateway.py`, so it is a structural boundary, not a complete
+   model-level prompt-injection defense; the injected text is still visible to
+   the model. AIF-24 is therefore `PARTIAL`, not `PASS`.
 2. **Regex redaction is not exhaustive** for novel token formats; the real
    backstop is zero egress and zero secrets held, not the regex.
 3. **No replay nonce / idempotency key.** Reads are safe today, but before any

@@ -230,7 +230,22 @@ remaining risks, and deployment/rollback status.
 - **tests run**: full AIF manifest 383 passed locally (see final result packet for exact count); targeted regressions per finding.
 - **remaining risks**: AIF exact-head CI authored but its green run on the final PR head pending; Mem0 + external MCP NOT_CONFIGURED; behavior influence NOT_PROMOTED; AIF-24 PARTIAL.
 
+## True Final Exact-Head Integrity Remediation (narrow pass)
+
+- **date/time**: 2026-08-17 (second exact-head review remediation)
+- **base SHA**: `968dafb6beda21aa11aa4cedeb7c9c3920c3fec4` · **start head**: `26c6fa71a6c146e35e9dc613c08a02ae61446d06`
+- **scope**: close the 5 remaining P1s + P2s only; NOT a redesign; no merge/deploy/behavior-influence; READ_ONLY_ADVISORY; no CRLF mass normalization.
+- **P1 fixes**:
+  - **Real dual-path decision shadow** — `shadow_compare_wakes()` now invokes a `decision_evaluator(wake, context, mode)` twice (baseline + augmented contexts); a copied/same-object result can no longer satisfy decision evidence; each packet carries baseline/augmented context + decision digests, `decision_id`, `evaluator_version`, `comparison_completed`; `dual_path_executed` is a new fail-closed lineage marker required by `promotion_gate`; `critical_memory_false_positives` is derived from real baseline-vs-augmented diffs and the gate also checks the derived value (not only external metrics).
+  - **MCP true timeout** — `_call_with_timeout()` now runs the provider on a daemon thread and returns at the deadline without waiting for executor shutdown; measured-elapsed latency is asserted.
+  - **MCP default rate governor structural** — `call_mcp_tool(governor=None)` now uses a shared `_DEFAULT_GOVERNOR`; governance can no longer be bypassed by omitting the governor; `reset_default_governor()`/`get_default_governor()` added; `agent_perf_bench.benchmark()` resets the governor for determinism.
+  - **Wall-clock trace retention** — `agent_trace_retention.py` now ages rows against `now` (injectable) instead of the newest record; no-timestamp rows cannot live forever under an active age policy; receipt exposes `removed_valid`/`removed_invalid`/`removed_total`/`valid_rows_before`/`invalid_rows`.
+  - **Forced memory admission privilege fields** — `LocalTestMemoryProvider.add_candidate()` now FORCES `authority_class=NON_AUTHORITATIVE_CONTEXT` and recomputes `status` via the canonical `admit_status()` (caller ACTIVE on an inferred type is downgraded to CANDIDATE; lifecycle downgrades preserved); `search()` applies defense-in-depth `_retrievable()` filtering (authority/provenance/forbidden-subject).
+  - **AIF CI watches the production hook** — `agent-intelligence-foundation-ci.yml` push/pull paths now include `scripts/lib/cio_material_scan.py`.
+- **P2 fixes**: retention invalid-row accounting (above); AIF-24 stays PARTIAL and docs now state the UNTRUSTED_DATA utility is NOT auto-wired through the context envelope / MCP gateway; CRLF executable/shebang scan clean (0 executable risks; 71 changed files carry CRLF, deferred to a separate mechanical PR).
+- **tests run**: full AIF manifest 409 passed locally (23 files); targeted CIO/release/no-broker-write regressions green; no executable/shebang CRLF risk.
+
 ## Cross-phase notes
 
-- **Total AIF test manifest** (pinned in `agent-intelligence-foundation-ci.yml`): 383 tests across 23 files after remediation.
+- **Total AIF test manifest** (pinned in `agent-intelligence-foundation-ci.yml`): 409 tests across 23 files after the true-final remediation.
 - **Known unrelated failures** (carried, not in this program's scope): 8 × `tests/test_agent_runtime_host_proof_wrapper.py` (credential-handoff subsystem) — pre-existing, environment-dependent, proven to also fail on base `968dafb6`.
