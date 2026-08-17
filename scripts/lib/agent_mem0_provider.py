@@ -3,23 +3,19 @@
 READ_ONLY_ADVISORY. The `mem0` package is NOT installed and MUST NOT be
 installed in this tree. This module provides a fail-soft adapter
 (`Mem0MemoryProvider`) that reports NOT_CONFIGURED honestly, plus the due-
-diligence record and conservative feature flags for the shadow pilot.
+diligence record.
 
-Memory is shadow-only today: MEMORY_SHADOW=1, MEMORY_BEHAVIOR_INFLUENCE=0.
+Feature flags are NOT declared here. The single source of truth for runtime
+activation is ``scripts/lib/agent_feature_flags.py`` (conservative defaults:
+MEMORY_PROVIDER="null", MEMORY_SHADOW=0, MEMORY_BEHAVIOR_INFLUENCE=0). This
+module only carries Mem0 capability / due-diligence metadata; it must never
+expose contradictory runtime activation defaults.
 """
 from __future__ import annotations
 
 from typing import Any, Optional
 
 from scripts.lib.agent_context_envelope import RETRIEVAL_NOT_CONFIGURED
-
-# ── Feature flags — conservative defaults ─────────────────────────────────
-# Shadow mode records memory but never lets it influence advisory synthesis.
-MEMORY_SHADOW = 1
-MEMORY_BEHAVIOR_INFLUENCE = 0
-# "local" selects the in-process LocalTestMemoryProvider test double; only switch
-# to "mem0" once a self-hosted, reviewed backend is wired and shadow-accepted.
-MEMORY_PROVIDER = "local"
 
 _PROVIDER_NAME = "Mem0MemoryProvider"
 _NOT_CONFIGURED = "NOT_CONFIGURED"

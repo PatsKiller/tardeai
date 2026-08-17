@@ -383,3 +383,40 @@ def test_get_context_with_local_provider_accepts_plan_id():
     assert e["episodic_memory"]["retrieval_status"] == RETRIEVAL_OK
     assert e["episodic_memory"]["records"]
 
+
+def test_get_context_with_mem0_preserves_not_configured():
+    """NOT_CONFIGURED must never be silently converted to EMPTY.
+
+    Regression: _retrieve_episodic treated a truthy health dict as healthy,
+    ignored the provider's retrieval_status, and mapped zero records to EMPTY —
+    making "memory not configured" look like "memory consulted, empty".
+    """
+    from scripts.lib.agent_mem0_provider import Mem0MemoryProvider  # noqa: E402
+
+    e = get_context_for_agent(
+        agent="alex",
+        wake={"wake_id": "w1"},
+        memory_provider=Mem0MemoryProvider(),
+    )
+    assert e["episodic_memory"]["retrieval_status"] == RETRIEVAL_NOT_CONFIGURED
+    assert e["episodic_memory"]["records"] == []
+
+
+def test_get_context_with_mem0_marks_not_consulted():
+    from scripts.lib.agent_context_integration import (  # noqa: E402
+        MARKER_MEMORY_NOT_CONSULTED,
+        record_retrieval_before_reasoning,
+    )
+    from scripts.lib.agent_mem0_provider import Mem0MemoryProvider  # noqa: E402
+
+    e = get_context_for_agent(
+        agent="alex",
+        wake={"wake_id": "w1"},
+        memory_provider=Mem0MemoryProvider(),
+    )
+    audited = record_retrieval_before_reasoning(e)
+    mem = audited["episodic_memory"]
+    assert mem["retrieval_marker"] == MARKER_MEMORY_NOT_CONSULTED
+    assert audited["retrieval_audit"]["full_context_available"] is False
+
+

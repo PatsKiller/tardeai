@@ -16,17 +16,22 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import pytest  # noqa: E402
 
 from scripts.lib.agent_learning_linkage import (  # noqa: E402
-    ADMIT_STATUS_CANDIDATE,
     AUTHORITY_READ_ONLY_ADVISORY,
     FEEDBACK_NOT_OUTCOME,
     LINEAGE_STEPS,
     MEMORY_STATUS_CANDIDATE,
+    admit_memory_candidate,
     build_lineage,
     classify_feedback_vs_outcome,
     is_measured_outcome,
     lineage_digest,
     link_memory_refs,
     propose_memory_write,
+)
+from scripts.lib.agent_memory_governance import (  # noqa: E402
+    STATUS_ACTIVE,
+    STATUS_CANDIDATE,
+    STATUS_REJECT,
 )
 
 
@@ -139,7 +144,7 @@ def test_propose_memory_write_returns_candidate_with_provenance():
         decision_id="dec_schd",
     )
     assert cand["status"] == MEMORY_STATUS_CANDIDATE
-    assert cand["admit_status"] == ADMIT_STATUS_CANDIDATE
+    assert cand["admit_status"] == STATUS_CANDIDATE
     assert cand["memory_type"] == "lesson"
     assert "provenance" in cand
     assert cand["provenance"]["authority"] == AUTHORITY_READ_ONLY_ADVISORY
@@ -207,3 +212,117 @@ def test_link_memory_refs_is_non_mutating():
     original = dict(record)
     link_memory_refs(record, wake_id="w1", decision_id="dec_1")
     assert record == original
+
+
+# ── Provenance / admission closure (remediation) ──────────────────────────
+
+
+def test_propose_memory_write_no_provenance_is_rejected():
+    cand = propose_memory_write(
+        "reflect",
+        memory_type="lesson",
+        content="content",
+        source_event_ids=[],
+        source_refs=[],
+    )
+    assert cand["status"] == STATUS_REJECT
+    assert cand["admit_status"] == STATUS_REJECT
+    assert cand["retrievable"] is False
+    assert "reject_reason" in cand
+
+
+def test_propose_memory_write_forbidden_subject_is_rejected():
+    cand = propose_memory_write(
+        "reflect",
+        memory_type="lesson",
+        content="cash is $1,000,000",
+        subject="cash",
+        source_event_ids=["evt_1"],
+    )
+    assert cand["status"] == STATUS_REJECT
+    assert cand["retrievable"] is False
+
+
+def test_propose_memory_write_valid_is_candidate_retrievable():
+    cand = propose_memory_write(
+        "reflect",
+        memory_type="lesson",
+        content="content",
+        source_event_ids=["evt_1"],
+    )
+    assert cand["status"] == STATUS_CANDIDATE
+    assert cand["retrievable"] is True
+
+
+def test_admit_memory_candidate_reuses_governance_vocabulary():
+    cand = propose_memory_write(
+        "reflect",
+        memory_type="OPERATOR_EXPLICIT_PREFERENCE",
+        content="operator prefers SCHD",
+        source_event_ids=["evt_1"],
+        subject="income anchor",
+    )
+    admitted = admit_memory_candidate(cand, admit=True)
+    # Explicit operator statement admits ACTIVE (governance vocabulary), not a
+    # second "ADMITTED" status.
+    assert admitted["status"] == STATUS_ACTIVE
+    assert admitted["admit_status"] == STATUS_ACTIVE
+    assert admitted["retrievable"] is True
+
+
+def test_admit_memory_candidate_inferred_stays_candidate():
+    cand = propose_memory_write(
+        "reflect",
+        memory_type="OPERATOR_INFERRED_PREFERENCE",
+        content="seems to like SCHD",
+        source_event_ids=["evt_1"],
+    )
+    admitted = admit_memory_candidate(cand, admit=True)
+    assert admitted["status"] == STATUS_CANDIDATE
+
+
+def test_admit_memory_candidate_no_provenance_rejected_even_on_admit():
+    cand = propose_memory_write(
+        "reflect",
+        memory_type="OPERATOR_EXPLICIT_PREFERENCE",
+        content="operator prefers SCHD",
+        source_event_ids=[],
+        source_refs=[],
+    )
+    admitted = admit_memory_candidate(cand, admit=True)
+    assert admitted["status"] == STATUS_REJECT
+    assert admitted["retrievable"] is False
+
+
+def test_admit_memory_candidate_forbidden_subject_rejected():
+    cand = propose_memory_write(
+        "reflect",
+        memory_type="OPERATOR_EXPLICIT_PREFERENCE",
+        content="cash is $1,000,000",
+        source_event_ids=["evt_1"],
+        subject="cash",
+    )
+    # Even a valid provenance + explicit admit cannot admit a forbidden subject.
+    admitted = admit_memory_candidate(
+        {
+            "memory_type": "OPERATOR_EXPLICIT_PREFERENCE",
+            "subject": "cash",
+            "content": "cash is $1,000,000",
+            "source_event_ids": ["evt_1"],
+        },
+        admit=True,
+    )
+    assert admitted["status"] == STATUS_REJECT
+
+
+def test_admit_memory_candidate_explicit_reject_is_reject():
+    cand = propose_memory_write(
+        "reflect",
+        memory_type="OPERATOR_EXPLICIT_PREFERENCE",
+        content="operator prefers SCHD",
+        source_event_ids=["evt_1"],
+    )
+    rejected = admit_memory_candidate(cand, admit=False, reason="operator changed mind")
+    assert rejected["status"] == STATUS_REJECT
+    assert rejected["retrievable"] is False
+

@@ -28,6 +28,13 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from scripts.lib.agent_context_envelope import canonical_json, sha256_hex
+from scripts.lib.agent_memory_governance import (
+    STATUS_ACTIVE,
+    STATUS_CANDIDATE,
+    STATUS_REJECT,
+    admit_status,
+    is_forbidden_authoritative,
+)
 
 # ── Lineage model (ordered) ────────────────────────────────────────────────
 LINEAGE_STEPS = (
@@ -47,10 +54,10 @@ LINEAGE_STEPS = (
 AUTHORITY_READ_ONLY_ADVISORY = "READ_ONLY_ADVISORY"
 
 # ── Memory-candidate admission states ──────────────────────────────────────
-MEMORY_STATUS_CANDIDATE = "CANDIDATE"
-ADMIT_STATUS_CANDIDATE = "CANDIDATE"
-ADMIT_STATUS_ADMITTED = "ADMITTED"
-ADMIT_STATUS_REJECTED = "REJECTED"
+# The learning linkage reuses the canonical memory-governance vocabulary
+# (CANDIDATE / ACTIVE / REJECT). There is no second, incompatible admission
+# status vocabulary here.
+MEMORY_STATUS_CANDIDATE = STATUS_CANDIDATE
 
 # ── Feedback-vs-outcome invariant ──────────────────────────────────────────
 # Operator dispositions. These are FEEDBACK, NEVER investment outcomes.
@@ -187,6 +194,7 @@ def propose_memory_write(
     content: Any,
     source_event_ids: Any,
     source_refs: Any = None,
+    subject: Optional[str] = None,
     wake_id: Optional[str] = None,
     trace_id: Optional[str] = None,
     decision_id: Optional[str] = None,
@@ -195,9 +203,16 @@ def propose_memory_write(
     """Propose a memory CANDIDATE from a reflection. Never writes to any store.
 
     The ONLY sanctioned path for reflection output to become memory. Returns a
-    candidate record (status CANDIDATE, admit_status CANDIDATE) carrying full
-    provenance and lineage. A separate admit-style gate decides the final status
-    (ADMITTED / REJECTED); this module does not perform that mutation.
+    candidate record (status CANDIDATE) carrying full provenance and lineage,
+    OR an explicitly REJECTED / non-retrievable proposal when the reflection has
+    no provenance or names a forbidden-authoritative subject. A separate admit
+    gate decides the final ACTIVE/CANDIDATE/REJECT status; this module does not
+    perform that mutation.
+
+    Invariants (structural):
+      * no provenance  -> REJECTED, ``retrievable=False`` (never a normal candidate);
+      * forbidden-authoritative subject -> REJECTED, ``retrievable=False``;
+      * valid provenance -> CANDIDATE, ``retrievable=True`` (context only).
 
     No provider/store is touched and no write/promote action is emitted.
     """
@@ -216,27 +231,58 @@ def propose_memory_write(
         "source_event_ids": sorted(str(e) for e in event_ids),
     }
     memory_id = "mem_" + sha256_hex(canonical_json(body), 16)
-    return {
+
+    provenance = {
+        "generated_by": "agent_learning_linkage.propose_memory_write",
+        "authority": AUTHORITY_READ_ONLY_ADVISORY,
+        "write_attempted": False,
+        "promote_attempted": False,
+        "memory_digest": sha256_hex(canonical_json(body), 16),
+    }
+    common = {
         "memory_id": memory_id,
-        "status": MEMORY_STATUS_CANDIDATE,
-        "admit_status": ADMIT_STATUS_CANDIDATE,
         "memory_type": str(memory_type or ""),
         "content": content,
+        "subject": subject,
         "reflection": reflection,
         "reflection_digest": sha256_hex(canonical_json(reflection), 16),
         "source_event_ids": sorted(str(e) for e in event_ids),
         "source_refs": list(refs),
         "lineage": lineage,
         "lineage_digest": lineage_digest(lineage),
-        "provenance": {
-            "generated_by": "agent_learning_linkage.propose_memory_write",
-            "authority": AUTHORITY_READ_ONLY_ADVISORY,
-            "write_attempted": False,
-            "promote_attempted": False,
-            "memory_digest": sha256_hex(canonical_json(body), 16),
-        },
+        "provenance": provenance,
         "authority": AUTHORITY_READ_ONLY_ADVISORY,
     }
+
+    if not event_ids and not refs:
+        common.update(
+            {
+                "status": STATUS_REJECT,
+                "admit_status": STATUS_REJECT,
+                "retrievable": False,
+                "reject_reason": "missing provenance: source_event_ids or source_refs required",
+            }
+        )
+        return common
+    if is_forbidden_authoritative(subject):
+        common.update(
+            {
+                "status": STATUS_REJECT,
+                "admit_status": STATUS_REJECT,
+                "retrievable": False,
+                "reject_reason": f"forbidden authoritative subject: {subject!r}",
+            }
+        )
+        return common
+
+    common.update(
+        {
+            "status": STATUS_CANDIDATE,
+            "admit_status": STATUS_CANDIDATE,
+            "retrievable": True,
+        }
+    )
+    return common
 
 
 def admit_memory_candidate(
@@ -246,16 +292,31 @@ def admit_memory_candidate(
     reason: Optional[str] = None,
     admitted_by: Optional[str] = None,
 ) -> dict[str, Any]:
-    """Pure admit-style gate: return the candidate with a final status.
+    """Pure admit-style gate: return the candidate with a final governance status.
 
     Read-only by design — it returns a copy with ``status``/``admit_status`` set,
     it does NOT write to any provider/store. Callers decide whether (and where)
-    to persist the ADMITTED record.
+    to persist the record.
+
+    Reuses the canonical memory-governance admission policy (``admit_status``),
+    so the final status is CANDIDATE / ACTIVE / REJECT — never a separate
+    learning-linkage-only vocabulary. An explicit operator statement is admitted
+    ACTIVE, an inferred one stays CANDIDATE, and a no-provenance or forbidden-
+    authoritative candidate is REJECT even when ``admit`` is True.
     """
     out = dict(candidate)
-    final = ADMIT_STATUS_ADMITTED if admit else ADMIT_STATUS_REJECTED
+    if not admit:
+        final = STATUS_REJECT
+    else:
+        provenance_ok = bool(out.get("source_event_ids") or out.get("source_refs"))
+        final = admit_status(
+            out.get("memory_type"),
+            subject=out.get("subject"),
+            provenance_ok=provenance_ok,
+        )
     out["status"] = final
     out["admit_status"] = final
+    out["retrievable"] = final != STATUS_REJECT
     out["admitted_by"] = admitted_by
     if reason is not None:
         out["admit_reason"] = reason

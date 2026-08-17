@@ -446,6 +446,41 @@ def _provider_name(provider: Optional[Any]) -> Optional[str]:
     return getattr(provider, "name", None) or type(provider).__name__
 
 
+#: Provider health statuses that must be surfaced verbatim rather than converted
+#: to EMPTY. A NOT_CONFIGURED provider was never "consulted, no memories".
+_KNOWN_RETRIEVAL_STATUSES = frozenset({
+    RETRIEVAL_OK,
+    RETRIEVAL_EMPTY,
+    RETRIEVAL_NOT_CONFIGURED,
+    RETRIEVAL_UNAVAILABLE,
+    RETRIEVAL_ERROR,
+})
+
+
+def _memory_section(
+    *,
+    query: Any,
+    status: str,
+    provider: Optional[str],
+    records: Optional[list[Any]] = None,
+    conflicts: Optional[list[Any]] = None,
+    error: Optional[str] = None,
+) -> dict[str, Any]:
+    records = list(records or [])
+    conflicts = list(conflicts or [])
+    out: dict[str, Any] = {
+        "query": query,
+        "memory_ids": [r.get("memory_id") for r in records if isinstance(r, dict)],
+        "records": records,
+        "conflicts": conflicts,
+        "retrieval_status": status,
+        "provider": provider,
+    }
+    if error is not None:
+        out["error"] = error
+    return out
+
+
 def _retrieve_episodic(
     provider: Optional[Any],
     *,
@@ -454,40 +489,75 @@ def _retrieve_episodic(
 ) -> dict[str, Any]:
     """Consult an optional memory provider. Fail-soft, never raises.
 
-    Returns an episodic_memory section. When no provider is present the
-    section is explicitly NOT_CONFIGURED (never silently "empty but consulted").
+    Canonical status mapping (never silently normalize NOT_CONFIGURED /
+    UNAVAILABLE / ERROR into EMPTY):
+
+      * provider absent                          -> NOT_CONFIGURED
+      * health status NOT_CONFIGURED             -> NOT_CONFIGURED
+      * health falsy / status UNAVAILABLE        -> UNAVAILABLE
+      * health status ERROR                      -> ERROR
+      * healthy + search raises                  -> ERROR
+      * healthy + non-dict search result         -> ERROR
+      * healthy + valid search + provider status -> that status (OK/EMPTY/NOT_*)
+      * healthy + valid search + no status       -> OK if records else EMPTY
     """
     if provider is None:
         return _empty_memory(None)
     query = {"symbols": list(symbols or []), "plan_id": plan_id}
+    provider_name = _provider_name(provider)
+
     try:
         health = getattr(provider, "health", lambda: False)()
-        if not health:
-            return {
-                "query": query,
-                "memory_ids": [],
-                "records": [],
-                "conflicts": [],
-                "retrieval_status": RETRIEVAL_UNAVAILABLE,
-                "provider": _provider_name(provider),
-            }
-        result = provider.search(query=query, symbols=symbols, plan_id=plan_id)
-        records = list(result.get("records") or []) if isinstance(result, dict) else []
-        return {
-            "query": query,
-            "memory_ids": [r.get("memory_id") for r in records if isinstance(r, dict)],
-            "records": records,
-            "conflicts": list(result.get("conflicts") or []) if isinstance(result, dict) else [],
-            "retrieval_status": RETRIEVAL_OK if records else RETRIEVAL_EMPTY,
-            "provider": _provider_name(provider),
-        }
     except Exception as exc:  # noqa: BLE001 — fail-soft boundary
-        return {
-            "query": query,
-            "memory_ids": [],
-            "records": [],
-            "conflicts": [],
-            "retrieval_status": RETRIEVAL_ERROR,
-            "provider": _provider_name(provider),
-            "error": type(exc).__name__,
-        }
+        return _memory_section(
+            query=query, status=RETRIEVAL_ERROR, provider=provider_name,
+            error=type(exc).__name__,
+        )
+
+    # Interpret the health signal conservatively.
+    if isinstance(health, dict):
+        hstatus = str(health.get("status") or "").upper()
+        if hstatus == RETRIEVAL_NOT_CONFIGURED:
+            return _memory_section(
+                query=query, status=RETRIEVAL_NOT_CONFIGURED, provider=provider_name,
+            )
+        if hstatus == RETRIEVAL_UNAVAILABLE:
+            return _memory_section(
+                query=query, status=RETRIEVAL_UNAVAILABLE, provider=provider_name,
+            )
+        if hstatus == RETRIEVAL_ERROR:
+            return _memory_section(
+                query=query, status=RETRIEVAL_ERROR, provider=provider_name,
+            )
+        if not health:
+            return _memory_section(
+                query=query, status=RETRIEVAL_UNAVAILABLE, provider=provider_name,
+            )
+    elif not health:
+        return _memory_section(
+            query=query, status=RETRIEVAL_UNAVAILABLE, provider=provider_name,
+        )
+
+    try:
+        result = provider.search(query=query, symbols=symbols, plan_id=plan_id)
+    except Exception as exc:  # noqa: BLE001 — fail-soft boundary
+        return _memory_section(
+            query=query, status=RETRIEVAL_ERROR, provider=provider_name,
+            error=type(exc).__name__,
+        )
+
+    if not isinstance(result, dict):
+        return _memory_section(
+            query=query, status=RETRIEVAL_ERROR, provider=provider_name,
+            error="MalformedResponse",
+        )
+
+    records = list(result.get("records") or [])
+    conflicts = list(result.get("conflicts") or [])
+    status = result.get("retrieval_status")
+    if status not in _KNOWN_RETRIEVAL_STATUSES:
+        status = RETRIEVAL_OK if records else RETRIEVAL_EMPTY
+    return _memory_section(
+        query=query, status=status, provider=provider_name,
+        records=records, conflicts=conflicts,
+    )

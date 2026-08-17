@@ -25,6 +25,10 @@ from scripts.lib.agent_context_envelope import (
     canonical_json,
     sha256_hex,
 )
+from scripts.lib.agent_memory_governance import (
+    admit_status,
+    is_forbidden_authoritative,
+)
 
 PROVIDER_STATUS_OK = "OK"
 PROVIDER_STATUS_NOT_CONFIGURED = "NOT_CONFIGURED"
@@ -281,6 +285,14 @@ class LocalTestMemoryProvider:
     def add_candidate(self, record: dict[str, Any]) -> Optional[str]:
         if not isinstance(record, dict):
             return None
+        # Governed admission: no retrievable memory without provenance, and no
+        # memory about forbidden-authoritative subjects. This is NOT a bypass
+        # around MemoryRecord/admission validation — the canonical governance
+        # predicates are reused here so there is exactly ONE admission policy.
+        if not (record.get("source_event_ids") or record.get("source_refs")):
+            return None
+        if is_forbidden_authoritative(record.get("subject")):
+            return None
         rec = dict(record)
         digest = rec.get("content_digest")
         if not digest:
@@ -291,7 +303,14 @@ class LocalTestMemoryProvider:
             memory_id = "mem_" + digest
             rec["memory_id"] = memory_id
         rec.setdefault("memory_version", "1.0")
-        rec.setdefault("status", "CANDIDATE")
+        # Default status via canonical admission (never a silent CANDIDATE for an
+        # explicit operator statement, never ACTIVE for an inferred one).
+        if not rec.get("status"):
+            rec["status"] = admit_status(
+                rec.get("memory_type"),
+                subject=rec.get("subject"),
+                provenance_ok=True,
+            )
         rec.setdefault("authority_class", MEMORY_AUTHORITY)
         rec.setdefault("confidence", 0.5)
         rec.setdefault("created_at", _now_iso())
