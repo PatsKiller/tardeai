@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -323,6 +324,37 @@ def test_25_notification_state_retention_bounded(tmp_path):
                         "updated_at": f"2026-08-17T00:00:{i % 60:02d}"}
     s._write_index(big)
     assert len(s.all_lineages()) <= 2048
+
+
+def test_26_concurrent_scanner_runs_cannot_double_send(tmp_path):
+    import threading
+
+    store = NotificationStateStore(state_path=tmp_path / "state.jsonl",
+                                   audit_path=tmp_path / "a.jsonl",
+                                   metrics_path=tmp_path / "m.jsonl")
+    # A genuinely material (actionable) decision that would page IMMEDIATE on
+    # first sight — the case where a double-send is the real risk.
+    d = cash_dec(deploy_now=50000)
+    results: list[dict[str, Any]] = []
+    barrier = threading.Barrier(2)
+
+    def run() -> None:
+        barrier.wait()
+        # Mirror scan_office: serialize decide+record under one store lock.
+        with store.locked():
+            nd = decide_notification(d, store=store)
+            store.record(nd)
+            results.append(nd)
+
+    t1 = threading.Thread(target=run)
+    t2 = threading.Thread(target=run)
+    t1.start()
+    t2.start()
+    t1.join()
+    t2.join()
+
+    classes = [r.get("notification_class") for r in results]
+    assert classes.count("IMMEDIATE") == 1, f"expected exactly one IMMEDIATE, got {classes}"
 
 
 # ── Content ──────────────────────────────────────────────────────────────────

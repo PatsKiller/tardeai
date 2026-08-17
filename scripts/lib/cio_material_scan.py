@@ -556,12 +556,15 @@ def scan_office(
             audit_path=state_dir / "cio_notification_audit.jsonl",
             metrics_path=state_dir / "cio_notification_metrics.jsonl",
         )
-        for cand in candidates:
-            nd = decide_notification(cand, store=store)
-            key = str(cand.get("decision_id") or "")
-            nd_map[key] = nd
-            if persist:
-                store.record(nd)
+        with store.locked():
+            # Serialize the decide+record read-modify-write so two concurrent
+            # scanner runs cannot both observe "never told" and double-send.
+            for cand in candidates:
+                nd = decide_notification(cand, store=store)
+                key = str(cand.get("decision_id") or "")
+                nd_map[key] = nd
+                if persist:
+                    store.record(nd)
 
     selected = select_publications(candidates, max_publish=max_publish)
     results = []

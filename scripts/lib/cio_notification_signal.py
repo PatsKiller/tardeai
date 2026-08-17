@@ -29,14 +29,17 @@ Memory behavior influence is NOT enabled here.
 """
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import json
 import os
 import re
+import threading
 import time
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Iterator, Optional
 
 from scripts.lib.cio_decision_semantics import (
     actionability_blocking_state,
@@ -256,7 +259,11 @@ class NotificationStateStore:
     * audit file: append-only history (bounded), for traceability/metrics.
     * fail-closed: a malformed index line is skipped (treated as unknown).
     * bounded: MAX_LINEAGES cap; audit/metrics capped at MAX_*_LINES.
+    * concurrency-safe: an advisory ``fcntl`` lock serializes the read-modify-
+      write of the index so two concurrent scanner runs cannot double-send.
     """
+
+    _tls = threading.local()
 
     def __init__(
         self,
@@ -267,6 +274,28 @@ class NotificationStateStore:
         self.state_path = Path(state_path or DEFAULT_STATE_PATH)
         self.audit_path = Path(audit_path or DEFAULT_AUDIT_PATH)
         self.metrics_path = Path(metrics_path or DEFAULT_METRICS_PATH)
+
+    @contextmanager
+    def locked(self) -> Iterator[None]:
+        """Acquire the per-store process lock (reentrant within this thread).
+
+        Two independent scanner processes that share ``state_path`` serialize
+        their read-modify-write through this lock, preventing a race where both
+        decide IMMEDIATE before either persists its notification state.
+        """
+        if getattr(self._tls, "locked", False):
+            yield
+            return
+        self.state_path.parent.mkdir(parents=True, exist_ok=True)
+        lock_path = self.state_path.with_suffix(self.state_path.suffix + ".lock")
+        with open(lock_path, "a+", encoding="utf-8") as fh:
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+            self._tls.locked = True
+            try:
+                yield
+            finally:
+                self._tls.locked = False
+                fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
 
     # -- index (compact latest-per-lineage) ----------------------------------
     def _read_index(self) -> dict[str, dict[str, Any]]:
@@ -316,19 +345,21 @@ class NotificationStateStore:
             pass
 
     def latest(self, lineage: str) -> Optional[dict[str, Any]]:
-        return self._read_index().get(lineage)
+        with self.locked():
+            return self._read_index().get(lineage)
 
     def record(self, nd: dict[str, Any]) -> dict[str, Any]:
         """Persist a NotificationDecision as the latest state for its lineage."""
         lineage = str(nd.get("decision_lineage_id") or "")
         if not lineage:
             return nd
-        row = dict(nd)
-        row["updated_at"] = _now_iso()
-        index = self._read_index()
-        index[lineage] = row
-        self._write_index(index)
-        self._append(self.audit_path, row, MAX_AUDIT_LINES)
+        with self.locked():
+            row = dict(nd)
+            row["updated_at"] = _now_iso()
+            index = self._read_index()
+            index[lineage] = row
+            self._write_index(index)
+            self._append(self.audit_path, row, MAX_AUDIT_LINES)
         return nd
 
     def record_metrics(self, counters: dict[str, Any]) -> None:
