@@ -199,7 +199,7 @@ def build_local_provider_registry() -> dict[str, object]:
     documents = LocalDocumentsProvider()
     calendar = LocalCalendarProvider()
     goals_plans = LocalGoalsPlansProvider()
-    return {
+    registry: dict[str, object] = {
         "portfolio.get_verified_snapshot": portfolio,
         "portfolio.get_cash_snapshot": portfolio,
         "portfolio.get_risk_snapshot": portfolio,
@@ -214,6 +214,16 @@ def build_local_provider_registry() -> dict[str, object]:
         "goals.list": goals_plans,
         "plans.get": goals_plans,
     }
+    # Financial Senses: same gateway, fixture providers (no network).
+    try:
+        from scripts.lib.financial_senses_aif import (
+            build_financial_senses_registry,
+            build_fixture_providers,
+        )
+        registry.update(build_financial_senses_registry(build_fixture_providers()))
+    except Exception:
+        pass
+    return registry
 
 
 def build_external_not_configured_registry() -> dict[str, object]:

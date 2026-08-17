@@ -12,6 +12,7 @@ release can be staged without a code change:
   MEMORY_SHADOW               — record memory, never influence     (default 0)
   MEMORY_BEHAVIOR_INFLUENCE   — memory may shape advisory context  (default 0)
   LANGGRAPH_WORKER_PILOT      — LangGraph durable-workflow pilot   (default 0)
+  AIF_FINANCIAL_SENSES_SHADOW — FS calls via AIF, shadow-only      (default 0)
 
 Activation is *advisory-context only*. This module documents — and can enforce
 via `activation_scope_check()` — the ONLY effects that may ever be switched on,
@@ -35,6 +36,7 @@ DEFAULT_MEMORY_PROVIDER = "null"
 DEFAULT_MEMORY_SHADOW = 0
 DEFAULT_MEMORY_BEHAVIOR_INFLUENCE = 0
 DEFAULT_LANGGRAPH_WORKER_PILOT = 0
+DEFAULT_AIF_FINANCIAL_SENSES_SHADOW = 0
 
 #: Every environment-driven integer/boolean flag, in canonical order.
 INT_FLAG_NAMES: tuple[str, ...] = (
@@ -44,6 +46,7 @@ INT_FLAG_NAMES: tuple[str, ...] = (
     "MEMORY_SHADOW",
     "MEMORY_BEHAVIOR_INFLUENCE",
     "LANGGRAPH_WORKER_PILOT",
+    "AIF_FINANCIAL_SENSES_SHADOW",
 )
 
 #: The only memory-provider values this program accepts. Anything else fails
@@ -60,6 +63,7 @@ DEFAULT_FLAGS: dict[str, Any] = {
     "MEMORY_SHADOW": DEFAULT_MEMORY_SHADOW,
     "MEMORY_BEHAVIOR_INFLUENCE": DEFAULT_MEMORY_BEHAVIOR_INFLUENCE,
     "LANGGRAPH_WORKER_PILOT": DEFAULT_LANGGRAPH_WORKER_PILOT,
+    "AIF_FINANCIAL_SENSES_SHADOW": DEFAULT_AIF_FINANCIAL_SENSES_SHADOW,
 }
 
 _TRUTHY = frozenset({"1", "true", "t", "yes", "y", "on"})
@@ -174,6 +178,10 @@ ALLOWED_ACTIVATION_SCOPE: dict[str, dict[str, str]] = {
         "mcp read data informs analysis": (
             "read-only MCP data informs analysis; no write path is ever opened"
         ),
+        "financial senses informs analysis": (
+            "Financial Senses evidence informs shadow analysis; it never changes "
+            "canonical action, memory authority, or execution"
+        ),
         "follow-up scheduler creates revisit": (
             "a follow-up scheduler schedules an advisory revisit; it never mutates policy"
         ),
@@ -189,6 +197,14 @@ ALLOWED_ACTIVATION_SCOPE: dict[str, dict[str, str]] = {
         "mcp write": "MCP writes are never authorized",
         "langgraph broker authority": "LangGraph is never granted broker authority",
         "learning auto-promotes strategy": "learning may propose, never auto-promote a strategy",
+        "financial senses changes action": "Financial Senses may never change canonical action",
+        "financial senses broker": "Financial Senses may never call a broker",
+        "financial senses behavior influence": (
+            "Financial Senses behavior influence is structurally forbidden in this program"
+        ),
+        "financial senses memory influence": (
+            "Financial Senses may never flip MEMORY_BEHAVIOR_INFLUENCE"
+        ),
     },
 }
 

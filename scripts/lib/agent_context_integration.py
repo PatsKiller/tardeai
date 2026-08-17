@@ -408,6 +408,38 @@ def apply_context_budget(
 
         # Episodic memory: drop low-confidence records first (the 7th, lowest
         # priority) before dropping the whole section.
+        # Financial Senses evidence is lower-priority than office_truth /
+        # decision / intent / memory. Drop FS items first, never evicting
+        # higher-authority truth, and never stripping remaining items' 
+        # freshness/quality/authority/provenance/identity fields.
+        if _content_tokens(env) > budget:
+            try:
+                from scripts.lib.financial_senses_aif import drop_financial_senses_items
+            except Exception:
+                drop_financial_senses_items = None  # type: ignore[assignment]
+            if drop_financial_senses_items is not None:
+                before_fs = _content_tokens(env)
+                dropped_fs = drop_financial_senses_items(env)
+                after_fs = _content_tokens(env)
+                if dropped_fs:
+                    metadata.setdefault("financial_senses_dropped", []).extend(dropped_fs)
+                    metadata["details"].append(
+                        {
+                            "section": "specialist_context.financial_senses",
+                            "action": "dropped_financial_senses_items",
+                            "request_ids": dropped_fs,
+                            "tokens_saved": max(0, before_fs - after_fs),
+                        }
+                    )
+                if _content_tokens(env) <= budget:
+                    metadata["final_tokens"] = _content_tokens(env)
+                    metadata["within_budget"] = metadata["final_tokens"] <= budget
+                    metadata["canonical_truth_preserved"] = (
+                        SECTION_OFFICE_TRUTH in env
+                        and not _is_budget_stub(env.get(SECTION_OFFICE_TRUTH))
+                    )
+                    return env, metadata
+
         if section == SECTION_EPISODIC_MEMORY:
             before = _content_tokens(env)
             dropped_ids = _drop_low_confidence_memory(env)
