@@ -17,15 +17,9 @@ on:
       - "docs/investment-office/**"
       - ".github/workflows/cio-production-hardening-ci.yml"
   pull_request:
-    paths:
-      - "scripts/lib/cio_*.py"
-      - "scripts/render_cio_report_files.py"
-      - "scripts/cio_release_manifest.py"
-      - "scripts/run_cio_hardening_ci.py"
-      - "scripts/run_cio_acceptance.py"
-      - "tests/test_cio_*.py"
-      - "docs/investment-office/**"
-      - ".github/workflows/cio-production-hardening-ci.yml"
+    # `cio-hardening` is a required status check on main. A path filter here
+    # would let unrelated PRs skip the job and leave the check "Pending",
+    # blocking merge. Run on every PR so the required check is always reported.
   workflow_dispatch:
 
 jobs:
