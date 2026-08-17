@@ -119,6 +119,61 @@ def test_duration_kind_instant_without_start():
     assert duration_kind({"end": "2024-12-31"}) == "INSTANT"
 
 
+def test_ytd_q2_vs_q3_horizon_mismatch_unavailable():
+    # Six-month cumulative (Q2 YTD) vs nine-month cumulative (Q3 YTD) both
+    # classify as YTD, but they are NOT like-for-like: different cumulative
+    # horizons must fail closed rather than yield a misleading delta.
+    a = {"Revenues": d(100.0, start="2024-01-01", end="2024-06-30", fp="Q2", form="10-Q")}
+    b = {"Revenues": d(200.0, start="2024-01-01", end="2024-09-30", fp="Q3", form="10-Q")}
+    r = compare_filing_facts(a, b)
+    assert r["comparisons"]["revenue"]["comparison_status"] == COMPARISON_UNAVAILABLE
+    assert "ytd_horizon_mismatch" in r["comparisons"]["revenue"]["reason"]
+
+
+def test_ytd_same_fiscal_period_across_years_ok():
+    # Q2 YTD vs Q2 YTD in different years is the same cumulative horizon.
+    a = {"Revenues": d(100.0, start="2024-01-01", end="2024-06-30", fp="Q2", form="10-Q")}
+    b = {"Revenues": d(110.0, start="2025-01-01", end="2025-06-30", fp="Q2", form="10-Q")}
+    r = compare_filing_facts(a, b)
+    assert r["comparisons"]["revenue"]["comparison_status"] == COMPARISON_OK
+    assert r["comparisons"]["revenue"]["delta"] == 10.0
+
+
+def test_ytd_six_month_vs_nine_month_span_unavailable():
+    # No fiscal-period label: 6-month vs 9-month span is a different horizon.
+    a = {"Revenues": d(100.0, start="2026-01-01", end="2026-06-30", fp="")}
+    b = {"Revenues": d(200.0, start="2026-01-01", end="2026-09-30", fp="")}
+    r = compare_filing_facts(a, b)
+    assert r["comparisons"]["revenue"]["comparison_status"] == COMPARISON_UNAVAILABLE
+    assert "ytd_horizon_mismatch" in r["comparisons"]["revenue"]["reason"]
+
+
+def test_ytd_span_within_tolerance_ok():
+    # ~181d vs ~180d (one-day jitter, no fiscal period) is the same horizon.
+    a = {"Revenues": d(100.0, start="2024-01-01", end="2024-06-30", fp="")}
+    b = {"Revenues": d(110.0, start="2023-01-01", end="2023-06-30", fp="")}
+    r = compare_filing_facts(a, b)
+    assert r["comparisons"]["revenue"]["comparison_status"] == COMPARISON_OK
+
+
+def test_ytd_multi_context_horizon_ambiguous_unavailable():
+    # Both periods carry a Q2-YTD and a Q3-YTD candidate; two distinct horizons
+    # on both sides is ambiguous and must fail closed.
+    rows = [
+        d(100.0, start="2024-01-01", end="2024-06-30", fp="Q2"),
+        d(150.0, start="2024-01-01", end="2024-09-30", fp="Q3"),
+    ]
+    rows_b = [
+        d(110.0, start="2024-01-01", end="2024-06-30", fp="Q2"),
+        d(165.0, start="2024-01-01", end="2024-09-30", fp="Q3"),
+    ]
+    a = {"Revenues": rows}
+    b = {"Revenues": rows_b}
+    r = compare_filing_facts(a, b)
+    assert r["comparisons"]["revenue"]["comparison_status"] == COMPARISON_UNAVAILABLE
+    assert r["comparisons"]["revenue"]["reason"] in ("ambiguous_context", "no_like_for_like_pair")
+
+
 def test_all_canonical_keys_present():
     a = {
         "Revenues": d(100.0),

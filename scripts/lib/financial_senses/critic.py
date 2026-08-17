@@ -82,6 +82,17 @@ def _digest(obj: Any) -> str:
     return hashlib.sha256(json.dumps(obj, sort_keys=True, default=str).encode()).hexdigest()[:16]
 
 
+def _coerce_pct(value: Any) -> Optional[float]:
+    """Parse a percentage; return None if missing, non-numeric, or outside [0,100]."""
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return None
+    if v < 0.0 or v > 100.0:
+        return None
+    return v
+
+
 def review_decision(evidence_packet: dict, proposed_action: dict) -> CriticReview:
     """Deterministic shadow review. Never mutates anything external.
 
@@ -148,19 +159,34 @@ def review_decision(evidence_packet: dict, proposed_action: dict) -> CriticRevie
     # 4. Unmodeled portfolio effects — material above the documented threshold.
     # `coverage_pct` is MODELED coverage (unmodeled = 100 - value);
     # `unmodeled_coverage_pct` is already the UNMODELED fraction and must not be
-    # subtracted from 100 again.
+    # subtracted from 100 again. Both must be within [0, 100]; a malformed /
+    # out-of-range value means coverage cannot be assessed and must never
+    # silently pass.
+    coverage_malformed = False
     if "coverage_pct" in evidence and evidence.get("coverage_pct") is not None:
-        try:
-            unmodeled = 100.0 - float(evidence["coverage_pct"])
-        except (TypeError, ValueError):
+        cov = _coerce_pct(evidence["coverage_pct"])
+        if cov is None:
+            coverage_malformed = True
             unmodeled = None
+        else:
+            unmodeled = 100.0 - cov
     elif "unmodeled_coverage_pct" in evidence and evidence.get("unmodeled_coverage_pct") is not None:
-        try:
-            unmodeled = float(evidence["unmodeled_coverage_pct"])
-        except (TypeError, ValueError):
+        unm = _coerce_pct(evidence["unmodeled_coverage_pct"])
+        if unm is None:
+            coverage_malformed = True
             unmodeled = None
+        else:
+            unmodeled = unm
     else:
         unmodeled = None
+
+    if coverage_malformed:
+        review.missing_evidence.append(
+            "portfolio coverage out of range [0,100] or malformed"
+        )
+        review.result = RESULT_DATA_UNAVAILABLE
+        review.recommended_next_step = "provide a valid coverage_pct or unmodeled_coverage_pct in [0,100]"
+        return review
 
     if unmodeled is not None and unmodeled > UNMODELED_MATERIALITY_THRESHOLD_PCT:
         review.portfolio_effects.append(f"{unmodeled:.2f}% of portfolio is unmodeled")

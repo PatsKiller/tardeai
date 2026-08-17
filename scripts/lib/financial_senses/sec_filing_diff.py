@@ -61,6 +61,25 @@ MATERIALITY_THRESHOLDS = {
 
 _QTRS = ("Q1", "Q2", "Q3", "Q4")
 
+# Tolerance (days) for treating two YTD spans as the same cumulative horizon when
+# no fiscal-period label is present (e.g. ~181d vs ~182d). Larger divergence
+# (e.g. ~181d vs ~273d) is a different cumulative horizon and is NOT comparable.
+YTD_SPAN_TOLERANCE_DAYS = 5
+
+
+def _span_days(fact: Any) -> int | None:
+    """Return the start→end span in days, or None if it cannot be established."""
+    if not isinstance(fact, dict):
+        return None
+    start = fact.get("start")
+    end = fact.get("end")
+    if not start or not end:
+        return None
+    try:
+        return (_date.fromisoformat(str(end)) - _date.fromisoformat(str(start))).days
+    except ValueError:
+        return None
+
 
 def _frame_type(frame: Any) -> str | None:
     """Classify an SEC `frame` string using official conventions.
@@ -137,6 +156,26 @@ def _fp(fact: Any) -> str | None:
     return fp or None
 
 
+def _ytd_horizon(fact: Any):
+    """Return the cumulative-horizon discriminator for a YTD duration fact.
+
+    YTD facts span multiple quarters (six-, nine-month cumulative), so two YTD
+    facts are NOT like-for-like merely because both classify as YTD. The horizon
+    is the fiscal period (Q2 vs Q3) when present; otherwise it is the span
+    bucketed with tolerance so ~181d and ~182d compare but ~181d and ~273d do
+    not. Returns None when neither can be established.
+    """
+    if not isinstance(fact, dict):
+        return None
+    fp = _fp(fact)
+    if fp:
+        return ("fp", fp)
+    span = _span_days(fact)
+    if span is not None:
+        return ("span", round(span / YTD_SPAN_TOLERANCE_DAYS))
+    return None
+
+
 def _numeric(fact: Any):
     if not isinstance(fact, dict):
         return None
@@ -175,7 +214,12 @@ def _context_key(key: str, fact: dict) -> tuple:
     if FACT_KINDS.get(key) == "INSTANT":
         return ("INSTANT", unit)
     dk = duration_kind(fact)
-    fp = _fp(fact) if dk == "QUARTERLY" else None
+    if dk == "QUARTERLY":
+        fp = _fp(fact)
+    elif dk == "YTD":
+        fp = _ytd_horizon(fact)
+    else:
+        fp = None
     return ("DURATION", unit, dk, fp)
 
 
@@ -197,6 +241,14 @@ def _single_pair_reason(key: str, fact_a: dict, fact_b: dict) -> str | None:
             fpb = _fp(fact_b)
             if fpa and fpb and fpa != fpb:
                 return f"fiscal_period_mismatch {fpa} vs {fpb}"
+        if ka == "YTD":
+            # YTD facts accumulate over different horizons (Q2 vs Q3, 6M vs 9M).
+            # Same fiscal period or a within-tolerance span is comparable; a
+            # differing horizon is NOT and must fail closed.
+            ha = _ytd_horizon(fact_a)
+            hb = _ytd_horizon(fact_b)
+            if ha is not None and hb is not None and ha != hb:
+                return f"ytd_horizon_mismatch {ha} vs {hb}"
     return None
 
 

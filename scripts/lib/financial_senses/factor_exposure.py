@@ -17,6 +17,7 @@ from .provider import BaseProvider, Capability
 from .result import Fact, FinancialSenseResult, ModelEstimate, Quality, STATUS_OK
 from .source_governance import (
     SOURCE_APPROVED_MARKET_DATA,
+    VALID_QUALITY,
     best_source,
     can_back_fact,
     grade_for_source,
@@ -53,10 +54,13 @@ class FactorExposure:
 
 
 def _coerce_loading(entry) -> Optional[dict]:
-    """Normalize a loading spec into {loading, source, method, window, as_of}.
+    """Normalize a loading spec into the full governed record.
 
-    Returns None when the loading is unsourced (so it is UNAVAILABLE, not
-    fabricated).
+    A loading is usable only when it carries the complete contract: factor key
+    (the mapping key), a numeric loading, method, window, as_of, a validated
+    quality, and a governed source. A record missing any required metadata is
+    returned as None so the factor-vector calculation treats it as UNAVAILABLE
+    rather than fabricating a partial loading.
     """
     if isinstance(entry, dict):
         src = str(entry.get("source") or "").strip().lower()
@@ -66,12 +70,21 @@ def _coerce_loading(entry) -> Optional[dict]:
             loading = float(entry["loading"])
         except (KeyError, TypeError, ValueError):
             return None
+        method = entry.get("method")
+        window = entry.get("window")
+        as_of = entry.get("as_of")
+        quality = entry.get("quality")
+        if not method or not window or not as_of:
+            return None
+        if quality not in VALID_QUALITY:
+            return None
         return {
             "loading": loading,
             "source": entry.get("source"),
-            "method": entry.get("method"),
-            "window": entry.get("window"),
-            "as_of": entry.get("as_of"),
+            "method": method,
+            "window": window,
+            "as_of": as_of,
+            "quality": quality,
         }
     return None
 
@@ -190,16 +203,39 @@ def overlap_report(instrument_a: dict, instrument_b: dict) -> dict:
     }
 
 
-def _input_provenance(instrument: dict):
-    """Return (source_type, as_of, quality) if `instrument` carries fact-capable
-    provenance, else None. A raw caller dict without source/as_of/quality cannot
-    manufacture APPROVED_MARKET_DATA authority."""
-    src = instrument.get("source_type") or instrument.get("source")
-    as_of = instrument.get("as_of")
-    quality = instrument.get("quality")
-    if src and as_of and quality and can_back_fact(str(src)):
-        return str(src), as_of, quality
-    return None
+def _validated_upstream_provenance(instrument: dict):
+    """Return (source_type, source_ids, as_of, quality) if `instrument` carries a
+    governed, validated upstream provenance envelope, else None.
+
+    A raw caller dict's bare `source_type`/`as_of`/`quality` strings are asserted
+    metadata, NOT demonstrated governance, and can never mint a Fact. Fact
+    promotion requires a structured `provenance` envelope carrying immutable
+    source references (`source_ids`), `READ_ONLY_ADVISORY` authority, a
+    fact-capable `source_type`, and validated `quality` + `as_of`.
+    """
+    if not isinstance(instrument, dict):
+        return None
+    prov = instrument.get("provenance")
+    if not isinstance(prov, dict):
+        return None
+    src = prov.get("source_type") or prov.get("source")
+    if not src:
+        return None
+    src = str(src)
+    if not can_back_fact(src):
+        return None
+    source_ids = prov.get("source_ids")
+    if not source_ids or not isinstance(source_ids, list):
+        return None
+    if prov.get("authority") != "READ_ONLY_ADVISORY":
+        return None
+    as_of = prov.get("as_of")
+    quality = prov.get("quality")
+    if not as_of:
+        return None
+    if quality not in VALID_QUALITY:
+        return None
+    return src, list(source_ids), as_of, quality
 
 
 class FactorOverlapProvider(BaseProvider):
@@ -228,8 +264,8 @@ class FactorOverlapProvider(BaseProvider):
         r.data = report
 
         ho = report["holdings_overlap"]
-        prov_a = _input_provenance(a)
-        prov_b = _input_provenance(b)
+        prov_a = _validated_upstream_provenance(a)
+        prov_b = _validated_upstream_provenance(b)
 
         # Missing holdings data is honest UNAVAILABLE, never a fabricated zero.
         if ho.get("state") == UNAVAILABLE:
@@ -245,24 +281,27 @@ class FactorOverlapProvider(BaseProvider):
             return r
 
         if prov_a and prov_b:
-            # Both inputs carry fact-capable provenance -> propagate the real
-            # source (best-ranked) and the later as_of; emit a governed FACT.
+            # Both inputs carry a governed, validated upstream provenance
+            # envelope (immutable source_ids + READ_ONLY_ADVISORY authority) —
+            # propagate the real source and the later as_of; emit a governed FACT.
             src = best_source([prov_a[0], prov_b[0]], "portfolio_holding")
-            as_of = prov_a[1] if (prov_b[1] or "") <= (prov_a[1] or "") else prov_b[1]
+            as_of = prov_a[2] if (prov_b[2] or "") <= (prov_a[2] or "") else prov_b[2]
+            source_ids = sorted(set(prov_a[1]) | set(prov_b[1]))
             r.quality = Quality(grade=grade_for_source(src))
             r.facts.append(
                 Fact(
                     key="holdings_jaccard",
                     value=jaccard,
                     source_type=src,
-                    source_ids=["holdings_overlap", "instrument_a", "instrument_b"],
+                    source_ids=source_ids,
                     as_of=as_of,
                     quality=grade_for_source(src),
                 )
             )
         else:
             # Caller-supplied overlap is deterministic derived data; it is NOT an
-            # APPROVED_MARKET_DATA world FACT unless inputs prove provenance.
+            # APPROVED_MARKET_DATA world FACT unless inputs carry a validated
+            # upstream governed provenance envelope.
             r.quality = Quality(grade="UNKNOWN")
             r.estimates.append(
                 ModelEstimate(
@@ -271,11 +310,11 @@ class FactorOverlapProvider(BaseProvider):
                     method="holdings_overlap",
                     as_of=r.requested_at,
                     quality="UNKNOWN",
-                    notes="derived from caller inputs without source/as_of/quality",
+                    notes="derived from caller inputs without governed provenance",
                 )
             )
             r.add_warning(
-                "overlap is derived data; inputs lack source/as_of/quality provenance "
-                "and are not emitted as an APPROVED_MARKET_DATA fact"
+                "overlap is derived data; inputs lack a validated upstream "
+                "provenance envelope and are not emitted as an APPROVED_MARKET_DATA fact"
             )
         return r

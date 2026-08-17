@@ -29,7 +29,7 @@ but the contract/fixtures/docs are complete.
 | FS-21 | critic cannot modify live decision | PASS |
 | FS-22 | provider failure fail-soft | PASS |
 | FS-23 | no arbitrary URL/shell/write | PASS |
-| FS-24 | unit suite pass | PASS (222) |
+| FS-24 | unit suite pass | PASS (243) |
 | FS-25 | integration/contract suite pass | PASS |
 | FS-26 | dry replay pass | PASS |
 | FS-27 | documentation complete | PASS |

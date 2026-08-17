@@ -18,6 +18,14 @@ portfolio constraints. Output: `CriticReview@v1`.
 
 `NO_MATERIAL_OBJECTION`, `MATERIAL_OBJECTION`, `DATA_UNAVAILABLE`.
 
+## Portfolio coverage semantics
+
+`coverage_pct` is MODELED coverage: unmodeled = `100 - coverage_pct`.
+`unmodeled_coverage_pct` is already the UNMODELED fraction and is used as-is
+(not subtracted from 100 again). Both must be within `[0, 100]`; a missing,
+non-numeric, or out-of-range value is `DATA_UNAVAILABLE` and never silently
+passes.
+
 ## Shadow flags
 
 `CRITIC_SHADOW = 1`, `CRITIC_BEHAVIOR_INFLUENCE = 0`. No live decision changes,

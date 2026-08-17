@@ -10,7 +10,7 @@ from financial_senses.evidence_graph import (
 )
 
 
-def _fact(nid, source="PRIMARY_REGULATORY", observed="2024-01-01", quality="HIGH"):
+def _fact(nid, source="PRIMARY_REGULATORY", observed="2024-01-01", quality="HIGH", freshness="FRESH"):
     return {
         "id": nid,
         "type": NODE_FACT,
@@ -18,6 +18,7 @@ def _fact(nid, source="PRIMARY_REGULATORY", observed="2024-01-01", quality="HIGH
         "source": source,
         "observed_at": observed,
         "quality": quality,
+        "freshness": freshness,
     }
 
 
@@ -273,6 +274,89 @@ def _invalid_fact(nid, **overrides):
     base = {"id": nid, "type": NODE_FACT, "text": "invalid fact"}
     base.update(overrides)
     return base
+
+
+def test_fact_missing_freshness_not_authoritative():
+    # A FACT with full provenance but NO freshness is not fresh; it must not be
+    # authoritative nor actionable. Missing freshness != fresh.
+    g = build_graph(
+        [_invalid_fact("f1", source="PRIMARY_REGULATORY", observed_at="2024-01-01", quality="HIGH"), _claim("c1")],
+        [_edge("e1", "f1", "c1", "SUPPORTS")],
+    )
+    g.validate()
+    ev = g.claim_evidence("c1")
+    assert not ev["authoritative_fact_support"]
+    assert ev["invalid_fact_support"]
+    assert ev["actionable"] is False
+
+
+def test_fact_none_freshness_not_authoritative():
+    g = build_graph(
+        [_invalid_fact("f1", source="PRIMARY_REGULATORY", observed_at="2024-01-01", quality="HIGH", freshness=None), _claim("c1")],
+        [_edge("e1", "f1", "c1", "SUPPORTS")],
+    )
+    g.validate()
+    ev = g.claim_evidence("c1")
+    assert not ev["authoritative_fact_support"]
+    assert ev["actionable"] is False
+
+
+def test_fact_empty_freshness_not_authoritative():
+    g = build_graph(
+        [_invalid_fact("f1", source="PRIMARY_REGULATORY", observed_at="2024-01-01", quality="HIGH", freshness=""), _claim("c1")],
+        [_edge("e1", "f1", "c1", "SUPPORTS")],
+    )
+    g.validate()
+    ev = g.claim_evidence("c1")
+    assert not ev["authoritative_fact_support"]
+    assert ev["actionable"] is False
+
+
+def test_fact_unknown_freshness_not_authoritative():
+    g = build_graph(
+        [_invalid_fact("f1", source="PRIMARY_REGULATORY", observed_at="2024-01-01", quality="HIGH", freshness="UNKNOWN"), _claim("c1")],
+        [_edge("e1", "f1", "c1", "SUPPORTS")],
+    )
+    g.validate()
+    ev = g.claim_evidence("c1")
+    assert not ev["authoritative_fact_support"]
+    assert ev["invalid_fact_support"]
+    assert ev["actionable"] is False
+
+
+def test_fact_invalid_freshness_enum_not_authoritative():
+    g = build_graph(
+        [_invalid_fact("f1", source="PRIMARY_REGULATORY", observed_at="2024-01-01", quality="HIGH", freshness="NOT_A_REAL_VALUE"), _claim("c1")],
+        [_edge("e1", "f1", "c1", "SUPPORTS")],
+    )
+    g.validate()
+    ev = g.claim_evidence("c1")
+    assert not ev["authoritative_fact_support"]
+    assert ev["invalid_fact_support"]
+    assert ev["actionable"] is False
+
+
+def test_fact_explicit_fresh_is_authoritative():
+    g = build_graph(
+        [_invalid_fact("f1", source="PRIMARY_REGULATORY", observed_at="2024-01-01", quality="HIGH", freshness="FRESH"), _claim("c1")],
+        [_edge("e1", "f1", "c1", "SUPPORTS")],
+    )
+    g.validate()
+    ev = g.claim_evidence("c1")
+    assert ev["authoritative_fact_support"]
+    assert ev["actionable"] is True
+
+
+def test_fact_explicit_stale_is_stale_not_actionable():
+    g = build_graph(
+        [_invalid_fact("f1", source="PRIMARY_REGULATORY", observed_at="2024-01-01", quality="HIGH", freshness="STALE"), _claim("c1")],
+        [_edge("e1", "f1", "c1", "SUPPORTS")],
+    )
+    g.validate()
+    ev = g.claim_evidence("c1")
+    assert not ev["authoritative_fact_support"]
+    assert ev["stale_fact_support"]
+    assert ev["actionable"] is False
 
 
 def test_fact_missing_source_not_authoritative_not_actionable():

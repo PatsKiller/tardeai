@@ -335,3 +335,51 @@ final independent review. Narrow semantic closeout, not a redesign.
 - `run_release_ci_equivalent.py --source-only`: **PASS (17/17)**.
 - production mutations: 0 · Telegram sends: 0 · DB writes: 0 ·
   authority: `READ_ONLY_ADVISORY`.
+
+## 2026-08-17 — Fourth closeout (true-final semantic closeout)
+
+Targets the 3 P1 categories and 2 P2s from the independent exact-head review of
+`e0445453`. One narrow semantic commit; no redesign, no CRLF normalization, no
+merge/deploy, no AIF integration.
+
+### P1 — evidence freshness requires explicit FRESH
+- `_is_authoritative_fact()` now requires `freshness == "FRESH"` explicitly.
+  `None` / `""` / `UNKNOWN` / an unrecognized value are NOT fresh and can never
+  enter `authoritative_fact_support`; `STALE` remains `stale_fact_support`.
+- Acceptance and dry-replay fixtures stamp `freshness: "FRESH"` explicitly.
+- Added adversarial tests for `None`, `""`, `UNKNOWN`, an invalid enum, `FRESH`,
+  and `STALE`.
+
+### P1 — SEC YTD comparison is horizon-aware
+- `_ytd_horizon()` discriminates YTD cumulative horizons: fiscal period when
+  present (`Q2` vs `Q3`), else span bucketed with a 5-day tolerance. Q2-YTD vs
+  Q3-YTD and 6M vs 9M are `COMPARISON_UNAVAILABLE`; same-fiscal-period YTD across
+  years remains comparable; amendment selection and QTD/YTD fail-closed behavior
+  are preserved.
+- Added single-row and multi-context adversarial tests.
+
+### P1 — factor loading/provenance governance
+- `_coerce_loading()` now enforces the full contract (factor key, numeric
+  loading, `method`, `window`, `as_of`, validated `quality`, governed `source`);
+  missing metadata → `UNAVAILABLE`, never a partial loading.
+- `_validated_upstream_provenance()` replaces the self-asserted provenance path:
+  a `Fact` requires a structured `provenance` envelope (fact-capable
+  `source_type`, immutable `source_ids`, `READ_ONLY_ADVISORY`, validated
+  `quality` + `as_of`). Bare caller `source_type`/`as_of`/`quality` stays a
+  `ModelEstimate`.
+- Added provenance-forgery and incomplete-envelope adversarial tests.
+
+### P2 — critic percentage bounds + provider security enumeration
+- `coverage_pct` / `unmodeled_coverage_pct` are range-checked to `[0,100]`;
+  missing/non-numeric/out-of-range → `DATA_UNAVAILABLE`, never a silent pass.
+- `FactorOverlapProvider` added to `ALL_PROVIDERS` in the provider-wide
+  read-only/security tests.
+- CRLF normalization intentionally deferred to a separate mechanical cleanup.
+
+### Proof (fourth closeout)
+- `tests/financial_senses/` suite: **243 passed, 0 failed** (fully offline).
+- `tests/test_sec_form4_momentum_context.py`: **17/17 pass**.
+- Broader CIO/research representative regression: **81 passed**.
+- `run_release_ci_equivalent.py --source-only`: **PASS (17/17)**.
+- production mutations: 0 · Telegram sends: 0 · DB writes: 0 ·
+  authority: `READ_ONLY_ADVISORY`.

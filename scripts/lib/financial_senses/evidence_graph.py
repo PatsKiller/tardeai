@@ -21,6 +21,7 @@ from typing import Any, Optional
 from .provider import BaseProvider, Capability
 from .result import FinancialSenseResult, STATUS_OK
 from .source_governance import (
+    FRESHNESS_FRESH,
     FRESHNESS_STALE,
     SOURCE_MEMORY_CONTEXT,
     SOURCE_MODEL_INFERENCE,
@@ -193,8 +194,11 @@ class ClaimEvidenceGraph:
         """A source node is authoritative only if it is a valid, fresh FACT.
 
         Only a FACT that itself validates as fact-capable (fact-capable source,
-        observed_at/as_of, quality) and is not stale may back a claim as
-        authoritative evidence.
+        observed_at/as_of, quality) AND is explicitly stamped FRESH may back a
+        claim as authoritative evidence. Missing / UNKNOWN / unrecognized
+        freshness is NOT fresh: it cannot unlock actionability. A stale or
+        unclassified FACT remains visible as contextual/historical evidence but
+        never becomes authoritative authority.
         """
         if node is None or node.type != NODE_FACT:
             return False
@@ -204,7 +208,7 @@ class ClaimEvidenceGraph:
             return False
         if not node.quality:
             return False
-        if (node.freshness or "").upper() == FRESHNESS_STALE:
+        if (node.freshness or "").upper() != FRESHNESS_FRESH:
             return False
         return True
 

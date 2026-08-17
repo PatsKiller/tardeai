@@ -161,7 +161,7 @@ def test_evidence_capability_validates():
     p = ClaimEvidenceProvider()
     r = p.query("evidence.build_graph", {
         "nodes": [
-            {"id": "f1", "type": "FACT", "text": "revenue grew", "source": "PRIMARY_REGULATORY", "observed_at": "2024-12-31", "quality": "HIGH"},
+            {"id": "f1", "type": "FACT", "text": "revenue grew", "source": "PRIMARY_REGULATORY", "observed_at": "2024-12-31", "quality": "HIGH", "freshness": "FRESH"},
             {"id": "c1", "type": "CLAIM", "text": "growing", "claim_type": "thesis"},
         ],
         "edges": [{"id": "e1", "from_id": "f1", "to_id": "c1", "relation": "SUPPORTS"}],

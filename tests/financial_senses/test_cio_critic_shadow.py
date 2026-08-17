@@ -4,6 +4,7 @@ from __future__ import annotations
 from financial_senses.critic import (
     CRITIC_BEHAVIOR_INFLUENCE,
     CRITIC_SHADOW,
+    RESULT_DATA_UNAVAILABLE,
     RESULT_MATERIAL_OBJECTION,
     RESULT_NO_MATERIAL_OBJECTION,
     IndependentCriticProvider,
@@ -161,3 +162,44 @@ def test_non_material_actions_not_flagged_for_missing_evidence():
             {"action": action},
         )
         assert not any("substantive evidence" in m for m in review.missing_evidence), action
+
+
+def test_coverage_pct_above_100_is_data_unavailable():
+    review = review_decision(
+        {"identity_status": "RESOLVED", "coverage_pct": 150.0, "facts": []},
+        {"action": "hold"},
+    )
+    assert review.result == RESULT_DATA_UNAVAILABLE
+    assert any("coverage" in m for m in review.missing_evidence)
+
+
+def test_coverage_pct_below_0_is_data_unavailable():
+    review = review_decision(
+        {"identity_status": "RESOLVED", "coverage_pct": -5.0, "facts": []},
+        {"action": "hold"},
+    )
+    assert review.result == RESULT_DATA_UNAVAILABLE
+
+
+def test_unmodeled_coverage_pct_above_100_is_data_unavailable():
+    review = review_decision(
+        {"identity_status": "RESOLVED", "unmodeled_coverage_pct": 150.0, "facts": []},
+        {"action": "hold"},
+    )
+    assert review.result == RESULT_DATA_UNAVAILABLE
+
+
+def test_coverage_pct_non_numeric_is_data_unavailable():
+    review = review_decision(
+        {"identity_status": "RESOLVED", "coverage_pct": "not-a-number", "facts": []},
+        {"action": "hold"},
+    )
+    assert review.result == RESULT_DATA_UNAVAILABLE
+
+
+def test_coverage_pct_100_means_zero_unmodeled_no_objection():
+    review = review_decision(
+        {"identity_status": "RESOLVED", "coverage_pct": 100.0, "facts": []},
+        {"action": "hold"},
+    )
+    assert review.result == RESULT_NO_MATERIAL_OBJECTION

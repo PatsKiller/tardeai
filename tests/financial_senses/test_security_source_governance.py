@@ -24,6 +24,7 @@ from financial_senses.sec_provider import SecEdgarProvider
 from financial_senses.macro_provider import FredAlfredProvider
 from financial_senses.identity import OpenFigiProvider
 from financial_senses.stress_engine import PortfolioStressProvider
+from financial_senses.factor_exposure import FactorOverlapProvider
 from financial_senses.evidence_graph import ClaimEvidenceProvider
 from financial_senses.critic import IndependentCriticProvider
 
@@ -33,6 +34,7 @@ ALL_PROVIDERS = [
     FredAlfredProvider(api_key=None),
     OpenFigiProvider(),
     PortfolioStressProvider(),
+    FactorOverlapProvider(),
     ClaimEvidenceProvider(),
     IndependentCriticProvider(),
 ]

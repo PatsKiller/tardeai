@@ -42,9 +42,21 @@ def test_sector_overlap():
     assert r["common_sectors"] == ["tech"]
 
 
+def _loading(loading=1.0, source="verified_regression", quality="HIGH"):
+    """A fully-specified factor loading per the module's governed contract."""
+    return {
+        "loading": loading,
+        "source": source,
+        "method": "ols",
+        "window": "3y",
+        "as_of": "2024-06-01",
+        "quality": quality,
+    }
+
+
 def test_factor_similarity_shared():
-    a = {"size": {"loading": 1.0, "source": "verified_regression"}}
-    b = {"size": {"loading": 1.0, "source": "verified_regression"}}
+    a = {"size": _loading()}
+    b = {"size": _loading()}
     r = factor_similarity(a, b)
     assert r["cosine_similarity"] == 1.0
 
@@ -56,18 +68,35 @@ def test_factor_similarity_unsourced_is_unavailable():
     assert r["state"] == UNAVAILABLE
 
 
+def test_factor_similarity_missing_metadata_is_unavailable():
+    # source + loading alone is NOT a governed loading: method/window/as_of/
+    # quality are required and their absence must be UNAVAILABLE, not fabricated.
+    a = {"size": {"loading": 1.0, "source": "verified_regression"}}
+    b = {"size": {"loading": 1.0, "source": "verified_regression"}}
+    r = factor_similarity(a, b)
+    assert r["state"] == UNAVAILABLE
+    assert r["cosine_similarity"] is None
+
+
+def test_factor_similarity_invalid_quality_is_unavailable():
+    a = {"size": _loading(quality="NOT_A_GRADE")}
+    b = {"size": _loading()}
+    r = factor_similarity(a, b)
+    assert r["state"] == UNAVAILABLE
+
+
 def test_overlap_report_has_transparent_components():
     a = {
         "holdings": [{"symbol": "AAPL", "weight": 1.0}],
         "returns": [1, 2, 3],
         "sectors": {"tech": 1.0},
-        "factors": {"size": {"loading": 1.0, "source": "verified_regression"}},
+        "factors": {"size": _loading()},
     }
     b = {
         "holdings": [{"symbol": "AAPL", "weight": 1.0}],
         "returns": [1, 2, 3],
         "sectors": {"tech": 1.0},
-        "factors": {"size": {"loading": 1.0, "source": "verified_regression"}},
+        "factors": {"size": _loading()},
     }
     r = overlap_report(a, b)
     assert set(r.keys()) == {
@@ -116,7 +145,10 @@ def test_provider_raw_inputs_not_promoted_to_fact():
     assert r.validate() == []
 
 
-def test_provider_provenanced_inputs_propagate_fact():
+def test_provider_self_asserted_metadata_cannot_mint_fact():
+    # A caller can label holdings APPROVED_MARKET_DATA and add as_of/quality, but
+    # bare asserted metadata is not demonstrated provenance and must NOT cross the
+    # ModelEstimate -> Fact boundary.
     from financial_senses.factor_exposure import FactorOverlapProvider
 
     p = FactorOverlapProvider()
@@ -134,12 +166,54 @@ def test_provider_provenanced_inputs_propagate_fact():
             "quality": "MEDIUM",
         },
     })
+    assert not r.facts
+    assert r.estimates
+    assert r.validate() == []
+
+
+def test_provider_validated_upstream_provenance_propagates_fact():
+    from financial_senses.factor_exposure import FactorOverlapProvider
+
+    prov = {
+        "source_type": "APPROVED_MARKET_DATA",
+        "source_ids": ["sec_13f_table", "canonical_holdings_v2"],
+        "as_of": "2024-06-01",
+        "quality": "MEDIUM",
+        "authority": "READ_ONLY_ADVISORY",
+    }
+    p = FactorOverlapProvider()
+    r = p.query("factor.overlap", {
+        "instrument_a": {"holdings": [{"symbol": "AAPL", "weight": 0.1}], "provenance": prov},
+        "instrument_b": {"holdings": [{"symbol": "AAPL", "weight": 0.08}], "provenance": prov},
+    })
     assert r.facts
     fact = r.facts[0]
     assert fact.key == "holdings_jaccard"
     assert fact.source_type == "APPROVED_MARKET_DATA"
     assert fact.as_of == "2024-06-01"
     assert fact.quality == "MEDIUM"
+    assert "sec_13f_table" in fact.source_ids
+    assert r.validate() == []
+
+
+def test_provider_incomplete_provenance_not_promoted():
+    # A provenance envelope missing immutable source_ids must not mint a Fact.
+    from financial_senses.factor_exposure import FactorOverlapProvider
+
+    prov = {
+        "source_type": "APPROVED_MARKET_DATA",
+        "as_of": "2024-06-01",
+        "quality": "MEDIUM",
+        "authority": "READ_ONLY_ADVISORY",
+        # source_ids intentionally absent
+    }
+    p = FactorOverlapProvider()
+    r = p.query("factor.overlap", {
+        "instrument_a": {"holdings": [{"symbol": "AAPL", "weight": 0.1}], "provenance": prov},
+        "instrument_b": {"holdings": [{"symbol": "AAPL", "weight": 0.08}], "provenance": prov},
+    })
+    assert not r.facts
+    assert r.estimates
     assert r.validate() == []
 
 
