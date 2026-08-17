@@ -23,6 +23,9 @@ GATES = [
         "tests/test_cio_phase9_alex_telegram.py",
         "tests/test_cio_telegram_canary_dry.py",
     ]),
+    ("notification_signal_over_spam", [
+        "tests/test_cio_notification_signal.py",
+    ]),
     ("capital_ledger", [
         "tests/test_cio_capital_plan.py",
     ]),
