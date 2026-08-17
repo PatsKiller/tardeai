@@ -35,7 +35,10 @@ def main() -> int:
         operator_export=Path(args.operator_export) if args.operator_export else None,
     )
     print(json.dumps(result, indent=2, default=str))
-    return 0 if result.get("ok") else 2
+    # KEY_ATTRIBUTION_UNAVAILABLE is a successful fail-closed result.
+    if result.get("ok") or result.get("status") == "KEY_ATTRIBUTION_UNAVAILABLE":
+        return 0
+    return 2
 
 
 if __name__ == "__main__":

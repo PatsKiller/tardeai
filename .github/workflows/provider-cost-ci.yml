@@ -27,5 +27,5 @@ jobs:
         run: python3 scripts/provider_cost_export.py --start 2026-08-01 --end 2026-08-16 --group-by key --format json
       - name: Schwab / no-broker regressions
         run: |
-          python3 tests/test_no_broker_write_bypass.py
+          python3 -m pytest -q tests/test_no_broker_write_bypass.py
           python3 scripts/validate_schwab_write_policy.py --source-only
