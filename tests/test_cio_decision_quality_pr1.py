@@ -616,6 +616,76 @@ def test_topology_build_sha_fallback_detects_stale_release():
         assert ok is None, ok
 
 
+def test_topology_data_path_not_code():
+    """TRADEAI_RUNTIME_ROOT=/old/data/runtime is runtime state, not code."""
+    from scripts.lib.cio_topology_audit import (
+        _code_paths_from_text,
+        _is_data_path,
+    )
+    assert _is_data_path("/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/data/runtime") is True
+    assert _is_data_path("/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/x.log") is True
+    assert _is_data_path("/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/cio.py") is False
+
+    line = (
+        "cd /home/johnclaw/tradeai-wt-watch-review-automation && "
+        "TRADEAI_RUNTIME_ROOT=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/data/runtime "
+        "python scripts/run_watch_review_workers.py"
+    )
+    paths = _code_paths_from_text(line)
+    assert "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/data/runtime" not in paths
+    assert "/home/johnclaw/tradeai-wt-watch-review-automation" in paths
+
+
+def test_topology_additional_component_clean_and_stale():
+    """A separately-approved component resolves against its own pinned SHA."""
+    from scripts.lib.cio_topology_audit import _classify
+
+    comp = {
+        "label": "watch-review-automation",
+        "root": "/home/johnclaw/tradeai-wt-watch-review-automation",
+        "expected_sha": "cbabd9feba700edfbea02f0d0cef65936b73fd40",
+    }
+    approved = ("/home/johnclaw/trade-ai-releases/portfolio-server", comp["root"])
+
+    # A path under the component root with no sha mismatch must be clean even
+    # though it is not under the CIO approved root.
+    clean = _classify(
+        path="/home/johnclaw/tradeai-wt-watch-review-automation/scripts/run_watch_review_workers.py",
+        root=comp["root"],
+        head=comp["expected_sha"],
+        expected=comp["expected_sha"],
+        approved_roots=approved,
+        deprecated_roots=(),
+        deprecated_markers=(),
+    )
+    assert clean is None, clean
+
+    stale = _classify(
+        path="/home/johnclaw/tradeai-wt-watch-review-automation/scripts/run_watch_review_workers.py",
+        root=comp["root"],
+        head="0000000000000000000000000000000000000000",
+        expected=comp["expected_sha"],
+        approved_roots=approved,
+        deprecated_roots=(),
+        deprecated_markers=(),
+    )
+    assert stale is not None
+    assert stale["sha_mismatch"] is True
+
+    # A root NOT in approved must still flag root_not_approved.
+    other = _classify(
+        path="/home/johnclaw/some/other/repo/x.py",
+        root="/home/johnclaw/some/other/repo",
+        head=comp["expected_sha"],
+        expected=comp["expected_sha"],
+        approved_roots=approved,
+        deprecated_roots=(),
+        deprecated_markers=(),
+    )
+    assert other is not None
+    assert other["root_not_approved"] is True
+
+
 def test_topology_interpreter_is_runtime_not_code():
     """A venv python binary is runtime, never a CDQ-26 code-provenance violation."""
     from scripts.lib.cio_topology_audit import (
