@@ -107,6 +107,12 @@ class ProviderCostEvent:
     evidence_refs: list[str] = field(default_factory=list)
     observed_at: Optional[str] = None
     schema_version: str = SCHEMA_VERSION
+    client_request_id: Optional[str] = None
+    request_sent: Optional[bool] = None
+    possibly_billable: Optional[bool] = None
+    outcome: Optional[str] = None
+    error_class: Optional[str] = None
+    usage_unknown: Optional[bool] = None
 
     def attributed_usd(self) -> Optional[float]:
         if self.provider_reported_cost_usd is not None:

@@ -119,3 +119,31 @@ def reflect(*, cases_path: Optional[Path] = None, out_path: Optional[Path] = Non
     with dest.with_suffix(".jsonl").open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(rec, sort_keys=True, default=str) + "\n")
     return rec
+
+
+def main(argv: Optional[list[str]] = None) -> int:
+    """CLI: read-only reflection. Never auto-promotes."""
+    import argparse
+    p = argparse.ArgumentParser(description="CIO nightly reflection (READ_ONLY_ADVISORY)")
+    p.add_argument("--cases-path", default=None)
+    p.add_argument("--out-path", default=None)
+    args = p.parse_args(argv)
+    rec = reflect(
+        cases_path=Path(args.cases_path) if args.cases_path else None,
+        out_path=Path(args.out_path) if args.out_path else None,
+    )
+    summary = {
+        "at": rec.get("at"),
+        "cases_seen": rec.get("cases_seen"),
+        "scored": rec.get("scored"),
+        "proposal_count": len(rec.get("proposals") or []),
+        "auto_promotions": rec.get("auto_promotions"),
+        "mutates_production": rec.get("mutates_production"),
+        "authority": rec.get("authority"),
+    }
+    print(json.dumps(summary, default=str))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

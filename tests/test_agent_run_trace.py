@@ -23,6 +23,7 @@ from scripts.lib.agent_run_trace import (  # noqa: E402
     query_traces,
     sanitize_trace,
     trace_digest,
+    validate_lineage,
     validate_trace,
 )
 
@@ -198,3 +199,46 @@ def test_stable_trace_digest():
 def test_trace_version():
     t = build_trace(trace_id="tr_1", wake_id="w1", agent="alex", role="cio_synthesis")
     assert t["trace_version"] == TRACE_VERSION
+
+
+def test_completed_trace_lineage_complete():
+    t = close_trace(
+        build_trace(
+            trace_id="tr_lin",
+            wake_id="w1",
+            agent="alex",
+            role="cio_synthesis",
+            trigger="POSITION_OPENED",
+        ),
+        decision={"decision_id": "dec_1", "action": "HOLD"},
+        notification={"sent": False},
+        operator={"disposition": "ACK"},
+        outcome={"status": "OPEN"},
+        learning={"case_id": "case_1", "auto_promoted": False},
+        tool_receipts=[{"tool": "sec.resolve_cik", "shadow_only": True}],
+        evidence={"kind": "Fact"},
+        context={"context_digest": "abc"},
+    )
+    ok, missing = validate_lineage(t)
+    assert ok, missing
+    assert t["wake_id"] == "w1"
+    assert t["trigger"] == "POSITION_OPENED"
+    assert t["tool_receipts"][0]["shadow_only"] is True
+    assert t["learning"]["auto_promoted"] is False
+    raw = json.dumps(t)
+    assert "chain_of_thought" not in raw
+    assert "internal_monologue" not in raw
+    assert "scratchpad" not in raw
+
+
+def test_request_id_hex_survives_sanitize():
+    rid = "a" * 32
+    t = build_trace(
+        trace_id="tr_rid",
+        wake_id="w1",
+        agent="alex",
+        role="cio_synthesis",
+        request_id=rid,
+    )
+    clean = sanitize_trace(t)
+    assert clean["request_id"] == rid

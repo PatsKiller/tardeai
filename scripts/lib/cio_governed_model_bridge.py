@@ -418,11 +418,49 @@ class MockProvider:
 #  REAL PROVIDER (P-1.2B canary — live DeepSeek calls through governance)
 # ══════════════════════════════════════════════════════════════════════════
 
+def _emit_bridge_cost(
+    *,
+    outcome: str,
+    model: str | None,
+    request_id: str | None = None,
+    client_request_id: str | None = None,
+    raw_key: str | None = None,
+    usage: dict | None = None,
+    request_sent: bool = False,
+    possibly_billable: bool = False,
+    error_class: str | None = None,
+) -> None:
+    """Direct-bypass emit. RealProvider does not call deepseek_client.chat (tools)."""
+    try:
+        from lib.provider_cost.emit import emit_cost_event
+        usage = usage or {}
+        emit_cost_event(
+            provider="deepseek",
+            model=str(model or ""),
+            outcome=outcome,
+            request_id=request_id,
+            client_request_id=client_request_id,
+            prompt_tokens=usage.get("prompt_tokens"),
+            completion_tokens=usage.get("completion_tokens"),
+            cache_hit_tokens=usage.get("prompt_cache_hit_tokens") or usage.get("cache_hit_tokens"),
+            cache_miss_tokens=usage.get("prompt_cache_miss_tokens") or usage.get("cache_miss_tokens"),
+            raw_key=raw_key,
+            request_sent=request_sent,
+            possibly_billable=possibly_billable,
+            error_class=error_class,
+            source_service="cio_governed_model_bridge",
+            evidence_refs=["cio_governed_model_bridge.RealProvider"],
+        )
+    except Exception:
+        return
+
+
 class RealProvider:
     """Live DeepSeek V4 provider — governed, exact model, no fallback.
 
     Uses canonical deepseek_tradeai API key (never logs, never exposes).
-    Delegates to deepseek_client.chat() for basic calls; extends for tools.
+    Own HTTP path because tools/tool_choice are not in deepseek_client.chat().
+    Emits one ProviderCostEvent per attempt (does not also call chat()).
     """
 
     _instance: RealProvider | None = None
@@ -517,29 +555,94 @@ class RealProvider:
                 timeout=90.0,
             )
         except _requests.Timeout:
-            raise RuntimeError("DeepSeek API timeout after 90s")
+            _emit_bridge_cost(
+                outcome="possibly_billable_attempt",
+                model=model_id,
+                client_request_id=client_rid,
+                raw_key=key,
+                request_sent=True,
+                possibly_billable=True,
+                error_class="TIMEOUT",
+            )
+            err = RuntimeError("DeepSeek API timeout after 90s")
+            err.request_sent = True  # type: ignore[attr-defined]
+            err.possibly_billable = True  # type: ignore[attr-defined]
+            raise err
         except _requests.RequestException as e:
-            raise RuntimeError(f"DeepSeek API network error: {type(e).__name__}") from e
+            _emit_bridge_cost(
+                outcome="possibly_billable_attempt",
+                model=model_id,
+                client_request_id=client_rid,
+                raw_key=key,
+                request_sent=True,
+                possibly_billable=True,
+                error_class="NETWORK_ERROR",
+            )
+            err = RuntimeError(f"DeepSeek API network error: {type(e).__name__}")
+            err.request_sent = True  # type: ignore[attr-defined]
+            err.possibly_billable = True  # type: ignore[attr-defined]
+            raise err from e
 
         latency_ms = int((time.time() - t0) * 1000)
         provider_request_id = r.headers.get("x-request-id", client_rid)
 
         if r.status_code != 200:
-            raise RuntimeError(
+            _emit_bridge_cost(
+                outcome="possibly_billable_attempt",
+                model=model_id,
+                request_id=provider_request_id,
+                client_request_id=client_rid,
+                raw_key=key,
+                request_sent=True,
+                possibly_billable=True,
+                error_class=f"HTTP_{r.status_code}",
+            )
+            err = RuntimeError(
                 f"DeepSeek API returned HTTP {r.status_code}: "
                 f"{r.text[:500]}"
             )
+            err.request_sent = True  # type: ignore[attr-defined]
+            err.possibly_billable = True  # type: ignore[attr-defined]
+            raise err
 
         try:
             payload = r.json()
         except Exception:
-            raise RuntimeError("DeepSeek API returned non-JSON response")
+            _emit_bridge_cost(
+                outcome="possibly_billable_attempt",
+                model=model_id,
+                request_id=provider_request_id,
+                client_request_id=client_rid,
+                raw_key=key,
+                request_sent=True,
+                possibly_billable=True,
+                error_class="JSON_INVALID",
+            )
+            err = RuntimeError("DeepSeek API returned non-JSON response")
+            err.request_sent = True  # type: ignore[attr-defined]
+            err.possibly_billable = True  # type: ignore[attr-defined]
+            raise err
 
         returned_model = payload.get("model")
         if returned_model and returned_model != model_id:
-            raise RuntimeError(
+            usage_mm = payload.get("usage") or {}
+            _emit_bridge_cost(
+                outcome="possibly_billable_attempt",
+                model=model_id,
+                request_id=provider_request_id,
+                client_request_id=client_rid,
+                raw_key=key,
+                usage=usage_mm,
+                request_sent=True,
+                possibly_billable=True,
+                error_class="MISMATCHED_RETURNED_MODEL",
+            )
+            err = RuntimeError(
                 f"Model mismatch: requested {model_id}, returned {returned_model}"
             )
+            err.request_sent = True  # type: ignore[attr-defined]
+            err.possibly_billable = True  # type: ignore[attr-defined]
+            raise err
 
         choice = (payload.get("choices") or [{}])[0]
         msg = choice.get("message") or {}
@@ -555,6 +658,16 @@ class RealProvider:
         usage = payload.get("usage") or {}
         import hashlib
         raw_hash = hashlib.sha256(r.content).hexdigest()[:24]
+        _emit_bridge_cost(
+            outcome="success",
+            model=returned_model or model_id,
+            request_id=provider_request_id,
+            client_request_id=client_rid,
+            raw_key=key,
+            usage=usage,
+            request_sent=True,
+            possibly_billable=True,
+        )
 
         return {
             "id": client_rid,
@@ -741,20 +854,36 @@ def execute_governed_call(
     else:
         provider = MockProvider.instance()
     try:
-        response = provider.generate(
-            messages, model_id,
-            tools=tools,
-            tool_choice=tool_choice,
-            response_format=response_format,
-            stream=False,
-            max_tokens=max_tokens,
-            thinking=policy.get("thinking", "disabled"),
-            reasoning_effort=policy.get("reasoning_effort"),
-        )
+        try:
+            from lib.provider_cost.context import cost_attribution
+        except Exception:
+            from contextlib import contextmanager as _cm
+
+            @_cm
+            def cost_attribution(**_kw):
+                yield {}
+        with cost_attribution(
+            source_service="cio_governed_model_bridge",
+            source_process=process_id,
+            source_lane=requested_policy,
+            reservation_id=str(reservation_id) if reservation_id is not None else None,
+            run_id=rid,
+        ):
+            response = provider.generate(
+                messages, model_id,
+                tools=tools,
+                tool_choice=tool_choice,
+                response_format=response_format,
+                stream=False,
+                max_tokens=max_tokens,
+                thinking=policy.get("thinking", "disabled"),
+                reasoning_effort=policy.get("reasoning_effort"),
+            )
     except Exception as e:
         provider_name = "RealProvider" if BIND_MODE == "canary" else "MockProvider"
         _trip_circuit(f"provider_failure:{type(e).__name__}:{provider_name}")
-        lc.settle_reservation(reservation_id, None, ok=False, billable_attempt=False)
+        sent = bool(getattr(e, "possibly_billable", False) or getattr(e, "request_sent", False))
+        lc.settle_reservation(reservation_id, None, ok=False, billable_attempt=sent)
         return _error("PROVIDER_ERROR", f"{provider_name} failure: {type(e).__name__}", status=500)
 
     # ── Step 8: Model mismatch check ───────────────────────────────────
@@ -818,9 +947,8 @@ def execute_governed_call(
         "client_model_ignored": True,
         "mock": is_mock,
     }
-    return response
 
-    # ── Step 11: Log (sanitized) ───────────────────────────────────────
+    # ── Step 11: Log (sanitized) — must run before return ──────────────
     try:
         lc.log_call(
             lane=requested_policy.lower(),

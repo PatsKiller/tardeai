@@ -166,8 +166,26 @@ def run_one_lane(lane: str, facts: dict, *, timeout: int = BLIND_TIMEOUT) -> dic
         return result
 
     try:
-        raw = llm_lane.generate(prompt, lane=lane, timeout=timeout,
-                                model=LANE_MODEL.get(lane))
+        try:
+            from lib.provider_cost.context import cost_attribution
+        except Exception:
+            from contextlib import contextmanager as _cm
+
+            @_cm
+            def cost_attribution(**_kw):
+                yield {}
+        with cost_attribution(
+            source_service="blind_review_runner",
+            source_process="blind_review_runner",
+            source_lane=lane,
+        ):
+            raw = llm_lane.generate(
+                prompt,
+                lane=lane,
+                timeout=timeout,
+                model=LANE_MODEL.get(lane),
+                process_id="blind_review_runner",
+            )
     except Exception as exc:
         result["error"] = f"{type(exc).__name__}: {str(exc)[:160]}"
         return result

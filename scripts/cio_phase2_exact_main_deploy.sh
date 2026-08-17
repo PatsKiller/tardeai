@@ -273,6 +273,19 @@ overlay_main() {
     cp -a "${ROOT}/config/cio_research_source_catalog.json" "${dest}/config/"
     log "  overlay research source catalog"
   fi
+  mkdir -p "${dest}/linux_launchers" "${dest}/config"
+  if [[ -f "${ROOT}/linux_launchers/run_provider_cost_daily.sh" ]]; then
+    cp -a "${ROOT}/linux_launchers/run_provider_cost_daily.sh" \
+      "${dest}/linux_launchers/"
+    chmod 0755 "${dest}/linux_launchers/run_provider_cost_daily.sh"
+    log "  overlay provider-cost daily launcher"
+  fi
+  for cfg in provider_pricing_schedules.json provider_cost_call_sites.json; do
+    if [[ -f "${ROOT}/config/${cfg}" ]]; then
+      cp -a "${ROOT}/config/${cfg}" "${dest}/config/"
+      log "  overlay config/${cfg}"
+    fi
+  done
   if [[ -f "${ROOT}/.github/workflows/cio-production-hardening-ci.yml" ]]; then
     cp -a "${ROOT}/.github/workflows/cio-production-hardening-ci.yml" \
       "${dest}/.github/workflows/"

@@ -155,3 +155,17 @@ def test_scan_hook_returns_none_when_flags_off(monkeypatch):
     for k in ("AGENT_CONTEXT_ENVELOPE", "AGENT_RUN_TRACE"):
         monkeypatch.delenv(k, raising=False)
     assert ms._instrument_scan([], at="2026-08-17T00:00:00+00:00") is None
+
+
+def test_run_trace_defaults_to_canonical_path(tmp_path, monkeypatch):
+    dest = tmp_path / "default_traces.jsonl"
+    monkeypatch.setattr(
+        "scripts.lib.agent_runtime_instrumentation.DEFAULT_TRACE_PATH", dest
+    )
+    res = instrument_material_wake(
+        {"wake_id": "w_default", "trigger": "FOLLOW_UP_DUE"},
+        flags=_flags(AGENT_CONTEXT_ENVELOPE=0, AGENT_RUN_TRACE=1),
+    )
+    assert res["trace_appended"] is True
+    assert dest.exists()
+    assert "w_default" in dest.read_text()
