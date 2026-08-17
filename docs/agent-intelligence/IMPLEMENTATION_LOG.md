@@ -85,7 +85,7 @@ remaining risks, and deployment/rollback status.
 - **failures found / fixed**:
   - `evaluate_notification` conflated `same_generation` (dedupe-key) with `same_decision`; reworked to separate identity vs decision+evidence change → fixed reopen-on-new-evidence case.
   - `build_next_review()` default incorrectly asserted as invalid in a test; clarified that a bare schedule degrades to an explicit-unavailable record (valid), while a truly blank dict is rejected.
-- **remaining risks**: 2.1 (instrument live material wakes) and 2.5 (dry replay harness) not yet done — both touch existing production paths; deferred pending Phase 0 promote/topology go-ahead.
+- **remaining risks**: 2.1 (instrument live material wakes) was completed in the independent-review remediation (see "Final Independent Review Remediation" below); 2.5 (dry replay harness) done in Phase 2.5.
 - **deployment/rollback status**: additive code only; not wired to production.
 
 ---
@@ -123,7 +123,7 @@ remaining risks, and deployment/rollback status.
 - **files changed**: `scripts/lib/mcp_read_only_gateway.py`, `scripts/lib/mcp_provider_adapters.py`, `tests/test_mcp_read_only_gateway.py`, `tests/test_mcp_security.py`, `docs/agent-intelligence/MCP_READ_ONLY_GATEWAY.md`, `MCP_SECURITY_MODEL.md`, `ADR/003-mcp-read-only-gateway.md` (all new).
 - **design decisions**: internal gateway over direct agent→MCP connections; allowlist of 13 read-only tools + denylist substrings that always win; SSRF guard (localhost/RFC1918/link-local/metadata denied + safe-host allowlist); path-traversal guard; response size bound; sensitive-value redaction; per-call receipts bound to wake_id/trace_id. Server-side read-only, not readOnlyHint.
 - **tests run**: `pytest tests/test_mcp_read_only_gateway.py tests/test_mcp_security.py` → 32 passed.
-- **remaining risks**: external calendar/documents backends NOT_CONFIGURED (no external auth material); rate-limit/timeout stubs.
+- **remaining risks**: external calendar/documents backends NOT_CONFIGURED (no external auth material). Timeout + rate/budget governance implemented in the remediation (see "Final Independent Review Remediation").
 - **deployment/rollback status**: additive; not wired to production.
 
 ## Phase 4 — Memory Abstraction + Mem0 Shadow Pilot
@@ -180,7 +180,7 @@ remaining risks, and deployment/rollback status.
 - **files changed**: `tests/test_agent_intelligence_adversarial.py`, `docs/agent-intelligence/THREAT_MODEL.md`, `PRIVACY_AND_REDACTION.md` (new); `scripts/lib/agent_memory_provider.py` (scope enforcement fix).
 - **failures found / fixed**: red-team found `LocalTestMemoryProvider` accepted `scope` but did not filter by it → **fixed** via `_scope_matches`; pinned by `test_local_provider_scope_isolation_enforced`.
 - **tests run**: `pytest tests/test_agent_intelligence_adversarial.py` → 26 passed; hard counters unauthorized=0, truth-override=0, leak=0.
-- **remaining risks**: prompt-injection text still reaches model context (execution blocked, not stripped); build_memory_record doesn't itself reject forbidden subjects (rejection lives in admit_status); no replay nonce; regex redaction not exhaustive; no retention TTL.
+- **remaining risks**: prompt-injection text still reaches model context (execution blocked, not stripped; structural UNTRUSTED_DATA envelope added, AIF-24 downgraded to PARTIAL); regex redaction not exhaustive. Memory provenance/admission now enforced end-to-end and retention TTL implemented in the remediation (see "Final Independent Review Remediation").
 
 ## Phase 10 — Comprehensive Test Program + plan_id contract fix
 
@@ -205,11 +205,32 @@ remaining risks, and deployment/rollback status.
 - **date/time**: 2026-08-17T03:45Z (UTC)
 - **base SHA**: `550472a5` · **head SHA**: `2bd478b7`
 - **files changed**: `scripts/lib/agent_shadow_acceptance.py`, `tests/test_agent_shadow_acceptance.py` (new).
-- **design decisions**: shadow_compare_wakes (baseline vs augmented, shadow only); promotion_gate conservative (NOT_PROMOTED unless influence enabled AND all hard gates pass).
-- **dry-run evidence**: real 397-wake corpus → trace_coverage=1.0, context_failures=0, truth_overrides=0, all_hard_gates=True, verdict NOT_PROMOTED (influence off; no decision payloads in wake traces).
-- **tests run**: `pytest tests/test_agent_shadow_acceptance.py` → 6 passed.
+- **design decisions**: shadow_compare_wakes (baseline vs augmented, shadow only); promotion_gate fail-closed — PROMOTED requires affirmative measured decision-level evidence (payloads available, comparisons completed, zero truth overrides, zero unauthorized actions, zero critical memory false positives, measured operator recall above threshold, trace coverage ≥ 99%, MCP write denial rate 100%, P0/P1 == 0, influence explicitly enabled). Missing evidence fails closed.
+- **dry-run evidence**: real 397-wake corpus → trace_coverage=1.0, context_failures=0, truth_overrides=0, verdict NOT_PROMOTED (influence off; no decision payloads in wake traces).
+- **tests run**: `pytest tests/test_agent_shadow_acceptance.py` → 6 passed (initial); expanded to fail-closed coverage in the remediation (see below).
+
+## Final Independent Review Remediation (bounded pass)
+
+- **date/time**: 2026-08-17 (remediation after PR #341 draft)
+- **base SHA**: `968dafb6beda21aa11aa4cedeb7c9c3920c3fec4` · **start head**: `76800c24aeca1aa7e41e407c61f6f641c607b381`
+- **scope**: close the independent-review findings only; NOT a new feature; no merge/deploy/behavior-influence; READ_ONLY_ADVISORY.
+- **files changed**:
+  - `scripts/lib/agent_runtime_instrumentation.py` (new) — flag-gated `instrument_material_wake`; `scripts/lib/cio_material_scan.py` (`_instrument_scan` hook).
+  - `scripts/lib/mcp_read_only_gateway.py` — timeout + `MCPRateGovernor`; new `TIMEOUT`/`LIMITED` statuses.
+  - `scripts/lib/agent_trace_retention.py` (new) — bounded JSONL retention/rotation.
+  - `scripts/lib/agent_untrusted_data.py` (new) — UNTRUSTED_DATA envelope + partition guard.
+  - `scripts/lib/agent_shadow_acceptance.py` — promotion gate fail-closed.
+  - `scripts/lib/agent_context_envelope.py` — NOT_CONFIGURED/UNAVAILABLE/ERROR propagation.
+  - `scripts/lib/agent_memory_provider.py` + `agent_learning_linkage.py` — provenance/admission enforced end-to-end.
+  - `scripts/lib/agent_mem0_provider.py` — removed split-brain runtime flags.
+  - `scripts/lib/agent_followup.py` — `reopen_after_reject` identity semantics.
+  - `scripts/lib/agent_run_trace.py` — `query_traces(case_id=...)` top-level fallback.
+  - `.github/workflows/agent-intelligence-foundation-ci.yml` (new).
+  - `docs/agent-intelligence/PHASE_ACCEPTANCE.md`, `IMPLEMENTATION_LOG.md`, `THREAT_MODEL.md`, `PRIVACY_AND_REDACTION.md`, `DEPLOYMENT_RUNBOOK.md`, `ROLLBACK_RUNBOOK.md` (sync).
+- **tests run**: full AIF manifest 383 passed locally (see final result packet for exact count); targeted regressions per finding.
+- **remaining risks**: AIF exact-head CI authored but its green run on the final PR head pending; Mem0 + external MCP NOT_CONFIGURED; behavior influence NOT_PROMOTED; AIF-24 PARTIAL.
 
 ## Cross-phase notes
 
-- **Total new tests (Agent Intelligence Foundation)**: 266 across 17 test files for Phases 3–12 (plus Phase 1's 44 and Phase 2's 19 primitives ≈ 329 total new AIF tests).
-- **Known unrelated failures** (carried, not in this program's scope): 8 × `tests/test_agent_runtime_host_proof_wrapper.py` (credential-handoff subsystem) — pre-existing, environment-dependent.
+- **Total AIF test manifest** (pinned in `agent-intelligence-foundation-ci.yml`): 383 tests across 23 files after remediation.
+- **Known unrelated failures** (carried, not in this program's scope): 8 × `tests/test_agent_runtime_host_proof_wrapper.py` (credential-handoff subsystem) — pre-existing, environment-dependent, proven to also fail on base `968dafb6`.

@@ -29,7 +29,7 @@ memory governance, and redaction in the context envelope / traces.
 | Advisory context | Stale memory (expired operator preference) | Low | Medium | `_is_expired()` / `_is_live()` drop `EXPIRED` and past `expires_at` from primary and from `retrieve_for_context` | Clock-dependent; a provider that ignores `expires_at` must still be caught by `retrieve_for_context`'s defensive re-filter. |
 | Operator privacy | Cross-user / cross-scope memory leakage | Medium | High | `retrieve_for_context` forwards `scope` to the provider; `LocalTestMemoryProvider.search` enforces scope via `_scope_matches` (missing constraint == shared; `shared_scope=True` is explicit cross-operator) | Mitigated in `agent_memory_provider.py` (pinned by `test_local_provider_scope_isolation_enforced`). Any future multi-tenant provider MUST implement equivalent scope enforcement, or cross-account leakage occurs. |
 | Credentials / secrets | Secret exfiltration (tokens, auth material) | Medium | Critical | `redact_secrets()` redacts secret-shaped keys/values everywhere; `build_memory_record()` rejects token-shaped content; receipts store only digests, never raw bodies | Regex-based redaction is over-broad but not exhaustive — a novel token format not matching the patterns could pass. No egress channel exists, which is the real backstop. |
-| Internal network | SSRF (`169.254.169.254`, metadata, RFC1918, localhost) | Medium | Critical | `_is_safe_host()` blocks private/metadata hosts unconditionally and requires an explicit safe-host allowlist (fail closed); applied to all `url`/`host` keys and any `http(s)://` string | No network egress exists today, so SSRF is theoretical until an external adapter is wired. Timeouts/rate limits are still stubs. |
+| Internal network | SSRF (`169.254.169.254`, metadata, RFC1918, localhost) | Medium | Critical | `_is_safe_host()` blocks private/metadata hosts unconditionally and requires an explicit safe-host allowlist (fail closed); applied to all `url`/`host` keys and any `http(s)://` string | No network egress exists today, so SSRF is theoretical until an external adapter is wired. Per-call timeout + rate/budget governance (`MCPRateGovernor`, `TIMEOUT`/`LIMITED`) are now implemented. |
 | Filesystem | Path traversal (`../`, absolute paths, root escape) | Medium | High | `_is_safe_doc_path()` rejects `..`, absolute paths (Unix/Windows), and root escapes; applied to `path`/`file_path`/`doc_path`/`source_path` keys | Local document providers are in-memory; the guard is defense-in-depth until a real filesystem-backed document adapter exists. |
 | Broker/order/stop state | Tool escalation (write tool, or read-only name with write payload) | Low | Critical | Deny-substring wins over allowlist; request schema rejects unknown fields; providers expose only `get`/`search`/`health` (no write methods) | None identified at the gateway. Capability *classification* (`classify_tool`) is attribution only, never authorization — callers must not mistake it for a boundary. |
 | Broker/order/stop state | Fake read-only MCP server (advertises `readOnlyHint`) | Low | Critical | `readOnlyHint` metadata is ignored; the boundary derives from the exact tool name + denylist + absence of write methods. A provider that smuggles a `write()` method is never invoked (gateway only calls `get`/`search`) | If a future gateway adds generic method dispatch by name, it must retain the read-only-only method surface. |
@@ -55,18 +55,23 @@ memory governance, and redaction in the context envelope / traces.
 ## Top residual risks (not fully mitigated)
 
 1. **Prompt-injection text still reaches model context.** The gateway blocks
-   mutation, but the injected document/calendar text is not stripped or
-   sandboxed from the reasoning context. Consider a model-level
-   "content-vs-instruction" delimiter or a curated summary before external text
-   is placed into the envelope.
-2. **`build_memory_record()` does not itself reject forbidden-authoritative
-   subjects** — that rejection lives in `admit_status()`. Any future admission
-   path that bypasses `admit_status` would admit a (still non-authoritative)
-   record about "cash" without an error. Prefer centralizing the check in the
-   builder.
+   mutation, and external content is now structurally typed as `UNTRUSTED_DATA`
+   (`agent_untrusted_data.py`: explicit envelope + delimiter + partition guard
+   that keeps untrusted data out of instruction sections). This is a structural
+   boundary, not a model-level prompt-injection defense; the injected text is
+   still visible to the model. AIF-24 is therefore `PARTIAL`, not `PASS`.
+2. **Regex redaction is not exhaustive** for novel token formats; the real
+   backstop is zero egress and zero secrets held, not the regex.
 3. **No replay nonce / idempotency key.** Reads are safe today, but before any
    write-capable surface is added, add a signed per-wake nonce.
-4. **Regex redaction is not exhaustive** for novel token formats; the real
-   backstop is zero egress and zero secrets held, not the regex.
-5. **Trace/memory retention has no automated TTL/purge.** Append-only JSONL is
-   durable but unbounded; a retention job is required before production.
+
+## Residual risks closed in remediation
+
+1. **Memory admission bypass** (forbidden-authoritative subject or no provenance
+   via a path that skipped `admit_status`) — closed: `propose_memory_write`,
+   `admit_memory_candidate`, and `LocalTestMemoryProvider.add_candidate` now all
+   route through the canonical governance predicates, so a provenance-free or
+   forbidden-subject record can never become retrievable context.
+2. **Trace/memory retention had no automated TTL/purge** — closed:
+   `agent_trace_retention.py` provides bounded retention/rotation (max age,
+   max bytes, max rows; atomic rotate; governed paths only; dry-run default).

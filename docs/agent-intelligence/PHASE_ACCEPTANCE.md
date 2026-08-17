@@ -38,11 +38,11 @@ Status vocabulary:
 | AIF-21 | feedback != measured investment outcome | PASS | `classify_feedback_vs_outcome` |
 | AIF-22 | reflection proposes, never auto-promotes | PASS | `propose_memory_write` (CANDIDATE, no write) |
 | AIF-23 | LangGraph conditional gate | PASS (**NOT_REQUIRED**) | complexity gate default |
-| AIF-24 | external content treated as untrusted data | PASS | red-team prompt-injection / calendar tests |
+| AIF-24 | external content treated as untrusted data | **PARTIAL** | `agent_untrusted_data.py` UNTRUSTED_DATA envelope + delimiter + partition guard; residual model-level prompt-injection risk acknowledged |
 | AIF-25 | provider outage fail-soft | PASS | `test_agent_intelligence_failure_injection.py` |
 | AIF-26 | historical replay complete | PASS | 397 real wakes replayed |
 | AIF-27 | shadow comparison complete | PASS (context-level) | `shadow_compare_wakes`; wake traces carry no decision payloads |
-| AIF-28 | behavior-influence promotion justified | **NOT_PROMOTED** | influence=0; gate blocks |
+| AIF-28 | behavior-influence promotion justified | **NOT_PROMOTED** | influence=0; fail-closed gate requires measured decision-level evidence |
 | AIF-29 | zero broker/order/stop/2FA/risk-policy mutation | PASS | no such code path; adversarial counters = 0 |
 | AIF-30 | READ_ONLY_ADVISORY | PASS | authority constant throughout |
 
@@ -66,18 +66,44 @@ Status vocabulary:
 
 ## Overall
 
-**Implementation, unit/integration/adversarial/failure-injection, historical
-replay, and shadow comparison are complete and committed.** The program is in a
-**shadow-only, behavior-influence-OFF** posture: every feature flag defaults to
-`0`, `MEMORY_PROVIDER=null`, and `promotion_gate()` returns `NOT_PROMOTED`.
+**Implementation is complete; the program remains in a shadow-only,
+behavior-influence-OFF posture** (every feature flag defaults to `0`,
+`MEMORY_PROVIDER=null`, `promotion_gate()` fails closed and returns
+`NOT_PROMOTED` without measured decision-level evidence).
+
+Independent-review remediation closed (this branch):
+
+- **Runtime instrumentation** is now flag-gated and additive
+  (`agent_runtime_instrumentation.py` + `cio_material_scan._instrument_scan`):
+  flags OFF ⇒ exact pre-AIF parity; `AGENT_CONTEXT_ENVELOPE=1` builds
+  ContextEnvelope@v1; `AGENT_RUN_TRACE=1` propagates one wake/trace lineage and
+  appends a redacted AgentRunTrace; hooks fail soft. No host activation.
+- **AIF exact-head CI** exists (`agent-intelligence-foundation-ci.yml`) and runs
+  the full AIF manifest; it complements (does not replace) `cio-hardening` and
+  `release-readiness`.
+- **Promotion gate fails closed** and requires measured decision-level evidence
+  (payloads available, comparisons completed, zero truth overrides, zero
+  unauthorized actions, zero critical memory false positives, measured operator
+  recall above threshold, trace coverage ≥ 99%, MCP write denial rate 100%).
+- **`NOT_CONFIGURED`/`UNAVAILABLE`/`ERROR`** propagate honestly end to end and
+  are never normalized to `EMPTY`.
+- **Memory provenance/admission** is enforced end to end via one governed path.
+- **Single feature-flag source of truth** in `agent_feature_flags.py`.
+- **MCP timeout + rate/budget governance** implemented (`MCPRateGovernor`,
+  `TIMEOUT`/`LIMITED` statuses).
+- **Trace retention/rotation** implemented (`agent_trace_retention.py`, dry-run
+  default, governed paths only, atomic rotation).
 
 Notable honest caveats (not "PASS"):
 
 - **Mem0** and **external calendar/documents MCP** are `NOT_CONFIGURED` (no
   packages installed, no external credentials); local test doubles are used.
-- **Behavior influence is NOT_PROMOTED** by design; the wake traces carry no
+- **Behavior influence is NOT_PROMOTED** by design; wake traces carry no
   decision payloads, so shadow comparison is context-level, not notification-level.
-- **Exact-head CI** was not executed in this environment; all local tests for
-  this program are green. Eight pre-existing `test_agent_runtime_host_proof_wrapper.py`
-  failures are unrelated to this program (credential-handoff subsystem) and are
-  carried as `known_unrelated_failures`.
+- **AIF-24 external-content trust is PARTIAL**: the UNTRUSTED_DATA envelope is
+  structural typing + delimiting, not a model-level prompt-injection defense.
+- **AIF exact-head CI** is authored but its green run on the final PR head is
+  still pending at the time of this writing (see IMPLEMENTATION_LOG).
+- Pre-existing `test_agent_runtime_host_proof_wrapper.py` failures are unrelated
+  to this program (credential-handoff subsystem) and carried as
+  `known_unrelated_failures` (proven to also fail on base `968dafb6`).

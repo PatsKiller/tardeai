@@ -72,6 +72,11 @@ export AGENT_RUN_TRACE=1
 - **What turns on:** context-envelope enrichment and run-trace lineage.
 - **Effect scope:** purely additive context and auditability. No decision
   changes.
+- **Wiring:** the flag-gated hooks are implemented in
+  `scripts/lib/agent_runtime_instrumentation.py` and invoked from
+  `cio_material_scan._instrument_scan`. They **fail soft** — an observability
+  failure never fabricates truth or mutates a decision — and flags OFF is exact
+  pre-AIF parity.
 - **Hold until:** trace coverage >= 99%, no context-build failures, no digest
   surprises. Compare before/after decision output — it must be identical.
 
@@ -185,5 +190,25 @@ for effect in ["memory changes holdings", "MCP write", "LangGraph broker authori
    denied; unknown flag value -> `0`; invalid provider -> `"null"`.
 6. **Any stage can be rolled back** by applying the rollback flag set. See
    `ROLLBACK_RUNBOOK.md`.
+
+## 7. Trace retention (operator deployment step)
+
+`scripts/lib/agent_trace_retention.py` provides bounded retention/rotation for
+the two governed trace paths (`agent_run_traces.jsonl`, `agent_tool_traces.jsonl`).
+It defaults to dry-run and refuses to touch any unlisted path. To enforce it
+operationally, schedule a periodic dry-run + enforce pass (e.g. a user systemd
+timer or cron) with an explicit max age / max bytes / max rows. **No automated
+timer is installed by this branch** — the operator must add it before production
+activation. Never run a purge against any path outside the governed set.
+
+```bash
+python3 - <<'PY'
+from pathlib import Path
+from scripts.lib.agent_trace_retention import enforce_trace_retention, GOVERNED_TRACE_PATHS
+for p in GOVERNED_TRACE_PATHS:
+    if Path(p).exists():
+        print(enforce_trace_retention(p, max_age_days=90, max_bytes=50_000_000, dry_run=True))
+PY
+```
 
 > The office advises. It never decides for the operator.

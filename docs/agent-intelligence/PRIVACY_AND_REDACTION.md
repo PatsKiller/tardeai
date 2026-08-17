@@ -104,10 +104,14 @@ a run trace, a tool trace, or a memory record.**
   expired records are excluded from primary context and retrieval. Every
   production memory record must carry an explicit `expires_at`.
 - **Run/tool traces** are append-only JSONL (`data/cio/agent_run_traces.jsonl`,
-  tool traces). They are **not** auto-purged: no TTL job exists yet, so
-  retention must be enforced operationally until an automated retention window
-  is added.
+  tool traces). A bounded retention/rotation utility
+  (`agent_trace_retention.enforce_trace_retention`) now exists with configured
+  max age / max bytes / max rows, atomic rotation, and a governed-path guard;
+  it defaults to dry-run (no write) and only ever touches the two governed
+  trace paths. No production purge is performed in this remediation; an
+  operator deployment step (timer/cron) is documented in the runbook.
 
-> Residual risk: append-only traces are durable but currently unbounded. A
-> retention/rotation job is required before production activation (tracked in
-> THREAT_MODEL.md).
+> Residual risk: append-only traces are bounded **only when the retention step
+> is actually scheduled/run**. The utility is implemented and tested; the
+> operator must still schedule it before production activation (see
+> DEPLOYMENT_RUNBOOK.md).

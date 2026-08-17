@@ -95,9 +95,12 @@ A reusable post-rollback self-check:
 ```python
 from scripts.lib.agent_feature_flags import load_feature_flags, behavior_influence_active
 flags = load_feature_flags()
+assert flags["AGENT_CONTEXT_ENVELOPE"] == 0
+assert flags["AGENT_RUN_TRACE"] == 0
 assert flags["MEMORY_BEHAVIOR_INFLUENCE"] == 0
 assert flags["MCP_READ_ONLY_GATEWAY"] == 0
 assert flags["MEMORY_PROVIDER"] == "null"
+assert flags["MEMORY_SHADOW"] == 0
 assert flags["LANGGRAPH_WORKER_PILOT"] == 0
 assert behavior_influence_active(flags) is False
 ```
