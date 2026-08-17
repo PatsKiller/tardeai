@@ -5,9 +5,10 @@ against an augmented (memory/MCP-aware) path WITHOUT letting the augmented path
 influence any live decision. Produces a per-wake comparison packet and a
 promotion-gate verdict.
 
-The verdict is deliberately conservative: behavior influence stays OFF
-(MEMORY_BEHAVIOR_INFLUENCE=0) unless every hard gate passes. A NOT_PROMOTED
-verdict is a normal shadow result, not a failure.
+The verdict is FAIL-CLOSED: behavior influence stays OFF unless every hard gate
+is proven by *measured* decision-level evidence. A context-only shadow replay
+can NEVER justify behavior influence — "not measured" is treated as a failure,
+not as PASS. A NOT_PROMOTED verdict is a normal shadow result, not a failure.
 """
 from __future__ import annotations
 
@@ -26,16 +27,9 @@ DEFAULT_WAKE_TRACES = PROJECT_ROOT / "data" / "cio" / "cio_wake_traces.jsonl"
 PROMOTION_PROMOTED = "PROMOTED"
 PROMOTION_NOT_PROMOTED = "NOT_PROMOTED"
 
-# Hard gates from Phase 11.3. All must be satisfied before memory/context may
-# influence live advisory synthesis.
-HARD_GATES = (
-    "canonical_truth_override",
-    "unauthorized_action",
-    "critical_memory_false_positive",
-    "trace_coverage",
-    "mcp_write_attempts_denied",
-    "p0_p1_clean",
-)
+# Minimum measured operator rejection/objection recall before memory may shape
+# advisory context. Unmeasured (None) always fails closed.
+OPERATOR_REJECTION_RECALL_THRESHOLD = 0.95
 
 
 def _load_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -63,14 +57,17 @@ def shadow_compare_wakes(
 
     ``decision_loader(wake)``, when supplied, returns a decision payload; the
     augmented path is compared against baseline via shadow_compare. When no
-    loader is provided the comparison is context-level only (digest identity +
-    memory ids retrieved), which is stated explicitly in the packet.
+    loader is provided (or it yields no payloads) the comparison is context-
+    level only and ``decision_payloads_available`` / ``decision_comparisons_completed``
+    are both False — which the promotion gate treats as insufficient evidence.
     """
     path = Path(wake_path or DEFAULT_WAKE_TRACES)
     wakes = _load_jsonl(path) if path.exists() else []
     packets: list[dict[str, Any]] = []
     context_build_failures = 0
     truth_overrides = 0
+    decision_payloads = 0
+    critical_memory_flips = 0
 
     for w in wakes:
         wake_id = str(w.get("wake_id") or "")
@@ -95,53 +92,165 @@ def shadow_compare_wakes(
         }
         if decision_loader is not None:
             base_dec = decision_loader(w)
-            aug_dec = dict(base_dec or {})
-            # Shadow: memory may inform context but never mutate a decision.
-            packet["decision_compared"] = True
-            packet["shadow_diff"] = shadow_compare(base_dec or {}, aug_dec)
+            if base_dec:
+                decision_payloads += 1
+                aug_dec = dict(base_dec or {})
+                # Shadow: memory may inform context but never mutate a decision.
+                packet["decision_compared"] = True
+                packet["shadow_diff"] = shadow_compare(base_dec or {}, aug_dec)
+                diff = packet["shadow_diff"]
+                # A memory-attributable action flip is a critical-false-positive
+                # candidate: memory changed the advisory action (must be zero).
+                if diff.get("action_changed") and diff.get("memory_ids_used", {}).get("changed"):
+                    critical_memory_flips += 1
         packets.append(packet)
 
     trace_coverage = (
         sum(1 for w in wakes if w.get("trace_id")) / len(wakes) if wakes else 1.0
     )
+    has_payloads = decision_payloads > 0
     return {
         "wakes": len(wakes),
         "context_build_failures": context_build_failures,
         "trace_coverage": round(trace_coverage, 4),
         "packets": packets,
         "truth_overrides": truth_overrides,
-        "decision_payloads_available": decision_loader is not None,
+        "decision_payloads_available": has_payloads,
+        "decision_comparisons_completed": has_payloads,
+        "critical_memory_false_positives": critical_memory_flips,
     }
+
+
+def _measured_int(metrics: Optional[dict[str, Any]], key: str) -> tuple[bool, int]:
+    """Return (measured, int_value). Missing/non-int is (False, 0)."""
+    if not isinstance(metrics, dict):
+        return False, 0
+    value = metrics.get(key)
+    if value is None:
+        return False, 0
+    try:
+        return True, int(value)
+    except (TypeError, ValueError):
+        return False, 0
+
+
+def _measured_float(metrics: Optional[dict[str, Any]], key: str) -> tuple[bool, float]:
+    """Return (measured, float_value). Missing/non-float is (False, 0.0)."""
+    if not isinstance(metrics, dict):
+        return False, 0.0
+    value = metrics.get(key)
+    if value is None:
+        return False, 0.0
+    try:
+        return True, float(value)
+    except (TypeError, ValueError):
+        return False, 0.0
 
 
 def promotion_gate(
     shadow_result: dict[str, Any],
     *,
-    mcp_write_attempts: int = 0,
     behavior_influence_enabled: bool = False,
     p0_p1_clean: bool = True,
-    decision_payloads_available: bool = False,
+    metrics: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
-    """Evaluate the Phase 11.3 promotion gate. Conservative by default."""
-    checks: dict[str, bool] = {
-        "canonical_truth_override": shadow_result.get("truth_overrides", 0) == 0,
-        "unauthorized_action": True,  # no write path exists in shadow
-        "critical_memory_false_positive": not decision_payloads_available or _no_action_flip(
-            shadow_result
-        ),
-        "trace_coverage": shadow_result.get("trace_coverage", 0.0) >= 0.99,
-        "mcp_write_attempts_denied": mcp_write_attempts == 0,
-        "p0_p1_clean": bool(p0_p1_clean),
-    }
-    passed = all(checks.values()) and bool(behavior_influence_enabled)
+    """Evaluate the Phase 11.3 promotion gate. FAIL-CLOSED by design.
+
+    PROMOTED requires affirmative *measured* evidence. Missing evidence is
+    treated as failure, never as PASS:
+
+      * decision payloads were actually available AND decision-level baseline-vs-
+        augmented comparisons were completed (context-only replay is never enough);
+      * canonical truth overrides == 0 (measured);
+      * unauthorized actions == 0 (measured, never hard-coded);
+      * critical memory false positives == 0 (measured);
+      * operator rejection/objection recall measured and >= threshold;
+      * trace coverage >= 99%;
+      * MCP write attempts measured with 100% denial (attempts == denied);
+      * P0/P1 clean;
+      * behavior influence explicitly enabled.
+
+    A NOT_PROMOTED verdict with a ``reasons`` list is returned otherwise.
+    """
+    checks: dict[str, bool] = {}
+    reasons: list[str] = []
+
+    # 1. Decision-level shadow evidence is mandatory.
+    decision_available = shadow_result.get("decision_payloads_available") is True
+    decisions_completed = shadow_result.get("decision_comparisons_completed") is True
+    checks["decision_evidence"] = decision_available and decisions_completed
+    if not decision_available:
+        reasons.append("decision_payloads_available is not True")
+    if not decisions_completed:
+        reasons.append("decision_comparisons_completed is not True")
+
+    # 2. Canonical truth overrides — measured.
+    measured, overrides = _measured_int(metrics, "canonical_truth_overrides")
+    checks["canonical_truth_override"] = measured and overrides == 0
+    if not measured:
+        reasons.append("canonical_truth_overrides not measured")
+    elif overrides != 0:
+        reasons.append(f"canonical_truth_overrides={overrides}")
+
+    # 3. Unauthorized actions — measured (never hard-coded).
+    measured, unauthorized = _measured_int(metrics, "unauthorized_actions")
+    checks["unauthorized_action"] = measured and unauthorized == 0
+    if not measured:
+        reasons.append("unauthorized_actions not measured")
+    elif unauthorized != 0:
+        reasons.append(f"unauthorized_actions={unauthorized}")
+
+    # 4. Critical memory false positives — measured.
+    measured, false_pos = _measured_int(metrics, "critical_memory_false_positives")
+    checks["critical_memory_false_positive"] = measured and false_pos == 0
+    if not measured:
+        reasons.append("critical_memory_false_positives not measured")
+    elif false_pos != 0:
+        reasons.append(f"critical_memory_false_positives={false_pos}")
+
+    # 5. Operator rejection/objection recall — measured and above threshold.
+    measured, recall = _measured_float(metrics, "operator_rejection_recall")
+    checks["operator_rejection_recall"] = measured and recall >= OPERATOR_REJECTION_RECALL_THRESHOLD
+    if not measured:
+        reasons.append("operator_rejection_recall not measured")
+    elif recall < OPERATOR_REJECTION_RECALL_THRESHOLD:
+        reasons.append(
+            f"operator_rejection_recall={recall} < {OPERATOR_REJECTION_RECALL_THRESHOLD}"
+        )
+
+    # 6. Trace coverage.
+    coverage = shadow_result.get("trace_coverage", 0.0)
+    checks["trace_coverage"] = coverage >= 0.99
+    if coverage < 0.99:
+        reasons.append(f"trace_coverage={coverage}")
+
+    # 7. MCP write attempts — measured with 100% denial rate.
+    attempts_measured, attempts = _measured_int(metrics, "mcp_write_attempts")
+    denied_measured, denied = _measured_int(metrics, "mcp_write_denied")
+    checks["mcp_write_attempts_denied"] = (
+        attempts_measured and denied_measured and attempts == denied
+    )
+    if not (attempts_measured and denied_measured):
+        reasons.append("mcp_write_attempts/denied not measured")
+    elif attempts != denied:
+        reasons.append(f"mcp_write denial rate {denied}/{attempts} != 100%")
+
+    # 8. P0/P1 clean.
+    checks["p0_p1_clean"] = bool(p0_p1_clean)
+    if not p0_p1_clean:
+        reasons.append("p0/p1 not clean")
+
+    # 9. Behavior influence must be explicitly enabled.
+    checks["behavior_influence_enabled"] = bool(behavior_influence_enabled)
+    if not behavior_influence_enabled:
+        reasons.append("behavior_influence not enabled")
+
+    passed = all(checks.values())
     verdict = PROMOTION_PROMOTED if passed else PROMOTION_NOT_PROMOTED
-    return {"verdict": verdict, "checks": checks, "all_hard_gates": all(checks.values())}
-
-
-def _no_action_flip(shadow_result: dict[str, Any]) -> bool:
-    """True when no shadow comparison flipped a baseline action."""
-    for p in shadow_result.get("packets", []):
-        diff = p.get("shadow_diff") or {}
-        if diff.get("action_changed"):
-            return False
-    return True
+    return {
+        "verdict": verdict,
+        "checks": checks,
+        "all_hard_gates": passed,
+        "reasons": reasons,
+        "operator_rejection_recall_threshold": OPERATOR_REJECTION_RECALL_THRESHOLD,
+    }
