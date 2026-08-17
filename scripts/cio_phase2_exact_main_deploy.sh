@@ -6,6 +6,8 @@
 # promote  — point CURRENT + systemd at the prepared release, restart, health
 # rollback — restore PREV recorded in state
 # status
+# stamp    — (re)stamp provenance artifacts for a release dir: SOURCE_COMMIT, BUILD_SHA,
+#            GIT_SHA, BUILD_STAMP.json, and build-meta.json (no npm/network/systemd)
 #
 # Authority: READ_ONLY_ADVISORY. No broker. Telegram remains interdicted.
 #
@@ -131,6 +133,7 @@ stamp_build() {
   local dir="$1" sha="$2"
   printf '%s\n' "$sha" >"${dir}/BUILD_SHA"
   printf '%s\n' "$sha" >"${dir}/GIT_SHA"
+  printf '%s\n' "$sha" >"${dir}/SOURCE_COMMIT"
   printf '%s\n' "main" >"${dir}/BUILD_BRANCH"
   printf '%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"${dir}/BUILD_STAMPED_AT"
   printf '%s\n' "stamped_by=cio_phase2_exact_main_deploy.sh" >"${dir}/BUILD_STAMP_NOTE"
@@ -191,6 +194,35 @@ link_pipeline_data() {
   fi
 }
 
+write_build_meta() {
+  local dest="$1" sha="$2" src_cc="${3:-}"
+  python3 - "$src_cc" <<PY
+import json, sys
+from datetime import datetime, timezone
+from pathlib import Path
+extra = sys.argv[1] if len(sys.argv) > 1 else ""
+meta = {
+    "git_sha": "${sha}",
+    "source_sha": "${sha}",
+    "build_sha": "${sha}"[:12],
+    "source_commit": "${sha}",
+    "built_at": datetime.now(timezone.utc).isoformat(),
+    "branch": "main",
+    "release_label": "${LABEL}",
+}
+paths = [
+    Path("${dest}/apps/command-center-v3/build-meta.json"),
+    Path("${dest}/apps/command-center-v3/dist/build-meta.json"),
+]
+if extra:
+    paths.append(Path(extra) / "build-meta.json")
+for p in paths:
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(meta, indent=2) + "\n")
+print("wrote build-meta", meta["git_sha"][:12])
+PY
+}
+
 build_frontend() {
   local src="$1"
   local dest="$2"
@@ -214,27 +246,7 @@ build_frontend() {
   )
   mkdir -p "${dest}/apps/command-center-v3/dist"
   rsync -a --delete "${cc}/dist/" "${dest}/apps/command-center-v3/dist/"
-  python3 - <<PY
-import json
-from datetime import datetime, timezone
-from pathlib import Path
-meta = {
-    "git_sha": "${CONTENT_SHA}",
-    "source_sha": "${CONTENT_SHA}",
-    "build_sha": "${CONTENT_SHA}"[:12],
-    "built_at": datetime.now(timezone.utc).isoformat(),
-    "branch": "main",
-    "release_label": "${LABEL}",
-}
-for p in (
-    Path("${dest}/apps/command-center-v3/build-meta.json"),
-    Path("${dest}/apps/command-center-v3/dist/build-meta.json"),
-    Path("${cc}/build-meta.json"),
-):
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(meta, indent=2) + "\n")
-print("wrote build-meta", meta["git_sha"][:12])
-PY
+  write_build_meta "$dest" "$CONTENT_SHA" "$cc"
 }
 
 overlay_main() {
@@ -404,8 +416,12 @@ case "$MODE" in
   promote)  cmd_promote "${2:-}" ;;
   rollback) cmd_rollback "${2:-}" ;;
   status)   cmd_status ;;
+  stamp)    [[ -n "${2:-}" && -n "${3:-}" ]] || die "usage: $0 stamp <release-dir> <full-40-char-sha>"
+            stamp_build "$2" "$3"
+            write_build_meta "$2" "$3"
+            log "stamped provenance for $2 -> $3" ;;
   *)
-    echo "Usage: $0 {prepare|promote|rollback|status} [path]"
+    echo "Usage: $0 {prepare|promote|rollback|status|stamp} [path]"
     exit 2
     ;;
 esac
