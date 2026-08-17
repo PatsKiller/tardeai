@@ -27,7 +27,7 @@ from scripts.lib.agent_memory_governance import (
 from scripts.lib.agent_memory_provider import LocalTestMemoryProvider
 from scripts.lib.agent_run_trace import append_trace, build_trace
 from scripts.lib.mcp_provider_adapters import build_local_provider_registry
-from scripts.lib.mcp_read_only_gateway import call_mcp_tool
+from scripts.lib.mcp_read_only_gateway import call_mcp_tool, reset_default_governor
 
 AUTHORITY = "READ_ONLY_ADVISORY"
 
@@ -66,6 +66,9 @@ def _fixture_truth() -> dict[str, Any]:
 def benchmark(n: int = 100) -> dict[str, Any]:
     """Run each operation ``n`` times and return mean wall-clock latency (ms)."""
     n = max(1, int(n))
+    # The MCP chokepoint now always applies a shared default rate governor. Reset
+    # it so this isolated benchmark measures real reads, not budget rejections.
+    reset_default_governor()
     memory = _fixture_memory()
     registry = build_local_provider_registry()
     decision = _fixture_decision()

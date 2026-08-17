@@ -20,10 +20,10 @@ Guarantees:
 """
 from __future__ import annotations
 
-import concurrent.futures
 import ipaddress
 import json
 import re
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -64,6 +64,7 @@ DEFAULT_MAX_CALLS_PER_WAKE = 50
 DEFAULT_MAX_CALLS_PER_TOOL = 10
 
 _TIMEOUT = object()
+_NO_RESULT = object()
 
 
 def _call_with_timeout(
@@ -72,16 +73,33 @@ def _call_with_timeout(
     **kwargs: Any,
 ) -> Any:
     """Call ``fn(**kwargs)`` with a per-call deadline. Returns ``_TIMEOUT``
-    on deadline exceeded. ``timeout_ms <= 0`` means no deadline (direct call)."""
+    on deadline exceeded. ``timeout_ms <= 0`` means no deadline (direct call).
+
+    A TRUE deadline: the caller regains control at the deadline rather than
+    waiting for the underlying (read-only) function to finish. The worker runs
+    on a daemon thread; on timeout its result is discarded and it is reclaimed
+    when it eventually returns (never blocking the caller or process exit).
+    """
     if timeout_ms is None or timeout_ms <= 0:
         return fn(**kwargs)
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
-        future = ex.submit(fn, **kwargs)
+
+    box: dict[str, Any] = {"value": _NO_RESULT, "error": None}
+
+    def _run() -> None:
         try:
-            return future.result(timeout=timeout_ms / 1000.0)
-        except concurrent.futures.TimeoutError:
-            future.cancel()
-            return _TIMEOUT
+            box["value"] = fn(**kwargs)
+        except Exception as exc:  # noqa: BLE001 — surfaced to caller
+            box["error"] = exc
+
+    worker = threading.Thread(target=_run, daemon=True)
+    worker.start()
+    worker.join(timeout=timeout_ms / 1000.0)
+    if worker.is_alive():
+        # Deadline reached: do NOT wait for the worker; discard its result.
+        return _TIMEOUT
+    if box["error"] is not None:
+        raise box["error"]
+    return box["value"]
 
 
 class MCPRateGovernor:
@@ -133,6 +151,22 @@ class MCPRateGovernor:
         self._wake_counts.clear()
         self._tool_counts.clear()
         self._last_call_ms.clear()
+
+
+# Shared governed default so the chokepoint ALWAYS applies budget governance.
+# ``call_mcp_tool(governor=None)`` uses this shared governor rather than
+# bypassing the budget: a caller cannot disable governance by omitting it.
+_DEFAULT_GOVERNOR = MCPRateGovernor()
+
+
+def get_default_governor() -> MCPRateGovernor:
+    """Return the shared default rate/budget governor for the chokepoint."""
+    return _DEFAULT_GOVERNOR
+
+
+def reset_default_governor() -> None:
+    """Reset the shared default governor (used by tests to be deterministic)."""
+    _DEFAULT_GOVERNOR.reset()
 
 # ── Read-only allowlist (exact tool name -> capability class) ──────────────
 # Every entry is read-only. Capability classes are domain scopes, never verbs.
@@ -510,15 +544,17 @@ def call_mcp_tool(
                 reason=f"unsafe path: {p}",
             )
 
-    # 5a. rate / budget governance (bounded, deterministic, fail-closed)
-    if governor is not None:
-        budget_ok, budget_reason = governor.allow(wake_id, tool)
-        if not budget_ok:
-            return _finish(
-                ok=False,
-                status=MCP_READ_ONLY_STATUS_LIMITED,
-                reason=budget_reason,
-            )
+    # 5a. rate / budget governance (bounded, deterministic, fail-closed).
+    # Structural: governance ALWAYS applies. Omitting the governor uses the
+    # shared default; a caller cannot disable governance with governor=None.
+    active_governor = governor if governor is not None else _DEFAULT_GOVERNOR
+    budget_ok, budget_reason = active_governor.allow(wake_id, tool)
+    if not budget_ok:
+        return _finish(
+            ok=False,
+            status=MCP_READ_ONLY_STATUS_LIMITED,
+            reason=budget_reason,
+        )
 
     # 6. provider lookup (fail-soft)
     provider_obj = None

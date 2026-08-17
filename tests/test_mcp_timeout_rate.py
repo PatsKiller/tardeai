@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -22,10 +23,18 @@ from scripts.lib.mcp_read_only_gateway import (  # noqa: E402
     MCP_READ_ONLY_STATUS_TIMEOUT,
     MCPRateGovernor,
     call_mcp_tool,
+    reset_default_governor,
 )
 from scripts.lib.mcp_provider_adapters import build_local_provider_registry  # noqa: E402
 
 _TRACE_DIR = Path(tempfile.mkdtemp(prefix="mcp_gov_"))
+
+
+@pytest.fixture(autouse=True)
+def _reset_default_governor():
+    reset_default_governor()
+    yield
+    reset_default_governor()
 
 
 class _SlowSearch:
@@ -68,6 +77,94 @@ def test_slow_provider_times_out_fail_soft():
     assert r["ok"] is False
     assert r["status"] == MCP_READ_ONLY_STATUS_TIMEOUT
     assert "timeout" in r["reason"]
+
+
+def test_measured_elapsed_timeout():
+    # The provider sleeps ~500ms; the gateway must return TIMEOUT near the 50ms
+    # deadline, NOT after the provider completes (~500ms).
+    start = time.monotonic()
+    r = _call(
+        "documents.search",
+        {"query": "x"},
+        provider_registry=_slow_registry(),
+        timeout_ms=50,
+    )
+    elapsed_ms = (time.monotonic() - start) * 1000.0
+    assert r["status"] == MCP_READ_ONLY_STATUS_TIMEOUT
+    # Generous upper bound (200ms) still proves the caller did NOT wait 500ms.
+    assert elapsed_ms < 200, f"timeout did not bound latency: {elapsed_ms:.0f}ms"
+
+
+def test_provider_exception_fail_soft():
+    class _Boom:
+        name = "boom"
+
+        def health(self):
+            return True
+
+        def search(self, tool=None, **kw):
+            raise RuntimeError("boom")
+
+    r = _call("documents.search", {"query": "x"}, provider_registry={"documents.search": _Boom()})
+    assert r["ok"] is False
+    assert r["status"] == "ERROR"
+
+
+def test_repeated_timeouts_do_not_grow_threads():
+    # Repeated timeouts must not leave unbounded (non-daemon) worker threads.
+    baseline = threading.active_count()
+    for _ in range(10):
+        _call(
+            "documents.search",
+            {"query": "x"},
+            provider_registry=_slow_registry(),
+            timeout_ms=20,
+        )
+    # Let the daemon workers (which sleep 0.5s) finish and be reclaimed.
+    time.sleep(0.8)
+    assert threading.active_count() <= baseline + 1, (
+        f"thread count grew from {baseline} to {threading.active_count()}"
+    )
+
+
+def test_default_governor_applies_without_explicit_governor():
+    # No governor supplied => the shared default governor still bounds the wake.
+    reset_default_governor()
+    limit = 0
+    for _ in range(60):  # default max_calls_per_wake == 50
+        r = _call("portfolio.get_verified_snapshot", {"account_id": "a"})
+        if r["status"] == MCP_READ_ONLY_STATUS_LIMITED:
+            limit += 1
+    assert limit >= 10  # 50 allowed, then LIMITED
+
+
+def test_governor_none_cannot_bypass():
+    # Passing governor=None explicitly must NOT disable governance.
+    reset_default_governor()
+    r = None
+    for _ in range(60):
+        r = _call("portfolio.get_verified_snapshot", {"account_id": "a"}, governor=None)
+    assert r["status"] == MCP_READ_ONLY_STATUS_LIMITED
+
+
+def test_separate_wake_ids_do_not_contaminate():
+    reset_default_governor()
+    # Exhaust wake_2's budget; wake_3 must remain unaffected.
+    for _ in range(60):
+        _call("portfolio.get_verified_snapshot", {"account_id": "a"}, wake_id="wake_2")
+    ok = _call("portfolio.get_verified_snapshot", {"account_id": "a"}, wake_id="wake_3")
+    assert ok["ok"] is True
+    assert ok["status"] == MCP_READ_ONLY_STATUS_OK
+
+
+def test_unknown_malformed_wake_id_bounded():
+    # An unusual/unknown wake id still gets its own bounded bucket, not a bypass.
+    reset_default_governor()
+    results = [
+        _call("portfolio.get_verified_snapshot", {"account_id": "a"}, wake_id="wake_<unknown>!@#")
+        for _ in range(60)
+    ]
+    assert any(r["status"] == MCP_READ_ONLY_STATUS_LIMITED for r in results)
 
 
 def test_normal_read_unchanged_with_high_budget_governor():
