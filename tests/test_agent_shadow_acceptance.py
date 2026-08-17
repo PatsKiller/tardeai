@@ -55,7 +55,7 @@ def _clean_decision_shadow():
         "truth_overrides": 0,
         "decision_payloads_available": True,
         "decision_comparisons_completed": True,
-        "critical_memory_false_positives": 0,
+        "memory_attributable_action_flips": 0,
     }
 
 
@@ -228,7 +228,7 @@ def test_genuine_dual_path_result_is_complete(tmp_path):
     assert res["decision_payloads_available"] is True
     assert res["decision_comparisons_completed"] is True
     assert res["dual_path_executed"] is True
-    assert res["critical_memory_false_positives"] == 0
+    assert res["memory_attributable_action_flips"] == 0
     p = res["packets"][0]
     assert p["comparison_completed"] is True
     assert p["baseline_decision_digest"] != p["augmented_decision_digest"]
@@ -326,8 +326,8 @@ def test_memory_attributable_flip_is_detected(tmp_path):
         decision_evaluator=evaluator,
         evaluator_version="test-v1",
     )
-    assert res["critical_memory_false_positives"] >= 1
+    assert res["memory_attributable_action_flips"] >= 1
     g = promotion_gate(res, behavior_influence_enabled=True, metrics=_clean_metrics())
     # Even with externally-clean metrics, the derived flip blocks promotion.
-    assert g["checks"]["shadow_critical_memory_flips"] is False
+    assert g["checks"]["shadow_memory_attributable_flips"] is False
     assert g["verdict"] == PROMOTION_NOT_PROMOTED

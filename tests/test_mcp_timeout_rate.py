@@ -18,11 +18,15 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import pytest  # noqa: E402
 
 from scripts.lib.mcp_read_only_gateway import (  # noqa: E402
+    MAX_IN_FLIGHT_TIMED_CALLS,
     MCP_READ_ONLY_STATUS_LIMITED,
     MCP_READ_ONLY_STATUS_OK,
+    MCP_READ_ONLY_STATUS_SATURATED,
     MCP_READ_ONLY_STATUS_TIMEOUT,
     MCPRateGovernor,
     call_mcp_tool,
+    get_default_governor,
+    in_flight_timed_calls,
     reset_default_governor,
 )
 from scripts.lib.mcp_provider_adapters import build_local_provider_registry  # noqa: E402
@@ -215,3 +219,67 @@ def test_min_interval_rate_limit():
     assert r["ok"] is False
     assert r["status"] == MCP_READ_ONLY_STATUS_LIMITED
     assert "rate limit" in r["reason"]
+
+
+# ── P1: global in-flight timed-worker bound + governor state lifecycle ─────
+
+
+def test_hung_provider_in_flight_bound_saturates():
+    # A read provider that blocks indefinitely. Once MAX_IN_FLIGHT_TIMED_CALLS
+    # timed workers are outstanding, further timed calls must SATURATE rather
+    # than spawn yet another (unbounded) daemon thread. Distinct wake IDs must
+    # NOT bypass the global in-flight cap.
+    gate = threading.Event()
+
+    class _Hung:
+        name = "hung"
+
+        def health(self):
+            return True
+
+        def search(self, tool=None, **kw):
+            gate.wait(timeout=30)
+            return {"status": "OK", "results": []}
+
+    reg = {"documents.search": _Hung()}
+    statuses = []
+    try:
+        for i in range(MAX_IN_FLIGHT_TIMED_CALLS + 3):
+            r = _call(
+                "documents.search",
+                {"query": "x"},
+                provider_registry=reg,
+                timeout_ms=20,
+                wake_id=f"wake_{i}",
+                trace_id=f"tr_{i}",
+            )
+            statuses.append(r["status"])
+        assert in_flight_timed_calls() <= MAX_IN_FLIGHT_TIMED_CALLS
+        assert MCP_READ_ONLY_STATUS_SATURATED in statuses
+        assert statuses.count(MCP_READ_ONLY_STATUS_SATURATED) >= 3
+    finally:
+        gate.set()  # release the hung workers
+        time.sleep(0.3)
+    assert in_flight_timed_calls() == 0
+
+
+def test_governor_wake_state_lru_bounded():
+    gov = MCPRateGovernor(max_tracked_wakes=5)
+    for i in range(30):
+        assert gov.allow(f"wake_{i}", "portfolio.get_verified_snapshot")[0]
+    assert gov.wake_cardinality() <= 5
+
+
+def test_governor_wake_state_ttl_eviction():
+    gov = MCPRateGovernor(wake_ttl_ms=50)
+    assert gov.allow("wake_1", "portfolio.get_verified_snapshot")[0]
+    assert gov.wake_cardinality() == 1
+    time.sleep(0.2)  # > 50ms TTL
+    assert gov.allow("wake_2", "portfolio.get_verified_snapshot")[0]
+    assert gov.wake_cardinality() == 1  # wake_1 evicted, wake_2 retained
+
+
+def test_default_governor_has_bounded_lifecycle():
+    gov = get_default_governor()
+    assert gov.max_tracked_wakes > 0
+    assert gov.wake_ttl_ms > 0

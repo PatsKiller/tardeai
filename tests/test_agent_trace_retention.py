@@ -146,6 +146,24 @@ def test_refuses_unlisted_path_by_default(tmp_path):
     assert p.read_text().strip() == '{"trace_id":"a"}'
 
 
+def test_invalid_only_removal_physically_rewrites(tmp_path):
+    # 1 valid row to keep + 1 malformed row. removed_valid == 0 but the malformed
+    # row must still be PHYSICALLY removed (not merely reported removed).
+    p = tmp_path / "t.jsonl"
+    _write(p, [
+        '{"trace_id":"keep","started_at":"2026-08-03T00:00:00Z"}',
+        "not valid json",
+    ])
+    r = enforce_trace_retention(p, max_rows=10, dry_run=False, allow_unlisted=True)
+    assert r["ok"] is True
+    assert r["removed_valid"] == 0
+    assert r["removed_invalid"] == 1
+    assert r["removed_total"] == 1
+    assert r["rotated"] is True
+    kept = [json.loads(l) for l in p.read_text().splitlines() if l.strip()]
+    assert [k["trace_id"] for k in kept] == ["keep"]
+
+
 def test_no_budget_no_removal(tmp_path):
     p = tmp_path / "t.jsonl"
     _write(p, ['{"trace_id":"a"}', '{"trace_id":"b"}'])

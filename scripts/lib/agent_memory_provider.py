@@ -199,20 +199,22 @@ _LIFECYCLE_STATUSES = frozenset(
 def _forced_status(caller_status: Any, canonical_status: str) -> str:
     """Return the status a record may be stored under.
 
-    Caller input may never ESCALATE beyond the canonical admission result:
+    Admission status comes from ``admit_status()`` (canonical), not from the
+    caller:
 
       * lifecycle downgrades (DISPUTED/EXPIRED/RETRACTED/SUPERSEDED) are
-        preserved (they are non-active, so not an escalation);
-      * ACTIVE is downgraded to the canonical status when the canonical rule
-        only permits CANDIDATE (e.g. an inferred preference cannot become ACTIVE
-        merely because the caller supplied ACTIVE);
-      * otherwise the caller's (non-escalating) status is preserved.
+        preserved — they are non-active and are only reached via governed
+        transitions (``dispute``/``expire``/``supersedes``) or by loading a
+        historical record that already carries them, never as an escalation;
+      * everything else is normalized to the canonical result. A caller can
+        never elevate above ``admit_status()`` (an inferred preference supplied
+        as ACTIVE becomes CANDIDATE), and unknown/garbage/lowercase/whitespace
+        statuses (e.g. "BOGUS", "active", " active ", "REJECT") are NOT
+        persisted — they are replaced by the canonical status.
     """
     if caller_status in _LIFECYCLE_STATUSES:
         return caller_status
-    if caller_status == STATUS_ACTIVE and canonical_status != STATUS_ACTIVE:
-        return canonical_status
-    return caller_status or canonical_status
+    return canonical_status
 
 
 def _retrievable(record: dict[str, Any]) -> bool:

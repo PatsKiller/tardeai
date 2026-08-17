@@ -26,6 +26,7 @@ from scripts.lib.agent_memory_governance import (  # noqa: E402
     MEMORY_TYPE_OPERATOR_INFERRED_PREFERENCE,
     STATUS_ACTIVE,
     STATUS_CANDIDATE,
+    STATUS_REJECT,
     build_memory_record,
     resolve_conflict,
 )
@@ -281,3 +282,34 @@ def test_canonical_truth_override_still_wins():
     out = resolve_conflict([p.get(mid)], canonical_truth_override=True)
     assert out["primary"] is None
     assert out["canonical_truth_override"] is True
+
+
+# ── P2: admission status is fully canonicalized (not merely defaulted) ─────
+
+
+def test_unknown_status_normalized_to_canonical():
+    # Unknown/lowercase/whitespace/REJECT statuses must NOT be persisted; the
+    # stored status comes from admit_status() (CANDIDATE for an inferred type).
+    p = LocalTestMemoryProvider()
+    for bad in ("BOGUS", "active", " active ", STATUS_REJECT, "reject"):
+        mid = p.add_candidate(_forged_pref(status=bad))
+        assert mid is not None, bad
+        assert p.get(mid)["status"] == STATUS_CANDIDATE, bad
+
+
+def test_explicit_preference_garbage_status_becomes_canonical():
+    # An explicit preference with a garbage status is recomputed to ACTIVE by
+    # the canonical rule, never persisted as the caller-supplied value.
+    p = LocalTestMemoryProvider()
+    mid = p.add_candidate(
+        {
+            "memory_type": MEMORY_TYPE_OPERATOR_EXPLICIT_PREFERENCE,
+            "subject": "SCHD",
+            "content": "operator wants SCHD core",
+            "source_event_ids": ["evt_1"],
+            "status": "BOGUS",
+        }
+    )
+    assert mid is not None
+    assert p.get(mid)["status"] == STATUS_ACTIVE
+    assert p.get(mid)["authority_class"] == MEMORY_AUTHORITY_NON_AUTHORITATIVE

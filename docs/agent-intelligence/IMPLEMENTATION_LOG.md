@@ -236,7 +236,7 @@ remaining risks, and deployment/rollback status.
 - **base SHA**: `968dafb6beda21aa11aa4cedeb7c9c3920c3fec4` · **start head**: `26c6fa71a6c146e35e9dc613c08a02ae61446d06`
 - **scope**: close the 5 remaining P1s + P2s only; NOT a redesign; no merge/deploy/behavior-influence; READ_ONLY_ADVISORY; no CRLF mass normalization.
 - **P1 fixes**:
-  - **Real dual-path decision shadow** — `shadow_compare_wakes()` now invokes a `decision_evaluator(wake, context, mode)` twice (baseline + augmented contexts); a copied/same-object result can no longer satisfy decision evidence; each packet carries baseline/augmented context + decision digests, `decision_id`, `evaluator_version`, `comparison_completed`; `dual_path_executed` is a new fail-closed lineage marker required by `promotion_gate`; `critical_memory_false_positives` is derived from real baseline-vs-augmented diffs and the gate also checks the derived value (not only external metrics).
+  - **Real dual-path decision shadow** — `shadow_compare_wakes()` now invokes a `decision_evaluator(wake, context, mode)` twice (baseline + augmented contexts); a copied/same-object result can no longer satisfy decision evidence; each packet carries baseline/augmented context + decision digests, `decision_id`, `evaluator_version`, `comparison_completed`; `dual_path_executed` is a new fail-closed lineage marker required by `promotion_gate`; `memory_attributable_action_flips` is derived from real baseline-vs-augmented diffs and the gate also checks the derived value (not only external metrics).
   - **MCP true timeout** — `_call_with_timeout()` now runs the provider on a daemon thread and returns at the deadline without waiting for executor shutdown; measured-elapsed latency is asserted.
   - **MCP default rate governor structural** — `call_mcp_tool(governor=None)` now uses a shared `_DEFAULT_GOVERNOR`; governance can no longer be bypassed by omitting the governor; `reset_default_governor()`/`get_default_governor()` added; `agent_perf_bench.benchmark()` resets the governor for determinism.
   - **Wall-clock trace retention** — `agent_trace_retention.py` now ages rows against `now` (injectable) instead of the newest record; no-timestamp rows cannot live forever under an active age policy; receipt exposes `removed_valid`/`removed_invalid`/`removed_total`/`valid_rows_before`/`invalid_rows`.
@@ -245,7 +245,20 @@ remaining risks, and deployment/rollback status.
 - **P2 fixes**: retention invalid-row accounting (above); AIF-24 stays PARTIAL and docs now state the UNTRUSTED_DATA utility is NOT auto-wired through the context envelope / MCP gateway; CRLF executable/shebang scan clean (0 executable risks; 71 changed files carry CRLF, deferred to a separate mechanical PR).
 - **tests run**: full AIF manifest 409 passed locally (23 files); targeted CIO/release/no-broker-write regressions green; no executable/shebang CRLF risk.
 
+## Spot-Review Exact-Head Remediation (resource governance + P2 correctness)
+
+- **date/time**: 2026-08-17 (third exact-head spot review remediation)
+- **base SHA**: `968dafb6beda21aa11aa4cedeb7c9c3920c3fec4` · **start head**: `233b379c3d4ab2bb2372c20952c7f1a1bc8cd415`
+- **scope**: close 1 P1 + 3 P2 only; NOT a redesign; no merge/deploy/behavior-influence; READ_ONLY_ADVISORY; no CRLF mass normalization.
+- **P1 — globally bounded MCP timed-worker + governor wake state**:
+  - `_call_with_timeout()` now acquires a global in-flight slot (`MAX_IN_FLIGHT_TIMED_CALLS=8`) before spawning a daemon worker; a timed-out worker keeps its slot until it returns, so a hung provider cannot accumulate unbounded threads — once saturated, further timed calls return a new `SATURATED` status (fail closed). `in_flight_timed_calls()` exposes the count.
+  - `MCPRateGovernor` now bounds its own state: `max_tracked_wakes` (LRU) + `wake_ttl_ms` (TTL) evict stale/overflowing wake buckets, so a long-running process cannot accumulate unbounded per-wake/tool counters. `wake_cardinality()` exposes the count.
+- **P2 — invalid-only trace removal physically rewrites**: `enforce_trace_retention()` rewrites the file whenever invalid JSON is dropped, even when `removed_valid == 0`, so the receipt's `removed_invalid` is physically honored.
+- **P2 — memory admission status fully canonicalized**: `_forced_status()` now returns the canonical `admit_status()` result for every non-lifecycle status; unknown/lowercase/whitespace/`REJECT` caller statuses are normalized away rather than persisted.
+- **P2 — shadow flip metric renamed**: the derived `critical_memory_false_positives` counter is renamed to `memory_attributable_action_flips` (it proves a memory-attributable action change, not an adjudicated false positive); the promotion gate check is `shadow_memory_attributable_flips`.
+- **tests run**: full AIF manifest 416 passed locally (23 files); CIO/release/no-broker-write regressions green.
+
 ## Cross-phase notes
 
-- **Total AIF test manifest** (pinned in `agent-intelligence-foundation-ci.yml`): 409 tests across 23 files after the true-final remediation.
+- **Total AIF test manifest** (pinned in `agent-intelligence-foundation-ci.yml`): 416 tests across 23 files after the spot-review remediation.
 - **Known unrelated failures** (carried, not in this program's scope): 8 × `tests/test_agent_runtime_host_proof_wrapper.py` (credential-handoff subsystem) — pre-existing, environment-dependent, proven to also fail on base `968dafb6`.

@@ -215,7 +215,10 @@ def enforce_trace_retention(
     removed_valid = len(rows) - len(kept)
     removed_total = removed_valid + invalid_count
     rotated = False
-    if removed_valid > 0 and not dry_run:
+    # Rewrite whenever anything is dropped — including invalid-only removal — so
+    # the receipt's removed_invalid/removed_total are physically honored, not
+    # merely reported.
+    if (removed_valid > 0 or invalid_count > 0) and not dry_run:
         _write_atomic(p, [raw for raw, _ in kept])
         rotated = True
 

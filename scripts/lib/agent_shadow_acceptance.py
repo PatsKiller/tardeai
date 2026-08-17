@@ -88,7 +88,7 @@ def shadow_compare_wakes(
         decision AND the two results are distinct objects;
       * ``decision_comparisons_completed`` is True only when at least one wake
         produced such a comparison AND no evaluation failed;
-      * ``critical_memory_false_positives`` is derived from actual baseline-vs-
+      * ``memory_attributable_action_flips`` is derived from actual baseline-vs-
         augmented decision differences, never from a copied object.
 
     When no evaluator is provided (or it yields no payloads) the comparison is
@@ -102,7 +102,7 @@ def shadow_compare_wakes(
     context_build_failures = 0
     decision_payloads = 0
     evaluation_failures = 0
-    critical_memory_flips = 0
+    memory_attributable_flips = 0
 
     for w in wakes:
         wake_id = str(w.get("wake_id") or "")
@@ -154,10 +154,12 @@ def shadow_compare_wakes(
                 packet["augmented_decision_digest"] = _decision_digest(aug_dec)
                 diff = shadow_compare(base_dec, aug_dec)
                 packet["shadow_diff"] = diff
-                # A memory-attributable action flip is a critical-false-positive
-                # candidate: memory changed the advisory action (must be zero).
+                # A memory-attributable action flip: memory changed the advisory
+                # action. This is NOT yet adjudicated as a true false positive
+                # (that requires a correctness/outcome evaluation target); it is
+                # treated conservatively and must be zero before promotion.
                 if diff.get("action_changed") and diff.get("memory_ids_used", {}).get("changed"):
-                    critical_memory_flips += 1
+                    memory_attributable_flips += 1
         packets.append(packet)
 
     trace_coverage = (
@@ -175,7 +177,7 @@ def shadow_compare_wakes(
         "decision_comparisons_completed": comparisons_complete,
         "dual_path_executed": comparisons_complete,
         "evaluation_failures": evaluation_failures,
-        "critical_memory_false_positives": critical_memory_flips,
+        "memory_attributable_action_flips": memory_attributable_flips,
         "evaluator_version": evaluator_version,
     }
 
@@ -250,11 +252,12 @@ def promotion_gate(
     if not checks["decision_dual_path"]:
         reasons.append("dual_path_executed is not True (no genuine baseline-vs-augmented execution)")
 
-    # 1b. Derived critical-memory false positives from the actual comparison.
-    derived_flips = shadow_result.get("critical_memory_false_positives")
-    checks["shadow_critical_memory_flips"] = isinstance(derived_flips, int) and derived_flips == 0
-    if not checks["shadow_critical_memory_flips"]:
-        reasons.append(f"shadow critical_memory_false_positives={derived_flips}")
+    # 1b. Derived memory-attributable action flips from the actual comparison.
+    # (Not yet adjudicated as false positives; conservative, must be zero.)
+    derived_flips = shadow_result.get("memory_attributable_action_flips")
+    checks["shadow_memory_attributable_flips"] = isinstance(derived_flips, int) and derived_flips == 0
+    if not checks["shadow_memory_attributable_flips"]:
+        reasons.append(f"shadow memory_attributable_action_flips={derived_flips}")
 
     # 2. Canonical truth overrides — measured.
     measured, overrides = _measured_int(metrics, "canonical_truth_overrides")

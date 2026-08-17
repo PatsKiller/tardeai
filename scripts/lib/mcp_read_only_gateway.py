@@ -42,6 +42,7 @@ MCP_READ_ONLY_STATUS_NOT_CONFIGURED = "NOT_CONFIGURED"
 MCP_READ_ONLY_STATUS_BOUNDED = "BOUNDED"
 MCP_READ_ONLY_STATUS_TIMEOUT = "TIMEOUT"
 MCP_READ_ONLY_STATUS_LIMITED = "LIMITED"
+MCP_READ_ONLY_STATUS_SATURATED = "SATURATED"
 
 MCP_READ_ONLY = {
     "authority": MCP_READ_ONLY_AUTHORITY,
@@ -52,19 +53,55 @@ MCP_READ_ONLY = {
     "status_bounded": MCP_READ_ONLY_STATUS_BOUNDED,
     "status_timeout": MCP_READ_ONLY_STATUS_TIMEOUT,
     "status_limited": MCP_READ_ONLY_STATUS_LIMITED,
+    "status_saturated": MCP_READ_ONLY_STATUS_SATURATED,
 }
 
 # ── Timeout / rate governance (bounded, deterministic, in-process) ─────────
 # The current adapters are synchronous + read-only, so a timed-out call cannot
 # mutate anything (no orphan background mutation). A cooperative per-call
 # deadline is enforced via a short-lived worker thread; on timeout the result
-# is discarded and a TIMEOUT status is returned.
+# is discarded and a TIMEOUT status is returned. In-flight timed executions are
+# GLOBALLY bounded so a fan-out of hung providers cannot accumulate unbounded
+# daemon threads; when the bound is exhausted, the call SATURATES (fail closed).
 DEFAULT_TIMEOUT_MS = 2000
 DEFAULT_MAX_CALLS_PER_WAKE = 50
 DEFAULT_MAX_CALLS_PER_TOOL = 10
 
+# Hard cap on concurrently-running timed provider executions. A timed-out call
+# keeps its slot until the underlying (read-only) function returns, so a hung
+# provider holds a slot; once all slots are held, further timed calls SATURATE
+# instead of spawning yet another worker.
+MAX_IN_FLIGHT_TIMED_CALLS = 8
+
 _TIMEOUT = object()
+_SATURATED = object()
 _NO_RESULT = object()
+
+_in_flight = 0
+_in_flight_lock = threading.Lock()
+
+
+def _try_acquire_timed_slot() -> bool:
+    """Reserve one in-flight timed-execution slot; False when saturated."""
+    global _in_flight
+    with _in_flight_lock:
+        if _in_flight >= MAX_IN_FLIGHT_TIMED_CALLS:
+            return False
+        _in_flight += 1
+        return True
+
+
+def _release_timed_slot() -> None:
+    global _in_flight
+    with _in_flight_lock:
+        if _in_flight > 0:
+            _in_flight -= 1
+
+
+def in_flight_timed_calls() -> int:
+    """Number of currently-running timed provider executions (for tests)."""
+    with _in_flight_lock:
+        return _in_flight
 
 
 def _call_with_timeout(
@@ -73,15 +110,23 @@ def _call_with_timeout(
     **kwargs: Any,
 ) -> Any:
     """Call ``fn(**kwargs)`` with a per-call deadline. Returns ``_TIMEOUT``
-    on deadline exceeded. ``timeout_ms <= 0`` means no deadline (direct call).
+    on deadline exceeded and ``_SATURATED`` when the global in-flight bound is
+    exhausted. ``timeout_ms <= 0`` means no deadline (direct call).
 
     A TRUE deadline: the caller regains control at the deadline rather than
     waiting for the underlying (read-only) function to finish. The worker runs
     on a daemon thread; on timeout its result is discarded and it is reclaimed
     when it eventually returns (never blocking the caller or process exit).
+    In-flight executions are globally bounded: a timed-out worker keeps its slot
+    until it returns, so a hung provider cannot cause unbounded thread growth —
+    once ``MAX_IN_FLIGHT_TIMED_CALLS`` are outstanding, further timed calls are
+    rejected with ``_SATURATED``.
     """
     if timeout_ms is None or timeout_ms <= 0:
         return fn(**kwargs)
+
+    if not _try_acquire_timed_slot():
+        return _SATURATED
 
     box: dict[str, Any] = {"value": _NO_RESULT, "error": None}
 
@@ -90,6 +135,8 @@ def _call_with_timeout(
             box["value"] = fn(**kwargs)
         except Exception as exc:  # noqa: BLE001 — surfaced to caller
             box["error"] = exc
+        finally:
+            _release_timed_slot()
 
     worker = threading.Thread(target=_run, daemon=True)
     worker.start()
@@ -107,7 +154,15 @@ class MCPRateGovernor:
 
     Deterministic and in-process. One wake issuing an unbounded call fanout is
     blocked once it exceeds ``max_calls_per_wake`` or ``max_calls_per_tool``.
+
+    Wake state is also BOUNDED over process lifetime: distinct wake IDs are
+    tracked up to ``max_tracked_wakes`` (least-recently-seen evicted first) and
+    any wake idle longer than ``wake_ttl_ms`` is dropped, so a long-running
+    process cannot accumulate unbounded per-wake/tool counters.
     """
+
+    DEFAULT_MAX_TRACKED_WAKES = 512
+    DEFAULT_WAKE_TTL_MS = 3_600_000  # 1 hour
 
     def __init__(
         self,
@@ -115,19 +170,57 @@ class MCPRateGovernor:
         max_calls_per_wake: int = DEFAULT_MAX_CALLS_PER_WAKE,
         max_calls_per_tool: int = DEFAULT_MAX_CALLS_PER_TOOL,
         min_interval_ms: float = 0.0,
+        max_tracked_wakes: int = DEFAULT_MAX_TRACKED_WAKES,
+        wake_ttl_ms: float = DEFAULT_WAKE_TTL_MS,
     ) -> None:
         self.max_calls_per_wake = int(max_calls_per_wake)
         self.max_calls_per_tool = int(max_calls_per_tool)
         self.min_interval_ms = float(min_interval_ms or 0.0)
+        self.max_tracked_wakes = max(1, int(max_tracked_wakes))
+        self.wake_ttl_ms = float(wake_ttl_ms or 0.0)
         self._wake_counts: dict[str, int] = {}
         self._tool_counts: dict[tuple[str, str], int] = {}
         self._last_call_ms: dict[str, int] = {}
+        self._last_seen_ms: dict[str, int] = {}
+
+    def wake_cardinality(self) -> int:
+        """Number of distinct wake IDs currently tracked (for tests)."""
+        return len(self._wake_counts)
+
+    def _drop_wake(self, wid: str) -> None:
+        self._wake_counts.pop(wid, None)
+        self._last_call_ms.pop(wid, None)
+        self._last_seen_ms.pop(wid, None)
+        for key in [k for k in self._tool_counts if k[0] == wid]:
+            self._tool_counts.pop(key, None)
+
+    def _evict(self, now: int, incoming: Optional[str] = None) -> None:
+        # TTL: drop wakes idle longer than wake_ttl_ms.
+        if self.wake_ttl_ms > 0:
+            stale = [w for w, seen in self._last_seen_ms.items() if now - seen > self.wake_ttl_ms]
+            for w in stale:
+                self._drop_wake(w)
+        # LRU: bound distinct-wake cardinality (least-recently-seen evicted).
+        # Account for ``incoming`` becoming a newly-tracked wake so the bound is
+        # never exceeded by one.
+        effective = len(self._wake_counts)
+        if incoming is not None and incoming not in self._wake_counts:
+            effective += 1
+        if effective > self.max_tracked_wakes:
+            ordered = sorted(self._last_seen_ms.items(), key=lambda kv: kv[1])
+            excess = effective - self.max_tracked_wakes
+            for w, _ in ordered[:excess]:
+                self._drop_wake(w)
 
     def allow(self, wake_id: Any, tool: Any) -> tuple[bool, str]:
         """Return (allowed, reason). Records the call only when allowed."""
         now = _now_ms()
         wid = str(wake_id or "")
         t = str(tool or "").lower()
+
+        # Mark seen first so the current wake is never evicted this round.
+        self._last_seen_ms[wid] = now
+        self._evict(now, incoming=wid)
 
         if self.min_interval_ms > 0 and wid in self._last_call_ms:
             delta = now - self._last_call_ms[wid]
@@ -151,6 +244,7 @@ class MCPRateGovernor:
         self._wake_counts.clear()
         self._tool_counts.clear()
         self._last_call_ms.clear()
+        self._last_seen_ms.clear()
 
 
 # Shared governed default so the chokepoint ALWAYS applies budget governance.
@@ -616,6 +710,14 @@ def call_mcp_tool(
             ok=False,
             status=MCP_READ_ONLY_STATUS_TIMEOUT,
             reason=f"timeout after {timeout_ms}ms",
+            provider_name=pname,
+        )
+
+    if response is _SATURATED:
+        return _finish(
+            ok=False,
+            status=MCP_READ_ONLY_STATUS_SATURATED,
+            reason=f"in-flight timed executions saturated (>{MAX_IN_FLIGHT_TIMED_CALLS})",
             provider_name=pname,
         )
 
