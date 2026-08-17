@@ -232,10 +232,11 @@ def query_traces(
                 continue
             if case_id:
                 learning = r.get("learning") or {}
-                if isinstance(learning, dict) and str(learning.get("case_id") or "") != str(case_id):
-                    continue
-                # Also allow top-level case_id for convenience.
-                if str(r.get("case_id") or "") != str(case_id) and not isinstance(learning, dict):
+                learning_case = learning.get("case_id") if isinstance(learning, dict) else None
+                top_case = r.get("case_id")
+                # Match if EITHER learning.case_id OR top-level case_id equals the
+                # requested case_id. Otherwise reject the trace.
+                if str(learning_case or "") != str(case_id) and str(top_case or "") != str(case_id):
                     continue
             if agent and str(r.get("agent") or "") != str(agent):
                 continue

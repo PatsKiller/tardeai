@@ -62,6 +62,13 @@ def test_no_prior_reject_allows():
     assert reopen_after_reject("REJECT", False, True) == "ALLOW"
 
 
+def test_new_identity_with_changed_evidence_allows():
+    # Regression: a NEW recommendation identity with changed evidence must be
+    # ALLOW, never "WHAT CHANGED SINCE YOUR REJECT" — that label is reserved
+    # for the SAME recommendation whose evidence changed.
+    assert reopen_after_reject("REJECT", same_identity=False, same_evidence=False) == "ALLOW"
+
+
 # ── Durable next review ────────────────────────────────────────────────────
 
 

@@ -134,6 +134,42 @@ def test_query_by_case_id(tmp_path):
     assert len(rows) == 1
 
 
+def test_query_by_top_level_case_id(tmp_path):
+    # Regression: the documented top-level case_id fallback must work even when
+    # there is no ``learning.case_id`` (empty learning section).
+    p = _tmp_path(tmp_path)
+    append_trace(
+        close_trace(
+            build_trace(trace_id=new_trace_id("w1"), wake_id="w1", agent="alex", role="cio_synthesis"),
+            case_id="case_top",
+        ),
+        path=p,
+    )
+    rows = query_traces(case_id="case_top", path=p)
+    assert len(rows) == 1
+
+
+def test_query_by_case_id_rejects_unrelated(tmp_path):
+    p = _tmp_path(tmp_path)
+    append_trace(
+        close_trace(
+            build_trace(trace_id=new_trace_id("w1"), wake_id="w1", agent="alex", role="cio_synthesis"),
+            learning={"case_id": "case_1"},
+        ),
+        path=p,
+    )
+    append_trace(
+        close_trace(
+            build_trace(trace_id=new_trace_id("w2"), wake_id="w2", agent="alex", role="cio_synthesis"),
+            case_id="case_top",
+        ),
+        path=p,
+    )
+    assert query_traces(case_id="case_none", path=p) == []
+    assert len(query_traces(case_id="case_1", path=p)) == 1
+    assert len(query_traces(case_id="case_top", path=p)) == 1
+
+
 def test_append_persists_no_secrets(tmp_path):
     p = _tmp_path(tmp_path)
     t = build_trace(

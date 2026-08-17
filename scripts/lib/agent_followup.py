@@ -158,7 +158,10 @@ def reopen_after_reject(
 
     if disposition in _SUPPRESSING_DISPOSITIONS and same_identity and same_evidence:
         return "SUPPRESS"
-    if disposition == "REJECT" and not same_evidence:
+    # Only the SAME recommendation with changed evidence may be reopened as
+    # "WHAT CHANGED SINCE YOUR REJECT". A new identity is ALLOW regardless of
+    # whether the evidence also changed.
+    if disposition == "REJECT" and same_identity and not same_evidence:
         return _REOPEN_LABEL
     return "ALLOW"
 
