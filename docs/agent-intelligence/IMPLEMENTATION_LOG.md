@@ -113,3 +113,103 @@ remaining risks, and deployment/rollback status.
   2. **`$PROJ`/`$PY` blind spot**: DEFERRED as a separate plan — see `docs/agent-intelligence/PLAN_crontab_proj_migration.md`. The crontab header `PROJ=/home/johnclaw/trade-ai-v12-rebuild/...` routes ~347 jobs (incl. ~13 CIO-matching) to the old tree invisibly to the audit's literal-path matching. Not touched in Phase 0.
 - **topology final result**: **0 violations (PASS)** — `TOPO_VERSION 1.6.0`. Active processes (portfolio-server, bridge, telegram), all CIO cron hardcoded paths, and systemd units (system + user) now resolve to `968dafb6` (or the separately-approved watch-review SHA).
 - **rollback**: portfolio-server rollback via `cio_phase2_exact_main_deploy.sh rollback`; bridge unit backup at `/tmp/cio-governed-bridge.service.pre-topo-*`; crontab backup at `/tmp/crontab.backup.*`; systemd `daemon-reload` re-applies.
+
+---
+
+## Phase 3 — Read-only MCP Gateway
+
+- **date/time**: 2026-08-17T03:00Z (UTC)
+- **base SHA**: `d12f26f8` · **head SHA**: `9ff65382`
+- **files changed**: `scripts/lib/mcp_read_only_gateway.py`, `scripts/lib/mcp_provider_adapters.py`, `tests/test_mcp_read_only_gateway.py`, `tests/test_mcp_security.py`, `docs/agent-intelligence/MCP_READ_ONLY_GATEWAY.md`, `MCP_SECURITY_MODEL.md`, `ADR/003-mcp-read-only-gateway.md` (all new).
+- **design decisions**: internal gateway over direct agent→MCP connections; allowlist of 13 read-only tools + denylist substrings that always win; SSRF guard (localhost/RFC1918/link-local/metadata denied + safe-host allowlist); path-traversal guard; response size bound; sensitive-value redaction; per-call receipts bound to wake_id/trace_id. Server-side read-only, not readOnlyHint.
+- **tests run**: `pytest tests/test_mcp_read_only_gateway.py tests/test_mcp_security.py` → 32 passed.
+- **remaining risks**: external calendar/documents backends NOT_CONFIGURED (no external auth material); rate-limit/timeout stubs.
+- **deployment/rollback status**: additive; not wired to production.
+
+## Phase 4 — Memory Abstraction + Mem0 Shadow Pilot
+
+- **date/time**: 2026-08-17T03:05Z (UTC)
+- **base SHA**: `9ff65382` · **head SHA**: `f7df00d8`
+- **files changed**: `scripts/lib/agent_memory_provider.py`, `agent_memory_governance.py`, `agent_mem0_provider.py`, `tests/test_agent_memory_governance.py`, `tests/test_agent_mem0_provider.py`, `docs/agent-intelligence/MEMORY_GOVERNANCE_AND_MEM0.md`, `MEMORY_ADMISSION_POLICY.md`, `ADR/004`, `ADR/006` (all new).
+- **design decisions**: MemoryProvider protocol (search/add_candidate/get/dispute/expire/health); MemoryRecord@v1 with deterministic digest + provenance requirement + token rejection; admission policy (ACTIVE only for explicit operator/commitment/durable case); NEVER-admit authoritative fields (price/cash/shares/risk/policy); conflict rules (truth wins, newer explicit supersedes, disputed visible, expired excluded). Mem0 NOT_CONFIGURED (self-hosted preferred). Shadow posture MEMORY_SHADOW=1, BEHAVIOR_INFLUENCE=0.
+- **tests run**: `pytest tests/test_agent_memory_governance.py tests/test_agent_mem0_provider.py` → 36 passed.
+- **remaining risks**: Mem0 backend not configured; provider scope/plan filters hardened later (see Phase 9 fix + plan_id fix).
+- **deployment/rollback status**: additive; shadow-only.
+
+## Phase 6 — Autonomous Office Initiative
+
+- **date/time**: 2026-08-17T03:10Z (UTC)
+- **base SHA**: `f7df00d8` · **head SHA**: `7b33832d`
+- **files changed**: `scripts/lib/agent_wake_taxonomy.py`, `agent_followup.py`, `tests/test_agent_wake_taxonomy.py`, `tests/test_agent_followup.py`, `docs/agent-intelligence/AUTONOMOUS_OFFICE_INITIATIVE.md` (all new).
+- **design decisions**: 16-trigger canonical wake taxonomy; allowed/denied autonomous-action sets (advisory only); notification policy (unchanged replay suppressed, prior REJECT reopens only on changed evidence); durable next-review binding (TIME/CONDITION/DATA_FRESHNESS/EVENT + revisit_id + lineage); advisory message uses memory only when decision-relevant.
+- **tests run**: `pytest tests/test_agent_wake_taxonomy.py tests/test_agent_followup.py` → 50 passed.
+- **deployment/rollback status**: additive; not wired to live wakes.
+
+## Phase 7 — Learning Loop Integration + Phase 8 — LangGraph Gate
+
+- **date/time**: 2026-08-17T03:15Z (UTC)
+- **base SHA**: `7b33832d` · **head SHA**: `e2103e09`
+- **files changed**: `scripts/lib/agent_learning_linkage.py`, `langgraph_complexity_gate.py`, `tests/test_agent_learning_linkage.py`, `tests/test_langgraph_complexity_gate.py`, `docs/agent-intelligence/ORCHESTRATION_AND_LANGGRAPH_DECISION.md`, `ADR/005` (all new).
+- **design decisions**: lineage wake→trace→decision→case→feedback→follow-up→outcome→darwin→reflection→lesson; feedback-vs-outcome invariant (REJECT≠loss, ACK≠win, DONE≠win, RATE≠alpha); reflection must propose_memory_write (CANDIDATE, no direct mutation). LangGraph gate defaults NOT_REQUIRED (a success); Letta DEFERRED.
+- **tests run**: `pytest tests/test_agent_learning_linkage.py tests/test_langgraph_complexity_gate.py` → 25 passed.
+- **deployment/rollback status**: additive.
+
+## Phase 5 — Context-Aware Agent Integration (shadow-only)
+
+- **date/time**: 2026-08-17T03:20Z (UTC)
+- **base SHA**: `e2103e09` · **head SHA**: `34f29af4`
+- **files changed**: `scripts/lib/agent_context_integration.py`, `tests/test_agent_context_integration.py`, `docs/agent-intelligence/AGENT_INTELLIGENCE_FOUNDATION_ARCHITECTURE.md` (all new).
+- **design decisions**: specialist sub-envelopes scoped per role (guardian/steph/maria/ledger, unknown fail-closed); parent wake/trace linkage; retrieval-before-reasoning honesty markers; deterministic budget (truth never truncated); shadow_compare diff report.
+- **tests run**: `pytest tests/test_agent_context_integration.py` → 23 passed.
+- **deployment/rollback status**: additive adapters only; no live behavior change.
+
+## Phase 2.5 — Dry Replay Harness
+
+- **date/time**: 2026-08-17T03:25Z (UTC)
+- **base SHA**: `34f29af4` · **head SHA**: `b720c730`
+- **files changed**: `scripts/lib/agent_replay_harness.py`, `tests/test_agent_replay_harness.py`, `docs/agent-intelligence/EVALUATION_AND_SHADOW_TEST_PLAN.md` (all new).
+- **design decisions**: read-only replay over 397 real wakes; never resends Telegram (notify callback never invoked). Measures trace coverage/completeness, lineage breaks, context build failures; notification metrics only when a decision loader yields payloads.
+- **dry-run evidence**: real corpus → trace_coverage=1.00, lineage_breaks=0, context_failures=0; notification metrics zero on real corpus (no decision payloads) and exercised via synthetic fixtures.
+- **tests run**: `pytest tests/test_agent_replay_harness.py` → 10 passed.
+- **deployment/rollback status**: additive.
+
+## Phase 9 — Security / Threat Model / Red Team (+ memory scope fix)
+
+- **date/time**: 2026-08-17T03:30Z (UTC)
+- **base SHA**: `b720c730` · **head SHA**: `2d0a4cf6`
+- **files changed**: `tests/test_agent_intelligence_adversarial.py`, `docs/agent-intelligence/THREAT_MODEL.md`, `PRIVACY_AND_REDACTION.md` (new); `scripts/lib/agent_memory_provider.py` (scope enforcement fix).
+- **failures found / fixed**: red-team found `LocalTestMemoryProvider` accepted `scope` but did not filter by it → **fixed** via `_scope_matches`; pinned by `test_local_provider_scope_isolation_enforced`.
+- **tests run**: `pytest tests/test_agent_intelligence_adversarial.py` → 26 passed; hard counters unauthorized=0, truth-override=0, leak=0.
+- **remaining risks**: prompt-injection text still reaches model context (execution blocked, not stripped); build_memory_record doesn't itself reject forbidden subjects (rejection lives in admit_status); no replay nonce; regex redaction not exhaustive; no retention TTL.
+
+## Phase 10 — Comprehensive Test Program + plan_id contract fix
+
+- **date/time**: 2026-08-17T03:35Z (UTC)
+- **base SHA**: `2d0a4cf6` · **head SHA**: `9f41cfe6` (+ fix `aee95c77`)
+- **files changed**: `tests/test_agent_intelligence_failure_injection.py`, `tests/test_agent_intelligence_integration.py`, `scripts/lib/agent_perf_bench.py`, `tests/test_agent_perf_bench.py` (new); `scripts/lib/agent_memory_provider.py` + `tests/test_agent_context_envelope.py` (plan_id contract fix).
+- **failures found / fixed**: `get_context_for_agent` passed `plan_id=` into `provider.search()` but the provider protocol lacked it → RETRIEVAL_ERROR with the shipped local provider → **fixed** (added `plan_id` to protocol + providers + `_plan_matches` filter). Regression test added.
+- **tests run**: `pytest tests/test_agent_intelligence_failure_injection.py tests/test_agent_intelligence_integration.py tests/test_agent_perf_bench.py` → 21 passed.
+- **performance (local CPU baseline, not budgets)**: context build ~0.017ms, memory retrieval ~0.014ms, MCP read ~0.122ms, trace append ~0.038ms.
+
+## Phase 12 — Controlled Read-Only Activation (feature flags + runbooks)
+
+- **date/time**: 2026-08-17T03:40Z (UTC)
+- **base SHA**: `9f41cfe6` · **head SHA**: `550472a5`
+- **files changed**: `scripts/lib/agent_feature_flags.py`, `tests/test_agent_feature_flags.py`, `docs/agent-intelligence/DEPLOYMENT_RUNBOOK.md`, `ROLLBACK_RUNBOOK.md` (all new).
+- **design decisions**: conservative defaults (all 0; MEMORY_PROVIDER=null); rollback_flags() = conservative config; activation_scope_check() denies memory-changing holdings/cash/risk, order creation, MCP writes, LangGraph broker authority, learning auto-promotion.
+- **tests run**: `pytest tests/test_agent_feature_flags.py` → 37 passed.
+- **deployment/rollback status**: defaults OFF; not activated.
+
+## Phase 11 — Shadow Acceptance + Promotion Gate
+
+- **date/time**: 2026-08-17T03:45Z (UTC)
+- **base SHA**: `550472a5` · **head SHA**: `2bd478b7`
+- **files changed**: `scripts/lib/agent_shadow_acceptance.py`, `tests/test_agent_shadow_acceptance.py` (new).
+- **design decisions**: shadow_compare_wakes (baseline vs augmented, shadow only); promotion_gate conservative (NOT_PROMOTED unless influence enabled AND all hard gates pass).
+- **dry-run evidence**: real 397-wake corpus → trace_coverage=1.0, context_failures=0, truth_overrides=0, all_hard_gates=True, verdict NOT_PROMOTED (influence off; no decision payloads in wake traces).
+- **tests run**: `pytest tests/test_agent_shadow_acceptance.py` → 6 passed.
+
+## Cross-phase notes
+
+- **Total new tests (Agent Intelligence Foundation)**: 266 across 17 test files for Phases 3–12 (plus Phase 1's 44 and Phase 2's 19 primitives ≈ 329 total new AIF tests).
+- **Known unrelated failures** (carried, not in this program's scope): 8 × `tests/test_agent_runtime_host_proof_wrapper.py` (credential-handoff subsystem) — pre-existing, environment-dependent.
