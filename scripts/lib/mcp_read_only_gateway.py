@@ -20,13 +20,14 @@ Guarantees:
 """
 from __future__ import annotations
 
+import concurrent.futures
 import ipaddress
 import json
 import re
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable, Optional
+from typing import Any, Callable, Iterable, Optional
 
 from scripts.lib.agent_context_envelope import redact_secrets
 from scripts.lib.agent_tool_trace import append_tool_call, build_tool_call
@@ -39,6 +40,8 @@ MCP_READ_ONLY_STATUS_DENIED = "DENIED"
 MCP_READ_ONLY_STATUS_ERROR = "ERROR"
 MCP_READ_ONLY_STATUS_NOT_CONFIGURED = "NOT_CONFIGURED"
 MCP_READ_ONLY_STATUS_BOUNDED = "BOUNDED"
+MCP_READ_ONLY_STATUS_TIMEOUT = "TIMEOUT"
+MCP_READ_ONLY_STATUS_LIMITED = "LIMITED"
 
 MCP_READ_ONLY = {
     "authority": MCP_READ_ONLY_AUTHORITY,
@@ -47,7 +50,89 @@ MCP_READ_ONLY = {
     "status_error": MCP_READ_ONLY_STATUS_ERROR,
     "status_not_configured": MCP_READ_ONLY_STATUS_NOT_CONFIGURED,
     "status_bounded": MCP_READ_ONLY_STATUS_BOUNDED,
+    "status_timeout": MCP_READ_ONLY_STATUS_TIMEOUT,
+    "status_limited": MCP_READ_ONLY_STATUS_LIMITED,
 }
+
+# ── Timeout / rate governance (bounded, deterministic, in-process) ─────────
+# The current adapters are synchronous + read-only, so a timed-out call cannot
+# mutate anything (no orphan background mutation). A cooperative per-call
+# deadline is enforced via a short-lived worker thread; on timeout the result
+# is discarded and a TIMEOUT status is returned.
+DEFAULT_TIMEOUT_MS = 2000
+DEFAULT_MAX_CALLS_PER_WAKE = 50
+DEFAULT_MAX_CALLS_PER_TOOL = 10
+
+_TIMEOUT = object()
+
+
+def _call_with_timeout(
+    fn: Callable[..., Any],
+    timeout_ms: int,
+    **kwargs: Any,
+) -> Any:
+    """Call ``fn(**kwargs)`` with a per-call deadline. Returns ``_TIMEOUT``
+    on deadline exceeded. ``timeout_ms <= 0`` means no deadline (direct call)."""
+    if timeout_ms is None or timeout_ms <= 0:
+        return fn(**kwargs)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+        future = ex.submit(fn, **kwargs)
+        try:
+            return future.result(timeout=timeout_ms / 1000.0)
+        except concurrent.futures.TimeoutError:
+            future.cancel()
+            return _TIMEOUT
+
+
+class MCPRateGovernor:
+    """Simple bounded per-wake / per-tool request budget + optional rate limit.
+
+    Deterministic and in-process. One wake issuing an unbounded call fanout is
+    blocked once it exceeds ``max_calls_per_wake`` or ``max_calls_per_tool``.
+    """
+
+    def __init__(
+        self,
+        *,
+        max_calls_per_wake: int = DEFAULT_MAX_CALLS_PER_WAKE,
+        max_calls_per_tool: int = DEFAULT_MAX_CALLS_PER_TOOL,
+        min_interval_ms: float = 0.0,
+    ) -> None:
+        self.max_calls_per_wake = int(max_calls_per_wake)
+        self.max_calls_per_tool = int(max_calls_per_tool)
+        self.min_interval_ms = float(min_interval_ms or 0.0)
+        self._wake_counts: dict[str, int] = {}
+        self._tool_counts: dict[tuple[str, str], int] = {}
+        self._last_call_ms: dict[str, int] = {}
+
+    def allow(self, wake_id: Any, tool: Any) -> tuple[bool, str]:
+        """Return (allowed, reason). Records the call only when allowed."""
+        now = _now_ms()
+        wid = str(wake_id or "")
+        t = str(tool or "").lower()
+
+        if self.min_interval_ms > 0 and wid in self._last_call_ms:
+            delta = now - self._last_call_ms[wid]
+            if delta < self.min_interval_ms:
+                return False, f"rate limit: min interval {self.min_interval_ms}ms"
+
+        wake_count = self._wake_counts.get(wid, 0)
+        if wake_count >= self.max_calls_per_wake:
+            return False, f"wake budget exceeded: {self.max_calls_per_wake}"
+
+        tool_count = self._tool_counts.get((wid, t), 0)
+        if tool_count >= self.max_calls_per_tool:
+            return False, f"tool budget exceeded: {self.max_calls_per_tool}"
+
+        self._wake_counts[wid] = wake_count + 1
+        self._tool_counts[(wid, t)] = tool_count + 1
+        self._last_call_ms[wid] = now
+        return True, ""
+
+    def reset(self) -> None:
+        self._wake_counts.clear()
+        self._tool_counts.clear()
+        self._last_call_ms.clear()
 
 # ── Read-only allowlist (exact tool name -> capability class) ──────────────
 # Every entry is read-only. Capability classes are domain scopes, never verbs.
@@ -315,6 +400,8 @@ def call_mcp_tool(
     max_response_bytes: int = DEFAULT_MAX_RESPONSE_BYTES,
     trace_path: Any = None,
     doc_root: Optional[str] = None,
+    timeout_ms: int = DEFAULT_TIMEOUT_MS,
+    governor: Optional["MCPRateGovernor"] = None,
 ) -> dict[str, Any]:
     """Single chokepoint for every agent MCP tool call.
 
@@ -423,6 +510,16 @@ def call_mcp_tool(
                 reason=f"unsafe path: {p}",
             )
 
+    # 5a. rate / budget governance (bounded, deterministic, fail-closed)
+    if governor is not None:
+        budget_ok, budget_reason = governor.allow(wake_id, tool)
+        if not budget_ok:
+            return _finish(
+                ok=False,
+                status=MCP_READ_ONLY_STATUS_LIMITED,
+                reason=budget_reason,
+            )
+
     # 6. provider lookup (fail-soft)
     provider_obj = None
     if isinstance(provider_registry, dict):
@@ -469,12 +566,20 @@ def call_mcp_tool(
         )
 
     try:
-        response = fn(tool=tool, **request)
+        response = _call_with_timeout(fn, timeout_ms, tool=tool, **request)
     except Exception as exc:  # noqa: BLE001 — fail-soft boundary
         return _finish(
             ok=False,
             status=MCP_READ_ONLY_STATUS_ERROR,
             reason=f"{type(exc).__name__}: {exc}",
+            provider_name=pname,
+        )
+
+    if response is _TIMEOUT:
+        return _finish(
+            ok=False,
+            status=MCP_READ_ONLY_STATUS_TIMEOUT,
+            reason=f"timeout after {timeout_ms}ms",
             provider_name=pname,
         )
 
