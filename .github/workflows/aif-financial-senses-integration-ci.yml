@@ -1,0 +1,49 @@
+name: aif-financial-senses-integration-ci
+
+# Governed AIF ↔ Financial Senses integration. READ_ONLY_ADVISORY.
+# No broker writes, no Telegram, no production mutation.
+# pull_request has no path filter so the job always reports (never pending).
+
+on:
+  push:
+    branches: ["main", "feature/**", "fix/**"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  aif-financial-senses-integration:
+    runs-on: ubuntu-latest
+    env:
+      TRADE_AI_CI: "1"
+      CIO_TELEGRAM_INTERDICT: "1"
+      ENABLE_TELEGRAM: "0"
+      ALPACA_MODE: paper
+      MEMORY_BEHAVIOR_INFLUENCE: "0"
+      AIF_FINANCIAL_SENSES_SHADOW: "0"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install test deps
+        run: |
+          python3 -m pip install --upgrade pip
+          pip install pytest pyyaml
+
+      - name: Integration CI (pinned manifest)
+        run: python3 scripts/run_aif_financial_senses_ci.py
+
+      - name: Financial Senses suite
+        run: python3 -m pytest -q --tb=line tests/financial_senses
+
+      - name: AIF critical suite
+        run: python3 -m pytest -q --tb=line tests/test_agent_intelligence_adversarial.py tests/test_agent_intelligence_failure_injection.py tests/test_agent_intelligence_integration.py
+
+      - name: Schwab write policy (source-only)
+        run: python3 scripts/validate_schwab_write_policy.py --source-only
+
+      - name: Release readiness (source-only)
+        run: python3 scripts/run_release_ci_equivalent.py --source-only
