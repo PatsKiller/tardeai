@@ -29603,7 +29603,8 @@ def _symbol_cards(query=None):
         c["ts"] = _t.time()
     out = dict(c["payload"])  # shallow copy: json_response pops __etag__, must not mutate cache
     out["__etag__"] = c["etag"]
-    return out
+    from lib.cc_symbol_cards import apply_symbol_cards_query
+    return apply_symbol_cards_query(out, query)
 
 
 def _symbol_cards_build():
