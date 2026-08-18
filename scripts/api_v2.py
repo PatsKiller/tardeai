@@ -40274,6 +40274,18 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
 
+    # ── /v3/intelligence — IntelligenceLineage@v1 closed-loop (GET only) ─
+    if base_path.startswith("/api/v3/intelligence"):
+        try:
+            import api_v3_intelligence as _intel
+            p = base_path[len("/api/v3/intelligence"):].strip("/")
+            if method != "GET":
+                return 405, {"ok": False, "error": "method_not_allowed",
+                             "message": "intelligence lineage API is GET-only"}
+            return _intel.handle_get(p, query if isinstance(query, dict) else None)
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
+
     # ── /v3/cio — CIO Command Center dashboard + plan deep links ──────────
     if base_path.startswith("/api/v3/cio"):
         try:

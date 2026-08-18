@@ -9,14 +9,16 @@ import InferenceLayersPanel from '../components/InferenceLayersPanel'
 import IntelligenceNewsTab from '../components/intelligence/IntelligenceNewsTab'
 import IntelligenceResearchTab from '../components/intelligence/IntelligenceResearchTab'
 import IntelligenceSourcesTab from '../components/intelligence/IntelligenceSourcesTab'
+import ClosedLoopPanel from './ClosedLoopPanel'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubTab } from '../lib/terminalHubChrome'
 interface Props { onDrill: (ctx: DrillContext) => void }
 
-const TABS = ['Command Center', 'Inferences', 'Signal Quality', 'News', 'Research', 'Sources', 'Workflow'] as const
+const TABS = ['Closed Loop', 'Command Center', 'Inferences', 'Signal Quality', 'News', 'Research', 'Sources', 'Workflow'] as const
 type Tab = typeof TABS[number]
 
 const TAB_SLUG: Record<Tab, string> = {
+  'Closed Loop': 'closed-loop',
   'Command Center': 'command',
   'Inferences': 'inferences',
   'Signal Quality': 'quality',
@@ -81,6 +83,7 @@ export default function IntelligenceHub({ onDrill }: Props) {
 
       {showTopics && <ResearchTopicsModal onClose={() => setShowTopics(false)} />}
 
+      {tab === 'Closed Loop' && <ClosedLoopPanel />}
       {tab === 'Command Center' && <CentralIntelligencePages mode="command" onDrill={onDrill} />}
       {tab === 'Inferences' && <InferenceLayersPanel />}
       {tab === 'Signal Quality' && <CentralIntelligencePages mode="quality" onDrill={onDrill} />}
