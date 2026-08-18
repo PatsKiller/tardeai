@@ -69,7 +69,41 @@ def test_critique_partial_without_sources():
 def test_memory_bridge_rejects_forbidden():
     out = admit_from_research({"summary": "place an order for NVDA", "symbol": "NVDA", "research_id": "res_x"})
     assert out["ok"] is False
-    assert "forbidden" in str(out.get("reason"))
+    assert "forbidden" in str(out.get("reason")) or "no_memory_safe" in str(out.get("reason"))
+
+
+def test_memory_bridge_skips_holdings_gap_and_keeps_catalyst_finding(monkeypatch):
+    import lib.agent_memory_admission as adm
+    import lib.research_memory_bridge as mb
+
+    captured: dict = {}
+
+    def _fake_admit(rec, provider=None, admitted_by=""):
+        captured.update(rec)
+        return {"accepted": True, "memory_id": "mem_safe"}
+
+    monkeypatch.setattr(adm, "admit_candidate", _fake_admit)
+    monkeypatch.setattr(
+        "lib.agent_durable_memory.get_durable_provider",
+        lambda: object(),
+        raising=False,
+    )
+    out = mb.admit_from_research(
+        {
+            "summary": "No holdings data provided in context. Analyst upgrade on SCHD.",
+            "symbol": "SCHD",
+            "research_id": "res_x",
+            "findings": [{
+                "text": "Analyst upgrade for SCHD on 2026-08-18 supports the dividend quality thesis.",
+            }],
+            "answers": [{"status": "answered", "summary": "One confirmed analyst upgrade on 2026-08-18."}],
+        },
+        critique={"verdict": "VALID"},
+    )
+    content = captured.get("content") or ""
+    assert "holdings" not in content.lower()
+    assert "SCHD" in content or "analyst upgrade" in content.lower()
+    assert captured.get("source_kind") == "research_artifact"
 
 
 def test_memory_bridge_rejects_failed_critique():
@@ -149,3 +183,91 @@ def test_lineage_does_not_infer_advisory_used(cio: Path):
     snap = L.rebuild_lineages()
     for rec in snap.get("lineages") or []:
         assert rec.get("status") != "ADVISORY_USED" or rec.get("advisory_use", {}).get("receipt")
+
+
+def test_stamp_result_rejects_hallucinated_as_of_and_fills_summary():
+    from lib.hermes_research_schema import stamp_result
+    request = {
+        "research_id": "res_canary",
+        "plan_id": "plan_canary",
+        "symbol": "SCHD",
+        "thesis_version": "desk@v5",
+        "known_catalyst_event_ids": ["cat_schd_2026-08-16_analyst_upgrade_a05f99"],
+        "catalyst": {
+            "events": [{
+                "event_id": "cat_schd_2026-08-16_analyst_upgrade_a05f99",
+                "title": "SCHD analyst note",
+            }],
+        },
+    }
+    body = {
+        "as_of": "2025-07-11",
+        "answers": [{
+            "question_id": "q_cat_1",
+            "status": "unanswered",
+            "summary": "No specific catalysts identified within the next 10 sessions for SCHD.",
+            "confidence": 0.2,
+        }],
+        "findings": [],
+        "summary": "",
+    }
+    result = stamp_result(request, body, worker_id="test-worker", t0_ms=12)
+    assert result["completed_ts"].startswith("2026-")
+    assert "2025-07-11" not in result["as_of"]
+    assert result["summary"]
+    assert "SCHD" in result["summary"]
+    assert "cat_schd_2026-08-16_analyst_upgrade_a05f99" in result["sources"]
+    assert result["provenance"].get("model_as_of") == "2025-07-11"
+    assert result["provenance"].get("as_of_coerced") is True
+    rec = critique(result)
+    assert rec["verdict"] in {"VALID", "PARTIAL"}
+    assert "empty_summary" not in rec["reasons"]
+    assert rec["source_count"] >= 1
+
+
+def test_critique_still_insufficient_without_summary_or_sources():
+    rec = critique({"summary": "", "symbol": "SCHD", "sources": []})
+    assert rec["verdict"] == "INSUFFICIENT"
+    assert "empty_summary" in rec["reasons"]
+
+
+def test_validate_result_allows_zero_confidence():
+    from lib.hermes_research_schema import validate_result
+    ok, why = validate_result({
+        "result_id": "rr_x",
+        "research_id": "res_x",
+        "as_of": "2026-08-18T21:00:00+00:00",
+        "answers": [{"question_id": "q1", "confidence": 0.0, "summary": "unknown"}],
+    })
+    assert ok, why
+
+
+def test_memory_bridge_uses_allowed_research_artifact_class(monkeypatch):
+    """source_kind must be an allowed admission class, not research_result."""
+    import lib.agent_memory_admission as adm
+    import lib.research_memory_bridge as mb
+
+    captured: dict = {}
+
+    def _fake_admit(rec, provider=None, admitted_by=""):
+        captured.update(rec)
+        return {"accepted": True, "memory_id": "mem_test"}
+
+    monkeypatch.setattr(adm, "admit_candidate", _fake_admit)
+    monkeypatch.setattr(
+        "lib.agent_durable_memory.get_durable_provider",
+        lambda: object(),
+        raising=False,
+    )
+    out = mb.admit_from_research(
+        {
+            "summary": "SCHD analyst upgrade on 2026-08-18 is the only confirmed catalyst.",
+            "symbol": "SCHD",
+            "research_id": "res_x",
+            "as_of": "2026-08-18T21:00:00+00:00",
+        },
+        critique={"verdict": "PARTIAL"},
+    )
+    kind = captured.get("source_kind") or (out.get("candidate") or {}).get("source_kind")
+    assert kind == "research_artifact"
+    assert kind in adm.VALID_SOURCE_CLASSES

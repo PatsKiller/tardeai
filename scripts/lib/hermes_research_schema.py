@@ -33,6 +33,176 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+AS_OF_MAX_AGE_HOURS = 14 * 24
+AS_OF_MAX_FUTURE_HOURS = 24
+
+
+def parse_as_of(value: Any) -> Optional[datetime]:
+    """Parse model/catalyst as_of. Date-only is treated as UTC midnight."""
+    if value is None:
+        return None
+    s = str(value).strip()
+    if not s:
+        return None
+    s = s.replace("Z", "+00:00")
+    try:
+        dt = datetime.fromisoformat(s)
+    except ValueError:
+        try:
+            dt = datetime.fromisoformat(s[:10])
+        except ValueError:
+            return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def coerce_as_of(value: Any, *, now: Optional[datetime] = None) -> str:
+    """Keep as_of only if it is a real, near-now timestamp.
+
+    Model bodies have returned '2025-07-11' (year-old hallucination). That must
+    not become completed_ts. Worker-now is the honest production time when the
+    supplied stamp is unusable.
+    """
+    now = now or datetime.now(timezone.utc)
+    dt = parse_as_of(value)
+    if dt is None:
+        return now.isoformat()
+    delta_s = (dt - now).total_seconds()
+    if delta_s > AS_OF_MAX_FUTURE_HOURS * 3600:
+        return now.isoformat()
+    if delta_s < -AS_OF_MAX_AGE_HOURS * 3600:
+        return now.isoformat()
+    return dt.isoformat()
+
+
+def compact_catalyst(request: dict[str, Any]) -> dict[str, Any]:
+    """Small catalyst payload for the model + source grounding. No invention."""
+    cat = request.get("catalyst") or request.get("catalyst_pack") or {}
+    if not isinstance(cat, dict):
+        cat = {}
+    events: list[dict[str, Any]] = []
+    raw_events = cat.get("events") or []
+    if isinstance(raw_events, list):
+        for ev in raw_events[:8]:
+            if not isinstance(ev, dict):
+                continue
+            events.append({
+                "event_id": ev.get("event_id"),
+                "title": str(ev.get("title") or "")[:160],
+                "kind": ev.get("kind"),
+                "severity": ev.get("severity"),
+                "session_date": ev.get("session_date") or ev.get("event_ts"),
+                "source": ev.get("source"),
+                "confirmed": ev.get("confirmed"),
+                "symbol": ev.get("symbol"),
+            })
+    ids = [
+        str(x) for x in (
+            request.get("known_catalyst_event_ids")
+            or cat.get("known_catalyst_event_ids")
+            or []
+        )
+        if x
+    ][:12]
+    return {
+        "as_of": cat.get("as_of"),
+        "symbol": cat.get("symbol") or request.get("symbol"),
+        "open_count": cat.get("open_count"),
+        "quality_state": cat.get("quality_state") or cat.get("quality"),
+        "events": events,
+        "event_ids": ids,
+    }
+
+
+def _add_source(out: list[str], seen: set[str], value: Any) -> None:
+    if isinstance(value, dict):
+        value = (
+            value.get("url")
+            or value.get("event_id")
+            or value.get("id")
+            or value.get("title")
+            or value.get("source")
+        )
+    s = str(value or "").strip()
+    if not s or s in seen:
+        return
+    seen.add(s)
+    out.append(s[:240])
+
+
+def collect_sources(
+    body: dict[str, Any],
+    request: Optional[dict[str, Any]] = None,
+) -> list[str]:
+    """Ground sources from model citations + request catalyst events. No fake URLs."""
+    out: list[str] = []
+    seen: set[str] = set()
+    for key in ("sources", "source_urls", "evidence_links"):
+        raw = body.get(key) or []
+        if isinstance(raw, str):
+            raw = [raw]
+        if isinstance(raw, list):
+            for item in raw:
+                _add_source(out, seen, item)
+    for a in body.get("answers") or []:
+        if not isinstance(a, dict):
+            continue
+        for c in a.get("citations") or []:
+            _add_source(out, seen, c)
+    cat = compact_catalyst(request or {})
+    for ev in cat.get("events") or []:
+        _add_source(out, seen, ev.get("event_id") or ev.get("title"))
+    for eid in cat.get("event_ids") or []:
+        _add_source(out, seen, eid)
+    return out[:20]
+
+
+def synthesize_summary(
+    body: dict[str, Any],
+    request: Optional[dict[str, Any]] = None,
+) -> str:
+    """Top-level summary from existing answer/finding text. Does not invent claims."""
+    existing = body.get("summary")
+    if isinstance(existing, str) and existing.strip() and existing.strip().lower() not in {"n/a", "todo"}:
+        return existing.strip()[:800]
+    parts: list[str] = []
+    symbol = ""
+    if request:
+        symbol = str(
+            request.get("symbol")
+            or (request.get("subject") or {}).get("symbol")
+            or ""
+        ).upper()
+    if not symbol:
+        symbol = str(body.get("symbol") or "").upper()
+    for a in body.get("answers") or []:
+        if not isinstance(a, dict):
+            continue
+        text = str(a.get("summary") or a.get("detail") or "").strip()
+        if text:
+            parts.append(text)
+    for f in body.get("findings") or []:
+        if isinstance(f, dict):
+            text = str(f.get("text") or f.get("summary") or "").strip()
+        else:
+            text = str(f).strip()
+        if text:
+            parts.append(text)
+    notes = ""
+    desk = body.get("desk_implications")
+    if isinstance(desk, dict):
+        notes = str(desk.get("notes") or "").strip()
+    if notes:
+        parts.append(notes)
+    if not parts:
+        return ""
+    text = " ".join(parts)
+    if symbol and symbol.lower() not in text.lower():
+        text = f"{symbol}: {text}"
+    return text[:800]
+
+
 def new_id(prefix: str) -> str:
     return f"{prefix}_{uuid.uuid4().hex[:12]}"
 
@@ -91,7 +261,7 @@ def validate_result(result: dict[str, Any], request: Optional[dict[str, Any]] = 
         if c is not None:
             try:
                 cf = float(c)
-                if cf <= 0 or cf > 1:
+                if cf < 0 or cf > 1:
                     return False, "confidence_out_of_range"
             except (TypeError, ValueError):
                 return False, "confidence_invalid"
@@ -122,13 +292,21 @@ def stamp_result(
     result_id: Optional[str] = None,
 ) -> dict[str, Any]:
     """Stamp identity/status onto backend body → hermes_result@v1."""
-    as_of = body.get("as_of") or body.get("completed_ts") or _now()
+    completed_ts = _now()
+    raw_as_of = body.get("as_of") or body.get("completed_ts")
+    as_of = coerce_as_of(raw_as_of)
+    sources = collect_sources(body, request)
+    summary = synthesize_summary(body, request)
+    evidence_links = list(body.get("evidence_links") or sources)[:20]
+    model_as_of = str(raw_as_of or "").strip()
+    parsed_model_as_of = parse_as_of(raw_as_of)
+    as_of_coerced = parsed_model_as_of is None or as_of != parsed_model_as_of.isoformat()
     result = {
         "schema_version": SCHEMA_RESULT,
         "result_id": result_id or new_id("rr"),
         "research_id": request.get("research_id"),
         "plan_id": request.get("plan_id"),
-        "completed_ts": as_of,
+        "completed_ts": completed_ts,
         "as_of": as_of,
         "status": "completed",
         "thesis_version_at_request": request.get("thesis_version"),
@@ -137,7 +315,10 @@ def stamp_result(
         "answers": list(body.get("answers") or [])[:12],
         "findings": list(body.get("findings") or [])[:12],
         "desk_implications": body.get("desk_implications") or {},
-        "summary": str(body.get("summary") or "")[:800],
+        "summary": summary,
+        "sources": sources,
+        "source_urls": list(body.get("source_urls") or sources)[:20],
+        "evidence_links": evidence_links,
         "limitations": list(body.get("limitations") or [])[:8],
         "authority": AUTHORITY,
         "provenance": {
@@ -146,8 +327,14 @@ def stamp_result(
             "worker_id": worker_id,
             "latency_ms": t0_ms,
             "error": None,
+            "model_as_of": model_as_of or None,
+            "as_of_coerced": as_of_coerced,
         },
-        "catalyst_event_ids": list(request.get("known_catalyst_event_ids") or [])[:40],
+        "catalyst_event_ids": list(
+            request.get("known_catalyst_event_ids")
+            or compact_catalyst(request).get("event_ids")
+            or []
+        )[:40],
     }
     return result
 

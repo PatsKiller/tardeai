@@ -4,155 +4,160 @@
 |---|---|
 | **Document name** | `CIO_AND_ADVISORY_LIVING_STATUS.md` |
 | **Repo path** | `docs/investment-office/CIO_AND_ADVISORY_LIVING_STATUS.md` |
-| **Revision** | **R6.1 — 2026-08-18T21:06Z** (R6 correction + Hermes live canary) |
-| **Status** | **PARTIAL_WITH_EXPLICIT_GAPS** — one real worker completion; memory correctly refused; Hermes units still failed |
+| **Revision** | **R6.2 — 2026-08-18T21:32Z** (producer repair + live VALID proof) |
+| **Status** | **PARTIAL_WITH_EXPLICIT_GAPS** — two live-bridge jobs now VALID with sources; memory admitted as CANDIDATE and retrieved. Code not yet on CURRENT. |
 | **Authority** | `READ_ONLY_ADVISORY` · `MEMORY_BEHAVIOR_INFLUENCE=0` · `broker_write=NONE` |
 | **Owner** | Alex desk · operator: John |
 | **Live CURRENT** | `e96ff36a-main-exact-phase2-20260818-164906` |
 | **CURRENT SHA** | `e96ff36a2b950deb3cac187e37819a0524da8ae0` |
-| **origin/main at authoring** | `c74e511257ada1b05e6ce8e46bbb7e1f528c2c43` (PR #374 docs-only; first parent = CURRENT) |
-| **Provenance** | **MAIN_AHEAD_DOCS_ONLY** vs CURRENT. Do not promote this docs commit. |
+| **origin/main at authoring** | will be this PR after merge (branch `fix/hermes-quality-producer`) |
+| **Provenance** | **CODE FIX pending promote.** Do not leave CURRENT on e96 after this lands. |
 | **UI chip** | `3.14+msz4yxaj` · `e96ff36a` |
 | **Google Drive file** | [CIO_AND_ADVISORY_LIVING_STATUS.md](https://drive.google.com/file/d/1scL90dCZa7uOK9_sojX-MNBWHfrViWMi/view) |
 | **Drive folder** | [docs / investment-office](https://drive.google.com/drive/folders/1sVHlO8v-NStl2HRbk1bJqwqI67bxGUM8) |
 
-> All numbers below are from the **2026-08-18T21:01–21:06Z** probe after restoring CURRENT to `e96ff36a` (it had been hijacked at 16:57 EDT by unstamped dir `20260818-165624` / PR 296).  
-> This revision **replaces** leftover R4/R5 passages (108/204/244b7a41/“reconciliation missing”).
+> R6.1 documented the blocks and stopped. That was wrong. This revision names the producers, the patches, and the live IDs. No invented PnL.
 
 ---
 
-## 1. One-screen truth (21:06Z)
+## 0. Direct answer (why R6.1 did not fix)
+
+R6.1 **was** written and Drive-replaced (file `1scL90dCZa7uOK9_sojX-MNBWHfrViWMi`, 21:08Z). It correctly said the SCHD canary was `INSUFFICIENT` and memory refused.
+
+It did **not** patch the producers. Honest refusal is not completion. The canary already had answer text; critique never saw it.
+
+| Block | Root cause | Fix this revision |
+|---|---|---|
+| Critique `empty_summary` + `no_sources` | Bridge sent only empty `context_snapshot`. Request already had `catalyst.events`. Model said “no events.” `stamp_result` left top-level `summary` blank. Critique only reads `summary` / `sources`. | Pass `compact_catalyst(request)` into the model. Synthesize `summary` from answers/findings. Ground `sources` from catalyst `event_id`s + citations. |
+| `as_of=2025-07-11` | Model date copied to both `as_of` and `completed_ts`. Persist then overwrote `completed_ts` with `as_of`. | `coerce_as_of` rejects stamps older than 14d. `completed_ts` is worker-now. Persist no longer clobbers it. |
+| Memory refused | (1) empty summary → INSUFFICIENT. (2) `source_kind=research_result` is not in `VALID_SOURCE_CLASSES`. (3) full summary contained the words `holdings`/`price` (gap language) and tripped `forbidden_authoritative_truth`. | Use allowed class `research_artifact`. Pick a memory-safe paragraph (findings first). Do **not** weaken the forbidden scanner. |
+| Confidence fail on first retry | `validate_result` rejected `confidence=0`. | Allow 0; clamp out-of-range in the backend. |
+| CURRENT hijack 16:57/17:08 EDT | Rebuild-tree `deploy_portfolio_server.sh` rsyncs a timestamped dir and `ln -sfn` CURRENT. That copy hardcodes `TRADEAI_CC_SOURCE_PR=296`. | Guard: refuse to overwrite a `SOURCE_COMMIT` pin unless `FORCE_OVERWRITE_EXACT_MAIN=1`. Applied in-repo **and** on the live rebuild-tree script. |
+
+Admission gates were not loosened to get green.
+
+---
+
+## 1. One-screen truth (21:32Z)
 
 | Surface | Status | Live evidence |
 |---|---|---|
 | Command Center SPA | **WORKING** | chip `3.14+msz4yxaj` |
-| Release | **WORKING** | CURRENT `e96ff36a` restored; main `c74e511` docs-only ahead |
-| `/api/v3/cio` | **WORKING** | 200; snapshot **15/15 domains**, `health.ok=true` (recon producer present) |
-| `/api/v3/advisory` | **WORKING_DEGRADED** | 58 rows; health **STALE**; FACT_FRESHNESS=CURRENT (desk cache); **HOLDINGS_SOURCE_FRESHNESS=STALE**; OPINION_FRESHNESS=EXPIRED |
+| Release | **WORKING / STALE_CODE** | CURRENT still `e96ff36a`. Producer fix is this PR. Promote after merge. |
+| `/api/v3/cio` | **WORKING** | 200 (recon producer present) |
+| `/api/v3/advisory` | **WORKING_DEGRADED** | HOLDINGS_SOURCE_FRESHNESS=STALE; OPINION_FRESHNESS=EXPIRED |
 | `/api/v3/intelligence` | **WORKING** | 13 lineages |
-| `/api/v3/intelligence/queue` | **WORKING** | **108 pending** after canary overlay expire (was 109) |
-| `/api/v3/intelligence/reconciliation` | **WORKING** | 200; `ok=false` because research still pending |
-| Memory | **SHADOW** | 1 ADMITTED + 1 EXPIRED; **MBI=0**; canary **not** admitted |
-| Learning | **WORKING_DEGRADED** | **279** cases; 0 matured / 0 scored; observer **PROVEN_IDLE**; next_due **2026-08-22T14:23:21Z** |
-| Hermes autonomous-loop | **BROKEN** | still **failed** (Aug 17 MU/STLD timeout) |
-| Hermes deep-research-local | **BROKEN** | still **failed** (DB SSL after 27b) |
-| CIO Hermes worker timer | **ARMED** | enabled; 17:00 tick stub-completed 2 jobs; 21:04 live canary below |
+| `/api/v3/intelligence/queue` | **WORKING** | **108 pending overlay** (structured jobs completed; overlay not auto-expired) |
+| `/api/v3/intelligence/reconciliation` | **WORKING** | 200; `ok=false` while overlay backlog exists |
+| Memory | **SHADOW** | 2 ACTIVE + 1 EXPIRED + **2 new CANDIDATE** (`mem_12ab1b21…` SCHD, `mem_b91739ce…` XLI). MBI=0. |
+| Learning | **WORKING_DEGRADED** | observer **PROVEN_IDLE**; next_due **2026-08-22T14:23:21Z** |
+| Hermes autonomous-loop | **BROKEN** | still failed (Aug 17 MU/STLD timeout) |
+| Hermes deep-research-local | **BROKEN** | still failed (DB SSL after 27b) |
+| CIO Hermes worker | **PROVEN live-bridge** | two jobs below; timer still catalyst/stub unless promoted |
 | Authority | **PROVEN_LIVE** | READ_ONLY_ADVISORY; MBI=0; 0 broker/order/stop/risk/2FA |
 
 ---
 
-## 2. Source / release
+## 2. Live jobs this run
 
-| Item | Value |
-|---|---|
-| origin/main | `c74e511257ada1b05e6ce8e46bbb7e1f528c2c43` (#374 R6 docs) |
-| CURRENT SHA | `e96ff36a2b950deb3cac187e37819a0524da8ae0` |
-| CURRENT path | `/home/johnclaw/trade-ai-releases/portfolio-server/e96ff36a-main-exact-phase2-20260818-164906` |
-| Classification | **MAIN_AHEAD_DOCS_ONLY** |
-| Incident | 16:57 EDT `deploy_portfolio_server.sh` (or sibling) pointed CURRENT at unstamped `20260818-165624` (no SOURCE_COMMIT, SHA pin 31458e9b / PR 296). `/api/v3/intelligence` 404 until restore 21:02Z. |
-| RELEASE_MANIFEST.md | still pins `aa037b73` — **HISTORICAL_ACCEPTANCE_PIN**, not CURRENT |
+Worker invoked from worktree `fix/hermes-quality-producer` against live `data/cio` (CURRENT cwd). Backend: `BridgeHermesResearchBackend` :8766.
 
----
-
-## 3. Hermes live canary (this run)
+### 2a. SCHD — `res_e14a2fdac29c` → `rr_2ce371c209dc`
 
 | Field | Value |
 |---|---|
-| research_id | `res_db9536fabeba` |
-| parent plan | `plan_20c650160254` (S6_CONCENTRATION_OR_DISPOSITION, SCHD, desk@v5) |
-| challenge stream | `hermes-challenge-c1fbd261c88d` |
-| queued_at | 2026-08-16T15:19:37Z |
-| path | `hermes_cio_worker.py --research-id … --backend live` on CURRENT `e96ff36a` |
-| claimed/started/completed | 2026-08-18T21:04:12Z wall (worker latency **2779 ms**) |
-| backend | `BridgeHermesResearchBackend` (governed bridge :8766, not stub write) |
-| result_id | `rr_3ac69ce392c0` |
-| source_count | **0** |
-| quality / critique | **INSUFFICIENT** (`empty_summary`, `no_sources`) |
-| model as_of | `2025-07-11` (hallucinated / not event-time — **not** treated as truth) |
-| final_state | structured request **completed**; overlay challenge **EXPIRED** reason `satisfied_by_structured_result:rr_3ac69ce392c0` |
-| plan attach | **YES** — `cio_plans` PLAN_UPDATED 21:04:12Z; evidence `hermes_research` + findings, `result_id=rr_3ac69ce392c0`, status=completed |
-| memory admit | **REJECTED** (critique_INSUFFICIENT) — admission not weakened |
-| lineage snapshot | SCHD `lin_be74ab5d25c949dd980c` still OUTCOME_PENDING; CURRENT builder did not ingest results jsonl (fix in follow-through commit) |
-| Telegram | none (CIO_TELEGRAM_INTERDICT=1 / no material change) |
+| plan | `plan_d45c7c4af5a6` |
+| first attempt | failed `confidence_out_of_range` (model 0) — then validator fixed and retried |
+| backend | live bridge, latency **4137 ms** |
+| critique | **VALID** · sources=`cat_schd_2026-08-18_analyst_upgrade_a05f99` |
+| model used catalyst | yes — q2 cites the event_id; finding names the 2026-08-18 upgrade |
+| persist as_of | `2026-08-18T15:20:15.993785+00:00` (model; same day; kept) |
+| persist completed_ts | same (this job used the old persist clobber) |
+| plan attach | **YES** — `hermes_research` + findings, `result_id=rr_2ce371c209dc` |
+| memory | **CANDIDATE** `mem_12ab1b21ba5055a7aebfeb4365cf070e` — retrieved. Content is the finding, not the holdings-gap sentence. |
+| Telegram | none |
 
-17:00 timer tick (while CURRENT was hijacked) stub-completed `res_29e5a85972c1` (XLI, `rr_2e02f2329648`) and `res_48a84c661bc8` (DIVI, `rr_5c0dc398dfb9`) via catalyst/stub. Those are **worker-path** events, **not** live-bridge research.
+### 2b. XLI — `res_3f11c4dad72e` → `rr_60d280b8b1b3`
 
----
-
-## 4. Queue (after canary expire)
-
-| Metric | Value |
+| Field | Value |
 |---|---|
-| pending | **108** |
-| events | 315 (314 + 1 EXPIRED) |
-| unique streams | 211 |
-| by_reason (CURRENT classifier) | 93 legitimate_current · 15 labeled missing_parent |
-| missing_parent truth | those 15 have **empty symbols** but **do have plan_id** (most also have research_id). They are **missing_symbol**, not orphans. Recoverable. Not deleted. |
-| oldest_age_hours | ~162 |
-| history deleted | **0** |
+| plan | `plan_ece5f6531254` |
+| backend | live bridge, latency **5875 ms** |
+| critique | **VALID** · sources=`cat_xli_2026-08-18_other_9c57b4` |
+| completed_ts | **`2026-08-18T21:30:36.119340+00:00`** (worker-now; persist clobber fixed) |
+| as_of | `2026-08-18T15:16:13.988036+00:00` (model, same day) |
+| plan attach | **YES** |
+| memory | **CANDIDATE** `mem_b91739ce0729a3944f090d613ba8718a` — retrieved |
+| Telegram | none |
+
+17:00 timer stub-completions (`res_29e5a85972c1` XLI, `res_48a84c661bc8` DIVI) and R6.1 canary `rr_3ac69ce392c0` (INSUFFICIENT, `as_of=2025-07-11`) remain historical. History not deleted.
 
 ---
 
-## 5. Closed-loop stages (honest)
+## 3. Queue / closed loop
 
 | Stage | Status |
 |---|---|
 | Research request | **WORKING** |
-| Queue visibility | **WORKING** |
-| Research completion | **ONE live-bridge job completed** (SCHD). Autonomous-loop / deep-research still failed. Quality INSUFFICIENT. |
-| Critique | **WORKING** (INSUFFICIENT on canary) |
-| Plan attach | **PROVEN** for `rr_3ac69ce392c0` |
-| Research→memory | **hook refused canary** (correct). No new memory_id. |
-| Automatic retrieval / advisory delta | **NOT_PROVEN** (nothing admitted) |
-| Outcomes | **PROVEN_IDLE** · next_due 2026-08-22T14:23:21Z · 279 cases · 0 matured |
-| Lesson reuse | **NOT_PROVEN** |
+| Queue visibility | **WORKING** — overlay pending **108** |
+| Research completion | **TWO live-bridge VALID jobs** this hour. Autonomous-loop / deep-research still failed. |
+| Critique | **WORKING** — VALID on both new results; INSUFFICIENT on R6.1 canary (correct at the time) |
+| Plan attach | **PROVEN** for `rr_2ce371c209dc` and `rr_60d280b8b1b3` |
+| Research→memory | **PROVEN CANDIDATE** (retrieved). Not ACTIVE policy. MBI=0. |
+| Automatic retrieval / advisory delta | **NOT_PROVEN** as a desk consumer path |
+| Overlay expire-on-complete | **NOT_WIRED** — completing a `res_*` does not EXPIRE the challenge stream |
+| Outcomes | **PROVEN_IDLE** · next_due 2026-08-22T14:23:21Z |
 | Influence | flags ACTIVE_ADVISORY; **eligible_runs=0**; MBI=0 |
 
 ---
 
-## 6. P1 register (this probe)
+## 4. P1 register
 
 | gap | status | note |
 |---|---|---|
 | G-HER-01 | **open** | autonomous-loop + deep-research still failed |
-| G-RES-01 | **partial** | worker can complete; 108 remain; overlay ≠ structured store |
+| G-RES-01 | **partial** | two structured jobs completed; overlay 108 remain |
 | G-OUT-01 | **PROVEN_IDLE** | not an engineering fail |
-| G-REC-01 | **partial** | domain present; `ok=false` while backlog exists |
-| G-ACT-01 / G-PLN-01 | **open** | recon flags draft/diagnostic; not mass-mutated |
-| G-OPN-01 | **open** | Flash/Pro EXPIRED — no timestamp bump |
-| G-HLD-01 | **open** | HOLDINGS_SOURCE_FRESHNESS=STALE on desk |
+| G-REC-01 | **partial** | domain present; `ok=false` while overlay backlog exists |
+| G-ACT-01 / G-PLN-01 | **open** | recon flags draft/diagnostic |
+| G-OPN-01 | **open** | Flash/Pro EXPIRED |
+| G-HLD-01 | **open** | HOLDINGS_SOURCE_FRESHNESS=STALE |
 | G-INF-01 | **open** | no eligible influence runs |
-| G-MAN-01 | **open** | RELEASE_MANIFEST is historical pin, not CURRENT |
-| CURRENT hijack | **closed this hour** | restored e96ff36a |
+| G-MAN-01 | **open** | RELEASE_MANIFEST historical pin |
+| CURRENT hijack | **guarded** | restore still e96; script now refuses overwrite |
+| G-QLT-01 (new) | **closed in branch** | catalyst in prompt; summary/sources stamped; as_of coerced |
+| G-MEM-01 (new) | **closed in branch** | `research_artifact` + memory-safe excerpt |
 
 ---
 
-## 7. Operator confirmation (R6.1)
+## 5. Operator confirmation (R6.2)
 
-Hard-reload `/v3/`.
+Hard-reload `/v3/` after promote.
 
-- [ ] Chip `3.14+msz4yxaj` · SHA `e96ff36a` (not 244b7a41)
-- [ ] `/api/v3/intelligence/queue` pending **108**
-- [ ] Plan `plan_20c650160254` evidence includes `rr_3ac69ce392c0`
-- [ ] Memory still 2 records; canary **not** admitted
-- [ ] Drive header **R6.1 — 2026-08-18T21:06Z**
+- [ ] Chip still `3.14+msz4yxaj` until promote; after promote chip SHA must match this merge
+- [ ] Plan `plan_d45c7c4af5a6` evidence includes `rr_2ce371c209dc`
+- [ ] Plan `plan_ece5f6531254` evidence includes `rr_60d280b8b1b3`
+- [ ] Memory contains CANDIDATE `mem_12ab1b21…` and `mem_b91739ce…`
+- [ ] Drive header **R6.2 — 2026-08-18T21:32Z**
 - [ ] MBI=0
+- [ ] Do not treat overlay pending 108 as “research never completed”
 
 ---
 
-## 8. How we update
+## 6. How we update
 
-Same Drive file `1scL90dCZa7uOK9_sojX-MNBWHfrViWMi`. **R7** only after a completed result that is **VALID** (or PARTIAL with sources) **and** admitted/retrieved by a consumer. Do not promote docs-only commits.
+Same Drive file `1scL90dCZa7uOK9_sojX-MNBWHfrViWMi`. **R7** only after this code is **promoted to CURRENT** and one more job completes **on CURRENT** with VALID + CANDIDATE retrieve (no worktree PYTHONPATH). Do not claim R7 from a worktree-only worker.
 
 ---
 
-## 9. Revision log
+## 7. Revision log
 
 | Rev | UTC | What changed |
 |---|---|---|
 | R4 | 2026-08-18T16:04Z | Lineage store + drain; CURRENT was `244b7a41`. |
 | R5 | 2026-08-18T20:40Z | Closure v2 authored as deploy-pending. |
 | R6 | 2026-08-18T20:53Z | Truth-sync to `e96ff36a`; leftover R4 numbers remained below the fold. |
-| **R6.1** | **2026-08-18T21:06Z** | Corrected stale 108/204/244b7a41/recon-missing. Restored hijacked CURRENT. Live-bridge canary `rr_3ac69ce392c0`. Memory refused. 108 pending. |
+| R6.1 | 2026-08-18T21:06Z | Corrected stale numbers. Live-bridge canary `rr_3ac69ce392c0`. Memory refused. **Documented blocks instead of fixing them.** |
+| **R6.2** | **2026-08-18T21:32Z** | Fixed producers. VALID `rr_2ce371c209dc` / `rr_60d280b8b1b3`. Memory CANDIDATE retrieved. CURRENT hijack guarded. Not promoted yet. |
 
-*End of R6.1. Not R7 — canary quality was INSUFFICIENT and memory was not admitted.*
+*End of R6.2. Not R7 — CURRENT still e96; overlay still 108; Hermes units still failed.*

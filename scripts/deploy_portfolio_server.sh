@@ -37,6 +37,22 @@ PREV_RELEASE=""
 if [[ -L "${RELEASES_BASE}/CURRENT" || -d "${RELEASES_BASE}/CURRENT" ]]; then
     PREV_RELEASE="$(readlink -f "${RELEASES_BASE}/CURRENT" 2>/dev/null || true)"
 fi
+
+# Refuse to overwrite an exact-main CURRENT (SOURCE_COMMIT pin) with this
+# timestamped rsync path. 2026-08-18 16:57 EDT hijack pointed CURRENT at
+# unstamped 20260818-165624 (no SOURCE_COMMIT) and 404'd /api/v3/intelligence.
+# Promote exact-main via cio_phase2_exact_main_deploy.sh instead.
+if [[ -n "${PREV_RELEASE}" && -f "${PREV_RELEASE}/SOURCE_COMMIT" ]]; then
+    if [[ "${FORCE_OVERWRITE_EXACT_MAIN:-0}" != "1" ]]; then
+        echo "ERROR: CURRENT is exact-main pin $(tr -d '[:space:]' < "${PREV_RELEASE}/SOURCE_COMMIT")"
+        echo "       path: ${PREV_RELEASE}"
+        echo "       deploy_portfolio_server.sh will not hijack CURRENT."
+        echo "       Use scripts/cio_phase2_exact_main_deploy.sh to promote,"
+        echo "       or set FORCE_OVERWRITE_EXACT_MAIN=1 if you really mean it."
+        exit 2
+    fi
+    echo "WARNING: FORCE_OVERWRITE_EXACT_MAIN=1 — overwriting exact-main CURRENT"
+fi
 RECEIPT_FILE="${RELEASES_BASE}/deploy_receipt.json"
 
 write_deploy_receipt() {
@@ -217,6 +233,14 @@ fi
 
 # --- Step 5: Update CURRENT symlink ---
 echo "[5/8] Updating CURRENT symlink..."
+# Second check: refuse if this timestamped tree still has no SOURCE_COMMIT
+# while CURRENT is an exact-main pin (belt-and-suspenders with the early guard).
+if [[ -n "${PREV_RELEASE}" && -f "${PREV_RELEASE}/SOURCE_COMMIT" && ! -f "${RELEASE_DIR}/SOURCE_COMMIT" ]]; then
+    if [[ "${FORCE_OVERWRITE_EXACT_MAIN:-0}" != "1" ]]; then
+        echo "ERROR: refusing to replace exact-main CURRENT with unstamped ${RELEASE_DIR}"
+        exit 2
+    fi
+fi
 ln -sfn "$RELEASE_DIR" "${RELEASES_BASE}/CURRENT"
 echo "  CURRENT -> $RELEASE_DIR"
 
