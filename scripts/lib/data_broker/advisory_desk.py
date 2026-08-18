@@ -2052,6 +2052,7 @@ def _build_evidence_bundle(
     symbol: str,
     row_class: str,
     all_data: dict[str, Any],
+    account: str | None = None,
 ) -> dict[str, Any]:
     """Assemble all available evidence for one row into a deterministic bundle.
 
@@ -2289,8 +2290,9 @@ def _build_evidence_bundle(
     elif row_class in ("holding", "watchlist"):
         gaps.append("price_action")
 
-    # ── S4/12. Lot-level basis ──
-    lb = all_data.get("lot_basis", {}).get(symbol, {})
+    # ── S4/12. Lot-level basis (account-scoped; file key is SYMBOL:account) ──
+    lb_map = all_data.get("lot_basis", {}) or {}
+    lb = lb_map.get(_lot_key(symbol, account), {}) or lb_map.get(symbol, {})
     if lb and isinstance(lb, dict) and lb.get("lot_count"):
         item = {
             "type": "lot_basis",
@@ -2989,7 +2991,7 @@ def build_advisory_desk(*, max_age_s: float = DEFAULT_MAX_AGE_S, force: bool = F
     for row in rows:
         sym = row.get("symbol", "")
         rcls = row.get("row_class", "unknown")
-        bundle = _build_evidence_bundle(sym, rcls, evidence_data)
+        bundle = _build_evidence_bundle(sym, rcls, evidence_data, account=row.get("account"))
         row["evidence_bundle"] = bundle
 
         # Phase 7: attach canonical mark + honest analyst denominators

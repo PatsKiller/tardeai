@@ -69,9 +69,34 @@ def test_host_uses_run_bounded_and_exempts_maturity():
     src = (ROOT / "scripts/portfolio_server.py").read_text()
     assert "from lib.cc_request_bound import run_bounded" in src
     assert "agent-maturity exceeded 3s connect/read bound" in src
+    assert "repository evidence only" in src
+    assert "_dispatch_maturity" in src
     assert '"/api/v3/agent-maturity"' in src
     boot = (ROOT / "scripts/agent_runtime_read_boot.py").read_text()
     assert "connect_timeout=2" in boot
+
+
+def test_evidence_bundle_uses_account_lot_key():
+    from lib.data_broker.advisory_desk import _build_evidence_bundle
+
+    all_data = {
+        "lot_basis": {
+            "SCHD:schwab_taxable": {
+                "lot_count": 3, "lot_data_status": "VERIFIED",
+                "open_lots_count": 3, "total_shares": 406.54,
+            },
+            "SCHD:schwab_rollover_ira": {
+                "lot_count": 9, "lot_data_status": "VERIFIED",
+                "open_lots_count": 9, "total_shares": 6155.25,
+            },
+        }
+    }
+    tax = _build_evidence_bundle("SCHD", "holding", all_data, account="schwab_taxable")
+    types = [i.get("type") for i in tax["evidence_items"]]
+    assert "lot_basis" in types
+    lot_item = next(i for i in tax["evidence_items"] if i["type"] == "lot_basis")
+    assert lot_item["lot_count"] == 3
+    assert "lot_basis" not in tax["evidence_gaps"]
 
 
 def test_lot_key_and_account_scoped_basis():
