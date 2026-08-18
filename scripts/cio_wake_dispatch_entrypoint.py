@@ -72,8 +72,25 @@ def main():
         result["error_count"],
     )
 
+    # ── Step 1b: Persist today's investment books even if no wake fires ─
+    try:
+        from scripts.lib.cio_investment_product import build_product, persist_product
+        persist_product(build_product())
+    except Exception:
+        log.exception("investment product persist failed (fail-soft)")
+
     # ── Step 2: Execute each dispatched run ────────────────────────────
-    worker = CIORunWorker(run_store=run_store, mode="shadow")
+    from scripts.lib.cio_action_ledger import CIOActionLedger
+    from scripts.lib.cio_notification_outbox import NotificationOutbox
+    from scripts.lib.cio_investment_product import build_investment_product_synthesis_fn
+
+    worker = CIORunWorker(
+        run_store=run_store,
+        action_ledger=CIOActionLedger(),
+        notification_outbox=NotificationOutbox(),
+        mode="shadow",
+        synthesis_fn=build_investment_product_synthesis_fn(),
+    )
     for d in result.get("dispatched", []):
         run_id = d["run_id"]
         wake_id = d["wake_job_id"]

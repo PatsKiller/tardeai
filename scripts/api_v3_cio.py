@@ -394,6 +394,20 @@ def post_plan_disposition(plan_id: str, body: dict[str, Any] | None = None) -> d
     }
 
 
+def get_investment_product() -> dict[str, Any]:
+    """GET /api/v3/cio/investment-product — four canonical CIO books."""
+    try:
+        from scripts.lib.cio_investment_product import build_product, load_brief, persist_product
+        brief = load_brief()
+        if not brief:
+            brief = persist_product(build_product())
+        return {"ok": True, "authority": "READ_ONLY_ADVISORY", "mutation": False,
+                "financial_action": False, "product": brief}
+    except Exception as e:
+        return {"ok": False, "error": type(e).__name__, "detail": str(e)[:200],
+                "authority": "READ_ONLY_ADVISORY", "financial_action": False}
+
+
 def get_cio_home() -> dict[str, Any]:
     """GET /api/v3/cio/home — Phase 8 office-home payload (6 sections, decision-first).
 

@@ -27494,6 +27494,11 @@ def _cio_capital_plan(query=None):
             PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json"
         ) or {}
         queue = build_queue_from_executor(_db_query)
+        try:
+            from scripts.lib.cio_investment_product import merge_queue_with_stored_verdicts
+            queue = merge_queue_with_stored_verdicts(queue)
+        except Exception:
+            pass
         redeploy = _redeploy_opportunity_set() or {}
         open_events = redeploy.get("open_events") or []
         sectors = (_cio_sector_opportunities() or {}).get("opportunities") or []
@@ -40278,6 +40283,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     return 200, _cio.get_cio_dashboard()
                 if p == "home":
                     return 200, _cio.get_cio_home()
+                if p in ("investment-product", "investment-books", "books"):
+                    return 200, _cio.get_investment_product()
                 if p == "dispositions":
                     return 200, _cio.get_decision_dispositions()
                 if p.startswith("decision/"):

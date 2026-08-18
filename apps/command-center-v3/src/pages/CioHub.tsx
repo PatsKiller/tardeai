@@ -172,11 +172,12 @@ type DispositionRec = {
 }
 type DispositionMap = Record<string, DispositionRec>
 
-const TABS = ['cio-now', 'capital-plan', 'posture', 'opportunities', 'report', 'evidence', 'notification-gate', 'telegram-receipts', 'senses-evidence'] as const
+const TABS = ['cio-now', 'investment-books', 'capital-plan', 'posture', 'opportunities', 'report', 'evidence', 'notification-gate', 'telegram-receipts', 'senses-evidence'] as const
 type Tab = typeof TABS[number]
 
 const TAB_LABEL: Record<Tab, string> = {
   'cio-now': 'CIO NOW',
+  'investment-books': 'INVESTMENT BOOKS',
   'capital-plan': 'CAPITAL PLAN',
   posture: 'PORTFOLIO POSTURE',
   opportunities: 'OPPORTUNITIES',
@@ -694,6 +695,65 @@ function PostureSection({ posture }: { posture: Posture }) {
   )
 }
 
+function InvestmentBooksPanel() {
+  const { data, loading, error } = useApi<any>('/api/v3/cio/investment-product', 30_000)
+  const p = data?.product || {}
+  const temp = p.temperament || {}
+  const re = p.reentry_book || {}
+  const opp = p.opportunity_book || {}
+  const act = p.action_book || {}
+  return <div data-testid="cio-investment-books" style={{ display: 'grid', gap: 14 }}>
+    <div style={{ fontSize: 12, color: 'var(--text3)' }}>
+      Advisory books only. Desk READY/IN_ZONE is not RE_ENTER. MEMORY_BEHAVIOR_INFLUENCE={temp?.influence?.memory_behavior_influence || '0'}.
+    </div>
+    {loading && <div>Loading books…</div>}
+    {error && <div style={{ color: 'var(--amber)' }}>{String(error)}</div>}
+    <section style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12 }}>
+      <div style={{ fontWeight: 800 }}>Market Temperament</div>
+      <div style={{ marginTop: 6, fontWeight: 700 }}>{temp.title || '—'}</div>
+      <div style={{ fontSize: 13, color: 'var(--text2)', marginTop: 6 }}>{temp.narrative}</div>
+      <div style={{ fontSize: 13, marginTop: 8 }}>{temp.portfolio_implication}</div>
+    </section>
+    <section style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12 }}>
+      <div style={{ fontWeight: 800 }}>Re-Entry Book</div>
+      <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>{re.note}</div>
+      <table style={{ width: '100%', fontSize: 12, marginTop: 8, borderCollapse: 'collapse' }}>
+        <thead><tr>{['symbol','status','verdict','setup','what would change'].map(h => <th key={h} style={{ textAlign: 'left', padding: '4px 6px', color: 'var(--text3)' }}>{h}</th>)}</tr></thead>
+        <tbody>{(re.names || []).slice(0, 30).map((r: any) => <tr key={r.symbol}>
+          <td style={{ padding: '4px 6px' }}>{r.symbol}</td>
+          <td style={{ padding: '4px 6px' }}>{r.status}</td>
+          <td style={{ padding: '4px 6px' }}>{r.governed_verdict || '—'}</td>
+          <td style={{ padding: '4px 6px' }}>{r.setup}</td>
+          <td style={{ padding: '4px 6px' }}>{r.what_would_change}</td>
+        </tr>)}</tbody>
+      </table>
+      {(re.names || []).length === 0 && <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 8 }}>No former holdings in the re-entry universe right now.</div>}
+    </section>
+    <section style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12 }}>
+      <div style={{ fontWeight: 800 }}>Opportunity Book</div>
+      <div style={{ fontSize: 12, color: 'var(--text3)' }}>{opp.note}</div>
+      {(opp.top || []).slice(0, 12).map((o: any) => (
+        <div key={o.symbol + String(o.rank)} style={{ fontSize: 13, marginTop: 6 }}>
+          {o.rank}. {o.symbol} — {o.verdict || o.state || 'WATCH'} ({o.source}) · vs former {o.vs_former_holdings}
+        </div>
+      ))}
+    </section>
+    <section style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12 }}>
+      <div style={{ fontWeight: 800 }}>Portfolio Action Book</div>
+      {(['DO_NOW','WATCH_CLOSELY','RE_ENTER_IF','NEW_POSITION_IF','HOLD_CASH_FOR','AVOID','RESEARCH_NEXT'] as const).map(k => (
+        <div key={k} style={{ marginTop: 8 }}>
+          <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--text3)' }}>{k.replace(/_/g, ' ')}</div>
+          {((act as any)[k] || []).slice(0, 8).map((r: any, i: number) => (
+            <div key={k + i} style={{ fontSize: 13 }}>{r.symbol} — {r.action}: {r.why}</div>
+          ))}
+          {((act as any)[k] || []).length === 0 && <div style={{ fontSize: 12, color: 'var(--text3)' }}>—</div>}
+        </div>
+      ))}
+    </section>
+    <div style={{ fontSize: 12, color: 'var(--text3)' }}>{p.summary}</div>
+  </div>
+}
+
 function OpportunitiesSection({ opp }: { opp: Opportunities }) {
   const list = (items: { symbol: string; signal: string; source: string }[]) =>
     items.length === 0 ? <Empty text="None." /> : (
@@ -1012,6 +1072,8 @@ export default function CioHub({ onDrill }: Props) {
         </div>
       )}
 
+      {tab === 'investment-books' && <InvestmentBooksPanel />}
+
       {(tab === 'notification-gate' || tab === 'telegram-receipts' || tab === 'senses-evidence') && (
         <div role="tabpanel" aria-label={TAB_LABEL[tab]}>
           {tab === 'notification-gate' && <NotificationGatePanel />}
@@ -1020,7 +1082,7 @@ export default function CioHub({ onDrill }: Props) {
         </div>
       )}
 
-      {home && tab !== 'notification-gate' && tab !== 'telegram-receipts' && tab !== 'senses-evidence' && (
+      {home && tab !== 'notification-gate' && tab !== 'telegram-receipts' && tab !== 'senses-evidence' && tab !== 'investment-books' && (
         <div role="tabpanel" aria-label={TAB_LABEL[tab]}>
           {tab === 'cio-now' && <CioNowSection home={home} dispositions={dispositions} legacyUnversioned={legacyUnversioned} onAct={onAct} />}
           {tab === 'capital-plan' && <CapitalPlanSection cp={home.capital_plan} />}
