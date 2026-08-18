@@ -43,13 +43,17 @@ export default function MetricStrip({ onDrill }: Props) {
   const realizedCount = overview?.journal?.realized_count
   const longTermTrimPnl = overview?.journal?.long_term_trim_pnl
   const journalLastClose = overview?.journal?.last_close_date
-  const journalStaleDays = (() => {
-    if (!journalLastClose) return null
-    const ms = Date.now() - new Date(String(journalLastClose)).getTime()
-    return isFinite(ms) && ms > 0 ? Math.floor(ms / 86_400_000) : null
+  const journalLastIngested = overview?.journal?.last_ingested_at
+  const journalIngestedHours = (() => {
+    if (!journalLastIngested) return null
+    const ms = Date.now() - new Date(String(journalLastIngested)).getTime()
+    return isFinite(ms) && ms > 0 ? ms / 3_600_000 : null
   })()
-  const journalStale = journalStaleDays != null && journalStaleDays > 7
-  const journalAgeMark = journalStale ? ` · ${journalStaleDays}d old` : ''
+  // STALE now means "journal pipeline hasn't rebuilt recently" (72h spans weekends), not
+  // "haven't closed a trade recently" — a quiet market is not stale data.
+  const journalStale = journalIngestedHours != null && journalIngestedHours > 72
+  const journalAgeMark = journalStale ? ` · not refreshed ${Math.round(journalIngestedHours)}h` : ''
+  const journalRefreshedMark = journalLastIngested ? ` · journal rebuilt ${new Date(String(journalLastIngested)).toLocaleString(undefined, { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` : ''
   const vix = tradeAi?.vix
   const approvals = overview?.pending_approvals ?? overview?.approvals_count
   const priceStamp = pricingStampLine(overview?.pricing ?? { last_repriced: overview?.last_repriced, reprice_source: overview?.reprice_source })
@@ -90,17 +94,17 @@ export default function MetricStrip({ onDrill }: Props) {
       label: 'TRADING', value: winRate != null ? `${winRate}%${winTrades ? ` · ${winTrades}` : ''}${journalPnl != null ? ` · ${fmt$(journalPnl, 0)}` : ''}` : '—',
       stale: journalStale ? journalAgeMark : null,
       color: winRate != null && winRate >= 50 ? BB.green : winRate != null ? BB.amber : 'var(--text3)',
-      tip: `Active trading only (day + swing), broker round-trips${journalLastClose ? ` · through ${journalLastClose}` : ''}. Excludes long-term trims of old holds — those are in REALIZED. Win rate excludes $0 scratches.${journalStale ? ` STALE because trade_closed last close is ${journalLastClose} — refresh via schwab journal ingest (broker history → local journal), not a dead UI.` : ''}`,
+      tip: `Active trading only (day + swing), broker round-trips${journalLastClose ? ` · last close ${journalLastClose}` : ''}${journalRefreshedMark}. Excludes long-term trims of old holds — those are in REALIZED. Win rate excludes $0 scratches.`,
       drill: { title: 'Trading (active)', subtitle: `Day + swing round-trips, excludes long-term position trims${journalLastClose ? ` · through ${journalLastClose}` : ''} · REALIZED tile shows all closed incl. trims`, endpoint: '/api/v2/overview',
-        rows: [{ trading_win_rate: overview?.journal?.win_rate, trading_trades: overview?.journal?.trade_count, trading_pnl: overview?.journal?.total_pnl, realized_win_rate: overview?.journal?.realized_win_rate, realized_trades: realizedCount, realized_pnl: realizedPnl, long_term_trim_pnl: longTermTrimPnl, basis: overview?.journal?.basis, last_close_date: overview?.journal?.last_close_date, paper_readiness_win_rate: readiness?.win_rate, paper_usable_trades: readiness?.closed_usable }] },
+        rows: [{ trading_win_rate: overview?.journal?.win_rate, trading_trades: overview?.journal?.trade_count, trading_pnl: overview?.journal?.total_pnl, realized_win_rate: overview?.journal?.realized_win_rate, realized_trades: realizedCount, realized_pnl: realizedPnl, long_term_trim_pnl: longTermTrimPnl, basis: overview?.journal?.basis, last_close_date: overview?.journal?.last_close_date, last_ingested_at: overview?.journal?.last_ingested_at, ledger_last_trade_time: overview?.journal?.ledger_last_trade_time, paper_readiness_win_rate: readiness?.win_rate, paper_usable_trades: readiness?.closed_usable }] },
     },
     {
       label: 'REALIZED', value: realizedPnl != null ? fmt$(realizedPnl, 0) : '—',
       stale: journalStale ? journalAgeMark : null,
       color: realizedPnl == null ? 'var(--text3)' : realizedPnl >= 0 ? BB.green : BB.red,
-      tip: `All closed P&L incl. long-term trims of old buy-and-hold lots${longTermTrimPnl ? ` (${fmt$(longTermTrimPnl, 0)} of it is long-term trims)` : ''}${journalLastClose ? ` · through ${journalLastClose}` : ''}. Trading-only P&L is ${journalPnl != null ? fmt$(journalPnl, 0) : '—'}.${journalStale ? ` Not a crashed page — last broker-verified close is ${journalLastClose}.` : ''}`,
+      tip: `All closed P&L incl. long-term trims of old buy-and-hold lots${longTermTrimPnl ? ` (${fmt$(longTermTrimPnl, 0)} of it is long-term trims)` : ''}${journalLastClose ? ` · last close ${journalLastClose}` : ''}${journalRefreshedMark}. Trading-only P&L is ${journalPnl != null ? fmt$(journalPnl, 0) : '—'}.`,
       drill: { title: 'Realized P&L (all closed)', subtitle: `Includes long-term position trims — not just trading${journalLastClose ? ` · through ${journalLastClose}` : ''}`, endpoint: '/api/v2/overview',
-        rows: [{ realized_pnl: realizedPnl, realized_trades: realizedCount, long_term_trim_pnl: longTermTrimPnl, trading_pnl: overview?.journal?.total_pnl, trading_trades: overview?.journal?.trade_count, basis: overview?.journal?.basis, last_close_date: overview?.journal?.last_close_date }] },
+        rows: [{ realized_pnl: realizedPnl, realized_trades: realizedCount, long_term_trim_pnl: longTermTrimPnl, trading_pnl: overview?.journal?.total_pnl, trading_trades: overview?.journal?.trade_count, basis: overview?.journal?.basis, last_close_date: overview?.journal?.last_close_date, last_ingested_at: overview?.journal?.last_ingested_at }] },
     },
     {
       label: 'REGIME', value: regimeLabel ? `${regimeLabel.replace(/_/g, ' ')}${regimeConf ? ` ${Math.round(regimeConf * 100)}%` : ''}` : '—',

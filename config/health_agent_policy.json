@@ -120,7 +120,7 @@
     "annotation_warn_pct": 40,
     "annotation_critical_pct": 20,
     "mfe_coverage_warn_pct": 50,
-    "trade_closed_stale_days": 7,
+    "trade_closed_stale_days": 3,
     "check_after_hour_et": 19
   },
   "proposal_oversight_load": {
