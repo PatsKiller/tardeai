@@ -825,9 +825,35 @@ def main():
     parser.add_argument("--drain-closed-trades", action="store_true",
                         help="Manual DRAIN MODE: prioritize closed_trade_needing_reflection over held-position "
                              "monitoring for THIS RUN ONLY (off by default; normal cron priority unchanged).")
+    parser.add_argument(
+        "--allow-peak",
+        action="store_true",
+        help="allow DeepSeek Flash apply during official peak (01-04 and 06-10 UTC)",
+    )
     args = parser.parse_args()
 
     check_kill_switch()
+    try:
+        from hermes_llm_failover import (
+            allow_deepseek_peak,
+            deepseek_window_label,
+            is_deepseek_offpeak,
+            primary_provider,
+        )
+        if (
+            args.apply
+            and primary_provider() == "bridge_flash"
+            and not is_deepseek_offpeak()
+            and not (args.allow_peak or allow_deepseek_peak())
+        ):
+            print(
+                f"SKIPPED_DEEPSEEK_PEAK: window={deepseek_window_label()} "
+                "official peak 01:00-04:00 and 06:00-10:00 UTC (half price off-peak). "
+                "Pass --allow-peak to override."
+            )
+            return
+    except Exception as exc:
+        print(f"off-peak gate unavailable ({exc}); continuing")
     lock_fd = acquire_lock()
     start = time.time()
 

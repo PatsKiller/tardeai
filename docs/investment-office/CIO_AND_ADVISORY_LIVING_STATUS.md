@@ -4,13 +4,13 @@
 |---|---|
 | **Document name** | `CIO_AND_ADVISORY_LIVING_STATUS.md` |
 | **Repo path** | `docs/investment-office/CIO_AND_ADVISORY_LIVING_STATUS.md` |
-| **Revision** | **R6.4 — 2026-08-18T22:12Z** (overnight Flash now-test; **not R7**) |
-| **Status** | **PARTIAL_WITH_EXPLICIT_GAPS** — both overnight jobs **ran now** on DeepSeek Flash and committed. Overlay/desk-consumer gaps remain. |
+| **Revision** | **R6.5 — 2026-08-18T22:25Z** (official DeepSeek off-peak cadence; **not R7**) |
+| **Status** | **PARTIAL_WITH_EXPLICIT_GAPS** — overnight jobs now fire **5× each** in official DeepSeek off-peak ∩ 21:00–09:00 ET. Overlay/desk-consumer gaps remain. |
 | **Authority** | `READ_ONLY_ADVISORY` · `MEMORY_BEHAVIOR_INFLUENCE=0` · `broker_write=NONE` |
 | **Owner** | Alex desk · operator: John |
 | **Live CURRENT** | `575477dc-main-exact-phase2-20260818-175137` |
 | **CURRENT SHA** | `575477dc779c25111250a82b2e56d9c08a962950` |
-| **origin/main** | `8f8a3acb` (R6.4 now-test docs, PR #383; last code `38cd2320` PR #382) |
+| **origin/main** | `dac54411` (R6.4 header pin #384; last overnight-code `38cd2320` PR #382) |
 | **UI chip (live)** | `3.14+msz77bh2` · `575477dc` |
 | **Google Drive file** | [CIO_AND_ADVISORY_LIVING_STATUS.md](https://drive.google.com/file/d/1scL90dCZa7uOK9_sojX-MNBWHfrViWMi/view) |
 | **Drive folder** | [docs / investment-office](https://drive.google.com/drive/folders/1sVHlO8v-NStl2HRbk1bJqwqI67bxGUM8) |
@@ -61,7 +61,50 @@ Same command lines as the systemd units, run immediately. `HERMES_LLM_PRIMARY=br
 
 Prior same-hour Flash proofs (still in the table): STLD `25362`. Early LRCX/NUVL/IVF/SPRC/AXTI rows still show `gemma3:*` in `model_used` because Flash echoed that name before we forced the stamp.
 
-Ollama was **not** used as primary. Tonight’s 21:01 / 02:30 timers will hit the same Flash-primary path.
+Ollama was **not** used as primary.
+
+## 1c. Why 21:01 / 02:30 — and the new schedule
+
+Those two times were **once per day**, from the old Ollama overnight design:
+
+| Job | Old calendar | Why it looked like 21:01 / 02:30 |
+|---|---|---|
+| autonomous-loop | `01:00 UTC` + `RandomizedDelaySec=300` | 01:00 UTC = **21:00 EDT**; jitter → ~21:01–21:05 |
+| deep-research-local | `02:30` local + 300s jitter | ~02:30–02:35 EDT |
+
+They were **not** DeepSeek off-peak. Official DeepSeek peak is **01:00–04:00 and 06:00–10:00 UTC** (Beijing 09:00–12:00 and 14:00–18:00). Half price outside those windows. [pricing](https://api-docs.deepseek.com/quick_start/pricing/)
+
+In America/New_York (EDT, UTC−4):
+
+| Local | UTC | Official DeepSeek |
+|---|---|---|
+| 21:00–00:00 | 01:00–04:00 | **PEAK** (old 21:01 timer sat here) |
+| 00:00–02:00 | 04:00–06:00 | off-peak |
+| 02:00–06:00 | 06:00–10:00 | **PEAK** (old 02:30 timer sat here) |
+| 06:00–21:00 | 10:00–01:00 next | off-peak |
+
+So “9pm–9am local” is **not** DeepSeek off-peak. Intersection of (9pm–9am ET) ∩ official off-peak is only **00:00–02:00** and **06:00–09:00 ET**.
+
+**New cadence (host timers live now): 5 fires each per day = 10 Flash jobs / day.**
+
+| Local ET | UTC | Job |
+|---|---|---|
+| 00:10 | 04:10 | autonomous-loop (2 tickers) |
+| 00:35 | 04:35 | deep-research (3 symbols) |
+| 01:10 | 05:10 | autonomous-loop |
+| 01:35 | 05:35 | deep-research |
+| 06:10 | 10:10 | autonomous-loop |
+| 06:35 | 10:35 | deep-research |
+| 07:10 | 11:10 | autonomous-loop |
+| 07:35 | 11:35 | deep-research |
+| 08:10 | 12:10 | autonomous-loop |
+| 08:35 | 12:35 | deep-research |
+
+Scripts refuse Flash apply during official peak unless `--allow-peak`. `tradeai-hermes-cio-worker` still runs every 15m 24/7 (separate drain lane — not retargeted here).
+
+Enabling the new timers triggered one Persistent catch-up at 18:24 EDT (official off-peak): autonomous-loop 0 new targets; deep-research TRX `25381` / ANY `25382` / ADBE `25383` Flash, exit 0. Next fires **00:10 ET** and **00:35 ET**.
+
+Not R7. CURRENT not promoted.
 
 ## 2. Validation this hour (not R7)
 
@@ -96,7 +139,9 @@ Remaining 94 overlays are plans with **no** completed structured result. Not del
 
 - [ ] Chip `3.14+msz77bh2` · SHA `575477dc`
 - [ ] Overnight now-test IDs `25365`–`25369` exist, `model_used=deepseek-v4-flash`
-- [ ] Drive header **R6.4 — 2026-08-18T22:12Z**
+- [ ] Drive header **R6.5 — 2026-08-18T22:25Z**
+- [ ] Next autonomous-loop is **00:10 ET**, not 21:01
+- [ ] Next deep-research is **00:35 ET**, not 02:30
 - [ ] Overlay pending **94** (or lower if the timer drained more)
 - [ ] `mem_8bbacb882a761199a950eed65f15c5aa` present, status CANDIDATE
 - [ ] Drive header **R6.3 — 2026-08-18T21:49Z**
@@ -119,5 +164,6 @@ Same Drive file `1scL90dCZa7uOK9_sojX-MNBWHfrViWMi`. **R7** only if: overlay exp
 | R6.2 | 2026-08-18T21:38Z | Catalyst/summary/sources. PR #377 promoted `40934ca8`. VALID jobs. |
 | **R6.3** | **2026-08-18T21:49Z** | Overlay expire + hook path/store fix. 108→94. Live auto-admit `mem_8bbacb88…`. Not R7. |
 | **R6.4** | **2026-08-18T22:12Z** | Did not wait for timers. Overnight jobs run now on Flash: 2/2 + 3/3 committed. Not R7. |
+| **R6.5** | **2026-08-18T22:25Z** | Official DeepSeek off-peak cadence. 21:01/02:30 were peak. Now 5×2 in 00–02 and 06–09 ET. Not R7. |
 
-*End of R6.4. Not R7.*
+*End of R6.5. Not R7.*

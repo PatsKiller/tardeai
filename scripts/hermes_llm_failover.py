@@ -12,7 +12,14 @@ import os
 import re
 import urllib.error
 import urllib.request
+from datetime import datetime, timezone
 from typing import Any
+
+# Official DeepSeek peak windows (half-open, UTC).
+# https://api-docs.deepseek.com/quick_start/pricing/
+# Peak: 01:00-04:00 and 06:00-10:00 UTC. All other hours are off-peak (half price).
+# These are Beijing 09:00-12:00 and 14:00-18:00 — NOT US 21:00-09:00.
+DEEPSEEK_PEAK_UTC = ((1, 4), (6, 10))
 
 AUTHORITY = "READ_ONLY_ADVISORY"
 DEFAULT_OLLAMA = os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
@@ -33,6 +40,31 @@ def failover_enabled() -> bool:
     return os.getenv("HERMES_OLLAMA_FAILOVER", "1").strip().lower() not in {
         "0", "false", "no", "off",
     }
+
+
+def allow_deepseek_peak() -> bool:
+    """Manual override for now-tests. Default is refuse Flash apply during official peak."""
+    return os.getenv("HERMES_ALLOW_DEEPSEEK_PEAK", "").strip().lower() in {
+        "1", "true", "yes", "on",
+    }
+
+
+def is_deepseek_offpeak(when: datetime | None = None) -> bool:
+    """True outside official DeepSeek peak hours."""
+    dt = when or datetime.now(timezone.utc)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    else:
+        dt = dt.astimezone(timezone.utc)
+    hour = dt.hour + dt.minute / 60.0 + dt.second / 3600.0
+    for start, end in DEEPSEEK_PEAK_UTC:
+        if start <= hour < end:
+            return False
+    return True
+
+
+def deepseek_window_label(when: datetime | None = None) -> str:
+    return "off-peak" if is_deepseek_offpeak(when) else "peak"
 
 
 def primary_provider() -> str:
