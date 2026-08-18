@@ -15,6 +15,29 @@ from scripts.lib.autonomy_watchdog.heartbeat import paths
 from scripts.lib.autonomy_watchdog.io import append_jsonl, read_jsonl
 from scripts.lib.autonomy_watchdog.model import ny_date, now_utc
 
+def _http_post(url: str, payload: dict[str, Any]) -> tuple[dict[str, Any], int]:
+    """stdlib POST. Tests patch this. Never used under CI lock."""
+    import json as _json
+    import urllib.error
+    import urllib.request
+    data = _json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"}, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=12) as resp:
+            raw = resp.read().decode("utf-8", "replace")
+            status = getattr(resp, "status", 200)
+    except urllib.error.HTTPError as e:
+        raw = e.read().decode("utf-8", "replace")
+        status = e.code
+    try:
+        body = _json.loads(raw) if raw else {}
+    except Exception:
+        body = {}
+    if not isinstance(body, dict):
+        body = {}
+    return body, int(status)
+
+
 FAMILY = "TRADE_AI_SYSTEM"
 DAILY_PREFIX = "system-heartbeat:"
 CANARY_PREFIX = "system-canary:"
@@ -95,24 +118,17 @@ def send_system(
         return rec
     token = str(src.get("TELEGRAM_BOT_TOKEN") or "").strip()
     chat = str(src.get("TELEGRAM_CHAT_ID") or "").split(",")[0].strip()
-    # Direct Bot API — do not route through CIO transport or CIO interdict.
+    # Direct Bot API via stdlib — no CIO transport, no `requests` CI dependency.
     try:
-        import requests
-        resp = requests.post(
+        body, status = _http_post(
             f"https://api.telegram.org/bot{token}/sendMessage",
-            json={"chat_id": chat, "text": text},
-            timeout=12,
+            {"chat_id": chat, "text": text},
         )
-        body = {}
-        try:
-            body = resp.json()
-        except Exception:
-            body = {}
-        rec["ok"] = bool(resp.ok and body.get("ok"))
+        rec["ok"] = bool(body.get("ok"))
         rec["message_id"] = ((body.get("result") or {}) if isinstance(body.get("result"), dict) else {}).get("message_id")
-        rec["status_code"] = resp.status_code
+        rec["status_code"] = status
         if not rec["ok"]:
-            rec["reason"] = str(body.get("description") or resp.status_code)[:160]
+            rec["reason"] = str(body.get("description") or status)[:160]
     except Exception as e:
         rec["ok"] = False
         rec["reason"] = type(e).__name__

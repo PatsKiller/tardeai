@@ -101,16 +101,13 @@ def test_telegram_dedupe(root: Path, monkeypatch: pytest.MonkeyPatch):
     env = {"TELEGRAM_BOT_TOKEN": "x", "TELEGRAM_CHAT_ID": "1", "SYSTEM_TELEGRAM_ENABLED": "1"}
     sent = {"n": 0}
 
-    def fake_post(*a, **k):
+    def fake_post(url, payload):
         sent["n"] += 1
-        class R:
-            ok = True
-            status_code = 200
-            def json(self):
-                return {"ok": True, "result": {"message_id": 99}}
-        return R()
+        assert "sendMessage" in url
+        assert "BUY" not in str(payload)
+        return {"ok": True, "result": {"message_id": 99}}, 200
 
-    monkeypatch.setattr("requests.post", fake_post)
+    monkeypatch.setattr(TG, "_http_post", fake_post)
     a = TG.send_system("hello", identity="system-heartbeat:2026-08-18", kind="daily_heartbeat", root=root, env=env)
     b = TG.send_system("hello", identity="system-heartbeat:2026-08-18", kind="daily_heartbeat", root=root, env=env)
     assert a["ok"] and a.get("message_id") == 99
