@@ -58,7 +58,7 @@ def build_api(env: Optional[Mapping[str, str]] = None, *, reader_factory=None):
             from agent_runtime.read_postgres import PostgresAgentRuntimeReader
 
             def connection_factory():
-                conn = psycopg2.connect(dsn)
+                conn = psycopg2.connect(dsn, connect_timeout=2)
                 conn.autocommit = False  # read path opens an explicit READ ONLY txn
                 return conn
 

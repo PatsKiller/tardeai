@@ -172,6 +172,12 @@ def _norm_symbol(s: str) -> str:
     return str(s).strip().upper()
 
 
+def _lot_key(symbol: str, account: str | None) -> str:
+    """Composite tax-lot key. File keys are SYMBOL:account; never lot.account."""
+    acct = str(account or "").strip()
+    return f"{symbol}:{acct}" if acct else symbol
+
+
 # FIX-1: CUSIP / non-ticker detection
 _CUSIP_RE = re.compile(r"^[A-Z0-9]{6,9}$")  # 6-9 alphanumeric: typical CUSIP length
 _ALL_DIGITS_RE = re.compile(r"^\d+$")          # all-digits: bond/treasury identifier
@@ -375,6 +381,7 @@ def _load_tax_lots() -> dict[str, Any]:
         return raw
 
     by_symbol: dict[str, list[dict[str, Any]]] = {}
+    by_account: dict[str, list[dict[str, Any]]] = {}
     lot_count = 0
     for key, lots in raw.items():
         if not isinstance(lots, list):
@@ -383,14 +390,20 @@ def _load_tax_lots() -> dict[str, Any]:
         sym = _norm_symbol(parts[0]) if parts else ""
         if not sym:
             continue
+        bucket_acct = parts[1] if len(parts) > 1 else ""
+        bucket_key = f"{sym}:{bucket_acct}" if bucket_acct else sym
         for lot in lots:
             if isinstance(lot, dict):
-                by_symbol.setdefault(sym, []).append(lot)
+                rec = dict(lot)
+                rec["_bucket_account"] = bucket_acct
+                by_symbol.setdefault(sym, []).append(rec)
+                by_account.setdefault(bucket_key, []).append(rec)
                 lot_count += 1
 
     return {
         "state": "AVAILABLE",
         "by_symbol": by_symbol,
+        "by_account": by_account,
         "count": lot_count,
     }
 
@@ -1761,6 +1774,7 @@ def _load_lot_basis(
     tax_lots: dict,
     current_price: float | None,
     listing_date_str: str | None,
+    account: str | None = None,
 ) -> dict[str, Any]:
     """Expose per-lot cost basis with profit/underwater breakdown.
 
@@ -1772,7 +1786,18 @@ def _load_lot_basis(
         lots_in_profit, lots_underwater, weighted_avg_basis,
         oldest_open_lot_date, lot_data_status, lots[]
     """
-    all_lots = tax_lots.get("by_symbol", {}).get(symbol, [])
+    acct = str(account or "").strip()
+    if acct:
+        by_account = tax_lots.get("by_account", {}) or {}
+        all_lots = by_account.get(_lot_key(symbol, acct), [])
+        if not all_lots:
+            want = _lot_key(symbol, acct).lower()
+            for key, lots in by_account.items():
+                if str(key).lower() == want:
+                    all_lots = lots
+                    break
+    else:
+        all_lots = tax_lots.get("by_symbol", {}).get(symbol, [])
 
     # Filter open lots
     open_lots = [
@@ -2782,6 +2807,8 @@ def build_advisory_desk(*, max_age_s: float = DEFAULT_MAX_AGE_S, force: bool = F
 
     for pos in holdings.get("positions", []):
         sym = pos["symbol"]
+        acct = str(pos.get("account") or "")
+        lot_key = _lot_key(sym, acct)
         inst = instrument_data.get(sym, {})
         ld_str = inst.get("listing_date")
         price = _f(pos.get("price"))
@@ -2792,9 +2819,9 @@ def build_advisory_desk(*, max_age_s: float = DEFAULT_MAX_AGE_S, force: bool = F
         pa = _load_price_action(sym, price, cb, shares, ohlcv_data, ld_str)
         price_actions[sym] = pa
 
-        # Lot basis
-        lb = _load_lot_basis(sym, tax_lots, price, ld_str)
-        lot_basis_data[sym] = lb
+        # Lot basis — account-scoped so taxable SCHD does not inherit IRA lots.
+        lb = _load_lot_basis(sym, tax_lots, price, ld_str, account=acct or None)
+        lot_basis_data[lot_key] = lb
 
     # Watchlist + closed symbols also get price action (OHLCV or Finviz fallback).
     # No cost basis / shares — these are not held positions, so the
@@ -2809,7 +2836,8 @@ def build_advisory_desk(*, max_age_s: float = DEFAULT_MAX_AGE_S, force: bool = F
         sym = pos["symbol"]
         pos_with_lots = dict(pos)
         pos_with_lots["days_held"] = _compute_days_held(sym, tax_lots)
-        pos_with_lots["lot_basis"] = lot_basis_data.get(sym, {})
+        _lk = _lot_key(sym, pos.get("account"))
+        pos_with_lots["lot_basis"] = lot_basis_data.get(_lk, lot_basis_data.get(sym, {}))
 
         inv = _validate_external_invariants(pos_with_lots, listing_dates, ohlcv_data)
         invariant_results[sym] = inv
@@ -2829,7 +2857,8 @@ def build_advisory_desk(*, max_age_s: float = DEFAULT_MAX_AGE_S, force: bool = F
             # ── S4: Add price action, lot basis, instrument data to opinion row ──
             sym = pos["symbol"]
             opinion["price_action"] = price_actions.get(sym, {})
-            opinion["lot_basis"] = lot_basis_data.get(sym, {})
+            _lk = _lot_key(sym, pos.get("account"))
+            opinion["lot_basis"] = lot_basis_data.get(_lk, lot_basis_data.get(sym, {}))
             opinion["instrument"] = instrument_data.get(sym, {})
             opinion["invariant_violations"] = invariant_results.get(sym, {}).get("violations", [])
             opinion["lot_data_status"] = invariant_results.get(sym, {}).get("lot_data_status", "")
@@ -2837,7 +2866,7 @@ def build_advisory_desk(*, max_age_s: float = DEFAULT_MAX_AGE_S, force: bool = F
             opinion["adjusted_cost"] = _f(pos.get("cost_basis"))
             opinion["cost_basis_source"] = pos.get("cost_basis_source", "")
             opinion["basis_partial"] = bool(pos.get("basis_partial"))
-            opinion["holding_period"] = lot_basis_data.get(sym, {}).get("holding_period")
+            opinion["holding_period"] = lot_basis_data.get(_lk, lot_basis_data.get(sym, {})).get("holding_period")
             # Holdings arithmetic needed for canonical mark / dual-price detection
             opinion["shares"] = pos.get("shares")
             opinion["price"] = pos.get("price")

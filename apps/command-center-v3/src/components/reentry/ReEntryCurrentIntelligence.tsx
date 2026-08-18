@@ -225,7 +225,6 @@ export default function ReEntryCurrentIntelligence({
 } = {}) {
   const navigate = useNavigate()
   const evidence = useReEntryExitEvidence(365)
-  const cards = useApi<any>('/api/v2/symbol-cards', 300_000)
   const holdings = useApi<any>('/api/v2/portfolio/holdings', 120_000)
   const mandatesPref = useApi<any>(`/api/v2/ui/prefs/get?key=${encodeURIComponent(MANDATE_KEY)}`, 0)
   const eventsPref = useApi<any>(`/api/v2/ui/prefs/get?key=${encodeURIComponent(EVENT_KEY)}`, 0)
@@ -309,6 +308,11 @@ export default function ReEntryCurrentIntelligence({
   }, [evidence.rows])
 
   const symbols = useMemo(() => summaries.map(summary => summary.symbol).slice(0, 300), [summaries])
+  const cards = useApi<any>(
+    symbols.length ? `/api/v2/symbol-cards?symbols=${encodeURIComponent(symbols.join(','))}` : '',
+    300_000,
+    { enabled: symbols.length > 0 },
+  )
   useEffect(() => {
     if (!symbols.length) return
     let dead = false
@@ -316,20 +320,25 @@ export default function ReEntryCurrentIntelligence({
     const controller = new AbortController()
     const output: Record<string, any> = {}
     const worker = async () => {
+      const CHUNK = 80
       while (!dead) {
-        const index = cursor++
+        const index = cursor
+        cursor += CHUNK
         if (index >= symbols.length) return
-        const symbol = symbols[index]
+        const chunk = symbols.slice(index, index + CHUNK)
         try {
-          const response = await fetch(`/api/v2/watchlist/items?symbol=${encodeURIComponent(symbol)}`, { cache: 'no-store', signal: controller.signal })
+          const response = await fetch(`/api/v2/watchlist/items?symbols=${encodeURIComponent(chunk.join(','))}`, { cache: 'no-store', signal: controller.signal })
           const payload = unwrap(await response.json())
-          output[symbol] = (payload?.items ?? [])[0] ?? null
+          for (const item of (payload?.items ?? [])) {
+            const sym = String(item?.symbol || '').toUpperCase()
+            if (sym) output[sym] = item
+          }
         } catch {
-          output[symbol] = null
+          for (const symbol of chunk) output[symbol] = output[symbol] ?? null
         }
       }
     }
-    void Promise.all(Array.from({ length: Math.min(8, symbols.length) }, () => worker())).then(() => {
+    void Promise.all(Array.from({ length: Math.min(2, Math.ceil(symbols.length / 80) || 1) }, () => worker())).then(() => {
       if (!dead) setWatchMap(previous => ({ ...previous, ...output }))
     })
     return () => { dead = true; controller.abort() }
