@@ -196,30 +196,23 @@ link_pipeline_data() {
 
 write_build_meta() {
   local dest="$1" sha="$2" src_cc="${3:-}"
-  python3 - "$src_cc" <<PY
-import json, sys
-from datetime import datetime, timezone
+  # Merge Vite ui_version — do not clobber it. Missing ui_version makes
+  # cc-boot.js fall back to "1.6" and the desk chip render as "… · sha".
+  PYTHONPATH="${ROOT}/scripts${PYTHONPATH:+:$PYTHONPATH}" \
+  python3 - "$dest" "$sha" "${LABEL}" "${src_cc:-}" <<'PY'
+import sys
 from pathlib import Path
-extra = sys.argv[1] if len(sys.argv) > 1 else ""
-meta = {
-    "git_sha": "${sha}",
-    "source_sha": "${sha}",
-    "build_sha": "${sha}"[:12],
-    "source_commit": "${sha}",
-    "built_at": datetime.now(timezone.utc).isoformat(),
-    "branch": "main",
-    "release_label": "${LABEL}",
-}
+from lib.cc_v3_build_meta import write_merged_build_meta
+dest, sha, label, extra = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
 paths = [
-    Path("${dest}/apps/command-center-v3/build-meta.json"),
-    Path("${dest}/apps/command-center-v3/dist/build-meta.json"),
+    Path(dest) / "apps/command-center-v3/dist/build-meta.json",
+    Path(dest) / "apps/command-center-v3/build-meta.json",
 ]
 if extra:
     paths.append(Path(extra) / "build-meta.json")
-for p in paths:
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(meta, indent=2) + "\n")
-print("wrote build-meta", meta["git_sha"][:12])
+    paths.append(Path(extra) / "dist/build-meta.json")
+meta = write_merged_build_meta(paths, sha=sha, label=label)
+print("wrote build-meta", meta.get("ui_version"), meta.get("git_sha", "")[:12])
 PY
 }
 
