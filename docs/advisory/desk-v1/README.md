@@ -1,5 +1,8 @@
 # Advisory Desk v1 — Documentation Index
 
+**Living operator status (CIO + Advisory, working / not working / config):**  
+[`docs/investment-office/CIO_AND_ADVISORY_LIVING_STATUS.md`](../../investment-office/CIO_AND_ADVISORY_LIVING_STATUS.md) — updated and Drive-synced as work continues.
+
 **Branch:** `feature/advisory-desk-v1`  
 **Flag:** `ADVISORY_DESK_V1` (enabled 2026-08-12 in `config/advisory_desk.yaml`; systemd timer live via drop-in)  
 **Authority:** READ_ONLY_ADVISORY throughout  

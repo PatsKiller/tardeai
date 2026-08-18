@@ -1,5 +1,8 @@
 # CIO Desk — Architect Packet
 
+**Living operator status (CIO + Advisory, working / not working / config):**  
+[`docs/investment-office/CIO_AND_ADVISORY_LIVING_STATUS.md`](../investment-office/CIO_AND_ADVISORY_LIVING_STATUS.md) — updated and Drive-synced as work continues.
+
 Code-adjacent documentation for the Trade AI **CIO / Financial Advisor desk** on `feature/advisory-desk-v1` (repo: [PatsKiller/tardeai](https://github.com/PatsKiller/tardeai)).
 
 **Audience:** architects and operators who need the thesis, authority model, situation catalog, learning loop, and known gaps **without host access**.  
