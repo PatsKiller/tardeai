@@ -98,11 +98,13 @@ def run_one(conn, sym, model, apply):
             num_predict=3000,
         )
         out = merge_structured_into_result(json.loads(pack["content"]))
-        if pack.get("failover"):
-            print(f"  {sym}: FAILOVER {pack.get('model')} ({pack.get('reason')})")
-            model = pack.get("model") or model
-            out["llm_failover_reason"] = pack.get("reason")
+        model = pack.get("model") or model
         out["llm_provider"] = pack.get("provider")
+        if pack.get("failover"):
+            print(f"  {sym}: BACKUP {pack.get('model')} ({pack.get('reason')})")
+            out["llm_failover_reason"] = pack.get("reason")
+        else:
+            print(f"  {sym}: LLM {pack.get('provider')} {pack.get('model')}")
     except Exception as e:
         print(f"  {sym}: FAILED ({str(e)[:80]})"); return "failed"
     # deterministic fields stamped from code (never rely on LLM to echo)
@@ -143,13 +145,16 @@ def run_one(conn, sym, model, apply):
     if not apply:
         print(f"  {sym}: VALIDATED (dry-run, conf={out.get('confidence_score')})"); return "validated"
     sql, vals = build_insert("hermes_research_intelligence", out)
-    # Long Ollama calls leave the SSL session dead. Always reconnect before write.
+    # Long LLM calls leave the SSL session dead. Fresh write connection;
+    # do not close the caller's conn in a way that leaves them holding a dead handle.
+    wconn = db()
     try:
-        conn.close()
-    except Exception:
-        pass
-    conn = db()
-    cur = conn.cursor(); cur.execute(sql, vals); rid = cur.fetchone()[0]; conn.commit()
+        cur = wconn.cursor(); cur.execute(sql, vals); rid = cur.fetchone()[0]; wconn.commit()
+    finally:
+        try:
+            wconn.close()
+        except Exception:
+            pass
     print(f"  {sym}: COMMITTED id={rid}"); return "applied"
 
 
@@ -194,6 +199,11 @@ def main():
         counts = {}
         for sym in targets:
             try:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+                conn = db()
                 r = run_one(conn, sym, args.model, args.apply)
             except Exception as exc:
                 print(f"  {sym}: FAILED_RETRYABLE {type(exc).__name__}: {exc}")
