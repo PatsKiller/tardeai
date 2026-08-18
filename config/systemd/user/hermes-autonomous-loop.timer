@@ -1,12 +1,12 @@
 [Unit]
-Description=Hermes Autonomous Research Loop — DeepSeek cheap window 09:00-20:59 ET
+Description=Hermes Autonomous Research Loop — DeepSeek China-night off-peak
 
 [Timer]
-# Cheapest DeepSeek = official off-peak. In America/New_York that is
-# 09:00-20:59 in summer (EDT). Winter (EST) peak starts 20:00 — the
-# 20:10 slot is skipped by the script peak gate.
-# Do not fire 21:00-08:59 ET; that band includes both official peaks.
-OnCalendar=*-*-* 09,10,11,12,13,14,15,16,17,18,19,20:10:00 America/New_York
+# Cheapest DeepSeek = China night (official off-peak).
+# Peak is Beijing 09:00-12:00 and 14:00-18:00.
+# China night 18:00-09:00 Asia/Shanghai = 10:00-01:00 UTC (half price).
+# Do not fire Beijing 09-12 or 14-18.
+OnCalendar=*-*-* 18,19,20,21,22,23,00,01,02,03,04,05,06,07,08:10:00 Asia/Shanghai
 Persistent=true
 RandomizedDelaySec=60
 AccuracySec=1min
