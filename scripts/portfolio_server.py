@@ -781,17 +781,28 @@ def _agent_runtime_read_handle(method: str, path: str, raw_query):
             try:
                 return run_bounded(_ar_boot.handle, method, path, query, timeout_s=3.0)
             except TimeoutError:
-                return 503, {
-                    "contract": "agent-maturity-read-api-v1",
-                    "read_only": True,
-                    "kind": "timeout",
-                    "data": None,
-                    "authority": {
-                        "mutation": False, "provider_call": False, "service_control": False,
-                        "schedule_change": False, "financial_action": False,
-                    },
-                    "detail": "agent-maturity exceeded 3s connect/read bound",
-                }
+                # Live connect/read hung. Repo evidence is ~20ms — serve that
+                # instead of an empty 503 so the maturity board still paints.
+                try:
+                    from agent_runtime.read_http import _dispatch_maturity
+                    status, body = _dispatch_maturity(method, path, None)
+                    if isinstance(body, dict):
+                        body = dict(body)
+                        body["degraded"] = True
+                        body["detail"] = "live maturity reader exceeded 3s bound; repository evidence only"
+                    return status, body
+                except Exception:
+                    return 503, {
+                        "contract": "agent-maturity-read-api-v1",
+                        "read_only": True,
+                        "kind": "timeout",
+                        "data": None,
+                        "authority": {
+                            "mutation": False, "provider_call": False, "service_control": False,
+                            "schedule_change": False, "financial_action": False,
+                        },
+                        "detail": "agent-maturity exceeded 3s connect/read bound",
+                    }
         return _ar_boot.handle(method, path, query)
     except Exception:
         # Honest zero-authority 503; never surface an exception to the client.
