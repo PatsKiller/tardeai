@@ -20,6 +20,17 @@ function Table({ cols, rows }: { cols: string[]; rows: Array<Array<string | numb
   </table></div>
 }
 
+export function InfluenceBadge() {
+  const { data } = useApi<any>('/api/v3/maturity/influence', 30_000)
+  const mode = data?.gates?.lesson_mode || 'OFF'
+  return <div data-testid="learning-influence-badge" style={{ ...panel, marginBottom: 12 }}>
+    <div style={{ fontWeight: 800 }}>{data?.badge || 'BASELINE'}</div>
+    <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>
+      lesson_mode={mode} · fs_mode={data?.gates?.financial_senses_mode || 'OFF'} · MEMORY_BEHAVIOR_INFLUENCE untouched
+    </div>
+  </div>
+}
+
 export function LearningPanel() {
   const { data, loading, error } = useApi<any>('/api/v3/maturity/learning', 60_000)
   const [open, setOpen] = useState<string | null>(null)
@@ -30,6 +41,7 @@ export function LearningPanel() {
   )
   const lessons = data?.lessons || []
   return <div data-testid="maturity-learning">
+    <InfluenceBadge />
     <div style={{ ...panel, marginBottom: 12 }}>
       <div style={{ fontWeight: 800 }}>Learning</div>
       <div style={{ marginTop: 4, fontSize: 12, color: 'var(--text3)' }}>RATIFIED_CONTEXT is advisory context, not production policy.</div>
