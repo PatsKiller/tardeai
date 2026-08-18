@@ -150,9 +150,9 @@ def main():
           "news_articles MAX(created_at)",
           ".venv/bin/python scripts/news_ingestion.py --priority")
 
-    check("cio_decisions", 48,
-          _db_age_hours("SELECT MAX(created_at) FROM cio_decisions"),
-          "cio_decisions MAX(created_at)")
+    check("cio_advisory_cases", 48,
+          _file_age_hours(PROJECT_ROOT / "data" / "cio" / "cio_production_cases.jsonl"),
+          "cio_production_cases.jsonl mtime (canonical CIO case store; legacy cio_decisions table is retired)")
 
     # Per-holding LLM health assessment (blind spot until 2026-06-03 — refresh job was unscheduled)
     check("holdings_llm_health", 48,

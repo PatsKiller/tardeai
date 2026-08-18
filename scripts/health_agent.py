@@ -604,9 +604,11 @@ def collect_data_quality() -> list[dict]:
             ("risk_management", _file_age_h(STATE_DIR / "risk_management.json"), wk or 24, True),
             ("dividend_calendar", _file_age_h(STATE_DIR / "dividend_calendar.json"), wk or 48, True),
             ("news", _db_age_h("SELECT MAX(created_at) FROM news_articles"), wk or 6, False),
-            ("cio_decisions", _db_age_h("SELECT MAX(created_at) FROM cio_decisions"), wk or 48, True),
+            ("cio_advisory_cases", _file_age_h(PROJECT_ROOT / "data" / "cio" / "cio_production_cases.jsonl"), wk or 48, True),
             ("agent_jobs", _db_age_h("SELECT MAX(created_at) FROM watchlist_agent_jobs WHERE status='completed'"), wk or 4, False),
-            ("indicator_snapshots", _db_age_h("SELECT MAX(computed_at) FROM indicator_signal_history"), wk or 48, True),
+            # indicator_signal_history last wrote 2026-05-04; producer is retired.
+            # Do not emit critical / auto-retry indicator_cache_refresh against a dead table.
+            # ("indicator_snapshots", ... retired)
             ("symbol_profiles", _db_age_h("SELECT MAX(updated_at) FROM symbol_profiles"), wk or 48, True),
             ("analyst_rollups", _db_age_h("SELECT MAX(created_at) FROM analyst_consensus_history"), wk or 48, True),
             ("sector_momentum", _db_age_h("SELECT MAX(created_at) FROM sector_momentum_state"), wk or 48, True),
@@ -619,6 +621,13 @@ def collect_data_quality() -> list[dict]:
             ("orchestrator_setups", _file_age_h(LOG_DIR / "screener_pm.log"), wk or 24, True),
             ("shadow_batch", _file_age_h(LOG_DIR / "shadow_batch_manual.log"), wk or 24, True),
         ]
+        out.append(_f(
+            "data_quality",
+            "indicator_snapshots_retired",
+            "info",
+            "indicator_signal_history producer retired (last row 2026-05-04); "
+            "not the canonical live indicator product",
+        ))
         for name, age, maxh, weekend_ok in checks:
             if age is None:
                 out.append(_f("data_quality", f"{name}_unknown", "info", f"{name} freshness unknown", age_hours=None))
@@ -1841,9 +1850,20 @@ def collect_pipeline_containment() -> list[dict]:
         contained = state["status"] == STATUS_ACTIVE
 
         # ── 2. Crontab integrity — are critical watchlist agent lines commented? ──
-        crontab_raw = subprocess.run(
+        cron_proc = subprocess.run(
             ["crontab", "-l"], capture_output=True, text=True, timeout=10
-        ).stdout
+        )
+        crontab_raw = cron_proc.stdout or ""
+        if cron_proc.returncode != 0 and (
+            "Permission denied" in (cron_proc.stderr or "") or "fopen" in (cron_proc.stderr or "")
+        ):
+            crontab_raw = ""
+            out.append(_f(
+                "intelligence_quality",
+                "hermes_crontab_unreadable",
+                "info",
+                "Could not read crontab this cycle — skipping cron_missing checks (hardened systemd)",
+            ))
         agent_cron_lines = [
             l for l in crontab_raw.split("\n")
             if "process_watchlist_agent_jobs.py" in l

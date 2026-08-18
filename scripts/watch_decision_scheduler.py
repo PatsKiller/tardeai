@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -257,4 +258,13 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # systemd Type=oneshot waits for leftover non-daemon threads (DB adapters).
+    # Force a clean process exit after the scheduled batch is printed.
+    try:
+        main()
+        rc = 0
+    except Exception:
+        rc = 1
+        raise
+    if os.environ.get("WATCH_SCHEDULER_NO_FORCE_EXIT") != "1":
+        os._exit(rc)

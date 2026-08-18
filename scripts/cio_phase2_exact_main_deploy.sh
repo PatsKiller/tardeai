@@ -273,7 +273,7 @@ overlay_main() {
     cp -a "${ROOT}/config/cio_research_source_catalog.json" "${dest}/config/"
     log "  overlay research source catalog"
   fi
-  mkdir -p "${dest}/linux_launchers" "${dest}/config"
+  mkdir -p "${dest}/linux_launchers" "${dest}/config" "${dest}/logs"
   if [[ -f "${ROOT}/linux_launchers/run_provider_cost_daily.sh" ]]; then
     cp -a "${ROOT}/linux_launchers/run_provider_cost_daily.sh" \
       "${dest}/linux_launchers/"

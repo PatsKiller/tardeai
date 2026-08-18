@@ -210,7 +210,7 @@
       "approved_paper_test_stuck",
       "enrichment_status_in_progress_stale",
       "news_symbol_mismatch",
-      "cio_decisions_stale",
+      "cio_advisory_cases_stale",
       "trade_closed_stale",
       "orchestrator_setups_stale",
       "shadow_batch_stale",
@@ -320,7 +320,7 @@
     "stale_paper_trade_stats": ".venv/bin/python scripts/paper_trade_statistics.py",
     "paper_trade_stats_stale": ".venv/bin/python scripts/paper_trade_statistics.py",
     "news_symbol_mismatch": "flock -n /tmp/watchlist_news_guard.lock .venv/bin/python scripts/remediate_watchlist_news_guard.py --apply >> logs/remediate_watchlist_news_guard.log 2>&1",
-    "cio_decisions_stale": ".venv/bin/python scripts/cio_decision_engine.py --run",
+
     "trade_closed_stale": "bash -c '.venv/bin/python scripts/schwab_journal_builder.py --apply && .venv/bin/python scripts/schwab_transaction_ingest.py --apply'",
     "orchestrator_setups_stale": ".venv/bin/python scripts/heal_trade_ai_session_cache.py",
     "trade_ai_session_stale": ".venv/bin/python scripts/heal_trade_ai_session_cache.py",
