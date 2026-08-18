@@ -12,12 +12,30 @@
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(git -C "$HERE" rev-parse --show-toplevel 2>/dev/null || dirname "$HERE")"
-export CURSOR_PROJECT_DIR="$ROOT"
 # shellcheck source=/dev/null
 source "$ROOT/.cursor/hooks/guard-lib.sh"
-mkdir -p "$GUARD_DIR"; [[ -f "$GRANTS" ]] || echo '{}' > "$GRANTS"
+mkdir -p "$GUARD_DIR"
+# Never echo-redirect onto grants.json. Init only if MISSING. Doctor/show
+# must still run when the ledger is corrupt.
+_ls=$(_ledger state 2>/dev/null | jq -r '.state // empty')
+if [[ "$_ls" == "MISSING" ]]; then
+  _ledger init >/dev/null || true
+fi
+_ledger_require_valid() {
+  local st
+  st=$(_ledger state 2>/dev/null | jq -r '.state // "UNREADABLE"')
+  case "$st" in
+    ZERO_BYTE|MALFORMED|UNREADABLE)
+      echo "${RED}APPROVAL_LEDGER_CORRUPT${OFF}  state=$st  path=$GRANTS"
+      echo "Refuse to mutate a corrupt ledger. Run: bin/guard doctor"
+      exit 2 ;;
+  esac
+}
 
-ALL_TIERS="db-write cron git-push maintree service deps sudo state-write release-write openclaw telegram llm destructive"
+# Every tier classify_cmd/classify_path can return, except the never-grantable
+# ones. A tier missing here is unreachable: guarded paths now deny without a
+# grant, so an ungrantable tier would be a permanent lockout.
+ALL_TIERS="db-write cron git-push maintree service deps sudo state-write release-write openclaw telegram llm destructive config-write frozen-v2 guard-config file-delete"
 BOLD=$'\e[1m'; RED=$'\e[31m'; YEL=$'\e[33m'; GRN=$'\e[32m'; OFF=$'\e[0m'
 
 parse_dur() { case "$1" in *m) echo $(( ${1%m} * 60 ));; *h) echo $(( ${1%h} * 3600 ));; *) echo "$1";; esac; }
@@ -46,6 +64,7 @@ cmd_show() {
 }
 
 cmd_grant() {
+  _ledger_require_valid
   local tier="$1"; shift
   local dur=1800 uses=10 reason="(no reason given)" yes=0
   while [[ $# -gt 0 ]]; do case "$1" in
@@ -75,15 +94,17 @@ cmd_grant() {
     [[ "$ans" == "APPROVE" ]] || { echo "cancelled"; exit 1; }
   fi
 
-  local tmp; tmp=$(mktemp)
-  jq --arg t "$tier" --argjson e "$(( $(now) + dur ))" --argjson u "$uses" --arg r "$reason" \
-     '.[$t] = {expires:$e, uses:$u, reason:$r}' "$GRANTS" > "$tmp" && mv "$tmp" "$GRANTS"
+  local exp=$(( $(now) + dur ))
+  if ! _ledger grant --tier "$tier" --expires "$exp" --uses "$uses" --reason "$reason" >/dev/null; then
+    echo "${RED}grant failed (ledger corrupt or write error).${OFF}  bin/guard doctor"; exit 2
+  fi
   audit_line "$(jq -nc --arg ts "$(date -Is)" --arg t "$tier" --arg r "$reason" --argjson d "$dur" \
     '{ts:$ts, event:"grant-issued", tier:$t, reason:$r, seconds:$d}')"
   echo "${GRN}granted.${OFF}  revoke with: guard revoke $tier"
 }
 
 cmd_plan() {
+  _ledger_require_valid
   local file="$1"; shift
   [[ -f "$file" ]] || { echo "no such plan file: $file"; exit 1; }
   local dur=3600 uses=25 tiers=""
@@ -126,16 +147,29 @@ cmd_plan() {
 }
 
 cmd_revoke() {
-  if [[ "${1:-}" == "--all" ]]; then echo '{}' > "$GRANTS"; echo "${GRN}all grants revoked${OFF}"; return; fi
-  local tmp; tmp=$(mktemp)
-  jq --arg t "$1" 'del(.[$t])' "$GRANTS" > "$tmp" && mv "$tmp" "$GRANTS"
+  _ledger_require_valid
+  if [[ "${1:-}" == "--all" ]]; then
+    _ledger revoke-all >/dev/null || { echo "${RED}APPROVAL_LEDGER_CORRUPT${OFF}"; exit 2; }
+    audit_line "$(jq -nc --arg ts "$(date -Is)" '{ts:$ts, event:"revoke-all"}')"
+    echo "${GRN}all grants revoked${OFF}"
+    return
+  fi
+  _ledger revoke --tier "$1" >/dev/null || { echo "${RED}APPROVAL_LEDGER_CORRUPT${OFF}"; exit 2; }
+  audit_line "$(jq -nc --arg ts "$(date -Is)" --arg t "$1" '{ts:$ts, event:"revoke", tier:$t}')"
   echo "${GRN}revoked: $1${OFF}"
+}
+
+cmd_doctor() {
+  _ledger doctor
 }
 
 cmd_log() {
   local n="${1:-20}"
   [[ -f "$AUDIT" ]] || { echo "no audit log yet"; return; }
-  jq -r 'select(.event=="auto-accepted" or .event=="grant-issued")
+  # Read line-at-a-time and skip torn records: concurrent hook appends leave the
+  # occasional unparseable line, and one of those must not blind the whole log.
+  jq -R -r 'fromjson? // empty
+         | select(.event=="auto-accepted" or .event=="grant-issued")
          | "\(.ts)  \(.event)  [\(.tier)]  \(.command // .reason)"' "$AUDIT" | tail -"$n"
 }
 
@@ -146,5 +180,6 @@ case "${1:-show}" in
   plan)   shift; cmd_plan  "$@" ;;
   revoke) shift; cmd_revoke "$@" ;;
   log)    shift; cmd_log   "$@" ;;
+  doctor) cmd_doctor ;;
   *) sed -n '2,12p' "$0" ;;
 esac

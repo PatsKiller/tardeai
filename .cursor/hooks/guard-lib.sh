@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
 # Shared classifier + approval ledger.
-GUARD_DIR="${CURSOR_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.cursor/approvals"
+# One ledger per host, at a fixed absolute path. Deliberately not derived from
+# CWD, the git toplevel, or CURSOR_PROJECT_DIR: the hooks run from the workspace
+# root while bin/guard runs from inside the guardrails worktree, and a grant
+# issued by one must be visible to the other.
+GUARD_DIR="${GUARD_APPROVALS_DIR:-$HOME/.cursor/approvals}"
 GRANTS="$GUARD_DIR/grants.json"
-AUDIT="${CURSOR_PROJECT_DIR:-.}/logs/cursor-agent-audit.jsonl"
+AUDIT="${GUARD_AUDIT_LOG:-$HOME/logs/cursor-agent-audit.jsonl}"
 
 tier_scope() {
   case "$1" in
@@ -29,6 +33,13 @@ tier_scope() {
 
 classify_cmd() {
   local cmd="$1" U; U="${cmd^^}"
+  # The ledger is now the only thing standing between the agent and every
+  # guarded scope, so the agent must not be able to issue itself a grant.
+  # Operator grants come from a real terminal, which never passes through this
+  # hook. Reading the ledger (show/scopes/log) and tightening it (revoke) stay
+  # unguarded; only widening it is blocked.
+  [[ "$cmd" =~ (^|[[:space:];&|/])guard[[:space:]]+(grant|plan)([[:space:]]|$) ]] && { echo approvals; return; }
+  [[ "$cmd" =~ (\>|\>\>|tee|sed[[:space:]]+-i|mv|cp|rm|truncate|install|dd)[^|]*\.cursor/approvals ]] && { echo approvals; return; }
   [[ "$cmd" =~ (cat|less|more|head|tail|strings|grep|awk|sed|cp|scp|rsync|base64|xxd|env|printenv|source|\.)[[:space:]].*\.env ]] && { echo secret; return; }
   [[ "$cmd" =~ (id_ed25519|id_rsa|authorized_keys|\.ssh/|\.pgpass|credentials) ]] && { echo secret; return; }
   [[ "$cmd" =~ (\>|\>\>|tee)[^|]*(\.env|\.pem|\.key|credentials|\.pgpass) ]] && { echo secret; return; }
@@ -43,7 +54,14 @@ classify_cmd() {
   [[ "$cmd" =~ api\.telegram\.org ]] && { echo telegram; return; }
   [[ "$cmd" =~ (api\.anthropic\.com|api\.openai\.com|api\.x\.ai) ]] && { echo llm; return; }
   [[ "$cmd" =~ ^sudo ]] && { echo sudo; return; }
-  [[ "$cmd" =~ (systemctl|service)[[:space:]]+(restart|stop|start|reload) ]] && { echo service; return; }
+  # Verb may be separated from systemctl by any number of flags (--user, -M host,
+  # --now). 45 of 48 tradeai units are user units, so the --user form is the one
+  # that actually matters here. Over-classifying a read-only subcommand is safe;
+  # under-classifying a restart is not.
+  [[ "$cmd" =~ (^|[[:space:];&|])systemctl[[:space:]] ]] && \
+    [[ "$cmd" =~ [[:space:]](start|stop|restart|reload|kill|mask|unmask|enable|disable|daemon-reload)([[:space:]]|$) ]] && \
+    { echo service; return; }
+  [[ "$cmd" =~ (^|[[:space:];&|])service[[:space:]]+[^[:space:]]+[[:space:]]+(start|stop|restart|reload) ]] && { echo service; return; }
   [[ "$cmd" =~ (pip|pip3|npm|apt|apt-get)[[:space:]]+(install|uninstall|remove|upgrade) ]] && { echo deps; return; }
   [[ "$cmd" =~ (trade-ai-releases|trade-ai-deployments) ]] && [[ "$cmd" =~ (\>|\>\>|tee|mv|cp|rm|sed[[:space:]]+-i) ]] && { echo release-write; return; }
   [[ "$cmd" =~ (\>|\>\>|tee|mv|cp|rm|sed[[:space:]]+-i).*data/portfolios/state ]] && { echo state-write; return; }
@@ -70,22 +88,51 @@ classify_path() {
   echo none
 }
 
+_GUARD_HOOKS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_LEDGER_PY="$_GUARD_HOOKS/guard_ledger.py"
+_ledger() { python3 "$_LEDGER_PY" "$@"; }
+
 now() { date +%s; }
-grant_active() {
-  [[ -f "$GRANTS" ]] || return 1
-  local exp uses
-  exp=$(jq -r --arg t "$1" '.[$t].expires // 0' "$GRANTS" 2>/dev/null) || return 1
-  uses=$(jq -r --arg t "$1" '.[$t].uses // 0' "$GRANTS" 2>/dev/null)
-  [[ "$exp" -gt "$(now)" ]] || return 1
-  [[ "$uses" -lt 0 || "$uses" -gt 0 ]] || return 1
-  return 0
+
+ledger_state() {
+  _ledger state 2>/dev/null | jq -r '.state // "UNREADABLE"'
 }
+
+ledger_is_corrupt() {
+  case "$(ledger_state)" in
+    ZERO_BYTE|MALFORMED|UNREADABLE) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Single consume transaction: check+decrement under exclusive lock.
+# rc 0 consumed, 2 APPROVAL_LEDGER_CORRUPT, 3 no grant, 1 other.
 grant_consume() {
-  [[ -f "$GRANTS" ]] || return 0
-  local tmp; tmp=$(mktemp)
-  jq --arg t "$1" 'if (.[$t].uses // 0) > 0 then .[$t].uses -= 1 else . end' "$GRANTS" > "$tmp" 2>/dev/null && mv "$tmp" "$GRANTS" || rm -f "$tmp"
+  local out rc
+  out=$(_ledger consume --tier "$1" 2>/dev/null) || rc=$?
+  rc=${rc:-0}
+  # Last JSON object only — ignore any stray lines.
+  GRANT_CONSUME_JSON=$(printf '%s\n' "$out" | awk 'BEGIN{s="{}"} /^[[:space:]]*\{/{s=$0} END{print s}')
+  return "$rc"
 }
-grant_reason() { jq -r --arg t "$1" '.[$t].reason // "—"' "$GRANTS" 2>/dev/null; }
-grant_left()   { jq -r --arg t "$1" '.[$t].uses // 0'      "$GRANTS" 2>/dev/null; }
-grant_expires(){ jq -r --arg t "$1" '.[$t].expires // 0'   "$GRANTS" 2>/dev/null; }
-audit_line()   { mkdir -p "$(dirname "$AUDIT")" 2>/dev/null; printf '%s\n' "$1" >> "$AUDIT" 2>/dev/null || true; }
+
+grant_active() {
+  local out
+  out=$(_ledger list 2>/dev/null) || return 1
+  echo "$out" | jq -e --arg t "$1" '.active[$t] != null' >/dev/null 2>&1
+}
+
+grant_reason() {
+  _ledger list 2>/dev/null | jq -r --arg t "$1" '.grants[$t].reason // "—"'
+}
+grant_left() {
+  _ledger list 2>/dev/null | jq -r --arg t "$1" '.grants[$t].uses // 0'
+}
+grant_expires() {
+  _ledger list 2>/dev/null | jq -r --arg t "$1" '.grants[$t].expires // 0'
+}
+
+audit_line() {
+  # Serialized append via the canonical writer. $1 is a JSON object string.
+  _ledger audit --payload "$1" >/dev/null 2>&1 || true
+}

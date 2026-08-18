@@ -233,7 +233,7 @@ cat > .cursor/hooks.json <<'HKEOF'
       { "command": ".cursor/hooks/guard-read.sh", "failClosed": true }
     ],
     "preToolUse": [
-      { "command": ".cursor/hooks/guard-write.sh", "matcher": "Write|Delete", "failClosed": true }
+      { "command": ".cursor/hooks/guard-write.sh", "matcher": "Write|Delete|StrReplace|Edit|MultiEdit|EditNotebook", "failClosed": true }
     ],
     "afterShellExecution": [ { "command": ".cursor/hooks/audit.sh" } ],
     "afterFileEdit":       [ { "command": ".cursor/hooks/audit.sh" } ]
@@ -257,12 +257,27 @@ apps/command-center-v3/dist.old-*/
 .cursor/approvals/
 CIEOF
 
-echo '{}' > .cursor/approvals/grants.json
+# Never truncate grants.json with shell redirection. Prefer the transactional
+# writer; fall back to leaving a missing ledger for first `guard` init.
+if [[ -f .cursor/hooks/guard_ledger.py ]]; then
+  GUARD_APPROVALS_DIR="$(pwd)/.cursor/approvals" python3 .cursor/hooks/guard_ledger.py init >/dev/null || true
+fi
 grep -q '^\.cursor/approvals/' .gitignore 2>/dev/null || echo '.cursor/approvals/' >> .gitignore
 grep -q '^logs/cursor-agent-audit' .gitignore 2>/dev/null || echo 'logs/cursor-agent-audit.jsonl' >> .gitignore
 
+# Overlay the transactional ledger bundle if this installer lives next to it.
+# Heredocs above are the last non-transactional snapshot; they must not win.
+_SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "$_SRC/.cursor/hooks/guard_ledger.py" ]]; then
+  cp -a "$_SRC/.cursor/hooks/guard_ledger.py" "$ROOT/.cursor/hooks/"
+  cp -a "$_SRC/.cursor/hooks/guard-lib.sh" "$_SRC/.cursor/hooks/guard-read.sh" \
+        "$_SRC/.cursor/hooks/guard-write.sh" "$_SRC/.cursor/hooks/guard-shell.sh" \
+        "$_SRC/.cursor/hooks/audit.sh" "$ROOT/.cursor/hooks/"
+  [[ -f "$_SRC/bin/guard" ]] && cp -a "$_SRC/bin/guard" "$ROOT/bin/guard"
+  [[ -f "$_SRC/.cursor/hooks.json" ]] && cp -a "$_SRC/.cursor/hooks.json" "$ROOT/.cursor/hooks.json"
+fi
 # bin/guard is written separately — see install-guard-cli.sh, or copy from the bundle.
-chmod +x .cursor/hooks/*.sh 2>/dev/null
+chmod +x .cursor/hooks/*.sh .cursor/hooks/guard_ledger.py bin/guard 2>/dev/null
 sed -i 's/\r$//' .cursor/hooks/*.sh 2>/dev/null
 
 # ─────────────────────────────────────────────────────── SELF-TEST

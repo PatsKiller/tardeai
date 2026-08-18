@@ -9,7 +9,7 @@
       { "command": "/home/johnclaw/tradeai-wt-cursor-guardrails/.cursor/hooks/guard-read.sh", "failClosed": true }
     ],
     "preToolUse": [
-      { "command": "/home/johnclaw/tradeai-wt-cursor-guardrails/.cursor/hooks/guard-write.sh", "matcher": "Write|Delete", "failClosed": true }
+      { "command": "/home/johnclaw/tradeai-wt-cursor-guardrails/.cursor/hooks/guard-write.sh", "matcher": "Write|Delete|StrReplace|Edit|MultiEdit|EditNotebook", "failClosed": true }
     ],
     "afterShellExecution": [ { "command": "/home/johnclaw/tradeai-wt-cursor-guardrails/.cursor/hooks/audit.sh" } ],
     "afterFileEdit":       [ { "command": "/home/johnclaw/tradeai-wt-cursor-guardrails/.cursor/hooks/audit.sh" } ]
