@@ -1,12 +1,12 @@
 [Unit]
-Description=Hermes Autonomous Research Loop — DeepSeek official off-peak cadence
+Description=Hermes Autonomous Research Loop — DeepSeek cheap window 09:00-20:59 ET
 
 [Timer]
-# Official DeepSeek off-peak ∩ US night/pre-market (America/New_York):
-#   00:00-02:00 and 06:00-09:00 ET.
-# Do NOT fire 21:00 ET or 02:30 ET — those are official peak
-# (01:00-04:00 and 06:00-10:00 UTC).
-OnCalendar=*-*-* 00,01,06,07,08:10:00 America/New_York
+# Cheapest DeepSeek = official off-peak. In America/New_York that is
+# 09:00-20:59 in summer (EDT). Winter (EST) peak starts 20:00 — the
+# 20:10 slot is skipped by the script peak gate.
+# Do not fire 21:00-08:59 ET; that band includes both official peaks.
+OnCalendar=*-*-* 09,10,11,12,13,14,15,16,17,18,19,20:10:00 America/New_York
 Persistent=true
 RandomizedDelaySec=60
 AccuracySec=1min
