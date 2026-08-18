@@ -128,6 +128,21 @@ def test_observe_expires_only_old_cases_and_never_invents_pnl(cio: Path, monkeyp
     assert "NEGATIVE" not in json.dumps(by["dec_old"].get("outcome"))
 
 
+def test_rebuild_ingests_completed_research_results(cio: Path):
+    (cio / "hermes_research_results.jsonl").write_text(json.dumps({
+        "event": "HERMES_RESEARCH_COMPLETED",
+        "status": "completed",
+        "symbol": "SCHD",
+        "research_id": "res_canary",
+        "result_id": "rr_canary",
+    }) + "\n", encoding="utf-8")
+    snap = L.rebuild_lineages()
+    schd = next(r for r in snap["lineages"] if r["symbol"] == "SCHD")
+    assert "rr_canary" in schd["research_result_ids"]
+    assert "res_canary" in schd["research_request_ids"]
+    assert schd["status"] in {"RESEARCH_COMPLETED", "ADVISORY_USED", "OUTCOME_PENDING", "MEMORY_ADMITTED", "MEMORY_RETRIEVED"}
+
+
 def test_rebuild_uses_real_ids_only(cio: Path, monkeypatch: pytest.MonkeyPatch):
     from lib import cio_production_case as cs
     monkeypatch.setattr(cs, "DEFAULT_PATH", cio / "cio_production_cases.jsonl")

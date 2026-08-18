@@ -34,6 +34,9 @@ def _classify(rec: dict[str, Any], *, now: datetime, max_age_days: int = 7) -> s
     if any("TEST" in s or s in {"SPACEX", "SPACEX_TEST"} for s in syms):
         return "fixture_test"
     if not syms:
+        md = rec.get("metadata") or {}
+        if md.get("plan_id") or md.get("research_id"):
+            return "missing_symbol"
         return "missing_parent"
     if any(not s.replace(".", "").isalnum() or len(s) > 8 for s in syms):
         return "invalid_symbol"

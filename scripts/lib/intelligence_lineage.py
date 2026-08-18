@@ -471,6 +471,7 @@ def rebuild_lineages() -> dict[str, Any]:
     latest = challenge_latest(challenges)
     pending = challenge_pending(latest)
     memories = _read_jsonl(d / "aif_memory.jsonl")
+    results = _read_jsonl(d / "hermes_research_results.jsonl")
     lessons_path = d / "lessons.jsonl"
     if not lessons_path.exists():
         # maturity control lessons live under various names
@@ -497,6 +498,22 @@ def rebuild_lineages() -> dict[str, Any]:
             by_symbol[s] = empty_lineage(lid, symbol=s, origin="live_rebuild", discovery_id="disc_" + _hid(s))
             _advance(by_symbol[s], "DISCOVERED", "rebuild", "symbol present in office evidence", [s])
         return by_symbol[s]
+
+    for rec in results:
+        et = str(rec.get("event") or rec.get("status") or "")
+        if et and et not in {"HERMES_RESEARCH_COMPLETED", "completed", "COMPLETED"}:
+            continue
+        s = str(rec.get("symbol") or "").upper()
+        if not s:
+            continue
+        lin = bucket(s)
+        rid = str(rec.get("result_id") or "")
+        req = str(rec.get("research_id") or "")
+        if rid and rid not in lin["research_result_ids"]:
+            lin["research_result_ids"].append(rid)
+        if req and req not in lin["research_request_ids"]:
+            lin["research_request_ids"].append(req)
+        _advance(lin, "RESEARCH_COMPLETED", "hermes_research_results", et or "completed", [rid or req])
 
     for rec in pending:
         for s in _challenge_symbols(rec):
