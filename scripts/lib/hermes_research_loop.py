@@ -11,13 +11,160 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
+_PLAN_ID_RE = re.compile(r"plan_[0-9a-f]{8,}", re.I)
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def plan_id_from_challenge(rec: dict[str, Any]) -> str:
+    """Extract plan_id from overlay metadata, payload.source, or description."""
+    md = rec.get("metadata") if isinstance(rec.get("metadata"), dict) else {}
+    if md.get("plan_id"):
+        return str(md["plan_id"])
+    pl = rec.get("payload") if isinstance(rec.get("payload"), dict) else {}
+    if pl.get("plan_id"):
+        return str(pl["plan_id"])
+    for blob in (pl.get("source"), pl.get("description"), rec.get("stream_id"), rec.get("challenge_id")):
+        m = _PLAN_ID_RE.search(str(blob or ""))
+        if m:
+            return m.group(0)
+    return ""
+
+
+def expire_overlay_for_plan(
+    plan_id: str,
+    *,
+    result_id: str = "",
+    research_id: str = "",
+    apply: bool = True,
+) -> dict[str, Any]:
+    """Expire pending overlay streams whose payload points at this plan.
+
+    Append-only. Never deletes history. No-op when plan_id is empty.
+    """
+    out: dict[str, Any] = {
+        "ok": True,
+        "plan_id": plan_id,
+        "result_id": result_id,
+        "research_id": research_id,
+        "matched": 0,
+        "expired": 0,
+        "errors": [],
+        "stream_ids": [],
+        "applied": apply,
+        "authority": "READ_ONLY_ADVISORY",
+    }
+    if not plan_id:
+        out["ok"] = False
+        out["error"] = "plan_id_required"
+        return out
+    try:
+        from lib.intelligence_lineage import (
+            _read_jsonl,
+            challenge_latest,
+            challenge_pending,
+            cio_dir,
+        )
+        from lib.cio_hermes_challenge_queue import HermesChallengeQueue
+    except Exception:
+        from scripts.lib.intelligence_lineage import (  # type: ignore
+            _read_jsonl,
+            challenge_latest,
+            challenge_pending,
+            cio_dir,
+        )
+        from scripts.lib.cio_hermes_challenge_queue import HermesChallengeQueue  # type: ignore
+    path = cio_dir() / "hermes_challenge_queue.jsonl"
+    pending = challenge_pending(challenge_latest(_read_jsonl(path)))
+    reason = f"satisfied_by_structured_result:{result_id or research_id or plan_id}"
+    matches = []
+    for rec in pending:
+        if plan_id_from_challenge(rec) == plan_id:
+            sid = str(rec.get("stream_id") or "")
+            if sid:
+                matches.append(sid)
+    out["matched"] = len(matches)
+    out["stream_ids"] = matches
+    if not apply or not matches:
+        return out
+    q = HermesChallengeQueue(event_store_path=path)
+    for sid in matches:
+        try:
+            q.expire(sid, actor_id="hermes_research_loop", reason=reason)
+            out["expired"] += 1
+        except Exception as exc:
+            out["errors"].append(f"{sid}:{type(exc).__name__}:{exc}")
+    if out["errors"] and out["expired"] == 0:
+        out["ok"] = False
+    return out
+
+
+def expire_satisfied_overlays(*, apply: bool = True) -> dict[str, Any]:
+    """Expire overlay streams whose plan already has a completed structured result."""
+    try:
+        from lib.intelligence_lineage import (
+            _read_jsonl,
+            challenge_latest,
+            challenge_pending,
+            cio_dir,
+        )
+        from lib import cio_hermes_research as hr
+    except Exception:
+        from scripts.lib.intelligence_lineage import (  # type: ignore
+            _read_jsonl,
+            challenge_latest,
+            challenge_pending,
+            cio_dir,
+        )
+        from scripts.lib import cio_hermes_research as hr  # type: ignore
+    path = cio_dir() / "hermes_challenge_queue.jsonl"
+    pending = challenge_pending(challenge_latest(_read_jsonl(path)))
+    proj = hr._load_projection()
+    by_plan: dict[str, list[dict[str, Any]]] = {}
+    for rec in (proj.get("by_research_id") or {}).values():
+        if not isinstance(rec, dict):
+            continue
+        pid = str(rec.get("plan_id") or "")
+        if pid:
+            by_plan.setdefault(pid, []).append(rec)
+    report = {
+        "ok": True,
+        "before_pending": len(pending),
+        "expired": 0,
+        "skipped_open": 0,
+        "no_plan": 0,
+        "applied": apply,
+        "authority": "READ_ONLY_ADVISORY",
+        "deleted": 0,
+    }
+    seen: set[str] = set()
+    for rec in pending:
+        pid = plan_id_from_challenge(rec)
+        if not pid:
+            report["no_plan"] += 1
+            continue
+        done = next((r for r in by_plan.get(pid) or [] if r.get("status") == "completed"), None)
+        if not done:
+            report["skipped_open"] += 1
+            continue
+        if pid in seen:
+            continue
+        seen.add(pid)
+        exp = expire_overlay_for_plan(
+            pid,
+            result_id=str(done.get("latest_result_id") or ""),
+            research_id=str(done.get("research_id") or ""),
+            apply=apply,
+        )
+        report["expired"] += int(exp.get("expired") or 0)
+    return report
 
 
 def _import_store():
@@ -190,6 +337,7 @@ def on_hermes_completed(
         "memo": False,
         "critique": None,
         "memory": None,
+        "overlay": None,
     }
     try:
         from lib.research_quality import critique as _critique
@@ -218,7 +366,8 @@ def on_hermes_completed(
             merged["sources"] = collect_sources(merged, request)
         crit = _critique(merged)
         out["critique"] = crit
-        out["memory"] = admit_from_research(merged, critique=crit)
+        mem = admit_from_research(merged, critique=crit)
+        out["memory"] = mem
         record_success()
     except Exception as e:
         out["memory_error"] = f"{type(e).__name__}:{e}"
@@ -301,9 +450,21 @@ def on_hermes_completed(
     except Exception as e:
         out["memo_error"] = f"{type(e).__name__}:{e}"
 
-    # Audit line
+    try:
+        out["overlay"] = expire_overlay_for_plan(
+            plan_id,
+            result_id=str(result.get("result_id") or ""),
+            research_id=str(result.get("research_id") or ""),
+            apply=True,
+        )
+    except Exception as e:
+        out["overlay_error"] = f"{type(e).__name__}:{e}"
+
+    # Audit line — include critique/memory/overlay so a missing receipt is visible
     try:
         Path("data/cio").mkdir(parents=True, exist_ok=True)
+        mem = out.get("memory") if isinstance(out.get("memory"), dict) else {}
+        admission = mem.get("admission") if isinstance(mem.get("admission"), dict) else {}
         with open("data/cio/hermes_research_requests.jsonl", "a", encoding="utf-8") as fh:
             fh.write(json.dumps({
                 "event": "HERMES_LOOP_COMPLETED",
@@ -314,6 +475,15 @@ def on_hermes_completed(
                 "enriched": out.get("enriched"),
                 "notified": out.get("notified"),
                 "material_changed": out.get("material_changed"),
+                "critique_verdict": (out.get("critique") or {}).get("verdict")
+                if isinstance(out.get("critique"), dict) else None,
+                "memory_ok": mem.get("ok"),
+                "memory_accepted": admission.get("accepted"),
+                "memory_id": admission.get("memory_id") or mem.get("memory_id"),
+                "memory_reason": admission.get("reason") or mem.get("reason") or mem.get("error"),
+                "memory_error": out.get("memory_error"),
+                "overlay_expired": (out.get("overlay") or {}).get("expired")
+                if isinstance(out.get("overlay"), dict) else None,
             }, sort_keys=True) + "\n")
     except Exception:
         pass

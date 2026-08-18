@@ -8,11 +8,11 @@ WorkingDirectory=/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT
 Environment=PYTHONPATH=/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT:/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts
 Environment=PATH=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin:/usr/bin
 Environment=HOME=/home/johnclaw
-Environment=HERMES_BACKEND=catalyst
-# Bound: at most 2 jobs per tick. Circuit breaker refuses calls when OPEN.
-ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/hermes_cio_worker.py --drain --max 2 --json
+Environment=HERMES_BACKEND=live
+# Bound: at most 2 live-bridge jobs per tick. Circuit breaker refuses calls when OPEN.
+ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/hermes_cio_worker.py --drain --max 2 --backend live --json
 Nice=10
-TimeoutStartSec=240
+TimeoutStartSec=600
 StandardOutput=append:/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/logs/hermes_cio_worker.log
 StandardError=append:/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/logs/hermes_cio_worker.log
 

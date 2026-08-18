@@ -854,9 +854,15 @@ def main():
             results = []
 
         elapsed = time.time() - start
+        ok_st = {"validated", "applied", "deferred_budget"}
         validated = sum(1 for r in results if r["status"] in ("validated", "applied"))
-        failed = sum(1 for r in results if r["status"] not in ("validated", "applied"))
-        print(f"\nDone in {elapsed:.1f}s: {validated} validated, {failed} failed/rejected")
+        deferred = sum(1 for r in results if r["status"] == "deferred_budget")
+        failed = sum(1 for r in results if r["status"] not in ok_st)
+        print(
+            f"\nDone in {elapsed:.1f}s: {validated} validated, "
+            f"{deferred} deferred_budget, {failed} failed/rejected"
+        )
+        # Unit budget skip is a legitimate stop, not a red unit.
         if results and validated == 0 and failed == len(results):
             sys.exit(1)
 

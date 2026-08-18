@@ -47,6 +47,11 @@ def cio_dir() -> Path:
     env = os.environ.get("TRADEAI_CIO_DIR")
     if env:
         return Path(env)
+    # Worker persist writes cwd-relative data/cio. Prefer the same dir so
+    # overlay expire/lineage see the live store when invoked from CURRENT.
+    cwd_cand = Path("data/cio")
+    if cwd_cand.exists():
+        return cwd_cand.resolve()
     cand = PROJECT_ROOT / "data" / "cio"
     if cand.exists():
         return cand

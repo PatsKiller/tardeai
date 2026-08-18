@@ -185,6 +185,47 @@ def test_lineage_does_not_infer_advisory_used(cio: Path):
         assert rec.get("status") != "ADVISORY_USED" or rec.get("advisory_use", {}).get("receipt")
 
 
+def test_plan_id_from_challenge_source():
+    from lib.hermes_research_loop import plan_id_from_challenge
+    rec = {
+        "stream_id": "hermes-challenge-abc",
+        "payload": {
+            "source": "cio_plan:plan_d45c7c4af5a6",
+            "description": "Material CIO situation S6 plan=plan_d45c7c4af5a6",
+        },
+        "metadata": {},
+    }
+    assert plan_id_from_challenge(rec) == "plan_d45c7c4af5a6"
+
+
+def test_expire_overlay_for_plan(cio: Path):
+    from lib.hermes_research_loop import expire_overlay_for_plan
+    path = cio / "hermes_challenge_queue.jsonl"
+    q = HermesChallengeQueue(event_store_path=path)
+    ev = q.enqueue(
+        challenge_type="research_gap",
+        description="Material CIO situation S6 plan=plan_d45c7c4af5a6",
+        source="cio_plan:plan_d45c7c4af5a6",
+        metadata={"symbols": ["SCHD"]},
+    )
+    sid = ev.get("stream_id")
+    out = expire_overlay_for_plan(
+        "plan_d45c7c4af5a6",
+        result_id="rr_test",
+        research_id="res_test",
+        apply=True,
+    )
+    assert out["matched"] == 1
+    assert out["expired"] == 1
+    assert sid in out["stream_ids"]
+    # append-only: original enqueue still present
+    rows = path.read_text().splitlines()
+    assert any("HERMES_CHALLENGE_ENQUEUED" in r for r in rows)
+    assert any("HERMES_CHALLENGE_EXPIRED" in r for r in rows)
+    dry = expire_overlay_for_plan("plan_d45c7c4af5a6", result_id="rr_test", apply=True)
+    assert dry["matched"] == 0
+
+
 def test_stamp_result_rejects_hallucinated_as_of_and_fills_summary():
     from lib.hermes_research_schema import stamp_result
     request = {
