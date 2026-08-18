@@ -4,18 +4,18 @@
 |---|---|
 | **Document name** | `CIO_AND_ADVISORY_LIVING_STATUS.md` |
 | **Repo path** | `docs/investment-office/CIO_AND_ADVISORY_LIVING_STATUS.md` |
-| **Revision** | **R6.7 — 2026-08-18T22:32Z** (China-night Flash cadence; **not R7**) |
-| **Status** | **PARTIAL_WITH_EXPLICIT_GAPS** — Flash jobs fire **hourly on China night** (Beijing 18:00–09:00). Overlay/desk-consumer gaps remain. |
+| **Revision** | **R6.8 — 2026-08-18T22:45Z** (CIO investment-product live certification; **not R7**) |
+| **Status** | **CIO_PRODUCT_LIVE_BUT_INCOMPLETE** — CURRENT `575477dc` produces real books. Flash research does not reassess them. Do not promote `08e768d`. |
 | **Authority** | `READ_ONLY_ADVISORY` · `MEMORY_BEHAVIOR_INFLUENCE=0` · `broker_write=NONE` |
 | **Owner** | Alex desk · operator: John |
 | **Live CURRENT** | `575477dc-main-exact-phase2-20260818-175137` |
 | **CURRENT SHA** | `575477dc779c25111250a82b2e56d9c08a962950` |
-| **origin/main** | `a77d986b` (R6.6 daytime window #386; last overnight-code `38cd2320` PR #382) |
+| **origin/main** | `08e768d0` (China-night #387; **do not promote** — docs/scheduler/host only) |
 | **UI chip (live)** | `3.14+msz77bh2` · `575477dc` |
 | **Google Drive file** | [CIO_AND_ADVISORY_LIVING_STATUS.md](https://drive.google.com/file/d/1scL90dCZa7uOK9_sojX-MNBWHfrViWMi/view) |
 | **Drive folder** | [docs / investment-office](https://drive.google.com/drive/folders/1sVHlO8v-NStl2HRbk1bJqwqI67bxGUM8) |
 
-> **Not R7.** Overlay is not empty. No desk consumer path. Overnight jobs were **not** left for tonight’s timer — they were run now.
+> **Not R7.** Certification 2026-08-18T22:45Z: books are live on CURRENT. Do not promote main. See §1d.
 
 ---
 
@@ -107,6 +107,38 @@ Timers use `Asia/Shanghai` so winter/summer stay on China night. Scripts still r
 
 Not R7. CURRENT not promoted.
 
+## 1d. CIO investment-product live certification (2026-08-18T22:45Z)
+
+No new architecture. No CURRENT promote.
+
+**SOURCE.** origin/main `08e768d08a0aed24511bc1156925dd70238b9f68`. CURRENT `575477dc-main-exact-phase2-20260818-175137` SOURCE=BUILD=GIT=`575477dc779c25111250a82b2e56d9c08a962950` stamped 2026-08-18T21:52:15Z. portfolio-server WorkingDirectory is that release on `:7777`. chip `3.14+msz77bh2`.
+
+**main-ahead classification (575477dc..08e768d):** all **DOCS_ONLY**, **SCHEDULER_ONLY**, or **HOST_ALREADY_APPLIED** (Flash failover/primary + China-night timers). **runtime_required_ahead = 0.**
+
+**INVESTMENT_PRODUCT** `GET /api/v3/cio/investment-product` **200**. schema `CIOInvestmentProduct@v1`. as_of **2026-08-18T20:55:17Z** (persisted snapshot, ~2h stale vs home 22:39Z). MBI=0. temperament RISK OFF — SELECTIVE RISK. reentry **61** (NEAR 25 / WAIT 32 / AVOID 4 / REENTER 0). opportunity **20** (all `source=reentry`). DO_NOW 0. RESEARCH_NEXT 8. what_changed **absent**. governed_verdicts **[]**.
+
+**REENTRY.** SCHG = **currently held** (advisory HOLD; not a clean re-entry candidate). CSCO = **present NEAR**, exit/price **missing**, no governed RE_ENTER. ANET = same. NEAR ≠ RE_ENTER.
+
+**OPPORTUNITIES.** ranked 20; top ADBE… all former-holding watches. cash not a ranked row. empty **new-name** pipeline: watchlist 12 all WAIT; rotation exists on `/home` only; opportunity_book does not ingest watch/rotation/defense.
+
+**TEMPERAMENT.** regime risk-off as-of 16:05 EDT. FS receipts=4 unused (fs_mode OFF). 7 ratified lessons unused (lesson_mode OFF). No breadth/VIX/sector leadership block. **product-quality gap.**
+
+**DAILY_CIO.** Last four-book persist 20:55Z (`cio_investment_brief.json`). Live named memo `cio_desk_note_latest.md` 22:30Z — HOLD/STAGE cash, HOLD SCHD (operator defer), SPCX awareness. **PASS** as named HOLD CASH / WAIT. persist_product lives on `cio_wake_dispatch_entrypoint` which is **not** the live reactive timer (`cio_reactive_cycle` dispatched=0, no persist).
+
+**RESEARCH_LOOP.** lineages 13 (MEMORY_ADMITTED 2 DIVI/XLI, RESEARCH_COMPLETED 1 JEPI, REQUESTED 5, OUTCOME_PENDING 5). pending challenges 88. queue pending 88 (73 legitimate, 15 missing_symbol). DIVI: res_* → rr_* → mem_8bbacb88… admitted. **advisory_use=None. memory_retrieval_ids=[]. CIO product not rebuilt.** Flash rows 25365–25391 not consumed by books.
+
+**HERMES.** China-night timers live Asia/Shanghai. last deep 18:35 ET APAM/BRO/BWEN Flash `25389–25391` exit 0. next 19:10 / 19:35 ET. Flash used. Quality: summaries exist; **no CIO consumption.**
+
+**ADVISORY.** desk_freshness CURRENT. HOLDINGS_SOURCE_FRESHNESS **STALE**. OPINION_FRESHNESS **EXPIRED** (synthesis 2026-08-13, label PRIOR SYNTHESIS). watch CURRENT. reentry CURRENT. DATA_CONFLICT banner 17 rows. MBI=0. Financial Senses on rows DATA_UNAVAILABLE.
+
+**TELEGRAM.** last financial-class scan 22:35Z: digest=0 immediate=0 suppressed_unchanged=3 (cash / reentry / SCHD DATA_CONFLICT). last Telegram IDs: heartbeat 47831, autonomy_RECOVERED 48061. **no daily investment digest sent.**
+
+**COMMAND_CENTER.** `/v3/cio` reads live `/api/v3/cio/home` + `/investment-product`. `/v3/advisory` live. `/v3/closed-loop` → intelligence live. Not fixtures. Operator Qs: 1–3 yes; 4 partial; 5–6 partial; 7 no; 8 no; 9 suppressed.
+
+**PROMOTION.** **no.** 08e768d is docs/scheduler/host-already-applied.
+
+**P0.** persist_product not on live reactive path; GET serves stale brief; research/memory does not reassess books. **P1.** temperament depth; new-name opportunity join; CSCO/ANET price/exit join; Telegram digest; opinion/holdings freshness. **P2.** overlay 88; what_changed section.
+
 ## 2. Validation this hour (not R7)
 
 | Job | Result | Critique | Overlay | Memory |
@@ -168,5 +200,6 @@ Same Drive file `1scL90dCZa7uOK9_sojX-MNBWHfrViWMi`. **R7** only if: overlay exp
 | **R6.5** | **2026-08-18T22:25Z** | Official DeepSeek off-peak cadence. 21:01/02:30 were peak. Now 5×2 in 00–02 and 06–09 ET. Not R7. |
 | **R6.6** | **2026-08-18T22:28Z** | Cheap window is 09:00–20:59 ET, not overnight. Hourly 12×2. Not R7. |
 | **R6.7** | **2026-08-18T22:32Z** | China night is the cheap block. Timers on Asia/Shanghai 18:00–09:00. Hourly 15×2. Not R7. |
+| **R6.8** | **2026-08-18T22:45Z** | Certified CURRENT `575477dc` books live but incomplete. Do not promote `08e768d`. Not R7. |
 
-*End of R6.7. Not R7.*
+*End of R6.8. Not R7.*
