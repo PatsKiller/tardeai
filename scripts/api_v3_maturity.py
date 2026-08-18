@@ -67,6 +67,28 @@ def handle_get(path: str, query: dict | None = None) -> tuple[int, dict[str, Any
         return 200, {"ok": True, **AUTHORITY, **collect_telegram_receipts()}
     if p in ("autonomy-health", "autonomy"):
         return 200, {"ok": True, **AUTHORITY, **collect_autonomy_health()}
+    if p in ("influence", "comparator"):
+        from scripts.lib.advisory_influence.gates import current_gates
+        from scripts.lib.advisory_influence.comparator import metrics
+        from scripts.lib.maturity_control.store import resolve_root
+        import json
+        from pathlib import Path
+        runs_path = resolve_root() / "data" / "cio" / "advisory_influence_runs.jsonl"
+        runs = []
+        if runs_path.is_file():
+            for line in runs_path.read_text(encoding="utf-8").splitlines():
+                if line.strip():
+                    try:
+                        runs.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        continue
+        return 200, {
+            "ok": True, **AUTHORITY,
+            "gates": current_gates(),
+            "metrics": metrics(runs),
+            "runs": runs[-20:],
+            "badge": "LEARNING-INFLUENCED ADVISORY" if current_gates().get("lesson_mode") in {"CANARY", "ACTIVE_ADVISORY"} else "BASELINE",
+        }
     return 404, {"ok": False, "error": f"unknown_maturity_get:{p}"}
 
 
