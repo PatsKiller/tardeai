@@ -8,10 +8,10 @@
 | **Status** | **PARTIAL_WITH_EXPLICIT_GAPS** — overlay expire-on-complete proven; hook auto-admit proven; 94 overlay still open because those plans have no completed structured result. Overnight Hermes units patched, not re-proven this hour. |
 | **Authority** | `READ_ONLY_ADVISORY` · `MEMORY_BEHAVIOR_INFLUENCE=0` · `broker_write=NONE` |
 | **Owner** | Alex desk · operator: John |
-| **Live CURRENT** | `40934ca8-main-exact-phase2-20260818-173544` until this PR is promoted |
-| **CURRENT SHA (now)** | `40934ca809e3cff18f0aacb3d59e00d7a9b15421` |
-| **This branch** | `fix/hermes-loop-closure` |
-| **UI chip (live)** | `3.14+msz6mwp7` · `40934ca8` |
+| **Live CURRENT** | `575477dc-main-exact-phase2-20260818-175137` |
+| **CURRENT SHA** | `575477dc779c25111250a82b2e56d9c08a962950` |
+| **origin/main** | `575477dc779c25111250a82b2e56d9c08a962950` (PR #379) |
+| **UI chip (live)** | `3.14+msz77bh2` · `575477dc` |
 | **Google Drive file** | [CIO_AND_ADVISORY_LIVING_STATUS.md](https://drive.google.com/file/d/1scL90dCZa7uOK9_sojX-MNBWHfrViWMi/view) |
 | **Drive folder** | [docs / investment-office](https://drive.google.com/drive/folders/1sVHlO8v-NStl2HRbk1bJqwqI67bxGUM8) |
 
@@ -38,8 +38,8 @@ Admission gates were not loosened.
 
 | Surface | Status | Live evidence |
 |---|---|---|
-| Command Center SPA | **WORKING** | chip `3.14+msz6mwp7` until promote |
-| Release | **WORKING / CODE_PENDING_PROMOTE** | CURRENT still `40934ca8` (R6.2). This PR is the next exact-main. |
+| Command Center SPA | **WORKING** | chip `3.14+msz77bh2` |
+| Release | **WORKING** | CURRENT `575477dc` = origin/main (PR #379 promoted) |
 | `/api/v3/intelligence` | **WORKING** | 200 |
 | `/api/v3/intelligence/queue` | **WORKING** | overlay **94** after expire (was 108). 15 still `missing_symbol`. |
 | Memory | **SHADOW** | Hook auto-admit **CANDIDATE** `mem_8bbacb882a761199a950eed65f15c5aa` on live store. MBI=0. |
@@ -81,7 +81,7 @@ Remaining 94 overlays are plans with **no** completed structured result. Not del
 
 ## 4. Operator confirmation (R6.3)
 
-- [ ] After promote: chip SHA matches this merge (not only `40934ca8`)
+- [ ] Chip `3.14+msz77bh2` · SHA `575477dc`
 - [ ] Overlay pending **94** (or lower if the timer drained more)
 - [ ] `mem_8bbacb882a761199a950eed65f15c5aa` present, status CANDIDATE
 - [ ] Drive header **R6.3 — 2026-08-18T21:49Z**
