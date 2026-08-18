@@ -1,5 +1,9 @@
 # CIO Desk — Architect Packet
 
+**CURRENT OPERATOR TRUTH (living sheet, R2+):**  
+[`docs/investment-office/CIO_AND_ADVISORY_LIVING_STATUS.md`](../investment-office/CIO_AND_ADVISORY_LIVING_STATUS.md)  
+This sheet overrides older architecture/planning docs when they disagree. Drive: same filename, replaced in place.
+
 Code-adjacent documentation for the Trade AI **CIO / Financial Advisor desk** on `feature/advisory-desk-v1` (repo: [PatsKiller/tardeai](https://github.com/PatsKiller/tardeai)).
 
 **Audience:** architects and operators who need the thesis, authority model, situation catalog, learning loop, and known gaps **without host access**.  
