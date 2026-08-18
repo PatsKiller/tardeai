@@ -299,6 +299,16 @@ def run_once(*, max_wakes: int = 12, dispatch: bool = True) -> dict[str, Any]:
         out["curation_emitted"] = 0
         out["errors"].append(f"curation_emit:{exc}")
 
+    # Restart-safe cheap retry of research→product reassessment. Never reruns paid LLM.
+    try:
+        try:
+            from lib.cio_product_reassessment import retry_pending_reassessments
+        except Exception:
+            from scripts.lib.cio_product_reassessment import retry_pending_reassessments  # type: ignore
+        out["reassessment_retry"] = retry_pending_reassessments(limit=3)
+    except Exception as exc:
+        out.setdefault("errors", []).append(f"reassessment_retry:{exc}")
+
     try:
         STATUS_PATH.parent.mkdir(parents=True, exist_ok=True)
         STATUS_PATH.write_text(json.dumps(out, indent=2, default=str))

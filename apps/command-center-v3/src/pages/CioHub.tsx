@@ -708,6 +708,21 @@ function InvestmentBooksPanel() {
     </div>
     {loading && <div>Loading books…</div>}
     {error && <div style={{ color: 'var(--amber)' }}>{String(error)}</div>}
+    {p.what_changed && (
+      <section data-testid="cio-what-changed" style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12 }}>
+        <div style={{ fontWeight: 800 }}>What changed</div>
+        <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>
+          trigger {p.trigger || '—'} · prior {p.previous_product_id || '—'} · now {p.product_id || p.decision_id || '—'}
+          {p.what_changed.material ? ' · MATERIAL' : ' · no material investment change'}
+        </div>
+        {(p.what_changed.items || []).slice(0, 16).map((it: any, i: number) => (
+          <div key={i} style={{ fontSize: 13, marginTop: 4 }}>
+            {it.kind}{it.symbol ? ` · ${it.symbol}` : ''}{it.from ? ` ${it.from}` : ''}{it.to ? ` → ${it.to}` : ''}
+          </div>
+        ))}
+        {(p.what_changed.items || []).length === 0 && <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 6 }}>—</div>}
+      </section>
+    )}
     <section style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12 }}>
       <div style={{ fontWeight: 800 }}>Market Temperament</div>
       <div style={{ marginTop: 6, fontWeight: 700 }}>{temp.title || '—'}</div>

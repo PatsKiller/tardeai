@@ -608,13 +608,20 @@ def _summary(temperament: dict[str, Any], reentry: dict[str, Any], actions: dict
 def persist_product(product: dict[str, Any], *, root: Path | str | None = None) -> dict[str, Any]:
     from scripts.lib.autonomy_watchdog.io import append_jsonl, atomic_write_json
     p = paths(root)
+    if not product.get("product_id"):
+        product["product_id"] = product.get("decision_id") or ("prod_" + _iso().replace(":", "").replace("-", "")[:15])
     slim = {k: product[k] for k in product if k != "merged_queue"}
     atomic_write_json(p["brief"], slim)
     append_jsonl(p["briefs"], {
         "as_of": product.get("as_of"),
+        "product_id": product.get("product_id"),
+        "previous_product_id": product.get("previous_product_id"),
+        "trigger": product.get("trigger"),
         "summary": product.get("summary"),
         "verdict_count": len(product.get("governed_verdicts") or []),
         "reentry_count": (product.get("reentry_book") or {}).get("count"),
+        "what_changed_material": ((product.get("what_changed") or {}).get("material")
+                                 if isinstance(product.get("what_changed"), dict) else None),
     })
     atomic_write_json(p["verdicts"], {
         "as_of": product.get("as_of"),
