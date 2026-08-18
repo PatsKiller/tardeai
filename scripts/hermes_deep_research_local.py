@@ -88,13 +88,21 @@ def run_one(conn, sym, model, apply):
     schema = build_deep_research_json_schema(sym)
     prompt = PROMPT.format(sym=sym, trades=json.dumps(ctx["recent_trades"]),
                            research=json.dumps(ctx["prior_research"]), schema=schema)
-    payload = json.dumps({"model": model, "messages": [{"role": "user", "content": prompt}], "stream": False,
-                          "options": {"num_ctx": 16384, "num_predict": 3000, "temperature": 0.3}, "format": "json"}).encode()
     try:
-        req = urllib.request.Request(OLLAMA, data=payload, headers={"Content-Type": "application/json"})
-        from llm_net import urlopen_retry
-        content = json.loads(urlopen_retry(req, timeout=600, attempts=2, base=2.0)).get("message", {}).get("content", "")
-        out = merge_structured_into_result(json.loads(content))
+        from hermes_llm_failover import chat_json
+        pack = chat_json(
+            prompt,
+            ollama_model=model,
+            ollama_timeout_s=600,
+            num_ctx=16384,
+            num_predict=3000,
+        )
+        out = merge_structured_into_result(json.loads(pack["content"]))
+        if pack.get("failover"):
+            print(f"  {sym}: FAILOVER {pack.get('model')} ({pack.get('reason')})")
+            model = pack.get("model") or model
+            out["llm_failover_reason"] = pack.get("reason")
+        out["llm_provider"] = pack.get("provider")
     except Exception as e:
         print(f"  {sym}: FAILED ({str(e)[:80]})"); return "failed"
     # deterministic fields stamped from code (never rely on LLM to echo)
@@ -170,7 +178,14 @@ def main():
             # below has its own 600s timeout), so we don't false-skip on a cold 17GB model.
             h = check_ollama_health(model=args.model, generate_probe=False, timeout_sec=20)
             if not h.get("healthy"):
-                print(f"SKIPPED_LLM_UNHEALTHY: {h.get('failure_class')}"); return
+                from hermes_llm_failover import failover_enabled
+                if failover_enabled():
+                    print(
+                        f"OLLAMA_UNHEALTHY ({h.get('failure_class')}); "
+                        "continuing with DeepSeek Flash failover"
+                    )
+                else:
+                    print(f"SKIPPED_LLM_UNHEALTHY: {h.get('failure_class')}"); return
         except Exception as e:
             print(f"health gate unavailable ({e}); continuing cautiously")
         conn = db()

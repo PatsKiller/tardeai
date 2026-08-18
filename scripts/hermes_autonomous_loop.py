@@ -32,6 +32,20 @@ OLLAMA_TIMEOUT = int(os.environ.get("HERMES_LOOP_OLLAMA_TIMEOUT", "300"))
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 
+def _llm_json(prompt: str) -> tuple[dict, dict]:
+    """Ollama first, governed DeepSeek Flash on timeout/unhealthy."""
+    from hermes_llm_failover import chat_json
+    pack = chat_json(
+        prompt,
+        ollama_model=LOOP_MODEL,
+        ollama_timeout_s=float(OLLAMA_TIMEOUT),
+    )
+    parsed = json.loads(pack["content"])
+    if not isinstance(parsed, dict):
+        raise ValueError("llm_json_root_not_object")
+    return parsed, pack
+
+
 def check_kill_switch():
     if KILL_FILE.exists():
         print(f"ABORT: Kill switch active ({KILL_FILE})")
@@ -296,19 +310,7 @@ def run_ticker_challenger(args):
             )
 
             try:
-                payload = json.dumps({
-                    "model": LOOP_MODEL,
-                    "messages": [{"role": "user", "content": prompt}],
-                    "stream": False,
-                    "options": {"num_ctx": 8192, "num_predict": 2000, "temperature": 0.3},
-                    "format": "json"
-                }).encode()
-                req = urllib.request.Request("http://localhost:11434/api/chat",
-                                             data=payload, headers={"Content-Type": "application/json"})
-                resp = urllib.request.urlopen(req, timeout=OLLAMA_TIMEOUT)
-                result = json.loads(resp.read())
-                content = result.get("message", {}).get("content", "")
-                output = json.loads(content)
+                output, llm_meta = _llm_json(prompt)
             except Exception as e:
                 print(f"    FAILED: {e}")
                 results.append({"symbol": sym, "status": "failed", "error": str(e)[:200]})
@@ -318,13 +320,18 @@ def run_ticker_challenger(args):
                     pass
                 conn = None
                 continue
+            if llm_meta.get("failover"):
+                print(f"    FAILOVER {llm_meta.get('model')} ({llm_meta.get('reason')})")
 
             output["hermes_agent_name"] = "ticker_research_agent"
             output["research_type"] = "ticker_thesis_challenge"
             output.setdefault("topic", f"{sym} autonomous thesis challenge — {target.get('trade_count', 0)} trades")
             output.setdefault("confidence_score", 0.5)
             output.setdefault("freshness_date", date.today().isoformat())
-            output.setdefault("model_used", LOOP_MODEL)
+            output.setdefault("model_used", llm_meta.get("model") or LOOP_MODEL)
+            output["llm_provider"] = llm_meta.get("provider")
+            if llm_meta.get("failover"):
+                output["llm_failover_reason"] = llm_meta.get("reason")
             output["symbol"] = sym
             if target.get("trade_instance_id") is not None:
                 output["trade_instance_id"] = target["trade_instance_id"]
@@ -517,30 +524,21 @@ Respond ONLY with valid JSON (no markdown, no preamble)."""
     outdir.mkdir(parents=True, exist_ok=True)
 
     try:
-        payload_data = json.dumps({
-            "model": LOOP_MODEL,
-            "messages": [{"role": "user", "content": prompt}],
-            "stream": False,
-            "options": {"num_ctx": 8192, "num_predict": 2000, "temperature": 0.3},
-            "format": "json"
-        }).encode()
-        req = urllib.request.Request("http://localhost:11434/api/chat",
-                                     data=payload_data, headers={"Content-Type": "application/json"})
-        resp = urllib.request.urlopen(req, timeout=OLLAMA_TIMEOUT)
-        result = json.loads(resp.read())
-        content = result.get("message", {}).get("content", "")
-        output = json.loads(content)
+        output, llm_meta = _llm_json(prompt)
     except Exception as e:
-        print(f"  Ollama call failed: {e}")
+        print(f"  LLM call failed: {e}")
         cur.close(); conn.close()
         return [{"status": "failed", "error": str(e)[:200]}]
+    if llm_meta.get("failover"):
+        print(f"  FAILOVER {llm_meta.get('model')} ({llm_meta.get('reason')})")
 
     output["hermes_agent_name"] = "portfolio_reflection_agent"
     output["research_type"] = "portfolio_reflection"
     output.setdefault("topic", f"Portfolio Reflection — {month_label}")
     output.setdefault("confidence_score", 0.5)
     output.setdefault("freshness_date", date.today().isoformat())
-    output.setdefault("model_used", LOOP_MODEL)
+    output.setdefault("model_used", llm_meta.get("model") or LOOP_MODEL)
+    output["llm_provider"] = llm_meta.get("provider")
     output["status"] = "staged"
     # tags omitted — build_insert handles NULL/absent gracefully
 
@@ -738,30 +736,22 @@ Respond ONLY with valid JSON (no markdown, no preamble)."""
     outdir.mkdir(parents=True, exist_ok=True)
 
     try:
-        payload_data = json.dumps({
-            "model": LOOP_MODEL,
-            "messages": [{"role": "user", "content": prompt}],
-            "stream": False,
-            "options": {"num_ctx": 8192, "num_predict": 2000, "temperature": 0.3},
-            "format": "json"
-        }).encode()
-        req = urllib.request.Request("http://localhost:11434/api/chat",
-                                     data=payload_data, headers={"Content-Type": "application/json"})
-        resp = urllib.request.urlopen(req, timeout=OLLAMA_TIMEOUT)
-        result = json.loads(resp.read())
-        content = result.get("message", {}).get("content", "")
-        output = json.loads(content)
+        output, llm_meta = _llm_json(prompt)
     except Exception as e:
-        print(f"  Ollama call failed: {e}")
+        print(f"  LLM call failed: {e}")
         cur.close(); conn.close()
         return [{"status": "failed", "error": str(e)[:200]}]
+    if llm_meta.get("failover"):
+        print(f"  FAILOVER {llm_meta.get('model')} ({llm_meta.get('reason')})")
+    output["model_used"] = llm_meta.get("model") or LOOP_MODEL
+    output["llm_provider"] = llm_meta.get("provider")
 
     output["hermes_agent_name"] = "pipeline_quality_agent"
     output["research_type"] = "pipeline_quality"
     output.setdefault("topic", f"Pipeline Quality Assessment — {date_label}")
     output.setdefault("confidence_score", 0.5)
     output.setdefault("freshness_date", date.today().isoformat())
-    output.setdefault("model_used", LOOP_MODEL)
+    output.setdefault("model_used", llm_meta.get("model") or LOOP_MODEL)
     output["status"] = "staged"
     # tags omitted — build_insert handles NULL/absent gracefully
 
