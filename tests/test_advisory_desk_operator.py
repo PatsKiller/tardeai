@@ -82,6 +82,36 @@ def test_implied_price_is_derived_reference_not_canonical():
     assert any("implied_price" in x for x in out["why_missing"])
 
 
+def test_account_specific_holdings_not_last_symbol_wins():
+    """Taxable SCHD must not inherit IRA shares from symbol-keyed provenance."""
+    row = {
+        "row_class": "holding",
+        "symbol": "SCHD",
+        "account": "schwab_taxable",
+        "shares": 406.54,
+        "market_value": 14005.43,
+        "canonical_financial_facts": {
+            "shares": 6155.25,
+            "market_value": 212048.39,
+            "current_mark": 34.52,
+            "as_of": "2026-08-14",
+        },
+    }
+    live = {
+        "symbol": "SCHD",
+        "account": "schwab_taxable",
+        "shares": 406.54,
+        "market_value": 14005.43,
+        "canonical_mark": 34.52,
+        "canonical_mark_as_of": "2026-08-14",
+        "cost_basis": 12687.73,
+    }
+    out = holdings_field_states(row, live=live)
+    assert out["shares"]["value"] == 406.54
+    assert out["market_value"]["value"] == 14005.43
+    assert abs(out["implied_price"]["value"] - 34.45) < 0.02
+
+
 def test_reference_snapshot_not_promoted():
     live = {
         "symbol": "SPCX",

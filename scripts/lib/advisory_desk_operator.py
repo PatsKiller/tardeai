@@ -879,24 +879,38 @@ def holdings_field_states(
         }
 
     live = live or {}
-    shares = _f(facts.get("shares") if facts.get("shares") is not None else row.get("shares"))
+    # Prefer the live (symbol, account) row, then the desk opinion row, then
+    # provenance facts. attach_advisory_row_provenance is keyed by symbol only
+    # and last-write-wins across accounts (SCHD taxable must not inherit IRA).
+    shares = _f(live.get("shares"))
     if shares is None:
-        shares = _f(live.get("shares"))
+        shares = _f(row.get("shares"))
+    if shares is None:
+        shares = _f(facts.get("shares"))
     if shares is None:
         shares = _lot_shares(row)
-    mv = _f(facts.get("market_value") if facts.get("market_value") is not None else row.get("market_value"))
+    mv = _f(live.get("market_value"))
     if mv is None:
-        mv = _f(live.get("market_value"))
-    mark = _f(facts.get("current_mark"))
+        mv = _f(row.get("market_value"))
+    if mv is None:
+        mv = _f(facts.get("market_value"))
+    mark = _f(live.get("canonical_mark"))
     if mark is None:
-        mark = _f(live.get("canonical_mark") if live.get("canonical_mark") is not None else row.get("canonical_mark"))
+        mark = _f(row.get("canonical_mark"))
+    if mark is None:
+        mark = _f(facts.get("current_mark"))
     ref_px = _f(live.get("price") if live.get("price") is not None else row.get("price"))
     ref_cur = _f(live.get("current_price") if live.get("current_price") is not None else row.get("current_price"))
-    as_of = facts.get("as_of") or live.get("canonical_mark_as_of") or live.get("as_of") or row.get("as_of") or row.get("price_as_of")
-    source = facts.get("source") or live.get("canonical_mark_source") or row.get("price_source") or "holdings.json"
-    basis = _f(facts.get("total_cost_basis") if facts.get("total_cost_basis") is not None else row.get("adjusted_cost") or row.get("cost_basis"))
+    as_of = (
+        live.get("canonical_mark_as_of") or live.get("as_of")
+        or row.get("as_of") or row.get("price_as_of") or facts.get("as_of")
+    )
+    source = live.get("canonical_mark_source") or row.get("price_source") or facts.get("source") or "holdings.json"
+    basis = _f(live.get("cost_basis"))
     if basis is None:
-        basis = _f(live.get("cost_basis"))
+        basis = _f(row.get("adjusted_cost") or row.get("cost_basis"))
+    if basis is None:
+        basis = _f(facts.get("total_cost_basis"))
     avg = _f(facts.get("avg_cost_per_share") or row.get("average_cost") or live.get("average_cost"))
     if avg is None and shares and shares > 0 and basis is not None:
         avg = basis / shares
