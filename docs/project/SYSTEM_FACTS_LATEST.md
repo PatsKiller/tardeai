@@ -1,11 +1,11 @@
 # System Facts — Latest
 
-Generated: 2026-08-16T18:00:00.392424
+Generated: 2026-08-17T07:40:00.691576
 
 ## Runtime
 - Hostname: ms01-openclaw
 - Python: 3.14.4
-- Git: feat/two-way-watchlist-curation @ 8f11a642
+- Git: feat/two-way-watchlist-curation @ 31458e9b
 
 ## Database
 - Connected: True
@@ -13,15 +13,15 @@ Generated: 2026-08-16T18:00:00.392424
 - trade_ai_scans: 58276
 - paper_trade_proposals: 6274
 - paper_trades: 745
-- watchlist_agent_results: 12878
-- news_articles: 90653
+- watchlist_agent_results: 12886
+- news_articles: 91442
 - topic_monitor: 398
-- content_embeddings: 755511
+- content_embeddings: 757875
 - pipeline_stages: 44
-- pipeline_runs: 53418
+- pipeline_runs: 53994
 - config_documents: 38
-- content_entity_links: 100775
-- blocked_content: 1313
+- content_entity_links: 101699
+- blocked_content: 1328
 
 ## Codebase
 - python_script_count: 1884
@@ -36,7 +36,7 @@ Generated: 2026-08-16T18:00:00.392424
 ## Safety
 - ALPACA_MODE: paper
 - Live trading: BLOCKED
-- Holdings: $1,282,948
+- Holdings: $1,279,773
 - Holdings guard: PASSED
 - Blocked reasons: policy_live_trading_allowed_false, validation_days_insufficient, closed_trade_sample_insufficient, win_rate_below_threshold, governance_not_approved
 
