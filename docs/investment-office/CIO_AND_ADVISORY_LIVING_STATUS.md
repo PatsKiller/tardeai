@@ -4,15 +4,15 @@
 |---|---|
 | **Document name** | `CIO_AND_ADVISORY_LIVING_STATUS.md` |
 | **Repo path** | `docs/investment-office/CIO_AND_ADVISORY_LIVING_STATUS.md` |
-| **Revision** | **R4 — 2026-08-18T16:02Z** (closed-loop P0 executed; CURRENT still pre-promote until exact-main) |
+| **Revision** | **R4 — 2026-08-18T16:04Z** (closed-loop P0 live after exact-main `244b7a41`) |
 | **Status** | **RECONCILIATION / PARTIAL_WITH_EXPLICIT_GAPS** |
 | **Authority** | `READ_ONLY_ADVISORY` · `MEMORY_BEHAVIOR_INFLUENCE=0` · `broker_write=NONE` |
 | **Owner** | Alex desk · operator: John |
-| **Live CURRENT** | `66c733a4-main-exact-phase2-20260818-113725` |
-| **CURRENT SHA** | `66c733a4d63db38c5f80a61fc096755fcc557023` |
-| **origin/main at R4 authoring** | `93a822e7` + this commit (MAIN_AHEAD until exact-main promote) |
-| **Provenance** | **MAIN_AHEAD_NOT_DEPLOYED** until promote; data-plane drain already applied to shared `data/cio` |
-| **UI chip** | still `3.14+msytu33x` · `66c733a4` until promote |
+| **Live CURRENT** | `244b7a41-main-exact-phase2-20260818-120315` |
+| **CURRENT SHA** | `244b7a41b0c9e973e2ea874c8e0b2c3986fd2982` |
+| **origin/main** | `244b7a41b0c9e973e2ea874c8e0b2c3986fd2982` |
+| **Provenance** | **CURRENT_MATCH** (promoted after #370) |
+| **UI chip** | `3.14+msyurbz9` · `244b7a41` |
 | **Google Drive file** | [CIO_AND_ADVISORY_LIVING_STATUS.md](https://drive.google.com/file/d/1scL90dCZa7uOK9_sojX-MNBWHfrViWMi/view) |
 | **Drive folder** | [docs / investment-office](https://drive.google.com/drive/folders/1sVHlO8v-NStl2HRbk1bJqwqI67bxGUM8) |
 
@@ -28,11 +28,11 @@
 
 | Surface | Status | Live evidence |
 |---|---|---|
-| Command Center SPA | **WORKING** | `/v3/*` 200 HTML; chip still `66c733a4` until promote |
-| Release / CURRENT vs main | **MAIN_AHEAD** | CURRENT `66c733a4`; this packet lands on main then needs exact-main |
-| `/api/v3/cio` | **WORKING_DEGRADED** | 200, thesis v5; snapshot missing **reconciliation**; challenge **event-count still 210 ENQUEUED** on CURRENT code |
+| Command Center SPA | **WORKING** | `/v3/*` 200 HTML; chip `3.14+msyurbz9` |
+| Release / CURRENT vs main | **WORKING** | CURRENT = origin/main `244b7a41` after exact-main promote |
+| `/api/v3/cio` | **WORKING_DEGRADED** | 200, thesis v5; snapshot missing **reconciliation**; delegation **pending=108** |
 | `/api/v3/advisory` | **WORKING_DEGRADED** | 200, 58 rows, **OPINION_FRESHNESS=EXPIRED**, health DEGRADED |
-| `/api/v3/intelligence` | **CODE_READY / NOT_ON_CURRENT** | 404 on live CURRENT; code + tests in this packet |
+| `/api/v3/intelligence` | **WORKING** | 200, 13 lineages, pending 108, latest `lin_cebe7bbaba9921e9aeb6` |
 | Agent maturity | **WORKING_DEGRADED** | fail-soft repo path from #364/#365 |
 | Memory | **SHADOW** | DurableJsonl, 2 records (1 ADMITTED, 1 EXPIRED), influence flag ACTIVE_ADVISORY, **MBI=0** |
 | Learning | **WORKING_DEGRADED** | 204 cases, **201 OPEN / 3 AWAITING / 0 matured / 0 scored**, 7 RATIFIED_CONTEXT, 0 ADVISORY_ACTIVE |
@@ -50,12 +50,12 @@
 
 | Item | Exact value |
 |---|---|
-| CURRENT SHA | `66c733a4d63db38c5f80a61fc096755fcc557023` |
-| CURRENT path | `/home/johnclaw/trade-ai-releases/portfolio-server/66c733a4-main-exact-phase2-20260818-113725` |
+| CURRENT SHA | `244b7a41b0c9e973e2ea874c8e0b2c3986fd2982` |
+| CURRENT path | `/home/johnclaw/trade-ai-releases/portfolio-server/244b7a41-main-exact-phase2-20260818-120315` |
 | Shared CIO dir | `/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/data/cio` (CURRENT `data/cio` symlink) |
-| Classification until promote | **MAIN_AHEAD_NOT_DEPLOYED** |
-| Recent merges | #369 R3 docs, #368 living R2, #367 guard ledger, #365/#364 CC gaps |
-| This packet | closed-loop P0 on `feature/closed-loop-p0-lineage` |
+| Classification | **CURRENT_MATCH** |
+| Recent merges | **#370** closed-loop P0, #369 R3 docs, #368 living R2, #367 guard ledger, #365/#364 CC gaps |
+| This packet | #370 `244b7a41` |
 
 Do **not** treat committed `docs/investment-office/RELEASE_MANIFEST.md` (still pins `aa037b73`) as CURRENT.
 
@@ -137,8 +137,8 @@ Do not treat CIO notification `lineage_count=9` as IntelligenceLineage.
 |---|---|---|---|---|
 | `/v3/advisory` | Opinion table | **WORKING_DEGRADED** | unchanged | opinions EXPIRED |
 | `/v3/cio` | Thesis / plans / books | **WORKING_DEGRADED** | delegation pending-count **after promote** | reconciliation missing |
-| `/v3/intelligence?tab=closed-loop` | Lineage table | **CODE_READY** | Closed Loop tab + panel | 404 API until promote |
-| `/v3/closed-loop` | alias | **CODE_READY** | redirects to intelligence tab | SPA shell only on CURRENT |
+| `/v3/intelligence?tab=closed-loop` | Lineage table | **WORKING** | Closed Loop tab + `/api/v3/intelligence` 200 | 13 rows; 0 outcomes |
+| `/v3/closed-loop` | alias | **WORKING** | redirects to intelligence tab | live on CURRENT |
 | `/v3/health?tab=daily-intelligence` | Daily proof | **WORKING** | unchanged | DEGRADED components |
 | Memory / Learning | maturity APIs | **SHADOW / DEGRADED** | observer will expire at 7d | 0 matured |
 
@@ -166,7 +166,7 @@ New runtime hooks:
 
 ## 9. CIO / Advisory live numbers
 
-**CIO:** thesis `desk@v5`. Snapshot still missing reconciliation. Plans ~30 (mostly draft). Actions 15 OPEN. **CURRENT code** still reports challenges ENQUEUED=210 (event count). Shared store after drain: 313 events, **108 pending**.
+**CIO:** thesis `desk@v5`. Snapshot still missing reconciliation. Plans ~30 (mostly draft). Actions 15 OPEN. **CURRENT delegation** reports challenges **pending=108** (EXPIRED 75 · CANCELLED 27 · ENQUEUED 108). History still has 210 ENQUEUED rows (313 events).
 
 **Advisory:** 58 rows. Health DEGRADED (Flash/Pro opinions EXPIRED). FACT_FRESHNESS=CURRENT on desk build; **do not call holdings CURRENT** (underlying snapshot still 2026-08-14). SCHD taxable lots ≈406.54 / IRA ≈6155.25.
 
@@ -174,7 +174,7 @@ New runtime hooks:
 
 ## 10. Runtime topology
 
-Persistent: `portfolio-server` CURRENT `66c733a4`, `cio-governed-bridge`, `tradeai-cio-telegram`, heartbeat-receiver.
+Persistent: `portfolio-server` CURRENT `244b7a41`, `cio-governed-bridge`, `tradeai-cio-telegram`, heartbeat-receiver.
 
 **Failed units (still):** `hermes-autonomous-loop.service` (TimeoutStart / Ollama 300s on MU, then killed at 10m), `hermes-deep-research-local.service`.
 
@@ -187,11 +187,11 @@ Outcome scorer timer **18:30 EDT** now owns the durable observer (runs from CURR
 | gap_id | domain | severity | current | notes |
 |---|---|---|---|---|
 | G-PRIOR-01 | program | **closed** | packet executed in RECONCILIATION mode | this revision |
-| G-REL-01 | release | **reopened** | CURRENT `66c733a4` behind this main | closes again after exact-main |
-| G-LOOP-01 | lineage | **closed in code+data** | store + 13 real IDs; API/CC after promote | not 404 in source |
+| G-REL-01 | release | **closed** | CURRENT = origin/main `244b7a41` | exact-main promote after #370 |
+| G-LOOP-01 | lineage | **closed** | store + live GET 200 + 13 real IDs | SCHD `lin_be74ab5d25c949dd980c` |
 | G-RES-01 | research | **partial** | drain 210→108 pending; worker still failed | completing worker **not** claimed |
 | G-OUT-01 | outcomes | **partial** | observer wired; 0 due | will expire only after 7d |
-| G-CC-01 | CC | **closed in code** | Closed Loop tab + `/v3/closed-loop` | visible after frontend promote |
+| G-CC-01 | CC | **closed** | Closed Loop tab + `/v3/closed-loop` live | 13 rows; no fake outcomes |
 | G-REC-01 | CIO | **P1** | reconciliation domain missing | unchanged |
 | G-ACT-01 | CIO | **P1** | 12 system-backfill OPEN | unchanged |
 | G-PLN-01 | CIO | **P1** | mostly draft plans | unchanged |
@@ -208,23 +208,23 @@ Acceptance: G-RES-01 is **not** fully closed until a Hermes run completes real r
 
 ## 12. Operator confirmation (R4)
 
-Hard-reload `/v3/` **after** exact-main promote.
+Hard-reload `/v3/` now.
 
-- [ ] Chip SHA matches promoted exact-main (not `66c733a4`)
+- [ ] Chip `3.14+msyurbz9` · SHA `244b7a41`
 - [ ] `/api/v3/intelligence` 200, `lineage_count=13`, `pending_challenges=108`
 - [ ] `/v3/intelligence?tab=closed-loop` shows SCHD `lin_be74ab5d25c949dd980c`
 - [ ] `/api/v3/cio/delegation` challenges.pending = **108** (not 210)
 - [ ] Hermes queue file still has **210 ENQUEUED** historical rows
 - [ ] Learning still 0 matured (honest)
 - [ ] SYSTEM Telegram today: message **47831**
-- [ ] Drive header says **R4**
+- [ ] Drive header says **R4 — 2026-08-18T16:04Z**
 - [ ] MBI still 0; no broker writes
 
 ---
 
 ## 13. How we update
 
-Same filename. Next rewrite after exact-main promote is **R5** only if CURRENT SHA / chip / API proof needs a new header. Replace Drive file `1scL90dCZa7uOK9_sojX-MNBWHfrViWMi` in place.
+Same filename. Next rewrite is **R5** if a later promote or drain changes the numbers. Replace Drive file `1scL90dCZa7uOK9_sojX-MNBWHfrViWMi` in place.
 
 ---
 
@@ -235,6 +235,6 @@ Same filename. Next rewrite after exact-main promote is **R5** only if CURRENT S
 | R1 | 2026-08-18T15:15Z | First sheet after #364/#365. Pre-closed-loop. |
 | R2 | 2026-08-18T15:40Z | Post-closed-loop reconciliation. Prior program did not run. |
 | R3 | 2026-08-18T15:42Z | Exact-main promote `66c733a4`. Loop still not proven. |
-| **R4** | **2026-08-18T16:02Z** | Unrun packet executed. Lineage store + drain + observer + CC/API. 13 real lineage IDs. Hermes worker still failed. 0 matured cases. |
+| **R4** | **2026-08-18T16:04Z** | Unrun packet executed and promoted `244b7a41`. Live `/api/v3/intelligence` 200, 13 IDs, pending 108. Hermes worker still failed. 0 matured cases. |
 
-*End of R4. GitHub + Drive must tell this story. CURRENT matches only after exact-main promote.*
+*End of R4. GitHub + Drive + CURRENT tell this same story.*
