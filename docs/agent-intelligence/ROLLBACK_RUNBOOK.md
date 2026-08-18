@@ -18,6 +18,7 @@ Apply exactly these values (equivalent to unsetting every activation flag):
 export MEMORY_BEHAVIOR_INFLUENCE=0
 export MCP_READ_ONLY_GATEWAY=0
 export MEMORY_PROVIDER=null
+export GOVERNED_MEMORY_ADVISORY_INFLUENCE=OFF
 export LANGGRAPH_WORKER_PILOT=0
 # observability flags return to conservative defaults as well:
 export AGENT_CONTEXT_ENVELOPE=0

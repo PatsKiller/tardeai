@@ -128,6 +128,22 @@ class MemoryProvider(Protocol):
         ...
 
 
+def get_memory_provider(flags: Optional[dict[str, Any]] = None, *, root: Any = None) -> Any:
+    """Factory: null / local (test) / durable JSONL. mem0 stays NOT_CONFIGURED."""
+    from scripts.lib.agent_feature_flags import resolve_flags
+    resolved = resolve_flags(flags)
+    name = str(resolved.get("MEMORY_PROVIDER") or "null")
+    if name == "durable":
+        from scripts.lib.agent_durable_memory import get_durable_provider
+        return get_durable_provider(root)
+    if name == "local":
+        return LocalTestMemoryProvider()
+    if name == "mem0":
+        from scripts.lib.agent_mem0_provider import Mem0MemoryProvider
+        return Mem0MemoryProvider()
+    return NullMemoryProvider()
+
+
 # ── NullMemoryProvider — safe no-op default ───────────────────────────────
 
 

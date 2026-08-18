@@ -13,7 +13,7 @@ import {
   type AgentRuntimeDefinition,
 } from '../lib/agentRuntimeMonitoring'
 import { resolveAgentRuntimeView, readApiBaseFromEnv, type ResolvedRuntimeView } from '../lib/agentRuntimeReadAdapter'
-import { CasesPanel, LearningPanel, PromotionPanel } from './MaturityPanels'
+import { CasesPanel, LearningPanel, MemoryPanel, PromotionPanel } from './MaturityPanels'
 import { resolveAgentRuntimeDetail, type AgentDetailView } from '../lib/agentRuntimeDetailAdapter'
 import {
   maturityHealthLabel,
@@ -32,7 +32,7 @@ import {
 } from '../lib/agentMaturityObservability'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
-type View = 'Runtime' | 'Learning' | 'Promotion' | 'Cases' | 'Evidence' | 'Legacy analytics'
+type View = 'Runtime' | 'Learning' | 'Memory' | 'Promotion' | 'Cases' | 'Evidence' | 'Legacy analytics'
 type BadgeTone = 'blue' | 'green' | 'amber' | 'red' | 'slate'
 
 const lifecycleTone: Record<AgentLifecycle, BadgeTone> = {
@@ -570,10 +570,11 @@ export default function AgentRuntimeHub({ onDrill }: Props) {
   return <div>
     <div className="hub-title-row" style={{ marginBottom: 14 }}>
       <div><div style={{ fontSize: 22, fontWeight: 800 }}>Agents</div><div style={{ marginTop: 3, fontSize: TYPE.xs, color: 'var(--text3)' }}>Governed runtime maturity, evidence, monitoring, and existing agent analytics.</div></div>
-      <div className="hub-tabs" style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>{(['Runtime', 'Learning', 'Promotion', 'Cases', 'Evidence', 'Legacy analytics'] as View[]).map(item => <button key={item} type="button" onClick={() => setView(item)} style={{ border: '1px solid var(--border)', borderRadius: 7, background: view === item ? 'rgba(96,165,250,.14)' : 'var(--bg1)', color: view === item ? T.link : 'var(--text2)', padding: '6px 10px', fontSize: TYPE.xs, fontWeight: 750, cursor: 'pointer' }}>{item}</button>)}</div>
+      <div className="hub-tabs" style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>{(['Runtime', 'Learning', 'Memory', 'Promotion', 'Cases', 'Evidence', 'Legacy analytics'] as View[]).map(item => <button key={item} type="button" onClick={() => setView(item)} style={{ border: '1px solid var(--border)', borderRadius: 7, background: view === item ? 'rgba(96,165,250,.14)' : 'var(--bg1)', color: view === item ? T.link : 'var(--text2)', padding: '6px 10px', fontSize: TYPE.xs, fontWeight: 750, cursor: 'pointer' }}>{item}</button>)}</div>
     </div>
     {view === 'Runtime' && <RuntimeView />}
     {view === 'Learning' && <LearningPanel />}
+    {view === 'Memory' && <MemoryPanel />}
     {view === 'Promotion' && <PromotionPanel />}
     {view === 'Cases' && <CasesPanel />}
     {view === 'Evidence' && <LearningPanel />}

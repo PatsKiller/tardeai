@@ -92,6 +92,14 @@ FORBIDDEN_AUTHORITATIVE_FIELDS = (
     "freshness status",
     "policy",
     "policy config",
+    "2fa",
+    "two fa",
+    "two factor",
+    "live execution permission",
+    "broker state",
+    "broker auth",
+    "risk policy",
+    "credential",
 )
 
 

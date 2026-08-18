@@ -67,6 +67,71 @@ def handle_get(path: str, query: dict | None = None) -> tuple[int, dict[str, Any
         return 200, {"ok": True, **AUTHORITY, **collect_telegram_receipts()}
     if p in ("autonomy-health", "autonomy"):
         return 200, {"ok": True, **AUTHORITY, **collect_autonomy_health()}
+    if p == "memory":
+        from scripts.lib.agent_durable_memory import get_durable_provider, display_status
+        from scripts.lib.agent_memory_shadow import shadow_metrics
+        from scripts.lib.maturity_control.redaction import redact
+        import json as _json
+        from pathlib import Path as _Path
+        prov = get_durable_provider()
+        recs = []
+        contradictions = []
+        for r in prov._store.values():
+            item = {
+                "memory_id": r.get("memory_id"),
+                "status": display_status(r.get("status")),
+                "raw_status": r.get("status"),
+                "authority_class": r.get("authority_class"),
+                "subject": r.get("subject"),
+                "content": r.get("content"),
+                "memory_type": r.get("memory_type"),
+                "symbols": r.get("symbols"),
+                "confidence": r.get("confidence"),
+                "created_at": r.get("created_at"),
+                "as_of": r.get("as_of") or r.get("valid_from") or r.get("created_at"),
+                "expires_at": r.get("expires_at"),
+                "source_refs": r.get("source_refs") or r.get("source_event_ids"),
+                "provenance": r.get("source_kind"),
+                "content_hash": r.get("content_hash") or r.get("content_digest"),
+                "contradicts": r.get("contradicts"),
+                "supersedes": r.get("supersedes"),
+                "superseded_by": r.get("superseded_by"),
+                "admission_reason": r.get("admission_reason"),
+            }
+            recs.append(item)
+            if r.get("contradicts") or r.get("status") == "DISPUTED":
+                contradictions.append({
+                    "memory_id": r.get("memory_id"),
+                    "status": display_status(r.get("status")),
+                    "contradicts": r.get("contradicts"),
+                    "dispute_reason": r.get("dispute_reason"),
+                })
+        shadow_runs = []
+        shadow_path = _Path(prov.path).with_name("memory_shadow_runs.jsonl")
+        if shadow_path.is_file():
+            for line in shadow_path.read_text(encoding="utf-8", errors="replace").splitlines()[-20:]:
+                if not line.strip():
+                    continue
+                try:
+                    shadow_runs.append(_json.loads(line))
+                except _json.JSONDecodeError:
+                    continue
+        health = prov.health()
+        return 200, redact({
+            "ok": True, **AUTHORITY,
+            "backend": health,
+            "influence_mode": os.environ.get("GOVERNED_MEMORY_ADVISORY_INFLUENCE", "OFF"),
+            "memory_behavior_influence": os.environ.get("MEMORY_BEHAVIOR_INFLUENCE", "0"),
+            "counts": prov.counts(),
+            "records": recs,
+            "contradictions": contradictions,
+            "admission_receipts": prov.tail_jsonl(prov.receipts_path, 20),
+            "retrieval_receipts": prov.tail_jsonl(prov.retrievals_path, 20),
+            "shadow": shadow_metrics(shadow_runs),
+            "shadow_runs": shadow_runs[-10:],
+            "operator_actions": ["dispute", "retract", "expire"],
+            "control_path": "/api/v3/maturity-control/memory/{dispute|retract|expire}",
+        })
     if p in ("influence", "comparator"):
         from scripts.lib.advisory_influence.gates import current_gates
         from scripts.lib.advisory_influence.comparator import metrics
@@ -123,6 +188,20 @@ def handle_control_post(path: str, body: dict[str, Any] | None) -> tuple[int, di
                 has_score=bool(body.get("has_score")),
             )
             return 200, {"ok": True, "financial_action": False, "promotion": rec}
+        if p.startswith("memory/"):
+            from scripts.lib.agent_durable_memory import get_durable_provider
+            action = p.split("/", 1)[1]
+            mid = str(body.get("memory_id") or "")
+            prov = get_durable_provider()
+            if action == "dispute":
+                ok = prov.dispute(mid, str(body.get("reason") or "operator"))
+            elif action == "retract":
+                ok = prov.retract(mid, str(body.get("reason") or "operator"))
+            elif action == "expire":
+                ok = prov.expire(mid)
+            else:
+                return 404, {"ok": False, "error": f"unknown_memory_control:{action}"}
+            return 200, {"ok": ok, "financial_action": False, "memory_id": mid, "action": action}
         pid = str(body.get("promotion_id") or "")
         rec = P.load_or_raise(pid)
         if p == "preflight":

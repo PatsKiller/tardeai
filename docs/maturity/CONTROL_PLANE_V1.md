@@ -22,6 +22,7 @@ READ_ONLY_ADVISORY. AUTO-PROMOTION TO TRADING: DISABLED.
 | CLI | `scripts/maturity_promotion.py` |
 | GET API | `/api/v3/maturity/*` via `api_v3_maturity.py` |
 | Control API | POST `/api/v3/maturity-control/*` (env-gated, not dashboard) |
-| CC tabs | Agents Learning/Promotion/Cases/Evidence; CIO Notification Gate / Telegram / Senses; Health Intelligence loop |
+| CC tabs | Agents Learning/Memory/Promotion/Cases/Evidence; CIO Notification Gate / Telegram / Senses; Health Intelligence loop + Memory |
+| Durable memory | GET `/api/v3/maturity/memory`; JSONL `data/cio/aif_memory.jsonl`; SHADOW only |
 
 Phase 11 may set lesson overlay `SHADOW_INFLUENCE` or agent overlay `OPERATIONAL_ADVISORY`. It never enables broker, orders, stops, 2FA, or risk policy.
