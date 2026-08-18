@@ -48,6 +48,19 @@ export default function ClosedLoopPanel() {
             {' · '}reasons {JSON.stringify(queue.by_reason || {})}
           </div>
         )}
+        {(data?.reassessments || []).length > 0 && (
+          <div data-testid="cio-reassessment-chain" style={{ marginTop: 10, fontSize: 12 }}>
+            <div style={label}>CIO reassessments (research → product)</div>
+            {(data.reassessments as any[]).slice(0, 6).map((r) => (
+              <div key={r.reassessment_id} style={{ marginTop: 4 }}>
+                {r.as_of || ''} · {r.parent?.symbol || r.parent?.status || 'BOOK'} · {r.status}
+                {' · '}{r.previous_product_id || '—'} → {r.product_id || '—'}
+                {' · '}{r.notification_class || '—'}
+                {r.what_changed_material ? ' · MATERIAL' : ''}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
       {loading && <div style={panel}>Loading lineage…</div>}
       {error && <div style={{ ...panel, color: 'var(--amber)' }}>{String(error)}</div>}

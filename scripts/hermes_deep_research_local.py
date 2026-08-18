@@ -155,7 +155,25 @@ def run_one(conn, sym, model, apply):
             wconn.close()
         except Exception:
             pass
-    print(f"  {sym}: COMMITTED id={rid}"); return "applied"
+    print(f"  {sym}: COMMITTED id={rid}")
+    try:
+        from cio_product_reassessment import notify_from_flash_row
+    except Exception:
+        try:
+            from scripts.lib.cio_product_reassessment import notify_from_flash_row
+        except Exception:
+            notify_from_flash_row = None
+    if notify_from_flash_row:
+        try:
+            notify_from_flash_row(
+                symbol=sym, row_id=rid,
+                summary=str((out or {}).get("summary") or "")[:240],
+                model=str((out or {}).get("model_used") or ""),
+                research_type="deep_research_local",
+            )
+        except Exception:
+            pass
+    return "applied"
 
 
 def main():

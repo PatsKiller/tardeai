@@ -26,7 +26,13 @@ AUTHORITY = {
 def handle_get(path: str, query: dict | None = None) -> tuple[int, dict[str, Any]]:
     p = (path or "").strip("/")
     if p in ("", "closed-loop", "dashboard", "authority"):
-        return 200, {**AUTHORITY, **L.summary()}
+        payload = {**AUTHORITY, **L.summary()}
+        try:
+            from lib.cio_product_reassessment import latest_reassessments
+        except ImportError:
+            from scripts.lib.cio_product_reassessment import latest_reassessments  # type: ignore
+        payload["reassessments"] = latest_reassessments(n=8)
+        return 200, payload
     if p == "challenges":
         return 200, {"ok": True, **AUTHORITY, **L.challenge_view()}
     if p in ("queue", "queue-health"):

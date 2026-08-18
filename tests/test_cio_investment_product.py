@@ -127,6 +127,7 @@ def test_cc_tab():
     assert "investment-books" in hub
     assert "cio-investment-books" in hub
     assert "INVESTMENT BOOKS" in hub
+    assert "cio-what-changed" in hub
 
 
 def test_no_broker():

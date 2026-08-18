@@ -167,6 +167,83 @@ def expire_satisfied_overlays(*, apply: bool = True) -> dict[str, Any]:
     return report
 
 
+def classify_overlay_pending(*, apply_satisfied: bool = False) -> dict[str, Any]:
+    """Classify remaining overlay streams. Never deletes history."""
+    try:
+        from lib.intelligence_lineage import (
+            _read_jsonl,
+            challenge_latest,
+            challenge_pending,
+            cio_dir,
+        )
+        from lib import cio_hermes_research as hr
+    except Exception:
+        from scripts.lib.intelligence_lineage import (  # type: ignore
+            _read_jsonl,
+            challenge_latest,
+            challenge_pending,
+            cio_dir,
+        )
+        from scripts.lib import cio_hermes_research as hr  # type: ignore
+    path = cio_dir() / "hermes_challenge_queue.jsonl"
+    latest = challenge_latest(_read_jsonl(path))
+    pending = challenge_pending(latest)
+    proj = hr._load_projection()
+    by_plan: dict[str, list[dict[str, Any]]] = {}
+    for rec in (proj.get("by_research_id") or {}).values():
+        if isinstance(rec, dict) and rec.get("plan_id"):
+            by_plan.setdefault(str(rec["plan_id"]), []).append(rec)
+    buckets = {
+        "ACTIVE_VALID": 0,
+        "WAITING_RESEARCH": 0,
+        "SATISFIED_BY_RESULT": 0,
+        "ORPHANED_LEGACY": 0,
+        "DUPLICATE": 0,
+        "STALE_EXPIRED": 0,
+        "INVALID": 0,
+    }
+    seen_plan: set[str] = set()
+    satisfied_plans: list[str] = []
+    for rec in pending:
+        if not isinstance(rec, dict):
+            buckets["INVALID"] += 1
+            continue
+        pid = plan_id_from_challenge(rec)
+        if not pid:
+            buckets["ORPHANED_LEGACY"] += 1
+            continue
+        if pid in seen_plan:
+            buckets["DUPLICATE"] += 1
+            continue
+        seen_plan.add(pid)
+        done = next((r for r in by_plan.get(pid) or [] if r.get("status") == "completed"), None)
+        if done:
+            buckets["SATISFIED_BY_RESULT"] += 1
+            satisfied_plans.append(pid)
+            continue
+        ev = str(rec.get("event") or rec.get("status") or "").upper()
+        if ev in {"EXPIRED", "CANCELLED"}:
+            buckets["STALE_EXPIRED"] += 1
+        elif by_plan.get(pid):
+            buckets["WAITING_RESEARCH"] += 1
+        else:
+            buckets["ACTIVE_VALID"] += 1
+    expired = 0
+    if apply_satisfied:
+        for pid in satisfied_plans:
+            exp = expire_overlay_for_plan(pid, apply=True)
+            expired += int(exp.get("expired") or 0)
+    return {
+        "ok": True,
+        "pending": len(pending),
+        "buckets": buckets,
+        "satisfied_closed": expired,
+        "applied": apply_satisfied,
+        "authority": "READ_ONLY_ADVISORY",
+        "deleted": 0,
+    }
+
+
 def _import_store():
     try:
         from lib import cio_hermes_research as hr
@@ -372,36 +449,33 @@ def on_hermes_completed(
     except Exception as e:
         out["memory_error"] = f"{type(e).__name__}:{e}"
     plan_id = str(out["plan_id"] or "")
-    if not plan_id:
-        out["ok"] = False
-        out["error"] = "plan_id_missing"
-        return out
+    # Plan attach/enrich needs a plan. Product reassessment does not —
+    # overnight Flash jobs often have no plan_id (ORPHANED_LEGACY parent).
 
-    try:
+    plan = None
+    store = None
+    if plan_id:
         try:
-            from lib.hermes_research_schema import evidence_domain_from_result
-        except Exception:
-            from scripts.lib.hermes_research_schema import evidence_domain_from_result  # type: ignore
-        domain = evidence_domain_from_result(result, reused=bool(result.get("reused")))
-        plan = _merge_evidence_on_plan_id(
-            plan_id, domain, research_id=str(result.get("research_id") or ""),
-        )
-        out["attached"] = plan is not None
-    except Exception as e:
-        out["attach_error"] = f"{type(e).__name__}:{e}"
-        plan = None
+            try:
+                from lib.hermes_research_schema import evidence_domain_from_result
+            except Exception:
+                from scripts.lib.hermes_research_schema import evidence_domain_from_result  # type: ignore
+            domain = evidence_domain_from_result(result, reused=bool(result.get("reused")))
+            plan = _merge_evidence_on_plan_id(
+                plan_id, domain, research_id=str(result.get("research_id") or ""),
+            )
+            out["attached"] = plan is not None
+        except Exception as e:
+            out["attach_error"] = f"{type(e).__name__}:{e}"
+            plan = None
 
-    CIOPlanStore = _import_plans()
-    store = CIOPlanStore()
-    plan = plan or store.get_plan(plan_id)
-    if not plan:
-        out["ok"] = False
-        out["error"] = "plan_not_found"
-        return out
+        CIOPlanStore = _import_plans()
+        store = CIOPlanStore()
+        plan = plan or store.get_plan(plan_id)
 
-    before_fp = _material_fingerprint(plan)
+    before_fp = _material_fingerprint(plan) if plan else ""
 
-    if resynth:
+    if resynth and plan and store:
         try:
             try:
                 from lib.cio_plan_enrichment import enrich_plan, maybe_notify_plan, is_material_plan
@@ -450,15 +524,31 @@ def on_hermes_completed(
     except Exception as e:
         out["memo_error"] = f"{type(e).__name__}:{e}"
 
+    if plan_id:
+        try:
+            out["overlay"] = expire_overlay_for_plan(
+                plan_id,
+                result_id=str(result.get("result_id") or ""),
+                research_id=str(result.get("research_id") or ""),
+                apply=True,
+            )
+        except Exception as e:
+            out["overlay_error"] = f"{type(e).__name__}:{e}"
+
+    # Missing R6.8 link: persist a new investment product + what_changed + notify.
+    # Fail-soft. Never reruns paid research. Never grants RE_ENTER.
     try:
-        out["overlay"] = expire_overlay_for_plan(
-            plan_id,
-            result_id=str(result.get("result_id") or ""),
-            research_id=str(result.get("research_id") or ""),
-            apply=True,
+        try:
+            from lib.cio_product_reassessment import reassess_on_research_completed
+        except Exception:
+            from scripts.lib.cio_product_reassessment import (  # type: ignore
+                reassess_on_research_completed,
+            )
+        out["reassessment"] = reassess_on_research_completed(
+            request, result, critique=out.get("critique") if isinstance(out.get("critique"), dict) else None,
         )
     except Exception as e:
-        out["overlay_error"] = f"{type(e).__name__}:{e}"
+        out["reassessment_error"] = f"{type(e).__name__}:{e}"
 
     # Audit line — include critique/memory/overlay so a missing receipt is visible
     try:
@@ -484,6 +574,12 @@ def on_hermes_completed(
                 "memory_error": out.get("memory_error"),
                 "overlay_expired": (out.get("overlay") or {}).get("expired")
                 if isinstance(out.get("overlay"), dict) else None,
+                "reassessment_ok": (out.get("reassessment") or {}).get("ok")
+                if isinstance(out.get("reassessment"), dict) else None,
+                "reassessment_id": (out.get("reassessment") or {}).get("reassessment_id")
+                if isinstance(out.get("reassessment"), dict) else None,
+                "reassessment_duplicate": (out.get("reassessment") or {}).get("duplicate")
+                if isinstance(out.get("reassessment"), dict) else None,
             }, sort_keys=True) + "\n")
     except Exception:
         pass

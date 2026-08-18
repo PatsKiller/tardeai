@@ -18,6 +18,10 @@ from datetime import datetime, timezone, date
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+if str(PROJECT_ROOT / "scripts") not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 LOCKFILE = Path("/tmp/hermes_autonomous_loop.lock")
 KILL_FILE = PROJECT_ROOT / "data" / "runtime" / "HERMES_DISABLED"
 MAX_RUNTIME = 600  # seconds
@@ -30,6 +34,28 @@ LOOP_MODEL = os.environ.get("HERMES_LOOP_MODEL", "gemma3:12b")
 OLLAMA_TIMEOUT = int(os.environ.get("HERMES_LOOP_OLLAMA_TIMEOUT", "300"))
 
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+
+
+def _cio_wake_after_flash(symbol, row_id, output=None):
+    """Fail-soft: persist a new CIO product after Flash commit. Never calls a paid LLM."""
+    try:
+        from cio_product_reassessment import notify_from_flash_row
+    except Exception:
+        try:
+            from scripts.lib.cio_product_reassessment import notify_from_flash_row
+        except Exception:
+            return
+    try:
+        pack = output if isinstance(output, dict) else {}
+        notify_from_flash_row(
+            symbol=str(symbol or pack.get("symbol") or ""),
+            row_id=row_id,
+            summary=str(pack.get("summary") or "")[:240],
+            model=str(pack.get("model_used") or ""),
+            research_type=str(pack.get("research_type") or "ticker_thesis_challenge"),
+        )
+    except Exception:
+        return
 
 
 def _llm_json(prompt: str) -> tuple[dict, dict]:
@@ -393,6 +419,7 @@ def run_ticker_challenger(args):
                     print(f"    COMMITTED: id={row[0]}")
                     results[-1]["row_id"] = row[0]
                     results[-1]["status"] = "applied"
+                    _cio_wake_after_flash(sym, row[0], output)
                 except Exception as e:
                     iconn.rollback()
                     print(f"    APPLY ERROR: {e}")
@@ -597,6 +624,7 @@ Respond ONLY with valid JSON (no markdown, no preamble)."""
             print(f"    COMMITTED: id={row[0]}")
             results[-1]["row_id"] = row[0]
             results[-1]["status"] = "applied"
+            _cio_wake_after_flash(output.get("symbol"), row[0], output)
         except Exception as e:
             iconn.rollback()
             print(f"    APPLY ERROR: {e}")
@@ -806,6 +834,7 @@ Respond ONLY with valid JSON (no markdown, no preamble)."""
             print(f"    COMMITTED: id={row[0]}")
             results[-1]["row_id"] = row[0]
             results[-1]["status"] = "applied"
+            _cio_wake_after_flash(output.get("symbol"), row[0], output)
         except Exception as e:
             iconn.rollback()
             print(f"    APPLY ERROR: {e}")
