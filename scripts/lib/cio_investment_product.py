@@ -261,7 +261,7 @@ def adjudicate_reentry(
             status = "NEAR"
             change = "Second independent source + valid FS, or an explicit RE_ENTER verdict."
         else:
-            status = "NEAR" if signal in {"IN_ZONE", "READY TO REVIEW", "READY"} else "WAIT"
+            status = "NEAR" if signal in {"IN_ZONE", "READY TO REVIEW", "READY", "NEAR ENTRY", "NEAR"} else "WAIT"
             change = "Independent research/queue confluence plus valid Financial Senses."
     rec = {
         "symbol": symbol,

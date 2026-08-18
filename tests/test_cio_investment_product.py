@@ -72,7 +72,7 @@ def test_queue_reentry_names_enter_book_without_prev_table(root: Path):
     p = build_product(root=root, queue=queue, previously_traded=[], holdings={})
     names = {r["symbol"]: r for r in p["reentry_book"]["names"]}
     assert "ANET" in names and "CSCO" in names
-    assert names["ANET"]["status"] in {"NEAR", "WAIT"}
+    assert names["ANET"]["status"] == "NEAR"
     assert names["ANET"]["governed_verdict"] is None
     assert "SCHG" not in names  # advisory ADD alone is opportunity book, not former-holding book
 
