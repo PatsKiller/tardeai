@@ -10,7 +10,7 @@
 | **Owner** | Alex desk · operator: John |
 | **Live CURRENT** | `575477dc-main-exact-phase2-20260818-175137` |
 | **CURRENT SHA** | `575477dc779c25111250a82b2e56d9c08a962950` |
-| **origin/main** | `38cd2320` (Flash overnight primary, PR #382) |
+| **origin/main** | `8f8a3acb` (R6.4 now-test docs, PR #383; last code `38cd2320` PR #382) |
 | **UI chip (live)** | `3.14+msz77bh2` · `575477dc` |
 | **Google Drive file** | [CIO_AND_ADVISORY_LIVING_STATUS.md](https://drive.google.com/file/d/1scL90dCZa7uOK9_sojX-MNBWHfrViWMi/view) |
 | **Drive folder** | [docs / investment-office](https://drive.google.com/drive/folders/1sVHlO8v-NStl2HRbk1bJqwqI67bxGUM8) |
