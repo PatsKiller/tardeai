@@ -11,6 +11,7 @@ Authority: READ_ONLY_ADVISORY.
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
@@ -19,7 +20,10 @@ from scripts.lib.cio_production_case import materialize_cases
 
 AUTHORITY = "READ_ONLY_ADVISORY"
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-OUT_PATH = PROJECT_ROOT / "data" / "cio" / "cio_reflection_candidates.jsonl"
+SNAPSHOT_PATH = PROJECT_ROOT / "data" / "cio" / "cio_reflection_candidates.json"
+HISTORY_PATH = PROJECT_ROOT / "data" / "cio" / "cio_reflection_candidates.jsonl"
+# Legacy alias — do not write pretty JSON to this path.
+OUT_PATH = HISTORY_PATH
 
 LESSON_STATES = (
     "CANDIDATE", "RATIFIED", "DISPUTED", "DEPRECATED", "SUPERSEDED", "REJECTED",
@@ -33,6 +37,57 @@ def _is_scored(case: dict[str, Any]) -> bool:
     if darwin.get("eligible") is True:
         return True
     return str(darwin.get("darwin_status") or "").upper() == "SCORED"
+
+
+def resolve_journal_paths(out_path: Optional[Path] = None) -> tuple[Path, Path]:
+    """Return (snapshot.json, history.jsonl). Never the same file."""
+    if out_path is None:
+        return SNAPSHOT_PATH, HISTORY_PATH
+    p = Path(out_path)
+    if p.suffix == ".jsonl":
+        return p.with_suffix(".json"), p
+    if p.suffix == ".json":
+        return p, p.with_name(p.stem + ".jsonl")
+    return p.with_suffix(".json"), p.with_suffix(".jsonl")
+
+
+def _atomic_write_text(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    tmp.replace(path)
+
+
+def extract_last_valid_jsonl_record(path: Path) -> Optional[dict[str, Any]]:
+    """Best-effort recover of the last compact JSON object from a malformed file."""
+    if not path.is_file():
+        return None
+    last = None
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = line.strip()
+        if not line or line in ("{", "}"):
+            continue
+        try:
+            obj = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(obj, dict):
+            last = obj
+    return last
+
+
+def persist_reflection(rec: dict[str, Any], *, snapshot_path: Path, history_path: Path) -> None:
+    """Atomically replace snapshot JSON and append exactly one compact JSONL row."""
+    if snapshot_path.resolve() == history_path.resolve():
+        raise ValueError("snapshot and history must be distinct paths")
+    snapshot_path.parent.mkdir(parents=True, exist_ok=True)
+    history_path.parent.mkdir(parents=True, exist_ok=True)
+    _atomic_write_text(snapshot_path, json.dumps(rec, indent=2, default=str) + "\n")
+    line = json.dumps(rec, sort_keys=True, default=str, separators=(",", ":")) + "\n"
+    with history_path.open("a", encoding="utf-8") as fh:
+        fh.write(line)
+        fh.flush()
+        os.fsync(fh.fileno())
 
 
 def reflect(*, cases_path: Optional[Path] = None, out_path: Optional[Path] = None) -> dict[str, Any]:
@@ -113,11 +168,8 @@ def reflect(*, cases_path: Optional[Path] = None, out_path: Optional[Path] = Non
         "auto_promotions": 0,
         "authority": AUTHORITY,
     }
-    dest = out_path or OUT_PATH
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    dest.write_text(json.dumps(rec, indent=2, default=str) + "\n", encoding="utf-8")
-    with dest.with_suffix(".jsonl").open("a", encoding="utf-8") as fh:
-        fh.write(json.dumps(rec, sort_keys=True, default=str) + "\n")
+    snapshot_path, history_path = resolve_journal_paths(out_path)
+    persist_reflection(rec, snapshot_path=snapshot_path, history_path=history_path)
     return rec
 
 

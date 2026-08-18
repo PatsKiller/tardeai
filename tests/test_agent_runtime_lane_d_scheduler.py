@@ -106,11 +106,25 @@ def test_run_once_refuses_without_operator_auth(monkeypatch: pytest.MonkeyPatch)
     assert rc == run_once.EX_NOPERM
 
 
-def test_run_once_refuses_disabled_agent_even_with_auth(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_run_once_disabled_agent_is_expected_no_work(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("AGENT_RUNTIME_OPERATOR_AUTH", "1")
     monkeypatch.setenv("AGENT_RUNTIME_QUEUE_MODULE", "some.module")
     rc = run_once.main(["--agent", SECOND_WAVE_AGENT_IDS[0], "--once"])
-    assert rc == run_once.EX_NOPERM
+    assert rc == 0
+
+
+def test_run_once_unknown_agent_is_expected_no_work(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AGENT_RUNTIME_OPERATOR_AUTH", "1")
+    rc = run_once.main(["--agent", "atlas", "--once"])
+    assert rc == 0
+
+
+def test_run_once_tax_agent_aliases_to_ledger(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AGENT_RUNTIME_OPERATOR_AUTH", "1")
+    monkeypatch.delenv("AGENT_RUNTIME_QUEUE_MODULE", raising=False)
+    rc = run_once.main(["--agent", "tax_agent", "--once"])
+    # ledger is DESIGNED/disabled → no-work 0 (not unknown 78)
+    assert rc == 0
 
 
 def test_run_once_refuses_without_queue_backend(monkeypatch: pytest.MonkeyPatch) -> None:

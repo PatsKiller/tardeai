@@ -1,0 +1,23 @@
+[Unit]
+Description=Trade AI governed SHADOW trigger producer
+ConditionPathExists=/etc/tradeai/agent_runtime_enabled
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
+Environment=PYTHONPATH=%h/trade-ai-releases/portfolio-server/CURRENT:%h/trade-ai-releases/portfolio-server/CURRENT/scripts
+Environment=AGENT_RUNTIME_OPERATOR_AUTH=0
+EnvironmentFile=-%h/.config/tradeai/agent-operator.env
+ExecStart=%h/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.agent_runtime.trigger_producer --json
+TimeoutStartSec=120
+Nice=10
+NoNewPrivileges=true
+PrivateTmp=true
+ReadWritePaths=%h/.local/state/tradeai
+StandardOutput=append:%h/trade-ai-releases/portfolio-server/CURRENT/logs/agent_runtime_producer.log
+StandardError=append:%h/trade-ai-releases/portfolio-server/CURRENT/logs/agent_runtime_producer.log
+
+[Install]
+WantedBy=default.target
