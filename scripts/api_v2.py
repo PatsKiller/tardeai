@@ -2412,6 +2412,21 @@ def overview():
             j_last_close = _lc.isoformat() if hasattr(_lc, "isoformat") else (str(_lc) if _lc else None)
     except Exception:
         j_trade_count = 0
+    # Journal-pipeline freshness (rebase the STALE badge here, NOT on last close date). trade_closed
+    # schwab rows are DELETE-then-INSERTed with created_at=NOW() on every schwab_journal_builder --apply,
+    # so MAX(created_at) = last successful rebuild. This is the real "is the journal up to date" signal;
+    # last_close_date (above) is just "when did I last close a position", which is legitimately old during
+    # a quiet market and must NOT be flagged as stale data.
+    j_last_ingested = None
+    j_ledger_last_trade = None
+    try:
+        _ing = _db_query("SELECT MAX(created_at) AS last_ingested_at FROM trade_closed WHERE account LIKE 'schwab%'", fetch="one") or {}
+        _lt = _db_query("SELECT MAX(trade_time) AS last_trade_time FROM trade_transactions WHERE import_source='schwab_api'", fetch="one") or {}
+        _ia, _ltv = _ing.get("last_ingested_at"), _lt.get("last_trade_time")
+        j_last_ingested = _ia.isoformat() if hasattr(_ia, "isoformat") else (str(_ia) if _ia else None)
+        j_ledger_last_trade = _ltv.isoformat() if hasattr(_ltv, "isoformat") else (str(_ltv) if _ltv else None)
+    except Exception:
+        j_last_ingested = j_ledger_last_trade = None
     if j_trade_count == 0:
         journal = _load_json(STATE_DIR / "trade_journal.json") or {}
         j_all = journal.get("closed_trades") or journal.get("trades") or []
@@ -2512,6 +2527,8 @@ def overview():
             # /api/v2/journal); was legacy_fifo_journal (trade_journal.json), frozen at the last CSV import.
             "basis": j_basis,
             "last_close_date": j_last_close,
+            "last_ingested_at": j_last_ingested,
+            "ledger_last_trade_time": j_ledger_last_trade,
         },
         "news_count": len(news.get("catalysts", [])),
         "notification_count": (notif_rows or {}).get("cnt", 0),
