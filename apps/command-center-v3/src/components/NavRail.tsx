@@ -25,6 +25,7 @@ const SECTIONS: { label: string; hubs: Hub[] }[] = [
       { to: '/agents', label: 'Agents' },
       { to: '/research-intelligence', label: 'Research Intel' },
       { to: '/intelligence', label: 'Intelligence' },
+      { to: '/closed-loop', label: 'Closed Loop' },
       { to: '/hermes', label: 'Hermes' },
       { to: '/advisory', label: 'Advisory Desk' },
       { to: '/cio', label: 'CIO Desk' },

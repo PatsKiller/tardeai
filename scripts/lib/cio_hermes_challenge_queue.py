@@ -465,6 +465,7 @@ class HermesChallengeQueue:
         self,
         challenge_id: str,
         actor_id: str = "hermes_system",
+        reason: str = "",
     ) -> dict[str, Any]:
         """Mark a challenge as expired."""
         challenges = self._build_projection()
@@ -481,6 +482,9 @@ class HermesChallengeQueue:
             "expired_at": datetime.now(timezone.utc).isoformat(),
             "previous_status": ch["status"],
         }
+        if reason:
+            payload["reason"] = reason
+            payload["status"] = "EXPIRED"
 
         event = build_event(
             event_type="HERMES_CHALLENGE_EXPIRED",

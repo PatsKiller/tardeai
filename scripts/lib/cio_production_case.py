@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
@@ -93,8 +94,15 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def default_cases_path() -> Path:
+    env = os.environ.get("TRADEAI_CIO_DIR")
+    if env:
+        return Path(env) / "cio_production_cases.jsonl"
+    return DEFAULT_PATH
+
+
 def _resolve_path(path: Optional[Path] = None) -> Path:
-    return path or DEFAULT_PATH
+    return path or default_cases_path()
 
 
 def case_id_for(decision_id: str, input_digest: str, evidence_digest: str) -> str:

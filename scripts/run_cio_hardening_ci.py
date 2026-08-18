@@ -84,6 +84,9 @@ GATES = [
     ("acceptance_harness_v4", [
         "tests/test_cio_acceptance_v4.py",
     ]),
+    ("intelligence_lineage", [
+        "tests/test_cio_intelligence_lineage.py",
+    ]),
 ]
 
 

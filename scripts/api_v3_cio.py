@@ -182,13 +182,21 @@ def _delegation_data() -> dict[str, Any]:
         elif "COMPLETED" in et:
             handoff_statuses["COMPLETED"] = handoff_statuses.get("COMPLETED", 0) + 1
 
+    try:
+        from lib.intelligence_lineage import challenge_latest, challenge_pending
+    except ImportError:
+        from scripts.lib.intelligence_lineage import challenge_latest, challenge_pending  # type: ignore
+
+    latest_by_stream = challenge_latest(challenges)
+    pending = challenge_pending(latest_by_stream)
     challenge_statuses: dict[str, int] = {}
-    for c in challenges:
-        et = c.get("event_type", "")
-        if "ENQUEUED" in et:
-            challenge_statuses["ENQUEUED"] = challenge_statuses.get("ENQUEUED", 0) + 1
-        elif "RESOLVED" in et:
-            challenge_statuses["RESOLVED"] = challenge_statuses.get("RESOLVED", 0) + 1
+    for c in latest_by_stream.values():
+        et = str(c.get("event_type") or "")
+        if et == "HERMES_CHALLENGE_GENESIS":
+            continue
+        key = et.replace("HERMES_CHALLENGE_", "") or "UNKNOWN"
+        challenge_statuses[key] = challenge_statuses.get(key, 0) + 1
+    challenge_statuses["PENDING"] = len(pending)
 
     # Latest events
     latest_handoff = handoffs[-1] if handoffs else None
@@ -206,12 +214,15 @@ def _delegation_data() -> dict[str, Any]:
         },
         "challenges": {
             "statuses": challenge_statuses,
-            "total": len([c for c in challenges if c.get("event_type") != "HERMES_CHALLENGE_GENESIS"]),
+            "pending": len(pending),
+            "unique_streams": len([k for k in latest_by_stream if k != "hermes_challenge_queue"]),
+            "total_events": len([c for c in challenges if c.get("event_type") != "HERMES_CHALLENGE_GENESIS"]),
+            "total": len(pending),
             "latest": {
                 "event_type": latest_challenge.get("event_type"),
                 "stream_id": latest_challenge.get("stream_id"),
                 "challenge_type": (latest_challenge.get("payload") or {}).get("challenge_type") if latest_challenge else None,
-                "timestamp": latest_challenge.get("timestamp"),
+                "timestamp": latest_challenge.get("timestamp") or latest_challenge.get("occurred_at"),
             } if latest_challenge else None,
         },
     }
