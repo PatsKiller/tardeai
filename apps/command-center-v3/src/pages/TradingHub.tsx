@@ -226,22 +226,25 @@ export default function TradingHub({ onDrill }: Props) {
   const { data: tradeAi, error: tradeAiError, loading: tradeAiLoading } = useApi<any>('/api/v2/trade-ai/scanner', 60_000, { enabled: tab === 'Trade AI' })
   const { data: warriorAudit } = useApi<any>('/api/v2/warrior-audit/latest', 300_000, { enabled: tab === 'Trade AI' })
   const paMap = useProAnalystMap()
-  const { data: openTrades } = useApi<any>('/api/v2/open-trades', 30_000, { enabled: tab === 'Open Trades' || !brokerDesk })
+  // Do not stampede the single-process API while the default Trade AI tab
+  // is still painting the scanner (941-row payload + 8 sibling polls = empty desk).
+  const scannerSettled = tab !== 'Trade AI' || !!tradeAi || !!tradeAiError
+  const { data: openTrades } = useApi<any>('/api/v2/open-trades', 30_000, { enabled: (tab === 'Open Trades' || !brokerDesk) && scannerSettled })
   // WP-T3 triage: position intelligence summary (risk flags) — hub-wide, slower poll
   const { data: openIntel, loading: openIntelLoading } = useApi<any>('/api/v2/open-trades/intelligence', 120_000, {
-    enabled: !pureSchwabTabs,
+    enabled: !pureSchwabTabs && scannerSettled,
   })
   // Paper PENDING+AFPT — validation/Alpaca pipeline only (NOT Path B broker queue).
-  const { data: proposals } = useApi<any>('/api/v2/paper-proposals', 60_000, { enabled: !pureSchwabTabs })
+  const { data: proposals } = useApi<any>('/api/v2/paper-proposals', 60_000, { enabled: !pureSchwabTabs && scannerSettled })
   // Path B truth for operator queue size — queue_summary.total (active broker entries).
-  const { data: brokerQueueSummary } = useApi<any>('/api/v2/broker-proposals/summary', 120_000, { enabled: !pureSchwabTabs })
+  const { data: brokerQueueSummary } = useApi<any>('/api/v2/broker-proposals/summary', 120_000, { enabled: !pureSchwabTabs && scannerSettled })
   // Light list probe for pagination.total when summary is thin / unavailable (same active population).
   const { data: brokerQueueList } = useApi<any>('/api/v2/broker-proposals?page=1&page_size=1', 120_000, {
-    enabled: !pureSchwabTabs && brokerQueueSummary == null,
+    enabled: !pureSchwabTabs && scannerSettled && brokerQueueSummary == null,
   })
-  const { data: paperStatus } = useApi<any>('/api/v2/paper-status', 30_000)
-  const { data: readiness } = useApi<any>('/api/v2/paper-trade-readiness', 120_000, { enabled: !brokerDesk })
-  const { data: execState } = useApi<any>('/api/v2/execution/current-state', 120_000, { enabled: !brokerDesk })
+  const { data: paperStatus } = useApi<any>('/api/v2/paper-status', 30_000, { enabled: scannerSettled })
+  const { data: readiness } = useApi<any>('/api/v2/paper-trade-readiness', 120_000, { enabled: !brokerDesk && scannerSettled })
+  const { data: execState } = useApi<any>('/api/v2/execution/current-state', 120_000, { enabled: !brokerDesk && scannerSettled })
   const { data: execQual, loading: execQualLoading, error: execQualError } = useApi<any>('/api/v2/execution-quality', 120_000, { enabled: tab === 'Execution' })
   const { data: scalpData } = useApi<any>('/api/v2/scalp/live', 120_000, { enabled: tab === 'Scalp' })
   const { data: scalpExt } = useApi<any>('/api/v2/hermes/subject-intel-map?type=scalp', 120_000, { enabled: tab === 'Scalp' })
@@ -249,11 +252,11 @@ export default function TradingHub({ onDrill }: Props) {
   const { data: setupAdvisory } = useApi<any>('/api/v2/atm/setup-advisory', 120_000, { enabled: tab === 'Open Trades' || tab === 'ATM Controls' })
   // Recon for tab body + hub triage (unmatched breaks)
   const { data: recon } = useApi<any>('/api/v2/broker-reconciliation', 120_000, {
-    enabled: tab === 'Broker Recon' || !pureSchwabTabs,
+    enabled: (tab === 'Broker Recon' || !pureSchwabTabs) && scannerSettled,
   })
   // Pilot standing approvals for 2FA triage chip
   const { data: pilotStatus } = useApi<any>('/api/v2/broker-orders/pilot/status', 60_000, {
-    enabled: !pureSchwabTabs || tab === 'Broker Orders',
+    enabled: (!pureSchwabTabs || tab === 'Broker Orders') && scannerSettled,
   })
 
   const advMap: Record<string, any> = {}
@@ -405,13 +408,14 @@ export default function TradingHub({ onDrill }: Props) {
         // scanner. Show an explicit state instead. Genuine empty data still renders below.
         if (!tradeAi) {
           const errored = !!tradeAiError
+          const pending = tradeAiLoading || !errored
           return (
             <div className={terminalUi ? 'cc-panel' : undefined} style={{ ...(terminalUi ? hubPanel(terminalUi) : { background: 'var(--bg1)', border: `1px solid ${errored ? '#ef4444' : 'var(--border)'}`, borderRadius: 10, padding: 16 }) }}>
               <div style={{ fontSize: terminalUi ? 11 : 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 6 }}>Market Opportunities Scanner</div>
               <div style={{ fontSize: 12, color: errored ? '#ef4444' : 'var(--text3)' }}>
-                {tradeAiLoading && !errored ? 'Loading latest scanner run…'
-                  : errored ? '⚠ Scanner data temporarily unavailable — /api/v2/trade-ai/scanner did not respond (auto-retrying every 60s). This is an API/data-availability issue, not necessarily an empty scan. Check backend load (e.g. a long-running backup) if it persists.'
-                  : 'No scanner data yet.'}
+                {errored ? '⚠ Scanner data temporarily unavailable — /api/v2/trade-ai/scanner did not respond (auto-retrying every 60s). This is an API/data-availability issue, not necessarily an empty scan. Check backend load (e.g. a long-running backup) if it persists.'
+                  : pending ? 'Loading latest scanner run…'
+                  : 'Scanner returned an empty payload — not a missing file. Recheck /api/v2/trade-ai/scanner.'}
               </div>
               <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/trade-ai/scanner{tradeAiError ? ` · error: ${String(tradeAiError).slice(0, 80)}` : ''}</div>
             </div>
