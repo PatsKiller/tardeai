@@ -67,6 +67,12 @@ def handle_get(path: str, query: dict | None = None) -> tuple[int, dict[str, Any
         return 200, {"ok": True, **AUTHORITY, **collect_telegram_receipts()}
     if p in ("autonomy-health", "autonomy"):
         return 200, {"ok": True, **AUTHORITY, **collect_autonomy_health()}
+    if p in ("heartbeat", "dashboard", "daily-intelligence"):
+        from scripts.lib.autonomy_watchdog.engine import api_payload
+        return 200, {**AUTHORITY, **api_payload()}
+    if p in ("heartbeat/history", "daily-intelligence/history"):
+        from scripts.lib.autonomy_watchdog.heartbeat import load_history
+        return 200, {"ok": True, **AUTHORITY, "history": load_history(limit_days=30)}
     if p == "memory":
         from scripts.lib.agent_durable_memory import get_durable_provider, display_status
         from scripts.lib.agent_memory_shadow import shadow_metrics

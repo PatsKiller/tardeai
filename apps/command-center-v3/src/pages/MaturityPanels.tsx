@@ -184,12 +184,91 @@ export function CasesPanel() {
   </div>
 }
 
+export function DailyIntelligencePanel() {
+  const { data, loading, error } = useApi<any>('/api/v3/maturity/heartbeat', 30_000)
+  const today = data?.today || {}
+  const comps = data?.components || today.components || []
+  const hist = data?.history || []
+  const auto = today.autonomy || {}
+  const senses = today.senses || {}
+  const learn = today.learning || {}
+  const mem = today.memory || {}
+  const cio = today.cio || {}
+  const fin = today.finops || {}
+  const auth = today.authority || {}
+  return <div data-testid="daily-intelligence" style={panel}>
+    <div style={{ fontWeight: 800 }}>TRADE AI INTELLIGENCE · TODAY</div>
+    <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>
+      Daily proof that the intelligence office ran. Silence from CIO financial Telegram is not failure.
+    </div>
+    <div style={{ marginTop: 8, fontSize: 12 }}>
+      overall={today.overall || data?.watchdog_state?.overall || '—'} ·
+      SHA {String(today.release_sha || '').slice(0, 12) || '—'} ·
+      provenance={today.provenance_status || '—'} ·
+      last watchdog {data?.watchdog_state?.at || '—'}
+    </div>
+    <div style={{ marginTop: 6, fontSize: 12 }}>
+      last system Telegram {data?.last_system_telegram?.at || 'NEVER'} ·
+      last daily heartbeat {data?.last_daily_system_telegram?.at || 'NEVER'} ·
+      last financial Telegram {cio.last_financial_telegram || 'NEVER'}
+    </div>
+    {loading && <div>Loading…</div>}
+    {error && <div style={{ color: 'var(--amber)' }}>{String(error)}</div>}
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 8, marginTop: 12 }}>
+      {[
+        ['Agents', auto.state, auto.wakes, auto.reason],
+        ['Financial Senses', senses.state, senses.receipts, senses.reason],
+        ['Learning', learn.state, learn.reflections, learn.reason],
+        ['Memory', mem.state, mem.retrievals, mem.reason],
+        ['CIO Notifications', cio.state, cio.material_scans, cio.reason],
+        ['FinOps', fin.state, fin.events, fin.reason],
+        ['Authority', auth.memory_behavior_influence === '0' || auth.memory_behavior_influence === 0 ? 'HEALTHY' : 'FAILED', auth.memory_behavior_influence, 'MEMORY_BEHAVIOR_INFLUENCE'],
+      ].map(([title, state, count, reason]) => (
+        <div key={String(title)} style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 10 }}>
+          <div style={label}>{String(title)}</div>
+          <div style={{ fontWeight: 800, marginTop: 4 }}>{String(state || '—')}</div>
+          <div style={{ fontSize: 12 }}>today {String(count ?? '—')}</div>
+          <div style={{ fontSize: 11, color: 'var(--text3)' }}>{String(reason || '')}</div>
+        </div>
+      ))}
+    </div>
+    {cio.silence_explained && <div style={{ marginTop: 12, fontSize: 12, color: 'var(--text2)' }}>
+      {cio.silence_copy || 'No material immediate financial notification required. The scanner is operating normally.'}
+    </div>}
+    <div style={{ marginTop: 16, fontWeight: 800 }}>History (30 days)</div>
+    <Table
+      cols={['date', 'overall', 'agents', 'senses', 'reflection', 'memory', 'CIO scans', 'financial TG', 'health']}
+      rows={hist.slice(-30).map((h: any) => [
+        h.date, h.overall,
+        (h.autonomy || {}).wakes, (h.senses || {}).receipts,
+        (h.learning || {}).reflections, (h.memory || {}).retrievals,
+        (h.cio || {}).material_scans, (h.cio || {}).Telegram_financial_sends,
+        (h.health || {}).overall,
+      ])}
+    />
+    <pre style={{ display: 'none' }}>{JSON.stringify(comps)}</pre>
+  </div>
+}
+
 export function NotificationGatePanel() {
   const { data, loading, error } = useApi<any>('/api/v3/maturity/notification-gate', 30_000)
+  const { data: hb } = useApi<any>('/api/v3/maturity/heartbeat', 30_000)
   const rows = data?.lineages || []
+  const cio = (hb?.today || {}).cio || {}
   return <div data-testid="cio-notification-gate" style={panel}>
     <div style={{ fontWeight: 800 }}>Notification Gate</div>
     <div style={{ marginTop: 4, fontSize: 12, color: 'var(--text3)' }}>IMMEDIATE · DIGEST · COMMAND_CENTER_ONLY · SUPPRESSED</div>
+    <div style={{ marginTop: 8, fontSize: 12 }}>
+      Scanner: {cio.state || '—'} · scans today {cio.material_scans ?? '—'} ·
+      immediate {cio.immediate ?? '—'} · digest {cio.digest ?? '—'} ·
+      CC-only {cio.command_center_only ?? '—'} · suppressed {cio.suppressed ?? '—'} ·
+      last Telegram {cio.last_financial_telegram || 'NEVER'}
+    </div>
+    {(cio.immediate === 0 || cio.immediate === '0') && (Number(cio.suppressed) > 0 || Number(cio.material_scans) > 0) && (
+      <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text2)' }}>
+        No material immediate financial notification required. The scanner is operating normally.
+      </div>
+    )}
     {loading && <div>Loading…</div>}
     {error && <div style={{ color: 'var(--amber)' }}>{String(error)}</div>}
     <Table
