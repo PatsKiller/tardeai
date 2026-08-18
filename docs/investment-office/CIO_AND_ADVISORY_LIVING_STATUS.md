@@ -4,15 +4,15 @@
 |---|---|
 | **Document name** | `CIO_AND_ADVISORY_LIVING_STATUS.md` |
 | **Repo path** | `docs/investment-office/CIO_AND_ADVISORY_LIVING_STATUS.md` |
-| **Revision** | **R2 — 2026-08-18T15:40Z** (post-closed-loop **reconciliation**; prior program did **not** return a packet) |
+| **Revision** | **R3 — 2026-08-18T15:42Z** (same reconciliation truth; CURRENT promoted to match main) |
 | **Status** | **RECONCILIATION / PARTIAL_WITH_EXPLICIT_GAPS** |
 | **Authority** | `READ_ONLY_ADVISORY` · `MEMORY_BEHAVIOR_INFLUENCE=0` · `broker_write=NONE` |
 | **Owner** | Alex desk · operator: John |
-| **Live CURRENT** | `3290ab0d-main-exact-phase2-20260818-110747` |
-| **CURRENT SHA** | `3290ab0dedb0648e71861da6900b882ed50c7e04` |
-| **origin/main** | `6d5572e4d3fae86ff22cb9cb2569f159dd37f038` |
-| **Provenance** | **MAIN_AHEAD_NOT_DEPLOYED** (CURRENT internally valid; main has #367 guard ledger not promoted) |
-| **UI chip** | `3.14+msysryqp` · `3290ab0d` |
+| **Live CURRENT** | `66c733a4-main-exact-phase2-20260818-113725` |
+| **CURRENT SHA** | `66c733a4d63db38c5f80a61fc096755fcc557023` |
+| **origin/main** | `66c733a4d63db38c5f80a61fc096755fcc557023` |
+| **Provenance** | **CURRENT_MATCH** (promoted after R2 merge #368) |
+| **UI chip** | `3.14+msytu33x` · `66c733a4` |
 | **Google Drive file** | [CIO_AND_ADVISORY_LIVING_STATUS.md](https://drive.google.com/file/d/1scL90dCZa7uOK9_sojX-MNBWHfrViWMi/view) |
 | **Drive folder** | [docs / investment-office](https://drive.google.com/drive/folders/1sVHlO8v-NStl2HRbk1bJqwqI67bxGUM8) |
 
@@ -29,7 +29,7 @@
 | Surface | Status | Live evidence |
 |---|---|---|
 | Command Center SPA | **WORKING** | `/v3/*` 200 HTML; chip `3.14+msysryqp` |
-| Release / CURRENT vs main | **WORKING_DEGRADED** | CURRENT `3290ab0d` valid; origin/main `6d5572e4` (#367) **not deployed** |
+| Release / CURRENT vs main | **WORKING** | CURRENT = origin/main `66c733a4` after exact-main promote |
 | `/api/v3/cio` | **WORKING_DEGRADED** | 200, `desk@v5`; snapshot **14/15** domains, missing **reconciliation** |
 | `/api/v3/advisory` | **WORKING_DEGRADED** | 200, 58 rows, facts CURRENT on desk, **OPINION_FRESHNESS=EXPIRED**, health DEGRADED |
 | Agent maturity | **WORKING_DEGRADED** | 200 in 3.01s, `degraded=true`, repo evidence (live PG still >3s) |
@@ -53,14 +53,14 @@
 
 | Item | Exact value |
 |---|---|
-| POST_CLOSED_LOOP_MAIN | `6d5572e4d3fae86ff22cb9cb2569f159dd37f038` |
+| POST_CLOSED_LOOP_MAIN | `66c733a4d63db38c5f80a61fc096755fcc557023` |
 | origin/main | same |
-| CURRENT path | `/home/johnclaw/trade-ai-releases/portfolio-server/3290ab0d-main-exact-phase2-20260818-110747` |
-| SOURCE_COMMIT / BUILD_SHA / GIT_SHA | `3290ab0dedb0648e71861da6900b882ed50c7e04` |
-| BUILD_STAMP | `2026-08-18T15:08:24Z` label `main-exact-phase2` |
-| build-meta ui | `3.14+msysryqp` |
-| `validate_release_provenance.py CURRENT` | **ok: true** (internal consistency of CURRENT) |
-| Classification | **MAIN_AHEAD_OF_CURRENT** · CURRENT_MATCH=false · PROVENANCE_VALID=true **for CURRENT only** |
+| CURRENT path | `/home/johnclaw/trade-ai-releases/portfolio-server/66c733a4-main-exact-phase2-20260818-113725` |
+| SOURCE_COMMIT / BUILD_SHA / GIT_SHA | `66c733a4d63db38c5f80a61fc096755fcc557023` |
+| BUILD_STAMP | `2026-08-18T15:38:03Z` label `main-exact-phase2` |
+| build-meta ui | `3.14+msytu33x` |
+| `validate_release_provenance.py CURRENT` | **ok: true** |
+| Classification | **CURRENT_MATCH** · PROVENANCE_VALID=true |
 | Branch protection | required PR; required check `cio-hardening`; no force-push |
 | Recent merges | #367 guard ledger, #365/#364 CC gaps, #363/#362 load repair, #361–#359 Advisory, #356–#358 CIO books, #355 watchdog, #354 memory |
 | Open overlapping | **#366** living-status (R1, **not on main**); plus older research/reentry drafts |
@@ -277,7 +277,7 @@ Timers (oneshot between fires): CIO reactive / material-scan / delivery / defer-
 | gap_id | domain | severity | current | required | impact |
 |---|---|---|---|---|---|
 | G-PRIOR-01 | program | **P0** | Closed-loop program never ran; no packet | Execute or explicitly defer | All lineage links MISSING |
-| G-REL-01 | release | **P0** | CURRENT `3290ab0d` behind main `6d5572e4` | CURRENT = origin/main | Watchdog DEGRADED; two truths |
+| G-REL-01 | release | **closed** | was MAIN_AHEAD; promoted `66c733a4` | CURRENT = origin/main | closed by exact-main promote |
 | G-LOOP-01 | lineage | **P0** | No IntelligenceLineage@v1 / 404 APIs | Durable lineage store + API + CC | Cannot prove discover→reuse |
 | G-RES-01 | research | **P0** | 210 ENQUEUED; hermes loop **failed** | Drain + completing worker | Requests do not become results |
 | G-OUT-01 | outcomes | **P0** | 0 matured / 0 scored | Observer + maturity rules | Learning loop broken |
@@ -329,6 +329,7 @@ Same filename. Next rewrite after closure/deploy is **R3**. Replace Drive file `
 | Rev | UTC | What changed |
 |---|---|---|
 | R1 | 2026-08-18T15:15Z | First sheet after #364/#365. Pre-closed-loop. |
-| **R2** | **2026-08-18T15:40Z** | Post-closed-loop **reconciliation**. Prior program **did not run**. Live re-probe. Lineage IDs = MISSING. Gap register v1. Telegram daily **proven**. MAIN ahead of CURRENT. |
+| R2 | 2026-08-18T15:40Z | Post-closed-loop reconciliation. Prior program did not run. Lineage IDs MISSING. MAIN ahead of CURRENT. |
+| **R3** | **2026-08-18T15:42Z** | Exact-main promote `66c733a4`. CURRENT_MATCH. Intelligence loop still **not proven**. Gaps other than G-REL-01 / G-DOC-01 remain. |
 
-*End of R2. GitHub + Drive + this file must tell this same story.*
+*End of R3. GitHub + Drive + CURRENT must tell this same story. Closed-loop IDs remain MISSING.*
