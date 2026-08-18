@@ -34,6 +34,18 @@ def test_trigger_producer_missing_dsn_fail_soft(monkeypatch):
     assert rc == 0
 
 
+def test_trigger_producer_db_unavailable_fail_soft(monkeypatch):
+    from scripts.agent_runtime import trigger_producer as tp
+
+    class Boom:
+        def get_cursor(self, *a, **k):
+            raise RuntimeError("connection refused")
+
+    monkeypatch.setattr(tp, "_build_store", lambda: Boom())
+    rc = tp.main(["--json", "--sources", "watch"])
+    assert rc == 0
+
+
 def test_health_monitor_writes_observation_without_crashing(tmp_path, monkeypatch):
     from scripts.agent_runtime import health_monitor as hm
 
