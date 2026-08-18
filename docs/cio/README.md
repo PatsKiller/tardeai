@@ -1,6 +1,6 @@
 # CIO Desk — Architect Packet
 
-**CURRENT OPERATOR TRUTH (living sheet, R4):**  
+**CURRENT OPERATOR TRUTH (living sheet, R6):**  
 [`docs/investment-office/CIO_AND_ADVISORY_LIVING_STATUS.md`](../investment-office/CIO_AND_ADVISORY_LIVING_STATUS.md)  
 This sheet overrides older architecture/planning docs when they disagree. Drive: same filename, replaced in place.
 
