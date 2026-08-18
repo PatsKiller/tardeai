@@ -40338,6 +40338,29 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
 
+    # ── /v3/maturity — Command Center learning / promotion / notification GET ─
+    if base_path.startswith("/api/v3/maturity-control"):
+        try:
+            import api_v3_maturity as _mat
+            p = base_path[len("/api/v3/maturity-control"):].strip("/")
+            if method != "POST":
+                return 405, {"ok": False, "error": "method_not_allowed",
+                             "message": "maturity-control is POST-only; dashboard stays GET"}
+            return _mat.handle_control_post(p, body or {})
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
+
+    if base_path.startswith("/api/v3/maturity"):
+        try:
+            import api_v3_maturity as _mat
+            p = base_path[len("/api/v3/maturity"):].strip("/")
+            if method != "GET":
+                return 405, {"ok": False, "error": "method_not_allowed",
+                             "message": "maturity dashboard API is GET-only"}
+            return _mat.handle_get(p, query if isinstance(query, dict) else None)
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
+
     # ── /v3/advisory — Advisory Desk v1 (Phase 4 surface) ─────────────────
     if base_path.startswith("/api/v3/advisory"):
         try:

@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, type CSSProperties, type ReactNode } 
 import { useSearchParams, Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { hubTitle, hubSubtitle } from '../lib/terminalHubChrome'
+import { NotificationGatePanel, SensesEvidencePanel, TelegramReceiptsPanel } from './MaturityPanels'
 
 /**
  * /v3/cio — the private investment office home (Phase 8).
@@ -171,7 +172,7 @@ type DispositionRec = {
 }
 type DispositionMap = Record<string, DispositionRec>
 
-const TABS = ['cio-now', 'capital-plan', 'posture', 'opportunities', 'report', 'evidence'] as const
+const TABS = ['cio-now', 'capital-plan', 'posture', 'opportunities', 'report', 'evidence', 'notification-gate', 'telegram-receipts', 'senses-evidence'] as const
 type Tab = typeof TABS[number]
 
 const TAB_LABEL: Record<Tab, string> = {
@@ -181,6 +182,9 @@ const TAB_LABEL: Record<Tab, string> = {
   opportunities: 'OPPORTUNITIES',
   report: 'REPORT',
   evidence: 'EVIDENCE / AUDIT',
+  'notification-gate': 'NOTIFICATION GATE',
+  'telegram-receipts': 'TELEGRAM RECEIPTS',
+  'senses-evidence': 'SENSES EVIDENCE',
 }
 
 function fmtUsd(n: number | null | undefined): string {
@@ -1008,7 +1012,15 @@ export default function CioHub({ onDrill }: Props) {
         </div>
       )}
 
-      {home && (
+      {(tab === 'notification-gate' || tab === 'telegram-receipts' || tab === 'senses-evidence') && (
+        <div role="tabpanel" aria-label={TAB_LABEL[tab]}>
+          {tab === 'notification-gate' && <NotificationGatePanel />}
+          {tab === 'telegram-receipts' && <TelegramReceiptsPanel />}
+          {tab === 'senses-evidence' && <SensesEvidencePanel />}
+        </div>
+      )}
+
+      {home && tab !== 'notification-gate' && tab !== 'telegram-receipts' && tab !== 'senses-evidence' && (
         <div role="tabpanel" aria-label={TAB_LABEL[tab]}>
           {tab === 'cio-now' && <CioNowSection home={home} dispositions={dispositions} legacyUnversioned={legacyUnversioned} onAct={onAct} />}
           {tab === 'capital-plan' && <CapitalPlanSection cp={home.capital_plan} />}

@@ -7,6 +7,7 @@ import CoderDispatchLedger from '../components/health/CoderDispatchLedger'
 import RiskHealthStrip from '../components/risk/RiskHealthStrip'
 import RemediationDashboard from './RemediationDashboard'
 import OpsAutonomyDashboard from './OpsAutonomyDashboard'
+import { AutonomyLoopPanel } from './MaturityPanels'
 import type { DrillContext } from '../components/DetailDrawer'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubTab, hubPanel } from '../lib/terminalHubChrome'
@@ -47,6 +48,7 @@ const TAB_HELP: Record<string, string> = {
   history: 'Score trend over recent cron runs (every 30 min) with per-run context: what degraded, finding counts, deltas.',
   log: 'Health Inspector remediation log — every fix, remediation, and escalations across all 22+ producers and agent pipelines. Auto-refreshes every 60s.',
   autonomy: 'Ops Command Board — WHAT / WHY / WHO / WHEN / HOW / STATUS for Layer-1 Ops Agent + Layer-4 Health Agent.',
+  'intelligence-loop': 'Agent-runtime, reflection, Financial Senses, notification, FinOps, and CURRENT provenance freshness.',
 }
 
 function fmtWhen(s?: string) {
@@ -64,10 +66,10 @@ export default function HealthHub({ onDrill }: Props) {
   const [terminalUi] = useTerminalUi()
   const [searchParams] = useSearchParams()
   const urlTab = searchParams.get('tab')
-  const [tab, setTab] = useState<'overview' | 'coders' | 'history' | 'log' | 'autonomy'>(
-    urlTab === 'coders' || urlTab === 'history' || urlTab === 'log' || urlTab === 'autonomy' ? urlTab : 'overview')
+  const [tab, setTab] = useState<'overview' | 'coders' | 'history' | 'log' | 'autonomy' | 'intelligence-loop'>(
+    urlTab === 'coders' || urlTab === 'history' || urlTab === 'log' || urlTab === 'autonomy' || urlTab === 'intelligence-loop' ? urlTab : 'overview')
   useEffect(() => {
-    if (urlTab === 'coders' || urlTab === 'history' || urlTab === 'overview' || urlTab === 'log' || urlTab === 'autonomy') setTab(urlTab)
+    if (urlTab === 'coders' || urlTab === 'history' || urlTab === 'overview' || urlTab === 'log' || urlTab === 'autonomy' || urlTab === 'intelligence-loop') setTab(urlTab)
   }, [urlTab])
   const { data: health, loading, error } = useApi<any>('/api/v2/health', 120_000)
   const { data: coders } = useApi<any>('/api/v2/health/coders', 120_000)
@@ -130,7 +132,7 @@ export default function HealthHub({ onDrill }: Props) {
           </div>
         </div>
         <div className="hub-tabs" style={{ display: 'flex', gap: terminalUi ? 4 : 6, flexWrap: 'wrap' }}>
-          {(['overview', 'coders', 'history', 'log', 'autonomy'] as const).map(t => (
+          {(['overview', 'coders', 'history', 'log', 'autonomy', 'intelligence-loop'] as const).map(t => (
             <button key={t} onClick={() => setTab(t)} title={TAB_HELP[t]} style={hubTab(tab === t, terminalUi)}>
               {t === 'autonomy' ? 'Ops Command' : t.charAt(0).toUpperCase() + t.slice(1)}
             </button>
@@ -611,6 +613,7 @@ export default function HealthHub({ onDrill }: Props) {
 
       {tab === 'log' && <RemediationDashboard />}
       {tab === 'autonomy' && <OpsAutonomyDashboard />}
+      {tab === 'intelligence-loop' && <AutonomyLoopPanel />}
     </div>
   )
 }
