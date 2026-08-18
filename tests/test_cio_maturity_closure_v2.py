@@ -119,6 +119,16 @@ def test_queue_health_classifies_test_symbol(cio: Path):
     assert h["by_reason"].get("fixture_test", 0) >= 1
 
 
+def test_reconciliation_accepts_naive_as_of(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    from lib import cio_reconciliation as cr
+    hp = tmp_path / "holdings.json"
+    hp.write_text(json.dumps({"as_of": "2026-08-14T12:00:00", "holdings": []}))
+    monkeypatch.setattr(cr, "_holdings_path", lambda: hp)
+    rec = cr.build()
+    assert rec["holdings_source_freshness"] in {"STALE", "EXPIRED", "CURRENT"}
+    assert rec["financial_action"] is False
+
+
 def test_reconciliation_is_honest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     rec = build_recon()
     assert rec["schema"] == "CIOReconciliation@v1"
