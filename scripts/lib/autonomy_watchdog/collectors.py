@@ -408,6 +408,40 @@ def collect_finops(*, root: Path, start, end, now=None) -> dict[str, Any]:
     }
 
 
+def collect_advisory(*, root: Path, now=None) -> dict[str, Any]:
+    """Advisory Desk freshness — facts / watch / re-entry / opinions."""
+    try:
+        from scripts.lib.advisory_desk_operator import assess_watchdog_advisory
+        facts = assess_watchdog_advisory(now=now)
+    except Exception as exc:  # noqa: BLE001
+        facts = {"facts_freshness": FAILED, "error": type(exc).__name__}
+    freshness = str(facts.get("facts_freshness") or "UNAVAILABLE")
+    if freshness == "CURRENT":
+        status, reason = HEALTHY, f"desk_age_s={facts.get('desk_age_seconds')}"
+    elif freshness == "STALE":
+        status, reason = STALE, f"desk_age_s={facts.get('desk_age_seconds')}"
+    elif freshness == "EXPIRED":
+        status, reason = STALE, "advisory snapshot expired"
+    else:
+        status, reason = NOT_CONFIGURED, facts.get("error") or "no advisory snapshot"
+    return {
+        "component": component(
+            "advisory", status, last_success=facts.get("desk_computed_at"),
+            reason=reason, source="advisory_desk_latest.json", now=now,
+            extras={
+                "facts_freshness": freshness,
+                "watch_coverage": facts.get("watch_intelligence_joined"),
+                "watch_rows": facts.get("watch_rows"),
+                "reentry_coverage": facts.get("reentry_fields_present"),
+                "reentry_rows": facts.get("reentry_rows"),
+                "opinion_freshness": facts.get("opinion_freshness"),
+                "operator_truth_version": facts.get("operator_truth_version"),
+            },
+        ),
+        "facts": facts,
+    }
+
+
 def collect_authority(*, env=None, now=None) -> dict[str, Any]:
     mbi = _env("MEMORY_BEHAVIOR_INFLUENCE", "0", env)
     bad = mbi not in {"0", "", "false", "off"}
@@ -469,9 +503,10 @@ def collect_all(*, root: Any = None, now=None, env=None) -> dict[str, Any]:
     cio = collect_cio(root=base, start=start, end=end, now=now)
     fin = collect_finops(root=base, start=start, end=end, now=now)
     auth = collect_authority(env=env, now=now)
+    adv = collect_advisory(root=base, now=now)
     host = collect_host_health()
     comps = [rel["component"], auto["component"], senses["component"], learn["component"],
-             mem["component"], cio["component"], fin["component"], auth["component"]]
+             mem["component"], cio["component"], fin["component"], adv["component"], auth["component"]]
     return {
         "root": str(base),
         "day": None,
@@ -482,6 +517,7 @@ def collect_all(*, root: Any = None, now=None, env=None) -> dict[str, Any]:
         "memory": mem,
         "cio": cio,
         "finops": fin,
+        "advisory": adv,
         "authority": auth,
         "host_health": host,
         "components": comps,

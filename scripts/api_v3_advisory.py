@@ -51,20 +51,56 @@ def compute_banners(meta: dict[str, Any], data: dict[str, Any]) -> list[dict[str
                 f"marks/MV/targets{': ' + shown if shown else ''}{extra}"
             ),
         })
-    # 1 OK / health
-    if meta.get("validation_ok") and meta.get("plausibility_gate") == "PASS":
+    # 1 Desk health — validation_ok + plausibility is NOT sufficient.
+    health = (data.get("desk_health") or meta.get("desk_health") or {})
+    overall = str(health.get("overall") or "")
+    if not overall:
+        # Fallback only when operator enrichment has not run.
+        if meta.get("validation_ok") and meta.get("plausibility_gate") == "PASS":
+            overall = "UNKNOWN"
+        else:
+            overall = "FAILED"
+    if overall == "HEALTHY":
         banners.append({
             "id": "OK",
             "severity": "info",
-            "title": "Desk healthy",
-            "detail": f"{meta.get('holdings_rows', 0)} holdings · validation PASS",
+            "title": "Desk HEALTHY",
+            "detail": health.get("reason") or f"{meta.get('holdings_rows', 0)} holdings · facts current · validation PASS",
         })
-    else:
+    elif overall == "STALE":
+        banners.append({
+            "id": "DESK_STALE",
+            "severity": "warn",
+            "title": "Desk STALE",
+            "detail": health.get("reason") or "Facts or cache older than policy — not current",
+        })
+    elif overall == "PARTIAL":
+        banners.append({
+            "id": "DESK_PARTIAL",
+            "severity": "warn",
+            "title": "Desk PARTIAL",
+            "detail": health.get("reason") or "Some source families incomplete",
+        })
+    elif overall == "DEGRADED":
+        banners.append({
+            "id": "DESK_DEGRADED",
+            "severity": "warn",
+            "title": "Desk DEGRADED",
+            "detail": health.get("reason") or "Opinions or secondary providers stale",
+        })
+    elif overall == "FAILED":
         banners.append({
             "id": "VALIDATION_FAIL",
             "severity": "critical",
-            "title": "Validation issues",
-            "detail": "; ".join((meta.get("validation_errors") or [])[:3]) or "validation_ok=false",
+            "title": "Desk FAILED",
+            "detail": health.get("reason") or "; ".join((meta.get("validation_errors") or [])[:3]) or "validation_ok=false",
+        })
+    else:
+        banners.append({
+            "id": "DESK_UNKNOWN",
+            "severity": "warn",
+            "title": f"Desk {overall or 'UNKNOWN'}",
+            "detail": health.get("reason") or "Operator health not attached — do not assume healthy",
         })
     # 2 Plausibility
     if meta.get("plausibility_gate") == "FAIL":
@@ -252,12 +288,22 @@ def _row_view(row: dict[str, Any], opinions: dict[str, Any] | None = None) -> di
     if action_suppressed:
         dq["banner"] = "DATA CONFLICT — ACTION SUPPRESSED"
 
+    operator = row.get("operator") if isinstance(row.get("operator"), dict) else {}
+    watch = row.get("watch_intelligence") or operator.get("watch_intelligence")
+    reentry = row.get("reentry") or operator.get("reentry")
+    durable = row.get("durable_memory") or operator.get("durable_memory")
+    senses = row.get("financial_senses") or operator.get("financial_senses")
+    field_states = row.get("field_states") or operator.get("field_states")
     return {
         "symbol": row.get("symbol"),
         "account": row.get("account"),
         "row_class": row.get("row_class"),
         "verdict": _verdict_str(row.get("verdict")),
         "confidence": row.get("confidence"),
+        "setup_state": row.get("setup_state") or operator.get("setup_state"),
+        "setup_confidence": row.get("setup_confidence"),
+        "watch_filters": row.get("watch_filters") or operator.get("watch_filters") or [],
+        "watch_rank": row.get("watch_rank") if row.get("watch_rank") is not None else operator.get("watch_rank"),
         "market_value": row.get("market_value"),
         "weight_pct": row.get("weight_pct"),
         "gain_loss_pct": row.get("gain_loss_pct"),
@@ -268,11 +314,27 @@ def _row_view(row: dict[str, Any], opinions: dict[str, Any] | None = None) -> di
         "rationale": row.get("rationale"),
         "rationale_signals": _split_rationale_signals(row.get("rationale") or ""),
         "risk_signals": row.get("risk_signals") or [],
+        "why_call": row.get("why_call") or operator.get("why_call"),
         "advisory_row_hash": rh,
         "row_id": f"{row.get('symbol')}:{row.get('account') or ''}|{(row.get('computed_at') or '')[:10]}|{rh[:12]}",
         "data_quality": dq,
         "canonical_financial_facts": facts,
         "advisory_provenance": provenance,
+        "field_states": field_states,
+        "watch_intelligence": watch,
+        "reentry": reentry,
+        "reentry_state": row.get("reentry_state"),
+        "reentry_entry_low": row.get("reentry_entry_low"),
+        "reentry_entry_high": row.get("reentry_entry_high"),
+        "reentry_price": row.get("reentry_price"),
+        "reentry_rsi": row.get("reentry_rsi"),
+        "reentry_distance_label": row.get("reentry_distance_label"),
+        "reentry_next_action": row.get("reentry_next_action"),
+        "reentry_reason": row.get("reentry_reason"),
+        "reentry_wash_status": row.get("reentry_wash_status"),
+        "durable_memory": durable,
+        "financial_senses": senses,
+        "operator": operator,
         "expand": {
             "lots": lot,
             "canonical_financial_facts": facts,
@@ -280,6 +342,11 @@ def _row_view(row: dict[str, Any], opinions: dict[str, Any] | None = None) -> di
             "price_action": pa,
             "analyst": analyst,
             "memory": memory,
+            "durable_memory": durable,
+            "financial_senses": senses,
+            "watch_intelligence": watch,
+            "reentry": reentry,
+            "field_states": field_states,
             "evidence_items": items[:20],
             "opinion": opinion,
             "instrument": row.get("instrument"),
@@ -288,15 +355,24 @@ def _row_view(row: dict[str, Any], opinions: dict[str, Any] | None = None) -> di
 
 
 def _load_desk(*, force: bool = False) -> dict[str, Any]:
-    if not force and CACHE_FILE.exists():
-        try:
-            cached = json.loads(CACHE_FILE.read_text(encoding="utf-8"))
-            if cached.get("ok"):
-                return cached
-        except Exception:
-            pass
-    from lib.data_broker.advisory_desk import build_advisory_desk
-    return build_advisory_desk(force=True, max_age_s=0)
+    """Honor advisory_desk.DEFAULT_MAX_AGE_S. Never serve a day-old ok=true blob."""
+    from lib.data_broker.advisory_desk import DEFAULT_MAX_AGE_S, build_advisory_desk
+    try:
+        desk = build_advisory_desk(force=force, max_age_s=0 if force else DEFAULT_MAX_AGE_S)
+    except Exception:
+        # Last resort: labeled stale cache only when recompute is impossible.
+        if CACHE_FILE.exists():
+            try:
+                cached = json.loads(CACHE_FILE.read_text(encoding="utf-8"))
+                if isinstance(cached, dict):
+                    cached["cache_hit"] = True
+                    cached["stale_fallback"] = True
+                    cached["desk_freshness_state"] = "EXPIRED"
+                    return cached
+            except Exception:
+                pass
+        raise
+    return desk
 
 
 def _load_opinions_blob() -> dict[str, Any]:
@@ -330,10 +406,25 @@ def _load_opinions_blob() -> dict[str, Any]:
 
 def get_advisory_desk(*, force: bool = False, row_class: str | None = None) -> dict[str, Any]:
     desk = _load_desk(force=force)
+    opinions = desk.get("opinions") or _load_opinions_blob()
+    # Operator-grade join: watch intelligence, re-entry, durable memory, FS.
+    # Re-enrich when the cached envelope predates this contract.
+    try:
+        from lib.advisory_desk_operator import OPERATOR_TRUTH_VERSION, enrich_desk
+        ot = desk.get("operator_truth") or (desk.get("data") or {}).get("operator_truth") or {}
+        if ot.get("version") != OPERATOR_TRUTH_VERSION:
+            desk = enrich_desk(desk, opinions=opinions if isinstance(opinions, dict) else {}, cache_path=CACHE_FILE)
+            if not desk.get("cache_hit") or desk.get("stale_fallback"):
+                try:
+                    CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+                    CACHE_FILE.write_text(json.dumps(desk, indent=2, default=str), encoding="utf-8")
+                except Exception:
+                    pass
+    except Exception:
+        pass
     data = desk.get("data") or {}
     meta = data.get("metadata") or {}
     rows_raw = data.get("rows") or []
-    opinions = desk.get("opinions") or _load_opinions_blob()
     opinion_rows = opinions.get("rows") if isinstance(opinions, dict) else None
 
     rows = [_row_view(r, opinion_rows if isinstance(opinion_rows, dict) else opinions) for r in rows_raw]
@@ -373,11 +464,23 @@ def get_advisory_desk(*, force: bool = False, row_class: str | None = None) -> d
     except Exception:
         promotion = {"status": "UNKNOWN"}
 
+    health = data.get("desk_health") or desk.get("desk_health") or {}
+    timestamps = data.get("timestamps") or desk.get("timestamps") or {}
+    ot = data.get("operator_truth") or desk.get("operator_truth") or {}
     return {
         "ok": True,
         "as_of": data.get("computed_at") or _now_iso(),
         "authority": "READ_ONLY_ADVISORY",
+        "memory_behavior_influence": ot.get("memory_behavior_influence") or "0",
+        "broker_write_authority": "NONE",
         "version": data.get("version"),
+        "operator_truth_version": ot.get("version"),
+        "desk_computed_at": desk.get("desk_computed_at") or data.get("computed_at"),
+        "desk_cache_age_seconds": desk.get("desk_cache_age_seconds"),
+        "desk_cache_hit": bool(desk.get("cache_hit")),
+        "desk_freshness_state": desk.get("desk_freshness_state") or timestamps.get("facts_freshness"),
+        "desk_health": health,
+        "timestamps": timestamps,
         "banners": banners,
         "metadata": meta,
         "portfolio_analytics": meta.get("portfolio_analytics") or {},
@@ -385,6 +488,7 @@ def get_advisory_desk(*, force: bool = False, row_class: str | None = None) -> d
         "by_class": by_class,
         "verdict_counts": meta.get("verdict_counts") or {},
         "synthesis": synthesis,
+        "synthesis_label": timestamps.get("synthesis_label"),
         "rows": rows,
         "row_count": len(rows),
         "content_hash": data.get("content_hash"),

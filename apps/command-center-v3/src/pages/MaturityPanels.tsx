@@ -195,6 +195,7 @@ export function DailyIntelligencePanel() {
   const mem = today.memory || {}
   const cio = today.cio || {}
   const fin = today.finops || {}
+  const adv = today.advisory || {}
   const auth = today.authority || {}
   return <div data-testid="daily-intelligence" style={panel}>
     <div style={{ fontWeight: 800 }}>TRADE AI INTELLIGENCE · TODAY</div>
@@ -222,6 +223,7 @@ export function DailyIntelligencePanel() {
         ['Memory', mem.state, mem.retrievals, mem.reason],
         ['CIO Notifications', cio.state, cio.material_scans, cio.reason],
         ['FinOps', fin.state, fin.events, fin.reason],
+        ['Advisory Desk', adv.state, adv.facts_freshness, adv.reason],
         ['Authority', auth.memory_behavior_influence === '0' || auth.memory_behavior_influence === 0 ? 'HEALTHY' : 'FAILED', auth.memory_behavior_influence, 'MEMORY_BEHAVIOR_INFLUENCE'],
       ].map(([title, state, count, reason]) => (
         <div key={String(title)} style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 10 }}>

@@ -247,10 +247,23 @@ def _load_holdings() -> dict[str, Any]:
             "cost_basis_source": str(h.get("cost_basis_source", "")),
             "basis_partial": bool(h.get("basis_partial")),
             "cost_basis_note": str(h.get("cost_basis_note", "")),
-            "as_of": h.get("as_of") or h.get("price_as_of") or raw.get("as_of"),
+            "as_of": h.get("as_of") or h.get("price_as_of") or h.get("canonical_mark_as_of") or raw.get("as_of"),
             "updated_at": h.get("updated_at") or h.get("as_of") or raw.get("updated_at"),
-            "price_as_of": h.get("price_as_of") or h.get("as_of"),
-            "price_source": str(h.get("price_source") or h.get("source") or "holdings.json"),
+            "price_as_of": h.get("price_as_of") or h.get("canonical_mark_as_of") or h.get("as_of"),
+            "price_source": str(h.get("price_source") or h.get("canonical_mark_source") or h.get("source") or "holdings.json"),
+            # CIO financial-truth fields — required so Advisory can distinguish
+            # a canonical mark from a Finviz reference snapshot.
+            "canonical_mark": _f(h.get("canonical_mark")),
+            "canonical_mark_as_of": h.get("canonical_mark_as_of"),
+            "canonical_mark_source": h.get("canonical_mark_source"),
+            "canonical_mark_type": h.get("canonical_mark_type"),
+            "implied_price_from_mv": _f(h.get("implied_price_from_mv")),
+            "official_close": _f(h.get("official_close")),
+            "official_close_as_of": h.get("official_close_as_of"),
+            "broker_position_price": _f(h.get("broker_position_price")),
+            "broker_position_as_of": h.get("broker_position_as_of"),
+            "broker_market_value": _f(h.get("broker_market_value")),
+            "price_field_role": h.get("price_field_role"),
         }
         positions.append(pos)
         total_value += mv
@@ -741,6 +754,46 @@ def _derive_watchlist_opinion(
     }
 
 
+_REENTRY_ROWS_CACHE: list[dict[str, Any]] | None = None
+
+
+def _reentry_rows_once() -> list[dict[str, Any]]:
+    """Load the canonical Re-Entry projection once per desk build.
+
+    Prefer the latest artifact (fresh within 10 minutes) over rebuilding
+    the decision desk once per closed symbol.
+    """
+    global _REENTRY_ROWS_CACHE
+    if _REENTRY_ROWS_CACHE is not None:
+        return _REENTRY_ROWS_CACHE
+    latest = CACHE_DIR / "reentry_decision_desk_latest.json"
+    try:
+        if latest.exists() and (_time.time() - latest.stat().st_mtime) < 600:
+            blob = json.loads(latest.read_text(encoding="utf-8"))
+            rows = blob.get("rows") if isinstance(blob, dict) else None
+            if not rows and isinstance(blob, dict) and isinstance(blob.get("data"), dict):
+                rows = blob["data"].get("rows")
+            if isinstance(rows, list):
+                _REENTRY_ROWS_CACHE = rows
+                return rows
+    except Exception:
+        pass
+    try:
+        from lib.data_broker.reentry_decision_desk import build_decision_desk
+        from db_adapter import _execute as _db_exec
+
+        def _db_wrapper(sql: str, params=None, *, fetch: str = "all"):
+            return _db_exec(sql, params, fetch=fetch)
+
+        result = build_decision_desk(_db_wrapper)
+        rows = result.get("rows", []) if isinstance(result, dict) else []
+        _REENTRY_ROWS_CACHE = rows if isinstance(rows, list) else []
+        return _REENTRY_ROWS_CACHE
+    except Exception:
+        _REENTRY_ROWS_CACHE = []
+        return _REENTRY_ROWS_CACHE
+
+
 def _derive_closed_opinion(
     symbol: str,
     trades: list[dict[str, Any]],
@@ -755,24 +808,27 @@ def _derive_closed_opinion(
 
     _scripts_path()
     try:
-        from lib.data_broker.reentry_decision_desk import build_decision_desk
-        from db_adapter import _execute as _db_exec
-        def _db_wrapper(sql: str, params=None, *, fetch: str = "all"):
-            """Thin wrapper matching the re-entry desk's db_query signature.
-            Defaults to fetch='all' since most callers expect a list.
-            """
-            return _db_exec(sql, params, fetch=fetch)
-        reentry_result = build_decision_desk(_db_wrapper)
-        # Rows are at top level, not nested inside data
-        rows = reentry_result.get("rows", []) if isinstance(reentry_result, dict) else []
+        rows = _reentry_rows_once()
         for row in rows:
             if _norm_symbol(row.get("symbol", "")) == symbol:
-                intel = row.get("intel", {})
+                intel = row.get("intel", {}) if isinstance(row.get("intel"), dict) else {}
                 state = intel.get("state", "WAIT")
+                price = row.get("price")
+                entry_low = row.get("entry_low")
+                entry_high = row.get("entry_high")
+                rsi = row.get("rsi") if row.get("rsi") is not None else intel.get("rsi")
+                extra = {
+                    "reentry_state": state,
+                    "reentry_entry_low": entry_low,
+                    "reentry_entry_high": entry_high,
+                    "reentry_price": price,
+                    "reentry_rsi": rsi,
+                    "reentry_reason": intel.get("reason") or "",
+                    "reentry_next_action": intel.get("action") or "",
+                    "reentry_distance_pct": intel.get("distance_pct"),
+                    "reentry_wash_blocked": bool(intel.get("wash_blocked")),
+                }
                 if state in ("READY TO REVIEW", "NEAR ENTRY"):
-                    price = row.get("price", "?")
-                    entry_low = row.get("entry_low", "?")
-                    entry_high = row.get("entry_high", "?")
                     return {
                         "symbol": symbol,
                         "verdict": AdvisoryVerdict.RE_ENTER,
@@ -788,26 +844,23 @@ def _derive_closed_opinion(
                         "days_held": None,
                         "risk_signals": [],
                         "source": "reentry_decision_desk",
-                        "reentry_state": state,
-                        "reentry_entry_low": entry_low,
-                        "reentry_entry_high": entry_high,
                         "housekeeping_flag": False,
+                        **extra,
                     }
-                else:
-                    return {
-                        "symbol": symbol,
-                        "verdict": AdvisoryVerdict.WAIT,
-                        "confidence": 0.30,
-                        "rationale": f"Re-entry desk: {state} — {intel.get('reason', 'Not yet ready for review.')}",
-                        "weight_pct": None,
-                        "market_value": None,
-                        "gain_loss_pct": None,
-                        "days_held": None,
-                        "reentry_state": state,
-                        "risk_signals": [],
-                        "source": "reentry_decision_desk",
-                        "housekeeping_flag": False,
-                    }
+                return {
+                    "symbol": symbol,
+                    "verdict": AdvisoryVerdict.WAIT,
+                    "confidence": 0.30,
+                    "rationale": f"Re-entry desk: {state} — {intel.get('reason', 'Not yet ready for review.')}",
+                    "weight_pct": None,
+                    "market_value": None,
+                    "gain_loss_pct": None,
+                    "days_held": None,
+                    "risk_signals": [],
+                    "source": "reentry_decision_desk",
+                    "housekeeping_flag": False,
+                    **extra,
+                }
     except Exception:
         pass
 
@@ -2690,6 +2743,8 @@ def build_advisory_desk(*, max_age_s: float = DEFAULT_MAX_AGE_S, force: bool = F
             pass
 
     t0 = datetime.now(timezone.utc)
+    global _REENTRY_ROWS_CACHE
+    _REENTRY_ROWS_CACHE = None
 
     # Load all data domains
     holdings = _load_holdings()
@@ -2793,6 +2848,17 @@ def build_advisory_desk(*, max_age_s: float = DEFAULT_MAX_AGE_S, force: bool = F
             opinion["updated_at"] = pos.get("updated_at")
             opinion["price_as_of"] = pos.get("price_as_of")
             opinion["price_source"] = pos.get("price_source") or "holdings.json"
+            opinion["canonical_mark"] = pos.get("canonical_mark")
+            opinion["canonical_mark_as_of"] = pos.get("canonical_mark_as_of")
+            opinion["canonical_mark_source"] = pos.get("canonical_mark_source")
+            opinion["canonical_mark_type"] = pos.get("canonical_mark_type")
+            opinion["implied_price_from_mv"] = pos.get("implied_price_from_mv")
+            opinion["official_close"] = pos.get("official_close")
+            opinion["official_close_as_of"] = pos.get("official_close_as_of")
+            opinion["broker_position_price"] = pos.get("broker_position_price")
+            opinion["broker_position_as_of"] = pos.get("broker_position_as_of")
+            opinion["broker_market_value"] = pos.get("broker_market_value")
+            opinion["price_field_role"] = pos.get("price_field_role")
 
             # S4: is_recent_ipo limitation — indicate unreliable technicals
             if instrument_data.get(sym, {}).get("is_recent_ipo"):
@@ -2939,15 +3005,22 @@ def build_advisory_desk(*, max_age_s: float = DEFAULT_MAX_AGE_S, force: bool = F
     for row in rows:
         row["advisory_row_hash"] = _row_hash(row)
 
-    # A3: Suppress noise — closed-journal rows hidden except RE_ENTER
-    # RE_ENTER is the meaningful signal from closed positions; WAIT on 20/20 rows is noise.
+    # A3: Suppress noise — closed-journal WAIT with no desk state is hidden.
+    # Keep RE_ENTER plus any row whose Re-Entry engine produced an operator
+    # state (READY / NEAR / WASH / OVERBOUGHT / STALE / MISSING).
+    _keep_reentry = {
+        "READY TO REVIEW", "NEAR ENTRY", "OVERSOLD REVIEW",
+        "WASH BLOCK", "OVERBOUGHT WAIT", "STALE",
+        "MISSING MARKET", "MISSING PLAN",
+    }
     closed_rows_suppressed: list[dict[str, Any]] = [
         r for r in rows if r.get("row_class") == "closed_journal"
     ]
     rows = [
         r for r in rows
         if r.get("row_class") != "closed_journal"
-        or str(r["verdict"].value) == "RE_ENTER"  # keep RE_ENTER rows visible
+        or str(r["verdict"].value if hasattr(r["verdict"], "value") else r["verdict"]) == "RE_ENTER"
+        or str(r.get("reentry_state") or "") in _keep_reentry
     ]
 
     # Detect degenerate classes (every row in a class shares the same verdict)
