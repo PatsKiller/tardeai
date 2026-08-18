@@ -21,6 +21,12 @@ try:
         questions_from_request,
         utc_now_iso,
     )
+    from lib.hermes_research_schema import (
+        coerce_as_of,
+        collect_sources,
+        compact_catalyst,
+        synthesize_summary,
+    )
 except ImportError:  # pragma: no cover
     from scripts.lib.hermes_research_backend import (  # type: ignore
         HermesBackendError,
@@ -29,6 +35,12 @@ except ImportError:  # pragma: no cover
         normalize_desk_bias,
         questions_from_request,
         utc_now_iso,
+    )
+    from scripts.lib.hermes_research_schema import (  # type: ignore
+        coerce_as_of,
+        collect_sources,
+        compact_catalyst,
+        synthesize_summary,
     )
 
 
@@ -117,6 +129,8 @@ class BridgeHermesResearchBackend:
         return (
             "Hermes READ_ONLY research for CIO desk. No orders/stops language. "
             "Do not invent portfolio numbers outside context_snapshot. "
+            "Use catalyst.events as the event calendar. Cite event_id in citations. "
+            "as_of must be today's UTC ISO timestamp, not a historical guess. "
             "Reply with JSON only (no markdown, no preamble). Schema:\n"
             '{"as_of":"ISO","answers":[{"question_id":"","status":"answered|partial|unanswered",'
             '"summary":"","detail":"","confidence":0.0,"citations":[]}],'
@@ -137,6 +151,7 @@ class BridgeHermesResearchBackend:
             "situation": subject.get("situation_type") or request.get("situation_type"),
             "questions": [{"id": q["id"], "text": q["text"][:220], "intent": q["intent"]} for q in qs],
             "context": request.get("context_snapshot") or {},
+            "catalyst": compact_catalyst(request),
             "criteria": (request.get("success_criteria") or "")[:200]
             if isinstance(request.get("success_criteria"), str)
             else (request.get("success_criteria") or [])[:4],
@@ -238,6 +253,11 @@ class BridgeHermesResearchBackend:
                 conf_f = float(conf) if conf is not None else None
             except (TypeError, ValueError):
                 conf_f = None
+            if conf_f is not None:
+                if conf_f < 0:
+                    conf_f = 0.0
+                elif conf_f > 1:
+                    conf_f = 1.0
             status = (a.get("status") or "answered").lower()
             if status not in ("answered", "partial", "unanswered"):
                 status = "partial"
@@ -266,8 +286,8 @@ class BridgeHermesResearchBackend:
         bias = normalize_desk_bias(di.get("suggestion_bias"))
         symbol = (request.get("subject") or {}).get("symbol") or request.get("symbol")
 
-        return {
-            "as_of": raw.get("as_of") or utc_now_iso(),
+        draft = {
+            "as_of": coerce_as_of(raw.get("as_of") or utc_now_iso()),
             "symbol": symbol,
             "thesis_version_at_request": request.get("thesis_version"),
             "answers": answers,
@@ -280,5 +300,11 @@ class BridgeHermesResearchBackend:
                 "notes": str(di.get("notes") or "")[:1000],
             },
             "limitations": [str(x) for x in (raw.get("limitations") or [])][:20],
+            "summary": str(raw.get("summary") or "")[:800],
             "evidence_links": raw.get("evidence_links") or [],
+            "sources": raw.get("sources") or raw.get("source_urls") or [],
         }
+        draft["summary"] = synthesize_summary(draft, request)
+        draft["sources"] = collect_sources(draft, request)
+        draft["evidence_links"] = list(draft.get("evidence_links") or draft["sources"])[:20]
+        return draft

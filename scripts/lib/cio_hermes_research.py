@@ -748,16 +748,17 @@ def _persist_stamped_result(research_id: str, result: dict[str, Any]) -> dict[st
             mark_failed(research_id, "execution_language_in_result")
             return {"ok": False, "error": "execution_language_in_result"}
 
-        as_of = str(result.get("as_of") or result.get("completed_ts") or _now())
         result = dict(result)
+        completed_ts = str(result.get("completed_ts") or _now())
+        as_of = str(result.get("as_of") or completed_ts)
         result.setdefault("schema_version", SCHEMA_RESULT)
         result.setdefault("research_id", research_id)
         result.setdefault("plan_id", req_meta.get("plan_id"))
         result.setdefault("fingerprint", req_meta.get("fingerprint"))
         result.setdefault("status", "completed")
         result.setdefault("authority", AUTHORITY)
+        result["completed_ts"] = completed_ts
         result["as_of"] = as_of
-        result["completed_ts"] = as_of
 
         _append_jsonl(RESULT_PATH, {"event": "HERMES_RESEARCH_COMPLETED", **result})
 

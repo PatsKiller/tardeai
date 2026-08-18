@@ -205,8 +205,17 @@ def on_hermes_completed(
             merged["symbol"] = request.get("symbol") or (request.get("metadata") or {}).get("symbol")
         if not merged.get("research_id"):
             merged["research_id"] = request.get("research_id")
-        if not merged.get("summary"):
-            merged["summary"] = merged.get("thesis") or merged.get("content") or merged.get("findings") or ""
+        try:
+            from lib.hermes_research_schema import collect_sources, synthesize_summary
+        except Exception:
+            from scripts.lib.hermes_research_schema import (  # type: ignore
+                collect_sources,
+                synthesize_summary,
+            )
+        if not str(merged.get("summary") or "").strip():
+            merged["summary"] = synthesize_summary(merged, request)
+        if not (merged.get("sources") or merged.get("source_urls")):
+            merged["sources"] = collect_sources(merged, request)
         crit = _critique(merged)
         out["critique"] = crit
         out["memory"] = admit_from_research(merged, critique=crit)

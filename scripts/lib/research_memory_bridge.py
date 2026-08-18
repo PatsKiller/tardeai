@@ -23,6 +23,40 @@ def _forbidden(text: str) -> str | None:
     return None
 
 
+def _memory_safe_content(result: dict[str, Any]) -> str:
+    """Pick a research observation that does not trip the authoritative-truth lint.
+
+    Plan attach keeps the full summary (gaps about missing holdings/price data).
+    Memory may not store those tokens. We do not invent claims — we only skip
+    paragraphs that the existing gate would reject.
+    """
+    try:
+        from lib.agent_memory_governance import is_forbidden_authoritative
+    except ImportError:
+        from scripts.lib.agent_memory_governance import is_forbidden_authoritative  # type: ignore
+    candidates: list[str] = []
+    for f in result.get("findings") or []:
+        if isinstance(f, dict):
+            candidates.append(str(f.get("text") or f.get("summary") or ""))
+        else:
+            candidates.append(str(f))
+    for a in result.get("answers") or []:
+        if isinstance(a, dict) and str(a.get("status") or "") == "answered":
+            candidates.append(str(a.get("summary") or a.get("detail") or ""))
+    if result.get("summary"):
+        candidates.append(str(result.get("summary") or ""))
+    if result.get("content"):
+        candidates.append(str(result.get("content") or ""))
+    for text in candidates:
+        text = str(text or "").strip()
+        if not text:
+            continue
+        if is_forbidden_authoritative(text) or _forbidden(text):
+            continue
+        return text[:800]
+    return ""
+
+
 def admit_from_research(
     result: dict[str, Any],
     *,
@@ -32,9 +66,9 @@ def admit_from_research(
     verdict = str((critique or {}).get("verdict") or "").upper()
     if verdict in {"FAILED", "INSUFFICIENT"}:
         return {"ok": False, "skipped": True, "reason": f"critique_{verdict or 'missing'}"}
-    summary = str(result.get("summary") or result.get("content") or "")[:800]
+    summary = _memory_safe_content(result)
     if not summary:
-        return {"ok": False, "skipped": True, "reason": "empty_summary"}
+        return {"ok": False, "skipped": True, "reason": "no_memory_safe_summary"}
     hit = _forbidden(summary)
     if hit:
         return {"ok": False, "skipped": True, "reason": f"forbidden:{hit}"}
@@ -50,7 +84,7 @@ def admit_from_research(
         "as_of": result.get("as_of") or now.isoformat(),
         "expires_at": (now + timedelta(days=30)).isoformat(),
         "source_refs": [x for x in [rid, lineage_id] if x],
-        "source_kind": "research_result",
+        "source_kind": "research_artifact",
         "authority_class": "NON_AUTHORITATIVE_CONTEXT",
         "admission_reason": "validated_research_bridge",
         "research_result_id": rid,

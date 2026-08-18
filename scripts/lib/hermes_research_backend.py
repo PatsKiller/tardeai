@@ -20,6 +20,9 @@ RESULT_BODY_KEYS = frozenset({
     "desk_implications",
     "limitations",
     "evidence_links",
+    "sources",
+    "source_urls",
+    "summary",
     "symbol",
     "thesis_version_at_request",
 })
