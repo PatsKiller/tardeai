@@ -2948,9 +2948,12 @@ def build_advisory_desk(*, max_age_s: float = DEFAULT_MAX_AGE_S, force: bool = F
         if not row.get("row_class"):
             row["row_class"] = source_to_class.get(row.get("source", ""), "unknown")
 
-    # Holdings lookup for provenance (canonical mark / dual price)
-    pos_by_symbol: dict[str, dict[str, Any]] = {
-        p["symbol"]: p for p in holdings.get("positions", []) if p.get("symbol")
+    # Holdings lookup for provenance (canonical mark / dual price).
+    # Must be account-scoped — last-write-wins on symbol alone paints IRA
+    # shares/MV onto the taxable row and forges a DATA CONFLICT.
+    pos_by_key: dict[tuple[str, str], dict[str, Any]] = {
+        (p["symbol"], str(p.get("account") or "")): p
+        for p in holdings.get("positions", []) if p.get("symbol")
     }
 
     # Attach evidence bundles to each row
@@ -2964,7 +2967,7 @@ def build_advisory_desk(*, max_age_s: float = DEFAULT_MAX_AGE_S, force: bool = F
         try:
             attach_advisory_row_provenance(
                 row,
-                holdings=pos_by_symbol.get(sym) if rcls == "holding" else None,
+                holdings=pos_by_key.get((sym, str(row.get("account") or ""))) if rcls == "holding" else None,
                 analyst=analyst_data.get(sym),
             )
         except Exception:

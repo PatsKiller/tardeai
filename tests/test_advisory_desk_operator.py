@@ -82,6 +82,12 @@ def test_implied_price_is_derived_reference_not_canonical():
     assert any("implied_price" in x for x in out["why_missing"])
 
 
+def test_builder_provenance_is_account_keyed():
+    src = (ROOT / "scripts" / "lib" / "data_broker" / "advisory_desk.py").read_text(encoding="utf-8")
+    assert "pos_by_key" in src
+    assert 'pos_by_key.get((sym, str(row.get("account") or "")))' in src
+
+
 def test_account_specific_holdings_not_last_symbol_wins():
     """Taxable SCHD must not inherit IRA shares from symbol-keyed provenance."""
     row = {
