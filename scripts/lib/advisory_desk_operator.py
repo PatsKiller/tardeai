@@ -256,6 +256,37 @@ def cache_meta(desk: dict[str, Any], *, cache_path: Optional[Path] = None, now: 
     }
 
 
+def holdings_source_freshness(*, now: datetime | None = None) -> dict[str, Any]:
+    """Freshness of the underlying holdings.json clock — not desk-build cache."""
+    now = now or datetime.now(timezone.utc)
+    raw = _load_json(_STATE_DIR / "holdings.json")
+    as_of = raw.get("as_of") or raw.get("generated_at") or raw.get("asOf")
+    dt = None
+    if as_of:
+        try:
+            dt = datetime.fromisoformat(str(as_of).replace("Z", "+00:00"))
+        except Exception:
+            dt = None
+    if dt is None:
+        state = FRESH_UNAVAILABLE
+        age = None
+    else:
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        age = (now - dt).total_seconds()
+        if age > FACTS_EXPIRED_S:
+            state = FRESH_EXPIRED
+        elif age > FACTS_STALE_S:
+            state = FRESH_STALE
+        else:
+            state = FRESH_CURRENT
+    return {
+        "holdings_source_as_of": as_of,
+        "holdings_source_age_seconds": round(age, 1) if age is not None else None,
+        "holdings_source_freshness": state,
+    }
+
+
 def compute_desk_health(
     *,
     structural_ok: bool,
@@ -266,11 +297,14 @@ def compute_desk_health(
     reentry_freshness: str,
     watch_freshness: str,
     memory_health: str,
+    holdings_source_freshness: str | None = None,
 ) -> dict[str, Any]:
     dims = {
         "STRUCTURAL_VALIDATION": "PASS" if structural_ok else "FAIL",
         "PLAUSIBILITY": "PASS" if plausibility_pass else "FAIL",
         "FACT_FRESHNESS": fact_freshness,
+        "FACT_FRESHNESS_SCOPE": "desk_build_cache",
+        "HOLDINGS_SOURCE_FRESHNESS": holdings_source_freshness or "NOT_EVALUATED",
         "SOURCE_COMPLETENESS": source_completeness,
         "OPINION_FRESHNESS": opinion_freshness,
         "REENTRY_FRESHNESS": reentry_freshness,
@@ -280,6 +314,13 @@ def compute_desk_health(
     if not structural_ok:
         overall = FAILED
         reason = "structural validation failed"
+    elif holdings_source_freshness in (FRESH_STALE, FRESH_EXPIRED):
+        overall = STALE
+        reason = (
+            "holdings source clock is "
+            f"{holdings_source_freshness}; desk-build FACT_FRESHNESS={fact_freshness} "
+            "is cache age only"
+        )
     elif fact_freshness == FRESH_EXPIRED:
         overall = STALE
         reason = "deterministic facts expired"
@@ -1267,6 +1308,7 @@ def enrich_desk(
     elif memory_join.get("state") == FAILED:
         mem_health = FAILED
 
+    hsrc = holdings_source_freshness(now=now)
     health = compute_desk_health(
         structural_ok=bool(meta.get("validation_ok", True)),
         plausibility_pass=str(meta.get("plausibility_gate") or "PASS") == "PASS",
@@ -1276,6 +1318,7 @@ def enrich_desk(
         reentry_freshness=str(reentry_join.get("freshness") or FRESH_UNAVAILABLE),
         watch_freshness=str(watch_join.get("freshness") or FRESH_UNAVAILABLE),
         memory_health=mem_health,
+        holdings_source_freshness=str(hsrc["holdings_source_freshness"]),
     )
 
     timestamps = {

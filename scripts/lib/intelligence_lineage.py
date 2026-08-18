@@ -437,6 +437,17 @@ def observe_overdue_cases(*, apply: bool = False, horizon_days: int = 7) -> dict
         scored_rec = maybe_score_if_mature(case, path=path)
         if scored_rec.get("eligible") or scored_rec.get("darwin_status") == "SCORED":
             scored += 1
+    next_due = None
+    due_times = []
+    for case in cases:
+        opened = _case_opened_at(case, first_at)
+        if opened is None:
+            continue
+        due = opened + timedelta(days=horizon_days)
+        if due > _now():
+            due_times.append(due)
+    if due_times:
+        next_due = min(due_times).isoformat()
     return {
         "cases_total": len(cases),
         "observed_expired": observed,
@@ -448,6 +459,8 @@ def observe_overdue_cases(*, apply: bool = False, horizon_days: int = 7) -> dict
         "horizon_days": horizon_days,
         "authority": AUTHORITY,
         "path": str(path),
+        "next_due_at": next_due,
+        "observer_state": "PROVEN_IDLE" if observed == 0 else "OBSERVED",
     }
 
 
@@ -550,17 +563,7 @@ def rebuild_lineages() -> dict[str, Any]:
             if rid not in lin["memory_retrieval_ids"]:
                 lin["memory_retrieval_ids"].append(rid)
 
-    # Advisory use: if we have a holdings/advisory symbol it was used
-    # (presence of a case or challenge already implies advisory context)
-    for lin in by_symbol.values():
-        if lin.get("cio_case_id") or lin.get("research_request_ids"):
-            if lin["status"] in {"DISCOVERED", "RESEARCH_REQUESTED", "MEMORY_ADMITTED", "MEMORY_RETRIEVED"}:
-                _advance(lin, "ADVISORY_USED", "advisory_or_cio", "symbol appeared in CIO/advisory evidence", [lin.get("symbol") or ""])
-                lin["advisory_use"] = {
-                    "used": True,
-                    "mode": "SHADOW",
-                    "canonical_truth_changed": False,
-                }
+    # Do not infer ADVISORY_USED from symbol presence. Only from an explicit use receipt.
 
     for les in lessons:
         lid = str(les.get("lesson_id") or les.get("id") or "")

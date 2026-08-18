@@ -15,6 +15,7 @@ function Badge({ children, tone = 'slate' }: { children: string; tone?: string }
 
 export default function ClosedLoopPanel() {
   const { data, loading, error } = useApi<any>('/api/v3/intelligence', 30_000)
+  const { data: queue } = useApi<any>('/api/v3/intelligence/queue', 30_000)
   const [open, setOpen] = useState<string | null>(null)
   const { data: one } = useApi<any>(
     open ? `/api/v3/intelligence/lineage/${encodeURIComponent(open)}` : '/api/v3/intelligence/authority',
@@ -41,6 +42,12 @@ export default function ClosedLoopPanel() {
         <div style={{ ...label, marginTop: 10 }}>
           snapshot {data?.generated_at || 'MISSING'} · latest {data?.latest_lineage_id || 'MISSING'}
         </div>
+        {queue && (
+          <div style={{ marginTop: 10, fontSize: 12 }}>
+            queue pending={String(queue.pending ?? '—')} oldest_h={String(queue.oldest_age_hours ?? '—')}
+            {' · '}reasons {JSON.stringify(queue.by_reason || {})}
+          </div>
+        )}
       </div>
       {loading && <div style={panel}>Loading lineage…</div>}
       {error && <div style={{ ...panel, color: 'var(--amber)' }}>{String(error)}</div>}

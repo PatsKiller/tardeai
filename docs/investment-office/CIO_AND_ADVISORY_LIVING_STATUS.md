@@ -4,8 +4,8 @@
 |---|---|
 | **Document name** | `CIO_AND_ADVISORY_LIVING_STATUS.md` |
 | **Repo path** | `docs/investment-office/CIO_AND_ADVISORY_LIVING_STATUS.md` |
-| **Revision** | **R4 — 2026-08-18T16:04Z** (closed-loop P0 live after exact-main `244b7a41`) |
-| **Status** | **RECONCILIATION / PARTIAL_WITH_EXPLICIT_GAPS** |
+| **Revision** | **R5 — 2026-08-18T20:40Z** (PRE-CLOSURE IMPLEMENTATION / DEPLOYMENT PENDING) |
+| **Status** | **PRE_CLOSURE_IMPLEMENTATION_COMPLETE / DEPLOYMENT_PENDING** |
 | **Authority** | `READ_ONLY_ADVISORY` · `MEMORY_BEHAVIOR_INFLUENCE=0` · `broker_write=NONE` |
 | **Owner** | Alex desk · operator: John |
 | **Live CURRENT** | `244b7a41-main-exact-phase2-20260818-120315` |
@@ -236,5 +236,6 @@ Same filename. Next rewrite is **R5** if a later promote or drain changes the nu
 | R2 | 2026-08-18T15:40Z | Post-closed-loop reconciliation. Prior program did not run. |
 | R3 | 2026-08-18T15:42Z | Exact-main promote `66c733a4`. Loop still not proven. |
 | **R4** | **2026-08-18T16:04Z** | Unrun packet executed and promoted `244b7a41`. Live `/api/v3/intelligence` 200, 13 IDs, pending 108. Hermes worker still failed. 0 matured cases. |
+| **R5** | **2026-08-18T20:40Z** | Maturity-closure v2 **code** on this branch: Hermes time-budget, deep-research DB reconnect, CIO worker timer, queue health, research→memory hook, critique, recon producer, holdings-source freshness, PROVEN_IDLE observer. **Not yet on CURRENT.** Live probe still shows failed Hermes units and 109 pending. |
 
-*End of R4. GitHub + Drive + CURRENT tell this same story.*
+*End of R5. Do not treat this revision as live until exact-main promote. R6 follows live certification.*

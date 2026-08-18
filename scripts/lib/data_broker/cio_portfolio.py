@@ -277,14 +277,20 @@ def _domain_reconciliation() -> DomainEvidence:
     Does NOT hardcode ok=True.  Reads data/reconciliation/state/latest.json.
     If the file is missing the domain is DATA_UNAVAILABLE.
     """
-    if RECONCILIATION_PATH.exists():
-        recon_data = _load_json(RECONCILIATION_PATH)
-        if recon_data:
-            return DomainEvidence.available(
-                "reconciliation", recon_data,
-                source_ref=str(RECONCILIATION_PATH),
-                as_of=recon_data.get("reconciled_at", "") if isinstance(recon_data, dict) else "",
-            )
+    candidates = [
+        RECONCILIATION_PATH,
+        PROJECT_ROOT / "data" / "cio" / "reconciliation_latest.json",
+        Path("/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/data/reconciliation/state/latest.json"),
+    ]
+    for cand in candidates:
+        if cand.exists():
+            recon_data = _load_json(cand)
+            if recon_data:
+                return DomainEvidence.available(
+                    "reconciliation", recon_data,
+                    source_ref=str(cand),
+                    as_of=recon_data.get("reconciled_at", "") if isinstance(recon_data, dict) else "",
+                )
 
     return DomainEvidence.unavailable(
         "reconciliation",

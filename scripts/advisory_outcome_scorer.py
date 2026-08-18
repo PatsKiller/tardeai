@@ -28,6 +28,7 @@ def main() -> int:
     closed_loop: dict = {}
     try:
         from lib.intelligence_lineage import observe_overdue_cases, rebuild_lineages
+        from lib.cio_reconciliation import persist as persist_recon
         closed_loop["observe"] = observe_overdue_cases(apply=True, horizon_days=7)
         snap = rebuild_lineages()
         closed_loop["lineage"] = {
@@ -35,6 +36,7 @@ def main() -> int:
             "by_status": snap.get("by_status"),
             "pending_challenges": snap.get("pending_challenges"),
         }
+        closed_loop["reconciliation"] = persist_recon()
         closed_loop["ok"] = True
     except Exception as exc:
         closed_loop = {"ok": False, "error": type(exc).__name__, "detail": str(exc)[:240]}

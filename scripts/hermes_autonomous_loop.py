@@ -258,8 +258,21 @@ def run_ticker_challenger(args):
     results = []
     outdir = PROJECT_ROOT / "docs" / "hermes" / "phase3b_dryrun"
     outdir.mkdir(parents=True, exist_ok=True)
+    run_started = time.time()
+    # Leave 20s for process teardown so systemd TimeoutStartSec is not the failure mode.
+    budget_s = max(60, int(os.environ.get("HERMES_LOOP_BUDGET_SEC", str(MAX_RUNTIME))) - 20)
 
     for i, target in enumerate(targets):
+        remaining = budget_s - (time.time() - run_started)
+        if remaining < min(float(OLLAMA_TIMEOUT), 90.0):
+            left = [t["symbol"] for t in targets[i:]]
+            print(f"    BUDGET: skip remaining {left} (remain={remaining:.0f}s < ollama_timeout)")
+            for t in targets[i:]:
+                results.append({
+                    "symbol": t["symbol"], "status": "deferred_budget",
+                    "error": f"unit_budget_remain={remaining:.0f}s",
+                })
+            break
         sym = target["symbol"]
         print(f"\n  [{i+1}/{len(targets)}] {sym} ({target.get('src','target')})")
 
