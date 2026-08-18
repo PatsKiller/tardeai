@@ -150,6 +150,9 @@ def build_canonical_financial_facts(row: dict[str, Any]) -> dict[str, Any]:
     quality = STATE_VERIFIED_AS_OF
     if px is None and mv is None:
         quality = STATE_DATA_UNAVAILABLE
+    elif px is None:
+        # Market value without a mark is not a verified current price.
+        quality = STATE_DATA_UNAVAILABLE
     if conflicts:
         quality = STATE_CONFLICTED
 

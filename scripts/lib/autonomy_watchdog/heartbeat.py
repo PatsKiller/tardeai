@@ -31,6 +31,7 @@ def build_receipt(bundle: dict[str, Any], *, now: Optional[datetime] = None) -> 
     mem = (bundle.get("memory") or {}).get("component") or {}
     cio = (bundle.get("cio") or {}).get("component") or {}
     fin = (bundle.get("finops") or {}).get("component") or {}
+    adv = (bundle.get("advisory") or {}).get("component") or {}
     auth = (bundle.get("authority") or {}).get("component") or {}
     host = bundle.get("host_health") or {}
     return {
@@ -98,6 +99,14 @@ def build_receipt(bundle: dict[str, Any], *, now: Optional[datetime] = None) -> 
             "invalid_events": fin.get("invalid_events") or 0,
             "reason": fin.get("reason"),
         },
+        "advisory": {
+            "state": adv.get("status"),
+            "facts_freshness": adv.get("facts_freshness"),
+            "watch_coverage": adv.get("watch_coverage"),
+            "reentry_coverage": adv.get("reentry_coverage"),
+            "opinion_freshness": adv.get("opinion_freshness"),
+            "reason": adv.get("reason"),
+        },
         "health": {
             "overall": host.get("overall") or bundle.get("overall"),
             "degraded_components": host.get("degraded_components") or [],
@@ -147,6 +156,7 @@ def format_text(rec: dict[str, Any]) -> str:
     mem = rec.get("memory") or {}
     cio = rec.get("cio") or {}
     fin = rec.get("finops") or {}
+    adv = rec.get("advisory") or {}
     health = rec.get("health") or {}
     sha = str(rec.get("release_sha") or "")[:12]
     findings = int(health.get("operator_findings") or 0)
@@ -160,6 +170,7 @@ def format_text(rec: dict[str, Any]) -> str:
         f"CIO {cio.get('state')} — {cio.get('material_scans')} scans, "
         f"{cio.get('immediate')} immediate, {cio.get('suppressed')} suppressed\n"
         f"FinOps {fin.get('state')} — {fin.get('events')} events\n"
+        f"Advisory {adv.get('state') or 'UNKNOWN'} — facts {adv.get('facts_freshness') or 'n/a'}\n"
         f"Financial alerts today: {'none' if not cio.get('immediate') else cio.get('immediate')}\n"
         f"External/operator findings: {findings}"
     )
