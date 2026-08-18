@@ -227,6 +227,8 @@ def test_stamp_is_idempotent(tmp_path):
 def test_deploy_script_stamps_source_commit_and_build_meta_source_commit():
     src = DEPLOY.read_text(encoding="utf-8")
     assert 'printf \'%s\\n\' "$sha" >"${dir}/SOURCE_COMMIT"' in src
-    assert '"source_commit": "${sha}"' in src
     assert "write_build_meta" in src
+    assert "write_merged_build_meta" in src
     assert "stamp)" in src
+    helper = (ROOT / "scripts/lib/cc_v3_build_meta.py").read_text(encoding="utf-8")
+    assert '"source_commit"' in helper or "source_commit" in helper
