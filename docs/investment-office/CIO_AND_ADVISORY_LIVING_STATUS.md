@@ -4,13 +4,13 @@
 |---|---|
 | **Document name** | `CIO_AND_ADVISORY_LIVING_STATUS.md` |
 | **Repo path** | `docs/investment-office/CIO_AND_ADVISORY_LIVING_STATUS.md` |
-| **Revision** | **R6.6 — 2026-08-18T22:28Z** (Flash cheap window 09:00–20:59 ET; **not R7**) |
-| **Status** | **PARTIAL_WITH_EXPLICIT_GAPS** — Flash jobs fire **hourly 9:10am–8:35pm ET** (official cheap window). Overlay/desk-consumer gaps remain. |
+| **Revision** | **R6.7 — 2026-08-18T22:32Z** (China-night Flash cadence; **not R7**) |
+| **Status** | **PARTIAL_WITH_EXPLICIT_GAPS** — Flash jobs fire **hourly on China night** (Beijing 18:00–09:00). Overlay/desk-consumer gaps remain. |
 | **Authority** | `READ_ONLY_ADVISORY` · `MEMORY_BEHAVIOR_INFLUENCE=0` · `broker_write=NONE` |
 | **Owner** | Alex desk · operator: John |
 | **Live CURRENT** | `575477dc-main-exact-phase2-20260818-175137` |
 | **CURRENT SHA** | `575477dc779c25111250a82b2e56d9c08a962950` |
-| **origin/main** | `65d8b413` (R6.5 off-peak #385; last overnight-code `38cd2320` PR #382) |
+| **origin/main** | `a77d986b` (R6.6 daytime window #386; last overnight-code `38cd2320` PR #382) |
 | **UI chip (live)** | `3.14+msz77bh2` · `575477dc` |
 | **Google Drive file** | [CIO_AND_ADVISORY_LIVING_STATUS.md](https://drive.google.com/file/d/1scL90dCZa7uOK9_sojX-MNBWHfrViWMi/view) |
 | **Drive folder** | [docs / investment-office](https://drive.google.com/drive/folders/1sVHlO8v-NStl2HRbk1bJqwqI67bxGUM8) |
@@ -83,23 +83,27 @@ In America/New_York (EDT, UTC−4):
 | 02:00–06:00 | 06:00–10:00 | **PEAK** (old 02:30 timer sat here) |
 | 06:00–21:00 | 10:00–01:00 next | off-peak |
 
-**Correction (R6.6):** cheapest DeepSeek is the **daytime** official off-peak block, not overnight. Operator window: **09:00–20:59 America/New_York**.
+**Correction (R6.7):** cheapest DeepSeek is **China night**, not US night and not a 9am-ET start.
 
-| Season | 09:00–20:59 local | Official |
+Official peak = Beijing business hours **09:00–12:00** and **14:00–18:00**. Half price the rest of the day. [pricing](https://api-docs.deepseek.com/quick_start/pricing/)
+
+| Clock | China night (cheap) | China day (peak) |
 |---|---|---|
-| Summer (EDT, now) | 13:00–00:59 UTC | **all cheap** — peak starts 21:00 EDT |
-| Winter (EST) | 14:00–01:59 UTC | cheap until **19:59 EST**; 20:00–20:59 EST is peak (scripts skip) |
+| Beijing | **18:00–09:00** | 09:00–12:00 and 14:00–18:00 |
+| UTC | 10:00–01:00 | 01:00–04:00 and 06:00–10:00 |
+| ET now (EDT) | **06:00am–9:00pm** | 9pm–midnight and 2am–6am |
+| ET winter (EST) | **05:00am–8:00pm** | 8pm–11pm and 1am–5am |
 
-Official cheap actually starts earlier (06:00 EDT / 05:00 EST). We start at **09:00** as requested and stop before **21:00**.
+China lunch 12:00–14:00 Beijing is also cheap (US midnight). Not scheduled — that is not night.
 
-**Live cadence: hourly, 12 fires each = 24 Flash jobs / day.**
+**Live cadence: hourly on Asia/Shanghai, 15 fires each = 30 Flash jobs / day.**
 
-| Local ET | Job |
-|---|---|
-| 09:10 … 20:10 every hour | autonomous-loop (2 tickers) |
-| 09:35 … 20:35 every hour | deep-research (3 symbols) |
+| Beijing | ET (EDT) | Job |
+|---|---|---|
+| 18:10 … 08:10 every hour | 06:10am … 8:10pm | autonomous-loop (2 tickers) |
+| 18:35 … 08:35 every hour | 06:35am … 8:35pm | deep-research (3 symbols) |
 
-Scripts refuse Flash apply during official peak unless `--allow-peak`. `tradeai-hermes-cio-worker` still runs every 15m 24/7 (separate drain lane).
+Timers use `Asia/Shanghai` so winter/summer stay on China night. Scripts still refuse Flash apply during official peak unless `--allow-peak`. `tradeai-hermes-cio-worker` still every 15m 24/7.
 
 Not R7. CURRENT not promoted.
 
@@ -136,9 +140,9 @@ Remaining 94 overlays are plans with **no** completed structured result. Not del
 
 - [ ] Chip `3.14+msz77bh2` · SHA `575477dc`
 - [ ] Overnight now-test IDs `25365`–`25369` exist, `model_used=deepseek-v4-flash`
-- [ ] Drive header **R6.6 — 2026-08-18T22:28Z**
-- [ ] Next autonomous-loop is **19:10 ET** today, then hourly 09:10–20:10
-- [ ] Next deep-research is **19:35 ET** today, then hourly 09:35–20:35
+- [ ] Drive header **R6.7 — 2026-08-18T22:32Z**
+- [ ] Timers are `Asia/Shanghai` 18:10–08:10 / 18:35–08:35
+- [ ] Next fires still tonight (China morning): **18:35 / 19:10 ET**, then resume **06:10 ET** tomorrow
 - [ ] Overlay pending **94** (or lower if the timer drained more)
 - [ ] `mem_8bbacb882a761199a950eed65f15c5aa` present, status CANDIDATE
 - [ ] Drive header **R6.3 — 2026-08-18T21:49Z**
@@ -163,5 +167,6 @@ Same Drive file `1scL90dCZa7uOK9_sojX-MNBWHfrViWMi`. **R7** only if: overlay exp
 | **R6.4** | **2026-08-18T22:12Z** | Did not wait for timers. Overnight jobs run now on Flash: 2/2 + 3/3 committed. Not R7. |
 | **R6.5** | **2026-08-18T22:25Z** | Official DeepSeek off-peak cadence. 21:01/02:30 were peak. Now 5×2 in 00–02 and 06–09 ET. Not R7. |
 | **R6.6** | **2026-08-18T22:28Z** | Cheap window is 09:00–20:59 ET, not overnight. Hourly 12×2. Not R7. |
+| **R6.7** | **2026-08-18T22:32Z** | China night is the cheap block. Timers on Asia/Shanghai 18:00–09:00. Hourly 15×2. Not R7. |
 
-*End of R6.6. Not R7.*
+*End of R6.7. Not R7.*

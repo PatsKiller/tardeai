@@ -1,9 +1,9 @@
 [Unit]
-Description=Hermes Deep Research — DeepSeek cheap window 09:00-20:59 ET
+Description=Hermes Deep Research — DeepSeek China-night off-peak
 
 [Timer]
-# Offset +25m from autonomous-loop. Same 09:00-20:59 ET cheap window.
-OnCalendar=*-*-* 09,10,11,12,13,14,15,16,17,18,19,20:35:00 America/New_York
+# Offset +25m. Same China night 18:00-09:00 Asia/Shanghai.
+OnCalendar=*-*-* 18,19,20,21,22,23,00,01,02,03,04,05,06,07,08:35:00 Asia/Shanghai
 Persistent=true
 RandomizedDelaySec=60
 AccuracySec=1min
