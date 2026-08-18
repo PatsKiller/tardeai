@@ -19,7 +19,7 @@ from scripts.lib.maturity_control.schema import content_hash, utc_now
 DEFAULT_REL = Path("data") / "cio"
 
 
-def resolve_root(root: Path | str | None) -> Path:
+def resolve_root(root: Path | str | None = None) -> Path:
     if root:
         return Path(root)
     env = os.environ.get("TRADEAI_ROOT") or os.environ.get("MATURITY_CONTROL_ROOT")
