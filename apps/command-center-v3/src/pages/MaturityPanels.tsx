@@ -35,7 +35,7 @@ export function LearningPanel() {
       <div style={{ marginTop: 4, fontSize: 12, color: 'var(--text3)' }}>RATIFIED_CONTEXT is advisory context, not production policy.</div>
       <div style={{ marginTop: 8 }}><Badge tone="red">AUTO-PROMOTION TO TRADING: DISABLED</Badge></div>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
-        {Object.entries(data?.counts || {}).map(([k, v]) => <Badge key={k}>{k} {String(v)}</Badge>)}
+        {Object.entries(data?.counts || {}).map(([k, v]) => <Badge key={k}>{`${k} ${String(v)}`}</Badge>)}
       </div>
     </div>
     {loading && <div style={{ color: 'var(--text3)' }}>Loading lessons…</div>}
