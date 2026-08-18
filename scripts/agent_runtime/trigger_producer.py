@@ -135,7 +135,20 @@ def main(argv: list[str] | None = None) -> int:
             return 0
 
     sources = _configured_sources(args.sources) if args.sources else None
-    payload = produce_once(store, sources=sources)
+    try:
+        payload = produce_once(store, sources=sources)
+    except Exception as exc:  # provider/DB unavailable — enqueue nothing
+        payload = {
+            "contract": "agent-runtime-trigger-producer-v1",
+            "enqueued": 0,
+            "duplicates": 0,
+            "blocked_sources": ["UNAVAILABLE"],
+            "expired_leases_returned": 0,
+            "per_agent_depth": {},
+            "sources": [],
+            "fail_soft": True,
+            "detail": f"{type(exc).__name__}: produce unavailable",
+        }
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
     else:
