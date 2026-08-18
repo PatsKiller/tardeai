@@ -15,8 +15,12 @@ import json
 import sys
 from pathlib import Path
 
-# Allow `python -m scripts.hermes_cio_worker` from repo root
+# Allow both `lib.*` (scripts/ on path) and `scripts.lib.*` (repo root on path).
+# agent_memory_admission hard-imports scripts.lib; missing repo root made the
+# completion hook throw ModuleNotFoundError and skip memory.
 _ROOT = Path(__file__).resolve().parents[1]
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
 if str(_ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(_ROOT / "scripts"))
 
@@ -36,6 +40,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     p.add_argument("--no-callback", action="store_true", help="Skip CIO attach/resynth hook")
     p.add_argument("--json", action="store_true", help="Print JSON summary")
+    p.add_argument(
+        "--expire-satisfied",
+        action="store_true",
+        help="Expire overlay streams whose plan already has a completed structured result",
+    )
     args = p.parse_args(argv)
 
     try:
@@ -58,7 +67,13 @@ def main(argv: list[str] | None = None) -> int:
         on_failed=None if args.no_callback else on_hermes_failed,
     )
 
-    if args.research_id:
+    if args.expire_satisfied:
+        try:
+            from lib.hermes_research_loop import expire_satisfied_overlays
+        except Exception:
+            from scripts.lib.hermes_research_loop import expire_satisfied_overlays  # type: ignore
+        out = expire_satisfied_overlays(apply=True)
+    elif args.research_id:
         out = worker.run_research_id(args.research_id)
     elif args.drain:
         out = worker.run_once(limit=max(1, args.max))

@@ -66,6 +66,10 @@ def build(*, max_age_days: int = 7) -> dict[str, Any]:
         age_h = ((now - ts).total_seconds() / 3600.0) if ts else None
         if age_h is not None:
             ages.append(age_h)
+        try:
+            from lib.hermes_research_loop import plan_id_from_challenge
+        except Exception:
+            from scripts.lib.hermes_research_loop import plan_id_from_challenge  # type: ignore
         items.append({
             "stream_id": rec.get("stream_id"),
             "symbols": _challenge_symbols(rec),
@@ -73,7 +77,7 @@ def build(*, max_age_days: int = 7) -> dict[str, Any]:
             "occurred_at": rec.get("occurred_at"),
             "age_hours": round(age_h, 2) if age_h is not None else None,
             "challenge_type": (rec.get("payload") or {}).get("challenge_type"),
-            "plan_id": (rec.get("metadata") or {}).get("plan_id"),
+            "plan_id": (rec.get("metadata") or {}).get("plan_id") or plan_id_from_challenge(rec),
             "research_id": (rec.get("metadata") or {}).get("research_id"),
         })
     ages_sorted = sorted(ages)
