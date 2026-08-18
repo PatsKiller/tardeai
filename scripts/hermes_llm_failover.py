@@ -1,9 +1,9 @@
-"""Ollama-first JSON chat with governed DeepSeek Flash failover.
+"""Governed DeepSeek Flash / Ollama JSON chat for overnight Hermes units.
 
-Used by overnight Hermes units that currently die on gemma3 timeout/SSL.
+Overnight default: Flash primary, Ollama backup.
 READ_ONLY_ADVISORY. No broker, Telegram, or order language.
 
-Failover is labeled. It is not a silent model swap.
+Provider is always labeled. It is not a silent model swap.
 """
 from __future__ import annotations
 
@@ -33,6 +33,14 @@ def failover_enabled() -> bool:
     return os.getenv("HERMES_OLLAMA_FAILOVER", "1").strip().lower() not in {
         "0", "false", "no", "off",
     }
+
+
+def primary_provider() -> str:
+    """bridge_flash (overnight default) or ollama."""
+    raw = os.getenv("HERMES_LLM_PRIMARY", "bridge_flash").strip().lower()
+    if raw in {"flash", "deepseek", "deepseek-flash", "bridge", "bridge_flash"}:
+        return "bridge_flash"
+    return "ollama"
 
 
 def ollama_probe(timeout_s: float = 2.0) -> str | None:
@@ -122,6 +130,21 @@ def _bridge_flash_chat(prompt: str, *, timeout_s: float | None = None) -> str:
     return str(content)
 
 
+def _pack(*, content: str, provider: str, model: str, failover: bool, reason: str | None) -> dict[str, Any]:
+    text = _extract_json_text(content)
+    if not text.strip():
+        raise HermesLlmError(f"{provider}_empty_content")
+    return {
+        "content": text,
+        "provider": provider,
+        "model": model,
+        "failover": failover,
+        "reason": reason,
+        "authority": AUTHORITY,
+        "primary": primary_provider(),
+    }
+
+
 def chat_json(
     prompt: str,
     *,
@@ -132,52 +155,62 @@ def chat_json(
     temperature: float = 0.3,
     probe_first: bool = True,
 ) -> dict[str, Any]:
-    """Ollama first; on unhealthy/timeout/error, governed Flash.
+    """Primary provider first; labeled backup on error.
 
-    Returns content plus explicit provider labels. Never invents JSON.
+    Overnight default primary is governed DeepSeek Flash (:8766).
+    Ollama is backup. Set HERMES_LLM_PRIMARY=ollama to invert.
     """
-    reason: str | None = None
-    if failover_enabled() and probe_first:
-        reason = ollama_probe()
-    if reason is None:
-        try:
-            content = _ollama_chat(
-                prompt,
-                model=ollama_model,
-                timeout_s=ollama_timeout_s,
-                num_ctx=num_ctx,
-                num_predict=num_predict,
-                temperature=temperature,
-            )
-            text = _extract_json_text(content)
-            if not text.strip():
-                raise HermesLlmError("ollama_empty_content")
-            return {
-                "content": text,
-                "provider": "ollama",
-                "model": ollama_model,
-                "failover": False,
-                "reason": None,
-                "authority": AUTHORITY,
-            }
-        except Exception as exc:
-            reason = f"ollama_error:{type(exc).__name__}:{exc}"[:220]
-            if not failover_enabled():
-                raise HermesLlmError(reason) from exc
+    primary = primary_provider()
+    allow_backup = failover_enabled()
+
+    def _try_flash() -> str:
+        return _bridge_flash_chat(prompt)
+
+    def _try_ollama() -> str:
+        if probe_first:
+            bad = ollama_probe()
+            if bad:
+                raise HermesLlmError(bad)
+        return _ollama_chat(
+            prompt,
+            model=ollama_model,
+            timeout_s=ollama_timeout_s,
+            num_ctx=num_ctx,
+            num_predict=num_predict,
+            temperature=temperature,
+        )
+
+    first, second = (
+        ("bridge_flash", _try_flash, DEFAULT_FLASH),
+        ("ollama", _try_ollama, ollama_model),
+    ) if primary == "bridge_flash" else (
+        ("ollama", _try_ollama, ollama_model),
+        ("bridge_flash", _try_flash, DEFAULT_FLASH),
+    )
+
+    first_name, first_fn, first_model = first
+    second_name, second_fn, second_model = second
     try:
-        content = _bridge_flash_chat(prompt)
-        text = _extract_json_text(content)
-        if not text.strip():
-            raise HermesLlmError("flash_empty_content")
-        return {
-            "content": text,
-            "provider": "bridge_flash",
-            "model": DEFAULT_FLASH,
-            "failover": True,
-            "reason": reason,
-            "authority": AUTHORITY,
-        }
+        return _pack(
+            content=first_fn(),
+            provider=first_name,
+            model=first_model,
+            failover=False,
+            reason=None,
+        )
+    except Exception as exc:
+        reason = f"{first_name}_error:{type(exc).__name__}:{exc}"[:220]
+        if not allow_backup:
+            raise HermesLlmError(reason) from exc
+    try:
+        return _pack(
+            content=second_fn(),
+            provider=second_name,
+            model=second_model,
+            failover=True,
+            reason=reason,
+        )
     except Exception as exc:
         raise HermesLlmError(
-            f"failover_failed:{reason}|{type(exc).__name__}:{exc}"[:300]
+            f"backup_failed:{reason}|{second_name}:{type(exc).__name__}:{exc}"[:300]
         ) from exc

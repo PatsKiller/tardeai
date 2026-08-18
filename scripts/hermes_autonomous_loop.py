@@ -267,7 +267,8 @@ def run_ticker_challenger(args):
     run_id = f"auto_ticker_challenger_{datetime.now().strftime('%Y%m%d_%H%M')}"
     print(f"Run ID: {run_id}")
     print(f"Targets: {[t['symbol'] for t in targets]}")
-    print(f"Ollama timeout: {OLLAMA_TIMEOUT}s · model: {LOOP_MODEL}")
+    print(f"Ollama timeout: {OLLAMA_TIMEOUT}s · ollama_model: {LOOP_MODEL}")
+    print(f"LLM primary: {os.getenv('HERMES_LLM_PRIMARY', 'bridge_flash')} · failover={os.getenv('HERMES_OLLAMA_FAILOVER', '1')}")
 
     results = []
     outdir = PROJECT_ROOT / "docs" / "hermes" / "phase3b_dryrun"
@@ -328,7 +329,7 @@ def run_ticker_challenger(args):
             output.setdefault("topic", f"{sym} autonomous thesis challenge — {target.get('trade_count', 0)} trades")
             output.setdefault("confidence_score", 0.5)
             output.setdefault("freshness_date", date.today().isoformat())
-            output.setdefault("model_used", llm_meta.get("model") or LOOP_MODEL)
+            output["model_used"] = llm_meta.get("model") or LOOP_MODEL
             output["llm_provider"] = llm_meta.get("provider")
             if llm_meta.get("failover"):
                 output["llm_failover_reason"] = llm_meta.get("reason")
