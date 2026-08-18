@@ -29,6 +29,24 @@ def handle_get(path: str, query: dict | None = None) -> tuple[int, dict[str, Any
         return 200, {**AUTHORITY, **L.summary()}
     if p == "challenges":
         return 200, {"ok": True, **AUTHORITY, **L.challenge_view()}
+    if p in ("queue", "queue-health"):
+        try:
+            from lib.hermes_queue_health import build as queue_health
+        except ImportError:
+            from scripts.lib.hermes_queue_health import build as queue_health  # type: ignore
+        return 200, {"ok": True, **AUTHORITY, **queue_health()}
+    if p in ("circuit", "backend"):
+        try:
+            from lib.research_circuit import load as circuit_load
+        except ImportError:
+            from scripts.lib.research_circuit import load as circuit_load  # type: ignore
+        return 200, {"ok": True, **AUTHORITY, **circuit_load()}
+    if p == "reconciliation":
+        try:
+            from lib.cio_reconciliation import build as rec_build
+        except ImportError:
+            from scripts.lib.cio_reconciliation import build as rec_build  # type: ignore
+        return 200, {"ok": True, **AUTHORITY, **rec_build()}
     if p in ("lineage", "lineages"):
         snap = L.load_snapshot()
         return 200, {

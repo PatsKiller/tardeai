@@ -1,0 +1,11 @@
+[Unit]
+Description=Trade AI Hermes CIO research worker timer (every 15m)
+
+[Timer]
+OnCalendar=*:0/15
+Persistent=true
+RandomizedDelaySec=45
+Unit=tradeai-hermes-cio-worker.service
+
+[Install]
+WantedBy=timers.target

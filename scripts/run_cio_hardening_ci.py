@@ -87,6 +87,9 @@ GATES = [
     ("intelligence_lineage", [
         "tests/test_cio_intelligence_lineage.py",
     ]),
+    ("maturity_closure_v2", [
+        "tests/test_cio_maturity_closure_v2.py",
+    ]),
 ]
 
 

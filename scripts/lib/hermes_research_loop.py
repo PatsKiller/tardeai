@@ -188,7 +188,31 @@ def on_hermes_completed(
         "enriched": False,
         "notified": False,
         "memo": False,
+        "critique": None,
+        "memory": None,
     }
+    try:
+        from lib.research_quality import critique as _critique
+        from lib.research_memory_bridge import admit_from_research
+        from lib.research_circuit import record_success
+    except Exception:
+        from scripts.lib.research_quality import critique as _critique  # type: ignore
+        from scripts.lib.research_memory_bridge import admit_from_research  # type: ignore
+        from scripts.lib.research_circuit import record_success  # type: ignore
+    try:
+        merged = dict(result)
+        if not merged.get("symbol"):
+            merged["symbol"] = request.get("symbol") or (request.get("metadata") or {}).get("symbol")
+        if not merged.get("research_id"):
+            merged["research_id"] = request.get("research_id")
+        if not merged.get("summary"):
+            merged["summary"] = merged.get("thesis") or merged.get("content") or merged.get("findings") or ""
+        crit = _critique(merged)
+        out["critique"] = crit
+        out["memory"] = admit_from_research(merged, critique=crit)
+        record_success()
+    except Exception as e:
+        out["memory_error"] = f"{type(e).__name__}:{e}"
     plan_id = str(out["plan_id"] or "")
     if not plan_id:
         out["ok"] = False

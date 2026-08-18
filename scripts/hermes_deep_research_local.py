@@ -135,6 +135,12 @@ def run_one(conn, sym, model, apply):
     if not apply:
         print(f"  {sym}: VALIDATED (dry-run, conf={out.get('confidence_score')})"); return "validated"
     sql, vals = build_insert("hermes_research_intelligence", out)
+    # Long Ollama calls leave the SSL session dead. Always reconnect before write.
+    try:
+        conn.close()
+    except Exception:
+        pass
+    conn = db()
     cur = conn.cursor(); cur.execute(sql, vals); rid = cur.fetchone()[0]; conn.commit()
     print(f"  {sym}: COMMITTED id={rid}"); return "applied"
 
@@ -172,9 +178,21 @@ def main():
         print(f"Hermes Deep Research (Local) — model={args.model} apply={args.apply} targets={targets}")
         counts = {}
         for sym in targets:
-            r = run_one(conn, sym, args.model, args.apply)
+            try:
+                r = run_one(conn, sym, args.model, args.apply)
+            except Exception as exc:
+                print(f"  {sym}: FAILED_RETRYABLE {type(exc).__name__}: {exc}")
+                r = "failed_retryable"
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+                conn = db()
             counts[r] = counts.get(r, 0) + 1
-        conn.close()
+        try:
+            conn.close()
+        except Exception:
+            pass
         print("RESULT:", json.dumps(counts))
     finally:
         LOCK.unlink(missing_ok=True)

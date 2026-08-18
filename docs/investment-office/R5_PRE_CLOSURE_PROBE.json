@@ -1,0 +1,323 @@
+{
+  "as_of": "2026-08-18T20:33:36.787640+00:00",
+  "schema": "R5_PRE_CLOSURE_PROBE@v1",
+  "apis": {
+    "/api/v3/cio": {
+      "http": 200,
+      "bytes": 174289,
+      "slim": {
+        "ok": true,
+        "authority": "READ_ONLY_ADVISORY",
+        "snapshot_health": {
+          "domains_total": 15,
+          "domains_available": 14,
+          "domains_missing": [
+            "reconciliation"
+          ],
+          "domains_stale": [],
+          "ok": false
+        },
+        "snapshot_domains": [
+          "portfolio",
+          "risk",
+          "watch",
+          "watch_intelligence",
+          "rotation",
+          "income",
+          "reconciliation",
+          "hermes_research",
+          "investment_policy",
+          "model_portfolio",
+          "cost_basis",
+          "transactions",
+          "sectors",
+          "holdings_detail",
+          "cash_buying_power",
+          "retirement"
+        ],
+        "delegation_challenges": {
+          "statuses": {
+            "EXPIRED": 75,
+            "CANCELLED": 27,
+            "ENQUEUED": 109,
+            "PENDING": 109
+          },
+          "pending": 109,
+          "unique_streams": 211,
+          "total_events": 313,
+          "total": 109,
+          "latest": {
+            "event_type": "HERMES_CHALLENGE_ENQUEUED",
+            "stream_id": "hermes-challenge-491fafa6b93d",
+            "challenge_type": "research_gap",
+            "timestamp": "2026-08-18T20:07:25.429582+00:00"
+          }
+        }
+      },
+      "error": null
+    },
+    "/api/v3/cio/delegation": {
+      "http": 200,
+      "bytes": 592,
+      "slim": {
+        "ok": true,
+        "delegation_challenges": {
+          "statuses": {
+            "EXPIRED": 75,
+            "CANCELLED": 27,
+            "ENQUEUED": 109,
+            "PENDING": 109
+          },
+          "pending": 109,
+          "unique_streams": 211,
+          "total_events": 313,
+          "total": 109,
+          "latest": {
+            "event_type": "HERMES_CHALLENGE_ENQUEUED",
+            "stream_id": "hermes-challenge-491fafa6b93d",
+            "challenge_type": "research_gap",
+            "timestamp": "2026-08-18T20:07:25.429582+00:00"
+          }
+        }
+      },
+      "error": null
+    },
+    "/api/v3/cio/books": {
+      "http": 200,
+      "bytes": 76983,
+      "slim": {
+        "ok": true,
+        "authority": "READ_ONLY_ADVISORY",
+        "financial_action": false
+      },
+      "error": null
+    },
+    "/api/v3/advisory": {
+      "http": 200,
+      "bytes": 1631449,
+      "slim": {
+        "ok": true,
+        "authority": "READ_ONLY_ADVISORY",
+        "row_count": 58,
+        "desk_health": {
+          "overall": "DEGRADED",
+          "reason": "prior synthesis / Flash opinions are old; facts may still be current",
+          "dimensions": {
+            "STRUCTURAL_VALIDATION": "PASS",
+            "PLAUSIBILITY": "PASS",
+            "FACT_FRESHNESS": "CURRENT",
+            "SOURCE_COMPLETENESS": "HEALTHY",
+            "OPINION_FRESHNESS": "EXPIRED",
+            "REENTRY_FRESHNESS": "CURRENT",
+            "WATCH_INTELLIGENCE_FRESHNESS": "CURRENT",
+            "MEMORY_PROVIDER_HEALTH": "HEALTHY"
+          }
+        },
+        "memory_behavior_influence": "0"
+      },
+      "error": null
+    },
+    "/api/v3/intelligence": {
+      "http": 200,
+      "bytes": 169777,
+      "slim": {
+        "ok": true,
+        "authority": "READ_ONLY_ADVISORY",
+        "schema": "IntelligenceLineage@v1",
+        "lineage_count": 13,
+        "pending_challenges": 109,
+        "by_status": {
+          "ADVISORY_USED": 8,
+          "OUTCOME_PENDING": 5
+        },
+        "financial_action": false
+      },
+      "error": null
+    },
+    "/api/v3/intelligence/challenges": {
+      "http": 200,
+      "bytes": 10875,
+      "slim": {
+        "ok": true,
+        "authority": "READ_ONLY_ADVISORY",
+        "schema": "IntelligenceLineage@v1",
+        "financial_action": false
+      },
+      "error": null
+    },
+    "/api/v3/agent-maturity": {
+      "http": 200,
+      "bytes": 52580,
+      "slim": {
+        "authority": {
+          "mutation": false,
+          "provider_call": false,
+          "service_control": false,
+          "schedule_change": false,
+          "financial_action": false
+        }
+      },
+      "error": null
+    },
+    "/api/v3/maturity/memory": {
+      "http": 200,
+      "bytes": 14147,
+      "slim": {
+        "ok": true,
+        "authority": "READ_ONLY_ADVISORY",
+        "counts": {
+          "CANDIDATE": 0,
+          "ADMITTED": 1,
+          "DISPUTED": 0,
+          "SUPERSEDED": 0,
+          "EXPIRED": 1,
+          "RETRACTED": 0
+        },
+        "influence_mode": "ACTIVE_ADVISORY",
+        "memory_behavior_influence": "0",
+        "financial_action": false,
+        "record_count": 2
+      },
+      "error": null
+    },
+    "/api/v3/maturity/influence": {
+      "http": 200,
+      "bytes": 656,
+      "slim": {
+        "ok": true,
+        "authority": "READ_ONLY_ADVISORY",
+        "badge": "LEARNING-INFLUENCED ADVISORY",
+        "gates": {
+          "authority": "READ_ONLY_ADVISORY",
+          "financial_action": false,
+          "lesson_mode": "ACTIVE_ADVISORY",
+          "financial_senses_mode": "ACTIVE_ADVISORY",
+          "memory_behavior_influence_untouched": true,
+          "execution_authority": false,
+          "contract": "advisory-influence-v1"
+        },
+        "financial_action": false
+      },
+      "error": null
+    },
+    "/api/v3/maturity/learning": {
+      "http": 200,
+      "bytes": 8029,
+      "slim": {
+        "ok": true,
+        "authority": "READ_ONLY_ADVISORY",
+        "counts": {
+          "CANDIDATE": 0,
+          "RATIFIED_CONTEXT": 7,
+          "SHADOW_INFLUENCE": 0,
+          "ADVISORY_ACTIVE": 0,
+          "RESTRICTED": 0,
+          "RETIRED": 5
+        },
+        "financial_action": false,
+        "lesson_count": 12
+      },
+      "error": null
+    },
+    "/api/v3/maturity/cases": {
+      "http": 200,
+      "bytes": 50092,
+      "slim": {
+        "ok": true,
+        "authority": "READ_ONLY_ADVISORY",
+        "cases_seen": 277,
+        "by_status": {
+          "OPEN": 274,
+          "AWAITING_OUTCOME": 3
+        },
+        "financial_action": false
+      },
+      "error": null
+    },
+    "/api/v3/maturity/heartbeat": {
+      "http": 200,
+      "bytes": 23539,
+      "slim": {
+        "ok": true,
+        "authority": "READ_ONLY_ADVISORY",
+        "schema": "DailyIntelligenceHeartbeat@v1",
+        "financial_action": false
+      },
+      "error": null
+    }
+  },
+  "systemd": {
+    "portfolio-server.service": {
+      "active": "active",
+      "failed": "active",
+      "rc_active": 0
+    },
+    "hermes-autonomous-loop.service": {
+      "active": "failed",
+      "failed": "failed",
+      "rc_active": 3
+    },
+    "hermes-deep-research-local.service": {
+      "active": "failed",
+      "failed": "failed",
+      "rc_active": 3
+    },
+    "tradeai-cio-telegram.service": {
+      "active": "active",
+      "failed": "active",
+      "rc_active": 0
+    },
+    "tradeai-advisory-outcome-scorer.timer": {
+      "active": "active",
+      "failed": "active",
+      "rc_active": 0
+    },
+    "tradeai-advisory-lessons-reflect.timer": {
+      "active": "active",
+      "failed": "active",
+      "rc_active": 0
+    },
+    "tradeai-cio-nightly-reflection.timer": {
+      "active": "active",
+      "failed": "active",
+      "rc_active": 0
+    }
+  },
+  "systemd_failed": [
+    "\u25cf hermes-autonomous-loop.service           loaded failed failed Hermes Autonomous Ticker Challenger Loop (Apply Mode)",
+    "\u25cf hermes-deep-research-local.service       loaded failed failed Hermes Deep Research (Local) \u2014 internal overnight deep-research lane (advisory, staging-only)",
+    "\u25cf mcporter-token-refresh.service           loaded failed failed Refresh mcporter Google token",
+    "\u25cf tradeai-watch-decision-scheduler.service loaded failed failed Trade AI watch decision scheduler (LOCAL_QUANT tickets + free critics)"
+  ],
+  "ollama": {
+    "http_ok": true,
+    "raw_head": "{\"models\":[{\"name\":\"gemma3:4b\",\"model\":\"gemma3:4b\",\"modified_at\":\"2026-07-23T15:52:08.162498276-04:00\",\"size\":3338801819,\"digest\":\"6d0ee830bb54426fa6287268703dafbaf88374d194ed850fd5980f71f70eb0a0\",\"details\":{\"parent_model\":\"\",\"format\":\"gguf\",\"family\":\"gemma3\",\"families\":[\"gemma3\"],\"parameter_size\":\"4.3B\",\"quantization_level\":\"Q4_K_M\"}},{\"name\":\"gemma3:27b\",\"model\":\"gemma3:27b\",\"modified_at\":\"2026-"
+  },
+  "cio_files": {
+    "hermes_challenge_queue.jsonl": {
+      "exists": true,
+      "bytes": 345337,
+      "mtime": "2026-08-18T20:07:25.428573+00:00"
+    },
+    "cio_production_cases.jsonl": {
+      "exists": true,
+      "bytes": 7309964,
+      "mtime": "2026-08-18T20:25:53.472779+00:00"
+    },
+    "intelligence_lineages.json": {
+      "exists": true,
+      "bytes": 223761,
+      "mtime": "2026-08-18T15:58:30.213566+00:00"
+    },
+    "aif_memory.jsonl": {
+      "exists": true,
+      "bytes": 3260,
+      "mtime": "2026-08-18T03:15:21.155168+00:00"
+    },
+    "cio_action_ledger.jsonl": {
+      "exists": true,
+      "bytes": 92160,
+      "mtime": "2026-08-10T23:54:05.526413+00:00"
+    }
+  }
+}
