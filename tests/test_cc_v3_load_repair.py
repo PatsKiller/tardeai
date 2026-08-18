@@ -44,6 +44,11 @@ def test_deploy_script_calls_merge_helper():
     assert "ui_version" in src
 
 
+def test_host_wraps_maturity_connect_in_3s():
+    src = (ROOT / "scripts/portfolio_server.py").read_text()
+    assert "agent-maturity exceeded 3s connect/read bound" in src
+
+
 def test_maturity_bound_times_out(monkeypatch):
     from agent_runtime import read_http as rh
 
