@@ -31,6 +31,74 @@ export function InfluenceBadge() {
   </div>
 }
 
+export function MemoryPanel() {
+  const { data, loading, error } = useApi<any>('/api/v3/maturity/memory', 30_000)
+  const [msg, setMsg] = useState('')
+  const counts = data?.counts || {}
+  const recs = data?.records || []
+  const contradictions = data?.contradictions || []
+  const retrievals = data?.retrieval_receipts || []
+  const shadow = data?.shadow || {}
+  async function act(action: string, memoryId: string) {
+    setMsg('')
+    try {
+      const r = await fetch(`/api/v3/maturity-control/memory/${action}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ memory_id: memoryId, reason: 'operator' }),
+      })
+      const j = await r.json()
+      setMsg(j.ok ? `${action} ${memoryId}` : `${action} blocked: ${j.error || j.message || r.status}`)
+    } catch (e: any) {
+      setMsg(`failed: ${e?.message || e}`)
+    }
+  }
+  return <div data-testid="maturity-memory" style={panel}>
+    <div style={{ fontWeight: 800 }}>Memory</div>
+    <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>
+      Durable, NON_AUTHORITATIVE_CONTEXT. Not financial truth. Not execution authority.
+    </div>
+    <div style={{ marginTop: 8, fontSize: 12 }}>
+      provider={data?.backend?.provider || '—'} · backend={data?.backend?.backend || '—'} ·
+      durable={String(!!data?.backend?.durable)} · local={String(!!data?.backend?.local_controlled)} ·
+      influence={data?.influence_mode || 'OFF'} ·
+      MEMORY_BEHAVIOR_INFLUENCE={data?.memory_behavior_influence || '0'}
+    </div>
+    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', margin: '10px 0' }}>
+      {Object.entries(counts).map(([k, v]) => <Badge key={k}>{`${k} ${String(v)}`}</Badge>)}
+      <Badge>{`shadow_runs ${String(shadow.comparator_runs ?? 0)}`}</Badge>
+      <Badge>{`retrievals ${String(shadow.real_retrievals ?? retrievals.length)}`}</Badge>
+    </div>
+    {loading && <div>Loading…</div>}
+    {error && <div style={{ color: 'var(--amber)' }}>{String(error)}</div>}
+    {msg && <div style={{ fontSize: 12, color: 'var(--amber)', marginBottom: 8 }}>{msg}</div>}
+    <Table
+      cols={['id', 'status', 'type', 'subject', 'expires', 'actions']}
+      rows={recs.slice(0, 40).map((r: any) => [
+        r.memory_id, r.status, r.memory_type, r.subject, r.expires_at,
+        `${r.memory_id}`,
+      ])}
+    />
+    <div style={{ marginTop: 8 }}>
+      {recs.slice(0, 20).map((r: any) => (
+        <span key={r.memory_id} style={{ marginRight: 8 }}>
+          <button type="button" onClick={() => act('dispute', r.memory_id)}>dispute {String(r.memory_id).slice(0, 10)}</button>
+          <button type="button" onClick={() => act('retract', r.memory_id)}>retract</button>
+          <button type="button" onClick={() => act('expire', r.memory_id)}>expire</button>
+        </span>
+      ))}
+    </div>
+    {contradictions.length > 0 && <div style={{ marginTop: 12 }}>
+      <div style={label}>Contradictions / disputed</div>
+      <pre style={{ fontSize: 11, whiteSpace: 'pre-wrap' }}>{JSON.stringify(contradictions.slice(0, 20), null, 2)}</pre>
+    </div>}
+    {retrievals.length > 0 && <div style={{ marginTop: 12 }}>
+      <div style={label}>Recent retrievals</div>
+      <pre style={{ fontSize: 11, whiteSpace: 'pre-wrap' }}>{JSON.stringify(retrievals.slice(-5), null, 2)}</pre>
+    </div>}
+  </div>
+}
+
 export function LearningPanel() {
   const { data, loading, error } = useApi<any>('/api/v3/maturity/learning', 60_000)
   const [open, setOpen] = useState<string | null>(null)

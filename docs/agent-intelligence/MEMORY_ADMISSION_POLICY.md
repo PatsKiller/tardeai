@@ -17,6 +17,39 @@ as, and what it can never become. Implemented in
 `CANDIDATE` memory may inform context but can **never act as policy** — it does
 not drive a decision, an order, a stop, or a risk-policy change.
 
+### Display mapping (Program 3)
+
+Stored status `ACTIVE` is displayed as `ADMITTED` in Command Center and GET
+`/api/v3/maturity/memory`. The on-disk value is **not rewritten**. Historical
+`ACTIVE` records remain `ACTIVE`.
+
+## Program 3 admission pipeline
+
+candidate → schema validation → secret scan → authority scan →
+source/provenance validation → scope classification → contradiction scan →
+expiry assignment → admission decision → durable write
+
+Admission produces a receipt (`data/cio/aif_memory_admissions.jsonl`) with
+`memory_id`, `candidate_id`, `accepted`, `reason`, `authority_class`,
+`source_count`, `provenance_valid`, `secret_scan`, `forbidden_truth_scan`,
+`contradiction_count`, `expires_at`, `admitted_at`, `admitted_by`.
+
+Fail soft for the wider agent wake. Fail closed for memory admission.
+
+## Retention (TTL days)
+
+| Type | TTL |
+|------|-----|
+| OPERATOR_EXPLICIT_PREFERENCE | 365 |
+| OPERATOR_INFERRED_PREFERENCE | 180 |
+| AGENT_COMMITMENT | 180 |
+| CASE_SUMMARY | 365 |
+| RESEARCH_REFERENCE | 90 |
+| EPISODIC | 30 |
+| PROCEDURAL_HINT | 14 |
+
+Expired records remain in the audit JSONL and are excluded from active retrieval.
+
 ### Memory types → default admission
 
 | `memory_type` | Default admission |

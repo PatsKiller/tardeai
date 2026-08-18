@@ -7,7 +7,7 @@ import CoderDispatchLedger from '../components/health/CoderDispatchLedger'
 import RiskHealthStrip from '../components/risk/RiskHealthStrip'
 import RemediationDashboard from './RemediationDashboard'
 import OpsAutonomyDashboard from './OpsAutonomyDashboard'
-import { AutonomyLoopPanel } from './MaturityPanels'
+import { AutonomyLoopPanel, MemoryPanel } from './MaturityPanels'
 import type { DrillContext } from '../components/DetailDrawer'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubTab, hubPanel } from '../lib/terminalHubChrome'
@@ -613,7 +613,7 @@ export default function HealthHub({ onDrill }: Props) {
 
       {tab === 'log' && <RemediationDashboard />}
       {tab === 'autonomy' && <OpsAutonomyDashboard />}
-      {tab === 'intelligence-loop' && <AutonomyLoopPanel />}
+      {tab === 'intelligence-loop' && <><AutonomyLoopPanel /><div style={{ height: 12 }} /><MemoryPanel /></>}
     </div>
   )
 }

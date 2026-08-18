@@ -8,7 +8,7 @@ release can be staged without a code change:
   AGENT_CONTEXT_ENVELOPE      — ContextEnvelope@v1 enrichment      (default 0)
   AGENT_RUN_TRACE             — AgentRunTrace@v1 JSONL lineage     (default 0)
   MCP_READ_ONLY_GATEWAY       — read-only MCP context path         (default 0)
-  MEMORY_PROVIDER             — "null" | "local" | "mem0"          (default "null")
+  MEMORY_PROVIDER             — "null" | "local" | "mem0" | "durable" (default "null")
   MEMORY_SHADOW               — record memory, never influence     (default 0)
   MEMORY_BEHAVIOR_INFLUENCE   — memory may shape advisory context  (default 0)
   LANGGRAPH_WORKER_PILOT      — LangGraph durable-workflow pilot   (default 0)
@@ -51,7 +51,7 @@ INT_FLAG_NAMES: tuple[str, ...] = (
 
 #: The only memory-provider values this program accepts. Anything else fails
 #: closed to "null" so a typo can never silently select a live backend.
-ALLOWED_MEMORY_PROVIDERS = frozenset({"mem0", "local", "null"})
+ALLOWED_MEMORY_PROVIDERS = frozenset({"mem0", "local", "null", "durable"})
 
 #: Canonical conservative config. This is both the default and the rollback set:
 #: every capability off, memory provider null.
@@ -101,6 +101,21 @@ def _coerce_provider(value: Any) -> str:
     if s not in ALLOWED_MEMORY_PROVIDERS:
         return "null"
     return s
+
+
+def resolve_flags(flags: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+    """Merge a partial flags mapping with env-backed conservative defaults.
+
+    Callers may pass ``{"MEMORY_PROVIDER": "durable"}``; missing keys are filled
+    from ``load_feature_flags()``. Values are re-coerced so an invalid provider
+    still fails closed to ``"null"``.
+    """
+    base = load_feature_flags()
+    if not flags:
+        return base
+    merged = dict(base)
+    merged.update(flags)
+    return load_feature_flags(merged)
 
 
 def load_feature_flags(env: Optional[dict[str, Any]] = None) -> dict[str, Any]:

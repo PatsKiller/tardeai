@@ -26,6 +26,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Optional
 
+import os
+
 from scripts.lib.agent_context_envelope import get_context_for_agent
 from scripts.lib.agent_feature_flags import load_feature_flags
 from scripts.lib.agent_run_trace import (
@@ -83,10 +85,20 @@ def instrument_material_wake(
     envelope: Optional[dict[str, Any]] = None
     if envelope_on:
         try:
+            attached = memory_provider
+            if attached is None:
+                provider_name = str(flags.get("MEMORY_PROVIDER") or "null")
+                shadow = int(flags.get("MEMORY_SHADOW") or 0) == 1
+                gov = str(os.environ.get("GOVERNED_MEMORY_ADVISORY_INFLUENCE") or "OFF").strip().upper()
+                if provider_name in {"durable", "local"} and (
+                    shadow or gov in {"SHADOW", "CANARY", "ACTIVE_ADVISORY"}
+                ):
+                    from scripts.lib.agent_memory_provider import get_memory_provider
+                    attached = get_memory_provider(flags)
             envelope = get_context_for_agent(
                 agent="alex",
                 wake=(wake if isinstance(wake, dict) else {"wake_id": wake_id}),
-                memory_provider=memory_provider,
+                memory_provider=attached,
             )
         except Exception as exc:  # noqa: BLE001 — fail-soft observability boundary
             errors.append(f"envelope:{type(exc).__name__}")
@@ -97,6 +109,9 @@ def instrument_material_wake(
     if trace_on:
         try:
             wake_d = wake if isinstance(wake, dict) else {}
+            mem_ids = []
+            if isinstance(envelope, dict):
+                mem_ids = list((envelope.get("episodic_memory") or {}).get("memory_ids") or [])
             trace = build_trace(
                 trace_id=trace_id,
                 wake_id=wake_id,
@@ -108,6 +123,9 @@ def instrument_material_wake(
                     if isinstance(envelope, dict) else None
                 ),
                 decision_ids=list(decision_ids or []) or None,
+                memory_ids=mem_ids or None,
+                memory_behavior_influence=str(flags.get("MEMORY_BEHAVIOR_INFLUENCE") or "0"),
+                memory_authority="NON_AUTHORITATIVE_CONTEXT",
             )
             dest = Path(trace_path) if trace_path is not None else DEFAULT_TRACE_PATH
             trace_appended = append_trace(trace, path=dest)

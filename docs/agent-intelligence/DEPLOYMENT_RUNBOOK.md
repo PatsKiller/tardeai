@@ -46,14 +46,29 @@ value. Absence of an environment variable = the default below.
 | `AGENT_CONTEXT_ENVELOPE` | `0` | Enrich wakes with `ContextEnvelope@v1` |
 | `AGENT_RUN_TRACE` | `0` | Append `AgentRunTrace@v1` lineage JSONL |
 | `MCP_READ_ONLY_GATEWAY` | `0` | Route agent MCP calls through the read-only gateway |
-| `MEMORY_PROVIDER` | `"null"` | `"null"` \| `"local"` \| `"mem0"` (invalid -> `"null"`) |
+| `MEMORY_PROVIDER` | `"null"` | `"null"` \| `"local"` \| `"mem0"` \| `"durable"` (invalid -> `"null"`) |
 | `MEMORY_SHADOW` | `0` | Record memory; never let it influence synthesis |
 | `MEMORY_BEHAVIOR_INFLUENCE` | `0` | Let memory shape advisory context (last resort) |
 | `LANGGRAPH_WORKER_PILOT` | `0` | LangGraph durable-workflow pilot |
 
 Integer/boolean flags accept `0`/`1`, `true`/`false`, `yes`/`no`, `on`/`off`
 (case-insensitive). Any non-`1` value fails closed to `0`. Any `MEMORY_PROVIDER`
-outside `{"mem0", "local", "null"}` fails closed to `"null"`.
+outside `{"mem0", "local", "null", "durable"}` fails closed to `"null"`.
+
+### Program 3 — durable memory shadow (does not enable behavior influence)
+
+```bash
+export MEMORY_PROVIDER=durable
+export MEMORY_SHADOW=1
+export MEMORY_BEHAVIOR_INFLUENCE=0
+export GOVERNED_MEMORY_ADVISORY_INFLUENCE=SHADOW
+```
+
+- **What turns on:** durable JSONL store on shared `data/cio`, Command Center
+  Memory tab, retrieval/admission receipts, SHADOW comparator.
+- **What stays off:** `MEMORY_BEHAVIOR_INFLUENCE`, broker/order/stop/risk/2FA.
+- **Hold until:** canary memory survives restart + CURRENT flip, zero secret
+  leaks, zero forbidden-truth admissions, Program 1/2 surfaces still healthy.
 
 ---
 

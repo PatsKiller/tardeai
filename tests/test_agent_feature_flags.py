@@ -107,10 +107,11 @@ def test_valid_memory_provider_accepted():
     assert load_feature_flags({"MEMORY_PROVIDER": "local"})["MEMORY_PROVIDER"] == "local"
     assert load_feature_flags({"MEMORY_PROVIDER": "null"})["MEMORY_PROVIDER"] == "null"
     assert load_feature_flags({"MEMORY_PROVIDER": "LOCAL"})["MEMORY_PROVIDER"] == "local"
+    assert load_feature_flags({"MEMORY_PROVIDER": "durable"})["MEMORY_PROVIDER"] == "durable"
 
 
 def test_allowed_memory_providers_constant():
-    assert ALLOWED_MEMORY_PROVIDERS == frozenset({"mem0", "local", "null"})
+    assert ALLOWED_MEMORY_PROVIDERS == frozenset({"mem0", "local", "null", "durable"})
 
 
 # ── rollback_flags ─────────────────────────────────────────────────────────

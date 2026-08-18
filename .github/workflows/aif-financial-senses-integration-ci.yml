@@ -42,6 +42,9 @@ jobs:
       - name: AIF critical suite
         run: python3 -m pytest -q --tb=line tests/test_agent_intelligence_adversarial.py tests/test_agent_intelligence_failure_injection.py tests/test_agent_intelligence_integration.py
 
+      - name: Durable memory + maturity programs
+        run: python3 -m pytest -q --tb=line tests/test_agent_durable_memory.py tests/test_advisory_influence.py tests/test_maturity_control_plane.py
+
       - name: Schwab write policy (source-only)
         run: python3 scripts/validate_schwab_write_policy.py --source-only
 
