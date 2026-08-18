@@ -4,15 +4,15 @@
 |---|---|
 | **Document name** | `CIO_AND_ADVISORY_LIVING_STATUS.md` |
 | **Repo path** | `docs/investment-office/CIO_AND_ADVISORY_LIVING_STATUS.md` |
-| **Revision** | **R6.2 — 2026-08-18T21:32Z** (producer repair + live VALID proof) |
-| **Status** | **PARTIAL_WITH_EXPLICIT_GAPS** — two live-bridge jobs now VALID with sources; memory admitted as CANDIDATE and retrieved. Code not yet on CURRENT. |
+| **Revision** | **R6.2 — 2026-08-18T21:38Z** (producer repair + promoted + CURRENT-native VALID job) |
+| **Status** | **PARTIAL_WITH_EXPLICIT_GAPS** — producers fixed, PR #377 merged, CURRENT `40934ca8`. VALID jobs + CANDIDATE memory retrieved. Overlay still 108. Hermes units still failed. |
 | **Authority** | `READ_ONLY_ADVISORY` · `MEMORY_BEHAVIOR_INFLUENCE=0` · `broker_write=NONE` |
 | **Owner** | Alex desk · operator: John |
-| **Live CURRENT** | `e96ff36a-main-exact-phase2-20260818-164906` |
-| **CURRENT SHA** | `e96ff36a2b950deb3cac187e37819a0524da8ae0` |
-| **origin/main at authoring** | will be this PR after merge (branch `fix/hermes-quality-producer`) |
-| **Provenance** | **CODE FIX pending promote.** Do not leave CURRENT on e96 after this lands. |
-| **UI chip** | `3.14+msz4yxaj` · `e96ff36a` |
+| **Live CURRENT** | `40934ca8-main-exact-phase2-20260818-173544` |
+| **CURRENT SHA** | `40934ca809e3cff18f0aacb3d59e00d7a9b15421` |
+| **origin/main at authoring** | `40934ca809e3cff18f0aacb3d59e00d7a9b15421` (PR #377) |
+| **Provenance** | **CURRENT_MATCH** with origin/main after promote. |
+| **UI chip** | `3.14+msz6mwp7` · `40934ca8` |
 | **Google Drive file** | [CIO_AND_ADVISORY_LIVING_STATUS.md](https://drive.google.com/file/d/1scL90dCZa7uOK9_sojX-MNBWHfrViWMi/view) |
 | **Drive folder** | [docs / investment-office](https://drive.google.com/drive/folders/1sVHlO8v-NStl2HRbk1bJqwqI67bxGUM8) |
 
@@ -42,14 +42,14 @@ Admission gates were not loosened to get green.
 
 | Surface | Status | Live evidence |
 |---|---|---|
-| Command Center SPA | **WORKING** | chip `3.14+msz4yxaj` |
-| Release | **WORKING / STALE_CODE** | CURRENT still `e96ff36a`. Producer fix is this PR. Promote after merge. |
+| Command Center SPA | **WORKING** | chip `3.14+msz6mwp7` |
+| Release | **WORKING** | CURRENT `40934ca8` = origin/main (PR #377 promoted) |
 | `/api/v3/cio` | **WORKING** | 200 (recon producer present) |
 | `/api/v3/advisory` | **WORKING_DEGRADED** | HOLDINGS_SOURCE_FRESHNESS=STALE; OPINION_FRESHNESS=EXPIRED |
 | `/api/v3/intelligence` | **WORKING** | 13 lineages |
 | `/api/v3/intelligence/queue` | **WORKING** | **108 pending overlay** (structured jobs completed; overlay not auto-expired) |
 | `/api/v3/intelligence/reconciliation` | **WORKING** | 200; `ok=false` while overlay backlog exists |
-| Memory | **SHADOW** | 2 ACTIVE + 1 EXPIRED + **2 new CANDIDATE** (`mem_12ab1b21…` SCHD, `mem_b91739ce…` XLI). MBI=0. |
+| Memory | **SHADOW** | 2 ACTIVE + 1 EXPIRED + **3 CANDIDATE** (`mem_12ab1b21…`, `mem_b91739ce…`, `mem_3ec086de…`). MBI=0. |
 | Learning | **WORKING_DEGRADED** | observer **PROVEN_IDLE**; next_due **2026-08-22T14:23:21Z** |
 | Hermes autonomous-loop | **BROKEN** | still failed (Aug 17 MU/STLD timeout) |
 | Hermes deep-research-local | **BROKEN** | still failed (DB SSL after 27b) |
@@ -90,6 +90,19 @@ Worker invoked from worktree `fix/hermes-quality-producer` against live `data/ci
 | memory | **CANDIDATE** `mem_b91739ce0729a3944f090d613ba8718a` — retrieved |
 | Telegram | none |
 
+### 2c. SCHD on promoted CURRENT — `res_f83c5d619f49` → `rr_b841b1b28b38`
+
+| Field | Value |
+|---|---|
+| path | `hermes_cio_worker.py` on CURRENT `40934ca8` (no worktree PYTHONPATH) |
+| plan | `plan_d45c7c4af5a6` |
+| backend | live bridge, latency **5932 ms** |
+| critique | **VALID** · sources=`cat_schd_2026-08-18_analyst_upgrade_a05f99` |
+| completed_ts | `2026-08-18T21:37:22.774552+00:00` (worker-now) |
+| plan attach | **YES** |
+| memory | **CANDIDATE** `mem_3ec086deb2513db0720c628b4e8f10ba` retrieved (admit via same bridge after the worker return; hook did not write its own receipt) |
+| Telegram | none |
+
 17:00 timer stub-completions (`res_29e5a85972c1` XLI, `res_48a84c661bc8` DIVI) and R6.1 canary `rr_3ac69ce392c0` (INSUFFICIENT, `as_of=2025-07-11`) remain historical. History not deleted.
 
 ---
@@ -102,7 +115,7 @@ Worker invoked from worktree `fix/hermes-quality-producer` against live `data/ci
 | Queue visibility | **WORKING** — overlay pending **108** |
 | Research completion | **TWO live-bridge VALID jobs** this hour. Autonomous-loop / deep-research still failed. |
 | Critique | **WORKING** — VALID on both new results; INSUFFICIENT on R6.1 canary (correct at the time) |
-| Plan attach | **PROVEN** for `rr_2ce371c209dc` and `rr_60d280b8b1b3` |
+| Plan attach | **PROVEN** for `rr_2ce371c209dc`, `rr_60d280b8b1b3`, `rr_b841b1b28b38` |
 | Research→memory | **PROVEN CANDIDATE** (retrieved). Not ACTIVE policy. MBI=0. |
 | Automatic retrieval / advisory delta | **NOT_PROVEN** as a desk consumer path |
 | Overlay expire-on-complete | **NOT_WIRED** — completing a `res_*` does not EXPIRE the challenge stream |
@@ -134,11 +147,11 @@ Worker invoked from worktree `fix/hermes-quality-producer` against live `data/ci
 
 Hard-reload `/v3/` after promote.
 
-- [ ] Chip still `3.14+msz4yxaj` until promote; after promote chip SHA must match this merge
-- [ ] Plan `plan_d45c7c4af5a6` evidence includes `rr_2ce371c209dc`
+- [ ] Chip `3.14+msz6mwp7` · SHA `40934ca8` (not e96 / not 244b7a41)
+- [ ] Plan `plan_d45c7c4af5a6` evidence includes `rr_b841b1b28b38` (latest) and earlier `rr_2ce371c209dc`
 - [ ] Plan `plan_ece5f6531254` evidence includes `rr_60d280b8b1b3`
-- [ ] Memory contains CANDIDATE `mem_12ab1b21…` and `mem_b91739ce…`
-- [ ] Drive header **R6.2 — 2026-08-18T21:32Z**
+- [ ] Memory CANDIDATE `mem_12ab1b21…` / `mem_b91739ce…` / `mem_3ec086de…`
+- [ ] Drive header **R6.2 — 2026-08-18T21:38Z**
 - [ ] MBI=0
 - [ ] Do not treat overlay pending 108 as “research never completed”
 
@@ -146,7 +159,7 @@ Hard-reload `/v3/` after promote.
 
 ## 6. How we update
 
-Same Drive file `1scL90dCZa7uOK9_sojX-MNBWHfrViWMi`. **R7** only after this code is **promoted to CURRENT** and one more job completes **on CURRENT** with VALID + CANDIDATE retrieve (no worktree PYTHONPATH). Do not claim R7 from a worktree-only worker.
+Same Drive file `1scL90dCZa7uOK9_sojX-MNBWHfrViWMi`. Code is on CURRENT. Overlay expire-on-complete is still unwired. Hermes units still failed. **R7** waits on those plus a desk consumer retrieving the CANDIDATE without a manual admit replay. Do not invent that.
 
 ---
 
@@ -158,6 +171,6 @@ Same Drive file `1scL90dCZa7uOK9_sojX-MNBWHfrViWMi`. **R7** only after this code
 | R5 | 2026-08-18T20:40Z | Closure v2 authored as deploy-pending. |
 | R6 | 2026-08-18T20:53Z | Truth-sync to `e96ff36a`; leftover R4 numbers remained below the fold. |
 | R6.1 | 2026-08-18T21:06Z | Corrected stale numbers. Live-bridge canary `rr_3ac69ce392c0`. Memory refused. **Documented blocks instead of fixing them.** |
-| **R6.2** | **2026-08-18T21:32Z** | Fixed producers. VALID `rr_2ce371c209dc` / `rr_60d280b8b1b3`. Memory CANDIDATE retrieved. CURRENT hijack guarded. Not promoted yet. |
+| **R6.2** | **2026-08-18T21:38Z** | Fixed producers. PR #377 merged + promoted `40934ca8`. VALID `rr_2ce371c209dc` / `rr_60d280b8b1b3` / CURRENT-native `rr_b841b1b28b38`. Memory CANDIDATE retrieved. Overlay 108. Units still failed. |
 
-*End of R6.2. Not R7 — CURRENT still e96; overlay still 108; Hermes units still failed.*
+*End of R6.2. Not R7 — overlay still 108; Hermes units still failed; worker hook did not write its own memory receipt.*
