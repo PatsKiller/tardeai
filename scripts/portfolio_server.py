@@ -775,6 +775,25 @@ def _agent_runtime_read_handle(method: str, path: str, raw_query):
         query = {}
         if raw_query:
             query = {k: (v[0] if isinstance(v, list) and len(v) == 1 else v) for k, v in raw_query.items()}
+        # agent-maturity first paint must not wait on a hung Postgres connect.
+        if str(path or "").startswith("/api/v3/agent-maturity"):
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                fut = pool.submit(_ar_boot.handle, method, path, query)
+                try:
+                    return fut.result(timeout=3.0)
+                except concurrent.futures.TimeoutError:
+                    return 503, {
+                        "contract": "agent-maturity-read-api-v1",
+                        "read_only": True,
+                        "kind": "timeout",
+                        "data": None,
+                        "authority": {
+                            "mutation": False, "provider_call": False, "service_control": False,
+                            "schedule_change": False, "financial_action": False,
+                        },
+                        "detail": "agent-maturity exceeded 3s connect/read bound",
+                    }
         return _ar_boot.handle(method, path, query)
     except Exception:
         # Honest zero-authority 503; never surface an exception to the client.
