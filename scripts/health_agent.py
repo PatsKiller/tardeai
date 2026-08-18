@@ -2150,7 +2150,9 @@ def collect_trade_in_view_health() -> list[dict]:
                               mfe_pct=mfe_pct, mfe_rows=mfe_n, trades=trades_n,
                               route="/v3/trade-in-view"))
 
-        # trade_closed output freshness (post-close on trading days)
+        # trade_closed output freshness (post-close on trading days). Rebased on the journal REBUILD
+        # timestamp (created_at), NOT MAX(close_date): a quiet market with no recent closes is not a
+        # broken ingest. schwab_journal_builder DELETE-then-INSERTs with created_at=NOW() each --apply.
         try:
             from zoneinfo import ZoneInfo
             now_et = datetime.now(ZoneInfo("America/New_York"))
@@ -2160,12 +2162,12 @@ def collect_trade_in_view_health() -> list[dict]:
             now_et = datetime.now()
             trading = now_et.weekday() < 5
         if trading and now_et.hour >= int(cfg.get("check_after_hour_et", 19)):
-            age_d = _db_age_h("SELECT MAX(close_date)::timestamp FROM trade_closed")
-            max_d = float(cfg.get("trade_closed_stale_days", 7))
+            age_d = _db_age_h("SELECT MAX(created_at)::timestamp FROM trade_closed WHERE account LIKE 'schwab%'")
+            max_d = float(cfg.get("trade_closed_stale_days", 3))
             if age_d is not None and age_d > max_d * 24:
                 out.append(_f("data_quality", "trade_closed_stale", "warning",
-                              f"trade_closed newest close {age_d:.0f}h old (>{max_d}d) — "
-                              f"journal ingest may be broken",
+                              f"trade_closed journal rebuild {age_d:.0f}h old (>{max_d}d) — "
+                              f"schwab_journal_builder may be broken",
                               age_hours=age_d, route="/v3/trade-in-view"))
     except Exception as e:
         out.append(_f("data_quality", "collector_error", "info",

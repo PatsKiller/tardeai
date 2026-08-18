@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-08-18 — Header STALE badge rebased on journal-rebuild freshness
+
+The TRADING / REALIZED header tiles were flagging `⚠ STALE` because staleness was computed from
+`journal.last_close_date` = `MAX(close_date)` — the date of the most recent *closed* position. A quiet
+market (no Schwab position closed since Jul 24) was being mislabeled as "stale data" even though the
+journal pipeline (`schwab_transaction_ingest` → `schwab_journal_builder`) was running every cycle.
+
+- **`scripts/api_v2.py`**: `/api/v2/overview` now exposes `journal.last_ingested_at`
+  (`MAX(created_at)` over `trade_closed` schwab rows = last successful rebuild) and
+  `journal.ledger_last_trade_time` (`MAX(trade_time)` over `trade_transactions` `schwab_api` rows).
+  `last_close_date` remains as neutral "last close" info.
+- **`apps/command-center-v3/src/components/MetricStrip.tsx`**: staleness now keys off
+  `last_ingested_at` (>72h → STALE, spans weekends) instead of `last_close_date`. Tile tooltips read
+  "last close <date> · journal rebuilt <time>" rather than implying the data is broken.
+- **`scripts/health_agent.py` + `config/health_agent_policy.json`**: the parallel `trade_closed_stale`
+  check was rebased from `MAX(close_date)` to `MAX(created_at)` (rebuild freshness), threshold 7d → 3d.
+- **`tests/test_journal_staleness_semantics.py`**: pins the decoupled contract across API, header, and
+  health agent.
+
 ## 2026-08-16 — Deep docs/ cleanup (3,436 → 1,779 files; 2.30 GB → 17 MB)
 
 Due-diligence pass over `docs/` to purge "version one/two" snapshots, stale backups, and
