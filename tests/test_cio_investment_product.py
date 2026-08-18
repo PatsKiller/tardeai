@@ -63,6 +63,20 @@ def test_above_zone_avoid():
     assert rec["governed_verdict"] is None
 
 
+def test_queue_reentry_names_enter_book_without_prev_table(root: Path):
+    queue = {"items": [
+        {"symbol": "ANET", "source": "reentry", "directive_label": "Re-entry NEAR ENTRY — ANET"},
+        {"symbol": "CSCO", "source": "reentry", "directive_label": "Re-entry NEAR ENTRY — CSCO"},
+        {"symbol": "SCHG", "source": "advisory", "verdict": "ADD", "directive_label": "watch SCHG"},
+    ]}
+    p = build_product(root=root, queue=queue, previously_traded=[], holdings={})
+    names = {r["symbol"]: r for r in p["reentry_book"]["names"]}
+    assert "ANET" in names and "CSCO" in names
+    assert names["ANET"]["status"] in {"NEAR", "WAIT"}
+    assert names["ANET"]["governed_verdict"] is None
+    assert "SCHG" not in names  # advisory ADD alone is opportunity book, not former-holding book
+
+
 def test_product_books(root: Path):
     prev = [
         {"symbol": "SCHG", "reentry_signal": "IN_ZONE", "last_exit_price": 90, "current_price": 92,

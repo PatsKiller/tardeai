@@ -366,6 +366,58 @@ def build_temperament(
     }
 
 
+def _infer_signal_from_queue_item(it: dict[str, Any]) -> str:
+    state = str(it.get("state") or "").upper()
+    if state in READY_STATES:
+        return state
+    label = str(it.get("directive_label") or it.get("label") or "").upper()
+    if "IN ZONE" in label or "IN_ZONE" in label:
+        return "IN_ZONE"
+    if "NEAR" in label:
+        return "NEAR ENTRY"
+    if "READY" in label:
+        return "READY TO REVIEW"
+    if "OVERSOLD" in label:
+        return "OVERSOLD REVIEW"
+    if "ABOVE" in label:
+        return "ABOVE_ZONE"
+    if it.get("verdict") == "RE_ENTER":
+        return "IN_ZONE"
+    return "WATCH"
+
+
+def _merge_prev_and_queue(prev: list[dict[str, Any]], queue: dict[str, Any]) -> list[dict[str, Any]]:
+    """Former-holdings table plus re-entry desk/queue names (CSCO/ANET etc.)."""
+    by: dict[str, dict[str, Any]] = {}
+    for row in prev or []:
+        if not isinstance(row, dict):
+            continue
+        sym = str(row.get("symbol") or "").upper()
+        if sym:
+            by[sym] = dict(row)
+            by[sym]["symbol"] = sym
+    for it in (queue.get("items") or queue.get("top") or []):
+        if not isinstance(it, dict):
+            continue
+        src = str(it.get("source") or "")
+        label = str(it.get("directive_label") or "")
+        if src != "reentry" and "re-entry" not in label.lower() and it.get("verdict") != "RE_ENTER":
+            continue
+        sym = str(it.get("symbol") or "").upper()
+        if not sym:
+            continue
+        if sym not in by:
+            by[sym] = {
+                "symbol": sym,
+                "reentry_signal": _infer_signal_from_queue_item(it),
+                "source": "opportunity_queue",
+                "directive_label": label,
+            }
+        else:
+            by[sym].setdefault("reentry_signal", _infer_signal_from_queue_item(it))
+    return list(by.values())
+
+
 def build_reentry_book(
     prev: list[dict[str, Any]],
     queue: dict[str, Any],
@@ -376,7 +428,7 @@ def build_reentry_book(
     by_q = _queue_by_symbol(queue)
     fs_ok = _fs_ok(fs_rows)
     rows = []
-    for row in prev:
+    for row in _merge_prev_and_queue(prev, queue):
         rec = adjudicate_reentry(
             row, qitems=by_q.get(str(row.get("symbol") or "").upper(), []),
             lessons=lessons, fs_ok=fs_ok, infl=infl,
