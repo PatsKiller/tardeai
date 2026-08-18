@@ -1,0 +1,15 @@
+[Unit]
+Description=Hermes Deep Research (Local) — official DeepSeek off-peak lane (advisory, staging-only)
+After=network-online.target cio-governed-bridge.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/hermes_deep_research_local.py --apply --max-rows 3 --model gemma3:27b
+TimeoutStartSec=3600
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+Environment=PYTHONUNBUFFERED=1
+Environment=HERMES_LLM_PRIMARY=bridge_flash
+Environment=HERMES_OLLAMA_FAILOVER=1
+Environment=HERMES_BRIDGE_URL=http://127.0.0.1:8766
+Environment=HERMES_BRIDGE_MODEL=deepseek-v4-flash

@@ -164,14 +164,42 @@ def main():
     ap.add_argument("--max-rows", type=int, default=3)
     ap.add_argument("--model", default="gemma3:27b")
     ap.add_argument("--allow-daytime", action="store_true", help="run outside the overnight window (manual)")
+    ap.add_argument(
+        "--allow-peak",
+        action="store_true",
+        help="allow DeepSeek Flash apply during official peak (01-04 and 06-10 UTC)",
+    )
     args = ap.parse_args()
 
     if KILL.exists():
         print("ABORT: kill-switch present (data/runtime/HERMES_DISABLED)"); sys.exit(2)
     if LOCK.exists():
         print("ABORT: another deep-research run holds the lockfile"); sys.exit(1)
+    try:
+        from hermes_llm_failover import (
+            allow_deepseek_peak,
+            deepseek_window_label,
+            is_deepseek_offpeak,
+            primary_provider,
+        )
+        flash = primary_provider() == "bridge_flash"
+    except Exception:
+        flash = False
+        is_deepseek_offpeak = None  # type: ignore
     hour = datetime.now().hour
-    if not (hour >= 22 or hour < 6) and not args.allow_daytime:
+    if flash and is_deepseek_offpeak is not None:
+        if (
+            args.apply
+            and not is_deepseek_offpeak()
+            and not (args.allow_peak or args.allow_daytime or allow_deepseek_peak())
+        ):
+            print(
+                f"SKIPPED_DEEPSEEK_PEAK: window={deepseek_window_label()} "
+                "official peak 01:00-04:00 and 06:00-10:00 UTC. "
+                "Pass --allow-peak to override."
+            )
+            return
+    elif not (hour >= 22 or hour < 6) and not args.allow_daytime:
         print(f"NOTE: outside overnight window (hour={hour}); pass --allow-daytime to run manually. Proceeding dry-run only.")
         args.apply = False
     LOCK.write_text(str(os.getpid()))

@@ -1,0 +1,12 @@
+[Unit]
+Description=Hermes Deep Research — DeepSeek official off-peak cadence
+
+[Timer]
+# Offset +25m from autonomous-loop. Same official off-peak ∩ night/pre-market windows.
+OnCalendar=*-*-* 00,01,06,07,08:35:00 America/New_York
+Persistent=true
+RandomizedDelaySec=60
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target
