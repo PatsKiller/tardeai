@@ -87,10 +87,49 @@ def decide_notifications(
 def emit_telegram(
     decided: dict[str, Any],
     send_fn: Callable[..., Any] | None,
+    *,
+    title: str = "INDUSTRY MOMENTUM",
 ) -> int:
     """Route through the canonical sender. Never bypass_router."""
     lines = [a["line"] for a in decided.get("send") or [] if a.get("line")]
     if not lines or send_fn is None:
         return 0
-    send_fn("INDUSTRY MOMENTUM\n" + "\n".join(lines))
+    send_fn(title + "\n" + "\n".join(lines))
     return len(lines)
+
+
+def sector_condition_key(sector: str) -> str:
+    return f"sector_momentum:{sector}"
+
+
+def sector_semantic_uid(sector: str, from_state: str, to_state: str, session: str) -> str:
+    return f"sector_momentum:{sector}:{from_state}:{to_state}:{session}"
+
+
+def decide_sector_notifications(
+    alerts: Iterable[dict[str, Any]],
+    *,
+    session: str,
+    state_path=None,
+) -> dict[str, Any]:
+    """Same transition state machine as industry. Never notify on replay."""
+    send: list[dict[str, Any]] = []
+    suppressed: list[dict[str, Any]] = []
+    observations: list[dict[str, Any]] = []
+    for a in alerts:
+        sector = str(a.get("sector") or a.get("etf") or "")
+        frm = a.get("from") or ""
+        to = a.get("to") or ""
+        obs = observe(
+            sector_condition_key(sector),
+            f"{frm}->{to}",
+            alertable=True,
+            path=state_path,
+            extra={"session": session, "uid": sector_semantic_uid(sector, frm, to, session)},
+        )
+        observations.append(obs)
+        if obs["notify"]:
+            send.append(a)
+        else:
+            suppressed.append({**a, "suppress_reason": obs["action"]})
+    return {"send": send, "suppressed": suppressed, "observations": observations}

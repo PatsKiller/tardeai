@@ -267,9 +267,12 @@ def test_build_office_home_has_six_sections():
         report=_report(), thesis=_thesis(), attribution=_attribution(),
         income={"grand_total_income": 10543.13},
     )
-    for k in ("cio_now", "capital_plan", "posture", "opportunities", "report", "evidence"):
+    for k in ("cio_now", "capital_plan", "posture", "opportunities", "report", "evidence", "operator_trust"):
         assert k in home, k
     assert home["authority"] == "READ_ONLY_ADVISORY"
+    assert "aegis_last_run" in home["operator_trust"]
+    assert "holdings" in home["operator_trust"]
+    assert "notification" in home["operator_trust"]
     assert home["posture"]["income"]["total_usd"] == 10543.13
 
 
@@ -290,3 +293,4 @@ def test_build_office_home_empty_fail_soft():
     assert home["capital_plan"]["cash_total_usd"] is None
     assert home["report"]["source_sha"] is None
     assert home["evidence"]["authority"] == "READ_ONLY_ADVISORY"
+    assert home["operator_trust"]["holdings"]["reason_code"]

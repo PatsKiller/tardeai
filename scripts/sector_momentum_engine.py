@@ -407,22 +407,36 @@ def main() -> int:
 
     alerts = alerts[:CFG["max_alert_lines_per_day"]]
     market["state_line"] = market_state_line(market, rows)
+    session = datetime.now(timezone.utc).date().isoformat()
+    try:
+        from industry_momentum import decide_sector_notifications, emit_telegram
+        notify_plan = decide_sector_notifications(alerts, session=session)
+    except Exception as e:
+        notify_plan = {"send": [], "suppressed": alerts, "error": str(e)[:160]}
     snap = {"generated_at": datetime.now(timezone.utc).isoformat(),
             "rows": rows, "market": market, "transitions_today": alerts,
+            "notify": {
+                "send": len(notify_plan.get("send") or []),
+                "suppressed": len(notify_plan.get("suppressed") or []),
+            },
             "not_decomposed": weights.get("_not_decomposed"),
             "exposure_basis": "effective (direct + config fund lookthrough, factsheet weights)"}
     out = ROOT / "data" / "runtime" / "sector_momentum_latest.json"
     out.write_text(json.dumps(snap, default=str))
-    for a in alerts:
+    for a in notify_plan.get("send") or []:
         print(f"[momentum] TRANSITION {a['severity']}: {a['line']}")
-    if alerts and not args.dry_run:
+    for a in notify_plan.get("suppressed") or []:
+        print(f"[momentum] SUPPRESSED {a.get('suppress_reason')}: {a.get('line')}")
+    if (notify_plan.get("send") or []) and not args.dry_run:
         try:
             from telegram_alert import send_telegram
-            send_telegram("SECTOR MOMENTUM\n" + "\n".join(a["line"] for a in alerts), bypass_router=True)
+            # Governed path: Signal-over-Spam router. Never bypass_router.
+            emit_telegram(notify_plan, send_telegram, title="SECTOR MOMENTUM")
         except Exception as e:
             print(f"[momentum] telegram failed: {e}")
     print(f"[momentum] {sum(1 for r in rows if r.get('state'))}/11 sectors classified, "
-          f"{len(alerts)} confirmed transitions")
+          f"{len(alerts)} confirmed transitions · {len(notify_plan.get('send') or [])} alerts · "
+          f"{len(notify_plan.get('suppressed') or [])} suppressed")
     return 0
 
 
