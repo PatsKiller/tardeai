@@ -13,9 +13,16 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
+
+# Overnight units put scripts/lib on sys.path, not the repo root.
+# CIO modules import scripts.lib.* — ensure the repo root is visible.
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 AUTHORITY = "READ_ONLY_ADVISORY"
 WHAT_CHANGED_SCHEMA = "CIOWhatChanged@v1"
@@ -34,7 +41,10 @@ def _cio_dir(root: Path | str | None = None) -> Path:
     if root:
         return Path(root) / "data" / "cio"
     try:
-        from scripts.lib.maturity_control.store import resolve_root
+        try:
+            from maturity_control.store import resolve_root
+        except ImportError:
+            from scripts.lib.maturity_control.store import resolve_root
         return resolve_root(None) / "data" / "cio"
     except Exception:
         return Path("data/cio")
@@ -300,10 +310,13 @@ def _annotate_research(product: dict[str, Any], result: dict[str, Any], critique
 
 def _notify(product: dict[str, Any], changed: dict[str, Any], parent: dict[str, Any]) -> dict[str, Any]:
     try:
-        from scripts.lib.cio_notification_signal import (
-            NotificationStateStore,
-            decide_notification,
-        )
+        try:
+            from cio_notification_signal import NotificationStateStore, decide_notification
+        except ImportError:
+            from scripts.lib.cio_notification_signal import (
+                NotificationStateStore,
+                decide_notification,
+            )
     except Exception as exc:
         return {"ok": False, "error": f"{type(exc).__name__}:{exc}", "notification_class": "COMMAND_CENTER_ONLY"}
     do_now = bool((product.get("action_book") or {}).get("DO_NOW"))
@@ -344,7 +357,10 @@ def reassess_on_research_completed(
     notify: bool = True,
 ) -> dict[str, Any]:
     """Reload canonical truth, persist a new product, diff, notify. Idempotent."""
-    from scripts.lib.cio_investment_product import build_product, load_brief, persist_product
+    try:
+        from cio_investment_product import build_product, load_brief, persist_product
+    except ImportError:
+        from scripts.lib.cio_investment_product import build_product, load_brief, persist_product
 
     parent = recover_parent(request, result)
     result_id = parent.get("result_id") or "missing_result"

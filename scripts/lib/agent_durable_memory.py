@@ -80,23 +80,31 @@ DISPLAY_STATUS = {
 
 
 def default_store_path(root: Path | str | None = None) -> Path:
+    """Resolve the durable memory JSONL.
+
+    Precedence (most explicit wins):
+      1. explicit root argument
+      2. TRADEAI_CIO_DIR
+      3. TRADEAI_ROOT / MATURITY_CONTROL_ROOT  (test isolation)
+      4. cwd data/cio if present (live worker from rebuild tree)
+      5. resolve_root / module tree
+    """
     if root:
         return Path(root) / "data" / "cio" / "aif_memory.jsonl"
     cio_env = os.environ.get("TRADEAI_CIO_DIR")
     if cio_env:
         return Path(cio_env) / "aif_memory.jsonl"
+    env = os.environ.get("TRADEAI_ROOT") or os.environ.get("MATURITY_CONTROL_ROOT")
+    if env:
+        return Path(env) / "data" / "cio" / "aif_memory.jsonl"
     cwd_cio = Path("data/cio")
     if cwd_cio.exists():
         return (cwd_cio / "aif_memory.jsonl").resolve()
-    env = os.environ.get("TRADEAI_ROOT") or os.environ.get("MATURITY_CONTROL_ROOT")
-    if env:
-        base = Path(env)
-    else:
-        try:
-            from scripts.lib.maturity_control.store import resolve_root
-            base = resolve_root()
-        except Exception:
-            base = Path(__file__).resolve().parents[2]
+    try:
+        from scripts.lib.maturity_control.store import resolve_root
+        base = resolve_root()
+    except Exception:
+        base = Path(__file__).resolve().parents[2]
     return base / "data" / "cio" / "aif_memory.jsonl"
 
 
