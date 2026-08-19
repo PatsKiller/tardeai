@@ -40332,6 +40332,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     return 200, _cio.get_cio_thesis()
                 if p in ("universe-theses", "universe_theses", "theses-universe"):
                     return 200, _cio.get_universe_theses()
+                if p in ("agent-research-ops", "agent_research_ops", "research-ops"):
+                    return 200, _cio.get_agent_research_ops()
                 if p in ("thesis-research-proposal", "thesis_research_proposal", "research-proposal"):
                     return 200, _cio.get_thesis_research_proposal()
                 if p.startswith("thesis-ri-pipeline/") or p.startswith("thesis_ri_pipeline/"):

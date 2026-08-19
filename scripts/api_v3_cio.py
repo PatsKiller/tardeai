@@ -13,6 +13,7 @@ Routes:
   GET /api/v3/cio/plans/{id}    — Single plan detail for deep links ?plan=
   GET /api/v3/cio/thesis        — Active desk@vN thesis
   GET /api/v3/cio/universe-theses — UNIVERSE & THESES projection (read-only)
+  GET /api/v3/cio/agent-research-ops — queue/provider/spend ops strip (no secrets)
   GET /api/v3/cio/symbol-thesis/{SYM} — per-symbol thesis card + history
   GET /api/v3/cio/thesis-research-proposal — dry prioritized research set (RI plane)
   GET /api/v3/cio/thesis-ri-pipeline/{SYM} — RAG-first + acquisition plan (dry)
@@ -26,6 +27,7 @@ Routes:
 from __future__ import annotations
 
 import json
+import os
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -330,6 +332,115 @@ def get_cio_thesis() -> dict[str, Any]:
         "thesis": block,
         "authority": "READ_ONLY_ADVISORY",
     }
+
+
+def _count_cell(row: Any) -> int:
+    if row is None:
+        return 0
+    if isinstance(row, dict):
+        for v in row.values():
+            try:
+                return int(v or 0)
+            except (TypeError, ValueError):
+                continue
+        return 0
+    try:
+        return int(row[0] or 0)
+    except Exception:
+        return 0
+
+
+def get_agent_research_ops() -> dict[str, Any]:
+    """GET /api/v3/cio/agent-research-ops — operator-visible intelligence engine health.
+
+    Never returns cap values, tokens, or credentials. Cap status is CONFIGURED/MISSING/EXHAUSTED only.
+    """
+    cap_raw = str(os.environ.get("LLM_GLOBAL_DAILY_USD_CAP") or "").strip()
+    cap_status = "CONFIGURED" if cap_raw else "MISSING"
+    out: dict[str, Any] = {
+        "ok": True,
+        "as_of": _now_iso(),
+        "authority": "READ_ONLY_ADVISORY",
+        "global_cap_status": cap_status,
+        "queue": {},
+        "provider_mix_today": {},
+        "notification": {},
+    }
+    try:
+        from db_adapter import USE_DB, _execute
+        if not USE_DB:
+            out["queue"] = {"error": "db_unavailable"}
+            return out
+        rows = _execute("SELECT status, COUNT(*) FROM watchlist_agent_jobs GROUP BY status", fetch="all") or []
+        by_status: dict[str, int] = {}
+        for row in rows:
+            if isinstance(row, dict):
+                st = str(row.get("status") or "")
+                cnt = int(list(row.values())[1] or 0)
+            else:
+                st, cnt = str(row[0]), int(row[1] or 0)
+            by_status[st] = cnt
+        queued = int(by_status.get("queued") or 0)
+        oldest = _execute(
+            "SELECT MIN(created_at) FROM watchlist_agent_jobs WHERE status='queued'",
+            fetch="one",
+        )
+        oldest_at = None
+        if oldest:
+            oldest_at = str(oldest[0] if not isinstance(oldest, dict) else list(oldest.values())[0])
+        agents = _execute(
+            """SELECT requested_agent, COUNT(*) FROM watchlist_agent_jobs
+               WHERE status='queued' GROUP BY requested_agent""",
+            fetch="all",
+        ) or []
+        by_agent: dict[str, int] = {}
+        for row in agents:
+            if isinstance(row, dict):
+                by_agent[str(list(row.values())[0])] = int(list(row.values())[1] or 0)
+            else:
+                by_agent[str(row[0])] = int(row[1] or 0)
+        created = _execute(
+            "SELECT COUNT(*) FROM watchlist_agent_jobs WHERE created_at >= CURRENT_DATE",
+            fetch="one",
+        )
+        completed = _execute(
+            "SELECT COUNT(*) FROM watchlist_agent_jobs WHERE status='completed' AND COALESCE(completed_at, created_at) >= CURRENT_DATE",
+            fetch="one",
+        )
+        failed = _execute(
+            "SELECT COUNT(*) FROM watchlist_agent_jobs WHERE status='failed' AND COALESCE(completed_at, created_at) >= CURRENT_DATE",
+            fetch="one",
+        )
+        mix = _execute(
+            """SELECT COALESCE(model_used,'unknown'), COUNT(*)
+               FROM watchlist_agent_results
+               WHERE created_at >= CURRENT_DATE
+               GROUP BY 1""",
+            fetch="all",
+        ) or []
+        provider_mix: dict[str, int] = {}
+        for row in mix:
+            if isinstance(row, dict):
+                provider_mix[str(list(row.values())[0])] = int(list(row.values())[1] or 0)
+            else:
+                provider_mix[str(row[0])] = int(row[1] or 0)
+        out["queue"] = {
+            "queued": queued,
+            "by_status": by_status,
+            "by_agent": by_agent,
+            "oldest_queued": oldest_at,
+            "created_today": _count_cell(created),
+            "completed_today": _count_cell(completed),
+            "failed_today": _count_cell(failed),
+            "actionable_queue": queued,
+            "stale_or_superseded": int(by_status.get("deferred") or 0) + int(by_status.get("superseded") or 0),
+        }
+        out["provider_mix_today"] = provider_mix
+    except Exception as e:
+        out["ok"] = False
+        out["error"] = type(e).__name__
+        out["detail"] = str(e)[:200]
+    return out
 
 
 def get_universe_theses() -> dict[str, Any]:

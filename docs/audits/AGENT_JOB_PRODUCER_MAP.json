@@ -1,0 +1,30 @@
+{
+  "as_of": "2026-08-19",
+  "table": "watchlist_agent_jobs",
+  "authority": "READ_ONLY_ADVISORY",
+  "governance": "scripts/lib/agent_job_enqueue_governance.py",
+  "producers": [
+    {"script": "scripts/research_scheduler.py", "scheduler": "research_scheduler cron/hermes", "request_type": "scheduled_research", "agent": "maria|full_chain", "dedupe": "governed_enqueue semantic_key", "backpressure": true, "thesis_driven": false, "rag_first": false, "can_duplicate_queued": false},
+    {"script": "scripts/overnight_batch.py", "scheduler": "overnight cron", "request_type": "full_analysis", "agent": "maria|steph|risk_agent", "dedupe": "governed_enqueue (holdings nightly now submitted_from=overnight_batch)", "backpressure": true, "thesis_driven": false, "can_duplicate_queued": false},
+    {"script": "scripts/bootstrap_agent_coverage.py", "scheduler": "manual/ops", "request_type": "research", "agent": "policy-driven", "dedupe": "governed_enqueue", "can_duplicate_queued": false},
+    {"script": "scripts/auto_research.py", "scheduler": "event/check", "request_type": "full_analysis", "agent": "maria|steph|risk_agent", "dedupe": "governed_enqueue + 6h pending check", "can_duplicate_queued": false},
+    {"script": "scripts/queue_proposal_agent_reviews.py", "scheduler": "proposal/GO", "request_type": "proposal_review|go_signal_review", "agent": "maria|risk_agent|steph", "dedupe": "governed_enqueue", "can_duplicate_queued": false},
+    {"script": "scripts/process_watchlist_agent_jobs.py", "scheduler": "worker self-heal", "request_type": "synthesis_retry|full_analysis auto-queue", "dedupe": "governed_enqueue", "can_duplicate_queued": false},
+    {"script": "scripts/system_health_agent.py", "scheduler": "health daemon", "request_type": "coverage backfill", "dedupe": "pre-insert COUNT queued/running", "can_duplicate_queued": "possible if COUNT races; drain-time semantic supersede", "wrapped": false},
+    {"script": "scripts/social_scalp_scanner.py", "scheduler": "scalp scan", "dedupe": "script-local", "wrapped": false},
+    {"script": "scripts/pipeline_watchdog.py", "scheduler": "watchdog", "wrapped": false},
+    {"script": "scripts/pipeline_health_monitor.py", "scheduler": "health monitor", "wrapped": false},
+    {"script": "scripts/holdings_change_trigger.py", "scheduler": "holdings change", "wrapped": false},
+    {"script": "scripts/hermes_tradeai_handshake.py", "scheduler": "hermes handshake", "wrapped": false},
+    {"script": "scripts/enqueue_holdings_agent_opinions.py", "scheduler": "holdings opinions", "wrapped": false},
+    {"script": "scripts/data_gap_resolver.py", "scheduler": "data gap", "wrapped": false},
+    {"script": "scripts/api_v2.py", "scheduler": "Command Center/API", "request_type": "operator/manual", "wrapped": false, "notes": "operator/manual lane"},
+    {"script": "scripts/alert_event_writer.py", "scheduler": "alerts", "wrapped": false},
+    {"script": "scripts/agent_watchlist_engine.py", "scheduler": "watchlist engine", "wrapped": false},
+    {"script": "scripts/agent_event_router.py", "scheduler": "event router", "wrapped": false},
+    {"script": "scripts/aegis_overnight.py", "scheduler": "aegis overnight", "wrapped": false},
+    {"script": "scripts/purge_error_synthesis.py", "scheduler": "purge/requeue", "wrapped": false}
+  ],
+  "unwrapped_mitigation": "process_watchlist_agent_jobs calls govern_existing_queued before drain: duplicate/stale queued rows are superseded/deferred, never deleted.",
+  "unexplained_producers": []
+}

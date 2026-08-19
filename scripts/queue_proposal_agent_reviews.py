@@ -153,10 +153,22 @@ def queue_agent_job(conn, symbol, agent_name, proposal_id, strategy_id, dry_run=
         return {"queued": False, "dry_run": True}
 
     cur = conn.cursor()
-    cur.execute("""
-        INSERT INTO watchlist_agent_jobs (id, symbol, requested_agent, request_type, note, status, priority, submitted_from, payload)
-        VALUES (%s, %s, %s, 'proposal_review', %s, 'queued', 3, 'proposal_agent_queue', %s)
-    """, [job_id, symbol, agent_name, note, json.dumps({"proposal_id": proposal_id, "strategy_id": strategy_id})])
+    sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+    from agent_job_enqueue_governance import EnqueueRequest, governed_enqueue
+    res = governed_enqueue(cur, EnqueueRequest(
+        symbol=symbol,
+        requested_agent=agent_name,
+        request_type="proposal_review",
+        submitted_from="proposal_agent_queue",
+        priority=3,
+        note=note,
+        job_id=job_id,
+        payload={"proposal_id": proposal_id, "strategy_id": strategy_id},
+        universe_tier="T1",
+        material=True,
+    ))
+    if res.action != "INSERT":
+        return {"queued": False, "job_id": res.job_id, "action": res.action}
 
     return {"queued": True, "job_id": job_id}
 
@@ -203,11 +215,23 @@ def run(symbol=None, dry_run=True):
                     if not dry_run:
                         job_id = str(uuid.uuid4())[:12]
                         cur = conn.cursor()
-                        cur.execute("""
-                            INSERT INTO watchlist_agent_jobs (id, symbol, requested_agent, request_type, note, status, priority, submitted_from)
-                            VALUES (%s, %s, %s, 'go_signal_review', %s, 'queued', 3, 'proposal_agent_queue')
-                        """, [job_id, sym, agent, f"GO signal review for {sym}"])
-                        stats["jobs_queued"] += 1
+                        sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+                        from agent_job_enqueue_governance import EnqueueRequest, governed_enqueue
+                        res = governed_enqueue(cur, EnqueueRequest(
+                            symbol=sym,
+                            requested_agent=agent,
+                            request_type="go_signal_review",
+                            submitted_from="proposal_agent_queue",
+                            priority=3,
+                            note=f"GO signal review for {sym}",
+                            job_id=job_id,
+                            universe_tier="T1",
+                            material=True,
+                        ))
+                        if res.action == "INSERT":
+                            stats["jobs_queued"] += 1
+                        else:
+                            stats["skipped_existing"] += 1
                     else:
                         log.info(f"  [dry-run] Would queue {agent} for {sym} (GO signal, no proposal)")
                         stats["jobs_queued"] += 1

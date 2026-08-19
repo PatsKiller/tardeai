@@ -13,7 +13,12 @@ Authority: READ_ONLY_ADVISORY (no broker / order / stop / risk / 2FA)
 
 Official DeepSeek UTC pricing peaks (01:00–04:00 and 06:00–10:00 UTC) remain an extra skip. They do not overlap 10:00–21:00 ET.
 
-## What is live on the host (not protected `main`)
+## What is live on the host vs protected `main`
+
+Protected `main` at handoff is `25a1a34a` (merge of #397) with #400/#398/#399 in ancestry.
+Host crontab and CURRENT release may still lag that SHA until an immutable exact-main promotion.
+
+Historical note: the original #400 docs said "Protected main Unchanged / PR not merged." That is **stale**. #400 merged as `1dfa064b`.
 
 | Surface | Status |
 |---------|--------|
@@ -22,7 +27,7 @@ Official DeepSeek UTC pricing peaks (01:00–04:00 and 06:00–10:00 UTC) remain
 | Market `--limit 20` `*/15 6-19` | Commented (bulk before 10 a.m.) |
 | As-needed 1-call | `run_governed_agent_flash_market.sh` still `*/15 6-19` weekdays |
 | Gate code overlay | `scripts/lib/deepseek_offpeak.py`, wrapper, Hermes Flash skip in `hermes_llm_failover.py` / `hermes_autonomous_loop.py` / `hermes_deep_research_local.py` |
-| Protected `main` | **Unchanged.** Source is PR **#400** (`fix/watchlist-agent-jobs-overnight-cap`) |
+| Protected `main` | **`25a1a34a`** includes PR **#400** (`1dfa064b`) plus #398/#399/#397 |
 
 ## Crontab backups (host, not Git)
 
@@ -34,14 +39,14 @@ Official DeepSeek UTC pricing peaks (01:00–04:00 and 06:00–10:00 UTC) remain
 
 Rollback any step: `crontab <that file>`.
 
-## Git / PRs (pushed, not merged)
+## Git / PRs (historical drafts; now merged)
 
-| PR | Head | Notes |
-|----|------|-------|
-| #400 | `5d13128b` | Bulk window 10:00–21:00 ET + Hermes gate. Draft. |
-| #399 | `d407b13d` | flock `env` form. Draft. |
-| #398 | `6e429619` | Watchlist/source/RAG matcher. Draft. |
-| #397 | `4bfa5e88` | Living thesis + CC tab. Draft, `merge_authorized=NO`. |
+| PR | Merge | Notes |
+|----|-------|-------|
+| #400 | `1dfa064b` | Bulk window 10:00–21:00 ET + Hermes gate. **Merged.** |
+| #399 | `0db697cb` | flock `env` form. **Merged.** |
+| #398 | `36dd1c4b` | Watchlist/source/RAG matcher. **Merged.** |
+| #397 | `25a1a34a` | Living thesis + CC tab. **Merged** to protected main. |
 
 Do **not** merge `feat/two-way-watchlist-curation`.
 

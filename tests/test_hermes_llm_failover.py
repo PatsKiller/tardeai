@@ -123,24 +123,26 @@ def test_ollama_primary_unhealthy_uses_flash(monkeypatch):
 
 
 def test_deepseek_official_offpeak_windows():
+    """Bulk allowed: 10:00–21:00 America/New_York and not official UTC peak."""
     def utc(h, m=0):
         return datetime(2026, 8, 19, h, m, tzinfo=timezone.utc)
 
-    # Official peak: 01:00-04:00 and 06:00-10:00 UTC
-    assert is_deepseek_offpeak(utc(0, 59)) is True
+    # 04:00 UTC = 00:00 EDT — outside operator bulk window
+    assert is_deepseek_offpeak(utc(4, 0)) is False
+    # 14:30 UTC = 10:30 EDT — inside bulk, not official UTC peak
+    assert is_deepseek_offpeak(utc(14, 30)) is True
+    # 18:00 UTC = 14:00 EDT — bulk
+    assert is_deepseek_offpeak(utc(18, 0)) is True
+    # Official UTC peak still blocks even if it were afternoon elsewhere
     assert is_deepseek_offpeak(utc(1, 0)) is False
-    assert is_deepseek_offpeak(utc(3, 59)) is False
-    assert is_deepseek_offpeak(utc(4, 0)) is True
-    assert is_deepseek_offpeak(utc(5, 59)) is True
     assert is_deepseek_offpeak(utc(6, 0)) is False
-    assert is_deepseek_offpeak(utc(9, 59)) is False
-    assert is_deepseek_offpeak(utc(10, 0)) is True
-    edt = datetime.fromisoformat("2026-08-18T21:00:00-04:00")
-    assert is_deepseek_offpeak(edt) is False
-    assert deepseek_window_label(edt) == "peak"
-    # 00:10 EDT = 04:10 UTC = off-peak
-    assert is_deepseek_offpeak(datetime.fromisoformat("2026-08-19T00:10:00-04:00")) is True
-    # 02:30 EDT = 06:30 UTC = peak
+    edt_after_bulk = datetime.fromisoformat("2026-08-18T21:00:00-04:00")
+    assert is_deepseek_offpeak(edt_after_bulk) is False
+    assert deepseek_window_label(edt_after_bulk) == "as-needed-only"
+    ten_et = datetime.fromisoformat("2026-08-19T10:00:00-04:00")
+    assert is_deepseek_offpeak(ten_et) is True
+    assert deepseek_window_label(ten_et) == "bulk-et-10-21"
+    # 02:30 EDT = 06:30 UTC = official peak AND outside bulk
     assert is_deepseek_offpeak(datetime.fromisoformat("2026-08-19T02:30:00-04:00")) is False
 
 

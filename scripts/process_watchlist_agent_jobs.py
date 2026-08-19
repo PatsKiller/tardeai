@@ -234,7 +234,27 @@ def _wait_setup_symbol_set(conn) -> frozenset[str]:
         return frozenset()
 
 
+def _job_provider_lane() -> str:
+    """AUTO_QUEUE vs MANUAL_OPERATOR vs CHALLENGE. Holdings/WAIT do not force OAuth."""
+    payload = {}
+    try:
+        from agent_job_provider_policy import classify_job_lane
+    except ImportError:
+        from lib.agent_job_provider_policy import classify_job_lane  # type: ignore
+    return classify_job_lane(
+        submitted_from=_CURRENT_JOB_SUBMITTED_FROM,
+        request_type=_CURRENT_JOB_REQUEST_TYPE,
+        priority=_CURRENT_JOB_PRIORITY,
+        payload=payload,
+    )
+
+
 def _prefer_maria_oauth() -> bool:
+    """OAuth may preempt Flash only for explicit challenge/manual-OAuth — never auto queue.
+
+    maria_priority_tier (holdings / top-N WAIT) remains for legacy/manual compatibility
+    diagnostics but MUST NOT silently preempt governed DeepSeek Flash.
+    """
     if (_CURRENT_AGENT or "").lower() != "maria":
         return False
     if _MARIA_OAUTH_RUN_CALLS >= MARIA_OAUTH_RUN_CAP:
@@ -245,14 +265,11 @@ def _prefer_maria_oauth() -> bool:
             return False
     except Exception:
         pass
-    return maria_priority_tier(
-        _CURRENT_JOB_SYMBOL,
-        portfolio_symbols=_PORTFOLIO_SYMS_RUN,
-        wait_symbols=_WAIT_SETUP_SYMS_RUN,
-        submitted_from=_CURRENT_JOB_SUBMITTED_FROM,
-        priority=_CURRENT_JOB_PRIORITY,
-        request_type=_CURRENT_JOB_REQUEST_TYPE,
-    )
+    try:
+        from agent_job_provider_policy import oauth_may_preempt_flash
+    except ImportError:
+        from lib.agent_job_provider_policy import oauth_may_preempt_flash  # type: ignore
+    return oauth_may_preempt_flash(_job_provider_lane())
 
 
 _REFUSAL_PREFIXES = ("i cannot fulfill", "i can't fulfill", "i cannot help", "i can't help",
@@ -288,7 +305,32 @@ def _llm(prompt: str, max_tokens: int = 800, task_type: str = "agent_narrative",
     """
     global _MARIA_OAUTH_RUN_CALLS, _LOCAL_SLOW
     _llm._fallback_chain = []  # Gate-B.2: explicit provider provenance
-    if task_type in ("agent_narrative", "agent_debate") and _prefer_maria_oauth():
+    try:
+        from agent_job_provider_policy import (
+            first_provider_attempt,
+            is_hard_policy_failure,
+            oauth_soft_fallback_permitted,
+            requested_provider_policy,
+        )
+    except ImportError:
+        from lib.agent_job_provider_policy import (  # type: ignore
+            first_provider_attempt,
+            is_hard_policy_failure,
+            oauth_soft_fallback_permitted,
+            requested_provider_policy,
+        )
+    job_lane = _job_provider_lane()
+    _llm._requested_policy = requested_provider_policy(job_lane)
+    _llm._first_attempt = first_provider_attempt(job_lane)
+    _llm._fallback_reason = None
+    _llm._manual_vs_automatic = "manual" if job_lane != "AUTO_QUEUE" else "automatic"
+
+    def _try_maria_oauth(*, fallback_reason: str | None) -> str | None:
+        global _MARIA_OAUTH_RUN_CALLS
+        if task_type not in ("agent_narrative", "agent_debate"):
+            return None
+        if (_CURRENT_AGENT or "").lower() != "maria":
+            return None
         try:
             from llm_consumption import gate_and_generate
             from maria_oauth_priority import is_manual_refresh
@@ -325,10 +367,22 @@ def _llm(prompt: str, max_tokens: int = 800, task_type: str = "agent_narrative",
                     _llm._last_model = f"{lane}-oauth"
                     _llm._last_provider = lane
                     _llm._last_cost = 0
-                    _llm._fallback_chain = [{"attempted": "grok-oauth"}, {"attempted": "chatgpt-oauth"}, {"used": f"{lane}-oauth"}]
+                    _llm._fallback_reason = fallback_reason
+                    _llm._fallback_chain = [
+                        {"attempted": "grok-oauth"},
+                        {"attempted": "chatgpt-oauth"},
+                        {"used": f"{lane}-oauth"},
+                        {"fallback_reason": fallback_reason},
+                    ]
                     return str(out)
         except Exception:
-            pass  # fall through to the normal router path
+            return None
+        return None
+
+    if task_type in ("agent_narrative", "agent_debate") and _prefer_maria_oauth():
+        preempt = _try_maria_oauth(fallback_reason="EXPLICIT_OAUTH_LANE")
+        if preempt:
+            return preempt
         _llm._fallback_chain = [{"attempted": "grok-oauth", "failed": True},
                                  {"attempted": "chatgpt-oauth", "failed": True}]
     try:
@@ -363,7 +417,16 @@ def _llm(prompt: str, max_tokens: int = 800, task_type: str = "agent_narrative",
                                           "model": _llm._last_model})
             return result["response"]
         else:
-            return f"LLM error: {result.get('error', 'all providers failed')}"
+            err = str(result.get("error", "all providers failed"))
+            if is_hard_policy_failure(err):
+                _llm._fallback_reason = "HARD_POLICY_FAILURE"
+                _llm._fallback_chain.append({"hard_failure": err[:160]})
+                return f"LLM error: {err}"
+            if oauth_soft_fallback_permitted(job_lane, err):
+                oauth_out = _try_maria_oauth(fallback_reason="FLASH_SOFT_FAILURE")
+                if oauth_out:
+                    return oauth_out
+            return f"LLM error: {err}"
     except ImportError:
         # Fallback to direct Ollama if router not available
         try:
@@ -388,6 +451,10 @@ def _llm(prompt: str, max_tokens: int = 800, task_type: str = "agent_narrative",
 _llm._last_model = OLLAMA_MODEL
 _llm._last_provider = "local"
 _llm._last_cost = 0
+_llm._requested_policy = None
+_llm._first_attempt = None
+_llm._fallback_reason = None
+_llm._manual_vs_automatic = None
 
 # ── CIO final-synthesis: free Grok OAuth primary, local gemma fallback (operator 2026-06-14) ──
 # The specialist agents (Maria/Steph/Risk) stay on local gemma3:4b; only the FINAL synthesis — the
@@ -411,31 +478,39 @@ def _strip_local_tokens(prompt: str) -> str:
 
 
 def _synthesis_llm(prompt: str, max_tokens: int = 2000) -> str:
-    """Declared multi-lane CIO synthesis (Gate-B.2): Grok OAuth primary, local gemma as
-    explicitly declared lane (not silent fallback). Both lanes are free. CIO authority
-    is gated by cio_legacy_watch_gate.py — this function produces LEGACY_CIO_REVIEW,
-    never AUTHORITATIVE_CIO_ACTION.
+    """Declared multi-lane CIO synthesis (Gate-B.2): initial synthesis is Flash-first
+    via llm_router task_type=cio_synthesis. Grok OAuth is an optional high-impact /
+    soft-failure challenge lane (declared, not silent). Local gemma remains a
+    declared fallback. CIO authority is gated by cio_legacy_watch_gate.py — this
+    function produces LEGACY_CIO_REVIEW, never AUTHORITATIVE_CIO_ACTION.
 
     Provider provenance recorded on _llm._fallback_chain."""
     _llm._fallback_chain = []
+    out = _llm(prompt, max_tokens=max_tokens, task_type="cio_synthesis", high_impact=False)
+    if out and not str(out).startswith("LLM error") and not _is_refusal(out):
+        _llm._fallback_chain = list(getattr(_llm, "_fallback_chain", []) or []) + [
+            {"policy": "FLASH_FIRST_INITIAL_SYNTHESIS",
+             "declared_lanes": ["grok-oauth", "local-gemma"]},
+        ]
+        return out
     try:
         import llm_lane
         if llm_lane.available("grok"):
-            out = llm_lane.generate(_strip_local_tokens(prompt), lane="grok", timeout=120)
-            if out and not str(out).startswith("LLM error") and not _is_refusal(out):
+            gout = llm_lane.generate(_strip_local_tokens(prompt), lane="grok", timeout=120)
+            if gout and not str(gout).startswith("LLM error") and not _is_refusal(gout):
                 _llm._last_model = "grok-3-mini"; _llm._last_provider = "grok-oauth"; _llm._last_cost = 0
-                _llm._fallback_chain = [{"used": "grok-oauth", "model": "grok-3-mini",
+                _llm._fallback_reason = "FLASH_SOFT_FAILURE_OR_EMPTY"
+                _llm._fallback_chain = [{"attempted": "llm_router:cio_synthesis", "failed": True},
+                                         {"used": "grok-oauth", "model": "grok-3-mini",
                                           "declared_lanes": ["grok-oauth", "local-gemma"]}]
-                return out
+                return gout
         # Gate-B.2: declared fallback lane (not silent)
         _llm._fallback_chain = [{"attempted": "grok-oauth", "failed": True},
                                  {"used": "local-gemma", "declared_lanes": ["grok-oauth", "local-gemma"]}]
     except Exception:
         pass
-    # fallback: local gemma via the existing router/_llm path
-    out = _llm(prompt, max_tokens=max_tokens, task_type="cio_synthesis", high_impact=False)
     _llm._last_model = getattr(_llm, "_last_model", OLLAMA_MODEL) or OLLAMA_MODEL
-    return out
+    return out if out else "LLM error: synthesis_failed"
 
 
 # ── CIO dual-consensus: Grok + ChatGPT (both free OAuth) cross-check the final verdict (operator 2026-06-18).
@@ -2078,12 +2153,26 @@ CRITICAL INSTRUCTIONS:
                             AND status = 'queued' LIMIT 1""", (symbol,))
             if not cur2.fetchone():
                 from datetime import datetime as _dtt, timezone as _tzz
-                cur2.execute("""INSERT INTO watchlist_agent_jobs
-                                (id, symbol, requested_agent, request_type, note, priority, status, submitted_from, payload, created_at)
-                                VALUES (%s,%s,'full_chain','synthesis_retry',
-                                        'all LLM lanes failed — automatic retry',2,'queued','run_synthesis_guard','{}',NOW())
-                                ON CONFLICT (id) DO NOTHING""",
-                             (f"synretry-{symbol}-{_dtt.now(_tzz.utc).strftime('%Y%m%d%H%M%S')}", symbol))
+                try:
+                    from agent_job_enqueue_governance import EnqueueRequest, governed_enqueue
+                    governed_enqueue(cur2, EnqueueRequest(
+                        symbol=symbol,
+                        requested_agent="full_chain",
+                        request_type="synthesis_retry",
+                        submitted_from="run_synthesis_guard",
+                        priority=2,
+                        note="all LLM lanes failed — automatic retry",
+                        job_id=f"synretry-{symbol}-{_dtt.now(_tzz.utc).strftime('%Y%m%d%H%M%S')}",
+                        universe_tier="T1",
+                        material=True,
+                    ))
+                except Exception:
+                    cur2.execute("""INSERT INTO watchlist_agent_jobs
+                                    (id, symbol, requested_agent, request_type, note, priority, status, submitted_from, payload, created_at)
+                                    VALUES (%s,%s,'full_chain','synthesis_retry',
+                                            'all LLM lanes failed — automatic retry',2,'queued','run_synthesis_guard','{}',NOW())
+                                    ON CONFLICT (id) DO NOTHING""",
+                                 (f"synretry-{symbol}-{_dtt.now(_tzz.utc).strftime('%Y%m%d%H%M%S')}", symbol))
                 # Keep the synthesis gate open for the retry — run_synthesis skips 'completed' maturity.
                 cur2.execute("""UPDATE watchlist_analysis_maturity SET final_synthesis_status='pending', analysis_stage='specialist_review_complete', updated_at=now()
                                 WHERE symbol=%s AND final_synthesis_status='completed'""", (symbol,))
@@ -2401,6 +2490,15 @@ def process_jobs(limit: int = 10):
         if expired:
             print(f"[watchlist-agent] Off-hours: expired {len(expired)} aged tail jobs (outside daily priority)")
 
+    try:
+        from agent_job_enqueue_governance import govern_existing_queued
+        gov = govern_existing_queued(cur)
+        conn.commit()
+        if gov.get("superseded") or gov.get("stale_deferred"):
+            print(f"[watchlist-agent] queue governance: {gov}")
+    except Exception as _ge:
+        print(f"[watchlist-agent] queue governance skipped: {type(_ge).__name__}")
+
     # Get queued jobs — PRIORITIZED: directive · holdings · proposals · buy/start · top-N · active · tail.
     scope_sql = ""
     scope_params: list = []
@@ -2431,7 +2529,7 @@ def process_jobs(limit: int = 10):
     _PORTFOLIO_SYMS_RUN = portfolio_syms
     _WAIT_SETUP_SYMS_RUN = wait_syms
     if wait_syms:
-        print(f"[watchlist-agent] Maria OAuth WAIT tier: {', '.join(sorted(wait_syms))}")
+        print(f"[watchlist-agent] WAIT setups (priority only, not OAuth-preempt): {', '.join(sorted(wait_syms))}")
 
     for job in jobs:
         job_id = job["id"]
@@ -2572,12 +2670,23 @@ def process_jobs(limit: int = 10):
               parsed.get("next_action", ""),
               json.dumps({
                   "raw": raw,
-                  "model": OLLAMA_MODEL,
+                  "model": getattr(_llm, "_last_model", OLLAMA_MODEL),
+                  "provider": getattr(_llm, "_last_provider", "unknown"),
+                  "requested_provider_policy": getattr(_llm, "_requested_policy", None),
+                  "first_provider_attempted": getattr(_llm, "_first_attempt", None),
+                  "actual_provider": getattr(_llm, "_last_provider", None),
+                  "fallback_reason": getattr(_llm, "_fallback_reason", None),
+                  "cost": getattr(_llm, "_last_cost", 0),
+                  "fallback_chain": getattr(_llm, "_fallback_chain", []),
+                  "task_type": "agent_narrative",
+                  "agent": agent,
+                  "symbol": symbol,
+                  "manual_vs_automatic": getattr(_llm, "_manual_vs_automatic", None),
                   "agent_contract": AGENT_JSON_CONTRACT_VERSION,
                   "evidence": parsed.get("evidence", []),
                   "data_i_doubt": parsed.get("data_i_doubt", "none"),
               }),
-              OLLAMA_MODEL, prompt_hash,
+              getattr(_llm, "_last_model", OLLAMA_MODEL), prompt_hash,
               json.dumps(context["snapshot"], default=str),
               raw,
               job.get("started_at")))
@@ -2831,13 +2940,28 @@ def _auto_queue_new_symbols():
         strategy_type = row.get("strategy_type") or "unknown"
         for agent in agents_to_queue:
             job_id = f"auto_{symbol.lower()}_{agent}_{uuid.uuid4().hex[:6]}"
-            cur.execute("""
-                INSERT INTO watchlist_agent_jobs
-                    (id, symbol, requested_agent, request_type, priority, note, status)
-                VALUES (%s, %s, %s, 'full_analysis', 2, %s, 'queued')
-                ON CONFLICT DO NOTHING
-            """, (job_id, symbol, agent, f"Auto-queued for new watchlist symbol (strategy: {strategy_type})"))
-            queued += 1
+            try:
+                from agent_job_enqueue_governance import EnqueueRequest, governed_enqueue
+                res = governed_enqueue(cur, EnqueueRequest(
+                    symbol=symbol,
+                    requested_agent=agent,
+                    request_type="full_analysis",
+                    submitted_from="watchlist_agent_auto_queue",
+                    priority=2,
+                    note=f"Auto-queued for new watchlist symbol (strategy: {strategy_type})",
+                    job_id=job_id,
+                    universe_tier="T2",
+                ))
+                if res.action == "INSERT":
+                    queued += 1
+            except Exception:
+                cur.execute("""
+                    INSERT INTO watchlist_agent_jobs
+                        (id, symbol, requested_agent, request_type, priority, note, status)
+                    VALUES (%s, %s, %s, 'full_analysis', 2, %s, 'queued')
+                    ON CONFLICT DO NOTHING
+                """, (job_id, symbol, agent, f"Auto-queued for new watchlist symbol (strategy: {strategy_type})"))
+                queued += 1
 
     conn.commit()
     conn.close()

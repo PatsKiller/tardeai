@@ -759,6 +759,39 @@ type UniverseThesesPayload = {
   note?: string
 }
 
+function AgentResearchOpsStrip() {
+  const { data, loading, error } = useApi<any>('/api/v3/cio/agent-research-ops', 60_000)
+  const q = data?.queue || {}
+  const mix = data?.provider_mix_today || {}
+  return (
+    <div data-testid="cio-agent-research-ops" style={{ display: 'grid', gap: 10, marginBottom: 8 }}>
+      <div style={{ fontSize: 12, color: 'var(--text3)' }}>
+        Intelligence engine ops. Advisory only. Automatic queued work is DeepSeek Flash first.
+      </div>
+      {loading && <div style={muted}>Loading research ops…</div>}
+      {error && <div style={{ color: 'var(--amber)', fontSize: 13 }}>Research ops unavailable: {String(error)}</div>}
+      {data && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10 }}>
+          <Stat label="Queued" value={String(q.queued ?? '—')} />
+          <Stat label="Created today" value={String(q.created_today ?? '—')} />
+          <Stat label="Completed today" value={String(q.completed_today ?? '—')} />
+          <Stat label="Failed today" value={String(q.failed_today ?? '—')} />
+          <Stat label="Oldest queued" value={q.oldest_queued ? String(q.oldest_queued).slice(0, 16) : '—'} />
+          <Stat label="Global cap" value={String(data.global_cap_status ?? '—')} />
+          <Stat label="Maria queued" value={String((q.by_agent && q.by_agent.maria) ?? '—')} />
+          <Stat label="Stale/superseded" value={String(q.stale_or_superseded ?? '—')} />
+        </div>
+      )}
+      {mix && Object.keys(mix).length > 0 && (
+        <div style={{ fontSize: 12, color: 'var(--text2)' }}>
+          Provider mix today:{' '}
+          {Object.entries(mix).map(([k, v]) => `${k}=${v}`).join(' · ')}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function UniverseThesesPanel() {
   const { data, loading, error } = useApi<UniverseThesesPayload>('/api/v3/cio/universe-theses', 60_000)
   const [sym, setSym] = useState('')
@@ -774,7 +807,7 @@ function UniverseThesesPanel() {
   return (
     <div data-testid="cio-universe-theses" style={{ display: 'grid', gap: 14 }}>
       <div style={{ fontSize: 12, color: 'var(--text3)' }}>
-        Living theses for the material universe. Advisory only. Live main may not serve this API until PR 397 is deployed.
+        Living theses for the material universe. Advisory only. Merged on protected main (PR 397).
       </div>
       {loading && <div style={muted}>Loading universe &amp; theses…</div>}
       {(error || payloadError) && (
@@ -1225,6 +1258,7 @@ export default function CioHub({ onDrill }: Props) {
 
       {tab === 'universe-theses' && (
         <div role="tabpanel" aria-label={TAB_LABEL[tab]}>
+          <AgentResearchOpsStrip />
           <UniverseThesesPanel />
         </div>
       )}
