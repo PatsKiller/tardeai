@@ -128,11 +128,24 @@ Soak: completions + spend nights + CC card for 3 symbols + one notify or one sup
 
 ---
 
-## Phase 1 implementation note (2026-08-19, this branch only)
+## Implementation notes (2026-08-19)
 
-Shipped on `fix/watchlist-agent-jobs-overnight-cap` (do not merge into #398/#399):
+### Phase 1 — `fix/watchlist-agent-jobs-overnight-cap` @ `71f33970`
 
-- Wrapper `scripts/run_watchlist_agent_jobs_offpeak.sh` sources operator + tmpfs env, soak-defaults `LLM_GLOBAL_DAILY_USD_CAP=2.00` on this lane only when unset/non-positive, PEAK_SKIPs official DeepSeek 01:00–04:00 and 06:00–10:00 UTC (override `HERMES_ALLOW_DEEPSEEK_PEAK=1`), flocks `/tmp/tradeai_watchlist_agent_jobs.lock` with `AGENT_JOBS_LOCK_HELD_EXTERNALLY=1`, and drains `--limit 8` (not `--scheduled-canary`).
-- Helper `scripts/lib/deepseek_offpeak.py` is time-freezable (`TRADEAI_OFFPEAK_NOW_UTC`).
-- Read-only spend JSON: `scripts/report_agent_jobs_spend_soak.py --json`.
-- Live crontab is **not** edited here. Parent applies after review: backup crontab, hash + diff, replace only overnight/weekend agent-job lines with the documented `*/15 0-1` wrapper (no `*/5 0-5` peak overlap).
+- Wrapper `scripts/run_watchlist_agent_jobs_offpeak.sh` sources operator + tmpfs env, soak-defaults `LLM_GLOBAL_DAILY_USD_CAP=2.00` on this lane only when unset/non-positive, PEAK_SKIPs outside **10:00–21:00 America/New_York** (and official UTC pricing peaks). Override `HERMES_ALLOW_DEEPSEEK_PEAK=1` is as-needed only. Flock `/tmp/tradeai_watchlist_agent_jobs.lock` with `AGENT_JOBS_LOCK_HELD_EXTERNALLY=1`, drain `--limit 8`.
+- Helper `scripts/lib/deepseek_offpeak.py`. Spend JSON: `scripts/report_agent_jobs_spend_soak.py --json`.
+- Hermes Flash apply (`hermes_llm_failover.is_deepseek_offpeak`) uses the same 10:00–21:00 ET bulk gate.
+- Intended live line (host TZ already Eastern):
+
+```
+*/15 10-20 * * * $PROJ/scripts/run_watchlist_agent_jobs_offpeak.sh >> $PROJ/logs/watchlist_agent_jobs_offpeak.log 2>&1
+```
+
+`10-20` is 10:00 a.m. through 8:59 p.m. Eastern (last tick before 9 p.m.). **Not** midnight. Midnight `0-1` was incorrect. Market `*/15 6-19 --limit 20` is bulk before 10 a.m. and should be commented; the 1-call governed Flash wrapper may remain as as-needed.
+
+### Phases 2–5 — `wt/symbol-thesis-universe` @ `4bfa5e88` (PR #397 still draft, merge_authorized NO)
+
+- `config/r71_cursor_dependency.json` now declares PR **#398** head `6e429619` (`cursor_pr: 398`).
+- Thesis card fills `active_research` / `recent_completed_research` from `watchlist_agent_jobs` (empty if DB down). Canary helper `scripts/publish_symbol_thesis_canary.py` default dry; `--apply` requires `CANARY_THESIS_APPLY=1` (not applied).
+- Command Center `UNIVERSE & THESES` tab + `SymbolThesisCard` + CIO NOW suppression strip. v3 APIs exist **only on this branch**.
+- `_notify` enqueues outbox for material product `what_changed` only. Live Telegram delivery not enabled.
