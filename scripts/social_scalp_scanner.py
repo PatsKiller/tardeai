@@ -922,6 +922,14 @@ def run_scan():
         }
         route = route_social_candidate(_route_candidate, finviz_data, catalyst_enrichment,
                                        trace_id=discovery_trace_id)
+        # Surface the social-only catalyst cap explicitly so the operator/UI can see a
+        # GO/A+ was downgraded for lack of a verified catalyst (rather than a silent cap).
+        # The route policy already emits SOCIAL_ONLY_UNVERIFIED; this adds the cap marker
+        # that distinguishes "capped after scoring GO" from a plain watch-only candidate.
+        if _capped:
+            _rc = route.setdefault("reason_codes", [])
+            if "SOCIAL_ONLY_CATALYST_CAP" not in _rc:
+                _rc.append("SOCIAL_ONLY_CATALYST_CAP")
         logger.info("%s — route=%s actionability=%s reasons=%s trace=%s",
                     symbol, route["route"], route["actionability"],
                     ",".join(route["reason_codes"]), discovery_trace_id)
