@@ -10,9 +10,10 @@ Related PRs (do not merge `feat/two-way-watchlist-curation`):
 
 | PR | Role | Merge now? |
 |----|------|------------|
-| #398 `fix/watchlist-source-remediation-mainline` @ `6e429619` | Watchlist/source/RAG matcher | Operator undraft + merge first |
-| #399 `fix/watchlist-agent-jobs-cron-env` @ `d407b13d` | flock `env` form | Operator undraft + merge second |
-| #397 `wt/symbol-thesis-universe` @ `65fc1c9f` | R7.1 living thesis backend | Keep draft until soak + CC card + notify proof |
+| #398 `fix/watchlist-source-remediation-mainline` | Watchlist/source/RAG matcher | Merged 2026-08-19 (`36dd1c4b`) |
+| #399 `fix/watchlist-agent-jobs-cron-env` | flock `env` form | Merged 2026-08-19 (`0db697cb`) |
+| #400 `fix/watchlist-agent-jobs-overnight-cap` | Bulk DeepSeek window + soak drain | Merged 2026-08-19 |
+| #397 `wt/symbol-thesis-universe` | R7.1 living thesis + CC card | Operator authorized after green CI |
 
 ---
 
@@ -130,7 +131,7 @@ Soak: completions + spend nights + CC card for 3 symbols + one notify or one sup
 
 ## Implementation notes (2026-08-19)
 
-### Phase 1 — `fix/watchlist-agent-jobs-overnight-cap` @ `71f33970`
+### Phase 1 — merged as PR #400
 
 - Wrapper `scripts/run_watchlist_agent_jobs_offpeak.sh` sources operator + tmpfs env, soak-defaults `LLM_GLOBAL_DAILY_USD_CAP=2.00` on this lane only when unset/non-positive, PEAK_SKIPs outside **10:00–21:00 America/New_York** (and official UTC pricing peaks). Override `HERMES_ALLOW_DEEPSEEK_PEAK=1` is as-needed only. Flock `/tmp/tradeai_watchlist_agent_jobs.lock` with `AGENT_JOBS_LOCK_HELD_EXTERNALLY=1`, drain `--limit 8`.
 - Helper `scripts/lib/deepseek_offpeak.py`. Spend JSON: `scripts/report_agent_jobs_spend_soak.py --json`.
@@ -143,9 +144,15 @@ Soak: completions + spend nights + CC card for 3 symbols + one notify or one sup
 
 `10-20` is 10:00 a.m. through 8:59 p.m. Eastern (last tick before 9 p.m.). **Not** midnight. Midnight `0-1` was incorrect. Market `*/15 6-19 --limit 20` is bulk before 10 a.m. and should be commented; the 1-call governed Flash wrapper may remain as as-needed.
 
-### Phases 2–5 — `wt/symbol-thesis-universe` @ `4bfa5e88` (PR #397 still draft, merge_authorized NO)
+### Watchlist source + cron env — merged as PR #398 and PR #399
 
-- `config/r71_cursor_dependency.json` now declares PR **#398** head `6e429619` (`cursor_pr: 398`).
-- Thesis card fills `active_research` / `recent_completed_research` from `watchlist_agent_jobs` (empty if DB down). Canary helper `scripts/publish_symbol_thesis_canary.py` default dry; `--apply` requires `CANARY_THESIS_APPLY=1` (not applied).
-- Command Center `UNIVERSE & THESES` tab + `SymbolThesisCard` + CIO NOW suppression strip. v3 APIs exist **only on this branch**.
-- `_notify` enqueues outbox for material product `what_changed` only. Live Telegram delivery not enabled.
+Operator authorized merge after #400. RAG matcher and flock `env` form are on `main`.
+
+### Phases 2–5 — `wt/symbol-thesis-universe` (PR #397)
+
+Phases 3–5 product plumbing on this branch. Operator authorized merge after green frontend CI (design-guard: do not write `#397` in copy).
+
+- `config/r71_cursor_dependency.json` declares PR **#398** head `6e429619` (`cursor_pr: 398`). Data-plane consume only; no wholesale merge of `feat/two-way-watchlist-curation`.
+- `build_symbol_thesis_card` fills `active_research` / `recent_completed_research` from `watchlist_agent_jobs` (empty if DB unavailable). Gated canary helper `scripts/publish_symbol_thesis_canary.py` is **default dry**; `--apply` requires `CANARY_THESIS_APPLY=1`. Auto `@vN` on wake remains forbidden.
+- Command Center `UNIVERSE & THESES` tab + `SymbolThesisCard`. CIO NOW trust strip shows `operator_trust.notification` class **and** `suppression_reason`.
+- `_notify` enqueues `NotificationOutbox` for **material product `what_changed` only**. Thesis-version-only bumps do not enqueue. Delivery worker not switched to live. `AUTHORIZE_P2_LIVE_OPERATOR_DELIVERY` remains unset.

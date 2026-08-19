@@ -1,0 +1,11 @@
+{
+  "_comment": "Operator-provided portfolio role context. Not market truth. Not a BUY. READ_ONLY_ADVISORY.",
+  "roles": {
+    "SCHG": {
+      "portfolio_role": "GROWTH",
+      "confidence": "HIGH",
+      "source": "operator_declaration",
+      "note": "Operator handoff 2026-08-19: SCHG represented growth exposure in the book."
+    }
+  }
+}

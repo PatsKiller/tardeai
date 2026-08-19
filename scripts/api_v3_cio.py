@@ -12,6 +12,13 @@ Routes:
   GET /api/v3/cio/plans         — Open advisory plans (optional ?limit=)
   GET /api/v3/cio/plans/{id}    — Single plan detail for deep links ?plan=
   GET /api/v3/cio/thesis        — Active desk@vN thesis
+  GET /api/v3/cio/universe-theses — UNIVERSE & THESES projection (read-only)
+  GET /api/v3/cio/symbol-thesis/{SYM} — per-symbol thesis card + history
+  GET /api/v3/cio/thesis-research-proposal — dry prioritized research set (RI plane)
+  GET /api/v3/cio/thesis-ri-pipeline/{SYM} — RAG-first + acquisition plan (dry)
+  GET /api/v3/cio/thesis-research-context/{SYM} — ThesisResearchContext@v1 + supply plane
+  GET /api/v3/cio/r71-fabric-map — Cursor dependency + integration map
+  GET /api/v3/cio/ask-thesis/{SYM} — Ask CIO symbol-thesis context
   POST /api/v3/cio/plans/{id}/disposition — ack/defer/done/reject (status only)
   GET  /api/v3/cio/dispositions — latest operator dispositions (decision_id key)
   POST /api/v3/cio/decision/{decision_id}/disposition — ACK/DEFER/DONE/REJECT
@@ -323,6 +330,148 @@ def get_cio_thesis() -> dict[str, Any]:
         "thesis": block,
         "authority": "READ_ONLY_ADVISORY",
     }
+
+
+def get_universe_theses() -> dict[str, Any]:
+    """GET /api/v3/cio/universe-theses — UNIVERSE & THESES operator projection."""
+    try:
+        from scripts.lib.symbol_thesis_cc import build_universe_theses_projection
+        payload = build_universe_theses_projection(include_proposed_research=True)
+        return {"ok": True, **payload}
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": type(e).__name__,
+            "detail": str(e)[:240],
+            "authority": "READ_ONLY_ADVISORY",
+            "as_of": _now_iso(),
+        }
+
+
+def get_symbol_thesis_card(symbol: str) -> dict[str, Any]:
+    """GET /api/v3/cio/symbol-thesis/{SYM} — drill-down card + history."""
+    sym = str(symbol or "").strip().upper()
+    if not sym:
+        return {"ok": False, "error": "symbol_required", "authority": "READ_ONLY_ADVISORY"}
+    try:
+        from scripts.lib.symbol_thesis_cc import build_symbol_thesis_card
+        card = build_symbol_thesis_card(sym)
+        return {"ok": True, **card}
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": type(e).__name__,
+            "detail": str(e)[:240],
+            "symbol": sym,
+            "authority": "READ_ONLY_ADVISORY",
+            "as_of": _now_iso(),
+        }
+
+
+def get_thesis_research_proposal() -> dict[str, Any]:
+    """GET /api/v3/cio/thesis-research-proposal — DRY prioritized research set (RI plane)."""
+    try:
+        from scripts.lib.symbol_thesis_research import propose_prioritized_research
+        prop = propose_prioritized_research(limit=40, run_pipeline_preview=0)
+        return {"ok": True, **prop}
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": type(e).__name__,
+            "detail": str(e)[:240],
+            "authority": "READ_ONLY_ADVISORY",
+            "enqueued": False,
+            "hermes_is_acquisition_source": False,
+            "as_of": _now_iso(),
+        }
+
+
+def get_thesis_ri_pipeline(symbol: str) -> dict[str, Any]:
+    """GET /api/v3/cio/thesis-ri-pipeline/{SYM} — RAG-first + budgeted acquisition plan.
+
+    Hermes/Flash are synthesis-only. Default dry: no acquire/embed/LLM.
+    """
+    sym = str(symbol or "").strip().upper()
+    if not sym:
+        return {"ok": False, "error": "symbol_required", "authority": "READ_ONLY_ADVISORY"}
+    try:
+        from scripts.lib.symbol_thesis_research import run_ri_pipeline_for_gap
+        out = run_ri_pipeline_for_gap(
+            sym,
+            retrieve=True,
+            apply_acquire=False,
+            apply_embed=False,
+            call_llm=False,
+        )
+        return {"ok": True, **out}
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": type(e).__name__,
+            "detail": str(e)[:240],
+            "symbol": sym,
+            "hermes_is_acquisition_source": False,
+            "authority": "READ_ONLY_ADVISORY",
+            "as_of": _now_iso(),
+        }
+
+
+def get_ask_thesis_context(symbol: str) -> dict[str, Any]:
+    """GET /api/v3/cio/ask-thesis/{SYM} — Ask CIO symbol-thesis context."""
+    sym = str(symbol or "").strip().upper()
+    if not sym:
+        return {"ok": False, "error": "symbol_required", "authority": "READ_ONLY_ADVISORY"}
+    try:
+        from scripts.lib.symbol_thesis_cc import ask_cio_symbol_context
+        ctx = ask_cio_symbol_context(sym)
+        return {"ok": True, **ctx}
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": type(e).__name__,
+            "detail": str(e)[:240],
+            "symbol": sym,
+            "authority": "READ_ONLY_ADVISORY",
+            "as_of": _now_iso(),
+        }
+
+
+def get_thesis_research_context(symbol: str) -> dict[str, Any]:
+    """GET /api/v3/cio/thesis-research-context/{SYM} — supply plane + RAG + materiality."""
+    sym = str(symbol or "").strip().upper()
+    if not sym:
+        return {"ok": False, "error": "symbol_required", "authority": "READ_ONLY_ADVISORY"}
+    try:
+        from scripts.lib.r71_cursor_fabric_map import load_dependency
+        from scripts.lib.thesis_research_context import build_thesis_research_context
+        ctx = build_thesis_research_context(sym, run_rag_pipeline=True)
+        dep = load_dependency()
+        ctx["cursor_dependency_sha"] = dep.get("cursor_head")
+        return {"ok": True, **ctx}
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": type(e).__name__,
+            "detail": str(e)[:240],
+            "symbol": sym,
+            "authority": "READ_ONLY_ADVISORY",
+            "as_of": _now_iso(),
+        }
+
+
+def get_r71_fabric_map() -> dict[str, Any]:
+    """GET /api/v3/cio/r71-fabric-map — Cursor Gap A–F integration map + dependency SHA."""
+    try:
+        from scripts.lib.r71_cursor_fabric_map import fabric_map_report
+        return {"ok": True, **fabric_map_report()}
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": type(e).__name__,
+            "detail": str(e)[:240],
+            "authority": "READ_ONLY_ADVISORY",
+            "as_of": _now_iso(),
+        }
 
 
 def get_cio_desk_note() -> dict[str, Any]:

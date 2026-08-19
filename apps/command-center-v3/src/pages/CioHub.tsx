@@ -2,13 +2,14 @@ import { useEffect, useState, useCallback, type CSSProperties, type ReactNode } 
 import { useSearchParams, Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { hubTitle, hubSubtitle } from '../lib/terminalHubChrome'
+import { SymbolThesisCard } from '../components/cio/SymbolThesisCard'
 import { NotificationGatePanel, SensesEvidencePanel, TelegramReceiptsPanel } from './MaturityPanels'
 
 /**
  * /v3/cio — the private investment office home (Phase 8).
  *
  * Decision-first, evidence-later. Six sections:
- *   CIO NOW · CAPITAL PLAN · PORTFOLIO POSTURE · OPPORTUNITIES · REPORT · EVIDENCE
+ *   CIO NOW · UNIVERSE & THESES · CAPITAL PLAN · PORTFOLIO POSTURE · OPPORTUNITIES · REPORT · EVIDENCE
  *
  * UX rules enforced here:
  *   - dollars before percentages when discussing action
@@ -198,11 +199,12 @@ type DispositionRec = {
 }
 type DispositionMap = Record<string, DispositionRec>
 
-const TABS = ['cio-now', 'investment-books', 'capital-plan', 'posture', 'opportunities', 'report', 'evidence', 'notification-gate', 'telegram-receipts', 'senses-evidence'] as const
+const TABS = ['cio-now', 'universe-theses', 'investment-books', 'capital-plan', 'posture', 'opportunities', 'report', 'evidence', 'notification-gate', 'telegram-receipts', 'senses-evidence'] as const
 type Tab = typeof TABS[number]
 
 const TAB_LABEL: Record<Tab, string> = {
   'cio-now': 'CIO NOW',
+  'universe-theses': 'UNIVERSE & THESES',
   'investment-books': 'INVESTMENT BOOKS',
   'capital-plan': 'CAPITAL PLAN',
   posture: 'PORTFOLIO POSTURE',
@@ -540,12 +542,14 @@ function TrustStrip({ trust }: { trust?: OperatorTrust }) {
     ? (aegis?.note || 'no packet yet')
     : `${aegis.session_target || 'isolated'}${aegis.generated_at ? ` · ${String(aegis.generated_at).slice(0, 16).replace('T', ' ')}` : ''}`
   const holdLabel = hold?.reason_code || 'DATA_UNAVAILABLE'
-  const ntfLabel = ntf?.suppression_reason || ntf?.notification_class || 'none on record'
+  const ntfClass = ntf?.notification_class || 'none on record'
+  const ntfSuppress = ntf?.suppression_reason || (ntf?.available === false ? 'DATA_UNAVAILABLE' : 'none')
   return (
     <div data-testid="cio-trust-strip" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 16 }}>
       <Stat label="Aegis last run" value={aegisLabel} help="Isolated evening packet. Overflow must stay false." />
       <Stat label="Holdings reason" value={holdLabel} help="Completeness / last-good guard. Incomplete $722k stays blocked." />
-      <Stat label="Notification" value={ntfLabel} help="Latest suppression or delivery class for the current CIO lineage." />
+      <Stat label="Notification" value={ntfClass} help="Latest operator_trust.notification class. Live delivery is a separate gate." />
+      <Stat label="Suppression" value={ntfSuppress} help="operator_trust.notification.suppression_reason when the lineage did not page." />
     </div>
   )
 }
@@ -736,6 +740,93 @@ function PostureSection({ posture }: { posture: Posture }) {
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+type UniverseThesesPayload = {
+  ok?: boolean
+  error?: string
+  detail?: string
+  metrics?: Record<string, unknown>
+  symbols?: Array<{
+    symbol?: string
+    portfolio_role?: string
+    thesis_state?: string
+    thesis_version?: string | number
+    memberships?: string[]
+  }>
+  note?: string
+}
+
+function UniverseThesesPanel() {
+  const { data, loading, error } = useApi<UniverseThesesPayload>('/api/v3/cio/universe-theses', 60_000)
+  const [sym, setSym] = useState('')
+  const cardPath = sym ? `/api/v3/cio/symbol-thesis/${encodeURIComponent(sym)}` : ''
+  const { data: card, loading: cardLoading, error: cardError } = useApi<any>(
+    cardPath || '/api/v3/cio/symbol-thesis/_idle',
+    0,
+    { enabled: Boolean(sym) },
+  )
+  const missingApi = Boolean(error && String(error).includes('HTTP 404'))
+  const payloadError = data && data.ok === false
+  const rows = Array.isArray(data?.symbols) ? data!.symbols! : []
+  return (
+    <div data-testid="cio-universe-theses" style={{ display: 'grid', gap: 14 }}>
+      <div style={{ fontSize: 12, color: 'var(--text3)' }}>
+        Living theses for the material universe. Advisory only. Live main may not serve this API until PR 397 is deployed.
+      </div>
+      {loading && <div style={muted}>Loading universe &amp; theses…</div>}
+      {(error || payloadError) && (
+        <div data-testid="cio-universe-theses-error" style={{ color: 'var(--amber)', fontSize: 13 }}>
+          {missingApi
+            ? 'Universe theses API is not on this host yet (empty until /api/v3/cio/universe-theses exists).'
+            : `Universe theses unavailable: ${payloadError ? (data?.error || data?.detail || 'ok=false') : String(error)}`}
+        </div>
+      )}
+      {data?.metrics && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12 }}>
+          <Stat label="Material" value={String(data.metrics.material_universe ?? '—')} />
+          <Stat label="Current thesis" value={String(data.metrics.current_thesis ?? '—')} />
+          <Stat label="Research required" value={String(data.metrics.research_required ?? '—')} />
+          <Stat label="Coverage" value={data.metrics.coverage_pct != null ? `${data.metrics.coverage_pct}` : '—'} />
+        </div>
+      )}
+      {!loading && !error && !payloadError && rows.length === 0 && (
+        <Empty text="No material universe theses to show." />
+      )}
+      {rows.length > 0 && (
+        <div style={card}>
+          <SectionTitle>Symbols</SectionTitle>
+          {rows.slice(0, 80).map((r, i) => (
+            <button
+              key={(r.symbol || 'x') + i}
+              type="button"
+              onClick={() => setSym(String(r.symbol || ''))}
+              style={{
+                display: 'block', width: '100%', textAlign: 'left',
+                padding: '8px 4px', border: 'none', borderBottom: '1px solid var(--border)',
+                background: r.symbol === sym ? 'var(--accent-dim)' : 'transparent',
+                color: 'var(--text1)', cursor: 'pointer', fontSize: 13,
+              }}
+            >
+              <strong>{r.symbol}</strong>
+              {' · '}
+              {r.portfolio_role || 'UNKNOWN'}
+              {' · '}
+              {r.thesis_state || 'RESEARCH_REQUIRED'}
+              {r.thesis_version != null ? ` · ${String(r.thesis_version)}` : ''}
+            </button>
+          ))}
+        </div>
+      )}
+      {cardLoading && sym && <div style={muted}>Loading {sym} thesis…</div>}
+      {cardError && sym && (
+        <div style={{ color: 'var(--amber)', fontSize: 13 }}>
+          Symbol thesis unavailable for {sym}: {String(cardError)}
+        </div>
+      )}
+      {sym && !cardError && <SymbolThesisCard card={card} />}
     </div>
   )
 }
@@ -1132,6 +1223,12 @@ export default function CioHub({ onDrill }: Props) {
         </div>
       )}
 
+      {tab === 'universe-theses' && (
+        <div role="tabpanel" aria-label={TAB_LABEL[tab]}>
+          <UniverseThesesPanel />
+        </div>
+      )}
+
       {tab === 'investment-books' && <InvestmentBooksPanel />}
 
       {(tab === 'notification-gate' || tab === 'telegram-receipts' || tab === 'senses-evidence') && (
@@ -1142,7 +1239,7 @@ export default function CioHub({ onDrill }: Props) {
         </div>
       )}
 
-      {home && tab !== 'notification-gate' && tab !== 'telegram-receipts' && tab !== 'senses-evidence' && tab !== 'investment-books' && (
+      {home && tab !== 'notification-gate' && tab !== 'telegram-receipts' && tab !== 'senses-evidence' && tab !== 'investment-books' && tab !== 'universe-theses' && (
         <div role="tabpanel" aria-label={TAB_LABEL[tab]}>
           {tab === 'cio-now' && <CioNowSection home={home} dispositions={dispositions} legacyUnversioned={legacyUnversioned} onAct={onAct} />}
           {tab === 'capital-plan' && <CapitalPlanSection cp={home.capital_plan} />}

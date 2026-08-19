@@ -40330,6 +40330,40 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     return 200, _cio.get_cio_delegation()
                 if p == "thesis":
                     return 200, _cio.get_cio_thesis()
+                if p in ("universe-theses", "universe_theses", "theses-universe"):
+                    return 200, _cio.get_universe_theses()
+                if p in ("thesis-research-proposal", "thesis_research_proposal", "research-proposal"):
+                    return 200, _cio.get_thesis_research_proposal()
+                if p.startswith("thesis-ri-pipeline/") or p.startswith("thesis_ri_pipeline/"):
+                    prefix = "thesis-ri-pipeline/" if p.startswith("thesis-ri-pipeline/") else "thesis_ri_pipeline/"
+                    sym = p[len(prefix):].strip("/").split("/")[0]
+                    if not sym:
+                        return 400, {"ok": False, "error": "symbol required"}
+                    return 200, _cio.get_thesis_ri_pipeline(sym)
+                if p.startswith("thesis-research-context/") or p.startswith("thesis_research_context/"):
+                    prefix = (
+                        "thesis-research-context/"
+                        if p.startswith("thesis-research-context/")
+                        else "thesis_research_context/"
+                    )
+                    sym = p[len(prefix):].strip("/").split("/")[0]
+                    if not sym:
+                        return 400, {"ok": False, "error": "symbol required"}
+                    return 200, _cio.get_thesis_research_context(sym)
+                if p in ("r71-fabric-map", "r71_fabric_map", "fabric-map"):
+                    return 200, _cio.get_r71_fabric_map()
+                if p.startswith("symbol-thesis/") or p.startswith("symbol_thesis/"):
+                    prefix = "symbol-thesis/" if p.startswith("symbol-thesis/") else "symbol_thesis/"
+                    sym = p[len(prefix):].strip("/").split("/")[0]
+                    if not sym:
+                        return 400, {"ok": False, "error": "symbol required"}
+                    return 200, _cio.get_symbol_thesis_card(sym)
+                if p.startswith("ask-thesis/") or p.startswith("ask_thesis/"):
+                    prefix = "ask-thesis/" if p.startswith("ask-thesis/") else "ask_thesis/"
+                    sym = p[len(prefix):].strip("/").split("/")[0]
+                    if not sym:
+                        return 400, {"ok": False, "error": "symbol required"}
+                    return 200, _cio.get_ask_thesis_context(sym)
                 if p in ("desk-note", "desk_note", "synthesis"):
                     return 200, _cio.get_cio_desk_note()
                 if p == "plans":
