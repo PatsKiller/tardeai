@@ -163,12 +163,34 @@ def _compute_intelligence_score(record: dict, entity_type: str) -> tuple:
 # CORE UPSERT FUNCTION
 # ─────────────────────────────────────────────
 
+def _dead_conn_msg(exc: BaseException) -> bool:
+    msg = str(exc).lower()
+    return any(s in msg for s in (
+        "already closed", "interfaceerror", "ssl connection", "connection has been closed",
+    ))
+
+
+def _live_conn(conn):
+    """Prefer a live handle; rebuild after idle/SSL death."""
+    try:
+        if conn is not None and not getattr(conn, "closed", 1):
+            return conn
+    except Exception:
+        pass
+    try:
+        from db_adapter import ensure_conn
+        return ensure_conn()
+    except Exception:
+        return conn
+
+
 def upsert_entity(conn, entity_id: str, entity_type: str,
-                  fields: dict, source: str = 'unknown') -> bool:
+                  fields: dict, source: str = 'unknown', _retried: bool = False) -> bool:
     """
     Upsert an intelligence entity record.
     Only updates fields provided. Non-fatal — never raises.
     """
+    conn = _live_conn(conn)
     try:
         cur = conn.cursor()
 
@@ -261,6 +283,13 @@ def upsert_entity(conn, entity_id: str, entity_type: str,
             conn.rollback()
         except Exception:
             pass
+        if not _retried and _dead_conn_msg(e):
+            try:
+                from db_adapter import close_thread_conn, ensure_conn
+                close_thread_conn()
+                return upsert_entity(ensure_conn(), entity_id, entity_type, fields, source, _retried=True)
+            except Exception as e2:
+                log.error(f"[IEM] upsert_entity retry failed for {entity_id}: {e2}")
         return False
 
 
