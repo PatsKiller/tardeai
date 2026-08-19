@@ -927,6 +927,40 @@ def compose_broker_item(symbol: str, *, card: dict | None = None) -> dict[str, A
         "street": field(c.get("street_freshness"), source="yahoo/analyst_rollup"),
         "review": field(c.get("review_freshness"), source="review_artifacts"),
     }
+    # Symbol-thesis coverage (fail-soft) — materiality tiering; never invent thesis
+    try:
+        from scripts.lib.symbol_thesis_attach import thesis_fields_for_symbol, watchlist_materiality
+        th = thesis_fields_for_symbol(sym)
+        memberships = list(th.get("memberships") or [])
+        if held and "HELD" not in memberships:
+            memberships = ["HELD"] + memberships
+        if "WATCHLIST" not in memberships:
+            memberships = memberships + ["WATCHLIST"]
+        materiality = watchlist_materiality(
+            memberships,
+            thesis_state=str(th.get("thesis_state") or "INSUFFICIENT_DATA"),
+        )
+        it["domains"]["SymbolThesis"] = {
+            "thesis_state": field(th.get("thesis_state"), source="symbol_thesis_coverage"),
+            "portfolio_role": field(th.get("portfolio_role"), source=th.get("portfolio_role_source") or "portfolio_role"),
+            "stance": field(th.get("thesis_stance"), source="cio_theses"),
+            "materiality": field(materiality, source="symbol_thesis_attach.watchlist_materiality"),
+            "research_gap_count": field(th.get("research_gap_count") or 0, source="symbol_thesis_coverage"),
+            "why_in_universe": field(
+                ",".join(memberships) if memberships else "WATCHLIST",
+                source="symbol_universe",
+            ),
+            "symbol_thesis_version": field(th.get("symbol_thesis_version"), source="cio_theses"),
+            "authority": field("READ_ONLY_ADVISORY", source="symbol_thesis"),
+        }
+        it["thesis_state"] = th.get("thesis_state")
+        it["watchlist_materiality"] = materiality
+        it["portfolio_role"] = th.get("portfolio_role")
+    except Exception:
+        it["domains"]["SymbolThesis"] = {
+            "thesis_state": field("INSUFFICIENT_DATA", source="symbol_thesis_coverage", quality_state="UNAVAILABLE"),
+            "materiality": field("DISCOVERY_ONLY", source="symbol_thesis_attach"),
+        }
     quality = assess_data_quality([it])
     return {
         "ok": True,

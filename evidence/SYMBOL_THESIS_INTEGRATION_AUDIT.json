@@ -1,0 +1,220 @@
+{
+  "schema": "SymbolThesisIntegrationAudit@v1",
+  "as_of": "2026-08-19T13:19:13.335295+00:00",
+  "authority": "READ_ONLY_ADVISORY",
+  "production_mutation": false,
+  "backfill_performed": false,
+  "research_enqueued": false,
+  "live_read_only_coverage": {
+    "universe_union": 5135,
+    "material": 125,
+    "current": 0,
+    "research_required": 125,
+    "stale": 0,
+    "conflicted": 0,
+    "insufficient_data": 5010,
+    "role_unknown": 63,
+    "coverage_pct_material": 0.0,
+    "desk": "desk@v5",
+    "authority": "READ_ONLY_ADVISORY"
+  },
+  "proposed_prioritized_research": {
+    "counts": {
+      "proposed": 12,
+      "skipped_discovery_or_capped": 488,
+      "by_priority": {
+        "P0": 0,
+        "P1": 9,
+        "P2": 2,
+        "P3": 1
+      },
+      "universe_rows": 5135,
+      "research_required_material": 125
+    },
+    "top": [
+      {
+        "symbol": "12507E201",
+        "priority": "P1",
+        "question": "Why is 12507E201 still held (role=UNKNOWN)? State positive case, counter-thesis, and what would justify ADD vs TRIM vs EXIT.",
+        "gap": "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      },
+      {
+        "symbol": "543354104",
+        "priority": "P1",
+        "question": "Why is 543354104 still held (role=UNKNOWN)? State positive case, counter-thesis, and what would justify ADD vs TRIM vs EXIT.",
+        "gap": "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      },
+      {
+        "symbol": "628518102",
+        "priority": "P1",
+        "question": "Why is 628518102 still held (role=UNKNOWN)? State positive case, counter-thesis, and what would justify ADD vs TRIM vs EXIT.",
+        "gap": "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      },
+      {
+        "symbol": "ADBE",
+        "priority": "P1",
+        "question": "Build living exit/re-entry thesis for ADBE: why previously owned, why exited, what changed since exit, market/sector fit, and research gaps.",
+        "gap": "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      },
+      {
+        "symbol": "AGMH",
+        "priority": "P1",
+        "question": "Build living exit/re-entry thesis for AGMH: why previously owned, why exited, what changed since exit, market/sector fit, and research gaps.",
+        "gap": "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      },
+      {
+        "symbol": "ALXO",
+        "priority": "P1",
+        "question": "Build living exit/re-entry thesis for ALXO: why previously owned, why exited, what changed since exit, market/sector fit, and research gaps.",
+        "gap": "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      },
+      {
+        "symbol": "AMANX",
+        "priority": "P1",
+        "question": "Why is AMANX still held (role=UNKNOWN)? State positive case, counter-thesis, and what would justify ADD vs TRIM vs EXIT.",
+        "gap": "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      },
+      {
+        "symbol": "AMC",
+        "priority": "P1",
+        "question": "Build living exit/re-entry thesis for AMC: why previously owned, why exited, what changed since exit, market/sector fit, and research gaps.",
+        "gap": "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      },
+      {
+        "symbol": "AMD",
+        "priority": "P1",
+        "question": "Build living exit/re-entry thesis for AMD: why previously owned, why exited, what changed since exit, market/sector fit, and research gaps.",
+        "gap": "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      },
+      {
+        "symbol": "ACHV",
+        "priority": "P2",
+        "question": "Build living exit/re-entry thesis for ACHV: why previously owned, why exited, what changed since exit, market/sector fit, and research gaps.",
+        "gap": "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      },
+      {
+        "symbol": "AIRE",
+        "priority": "P2",
+        "question": "Build living exit/re-entry thesis for AIRE: why previously owned, why exited, what changed since exit, market/sector fit, and research gaps.",
+        "gap": "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      },
+      {
+        "symbol": "AMAGX",
+        "priority": "P3",
+        "question": "Build living exit/re-entry thesis for AMAGX: why previously owned, why exited, what changed since exit, market/sector fit, and research gaps.",
+        "gap": "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      }
+    ]
+  },
+  "SCHG": {
+    "memberships": [
+      "HELD",
+      "REENTRY",
+      "WATCHLIST"
+    ],
+    "portfolio_role": "GROWTH",
+    "portfolio_role_source": "operator_declaration",
+    "thesis_state": "RESEARCH_REQUIRED",
+    "thesis_version": null,
+    "stance": null,
+    "why_owned_or_watched": "DATA_UNAVAILABLE",
+    "why_exited": "DATA_UNAVAILABLE",
+    "reentry_state": "CURRENTLY HELD",
+    "opportunity_rank": null,
+    "research_gaps": [
+      "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)",
+      "Re-entry desk has decision-control fields only; need investment thesis (why exit, thesis intact?, market fit)"
+    ],
+    "proposed_research_questions": [
+      "Why is SCHG still held (role=GROWTH)? State positive case, counter-thesis, and what would justify ADD vs TRIM vs EXIT.",
+      "For former holding SCHG: why was it owned, why exited, is the thesis intact, and what specific evidence would move NEAR\u2192RE_ENTER without bypassing gates?"
+    ],
+    "what_would_change": []
+  },
+  "CSCO": {
+    "memberships": [
+      "REENTRY",
+      "WATCHLIST",
+      "OPPORTUNITY"
+    ],
+    "portfolio_role": "UNKNOWN",
+    "portfolio_role_source": "insufficient",
+    "thesis_state": "RESEARCH_REQUIRED",
+    "thesis_version": null,
+    "stance": null,
+    "why_owned_or_watched": "DATA_UNAVAILABLE",
+    "why_exited": "DATA_UNAVAILABLE",
+    "reentry_state": "NEAR ENTRY",
+    "opportunity_rank": 12,
+    "research_gaps": [
+      "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)",
+      "Portfolio role UNKNOWN \u2014 gather operator/historical role evidence",
+      "Re-entry desk has decision-control fields only; need investment thesis (why exit, thesis intact?, market fit)"
+    ],
+    "proposed_research_questions": [
+      "Build living exit/re-entry thesis for CSCO: why previously owned, why exited, what changed since exit, market/sector fit, and research gaps.",
+      "What portfolio role should CSCO occupy (CORE/GROWTH/INCOME/SATELLITE/HEDGE) and what operator/historical evidence supports it?",
+      "For former holding CSCO: why was it owned, why exited, is the thesis intact, and what specific evidence would move NEAR\u2192RE_ENTER without bypassing gates?"
+    ],
+    "what_would_change": []
+  },
+  "ANET": {
+    "memberships": [
+      "REENTRY",
+      "WATCHLIST",
+      "OPPORTUNITY"
+    ],
+    "portfolio_role": "UNKNOWN",
+    "portfolio_role_source": "insufficient",
+    "thesis_state": "RESEARCH_REQUIRED",
+    "thesis_version": null,
+    "stance": null,
+    "why_owned_or_watched": "DATA_UNAVAILABLE",
+    "why_exited": "DATA_UNAVAILABLE",
+    "reentry_state": "WAIT",
+    "opportunity_rank": 6,
+    "research_gaps": [
+      "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)",
+      "Portfolio role UNKNOWN \u2014 gather operator/historical role evidence",
+      "Re-entry desk has decision-control fields only; need investment thesis (why exit, thesis intact?, market fit)"
+    ],
+    "proposed_research_questions": [
+      "Build living exit/re-entry thesis for ANET: why previously owned, why exited, what changed since exit, market/sector fit, and research gaps.",
+      "What portfolio role should ANET occupy (CORE/GROWTH/INCOME/SATELLITE/HEDGE) and what operator/historical evidence supports it?",
+      "For former holding ANET: why was it owned, why exited, is the thesis intact, and what specific evidence would move NEAR\u2192RE_ENTER without bypassing gates?"
+    ],
+    "what_would_change": []
+  },
+  "product_smoke": {
+    "schema": "CIOInvestmentProduct@v1",
+    "thesis_universe": {
+      "universe_union": 5135,
+      "material": 125,
+      "current": 0,
+      "research_required": 125,
+      "stale": 0,
+      "conflicted": 0,
+      "insufficient_data": 5010,
+      "role_unknown": 63,
+      "coverage_pct_material": 0.0,
+      "desk": "desk@v5",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    "thesis_changes_today_counts": {
+      "NEW": 0,
+      "STRENGTHENED": 0,
+      "WEAKENED": 0,
+      "BROKEN": 0,
+      "RESEARCH_REQUIRED": 0,
+      "CONFLICTED": 0,
+      "RETIRED": 0,
+      "OTHER": 0
+    },
+    "reentry_thesis_incomplete": 63,
+    "holdings_thesis_n": 26,
+    "research_next_n": 12,
+    "authority": "READ_ONLY_ADVISORY",
+    "financial_action": false
+  },
+  "note": "No production thesis backfill. Proposed research is DRY."
+}

@@ -389,6 +389,52 @@ def reassess_on_research_completed(
     }
     prior = load_brief(root)
     try:
+        # Closed-loop §K: research result → SYMBOL THESIS REASSESSMENT (before product rebuild).
+        # Idempotent via reassessment_id; publish only on material content change.
+        thesis_review: dict[str, Any] = {"skipped": True}
+        sym_for_thesis = str(parent.get("symbol") or result.get("symbol") or "").upper()
+        if sym_for_thesis:
+            try:
+                from scripts.lib.symbol_thesis_review import reconcile_symbol_thesis
+                critique_v = str((critique or {}).get("verdict") or "").upper()
+                summary = str(result.get("summary") or result.get("answer") or "").strip()
+                # Only feed research into thesis when critique is not INSUFFICIENT
+                evidence: dict[str, Any] = {
+                    "research_result_id": result_id,
+                    "result_id": result_id,
+                    "financial_truth_refs": list(result.get("evidence_refs") or [])[:12],
+                    "fs_receipts": list(result.get("fs_receipts") or [])[:8],
+                    "ratified_lessons": list(result.get("lessons") or [])[:8],
+                    "memory_refs": list(result.get("memory_refs") or [])[:8],
+                }
+                if summary and critique_v not in {"INSUFFICIENT", "REJECT", "REJECTED"}:
+                    # Append research as evidence_for; do not invent stance
+                    evidence["evidence_for"] = [f"research:{result_id}: {summary[:240]}"]
+                    # Optional explicit stance/summary only if research payload provides them
+                    if result.get("thesis_summary"):
+                        evidence["summary"] = str(result.get("thesis_summary"))[:2000]
+                    if result.get("thesis_stance"):
+                        evidence["stance"] = str(result.get("thesis_stance"))
+                    if result.get("research_gaps") is not None:
+                        evidence["research_gaps"] = list(result.get("research_gaps") or [])
+                    if result.get("counter_evidence") is not None:
+                        evidence["counter_evidence"] = list(result.get("counter_evidence") or [])
+                thesis_review = reconcile_symbol_thesis(
+                    sym_for_thesis,
+                    trigger="research_completion",
+                    evidence=evidence,
+                    root=root,
+                    publish=True,
+                    notify=False,  # notification governed by product what_changed below
+                    actor_id="cio_product_reassessment",
+                )
+            except Exception as thesis_exc:
+                thesis_review = {
+                    "ok": False,
+                    "error": f"{type(thesis_exc).__name__}:{thesis_exc}",
+                    "skipped": False,
+                }
+
         product = build_product(
             root=root,
             env=env,
@@ -403,6 +449,14 @@ def reassess_on_research_completed(
         product["parent_run_id"] = parent.get("parent_run_id")
         product["parent_plan_id"] = parent.get("plan_id")
         product["parent_recovery"] = parent.get("status")
+        product["symbol_thesis_review"] = {
+            k: thesis_review.get(k)
+            for k in (
+                "classification", "version_published", "old_version", "new_version",
+                "thesis_id", "symbol", "error", "skipped",
+            )
+            if k in thesis_review or thesis_review.get(k) is not None
+        }
         _annotate_research(product, result, critique)
         try:
             from scripts.lib.cio_production_eligibility import prior_visible_for_what_changed

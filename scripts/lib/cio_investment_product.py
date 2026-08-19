@@ -237,10 +237,35 @@ def adjudicate_reentry(
     signal = str(row.get("reentry_signal") or row.get("state") or "").upper()
     verdicts = [str(i.get("verdict") or "").upper() for i in qitems]
     sources = {str(i.get("source") or "") for i in qitems}
-    why_sold = f"Prior profitable exit; last exit {row.get('last_exit_price') or 'n/a'}."
     vs_exit = row.get("pct_above_exit")
     zone = f"{row.get('reentry_zone_low') or '?'}–{row.get('reentry_zone_high') or '?'}"
     restrict = _lesson_restricts(lessons, symbol)
+
+    # Symbol thesis (fail-soft) — never invent why_owned / why_exited
+    thesis: dict[str, Any] = {}
+    try:
+        from scripts.lib.symbol_thesis_attach import thesis_fields_for_symbol
+        thesis = thesis_fields_for_symbol(symbol, root=row.get("_product_root"))
+    except Exception:
+        thesis = {"thesis_state": "INSUFFICIENT_DATA", "has_current_symbol_thesis": False}
+
+    why_exited = thesis.get("why_exited")
+    if why_exited in (None, "", "DATA_UNAVAILABLE"):
+        why_sold = (
+            f"DATA_UNAVAILABLE — no living exit thesis; mechanical last exit "
+            f"{row.get('last_exit_price') or 'n/a'}."
+        )
+    else:
+        why_sold = why_exited
+    why_owned = thesis.get("why_owned_or_watched") or "DATA_UNAVAILABLE"
+    what_changed = thesis.get("what_changed_since_exit") or "DATA_UNAVAILABLE"
+    market_fit = (
+        thesis.get("thesis_summary")
+        or (f"thesis_state={thesis.get('thesis_state')}; role={thesis.get('portfolio_role')}")
+    )
+    prior_lessons = "restricting" if restrict else (
+        "see_symbol_thesis" if thesis.get("has_current_symbol_thesis") else "none_documented"
+    )
 
     status = "WAIT"
     governed = None
@@ -269,23 +294,67 @@ def adjudicate_reentry(
         else:
             status = "NEAR" if signal in {"IN_ZONE", "READY TO REVIEW", "READY", "NEAR ENTRY", "NEAR"} else "WAIT"
             change = "Independent research/queue confluence plus valid Financial Senses."
+
+    # Thesis gaps cannot invent RE_ENTER; they can block weak promotion to actionable
+    thesis_state = str(thesis.get("thesis_state") or "")
+    if governed == "RE_ENTER" and thesis_state in {"RESEARCH_REQUIRED", "STALE", "CONFLICTED"}:
+        # Keep governed RE_ENTER if explicit queue verdict, but surface that thesis is incomplete
+        change = (
+            f"{change} Symbol thesis is {thesis_state} — operator should review thesis gaps "
+            f"before treating this as high-conviction."
+        )
+    elif status in {"NEAR", "REENTER"} and thesis_state in {"RESEARCH_REQUIRED", "INSUFFICIENT_DATA"} and not governed:
+        # Do not silently look "ready" without thesis; keep NEAR/WAIT and flag research
+        if status == "REENTER":
+            status = "NEAR"
+        change = (
+            f"Thesis {thesis_state}: specific research gaps must close before high-conviction RE_ENTER. "
+            f"{change}"
+        )
+
+    what_changes = thesis.get("what_would_change") or []
+    if isinstance(what_changes, list) and what_changes:
+        change_thesis = "; ".join(str(x) for x in what_changes[:3])
+    else:
+        change_thesis = change
+
     rec = {
         "symbol": symbol,
         "status": status,
         "governed_verdict": governed,
         "why_sold": why_sold,
-        "what_happened_since": f"Signal {signal or 'n/a'}; {vs_exit}% vs exit" if vs_exit is not None else f"Signal {signal or 'n/a'}.",
+        "why_previously_owned": why_owned,
+        "what_happened_since": (
+            what_changed if what_changed not in (None, "DATA_UNAVAILABLE")
+            else (f"Signal {signal or 'n/a'}; {vs_exit}% vs exit" if vs_exit is not None else f"Signal {signal or 'n/a'}.")
+        ),
+        "what_changed_since_exit": what_changed,
         "current_price": row.get("current_price"),
         "last_exit_price": row.get("last_exit_price"),
         "setup": f"Zone {zone}; desk {signal or 'n/a'}",
         "financial_senses": "valid_recent" if fs_ok else "none_or_stale",
         "research_change": f"queue_sources={sorted(sources)} verdicts={verdicts}",
-        "market_fit": "see temperament",
-        "prior_lessons": "restricting" if restrict else "none_blocking",
+        "market_fit": market_fit if thesis.get("has_current_symbol_thesis") else (
+            f"DATA_UNAVAILABLE (desk temperament separate); thesis_state={thesis_state or 'INSUFFICIENT_DATA'}"
+        ),
+        "prior_lessons": prior_lessons,
         "entry_trigger": "Price in zone + governed RE_ENTER + non-stale confirmation",
-        "invalidation": "Extension >25% above exit, restricting lesson, or stale FS used as truth",
+        "invalidation": (
+            "; ".join(str(x) for x in (thesis.get("invalidation_conditions") or [])[:3])
+            if thesis.get("invalidation_conditions")
+            else "Extension >25% above exit, restricting lesson, or stale FS used as truth"
+        ),
         "suggested_advisory_size": "policy default; cash/risk first",
-        "what_would_change": change,
+        "what_would_change": change_thesis,
+        "thesis": thesis,
+        "symbol_thesis_id": thesis.get("symbol_thesis_id"),
+        "symbol_thesis_version": thesis.get("symbol_thesis_version"),
+        "thesis_state": thesis_state or "INSUFFICIENT_DATA",
+        "portfolio_role": thesis.get("portfolio_role") or "UNKNOWN",
+        "portfolio_role_source": thesis.get("portfolio_role_source"),
+        "research_gap_count": thesis.get("research_gap_count") or 0,
+        "research_gaps": thesis.get("research_gaps") or [],
+        "counter_thesis_state": thesis.get("counter_thesis_state"),
         "authority": AUTHORITY,
         "financial_action": False,
     }
@@ -430,11 +499,16 @@ def build_reentry_book(
     lessons: dict[str, Any],
     fs_rows: list[dict[str, Any]],
     infl: dict[str, Any],
+    *,
+    root: Path | str | None = None,
 ) -> dict[str, Any]:
     by_q = _queue_by_symbol(queue)
     fs_ok = _fs_ok(fs_rows)
     rows = []
     for row in _merge_prev_and_queue(prev, queue):
+        row = dict(row)
+        if root is not None:
+            row["_product_root"] = str(root)
         rec = adjudicate_reentry(
             row, qitems=by_q.get(str(row.get("symbol") or "").upper(), []),
             lessons=lessons, fs_ok=fs_ok, infl=infl,
@@ -443,66 +517,181 @@ def build_reentry_book(
     counts: dict[str, int] = {}
     for r in rows:
         counts[r["status"]] = counts.get(r["status"], 0) + 1
+    thesis_incomplete = sum(
+        1 for r in rows
+        if str(r.get("thesis_state") or "") in {"RESEARCH_REQUIRED", "STALE", "CONFLICTED", "INSUFFICIENT_DATA"}
+    )
     return {
         "count": len(rows),
         "counts": counts,
+        "thesis_incomplete_count": thesis_incomplete,
         "names": rows,
-        "note": "IN_ZONE / READY / NEAR is not RE_ENTER. Governed verdicts are candidate-specific.",
+        "note": (
+            "IN_ZONE / READY / NEAR is not RE_ENTER. Governed verdicts are candidate-specific. "
+            "Symbol thesis gaps are surfaced; mechanical why_sold placeholders replaced with "
+            "DATA_UNAVAILABLE when no living exit thesis exists."
+        ),
         "authority": AUTHORITY,
     }
 
 
-def build_opportunity_book(queue: dict[str, Any], reentry: dict[str, Any]) -> dict[str, Any]:
-    re_syms = {r["symbol"]: r["status"] for r in reentry.get("names") or []}
+def build_opportunity_book(
+    queue: dict[str, Any],
+    reentry: dict[str, Any],
+    *,
+    root: Path | str | None = None,
+) -> dict[str, Any]:
+    from scripts.lib.symbol_thesis_attach import opportunity_actionability, thesis_fields_for_symbol
+    re_by = {r["symbol"]: r for r in reentry.get("names") or []}
     ranked = []
     for i, it in enumerate((queue.get("items") or queue.get("top") or [])[:20], 1):
         if not isinstance(it, dict):
             continue
         sym = str(it.get("symbol") or "").upper()
-        vs_re = re_syms.get(sym)
-        ranked.append({
+        vs_re = (re_by.get(sym) or {}).get("status") or "not_former"
+        thesis = (re_by.get(sym) or {}).get("thesis") or thesis_fields_for_symbol(sym, root=root)
+        row = {
             "rank": i,
             "symbol": sym,
             "source": it.get("source"),
             "verdict": it.get("verdict"),
             "state": it.get("state"),
             "label": it.get("directive_label"),
-            "vs_former_holdings": vs_re or "not_former",
+            "vs_former_holdings": vs_re,
+            "status": vs_re if vs_re != "not_former" else it.get("state"),
+            "thesis": thesis,
+            "thesis_state": thesis.get("thesis_state"),
+            "portfolio_role": thesis.get("portfolio_role"),
+            "research_gap_count": thesis.get("research_gap_count") or 0,
+            "research_gaps": thesis.get("research_gaps") or [],
+            "symbol_thesis_version": thesis.get("symbol_thesis_version"),
             "why_outranks_cash_or_reentry": (
                 f"Desk {it.get('source')} {it.get('verdict') or it.get('state') or 'watch'}; "
-                f"former-holding status {vs_re or 'n/a'}."
+                f"former-holding status {vs_re or 'n/a'}; "
+                f"thesis_state={thesis.get('thesis_state')}; gaps={thesis.get('research_gap_count') or 0}."
             ),
-        })
+        }
+        row["actionability"] = opportunity_actionability(row)
+        # Soft demote weakly supported ADD when thesis incomplete
+        if row["actionability"] == "RESEARCH_REQUIRED" and row.get("verdict") == "ADD":
+            row["verdict_note"] = "ADD suppressed to RESEARCH_REQUIRED until thesis gaps close"
+        ranked.append(row)
     return {
         "count": len(ranked),
         "top": ranked,
-        "note": "New capital uses are ranked against cash and former holdings, not in isolation.",
+        "note": (
+            "New capital uses ranked against cash and former holdings. "
+            "Unresolved material thesis gaps → RESEARCH_REQUIRED, not weak ADD/REENTER."
+        ),
         "authority": AUTHORITY,
     }
 
 
-def build_action_book(reentry: dict[str, Any], opportunities: dict[str, Any], temperament: dict[str, Any]) -> dict[str, Any]:
+def build_action_book(
+    reentry: dict[str, Any],
+    opportunities: dict[str, Any],
+    temperament: dict[str, Any],
+    *,
+    holdings: Optional[dict[str, Any]] = None,
+    root: Path | str | None = None,
+) -> dict[str, Any]:
+    from scripts.lib.symbol_thesis_attach import thesis_fields_for_symbol
     do_now, watch, re_if, new_if, cash_for, avoid, research = [], [], [], [], [], [], []
     for r in reentry.get("names") or []:
+        base = {
+            "symbol": r["symbol"],
+            "thesis_state": r.get("thesis_state"),
+            "portfolio_role": r.get("portfolio_role"),
+            "research_gaps": r.get("research_gaps") or [],
+        }
         if r["status"] == "REENTER":
-            do_now.append({"symbol": r["symbol"], "action": "RE_ENTER", "why": r["what_would_change"]})
+            do_now.append({**base, "action": "RE_ENTER", "why": r["what_would_change"]})
         elif r["status"] == "NEAR":
-            watch.append({"symbol": r["symbol"], "action": "WATCH", "why": r["setup"]})
-            re_if.append({"symbol": r["symbol"], "action": "RE_ENTER_IF", "why": r["what_would_change"]})
+            watch.append({**base, "action": "WATCH", "why": r["setup"]})
+            re_if.append({**base, "action": "RE_ENTER_IF", "why": r["what_would_change"]})
         elif r["status"] == "AVOID":
-            avoid.append({"symbol": r["symbol"], "action": "AVOID", "why": r["what_happened_since"]})
+            avoid.append({**base, "action": "AVOID", "why": r["what_happened_since"]})
         else:
-            re_if.append({"symbol": r["symbol"], "action": "RE_ENTER_IF", "why": r["what_would_change"]})
+            re_if.append({**base, "action": "RE_ENTER_IF", "why": r["what_would_change"]})
+        if (r.get("research_gap_count") or 0) > 0:
+            research.append({
+                **base,
+                "action": "THESIS_RESEARCH",
+                "why": "; ".join(str(x) for x in (r.get("research_gaps") or [])[:2]) or "thesis gaps",
+            })
     for o in opportunities.get("top") or []:
+        if o.get("actionability") == "RESEARCH_REQUIRED":
+            research.append({
+                "symbol": o["symbol"],
+                "action": "THESIS_RESEARCH",
+                "why": o.get("why_outranks_cash_or_reentry"),
+                "thesis_state": o.get("thesis_state"),
+                "portfolio_role": o.get("portfolio_role"),
+                "research_gaps": o.get("research_gaps") or [],
+            })
+            continue
         if o.get("verdict") == "ADD" and o.get("symbol") not in {x["symbol"] for x in do_now}:
-            new_if.append({"symbol": o["symbol"], "action": "ADD_IF", "why": o["why_outranks_cash_or_reentry"]})
-        if not o.get("verdict"):
+            new_if.append({
+                "symbol": o["symbol"],
+                "action": "ADD_IF",
+                "why": o["why_outranks_cash_or_reentry"],
+                "thesis_state": o.get("thesis_state"),
+                "actionability": o.get("actionability"),
+            })
+        if not o.get("verdict") and o.get("actionability") != "RESEARCH_REQUIRED":
             research.append({"symbol": o["symbol"], "action": "RESEARCH", "why": o.get("label")})
+
+    # Current holdings — living thesis state for Portfolio Action Book
+    held_thesis = []
+    held_map = holdings or {}
+    held_syms: list[str] = []
+    if isinstance(held_map.get("holdings"), list):
+        for h in held_map["holdings"]:
+            if isinstance(h, dict) and h.get("symbol"):
+                held_syms.append(str(h["symbol"]).upper())
+    elif isinstance(held_map.get("symbols"), list):
+        held_syms = [str(s).upper() for s in held_map["symbols"]]
+    # also pull from reentry rows marked held via thesis memberships
+    for r in reentry.get("names") or []:
+        memb = (r.get("thesis") or {}).get("memberships") or []
+        if "HELD" in memb and r["symbol"] not in held_syms:
+            held_syms.append(r["symbol"])
+    for sym in sorted(set(held_syms)):
+        th = thesis_fields_for_symbol(sym, root=root)
+        held_thesis.append({
+            "symbol": sym,
+            "action": "HOLD_REVIEW",
+            "thesis_state": th.get("thesis_state"),
+            "portfolio_role": th.get("portfolio_role"),
+            "portfolio_role_source": th.get("portfolio_role_source"),
+            "why_still_held": th.get("why_owned_or_watched") or "DATA_UNAVAILABLE",
+            "counter_thesis": th.get("counter_evidence") or [],
+            "research_gaps": th.get("research_gaps") or [],
+            "what_would_change": th.get("what_would_change") or [],
+            "symbol_thesis_version": th.get("symbol_thesis_version"),
+        })
+        if th.get("thesis_state") in {"STALE", "RESEARCH_REQUIRED", "CONFLICTED"}:
+            research.append({
+                "symbol": sym,
+                "action": "THESIS_RESEARCH",
+                "why": f"HELD thesis {th.get('thesis_state')}",
+                "thesis_state": th.get("thesis_state"),
+                "research_gaps": th.get("research_gaps") or [],
+            })
+
     cash_for.append({
         "symbol": "CASH",
         "action": "HOLD_CASH_FOR",
         "why": temperament.get("portfolio_implication"),
     })
+    # de-dupe research by symbol
+    seen_r = set()
+    research_dedup = []
+    for r in research:
+        if r["symbol"] in seen_r:
+            continue
+        seen_r.add(r["symbol"])
+        research_dedup.append(r)
     return {
         "DO_NOW": do_now,
         "WATCH_CLOSELY": watch,
@@ -510,7 +699,8 @@ def build_action_book(reentry: dict[str, Any], opportunities: dict[str, Any], te
         "NEW_POSITION_IF": new_if[:8],
         "HOLD_CASH_FOR": cash_for,
         "AVOID": avoid,
-        "RESEARCH_NEXT": research[:8],
+        "CURRENT_HOLDINGS_THESIS": held_thesis[:40],
+        "RESEARCH_NEXT": research_dedup[:12],
         "authority": AUTHORITY,
         "financial_action": False,
     }
@@ -533,10 +723,23 @@ def build_product(
     fs_rows = collect_fs(root)
     mem = collect_memory(root)
     regime = collect_regime()
+    root_path = Path(root) if root is not None else resolve_root()
+    try:
+        from scripts.lib.symbol_thesis_attach import clear_cache, universe_metrics
+        clear_cache()
+        thesis_metrics = universe_metrics(root=root_path)
+    except Exception:
+        thesis_metrics = {"error": "thesis_metrics_unavailable"}
+    try:
+        from scripts.lib.symbol_thesis_review import daily_thesis_changes
+        thesis_changes_today = daily_thesis_changes(root=root_path)
+    except Exception:
+        thesis_changes_today = {"error": "daily_thesis_changes_unavailable"}
+
     temperament = build_temperament(regime=regime, holdings=holdings, fs_rows=fs_rows, lessons=lessons, infl=infl)
-    reentry = build_reentry_book(prev, queue, lessons, fs_rows, infl)
-    opportunities = build_opportunity_book(queue, reentry)
-    actions = build_action_book(reentry, opportunities, temperament)
+    reentry = build_reentry_book(prev, queue, lessons, fs_rows, infl, root=root_path)
+    opportunities = build_opportunity_book(queue, reentry, root=root_path)
+    actions = build_action_book(reentry, opportunities, temperament, holdings=holdings, root=root_path)
     verdicts = [r for r in reentry.get("names") or [] if r.get("governed_verdict")]
     merged = apply_governed_verdicts(queue, verdicts)
     recs = _recommendations(actions, temperament)
@@ -550,6 +753,8 @@ def build_product(
         "reentry_book": reentry,
         "opportunity_book": opportunities,
         "action_book": actions,
+        "thesis_universe": thesis_metrics,
+        "thesis_changes_today": thesis_changes_today,
         "governed_verdicts": verdicts,
         "merged_queue": merged,
         "memory": {"provider": (mem.get("health") or {}).get("provider"), "counts": mem.get("counts")},
