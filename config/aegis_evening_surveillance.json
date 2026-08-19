@@ -1,0 +1,17 @@
+{
+  "id": "aegis-evening-surveillance",
+  "sessionTarget": "isolated",
+  "wakeMode": "now",
+  "canonical_cio_source": "cio_investment_product",
+  "forbidden_inputs": [
+    "telegram_history",
+    "full_watchlist",
+    "alert_events_table",
+    "prior_conversation",
+    "cio_decisions"
+  ],
+  "packet_script": "scripts/aegis_evening_packet.py",
+  "packet_path": "data/runtime/aegis_evening_packet.json",
+  "max_findings": 8,
+  "prompt": "FRESH SESSION. Consume only the bounded evening packet. Title: Aegis Evening Scan. Max 8 findings. Never treat cio_decisions as canonical."
+}

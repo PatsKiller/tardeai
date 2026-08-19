@@ -121,6 +121,11 @@ def main() -> int:
             print(f"    ok     {o['name']:22s} {o['age_days']}d")
 
     if not stale and not missing:
+        try:
+            from alert_condition_state import observe
+            observe("system_health:pipeline_freshness", "FRESH", alertable=False)
+        except Exception:
+            pass
         return 0
 
     lines = ["⚠ Pipeline freshness — stale dashboard data:"]
@@ -131,22 +136,33 @@ def main() -> int:
     msg = "\n".join(lines)
 
     try:
-        from db_adapter import _execute
-        import time as _t
-        _execute(
-            """INSERT INTO alert_events (alert_uid, alert_type, symbol, severity, source_script, raw_text, created_at)
-               VALUES (%s,'system_health',NULL,'warning','pipeline_freshness_monitor',%s,NOW())
-               ON CONFLICT (alert_uid) DO NOTHING""",
-            (f"pipeline_freshness_{int(_t.time()//3600)}", msg), fetch=None,
-        )
+        from alert_condition_state import observe
+        stale_names = ",".join(sorted(s["name"] for s in stale)) or "none"
+        missing_names = ",".join(sorted(m["name"] for m in missing)) or "none"
+        state = f"STALE:{stale_names}|MISSING:{missing_names}"
+        obs = observe("system_health:pipeline_freshness", state, alertable=True)
     except Exception:
-        pass
-    if a.send:
+        obs = {"notify": True, "uid": "pipeline_freshness_transition", "action": "new"}
+
+    if obs.get("notify"):
         try:
-            import alert_dispatcher_unified as ad
-            ad.dispatch(alert_type="system_health", text=msg, severity="warning", source="pipeline_freshness_monitor")
+            from db_adapter import _execute
+            _execute(
+                """INSERT INTO alert_events (alert_uid, alert_type, symbol, severity, source_script, raw_text, created_at)
+                   VALUES (%s,'system_health',NULL,'warning','pipeline_freshness_monitor',%s,NOW())
+                   ON CONFLICT (alert_uid) DO NOTHING""",
+                (obs.get("uid") or "pipeline_freshness_transition", msg), fetch=None,
+            )
         except Exception:
             pass
+        if a.send:
+            try:
+                import alert_dispatcher_unified as ad
+                ad.dispatch(alert_type="system_health", text=msg, severity="warning", source="pipeline_freshness_monitor")
+            except Exception:
+                pass
+    else:
+        print(f"[pipeline-freshness] unchanged stale set — suppressed ({obs.get('action')})")
     return 1
 
 

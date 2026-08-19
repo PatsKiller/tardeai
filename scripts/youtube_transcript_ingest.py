@@ -152,18 +152,50 @@ def _fetch_timedtext(video_id: str) -> dict:
     except urllib.error.HTTPError as e:
         if e.code == 429:
             cookie_hint = " (cookies loaded)" if COOKIE_PATH.exists() else " — add cookies: config/youtube_cookies.txt"
-            return {"error": f"Rate limited (429){cookie_hint}", "text": "", "segments": 0, "duration_seconds": 0}
+            return {"error": f"Rate limited (429){cookie_hint}", "text": "", "segments": 0,
+                    "duration_seconds": 0, "rate_limited": True}
         return {"error": f"HTTP {e.code}", "text": "", "segments": 0, "duration_seconds": 0}
     except Exception as e:
         return {"error": f"timedtext: {e}", "text": "", "segments": 0, "duration_seconds": 0}
 
 
+_YT_COOLDOWN = Path(__file__).resolve().parent.parent / "data" / "runtime" / "youtube_429_cooldown.json"
+
+
+def _yt_cooldown_active() -> bool:
+    try:
+        import time
+        data = json.loads(_YT_COOLDOWN.read_text())
+        return float(data.get("until", 0)) > time.time()
+    except Exception:
+        return False
+
+
+def _yt_trip_cooldown(seconds: int = 1800) -> None:
+    import time
+    try:
+        _YT_COOLDOWN.parent.mkdir(parents=True, exist_ok=True)
+        _YT_COOLDOWN.write_text(json.dumps({"until": time.time() + seconds, "reason": "429"}))
+    except Exception:
+        pass
+
+
+def _is_429(exc_or_result) -> bool:
+    s = str(exc_or_result or "").lower()
+    return "429" in s or "too many requests" in s or "rate limited" in s
+
+
 def fetch_transcript(video_id: str) -> dict:
-    """Fetch transcript with 3-method fallback chain:
-    1. youtube-transcript-api with cookies (if config/youtube_cookies.txt exists)
-    2. youtube-transcript-api without cookies
-    3. Direct timedtext HTML scraping with cookies
-    """
+    """Fetch transcript with bounded fallback. A 429 stops the chain and the loop."""
+    if _yt_cooldown_active():
+        return {"error": "Rate limited (429) cooldown — skipping", "text": "", "segments": 0,
+                "duration_seconds": 0, "rate_limited": True}
+
+    def _fail_429(src: str) -> dict:
+        _yt_trip_cooldown()
+        return {"error": f"Rate limited (429) via {src}", "text": "", "segments": 0,
+                "duration_seconds": 0, "rate_limited": True}
+
     # Method 1: youtube-transcript-api with cookie session
     session = _load_cookie_session()
     if session:
@@ -181,6 +213,8 @@ def fetch_transcript(video_id: str) -> dict:
                 transcript = ytt_api.fetch(video_id)
             return _parse_transcript_entries(transcript)
         except Exception as e:
+            if _is_429(e):
+                return _fail_429("youtube-transcript-api+cookies")
             pass  # Fall through to method 2
 
     # Method 2: youtube-transcript-api without cookies
@@ -192,16 +226,21 @@ def fetch_transcript(video_id: str) -> dict:
             try:
                 transcript = ytt_api.fetch(video_id, languages=langs)
                 break
-            except Exception:
+            except Exception as e:
+                if _is_429(e):
+                    return _fail_429("youtube-transcript-api")
                 continue
         if transcript is None:
             transcript = ytt_api.fetch(video_id)
         return _parse_transcript_entries(transcript)
-    except Exception:
-        pass
+    except Exception as e:
+        if _is_429(e):
+            return _fail_429("youtube-transcript-api")
 
     # Method 3: Direct timedtext scraping with cookies
     result = _fetch_timedtext(video_id)
+    if result.get("rate_limited") or _is_429(result.get("error")):
+        return _fail_429("timedtext")
     if result.get("text"):
         return result
 
@@ -302,7 +341,8 @@ def ingest_video(video_url: str, added_by: str = "user", *, publish_date: str | 
     result = fetch_transcript(video_id)
     if result.get("error"):
         conn.close()
-        return {"error": result["error"], "video_id": video_id}
+        return {"error": result["error"], "video_id": video_id,
+                "rate_limited": bool(result.get("rate_limited"))}
 
     # Get metadata
     meta = get_video_metadata(video_id)
@@ -557,6 +597,9 @@ def import_channel(channel_url: str, max_videos: int = 20, strategy_focus: str =
             errors += 1
             if i < 5:  # Only print first few errors
                 print(f"  [{i+1}/{len(videos)}] SKIP: {v['title'][:40]} — {str(result.get('error',''))[:40]}")
+            if result.get("rate_limited") or _is_429(result.get("error")):
+                print("[yt] 429 — stopping channel ingest for this run (cooldown armed)")
+                break
 
     # Update last_checked
     conn = _get_conn()

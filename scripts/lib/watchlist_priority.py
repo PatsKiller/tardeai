@@ -265,6 +265,46 @@ def load_daily_priority_symbols(cur, project_root: Path | None = None) -> set[st
     return {str(r[0]).upper() for r in cur.fetchall() if r and r[0]}
 
 
+def load_alert_priority_symbols(cur, project_root: Path | None = None) -> set[str]:
+    """ALERT eligibility — true CIO/operator priority, NOT every active watchlist row.
+
+    Reuses sql_scoring_priority_exists (holdings, directives, active proposals,
+    CIO-rated cards/synthesis). Passive status='active' inventory stays subject
+    to the Hermes top-N window.
+    """
+    holdings = holdings_list(project_root)
+    out = {str(s).upper() for s in holdings}
+    try:
+        cur.execute(f"""SELECT DISTINCT UPPER(wi.symbol) AS symbol
+                        FROM watchlist_items wi
+                        WHERE {sql_scoring_priority_exists('wi.symbol')}""",
+                    scoring_priority_sql_params(holdings, project_root))
+        out.update(str(r[0]).upper() for r in cur.fetchall() if r and r[0])
+    except Exception:
+        try:
+            cur.connection.rollback()
+        except Exception:
+            pass
+    return out
+
+
+def rank_band(rank: int | None, top_n: int | None = None) -> str:
+    """Material rank bands. Churn inside a band is not operator-pageable."""
+    if rank is None:
+        return "unknown"
+    r = int(rank)
+    n = top_n or WATCHLIST_TOP_N
+    if r <= 20:
+        return "top20"
+    if r <= 50:
+        return "top50"
+    if r <= 100:
+        return "top100"
+    if r <= n:
+        return "top200"
+    return "outside"
+
+
 def rank_in_scope(rank: int | None, top_n: int | None = None,
                   symbol: str | None = None, daily_symbols: set[str] | None = None) -> bool:
     """True when symbol is daily-priority or Hermes rank is within the actionable window."""
@@ -277,17 +317,20 @@ def rank_in_scope(rank: int | None, top_n: int | None = None,
 
 def rank_alert_worthy(cur_rank: int | None, prev_rank: int | None, top_n: int | None = None,
                       symbol: str | None = None, daily_symbols: set[str] | None = None) -> bool:
-    """Suppress tail rank-jump noise; alert daily-priority and top-N names."""
-    if symbol and daily_symbols and str(symbol).upper() in daily_symbols:
-        return True
+    """Alert only on a material band change (enter/leave top-N or cross a band).
+
+    `daily_symbols` used to exempt every active-watchlist name from top-N; that
+    is no longer a rank-alert bypass. Holdings/CIO-priority still get score and
+    factor alerts via rank_in_scope(); rank pages require a band change.
+    """
     n = top_n or WATCHLIST_TOP_N
-    if cur_rank is None:
+    cur_b = rank_band(cur_rank, n)
+    prev_b = rank_band(prev_rank, n)
+    if cur_b == "unknown":
         return False
-    if int(cur_rank) <= n:
-        return True
-    if prev_rank is not None and int(prev_rank) > n >= int(cur_rank):
-        return True
-    return False
+    if cur_b == "outside" and prev_b == "outside":
+        return False
+    return cur_b != prev_b
 
 
 def is_buy_side_rating(raw: str | None) -> bool:

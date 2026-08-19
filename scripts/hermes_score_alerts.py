@@ -18,7 +18,10 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
-from watchlist_priority import load_daily_priority_symbols, rank_alert_worthy, rank_in_scope
+from watchlist_priority import (
+    load_alert_priority_symbols, rank_alert_worthy, rank_band, rank_in_scope,
+)
+from alert_condition_state import observe
 
 SCORE_DELTA = 8.0
 RANK_JUMP = 20
@@ -54,7 +57,7 @@ def _div(components):
 
 def run(send=False):
     conn = _conn(); cur = conn.cursor()
-    daily_symbols = load_daily_priority_symbols(cur, PROJECT_ROOT)
+    daily_symbols = load_alert_priority_symbols(cur, PROJECT_ROOT)
     cur.execute("""SELECT symbol, composite_score, rank, components, scored_at,
                      ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY scored_at DESC) rn
                    FROM hermes_score_history WHERE scored_at > now() - interval '3 days'""")
@@ -69,38 +72,49 @@ def run(send=False):
         if len(snaps) < 2:
             continue
         cur_s, prev_s = snaps[0], snaps[1]
-        ts = cur_s["scored_at"].strftime("%Y%m%d%H%M")
         cur_rank = cur_s.get("rank")
         prev_rank = prev_s.get("rank")
         in_scope = rank_in_scope(cur_rank, symbol=sym, daily_symbols=daily_symbols)
         rank_ok = rank_alert_worthy(cur_rank, prev_rank, symbol=sym, daily_symbols=daily_symbols)
-        # composite spike/drop (top-N only — tail churn is not actionable)
+        # composite spike/drop (true priority / top-N only — tail churn is not actionable)
         if in_scope and cur_s["composite_score"] is not None and prev_s["composite_score"] is not None:
             delta = float(cur_s["composite_score"]) - float(prev_s["composite_score"])
             if abs(delta) >= SCORE_DELTA:
-                arrow = "📈" if delta > 0 else "📉"
-                txt = f"{arrow} {sym} Hermes score {'spiked' if delta > 0 else 'dropped'} {delta:+.0f} → {float(cur_s['composite_score']):.0f}"
-                if _alert(cur, f"hermes_score_{sym}_{ts}", "hermes_score_move", sym, "info" if delta > 0 else "warning", txt):
-                    new_alerts.append(txt)
-        # rank surge (suppress #2000+ tail noise)
+                direction = "up" if delta > 0 else "down"
+                bucket = int(float(cur_s["composite_score"]) // 10)
+                obs = observe(f"hermes_score:{sym}", f"{direction}:{bucket}", alertable=True)
+                if obs["notify"]:
+                    arrow = "📈" if delta > 0 else "📉"
+                    txt = f"{arrow} {sym} Hermes score {'spiked' if delta > 0 else 'dropped'} {delta:+.0f} → {float(cur_s['composite_score']):.0f}"
+                    if _alert(cur, obs["uid"], "hermes_score_move", sym, "info" if delta > 0 else "warning", txt):
+                        new_alerts.append(txt)
+        # rank surge — band change only; scoring history stays in hermes_score_history
         if rank_ok and cur_rank and prev_rank and (prev_rank - cur_rank) >= RANK_JUMP:
-            txt = f"⤴ {sym} jumped to Hermes rank #{cur_s['rank']} (from #{prev_s['rank']})"
-            if _alert(cur, f"hermes_rank_{sym}_{ts}", "hermes_rank_surge", sym, "info", txt):
-                new_alerts.append(txt)
-        # analyst divergence flip (top-N only)
+            cur_b = rank_band(cur_rank)
+            prev_b = rank_band(prev_rank)
+            obs = observe(f"hermes_rank:{sym}", f"{prev_b}->{cur_b}", alertable=True)
+            if obs["notify"]:
+                txt = f"⤴ {sym} jumped to Hermes rank #{cur_s['rank']} (from #{prev_s['rank']})"
+                if _alert(cur, obs["uid"], "hermes_rank_surge", sym, "info", txt):
+                    new_alerts.append(txt)
+        # analyst divergence flip (top-N / true priority only)
         dc, dp = _div(cur_s["components"]), _div(prev_s["components"])
         if in_scope and dc and dp and dc != dp:
-            txt = f"⚠ {sym} analyst view flipped {dp} → {dc} vs Street"
-            if _alert(cur, f"hermes_divflip_{sym}_{ts}", "hermes_divergence_flip", sym, "warning", txt):
-                new_alerts.append(txt)
+            obs = observe(f"hermes_divflip:{sym}", f"{dp}->{dc}", alertable=True)
+            if obs["notify"]:
+                txt = f"⚠ {sym} analyst view flipped {dp} → {dc} vs Street"
+                if _alert(cur, obs["uid"], "hermes_divergence_flip", sym, "warning", txt):
+                    new_alerts.append(txt)
         # factor regime change (sector_strength / setup_quality)
         for f in ("sector_strength", "setup_quality"):
             cf = (cur_s["components"] or {}).get(f, {}).get("score")
             pf = (prev_s["components"] or {}).get(f, {}).get("score")
             if in_scope and cf is not None and pf is not None and abs(float(cf) - float(pf)) >= FACTOR_DELTA:
-                txt = f"↻ {sym} {f.replace('_', ' ')} shifted {float(pf):.0f}→{float(cf):.0f}"
-                if _alert(cur, f"hermes_{f}_{sym}_{ts}", "hermes_factor_shift", sym, "info", txt):
-                    new_alerts.append(txt)
+                obs = observe(f"hermes_{f}:{sym}", f"{int(float(pf))//20}->{int(float(cf))//20}", alertable=True)
+                if obs["notify"]:
+                    txt = f"↻ {sym} {f.replace('_', ' ')} shifted {float(pf):.0f}→{float(cf):.0f}"
+                    if _alert(cur, obs["uid"], "hermes_factor_shift", sym, "info", txt):
+                        new_alerts.append(txt)
     conn.commit()
     if new_alerts and send:
         _telegram("🔭 Hermes watchlist alerts:\n" + "\n".join(new_alerts[:12]))

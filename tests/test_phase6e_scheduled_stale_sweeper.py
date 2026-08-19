@@ -79,7 +79,7 @@ class TestScheduledStaleSweeper(unittest.TestCase):
     def test_10_holdings_guard(self):
         script = (PROJECT_ROOT / "scripts/run_scheduled_stale_proposal_sweeper.sh").read_text()
         self.assertIn('holdings.json', script)
-        self.assertIn('1000000', script)
+        self.assertIn('file_is_intact', script)
 
     # 11. Phase 6A-D regression
     def test_11_phase6a_regression(self):
