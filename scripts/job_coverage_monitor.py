@@ -52,7 +52,7 @@ REGISTRY = [
      "signal": ("log", "drive-sync.log")},
     {"name": "news_ingestion", "schedule_match": "news_ingestion.py", "cadence_h": 12,
      "signal": ("db", "SELECT MAX(created_at) FROM news_articles")},
-    {"name": "rag_embeddings", "schedule_match": "embedding", "cadence_h": 72,
+    {"name": "rag_embeddings", "schedule_match": "rag_indexer.py", "cadence_h": 72,
      "signal": ("db", "SELECT MAX(created_at) FROM content_embeddings")},
     {"name": "transcript_discovery", "schedule_match": "aegis_transcript_discovery.py", "cadence_h": 240,
      "signal": ("db", "SELECT MAX(ingested_at) FROM youtube_transcripts")},
@@ -101,6 +101,34 @@ REGISTRY = [
     # Industry/sector novelty discovery — daily.
     {"name": "hermes_industry_novelty_discovery", "schedule_match": "hermes_industry_novelty_discovery.py",
      "cadence_h": 30, "signal": ("log", "hermes_industry_novelty.log")},
+
+    # ── Watchlist remediation lanes (2026-08-19 audit) — self-heal managed ──
+    # Each carries cron_line (re-add when NOT_SCHEDULED) + remediate_cmd (re-run when
+    # STALE). cadence_h=80 tolerates the weekend gap (weekday-daily jobs).
+    {"name": "research_watchlist_discovery", "schedule_match": "research_watchlist_discovery.py",
+     "cadence_h": 80, "signal": ("db", "SELECT MAX(last_success_at) FROM data_source_health WHERE source_key='research_discovery'"),
+     "cron_line": "0 7 * * 1-5 cd $PROJ && $PY scripts/research_watchlist_discovery.py --apply >> logs/research_watchlist_discovery.log 2>&1",
+     "remediate_cmd": "cd $PROJ && $PY scripts/research_watchlist_discovery.py --apply"},
+    {"name": "sync_social_to_intelligence", "schedule_match": "sync_social_to_intelligence.py",
+     "cadence_h": 80, "signal": ("db", "SELECT MAX(last_success_at) FROM data_source_health WHERE source_key='social'"),
+     "cron_line": "30 11,15 * * 1-5 cd $PROJ && $PY scripts/sync_social_to_intelligence.py --apply >> logs/sync_social_to_intelligence.log 2>&1",
+     "remediate_cmd": "cd $PROJ && $PY scripts/sync_social_to_intelligence.py --apply"},
+    {"name": "hermes_social_sentiment", "schedule_match": "hermes_social_sentiment.py",
+     "cadence_h": 80, "signal": ("db", "SELECT MAX(last_success_at) FROM data_source_health WHERE source_key='hermes_social'"),
+     "cron_line": "15 11,15 * * 1-5 cd $PROJ && $PY scripts/hermes_social_sentiment.py --apply >> logs/hermes_social_sentiment.log 2>&1",
+     "remediate_cmd": "cd $PROJ && $PY scripts/hermes_social_sentiment.py --apply"},
+    {"name": "candidate_discovery_orchestrator", "schedule_match": "candidate_discovery_orchestrator.py",
+     "cadence_h": 80, "signal": ("db", "SELECT MAX(last_success_at) FROM data_source_health WHERE source_key IN ('news_catalyst','incubator','social_scalp','yahoo_movers')"),
+     "cron_line": "15 6 * * 1-5 cd $PROJ && $PY scripts/candidate_discovery_orchestrator.py --apply >> logs/candidate_discovery.log 2>&1",
+     "remediate_cmd": "cd $PROJ && $PY scripts/candidate_discovery_orchestrator.py --apply"},
+    {"name": "drain_discovery_backlog", "schedule_match": "drain_discovery_backlog.py",
+     "cadence_h": 80, "signal": ("log", "drain_discovery_backlog.log"),
+     "cron_line": "0 6 * * 1-5 cd $PROJ && $PY scripts/drain_discovery_backlog.py --apply >> logs/drain_discovery_backlog.log 2>&1",
+     "remediate_cmd": "cd $PROJ && $PY scripts/drain_discovery_backlog.py --apply"},
+    {"name": "desk_suggestions_digest", "schedule_match": "desk_suggestions_digest.py",
+     "cadence_h": 80, "signal": ("log", "desk_suggestions_digest.log"),
+     "cron_line": "0 8 * * 1-5 cd $PROJ && $PY scripts/desk_suggestions_digest.py >> logs/desk_suggestions_digest.log 2>&1",
+     "remediate_cmd": "cd $PROJ && $PY scripts/desk_suggestions_digest.py"},
 ]
 
 

@@ -898,6 +898,13 @@ def audit(source: str, event: str, payload: Optional[Dict[str, Any]] = None,
 # P4 — graduated autonomy (pure gate, no I/O)
 # ─────────────────────────────────────────────────────────────────────────────
 
+# Bootstrap soak: when no MEASURED trailing hit-rate exists yet (CURATION_HIT_RATE_DEFAULT
+# unset), this is the ASSUMPTION substituted so auto-apply can soak — only while
+# CURATION_AUTO_APPLY=1. It is NOT a measured hit-rate and must never be described as one;
+# it never raises the authority ceiling on its own (the operator opted into auto-apply).
+BOOTSTRAP_ASSUMPTION = 0.65
+
+
 def auto_apply_gate(source_tier: str, divergence: str, hit_rate: Optional[float],
                     *, min_hit_rate: float = 0.6) -> Dict[str, Any]:
     """Graduated auto-apply for self-learning gates.

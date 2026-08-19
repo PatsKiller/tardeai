@@ -121,8 +121,13 @@ def test_policy_wiring():
 
 
 def test_backfill_script_allowlisted_and_safe():
+    # Semantic safety (the old string-assertion checked an inline guard since
+    # replaced by the general allowlist): the backfill script must be allowlisted
+    # and auto-remediation must gate on it; the script itself must backfill, never delete.
+    allowlist = (ROOT / "config" / "claude_escalation_allowlist.yaml").read_text()
+    assert "fix_strategy_registry_null_ids.py" in allowlist
     src = (ROOT / "scripts" / "health_agent.py").read_text()
-    assert '"fix_strategy_registry_null_ids.py" not in cmd' in src
+    assert "if not any(s in cmd for s in _SAFE_REMEDIATION_SCRIPTS)" in src
     fix = (ROOT / "scripts" / "fix_strategy_registry_null_ids.py").read_text()
     assert "UPDATE strategy_registry" in fix and "RETURNING" in fix
     assert "DELETE" not in fix  # backfill, never delete

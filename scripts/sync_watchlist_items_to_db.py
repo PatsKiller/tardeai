@@ -143,10 +143,16 @@ def sync():
         bt = backtests.get(symbol, {})
         tp = trade_plans.get(symbol, {})
         bt_score = bt.get("score") or bt.get("backtest_score")
+        origin = {
+            "ai_discovered": "discovery_candidates",
+            "ai_watchlist": "ai_watchlist",
+            "portfolio": "portfolio",
+            "personal_watchlist": "personal_watchlist",
+        }.get(source, source)
 
         cur.execute("""
-            INSERT INTO watchlist_items (symbol, source, bucket, asset_type, status, score, backtest_score, backtest_data, trade_plan, source_payload, last_seen_at, updated_at)
-            VALUES (%s, %s, %s, %s, 'active', %s, %s, %s, %s, %s, now(), now())
+            INSERT INTO watchlist_items (symbol, source, bucket, asset_type, status, score, backtest_score, backtest_data, trade_plan, source_payload, origin_system, last_seen_at, updated_at)
+            VALUES (%s, %s, %s, %s, 'active', %s, %s, %s, %s, %s, %s, now(), now())
             ON CONFLICT (symbol, source, COALESCE(bucket, '__none__'))
             DO UPDATE SET
                 asset_type = COALESCE(EXCLUDED.asset_type, watchlist_items.asset_type),
@@ -160,7 +166,7 @@ def sync():
                 status = CASE WHEN watchlist_items.status = 'removed' THEN 'active' ELSE watchlist_items.status END
         """, (symbol, source, bk, at, score, bt_score,
               json.dumps(bt) if bt else '{}', json.dumps(tp) if tp else '{}',
-              json.dumps(payload) if payload else '{}'))
+              json.dumps(payload) if payload else '{}', origin))
         upserted += 1
 
     # Portfolio

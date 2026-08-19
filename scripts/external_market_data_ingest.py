@@ -243,6 +243,19 @@ def ingest_quotes(symbols: list = None) -> dict:
             print(f"  [fallback] yfinance failed (non-fatal): {e}")
     total = a.get("fetched", 0) + fv.get("fetched", 0) + yf.get("fetched", 0)
     print(f"[quotes] {total}/{len(symbols)} (alpaca {a.get('fetched', 0)} + finviz {fv.get('fetched', 0)} + yf {yf.get('fetched', 0)})")
+
+    # yahoo_finance is a LAST-RESORT fallback. When Alpaca (+ Finviz) price the whole
+    # universe, yfinance never runs, so its data_source_health marker never updates and
+    # the health agent reports it stale (183h) — a monitoring false-positive, not an
+    # outage. Mark it healthy/covered here so liveness reflects reality. When yfinance
+    # DID run, ingest_yfinance_quotes() already reported its own ok/error state.
+    if not miss2:
+        try:
+            from lib.data_source_report import report_source
+            report_source("yahoo_finance", True, rows=None, error=None)
+        except Exception:
+            pass
+
     return {"alpaca": a.get("fetched", 0), "finviz": fv.get("fetched", 0), "yfinance": yf.get("fetched", 0),
             "fetched": total, "total": len(symbols)}
 
