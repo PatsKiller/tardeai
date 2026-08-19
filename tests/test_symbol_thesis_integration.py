@@ -267,6 +267,7 @@ def test_reassessment_hooks_thesis_review(tmp_path, monkeypatch):
 def test_api_helpers_importable():
     import api_v3_cio as cio
     assert callable(cio.get_universe_theses)
+    assert callable(cio.get_agent_research_ops)
     assert callable(cio.get_symbol_thesis_card)
     assert callable(cio.get_thesis_research_proposal)
     assert callable(cio.get_ask_thesis_context)

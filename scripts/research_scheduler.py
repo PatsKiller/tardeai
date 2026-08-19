@@ -343,27 +343,51 @@ QUESTION = ("Is {sym} a sound {kind} right now? Flag any NEW catalysts, risks, o
 
 
 def _enqueue_local(sym, tier, deep=False) -> dict:
-    """Queue a local-gemma research job; the always-on watchlist_agent_jobs workers drain it.
-    Idempotent-ish: skips if an unprocessed job for this symbol/agent already queued."""
+    """Queue a Flash-first research job; watchlist_agent_jobs workers drain it.
+    Canonical governance: dedupe / reuse / backpressure (no duplicate paid work)."""
     agent = "full_chain" if deep else "maria"
     prio = 1 if tier.startswith("T0") else (3 if tier == "T1-WATCH" else 5)
+    uni = "T0" if str(tier).startswith("T0") else ("T1" if "T1" in str(tier) else ("T2" if "T2" in str(tier) else "T3"))
     try:
-        from db_adapter import _execute
-        dup = _execute("""SELECT 1 FROM watchlist_agent_jobs WHERE symbol=%s AND requested_agent=%s
-                          AND status IN ('queued','running') LIMIT 1""", (sym, agent), fetch="one")
-        if dup:
-            return {"ok": True, "tail": "already queued"}
-        # id is a TEXT primary key (no sequence) — generate a stable, unique-per-minute string
+        from db_adapter import _execute, _get_conn
+        conn = _get_conn()
+        cur = conn.cursor()
+        from agent_job_enqueue_governance import EnqueueRequest, governed_enqueue
         job_id = f"sched-{sym}-{agent}-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
-        _execute("""INSERT INTO watchlist_agent_jobs
-                    (id, symbol, requested_agent, request_type, note, priority, status, submitted_from, payload, created_at)
-                    VALUES (%s,%s,%s,%s,%s,%s,'queued','research_scheduler','{}',NOW())
-                    ON CONFLICT (id) DO NOTHING""",
-                 (job_id, sym, agent, "scheduled_research",
-                  f"{tier} scheduled research ({'deep' if deep else 'standard'})", prio), fetch=None)
-        return {"ok": True, "tail": f"enqueued {agent} p{prio}"}
+        res = governed_enqueue(cur, EnqueueRequest(
+            symbol=sym,
+            requested_agent=agent,
+            request_type="scheduled_research",
+            submitted_from="research_scheduler",
+            priority=prio,
+            note=f"{tier} scheduled research ({'deep' if deep else 'standard'})",
+            job_id=job_id,
+            universe_tier=uni,
+            material=str(tier).startswith("T0"),
+        ))
+        conn.commit()
+        conn.close()
+        if res.action == "INSERT":
+            return {"ok": True, "tail": f"enqueued {agent} p{prio}"}
+        return {"ok": True, "tail": f"{res.action.lower()} {agent} ({res.reason})"}
     except Exception as e:
-        return {"ok": False, "tail": str(e)[:100]}
+        try:
+            from db_adapter import _execute
+            dup = _execute("""SELECT 1 FROM watchlist_agent_jobs WHERE symbol=%s AND requested_agent=%s
+                              AND status IN ('queued','running') LIMIT 1""", (sym, agent), fetch="one")
+            if dup:
+                return {"ok": True, "tail": "already queued"}
+            job_id = f"sched-{sym}-{agent}-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
+            _execute("""INSERT INTO watchlist_agent_jobs
+                        (id, symbol, requested_agent, request_type, note, priority, status, submitted_from, payload, created_at)
+                        VALUES (%s,%s,%s,%s,%s,%s,'queued','research_scheduler','{}',NOW())
+                        ON CONFLICT (id) DO NOTHING""",
+                     (job_id, sym, agent, "scheduled_research",
+                      f"{tier} scheduled research ({'deep' if deep else 'standard'})", prio), fetch=None)
+            return {"ok": True, "tail": f"enqueued {agent} p{prio}"}
+        except Exception as e2:
+            return {"ok": False, "tail": str(e2)[:100]}
+
 
 
 def dispatch(sym, lane, tier, apply) -> dict:

@@ -64,18 +64,27 @@ def queue_holdings_batch():
     else:
         stale_holdings = set()
 
-    # Queue all 3 agents for each stale holding
+    # Queue all 3 agents for each stale holding (governed: Flash-first drain, no dupes)
     agents = ["maria", "steph", "risk_agent"]
     queued = 0
+    sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+    from agent_job_enqueue_governance import EnqueueRequest, governed_enqueue
     for symbol in sorted(stale_holdings):
         for agent in agents:
             job_id = f"t1_{symbol.lower()}_{agent}_{uuid.uuid4().hex[:6]}"
-            cur.execute("""
-                INSERT INTO watchlist_agent_jobs (id, symbol, requested_agent, request_type, priority, note, status, submitted_from)
-                VALUES (%s, %s, %s, 'full_analysis', 1, 'Tier 1: Holdings nightly refresh', 'queued', 'command_center')
-                ON CONFLICT DO NOTHING
-            """, (job_id, symbol, agent))
-            queued += 1
+            res = governed_enqueue(cur, EnqueueRequest(
+                symbol=symbol,
+                requested_agent=agent,
+                request_type="full_analysis",
+                submitted_from="overnight_batch",
+                priority=1,
+                note="Tier 1: Holdings nightly refresh",
+                job_id=job_id,
+                universe_tier="T0",
+                material=True,
+            ))
+            if res.action == "INSERT":
+                queued += 1
 
     conn.commit()
     conn.close()

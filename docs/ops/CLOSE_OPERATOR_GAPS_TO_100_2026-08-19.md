@@ -1,10 +1,28 @@
 # Close remaining operator gaps to 100%
 
 Date: 2026-08-19  
-Status: PLAN + IN IMPLEMENTATION  
+Status: HISTORICAL PLAN + 2026-08-19 CONVERGENCE RECONCILIATION  
 Authority: READ_ONLY_ADVISORY (no broker / order / stop / risk / 2FA mutation)
 
-This is the operator-facing plan to close the last 15–20% of the experience: autonomous research completion, mainline reconciliation, living-thesis product, Command Center SCHG card, and proven CIO Telegram (or proven suppression).
+## Reconciliation (2026-08-19, after protected main `25a1a34a`)
+
+The body below was written while #397/#398/#399/#400 were still in flight. Treat those
+"draft / not-main / NOT LIVE" sentences as **history**. Current source-of-truth:
+
+| PR | Merge SHA | Status |
+|----|-----------|--------|
+| #400 | `1dfa064b786754c386a52f123194f74a058e6034` | Merged to protected main |
+| #398 | `36dd1c4b939834d9beb92accb3234788533f369c` | Merged to protected main |
+| #399 | `0db697cbcb9c8d0af65ce5918ec165e1b352c1d7` | Merged to protected main |
+| #397 | `25a1a34a49feecb659080e8e13788381498c03f7` | Merged to protected main (R7.1 living thesis + Command Center) |
+
+Automatic queued intelligence is **DeepSeek Flash FIRST** via existing `llm_router`.
+Maria `_prefer_maria_oauth()` no longer preempts the router for holdings/WAIT/auto queue.
+OAuth remains for explicit challenge / manual / soft Flash fallback.
+Queue control is dedupe/supersede/stale/backpressure — not raising `--limit`.
+`LLM_GLOBAL_DAILY_USD_CAP` remains the operator cap (value not logged). Soak $2 is SOAK_DEFAULT only.
+
+Remaining work is **deploy exact main** via immutable release + natural-run soak, not another architecture layer.
 
 Related PRs (do not merge `feat/two-way-watchlist-curation`):
 
@@ -13,7 +31,7 @@ Related PRs (do not merge `feat/two-way-watchlist-curation`):
 | #398 `fix/watchlist-source-remediation-mainline` | Watchlist/source/RAG matcher | Merged 2026-08-19 (`36dd1c4b`) |
 | #399 `fix/watchlist-agent-jobs-cron-env` | flock `env` form | Merged 2026-08-19 (`0db697cb`) |
 | #400 `fix/watchlist-agent-jobs-overnight-cap` | Bulk DeepSeek window + soak drain | Merged 2026-08-19 |
-| #397 `wt/symbol-thesis-universe` | R7.1 living thesis + CC card | Operator authorized after green CI |
+| #397 `wt/symbol-thesis-universe` | R7.1 living thesis + CC card | **Merged** `25a1a34a` (2026-08-19) |
 
 ---
 
@@ -29,8 +47,8 @@ The plumbing is mostly connected and fail-closed. Remaining problems are integra
 | CIO research→reassessment | LIVE | Completion → reassessment → product → `what_changed` |
 | Watchlist-agent worker | RUNNING | Live `flock` syntax fixed |
 | Autonomous agent-job completion | BROKEN / FAIL-CLOSED | Missing `LLM_GLOBAL_DAILY_USD_CAP` on direct cron; then circuit opens |
-| Symbol living thesis | BUILT IN #397, NOT LIVE | SCHG/CSCO/ANET logic on branch only |
-| Command Center living-thesis UI | NOT COMPLETE | #397 is backend-only |
+| Symbol living thesis | **IN MAIN** (`25a1a34a`) | SCHG/CSCO/ANET canary still needs production deploy of this SHA |
+| Command Center living-thesis UI | **IN MAIN** | UNIVERSE & THESES tab is in Command Center source; live host may still run older CURRENT |
 | Interactive Telegram | YES | `/cio`, `/advisory`, `rag`, `ask`, watch commands |
 | Proactive CIO Telegram | ARCHITECTURE EXISTS | Silence ≠ proof; need `message_id` or visible SUPPRESSED |
 

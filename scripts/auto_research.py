@@ -202,15 +202,23 @@ def _queue_agent_reviews(symbol: str, note: str) -> int:
         conn.close()
         return 0
     queued = 0
+    sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+    from agent_job_enqueue_governance import EnqueueRequest, governed_enqueue
     for agent in ("maria", "steph", "risk_agent"):
         job_id = f"ar_{symbol.lower()}_{agent}_{uuid.uuid4().hex[:6]}"
-        cur.execute("""
-            INSERT INTO watchlist_agent_jobs
-                (id, symbol, requested_agent, request_type, priority, note, status, submitted_from)
-            VALUES (%s, %s, %s, 'full_analysis', 0, %s, 'queued', 'auto_research.py')
-            ON CONFLICT DO NOTHING
-        """, (job_id, symbol, agent, note[:240]))
-        queued += cur.rowcount or 0
+        res = governed_enqueue(cur, EnqueueRequest(
+            symbol=symbol,
+            requested_agent=agent,
+            request_type="full_analysis",
+            submitted_from="auto_research.py",
+            priority=0,
+            note=note[:240],
+            job_id=job_id,
+            universe_tier="T0",
+            material=True,
+        ))
+        if res.action == "INSERT":
+            queued += 1
     conn.commit()
     conn.close()
     if queued:
