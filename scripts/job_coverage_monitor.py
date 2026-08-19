@@ -52,7 +52,7 @@ REGISTRY = [
      "signal": ("log", "drive-sync.log")},
     {"name": "news_ingestion", "schedule_match": "news_ingestion.py", "cadence_h": 12,
      "signal": ("db", "SELECT MAX(created_at) FROM news_articles")},
-    {"name": "rag_embeddings", "schedule_match": "embedding", "cadence_h": 72,
+    {"name": "rag_embeddings", "schedule_match": "rag_indexer.py", "cadence_h": 72,
      "signal": ("db", "SELECT MAX(created_at) FROM content_embeddings")},
     {"name": "transcript_discovery", "schedule_match": "aegis_transcript_discovery.py", "cadence_h": 240,
      "signal": ("db", "SELECT MAX(ingested_at) FROM youtube_transcripts")},
