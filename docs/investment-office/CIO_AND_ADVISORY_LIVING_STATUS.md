@@ -4,18 +4,18 @@
 |---|---|
 | **Document name** | `CIO_AND_ADVISORY_LIVING_STATUS.md` |
 | **Repo path** | `docs/investment-office/CIO_AND_ADVISORY_LIVING_STATUS.md` |
-| **Revision** | **R6.8 — 2026-08-18T22:45Z** (CIO investment-product live certification; **not R7**) |
-| **Status** | **CIO_PRODUCT_LIVE_BUT_INCOMPLETE** — CURRENT `575477dc` produces real books. Flash research does not reassess them. Do not promote `08e768d`. |
+| **Revision** | **R6.9 — 2026-08-19T01:12Z** (closed-loop live + trust/signal code live; **not R7**) |
+| **Status** | **CODE_FIXED_AWAITING_HOST_OBSERVATION** — CIO closed-loop is on CURRENT. Trust/signal patches are on CURRENT. Telegram quieting and two pipeline runs still need host time. |
 | **Authority** | `READ_ONLY_ADVISORY` · `MEMORY_BEHAVIOR_INFLUENCE=0` · `broker_write=NONE` |
 | **Owner** | Alex desk · operator: John |
-| **Live CURRENT** | `575477dc-main-exact-phase2-20260818-175137` |
-| **CURRENT SHA** | `575477dc779c25111250a82b2e56d9c08a962950` |
-| **origin/main** | `08e768d0` (China-night #387; **do not promote** — docs/scheduler/host only) |
-| **UI chip (live)** | `3.14+msz77bh2` · `575477dc` |
+| **Live CURRENT** | `f17c36cf-main-exact-phase2-20260818-210255` |
+| **CURRENT SHA** | `f17c36cf1793835807a05b58568aa4ad114865ea` |
+| **origin/main** | `f17c36cf` (merge #391). **This docs revision must not re-promote CURRENT.** |
+| **UI chip (live)** | `3.14+msze1bj2` · `f17c36cf` |
 | **Google Drive file** | [CIO_AND_ADVISORY_LIVING_STATUS.md](https://drive.google.com/file/d/1scL90dCZa7uOK9_sojX-MNBWHfrViWMi/view) |
 | **Drive folder** | [docs / investment-office](https://drive.google.com/drive/folders/1sVHlO8v-NStl2HRbk1bJqwqI67bxGUM8) |
 
-> **Not R7.** Certification 2026-08-18T22:45Z: books are live on CURRENT. Do not promote main. See §1d.
+> **Not R7.** R6.8 certified books. #389 closed research→reassessment. #391 made one Telegram message mean something. Host observation of the quiet Telegram path is still open. See §1e–§1f.
 
 ---
 
@@ -34,19 +34,19 @@ Admission gates were not loosened.
 
 ---
 
-## 1. One-screen truth (21:49Z)
+## 1. One-screen truth (01:12Z)
 
 | Surface | Status | Live evidence |
 |---|---|---|
-| Command Center SPA | **WORKING** | chip `3.14+msz77bh2` |
-| Release | **WORKING** | CURRENT `575477dc` = origin/main (PR #379 promoted) |
+| Command Center SPA | **WORKING** | chip `3.14+msze1bj2` |
+| Release | **WORKING** | CURRENT `f17c36cf` = origin/main (PR #391 promoted; APP_RUNTIME) |
 | `/api/v3/intelligence` | **WORKING** | 200 |
-| `/api/v3/intelligence/queue` | **WORKING** | overlay **94** after expire (was 108). 15 still `missing_symbol`. |
-| Memory | **SHADOW** | Hook auto-admit **CANDIDATE** `mem_8bbacb882a761199a950eed65f15c5aa` on live store. MBI=0. |
-| Hermes CIO worker timer | **ARMED live** | 21:45Z already wrote CANDIDATE `mem_2b0c1a65…` / `mem_8d9c6322…` |
-| Hermes autonomous-loop | **PROVEN_NOW (Flash)** | 22:11:43–22:12:12Z apply 2/2 · CPRI `25365` · SH `25366` · `model_used=deepseek-v4-flash` · 29s · exit 0 |
-| Hermes deep-research-local | **PROVEN_NOW (Flash)** | 22:12:12–22:12:32Z apply 3/3 · EKSO `25367` · AGMH `25368` · FUSE `25369` · Flash · 20s · exit 0 |
-| Authority | **PROVEN_LIVE** | READ_ONLY_ADVISORY; MBI=0 |
+| `/v3/cio` | **WORKING** | 200 after exact-main promote |
+| Closed-loop CIO | **LIVE** | #389: research completion → parent reassessment → persist_product → what_changed → notify |
+| Telegram trust | **CODE LIVE** | #391: industry bypass gone; Hermes/health state-transition; EOD sign fixed. Awaiting host quieting. |
+| Holdings guard | **CODE LIVE** | $1M floor removed. $722,923 reconcile still **blocked** (partial vs last-good $1.28M). |
+| Memory | **SHADOW** | #390 isolated test root. MBI=0. AIF-FS CI green on #391. |
+| Authority | **PROVEN_LIVE** | READ_ONLY_ADVISORY; MBI=0; no broker/order/stop/2FA mutation |
 
 ---
 
@@ -135,9 +135,35 @@ No new architecture. No CURRENT promote.
 
 **COMMAND_CENTER.** `/v3/cio` reads live `/api/v3/cio/home` + `/investment-product`. `/v3/advisory` live. `/v3/closed-loop` → intelligence live. Not fixtures. Operator Qs: 1–3 yes; 4 partial; 5–6 partial; 7 no; 8 no; 9 suppressed.
 
-**PROMOTION.** **no.** 08e768d is docs/scheduler/host-already-applied.
+**PROMOTION (R6.8).** **no.** 08e768d was docs/scheduler/host-already-applied.
 
-**P0.** persist_product not on live reactive path; GET serves stale brief; research/memory does not reassess books. **P1.** temperament depth; new-name opportunity join; CSCO/ANET price/exit join; Telegram digest; opinion/holdings freshness. **P2.** overlay 88; what_changed section.
+**P0 then.** persist_product not on live reactive path; GET serves stale brief; research/memory does not reassess books. Closed by **#389** (see §1e).
+
+## 1e. Closed-loop product (PR #389 → then live on CURRENT)
+
+`on_hermes_completed` now reassesses the parent book even without `plan_id`, persists `CIOInvestmentProduct@v1`, writes `what_changed`, and uses Signal-over-Spam (`IMMEDIATE` / `DIGEST` / `SUPPRESSED` / `COMMAND_CENTER_ONLY`). Duplicate replay is SUPPRESSED.
+
+Natural CIO worker later reassessed evening names (SPACEX_TEST / SPCX / SCHD) with `material=false` → SUPPRESSED. That is the router working.
+
+#390 was memory-API test hygiene only. It moved `origin/main` to `22220efc` and was **not** the reason CURRENT moved.
+
+## 1f. Trust, Telegram signal, data integrity (PR #391 — APP_RUNTIME — **this CURRENT**)
+
+The system was over-reporting, not failing to wake. Industry Momentum was **not** a Signal-over-Spam failure. A legacy Defense publisher called `send_telegram(..., bypass_router=True)`. Health-inspector remediations ran `finviz_industry_groups.py --close` about every two minutes; same-day persist made debounce re-confirm the same transition.
+
+| Defect | Source truth | Fix on `f17c36cf` |
+|---|---|---|
+| Identical INDUSTRY MOMENTUM every ~2 min | health-inspect `--close` + `bypass_router=True` + today-row reconfirm | remediations no `--close`; prior-session confirm; semantic from→to; governed send; close flock |
+| 1,555 `hermes_rank_surge` | `status='active'` treated as daily-priority; UID `hermes_rank_<sym>_<timestamp>` | scoring-priority + rank bands; durable condition state |
+| 401 staleness / 73–85 system_health | new event each cycle | FRESH→STALE / STALE→RECOVERED |
+| EOD CVS/KMB look like gains | `abs(pnl)` + `sign()` omits minus | signed money/pct/R; missing stop/target; option label |
+| holdings write BLOCKED 722,923 vs $1M | static floor assumed ~$1.24M book | coverage + cash + 50% drop; **keep block** — payload incomplete vs last-good **$1,279,682** |
+| finviz `connection already closed` | raw conn held across HTTP | `ensure_conn` + refresh after fetch |
+| Aegis evening overflow | OpenClaw job, no isolated session, unbounded dumps | bounded packet + isolated contract; live gateway `sessionTarget` still host-pending |
+
+**Do not write the $722,923 snapshot.** Last-good is complete at $1.28M (34 positions, $578k cash, 5 accounts). Recurring `holdings_reconcile --apply` at ~16:10 is the partial producer.
+
+**This docs commit is DOCS_ONLY. Do not exact-main promote it.**
 
 ## 2. Validation this hour (not R7)
 
@@ -163,21 +189,24 @@ Remaining 94 overlays are plans with **no** completed structured result. Not del
 | G-MEM-01 | **closed** | hook auto-admit on live store |
 | G-OVL-01 | **closed as producer** | expire-on-complete + backfill |
 | G-OUT-01 | **PROVEN_IDLE** | next_due 2026-08-22T14:23:21Z |
-| G-HLD-01 / G-OPN-01 / G-INF-01 | **open** | unchanged |
+| G-HLD-01 / G-OPN-01 / G-INF-01 | **open** | holdings last-good $1.28M; opinion still can expire |
+| G-TG-01 industry bypass | **closed in source** | #391; host remediations patched; observe next close |
+| G-TG-02 Hermes cardinality | **closed in source** | scoring-priority + band UID |
+| G-EOD-01 sign | **closed** | CVS/KMB fixture `-$5.72` / `-$163.24` |
+| G-HLD-02 $1M floor | **closed** | static floor removed; 722k still blocked as incomplete |
 | CURRENT hijack | **guarded** | still in place |
 
 ---
 
-## 4. Operator confirmation (R6.3)
+## 4. Operator confirmation (R6.9)
 
-- [ ] Chip `3.14+msz77bh2` · SHA `575477dc`
-- [ ] Overnight now-test IDs `25365`–`25369` exist, `model_used=deepseek-v4-flash`
-- [ ] Drive header **R6.7 — 2026-08-18T22:32Z**
-- [ ] Timers are `Asia/Shanghai` 18:10–08:10 / 18:35–08:35
-- [ ] Next fires still tonight (China morning): **18:35 / 19:10 ET**, then resume **06:10 ET** tomorrow
-- [ ] Overlay pending **94** (or lower if the timer drained more)
-- [ ] `mem_8bbacb882a761199a950eed65f15c5aa` present, status CANDIDATE
-- [ ] Drive header **R6.3 — 2026-08-18T21:49Z**
+- [ ] Chip `3.14+msze1bj2` · SHA `f17c36cf`
+- [ ] CURRENT `f17c36cf-main-exact-phase2-20260818-210255` (rollback: `08ec3a3d-…-190351`)
+- [ ] Drive header **R6.9 — 2026-08-19T01:12Z**
+- [ ] Industry remediations no longer pass `--close` (cron 12:30 / 16:18 unchanged)
+- [ ] Next EOD print shows minus on losses
+- [ ] Do **not** lower the holdings floor to $700k
+- [ ] Do **not** promote this docs PR
 - [ ] MBI=0
 - [ ] Do **not** call this R7
 
@@ -185,7 +214,7 @@ Remaining 94 overlays are plans with **no** completed structured result. Not del
 
 ## 5. How we update
 
-Same Drive file `1scL90dCZa7uOK9_sojX-MNBWHfrViWMi`. **R7** only if: overlay expire keeps working on CURRENT, one overnight unit completes without systemd fail, and a desk consumer retrieves a CANDIDATE without a manual replay. None of those three are claimed here.
+Same Drive file `1scL90dCZa7uOK9_sojX-MNBWHfrViWMi`. In-place `--replace`. **R7** only if: overlay expire keeps working on CURRENT, one overnight unit completes without systemd fail, a desk consumer retrieves a CANDIDATE without a manual replay, **and** Telegram is quiet enough that one message means something. None of those are claimed here.
 
 ---
 
@@ -201,5 +230,6 @@ Same Drive file `1scL90dCZa7uOK9_sojX-MNBWHfrViWMi`. **R7** only if: overlay exp
 | **R6.6** | **2026-08-18T22:28Z** | Cheap window is 09:00–20:59 ET, not overnight. Hourly 12×2. Not R7. |
 | **R6.7** | **2026-08-18T22:32Z** | China night is the cheap block. Timers on Asia/Shanghai 18:00–09:00. Hourly 15×2. Not R7. |
 | **R6.8** | **2026-08-18T22:45Z** | Certified CURRENT `575477dc` books live but incomplete. Do not promote `08e768d`. Not R7. |
+| **R6.9** | **2026-08-19T01:12Z** | Header pin to live `f17c36cf` (#389 closed-loop + #391 trust/signal on CURRENT). Docs-only; do not re-promote. Not R7. |
 
-*End of R6.8. Not R7.*
+*End of R6.9. Not R7.*
