@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
+import { Fragment, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import { useApi } from '../hooks/useApi'
 import { hubTitle, hubSubtitle } from '../lib/terminalHubChrome'
 
@@ -558,6 +558,8 @@ export default function AdvisoryDeskHub({ onDrill }: Props) {
   const [expanded, setExpanded] = useState<string | null>(null)
   const [feedbackMsg, setFeedbackMsg] = useState<string>('')
   const [showRemnants, setShowRemnants] = useState(false)
+  const [runMsg, setRunMsg] = useState('')
+  const [runBusy, setRunBusy] = useState(false)
   const path = cls === 'all' ? '/api/v3/advisory' : `/api/v3/advisory?class=${cls}`
   const { data, loading, error, refetch } = useApi<any>(path, 60_000)
 
@@ -565,6 +567,20 @@ export default function AdvisoryDeskHub({ onDrill }: Props) {
   const banners: Banner[] = useMemo(() => data?.banners ?? [], [data?.banners])
   const ts = data?.timestamps || {}
   const health = data?.desk_health || {}
+  const schedule = data?.schedule || {}
+  const runNow = data?.run_now || {}
+  const running = runBusy || runNow.state === 'running'
+
+  useEffect(() => {
+    if (runNow.state === 'running') setRunBusy(true)
+    if (runNow.state === 'ok' || runNow.state === 'error') setRunBusy(false)
+  }, [runNow.state])
+
+  useEffect(() => {
+    if (!running) return
+    const t = window.setInterval(() => { refetch?.() }, 3000)
+    return () => window.clearInterval(t)
+  }, [running, refetch])
 
   const visibleRows = useMemo(() => {
     let out = rows.filter(r =>
@@ -601,6 +617,31 @@ export default function AdvisoryDeskHub({ onDrill }: Props) {
     }
   }
 
+  async function runDeskNow() {
+    setRunBusy(true)
+    setRunMsg('Starting desk rebuild…')
+    try {
+      const res = await fetch('/api/v3/advisory/run-now', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      })
+      const j = await res.json()
+      if (res.status === 202 || j.accepted) {
+        setRunMsg(j.message || 'Running… paid Flash + Pro, advisory only')
+      } else if (res.status === 409) {
+        setRunMsg('Already running')
+      } else {
+        setRunBusy(false)
+        setRunMsg(j.error || j.reason || 'Run failed')
+      }
+      refetch?.()
+    } catch (e: any) {
+      setRunBusy(false)
+      setRunMsg(String(e?.message || e))
+    }
+  }
+
   if (loading) return <div style={{ padding: 32, color: 'var(--text2)' }}>Loading advisory desk…</div>
   if (error) return <div style={{ padding: 32, color: 'var(--red)' }}>Advisory data unavailable: {String(error)}</div>
 
@@ -629,6 +670,48 @@ export default function AdvisoryDeskHub({ onDrill }: Props) {
         <Stamp label="MEMORY" at={ts.memory} fresh={ts.memory_freshness} />
         <Stamp label="FLASH OPINION" at={ts.flash} fresh={ts.flash_freshness} />
         <Stamp label="PRO SYNTHESIS" at={ts.synthesis} fresh={ts.synthesis_freshness} />
+      </div>
+
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', margin: '0 0 14px' }}>
+        <div data-testid="advisory-next-run" style={{ border: '1px solid var(--border)', borderRadius: 6, padding: '6px 10px', minWidth: 220 }}>
+          <div style={{ fontSize: 10, color: 'var(--text3)', fontWeight: 700, letterSpacing: 0.3 }}>NEXT SCHEDULED</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
+            {schedule.next_run_et || 'weekdays 09:15 ET'}
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text2)' }}>
+            {schedule.cadence || 'Mon–Fri 09:15 America/New_York'}
+            {schedule.source ? ` · ${schedule.source}` : ''}
+          </div>
+        </div>
+        <button
+          type="button"
+          data-testid="advisory-run-now"
+          disabled={running}
+          onClick={runDeskNow}
+          title="Rebuild facts + Flash opinions + Pro synthesis now. Paid. Advisory only. No broker writes."
+          style={{
+            padding: '8px 14px',
+            borderRadius: 6,
+            border: '1px solid var(--accent)',
+            background: running ? 'var(--bg2)' : 'var(--accent)',
+            color: running ? 'var(--text2)' : 'var(--text0)',
+            cursor: running ? 'default' : 'pointer',
+            fontSize: 12,
+            fontWeight: 700,
+          }}
+        >
+          {running ? 'Running…' : 'Run now'}
+        </button>
+        <span style={{ fontSize: 12, color: 'var(--text3)' }}>
+          Paid Flash + Pro · READ_ONLY_ADVISORY · no broker writes
+        </span>
+        {(runMsg || runNow.error || runNow.finished_at) && (
+          <span style={{ fontSize: 12, color: runNow.state === 'error' ? 'var(--red)' : 'var(--text2)' }}>
+            {runNow.state === 'error'
+              ? String(runNow.error)
+              : runMsg || (runNow.finished_at ? `Last run ${fmtWhen(runNow.finished_at)}` : '')}
+          </span>
+        )}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 8, margin: '0 0 16px' }}>
