@@ -187,8 +187,14 @@ def test_shadow_does_not_change_production(root: Path, monkeypatch: pytest.Monke
 def test_memory_api_get(root: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("TRADEAI_ROOT", str(root))
     monkeypatch.setenv("MATURITY_CONTROL_ROOT", str(root))
+    monkeypatch.delenv("TRADEAI_CIO_DIR", raising=False)
+    from scripts.lib.agent_durable_memory import default_store_path, get_durable_provider
     p = DurableJsonlMemoryProvider(path=root / "data/cio/aif_memory.jsonl")
     admit_candidate(_ok_raw(), provider=p)
+    api_path = default_store_path()
+    assert api_path.resolve() == (root / "data/cio/aif_memory.jsonl").resolve()
+    api_prov = get_durable_provider()
+    assert Path(api_prov.path).resolve() == Path(p.path).resolve()
     code, body = api.handle_get("memory")
     assert code == 200
     assert body["ok"] is True
@@ -196,6 +202,24 @@ def test_memory_api_get(root: Path, monkeypatch: pytest.MonkeyPatch):
     assert body["financial_action"] is False
     assert body["memory_behavior_influence"] == "0"
     assert body["backend"]["durable"] is True
+    assert body["counts"]["ADMITTED"] >= 1
+    assert api_prov.counts()["ADMITTED"] >= 1
+
+
+def test_memory_api_get_prefers_tradeai_root_over_cwd(root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """GitHub runners have repo data/cio; TRADEAI_ROOT must still isolate the API."""
+    monkeypatch.setenv("TRADEAI_ROOT", str(root))
+    monkeypatch.setenv("MATURITY_CONTROL_ROOT", str(root))
+    monkeypatch.delenv("TRADEAI_CIO_DIR", raising=False)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "data" / "cio").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "data" / "cio" / "aif_memory.jsonl").write_text("", encoding="utf-8")
+    p = DurableJsonlMemoryProvider(path=root / "data/cio/aif_memory.jsonl")
+    admit_candidate(_ok_raw(), provider=p)
+    from scripts.lib.agent_durable_memory import default_store_path
+    assert default_store_path().resolve() == (root / "data/cio/aif_memory.jsonl").resolve()
+    code, body = api.handle_get("memory")
+    assert code == 200
     assert body["counts"]["ADMITTED"] >= 1
 
 

@@ -155,6 +155,7 @@ def test_restart_retries_pending_without_rerunning_research(root: Path, monkeypa
         return real_build(*a, **k)
 
     monkeypatch.setattr("scripts.lib.cio_investment_product.build_product", boom)
+    monkeypatch.setattr("cio_investment_product.build_product", boom, raising=False)
     first = reassess_on_research_completed(
         {"plan_id": "plan_eeeeeeee"},
         {"result_id": "rr_retry", "symbol": "ANET", "summary": "ok", "status": "completed"},

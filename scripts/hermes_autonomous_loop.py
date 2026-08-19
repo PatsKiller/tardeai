@@ -22,6 +22,8 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 if str(PROJECT_ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+if str(PROJECT_ROOT / "scripts" / "lib") not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
 LOCKFILE = Path("/tmp/hermes_autonomous_loop.lock")
 KILL_FILE = PROJECT_ROOT / "data" / "runtime" / "HERMES_DISABLED"
 MAX_RUNTIME = 600  # seconds
@@ -39,6 +41,9 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 def _cio_wake_after_flash(symbol, row_id, output=None):
     """Fail-soft: persist a new CIO product after Flash commit. Never calls a paid LLM."""
     try:
+        _cur = Path.home() / "trade-ai-releases" / "portfolio-server" / "CURRENT"
+        if _cur.is_dir() and str(_cur) not in sys.path:
+            sys.path.insert(0, str(_cur))
         from cio_product_reassessment import notify_from_flash_row
     except Exception:
         try:

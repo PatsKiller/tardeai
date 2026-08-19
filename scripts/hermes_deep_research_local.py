@@ -20,6 +20,7 @@ from datetime import date, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "scripts" / "lib"))
 from cio_agent_contract import AGENT_JSON_CONTRACT_VERSION, build_deep_research_json_schema, merge_structured_into_result
@@ -157,6 +158,9 @@ def run_one(conn, sym, model, apply):
             pass
     print(f"  {sym}: COMMITTED id={rid}")
     try:
+        _cur = Path.home() / "trade-ai-releases" / "portfolio-server" / "CURRENT"
+        if _cur.is_dir() and str(_cur) not in sys.path:
+            sys.path.insert(0, str(_cur))
         from cio_product_reassessment import notify_from_flash_row
     except Exception:
         try:
