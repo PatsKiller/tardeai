@@ -3,18 +3,17 @@
   "as_of": "2026-08-19",
   "protected_main": "ff2037d45c582fa164fc6cb1136088fc80d8edcd",
   "pr_397_branch": "wt/symbol-thesis-universe",
-  "cursor_branch": "feat/two-way-watchlist-curation",
-  "cursor_head": "e683e90f9a24b9cd56399054da33cc6c3b4ba8bb",
-  "cursor_commit_subject": "fix(watchlist): close six lifecycle gaps + self-healing cron lanes",
-  "cursor_pr": null,
+  "cursor_branch": "fix/watchlist-source-remediation-mainline",
+  "cursor_head": "6e4296191653a2c7d660a2eb5e7cefc75a5c02bc",
+  "cursor_commit_subject": "PR #398 head — watchlist/source/RAG matcher (declared SHA only)",
+  "cursor_pr": 398,
   "cursor_remediation_versioned": true,
   "on_main": false,
   "dependency_strategy": "DECLARE_SHA_CONSUME_DATA_PLANE_NO_WHOLESALE_MERGE",
   "notes": [
-    "Gap A-F is COMMITTED and PUSHED on feat/two-way-watchlist-curation.",
-    "Live checkout currently tracks that branch; protected main does not yet include it.",
-    "No open GitHub PR for the Cursor branch at handoff — preferred: land via its own reviewed PR.",
+    "Phase 2 retarget: cursor SHA now PR #398 head 6e429619. Do not wholesale-merge that branch into #397.",
     "#397 consumes DB/event data plane + declares this SHA; does not merge the divergent branch.",
+    "Operator undraft + merge of #398 is separate from this draft PR.",
     "Do not recreate sync_social / research_watchlist_discovery / candidate_discovery / cron_self_heal inside #397."
   ],
   "consume_directly_data_plane": [
@@ -44,7 +43,7 @@
       "job": "rag_embeddings",
       "issue": "schedule_match='embedding' does not match crontab 'rag_indexer.py' → false NOT_SCHEDULED",
       "actual": "crontab '0 */4 * * * ... rag_indexer.py' present; embeddings fresh",
-      "fix_owner": "feat/two-way-watchlist-curation job_coverage_monitor.py"
+      "fix_owner": "PR #398 job_coverage_monitor.py"
     }
   ],
   "authority": "READ_ONLY_ADVISORY"

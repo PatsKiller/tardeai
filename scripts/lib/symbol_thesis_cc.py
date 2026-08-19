@@ -15,6 +15,7 @@ from scripts.lib.symbol_thesis_attach import (
     watchlist_materiality,
 )
 from scripts.lib.symbol_thesis_coverage import build_coverage_report, symbol_thesis_id
+from scripts.lib.symbol_thesis_queue import load_symbol_research_queue
 from scripts.lib.symbol_thesis_research import propose_prioritized_research, research_requests_for_symbol
 from scripts.lib.symbol_thesis_review import daily_thesis_changes
 from scripts.lib.symbol_universe import reconcile_universe
@@ -154,6 +155,14 @@ def build_symbol_thesis_card(
     research = research_requests_for_symbol(sym, root=root)
     uni = reconcile_universe(root)
     urec = (uni.get("symbols") or {}).get(sym) or {}
+    queue = load_symbol_research_queue(sym)
+    cio_action = _cio_action_for_symbol(sym, root=root)
+    ntf = None
+    try:
+        from scripts.lib.cio_command_center import _trust_notification
+        ntf = _trust_notification()
+    except Exception:
+        ntf = None
 
     return {
         "schema": "SymbolThesisCard@v1",
@@ -192,16 +201,48 @@ def build_symbol_thesis_card(
         "opportunity_rank": (urec.get("opportunity") or {}).get("rank") if urec.get("opportunity") else None,
         "research_gaps": fields.get("research_gaps") or [],
         "proposed_research": research,
-        "active_research": [],  # filled when queue wired; empty = none known
-        "recent_completed_research": [],
+        "active_research": queue.get("active_research") or [],
+        "recent_completed_research": queue.get("recent_completed_research") or [],
+        "research_queue_source": queue.get("source"),
         "financial_senses_refs": [],
         "lesson_refs": [],
         "memory_refs": [],
         "thesis_history": hist_rows,
         "what_changed": hist_rows[0].get("reason_for_change") if hist_rows else None,
-        "advisory_verdict": None,  # books attach separately; never invent
-        "note": "No hidden chain-of-thought. Supporting evidence IDs are drillable when present.",
+        "cio_action": cio_action,
+        "advisory_verdict": (cio_action or {}).get("action") if cio_action else None,
+        "notification": ntf,
+        "suppression_reason": (ntf or {}).get("suppression_reason") if ntf else None,
+        "note": "No hidden chain-of-thought. Supporting evidence IDs are drillable when present. Empty research lists mean the queue was unavailable or idle — not invented jobs.",
     }
+
+
+def _cio_action_for_symbol(symbol: str, root: Path) -> Optional[dict[str, Any]]:
+    """Fail-soft CIO action book row for this symbol. Never invents RE_ENTER."""
+    try:
+        from scripts.lib.cio_investment_product import load_brief
+        brief = load_brief(root) or {}
+    except Exception:
+        return None
+    act = brief.get("action_book") or {}
+    buckets = (
+        "DO_NOW", "WATCH_CLOSELY", "RE_ENTER_IF", "NEW_POSITION_IF",
+        "HOLD_CASH_FOR", "AVOID", "RESEARCH_NEXT",
+    )
+    for bucket in buckets:
+        rows = act.get(bucket) if isinstance(act.get(bucket), list) else []
+        for r in rows:
+            if not isinstance(r, dict):
+                continue
+            if str(r.get("symbol") or "").upper() == symbol:
+                return {
+                    "bucket": bucket,
+                    "action": r.get("action"),
+                    "why": r.get("why"),
+                    "authority": AUTHORITY,
+                    "financial_action": False,
+                }
+    return None
 
 
 def ask_cio_symbol_context(symbol: str, *, root: Path | str | None = None) -> dict[str, Any]:

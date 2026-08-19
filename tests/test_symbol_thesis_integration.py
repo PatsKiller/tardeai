@@ -377,7 +377,8 @@ def test_r71_dependency_versioned():
     from scripts.lib.r71_cursor_fabric_map import fabric_map_report, load_dependency
     dep = load_dependency()
     assert dep.get("cursor_remediation_versioned") is True
-    assert dep.get("cursor_head", "").startswith("e683e90f")
+    assert dep.get("cursor_head", "").startswith("6e429619")
+    assert dep.get("cursor_pr") == 398
     assert dep.get("dependency_strategy") == "DECLARE_SHA_CONSUME_DATA_PLANE_NO_WHOLESALE_MERGE"
     report = fabric_map_report()
     assert report["hold_on_unversioned"] is False

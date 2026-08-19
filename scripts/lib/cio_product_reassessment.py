@@ -308,7 +308,96 @@ def _annotate_research(product: dict[str, Any], result: dict[str, Any], critique
             return
 
 
-def _notify(product: dict[str, Any], changed: dict[str, Any], parent: dict[str, Any]) -> dict[str, Any]:
+THESIS_VERSION_ONLY_KINDS = frozenset({
+    "thesis_version", "thesis_version_changed", "symbol_thesis_version",
+})
+
+
+def should_enqueue_product_notification(changed: dict[str, Any] | None) -> bool:
+    """Material product what_changed only. Thesis-version bumps do not page Telegram."""
+    ch = changed or {}
+    if not ch.get("material"):
+        return False
+    items = [i for i in (ch.get("items") or []) if isinstance(i, dict)]
+    if not items:
+        return False
+    kinds = {str(i.get("kind") or "") for i in items}
+    if kinds and kinds <= THESIS_VERSION_ONLY_KINDS:
+        return False
+    return any(i.get("material") for i in items)
+
+
+def _outbox_for_root(root: Path | str | None = None):
+    from scripts.lib.cio_notification_outbox import NotificationOutbox
+    if root:
+        p = Path(root) / "data" / "cio" / "cio_notification_outbox.jsonl"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        return NotificationOutbox(event_store_path=p)
+    return NotificationOutbox()
+
+
+def _enqueue_material_product_outbox(
+    product: dict[str, Any],
+    changed: dict[str, Any],
+    parent: dict[str, Any],
+    *,
+    root: Path | str | None = None,
+    outbox=None,
+) -> dict[str, Any]:
+    """Durable outbox enqueue only. Does not switch the delivery worker to live."""
+    try:
+        import hashlib
+        from scripts.lib.cio_notification_outbox import NotificationOutbox  # noqa: F401
+        outbox = outbox or _outbox_for_root(root)
+        pid = str(product.get("product_id") or product.get("decision_id") or "product")
+        items = [
+            i for i in (changed.get("items") or [])
+            if isinstance(i, dict) and i.get("material")
+        ]
+        body_lines = [
+            f"Material CIO product change · {pid}",
+            f"trigger={product.get('trigger') or 'RESEARCH_COMPLETED'}",
+            f"symbol={parent.get('symbol') or 'BOOK'}",
+        ]
+        for it in items[:8]:
+            body_lines.append(
+                f"- {it.get('kind')} {it.get('symbol') or ''} "
+                f"{it.get('from') or ''} → {it.get('to') or ''}".strip()
+            )
+        body = "\n".join(body_lines)
+        note = {
+            "notification_id": "ntf_prod_" + _digest(pid, changed.get("as_of") or _now()),
+            "idempotency_key": f"product_what_changed:{pid}",
+            "dedupe_key": f"product_what_changed:{pid}:{changed.get('as_of') or ''}",
+            "message_class": "advisory",
+            "channel_targets": ["telegram", "command_center"],
+            "subject": f"CIO material change · {parent.get('symbol') or 'BOOK'}",
+            "body": body,
+            "body_hash": hashlib.sha256(body.encode("utf-8")).hexdigest(),
+        }
+        event = outbox.enqueue(note, actor_id="cio_product_reassessment")
+        return {
+            "outbox_enqueued": True,
+            "outbox_notification_id": note["notification_id"],
+            "outbox_event_type": (event or {}).get("event_type"),
+            "live_delivery": False,
+        }
+    except Exception as exc:
+        return {
+            "outbox_enqueued": False,
+            "outbox_error": f"{type(exc).__name__}:{exc}"[:200],
+            "live_delivery": False,
+        }
+
+
+def _notify(
+    product: dict[str, Any],
+    changed: dict[str, Any],
+    parent: dict[str, Any],
+    *,
+    root: Path | str | None = None,
+    outbox=None,
+) -> dict[str, Any]:
     try:
         try:
             from cio_notification_signal import NotificationStateStore, decide_notification
@@ -341,6 +430,19 @@ def _notify(product: dict[str, Any], changed: dict[str, Any], parent: dict[str, 
         NotificationStateStore().record(nd)
     except Exception:
         pass
+    enqueue = should_enqueue_product_notification(changed)
+    nd["outbox_enqueued"] = False
+    nd["live_delivery"] = False
+    if not enqueue:
+        nd["outbox_skip_reason"] = (
+            "non_material_what_changed" if not changed.get("material")
+            else "thesis_version_only"
+        )
+        return nd
+    extra = _enqueue_material_product_outbox(
+        product, changed, parent, root=root, outbox=outbox,
+    )
+    nd.update(extra)
     return nd
 
 
@@ -475,7 +577,11 @@ def reassess_on_research_completed(
             critique=critique,
         )
         _append_jsonl(_paths(root)["impacts"], impact)
-        nd = _notify(product, changed, parent) if notify else {"notification_class": "COMMAND_CENTER_ONLY", "skipped": True}
+        nd = (
+            _notify(product, changed, parent, root=root)
+            if notify
+            else {"notification_class": "COMMAND_CENTER_ONLY", "skipped": True, "outbox_enqueued": False}
+        )
         rec = {
             "schema": REASSESS_SCHEMA,
             "reassessment_id": rid,
