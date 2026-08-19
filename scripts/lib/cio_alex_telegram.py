@@ -34,6 +34,14 @@ from scripts.lib.cio_decision_semantics import (
     actionability_blocking_state,
     canonical_act_now,
 )
+from scripts.lib.cio_production_eligibility import (
+    cio_state_root,
+    eligibility_verdict,
+    guard_test_cio_write,
+    is_forbidden_from_production,
+    is_internal_reason_code,
+    stamp_advisory_origin,
+)
 
 ALEX_TELEGRAM_VERSION = "alex_telegram_1.0.0"
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -74,11 +82,15 @@ def _num(v: Any) -> float:
 
 
 def _defer_path() -> Path:
-    return Path(_env("CIO_DEFER_LINEAGE_PATH", str(DEFAULT_DEFER_PATH)))
+    explicit = _env("CIO_DEFER_LINEAGE_PATH")
+    path = Path(explicit) if explicit else (cio_state_root() / "data" / "cio" / "cio_defer_lineage.jsonl")
+    return guard_test_cio_write(path)
 
 
 def _receipt_path() -> Path:
-    return Path(_env("CIO_TELEGRAM_RECEIPT_PATH", str(DEFAULT_RECEIPT_PATH)))
+    explicit = _env("CIO_TELEGRAM_RECEIPT_PATH")
+    path = Path(explicit) if explicit else (cio_state_root() / "data" / "cio" / "cio_telegram_receipts.jsonl")
+    return guard_test_cio_write(path)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -296,10 +308,24 @@ def format_cio_message(decision: dict[str, Any]) -> str:
     sym = decision.get("symbol") or decision.get("scope") or "—"
     delta = _num(decision.get("delta_usd") if decision.get("delta_usd") is not None
                  else decision.get("recommended_delta_usd"))
-    why = (decision.get("why_now") or decision.get("what_changed") or "").strip()
+    raw_why = (decision.get("why_now") or "").strip()
+    if isinstance(decision.get("what_changed"), str):
+        raw_changed = decision.get("what_changed").strip()
+    elif isinstance(decision.get("what_changed"), dict):
+        raw_changed = str(decision.get("what_changed").get("summary") or "").strip()
+    else:
+        raw_changed = ""
+    if is_internal_reason_code(raw_why):
+        why = ""
+    else:
+        why = raw_why or (raw_changed if not is_internal_reason_code(raw_changed) else "")
     counter = (decision.get("counter_thesis") or "").strip()
     change = (decision.get("what_changes_call") or "").strip()
-    nxt = decision.get("next_review") or "—"
+    nxt = decision.get("next_review")
+    if nxt in (None, "", "—", "-", "n/a", "None"):
+        nxt_display = "DATA_UNAVAILABLE"
+    else:
+        nxt_display = str(nxt)
     cash = decision.get("capital") if isinstance(decision.get("capital"), dict) else {}
     free = cash.get("free_investable")
     deploy = cash.get("deploy_now")
@@ -310,7 +336,7 @@ def format_cio_message(decision: dict[str, Any]) -> str:
         weight = decision.get("current_weight_pct")
 
     call_core = f"{standing} {sym}" + (f"  ${delta:+,.0f}" if abs(delta) >= 1 else "")
-    why_block = why[:240] or "See evidence in CIO."
+    why_block = why[:240] or "DATA_UNAVAILABLE — no current investment rationale attached"
     if risk and risk.lower() not in why_block.lower():
         why_block = f"{why_block} {risk}".strip()
     if weight is not None:
@@ -321,11 +347,16 @@ def format_cio_message(decision: dict[str, Any]) -> str:
         except (TypeError, ValueError):
             pass
 
+    workflow = str(decision.get("workflow_status") or "").strip().upper()
+    what_changed_line = why[:280] if why else (f"{standing} {sym}" if standing else "DATA_UNAVAILABLE")
+    if workflow in {"REVIEW_DUE", "REVIEW_PENDING", "REVALIDATION_REQUIRED"}:
+        what_changed_line = f"{workflow} — latest eligible production thesis retained"
+
     lines = [
         "Alex · CIO NOW",
         "",
         "WHAT CHANGED",
-        why[:280] or f"{standing} {sym}",
+        what_changed_line,
         "",
     ]
     if use_standing:
@@ -347,23 +378,34 @@ def format_cio_message(decision: dict[str, Any]) -> str:
             "",
         ])
 
+    def _cap(label: str, val: Any, missing: str) -> str:
+        if val is None or val == "":
+            return f"{label}: DATA_UNAVAILABLE — {missing}"
+        try:
+            return f"{label}: ${float(val):,.0f}"
+        except (TypeError, ValueError):
+            return f"{label}: DATA_UNAVAILABLE — unparseable"
+
+    mind = change[:200] if change else (
+        "DEFAULT REVIEW CONDITION — Material new multi-desk evidence or cash-band breach."
+    )
     lines.extend([
         "CAPITAL",
-        f"Free investable: ${float(free):,.0f}" if free is not None else "Free investable: see capital plan",
-        f"Deploy now: ${float(deploy):,.0f}" if deploy is not None else "Deploy now: —",
-        f"Remain cash: ${float(remain):,.0f}" if remain is not None else "Remain cash: —",
+        _cap("Free investable", free, "current capital plan not attached"),
+        _cap("Deploy now", deploy, "current capital plan not attached"),
+        _cap("Remain cash", remain, "current capital plan not attached"),
         "",
         "WHY",
         why_block,
         "",
         "COUNTER-THESIS",
-        (counter[:200] if counter else "None on record."),
+        (counter[:200] if counter else "DATA_UNAVAILABLE — no current counter-thesis artifact attached"),
         "",
         "WHAT CHANGES MY MIND",
-        change[:200] or "Material new multi-desk evidence or cash-band breach.",
+        mind,
         "",
         "NEXT REVIEW",
-        str(nxt),
+        nxt_display,
     ])
 
     disp = cls.get("operator_disposition") or _disposition_text(decision)
@@ -441,12 +483,30 @@ def record_defer(
         "action": decision.get("action") or decision.get("stance"),
         "material_state": material_state_fingerprint(decision),
         "deferred_at": _now().isoformat(),
+        "created_at": _now().isoformat(),
         "revisit_at": when.isoformat() if when.tzinfo else when.replace(tzinfo=timezone.utc).isoformat(),
         "reason": reason,
+        "reason_code": str(decision.get("reason_code") or reason),
+        "operator_reason": decision.get("operator_reason"),
         "status": "deferred",
-        "parent_decision_id": did,
+        "parent_decision_id": decision.get("parent_decision_id") or did,
+        "parent_product_id": decision.get("parent_product_id") or decision.get("product_id"),
+        "parent_run_id": decision.get("parent_run_id") or decision.get("run_id"),
         "version": ALEX_TELEGRAM_VERSION,
     }
+    stamp_advisory_origin(rec, producer="cio_alex_telegram.record_defer")
+    if "environment" in decision and decision.get("environment"):
+        rec["environment"] = decision.get("environment")
+    if decision.get("synthetic") is not None:
+        rec["synthetic"] = decision.get("synthetic")
+    if decision.get("source_kind"):
+        rec["source_kind"] = decision.get("source_kind")
+    if decision.get("run_id"):
+        rec["run_id"] = decision.get("run_id")
+    if decision.get("source_commit"):
+        rec["source_commit"] = decision.get("source_commit")
+    if decision.get("producer"):
+        rec["producer"] = decision.get("producer")
     path = _defer_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as f:
@@ -469,12 +529,41 @@ def list_defer_lineage(*, limit: int = 200) -> list[dict[str, Any]]:
     return rows
 
 
+def iter_defer_lineage() -> list[dict[str, Any]]:
+    path = _defer_path()
+    if not path.is_file():
+        return []
+    rows: list[dict[str, Any]] = []
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if not line.strip():
+            continue
+        try:
+            rec = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(rec, dict):
+            rows.append(rec)
+    return rows
+
+
+def latest_defer_by_lineage() -> dict[str, dict[str, Any]]:
+    """Append-only latest record per lineage_id (falls back to decision_id)."""
+    latest: dict[str, dict[str, Any]] = {}
+    for rec in iter_defer_lineage():
+        key = str(rec.get("lineage_id") or rec.get("decision_id") or "").strip()
+        if key:
+            latest[key] = rec
+    return latest
+
+
 def due_defers(now: Optional[datetime] = None) -> list[dict[str, Any]]:
-    """Deferred lineages whose revisit_at is due and not yet reopened."""
+    """Deferred lineages whose latest status is still open and revisit_at is due."""
     now = now or _now()
     due: list[dict[str, Any]] = []
-    seen_open: set[str] = set()
-    for rec in list_defer_lineage():
+    seen: set[str] = set()
+    for rec in latest_defer_by_lineage().values():
+        if rec.get("quarantined") or rec.get("terminal"):
+            continue
         if rec.get("status") not in ("deferred", "open"):
             continue
         try:
@@ -483,14 +572,22 @@ def due_defers(now: Optional[datetime] = None) -> list[dict[str, Any]]:
             continue
         if rev.tzinfo is None:
             rev = rev.replace(tzinfo=timezone.utc)
-        if rev <= now and rec.get("decision_id") not in seen_open:
+        key = str(rec.get("lineage_id") or rec.get("decision_id") or "")
+        if rev <= now and key not in seen:
             due.append(rec)
-            seen_open.add(str(rec.get("decision_id")))
+            seen.add(key)
     return due
 
 
+def _strip_invented_defer_why(why: Any) -> str:
+    text = str(why or "").strip()
+    if not text or is_internal_reason_code(text):
+        return ""
+    return text
+
+
 def reopen_deferred(lineage: dict[str, Any], decision: Optional[dict[str, Any]] = None) -> dict[str, Any]:
-    """Reopen the same decision lineage for Alex — preserves decision_id."""
+    """Reopen the same decision lineage — never invent an investment thesis."""
     did = lineage.get("decision_id")
     base = dict(decision or {})
     base["decision_id"] = did
@@ -498,12 +595,17 @@ def reopen_deferred(lineage: dict[str, Any], decision: Optional[dict[str, Any]] 
     base.setdefault("action", lineage.get("action"))
     base["status"] = "reopened"
     base["lifecycle"] = "reopened_from_defer"
+    base["workflow_status"] = "REVIEW_DUE"
     base["lineage_id"] = lineage.get("lineage_id")
     base["parent_decision_id"] = lineage.get("parent_decision_id") or did
-    base["why_now"] = base.get("why_now") or (
-        f"Deferred review due ({lineage.get('reason') or 'operator_defer'})."
-    )
-    # Mark lineage consumed
+    base["reason_code"] = lineage.get("reason_code") or lineage.get("reason")
+    if lineage.get("operator_reason"):
+        base.setdefault("operator_reason", lineage.get("operator_reason"))
+    # A due defer is a workflow event. Do not substitute lineage.reason as why_now.
+    base["why_now"] = _strip_invented_defer_why(base.get("why_now"))
+    for key in ("environment", "synthetic", "source_kind", "run_id", "source_commit", "producer"):
+        if base.get(key) in (None, "", []) and lineage.get(key) not in (None, "", []):
+            base[key] = lineage.get(key)
     path = _defer_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     closed = {
@@ -527,20 +629,26 @@ def evaluate_outbound(
 ) -> dict[str, Any]:
     """Full product evaluation without sending."""
     mat = is_material_event(kind=kind, decision=decision)
+    elig = eligibility_verdict(decision, purpose="production_notification")
+    forbidden = is_forbidden_from_production(decision)
     body = format_cio_message(decision) if decision else ""
     dkey = decision_dedupe_key(decision) if decision.get("decision_id") else tg.semantic_body_key(body)
     dup = tg.was_recently_sent(dkey)
+    would = bool(mat["material"] and not dup)
     return {
         "version": ALEX_TELEGRAM_VERSION,
         "material": mat["material"],
         "material_reason": mat["reason"],
+        "eligibility": elig,
+        "production_eligible": bool(elig.get("eligible")) and not forbidden,
         "body": body,
         "dedupe_key": dkey,
         "would_duplicate": dup,
         "decision_id": decision.get("decision_id"),
         "channel": "telegram_cio_only",
         "general_channel_eligible": False,
-        "would_send": bool(mat["material"] and not dup),
+        "would_send": would,
+        "production_would_send": bool(would and elig.get("eligible") and not forbidden),
     }
 
 
@@ -568,6 +676,9 @@ def deliver_decision(
         "dry_run": dry_run,
         "receipt": None,
     }
+    if not ev.get("production_eligible", True) and not dry_run:
+        out["reason"] = "not_production_advisory_eligible"
+        return out
     if not ev["material"]:
         out["reason"] = ev["material_reason"]
         return out

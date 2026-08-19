@@ -68,11 +68,14 @@ def _cio_product() -> dict:
                 }
     # Fallback: latest persist via library if present
     try:
-        from cio_investment_product import load_brief
-        brief = load_brief()
+        try:
+            from cio_investment_product import load_brief, load_current_production_product
+        except ImportError:
+            from scripts.lib.cio_investment_product import load_brief, load_current_production_product
+        brief = load_current_production_product() or load_brief()
         if brief:
             return {
-                "source": "cio_investment_product.load_brief",
+                "source": "cio_investment_product.load_current_production_product",
                 "product_id": getattr(brief, "product_id", None) or (brief.get("product_id") if isinstance(brief, dict) else None),
                 "brief": _trim(brief if isinstance(brief, dict) else getattr(brief, "__dict__", str(brief)), 1600),
             }

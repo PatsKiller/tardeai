@@ -28,6 +28,12 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 from scripts.lib.maturity_control.store import resolve_root
+from scripts.lib.cio_production_eligibility import (
+    classify_advisory_record,
+    select_current_production_product,
+    stamp_advisory_origin,
+    unavailable_current_product,
+)
 
 SCHEMA = "CIOInvestmentProduct@v1"
 AUTHORITY = "READ_ONLY_ADVISORY"
@@ -554,6 +560,7 @@ def build_product(
         "requires_operator_review": True,
         "confidence": 0.55 if verdicts or (queue.get("count") or 0) else 0.35,
     }
+    stamp_advisory_origin(product, producer="cio_investment_product.build_product")
     return product
 
 
@@ -610,6 +617,7 @@ def persist_product(product: dict[str, Any], *, root: Path | str | None = None) 
     p = paths(root)
     if not product.get("product_id"):
         product["product_id"] = product.get("decision_id") or ("prod_" + _iso().replace(":", "").replace("-", "")[:15])
+    stamp_advisory_origin(product, producer="cio_investment_product.persist_product")
     slim = {k: product[k] for k in product if k != "merged_queue"}
     atomic_write_json(p["brief"], slim)
     append_jsonl(p["briefs"], {
@@ -640,6 +648,20 @@ def persist_product(product: dict[str, Any], *, root: Path | str | None = None) 
 
 def load_brief(root: Path | str | None = None) -> dict[str, Any]:
     return _read_json(paths(root)["brief"])
+
+
+def load_current_production_product(root: Path | str | None = None) -> dict[str, Any]:
+    """Canonical current CIO product: eligible PROD only. Fail closed."""
+    brief = load_brief(root)
+    chosen = select_current_production_product([brief] if brief else [])
+    if chosen:
+        return chosen
+    if brief:
+        return unavailable_current_product(
+            reason=classify_advisory_record(brief)["reason"],
+            last=brief,
+        )
+    return unavailable_current_product(reason="no_current_product")
 
 
 def load_verdicts(root: Path | str | None = None) -> list[dict[str, Any]]:
