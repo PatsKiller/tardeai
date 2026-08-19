@@ -774,7 +774,7 @@ function UniverseThesesPanel() {
   return (
     <div data-testid="cio-universe-theses" style={{ display: 'grid', gap: 14 }}>
       <div style={{ fontSize: 12, color: 'var(--text3)' }}>
-        Living theses for the material universe. Advisory only. Live main may not serve this API until #397 is deployed.
+        Living theses for the material universe. Advisory only. Live main may not serve this API until PR 397 is deployed.
       </div>
       {loading && <div style={muted}>Loading universe &amp; theses…</div>}
       {(error || payloadError) && (
