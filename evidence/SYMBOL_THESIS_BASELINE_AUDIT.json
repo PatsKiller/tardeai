@@ -1,0 +1,882 @@
+{
+  "audit_id": "SYMBOL_THESIS_BASELINE_AUDIT",
+  "as_of": "2026-08-19T12:42:47.041451+00:00",
+  "authority": "READ_ONLY_ADVISORY",
+  "live_root": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild",
+  "accepted_main_at_worktree": "ff2037d45c582fa164fc6cb1136088fc80d8edcd",
+  "note": "Read-only audit. Desk thesis may exist without per-symbol theses. Re-entry intel states are decision-control, not investment theses.",
+  "universe_counts": {
+    "HELD": 25,
+    "FORMER_HOLDING": 49,
+    "REENTRY": 104,
+    "WATCHLIST": 5119,
+    "OPPORTUNITY": 18,
+    "RESEARCH_ONLY": 0,
+    "RETIRED": 0,
+    "universe_union": 5135
+  },
+  "coverage_counts": {
+    "CURRENT": 0,
+    "RESEARCH_REQUIRED": 125,
+    "STALE": 0,
+    "CONFLICTED": 0,
+    "RETIRED": 0,
+    "INSUFFICIENT_DATA": 5010,
+    "symbol_thesis": 0,
+    "desk_thesis_only": 5135,
+    "missing_symbol_thesis": 5135,
+    "role_unknown": 5073,
+    "rows": 5135
+  },
+  "desk": {
+    "thesis_id": "desk",
+    "thesis_version": "desk@v5",
+    "stance": "defensive_observe",
+    "linked_symbols": [
+      "SCHD",
+      "SPCX"
+    ],
+    "summary": "Mature desk OS (Desk Version 2) under a living governing thesis. Every plan and Telegram advisory must reason about fit or tension with this document \u2014 thesis is not a footer tag. Prefer Data Broker multi-domain evidence (holdings + cash/portfolio + risk; Hermes when material). Cash is a feature \u2014 stage deployment; never force fills. Operator dispositions close the learning loop and bias future enrichment. Highest-signal action may be non-action under defensive_observe. No unattended trading. RE"
+  },
+  "focus": {
+    "SCHG": {
+      "symbol": "SCHG",
+      "thesis_id": "symbol_schg",
+      "coverage_state": "RESEARCH_REQUIRED",
+      "coverage_reason": "missing_symbol_thesis",
+      "has_current_symbol_thesis": false,
+      "has_only_desk_thesis": true,
+      "thesis_version": null,
+      "thesis_pin": null,
+      "thesis_age_days": null,
+      "thesis_status": null,
+      "thesis_summary": null,
+      "thesis_stance": null,
+      "desk_pin": "desk@v5",
+      "desk_stance": "defensive_observe",
+      "portfolio_role": {
+        "symbol": "SCHG",
+        "portfolio_role": "GROWTH",
+        "prior_portfolio_role": null,
+        "confidence": "HIGH",
+        "source": "operator_declaration",
+        "evidence": [
+          "Operator: SCHG represented growth exposure in the book."
+        ],
+        "role_research_required": false,
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "memberships": [
+        "HELD",
+        "REENTRY",
+        "WATCHLIST"
+      ],
+      "reentry_state": "CURRENTLY HELD",
+      "reentry_advisory_action": "Monitor / No Action",
+      "opportunity_rank": null,
+      "research_gaps": [
+        "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)",
+        "Re-entry desk has decision-control fields only; need investment thesis (why exit, thesis intact?, market fit)"
+      ],
+      "research_required": true,
+      "material": true,
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    "CSCO": {
+      "symbol": "CSCO",
+      "thesis_id": "symbol_csco",
+      "coverage_state": "RESEARCH_REQUIRED",
+      "coverage_reason": "missing_symbol_thesis",
+      "has_current_symbol_thesis": false,
+      "has_only_desk_thesis": true,
+      "thesis_version": null,
+      "thesis_pin": null,
+      "thesis_age_days": null,
+      "thesis_status": null,
+      "thesis_summary": null,
+      "thesis_stance": null,
+      "desk_pin": "desk@v5",
+      "desk_stance": "defensive_observe",
+      "portfolio_role": {
+        "symbol": "CSCO",
+        "portfolio_role": "UNKNOWN",
+        "prior_portfolio_role": null,
+        "confidence": "LOW",
+        "source": "insufficient",
+        "evidence": [],
+        "role_research_required": true,
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "memberships": [
+        "REENTRY",
+        "WATCHLIST",
+        "OPPORTUNITY"
+      ],
+      "reentry_state": "NEAR ENTRY",
+      "reentry_advisory_action": "Prepare Re-Entry / Watch Limit",
+      "opportunity_rank": 12,
+      "research_gaps": [
+        "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)",
+        "Portfolio role UNKNOWN \u2014 gather operator/historical role evidence",
+        "Re-entry desk has decision-control fields only; need investment thesis (why exit, thesis intact?, market fit)"
+      ],
+      "research_required": true,
+      "material": true,
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    "ANET": {
+      "symbol": "ANET",
+      "thesis_id": "symbol_anet",
+      "coverage_state": "RESEARCH_REQUIRED",
+      "coverage_reason": "missing_symbol_thesis",
+      "has_current_symbol_thesis": false,
+      "has_only_desk_thesis": true,
+      "thesis_version": null,
+      "thesis_pin": null,
+      "thesis_age_days": null,
+      "thesis_status": null,
+      "thesis_summary": null,
+      "thesis_stance": null,
+      "desk_pin": "desk@v5",
+      "desk_stance": "defensive_observe",
+      "portfolio_role": {
+        "symbol": "ANET",
+        "portfolio_role": "UNKNOWN",
+        "prior_portfolio_role": null,
+        "confidence": "LOW",
+        "source": "insufficient",
+        "evidence": [],
+        "role_research_required": true,
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "memberships": [
+        "REENTRY",
+        "WATCHLIST",
+        "OPPORTUNITY"
+      ],
+      "reentry_state": "WAIT",
+      "reentry_advisory_action": "Monitor / No Action",
+      "opportunity_rank": 6,
+      "research_gaps": [
+        "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)",
+        "Portfolio role UNKNOWN \u2014 gather operator/historical role evidence",
+        "Re-entry desk has decision-control fields only; need investment thesis (why exit, thesis intact?, market fit)"
+      ],
+      "research_required": true,
+      "material": true,
+      "authority": "READ_ONLY_ADVISORY"
+    }
+  },
+  "research_gap_triggers_sample": [
+    {
+      "symbol": "12507E201",
+      "thesis_id": "symbol_s_12507e201",
+      "coverage_state": "RESEARCH_REQUIRED",
+      "triggers": [
+        "missing_thesis",
+        "role_unknown"
+      ],
+      "research_gaps": [
+        "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)",
+        "Portfolio role UNKNOWN \u2014 gather operator/historical role evidence"
+      ],
+      "priority": "NORMAL",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    {
+      "symbol": "543354104",
+      "thesis_id": "symbol_s_543354104",
+      "coverage_state": "RESEARCH_REQUIRED",
+      "triggers": [
+        "missing_thesis",
+        "role_unknown"
+      ],
+      "research_gaps": [
+        "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)",
+        "Portfolio role UNKNOWN \u2014 gather operator/historical role evidence"
+      ],
+      "priority": "NORMAL",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    {
+      "symbol": "628518102",
+      "thesis_id": "symbol_s_628518102",
+      "coverage_state": "RESEARCH_REQUIRED",
+      "triggers": [
+        "missing_thesis",
+        "role_unknown"
+      ],
+      "research_gaps": [
+        "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)",
+        "Portfolio role UNKNOWN \u2014 gather operator/historical role evidence"
+      ],
+      "priority": "NORMAL",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    {
+      "symbol": "A",
+      "thesis_id": "symbol_a",
+      "coverage_state": "INSUFFICIENT_DATA",
+      "triggers": [
+        "missing_thesis",
+        "role_unknown"
+      ],
+      "research_gaps": [
+        "Optional: create symbol thesis if this watchlist name becomes material",
+        "Portfolio role UNKNOWN \u2014 gather operator/historical role evidence"
+      ],
+      "priority": "NORMAL",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    {
+      "symbol": "AA",
+      "thesis_id": "symbol_aa",
+      "coverage_state": "INSUFFICIENT_DATA",
+      "triggers": [
+        "missing_thesis",
+        "role_unknown"
+      ],
+      "research_gaps": [
+        "Optional: create symbol thesis if this watchlist name becomes material",
+        "Portfolio role UNKNOWN \u2014 gather operator/historical role evidence"
+      ],
+      "priority": "NORMAL",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    {
+      "symbol": "AAA",
+      "thesis_id": "symbol_aaa",
+      "coverage_state": "INSUFFICIENT_DATA",
+      "triggers": [
+        "missing_thesis",
+        "role_unknown"
+      ],
+      "research_gaps": [
+        "Optional: create symbol thesis if this watchlist name becomes material",
+        "Portfolio role UNKNOWN \u2014 gather operator/historical role evidence"
+      ],
+      "priority": "NORMAL",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    {
+      "symbol": "AAAA",
+      "thesis_id": "symbol_aaaa",
+      "coverage_state": "INSUFFICIENT_DATA",
+      "triggers": [
+        "missing_thesis",
+        "role_unknown"
+      ],
+      "research_gaps": [
+        "Optional: create symbol thesis if this watchlist name becomes material",
+        "Portfolio role UNKNOWN \u2014 gather operator/historical role evidence"
+      ],
+      "priority": "NORMAL",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    {
+      "symbol": "AAAC",
+      "thesis_id": "symbol_aaac",
+      "coverage_state": "INSUFFICIENT_DATA",
+      "triggers": [
+        "missing_thesis",
+        "role_unknown"
+      ],
+      "research_gaps": [
+        "Optional: create symbol thesis if this watchlist name becomes material",
+        "Portfolio role UNKNOWN \u2014 gather operator/historical role evidence"
+      ],
+      "priority": "NORMAL",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    {
+      "symbol": "AAAD",
+      "thesis_id": "symbol_aaad",
+      "coverage_state": "INSUFFICIENT_DATA",
+      "triggers": [
+        "missing_thesis",
+        "role_unknown"
+      ],
+      "research_gaps": [
+        "Optional: create symbol thesis if this watchlist name becomes material",
+        "Portfolio role UNKNOWN \u2014 gather operator/historical role evidence"
+      ],
+      "priority": "NORMAL",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    {
+      "symbol": "AAAP",
+      "thesis_id": "symbol_aaap",
+      "coverage_state": "INSUFFICIENT_DATA",
+      "triggers": [
+        "missing_thesis",
+        "role_unknown"
+      ],
+      "research_gaps": [
+        "Optional: create symbol thesis if this watchlist name becomes material",
+        "Portfolio role UNKNOWN \u2014 gather operator/historical role evidence"
+      ],
+      "priority": "NORMAL",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    {
+      "symbol": "AAAU",
+      "thesis_id": "symbol_aaau",
+      "coverage_state": "INSUFFICIENT_DATA",
+      "triggers": [
+        "missing_thesis",
+        "role_unknown"
+      ],
+      "research_gaps": [
+        "Optional: create symbol thesis if this watchlist name becomes material",
+        "Portfolio role UNKNOWN \u2014 gather operator/historical role evidence"
+      ],
+      "priority": "NORMAL",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    {
+      "symbol": "AACB",
+      "thesis_id": "symbol_aacb",
+      "coverage_state": "INSUFFICIENT_DATA",
+      "triggers": [
+        "missing_thesis",
+        "role_unknown"
+      ],
+      "research_gaps": [
+        "Optional: create symbol thesis if this watchlist name becomes material",
+        "Portfolio role UNKNOWN \u2014 gather operator/historical role evidence"
+      ],
+      "priority": "NORMAL",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    {
+      "symbol": "AACG",
+      "thesis_id": "symbol_aacg",
+      "coverage_state": "INSUFFICIENT_DATA",
+      "triggers": [
+        "missing_thesis",
+        "role_unknown"
+      ],
+      "research_gaps": [
+        "Optional: create symbol thesis if this watchlist name becomes material",
+        "Portfolio role UNKNOWN \u2014 gather operator/historical role evidence"
+      ],
+      "priority": "NORMAL",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    {
+      "symbol": "AACI",
+      "thesis_id": "symbol_aaci",
+      "coverage_state": "INSUFFICIENT_DATA",
+      "triggers": [
+        "missing_thesis",
+        "role_unknown"
+      ],
+      "research_gaps": [
+        "Optional: create symbol thesis if this watchlist name becomes material",
+        "Portfolio role UNKNOWN \u2014 gather operator/historical role evidence"
+      ],
+      "priority": "NORMAL",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    {
+      "symbol": "AACO",
+      "thesis_id": "symbol_aaco",
+      "coverage_state": "INSUFFICIENT_DATA",
+      "triggers": [
+        "missing_thesis",
+        "role_unknown"
+      ],
+      "research_gaps": [
+        "Optional: create symbol thesis if this watchlist name becomes material",
+        "Portfolio role UNKNOWN \u2014 gather operator/historical role evidence"
+      ],
+      "priority": "NORMAL",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    {
+      "symbol": "AACP",
+      "thesis_id": "symbol_aacp",
+      "coverage_state": "INSUFFICIENT_DATA",
+      "triggers": [
+        "missing_thesis",
+        "role_unknown"
+      ],
+      "research_gaps": [
+        "Optional: create symbol thesis if this watchlist name becomes material",
+        "Portfolio role UNKNOWN \u2014 gather operator/historical role evidence"
+      ],
+      "priority": "NORMAL",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    {
+      "symbol": "AACPU",
+      "thesis_id": "symbol_aacpu",
+      "coverage_state": "INSUFFICIENT_DATA",
+      "triggers": [
+        "missing_thesis",
+        "role_unknown"
+      ],
+      "research_gaps": [
+        "Optional: create symbol thesis if this watchlist name becomes material",
+        "Portfolio role UNKNOWN \u2014 gather operator/historical role evidence"
+      ],
+      "priority": "NORMAL",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    {
+      "symbol": "AADR",
+      "thesis_id": "symbol_aadr",
+      "coverage_state": "INSUFFICIENT_DATA",
+      "triggers": [
+        "missing_thesis",
+        "role_unknown"
+      ],
+      "research_gaps": [
+        "Optional: create symbol thesis if this watchlist name becomes material",
+        "Portfolio role UNKNOWN \u2014 gather operator/historical role evidence"
+      ],
+      "priority": "NORMAL",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    {
+      "symbol": "AADX",
+      "thesis_id": "symbol_aadx",
+      "coverage_state": "INSUFFICIENT_DATA",
+      "triggers": [
+        "missing_thesis",
+        "role_unknown"
+      ],
+      "research_gaps": [
+        "Optional: create symbol thesis if this watchlist name becomes material",
+        "Portfolio role UNKNOWN \u2014 gather operator/historical role evidence"
+      ],
+      "priority": "NORMAL",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    {
+      "symbol": "AAEQ",
+      "thesis_id": "symbol_aaeq",
+      "coverage_state": "INSUFFICIENT_DATA",
+      "triggers": [
+        "missing_thesis",
+        "role_unknown"
+      ],
+      "research_gaps": [
+        "Optional: create symbol thesis if this watchlist name becomes material",
+        "Portfolio role UNKNOWN \u2014 gather operator/historical role evidence"
+      ],
+      "priority": "NORMAL",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    {
+      "symbol": "AAL",
+      "thesis_id": "symbol_aal",
+      "coverage_state": "INSUFFICIENT_DATA",
+      "triggers": [
+        "missing_thesis",
+        "role_unknown"
+      ],
+      "research_gaps": [
+        "Optional: create symbol thesis if this watchlist name becomes material",
+        "Portfolio role UNKNOWN \u2014 gather operator/historical role evidence"
+      ],
+      "priority": "NORMAL",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    {
+      "symbol": "AALG",
+      "thesis_id": "symbol_aalg",
+      "coverage_state": "INSUFFICIENT_DATA",
+      "triggers": [
+        "missing_thesis",
+        "role_unknown"
+      ],
+      "research_gaps": [
+        "Optional: create symbol thesis if this watchlist name becomes material",
+        "Portfolio role UNKNOWN \u2014 gather operator/historical role evidence"
+      ],
+      "priority": "NORMAL",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    {
+      "symbol": "AAME",
+      "thesis_id": "symbol_aame",
+      "coverage_state": "INSUFFICIENT_DATA",
+      "triggers": [
+        "missing_thesis",
+        "role_unknown"
+      ],
+      "research_gaps": [
+        "Optional: create symbol thesis if this watchlist name becomes material",
+        "Portfolio role UNKNOWN \u2014 gather operator/historical role evidence"
+      ],
+      "priority": "NORMAL",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    {
+      "symbol": "AAMI",
+      "thesis_id": "symbol_aami",
+      "coverage_state": "INSUFFICIENT_DATA",
+      "triggers": [
+        "missing_thesis",
+        "role_unknown"
+      ],
+      "research_gaps": [
+        "Optional: create symbol thesis if this watchlist name becomes material",
+        "Portfolio role UNKNOWN \u2014 gather operator/historical role evidence"
+      ],
+      "priority": "NORMAL",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    {
+      "symbol": "AAOG",
+      "thesis_id": "symbol_aaog",
+      "coverage_state": "INSUFFICIENT_DATA",
+      "triggers": [
+        "missing_thesis",
+        "role_unknown"
+      ],
+      "research_gaps": [
+        "Optional: create symbol thesis if this watchlist name becomes material",
+        "Portfolio role UNKNOWN \u2014 gather operator/historical role evidence"
+      ],
+      "priority": "NORMAL",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    {
+      "symbol": "AAOI",
+      "thesis_id": "symbol_aaoi",
+      "coverage_state": "INSUFFICIENT_DATA",
+      "triggers": [
+        "missing_thesis",
+        "role_unknown"
+      ],
+      "research_gaps": [
+        "Optional: create symbol thesis if this watchlist name becomes material",
+        "Portfolio role UNKNOWN \u2014 gather operator/historical role evidence"
+      ],
+      "priority": "NORMAL",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    {
+      "symbol": "AAON",
+      "thesis_id": "symbol_aaon",
+      "coverage_state": "INSUFFICIENT_DATA",
+      "triggers": [
+        "missing_thesis",
+        "role_unknown"
+      ],
+      "research_gaps": [
+        "Optional: create symbol thesis if this watchlist name becomes material",
+        "Portfolio role UNKNOWN \u2014 gather operator/historical role evidence"
+      ],
+      "priority": "NORMAL",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    {
+      "symbol": "AAOX",
+      "thesis_id": "symbol_aaox",
+      "coverage_state": "INSUFFICIENT_DATA",
+      "triggers": [
+        "missing_thesis",
+        "role_unknown"
+      ],
+      "research_gaps": [
+        "Optional: create symbol thesis if this watchlist name becomes material",
+        "Portfolio role UNKNOWN \u2014 gather operator/historical role evidence"
+      ],
+      "priority": "NORMAL",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    {
+      "symbol": "AAOZ",
+      "thesis_id": "symbol_aaoz",
+      "coverage_state": "INSUFFICIENT_DATA",
+      "triggers": [
+        "missing_thesis",
+        "role_unknown"
+      ],
+      "research_gaps": [
+        "Optional: create symbol thesis if this watchlist name becomes material",
+        "Portfolio role UNKNOWN \u2014 gather operator/historical role evidence"
+      ],
+      "priority": "NORMAL",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    {
+      "symbol": "AAP",
+      "thesis_id": "symbol_aap",
+      "coverage_state": "INSUFFICIENT_DATA",
+      "triggers": [
+        "missing_thesis",
+        "role_unknown"
+      ],
+      "research_gaps": [
+        "Optional: create symbol thesis if this watchlist name becomes material",
+        "Portfolio role UNKNOWN \u2014 gather operator/historical role evidence"
+      ],
+      "priority": "NORMAL",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    {
+      "symbol": "AAPB",
+      "thesis_id": "symbol_aapb",
+      "coverage_state": "INSUFFICIENT_DATA",
+      "triggers": [
+        "missing_thesis",
+        "role_unknown"
+      ],
+      "research_gaps": [
+        "Optional: create symbol thesis if this watchlist name becomes material",
+        "Portfolio role UNKNOWN \u2014 gather operator/historical role evidence"
+      ],
+      "priority": "NORMAL",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    {
+      "symbol": "AAPD",
+      "thesis_id": "symbol_aapd",
+      "coverage_state": "INSUFFICIENT_DATA",
+      "triggers": [
+        "missing_thesis",
+        "role_unknown"
+      ],
+      "research_gaps": [
+        "Optional: create symbol thesis if this watchlist name becomes material",
+        "Portfolio role UNKNOWN \u2014 gather operator/historical role evidence"
+      ],
+      "priority": "NORMAL",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    {
+      "symbol": "AAPE",
+      "thesis_id": "symbol_aape",
+      "coverage_state": "INSUFFICIENT_DATA",
+      "triggers": [
+        "missing_thesis",
+        "role_unknown"
+      ],
+      "research_gaps": [
+        "Optional: create symbol thesis if this watchlist name becomes material",
+        "Portfolio role UNKNOWN \u2014 gather operator/historical role evidence"
+      ],
+      "priority": "NORMAL",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    {
+      "symbol": "AAPG",
+      "thesis_id": "symbol_aapg",
+      "coverage_state": "INSUFFICIENT_DATA",
+      "triggers": [
+        "missing_thesis",
+        "role_unknown"
+      ],
+      "research_gaps": [
+        "Optional: create symbol thesis if this watchlist name becomes material",
+        "Portfolio role UNKNOWN \u2014 gather operator/historical role evidence"
+      ],
+      "priority": "NORMAL",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    {
+      "symbol": "AAPL",
+      "thesis_id": "symbol_aapl",
+      "coverage_state": "INSUFFICIENT_DATA",
+      "triggers": [
+        "missing_thesis",
+        "role_unknown"
+      ],
+      "research_gaps": [
+        "Optional: create symbol thesis if this watchlist name becomes material",
+        "Portfolio role UNKNOWN \u2014 gather operator/historical role evidence"
+      ],
+      "priority": "NORMAL",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    {
+      "symbol": "AAPR",
+      "thesis_id": "symbol_aapr",
+      "coverage_state": "INSUFFICIENT_DATA",
+      "triggers": [
+        "missing_thesis",
+        "role_unknown"
+      ],
+      "research_gaps": [
+        "Optional: create symbol thesis if this watchlist name becomes material",
+        "Portfolio role UNKNOWN \u2014 gather operator/historical role evidence"
+      ],
+      "priority": "NORMAL",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    {
+      "symbol": "AAPU",
+      "thesis_id": "symbol_aapu",
+      "coverage_state": "INSUFFICIENT_DATA",
+      "triggers": [
+        "missing_thesis",
+        "role_unknown"
+      ],
+      "research_gaps": [
+        "Optional: create symbol thesis if this watchlist name becomes material",
+        "Portfolio role UNKNOWN \u2014 gather operator/historical role evidence"
+      ],
+      "priority": "NORMAL",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    {
+      "symbol": "AAPW",
+      "thesis_id": "symbol_aapw",
+      "coverage_state": "INSUFFICIENT_DATA",
+      "triggers": [
+        "missing_thesis",
+        "role_unknown"
+      ],
+      "research_gaps": [
+        "Optional: create symbol thesis if this watchlist name becomes material",
+        "Portfolio role UNKNOWN \u2014 gather operator/historical role evidence"
+      ],
+      "priority": "NORMAL",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    {
+      "symbol": "AAPX",
+      "thesis_id": "symbol_aapx",
+      "coverage_state": "INSUFFICIENT_DATA",
+      "triggers": [
+        "missing_thesis",
+        "role_unknown"
+      ],
+      "research_gaps": [
+        "Optional: create symbol thesis if this watchlist name becomes material",
+        "Portfolio role UNKNOWN \u2014 gather operator/historical role evidence"
+      ],
+      "priority": "NORMAL",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    {
+      "symbol": "AAPY",
+      "thesis_id": "symbol_aapy",
+      "coverage_state": "INSUFFICIENT_DATA",
+      "triggers": [
+        "missing_thesis",
+        "role_unknown"
+      ],
+      "research_gaps": [
+        "Optional: create symbol thesis if this watchlist name becomes material",
+        "Portfolio role UNKNOWN \u2014 gather operator/historical role evidence"
+      ],
+      "priority": "NORMAL",
+      "authority": "READ_ONLY_ADVISORY"
+    }
+  ],
+  "research_gap_trigger_count": 200,
+  "material_missing_thesis": [
+    "12507E201",
+    "543354104",
+    "628518102",
+    "ACHV",
+    "ADBE",
+    "AGMH",
+    "AIRE",
+    "ALXO",
+    "AMAGX",
+    "AMANX",
+    "AMC",
+    "AMD",
+    "ANET",
+    "APAM",
+    "ARKG",
+    "ARKQ",
+    "ARKX",
+    "ATAI",
+    "AUUD",
+    "AVAV",
+    "AXTI",
+    "BAH",
+    "BJDX",
+    "BNAI",
+    "BND",
+    "BOF",
+    "BOXL",
+    "BUG",
+    "CACI",
+    "CAST",
+    "CSCO",
+    "CSWC",
+    "CTXR",
+    "DFSC",
+    "DHX",
+    "DIV",
+    "DIVI",
+    "DRS",
+    "DXCM",
+    "EKSO",
+    "ELAB",
+    "ELBM",
+    "FATN",
+    "FCNTX",
+    "FJSCX",
+    "FSELX",
+    "FSPTX",
+    "FUSE",
+    "GCTS",
+    "GERN",
+    "GOVX",
+    "GSIT",
+    "GWH",
+    "GXAI",
+    "HEALTH",
+    "HPE",
+    "IBIO",
+    "IHT",
+    "IPM",
+    "IRDM",
+    "JEPI",
+    "JEPQ",
+    "JTAI",
+    "KBR",
+    "KTOS",
+    "LAC",
+    "LASE",
+    "LDOS",
+    "LGPS",
+    "LHX",
+    "LMT",
+    "MNTS",
+    "MOGU",
+    "MSGM",
+    "NEE",
+    "NERV",
+    "NOC",
+    "NUAI",
+    "NUWE",
+    "OLOX",
+    "PEPG",
+    "PETS",
+    "PEW",
+    "PFE",
+    "PFLT",
+    "PHIO",
+    "PRSO",
+    "QCOM",
+    "RANI",
+    "RDHL",
+    "RGNT",
+    "RKLB",
+    "RTX",
+    "SCHD",
+    "SCHG",
+    "SCLX",
+    "SHFS",
+    "SHPH",
+    "SIBN",
+    "SLDP"
+  ],
+  "universe_errors": [],
+  "starting_main_handoff": "258b11de7f31be3ef6d2044231023d90d73f6afb",
+  "main_moved_during_work": true,
+  "intervening": [
+    "ff2037d4 #396 r69-finviz-orch-reconnect",
+    "6c7bf789 retry IEM/readiness"
+  ]
+}

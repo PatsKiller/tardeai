@@ -318,11 +318,13 @@ class CIOThesisStore:
         change_note: str = "",
         actor_id: str = "cio_theses",
         extra: Optional[dict[str, Any]] = None,
+        notify: bool = True,
     ) -> dict[str, Any]:
         """Publish a new version of a thesis (creates thesis_id on first publish).
 
         desk@v2+ fields: principles, risk_posture, escalation_rules, learning_log (seed).
         Ongoing operator learning also lands in cio_operator_learning.jsonl.
+        notify=False suppresses Telegram (bulk symbol backfills / tests).
         """
         tid = _normalize_thesis_id(thesis_id)
         summary = (summary or "").strip()
@@ -385,7 +387,8 @@ class CIOThesisStore:
                     payload[k] = v
         et = "THESIS_CREATED" if next_ver == 1 else "THESIS_VERSION_PUBLISHED"
         self._append_event(et, tid, payload, actor_id=actor_id)
-        _notify_thesis_publish(tid, next_ver, summary)
+        if notify:
+            _notify_thesis_publish(tid, next_ver, summary)
         return dict(self._current[tid])
 
     def get_current(self, thesis_id: str = DEFAULT_THESIS_ID) -> Optional[dict[str, Any]]:
