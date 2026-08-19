@@ -1,8 +1,12 @@
-"""Official DeepSeek peak/off-peak windows (UTC, half-open).
+"""DeepSeek bulk vs as-needed windows.
 
-Peak: 01:00-04:00 and 06:00-10:00 UTC (same as scripts/hermes_llm_failover.py).
-Used by the overnight watchlist-agent-jobs wrapper so tests can freeze time
-without depending on the shell's wall clock.
+Operator policy (2026-08-19): substantial Hermes / agent-job DeepSeek Pro and
+Flash bulk work runs 10:00–21:00 America/New_York (US Eastern, DST-aware).
+Outside that window: as-needed only (HERMES_ALLOW_DEEPSEEK_PEAK / --allow-peak),
+not bulk drains.
+
+Official DeepSeek pricing peaks remain a hard extra skip for bulk:
+01:00–04:00 and 06:00–10:00 UTC (does not overlap 10:00–21:00 ET).
 
 READ_ONLY_ADVISORY. No broker / order / stop / risk / 2FA.
 """
@@ -13,28 +17,44 @@ import os
 import sys
 from datetime import datetime, timezone
 from typing import Any
+from zoneinfo import ZoneInfo
+
+ET = ZoneInfo("America/New_York")
 
 # Official DeepSeek peak windows (half-open, UTC).
 # https://api-docs.deepseek.com/quick_start/pricing/
 DEEPSEEK_PEAK_UTC = ((1, 4), (6, 10))
+
+# Operator bulk window (half-open, US Eastern): 10:00 inclusive, 21:00 exclusive.
+BULK_ET_START_HOUR = 10
+BULK_ET_END_HOUR = 21
+
 SOAK_DEFAULT_USD = 2.00
 TRUTHY = {"1", "true", "yes", "on"}
 
 
-def _as_utc(dt: datetime | None) -> datetime:
+def _as_aware(dt: datetime | None) -> datetime:
     if dt is None:
         raw = (os.getenv("TRADEAI_OFFPEAK_NOW_UTC") or "").strip()
         if raw:
             parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
-            return _as_utc(parsed)
+            return _as_aware(parsed)
         dt = datetime.now(timezone.utc)
     if dt.tzinfo is None:
         return dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc)
+    return dt
+
+
+def _as_utc(dt: datetime | None) -> datetime:
+    return _as_aware(dt).astimezone(timezone.utc)
+
+
+def _as_et(dt: datetime | None) -> datetime:
+    return _as_aware(dt).astimezone(ET)
 
 
 def is_deepseek_peak_utc(dt: datetime | None = None) -> bool:
-    """True inside official DeepSeek peak hours (half-open intervals)."""
+    """True inside official DeepSeek pricing peak hours (half-open UTC)."""
     when = _as_utc(dt)
     hour = when.hour + when.minute / 60.0 + when.second / 3600.0
     for start, end in DEEPSEEK_PEAK_UTC:
@@ -43,20 +63,34 @@ def is_deepseek_peak_utc(dt: datetime | None = None) -> bool:
     return False
 
 
+def in_operator_bulk_window_et(dt: datetime | None = None) -> bool:
+    """True 10:00 <= t < 21:00 America/New_York."""
+    when = _as_et(dt)
+    hour = when.hour + when.minute / 60.0 + when.second / 3600.0
+    return BULK_ET_START_HOUR <= hour < BULK_ET_END_HOUR
+
+
+def is_bulk_deepseek_window(dt: datetime | None = None) -> bool:
+    """Bulk Flash/Pro allowed: Eastern 10:00–21:00 and not official UTC peak."""
+    if is_deepseek_peak_utc(dt):
+        return False
+    return in_operator_bulk_window_et(dt)
+
+
 def allow_deepseek_peak() -> bool:
-    """Honor Hermes override: HERMES_ALLOW_DEEPSEEK_PEAK=1 runs during peak."""
+    """As-needed override (Hermes --allow-peak / HERMES_ALLOW_DEEPSEEK_PEAK=1)."""
     return os.getenv("HERMES_ALLOW_DEEPSEEK_PEAK", "").strip().lower() in TRUTHY
 
 
 def should_peak_skip(dt: datetime | None = None) -> bool:
-    """True when the overnight wrapper should log PEAK_SKIP and exit 0."""
+    """True when the bulk wrapper should log PEAK_SKIP and exit 0."""
     if allow_deepseek_peak():
         return False
-    return is_deepseek_peak_utc(dt)
+    return not is_bulk_deepseek_window(dt)
 
 
 def resolve_overnight_soak_cap(raw: str | None) -> dict[str, Any]:
-    """Overnight-lane-only soak default.
+    """Bulk-lane soak default.
 
     Unset / blank / non-positive → 2.00 (origin=soak).
     Already set and >0 → keep.

@@ -57,6 +57,24 @@ def offpeak_now():
     return "2026-08-19T00:30:00Z"
 
 
+def test_operator_bulk_window_et():
+    from lib.deepseek_offpeak import in_operator_bulk_window_et, is_bulk_deepseek_window, should_peak_skip
+
+    ten_am = datetime.fromisoformat("2026-08-19T10:00:00-04:00")
+    nine_pm = datetime.fromisoformat("2026-08-19T21:00:00-04:00")
+    nine_am = datetime.fromisoformat("2026-08-19T09:59:00-04:00")
+    afternoon = datetime.fromisoformat("2026-08-19T13:53:00-04:00")
+    midnight = datetime.fromisoformat("2026-08-19T00:30:00-04:00")
+    assert in_operator_bulk_window_et(ten_am) is True
+    assert in_operator_bulk_window_et(afternoon) is True
+    assert in_operator_bulk_window_et(nine_pm) is False
+    assert in_operator_bulk_window_et(nine_am) is False
+    assert in_operator_bulk_window_et(midnight) is False
+    assert is_bulk_deepseek_window(afternoon) is True
+    assert should_peak_skip(midnight) is True
+    assert should_peak_skip(afternoon) is False
+
+
 def test_is_deepseek_peak_utc_windows_deterministic():
     assert is_deepseek_peak_utc(utc(0, 59)) is False
     assert is_deepseek_peak_utc(utc(1, 0)) is True
@@ -107,7 +125,7 @@ def test_wrapper_exists_contract():
     assert "AGENT_JOBS_LOCK_HELD_EXTERNALLY=1" in text
     assert "/tmp/tradeai_watchlist_agent_jobs.lock" in text
     assert "PEAK_SKIP" in text
-    assert "SOAK_CAP=2.00 (not measured; overnight lane only)" in text
+    assert "SOAK_CAP=2.00 (not measured; bulk 10:00-21:00 ET lane only)" in text
     assert "TRADEAI_OFFPEAK_DRY_RUN" in text
     assert "HERMES_ALLOW_DEEPSEEK_PEAK" in HELPER.read_text()
     # env assignment must not be flock's executable (#399 form)
@@ -122,11 +140,11 @@ def test_wrapper_exists_contract():
     assert "unlink " not in command_lines
     # documented cron: no unescaped %
     cron_comments = [ln for ln in text.splitlines() if "run_watchlist_agent_jobs_offpeak.sh" in ln and ln.strip().startswith("#")]
-    assert any("*/15 0-1 * * 1-6" in ln for ln in cron_comments)
+    assert any("*/15 10-20 * * *" in ln for ln in cron_comments)
     for ln in cron_comments:
         assert "%" not in ln
         assert "*/5 0-5" not in ln
-    assert "*/15 0-1 * * 0" in text
+        assert "*/15 0-1" not in ln
 
 
 def test_peak_window_skipped_exit_0(tmp_path, offpeak_now):
@@ -207,7 +225,7 @@ def test_missing_cap_gets_soak_2(tmp_path):
     proc = subprocess.run(["bash", str(WRAPPER)], env=env, capture_output=True, text=True, timeout=30)
     assert proc.returncode == 0, log.read_text() if log.exists() else proc.stderr
     body = log.read_text()
-    assert "SOAK_CAP=2.00 (not measured; overnight lane only)" in body
+    assert "SOAK_CAP=2.00 (not measured; bulk 10:00-21:00 ET lane only)" in body
 
 
 def test_malformed_cap_fail_closed(tmp_path):

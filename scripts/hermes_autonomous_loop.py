@@ -882,7 +882,7 @@ def main():
         ):
             print(
                 f"SKIPPED_DEEPSEEK_PEAK: window={deepseek_window_label()} "
-                "official peak 01:00-04:00 and 06:00-10:00 UTC (half price off-peak). "
+                "bulk Flash/Pro is 10:00-21:00 America/New_York; outside that is as-needed only. "
                 "Pass --allow-peak to override."
             )
             return

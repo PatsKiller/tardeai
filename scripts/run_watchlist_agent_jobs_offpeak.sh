@@ -1,15 +1,14 @@
 #!/usr/bin/env bash
-# DeepSeek OFF-PEAK watchlist agent-jobs drain (overnight soak, not canary).
+# DeepSeek BULK watchlist agent-jobs drain (10:00–21:00 US Eastern, not canary).
 #
-# Intended crontab (do not paste API keys; source env inside this wrapper).
-# Host local time is America/New_York; hours 0-1 are 00:00–01:59 ET
-# (04:00–05:59 UTC in EDT — between official DeepSeek peak windows).
-# Wrapper also PEAK_SKIPs 01:00-04:00 and 06:00-10:00 UTC if invoked then.
+# Operator policy: substantial Flash/Pro bulk runs 10 a.m.–9 p.m. America/New_York.
+# Outside that window this wrapper PEAK_SKIPs (exit 0) unless HERMES_ALLOW_DEEPSEEK_PEAK=1
+# (as-needed only). Official UTC pricing peaks are also skipped.
 #
-#   */15 0-1 * * 1-6 $PROJ/scripts/run_watchlist_agent_jobs_offpeak.sh >> $PROJ/logs/watchlist_agent_jobs_offpeak.log 2>&1
+# Intended crontab (host TZ America/New_York; hours 10-20 = 10:00–20:59 ET).
+# Do not paste API keys; source env inside this wrapper.
 #
-# Optional Sunday off-peak (same hours; do not use overlapping */5 0-5):
-#   */15 0-1 * * 0 $PROJ/scripts/run_watchlist_agent_jobs_offpeak.sh >> $PROJ/logs/watchlist_agent_jobs_offpeak.log 2>&1
+#   */15 10-20 * * * $PROJ/scripts/run_watchlist_agent_jobs_offpeak.sh >> $PROJ/logs/watchlist_agent_jobs_offpeak.log 2>&1
 #
 # Guarantees:
 #   - Source ~/.config/tradeai/agent-operator.env then /run/user/$(id -u)/tradeai/env
@@ -81,7 +80,7 @@ if [[ "$CAP_RC" -ne 0 ]]; then
 fi
 if [[ "$CAP_OUT" == origin=soak* ]]; then
   export LLM_GLOBAL_DAILY_USD_CAP="$SOAK_DEFAULT"
-  log "SOAK_CAP=2.00 (not measured; overnight lane only)"
+  log "SOAK_CAP=2.00 (not measured; bulk 10:00-21:00 ET lane only)"
 else
   log "LLM_GLOBAL_DAILY_USD_CAP_ok=yes (kept)"
 fi
