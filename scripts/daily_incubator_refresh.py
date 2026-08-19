@@ -171,6 +171,22 @@ def refresh_ticker(conn, inc, dry_run=False):
     return event_type.lower()
 
 
+def _ensure_conn(conn):
+    """Return conn if still open, else a fresh connection.
+
+    The catalyst-refresh loop makes slow network calls (up to 30 symbols × 7 news
+    providers) while the scan-refresh transaction is held open. The server's idle
+    guard can terminate that held-open connection, so the final commit() raised
+    `psycopg2.InterfaceError: connection already closed`. Reconnect on demand.
+    """
+    try:
+        if conn is not None and not conn.closed:
+            return conn
+    except Exception:
+        pass
+    return get_conn()
+
+
 def main():
     parser = argparse.ArgumentParser(description="Daily incubator refresh")
     parser.add_argument("--dry-run", action="store_true", help="Print actions without writing to DB")
@@ -194,6 +210,13 @@ def main():
         for inc in active:
             result = refresh_ticker(conn, inc, dry_run=args.dry_run)
             counts[result] = counts.get(result, 0) + 1
+
+        # Commit the scan-refresh work BEFORE the slow catalyst HTTP loop, so the
+        # transaction isn't held open (idle-in-transaction) across minutes of network
+        # calls — that held-open transaction is what the server's idle guard killed.
+        if args.apply:
+            conn.commit()
+            log.info("Committed scan-refresh changes")
 
         # ── Catalyst refresh for stale incubator symbols ──
         # Symbols with no scan in 3+ days get fresh catalyst enrichment
@@ -228,6 +251,11 @@ def main():
                 try:
                     result = enrich_ticker(sym)
                     if result.get("has_fresh_catalyst"):
+                        # enrich_ticker makes slow HTTP calls (7 news providers); the
+                        # server idle-guard can close our connection mid-loop. Reconnect
+                        # and grab a fresh cursor before each write so the update isn't lost.
+                        conn = _ensure_conn(conn)
+                        cur = conn.cursor()
                         cur.execute("""
                             UPDATE incubator_universe
                             SET catalyst = %s, catalyst_verified = %s, updated_at = NOW()
@@ -247,9 +275,12 @@ def main():
         except Exception as e:
             log.warning("Catalyst refresh pass failed: %s", e)
 
+        # Reconnect if the server idle-guard closed the connection during the slow
+        # catalyst HTTP loop, then commit the catalyst updates.
+        conn = _ensure_conn(conn)
         if args.apply:
             conn.commit()
-            log.info("Committed changes to database")
+            log.info("Committed catalyst-refresh changes")
         else:
             conn.rollback()
 

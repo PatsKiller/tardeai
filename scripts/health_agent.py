@@ -88,6 +88,40 @@ def _rewrite_remediation_cmd(cmd: str) -> str:
     return re.sub(r"(?:\.?/?\.?venv/bin/python3?)\b", py, cmd)
 
 
+# Source keys that external_market_data_ingest.py --quotes actually refreshes (and whose
+# data_source_health markers it updates). The generic data_source_stale retry is only
+# correct for these; every other source needs an explicit data_source_remediation entry.
+_QUOTE_SOURCE_KEYS = {"yahoo_finance", "finviz", "alpaca"}
+
+
+def _data_source_retry_cmd(policy: dict, ftype: str, finding: dict) -> str | None:
+    """Resolve the allowlisted retry command for a finding, source-aware for data_source_stale.
+
+    The generic `data_source_stale` remediation points at
+    `external_market_data_ingest.py --quotes`, which only refreshes quote data
+    (Alpaca/Finviz/yfinance). A stale non-quote source (finnhub news, sec, social, …)
+    would otherwise be retried against the wrong producer forever — a no-op loop that
+    can never clear the finding. Prefer a per-source override from
+    `policy.data_source_remediation` (keyed by source_key) when present, and skip auto-retry
+    (return None → escalate) for non-quote sources that have no explicit producer.
+    """
+    rmap = policy.get("remediation_map") or {}
+    cmd = rmap.get(ftype)
+    if ftype == "data_source_stale":
+        src = (finding.get("source") or "").lower()
+        src_map = policy.get("data_source_remediation") or {}
+        if src and isinstance(src_map, dict):
+            override = src_map.get(src)
+            if isinstance(override, str) and override.strip():
+                return override
+        # The generic entry runs the market-quote ingest, which only refreshes quote
+        # sources. Non-quote sources have no producer in that script, so auto-retrying
+        # is a no-op loop — skip auto (escalate) rather than run the wrong producer.
+        if src and src not in _QUOTE_SOURCE_KEYS:
+            return None
+    return cmd if isinstance(cmd, str) else None
+
+
 def _remediation_cwd() -> Path:
     """Cwd with scripts/ + .env. Prefer DEV (has venv + full scripts); fall back to live."""
     if (DEV_ROOT / "scripts").is_dir() and (DEV_ROOT / ".env").is_file():
@@ -400,7 +434,7 @@ def run_auto_remediation(policy: dict, findings: list[dict]) -> list[dict]:
 
     for f in actionable:
         ftype = f.get("type")
-        raw_cmd = rmap.get(ftype)
+        raw_cmd = _data_source_retry_cmd(policy, ftype, f)
         # Only string commands are executable (skip agent_hung dict etc.)
         if not isinstance(raw_cmd, str) or not raw_cmd.strip():
             continue
@@ -3235,7 +3269,7 @@ def enqueue_escalations(policy: dict, findings_flat: list[dict]):
             for field in ("_attempts", "_last_attempt_ts", "_exhausted"):
                 if field in old_item:
                     item[field] = old_item[field]
-            retry = rmap.get(f["type"])
+            retry = _data_source_retry_cmd(policy, f["type"], f)
             if isinstance(retry, str) and retry.strip():
                 retry = _rewrite_remediation_cmd(retry)
                 try:
