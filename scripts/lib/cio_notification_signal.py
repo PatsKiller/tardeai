@@ -404,8 +404,35 @@ def decide_notification(
     standing_changed = prev is not None and prev.get("standing_recommendation") != standing
     blocking_changed = prev is not None and prev.get("blocking_state") != (blocking or None)
 
+    from scripts.lib.cio_production_eligibility import is_forbidden_from_production
+
     material, material_reason = semantic_materiality(d)
     prior_reject = bool(prev) and (prev.get("operator_disposition") or "").upper() in SUPPRESSING_DISPOSITIONS
+    if is_forbidden_from_production(d):
+        return {
+            "notification_id": "ntf_" + _digest("ntf", lineage, material_gen, _now_iso(), length=24),
+            "decision_id": _str(d.get("decision_id")),
+            "decision_lineage_id": lineage,
+            "material_generation_id": material_gen,
+            "evidence_generation_id": evidence_gen,
+            "wake_id": _str(wake_id),
+            "trace_id": _str(trace_id),
+            "notification_class": DELIVERY_SUPPRESSED,
+            "materiality_reason": material_reason,
+            "suppressed_reason": "not_production_advisory_eligible",
+            "standing_recommendation": standing,
+            "current_action": current,
+            "act_now": act_now,
+            "blocking_state": blocking,
+            "operator_disposition": disposition,
+            "reopen": False,
+            "reopen_reason": None,
+            "previous_notification_id": (prev or {}).get("notification_id"),
+            "previous_material_generation_id": (prev or {}).get("material_generation_id"),
+            "next_review": d.get("next_review"),
+            "evidence_digest": evidence_gen,
+            "created_at": _now_iso(),
+        }
 
     notification_class = DELIVERY_COMMAND_CENTER_ONLY
     suppressed_reason: Optional[str] = None

@@ -404,7 +404,12 @@ def reassess_on_research_completed(
         product["parent_plan_id"] = parent.get("plan_id")
         product["parent_recovery"] = parent.get("status")
         _annotate_research(product, result, critique)
-        changed = diff_products(prior, product)
+        try:
+            from scripts.lib.cio_production_eligibility import prior_visible_for_what_changed
+            prior_cmp = prior_visible_for_what_changed(prior, product)
+        except Exception:
+            prior_cmp = prior
+        changed = diff_products(prior_cmp, product)
         product["what_changed"] = changed
         persist_product(product, root=root)
         impact = research_impact(

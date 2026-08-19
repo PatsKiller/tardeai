@@ -19,6 +19,7 @@ from scripts.lib.cio_alex_telegram import (
     rejected_unchanged,
 )
 from scripts.lib.cio_production_case import open_case_from_decision
+from scripts.lib.cio_production_eligibility import is_forbidden_from_production
 from scripts.lib.cio_symbol_research import retrieve_symbol_research
 
 AUTHORITY = "READ_ONLY_ADVISORY"
@@ -62,6 +63,15 @@ def publish_material_decision(
     did = str(decision.get("decision_id") or "").strip()
     if not did:
         return {"ok": False, "error": "missing_decision_id", "authority": AUTHORITY}
+
+    if is_forbidden_from_production(decision):
+        return {
+            "ok": True,
+            "published": False,
+            "reason": "not_production_advisory_eligible",
+            "decision_id": did,
+            "authority": AUTHORITY,
+        }
 
     if rejected_unchanged(decision):
         return {

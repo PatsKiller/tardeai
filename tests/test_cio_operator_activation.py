@@ -172,7 +172,13 @@ def test_defer_reopen_same_lineage(tmp_path, monkeypatch):
     assert out["due"] >= 1
     assert out["processed"]
     assert out["processed"][0]["decision_id"] == "dec_defer_test"
-    assert out["processed"][0]["reopened"] is True
+    # Isolated / unmarked test defers cannot become a live thesis.
+    assert out["processed"][0]["reopened"] is False
+    assert out["processed"][0].get("published") is False
+    assert out["processed"][0]["reason"] in {
+        "not_production_advisory_eligible",
+        "exact_parent_unavailable",
+    }
 
 
 def test_compact_holdings_skips_cash():
