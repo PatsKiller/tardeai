@@ -40334,6 +40334,12 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     return 200, _cio.get_universe_theses()
                 if p in ("thesis-research-proposal", "thesis_research_proposal", "research-proposal"):
                     return 200, _cio.get_thesis_research_proposal()
+                if p.startswith("thesis-ri-pipeline/") or p.startswith("thesis_ri_pipeline/"):
+                    prefix = "thesis-ri-pipeline/" if p.startswith("thesis-ri-pipeline/") else "thesis_ri_pipeline/"
+                    sym = p[len(prefix):].strip("/").split("/")[0]
+                    if not sym:
+                        return 400, {"ok": False, "error": "symbol required"}
+                    return 200, _cio.get_thesis_ri_pipeline(sym)
                 if p.startswith("symbol-thesis/") or p.startswith("symbol_thesis/"):
                     prefix = "symbol-thesis/" if p.startswith("symbol-thesis/") else "symbol_thesis/"
                     sym = p[len(prefix):].strip("/").split("/")[0]

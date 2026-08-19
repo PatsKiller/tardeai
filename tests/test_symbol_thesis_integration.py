@@ -270,3 +270,104 @@ def test_api_helpers_importable():
     assert callable(cio.get_symbol_thesis_card)
     assert callable(cio.get_thesis_research_proposal)
     assert callable(cio.get_ask_thesis_context)
+    assert callable(cio.get_thesis_ri_pipeline)
+
+
+def test_research_request_not_hermes_as_source():
+    from scripts.lib.symbol_thesis_research import build_research_request
+    fields = {
+        "symbol_thesis_id": "symbol_schg",
+        "thesis_state": "RESEARCH_REQUIRED",
+        "portfolio_role": "GROWTH",
+        "memberships": ["HELD"],
+        "counter_evidence": [],
+    }
+    req = build_research_request(
+        "SCHG",
+        gap="Create living symbol thesis (role, why owned/exited, invalidation, research gaps)",
+        thesis_fields=fields,
+    )
+    assert req["hermes_is_acquisition_source"] is False
+    assert req["hermes_role"] == "synthesis_and_challenge_only"
+    assert req["acquisition_plane"] == "research_intelligence_multi_source"
+    assert "rag_retrieve_supporting_and_contradictory" in req["pipeline"]
+    assert "searxng_metasearch" in req["required_evidence_domains"]
+    assert "hermes" not in req["required_evidence_domains"]
+
+
+def test_acquisition_plan_skips_when_sufficient():
+    from scripts.lib.symbol_thesis_acquisition import build_acquisition_plan
+    catalog = {
+        "sufficiency": {
+            "sufficient_for_synthesis": True,
+            "remaining_evidence_gaps": [],
+        }
+    }
+    plan = build_acquisition_plan(
+        "SCHG", question="Why held?", evidence_catalog=catalog, priority="P1"
+    )
+    assert plan["status"] == "SKIP_ACQUISITION"
+    assert plan["hermes_is_acquisition_source"] is False
+    assert plan["steps"] == []
+
+
+def test_acquisition_plan_budgeted_and_multi_source():
+    from scripts.lib.symbol_thesis_acquisition import build_acquisition_plan, SOURCE_FAMILIES
+    catalog = {
+        "sufficiency": {
+            "sufficient_for_synthesis": False,
+            "remaining_evidence_gaps": [
+                "insufficient_supporting_rag",
+                "insufficient_contradictory_rag",
+                "no_approved_primary_or_news",
+            ],
+        }
+    }
+    plan = build_acquisition_plan(
+        "CSCO",
+        question="Build living exit/re-entry thesis for CSCO",
+        evidence_catalog=catalog,
+        priority="P1",
+    )
+    assert plan["status"] == "ACQUISITION_PLANNED"
+    families = {s["family"] for s in plan["steps"]}
+    assert "searxng_metasearch" in families
+    assert "sec_filings" in families
+    assert "deterministic_structured" in families
+    # Hermes must not appear as an acquisition step
+    assert "hermes" not in families
+    assert "deepseek_flash" not in families
+    for s in plan["steps"]:
+        assert s["family"] in SOURCE_FAMILIES or s["family"] == "rag_existing"
+        assert len(s["targets"]) <= s["cap"]
+    assert plan["curation_gate"]["no_second_vector_store"] is True
+    assert plan["synthesis_gate"]["not_acquisition_source"] is True
+
+
+def test_synthesis_packet_blocked_without_evidence():
+    from scripts.lib.symbol_thesis_synthesis import build_synthesis_packet
+    packet = build_synthesis_packet(
+        "ANET",
+        question="thesis?",
+        evidence_catalog={
+            "supporting": [],
+            "contradictory": [],
+            "structured": [],
+            "sufficiency": {"sufficient_for_synthesis": False},
+        },
+        acquisition_plan={"status": "ACQUISITION_PLANNED", "plan_id": "x"},
+    )
+    assert packet["gate"] == "BLOCKED_PENDING_ACQUISITION_AND_CURATION"
+    assert packet["llm_lanes"]["acquisition_source"] is False
+    assert packet["call_llm"] is False
+
+
+def test_curate_blocks_low_quality():
+    from scripts.lib.symbol_thesis_acquisition import curate_candidate_for_embed
+    bad = curate_candidate_for_embed({"rag_status": "blocked", "quality": "SECONDARY_RESEARCH"})
+    assert bad["admit"] is False
+    good = curate_candidate_for_embed({
+        "rag_status": "approved", "quality": "APPROVED_NEWS", "fact": "ok"
+    })
+    assert good["admit"] is True
+    assert good["embed_ready"] is True

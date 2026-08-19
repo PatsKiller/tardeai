@@ -14,7 +14,8 @@ Routes:
   GET /api/v3/cio/thesis        — Active desk@vN thesis
   GET /api/v3/cio/universe-theses — UNIVERSE & THESES projection (read-only)
   GET /api/v3/cio/symbol-thesis/{SYM} — per-symbol thesis card + history
-  GET /api/v3/cio/thesis-research-proposal — dry prioritized research set
+  GET /api/v3/cio/thesis-research-proposal — dry prioritized research set (RI plane)
+  GET /api/v3/cio/thesis-ri-pipeline/{SYM} — RAG-first + acquisition plan (dry)
   GET /api/v3/cio/ask-thesis/{SYM} — Ask CIO symbol-thesis context
   POST /api/v3/cio/plans/{id}/disposition — ack/defer/done/reject (status only)
   GET  /api/v3/cio/dispositions — latest operator dispositions (decision_id key)
@@ -366,10 +367,10 @@ def get_symbol_thesis_card(symbol: str) -> dict[str, Any]:
 
 
 def get_thesis_research_proposal() -> dict[str, Any]:
-    """GET /api/v3/cio/thesis-research-proposal — DRY prioritized research set."""
+    """GET /api/v3/cio/thesis-research-proposal — DRY prioritized research set (RI plane)."""
     try:
         from scripts.lib.symbol_thesis_research import propose_prioritized_research
-        prop = propose_prioritized_research(limit=40)
+        prop = propose_prioritized_research(limit=40, run_pipeline_preview=0)
         return {"ok": True, **prop}
     except Exception as e:
         return {
@@ -378,6 +379,37 @@ def get_thesis_research_proposal() -> dict[str, Any]:
             "detail": str(e)[:240],
             "authority": "READ_ONLY_ADVISORY",
             "enqueued": False,
+            "hermes_is_acquisition_source": False,
+            "as_of": _now_iso(),
+        }
+
+
+def get_thesis_ri_pipeline(symbol: str) -> dict[str, Any]:
+    """GET /api/v3/cio/thesis-ri-pipeline/{SYM} — RAG-first + budgeted acquisition plan.
+
+    Hermes/Flash are synthesis-only. Default dry: no acquire/embed/LLM.
+    """
+    sym = str(symbol or "").strip().upper()
+    if not sym:
+        return {"ok": False, "error": "symbol_required", "authority": "READ_ONLY_ADVISORY"}
+    try:
+        from scripts.lib.symbol_thesis_research import run_ri_pipeline_for_gap
+        out = run_ri_pipeline_for_gap(
+            sym,
+            retrieve=True,
+            apply_acquire=False,
+            apply_embed=False,
+            call_llm=False,
+        )
+        return {"ok": True, **out}
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": type(e).__name__,
+            "detail": str(e)[:240],
+            "symbol": sym,
+            "hermes_is_acquisition_source": False,
+            "authority": "READ_ONLY_ADVISORY",
             "as_of": _now_iso(),
         }
 
