@@ -40340,6 +40340,18 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     if not sym:
                         return 400, {"ok": False, "error": "symbol required"}
                     return 200, _cio.get_thesis_ri_pipeline(sym)
+                if p.startswith("thesis-research-context/") or p.startswith("thesis_research_context/"):
+                    prefix = (
+                        "thesis-research-context/"
+                        if p.startswith("thesis-research-context/")
+                        else "thesis_research_context/"
+                    )
+                    sym = p[len(prefix):].strip("/").split("/")[0]
+                    if not sym:
+                        return 400, {"ok": False, "error": "symbol required"}
+                    return 200, _cio.get_thesis_research_context(sym)
+                if p in ("r71-fabric-map", "r71_fabric_map", "fabric-map"):
+                    return 200, _cio.get_r71_fabric_map()
                 if p.startswith("symbol-thesis/") or p.startswith("symbol_thesis/"):
                     prefix = "symbol-thesis/" if p.startswith("symbol-thesis/") else "symbol_thesis/"
                     sym = p[len(prefix):].strip("/").split("/")[0]

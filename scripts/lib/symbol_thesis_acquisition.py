@@ -292,46 +292,32 @@ def plan_embed_into_existing_rag(
 
 
 def dry_run_searx_step(queries: list[str]) -> list[dict[str, Any]]:
-    """Optional live SearXNG probe (read-only web). Caps already applied by plan.
+    """Optional live SearXNG probe via SHARED searxng_client (no second client).
 
     Fail-soft. Catalogs hits as pending evidence (not yet embedded).
     """
     out: list[dict[str, Any]] = []
     try:
-        import re
-        import urllib.parse
-        import urllib.request
+        from scripts.lib.searxng_client import searx_search
         from scripts.lib.symbol_thesis_evidence import evidence_item, POLARITY_NEUTRAL
     except Exception as exc:
         return [{"error": f"import:{exc}"}]
 
-    searx = "http://127.0.0.1:8080/search"  # local container convention
-    # try common env
-    import os
-    searx = os.environ.get("SEARXNG_URL", searx)
-
     for q in queries[:3]:
-        try:
-            params = urllib.parse.urlencode({"q": q, "format": "json", "categories": "general"})
-            req = urllib.request.Request(
-                f"{searx}?{params}",
-                headers={"User-Agent": "SymbolThesisAcquisition/1.0"},
-            )
-            with urllib.request.urlopen(req, timeout=12) as resp:
-                data = json.loads(resp.read())
-            for hit in (data.get("results") or [])[:5]:
-                out.append(evidence_item(
-                    fact=(hit.get("content") or hit.get("title") or "")[:400],
-                    title=(hit.get("title") or "")[:200],
-                    source_type="searxng_web",
-                    source_id=_digest(hit.get("url"), hit.get("title")),
-                    polarity=POLARITY_NEUTRAL,
-                    quality="SECONDARY_RESEARCH",
-                    rag_status="pending",
-                    url=hit.get("url"),
-                    observed_at=_now(),
-                    provenance={"query": q, "engine": "searxng"},
-                ))
-        except Exception as exc:
-            out.append({"error": f"searx:{q[:60]}:{exc}", "query": q})
+        for hit in searx_search(q, limit=5):
+            if hit.get("error"):
+                out.append(hit)
+                continue
+            out.append(evidence_item(
+                fact=(hit.get("snippet") or hit.get("title") or "")[:400],
+                title=(hit.get("title") or "")[:200],
+                source_type="searxng_web",
+                source_id=_digest(hit.get("url"), hit.get("title")),
+                polarity=POLARITY_NEUTRAL,
+                quality="SECONDARY_RESEARCH",
+                rag_status="pending",
+                url=hit.get("url"),
+                observed_at=_now(),
+                provenance={"query": q, "engine": "searxng", "domain": hit.get("domain")},
+            ))
     return out

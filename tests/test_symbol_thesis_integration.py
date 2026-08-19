@@ -371,3 +371,73 @@ def test_curate_blocks_low_quality():
     })
     assert good["admit"] is True
     assert good["embed_ready"] is True
+
+
+def test_r71_dependency_versioned():
+    from scripts.lib.r71_cursor_fabric_map import fabric_map_report, load_dependency
+    dep = load_dependency()
+    assert dep.get("cursor_remediation_versioned") is True
+    assert dep.get("cursor_head", "").startswith("e683e90f")
+    assert dep.get("dependency_strategy") == "DECLARE_SHA_CONSUME_DATA_PLANE_NO_WHOLESALE_MERGE"
+    report = fabric_map_report()
+    assert report["hold_on_unversioned"] is False
+    assert "DO_NOT_IMPORT" in report["by_class"]
+    assert any("candidate_discovery" in c for c in report["by_class"]["CONSUME_DIRECTLY"])
+
+
+def test_materiality_membership_not_evidence():
+    from scripts.lib.symbol_thesis_materiality import classify_materiality
+    m = classify_materiality(
+        memberships=["WATCHLIST"],
+        source_tier="candidate",
+        origin_system="hermes_research+social",
+        provenance_complete=True,
+        social_score=95,
+    )
+    assert m["membership_is_not_evidence"] is True
+    assert m["social_score_is_derived_only"] is True
+    assert m["auto_apply_is_not_research_confidence"] is True
+    assert m["materiality_tier"] == "T3_DISCOVERY"
+    assert m["expensive_thesis_work_allowed"] is False
+
+    held = classify_materiality(memberships=["HELD", "WATCHLIST"], held=True)
+    assert held["materiality_tier"] == "T0_CURRENT_HOLDING"
+    assert held["expensive_thesis_work_allowed"] is True
+
+
+def test_legacy_unattributed_trust():
+    from scripts.lib.symbol_thesis_materiality import classify_materiality
+    m = classify_materiality(
+        memberships=["REENTRY", "WATCHLIST"],
+        reentry_state="NEAR ENTRY",
+        origin_system=None,
+        provenance_complete=False,
+    )
+    assert m["evidence_trust"] == "LEGACY_UNATTRIBUTED"
+    # near reentry without provenance demoted from expensive (except holdings)
+    assert m["expensive_thesis_work_allowed"] is False
+
+
+def test_wake_dedupe_no_auto_thesis_version(tmp_path, monkeypatch):
+    monkeypatch.chdir(ROOT)
+    from scripts.lib.symbol_thesis_event_wake import plan_wake_from_discovery, execute_wake_checks
+    # use tmp root for dedupe file via monkeypatch of parents — pass root
+    p1 = plan_wake_from_discovery(symbol="SCHG", event_id="evt-test-1", root=tmp_path)
+    assert p1["duplicate"] is False
+    assert "auto_thesis_version" in p1["actions_forbidden"]
+    assert p1["cio_event_type"] == "watch.new_signal"
+    # mark seen
+    from scripts.lib.symbol_thesis_event_wake import execute_wake_checks as _
+    # manually persist by calling execute with persist
+    # (execute builds full context — may be slow; just re-plan after fake save)
+    from scripts.lib.symbol_thesis_event_wake import _save_seen
+    _save_seen(tmp_path, {"seen": {p1["wake_id"]: {"as_of": "x"}}, "updated_at": "x"})
+    p2 = plan_wake_from_discovery(symbol="SCHG", event_id="evt-test-1", root=tmp_path)
+    assert p2["duplicate"] is True
+    assert p2["action"] == "SUPPRESS"
+
+
+def test_shared_searx_client_importable():
+    from scripts.lib.searxng_client import searx_search, DEFAULT_SEARXNG
+    assert "8080" in DEFAULT_SEARXNG or "SEARXNG" in DEFAULT_SEARXNG or "http" in DEFAULT_SEARXNG
+    assert callable(searx_search)
