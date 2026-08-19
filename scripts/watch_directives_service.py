@@ -159,6 +159,7 @@ def _drain_curation_sources(c, cur, dry, report, evaluate, resolve_fn):
     still lets promote_directive_lead decide (never force auto=True).
     """
     from lib.two_way_curation import (
+        BOOTSTRAP_ASSUMPTION,
         DEFAULT_DRAIN_LIMIT,
         DESK_PROMOTION_TIER,
         auto_apply_gate,
@@ -182,16 +183,16 @@ def _drain_curation_sources(c, cur, dry, report, evaluate, resolve_fn):
         except Exception:
             div = "unavailable"
         # No calibrated hit-rate yet → pass None so hit_rate_ok is False unless
-        # CURATION_HIT_RATE_DEFAULT is set (bootstrap soak).
+        # CURATION_HIT_RATE_DEFAULT (MEASURED_HIT_RATE) is set.
         hr_raw = os.environ.get("CURATION_HIT_RATE_DEFAULT", "").strip()
         try:
             hr = float(hr_raw) if hr_raw else None
         except ValueError:
             hr = None
-        # During bootstrap (no hit-rate), treat missing hit-rate as meeting floor
-        # only when CURATION_AUTO_APPLY=1; default is stage-for-review (safer).
+        # During bootstrap (no measured hit-rate), substitute BOOTSTRAP_ASSUMPTION to meet
+        # the floor only when CURATION_AUTO_APPLY=1; default is stage-for-review (safer).
         if hr is None and os.environ.get("CURATION_AUTO_APPLY", "0").strip() in ("1", "true", "yes"):
-            hr = 0.65
+            hr = BOOTSTRAP_ASSUMPTION
         return auto_apply_gate(tier, div, hr)
 
     drain_curation_sources(
