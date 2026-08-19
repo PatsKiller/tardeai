@@ -139,22 +139,44 @@ def check_pipeline_critical() -> list:
 
 
 def check_data_staleness() -> list:
-    """Check critical data product freshness."""
+    """Check critical data product freshness. State-transition only (FRESH→STALE / STALE→FRESH)."""
     alerts = []
     now = datetime.now()
     checks = [
         ("holdings.json", STATE_DIR / "holdings.json", 36),  # 36h = hard alert threshold
         ("risk_management.json", STATE_DIR / "risk_management.json", 36),
     ]
+    try:
+        sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+        from alert_condition_state import observe
+    except Exception:
+        observe = None
     for label, path, max_h in checks:
-        if path.exists():
-            age_h = (now - datetime.fromtimestamp(path.stat().st_mtime)).total_seconds() / 3600
-            if age_h > max_h and now.weekday() < 5:  # Only alert on weekdays
+        if not path.exists():
+            continue
+        age_h = (now - datetime.fromtimestamp(path.stat().st_mtime)).total_seconds() / 3600
+        stale = age_h > max_h and now.weekday() < 5
+        if observe is not None:
+            obs = observe(
+                f"data_staleness:{label}",
+                f"STALE:{int(age_h)}h" if stale else "FRESH",
+                alertable=stale,
+            )
+            if not obs.get("notify"):
+                continue
+            if obs.get("action") == "recovered":
                 alerts.append({
-                    "type": "data_stale",
-                    "severity": "warning",
-                    "message": f"STALE DATA: {label} is {age_h:.0f}h old (threshold {max_h}h)",
+                    "type": "data_staleness",
+                    "severity": "info",
+                    "message": f"RECOVERED: {label} is fresh again ({age_h:.0f}h)",
                 })
+                continue
+        if stale:
+            alerts.append({
+                "type": "data_staleness",
+                "severity": "warning",
+                "message": f"STALE DATA: {label} is {age_h:.0f}h old (threshold {max_h}h)",
+            })
     return alerts
 
 

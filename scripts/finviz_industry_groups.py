@@ -24,6 +24,7 @@ import argparse
 import csv
 import io
 import json
+import os
 import re
 import sys
 import urllib.error
@@ -33,6 +34,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "scripts" / "lib"))
 
 from sector_momentum_engine import CFG, classify, _closes, _ret  # noqa: E402
 
@@ -46,6 +48,24 @@ SNAP = ROOT / "data" / "runtime" / "industry_momentum_latest.json"
 URL = "https://elite.finviz.com/grp_export.ashx?g=industry&v=141"
 MAX_ALERTS = 3
 POOL_N = 10
+_CLOSE_LOCK_FD = None
+
+
+def _acquire_close_lock() -> None:
+    """Process-level singleton for --close. Cron already flocks; health remediations did not."""
+    global _CLOSE_LOCK_FD
+    try:
+        import fcntl
+        p = Path("/tmp/industry_momentum_close.lock")
+        _CLOSE_LOCK_FD = open(p, "w")
+        fcntl.flock(_CLOSE_LOCK_FD.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        _CLOSE_LOCK_FD.write(str(os.getpid()))
+        _CLOSE_LOCK_FD.flush()
+    except BlockingIOError:
+        print("[industry] another --close is running — refusing duplicate close persist")
+        raise SystemExit(0)
+    except Exception:
+        pass  # lock is best-effort; semantic dedupe is the real backstop
 
 
 def _cookie() -> str:
@@ -200,15 +220,23 @@ def main() -> int:
         g["watched"] = watch.get(g["industry"], [])
 
     alerts, confirmed = [], []
+    notify_plan = {"send": [], "suppressed": [], "observations": []}
     if args.close:
+        # Singleton: one close-state process at a time. Health-inspector remediations
+        # used to invoke --close every ~2 minutes without the cron flock.
+        _acquire_close_lock()
+        from industry_momentum import build_alerts, decide_notifications, emit_telegram, is_confirmed
         d = CFG["debounce_days"]
         for g in groups:
             if not g["state"]:
                 continue
-            cur.execute("""SELECT state FROM industry_momentum_state WHERE industry=%s
+            # Prior SESSIONS only. Including today's already-persisted row made every
+            # same-day --close replay look like a fresh confirmation.
+            cur.execute("""SELECT state FROM industry_momentum_state
+                           WHERE industry=%s AND as_of < CURRENT_DATE
                            ORDER BY as_of DESC LIMIT %s""", (g["industry"], d))
             prior = [r[0] for r in cur.fetchall()]
-            if len(prior) >= d and prior[0] == g["state"] and prior[-1] != g["state"]:
+            if is_confirmed(prior, g["state"], d):
                 confirmed.append({"industry": g["industry"], "sector": g["sector"],
                                   "from": prior[-1], "to": g["state"],
                                   "rel1w": g["rel1w"], "rel1m": g["rel1m"],
@@ -227,15 +255,9 @@ def main() -> int:
                      g["perf_week"], g["perf_month"], g["perf_quarter"], g["perf_ytd"],
                      g["change_1d"], g["stocks"]))
         conn.commit()
-        # alerts ONLY for book/watch intersections (the 144-industry firehose stays silent)
-        for c in confirmed:
-            if not (c["held"] or c["watched"]):
-                continue
-            who = ("holding " + "/".join(c["held"][:4])) if c["held"] else \
-                  ("watching " + "/".join(c["watched"][:4]))
-            alerts.append({**c, "line": f"⚠ {c['industry']} ({c['sector']}) {c['from']}→{c['to']} "
-                                        f"— rel1w {c['rel1w']:+.1f} · {who}"})
-        alerts = alerts[:MAX_ALERTS]
+        alerts = build_alerts(confirmed, max_alerts=MAX_ALERTS)
+        session = datetime.now().date().isoformat()
+        notify_plan = decide_notifications(alerts, session=session)
 
     ranked = sorted((g for g in groups if g["rel1w"] is not None),
                     key=lambda g: g["rel1w"], reverse=True)
@@ -264,24 +286,29 @@ def main() -> int:
                 for g in sorted(improving, key=lambda x: x["rel1w"] or 0, reverse=True)[:POOL_N]],
         },
         "transitions_confirmed": confirmed,
-        "alerts": alerts,
+        "alerts": notify_plan.get("send") or [],
+        "alerts_suppressed": [a.get("line") for a in (notify_plan.get("suppressed") or [])],
         "counts": {s: sum(1 for g in groups if g["state"] == s) for s in
                    ("LEADING", "WEAKENING", "LAGGING", "IMPROVING")},
     }
     if not args.dry_run:
         SNAP.parent.mkdir(parents=True, exist_ok=True)
         SNAP.write_text(json.dumps(snap, default=str))
-    for a in alerts:
+    for a in notify_plan.get("send") or []:
         print("[industry ALERT]", a["line"])
-    if alerts and not args.dry_run:
+    for a in notify_plan.get("suppressed") or []:
+        print("[industry SUPPRESSED]", a.get("line"))
+    if (notify_plan.get("send") or []) and not args.dry_run:
         try:
+            from industry_momentum import emit_telegram
             from telegram_alert import send_telegram
-            send_telegram("INDUSTRY MOMENTUM\n" + "\n".join(a["line"] for a in alerts),
-                          bypass_router=True)
+            # Governed path: Signal-over-Spam router. Never bypass_router.
+            emit_telegram(notify_plan, send_telegram)
         except Exception as e:
             print(f"[industry] telegram failed: {e}")
     print(f"[industry] {len(groups)} groups · counts {snap['counts']} · "
-          f"{len(confirmed)} confirmed transitions · {len(alerts)} alerts · "
+          f"{len(confirmed)} confirmed transitions · {len(notify_plan.get('send') or [])} alerts · "
+          f"{len(notify_plan.get('suppressed') or [])} suppressed · "
           f"snapshot {SNAP.stat().st_size if SNAP.exists() and not args.dry_run else 0}B")
     return 0
 

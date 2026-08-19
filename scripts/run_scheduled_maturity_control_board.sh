@@ -16,7 +16,7 @@ LLM_DISABLE=$(grep '^LLM_DISABLE_LIVE_EXECUTION=' "$PROJ/.env" | cut -d= -f2-)
 [ "$ALPACA_MODE" != "paper" ] && { log "ABORT: ALPACA_MODE=$ALPACA_MODE"; exit 1; }
 [ "$LLM_DISABLE" != "true" ] && { log "ABORT: LLM_DISABLE=$LLM_DISABLE"; exit 1; }
 
-HOLDINGS_OK=$($PY -c 'import json; d=json.load(open("'"$PROJ"'/data/portfolios/state/holdings.json")); print("OK" if d["portfolio_totals"]["total_value"] > 1000000 else "FAIL")' 2>/dev/null || echo "FAIL")
+HOLDINGS_OK=$($PY -c 'import sys; sys.path[:0]=["'"$PROJ"'/scripts","'"$PROJ"'/scripts/lib"]; from holdings_sanity import file_is_intact; print("OK" if file_is_intact("'"$PROJ"'/data/portfolios/state/holdings.json") else "FAIL")' 2>/dev/null || echo "FAIL")
 [ "$HOLDINGS_OK" != "OK" ] && { log "ABORT: holdings guard failed"; exit 1; }
 
 log "Starting"

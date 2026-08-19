@@ -23,10 +23,17 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
 HOLDINGS_PATH = PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json"
-MIN_TOTAL = 1_000_000          # canonical sanity floor (the portfolio is ~$1.24M)
+# MIN_TOTAL retained as a deprecated alias for import compatibility. It is NOT
+# applied. Validation is coverage + relative-drop (see holdings_sanity).
+MIN_TOTAL = None
 BASIS_DIVERGENCE_PCT = 2.0     # flag if API avg price differs from stored basis by > this %
-CATASTROPHIC_DROP_FRACTION = 0.5  # reject a write whose total < this fraction of the last-good total
+from holdings_sanity import (  # noqa: E402
+    CATASTROPHIC_DROP_FRACTION,
+    REASON_VALID_COMPLETE,
+    validate_payload,
+)
 from tg_chat_ids import chat_ids  # no hardcoded chat IDs
 
 
@@ -60,27 +67,35 @@ def _total_of(h):
         return 0.0
 
 
-def sane_payload(h):
-    """PRE-WRITE SANITY — returns (ok, reason). Empty/partial/garbage all fail here."""
-    if not isinstance(h, dict):
-        return False, "payload is not a dict (parse error / garbage)"
-    pos = _positions_of(h)
-    if not isinstance(pos, list) or len(pos) == 0:
-        return False, "zero positions in payload — refusing to write"
-    total = _total_of(h)
-    if total < MIN_TOTAL:
-        return False, f"total_value {total:,.0f} below sanity floor {MIN_TOTAL:,.0f} — refusing to write"
-    return True, "ok"
+def _last_good_doc(path=None):
+    try:
+        p = Path(path) if path else HOLDINGS_PATH
+        if p.exists():
+            return json.loads(p.read_text())
+    except Exception:
+        pass
+    return None
 
 
-def canonical_assert(path=None):
-    """The documented post-write check. Raises AssertionError on a bad snapshot."""
-    d = json.load(open(path or HOLDINGS_PATH))
-    v = d["portfolio_totals"]["total_value"]
-    n = len(_positions_of(d))
-    assert v > MIN_TOTAL, f"post-write total_value {v} <= floor"
-    assert n > 0, "post-write position_count == 0"
-    return v, n
+def sane_payload(h, last_good=None):
+    """PRE-WRITE SANITY — same contract as canonical_assert()."""
+    last = last_good if last_good is not None else _last_good_doc()
+    v = validate_payload(h, last)
+    return v.ok, f"{v.reason_code}: {v.reason}"
+
+
+def canonical_assert(path=None, last_good=None):
+    """Post-write check — identical contract to sane_payload()."""
+    p = path or HOLDINGS_PATH
+    d = json.load(open(p))
+    last = last_good
+    if last is None:
+        # After a write the file IS the candidate; compare against in-memory prior if given.
+        last = getattr(canonical_assert, "_prior", None)
+    v = validate_payload(d, last)
+    if not v.ok:
+        raise AssertionError(f"post-write {v.reason_code}: {v.reason}")
+    return v.total, v.position_count
 
 
 def check_basis_divergence(new_holdings, account_key="schwab"):
@@ -155,20 +170,15 @@ def protected_holdings_write(new_holdings, source="schwab_sync", account_key="sc
     a caller may pass its own resolved path (the guard operates entirely on that path).
     """
     HP = Path(target_path).resolve() if target_path else HOLDINGS_PATH
-    ok, reason = sane_payload(new_holdings)
-    if not ok:
-        _record(account_key, "rejected_sanity", f"[{source}] {reason}")
+    prior_doc = _last_good_doc(HP)
+    verdict = validate_payload(new_holdings, prior_doc)
+    if not verdict.ok:
+        status = "rejected_drop" if verdict.reason_code == "CATASTROPHIC_DROP" else "rejected_sanity"
+        reason = f"{verdict.reason_code}: {verdict.reason}"
+        _record(account_key, status, f"[{source}] {reason}", verdict.position_count, verdict.total)
         _alert(f"🛑 holdings write BLOCKED ({source}): {reason}. Prior snapshot kept (no wipe).", source)
-        return {"wrote": False, "status": "rejected_sanity", "reason": reason}
-
-    # catastrophic-drop guard vs last-good snapshot
-    prior = _last_good_total(HP)
-    new_total = _total_of(new_holdings)
-    if prior > 0 and new_total < CATASTROPHIC_DROP_FRACTION * prior:
-        rsn = f"total {new_total:,.0f} < {CATASTROPHIC_DROP_FRACTION:.0%} of last-good {prior:,.0f}"
-        _record(account_key, "rejected_drop", f"[{source}] {rsn}", len(_positions_of(new_holdings)), new_total)
-        _alert(f"🛑 holdings write REJECTED ({source}): catastrophic drop — {rsn}. Prior snapshot kept.", source)
-        return {"wrote": False, "status": "rejected_drop", "reason": rsn}
+        return {"wrote": False, "status": status, "reason": reason, "reason_code": verdict.reason_code,
+                "missing_accounts": verdict.missing_accounts}
 
     # ── SSOT BASIS SHIELD (root fix 2026-06-12) ──────────────────────────────────────────────
     # Rows whose basis came from the single-source-of-truth hierarchy (csv tax lot > broker API
@@ -228,13 +238,13 @@ def protected_holdings_write(new_holdings, source="schwab_sync", account_key="sc
             pass
 
     backup = None
-    prior_doc = None
     if HP.exists():
         backup = HP.read_bytes()
-        try:
-            prior_doc = json.loads(backup.decode())
-        except Exception:
-            prior_doc = None
+        if prior_doc is None:
+            try:
+                prior_doc = json.loads(backup.decode())
+            except Exception:
+                prior_doc = None
 
     # atomic write
     try:
@@ -252,7 +262,7 @@ def protected_holdings_write(new_holdings, source="schwab_sync", account_key="sc
 
     # post-write verification — restore on failure
     try:
-        v, n = canonical_assert(HP)
+        v, n = canonical_assert(HP, last_good=prior_doc)
     except Exception as e:
         if backup is not None:
             HP.write_bytes(backup)

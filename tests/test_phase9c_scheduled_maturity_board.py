@@ -48,7 +48,7 @@ class TestPhase9CScheduledMaturityBoard(unittest.TestCase):
     def test_10_wrapper_checks_holdings(self):
         script = (PROJECT_ROOT / "scripts/run_scheduled_maturity_control_board.sh").read_text()
         self.assertIn("holdings.json", script)
-        self.assertIn("1000000", script)
+        self.assertIn("file_is_intact", script)
 
     def test_11_wrapper_outputs_to_maturity_hardening(self):
         script = (PROJECT_ROOT / "scripts/run_scheduled_maturity_control_board.sh").read_text()

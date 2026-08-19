@@ -83,12 +83,27 @@ def main():
                                              "name": "Cash & Cash Investments", "source": "broker_reconcile"})
 
     if apply and (report["feedless_fixed"] or report["corrected"] or report["cash_fixed"]):
-        # recalc portfolio total
+        # Stale broker snapshot (the June 2026 paste) must not rewrite August books.
+        # Daily 16:10 --apply has been presenting ~$723k partial totals against a
+        # ~$1.28M last-good — that is incomplete coverage, not a smaller portfolio.
+        sys.path.insert(0, str(ROOT / "scripts"))
+        sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+        from holdings_sanity import validate_payload
+        last = json.loads(HJ.read_text())
         total = sum(h.get("market_value") or 0 for h in port["holdings"])
         port["portfolio_totals"]["total_value"] = round(total, 2)
-        port["reconciled_at"] = ref_as_of = json.loads(REF.read_text()).get("as_of")
-        from holdings_guard import protected_holdings_write  # MANDATORY wipe-guard
-        protected_holdings_write(port, source="holdings_reconcile", target_path=str(HJ))
+        port["reconciled_at"] = json.loads(REF.read_text()).get("as_of")
+        verdict = validate_payload(port, last)
+        if not verdict.ok:
+            print(json.dumps({
+                "apply_blocked": True,
+                "reason_code": verdict.reason_code,
+                "reason": verdict.reason,
+                "computed_total": total,
+            }))
+        else:
+            from holdings_guard import protected_holdings_write  # MANDATORY wipe-guard
+            protected_holdings_write(port, source="holdings_reconcile", target_path=str(HJ))
 
     # ── Follow-up A: outlier reconciliation — flag held EQUITY/ETF names whose live price diverges >1.5%
     # from the broker reference (the authoritative second source). Feed-less funds are snapped above, so

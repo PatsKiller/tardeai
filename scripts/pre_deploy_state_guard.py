@@ -23,7 +23,8 @@ STATE_DIR = ROOT / "data" / "portfolios" / "state"
 HOLDINGS = STATE_DIR / "holdings.json"
 AUDIT = ROOT / "data" / "state_guard_audit.jsonl"
 BACKUP_DIR = ROOT / "data" / "backups" / "state_snapshots"
-MIN_TOTAL = 1_000_000
+# Deprecated historical $1M floor — assert_holdings_ok now uses holdings_sanity.
+MIN_TOTAL = None
 
 
 def _members(archive):
@@ -47,16 +48,17 @@ def _state_hits(members):
 
 
 def assert_holdings_ok(label):
-    """total market value >= $1M AND position_count > 0, read straight from holdings.json."""
+    """Same coverage/relative contract as the holdings write guard (no static $1M floor)."""
     try:
+        sys.path.insert(0, str(ROOT / "scripts"))
+        sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+        from holdings_sanity import validate_payload
         h = json.load(open(HOLDINGS))
-        hold = h.get("holdings") or h.get("positions") or []
-        if isinstance(hold, dict):
-            hold = list(hold.values())
-        n = len(hold)
-        tot = sum((p.get("market_value") or p.get("value") or 0) for p in hold if isinstance(p, dict))
-        ok = n > 0 and tot >= MIN_TOTAL
-        return ok, {"label": label, "positions": n, "total": round(tot, 2), "min_total": MIN_TOTAL, "ok": ok}
+        v = validate_payload(h, None)
+        return v.ok, {
+            "label": label, "positions": v.position_count, "total": round(v.total, 2),
+            "reason_code": v.reason_code, "ok": v.ok,
+        }
     except Exception as e:
         return False, {"label": label, "error": str(e)[:140], "ok": False}
 

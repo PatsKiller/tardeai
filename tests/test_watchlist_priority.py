@@ -89,8 +89,31 @@ def test_rank_in_scope_daily_priority_symbol():
 
 
 def test_rank_alert_worthy_daily_priority_symbol():
+    """Passive/deep ranks no longer bypass the band gate, even for priority names."""
     daily = {"NVDA"}
-    assert wp.rank_alert_worthy(4000, 4100, symbol="NVDA", daily_symbols=daily) is True
+    assert wp.rank_alert_worthy(4000, 4100, symbol="NVDA", daily_symbols=daily) is False
+
+
+def test_rank_alert_worthy_band_change_inside_window():
+    assert wp.rank_alert_worthy(40, 80) is True  # top50 ← top100
+
+
+def test_rank_alert_worthy_same_band_suppressed():
+    assert wp.rank_alert_worthy(80, 95) is False  # both top100
+
+
+def test_rank_band():
+    assert wp.rank_band(10) == "top20"
+    assert wp.rank_band(40) == "top50"
+    assert wp.rank_band(80) == "top100"
+    assert wp.rank_band(150) == "top200"
+    assert wp.rank_band(500) == "outside"
+
+
+def test_sql_scoring_priority_excludes_blanket_active():
+    sql = wp.sql_scoring_priority_exists("j.symbol")
+    assert "status = 'active'" not in sql
+    assert "in_directive_watch" in sql
 
 
 def test_sql_daily_priority_exists_has_proposals_and_buy():

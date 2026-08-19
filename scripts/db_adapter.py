@@ -210,12 +210,36 @@ def close_thread_conn():
 get_connection = _get_conn
 
 
-def _execute(sql: str, params=None, fetch: str = None):
-    """Execute SQL. fetch='one'|'all'|None."""
-    conn = _get_conn()
+def ensure_conn():
+    """Return a live thread-local connection, discarding a closed/dead handle first."""
+    conn = getattr(_tls, "conn", None)
+    dead = False
     if conn is None:
-        return None
-    try:
+        dead = True
+    else:
+        try:
+            if getattr(conn, "closed", 1):
+                dead = True
+            else:
+                # Probe — InterfaceError "connection already closed" lands here.
+                with conn.cursor() as cur:
+                    cur.execute("SELECT 1")
+                conn.rollback()
+        except Exception:
+            dead = True
+    if dead:
+        try:
+            if conn is not None:
+                conn.close()
+        except Exception:
+            pass
+        _tls.conn = None
+    return _get_conn()
+
+
+def _execute(sql: str, params=None, fetch: str = None):
+    """Execute SQL. fetch='one'|'all'|None. Retries once on a closed connection."""
+    def _run(conn):
         import psycopg2.extras
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(sql, params)
@@ -227,8 +251,27 @@ def _execute(sql: str, params=None, fetch: str = None):
                 result = True
             conn.commit()
             return result
+
+    conn = ensure_conn()
+    if conn is None:
+        return None
+    try:
+        return _run(conn)
     except Exception as e:
-        conn.rollback()
+        msg = str(e).lower()
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        if "already closed" in msg or "interfaceerror" in msg or "connection" in msg:
+            try:
+                close_thread_conn()
+                conn = ensure_conn()
+                if conn is not None:
+                    return _run(conn)
+            except Exception as e2:
+                print(f"  [db_adapter] SQL retry failed: {e2}")
+                return None
         print(f"  [db_adapter] SQL error: {e}")
         return None
 
