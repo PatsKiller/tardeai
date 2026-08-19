@@ -521,7 +521,7 @@ def pull_brave_aplus(symbol: str, score: int, conn) -> bool:
 # INTELLIGENCE READINESS SCORING
 # ─────────────────────────────────────────────
 
-def compute_intelligence_readiness(symbol: str, conn) -> dict:
+def compute_intelligence_readiness(symbol: str, conn, _retried: bool = False) -> dict:
     """
     Score 0-100 how well-equipped agents are to analyze this ticker.
     Components: scan_data(30) + catalyst(25) + news(20) + social(15) + edgar(10)
@@ -530,6 +530,9 @@ def compute_intelligence_readiness(symbol: str, conn) -> dict:
     score = 0
     components = {}
     try:
+        if conn is None or getattr(conn, "closed", 1):
+            from db_adapter import ensure_conn
+            conn = ensure_conn()
         cur = conn.cursor()
 
         # Component 1: trade_ai_scans row (30 pts)
@@ -606,6 +609,15 @@ def compute_intelligence_readiness(symbol: str, conn) -> dict:
             conn.rollback()
         except Exception:
             pass
+        msg = str(e).lower()
+        dead = any(s in msg for s in ("already closed", "interfaceerror", "ssl connection", "connection has been closed"))
+        if dead and not _retried:
+            try:
+                from db_adapter import close_thread_conn, ensure_conn
+                close_thread_conn()
+                return compute_intelligence_readiness(symbol, ensure_conn(), _retried=True)
+            except Exception as e2:
+                log.error(f"compute_intelligence_readiness retry failed for {symbol}: {e2}")
         return {'score': 0, 'grade': 'UNKNOWN'}
 
 
