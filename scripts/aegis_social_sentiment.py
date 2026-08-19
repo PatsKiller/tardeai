@@ -125,6 +125,43 @@ def fetch_reddit_mentions(symbols: list[str]) -> dict[str, dict]:
     return results
 
 
+# ── StockTwits symbol stream (working replacement for Reddit 403) ─────────
+
+def fetch_stocktwits_mentions(symbols: list[str], max_symbols: int = 50) -> dict[str, dict]:
+    """Scan StockTwits symbol streams for per-symbol sentiment (no key, real-time).
+
+    The Reddit public JSON API started returning 403 (2026-08-17) which left the desk
+    with no social signal. StockTwits is the working fallback — its per-message
+    sentiment entities give bull/bear directly, matching the shape Reddit used to.
+    """
+    results: dict[str, dict] = {sym: {"mentions": [], "source": "stocktwits"} for sym in symbols}
+    for sym in symbols[:max_symbols]:
+        try:
+            url = f"https://api.stocktwits.com/api/2/streams/symbol/{sym}.json"
+            resp = requests.get(url, timeout=8, headers={"User-Agent": "Mozilla/5.0"})
+            if resp.status_code != 200:
+                continue
+            data = resp.json()
+            messages = data.get("messages", [])
+            for m in messages:
+                body = (m.get("body") or "").strip()[:200]
+                if not body:
+                    continue
+                senti = ((m.get("entities") or {}).get("sentiment") or {}).get("basic") or ""
+                results[sym]["mentions"].append({
+                    "channel": "stocktwits",
+                    "title": body[:100],
+                    "score": int((m.get("likes") or {}).get("total", 0) or 0),
+                    "bull_signals": 1 if senti == "Bullish" else 0,
+                    "bear_signals": 1 if senti == "Bearish" else 0,
+                })
+            time.sleep(0.3)  # politeness — per-symbol
+        except Exception as e:
+            print(f"  [stocktwits] {sym} error: {e}")
+
+    return results
+
+
 # ── Brave Search API ─────────────────────────────────────────────────────
 
 def fetch_brave_social(symbols: list[str], max_queries: int = 10) -> dict[str, dict]:
@@ -163,30 +200,33 @@ def fetch_brave_social(symbols: list[str], max_queries: int = 10) -> dict[str, d
 
 # ── Sentiment normalization ──────────────────────────────────────────────
 
-def normalize_sentiment(symbol: str, reddit_data: dict, brave_data: dict) -> dict:
+def normalize_sentiment(symbol: str, reddit_data: dict, brave_data: dict,
+                        stocktwits_data: dict | None = None) -> dict:
     """Normalize raw social data into a structured sentiment record."""
     r_mentions = reddit_data.get("mentions", [])
     b_mentions = brave_data.get("mentions", []) if brave_data else []
+    st_mentions = (stocktwits_data or {}).get("mentions", []) if stocktwits_data else []
+    social_mentions = r_mentions + st_mentions
 
-    mention_count = len(r_mentions) + len(b_mentions)
+    mention_count = len(social_mentions) + len(b_mentions)
     if mention_count == 0:
         return None
 
-    # Count polarity from Reddit
-    bullish = sum(m.get("bull_signals", 0) for m in r_mentions)
-    bearish = sum(m.get("bear_signals", 0) for m in r_mentions)
+    # Count polarity from Reddit + StockTwits (both carry bull/bear signals)
+    bullish = sum(m.get("bull_signals", 0) for m in social_mentions)
+    bearish = sum(m.get("bear_signals", 0) for m in social_mentions)
     total_signals = bullish + bearish
     if total_signals > 0:
         sentiment_score = round((bullish - bearish) / total_signals, 2)
     else:
         sentiment_score = 0.0
 
-    bullish_count = sum(1 for m in r_mentions if m.get("bull_signals", 0) > m.get("bear_signals", 0))
-    bearish_count = sum(1 for m in r_mentions if m.get("bear_signals", 0) > m.get("bull_signals", 0))
+    bullish_count = sum(1 for m in social_mentions if m.get("bull_signals", 0) > m.get("bear_signals", 0))
+    bearish_count = sum(1 for m in social_mentions if m.get("bear_signals", 0) > m.get("bull_signals", 0))
     neutral_count = mention_count - bullish_count - bearish_count
 
     # Theme extraction from titles
-    all_titles = [m.get("title", "") for m in r_mentions + b_mentions]
+    all_titles = [m.get("title", "") for m in social_mentions + b_mentions]
     words = Counter()
     for t in all_titles:
         for w in re.findall(r'\b[a-z]{4,}\b', t.lower()):
@@ -195,10 +235,13 @@ def normalize_sentiment(symbol: str, reddit_data: dict, brave_data: dict) -> dic
     themes = [w for w, c in words.most_common(5) if c >= 2]
 
     # Top posts summary
-    top = sorted(r_mentions, key=lambda m: m.get("score", 0), reverse=True)[:3]
-    summary_parts = [f"r/{m.get('subreddit','?')}: {m.get('title','')[:60]} (score:{m.get('score',0)})" for m in top]
+    top = sorted(social_mentions, key=lambda m: m.get("score", 0), reverse=True)[:3]
+    summary_parts = []
+    for m in top:
+        label = m.get("channel") or f"r/{m.get('subreddit', '?')}"
+        summary_parts.append(f"{label}: {m.get('title', '')[:60]} (score:{m.get('score', 0)})")
     for m in b_mentions[:2]:
-        summary_parts.append(f"[brave] {m.get('title','')[:60]}")
+        summary_parts.append(f"[brave] {m.get('title', '')[:60]}")
     summary = " | ".join(summary_parts)[:500]
 
     # Spike detection: >5 mentions for a single symbol is unusual
@@ -234,7 +277,7 @@ def persist_sentiment(symbol: str, sentiment: dict, source_family: str):
             mention_count=EXCLUDED.mention_count, sentiment_score=EXCLUDED.sentiment_score,
             top_posts_summary=EXCLUDED.top_posts_summary, confidence=EXCLUDED.confidence,
             observed_at=NOW()""",
-        (RUN_ID, symbol, source_family, "reddit+brave", sentiment["mention_count"],
+        (RUN_ID, symbol, source_family, "reddit+stocktwits+brave", sentiment["mention_count"],
          sentiment["bullish_count"], sentiment["bearish_count"], sentiment["neutral_count"],
          sentiment["sentiment_score"], sentiment["volume_zscore"], sentiment["unusual_spike"],
          sentiment["theme_tags"], sentiment["top_posts_summary"],
@@ -254,10 +297,15 @@ def main():
     symbols = [u["symbol"] for u in universe]
     print(f"  Universe: {len(symbols)} symbols")
 
-    # D1: Reddit scan
+    # D1: Reddit scan (best-effort — public JSON API is 403 since 2026-08-17)
     reddit_data = fetch_reddit_mentions(symbols)
     reddit_hits = sum(1 for v in reddit_data.values() if v.get("mentions"))
     print(f"  Reddit: {reddit_hits} symbols with mentions")
+
+    # D1: StockTwits scan (working primary social source)
+    stocktwits_data = fetch_stocktwits_mentions(symbols, max_symbols=50)
+    stocktwits_hits = sum(1 for v in stocktwits_data.values() if v.get("mentions"))
+    print(f"  StockTwits: {stocktwits_hits} symbols with mentions")
 
     # D1: Brave discovery (top 10 by priority: recovery > watchlist > holdings)
     priority_syms = sorted(symbols, key=lambda s: (
@@ -270,14 +318,18 @@ def main():
     # D3: Normalize + persist
     written = 0
     for sym in symbols:
-        sentiment = normalize_sentiment(sym, reddit_data.get(sym, {}), brave_data.get(sym, {}))
+        sentiment = normalize_sentiment(
+            sym, reddit_data.get(sym, {}), brave_data.get(sym, {}),
+            stocktwits_data.get(sym, {}),
+        )
         if sentiment:
-            if persist_sentiment(sym, sentiment, "reddit+brave"):
+            if persist_sentiment(sym, sentiment, "social"):
                 written += 1
 
     print(f"  Persisted: {written} sentiment records")
     print(f"[aegis-social] Complete — {datetime.now().isoformat()}")
-    return {"universe": len(symbols), "reddit_hits": reddit_hits, "brave_hits": len(brave_data), "written": written, "run_id": RUN_ID}
+    return {"universe": len(symbols), "reddit_hits": reddit_hits, "stocktwits_hits": stocktwits_hits,
+            "brave_hits": len(brave_data), "written": written, "run_id": RUN_ID}
 
 
 if __name__ == "__main__":

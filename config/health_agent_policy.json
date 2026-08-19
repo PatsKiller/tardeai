@@ -348,6 +348,13 @@
     "execution_log_errors": ".venv/bin/python scripts/unified_stop_supervisor.py --apply >> logs/unified_stop_supervisor.log 2>&1",
     "data_source_stale": ".venv/bin/python scripts/external_market_data_ingest.py --quotes"
   },
+  "data_source_remediation": {
+    "_comment": "source_key -> producer command for the generic data_source_stale finding. The default remediation_map['data_source_stale'] runs external_market_data_ingest.py --quotes, which only refreshes QUOTE sources (yahoo_finance/finviz/alpaca). Non-quote sources (finnhub news, sec_edgar, youtube_api, …) must be listed here or they are NOT auto-retried — the finding escalates instead of looping a producer that can never clear it. finnhub is intentionally unmapped: a 401 routes to data_source_auth_failed (operator action), and a non-401 stall is the orchestrator/enrichment lane already covered by pipeline_failures.",
+    "sec_edgar": ".venv/bin/python scripts/sec_data_ingest.py --all",
+    "youtube_api": ".venv/bin/python scripts/youtube_transcript_ingest.py --all-channels",
+    "social": ".venv/bin/python scripts/sync_social_to_intelligence.py --apply",
+    "hermes_social": ".venv/bin/python scripts/hermes_social_sentiment.py --apply"
+  },
   "log_errors": {
     "_comment": "Scan recently-active component logs for ERROR/Traceback spikes (content, not staleness).",
     "enabled": true,

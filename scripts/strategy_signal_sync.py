@@ -336,7 +336,8 @@ def build_setup_description(scan: dict, plan: dict) -> str:
 
 def insert_strategy_signal(conn, scan: dict, plan: dict, available_cols: set,
                            sync_run_id: str, dry_run=False, route_data: dict = None,
-                           max_price_drift_pct: float = 3.0) -> dict:
+                           max_price_drift_pct: float = 3.0,
+                           max_signal_drift_pct: float = 25.0) -> dict:
     """Insert or update a strategy_signal row. Returns status dict."""
     symbol = scan['symbol']
     strategy_id = scan.get('strategy_id') or infer_strategy_id(scan)
@@ -355,7 +356,15 @@ def insert_strategy_signal(conn, scan: dict, plan: dict, available_cols: set,
     if existing:
         return {"status": "skipped", "reason": "duplicate", "signal_id": existing[0]}
 
-    # ── Live price validation: reject if screener price drifted >3% from live ──
+    # ── Live price re-pricing ──
+    # The screener `price` is the DISCOVERY price (an intraday/premarket snapshot), not the
+    # execution price. Micro-float momentum names routinely move 40-110% intraday, so the
+    # discovery price drifts far more than 3% from the live quote as a matter of course — a
+    # fixed 3% reject was dropping every GO signal (inserted: 0 → proposals: 0). The correct
+    # behavior is to re-price the entry to the live quote, and only reject on a hard ceiling
+    # that signals stale/corrupt data rather than a normal volatile fade. Fill-time drift is
+    # still enforced downstream (momentum_scalp.yaml intraday_execution.max_price_drift_pct
+    # and the paper fast path).
     price = float(scan.get('price') or 0)
     if price > 0:
         try:
@@ -363,14 +372,22 @@ def insert_strategy_signal(conn, scan: dict, plan: dict, available_cols: set,
             live_q = get_best_quote(symbol)
             if live_q and live_q.get("last_price"):
                 live_px = float(live_q["last_price"])
-                drift_pct = abs(live_px - price) / price * 100
-                if drift_pct > max_price_drift_pct:
-                    log.warning(f"  {symbol}: screener price ${price:.2f} drifted {drift_pct:.1f}% "
-                                f"from live ${live_px:.2f} — skipping signal")
-                    return {"status": "skipped",
-                            "reason": f"price_drift_{drift_pct:.1f}pct (screener=${price:.2f} live=${live_px:.2f})"}
-                # Use live price for signal if available
-                price = live_px
+                if live_px > 0:
+                    drift_pct = abs(live_px - price) / price * 100
+                    if drift_pct > max_signal_drift_pct:
+                        log.warning(
+                            f"  {symbol}: screener price ${price:.2f} vs live ${live_px:.2f} "
+                            f"({drift_pct:.1f}%) exceeds hard ceiling {max_signal_drift_pct:.0f}% — skipping signal"
+                        )
+                        return {"status": "skipped",
+                                "reason": f"price_drift_{drift_pct:.1f}pct (screener=${price:.2f} live=${live_px:.2f})"}
+                    if drift_pct > max_price_drift_pct:
+                        log.info(
+                            f"  {symbol}: screener ${price:.2f} vs live ${live_px:.2f} "
+                            f"({drift_pct:.1f}%) — re-pricing entry to live quote"
+                        )
+                    # Use live price for signal entry.
+                    price = live_px
         except Exception as e:
             log.warning(f"  {symbol}: live price check failed ({e}) — using screener price")
 

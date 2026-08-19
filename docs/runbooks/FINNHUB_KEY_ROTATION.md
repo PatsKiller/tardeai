@@ -43,10 +43,17 @@ Alternative — edit the `FINNHUB_API_KEY` secret in the Bitwarden SM project
 ```
 
 ### 4. Clear the stale finding
-Re-run the Finnhub producer so `data_source_health.finnhub` records a fresh success:
+The `finnhub` health marker (`data_source_health.finnhub`) is reported by
+`symbol_enrichment.pull_finnhub_news`, which runs inside the enrichment stage of
+`trade_ai_orchestrator.py` — **not** `news_ingestion.py`. After rotating the key,
+the marker clears automatically on the next enrichment/orchestrator cycle, so no
+manual step is required. To force it immediately, run the orchestrator with a
+time-appropriate `--run-label` (see `remediate_pipeline_failures.py` for the ET-hour
+→ label map), e.g.:
 
 ```bash
-.venv/bin/python scripts/news_ingestion.py --priority
+flock -n /tmp/screener_pm.lock .venv/bin/python scripts/trade_ai_orchestrator.py \
+  --run-label early --skip-market-check --no-llm --no-alerts --allow-underfilled
 ```
 
 The next health-agent scan (≤ next cycle) drops the `data_source_auth_failed` finding.

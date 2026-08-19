@@ -101,9 +101,14 @@ def test_policy_wiring():
 
 
 def test_remediation_allowlisted():
+    # Semantic safety (the old string-assertions checked inline guards since replaced
+    # by the general allowlist): both proposal remediators must be allowlisted and
+    # auto-remediation must gate on the allowlist.
+    allowlist = (ROOT / "config" / "claude_escalation_allowlist.yaml").read_text()
+    assert "auto_enrichment_runner.py" in allowlist
+    assert "cleanup_stale_proposals.py" in allowlist
     src = (ROOT / "scripts" / "health_agent.py").read_text()
-    assert '"auto_enrichment_runner.py" not in cmd' in src
-    assert '"cleanup_stale_proposals.py" not in cmd' in src
+    assert "if not any(s in cmd for s in _SAFE_REMEDIATION_SCRIPTS)" in src
     cleanup = (ROOT / "scripts" / "cleanup_stale_proposals.py").read_text()
     assert "def run_pipeline_sweep" in cleanup
     assert "--pipeline-sweep" in cleanup

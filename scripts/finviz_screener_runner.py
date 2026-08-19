@@ -314,8 +314,8 @@ def run_screener(screener_id: str = None, dry_run: bool = False) -> dict:
                         """, (ticker, strategy, f"Discovered by screener {sid}"))
 
                         cur.execute("""
-                            INSERT INTO watchlist_items (symbol, source, status, updated_at)
-                            VALUES (%s, 'ai_discovered', 'active', now())
+                            INSERT INTO watchlist_items (symbol, source, status, origin_system, updated_at)
+                            VALUES (%s, 'ai_discovered', 'active', 'finviz_screener', now())
                             ON CONFLICT DO NOTHING
                         """, (ticker,))
 

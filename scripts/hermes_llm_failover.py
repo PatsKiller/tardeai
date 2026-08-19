@@ -15,10 +15,9 @@ import urllib.request
 from datetime import datetime, timezone
 from typing import Any
 
-# Official DeepSeek peak windows (half-open, UTC).
+# Official DeepSeek peak windows (half-open, UTC) — kept for label/compat.
+# Bulk Flash/Pro is operator-gated to 10:00–21:00 America/New_York (see lib.deepseek_offpeak).
 # https://api-docs.deepseek.com/quick_start/pricing/
-# Peak: 01:00-04:00 and 06:00-10:00 UTC. All other hours are off-peak (half price).
-# These are Beijing 09:00-12:00 and 14:00-18:00 — NOT US 21:00-09:00.
 DEEPSEEK_PEAK_UTC = ((1, 4), (6, 10))
 
 AUTHORITY = "READ_ONLY_ADVISORY"
@@ -50,21 +49,29 @@ def allow_deepseek_peak() -> bool:
 
 
 def is_deepseek_offpeak(when: datetime | None = None) -> bool:
-    """True outside official DeepSeek peak hours."""
-    dt = when or datetime.now(timezone.utc)
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    else:
-        dt = dt.astimezone(timezone.utc)
-    hour = dt.hour + dt.minute / 60.0 + dt.second / 3600.0
-    for start, end in DEEPSEEK_PEAK_UTC:
-        if start <= hour < end:
-            return False
-    return True
+    """True when bulk DeepSeek Flash/Pro is allowed.
+
+    Operator bulk window: 10:00–21:00 America/New_York, and not official UTC peak.
+    Outside that, Flash/Pro is as-needed only (HERMES_ALLOW_DEEPSEEK_PEAK / --allow-peak).
+    """
+    try:
+        from lib.deepseek_offpeak import is_bulk_deepseek_window
+        return is_bulk_deepseek_window(when)
+    except Exception:
+        dt = when or datetime.now(timezone.utc)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        else:
+            dt = dt.astimezone(timezone.utc)
+        hour = dt.hour + dt.minute / 60.0 + dt.second / 3600.0
+        for start, end in DEEPSEEK_PEAK_UTC:
+            if start <= hour < end:
+                return False
+        return True
 
 
 def deepseek_window_label(when: datetime | None = None) -> str:
-    return "off-peak" if is_deepseek_offpeak(when) else "peak"
+    return "bulk-et-10-21" if is_deepseek_offpeak(when) else "as-needed-only"
 
 
 def primary_provider() -> str:

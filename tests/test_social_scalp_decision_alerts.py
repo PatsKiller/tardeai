@@ -38,8 +38,10 @@ def main():
     check("verified catalyst sends GO alert", alert_action_for(d, g) == "GO")
     check("verified catalyst alerted flag True", _alerted_flag(d) is True)
 
-    # 2b. Credible news source (not RAG-verified flag) also escapes the cap.
-    d, g, capped = apply_social_only_cap("GO", "A", {"catalyst": True, "catalyst_source": "SEC 8-K filing"})
+    # 2b. Credible news source (news_articles rows / catalyst_tier) also escapes the cap.
+    # NOTE: keys are `catalysts` / `catalyst_tier` (the 2026-07-08 fix); the legacy
+    # `catalyst`/`catalyst_source` keys are never set by build_catalyst_enrichment.
+    d, g, capped = apply_social_only_cap("GO", "A", {"catalysts": [{"title": "SEC 8-K filing"}]})
     check("news-sourced catalyst not capped", (not capped) and d == "GO")
 
     # 3. Raw score 35 WAIT → WAIT alert.

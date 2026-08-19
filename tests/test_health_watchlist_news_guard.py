@@ -57,8 +57,13 @@ def test_policy_wiring():
 
 
 def test_remediation_allowlisted():
+    # Semantic safety (the old string-assertion checked an inline guard since
+    # replaced by the general allowlist): the (destructive) news-guard purge script
+    # must be in the canonical allowlist, and auto-remediation must gate on it.
+    allowlist = (ROOT / "config" / "claude_escalation_allowlist.yaml").read_text()
+    assert "remediate_watchlist_news_guard.py" in allowlist
     src = (ROOT / "scripts" / "health_agent.py").read_text()
-    assert '"remediate_watchlist_news_guard.py" not in cmd' in src
+    assert "if not any(s in cmd for s in _SAFE_REMEDIATION_SCRIPTS)" in src
 
 
 def test_remediate_script_exists():
