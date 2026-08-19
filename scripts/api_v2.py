@@ -40456,6 +40456,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     return 200, _adv.get_advisory_brief()
                 if p == "calibration":
                     return 200, _adv.get_calibration()
+                if p in ("run-status", "run_status"):
+                    return 200, _adv.get_run_status()
                 if p == "promotion":
                     try:
                         from lib.advisory.promotion_gate import evaluate_promotion, load_promotion_state
@@ -40486,6 +40488,10 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     return 200, _adv.post_feedback(body or {}, kind="ack")
                 if p == "snooze":
                     return 200, _adv.post_feedback(body or {}, kind="snooze")
+                if p in ("run-now", "run_now"):
+                    result = _adv.post_run_now(body or {})
+                    code = 202 if result.get("accepted") else 409
+                    return code, result
                 return 404, {"ok": False, "error": f"unknown_advisory_post: {p}"}
             return 405, {"ok": False, "error": "method_not_allowed"}
         except Exception as e:

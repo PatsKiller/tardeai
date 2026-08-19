@@ -9,6 +9,8 @@ Routes:
   POST /api/v3/advisory/rate         — {row_id|symbol, rating, reason_code?, note?}
   POST /api/v3/advisory/ack          — {row_id|symbol}
   POST /api/v3/advisory/snooze       — {row_id|symbol}
+  POST /api/v3/advisory/run-now      — rebuild facts + Flash/Pro (paid, advisory)
+  GET  /api/v3/advisory/run-status   — last/current run-now state + next scheduled
   GET  /api/v3/advisory/calibration  — outcome calibration
   GET  /api/v3/advisory/history/{symbol} — prior + feedback
 """
@@ -467,6 +469,18 @@ def get_advisory_desk(*, force: bool = False, row_class: str | None = None) -> d
     health = data.get("desk_health") or desk.get("desk_health") or {}
     timestamps = data.get("timestamps") or desk.get("timestamps") or {}
     ot = data.get("operator_truth") or desk.get("operator_truth") or {}
+    schedule: dict[str, Any] = {}
+    run_now: dict[str, Any] = {"state": "idle"}
+    try:
+        from lib.advisory_desk_schedule import run_status as _run_status
+        st = _run_status()
+        schedule = dict(st.get("schedule") or {})
+        run_now = {k: v for k, v in st.items() if k != "schedule"}
+    except Exception:
+        schedule = {
+            "cadence": "weekdays 09:15 America/New_York",
+            "source": "unavailable",
+        }
     return {
         "ok": True,
         "as_of": data.get("computed_at") or _now_iso(),
@@ -499,6 +513,8 @@ def get_advisory_desk(*, force: bool = False, row_class: str | None = None) -> d
             "promoted": bool(promotion.get("promoted")),
             "morning_path_default": bool(promotion.get("morning_path_default")),
         },
+        "schedule": schedule,
+        "run_now": run_now,
     }
 
 
@@ -553,6 +569,18 @@ def _verdict_top(desk: dict[str, Any]) -> str:
         return "—"
     top = sorted(vc.items(), key=lambda x: -x[1])[:3]
     return " ".join(f"{k}:{v}" for k, v in top)
+
+
+def get_run_status() -> dict[str, Any]:
+    from lib.advisory_desk_schedule import run_status as _run_status
+    st = _run_status()
+    return {"ok": True, **st}
+
+
+def post_run_now(_body: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Operator on-demand desk rebuild. Paid Flash/Pro. No broker writes."""
+    from lib.advisory_desk_schedule import start_run_now
+    return start_run_now(live_llm=True)
 
 
 def post_feedback(body: dict[str, Any], *, kind: str = "rate") -> dict[str, Any]:
