@@ -11,7 +11,7 @@ class SocialSource(DiscoverySource):
         try:
             cur.execute("""
                 SELECT DISTINCT symbol FROM trade_ai_scans
-                WHERE scan_date >= CURRENT_DATE - 2
+                WHERE run_date >= CURRENT_DATE - 2
                 AND source ILIKE '%%social%%'
                 AND symbol IS NOT NULL
                 ORDER BY symbol LIMIT %s

@@ -195,8 +195,8 @@ def add_discoveries_to_watchlist(discoveries: list, dry_run: bool = False) -> di
         # Add to watchlist
         try:
             cur.execute("""
-                INSERT INTO watchlist_items (symbol, source, status, updated_at)
-                VALUES (%s, 'ai_discovered', 'active', NOW())
+                INSERT INTO watchlist_items (symbol, source, status, origin_system, updated_at)
+                VALUES (%s, 'ai_discovered', 'active', 'intel_auto_discovery', NOW())
                 ON CONFLICT DO NOTHING
             """, (sym,))
         except Exception:

@@ -53,11 +53,31 @@ def _http_get(url: str, headers: dict, timeout: int = 15) -> str:
 
 
 def _get_conn():
-    import psycopg2
-    pw = ""
-    for line in (PROJECT_ROOT / ".env").read_text().splitlines():
-        if line.startswith("DB_PASSWORD="): pw = line.split("=", 1)[1].strip()
-    return psycopg2.connect(host="localhost", dbname="trade_ai", user="trade_ai", password=pw)
+    """Use the shared adapter so idle/closed connections self-heal."""
+    try:
+        from db_adapter import _get_conn as _shared
+        return _shared()
+    except Exception:
+        import psycopg2
+        pw = ""
+        for line in (PROJECT_ROOT / ".env").read_text().splitlines():
+            if line.startswith("DB_PASSWORD="):
+                pw = line.split("=", 1)[1].strip()
+        return psycopg2.connect(host="localhost", dbname="trade_ai", user="trade_ai", password=pw)
+
+
+def _refresh_conn(conn):
+    """After a long HTTP fetch the session may have been closed by idle timeout."""
+    try:
+        from db_adapter import ensure_conn
+        return ensure_conn()
+    except Exception:
+        try:
+            if conn is not None and not getattr(conn, "closed", 1):
+                return conn
+        except Exception:
+            pass
+        return _get_conn()
 
 
 def _get_finviz_cookie():
@@ -214,6 +234,13 @@ def run_screener(screener_id: str = None, dry_run: bool = False) -> dict:
 
         print(f"  [{sid}] Fetching {s['display_name']}...")
         tickers = _fetch_screener_tickers(url, cookie)
+        # HTTP can outlive PG idle_session_timeout — never reuse a dead handle.
+        conn = _refresh_conn(conn)
+        try:
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        except Exception:
+            conn = _get_conn()
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
         # SCREENER-ARCH-2B: Per-screener cap overrides for broad ETF/income screeners
         SCREENER_CAP_OVERRIDES = {
@@ -287,8 +314,8 @@ def run_screener(screener_id: str = None, dry_run: bool = False) -> dict:
                         """, (ticker, strategy, f"Discovered by screener {sid}"))
 
                         cur.execute("""
-                            INSERT INTO watchlist_items (symbol, source, status, updated_at)
-                            VALUES (%s, 'ai_discovered', 'active', now())
+                            INSERT INTO watchlist_items (symbol, source, status, origin_system, updated_at)
+                            VALUES (%s, 'ai_discovered', 'active', 'finviz_screener', now())
                             ON CONFLICT DO NOTHING
                         """, (ticker,))
 
@@ -335,7 +362,12 @@ def run_screener(screener_id: str = None, dry_run: bool = False) -> dict:
                 pass
             raise
 
-    conn.close()
+    # Shared adapter connection is thread-local — do not close it out from under other callers.
+    try:
+        if conn is not None and not getattr(conn, "autocommit", True):
+            pass
+    except Exception:
+        pass
 
     summary = {
         "mode": "dry_run" if dry_run else "live",
