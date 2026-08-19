@@ -20,6 +20,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+# Repo root first: cio_investment_product imports scripts.lib.* ; `python scripts/…`
+# puts only scripts/ on sys.path[0] and then `import scripts` fails.
+sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "scripts" / "lib"))
 
@@ -45,13 +48,15 @@ def _trim(obj, n=800):
 def _cio_product() -> dict:
     """Current canonical CIO product — never the retired cio_decisions file."""
     candidates = [
+        ROOT / "data" / "cio" / "cio_investment_brief.json",
         ROOT / "data" / "cio" / "cio_investment_product_latest.json",
+        ROOT / "data" / "cio" / "CURRENT" / "cio_investment_brief.json",
         ROOT / "data" / "cio" / "CURRENT" / "cio_investment_product_latest.json",
     ]
-    # TRADEAI_CIO_DIR / live CURRENT tree
     cio_dir = os.environ.get("TRADEAI_CIO_DIR")
     if cio_dir:
-        candidates.insert(0, Path(cio_dir) / "cio_investment_product_latest.json")
+        candidates.insert(0, Path(cio_dir) / "cio_investment_brief.json")
+        candidates.insert(1, Path(cio_dir) / "cio_investment_product_latest.json")
     for p in candidates:
         if p.exists():
             data = _read_json(p) or {}

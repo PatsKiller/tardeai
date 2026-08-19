@@ -11,6 +11,13 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import aegis_evening_packet as pkt  # noqa: E402
 
 
+def test_packet_sys_path_includes_repo_root():
+    """CLI `python scripts/aegis_evening_packet.py` must be able to import scripts.lib.*."""
+    src = Path(pkt.__file__).read_text()
+    assert "sys.path.insert(0, str(ROOT))" in src
+    assert "cio_investment_brief.json" in src
+
+
 def test_packet_bounded_and_canonical(tmp_path, monkeypatch):
     # Intentionally huge "alert history" must not land in the packet.
     huge = tmp_path / "alerts.json"
