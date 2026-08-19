@@ -93,6 +93,31 @@ type CioNow = {
   attention?: CioAttention
 }
 
+type OperatorTrust = {
+  aegis_last_run?: {
+    available?: boolean
+    generated_at?: string | null
+    session_target?: string
+    product_id?: string
+    packet_chars?: number
+    overflow?: boolean
+    note?: string
+  }
+  holdings?: {
+    available?: boolean
+    ok?: boolean
+    reason_code?: string
+    reason?: string
+    total?: number
+  }
+  notification?: {
+    available?: boolean
+    notification_class?: string | null
+    suppression_reason?: string | null
+    decision_id?: string
+  }
+}
+
 type Home = {
   ok?: boolean
   as_of?: string
@@ -104,6 +129,7 @@ type Home = {
   opportunities: Opportunities
   report: ReportSummary
   evidence: Evidence
+  operator_trust?: OperatorTrust
 }
 
 type CapitalPlan = {
@@ -506,6 +532,24 @@ function DecisionCard({ d, dispositions, legacyUnversioned, onAct }: {
   )
 }
 
+function TrustStrip({ trust }: { trust?: OperatorTrust }) {
+  const aegis = trust?.aegis_last_run
+  const hold = trust?.holdings
+  const ntf = trust?.notification
+  const aegisLabel = !aegis?.available
+    ? (aegis?.note || 'no packet yet')
+    : `${aegis.session_target || 'isolated'}${aegis.generated_at ? ` · ${String(aegis.generated_at).slice(0, 16).replace('T', ' ')}` : ''}`
+  const holdLabel = hold?.reason_code || 'DATA_UNAVAILABLE'
+  const ntfLabel = ntf?.suppression_reason || ntf?.notification_class || 'none on record'
+  return (
+    <div data-testid="cio-trust-strip" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 16 }}>
+      <Stat label="Aegis last run" value={aegisLabel} help="Isolated evening packet. Overflow must stay false." />
+      <Stat label="Holdings reason" value={holdLabel} help="Completeness / last-good guard. Incomplete $722k stays blocked." />
+      <Stat label="Notification" value={ntfLabel} help="Latest suppression or delivery class for the current CIO lineage." />
+    </div>
+  )
+}
+
 // ── Section renderers ─────────────────────────────────────────────────────────
 
 function CioNowSection({ home, dispositions, legacyUnversioned, onAct }: {
@@ -529,6 +573,7 @@ function CioNowSection({ home, dispositions, legacyUnversioned, onAct }: {
         <Stat label="Open plans" value={openPlans} help="Open advisory plans awaiting disposition." />
         <Stat label="Material Today" value={materialToday ?? '—'} help="Deduped priority set (not the sum of the other three). Cards show at most 5." />
       </div>
+      <TrustStrip trust={home.operator_trust} />
       {decisions.length === 0 ? (
         <Empty text="Nothing needs a decision right now. Portfolio is stable." />
       ) : (

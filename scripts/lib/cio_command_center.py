@@ -863,4 +863,125 @@ def build_office_home(
         home["consistency"]["decision_field_parity"] = {
             "ok": False, "error": str(exc)[:160],
         }
+    home["operator_trust"] = build_operator_trust()
     return home
+
+
+def build_operator_trust() -> dict[str, Any]:
+    """Existing-page trust strip: Aegis last run, holdings reason, notify suppression.
+
+    Fail-soft. Never invents a dashboard and never mutates broker/state.
+    """
+    return {
+        "aegis_last_run": _trust_aegis(),
+        "holdings": _trust_holdings(),
+        "notification": _trust_notification(),
+        "authority": "READ_ONLY_ADVISORY",
+    }
+
+
+def _trust_aegis() -> dict[str, Any]:
+    from pathlib import Path
+    roots = []
+    try:
+        from scripts.lib.maturity_control.store import resolve_root
+        roots.append(resolve_root(None))
+    except Exception:
+        pass
+    roots.append(Path(__file__).resolve().parents[2])
+    for root in roots:
+        for rel in (
+            "data/runtime/aegis_evening_packet.json",
+            "data/cio/aegis_evening_packet.json",
+        ):
+            p = root / rel
+            if not p.is_file():
+                continue
+            try:
+                import json
+                pkt = json.loads(p.read_text(encoding="utf-8", errors="replace"))
+            except Exception:
+                continue
+            if not isinstance(pkt, dict):
+                continue
+            return {
+                "available": True,
+                "generated_at": pkt.get("generated_at"),
+                "session_target": "isolated",
+                "canonical_cio_source": pkt.get("canonical_cio_source"),
+                "product_id": (pkt.get("cio") or {}).get("product_id"),
+                "packet_chars": pkt.get("packet_chars"),
+                "overflow": False,
+            }
+    return {
+        "available": False,
+        "session_target": "isolated",
+        "note": "No Aegis evening packet on disk yet",
+    }
+
+
+def _trust_holdings() -> dict[str, Any]:
+    try:
+        from scripts.lib.holdings_sanity import validate_payload, REASON_VALID_COMPLETE
+    except Exception:
+        try:
+            from holdings_sanity import validate_payload, REASON_VALID_COMPLETE
+        except Exception as exc:
+            return {"available": False, "reason_code": "DATA_UNAVAILABLE", "detail": str(exc)[:160]}
+    from pathlib import Path
+    try:
+        from scripts.lib.maturity_control.store import resolve_root
+        root = resolve_root(None)
+    except Exception:
+        root = Path(__file__).resolve().parents[2]
+    doc = {}
+    for rel in (
+        "data/portfolios/state/holdings.json",
+        "data/state/holdings.json",
+    ):
+        p = root / rel
+        if p.is_file():
+            import json
+            try:
+                doc = json.loads(p.read_text(encoding="utf-8", errors="replace"))
+            except Exception:
+                doc = {}
+            if doc:
+                break
+    try:
+        v = validate_payload(doc, last_good=doc if doc else None)
+    except TypeError:
+        try:
+            v = validate_payload(doc)
+        except Exception as exc:
+            return {"available": False, "reason_code": "DATA_UNAVAILABLE", "detail": str(exc)[:160]}
+    except Exception as exc:
+        return {"available": False, "reason_code": "DATA_UNAVAILABLE", "detail": str(exc)[:160]}
+    reason = getattr(v, "reason_code", None) or (v.get("reason_code") if isinstance(v, dict) else None)
+    return {
+        "available": True,
+        "ok": bool(getattr(v, "ok", None) if not isinstance(v, dict) else v.get("ok")),
+        "reason_code": reason or REASON_VALID_COMPLETE,
+        "reason": getattr(v, "reason", None) if not isinstance(v, dict) else v.get("reason"),
+        "total": getattr(v, "total", None) if not isinstance(v, dict) else v.get("total"),
+    }
+
+
+def _trust_notification() -> dict[str, Any]:
+    try:
+        from scripts.lib.cio_notification_signal import NotificationStateStore
+        store = NotificationStateStore()
+        rows = list((store.all_lineages() or {}).values())
+    except Exception as exc:
+        return {"available": False, "suppression_reason": "DATA_UNAVAILABLE", "detail": str(exc)[:160]}
+    if not rows:
+        return {"available": True, "suppression_reason": "none_on_record", "notification_class": None}
+    rows.sort(key=lambda r: str(r.get("updated_at") or r.get("created_at") or ""), reverse=True)
+    latest = rows[0]
+    return {
+        "available": True,
+        "notification_class": latest.get("notification_class"),
+        "suppression_reason": latest.get("suppressed_reason") or "none",
+        "decision_id": latest.get("decision_id"),
+        "updated_at": latest.get("updated_at") or latest.get("created_at"),
+    }
