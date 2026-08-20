@@ -210,6 +210,28 @@ def test_field_meta_critical_source_time_does_not_fall_back_to_ingested_at():
     assert m["clock_kind"] is None
 
 
+def test_stale_canonical_mark_as_of_does_not_stale_a_fresh_quote():
+    """Phase 0.2 — a repricer-fresh quote must not read STALE off a stale
+    persisted canonical_mark_as_of. The mark is re-derived from current_price,
+    so its as_of is the quote's own clock (updated_at), not the stale stamp."""
+    now = datetime(2026, 8, 19, 23, 0, tzinfo=timezone.utc)
+    row = {
+        "symbol": "SCHD",
+        "account": "schwab_taxable",
+        "shares": 406.5436,
+        "current_price": 35.09,
+        "price": 35.0899,
+        "market_value": 14265.61,
+        "price_source": "finviz",
+        "canonical_mark_as_of": "2026-08-14",
+        "updated_at": "2026-08-19T20:52:10+00:00",
+    }
+    r = check_position_row(row, portfolio_value=1_283_117.0, now=now)
+    assert r["quality"] == STATE_VERIFIED_AS_OF, r["quality"]
+    assert not any(e["type"] == "source_observation_stale" for e in r["exceptions"])
+    assert r["source_observation_quality"] != STATE_STALE
+
+
 def test_old_source_as_of_new_updated_at_remains_stale():
     """P0-7: process clocks must never make an old source fresh."""
     now = datetime(2026, 8, 14, 16, 0, tzinfo=timezone.utc)
@@ -273,6 +295,37 @@ def test_meta_timestamp_conflict_stale_updated_at():
     assert "meta_timestamp_conflict" in types or gate["meta"]["quality"] in (
         STATE_CONFLICTED, STATE_STALE,
     )
+
+
+def test_parse_ts_et_suffix_is_new_york_not_utc():
+    from scripts.lib.cio_financial_truth_gate import parse_ts
+    et = parse_ts("2026-08-19 16:45:01 ET")
+    assert et == datetime(2026, 8, 19, 20, 45, 1, tzinfo=timezone.utc)
+    # date-only still parses as midnight UTC (fallback clock, not preferred).
+    assert parse_ts("2026-08-19") == datetime(2026, 8, 19, 0, 0, tzinfo=timezone.utc)
+
+
+def test_meta_clock_prefers_last_repriced_over_date_only():
+    now = datetime(2026, 8, 19, 23, 50, tzinfo=timezone.utc)  # 7:50 PM ET
+    doc = {
+        # date-only as_of -> midnight UTC -> STALE by evening (48h threshold not hit, but wrong clock)
+        "as_of": "2026-08-19",
+        "last_repriced": "2026-08-19 16:45:01 ET",
+        "portfolio_totals": {"total_value": 2000.0},
+        "holdings": [
+            {"symbol": "CASH", "is_cash": True, "market_value": 1000.0, "account": "a"},
+            {
+                "symbol": "XYZ", "account": "a", "shares": 10,
+                "current_price": 100, "price": 100, "market_value": 1000,
+                "source_as_of": (now - timedelta(minutes=5)).isoformat(),
+                "updated_at": now.isoformat(),
+            },
+        ],
+    }
+    gate = evaluate_holdings_document(doc, now=now)
+    # meta clock uses last_repriced (16:45 ET today), not date-only midnight.
+    assert gate["meta"]["source_as_of"] == "2026-08-19T20:45:01+00:00"
+    assert gate["meta"]["quality"] != STATE_STALE
 
 
 def test_book_identity_cash_plus_mv():

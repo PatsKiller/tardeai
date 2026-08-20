@@ -4,6 +4,7 @@ Extends existing CIO/Advisory surfaces — does not create a second dashboard.
 """
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
@@ -50,6 +51,44 @@ def membership_exit_reason(prev_memberships: list[str], curr_memberships: list[s
     return "OTHER"
 
 
+def _is_cusip(symbol: str) -> bool:
+    """True for unresolved CUSIP/SEDOL-style identifiers (e.g. 12507E201).
+
+    Real tickers are 1–5 alpha/dot/dash chars. A leading-digit alphanumeric
+    code of length 6–9 is a bond/identifier, not a tradable equity symbol.
+    """
+    s = str(symbol or "").strip()
+    return bool(re.fullmatch(r"[0-9][0-9A-Za-z]{5,8}", s))
+
+
+def _membership_bucket(r: dict[str, Any]) -> str:
+    """Canonical single membership label for a universe row (HELD/REENTRY/WATCH/…).
+
+    CUSIP/unresolved identifiers are pulled out of the HELD sort entirely so
+    they no longer crowd the top of the 80-name operator list.
+    """
+    sym = str(r.get("symbol") or "")
+    if _is_cusip(sym):
+        return "BONDS_UNRESOLVED"
+    m = set(r.get("memberships") or [])
+    if "HELD" in m:
+        return "HELD"
+    if "REENTRY" in m or "FORMER_HOLDING" in m:
+        return "REENTRY"
+    if "OPPORTUNITY" in m or "WATCHLIST" in m:
+        return "WATCH"
+    return "OTHER"
+
+
+_BUCKET_PRIORITY = {
+    "HELD": 0,
+    "REENTRY": 1,
+    "WATCH": 2,
+    "OTHER": 3,
+    "BONDS_UNRESOLVED": 4,
+}
+
+
 def build_universe_theses_projection(
     *,
     root: Path | str | None = None,
@@ -63,12 +102,13 @@ def build_universe_theses_projection(
     daily = daily_thesis_changes(root=root)
 
     material_rows = [r for r in (report.get("rows") or []) if r.get("material")]
-    # Prefer HELD / REENTRY / OPPORTUNITY for the operator card list
+    # Prefer HELD / REENTRY / WATCH for the operator card list; park CUSIPs and
+    # unresolved identifiers in a trailing "Bonds & unresolved" bucket so they
+    # no longer crowd the top of the 80.
     def _sort_key(r: dict[str, Any]) -> tuple:
-        m = set(r.get("memberships") or [])
-        pri = 0 if "HELD" in m else (1 if "REENTRY" in m or "OPPORTUNITY" in m else 2)
+        bucket_pri = _BUCKET_PRIORITY.get(_membership_bucket(r), 4)
         state_pri = 0 if r.get("coverage_state") in {"CONFLICTED", "STALE", "RESEARCH_REQUIRED"} else 1
-        return (pri, state_pri, r.get("symbol") or "")
+        return (bucket_pri, state_pri, r.get("symbol") or "")
 
     material_rows.sort(key=_sort_key)
     cards = []
@@ -76,6 +116,7 @@ def build_universe_theses_projection(
         cards.append({
             "symbol": r["symbol"],
             "memberships": r.get("memberships"),
+            "bucket": _membership_bucket(r),
             "portfolio_role": (r.get("portfolio_role") or {}).get("portfolio_role"),
             "portfolio_role_source": (r.get("portfolio_role") or {}).get("source"),
             "thesis_state": r.get("coverage_state"),
@@ -98,6 +139,10 @@ def build_universe_theses_projection(
     if include_proposed_research:
         proposed = propose_prioritized_research(root=root, limit=25)
 
+    bonds_unresolved = sum(
+        1 for r in material_rows if _membership_bucket(r) == "BONDS_UNRESOLVED"
+    )
+
     return {
         "schema": "UniverseThesesProjection@v1",
         "section": "UNIVERSE_AND_THESES",
@@ -112,6 +157,7 @@ def build_universe_theses_projection(
             "stale": metrics.get("stale"),
             "conflicted": metrics.get("conflicted"),
             "insufficient_data": metrics.get("insufficient_data"),
+            "bonds_unresolved": bonds_unresolved,
             "unknown_role": metrics.get("role_unknown"),
             "coverage_pct": metrics.get("coverage_pct_material"),
             "open_thesis_research_proposed": (proposed or {}).get("counts", {}).get("proposed") if proposed else 0,

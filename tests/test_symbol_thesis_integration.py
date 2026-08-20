@@ -24,6 +24,23 @@ def thesis_store(tmp_path):
     )
 
 
+def test_cusip_bucket_sorts_unresolved_last():
+    from scripts.lib.symbol_thesis_cc import _is_cusip, _membership_bucket, _BUCKET_PRIORITY
+    assert _is_cusip("12507E201")
+    assert _is_cusip("543354104")
+    assert not _is_cusip("MSFT")
+    assert not _is_cusip("SCHD")
+    assert _membership_bucket({"symbol": "12507E201", "memberships": ["HELD"]}) == "BONDS_UNRESOLVED"
+    assert _membership_bucket({"symbol": "MSFT", "memberships": ["HELD"]}) == "HELD"
+    assert _membership_bucket({"symbol": "AMC", "memberships": ["FORMER_HOLDING", "REENTRY"]}) == "REENTRY"
+    assert _membership_bucket({"symbol": "PLTR", "memberships": ["WATCHLIST"]}) == "WATCH"
+    # BONDS_UNRESOLVED must sort after every real membership.
+    assert _BUCKET_PRIORITY["BONDS_UNRESOLVED"] > _BUCKET_PRIORITY["HELD"]
+    assert _BUCKET_PRIORITY["BONDS_UNRESOLVED"] > _BUCKET_PRIORITY["REENTRY"]
+    assert _BUCKET_PRIORITY["BONDS_UNRESOLVED"] > _BUCKET_PRIORITY["WATCH"]
+
+
+
 def test_reconcile_no_churn_on_identical(thesis_store, tmp_path, monkeypatch):
     monkeypatch.chdir(ROOT)
     from scripts.lib.symbol_thesis_publish import publish_symbol_thesis

@@ -30,6 +30,37 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _watch_hub_counts() -> dict[str, Any]:
+    """Lazy Watch Hub counts for the chip labels. Never raises.
+
+    The Advisory watch class is the *personal* watchlist.json; the Hub is the
+    larger DB universe. Surface both so the operator sees the desk is a small
+    intentional subset, not the full Hub.
+
+    ``active`` is the material, actively-managed Hub set (the same pool the
+    hub opportunity slice draws from). ``universe`` is the broader watchable
+    set (active + researched), excluding removed names.
+    """
+    try:
+        from db_adapter import _execute
+        active = _execute(
+            "SELECT count(DISTINCT symbol) AS n FROM watchlist_items "
+            "WHERE status = 'active'",
+            fetch="one",
+        ) or {}
+        universe = _execute(
+            "SELECT count(DISTINCT symbol) AS n FROM watchlist_items "
+            "WHERE status IN ('active','researched')",
+            fetch="one",
+        ) or {}
+        return {
+            "active": int(active.get("n") or 0),
+            "universe": int(universe.get("n") or 0),
+        }
+    except Exception:
+        return {"active": None, "universe": None}
+
+
 def _verdict_str(v: Any) -> str:
     if hasattr(v, "value"):
         return str(v.value)
@@ -301,6 +332,11 @@ def _row_view(row: dict[str, Any], opinions: dict[str, Any] | None = None) -> di
         "account": row.get("account"),
         "row_class": row.get("row_class"),
         "verdict": _verdict_str(row.get("verdict")),
+        "verdict_suppressed": bool(row.get("verdict_suppressed")),
+        "verdict_suppressed_reason": row.get("verdict_suppressed_reason"),
+        "trim_kind": row.get("trim_kind"),
+        "housekeeping_flag": bool(row.get("housekeeping_flag")),
+        "housekeeping_reason": row.get("housekeeping_reason"),
         "confidence": row.get("confidence"),
         "setup_state": row.get("setup_state") or operator.get("setup_state"),
         "setup_confidence": row.get("setup_confidence"),
@@ -469,6 +505,19 @@ def get_advisory_desk(*, force: bool = False, row_class: str | None = None) -> d
     health = data.get("desk_health") or desk.get("desk_health") or {}
     timestamps = data.get("timestamps") or desk.get("timestamps") or {}
     ot = data.get("operator_truth") or desk.get("operator_truth") or {}
+    price_clock: dict[str, Any] = {}
+    try:
+        from lib.advisory_desk_operator import holdings_source_freshness as _hsf
+        hsf = _hsf()
+        price_clock = {
+            "as_of": hsf.get("holdings_source_as_of"),
+            "age_seconds": hsf.get("holdings_source_age_seconds"),
+            "freshness": hsf.get("holdings_source_freshness"),
+            "clock_field": hsf.get("holdings_source_clock_field"),
+            "reprice_source": hsf.get("holdings_reprice_source"),
+        }
+    except Exception:
+        price_clock = {"freshness": "UNAVAILABLE"}
     schedule: dict[str, Any] = {}
     run_now: dict[str, Any] = {"state": "idle"}
     try:
@@ -481,6 +530,16 @@ def get_advisory_desk(*, force: bool = False, row_class: str | None = None) -> d
             "cadence": "weekdays 09:15 America/New_York",
             "source": "unavailable",
         }
+    desk_sources: dict[str, Any] = {
+        "watchlist_personal_total": meta.get("personal_watchlist_count"),
+        "watchlist_personal_shown": by_class.get("watchlist", 0),
+        "watch_hub_active": _watch_hub_counts().get("active"),
+        "watch_hub_universe": _watch_hub_counts().get("universe"),
+        "watch_hub_total": meta.get("hub_watch_total"),
+        "watch_hub_shown": by_class.get("watchlist_hub", 0),
+        "reentry_universe": meta.get("reentry_universe_count"),
+        "reentry_shown": by_class.get("closed_journal", 0),
+    }
     return {
         "ok": True,
         "as_of": data.get("computed_at") or _now_iso(),
@@ -495,11 +554,13 @@ def get_advisory_desk(*, force: bool = False, row_class: str | None = None) -> d
         "desk_freshness_state": desk.get("desk_freshness_state") or timestamps.get("facts_freshness"),
         "desk_health": health,
         "timestamps": timestamps,
+        "price_clock": price_clock,
         "banners": banners,
         "metadata": meta,
         "portfolio_analytics": meta.get("portfolio_analytics") or {},
         "performance": meta.get("performance") or {},
         "by_class": by_class,
+        "desk_sources": desk_sources,
         "verdict_counts": meta.get("verdict_counts") or {},
         "synthesis": synthesis,
         "synthesis_label": timestamps.get("synthesis_label"),

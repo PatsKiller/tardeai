@@ -42,6 +42,10 @@ READY_STATES = frozenset({"READY TO REVIEW", "NEAR ENTRY", "OVERSOLD REVIEW", "I
 AVOID_SIGNALS = frozenset({"ABOVE_ZONE"})
 RESTRICT_LESSON = frozenset({"RESTRICTED", "RETIRED"})
 
+# Category/aggregate labels that leaked into the former-holdings symbol column.
+# They are not tickers and must never render as re-entry candidates.
+NON_TICKER_SYMBOLS = frozenset({"HEALTH"})
+
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
@@ -135,7 +139,7 @@ def collect_previously_traded() -> list[dict[str, Any]]:
         "reentry_signal, pct_above_exit, best_pnl_pct, is_currently_held "
         "FROM previously_traded_watchlist WHERE is_currently_held=false "
         "ORDER BY CASE reentry_signal WHEN 'IN_ZONE' THEN 0 WHEN 'WATCH' THEN 1 "
-        "WHEN 'BELOW_ZONE' THEN 2 ELSE 3 END, best_pnl_pct DESC NULLS LAST LIMIT 40"
+        "WHEN 'BELOW_ZONE' THEN 2 ELSE 3 END, best_pnl_pct DESC NULLS LAST LIMIT 250"
     )
     try:
         import scripts.api_v2 as v2
@@ -507,6 +511,10 @@ def build_reentry_book(
     rows = []
     for row in _merge_prev_and_queue(prev, queue):
         row = dict(row)
+        sym = str(row.get("symbol") or "").upper()
+        # Drop category/fund labels that are not tradable tickers.
+        if sym in NON_TICKER_SYMBOLS:
+            continue
         if root is not None:
             row["_product_root"] = str(root)
         rec = adjudicate_reentry(

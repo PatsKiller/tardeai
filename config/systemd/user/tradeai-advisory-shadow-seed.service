@@ -1,0 +1,16 @@
+[Unit]
+Description=Trade AI Advisory Desk daily shadow-receipt seed (READ_ONLY_ADVISORY, influence=0)
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
+Environment=MEMORY_BEHAVIOR_INFLUENCE=0
+Environment=PYTHONPATH=%h/trade-ai-releases/portfolio-server/CURRENT
+ExecStart=%h/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python %h/trade-ai-releases/portfolio-server/CURRENT/scripts/advisory_shadow_seed.py
+Nice=10
+# Observation only — writes Financial Senses + durable-memory heartbeat receipts
+# at influence=0. Never invokes a live FS provider, model, or broker mutation.
+
+[Install]
+WantedBy=default.target

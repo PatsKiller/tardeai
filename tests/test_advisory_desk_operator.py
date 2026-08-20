@@ -36,6 +36,7 @@ from lib.advisory_desk_operator import (  # noqa: E402
     field_state,
     holdings_field_states,
     na,
+    no_producer_freshness,
     project_reentry,
     project_watch,
     why_advisory_call,
@@ -143,6 +144,15 @@ def test_freshness_expired_vs_current():
     assert classify_freshness(NOW - timedelta(hours=10), stale_s=6 * 3600, expired_s=24 * 3600, now=NOW) == FRESH_STALE
     assert classify_freshness(NOW - timedelta(hours=30), stale_s=6 * 3600, expired_s=24 * 3600, now=NOW) == FRESH_EXPIRED
     assert classify_freshness(None, stale_s=300, expired_s=3600, now=NOW) == "UNAVAILABLE"
+
+
+def test_no_producer_freshness_stamps_no_producer_not_stale():
+    # A 2-day-old receipt is NOT a job behind schedule when there is no daily
+    # producer — stamp NO_PRODUCER, never a misleading STALE/EXPIRED.
+    assert no_producer_freshness(NOW - timedelta(seconds=60), stale_s=36 * 3600, now=NOW) == FRESH_CURRENT
+    assert no_producer_freshness(NOW - timedelta(hours=40), stale_s=36 * 3600, now=NOW) == "NO_PRODUCER"
+    assert no_producer_freshness(NOW - timedelta(days=10), stale_s=36 * 3600, now=NOW) == "NO_PRODUCER"
+    assert no_producer_freshness(None, stale_s=36 * 3600, now=NOW) == "UNAVAILABLE"
 
 
 def test_desk_health_stale_not_healthy():
@@ -260,6 +270,39 @@ def test_project_watch_pltr_shape():
     assert setup == SETUP_BLOCKED
     why = why_advisory_call({"verdict": "WAIT", "row_class": "watchlist"}, watch=w, reentry=None)
     assert "DETERMINISTIC_FAIL" in why or "NO TRADE" in why
+
+
+def test_blocked_overridden_when_technicals_current():
+    # A BLOCKED whose only admission was a STALE technical snapshot must not
+    # read as blocked once the Hub has refreshed that snapshot to CURRENT.
+    composed = {
+        "ok": True,
+        "card": {
+            "symbol": "PLTR",
+            "last": 172.535,
+            "price_as_of": "2026-08-18T09:07:18-04:00",
+            "price_source": "market_quotes",
+            "freshness_state": "CURRENT",
+            "trade_ai_state": "DETERMINISTIC_FAIL",
+            "operator_meaning": "NO TRADE MECHANICS — quality or ticket validation failed",
+            "primary_risk": "quality admission: technical snapshot is STALE",
+            "technical_freshness": "CURRENT",
+            "rsi": 72.1,
+            "support": 122.21,
+            "resistance": 178.05,
+        },
+        "item": {"domains": {"CanonicalQuote": {}}},
+    }
+    w = project_watch(composed)
+    assert w["technicals"]["freshness"] == "CURRENT"
+    setup = derive_setup_state(w, verdict="WAIT")
+    assert setup != SETUP_BLOCKED
+
+    # Same card with a still-STALE snapshot stays blocked.
+    stale = dict(composed)
+    stale["card"] = {**composed["card"], "technical_freshness": "STALE"}
+    w2 = project_watch(stale)
+    assert derive_setup_state(w2, verdict="WAIT") == SETUP_BLOCKED
 
 
 def test_enrich_row_watch_and_reentry_pass_through():
@@ -380,6 +423,58 @@ def test_watchdog_assess_reads_cache(tmp_path: Path, monkeypatch: pytest.MonkeyP
 
 def test_operator_truth_version_constant():
     assert OPERATOR_TRUTH_VERSION.startswith("advisory.operator.")
+
+
+def test_holdings_source_clock_prefers_last_repriced_over_date_only(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Date-only `as_of` parses as midnight UTC and reads STALE by evening ET.
+    `last_repriced`/`generated_at` carry an explicit ET price clock that must win.
+    """
+    from lib import advisory_desk_operator as m
+
+    now = datetime(2026, 8, 19, 23, 50, tzinfo=timezone.utc)  # 7:50 PM ET
+
+    # Date-only as_of alone -> midnight UTC -> STALE by evening.
+    monkeypatch.setattr(m, "_load_json", lambda p: {"as_of": "2026-08-19"})
+    res = m.holdings_source_freshness(now=now)
+    assert res["holdings_source_freshness"] == FRESH_STALE
+    assert res["holdings_source_clock_field"] == "as_of"
+
+    # Repricer clock (16:45 ET) -> 20:45 UTC -> ~3h old -> CURRENT.
+    monkeypatch.setattr(
+        m, "_load_json",
+        lambda p: {"as_of": "2026-08-19", "last_repriced": "2026-08-19 16:45:01 ET"},
+    )
+    res = m.holdings_source_freshness(now=now)
+    assert res["holdings_source_freshness"] == FRESH_CURRENT
+    assert res["holdings_source_clock_field"] == "last_repriced"
+    assert res["holdings_source_as_of"] == "2026-08-19 16:45:01 ET"
+
+    # generated_at is the fallback price clock when last_repriced is absent.
+    monkeypatch.setattr(
+        m, "_load_json",
+        lambda p: {"as_of": "2026-08-19", "generated_at": "2026-08-19 16:45:01 ET"},
+    )
+    res = m.holdings_source_freshness(now=now)
+    assert res["holdings_source_freshness"] == FRESH_CURRENT
+    assert res["holdings_source_clock_field"] == "generated_at"
+
+
+def test_holdings_source_clock_never_uses_positions_built_at(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """positions_built_at is when the list was constructed, not a price clock."""
+    from lib import advisory_desk_operator as m
+
+    now = datetime(2026, 8, 19, 23, 50, tzinfo=timezone.utc)
+    monkeypatch.setattr(
+        m, "_load_json",
+        lambda p: {"positions_built_at": "2026-07-17T03:19:26.775259+00:00"},
+    )
+    res = m.holdings_source_freshness(now=now)
+    # No price/date clock present -> UNAVAILABLE, not silently current.
+    assert res["holdings_source_freshness"] == "UNAVAILABLE"
 
 
 def test_compute_banners_stale_is_not_healthy():

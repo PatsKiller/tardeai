@@ -194,6 +194,40 @@ def test_advisory_desk_attach_includes_canonical_financial_facts():
     assert DATA_CONFLICT_ACTION_SUPPRESSED in (out["data_quality"].get("banner") or "")
 
 
+def test_stamp_conflicted_verdict_suppression():
+    from scripts.lib.data_broker.advisory_desk import (
+        AdvisoryVerdict,
+        stamp_conflicted_verdict_suppression,
+    )
+
+    rows = [
+        {
+            "symbol": "SCHD", "verdict": AdvisoryVerdict.TRIM,
+            "canonical_financial_facts": {"conflicts": ["dual price fields disagree"]},
+            "data_quality": {"action_suppressed": True},
+        },
+        {
+            "symbol": "V", "verdict": AdvisoryVerdict.TRIM,
+            "canonical_financial_facts": {"conflicts": []},
+            "data_quality": {"action_suppressed": False},
+        },
+        {
+            "symbol": "MSFT", "verdict": AdvisoryVerdict.WAIT,
+            "data_quality": {"action_suppressed": True},
+        },
+        {
+            "symbol": "BND", "verdict": AdvisoryVerdict.HOLD,
+            "canonical_financial_facts": {"conflicts": ["x"]},
+        },
+    ]
+    stamp_conflicted_verdict_suppression(rows)
+    assert rows[0]["verdict_suppressed"] is True
+    assert rows[0]["verdict_suppressed_reason"] == "DATA CONFLICT — ACTION SUPPRESSED"
+    assert "verdict_suppressed" not in rows[1]  # clean TRIM stays actionable
+    assert "verdict_suppressed" not in rows[2]  # WAIT is not an actionable verdict
+    assert "verdict_suppressed" not in rows[3]  # HOLD is not actionable
+
+
 def test_attach_does_not_let_yahoo_snapshot_overwrite_mark():
     row = {
         "symbol": "DXCM",

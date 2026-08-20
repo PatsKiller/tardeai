@@ -237,6 +237,36 @@ def test_opportunities_buckets():
     assert [r["symbol"] for r in o["reentry"]] == ["ADBE"]
     assert [g["symbol"] for g in o["research_gaps"]] == ["CVX"]
     assert o["rotation"][0]["sector"] == "Energy"
+    assert o["watch_total"] == 2
+    assert o["reentry_total"] == 1
+
+
+def test_opportunities_reentry_not_mislabeled_as_watch():
+    # Re-entry rows that carry a readiness label (no RE_ENTER token) must bucket
+    # under re-entry, not the staged watch queue.
+    q = {"items": [
+        {"symbol": "FATN", "verdict": None, "source": "advisory",
+         "directive_label": "Re-entry NEAR ENTRY — FATN"},
+        {"symbol": "GXAI", "verdict": None, "source": "advisory",
+         "directive_label": "Re-entry READY TO REVIEW — GXAI"},
+        {"symbol": "PLTR", "verdict": None, "source": "advisory",
+         "directive_label": "Watchlist NEW — PLTR"},
+    ]}
+    o = c.build_opportunities(queue=q)
+    assert [w["symbol"] for w in o["watch"]] == ["PLTR"]
+    assert [r["symbol"] for r in o["reentry"]] == ["FATN", "GXAI"]
+    assert o["reentry_total"] == 2
+
+
+def test_opportunities_source_reentry_wins():
+    q = {"items": [
+        {"symbol": "IPM", "verdict": None, "source": "reentry", "directive_label": "MISSING PLAN — IPM"},
+        {"symbol": "AMC", "verdict": "RE_ENTER", "source": "advisory", "directive_label": "Advisory RE_ENTER — AMC"},
+    ]}
+    o = c.build_opportunities(queue=q)
+    assert [r["symbol"] for r in o["reentry"]] == ["IPM", "AMC"]
+    assert o["watch"] == []
+
 
 
 # ── Report / Evidence ────────────────────────────────────────────────────────

@@ -20,6 +20,11 @@ type DeskRow = {
   account?: string
   row_class: string
   verdict: string
+  verdict_suppressed?: boolean
+  verdict_suppressed_reason?: string
+  trim_kind?: string | null
+  housekeeping_flag?: boolean
+  housekeeping_reason?: string | null
   confidence?: number
   setup_state?: string
   setup_confidence?: number
@@ -95,6 +100,19 @@ const VERDICT_HELP: Record<string, string> = {
   INSUFFICIENT_DATA: 'Not enough evidence to act — verdict suppressed.',
 }
 
+// Phase 4 — TRIM policy labels. A concentration TRIM is *policy*, a gain TRIM
+// is a *rule*, and a remnant sell is *housekeeping* (never a book TRIM).
+const TRIM_KIND_LABEL: Record<string, string> = {
+  policy: 'policy',
+  rule: 'rule',
+  housekeeping: 'housekeeping',
+}
+const TRIM_KIND_HELP: Record<string, string> = {
+  policy: 'Concentration TRIM — position exceeds the single-name weight cap.',
+  rule: 'Gain TRIM — unrealized gain exceeds the profit-taking threshold.',
+  housekeeping: 'Housekeeping — sub-threshold/remnant; consolidate, do not book-sell.',
+}
+
 const SEV_BG: Record<string, string> = {
   critical: 'var(--red-ghost)',
   warn: 'var(--amber-ghost)',
@@ -126,7 +144,7 @@ const BANNER_ACTION: Record<string, string> = {
 }
 
 const MATERIALITY_FLOOR = 500
-const CLASSES = ['all', 'holding', 'watchlist', 'closed_journal', 'allocation'] as const
+const CLASSES = ['all', 'holding', 'watchlist', 'watchlist_hub', 'closed_journal', 'allocation'] as const
 const WATCH_FILTERS = [
   ['all', 'All'],
   ['needs_attention', 'Needs attention'],
@@ -183,7 +201,7 @@ function qualityTone(q: string | undefined) {
   if (u === 'CONFLICTED' || u === 'FAILED') return 'var(--red)'
   if (u === 'STALE' || u === 'DATA_UNAVAILABLE' || u === 'EXPIRED' || u === 'DEGRADED' || u === 'PARTIAL') return 'var(--amber)'
   if (u.startsWith('VERIFIED') || u === 'AVAILABLE' || u === 'CURRENT' || u === 'HEALTHY' || u === 'PASS') return 'var(--green)'
-  if (u === 'NOT_APPLICABLE' || u === 'N/A') return 'var(--text3)'
+  if (u === 'NOT_APPLICABLE' || u === 'N/A' || u === 'NO_PRODUCER') return 'var(--text3)'
   return undefined
 }
 
@@ -537,6 +555,26 @@ function Stamp({ label, at, fresh }: { label: string; at?: any; fresh?: string }
   )
 }
 
+function PriceClockStamp({ pc }: { pc?: any }) {
+  const asOf = pc?.as_of
+  const fresh = pc?.freshness
+  const src = pc?.reprice_source
+  const srcLabel = src === 'finviz_afterhours' ? 'Finviz after-hours' : src
+  // `as_of` may carry an explicit " ET" price-print clock (e.g. "2026-08-19 16:45:01 ET").
+  const shown = asOf ? String(asOf).replace('T', ' ').slice(0, 19) : 'no price print'
+  return (
+    <div style={{ border: '1px solid var(--border)', borderRadius: 6, padding: '6px 8px', minWidth: 150 }}>
+      <div style={{ fontSize: 10, color: 'var(--text3)', fontWeight: 700, letterSpacing: 0.3 }}>PRICES</div>
+      <div style={{ fontSize: 11.5, fontWeight: 600, color: qualityTone(fresh) || 'var(--text)' }}>
+        {fresh || 'n/a'}
+      </div>
+      <div style={{ fontSize: 10.5, color: 'var(--text2)' }}>
+        {shown}{ageLabel(asOf) ? ` · ${ageLabel(asOf)}` : ''}{srcLabel ? ` · ${srcLabel}` : ''}
+      </div>
+    </div>
+  )
+}
+
 function classHeadline(r: DeskRow) {
   if (r.row_class === 'watchlist') {
     const wi = r.watch_intelligence
@@ -567,6 +605,8 @@ export default function AdvisoryDeskHub({ onDrill }: Props) {
   const banners: Banner[] = useMemo(() => data?.banners ?? [], [data?.banners])
   const ts = data?.timestamps || {}
   const health = data?.desk_health || {}
+  const priceClock = data?.price_clock || {}
+  const deskSources = data?.desk_sources || {}
   const schedule = data?.schedule || {}
   const runNow = data?.run_now || {}
   const running = runBusy || runNow.state === 'running'
@@ -599,6 +639,10 @@ export default function AdvisoryDeskHub({ onDrill }: Props) {
     })
   }, [rows, showRemnants, cls, watchFilter])
   const hiddenRemnants = rows.filter(r => r.row_class === 'holding' && !showRemnants && (r.market_value ?? 0) < MATERIALITY_FLOOR).length
+  const remnantNames = rows
+    .filter(r => r.row_class === 'holding' && (r.market_value ?? 0) < MATERIALITY_FLOOR)
+    .map(r => r.symbol)
+    .filter((s, i, a) => s && a.indexOf(s) === i)
 
   async function postFeedback(kind: 'rate' | 'ack' | 'snooze', row: DeskRow, extra?: Record<string, string>) {
     try {
@@ -628,7 +672,7 @@ export default function AdvisoryDeskHub({ onDrill }: Props) {
       })
       const j = await res.json()
       if (res.status === 202 || j.accepted) {
-        setRunMsg(j.message || 'Running… paid Flash + Pro, advisory only')
+        setRunMsg(`${j.message || 'Running… paid Flash + Pro, advisory only'} — desk rebuilt; technicals not refreshed`)
       } else if (res.status === 409) {
         setRunMsg('Already running')
       } else {
@@ -664,6 +708,7 @@ export default function AdvisoryDeskHub({ onDrill }: Props) {
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, margin: '10px 0 12px' }}>
         <Stamp label="FACTS AS OF" at={ts.facts} fresh={ts.facts_freshness} />
+        <PriceClockStamp pc={priceClock} />
         <Stamp label="WATCH INTEL" at={ts.watch} fresh={ts.watch_freshness} />
         <Stamp label="RE-ENTRY" at={ts.reentry} fresh={ts.reentry_freshness} />
         <Stamp label="SENSES" at={ts.senses} fresh={ts.senses_freshness} />
@@ -688,7 +733,7 @@ export default function AdvisoryDeskHub({ onDrill }: Props) {
           data-testid="advisory-run-now"
           disabled={running}
           onClick={runDeskNow}
-          title="Rebuild facts + Flash opinions + Pro synthesis now. Paid. Advisory only. No broker writes."
+          title="Rebuild facts + Flash opinions + Pro synthesis now. Paid. Advisory only. No broker writes. Technical snapshots (indicator_cache_refresh / watchlist strategy cards / quotes) are NOT refreshed."
           style={{
             padding: '8px 14px',
             borderRadius: 6,
@@ -712,6 +757,11 @@ export default function AdvisoryDeskHub({ onDrill }: Props) {
               : runMsg || (runNow.finished_at ? `Last run ${fmtWhen(runNow.finished_at)}` : '')}
           </span>
         )}
+      </div>
+      <div style={{ fontSize: 11, color: 'var(--text3)', margin: '-8px 0 14px' }}>
+        Run now rebuilds facts + Flash/Pro opinions only. Stale technical snapshots behind watch
+        <span style={{ color: 'var(--amber)' }}> BLOCKED</span> rows (indicator_cache_refresh · materialize_watchlist_strategy_cards · quote_refresh)
+        are <em>not</em> refreshed here — re-run the Watch technical pipeline to clear those.
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 8, margin: '0 0 16px' }}>
@@ -750,19 +800,39 @@ export default function AdvisoryDeskHub({ onDrill }: Props) {
       )}
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-        {CLASSES.map((c) => (
-          <button
-            key={c}
-            onClick={() => setCls(c)}
-            style={{
-              padding: '5px 12px', borderRadius: 6, border: '1px solid var(--border)',
-              background: cls === c ? 'var(--accent)' : 'var(--bg2)',
-              color: cls === c ? 'var(--text0)' : 'var(--text2)', cursor: 'pointer', fontSize: 12,
-            }}
+        {CLASSES.map((c) => {
+          const shown = c !== 'all' ? data?.by_class?.[c] ?? 0 : 0
+          const label =
+            c === 'watchlist'
+              ? `${c} (${shown} of ${deskSources.watchlist_personal_total ?? '—'} personal · Hub ${deskSources.watch_hub_active ?? '—'}/${deskSources.watch_hub_universe ?? '—'})`
+              : c === 'watchlist_hub'
+                ? `hub opportunity (${shown}${deskSources.watch_hub_total != null ? ` of ${deskSources.watch_hub_total}` : ''})`
+                : c === 'closed_journal'
+                  ? `${c} (${shown} of ${deskSources.reentry_universe ?? '—'} re-entry)`
+                  : `${c}${c !== 'all' && data?.by_class?.[c] != null ? ` (${data.by_class[c]})` : ''}`
+          return (
+            <button
+              key={c}
+              onClick={() => setCls(c)}
+              style={{
+                padding: '5px 12px', borderRadius: 6, border: '1px solid var(--border)',
+                background: cls === c ? 'var(--accent)' : 'var(--bg2)',
+                color: cls === c ? 'var(--text0)' : 'var(--text2)', cursor: 'pointer', fontSize: 12,
+              }}
+            >
+              {label}
+            </button>
+          )
+        })}
+        {cls !== 'all' && (cls === 'watchlist' || cls === 'watchlist_hub' || cls === 'closed_journal') && (
+          <a
+            href={cls === 'closed_journal' ? '/v3/portfolio/re-entry' : '/v3/watch'}
+            style={{ fontSize: 11, color: 'var(--accent)', textDecoration: 'none', borderBottom: '1px dotted var(--accent)' }}
+            title={cls === 'closed_journal' ? 'Open the full Re-Entry ledger' : 'Open the full Watch Hub'}
           >
-            {c}{c !== 'all' && data?.by_class?.[c] != null ? ` (${data.by_class[c]})` : ''}
-          </button>
-        ))}
+            open {cls === 'closed_journal' ? 'Re-Entry' : 'Watch Hub'} ↗
+          </a>
+        )}
         <button
           onClick={() => setShowRemnants(v => !v)}
           title="Toggle sub-$500 close-out remnants"
@@ -779,6 +849,12 @@ export default function AdvisoryDeskHub({ onDrill }: Props) {
         </span>
         {feedbackMsg && <span style={{ fontSize: 12, color: 'var(--green)', marginLeft: 8 }}>{feedbackMsg}</span>}
       </div>
+      {!showRemnants && hiddenRemnants > 0 && (
+        <div style={{ fontSize: 11, color: 'var(--text3)', margin: '-6px 0 12px' }}>
+          {hiddenRemnants} hidden sub-$500 remnants include{' '}
+          {remnantNames.slice(0, 8).join(', ')}{remnantNames.length > 8 ? ', …' : ''} — use “Show remnants” to surface them.
+        </div>
+      )}
 
       {(cls === 'watchlist' || cls === 'all') && (
         <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
@@ -825,8 +901,19 @@ export default function AdvisoryDeskHub({ onDrill }: Props) {
                     </td>
                     <td style={{ padding: '8px 10px', color: 'var(--text2)' }}>{r.row_class}</td>
                     <td style={{ padding: '8px 10px', fontWeight: 700, color: VERDICT_COLOR[r.verdict] || 'var(--text)' }}
-                      title={VERDICT_HELP[r.verdict]}>
+                      title={r.verdict_suppressed ? (r.verdict_suppressed_reason || 'ACTION SUPPRESSED') : VERDICT_HELP[r.verdict]}>
                       {r.verdict}
+                      {r.verdict_suppressed && (
+                        <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--red)' }}>SUPPRESSED</div>
+                      )}
+                      {r.trim_kind && TRIM_KIND_LABEL[r.trim_kind] && (
+                        <div
+                          style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'capitalize' }}
+                          title={TRIM_KIND_HELP[r.trim_kind]}
+                        >
+                          {TRIM_KIND_LABEL[r.trim_kind]}
+                        </div>
+                      )}
                       {r.setup_state && r.row_class === 'watchlist' && (
                         <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--accent)' }}>{r.setup_state}</div>
                       )}
