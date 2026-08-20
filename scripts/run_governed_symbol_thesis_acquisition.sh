@@ -15,8 +15,9 @@
 #
 set -euo pipefail
 
-# SRC = repo checkout holding the runner + symbol_thesis_* modules.
-SRC="${TRADEAI_SRC:-/home/johnclaw/tradeai-wt-final-operator-convergence}"
+# SRC = checkout holding the runner + symbol_thesis_* modules. Self-locating so
+# the wrapper works from any checkout (ephemeral worktree or canonical tree).
+SRC="${TRADEAI_SRC:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 # PROJ = canonical deployment tree (venv, .env, data/, DB creds).
 PROJ="${TRADEAI_PROJ:-/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild}"
 PY="${PY:-$PROJ/.venv/bin/python}"
