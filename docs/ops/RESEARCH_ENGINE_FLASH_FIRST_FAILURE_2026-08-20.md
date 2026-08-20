@@ -58,3 +58,26 @@ Evidence (operator host, 2026-08-20):
 - No silent re-queue of the 300+ failed jobs.
 - No change to broker / order / stop / 2FA paths.
 - No inventing Flash receipts when the provider was never called.
+
+## Resolution (2026-08-20) — supersedes the "CAP missing" root cause above
+
+Re-investigation showed the "missing `LLM_GLOBAL_DAILY_USD_CAP`" framing was **stale**.
+The 8-19 cron→wrapper migration already sourced `agent-operator.env` on the live
+drain path (`run_watchlist_agent_jobs_offpeak.sh` logs `LLM_GLOBAL_DAILY_USD_CAP_ok=yes`
+every run). The two **real** gates blocking the governed Flash-first path
+(`agent_flash_governance` / `watchlist_maria_flash_narrative`) were:
+
+1. **Canonical containment flag absent** — `~/.local/state/tradeai/AGENT_JOBS_P0_CONTAINED`
+   did not exist, so the market-hours governed canary fail-closed `exit=78` every 15m.
+2. **`daily_soft_cap=120` request cap exhausted** overnight for
+   `watchlist_maria_flash_narrative`, so every governed maria call rejected with
+   `COST_CAP_EXCEEDED: daily request cap` before reaching the provider; 8 errors
+   then tripped `agent_flash` for the rest of the run.
+
+**Applied fix:** armed containment via `agent_jobs_containment.activate()`, added the
+process-scoped containment override to the offpeak wrapper, and raised the maria
+`daily_soft_cap` 120→240. Result: 5/5 governed `--scheduled-canary` Flash calls
+succeeded on exact `deepseek-v4-flash` (no `gemma3`), cost recorded, `fallback_used=false`.
+Failure churn (CAP_MISSING / CIRCUIT_OPEN) stopped once containment was armed.
+
+See `docs/ops/FLASH_ACTIVATION_AND_THESIS_CANARY_2026-08-20.md`.

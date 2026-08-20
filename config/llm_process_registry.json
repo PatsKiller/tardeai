@@ -91,12 +91,13 @@
       ],
       "max_input_tokens": 4000,
       "max_output_tokens": 800,
-      "daily_soft_cap": 120,
+      "daily_soft_cap": 240,
       "daily_cost_cap_usd": 2.0,
       "tools_allowed": false,
       "fallback_allowed": false,
       "advisory_only": true,
-      "output_schema": "watch_narrative.v1"
+      "output_schema": "watch_narrative.v1",
+      "notes": " | 2026-08-20: daily_soft_cap 120→240 after overnight request-cap exhaustion; containment re-armed + offpeak wrapper now overrides containment (issue #283). cost cap unchanged 2.0."
     },
     {
       "id": "watchlist_risk_flash_narrative",
