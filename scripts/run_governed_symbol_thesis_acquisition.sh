@@ -3,7 +3,7 @@
 #
 # Cron-safe (no % chars, no multi-command shell):
 #
-#   17 3 * * 1-5 /home/johnclaw/tradeai-wt-final-operator-convergence/scripts/run_governed_symbol_thesis_acquisition.sh >> /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/symbol_thesis_acquisition.log 2>&1 # TRADEAI_GOVERNED_WORKER thesis-acquisition-daily
+#   17 3 * * 1-5 /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/run_governed_symbol_thesis_acquisition.sh >> /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/symbol_thesis_acquisition.log 2>&1 # TRADEAI_GOVERNED_WORKER thesis-acquisition-daily
 #
 # Guarantees (mirrors run_governed_agent_flash_market.sh):
 #   - Canonical host containment flag remains on disk (never cleared)
