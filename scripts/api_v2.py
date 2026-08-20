@@ -22045,8 +22045,33 @@ def _research_topics_unified():
         "gaps_escalated": len(gaps) > 0,
         "auto_research_briefs": auto_briefs_out,
         "auto_research_count": len(auto_briefs_out),
+        "youtube_research_queue": _cio_youtube_research_queue_summary(),
         "note": "User Research Topics are operator-initiated advisories. Auto-research briefs come from auto_research.py (Trade AI LLM router, not Hermes). Topic Monitor Library tracks automated intelligence gathering. Gaps escalated to Iris agent for investigation.",
     }
+
+
+def _cio_youtube_research_queue_summary():
+    """Thin read of material-only CIO YouTube queue (file or empty)."""
+    try:
+        from cio_youtube_research_queue import load_queue
+        q = load_queue()
+        return {
+            "count": q.get("count", 0),
+            "built_at": q.get("built_at"),
+            "min_quality": q.get("min_quality", 70),
+            "items": (q.get("items") or [])[:12],
+        }
+    except Exception:
+        return {"count": 0, "items": [], "note": "queue unavailable"}
+
+
+def _cio_youtube_research_queue():
+    """GET /api/v2/cio/youtube-research-queue — material-only promoted YT (Q>=70)."""
+    try:
+        from cio_youtube_research_queue import load_queue
+        return load_queue()
+    except Exception as e:
+        return {"count": 0, "items": [], "error": str(e)[:160]}
 
 
 def _report_catalog_cached():
@@ -35719,6 +35744,7 @@ ROUTES = {
     "/api/v2/sec/form4/symbol": lambda: {"error": "Use /api/v2/sec/form4?symbol=V"},
     "/api/v2/research-topics": lambda: _research_topics_unified(),
     "/api/v2/research-topics/registry": lambda: _research_topics_registry(),
+    "/api/v2/cio/youtube-research-queue": lambda: _cio_youtube_research_queue(),
     "/api/v2/research-intelligence": lambda: _research_intelligence_feed(_current_query),
     "/api/v2/research-intelligence/taxonomy": lambda: _research_intelligence_taxonomy(),
     "/api/v2/research-intelligence/freshness": lambda: _research_intelligence_freshness(),

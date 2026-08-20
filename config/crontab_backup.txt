@@ -123,7 +123,8 @@ BLIND_REVIEW_LANES=deepseek-flash,grok,chatgpt
 0 10 * * 0 cd $PROJ && flock -n /tmp/weekly_trade_review.lock $PY scripts/multi_tier_trade_reviewer.py --tier weekly >> logs/weekly_trade_review.log 2>&1
 0 10 * * 1-5 cd $PROJ && $PY scripts/cleanup_stale_proposals.py --apply >> logs/cleanup_stale_proposals.log 2>&1
 0 10 * * 1-5 cd $PROJ && flock -n /tmp/finviz_screener.lock $PY scripts/finviz_screener_runner.py --run >> logs/finviz_screener.log 2>&1
-0 10 1 * * cd $PROJ && $PY scripts/youtube_channel_discovery.py --discover --telegram >> logs/youtube_discovery.log 2>&1
+# Weekly (Sundays 10:00) YouTube channel discovery — was monthly 1st@10:00
+0 10 * * 0 cd $PROJ && $PY scripts/youtube_channel_discovery.py --discover --telegram >> logs/youtube_discovery.log 2>&1
 0 10-15 * * 1-5 $PROJ/scripts/agent_router_cron.sh light
 0 10-16 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/alpaca_recon.lock $PY scripts/alpaca_paper_adapter.py --sync-only >> logs/alpaca_paper_adapter.log 2>&1
 0 10-16 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && .venv/bin/python scripts/data_gap_resolver.py >> logs/data_gap_resolver.log 2>&1
@@ -149,6 +150,8 @@ BLIND_REVIEW_LANES=deepseek-flash,grok,chatgpt
 0 18 * * 1-5 cd $PROJ && flock -n /tmp/finviz_screener.lock $PY scripts/finviz_screener_runner.py --run >> logs/finviz_screener.log 2>&1
 0 18 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && .venv/bin/python scripts/data_gap_resolver.py --pre-overnight >> logs/data_gap_resolver_pre_overnight.log 2>&1
 0 19 * * 1-5 cd $PROJ && $PY scripts/youtube_transcript_ingest.py --all-channels >> logs/youtube_ingest.log 2>&1
+# Material-only CIO YouTube research queue (Q>=70 promoted) — after weekday ingest
+30 19 * * 1-5 cd $PROJ && $PY scripts/cio_youtube_research_queue.py --build >> logs/cio_youtube_research_queue.log 2>&1
 # PHASE102-RETIRED 0 20 * * 1-5 cd $PROJ && bash scripts/market_day_gate.sh $PY scripts/overnight_batch.py --telegram >> logs/overnight_batch.log 2>&1
 0 20 * * 1-5 cd $PROJ && $PY scripts/sec_data_ingest.py --all >> logs/sec_ingest.log 2>&1
 0 20 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && ./scripts/run_scheduled_atp2_research_cycle.sh --cycle evening >> logs/atp2_research_cycle_cron.log 2>&1

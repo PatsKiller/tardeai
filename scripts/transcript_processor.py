@@ -27,7 +27,7 @@ FILLERS = [
 ]
 FILLER_PATTERN = re.compile('|'.join(FILLERS), re.IGNORECASE)
 
-# ── Step 4: Sub-tag rules (12 retirement-specific) ───────────────────
+# ── Step 4: Sub-tag rules (full investment desk + retirement) ────────
 
 SUB_TAG_RULES = {
     "roth_conversion_ladder": ["roth conversion", "roth ladder", "conversion ladder", "convert ira to roth", "backdoor roth"],
@@ -38,10 +38,21 @@ SUB_TAG_RULES = {
     "income_gap_strategy": ["income gap", "income target", "retirement income", "passive income", "dividend income.*retirement"],
     "tax_bracket_management": ["tax bracket", "bracket room", "fill.*bracket", "tax efficiency", "tax optimization"],
     "covered_call_income": ["covered call", "option income", "selling calls", "premium income", "wheel strategy"],
+    "put_selling_etf": ["put selling", "put etf", "put-write", "put write", "cash secured put", "buffer etf"],
+    "inverse_bearish_etf": ["inverse etf", "bear etf", "short etf", "3x inverse", "bearish etf"],
     "dividend_growth": ["dividend growth", "dividend aristocrat", "consecutive.*dividend", "dividend increase", "dgi"],
+    "growth_equity": ["growth stock", "growth investing", "earnings growth", "revenue growth", "secular growth"],
+    "value_equity": ["value stock", "value investing", "deep value", "margin of safety", "price to book"],
+    "small_cap_equity": ["small cap", "small-cap", "microcap", "russell 2000", "smallcap"],
+    "bond_ladder": ["bond ladder", "treasury ladder", "fixed income ladder", "i bond", "tips"],
+    "fixed_income": ["fixed income", "corporate bond", "municipal bond", "duration", "yield curve", "treasury bond"],
+    "macro_multi_asset": ["macro thesis", "multi-asset", "portfolio construction", "investment thesis", "market regime", "cross-asset"],
+    "crypto_assets": ["bitcoin", "ethereum", "crypto etf", "spot bitcoin", "digital asset"],
+    "commodity_assets": ["commodity", "gold etf", "silver etf", "oil futures", "precious metal"],
+    "international_emerging": ["emerging market", "international equity", "developed market", "ex-us", "global equity"],
+    "valuation_analysis": ["valuation", "pe ratio", "price to earnings", "dcf", "intrinsic value", "fair value"],
     "rmd_planning": ["required minimum", "rmd", "rmd strategy", "rmd tax", "72t"],
     "401k_rollover": ["401k rollover", "rollover ira", "roll over.*401", "employer plan"],
-    "bond_ladder": ["bond ladder", "treasury ladder", "fixed income ladder", "i bond", "tips"],
 }
 
 
@@ -108,7 +119,7 @@ def generate_structured_summary(title: str, extracted_text: str, channel: str = 
 
         high_impact = quality_score >= 70
 
-        prompt = f"""/no_think You are a retirement income and tax planning analyst.
+        prompt = f"""/no_think You are a full-desk investment research analyst covering equities (growth, value, small-cap), ETFs, bonds/fixed income, options income strategies, commodities, crypto, international markets, and macro. Retirement income and tax planning remain in scope when present.
 Analyze this YouTube transcript and output ONLY valid JSON.
 
 Title: {title}
@@ -119,17 +130,18 @@ Transcript (key sentences):
 
 Output ONLY valid JSON with this exact schema (no other text before or after):
 {{
-  "summary": "150-250 word professional overview focused on retirement/income/tax implications",
+  "summary": "150-250 word professional overview focused on investment research implications across asset classes (stocks/ETFs/bonds/options/macro); include retirement/tax angles when relevant",
   "key_points": ["concise factual point 1", "point 2", "point 3"] (5-8 points),
   "action_items": ["actionable recommendation 1", "recommendation 2"] (max 6),
   "tickers_mentioned": ["SCHD", "V", "JEPI"],
   "retirement_relevance": "high" or "medium" or "low",
+  "research_relevance": "high" or "medium" or "low",
   "relevance_score": 0-100,
-  "main_topics": ["roth_conversion_ladder", "income_gap_strategy", "dividend_growth"],
+  "main_topics": ["growth_equity", "bond_ladder", "macro_multi_asset", "covered_call_income"],
   "llm_confidence": 0-100
 }}
 
-Focus on: dividend strategy, Roth ladders, SSDI rules, Medicaid planning, tax optimization, income gap, covered calls, specific ticker or ETF mentions."""
+Focus on: equity style (growth/value/small-cap), valuation, ETF structures (covered call, put-write, inverse), fixed income/duration, macro/regime, portfolio construction, commodities/crypto/international, plus retirement topics when present (Roth ladders, SSDI, Medicaid, tax optimization, income gap). Capture specific ticker or ETF mentions."""
 
         result = get_llm_response(
             "cio_synthesis" if high_impact else "agent_narrative",
@@ -168,7 +180,7 @@ Focus on: dividend strategy, Roth ladders, SSDI rules, Medicaid planning, tax op
 # ── Step 4: Sub-tags ─────────────────────────────────────────────────
 
 def extract_sub_tags(text: str) -> list:
-    """Extract retirement-specific sub-tags from transcript text."""
+    """Extract investment-desk sub-tags (all asset classes + retirement) from text."""
     text_lower = (text or "").lower()
     tags = []
     for tag, patterns in SUB_TAG_RULES.items():
@@ -182,9 +194,23 @@ def extract_sub_tags(text: str) -> list:
 # ── Step 4b: Timestamped highlights from timed segments ──────────────
 
 HIGHLIGHT_KEYWORDS = [
+    # Retirement / disability (kept)
     "roth", "conversion", "ira", "401k", "dividend", "yield", "income",
     "retirement", "medicare", "medicaid", "irmaa", "tax bracket", "ssdi",
     "disability", "stop loss", "rebalance", "covered call", "bond ladder",
+    # Equities / valuation
+    "growth stock", "value investing", "small cap", "valuation", "earnings growth",
+    "free cash flow", "moat", "price target",
+    # Bonds / fixed income
+    "bond", "treasury", "fixed income", "duration", "yield curve", "tips",
+    # Options / ETF structures
+    "put selling", "put etf", "put write", "inverse etf", "bear etf",
+    "option premium", "wheel strategy",
+    # Macro / multi-asset
+    "macro", "portfolio construction", "investment thesis", "multi-asset",
+    "fomc", "inflation", "interest rate",
+    # Crypto / commodities / international
+    "bitcoin", "crypto", "commodity", "gold", "emerging market", "international",
 ]
 
 
@@ -220,7 +246,15 @@ def extract_timestamped_highlights(timed_segments: list, max_highlights: int = 6
                          "income": "Income strategy", "retirement": "Retirement planning",
                          "medicare": "Medicare/IRMAA", "irmaa": "IRMAA analysis",
                          "tax bracket": "Tax bracket management", "disability": "Disability planning",
-                         "covered call": "Covered call income", "bond ladder": "Bond strategy"}
+                         "covered call": "Covered call income", "bond ladder": "Bond strategy",
+                         "growth stock": "Growth equities", "value investing": "Value equities",
+                         "small cap": "Small-cap equities", "valuation": "Valuation analysis",
+                         "bond": "Fixed income", "treasury": "Treasuries",
+                         "fixed income": "Fixed income", "put selling": "Put-selling ETF",
+                         "put etf": "Put-selling ETF", "inverse etf": "Inverse/bearish ETF",
+                         "macro": "Macro outlook", "portfolio construction": "Portfolio construction",
+                         "bitcoin": "Crypto assets", "commodity": "Commodities",
+                         "emerging market": "International/emerging"}
             readable_topic = topic_map.get(topic, topic.title())
 
             def _fmt_time(seconds):
