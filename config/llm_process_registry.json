@@ -140,13 +140,14 @@
         "FAST"
       ],
       "max_input_tokens": 4000,
-      "max_output_tokens": 800,
+      "max_output_tokens": 1600,
       "daily_soft_cap": 40,
       "daily_cost_cap_usd": 1.0,
       "tools_allowed": false,
       "fallback_allowed": false,
       "advisory_only": true,
-      "output_schema": "cio_synthesis.v1"
+      "output_schema": "cio_synthesis.v1",
+      "notes": "2026-08-20: max_output_tokens 800→1600 — living-thesis synthesis JSON (11 keys + cited evidence lists) was being truncated mid-object at 800 tokens, causing parse:no_json_object. Cost cap unchanged 1.0."
     },
     {
       "id": "watchlist_agent_debate_flash",

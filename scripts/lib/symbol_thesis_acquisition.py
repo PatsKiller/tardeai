@@ -291,6 +291,93 @@ def plan_embed_into_existing_rag(
     }
 
 
+def embed_evidence_into_rag(
+    cataloged_items: list[dict[str, Any]],
+    *,
+    max_embeds: int = 20,
+    conn=None,
+) -> dict[str, Any]:
+    """Embed curation-approved items into EXISTING content_embeddings (db-write).
+
+    Only items passing curate_candidate_for_embed's embed_ready gate are written
+    (approved / PRIMARY_REGULATORY / APPROVED_NEWS / RAG_HIT). Pending SearXNG
+    hits stay out until a curator approves them — the fail-closed boundary.
+    Idempotent via ON CONFLICT (source_type, source_id) DO NOTHING. No second store.
+    """
+    ready = []
+    for it in cataloged_items:
+        d = curate_candidate_for_embed(it)
+        if d.get("admit") and d.get("embed_ready"):
+            ready.append(d["item"])
+    not_ready = len(cataloged_items) - len(ready)
+    ready = ready[:max_embeds]
+    base = {
+        "schema": "SymbolThesisEmbedResult@v1",
+        "embedded": 0,
+        "admitted_ready": len(ready),
+        "skipped_not_embed_ready": not_ready,
+        "apply": True,
+        "authority": AUTHORITY,
+        "as_of": _now(),
+    }
+    if not ready:
+        return base
+
+    try:
+        from rag_retrieval import embed_text
+    except Exception as exc:
+        return {**base, "error": f"embed_import:{type(exc).__name__}:{exc}"}
+
+    close = False
+    cur = None
+    embedded = 0
+    errors: list[str] = []
+    try:
+        if conn is None:
+            from rag_retrieval import _get_conn
+            conn = _get_conn()
+            close = True
+        cur = conn.cursor()
+        for it in ready:
+            text = f"{it.get('title') or ''} {it.get('fact') or ''}".strip()[:2000]
+            vec = embed_text(text)
+            if vec is None:
+                continue
+            src = str(it.get("source_type") or "thesis_evidence")[:60]
+            sid = int(hashlib.md5(str(it.get("source_id") or "").encode()).hexdigest()[:15], 16)
+            title = str(it.get("title") or it.get("fact") or "")[:300]
+            cur.execute(
+                """
+                INSERT INTO content_embeddings
+                    (source_type, source_id, title, embedding, embedding_model, embedding_dim, created_at)
+                VALUES (%s,%s,%s,%s,%s,%s,NOW())
+                ON CONFLICT (source_type, source_id) DO NOTHING
+                """,
+                (src, sid, title, json.dumps(vec), "nomic-embed-text", len(vec)),
+            )
+            embedded += 1
+        conn.commit()
+    except Exception as exc:
+        errors.append(f"{type(exc).__name__}:{exc}")
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+    finally:
+        if cur is not None:
+            try:
+                cur.close()
+            except Exception:
+                pass
+        if close and conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+    return {**base, "embedded": embedded, "errors": errors}
+
+
 def dry_run_searx_step(queries: list[str]) -> list[dict[str, Any]]:
     """Optional live SearXNG probe via SHARED searxng_client (no second client).
 

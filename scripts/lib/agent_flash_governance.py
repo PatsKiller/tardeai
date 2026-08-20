@@ -281,6 +281,7 @@ def governed_flash_call(
     job_key: str | None = None,
     prompt_version: str = "v1",
     allow_fast_think: bool = True,
+    response_json: bool = False,
 ) -> dict[str, Any]:
     """Execute one governed DeepSeek Flash call. Fail closed. No silent fallback.
 
@@ -457,6 +458,7 @@ def governed_flash_call(
             max_tokens=effective_out,
             metadata=meta,
             return_provenance=True,
+            response_json=response_json,
         )
     except Exception as e:
         _trip_circuit(str(e))
