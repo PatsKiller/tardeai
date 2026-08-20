@@ -7,6 +7,7 @@ Unified snapshot aggregating the key domains a CIO needs in ONE read:
   rotation  → sector leadership, regime signal
   income    → dividends, yield by account
   reentry   → reentry decision desk (READY/NEAR/BLOCK) for S3
+  watch_intelligence → broker watch cards (READY/GO/NEAR/BLOCK) for S7
 
 Composes existing Data Broker projections — does NOT re-read raw files.
 Zero provider calls on page load. Deterministic computation only.
@@ -118,12 +119,10 @@ def _domain_risk() -> dict[str, Any]:
 
 
 def _domain_watch() -> DomainEvidence:
-    """Watchlist state summary. Reads actual watchlist source, NOT holdings.json.
+    """Legacy thesis watchlist file (symbol → thesis dict). Not S7 promotion shape.
 
-    Fallback order:
-      1. data/watchlist/state/watchlist.json (canonical file source)
-      2. DB-based watchlist table (existing approach)
-      3. DATA_UNAVAILABLE with SOURCE_FILE_MISSING
+    Prefer ``_domain_watch_intelligence`` for CIOSituationDetector S7.
+    Kept for operators/UI that still read snapshot.domains.watch.
     """
     # 1. Try canonical watchlist file
     if WATCHLIST_PATH.exists():
@@ -131,7 +130,7 @@ def _domain_watch() -> DomainEvidence:
         if watch_data:
             as_of = watch_data.get("as_of", "") if isinstance(watch_data, dict) else ""
             return DomainEvidence.available(
-                "watch_intelligence", watch_data,
+                "watch", watch_data,
                 source_ref=str(WATCHLIST_PATH), as_of=as_of
             )
 
@@ -170,7 +169,7 @@ def _domain_watch() -> DomainEvidence:
         ]
         conn.close()
         return DomainEvidence.available(
-            "watch_intelligence",
+            "watch",
             {"watchlist_count": count, "items": items},
             source_ref="DB:watchlist",
         )
@@ -179,11 +178,53 @@ def _domain_watch() -> DomainEvidence:
 
     # 3. No watchlist source available
     return DomainEvidence.unavailable(
-        "watch_intelligence",
+        "watch",
         reason_code=ReasonCode.SOURCE_FILE_MISSING,
         source_ref=str(WATCHLIST_PATH),
         gap_reason="No watchlist source available: watchlist.json missing and DB fallback failed",
     )
+
+
+def _domain_watch_intelligence() -> DomainEvidence:
+    """Watch Intelligence broker projection for S7 (READ_ONLY).
+
+    Calls list_watch_intelligence (fail-soft) and normalizes promotion-grade
+    statuses to READY|GO|NEAR|BLOCK for eval_s7. Does not invent READY from
+    street ratings or MANAGING/WAIT alone.
+    """
+    try:
+        try:
+            from lib.data_broker.watch_intelligence import (
+                list_watch_intelligence,
+                project_watch_intelligence_for_cio,
+            )
+        except Exception:  # pragma: no cover
+            from scripts.lib.data_broker.watch_intelligence import (  # type: ignore
+                list_watch_intelligence,
+                project_watch_intelligence_for_cio,
+            )
+        raw = list_watch_intelligence({"page_size": 80, "view": "all"})
+        if not isinstance(raw, dict) or not raw.get("ok", True):
+            # Still project whatever came back; empty → present domain with 0 items
+            raw = raw if isinstance(raw, dict) else {}
+        projected = project_watch_intelligence_for_cio(raw)
+        projected.setdefault("items", [])
+        projected.setdefault("candidates", projected.get("items") or [])
+        projected.setdefault("rows", projected.get("items") or [])
+        as_of = str(projected.get("generated_at") or raw.get("generated_at") or "")
+        return DomainEvidence.available(
+            "watch_intelligence",
+            projected,
+            source_ref="lib.data_broker.watch_intelligence.list_watch_intelligence",
+            as_of=as_of,
+        )
+    except Exception as exc:
+        return DomainEvidence.unavailable(
+            "watch_intelligence",
+            reason_code=ReasonCode.COLLECTOR_EXCEPTION,
+            source_ref="lib.data_broker.watch_intelligence.list_watch_intelligence",
+            gap_reason=f"watch_intelligence_domain_error:{type(exc).__name__}:{exc}",
+        )
 
 
 def _domain_rotation() -> DomainEvidence:
@@ -982,7 +1023,7 @@ _COLLECTORS = {
     "portfolio": _domain_portfolio,
     "risk": _domain_risk,
     "watch": _domain_watch,
-    "watch_intelligence": _domain_watch,
+    "watch_intelligence": _domain_watch_intelligence,
     "rotation": _domain_rotation,
     "income": _domain_income,
     "reconciliation": _domain_reconciliation,
