@@ -41,11 +41,11 @@ def test_intent_meta_llm_ask_no_reentry_default(monkeypatch):
     assert "runtime_llm" in needs or "runtime_status" in needs
 
 
-def test_intent_unclear_not_reentry_dump(monkeypatch):
+def test_intent_freeform_not_reentry_dump(monkeypatch):
     monkeypatch.setenv("CIO_OPERATOR_INTENT_FLASH", "0")
     intent = analyze_operator_intent("alex hello there")
-    assert intent.get("intent") == "unclear"
-    assert intent.get("needs") == []
+    assert intent.get("intent") == "freeform"
+    assert "reentry_ready" not in (intent.get("needs") or [])
 
 
 def test_handle_llm_ask_no_reentry_dump(monkeypatch):
