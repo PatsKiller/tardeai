@@ -923,11 +923,21 @@ export default function AdvisoryDeskHub({ onDrill }: Props) {
                     </td>
                     <td style={{ padding: '8px 10px' }}>{r.confidence != null ? Number(r.confidence).toFixed(2) : 'n/a'}</td>
                     <td style={{ padding: '8px 10px', color: 'var(--text2)' }}>{classHeadline(r)}</td>
-                    <td style={{ padding: '8px 10px' }} data-testid="data-quality">
-                      ev {dq.evidence_count ?? 0}
-                      {dq.gap_count ? ` · gaps ${dq.gap_count}` : ''}
-                      {dq.action_suppressed ? <span style={{ color: 'var(--red)', fontWeight: 700 }}> · DATA CONFLICT</span>
-                        : dq.quality ? ` · ${dq.quality}` : ''}
+                    <td style={{ padding: '8px 10px' }} data-testid="data-quality"
+                      title={String(dq.quality_detail || dq.quality || '')}>
+                      <div style={{ fontWeight: 700, fontSize: 11, letterSpacing: '.2px',
+                        color: dq.action_suppressed ? 'var(--red)'
+                          : (dq.quality_kind === 'REENTRY_MECHANICAL_OK' || dq.quality_kind === 'OK') ? 'var(--text2)'
+                          : (dq.requeueable ? 'var(--amber)' : 'var(--text2)') }}>
+                        {dq.quality_label
+                          || (dq.action_suppressed ? 'MARK CONFLICT'
+                            : dq.quality ? String(dq.quality).replace(/_/g, ' ') : '—')}
+                      </div>
+                      <div style={{ fontSize: 10, color: 'var(--text3)' }}>
+                        ev {dq.evidence_count ?? 0}
+                        {dq.gap_count ? ` · gaps ${dq.gap_count}` : ''}
+                        {dq.requeueable ? ' · queued' : ''}
+                      </div>
                     </td>
                     <td style={{ padding: '8px 10px', color: 'var(--text2)', maxWidth: 340, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                       title={headline}>
