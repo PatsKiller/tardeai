@@ -440,10 +440,22 @@ def decide_notification(
     reopen_reason: Optional[str] = None
 
     if not gen_changed:
-        notification_class = DELIVERY_SUPPRESSED
-        suppressed_reason = (
-            "prior_operator_reject_unchanged" if prior_reject else "unchanged_replay"
-        )
+        # Sticky ACT_NOW on a concentration lineage must not go fully silent —
+        # DIGEST keeps the operator aware of over-fire without re-paging IMMEDIATE
+        # every scan (signal-over-spam preserved for non-ACT_NOW replays).
+        if (
+            act_now
+            and not blocking
+            and not prior_reject
+            and "CONCENTRATION" in str(lineage).upper()
+        ):
+            notification_class = DELIVERY_DIGEST
+            suppressed_reason = None
+        else:
+            notification_class = DELIVERY_SUPPRESSED
+            suppressed_reason = (
+                "prior_operator_reject_unchanged" if prior_reject else "unchanged_replay"
+            )
     elif prior_reject:
         # Prior REJECT: reopen ONLY on a genuine semantic change (standing moved,
         # blocking changed, or now actionable), never on a raw hash alone.

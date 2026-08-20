@@ -296,6 +296,10 @@ write_systemd() {
   if [[ -n "${CIO_SOURCE_PR:-}" ]]; then
     pr_line="Environment=TRADEAI_CC_SOURCE_PR=${CIO_SOURCE_PR}"
   fi
+  # Do NOT stamp CIO_TELEGRAM_INTERDICT here. Lexicographic merge used to fight
+  # 25-cio-only-live.conf (20 wrote =1, 25 wrote =0). Live/interdict mode is
+  # owned solely by ~/.config/systemd/user/portfolio-server.service.d/25-cio-only-live.conf
+  # (or cio_telegram_mode.sh). Promote must not re-arm the kill switch.
   cat >"$SYSTEMD_DROPIN" <<DROPIN
 [Service]
 WorkingDirectory=${dir}
@@ -304,11 +308,10 @@ Environment=LLM_GLOBAL_DAILY_USD_CAP=0.50
 Environment=TRADEAI_CC_DEPLOYED_SHA=${sha}
 ${pr_line}
 Environment=TRADEAI_WATCH_DEFAULT_WORKSPACE=intelligence
-Environment=CIO_TELEGRAM_INTERDICT=1
 ExecStart=
 ExecStart=${VENV_PYTHON} ${dir}/scripts/portfolio_server.py
 DROPIN
-  log "systemd drop-in → $dir sha=${sha} (CIO_TELEGRAM_INTERDICT=1; PR=${CIO_SOURCE_PR:-omitted})"
+  log "systemd drop-in → $dir sha=${sha} (INTERDICT owned by 25-cio-only-live.conf; PR=${CIO_SOURCE_PR:-omitted})"
 }
 
 activate_release() {

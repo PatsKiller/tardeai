@@ -551,3 +551,29 @@ def test_aug17_zero_repeat_after_first_material(store):
     res = replay_decisions(decisions, store=store)
     # First cycle pages each lineage once (3); the remaining 17 cycles add 0.
     assert res["immediate_notifications"] <= 3, res
+
+
+def test_phase_a_sticky_concentration_act_now_digest_not_silent(store):
+    """Phase A: sticky SCHD concentration ACT_NOW must not go SUPPRESSED forever.
+
+    First page may be IMMEDIATE; unchanged replay with act_now still True becomes
+    DIGEST (operator-aware) rather than silent SUPPRESSED.
+    """
+    a = schd_dec(digest="e1", current="TRIM", act_now=True)
+    assert "CONCENTRATION" in decision_lineage_id(a)
+    nd1 = decide_notification(a, store=store)
+    store.record(nd1)
+    assert nd1["notification_class"] == DELIVERY_IMMEDIATE
+    # Same semantic generation (unchanged digest fields that feed material_gen)
+    nd2 = decide_notification(schd_dec(digest="e1", current="TRIM", act_now=True), store=store)
+    assert nd2["notification_class"] == DELIVERY_DIGEST
+    assert nd2.get("suppressed_reason") is None
+
+
+def test_phase_a_sticky_non_act_now_still_suppressed(store):
+    """Non-ACT_NOW concentration replay remains SUPPRESSED (signal-over-spam)."""
+    a = schd_dec(digest="e1", current="TRIM", act_now=False)
+    store.record(decide_notification(a, store=store))
+    nd2 = decide_notification(schd_dec(digest="e1", current="TRIM", act_now=False), store=store)
+    assert nd2["notification_class"] == DELIVERY_SUPPRESSED
+    assert nd2["suppressed_reason"] == "unchanged_replay"
