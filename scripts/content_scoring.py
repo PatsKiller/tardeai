@@ -6,29 +6,59 @@ Used by news_ingestion.py, youtube_transcript_ingest.py, and social_monitor.py.
 from datetime import datetime, timezone
 
 
-# Keywords that boost relevance for retirement income investing
+# Keywords that boost relevance across the full investment research desk
+# (equities, fixed income, ETFs/options income, crypto, commodities, macro,
+# retirement/disability — retirement keywords retained for continuity).
 RELEVANCE_KEYWORDS = {
     "high": [
+        # Income / dividends / retirement (legacy — keep working)
         "dividend", "yield", "income", "roth", "ira", "401k", "retirement",
         "distribution", "payout", "ex-dividend", "dividend growth", "covered call",
         "bdc", "cef", "preferred", "reits", "reit", "mlp",
         "irmaa", "medicare", "social security", "rmd", "required minimum",
         "tax bracket", "capital gains", "tax loss", "conversion",
-        # Disability + Medicare + Trust (v4.6)
         "ssdi", "disability", "medicaid", "dual eligible", "special needs trust",
         "pooled trust", "able account", "spend down", "elder law",
         "medicaid planning", "disability income", "sga", "trial work period",
         "long term disability", "ltdi", "medicare supplement", "medigap",
+        # Equities by style
+        "growth stock", "growth investing", "value stock", "value investing",
+        "small cap", "small-cap", "mid cap", "large cap", "megacap",
+        "earnings growth", "free cash flow", "moat", "compounder",
+        # Fixed income / bonds
+        "treasury", "bond ladder", "fixed income", "duration risk",
+        "yield curve", "corporate bond", "municipal bond", "tips", "ig bond",
+        # Options / income ETFs
+        "covered call etf", "put selling", "put etf", "cash secured put",
+        "defined outcome", "buffer etf", "wheel strategy", "option premium",
+        # Inverse / bearish
+        "inverse etf", "bear etf", "short etf", "3x inverse", "hedge etf",
+        # Crypto / commodities
+        "bitcoin", "ethereum", "crypto etf", "spot bitcoin", "digital asset",
+        "gold etf", "silver etf", "commodity", "oil futures", "copper",
+        # International / emerging / macro
+        "emerging market", "international equity", "developed market",
+        "fx risk", "currency hedge", "global allocation",
+        "macro thesis", "portfolio construction", "multi-asset",
+        "secular theme", "investment thesis",
     ],
     "medium": [
         "earnings", "guidance", "revenue", "margin", "buyback", "debt",
         "interest rate", "fed", "inflation", "recession", "valuation",
         "pe ratio", "price target", "analyst", "upgrade", "downgrade",
         "sector rotation", "allocation", "rebalance", "risk",
+        "bond", "treasury yield", "credit spread", "duration",
+        "growth", "value", "smallcap", "factor investing", "quality factor",
+        "etf", "options", "implied volatility", "put write", "covered call",
+        "crypto", "bitcoin etf", "blockchain", "commodity etf", "gold",
+        "emerging markets", "international", "developed markets", "china",
+        "macro", "gdp", "pmi", "employment", "cpi", "fomc",
+        "inverse", "bearish", "hedge", "tail risk",
     ],
     "low": [
         "stock", "market", "rally", "sell-off", "volatility", "s&p",
         "nasdaq", "dow", "bull", "bear", "momentum",
+        "equities", "fixed income", "asset class", "diversify",
     ],
 }
 
@@ -44,9 +74,9 @@ SOURCE_QUALITY = {
     "unknown": 30,
 }
 
-# Known high-quality YouTube channels for finance
+# Known high-quality YouTube channels across asset classes
 TRUSTED_YOUTUBE_CHANNELS = {
-    # Existing
+    # Existing — dividend / retirement / income
     "dividend bull": 75, "dividendbull": 75,
     "joseph carlson": 70, "josephcarlson": 70,
     "ppc ian": 65, "ppcian": 65,
@@ -70,12 +100,35 @@ TRUSTED_YOUTUBE_CHANNELS = {
     # Retirement / SSDI / Tax
     "financial fast lane": 65, "paytaxeslater": 70, "james lange": 70,
     "mission financial": 65, "fedlife": 60,
-    # Market Trends / Sectors
+    # Market Trends / Sectors (existing)
     "stockcharts": 70, "tastylive": 70,
     "yahoo finance": 65, "investors podcast": 65,
     "everything money": 65, "sven carlin": 70,
     "the swedish investor": 65, "brian stoffel": 60,
     "couch investor": 55,
+    # Growth / equities / fundamental analysis
+    "aswath damodaran": 85, "damodaran lectures": 80,
+    "patrick boyle": 75, "new money": 65,
+    "meet kevin": 55, "graham stephan": 55,
+    "the investor channel": 60, "fundamental edge": 65,
+    "value investing with sage": 60, "buffettsbooks": 70,
+    # Macro / markets / Fed
+    "bloomberg markets": 80, "bloomberg television": 75,
+    "cnbc": 70, "reuters": 75,
+    "real vision": 70, "macro voices": 70,
+    "lynaldeninvestmentstrategy": 75, "lyn alden": 75,
+    "forward guidance": 70, "blockworks macro": 65,
+    "felix zulauf": 65, "campbell harvey": 70,
+    # Options / ETF / income structures
+    "option alpha": 70, "tastytrade": 70,
+    "in the money": 65, "projectoption": 65,
+    "etf.com": 70, "etf trends": 65,
+    "theetfeducator": 60, "simplified trading": 55,
+    # Crypto / commodities (reputable education-leaning)
+    "coin bureau": 60, "whiteboard crypto": 55,
+    "kitco news": 65, "commodities report": 55,
+    # International / global
+    "visualpolitik en": 55, "economics explained": 60,
 }
 
 
@@ -342,7 +395,7 @@ def score_social_post(text: str, username: str = "", platform: str = "x",
 
 # ── Intelligence tagging ─────────────────────────────────────────────────
 
-# Strategy keywords → strategy_type tag
+# Strategy keywords → strategy_type tag (full asset-class desk)
 STRATEGY_TAG_RULES = {
     "dividend_growth_compounder": [
         "dividend growth", "dividend increase", "payout ratio", "dividend aristocrat",
@@ -354,7 +407,15 @@ STRATEGY_TAG_RULES = {
     ],
     "core_growth_compounder": [
         "growth stock", "compounder", "revenue growth", "earnings growth",
-        "moat", "competitive advantage", "buyback",
+        "moat", "competitive advantage", "buyback", "growth investing",
+    ],
+    "value_equity": [
+        "value stock", "value investing", "deep value", "book value",
+        "price to book", "margin of safety", "value factor",
+    ],
+    "small_cap_equity": [
+        "small cap", "small-cap", "microcap", "russell 2000", "smallcap",
+        "emerging growth company",
     ],
     "swing_trade": [
         "swing trade", "momentum", "breakout", "technical analysis",
@@ -364,6 +425,14 @@ STRATEGY_TAG_RULES = {
         "tactical", "covered call", "option income", "premium",
         "income strategy", "cash secured put",
     ],
+    "put_selling_etf": [
+        "put selling", "put etf", "put-write", "put write", "cash secured put etf",
+        "defined outcome etf", "buffer etf", "put premium",
+    ],
+    "inverse_bearish_etf": [
+        "inverse etf", "bear etf", "short etf", "3x bear", "inverse fund",
+        "bearish etf", "hedge etf",
+    ],
     "retirement_planning": [
         "roth", "ira", "401k", "retirement", "irmaa", "medicare", "medicaid",
         "social security", "rmd", "required minimum", "conversion ladder",
@@ -371,7 +440,25 @@ STRATEGY_TAG_RULES = {
     ],
     "bond_income": [
         "bond", "treasury", "fixed income", "duration", "yield curve",
-        "interest rate", "corporate bond", "municipal",
+        "interest rate", "corporate bond", "municipal", "bond ladder", "tips",
+    ],
+    "crypto_assets": [
+        "bitcoin", "ethereum", "crypto", "blockchain", "spot bitcoin etf",
+        "digital asset", "altcoin", "crypto etf",
+    ],
+    "commodity_assets": [
+        "commodity", "gold etf", "silver", "oil futures", "copper",
+        "natural gas", "agriculture commodity", "precious metal",
+    ],
+    "international_emerging": [
+        "emerging market", "international equity", "developed market",
+        "ex-us", "global equity", "china stocks", "frontier market",
+        "currency hedge", "adr",
+    ],
+    "macro_multi_asset": [
+        "macro", "multi-asset", "portfolio construction", "secular theme",
+        "investment thesis", "asset allocation thesis", "regime",
+        "fomc", "macro outlook", "cross-asset",
     ],
     "defense_sector": [
         "defense", "aerospace", "military", "contractor", "geopolitical",
@@ -391,14 +478,13 @@ STRATEGY_TAG_RULES = {
     ],
 }
 
-# Agent responsibility mapping — which keywords trigger which agent
+# Agent responsibility mapping — full research desk model
 AGENT_TAG_RULES = {
     "Alex": [
         "roth", "ira", "401k", "retirement", "irmaa", "medicare", "medicaid",
         "social security", "rmd", "conversion", "tax bracket", "tax loss",
         "income gap", "withdrawal", "estate", "pension",
         "disability", "ssdi", "disabled", "mfs", "disability insurance",
-        # v4.6 expanded disability/trust/Medicare
         "special needs trust", "pooled trust", "able account", "elder law",
         "medicaid planning", "spend down", "dual eligible", "sga",
         "trial work period", "long term disability", "ltdi", "medigap",
@@ -409,21 +495,34 @@ AGENT_TAG_RULES = {
     "Maria": [
         "earnings", "revenue", "guidance", "catalyst", "upgrade", "downgrade",
         "price target", "analyst", "fundamental", "valuation", "pe ratio",
-        "growth", "moat", "competitive",
+        "growth", "moat", "competitive", "value stock", "small cap",
+        "free cash flow", "balance sheet", "margin expansion",
     ],
     "Steph": [
         "allocation", "rebalance", "portfolio", "account", "position size",
         "weight", "diversification", "sector rotation", "income",
-        "dividend", "yield", "payout",
+        "dividend", "yield", "payout", "covered call", "put selling",
+        "bond ladder", "fixed income", "etf income",
     ],
     "Risk": [
         "risk", "volatility", "drawdown", "stop loss", "correlation",
         "concentration", "beta", "var", "stress test", "rsi",
         "overbought", "oversold", "support", "resistance",
+        "inverse etf", "tail risk", "hedge", "duration risk",
     ],
     "Aegis": [
         "overnight", "after hours", "pre-market", "earnings surprise",
         "gap", "halt", "breaking", "urgent", "alert",
+    ],
+    "Tax": [
+        "capital gains", "tax loss harvest", "tax bracket", "wash sale",
+        "qualified dividend", "ordinary income", "cost basis",
+        "tax efficiency", "taxable account", "nontaxable",
+    ],
+    "CIO": [
+        "macro", "multi-asset", "portfolio construction", "investment thesis",
+        "secular theme", "regime", "cross-asset", "strategic allocation",
+        "research theme", "cio view", "market regime", "asset class rotation",
     ],
 }
 
@@ -459,12 +558,22 @@ def tag_content(text: str, title: str = "", matched_keywords: list = None) -> di
 
     # If no agents matched but we have strategies, assign defaults
     if not agent_tags and strategy_tags:
-        if any(s in strategy_tags for s in ("retirement_planning",)):
+        if any(s in strategy_tags for s in ("retirement_planning", "disability_retirement_planning")):
             agent_tags.append("Alex")
-        if any(s in strategy_tags for s in ("dividend_growth_compounder", "high_yield_income_bdc", "tactical_income", "reit_income")):
+        if any(s in strategy_tags for s in (
+            "dividend_growth_compounder", "high_yield_income_bdc", "tactical_income",
+            "reit_income", "bond_income", "put_selling_etf",
+        )):
             agent_tags.append("Steph")
-        if any(s in strategy_tags for s in ("core_growth_compounder", "swing_trade")):
+        if any(s in strategy_tags for s in (
+            "core_growth_compounder", "value_equity", "small_cap_equity",
+            "swing_trade", "crypto_assets", "commodity_assets", "international_emerging",
+        )):
             agent_tags.append("Maria")
+        if any(s in strategy_tags for s in ("inverse_bearish_etf",)):
+            agent_tags.append("Risk")
+        if any(s in strategy_tags for s in ("macro_multi_asset",)):
+            agent_tags.append("CIO")
 
     return {
         "strategy_tags": sorted(set(strategy_tags)),
@@ -538,7 +647,9 @@ def compute_tfidf(text: str, top_n: int = 30) -> dict:
     DOMAIN_BOOST = {"retirement": 2.0, "dividend": 2.0, "ssdi": 3.0, "disability": 2.5,
                     "roth": 2.5, "conversion": 2.0, "medicaid": 2.5, "irmaa": 3.0,
                     "medicare": 2.0, "income": 1.5, "yield": 1.5, "tax": 1.5,
-                    "portfolio": 1.5, "rebalance": 2.0, "etf": 1.5, "growth": 1.3}
+                    "portfolio": 1.5, "rebalance": 2.0, "etf": 1.5, "growth": 1.3,
+                    "bond": 1.5, "treasury": 1.5, "macro": 1.5, "valuation": 1.4,
+                    "crypto": 1.3, "commodity": 1.3, "bitcoin": 1.4, "inverse": 1.3}
     weights = {}
     for term, count in tf.items():
         w = (1 + _math.log(count)) / (1 + _math.log(total))

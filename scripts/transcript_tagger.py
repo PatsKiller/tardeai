@@ -69,23 +69,44 @@ HIGH_VALUE_KEYWORDS = {
     "analyst downgrade": (6, ["maria"]),
     "price target": (6, ["maria"]),
     "dividend growth": (6, ["steph", "maria"]),
+    "growth stock": (7, ["maria"]),
+    "value investing": (6, ["maria"]),
+    "small cap": (6, ["maria", "risk"]),
+    "free cash flow": (6, ["maria"]),
+    "valuation": (5, ["maria"]),
     # Risk / technical
     "support level": (6, ["risk"]),
     "resistance level": (6, ["risk"]),
     "stop loss": (8, ["risk"]),
     "moving average": (6, ["risk"]),
     "rsi": (5, ["risk"]),
-    # Steph / allocation
+    "inverse etf": (7, ["risk"]),
+    "tail risk": (7, ["risk"]),
+    # Steph / allocation / income
     "income floor": (8, ["steph", "alex"]),
     "asset allocation": (6, ["steph"]),
     "rebalance": (6, ["steph"]),
     "covered call": (6, ["steph", "maria"]),
+    "put selling": (7, ["steph", "risk"]),
+    "bond ladder": (7, ["steph"]),
+    "fixed income": (6, ["steph"]),
     "yield on cost": (6, ["steph"]),
     # Tax
     "tax loss harvest": (8, ["tax", "alex"]),
     "capital gains": (6, ["tax"]),
     "required minimum": (8, ["alex", "tax"]),
     "backdoor roth": (8, ["alex", "tax"]),
+    # CIO / macro / multi-asset
+    "macro thesis": (8, ["cio", "maria"]),
+    "portfolio construction": (7, ["cio", "steph"]),
+    "investment thesis": (7, ["cio", "maria"]),
+    "multi-asset": (7, ["cio", "steph"]),
+    "market regime": (6, ["cio", "risk"]),
+    # Crypto / commodities / international
+    "bitcoin": (5, ["maria", "risk"]),
+    "crypto etf": (6, ["maria"]),
+    "commodity": (5, ["maria"]),
+    "emerging market": (6, ["maria", "steph"]),
 }
 
 # Specific title indicators that boost quality
@@ -96,15 +117,26 @@ SPECIFIC_INDICATORS = [
     "critical", "must know", "changed", "new rules",
 ]
 
-# Category modifiers
+# Category modifiers (full desk — non-retirement categories included)
 CATEGORY_MODIFIERS = {
     "disability_retirement": 10,
     "tax_strategy": 8,
     "retirement_planning": 6,
     "dividend_income": 4,
-    "macro_economics": 3,
+    "bond_fixed_income": 5,
+    "growth_equity": 5,
+    "value_equity": 4,
+    "small_cap_equity": 4,
+    "put_selling_etf": 5,
+    "covered_call_etf": 5,
+    "inverse_bearish_etf": 4,
+    "crypto_assets": 3,
+    "commodity_assets": 3,
+    "international_emerging": 4,
+    "macro_economics": 5,
+    "macro_multi_asset": 5,
     "investment_general": 0,
-    "etf_indexing": 0,
+    "etf_indexing": 2,
     "financial_education": 0,
 }
 
@@ -198,7 +230,7 @@ def score_transcript_quality(title, summary, transcript_text,
 # ═══════════════════════════════════════════════════════
 
 STRATEGY_PATTERNS = [
-    # Most specific — disability intersection
+    # Most specific — disability intersection (keep working)
     ("disability_retirement", [
         "ssdi", "medicaid", "medicare", "irmaa", "disability benefits",
         "dual eligible", "spend down", "able account", "special needs trust",
@@ -222,9 +254,53 @@ STRATEGY_PATTERNS = [
         "required minimum", "retire early", "retirement planning",
         "pension", "social security claiming",
     ], 1.0),
+    ("put_selling_etf", [
+        "put selling", "put etf", "put-write", "put write", "put premium",
+        "cash secured put etf", "defined outcome", "buffer etf",
+    ], 1.2),
+    ("covered_call_etf", [
+        "covered call etf", "covered call", "option income etf",
+        "call writing", "premium income etf", "wheel strategy",
+    ], 1.1),
+    ("inverse_bearish_etf", [
+        "inverse etf", "bear etf", "short etf", "3x bear", "inverse fund",
+        "bearish etf", "hedge etf",
+    ], 1.1),
+    ("bond_fixed_income", [
+        "bond ladder", "fixed income", "treasury bond", "corporate bond",
+        "municipal bond", "yield curve", "duration", "tips", "bond etf",
+    ], 1.1),
+    ("growth_equity", [
+        "growth stock", "growth investing", "earnings growth", "revenue growth",
+        "growth compounder", "high growth", "secular growth",
+    ], 1.1),
+    ("value_equity", [
+        "value stock", "value investing", "deep value", "margin of safety",
+        "price to book", "value factor",
+    ], 1.0),
+    ("small_cap_equity", [
+        "small cap", "small-cap", "microcap", "russell 2000", "smallcap",
+    ], 1.0),
+    ("crypto_assets", [
+        "bitcoin", "ethereum", "crypto etf", "spot bitcoin", "digital asset",
+        "blockchain investing", "crypto",
+    ], 1.0),
+    ("commodity_assets", [
+        "commodity", "gold etf", "silver etf", "oil futures", "precious metal",
+        "natural gas", "copper price",
+    ], 1.0),
+    ("international_emerging", [
+        "emerging market", "international equity", "developed market",
+        "ex-us", "global equity", "china stocks", "currency hedge",
+    ], 1.0),
     ("dividend_income", [
         "dividend growth", "dividend income", "high yield", "schd",
         "income investing", "dividend stock", "yield on cost",
+    ], 1.0),
+    ("macro_multi_asset", [
+        "macro thesis", "multi-asset", "portfolio construction",
+        "investment thesis", "asset allocation", "market regime",
+        "cross-asset", "secular theme",
     ], 1.0),
     ("etf_indexing", [
         "index fund", "expense ratio", "passive investing",
@@ -232,7 +308,7 @@ STRATEGY_PATTERNS = [
     ], 0.8),
     ("macro_fed", [
         "federal reserve", "interest rate", "inflation",
-        "yield curve", "economic outlook", "fed meeting",
+        "yield curve", "economic outlook", "fed meeting", "fomc",
     ], 0.8),
     ("investment_general", [
         "stock market", "invest", "portfolio", "financial", "wealth",
@@ -262,7 +338,7 @@ def detect_strategy_tag(title, summary, transcript_text):
     return best, round(confidence, 2)
 
 
-# Agent mapping for strategy tags
+# Agent mapping for strategy tags (full desk routing)
 STRATEGY_AGENTS = {
     "disability_retirement": ["alex", "tax"],
     "trust_estate": ["alex", "tax"],
@@ -270,8 +346,19 @@ STRATEGY_AGENTS = {
     "tax_planning": ["tax", "alex"],
     "retirement_planning": ["alex", "steph"],
     "dividend_income": ["maria", "steph"],
+    "covered_call_etf": ["steph", "maria"],
+    "put_selling_etf": ["steph", "risk"],
+    "inverse_bearish_etf": ["risk", "maria"],
+    "bond_fixed_income": ["steph", "risk"],
+    "growth_equity": ["maria"],
+    "value_equity": ["maria"],
+    "small_cap_equity": ["maria", "risk"],
+    "crypto_assets": ["maria", "risk"],
+    "commodity_assets": ["maria", "risk"],
+    "international_emerging": ["maria", "steph"],
+    "macro_multi_asset": ["cio", "maria", "steph"],
     "etf_indexing": ["maria", "steph"],
-    "macro_fed": ["maria", "steph"],
+    "macro_fed": ["cio", "maria"],
     "investment_general": ["maria"],
 }
 
@@ -371,7 +458,10 @@ def tag_single_transcript(transcript_id, conn=None):
     # Step 4: Promotion threshold
     if "alex" in final_agents_list:
         promote_threshold = 55
-    elif strategy_tag in ("retirement_planning", "roth_conversion", "disability_retirement"):
+    elif strategy_tag in (
+        "retirement_planning", "roth_conversion", "disability_retirement",
+        "macro_multi_asset", "growth_equity", "bond_fixed_income",
+    ):
         promote_threshold = 60
     else:
         promote_threshold = t["auto_promote_threshold"] or 70

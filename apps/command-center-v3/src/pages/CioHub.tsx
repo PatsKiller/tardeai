@@ -1037,6 +1037,79 @@ function OpportunitiesSection({ opp }: { opp: Opportunities }) {
           )}
         </div>
       </div>
+
+      <YoutubeResearchQueuePanel />
+    </div>
+  )
+}
+
+function YoutubeResearchQueuePanel() {
+  const [items, setItems] = useState<any[]>([])
+  const [meta, setMeta] = useState<{ count?: number; built_at?: string; min_quality?: number; error?: string }>({})
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    fetch(`/api/v2/cio/youtube-research-queue?_=${Date.now()}`, { cache: 'no-store' })
+      .then(async r => {
+        const j = await r.json().catch(() => ({}))
+        if (cancelled) return
+        setItems(Array.isArray(j?.items) ? j.items : [])
+        setMeta({
+          count: j?.count ?? 0,
+          built_at: j?.built_at,
+          min_quality: j?.min_quality ?? 70,
+          error: j?.error,
+        })
+      })
+      .catch(e => {
+        if (!cancelled) setMeta({ count: 0, error: String(e?.message || e) })
+      })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [])
+
+  const count = meta.count ?? items.length
+  return (
+    <div style={{ ...card, marginTop: 16 }} data-testid="cio-youtube-research-queue">
+      <SectionTitle>YouTube research queue</SectionTitle>
+      <div style={{ ...faint, marginBottom: 8 }}>
+        Material-only · promoted transcripts across stocks, ETFs, bonds, and options income · quality ≥ {meta.min_quality ?? 70}
+        {meta.built_at ? ` · built ${new Date(meta.built_at).toLocaleString()}` : ''}
+        {count ? ` · ${count} items` : ''}
+      </div>
+      {loading ? <Empty text="Loading…" /> : meta.error ? (
+        <div style={{ fontSize: 12, color: 'var(--red, #ef4444)' }}>{meta.error}</div>
+      ) : items.length === 0 ? (
+        <Empty text="No material YouTube items yet (Q≥70 promoted)." />
+      ) : (
+        <div style={{ display: 'grid', gap: 8 }}>
+          {items.slice(0, 12).map((it: any, i: number) => (
+            <div key={it.video_id ?? it.source_id ?? i} style={{
+              padding: '8px 10px', borderRadius: 6, background: 'var(--bg2)',
+              border: '1px solid var(--border)',
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                <strong style={{ fontSize: 12, color: 'var(--text0)' }}>{it.title ?? 'Untitled'}</strong>
+                <span style={{ fontSize: 10, color: 'var(--text3)', whiteSpace: 'nowrap' }}>
+                  Q{it.quality_score ?? '—'}
+                  {it.asset_class ? ` · ${String(it.asset_class).replace(/_/g, ' ')}` : ''}
+                </span>
+              </div>
+              <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 3 }}>
+                {(it.tickers ?? []).slice(0, 6).join(', ') || '—'}
+                {(it.strategy_tags?.length) ? ` · ${(it.strategy_tags ?? []).slice(0, 3).map((t: string) => String(t).replace(/_/g, ' ')).join(', ')}` : ''}
+              </div>
+              {it.summary && (
+                <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 4, lineHeight: 1.4 }}>
+                  {String(it.summary).slice(0, 180)}{String(it.summary).length > 180 ? '…' : ''}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

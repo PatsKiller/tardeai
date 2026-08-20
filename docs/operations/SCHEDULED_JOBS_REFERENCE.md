@@ -238,7 +238,8 @@ still shows `inactive`. `Failed: 0` on that page remains the real fault signal.
 | 18:00 | daily | `social_ingest.py` | Evening social ingestion | social_posts | — |
 | 18:00 | daily | `news_ingestion.py --priority` | Evening news ingestion | news_articles | — |
 | 18:00 | daily | `nyc-dof-auction/rescan_tickets.py` | NYC DOF auction ticket rescan (separate project) | dof_auction DB | — |
-| 19:00 | M-F | `youtube_transcript_ingest.py --all-channels` | YouTube transcript ingestion | youtube_transcripts | — |
+| 19:00 | M-F | `youtube_transcript_ingest.py --all-channels` | YouTube transcript ingestion (uploads playlist preferred; quota-budgeted) | youtube_transcripts | — |
+| 19:30 | M-F | `cio_youtube_research_queue.py --build` | Material-only CIO YouTube research queue (promoted Q≥70, all asset classes) | data/cio/youtube_research_queue.json | — |
 | 19:00 | daily | `aegis_nightly_ingestion.py` | Aegis nightly data ingestion | intelligence_entities | — |
 
 ### Evening/Overnight (8:00 PM – 12:00 AM)
@@ -265,6 +266,7 @@ still shows `inactive`. `Failed: 0` on that page remains the real fault signal.
 | 8:00 | `data_gap_resolver.py --weekly-audit` | Weekly data gap audit |
 | 9:30 | `watchlist_hygiene.py` | Watchlist hygiene — remove stale, verify active |
 | 10:00 | `multi_tier_trade_reviewer.py --tier weekly` | Weekly trade review (LLM multi-tier) |
+| 10:00 | `youtube_channel_discovery.py --discover --telegram` | Weekly YouTube channel discovery (full asset-class coverage; auto-approves Q≥75 ADD) |
 | 10:00 | `iris_taxonomy_agent.py` | Iris taxonomy refresh |
 | 10:30 | `strategy_weekly_review.py` | Strategy weekly performance review |
 | 10:30 | `rebalance_verifier.py` | Rebalance verification |
@@ -289,7 +291,6 @@ still shows `inactive`. `Failed: 0` on that page remains the real fault signal.
 | 6:00 M-F | `backup_verify.py` | Monthly backup verification |
 | 8:00 Mon | `external_market_data_ingest.py --fundamentals` | Monday fundamentals update |
 | 9:00 | `run_alex_daily.py --monthly` | Alex monthly research |
-| 10:00 | `youtube_channel_discovery.py --discover` | Monthly YouTube channel discovery |
 
 ---
 

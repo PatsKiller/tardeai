@@ -292,6 +292,17 @@ def build_agenda(conn, *, horizon_hours=168, limit=15):
         except Exception:
             pass
 
+    # Source 7 (soft): material-only CIO YouTube research queue (Q>=70 promoted).
+    # Never raises into agenda apply — queue file may be absent.
+    if len(candidates) < limit:
+        try:
+            from cio_youtube_research_queue import agenda_candidates_from_queue
+            room = max(0, limit - len(candidates))
+            for c in agenda_candidates_from_queue(limit=min(3, room or 1)):
+                candidates.append(c)
+        except Exception:
+            pass
+
     cur.close()
     return candidates[:limit]
 

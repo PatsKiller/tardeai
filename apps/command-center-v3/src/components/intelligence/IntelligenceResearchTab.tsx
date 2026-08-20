@@ -34,18 +34,22 @@ export default function IntelligenceResearchTab({ onDrill, onManageTopics }: Pro
   const autoBriefs = data?.auto_research_briefs ?? []
   const monitorTopics = data?.monitor_topics ?? []
   const gaps = data?.research_gaps ?? []
+  const ytQueue = data?.youtube_research_queue ?? {}
+  const ytItems = ytQueue.items ?? []
+  const ytCount = ytQueue.count ?? ytItems.length
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }} data-testid="intelligence-research-tab">
       <div style={{ ...card, padding: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 10 }}>
         <div>
           <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text0)' }}>Research Topics</div>
           <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2 }}>
-            Auto-research (Trade AI LLM) · operator topics · topic monitor · gaps → Iris
+            Auto-research · YouTube material queue (Q≥70) · operator topics · topic monitor · gaps → Iris
           </div>
         </div>
         <div style={{ display: 'flex', gap: 12, fontSize: 11, flexWrap: 'wrap' }}>
           <span style={{ color: '#22c55e' }}>Auto-research: {data?.auto_research_count ?? 0}</span>
+          <span style={{ color: '#f97316' }} data-testid="yt-queue-count">YouTube: {ytCount}</span>
           <span style={{ color: '#60a5fa' }}>User: {userTopics.length}</span>
           <span style={{ color: 'var(--text2)' }}>Monitor: {data?.monitor_topic_count ?? 0}</span>
           <span style={{ color: (data?.gap_count ?? 0) > 0 ? '#f59e0b' : 'var(--text3)' }}>Gaps: {data?.gap_count ?? 0}</span>
@@ -54,6 +58,56 @@ export default function IntelligenceResearchTab({ onDrill, onManageTopics }: Pro
             cursor: 'pointer', background: 'rgba(168,85,247,.12)', color: '#a855f7', fontWeight: 600,
           }}>Manage</button>
         </div>
+      </div>
+
+      <div style={{ ...card, padding: 14, border: '1px solid rgba(249,115,22,.25)' }} data-testid="youtube-research-queue">
+        <div style={{ fontSize: 12, fontWeight: 700, color: '#f97316', marginBottom: 4 }}>
+          YouTube Research Queue ({ytCount})
+        </div>
+        <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 10 }}>
+          Material-only · promoted transcripts · quality ≥ {ytQueue.min_quality ?? 70}
+          {ytQueue.built_at ? ` · built ${fmtWhen(ytQueue.built_at)}` : ''}
+        </div>
+        {ytItems.length === 0 ? (
+          <div style={{ fontSize: 11, color: 'var(--text3)' }}>
+            No material YouTube items yet. Queue builds from promoted Q≥70 transcripts across all asset classes.
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gap: 8 }}>
+            {ytItems.slice(0, 12).map((it: any, i: number) => (
+              <div key={it.video_id ?? it.source_id ?? i}
+                onClick={() => onDrill({
+                  title: it.title ?? 'YouTube research',
+                  subtitle: [it.asset_class, ...(it.tickers ?? [])].filter(Boolean).join(' · '),
+                  endpoint: '/api/v2/cio/youtube-research-queue',
+                  rows: [it],
+                })}
+                style={{
+                  padding: '10px 12px', borderRadius: 8, background: 'var(--bg2)', cursor: 'pointer',
+                  border: '1px solid rgba(249,115,22,.15)',
+                }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)' }}>{it.title ?? 'Untitled'}</div>
+                  <div style={{ fontSize: 9, color: 'var(--text3)', whiteSpace: 'nowrap' }}>
+                    Q{it.quality_score ?? '—'}{it.asset_class ? ` · ${String(it.asset_class).replace(/_/g, ' ')}` : ''}
+                  </div>
+                </div>
+                {(it.tickers?.length > 0 || it.strategy_tags?.length > 0) && (
+                  <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 3 }}>
+                    {(it.tickers ?? []).slice(0, 6).join(', ')}
+                    {(it.tickers?.length && it.strategy_tags?.length) ? ' · ' : ''}
+                    {(it.strategy_tags ?? []).slice(0, 4).map((t: string) => String(t).replace(/_/g, ' ')).join(', ')}
+                  </div>
+                )}
+                {it.summary && (
+                  <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 6, lineHeight: 1.45 }}>
+                    {String(it.summary).slice(0, 220)}{String(it.summary).length > 220 ? '…' : ''}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {autoBriefs.length > 0 && (
