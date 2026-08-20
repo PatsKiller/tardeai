@@ -3,11 +3,13 @@
 Contract (READ_ONLY_ADVISORY):
   1. Flash analyzes what the operator is asking (intent JSON only).
   2. Evidence is pulled only from controlled Trade-AI artifacts
-     (re-entry desk, holdings / Data Broker paths) — never invented by the model.
-  3. If required evidence is missing → register a gap, ack the operator
+     (re-entry desk, CIO snapshot / Data Broker paths) — never invented by the model.
+  3. meta_system asks (which LLM, how Alex works) answer from runtime policy facts —
+     never dump re-entry READY/NEAR cards.
+  4. If required desk evidence is missing → register a gap, ack the operator
      ("pulling into Trade-AI — will reply when it lands"), and ledger a pending reply.
-  4. When evidence arrives → fulfill pending and Telegram-reply with vetted facts.
-  5. Flash may only rewrite wording of vetted facts for Telegram clarity.
+  5. When evidence arrives → fulfill pending and Telegram-reply with vetted facts.
+  6. Flash may only rewrite wording of vetted facts for Telegram clarity.
 
 No broker / order / stop / 2FA authority.
 """
@@ -26,6 +28,27 @@ PENDING_PATH = PROJECT_ROOT / "data" / "cio" / "cio_operator_pending_replies.jso
 AUTHORITY = "READ_ONLY_ADVISORY"
 
 SendFn = Callable[..., dict[str, Any]]
+
+# Desk-trading needs that pull market/book evidence
+_DESK_NEEDS = frozenset({
+    "reentry_ready",
+    "reentry_levels",
+    "cash",
+    "portfolio",
+    "risk",
+    "research",
+})
+_RUNTIME_NEEDS = frozenset({"runtime_llm", "runtime_status"})
+_META_HEURISTIC = re.compile(
+    r"(?is)\b("
+    r"llm|model|deepseek|flash|pro\b|"
+    r"which\s+(?:ai|model|llm)|"
+    r"what\s+(?:\w+\s+){0,4}(?:using|model|llm)|"
+    r"how\s+(?:do\s+)?you\s+work|"
+    r"read[_\s-]?only|authority|"
+    r"bot\s+status|what\s+version|which\s+version"
+    r")\b"
+)
 
 
 def _now() -> str:
@@ -60,13 +83,86 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
     return rows
 
 
+def _looks_like_meta_system(text: str) -> bool:
+    return bool(_META_HEURISTIC.search(text or ""))
+
+
+def load_runtime_llm_facts() -> dict[str, Any]:
+    """Vetted runtime / policy facts for meta_system answers. Fail-soft."""
+    facts: dict[str, Any] = {
+        "authority": AUTHORITY,
+        "converse_path": "call_governed_llm",
+        "use_pro_default": False,
+        "model_flash": "deepseek-v4-flash",
+        "model_pro": "deepseek-v4-pro",
+        "prefer_flash": True,
+        "policy_path": "config/cio_llm_policy.yaml",
+        "bridge_endpoint": None,
+        "caller_flash": None,
+        "gaps": [],
+    }
+    try:
+        from scripts.lib.cio_plan_enrichment import load_llm_policy
+
+        policy = load_llm_policy() or {}
+        llm = policy.get("llm") if isinstance(policy.get("llm"), dict) else {}
+        facts["prefer_flash"] = bool(llm.get("prefer_flash", True))
+        facts["bridge_endpoint"] = llm.get("bridge_endpoint")
+        facts["caller_flash"] = llm.get("caller_flash")
+        facts["caller_pro"] = llm.get("caller_pro")
+        facts["policy_enabled"] = bool(policy.get("enabled", True))
+        # Hardcoded bridge model ids from call_governed_llm (use_pro=False → flash)
+        facts["model_flash"] = "deepseek-v4-flash"
+        facts["model_pro"] = "deepseek-v4-pro"
+        facts["operator_intent_uses"] = "deepseek-v4-flash (use_pro=False)"
+    except Exception as exc:
+        facts["gaps"].append(f"policy:{type(exc).__name__}:{exc}")
+    if not facts.get("bridge_endpoint"):
+        facts["gaps"].append("bridge_endpoint:DATA_UNAVAILABLE")
+    return facts
+
+
+def format_meta_system_reply(facts: dict[str, Any], *, operator_text: str = "") -> str:
+    """Deterministic meta answer — no market numbers, no re-entry dump."""
+    flash = facts.get("model_flash") or "DATA_UNAVAILABLE"
+    pro = facts.get("model_pro") or "DATA_UNAVAILABLE"
+    bridge = facts.get("bridge_endpoint") or "DATA_UNAVAILABLE"
+    lines = [
+        "🧠 *Alex · runtime / LLM*",
+        f"• Converse + intent classify: governed bridge **`{flash}`** "
+        f"(`call_governed_llm`, `use_pro=False`)",
+        f"• Pro lane (material synthesis only when policy says so): **`{pro}`**",
+        f"• Policy: `{facts.get('policy_path')}` · prefer_flash="
+        f"{facts.get('prefer_flash')}",
+        f"• Bridge: `{bridge}`",
+        f"• Authority: **{AUTHORITY}** — no orders / stops / 2FA from chat",
+    ]
+    gaps = facts.get("gaps") or []
+    if gaps:
+        lines.append("• Gaps: " + "; ".join(str(g) for g in gaps[:4]))
+    lines.append("READ_ONLY_ADVISORY")
+    return "\n".join(lines)
+
+
+def format_unclear_reply(text: str) -> str:
+    return (
+        "🧠 *Alex*\n"
+        "I didn't map that to a desk ask. Try one of:\n"
+        "• re-entry / READY / levels\n"
+        "• cash / portfolio / risk\n"
+        "• which LLM / how you work\n"
+        "• `/cio help`\n"
+        "READ_ONLY_ADVISORY"
+    )
+
+
 def analyze_operator_intent(text: str) -> dict[str, Any]:
     """DeepSeek Flash → structured intent. Numbers never come from this step."""
     out: dict[str, Any] = {
         "ok": False,
         "source": "heuristic",
         "model": None,
-        "intent": "general",
+        "intent": "unclear",
         "symbols": [],
         "needs": [],
         "error": None,
@@ -76,46 +172,84 @@ def analyze_operator_intent(text: str) -> dict[str, Any]:
         out["error"] = "empty"
         return out
 
-    # Heuristic baseline (always available if Flash fails)
     needs: list[str] = []
-    low = t.lower()
-    if re.search(r"(?is)\bre[\s\-]?(?:entr|enter)|rentr|ready\s+to\s+(?:buy|purchase|review)|buy\s+back", t):
-        needs.append("reentry_ready")
-        out["intent"] = "reentry"
-    if re.search(r"(?is)\b(support|resistance|s/?r|50[\s\-]?day|sma\s*50|sma50|sma\s*20|levels?|stop)\b", t):
-        needs.append("reentry_levels")
-        if out["intent"] == "general":
+
+    # P0: meta_system BEFORE desk defaults — never fall through to re-entry dump
+    if _looks_like_meta_system(t):
+        out["intent"] = "meta_system"
+        if re.search(r"(?is)\b(llm|model|deepseek|flash|pro|ai)\b", t):
+            needs.append("runtime_llm")
+        needs.append("runtime_status")
+        out["needs"] = list(dict.fromkeys(needs))
+    else:
+        if re.search(
+            r"(?is)\bre[\s\-]?(?:entr|enter)|rentr|ready\s+to\s+(?:buy|purchase|review)|buy\s+back",
+            t,
+        ):
+            needs.append("reentry_ready")
             out["intent"] = "reentry"
-    if re.search(r"(?is)\b(cash|buying\s+power)\b", t):
-        needs.append("cash")
-    if re.search(r"(?is)\b(portfolio|holdings|book)\b", t):
-        needs.append("portfolio")
-    if re.search(r"(?is)\b(risk|heat|drawdown)\b", t):
-        needs.append("risk")
-    if not needs:
-        needs = ["reentry_ready", "portfolio"]  # safe default context for desk Qs
-        out["intent"] = "desk_question"
+        if re.search(
+            r"(?is)\b(support|resistance|s/?r|50[\s\-]?day|sma\s*50|sma50|sma\s*20|levels?|stop)\b",
+            t,
+        ):
+            needs.append("reentry_levels")
+            if out["intent"] in ("unclear", "general"):
+                out["intent"] = "reentry"
+        if re.search(r"(?is)\b(cash|buying\s+power)\b", t):
+            needs.append("cash")
+            if out["intent"] == "unclear":
+                out["intent"] = "cash"
+        if re.search(r"(?is)\b(portfolio|holdings|book)\b", t):
+            needs.append("portfolio")
+            if out["intent"] == "unclear":
+                out["intent"] = "portfolio"
+        if re.search(r"(?is)\b(risk|heat|drawdown)\b", t):
+            needs.append("risk")
+            if out["intent"] == "unclear":
+                out["intent"] = "risk"
+        if re.search(
+            r"(?is)\b(research|hermes|thesis|why\s+(?:own|hold|watch)|deep\s+dive)\b",
+            t,
+        ):
+            needs.append("research")
+            if out["intent"] == "unclear":
+                out["intent"] = "research"
+
+        # P0: NO default reentry_ready/portfolio — unmatched → unclear
+        if not needs:
+            out["intent"] = "unclear"
+            out["needs"] = []
+        else:
+            out["needs"] = list(dict.fromkeys(needs))
 
     syms = sorted(set(re.findall(r"\b([A-Z]{1,5})\b", t)))
-    # Drop common English false positives
     stop = {
         "I", "A", "THE", "AND", "OR", "TO", "FOR", "ON", "IN", "OF", "IS", "IT",
         "WHAT", "CAN", "NOW", "ETC", "DAY", "SMA", "RSI", "CIO", "READ", "ONLY",
-        "USD", "READY", "NEAR", "ZONE", "STOP", "ALEX",
+        "USD", "READY", "NEAR", "ZONE", "STOP", "ALEX", "LLM", "YOU", "HOW",
+        "WHICH", "USING", "MODEL", "FLASH", "PRO", "AI",
     }
     out["symbols"] = [s for s in syms if s not in stop][:12]
-    out["needs"] = needs
 
-    # Flash refine (intent only)
+    # Flash refine (intent only) — may not override clear heuristic meta_system
+    heuristic_intent = out["intent"]
+    heuristic_needs = list(out["needs"])
+
     if _env("CIO_OPERATOR_INTENT_FLASH", "1").lower() not in ("0", "false", "off", "no"):
         try:
             from scripts.lib.cio_plan_enrichment import call_governed_llm, load_llm_policy
+
             system = (
                 "You classify CIO Telegram operator questions. "
                 "Return ONE JSON object only with keys: "
-                "intent (reentry|portfolio|cash|risk|desk_question|other), "
+                "intent (meta_system|reentry|portfolio|cash|risk|research|desk_question|unclear|other), "
                 "symbols (list of tickers), "
-                "needs (subset of: reentry_ready, reentry_levels, cash, portfolio, risk). "
+                "needs (subset of: runtime_llm, runtime_status, reentry_ready, reentry_levels, "
+                "cash, portfolio, risk, research). "
+                "Use intent=meta_system and needs runtime_llm/runtime_status for questions about "
+                "which LLM/model/DeepSeek/Flash/Pro, how Alex works, authority, or bot status. "
+                "For meta_system do NOT include reentry_ready or portfolio. "
+                "If unclear, intent=unclear and needs=[]. "
                 "No prose. No invented tickers not implied by the question."
             )
             llm = call_governed_llm(
@@ -133,24 +267,54 @@ def analyze_operator_intent(text: str) -> dict[str, Any]:
                     raw = re.sub(r"\s*```$", "", raw).strip()
                 parsed = json.loads(raw)
                 if isinstance(parsed, dict):
-                    if parsed.get("intent"):
-                        out["intent"] = str(parsed["intent"])[:40]
+                    flash_intent = str(parsed.get("intent") or "").strip()[:40]
+                    allowed_needs = _DESK_NEEDS | _RUNTIME_NEEDS
+                    flash_needs = []
+                    if isinstance(parsed.get("needs"), list):
+                        flash_needs = [
+                            str(n) for n in parsed["needs"] if str(n) in allowed_needs
+                        ]
+
+                    # Heuristic meta wins if Flash tries to desk-route a meta ask
+                    if heuristic_intent == "meta_system":
+                        out["intent"] = "meta_system"
+                        out["needs"] = heuristic_needs or ["runtime_llm", "runtime_status"]
+                    elif flash_intent == "meta_system" or (
+                        flash_needs and set(flash_needs) <= _RUNTIME_NEEDS
+                    ):
+                        out["intent"] = "meta_system"
+                        out["needs"] = flash_needs or ["runtime_llm", "runtime_status"]
+                    elif flash_intent in (
+                        "reentry", "portfolio", "cash", "risk", "research",
+                        "desk_question", "unclear", "other",
+                    ):
+                        out["intent"] = flash_intent if flash_intent != "other" else "unclear"
+                        if flash_needs:
+                            # Strip desk needs from accidental meta bleed
+                            if out["intent"] == "unclear":
+                                out["needs"] = []
+                            else:
+                                out["needs"] = flash_needs
+                        elif flash_intent == "unclear":
+                            out["needs"] = []
+                        else:
+                            out["needs"] = heuristic_needs
+                    else:
+                        out["needs"] = flash_needs or heuristic_needs
+
                     if isinstance(parsed.get("symbols"), list):
                         out["symbols"] = [
                             str(s).upper() for s in parsed["symbols"] if str(s).isalpha()
                         ][:12]
-                    if isinstance(parsed.get("needs"), list):
-                        allowed = {
-                            "reentry_ready", "reentry_levels", "cash", "portfolio", "risk",
-                        }
-                        flash_needs = [
-                            str(n) for n in parsed["needs"] if str(n) in allowed
-                        ]
-                        if flash_needs:
-                            out["needs"] = flash_needs
                     out["ok"] = True
                     out["source"] = "deepseek_flash"
                     out["model"] = llm.get("model") or "deepseek-v4-flash"
+                    # Final guard: meta heuristic always blocks desk needs
+                    if _looks_like_meta_system(t):
+                        out["intent"] = "meta_system"
+                        out["needs"] = [
+                            n for n in (out["needs"] or []) if n in _RUNTIME_NEEDS
+                        ] or ["runtime_llm", "runtime_status"]
                     return out
             out["error"] = str(llm.get("error") or "intent_flash_failed")
         except Exception as exc:
@@ -160,25 +324,71 @@ def analyze_operator_intent(text: str) -> dict[str, Any]:
     return out
 
 
+def _domain_payload(snap: dict[str, Any], name: str) -> dict[str, Any]:
+    domains = snap.get("domains") or {}
+    d = domains.get(name) or {}
+    if isinstance(d, dict) and "data" in d and d.get("data") is not None:
+        return d.get("data") if isinstance(d.get("data"), dict) else {"value": d.get("data")}
+    return d if isinstance(d, dict) else {}
+
+
 def gather_tradeai_evidence(intent: dict[str, Any]) -> dict[str, Any]:
     """Pull vetted Trade-AI evidence only. Report gaps — never invent fills."""
-    from scripts.lib.cio_telegram_converse import (
-        format_reentry_purchase_reply,
-        load_reentry_desk_rows,
-        _portfolio_cash_fact_lines,
-        _row_levels,
-    )
-
     needs = list(intent.get("needs") or [])
+    intent_name = str(intent.get("intent") or "")
     symbols = [str(s).upper() for s in (intent.get("symbols") or [])]
     available: dict[str, Any] = {}
     gaps: list[dict[str, Any]] = []
     sources: list[str] = []
 
-    rows, as_of, path = load_reentry_desk_rows()
-    if path:
-        sources.append(str(path))
-    if "reentry_ready" in needs or "reentry_levels" in needs or intent.get("intent") == "reentry":
+    # ── meta_system: runtime facts only ─────────────────────────────────────
+    if intent_name == "meta_system" or (set(needs) & _RUNTIME_NEEDS and not (set(needs) & _DESK_NEEDS)):
+        facts = load_runtime_llm_facts()
+        available["meta_card"] = format_meta_system_reply(facts)
+        available["runtime_llm"] = facts
+        sources.append(str(facts.get("policy_path") or "cio_llm_policy"))
+        return {
+            "ok": True,
+            "authority": AUTHORITY,
+            "available": available,
+            "gaps": [
+                {"domain": "runtime", "symbol": None, "field": g, "reason": g, "gap_type": "soft"}
+                for g in (facts.get("gaps") or [])
+            ],
+            "blocking_gaps": [],
+            "sources": sources,
+            "complete": True,
+        }
+
+    # ── unclear: no desk pull ───────────────────────────────────────────────
+    if intent_name == "unclear" and not (set(needs) & _DESK_NEEDS):
+        available["unclear_card"] = format_unclear_reply("")
+        return {
+            "ok": True,
+            "authority": AUTHORITY,
+            "available": available,
+            "gaps": [],
+            "blocking_gaps": [],
+            "sources": sources,
+            "complete": True,
+        }
+
+    # ── re-entry only when needed ───────────────────────────────────────────
+    want_reentry = (
+        "reentry_ready" in needs
+        or "reentry_levels" in needs
+        or intent_name == "reentry"
+    )
+    if want_reentry:
+        from scripts.lib.cio_telegram_converse import (
+            format_reentry_purchase_reply,
+            load_reentry_desk_rows,
+            _row_levels,
+        )
+
+        rows, as_of, path = load_reentry_desk_rows()
+        if path:
+            sources.append(str(path))
         if not rows:
             gaps.append({
                 "domain": "reentry_decision_desk",
@@ -195,7 +405,6 @@ def gather_tradeai_evidence(intent: dict[str, Any]) -> dict[str, Any]:
                 operator_text="support resistance 50day",
             )
             available["reentry_as_of"] = as_of
-            # Per-symbol level gaps
             by_sym = {
                 str(r.get("symbol") or "").upper(): r
                 for r in rows
@@ -210,7 +419,7 @@ def gather_tradeai_evidence(intent: dict[str, Any]) -> dict[str, Any]:
             for sym in check_syms[:15]:
                 r = by_sym.get(sym)
                 if not r:
-                    if symbols:  # only gap if operator named it
+                    if symbols:
                         gaps.append({
                             "domain": "reentry_decision_desk",
                             "symbol": sym,
@@ -234,30 +443,125 @@ def gather_tradeai_evidence(intent: dict[str, Any]) -> dict[str, Any]:
                             "gap_type": "missing_market_data",
                         })
 
+    # ── CIO snapshot domains (cash / portfolio / risk / research) ───────────
+    want_snap = any(n in needs for n in ("cash", "portfolio", "risk", "research"))
+    snap: dict[str, Any] = {}
+    if want_snap:
+        try:
+            from scripts.lib.data_broker.cio_portfolio import get_cio_snapshot
+
+            snap = get_cio_snapshot(max_age_s=60) or {}
+            sources.append("get_cio_snapshot")
+        except Exception as exc:
+            gaps.append({
+                "domain": "cio_snapshot",
+                "symbol": None,
+                "field": "snapshot",
+                "reason": f"snapshot:{type(exc).__name__}:{exc}",
+                "gap_type": "missing_market_data",
+            })
+
     if "cash" in needs or "portfolio" in needs:
-        book = _portfolio_cash_fact_lines()
-        if book:
-            available["book"] = "; ".join(book)
-            sources.append("holdings.json")
-        else:
+        # Prefer snapshot; fall back to holdings helper
+        book_bits: list[str] = []
+        cash_dom = _domain_payload(snap, "cash_buying_power")
+        port_dom = _domain_payload(snap, "portfolio")
+        hold_dom = _domain_payload(snap, "holdings_detail")
+        if cash_dom:
+            q = cash_dom.get("quality_state") or cash_dom.get("state")
+            nested = cash_dom.get("data") if isinstance(cash_dom.get("data"), dict) else {}
+            pct = cash_dom.get("cash_pct")
+            if pct is None:
+                pct = nested.get("cash_pct")
+            bp = cash_dom.get("buying_power") or cash_dom.get("cash") or nested.get("buying_power")
+            # PARTIAL cash is OK (soft) — still surface facts when present
+            if pct is not None or bp is not None:
+                book_bits.append(f"cash_pct={pct} buying_power={bp} quality={q}")
+            elif q == "DATA_UNAVAILABLE":
+                gaps.append({
+                    "domain": "cash_buying_power",
+                    "symbol": None,
+                    "field": "cash",
+                    "reason": "cash domain unavailable",
+                    "gap_type": "missing_market_data",
+                })
+        if port_dom:
+            book_bits.append(
+                f"portfolio_value={port_dom.get('total_value')} "
+                f"holdings={port_dom.get('holdings_count')}"
+            )
+        if hold_dom and hold_dom.get("position_count") is not None:
+            book_bits.append(f"positions={hold_dom.get('position_count')}")
+        if not book_bits:
+            try:
+                from scripts.lib.cio_telegram_converse import _portfolio_cash_fact_lines
+
+                legacy = _portfolio_cash_fact_lines()
+                if legacy:
+                    book_bits.extend(legacy)
+                    sources.append("holdings.json")
+            except Exception:
+                pass
+        if book_bits:
+            available["book"] = "; ".join(book_bits)
+        elif "portfolio" in needs or "cash" in needs:
             gaps.append({
                 "domain": "portfolio",
                 "symbol": None,
                 "field": "holdings",
-                "reason": "holdings.json unavailable",
+                "reason": "portfolio/cash unavailable",
                 "gap_type": "missing_market_data",
             })
 
-    # Material gaps = block immediate complete answer only when core need unsatisfied
-    blocking = []
-    if ("reentry_ready" in needs or intent.get("intent") == "reentry") and not available.get("reentry_card"):
+    if "risk" in needs:
+        risk_dom = _domain_payload(snap, "risk")
+        if risk_dom and (risk_dom.get("state") not in (None, "DATA_UNAVAILABLE") or risk_dom.get("portfolio_heat_pct") is not None):
+            available["risk"] = {
+                "portfolio_heat_pct": risk_dom.get("portfolio_heat_pct"),
+                "total_risk_dollars": risk_dom.get("total_risk_dollars"),
+                "positions_at_risk": risk_dom.get("positions_at_risk"),
+                "max_drawdown_pct": risk_dom.get("max_drawdown_pct"),
+                "stops_active": risk_dom.get("stops_active"),
+            }
+        else:
+            gaps.append({
+                "domain": "risk",
+                "symbol": None,
+                "field": "risk",
+                "reason": "risk domain unavailable",
+                "gap_type": "missing_market_data",
+            })
+
+    if "research" in needs:
+        hermes = _domain_payload(snap, "hermes_research")
+        if hermes and hermes.get("state") not in (None, "DATA_UNAVAILABLE"):
+            available["hermes_research"] = {
+                "promoted_research_count": hermes.get("promoted_research_count"),
+                "staged_research_count": hermes.get("staged_research_count"),
+                "latest_topics": hermes.get("latest_topics"),
+                "model_provider": hermes.get("model_provider"),
+            }
+        else:
+            gaps.append({
+                "domain": "hermes_research",
+                "symbol": symbols[0] if symbols else None,
+                "field": "research",
+                "reason": "hermes_research unavailable or empty",
+                "gap_type": "missing_research",
+            })
+
+    # Blocking gaps
+    blocking: list[dict[str, Any]] = []
+    if want_reentry and not available.get("reentry_card"):
         blocking = [g for g in gaps if g.get("domain") == "reentry_decision_desk"]
-    # Named symbol totally missing from desk while asking reentry
     if symbols and ("reentry_ready" in needs or "reentry_levels" in needs):
         blocking.extend(
             g for g in gaps
             if g.get("symbol") in symbols and g.get("field") == "row"
         )
+    # Research-only ask with no hermes → blocking so we enqueue
+    if "research" in needs and not available.get("hermes_research") and not available.get("reentry_card"):
+        blocking.extend(g for g in gaps if g.get("domain") == "hermes_research")
 
     return {
         "ok": True,
@@ -275,7 +579,7 @@ def _register_gaps(gaps: list[dict[str, Any]], *, chat_id: str, pending_id: str)
     registered = 0
     try:
         from scripts.lib.advisory_gap_requeue import register_advisory_gaps
-        # Shape minimal rows for requeue helper
+
         rows = []
         for g in gaps:
             sym = g.get("symbol") or "BOOK"
@@ -304,20 +608,121 @@ def _register_gaps(gaps: list[dict[str, Any]], *, chat_id: str, pending_id: str)
     return {"registered": registered}
 
 
+def _enqueue_hermes_research(
+    *,
+    symbols: list[str],
+    chat_id: str,
+    pending_id: str,
+    operator_text: str,
+) -> dict[str, Any]:
+    """Operator-forced Hermes research when research need is blocking."""
+    out: dict[str, Any] = {"ok": False, "emitted": 0}
+    try:
+        from datetime import timedelta
+
+        from scripts.lib.hermes_research_loop import emit_research_for_plan
+        from scripts.lib.cio_plans import CIOPlanStore
+
+        store = CIOPlanStore()
+        revisit = (datetime.now(timezone.utc) + timedelta(hours=6)).replace(microsecond=0).isoformat()
+        plan = store.create_plan(
+            situation_type="S0_OPERATOR_CONVERSE",
+            symbols=symbols[:4] or ["BOOK"],
+            title="Operator research pull",
+            summary=(operator_text or "")[:400],
+            options=[
+                {"id": "wait", "label": "Wait for Hermes", "pros": "Vetted", "cons": "Delay"},
+                {"id": "pass", "label": "Pass", "pros": "No spend", "cons": "No answer"},
+            ],
+            recommendation="Pull Hermes research (operator_forced). READ_ONLY.",
+            risks=["DATA_UNAVAILABLE until Hermes lands"],
+            evidence_refs=[{"domain": "hermes_research", "fields_used": ["operator_forced"]}],
+            revisit_at=revisit,
+            owner_agent="alex",
+        )
+        plan_id = plan.get("plan_id") if isinstance(plan, dict) else None
+        if not plan_id:
+            out["error"] = "no_plan_id"
+            return out
+        emit = emit_research_for_plan(
+            plan if isinstance(plan, dict) else {"plan_id": plan_id, "symbols": symbols},
+            operator_forced=True,
+            reason="operator_desk_research_need",
+        )
+        out["ok"] = bool((emit or {}).get("ok", True)) if isinstance(emit, dict) else True
+        out["emitted"] = 0 if isinstance(emit, dict) and emit.get("skipped") else 1
+        out["plan_id"] = plan_id
+        out["emit"] = emit if isinstance(emit, dict) else {"raw": str(emit)[:200]}
+        _append_jsonl(
+            PROJECT_ROOT / "data" / "cio" / "cio_operator_gap_requests.jsonl",
+            {
+                "ts": _now(),
+                "pending_id": pending_id,
+                "chat_id": chat_id,
+                "kind": "hermes_operator_forced",
+                "plan_id": plan_id,
+                "symbols": symbols,
+                "authority": AUTHORITY,
+            },
+        )
+    except Exception as exc:
+        out["error"] = f"{type(exc).__name__}:{exc}"
+    return out
+
+
 def _curate_from_evidence(operator_text: str, evidence: dict[str, Any]) -> dict[str, Any]:
     """Flash rewrites vetted facts only — fail-soft to raw card."""
+    avail = evidence.get("available") or {}
+
+    # Meta / unclear — never run re-entry Flash curate
+    if avail.get("meta_card"):
+        return {
+            "ok": True,
+            "text": avail["meta_card"],
+            "source": "runtime_meta",
+            "model": None,
+        }
+    if avail.get("unclear_card"):
+        return {
+            "ok": True,
+            "text": avail["unclear_card"],
+            "source": "unclear_clarifier",
+            "model": None,
+        }
+
     from scripts.lib.cio_telegram_converse import (
         curate_reentry_reply_with_flash,
         _reentry_flash_enabled,
     )
 
-    card = (evidence.get("available") or {}).get("reentry_card") or ""
-    book = (evidence.get("available") or {}).get("book") or ""
+    card = avail.get("reentry_card") or ""
+    book = avail.get("book") or ""
+    risk = avail.get("risk")
+    hermes = avail.get("hermes_research")
     facts = card
+    extras: list[str] = []
     if book:
-        facts = f"Book: {book}\n\n{card}"
+        extras.append(f"Book: {book}")
+    if risk:
+        extras.append(
+            "Risk: heat={portfolio_heat_pct} risk$={total_risk_dollars} "
+            "at_risk={positions_at_risk} dd={max_drawdown_pct} stops={stops_active}".format(**{
+                k: risk.get(k) for k in (
+                    "portfolio_heat_pct", "total_risk_dollars", "positions_at_risk",
+                    "max_drawdown_pct", "stops_active",
+                )
+            })
+        )
+    if hermes:
+        extras.append(
+            f"Hermes: promoted={hermes.get('promoted_research_count')} "
+            f"staged={hermes.get('staged_research_count')} "
+            f"topics={hermes.get('latest_topics')}"
+        )
+    if extras:
+        facts = "\n".join(extras) + ("\n\n" + card if card else "")
 
-    if not facts.strip():
+    if not str(facts).strip():
         return {
             "ok": False,
             "text": (
@@ -328,21 +733,10 @@ def _curate_from_evidence(operator_text: str, evidence: dict[str, Any]) -> dict[
             "source": "empty_evidence",
         }
 
-    # Prefer Flash Q&A over polish-only when general path
-    try:
-        from scripts.lib.cio_telegram_converse import answer_operator_free_text_with_flash
-        # Reuse Flash answerer but it gathers again — call curate path directly
-        pass
-    except Exception:
-        pass
+    ready = re.findall(r"\*([A-Z]{1,5})\*", card) if card else []
+    near = re.findall(r"`([A-Z]{1,5})`", card) if card else []
 
-    ready = []
-    near = []
-    # Extract tickers from card for validation
-    ready = re.findall(r"\*([A-Z]{1,5})\*", card)
-    near = re.findall(r"`([A-Z]{1,5})`", card)
-
-    if _reentry_flash_enabled():
+    if card and _reentry_flash_enabled():
         flash = curate_reentry_reply_with_flash(
             operator_text=operator_text,
             deterministic_reply=facts,
@@ -357,9 +751,10 @@ def _curate_from_evidence(operator_text: str, evidence: dict[str, Any]) -> dict[
                 "model": flash.get("model"),
             }
 
+    text_out = facts if str(facts).endswith("READ_ONLY_ADVISORY") else str(facts) + "\nREAD_ONLY_ADVISORY"
     return {
         "ok": True,
-        "text": facts if facts.endswith("READ_ONLY_ADVISORY") else facts + "\nREAD_ONLY_ADVISORY",
+        "text": text_out,
         "source": "tradeai_deterministic",
         "model": None,
     }
@@ -394,6 +789,14 @@ def handle_operator_desk_question(
     blocking = evidence.get("blocking_gaps") or []
     if blocking:
         _register_gaps(blocking, chat_id=str(chat_id), pending_id=pending_id)
+        # Hermes when research is the blocker
+        if any(g.get("domain") == "hermes_research" for g in blocking):
+            _enqueue_hermes_research(
+                symbols=[str(s).upper() for s in (intent.get("symbols") or [])],
+                chat_id=str(chat_id),
+                pending_id=pending_id,
+                operator_text=text or "",
+            )
         gap_bits = []
         for g in blocking[:6]:
             sym = g.get("symbol") or "book"
@@ -418,7 +821,7 @@ def handle_operator_desk_question(
                 f"I analyzed your ask (`{intent.get('intent')}`). "
                 "Required facts are not fully in Trade-AI yet:\n"
                 + "\n".join(f"• `{b}`" for b in gap_bits)
-                + f"\n\nQueued into the controlled gap pipeline. "
+                + "\n\nQueued into the controlled gap pipeline. "
                 f"I'll reply here when it lands.\n"
                 f"Pending: `{pending_id}`\n"
                 "No orders/stops · READ_ONLY_ADVISORY"
@@ -428,10 +831,9 @@ def handle_operator_desk_question(
         return result
 
     curated = _curate_from_evidence(text, evidence)
-    # Soft gaps (non-blocking) — mention briefly
     soft = [g for g in (evidence.get("gaps") or []) if g not in blocking]
     text_out = curated.get("text") or ""
-    if soft and "DATA_UNAVAILABLE" not in text_out:
+    if soft and "DATA_UNAVAILABLE" not in text_out and intent.get("intent") != "meta_system":
         soft_syms = sorted({g.get("symbol") for g in soft if g.get("symbol")})
         if soft_syms:
             text_out = (
@@ -457,7 +859,6 @@ def try_fulfill_pending_replies(
 ) -> dict[str, Any]:
     """Re-check open pending operator questions; reply when Trade-AI has facts."""
     rows = _read_jsonl(PENDING_PATH)
-    # Latest status wins per pending_id
     latest: dict[str, dict[str, Any]] = {}
     for r in rows:
         pid = str(r.get("pending_id") or "")
