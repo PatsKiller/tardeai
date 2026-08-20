@@ -32,11 +32,19 @@ if [[ ! -x "$PY" ]]; then
 fi
 
 # Load CIO Telegram + live-delivery env (never print secrets)
+# Runtime SM render (/run/user/$UID/tradeai/env) holds TELEGRAM_CIO_BOT_TOKEN;
+# ~/.config/tradeai/cio-telegram.env often has chats only.
 set -a
-if [[ -f "${HOME}/.config/tradeai/cio-telegram.env" ]]; then
-  # shellcheck disable=SC1091
-  . "${HOME}/.config/tradeai/cio-telegram.env"
-fi
+for envf in \
+  "/run/user/${UID}/tradeai/env" \
+  "${HOME}/.config/tradeai/cio-telegram.env"
+do
+  if [[ -f "$envf" ]]; then
+    # shellcheck disable=SC1090
+    . "$envf" || true
+    log "env_loaded path=${envf}"
+  fi
+done
 # systemd drop-in Environment= lines (AUTH / INTERDICT / ENABLE_TELEGRAM)
 for conf in \
   "${HOME}/.config/systemd/user/portfolio-server.service.d/25-cio-only-live.conf" \
@@ -59,6 +67,19 @@ export AUTHORIZE_P2_LIVE_OPERATOR_DELIVERY="${AUTHORIZE_P2_LIVE_OPERATOR_DELIVER
 export ENABLE_TELEGRAM="${ENABLE_TELEGRAM:-1}"
 export CIO_TELEGRAM_INTERDICT="${CIO_TELEGRAM_INTERDICT:-0}"
 set +a
+
+if [[ -z "${TELEGRAM_CIO_BOT_TOKEN:-}" ]]; then
+  log "failure: TELEGRAM_CIO_BOT_TOKEN unset after env load (check /run/user/${UID}/tradeai/env)"
+  log "exit=2"
+  exit 2
+fi
+if [[ -z "${TELEGRAM_CIO_CHAT_IDS:-}${TELEGRAM_CIO_ALLOWLIST:-}" ]]; then
+  log "failure: TELEGRAM_CIO_CHAT_IDS/ALLOWLIST unset"
+  log "exit=2"
+  exit 2
+fi
+# Never log token; only presence
+log "cio_token_set=yes chat_ids_set=yes"
 
 if [[ "${CIO_TELEGRAM_INTERDICT}" == "1" ]]; then
   log "failure: CIO_TELEGRAM_INTERDICT=1"

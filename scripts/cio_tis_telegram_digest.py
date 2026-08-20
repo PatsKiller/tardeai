@@ -23,6 +23,42 @@ AUTHORITY = "READ_ONLY_ADVISORY"
 LEDGER_REL = Path("data/cio/cio_tis_digest_ledger.json")
 
 
+def _load_cio_env_files(*, root: Path | None = None) -> list[str]:
+    """Load CIO Telegram credentials the same way converse/canary do.
+
+    Order (first wins only if key unset): runtime SM render → cio-telegram.env →
+    project .env. Never logs values.
+    """
+    uid = os.getuid()
+    root = Path(root or ROOT)
+    candidates = [
+        Path(f"/run/user/{uid}/tradeai/env"),
+        Path.home() / ".config" / "tradeai" / "cio-telegram.env",
+        root / ".env",
+        Path("/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.env"),
+    ]
+    loaded: list[str] = []
+    for p in candidates:
+        if not p.is_file():
+            continue
+        try:
+            for line in p.read_text(encoding="utf-8", errors="replace").splitlines():
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                k, v = line.split("=", 1)
+                k = k.strip()
+                v = v.strip().strip('"').strip("'")
+                if not k.isidentifier():
+                    continue
+                if k not in os.environ or not str(os.environ.get(k) or "").strip():
+                    os.environ[k] = v
+            loaded.append(str(p))
+        except Exception:
+            continue
+    return loaded
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
@@ -158,12 +194,23 @@ def maybe_send_digest(
     dry_run: bool = True,
 ) -> dict[str, Any]:
     root = Path(root or ROOT)
+    loaded_env = _load_cio_env_files(root=root)
+    # Live delivery gates (process-scoped; match converse/canary)
+    if not dry_run:
+        os.environ.setdefault("AUTHORIZE_P2_LIVE_OPERATOR_DELIVERY", "1")
+        os.environ.setdefault("ENABLE_TELEGRAM", "1")
+        if os.environ.get("CIO_TELEGRAM_INTERDICT", "").strip() in {"1", "true", "TRUE"}:
+            pass  # honor explicit interdict
+        else:
+            os.environ["CIO_TELEGRAM_INTERDICT"] = "0"
+
     payload = build_digest_payload(root=root)
     out = {
         "ok": True,
         "dry_run": dry_run,
         "delivered": False,
         "authority": AUTHORITY,
+        "env_files_loaded": loaded_env,
         "payload": payload,
     }
     if not payload.get("should_send") and not force:
