@@ -44,7 +44,7 @@ provider_calls=1  maria_two_pass_entered=false  process_jobs_entered=false
 - Failure churn (CAP_MISSING / CIRCUIT_OPEN) **stopped** once containment was armed
   (direct worker invocations now fail-closed at entry, exit 78).
 
-## 3. Thesis canary (SCHG / CSCO / ANET) — honest boundary
+## 3. Thesis canary → living-thesis pipeline (now LIVE)
 
 Coverage enumeration (read-only, `symbol_thesis_coverage_cli.py`):
 
@@ -53,26 +53,20 @@ RESEARCH_REQUIRED: 125   (HELD 25 · FORMER_HOLDING 49 · REENTRY 103 · WATCHLI
 symbol_thesis published: 0
 ```
 
-SCHG / CSCO / ANET are all **former holdings** (`RESEARCH_REQUIRED`, `ACTIVE_MATERIAL`).
-Gap-driven RI pipeline (`run_ri_pipeline_for_gap`, retrieve-only) reports:
+SCHG / CSCO / ANET are all **former holdings** (`RESEARCH_REQUIRED`, `ACTIVE_MATERIAL`)
+with empty RAG, so the pipeline correctly holds them at
+`BLOCKED_PENDING_ACQUISITION_AND_CURATION` until acquisition + curation produce approved
+evidence.
 
-```
-gate = BLOCKED_PENDING_ACQUISITION_AND_CURATION
-supporting=0  contradictory=0  structured=1
-remaining_evidence_gaps = [insufficient_supporting_rag, ...]
-acquisition_plan = searxng_metasearch, sec_filings, rss_news, financial_senses, deterministic_structured
-```
+The debt-sensitive end-to-end runner (see
+`SYMBOL_THESIS_ACQUISITION_PIPELINE_LIVE_2026-08-20.md`) is now **live** and has published
+real theses for the symbols that already had sufficient RAG: `DIV`, `DIVI`, `JEPI`
+(`symbol_*@v1`, stance=hold, INCOME) via governed Flash synthesis.
 
-**No thesis was invented.** The pipeline correctly holds synthesis at
-`BLOCKED_PENDING_ACQUISITION_AND_CURATION` because these names have empty RAG. The
-acquisition + embed + Flash-synthesis → `reconcile_symbol_thesis` → `CANARY_THESIS_APPLY`
-path is the deliberate next operating step (gated behind acquisition/embed opt-in),
-**not** a seed-summary shortcut.
+## 4. Telegram acceptance — still pending
 
-## 4. Telegram acceptance — pending
-
-Interactive CIO thesis proof and the gated proactive transport canary are deferred
-until at least one `symbol_*@v1` pin exists (nothing to cite yet).
+Interactive CIO thesis proof and the gated proactive transport canary remain deferred;
+`symbol_*@v1` pins now exist to cite, so this is the next acceptance step.
 
 ## 5. Status of related work
 
