@@ -82,7 +82,8 @@ def test_format_lists_ready_and_near():
     assert "defensive_observe" not in text
 
 
-def test_process_operator_message_reentry_skips_s0_plan(tmp_path):
+def test_process_operator_message_reentry_skips_s0_plan(tmp_path, monkeypatch):
+    monkeypatch.setenv("CIO_REENTRY_FLASH", "0")
     sent: list[str] = []
 
     def send_fn(chat_id, body, reply_to=None):
@@ -109,3 +110,20 @@ def test_process_operator_message_reentry_skips_s0_plan(tmp_path):
     assert "READY TO REVIEW" in body or "re-entry desk artifact" in body.lower()
     assert "S0 OPERATOR" not in body
     assert "Acknowledge and monitor" not in body
+
+
+def test_flash_validation_requires_ready_symbols():
+    from scripts.lib.cio_telegram_converse import _validate_flash_reentry_reply
+
+    good = (
+        "*Ready*\n• *DHX* $4.10 zone $3.80–$4.20\n• *MOGU* $1.95\n"
+        "Near: ANET\nREAD_ONLY_ADVISORY"
+    )
+    assert _validate_flash_reentry_reply(
+        good, ready_symbols=["DHX", "MOGU"], near_symbols=["ANET"]
+    )
+    assert not _validate_flash_reentry_reply(
+        "*Ready*\n• *DHX* only\nREAD_ONLY",
+        ready_symbols=["DHX", "MOGU"],
+        near_symbols=["ANET"],
+    )

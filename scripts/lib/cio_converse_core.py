@@ -20,6 +20,7 @@ from scripts.lib.cio_telegram_converse import (
     DEFAULT_MSG_MAP,
     DEFAULT_RATE,
     assemble_context,
+    answer_reentry_purchase_query,
     build_template_advisory,
     emit_operator_message,
     ensure_converse_plan,
@@ -298,15 +299,18 @@ def process_operator_message(
             })
             return out
 
-    # Deterministic desk facts: re-entry READY/NEAR (skip S0 template wall)
+    # Desk facts + optional DeepSeek Flash polish (skip S0 template wall)
     if looks_like_reentry_purchase_query(text):
-        reply = format_reentry_purchase_reply()
+        ans = answer_reentry_purchase_query(text, use_flash=True)
+        reply = ans.get("text") or format_reentry_purchase_reply()
         if channel == "whatsapp":
             reply = re.sub(r"\*([^*]+)\*", r"\1", reply).replace("`", "")
         sent = _send(reply, reply_to=reply_to_message_id)
         out.update({
             "handled": True,
             "kind": "reentry_facts",
+            "reentry_source": ans.get("source"),
+            "reentry_model": ans.get("model"),
             "reply_preview": reply[:500],
             "outbound_message_id": sent.get("message_id"),
             "telegram_out_message_id": sent.get("message_id") if channel == "telegram" else None,
