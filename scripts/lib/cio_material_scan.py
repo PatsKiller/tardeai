@@ -491,6 +491,19 @@ def select_publications(
     return out
 
 
+def material_financial_notify_canary_on() -> bool:
+    """Explicit canary for material-scan live Telegram. Default OFF.
+
+    Even when ``--live`` and ``CIO_ONLY_LIVE``, financial-lane publishes stay
+    dry unless ``CIO_MATERIAL_FINANCIAL_NOTIFY_CANARY=1``. Situation-notify
+    (CIO_SITUATION_NOTIFY) is a separate path — do not conflate.
+    """
+    import os
+    return str(os.environ.get("CIO_MATERIAL_FINANCIAL_NOTIFY_CANARY") or "0").strip().lower() in {
+        "1", "true", "yes", "on",
+    }
+
+
 def scan_office(
     *,
     dry_run: bool = True,
@@ -500,7 +513,9 @@ def scan_office(
     notification_gate: bool = True,
 ) -> dict[str, Any]:
     mode = cio_delivery_mode()
-    if not dry_run and mode != "CIO_ONLY_LIVE":
+    canary = material_financial_notify_canary_on()
+    # Live financial Telegram requires CIO_ONLY_LIVE AND explicit canary (default OFF).
+    if not dry_run and (mode != "CIO_ONLY_LIVE" or not canary):
         dry_run = True
     office = office or load_live_office()
     holdings = office.get("holdings") or {}
@@ -630,6 +645,8 @@ def scan_office(
         "ok": True,
         "dry_run": dry_run,
         "delivery_mode": mode,
+        "material_financial_notify_canary": canary,
+        "financial_lane": "CANARY" if (canary and mode == "CIO_ONLY_LIVE" and not dry_run) else "OFF_BY_POLICY",
         "authority": AUTHORITY,
         "at": _now(),
         "baseline_captured": baseline,

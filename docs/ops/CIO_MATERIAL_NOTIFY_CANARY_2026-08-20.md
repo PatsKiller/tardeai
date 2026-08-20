@@ -164,3 +164,14 @@ CIO_TELEGRAM_INTERDICT=1
 
 Residual #2 **NARROW CLOSED** (canary exercised + disabled). Do not claim bulk financial notify.
 
+## B1 — Material-scan financial lane canary (2026-08-20 code)
+
+Separate from situation notify above.
+
+| Env | Default | Effect |
+|---|---|---|
+| `CIO_MATERIAL_FINANCIAL_NOTIFY_CANARY` | **0 / unset** | Material-scan `--live` stays dry → `financial_lane=OFF_BY_POLICY` |
+| `=1` + `CIO_ONLY_LIVE` | canary | Allows IMMEDIATE decisions to publish live via existing Signal-over-Spam gate |
+
+Do **not** leave `CIO_MATERIAL_FINANCIAL_NOTIFY_CANARY=1` permanently.
+

@@ -260,20 +260,49 @@ def _import_plans():
     return CIOPlanStore
 
 
+def _catalyst_medium_plus(plan: dict[str, Any]) -> tuple[bool, str]:
+    """True when plan catalyst pack is research-gap eligible (medium+ ≤10d) or materiality bump."""
+    pack = plan.get("_catalyst_pack") or plan.get("catalyst")
+    if not isinstance(pack, dict):
+        for r in plan.get("evidence_refs") or []:
+            if isinstance(r, dict) and r.get("domain") == "catalyst":
+                pack = r
+                break
+    if not isinstance(pack, dict):
+        return False, ""
+    try:
+        try:
+            from lib.catalyst_domain import catalyst_research_gap_eligible, materiality_bump
+        except Exception:
+            from scripts.lib.catalyst_domain import (  # type: ignore
+                catalyst_research_gap_eligible,
+                materiality_bump,
+            )
+        if materiality_bump(pack):
+            return True, "catalyst_materiality_bump"
+        if catalyst_research_gap_eligible(pack):
+            return True, "catalyst_research_gap_medium_plus"
+    except Exception:
+        return False, ""
+    return False, ""
+
+
 def should_enqueue_for_plan(plan: dict[str, Any]) -> tuple[bool, str, str]:
     """
     Returns (should, priority, reason).
     Escalation aligned with thesis: S1 DD, S6 fire, S8 high; S5 lower.
+    B3: catalyst medium+ is a first-class enqueue trigger (fp/TTL still apply).
     """
     st = str(plan.get("situation_type") or "")
     fire = " ".join(str(x) for x in (plan.get("fire_reasons") or (plan.get("extra") or {}).get("fire_reasons") or []))
     fire_l = fire.lower()
+    cat_ok, cat_reason = _catalyst_medium_plus(plan)
 
     if st.startswith("S8"):
         return True, "high", "s8_defensive_regime"
     if st.startswith("S1"):
-        if "deep_drawdown" in fire_l or "calendar_catalyst" in fire_l or "major_catalyst" in fire_l:
-            return True, "high", "s1_material_lifecycle"
+        if "deep_drawdown" in fire_l or "calendar_catalyst" in fire_l or "major_catalyst" in fire_l or cat_ok:
+            return True, "high", cat_reason or "s1_material_lifecycle"
         return True, "normal", "s1_lifecycle"
     if st.startswith("S6"):
         return True, "high", "s6_concentration"
@@ -281,6 +310,9 @@ def should_enqueue_for_plan(plan: dict[str, Any]) -> tuple[bool, str, str]:
         return True, "normal", "s5_cash_narrative"
     if st.startswith("S2"):
         return True, "normal", "s2_stop_gap_context"
+    # Catalyst medium+ on any watched/held plan without S-code still enqueues
+    if cat_ok:
+        return True, "high", cat_reason
     # Operator-marked
     if plan.get("hermes_requested") or plan.get("operator_forced"):
         return True, "high", "operator_requested"
@@ -303,11 +335,27 @@ def emit_research_for_plan(
     if not should and not operator_forced and not plan.get("hermes_requested"):
         return {"ok": False, "skipped": True, "reason": auto_reason}
     pri = priority or pri_default
+    # B3: prefer catalyst-aware questions when medium+ and caller did not supply
+    q = questions
+    cat_ok, cat_reason = _catalyst_medium_plus(plan)
+    if q is None and cat_ok:
+        try:
+            try:
+                from lib.catalyst_domain import catalyst_map_questions
+            except Exception:
+                from scripts.lib.catalyst_domain import catalyst_map_questions  # type: ignore
+            pack = plan.get("_catalyst_pack") or plan.get("catalyst")
+            mapped = catalyst_map_questions(pack) if pack else None
+            if mapped:
+                q = mapped
+                auto_reason = cat_reason or auto_reason
+        except Exception:
+            pass
     rr = hr.enqueue_research_request(
         plan,
         reason=reason or auto_reason,
         priority=pri,
-        questions=questions,
+        questions=q,
         operator_forced=operator_forced,
         force_refresh=force_refresh or operator_forced,
         actor_id=actor_id,
@@ -323,6 +371,10 @@ def emit_research_for_plan(
             on_hermes_reused(plan, rr)
         except Exception:
             pass
+    if cat_ok:
+        rr = dict(rr)
+        rr["catalyst_trigger"] = cat_reason or "catalyst_medium_plus"
+        rr["enqueue_reason"] = reason or auto_reason
     return rr
 
 
@@ -508,22 +560,7 @@ def on_hermes_completed(
         except Exception as e:
             out["enrich_error"] = f"{type(e).__name__}:{e}"
 
-    # Desk memo once (fail-soft; do not block)
-    try:
-        try:
-            from lib.cio_desk_synthesis import generate_desk_synthesis_v1
-        except Exception:
-            from scripts.lib.cio_desk_synthesis import generate_desk_synthesis_v1  # type: ignore
-        gen = generate_desk_synthesis_v1()
-        note = gen.get("note") or ""
-        if note:
-            root = Path("data/cio")
-            root.mkdir(parents=True, exist_ok=True)
-            (root / "cio_desk_note_latest.md").write_text(note + "\n", encoding="utf-8")
-            out["memo"] = True
-    except Exception as e:
-        out["memo_error"] = f"{type(e).__name__}:{e}"
-
+    # Desk memo deferred until after reassessment/lineage so we can stamp lineage_id.
     if plan_id:
         try:
             out["overlay"] = expire_overlay_for_plan(
@@ -570,6 +607,37 @@ def on_hermes_completed(
         out["lineage_id"] = lin.get("lineage_id") or (out.get("reassessment") or {}).get("lineage_id")
     except Exception as e:
         out["lineage_error"] = f"{type(e).__name__}:{e}"
+
+    # B2: post-research desk memo regenerate (fail-soft; stamp lineage; write spine)
+    try:
+        try:
+            from lib.cio_desk_synthesis import generate_desk_synthesis_v1
+        except Exception:
+            from scripts.lib.cio_desk_synthesis import generate_desk_synthesis_v1  # type: ignore
+        try:
+            from lib.intelligence_lineage import cio_dir as _cio_dir
+        except Exception:
+            try:
+                from scripts.lib.intelligence_lineage import cio_dir as _cio_dir  # type: ignore
+            except Exception:
+                _cio_dir = lambda: Path("data/cio")  # noqa: E731
+        gen = generate_desk_synthesis_v1()
+        note = gen.get("note") or ""
+        spine = gen.get("spine") or gen.get("memo_spine") or ""
+        lid = out.get("lineage_id") or (out.get("reassessment") or {}).get("lineage_id")
+        if note and lid:
+            note = note.rstrip() + f"\n\n─ lineage `{lid}` · research `{result.get('research_id')}` · result `{result.get('result_id')}`\n"
+        if note:
+            root = Path(_cio_dir())
+            root.mkdir(parents=True, exist_ok=True)
+            (root / "cio_desk_note_latest.md").write_text(note + "\n", encoding="utf-8")
+            if spine:
+                (root / "cio_desk_memo_spine_latest.md").write_text(str(spine) + "\n", encoding="utf-8")
+            out["memo"] = True
+            out["memo_lineage_id"] = lid
+            out["memo_path"] = str(root / "cio_desk_note_latest.md")
+    except Exception as e:
+        out["memo_error"] = f"{type(e).__name__}:{e}"
 
     # Audit line — include critique/memory/overlay so a missing receipt is visible
     try:

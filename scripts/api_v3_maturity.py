@@ -57,6 +57,23 @@ def handle_get(path: str, query: dict | None = None) -> tuple[int, dict[str, Any
                 "memory_behavior_influence": 0,
             }
         return 200, payload
+    if p in ("expired-observe", "expired_observe", "outcomes/expired"):
+        apply = False
+        if query:
+            raw = query.get("apply")
+            if isinstance(raw, list):
+                raw = raw[0] if raw else "0"
+            apply = str(raw or "0").lower() in ("1", "true", "yes")
+        try:
+            from scripts.lib.cio_outcome_observer import observe_expired_volume
+            return 200, {"ok": True, **AUTHORITY, **observe_expired_volume(apply=apply)}
+        except Exception as exc:
+            return 200, {
+                "ok": False,
+                **AUTHORITY,
+                "error": f"{type(exc).__name__}:{exc}",
+                "memory_behavior_influence": 0,
+            }
     if p == "lessons":
         data = L.collect_lessons()
         return 200, {"ok": True, **AUTHORITY, "lessons": data["lessons"], "counts": data["counts"]}

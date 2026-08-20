@@ -92,6 +92,7 @@ def record_disposition_outcome(
         "disposition": disp,
         "matured": matured,
         "matured_at": datetime.now(timezone.utc).isoformat() if matured else None,
+        "recorded_at": datetime.now(timezone.utc).isoformat(),
         "lineage_id": lineage_id,
         "rating": rating,
         "event_id": ev.get("event_id"),
@@ -118,6 +119,85 @@ def record_disposition_outcome(
     }
 
 
+def mature_deferred_by_age(*, horizon_days: int = 7, apply: bool = True) -> dict[str, Any]:
+    """Mature DEFERRED dispositions older than horizon without inventing P&L.
+
+    Marks matured_reason=EXPIRED_HORIZON. Does not flip MBI / eligible_runs.
+    """
+    proj = _cio_dir() / "cio_outcome_maturity.json"
+    if not proj.is_file():
+        return {"ok": True, "matured_expired": 0, "authority": AUTHORITY}
+    try:
+        mat = json.loads(proj.read_text(encoding="utf-8"))
+    except Exception as exc:
+        return {"ok": False, "error": f"{type(exc).__name__}:{exc}", "authority": AUTHORITY}
+    items = dict(mat.get("items") or {})
+    cutoff = datetime.now(timezone.utc) - timedelta(days=horizon_days)
+    n = 0
+    for key, row in list(items.items()):
+        if row.get("matured"):
+            continue
+        if str(row.get("disposition") or "").upper() != "DEFERRED":
+            continue
+        # Prefer matured_at placeholder / recorded_at; fall back to event store skip
+        ts_raw = row.get("recorded_at") or row.get("matured_at") or row.get("updated_at")
+        if not ts_raw:
+            # no timestamp — do not invent overdue
+            continue
+        try:
+            dt = datetime.fromisoformat(str(ts_raw).replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+        except Exception:
+            continue
+        if dt > cutoff:
+            continue
+        n += 1
+        if apply:
+            row["matured"] = True
+            row["matured_at"] = datetime.now(timezone.utc).isoformat()
+            row["matured_reason"] = "EXPIRED_HORIZON"
+            items[key] = row
+    if apply and n:
+        mat["items"] = items
+        mat["matured_count"] = sum(1 for v in items.values() if v.get("matured"))
+        mat["updated_at"] = datetime.now(timezone.utc).isoformat()
+        mat["expired_horizon_matured"] = int(mat.get("expired_horizon_matured") or 0) + n
+        proj.write_text(json.dumps(mat, indent=2, sort_keys=True), encoding="utf-8")
+    return {
+        "ok": True,
+        "matured_expired": n,
+        "applied": apply,
+        "horizon_days": horizon_days,
+        "authority": AUTHORITY,
+        "memory_behavior_influence": 0,
+    }
+
+
+def observe_expired_volume(*, apply: bool = False, horizon_days: int = 7) -> dict[str, Any]:
+    """D1: combine production-case EXPIRED observer + deferred disposition aging."""
+    case_obs: dict[str, Any] = {}
+    try:
+        try:
+            from lib.intelligence_lineage import observe_overdue_cases
+        except Exception:
+            from scripts.lib.intelligence_lineage import observe_overdue_cases  # type: ignore
+        case_obs = observe_overdue_cases(apply=apply, horizon_days=horizon_days)
+    except Exception as exc:
+        case_obs = {"ok": False, "error": f"{type(exc).__name__}:{exc}"}
+    defer_obs = mature_deferred_by_age(horizon_days=horizon_days, apply=apply)
+    return {
+        "ok": True,
+        "schema": "CIOExpiredMaturityObserve@v1",
+        "cases": case_obs,
+        "deferred_dispositions": defer_obs,
+        "authority": AUTHORITY,
+        "memory_behavior_influence": 0,
+        "eligible_runs": 0,
+        "note": "EXPIRED = horizon elapsed without market P&L invention.",
+    }
+
+
 def learning_summary() -> dict[str, Any]:
     """GET payload for /api/v3/maturity/learning — fail-soft empty."""
     proj = _cio_dir() / "cio_outcome_maturity.json"
@@ -129,6 +209,7 @@ def learning_summary() -> dict[str, Any]:
             "items": [],
             "eligible_runs": 0,
             "memory_behavior_influence": 0,
+            "expired_horizon_matured": 0,
             "authority": AUTHORITY,
             "note": "No matured outcomes yet — SHADOW influence remains.",
         }
@@ -137,11 +218,13 @@ def learning_summary() -> dict[str, Any]:
     except Exception as exc:
         return {"ok": False, "error": f"{type(exc).__name__}:{exc}", "authority": AUTHORITY}
     items = list((mat.get("items") or {}).values())
+    expired_n = sum(1 for i in items if i.get("matured_reason") == "EXPIRED_HORIZON")
     return {
         "ok": True,
         "schema": mat.get("schema") or "CIOOutcomeMaturity@v1",
         "matured_count": int(mat.get("matured_count") or sum(1 for i in items if i.get("matured"))),
         "total_recorded": len(items),
+        "expired_horizon_matured": int(mat.get("expired_horizon_matured") or expired_n),
         "items": items[-50:],
         "eligible_runs": int(mat.get("eligible_runs") or 0),
         "memory_behavior_influence": 0,
