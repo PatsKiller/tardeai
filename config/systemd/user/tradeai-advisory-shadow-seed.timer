@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily Advisory Desk shadow-receipt seed (FS + memory heartbeats, influence=0)
+
+[Timer]
+OnCalendar=*-*-* 21:45:00
+Persistent=true
+Unit=tradeai-advisory-shadow-seed.service
+
+[Install]
+WantedBy=timers.target

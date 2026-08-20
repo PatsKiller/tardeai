@@ -625,6 +625,23 @@ def build_posture(
 # Section 4 — Opportunities
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _is_reentry_opportunity(it: dict[str, Any]) -> bool:
+    """True when an opportunity row is a re-entry candidate, not a staged watch.
+
+    The queue's ``source``/``state`` are the primary signal; ``directive_label``
+    is a legacy fallback (e.g. "Re-entry NEAR ENTRY — ADBE" has no RE_ENTER
+    token but is unmistakably a re-entry). Watch chips must be the staged *watch*
+    queue, not mislabeled re-entry rows.
+    """
+    if _str(it.get("source") or "").lower() == "reentry":
+        return True
+    state = _str(it.get("state") or "").upper()
+    if state in {"READY TO REVIEW", "NEAR ENTRY", "OVERSOLD REVIEW"}:
+        return True
+    label = _str(it.get("directive_label") or "").upper()
+    return any(m in label for m in ("RE_ENTER", "RE-ENTER", "REENTER", "RE-ENTRY", "NEAR ENTRY"))
+
+
 def build_opportunities(
     *,
     queue: Optional[dict[str, Any]] = None,
@@ -643,7 +660,6 @@ def build_opportunities(
         symbol = it.get("symbol")
         # The queue carries the human signal in directive_label (e.g.
         # "Advisory TRIM — SCHD"); verdict/state are often null.
-        label = _str(it.get("directive_label") or "").upper()
         source = it.get("source")
         signal = _action_hint(it.get("directive_label"), it.get("verdict"))
         rec = {
@@ -652,7 +668,7 @@ def build_opportunities(
             "signal": signal,
             "label": it.get("directive_label"),
         }
-        if "RE_ENTER" in label or "RE-ENTER" in label or "REENTER" in label:
+        if _is_reentry_opportunity(it):
             if symbol not in seen_reentry:
                 reentry.append(rec)
                 seen_reentry.add(symbol)
@@ -690,7 +706,9 @@ def build_opportunities(
 
     return {
         "watch": watch[:8],
+        "watch_total": len(watch),
         "reentry": reentry[:6],
+        "reentry_total": len(reentry),
         "rotation": rotation[:8],
         "research_gaps": research_gaps[:8],
     }

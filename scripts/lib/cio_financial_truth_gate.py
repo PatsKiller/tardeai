@@ -95,7 +95,13 @@ def dollar_tol(row_value: float) -> float:
 
 
 def parse_ts(value: Any) -> Optional[datetime]:
-    """Parse ISO-ish timestamps; return aware UTC or None."""
+    """Parse ISO-ish timestamps; return aware UTC or None.
+
+    An explicit ``ET``/``EST``/``EDT`` suffix is interpreted as America/New_York
+    (the timezone quote/holdings feeds report in), never silently as UTC.
+    Date-only values stay midnight UTC and are the *fallback* clock, not the
+    preferred one.
+    """
     if value is None:
         return None
     if isinstance(value, datetime):
@@ -111,10 +117,29 @@ def parse_ts(value: Any) -> Optional[datetime]:
             return datetime(int(s[0:4]), int(s[5:7]), int(s[8:10]), tzinfo=timezone.utc)
         except ValueError:
             return None
-    # strip trailing " ET" etc.
-    for suffix in (" ET", " EST", " EDT", " UTC"):
+    # Explicit ET/EST/EDT suffix -> America/New_York via the shared quote parser.
+    for suffix in (" ET", " EST", " EDT"):
         if s.endswith(suffix):
+            try:
+                from brokers.quote_time import parse_quote_ts
+                dt = parse_quote_ts(s)
+                if dt is not None:
+                    return dt.astimezone(timezone.utc)
+            except Exception:
+                pass
+            # Fallback: strip suffix and localize as America/New_York.
             s = s[: -len(suffix)].strip()
+            try:
+                from zoneinfo import ZoneInfo
+                naive = datetime.fromisoformat(s)
+                if naive.tzinfo is None:
+                    naive = naive.replace(tzinfo=ZoneInfo("America/New_York"))
+                return naive.astimezone(timezone.utc)
+            except Exception:
+                return None
+    # trailing " UTC" -> naive is already UTC
+    if s.endswith(" UTC"):
+        s = s[: -len(" UTC")].strip()
     s = s.replace("Z", "+00:00")
     try:
         dt = datetime.fromisoformat(s)
@@ -420,7 +445,10 @@ def check_position_row(
 
     # Quote / valuation freshness uses SOURCE clocks only.
     # Process clocks (updated_at / ingested_at / fetched_at / …) never mint freshness.
-    src_name, src_dt, src_raw = extract_source_observation_time(row)
+    # Use the *derived* named row so the mark's as_of reflects its actual source
+    # clock (a stale persisted `canonical_mark_as_of` must not make a mark that
+    # was freshly re-derived from `current_price` read as old).
+    src_name, src_dt, src_raw = extract_source_observation_time(named)
     proc_name, proc_dt, proc_raw = extract_process_time(row)
     as_of = src_raw or row.get("as_of")
     updated = proc_raw
@@ -645,8 +673,16 @@ def evaluate_holdings_document(
             "abs_err": round(abs(sum_acct - derived_portfolio), 4),
         })
 
-    # Meta timestamp contract — source as_of, never process clocks for freshness
-    meta_as_of = doc.get("as_of") or doc.get("generated_at") or doc.get("source_as_of")
+    # Meta timestamp contract — source as_of, never process clocks for freshness.
+    # Prefer the repricer price clock (last_repriced / generated_at) over the
+    # date-only `as_of` label, which parses as midnight UTC and reads stale by
+    # evening. This mirrors advisory_desk_operator.holdings_source_freshness.
+    meta_as_of = (
+        doc.get("last_repriced")
+        or doc.get("generated_at")
+        or doc.get("as_of")
+        or doc.get("source_as_of")
+    )
     meta_updated = doc.get("updated_at") or doc.get("ingested_at") or doc.get("fetched_at")
     meta_ts = parse_ts(meta_updated)
     meta_as_of_ts = parse_ts(meta_as_of)

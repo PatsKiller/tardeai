@@ -67,6 +67,14 @@ pill (hollow marker) + tooltip instead of a bare gray `inactive`, so a deliberat
 as an alarming fault. Purely systemd-state-driven — no hardcoded unit names; a normal enabled-between-runs timer
 still shows `inactive`. `Failed: 0` on that page remains the real fault signal.
 
+### Advisory / CIO desk user timers (2026-08-19)
+
+| Timer | Schedule | Service | What It Does |
+|-------|----------|---------|-------------|
+| `tradeai-advisory-shadow-session.timer` | Mon-Fri 09:15 ET | `tradeai-advisory-shadow-session.service` | Advisory Desk shadow session (`scripts/advisory_shadow_session.py --once`). |
+| `tradeai-advisory-shadow-seed.timer` | Daily 21:45 ET | `tradeai-advisory-shadow-seed.service` | Writes Financial Senses + durable-memory heartbeat receipts at `influence=0` (`scripts/advisory_shadow_seed.py`). |
+| `tradeai-cio-nightly-reflection.timer` | Daily 21:50 ET | `tradeai-cio-nightly-reflection.service` | CIO nightly reflection candidates (`scripts/lib/cio_nightly_reflection.py`, observation only). |
+
 ---
 
 ## Cron Jobs by Time of Day

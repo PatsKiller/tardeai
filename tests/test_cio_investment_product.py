@@ -77,6 +77,17 @@ def test_queue_reentry_names_enter_book_without_prev_table(root: Path):
     assert "SCHG" not in names  # advisory ADD alone is opportunity book, not former-holding book
 
 
+def test_reentry_book_drops_non_tickers(root: Path):
+    prev = [
+        {"symbol": "SCHG", "reentry_signal": "IN_ZONE", "last_exit_price": 90, "current_price": 92},
+        {"symbol": "HEALTH", "reentry_signal": "WATCH", "last_exit_price": 1, "current_price": 1},
+    ]
+    p = build_product(root=root, queue={"items": []}, previously_traded=prev, holdings={})
+    names = {r["symbol"] for r in p["reentry_book"]["names"]}
+    assert "SCHG" in names
+    assert "HEALTH" not in names
+
+
 def test_product_books(root: Path):
     prev = [
         {"symbol": "SCHG", "reentry_signal": "IN_ZONE", "last_exit_price": 90, "current_price": 92,

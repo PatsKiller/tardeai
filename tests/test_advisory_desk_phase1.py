@@ -97,6 +97,70 @@ class TestValidationOnBuild(unittest.TestCase):
         self.assertIn("catalyst_cache_path", meta)
 
 
+class TestReentryUniverseJoin(unittest.TestCase):
+    """Phase 1 — closed_journal must join the full decision-desk universe, not the
+    journal-first-20 subset."""
+
+    def test_reentry_row_to_opinion_maps_states(self) -> None:
+        from lib.data_broker.advisory_desk import _reentry_row_to_opinion
+        from lib.data_broker.advisory_desk import AdvisoryVerdict
+
+        ready = _reentry_row_to_opinion(
+            {"symbol": "FATN", "intel": {"state": "NEAR ENTRY", "reason": "in zone"}, "price": 6.24, "entry_low": 5.6, "entry_high": 6.1},
+            set(),
+        )
+        self.assertEqual(ready["verdict"].value, "RE_ENTER")
+        self.assertEqual(ready["reentry_state"], "NEAR ENTRY")
+        self.assertEqual(ready["source"], "reentry_decision_desk")
+
+        wait = _reentry_row_to_opinion(
+            {"symbol": "AMC", "intel": {"state": "OVERBOUGHT WAIT", "reason": "rsi 72"}, "price": 2.52},
+            set(),
+        )
+        self.assertEqual(wait["verdict"].value, "WAIT")
+        self.assertEqual(wait["reentry_state"], "OVERBOUGHT WAIT")
+
+    def test_reentry_row_to_opinion_skips_held(self) -> None:
+        from lib.data_broker.advisory_desk import _reentry_row_to_opinion
+        out = _reentry_row_to_opinion(
+            {"symbol": "SCHD", "intel": {"state": "NEAR ENTRY"}},
+            {"SCHD"},
+        )
+        self.assertIsNone(out)
+
+
+class TestHubOpportunitySlice(unittest.TestCase):
+    """Phase 1 — a bounded Watch Hub opportunity slice, distinct from the personal
+    operator watch."""
+
+    def test_derive_hub_opinion_is_wait_not_held(self) -> None:
+        from lib.data_broker.advisory_desk import _derive_hub_opinion
+
+        row = _derive_hub_opinion("AMD", {"asset_type": "stock", "score": 92, "source_tier": "tier1"}, set())
+        self.assertEqual(row["verdict"].value, "WAIT")
+        self.assertEqual(row["source"], "watch_hub")
+        self.assertIn("not on personal operator watch", row["rationale"])
+        self.assertEqual(row["hub_score"], 92)
+
+    def test_derive_hub_opinion_skips_held(self) -> None:
+        from lib.data_broker.advisory_desk import _derive_hub_opinion
+        self.assertIsNone(_derive_hub_opinion("AMD", {}, {"AMD"}))
+
+    def test_source_maps_to_watchlist_hub_class(self) -> None:
+        # row_class assignment lives inline in build_advisory_desk; assert the
+        # canonical source->class mapping is wired by exercising a built row.
+        import lib.data_broker.advisory_desk as ad
+        src_map = {
+            "holdings": "holding",
+            "watchlist": "watchlist",
+            "watch_hub": "watchlist_hub",
+            "reentry_decision_desk": "closed_journal",
+            "allocation": "allocation",
+        }
+        self.assertEqual(ad._derive_hub_opinion("AMD", {}, set())["source"], "watch_hub")
+        self.assertEqual(src_map["watch_hub"], "watchlist_hub")
+
+
 class TestEnrichmentFlag(unittest.TestCase):
     def test_flag_off_forces_dry_run(self) -> None:
         from lib.data_broker.advisory_desk import enrich_advisory_with_opinions

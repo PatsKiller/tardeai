@@ -324,10 +324,24 @@ def apply_canonical_quote_fields(row: dict[str, Any]) -> dict[str, Any]:
         row, price_role=price_role, implied=implied,
     )
 
-    mark_as_of = _as_of_of(
-        row, "canonical_mark_as_of", "price_as_of", "quote_time", "quote_as_of",
-        "as_of", "updated_at",
-    )
+    # Mark as_of must reflect the mark's *actual* source clock. A quote-derived
+    # mark's observation time is the quote's own clock (`price_as_of`/
+    # `quote_time`), falling back to the repricer stamp (`updated_at`) — never a
+    # stale persisted `canonical_mark_as_of` the repricer left behind (e.g.
+    # broker stamp 2026-08-14 while `current_price` was refreshed 2026-08-19).
+    # Only `official_close` keeps its own stamp. `canon_key` may be a field name
+    # ("current_price") or a price_source ("finviz"); official_close is the sole
+    # non-quote mark source here.
+    if canon_key != "official_close":
+        mark_as_of = _as_of_of(
+            row, "price_as_of", "quote_time", "quote_as_of", "updated_at",
+            "canonical_mark_as_of", "as_of",
+        )
+    else:
+        mark_as_of = _as_of_of(
+            row, "canonical_mark_as_of", "official_close_as_of", "price_as_of",
+            "quote_time", "quote_as_of", "as_of", "updated_at",
+        )
     mark_type = _infer_mark_type(out, source_key=canon_key, as_of=mark_as_of)
 
     # Dual genuine marks only (never mark vs implied / stuffed MV)

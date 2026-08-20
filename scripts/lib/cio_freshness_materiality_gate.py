@@ -198,8 +198,15 @@ def _is_process_clock_value(row: dict[str, Any], ts: Any) -> bool:
 
 
 def _row_quote_ts(row: dict[str, Any]) -> Any:
-    """Quote clock is a source observation time. Process clocks are not freshness."""
-    _name, _dt, raw = extract_source_observation_time(row, include_aliases=True)
+    """Quote clock is a source observation time. Process clocks are not freshness.
+
+    Uses the derived canonical fields so a stale persisted ``canonical_mark_as_of``
+    does not make a mark freshly re-derived from ``current_price`` read as old.
+    """
+    from scripts.lib.cio_canonical_quote import apply_canonical_quote_fields
+
+    named = apply_canonical_quote_fields(row)
+    _name, _dt, raw = extract_source_observation_time(named, include_aliases=True)
     return raw
 
 
@@ -474,7 +481,10 @@ def collect_evidence_timestamps(
     # holdings book: source as_of is freshness. updated_at is snapshot identity
     # only — it must never make an old source look fresh.
     holdings_source_ts = (
-        doc.get("as_of") or doc.get("generated_at") or doc.get("source_as_of")
+        doc.get("last_repriced")
+        or doc.get("generated_at")
+        or doc.get("as_of")
+        or doc.get("source_as_of")
     )
     holdings_updated_at = doc.get("updated_at") or doc.get("ingested_at")
     # Identity of this holdings.json write (grouping), not a freshness clock.

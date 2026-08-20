@@ -31,6 +31,7 @@ FRESH_CURRENT = "CURRENT"
 FRESH_STALE = "STALE"
 FRESH_EXPIRED = "EXPIRED"
 FRESH_UNAVAILABLE = "UNAVAILABLE"
+FRESH_NO_PRODUCER = "NO_PRODUCER"
 
 HEALTHY = "HEALTHY"
 DEGRADED = "DEGRADED"
@@ -47,6 +48,11 @@ WATCH_STALE_S = 6 * 3600
 REENTRY_STALE_S = 6 * 3600
 MEMORY_STALE_S = 36 * 3600
 STREET_STALE_S = 14 * 86400
+
+# The scheduled daily producer that writes SENSES/MEMORY shadow receipts at
+# influence=0 (scripts/advisory_shadow_seed.py). Once wired, these sources have
+# a real producer, so an aged receipt is a genuine STALE — not NO_PRODUCER.
+SHADOW_SEED_PRODUCER = "advisory_shadow_seed"
 
 WATCH_CONTRACT = "watch_intelligence.broker.v1"
 
@@ -195,6 +201,18 @@ def classify_freshness(
     return FRESH_CURRENT
 
 
+def no_producer_freshness(as_of: Any, *, stale_s: float, now: Optional[datetime] = None) -> str:
+    """Freshness for a source with no scheduled producer.
+
+    SENSES and MEMORY now have a daily producer (SHADOW_SEED_PRODUCER) and use
+    classify_freshness directly. This helper remains for any genuinely
+    producer-less source: an aged receipt there is *informational*, not a job
+    that fell behind — stamp NO_PRODUCER rather than a misleading STALE.
+    """
+    f = classify_freshness(as_of, stale_s=stale_s, expired_s=7 * 86400, now=now)
+    return FRESH_NO_PRODUCER if f in (FRESH_STALE, FRESH_EXPIRED) else f
+
+
 def na(reason: str, *, source: Optional[str] = None) -> dict[str, Any]:
     return field_state(None, state=NOT_APPLICABLE, source=source, reason=reason, display="N/A")
 
@@ -256,23 +274,62 @@ def cache_meta(desk: dict[str, Any], *, cache_path: Optional[Path] = None, now: 
     }
 
 
+def _parse_holdings_source_clock(raw: Any) -> tuple[datetime | None, str | None]:
+    """Parse a holdings.json source clock to an aware datetime.
+
+    ``as_of`` is date-only (midnight UTC → already STALE by evening ET). The
+    repricer stamps ``last_repriced`` / ``generated_at`` with an `` ET`` suffix
+    (e.g. ``2026-08-19 16:45:01 ET``) that is the authoritative price clock.
+    Never let a date-only label masquerade as a live mark.
+    """
+    if raw is None:
+        return None, None
+    s = str(raw).strip()
+    if not s:
+        return None, None
+    try:
+        from brokers.quote_time import parse_quote_ts
+        dt = parse_quote_ts(s)
+        if dt is not None:
+            return dt.astimezone(timezone.utc), s
+    except Exception:
+        pass
+    try:
+        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc), s
+    except Exception:
+        return None, None
+
+
 def holdings_source_freshness(*, now: datetime | None = None) -> dict[str, Any]:
-    """Freshness of the underlying holdings.json clock — not desk-build cache."""
+    """Freshness of the underlying holdings.json clock — not desk-build cache.
+
+    Prefers the repricer price clock (``last_repriced`` / ``generated_at``)
+    over the date-only ``as_of`` label. The position-list clock
+    (``positions_built_at``) is intentionally not used: it is when the list was
+    constructed, not when prices were last refreshed.
+    """
     now = now or datetime.now(timezone.utc)
     raw = _load_json(_STATE_DIR / "holdings.json")
-    as_of = raw.get("as_of") or raw.get("generated_at") or raw.get("asOf")
+    as_of, source_field = None, None
+    for field in ("last_repriced", "generated_at", "as_of", "asOf"):
+        candidate = raw.get(field)
+        dt, label = _parse_holdings_source_clock(candidate)
+        if dt is not None:
+            as_of, source_field = label, field
+            break
+        if candidate and source_field is None:
+            # Preserve a present-but-unparseable value for the honest fallback.
+            source_field = field
     dt = None
     if as_of:
-        try:
-            dt = datetime.fromisoformat(str(as_of).replace("Z", "+00:00"))
-        except Exception:
-            dt = None
+        dt, _ = _parse_holdings_source_clock(as_of)
     if dt is None:
         state = FRESH_UNAVAILABLE
         age = None
     else:
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
         age = (now - dt).total_seconds()
         if age > FACTS_EXPIRED_S:
             state = FRESH_EXPIRED
@@ -284,6 +341,8 @@ def holdings_source_freshness(*, now: datetime | None = None) -> dict[str, Any]:
         "holdings_source_as_of": as_of,
         "holdings_source_age_seconds": round(age, 1) if age is not None else None,
         "holdings_source_freshness": state,
+        "holdings_source_clock_field": source_field,
+        "holdings_reprice_source": raw.get("reprice_source"),
     }
 
 
@@ -605,6 +664,7 @@ def project_watch(composed: dict[str, Any]) -> dict[str, Any]:
             "atr": field_state(atr, source="enrichment_cache") if atr is not None
                    else missing("no_atr", source="enrichment_cache"),
             "setup": card.get("technical_setup"),
+            "freshness": card.get("technical_freshness"),
         },
         "catalyst": {
             "summary": field_state(catalyst, source="catalyst_events") if catalyst
@@ -646,10 +706,19 @@ def derive_setup_state(watch: dict[str, Any], *, verdict: str) -> str:
     trade_u = str(trade or "").upper()
     q_fresh = str((watch.get("quote") or {}).get("freshness_state") or "")
     last = ((watch.get("quote") or {}).get("last") or {}).get("value")
+    tech_fresh = str(((watch.get("technicals") or {}).get("freshness") or "")).upper()
     if trade_u in {"AVOID"} or verdict == "AVOID":
         return SETUP_AVOID
     if trade_u in {"BLOCKED", "DETERMINISTIC_FAIL"}:
-        return SETUP_BLOCKED
+        # Phase 1 — a BLOCKED/DETERMINISTIC_FAIL whose only admission is a STALE
+        # technical snapshot must not read as blocked once the Hub has refreshed
+        # that snapshot to CURRENT. Fall through to the normal evaluation instead
+        # of echoing the stale admission. (RESEARCH_ONLY / no-mechanics blocks
+        # carry non-CURRENT technicals and stay BLOCKED.)
+        if tech_fresh == "CURRENT":
+            trade_u = "WAIT"
+        else:
+            return SETUP_BLOCKED
     if trade_u in {"STALE"} or q_fresh in {FRESH_STALE, "STALE", FRESH_EXPIRED} or (
         last is None and q_fresh in {FRESH_UNAVAILABLE, "DATA_UNAVAILABLE"}
     ):
@@ -789,8 +858,29 @@ def join_durable_memory(symbols: list[str]) -> dict[str, Any]:
                 "memory_type": rec.get("memory_type"),
                 "as_of": rec.get("created_at") or rec.get("admitted_at") or rec.get("as_of"),
             })
-    as_of = None
-    if supporting:
+    # The MEMORY clock reflects the newest *admission*, not the top-ranked
+    # retrieval. The daily shadow seed writes one admission/day; reading the
+    # admission receipt keeps the clock honest (CURRENT → STALE → EXPIRED) even
+    # when the heartbeat does not rank first among supporting memories.
+    last_admitted_at = None
+    try:
+        rp = getattr(prov, "receipts_path", None)
+        if rp and Path(rp).is_file():
+            tail = Path(rp).read_text(encoding="utf-8", errors="replace").splitlines()[-50:]
+            for line in reversed(tail):
+                try:
+                    r = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(r, dict) and r.get("accepted"):
+                    ts = r.get("admitted_at") or r.get("at")
+                    if ts:
+                        last_admitted_at = ts
+                        break
+    except OSError:
+        last_admitted_at = None
+    as_of = last_admitted_at
+    if not as_of and supporting:
         as_of = supporting[0].get("created_at") or supporting[0].get("admitted_at")
     provider_name = getattr(prov, "name", None) or type(prov).__name__
     status = result.get("retrieval_status") or ("OK" if supporting or counter else "EMPTY")
@@ -799,6 +889,7 @@ def join_durable_memory(symbols: list[str]) -> dict[str, Any]:
         "state": AVAILABLE if status in {"OK", "EMPTY", "RETRIEVAL_OK", "RETRIEVAL_EMPTY"} else DEGRADED,
         "retrieval_status": status,
         "provider": provider_name,
+        "producer": SHADOW_SEED_PRODUCER,
         "health": health if isinstance(health, dict) else {"status": str(health)},
         "influence_mode": influence,
         "memory_behavior_influence": mbi,
@@ -861,6 +952,10 @@ def join_financial_senses(symbols: list[str]) -> dict[str, Any]:
                 if s in by:
                     by[s].append(snippet)
     covered = sum(1 for s, rows in by.items() if rows)
+    freshness = (
+        classify_freshness(last_as_of, stale_s=36 * 3600, expired_s=7 * 86400)
+        if last_as_of else FRESH_UNAVAILABLE
+    )
     return {
         "available": path.is_file(),
         "state": AVAILABLE if receipts else NOT_RUN,
@@ -869,9 +964,13 @@ def join_financial_senses(symbols: list[str]) -> dict[str, Any]:
         "receipts_available": receipts,
         "row_coverage": covered,
         "as_of": last_as_of,
-        "freshness": classify_freshness(last_as_of, stale_s=36 * 3600, expired_s=7 * 86400) if last_as_of else FRESH_UNAVAILABLE,
+        "freshness": freshness,
+        "producer": SHADOW_SEED_PRODUCER,
         "by_symbol": {s: rows[-3:] for s, rows in by.items()},
-        "reason": None if receipts else "no_current_evidence",
+        "reason": (
+            "no_current_evidence" if not receipts
+            else ("fs_receipt_stale" if freshness in (FRESH_STALE, FRESH_EXPIRED) else None)
+        ),
     }
 
 
@@ -1140,6 +1239,14 @@ def why_advisory_call(row: dict[str, Any], *, watch: Optional[dict[str, Any]], r
         trade = ((watch.get("trade_ai") or {}).get("primary_state") or {}).get("value")
         meaning = (watch.get("trade_ai") or {}).get("operator_meaning")
         risk = (watch.get("trade_ai") or {}).get("primary_risk")
+        tech_fresh = str(((watch.get("technicals") or {}).get("freshness") or "")).upper()
+        if str(trade or "").upper() in {"BLOCKED", "DETERMINISTIC_FAIL"} and tech_fresh == "CURRENT":
+            # The Hub refreshed the technical snapshot to CURRENT, so the stale
+            # "technical snapshot is STALE" admission no longer applies; keep the
+            # why aligned with the un-blocked setup state.
+            trade = "WAIT"
+            meaning = "technicals refreshed (CURRENT)"
+            risk = None
         parts = [p for p in (f"Trade AI {trade}" if trade else None, meaning, risk) if p]
         if parts:
             return " — ".join(parts)
@@ -1355,11 +1462,13 @@ def enrich_desk(
         "memory": {
             "provider": memory_join.get("provider"),
             "retrieval_status": memory_join.get("retrieval_status"),
+            "producer": memory_join.get("producer"),
             "legacy_separated": True,
         },
         "senses": {
             "receipts_available": senses_join.get("receipts_available"),
             "row_coverage": senses_join.get("row_coverage"),
+            "producer": senses_join.get("producer"),
         },
     }
 

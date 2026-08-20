@@ -161,6 +161,8 @@ type Posture = {
 type Opportunities = {
   watch: { symbol: string; source: string; signal: string; label: string }[]
   reentry: { symbol: string; source: string; signal: string; label: string }[]
+  watch_total?: number
+  reentry_total?: number
   rotation: { sector: string; state: string; recommendation: string }[]
   research_gaps: { symbol: string; sector: string }[]
 }
@@ -581,7 +583,14 @@ function CioNowSection({ home, dispositions, legacyUnversioned, onAct }: {
       {decisions.length === 0 ? (
         <Empty text="Nothing needs a decision right now. Portfolio is stable." />
       ) : (
-        decisions.map((d, i) => <DecisionCard key={(decisionKey(d) || legacyDispositionKey(d)) + i} d={d} dispositions={dispositions} legacyUnversioned={legacyUnversioned} onAct={onAct} />)
+        <>
+          {decisions.map((d, i) => <DecisionCard key={(decisionKey(d) || legacyDispositionKey(d)) + i} d={d} dispositions={dispositions} legacyUnversioned={legacyUnversioned} onAct={onAct} />)}
+          {investmentDecisions > decisions.length && (
+            <div style={{ fontSize: 12, color: 'var(--text3)', margin: '4px 0 16px' }}>
+              Showing {decisions.length} of {investmentDecisions} decisions — the rest rank below this attention threshold.
+            </div>
+          )}
+        </>
       )}
     </div>
   )
@@ -755,6 +764,7 @@ type UniverseThesesPayload = {
     thesis_state?: string
     thesis_version?: string | number
     memberships?: string[]
+    bucket?: string
   }>
   note?: string
 }
@@ -823,6 +833,9 @@ function UniverseThesesPanel() {
           <Stat label="Current thesis" value={String(data.metrics.current_thesis ?? '—')} />
           <Stat label="Research required" value={String(data.metrics.research_required ?? '—')} />
           <Stat label="Coverage" value={data.metrics.coverage_pct != null ? `${data.metrics.coverage_pct}` : '—'} />
+          {data.metrics.bonds_unresolved != null && (
+            <Stat label="Bonds & unresolved" value={String(data.metrics.bonds_unresolved)} help="CUSIP/unresolved identifiers sorted out of the main list." />
+          )}
         </div>
       )}
       {!loading && !error && !payloadError && rows.length === 0 && (
@@ -831,7 +844,9 @@ function UniverseThesesPanel() {
       {rows.length > 0 && (
         <div style={card}>
           <SectionTitle>Symbols</SectionTitle>
-          {rows.slice(0, 80).map((r, i) => (
+          {rows.slice(0, 80).map((r, i) => {
+            const isUnresolved = r.bucket === 'BONDS_UNRESOLVED'
+            return (
             <button
               key={(r.symbol || 'x') + i}
               type="button"
@@ -840,17 +855,23 @@ function UniverseThesesPanel() {
                 display: 'block', width: '100%', textAlign: 'left',
                 padding: '8px 4px', border: 'none', borderBottom: '1px solid var(--border)',
                 background: r.symbol === sym ? 'var(--accent-dim)' : 'transparent',
-                color: 'var(--text1)', cursor: 'pointer', fontSize: 13,
+                color: isUnresolved ? 'var(--text3)' : 'var(--text1)', cursor: 'pointer', fontSize: 13,
               }}
             >
               <strong>{r.symbol}</strong>
+              {r.bucket ? (
+                <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, letterSpacing: '.4px', color: isUnresolved ? 'var(--amber)' : 'var(--text3)' }}>
+                  {r.bucket.replace(/_/g, ' ')}
+                </span>
+              ) : null}
               {' · '}
               {r.portfolio_role || 'UNKNOWN'}
               {' · '}
               {r.thesis_state || 'RESEARCH_REQUIRED'}
               {r.thesis_version != null ? ` · ${String(r.thesis_version)}` : ''}
             </button>
-          ))}
+            )
+          })}
         </div>
       )}
       {cardLoading && sym && <div style={muted}>Loading {sym} thesis…</div>}
@@ -866,11 +887,13 @@ function UniverseThesesPanel() {
 
 function InvestmentBooksPanel() {
   const { data, loading, error } = useApi<any>('/api/v3/cio/investment-product', 30_000)
+  const [reentryLimit, setReentryLimit] = useState(30)
   const p = data?.product || {}
   const temp = p.temperament || {}
   const re = p.reentry_book || {}
   const opp = p.opportunity_book || {}
   const act = p.action_book || {}
+  const reentryNames: any[] = re.names || []
   return <div data-testid="cio-investment-books" style={{ display: 'grid', gap: 14 }}>
     <div style={{ fontSize: 12, color: 'var(--text3)' }}>
       Advisory books only. Desk READY/IN_ZONE is not RE_ENTER. MEMORY_BEHAVIOR_INFLUENCE={temp?.influence?.memory_behavior_influence || '0'}.
@@ -903,7 +926,7 @@ function InvestmentBooksPanel() {
       <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>{re.note}</div>
       <table style={{ width: '100%', fontSize: 12, marginTop: 8, borderCollapse: 'collapse' }}>
         <thead><tr>{['symbol','status','verdict','setup','what would change'].map(h => <th key={h} style={{ textAlign: 'left', padding: '4px 6px', color: 'var(--text3)' }}>{h}</th>)}</tr></thead>
-        <tbody>{(re.names || []).slice(0, 30).map((r: any) => <tr key={r.symbol}>
+        <tbody>{reentryNames.slice(0, reentryLimit).map((r: any) => <tr key={r.symbol}>
           <td style={{ padding: '4px 6px' }}>{r.symbol}</td>
           <td style={{ padding: '4px 6px' }}>{r.status}</td>
           <td style={{ padding: '4px 6px' }}>{r.governed_verdict || '—'}</td>
@@ -911,7 +934,16 @@ function InvestmentBooksPanel() {
           <td style={{ padding: '4px 6px' }}>{r.what_would_change}</td>
         </tr>)}</tbody>
       </table>
-      {(re.names || []).length === 0 && <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 8 }}>No former holdings in the re-entry universe right now.</div>}
+      {reentryNames.length === 0 && <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 8 }}>No former holdings in the re-entry universe right now.</div>}
+      {reentryNames.length > reentryLimit && (
+        <button
+          type="button"
+          onClick={() => setReentryLimit(reentryNames.length)}
+          style={{ marginTop: 8, padding: '6px 12px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg0)', color: 'var(--accent)', cursor: 'pointer' }}
+        >
+          Show all {reentryNames.length} names
+        </button>
+      )}
     </section>
     <section style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12 }}>
       <div style={{ fontWeight: 800 }}>Opportunity Book</div>
@@ -924,11 +956,11 @@ function InvestmentBooksPanel() {
     </section>
     <section style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12 }}>
       <div style={{ fontWeight: 800 }}>Portfolio Action Book</div>
-      {(['DO_NOW','WATCH_CLOSELY','RE_ENTER_IF','NEW_POSITION_IF','HOLD_CASH_FOR','AVOID','RESEARCH_NEXT'] as const).map(k => (
+      {(['DO_NOW','WATCH_CLOSELY','RE_ENTER_IF','NEW_POSITION_IF','HOLD_CASH_FOR','AVOID','CURRENT_HOLDINGS_THESIS','RESEARCH_NEXT'] as const).map(k => (
         <div key={k} style={{ marginTop: 8 }}>
           <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--text3)' }}>{k.replace(/_/g, ' ')}</div>
           {((act as any)[k] || []).slice(0, 8).map((r: any, i: number) => (
-            <div key={k + i} style={{ fontSize: 13 }}>{r.symbol} — {r.action}: {r.why}</div>
+            <div key={k + i} style={{ fontSize: 13 }}>{r.symbol} — {r.action}: {r.why ?? r.why_still_held ?? r.thesis_state ?? '—'}</div>
           ))}
           {((act as any)[k] || []).length === 0 && <div style={{ fontSize: 12, color: 'var(--text3)' }}>—</div>}
         </div>
@@ -958,12 +990,18 @@ function OpportunitiesSection({ opp }: { opp: Opportunities }) {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
         <div style={card}>
           <SectionTitle>Watch candidates</SectionTitle>
-          <div style={{ ...faint, marginBottom: 8 }}>Sourced from the advisory, defense, and CIO desks.</div>
+          <div style={{ ...faint, marginBottom: 8 }}>
+            Sourced from the advisory, defense, and CIO desks.
+            {opp.watch_total != null && opp.watch_total > opp.watch.length ? ` · showing ${opp.watch.length} of ${opp.watch_total}` : ''}
+          </div>
           {list(opp.watch)}
         </div>
         <div style={card}>
           <SectionTitle>Re-entry</SectionTitle>
-          <div style={{ ...faint, marginBottom: 8 }}>Names flagged to re-enter after an exit.</div>
+          <div style={{ ...faint, marginBottom: 8 }}>
+            Names flagged to re-enter after an exit.
+            {opp.reentry_total != null && opp.reentry_total > opp.reentry.length ? ` · showing ${opp.reentry.length} of ${opp.reentry_total}` : ''}
+          </div>
           {list(opp.reentry)}
         </div>
       </div>
