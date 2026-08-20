@@ -49,7 +49,7 @@ export default function IntelligenceResearchTab({ onDrill, onManageTopics }: Pro
         </div>
         <div style={{ display: 'flex', gap: 12, fontSize: 11, flexWrap: 'wrap' }}>
           <span style={{ color: '#22c55e' }}>Auto-research: {data?.auto_research_count ?? 0}</span>
-          <span style={{ color: '#f97316' }} data-testid="yt-queue-count">YouTube: {ytCount}</span>
+          <span style={{ color: 'var(--orange)' }} data-testid="yt-queue-count">YouTube: {ytCount}</span>
           <span style={{ color: '#60a5fa' }}>User: {userTopics.length}</span>
           <span style={{ color: 'var(--text2)' }}>Monitor: {data?.monitor_topic_count ?? 0}</span>
           <span style={{ color: (data?.gap_count ?? 0) > 0 ? '#f59e0b' : 'var(--text3)' }}>Gaps: {data?.gap_count ?? 0}</span>
@@ -60,11 +60,11 @@ export default function IntelligenceResearchTab({ onDrill, onManageTopics }: Pro
         </div>
       </div>
 
-      <div style={{ ...card, padding: 14, border: '1px solid rgba(249,115,22,.25)' }} data-testid="youtube-research-queue">
-        <div style={{ fontSize: 12, fontWeight: 700, color: '#f97316', marginBottom: 4 }}>
+      <div style={{ ...card, padding: 14, border: '1px solid var(--border)' }} data-testid="youtube-research-queue">
+        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--orange)', marginBottom: 4 }}>
           YouTube Research Queue ({ytCount})
         </div>
-        <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 10 }}>
+        <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 10 }}>
           Material-only · promoted transcripts · quality ≥ {ytQueue.min_quality ?? 70}
           {ytQueue.built_at ? ` · built ${fmtWhen(ytQueue.built_at)}` : ''}
         </div>
@@ -84,16 +84,16 @@ export default function IntelligenceResearchTab({ onDrill, onManageTopics }: Pro
                 })}
                 style={{
                   padding: '10px 12px', borderRadius: 8, background: 'var(--bg2)', cursor: 'pointer',
-                  border: '1px solid rgba(249,115,22,.15)',
+                  border: '1px solid var(--border)',
                 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
                   <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)' }}>{it.title ?? 'Untitled'}</div>
-                  <div style={{ fontSize: 9, color: 'var(--text3)', whiteSpace: 'nowrap' }}>
+                  <div style={{ fontSize: 10, color: 'var(--text3)', whiteSpace: 'nowrap' }}>
                     Q{it.quality_score ?? '—'}{it.asset_class ? ` · ${String(it.asset_class).replace(/_/g, ' ')}` : ''}
                   </div>
                 </div>
                 {(it.tickers?.length > 0 || it.strategy_tags?.length > 0) && (
-                  <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 3 }}>
+                  <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 3 }}>
                     {(it.tickers ?? []).slice(0, 6).join(', ')}
                     {(it.tickers?.length && it.strategy_tags?.length) ? ' · ' : ''}
                     {(it.strategy_tags ?? []).slice(0, 4).map((t: string) => String(t).replace(/_/g, ' ')).join(', ')}

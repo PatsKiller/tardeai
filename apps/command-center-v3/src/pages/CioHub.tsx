@@ -1080,7 +1080,7 @@ function YoutubeResearchQueuePanel() {
         {count ? ` · ${count} items` : ''}
       </div>
       {loading ? <Empty text="Loading…" /> : meta.error ? (
-        <div style={{ fontSize: 12, color: 'var(--red, #ef4444)' }}>{meta.error}</div>
+        <div style={{ fontSize: 12, color: 'var(--red)' }}>{meta.error}</div>
       ) : items.length === 0 ? (
         <Empty text="No material YouTube items yet (Q≥70 promoted)." />
       ) : (
