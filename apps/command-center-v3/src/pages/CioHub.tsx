@@ -232,12 +232,13 @@ type DispositionRec = {
 }
 type DispositionMap = Record<string, DispositionRec>
 
-const TABS = ['cio-now', 'universe-theses', 'investment-books', 'capital-plan', 'posture', 'opportunities', 'report', 'evidence', 'notification-gate', 'telegram-receipts', 'senses-evidence'] as const
+const TABS = ['cio-now', 'universe-theses', 'tis-layout', 'investment-books', 'capital-plan', 'posture', 'opportunities', 'report', 'evidence', 'notification-gate', 'telegram-receipts', 'senses-evidence'] as const
 type Tab = typeof TABS[number]
 
 const TAB_LABEL: Record<Tab, string> = {
   'cio-now': 'CIO NOW',
   'universe-theses': 'UNIVERSE & THESES',
+  'tis-layout': 'TIS LAYOUT',
   'investment-books': 'INVESTMENT BOOKS',
   'capital-plan': 'CAPITAL PLAN',
   posture: 'PORTFOLIO POSTURE',
@@ -899,6 +900,319 @@ function AgentResearchOpsStrip() {
   )
 }
 
+function TisLayoutPanel() {
+  type TisPolicy = {
+    title?: string
+    layout?: { id?: string; title?: string; body?: string }[]
+    requirements?: {
+      coverage_sla?: {
+        holdings_current_pct?: number
+        reentry_ready_near_current_pct?: number
+        watch_desk_current_pct?: number
+      }
+      stale_days?: number
+      concentration_fire_pct?: number
+      telegram?: {
+        enabled?: boolean
+        immediate?: string[]
+        digest?: string[]
+        digest_cooldown_hours?: number
+        digest_max_symbols?: number
+      }
+      research_scheduler?: {
+        reentry_tier?: string
+        reentry_sla_refreshes?: number
+        reentry_sla_window_days?: number
+      }
+      acquisition?: {
+        skip_until_hours_blocked_rag?: number
+        held_reentry_lane?: boolean
+      }
+    }
+    notes?: string
+    updated_at?: string | null
+    updated_by?: string | null
+  }
+  type SlaBucket = { current_pct?: number; current_n?: number; n?: number; ok?: boolean }
+  const { data, loading, error, refetch } = useApi<{ ok?: boolean; policy?: TisPolicy; error?: string }>(
+    '/api/v3/cio/tis-policy',
+    60_000,
+  )
+  const { data: slaData } = useApi<{
+    ok?: boolean
+    sla?: {
+      sla_ok?: boolean
+      buckets?: Record<string, SlaBucket>
+      breaches?: { bucket?: string; actual_pct?: number; target_pct?: number; missing?: string[] }[]
+      note?: string
+    }
+  }>('/api/v3/cio/tis-coverage-sla', 60_000)
+
+  const [draft, setDraft] = useState<TisPolicy | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [saveMsg, setSaveMsg] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (data?.policy) setDraft(JSON.parse(JSON.stringify(data.policy)))
+  }, [data])
+
+  const req = draft?.requirements
+  const sla = req?.coverage_sla
+  const tg = req?.telegram
+  const rs = req?.research_scheduler
+
+  const setSla = (key: string, value: number) => {
+    setDraft((prev) => {
+      if (!prev) return prev
+      const next = { ...prev, requirements: { ...(prev.requirements || {}) } }
+      next.requirements!.coverage_sla = { ...(next.requirements!.coverage_sla || {}), [key]: value }
+      return next
+    })
+  }
+
+  const save = async () => {
+    if (!draft) return
+    setSaving(true)
+    setSaveMsg(null)
+    try {
+      const res = await fetch('/api/v3/cio/tis-policy', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          updated_by: 'cc_operator',
+          layout: draft.layout,
+          requirements: draft.requirements,
+          notes: draft.notes,
+          title: draft.title,
+        }),
+      })
+      const body = await res.json()
+      if (!res.ok || body?.ok === false) {
+        setSaveMsg(String(body?.errors?.join?.('; ') || body?.error || body?.detail || `HTTP ${res.status}`))
+      } else {
+        setSaveMsg('Saved. Next coverage/digest/scheduler pass will use these requirements.')
+        setDraft(body.policy || draft)
+        refetch?.()
+      }
+    } catch (e) {
+      setSaveMsg(String(e))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const buckets = slaData?.sla?.buckets || {}
+  const faint: CSSProperties = { fontSize: 12, color: 'var(--text3)', lineHeight: 1.45 }
+  const inputStyle: CSSProperties = {
+    width: 72, padding: '4px 6px', borderRadius: 4,
+    border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text)',
+  }
+
+  return (
+    <div data-testid="cio-tis-layout" style={{ display: 'grid', gap: 16 }}>
+      <div>
+        <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', letterSpacing: '.3px' }}>
+          Thesis Investment System (TIS)
+        </div>
+        <div style={faint}>
+          Actual operating layout for living theses, coverage SLA, re-entry/watch progress, and Telegram.
+          Thesis coverage is <strong style={{ color: 'var(--text2)' }}>not</strong> gated by concentration fire —
+          Visa, Dexcom, and every holding get the same thesis treatment. Edit requirements below; Save writes an
+          operator override (advisory only).
+        </div>
+        {(draft?.updated_at || draft?.updated_by) && (
+          <div style={{ ...faint, marginTop: 4 }}>
+            Last edit: {draft.updated_by || '—'} · {draft.updated_at || '—'}
+          </div>
+        )}
+      </div>
+
+      {loading && <div style={faint}>Loading TIS policy…</div>}
+      {error && <div style={{ color: 'var(--amber)', fontSize: 13 }}>TIS policy unavailable: {String(error)}</div>}
+
+      {/* Live SLA strip */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10 }}>
+        {(['holdings', 'reentry_ready_near', 'watch_desk'] as const).map((k) => {
+          const b = buckets[k]
+          const label = k === 'holdings' ? 'Holdings CURRENT' : k === 'reentry_ready_near' ? 'Reentry CURRENT' : 'Watch CURRENT'
+          return (
+            <div key={k} style={{ padding: 10, border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg2)' }}>
+              <div style={{ fontSize: 11, color: 'var(--text3)', letterSpacing: '.4px' }}>{label}</div>
+              <div style={{ fontSize: 20, fontWeight: 700, color: b?.ok === false ? 'var(--amber)' : 'var(--text)' }}>
+                {b?.current_pct != null ? `${b.current_pct}%` : '—'}
+              </div>
+              <div style={faint}>{b?.current_n ?? '—'} / {b?.n ?? '—'} names</div>
+            </div>
+          )
+        })}
+      </div>
+      {slaData?.sla?.note && <div style={faint}>{slaData.sla.note}</div>}
+      {(slaData?.sla?.breaches || []).length > 0 && (
+        <div style={{ fontSize: 12, color: 'var(--amber)' }} data-testid="cio-tis-sla-breaches">
+          SLA breaches:{' '}
+          {(slaData!.sla!.breaches || []).map((b) => (
+            <span key={b.bucket} style={{ marginRight: 10 }}>
+              {b.bucket} {b.actual_pct}%&lt;{b.target_pct}% ({(b.missing || []).slice(0, 6).join(', ')})
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Layout documentation */}
+      <div style={{ display: 'grid', gap: 10 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '.5px', color: 'var(--text2)' }}>LAYOUT</div>
+        {(draft?.layout || []).map((block, idx) => (
+          <div key={block.id || idx} style={{ padding: '10px 12px', borderLeft: '2px solid var(--accent)', background: 'var(--bg2)' }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{block.title}</div>
+            <textarea
+              value={block.body || ''}
+              onChange={(e) => {
+                const v = e.target.value
+                setDraft((prev) => {
+                  if (!prev) return prev
+                  const layout = [...(prev.layout || [])]
+                  layout[idx] = { ...layout[idx], body: v }
+                  return { ...prev, layout }
+                })
+              }}
+              rows={3}
+              style={{
+                width: '100%', marginTop: 6, padding: 8, borderRadius: 4,
+                border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)',
+                fontSize: 12, lineHeight: 1.45, resize: 'vertical', fontFamily: 'inherit',
+              }}
+            />
+          </div>
+        ))}
+      </div>
+
+      {/* Editable requirements */}
+      <div style={{ display: 'grid', gap: 12 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '.5px', color: 'var(--text2)' }}>REQUIREMENTS (EDITABLE)</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'center' }}>
+          <label style={faint}>Holdings CURRENT % ≥
+            <input type="number" min={50} max={100} style={{ ...inputStyle, marginLeft: 6 }}
+              value={sla?.holdings_current_pct ?? 100}
+              onChange={(e) => setSla('holdings_current_pct', Number(e.target.value))} />
+          </label>
+          <label style={faint}>Reentry CURRENT % ≥
+            <input type="number" min={50} max={100} style={{ ...inputStyle, marginLeft: 6 }}
+              value={sla?.reentry_ready_near_current_pct ?? 100}
+              onChange={(e) => setSla('reentry_ready_near_current_pct', Number(e.target.value))} />
+          </label>
+          <label style={faint}>Watch CURRENT % ≥
+            <input type="number" min={0} max={100} style={{ ...inputStyle, marginLeft: 6 }}
+              value={sla?.watch_desk_current_pct ?? 80}
+              onChange={(e) => setSla('watch_desk_current_pct', Number(e.target.value))} />
+          </label>
+          <label style={faint}>Stale days
+            <input type="number" min={1} max={365} style={{ ...inputStyle, marginLeft: 6 }}
+              value={req?.stale_days ?? 30}
+              onChange={(e) => setDraft((p) => p ? {
+                ...p,
+                requirements: { ...p.requirements, stale_days: Number(e.target.value) },
+              } : p)} />
+          </label>
+          <label style={faint}>Concentration fire % (risk only)
+            <input type="number" min={1} max={50} step={0.5} style={{ ...inputStyle, marginLeft: 6 }}
+              value={req?.concentration_fire_pct ?? 12}
+              onChange={(e) => setDraft((p) => p ? {
+                ...p,
+                requirements: { ...p.requirements, concentration_fire_pct: Number(e.target.value) },
+              } : p)} />
+          </label>
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'center' }}>
+          <label style={{ ...faint, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <input
+              type="checkbox"
+              checked={tg?.enabled !== false}
+              onChange={(e) => setDraft((p) => p ? {
+                ...p,
+                requirements: {
+                  ...p.requirements,
+                  telegram: { ...(p.requirements?.telegram || {}), enabled: e.target.checked },
+                },
+              } : p)}
+            />
+            Telegram digests enabled
+          </label>
+          <label style={faint}>Digest cooldown (h)
+            <input type="number" min={1} max={168} style={{ ...inputStyle, marginLeft: 6 }}
+              value={tg?.digest_cooldown_hours ?? 12}
+              onChange={(e) => setDraft((p) => p ? {
+                ...p,
+                requirements: {
+                  ...p.requirements,
+                  telegram: { ...(p.requirements?.telegram || {}), digest_cooldown_hours: Number(e.target.value) },
+                },
+              } : p)} />
+          </label>
+          <label style={faint}>Reentry research tier
+            <input type="text" style={{ ...inputStyle, width: 110, marginLeft: 6 }}
+              value={rs?.reentry_tier ?? 'T0-REENTRY'}
+              onChange={(e) => setDraft((p) => p ? {
+                ...p,
+                requirements: {
+                  ...p.requirements,
+                  research_scheduler: {
+                    ...(p.requirements?.research_scheduler || {}),
+                    reentry_tier: e.target.value,
+                  },
+                },
+              } : p)} />
+          </label>
+          <label style={faint}>Blocked-RAG skip_until (h)
+            <input type="number" min={1} max={336} style={{ ...inputStyle, marginLeft: 6 }}
+              value={req?.acquisition?.skip_until_hours_blocked_rag ?? 72}
+              onChange={(e) => setDraft((p) => p ? {
+                ...p,
+                requirements: {
+                  ...p.requirements,
+                  acquisition: {
+                    ...(p.requirements?.acquisition || {}),
+                    skip_until_hours_blocked_rag: Number(e.target.value),
+                  },
+                },
+              } : p)} />
+          </label>
+        </div>
+        <div style={faint}>
+          IMMEDIATE: {(tg?.immediate || []).join(', ') || '—'}
+          <br />
+          DIGEST: {(tg?.digest || []).join(', ') || '—'}
+        </div>
+        <textarea
+          value={draft?.notes || ''}
+          onChange={(e) => setDraft((p) => p ? { ...p, notes: e.target.value } : p)}
+          rows={2}
+          placeholder="Operator notes"
+          style={{
+            width: '100%', padding: 8, borderRadius: 4, border: '1px solid var(--border)',
+            background: 'var(--bg2)', color: 'var(--text)', fontSize: 12, fontFamily: 'inherit',
+          }}
+        />
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <button
+            type="button"
+            data-testid="cio-tis-save"
+            disabled={saving || !draft}
+            onClick={save}
+            style={{
+              padding: '8px 16px', borderRadius: 6, border: '1px solid var(--accent)',
+              background: 'var(--accent-dim)', color: 'var(--accent)', cursor: 'pointer',
+              fontWeight: 700, fontSize: 12, letterSpacing: '.4px',
+            }}
+          >
+            {saving ? 'Saving…' : 'Save requirements'}
+          </button>
+          {saveMsg && <span style={{ fontSize: 12, color: saveMsg.startsWith('Saved') ? 'var(--text2)' : 'var(--amber)' }}>{saveMsg}</span>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function UniverseThesesPanel() {
   const { data, loading, error } = useApi<UniverseThesesPayload>('/api/v3/cio/universe-theses', 60_000)
   const [sym, setSym] = useState('')
@@ -1513,6 +1827,12 @@ export default function CioHub({ onDrill }: Props) {
         </div>
       )}
 
+      {tab === 'tis-layout' && (
+        <div role="tabpanel" aria-label={TAB_LABEL[tab]}>
+          <TisLayoutPanel />
+        </div>
+      )}
+
       {tab === 'investment-books' && <InvestmentBooksPanel />}
 
       {(tab === 'notification-gate' || tab === 'telegram-receipts' || tab === 'senses-evidence') && (
@@ -1523,7 +1843,7 @@ export default function CioHub({ onDrill }: Props) {
         </div>
       )}
 
-      {home && tab !== 'notification-gate' && tab !== 'telegram-receipts' && tab !== 'senses-evidence' && tab !== 'investment-books' && tab !== 'universe-theses' && (
+      {home && tab !== 'notification-gate' && tab !== 'telegram-receipts' && tab !== 'senses-evidence' && tab !== 'investment-books' && tab !== 'universe-theses' && tab !== 'tis-layout' && (
         <div role="tabpanel" aria-label={TAB_LABEL[tab]}>
           {tab === 'cio-now' && <CioNowSection home={home} dispositions={dispositions} legacyUnversioned={legacyUnversioned} onAct={onAct} />}
           {tab === 'capital-plan' && <CapitalPlanSection cp={home.capital_plan} />}

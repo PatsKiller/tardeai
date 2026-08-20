@@ -559,6 +559,7 @@ HELP = """🤖 CIO Commands:
   /cio                 — Full CIO dashboard
   /cio actions         — Open action items
   /cio portfolio       — Portfolio snapshot
+  /cio reentry         — Re-entry READY / NEAR purchase candidates
   /cio hermes          — Hermes research topics
   /cio risk            — Risk overview
   /cio plans           — Open advisory plans

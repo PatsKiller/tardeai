@@ -20,11 +20,14 @@ from scripts.lib.cio_telegram_converse import (
     DEFAULT_MSG_MAP,
     DEFAULT_RATE,
     assemble_context,
+    answer_reentry_purchase_query,
     build_template_advisory,
     emit_operator_message,
     ensure_converse_plan,
+    format_reentry_purchase_reply,
     format_structured_reply,
     handle_cio_slash,
+    looks_like_reentry_purchase_query,
     mark_message_seen,
     mark_wake_rate,
     message_seen,
@@ -44,7 +47,7 @@ SendFn = Callable[..., dict[str, Any]]
 # Plain-text command prefixes accepted on WhatsApp (no leading /cio required)
 PLAIN_CMD_RE = re.compile(
     r"^\s*(?:/cio\s+)?(help|plans|plan|thesis|traces|status|actions|portfolio|hermes|risk|"
-    r"ack|rate|defer|done|reject)\b",
+    r"reentry|re-entry|ack|rate|defer|done|reject)\b",
     re.I,
 )
 
@@ -295,6 +298,24 @@ def process_operator_message(
                 "outbound_message_id": sent.get("message_id"),
             })
             return out
+
+    # Desk facts + optional DeepSeek Flash polish (skip S0 template wall)
+    if looks_like_reentry_purchase_query(text):
+        ans = answer_reentry_purchase_query(text, use_flash=True)
+        reply = ans.get("text") or format_reentry_purchase_reply()
+        if channel == "whatsapp":
+            reply = re.sub(r"\*([^*]+)\*", r"\1", reply).replace("`", "")
+        sent = _send(reply, reply_to=reply_to_message_id)
+        out.update({
+            "handled": True,
+            "kind": "reentry_facts",
+            "reentry_source": ans.get("source"),
+            "reentry_model": ans.get("model"),
+            "reply_preview": reply[:500],
+            "outbound_message_id": sent.get("message_id"),
+            "telegram_out_message_id": sent.get("message_id") if channel == "telegram" else None,
+        })
+        return out
 
     # free-text converse
     if not rate_limit_ok(chat_id, path=rate_path, limit=wakes_limit):

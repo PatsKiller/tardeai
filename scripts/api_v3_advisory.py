@@ -17,6 +17,7 @@ Routes:
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -321,6 +322,36 @@ def _row_view(row: dict[str, Any], opinions: dict[str, Any] | None = None) -> di
     if action_suppressed:
         dq["banner"] = "DATA CONFLICT — ACTION SUPPRESSED"
 
+    # Operator-accurate Quality column (do not dump everything as DATA_UNAVAILABLE)
+    try:
+        from scripts.lib.advisory_quality_label import classify_advisory_quality
+    except Exception:
+        try:
+            from lib.advisory_quality_label import classify_advisory_quality  # type: ignore
+        except Exception:
+            classify_advisory_quality = None  # type: ignore
+    if classify_advisory_quality is not None:
+        classified = classify_advisory_quality(
+            {
+                **row,
+                "verdict": _verdict_str(row.get("verdict")),
+                "setup_state": row.get("setup_state") or (row.get("operator") or {}).get("setup_state"),
+                "reentry_state": row.get("reentry_state"),
+            },
+            dq,
+        )
+        dq["quality_kind"] = classified.get("kind")
+        dq["quality_label"] = classified.get("label")
+        dq["quality_detail"] = classified.get("detail")
+        dq["requeueable"] = bool(classified.get("requeueable"))
+        dq["requeue_gaps"] = list(classified.get("requeue_gaps") or [])
+    else:
+        dq["quality_label"] = quality or ("DATA CONFLICT" if action_suppressed else None)
+        dq["quality_kind"] = None
+        dq["quality_detail"] = None
+        dq["requeueable"] = False
+        dq["requeue_gaps"] = []
+
     operator = row.get("operator") if isinstance(row.get("operator"), dict) else {}
     watch = row.get("watch_intelligence") or operator.get("watch_intelligence")
     reentry = row.get("reentry") or operator.get("reentry")
@@ -469,6 +500,28 @@ def get_advisory_desk(*, force: bool = False, row_class: str | None = None) -> d
     if row_class:
         rows = [r for r in rows if r.get("row_class") == row_class]
 
+    gap_requeue: dict[str, Any] = {"ok": False, "enabled": False, "note": "not_run"}
+    # Register gaps on forced rebuilds by default (avoid hammering DB on every poll).
+    # Set ADVISORY_GAP_REQUEUE_ON_READ=1 to also register on cache hits.
+    _requeue_on_read = os.environ.get("ADVISORY_GAP_REQUEUE_ON_READ", "").strip().lower() in {
+        "1", "true", "yes", "on",
+    }
+    if not row_class and (force or _requeue_on_read or not desk.get("cache_hit")):
+        try:
+            from scripts.lib.advisory_gap_requeue import register_advisory_gaps
+        except Exception:
+            try:
+                from lib.advisory_gap_requeue import register_advisory_gaps  # type: ignore
+            except Exception:
+                register_advisory_gaps = None  # type: ignore
+        if register_advisory_gaps is not None:
+            try:
+                gap_requeue = register_advisory_gaps(rows, max_register=40)
+            except Exception as e:
+                gap_requeue = {"ok": False, "error": type(e).__name__, "detail": str(e)[:160]}
+    elif not row_class:
+        gap_requeue = {"ok": True, "enabled": True, "note": "skipped_cache_hit_set_ADVISORY_GAP_REQUEUE_ON_READ=1"}
+
     by_class: dict[str, int] = {}
     for r in rows:
         c = str(r.get("row_class") or "unknown")
@@ -569,6 +622,7 @@ def get_advisory_desk(*, force: bool = False, row_class: str | None = None) -> d
         "content_hash": data.get("content_hash"),
         "llm_in_path": llm_in_path,
         "deterministic": data.get("deterministic", True),
+        "gap_requeue": gap_requeue,
         "promotion": {
             "status": promotion.get("status"),
             "promoted": bool(promotion.get("promoted")),
