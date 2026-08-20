@@ -23,6 +23,20 @@ from scripts.lib.symbol_universe import reconcile_universe
 
 AUTHORITY = "READ_ONLY_ADVISORY"
 
+# Category / aggregate labels that leaked into the symbol column. Not tickers —
+# exclude from material cards or bucket OTHER (CUSIP bucketing stays separate).
+NON_TICKER_SYMBOLS = frozenset({
+    "HEALTH",
+    "DAY_SWING",
+    "POSITION",
+    "LONG_TERM_COMPOUNDER",
+    "CATEGORY",
+    "SECTOR",
+    "STYLE",
+    "AGGREGATE",
+    "UNKNOWN_CATEGORY",
+})
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
@@ -61,15 +75,24 @@ def _is_cusip(symbol: str) -> bool:
     return bool(re.fullmatch(r"[0-9][0-9A-Za-z]{5,8}", s))
 
 
+def _is_non_ticker(symbol: str) -> bool:
+    """True for category/aggregate labels that must not render as material tickers."""
+    s = str(symbol or "").strip().upper()
+    return bool(s) and s in NON_TICKER_SYMBOLS
+
+
 def _membership_bucket(r: dict[str, Any]) -> str:
     """Canonical single membership label for a universe row (HELD/REENTRY/WATCH/…).
 
     CUSIP/unresolved identifiers are pulled out of the HELD sort entirely so
-    they no longer crowd the top of the 80-name operator list.
+    they no longer crowd the top of the 80-name operator list. Non-ticker
+    category labels are OTHER (never HELD/REENTRY/WATCH material tickers).
     """
     sym = str(r.get("symbol") or "")
     if _is_cusip(sym):
         return "BONDS_UNRESOLVED"
+    if _is_non_ticker(sym):
+        return "OTHER"
     m = set(r.get("memberships") or [])
     if "HELD" in m:
         return "HELD"
@@ -102,17 +125,25 @@ def build_universe_theses_projection(
     daily = daily_thesis_changes(root=root)
 
     material_rows = [r for r in (report.get("rows") or []) if r.get("material")]
+    non_ticker_excluded = sum(
+        1 for r in material_rows if _is_non_ticker(str(r.get("symbol") or ""))
+    )
     # Prefer HELD / REENTRY / WATCH for the operator card list; park CUSIPs and
     # unresolved identifiers in a trailing "Bonds & unresolved" bucket so they
-    # no longer crowd the top of the 80.
+    # no longer crowd the top of the 80. Non-ticker category labels are excluded
+    # from the material ticker card list (not shown as investable names).
+    material_for_cards = [
+        r for r in material_rows if not _is_non_ticker(str(r.get("symbol") or ""))
+    ]
+
     def _sort_key(r: dict[str, Any]) -> tuple:
         bucket_pri = _BUCKET_PRIORITY.get(_membership_bucket(r), 4)
         state_pri = 0 if r.get("coverage_state") in {"CONFLICTED", "STALE", "RESEARCH_REQUIRED"} else 1
         return (bucket_pri, state_pri, r.get("symbol") or "")
 
-    material_rows.sort(key=_sort_key)
+    material_for_cards.sort(key=_sort_key)
     cards = []
-    for r in material_rows[:symbol_limit]:
+    for r in material_for_cards[:symbol_limit]:
         cards.append({
             "symbol": r["symbol"],
             "memberships": r.get("memberships"),
@@ -140,7 +171,7 @@ def build_universe_theses_projection(
         proposed = propose_prioritized_research(root=root, limit=25)
 
     bonds_unresolved = sum(
-        1 for r in material_rows if _membership_bucket(r) == "BONDS_UNRESOLVED"
+        1 for r in material_for_cards if _membership_bucket(r) == "BONDS_UNRESOLVED"
     )
 
     return {
@@ -158,6 +189,7 @@ def build_universe_theses_projection(
             "conflicted": metrics.get("conflicted"),
             "insufficient_data": metrics.get("insufficient_data"),
             "bonds_unresolved": bonds_unresolved,
+            "non_ticker_excluded": non_ticker_excluded,
             "unknown_role": metrics.get("role_unknown"),
             "coverage_pct": metrics.get("coverage_pct_material"),
             "open_thesis_research_proposed": (proposed or {}).get("counts", {}).get("proposed") if proposed else 0,

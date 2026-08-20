@@ -350,10 +350,79 @@ def _count_cell(row: Any) -> int:
         return 0
 
 
+def classify_research_failure_message(message: str | None) -> str:
+    """Map a watchlist_events failure message to a stable failure class.
+
+    Pure helper — unit-tested. Never invents a success.
+    """
+    msg = str(message or "").strip()
+    low = msg.lower()
+    if not msg:
+        return "UNKNOWN"
+    # Circuit-open is the cascading class even when the last error mentions the cap.
+    if "circuit_open" in low or "circuit breaker open" in low:
+        return "AGENT_FLASH_CIRCUIT_OPEN"
+    if "cost_configuration_invalid" in low or "global daily usd cap required" in low:
+        return "LLM_GLOBAL_DAILY_USD_CAP_MISSING"
+    if "budget_exhausted" in low or ("global_cap" in low and "exhaust" in low):
+        return "LLM_GLOBAL_DAILY_USD_CAP_EXHAUSTED"
+    if "cost_cap_exceeded" in low:
+        return "COST_CAP_EXCEEDED"
+    if "invalid_symbol" in low or "skipped: not found" in low:
+        return "INVALID_SYMBOL"
+    if "data gap" in low or "data_gap" in low:
+        return "DATA_GAP_SKIP"
+    if "llm error" in low:
+        return "LLM_ERROR"
+    return "OTHER"
+
+
+def _bump(counter: dict[str, int], key: str | None, n: int = 1) -> None:
+    k = str(key or "unknown").strip() or "unknown"
+    counter[k] = int(counter.get(k) or 0) + n
+
+
+def summarize_flash_first_attempts(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Aggregate provider-attempted / actual / fallback from result full_result blobs."""
+    attempted: dict[str, int] = {}
+    actual: dict[str, int] = {}
+    fallback_reasons: dict[str, int] = {}
+    policies: dict[str, int] = {}
+    for row in rows:
+        fr = row.get("full_result") if isinstance(row, dict) else None
+        if isinstance(fr, str):
+            try:
+                fr = json.loads(fr)
+            except Exception:
+                fr = None
+        if not isinstance(fr, dict):
+            # Fall back to model_used column only
+            _bump(actual, (row or {}).get("model_used") if isinstance(row, dict) else None)
+            continue
+        _bump(attempted, fr.get("first_provider_attempted") or fr.get("requested_provider_policy"))
+        _bump(actual, fr.get("actual_provider") or fr.get("provider") or fr.get("model") or (row or {}).get("model_used"))
+        if fr.get("fallback_reason"):
+            _bump(fallback_reasons, fr.get("fallback_reason"))
+        if fr.get("requested_provider_policy"):
+            _bump(policies, fr.get("requested_provider_policy"))
+    return {
+        "provider_attempted_today": attempted,
+        "provider_actual_today": actual,
+        "fallback_reason_today": fallback_reasons,
+        "requested_provider_policy_today": policies,
+        "flash_attempted": any(
+            "flash" in k.lower() or "deepseek" in k.lower() for k in attempted
+        ),
+        "sample_count": len(rows),
+    }
+
+
 def get_agent_research_ops() -> dict[str, Any]:
     """GET /api/v3/cio/agent-research-ops — operator-visible intelligence engine health.
 
     Never returns cap values, tokens, or credentials. Cap status is CONFIGURED/MISSING/EXHAUSTED only.
+    Surfaces Flash-first attempt/actual/fallback and dominant failure class when present.
+    Does not silently re-queue failed jobs.
     """
     cap_raw = str(os.environ.get("LLM_GLOBAL_DAILY_USD_CAP") or "").strip()
     cap_status = "CONFIGURED" if cap_raw else "MISSING"
@@ -364,7 +433,13 @@ def get_agent_research_ops() -> dict[str, Any]:
         "global_cap_status": cap_status,
         "queue": {},
         "provider_mix_today": {},
+        "failure_classes_today": {},
+        "flash_first": {},
+        "dominant_failure_class": None,
+        "operator_finding": None,
         "notification": {},
+        "requeue_suppressed": True,
+        "requeue_note": "Failed jobs are not auto-requeued; fix config/cap then enqueue deliberately.",
     }
     try:
         from db_adapter import USE_DB, _execute
@@ -424,6 +499,57 @@ def get_agent_research_ops() -> dict[str, Any]:
                 provider_mix[str(list(row.values())[0])] = int(list(row.values())[1] or 0)
             else:
                 provider_mix[str(row[0])] = int(row[1] or 0)
+
+        # Failure class honesty from today's events (Flash-first fail-closed)
+        fail_events = _execute(
+            """SELECT message, COUNT(*) AS c FROM watchlist_events
+               WHERE created_at >= CURRENT_DATE
+                 AND status IN ('failed', 'skipped')
+               GROUP BY message
+               ORDER BY c DESC
+               LIMIT 40""",
+            fetch="all",
+        ) or []
+        failure_classes: dict[str, int] = {}
+        for row in fail_events:
+            if isinstance(row, dict):
+                msg = row.get("message")
+                cnt = int(row.get("c") or list(row.values())[1] or 0)
+            else:
+                msg, cnt = row[0], int(row[1] or 0)
+            _bump(failure_classes, classify_research_failure_message(str(msg or "")), cnt)
+
+        # Per-cycle Flash-first visibility from completed result provenance
+        attempt_rows = _execute(
+            """SELECT model_used, full_result FROM watchlist_agent_results
+               WHERE created_at >= CURRENT_DATE
+               ORDER BY created_at DESC
+               LIMIT 200""",
+            fetch="all",
+        ) or []
+        flash = summarize_flash_first_attempts([dict(r) if not isinstance(r, dict) else r for r in attempt_rows])
+
+        dominant = None
+        if failure_classes:
+            dominant = max(failure_classes.items(), key=lambda kv: kv[1])[0]
+
+        # Cap status refinement from observed failures (env may be set in CC but not in worker)
+        if dominant == "LLM_GLOBAL_DAILY_USD_CAP_MISSING":
+            cap_status = "MISSING"
+            out["operator_finding"] = (
+                "docs/ops/RESEARCH_ENGINE_FLASH_FIRST_FAILURE_2026-08-20.md — "
+                "worker lacks LLM_GLOBAL_DAILY_USD_CAP; Flash fail-closed then circuit-open. "
+                "Do not silently re-queue."
+            )
+        elif dominant == "LLM_GLOBAL_DAILY_USD_CAP_EXHAUSTED":
+            cap_status = "EXHAUSTED"
+        elif dominant == "AGENT_FLASH_CIRCUIT_OPEN" and cap_status == "MISSING":
+            out["operator_finding"] = (
+                "docs/ops/RESEARCH_ENGINE_FLASH_FIRST_FAILURE_2026-08-20.md — "
+                "agent_flash circuit open after cap-config failures."
+            )
+
+        out["global_cap_status"] = cap_status
         out["queue"] = {
             "queued": queued,
             "by_status": by_status,
@@ -436,6 +562,9 @@ def get_agent_research_ops() -> dict[str, Any]:
             "stale_or_superseded": int(by_status.get("deferred") or 0) + int(by_status.get("superseded") or 0),
         }
         out["provider_mix_today"] = provider_mix
+        out["failure_classes_today"] = failure_classes
+        out["dominant_failure_class"] = dominant
+        out["flash_first"] = flash
     except Exception as e:
         out["ok"] = False
         out["error"] = type(e).__name__

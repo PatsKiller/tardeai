@@ -7,33 +7,51 @@ Phase 7: actually attach canonical_financial_facts + advisory_provenance on
 the /v3/advisory expand payload. Analyst upside must never be labeled
 "vs current" when the denominator is a stale provider snapshot.
 
+P0.3: Finviz / external quote older than the current session is STALE and
+ignored for CONFLICT vs today's broker MV — after-hours prefer broker mark.
+
 Authority: READ_ONLY_ADVISORY. No broker.
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 try:
     from scripts.lib.cio_financial_truth_gate import (
         STATE_CONFLICTED,
         STATE_DATA_UNAVAILABLE,
+        STATE_STALE,
         STATE_VERIFIED_AS_OF,
         analyst_upside_vs_canonical,
         classify_price_fields,
         dollar_tol,
+        parse_ts,
     )
 except ImportError:  # pragma: no cover — scripts/ on path without repo root
     from lib.cio_financial_truth_gate import (  # type: ignore
         STATE_CONFLICTED,
         STATE_DATA_UNAVAILABLE,
+        STATE_STALE,
         STATE_VERIFIED_AS_OF,
         analyst_upside_vs_canonical,
         classify_price_fields,
         dollar_tol,
+        parse_ts,
     )
 
-ADVISORY_PROVENANCE_VERSION = "advisory_provenance_1.1.0"
+ADVISORY_PROVENANCE_VERSION = "advisory_provenance_1.2.0"
 DATA_CONFLICT_ACTION_SUPPRESSED = "DATA CONFLICT — ACTION SUPPRESSED"
+
+# External quote sources that must not CONFLICT against today's broker MV when stale.
+_EXTERNAL_QUOTE_SOURCE_TOKENS = (
+    "finviz",
+    "yahoo",
+    "provider",
+    "enrichment",
+    "quote_cache",
+    "ticker_enrichment",
+)
 
 # Recommendation tokens we treat as an explicit desk response (not absence).
 _EXPLICIT_STANCE_TOKENS = frozenset({
@@ -108,12 +126,73 @@ def _mark_source(row: dict[str, Any], price_info: dict[str, Any]) -> str:
     )
 
 
-def build_canonical_financial_facts(row: dict[str, Any]) -> dict[str, Any]:
+def _is_external_quote_source(source: str | None) -> bool:
+    src = str(source or "").lower()
+    return any(tok in src for tok in _EXTERNAL_QUOTE_SOURCE_TOKENS)
+
+
+def external_quote_stale_vs_session(
+    source: str | None,
+    as_of: Any,
+    *,
+    now: Optional[datetime] = None,
+) -> bool:
+    """True when an external quote observation is older than today's session date.
+
+    After-hours / next-day broker MV must not be labeled CONFLICTED against a
+    Finviz print from a prior session — that print is STALE and ignored.
+    """
+    if not _is_external_quote_source(source):
+        return False
+    dt = parse_ts(as_of)
+    if dt is None:
+        return False
+    try:
+        from scripts.lib.cio_market_session import get_market_session
+    except ImportError:  # pragma: no cover
+        from lib.cio_market_session import get_market_session  # type: ignore
+    sess = get_market_session(now)
+    session_date_s = sess.get("session_date")
+    if not session_date_s:
+        return False
+    try:
+        from datetime import date as _date
+        session_date = _date.fromisoformat(str(session_date_s))
+    except ValueError:
+        return False
+    # Compare in exchange-local calendar day when possible
+    try:
+        from zoneinfo import ZoneInfo
+        et = ZoneInfo("America/New_York")
+        obs_date = dt.astimezone(et).date()
+    except Exception:
+        obs_date = (dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)).date()
+    return obs_date < session_date
+
+
+def _session_prefers_broker_mark(now: Optional[datetime] = None) -> bool:
+    """After RTH (POST/CLOSED) prefer latest broker mark over external prints."""
+    try:
+        from scripts.lib.cio_market_session import get_market_session
+    except ImportError:  # pragma: no cover
+        from lib.cio_market_session import get_market_session  # type: ignore
+    state = str((get_market_session(now) or {}).get("state") or "").upper()
+    return state in {"POST", "CLOSED"}
+
+
+def build_canonical_financial_facts(
+    row: dict[str, Any],
+    *,
+    now: Optional[datetime] = None,
+) -> dict[str, Any]:
     """Structured current-mark facts for the expanded advisory row.
 
     Operator fields (in display order):
       Current mark, As of, Source, Shares, Market value, Total cost basis,
       Avg cost/share, Unrealized P/L, Quality.
+
+    P0.3: stale Finviz / external quote vs today's broker MV is STALE (ignored
+    for CONFLICT), not CONFLICTED. After-hours prefer broker implied mark.
     """
     shares = _shares(row)
     price_info = classify_price_fields(row)
@@ -127,37 +206,73 @@ def build_canonical_financial_facts(row: dict[str, Any]) -> dict[str, Any]:
             avg = basis  # already per-share
         else:
             avg = basis / shares
+
+    as_of = _mark_as_of(row)
+    source = _mark_source(row, price_info)
+    implied_px = _f(price_info.get("implied_price_from_mv"))
+    broker_px = _f(row.get("broker_position_price") or row.get("broker_price"))
+    external_stale = external_quote_stale_vs_session(source, as_of, now=now)
+    prefer_broker = _session_prefers_broker_mark(now) or external_stale
+
+    stale_notes: list[str] = []
+    if external_stale:
+        stale_notes.append(
+            f"external quote source={source} as_of={as_of} older than session — STALE, ignored for CONFLICT"
+        )
+        # Prefer latest broker mark / implied-from-MV over the stale Finviz print
+        if broker_px is not None and broker_px > 0:
+            px = broker_px
+            source = "broker_position_price"
+            as_of = str(row.get("broker_position_as_of") or as_of or "")
+        elif implied_px is not None and implied_px > 0:
+            px = implied_px
+            source = "broker_implied_from_mv"
+    elif prefer_broker and _is_external_quote_source(source):
+        # After-hours: prefer broker mark even if external stamp is same calendar day
+        if broker_px is not None and broker_px > 0:
+            px = broker_px
+            source = "broker_position_price"
+            as_of = str(row.get("broker_position_as_of") or as_of or "")
+            stale_notes.append("after-hours: preferred broker mark over external quote")
+        elif implied_px is not None and implied_px > 0:
+            # Only switch when external disagrees materially with broker MV
+            if px is None or (px > 0 and abs(implied_px - px) / px > 0.002):
+                px = implied_px
+                source = "broker_implied_from_mv"
+                stale_notes.append("after-hours: preferred broker implied-from-MV over external quote")
+
     implied = (shares * px) if (shares is not None and px is not None) else None
     upl = (mv - basis) if (mv is not None and basis is not None) else None
     upl_pct = (upl / basis * 100.0) if (upl is not None and basis and basis > 0) else None
 
     conflicts: list[str] = []
     prices = price_info.get("genuine_marks") or price_info.get("prices") or {}
-    if price_info.get("conflicted"):
-        conflicts.append(f"Dual price fields disagree: {prices}")
-    implied_px = _f(price_info.get("implied_price_from_mv"))
-    if implied_px is not None and px is not None and px > 0:
-        if abs(implied_px - px) / px > 0.002:
-            conflicts.append(
-                f"canonical mark ({px:.2f}) ≠ implied-from-MV ({implied_px:.2f})"
-            )
-    if implied is not None and mv is not None:
-        if abs(implied - mv) > dollar_tol(mv):
-            conflicts.append(
-                f"shares×price ({implied:.2f}) ≠ market_value ({mv:.2f})"
-            )
+    # Dual genuine marks / MV arithmetic only conflict when the external print
+    # is still treated as current. Session-stale Finviz is ignored.
+    if not external_stale:
+        if price_info.get("conflicted"):
+            conflicts.append(f"Dual price fields disagree: {prices}")
+        if implied_px is not None and px is not None and px > 0:
+            if abs(implied_px - px) / px > 0.002:
+                conflicts.append(
+                    f"canonical mark ({px:.2f}) ≠ implied-from-MV ({implied_px:.2f})"
+                )
+        if implied is not None and mv is not None:
+            if abs(implied - mv) > dollar_tol(mv):
+                conflicts.append(
+                    f"shares×price ({implied:.2f}) ≠ market_value ({mv:.2f})"
+                )
 
     quality = STATE_VERIFIED_AS_OF
     if px is None and mv is None:
         quality = STATE_DATA_UNAVAILABLE
     elif px is None:
-        # Market value without a mark is not a verified current price.
         quality = STATE_DATA_UNAVAILABLE
+    if external_stale and not conflicts:
+        quality = STATE_STALE
     if conflicts:
         quality = STATE_CONFLICTED
 
-    as_of = _mark_as_of(row)
-    source = _mark_source(row, price_info)
     action_suppressed = quality == STATE_CONFLICTED
     return {
         "current_mark": px,
@@ -185,6 +300,8 @@ def build_canonical_financial_facts(row: dict[str, Any]) -> dict[str, Any]:
         "price_field_role": price_info.get("price_field_role"),
         "canonical_price_key": price_info.get("canonical_price_key"),
         "conflicts": conflicts,
+        "stale_notes": stale_notes,
+        "external_quote_stale_vs_session": external_stale,
         "action_suppressed": action_suppressed,
         "banner": DATA_CONFLICT_ACTION_SUPPRESSED if action_suppressed else None,
         "authority": "READ_ONLY_ADVISORY",

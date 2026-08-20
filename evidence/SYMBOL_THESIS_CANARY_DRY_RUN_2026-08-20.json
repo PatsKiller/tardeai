@@ -1,0 +1,55 @@
+{
+  "schema": "SymbolThesisCanaryPlan@v1",
+  "mode": "dry",
+  "apply_requested": false,
+  "apply_blocked": false,
+  "apply_block_reason": null,
+  "symbols": [
+    "SCHG",
+    "CSCO",
+    "ANET"
+  ],
+  "rejected_not_canary": [],
+  "rows": [
+    {
+      "symbol": "SCHG",
+      "thesis_id": "symbol_schg",
+      "current_version": null,
+      "thesis_state": "RESEARCH_REQUIRED",
+      "portfolio_role": "GROWTH",
+      "has_summary": false,
+      "would_publish": false,
+      "notify": false,
+      "applied": false,
+      "skip_reason": "no_existing_summary_will_not_invent"
+    },
+    {
+      "symbol": "CSCO",
+      "thesis_id": "symbol_csco",
+      "current_version": null,
+      "thesis_state": "RESEARCH_REQUIRED",
+      "portfolio_role": "UNKNOWN",
+      "has_summary": false,
+      "would_publish": false,
+      "notify": false,
+      "applied": false,
+      "skip_reason": "no_existing_summary_will_not_invent"
+    },
+    {
+      "symbol": "ANET",
+      "thesis_id": "symbol_anet",
+      "current_version": null,
+      "thesis_state": "RESEARCH_REQUIRED",
+      "portfolio_role": "UNKNOWN",
+      "has_summary": false,
+      "would_publish": false,
+      "notify": false,
+      "applied": false,
+      "skip_reason": "no_existing_summary_will_not_invent"
+    }
+  ],
+  "auto_thesis_on_wake": false,
+  "authority": "READ_ONLY_ADVISORY",
+  "financial_action": false,
+  "note": "Default dry. --apply requires CANARY_THESIS_APPLY=1. Wake must not auto-publish @vN."
+}

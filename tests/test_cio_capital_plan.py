@@ -723,3 +723,65 @@ def test_g7_double_count_and_prospective_inclusion_fail():
     assert by["no_capital_source_double_count"]["pass"] is False
     assert by["prospective_raise_excludes_earmarked_existing_cash"]["pass"] is False
     assert by["prospective_raise_excludes_realized_historical_proceeds"]["pass"] is False
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# P3.15 — deploy request labeling / reconciliation
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_p315_deploy_request_reconciles_and_labels_notional_rotation():
+    posture = cp.cash_posture(100_000.0, 500_000.0, min_pct=20.0)
+    opps = [
+        {"sector": "Energy", "state": "IMPROVING", "opportunity": True,
+         "current_exposure_pct": 4.0, "target_posture_pct": 5.0,
+         "recommendation": "STAGED_DEPLOYMENT"},
+    ]
+    queue = {"items": [{"symbol": "TSLA", "verdict": "ADD", "source": "advisory"}]}
+    uses = cp.build_capital_uses(queue, [], opps, posture, 500_000.0)
+    assert uses["adds_usd"] == cp.NEW_POSITION_DEFAULT_USD
+    assert uses["sector_rotation_usd"] == 5_000.0
+    assert uses["fundable_deploy_request_usd"] == uses["adds_usd"]
+    assert uses["notional_sector_rotation_usd"] == 5_000.0
+    assert uses["total_deploy_request_usd"] == round(
+        uses["fundable_deploy_request_usd"] + uses["notional_sector_rotation_usd"], 2
+    )
+    assert uses["deploy_request_reconciled"] is True
+    assert uses["reserve_excluded_from_deploy_request"] is True
+    assert uses["reserve"] == posture["reserve_usd"]
+    # Reserve must NOT be inside the total.
+    assert uses["total_deploy_request_usd"] != round(
+        uses["total_deploy_request_usd"] + uses["reserve"], 2
+    )
+    assert "notional" in uses["component_labels"]["sector_rotation_usd"].lower()
+    assert uses["sector_rotation"][0]["notional"] is True
+
+
+def test_p315_deploy_vs_investable_cash_gap_labeled():
+    # Large raise + large deploy request → recommended deploy can exceed investable.
+    plan = cp.build_capital_plan(
+        portfolio_value=500_000.0,
+        cash_total=110_000.0,  # investable = 10k (reserve 100k)
+        positions=[
+            {"symbol": "EXITME", "market_value": 40_000.0, "account": "schwab_rollover_ira"},
+        ],
+        queue={"items": [
+            {"symbol": "EXITME", "verdict": "EXIT", "source": "cio"},
+            {"symbol": "TSLA", "verdict": "ADD", "source": "advisory"},
+            {"symbol": "NVDA", "verdict": "ADD", "source": "advisory"},
+            {"symbol": "AAPL", "verdict": "ADD", "source": "advisory"},
+        ]},
+    )
+    funding = plan["deploy_funding"]
+    assert funding["investable_cash_usd"] == 10_000.0
+    assert funding["prospective_raise_usd"] == 40_000.0
+    assert funding["recommended_deploy_usd"] > funding["investable_cash_usd"]
+    assert funding["deploy_exceeds_investable_cash"] is True
+    assert funding["gap_vs_investable_cash_usd"] == round(
+        funding["recommended_deploy_usd"] - funding["investable_cash_usd"], 2
+    )
+    assert funding["gap_covered_by_prospective_raise"] is True
+    assert "exceeds investable cash" in funding["note"].lower()
+    # Surface labels for command center
+    uses = plan["capital_uses"]
+    assert "notional" in uses["component_labels"]["sector_rotation_usd"].lower()
+    assert "held" in uses["component_labels"]["reserve"].lower()

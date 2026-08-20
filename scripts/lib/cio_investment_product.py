@@ -44,7 +44,26 @@ RESTRICT_LESSON = frozenset({"RESTRICTED", "RETIRED"})
 
 # Category/aggregate labels that leaked into the former-holdings symbol column.
 # They are not tickers and must never render as re-entry candidates.
-NON_TICKER_SYMBOLS = frozenset({"HEALTH"})
+NON_TICKER_SYMBOLS = frozenset({
+    "HEALTH",
+    "DAY_SWING",
+    "POSITION",
+    "LONG_TERM_COMPOUNDER",
+    "CATEGORY",
+    "SECTOR",
+    "STYLE",
+    "AGGREGATE",
+    "UNKNOWN_CATEGORY",
+})
+
+_OPP_STATUS_PREF = {
+    "REENTER": 0,
+    "RE_ENTER": 0,
+    "NEAR": 1,
+    "WAIT": 2,
+    "AVOID": 3,
+    "not_former": 4,
+}
 
 
 def _now() -> datetime:
@@ -53,6 +72,32 @@ def _now() -> datetime:
 
 def _iso(now: Optional[datetime] = None) -> str:
     return (now or _now()).replace(microsecond=0).isoformat()
+
+
+def _fmt_num(v: Any, digits: int = 2) -> str:
+    """Round floats for operator-facing strings; strip trailing zeros.
+
+    1.3469600000000002 → '1.35'; 85.0 → '85'; None/bad → '?'
+    """
+    if v is None or v == "":
+        return "?"
+    try:
+        n = float(v)
+    except (TypeError, ValueError):
+        return str(v)
+    if not (n == n):  # NaN
+        return "?"
+    s = f"{n:.{digits}f}".rstrip("0").rstrip(".")
+    return s if s else "0"
+
+
+def _round_pct(value: Any, nd: int = 2) -> Any:
+    if value is None:
+        return None
+    try:
+        return round(float(value), nd)
+    except (TypeError, ValueError):
+        return value
 
 
 def _env(name: str, default: str = "", env: Optional[dict[str, str]] = None) -> str:
@@ -241,8 +286,14 @@ def adjudicate_reentry(
     signal = str(row.get("reentry_signal") or row.get("state") or "").upper()
     verdicts = [str(i.get("verdict") or "").upper() for i in qitems]
     sources = {str(i.get("source") or "") for i in qitems}
-    vs_exit = row.get("pct_above_exit")
-    zone = f"{row.get('reentry_zone_low') or '?'}–{row.get('reentry_zone_high') or '?'}"
+    vs_exit_raw = row.get("pct_above_exit")
+    try:
+        vs_exit = float(vs_exit_raw) if vs_exit_raw is not None else None
+    except (TypeError, ValueError):
+        vs_exit = None
+    zone_lo = row.get("reentry_zone_low")
+    zone_hi = row.get("reentry_zone_high")
+    zone = f"{_fmt_num(zone_lo) if zone_lo is not None else '?'}–{_fmt_num(zone_hi) if zone_hi is not None else '?'}"
     restrict = _lesson_restricts(lessons, symbol)
 
     # Symbol thesis (fail-soft) — never invent why_owned / why_exited
@@ -330,11 +381,16 @@ def adjudicate_reentry(
         "why_previously_owned": why_owned,
         "what_happened_since": (
             what_changed if what_changed not in (None, "DATA_UNAVAILABLE")
-            else (f"Signal {signal or 'n/a'}; {vs_exit}% vs exit" if vs_exit is not None else f"Signal {signal or 'n/a'}.")
+            else (
+                f"Signal {signal or 'n/a'}; {_fmt_num(vs_exit)}% vs exit"
+                if vs_exit is not None
+                else f"Signal {signal or 'n/a'}."
+            )
         ),
         "what_changed_since_exit": what_changed,
         "current_price": row.get("current_price"),
         "last_exit_price": row.get("last_exit_price"),
+        "pct_above_exit": round(vs_exit, 2) if vs_exit is not None else None,
         "setup": f"Zone {zone}; desk {signal or 'n/a'}",
         "financial_senses": "valid_recent" if fs_ok else "none_or_stale",
         "research_change": f"queue_sources={sorted(sources)} verdicts={verdicts}",
@@ -543,6 +599,16 @@ def build_reentry_book(
     }
 
 
+def _opportunity_row_pref(row: dict[str, Any]) -> tuple:
+    """Lower tuple = better: prefer stronger status, then earlier queue order."""
+    status = str(row.get("status") or "").upper()
+    return (
+        _OPP_STATUS_PREF.get(status, 9),
+        int(row.get("_orig_i") or 9999),
+        str(row.get("symbol") or ""),
+    )
+
+
 def build_opportunity_book(
     queue: dict[str, Any],
     reentry: dict[str, Any],
@@ -551,15 +617,17 @@ def build_opportunity_book(
 ) -> dict[str, Any]:
     from scripts.lib.symbol_thesis_attach import opportunity_actionability, thesis_fields_for_symbol
     re_by = {r["symbol"]: r for r in reentry.get("names") or []}
-    ranked = []
-    for i, it in enumerate((queue.get("items") or queue.get("top") or [])[:20], 1):
+    candidates: list[dict[str, Any]] = []
+    for i, it in enumerate(queue.get("items") or queue.get("top") or []):
         if not isinstance(it, dict):
             continue
         sym = str(it.get("symbol") or "").upper()
+        if not sym or sym in NON_TICKER_SYMBOLS:
+            continue
         vs_re = (re_by.get(sym) or {}).get("status") or "not_former"
         thesis = (re_by.get(sym) or {}).get("thesis") or thesis_fields_for_symbol(sym, root=root)
         row = {
-            "rank": i,
+            "_orig_i": i,
             "symbol": sym,
             "source": it.get("source"),
             "verdict": it.get("verdict"),
@@ -579,17 +647,43 @@ def build_opportunity_book(
                 f"thesis_state={thesis.get('thesis_state')}; gaps={thesis.get('research_gap_count') or 0}."
             ),
         }
+        # Carry rounded zone/pct from re-entry adjudication when present (P2.9 helper).
+        re_row = re_by.get(sym) or {}
+        if re_row.get("setup"):
+            row["setup"] = re_row.get("setup")
+        if re_row.get("pct_above_exit") is not None:
+            row["pct_above_exit"] = _round_pct(re_row.get("pct_above_exit"))
+        elif it.get("pct_above_exit") is not None:
+            row["pct_above_exit"] = _round_pct(it.get("pct_above_exit"))
+        if it.get("reentry_zone_low") is not None or it.get("reentry_zone_high") is not None:
+            row["zone"] = (
+                f"{_fmt_num(it.get('reentry_zone_low'))}–{_fmt_num(it.get('reentry_zone_high'))}"
+            )
         row["actionability"] = opportunity_actionability(row)
-        # Soft demote weakly supported ADD when thesis incomplete
         if row["actionability"] == "RESEARCH_REQUIRED" and row.get("verdict") == "ADD":
             row["verdict_note"] = "ADD suppressed to RESEARCH_REQUIRED until thesis gaps close"
-        ranked.append(row)
+        candidates.append(row)
+
+    # Dedupe by symbol — keep best rank/status (fixes AUUD-style duplicates).
+    best_by_sym: dict[str, dict[str, Any]] = {}
+    for row in candidates:
+        sym = row["symbol"]
+        prev = best_by_sym.get(sym)
+        if prev is None or _opportunity_row_pref(row) < _opportunity_row_pref(prev):
+            best_by_sym[sym] = row
+
+    ranked = sorted(best_by_sym.values(), key=_opportunity_row_pref)[:20]
+    for i, row in enumerate(ranked, 1):
+        row["rank"] = i
+        row.pop("_orig_i", None)
     return {
         "count": len(ranked),
         "top": ranked,
+        "deduped_from": len(candidates),
         "note": (
             "New capital uses ranked against cash and former holdings. "
-            "Unresolved material thesis gaps → RESEARCH_REQUIRED, not weak ADD/REENTER."
+            "Unresolved material thesis gaps → RESEARCH_REQUIRED, not weak ADD/REENTER. "
+            "Duplicate symbols collapsed to best status before ranking."
         ),
         "authority": AUTHORITY,
     }

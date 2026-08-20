@@ -188,13 +188,27 @@ def _action_pairs(actions: dict[str, Any]) -> set[tuple[str, str]]:
 
 def diff_products(prior: dict[str, Any], new: dict[str, Any]) -> dict[str, Any]:
     """Semantic what_changed. Timestamp-only churn is not material."""
+    try:
+        from scripts.lib.cio_investment_product import NON_TICKER_SYMBOLS
+    except ImportError:  # pragma: no cover
+        from cio_investment_product import NON_TICKER_SYMBOLS  # type: ignore
+
     items: list[dict[str, Any]] = []
     p_re = _symbols((prior or {}).get("reentry_book") or {})
     n_re = _symbols((new or {}).get("reentry_book") or {})
     for sym in sorted(set(p_re) | set(n_re)):
+        if sym in NON_TICKER_SYMBOLS:
+            continue
         a, b = p_re.get(sym), n_re.get(sym)
         if a is None and b is not None:
-            items.append({"kind": "reentry_added", "symbol": sym, "to": b, "material": True})
+            # Demote pure AVOID adds — noise, not a material paging event
+            to_state = str(b or "").upper()
+            material = to_state != "AVOID"
+            items.append({
+                "kind": "reentry_added", "symbol": sym, "to": b,
+                "material": material,
+                **({"demoted_reason": "reentry_added_to_AVOID"} if not material else {}),
+            })
         elif b is None and a is not None:
             items.append({"kind": "reentry_removed", "symbol": sym, "from": a, "material": True})
         elif a != b:
@@ -206,6 +220,8 @@ def diff_products(prior: dict[str, Any], new: dict[str, Any]) -> dict[str, Any]:
 
     p_op, n_op = _opp_rank((prior or {}).get("opportunity_book") or {}), _opp_rank((new or {}).get("opportunity_book") or {})
     for sym in sorted(set(p_op) | set(n_op)):
+        if sym in NON_TICKER_SYMBOLS:
+            continue
         if sym not in p_op:
             items.append({"kind": "opportunity_added", "symbol": sym, "to": n_op[sym], "material": True})
         elif sym not in n_op:
@@ -218,8 +234,12 @@ def diff_products(prior: dict[str, Any], new: dict[str, Any]) -> dict[str, Any]:
 
     p_act, n_act = _action_pairs((prior or {}).get("action_book") or {}), _action_pairs((new or {}).get("action_book") or {})
     for pair in sorted(n_act - p_act):
+        if pair[0] in NON_TICKER_SYMBOLS:
+            continue
         items.append({"kind": "action_added", "symbol": pair[0], "to": pair[1], "material": pair[1] in {"DO_NOW", "AVOID"}})
     for pair in sorted(p_act - n_act):
+        if pair[0] in NON_TICKER_SYMBOLS:
+            continue
         items.append({"kind": "action_removed", "symbol": pair[0], "from": pair[1], "material": pair[1] in {"DO_NOW", "AVOID"}})
 
     p_t = str(((prior or {}).get("temperament") or {}).get("title") or "")
@@ -237,6 +257,38 @@ def diff_products(prior: dict[str, Any], new: dict[str, Any]) -> dict[str, Any]:
         "authority": AUTHORITY,
         "financial_action": False,
     }
+
+
+def material_notification_items(changed: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """Material diff lines for paging — NON_TICKER already filtered in diff_products."""
+    try:
+        from scripts.lib.cio_investment_product import NON_TICKER_SYMBOLS
+    except ImportError:  # pragma: no cover
+        from cio_investment_product import NON_TICKER_SYMBOLS  # type: ignore
+    items = []
+    for i in ((changed or {}).get("items") or []):
+        if not isinstance(i, dict) or not i.get("material"):
+            continue
+        sym = str(i.get("symbol") or "").upper()
+        if sym and sym in NON_TICKER_SYMBOLS:
+            continue
+        items.append(i)
+    return items
+
+
+def notification_attribution_symbol(
+    changed: dict[str, Any] | None,
+    trigger_symbol: str | None,
+) -> str:
+    """Label BOOK when the trigger symbol's own row did not materially change."""
+    trigger = str(trigger_symbol or "").strip().upper()
+    items = material_notification_items(changed)
+    if not trigger:
+        return "BOOK"
+    for it in items:
+        if str(it.get("symbol") or "").upper() == trigger:
+            return trigger
+    return "BOOK"
 
 
 def research_impact(
@@ -318,13 +370,13 @@ def should_enqueue_product_notification(changed: dict[str, Any] | None) -> bool:
     ch = changed or {}
     if not ch.get("material"):
         return False
-    items = [i for i in (ch.get("items") or []) if isinstance(i, dict)]
+    items = material_notification_items(ch)
     if not items:
         return False
     kinds = {str(i.get("kind") or "") for i in items}
     if kinds and kinds <= THESIS_VERSION_ONLY_KINDS:
         return False
-    return any(i.get("material") for i in items)
+    return True
 
 
 def _outbox_for_root(root: Path | str | None = None):
@@ -350,14 +402,14 @@ def _enqueue_material_product_outbox(
         from scripts.lib.cio_notification_outbox import NotificationOutbox  # noqa: F401
         outbox = outbox or _outbox_for_root(root)
         pid = str(product.get("product_id") or product.get("decision_id") or "product")
-        items = [
-            i for i in (changed.get("items") or [])
-            if isinstance(i, dict) and i.get("material")
-        ]
+        items = material_notification_items(changed)
+        trigger_symbol = str(parent.get("symbol") or "").upper() or None
+        label = notification_attribution_symbol(changed, trigger_symbol)
         body_lines = [
             f"Material CIO product change · {pid}",
             f"trigger={product.get('trigger') or 'RESEARCH_COMPLETED'}",
-            f"symbol={parent.get('symbol') or 'BOOK'}",
+            f"trigger_symbol={trigger_symbol or 'NONE'}",
+            f"symbol={label}",
         ]
         for it in items[:8]:
             body_lines.append(
@@ -371,7 +423,9 @@ def _enqueue_material_product_outbox(
             "dedupe_key": f"product_what_changed:{pid}:{changed.get('as_of') or ''}",
             "message_class": "advisory",
             "channel_targets": ["telegram", "command_center"],
-            "subject": f"CIO material change · {parent.get('symbol') or 'BOOK'}",
+            "subject": f"CIO material change · {label}",
+            "trigger_symbol": trigger_symbol,
+            "attribution_symbol": label,
             "body": body,
             "body_hash": hashlib.sha256(body.encode("utf-8")).hexdigest(),
         }
@@ -381,6 +435,8 @@ def _enqueue_material_product_outbox(
             "outbox_notification_id": note["notification_id"],
             "outbox_event_type": (event or {}).get("event_type"),
             "live_delivery": False,
+            "trigger_symbol": trigger_symbol,
+            "attribution_symbol": label,
         }
     except Exception as exc:
         return {
@@ -413,9 +469,12 @@ def _notify(
         r.get("governed_verdict") == "RE_ENTER"
         for r in ((product.get("reentry_book") or {}).get("names") or [])
     )
+    trigger_symbol = str(parent.get("symbol") or "").upper() or None
+    label = notification_attribution_symbol(changed, trigger_symbol)
     decision = {
         "decision_id": product.get("decision_id") or product.get("product_id"),
-        "symbol": parent.get("symbol") or "BOOK",
+        "symbol": label,
+        "trigger_symbol": trigger_symbol,
         "standing_recommendation": "RESEARCH" if not reenter else "RE_ENTER",
         "current_action": "DO_NOW" if do_now else ("RE_ENTER" if reenter else "WAIT"),
         "act_now": bool(do_now and reenter),
