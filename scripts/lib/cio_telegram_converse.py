@@ -42,6 +42,16 @@ DECISION_ID_RE = re.compile(
 SYMBOL_RE = re.compile(r"\b([A-Z]{1,5})\b")
 ACK_RE = re.compile(r"^\s*(ack|acknowledge)\s*(plan_[a-z0-9_\-]+|plan-[a-z0-9_\-]+)?\s*$", re.I)
 
+# Free-text desk facts: re-entry readiness (avoid S0 template wall)
+REENTRY_QUERY_RE = re.compile(
+    r"(?is)\b("
+    r"re[\s\-]?entr(?:y|ies)|rentr(?:y|ies)|"
+    r"ready\s+(?:to\s+)?(?:review|buy|purchase)|"
+    r"(?:buy|purchase).{0,40}ready|"
+    r"ready.{0,40}(?:buy|purchase)"
+    r")\b"
+)
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -907,6 +917,174 @@ def assemble_context(
     return ctx
 
 
+def looks_like_reentry_purchase_query(text: str) -> bool:
+    """True when operator asks which names are re-entry ready to buy/review."""
+    t = (text or "").strip()
+    if not t or len(t) > 500:
+        return False
+    # Slash commands are handled elsewhere
+    if t.lower().startswith("/cio"):
+        return False
+    return bool(REENTRY_QUERY_RE.search(t))
+
+
+def _reentry_desk_json_paths() -> list[Path]:
+    """Candidate paths for reentry_decision_desk_latest.json (worktree + live)."""
+    rel = Path("data") / "runtime" / "reentry_decision_desk_latest.json"
+    out: list[Path] = [PROJECT_ROOT / rel]
+    data_root = (_env("TRADEAI_DATA_ROOT") or "").strip()
+    if data_root:
+        out.append(Path(data_root) / "runtime" / "reentry_decision_desk_latest.json")
+    src = (_env("TRADEAI_SRC") or "").strip()
+    if src:
+        out.append(Path(src) / rel)
+    # Canonical live tree (release CURRENT often symlinks here)
+    out.append(
+        Path("/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild") / rel
+    )
+    # Dedupe while preserving order
+    seen: set[str] = set()
+    uniq: list[Path] = []
+    for p in out:
+        key = str(p)
+        if key in seen:
+            continue
+        seen.add(key)
+        uniq.append(p)
+    return uniq
+
+
+def load_reentry_desk_rows() -> tuple[list[dict[str, Any]], Optional[str], Optional[Path]]:
+    """Load desk rows from latest artifact. Returns (rows, computed_at, path)."""
+    for path in _reentry_desk_json_paths():
+        try:
+            if not path.is_file():
+                continue
+            raw = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(raw, dict):
+                continue
+            rows = raw.get("rows") or raw.get("candidates") or []
+            if isinstance(raw.get("data"), dict) and not rows:
+                rows = raw["data"].get("rows") or []
+            if not isinstance(rows, list):
+                continue
+            as_of = (
+                raw.get("computed_at")
+                or raw.get("generated_at")
+                or raw.get("as_of")
+            )
+            return rows, (str(as_of) if as_of else None), path
+        except Exception:
+            continue
+    return [], None, None
+
+
+def _fmt_money(v: Any) -> str:
+    try:
+        x = float(v)
+    except (TypeError, ValueError):
+        return "—"
+    if x >= 100:
+        return f"${x:,.2f}"
+    if x >= 1:
+        return f"${x:.2f}"
+    return f"${x:.4f}".rstrip("0").rstrip(".")
+
+
+def format_reentry_purchase_reply(
+    *,
+    desk_rows: Optional[list[dict[str, Any]]] = None,
+    computed_at: Optional[str] = None,
+    near_limit: int = 8,
+) -> str:
+    """Short actionable Telegram reply for re-entry readiness (READ_ONLY).
+
+    Answers 'what's ready to buy?' with READY TO REVIEW names + zone —
+    not the S0 template / thesis wall.
+    """
+    rows = desk_rows
+    as_of = computed_at
+    if rows is None:
+        rows, as_of, _path = load_reentry_desk_rows()
+
+    ready: list[dict[str, Any]] = []
+    near: list[dict[str, Any]] = []
+    for r in rows or []:
+        if not isinstance(r, dict):
+            continue
+        intel = r.get("intel") if isinstance(r.get("intel"), dict) else {}
+        state = str(intel.get("state") or r.get("status") or "").strip()
+        sym = str(r.get("symbol") or r.get("ticker") or "").upper()
+        if not sym:
+            continue
+        item = {
+            "symbol": sym,
+            "state": state,
+            "price": r.get("price"),
+            "entry_low": r.get("entry_low"),
+            "entry_high": r.get("entry_high"),
+            "held": bool(r.get("held")),
+            "action": (r.get("advisory") or {}).get("action")
+            if isinstance(r.get("advisory"), dict)
+            else None,
+        }
+        if state == "READY TO REVIEW":
+            ready.append(item)
+        elif state == "NEAR ENTRY":
+            near.append(item)
+
+    lines: list[str] = [
+        "🎯 *Re-entry — purchase candidates*",
+        "_Exited names · not current holdings · READ_ONLY_",
+    ]
+    if as_of:
+        lines.append(f"as_of `{str(as_of)[:19]}`")
+    lines.append("")
+
+    if not rows:
+        lines.append("No re-entry desk artifact found — rebuild desk / check Data Broker.")
+        lines.append("")
+        lines.append("CC: `/v3/portfolio/re-entry` · `/cio reentry`")
+        lines.append("No orders/stops from chat · READ_ONLY_ADVISORY")
+        return "\n".join(lines)
+
+    if ready:
+        lines.append(f"✅ *READY TO REVIEW* ({len(ready)}) — buy-limit candidates")
+        for it in ready:
+            zone = ""
+            if it.get("entry_low") is not None and it.get("entry_high") is not None:
+                zone = f" zone {_fmt_money(it['entry_low'])}–{_fmt_money(it['entry_high'])}"
+            px = _fmt_money(it.get("price"))
+            held_tag = " · *held*" if it.get("held") else ""
+            lines.append(f"• *{it['symbol']}* {px}{zone}{held_tag}")
+            if it.get("action"):
+                lines.append(f"  _{it['action']}_")
+    else:
+        lines.append("✅ *READY TO REVIEW* — none right now")
+
+    lines.append("")
+    if near:
+        show = near[: max(1, int(near_limit))]
+        names = ", ".join(f"`{it['symbol']}`" for it in show)
+        extra = len(near) - len(show)
+        near_line = f"👀 *NEAR ENTRY* ({len(near)}): {names}"
+        if extra > 0:
+            near_line += f" +{extra} more"
+        lines.append(near_line)
+        lines.append("_Near = watch/prepare — not purchase-ready yet_")
+    else:
+        lines.append("👀 *NEAR ENTRY* — none")
+
+    lines.append("")
+    lines.append(
+        "Note: current *holdings* are not re-entry targets; "
+        "this book is for names you already exited."
+    )
+    lines.append("CC: `/v3/portfolio/re-entry` · cmd: `/cio reentry`")
+    lines.append("No orders/stops from chat · READ_ONLY_ADVISORY")
+    return "\n".join(lines)
+
+
 def build_template_advisory(text: str, ctx: dict[str, Any]) -> dict[str, Any]:
     """Deterministic reply when LLM is blocked or disabled."""
     symbols = ctx.get("symbols") or []
@@ -1111,6 +1289,8 @@ def handle_cio_slash(text: str) -> str:
         if sub in ("status", "actions", "portfolio", "hermes", "risk"):
             if sub in cc.COMMANDS:
                 return cc.COMMANDS[sub]()
+        if sub in ("reentry", "re-entry"):
+            return format_reentry_purchase_reply()
         if sub == "traces":
             n = 10
             llm_f = None
