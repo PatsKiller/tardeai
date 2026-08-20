@@ -57,12 +57,45 @@ delivery class is **DIGEST** instead of silent **SUPPRESSED**.
 | Watch `primary_state` → S7 READY/GO/NEAR | #415 |
 | Material situation notify canary doc | `CIO_MATERIAL_NOTIFY_CANARY_2026-08-20.md` |
 
-## 5. Operator canary (after merge + host INTERDICT cleanup)
+## 5. Operator canary (closed 2026-08-20 ~16:40 ET)
 
-1. Confirm effective env: `CIO_TELEGRAM_INTERDICT=0` on portfolio-server
-2. Optional situation canary: `CIO_SITUATION_NOTIFY=1` for one S6 pass (policy master may stay false)
-3. Confirm phone: concentration DIGEST/IMMEDIATE path; no flood of ~23 S3 READY pages
-4. S3 Telegram only if a capital-plan row is `RE_ENTER` + `act_now`
+- Host INTERDICT effective `=0` after drop-in `20` cleanup + `daemon-reload`.
+- SCHD concentration canary delivered: `dec_phase_a_schd_concentration_canary`,
+  message id **202**, CIO-only, `REAL_TELEGRAM_SENDS: 1`.
+- Signal gate proved in-process: first ACT_NOW → **IMMEDIATE**; sticky → **DIGEST**.
+- Script: `scripts/cio_phase_a_schd_concentration_canary.py` (merged via #416).
+
+## 6. Why Telegram looks “SCHD-only” (operator FAQ)
+
+You are **not** missing a broken feed for former holdings / watch names. Those
+paths are live for **detection** and intentionally quiet for **notify**.
+
+Live check 2026-08-20 (~16:45 ET), reentry desk + S3/S7:
+
+| Symbol | Desk / path | Detector | Why no Telegram |
+|--------|-------------|----------|-----------------|
+| **SCHD** | Held, weight over fire | S6 concentration | Notify path allowed; canary + sticky DIGEST policy |
+| **AXTI** | reentry **NEAR** | S3 fires | Bare NEAR ≠ capital `RE_ENTER`+`ACT_NOW` → `s3_capital_act_now=false` |
+| **FATN** (not FTAN) | reentry **NEAR** | S3 fires | Same — surface only, no page |
+| **ANET** | reentry **NEAR** | S3 fires | Same |
+| **SCHG** | reentry **BLOCK** | No S3 | Desk blocked — not a candidate |
+| **CSCO** | reentry **BLOCK** | No S3 | Desk blocked |
+| Watch desk (~80) | `promotion_grade=0` | **0 S7** | No READY/GO/NEAR promotion status projected |
+
+Also:
+- ~23 S3 READY/NEAR names fire plans; **none** page unless capital-plan says
+  governed **RE_ENTER** + **ACT_NOW** (Phase A gate — avoids 23-name spam).
+- Living theses for SCHG/CSCO/ANET etc. are still mostly
+  `BLOCKED_PENDING_ACQUISITION_AND_CURATION` / missing pin — research exists as
+  debt queue, not as Telegram advisories.
+- Watchlist fall-on/off does not yet auto-create/retire theses or promote S7
+  (Phase C in the gap diligence plan).
+
+**What would make those names advise on Telegram:**
+1. Reentry desk → capital **RE_ENTER** with freshness **ACT_NOW** (S3 notify gate), or
+2. Watch desk marks `proposal_allowed` / near-trigger so S7 lights (then decide
+   whether S7 joins notify allowlist — currently forward-loop / not paged), or
+3. Explicit operator `/cio` converse on the symbol (interactive path already live).
 
 ## Tests
 

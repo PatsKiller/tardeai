@@ -20,6 +20,9 @@ Routes:
   GET /api/v3/cio/thesis-research-context/{SYM} — ThesisResearchContext@v1 + supply plane
   GET /api/v3/cio/r71-fabric-map — Cursor dependency + integration map
   GET /api/v3/cio/ask-thesis/{SYM} — Ask CIO symbol-thesis context
+  GET /api/v3/cio/tis-policy — Thesis Investment System layout + requirements
+  PUT /api/v3/cio/tis-policy — operator edit (override JSON; no broker writes)
+  GET /api/v3/cio/tis-coverage-sla — coverage SLA vs TIS targets
   POST /api/v3/cio/plans/{id}/disposition — ack/defer/done/reject (status only)
   GET  /api/v3/cio/dispositions — latest operator dispositions (decision_id key)
   POST /api/v3/cio/decision/{decision_id}/disposition — ACK/DEFER/DONE/REJECT
@@ -585,6 +588,84 @@ def get_universe_theses() -> dict[str, Any]:
             "detail": str(e)[:240],
             "authority": "READ_ONLY_ADVISORY",
             "as_of": _now_iso(),
+        }
+
+
+def get_tis_policy() -> dict[str, Any]:
+    """GET /api/v3/cio/tis-policy — editable TIS layout + requirements."""
+    try:
+        from scripts.lib.cio_tis_policy import load_tis_policy
+        pol = load_tis_policy(root=PROJECT_ROOT)
+        return {"ok": True, "policy": pol, "authority": "READ_ONLY_ADVISORY", "as_of": _now_iso()}
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": type(e).__name__,
+            "detail": str(e)[:240],
+            "authority": "READ_ONLY_ADVISORY",
+        }
+
+
+def put_tis_policy(body: dict[str, Any] | None) -> dict[str, Any]:
+    """PUT /api/v3/cio/tis-policy — merge operator edits into override JSON."""
+    body = body if isinstance(body, dict) else {}
+    try:
+        from scripts.lib.cio_tis_policy import save_tis_policy
+        updated_by = str(body.get("updated_by") or body.get("operator") or "cc_operator")[:120]
+        patch = body.get("policy") if isinstance(body.get("policy"), dict) else body
+        # Drop wrapper keys if present
+        for k in ("ok", "as_of", "source"):
+            patch.pop(k, None)
+        res = save_tis_policy(patch, root=PROJECT_ROOT, updated_by=updated_by)
+        if not res.get("ok"):
+            return {**res, "as_of": _now_iso()}
+        return {
+            "ok": True,
+            "policy": res.get("policy"),
+            "authority": "READ_ONLY_ADVISORY",
+            "as_of": _now_iso(),
+            "message": "TIS policy override saved. Takes effect on next coverage/digest/scheduler pass.",
+        }
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": type(e).__name__,
+            "detail": str(e)[:240],
+            "authority": "READ_ONLY_ADVISORY",
+        }
+
+
+def get_tis_coverage_sla() -> dict[str, Any]:
+    """GET /api/v3/cio/tis-coverage-sla — holdings/reentry/watch CURRENT % vs SLA."""
+    try:
+        from scripts.lib.cio_tis_policy import (
+            evaluate_coverage_sla,
+            load_tis_policy,
+            stale_days,
+            telegram_rules,
+        )
+        from scripts.lib.symbol_thesis_coverage import build_coverage_report
+        pol = load_tis_policy(root=PROJECT_ROOT)
+        report = build_coverage_report(
+            root=PROJECT_ROOT,
+            stale_days=stale_days(pol),
+            material_only=False,
+        )
+        sla = evaluate_coverage_sla(report, policy=pol)
+        return {
+            "ok": True,
+            "sla": sla,
+            "telegram": telegram_rules(pol),
+            "authority": "READ_ONLY_ADVISORY",
+            "as_of": _now_iso(),
+            "note": "Thesis eligibility is not gated by concentration fire %.",
+        }
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": type(e).__name__,
+            "detail": str(e)[:240],
+            "authority": "READ_ONLY_ADVISORY",
         }
 
 

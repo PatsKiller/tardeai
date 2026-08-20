@@ -9,7 +9,7 @@ Implements docs/RESEARCH_PRIORITIZATION.md:
   • Dispatches within a per-run external-lane budget (so the free OAuth lanes don't exhaust).
   • Holdings (T0) are refreshed several times/day and material changes are surfaced to card + Telegram.
 
-Modes: holdings | priority | watchlist | incubator | cold-floor | backfill
+Modes: holdings | reentry | priority | watchlist | incubator | cold-floor | backfill
 Dry by default; pass --apply to actually call the lanes. All numbers env-tunable (RESEARCH_*).
 """
 from __future__ import annotations
@@ -56,12 +56,20 @@ LANES = {
 # tier → (sla_refreshes, sla_window_days, lanes[]).  Local always covers; externals are tier-gated.
 TIER_SLA = {
     "T0-HOLD":  (3, 1,  ["local-gemma", "internal-deep", "deepseek"]),
+    "T0-REENTRY": (2, 1, ["local-gemma", "deepseek"]),  # Phase B: READY/NEAR reentry desk
     "T0-PROP":  (2, 1,  ["local-gemma", "deepseek"]),
     "T1-WATCH": (4, 7,  ["local-gemma", "deepseek"]),       # externals rotated (one per refresh)
     "T2-INCUB": (1, 7,  ["local-gemma", "deepseek"]),       # external only on catalyst
     "T3-COLD":  (1, 14, ["local-gemma"]),                   # external only on catalyst
 }
-TIER_WEIGHT = {"T0-HOLD": 1.0, "T0-PROP": 0.9, "T1-WATCH": 0.6, "T2-INCUB": 0.3, "T3-COLD": 0.1}
+TIER_WEIGHT = {
+    "T0-HOLD": 1.0,
+    "T0-REENTRY": 0.95,
+    "T0-PROP": 0.9,
+    "T1-WATCH": 0.6,
+    "T2-INCUB": 0.3,
+    "T3-COLD": 0.1,
+}
 EXTERNAL_LANES = {"deepseek", "claude"}
 
 # Thesis-driven / RAG-first commissioning (P1.7). Flags are authoritative for
@@ -195,6 +203,57 @@ def load_universe() -> dict:
                 add(x["symbol"], "T0-HOLD")
     except Exception:
         pass
+    # T0-REENTRY — Phase B: READY/NEAR from reentry decision desk (not held)
+    try:
+        from scripts.lib.cio_tis_policy import load_tis_policy
+        _tis = load_tis_policy()
+        _tier = (
+            ((_tis.get("requirements") or {}).get("research_scheduler") or {}).get("reentry_tier")
+            or "T0-REENTRY"
+        )
+        # Allow TIS override of SLA refreshes/window into TIER_SLA at runtime
+        _rs = (_tis.get("requirements") or {}).get("research_scheduler") or {}
+        if _tier in TIER_SLA and _rs.get("reentry_sla_refreshes") and _rs.get("reentry_sla_window_days"):
+            lanes = TIER_SLA[_tier][2]
+            TIER_SLA[_tier] = (
+                int(_rs["reentry_sla_refreshes"]),
+                int(_rs["reentry_sla_window_days"]),
+                lanes,
+            )
+    except Exception:
+        _tier = "T0-REENTRY"
+    try:
+        desk_path = ROOT / "data" / "runtime" / "reentry_decision_desk_latest.json"
+        if desk_path.exists():
+            desk = json.loads(desk_path.read_text())
+            rows = (
+                desk.get("candidates")
+                or desk.get("decisions")
+                or desk.get("rows")
+                or desk.get("items")
+                or []
+            )
+            if isinstance(rows, dict):
+                rows = [
+                    {"symbol": k, **(v if isinstance(v, dict) else {"status": v})}
+                    for k, v in rows.items()
+                ]
+            for it in rows:
+                if not isinstance(it, dict):
+                    continue
+                sym = str(it.get("symbol") or it.get("ticker") or "").upper()
+                st = str(
+                    it.get("status")
+                    or it.get("decision")
+                    or it.get("desk_status")
+                    or it.get("primary_state")
+                    or it.get("intel_state")
+                    or ""
+                ).upper()
+                if sym and any(x in st for x in ("READY", "NEAR", "GO", "IN_ZONE")):
+                    add(sym, _tier)
+    except Exception:
+        pass
     # T0-PROP
     for r in _q("""SELECT DISTINCT symbol FROM paper_trade_proposals
                    WHERE status IN ('PENDING','APPROVED','APPROVED_FOR_PAPER_TEST')"""):
@@ -241,7 +300,11 @@ def load_universe() -> dict:
 
 
 def _tier_order(t: str) -> int:
-    return ["T0-HOLD", "T0-PROP", "T1-WATCH", "T2-INCUB", "T3-COLD"].index(t)
+    order = ["T0-HOLD", "T0-REENTRY", "T0-PROP", "T1-WATCH", "T2-INCUB", "T3-COLD"]
+    try:
+        return order.index(t)
+    except ValueError:
+        return len(order)
 
 
 _LANE_ROT_CACHE: dict = {}
@@ -626,6 +689,11 @@ def run(mode, apply, budget):
         targets = [s for s, v in uni.items() if v["tier"] == "T0-HOLD"]
         lanes_for = lambda t: TIER_SLA[t][2]   # full T0 fleet: local-gemma + internal-deep + deepseek
         ordered = [{"symbol": s, "tier": "T0-HOLD"} for s in targets]
+    elif mode == "reentry":
+        # Phase B: READY/NEAR reentry desk lane (TIS policy tier, default T0-REENTRY)
+        targets = [s for s, v in uni.items() if v["tier"] == "T0-REENTRY"]
+        lanes_for = lambda t: TIER_SLA.get(t, TIER_SLA["T0-REENTRY"])[2]
+        ordered = [{"symbol": s, "tier": "T0-REENTRY"} for s in targets]
     else:
         lane = "deepseek"  # primary ordering lane; gemma assumed broad/elsewhere
         due = build_due(uni, lane, force_all=(mode == "backfill"))
@@ -724,7 +792,7 @@ def _summary(done, spent):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--mode", default="priority",
-                    choices=["holdings", "priority", "watchlist", "incubator", "cold-floor", "backfill"])
+                    choices=["holdings", "reentry", "priority", "watchlist", "incubator", "cold-floor", "backfill"])
     ap.add_argument("--apply", action="store_true", help="actually call the lanes (default dry-run plan)")
     ap.add_argument("--budget", type=int, default=EXTERNAL_BUDGET, help="max external calls this run")
     a = ap.parse_args()

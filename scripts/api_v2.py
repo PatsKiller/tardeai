@@ -40362,6 +40362,10 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     return 200, _cio.get_cio_thesis()
                 if p in ("universe-theses", "universe_theses", "theses-universe"):
                     return 200, _cio.get_universe_theses()
+                if p in ("tis-policy", "tis_policy", "tis-layout"):
+                    return 200, _cio.get_tis_policy()
+                if p in ("tis-coverage-sla", "tis_coverage_sla", "coverage-sla"):
+                    return 200, _cio.get_tis_coverage_sla()
                 if p in ("agent-research-ops", "agent_research_ops", "research-ops"):
                     return 200, _cio.get_agent_research_ops()
                 if p in ("thesis-research-proposal", "thesis_research_proposal", "research-proposal"):
@@ -40417,6 +40421,12 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     res = _cio.get_cio_plan(pid)
                     return (200 if res.get("ok") else 404), res
                 return 404, {"ok": False, "error": f"unknown_cio_path: {p}"}
+            if method == "PUT":
+                if p in ("tis-policy", "tis_policy", "tis-layout"):
+                    res = _cio.put_tis_policy(body or {})
+                    code = 200 if res.get("ok") else 400
+                    return code, res
+                return 404, {"ok": False, "error": f"unknown_cio_put: {p}"}
             if method == "POST":
                 # POST /api/v3/cio/decision/{key}/disposition — operator ACK/DEFER/DONE/REJECT/RATE
                 if p.startswith("decision/") and p.endswith("/disposition"):
@@ -40425,6 +40435,11 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     if not key:
                         return 400, {"ok": False, "error": "decision_key required"}
                     res = _cio.post_decision_disposition(key, body or {})
+                    code = 200 if res.get("ok") else 400
+                    return code, res
+                # Allow POST as alias for TIS policy save (some clients lack PUT)
+                if p in ("tis-policy", "tis_policy", "tis-layout"):
+                    res = _cio.put_tis_policy(body or {})
                     code = 200 if res.get("ok") else 400
                     return code, res
                 # POST /api/v3/cio/plans/{id}/disposition  — status only (READ_ONLY)

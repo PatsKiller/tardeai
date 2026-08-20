@@ -53,6 +53,13 @@ Two earlier ships closed desk completeness (#403) and YouTube full-asset-class c
 2. ~~Produce seed summaries for SCHG/CSCO/ANET, then re-run canary with `CANARY_THESIS_APPLY=1`~~ — **superseded then shipped**: the gap-driven research → RAG → Flash synthesis → reconcile → apply path is now a **live autonomous pipeline** (`run_symbol_thesis_acquisition.py` + governed wrapper). SCHG/CSCO/ANET remain `BLOCKED_PENDING_ACQUISITION_AND_CURATION` (empty RAG); `DIV`/`DIVI`/`JEPI` (sufficient RAG) published `symbol_*@v1`. See `docs/ops/SYMBOL_THESIS_ACQUISITION_PIPELINE_LIVE_2026-08-20.md`.
 3. Confirm model-portfolio sector targets are the intended IPS (now loaded, not invented).
 
+## Final live status (2026-08-20 ~17:27 UTC)
+
+- **Release promoted** `5209c820` → **`8db42725`** (current `origin/main`, merge of #410) via `cio_phase2_exact_main_deploy.sh`. `CURRENT` symlink updated, server restarted, health + `/v3/cio=200`. Frontend rebuilt (`ui_version 3.14+mt1slm3k`). Holdings `data/portfolios/state` symlink to canonical confirmed intact.
+- **Portfolio freshness verified**: `portfolio_value $1,279,003.95`, `as_of 2026-08-20`, `last_repriced 2026-08-20 13:15:00 ET` (`finviz_live`), 20 positions.
+- **Telegram proactive non-financial canary delivered**: `cio_phase13_telegram_live_canary.py` → `delivered: true`, `REAL_TELEGRAM_SENDS: 1`, `GENERAL_TELEGRAM_RECEIVED: false`, CIO-only channel (`telegram_cio`), 3 allowlisted chats, durable receipt `dec_phase13_live_canary` (message id 197). No portfolio action.
+- **Telegram interactive converse verified**: `tradeai-cio-telegram.service` restarted on the promoted code (ExecStart → `CURRENT/scripts/cio_telegram_bot.py --loop`). Dry-run `process_operator_message` proves free-text query → `READ_ONLY_ADVISORY` structured reply with desk-thesis pin + CC deep links; `/cio status` deterministic dashboard; non-allowlisted chat fails closed (`not_allowlisted`).
+
 ## Drive sync
 
 Ops closeout + finding docs land under `docs/ops/` and are mirrored by the hourly docs→Drive cron after merge to canonical `docs/`.

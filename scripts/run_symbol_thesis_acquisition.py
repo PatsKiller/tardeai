@@ -183,6 +183,48 @@ def _prior_state(root: Path, question_digest: str) -> dict[str, Any]:
     return {}
 
 
+def _skip_until_hours(root: Path) -> int:
+    """Phase B: defer blocked-RAG symbols per TIS policy (default 72h)."""
+    try:
+        from scripts.lib.cio_tis_policy import load_tis_policy
+        acq = ((load_tis_policy(root=root).get("requirements") or {}).get("acquisition") or {})
+        return int(acq.get("skip_until_hours_blocked_rag") or 72)
+    except Exception:
+        return 72
+
+
+def _is_skip_until_active(rec: dict[str, Any], *, hours: int) -> bool:
+    """True when ledger says skip_until is still in the future (or recent BLOCKED)."""
+    su = rec.get("skip_until")
+    if su:
+        try:
+            dt = datetime.fromisoformat(str(su).replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return datetime.now(timezone.utc) < dt
+        except Exception:
+            pass
+    # Fallback: recent BLOCKED within hours window
+    if str(rec.get("status") or "").upper() in ("BLOCKED", "BLOCKED_PENDING_ACQUISITION_AND_CURATION"):
+        ts = rec.get("as_of") or rec.get("acquired_at")
+        if ts:
+            try:
+                dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                age_h = (datetime.now(timezone.utc) - dt).total_seconds() / 3600.0
+                return age_h < float(hours)
+            except Exception:
+                return False
+    return False
+
+
+def _stamp_skip_until(out: dict[str, Any], *, hours: int) -> None:
+    from datetime import timedelta
+    until = datetime.now(timezone.utc) + timedelta(hours=max(1, int(hours)))
+    out["skip_until"] = until.replace(microsecond=0).isoformat()
+
+
 def _thesis_conn(root: Path):
     """Postgres connection from root/.env (same pattern as symbol_universe). Fail-soft."""
     try:
@@ -324,6 +366,7 @@ def _run_one_impl(
             1 for a in acquired
             if (a.get("rag_status") or "pending") == "pending" and not a.get("error")
         )
+        _stamp_skip_until(out, hours=_skip_until_hours(root))
         return out
 
     if skip_synthesize or (apply and llm_budget_left[0] <= 0):
@@ -390,8 +433,31 @@ def run(
 
     llm_budget = [max(0, int(max_llm))]
     results: list[dict[str, Any]] = []
+    skip_h = _skip_until_hours(root)
     for row in queue:
         sym = str(row.get("symbol") or "").upper()
+        # Phase B skip_until: do not re-burn LLM/acquire budget on recently blocked RAG
+        fields_probe = thesis_fields_for_symbol(sym, root=root)
+        gap0 = (fields_probe.get("research_gaps") or ["Create living symbol thesis"])[0]
+        qd0 = _digest(sym, _specific_question(
+            sym, gap0,
+            memberships=list(fields_probe.get("memberships") or []),
+            role=str(fields_probe.get("portfolio_role") or "UNKNOWN"),
+            thesis_state=str(fields_probe.get("thesis_state") or "INSUFFICIENT_DATA"),
+        ))
+        prior0 = _prior_state(root, qd0)
+        if _is_skip_until_active(prior0, hours=skip_h) and not symbols:
+            results.append({
+                "schema": "SymbolThesisAcquisitionRun@v1",
+                "as_of": _now(),
+                "symbol": sym,
+                "status": "SKIPPED_UNTIL",
+                "skip_until": prior0.get("skip_until"),
+                "block_reason": prior0.get("block_reason"),
+                "authority": AUTHORITY,
+                "financial_action": False,
+            })
+            continue
         rec = run_one(
             sym,
             root=root,
