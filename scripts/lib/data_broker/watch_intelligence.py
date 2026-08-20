@@ -1246,3 +1246,168 @@ def watch_reviews(symbol: str) -> dict[str, Any]:
         "items": items,
         "source_status": {"reviews": "authorization_gated", "quarantine_excluded": True},
     }
+
+
+# ── CIO detector projection (S7) ──────────────────────────────────────────────
+# eval_s7 gates on top-level status ∈ {READY, GO, NEAR}. Broker cards use
+# trade_ai_state / proposal_allowed / near_trigger — normalize without re-ranking
+# and without promoting every watched name.
+
+_WATCH_S7_EXPLICIT = frozenset({"READY", "GO", "NEAR", "BLOCK"})
+_WATCH_S7_READY_STATES = frozenset({
+    "READY",
+    "PROMOTE",
+    "PROPOSAL",
+    "ENTER",
+    "PROPOSAL_ELIGIBLE",
+})
+_WATCH_S7_GO_STATES = frozenset({"GO"})
+
+
+def _watch_card_from_item(row: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(row, dict):
+        return {}
+    card = row.get("card")
+    if isinstance(card, dict):
+        return card
+    return row
+
+
+def _watch_score(card: dict[str, Any]) -> float | None:
+    for key in ("score", "watch_score", "rank_score"):
+        raw = card.get(key)
+        if raw is None:
+            continue
+        try:
+            return float(raw)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def normalize_watch_s7_status(row: dict[str, Any] | None) -> tuple[str, float | None, dict[str, Any]]:
+    """Map watch broker row/card → (READY|GO|NEAR|BLOCK, score, meta).
+
+    Promotion-grade only:
+      - explicit status/signal/tier already READY|GO|NEAR
+      - proposal_allowed True → READY
+      - trade_ai_state in READY/GO/PROMOTE/... → READY or GO
+      - near_trigger / is_near_trigger True → NEAR (strong_near if no score)
+
+    WAIT / MANAGING / street ratings alone → BLOCK (never spam S7).
+    """
+    if not isinstance(row, dict):
+        return "BLOCK", None, {"reason": "invalid_row"}
+
+    card = _watch_card_from_item(row)
+    score = _watch_score(card)
+    if score is None:
+        score = _watch_score(row)
+
+    explicit = str(
+        row.get("status") or row.get("signal") or row.get("tier")
+        or card.get("status") or card.get("signal") or card.get("tier") or ""
+    ).strip().upper()
+    if explicit in _WATCH_S7_EXPLICIT:
+        meta = {"reason": "explicit_status"}
+        if explicit == "NEAR" and score is None:
+            meta["strong_near"] = bool(row.get("strong_near") or card.get("strong_near"))
+        return explicit, score, meta
+
+    if card.get("proposal_allowed") is True or row.get("proposal_allowed") is True:
+        return "READY", score, {"reason": "proposal_allowed"}
+
+    state = str(card.get("trade_ai_state") or row.get("trade_ai_state") or "").strip().upper()
+    if state in _WATCH_S7_GO_STATES:
+        return "GO", score, {"reason": f"trade_ai_state={state}"}
+    if state in _WATCH_S7_READY_STATES:
+        return "READY", score, {"reason": f"trade_ai_state={state}"}
+
+    is_near = bool(card.get("is_near_trigger") or row.get("is_near_trigger"))
+    nt = card.get("near_trigger") if isinstance(card.get("near_trigger"), dict) else {}
+    if not isinstance(nt, dict):
+        nt = {}
+    if is_near or nt.get("is_near") is True:
+        meta: dict[str, Any] = {"reason": "near_trigger"}
+        if score is None:
+            meta["strong_near"] = True  # desk-flagged near; eval_s7 allows without score
+        return "NEAR", score, meta
+
+    return "BLOCK", score, {"reason": "not_promotion_grade", "trade_ai_state": state or None}
+
+
+def project_watch_intelligence_for_cio(payload: dict[str, Any] | list | None) -> dict[str, Any]:
+    """Project list_watch_intelligence (or item list) into eval_s7 evidence shape.
+
+    Lean ``items`` with top-level ``status`` READY|GO|NEAR|BLOCK. Fail-soft empty.
+    """
+    if isinstance(payload, list):
+        raw_items = payload
+        meta_src: dict[str, Any] = {}
+    elif isinstance(payload, dict):
+        raw_items = payload.get("items") or payload.get("candidates") or payload.get("rows") or []
+        meta_src = payload
+    else:
+        raw_items = []
+        meta_src = {}
+
+    if isinstance(raw_items, dict):
+        raw_items = [
+            ({"symbol": k, **v} if isinstance(v, dict) else {"symbol": k, "status": v})
+            for k, v in raw_items.items()
+        ]
+
+    items_out: list[dict[str, Any]] = []
+    for it in raw_items or []:
+        if not isinstance(it, dict):
+            continue
+        card = _watch_card_from_item(it)
+        sym = str(it.get("symbol") or card.get("symbol") or it.get("ticker") or "").upper()
+        if not sym:
+            continue
+        status, score, meta = normalize_watch_s7_status(it)
+        row: dict[str, Any] = {
+            "symbol": sym,
+            "status": status,
+            "score": score,
+            "watch_score": score,
+            "held": card.get("held") if card.get("held") is not None else it.get("held"),
+            "trade_ai_state": card.get("trade_ai_state") or it.get("trade_ai_state"),
+            "proposal_allowed": card.get("proposal_allowed")
+            if card.get("proposal_allowed") is not None
+            else it.get("proposal_allowed"),
+            "is_near_trigger": bool(
+                card.get("is_near_trigger") or it.get("is_near_trigger")
+                or ((card.get("near_trigger") or {}).get("is_near") if isinstance(card.get("near_trigger"), dict) else False)
+            ),
+            "street_rating": card.get("street_rating") or it.get("street_rating"),
+            "map_reason": meta.get("reason"),
+        }
+        if status == "NEAR" and meta.get("strong_near"):
+            row["strong_near"] = True
+        items_out.append(row)
+
+    ready_n = sum(1 for r in items_out if r["status"] == "READY")
+    go_n = sum(1 for r in items_out if r["status"] == "GO")
+    near_n = sum(1 for r in items_out if r["status"] == "NEAR")
+    block_n = sum(1 for r in items_out if r["status"] == "BLOCK")
+    return {
+        "ok": bool(meta_src.get("ok", True)) if meta_src else True,
+        "generated_at": meta_src.get("generated_at"),
+        "contract_version": meta_src.get("contract_version") or meta_src.get("data_contract_version"),
+        "source": "watch_intelligence",
+        "projection": "cio_s7_status_v1",
+        "items": items_out,
+        "candidates": items_out,
+        "rows": items_out,
+        "counts": {
+            "ready": ready_n,
+            "go": go_n,
+            "near": near_n,
+            "block": block_n,
+            "total": len(items_out),
+            "promotion_grade": ready_n + go_n + near_n,
+        },
+        "broker_counts": meta_src.get("counts") if isinstance(meta_src.get("counts"), dict) else None,
+        "summary": meta_src.get("summary"),
+    }
