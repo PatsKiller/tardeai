@@ -656,13 +656,35 @@ def reassess_on_research_completed(
         }
         _append_jsonl(_paths(root)["log"], rec)
         _mark("completed", rid, rec, root=root)
+        lineage_id = None
+        try:
+            try:
+                from lib.intelligence_lineage import attach_advisory_use
+            except Exception:
+                from scripts.lib.intelligence_lineage import attach_advisory_use  # type: ignore
+            lin = attach_advisory_use(
+                research_id=str(parent.get("research_id") or result.get("research_id") or "") or None,
+                result_id=str(result_id or "") or None,
+                lineage_id=str(result.get("lineage_id") or "") or None,
+                product_id=str(product.get("product_id") or "") or None,
+                reassessment_id=rid,
+                decision_id=str(product.get("decision_id") or "") or None,
+                what_changed_material=bool(changed.get("material")),
+            )
+            lineage_id = lin.get("lineage_id")
+            if lineage_id:
+                rec["lineage_id"] = lineage_id
+                product["lineage_id"] = lineage_id
+        except Exception as lin_exc:
+            out["lineage_error"] = f"{type(lin_exc).__name__}:{lin_exc}"
         out.update({
             "ok": True,
             "status": "COMPLETED",
+            "lineage_id": lineage_id,
             "product": {k: product.get(k) for k in (
                 "product_id", "previous_product_id", "decision_id", "as_of",
-                "trigger", "what_changed", "summary", "parent_recovery",
-            )},
+                "trigger", "what_changed", "summary", "parent_recovery", "lineage_id",
+            ) if k in product},
             "impact": impact,
             "notification": nd,
         })

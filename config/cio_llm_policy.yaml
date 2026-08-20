@@ -24,8 +24,9 @@ non_material_sources:
   - pure_heartbeat_no_change
   - cio_slash_status
 
-situation_notify_telegram: false   # master; also requires CIO_SITUATION_NOTIFY=1
+situation_notify_telegram: false   # master; also requires CIO_SITUATION_NOTIFY=1 (alias CIO_SITUATIONS_NOTIFY=1 OR'd)
 # When notify is on, only these situation types go to @tradeai_cio_bot
+# Phase B material canary prefers S1/S5/S6/S8 (+ calendar_catalyst_material on S1); S2 optional
 notify_situation_types:
   - S1_POSITION_LIFECYCLE
   - S2_STOP_GAP
@@ -33,10 +34,11 @@ notify_situation_types:
   - S6_CONCENTRATION_OR_DISPOSITION
   - S8_DEFENSIVE_REGIME
 # Re-notify guards (re-enrich must NOT re-push Telegram by default)
-notify_once_per_fingerprint: true  # same plan_id+evidence/fire → one notify
+notify_once_per_fingerprint: true  # same plan_id+evidence/fire → one notify; ledger: data/cio/cio_plan_notify_ledger.json
 notify_cooldown_hours: 12          # legacy rows without fingerprint
 notify_min_gap_minutes: 5          # min gap even when fingerprint changes
 # Override: CIO_SITUATION_NOTIFY_FORCE=1 or maybe_notify_plan(..., force=True)
+# Canary flags: docs/ops/CIO_MATERIAL_NOTIFY_CANARY_2026-08-20.md (financial lane remains OFF_BY_POLICY)
 
 llm:
   enabled: true                    # CIO_LLM_ENRICH=0 to disable

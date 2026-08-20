@@ -165,6 +165,33 @@ def test_earnings_high_12d_research_gap_no_telegram_elevate():
     assert catalyst_telegram_line(pack9) is None
 
 
+def test_medium_plus_gates_research_gap_not_materiality_bump():
+    """Documented gates: research_gap = medium+ ≤10d; materiality_bump = high+ ≤5d.
+
+    Low ex-div must not open either gate.
+    """
+    # medium guidance @ 7d → research-gap eligible, no materiality bump
+    ev_med = _ev("guidance", days=7, symbol="ABC", title="sector note")
+    assert ev_med["severity"] == "medium"
+    pack_med = build_pack_from_events([ev_med], symbol="ABC")
+    assert catalyst_research_gap_eligible(pack_med) is True
+    assert materiality_bump(pack_med) is False
+
+    # high earnings @ 4d → both gates (high ≥ medium; within warm + research horizons)
+    ev_hi = _ev("earnings", days=4, symbol="SPCX", title="Q2 earnings")
+    assert ev_hi["severity"] == "high"
+    pack_hi = build_pack_from_events([ev_hi], symbol="SPCX")
+    assert catalyst_research_gap_eligible(pack_hi) is True
+    assert materiality_bump(pack_hi) is True
+
+    # low ex-div near-term → neither gate
+    ev_low = _ev("ex_div", days=3, symbol="SCHD", title="SCHD quarterly distribution")
+    ev_low["severity"] = "low"
+    pack_low = build_pack_from_events([ev_low], symbol="SCHD")
+    assert catalyst_research_gap_eligible(pack_low) is False
+    assert materiality_bump(pack_low) is False
+
+
 def test_unknown_severity_behaves_as_low():
     ev = _ev("other", days=2, severity="totally_unknown")
     # explicit unknown → clamp via assign → low

@@ -656,6 +656,192 @@ def get_lineage(lineage_id: str) -> dict[str, Any] | None:
     return None
 
 
+def _upsert_snapshot_lineage(rec: dict[str, Any]) -> None:
+    """Merge one live-forward lineage into the projection snapshot (idempotent)."""
+    jsonl_path, snap_path = lineage_paths()
+    _append_jsonl(jsonl_path, {
+        "event": "LINEAGE_LIVE_FORWARD",
+        "at": _iso(),
+        "lineage_id": rec.get("lineage_id"),
+        "status": rec.get("status"),
+        "symbol": rec.get("symbol"),
+        "research_request_ids": list(rec.get("research_request_ids") or []),
+        "research_result_ids": list(rec.get("research_result_ids") or []),
+        "authority": AUTHORITY,
+    })
+    snap = load_snapshot()
+    rows = list(snap.get("lineages") or [])
+    lid = str(rec.get("lineage_id") or "")
+    replaced = False
+    for i, r in enumerate(rows):
+        if r.get("lineage_id") == lid:
+            rows[i] = rec
+            replaced = True
+            break
+    if not replaced:
+        rows.insert(0, rec)
+    by_status = {
+        s: sum(1 for r in rows if r.get("status") == s)
+        for s in STATUSES
+        if any(r.get("status") == s for r in rows)
+    }
+    live_n = sum(1 for r in rows if str(r.get("origin") or "") == "live_forward")
+    snap.update({
+        "schema": SCHEMA,
+        "generated_at": _iso(),
+        "authority": AUTHORITY,
+        "count": len(rows),
+        "by_status": by_status,
+        "live_forward_count": live_n,
+        "lineages": rows[:500],
+        "financial_action": False,
+    })
+    _atomic_json(snap_path, snap)
+
+
+def _find_by_research_id(research_id: str) -> dict[str, Any] | None:
+    rid = str(research_id or "").strip()
+    if not rid:
+        return None
+    for rec in load_snapshot().get("lineages") or []:
+        reqs = [str(x) for x in (rec.get("research_request_ids") or [])]
+        if rid in reqs or rid == str(rec.get("discovery_id") or ""):
+            return dict(rec)
+    return None
+
+
+def attach_research_requested(
+    *,
+    research_id: str,
+    symbol: str | None = None,
+    plan_id: str | None = None,
+    thesis_version: str | None = None,
+    fingerprint: str | None = None,
+    discovery_id: str | None = None,
+) -> dict[str, Any]:
+    """Live-forward: enqueue → RESEARCH_REQUESTED. Idempotent on research_id."""
+    existing = _find_by_research_id(research_id)
+    if existing:
+        reqs = list(existing.get("research_request_ids") or [])
+        if research_id not in reqs:
+            reqs.append(research_id)
+            existing["research_request_ids"] = reqs
+        _advance(existing, "RESEARCH_REQUESTED", "cio_hermes_research", "enqueue", [research_id])
+        if plan_id:
+            existing["cio_case_id"] = existing.get("cio_case_id") or plan_id
+        if thesis_version:
+            existing["thesis_id"] = thesis_version
+        if fingerprint:
+            existing.setdefault("transitions", [])  # keep
+            existing["fingerprint"] = fingerprint
+        _upsert_snapshot_lineage(existing)
+        return {"ok": True, "lineage_id": existing.get("lineage_id"), "lineage": existing, "idempotent": True}
+
+    lid = "lin_" + _hid("live", research_id, symbol or "", plan_id or "")
+    rec = empty_lineage(
+        lid,
+        origin="live_forward",
+        symbol=(symbol or "").upper() or None,
+        discovery_id=discovery_id or research_id,
+        thesis_id=thesis_version,
+        cio_case_id=plan_id,
+    )
+    rec["research_request_ids"] = [research_id]
+    if fingerprint:
+        rec["fingerprint"] = fingerprint
+    _advance(rec, "RESEARCH_REQUESTED", "cio_hermes_research", "enqueue", [research_id])
+    _upsert_snapshot_lineage(rec)
+    return {"ok": True, "lineage_id": lid, "lineage": rec, "idempotent": False}
+
+
+def attach_research_completed(
+    *,
+    research_id: str,
+    result_id: str,
+    symbol: str | None = None,
+    plan_id: str | None = None,
+    memory_id: str | None = None,
+    critique_verdict: str | None = None,
+) -> dict[str, Any]:
+    """Live-forward: result persisted → RESEARCH_COMPLETED (+ MEMORY_ADMITTED if memory_id)."""
+    rec = _find_by_research_id(research_id)
+    if not rec:
+        # create then complete (late attach)
+        created = attach_research_requested(
+            research_id=research_id, symbol=symbol, plan_id=plan_id,
+        )
+        rec = created.get("lineage") or empty_lineage(
+            "lin_" + _hid("late", research_id),
+            origin="live_forward",
+            symbol=(symbol or "").upper() or None,
+        )
+        rec["research_request_ids"] = list(dict.fromkeys(
+            list(rec.get("research_request_ids") or []) + [research_id]
+        ))
+    results = list(rec.get("research_result_ids") or [])
+    if result_id and result_id not in results:
+        results.append(result_id)
+    rec["research_result_ids"] = results
+    if symbol and not rec.get("symbol"):
+        rec["symbol"] = str(symbol).upper()
+    if plan_id and not rec.get("cio_case_id"):
+        rec["cio_case_id"] = plan_id
+    _advance(rec, "RESEARCH_COMPLETED", "cio_hermes_research", "mark_completed", [result_id])
+    if critique_verdict and str(critique_verdict).upper() in {"VALID", "PASS", "OK", "ACCEPTED"}:
+        _advance(rec, "RESEARCH_VALIDATED", "research_quality", str(critique_verdict), [result_id])
+    if memory_id:
+        mids = list(rec.get("memory_ids") or [])
+        if memory_id not in mids:
+            mids.append(memory_id)
+        rec["memory_ids"] = mids
+        _advance(rec, "MEMORY_ADMITTED", "research_memory_bridge", "admit", [memory_id])
+    _upsert_snapshot_lineage(rec)
+    return {"ok": True, "lineage_id": rec.get("lineage_id"), "lineage": rec}
+
+
+def attach_advisory_use(
+    *,
+    research_id: str | None = None,
+    result_id: str | None = None,
+    lineage_id: str | None = None,
+    product_id: str | None = None,
+    reassessment_id: str | None = None,
+    decision_id: str | None = None,
+    what_changed_material: bool | None = None,
+) -> dict[str, Any]:
+    """Live-forward: parent book reassessment → ADVISORY_USED / SYNTHESIZED."""
+    rec = None
+    if lineage_id:
+        rec = get_lineage(lineage_id)
+    if not rec and research_id:
+        rec = _find_by_research_id(research_id)
+    if not rec and result_id:
+        for r in load_snapshot().get("lineages") or []:
+            if result_id in [str(x) for x in (r.get("research_result_ids") or [])]:
+                rec = dict(r)
+                break
+    if not rec:
+        return {"ok": False, "error": "lineage_not_found"}
+    use = {
+        "product_id": product_id,
+        "reassessment_id": reassessment_id,
+        "decision_id": decision_id,
+        "what_changed_material": what_changed_material,
+        "at": _iso(),
+    }
+    rec["advisory_use"] = use
+    if decision_id:
+        rec["decision_id"] = decision_id
+    refs = [x for x in (product_id, reassessment_id, decision_id, result_id) if x]
+    _advance(rec, "SYNTHESIZED", "cio_product_reassessment", "product_persist", refs)
+    _advance(rec, "ADVISORY_USED", "cio_product_reassessment", "reassess_on_research_completed", refs)
+    if what_changed_material is False:
+        # still advisory-used; quiet notify path
+        pass
+    _upsert_snapshot_lineage(rec)
+    return {"ok": True, "lineage_id": rec.get("lineage_id"), "lineage": rec}
+
+
 def challenge_view(limit: int = 40) -> dict[str, Any]:
     rows = _read_jsonl(cio_dir() / "hermes_challenge_queue.jsonl")
     latest = challenge_latest(rows)

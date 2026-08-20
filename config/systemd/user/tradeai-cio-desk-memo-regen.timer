@@ -1,0 +1,13 @@
+[Unit]
+Description=Daily off-peak CIO desk memo regen (17:45 ET) — DISABLED by default
+
+[Timer]
+# Off-peak after US cash close / RI shadow window (ET year-round).
+OnCalendar=*-*-* 17:45:00 America/New_York
+Persistent=true
+Unit=tradeai-cio-desk-memo-regen.service
+
+[Install]
+# DISABLED by default — install + enable only after operator ack.
+# Prefer documenting install rather than enabling — see docs/ops/CIO_DESK_MEMO_CONTINUOUS_2026-08-20.md
+# WantedBy=timers.target

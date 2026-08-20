@@ -224,3 +224,59 @@ def test_delegation_counts_latest_per_stream(cio: Path, monkeypatch: pytest.Monk
     enqueued_events = sum(1 for r in rows if r.get("event_type") == "HERMES_CHALLENGE_ENQUEUED")
     assert enqueued_events >= 1
     assert len(pending) != enqueued_events or enqueued_events == 0
+
+
+def test_live_forward_request_result_advisory(cio: Path):
+    """Golden path: enqueue attach → complete → advisory_use yields non-null lineage_id."""
+    a = L.attach_research_requested(
+        research_id="res_test_held_1",
+        symbol="SCHD",
+        plan_id="plan_test_1",
+        thesis_version="desk@v5",
+        fingerprint="fp@v1:test",
+    )
+    assert a["ok"] is True
+    lid = a["lineage_id"]
+    assert lid
+    assert a["lineage"]["status"] == "RESEARCH_REQUESTED"
+    assert a["lineage"]["origin"] == "live_forward"
+
+    b = L.attach_research_completed(
+        research_id="res_test_held_1",
+        result_id="rr_test_1",
+        symbol="SCHD",
+        plan_id="plan_test_1",
+        memory_id="mem_test_1",
+        critique_verdict="VALID",
+    )
+    assert b["ok"] is True
+    assert b["lineage_id"] == lid
+    assert "rr_test_1" in b["lineage"]["research_result_ids"]
+    assert b["lineage"]["status"] in {"RESEARCH_COMPLETED", "RESEARCH_VALIDATED", "MEMORY_ADMITTED"}
+    assert "mem_test_1" in b["lineage"]["memory_ids"]
+
+    c = L.attach_advisory_use(
+        research_id="res_test_held_1",
+        result_id="rr_test_1",
+        product_id="prod_test_1",
+        reassessment_id="reassessment:global_product:rr_test_1",
+        decision_id="cio_books_test",
+        what_changed_material=True,
+    )
+    assert c["ok"] is True
+    assert c["lineage_id"] == lid
+    assert c["lineage"]["status"] == "ADVISORY_USED"
+    assert c["lineage"]["advisory_use"]["product_id"] == "prod_test_1"
+
+    # idempotent re-request
+    d = L.attach_research_requested(research_id="res_test_held_1", symbol="SCHD")
+    assert d["idempotent"] is True
+    assert d["lineage_id"] == lid
+
+    # API surface
+    code, payload = api.handle_get("lineage")
+    assert code == 200
+    assert payload.get("live_forward_count", 0) >= 1
+    code2, one = api.handle_get(f"lineage/{lid}")
+    assert code2 == 200
+    assert one["lineage"]["lineage_id"] == lid

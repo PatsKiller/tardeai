@@ -74,9 +74,13 @@ def _now_ms() -> int:
 def flags_snapshot() -> dict[str, bool]:
     """Current enrich/notify flags (env + soft defaults)."""
     enrich_raw = os.environ.get("CIO_LLM_ENRICH", "1").strip().lower()
-    notify_raw = os.environ.get("CIO_SITUATION_NOTIFY", "0").strip().lower()
     enrich_on = enrich_raw not in ("0", "false", "off", "no")
-    notify_on = notify_raw in ("1", "true", "on", "yes")
+    # Accept singular or plural notify env (OR); default off when both unset.
+    notify_on = False
+    for key in ("CIO_SITUATION_NOTIFY", "CIO_SITUATIONS_NOTIFY"):
+        if os.environ.get(key, "").strip().lower() in ("1", "true", "on", "yes"):
+            notify_on = True
+            break
     return {"enrich_on": enrich_on, "notify_on": notify_on}
 
 

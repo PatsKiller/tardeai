@@ -509,6 +509,23 @@ def enqueue_research_request(
             out["ttl_seconds"] = result.ttl_seconds
         if result.reuse_miss_reason:
             out["reuse_miss_reason"] = result.reuse_miss_reason
+        # Live-forward IntelligenceLineage@v1 (fail-soft)
+        if result.research_id:
+            try:
+                try:
+                    from lib.intelligence_lineage import attach_research_requested
+                except Exception:
+                    from scripts.lib.intelligence_lineage import attach_research_requested  # type: ignore
+                lin = attach_research_requested(
+                    research_id=str(result.research_id),
+                    symbol=str(request.get("symbol") or symbol),
+                    plan_id=pid,
+                    thesis_version=thesis or None,
+                    fingerprint=str(result.fingerprint or "") or None,
+                )
+                out["lineage_id"] = lin.get("lineage_id")
+            except Exception as lin_exc:
+                out["lineage_error"] = f"{type(lin_exc).__name__}:{lin_exc}"
         return out
     except ValueError as e:
         return {"ok": False, "error": str(e)}
@@ -812,7 +829,28 @@ def _persist_stamped_result(research_id: str, result: dict[str, Any]) -> dict[st
             "status": "completed",
             "updated_ts": as_of,
         })
-        return {"ok": True, "result_id": result.get("result_id"), "result": result}
+        lineage_id = None
+        try:
+            try:
+                from lib.intelligence_lineage import attach_research_completed
+            except Exception:
+                from scripts.lib.intelligence_lineage import attach_research_completed  # type: ignore
+            lin = attach_research_completed(
+                research_id=research_id,
+                result_id=str(result.get("result_id") or ""),
+                symbol=str(result.get("symbol") or req_meta.get("symbol") or ""),
+                plan_id=str(pid or "") or None,
+            )
+            lineage_id = lin.get("lineage_id")
+            if lineage_id:
+                result = dict(result)
+                result["lineage_id"] = lineage_id
+        except Exception:
+            lineage_id = None
+        out_ok = {"ok": True, "result_id": result.get("result_id"), "result": result}
+        if lineage_id:
+            out_ok["lineage_id"] = lineage_id
+        return out_ok
     except Exception as e:
         return {"ok": False, "error": f"{type(e).__name__}:{e}"}
 
