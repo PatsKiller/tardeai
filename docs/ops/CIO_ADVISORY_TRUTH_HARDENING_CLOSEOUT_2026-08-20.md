@@ -49,8 +49,8 @@ Two earlier ships closed desk completeness (#403) and YouTube full-asset-class c
 
 ## Operator follow-ups (not blocking this PR)
 
-1. Set / fix `LLM_GLOBAL_DAILY_USD_CAP` (or equivalent) so Flash-first can succeed — see research failure finding doc.
-2. Produce seed summaries for SCHG/CSCO/ANET, then re-run canary with `CANARY_THESIS_APPLY=1`.
+1. ~~Set / fix `LLM_GLOBAL_DAILY_USD_CAP` so Flash-first can succeed~~ — **resolved 2026-08-20**: cap was already sourced via the offpeak/market wrappers; the real gates were the canonical containment flag (absent → `exit=78`) and the maria `daily_soft_cap` request cap (exhausted overnight → `COST_CAP_EXCEEDED`). See `docs/ops/FLASH_ACTIVATION_AND_THESIS_CANARY_2026-08-20.md`.
+2. ~~Produce seed summaries for SCHG/CSCO/ANET, then re-run canary with `CANARY_THESIS_APPLY=1`~~ — **superseded**: next step is **gap-driven research → RAG → Flash synthesis → reconcile → apply** (not inventing seed summaries). SCHG/CSCO/ANET are former holdings (`RESEARCH_REQUIRED`) with empty RAG; synthesis is `BLOCKED_PENDING_ACQUISITION_AND_CURATION`.
 3. Confirm model-portfolio sector targets are the intended IPS (now loaded, not invented).
 
 ## Drive sync

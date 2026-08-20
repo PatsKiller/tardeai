@@ -59,6 +59,13 @@ if [[ -f "$RUN_ENV" ]]; then
   log "env_loaded=${RUN_ENV}"
 fi
 
+# --- Process-scoped containment override (host flag stays armed; issue #283) ---
+# The canonical host flag ~/.local/state/tradeai/AGENT_JOBS_P0_CONTAINED is armed,
+# so this governed wrapper must explicitly override containment for its own process.
+OVERRIDE_FLAG="/tmp/tradeai_agent_jobs_p0_offpeak_absent_$$"
+export AGENT_JOBS_P0_CONTAINED=0
+export AGENT_JOBS_P0_CONTAINMENT_FLAG="$OVERRIDE_FLAG"
+
 cd "$PROJ"
 export PYTHONPATH="${PROJ}/scripts${PYTHONPATH:+:$PYTHONPATH}"
 
