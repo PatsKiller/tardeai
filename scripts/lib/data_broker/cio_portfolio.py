@@ -6,6 +6,7 @@ Unified snapshot aggregating the key domains a CIO needs in ONE read:
   watch     → active watch items, CIO verdicts
   rotation  → sector leadership, regime signal
   income    → dividends, yield by account
+  reentry   → reentry decision desk (READY/NEAR/BLOCK) for S3
 
 Composes existing Data Broker projections — does NOT re-read raw files.
 Zero provider calls on page load. Deterministic computation only.
@@ -63,6 +64,7 @@ CIO_DOMAINS = (
     "holdings_detail",
     "cash_buying_power",
     "retirement",
+    "reentry",
 )
 
 
@@ -925,6 +927,57 @@ def _domain_retirement() -> DomainEvidence:
     )
 
 
+def _domain_reentry() -> DomainEvidence:
+    """Reentry decision desk for CIOSituationDetector S3 (READ_ONLY).
+
+    Prefers the persisted build_decision_desk snapshot (zero provider calls).
+    Normalizes intel.state → top-level status READY|NEAR|BLOCK for eval_s3.
+    Fail-soft: missing/corrupt/exception → DATA_UNAVAILABLE (no raise).
+    """
+    path = RUNTIME_DIR / "reentry_decision_desk_latest.json"
+    try:
+        if not path.exists():
+            return DomainEvidence.unavailable(
+                "reentry",
+                reason_code=ReasonCode.SOURCE_FILE_MISSING,
+                source_ref=str(path),
+                gap_reason="reentry_decision_desk_latest.json missing",
+            )
+        raw = _load_json(path)
+        if not raw:
+            return DomainEvidence.unavailable(
+                "reentry",
+                reason_code=ReasonCode.SOURCE_FILE_MISSING,
+                source_ref=str(path),
+                gap_reason="reentry_decision_desk_latest.json empty or unreadable",
+            )
+        try:
+            from lib.data_broker.reentry_decision_desk import project_reentry_desk_for_cio
+        except Exception:  # pragma: no cover
+            from scripts.lib.data_broker.reentry_decision_desk import (  # type: ignore
+                project_reentry_desk_for_cio,
+            )
+        projected = project_reentry_desk_for_cio(raw)
+        if not isinstance(projected, dict):
+            projected = {"rows": [], "candidates": [], "ok": False}
+        projected.setdefault("rows", [])
+        projected.setdefault("candidates", projected.get("rows") or [])
+        as_of = str(projected.get("computed_at") or raw.get("computed_at") or "")
+        return DomainEvidence.available(
+            "reentry",
+            projected,
+            source_ref=str(path),
+            as_of=as_of,
+        )
+    except Exception as exc:
+        return DomainEvidence.unavailable(
+            "reentry",
+            reason_code=ReasonCode.COLLECTOR_EXCEPTION,
+            source_ref=str(path),
+            gap_reason=f"reentry_domain_error:{type(exc).__name__}:{exc}",
+        )
+
+
 _COLLECTORS = {
     "portfolio": _domain_portfolio,
     "risk": _domain_risk,
@@ -942,6 +995,9 @@ _COLLECTORS = {
     "holdings_detail": _domain_holdings_detail,
     "cash_buying_power": _domain_cash_buying_power,
     "retirement": _domain_retirement,
+    # Alias pair: catalog "reentry" + detector key "reentry_decision_desk"
+    "reentry": _domain_reentry,
+    "reentry_decision_desk": _domain_reentry,
 }
 
 
