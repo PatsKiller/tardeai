@@ -148,3 +148,19 @@ CIO_TELEGRAM_INTERDICT=1
 - `docs/cio/SITUATIONS.md` — notify guard / ledger
 - `docs/cio/CATALYST_AND_HERMES.md` — severity gates / `calendar_catalyst_material`
 - `config/cio_llm_policy.yaml` / `config/cio_situations.yaml`
+
+## LIVE CANARY RECEIPT (2026-08-20)
+
+| Field | Value |
+|---|---|
+| Enabled | `CIO_SITUATION_NOTIFY=1` (+ AUTHORIZE_P2 / INTERDICT=0) then **disabled to 0** |
+| plan_id | `plan_43043a4ccdbe` |
+| fingerprint | `0a9546edf706438d` |
+| maybe_notify_plan(force=True) | **True** (ledger recorded) |
+| ledger_ts | `2026-08-20T18:32:48.522591+00:00` |
+| message_id | Not persisted by ledger; send path returned ok for ≥1 allowlisted chat (one chat_id returned Telegram "chat not found") |
+| Financial bulk lane | Still **OFF_BY_POLICY** (not enabled) |
+| lineage linkage | Same SCHD cycle as E1 (`lin_4c9d72b25d58f05a6170`) |
+
+Residual #2 **NARROW CLOSED** (canary exercised + disabled). Do not claim bulk financial notify.
+

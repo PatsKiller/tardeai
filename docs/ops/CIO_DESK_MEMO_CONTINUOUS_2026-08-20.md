@@ -46,3 +46,15 @@ Until that enable step: schedule is **optional / inactive**. Manual regen only.
 ## Related
 
 - [DESK_NOTE.md](../cio/DESK_NOTE.md) · [CIO_CLOSED_LOOP_LINEAGE_CLOSEOUT_2026-08-20.md](./CIO_CLOSED_LOOP_LINEAGE_CLOSEOUT_2026-08-20.md)
+
+## LIVE HOST PROOF (2026-08-20)
+
+| Field | Value |
+|---|---|
+| Manual dry | OK — wrote `cio_desk_note_latest.md` (v1.3.0 · desk@v5) |
+| Timer | **ENABLED** `tradeai-cio-desk-memo-regen.timer` |
+| Next fire | 2026-08-20 17:45:00 EDT |
+| One-shot | `systemctl --user start …service` → status=0/SUCCESS |
+
+Residual #3 **CLOSED** (timer enabled).
+

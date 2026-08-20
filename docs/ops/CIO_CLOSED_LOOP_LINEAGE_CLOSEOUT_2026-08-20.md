@@ -44,3 +44,23 @@ curl -sS localhost:7777/api/v3/intelligence/lineage | jq '{count,live_forward_co
 # optional drain (uses CURRENT):
 # systemctl --user start tradeai-hermes-cio-worker.service
 ```
+
+## LIVE HOST PROOF (2026-08-20)
+
+| Field | Value |
+|---|---|
+| CURRENT SHA | `c5a6de188dfaabf856eeba6aa2cc18ba0699c095` |
+| Release | `c5a6de18-main-exact-phase2-20260820-142426` |
+| symbol | SCHD (held) |
+| plan_id | `plan_43043a4ccdbe` (S6 proposed, desk@v5) |
+| research_id | `res_da001ade8459` |
+| result_id | `rr_a5131352ef0f` |
+| lineage_id | `lin_4c9d72b25d58f05a6170` |
+| status | **ADVISORY_USED** (live_forward) |
+| product_id | `prod_05c8ef7715fd42b9` |
+| reassessment_id | `reassessment:plan_43043a4ccdbe:rr_a5131352ef0f` |
+| drain | `hermes_cio_worker.py --drain --max 1 --backend stub` on CURRENT (hooks proven; Flash not required for lineage attach) |
+| API after | `live_forward_today=1`, `by_status.ADVISORY_USED=1` |
+
+Residual #1 **CLOSED** for live-forward identity on CURRENT.
+
