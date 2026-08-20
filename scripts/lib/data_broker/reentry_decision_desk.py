@@ -1057,3 +1057,109 @@ def build_decision_desk(
             pass  # fail-soft — never block the read path
 
     return result
+
+
+# ── CIO detector projection (S3) ──────────────────────────────────────────────
+# Desk rows expose intel.state like "READY TO REVIEW" / "NEAR ENTRY"; eval_s3
+# gates on top-level status in {READY, NEAR}. Normalize without re-ranking.
+
+_REENTRY_S3_READY = frozenset({
+    "READY",
+    "READY TO REVIEW",
+    "IN_ZONE",
+})
+_REENTRY_S3_NEAR = frozenset({
+    "NEAR",
+    "NEAR ENTRY",
+    "OVERSOLD REVIEW",
+})
+_REENTRY_S3_EXPLICIT = frozenset({"READY", "NEAR", "BLOCK"})
+
+
+def normalize_reentry_s3_status(row: dict[str, Any] | None) -> str:
+    """Map desk row → uppercase READY | NEAR | BLOCK for CIOSituationDetector.
+
+    Passthrough only — does not invent READY from soft signals. Unknown /
+    WAIT / HELD / MISSING* collapse to BLOCK (visible on desk, not S3).
+    """
+    if not isinstance(row, dict):
+        return "BLOCK"
+
+    explicit = str(row.get("status") or row.get("decision") or "").strip().upper()
+    if explicit in _REENTRY_S3_EXPLICIT:
+        return explicit
+    if explicit == "GO":
+        return "READY"
+
+    intel = row.get("intel") if isinstance(row.get("intel"), dict) else {}
+    intel_state = str(intel.get("state") or row.get("state") or "").strip().upper()
+    if intel_state in _REENTRY_S3_READY:
+        return "READY"
+    if intel_state in _REENTRY_S3_NEAR:
+        return "NEAR"
+    return "BLOCK"
+
+
+def project_reentry_desk_for_cio(desk: dict[str, Any] | None) -> dict[str, Any]:
+    """Project build_decision_desk / latest.json into eval_s3 evidence shape.
+
+    Returns a lean payload with ``rows`` / ``candidates`` carrying top-level
+    ``status`` (READY|NEAR|BLOCK). Fail-soft empty on bad input.
+    """
+    if not isinstance(desk, dict):
+        return {
+            "ok": False,
+            "source": "reentry_decision_desk",
+            "rows": [],
+            "candidates": [],
+            "counts": {"ready": 0, "near": 0, "block": 0, "total": 0},
+        }
+
+    raw_rows = desk.get("rows") or desk.get("candidates") or desk.get("items") or []
+    if isinstance(raw_rows, dict):
+        raw_rows = [
+            ({"symbol": k, **v} if isinstance(v, dict) else {"symbol": k, "status": v})
+            for k, v in raw_rows.items()
+        ]
+
+    rows_out: list[dict[str, Any]] = []
+    for r in raw_rows or []:
+        if not isinstance(r, dict):
+            continue
+        sym = str(r.get("symbol") or r.get("ticker") or "").upper()
+        if not sym:
+            continue
+        status = normalize_reentry_s3_status(r)
+        intel = r.get("intel") if isinstance(r.get("intel"), dict) else {}
+        advisory = r.get("advisory") if isinstance(r.get("advisory"), dict) else {}
+        rows_out.append({
+            "symbol": sym,
+            "status": status,
+            "intel_state": intel.get("state"),
+            "held": r.get("held"),
+            "price": r.get("price"),
+            "entry_low": r.get("entry_low"),
+            "entry_high": r.get("entry_high"),
+            "rr": r.get("rr"),
+            "advisory_action": advisory.get("action"),
+        })
+
+    ready_n = sum(1 for r in rows_out if r["status"] == "READY")
+    near_n = sum(1 for r in rows_out if r["status"] == "NEAR")
+    block_n = sum(1 for r in rows_out if r["status"] == "BLOCK")
+    return {
+        "ok": bool(desk.get("ok", True)),
+        "version": desk.get("version"),
+        "computed_at": desk.get("computed_at"),
+        "source": "reentry_decision_desk",
+        "projection": "cio_s3_status_v1",
+        "rows": rows_out,
+        "candidates": rows_out,
+        "counts": {
+            "ready": ready_n,
+            "near": near_n,
+            "block": block_n,
+            "total": len(rows_out),
+        },
+        "freshness": desk.get("freshness"),
+    }
