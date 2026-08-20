@@ -19,12 +19,12 @@ from scripts.lib.cio_telegram_converse import (
     DEFAULT_DEDUP,
     DEFAULT_MSG_MAP,
     DEFAULT_RATE,
-    assemble_context,
-    build_template_advisory,
+    answer_reentry_purchase_query,
     emit_operator_message,
-    ensure_converse_plan,
+    format_reentry_purchase_reply,
     format_structured_reply,
     handle_cio_slash,
+    looks_like_reentry_purchase_query,
     mark_message_seen,
     mark_wake_rate,
     message_seen,
@@ -32,19 +32,20 @@ from scripts.lib.cio_telegram_converse import (
     parse_reply_footer,
     plan_id_for_reply_message,
     rate_limit_ok,
-    record_plan_message,
     format_decision_thread_reply,
     load_decision_thread_context,
     record_decision_thread_note,
     _now,
 )
+from scripts.lib.cio_operator_desk_loop import handle_operator_desk_question
+
 
 SendFn = Callable[..., dict[str, Any]]
 
 # Plain-text command prefixes accepted on WhatsApp (no leading /cio required)
 PLAIN_CMD_RE = re.compile(
     r"^\s*(?:/cio\s+)?(help|plans|plan|thesis|traces|status|actions|portfolio|hermes|risk|"
-    r"ack|rate|defer|done|reject)\b",
+    r"reentry|re-entry|ack|rate|defer|done|reject)\b",
     re.I,
 )
 
@@ -296,6 +297,24 @@ def process_operator_message(
             })
             return out
 
+    # Desk facts + optional DeepSeek Flash polish (skip S0 template wall)
+    if looks_like_reentry_purchase_query(text):
+        ans = answer_reentry_purchase_query(text, use_flash=True)
+        reply = ans.get("text") or format_reentry_purchase_reply()
+        if channel == "whatsapp":
+            reply = re.sub(r"\*([^*]+)\*", r"\1", reply).replace("`", "")
+        sent = _send(reply, reply_to=reply_to_message_id)
+        out.update({
+            "handled": True,
+            "kind": "reentry_facts",
+            "reentry_source": ans.get("source"),
+            "reentry_model": ans.get("model"),
+            "reply_preview": reply[:500],
+            "outbound_message_id": sent.get("message_id"),
+            "telegram_out_message_id": sent.get("message_id") if channel == "telegram" else None,
+        })
+        return out
+
     # free-text converse
     if not rate_limit_ok(chat_id, path=rate_path, limit=wakes_limit):
         _send("Rate limit: too many converse wakes this hour. Try: status or plans.")
@@ -349,25 +368,45 @@ def process_operator_message(
         })
         return out
 
-    payload = {
-        "text": text[:4000],
-        "chat_id": chat_id,
-        "message_id": message_id_s,
-        "channel": channel,
-        "reply_to_message_id": str(reply_to_message_id or "") or None,
-        "ts": _now(),
-        "user_id": str(user_id or ""),
-        "username": username or "",
-        "plan_id": plan_id,
-        "goal_id": goal_id,
-        "action_id": action_id,
-        "authority": "READ_ONLY_ADVISORY",
-    }
+    # Trade-AI desk loop: Flash analyzes intent → pull vetted facts → answer or defer
+    # Natural language understanding is Flash's job; numbers only from Trade-AI.
+    desk = handle_operator_desk_question(
+        text,
+        chat_id=chat_id,
+        message_id=message_id_s,
+        channel=channel,
+    )
+    reply = (desk.get("text") or "").strip()
+    if not reply:
+        reply = (
+            "Trade-AI had no vetted answer yet. Queued a pull if needed — "
+            "try `/cio reentry` or `/cio portfolio`.\n"
+            "No orders/stops from chat · READ_ONLY_ADVISORY"
+        )
+    if channel == "whatsapp":
+        reply = re.sub(r"\*([^*]+)\*", r"\1", reply).replace("`", "")
 
+    # Audit wake / rate only — do not use plan enrichment as the Telegram body
     event_id = None
     wake_id = None
     if not dry_run:
-        # source label for bus
+        payload = {
+            "text": text[:4000],
+            "chat_id": chat_id,
+            "message_id": message_id_s,
+            "channel": channel,
+            "reply_to_message_id": str(reply_to_message_id or "") or None,
+            "ts": _now(),
+            "user_id": str(user_id or ""),
+            "username": username or "",
+            "plan_id": plan_id,
+            "goal_id": goal_id,
+            "action_id": action_id,
+            "authority": "READ_ONLY_ADVISORY",
+            "reply_source": desk.get("reply_source"),
+            "desk_kind": desk.get("kind"),
+            "pending_id": desk.get("pending_id"),
+        }
         try:
             from scripts.lib.cio_event_bus import CIOEventBus
             evt = CIOEventBus().emit(
@@ -394,127 +433,19 @@ def process_operator_message(
         )
         mark_wake_rate(chat_id, path=rate_path)
 
-    ctx = assemble_context(text, plan_id=plan_id, action_id=action_id, goal_id=goal_id)
-    advisory = build_template_advisory(text, ctx)
-    new_plan_id = plan_id
-    llm_deferred = True
-    if not dry_run:
-        new_plan_id = ensure_converse_plan(
-            advisory, plan_id=plan_id, symbols=ctx.get("symbols") or [], text=text,
-        )
-        try:
-            from scripts.lib.cio_plans import CIOPlanStore
-            from scripts.lib.cio_plan_enrichment import enrich_plan
-            store = CIOPlanStore()
-            plan_obj = store.get_plan(new_plan_id) if new_plan_id else None
-            if plan_obj:
-                enr = enrich_plan(
-                    plan_obj,
-                    source="OPERATOR_MESSAGE",
-                    wake_id=str(wake_id or message_id_s),
-                    extra_context={
-                        "operator_text": text[:500],
-                        "symbols": ctx.get("symbols"),
-                        "channel": channel,
-                    },
-                    plan_store=store,
-                )
-                plan_obj = enr.get("plan") or plan_obj
-                llm_deferred = plan_obj.get("narrative_source") != "llm"
-                advisory = {
-                    "summary": plan_obj.get("summary") or advisory.get("summary"),
-                    "evidence_refs": plan_obj.get("evidence_refs") or advisory.get("evidence_refs"),
-                    "options": plan_obj.get("options") or advisory.get("options"),
-                    "recommendation": plan_obj.get("recommendation") or advisory.get("recommendation"),
-                    "risks": plan_obj.get("risks") or advisory.get("risks"),
-                    "revisit_at": plan_obj.get("revisit_at") or advisory.get("revisit_at"),
-                    "llm_deferred": llm_deferred,
-                    "deep_links": plan_obj.get("cc_deep_links") or advisory.get("deep_links"),
-                }
-        except Exception:
-            llm_deferred = True
-
-    # P3/P6: thesis pin + CC deep links from plan
-    thesis_pin = None
-    sit_type = "S0_OPERATOR_CONVERSE"
-    plan_links = advisory.get("deep_links")
-    plan_symbols = ctx.get("symbols") or []
-    if not dry_run and new_plan_id:
-        try:
-            from scripts.lib.cio_plans import CIOPlanStore
-            pref = CIOPlanStore().get_plan(new_plan_id)
-            if pref:
-                thesis_pin = pref.get("thesis_version")
-                sit_type = pref.get("situation_type") or sit_type
-                plan_links = pref.get("cc_deep_links") or plan_links
-                plan_symbols = pref.get("symbols") or plan_symbols
-                goal_id = goal_id or (
-                    (pref.get("linked_goal_ids") or [None])[0]
-                )
-        except Exception:
-            pass
-    if not thesis_pin:
-        try:
-            from scripts.lib.cio_theses import safe_current_pin
-            thesis_pin = safe_current_pin("desk")
-        except Exception:
-            pass
-
-    reply = format_reply_for_channel(
-        channel=channel,
-        summary=advisory["summary"],
-        evidence_refs=advisory.get("evidence_refs"),
-        options=advisory.get("options"),
-        recommendation=advisory.get("recommendation") or "",
-        risks=advisory.get("risks"),
-        plan_id=new_plan_id,
-        goal_id=goal_id,
-        action_id=action_id,
-        revisit_at=advisory.get("revisit_at"),
-        thesis_version=thesis_pin,
-        situation_type=sit_type,
-        llm_deferred=bool(advisory.get("llm_deferred", llm_deferred)),
-        deep_links=plan_links,
-        symbols=plan_symbols,
-    )
-
-    sent_mid = None
-    if not dry_run:
-        sent = _send(reply, reply_to=reply_to_message_id)
-        sent_mid = sent.get("message_id")
-        if sent_mid and new_plan_id:
-            record_plan_message(
-                new_plan_id,
-                sent_mid,
-                chat_id,
-                path=msg_map_path,
-                channel=channel,
-            )
-        # close wake trace (fail-soft) — same as TG
-        if wake_id:
-            try:
-                from scripts.lib.cio_wake_traces import close_trace
-                close_trace(
-                    wake_id=str(wake_id),
-                    outcome="deferred" if llm_deferred else "ok",
-                    plan_id=new_plan_id,
-                    situation_type="S0_OPERATOR_CONVERSE",
-                    agent_id="alex",
-                    source="OPERATOR_MESSAGE",
-                )
-            except Exception:
-                pass
-
+    sent = _send(reply, reply_to=reply_to_message_id)
     out.update({
         "handled": True,
-        "kind": "converse",
-        "event_id": event_id,
+        "kind": "operator_desk",
+        "desk_kind": desk.get("kind"),
+        "reply_source": desk.get("reply_source"),
+        "reply_model": desk.get("model"),
+        "pending_id": desk.get("pending_id"),
         "wake_job_id": wake_id,
-        "plan_id": new_plan_id,
-        "attached_plan_id": plan_id,
-        "outbound_message_id": sent_mid,
-        "telegram_out_message_id": sent_mid if channel == "telegram" else None,
-        "reply_preview": reply[:240],
-        "llm_deferred": bool(advisory.get("llm_deferred", llm_deferred)),
+        "event_id": event_id,
+        "plan_id": plan_id,
+        "reply_preview": reply[:500],
+        "outbound_message_id": sent.get("message_id"),
+        "telegram_out_message_id": sent.get("message_id") if channel == "telegram" else None,
     })
     return out
