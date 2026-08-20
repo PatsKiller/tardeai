@@ -516,6 +516,13 @@ def build_capital_uses(
                 "target_pct": round(target, 2),
                 "amount_usd": round(gap_usd, 2),
                 "recommendation": rec,
+                "notional": True,
+                "amount_kind": "notional_underweight_gap",
+                "note": (
+                    "Notional sector underweight gap — not a committed cash ticket; "
+                    "included in Total deploy request but labeled separately from "
+                    "fundable adds/re-entries."
+                ),
             })
 
     adds_usd = round(sum(a["amount_usd"] for a in adds), 2)
@@ -523,7 +530,10 @@ def build_capital_uses(
     new_usd = round(sum(n["amount_usd"] for n in new_positions), 2)
     rotation_usd = round(sum(s["amount_usd"] for s in rotation), 2)
     reserve_usd = round(_fnum(posture.get("reserve_usd")), 2)
-    total_use_usd = round(adds_usd + reentry_usd + new_usd + rotation_usd, 2)
+    fundable_usd = round(adds_usd + reentry_usd + new_usd, 2)
+    # Total deploy request = fundable tickets + notional sector-rotation gaps.
+    # Reserve is cash retained at the policy floor — never part of this total.
+    total_use_usd = round(fundable_usd + rotation_usd, 2)
 
     return {
         "adds": adds,
@@ -535,7 +545,29 @@ def build_capital_uses(
         "reentry_usd": reentry_usd,
         "new_positions_usd": new_usd,
         "sector_rotation_usd": rotation_usd,
+        "fundable_deploy_request_usd": fundable_usd,
+        "notional_sector_rotation_usd": rotation_usd,
         "total_deploy_request_usd": total_use_usd,
+        "reserve_excluded_from_deploy_request": True,
+        "deploy_request_reconciled": abs(
+            total_use_usd - (fundable_usd + rotation_usd)
+        ) < 0.02,
+        "component_labels": {
+            "adds_usd": "Add to holdings",
+            "new_positions_usd": "New positions",
+            "reentry_usd": "Re-entry",
+            "sector_rotation_usd": "Sector rotation (notional gap)",
+            "reserve": "Reserve (held, not deployed)",
+            "total_deploy_request_usd": (
+                "Total deploy request (fundable + notional sector gaps)"
+            ),
+            "fundable_deploy_request_usd": "Fundable deploy request",
+        },
+        "deploy_request_notes": [
+            "Total deploy request = adds + new positions + re-entry + sector rotation.",
+            "Sector rotation is a notional underweight gap, not a committed cash ticket.",
+            "Reserve is the cash-policy floor retained — excluded from Total deploy request.",
+        ],
     }
 
 
@@ -605,6 +637,33 @@ def build_capital_plan(
     net_raise = prospective_raise
     post_cash = round(cash + net_raise - net_deploy, 2)
     post_cash_pct = round(post_cash / value * 100.0, 2) if value > 0 else 0.0
+
+    investable = posture["investable_usd"]
+    gap_vs_investable = round(max(0.0, net_deploy - investable), 2)
+    deploy_funding = {
+        "recommended_deploy_usd": net_deploy,
+        "investable_cash_usd": investable,
+        "prospective_raise_usd": prospective_raise,
+        "deployable_usd": deployable,
+        "total_deploy_request_usd": uses["total_deploy_request_usd"],
+        "fundable_deploy_request_usd": uses.get("fundable_deploy_request_usd"),
+        "notional_sector_rotation_usd": uses.get("notional_sector_rotation_usd"),
+        "deploy_exceeds_investable_cash": net_deploy > investable + 0.01,
+        "gap_vs_investable_cash_usd": gap_vs_investable,
+        "gap_covered_by_prospective_raise": (
+            gap_vs_investable > 0 and prospective_raise + 0.01 >= gap_vs_investable
+        ),
+        "note": (
+            f"Recommended deploy ${net_deploy:,.0f} exceeds investable cash "
+            f"${investable:,.0f} by ${gap_vs_investable:,.0f}; the gap is funded "
+            f"only by prospective raise (trims/exits not yet cash), not by "
+            f"reserve or earmarked redeploy."
+            if gap_vs_investable > 0.01
+            else (
+                "Recommended deploy is within investable cash above the policy reserve."
+            )
+        ),
+    }
 
     # Free cash above earmark (still subject to reserve via investable)
     free_above_earmark = round(max(0.0, cash - earmarked), 2)
@@ -693,11 +752,20 @@ def build_capital_plan(
             "reentry_usd": uses["reentry_usd"],
             "new_positions_usd": uses["new_positions_usd"],
             "sector_rotation_usd": uses["sector_rotation_usd"],
+            "fundable_deploy_request_usd": uses.get("fundable_deploy_request_usd"),
+            "notional_sector_rotation_usd": uses.get("notional_sector_rotation_usd"),
             "total_deploy_request_usd": uses["total_deploy_request_usd"],
+            "reserve_excluded_from_deploy_request": uses.get(
+                "reserve_excluded_from_deploy_request", True
+            ),
+            "deploy_request_reconciled": uses.get("deploy_request_reconciled", True),
+            "component_labels": uses.get("component_labels") or {},
+            "deploy_request_notes": uses.get("deploy_request_notes") or [],
         },
         "net_recommended_deploy_usd": net_deploy,
         "net_recommended_raise_usd": net_raise,
         "deployable_usd": deployable,
+        "deploy_funding": deploy_funding,
         "post_plan_cash_usd": post_cash,
         "post_plan_cash_pct": post_cash_pct,
         "cash_ledger": ledger,

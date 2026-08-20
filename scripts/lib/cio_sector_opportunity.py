@@ -20,6 +20,7 @@ from __future__ import annotations
 import hashlib
 import json
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Callable, Optional
 
 # Executor signature matches db_adapter._execute(sql, params=None, fetch=None).
@@ -51,7 +52,14 @@ VWAP_EXTENDED_RATIO = 1.03
 
 # Fallback comfort target when no sector target is configured (operator comfort
 # line, matching rotation_sector_targets.default_comfort_pct).
+# This is a MODEL DEFAULT / PLACEHOLDER — not a researched per-sector IPS target.
 DEFAULT_SECTOR_TARGET_PCT = 18.0
+TARGET_SOURCE_MODEL_PORTFOLIO = "model_portfolio"
+TARGET_SOURCE_ROTATION_COMFORT = "rotation_comfort"
+TARGET_SOURCE_PLACEHOLDER = "model_default_placeholder"
+TARGET_LABEL_PLACEHOLDER = (
+    f"placeholder / model default ({DEFAULT_SECTOR_TARGET_PCT:.0f}%) — not a researched sector target"
+)
 
 # Sector-name normalization (momentum engine canonical ← aliases from other sources).
 SECTOR_ALIASES = {
@@ -92,6 +100,149 @@ def is_pseudo_sector(name: Any) -> bool:
         if re.match(r"^[A-Za-z]{1,5}[−\-–—/\\|][A-Za-z]{1,5}$", raw):
             return True
         return False
+
+
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[2]
+
+
+def _read_json(path: Path) -> dict[str, Any]:
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        return raw if isinstance(raw, dict) else {}
+    except Exception:
+        return {}
+
+
+def load_sector_target_map(
+    project_root: Optional[Path] = None,
+) -> dict[str, Any]:
+    """Load GICS sector targets from existing configs — never invent numbers.
+
+    Preference order per sector:
+      1. config/model_portfolio.json ``sector_targets`` (canonical Model Portfolio)
+      2. config/rotation_sector_targets.json themes that canonicalize to a GICS sector
+         (e.g. theme ``Energy`` → Energy 5%)
+      3. no entry → callers fall back to DEFAULT_SECTOR_TARGET_PCT and must label it
+         as a model-default placeholder
+
+    Returns::
+      {
+        "targets": {canonical_sector: pct},
+        "sources": {canonical_sector: source_code},
+        "default_pct": 18.0,
+        "configs_loaded": [...],
+      }
+    """
+    root = Path(project_root) if project_root else _repo_root()
+    targets: dict[str, float] = {}
+    sources: dict[str, str] = {}
+    configs_loaded: list[str] = []
+
+    mp = _read_json(root / "config" / "model_portfolio.json")
+    mp_sectors = mp.get("sector_targets") or {}
+    if isinstance(mp_sectors, dict) and mp_sectors:
+        configs_loaded.append("config/model_portfolio.json")
+        for key, cfg in mp_sectors.items():
+            if not isinstance(cfg, dict):
+                continue
+            pct = cfg.get("target_pct")
+            if pct is None:
+                continue
+            # snake_case keys → "communication services" etc.
+            canon = canonical_sector(str(key).replace("_", " "))
+            if canon in CANONICAL_SECTORS:
+                targets[canon] = float(pct)
+                sources[canon] = TARGET_SOURCE_MODEL_PORTFOLIO
+
+    rot = _read_json(root / "config" / "rotation_sector_targets.json")
+    themes = rot.get("themes") or {}
+    if isinstance(themes, dict) and themes:
+        configs_loaded.append("config/rotation_sector_targets.json")
+        for theme, cfg in themes.items():
+            if not isinstance(cfg, dict):
+                continue
+            pct = cfg.get("target")
+            if pct is None:
+                continue
+            canon = canonical_sector(theme)
+            if canon not in CANONICAL_SECTORS:
+                continue
+            # Model portfolio wins when both exist; rotation only fills gaps.
+            if canon in targets:
+                continue
+            targets[canon] = float(pct)
+            sources[canon] = TARGET_SOURCE_ROTATION_COMFORT
+
+    return {
+        "targets": targets,
+        "sources": sources,
+        "default_pct": DEFAULT_SECTOR_TARGET_PCT,
+        "configs_loaded": configs_loaded,
+        "authority": "READ_ONLY_ADVISORY",
+    }
+
+
+def target_honesty_for(
+    target_pct: Optional[float],
+    *,
+    configured_source: Optional[str] = None,
+) -> dict[str, Any]:
+    """Label whether a sector target is configured policy vs placeholder default."""
+    if configured_source:
+        if configured_source == TARGET_SOURCE_MODEL_PORTFOLIO:
+            label = "model portfolio target"
+        elif configured_source == TARGET_SOURCE_ROTATION_COMFORT:
+            label = "rotation comfort target"
+        else:
+            label = str(configured_source)
+        return {
+            "target_source": configured_source,
+            "target_label": label,
+            "is_placeholder": False,
+        }
+    # Unconfigured → model default placeholder (do not present as researched).
+    pct = float(target_pct) if target_pct is not None else DEFAULT_SECTOR_TARGET_PCT
+    if abs(pct - DEFAULT_SECTOR_TARGET_PCT) < 0.011:
+        return {
+            "target_source": TARGET_SOURCE_PLACEHOLDER,
+            "target_label": TARGET_LABEL_PLACEHOLDER,
+            "is_placeholder": True,
+        }
+    return {
+        "target_source": TARGET_SOURCE_PLACEHOLDER,
+        "target_label": f"unconfigured fallback ({pct:g}%) — not a researched sector target",
+        "is_placeholder": True,
+    }
+
+
+def annotate_sector_targets_honesty(
+    opportunities: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Synthesis-level honesty when every target is the identical placeholder."""
+    opps = [o for o in opportunities if isinstance(o, dict)]
+    pcts = [
+        o.get("target_posture_pct")
+        for o in opps
+        if o.get("target_posture_pct") is not None
+    ]
+    sources = {str(o.get("target_source") or "") for o in opps}
+    all_placeholder = bool(opps) and sources <= {TARGET_SOURCE_PLACEHOLDER, ""}
+    identical = False
+    if len(pcts) >= 2:
+        identical = all(abs(float(p) - float(pcts[0])) < 0.011 for p in pcts)
+    if identical and abs(float(pcts[0]) - DEFAULT_SECTOR_TARGET_PCT) < 0.011:
+        all_placeholder = True
+    return {
+        "all_targets_identical": identical,
+        "all_targets_placeholder": all_placeholder,
+        "identical_target_pct": round(float(pcts[0]), 2) if identical else None,
+        "note": (
+            TARGET_LABEL_PLACEHOLDER
+            if all_placeholder
+            else "Sector targets include configured model-portfolio and/or rotation comfort values."
+        ),
+    }
 
 
 def canonical_sector(name: Any) -> str:
@@ -299,6 +450,7 @@ def build_sector_opportunity(
     sector_row: dict[str, Any],
     *,
     target_pct: Optional[float] = None,
+    target_source: Optional[str] = None,
     capital_usd: Optional[float] = None,
     candidates: Optional[list[dict[str, Any]]] = None,
     now: Optional[datetime] = None,
@@ -321,9 +473,16 @@ def build_sector_opportunity(
     research = [c for c in cands if readiness_map[c["symbol"]] == "NEEDS_RESEARCH"]
     extended = [c for c in cands if readiness_map[c["symbol"]] == "TOO_EXTENDED"]
 
-    target = target_pct if target_pct is not None else DEFAULT_SECTOR_TARGET_PCT
+    configured = target_pct is not None
+    target = target_pct if configured else DEFAULT_SECTOR_TARGET_PCT
+    honesty = target_honesty_for(
+        target,
+        configured_source=(
+            target_source or TARGET_SOURCE_ROTATION_COMFORT
+        ) if configured else None,
+    )
     rec = deployment_recommendation(
-        sector["state"], sector["book_pct"], target_pct, capital_usd, len(ready)
+        sector["state"], sector["book_pct"], target, capital_usd, len(ready)
     )
 
     opportunity = is_opportunity_state(sector["state"])
@@ -348,7 +507,10 @@ def build_sector_opportunity(
         "slope": sector["slope"],
         "rs_score": sector["rs_score"],
         "current_exposure_pct": sector["book_pct"],
-        "target_posture_pct": round(target, 2),
+        "target_posture_pct": round(float(target), 2),
+        "target_source": honesty["target_source"],
+        "target_label": honesty["target_label"],
+        "target_is_placeholder": bool(honesty["is_placeholder"]),
         "potential_capital_usd": round(float(capital_usd or 0.0), 2),
         "candidates": top_candidates,
         "candidate_counts": {
@@ -381,6 +543,7 @@ def synthesize_sector_opportunities(
     sector_rows: list[dict[str, Any]],
     *,
     sector_targets: Optional[dict[str, float]] = None,
+    sector_target_sources: Optional[dict[str, str]] = None,
     capital_usd: Optional[float] = None,
     candidates: Optional[list[dict[str, Any]]] = None,
     now: Optional[datetime] = None,
@@ -390,9 +553,12 @@ def synthesize_sector_opportunities(
 
     Only LEADING/IMPROVING sectors are emitted by default (the "improving"
     acceptance shape). `sector_targets` maps canonical sector name → comfort pct.
+    When a target is missing, DEFAULT_SECTOR_TARGET_PCT is used and labeled as a
+    placeholder — never presented as a researched IPS target.
     """
     now = now or datetime.now(timezone.utc)
     targets = sector_targets or {}
+    src_map = sector_target_sources or {}
 
     opportunities: list[dict[str, Any]] = []
     for row in sector_rows or []:
@@ -400,9 +566,21 @@ def synthesize_sector_opportunities(
         if sector is None:
             continue
         target = _lookup_target(targets, sector["sector"])
+        src = None
+        if target is not None:
+            # Prefer explicit source map; fall back to model_portfolio if present in map.
+            canon = sector["sector"]
+            src = src_map.get(canon) or src_map.get(canonical_sector(canon))
+            if not src:
+                # Configured numeric target without source → treat as rotation/comfort.
+                src = TARGET_SOURCE_ROTATION_COMFORT
         opp = build_sector_opportunity(
-            row, target_pct=target, capital_usd=capital_usd,
-            candidates=candidates, now=now,
+            row,
+            target_pct=target,
+            target_source=src if target is not None else None,
+            capital_usd=capital_usd,
+            candidates=candidates,
+            now=now,
         )
         if opp.get("opportunity") or include_non_opportunity:
             opportunities.append(opp)
@@ -419,6 +597,7 @@ def synthesize_sector_opportunities(
     )
 
     digest_raw = "|".join(o["opportunity_key"] for o in opportunities)
+    honesty = annotate_sector_targets_honesty(opportunities)
     return {
         "computed_at": now.isoformat(),
         "digest": hashlib.sha256(digest_raw.encode("utf-8")).hexdigest(),
@@ -426,6 +605,7 @@ def synthesize_sector_opportunities(
         "opportunity_count": sum(1 for o in opportunities if o.get("opportunity")),
         "capital_usd": round(float(capital_usd or 0.0), 2),
         "opportunities": opportunities,
+        "sector_target_honesty": honesty,
     }
 
 
@@ -453,7 +633,16 @@ def render_statement(opp: dict[str, Any]) -> str:
     exposure = opp.get("current_exposure_pct")
     exposure_s = f"{exposure:.1f}%" if exposure is not None else "unknown"
     target = opp.get("target_posture_pct")
-    target_s = f"{target:.0f}%" if target is not None else "no explicit target"
+    if opp.get("target_is_placeholder"):
+        target_s = (
+            f"{target:.0f}% (placeholder / model default — not researched)"
+            if target is not None
+            else "no explicit target"
+        )
+        target_phrase = "Placeholder/model-default posture"
+    else:
+        target_s = f"{target:.0f}%" if target is not None else "no explicit target"
+        target_phrase = "Policy/target posture"
     capital = opp.get("potential_capital_usd") or 0.0
 
     cands = opp.get("candidates") or []
@@ -475,7 +664,7 @@ def render_statement(opp: dict[str, Any]) -> str:
 
     return (
         f"Sector {sector} {verb}. Current portfolio exposure = {exposure_s}. "
-        f"Policy/target posture = {target_s}. Potential incremental capital = "
+        f"{target_phrase} = {target_s}. Potential incremental capital = "
         f"${capital:,.0f}. Best current candidates: {cand_s}. "
         f"I recommend {rec}."
     )
@@ -536,15 +725,38 @@ def build_synthesis_from_executor(
     executor: Executor,
     *,
     sector_targets: Optional[dict[str, float]] = None,
+    sector_target_sources: Optional[dict[str, str]] = None,
     capital_usd: Optional[float] = None,
     now: Optional[datetime] = None,
+    project_root: Optional[Path] = None,
 ) -> dict[str, Any]:
-    """Convenience: read inputs and synthesize in one call."""
+    """Convenience: read inputs and synthesize in one call.
+
+    When ``sector_targets`` is omitted, loads existing config targets via
+    ``load_sector_target_map`` (model_portfolio + GICS-canonical rotation themes).
+    """
     inputs = fetch_sector_opportunity_inputs(executor, capital_usd=capital_usd)
-    return synthesize_sector_opportunities(
+    sources = sector_target_sources
+    targets = sector_targets
+    loaded_meta: Optional[dict[str, Any]] = None
+    if targets is None:
+        loaded_meta = load_sector_target_map(project_root=project_root)
+        targets = loaded_meta.get("targets") or {}
+        sources = loaded_meta.get("sources") or {}
+    result = synthesize_sector_opportunities(
         inputs["sector_rows"],
-        sector_targets=sector_targets,
+        sector_targets=targets,
+        sector_target_sources=sources,
         capital_usd=inputs["capital_usd"],
         candidates=inputs["candidates"],
         now=now,
     )
+    if loaded_meta is not None:
+        result = dict(result)
+        result["sector_target_map"] = {
+            "targets": loaded_meta.get("targets") or {},
+            "sources": loaded_meta.get("sources") or {},
+            "configs_loaded": loaded_meta.get("configs_loaded") or [],
+            "default_pct": loaded_meta.get("default_pct"),
+        }
+    return result

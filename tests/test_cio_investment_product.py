@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from scripts.lib.cio_investment_product import (
+    _fmt_num,
     adjudicate_reentry,
     apply_governed_verdicts,
     build_investment_product_synthesis_fn,
@@ -13,6 +14,38 @@ from scripts.lib.cio_investment_product import (
     persist_product,
 )
 from scripts.cio_wake_dispatch_entrypoint import main as entry_src
+
+
+def test_fmt_num_rounds_and_strips_zeros():
+    assert _fmt_num(1.3469600000000002) == "1.35"
+    assert _fmt_num(1.5995149999999998) == "1.6"
+    assert _fmt_num(85.0) == "85"
+    assert _fmt_num(2.10) == "2.1"
+    assert _fmt_num(None) == "?"
+    assert _fmt_num("x") == "x"
+
+
+def test_zone_and_pct_above_exit_rounded():
+    rec = adjudicate_reentry(
+        {
+            "symbol": "SCHG",
+            "reentry_signal": "IN_ZONE",
+            "last_exit_price": 90,
+            "current_price": 92,
+            "reentry_zone_low": 1.3469600000000002,
+            "reentry_zone_high": 1.5995149999999998,
+            "pct_above_exit": 2.1000000000000001,
+        },
+        qitems=[],
+        lessons={"lessons": []},
+        fs_ok=False,
+        infl={"lesson_enhanced": False},
+    )
+    assert "1.35–1.6" in rec["setup"]
+    assert rec["pct_above_exit"] == 2.1
+    # thesis may supply what_changed; mechanical fallback must still round pct
+    if rec.get("what_changed_since_exit") in (None, "DATA_UNAVAILABLE"):
+        assert "2.1% vs exit" in rec["what_happened_since"]
 
 
 @pytest.fixture

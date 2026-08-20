@@ -64,6 +64,102 @@ TIER_SLA = {
 TIER_WEIGHT = {"T0-HOLD": 1.0, "T0-PROP": 0.9, "T1-WATCH": 0.6, "T2-INCUB": 0.3, "T3-COLD": 0.1}
 EXTERNAL_LANES = {"deepseek", "claude"}
 
+# Thesis-driven / RAG-first commissioning (P1.7). Flags are authoritative for
+# AGENT_JOB_PRODUCER_MAP and tests — never invent thesis text.
+THESIS_DRIVEN = True
+RAG_FIRST = True
+# R7.1 practical order when converting autonomous jobs toward thesis gaps:
+R71_PIPELINE_ORDER = (
+    "gap",
+    "rag_support",
+    "rag_contradict",
+    "structured",
+    "acquire_if_needed",
+    "synthesize",
+)
+
+
+def thesis_driven_enabled() -> bool:
+    raw = os.getenv("RESEARCH_THESIS_DRIVEN", "1").strip().lower()
+    return raw not in {"0", "false", "no", "off"} and THESIS_DRIVEN
+
+
+def rag_first_enabled() -> bool:
+    raw = os.getenv("RESEARCH_RAG_FIRST", "1").strip().lower()
+    return raw not in {"0", "false", "no", "off"} and RAG_FIRST
+
+
+def build_thesis_gap_commission(
+    symbol: str,
+    *,
+    tier: str,
+    gap_request: dict | None = None,
+    root: Path | None = None,
+) -> dict | None:
+    """Build a thesis-gap enqueue payload when gaps exist. Never invents thesis text.
+
+    Returns None when no existing gap/request is available (caller keeps generic path).
+    """
+    if not thesis_driven_enabled():
+        return None
+    req = gap_request
+    if req is None:
+        try:
+            from scripts.lib.symbol_thesis_research import research_requests_for_symbol
+            reqs = research_requests_for_symbol(symbol, root=root)
+            req = reqs[0] if reqs else None
+        except Exception:
+            req = None
+    if not isinstance(req, dict):
+        return None
+    thesis_id = req.get("thesis_id")
+    gap = req.get("research_gap") or req.get("research_gap_id")
+    question = req.get("specific_question")
+    if not thesis_id or not question:
+        return None
+    gap_id = (
+        req.get("research_gap_id")
+        or req.get("request_id")
+        or f"gap_{symbol}_{str(gap)[:40]}".replace(" ", "_")[:80]
+    )
+    materiality = "T1" if str(tier).startswith("T0") or tier == "T1-WATCH" else "T1"
+    return {
+        "thesis_id": thesis_id,
+        "thesis_version": req.get("thesis_version"),
+        "research_gap_id": gap_id,
+        "research_gap": gap,
+        "specific_question": question,  # from coverage gap machinery — not invented
+        "RAG_FIRST": True,
+        "rag_first": rag_first_enabled(),
+        "materiality": materiality,
+        "pipeline_order": list(R71_PIPELINE_ORDER),
+        "thesis_driven": True,
+        "request_type": "thesis_gap_research",
+        "note": f"{tier} thesis-gap research (RAG-first); gap={str(gap)[:80]}",
+    }
+
+
+def load_high_value_thesis_gaps(
+    symbols: list[str],
+    *,
+    root: Path | None = None,
+    limit: int = 40,
+) -> dict[str, dict]:
+    """Map symbol → first existing thesis-gap request. Fail-soft; never invents."""
+    out: dict[str, dict] = {}
+    for sym in symbols[: max(0, int(limit))]:
+        s = str(sym or "").upper().strip()
+        if not s or s in out:
+            continue
+        try:
+            from scripts.lib.symbol_thesis_research import research_requests_for_symbol
+            reqs = research_requests_for_symbol(s, root=root)
+        except Exception:
+            reqs = []
+        if reqs:
+            out[s] = reqs[0]
+    return out
+
 
 def _q(sql, params=()):
     from db_adapter import _execute
@@ -342,12 +438,46 @@ QUESTION = ("Is {sym} a sound {kind} right now? Flag any NEW catalysts, risks, o
             "last few days. Give a clear recommendation and what would change your mind. Advisory only.")
 
 
-def _enqueue_local(sym, tier, deep=False) -> dict:
+def _enqueue_local(sym, tier, deep=False, *, thesis_gap: dict | None = None) -> dict:
     """Queue a Flash-first research job; watchlist_agent_jobs workers drain it.
-    Canonical governance: dedupe / reuse / backpressure (no duplicate paid work)."""
+    Canonical governance: dedupe / reuse / backpressure (no duplicate paid work).
+
+    When thesis_gap is provided (thesis_driven path), payload carries thesis_id,
+    research_gap_id, specific_question, RAG_FIRST — never invents thesis text.
+    """
     agent = "full_chain" if deep else "maria"
     prio = 1 if tier.startswith("T0") else (3 if tier == "T1-WATCH" else 5)
     uni = "T0" if str(tier).startswith("T0") else ("T1" if "T1" in str(tier) else ("T2" if "T2" in str(tier) else "T3"))
+    commission = thesis_gap or (
+        build_thesis_gap_commission(sym, tier=tier)
+        if thesis_driven_enabled() and (str(tier).startswith("T0") or tier == "T1-WATCH")
+        else None
+    )
+    request_type = "scheduled_research"
+    note = f"{tier} scheduled research ({'deep' if deep else 'standard'})"
+    payload: dict = {}
+    thesis_id = None
+    research_gap_id = None
+    material = str(tier).startswith("T0")
+    if commission:
+        request_type = str(commission.get("request_type") or "thesis_gap_research")
+        note = str(commission.get("note") or note)
+        thesis_id = commission.get("thesis_id")
+        research_gap_id = commission.get("research_gap_id")
+        material = True  # high-value thesis gaps are material (T1)
+        uni = "T1" if uni not in {"T0", "T1"} else uni
+        payload = {
+            "thesis_id": thesis_id,
+            "thesis_version": commission.get("thesis_version"),
+            "research_gap_id": research_gap_id,
+            "research_gap": commission.get("research_gap"),
+            "specific_question": commission.get("specific_question"),
+            "RAG_FIRST": True,
+            "rag_first": bool(commission.get("rag_first", True)),
+            "materiality": commission.get("materiality") or "T1",
+            "pipeline_order": commission.get("pipeline_order") or list(R71_PIPELINE_ORDER),
+            "thesis_driven": True,
+        }
     try:
         from db_adapter import _execute, _get_conn
         conn = _get_conn()
@@ -357,49 +487,76 @@ def _enqueue_local(sym, tier, deep=False) -> dict:
         res = governed_enqueue(cur, EnqueueRequest(
             symbol=sym,
             requested_agent=agent,
-            request_type="scheduled_research",
+            request_type=request_type,
             submitted_from="research_scheduler",
             priority=prio,
-            note=f"{tier} scheduled research ({'deep' if deep else 'standard'})",
+            note=note,
             job_id=job_id,
             universe_tier=uni,
-            material=str(tier).startswith("T0"),
+            material=material,
+            payload=payload,
+            thesis_id=thesis_id,
+            research_gap_id=research_gap_id,
         ))
         conn.commit()
         conn.close()
         if res.action == "INSERT":
-            return {"ok": True, "tail": f"enqueued {agent} p{prio}"}
-        return {"ok": True, "tail": f"{res.action.lower()} {agent} ({res.reason})"}
+            return {"ok": True, "tail": f"enqueued {agent} p{prio}", "thesis_id": thesis_id,
+                    "request_type": request_type, "payload": payload}
+        return {"ok": True, "tail": f"{res.action.lower()} {agent} ({res.reason})",
+                "thesis_id": thesis_id, "request_type": request_type, "payload": payload}
     except Exception as e:
         try:
             from db_adapter import _execute
             dup = _execute("""SELECT 1 FROM watchlist_agent_jobs WHERE symbol=%s AND requested_agent=%s
                               AND status IN ('queued','running') LIMIT 1""", (sym, agent), fetch="one")
             if dup:
-                return {"ok": True, "tail": "already queued"}
+                return {"ok": True, "tail": "already queued", "thesis_id": thesis_id}
             job_id = f"sched-{sym}-{agent}-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
+            import json as _json
             _execute("""INSERT INTO watchlist_agent_jobs
                         (id, symbol, requested_agent, request_type, note, priority, status, submitted_from, payload, created_at)
-                        VALUES (%s,%s,%s,%s,%s,%s,'queued','research_scheduler','{}',NOW())
+                        VALUES (%s,%s,%s,%s,%s,%s,'queued','research_scheduler',%s,NOW())
                         ON CONFLICT (id) DO NOTHING""",
-                     (job_id, sym, agent, "scheduled_research",
-                      f"{tier} scheduled research ({'deep' if deep else 'standard'})", prio), fetch=None)
-            return {"ok": True, "tail": f"enqueued {agent} p{prio}"}
+                     (job_id, sym, agent, request_type, note, prio,
+                      _json.dumps(payload or {})), fetch=None)
+            return {"ok": True, "tail": f"enqueued {agent} p{prio}", "thesis_id": thesis_id,
+                    "request_type": request_type, "payload": payload}
         except Exception as e2:
             return {"ok": False, "tail": str(e2)[:100]}
 
 
-
-def dispatch(sym, lane, tier, apply) -> dict:
+def dispatch(sym, lane, tier, apply, *, thesis_gap: dict | None = None) -> dict:
     """Route by lane kind: queue lanes enqueue local work; external lanes call the researcher."""
     meta = LANES.get(lane, {})
     if meta.get("dispatch") == "queue":
         if not apply:
+            commission = thesis_gap or (
+                build_thesis_gap_commission(sym, tier=tier)
+                if thesis_driven_enabled() and (str(tier).startswith("T0") or tier == "T1-WATCH")
+                else None
+            )
+            if commission:
+                return {
+                    "ok": True,
+                    "tail": f"would enqueue {lane} thesis_gap thesis_id={commission.get('thesis_id')}",
+                    "thesis_id": commission.get("thesis_id"),
+                    "payload": commission,
+                    "request_type": commission.get("request_type"),
+                }
             return {"ok": True, "tail": f"would enqueue {lane}"}
-        return _enqueue_local(sym, tier, deep=(lane == "internal-deep"))
+        return _enqueue_local(sym, tier, deep=(lane == "internal-deep"), thesis_gap=thesis_gap)
     # external (deepseek)
     kind = "position to hold" if tier == "T0-HOLD" else ("proposal to trade" if tier == "T0-PROP" else "candidate")
-    q = QUESTION.format(sym=sym, kind=kind)
+    commission = thesis_gap or (
+        build_thesis_gap_commission(sym, tier=tier)
+        if thesis_driven_enabled() and (str(tier).startswith("T0") or tier == "T1-WATCH")
+        else None
+    )
+    if commission and commission.get("specific_question"):
+        q = str(commission["specific_question"])
+    else:
+        q = QUESTION.format(sym=sym, kind=kind)
     prio = "P0" if tier.startswith("T0") else ("P1" if tier == "T1-WATCH" else "P2")
     cmd = [PY, RESEARCHER, "--lane", lane, "--symbol", sym, "--question", q,
            "--priority", prio, "--trigger", "research_scheduler"]
@@ -408,7 +565,13 @@ def dispatch(sym, lane, tier, apply) -> dict:
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=CALL_TIMEOUT)
         ok = "status=sent" in (r.stdout + r.stderr) or "recommendation:" in r.stdout
-        return {"ok": ok, "tail": (r.stdout or r.stderr or "")[-160:]}
+        return {
+            "ok": ok,
+            "tail": (r.stdout or r.stderr or "")[-160:],
+            "thesis_id": (commission or {}).get("thesis_id"),
+            "request_type": (commission or {}).get("request_type") or "scheduled_research",
+            "rag_first": rag_first_enabled() if commission else False,
+        }
     except subprocess.TimeoutExpired:
         return {"ok": False, "tail": "timeout"}
     except Exception as e:
@@ -477,8 +640,19 @@ def run(mode, apply, budget):
         ordered = due
         lanes_for = lambda t: TIER_SLA[t][2]
 
-    print(f"[scheduler] mode={mode} due={len(ordered)} external_budget={budget} apply={apply}")
+    print(f"[scheduler] mode={mode} due={len(ordered)} external_budget={budget} apply={apply} "
+          f"thesis_driven={thesis_driven_enabled()} rag_first={rag_first_enabled()}")
     cats = catalyst_signals()
+    # Preload thesis gaps for high-value symbols (T0/T1) — convert commissioning
+    # toward thesis-gap requests when gaps exist. Never invent thesis text.
+    gap_by_sym: dict = {}
+    if thesis_driven_enabled():
+        hv = [
+            item["symbol"] for item in ordered
+            if str(item.get("tier") or "").startswith("T0") or item.get("tier") == "T1-WATCH"
+        ]
+        gap_by_sym = load_high_value_thesis_gaps(hv)
+        print(f"[scheduler] thesis gaps available for {len(gap_by_sym)}/{len(hv)} high-value symbols")
     # Resume guard: in backfill, skip an external lane for symbols already covered within the skip window
     # (so a relaunch continues where the last run stopped instead of redoing the top of the priority list).
     fresh_ext = {}
@@ -498,6 +672,7 @@ def run(mode, apply, budget):
         sym, tier = item["symbol"], item["tier"]
         all_lanes = lanes_for(tier)
         catalyst = cats.get(sym, False)
+        thesis_gap = gap_by_sym.get(sym)
         # decide lanes for THIS symbol
         local_lanes = [l for l in all_lanes if LANES[l]["dispatch"] == "queue"]
         ext_lanes = [l for l in all_lanes if l in EXTERNAL_LANES and LANES[l]["auto"]]
@@ -511,12 +686,17 @@ def run(mode, apply, budget):
         if tier == "T1-WATCH" and ext_lanes:
             ext_lanes = [_lane_rotation(ext_lanes)[ext_rot % len(_lane_rotation(ext_lanes))]]; ext_rot += 1
         tag = f"{item.get('score',0):.0f}" if "score" in item else "-"
+        gap_tag = f" thesis_id={thesis_gap.get('thesis_id')}" if thesis_gap else ""
         # local lanes: always (cheap, queued)
         for lane in local_lanes:
-            print(f"  → {sym:6s} {tier:9s} lane={lane:13s} prio={tag}")
+            print(f"  → {sym:6s} {tier:9s} lane={lane:13s} prio={tag}{gap_tag}")
             if apply:
-                res = dispatch(sym, lane, tier, apply)
+                res = dispatch(sym, lane, tier, apply, thesis_gap=thesis_gap)
                 print(f"     {'ok' if res['ok'] else 'FAIL'}: {res['tail'][:80]}")
+            else:
+                res = dispatch(sym, lane, tier, False, thesis_gap=thesis_gap)
+                if thesis_gap and res.get("thesis_id"):
+                    print(f"     dry: {res['tail'][:100]}")
         # external lanes: budgeted (skip ones freshly covered this backfill — resume guard)
         for lane in ext_lanes:
             if sym in fresh_ext.get(lane, ()):
@@ -525,9 +705,9 @@ def run(mode, apply, budget):
                 print(f"[scheduler] external budget {budget} spent at {done} symbols — externals roll to next run (local still queued)")
                 ext_lanes = []
                 break
-            print(f"  → {sym:6s} {tier:9s} lane={lane:13s} prio={tag} catalyst={catalyst}")
+            print(f"  → {sym:6s} {tier:9s} lane={lane:13s} prio={tag} catalyst={catalyst}{gap_tag}")
             if apply:
-                res = dispatch(sym, lane, tier, apply)
+                res = dispatch(sym, lane, tier, apply, thesis_gap=thesis_gap)
                 print(f"     {'ok' if res['ok'] else 'FAIL'}: {res['tail'][:80]}")
                 time.sleep(1)
             spent += 1

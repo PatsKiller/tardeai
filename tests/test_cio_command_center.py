@@ -196,8 +196,14 @@ def test_capital_plan_projection():
     assert cp["cash_posture"] == "above policy band"
     assert any("Prospective raise" in s["label"] and s["usd"] == 623009.02 for s in cp["sources"])
     assert any("Earmarked" in s["label"] and s["usd"] == 560009.02 for s in cp["sources"])
-    assert any(u["label"] == "Total deploy request" and u["usd"] == 603114.7 for u in cp["uses"])
+    assert any(
+        "Total deploy request" in u["label"] and u["usd"] == 603114.7 for u in cp["uses"]
+    )
+    assert any("notional" in u["label"].lower() or "Reserve (held" in u["label"] for u in cp["uses"])
     assert cp.get("plan_digest")
+    assert cp.get("deploy_funding") is not None
+    assert cp["deploy_funding"]["deploy_exceeds_investable_cash"] is True
+    assert cp["deploy_funding"]["gap_vs_investable_cash_usd"] == round(603114.7 - 321622.3, 2)
 
 
 def test_capital_plan_empty_fail_soft():
@@ -217,6 +223,10 @@ def test_posture_concentration_and_heat():
     assert p["concentration"]["fire_pct"] == 12.0
     assert p["risk_heat"]["max_drawdown_pct"] == -21.2
     assert p["performance"]["benchmark_label"].startswith("55% SPY")
+    assert "20% ITA" in p["performance"]["benchmark_label"]
+    assert p["performance"]["benchmark_source"]
+    assert "blended" in p["performance"]["benchmark_source"].lower()
+    assert "defense sleeve" in p["performance"]["benchmark_source"].lower()
     assert p["thesis"]["stance"] == "Neutral · hold"
     assert p["sector_tilts"][0]["sector"] == "Energy"
 

@@ -440,10 +440,11 @@ def build_cio_now(
 def _money_rows(rows: Optional[dict[str, Any]], keys: tuple[str, ...],
                 labels: tuple[str, ...]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
+    custom = (rows or {}).get("component_labels") or {}
     for k, lbl in zip(keys, labels):
         v = _num((rows or {}).get(k))
         if v is not None:
-            out.append({"label": lbl, "usd": v})
+            out.append({"label": str(custom.get(k) or lbl), "usd": v, "key": k})
     return out
 
 
@@ -456,6 +457,7 @@ def build_capital_plan(plan: Optional[dict[str, Any]] = None) -> dict[str, Any]:
     p = plan or {}
     band = p.get("cash_policy_band") or {}
     src = p.get("capital_sources") or {}
+    uses_raw = p.get("capital_uses") or {}
     earmark = _num(
         p.get("cash_earmarked_redeploy_usd")
         or src.get("earmarked_redeploy_usd")
@@ -483,11 +485,14 @@ def build_capital_plan(plan: Optional[dict[str, Any]] = None) -> dict[str, Any]:
     if not any(s["label"] == "Prospective raise" for s in sources) and _num(src.get("total_raise_usd")) is not None:
         sources.append({"label": "Prospective raise", "usd": _num(src.get("total_raise_usd"))})
     uses = _money_rows(
-        p.get("capital_uses"),
+        uses_raw,
         ("adds_usd", "new_positions_usd", "reentry_usd", "sector_rotation_usd",
-         "reserve", "total_deploy_request_usd"),
-        ("Add to holdings", "New positions", "Re-entry", "Sector rotation",
-         "Reserve", "Total deploy request"),
+         "reserve", "fundable_deploy_request_usd", "total_deploy_request_usd"),
+        ("Add to holdings", "New positions", "Re-entry",
+         "Sector rotation (notional gap)",
+         "Reserve (held, not deployed)",
+         "Fundable deploy request",
+         "Total deploy request (fundable + notional sector gaps)"),
     )
     try:
         from scripts.lib.cio_decision_semantics import capital_plan_surface_digest
@@ -498,6 +503,25 @@ def build_capital_plan(plan: Optional[dict[str, Any]] = None) -> dict[str, Any]:
     free_unearmarked = _num(p.get("cash_free_unearmarked_usd"))
     if free_unearmarked is None and _num(p.get("cash_total_usd")) is not None:
         free_unearmarked = max(0.0, float(p.get("cash_total_usd") or 0) - float(earmark or 0))
+    deploy_funding = p.get("deploy_funding") or {}
+    if not deploy_funding:
+        investable = _num(p.get("cash_investable_usd"))
+        recommended = _num(p.get("net_recommended_deploy_usd"))
+        if investable is not None and recommended is not None:
+            gap = round(max(0.0, recommended - investable), 2)
+            deploy_funding = {
+                "recommended_deploy_usd": recommended,
+                "investable_cash_usd": investable,
+                "prospective_raise_usd": prospective,
+                "deployable_usd": _num(p.get("deployable_usd")),
+                "deploy_exceeds_investable_cash": recommended > investable + 0.01,
+                "gap_vs_investable_cash_usd": gap,
+                "note": (
+                    f"Recommended deploy exceeds investable cash by ${gap:,.0f}."
+                    if gap > 0.01
+                    else "Recommended deploy is within investable cash."
+                ),
+            }
     return {
         "cash_total_usd": _num(p.get("cash_total_usd")),
         "cash_reserved_usd": _num(p.get("cash_reserved_usd")),
@@ -513,6 +537,8 @@ def build_capital_plan(plan: Optional[dict[str, Any]] = None) -> dict[str, Any]:
         "recommended_raise_usd": prospective,  # prospective only
         "sources": sources,
         "uses": uses,
+        "deploy_funding": deploy_funding,
+        "deploy_request_notes": uses_raw.get("deploy_request_notes") or [],
         "post_plan_cash_usd": _num(p.get("post_plan_cash_usd")),
         "post_plan_cash_pct": _num(p.get("post_plan_cash_pct")),
         "account_cash": account_cash,
@@ -574,6 +600,9 @@ def build_posture(
             "state": state,
             "exposure_pct": _num(o.get("current_exposure_pct")),
             "target_pct": _num(o.get("target_posture_pct")),
+            "target_source": o.get("target_source"),
+            "target_label": o.get("target_label"),
+            "target_is_placeholder": bool(o.get("target_is_placeholder")),
             "recommendation": rec,
         })
 
@@ -589,6 +618,16 @@ def build_posture(
             constraints.append(f"{c.get('kind')}: {c.get('value')}")
 
     principles = list(th.get("principles") or [])[:4]
+
+    target_honesty = (sector_opportunities or {}).get("sector_target_honesty") or {}
+    bench_label = attr.get("benchmark_label")
+    bench_source = attr.get("benchmark_source") or (
+        "portfolio_performance_attribution blended policy "
+        "(55% SPY / 20% ITA / 25% AGG) — ITA is the 20% defense sleeve of the blend, "
+        "not a standalone portfolio target"
+        if bench_label
+        else None
+    )
 
     return {
         "thesis": {
@@ -607,11 +646,13 @@ def build_posture(
             "sortino": _num(attr.get("port_sortino")),
         },
         "sector_tilts": sector_tilts[:8],
+        "sector_target_honesty": target_honesty,
         "performance": {
             "portfolio_cagr": _num(attr.get("port_cagr")),
             "benchmark_cagr": _num(attr.get("bench_cagr")),
             "alpha_annualized": _num(attr.get("alpha_annualized")),
-            "benchmark_label": attr.get("benchmark_label"),
+            "benchmark_label": bench_label,
+            "benchmark_source": bench_source,
         },
         "income": {
             "total_usd": _num(inc.get("grand_total_income")),

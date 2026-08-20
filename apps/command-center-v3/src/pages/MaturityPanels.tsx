@@ -204,10 +204,13 @@ export function DailyIntelligencePanel() {
     </div>
     <div style={{ marginTop: 8, fontSize: 12 }}>
       overall={today.overall || data?.watchdog_state?.overall || '—'} ·
-      SHA {String(today.release_sha || '').slice(0, 12) || '—'} ·
-      provenance={today.provenance_status || '—'} ·
       last watchdog {data?.watchdog_state?.at || '—'}
     </div>
+    <details style={{ marginTop: 4, fontSize: 11, color: 'var(--text3)' }}>
+      <summary style={{ cursor: 'pointer' }}>Provenance</summary>
+      SHA {String(today.release_sha || '').slice(0, 12) || '—'} ·
+      status {today.provenance_status || '—'}
+    </details>
     <div style={{ marginTop: 6, fontSize: 12 }}>
       last system Telegram {data?.last_system_telegram?.at || 'NEVER'} ·
       last daily heartbeat {data?.last_daily_system_telegram?.at || 'NEVER'} ·
@@ -285,31 +288,138 @@ export function NotificationGatePanel() {
 
 export function TelegramReceiptsPanel() {
   const { data, loading, error } = useApi<any>('/api/v3/maturity/telegram-receipts', 30_000)
+  const receipts: any[] = Array.isArray(data?.receipts) ? data.receipts : []
+  const lastAttempt = data?.last_delivery_attempt
+  const lastSuccess = data?.last_success
+  const lastFailure = data?.last_failure
+  const mode = String(data?.delivery_mode || '—')
+  const lastBot = data?.last_delivery_bot || (lastSuccess as any)?.bot_channel
   return <div data-testid="cio-telegram-receipts" style={panel}>
     <div style={{ fontWeight: 800 }}>Telegram receipts</div>
+    <div style={{ marginTop: 4, fontSize: 12, color: 'var(--text3)' }}>
+      Delivery-mode is CIO-path policy only. PREPARE_ONLY ≠ nothing was ever sent —
+      check which bot actually delivered. Empty list means no recorded send on scanned paths.
+    </div>
     {loading && <div>Loading…</div>}
     {error && <div style={{ color: 'var(--amber)' }}>{String(error)}</div>}
     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '10px 0' }}>
-      <Badge>{`mode ${data?.delivery_mode || '—'}`}</Badge>
-      <Badge tone={data?.credentials_ready ? 'green' : 'amber'}>{`credentials_ready ${!!data?.credentials_ready}`}</Badge>
-      <Badge tone={data?.live_authorized ? 'green' : 'slate'}>{`live_authorized ${!!data?.live_authorized}`}</Badge>
+      <Badge tone={mode === 'CIO_ONLY_LIVE' ? 'green' : 'amber'}>{`mode ${mode}`}</Badge>
+      <Badge tone={data?.credentials_ready ? 'green' : 'amber'}>{`credentials ready ${!!data?.credentials_ready}`}</Badge>
+      <Badge tone={data?.live_authorized ? 'green' : 'slate'}>{`live authorized ${!!data?.live_authorized}`}</Badge>
       <Badge tone={data?.interdicted ? 'amber' : 'green'}>{`interdicted ${!!data?.interdicted}`}</Badge>
+      <Badge tone={data?.dedicated_cio_delivered ? 'green' : 'slate'}>{`CIO bot delivered ${!!data?.dedicated_cio_delivered}`}</Badge>
+      <Badge tone={data?.generic_ops_delivered ? 'green' : 'slate'}>{`generic bot delivered ${!!data?.generic_ops_delivered}`}</Badge>
+      {lastBot && <Badge>{`last delivery bot ${lastBot}`}</Badge>}
     </div>
-    <pre style={{ fontSize: 11, color: 'var(--text2)', whiteSpace: 'pre-wrap' }}>{JSON.stringify({
-      last_attempt: data?.last_delivery_attempt,
-      last_success: data?.last_success,
-      last_failure: data?.last_failure,
-      receipts: data?.receipts,
-    }, null, 2)}</pre>
+    {data?.delivery_mode_note && (
+      <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 8 }}>{String(data.delivery_mode_note)}</div>
+    )}
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 8, marginBottom: 12 }}>
+      {[
+        ['Last attempt', lastAttempt],
+        ['Last success', lastSuccess],
+        ['Last failure', lastFailure],
+      ].map(([title, val]) => (
+        <div key={String(title)} style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 10 }}>
+          <div style={label}>{String(title)}</div>
+          <div style={{ fontSize: 12, marginTop: 4, color: 'var(--text1)', wordBreak: 'break-word' }}>
+            {val == null || val === ''
+              ? '—'
+              : typeof val === 'object'
+                ? Object.entries(val as Record<string, unknown>).slice(0, 6).map(([k, v]) => (
+                  <div key={k}><span style={{ color: 'var(--text3)' }}>{k.replace(/_/g, ' ')}</span>: {String(v ?? '—')}</div>
+                ))
+                : String(val)}
+          </div>
+        </div>
+      ))}
+    </div>
+    {receipts.length === 0 ? (
+      <div style={{ fontSize: 12, color: 'var(--text3)' }} data-testid="telegram-receipts-empty">
+        No receipts recorded on the scanned delivery paths.
+      </div>
+    ) : (
+      <Table
+        cols={['at', 'bot', 'ok', 'message_id', 'kind', 'subject']}
+        rows={receipts.slice(-40).reverse().map((r: any) => [
+          String(r.at || r.ts || r.timestamp || '—').slice(0, 19),
+          r.bot_channel || r.bot || r.bot_name || r.sender || '—',
+          r.ok === true ? 'ok' : r.ok === false ? 'fail' : (r.status || 'prep'),
+          r.message_id ?? '—',
+          r.event_type || r.channel || r.kind || '—',
+          String(r.subject || r.dedupe_key || r.symbol || r.detail || '').slice(0, 80) || '—',
+        ])}
+      />
+    )}
   </div>
 }
 
 export function SensesEvidencePanel() {
-  const { data } = useApi<any>('/api/v3/maturity/senses', 60_000)
+  const { data, loading, error } = useApi<any>('/api/v3/maturity/senses', 60_000)
+  const receipts: any[] = Array.isArray(data?.financial_senses_receipts)
+    ? data.financial_senses_receipts
+    : Array.isArray(data?.receipts) ? data.receipts : []
+  const providers: any[] = Array.isArray(data?.fs_providers)
+    ? data.fs_providers
+    : Array.isArray(data?.fs_provider_status?.providers) ? data.fs_provider_status.providers : []
+  const unconfiguredProviders = Array.isArray(data?.fs_providers_unconfigured_or_denied)
+    ? data.fs_providers_unconfigured_or_denied
+    : providers.filter((p: any) => {
+      const lab = String(p.label || p.status || '').toLowerCase()
+      return lab.includes('denied') || lab.includes('unconfigured')
+    })
+  const unconfiguredReceipts = receipts.filter((r: any) => {
+    const st = String(r.status || r.result || r.quality || '').toUpperCase()
+    return st.includes('DENIED') || st.includes('NOT_CONFIGURED') || st.includes('UNCONFIGURED')
+  }).length
   return <div data-testid="cio-senses-evidence" style={panel}>
     <div style={{ fontWeight: 800 }}>Senses evidence</div>
-    <div style={{ marginTop: 6, fontSize: 12, color: 'var(--text3)' }}>Financial Senses receipts from AgentRunTrace / tool traces. Shadow-only; no execution influence.</div>
-    <pre style={{ fontSize: 11, whiteSpace: 'pre-wrap', color: 'var(--text2)' }}>{JSON.stringify(data?.financial_senses_receipts || [], null, 2)}</pre>
+    <div style={{ marginTop: 6, fontSize: 12, color: 'var(--text3)' }}>
+      Financial Senses receipts from AgentRunTrace / tool traces. Shadow-only; no execution influence.
+      {unconfiguredProviders.length > 0
+        ? ` · ${unconfiguredProviders.length} provider(s) labeled shadow/unconfigured or DENIED.`
+        : ''}
+      {unconfiguredReceipts > 0 ? ` · ${unconfiguredReceipts} receipt(s) denied or unconfigured.` : ''}
+      {data?.fs_provider_status?.shadow_enabled === false ? ' · AIF shadow OFF → DENIED' : ''}
+    </div>
+    {loading && <div>Loading…</div>}
+    {error && <div style={{ color: 'var(--amber)' }}>{String(error)}</div>}
+    {providers.length > 0 && (
+      <div style={{ marginTop: 10 }} data-testid="senses-provider-status">
+        <div style={label}>FS providers</div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', margin: '6px 0' }}>
+          {providers.map((p: any) => (
+            <Badge
+              key={String(p.provider)}
+              tone={String(p.label || '').includes('DENIED') || String(p.label || '').includes('unconfigured') ? 'amber' : 'slate'}
+            >{`${p.provider} ${p.label || p.status}`}</Badge>
+          ))}
+        </div>
+        <Table
+          cols={['provider', 'label', 'status', 'reason']}
+          rows={providers.map((p: any) => [p.provider, p.label, p.status, p.reason])}
+        />
+      </div>
+    )}
+    {receipts.length === 0 ? (
+      <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 10 }} data-testid="senses-evidence-empty">
+        No Financial Senses receipts in store yet.
+      </div>
+    ) : (
+      <div style={{ marginTop: 10 }}>
+        <Table
+          cols={['as of', 'provider', 'capability', 'status', 'facts', 'note']}
+          rows={receipts.slice(0, 40).map((r: any) => [
+            r.as_of || r.ts || r.at || '—',
+            r.fs_provider || r.provider || '—',
+            r.fs_capability || r.capability || '—',
+            r.status || r.result || r.quality || '—',
+            r.fact_count ?? r.facts_count ?? (Array.isArray(r.facts) ? r.facts.length : '—'),
+            String(r.reason || r.note || r.error || '').slice(0, 72) || '—',
+          ])}
+        />
+      </div>
+    )}
   </div>
 }
 

@@ -27436,26 +27436,26 @@ def _opportunity_queue_summary():
 
 
 def _sector_target_map() -> dict:
-    """Read config/rotation_sector_targets.json themes → GICS target map (fail-soft).
+    """GICS sector targets from existing configs (fail-soft).
 
-    Only theme names that canonicalize to one of the 11 canonical GICS sectors
-    contribute a sector target; thematic sleeves (Magnificent 7, AI mega-cap,
-    Semiconductors, etc.) are skipped because they are not sector-level targets.
-    Returns {} on any error.
+    Prefers ``config/model_portfolio.json`` sector_targets, then GICS-canonical
+    themes from ``config/rotation_sector_targets.json``. Does not invent numbers;
+    missing sectors fall through to the model-default placeholder in synthesis.
     """
     try:
-        from scripts.lib.cio_sector_opportunity import CANONICAL_SECTORS, canonical_sector
-        raw = _load_json(PROJECT_ROOT / "config" / "rotation_sector_targets.json") or {}
-        themes = raw.get("themes") or {}
-        out: dict[str, float] = {}
-        for theme, cfg in themes.items():
-            target = (cfg or {}).get("target")
-            if target is None:
-                continue
-            canon = canonical_sector(theme)
-            if canon in CANONICAL_SECTORS:
-                out[canon] = float(target)
-        return out
+        from scripts.lib.cio_sector_opportunity import load_sector_target_map
+        loaded = load_sector_target_map(project_root=PROJECT_ROOT)
+        return dict(loaded.get("targets") or {})
+    except Exception:
+        return {}
+
+
+def _sector_target_sources() -> dict:
+    """Parallel source labels for ``_sector_target_map`` (fail-soft)."""
+    try:
+        from scripts.lib.cio_sector_opportunity import load_sector_target_map
+        loaded = load_sector_target_map(project_root=PROJECT_ROOT)
+        return dict(loaded.get("sources") or {})
     except Exception:
         return {}
 
@@ -27473,7 +27473,11 @@ def _cio_sector_opportunities(query=None):
             "ok": True,
             "authority": "READ_ONLY_ADVISORY",
             **build_synthesis_from_executor(
-                _db_query, sector_targets=_sector_target_map(), capital_usd=capital
+                _db_query,
+                sector_targets=_sector_target_map(),
+                sector_target_sources=_sector_target_sources(),
+                capital_usd=capital,
+                project_root=PROJECT_ROOT,
             ),
         }
     except Exception as exc:

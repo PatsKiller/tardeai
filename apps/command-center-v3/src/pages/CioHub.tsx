@@ -4,6 +4,7 @@ import { useApi } from '../hooks/useApi'
 import { hubTitle, hubSubtitle } from '../lib/terminalHubChrome'
 import { SymbolThesisCard } from '../components/cio/SymbolThesisCard'
 import { NotificationGatePanel, SensesEvidencePanel, TelegramReceiptsPanel } from './MaturityPanels'
+import { cioLabel, formatAsOfET } from '../lib/cioLabels'
 
 /**
  * /v3/cio — the private investment office home (Phase 8).
@@ -145,14 +146,44 @@ type CapitalPlan = {
   post_plan_cash_usd: number | null
   post_plan_cash_pct: number | null
   cash_posture: string
+  deploy_funding?: {
+    recommended_deploy_usd?: number | null
+    investable_cash_usd?: number | null
+    prospective_raise_usd?: number | null
+    deployable_usd?: number | null
+    deploy_exceeds_investable_cash?: boolean
+    gap_vs_investable_cash_usd?: number | null
+    note?: string | null
+  }
+  deploy_request_notes?: string[]
 }
 
 type Posture = {
   thesis: { stance: string; summary: string | null; principles: string[] }
   concentration: { top_position: string | null; top_weight_pct: number | null; fire_pct: number | null }
   risk_heat: { max_drawdown_pct: number | null; sharpe: number | null; sortino: number | null }
-  sector_tilts: { sector: string; state: string; exposure_pct: number | null; target_pct: number | null; recommendation: string }[]
-  performance: { portfolio_cagr: number | null; benchmark_cagr: number | null; alpha_annualized: number | null; benchmark_label: string | null }
+  sector_tilts: {
+    sector: string
+    state: string
+    exposure_pct: number | null
+    target_pct: number | null
+    target_source?: string | null
+    target_label?: string | null
+    target_is_placeholder?: boolean
+    recommendation: string
+  }[]
+  sector_target_honesty?: {
+    all_targets_placeholder?: boolean
+    all_targets_identical?: boolean
+    note?: string | null
+  }
+  performance: {
+    portfolio_cagr: number | null
+    benchmark_cagr: number | null
+    alpha_annualized: number | null
+    benchmark_label: string | null
+    benchmark_source?: string | null
+  }
   income: { total_usd: number | null }
   tax_issues: string[]
   constraints: string[]
@@ -597,6 +628,7 @@ function CioNowSection({ home, dispositions, legacyUnversioned, onAct }: {
 }
 
 function CapitalPlanSection({ cp }: { cp: CapitalPlan }) {
+  const funding = cp.deploy_funding
   return (
     <div data-testid="capital-plan-section">
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, marginBottom: 16 }}>
@@ -604,9 +636,18 @@ function CapitalPlanSection({ cp }: { cp: CapitalPlan }) {
         <Stat label="Reserved cash" value={fmtUsd(cp.cash_reserved_usd)} help="Cash held back to the policy floor / reserve." />
         <Stat label="Investable cash" value={fmtUsd(cp.cash_investable_usd)} help="Cash above the reserve available to deploy." />
         <Stat label="Target band" value={cp.cash_band.min_pct != null && cp.cash_band.max_pct != null ? `${cp.cash_band.min_pct}–${cp.cash_band.max_pct}%` : '—'} help="Policy cash floor-to-ceiling as a share of portfolio." />
-        <Stat label="Recommended deploy" value={fmtUsd(cp.recommended_deploy_usd)} help="Net dollars the desk recommends putting to work." />
+        <Stat label="Recommended deploy" value={fmtUsd(cp.recommended_deploy_usd)} help="Net dollars the desk recommends putting to work (capped by investable cash + prospective raise)." />
         <Stat label="Recommended raise" value={fmtUsd(cp.recommended_raise_usd)} help="Prospective raise = future trims/exits not yet cash. Earmarked redeploy already in cash is not new capital." />
       </div>
+
+      {funding?.deploy_exceeds_investable_cash && (
+        <div data-testid="deploy-vs-investable-gap" style={{ ...card, marginBottom: 12, borderLeft: '3px solid var(--amber)' }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--amber)', marginBottom: 4 }}>Deploy exceeds investable cash</div>
+          <div style={{ fontSize: 12, color: 'var(--text1)' }}>
+            {funding.note || `Recommended deploy ${fmtUsd(funding.recommended_deploy_usd)} exceeds investable cash ${fmtUsd(funding.investable_cash_usd)} by ${fmtUsd(funding.gap_vs_investable_cash_usd)}.`}
+          </div>
+        </div>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
         <div style={card}>
@@ -637,6 +678,13 @@ function CapitalPlanSection({ cp }: { cp: CapitalPlan }) {
                 ))}
               </tbody>
             </table>
+          )}
+          {(cp.deploy_request_notes || []).length > 0 && (
+            <div style={{ marginTop: 8 }}>
+              {(cp.deploy_request_notes || []).map((n, i) => (
+                <div key={i} style={{ ...muted, marginBottom: 2 }}>• {n}</div>
+              ))}
+            </div>
           )}
         </div>
       </div>
@@ -693,6 +741,11 @@ function PostureSection({ posture }: { posture: Posture }) {
           <div>
             <div style={kLabel}>Benchmark</div>
             <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text2)' }}>{performance.benchmark_label || '—'}</div>
+            {performance.benchmark_source && (
+              <div style={{ ...muted, marginTop: 4, maxWidth: 360 }} data-testid="benchmark-source">
+                {performance.benchmark_source}
+              </div>
+            )}
           </div>
           <div>
             <div style={kLabel}>Benchmark CAGR</div>
@@ -710,6 +763,11 @@ function PostureSection({ posture }: { posture: Posture }) {
       {sector_tilts.length > 0 && (
         <div style={card}>
           <SectionTitle>Sector tilts</SectionTitle>
+          {posture.sector_target_honesty?.all_targets_placeholder && (
+            <div style={{ ...muted, marginBottom: 8 }} data-testid="sector-target-placeholder-note">
+              {posture.sector_target_honesty.note || 'Sector targets shown are placeholder / model defaults — not researched IPS targets.'}
+            </div>
+          )}
           <table style={{ width: '100%', borderCollapse: 'collapse' }} data-testid="sector-tilts">
             <thead>
               <tr>
@@ -725,7 +783,15 @@ function PostureSection({ posture }: { posture: Posture }) {
                   <td style={{ padding: '5px 6px', fontSize: 12, color: 'var(--text0)' }}>{s.sector}</td>
                   <td style={{ padding: '5px 6px', fontSize: 12, color: 'var(--text2)' }}>{s.state}</td>
                   <td style={{ padding: '5px 6px', fontSize: 12, color: 'var(--text0)', textAlign: 'right' }}>{fmtPct(s.exposure_pct)}</td>
-                  <td style={{ padding: '5px 6px', fontSize: 12, color: 'var(--text2)', textAlign: 'right' }}>{fmtPct(s.target_pct)}</td>
+                  <td style={{ padding: '5px 6px', fontSize: 12, color: 'var(--text2)', textAlign: 'right' }}>
+                    {fmtPct(s.target_pct)}
+                    {s.target_is_placeholder && (
+                      <div style={{ fontSize: 11, color: 'var(--text3)' }}>placeholder / model default</div>
+                    )}
+                    {!s.target_is_placeholder && s.target_label && (
+                      <div style={{ fontSize: 11, color: 'var(--text3)' }}>{s.target_label}</div>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -744,7 +810,7 @@ function PostureSection({ posture }: { posture: Posture }) {
           {constraints.length > 0 && (
             <div style={card}>
               <SectionTitle>Active constraints</SectionTitle>
-              {constraints.map((c, i) => <div key={i} style={{ ...muted, marginBottom: 4 }}>• {c.replace(/_/g, ' ')}</div>)}
+              {constraints.map((c, i) => <div key={i} style={{ ...muted, marginBottom: 4 }}>• {cioLabel(c)}</div>)}
             </div>
           )}
         </div>
@@ -773,10 +839,14 @@ function AgentResearchOpsStrip() {
   const { data, loading, error } = useApi<any>('/api/v3/cio/agent-research-ops', 60_000)
   const q = data?.queue || {}
   const mix = data?.provider_mix_today || {}
+  const flash = data?.flash_first || {}
+  const failClasses = data?.failure_classes_today || {}
+  const capTone = data?.global_cap_status === 'CONFIGURED' ? undefined : 'var(--amber)'
   return (
     <div data-testid="cio-agent-research-ops" style={{ display: 'grid', gap: 10, marginBottom: 8 }}>
       <div style={{ fontSize: 12, color: 'var(--text3)' }}>
         Intelligence engine ops. Advisory only. Automatic queued work is DeepSeek Flash first.
+        Failed jobs are not silently re-queued.
       </div>
       {loading && <div style={muted}>Loading research ops…</div>}
       {error && <div style={{ color: 'var(--amber)', fontSize: 13 }}>Research ops unavailable: {String(error)}</div>}
@@ -792,10 +862,37 @@ function AgentResearchOpsStrip() {
           <Stat label="Stale/superseded" value={String(q.stale_or_superseded ?? '—')} />
         </div>
       )}
+      {data?.dominant_failure_class && (
+        <div style={{ fontSize: 12, color: 'var(--amber)' }} data-testid="cio-research-failure-class">
+          Dominant failure: {String(data.dominant_failure_class)}
+          {Object.keys(failClasses).length > 0
+            ? ` · ${Object.entries(failClasses).map(([k, v]) => `${k}=${v}`).join(' · ')}`
+            : ''}
+        </div>
+      )}
+      {data?.operator_finding && (
+        <div style={{ fontSize: 12, color: 'var(--text2)' }}>{String(data.operator_finding)}</div>
+      )}
       {mix && Object.keys(mix).length > 0 && (
         <div style={{ fontSize: 12, color: 'var(--text2)' }}>
           Provider mix today:{' '}
           {Object.entries(mix).map(([k, v]) => `${k}=${v}`).join(' · ')}
+        </div>
+      )}
+      {(flash.provider_attempted_today || flash.provider_actual_today) && (
+        <div style={{ fontSize: 12, color: 'var(--text2)' }} data-testid="cio-research-flash-first">
+          Flash-first attempted:{' '}
+          {Object.entries(flash.provider_attempted_today || {}).map(([k, v]) => `${k}=${v}`).join(' · ') || '—'}
+          {' · '}actual:{' '}
+          {Object.entries(flash.provider_actual_today || {}).map(([k, v]) => `${k}=${v}`).join(' · ') || '—'}
+          {flash.fallback_reason_today && Object.keys(flash.fallback_reason_today).length > 0
+            ? ` · fallback: ${Object.entries(flash.fallback_reason_today).map(([k, v]) => `${k}=${v}`).join(' · ')}`
+            : ''}
+        </div>
+      )}
+      {capTone && data?.global_cap_status === 'MISSING' && (
+        <div style={{ fontSize: 12, color: capTone }}>
+          Cap env missing in this process — Flash path fail-closes until LLM_GLOBAL_DAILY_USD_CAP is set on the agent-jobs worker.
         </div>
       )}
     </div>
@@ -904,9 +1001,15 @@ function InvestmentBooksPanel() {
       <section data-testid="cio-what-changed" style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12 }}>
         <div style={{ fontWeight: 800 }}>What changed</div>
         <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>
-          trigger {p.trigger || '—'} · prior {p.previous_product_id || '—'} · now {p.product_id || p.decision_id || '—'}
+          trigger {p.trigger || '—'}
           {p.what_changed.material ? ' · MATERIAL' : ' · no material investment change'}
         </div>
+        <details style={{ marginTop: 4 }}>
+          <summary style={{ cursor: 'pointer', fontSize: 11, color: 'var(--text3)' }}>Product IDs</summary>
+          <div style={{ fontSize: 11, color: 'var(--text3)', fontFamily: 'monospace', marginTop: 2 }}>
+            prior {p.previous_product_id || '—'} · now {p.product_id || p.decision_id || '—'}
+          </div>
+        </details>
         {(p.what_changed.items || []).slice(0, 16).map((it: any, i: number) => (
           <div key={i} style={{ fontSize: 13, marginTop: 4 }}>
             {it.kind}{it.symbol ? ` · ${it.symbol}` : ''}{it.from ? ` ${it.from}` : ''}{it.to ? ` → ${it.to}` : ''}
@@ -958,7 +1061,7 @@ function InvestmentBooksPanel() {
       <div style={{ fontWeight: 800 }}>Portfolio Action Book</div>
       {(['DO_NOW','WATCH_CLOSELY','RE_ENTER_IF','NEW_POSITION_IF','HOLD_CASH_FOR','AVOID','CURRENT_HOLDINGS_THESIS','RESEARCH_NEXT'] as const).map(k => (
         <div key={k} style={{ marginTop: 8 }}>
-          <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--text3)' }}>{k.replace(/_/g, ' ')}</div>
+          <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--text3)' }}>{cioLabel(k)}</div>
           {((act as any)[k] || []).slice(0, 8).map((r: any, i: number) => (
             <div key={k + i} style={{ fontSize: 13 }}>{r.symbol} — {r.action}: {r.why ?? r.why_still_held ?? r.thesis_state ?? '—'}</div>
           ))}
@@ -975,11 +1078,17 @@ function OpportunitiesSection({ opp }: { opp: Opportunities }) {
     items.length === 0 ? <Empty text="None." /> : (
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
         {items.map((it, i) => (
-          <span key={i} title={`${it.signal} · source: ${it.source}`} style={{
-            padding: '6px 12px', borderRadius: 6, background: 'var(--bg0)', border: '1px solid var(--border)', fontSize: 12,
-          }}>
-            <strong style={{ color: 'var(--text0)' }}>{it.symbol}</strong>
-            <span style={{ color: 'var(--text2)', marginLeft: 6 }}>{it.signal}</span>
+          <span
+            key={i}
+            data-testid="cio-opp-chip"
+            title={`${it.signal} · source: ${it.source}`}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              padding: '6px 12px', borderRadius: 6, background: 'var(--bg0)', border: '1px solid var(--border)', fontSize: 12,
+            }}
+          >
+            <strong data-testid="cio-opp-symbol" style={{ color: 'var(--text0)' }}>{it.symbol}</strong>
+            <span data-testid="cio-opp-verdict" style={{ color: 'var(--text2)' }}>{it.signal || 'Watch'}</span>
           </span>
         ))}
       </div>
@@ -1145,9 +1254,17 @@ function ReportSection({ report }: { report: ReportSummary }) {
       <div style={card}>
         <SectionTitle>Latest institutional report</SectionTitle>
         <div style={{ ...muted, marginBottom: 10 }}>
-          {report.as_of ? `As of ${String(report.as_of).slice(0, 19).replace('T', ' ')}` : 'No report generated yet.'}
-          {report.source_sha ? ` · source ${String(report.source_sha).slice(0, 12)}` : ''}
+          {report.as_of ? `As of ${formatAsOfET(report.as_of)}` : 'No report generated yet.'}
         </div>
+        {report.source_sha && (
+          <details style={{ ...faint, marginBottom: 8 }}>
+            <summary style={{ cursor: 'pointer', color: 'var(--text3)' }}>Provenance</summary>
+            <div style={{ marginTop: 4, fontFamily: 'monospace', fontSize: 11 }}>
+              source {String(report.source_sha).slice(0, 12)}
+              {report.manifest_hash ? ` · manifest ${String(report.manifest_hash).slice(0, 12)}` : ''}
+            </div>
+          </details>
+        )}
         {report.render_errors.length > 0 && (
           <div style={{ ...faint, color: 'var(--amber)', marginBottom: 8 }}>
             PDF not rendered in this environment: {report.render_errors.join('; ')}
@@ -1155,7 +1272,7 @@ function ReportSection({ report }: { report: ReportSummary }) {
         )}
         {report.fields_unavailable.length > 0 && (
           <div style={{ ...faint, marginBottom: 8 }}>
-            Unavailable: {report.fields_unavailable.map(f => f.replace(/_/g, ' ')).join(' · ')}
+            Unavailable: {report.fields_unavailable.map(f => cioLabel(f)).join(' · ')}
           </div>
         )}
         <button type="button" onClick={generate} disabled={busy}
@@ -1168,7 +1285,7 @@ function ReportSection({ report }: { report: ReportSummary }) {
       {html && (
         <div style={{ ...card, padding: 0, overflow: 'hidden' }}>
           <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', fontSize: 12, color: 'var(--text2)' }}>
-            Full report{generatedAt ? ` · generated ${String(generatedAt).slice(0, 19).replace('T', ' ')}` : ''}
+            Full report{generatedAt ? ` · generated ${formatAsOfET(generatedAt)}` : ''}
           </div>
           <iframe title="Institutional report" srcDoc={html} style={{ width: '100%', height: 720, border: 'none', background: 'var(--text0)' }} data-testid="report-iframe" />
         </div>
@@ -1183,24 +1300,41 @@ function EvidenceSection({ evidence }: { evidence: Evidence }) {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, marginBottom: 16 }}>
         <Stat label="Authority" value="Read-only advisory" help="This office composes advice; it cannot trade or move stops." />
         <Stat label="Report version" value={evidence.report_version || '—'} help="Version of the report generator." />
-        <Stat label="Source SHA" value={evidence.source_sha ? String(evidence.source_sha).slice(0, 12) : '—'} help="Git commit the data was read from." />
-        <Stat label="As of" value={evidence.as_of ? String(evidence.as_of).slice(0, 19).replace('T', ' ') : '—'} help="When the data snapshot was taken." />
+        <Stat label="As of" value={evidence.as_of ? formatAsOfET(evidence.as_of) : '—'} help="When the data snapshot was taken (Eastern Time)." />
+        <Stat label="Source refs" value={evidence.source_refs.length} help="Named source artifacts with integrity hashes (see below)." />
       </div>
+
+      {(evidence.source_sha || evidence.run_ids.length > 0) && (
+        <details style={{ ...card, fontSize: 12, color: 'var(--text3)' }} data-testid="evidence-provenance">
+          <summary style={{ cursor: 'pointer', color: 'var(--text2)' }}>Provenance (hashes / run IDs)</summary>
+          <div style={{ marginTop: 8, fontFamily: 'monospace', fontSize: 11 }}>
+            {evidence.source_sha ? <div>source SHA {String(evidence.source_sha)}</div> : null}
+            {evidence.run_ids.slice(0, 8).map((r, i) => (
+              <div key={i}>{r.id} · {r.state}</div>
+            ))}
+          </div>
+        </details>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
         <div style={card}>
           <SectionTitle>Source references</SectionTitle>
           {evidence.source_refs.length === 0 ? <Empty text="None." /> : (
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <tbody>
-                {evidence.source_refs.map((s, i) => (
-                  <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
-                    <td style={{ padding: '5px 4px', fontSize: 12, color: 'var(--text1)' }}>{s.name}</td>
-                    <td style={{ padding: '5px 4px', fontSize: 11, color: 'var(--text3)', textAlign: 'right', fontFamily: 'monospace' }}>{String(s.sha256).slice(0, 12)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <details open={false}>
+              <summary style={{ cursor: 'pointer', fontSize: 12, color: 'var(--text2)', marginBottom: 6 }}>
+                {evidence.source_refs.length} source{evidence.source_refs.length === 1 ? '' : 's'} (hashes collapsed)
+              </summary>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <tbody>
+                  {evidence.source_refs.map((s, i) => (
+                    <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
+                      <td style={{ padding: '5px 4px', fontSize: 12, color: 'var(--text1)' }}>{cioLabel(s.name)}</td>
+                      <td style={{ padding: '5px 4px', fontSize: 11, color: 'var(--text3)', textAlign: 'right', fontFamily: 'monospace' }} title={String(s.sha256)}>{String(s.sha256).slice(0, 12)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </details>
           )}
         </div>
 
@@ -1213,7 +1347,7 @@ function EvidenceSection({ evidence }: { evidence: Evidence }) {
                   <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
                     <td style={{ padding: '5px 4px', fontSize: 12, color: 'var(--text1)' }}>{v.reviewer}</td>
                     <td style={{ padding: '5px 4px', fontSize: 12, color: v.status === 'PASS' ? 'var(--green)' : 'var(--text2)' }}>{v.status}</td>
-                    <td style={{ padding: '5px 4px', fontSize: 11, color: 'var(--text3)', textAlign: 'right' }}>{String(v.ts || '').slice(0, 10)}</td>
+                    <td style={{ padding: '5px 4px', fontSize: 11, color: 'var(--text3)', textAlign: 'right' }}>{v.ts ? formatAsOfET(v.ts, { utcSuffix: false }) : '—'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -1224,16 +1358,21 @@ function EvidenceSection({ evidence }: { evidence: Evidence }) {
         <div style={card}>
           <SectionTitle>Run / handoff IDs</SectionTitle>
           {evidence.run_ids.length === 0 ? <Empty text="None." /> : (
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <tbody>
-                {evidence.run_ids.map((r, i) => (
-                  <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
-                    <td style={{ padding: '5px 4px', fontSize: 12, color: 'var(--text1)' }}>{String(r.id || '').slice(0, 40)}</td>
-                    <td style={{ padding: '5px 4px', fontSize: 11, color: 'var(--text3)', textAlign: 'right' }}>{r.state}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <details>
+              <summary style={{ cursor: 'pointer', fontSize: 12, color: 'var(--text2)', marginBottom: 6 }}>
+                {evidence.run_ids.length} run ID{evidence.run_ids.length === 1 ? '' : 's'} (collapsed)
+              </summary>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <tbody>
+                  {evidence.run_ids.map((r, i) => (
+                    <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
+                      <td style={{ padding: '5px 4px', fontSize: 11, color: 'var(--text1)', fontFamily: 'monospace' }} title={String(r.id)}>{String(r.id || '').slice(0, 24)}{String(r.id || '').length > 24 ? '…' : ''}</td>
+                      <td style={{ padding: '5px 4px', fontSize: 11, color: 'var(--text3)', textAlign: 'right' }}>{r.state}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </details>
           )}
         </div>
 
@@ -1243,7 +1382,7 @@ function EvidenceSection({ evidence }: { evidence: Evidence }) {
           {evidence.internal_codes.length === 0 ? <Empty text="None." /> : (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
               {evidence.internal_codes.map((c, i) => (
-                <code key={i} style={{ padding: '3px 8px', borderRadius: 4, background: 'var(--bg0)', border: '1px solid var(--border)', fontSize: 11, color: 'var(--text2)' }}>{c}</code>
+                <span key={i} title={c} style={{ padding: '3px 8px', borderRadius: 4, background: 'var(--bg0)', border: '1px solid var(--border)', fontSize: 11, color: 'var(--text2)' }}>{cioLabel(c)}</span>
               ))}
             </div>
           )}
@@ -1332,7 +1471,7 @@ export default function CioHub({ onDrill }: Props) {
       <div style={hubTitle()}>CIO — Private Investment Office</div>
       <div style={hubSubtitle()}>
         Alex · Chief Investment Officer · READ_ONLY_ADVISORY
-        {home?.as_of && <span style={{ color: 'var(--text3)', marginLeft: 12 }}>As of {new Date(home.as_of).toLocaleString()}</span>}
+        {home?.as_of && <span style={{ color: 'var(--text3)', marginLeft: 12 }}>As of {formatAsOfET(home.as_of)}</span>}
       </div>
 
       {/* Tab nav */}
