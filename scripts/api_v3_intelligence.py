@@ -5,6 +5,7 @@ Never invents POSITIVE/NEGATIVE outcomes. Never deletes challenge history.
 """
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 try:
@@ -55,13 +56,39 @@ def handle_get(path: str, query: dict | None = None) -> tuple[int, dict[str, Any
         return 200, {"ok": True, **AUTHORITY, **rec_build()}
     if p in ("lineage", "lineages"):
         snap = L.load_snapshot()
+        lineages = list(snap.get("lineages") or [])
+        live = [r for r in lineages if str(r.get("origin") or "") == "live_forward"]
+        now = datetime.now(timezone.utc)
+
+        def _parse(ts: Any):
+            try:
+                return datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+            except Exception:
+                return None
+
+        today_n = 0
+        week_n = 0
+        for r in live:
+            dt = _parse(r.get("updated_at") or r.get("created_at"))
+            if not dt:
+                continue
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            age = now - dt
+            if age <= timedelta(days=1):
+                today_n += 1
+            if age <= timedelta(days=7):
+                week_n += 1
         return 200, {
             "ok": True,
             **AUTHORITY,
             "count": snap.get("count") or 0,
+            "live_forward_count": snap.get("live_forward_count") or len(live),
+            "live_forward_today": today_n,
+            "live_forward_7d": week_n,
             "by_status": snap.get("by_status") or {},
             "generated_at": snap.get("generated_at"),
-            "lineages": snap.get("lineages") or [],
+            "lineages": lineages,
         }
     if p.startswith("lineage/"):
         lid = p.split("/", 1)[1].strip()

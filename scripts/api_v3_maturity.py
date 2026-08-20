@@ -44,7 +44,19 @@ def handle_get(path: str, query: dict | None = None) -> tuple[int, dict[str, Any
     if p in ("", "authority"):
         return 200, {"ok": True, **AUTHORITY, "contract": "maturity-control-plane-v1"}
     if p == "learning":
-        return 200, {"ok": True, **AUTHORITY, **L.collect_lessons()}
+        payload = {"ok": True, **AUTHORITY, **L.collect_lessons()}
+        try:
+            from scripts.lib.cio_outcome_observer import learning_summary
+            payload["disposition_outcomes"] = learning_summary()
+        except Exception as exc:
+            payload["disposition_outcomes"] = {
+                "ok": False,
+                "error": f"{type(exc).__name__}:{exc}",
+                "matured_count": 0,
+                "eligible_runs": 0,
+                "memory_behavior_influence": 0,
+            }
+        return 200, payload
     if p == "lessons":
         data = L.collect_lessons()
         return 200, {"ok": True, **AUTHORITY, "lessons": data["lessons"], "counts": data["counts"]}

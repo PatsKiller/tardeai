@@ -1309,8 +1309,45 @@ def post_decision_disposition(decision_key: str, body: dict[str, Any] | None = N
         return {"ok": False, "error": type(e).__name__, "detail": str(e)[:200],
                 "as_of": _now_iso(), "authority": AUTHORITY_ADVISORY}
 
-    return {"ok": True, "as_of": entry["occurred_at"], "disposition": entry,
-            "authority": AUTHORITY_ADVISORY}
+    outcome = None
+    try:
+        from scripts.lib.cio_outcome_observer import record_disposition_outcome
+        outcome = record_disposition_outcome(
+            decision_or_plan_id=did,
+            disposition=disp,
+            lineage_id=str(body.get("lineage_id") or "") or None,
+            rating=rating,
+            note=note,
+            symbol=str(symbol or "") or None,
+        )
+    except Exception as e:
+        outcome = {"ok": False, "error": f"{type(e).__name__}:{e}"}
+
+    return {
+        "ok": True,
+        "as_of": entry["occurred_at"],
+        "disposition": entry,
+        "outcome": outcome,
+        "authority": AUTHORITY_ADVISORY,
+    }
+
+
+def get_maturity_learning() -> dict[str, Any]:
+    """GET /api/v3/maturity/learning — disposition outcome maturity (fail-soft)."""
+    try:
+        from scripts.lib.cio_outcome_observer import learning_summary
+        return learning_summary()
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": type(e).__name__,
+            "detail": str(e)[:200],
+            "matured_count": 0,
+            "eligible_runs": 0,
+            "memory_behavior_influence": 0,
+            "authority": AUTHORITY_ADVISORY,
+            "as_of": _now_iso(),
+        }
 
 
 def get_cio_dashboard() -> dict[str, Any]:

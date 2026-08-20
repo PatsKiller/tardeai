@@ -67,9 +67,20 @@ def load_config(path: Path | str | None = None) -> dict[str, Any]:
     sh = os.environ.get("CIO_SITUATIONS_SHADOW")
     if sh is not None:
         cfg["shadow"] = sh.strip().lower() not in ("0", "false", "off", "no")
-    nt = os.environ.get("CIO_SITUATIONS_NOTIFY")
-    if nt is not None:
-        cfg["notify"] = nt.strip().lower() in ("1", "true", "on", "yes")
+    # Naming footgun: docs/ops mixed CIO_SITUATIONS_NOTIFY (plural, yaml) with
+    # CIO_SITUATION_NOTIFY (singular, enrichment). Accept either (OR). Default off.
+    notify_on = False
+    notify_seen = False
+    for key in ("CIO_SITUATIONS_NOTIFY", "CIO_SITUATION_NOTIFY"):
+        raw = os.environ.get(key)
+        if raw is None:
+            continue
+        notify_seen = True
+        if raw.strip().lower() in ("1", "true", "on", "yes"):
+            notify_on = True
+            break
+    if notify_seen:
+        cfg["notify"] = notify_on
     return cfg
 
 

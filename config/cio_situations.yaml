@@ -1,11 +1,13 @@
 # CIO Situation Catalog v1 — Phase 2a
 # Authority: READ_ONLY_ADVISORY. Detector SHADOW by default.
-# Env overrides: CIO_SITUATIONS_ENABLED, CIO_SITUATIONS_NOTIFY, CIO_SITUATIONS_SHADOW
+# Env overrides: CIO_SITUATIONS_ENABLED, CIO_SITUATIONS_NOTIFY|CIO_SITUATION_NOTIFY, CIO_SITUATIONS_SHADOW
+# Notify env names are OR'd (singular/plural footgun); default notify=false when unset.
 
 enabled: true
 shadow: true
 # Notify uses dedicated CIO bot (@tradeai_cio_bot) when CIO_SITUATION_NOTIFY=1
-# (also requires situation_notify_telegram or env). Default off in yaml; enable via env.
+# (alias CIO_SITUATIONS_NOTIFY=1 also accepted; also requires situation_notify_telegram or env).
+# Default off in yaml; enable via env for canary. See docs/ops/CIO_MATERIAL_NOTIFY_CANARY_2026-08-20.md
 notify: false
 dedup_hours: 12                  # longer cooldown so channel does not re-spam
 detector_version: "situation-catalog-v1.0.0"

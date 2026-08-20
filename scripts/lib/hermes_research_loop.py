@@ -550,6 +550,27 @@ def on_hermes_completed(
     except Exception as e:
         out["reassessment_error"] = f"{type(e).__name__}:{e}"
 
+    # Live-forward lineage: stamp memory + completed if not already attached
+    try:
+        try:
+            from lib.intelligence_lineage import attach_research_completed
+        except Exception:
+            from scripts.lib.intelligence_lineage import attach_research_completed  # type: ignore
+        mem = out.get("memory") if isinstance(out.get("memory"), dict) else {}
+        admission = mem.get("admission") if isinstance(mem.get("admission"), dict) else {}
+        crit = out.get("critique") if isinstance(out.get("critique"), dict) else {}
+        lin = attach_research_completed(
+            research_id=str(result.get("research_id") or request.get("research_id") or ""),
+            result_id=str(result.get("result_id") or ""),
+            symbol=str(result.get("symbol") or request.get("symbol") or ""),
+            plan_id=plan_id or None,
+            memory_id=str(admission.get("memory_id") or mem.get("memory_id") or "") or None,
+            critique_verdict=str(crit.get("verdict") or "") or None,
+        )
+        out["lineage_id"] = lin.get("lineage_id") or (out.get("reassessment") or {}).get("lineage_id")
+    except Exception as e:
+        out["lineage_error"] = f"{type(e).__name__}:{e}"
+
     # Audit line — include critique/memory/overlay so a missing receipt is visible
     try:
         Path("data/cio").mkdir(parents=True, exist_ok=True)
@@ -562,6 +583,7 @@ def on_hermes_completed(
                 "plan_id": plan_id,
                 "research_id": result.get("research_id"),
                 "result_id": result.get("result_id"),
+                "lineage_id": out.get("lineage_id"),
                 "enriched": out.get("enriched"),
                 "notified": out.get("notified"),
                 "material_changed": out.get("material_changed"),
@@ -579,6 +601,8 @@ def on_hermes_completed(
                 "reassessment_id": (out.get("reassessment") or {}).get("reassessment_id")
                 if isinstance(out.get("reassessment"), dict) else None,
                 "reassessment_duplicate": (out.get("reassessment") or {}).get("duplicate")
+                if isinstance(out.get("reassessment"), dict) else None,
+                "reassessment_lineage_id": (out.get("reassessment") or {}).get("lineage_id")
                 if isinstance(out.get("reassessment"), dict) else None,
             }, sort_keys=True) + "\n")
     except Exception:

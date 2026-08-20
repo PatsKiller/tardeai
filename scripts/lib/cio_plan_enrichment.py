@@ -61,9 +61,18 @@ def load_llm_policy(path: Path | str | None = None) -> dict[str, Any]:
     # env overrides
     if os.environ.get("CIO_LLM_ENRICH", "").strip().lower() in ("0", "false", "off", "no"):
         cfg.setdefault("llm", {})["enabled"] = False
-    if os.environ.get("CIO_SITUATION_NOTIFY", "").strip() in ("1", "true", "on", "yes"):
+    # Accept CIO_SITUATION_NOTIFY (canonical) OR CIO_SITUATIONS_NOTIFY (yaml alias).
+    if _notify_env_on():
         cfg["situation_notify_telegram"] = True
     return cfg
+
+
+def _notify_env_on() -> bool:
+    """True when either notify env name is truthy. Default false when both unset."""
+    for key in ("CIO_SITUATION_NOTIFY", "CIO_SITUATIONS_NOTIFY"):
+        if os.environ.get(key, "").strip().lower() in ("1", "true", "on", "yes"):
+            return True
+    return False
 
 
 def is_material_source(source: str, policy: Optional[dict[str, Any]] = None) -> bool:
@@ -2212,15 +2221,16 @@ def maybe_notify_plan(
 ) -> bool:
     """Optional Telegram notify via dedicated CIO bot. Default off.
 
-    Requires CIO_SITUATION_NOTIFY=1 (or policy situation_notify_telegram) and
-    TELEGRAM_CIO_BOT_TOKEN + allowlist. Never uses OpenClaw main bot.
+    Requires CIO_SITUATION_NOTIFY=1 (or alias CIO_SITUATIONS_NOTIFY=1, or policy
+    situation_notify_telegram) and TELEGRAM_CIO_BOT_TOKEN + allowlist.
+    Never uses OpenClaw main bot.
 
     Re-notify guard: same plan_id + same fingerprint is notified at most once
     (unless force=True / CIO_SITUATION_NOTIFY_FORCE=1, or evidence/fire_reasons change).
     Re-enrichment alone must not re-push.
     """
     pol = policy or load_llm_policy()
-    env_on = os.environ.get("CIO_SITUATION_NOTIFY", "0").strip().lower() in ("1", "true", "yes", "on")
+    env_on = _notify_env_on()
     # Fail-closed: need env OR policy flag (prefer env for host ops)
     if not env_on and not pol.get("situation_notify_telegram"):
         return False
