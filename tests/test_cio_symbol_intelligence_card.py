@@ -37,10 +37,14 @@ def test_render_uber_near_no_raw_dump():
     )
     body = render_telegram_card(obj)
     assert "UBER" in body
-    assert "Added To Reentry Watch" in body or "Reentry" in body
-    assert "Why now" in body
-    assert "Thesis" in body
-    assert "Technical setup" in body
+    assert "Added to Reentry" in body or "Reentry" in body
+    assert "<b>Do this</b>" in body or "Do this" in body
+    assert "<b>Why now</b>" in body or "Why now" in body
+    assert "<b>Thesis</b>" in body or "Thesis" in body
+    assert "<b>Levels</b>" in body or "Levels" in body
+    assert "🟠" in body  # reentry_added → WARM
+    assert "*Why now*" not in body
+    assert "*Thesis*" not in body
     assert "Causality" in body
     assert "SPCX" in body
     assert "Provenance" in body
