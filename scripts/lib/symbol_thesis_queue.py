@@ -25,9 +25,61 @@ def _iso(v: Any) -> Optional[str]:
     return str(v)
 
 
-def _row(r: dict[str, Any]) -> dict[str, Any]:
+def _parse_created_at(created_at: Any) -> Optional[datetime]:
+    """Parse created_at ISO (with/without Z, with/without tz) to UTC datetime."""
+    if created_at is None:
+        return None
+    if isinstance(created_at, datetime):
+        dt = created_at
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    s = str(created_at).strip()
+    if not s:
+        return None
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(s)
+    except Exception:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def _age_seconds(created_at: Any, *, now: Optional[datetime] = None) -> Optional[int]:
+    """Seconds since created_at vs UTC now. None if missing/unparseable."""
+    dt = _parse_created_at(created_at)
+    if dt is None:
+        return None
+    ref = now or datetime.now(timezone.utc)
+    if ref.tzinfo is None:
+        ref = ref.replace(tzinfo=timezone.utc)
+    return max(0, int((ref - dt).total_seconds()))
+
+
+def _human_age(seconds: Optional[int]) -> Optional[str]:
+    """Compact wait age: e.g. '12m', '3h', '2d'. None if no age."""
+    if seconds is None:
+        return None
+    try:
+        s = max(0, int(seconds))
+    except (TypeError, ValueError):
+        return None
+    if s < 3600:
+        return f"{s // 60}m"
+    if s < 86400:
+        return f"{s // 3600}h"
+    return f"{s // 86400}d"
+
+
+def _row(r: dict[str, Any], *, now: Optional[datetime] = None) -> dict[str, Any]:
     status = str(r.get("status") or "").lower()
-    return {
+    lane = "active" if status in ACTIVE_STATUSES else (
+        "completed" if status in COMPLETED_STATUSES else "other"
+    )
+    item: dict[str, Any] = {
         "id": r.get("id"),
         "symbol": str(r.get("symbol") or "").upper() or None,
         "agent": r.get("requested_agent") or r.get("agent"),
@@ -36,29 +88,42 @@ def _row(r: dict[str, Any]) -> dict[str, Any]:
         "created_at": _iso(r.get("created_at")),
         "completed_at": _iso(r.get("completed_at")),
         "summary": (str(r.get("summary") or r.get("note") or "")[:240] or None),
-        "lane": "active" if status in ACTIVE_STATUSES else (
-            "completed" if status in COMPLETED_STATUSES else "other"
-        ),
+        "lane": lane,
     }
+    if lane == "active":
+        age = _age_seconds(r.get("created_at"), now=now)
+        item["waiting_age_seconds"] = age
+        item["waiting_age_human"] = _human_age(age)
+    return item
 
 
 def _split(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    now = datetime.now(timezone.utc)
     active, completed = [], []
     for raw in rows:
         if not isinstance(raw, dict):
             continue
-        item = _row(raw)
+        item = _row(raw, now=now)
         if item["lane"] == "active":
             active.append(item)
         elif item["lane"] == "completed":
             completed.append(item)
+    ages = [
+        int(a["waiting_age_seconds"])
+        for a in active
+        if a.get("waiting_age_seconds") is not None
+    ]
+    oldest = max(ages) if ages else None
     return {
         "active_research": active[:20],
         "recent_completed_research": completed[:10],
+        "open_count": len(active),
+        "oldest_wait_seconds": oldest,
+        "oldest_wait_human": _human_age(oldest),
         "source": "watchlist_agent_jobs",
         "ok": True,
         "authority": AUTHORITY,
-        "as_of": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "as_of": now.replace(microsecond=0).isoformat(),
     }
 
 
@@ -66,6 +131,9 @@ def _empty(*, reason: str) -> dict[str, Any]:
     return {
         "active_research": [],
         "recent_completed_research": [],
+        "open_count": 0,
+        "oldest_wait_seconds": None,
+        "oldest_wait_human": None,
         "source": "unavailable" if reason != "empty" else "empty",
         "ok": reason == "empty",
         "reason": reason,

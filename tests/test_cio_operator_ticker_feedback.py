@@ -201,6 +201,14 @@ def test_api_get_and_post_feedback(tmp_path: Path, monkeypatch):
     assert len(got["journal"]) >= 1
     assert got["authority"] == "READ_ONLY_ADVISORY"
     assert got["intelligence"]["symbol"] == "UBER"
+    rq = got["research_queue"]
+    assert isinstance(rq, dict)
+    assert "open_count" in rq
+    assert "oldest_wait_seconds" in rq
+    assert "oldest_wait_human" in rq
+    assert "active_research" in rq
+    assert "recent_completed_research" in rq
+    assert "ok" in rq
 
 
 def test_api_rejects_bad_intent(tmp_path: Path, monkeypatch):

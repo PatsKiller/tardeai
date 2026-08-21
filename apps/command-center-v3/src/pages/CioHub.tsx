@@ -958,6 +958,23 @@ function extrasFromIntelligence(body: any): Partial<SymbolThesisCardPayload> {
   if (technical_summary) out.technical_summary = technical_summary
   if (causality) out.causality = causality
   if (hist) out.thesis_history = hist
+
+  // Phase D — research queue summary (fail-soft; prefer API summary fields).
+  const rq = (body.research_queue && typeof body.research_queue === 'object')
+    ? body.research_queue
+    : ((intel.research_queue && typeof intel.research_queue === 'object') ? intel.research_queue : null)
+  if (rq && rq.open_count != null && Number.isFinite(Number(rq.open_count))) {
+    out.research_queue_open_count = Math.max(0, Math.floor(Number(rq.open_count)))
+    if (rq.oldest_wait_human != null && String(rq.oldest_wait_human).trim()) {
+      out.research_queue_oldest_wait_human = String(rq.oldest_wait_human).trim()
+    }
+  } else if (body.research_queue_open_count != null && Number.isFinite(Number(body.research_queue_open_count))) {
+    out.research_queue_open_count = Math.max(0, Math.floor(Number(body.research_queue_open_count)))
+    if (body.research_queue_oldest_wait_human != null) {
+      out.research_queue_oldest_wait_human = String(body.research_queue_oldest_wait_human)
+    }
+  }
+
   return out
 }
 

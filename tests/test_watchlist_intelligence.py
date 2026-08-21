@@ -176,14 +176,20 @@ class TestListDetailReadOnly(unittest.TestCase):
         self.assertIn("watch/intelligence/:symbol", app)
         hub = (ROOT / "apps/command-center-v3/src/pages/WatchHub.tsx").read_text()
         self.assertIn("Intelligence", hub)
-        self.assertIn("WatchlistIntelligenceBoard", hub)
-        board = (ROOT / "apps/command-center-v3/src/pages/WatchlistIntelligenceBoard.tsx").read_text()
+        self.assertIn("WatchIntelligenceUnified", hub)
+        board = (ROOT / "apps/command-center-v3/src/pages/WatchIntelligenceUnified.tsx").read_text()
         self.assertIn("data-primary-rating", board)
         self.assertIn("Provider NONE", board)
         self.assertIn("Model NONE", board)
         page = (ROOT / "apps/command-center-v3/src/pages/SymbolIntelligencePage.tsx").read_text()
         self.assertIn("What the company does", page)
         self.assertIn("data-symbol-intelligence-page", page)
+        self.assertIn("data-research-queue", page)
+        self.assertIn("/api/v3/cio/intelligence/", page)
+        self.assertIn("Operator journal", page)
+        self.assertIn("Thesis timeline", page)
+        self.assertIn("READ_ONLY_ADVISORY", page)
+        self.assertNotIn("SHADOW Symbol Intelligence", page)
 
 
 if __name__ == "__main__":
