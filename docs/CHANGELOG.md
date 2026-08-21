@@ -1,5 +1,28 @@
 # Changelog
 
+## 2026-08-21 — CURRENT pin + Drive RAW health + bake-off sheet rescue
+
+MATURITY_IMPACT: live metric path `scripts/research_lane_health.py` now includes
+`current-pin` (CURRENT scripts/+docs/ vs SOURCE_COMMIT) and `drive-sync` (RAW
+`~/.local/state/drive-sync-last-result.json`, fire if no success in 24h or
+0-uploaded-with-404s). Operator-blind bake-off sheet rescued off `/tmp`.
+
+- **P0** `docs/ops/LANE_QUALITY_BAKEOFF_OPERATOR_BLIND_2026-08-21.md` (+ keys under
+  `docs/ops/bakeoff-2026-08-21/DO_NOT_OPEN_UNTIL_SCORED/`).
+- **P1** `a7f30d89` **does** contain #437/#438/#440 (all ancestors). Overlay was
+  #441 docs on that pin. Deploy `cio_phase2_exact_main_deploy.sh` now refuses
+  HEAD≠origin/main, dirty tree, and pin mismatch; rsyncs full `scripts/`+`docs/`.
+- **P2** gemma default-off is **recommendation-only** until the blind sheet is
+  scored. Flash is **not** the workhorse until 5-day burn-in (start 19:10 ET
+  2026-08-21). Flag `RESEARCH_ALLOW_LOCAL_LLM` stays 0.
+- **P3** Drive canonical `docs/` folder `1BMxbxU9c9rF3NBvXVQtVEewdvkifVkwP`.
+  Duplicate `1Rb6qcu…` deprecated. gog alias `default` = john@jwwhiting.com.
+- **TSLA** `mem_5989433c…` latest-wins **RETRACTED** `p0_adversarial_quarantine_2026-08-21`;
+  search does not return it. JSONL keeps historical ACTIVE as audit.
+- `RESEARCH_SKIP_GATE` stays 0. `MEMORY_BEHAVIOR_INFLUENCE` stays 0.
+- `AGENT_DECISION_PAYLOAD=1` already on producer drop-ins (B.1); 5-trading-day
+  window starts after this lands — nothing else flipped with it.
+
 ## 2026-08-21 — Research P0–P4 closeout (docs)
 
 Merged #440 (llm_lane import + RAW-store lane health), #437 (22-ticker denominator), #438 (R1–R5 flags default 0), #439 (bake-off). CURRENT `a7f30d89`. Scheduler-path DeepSeek proof id=45900. `$0.42/14d` spend void (crash loop). 27b is CPU, not GPU deep. Overnight *policy* ChatGPT; *live timer* still China-night gemma. `RESEARCH_SKIP_GATE` unset. Influence 0.

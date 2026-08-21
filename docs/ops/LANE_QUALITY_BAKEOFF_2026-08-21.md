@@ -4,9 +4,9 @@
 
 **Closeout 2026-08-21 18:46 ET:** #440 (import+alarm), #437, #438, #439 **merged**. CURRENT **`a7f30d89`**. Scheduler-path proof `hermes_external_research` id=45900 `status=sent`. RAW-store alarm live. `RESEARCH_SKIP_GATE` still 0. `$0.42/14d` spend is void (crash loop) — 7-day re-baseline pending.
 **Window:** Track A ran 17:31–18:06 ET (DeepSeek **off-peak**).
-**Sandbox:** `/tmp/tradeai-bakeoff-20260821/` — no writes to `hermes_external_research`, no Telegram, no cards.
+**Sandbox (volatile, rescued):** originally `/tmp/tradeai-bakeoff-20260821/`. **Fill:** [`LANE_QUALITY_BAKEOFF_OPERATOR_BLIND_2026-08-21.md`](LANE_QUALITY_BAKEOFF_OPERATOR_BLIND_2026-08-21.md). Keys: `bakeoff-2026-08-21/DO_NOT_OPEN_UNTIL_SCORED/`. Durable copy also under `data/bakeoff/2026-08-21/` (gitignored). No writes to `hermes_external_research`, no Telegram, no cards.
 
-Claude was **not** the judge. Blind ranking sheet for the operator: `operator_blind.md` (key in `operator_blind_key.json`).
+Claude was **not** the judge. Blind ranking sheet is unscored — do not change routing from Track A crash-rates.
 
 ---
 

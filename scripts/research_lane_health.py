@@ -68,12 +68,12 @@ def _alert(report: dict) -> int:
         return 0
     msg = (
         "⚠️ *Research lane RAW-store health*\n"
-        "Reads hermes_external_research **including** `[ERROR]…` rows "
-        "(not last_real). A dead lane must not look like silence.\n\n"
+        "Reads RAW stores (research rows **including** `[ERROR]…`, Drive "
+        "last-result JSON, CURRENT vs SOURCE_COMMIT). Silence is not health.\n\n"
         + "\n".join(lines)
         + "\n\nFix: DeepSeek writer must import `llm_lane` (scripts/llm_lane.py), "
-        "not `lib.llm_lane`. ChatGPT overnight is lane `overnight-deep` "
-        "(hermes_research_intelligence deep_research_local)."
+        "not `lib.llm_lane`. CURRENT must equal SOURCE_COMMIT (no docs overlay). "
+        "Drive result: ~/.local/state/drive-sync-last-result.json."
     )
     try:
         from telegram_alert import send_telegram

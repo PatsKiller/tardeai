@@ -83,6 +83,59 @@ def test_chatgpt_24h_zero_ok_fires():
     assert any("zero_non_error" in x for x in row["firing"])
 
 
+def test_pin_hybrid_fires():
+    from scripts.lib.current_pin_integrity import evaluate_pin
+
+    ok = evaluate_pin(source_commit="abc", diff_paths=[], extra_paths=[])
+    assert ok["ok"] is True
+    bad = evaluate_pin(
+        source_commit="a7f30d89",
+        diff_paths=["docs/CHANGELOG.md", "docs/ops/RESEARCH_LANE_HEALTH.md"],
+        extra_paths=["docs/ops/overlay.md"],
+    )
+    assert bad["ok"] is False
+    assert any(x.startswith("tree_diff:") for x in bad["firing"])
+    assert any(x.startswith("unpinned_extra:") for x in bad["firing"])
+
+
+def test_drive_sync_raw_404_shape_fires():
+    """Hourly cron '0 uploaded, 1979 unchanged' with 404s must not look healthy."""
+    from datetime import datetime, timezone
+    from scripts.lib.drive_sync_health import evaluate_drive_sync
+
+    now = datetime(2026, 8, 21, 23, 0, tzinfo=timezone.utc)
+    silent = evaluate_drive_sync(
+        {
+            "status": "done",
+            "finished_utc": "2026-08-21T22:31:54Z",
+            "uploaded": 0,
+            "skipped": 1979,
+            "failed": 40,
+            "exit_code": 0,
+        },
+        now=now,
+    )
+    assert silent["ok"] is False
+    assert any("zero_uploaded_with_failures" in x for x in silent["firing"])
+
+    missing = evaluate_drive_sync(None, now=now)
+    assert missing["ok"] is False
+    assert "missing_result_file" in missing["firing"]
+
+    healthy = evaluate_drive_sync(
+        {
+            "status": "done",
+            "finished_utc": "2026-08-21T22:31:54Z",
+            "uploaded": 5,
+            "skipped": 10,
+            "failed": 0,
+            "exit_code": 0,
+        },
+        now=now,
+    )
+    assert healthy["ok"] is True
+
+
 def test_researcher_imports_llm_lane_not_lib():
     import inspect
     from scripts.hermes_external_researcher import _import_llm_generate, call_governed_deepseek

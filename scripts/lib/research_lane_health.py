@@ -186,6 +186,18 @@ def collect_report(*, now: Optional[datetime] = None) -> dict[str, Any]:
                 now=now,
             )
         )
+    if os.getenv("RESEARCH_LANE_HEALTH_PIN", "1").strip().lower() not in {"0", "false", "off", "no"}:
+        try:
+            from scripts.lib.current_pin_integrity import collect_pin_report
+        except Exception:
+            from current_pin_integrity import collect_pin_report  # type: ignore
+        lanes.append(collect_pin_report(now=now))
+    if os.getenv("RESEARCH_LANE_HEALTH_DRIVE", "1").strip().lower() not in {"0", "false", "off", "no"}:
+        try:
+            from scripts.lib.drive_sync_health import collect_drive_report
+        except Exception:
+            from drive_sync_health import collect_drive_report  # type: ignore
+        lanes.append(collect_drive_report(now=now))
     firing = [r for r in lanes if not r["ok"]]
     return {
         "schema": SCHEMA,
