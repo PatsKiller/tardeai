@@ -15,6 +15,8 @@ Routes:
   GET /api/v3/cio/universe-theses — UNIVERSE & THESES projection (read-only)
   GET /api/v3/cio/agent-research-ops — queue/provider/spend ops strip (no secrets)
   GET /api/v3/cio/symbol-thesis/{SYM} — per-symbol thesis card + history
+  GET /api/v3/cio/intelligence/{SYM} — SymbolIntelligence + feedback journal
+  POST /api/v3/cio/intelligence/{SYM}/feedback — OperatorTickerFeedback@v1
   GET /api/v3/cio/thesis-research-proposal — dry prioritized research set (RI plane)
   GET /api/v3/cio/thesis-ri-pipeline/{SYM} — RAG-first + acquisition plan (dry)
   GET /api/v3/cio/thesis-research-context/{SYM} — ThesisResearchContext@v1 + supply plane
@@ -606,6 +608,144 @@ def get_symbol_thesis_card(symbol: str) -> dict[str, Any]:
             "authority": "READ_ONLY_ADVISORY",
             "as_of": _now_iso(),
         }
+
+
+def get_symbol_intelligence(symbol: str) -> dict[str, Any]:
+    """GET /api/v3/cio/intelligence/{SYM} — SIO + feedback journal (Phase B).
+
+    Assembles SymbolIntelligenceObject without a change_item when cheap, and
+    always returns ``journal`` + ``latest_feedback`` from the operator ticker
+    feedback store. READ_ONLY_ADVISORY.
+    """
+    sym = str(symbol or "").strip().upper()
+    if not sym:
+        return {"ok": False, "error": "symbol_required", "authority": "READ_ONLY_ADVISORY"}
+    latest = None
+    journal: list[dict[str, Any]] = []
+    try:
+        from scripts.lib.cio_operator_ticker_feedback import (
+            journal_for_symbol,
+            latest_feedback,
+        )
+
+        latest = latest_feedback(sym)
+        journal = journal_for_symbol(sym, limit=20)
+    except Exception:
+        latest = None
+        journal = []
+
+    intelligence: dict[str, Any] | None = None
+    intel_err: str | None = None
+    try:
+        from scripts.lib.cio_symbol_intelligence import assemble_symbol_intelligence
+
+        intelligence = assemble_symbol_intelligence(
+            sym,
+            change_item=None,
+            prior_feedback=latest,
+        )
+    except Exception as e:
+        intel_err = f"{type(e).__name__}:{e}"[:240]
+
+    return {
+        "ok": True,
+        "as_of": _now_iso(),
+        "symbol": sym,
+        "intelligence": intelligence,
+        "intelligence_error": intel_err,
+        "journal": journal,
+        "latest_feedback": latest,
+        "authority": "READ_ONLY_ADVISORY",
+        "financial_action": False,
+    }
+
+
+def post_symbol_intelligence_feedback(
+    symbol: str,
+    body: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """POST /api/v3/cio/intelligence/{SYM}/feedback — append OperatorTickerFeedback@v1.
+
+    body.intent (required): AGREE|DISAGREE|INTERESTED|DEFER|NEED_DATA|DISMISS|ACK
+    body.free_text / object_id / channel optional.
+    NEED_DATA triggers best-effort held-coverage dry / Hermes enqueue (fail-soft).
+    """
+    body = body if isinstance(body, dict) else {}
+    sym = str(symbol or body.get("symbol") or "").strip().upper()
+    if not sym:
+        return {
+            "ok": False,
+            "error": "symbol_required",
+            "as_of": _now_iso(),
+            "authority": "READ_ONLY_ADVISORY",
+        }
+    intent_raw = body.get("intent")
+    if not intent_raw:
+        return {
+            "ok": False,
+            "error": "intent_required",
+            "as_of": _now_iso(),
+            "authority": "READ_ONLY_ADVISORY",
+        }
+    try:
+        from scripts.lib.cio_operator_ticker_feedback import (
+            VALID_INTENTS,
+            append_feedback,
+            maybe_enqueue_need_data,
+            normalize_intent,
+            stance_from_intent,
+        )
+
+        intent = normalize_intent(intent_raw)
+        if intent not in VALID_INTENTS:
+            return {
+                "ok": False,
+                "error": "invalid_intent",
+                "detail": f"expected one of {sorted(VALID_INTENTS)}",
+                "as_of": _now_iso(),
+                "authority": "READ_ONLY_ADVISORY",
+            }
+        row = append_feedback({
+            "symbol": sym,
+            "intent": intent,
+            "stance": stance_from_intent(intent),
+            "free_text": body.get("free_text") or body.get("note"),
+            "object_id": body.get("object_id"),
+            "channel": body.get("channel") or "api",
+            "operator_actor_id": body.get("operator_actor_id"),
+        })
+    except ValueError as e:
+        return {
+            "ok": False,
+            "error": "invalid_feedback",
+            "detail": str(e)[:200],
+            "as_of": _now_iso(),
+            "authority": "READ_ONLY_ADVISORY",
+        }
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": type(e).__name__,
+            "detail": str(e)[:240],
+            "as_of": _now_iso(),
+            "authority": "READ_ONLY_ADVISORY",
+        }
+
+    need_data: dict[str, Any] | None = None
+    if row.get("intent") == "NEED_DATA":
+        try:
+            need_data = maybe_enqueue_need_data(sym, apply=False)
+        except Exception as e:
+            need_data = {"ok": False, "error": f"{type(e).__name__}:{e}"[:200]}
+
+    return {
+        "ok": True,
+        "as_of": row.get("ts") or _now_iso(),
+        "feedback": row,
+        "need_data": need_data,
+        "authority": "READ_ONLY_ADVISORY",
+        "financial_action": False,
+    }
 
 
 def get_thesis_research_proposal() -> dict[str, Any]:

@@ -1,9 +1,16 @@
-"""CIO Telegram inline keyboard for material decisions.
+"""CIO Telegram inline keyboard for material decisions + intelligence cards.
 
+Decision cards:
 [ ACK ] [ DEFER ]
 [ DONE ] [ REJECT ]
 [ RATE ] [ OPEN CIO ]
 [ EVIDENCE ] [ RESEARCH ]
+
+Investment Intelligence Cards:
+[ Agree ] [ Disagree ]
+[ Interested ] [ Defer ]
+[ Need data ] [ Dismiss ]
+[ OPEN CIO ] [ Thesis ]
 
 URL buttons only — no unsigned mutation. Tailscale HTTPS via action-link builder.
 """
@@ -70,4 +77,73 @@ def build_decision_inline_keyboard(
         "inline_keyboard": rows,
         "authority": AUTHORITY,
         "decision_id": did,
+    }
+
+
+def build_intelligence_inline_keyboard(
+    card: dict[str, Any],
+    *,
+    key: Optional[bytes] = None,
+) -> dict[str, Any]:
+    """Inline URL keyboard for Investment Intelligence Cards (READ_ONLY).
+
+    Uses ``object_id`` as the signed-action decision_id. Symbol is bound into
+    ``decision_input_digest`` as ``iic:{SYMBOL}`` so POST can append feedback
+    without a capital-plan catalog entry.
+    """
+    did = str(card.get("object_id") or card.get("decision_id") or "").strip()
+    if not did:
+        raise ValueError("object_id required for intelligence keyboard")
+    sym = str(card.get("symbol") or "").strip().upper()
+    inp = str(card.get("decision_input_digest") or (f"iic:{sym}" if sym else "iic:"))
+    evd = str(
+        card.get("decision_evidence_digest")
+        or card.get("card_schema")
+        or "InvestmentIntelligenceCard@v1"
+    )
+
+    def signed(action: str) -> str:
+        url = build_signed_action_url(
+            decision_id=did,
+            action=action,
+            decision_input_digest=inp,
+            decision_evidence_digest=evd,
+            key=key,
+        )
+        if reject_lan_url(url):
+            raise ValueError(f"LAN/localhost URL rejected: {url}")
+        return url
+
+    open_url = build_cio_hub_url()
+    if reject_lan_url(open_url):
+        raise ValueError(f"LAN/localhost URL rejected: {open_url}")
+    thesis_url = build_cio_research_url(sym) if sym else open_url
+    if reject_lan_url(thesis_url):
+        raise ValueError(f"LAN/localhost URL rejected: {thesis_url}")
+
+    rows = [
+        [
+            {"text": "Agree", "url": signed("agree")},
+            {"text": "Disagree", "url": signed("disagree")},
+        ],
+        [
+            {"text": "Interested", "url": signed("interested")},
+            {"text": "Defer", "url": signed("defer")},
+        ],
+        [
+            {"text": "Need data", "url": signed("need_data")},
+            {"text": "Dismiss", "url": signed("dismiss")},
+        ],
+        [
+            {"text": "OPEN CIO", "url": open_url},
+            {"text": "Thesis", "url": thesis_url},
+        ],
+    ]
+    return {
+        "inline_keyboard": rows,
+        "authority": AUTHORITY,
+        "decision_id": did,
+        "object_id": did,
+        "symbol": sym,
+        "card_schema": "InvestmentIntelligenceCard@v1",
     }

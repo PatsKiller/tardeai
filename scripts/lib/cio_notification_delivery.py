@@ -119,10 +119,18 @@ class RealTelegramAdapter:
                 "delivery_method": "telegram_cio",
             }
 
+        reply_markup = notification.get("reply_markup")
+        if reply_markup is not None and not isinstance(reply_markup, dict):
+            reply_markup = None
         res = send_cio_message(
             message,
             kind=str(notification.get("message_class") or "cio_advisory"),
             require_live_auth=True,
+            reply_markup=reply_markup,
+            decision_id=(
+                str(notification.get("object_id") or notification.get("decision_id") or "")
+                or None
+            ),
         )
         if res.get("delivered"):
             return {

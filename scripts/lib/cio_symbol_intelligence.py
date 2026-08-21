@@ -160,6 +160,13 @@ def assemble_symbol_intelligence(
     }
 
     continuity = None
+    if prior_feedback is None:
+        try:
+            from scripts.lib.cio_operator_ticker_feedback import latest_feedback
+
+            prior_feedback = latest_feedback(sym, root=root_p)
+        except Exception:
+            prior_feedback = None
     if isinstance(prior_feedback, dict) and prior_feedback.get("intent"):
         continuity = {
             "prior_intent": prior_feedback.get("intent"),

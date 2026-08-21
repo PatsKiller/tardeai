@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, type CSSProperties, type ReactNode } 
 import { useSearchParams, Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { hubTitle, hubSubtitle } from '../lib/terminalHubChrome'
-import { SymbolThesisCard } from '../components/cio/SymbolThesisCard'
+import { SymbolThesisCard, type SymbolThesisCardPayload } from '../components/cio/SymbolThesisCard'
 import { NotificationGatePanel, SensesEvidencePanel, TelegramReceiptsPanel } from './MaturityPanels'
 import { cioLabel, formatAsOfET } from '../lib/cioLabels'
 
@@ -899,15 +899,117 @@ function AgentResearchOpsStrip() {
   )
 }
 
+/** Fail-soft map of GET /api/v3/cio/intelligence/{SYM} → card extras. */
+function extrasFromIntelligence(body: any): Partial<SymbolThesisCardPayload> {
+  if (!body || typeof body !== 'object') return {}
+  const intel = (body.intelligence && typeof body.intelligence === 'object') ? body.intelligence : body
+  const latest = body.latest_feedback || intel.latest_feedback || null
+  const journal = Array.isArray(body.journal) ? body.journal : []
+  const journalLatest = journal.length ? journal[journal.length - 1] : null
+  const stance = body.operator_stance || body.stance
+    || latest?.stance || journalLatest?.stance
+    || intel.operator_stance || intel.stance
+  const prov = body.provenance || intel.provenance
+  const tech = body.technical_summary ?? intel.technical_summary ?? intel.technical
+  const cau = body.causality ?? intel.causality
+  const what = body.what_changed_detail
+    ?? intel.what_changed_detail
+    ?? (Array.isArray(intel.why_now) ? intel.why_now.filter(Boolean).join(' · ') : undefined)
+
+  let technical_summary: string | undefined
+  if (typeof tech === 'string') {
+    technical_summary = tech
+  } else if (tech && typeof tech === 'object') {
+    const parts = [
+      tech.price != null ? `Price ${tech.price}` : '',
+      (tech.support_or_zone_low != null || tech.resistance_or_zone_high != null)
+        ? `Zone ${tech.support_or_zone_low ?? '—'} → ${tech.resistance_or_zone_high ?? '—'}`
+        : '',
+      tech.stop_invalidation != null ? `Stop ${tech.stop_invalidation}` : '',
+      tech.target != null ? `Target ${tech.target}` : '',
+      tech.status ? `Status ${tech.status}` : '',
+    ].filter(Boolean)
+    technical_summary = parts.length ? parts.join(' · ') : undefined
+  }
+
+  let causality: string | undefined
+  if (typeof cau === 'string') causality = cau
+  else if (cau && typeof cau === 'object') {
+    causality = String(cau.narrative || cau.effect || '') || undefined
+  }
+
+  const hist = Array.isArray(body.thesis_history)
+    ? body.thesis_history
+    : (Array.isArray(intel.thesis_history) ? intel.thesis_history : undefined)
+
+  const out: Partial<SymbolThesisCardPayload> = {}
+  if (stance != null && String(stance)) out.operator_stance = String(stance)
+  if (latest && typeof latest === 'object' && latest.intent) {
+    out.latest_feedback = {
+      intent: String(latest.intent),
+      ts: latest.ts != null ? String(latest.ts) : undefined,
+      free_text: latest.free_text != null ? String(latest.free_text) : undefined,
+    }
+  }
+  if (prov && typeof prov === 'object' && prov.decision_origin != null) {
+    out.provenance = { decision_origin: String(prov.decision_origin) }
+  }
+  if (what != null && String(what)) out.what_changed_detail = String(what)
+  if (technical_summary) out.technical_summary = technical_summary
+  if (causality) out.causality = causality
+  if (hist) out.thesis_history = hist
+  return out
+}
+
 function UniverseThesesPanel() {
   const { data, loading, error } = useApi<UniverseThesesPayload>('/api/v3/cio/universe-theses', 60_000)
   const [sym, setSym] = useState('')
+  const [intelExtras, setIntelExtras] = useState<Partial<SymbolThesisCardPayload>>({})
   const cardPath = sym ? `/api/v3/cio/symbol-thesis/${encodeURIComponent(sym)}` : ''
   const { data: card, loading: cardLoading, error: cardError } = useApi<any>(
     cardPath || '/api/v3/cio/symbol-thesis/_idle',
     0,
     { enabled: Boolean(sym) },
   )
+
+  // Shared intelligence / journal — fail-soft on 404 or network errors (Phase B API).
+  useEffect(() => {
+    setIntelExtras({})
+    if (!sym) return
+    let cancelled = false
+    fetch(`/api/v3/cio/intelligence/${encodeURIComponent(sym)}`, { cache: 'no-store' })
+      .then(r => {
+        if (!r.ok) return null
+        return r.json()
+      })
+      .then(j => {
+        if (cancelled || !j) return
+        const body = j.ok !== undefined ? (j.data ?? j) : j
+        if (j.ok === false && !body?.latest_feedback && !body?.intelligence) return
+        setIntelExtras(extrasFromIntelligence(body))
+      })
+      .catch(() => {
+        if (!cancelled) setIntelExtras({})
+      })
+    return () => { cancelled = true }
+  }, [sym])
+
+  const mergedCard: SymbolThesisCardPayload | null = (() => {
+    if (!card) return null
+    const base = card as SymbolThesisCardPayload
+    const hist = (Array.isArray(base.thesis_history) && base.thesis_history.length)
+      ? base.thesis_history
+      : intelExtras.thesis_history
+    return {
+      ...base,
+      ...intelExtras,
+      // Prefer living-thesis history when present; fill from intelligence otherwise.
+      thesis_history: hist,
+      // Keep symbol-thesis what_changed unless intel provides richer detail only.
+      what_changed: base.what_changed,
+    }
+  })()
+
   const missingApi = Boolean(error && String(error).includes('HTTP 404'))
   const payloadError = data && data.ok === false
   const rows = Array.isArray(data?.symbols) ? data!.symbols! : []
@@ -977,7 +1079,7 @@ function UniverseThesesPanel() {
           Symbol thesis unavailable for {sym}: {String(cardError)}
         </div>
       )}
-      {sym && !cardError && <SymbolThesisCard card={card} />}
+      {sym && !cardError && <SymbolThesisCard card={mergedCard} />}
     </div>
   )
 }

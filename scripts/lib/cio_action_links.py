@@ -25,8 +25,28 @@ from urllib.parse import quote
 from scripts.notification_url_builder import get_public_base_url
 
 AUTHORITY = "READ_ONLY_ADVISORY"
-ACTIONS = frozenset({"ack", "defer", "done", "reject", "rate", "open", "evidence", "research"})
-MUTATING = frozenset({"ack", "defer", "done", "reject", "rate"})
+ACTIONS = frozenset({
+    "ack", "defer", "done", "reject", "rate", "open", "evidence", "research",
+    # Investment Intelligence Card feedback (Telegram URL buttons)
+    "agree", "disagree", "interested", "need_data", "dismiss",
+})
+MUTATING = frozenset({
+    "ack", "defer", "done", "reject", "rate",
+    "agree", "disagree", "interested", "need_data", "dismiss",
+})
+# Signed actions that map to OperatorTickerFeedback intents (IIC / sio_*).
+IIC_FEEDBACK_ACTIONS = frozenset({
+    "agree", "disagree", "interested", "defer", "need_data", "dismiss", "ack",
+})
+_IIC_ACTION_TO_INTENT = {
+    "agree": "AGREE",
+    "disagree": "DISAGREE",
+    "interested": "INTERESTED",
+    "defer": "DEFER",
+    "need_data": "NEED_DATA",
+    "dismiss": "DISMISS",
+    "ack": "ACK",
+}
 DEFAULT_TTL_SEC = 7 * 24 * 3600
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 KEY_PATH = PROJECT_ROOT / "data" / "cio" / "cio_action_link.key"
@@ -180,13 +200,119 @@ def build_signed_action_url(
     return f"{get_public_base_url()}/v3/go/cio/decision/{did}/action/{act}?t={token}"
 
 
-def apply_signed_disposition(payload: dict[str, Any], *, rating: Optional[int] = None, note: str = "") -> dict[str, Any]:
-    """POST-confirm path — calls the existing governed disposition API."""
-    from scripts.api_v3_cio import post_decision_disposition
+def _is_intelligence_card_payload(payload: dict[str, Any], note: str = "") -> bool:
+    """True when the signed action targets an Investment Intelligence Card."""
+    did = str(payload.get("decision_id") or "").strip()
+    if did.startswith("sio_"):
+        return True
+    dig_in = str(payload.get("decision_input_digest") or "")
+    dig_ev = str(payload.get("decision_evidence_digest") or "")
+    if dig_in.startswith("iic:") or dig_ev.startswith("InvestmentIntelligenceCard"):
+        return True
+    n = str(note or "").lower()
+    if "intelligence card" in n or "investmentintelligencecard" in n.replace(" ", ""):
+        return True
+    return False
 
+
+def _symbol_from_iic_payload(payload: dict[str, Any]) -> str:
+    dig = str(payload.get("decision_input_digest") or "").strip()
+    if dig.lower().startswith("iic:"):
+        return dig.split(":", 1)[1].strip().upper()
+    did = str(payload.get("decision_id") or "").strip()
+    if did.startswith("sio_"):
+        # object_id = sio_{SYM}_{kind}_{to_state…} — first segment after prefix is symbol
+        rest = did[4:]
+        if rest:
+            return rest.split("_", 1)[0].strip().upper()
+    return ""
+
+
+def _apply_iic_feedback(
+    payload: dict[str, Any],
+    *,
+    note: str = "",
+) -> dict[str, Any]:
+    """Map signed IIC action → OperatorTickerFeedback journal (fail-soft)."""
+    action = str(payload.get("action") or "").lower()
+    intent = _IIC_ACTION_TO_INTENT.get(action)
+    if not intent:
+        return {"ok": False, "error": "not_iic_feedback_action", "authority": AUTHORITY}
+    if action not in IIC_FEEDBACK_ACTIONS:
+        return {"ok": False, "error": "not_iic_feedback_action", "authority": AUTHORITY}
+
+    symbol = _symbol_from_iic_payload(payload)
+    if not symbol:
+        return {"ok": False, "error": "missing_symbol_for_iic_feedback", "authority": AUTHORITY}
+
+    try:
+        from scripts.lib.cio_operator_ticker_feedback import (
+            append_feedback,
+            maybe_enqueue_need_data,
+        )
+    except Exception as exc:
+        return {
+            "ok": False,
+            "error": "feedback_module_unavailable",
+            "detail": f"{type(exc).__name__}:{exc}"[:200],
+            "authority": AUTHORITY,
+        }
+
+    try:
+        stored = append_feedback({
+            "symbol": symbol,
+            "intent": intent,
+            "object_id": str(payload.get("decision_id") or "") or None,
+            "channel": "telegram",
+            "source": "signed_action_link",
+            "free_text": note or None,
+            "card_schema": "InvestmentIntelligenceCard@v1",
+        })
+    except Exception as exc:
+        return {
+            "ok": False,
+            "error": "append_feedback_failed",
+            "detail": f"{type(exc).__name__}:{exc}"[:200],
+            "authority": AUTHORITY,
+        }
+
+    need_data = None
+    if intent == "NEED_DATA":
+        try:
+            need_data = maybe_enqueue_need_data(symbol, apply=False)
+        except Exception as exc:
+            need_data = {"ok": False, "error": f"{type(exc).__name__}:{exc}"[:200]}
+
+    return {
+        "ok": True,
+        "feedback": stored,
+        "intent": intent,
+        "symbol": symbol,
+        "need_data": need_data,
+        "authority": AUTHORITY,
+        "source": "iic_signed_action",
+    }
+
+
+def apply_signed_disposition(payload: dict[str, Any], *, rating: Optional[int] = None, note: str = "") -> dict[str, Any]:
+    """POST-confirm path — disposition API, or IIC feedback for sio_* cards."""
     action = str(payload.get("action") or "").lower()
     if action not in MUTATING:
         return {"ok": False, "error": "not_mutating_action", "authority": AUTHORITY}
+
+    if _is_intelligence_card_payload(payload, note=note) and action in IIC_FEEDBACK_ACTIONS:
+        return _apply_iic_feedback(payload, note=note)
+
+    # IIC-only action names must not hit the decision disposition API.
+    if action in {"agree", "disagree", "interested", "need_data", "dismiss"}:
+        return {
+            "ok": False,
+            "error": "iic_feedback_requires_sio_decision_id",
+            "authority": AUTHORITY,
+        }
+
+    from scripts.api_v3_cio import post_decision_disposition
+
     body = {
         "decision_id": payload.get("decision_id"),
         "disposition": action,

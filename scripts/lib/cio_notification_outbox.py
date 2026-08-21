@@ -516,6 +516,10 @@ class NotificationOutbox:
                     "handoff_id": payload.get("handoff_id"),
                     "health_decision_id": payload.get("health_decision_id"),
                     "deep_link": payload.get("deep_link"),
+                    "reply_markup": payload.get("reply_markup"),
+                    "object_id": payload.get("object_id"),
+                    "symbol": payload.get("symbol"),
+                    "card_schema": payload.get("card_schema"),
                     "claim_token": None,
                     "claim_worker_id": None,
                     "lease_expires_at": None,
@@ -682,7 +686,8 @@ class NotificationOutbox:
         Optional fields:
           - severity (auto-determined if absent), created_at, expires_at,
             dedupe_key, cio_action_id, wake_job_id, handoff_id,
-            health_decision_id, deep_link, idempotency_key, priority
+            health_decision_id, deep_link, idempotency_key, priority,
+            reply_markup (Telegram inline keyboard), object_id, symbol, card_schema
         """
         # Guard: validate dict shape before accessing fields to avoid KeyErrors
         if not isinstance(notification, dict):
@@ -747,6 +752,15 @@ class NotificationOutbox:
             "deep_link": notification.get("deep_link"),
             "idempotency_key": idempotency_key,
         }
+        # Optional Telegram inline keyboard (IIC / decision URL buttons).
+        if notification.get("reply_markup") is not None:
+            payload["reply_markup"] = notification.get("reply_markup")
+        if notification.get("object_id") is not None:
+            payload["object_id"] = notification.get("object_id")
+        if notification.get("symbol") is not None:
+            payload["symbol"] = notification.get("symbol")
+        if notification.get("card_schema") is not None:
+            payload["card_schema"] = notification.get("card_schema")
 
         event = build_event(
             event_type="NOTIFICATION_ENQUEUED",
