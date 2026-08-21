@@ -48,6 +48,7 @@ jobs:
       # runner env can never flip behavior-influence on during CI.
       AGENT_CONTEXT_ENVELOPE: "0"
       AGENT_RUN_TRACE: "0"
+      AGENT_DECISION_PAYLOAD: "0"
       MCP_READ_ONLY_GATEWAY: "0"
       MEMORY_PROVIDER: "null"
       MEMORY_SHADOW: "0"
@@ -89,6 +90,8 @@ jobs:
             tests/test_agent_shadow_acceptance.py \
             tests/test_agent_wake_taxonomy.py \
             tests/test_agent_runtime_instrumentation.py \
+            tests/test_agent_decision_payload.py \
+            tests/test_agent_memory_shadow_measure.py \
             tests/test_langgraph_complexity_gate.py \
             tests/test_mcp_read_only_gateway.py \
             tests/test_mcp_security.py \
@@ -117,6 +120,8 @@ jobs:
             tests/test_agent_shadow_acceptance.py \
             tests/test_agent_wake_taxonomy.py \
             tests/test_agent_runtime_instrumentation.py \
+            tests/test_agent_decision_payload.py \
+            tests/test_agent_memory_shadow_measure.py \
             tests/test_langgraph_complexity_gate.py \
             tests/test_mcp_read_only_gateway.py \
             tests/test_mcp_security.py \
