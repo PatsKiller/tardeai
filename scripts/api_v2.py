@@ -40390,6 +40390,14 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     if not sym:
                         return 400, {"ok": False, "error": "symbol required"}
                     return 200, _cio.get_symbol_thesis_card(sym)
+                if p.startswith("intelligence/"):
+                    rest = p[len("intelligence/"):].strip("/")
+                    parts = [x for x in rest.split("/") if x]
+                    if not parts:
+                        return 400, {"ok": False, "error": "symbol required"}
+                    if len(parts) == 1:
+                        return 200, _cio.get_symbol_intelligence(parts[0])
+                    return 404, {"ok": False, "error": f"unknown_cio_path: {p}"}
                 if p.startswith("ask-thesis/") or p.startswith("ask_thesis/"):
                     prefix = "ask-thesis/" if p.startswith("ask-thesis/") else "ask_thesis/"
                     sym = p[len(prefix):].strip("/").split("/")[0]
@@ -40425,6 +40433,15 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     if not key:
                         return 400, {"ok": False, "error": "decision_key required"}
                     res = _cio.post_decision_disposition(key, body or {})
+                    code = 200 if res.get("ok") else 400
+                    return code, res
+                # POST /api/v3/cio/intelligence/{SYM}/feedback — OperatorTickerFeedback@v1
+                if p.startswith("intelligence/") and p.endswith("/feedback"):
+                    mid = p[len("intelligence/"):]
+                    sym = mid[: -len("/feedback")].strip("/").split("/")[0]
+                    if not sym:
+                        return 400, {"ok": False, "error": "symbol required"}
+                    res = _cio.post_symbol_intelligence_feedback(sym, body or {})
                     code = 200 if res.get("ok") else 400
                     return code, res
                 # POST /api/v3/cio/plans/{id}/disposition  — status only (READ_ONLY)
