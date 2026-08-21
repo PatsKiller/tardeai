@@ -460,6 +460,14 @@ def _enqueue_material_product_outbox(
         for card in cards:
             sym = str(card.get("symbol") or "").upper()
             body = render_telegram_card(card)
+            reply_markup = None
+            try:
+                from scripts.lib.cio_telegram_keyboard import (
+                    build_intelligence_inline_keyboard,
+                )
+                reply_markup = build_intelligence_inline_keyboard(card)
+            except Exception:
+                reply_markup = None
             note = {
                 "notification_id": "ntf_prod_" + _digest(pid, sym, changed.get("as_of") or _now()),
                 "idempotency_key": f"product_what_changed:{pid}:{sym}",
@@ -479,6 +487,8 @@ def _enqueue_material_product_outbox(
                     "change": (card.get("change") or {}),
                 },
             }
+            if reply_markup is not None:
+                note["reply_markup"] = reply_markup
             last_event = outbox.enqueue(note, actor_id="cio_product_reassessment")
             enqueued_ids.append(note["notification_id"])
 
