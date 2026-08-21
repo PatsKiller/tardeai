@@ -1,6 +1,8 @@
 # Lane Quality Bake-Off — 2026-08-21
 
-**Authority:** READ_ONLY_ADVISORY. Measurement only. **No routing flags flipped. #437/#438 not merged.**
+**Authority:** READ_ONLY_ADVISORY. Measurement only. **No routing flags flipped.**
+
+**Closeout 2026-08-21 18:46 ET:** #440 (import+alarm), #437, #438, #439 **merged**. CURRENT **`a7f30d89`**. Scheduler-path proof `hermes_external_research` id=45900 `status=sent`. RAW-store alarm live. `RESEARCH_SKIP_GATE` still 0. `$0.42/14d` spend is void (crash loop) — 7-day re-baseline pending.
 **Window:** Track A ran 17:31–18:06 ET (DeepSeek **off-peak**).
 **Sandbox:** `/tmp/tradeai-bakeoff-20260821/` — no writes to `hermes_external_research`, no Telegram, no cards.
 
@@ -184,7 +186,7 @@ Do **not** make either the workhorse. Use as overflow when Flash is 500/capped. 
 
 ### Can Flash take the workhorse outright?
 
-**Yes, once `hermes_external_researcher` imports `llm_lane` instead of `lib.llm_lane`.** Until that one-line fix, the “workhorse” is a 100% error printer. That fix is **not** a routing-table change; it is restoring the path the table already claims.
+**Yes.** #440 landed the import. Proof: scheduler-path id=45900 `status=sent`. Re-baseline spend 7 days before touching the call cap. Do not raise `LLM_GLOBAL_DAILY_USD_CAP`.
 
 ### Is local worth keeping?
 

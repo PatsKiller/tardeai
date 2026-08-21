@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-08-21 — Research P0–P4 closeout (docs)
+
+Merged #440 (llm_lane import + RAW-store lane health), #437 (22-ticker denominator), #438 (R1–R5 flags default 0), #439 (bake-off). CURRENT `a7f30d89`. Scheduler-path DeepSeek proof id=45900. `$0.42/14d` spend void (crash loop). 27b is CPU, not GPU deep. Overnight *policy* ChatGPT; *live timer* still China-night gemma. `RESEARCH_SKIP_GATE` unset. Influence 0.
+
 ## 2026-08-18 — Header STALE badge rebased on journal-rebuild freshness
 
 The TRADING / REALIZED header tiles were flagging `⚠ STALE` because staleness was computed from

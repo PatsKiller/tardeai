@@ -17,9 +17,9 @@ crons (subject-level), all keyed to the same tiers below.
 
 | Lane | Engine | Cost | Breadth | Dispatch | Role |
 |------|--------|------|---------|----------|------|
-| **local-gemma** | gemma3:12b/4b (local) | free, fast | **all tiers, broad** | enqueue `watchlist_agent_jobs` → drained by 24/7 workers | the workhorse — every due symbol |
-| **internal-deep** | ChatGPT OAuth overnight; gemma3:27b daytime/rollback | ChatGPT free (rate-limited); gemma local-free | T0/T1 deep dives | US overnight 22:00–06:00 ET → `:8646`; gemma only if `US_OVERNIGHT_LLM=gemma` | deep synthesis — **no gemma overnight by default** |
-| **deepseek** | DeepSeek V4 Flash (governed, paid) | metered, cheap | T0/T1 + catalyst | `hermes_external_researcher` (governed lane) | external skeptic — **primary auto lane** |
+| **local-gemma** | gemma3:4b / 12b (local) | free | overflow / math-adjacent | enqueue `watchlist_agent_jobs` **only if** `RESEARCH_ALLOW_LOCAL_LLM=1` (default **0**) | not the workhorse — maria queue was 28.5% fail |
+| **internal-deep** | **Policy:** ChatGPT OAuth 22:00–06:00 ET. **Live timer:** China-night gemma3:27b (empty US-day). 27b is **100% CPU** on the B50 — not a GPU deep lane | ChatGPT free; 27b CPU | T0/T1 | policy `:8646`; live timer not retargeted | do not label 27b “deep multi-agent synthesis” |
+| **deepseek** | DeepSeek V4 Flash via `scripts/llm_lane.py` | metered, cheap | T0/T1 + catalyst | `hermes_external_researcher` (`--trigger research_scheduler`) | **primary auto lane** — import fixed #440 (id=45900 sent) |
 | **grok** | xAI OAuth proxy :8645 | free, **rate-limited** | *(retained, not auto)* | — | deprecated for auto-dispatch |
 | **chatgpt** | codex OAuth proxy :8646 | free, **rate-limited** | US overnight judgment | `hermes_deep_research_local` (overnight) | default overnight LLM — not gemma |
 | **claude** | Anthropic API | **metered $** | arbitration only | manual / on disagreement | tie-break, high-stakes only — **never auto** |
@@ -27,9 +27,10 @@ crons (subject-level), all keyed to the same tiers below.
 | **catalyst** | `hermes_momentum_catalyst_researcher`, social scalp | free | event-driven | own cron | detects new events → pulls symbols forward |
 | **news** | `news_ingestion`, Finviz | free | broad, continuous | own cron | event feed feeding catalyst signal |
 
-Cheap/broad lanes (local-gemma) cover everything frequently; the governed DeepSeek lane is the single
-budgeted external skeptic for high tiers and live catalysts, **budgeted per run** so it never exhausts;
-claude is metered and only used for arbitration when lanes disagree.
+The governed DeepSeek Flash lane is the auto judgment workhorse (`llm_lane.py`, not `lib.llm_lane`).
+Local gemma is not auto-enqueued unless `RESEARCH_ALLOW_LOCAL_LLM=1`. Claude is metered arbitration-only.
+RAW-store health: `scripts/research_lane_health.py` (does **not** use `last_real`). Skip gate
+`RESEARCH_SKIP_GATE` defaults **off**. `$0.42/14d` spend was a crash loop — re-baseline 7d post-#440.
 
 ## 1. Universe & tiers
 
@@ -132,7 +133,8 @@ classified `thesis_update`). No-change refreshes store silently (audit), no aler
 | 20:30 | `research_scheduler --mode watchlist --apply` | T1 refresh sweep |
 | 10:00 | `research_scheduler --mode cold-floor --apply` | rotating T3 floor (retargeted off 02:00 Peak B; PEAK_SKIP wrapped) |
 | Sun | `research_scheduler --mode incubator --apply` | T2 sweep |
-| US overnight 22:00–06:00 ET | **deterministic jobs only**; judgmental LLM = **ChatGPT OAuth** (`:8646`), not gemma3:27b | gemma overnight timer currently **produces empty RESULT {}** (China-night calendar vs US overnight window mismatch). Operator 2026-08-21. |
+| US overnight 22:00–06:00 ET | **policy:** deterministic + ChatGPT OAuth (`:8646`) | **live timer still China-night gemma3:27b** (empty `RESULT: {}`). Alarm lane `overnight-deep` covers both. |
+| every 15 min | `research_lane_health.py --alert` | RAW `hermes_external_research` + overnight-deep; `[ERROR]` rows count |
 | (existing) ATP2 cycles, topic synth, news/finviz, catalyst | subject-level lanes | topics/sources/events feeding the catalyst signal |
 
 `--mode backfill` walks the **whole** universe by priority within the external budget — used to recover
