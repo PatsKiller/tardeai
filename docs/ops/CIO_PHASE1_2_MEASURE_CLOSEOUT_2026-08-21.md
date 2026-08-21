@@ -7,7 +7,7 @@
 
 | Item | Value |
 |------|--------|
-| DecisionPayload capture | `AGENT_DECISION_PAYLOAD=1` (drop-in `29-decision-payload-measure.conf`) |
+| DecisionPayload capture | `AGENT_DECISION_PAYLOAD=1` on **portfolio-server** (`29-…`) **and producers** (`30-decision-payload.conf` on material-scan / telegram / reactive / measure / advisory-shadow). Code default still 0. |
 | Memory influence | **`MEMORY_BEHAVIOR_INFLUENCE=0`** |
 | Memory provider / shadow | `durable` / `1` |
 | Governed memory posture | `SHADOW` |
@@ -20,9 +20,11 @@
 ```text
 systemctl --user start tradeai-cio-memory-shadow-measure.service
 → status=0/SUCCESS
-payload_v1=0 coverage=0.0   # window just opened; corpus will fill over sessions
+payload_v1=0 coverage=0.0   # producers did not inherit the flag — HOLD-fallback lie
 wakes≈2420 dual_path=True gate=NOT_PROMOTED influence_active=False
 ```
+
+**Correction (evening):** that 5-day window is a **false start**. Producers now have `AGENT_DECISION_PAYLOAD=1`. Restart the clock the first day `with_decision_payload_v1_non_synth ≥ 1`. Measure honesty (0 v1 ⇒ `decision_payloads_available=false`) is in #435; promote before trusting the JSON.
 
 Next timer fire: **2026-08-22 06:20 EDT**.
 
