@@ -1,0 +1,172 @@
+{
+  "n_rows": 240,
+  "lanes": {
+    "chatgpt": {
+      "n": 30,
+      "skipped_27b": 0,
+      "parse_pct": 100.0,
+      "numeric_exact_pct": 100.0,
+      "error_prefix_pct": 0.0,
+      "empty_or_fail_pct": 0.0,
+      "hallucinated_ticker_pct": 63.3,
+      "truncation_pct": 0.0,
+      "duplicate_output_pct": 0.0,
+      "median_length": 217,
+      "latency_p50_s": 5.975,
+      "latency_p95_s": 7.077,
+      "acceptance_rate_pct": 100.0,
+      "seconds_per_accepted": 6.098,
+      "accepted_n": 30,
+      "models_seen": [
+        "gpt-5.4-mini"
+      ]
+    },
+    "deepseek-v4-flash": {
+      "n": 30,
+      "skipped_27b": 0,
+      "parse_pct": 90.0,
+      "numeric_exact_pct": 90.0,
+      "error_prefix_pct": 0.0,
+      "empty_or_fail_pct": 10.0,
+      "hallucinated_ticker_pct": 26.7,
+      "truncation_pct": 0.0,
+      "duplicate_output_pct": 0.0,
+      "median_length": 239,
+      "latency_p50_s": 1.412,
+      "latency_p95_s": 6.757,
+      "acceptance_rate_pct": 90.0,
+      "seconds_per_accepted": 1.896,
+      "accepted_n": 27,
+      "models_seen": [
+        "None",
+        "deepseek-v4-flash"
+      ]
+    },
+    "deepseek-v4-flash-vision-exp": {
+      "n": 30,
+      "skipped_27b": 0,
+      "parse_pct": 100.0,
+      "numeric_exact_pct": 100.0,
+      "error_prefix_pct": 0.0,
+      "empty_or_fail_pct": 0.0,
+      "hallucinated_ticker_pct": 23.3,
+      "truncation_pct": 0.0,
+      "duplicate_output_pct": 0.0,
+      "median_length": 209,
+      "latency_p50_s": 2.013,
+      "latency_p95_s": 3.094,
+      "acceptance_rate_pct": 100.0,
+      "seconds_per_accepted": 2.023,
+      "accepted_n": 30,
+      "models_seen": [
+        "deepseek-v4-flash-vision-exp"
+      ]
+    },
+    "deepseek-v4-pro": {
+      "n": 30,
+      "skipped_27b": 0,
+      "parse_pct": 100.0,
+      "numeric_exact_pct": 100.0,
+      "error_prefix_pct": 0.0,
+      "empty_or_fail_pct": 0.0,
+      "hallucinated_ticker_pct": 76.7,
+      "truncation_pct": 0.0,
+      "duplicate_output_pct": 0.0,
+      "median_length": 265,
+      "latency_p50_s": 2.084,
+      "latency_p95_s": 3.535,
+      "acceptance_rate_pct": 100.0,
+      "seconds_per_accepted": 2.213,
+      "accepted_n": 30,
+      "models_seen": [
+        "deepseek-v4-pro"
+      ]
+    },
+    "grok": {
+      "n": 30,
+      "skipped_27b": 0,
+      "parse_pct": 100.0,
+      "numeric_exact_pct": 100.0,
+      "error_prefix_pct": 0.0,
+      "empty_or_fail_pct": 0.0,
+      "hallucinated_ticker_pct": 23.3,
+      "truncation_pct": 0.0,
+      "duplicate_output_pct": 0.0,
+      "median_length": 204,
+      "latency_p50_s": 9.765,
+      "latency_p95_s": 20.071,
+      "acceptance_rate_pct": 100.0,
+      "seconds_per_accepted": 10.839,
+      "accepted_n": 30,
+      "models_seen": [
+        "grok-3-mini"
+      ]
+    },
+    "internal-deep-27b": {
+      "n": 3,
+      "skipped_27b": 27,
+      "parse_pct": 100.0,
+      "numeric_exact_pct": 100.0,
+      "error_prefix_pct": 0.0,
+      "empty_or_fail_pct": 0.0,
+      "hallucinated_ticker_pct": 66.7,
+      "truncation_pct": 0.0,
+      "duplicate_output_pct": 0.0,
+      "median_length": 273,
+      "latency_p50_s": 84.709,
+      "latency_p95_s": 85.95,
+      "acceptance_rate_pct": 100.0,
+      "seconds_per_accepted": 84.438,
+      "accepted_n": 3,
+      "models_seen": [
+        "gemma3:27b"
+      ]
+    },
+    "local-gemma-12b": {
+      "n": 30,
+      "skipped_27b": 0,
+      "parse_pct": 100.0,
+      "numeric_exact_pct": 100.0,
+      "error_prefix_pct": 0.0,
+      "empty_or_fail_pct": 0.0,
+      "hallucinated_ticker_pct": 0.0,
+      "truncation_pct": 0.0,
+      "duplicate_output_pct": 0.0,
+      "median_length": 233,
+      "latency_p50_s": 24.161,
+      "latency_p95_s": 25.258,
+      "acceptance_rate_pct": 100.0,
+      "seconds_per_accepted": 24.197,
+      "accepted_n": 30,
+      "models_seen": [
+        "gemma3:12b"
+      ]
+    },
+    "local-gemma-4b": {
+      "n": 30,
+      "skipped_27b": 0,
+      "parse_pct": 100.0,
+      "numeric_exact_pct": 100.0,
+      "error_prefix_pct": 0.0,
+      "empty_or_fail_pct": 0.0,
+      "hallucinated_ticker_pct": 96.7,
+      "truncation_pct": 0.0,
+      "duplicate_output_pct": 0.0,
+      "median_length": 256,
+      "latency_p50_s": 8.748,
+      "latency_p95_s": 19.44,
+      "acceptance_rate_pct": 100.0,
+      "seconds_per_accepted": 12.676,
+      "accepted_n": 30,
+      "models_seen": [
+        "gemma3:4b"
+      ]
+    }
+  },
+  "flash_max_n": 5,
+  "flash_max_exact": 5,
+  "flash_max_parse": 5,
+  "flash_max_models": [
+    "deepseek-v4-flash"
+  ]
+}
