@@ -110,6 +110,9 @@ export type SymbolThesisCardPayload = {
   what_changed_detail?: string
   technical_summary?: string
   causality?: string
+  /** Phase D — fail-soft queue summary when CIO intelligence provides it. */
+  research_queue_open_count?: number | null
+  research_queue_oldest_wait_human?: string | null
 }
 
 export function SymbolThesisCard({ card: c }: { card: SymbolThesisCardPayload | null }) {
@@ -162,6 +165,13 @@ export function SymbolThesisCard({ card: c }: { card: SymbolThesisCardPayload | 
   const hasTech = Boolean(c.technical_summary)
   const hasCausality = Boolean(c.causality)
   const hasDetail = Boolean(c.what_changed_detail)
+  const rqOpen = c.research_queue_open_count
+  const hasQueueSummary = rqOpen != null && Number.isFinite(Number(rqOpen))
+  const queueLabel = hasQueueSummary
+    ? (Number(rqOpen) > 0
+      ? `RESEARCH QUEUE ${Math.floor(Number(rqOpen))} open${c.research_queue_oldest_wait_human ? ` · oldest ${c.research_queue_oldest_wait_human}` : ''}`
+      : 'RESEARCH QUEUE idle')
+    : null
 
   return (
     <div data-testid="symbol-thesis-card" style={card}>
@@ -175,12 +185,26 @@ export function SymbolThesisCard({ card: c }: { card: SymbolThesisCardPayload | 
             {c.symbol_thesis_version != null ? ` ${String(c.symbol_thesis_version)}` : ''}
           </div>
         </div>
-        <div style={{
-          alignSelf: 'flex-start', fontSize: 11, fontWeight: 800, letterSpacing: '.4px',
-          padding: '4px 8px', borderRadius: 6, border: '1px solid var(--border)',
-          color: c.thesis_state === 'RESEARCH_REQUIRED' ? 'var(--amber)' : 'var(--text2)',
-        }}>
-          {c.thesis_state || 'RESEARCH_REQUIRED'}
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignSelf: 'flex-start' }}>
+          {queueLabel && (
+            <div
+              data-research-queue={Number(rqOpen) > 0 ? String(Math.floor(Number(rqOpen))) : 'idle'}
+              style={{
+                fontSize: 11, fontWeight: 800, letterSpacing: '.4px',
+                padding: '4px 8px', borderRadius: 6, border: '1px solid var(--border)',
+                color: Number(rqOpen) > 0 ? 'var(--amber)' : 'var(--text2)',
+              }}
+            >
+              {queueLabel}
+            </div>
+          )}
+          <div style={{
+            fontSize: 11, fontWeight: 800, letterSpacing: '.4px',
+            padding: '4px 8px', borderRadius: 6, border: '1px solid var(--border)',
+            color: c.thesis_state === 'RESEARCH_REQUIRED' ? 'var(--amber)' : 'var(--text2)',
+          }}>
+            {c.thesis_state || 'RESEARCH_REQUIRED'}
+          </div>
         </div>
       </div>
       <Field label="Why own / watch">{c.why_owned_or_watched || '—'}</Field>
