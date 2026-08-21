@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 import time
 import uuid
 from datetime import datetime, timezone
@@ -20,6 +21,24 @@ from pathlib import Path
 from typing import Any, Optional, Protocol
 
 log = logging.getLogger("tradeai.cio_notification_delivery")
+
+# Legacy raw product dump: "Material CIO product change · …" plus bullet lines
+# like "- reentry_added …" / "- opportunity_…" / "- action_…".
+_RAW_DUMP_PREFIX = "Material CIO product change ·"
+_RAW_DUMP_BULLET_RE = re.compile(r"^-\s*(reentry_|opportunity_|action_)")
+
+
+def is_raw_product_dump_body(text: str) -> bool:
+    """True when body looks like the pre-IIC raw product what_changed dump.
+
+    Detects either the historical subject/title prefix, or ≥2 legacy bullet
+    lines of the form ``- reentry_*`` / ``- opportunity_*`` / ``- action_*``.
+    """
+    body = text or ""
+    if _RAW_DUMP_PREFIX in body:
+        return True
+    hits = sum(1 for line in body.splitlines() if _RAW_DUMP_BULLET_RE.match(line))
+    return hits >= 2
 
 
 class DeliveryAdapter(Protocol):
@@ -89,6 +108,21 @@ class RealTelegramAdapter:
         subject = notification.get("subject", "")
         message = f"{subject}\n\n{body}" if subject else body
 
+        # Belt-and-suspenders: never deliver pre-IIC raw product dumps.
+        if is_raw_product_dump_body(message) or is_raw_product_dump_body(str(body or "")):
+            log.warning(
+                "SUPPRESSED_RAW_PRODUCT_DUMP notification_id=%s subject=%s",
+                nid,
+                (subject or "")[:80],
+            )
+            return {
+                "delivered": False,
+                "error": "SUPPRESSED_RAW_PRODUCT_DUMP",
+                "reason": "raw_product_dump_body",
+                "notification_id": nid,
+                "delivery_method": "telegram_cio",
+            }
+
         try:
             from scripts.lib.cio_telegram_transport import send_cio_message, network_interdicted
         except ImportError:
@@ -122,6 +156,14 @@ class RealTelegramAdapter:
         reply_markup = notification.get("reply_markup")
         if reply_markup is not None and not isinstance(reply_markup, dict):
             reply_markup = None
+        raw_parse = notification.get("parse_mode")
+        parse_mode = raw_parse if raw_parse in ("HTML", None) else None
+        if raw_parse not in ("HTML", None):
+            log.warning(
+                "Ignoring unsupported parse_mode=%r for notification %s",
+                raw_parse,
+                nid,
+            )
         res = send_cio_message(
             message,
             kind=str(notification.get("message_class") or "cio_advisory"),
@@ -131,6 +173,7 @@ class RealTelegramAdapter:
                 str(notification.get("object_id") or notification.get("decision_id") or "")
                 or None
             ),
+            parse_mode=parse_mode,
         )
         if res.get("delivered"):
             return {

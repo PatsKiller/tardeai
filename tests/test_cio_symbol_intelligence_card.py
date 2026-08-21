@@ -106,6 +106,8 @@ def test_enqueue_per_ticker_intelligence_body(tmp_path: Path):
     assert "Causality" in text
     assert "reentry_added UBER → NEAR" not in text
     assert "symbol=BOOK" not in text
+    # Soft: IIC outbox notes opt into HTML parse_mode for Telegram bold/code.
+    assert '"parse_mode": "HTML"' in text or '"parse_mode":"HTML"' in text
 
 
 def test_notify_still_enqueues(tmp_path: Path):
