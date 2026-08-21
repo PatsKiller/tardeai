@@ -333,11 +333,11 @@ def _transition_label(change: dict[str, Any]) -> str:
     fr = change.get("from")
     to = change.get("to")
     if fr is not None and to is not None:
-        return f"{fr}→{to}"
+        return f"{fr} → {to}"
     if to is not None:
-        return f"→{to}"
+        return f"→ {to}"
     if fr is not None:
-        return f"{fr}→"
+        return f"{fr} →"
     return "—"
 
 
