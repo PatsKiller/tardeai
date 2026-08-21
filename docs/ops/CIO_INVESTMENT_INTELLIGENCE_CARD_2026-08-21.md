@@ -20,9 +20,15 @@ trigger_symbol=SPCX
 - Missing facts → `DATA_UNAVAILABLE` (no invention)
 - Decision origin labeled `FRESH_RESEARCH` vs `DETERMINISTIC_RANK`
 
-## Next (Phase B)
+## Later phases (shipped)
 
-Inline Agree/Defer/Need-data buttons + shared feedback journal (continuity on next alert).
+| Phase | PR | What |
+|-------|-----|------|
+| B+C | #423 | Feedback journal + Telegram buttons + CC thesis card |
+| D | #424 | SI dossier + research queue open count / oldest wait |
+| D+ | #425 | HTML bold + severity emoji + raw BOOK dump kill |
+
+See `CIO_IIC_SESSION_CLOSEOUT_2026-08-21.md`.
 
 ## Tests
 
