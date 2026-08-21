@@ -161,6 +161,12 @@ def run(top=20, lanes=("chatgpt", "grok"), apply=False, symbols=None):
             elif recent:
                 decision = "DEFER"
             if decision != "ALLOW":
+                if recent:
+                    try:
+                        from lib.research_skip_ledger import log_mapped_reason
+                        log_mapped_reason("FRESH_HOURS", symbol=r["symbol"], lane=lane)
+                    except Exception:
+                        pass
                 report[{"METADATA_ONLY": "metadata_only", "DEFER": "deferred",
                         "BLOCK": "blocked"}.get(decision, "skipped")] += 1
                 report["detail"].append({"symbol": r["symbol"], "lane": lane, "trigger_source": trig,

@@ -1771,7 +1771,24 @@ def answer_reentry_purchase_query(
             result["model"] = flash.get("model")
         else:
             result["flash_error"] = flash.get("error")
+    _emit_reentry_reply_payload(ready_syms, near_syms)
     return result
+
+
+def _emit_reentry_reply_payload(ready_syms: list[str], near_syms: list[str]) -> None:
+    """DecisionPayload@v1 for a Telegram re-entry facts reply. Fail-soft."""
+    try:
+        from scripts.lib.agent_decision_payload import emit_telegram_decision_payload
+        emit_telegram_decision_payload(
+            symbol=ready_syms[0] if ready_syms else (near_syms[0] if near_syms else None),
+            action="READY" if ready_syms else ("NEAR" if near_syms else "WAIT"),
+            surface="reentry",
+            origin="OPERATOR_ASK",
+            extra={"ready_n": len(ready_syms), "near_n": len(near_syms)},
+        )
+    except Exception:
+        pass
+
 
 def _portfolio_cash_fact_lines() -> list[str]:
     """One-line book facts for Flash context (fail-soft)."""

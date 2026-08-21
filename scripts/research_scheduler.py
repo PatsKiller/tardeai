@@ -1,13 +1,19 @@
 #!/usr/bin/env python3
 """research_scheduler.py — tiered, SLA-driven, priority-ordered external/LLM research dispatcher.
 
-Implements docs/RESEARCH_PRIORITIZATION.md:
+Implements docs/RESEARCH_PRIORITIZATION.md + docs/ops/RESEARCH_LIFECYCLE_STANDARD.md:
   • Assigns every tracked symbol the highest tier it qualifies for (holdings > proposals > watchlist >
-    incubator > cold universe).
+    incubator > cold universe). Reentry READY/NEAR join existing T1-WATCH (no new tier).
   • Enforces a per-tier refresh SLA ("at least X times in Y days") per external lane.
   • Orders the due set by an exposure/overdue/catalyst/rank/divergence priority score.
   • Dispatches within a per-run external-lane budget (so the free OAuth lanes don't exhaust).
-  • Holdings (T0) are refreshed several times/day and material changes are surfaced to card + Telegram.
+  • Holdings (T0) are refreshed several times/day; material changes fingerprint downstream
+    (`_research_fingerprint` on recommendation+confidence) — that is NOT the skip-before-call hash.
+  • Skip-before-call (flag RESEARCH_SKIP_GATE, default OFF): execute_set = due ∩ (changed ∪ stale ∪
+    triggered). Unchanged in-window sources are SKIP_UNCHANGED; hours-window reuse is SKIP_FRESH.
+  • Local LLM is math-only. local-gemma / maria / full_chain are NOT auto-enqueued unless
+    RESEARCH_ALLOW_LOCAL_LLM=1. DeepSeek remains the auto judgment lane. ChatGPT OAuth overnight
+    stays on hermes_deep_research_local (overnight_llm_policy) — do not regress it here.
 
 Modes: holdings | priority | watchlist | incubator | cold-floor | backfill
 Dry by default; pass --apply to actually call the lanes. All numbers env-tunable (RESEARCH_*).
@@ -37,12 +43,12 @@ COLD_FLOOR_DAYS = int(os.getenv("RESEARCH_COLD_FLOOR_DAYS", "14"))
 CALL_TIMEOUT    = int(os.getenv("RESEARCH_CALL_TIMEOUT", "150"))
 
 # ── Hermes lane registry (the whole 24/7 fleet, cheapest→scarcest) ────────────
-# Symbol-level research producers. local-gemma is the broad workhorse (enqueued, drained by the
-# always-on watchlist_agent_jobs workers); internal-deep is the overnight gemma3:27b window; deepseek
-# is the governed V4 Flash external challenge (paid, no fallback) — the primary automated external lane
-# as of 2026-08-13; claude is METERED → arbitration only, never auto-dispatched here. The free OAuth
-# grok/chatgpt lanes are retained in LANES but no longer auto-dispatched by this scheduler (they were
-# the source of hourly near-duplicate "research update" noise).
+# DeepSeek is the governed V4 Flash external challenge (paid, no fallback) — the primary automated
+# judgment lane. local-gemma / internal-deep remain in TIER_SLA for coverage accounting but are NOT
+# auto-enqueued unless RESEARCH_ALLOW_LOCAL_LLM=1 (local LLM is math-only; 852 maria queued + 441
+# failed in 2 days was the live failure mode). claude is METERED → arbitration only, never auto here.
+# grok/chatgpt OAuth are retained in LANES but not auto-dispatched by this scheduler. ChatGPT
+# overnight judgment stays on hermes_deep_research_local (overnight_llm_policy).
 LANES = {
     "local-gemma":   {"cost": "free-fast",    "dispatch": "queue",    "auto": True},
     "internal-deep": {"cost": "free-slow",    "dispatch": "queue",    "auto": True},
@@ -52,7 +58,8 @@ LANES = {
     "claude":        {"cost": "metered",      "dispatch": "external", "auto": False},  # arbitration only
 }
 
-# tier → (sla_refreshes, sla_window_days, lanes[]).  Local always covers; externals are tier-gated.
+# tier → (sla_refreshes, sla_window_days, lanes[]). Local listed for SLA accounting; auto-enqueue
+# of queue lanes is gated by allow_local_research_llm(). Externals are tier-gated.
 TIER_SLA = {
     "T0-HOLD":  (3, 1,  ["local-gemma", "internal-deep", "deepseek"]),
     "T0-PROP":  (2, 1,  ["local-gemma", "deepseek"]),
@@ -86,6 +93,29 @@ def thesis_driven_enabled() -> bool:
 def rag_first_enabled() -> bool:
     raw = os.getenv("RESEARCH_RAG_FIRST", "1").strip().lower()
     return raw not in {"0", "false", "no", "off"} and RAG_FIRST
+
+
+def skip_gate_enabled() -> bool:
+    """Source-hash skip-before-call. Default OFF — DeepSeek dispatch parity with today."""
+    return os.getenv("RESEARCH_SKIP_GATE", "0").strip().lower() not in {
+        "0", "false", "no", "off", "",
+    }
+
+
+def allow_local_research_llm() -> bool:
+    """Auto-enqueue maria/full_chain. Default OFF — local LLM is math-only."""
+    return os.getenv("RESEARCH_ALLOW_LOCAL_LLM", "0").strip().lower() in {
+        "1", "true", "yes", "on",
+    }
+
+
+def lanes_for(tier: str) -> list[str]:
+    """Lanes this run will consider. Queue lanes drop unless RESEARCH_ALLOW_LOCAL_LLM=1."""
+    _, _, lanes = TIER_SLA[tier]
+    out = list(lanes)
+    if not allow_local_research_llm():
+        out = [l for l in out if LANES.get(l, {}).get("dispatch") != "queue"]
+    return out
 
 
 def build_thesis_gap_commission(
@@ -161,8 +191,11 @@ def load_high_value_thesis_gaps(
 
 
 def _q(sql, params=()):
-    from db_adapter import _execute
-    return _execute(sql, params, fetch="all") or []
+    try:
+        from db_adapter import _execute
+        return _execute(sql, params, fetch="all") or []
+    except Exception:
+        return []
 
 
 def _is_symbol(s: str) -> bool:
@@ -174,20 +207,86 @@ def _is_symbol(s: str) -> bool:
     return is_held_equity_ticker(s)
 
 
+REENTRY_READY_NEAR_STATES = frozenset({
+    "READY TO REVIEW",
+    "NEAR ENTRY",
+    "READY",
+    "NEAR",
+})
+# Explicitly excluded from T1-WATCH via reentry desk (do not add).
+REENTRY_EXCLUDED_STATES = frozenset({
+    "WAIT",
+    "OVERSOLD",
+    "OVERSOLD REVIEW",
+    "CURRENTLY HELD",
+    "WASH BLOCK",
+    "STALE",
+    "MISSING MARKET",
+    "MISSING PLAN",
+    "OVERBOUGHT WAIT",
+    "BLOCK",
+})
+
+
+def load_reentry_ready_near_symbols(*, root: Path | None = None) -> list[str]:
+    """READY/NEAR reentry names as T1-WATCH candidates. Fail-soft if the desk file is missing.
+
+    Reads CURRENT-style path: <root>/data/runtime/reentry_decision_desk_latest.json
+    rows[].intel.state (and scorecard READY/NEAR labels). Does not add WAIT / OVERSOLD /
+    CURRENTLY HELD. CASH is not a ticker (`_is_symbol`).
+    """
+    path = (root or ROOT) / "data" / "runtime" / "reentry_decision_desk_latest.json"
+    try:
+        if not path.is_file():
+            return []
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+    rows = data.get("rows") if isinstance(data, dict) else None
+    if isinstance(rows, dict):
+        rows = list(rows.values())
+    if not isinstance(rows, list):
+        return []
+    out: list[str] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        if row.get("held") is True:
+            continue
+        intel = row.get("intel") if isinstance(row.get("intel"), dict) else {}
+        state = str(
+            intel.get("state") or row.get("state") or row.get("status") or ""
+        ).strip().upper()
+        if state in REENTRY_EXCLUDED_STATES:
+            continue
+        if state not in REENTRY_READY_NEAR_STATES:
+            continue
+        sym = str(row.get("symbol") or "").upper().strip()
+        if _is_symbol(sym):
+            out.append(sym)
+    return sorted(set(out))
+
+
 # ── universe assembly ────────────────────────────────────────────────────────
-def load_universe() -> dict:
+def load_universe(*, root: Path | None = None) -> dict:
     """symbol -> {'tier': str, 'rank': int|None}. Highest tier wins."""
+    root = root or ROOT
     uni: dict[str, dict] = {}
 
-    def add(sym, tier, rank=None):
-        sym = sym.upper().strip()
+    def add(sym, tier, rank=None, **meta):
+        sym = str(sym or "").upper().strip()
         if not _is_symbol(sym):
             return
         cur = uni.get(sym)
         if cur is None or _tier_order(tier) < _tier_order(cur["tier"]):
-            uni[sym] = {"tier": tier, "rank": rank}
-        elif rank is not None and uni[sym].get("rank") is None:
-            uni[sym]["rank"] = rank
+            row = {"tier": tier, "rank": rank}
+            row.update(meta)
+            uni[sym] = row
+        else:
+            if rank is not None and uni[sym].get("rank") is None:
+                uni[sym]["rank"] = rank
+            if meta.get("reentry_ready_near"):
+                uni[sym]["reentry_ready_near"] = True
 
     # T0-HOLD — unique held equity tickers (CASH / CUSIP out)
     try:
@@ -195,7 +294,7 @@ def load_universe() -> dict:
             from scripts.lib.holdings_universe import held_equity_tickers
         except Exception:
             from lib.holdings_universe import held_equity_tickers  # type: ignore
-        for sym in held_equity_tickers(root=ROOT):
+        for sym in held_equity_tickers(root=root):
             add(sym, "T0-HOLD")
     except Exception:
         pass
@@ -213,6 +312,12 @@ def load_universe() -> dict:
                    WHERE kind='ticker' AND status='active' AND spec ? 'symbol'"""):
         if dict(r).get("s"):
             add(dict(r)["s"], "T1-WATCH")
+    # T1-WATCH: reentry READY/NEAR (existing tier — do not invent a new one)
+    try:
+        for sym in load_reentry_ready_near_symbols(root=root):
+            add(sym, "T1-WATCH", reentry_ready_near=True)
+    except Exception:
+        pass
     # T2-INCUB: recently-proposed names + active incubator members (incl. claude_challenger cohort)
     for r in _q("""SELECT DISTINCT symbol FROM paper_trade_proposals
                    WHERE created_at > NOW() - INTERVAL '21 days'"""):
@@ -234,12 +339,12 @@ def load_universe() -> dict:
     # Scope-governor binding (Phase 1 §1.3): one governor owns research scope too. A symbol the
     # governor archived (scope_tier S3) never holds a T1/T2 research slot — it drops to T3-COLD
     # (metadata-only under the budget guard) until an event or the governor reactivates it.
-    # T0 (capital exposed) is never downgraded.
+    # T0 (capital exposed) is never downgraded. Reentry READY/NEAR stay T1 (not S3-archived).
     s3 = {dict(r)["symbol"].upper() for r in _q(
         """SELECT DISTINCT UPPER(symbol) AS symbol FROM watchlist_items
            WHERE scope_tier='S3' AND status IN ('active','researched')""")}
     for s, info in uni.items():
-        if s in s3 and info["tier"] in ("T1-WATCH", "T2-INCUB"):
+        if s in s3 and info["tier"] in ("T1-WATCH", "T2-INCUB") and not info.get("reentry_ready_near"):
             info["tier"] = "T3-COLD"
     return uni
 
@@ -612,11 +717,159 @@ def surface_holding_event(sym):
 
 
 def _research_fingerprint(row: dict) -> str:
-    """Content hash of a research row — stable across re-runs that only rephrase prose."""
+    """Content hash of a research row — stable across re-runs that only rephrase prose.
+
+    DOWNSTREAM DIFF only (surface_holding_event). Do not use as the skip-before-call hash.
+    """
     import hashlib
     rec = (row.get("recommendation") or "").strip()
     conf = str(row.get("confidence") or "")
     return hashlib.sha256(f"{rec[:240]}|{conf}".encode()).hexdigest()[:16]
+
+
+def _source_index_mods():
+    try:
+        from scripts.lib import research_source_index as rsi
+        from scripts.lib import research_skip_ledger as rsl
+        return rsi, rsl
+    except Exception:
+        from lib import research_source_index as rsi  # type: ignore
+        from lib import research_skip_ledger as rsl  # type: ignore
+        return rsi, rsl
+
+
+def maybe_dispatch_metered(
+    sym: str,
+    lane: str,
+    tier: str,
+    apply: bool,
+    *,
+    catalyst: bool = False,
+    thesis_gap: dict | None = None,
+    hours_window_fresh: bool = False,
+    source_as_of=None,
+    extra: dict | None = None,
+    now: datetime | None = None,
+    dispatch_fn=None,
+    index_path: Path | None = None,
+    ledger_path: Path | None = None,
+    reentry_ready_near: bool = False,
+) -> dict:
+    """Skip-before-call gate for a metered (DeepSeek) candidate.
+
+    When RESEARCH_SKIP_GATE is off: parity with today — dispatch (or count as spent on
+    dry-run) unless the existing backfill hours-window skip applies. No ledger write.
+
+    When on: decide() → SKIP_* does not call the researcher; EXECUTED/TRIGGERED call as
+    today then upsert the source index. Every gated candidate writes the skip ledger.
+    """
+    rsi, rsl = _source_index_mods()
+    thesis_version = (thesis_gap or {}).get("thesis_version") if thesis_gap else None
+    extra_payload = dict(extra or {})
+    if reentry_ready_near:
+        extra_payload["reentry_ready_near"] = True
+    payload = rsi.source_payload_for_symbol(
+        sym,
+        tier=tier,
+        catalyst=catalyst,
+        thesis_version=thesis_version,
+        source_as_of=source_as_of,
+        extra=extra_payload or None,
+    )
+    content_hash = rsi.compute_hash(payload)
+    source_id = rsi.source_id_for_symbol(sym, lane)
+    now_dt = now or datetime.now(timezone.utc)
+    call = dispatch_fn or dispatch
+    gate = skip_gate_enabled()
+
+    def _log(code: str, reason: str) -> None:
+        if not gate:
+            return
+        rsl.append_entry(
+            source_id=source_id,
+            code=code,
+            symbol=sym,
+            lane=lane,
+            content_hash=content_hash,
+            reason=reason,
+            metered=True,
+            path=ledger_path,
+            now=now_dt,
+        )
+
+    # Existing backfill resume guard (hours-window, no source-hash). When the gate is
+    # on this is SKIP_FRESH; when off it is the same silent continue as today.
+    if hours_window_fresh and not catalyst:
+        code = rsi.SKIP_FRESH
+        _log(code, "RESEARCH_BACKFILL_SKIP_FRESH_HOURS")
+        return {
+            "code": code,
+            "dispatched": False,
+            "result": None,
+            "content_hash": content_hash,
+            "source_id": source_id,
+        }
+
+    if not gate:
+        result = None
+        if apply:
+            result = call(sym, lane, tier, apply, thesis_gap=thesis_gap)
+        return {
+            "code": rsi.RESEARCH_EXECUTED,
+            "dispatched": True,
+            "result": result,
+            "content_hash": content_hash,
+            "source_id": source_id,
+        }
+
+    code = rsi.decide(
+        source_id,
+        content_hash,
+        triggered=bool(catalyst),
+        now=now_dt,
+        path=index_path,
+    )
+    if code in (rsi.SKIP_UNCHANGED, rsi.SKIP_FRESH):
+        reason = "hash_match_in_window" if code == rsi.SKIP_UNCHANGED else "ttl_fresh"
+        _log(code, reason)
+        return {
+            "code": code,
+            "dispatched": False,
+            "result": None,
+            "content_hash": content_hash,
+            "source_id": source_id,
+        }
+
+    result = None
+    if apply:
+        result = call(sym, lane, tier, apply, thesis_gap=thesis_gap)
+        ok = bool(result and result.get("ok"))
+        if ok:
+            rsi.upsert_row(
+                source_id,
+                content_hash=content_hash,
+                last_modified_at=source_as_of or rsi.iso(now_dt),
+                last_researched_at=rsi.iso(now_dt),
+                extra={
+                    "tier": tier,
+                    "reentry_ready_near": bool(reentry_ready_near),
+                },
+                path=index_path,
+                now=now_dt,
+                tier=tier,
+                symbol=sym,
+                reentry_ready_near=reentry_ready_near,
+            )
+        _log(code, "metered_dispatch" if ok else "metered_dispatch_failed")
+    else:
+        _log(code, "dry_would_dispatch")
+    return {
+        "code": code,
+        "dispatched": True,
+        "result": result,
+        "content_hash": content_hash,
+        "source_id": source_id,
+    }
 
 
 def run(mode, apply, budget):
@@ -628,8 +881,8 @@ def run(mode, apply, budget):
 
     if mode == "holdings":
         targets = [s for s, v in uni.items() if v["tier"] == "T0-HOLD"]
-        lanes_for = lambda t: TIER_SLA[t][2]   # full T0 fleet: local-gemma + internal-deep + deepseek
-        ordered = [{"symbol": s, "tier": "T0-HOLD"} for s in targets]
+        ordered = [{"symbol": s, "tier": "T0-HOLD",
+                    "reentry_ready_near": bool(uni[s].get("reentry_ready_near"))} for s in targets]
     else:
         lane = "deepseek"  # primary ordering lane; gemma assumed broad/elsewhere
         due = build_due(uni, lane, force_all=(mode == "backfill"))
@@ -641,11 +894,15 @@ def run(mode, apply, budget):
             due = [d for d in due if d["tier"] in ("T2-INCUB",)]
         elif mode == "cold-floor":
             due = [d for d in due if d["tier"] == "T3-COLD"][: max(1, len(uni) // COLD_FLOOR_DAYS)]
+        for d in due:
+            d["reentry_ready_near"] = bool((uni.get(d["symbol"]) or {}).get("reentry_ready_near"))
         ordered = due
-        lanes_for = lambda t: TIER_SLA[t][2]
 
     print(f"[scheduler] mode={mode} due={len(ordered)} external_budget={budget} apply={apply} "
-          f"thesis_driven={thesis_driven_enabled()} rag_first={rag_first_enabled()}")
+          f"thesis_driven={thesis_driven_enabled()} rag_first={rag_first_enabled()} "
+          f"skip_gate={skip_gate_enabled()} local_llm={allow_local_research_llm()}")
+    if not allow_local_research_llm():
+        print("[scheduler] local_llm_disabled")
     cats = catalyst_signals()
     # Preload thesis gaps for high-value symbols (T0/T1) — convert commissioning
     # toward thesis-gap requests when gaps exist. Never invent thesis text.
@@ -677,6 +934,7 @@ def run(mode, apply, budget):
         all_lanes = lanes_for(tier)
         catalyst = cats.get(sym, False)
         thesis_gap = gap_by_sym.get(sym)
+        reentry_ready_near = bool(item.get("reentry_ready_near") or (uni.get(sym) or {}).get("reentry_ready_near"))
         # decide lanes for THIS symbol
         local_lanes = [l for l in all_lanes if LANES[l]["dispatch"] == "queue"]
         ext_lanes = [l for l in all_lanes if l in EXTERNAL_LANES and LANES[l]["auto"]]
@@ -691,7 +949,11 @@ def run(mode, apply, budget):
             ext_lanes = [_lane_rotation(ext_lanes)[ext_rot % len(_lane_rotation(ext_lanes))]]; ext_rot += 1
         tag = f"{item.get('score',0):.0f}" if "score" in item else "-"
         gap_tag = f" thesis_id={thesis_gap.get('thesis_id')}" if thesis_gap else ""
-        # local lanes: always (cheap, queued)
+        # local queue lanes: only if RESEARCH_ALLOW_LOCAL_LLM=1 (maria/full_chain).
+        # local_llm_disabled is printed once per run above — not a skip-ledger research code
+        # unless the skip gate is also on (it still is not one of the four research codes).
+        if local_lanes and not allow_local_research_llm():
+            local_lanes = []
         for lane in local_lanes:
             print(f"  → {sym:6s} {tier:9s} lane={lane:13s} prio={tag}{gap_tag}")
             if apply:
@@ -701,18 +963,27 @@ def run(mode, apply, budget):
                 res = dispatch(sym, lane, tier, False, thesis_gap=thesis_gap)
                 if thesis_gap and res.get("thesis_id"):
                     print(f"     dry: {res['tail'][:100]}")
-        # external lanes: budgeted (skip ones freshly covered this backfill — resume guard)
+        # external lanes: budgeted; skip-gate decides execute vs SKIP_* when enabled.
         for lane in ext_lanes:
-            if sym in fresh_ext.get(lane, ()):
-                continue
             if spent >= budget:
                 print(f"[scheduler] external budget {budget} spent at {done} symbols — externals roll to next run (local still queued)")
                 ext_lanes = []
                 break
+            hours_fresh = sym in fresh_ext.get(lane, ())
+            outcome = maybe_dispatch_metered(
+                sym, lane, tier, apply,
+                catalyst=catalyst,
+                thesis_gap=thesis_gap,
+                hours_window_fresh=hours_fresh,
+                reentry_ready_near=reentry_ready_near,
+            )
+            if not outcome.get("dispatched"):
+                print(f"  skip {sym:6s} {tier:9s} lane={lane:13s} {outcome.get('code')}")
+                continue
             print(f"  → {sym:6s} {tier:9s} lane={lane:13s} prio={tag} catalyst={catalyst}{gap_tag}")
             if apply:
-                res = dispatch(sym, lane, tier, apply, thesis_gap=thesis_gap)
-                print(f"     {'ok' if res['ok'] else 'FAIL'}: {res['tail'][:80]}")
+                res = outcome.get("result") or {}
+                print(f"     {'ok' if res.get('ok') else 'FAIL'}: {str(res.get('tail') or '')[:80]}")
                 time.sleep(1)
             spent += 1
         if apply and tier == "T0-HOLD":

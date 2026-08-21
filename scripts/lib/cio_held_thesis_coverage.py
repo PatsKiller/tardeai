@@ -13,6 +13,7 @@ from typing import Any, Optional
 AUTHORITY = "READ_ONLY_ADVISORY"
 SCHEMA = "HeldBookThesisCoverage@v1"
 REVISION_SCHEMA = "ThesisRevisionLedger@v1"
+SLA_TARGET_PCT = 100.0
 
 
 def _now() -> str:
@@ -71,13 +72,47 @@ def coverage_row_for_symbol(symbol: str, *, root: Path | None = None) -> dict[st
         fields = {"thesis_state": "INSUFFICIENT_DATA", "error": type(exc).__name__}
     state = str(fields.get("thesis_state") or "INSUFFICIENT_DATA")
     current = bool(fields.get("has_current_symbol_thesis")) or state == "CURRENT"
+    try:
+        from scripts.lib.symbol_thesis_coverage import stale_days_for, row_is_fresh
+
+        memberships = list(fields.get("memberships") or [])
+        rec = {"memberships": memberships or ["HELD"], "held": True}
+        if "HELD" not in rec["memberships"]:
+            rec["memberships"] = ["HELD"] + rec["memberships"]
+        sla_days = fields.get("sla_days")
+        if sla_days is None:
+            sla_days = stale_days_for(symbol, rec, root=root)
+        age = fields.get("thesis_age_days")
+        fresh = bool(fields.get("fresh")) if "fresh" in fields else row_is_fresh(
+            {
+                "coverage_state": state,
+                "has_current_symbol_thesis": current,
+                "thesis_age_days": age,
+                "sla_days": sla_days,
+            }
+        )
+        cov_class = fields.get("coverage_class")
+    except Exception:
+        sla_days = fields.get("sla_days")
+        age = fields.get("thesis_age_days")
+        fresh = bool(fields.get("fresh")) if "fresh" in fields else (
+            state == "CURRENT" and current and age is not None and sla_days is not None
+            and float(age) <= float(sla_days)
+        )
+        cov_class = fields.get("coverage_class")
     return {
         "symbol": symbol.upper(),
         "thesis_state": state,
+        "coverage_state": state,
         "has_current_symbol_thesis": current,
         "portfolio_role": fields.get("portfolio_role"),
         "symbol_thesis_version": fields.get("symbol_thesis_version"),
         "research_gaps": list(fields.get("research_gaps") or [])[:5],
+        "thesis_age_days": fields.get("thesis_age_days"),
+        "sla_days": sla_days,
+        "coverage_class": cov_class,
+        "fresh": bool(fresh),
+        "age_gate_short_circuit": fields.get("age_gate_short_circuit"),
         "needs_coverage": not current and state in {
             "RESEARCH_REQUIRED", "INSUFFICIENT_DATA", "STALE", "CONFLICTED", "NONE", ""
         },
@@ -85,27 +120,44 @@ def coverage_row_for_symbol(symbol: str, *, root: Path | None = None) -> dict[st
 
 
 def build_held_coverage_report(*, root: Path | None = None) -> dict[str, Any]:
-    """SLA report for held book only."""
+    """SLA report for held book only (held_equity_tickers denominator)."""
     root = root or _project_root()
     held = list_held_tickers(root=root)
     rows = [coverage_row_for_symbol(s, root=root) for s in held]
     current_n = sum(1 for r in rows if r.get("has_current_symbol_thesis"))
+    fresh_n = sum(1 for r in rows if r.get("fresh"))
     need = [r for r in rows if r.get("needs_coverage")]
     by_state: dict[str, int] = {}
     for r in rows:
         st = str(r.get("thesis_state") or "NONE")
         by_state[st] = by_state.get(st, 0) + 1
-    total = len(rows) or 1
-    pct = round(100.0 * current_n / total, 2) if rows else 0.0
+    n = len(rows)
+    coverage_pct = round(100.0 * current_n / n, 2) if n else 0.0
+    fresh_pct = round(100.0 * fresh_n / n, 2) if n else 0.0
+    held_equity_ticker_n = n
+    try:
+        from scripts.lib.holdings_universe import snapshot as hu_snapshot
+
+        hu = hu_snapshot(root=root)
+        snap_n = int(hu.get("held_equity_ticker_n") or 0)
+        if snap_n:
+            held_equity_ticker_n = snap_n
+    except Exception:
+        pass
+    sla_met = coverage_pct >= SLA_TARGET_PCT and fresh_pct >= SLA_TARGET_PCT
     return {
         "schema": SCHEMA,
         "as_of": _now(),
         "authority": AUTHORITY,
         "held_count": len(rows),
+        "held_equity_ticker_n": held_equity_ticker_n,
         "current_count": current_n,
-        "held_current_pct": pct,
-        "sla_target_pct": 80.0,
-        "sla_met": pct >= 80.0,
+        "fresh_count": fresh_n,
+        "held_current_pct": coverage_pct,
+        "coverage_pct": coverage_pct,
+        "fresh_pct": fresh_pct,
+        "sla_target_pct": SLA_TARGET_PCT,
+        "sla_met": sla_met,
         "by_state": by_state,
         "needs_coverage": [r["symbol"] for r in need],
         "needs_coverage_n": len(need),
@@ -122,24 +174,44 @@ def write_coverage_report(
     root = root or _project_root()
     path = root / "data" / "cio" / "held_thesis_coverage_latest.json"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
     try:
-        from scripts.lib.holdings_universe import write_snapshot
+        from scripts.lib.holdings_universe import write_snapshot, snapshot as hu_snapshot
 
         write_snapshot(root=root)
+        if report.get("held_equity_ticker_n") is None:
+            report["held_equity_ticker_n"] = hu_snapshot(root=root).get("held_equity_ticker_n")
     except Exception:
-        pass
+        if report.get("held_equity_ticker_n") is None:
+            report["held_equity_ticker_n"] = report.get("held_count")
+    if report.get("coverage_pct") is None and report.get("held_current_pct") is not None:
+        report["coverage_pct"] = report.get("held_current_pct")
+    if report.get("sla_target_pct") is None:
+        report["sla_target_pct"] = SLA_TARGET_PCT
+    path.write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
     # append history line
     hist = root / "data" / "cio" / "held_thesis_coverage_history.jsonl"
     with hist.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps({
             "as_of": report.get("as_of"),
             "held_count": report.get("held_count"),
+            "held_equity_ticker_n": report.get("held_equity_ticker_n"),
             "current_count": report.get("current_count"),
             "held_current_pct": report.get("held_current_pct"),
+            "coverage_pct": report.get("coverage_pct"),
+            "fresh_pct": report.get("fresh_pct"),
             "needs_coverage_n": report.get("needs_coverage_n"),
+            "sla_target_pct": report.get("sla_target_pct"),
             "sla_met": report.get("sla_met"),
         }, sort_keys=True) + "\n")
+    # Sibling READY/NEAR report — fail-soft, never mixes into held_count.
+    try:
+        from scripts.lib.symbol_thesis_coverage import build_actionable_coverage_report
+
+        act = build_actionable_coverage_report(root=root)
+        ap = root / "data" / "cio" / "actionable_thesis_coverage_latest.json"
+        ap.write_text(json.dumps(act, indent=2, default=str), encoding="utf-8")
+    except Exception:
+        pass
     return path
 
 
@@ -166,6 +238,8 @@ def run_held_coverage_acquire(
             "skipped": "no_held_gaps",
             "report": {
                 "held_current_pct": report.get("held_current_pct"),
+                "coverage_pct": report.get("coverage_pct"),
+                "fresh_pct": report.get("fresh_pct"),
                 "sla_met": report.get("sla_met"),
                 "needs_coverage_n": report.get("needs_coverage_n"),
             },
@@ -192,10 +266,14 @@ def run_held_coverage_acquire(
         "acquisition": result,
         "report_before": {
             "held_current_pct": report.get("held_current_pct"),
+            "coverage_pct": report.get("coverage_pct"),
+            "fresh_pct": report.get("fresh_pct"),
             "needs_coverage_n": report.get("needs_coverage_n"),
         },
         "report_after": {
             "held_current_pct": after.get("held_current_pct"),
+            "coverage_pct": after.get("coverage_pct"),
+            "fresh_pct": after.get("fresh_pct"),
             "needs_coverage_n": after.get("needs_coverage_n"),
             "sla_met": after.get("sla_met"),
         },

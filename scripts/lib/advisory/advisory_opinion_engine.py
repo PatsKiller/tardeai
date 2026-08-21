@@ -497,6 +497,20 @@ def validate_opinion_output(
     return opinion, errors
 
 
+def _emit_advisory_decision_payload(row: dict[str, Any], opinion: dict[str, Any]) -> None:
+    """Flag-gated DecisionPayload@v1 when an opinion closes a recommendation. Fail-soft."""
+    try:
+        if not isinstance(opinion, dict) or opinion.get("cache_hit"):
+            return
+        try:
+            from lib.agent_decision_payload import emit_advisory_opinion_payload
+        except ImportError:
+            from scripts.lib.agent_decision_payload import emit_advisory_opinion_payload
+        emit_advisory_opinion_payload(row, opinion)
+    except Exception:
+        pass
+
+
 def emit_watchlist_feedback(
     row: dict[str, Any],
     evidence_bundle: dict[str, Any],
@@ -594,7 +608,7 @@ def generate_row_opinion(
             row, evidence_bundle, deterministic_verdict,
             int((row.get("confidence") or 0.5) * 100),
         )
-        return {
+        fallback = {
             "verdict": deterministic_verdict,
             "conviction": int((row.get("confidence") or 0.5) * 100),
             "what_changed": "No change — model unavailable.",
@@ -615,6 +629,8 @@ def generate_row_opinion(
             "cache_hit": False,
             "usage": {},
         }
+        _emit_advisory_decision_payload(row, fallback)
+        return fallback
 
     content = result.get("content", "")
     opinion = _extract_json_from_response(content)
@@ -624,7 +640,7 @@ def generate_row_opinion(
             row, evidence_bundle, deterministic_verdict,
             int((row.get("confidence") or 0.5) * 100),
         )
-        return {
+        fallback = {
             "verdict": deterministic_verdict,
             "conviction": int((row.get("confidence") or 0.5) * 100),
             "what_changed": "No change — model response unparseable.",
@@ -639,6 +655,8 @@ def generate_row_opinion(
             "cache_hit": False,
             "usage": result.get("usage") or {},
         }
+        _emit_advisory_decision_payload(row, fallback)
+        return fallback
 
     validated, validation_errors = validate_opinion_output(
         opinion, evidence_bundle, deterministic_verdict
@@ -663,6 +681,7 @@ def generate_row_opinion(
         }
         _save_opinion_cache(opinion_cache)
 
+    _emit_advisory_decision_payload(row, validated)
     return validated
 
 

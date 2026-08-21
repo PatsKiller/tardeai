@@ -224,6 +224,18 @@ def test_get_only_runtime_api(root: Path):
     assert body["error"] == "control_disabled"
 
 
+def test_scorecard_get_route(root: Path):
+    code, body = api.handle_get("scorecard")
+    assert code == 200
+    assert body["ok"] is True
+    assert body["financial_action"] is False
+    assert body["authority"] == "READ_ONLY_ADVISORY"
+    assert body["schema"] == "MaturityScorecard@v1"
+    assert body["mutation"] is False
+    assert "research_skip" in body["dimensions"]
+    assert body["dimensions"]["memory_influence"]["score"] == 0
+
+
 def test_notification_immediate_then_suppressed_fixture(root: Path):
     p = root / "data" / "cio" / "cio_notification_state.jsonl"
     rows = [

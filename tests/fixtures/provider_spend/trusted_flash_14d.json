@@ -1,0 +1,48 @@
+{
+  "description": "Token-priced Flash/bridge events. LOCAL_CALCULATED on the 2026-08-16 peak/off-peak table.",
+  "events": [
+    {
+      "usage_start": "2026-08-18T14:00:00+00:00",
+      "provider": "deepseek",
+      "model": "deepseek-v4-flash",
+      "source_lane": "flash",
+      "source_service": "deepseek_client.chat",
+      "calculated_cost_usd": 0.0012,
+      "provider_reported_cost_usd": null,
+      "cost_source": "LOCAL_CALCULATED",
+      "price_schedule_id": "deepseek-v4-flash-peakoff-2026-08-16",
+      "input_tokens": 800,
+      "output_tokens": 120,
+      "classification": "TRADE_AI_PRODUCTION",
+      "outcome": "success"
+    },
+    {
+      "usage_start": "2026-08-19T11:30:00+00:00",
+      "provider": "deepseek",
+      "model": "deepseek-v4-flash",
+      "source_lane": "flash",
+      "source_service": "cio_governed_bridge",
+      "calculated_cost_usd": 0.0008,
+      "cost_source": "LOCAL_CALCULATED",
+      "price_schedule_id": "deepseek-v4-flash-peakoff-2026-08-16",
+      "input_tokens": 400,
+      "output_tokens": 80,
+      "classification": "TRADE_AI_PRODUCTION",
+      "outcome": "success"
+    },
+    {
+      "usage_start": "2026-08-20T16:05:00+00:00",
+      "provider": "deepseek",
+      "model": "deepseek-v4-flash",
+      "source_lane": "FAST",
+      "source_service": "deepseek_client.chat",
+      "calculated_cost_usd": 0.0025,
+      "cost_source": "LOCAL_CALCULATED",
+      "price_schedule_id": "deepseek-v4-flash-peakoff-2026-08-16",
+      "input_tokens": 1500,
+      "output_tokens": 200,
+      "classification": "TRADE_AI_PRODUCTION",
+      "outcome": "success"
+    }
+  ]
+}
