@@ -198,6 +198,8 @@ Hourly Drive sync and many crons still treat
 | `docs/ops/CIO_IIC_PHASE_D_SI_QUEUE_2026-08-21.md` | #424 Phase D |
 | `docs/ops/CIO_IIC_TELEGRAM_ACTIONABLE_VISUAL_2026-08-21.md` | #425 visual + dump kill |
 | `docs/ops/CIO_IIC_SESSION_CLOSEOUT_2026-08-21.md` | Full IIC arc rollup |
+| `docs/investment-office/CANON_IMPLEMENTATION_AUDIT_2026-08-21.md` | Canon frameworks: claimed vs actually influencing decisions |
+| `docs/investment-office/BOOK_KNOWLEDGE_INVENTORY.md` | Catalog registry + pointer to audit |
 | `data/cio/held_thesis_coverage_latest.json` | Live SLA artifact (host; not Drive) |
 
 ---
