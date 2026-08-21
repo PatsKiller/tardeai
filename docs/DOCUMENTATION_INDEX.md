@@ -1,5 +1,5 @@
 # Trade AI v12 — Documentation Index
-**Updated:** 2026-08-09 (CIO Phase 3 delivery · CIO architecture docs indexed · Steph Wealth Advisor docs · AGENT_ROSTER refreshed · model policy updated)
+**Updated:** 2026-08-20 (Autonomous advisor system-state pack · freeform Alex · held-book thesis coverage · PRs #414–#420)
 **Protocol:** All doc changes follow `docs/A1A.md`. Do not add a doc without updating this index.
 **Scope:** Project root = `/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild`
 
@@ -7,6 +7,22 @@
 > the source draft had drifted, and docs that are actually in `docs/_archive/` are listed as archived
 > rather than active (see **Index Corrections** at the bottom). This is an A1A requirement — the index
 > must not point at phantom or mislocated files.
+
+---
+
+## Autonomy & system state (2026-08-20) — read first for recovery
+
+| Document | Purpose | Status |
+|----------|---------|--------|
+| `docs/architecture/TRADEAI_SYSTEM_STATE_AND_AUTONOMY_2026-08-20.md` | **Master record** — LIVE architecture, timers, notify gates, freeform/desk loop, thesis SLA, autonomy directive gap matrix, roadmap | Active |
+| `docs/ops/AUTONOMOUS_ADVISOR_SESSION_CLOSEOUT_2026-08-20.md` | Session closeout — PR #414–#420 deploys, host proofs, commands, Drive sync notes | Active |
+| `docs/ops/CIO_REENTRY_S3_WIRE_2026-08-20.md` | Reentry → S3 evidence wire (#414) | Active |
+| `docs/ops/CIO_WATCH_S7_WIRE_2026-08-20.md` | Watch → S7 evidence wire (#415) | Active |
+| `docs/ops/CIO_OPERATOR_DESK_LOOP_P0_2026-08-20.md` | Desk loop P0 meta_system (#418) | Active |
+| `docs/ops/CIO_OPERATOR_FREEFORM_AGENT_2026-08-20.md` | Freeform Flash agent (#419) | Active |
+| `docs/ops/CIO_HELD_THESIS_COVERAGE_2026-08-20.md` | Held-book thesis coverage SLA (#420) | Active |
+
+Drive mirror: **Trade_AI_Docs_v2** (`1Zxc20B5Xo24RGZ1Pow1-uW6ldASQJHiR`) via `scripts/sync-docs-to-drive.sh`.
 
 ---
 
