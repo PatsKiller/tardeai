@@ -395,48 +395,103 @@ def _enqueue_material_product_outbox(
     *,
     root: Path | str | None = None,
     outbox=None,
+    max_cards: int = 3,
 ) -> dict[str, Any]:
-    """Durable outbox enqueue only. Does not switch the delivery worker to live."""
+    """Durable outbox enqueue — one Investment Intelligence Card per material ticker.
+
+    Does not switch the delivery worker to live. Replaces raw kind/from→to dumps.
+    """
     try:
         import hashlib
         from scripts.lib.cio_notification_outbox import NotificationOutbox  # noqa: F401
+        from scripts.lib.cio_symbol_intelligence import (
+            cards_for_product_change,
+            render_telegram_card,
+        )
+
         outbox = outbox or _outbox_for_root(root)
         pid = str(product.get("product_id") or product.get("decision_id") or "product")
         items = material_notification_items(changed)
         trigger_symbol = str(parent.get("symbol") or "").upper() or None
-        label = notification_attribution_symbol(changed, trigger_symbol)
-        body_lines = [
-            f"Material CIO product change · {pid}",
-            f"trigger={product.get('trigger') or 'RESEARCH_COMPLETED'}",
-            f"trigger_symbol={trigger_symbol or 'NONE'}",
-            f"symbol={label}",
-        ]
-        for it in items[:8]:
-            body_lines.append(
-                f"- {it.get('kind')} {it.get('symbol') or ''} "
-                f"{it.get('from') or ''} → {it.get('to') or ''}".strip()
+        cards = cards_for_product_change(
+            product,
+            changed,
+            parent,
+            root=root,
+            max_cards=max_cards,
+            material_items=items,
+        )
+        if not cards:
+            # Fallback: book-level digest (temperament-only etc.)
+            label = notification_attribution_symbol(changed, trigger_symbol)
+            body = (
+                f"*CIO material book update*\n\n"
+                f"Causality: `{trigger_symbol or 'NONE'}` · {product.get('trigger') or 'RESEARCH_COMPLETED'}\n"
+                f"Attribution: `{label}`\n"
+                "No single-ticker material rows to card.\n"
+                f"{AUTHORITY}"
             )
-        body = "\n".join(body_lines)
-        note = {
-            "notification_id": "ntf_prod_" + _digest(pid, changed.get("as_of") or _now()),
-            "idempotency_key": f"product_what_changed:{pid}",
-            "dedupe_key": f"product_what_changed:{pid}:{changed.get('as_of') or ''}",
-            "message_class": "advisory",
-            "channel_targets": ["telegram", "command_center"],
-            "subject": f"CIO material change · {label}",
-            "trigger_symbol": trigger_symbol,
-            "attribution_symbol": label,
-            "body": body,
-            "body_hash": hashlib.sha256(body.encode("utf-8")).hexdigest(),
-        }
-        event = outbox.enqueue(note, actor_id="cio_product_reassessment")
+            note = {
+                "notification_id": "ntf_prod_" + _digest(pid, changed.get("as_of") or _now()),
+                "idempotency_key": f"product_what_changed:{pid}",
+                "dedupe_key": f"product_what_changed:{pid}:{changed.get('as_of') or ''}",
+                "message_class": "advisory",
+                "channel_targets": ["telegram", "command_center"],
+                "subject": f"CIO material change · {label}",
+                "trigger_symbol": trigger_symbol,
+                "attribution_symbol": label,
+                "body": body,
+                "body_hash": hashlib.sha256(body.encode("utf-8")).hexdigest(),
+                "card_schema": "InvestmentIntelligenceCard@v1",
+            }
+            event = outbox.enqueue(note, actor_id="cio_product_reassessment")
+            return {
+                "outbox_enqueued": True,
+                "outbox_notification_id": note["notification_id"],
+                "outbox_event_type": (event or {}).get("event_type"),
+                "live_delivery": False,
+                "trigger_symbol": trigger_symbol,
+                "attribution_symbol": label,
+                "cards_enqueued": 0,
+            }
+
+        enqueued_ids: list[str] = []
+        last_event = None
+        for card in cards:
+            sym = str(card.get("symbol") or "").upper()
+            body = render_telegram_card(card)
+            note = {
+                "notification_id": "ntf_prod_" + _digest(pid, sym, changed.get("as_of") or _now()),
+                "idempotency_key": f"product_what_changed:{pid}:{sym}",
+                "dedupe_key": f"product_what_changed:{pid}:{sym}:{changed.get('as_of') or ''}",
+                "message_class": "advisory",
+                "channel_targets": ["telegram", "command_center"],
+                "subject": str(card.get("headline") or f"CIO · {sym}"),
+                "trigger_symbol": trigger_symbol,
+                "attribution_symbol": sym,
+                "symbol": sym,
+                "object_id": card.get("object_id"),
+                "body": body,
+                "body_hash": hashlib.sha256(body.encode("utf-8")).hexdigest(),
+                "card_schema": "InvestmentIntelligenceCard@v1",
+                "intelligence": {
+                    "provenance": (card.get("provenance") or {}),
+                    "change": (card.get("change") or {}),
+                },
+            }
+            last_event = outbox.enqueue(note, actor_id="cio_product_reassessment")
+            enqueued_ids.append(note["notification_id"])
+
+        primary = str(cards[0].get("symbol") or "").upper()
         return {
             "outbox_enqueued": True,
-            "outbox_notification_id": note["notification_id"],
-            "outbox_event_type": (event or {}).get("event_type"),
+            "outbox_notification_id": enqueued_ids[0] if enqueued_ids else None,
+            "outbox_notification_ids": enqueued_ids,
+            "outbox_event_type": (last_event or {}).get("event_type"),
             "live_delivery": False,
             "trigger_symbol": trigger_symbol,
-            "attribution_symbol": label,
+            "attribution_symbol": primary,
+            "cards_enqueued": len(enqueued_ids),
         }
     except Exception as exc:
         return {
