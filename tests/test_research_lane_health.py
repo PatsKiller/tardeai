@@ -1,0 +1,93 @@
+"""RAW-store lane health — must NOT use last_real NOT LIKE '[%'."""
+from __future__ import annotations
+
+from datetime import datetime, timezone
+
+from scripts.lib.research_lane_health import (
+    consecutive_error_streak,
+    evaluate_lane,
+    is_error_recommendation,
+    non_error_count,
+)
+
+
+def test_bracket_prefix_is_error():
+    assert is_error_recommendation("[ERROR] No module named 'lib.llm_lane'")
+    assert is_error_recommendation("[AUTH_PENDING] not logged in")
+    assert is_error_recommendation("")
+    assert is_error_recommendation(None)
+    assert not is_error_recommendation("Hold SCHD; thesis intact.")
+
+
+def test_streak_counts_newest_errors_until_success():
+    rows = [
+        {"recommendation": "[ERROR] boom", "created_at": "t3"},
+        {"recommendation": "[ERROR] boom", "created_at": "t2"},
+        {"recommendation": "Hold", "created_at": "t1"},
+    ]
+    assert consecutive_error_streak(rows) == 2
+    assert consecutive_error_streak([{"recommendation": "Hold"}]) == 0
+
+
+def test_dead_deepseek_pattern_fires_streak_and_silence():
+    """The 8-day outage: every raw row is `[ERROR]…`. last_real would hide this."""
+    now = datetime(2026, 8, 21, 18, 0, tzinfo=timezone.utc)
+    dead = [{"recommendation": "[ERROR] No module named 'lib.llm_lane'", "created_at": now}] * 8
+    row = evaluate_lane(
+        "deepseek",
+        newest_first=dead,
+        last_24h=dead,
+        silence=True,
+        streak_n=5,
+        now=now,
+    )
+    assert row["ok"] is False
+    assert "error_streak:8>=5" in row["firing"]
+    assert any(x.startswith("zero_non_error_") for x in row["firing"])
+    assert non_error_count(dead) == 0
+
+
+def test_last_real_filter_would_hide_dead_lane():
+    """Document the bug: filtering NOT LIKE '[%' on a 100% error lane yields []."""
+    dead = [{"recommendation": "[ERROR] No module named 'lib.llm_lane'"}] * 5
+    last_real = [r for r in dead if not str(r["recommendation"]).startswith("[")]
+    assert last_real == []  # looks like "no new research"
+    assert consecutive_error_streak(dead) == 5  # raw store sees the outage
+
+
+def test_manual_claude_silence_does_not_fire():
+    now = datetime(2026, 8, 21, tzinfo=timezone.utc)
+    row = evaluate_lane(
+        "claude",
+        newest_first=[{"recommendation": "Hold", "created_at": now}],
+        last_24h=[],
+        silence=False,
+        streak_n=5,
+        now=now,
+    )
+    assert row["ok"] is True
+
+
+def test_chatgpt_24h_zero_ok_fires():
+    now = datetime(2026, 8, 21, tzinfo=timezone.utc)
+    rows = [{"recommendation": "[AUTH_PENDING] x", "created_at": now}] * 3
+    row = evaluate_lane(
+        "chatgpt",
+        newest_first=rows,
+        last_24h=rows,
+        silence=True,
+        streak_n=5,
+        now=now,
+    )
+    assert row["ok"] is False
+    assert any("zero_non_error" in x for x in row["firing"])
+
+
+def test_researcher_imports_llm_lane_not_lib():
+    import inspect
+    from scripts.hermes_external_researcher import _import_llm_generate, call_governed_deepseek
+    src = inspect.getsource(call_governed_deepseek)
+    assert "lib.llm_lane" not in src
+    src2 = inspect.getsource(_import_llm_generate)
+    assert "from llm_lane import generate" in src2
+    assert "from lib.llm_lane" not in src2
