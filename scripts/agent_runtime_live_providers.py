@@ -89,7 +89,7 @@ def _build_ollama_provider(model_name: str = "gemma3:12b") -> Callable[[str, Map
 def _build_governed_flash_provider() -> Callable[[str, Mapping[str, Any]], Mapping[str, Any]]:
     """Governed DeepSeek V4 Flash provider for the reflective critics.
 
-    Routes through lib.llm_lane.generate → gate_and_generate, so every call is
+    Routes through llm_lane.generate → gate_and_generate, so every call is
     cost-governed (process cap + global daily cap), circuit-breakered, and
     fail-closed (no silent Ollama/Grok/Claude fallback). Replaces the raw Ollama
     path that previously served sentinel/iris/reflection.
@@ -97,7 +97,10 @@ def _build_governed_flash_provider() -> Callable[[str, Mapping[str, Any]], Mappi
     def _call(run_id: str, request: Mapping[str, Any]) -> Mapping[str, Any]:
         try:
             sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
-            from lib.llm_lane import generate
+            try:
+                from llm_lane import generate
+            except ImportError:
+                from scripts.llm_lane import generate  # type: ignore
             msgs = request.get("messages") or []
             prompt = "\n\n".join(
                 str(m.get("content") or "") for m in msgs if m.get("content")

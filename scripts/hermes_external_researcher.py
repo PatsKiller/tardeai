@@ -27,7 +27,7 @@ HERMES_CLI = str(Path.home() / ".local" / "bin" / "hermes")
 LANE_CFG = {
     # Claude: Anthropic API (key from env). ChatGPT: FREE ChatGPT-subscription OAuth via Hermes Codex CLI
     # (provider openai-codex) — NOT the metered OpenAI API. Grok: xAI API key (or the free xai-oauth proxy).
-    # DeepSeek: governed V4 Flash via lib.llm_lane (cost-governed, no fallback) — the primary automated lane.
+    # DeepSeek: governed V4 Flash via scripts/llm_lane.py (cost-governed, no fallback).
     "claude":  {"kind": "anthropic", "url": ANTHROPIC_URL, "key_env": "ANTHROPIC_API_KEY", "default_model": "claude-sonnet-4-6"},
     "chatgpt": {"kind": "codex_cli", "provider": "openai-codex", "default_model": "gpt-5.4",
                 "auth_hint": "hermes auth add openai-codex --type oauth   (operator OAuth — free under your ChatGPT subscription)"},
@@ -35,7 +35,7 @@ LANE_CFG = {
                 "default_model": "grok-3-mini",
                 "auth_hint": "hermes auth add xai-oauth --type oauth  then  hermes proxy start --provider xai  (free xAI OAuth, no API key)"},
     "deepseek": {"kind": "governed_deepseek", "default_model": "deepseek-v4-flash",
-                 "auth_hint": "governed DeepSeek V4 Flash via lib.llm_lane (process hermes_external_research) — no OAuth"},
+                 "auth_hint": "governed DeepSeek V4 Flash via llm_lane.py (process hermes_external_research) — no OAuth"},
 }
 DEFAULT_MODEL = "claude-sonnet-4-6"
 
@@ -205,15 +205,27 @@ def call_xai_proxy(url, model, prompt, max_tokens=1500):
     return resp.get("choices", [{}])[0].get("message", {}).get("content", "")
 
 
-def call_governed_deepseek(model, prompt, max_tokens=1500):
-    """DeepSeek V4 Flash via the governed bridge (lib.llm_lane → gate_and_generate).
+def _import_llm_generate():
+    """scripts/llm_lane.py — never scripts/lib/llm_lane (that module does not exist).
 
-    Cost-governed, circuit-breakered, and fail-closed (no silent Ollama/Grok/ChatGPT fallback).
-    Mirrors the reflective-critic migration (scripts/agent_runtime_live_providers.py).
+    The 2026-08-13..21 DeepSeek store was 100% `[ERROR] No module named 'lib.llm_lane'`
+    because this file imported `lib.llm_lane` while sys.path has scripts/lib as `lib`.
     """
-    import sys as _sys
-    _sys.path.insert(0, str(ROOT / "scripts"))
-    from lib.llm_lane import generate
+    try:
+        from llm_lane import generate
+        return generate
+    except ImportError:
+        from scripts.llm_lane import generate  # type: ignore
+        return generate
+
+
+def call_governed_deepseek(model, prompt, max_tokens=1500):
+    """DeepSeek V4 Flash via llm_lane.generate → gate_and_generate.
+
+    This is the SCHEDULER path (research_scheduler subprocesses this file).
+    Cost-governed, circuit-breakered, fail-closed (no silent local fallback).
+    """
+    generate = _import_llm_generate()
     text = generate(
         prompt,
         lane="deepseek-flash",
