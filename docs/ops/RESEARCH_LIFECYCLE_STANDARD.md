@@ -110,7 +110,6 @@ Do not collapse skip into silence. Cost attribution (Phase A) depends on these c
 | In-flight duplicate | **Implemented** | queue `duplicate_in_flight` |
 | Calendar SLA dispatcher | **Implemented** | `research_scheduler.py` `TIER_SLA` — due set is the *candidate* set |
 | Output-prose fingerprint | **Implemented** | scheduler `_research_fingerprint` on recommendation+confidence (downstream *diff*, not skip-before-call) |
-<<<<<<< HEAD
 | Hours-window skip | **Implemented** | `hermes_top20_external_intel.py` `FRESH_HOURS=12`; scheduler backfill `RESEARCH_BACKFILL_SKIP_FRESH_HOURS` → `SKIP_FRESH` when the skip gate is on |
 | Thesis STALE by age | **Implemented** | `symbol_thesis_coverage.py` class SLAs via `stale_days_for`; `STALE_DAYS_DEFAULT=30` is fallback only |
 | Librarian 30d archive | **Implemented** | `hermes_librarian/freshness.py` |
