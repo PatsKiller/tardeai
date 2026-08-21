@@ -39,7 +39,7 @@ Install units from `config/systemd/` → `~/.config/systemd/user/`. Recovery: `d
 | Unit | Type | Schedule | What It Does |
 |------|------|----------|-------------|
 | `hermes-gateway` | persistent (user) | always | Hermes gateway on :18790. Bearer auth. Proxied via `/api/v2/hermes/chat`. Auto-restart. |
-| `hermes-autonomous-loop` | timer (user) | Daily 01:00 UTC (9 PM ET) | Ticker challenger loop. Runs `hermes_autonomous_loop.py --loop ticker_challenger --apply --max-rows 2`. Writes to hermes_research_intelligence staging table. 600s timeout. RandomizedDelay 300s. |
+| `hermes-autonomous-loop` | timer (user) | Hourly 18:00–08:10 Asia/Shanghai (10:00–00:10 UTC = 6:00 AM–8:10 PM ET). Official DeepSeek off-peak. **Do not retarget to overnight ET.** | Ticker challenger loop. Runs `hermes_autonomous_loop.py --loop ticker_challenger --apply --max-rows 2`. Writes to hermes_research_intelligence staging table. 900s timeout. |
 
 ## Trade AI User Timers — active vs retired
 

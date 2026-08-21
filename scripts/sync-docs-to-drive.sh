@@ -16,7 +16,13 @@ export PATH="/home/johnclaw/.local/bin:$PATH"
 export GOG_KEYRING_PASSWORD=$(cat /home/johnclaw/.openclaw/credentials/gog_keyring_password)
 GOG_ACCOUNT="john@jwwhiting.com"
 DRIVE_FOLDER_ID="1Zxc20B5Xo24RGZ1Pow1-uW6ldASQJHiR"  # Trade_AI_Docs_v2 (structured)
-SRC="/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
+# Pin to CURRENT (promoted SHA). Do not sync a stale rebuild feature branch.
+# Override with TRADEAI_DOCS_SRC if you intentionally push a worktree.
+SRC="${TRADEAI_DOCS_SRC:-$HOME/trade-ai-releases/portfolio-server/CURRENT}"
+if [[ ! -d "$SRC/docs" ]]; then
+  echo "docs SRC missing: $SRC/docs" >&2
+  exit 1
+fi
 LOG="/home/johnclaw/logs/drive-sync.log"
 MANIFEST="/home/johnclaw/.local/state/drive-sync-manifest.txt"
 FOLDER_CACHE="/home/johnclaw/.local/state/drive-folder-cache.txt"
@@ -27,6 +33,7 @@ touch "$MANIFEST" "$FOLDER_CACHE" "$IDMAP"
 
 log() { echo "[$(date -u '+%Y-%m-%d %H:%M:%S UTC')] $1" >> "$LOG"; }
 log "=== sync start ==="
+log "SRC=$SRC"
 
 # ── Runtime-dump exclusion ──
 # Hermes drain/runtime payloads and snapshot JSON dumps under docs/hermes/** are NOT project

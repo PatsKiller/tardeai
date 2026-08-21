@@ -51,14 +51,19 @@ def _load_jsonl(path: Path) -> list[dict[str, Any]]:
 
 
 def load_decision_payloads(trace_path: Path | str | None = None) -> list[dict[str, Any]]:
-    """Return DecisionPayload@v1 dicts from agent_run_traces (newest last)."""
+    """Return DecisionPayload@v1 dicts from agent_run_traces (newest last).
+
+    SYNTHESIZED origins are excluded — they must not count toward promotion.
+    """
     rows = _load_jsonl(Path(trace_path) if trace_path else DEFAULT_TRACE_PATH)
     out: list[dict[str, Any]] = []
     for r in rows:
         dec = r.get("decision")
-        if isinstance(dec, dict) and dec.get("schema") == PAYLOAD_SCHEMA:
-            # Skip synthesized for promotion arithmetic consumers
-            out.append(dec)
+        if not isinstance(dec, dict) or dec.get("schema") != PAYLOAD_SCHEMA:
+            continue
+        if dec.get("decision_origin") == "SYNTHESIZED":
+            continue
+        out.append(dec)
     return out
 
 
@@ -159,7 +164,7 @@ def compute_phase2_metrics(
         "wakes_compared": wakes,
         "wakes_with_memory_retrieval": with_retrieval,
         "decision_payload_trace_rows": payload_stats.get("rows"),
-        "decision_payload_v1_count": payload_stats.get("with_decision_payload_v1"),
+        "decision_payload_v1_count": payload_stats.get("with_decision_payload_v1_non_synth"),
         "decision_payload_coverage_on_traces": payload_stats.get("coverage"),
         "shadow_decision_payloads_available": shadow_result.get(
             "decision_payloads_available"
@@ -197,10 +202,9 @@ def run_measure(
     out_p = Path(out_path) if out_path else (root_p / "data/cio/memory_shadow_measure_latest.json")
 
     payload_stats = count_decision_payloads(trace_p)
-    payloads = load_decision_payloads(trace_p)
-    # Exclude SYNTHESIZED from evaluator index used for promotion-facing digests
-    live_payloads = [p for p in payloads if p.get("decision_origin") != "SYNTHESIZED"]
+    live_payloads = load_decision_payloads(trace_p)
     by_wake = _payload_index(live_payloads)
+    v1_live = int(payload_stats.get("with_decision_payload_v1_non_synth") or len(live_payloads))
 
     memory_provider = None
     try:
@@ -210,13 +214,21 @@ def run_measure(
     except Exception:
         memory_provider = None
 
-    evaluator = make_decision_evaluator(by_wake)
+    # Honesty: a HOLD-fallback evaluator is not DecisionPayload@v1 evidence.
+    # With zero live v1 rows, run context-only shadow (evaluator=None) so
+    # decision_payloads_available stays False.
+    evaluator = make_decision_evaluator(by_wake) if v1_live > 0 else None
     shadow = shadow_compare_wakes(
         wake_p,
         memory_provider=memory_provider,
         decision_evaluator=evaluator,
         evaluator_version=EVALUATOR_VERSION,
     )
+    if v1_live <= 0:
+        # HOLD-fallback / context-only replay is not DecisionPayload@v1 evidence.
+        shadow["decision_payloads_available"] = False
+        shadow["decision_comparisons_completed"] = False
+        shadow["dual_path_executed"] = False
     metrics = compute_phase2_metrics(shadow, payload_stats=payload_stats, flags=flags)
 
     # Promotion gate with influence still OFF → must be NOT_PROMOTED
@@ -245,7 +257,7 @@ def run_measure(
         "window": {
             "note": "Populate DecisionPayload corpus with AGENT_DECISION_PAYLOAD=1; "
             "decision-level promotion evidence needs ≥5 trading days of coverage.",
-            "payload_v1_count": payload_stats.get("with_decision_payload_v1"),
+            "payload_v1_count": payload_stats.get("with_decision_payload_v1_non_synth"),
             "wake_rows_compared": shadow.get("wakes"),
         },
         "metrics": metrics,

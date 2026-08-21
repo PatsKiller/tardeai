@@ -4,6 +4,8 @@ READ_ONLY_ADVISORY. AUTO-PROMOTION TO TRADING: DISABLED.
 
 ## Existing surfaces (8d18a668)
 
+`8d18a668` (#350, 2026-08-17) is an **ancestor snapshot**, not CURRENT. Live serve as of 2026-08-21 evening: `fe34482b` (#433). Maturation slices G.1/I.0/A.1/B.1: PRs #434 / #435.
+
 | Surface | Path | Notes |
 |---|---|---|
 | Agents hub | `/v3/agents` | `AgentRuntimeHub` Runtime + Legacy analytics |

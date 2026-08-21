@@ -39,6 +39,19 @@ Historical note: the original #400 docs said "Protected main Unchanged / PR not 
 
 Rollback any step: `crontab <that file>`.
 
+## 2026-08-21 Peak A/B leftover retarget (A.1)
+
+Ten overnight/21:00 ET jobs moved into 10:00–20:00 ET and wrapped with
+`~/.config/tradeai/bin/run_with_deepseek_offpeak.sh`. See
+`docs/ops/MATURATION_G1_I0_A1_B1_2026-08-21.md`.
+
+| When | File |
+|------|------|
+| Before Peak A/B leftover retarget | `crontab_backup_pre_offpeak_retarget_20260821_180645.txt` |
+
+**Not changed:** `hermes-autonomous-loop.timer` (18:00–08:10 Asia/Shanghai = official off-peak).  
+**Not wrapped:** ATP2 `premarket_4am` (latency-sensitive).
+
 ## Git / PRs (historical drafts; now merged)
 
 | PR | Merge | Notes |

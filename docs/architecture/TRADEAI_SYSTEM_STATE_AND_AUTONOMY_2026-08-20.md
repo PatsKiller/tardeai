@@ -1,30 +1,33 @@
-# TradeAI System State & Autonomy Record — 2026-08-20 (updated 2026-08-21)
+# TradeAI System State & Autonomy Record — 2026-08-20 (updated 2026-08-21 evening)
 
 **Authority:** READ_ONLY_ADVISORY (no chat→broker execution)  
-**CURRENT release:** promote after this docs PR (Phase 1–2 measure tip on `main`)  
-**Purpose:** Persistent recoverable record through Phase 1 DecisionPayload + Phase 2 shadow measure.  
+**CURRENT release:** `fe34482b` until exact-main promote of #434+#435  
+**Purpose:** Persistent recoverable record through G.1 / I.0 / A.1 / B.1.  
 **Drive mirror:** `Trade_AI_Docs_v2` (folder id `1Zxc20B5Xo24RGZ1Pow1-uW6ldASQJHiR`)  
-**Ground truth:** `docs/_findings/ALEX_AUTONOMY_GROUND_TRUTH_2026-08-21.md`
+**Ground truth (Phase 0, closed):** `docs/_findings/ALEX_AUTONOMY_GROUND_TRUTH_2026-08-21.md`  
+**Live ops (this evening):** `docs/ops/MATURATION_G1_I0_A1_B1_2026-08-21.md`
 
 ---
 
 ## 1. Executive snapshot
 
-| Dimension | State (2026-08-21 late) |
+| Dimension | State (2026-08-21 evening) |
 |-----------|-------------------|
-| Portfolio-server tip | Phase 1–2 measure stack (`DecisionPayload` + shadow measure + daily timer) |
-| DecisionPayload capture | **ON** (`AGENT_DECISION_PAYLOAD=1`) — 5-trading-day window started |
+| Portfolio-server tip | Phase 1–2 measure stack on CURRENT `fe34482b`; G.1/I.0/A.1/B.1 on #434/#435 |
+| DecisionPayload capture | **ON for producers** (telegram/material-scan/reactive drop-ins). Corpus still **0 v1**. 2026-08-21 5-day window was a **false start** — restart when `payload_v1_count ≥ 1` |
 | Memory behavior influence | **OFF** (`MEMORY_BEHAVIOR_INFLUENCE=0`) — do not flip until gate |
-| Memory shadow measure | **LIVE** daily timer 06:20 + on-demand; artifact `memory_shadow_measure_latest.json` |
+| Memory adversarial scan | Flag default **0**; TSLA canary **RETRACTED**; enable `31-memory-adversarial-scan.conf` after #434 promote |
+| Memory shadow measure | **LIVE** daily 06:20; honesty fix (0 v1 ≠ available) lands with #435 promote |
+| DeepSeek bulk | 10 Peak A/B crons retargeted 10:00–20:00 ET + PEAK_SKIP; autonomous-loop timer **not** retuned |
+| Tree-pin | Serve CURRENT; **215** TradeAI unit/cron drift (audit only) |
 | Alex Telegram converse | **LIVE** — meta / desk / **freeform** |
 | Product notify | **LIVE IIC cards** — HTML bold + severity emoji; raw BOOK dumps suppressed |
-| Symbol Intelligence page | **LIVE dossier** (#424) — queue open count + oldest wait |
-| Operator ticker feedback | **LIVE** (#423) — journal thin (n≈1); learning not evidenced |
-| Held symbol theses CURRENT | **~13.64%** (3/22); SLA not met |
-| Canon frameworks | Catalogued incomplete claims — see canon audit |
+| Operator ticker feedback | **LIVE** — journal thin (n=1); learning not evidenced |
+| Held symbol theses CURRENT | **13.64%** (3/22); SLA not met |
+| LLM daily cap | **$0.50** — do not raise until A.4+A.5 |
 | Broker auto-execution | **Off by design** |
 
-**Bottleneck:** decision-payload corpus (filling) → then memory promotion evidence; held-thesis coverage; churn dwell; preference learning.
+**Bottleneck:** first real DecisionPayload@v1 row (then restart 5-day clock) → tree-pin → spend attribution → coverage.
 
 ---
 
@@ -105,11 +108,11 @@ Holdings / Watch / Market / News / Catalysts
 
 ### Dual-root debt
 
-Hourly Drive sync and many crons still treat  
-`/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild` as **SRC**, while live serve is  
-`~/trade-ai-releases/portfolio-server/CURRENT`.  
+`ops_tree_pin_audit.py` (I.0): **215** TradeAI systemd/cron rows still `rebuild` or `hybrid` vs 15 `current`. Rebuild HEAD is `feat/two-way-watchlist-curation`, not `origin/main`.
 
-**Rule:** Sync Drive only from **`origin/main` `docs/`** checked out into rebuild `docs/` (or a clean main worktree). Never sync a dirty feature branch that deleted ops docs.
+Drive sync script default SRC is **CURRENT** after #435 (`TRADEAI_DOCS_SRC` override). Until that SHA is what cron executes, hourly sync may still use rebuild. **Never sync a dirty feature branch.**
+
+**Rule:** Sync Drive from `origin/main` `docs/` (clean worktree or CURRENT after overlay).
 
 ### Notify gates
 

@@ -89,6 +89,13 @@ def should_peak_skip(dt: datetime | None = None) -> bool:
     return not is_bulk_deepseek_window(dt)
 
 
+def should_official_peak_skip(dt: datetime | None = None) -> bool:
+    """True inside official DeepSeek UTC peak hours (unless allow-peak)."""
+    if allow_deepseek_peak():
+        return False
+    return is_deepseek_peak_utc(dt)
+
+
 def resolve_overnight_soak_cap(raw: str | None) -> dict[str, Any]:
     """Bulk-lane soak default.
 
@@ -115,13 +122,20 @@ def _cli(argv: list[str] | None = None) -> int:
         args = ["--help"]
     if args[0] in {"-h", "--help"}:
         sys.stdout.write(
-            "usage: deepseek_offpeak.py --gate | --resolve-cap\n"
-            "  --gate         exit 10 if PEAK_SKIP, else 0\n"
-            "  --resolve-cap  print origin=... cap=... ; exit 2 if invalid\n"
+            "usage: deepseek_offpeak.py --gate | --gate-official | --resolve-cap\n"
+            "  --gate           exit 10 if outside 10:00-21:00 ET or official UTC peak\n"
+            "  --gate-official  exit 10 only inside official DeepSeek UTC peak hours\n"
+            "  --resolve-cap    print origin=... cap=... ; exit 2 if invalid\n"
         )
         return 0
     if args[0] == "--gate":
         if should_peak_skip():
+            sys.stdout.write("PEAK_SKIP\n")
+            return 10
+        sys.stdout.write("OFFPEAK\n")
+        return 0
+    if args[0] == "--gate-official":
+        if should_official_peak_skip():
             sys.stdout.write("PEAK_SKIP\n")
             return 10
         sys.stdout.write("OFFPEAK\n")

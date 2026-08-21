@@ -7,7 +7,8 @@
 
 Every factual claim tagged `[VERIFIED]` (command/file read) or `[DOC-CLAIMED]` (document only). Untagged claims are not admissible.
 
-**Landed:** this file.
+**Landed:** this file.  
+**Successor (evening 2026-08-21):** `docs/ops/MATURATION_G1_I0_A1_B1_2026-08-21.md` — G.1 quarantine + producer payload flags + off-peak retarget. This Phase 0 snapshot is **not rewritten**.
 
 ---
 

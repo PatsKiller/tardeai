@@ -347,6 +347,7 @@ def count_decision_payloads(path: Path | str | None = None) -> dict[str, Any]:
             "rows": 0,
             "with_decision": 0,
             "with_decision_payload_v1": 0,
+            "with_decision_payload_v1_non_synth": 0,
             "synthesized": 0,
             "coverage": 0.0,
         }
@@ -366,15 +367,17 @@ def count_decision_payloads(path: Path | str | None = None) -> dict[str, Any]:
                     with_decision += 1
                     if dec.get("schema") == PAYLOAD_SCHEMA:
                         with_schema += 1
-                    if dec.get("decision_origin") == "SYNTHESIZED":
-                        synthesized += 1
+                        if dec.get("decision_origin") == "SYNTHESIZED":
+                            synthesized += 1
     except Exception:
         pass
     cov = (with_schema / total) if total else 0.0
+    non_synth = with_schema - synthesized
     return {
         "rows": total,
         "with_decision": with_decision,
         "with_decision_payload_v1": with_schema,
+        "with_decision_payload_v1_non_synth": non_synth,
         "synthesized": synthesized,
         "coverage": round(cov, 4),
     }
