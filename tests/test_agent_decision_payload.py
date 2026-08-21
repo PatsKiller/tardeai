@@ -19,6 +19,7 @@ from scripts.lib.agent_decision_payload import (  # noqa: E402
     infer_decision_origin,
     payload_from_material_decision,
     payload_from_symbol_intelligence,
+    ticker_or_unavailable,
 )
 from scripts.lib.agent_feature_flags import DEFAULT_FLAGS, load_feature_flags  # noqa: E402
 from scripts.lib.agent_runtime_instrumentation import instrument_material_wake  # noqa: E402
@@ -162,6 +163,11 @@ def test_payload_from_material_decision():
     assert pl["decision_id"] == "dec_cash_1"
     assert pl["decision_origin"] == "DETERMINISTIC_RANK"
     assert pl["current_action"] == "HOLD"
+    # Membership labels are not tickers.
+    assert pl["symbol"] == "DATA_UNAVAILABLE"
+    assert pl.get("data_unavailable") is True
+    assert ticker_or_unavailable("CASH") == "DATA_UNAVAILABLE"
+    assert ticker_or_unavailable("UBER") == "UBER"
 
 
 def test_redact_strips_forbidden_extras(tmp_path):
