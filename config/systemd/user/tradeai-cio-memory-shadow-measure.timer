@@ -1,0 +1,12 @@
+[Unit]
+Description=Daily CIO memory shadow measure during DecisionPayload window
+
+[Timer]
+# Once per day (local time). Persistent catches missed runs after reboot.
+OnCalendar=*-*-* 06:20:00
+Persistent=true
+AccuracySec=1min
+Unit=tradeai-cio-memory-shadow-measure.service
+
+[Install]
+WantedBy=timers.target
