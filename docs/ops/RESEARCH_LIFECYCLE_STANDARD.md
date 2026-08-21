@@ -71,7 +71,7 @@ Process only:
 
 Skip all unchanged and still-valid records.
 
-Class freshness (policy target; thesis classes from the maturation plan):
+Class freshness (implemented in `symbol_thesis_coverage.py` `CLASS_SLA_DAYS` / `stale_days_for`):
 
 | Class | Max age before forced refresh |
 |-------|-------------------------------|
@@ -82,7 +82,7 @@ Class freshness (policy target; thesis classes from the maturation plan):
 | Held, index/bond | 90d |
 | Hermes result reuse TTL (queue) | 2h–24h by priority (`hermes_research_policy.py`) |
 
-A catalyst, earnings, dividend action, or operator NEED_DATA **short-circuits** the age gate.
+A catalyst, earnings, dividend action, or operator NEED_DATA **short-circuits** the age gate (coverage does not mark STALE solely by calendar age; `coverage_reason` records the short-circuit). Held coverage SLA is **100%** `coverage_pct` **and** `fresh_pct` (`cio_held_thesis_coverage.py`). That target is **not currently met live** — the report measures the gap; it does not claim the book is fully covered.
 
 ---
 
@@ -110,13 +110,14 @@ Do not collapse skip into silence. Cost attribution (Phase A) depends on these c
 | In-flight duplicate | **Implemented** | queue `duplicate_in_flight` |
 | Calendar SLA dispatcher | **Implemented** | `research_scheduler.py` `TIER_SLA` — due set is the *candidate* set |
 | Output-prose fingerprint | **Implemented** | scheduler `_research_fingerprint` on recommendation+confidence (downstream *diff*, not skip-before-call) |
+<<<<<<< HEAD
 | Hours-window skip | **Implemented** | `hermes_top20_external_intel.py` `FRESH_HOURS=12`; scheduler backfill `RESEARCH_BACKFILL_SKIP_FRESH_HOURS` → `SKIP_FRESH` when the skip gate is on |
-| Thesis STALE by age | **Implemented** | `symbol_thesis_coverage.py` `STALE_DAYS_DEFAULT=30` |
+| Thesis STALE by age | **Implemented** | `symbol_thesis_coverage.py` class SLAs via `stale_days_for`; `STALE_DAYS_DEFAULT=30` is fallback only |
 | Librarian 30d archive | **Implemented** | `hermes_librarian/freshness.py` |
 | Unified source **content_hash** index | **Implemented** (flag `RESEARCH_SKIP_GATE`, **default off**) | `scripts/lib/research_source_index.py` → `data/cio/research_source_index.json` (`ResearchSourceIndex@v1`). `content_hash` is sha256 of source *inputs*, never recommendation/confidence/prose. |
-| Unified skip log (`SKIP_UNCHANGED` / `SKIP_FRESH`) | **Implemented** (same flag, **default off**) | `scripts/lib/research_skip_ledger.py` → `data/cio/research_skip_ledger.jsonl`. Scheduler dispatch writes one code per metered candidate when the gate is on. Live skip *rates* are not claimed until measured from that ledger. |
-| Thesis class SLAs 14/30/45/90d | **Implemented** (index TTL) / **Policy** (coverage %) | Index `fresh_until` uses 14d income/BDC + reentry READY/NEAR, 30d held growth/core, 90d BND-like, 45d watchlist. Coverage report is still held-only 80% SLA. |
-| Local LLM auto-enqueue | **Off unless flagged** | `RESEARCH_ALLOW_LOCAL_LLM` default 0. Scheduler does not auto-enqueue maria/full_chain. DeepSeek remains the auto judgment lane. ChatGPT overnight stays on `hermes_deep_research_local`. |
+| Unified skip log (`SKIP_UNCHANGED` / `SKIP_FRESH`) | **Implemented** (same flag, **default off**) | `scripts/lib/research_skip_ledger.py` → `data/cio/research_skip_ledger.jsonl`. Live skip *rates* are UNMEASURED until the gate is on. |
+| Thesis class SLAs 14/30/45/90d | **Implemented** | `CLASS_SLA_DAYS` / `stale_days_for`; held report publishes `coverage_pct` **and** `fresh_pct` with SLA 100% (`held_n` = 22 via `holdings_universe`). **Not currently met live.** |
+| Local LLM auto-enqueue | **Off unless flagged** | `RESEARCH_ALLOW_LOCAL_LLM` default 0. Scheduler does not auto-enqueue maria/full_chain. DeepSeek is the auto judgment lane. ChatGPT overnight stays on `hermes_deep_research_local`. Math-only local: `scripts/lib/llm_task_policy.py`. |
 
 When `RESEARCH_SKIP_GATE` is off (default), DeepSeek dispatch is unchanged (parity). When on, execute_set = due ∩ (changed ∪ stale ∪ triggered). Do not add a lane that always re-runs.
 

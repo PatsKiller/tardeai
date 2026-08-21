@@ -49,8 +49,12 @@ def main() -> int:
         path = write_coverage_report(rep, root=root)
         out["report"] = {
             "held_count": rep["held_count"],
+            "held_equity_ticker_n": rep.get("held_equity_ticker_n"),
             "current_count": rep["current_count"],
             "held_current_pct": rep["held_current_pct"],
+            "coverage_pct": rep.get("coverage_pct"),
+            "fresh_pct": rep.get("fresh_pct"),
+            "sla_target_pct": rep.get("sla_target_pct"),
             "sla_met": rep["sla_met"],
             "by_state": rep["by_state"],
             "needs_coverage": rep["needs_coverage"],

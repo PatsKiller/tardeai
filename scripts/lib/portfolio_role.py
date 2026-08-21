@@ -44,6 +44,8 @@ _TICKER_HINTS: dict[str, str] = {
     "JEPI": "INCOME",
     "DIV": "INCOME",
     "DIVI": "INCOME",
+    "PFLT": "INCOME",
+    "CSWC": "INCOME",
     "BND": "DEFENSIVE",
     "XAR": "CYCLICAL",
     "XLI": "CYCLICAL",
