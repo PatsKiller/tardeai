@@ -29,9 +29,16 @@ OpenAI     Fast       ~$0.50    Good       Last resort only
 
 ═══ TASK ROUTING ════════════════════════════════════════════════════════════
 
+  Live tables are Flash-only for agent_narrative / agent_debate / cio_synthesis /
+  sector_correlation / default — local is never selected for those tasks today.
+  lib.llm_task_policy still skips provider "local" for non-math tasks unless
+  LLM_ALLOW_LOCAL_JUDGMENT=1 or RESEARCH_ALLOW_LOCAL_LLM=1 so a future
+  LOCAL_MODEL / table change cannot silently send judgment/research to gemma.
+
   Live (gemma3:4b / 12b / 27b):  governed DeepSeek Flash for agent tasks
   Retirement/disability:         still policy-gated (not this module's spend path)
   US overnight judgment:         ChatGPT OAuth, not gemma (overnight_llm_policy)
+  Local LLM:                     math/numeric only (see lib.llm_task_policy)
 
 Usage:
     from llm_router import get_llm_response
@@ -62,6 +69,8 @@ DAILY_BUDGET_LIMIT = 1.50  # USD/day — allows cloud fallback when Ollama offli
 
 # Governed DeepSeek Flash only for agent watchlist workloads (issue #283 / PR #284).
 # No silent local/Grok/Claude/OpenAI fallback on paid agent tasks.
+# Live chains below never include "local". filter_local_providers is a guardrail
+# if a future LOCAL_MODEL change adds local to a judgment task.
 _TASK_ROUTING_PRE_GPU = {
     "agent_narrative":          ["deepseek-flash"],
     "agent_debate":             ["deepseek-flash"],
@@ -303,12 +312,28 @@ def get_llm_response(
 
     # Determine provider order
     if high_impact:
-        providers = _HIGH_IMPACT_ROUTING.get(task_type, _HIGH_IMPACT_ROUTING["default"])
+        providers = list(_HIGH_IMPACT_ROUTING.get(task_type, _HIGH_IMPACT_ROUTING["default"]))
     else:
-        providers = _TASK_ROUTING.get(task_type, _TASK_ROUTING["default"])
+        providers = list(_TASK_ROUTING.get(task_type, _TASK_ROUTING["default"]))
 
     fallback_reasons = []
     total_cost = 0.0
+
+    # Math-only local LLM. Does not alter DeepSeek Flash chains (live tables are
+    # Flash-only for agent_narrative). If a future table puts "local" on a
+    # judgment task, skip gemma unless the operator rollback flag is on.
+    try:
+        from lib.llm_task_policy import filter_local_providers
+        providers, local_skip = filter_local_providers(task_type or "default", providers)
+        if local_skip:
+            fallback_reasons.append(local_skip)
+    except Exception:
+        # Fail closed: never silently send judgment to gemma if policy import fails.
+        if "local" in providers:
+            fallback_reasons.append(
+                "local: POLICY_LOCAL_JUDGMENT_FORBIDDEN (policy module unavailable)"
+            )
+            providers = [p for p in providers if p != "local"]
 
     for provider_name in providers:
         caller = _PROVIDERS.get(provider_name)
