@@ -647,6 +647,31 @@ def get_symbol_intelligence(symbol: str) -> dict[str, Any]:
     except Exception as e:
         intel_err = f"{type(e).__name__}:{e}"[:240]
 
+    research_queue: dict[str, Any]
+    try:
+        from scripts.lib.symbol_thesis_queue import load_symbol_research_queue
+
+        rq = load_symbol_research_queue(sym)
+        research_queue = {
+            "open_count": int(rq.get("open_count") or 0),
+            "oldest_wait_seconds": rq.get("oldest_wait_seconds"),
+            "oldest_wait_human": rq.get("oldest_wait_human"),
+            "active_research": rq.get("active_research") or [],
+            "recent_completed_research": rq.get("recent_completed_research") or [],
+            "source": rq.get("source"),
+            "ok": bool(rq.get("ok")),
+        }
+    except Exception:
+        research_queue = {
+            "open_count": 0,
+            "oldest_wait_seconds": None,
+            "oldest_wait_human": None,
+            "active_research": [],
+            "recent_completed_research": [],
+            "source": "unavailable",
+            "ok": False,
+        }
+
     return {
         "ok": True,
         "as_of": _now_iso(),
@@ -655,6 +680,7 @@ def get_symbol_intelligence(symbol: str) -> dict[str, Any]:
         "intelligence_error": intel_err,
         "journal": journal,
         "latest_feedback": latest,
+        "research_queue": research_queue,
         "authority": "READ_ONLY_ADVISORY",
         "financial_action": False,
     }

@@ -18,6 +18,9 @@ def test_queue_empty_on_db_failure(monkeypatch):
     out = q.load_symbol_research_queue("SCHG", conn=object())  # cursor will fail
     assert out["active_research"] == []
     assert out["recent_completed_research"] == []
+    assert out["open_count"] == 0
+    assert out["oldest_wait_seconds"] is None
+    assert out["oldest_wait_human"] is None
     assert out["ok"] is False
 
 
@@ -34,6 +37,10 @@ def test_queue_splits_injected_rows():
     )
     assert len(out["active_research"]) == 1
     assert out["active_research"][0]["agent"] == "maria"
+    assert out["open_count"] == 1
+    assert out["oldest_wait_seconds"] is not None
+    assert out["oldest_wait_human"] is not None
+    assert out["active_research"][0].get("waiting_age_seconds") is not None
     assert len(out["recent_completed_research"]) == 1
     assert out["source"] == "watchlist_agent_jobs"
 
@@ -47,6 +54,9 @@ def test_card_uses_queue_not_hardcoded_empty(monkeypatch, tmp_path):
         lambda _sym: {
             "active_research": [{"id": 9, "status": "queued", "agent": "maria"}],
             "recent_completed_research": [],
+            "open_count": 1,
+            "oldest_wait_seconds": 720,
+            "oldest_wait_human": "12m",
             "source": "watchlist_agent_jobs",
             "ok": True,
         },
@@ -74,6 +84,9 @@ def test_card_uses_queue_not_hardcoded_empty(monkeypatch, tmp_path):
     card = cc.build_symbol_thesis_card("SCHG", root=tmp_path)
     assert card["active_research"][0]["id"] == 9
     assert card["recent_completed_research"] == []
+    assert card["research_queue_open_count"] == 1
+    assert card["research_queue_oldest_wait_seconds"] == 720
+    assert card["research_queue_oldest_wait_human"] == "12m"
 
 
 def test_canary_default_dry_and_rejects_non_canary(tmp_path, monkeypatch):
