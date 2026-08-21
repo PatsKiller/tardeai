@@ -14,8 +14,14 @@ set -euo pipefail
 export PATH="/home/johnclaw/.local/bin:$PATH"
 
 export GOG_KEYRING_PASSWORD=$(cat /home/johnclaw/.openclaw/credentials/gog_keyring_password)
-GOG_ACCOUNT="john@jwwhiting.com"
+export GOG_ACCOUNT="${GOG_ACCOUNT:-john@jwwhiting.com}"
+# Default account for gog (alias "default") — never call `gog auth manage` from cron (hangs without TTY).
+gog auth alias set default "$GOG_ACCOUNT" --no-input >/dev/null 2>&1 || true
 DRIVE_FOLDER_ID="1Zxc20B5Xo24RGZ1Pow1-uW6ldASQJHiR"  # Trade_AI_Docs_v2 (structured)
+# Canonical docs/ under Trade_AI_Docs_v2. Duplicate 1Rb6qcu… is deprecated.
+CANONICAL_DOCS_ID="1BMxbxU9c9rF3NBvXVQtVEewdvkifVkwP"
+CANONICAL_OPS_ID="1a7vr2gnNipfaFejjgHxKNhSFmnh_XVZ_"
+RESULT_JSON="/home/johnclaw/.local/state/drive-sync-last-result.json"
 # Pin to CURRENT (promoted SHA). Do not sync a stale rebuild feature branch.
 # Override with TRADEAI_DOCS_SRC if you intentionally push a worktree.
 SRC="${TRADEAI_DOCS_SRC:-$HOME/trade-ai-releases/portfolio-server/CURRENT}"
@@ -28,11 +34,100 @@ MANIFEST="/home/johnclaw/.local/state/drive-sync-manifest.txt"
 FOLDER_CACHE="/home/johnclaw/.local/state/drive-folder-cache.txt"
 IDMAP="/home/johnclaw/.local/state/drive-sync-ids.txt"  # relpath|drive_file_id — update in place, no dupes
 
-mkdir -p "$(dirname "$LOG")" "$(dirname "$MANIFEST")"
+mkdir -p "$(dirname "$LOG")" "$(dirname "$MANIFEST")" "$(dirname "$RESULT_JSON")"
 touch "$MANIFEST" "$FOLDER_CACHE" "$IDMAP"
 
 log() { echo "[$(date -u '+%Y-%m-%d %H:%M:%S UTC')] $1" >> "$LOG"; }
+
+write_result() {
+  local status="$1" uploaded="${2:-0}" skipped="${3:-0}" failed="${4:-0}" extra="${5:-}"
+  python3 - "$RESULT_JSON" "$status" "$uploaded" "$skipped" "$failed" "$extra" <<'PY'
+import json, sys, os
+from datetime import datetime, timezone
+path, status, uploaded, skipped, failed, extra = sys.argv[1:7]
+now = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+prev = {}
+try:
+    prev = json.loads(open(path, encoding="utf-8").read())
+except Exception:
+    prev = {}
+rec = {
+    "status": status,
+    "started_utc": prev.get("started_utc") if status != "running" else now,
+    "finished_utc": None if status == "running" else now,
+    "uploaded": int(uploaded or 0),
+    "skipped": int(skipped or 0),
+    "failed": int(failed or 0),
+    "exit_code": 0 if status == "running" else (1 if status != "done" or int(failed or 0) else 0),
+    "account": os.environ.get("GOG_ACCOUNT") or "john@jwwhiting.com",
+    "canonical_docs_id": "1BMxbxU9c9rF3NBvXVQtVEewdvkifVkwP",
+    "src": extra or "",
+    "reads_raw": True,
+}
+if status == "running":
+    rec["started_utc"] = now
+    rec["finished_utc"] = None
+json.dump(rec, open(path, "w", encoding="utf-8"), indent=2)
+open(path, "a", encoding="utf-8").write("\n")
+PY
+}
+
+# Pin folder cache to the canonical docs/ + docs/ops IDs so the hourly job
+# does not keep writing into the duplicate 1Rb6qcu… tree.
+pin_canonical_folder_cache() {
+  python3 - "$FOLDER_CACHE" "$CANONICAL_DOCS_ID" "$CANONICAL_OPS_ID" <<'PY'
+import sys
+from pathlib import Path
+path, docs_id, ops_id = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
+lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+out = []
+seen_docs = seen_ops = False
+for ln in lines:
+    if ln.startswith("docs|"):
+        out.append(f"docs|{docs_id}")
+        seen_docs = True
+    elif ln.startswith("docs/ops|"):
+        out.append(f"docs/ops|{ops_id}")
+        seen_ops = True
+    else:
+        out.append(ln)
+if not seen_docs:
+    out.insert(0, f"docs|{docs_id}")
+if not seen_ops:
+    out.append(f"docs/ops|{ops_id}")
+path.write_text("\n".join(out) + "\n", encoding="utf-8")
+PY
+}
+
+UPLOADED=0
+SKIPPED=0
+FAILED=0
+LIVE_OK="$(mktemp)"
+LIVE_BAD="$(mktemp)"
+trap 'write_result failed "${UPLOADED:-0}" "${SKIPPED:-0}" "${FAILED:-0}" "$SRC"; rm -f "$LIVE_OK" "$LIVE_BAD"' ERR
+trap 'rm -f "$LIVE_OK" "$LIVE_BAD"' EXIT
+
+folder_id_alive() {
+  local id="$1"
+  grep -qx "$id" "$LIVE_OK" 2>/dev/null && return 0
+  grep -qx "$id" "$LIVE_BAD" 2>/dev/null && return 1
+  if timeout 20 gog drive ls --account "$GOG_ACCOUNT" --parent "$id" --max=1 --json --no-input >/dev/null 2>&1; then
+    echo "$id" >> "$LIVE_OK"
+    return 0
+  fi
+  echo "$id" >> "$LIVE_BAD"
+  return 1
+}
+
+drop_folder_cache_line() {
+  local dir_path="$1"
+  grep -v "^${dir_path}|" "$FOLDER_CACHE" > "${FOLDER_CACHE}.new" 2>/dev/null || touch "${FOLDER_CACHE}.new"
+  mv "${FOLDER_CACHE}.new" "$FOLDER_CACHE"
+}
+
 log "=== sync start ==="
+pin_canonical_folder_cache
+write_result running 0 0 0 "$SRC"
 log "SRC=$SRC"
 
 # ── Runtime-dump exclusion ──
@@ -60,8 +155,12 @@ resolve_folder() {
   local cached
   cached=$(grep "^${dir_path}|" "$FOLDER_CACHE" 2>/dev/null | head -1 | cut -d'|' -f2)
   if [ -n "$cached" ]; then
-    echo "$cached"
-    return
+    if folder_id_alive "$cached"; then
+      echo "$cached"
+      return
+    fi
+    log "STALE folder cache $dir_path ($cached) — dropping"
+    drop_folder_cache_line "$dir_path"
   fi
 
   # Walk path components
@@ -75,8 +174,12 @@ resolve_folder() {
     local mid_cached
     mid_cached=$(grep "^${built_path}|" "$FOLDER_CACHE" 2>/dev/null | head -1 | cut -d'|' -f2)
     if [ -n "$mid_cached" ]; then
-      current_parent="$mid_cached"
-      continue
+      if folder_id_alive "$mid_cached"; then
+        current_parent="$mid_cached"
+        continue
+      fi
+      log "STALE folder cache $built_path ($mid_cached) — dropping"
+      drop_folder_cache_line "$built_path"
     fi
 
     # Search Drive for existing folder
@@ -146,6 +249,7 @@ find "$SRC/config/strategies" -name "*.yaml" -type f >> "$CANDIDATES" 2>/dev/nul
 TOTAL=$(wc -l < "$CANDIDATES")
 UPLOADED=0
 SKIPPED=0
+FAILED=0
 
 while IFS= read -r filepath; do
   relpath="${filepath#$SRC/}"
@@ -216,13 +320,15 @@ except: pass
     log "SYNCED (delete+create): $relpath"
   else
     log "FAILED: $relpath"
+    FAILED=$((FAILED + 1))
   fi
 
   sleep 0.3
 done < "$CANDIDATES"
 
 rm -f "$CANDIDATES"
-log "sync done: $UPLOADED uploaded, $SKIPPED unchanged, $TOTAL total candidates"
+log "sync done: $UPLOADED uploaded, $SKIPPED unchanged, $FAILED failed, $TOTAL total candidates"
+write_result done "$UPLOADED" "$SKIPPED" "$FAILED" "$SRC"
 
 # ── Cleanup: remove Drive files whose local source was deleted ──
 DELETED=0

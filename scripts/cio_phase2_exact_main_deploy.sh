@@ -34,6 +34,20 @@ die() { echo "ERROR: $*" >&2; exit 1; }
 git_sha() { git -C "$ROOT" rev-parse origin/main; }
 git_sha_short() { git -C "$ROOT" rev-parse --short origin/main; }
 
+# Exact-main: refuse to stamp origin/main onto a different HEAD (the hybrid disease).
+require_head_is_origin_main() {
+  git -C "$ROOT" fetch origin main --quiet
+  local head origin_main
+  head="$(git -C "$ROOT" rev-parse HEAD)"
+  origin_main="$(git -C "$ROOT" rev-parse origin/main)"
+  if [[ "$head" != "$origin_main" ]]; then
+    die "ROOT HEAD $head != origin/main $origin_main — refuse hybrid promote. Checkout origin/main first."
+  fi
+  if [[ -n "$(git -C "$ROOT" status --porcelain)" ]]; then
+    die "ROOT working tree dirty — refuse hybrid promote"
+  fi
+}
+
 current_release() { readlink -f "${RELEASES_BASE}/CURRENT"; }
 
 write_state() {
@@ -244,10 +258,13 @@ build_frontend() {
 
 overlay_main() {
   local dest="$1"
-  log "Overlay origin/main tree from $ROOT → $dest"
-  rsync -a \
+  log "Overlay origin/main tree from $ROOT → $dest (full scripts/ + docs/ — no slice overlay)"
+  rsync -a --delete \
     --exclude='__pycache__/' --exclude='*.pyc' --exclude='.pytest_cache/' \
     "${ROOT}/scripts/" "${dest}/scripts/"
+  rsync -a --delete \
+    --exclude='__pycache__/' \
+    "${ROOT}/docs/" "${dest}/docs/"
   rsync -a "${ROOT}/docs/investment-office/" "${dest}/docs/investment-office/"
   mkdir -p "${dest}/tests" "${dest}/.github/workflows"
   rsync -a --include='test_cio_*.py' --include='conftest.py' --exclude='*' \
@@ -325,9 +342,27 @@ activate_release() {
   log "CURRENT → $dir ; service restarted"
 }
 
+run_pin_check() {
+  local dir="$1"
+  local script="${dir}/scripts/current_pin_integrity.py"
+  if [[ ! -f "$script" ]]; then
+    die "current_pin_integrity.py missing in $dir — refuse hybrid"
+  fi
+  [[ -x "$VENV_PYTHON" ]] || die "venv python missing for pin check: $VENV_PYTHON"
+  log "CURRENT pin check vs SOURCE_COMMIT in $dir"
+  if ! (
+    cd "$dir"
+    CURRENT_PIN_DIR="$dir" CURRENT_PIN_REPO="$ROOT" \
+      "$VENV_PYTHON" scripts/current_pin_integrity.py
+  ); then
+    die "CURRENT pin mismatch — refuse to continue (no silent hybrid)"
+  fi
+  log "pin check OK"
+}
+
 cmd_prepare() {
   command -v rsync >/dev/null || die "rsync missing"
-  git -C "$ROOT" fetch origin main --quiet
+  require_head_is_origin_main
   PREV_RELEASE="$(current_release)"
   [[ -d "$PREV_RELEASE" ]] || die "PREV release missing"
   CONTENT_SHA="$(git_sha)"
@@ -348,6 +383,7 @@ cmd_prepare() {
   link_pipeline_data "$NEW_RELEASE"
   build_frontend "$ROOT" "$NEW_RELEASE"
   stamp_build "$NEW_RELEASE" "$CONTENT_SHA"
+  run_pin_check "$NEW_RELEASE"
   run_integrity_hook "$NEW_RELEASE"
   for p in \
     "scripts/portfolio_server.py" \

@@ -17,9 +17,9 @@ crons (subject-level), all keyed to the same tiers below.
 
 | Lane | Engine | Cost | Breadth | Dispatch | Role |
 |------|--------|------|---------|----------|------|
-| **local-gemma** | gemma3:4b / 12b (local) | free | overflow / math-adjacent | enqueue `watchlist_agent_jobs` **only if** `RESEARCH_ALLOW_LOCAL_LLM=1` (default **0**) | not the workhorse — maria queue was 28.5% fail |
+| **local-gemma** | gemma3:4b / 12b (local) | free | overflow / math-adjacent | enqueue `watchlist_agent_jobs` **only if** `RESEARCH_ALLOW_LOCAL_LLM=1` (default **0**, **recommendation-only until the operator-blind sheet is scored**) | bake-off proved **0% `[` error prefix** (no crashes), **not** output quality. Maria jobs 28.5% fail is infra, not a quality score. Do not auto-enable from bake-off crash-rate. |
 | **internal-deep** | **Policy:** ChatGPT OAuth 22:00–06:00 ET. **Live timer:** China-night gemma3:27b (empty US-day). 27b is **100% CPU** on the B50 — not a GPU deep lane | ChatGPT free; 27b CPU | T0/T1 | policy `:8646`; live timer not retargeted | do not label 27b “deep multi-agent synthesis” |
-| **deepseek** | DeepSeek V4 Flash via `scripts/llm_lane.py` | metered, cheap | T0/T1 + catalyst | `hermes_external_researcher` (`--trigger research_scheduler`) | **primary auto lane** — import fixed #440 (id=45900 sent) |
+| **deepseek** | DeepSeek V4 Flash via `scripts/llm_lane.py` | metered, cheap | T0/T1 + catalyst | `hermes_external_researcher` (`--trigger research_scheduler`) | **intended** auto external lane after #440 import fix. **Not the workhorse until a 5-day burn-in** reports error rate, latency, and spend. One call (id=45900) proves the import, not production. |
 | **grok** | xAI OAuth proxy :8645 | free, **rate-limited** | *(retained, not auto)* | — | deprecated for auto-dispatch |
 | **chatgpt** | codex OAuth proxy :8646 | free, **rate-limited** | US overnight judgment | `hermes_deep_research_local` (overnight) | default overnight LLM — not gemma |
 | **claude** | Anthropic API | **metered $** | arbitration only | manual / on disagreement | tie-break, high-stakes only — **never auto** |
@@ -27,10 +27,12 @@ crons (subject-level), all keyed to the same tiers below.
 | **catalyst** | `hermes_momentum_catalyst_researcher`, social scalp | free | event-driven | own cron | detects new events → pulls symbols forward |
 | **news** | `news_ingestion`, Finviz | free | broad, continuous | own cron | event feed feeding catalyst signal |
 
-The governed DeepSeek Flash lane is the auto judgment workhorse (`llm_lane.py`, not `lib.llm_lane`).
-Local gemma is not auto-enqueued unless `RESEARCH_ALLOW_LOCAL_LLM=1`. Claude is metered arbitration-only.
-RAW-store health: `scripts/research_lane_health.py` (does **not** use `last_real`). Skip gate
-`RESEARCH_SKIP_GATE` defaults **off**. `$0.42/14d` spend was a crash loop — re-baseline 7d post-#440.
+The governed DeepSeek Flash lane is the **intended** auto external writer (`llm_lane.py`, not `lib.llm_lane`).
+It was **100% `[ERROR] lib.llm_lane`** for 8 days (2026-08-13..21) and has **one** proven scheduler-path success (`hermes_external_research` id=45900). That is not burn-in. **Do not call Flash the workhorse in policy until 5 days of RAW-store error rate + latency + spend are posted** (window start 2026-08-21 19:10 ET; due 2026-08-26). `$0.42/14d` was the crash loop — void.
+
+Local gemma default-off (`RESEARCH_ALLOW_LOCAL_LLM=0`) is **recommendation-only until** `docs/ops/LANE_QUALITY_BAKEOFF_OPERATOR_BLIND_2026-08-21.md` is scored. Evidence that exists today: maria queue 28.5% fail (infra), 27b 100% CPU on the B50 (not a GPU deep lane), bake-off 0% error prefix (availability, not quality). **0% `[` ≠ usable judgment.** Flag stays 0; do not treat that as a quality routing decision.
+
+Claude is metered arbitration-only. RAW-store health: `scripts/research_lane_health.py` (does **not** use `last_real`; also CURRENT-pin + Drive-sync 24h). Skip gate `RESEARCH_SKIP_GATE` defaults **off**.
 
 ## 1. Universe & tiers
 
