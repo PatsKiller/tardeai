@@ -9,6 +9,8 @@
 | Capture start | 2026-08-21 (CURRENT tip with `AGENT_DECISION_PAYLOAD=1`) |
 | Decision-level evidence target | **≥ 5 trading days** of DecisionPayload@v1 corpus |
 | Earliest promotion reconsideration | after window + measured metrics (not a calendar promise) |
+| Manual timer proof | 2026-08-21 11:58 EDT — service `status=0/SUCCESS`; gate `NOT_PROMOTED`; influence `False` |
+| Next scheduled | 2026-08-22 06:20 EDT |
 
 ## Runtime posture
 

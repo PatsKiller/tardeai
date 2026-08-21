@@ -1,29 +1,30 @@
 # TradeAI System State & Autonomy Record — 2026-08-20 (updated 2026-08-21)
 
 **Authority:** READ_ONLY_ADVISORY (no chat→broker execution)  
-**CURRENT release:** `b04f00168397e01bb85c718ae88d9381df162970` (`b04f0016-main-exact-phase2-20260821-103022`)  
-**Purpose:** Persistent recoverable record of architecture, configuration, workflows, and autonomy gaps through PR **#425**.  
-**Drive mirror:** `Trade_AI_Docs_v2` (folder id `1Zxc20B5Xo24RGZ1Pow1-uW6ldASQJHiR`)
+**CURRENT release:** promote after this docs PR (Phase 1–2 measure tip on `main`)  
+**Purpose:** Persistent recoverable record through Phase 1 DecisionPayload + Phase 2 shadow measure.  
+**Drive mirror:** `Trade_AI_Docs_v2` (folder id `1Zxc20B5Xo24RGZ1Pow1-uW6ldASQJHiR`)  
+**Ground truth:** `docs/_findings/ALEX_AUTONOMY_GROUND_TRUTH_2026-08-21.md`
 
 ---
 
 ## 1. Executive snapshot
 
-| Dimension | State (2026-08-21) |
+| Dimension | State (2026-08-21 late) |
 |-----------|-------------------|
-| Portfolio-server tip | `b04f0016` (#425 bold IIC + dump kill; includes #424 SI queue) |
-| Alex Telegram converse | **LIVE** — meta / desk / **freeform** grounded agent |
+| Portfolio-server tip | Phase 1–2 measure stack (`DecisionPayload` + shadow measure + daily timer) |
+| DecisionPayload capture | **ON** (`AGENT_DECISION_PAYLOAD=1`) — 5-trading-day window started |
+| Memory behavior influence | **OFF** (`MEMORY_BEHAVIOR_INFLUENCE=0`) — do not flip until gate |
+| Memory shadow measure | **LIVE** daily timer 06:20 + on-demand; artifact `memory_shadow_measure_latest.json` |
+| Alex Telegram converse | **LIVE** — meta / desk / **freeform** |
 | Product notify | **LIVE IIC cards** — HTML bold + severity emoji; raw BOOK dumps suppressed |
-| Reentry → S3 detector | **LIVE** (#414) |
-| Watch → S7 detector | **LIVE** (#415) |
-| Symbol Intelligence page | **LIVE dossier** (#424) — queue open count + oldest wait; journal; timeline |
-| Operator ticker feedback | **LIVE** (#423) — TG buttons + CC intents → journal |
-| Held symbol theses CURRENT | Still thin (~13.6% last measured); coverage SLA tools LIVE |
-| Continuous wakes | Dense (reactive 2m, material 10m, Hermes, research_scheduler, watch jobs) |
-| Proactive financial Telegram | **Gated** (canaries / fingerprint dedupe; not always-on blast) |
+| Symbol Intelligence page | **LIVE dossier** (#424) — queue open count + oldest wait |
+| Operator ticker feedback | **LIVE** (#423) — journal thin (n≈1); learning not evidenced |
+| Held symbol theses CURRENT | **~13.64%** (3/22); SLA not met |
+| Canon frameworks | Catalogued incomplete claims — see canon audit |
 | Broker auto-execution | **Off by design** |
 
-**Bottleneck for “institutional autonomous advisor”:** held-book living thesis coverage + catalyst→thesis closed loop + **membership churn dwell** (UBER/ARKG flip-flops) + preference learning from feedback journal.
+**Bottleneck:** decision-payload corpus (filling) → then memory promotion evidence; held-thesis coverage; churn dwell; preference learning.
 
 ---
 
@@ -198,7 +199,13 @@ Hourly Drive sync and many crons still treat
 | `docs/ops/CIO_IIC_PHASE_D_SI_QUEUE_2026-08-21.md` | #424 Phase D |
 | `docs/ops/CIO_IIC_TELEGRAM_ACTIONABLE_VISUAL_2026-08-21.md` | #425 visual + dump kill |
 | `docs/ops/CIO_IIC_SESSION_CLOSEOUT_2026-08-21.md` | Full IIC arc rollup |
+| `docs/investment-office/CANON_IMPLEMENTATION_AUDIT_2026-08-21.md` | Canon claimed vs influencing |
+| `docs/_findings/ALEX_AUTONOMY_GROUND_TRUTH_2026-08-21.md` | Phase 0 ground truth |
+| `docs/ops/CIO_DECISION_PAYLOAD_PHASE1_2026-08-21.md` | Phase 1 DecisionPayload |
+| `docs/ops/CIO_MEMORY_SHADOW_MEASURE_PHASE2_2026-08-21.md` | Phase 2 measure + timer |
+| `docs/ops/CIO_PHASE1_2_MEASURE_CLOSEOUT_2026-08-21.md` | Phase 1–2 live closeout |
 | `data/cio/held_thesis_coverage_latest.json` | Live SLA artifact (host; not Drive) |
+| `data/cio/memory_shadow_measure_latest.json` | Live shadow measure (host; not Drive) |
 
 ---
 
@@ -207,9 +214,10 @@ Hourly Drive sync and many crons still treat
 1. Serve from `~/trade-ai-releases/portfolio-server/CURRENT` after exact-main promote (`cio_phase2_exact_main_deploy.sh`).  
 2. Rebuild `docs/` must track **`origin/main`** before Drive sync.  
 3. Re-run: `python3 scripts/cio_held_thesis_coverage.py --report`  
-4. Never sync `.env`, holdings JSON, credentials, or Hermes payload dumps to Drive.  
-5. Rollback: `cio_phase2_exact_main_deploy.sh rollback` → previous release under `PREV_RELEASE`.
+4. Re-run measure: `systemctl --user start tradeai-cio-memory-shadow-measure.service`  
+5. Never sync `.env`, holdings JSON, credentials, or Hermes payload dumps to Drive.  
+6. Rollback: `cio_phase2_exact_main_deploy.sh rollback` → previous release under `PREV_RELEASE`.
 
 ---
 
-*Updated 2026-08-21 — documentation Build after #424/#425 promote; READ_ONLY.*
+*Updated 2026-08-21 — Phase 1–2 measure window live; READ_ONLY.*
