@@ -31,6 +31,10 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("health")
     search = sub.add_parser("search")
     search.add_argument("--query", required=True)
+    retract = sub.add_parser("retract")
+    retract.add_argument("--id", required=True, help="memory_id to retract")
+    retract.add_argument("--reason", default="operator")
+    retract.add_argument("--apply", action="store_true", help="persist retraction (otherwise dry-run)")
     args = p.parse_args(argv)
     prov = DurableJsonlMemoryProvider(path=default_store_path())
     if args.cmd == "health":
@@ -39,6 +43,28 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "search":
         print(json.dumps(prov.search(query=args.query), indent=2, default=str))
         return 0
+    if args.cmd == "retract":
+        rec = prov.get(args.id)
+        out = {
+            "memory_id": args.id,
+            "found": rec is not None,
+            "status_before": (rec or {}).get("status"),
+            "apply": bool(args.apply),
+            "retracted": False,
+            "reason": args.reason,
+            "authority": "READ_ONLY_ADVISORY",
+            "financial_action": False,
+        }
+        if rec is None:
+            print(json.dumps(out, indent=2, default=str))
+            return 2
+        if args.apply:
+            out["retracted"] = bool(prov.retract(args.id, reason=args.reason))
+            stored = prov.get(args.id) or {}
+            out["status_after"] = stored.get("status")
+            out["retraction_reason"] = stored.get("retraction_reason")
+        print(json.dumps(out, indent=2, default=str))
+        return 0 if (out["retracted"] or not args.apply) else 2
     if args.cmd == "admit":
         rec = admit_candidate({
             "memory_type": args.type,

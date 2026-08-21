@@ -35,6 +35,7 @@ def test_defaults_are_conservative():
     assert flags["MCP_READ_ONLY_GATEWAY"] == 0
     assert flags["MEMORY_SHADOW"] == 0
     assert flags["MEMORY_BEHAVIOR_INFLUENCE"] == 0
+    assert flags["MEMORY_ADVERSARIAL_SCAN"] == 0
     assert flags["LANGGRAPH_WORKER_PILOT"] == 0
     assert flags["MEMORY_PROVIDER"] == "null"
 
@@ -84,6 +85,7 @@ def test_env_override_all_integer_flags():
         "MCP_READ_ONLY_GATEWAY": "on",
         "MEMORY_SHADOW": "yes",
         "MEMORY_BEHAVIOR_INFLUENCE": "1",
+        "MEMORY_ADVERSARIAL_SCAN": "1",
         "LANGGRAPH_WORKER_PILOT": "true",
     }
     flags = load_feature_flags(env)
@@ -93,6 +95,7 @@ def test_env_override_all_integer_flags():
     assert flags["MCP_READ_ONLY_GATEWAY"] == 1
     assert flags["MEMORY_SHADOW"] == 1
     assert flags["MEMORY_BEHAVIOR_INFLUENCE"] == 1
+    assert flags["MEMORY_ADVERSARIAL_SCAN"] == 1
     assert flags["LANGGRAPH_WORKER_PILOT"] == 1
 
 
