@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-08-21 — DecisionPayload landing + Drive silent-shape + post-window cutover plan
+
+MATURITY_IMPACT: measurement. Live metric = `data/cio/agent_run_traces.jsonl`
+DecisionPayload@v1 count since pin `cf5768a6` 19:20:47 ET, and
+`drive-sync` RAW last-result. No flags, no routing, no new producers.
+
+- **D1** 213 v1 rows all-time. First = 2026-08-21T18:15:38Z (today). Since pin:
+  27 (24 reentry + 3 material_scan). Watch/advisory/holdings/opportunity = 0
+  (wiring, queued). Watch cron pointed at CURRENT (emit-only diff).
+- **D2** Hourly 23:05–23:30Z: **0 uploaded, 1982 unchanged, 1230 FAILED 404s**.
+  Rebuild script did not write last-result. Backfilled RAW file; alarm fired
+  `zero_uploaded_with_failures:1230`. Next :05 uses CURRENT script (writes JSON).
+- **D3** Freeze 8/21–8/27 close. Skip gate 0, influence 0.
+- **D4** `docs/ops/CURRENT_CUTOVER_AFTER_2026-08-27.md` — execute after window.
+
 ## 2026-08-21 — CURRENT pin + Drive RAW health + bake-off sheet rescue
 
 MATURITY_IMPACT: live metric path `scripts/research_lane_health.py` now includes
