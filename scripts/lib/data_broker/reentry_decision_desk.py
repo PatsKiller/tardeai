@@ -1056,7 +1056,25 @@ def build_decision_desk(
         except Exception:
             pass  # fail-soft — never block the read path
 
+    # DecisionPayload@v1 — READY/NEAR rows with a published advisory. Flag-gated, fail-soft.
+    _emit_ready_near_payloads(rows_out)
+
     return result
+
+
+def _emit_ready_near_payloads(rows: list[dict[str, Any]]) -> None:
+    """Flag-gated DecisionPayload@v1 for READY TO REVIEW / NEAR ENTRY advisories.
+
+    Never raises. AGENT_DECISION_PAYLOAD default 0 = no emit (parity).
+    """
+    try:
+        try:
+            from lib.agent_decision_payload import emit_reentry_operator_payloads
+        except ImportError:
+            from scripts.lib.agent_decision_payload import emit_reentry_operator_payloads
+        emit_reentry_operator_payloads(rows)
+    except Exception:
+        pass
 
 
 # ── CIO detector projection (S3) ──────────────────────────────────────────────

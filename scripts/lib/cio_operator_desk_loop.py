@@ -1096,6 +1096,31 @@ def _curate_from_evidence(operator_text: str, evidence: dict[str, Any]) -> dict[
     }
 
 
+def _emit_telegram_desk_payload(intent: dict[str, Any], result: dict[str, Any]) -> None:
+    """DecisionPayload@v1 when a Telegram desk reply states a decision. Fail-soft.
+
+    Freeform already emits in ``answer_freeform_with_flash``. Meta / deferred
+    replies do not state a decision. Reentry answers do.
+    """
+    try:
+        if result.get("kind") != "answered":
+            return
+        iname = str((intent or {}).get("intent") or "")
+        if iname != "reentry":
+            return
+        from scripts.lib.agent_decision_payload import emit_telegram_decision_payload
+        syms = [str(s).upper() for s in ((intent or {}).get("symbols") or []) if s]
+        emit_telegram_decision_payload(
+            symbol=syms[0] if syms else None,
+            action="ADVISORY_REPLY",
+            surface="reentry",
+            origin="OPERATOR_ASK",
+            extra={"intent": iname, "reply_source": result.get("reply_source")},
+        )
+    except Exception:
+        pass
+
+
 def handle_operator_desk_question(
     text: str,
     *,
@@ -1164,6 +1189,7 @@ def handle_operator_desk_question(
             ),
             "reply_source": "deferred_gap",
         })
+        _emit_telegram_desk_payload(intent, result)
         return result
 
     curated = _curate_from_evidence(text, evidence)
@@ -1215,6 +1241,7 @@ def handle_operator_desk_question(
             "reply_source": curated.get("source"),
             "model": curated.get("model"),
         })
+        _emit_telegram_desk_payload(intent, result)
         return result
 
     if soft and "DATA_UNAVAILABLE" not in text_out and intent_name != "meta_system":
@@ -1233,6 +1260,7 @@ def handle_operator_desk_question(
         "reply_source": curated.get("source"),
         "model": curated.get("model"),
     })
+    _emit_telegram_desk_payload(intent, result)
     return result
 
 
