@@ -31,6 +31,7 @@ def test_defaults_are_conservative():
     flags = load_feature_flags({})
     assert flags["AGENT_CONTEXT_ENVELOPE"] == 0
     assert flags["AGENT_RUN_TRACE"] == 0
+    assert flags["AGENT_DECISION_PAYLOAD"] == 0
     assert flags["MCP_READ_ONLY_GATEWAY"] == 0
     assert flags["MEMORY_SHADOW"] == 0
     assert flags["MEMORY_BEHAVIOR_INFLUENCE"] == 0
@@ -79,6 +80,7 @@ def test_env_override_all_integer_flags():
     env = {
         "AGENT_CONTEXT_ENVELOPE": "true",
         "AGENT_RUN_TRACE": "1",
+        "AGENT_DECISION_PAYLOAD": "1",
         "MCP_READ_ONLY_GATEWAY": "on",
         "MEMORY_SHADOW": "yes",
         "MEMORY_BEHAVIOR_INFLUENCE": "1",
@@ -87,6 +89,7 @@ def test_env_override_all_integer_flags():
     flags = load_feature_flags(env)
     assert flags["AGENT_CONTEXT_ENVELOPE"] == 1
     assert flags["AGENT_RUN_TRACE"] == 1
+    assert flags["AGENT_DECISION_PAYLOAD"] == 1
     assert flags["MCP_READ_ONLY_GATEWAY"] == 1
     assert flags["MEMORY_SHADOW"] == 1
     assert flags["MEMORY_BEHAVIOR_INFLUENCE"] == 1

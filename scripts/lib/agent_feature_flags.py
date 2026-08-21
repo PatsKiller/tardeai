@@ -7,6 +7,7 @@ release can be staged without a code change:
 
   AGENT_CONTEXT_ENVELOPE      — ContextEnvelope@v1 enrichment      (default 0)
   AGENT_RUN_TRACE             — AgentRunTrace@v1 JSONL lineage     (default 0)
+  AGENT_DECISION_PAYLOAD      — DecisionPayload@v1 on completed traces (default 0)
   MCP_READ_ONLY_GATEWAY       — read-only MCP context path         (default 0)
   MEMORY_PROVIDER             — "null" | "local" | "mem0" | "durable" (default "null")
   MEMORY_SHADOW               — record memory, never influence     (default 0)
@@ -31,6 +32,7 @@ from typing import Any, Optional
 
 DEFAULT_AGENT_CONTEXT_ENVELOPE = 0
 DEFAULT_AGENT_RUN_TRACE = 0
+DEFAULT_AGENT_DECISION_PAYLOAD = 0
 DEFAULT_MCP_READ_ONLY_GATEWAY = 0
 DEFAULT_MEMORY_PROVIDER = "null"
 DEFAULT_MEMORY_SHADOW = 0
@@ -42,6 +44,7 @@ DEFAULT_AIF_FINANCIAL_SENSES_SHADOW = 0
 INT_FLAG_NAMES: tuple[str, ...] = (
     "AGENT_CONTEXT_ENVELOPE",
     "AGENT_RUN_TRACE",
+    "AGENT_DECISION_PAYLOAD",
     "MCP_READ_ONLY_GATEWAY",
     "MEMORY_SHADOW",
     "MEMORY_BEHAVIOR_INFLUENCE",
@@ -58,6 +61,7 @@ ALLOWED_MEMORY_PROVIDERS = frozenset({"mem0", "local", "null", "durable"})
 DEFAULT_FLAGS: dict[str, Any] = {
     "AGENT_CONTEXT_ENVELOPE": DEFAULT_AGENT_CONTEXT_ENVELOPE,
     "AGENT_RUN_TRACE": DEFAULT_AGENT_RUN_TRACE,
+    "AGENT_DECISION_PAYLOAD": DEFAULT_AGENT_DECISION_PAYLOAD,
     "MCP_READ_ONLY_GATEWAY": DEFAULT_MCP_READ_ONLY_GATEWAY,
     "MEMORY_PROVIDER": DEFAULT_MEMORY_PROVIDER,
     "MEMORY_SHADOW": DEFAULT_MEMORY_SHADOW,
@@ -202,6 +206,10 @@ ALLOWED_ACTIVATION_SCOPE: dict[str, dict[str, str]] = {
         ),
         "trace captures lineage": (
             "AgentRunTrace records wake/decision lineage for auditability"
+        ),
+        "decision payload capture": (
+            "DecisionPayload@v1 is appended for shadow/promotion measurement; "
+            "it never changes the advisory action itself"
         ),
     },
     "denied": {
