@@ -520,6 +520,7 @@ class NotificationOutbox:
                     "object_id": payload.get("object_id"),
                     "symbol": payload.get("symbol"),
                     "card_schema": payload.get("card_schema"),
+                    "parse_mode": payload.get("parse_mode"),
                     "claim_token": None,
                     "claim_worker_id": None,
                     "lease_expires_at": None,
@@ -687,7 +688,8 @@ class NotificationOutbox:
           - severity (auto-determined if absent), created_at, expires_at,
             dedupe_key, cio_action_id, wake_job_id, handoff_id,
             health_decision_id, deep_link, idempotency_key, priority,
-            reply_markup (Telegram inline keyboard), object_id, symbol, card_schema
+            reply_markup (Telegram inline keyboard), object_id, symbol, card_schema,
+            parse_mode (optional Telegram parse mode, e.g. ``HTML``)
         """
         # Guard: validate dict shape before accessing fields to avoid KeyErrors
         if not isinstance(notification, dict):
@@ -761,6 +763,9 @@ class NotificationOutbox:
             payload["symbol"] = notification.get("symbol")
         if notification.get("card_schema") is not None:
             payload["card_schema"] = notification.get("card_schema")
+        # Optional Telegram parse_mode (IIC HTML cards / book digest).
+        if notification.get("parse_mode") is not None:
+            payload["parse_mode"] = notification.get("parse_mode")
 
         event = build_event(
             event_type="NOTIFICATION_ENQUEUED",

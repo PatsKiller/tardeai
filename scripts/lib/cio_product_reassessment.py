@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import sys
 from datetime import datetime, timezone
@@ -23,6 +24,8 @@ from typing import Any, Optional
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
+
+log = logging.getLogger("tradeai.cio_product_reassessment")
 
 AUTHORITY = "READ_ONLY_ADVISORY"
 WHAT_CHANGED_SCHEMA = "CIOWhatChanged@v1"
@@ -421,28 +424,42 @@ def _enqueue_material_product_outbox(
             max_cards=max_cards,
             material_items=items,
         )
-        if not cards:
-            # Fallback: book-level digest (temperament-only etc.)
-            label = notification_attribution_symbol(changed, trigger_symbol)
+        try:
+            from scripts.lib.cio_notification_delivery import is_raw_product_dump_body
+        except ImportError:  # pragma: no cover
+            from cio_notification_delivery import is_raw_product_dump_body  # type: ignore
+
+        def _muted_book_digest(label: str) -> tuple[str, str]:
+            """Short HTML book digest (no Markdown asterisks)."""
+            trigger = trigger_symbol or "NONE"
+            causality = product.get("trigger") or "RESEARCH_COMPLETED"
             body = (
-                f"*CIO material book update*\n\n"
-                f"Causality: `{trigger_symbol or 'NONE'}` · {product.get('trigger') or 'RESEARCH_COMPLETED'}\n"
-                f"Attribution: `{label}`\n"
+                f"⚪ <b>CIO book update</b>\n"
+                f"Causality: <code>{trigger}</code> · {causality}\n"
+                f"Attribution: <code>{label}</code>\n"
                 "No single-ticker material rows to card.\n"
                 f"{AUTHORITY}"
             )
+            subject = f"CIO book update · {label}"
+            return subject, body
+
+        if not cards:
+            # Fallback: book-level digest (temperament-only etc.)
+            label = notification_attribution_symbol(changed, trigger_symbol)
+            subject, body = _muted_book_digest(label)
             note = {
                 "notification_id": "ntf_prod_" + _digest(pid, changed.get("as_of") or _now()),
                 "idempotency_key": f"product_what_changed:{pid}",
                 "dedupe_key": f"product_what_changed:{pid}:{changed.get('as_of') or ''}",
                 "message_class": "advisory",
                 "channel_targets": ["telegram", "command_center"],
-                "subject": f"CIO material change · {label}",
+                "subject": subject,
                 "trigger_symbol": trigger_symbol,
                 "attribution_symbol": label,
                 "body": body,
                 "body_hash": hashlib.sha256(body.encode("utf-8")).hexdigest(),
                 "card_schema": "InvestmentIntelligenceCard@v1",
+                "parse_mode": "HTML",
             }
             event = outbox.enqueue(note, actor_id="cio_product_reassessment")
             return {
@@ -460,6 +477,39 @@ def _enqueue_material_product_outbox(
         for card in cards:
             sym = str(card.get("symbol") or "").upper()
             body = render_telegram_card(card)
+            # Belt-and-suspenders: never enqueue a legacy raw dump body.
+            if is_raw_product_dump_body(body):
+                log.warning(
+                    "raw product dump body detected for symbol=%s; replacing with muted book digest",
+                    sym,
+                )
+                label = notification_attribution_symbol(changed, trigger_symbol)
+                subject, body = _muted_book_digest(label)
+                note = {
+                    "notification_id": "ntf_prod_" + _digest(pid, changed.get("as_of") or _now()),
+                    "idempotency_key": f"product_what_changed:{pid}",
+                    "dedupe_key": f"product_what_changed:{pid}:{changed.get('as_of') or ''}",
+                    "message_class": "advisory",
+                    "channel_targets": ["telegram", "command_center"],
+                    "subject": subject,
+                    "trigger_symbol": trigger_symbol,
+                    "attribution_symbol": label,
+                    "body": body,
+                    "body_hash": hashlib.sha256(body.encode("utf-8")).hexdigest(),
+                    "card_schema": "InvestmentIntelligenceCard@v1",
+                    "parse_mode": "HTML",
+                }
+                last_event = outbox.enqueue(note, actor_id="cio_product_reassessment")
+                return {
+                    "outbox_enqueued": True,
+                    "outbox_notification_id": note["notification_id"],
+                    "outbox_event_type": (last_event or {}).get("event_type"),
+                    "live_delivery": False,
+                    "trigger_symbol": trigger_symbol,
+                    "attribution_symbol": label,
+                    "cards_enqueued": 0,
+                    "raw_dump_suppressed": True,
+                }
             reply_markup = None
             try:
                 from scripts.lib.cio_telegram_keyboard import (
@@ -482,6 +532,7 @@ def _enqueue_material_product_outbox(
                 "body": body,
                 "body_hash": hashlib.sha256(body.encode("utf-8")).hexdigest(),
                 "card_schema": "InvestmentIntelligenceCard@v1",
+                "parse_mode": "HTML",
                 "intelligence": {
                     "provenance": (card.get("provenance") or {}),
                     "change": (card.get("change") or {}),

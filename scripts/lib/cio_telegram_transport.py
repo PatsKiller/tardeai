@@ -197,11 +197,16 @@ def send_cio_message(
     dedupe_key: Optional[str] = None,
     decision_id: Optional[str] = None,
     reply_markup: Optional[dict[str, Any]] = None,
+    parse_mode: Optional[str] = None,
 ) -> dict[str, Any]:
     """Send via CIO-only bot/allowlist. Never uses general Maria credentials.
 
     Phase 9: optional `dedupe_key` / `decision_id` for decision-state dedupe
     (preferred over body-only fingerprint when provided).
+
+    Optional `parse_mode` (e.g. ``\"HTML\"``) is passed through to the low-level
+    transport. Default ``None`` keeps plain-text behavior for legacy callers
+    (Markdown would eat underscores in ``dec_…`` / ``ACT_NOW``).
 
     Returns a structured result; never raises for delivery failures.
     """
@@ -264,11 +269,12 @@ def send_cio_message(
     message_ids: list[Any] = []
     for cid in cio_chat_ids():
         try:
-            # Plain text: Markdown parse_mode eats underscores in dec_… / ACT_NOW.
+            # Default plain text: Markdown parse_mode eats underscores in
+            # dec_… / ACT_NOW. Callers may opt into HTML for IIC cards.
             resp = send_message(
                 token=token, chat_id=cid, text=text[:4000],
                 reply_markup=reply_markup,
-                parse_mode=None,
+                parse_mode=parse_mode,
             )
             if resp.get("ok"):
                 ok_any = True

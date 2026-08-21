@@ -25,6 +25,18 @@ _KIND_HEADLINE = {
     "action_removed": "Action Book Update",
 }
 
+_KIND_VERB = {
+    "reentry_added": "Added to Reentry",
+    "reentry_removed": "Removed from Reentry",
+    "reentry_upgrade": "Reentry upgraded",
+    "reentry_downgrade": "Reentry downgraded",
+    "opportunity_added": "Added to Opportunity",
+    "opportunity_removed": "Removed from Opportunity",
+    "opportunity_rank_change": "Opportunity rank change",
+    "action_added": "Action update",
+    "action_removed": "Action update",
+}
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
@@ -35,6 +47,82 @@ def _fmt_money(v: Any) -> str:
         return f"${float(v):,.2f}"
     except (TypeError, ValueError):
         return "DATA_UNAVAILABLE"
+
+
+def _html_escape(s: Any) -> str:
+    """Escape &, <, >, \" for Telegram HTML bodies."""
+    t = "" if s is None else str(s)
+    return (
+        t.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+    )
+
+
+def _severity_emoji(kind: Any, to_state: Any) -> str:
+    """HOT/WARM/COOL/COLD emoji from change kind + to-state (fail-soft)."""
+    k = str(kind or "").strip().lower()
+    to_raw = to_state
+    to_s = str(to_state).strip().upper() if to_state is not None else ""
+
+    # 🔴 HOT
+    if k == "reentry_upgrade" and to_s in ("READY", "REENTER"):
+        return "🔴"
+    if "action" in k and "DO_NOW" in to_s:
+        return "🔴"
+    if k == "opportunity_rank_change":
+        try:
+            if int(to_raw) <= 5:
+                return "🔴"
+        except (TypeError, ValueError):
+            pass
+
+    # 🟠 WARM
+    if k == "reentry_added":
+        return "🟠"
+    if k == "reentry_upgrade" and to_s == "NEAR":
+        return "🟠"
+    if k == "opportunity_added":
+        return "🟠"
+
+    # 🟡 COOL
+    if k == "reentry_downgrade":
+        return "🟡"
+    if to_s in ("AVOID", "WAIT"):
+        return "🟡"
+    if "action" in k and to_s == "AVOID":
+        return "🟡"
+
+    # ⚪ COLD (removed + default)
+    return "⚪"
+
+
+def _human_verb(kind: Any) -> str:
+    k = str(kind or "").strip().lower()
+    return _KIND_VERB.get(k, "Material update")
+
+
+def _do_this_line(obj: dict[str, Any]) -> str:
+    """Fail-soft one-liner from technical.status + why_now[0] + action_class."""
+    change = obj.get("change") if isinstance(obj.get("change"), dict) else {}
+    kind = str(change.get("kind") or "").strip().lower()
+    tech = obj.get("technical") if isinstance(obj.get("technical"), dict) else {}
+    status = tech.get("status")
+    status_s = str(status).strip().upper() if status is not None else ""
+    why = obj.get("why_now") if isinstance(obj.get("why_now"), list) else []
+
+    if kind == "opportunity_removed":
+        return "No opportunity slot — do not add."
+    if status_s == "NEAR":
+        return "Watch entry zone — do not chase. Desk NEAR."
+    if status_s in ("READY", "REENTER"):
+        return "Elevated watch — confirm zone before any action. Desk READY."
+    if status_s in ("AVOID", "WAIT"):
+        return f"Stand down / wait. Desk {status_s}."
+    if why:
+        return str(why[0])[:160]
+    return "DATA_UNAVAILABLE — review in CIO."
 
 
 def _reentry_row_from_product(product: dict[str, Any], symbol: str) -> dict[str, Any]:
@@ -241,64 +329,106 @@ def assemble_symbol_intelligence(
     }
 
 
+def _transition_label(change: dict[str, Any]) -> str:
+    fr = change.get("from")
+    to = change.get("to")
+    if fr is not None and to is not None:
+        return f"{fr} → {to}"
+    if to is not None:
+        return f"→ {to}"
+    if fr is not None:
+        return f"{fr} →"
+    return "—"
+
+
 def render_telegram_card(obj: dict[str, Any]) -> str:
-    """Human Investment Intelligence Card for Telegram."""
-    sym = str(obj.get("symbol") or "—")
-    headline = str(obj.get("headline") or f"{sym} update")
-    lines = [
-        f"*{headline}*",
-        "",
-    ]
-    cont = ((obj.get("memory") or {}).get("continuity") or {})
-    if cont.get("summary"):
-        lines += ["*Your previous view*", str(cont["summary"])[:280], ""]
+    """Human Investment Intelligence Card for Telegram (HTML).
 
-    lines.append("*Why now*")
+    READ_ONLY_ADVISORY — escape all dynamic text; never invent prices/theses.
+    """
+    obj = obj if isinstance(obj, dict) else {}
+    sym = str(obj.get("symbol") or "—").upper()
+    change = obj.get("change") if isinstance(obj.get("change"), dict) else {}
+    kind = str(change.get("kind") or "update")
+    to_state = change.get("to")
+    verb = _human_verb(kind)
+    emoji = _severity_emoji(kind, to_state)
+    transition = _transition_label(change)
+
+    lead = (
+        f"{emoji} <b>{_html_escape(sym)} · {_html_escape(verb)} · "
+        f"{_html_escape(transition)}</b>"
+    )
+
+    prov = obj.get("provenance") if isinstance(obj.get("provenance"), dict) else {}
+    origin = str(prov.get("decision_origin") or "DETERMINISTIC_RANK")
+    if origin == "FRESH_RESEARCH":
+        research_icon = "🔬"
+        research_label = "Fresh research"
+    else:
+        research_icon = "📐"
+        research_label = "Deterministic rank"
+    cau = obj.get("causality") if isinstance(obj.get("causality"), dict) else {}
+    trigger_sym = cau.get("trigger_symbol") or "NONE"
+    meta = (
+        f"{research_icon} {_html_escape(research_label)} · trigger "
+        f"{_html_escape(trigger_sym)}"
+    )
+
+    do_this = _html_escape(_do_this_line(obj))
+
+    why_lines: list[str] = []
     for b in (obj.get("why_now") or [])[:4]:
-        lines.append(f"• {b}")
-    lines.append("")
+        why_lines.append(f"• {_html_escape(str(b)[:220])}")
+    if not why_lines:
+        why_lines.append(f"• {_html_escape('DATA_UNAVAILABLE')}")
 
-    th = obj.get("thesis") or {}
+    tech = obj.get("technical") if isinstance(obj.get("technical"), dict) else {}
+    price_s = _html_escape(_fmt_money(tech.get("price")))
+    zone_lo = _html_escape(_fmt_money(tech.get("support_or_zone_low")))
+    zone_hi = _html_escape(_fmt_money(tech.get("resistance_or_zone_high")))
+    stop_s = _html_escape(_fmt_money(tech.get("stop_invalidation")))
+    levels = (
+        f"Price <code>{price_s}</code> · Zone <code>{zone_lo}–{zone_hi}</code> · "
+        f"Invalidation <code>{stop_s}</code>"
+    )
+
+    th = obj.get("thesis") if isinstance(obj.get("thesis"), dict) else {}
     conf = th.get("confidence_0_10")
     conf_s = f"{conf:.1f}/10" if isinstance(conf, (int, float)) else "DATA_UNAVAILABLE"
-    lines += [
-        "*Thesis*",
-        str(th.get("summary") or "DATA_UNAVAILABLE")[:400],
-        f"State: `{th.get('state')}` · Confidence: {conf_s}",
+    thesis_summary = _html_escape(str(th.get("summary") or "DATA_UNAVAILABLE")[:400])
+    thesis_state = _html_escape(th.get("state") or "DATA_UNAVAILABLE")
+    thesis_line = (
+        f"{thesis_summary} · State <code>{thesis_state}</code> · "
+        f"Conf <code>{_html_escape(conf_s)}</code>"
+    )
+
+    lines = [
+        lead,
+        meta,
         "",
+        "<b>Do this</b>",
+        do_this,
+        "",
+        "<b>Why now</b>",
+        *why_lines,
+        "",
+        "<b>Levels</b>",
+        levels,
+        "",
+        "<b>Thesis</b>",
+        thesis_line,
     ]
 
-    tech = obj.get("technical") or {}
-    lines += [
-        "*Technical setup*",
-        f"Price: {_fmt_money(tech.get('price'))}",
-        f"Zone / support→resist: {_fmt_money(tech.get('support_or_zone_low'))} → "
-        f"{_fmt_money(tech.get('resistance_or_zone_high'))}",
-        f"Invalidation (stop): {_fmt_money(tech.get('stop_invalidation'))}",
-        f"Desk status: `{tech.get('status') or 'DATA_UNAVAILABLE'}`",
-        "",
-    ]
+    cont = ((obj.get("memory") or {}).get("continuity") or {})
+    if isinstance(cont, dict) and cont.get("summary"):
+        lines += ["", f"Your previous view: {_html_escape(str(cont['summary'])[:280])}"]
 
-    cat = obj.get("catalyst") or {}
+    narrative = str(cau.get("narrative") or "DATA_UNAVAILABLE")[:320]
     lines += [
-        "*Catalyst*",
-        f"{cat.get('primary') or 'DATA_UNAVAILABLE'}",
         "",
-    ]
-
-    cau = obj.get("causality") or {}
-    lines += [
-        "*Causality*",
-        str(cau.get("narrative") or "DATA_UNAVAILABLE")[:320],
-        "",
-    ]
-
-    prov = obj.get("provenance") or {}
-    lines += [
-        "*Provenance*",
-        f"Decision origin: `{prov.get('decision_origin')}`",
-        f"Research status: {obj.get('research_status')}",
-        "",
+        f"Causality: {_html_escape(narrative)}",
+        f"Provenance: <code>{_html_escape(origin)}</code>",
         AUTHORITY,
     ]
     return "\n".join(lines)

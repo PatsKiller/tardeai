@@ -41,3 +41,27 @@ def test_cio_send_passes_plain_parse_mode(monkeypatch):
     assert res.get("delivered") is True
     assert seen.get("parse_mode") is None
     assert "dec_5866156741de9046" in seen.get("text", "")
+
+
+def test_cio_send_passes_html_parse_mode(monkeypatch):
+    seen = {}
+
+    def fake_send_message(**kwargs):
+        seen.update(kwargs)
+        return {"ok": True, "response": {"ok": True, "result": {"message_id": 2}}}
+
+    monkeypatch.setattr("telegram_transport.send_message", fake_send_message)
+    monkeypatch.setattr(tg, "network_interdicted", lambda: False)
+    monkeypatch.setattr(tg, "live_authorized", lambda: True)
+    monkeypatch.setattr(tg, "credentials_ready", lambda: True)
+    monkeypatch.setattr(tg, "cio_bot_token", lambda: "t")
+    monkeypatch.setattr(tg, "cio_chat_ids", lambda: ["1"])
+    monkeypatch.setattr(tg, "was_recently_sent", lambda *a, **k: False)
+    monkeypatch.setattr(tg, "mark_sent", lambda *a, **k: None)
+    res = tg.send_cio_message(
+        "⚪ <b>CIO book update</b>",
+        require_live_auth=True,
+        parse_mode="HTML",
+    )
+    assert res.get("delivered") is True
+    assert seen.get("parse_mode") == "HTML"
