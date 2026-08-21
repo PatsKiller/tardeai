@@ -8,6 +8,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Optional
 
+from scripts.lib.agent_feature_flags import load_feature_flags
 from scripts.lib.agent_memory_governance import (
     MEMORY_TYPES,
     STATUS_DISPUTED,
@@ -15,6 +16,7 @@ from scripts.lib.agent_memory_governance import (
     STATUS_SUPERSEDED,
     admit_status,
     build_memory_record,
+    is_adversarial_instruction,
     is_forbidden_authoritative,
 )
 from scripts.lib.agent_durable_memory import (
@@ -51,6 +53,7 @@ def admit_candidate(
         "provenance_valid": False,
         "secret_scan": "not_run",
         "forbidden_truth_scan": "not_run",
+        "adversarial_scan": "not_run",
         "contradiction_count": 0,
         "expires_at": None,
         "admitted_at": None,
@@ -96,6 +99,20 @@ def admit_candidate(
         receipt["reason"] = "forbidden_authoritative_truth"
         provider._append_receipt(provider.receipts_path, receipt)
         return receipt
+
+    adversarial = is_adversarial_instruction(rec.get("subject")) or is_adversarial_instruction(
+        rec.get("content")
+    )
+    flags = load_feature_flags()
+    scan_on = int(flags.get("MEMORY_ADVERSARIAL_SCAN") or 0) == 1
+    if scan_on:
+        receipt["adversarial_scan"] = "reject" if adversarial else "pass"
+        if adversarial:
+            receipt["reason"] = "adversarial_instruction"
+            provider._append_receipt(provider.receipts_path, receipt)
+            return receipt
+    else:
+        receipt["adversarial_scan"] = "shadow_reject" if adversarial else "shadow_pass"
 
     refs = list(rec.get("source_refs") or []) + list(rec.get("source_event_ids") or [])
     receipt["source_count"] = len(refs)
