@@ -441,15 +441,30 @@ def _instrument_scan(
         decision_ids=decision_ids,
         trace_path=default_trace_path(),
     )
-    if not result.get("instrumented"):
+    # Phase 1: DecisionPayload@v1 — flag-gated, fail-soft, never mutates selected.
+    payload_emit: dict = {"emitted": 0, "enabled": False}
+    try:
+        from scripts.lib.agent_decision_payload import emit_payloads_for_decisions
+
+        payload_emit = emit_payloads_for_decisions(
+            list(selected or []),
+            wake_id=wake_id,
+            surface="material_scan",
+            path=default_trace_path(),
+        )
+    except Exception:
+        payload_emit = {"emitted": 0, "enabled": False, "errors": ["emit_import_or_call"]}
+
+    if not result.get("instrumented") and not payload_emit.get("emitted"):
         return None
     return {
-        "wake_id": result["wake_id"],
-        "trace_id": result["trace_id"],
+        "wake_id": result.get("wake_id") or wake_id,
+        "trace_id": result.get("trace_id"),
         "envelope": result.get("envelope"),
         "trace": result.get("trace"),
         "trace_appended": result.get("trace_appended"),
         "errors": result.get("errors"),
+        "decision_payloads": payload_emit,
     }
 
 

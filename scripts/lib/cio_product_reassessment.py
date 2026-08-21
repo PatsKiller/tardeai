@@ -542,6 +542,22 @@ def _enqueue_material_product_outbox(
                 note["reply_markup"] = reply_markup
             last_event = outbox.enqueue(note, actor_id="cio_product_reassessment")
             enqueued_ids.append(note["notification_id"])
+            # Phase 1: DecisionPayload@v1 — flag-gated, fail-soft.
+            try:
+                from scripts.lib.agent_decision_payload import (
+                    emit_decision_payload,
+                    payload_from_symbol_intelligence,
+                )
+
+                wake_id = f"wake_prod_{pid}_{sym}"
+                pl = payload_from_symbol_intelligence(
+                    card,
+                    wake_id=wake_id,
+                    change_item=(card.get("change") if isinstance(card.get("change"), dict) else None),
+                )
+                emit_decision_payload(pl, role="product_notify")
+            except Exception:
+                pass
 
         primary = str(cards[0].get("symbol") or "").upper()
         return {

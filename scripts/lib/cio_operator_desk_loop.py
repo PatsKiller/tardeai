@@ -630,6 +630,30 @@ def answer_freeform_with_flash(
             }
         if "READ_ONLY" not in text:
             text = text.rstrip() + "\nREAD_ONLY_ADVISORY"
+        # Phase 1: DecisionPayload@v1 for freeform (flag-gated, fail-soft).
+        try:
+            from scripts.lib.agent_decision_payload import (
+                build_decision_payload,
+                emit_decision_payload,
+                infer_decision_origin,
+            )
+
+            syms = []
+            if isinstance(context, dict):
+                syms = [str(s).upper() for s in (context.get("symbols") or []) if s][:1]
+            emit_decision_payload(
+                build_decision_payload(
+                    decision_id=f"dec_freeform_{(syms[0] if syms else 'ask')}",
+                    wake_id=f"wake_freeform_{uuid.uuid4().hex[:10]}",
+                    symbol=syms[0] if syms else None,
+                    surface="freeform",
+                    current_action="ADVISORY_REPLY",
+                    decision_origin=infer_decision_origin(trigger="OPERATOR_ASK"),
+                ),
+                role="freeform",
+            )
+        except Exception:
+            pass
         return {
             "ok": True,
             "text": text,
