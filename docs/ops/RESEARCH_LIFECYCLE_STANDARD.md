@@ -10,6 +10,10 @@ Research is **incremental, change-driven, and freshness-based**. It is not a ful
 
 Related: `docs/RESEARCH_PRIORITIZATION.md` (who/when/which lane). This file is **whether to execute** a research pass. SLA “due” does not mean “re-analyze identical content.”
 
+US overnight (22:00–06:00 ET): **deterministic jobs only**. If an LLM is required, **ChatGPT OAuth** — not gemma3-overnight. That model is installed but the China-night timer currently produces empty `RESULT: {}` during US daytime.
+
+**Holdings denominator:** `scripts/lib/holdings_universe.py` (`held_equity_tickers`). Coverage and T0-HOLD call this function. CASH and unresolved CUSIPs are not thesis tickers. Snapshot: `data/cio/holdings_universe_latest.json`.
+
 ---
 
 ## Core principle

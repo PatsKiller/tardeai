@@ -4,9 +4,11 @@
 Routes requests through provider chain. Task-aware routing.
 Logs everything for cost/quality tracking.
 
-═══ PROVIDER CHAIN (May 2026 — GPU testing phase) ═══════════════════════════
+═══ PROVIDER CHAIN (2026-08-21 inventory) ═══════════════════════════════════
 
-  LOCAL qwen3:1.7b  →  GROK (xAI)  →  CLAUDE (Anthropic)  →  OPENAI
+  LOCAL gemma3:4b (default)  →  governed DeepSeek Flash  →  ChatGPT OAuth overnight
+  Installed: gemma3:4b / 12b / 27b / gemma3-overnight. qwen3:1.7b is NOT installed.
+  Do not buy GPU for 1.7b. US overnight judgment = ChatGPT OAuth, not gemma.
 
 Provider   Speed      Cost/1K   Quality    Best For
 ─────────  ─────────  ────────  ─────────  ────────────────────────────────
@@ -16,25 +18,20 @@ Grok       Very fast  ~$0.01    Good       Agent analyses, debates, sector alert
 Claude     Medium     ~$1.00    Best       Retirement, disability, Roth, CIO synthesis
 OpenAI     Fast       ~$0.50    Good       Last resort only
 
-═══ GPU UPGRADE FAILBACK PLAN ════════════════════════════════════════════════
+═══ LOCAL INVENTORY (do not buy GPU for 1.7b) ════════════════════════════════
 
-When qwen3:14b is installed on GPU:
-  1. Set LOCAL_MODEL = "qwen3:14b" in this file OR set in .env:
-       echo "LOCAL_MODEL=qwen3:14b" >> .env
-  2. Grok auto-demotes from primary testing → fallback (code below handles this)
-  3. Local handles: agent_narrative, agent_debate, sector_correlation, sentiment
-  4. Claude remains for: cio_synthesis, retirement, disability (always best)
-  5. Verify: python3 scripts/llm_router.py --test
+  Live default is gemma3:4b (local_llm_config.DEFAULT_LOCAL_LLM_MODEL).
+  qwen3:1.7b is NOT installed. The old "1.7b is the quality ceiling / buy a GPU"
+  conclusion is obsolete — strike it from hardware decisions.
 
-  REVERT if GPU fails: set LOCAL_MODEL=qwen3:1.7b — Grok auto-promotes back.
-  No other changes needed. Single-line failback.
+  Optional future: LOCAL_LLM_MODEL=qwen3:14b only after that model is installed.
+  Do not revert to qwen3:1.7b; revert to gemma3:4b.
 
 ═══ TASK ROUTING ════════════════════════════════════════════════════════════
 
-  Pre-GPU (qwen3:1.7b):          local → grok → claude
-  Post-GPU (qwen3:14b):          local → claude → grok
-  Retirement/disability:         claude → grok → local (always Claude-first)
-  Sector correlation/debate:     grok → local → claude (Grok fast + good reasoning)
+  Live (gemma3:4b / 12b / 27b):  governed DeepSeek Flash for agent tasks
+  Retirement/disability:         still policy-gated (not this module's spend path)
+  US overnight judgment:         ChatGPT OAuth, not gemma (overnight_llm_policy)
 
 Usage:
     from llm_router import get_llm_response

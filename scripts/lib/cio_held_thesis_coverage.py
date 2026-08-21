@@ -24,50 +24,41 @@ def _project_root() -> Path:
 
 
 def _is_ticker(sym: str) -> bool:
-    t = str(sym or "").strip().upper()
-    if not t or t in {"CASH", "USD", "TEST", "SPAXX"}:
-        return False
-    if len(t) <= 5 and t[0].isalpha() and all(c.isalnum() or c in ".-" for c in t):
-        return True
-    return False
+    from scripts.lib.holdings_universe import is_held_equity_ticker
+
+    return is_held_equity_ticker(sym)
 
 
 def list_held_tickers(*, root: Path | None = None) -> list[str]:
-    """Held equity tickers from holdings.json (root) or CIO snapshot (fail-soft)."""
+    """Held equity tickers — authoritative coverage denominator.
+
+    Delegates to holdings_universe.held_equity_tickers (CASH/CUSIP out).
+    """
+    from scripts.lib.holdings_universe import held_equity_tickers
+
     root = root or _project_root()
-    out: list[str] = []
-
-    def _from_positions(positions: Any) -> None:
-        if not isinstance(positions, list):
-            return
-        for p in positions:
-            if not isinstance(p, dict):
-                continue
-            sym = str(p.get("symbol") or "").upper()
-            if _is_ticker(sym):
-                out.append(sym)
-
-    # Prefer explicit root holdings (works across worktrees / CURRENT)
-    path = root / "data" / "portfolios" / "state" / "holdings.json"
+    out = held_equity_tickers(root=root)
+    if out:
+        return out
+    # Fail-soft CIO snapshot if holdings.json empty
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-        _from_positions(data.get("holdings"))
+        from scripts.lib.data_broker.cio_portfolio import get_cio_snapshot
+        from scripts.lib.holdings_universe import is_held_equity_ticker
+
+        snap = get_cio_snapshot(max_age_s=60) or {}
+        hd = (snap.get("domains") or {}).get("holdings_detail") or {}
+        positions = hd.get("positions")
+        if positions is None and isinstance(hd.get("data"), dict):
+            positions = hd["data"].get("positions")
+        tickers = []
+        for p in positions or []:
+            if isinstance(p, dict):
+                sym = str(p.get("symbol") or "").upper()
+                if is_held_equity_ticker(sym):
+                    tickers.append(sym)
+        return sorted(set(tickers))
     except Exception:
-        pass
-
-    if not out:
-        try:
-            from scripts.lib.data_broker.cio_portfolio import get_cio_snapshot
-
-            snap = get_cio_snapshot(max_age_s=60) or {}
-            hd = (snap.get("domains") or {}).get("holdings_detail") or {}
-            positions = hd.get("positions")
-            if positions is None and isinstance(hd.get("data"), dict):
-                positions = hd["data"].get("positions")
-            _from_positions(positions)
-        except Exception:
-            pass
-    return sorted(set(out))
+        return []
 
 
 def coverage_row_for_symbol(symbol: str, *, root: Path | None = None) -> dict[str, Any]:
@@ -132,6 +123,12 @@ def write_coverage_report(
     path = root / "data" / "cio" / "held_thesis_coverage_latest.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
+    try:
+        from scripts.lib.holdings_universe import write_snapshot
+
+        write_snapshot(root=root)
+    except Exception:
+        pass
     # append history line
     hist = root / "data" / "cio" / "held_thesis_coverage_history.jsonl"
     with hist.open("a", encoding="utf-8") as fh:

@@ -29,7 +29,6 @@ sys.path.insert(0, str(ROOT / "scripts" / "lib"))
 from watchlist_priority import WATCHLIST_TOP_N
 PY = str(ROOT / ".venv" / "bin" / "python")
 RESEARCHER = str(ROOT / "scripts" / "hermes_external_researcher.py")
-HOLDINGS_FILE = ROOT / "data" / "portfolios" / "state" / "holdings.json"
 
 # ── tunables (env-overridable) ───────────────────────────────────────────────
 EXTERNAL_BUDGET = int(os.getenv("RESEARCH_EXTERNAL_BUDGET_PER_RUN", "40"))
@@ -167,8 +166,12 @@ def _q(sql, params=()):
 
 
 def _is_symbol(s: str) -> bool:
-    s = (s or "").upper().strip()
-    return bool(s) and s.isalpha() and 1 <= len(s) <= 5  # drop CUSIPs / cash rows
+    """T0-HOLD / universe membership. CASH and CUSIPs are not research tickers."""
+    try:
+        from scripts.lib.holdings_universe import is_held_equity_ticker
+    except Exception:
+        from lib.holdings_universe import is_held_equity_ticker  # type: ignore
+    return is_held_equity_ticker(s)
 
 
 # ── universe assembly ────────────────────────────────────────────────────────
@@ -186,13 +189,14 @@ def load_universe() -> dict:
         elif rank is not None and uni[sym].get("rank") is None:
             uni[sym]["rank"] = rank
 
-    # T0-HOLD
+    # T0-HOLD — unique held equity tickers (CASH / CUSIP out)
     try:
-        d = json.loads(HOLDINGS_FILE.read_text())
-        items = d if isinstance(d, list) else (d.get("holdings") or d.get("positions") or [])
-        for x in items:
-            if isinstance(x, dict) and x.get("symbol"):
-                add(x["symbol"], "T0-HOLD")
+        try:
+            from scripts.lib.holdings_universe import held_equity_tickers
+        except Exception:
+            from lib.holdings_universe import held_equity_tickers  # type: ignore
+        for sym in held_equity_tickers(root=ROOT):
+            add(sym, "T0-HOLD")
     except Exception:
         pass
     # T0-PROP

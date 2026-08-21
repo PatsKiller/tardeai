@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
-"""hermes_deep_research_local.py — Hermes Deep Research (Local) — BATCH_OVERNIGHT internal deep-research lane.
+"""hermes_deep_research_local.py — Hermes Deep Research — BATCH_OVERNIGHT lane.
 
-MANUAL / operator-run (NOT auto-wired into cron/systemd). Advisory + staging only: writes
-hermes_research_intelligence rows (research_type='deep_research_local') via the validated build_insert path.
-NEVER touches broker/order/stop/proposal/holdings/trading. Uses local Ollama gemma3:27b / gemma3-overnight.
+Advisory + staging only: writes hermes_research_intelligence rows
+(research_type='deep_research_local') via the validated build_insert path.
+NEVER touches broker/order/stop/proposal/holdings/trading.
 
-Design: docs/hermes/PHASE210C_INTERNAL_DEEP_RESEARCH_AGENT_DESIGN.md.
+US overnight (22:00–06:00 ET): ChatGPT OAuth (:8646), not gemma.
+Rollback: US_OVERNIGHT_LLM=gemma|off. Daytime default remains gemma3:27b.
 
-  python3 scripts/hermes_deep_research_local.py                 # dry-run, gemma3:27b, 3 targets
+  python3 scripts/hermes_deep_research_local.py                 # dry-run
   python3 scripts/hermes_deep_research_local.py --apply --max-rows 3
-  python3 scripts/hermes_deep_research_local.py --model gemma3-overnight:latest --apply
 Safety:
   - singleton lockfile; honors live kill-switch data/runtime/HERMES_DISABLED
-  - Ollama health gate (skips cleanly when unhealthy — no flood)
+  - Ollama health gate skipped for chatgpt lane
   - deterministic fields stamped from code; bounded summary recovery; never fabricates content
 """
 import os, sys, json, time, hashlib, argparse, urllib.request
@@ -90,22 +90,37 @@ def run_one(conn, sym, model, apply):
     prompt = PROMPT.format(sym=sym, trades=json.dumps(ctx["recent_trades"]),
                            research=json.dumps(ctx["prior_research"]), schema=schema)
     try:
-        from hermes_llm_failover import chat_json
-        pack = chat_json(
-            prompt,
-            ollama_model=model,
-            ollama_timeout_s=600,
-            num_ctx=16384,
-            num_predict=3000,
-        )
-        out = merge_structured_into_result(json.loads(pack["content"]))
-        model = pack.get("model") or model
-        out["llm_provider"] = pack.get("provider")
-        if pack.get("failover"):
-            print(f"  {sym}: BACKUP {pack.get('model')} ({pack.get('reason')})")
-            out["llm_failover_reason"] = pack.get("reason")
+        if str(model).startswith("chatgpt"):
+            from hermes_external_researcher import call_codex_cli
+            content = call_codex_cli("gpt-5.4", prompt)
+            if not content:
+                print(f"  {sym}: FAILED chatgpt oauth empty"); return "failed"
+            pack = {"content": content, "model": "chatgpt-oauth", "provider": "chatgpt_oauth"}
+            try:
+                parsed = json.loads(content)
+            except Exception:
+                parsed = {"summary": content[:2000]}
+            out = merge_structured_into_result(parsed if isinstance(parsed, dict) else {"summary": str(parsed)})
+            model = "chatgpt-oauth"
+            out["llm_provider"] = "chatgpt_oauth"
+            print(f"  {sym}: LLM chatgpt_oauth")
         else:
-            print(f"  {sym}: LLM {pack.get('provider')} {pack.get('model')}")
+            from hermes_llm_failover import chat_json
+            pack = chat_json(
+                prompt,
+                ollama_model=model,
+                ollama_timeout_s=600,
+                num_ctx=16384,
+                num_predict=3000,
+            )
+            out = merge_structured_into_result(json.loads(pack["content"]))
+            model = pack.get("model") or model
+            out["llm_provider"] = pack.get("provider")
+            if pack.get("failover"):
+                print(f"  {sym}: BACKUP {pack.get('model')} ({pack.get('reason')})")
+                out["llm_failover_reason"] = pack.get("reason")
+            else:
+                print(f"  {sym}: LLM {pack.get('provider')} {pack.get('model')}")
     except Exception as e:
         print(f"  {sym}: FAILED ({str(e)[:80]})"); return "failed"
     # deterministic fields stamped from code (never rely on LLM to echo)
@@ -209,6 +224,31 @@ def main():
         flash = False
         is_deepseek_offpeak = None  # type: ignore
     hour = datetime.now().hour
+    try:
+        from lib.overnight_llm_policy import (
+            LANE_CHATGPT,
+            LANE_NONE,
+            is_us_overnight,
+            overnight_llm_lane,
+        )
+    except Exception:
+        from scripts.lib.overnight_llm_policy import (  # type: ignore
+            LANE_CHATGPT,
+            LANE_NONE,
+            is_us_overnight,
+            overnight_llm_lane,
+        )
+    if is_us_overnight():
+        lane = overnight_llm_lane()
+        if lane == LANE_CHATGPT and str(args.model).startswith("gemma"):
+            print(
+                "US_OVERNIGHT: refusing gemma overnight LLM "
+                "(operator: overnight is deterministic; judgment lane=chatgpt oauth)"
+            )
+            args.model = "chatgpt"
+        elif lane == LANE_NONE:
+            print("US_OVERNIGHT: skipping judgmental LLM (US_OVERNIGHT_LLM=off)")
+            return
     if flash and is_deepseek_offpeak is not None:
         if (
             args.apply
@@ -229,9 +269,11 @@ def main():
         # health gate
         try:
             from llm_health_gate import check_ollama_health
-            # deep model (27b) is slow to cold-load; check reachability+availability only (the deep call
-            # below has its own 600s timeout), so we don't false-skip on a cold 17GB model.
-            h = check_ollama_health(model=args.model, generate_probe=False, timeout_sec=20)
+            if str(args.model).startswith("chatgpt"):
+                h = {"healthy": True}
+            else:
+                # deep model (27b) is slow to cold-load; check reachability+availability only.
+                h = check_ollama_health(model=args.model, generate_probe=False, timeout_sec=20)
             if not h.get("healthy"):
                 from hermes_llm_failover import failover_enabled
                 if failover_enabled():
