@@ -167,6 +167,9 @@ def handle_get(path: str, query: dict | None = None) -> tuple[int, dict[str, Any
             "operator_actions": ["dispute", "retract", "expire"],
             "control_path": "/api/v3/maturity-control/memory/{dispute|retract|expire}",
         })
+    if p == "scorecard":
+        from scripts.lib.maturity_scorecard import compute_scorecard
+        return 200, compute_scorecard()
     if p in ("influence", "comparator"):
         from scripts.lib.advisory_influence.gates import current_gates
         from scripts.lib.advisory_influence.comparator import metrics

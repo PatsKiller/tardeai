@@ -121,6 +121,8 @@ Do not collapse skip into silence. Cost attribution (Phase A) depends on these c
 
 When `RESEARCH_SKIP_GATE` is off (default), DeepSeek dispatch is unchanged (parity). When on, execute_set = due ∩ (changed ∪ stale ∪ triggered). Do not add a lane that always re-runs.
 
+Skip codes, when logged, belong in `data/cio/research_skip_ledger.jsonl` (R1). Maturity reads that ledger on **GET `/api/v3/maturity/scorecard`** (`docs/ops/MATURITY_SCORECARD.md`). Missing/stale (>7d) → `UNMEASURED`, never a stale skip rate. Local LLM is math-only (`scripts/lib/llm_task_policy.py`); judgment stays Flash / ChatGPT OAuth.
+
 ---
 
 ## Ownership
