@@ -89,17 +89,23 @@ def evaluate_pin(
     }
 
 
-def _git(repo: Path, *args: str, work_tree: Optional[Path] = None) -> subprocess.CompletedProcess[str]:
-    cmd = ["git"]
-    if work_tree is not None:
-        cmd += [f"--git-dir={repo / '.git'}", f"--work-tree={work_tree}"]
-    else:
-        cmd += ["-C", str(repo)]
-    cmd += list(args)
-    return subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+def _git(repo: Path, *args: str, timeout: int = 60) -> subprocess.CompletedProcess[str]:
+    """Always `git -C repo`. Never `--work-tree=CURRENT` — that binds the
+    rebuild branch index/sparse-checkout and false-fires D on live files."""
+    cmd = ["git", "-C", str(repo), *args]
+    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+
+
+def _git_bytes(repo: Path, *args: str, timeout: int = 120) -> subprocess.CompletedProcess[bytes]:
+    cmd = ["git", "-C", str(repo), *args]
+    return subprocess.run(cmd, capture_output=True, timeout=timeout)
 
 
 def collect_pin_report(*, now: Optional[datetime] = None) -> dict[str, Any]:
+    import hashlib
+    import tarfile
+    from io import BytesIO
+
     now = now or datetime.now(timezone.utc)
     cur = current_dir()
     repo = repo_dir()
@@ -120,7 +126,9 @@ def collect_pin_report(*, now: Optional[datetime] = None) -> dict[str, Any]:
         row["as_of"] = now.replace(microsecond=0).isoformat()
         row["current_dir"] = str(cur)
         return row
-    if not (repo / ".git").exists():
+    git_dir = repo / ".git"
+    if not git_dir.exists() and not repo.joinpath(".git").is_file():
+        # worktree gitfile still counts
         row = evaluate_pin(
             source_commit=sha, diff_paths=[], extra_paths=[], git_error="repo_git_missing"
         )
@@ -129,22 +137,57 @@ def collect_pin_report(*, now: Optional[datetime] = None) -> dict[str, Any]:
         row["repo"] = str(repo)
         return row
 
-    diff = _git(repo, "diff", "--name-only", sha, "--", *TREES, work_tree=cur)
-    if diff.returncode not in (0, 1):
+    tree = _git(repo, "ls-tree", "-r", "--name-only", sha, "--", *TREES)
+    if tree.returncode != 0:
+        err = (tree.stderr or tree.stdout or "ls-tree_failed").strip().splitlines()
         row = evaluate_pin(
             source_commit=sha,
             diff_paths=[],
             extra_paths=[],
-            git_error=(diff.stderr or diff.stdout or "diff_failed").strip().splitlines()[0]
-            if (diff.stderr or diff.stdout)
-            else "diff_failed",
+            git_error=(err[0] if err else "ls-tree_failed")[:80],
         )
         row["as_of"] = now.replace(microsecond=0).isoformat()
         return row
-    diff_paths = [ln.strip() for ln in (diff.stdout or "").splitlines() if ln.strip()]
-
-    tree = _git(repo, "ls-tree", "-r", "--name-only", sha, "--", *TREES)
     tracked = {ln.strip() for ln in (tree.stdout or "").splitlines() if ln.strip() and not _skip(ln.strip())}
+
+    arch = _git_bytes(repo, "archive", sha, "--", *TREES)
+    if arch.returncode != 0:
+        row = evaluate_pin(
+            source_commit=sha,
+            diff_paths=[],
+            extra_paths=[],
+            git_error="archive_failed",
+        )
+        row["as_of"] = now.replace(microsecond=0).isoformat()
+        return row
+
+    expected: dict[str, bytes] = {}
+    with tarfile.open(fileobj=BytesIO(arch.stdout), mode="r:") as tar:
+        for m in tar.getmembers():
+            if not m.isfile():
+                continue
+            rel = m.name
+            if _skip(rel):
+                continue
+            f = tar.extractfile(m)
+            if f is None:
+                continue
+            expected[rel] = f.read()
+
+    diffs: list[str] = []
+    for rel, blob in expected.items():
+        disk = cur / rel
+        if not disk.is_file():
+            diffs.append(rel)
+            continue
+        try:
+            data = disk.read_bytes()
+        except OSError:
+            diffs.append(rel)
+            continue
+        if hashlib.sha256(data).digest() != hashlib.sha256(blob).digest():
+            diffs.append(rel)
+
     extras: list[str] = []
     for tree_name in TREES:
         root = cur / tree_name
@@ -159,7 +202,7 @@ def collect_pin_report(*, now: Optional[datetime] = None) -> dict[str, Any]:
             if rel not in tracked:
                 extras.append(rel)
 
-    row = evaluate_pin(source_commit=sha, diff_paths=diff_paths, extra_paths=extras)
+    row = evaluate_pin(source_commit=sha, diff_paths=diffs, extra_paths=extras)
     row["as_of"] = now.replace(microsecond=0).isoformat()
     row["current_dir"] = str(cur.resolve())
     row["repo"] = str(repo)
