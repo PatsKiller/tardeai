@@ -1,0 +1,20 @@
+[Unit]
+Description=Trade AI CIO memory shadow measure (Phase 2; influence OFF)
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
+Environment=PYTHONPATH=%h/trade-ai-releases/portfolio-server/CURRENT:%h/trade-ai-releases/portfolio-server/CURRENT/scripts
+Environment=MEMORY_BEHAVIOR_INFLUENCE=0
+Environment=MEMORY_SHADOW=1
+EnvironmentFile=-/run/user/%U/tradeai/env
+EnvironmentFile=-%h/.config/tradeai/cio-operator-live.env
+# Capture flag comes from portfolio-server drop-in 29; pin influence OFF here too.
+ExecStart=%h/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/run_memory_shadow_measure.py
+Nice=10
+# READ_ONLY_ADVISORY — writes data/cio/memory_shadow_measure_latest.json only.
+# Never flips MEMORY_BEHAVIOR_INFLUENCE. Never sends Telegram.
+
+[Install]
+WantedBy=default.target

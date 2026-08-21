@@ -35,6 +35,19 @@ python3 scripts/run_memory_shadow_measure.py
 # artifact: data/cio/memory_shadow_measure_latest.json
 ```
 
+## systemd (daily)
+
+Units (repo + user install):
+
+- `config/systemd/user/tradeai-cio-memory-shadow-measure.service`
+- `config/systemd/user/tradeai-cio-memory-shadow-measure.timer` — `OnCalendar=*-*-* 06:20:00`
+
+```bash
+systemctl --user enable --now tradeai-cio-memory-shadow-measure.timer
+systemctl --user list-timers | grep memory-shadow
+systemctl --user start tradeai-cio-memory-shadow-measure.service   # manual run
+```
+
 ## Metrics
 
 `memory_retrieval_rate` · `memory_changed_decision` · `memory_changed_notification` ·  
