@@ -96,16 +96,20 @@ CC routes:
 - SRC: `/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/docs` must mirror **`origin/main` docs/** before sync
 - Protocol: `git checkout origin/main -- docs/` on dual-root (do **not** sync dirty feature branches)
 
-### Sync verification (filled after sync)
+### Sync verification (2026-08-21 targeted upload → Trade_AI_Docs_v2)
 
-| File | Drive status |
-|------|----------------|
-| `docs/architecture/TRADEAI_SYSTEM_STATE_AND_AUTONOMY_2026-08-20.md` | _pending_ |
-| `docs/ops/CIO_IIC_SESSION_CLOSEOUT_2026-08-21.md` | _pending_ |
-| `docs/ops/CIO_IIC_PHASE_D_SI_QUEUE_2026-08-21.md` | _pending_ |
-| `docs/ops/CIO_IIC_TELEGRAM_ACTIONABLE_VISUAL_2026-08-21.md` | _pending_ |
-| `docs/ops/CIO_IIC_FEEDBACK_CC_2026-08-21.md` | _pending_ |
-| `docs/ops/CIO_INVESTMENT_INTELLIGENCE_CARD_2026-08-21.md` | _pending_ |
+| File | Drive |
+|------|-------|
+| System state | [link](https://drive.google.com/file/d/1ZDm8K8D1OzO5gU2y8m_KO8n-BxsDPgD6/view) |
+| IIC session closeout | [link](https://drive.google.com/file/d/1Lhdah-2yVzRVTEdpgdvsL5lKaBLtn3IA/view) |
+| Phase D SI queue | [link](https://drive.google.com/file/d/1ZNdgooUygI7naUNqzrVGD0tcohd54K1s/view) |
+| Telegram actionable visual | [link](https://drive.google.com/file/d/1_PZndlXCKGyye8j_qaj1oVh0WX9QSMNF/view) |
+| Feedback + CC | [link](https://drive.google.com/file/d/1huE9ZjljQx0OCSiqkQgJglqxtCk-LqAe/view) |
+| IIC Phase A | [link](https://drive.google.com/file/d/1sBe9kpQy_3wcjNEF1wC5882nB-_j3KEE/view) |
+| Advisor closeout 08-20 | [link](https://drive.google.com/file/d/1h_xtJC467w1sXwmDUY17VXWkFK5VuvyP/view) |
+
+Folder: [Trade_AI_Docs_v2](https://drive.google.com/drive/folders/1Zxc20B5Xo24RGZ1Pow1-uW6ldASQJHiR) → `docs/ops` / `docs/architecture`  
+Note: full hourly `sync-docs-to-drive.sh` was aborted mid-archive 404 thrash; key IIC docs uploaded/replaced via `gog` from `origin/main` docs.
 
 ---
 
