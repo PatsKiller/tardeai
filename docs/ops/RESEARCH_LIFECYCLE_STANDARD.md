@@ -4,7 +4,7 @@
 **Authority:** READ_ONLY_ADVISORY  
 **Date:** 2026-08-21  
 **Owner (policy):** operator  
-**Owner (code):** `scripts/research_scheduler.py` · `scripts/lib/hermes_research_queue.py` · `scripts/lib/hermes_research_policy.py` · `scripts/lib/hermes_research_fingerprint.py` · `scripts/lib/symbol_thesis_coverage.py` · `scripts/lib/hermes_librarian/freshness.py`
+**Owner (code):** `scripts/research_scheduler.py` · `scripts/lib/research_source_index.py` · `scripts/lib/research_skip_ledger.py` · `scripts/lib/hermes_research_queue.py` · `scripts/lib/hermes_research_policy.py` · `scripts/lib/hermes_research_fingerprint.py` · `scripts/lib/symbol_thesis_coverage.py` · `scripts/lib/hermes_librarian/freshness.py`
 
 Research is **incremental, change-driven, and freshness-based**. It is not a full re-research of all content on every run. This minimizes compute cost, reduces processing time, and keeps research current without repeatedly analyzing unchanged information.
 
@@ -108,16 +108,17 @@ Do not collapse skip into silence. Cost attribution (Phase A) depends on these c
 | Request fingerprint (same *ask*) | **Implemented** | `hermes_research_fingerprint.py` `fp@v1` |
 | Result TTL reuse | **Implemented** | `hermes_research_queue.py` → `try_reuse_completed_result` (`reused_fresh_result`) |
 | In-flight duplicate | **Implemented** | queue `duplicate_in_flight` |
-| Calendar SLA dispatcher | **Implemented** | `research_scheduler.py` `TIER_SLA` — *due set can still re-call lanes without a source-hash skip* |
+| Calendar SLA dispatcher | **Implemented** | `research_scheduler.py` `TIER_SLA` — due set is the *candidate* set |
 | Output-prose fingerprint | **Implemented** | scheduler `_research_fingerprint` on recommendation+confidence (downstream *diff*, not skip-before-call) |
-| Hours-window skip | **Partial** | `hermes_top20_external_intel.py` `FRESH_HOURS=12`; scheduler backfill `RESEARCH_BACKFILL_SKIP_FRESH_HOURS` |
+| Hours-window skip | **Implemented** | `hermes_top20_external_intel.py` `FRESH_HOURS=12`; scheduler backfill `RESEARCH_BACKFILL_SKIP_FRESH_HOURS` → `SKIP_FRESH` when the skip gate is on |
 | Thesis STALE by age | **Implemented** | `symbol_thesis_coverage.py` `STALE_DAYS_DEFAULT=30` |
 | Librarian 30d archive | **Implemented** | `hermes_librarian/freshness.py` |
-| Unified source **content_hash** index | **Gap** | No single store with source_id + last_modified + last_researched + hash |
-| Unified skip log (`SKIP_UNCHANGED` / `SKIP_FRESH`) | **Gap** | Queue has reuse reasons; scheduler prints material-change; not one ledger |
-| Thesis class SLAs 14/30/45/90d | **Policy** | Maturation plan; coverage report still held-only 80% SLA |
+| Unified source **content_hash** index | **Implemented** (flag `RESEARCH_SKIP_GATE`, **default off**) | `scripts/lib/research_source_index.py` → `data/cio/research_source_index.json` (`ResearchSourceIndex@v1`). `content_hash` is sha256 of source *inputs*, never recommendation/confidence/prose. |
+| Unified skip log (`SKIP_UNCHANGED` / `SKIP_FRESH`) | **Implemented** (same flag, **default off**) | `scripts/lib/research_skip_ledger.py` → `data/cio/research_skip_ledger.jsonl`. Scheduler dispatch writes one code per metered candidate when the gate is on. Live skip *rates* are not claimed until measured from that ledger. |
+| Thesis class SLAs 14/30/45/90d | **Implemented** (index TTL) / **Policy** (coverage %) | Index `fresh_until` uses 14d income/BDC + reentry READY/NEAR, 30d held growth/core, 90d BND-like, 45d watchlist. Coverage report is still held-only 80% SLA. |
+| Local LLM auto-enqueue | **Off unless flagged** | `RESEARCH_ALLOW_LOCAL_LLM` default 0. Scheduler does not auto-enqueue maria/full_chain. DeepSeek remains the auto judgment lane. ChatGPT overnight stays on `hermes_deep_research_local`. |
 
-Until the unified index exists, **new** research producers must implement the index fields and skip codes. Do not add a lane that always re-runs.
+When `RESEARCH_SKIP_GATE` is off (default), DeepSeek dispatch is unchanged (parity). When on, execute_set = due ∩ (changed ∪ stale ∪ triggered). Do not add a lane that always re-runs.
 
 ---
 
@@ -127,6 +128,7 @@ Until the unified index exists, **new** research producers must implement the in
 |---------|--------|
 | Whether to enqueue vs reuse a Hermes *request* | `hermes_research_queue.py` + `hermes_research_policy.py` |
 | Whether two requests are the same work | `hermes_research_fingerprint.py` |
+| Whether a *source* changed / is stale (skip-before-call) | `research_source_index.py` + `research_skip_ledger.py` (flag `RESEARCH_SKIP_GATE`) |
 | Which symbols are *due* this cycle | `research_scheduler.py` + `docs/RESEARCH_PRIORITIZATION.md` |
 | Thesis CURRENT vs STALE | `symbol_thesis_coverage.py` / `cio_held_thesis_coverage.py` |
 | Source-file freshness / archive | `hermes_librarian/freshness.py` |
@@ -137,4 +139,8 @@ Scheduler authors: **due ∩ (changed ∪ stale ∪ triggered)** is the execute 
 
 ## Rollback / compatibility
 
-This document does not flip flags or change defaults. Existing TTL reuse and fingerprints stay. The standard forbids new full-sweep research jobs.
+`RESEARCH_SKIP_GATE` defaults to **0** (off) — DeepSeek due-set dispatch matches today. Set `0`/`false`/`off` to roll the skip gate back after enabling it.
+
+`RESEARCH_ALLOW_LOCAL_LLM` defaults to **0**. Set `1` to restore maria/full_chain auto-enqueue from the scheduler.
+
+Existing TTL reuse (`hermes_research_queue`) and the output-prose fingerprint stay. The standard forbids new full-sweep research jobs. Do not claim live skip rates until `data/cio/research_skip_ledger.jsonl` has been measured.
