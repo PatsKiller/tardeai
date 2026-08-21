@@ -1,3 +1,9 @@
+## Research lifecycle standard (2026-08-21)
+| Document | Purpose |
+|----------|---------|
+| `docs/ops/RESEARCH_LIFECYCLE_STANDARD.md` | Canonical: research only on new/changed/stale/triggered content; reuse unchanged; log EXECUTED / SKIP_UNCHANGED / SKIP_FRESH |
+| `docs/RESEARCH_PRIORITIZATION.md` | Lane/tier SLA; due is a candidate, not a re-analyze-all |
+
 ## Alpaca Multi-Account Taxonomy R1–R5 (2026-07-21)
 | Document | Purpose |
 |----------|---------|

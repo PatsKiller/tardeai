@@ -5,6 +5,11 @@ often** — so every tracked symbol is refreshed at least *X* times per *Y* days
 event-awareness. This governs **all** research lanes (local gemma, overnight deep, external OAuth,
 web/topic, catalyst, news), not just the external skeptics.
 
+**Lifecycle gate (canonical):** `docs/ops/RESEARCH_LIFECYCLE_STANDARD.md`. Research is incremental,
+change-driven, and freshness-based. An SLA “due” symbol is a **candidate**. Execute only if the source
+changed, freshness expired, or an operator/event trigger fired. Unchanged in-date work is reused
+(`SKIP_UNCHANGED` / `SKIP_FRESH`), never re-analyzed.
+
 Implemented by `scripts/research_scheduler.py` (symbol-level fan-out) + the existing topic/source/news
 crons (subject-level), all keyed to the same tiers below.
 
@@ -75,7 +80,9 @@ priority = 100·tier_weight            # HOLD 1.0 · PROP 0.9 · WATCH 0.6 · IN
          +  15·rank_score             # inverse Hermes rank (top names first)
 ```
 
-T0 symbols are candidates **every run** regardless of score; anything past SLA gets a hard overdue boost.
+T0 symbols are **candidates** every run regardless of score; anything past SLA gets a hard overdue boost.
+Candidate ≠ execute. Apply the lifecycle hash/mtime/TTL gate before a metered lane call
+(`docs/ops/RESEARCH_LIFECYCLE_STANDARD.md`).
 
 ## 4. Lane budget (never exhaust the free OAuth lanes)
 

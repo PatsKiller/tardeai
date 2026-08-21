@@ -27,6 +27,8 @@
 | LLM daily cap | **$0.50** — do not raise until A.4+A.5 |
 | Broker auto-execution | **Off by design** |
 
+**Research lifecycle:** incremental / change-driven / freshness-based — `docs/ops/RESEARCH_LIFECYCLE_STANDARD.md`. Do not full-re-research unchanged content.
+
 **Bottleneck:** first real DecisionPayload@v1 row (then restart 5-day clock) → tree-pin → spend attribution → coverage.
 
 ---
