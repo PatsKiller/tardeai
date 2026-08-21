@@ -71,7 +71,7 @@ Process only:
 
 Skip all unchanged and still-valid records.
 
-Class freshness (policy target; thesis classes from the maturation plan):
+Class freshness (implemented in `symbol_thesis_coverage.py` `CLASS_SLA_DAYS` / `stale_days_for`):
 
 | Class | Max age before forced refresh |
 |-------|-------------------------------|
@@ -82,7 +82,7 @@ Class freshness (policy target; thesis classes from the maturation plan):
 | Held, index/bond | 90d |
 | Hermes result reuse TTL (queue) | 2h–24h by priority (`hermes_research_policy.py`) |
 
-A catalyst, earnings, dividend action, or operator NEED_DATA **short-circuits** the age gate.
+A catalyst, earnings, dividend action, or operator NEED_DATA **short-circuits** the age gate (coverage does not mark STALE solely by calendar age; `coverage_reason` records the short-circuit). Held coverage SLA is **100%** `coverage_pct` **and** `fresh_pct` (`cio_held_thesis_coverage.py`). That target is **not currently met live** — the report measures the gap; it does not claim the book is fully covered.
 
 ---
 
@@ -111,11 +111,11 @@ Do not collapse skip into silence. Cost attribution (Phase A) depends on these c
 | Calendar SLA dispatcher | **Implemented** | `research_scheduler.py` `TIER_SLA` — *due set can still re-call lanes without a source-hash skip* |
 | Output-prose fingerprint | **Implemented** | scheduler `_research_fingerprint` on recommendation+confidence (downstream *diff*, not skip-before-call) |
 | Hours-window skip | **Partial** | `hermes_top20_external_intel.py` `FRESH_HOURS=12`; scheduler backfill `RESEARCH_BACKFILL_SKIP_FRESH_HOURS` |
-| Thesis STALE by age | **Implemented** | `symbol_thesis_coverage.py` `STALE_DAYS_DEFAULT=30` |
+| Thesis STALE by age | **Implemented** | `symbol_thesis_coverage.py` class SLAs via `stale_days_for`; `STALE_DAYS_DEFAULT=30` is fallback only |
 | Librarian 30d archive | **Implemented** | `hermes_librarian/freshness.py` |
 | Unified source **content_hash** index | **Gap** | No single store with source_id + last_modified + last_researched + hash |
 | Unified skip log (`SKIP_UNCHANGED` / `SKIP_FRESH`) | **Gap** | Queue has reuse reasons; scheduler prints material-change; not one ledger |
-| Thesis class SLAs 14/30/45/90d | **Policy** | Maturation plan; coverage report still held-only 80% SLA |
+| Thesis class SLAs 14/30/45/90d | **Implemented** | `CLASS_SLA_DAYS` in `symbol_thesis_coverage.py`; held report publishes `coverage_pct` **and** `fresh_pct` with SLA 100% (`held_n` = 22 via `holdings_universe`). **Not currently met live.** |
 
 Until the unified index exists, **new** research producers must implement the index fields and skip codes. Do not add a lane that always re-runs.
 

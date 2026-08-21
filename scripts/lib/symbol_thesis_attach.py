@@ -116,6 +116,11 @@ def thesis_fields_for_symbol(symbol: str, *, root: Path | str | None = None) -> 
         "active_research_count": 0,  # filled by caller if queue available
         "desk_pin": cov.get("desk_pin"),
         "has_current_symbol_thesis": bool(cov.get("has_current_symbol_thesis")),
+        "thesis_age_days": cov.get("thesis_age_days"),
+        "sla_days": cov.get("sla_days"),
+        "coverage_class": cov.get("coverage_class"),
+        "fresh": bool(cov.get("fresh")),
+        "age_gate_short_circuit": cov.get("age_gate_short_circuit"),
         "authority": "READ_ONLY_ADVISORY",
         "financial_action": False,
     }
