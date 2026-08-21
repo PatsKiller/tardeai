@@ -31,6 +31,7 @@ ALLOWLIST_PATTERNS: List[str] = [
     "config/cio_research_source_catalog.json",
     "docs/investment-office/RESEARCH_GOVERNANCE*",
     "docs/investment-office/BOOK_KNOWLEDGE_INVENTORY.md",
+    "docs/investment-office/CANON_*",
     "docs/investment-office/R1_FORMULA_AND_REFERENCE_AUDIT.md",
     "docs/investment-office/R2_*",
     "docs/investment-office/R3_*",

@@ -33,6 +33,19 @@ checks STATE/PROVENANCE coherence (status matches the evidence), not permanent
 absence: a source that later acquires lawful full text must instead provide a
 location/reference, source hash, permitted license class, and `verified_at`.
 
+## Implementation vs aspiration (2026-08-21)
+
+Uncharitable audit of whether catalogued frameworks influence production CIO /
+ranking / advisory decisions:
+
+→ **`docs/investment-office/CANON_IMPLEMENTATION_AUDIT_2026-08-21.md`**
+
+Summary: Core Ten + Ilmanen are mostly **documented incomplete claims**. Best
+real code is **research_governance** (de Prado/Bailey/White methods) which can
+block research-fact promotion but **cannot generate trades**. Hot-path CIO
+behavior remains largely **zone + RSI + status-diff**, not Graham/Bogle/Harris
+doctrine.
+
 ## Existing-code map (what already exists in the repo)
 
 - CIO advisory lifecycle: `scripts/lib/cio_*.py` (run store, dispatcher, worker,
