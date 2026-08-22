@@ -4,7 +4,8 @@
 **Authority:** READ_ONLY_ADVISORY  
 **Freeze:** 8/21–8/27 close. **P0 only in this PR** (suppression / no second send). T3–T7 after the window.  
 **CURRENT:** do not promote.  
-**Corpus:** 18,130 messages · 4 feeds · 2026-05-19 → 2026-08-22 (operator audit).
+**Corpus:** 18,130 messages · 4 feeds · 2026-05-19 → 2026-08-22 (operator audit).  
+**Session index:** `docs/ops/SESSION_CLOSEOUT_2026-08-22.md`
 
 ## What shipped (T1 + T2)
 

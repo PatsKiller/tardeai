@@ -39,15 +39,16 @@ Do not import `lib.llm_lane` — `scripts/lib` is the `lib` package and has no `
 
 Shipped in **#440** (merged). Live on crontab `PROJ=` rebuild **and** CURRENT `a7f30d89`.
 
-## Overnight identity `[VERIFIED]` 2026-08-21 18:46 ET
+## Overnight identity — retargeted 2026-08-22 (#453)
 
 | Source | State |
 |---|---|
-| Policy (`docs/RESEARCH_PRIORITIZATION.md`, #437 merged) | US overnight judgment = **ChatGPT OAuth** `:8646`, not gemma |
-| Live `hermes-deep-research-local.timer` | still **China-night gemma3:27b** calendar (US-day dry-run → empty `RESULT: {}`) |
-| Alarm | `chatgpt` (external store) **and** `overnight-deep` — installed |
+| Policy | US overnight judgment = **ChatGPT OAuth** `:8646`, not gemma |
+| Live `hermes-deep-research-local.timer` | **22,23,00,01,02,03,04,05:35 America/New_York**, `--model chatgpt`. Was China-night = US daytime dry-run. |
+| `hermes-autonomous-loop.timer` | **disabled**. Script refuses `--apply` when model is gemma and `RESEARCH_ALLOW_LOCAL_LLM=0`. |
+| systemd lane-health | **exit 0** if the check ran. Exit 1 = collect crashed. Telegram lists **Watched: deepseek** even when ok. New lane **`coverage-stall`**. |
 
-**Live timer is gemma-attempted, not ChatGPT.** Policy is ChatGPT. Do not retarget the timer until you want that routing change; the alarm is already covering both paths.
+Index of 2026-08-22 findings: `docs/ops/SESSION_CLOSEOUT_2026-08-22.md`.
 
 ## Closeout (merged + promoted)
 

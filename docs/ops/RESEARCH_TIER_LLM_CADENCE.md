@@ -106,4 +106,4 @@ Ignored standing **$0.50** in-process (`LLM_GLOBAL_DAILY_USD_CAP=25`); process s
 
 DB proof 12:50 ET: DeepSeek ok ids **46012–46982** (n=545 symbols with nonempty rec) · `hermes_external_research` spend **$0.168934** / 546 rows · global today **$0.206309** / 677. T2/T3 DeepSeek here is **confirm only**.
 
-See also: `docs/ops/LLM_ROUTING_AND_DATA_LAYERS.md` (two LLM families) · `docs/RESEARCH_PRIORITIZATION.md` (policy SLA) · `docs/ops/RESEARCH_COVERAGE_SNAPSHOT_2026-08-22.md` (10:24 ET snapshot; superseded for DeepSeek counts).
+See also: `docs/ops/SESSION_CLOSEOUT_2026-08-22.md` (findings index) · `docs/ops/LLM_ROUTING_AND_DATA_LAYERS.md` (two LLM families) · `docs/RESEARCH_PRIORITIZATION.md` (policy SLA) · `docs/ops/RESEARCH_COVERAGE_SNAPSHOT_2026-08-22.md` (10:24 ET snapshot; superseded for DeepSeek counts).
