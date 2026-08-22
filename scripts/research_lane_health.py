@@ -29,41 +29,112 @@ STATUS_PATH = ROOT / "data" / "runtime" / "research_lane_health.json"
 ALERT_DEDUP_SEC = int(os.getenv("RESEARCH_LANE_ALERT_DEDUP_SEC", str(6 * 3600)))
 
 
-def _load_state() -> dict:
+def unwrap_lane_map(raw: dict) -> dict:
+    """Per-lane alert state. Heal the 2026-08-22 nesting bug.
+
+    `_save_state({"as_of", "lanes": state})` while `_load_state()` returned the
+    *whole file* made every 15-min run wrap `lanes` inside `lanes` (63 layers,
+    258KB) and never see `last_alert` — Telegram every timer tick.
+    """
+    if not isinstance(raw, dict):
+        return {}
+    node = raw
+    for _ in range(128):
+        lanes = node.get("lanes")
+        if not isinstance(lanes, dict):
+            break
+        # A real per-lane map has lane names or last_alert, not only {as_of, lanes}.
+        if any(k not in ("as_of", "lanes") for k in lanes):
+            node = lanes
+            break
+        node = lanes
+    out = {}
+    for k, v in (node if isinstance(node, dict) else {}).items():
+        if k in ("as_of", "lanes") or not isinstance(v, dict):
+            continue
+        out[k] = v
+    return out
+
+
+def _load_lane_map() -> dict:
     try:
-        return json.loads(STATUS_PATH.read_text(encoding="utf-8"))
+        raw = json.loads(STATUS_PATH.read_text(encoding="utf-8"))
     except Exception:
         return {}
+    return unwrap_lane_map(raw if isinstance(raw, dict) else {})
 
 
-def _save_state(state: dict) -> None:
+def _save_state(as_of, lane_map: dict) -> None:
     STATUS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    STATUS_PATH.write_text(json.dumps(state, indent=2, default=str) + "\n", encoding="utf-8")
+    rec = {"as_of": as_of, "lanes": lane_map, "schema": "ResearchLaneHealthAlertState@v1"}
+    STATUS_PATH.write_text(json.dumps(rec, indent=2, default=str) + "\n", encoding="utf-8")
+
+
+def fix_hint(row: dict) -> str:
+    """Per-lane operator hint. Do not keep the #440 import line as the only Fix."""
+    lane = str(row.get("lane") or "")
+    firing = " ".join(str(x) for x in (row.get("firing") or []))
+    if lane == "deepseek":
+        return (
+            "DeepSeek: import is already `llm_lane` (scripts/llm_lane.py). "
+            "Live RAW errors are COST_CONFIGURATION_INVALID — cron .env must "
+            "export LLM_GLOBAL_DAILY_USD_CAP (restored 0.50 on rebuild 2026-08-22). "
+            "Alias `deepseek` is not available(); writer is deepseek-flash. "
+            "Weekday scheduler; streak stays until a successful send."
+        )
+    if lane == "overnight-deep":
+        return (
+            "Overnight: policy is ChatGPT OAuth 22:00–06:00 ET. Live timer is "
+            "still China-night gemma3:27b. Last deep_research_local ok 2026-08-20 Flash."
+        )
+    if lane == "drive-sync":
+        return (
+            "Drive: hourly CURRENT sweep. 1230 FAILED = 404 dead parent folder IDs "
+            "(cache not dropping). zero_uploaded_with_failures fires when that hour "
+            "uploaded=0. Canonical docs 1BMxbxU9… / ops 1a7vr2gn…"
+        )
+    if lane == "current-pin":
+        return "CURRENT scripts/+docs/ must match SOURCE_COMMIT (git archive hashes). No docs overlay."
+    if firing:
+        return firing
+    return "see research_lane_health.py JSON"
 
 
 def _alert(report: dict) -> int:
     firing = [r for r in report.get("lanes") or [] if not r.get("ok")]
     if not firing:
+        _save_state(report.get("as_of"), _load_lane_map())
         return 0
     now = int(time.time())
-    state = _load_state()
+    state = _load_lane_map()
     lines = []
+    hints = []
     sent = 0
     for row in firing:
         lane = row["lane"]
         prev = state.get(lane) or {}
-        last = int(prev.get("last_alert") or 0)
+        try:
+            last = int(prev.get("last_alert") or 0)
+        except (TypeError, ValueError):
+            last = 0
         if now - last < ALERT_DEDUP_SEC:
-            state[lane] = {**row, "last_alert": last, "suppressed": True}
+            state[lane] = {**prev, **{k: row.get(k) for k in ("ok", "firing", "error_streak")},
+                           "last_alert": last, "suppressed": True}
             continue
         reasons = ",".join(row.get("firing") or [])
+        extra = ""
+        if lane == "drive-sync":
+            extra = (f"  uploaded={row.get('uploaded')} failed={row.get('failed')} "
+                     f"exit={row.get('exit_code')}")
         lines.append(
             f"  • {lane}: {reasons}  streak={row.get('error_streak')}  "
             f"ok_24h={row.get('non_error_24h')} attempts_24h={row.get('attempts_24h')}"
+            + extra
         )
+        hints.append(f"  {lane}: {fix_hint(row)}")
         state[lane] = {**row, "last_alert": now, "suppressed": False}
         sent += 1
-    _save_state({"as_of": report.get("as_of"), "lanes": state})
+    _save_state(report.get("as_of"), state)
     if not lines:
         return 0
     msg = (
@@ -71,18 +142,21 @@ def _alert(report: dict) -> int:
         "Reads RAW stores (research rows **including** `[ERROR]…`, Drive "
         "last-result JSON, CURRENT vs SOURCE_COMMIT). Silence is not health.\n\n"
         + "\n".join(lines)
-        + "\n\nFix: DeepSeek writer must import `llm_lane` (scripts/llm_lane.py), "
-        "not `lib.llm_lane`. CURRENT must equal SOURCE_COMMIT (no docs overlay). "
-        "Drive result: ~/.local/state/drive-sync-last-result.json."
+        + "\n\nFix:\n"
+        + "\n".join(hints)
     )
     try:
-        from telegram_alert import send_telegram
-        send_telegram(msg, bypass_router=True)
+        _deliver_telegram(msg)
     except Exception as exc:
         print("telegram send failed:", exc, file=sys.stderr)
         print(msg)
         return 2
     return sent
+
+
+def _deliver_telegram(msg: str) -> None:
+    from telegram_alert import send_telegram
+    send_telegram(msg, bypass_router=True)
 
 
 def main() -> int:
