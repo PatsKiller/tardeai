@@ -5,6 +5,9 @@ often** — so every tracked symbol is refreshed at least *X* times per *Y* days
 event-awareness. This governs **all** research lanes (local gemma, overnight deep, external OAuth,
 web/topic, catalyst, news), not just the external skeptics.
 
+**Tiers / cron / LLM frequency:** `docs/ops/RESEARCH_TIER_LLM_CADENCE.md`.
+There is **one** watchlist research tier (`T1-WATCH`). Reentry READY/NEAR joins it. T2/T3 are not watchlist sub-tiers.
+
 **LIVE vs this policy (read first):** `docs/ops/LLM_ROUTING_AND_DATA_LAYERS.md`.
 Scheduler auto-external is DeepSeek-only. Holdings still get ChatGPT/Grok from
 `hermes_top20_external_intel.py` (trigger labeled `holdings`) every 2h — that is

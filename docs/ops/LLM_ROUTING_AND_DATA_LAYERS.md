@@ -7,7 +7,7 @@
 
 This is the map of **who calls which LLM, on which symbols, and why Telegram still says DATA_UNAVAILABLE** even though quotes, RSI, zones, Hermes scores, SearXNG, and OAuth research exist.
 
-Related: `docs/RESEARCH_PRIORITIZATION.md` (policy) · `docs/ops/RESEARCH_LIFECYCLE_STANDARD.md` (skip/freshness) · `docs/ops/RESEARCH_COVERAGE_SNAPSHOT_2026-08-22.md` (measured 10:24 ET).
+Related: `docs/RESEARCH_PRIORITIZATION.md` (policy) · `docs/ops/RESEARCH_LIFECYCLE_STANDARD.md` (skip/freshness) · `docs/ops/RESEARCH_COVERAGE_SNAPSHOT_2026-08-22.md` (measured 10:24 ET) · **`docs/ops/RESEARCH_TIER_LLM_CADENCE.md` (five universe tiers, watchlist is T1 only, cron + SLA)**.
 
 ---
 
