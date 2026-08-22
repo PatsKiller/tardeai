@@ -5,6 +5,8 @@
 
 **Coverage (holdings / reentry / watch / parse_error):** `docs/ops/RESEARCH_COVERAGE_SNAPSHOT_2026-08-22.md`. DeepSeek after the import fix is `COST_CONFIGURATION_INVALID` (cron `.env` missing the USD cap). T1/reentry starve because the scheduler auto-lane is DeepSeek-only.
 
+**Telegram every 15 min (2026-08-22 10:37 / 10:52 ET):** `_alert` saved `{as_of, lanes: state}` then loaded the *whole file* as the per-lane map. Each timer wrapped `lanes` inside `lanes` (63 layers, 258KB, never saw `last_alert`). Dedup is 6h after unwrap. Hint is no longer the stale `lib.llm_lane` import line.
+
 ## Why last_real hid the outage
 
 `research_scheduler.py` computes `last_real` with `recommendation NOT LIKE '[%'`.
