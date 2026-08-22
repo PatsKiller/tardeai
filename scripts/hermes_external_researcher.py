@@ -232,7 +232,7 @@ def call_governed_deepseek(model, prompt, max_tokens=1500):
         process_id="hermes_external_research",
         task_summary="hermes_external_research"[:160],
         timeout=120,
-        max_tokens=int(max_tokens or 1024),
+        max_tokens=int(max_tokens or 2048),
     )
     return str(text or "").strip()
 
@@ -420,6 +420,10 @@ def main():
     try:
         raw = call_external(args.lane, args.model, prompt)
         parsed = parse_external_research_result(raw) or {}
+        # Truncated JSON (1024-token cap) stored status=sent with recommendation=NULL.
+        # RAW-store health treats empty as an error streak. Keep the prose.
+        if not str(parsed.get("recommendation") or "").strip() and str(raw or "").strip():
+            parsed["recommendation"] = str(raw).strip()[:4000]
     except urllib.error.HTTPError as he:
         detail = ""
         try:

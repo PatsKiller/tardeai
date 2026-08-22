@@ -35,6 +35,8 @@ Do not import `lib.llm_lane` — `scripts/lib` is the `lib` package and has no `
 
 **Scheduler-path proof (not the bridge):** `--lane deepseek --trigger research_scheduler --apply` → `hermes_external_research` **id=45900** `status=sent` (SCHD).
 
+**2026-08-22 11:01 ET (do not wait for Monday):** cron does not source `.env` → `COST_CONFIGURATION_INVALID`. Cap restored + `llm_lane._load_repo_env()`. First send with cap unset in the parent still wrote **id=46012** V `status=sent` `deepseek-v4-flash` recommendation `HOLD / CONDITIONAL…` ($0.000396). id=46011 BND was `sent` with NULL rec (truncated JSON) — empty counts as error; researcher now stores raw[:4000]. Lane health **deepseek ok**, streak=0, ok_24h=2.
+
 Shipped in **#440** (merged). Live on crontab `PROJ=` rebuild **and** CURRENT `a7f30d89`.
 
 ## Overnight identity `[VERIFIED]` 2026-08-21 18:46 ET
