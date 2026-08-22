@@ -522,8 +522,36 @@ def parse_synthesis_result(raw: str) -> dict:
     })
 
 
+_HEALTH_RE = re.compile(r'"health"\s*:\s*"?(STRONG|STABLE|WATCH|CONCERN|EXIT)', re.I)
+_ACTION_RE = re.compile(r'"action"\s*:\s*"?(HOLD|ADD|TRIM|EXIT)', re.I)
+
+
+def salvage_holdings_health_fields(raw: str) -> Optional[dict]:
+    """Best-effort fields when gemma hits LOCAL_LLM_NUM_PREDICT and truncates JSON.
+
+    Only used by holdings_llm_refresh. Returns None unless health is present.
+    """
+    if not raw:
+        return None
+    h = _HEALTH_RE.search(raw)
+    if not h:
+        return None
+    a = _ACTION_RE.search(raw)
+    return {
+        "health": h.group(1).upper(),
+        "action": a.group(1).upper() if a else "HOLD",
+        "confidence": 50,
+        "reasoning": "salvaged_truncated_json",
+        "thesis_intact": "yes",
+        "catalyst_outlook": "neutral",
+        "risk_flag": "none",
+    }
+
+
 def parse_holdings_health_result(raw: str) -> Optional[dict]:
     parsed = extract_json_object(raw)
+    if not parsed:
+        parsed = salvage_holdings_health_fields(raw)
     if not parsed:
         return None
     return merge_structured_into_result({

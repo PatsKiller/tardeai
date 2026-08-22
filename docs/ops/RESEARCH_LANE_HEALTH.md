@@ -3,6 +3,8 @@
 **Authority:** READ_ONLY_ADVISORY  
 **Flag:** none (alarm is observational). `MEMORY_BEHAVIOR_INFLUENCE` stays 0.
 
+**Coverage (holdings / reentry / watch / parse_error):** `docs/ops/RESEARCH_COVERAGE_SNAPSHOT_2026-08-22.md`. DeepSeek after the import fix is `COST_CONFIGURATION_INVALID` (cron `.env` missing the USD cap). T1/reentry starve because the scheduler auto-lane is DeepSeek-only.
+
 ## Why last_real hid the outage
 
 `research_scheduler.py` computes `last_real` with `recommendation NOT LIKE '[%'`.
