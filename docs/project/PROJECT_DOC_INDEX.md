@@ -4,6 +4,7 @@
 | `docs/ops/RESEARCH_LIFECYCLE_STANDARD.md` | Canonical: research only on new/changed/stale/triggered content; reuse unchanged; log EXECUTED / SKIP_UNCHANGED / SKIP_FRESH |
 | `docs/RESEARCH_PRIORITIZATION.md` | Lane/tier SLA; due is a candidate, not a re-analyze-all |
 | `docs/ops/RESEARCH_TIER_LLM_CADENCE.md` | Five universe tiers; T1-WATCH is the only watchlist research tier; S0–S3 / hygiene 1–3 are not LLM queues; 2026-08-22 confirm-run |
+| `docs/ops/TELEGRAM_FEED_REMEDIATION_2026-08-22.md` | P0 T1/T2 Telegram suppress/edit; T3–T7 after 8/27 |
 
 ## Alpaca Multi-Account Taxonomy R1–R5 (2026-07-21)
 | Document | Purpose |

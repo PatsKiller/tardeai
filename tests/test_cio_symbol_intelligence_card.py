@@ -117,7 +117,7 @@ def test_notify_still_enqueues(tmp_path: Path):
         "decision_id": "dec_material_1",
         "trigger": "RESEARCH_COMPLETED",
         "action_book": {},
-        "reentry_book": {"names": [{"symbol": "CSCO", "status": "NEAR", "current_price": 50}]},
+        "reentry_book": {"names": [{"symbol": "CSCO", "status": "NEAR", "current_price": 50, "stop": 48}]},
     }
     changed = {
         "material": True,

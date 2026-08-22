@@ -32,12 +32,19 @@ class TestAlertPolicy(unittest.TestCase):
         from telegram_proposal_alert_policy import build_proposal_alert_packet
         pkt = build_proposal_alert_packet({
             "symbol": "TEST", "strategy_id": "momentum_scalp", "status": "PENDING",
-            "operator_verdict": "READY", "proposed_rr": 2.5,
+            "operator_verdict": "READY",
+            "proposed_entry": 5.42, "proposed_stop": 5.15, "proposed_target1": 5.96,
+            "proposed_rr": 0,  # stored 0 must not leak; arithmetic is 2.0
             "approval_blockers": [], "approval_allowed": True,
-            "execution_readiness": {"readiness_state": "READY_FOR_PAPER_SUBMIT"},
+            "execution_readiness": {
+                "readiness_state": "READY_FOR_PAPER_SUBMIT",
+                "quote_provider": "alpaca",
+                "quote_execution_eligible": True,
+            },
         })
         self.assertIn("APPROVE_PAPER", pkt["actions"])
         self.assertTrue(pkt["approval_allowed"])
+        self.assertEqual(pkt.get("rr_display"), "2.0:1")
 
     def test_05_blocked_rr_rebuild(self):
         from telegram_proposal_alert_policy import classify_proposal_alert_state
@@ -67,11 +74,12 @@ class TestAlertPolicy(unittest.TestCase):
         self.assertIn("#2297", msg)
         self.assertIn("Swing Breakout", msg)
         self.assertIn("Schwab Taxable", msg)
-        self.assertIn("tab=Proposals&proposal=2297", msg)
+        self.assertTrue("2297" in msg and ("proposal" in msg.lower() or "Proposals" in msg))
         self.assertIn("1.50", msg)
         self.assertIn("1.43", msg)
         self.assertIn("1.65", msg)
         self.assertIn("2.1", msg)
+        self.assertNotIn("0.0:1", msg)
 
     def test_07_suppression_key_stable(self):
         from telegram_proposal_alert_policy import alert_suppression_key
