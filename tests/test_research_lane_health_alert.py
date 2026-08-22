@@ -63,3 +63,26 @@ def test_alert_dedup_does_not_send_twice(tmp_path, monkeypatch):
     assert raw["lanes"]["deepseek"]["last_alert"] > 0
     assert "as_of" not in raw.get("lanes", {})
     assert time.time() - int(raw["lanes"]["deepseek"]["last_alert"]) < 5
+    assert "deepseek (watched)" in sent[0]
+
+
+def test_alert_exit_zero_when_alarms_found(monkeypatch, tmp_path):
+    """systemd failed must mean CHECK crashed, not 'found problems'."""
+    monkeypatch.setattr(hl, "STATUS_PATH", tmp_path / "h.json")
+    monkeypatch.setattr(hl, "_deliver_telegram", lambda msg: None)
+    report = {
+        "as_of": "now",
+        "ok": False,
+        "lanes": [
+            {"lane": "deepseek", "ok": True, "firing": [], "error_streak": 0,
+             "non_error_24h": 545, "attempts_24h": 545},
+            {"lane": "overnight-deep", "ok": False, "firing": ["zero_non_error_24h"],
+             "error_streak": 0, "non_error_24h": 0, "attempts_24h": 0},
+        ],
+    }
+    rc = hl._alert(report)
+    assert rc in (0, 1)  # 1 would be sent-count; check main()
+    monkeypatch.setattr(hl, "collect_report", lambda: report)
+    import sys
+    monkeypatch.setattr(sys, "argv", ["research_lane_health.py", "--alert"])
+    assert hl.main() == 0

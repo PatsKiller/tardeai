@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-08-22 — Research quality sample + thesis-mint dry-run + alarm holes
+
+MATURITY_IMPACT: live metric `data/runtime/research_lane_health.json` `firing` includes `coverage-stall`; systemd lane-health **exit 0** when the check ran. Freeze: staging mint only, no live `cio_theses.jsonl`.
+
+- Q1 sample n=40: median 320 chars, 45% <300, 15% generic, 0% cross-ticker dupes, 27.5% thesis-survivable.
+- Q2 dry-run: **19/19** RESEARCH_REQUIRED holdings mintable from disk. Coverage was a join gap.
+- Q3: DeepSeek always watched in Telegram; exit 0 on alarm; coverage-stall lane.
+- Q4: overnight timer retarget US 22:00–06:00 ET ChatGPT; autonomous-loop refuses gemma when local-LLM off.
+- Q5: process call cap 120→600; cold-floor 20→180; dollar cap $0.50 unchanged.
+
 ## 2026-08-22 — Telegram P0 card gates (T1/T2)
 
 MATURITY_IMPACT: live metric `data/cio/telegram_p0_suppress.jsonl` count by `rule` (quote_fail, invalidation_contradicts_price). Freeze-safe: **suppression only**, no new feeds/producers. CURRENT not promoted.

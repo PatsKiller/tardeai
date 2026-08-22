@@ -273,7 +273,7 @@
       ],
       "max_input_tokens": 8000,
       "max_output_tokens": 1024,
-      "daily_soft_cap": 120,
+      "daily_soft_cap": 600,
       "daily_cost_cap_usd": 0.30,
       "tools_allowed": false,
       "fallback_allowed": false,

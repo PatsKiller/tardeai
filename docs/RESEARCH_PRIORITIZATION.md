@@ -81,7 +81,7 @@ Holdings.json has 34 rows / 26 unique symbols including 5 CASH account rows and 
 | **T0-PROP** | 2× / 1 day | ✓ | — | ✓ |
 | **T1-WATCH** | 4× / 7 days | ✓ | — | ✓ (one external per refresh) |
 | **T2-INCUB** | 1× / 7 days | ✓ | — | catalyst only |
-| **T3-COLD** | 1× / 14 days | ✓ (rotating nightly batch) | — | catalyst only |
+| **T3-COLD** | **1× / 14 days** (was fiction at budget 20 = 127d). 2026-08-22: cold-floor **180**/day + process call cap **600**; dollar cap stays **$0.50** (~$0.056/day). | ✓ off (`RESEARCH_ALLOW_LOCAL_LLM=0`) | — | rotating DeepSeek floor |
 
 **Holdings (T0-HOLD) are special** (operator requirement): researched **several times a day** across the
 full lane fleet, and any **material change** is pushed to the symbol **card** and surfaced to the

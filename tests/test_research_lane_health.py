@@ -83,6 +83,34 @@ def test_chatgpt_24h_zero_ok_fires():
     assert any("zero_non_error" in x for x in row["firing"])
 
 
+def test_coverage_stall_fires_when_research_up_thesis_flat(tmp_path):
+    from scripts.lib.research_lane_health import collect_coverage_stall
+
+    row = collect_coverage_stall(
+        deepseek_ok_24h=545,
+        thesis_current=3,
+        thesis_held=22,
+        snap_path=tmp_path / "stall.json",
+        persist=True,
+    )
+    assert row["lane"] == "coverage-stall"
+    assert row["ok"] is False
+    assert any("research_up_thesis_flat" in x for x in row["firing"])
+
+
+def test_coverage_stall_quiet_when_thesis_meets_sla(tmp_path):
+    from scripts.lib.research_lane_health import collect_coverage_stall
+
+    row = collect_coverage_stall(
+        deepseek_ok_24h=545,
+        thesis_current=20,
+        thesis_held=22,
+        snap_path=tmp_path / "stall.json",
+        persist=False,
+    )
+    assert row["ok"] is True
+
+
 def test_pin_hybrid_fires():
     from scripts.lib.current_pin_integrity import evaluate_pin
 

@@ -867,6 +867,18 @@ def main():
     args = parser.parse_args()
 
     check_kill_switch()
+    # Policy: local LLM is math-only unless RESEARCH_ALLOW_LOCAL_LLM=1.
+    # Override.conf still sets HERMES_LOOP_MODEL=gemma3:12b — refuse apply.
+    _allow_local = os.getenv("RESEARCH_ALLOW_LOCAL_LLM", "0").strip().lower() in {
+        "1", "true", "yes", "on",
+    }
+    _model = (os.getenv("HERMES_LOOP_MODEL") or LOOP_MODEL or "").lower()
+    if args.apply and (not _allow_local) and ("gemma" in _model or "ollama" in _model):
+        print(
+            f"REFUSED_LOCAL_LLM: model={_model} RESEARCH_ALLOW_LOCAL_LLM=0. "
+            "Disable hermes-autonomous-loop.timer or set a non-gemma model."
+        )
+        return 0
     try:
         from hermes_llm_failover import (
             allow_deepseek_peak,

@@ -95,6 +95,12 @@ def fix_hint(row: dict) -> str:
         )
     if lane == "current-pin":
         return "CURRENT scripts/+docs/ must match SOURCE_COMMIT (git archive hashes). No docs overlay."
+    if lane == "coverage-stall":
+        return (
+            "Coverage stall: hermes_external_research grew, living thesis CURRENT "
+            "did not. Research is not minting symbol_<ticker> theses. Dry-run: "
+            "scripts/thesis_mint_from_research.py. Apply after 8/27."
+        )
     if firing:
         return firing
     return "see research_lane_health.py JSON"
@@ -126,10 +132,13 @@ def _alert(report: dict) -> int:
         if lane == "drive-sync":
             extra = (f"  uploaded={row.get('uploaded')} failed={row.get('failed')} "
                      f"exit={row.get('exit_code')}")
+        extra2 = ""
+        if lane == "coverage-stall":
+            extra2 = (f"  thesis={row.get('thesis_current')}/{row.get('thesis_held')}")
         lines.append(
             f"  • {lane}: {reasons}  streak={row.get('error_streak')}  "
             f"ok_24h={row.get('non_error_24h')} attempts_24h={row.get('attempts_24h')}"
-            + extra
+            + extra + extra2
         )
         hints.append(f"  {lane}: {fix_hint(row)}")
         state[lane] = {**row, "last_alert": now, "suppressed": False}
@@ -137,10 +146,21 @@ def _alert(report: dict) -> int:
     _save_state(report.get("as_of"), state)
     if not lines:
         return 0
+    watched = []
+    for row in report.get("lanes") or []:
+        if row.get("lane") == "deepseek":
+            watched.append(
+                f"  • deepseek (watched): ok={row.get('ok')} streak={row.get('error_streak')} "
+                f"ok_24h={row.get('non_error_24h')} attempts_24h={row.get('attempts_24h')}"
+            )
+            break
     msg = (
         "⚠️ *Research lane RAW-store health*\n"
         "Reads RAW stores (research rows **including** `[ERROR]…`, Drive "
-        "last-result JSON, CURRENT vs SOURCE_COMMIT). Silence is not health.\n\n"
+        "last-result JSON, CURRENT vs SOURCE_COMMIT). Silence is not health.\n"
+        "systemd exit 0 means the *check* ran; alarm state is this JSON/Telegram.\n\n"
+        + ("Watched:\n" + "\n".join(watched) + "\n\n" if watched else "")
+        + "Firing:\n"
         + "\n".join(lines)
         + "\n\nFix:\n"
         + "\n".join(hints)
@@ -163,12 +183,19 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--alert", action="store_true")
     args = ap.parse_args()
-    report = collect_report()
+    try:
+        report = collect_report()
+    except Exception as exc:
+        print(f"research_lane_health collect failed: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return 1
     print(json.dumps(report, indent=2, default=str))
     if args.alert:
-        _alert(report)
-        return 0 if report.get("ok") else 1
-    return 0 if report.get("ok") else 1
+        rc = _alert(report)
+        # 2 = telegram send failed (check ran, notify did not). 0 = check ran.
+        return 2 if rc == 2 else 0
+    # Alarm state lives in JSON (`ok`, `firing`). Exit 1 is a crashed CHECK,
+    # not "alarms found" — otherwise systemd cannot tell them apart.
+    return 0
 
 
 if __name__ == "__main__":
