@@ -17,7 +17,7 @@ This is the **index of findings and fixes** from 2026-08-22. Detail lives in the
 | DeepSeek **545 nonempty** / **$0.168934** (confirm-run) | Living thesis CURRENT **3/22 (13.6%)** — DIV, DIVI, JEPI — **unchanged** |
 | T0-HOLD 22/22 · T0-PROP 30/30 · T1 331/331 · reentry 25/25 · T2 141/141 forced · T3 20/20 slice | 19 holdings still `RESEARCH_REQUIRED` |
 
-Research writes `hermes_external_research`. **Nothing mints `symbol_<ticker>` into `cio_theses.jsonl`.** Dry-run: **19/19** of those names would mint CURRENT from data already on disk. Coverage was a **join gap**, not a research gap. Mint apply **after 8/27**.
+Research writes `hermes_external_research`. **Nothing mints `symbol_<ticker>` into `cio_theses.jsonl`.** Dry-run: **19/19** of those names would mint **a row** from data already on disk. Coverage was a **join gap**, not a research gap. Quality gate (M1): rec-only **2/19 CURRENT**, joined **12/19 CURRENT**, rest THIN. Live `substantive_pct=0.0` (DIV/DIVI/JEPI re-grade THIN). Mint apply **after 8/27**, and only as CURRENT vs THIN — never a fake-green 19/19.
 
 Canonical: `docs/ops/RESEARCH_QUALITY_AND_THESIS_GAP_2026-08-22.md`
 
@@ -71,7 +71,7 @@ Never print `0.0:1`. Quote-ineligible → withhold. Long invalidation ≥ price 
 
 | ID | Work |
 |---|---|
-| Thesis mint | Apply `thesis_mint_from_research.py` to **live** `cio_theses.jsonl` (staging already proves 19/19) |
+| Thesis mint | Apply `thesis_mint_from_research.py` to **live** `cio_theses.jsonl` as CURRENT vs THIN (staging: rec-only 2/19 PASS, joined 12/19 PASS). Do not mint THIN as CURRENT. |
 | Telegram T3 | One resolver per field; `?` never renders |
 | Telegram T4 | Bind Thesis/Catalyst to desk + Hermes + `hermes_external_research`; no machine token; sized TRIM needs capital |
 | Telegram T5 | Strip `dec_`/`prod_`/`plan_` from CIO Desk |

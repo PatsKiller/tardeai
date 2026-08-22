@@ -50,12 +50,10 @@ def test_coverage_missing_vs_current(tmp_path, monkeypatch):
     assert row["has_current_symbol_thesis"] is False
     assert row["portfolio_role"]["portfolio_role"] == "GROWTH"
 
+    from scripts.lib.thesis_substantiveness import pass_fixture
     publish_symbol_thesis(
         "SCHG",
-        summary=(
-            "SCHG is the book's primary large-cap growth sleeve. "
-            "We own it for growth exposure; invalidation if growth leadership breaks."
-        ),
+        summary=pass_fixture("SCHG"),
         stance="hold",
         portfolio_role="GROWTH",
         universe_memberships=["HELD"],

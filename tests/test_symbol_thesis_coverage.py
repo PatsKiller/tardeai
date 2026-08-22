@@ -10,7 +10,10 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
-THICK = (
+from scripts.lib.thesis_substantiveness import pass_fixture
+
+THICK = pass_fixture("JEPI")
+THIN = (
     "Living thesis: why this name is in the book, what would invalidate it, "
     "and what evidence would change the stance."
 )
@@ -24,13 +27,13 @@ class _Store:
         return self._recs.get(tid)
 
 
-def _old_thesis(*, days: float, extra=None, stance="hold"):
+def _old_thesis(*, days: float, extra=None, stance="hold", symbol="JEPI", summary=None):
     ts = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
     rec = {
         "status": "active",
         "published_ts": ts,
         "updated_ts": ts,
-        "summary": THICK,
+        "summary": summary or pass_fixture(symbol),
         "stance": stance,
         "thesis_version": "symbol_x@v1",
     }
@@ -86,9 +89,9 @@ def test_classify_uses_class_sla_not_global_30():
 
     held = {"memberships": ["HELD"], "held": True}
     # 20d is stale for income (14) but current for bond (90) and growth (30)
-    jepi_store = _Store({symbol_thesis_id("JEPI"): _old_thesis(days=20), "desk": None})
-    bnd_store = _Store({symbol_thesis_id("BND"): _old_thesis(days=20), "desk": None})
-    schg_store = _Store({symbol_thesis_id("SCHG"): _old_thesis(days=20), "desk": None})
+    jepi_store = _Store({symbol_thesis_id("JEPI"): _old_thesis(days=20, symbol="JEPI"), "desk": None})
+    bnd_store = _Store({symbol_thesis_id("BND"): _old_thesis(days=20, symbol="BND"), "desk": None})
+    schg_store = _Store({symbol_thesis_id("SCHG"): _old_thesis(days=20, symbol="SCHG"), "desk": None})
 
     jepi = classify_symbol("JEPI", universe_rec=held, store=jepi_store)
     bnd = classify_symbol("BND", universe_rec=held, store=bnd_store)
@@ -109,7 +112,7 @@ def test_age_gate_short_circuit_not_stale_by_age():
     from scripts.lib.symbol_thesis_coverage import classify_symbol, symbol_thesis_id
 
     held = {"memberships": ["HELD"], "held": True, "catalyst": True}
-    store = _Store({symbol_thesis_id("JEPI"): _old_thesis(days=40), "desk": None})
+    store = _Store({symbol_thesis_id("JEPI"): _old_thesis(days=40, symbol="JEPI"), "desk": None})
     row = classify_symbol("JEPI", universe_rec=held, store=store)
     assert row["coverage_state"] != "STALE"
     assert row["coverage_state"] == "CURRENT"
@@ -140,6 +143,22 @@ def test_age_gate_short_circuit_not_stale_by_age():
     )
     assert div["coverage_state"] == "CURRENT"
     assert div["age_gate_short_circuit"] == "dividend"
+
+
+def test_thin_is_not_current():
+    from scripts.lib.symbol_thesis_coverage import classify_symbol, symbol_thesis_id
+
+    held = {"memberships": ["HELD"], "held": True}
+    store = _Store({
+        symbol_thesis_id("BND"): _old_thesis(days=2, symbol="BND", summary=THIN),
+        "desk": None,
+    })
+    row = classify_symbol("BND", universe_rec=held, store=store)
+    assert row["coverage_state"] == "THIN"
+    assert row["fresh"] is True
+    assert row["has_current_symbol_thesis"] is True
+    assert row["substantiveness_bucket"] == "THIN"
+    assert row["coverage_reason"].startswith("symbol_thesis_thin")
 
 
 def test_build_coverage_report_publishes_coverage_and_fresh(tmp_path, monkeypatch):
@@ -175,9 +194,11 @@ def test_build_coverage_report_publishes_coverage_and_fresh(tmp_path, monkeypatc
         universe_memberships=["HELD"], store=store, notify=False,
     )
     rep = build_coverage_report(root=tmp_path, store=store)
-    assert "coverage_pct" in rep and "fresh_pct" in rep
+    assert "coverage_pct" in rep and "fresh_pct" in rep and "substantive_pct" in rep
     assert isinstance(rep["coverage_pct"], float)
     assert isinstance(rep["fresh_pct"], float)
+    assert isinstance(rep["substantive_pct"], float)
+    assert "THIN" in rep["coverage_counts"]
     held_slice = rep["slices"]["held"]
     assert held_slice["n"] == 2
     assert "CASH" not in held_slice["symbols"]

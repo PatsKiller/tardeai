@@ -97,8 +97,8 @@ def fix_hint(row: dict) -> str:
         return "CURRENT scripts/+docs/ must match SOURCE_COMMIT (git archive hashes). No docs overlay."
     if lane == "coverage-stall":
         return (
-            "Coverage stall: hermes_external_research grew, living thesis CURRENT "
-            "did not. Research is not minting symbol_<ticker> theses. Dry-run: "
+            "Coverage stall: research flowed, PASS-grade (CURRENT) thesis did not. "
+            "THIN rows count toward coverage_pct, not this alarm. Dry-run: "
             "scripts/thesis_mint_from_research.py. Apply after 8/27."
         )
     if firing:
@@ -134,7 +134,10 @@ def _alert(report: dict) -> int:
                      f"exit={row.get('exit_code')}")
         extra2 = ""
         if lane == "coverage-stall":
-            extra2 = (f"  thesis={row.get('thesis_current')}/{row.get('thesis_held')}")
+            extra2 = (
+                f"  substantive={row.get('thesis_substantive', row.get('thesis_current'))}"
+                f"/{row.get('thesis_held')} coverage={row.get('thesis_coverage')}"
+            )
         lines.append(
             f"  • {lane}: {reasons}  streak={row.get('error_streak')}  "
             f"ok_24h={row.get('non_error_24h')} attempts_24h={row.get('attempts_24h')}"

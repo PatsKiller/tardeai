@@ -28,11 +28,11 @@ def _strip_fence(text: str) -> str:
     return t.strip()
 
 
-def _summary_from_rec(sym: str, rec: str) -> str:
+def _summary_from_rec(sym: str, rec: str, *, cap: int = 2000) -> str:
     t = _strip_fence(rec)
     t = " ".join(t.split())
-    if len(t) > 700:
-        t = t[:697].rstrip() + "…"
+    if len(t) > cap:
+        t = t[: cap - 1].rstrip() + "…"
     if not t:
         return ""
     if not re.search(rf"\b{re.escape(sym)}\b", t, re.I):
@@ -45,7 +45,8 @@ def _latest_research(conn, symbols: list[str]) -> dict[str, dict]:
     out = {}
     cur.execute(
         """SELECT DISTINCT ON (upper(symbol))
-              upper(symbol), id, lane, recommendation, confidence, created_at
+              upper(symbol), id, lane, recommendation, dissent, evidence_json,
+              confidence, created_at
            FROM hermes_external_research
            WHERE upper(symbol) = ANY(%s)
              AND coalesce(recommendation,'')<>''
@@ -53,11 +54,13 @@ def _latest_research(conn, symbols: list[str]) -> dict[str, dict]:
            ORDER BY upper(symbol), created_at DESC""",
         (symbols,),
     )
-    for sym, rid, lane, rec, conf, ts in cur.fetchall():
+    for sym, rid, lane, rec, dissent, evidence, conf, ts in cur.fetchall():
         out[sym] = {
             "id": rid,
             "lane": lane,
             "recommendation": rec or "",
+            "dissent": dissent or "",
+            "evidence": evidence,
             "confidence": conf,
             "created_at": str(ts),
         }
@@ -97,6 +100,7 @@ def main() -> int:
     from scripts.lib.cio_held_thesis_coverage import build_held_coverage_report
     from scripts.lib.symbol_thesis_coverage import symbol_thesis_id
     from scripts.lib.portfolio_role import resolve_portfolio_role
+    from scripts.lib.thesis_substantiveness import grade_text, join_research_text, mint_state_for
 
     uni = load_universe(root=CURRENT)
     reentry = sorted(load_reentry_ready_near_symbols(root=CURRENT) or [])
@@ -114,24 +118,46 @@ def main() -> int:
     mintable_holdings = []
     for sym in symbols:
         rec = research.get(sym) or {}
-        text = rec.get("recommendation") or ""
-        summary = _summary_from_rec(sym, text)
+        rec_only = rec.get("recommendation") or ""
+        joined = join_research_text(
+            rec_only, rec.get("dissent"), rec.get("evidence"),
+        )
+        summary_rec = _summary_from_rec(sym, rec_only)
+        summary_joined = _summary_from_rec(sym, joined)
+        g_rec = grade_text(sym, summary_rec)
+        g_joined = grade_text(sym, summary_joined)
+        mint_body = summary_joined or summary_rec
+        g_mint = g_joined if summary_joined else g_rec
+        mint_state = mint_state_for(g_mint)
+        would = mint_state in ("CURRENT", "THIN")
         role = resolve_portfolio_role(sym, universe_rec=uni.get(sym) or {}, root=CURRENT)
-        would = bool(summary) and len(summary) >= 40
         live_row = live_state.get(sym) or {}
+        live_summary = (live_row.get("thesis_summary") or "")
+        live_grade = grade_text(sym, live_summary) if live_summary else None
         card = {
             "symbol": sym,
             "bucket": "T0-HOLD" if sym in holdings else "reentry",
             "live_state": live_row.get("thesis_state") or ("reentry" if sym in reentry else "UNKNOWN"),
             "live_current": bool(live_row.get("has_current_symbol_thesis")),
+            "live_regrade": (live_grade or {}).get("coverage_state") if live_grade else None,
+            "live_grade": (live_grade or {}).get("grade") if live_grade else None,
             "research_id": rec.get("id"),
             "research_lane": rec.get("lane"),
-            "research_chars": len(text),
+            "research_chars": len(rec_only),
+            "joined_chars": len(joined),
             "hermes_rank": ranks.get(sym),
             "portfolio_role": (role or {}).get("portfolio_role"),
-            "would_mint_current": would,
-            "would_say": summary[:400],
+            "grade_rec_only": g_rec.get("grade"),
+            "state_rec_only": g_rec.get("coverage_state"),
+            "grade_joined": g_joined.get("grade"),
+            "state_joined": g_joined.get("coverage_state"),
+            "would_mint_state": mint_state if would else "SKIP",
+            "would_mint_current": mint_state == "CURRENT",
+            "would_mint_thin": mint_state == "THIN",
+            "would_mint": would,
+            "would_say": mint_body[:400],
             "blockers": [] if would else ["no_nonempty_external_research_or_summary_lt_40"],
+            "grade_reasons": g_mint.get("reasons") or [],
         }
         cards.append(card)
         if sym in needs and would:
@@ -146,7 +172,7 @@ def main() -> int:
         store = CIOThesisStore(event_path=STAGING_EVENTS, projection_path=STAGING_PROJ)
         n_pub = 0
         for card in cards:
-            if not card["would_mint_current"]:
+            if not card["would_mint"]:
                 continue
             store.publish(
                 card["would_say"],
@@ -159,6 +185,9 @@ def main() -> int:
                     "source_research_id": card["research_id"],
                     "source_lane": card["research_lane"],
                     "dry_run": True,
+                    "substantiveness": "PASS" if card["would_mint_state"] == "CURRENT" else "THIN",
+                    "substantiveness_grade": card["grade_joined"] or card["grade_rec_only"],
+                    "mint_state": card["would_mint_state"],
                 },
                 notify=False,
             )
@@ -167,24 +196,64 @@ def main() -> int:
     else:
         staging_n = 0
 
+    req_cards = [c for c in cards if c["symbol"] in needs]
+    live_current_cards = [
+        c for c in cards
+        if c["bucket"] == "T0-HOLD" and c.get("live_grade")
+    ]
+    split_rec = {
+        "CURRENT": sum(1 for c in req_cards if c["state_rec_only"] == "CURRENT"),
+        "THIN": sum(1 for c in req_cards if c["state_rec_only"] == "THIN"),
+        "SKIP": sum(1 for c in req_cards if c["state_rec_only"] not in ("CURRENT", "THIN")),
+    }
+    split_joined = {
+        "CURRENT": sum(1 for c in req_cards if c["state_joined"] == "CURRENT"),
+        "THIN": sum(1 for c in req_cards if c["state_joined"] == "THIN"),
+        "SKIP": sum(1 for c in req_cards if c["state_joined"] not in ("CURRENT", "THIN")),
+    }
+    live_regrade = {
+        "PASS": sum(1 for c in live_current_cards if c.get("live_regrade") == "CURRENT"),
+        "THIN": sum(1 for c in live_current_cards if c.get("live_regrade") == "THIN"),
+        "n": len(live_current_cards),
+    }
     report = {
-        "schema": "ThesisMintDryRun@v1",
+        "schema": "ThesisMintDryRun@v2",
         "authority": "READ_ONLY_ADVISORY",
         "as_of": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
-        "live_held_current": f"{live.get('current_count')}/{live.get('held_count')} ({live.get('held_current_pct')}%)",
+        "live_held_current": (
+            f"{live.get('current_count')}/{live.get('held_count')} "
+            f"coverage={live.get('coverage_pct')}% substantive={live.get('substantive_pct')}%"
+        ),
         "holdings_n": len(holdings),
         "reentry_n": len(reentry),
         "needs_coverage_n": len(needs),
         "mintable_of_19_required": len(mintable_holdings),
         "mintable_holdings": mintable_holdings,
-        "would_mint_holdings": sum(1 for c in cards if c["bucket"] == "T0-HOLD" and c["would_mint_current"]),
-        "would_mint_reentry": sum(1 for c in cards if c["bucket"] == "reentry" and c["would_mint_current"]),
+        "projected_split_of_19": {
+            "n": len(req_cards),
+            "rec_only": split_rec,
+            "joined": split_joined,
+            "honest_line": (
+                f"rec-only {split_rec['CURRENT']}/{len(req_cards)} CURRENT, "
+                f"{split_rec['THIN']} THIN; joined {split_joined['CURRENT']}/{len(req_cards)} CURRENT, "
+                f"{split_joined['THIN']} THIN. 19/19 is coverage, not quality."
+            ),
+        },
+        "existing_current_regrade": live_regrade,
+        "would_mint_holdings": sum(1 for c in cards if c["bucket"] == "T0-HOLD" and c["would_mint"]),
+        "would_mint_holdings_current": sum(
+            1 for c in cards if c["bucket"] == "T0-HOLD" and c["would_mint_state"] == "CURRENT"
+        ),
+        "would_mint_holdings_thin": sum(
+            1 for c in cards if c["bucket"] == "T0-HOLD" and c["would_mint_state"] == "THIN"
+        ),
+        "would_mint_reentry": sum(1 for c in cards if c["bucket"] == "reentry" and c["would_mint"]),
         "staging_published": staging_n,
         "staging_path": str(STAGING_EVENTS) if args.apply_staging else None,
         "punchline": (
-            "MOST of the RESEARCH_REQUIRED book can be minted from data already on disk"
-            if len(mintable_holdings) >= 10
-            else "Minting from existing research would NOT cover most of the 19"
+            f"Join gap still {len(mintable_holdings)}/{len(needs)} mintable; "
+            f"quality split joined CURRENT={split_joined['CURRENT']} THIN={split_joined['THIN']}. "
+            "Do not treat 19/19 as a green coverage dashboard."
         ),
         "apply_after": "2026-08-27",
         "cards": cards,

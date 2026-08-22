@@ -14,6 +14,8 @@ AUTHORITY = "READ_ONLY_ADVISORY"
 SCHEMA = "HeldBookThesisCoverage@v1"
 REVISION_SCHEMA = "ThesisRevisionLedger@v1"
 SLA_TARGET_PCT = 100.0
+SLA_TARGET_FRESH_PCT = 90.0
+SLA_TARGET_SUBSTANTIVE_PCT = 70.0
 
 
 def _now() -> str:
@@ -71,7 +73,9 @@ def coverage_row_for_symbol(symbol: str, *, root: Path | None = None) -> dict[st
     except Exception as exc:
         fields = {"thesis_state": "INSUFFICIENT_DATA", "error": type(exc).__name__}
     state = str(fields.get("thesis_state") or "INSUFFICIENT_DATA")
-    current = bool(fields.get("has_current_symbol_thesis")) or state == "CURRENT"
+    current = bool(fields.get("has_current_symbol_thesis")) or state in {
+        "CURRENT", "THIN", "STALE", "CONFLICTED",
+    }
     try:
         from scripts.lib.symbol_thesis_coverage import stale_days_for, row_is_fresh
 
@@ -96,7 +100,7 @@ def coverage_row_for_symbol(symbol: str, *, root: Path | None = None) -> dict[st
         sla_days = fields.get("sla_days")
         age = fields.get("thesis_age_days")
         fresh = bool(fields.get("fresh")) if "fresh" in fields else (
-            state == "CURRENT" and current and age is not None and sla_days is not None
+            state in {"CURRENT", "THIN"} and current and age is not None and sla_days is not None
             and float(age) <= float(sla_days)
         )
         cov_class = fields.get("coverage_class")
@@ -113,9 +117,13 @@ def coverage_row_for_symbol(symbol: str, *, root: Path | None = None) -> dict[st
         "coverage_class": cov_class,
         "fresh": bool(fresh),
         "age_gate_short_circuit": fields.get("age_gate_short_circuit"),
+        "thesis_summary": fields.get("thesis_summary"),
+        "substantiveness_grade": fields.get("substantiveness_grade"),
+        "substantiveness_bucket": fields.get("substantiveness_bucket"),
         "needs_coverage": not current and state in {
-            "RESEARCH_REQUIRED", "INSUFFICIENT_DATA", "STALE", "CONFLICTED", "NONE", ""
+            "RESEARCH_REQUIRED", "INSUFFICIENT_DATA", "NONE", ""
         },
+        "needs_substance": state == "THIN",
     }
 
 
@@ -124,16 +132,27 @@ def build_held_coverage_report(*, root: Path | None = None) -> dict[str, Any]:
     root = root or _project_root()
     held = list_held_tickers(root=root)
     rows = [coverage_row_for_symbol(s, root=root) for s in held]
-    current_n = sum(1 for r in rows if r.get("has_current_symbol_thesis"))
-    fresh_n = sum(1 for r in rows if r.get("fresh"))
+    from scripts.lib.thesis_substantiveness import (
+        coverage_fresh_substantive_pcts,
+        row_is_covered,
+    )
+
+    pcts = coverage_fresh_substantive_pcts(rows)
+    # Recompute fresh from row.fresh (already set) — helper uses the same flag.
+    current_n = sum(1 for r in rows if row_is_covered(r))
+    fresh_n = pcts["fresh_n"]
+    substantive_n = pcts["substantive_n"]
+    thin_n = pcts["thin_n"]
     need = [r for r in rows if r.get("needs_coverage")]
+    need_sub = [r for r in rows if r.get("needs_substance")]
     by_state: dict[str, int] = {}
     for r in rows:
         st = str(r.get("thesis_state") or "NONE")
         by_state[st] = by_state.get(st, 0) + 1
     n = len(rows)
-    coverage_pct = round(100.0 * current_n / n, 2) if n else 0.0
-    fresh_pct = round(100.0 * fresh_n / n, 2) if n else 0.0
+    coverage_pct = pcts["coverage_pct"]
+    fresh_pct = pcts["fresh_pct"]
+    substantive_pct = pcts["substantive_pct"]
     held_equity_ticker_n = n
     try:
         from scripts.lib.holdings_universe import snapshot as hu_snapshot
@@ -144,7 +163,11 @@ def build_held_coverage_report(*, root: Path | None = None) -> dict[str, Any]:
             held_equity_ticker_n = snap_n
     except Exception:
         pass
-    sla_met = coverage_pct >= SLA_TARGET_PCT and fresh_pct >= SLA_TARGET_PCT
+    sla_met = (
+        coverage_pct >= SLA_TARGET_PCT
+        and fresh_pct >= SLA_TARGET_FRESH_PCT
+        and substantive_pct >= SLA_TARGET_SUBSTANTIVE_PCT
+    )
     return {
         "schema": SCHEMA,
         "as_of": _now(),
@@ -152,15 +175,24 @@ def build_held_coverage_report(*, root: Path | None = None) -> dict[str, Any]:
         "held_count": len(rows),
         "held_equity_ticker_n": held_equity_ticker_n,
         "current_count": current_n,
+        "coverage_count": current_n,
         "fresh_count": fresh_n,
+        "substantive_count": substantive_n,
+        "thin_count": thin_n,
         "held_current_pct": coverage_pct,
         "coverage_pct": coverage_pct,
         "fresh_pct": fresh_pct,
+        "substantive_pct": substantive_pct,
         "sla_target_pct": SLA_TARGET_PCT,
+        "sla_target_coverage_pct": SLA_TARGET_PCT,
+        "sla_target_fresh_pct": SLA_TARGET_FRESH_PCT,
+        "sla_target_substantive_pct": SLA_TARGET_SUBSTANTIVE_PCT,
         "sla_met": sla_met,
         "by_state": by_state,
         "needs_coverage": [r["symbol"] for r in need],
         "needs_coverage_n": len(need),
+        "needs_substance": [r["symbol"] for r in need_sub],
+        "needs_substance_n": len(need_sub),
         "rows": rows,
         "root": str(root),
     }
@@ -199,8 +231,14 @@ def write_coverage_report(
             "held_current_pct": report.get("held_current_pct"),
             "coverage_pct": report.get("coverage_pct"),
             "fresh_pct": report.get("fresh_pct"),
+            "substantive_pct": report.get("substantive_pct"),
+            "thin_count": report.get("thin_count"),
+            "substantive_count": report.get("substantive_count"),
             "needs_coverage_n": report.get("needs_coverage_n"),
+            "needs_substance_n": report.get("needs_substance_n"),
             "sla_target_pct": report.get("sla_target_pct"),
+            "sla_target_fresh_pct": report.get("sla_target_fresh_pct"),
+            "sla_target_substantive_pct": report.get("sla_target_substantive_pct"),
             "sla_met": report.get("sla_met"),
         }, sort_keys=True) + "\n")
     # Sibling READY/NEAR report — fail-soft, never mixes into held_count.

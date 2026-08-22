@@ -111,6 +111,24 @@ def test_coverage_stall_quiet_when_thesis_meets_sla(tmp_path):
     assert row["ok"] is True
 
 
+def test_coverage_stall_fires_when_covered_but_thin(tmp_path):
+    """22/22 coverage with 5 PASS must not quiet the stall — that is the fake green."""
+    from scripts.lib.research_lane_health import collect_coverage_stall
+
+    row = collect_coverage_stall(
+        deepseek_ok_24h=545,
+        thesis_current=5,
+        thesis_substantive=5,
+        thesis_coverage=22,
+        thesis_held=22,
+        snap_path=tmp_path / "stall.json",
+        persist=False,
+    )
+    assert row["ok"] is False
+    assert any("thesis_substantive=5/22" in x for x in row["firing"])
+    assert row["thesis_coverage"] == 22
+
+
 def test_pin_hybrid_fires():
     from scripts.lib.current_pin_integrity import evaluate_pin
 

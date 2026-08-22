@@ -102,7 +102,9 @@ def thesis_fields_for_symbol(symbol: str, *, root: Path | str | None = None) -> 
         "memberships": cov.get("memberships") or uni.get("memberships") or [],
         "counter_thesis_state": (
             "PRESENT" if extra.get("counter_evidence") else
-            ("REQUIRED" if cov.get("coverage_state") in ("RESEARCH_REQUIRED", "CONFLICTED", "STALE") else "ABSENT")
+            ("REQUIRED" if cov.get("coverage_state") in (
+                "RESEARCH_REQUIRED", "CONFLICTED", "STALE", "THIN"
+            ) else "ABSENT")
         ),
         "what_would_change": extra.get("what_changes_my_mind") or [],
         "why_owned_or_watched": extra.get("why_owned_or_watched") or "DATA_UNAVAILABLE",
@@ -121,6 +123,8 @@ def thesis_fields_for_symbol(symbol: str, *, root: Path | str | None = None) -> 
         "coverage_class": cov.get("coverage_class"),
         "fresh": bool(cov.get("fresh")),
         "age_gate_short_circuit": cov.get("age_gate_short_circuit"),
+        "substantiveness_grade": cov.get("substantiveness_grade"),
+        "substantiveness_bucket": cov.get("substantiveness_bucket"),
         "authority": "READ_ONLY_ADVISORY",
         "financial_action": False,
     }
@@ -155,7 +159,7 @@ def opportunity_actionability(row: dict[str, Any]) -> str:
     gaps = int(row.get("research_gap_count") or 0)
     if status == "AVOID" or verdict in {"EXIT", "TRIM"}:
         return "AVOID"
-    if thesis_state in {"RESEARCH_REQUIRED", "STALE", "CONFLICTED", "INSUFFICIENT_DATA"} or gaps > 0:
+    if thesis_state in {"RESEARCH_REQUIRED", "STALE", "CONFLICTED", "INSUFFICIENT_DATA", "THIN"} or gaps > 0:
         if status in {"REENTER"} and verdict == "RE_ENTER" and thesis_state == "CURRENT" and gaps == 0:
             return "ACTIONABLE_NOW"
         if status in {"NEAR", "NEAR ENTRY", "IN_ZONE", "READY", "READY TO REVIEW"}:
@@ -187,7 +191,7 @@ def watchlist_materiality(memberships: list[str], *, thesis_state: str, opp_rank
         return "ACTIVE_MATERIAL"
     if "REENTRY" in m or "FORMER_HOLDING" in m:
         return "ACTIVE_MATERIAL"
-    if thesis_state in {"RESEARCH_REQUIRED", "STALE", "CONFLICTED"} and (
+    if thesis_state in {"RESEARCH_REQUIRED", "STALE", "CONFLICTED", "THIN"} and (
         "WATCHLIST" in m or "OPPORTUNITY" in m or "REENTRY" in m
     ):
         # Material membership already returned above; watchlist-only research → flag

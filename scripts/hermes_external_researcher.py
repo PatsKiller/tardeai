@@ -336,6 +336,12 @@ def main():
     ap.add_argument("--apply", action="store_true", help="actually call the external model (default dry-run)")
     ap.add_argument("--force-retest", action="store_true",
                     help="bypass the capability cache and re-attempt a known-blocked lane (e.g. Codex headless)")
+    ap.add_argument("--max-output-tokens", type=int, default=None,
+                    help="sandbox/override only; cron does not pass this. Process registry still caps production.")
+    ap.add_argument("--prompt-file", default=None,
+                    help="sandbox only: replace PROMPT template ({question}/{context} placeholders). Cron unused.")
+    ap.add_argument("--no-store", action="store_true",
+                    help="sandbox: do not INSERT into hermes_external_research")
     args = ap.parse_args()
     if not args.model:
         args.model = LANE_CFG[args.lane]["default_model"]
@@ -366,7 +372,11 @@ def main():
     # .format() breaks on the appended JSON schema's literal {braces} — every call
     # since ~2026-07-02 died with KeyError before reaching any API (lanes "stalled").
     # Placeholder substitution must not interpret the schema as format fields.
-    prompt = PROMPT.replace("{question}", question).replace("{context}", json.dumps(ctx))
+    prompt_template = PROMPT
+    if args.prompt_file:
+        prompt_template = Path(args.prompt_file).read_text(encoding="utf-8")
+    prompt = prompt_template.replace("{question}", question).replace("{context}", json.dumps(ctx))
+    max_out = args.max_output_tokens
 
     print(f"=== Hermes External Researcher — lane={args.lane} model={args.model} apply={args.apply} ===")
     print("REDACTED packet that WOULD be sent:")
@@ -418,7 +428,7 @@ def main():
 
     status, parsed, raw = "sent", {}, ""
     try:
-        raw = call_external(args.lane, args.model, prompt)
+        raw = call_external(args.lane, args.model, prompt, max_tokens=max_out or 1500)
         parsed = parse_external_research_result(raw) or {}
         # Truncated JSON (1024-token cap) stored status=sent with recommendation=NULL.
         # RAW-store health treats empty as an error streak. Keep the prose.
@@ -436,6 +446,21 @@ def main():
         status = ("auth_pending" if "AUTH_PENDING" in msg else
                   "unavailable" if "UNAVAILABLE" in msg else "error")
         parsed = {"recommendation": f"[{status.upper()}] {msg}", "error": msg}
+    if getattr(args, "no_store", False):
+        print(json.dumps({
+            "stored": False,
+            "sandbox": True,
+            "status": status,
+            "symbol": args.symbol,
+            "max_output_tokens": max_out,
+            "recommendation": (parsed.get("recommendation") or "")[:4000],
+            "dissent": parsed.get("dissent"),
+            "evidence": parsed.get("evidence"),
+            "raw_chars": len(raw or ""),
+            "rec_chars": len(str(parsed.get("recommendation") or "")),
+            "raw": (raw or "")[:8000],
+        }, indent=2, default=str))
+        return
     c = psycopg2.connect(host=os.getenv("DB_HOST"), port=os.getenv("DB_PORT"), dbname=os.getenv("DB_NAME"),
                          user=os.getenv("DB_USER"), password=os.getenv("DB_PASSWORD")); cur = c.cursor()
     cur.execute("""INSERT INTO hermes_external_research

@@ -1,7 +1,10 @@
 """Per-symbol living thesis coverage over CIOThesisStore (READ_ONLY_ADVISORY).
 
 Coverage contract — every ACTIVE/MATERIAL symbol resolves to one of:
-  CURRENT | RESEARCH_REQUIRED | STALE | CONFLICTED | RETIRED | INSUFFICIENT_DATA
+  CURRENT | THIN | RESEARCH_REQUIRED | STALE | CONFLICTED | RETIRED | INSUFFICIENT_DATA
+
+CURRENT is PASS-grade (Q1 survivable). THIN cleared the 40-char floor but is not
+a thesis. Both count toward coverage_pct; only CURRENT counts toward substantive_pct.
 
 There is never an unexplained NO RECORD for material symbols.
 
@@ -18,11 +21,19 @@ from typing import Any, Optional
 from scripts.lib.cio_theses import CIOThesisStore, make_pin
 from scripts.lib.portfolio_role import resolve_portfolio_role
 from scripts.lib.symbol_universe import reconcile_universe, MEMBERSHIPS
+from scripts.lib.thesis_substantiveness import (
+    COVERED_STATES,
+    FRESH_STATES,
+    grade_text,
+    row_is_covered,
+    row_is_substantive,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 
 COVERAGE_STATES = (
     "CURRENT",
+    "THIN",
     "RESEARCH_REQUIRED",
     "STALE",
     "CONFLICTED",
@@ -67,6 +78,8 @@ AGE_GATE_SHORT_CIRCUIT_KEYS = (
 
 HELD_SLA_TARGET_PCT = 100.0
 ACTIONABLE_SLA_TARGET_PCT = 100.0
+SLA_TARGET_FRESH_PCT = 90.0
+SLA_TARGET_SUBSTANTIVE_PCT = 70.0
 
 
 def symbol_thesis_id(symbol: str) -> str:
@@ -282,10 +295,11 @@ def age_gate_short_circuit_reason(
 
 
 def row_is_fresh(row: dict[str, Any], *, sla_days: int | None = None) -> bool:
-    """CURRENT and thesis age within class SLA."""
-    if str(row.get("coverage_state") or "") != "CURRENT":
+    """CURRENT or THIN and thesis age within class SLA. Freshness is age, not quality."""
+    st = str(row.get("coverage_state") or "")
+    if st not in FRESH_STATES:
         return False
-    if not row.get("has_current_symbol_thesis"):
+    if not row.get("has_current_symbol_thesis") and st not in COVERED_STATES:
         return False
     age = row.get("thesis_age_days")
     sla = sla_days if sla_days is not None else row.get("sla_days")
@@ -298,24 +312,34 @@ def row_is_fresh(row: dict[str, Any], *, sla_days: int | None = None) -> bool:
 
 
 def coverage_fresh_pcts(rows: list[dict[str, Any]]) -> dict[str, Any]:
-    """Always two numbers: coverage_pct (has thesis) and fresh_pct (CURRENT + in SLA)."""
+    """Three numbers: coverage (CURRENT|THIN|STALE|CONFLICTED), fresh (age), substantive (PASS)."""
     n = len(rows)
     if n == 0:
         return {
             "n": 0,
             "has_current_n": 0,
+            "coverage_n": 0,
             "fresh_n": 0,
+            "substantive_n": 0,
+            "thin_n": 0,
             "coverage_pct": 0.0,
             "fresh_pct": 0.0,
+            "substantive_pct": 0.0,
         }
-    has_current_n = sum(1 for r in rows if r.get("has_current_symbol_thesis"))
+    coverage_n = sum(1 for r in rows if row_is_covered(r))
     fresh_n = sum(1 for r in rows if r.get("fresh") or row_is_fresh(r))
+    substantive_n = sum(1 for r in rows if row_is_substantive(r))
+    thin_n = sum(1 for r in rows if str(r.get("coverage_state") or "") == "THIN")
     return {
         "n": n,
-        "has_current_n": has_current_n,
+        "has_current_n": coverage_n,  # back-compat alias: covered, not PASS
+        "coverage_n": coverage_n,
         "fresh_n": fresh_n,
-        "coverage_pct": round(100.0 * has_current_n / n, 2),
+        "substantive_n": substantive_n,
+        "thin_n": thin_n,
+        "coverage_pct": round(100.0 * coverage_n / n, 2),
         "fresh_pct": round(100.0 * fresh_n / n, 2),
+        "substantive_pct": round(100.0 * substantive_n / n, 2),
     }
 
 
@@ -408,22 +432,38 @@ def _slice_pcts(
         }
     has_current_n = 0
     fresh_n = 0
+    substantive_n = 0
+    thin_n = 0
     for s in slice_symbols:
         r = by_sym.get(s) or {}
-        if r.get("has_current_symbol_thesis"):
+        if row_is_covered(r):
             has_current_n += 1
         if r.get("fresh") or row_is_fresh(r):
             fresh_n += 1
+        if row_is_substantive(r):
+            substantive_n += 1
+        if str(r.get("coverage_state") or "") == "THIN":
+            thin_n += 1
     coverage_pct = round(100.0 * has_current_n / n, 2)
     fresh_pct = round(100.0 * fresh_n / n, 2)
+    substantive_pct = round(100.0 * substantive_n / n, 2)
     return {
         "n": n,
         "has_current_n": has_current_n,
         "fresh_n": fresh_n,
+        "substantive_n": substantive_n,
+        "thin_n": thin_n,
         "coverage_pct": coverage_pct,
         "fresh_pct": fresh_pct,
+        "substantive_pct": substantive_pct,
         "sla_target_pct": sla_target_pct,
-        "sla_met": coverage_pct >= sla_target_pct and fresh_pct >= sla_target_pct,
+        "sla_target_fresh_pct": SLA_TARGET_FRESH_PCT,
+        "sla_target_substantive_pct": SLA_TARGET_SUBSTANTIVE_PCT,
+        "sla_met": (
+            coverage_pct >= sla_target_pct
+            and fresh_pct >= SLA_TARGET_FRESH_PCT
+            and substantive_pct >= SLA_TARGET_SUBSTANTIVE_PCT
+        ),
         "classified_rows": len(rows),
     }
 
@@ -487,11 +527,20 @@ def classify_symbol(
             reason = "symbol_thesis_too_thin"
             research_gaps.append("Expand living thesis: why owned/watched, invalidation, what changes mind")
         else:
-            state = "CURRENT"
-            if sc and age is not None and age > sla_days:
-                reason = f"age_gate_short_circuit_{sc}"
+            graded = grade_text(symbol, summary)
+            if graded["coverage_state"] == "CURRENT":
+                state = "CURRENT"
+                if sc and age is not None and age > sla_days:
+                    reason = f"age_gate_short_circuit_{sc}"
+                else:
+                    reason = "symbol_thesis_fresh"
             else:
-                reason = "symbol_thesis_fresh"
+                state = "THIN"
+                reason = "symbol_thesis_thin:" + ",".join(graded.get("reasons") or ["grade_not_pass"])
+                research_gaps.append(
+                    "Thesis is THIN (cleared 40-char floor, failed PASS): "
+                    "need ticker-specific fact, invalidation, role, numeric fidelity"
+                )
     else:
         # No symbol thesis
         if not material and "WATCHLIST" in memberships and not opp:
@@ -522,11 +571,18 @@ def classify_symbol(
 
     age_out = _age_days((cur or {}).get("published_ts") or (cur or {}).get("updated_ts"))
     fresh = (
-        state == "CURRENT"
+        state in FRESH_STATES
         and bool(cur)
         and age_out is not None
         and age_out <= float(sla_days)
     )
+    graded_extra = {}
+    if cur and state in ("CURRENT", "THIN"):
+        g = grade_text(symbol, (cur.get("summary") or ""))
+        graded_extra = {
+            "substantiveness_grade": g.get("grade"),
+            "substantiveness_bucket": g.get("bucket"),
+        }
 
     return {
         "symbol": symbol.upper(),
@@ -553,9 +609,10 @@ def classify_symbol(
         "reentry_advisory_action": reentry.get("advisory_action"),
         "opportunity_rank": (opp or {}).get("rank") if opp else None,
         "research_gaps": gaps,
-        "research_required": state in ("RESEARCH_REQUIRED", "STALE", "CONFLICTED") or bool(gaps),
+        "research_required": state in ("RESEARCH_REQUIRED", "STALE", "CONFLICTED", "THIN") or bool(gaps),
         "material": bool(material or opp or universe_rec.get("held")),
         "authority": "READ_ONLY_ADVISORY",
+        **graded_extra,
     }
 
 
@@ -606,9 +663,11 @@ def build_coverage_report(
         "authority": "READ_ONLY_ADVISORY",
         "coverage_pct": pcts["coverage_pct"],
         "fresh_pct": pcts["fresh_pct"],
+        "substantive_pct": pcts["substantive_pct"],
         "universe_counts": universe.get("counts"),
         "coverage_counts": {
             "CURRENT": _c("CURRENT"),
+            "THIN": _c("THIN"),
             "RESEARCH_REQUIRED": _c("RESEARCH_REQUIRED"),
             "STALE": _c("STALE"),
             "CONFLICTED": _c("CONFLICTED"),

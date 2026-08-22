@@ -919,7 +919,14 @@ def gate_and_generate(
         proc_out = cfg.get("max_output_tokens")
         proc_in = cfg.get("max_input_tokens")
         req_out = int(max_tokens or (proc_out or 2048))
-        if proc_out is not None:
+        # Sandbox-only: allow a one-shot ceiling above the process cap.
+        # Cron never sets HERMES_SANDBOX_OUTPUT_CEILING. Production stays min(req, proc).
+        sandbox_ceil = os.environ.get("HERMES_SANDBOX_OUTPUT_CEILING", "").strip().lower() in {
+            "1", "true", "yes", "on",
+        }
+        if sandbox_ceil:
+            effective_out = req_out
+        elif proc_out is not None:
             effective_out = min(req_out, int(proc_out))
         else:
             effective_out = req_out
