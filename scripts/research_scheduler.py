@@ -65,7 +65,7 @@ TIER_SLA = {
     "T0-PROP":  (2, 1,  ["local-gemma", "deepseek"]),
     "T1-WATCH": (4, 7,  ["local-gemma", "deepseek"]),       # externals rotated (one per refresh)
     "T2-INCUB": (1, 7,  ["local-gemma", "deepseek"]),       # external only on catalyst
-    "T3-COLD":  (1, 14, ["local-gemma"]),                   # external only on catalyst
+    "T3-COLD":  (1, 14, ["local-gemma", "deepseek"]),       # DeepSeek ONLY on catalyst; no 14d sweep
 }
 TIER_WEIGHT = {"T0-HOLD": 1.0, "T0-PROP": 0.9, "T1-WATCH": 0.6, "T2-INCUB": 0.3, "T3-COLD": 0.1}
 EXTERNAL_LANES = {"deepseek", "claude"}
@@ -893,6 +893,9 @@ def run(mode, apply, budget):
         elif mode == "incubator":
             due = [d for d in due if d["tier"] in ("T2-INCUB",)]
         elif mode == "cold-floor":
+            # DEPRECATED 2026-08-22: 14d T3 sweep. T3 DeepSeek is catalyst-only.
+            # Cron disabled. Manual --mode cold-floor still slices T3 due; ext_lanes
+            # stay empty unless catalyst_signals()[sym] (same T2/T3 gate below).
             due = [d for d in due if d["tier"] == "T3-COLD"][: max(1, len(uni) // COLD_FLOOR_DAYS)]
         for d in due:
             d["reentry_ready_near"] = bool((uni.get(d["symbol"]) or {}).get("reentry_ready_near"))

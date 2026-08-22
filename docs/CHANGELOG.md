@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-08-22 — T3 catalyst-only + S7 retention snapshot
+
+MATURITY_IMPACT: `Research cadence T3 14d sweep → catalyst-only, proven by crontab cold-floor commented and TIER_SLA T3 includes deepseek gated by catalyst`. CURRENT pin not promoted.
+
+- S7: `hermes_external_research` DELETE at 180d via daily 17:00 self-tune. Oldest 2026-06-07 (76d). `llm_consumption_log` has **no** rotation. Nothing under 90d. Snapshot `/home/johnclaw/archives/research-corpus-2026-08-22/`.
+- 94 thesis.changed cards = 47 symbols × 2 mint batches. STRENGTHENS/WEAKENS/INVALIDATES/CONFIRMS = **0**. Mint artifact.
+- T3: add deepseek to lanes; keep catalyst gate; disable cold-floor cron. Projected clock ~312/day vs 545 confirm-run. 50–80 still needs R3.
+- R1 post-#457 QCOM prompt: OUTPUT contract is the thesis; INPUT still has no standing `symbol_thesis`, no what-changed, no operator feedback. Temperature 0.3.
+
 ## 2026-08-22 — Recover the research we already paid for
 
 MATURITY_IMPACT: `Portfolio mgmt substantive_pct 0/22 → joined mint on disk (projected ~12/19 CURRENT of RESEARCH_REQUIRED), proven by data/cio/held_thesis_coverage_latest.json after --apply-live`. Freeze lifted by operator (payload window invalid). CURRENT pin `5e91225a` **not promoted**.
