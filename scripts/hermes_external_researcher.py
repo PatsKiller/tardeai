@@ -106,6 +106,8 @@ given a REDACTED packet (no dollar amounts, account ids, or secrets). Provide a 
 Question: {question}
 Redacted context (JSON): {context}
 
+The recommendation field IS the living thesis (not a one-line call). It must include the ticker, one numbered/symbol-specific fact, invalidation, role, and at least 8 sentences. Do not hide the thesis in evidence[]. JSON contract still required.
+
 """ + build_external_research_json_schema()
 
 
@@ -428,9 +430,9 @@ def main():
 
     status, parsed, raw = "sent", {}, ""
     try:
-        raw = call_external(args.lane, args.model, prompt, max_tokens=max_out or 1500)
+        raw = call_external(args.lane, args.model, prompt, max_tokens=max_out or 4096)
         parsed = parse_external_research_result(raw) or {}
-        # Truncated JSON (1024-token cap) stored status=sent with recommendation=NULL.
+        # Truncated JSON stored status=sent with recommendation=NULL.
         # RAW-store health treats empty as an error streak. Keep the prose.
         if not str(parsed.get("recommendation") or "").strip() and str(raw or "").strip():
             parsed["recommendation"] = str(raw).strip()[:4000]
@@ -466,13 +468,14 @@ def main():
     cur.execute("""INSERT INTO hermes_external_research
         (lane, trigger_reason, priority, symbol, question, redacted_context, model, status,
          recommendation, evidence_json, dissent, confidence, risk_flags, learning_candidate, operator_action,
-         trigger_source, budget_decision, lane_used)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+         trigger_source, budget_decision, lane_used, raw_response)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
         (args.lane, args.trigger, args.priority, args.symbol, question, json.dumps(ctx), args.model, status,
          parsed.get("recommendation"), json.dumps(parsed.get("evidence", [])), parsed.get("dissent"),
          parsed.get("confidence"), json.dumps(parsed.get("risk_flags")), parsed.get("learning_candidate"),
          parsed.get("operator_action"),
-         (args.trigger or "manual").split(":")[0], getattr(args, "budget_decision", "ALLOW"), args.lane))
+         (args.trigger or "manual").split(":")[0], getattr(args, "budget_decision", "ALLOW"), args.lane,
+         str(raw)[:16000]))
     rid = cur.fetchone()[0]; c.commit(); c.close()
     print(f"\nstored hermes_external_research id={rid} status={status}")
     if status == "sent":

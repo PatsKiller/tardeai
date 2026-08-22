@@ -1,6 +1,7 @@
-"""M2 CLI defaults stay production; M3 sweep excludes _archive and does not fall back to root."""
+"""M2 CLI defaults stay unset; M3 sweep excludes _archive and does not fall back to root."""
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -11,10 +12,12 @@ def test_researcher_max_output_tokens_defaults_unset():
     assert '--max-output-tokens", type=int, default=None' in src
     assert "--no-store" in src
     assert "--prompt-file" in src
-    # cron path still 1024
-    reg = (ROOT / "config/llm_process_registry.json").read_text()
-    assert '"id": "hermes_external_research"' in reg
-    assert '"max_output_tokens": 1024' in reg
+    # CLI default remains unset; process registry is the production ceiling (P1 1024->4096).
+    reg = json.loads((ROOT / "config/llm_process_registry.json").read_text())
+    proc = next(p for p in reg["processes"] if p["id"] == "hermes_external_research")
+    assert proc["max_output_tokens"] == 4096
+    assert proc["daily_soft_cap"] == 600
+    assert float(proc["daily_cost_cap_usd"]) == 0.30
     gate = (ROOT / "scripts/lib/llm_consumption.py").read_text()
     assert "HERMES_SANDBOX_OUTPUT_CEILING" in gate
     assert "min(req_out, int(proc_out))" in gate
