@@ -212,10 +212,10 @@
     "tranches": 3
   },
   "oversight_paid": {
-    "_comment": "v8.2 panel \u2014 three paid seats, per-seat models+prices; monthly budget shared. Primary=claude per the CRITICAL_CLOUD standing rule; gpt/xai optional (panel mode diffs them). env LLM_CRITICAL_CLOUD overrides the claude model.",
+    "_comment": "v8.2 panel \u2014 paid seats, per-seat models+prices; monthly budget shared. Primary=claude. NEVER auto-cron: Friday job is ChatGPT OAuth; paid requires scripts/defense_weekly_paid_review.py --apply-paid (operator). env LLM_CRITICAL_CLOUD overrides the claude model.",
     "monthly_budget_usd": 25.0,
     "est_output_tokens": 4000,
-    "weekly_paid_review": true,
+    "weekly_paid_review": false,
     "seats": {
       "paid": {
         "provider": "anthropic",
@@ -244,8 +244,10 @@
     }
   },
   "oversight_free": {
-    "_comment": "Tier-1 free-seat limits \u2014 oversight's share of each OAuth lane's GLOBAL daily quota (the lanes serve Hermes etc. too). Operator-owned.",
-    "daily_per_seat": 5
+    "_comment": "Tier-1 free-seat limits \u2014 oversight's share of each OAuth lane's GLOBAL daily quota (the lanes serve Hermes etc. too). Friday auto weekly uses weekly_auto_seat via llm_lane (ChatGPT OAuth :8646), never a paid key.",
+    "daily_per_seat": 5,
+    "weekly_auto_review": true,
+    "weekly_auto_seat": "chatgpt"
   },
   "operator_suppressions": [
     {

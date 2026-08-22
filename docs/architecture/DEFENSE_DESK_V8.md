@@ -54,5 +54,6 @@ monthly budget; proven to the API door — blocked only by empty Anthropic API c
 (no mock verdicts rendered; pill ④ populates on first funded run). OBJECT interlock
 proven LIVE: ChatGPT objected to the BND trim citing the lint's own tension → stage
 refused → override-ack staged + `oversight_override` in the audit chain. Pills also on
-pair cards (operator ask). weekly_paid_review: config, default OFF — operator decides
-after the first funded run.
+pair cards (operator ask). Friday auto oversight is ChatGPT OAuth (`llm_lane`
+chatgpt, $0). Paid Claude is **manual** (`defense_weekly_paid_review.py --apply-paid`);
+`oversight_paid.weekly_paid_review` stays false so the old cron script cannot auto-spend.

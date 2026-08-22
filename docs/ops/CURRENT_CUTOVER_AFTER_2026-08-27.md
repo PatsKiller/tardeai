@@ -55,6 +55,17 @@ used rebuild. Advisory cache worker has no `AGENT_DECISION_PAYLOAD` and no
   so `emit_advisory_opinion_payload` actually runs. **This can change
   advisory text vs the dirty rebuild branch** — not during burn-in.
 
+## Friday weekly oversight (do not auto-pay)
+
+Crontab `15 18 * * 5` `scripts/defense_weekly_paid_review.py` is **ChatGPT OAuth
+auto**. Paid Claude is operator-only: `--apply-paid`. **Never** add that flag to
+crontab. 2026-08-21 18:16 ET spent $0.396 `claude-opus-4-8` because
+`weekly_paid_review=true` auto-called `run_paid_review`.
+
+Retarget this line to CURRENT with Batch C (after 8/27). Until then the rebuild
+tree must carry the same script/config or 8/28 will spend Opus again. Do not
+promote CURRENT for this during the payload window.
+
 ## Success
 
 - `systemctl --user show UNIT -p WorkingDirectory` is CURRENT for Batch A/B.
