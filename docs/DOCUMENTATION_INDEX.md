@@ -1,5 +1,5 @@
 # Trade AI v12 — Documentation Index
-**Updated:** 2026-08-21 (research lifecycle standard · G.1/I.0/A.1/B.1)
+**Updated:** 2026-08-22 (research tier LLM cadence + confirm-run)
 **Protocol:** All doc changes follow `docs/A1A.md`. Do not add a doc without updating this index.
 **Scope:** Project root = `/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild`
 
@@ -19,6 +19,8 @@
 | `docs/ops/MATURATION_G1_I0_A1_B1_2026-08-21.md` | G.1 quarantine + I.0 tree-pin audit + A.1 off-peak retarget + B.1 producer payload flags | Active |
 | `docs/ops/RESEARCH_LIFECYCLE_STANDARD.md` | **Canonical** research re-research methodology — incremental, change-driven, freshness-based; skip unchanged | Active |
 | `docs/RESEARCH_PRIORITIZATION.md` | Hermes lane/tier SLA (who/when). Execute set = due ∩ lifecycle gate | Active |
+| `docs/ops/RESEARCH_TIER_LLM_CADENCE.md` | **Canonical** five universe tiers, one watchlist research tier (T1-WATCH), S0–S3 vs hygiene 1–3, cron + confirm-run | Active |
+| `docs/ops/LLM_ROUTING_AND_DATA_LAYERS.md` | Two LLM families (scheduler DeepSeek vs 2h OAuth); Telegram DATA_UNAVAILABLE is thesis-slot join | Active |
 | `docs/ops/CIO_PHASE1_2_MEASURE_CLOSEOUT_2026-08-21.md` | Phase 1–2 measure closeout; evening note: 5-day window false start | Active |
 | `docs/ops/AUTONOMOUS_ADVISOR_SESSION_CLOSEOUT_2026-08-20.md` | Session closeout — PR #414–#420 deploys, host proofs, commands, Drive sync notes | Active |
 | `docs/ops/CIO_REENTRY_S3_WIRE_2026-08-20.md` | Reentry → S3 evidence wire (#414) | Active |
