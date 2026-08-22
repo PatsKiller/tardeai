@@ -1,9 +1,9 @@
 # Session closeout — 2026-08-22
 
 **Authority:** READ_ONLY_ADVISORY  
-**CURRENT pin:** `5e91225a` — **not promoted** (freeze 8/21–8/27 close).  
+**CURRENT pin:** `5e91225a` — **not promoted**. Freeze **lifted 2026-08-22** (payload window invalid).  
 **Live research crontab:** `$PROJ=` rebuild. CIO delivery: CURRENT.  
-**Flags:** `RESEARCH_SKIP_GATE` 0 · `MEMORY_BEHAVIOR_INFLUENCE` 0 · `RESEARCH_ALLOW_LOCAL_LLM` 0.  
+**Flags:** `RESEARCH_SKIP_GATE` **1 (crontab prefix; code default 0)** · `MEMORY_BEHAVIOR_INFLUENCE` 0 · `RESEARCH_ALLOW_LOCAL_LLM` 0.  
 **Dollar cap:** `LLM_GLOBAL_DAILY_USD_CAP=0.50` (not raised). Process `hermes_external_research` **600 calls / $0.30**.
 
 This is the **index of findings and fixes** from 2026-08-22. Detail lives in the linked docs. Do not treat the 10:24 coverage snapshot as current DeepSeek counts.
@@ -17,7 +17,7 @@ This is the **index of findings and fixes** from 2026-08-22. Detail lives in the
 | DeepSeek **545 nonempty** / **$0.168934** (confirm-run) | Living thesis CURRENT **3/22 (13.6%)** — DIV, DIVI, JEPI — **unchanged** |
 | T0-HOLD 22/22 · T0-PROP 30/30 · T1 331/331 · reentry 25/25 · T2 141/141 forced · T3 20/20 slice | 19 holdings still `RESEARCH_REQUIRED` |
 
-Research writes `hermes_external_research`. **Nothing mints `symbol_<ticker>` into `cio_theses.jsonl`.** Dry-run: **19/19** of those names would mint **a row** from data already on disk. Coverage was a **join gap**, not a research gap. Quality gate (M1): rec-only **2/19 CURRENT**, joined **12/19 CURRENT**, rest THIN. Live `substantive_pct=0.0` (DIV/DIVI/JEPI re-grade THIN). Mint apply **after 8/27**, and only as CURRENT vs THIN — never a fake-green 19/19.
+Research writes `hermes_external_research`. Mint now reads **joined rec+dissent+evidence**. Rec-only **2/19 CURRENT**, joined **12/19 CURRENT**, rest THIN. Live `substantive_pct` was 0.0 (DIV/DIVI/JEPI re-grade THIN). Storage did not lose the 3,513 chars — they sit in other columns. Join-recoverable **545/545**, gone **0**. Prompt is **amnesiac** (no standing thesis). Skip gate **on** crontab. Live mint writes CURRENT `cio_theses.jsonl`.
 
 Canonical: `docs/ops/RESEARCH_QUALITY_AND_THESIS_GAP_2026-08-22.md`
 
@@ -67,11 +67,15 @@ Never print `0.0:1`. Quote-ineligible → withhold. Long invalidation ≥ price 
 
 ---
 
-## After 8/27 (do not do during freeze)
+## After freeze lift (doing now) vs still after 8/27
 
 | ID | Work |
 |---|---|
-| Thesis mint | Apply `thesis_mint_from_research.py` to **live** `cio_theses.jsonl` as CURRENT vs THIN. Rec-only: 2 CURRENT (AMANX, BAH), 15 THIN, 2 STUB (NOC, PFLT). Dashboard after apply: CURRENT 2/22, THIN 18, STUB 2 — **not** 19/19 and **not** 5/22 grandfathered. |
+| Thesis mint | **Doing now.** Joined mint to live CURRENT `cio_theses.jsonl`. Rec-only 2/19 CURRENT; joined 12/19. No grandfather DIV/DIVI/JEPI. |
+| Skip gate | **On** crontab (`RESEARCH_SKIP_GATE=1`). Ledger empty until Mon 08:00 ET. |
+| Parser/ceiling | **Shipped in git.** Overlay onto rebuild `$PROJ` required for crontab. |
+| Thesis cards | `thesis.changed` desk card path built. Telegram still default off. |
+| R3/R4/G2–G6 | **Not built.** R3 T3-SLA drop needs operator OK. |
 | Telegram T3 | One resolver per field; `?` never renders |
 | Telegram T4 | Bind Thesis/Catalyst to desk + Hermes + `hermes_external_research`; no machine token; sized TRIM needs capital |
 | Telegram T5 | Strip `dec_`/`prod_`/`plan_` from CIO Desk |
