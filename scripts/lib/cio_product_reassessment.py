@@ -477,6 +477,9 @@ def _enqueue_material_product_outbox(
         for card in cards:
             sym = str(card.get("symbol") or "").upper()
             body = render_telegram_card(card)
+            if not (body or "").strip():
+                # T1: inverted invalidation / empty card — do not enqueue.
+                continue
             # Belt-and-suspenders: never enqueue a legacy raw dump body.
             if is_raw_product_dump_body(body):
                 log.warning(

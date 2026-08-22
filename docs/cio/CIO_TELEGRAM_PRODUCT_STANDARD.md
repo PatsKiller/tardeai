@@ -70,6 +70,15 @@ I will notify you when one actually clears the gate.
 
 Do not send this every ten minutes.
 
+## P0 send gates (2026-08-22, freeze window)
+
+Suppression only — `docs/ops/TELEGRAM_FEED_REMEDIATION_2026-08-22.md`.
+
+- Never print `R:R 0.0:1`. Compute from entry/stop/target or print `R:R UNAVAILABLE` and do not mark ACTIONABLE.
+- Long invalidation must be below price (short: above) or **do not send** the card.
+- `Quote: alpaca ❌` / execution-ineligible → withhold the proposal.
+- Markdown parse failure must **edit** the original message (idempotency key), never a second send.
+
 ## Formatting rules (hard)
 
 - No broken Markdown/HTML.

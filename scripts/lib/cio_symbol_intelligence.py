@@ -192,7 +192,11 @@ def assemble_symbol_intelligence(
     price = prod_row.get("current_price") or desk.get("price")
     entry_low = desk.get("entry_low") or prod_row.get("entry_low")
     entry_high = desk.get("entry_high") or prod_row.get("entry_high")
-    stop = desk.get("stop")
+    stop = (
+        prod_row.get("stop")
+        or prod_row.get("invalidation")
+        or desk.get("stop")
+    )
     resistance = None
     if isinstance(desk.get("resistance"), dict):
         resistance = desk["resistance"].get("level")
@@ -345,7 +349,29 @@ def render_telegram_card(obj: dict[str, Any]) -> str:
     """Human Investment Intelligence Card for Telegram (HTML).
 
     READ_ONLY_ADVISORY — escape all dynamic text; never invent prices/theses.
+    T1: inverted invalidation (long stop ≥ price) returns empty — caller must
+    not send. cards_for_product_change filters these out.
     """
+    try:
+        from scripts.lib.telegram_card_gate import intelligence_card_gate, log_suppression
+    except Exception:
+        try:
+            from lib.telegram_card_gate import intelligence_card_gate, log_suppression
+        except Exception:
+            intelligence_card_gate = None  # type: ignore
+            log_suppression = None  # type: ignore
+    if intelligence_card_gate:
+        g = intelligence_card_gate(obj)
+        if not g.get("send"):
+            if log_suppression:
+                log_suppression(
+                    "invalidation_contradicts_price",
+                    symbol=obj.get("symbol"),
+                    decision_id=(obj.get("object_id") or obj.get("change", {}).get("kind")),
+                    reason=g.get("reason") or "",
+                    extra=g.get("invalidation"),
+                )
+            return ""
     obj = obj if isinstance(obj, dict) else {}
     sym = str(obj.get("symbol") or "—").upper()
     change = obj.get("change") if isinstance(obj.get("change"), dict) else {}
@@ -454,16 +480,24 @@ def cards_for_product_change(
         sym = str(it.get("symbol") or "").upper()
         if not sym or sym in seen:
             continue
-        seen.add(sym)
-        out.append(
-            assemble_symbol_intelligence(
-                sym,
-                change_item=it,
-                product=product,
-                parent=parent,
-                root=root,
-            )
+        card = assemble_symbol_intelligence(
+            sym,
+            change_item=it,
+            product=product,
+            parent=parent,
+            root=root,
         )
+        try:
+            from scripts.lib.telegram_card_gate import intelligence_card_gate
+        except Exception:
+            try:
+                from lib.telegram_card_gate import intelligence_card_gate
+            except Exception:
+                intelligence_card_gate = None  # type: ignore
+        if intelligence_card_gate and not intelligence_card_gate(card).get("send"):
+            continue
+        seen.add(sym)
+        out.append(card)
         if len(out) >= max_cards:
             break
     return out

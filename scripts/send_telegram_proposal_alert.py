@@ -241,23 +241,22 @@ def main():
                 result["destination"] = redact_telegram_destination(dest)
 
                 from telegram_alert import send_telegram
-                # Use dedicated chat_id if available, with optional thread_id
-                import requests
+                from telegram_transport import send_message as _tg_send
                 token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
                 if dest.get("chat_id") and token:
                     keyboard = build_proposal_inline_keyboard(packet)
-                    payload = {"chat_id": dest["chat_id"], "text": message, "parse_mode": "Markdown"}
-                    if keyboard:
-                        payload["reply_markup"] = json.dumps(keyboard)
-                    if dest.get("thread_id"):
-                        payload["message_thread_id"] = int(dest["thread_id"])
-                    resp = requests.post(f"https://api.telegram.org/bot{token}/sendMessage", json=payload, timeout=10)
-                    ok = resp.ok
-                    if not ok:
-                        # Retry without Markdown (keep buttons)
-                        payload.pop("parse_mode", None)
-                        resp2 = requests.post(f"https://api.telegram.org/bot{token}/sendMessage", json=payload, timeout=10)
-                        ok = resp2.ok
+                    # T2: one send (or edit). Markdown parse failure must not
+                    # post a second plaintext copy.
+                    resp = _tg_send(
+                        token=token,
+                        chat_id=str(dest["chat_id"]),
+                        text=message,
+                        parse_mode="Markdown",
+                        reply_markup=keyboard,
+                        thread_id=str(dest["thread_id"]) if dest.get("thread_id") else None,
+                        idempotency_key=check.get("idempotency_key"),
+                    )
+                    ok = bool(resp.get("ok"))
                 else:
                     ok = send_telegram(message)  # Fallback to default
 

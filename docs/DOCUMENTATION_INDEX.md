@@ -20,6 +20,7 @@
 | `docs/ops/RESEARCH_LIFECYCLE_STANDARD.md` | **Canonical** research re-research methodology — incremental, change-driven, freshness-based; skip unchanged | Active |
 | `docs/RESEARCH_PRIORITIZATION.md` | Hermes lane/tier SLA (who/when). Execute set = due ∩ lifecycle gate | Active |
 | `docs/ops/RESEARCH_TIER_LLM_CADENCE.md` | **Canonical** five universe tiers, one watchlist research tier (T1-WATCH), S0–S3 vs hygiene 1–3, cron + confirm-run | Active |
+| `docs/ops/TELEGRAM_FEED_REMEDIATION_2026-08-22.md` | Telegram audit 18,130 msgs — P0 T1/T2 shipped; T3–T7 after 8/27 | Active |
 | `docs/ops/LLM_ROUTING_AND_DATA_LAYERS.md` | Two LLM families (scheduler DeepSeek vs 2h OAuth); Telegram DATA_UNAVAILABLE is thesis-slot join | Active |
 | `docs/ops/CIO_PHASE1_2_MEASURE_CLOSEOUT_2026-08-21.md` | Phase 1–2 measure closeout; evening note: 5-day window false start | Active |
 | `docs/ops/AUTONOMOUS_ADVISOR_SESSION_CLOSEOUT_2026-08-20.md` | Session closeout — PR #414–#420 deploys, host proofs, commands, Drive sync notes | Active |

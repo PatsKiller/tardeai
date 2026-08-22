@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-08-22 — Telegram P0 card gates (T1/T2)
+
+MATURITY_IMPACT: live metric `data/cio/telegram_p0_suppress.jsonl` count by `rule` (quote_fail, invalidation_contradicts_price). Freeze-safe: **suppression only**, no new feeds/producers. CURRENT not promoted.
+
+- T1: R:R from entry/stop/target (never `0.0:1`); quote-fail withholds proposal; inverted invalidation suppresses IIC.
+- T2: transport retries **edit** the original (`idempotency_key`); no markdown→plaintext second send.
+- T3–T7 (join, IDs, four-feed split, 30/day) queued after 8/27. `docs/ops/TELEGRAM_FEED_REMEDIATION_2026-08-22.md`.
+
 ## 2026-08-22 — Watchlist/research tiers + LLM cadence (confirm-run)
 
 MATURITY_IMPACT: NONE (docs). Live metric n/a. Freeze 8/21–8/27: no CURRENT promote, no flag flips.

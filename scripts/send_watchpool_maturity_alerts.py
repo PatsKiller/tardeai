@@ -93,7 +93,6 @@ def main():
         if not args.dry_run:
             try:
                 from telegram_alert_routing_policy import telegram_destination_for_alert
-                import requests
                 for line in Path(PROJ / '.env').read_text().splitlines():
                     if '=' in line and not line.strip().startswith('#'):
                         k, v = line.split('=', 1)
@@ -101,13 +100,18 @@ def main():
                 dest = telegram_destination_for_alert(packet)
                 token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
                 if dest.get("chat_id") and token:
-                    payload = {"chat_id": dest["chat_id"], "text": message, "parse_mode": "Markdown"}
-                    r = requests.post(f"https://api.telegram.org/bot{token}/sendMessage", json=payload, timeout=10)
-                    if not r.ok:
-                        payload.pop("parse_mode", None)
-                        r = requests.post(f"https://api.telegram.org/bot{token}/sendMessage", json=payload, timeout=10)
-                    result["sent"] = r.ok
-                    sent_count += 1 if r.ok else 0
+                    from telegram_transport import send_message as _tg_send
+                    from lib.telegram_card_gate import idempotency_key as _ikey
+                    resp = _tg_send(
+                        token=token,
+                        chat_id=str(dest["chat_id"]),
+                        text=message,
+                        parse_mode="Markdown",
+                        idempotency_key=_ikey("watchpool", c.get("symbol"), check.get("key")),
+                    )
+                    r_ok = bool(resp.get("ok"))
+                    result["sent"] = r_ok
+                    sent_count += 1 if r_ok else 0
             except Exception as e:
                 result["error"] = str(e)[:80]
             _log_alert(check["key"], c["symbol"], alert_type, result["sent"], "sent" if result["sent"] else "error")
