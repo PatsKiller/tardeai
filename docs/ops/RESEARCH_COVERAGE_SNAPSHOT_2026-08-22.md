@@ -3,6 +3,8 @@
 **Authority:** READ_ONLY_ADVISORY  
 **Financial action:** none  
 **CURRENT pin:** `5e91225a` (not promoted for this). Live research crontab is still `$PROJ=` rebuild.  
+**This note is the 10:24 ET snapshot.** Confirm-run **11:05–12:43 ET the same day** DeepSeek’d T0-HOLD 22/22, T0-PROP 30/30, T1-WATCH 331/331 (reentry 25/25), T2 141/141 (forced), T3 20-slice. Canonical ladder + spend: `docs/ops/RESEARCH_TIER_LLM_CADENCE.md`. Counts below are **pre-confirm-run**.
+
 **This note did not exist until now.** Friday–Saturday work documented oversight (#445) and Drive; it did **not** write this coverage picture. Parse errors were **not** fixed until this PR.
 
 **Why holdings look OAuth-first / why Telegram says DATA_UNAVAILABLE:**
@@ -48,7 +50,7 @@ Denominator: `held_equity_tickers()` = AMANX ARKX BAH BND CSWC DIV DIVI DXCM JEP
 |---|---|---|---|
 | ChatGPT | **22/22** | 21/22 | all 22 |
 | Grok | **22/22** | 17/22 | all 22 |
-| DeepSeek | **1/22** (SCHD Fri 18:40) | 1 | — |
+| DeepSeek | **1/22 at 10:24** (SCHD Fri 18:40). **22/22 after 11:10 confirm-run** | 1 at snapshot | — |
 
 SRNE last ok **2026-08-13** (still inside 14d). Worthless/revoked; not a gap in the 14d window.
 
@@ -64,17 +66,13 @@ Artifact `data/cio/held_thesis_coverage_latest.json` as_of 2026-08-21 11:20 ET:
 
 This is a different store. External research ≠ thesis. `RESEARCH_SKIP_GATE` still 0, so the skip index is not the reason theses are missing.
 
-### 3. Reentry READY/NEAR — **in universe, not freshly researched**
+### 3. Reentry READY/NEAR — joins T1-WATCH (no new tier)
 
-25 names join T1-WATCH (no new tier). Scheduler `--mode watchlist` only auto-dispatches **`deepseek`** (plus local-gemma, which is off). DeepSeek is dead → T1/reentry starve.
-
-Never a non-error external row: **FSPTX, LGPS, MOGU, WLDS, XCUR**.
-
-Others last ran June–early August (TSLA 7/01, CACI 8/03, CSCO 8/12). None this week. **Do not auto-backfill.**
+25 names. At 10:24 DeepSeek was dead → starve. **Confirm-run 11:14 ET: 25/25 DeepSeek** (ids 46035–46059), including FSPTX, LGPS, MOGU, WLDS, XCUR. Same cadence as the rest of T1, not T0 3×/day.
 
 ### 4. T1-WATCH
 
-332 symbols. Any-lane ok in 14d: **153**. Miss: **179**. Same cause: T1 rotates one DeepSeek call; OAuth is not on that lane list; local LLM off.
+332 at snapshot / **331** live `load_universe`. At 10:24 any-lane ok in 14d: **153**, miss **179**. **Confirm-run: 331/331 DeepSeek today.** Cron `--mode watchlist` still only **50**/run M–F 20:30; Saturday full book was manual.
 
 ## `holdings_llm_refresh` parse_error — not fixed until this PR
 

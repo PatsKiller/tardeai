@@ -53,9 +53,9 @@ Every tracked symbol gets the **highest tier it qualifies for**:
 |------|-----------|--------|
 | **T0-HOLD** | open positions (real money) | `data/portfolios/state/holdings.json` |
 | **T0-PROP** | active proposals (PENDING/APPROVED) | `paper_trade_proposals` |
-| **T1-WATCH** | top-N Hermes-ranked + operator watch directives | `hermes_score_history`, `watch_directives` |
+| **T1-WATCH** | top-N Hermes-ranked + operator watch directives + reentry READY/NEAR | `hermes_score_history`, `watch_directives`, reentry desk |
 | **T2-INCUB** | incubator / recently-proposed candidates | `paper_trade_proposals` (21d) |
-| **T3-COLD** | rest of the profiled universe (~600) | `symbol_profiles` |
+| **T3-COLD** | rest of the profiled universe (~2500) | `symbol_profiles` |
 
 **Scope-governor binding (Phase 1, 2026-07-02,** [`docs/design/HERMES_MATURITY_5_DESIGN.md`](design/HERMES_MATURITY_5_DESIGN.md)**):**
 one governor owns research scope too — a symbol the scope governor archived
@@ -67,8 +67,9 @@ DeepSeek V4 Flash lane. Grok OAuth stays non-auto (hourly duplicate Telegram noi
 the US-overnight judgment lane (`hermes_deep_research_local`, 22:00–06:00 ET) — not a scheduler skeptic.
 Claude remains manual arbitration-only. T1's one-external-per-refresh pick still resolves to DeepSeek.
 
-Live split (2026-08-21, `research_scheduler.load_universe()` after CASH excluded from T0):
-**T0-HOLD = held equity tickers (22)** · T0-PROP ~31 · **T1-WATCH ~253** (post-cutover; the old “~83 watchlist” line was pre-cutover leftover) · T2-INCUB ~167 · T3-COLD ~2587.
+Live split (2026-08-22, `research_scheduler.load_universe()` after CASH excluded from T0):
+**T0-HOLD = 22** · T0-PROP **30** · **T1-WATCH 331** (rank ≤200 + directives + reentry READY/NEAR 25) · T2-INCUB **141** · T3-COLD **2537**.
+How/when each is LLM’d: `docs/ops/RESEARCH_TIER_LLM_CADENCE.md`.
 
 Holdings.json has 34 rows / 26 unique symbols including 5 CASH account rows and 3 $0 CUSIPs. Coverage denominator is **22 tickers** (`holdings_universe.held_equity_tickers`). Do not count CASH as a thesis name.
 

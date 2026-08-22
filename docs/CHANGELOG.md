@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-08-22 — Watchlist/research tiers + LLM cadence (confirm-run)
+
+MATURITY_IMPACT: NONE (docs). Live metric n/a. Freeze 8/21–8/27: no CURRENT promote, no flag flips.
+
+- **One** watchlist *research* tier: `T1-WATCH`. Five universe tiers total (T0-HOLD / T0-PROP / T1-WATCH / T2-INCUB / T3-COLD). Reentry READY/NEAR joins T1. Hermes S0–S3 and directive hygiene 1–3 are **not** LLM queues.
+- Confirm-run (manual Saturday, ignore standing $0.50 in-process; process cap restored 120 / $0.30): T0-HOLD **22/22**, T0-PROP **30/30**, T1 **331/331** (reentry **25/25**), T2 **141/141** (forced vs production catalyst-only), T3 **20/20** slice not 2537. `hermes_external_research` **$0.168934**.
+- Canonical: `docs/ops/RESEARCH_TIER_LLM_CADENCE.md`.
+
 ## 2026-08-21 — DecisionPayload landing + Drive silent-shape + post-window cutover plan
 
 MATURITY_IMPACT: measurement. Live metric = `data/cio/agent_run_traces.jsonl`

@@ -56,9 +56,9 @@ Live, a **second family** still calls ChatGPT/Grok every two hours.
 | Sun | `--mode incubator` | T2 | deepseek only on catalyst |
 
 Trigger written: `research_scheduler`.  
-Last 3d: **912 error / 1 ok**. That is why T1, reentry, and scheduler-path holdings are **not** DeepSeek-covered.
+Through Fri 2026-08-21: **912 error / 1 ok** (`lib.llm_lane` then `COST_CONFIGURATION_INVALID`). **2026-08-22 confirm-run (manual, Saturday):** T0-HOLD **22/22**, T0-PROP **30/30**, T1-WATCH **331/331** (reentry READY/NEAR **25/25**), T2 **141/141** (forced; production is catalyst-only), T3 **20/20** cold-floor slice. Spend `hermes_external_research` **$0.168934**. Full ladder: `docs/ops/RESEARCH_TIER_LLM_CADENCE.md`.
 
-Intended order for a T0 holding on this family: DeepSeek first (metered, cheap, auto). OAuth is **not on this list**.
+Intended order for a T0 holding on this family: DeepSeek first (metered, cheap, auto). OAuth is **not on this list**. Cron M–F only — Saturday coverage was the confirm-run, not crontab.
 
 ### Family B — OAuth enhancement fleet (ChatGPT `:8646` + Grok `:8645`)
 
