@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-08-22 — Session closeout (findings + fixes index)
+
+MATURITY_IMPACT: NONE (docs). Pointer: `docs/ops/SESSION_CLOSEOUT_2026-08-22.md`.
+Lane-health overnight section rewritten: timer is US ChatGPT 22:00–06:00 ET (#453), not China-night gemma.
+
 ## 2026-08-22 — Research quality sample + thesis-mint dry-run + alarm holes
 
 MATURITY_IMPACT: live metric `data/runtime/research_lane_health.json` `firing` includes `coverage-stall`; systemd lane-health **exit 0** when the check ran. Freeze: staging mint only, no live `cio_theses.jsonl`.

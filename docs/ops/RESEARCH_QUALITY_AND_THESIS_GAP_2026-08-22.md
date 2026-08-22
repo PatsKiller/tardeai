@@ -2,7 +2,8 @@
 
 **Authority:** READ_ONLY_ADVISORY  
 **Freeze:** no live thesis store writes, no CURRENT promote, no card wiring. Q2 apply after 8/27.  
-**Proof artifacts:** `data/cio/research_quality_sample_2026-08-22.json`, `data/cio/thesis_mint_dryrun_2026-08-22.json`
+**Proof artifacts:** `data/cio/research_quality_sample_2026-08-22.json`, `data/cio/thesis_mint_dryrun_2026-08-22.json`  
+**Session index:** `docs/ops/SESSION_CLOSEOUT_2026-08-22.md`
 
 ## The number
 
