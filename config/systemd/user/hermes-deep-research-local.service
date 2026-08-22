@@ -5,7 +5,7 @@ After=network-online.target cio-governed-bridge.service
 [Service]
 Type=oneshot
 WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
-ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/hermes_deep_research_local.py --apply --max-rows 3 --model gemma3:27b
+ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/hermes_deep_research_local.py --apply --max-rows 3 --model chatgpt
 TimeoutStartSec=3600
 Environment=PATH=/usr/local/bin:/usr/bin:/bin
 Environment=PYTHONUNBUFFERED=1

@@ -1,11 +1,9 @@
 [Unit]
-Description=Hermes Deep Research — China-night calendar (US-day dry) + US overnight ChatGPT OAuth
+Description=Hermes Deep Research — US overnight ChatGPT OAuth (policy 22:00-06:00 ET)
 
 [Timer]
-# Offset +25m. Same China night 18:00-09:00 Asia/Shanghai (US daytime; script dry-runs).
-OnCalendar=*-*-* 18,19,20,21,22,23,00,01,02,03,04,05,06,07,08:35:00 Asia/Shanghai
-# US overnight (22:00–05:40 America/New_York): ChatGPT OAuth, not gemma (operator 2026-08-21).
-OnCalendar=*-*-* 22,23,00,01,02,03,04,05:40:00 America/New_York
+# Was China-night Asia/Shanghai (US daytime dry-run, targets=[]). Retarget 2026-08-22.
+OnCalendar=*-*-* 22,23,00,01,02,03,04,05:35:00 America/New_York
 Persistent=true
 RandomizedDelaySec=60
 AccuracySec=1min

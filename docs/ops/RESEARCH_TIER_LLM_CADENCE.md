@@ -35,7 +35,7 @@ Highest membership wins (`load_universe`). SLA “due” ≠ execute. `RESEARCH_
 | **T0-PROP** | Active paper proposals | `paper_trade_proposals` PENDING/APPROVED | **DeepSeek** when due in `priority` (T0 always candidate) | **2× / 1 day** | `priority` budget **40** | **M–F hourly 10:00–16:00 ET** | **30/30** |
 | **T1-WATCH** | **The watchlist hot set** | Hermes rank ≤ 200 **or** active ticker directive **or** reentry READY/NEAR | **DeepSeek**, **one** external per refresh | **4× / 7 days** | `watchlist` budget **50**; also `priority` if due/catalyst | **M–F 20:30 ET** sweep; **M–F 10–16** if due | **331/331** (incl. reentry **25/25** ids 46035–46059) |
 | **T2-INCUB** | Incubator / proposed last 21d | `incubator_universe` + recent proposals | **DeepSeek only if catalyst** | **1× / 7 days** | `incubator` budget **30** | **Sunday 19:00 ET** | **141/141** confirm-run (production remains catalyst-only) |
-| **T3-COLD** | Rest of `symbol_profiles` | leftover after higher tiers | **No DeepSeek** unless catalyst. Local listed, **off** | **1× / 14 days** | `cold-floor` budget **20** rotating | **Daily 10:00 ET** (`run_with_deepseek_offpeak.sh`) | **20/20 slice** (not 2537) |
+| **T3-COLD** | Rest of `symbol_profiles` | leftover after higher tiers | **No DeepSeek** unless catalyst. Local listed, **off** | **Was published 1×/14d; that needed ~181/day. Production was 20/day = ~127d cycle (fiction).** After 2026-08-22: process call cap **600**/day, cold-floor budget **180**/day, dollar cap **$0.50**. 180×14≈2520 ≈ universe. Cost ~$0.056/day at $0.000313/call. | `cold-floor` budget **180** rotating | **Daily 10:00 ET** | confirm-run **20/20 slice** (not 2537) |
 
 Process cap: `hermes_external_research` **120 calls / $0.30**/day in `config/llm_process_registry.json`. Cron budgets are per-run. Standing global cap **$0.50** (not a raise). Bitwarden SM render at `/run/user/1000/tradeai/env` **omits** the cap and wipes appends on re-render. Live crontab now prefixes `env LLM_GLOBAL_DAILY_USD_CAP=0.50` on all six `research_scheduler` jobs so Monday cron does not fail-close `COST_CONFIGURATION_INVALID`. Sidecar `~/.config/tradeai/llm_global_daily_usd_cap.env` is the same 0.50.
 
@@ -85,7 +85,7 @@ Saturday/Sunday: **no** holdings / priority / watchlist DeepSeek unless someone 
 30 12,16 * * 1-5  --mode holdings   --budget 70
 0 10-16 * * 1-5  --mode priority   --budget 40   # T0 + due T1 + catalyst
 30 20 * * 1-5     --mode watchlist  --budget 50   # T1-WATCH only (≤50/run)
-0 10 * * *       --mode cold-floor --budget 20   # T3 slice 20
+0 10 * * *       --mode cold-floor --budget 180  # T3 ~14d cycle (was 20 = 127d fiction)
 0 19 * * 0       --mode incubator  --budget 30   # T2 Sunday
 ```
 

@@ -24,9 +24,13 @@ SCHEMA = "ResearchLaneHealth@v1"
 EXTERNAL_AUTO_LANES = ("deepseek", "grok", "chatgpt")
 EXTERNAL_MANUAL_LANES = ("claude",)
 OVERNIGHT_LANE = "overnight-deep"
+COVERAGE_STALL_LANE = "coverage-stall"
 
 DEFAULT_STREAK = 5
 DEFAULT_SILENCE_HOURS = 24
+# DeepSeek must stay in the watched set even when ok. Silence on weekdays only
+# would false-fire Saturday after a Friday success — coverage-stall is the
+# "research happened, brain did not learn" alarm.
 
 
 def error_streak_n() -> int:
@@ -165,6 +169,102 @@ def load_overnight_rows(*, since: datetime, limit: int = 50) -> tuple[list[dict]
     return newest, last_24h
 
 
+def _deepseek_ok(lanes: list[dict[str, Any]]) -> int:
+    for r in lanes:
+        if r.get("lane") == "deepseek":
+            try:
+                return int(r.get("non_error_24h") or 0)
+            except (TypeError, ValueError):
+                return 0
+    return 0
+
+
+def collect_coverage_stall(
+    *,
+    now: Optional[datetime] = None,
+    deepseek_ok_24h: int = 0,
+    thesis_current: Optional[int] = None,
+    thesis_held: Optional[int] = None,
+    snap_path: Optional[Any] = None,
+    persist: bool = True,
+) -> dict[str, Any]:
+    """Fire when research rows arrive and living thesis CURRENT does not move.
+
+    Today (2026-08-22): 545 DeepSeek ok, held CURRENT still 3/22. That fires.
+    """
+    now = now or datetime.now(timezone.utc)
+    from pathlib import Path
+    root = _project_root()
+    if snap_path is None:
+        snap_path = root / "data" / "runtime" / "coverage_stall_snapshot.json"
+    snap_path = Path(snap_path)
+    if thesis_current is None or thesis_held is None:
+        try:
+            from scripts.lib.cio_held_thesis_coverage import build_held_coverage_report
+            cov = build_held_coverage_report(root=root)
+            thesis_current = int(cov.get("current_count") or 0)
+            thesis_held = int(cov.get("held_count") or 0)
+        except Exception:
+            try:
+                p = Path("/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/data/cio/held_thesis_coverage_latest.json")
+                if p.is_file():
+                    import json
+                    d = json.loads(p.read_text())
+                    thesis_current = int(d.get("current_count") or 0)
+                    thesis_held = int(d.get("held_count") or 0)
+            except Exception:
+                pass
+    prev = {}
+    try:
+        import json
+        if snap_path.is_file():
+            prev = json.loads(snap_path.read_text()) or {}
+    except Exception:
+        prev = {}
+    prev_research = int(prev.get("deepseek_ok_24h") or 0)
+    prev_thesis = prev.get("thesis_current")
+    firing: list[str] = []
+    if (
+        deepseek_ok_24h >= 20
+        and thesis_current is not None
+        and thesis_held
+        and thesis_current < max(1, int(0.8 * thesis_held))
+        and (prev_thesis is None or int(prev_thesis) <= thesis_current)
+        and deepseek_ok_24h >= prev_research
+    ):
+        firing.append(
+            f"research_up_thesis_flat:deepseek_ok_24h={deepseek_ok_24h}"
+            f",thesis_current={thesis_current}/{thesis_held}"
+        )
+    rec = {
+        "lane": COVERAGE_STALL_LANE,
+        "ok": not firing,
+        "firing": firing,
+        "error_streak": 0,
+        "non_error_24h": deepseek_ok_24h,
+        "attempts_24h": deepseek_ok_24h,
+        "thesis_current": thesis_current,
+        "thesis_held": thesis_held,
+        "prev_deepseek_ok_24h": prev_research,
+        "prev_thesis_current": prev_thesis,
+        "authority": AUTHORITY,
+        "as_of": now.replace(microsecond=0).isoformat(),
+    }
+    if persist:
+        try:
+            import json
+            snap_path.parent.mkdir(parents=True, exist_ok=True)
+            snap_path.write_text(json.dumps({
+                "as_of": rec["as_of"],
+                "deepseek_ok_24h": deepseek_ok_24h,
+                "thesis_current": thesis_current,
+                "thesis_held": thesis_held,
+            }, indent=2) + "\n")
+        except OSError:
+            pass
+    return rec
+
+
 def collect_report(*, now: Optional[datetime] = None) -> dict[str, Any]:
     now = now or datetime.now(timezone.utc)
     since = now - timedelta(hours=silence_hours())
@@ -198,6 +298,10 @@ def collect_report(*, now: Optional[datetime] = None) -> dict[str, Any]:
         except Exception:
             from drive_sync_health import collect_drive_report  # type: ignore
         lanes.append(collect_drive_report(now=now))
+    if os.getenv("RESEARCH_LANE_HEALTH_COVERAGE_STALL", "1").strip().lower() not in {
+        "0", "false", "off", "no"
+    }:
+        lanes.append(collect_coverage_stall(now=now, deepseek_ok_24h=_deepseek_ok(lanes)))
     firing = [r for r in lanes if not r["ok"]]
     return {
         "schema": SCHEMA,
