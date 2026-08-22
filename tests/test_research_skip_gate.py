@@ -334,3 +334,50 @@ def test_summarize_rates(tmp_path):
     assert out["by_code"][SKIP_UNCHANGED] == 1
     assert out["by_code"][RESEARCH_EXECUTED] == 1
     assert out["metered_skipped"] == 1
+
+
+def test_skip_gate_code_default_stays_zero():
+    sched = (ROOT / "scripts/research_scheduler.py").read_text()
+    ledger = (ROOT / "scripts/lib/research_skip_ledger.py").read_text()
+    assert 'os.getenv("RESEARCH_SKIP_GATE", "0")' in sched
+    assert 'os.getenv("RESEARCH_SKIP_GATE", "0")' in ledger
+
+
+def test_skip_gate_report_missing(tmp_path, monkeypatch, capsys):
+    import research_skip_gate_report as rpt
+
+    monkeypatch.setenv("RESEARCH_SKIP_LEDGER_PATH", str(tmp_path / "missing.jsonl"))
+    assert rpt.main() == 0
+    assert capsys.readouterr().out.strip() == "ledger empty / gate off"
+
+
+def test_skip_gate_report_empty_file(tmp_path, monkeypatch, capsys):
+    import research_skip_gate_report as rpt
+
+    p = tmp_path / "research_skip_ledger.jsonl"
+    p.write_text("")
+    monkeypatch.setenv("RESEARCH_SKIP_LEDGER_PATH", str(p))
+    assert rpt.main() == 0
+    assert capsys.readouterr().out.strip() == "ledger empty / gate off"
+
+
+def test_skip_gate_report_counts_by_code(tmp_path, monkeypatch, capsys):
+    import research_skip_gate_report as rpt
+
+    p = tmp_path / "research_skip_ledger.jsonl"
+    append_entry(source_id="symbol:A:lane:deepseek", code=SKIP_UNCHANGED, symbol="A",
+                 lane="deepseek", reason="hash", metered=True, path=p)
+    append_entry(source_id="symbol:A:lane:deepseek", code=SKIP_UNCHANGED, symbol="A",
+                 lane="deepseek", reason="hash", metered=True, path=p)
+    append_entry(source_id="symbol:B:lane:deepseek", code=RESEARCH_EXECUTED, symbol="B",
+                 lane="deepseek", reason="changed", metered=True, path=p)
+    monkeypatch.setenv("RESEARCH_SKIP_LEDGER_PATH", str(p))
+    assert rpt.main() == 0
+    out = capsys.readouterr().out
+    assert "SKIP_UNCHANGED" in out
+    assert "RESEARCH_EXECUTED" in out
+    assert "ledger empty / gate off" not in out
+    data = json.loads(out[: out.rfind("}") + 1])
+    assert data["by_code"][SKIP_UNCHANGED] == 2
+    assert data["by_code"][RESEARCH_EXECUTED] == 1
+    assert data["total"] == 3

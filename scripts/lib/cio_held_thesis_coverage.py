@@ -6,6 +6,7 @@ Reuses symbol_thesis_attach / acquisition — does not invent theses.
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
@@ -319,6 +320,90 @@ def run_held_coverage_acquire(
 
 
 # ── Thesis revision ledger (Phase 1 stub for Phase 2 catalyst loop) ─────────
+
+
+LIVE_CIO = Path("/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT") / "data" / "cio"
+THESIS_CHANGE_SCHEMA = "ThesisChangeCard@v1"
+
+
+def thesis_change_card_path(root: Path | None = None) -> Path:
+    env = (os.getenv("THESIS_CHANGE_CARDS_PATH") or "").strip()
+    if env:
+        return Path(env)
+    if root is not None:
+        return Path(root) / "data" / "cio" / "thesis_change_cards.jsonl"
+    if os.getenv("PYTEST_CURRENT_TEST"):
+        return _project_root() / "data" / "cio" / "thesis_change_cards.jsonl"
+    return LIVE_CIO / "thesis_change_cards.jsonl"
+
+
+def write_thesis_change_card(
+    *,
+    symbol: str,
+    thesis_id: str,
+    version: int,
+    kind: str,
+    summary: str,
+    mint_state: str | None = None,
+    grade: str | None = None,
+    root: Path | None = None,
+    emit_bus: bool = True,
+) -> dict[str, Any]:
+    """Operator-visible CIO Desk card for a thesis mint/upgrade/downgrade/invalidate.
+
+    Always appends thesis_change_cards.jsonl. Event-bus emit is skipped under
+    pytest unless CIO_THESIS_BUS=1. Telegram stays on CIOThesisStore.notify
+    (CIO_THESIS_TELEGRAM default off).
+    """
+    kind = (kind or "revised").lower()
+    if kind not in ("minted", "upgraded", "downgraded", "invalidated", "revised"):
+        kind = "revised"
+    card = {
+        "schema": THESIS_CHANGE_SCHEMA,
+        "ts": _now(),
+        "kind": kind,
+        "symbol": (symbol or "").upper(),
+        "thesis_id": thesis_id,
+        "version": int(version or 1),
+        "mint_state": mint_state,
+        "grade": grade,
+        "summary": (summary or "").strip().replace("\n", " ")[:400],
+        "authority": AUTHORITY,
+        "notify": {
+            "desk_card": True,
+            "telegram": "CIO_THESIS_TELEGRAM (default off)",
+        },
+    }
+    path = thesis_change_card_path(root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(card, sort_keys=True, default=str) + "\n")
+    if emit_bus and (
+        os.getenv("CIO_THESIS_BUS") == "1" or not os.getenv("PYTEST_CURRENT_TEST")
+    ):
+        try:
+            from scripts.lib.cio_event_bus import CIOEventBus
+
+            bus_root = path.parent
+            bus = CIOEventBus(
+                bus_path=str(bus_root / "cio_events.jsonl"),
+                cursor_path=str(bus_root / "cio_event_cursors.jsonl"),
+            )
+            bus.emit(
+                "thesis.changed",
+                {
+                    "symbol": card["symbol"],
+                    "thesis_id": thesis_id,
+                    "version": card["version"],
+                    "kind": kind,
+                    "mint_state": mint_state,
+                },
+                source="thesis_mint_from_research",
+                semantic_event_key=f"thesis.changed|{thesis_id}|v{card['version']}|{kind}",
+            )
+        except Exception:
+            pass
+    return card
 
 
 def revision_ledger_path(root: Path | None = None) -> Path:

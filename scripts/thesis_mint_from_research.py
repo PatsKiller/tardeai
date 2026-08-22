@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
-"""Q2 — dry-run mint living symbol theses from EXISTING stores. No new LLM.
+"""Q2 — mint living symbol theses from EXISTING stores. No new LLM.
 
 Sources: hermes_external_research + holdings role + Hermes rank + reentry desk.
-Writes ONLY to data/cio/staging/ (not live cio_theses.jsonl).
-Apply to live store after 8/27.
+Default write is staging: data/cio/staging/ (not live cio_theses.jsonl).
+--apply-live is opt-in and writes CIOThesisStore default paths
+(data/cio/cio_theses.jsonl) after a huge warning. Do not pass it by accident.
+
+Mint grade is JOINED rec+dissent+evidence (g_mint). Report JSON still
+publishes both rec-only and joined splits.
 
 READ_ONLY_ADVISORY.
 """
@@ -12,12 +16,29 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 STAGING_EVENTS = ROOT / "data/cio/staging/symbol_thesis_mint_dryrun.jsonl"
 STAGING_PROJ = ROOT / "data/cio/staging/symbol_thesis_mint_dryrun_projection.json"
+# Live store is the shared CURRENT/rebuild jsonl (inode 3064869), not the worktree.
+LIVE_ROOT = Path("/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT")
+LIVE_EVENTS = LIVE_ROOT / "data/cio/cio_theses.jsonl"
+LIVE_PROJ = LIVE_ROOT / "data/cio/cio_theses_projection.json"
+
+LIVE_APPLY_WARNING = """
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+WARNING: --apply-live WRITES TO THE LIVE CIO THESIS STORE
+  CURRENT/data/cio/cio_theses.jsonl
+  CURRENT/data/cio/cio_theses_projection.json
+(shared inode with rebuild). This is append-only, operator-visible,
+and NOT the default. Default remains staging (--apply-staging).
+Do not use this flag unless you intend to mint living symbol theses
+into the live store.
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+"""
 
 
 def _strip_fence(text: str) -> str:
@@ -83,14 +104,101 @@ def _hermes_rank(conn, symbols: list[str]) -> dict[str, int]:
         return {}
 
 
+def _mint_extra(card: dict, *, dry_run: bool, apply_live: bool) -> dict:
+    return {
+        "source_research_id": card["research_id"],
+        "source_lane": card["research_lane"],
+        "dry_run": dry_run,
+        "apply_live": apply_live,
+        "substantiveness": "PASS" if card["would_mint_state"] == "CURRENT" else "THIN",
+        "substantiveness_grade": (
+            card.get("grade_mint") or card["grade_joined"] or card["grade_rec_only"]
+        ),
+        "grade_rec_only": card["grade_rec_only"],
+        "grade_joined": card["grade_joined"],
+        "mint_state": card["would_mint_state"],
+        "mint_grade_source": card.get("mint_grade_source"),
+    }
+
+
+def _kind_for_card(card: dict) -> str:
+    live = (card.get("live_regrade") or card.get("live_state") or "").upper()
+    nxt = (card.get("would_mint_state") or "").upper()
+    if live in ("", "UNKNOWN", "RESEARCH_REQUIRED", "REENTRY"):
+        return "minted"
+    if live == "THIN" and nxt == "CURRENT":
+        return "upgraded"
+    if live == "CURRENT" and nxt == "THIN":
+        return "downgraded"
+    if nxt == "SKIP":
+        return "invalidated"
+    return "revised"
+
+
+def _publish_mint_cards(
+    cards: list,
+    store,
+    *,
+    notify: bool,
+    dry_run: bool,
+    apply_live: bool,
+    actor_id: str,
+    change_note: str,
+    emit_desk_card: bool = False,
+) -> int:
+    from scripts.lib.symbol_thesis_coverage import symbol_thesis_id
+    from scripts.lib.cio_held_thesis_coverage import write_thesis_change_card
+
+    n_pub = 0
+    for card in cards:
+        if not card["would_mint"]:
+            continue
+        tid = symbol_thesis_id(card["symbol"])
+        rec = store.publish(
+            card["would_say"],
+            thesis_id=tid,
+            stance="hold" if card["bucket"] == "T0-HOLD" else "watch",
+            owner_agent="system",
+            actor_id=actor_id,
+            change_note=change_note,
+            extra=_mint_extra(card, dry_run=dry_run, apply_live=apply_live),
+            notify=notify,
+        )
+        if emit_desk_card:
+            write_thesis_change_card(
+                symbol=card["symbol"],
+                thesis_id=tid,
+                version=int((rec or {}).get("version") or 1),
+                kind=_kind_for_card(card),
+                summary=card["would_say"],
+                mint_state=card.get("would_mint_state"),
+                grade=card.get("grade_mint"),
+            )
+        n_pub += 1
+    return n_pub
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply-staging", action="store_true",
                     help="Write staging JSONL (still not live thesis store)")
+    ap.add_argument(
+        "--apply-live",
+        action="store_true",
+        help=(
+            "DANGER: write to live CURRENT/data/cio/cio_theses.jsonl "
+            "(data/cio/cio_theses.jsonl). Default remains staging. "
+            "Prints a huge warning. Opt-in only. Do not use during freeze."
+        ),
+    )
     ap.add_argument("--out", default=str(ROOT / "data/cio/thesis_mint_dryrun_2026-08-22.json"))
     args = ap.parse_args()
 
-    import os, sys
+    if args.apply_live:
+        print(LIVE_APPLY_WARNING, file=sys.stderr)
+        print(LIVE_APPLY_WARNING)
+
+    import os
     sys.path.insert(0, str(ROOT))
     sys.path.insert(0, str(ROOT / "scripts"))
     os.chdir(str(ROOT))
@@ -98,7 +206,6 @@ def main() -> int:
     from db_adapter import _get_conn
     from research_scheduler import load_universe, load_reentry_ready_near_symbols
     from scripts.lib.cio_held_thesis_coverage import build_held_coverage_report
-    from scripts.lib.symbol_thesis_coverage import symbol_thesis_id
     from scripts.lib.portfolio_role import resolve_portfolio_role
     from scripts.lib.thesis_substantiveness import grade_text, join_research_text, mint_state_for
 
@@ -127,10 +234,9 @@ def main() -> int:
         g_rec = grade_text(sym, summary_rec)
         g_joined = grade_text(sym, summary_joined)
         mint_body = summary_joined or summary_rec
-        # Grade the stored recommendation, not joined evidence. Joined may
-        # lift a later refresh; minting CURRENT from evidence the store
-        # truncated is the fake-green this gate exists to stop.
-        g_mint = g_rec
+        # P2: grade JOINED rec+dissent+evidence for would_mint_state / extra.
+        # Rec-only and joined splits stay in the report JSON.
+        g_mint = g_joined if summary_joined else g_rec
         mint_state = mint_state_for(g_mint)
         would = mint_state in ("CURRENT", "THIN")
         role = resolve_portfolio_role(sym, universe_rec=uni.get(sym) or {}, root=CURRENT)
@@ -154,11 +260,14 @@ def main() -> int:
             "state_rec_only": g_rec.get("coverage_state"),
             "grade_joined": g_joined.get("grade"),
             "state_joined": g_joined.get("coverage_state"),
+            "grade_mint": g_mint.get("grade"),
+            "mint_grade_source": "joined" if summary_joined else "rec_only",
             "would_mint_state": mint_state if would else "SKIP",
             "would_mint_current": mint_state == "CURRENT",
             "would_mint_thin": mint_state == "THIN",
             "would_mint": would,
-            "would_say": mint_body[:400],
+            "would_say": mint_body,
+            "would_say_preview": mint_body[:400],
             "blockers": [] if would else ["no_nonempty_external_research_or_summary_lt_40"],
             "grade_reasons": g_mint.get("reasons") or [],
         }
@@ -166,38 +275,40 @@ def main() -> int:
         if sym in needs and would:
             mintable_holdings.append(sym)
 
+    staging_n = 0
+    live_n = 0
     if args.apply_staging:
         from scripts.lib.cio_theses import CIOThesisStore
         if STAGING_EVENTS.exists():
             STAGING_EVENTS.unlink()
         if STAGING_PROJ.exists():
             STAGING_PROJ.unlink()
-        store = CIOThesisStore(event_path=STAGING_EVENTS, projection_path=STAGING_PROJ)
-        n_pub = 0
-        for card in cards:
-            if not card["would_mint"]:
-                continue
-            store.publish(
-                card["would_say"],
-                thesis_id=symbol_thesis_id(card["symbol"]),
-                stance="hold" if card["bucket"] == "T0-HOLD" else "watch",
-                owner_agent="system",
-                actor_id="thesis_mint_dryrun",
-                change_note="DRY_RUN mint from hermes_external_research — not live",
-                extra={
-                    "source_research_id": card["research_id"],
-                    "source_lane": card["research_lane"],
-                    "dry_run": True,
-                    "substantiveness": "PASS" if card["would_mint_state"] == "CURRENT" else "THIN",
-                    "substantiveness_grade": card["grade_joined"] or card["grade_rec_only"],
-                    "mint_state": card["would_mint_state"],
-                },
-                notify=False,
-            )
-            n_pub += 1
-        staging_n = n_pub
-    else:
-        staging_n = 0
+        staging_store = CIOThesisStore(event_path=STAGING_EVENTS, projection_path=STAGING_PROJ)
+        # P4: staging stays silent. notify=False
+        staging_n = _publish_mint_cards(
+            cards,
+            staging_store,
+            notify=False,
+            dry_run=True,
+            apply_live=False,
+            actor_id="thesis_mint_dryrun",
+            change_note="DRY_RUN mint from hermes_external_research — not live",
+        )
+    if args.apply_live:
+        from scripts.lib.cio_theses import CIOThesisStore
+        # Never unlink live jsonl — append-only. Default CIOThesisStore paths.
+        live_store = CIOThesisStore(event_path=LIVE_EVENTS, projection_path=LIVE_PROJ)
+        # P4: live apply uses CIOThesisStore.publish notify=True + desk card
+        live_n = _publish_mint_cards(
+            cards,
+            live_store,
+            notify=True,
+            dry_run=False,
+            apply_live=True,
+            actor_id="thesis_mint_from_research",
+            change_note="LIVE mint from hermes_external_research (joined rec+dissent+evidence)",
+            emit_desk_card=True,
+        )
 
     req_cards = [c for c in cards if c["symbol"] in needs]
     live_current_cards = [
@@ -253,12 +364,17 @@ def main() -> int:
         "would_mint_reentry": sum(1 for c in cards if c["bucket"] == "reentry" and c["would_mint"]),
         "staging_published": staging_n,
         "staging_path": str(STAGING_EVENTS) if args.apply_staging else None,
+        "apply_live": bool(args.apply_live),
+        "live_published": live_n,
+        "live_path": str(LIVE_EVENTS) if args.apply_live else None,
+        "notify": bool(args.apply_live),
         "punchline": (
             f"Join gap still {len(mintable_holdings)}/{len(needs)} mintable; "
             f"quality split joined CURRENT={split_joined['CURRENT']} THIN={split_joined['THIN']}. "
             "Do not treat 19/19 as a green coverage dashboard."
         ),
-        "apply_after": "2026-08-27",
+        "apply_after": "2026-08-22",
+        "freeze_lifted": True,
         "cards": cards,
     }
     out = Path(args.out)

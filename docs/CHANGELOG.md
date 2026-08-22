@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-08-22 — Recover the research we already paid for
+
+MATURITY_IMPACT: `Portfolio mgmt substantive_pct 0/22 → joined mint on disk (projected ~12/19 CURRENT of RESEARCH_REQUIRED), proven by data/cio/held_thesis_coverage_latest.json after --apply-live`. Freeze lifted by operator (payload window invalid). CURRENT pin `5e91225a` **not promoted**.
+
+- S1: columns are TEXT. recommendation p50=230/p90=500/max=4000. No VARCHAR(500). `data_i_doubt` never stored. Parser slices were the loss, not the schema.
+- S2: `raw_response TEXT` migrated, 0 historical rows. #449 fallback put 50 raw dumps into `recommendation` (first 2026-08-22 11:05).
+- S3: today 545 — (a) join-recoverable **545/545**, (b) raw-in-rec 50, (c) gone **0**. Joined CURRENT 474/545 vs rec-only 111. 30d n=546.
+- S4: parser 4000, raw always, ceiling 4096, recommendation IS the thesis. Overlay onto rebuild `$PROJ` still required for crontab.
+- S5: mint reads rec+dissent+evidence. Rec-only 2/19 CURRENT; joined 12/19. No grandfather DIV/DIVI/JEPI.
+- S6: do not re-call. Re-parse 50 dumps for free.
+- S7: retention 180 days.
+- R1: QCOM prompt has no `symbol_thesis`, no what-changed, no trend, no operator feedback. Temperature 0.3. Amnesiac re-ask.
+- R2: trigger was SLA due. Live crontab now `RESEARCH_SKIP_GATE=1` (code default still 0). Ledger empty until Mon 08:00 ET.
+- P4: `thesis.changed` CIO Desk card (`thesis_change_cards.jsonl` + event bus). Telegram still default off.
+- R3/R4/G2–G6: not built. T3 14-day SLA is what makes 545/day; 50–80/day needs operator OK to drop it.
+
 ## 2026-08-22 — Burn-in is four surfaces or it is not a burn-in
 
 MATURITY_IMPACT: `Reasoning payload-coverage → four-surface emit + change-gated reentry, proven by agent_run_traces.jsonl DecisionPayload@v1 by surface` (watch/holdings/advisory/opportunity no longer structurally zero). Freeze-safe: write-only traces, flag-gated, no decision semantics.
