@@ -5,6 +5,14 @@ often** — so every tracked symbol is refreshed at least *X* times per *Y* days
 event-awareness. This governs **all** research lanes (local gemma, overnight deep, external OAuth,
 web/topic, catalyst, news), not just the external skeptics.
 
+**LIVE vs this policy (read first):** `docs/ops/LLM_ROUTING_AND_DATA_LAYERS.md`.
+Scheduler auto-external is DeepSeek-only. Holdings still get ChatGPT/Grok from
+`hermes_top20_external_intel.py` (trigger labeled `holdings`) every 2h — that is
+**not** “DeepSeek first.” T1/reentry only have the scheduler path, so they starve
+while DeepSeek is red. Telegram `DATA_UNAVAILABLE` is a **thesis-slot join**, not
+missing quotes (technicals are already on the same card). SearXNG is up and not
+wired into that slot.
+
 **Lifecycle gate (canonical):** `docs/ops/RESEARCH_LIFECYCLE_STANDARD.md`. Research is incremental,
 change-driven, and freshness-based. An SLA “due” symbol is a **candidate**. Execute only if the source
 changed, freshness expired, or an operator/event trigger fired. Unchanged in-date work is reused
