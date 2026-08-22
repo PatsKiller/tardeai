@@ -271,9 +271,51 @@ DIV/DIVI/JEPI are CURRENT because **joined research now PASSES**, not because th
 
 Raw column empty for history. Tried to re-parse the 50 #449 dumps in `recommendation`: **0/50 parse**. They are truncated at 4000 chars mid-JSON (`endswith 'han 1 day old, treat'`). Join already grades them; structured split needs a re-call. 50 × $0.000313 ≈ **$0.016** — not spent. Do not re-call the other 495. Full 545 would be ~$0.17.
 
-### S7 — Retention
+### S7 — Retention (answered with job, dates, counts)
 
-`HERMES_EXTERNAL_RETENTION_DAYS` default **180**. Nothing expires under 90 days.
+| Store | Job | Policy | Oldest row | Rows older than 90d | Under 90d expiry? |
+|---|---|---|---|---:|---|
+| `hermes_external_research` (incl. `raw_response`) | `hermes_autonomous_self_tune.py --apply` **daily 17:00 ET** `DELETE … created_at < NOW() - 180d` | `HERMES_EXTERNAL_RETENTION_DAYS` default **180**, no `.env` override | **2026-06-07** (~76d) | **0** | **no** |
+| `raw_response` column | same table / same DELETE | 180d | 6 nonempty rows, all tonight (post-overlay) | 0 | no |
+| `llm_consumption_log` | **none** — not in `db_retention.py` POLICIES, not in crontab | unbounded | 2026-07-08 | **0** | **no** |
+| `hermes_research_intelligence` | same self-tune, 180d, only `status IN (rejected,superseded,expired)` | 180d | 2026-05-30 | 0 | no |
+
+`db_retention.py` is **not on crontab** (destructive, EXCLUDED). Last self-tune tonight 17:00: `external_purged=0`. Next run **Sun 17:00 ET**. First 180d cutoff for current oldest row ≈ **2026-12-04**.
+
+Nothing expires under 90 days. Snapshot taken anyway because there is no historical raw: `/home/johnclaw/archives/research-corpus-2026-08-22/` (`hermes_external_research.dump` 31MB, `llm_consumption_log.dump`, theses jsonl).
+
+### S7b — 94 `thesis.changed` cards are a mint backfill
+
+`CURRENT/data/cio/thesis_change_cards.jsonl`: **94 cards, 47 symbols, 2 batches** (22:14:06Z v1 400-char stub + 22:14:46–47Z full remint). Telegram off.
+
+| Verdict | n |
+|---|---:|
+| STRENGTHENS | **0** |
+| WEAKENS | **0** |
+| INVALIDATES | **0** |
+| CONFIRMS | **0** |
+| minted / revised / upgraded | 69 / 13 / 12 |
+
+The field does not exist. P4 fires on mint, not a delta contract. **Do not page.** 5 strongest WEAKENS/INVALIDATES: **none**. Most negative mint bodies (LMT, AMANX, SPCX, SCHG, MOGU) are first impressions, not revisions.
+
+### T3 catalyst-only (approved)
+
+Live T3 DeepSeek today: **30 rows**, not 181. T3 SLA lanes were `local-gemma` only — **catalyst could not call DeepSeek**. The 181/day figure was policy math. Cold-floor cron queued local-gemma (`budget=20` in last log).
+
+Shipped: `T3-COLD` lanes include `deepseek`; existing gate `T2/T3 and not catalyst → ext_lanes=[]` is the safety net. **Cold-floor crontab commented out.**
+
+Projected DeepSeek/day (clock, skip-gate off, no confirm-run):
+
+| Tier | Rule | Calls/day |
+|---|---|---:|
+| T0-HOLD | 22 × 3 | 66 |
+| T0-PROP | 30 × 2 | 60 |
+| T1-WATCH | 325 × 4/7 | ~186 |
+| T2-INCUB | catalyst only (already) | ~0–5 |
+| T3-COLD | catalyst only (now) | ~0–5 |
+| **Total** | | **~312–322** |
+
+Skip-gate (on, unmeasured until Mon 08:00) cuts the T0 3×/day when hash unchanged. 50–80/day still needs R3 (ATR/catalyst/14d floor on T0+T1), not just T3.
 
 ### R1 — Prompt is amnesiac (QCOM dump)
 

@@ -25,6 +25,7 @@ from scripts.lib.research_source_index import (
 from scripts.lib.research_skip_ledger import append_entry, summarize_rates
 from scripts.lib.holdings_universe import is_held_equity_ticker
 from scripts.research_scheduler import (
+    TIER_SLA,
     _is_symbol,
     allow_local_research_llm,
     lanes_for,
@@ -247,6 +248,15 @@ def test_missing_reentry_file_fail_soft(tmp_path, monkeypatch):
     assert load_reentry_ready_near_symbols(root=tmp_path) == []
     uni = load_universe(root=tmp_path)
     assert uni == {}
+
+
+def test_t3_deepseek_listed_but_catalyst_gated():
+    """T3 may call DeepSeek on catalyst; the 14d sweep is not the safety net."""
+    assert "deepseek" in TIER_SLA["T3-COLD"][2]
+    src = (ROOT / "scripts/research_scheduler.py").read_text()
+    assert 'if tier in ("T2-INCUB", "T3-COLD") and not catalyst:' in src
+    assert "ext_lanes = []" in src
+    assert "DEPRECATED 2026-08-22: 14d T3 sweep" in src
 
 
 def test_allow_local_research_llm_default_off(monkeypatch):

@@ -75,7 +75,7 @@ Never print `0.0:1`. Quote-ineligible → withhold. Long invalidation ≥ price 
 | Skip gate | **On** crontab (`RESEARCH_SKIP_GATE=1`). Ledger empty until Mon 08:00 ET. |
 | Parser/ceiling | **Shipped in git.** Overlay onto rebuild `$PROJ` required for crontab. |
 | Thesis cards | `thesis.changed` desk card path built. Telegram still default off. |
-| R3/R4/G2–G6 | **Not built.** R3 T3-SLA drop needs operator OK. |
+| T3 catalyst-only | **Done.** Cold-floor cron disabled. DeepSeek on T3 only if catalyst. |
 | Telegram T3 | One resolver per field; `?` never renders |
 | Telegram T4 | Bind Thesis/Catalyst to desk + Hermes + `hermes_external_research`; no machine token; sized TRIM needs capital |
 | Telegram T5 | Strip `dec_`/`prod_`/`plan_` from CIO Desk |
