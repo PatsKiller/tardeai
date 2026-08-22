@@ -5,6 +5,9 @@
 **CURRENT pin:** `5e91225a` (not promoted for this). Live research crontab is still `$PROJ=` rebuild.  
 **This note did not exist until now.** Friday–Saturday work documented oversight (#445) and Drive; it did **not** write this coverage picture. Parse errors were **not** fixed until this PR.
 
+**Why holdings look OAuth-first / why Telegram says DATA_UNAVAILABLE:**
+`docs/ops/LLM_ROUTING_AND_DATA_LAYERS.md`.
+
 Flags unchanged: `RESEARCH_SKIP_GATE` unset/0 · `MEMORY_BEHAVIOR_INFLUENCE` unset/0 · `RESEARCH_ALLOW_LOCAL_LLM` unset/0.
 
 ## Are all LLM lanes working?
