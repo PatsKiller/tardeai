@@ -68,6 +68,35 @@ The three names that were "CURRENT" were paragraphs, not theses. `substantive_pc
 
 **2/19 rec-only, 12/19 joined.** That is the number to remember, not 19/19. 19/19 is coverage after a join. Joined mint would land ~15/22 holdings CURRENT (68%) — shy of the 70% substantive target. Staging only: `data/cio/staging/symbol_thesis_mint_dryrun.jsonl`. Live `cio_theses.jsonl` untouched.
 
+### Q1 — the other 5 of 19 (there is no unlabeled remainder)
+
+The 2 CURRENT / 12 THIN mix came from stacking rec-only CURRENT (2) with joined CURRENT (12). Those are two different grades of the same 19, not CURRENT+THIN. Rec-only (what the mint now uses — stored `recommendation`, not joined evidence):
+
+| Bucket | n | Names |
+|---|---:|---|
+| CURRENT (A / PASS) | **2** | AMANX, BAH |
+| THIN/B | 11 | ARKX, BND, CSWC, DXCM, LDOS, QCOM, SPCX, SRNE, XAR, XLB, XLI |
+| THIN/C (sub-300 / missing needles) | 4 | RTX, SCHD, SCHG, V |
+| **STUB/F** (ungradeable stored rec) | **2** | NOC 17 chars, PFLT 7 chars |
+
+2+11+4+2 = 19. THIN total = 15. STUB = do not mint; stay `RESEARCH_REQUIRED`.
+
+### Q2 — dashboard after mint is not 19/19 and not 5/22 grandfathered
+
+Mint grade is rec-only. Quality gate still runs on read for **everyone**, including the existing 3 (DIV, DIVI, JEPI fail PASS → THIN). Grandfathering those 3 as CURRENT would hide the thing the gate caught.
+
+After rec-only mint apply (still after 8/27):
+
+| Tile | n | % |
+|---|---:|---:|
+| CURRENT (PASS) | 2/22 | **9.1** (AMANX, BAH) |
+| THIN | 18/22 | 81.8 (15 minted + 3 existing) |
+| RESEARCH_REQUIRED / STUB | 2/22 | 9.1 (NOC, PFLT) |
+| coverage_pct (CURRENT\|THIN) | 20/22 | 90.9 |
+| substantive_pct | 2/22 | 9.1 |
+
+5/22 = 22.7% only if we counted the existing 3 as CURRENT. We will not. `sla_met` stays false. The 19/19 green tile cannot happen.
+
 Coverage-stall now fires on **PASS count < 70% of held**, not row-exists. A 22/22 THIN mint with 5 PASS still fires.
 
 ## M2 — 320 chars is the stored field, not Flash.

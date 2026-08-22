@@ -87,6 +87,9 @@ def evaluate_drive_sync(
         # The silent-failure shape: cron "completed" with 0 uploads and N 404s.
         if failed > 0 and uploaded == 0 and status == "done":
             firing.append(f"zero_uploaded_with_failures:{failed}")
+        # CURRENT pin behind origin/main: sweep "green" while shipping stale docs.
+        if str(raw.get("source_status") or "") == "DEGRADED_STALE_SOURCE":
+            firing.append("DEGRADED_STALE_SOURCE")
     return {
         "lane": "drive-sync",
         "ok": not firing,

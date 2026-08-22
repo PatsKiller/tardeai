@@ -127,7 +127,10 @@ def main() -> int:
         g_rec = grade_text(sym, summary_rec)
         g_joined = grade_text(sym, summary_joined)
         mint_body = summary_joined or summary_rec
-        g_mint = g_joined if summary_joined else g_rec
+        # Grade the stored recommendation, not joined evidence. Joined may
+        # lift a later refresh; minting CURRENT from evidence the store
+        # truncated is the fake-green this gate exists to stop.
+        g_mint = g_rec
         mint_state = mint_state_for(g_mint)
         would = mint_state in ("CURRENT", "THIN")
         role = resolve_portfolio_role(sym, universe_rec=uni.get(sym) or {}, root=CURRENT)

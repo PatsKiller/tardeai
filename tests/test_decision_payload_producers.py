@@ -21,10 +21,13 @@ from scripts.lib.agent_decision_payload import (  # noqa: E402
     count_decision_payloads,
     emit_advisory_opinion_payload,
     emit_decision_payload,
+    emit_holdings_health_payload,
+    emit_opportunity_promote_payload,
     emit_reentry_operator_payloads,
     emit_telegram_decision_payload,
     emit_watch_alert_payload,
     payload_from_advisory_opinion,
+    payload_from_holdings_health,
     payload_from_reentry_row,
     payload_from_watch_alert,
     ticker_or_unavailable,
@@ -191,6 +194,38 @@ def test_flag_on_reentry_valid_payload(tmp_path):
     actions = {r["decision"]["current_action"] for r in rows}
     assert "READY" in actions
     assert "NEAR" in actions
+
+
+def test_reentry_skips_unchanged_reemission(tmp_path):
+    tp = tmp_path / "traces.jsonl"
+    fp = tmp_path / "fp.json"
+    rows = [_ready_row("UBER", "READY TO REVIEW")]
+    first = emit_reentry_operator_payloads(
+        rows, flags=_on(), path=tp, fingerprint_path=fp, heartbeat_hours=4,
+    )
+    second = emit_reentry_operator_payloads(
+        rows, flags=_on(), path=tp, fingerprint_path=fp, heartbeat_hours=4,
+    )
+    assert first["emitted"] == 1
+    assert second["emitted"] == 0
+    assert second["skipped_unchanged"] == 1
+
+
+def test_holdings_and_opportunity_surfaces(tmp_path):
+    tp = tmp_path / "traces.jsonl"
+    assert "holdings" in VALID_SURFACES
+    h = emit_holdings_health_payload(
+        {"symbol": "SCHD", "action": "HOLD", "health": "STABLE", "confidence": 0.7},
+        flags=_on(), path=tp,
+    )
+    assert h["emitted"] is True
+    o = emit_opportunity_promote_payload(
+        symbol="RKLB", status="PROMOTED", source="cio", flags=_on(), path=tp,
+    )
+    assert o["emitted"] is True
+    rows = [json.loads(l) for l in tp.read_text().splitlines() if l.strip()]
+    surfs = {r["decision"]["surface"] for r in rows}
+    assert surfs == {"holdings", "opportunity"}
 
 
 def test_flag_on_watch_valid_payload(tmp_path):

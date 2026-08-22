@@ -275,8 +275,18 @@ def refresh_one(conn, holding, dry_run=False):
         conn.commit()
 
         log.info(f"  {symbol}: health={health} action={action} conf={confidence} model={model}")
-        return {'symbol': symbol, 'status': 'refreshed', 'health': health,
+        out = {'symbol': symbol, 'status': 'refreshed', 'health': health,
                 'action': action, 'confidence': confidence, 'model': model}
+        try:
+            from lib.agent_decision_payload import emit_holdings_health_payload
+            emit_holdings_health_payload(out)
+        except Exception:
+            try:
+                from scripts.lib.agent_decision_payload import emit_holdings_health_payload
+                emit_holdings_health_payload(out)
+            except Exception:
+                pass
+        return out
 
     except Exception as e:
         log.warning(f"  {symbol}: refresh failed — {e}")

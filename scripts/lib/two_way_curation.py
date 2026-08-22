@@ -684,6 +684,22 @@ def drain_curation_sources(cur, dry: bool, report: Dict[str, Any],
                     st = res.get("status")
                     report["promoted"] = report.get("promoted", 0) + (1 if st == "PROMOTED" else 0)
                     report["staged"] = report.get("staged", 0) + (1 if st == "STAGED_FOR_REVIEW" else 0)
+                    if st in ("PROMOTED", "STAGED_FOR_REVIEW"):
+                        try:
+                            from lib.agent_decision_payload import emit_opportunity_promote_payload
+                            emit_opportunity_promote_payload(
+                                symbol=str(sym), status=str(st), source=str(source),
+                            )
+                        except Exception:
+                            try:
+                                from scripts.lib.agent_decision_payload import (
+                                    emit_opportunity_promote_payload,
+                                )
+                                emit_opportunity_promote_payload(
+                                    symbol=str(sym), status=str(st), source=str(source),
+                                )
+                            except Exception:
+                                pass
                     report["detail"].append({"source": source, "symbol": sym, "status": st,
                                              "directive": label, "surfaced_by": SURFACED_BY.get(source, source)})
                     if st not in TERMINAL_PROMOTE_STATUSES:

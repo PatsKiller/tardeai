@@ -168,6 +168,21 @@ def test_drive_sync_raw_404_shape_fires():
     assert missing["ok"] is False
     assert "missing_result_file" in missing["firing"]
 
+    stale_src = evaluate_drive_sync(
+        {
+            "status": "done",
+            "finished_utc": "2026-08-21T22:31:54Z",
+            "uploaded": 26,
+            "skipped": 2069,
+            "failed": 0,
+            "exit_code": 0,
+            "source_status": "DEGRADED_STALE_SOURCE",
+        },
+        now=now,
+    )
+    assert stale_src["ok"] is False
+    assert "DEGRADED_STALE_SOURCE" in stale_src["firing"]
+
     healthy = evaluate_drive_sync(
         {
             "status": "done",

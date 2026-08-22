@@ -89,9 +89,9 @@ def fix_hint(row: dict) -> str:
         )
     if lane == "drive-sync":
         return (
-            "Drive: hourly CURRENT sweep. 1230 FAILED = 404 dead parent folder IDs "
-            "(cache not dropping). zero_uploaded_with_failures fires when that hour "
-            "uploaded=0. Canonical docs 1BMxbxU9… / ops 1a7vr2gn…"
+            "Drive: hourly CURRENT sweep. DEGRADED_STALE_SOURCE when SOURCE_COMMIT "
+            "!= origin/main (pin behind #455+). Targeted gog --replace until D4 8/27. "
+            "zero_uploaded_with_failures = 404 dead parents. Canonical docs 1BMxbxU9… / ops 1a7vr2gn…"
         )
     if lane == "current-pin":
         return "CURRENT scripts/+docs/ must match SOURCE_COMMIT (git archive hashes). No docs overlay."

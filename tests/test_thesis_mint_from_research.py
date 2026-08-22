@@ -47,3 +47,9 @@ def test_joined_body_is_preferred_over_rec_only():
     g_join = grade_text("PFLT", mint._summary_from_rec("PFLT", joined))
     assert g_rec["coverage_state"] != "CURRENT"
     assert g_join["coverage_state"] == "CURRENT"
+
+
+def test_mint_state_grades_rec_only_not_joined():
+    src = (ROOT / "scripts/thesis_mint_from_research.py").read_text()
+    assert "Grade the stored recommendation, not joined evidence" in src
+    assert "g_mint = g_rec" in src
