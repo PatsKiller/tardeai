@@ -22,7 +22,7 @@ if str(_SCRIPTS) not in sys.path:
 
 def _load_repo_env() -> None:
     """Cron does not source .env. Without this, DeepSeek fail-closes
-    COST_CONFIGURATION_INVALID (global daily USD cap required). override=False
+    COST_CONFIGURATION_INVALID: LLM_GLOBAL_DAILY_USD_CAP required. override=False
     so systemd Environment= wins when set."""
     path = _SCRIPTS.parent / ".env"
     if not path.is_file():
