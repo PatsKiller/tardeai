@@ -71,7 +71,7 @@ Never print `0.0:1`. Quote-ineligible → withhold. Long invalidation ≥ price 
 
 | ID | Work |
 |---|---|
-| Thesis mint | Apply `thesis_mint_from_research.py` to **live** `cio_theses.jsonl` as CURRENT vs THIN (staging: rec-only 2/19 PASS, joined 12/19 PASS). Do not mint THIN as CURRENT. |
+| Thesis mint | Apply `thesis_mint_from_research.py` to **live** `cio_theses.jsonl` as CURRENT vs THIN. Rec-only: 2 CURRENT (AMANX, BAH), 15 THIN, 2 STUB (NOC, PFLT). Dashboard after apply: CURRENT 2/22, THIN 18, STUB 2 — **not** 19/19 and **not** 5/22 grandfathered. |
 | Telegram T3 | One resolver per field; `?` never renders |
 | Telegram T4 | Bind Thesis/Catalyst to desk + Hermes + `hermes_external_research`; no machine token; sized TRIM needs capital |
 | Telegram T5 | Strip `dec_`/`prod_`/`plan_` from CIO Desk |

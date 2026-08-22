@@ -50,6 +50,7 @@ VALID_SURFACES = frozenset({
     "watch",
     "opportunity",
     "advisory",
+    "holdings",
     "freeform",
     "material_scan",
     "product_notify",
@@ -100,6 +101,9 @@ _REENTRY_STATE_ACTION = {
     "READY TO REVIEW": "READY",
     "NEAR ENTRY": "NEAR",
 }
+# Reentry was emitting per desk tick (~127/name/day). Emit on action CHANGE
+# or a periodic heartbeat, not both on every wake.
+REENTRY_HEARTBEAT_HOURS = 4.0
 
 
 def _now_iso() -> str:
@@ -510,25 +514,89 @@ def emit_payloads_for_decisions(
     }
 
 
+def _reentry_fingerprint_path(path: Path | str | None) -> Path:
+    dest = Path(path) if path is not None else DEFAULT_TRACE_PATH
+    return dest.parent / "reentry_payload_last.json"
+
+
+def _load_reentry_last(fp: Path) -> dict[str, Any]:
+    try:
+        if fp.is_file():
+            data = json.loads(fp.read_text(encoding="utf-8"))
+            return data if isinstance(data, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return {}
+
+
+def _save_reentry_last(fp: Path, blob: dict[str, Any]) -> None:
+    try:
+        fp.parent.mkdir(parents=True, exist_ok=True)
+        tmp = fp.with_suffix(".tmp")
+        tmp.write_text(json.dumps(blob, indent=2, default=str) + "\n", encoding="utf-8")
+        tmp.replace(fp)
+    except OSError:
+        pass
+
+
+def _reentry_should_emit(
+    symbol: str,
+    action: str,
+    last: dict[str, Any],
+    *,
+    now: Optional[datetime] = None,
+    heartbeat_hours: float = REENTRY_HEARTBEAT_HOURS,
+) -> str:
+    """Return 'change' | 'heartbeat' | 'skip'."""
+    now = now or datetime.now(timezone.utc)
+    prev = last.get(symbol) if isinstance(last.get(symbol), dict) else {}
+    prev_action = str(prev.get("action") or "")
+    if prev_action != str(action or ""):
+        return "change"
+    ts = prev.get("ts")
+    if not ts:
+        return "heartbeat"
+    try:
+        t = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+        if t.tzinfo is None:
+            t = t.replace(tzinfo=timezone.utc)
+        age_h = (now - t.astimezone(timezone.utc)).total_seconds() / 3600.0
+    except (TypeError, ValueError):
+        return "heartbeat"
+    if age_h >= float(heartbeat_hours):
+        return "heartbeat"
+    return "skip"
+
+
 def emit_reentry_operator_payloads(
     rows: Optional[list[dict[str, Any]]],
     *,
     flags: Optional[dict[str, Any]] = None,
     path: Path | str | None = None,
     wake_id: Optional[str] = None,
+    fingerprint_path: Path | str | None = None,
+    heartbeat_hours: float = REENTRY_HEARTBEAT_HOURS,
 ) -> dict[str, Any]:
     """Emit DecisionPayload@v1 for READY TO REVIEW / NEAR ENTRY rows with advisory.
 
     Operator-visible re-entry desk publish path. Fail-soft. Flag-gated.
     Membership labels and missing tickers are skipped (not emitted as CASH).
+
+    Change-or-heartbeat: identical (symbol, action) within heartbeat_hours is
+    skipped so coverage% is not inflated by wake-tick re-emissions.
     """
     flags = flags if flags is not None else load_feature_flags()
     if not decision_payload_enabled(flags):
-        return {"emitted": 0, "attempted": 0, "errors": [], "enabled": False}
+        return {"emitted": 0, "attempted": 0, "skipped_unchanged": 0, "errors": [], "enabled": False}
     wid = str(wake_id or "").strip() or f"wake_reentry_{uuid.uuid4().hex[:10]}"
     emitted = 0
     attempted = 0
+    skipped = 0
     errors: list[str] = []
+    fp = Path(fingerprint_path) if fingerprint_path is not None else _reentry_fingerprint_path(path)
+    last = _load_reentry_last(fp)
+    now = datetime.now(timezone.utc)
+    dirty = False
     for row in rows or []:
         if not isinstance(row, dict):
             continue
@@ -539,24 +607,127 @@ def emit_reentry_operator_payloads(
         advisory = row.get("advisory") if isinstance(row.get("advisory"), dict) else {}
         if not (advisory.get("action") or intel.get("action")):
             continue
-        if ticker_or_unavailable(row.get("symbol") or row.get("ticker")) == "DATA_UNAVAILABLE":
+        sym = ticker_or_unavailable(row.get("symbol") or row.get("ticker"))
+        if sym == "DATA_UNAVAILABLE":
+            continue
+        action = _REENTRY_STATE_ACTION.get(state) or str(
+            advisory.get("action") or intel.get("action") or state
+        )
+        why = _reentry_should_emit(
+            sym, str(action), last, now=now, heartbeat_hours=heartbeat_hours,
+        )
+        if why == "skip":
+            skipped += 1
             continue
         attempted += 1
         try:
             pl = payload_from_reentry_row(row, wake_id=wid)
+            pl["extra_emit_reason"] = why
             res = emit_decision_payload(pl, flags=flags, path=path, role="reentry")
             if res.get("emitted"):
                 emitted += 1
+                last[sym] = {"action": str(action), "ts": now.isoformat(), "reason": why}
+                dirty = True
             elif res.get("error"):
                 errors.append(str(res["error"]))
         except Exception as exc:  # noqa: BLE001
             errors.append(type(exc).__name__)
+    if dirty:
+        _save_reentry_last(fp, last)
     return {
         "emitted": emitted,
         "attempted": attempted,
+        "skipped_unchanged": skipped,
         "errors": errors[:10],
         "enabled": True,
     }
+
+
+def payload_from_holdings_health(
+    row: dict[str, Any],
+    *,
+    wake_id: str,
+    trace_id: Optional[str] = None,
+) -> dict[str, Any]:
+    """Map a holdings LLM health refresh → DecisionPayload@v1 (surface=holdings)."""
+    r = row if isinstance(row, dict) else {}
+    action = r.get("action") or r.get("holdings_llm_action") or "HOLD"
+    return build_decision_payload(
+        decision_id=f"dec_holdings_{r.get('symbol')}_{action}",
+        wake_id=wake_id,
+        trace_id=trace_id,
+        symbol=r.get("symbol"),
+        surface="holdings",
+        current_action=action,
+        act_now=str(action).upper() in {"TRIM", "EXIT", "ADD"},
+        confidence=r.get("confidence"),
+        decision_origin=infer_decision_origin(trigger="HOLDINGS_HEALTH"),
+        extra={"health": r.get("health"), "model": r.get("model")},
+    )
+
+
+def emit_holdings_health_payload(
+    row: dict[str, Any],
+    *,
+    flags: Optional[dict[str, Any]] = None,
+    path: Path | str | None = None,
+    wake_id: Optional[str] = None,
+) -> dict[str, Any]:
+    """Flag-gated holdings DecisionPayload@v1. Fail-soft. Never raises to caller."""
+    flags = flags if flags is not None else load_feature_flags()
+    out: dict[str, Any] = {"emitted": False, "enabled": decision_payload_enabled(flags), "error": None}
+    if not out["enabled"]:
+        return out
+    try:
+        if not isinstance(row, dict) or not row.get("symbol"):
+            out["error"] = "invalid_row"
+            return out
+        wid = str(wake_id or "").strip() or f"wake_holdings_{uuid.uuid4().hex[:10]}"
+        pl = payload_from_holdings_health(row, wake_id=wid)
+        res = emit_decision_payload(pl, flags=flags, path=path, role="holdings")
+        out["emitted"] = bool(res.get("emitted"))
+        out["error"] = res.get("error")
+        out["trace_id"] = res.get("trace_id")
+        out["decision_id"] = res.get("decision_id")
+        return out
+    except Exception as exc:  # noqa: BLE001
+        out["error"] = type(exc).__name__
+        return out
+
+
+def emit_opportunity_promote_payload(
+    *,
+    symbol: str,
+    status: str,
+    source: str = "curation",
+    flags: Optional[dict[str, Any]] = None,
+    path: Path | str | None = None,
+    wake_id: Optional[str] = None,
+) -> dict[str, Any]:
+    """Flag-gated opportunity DecisionPayload@v1 on a two-way book add/stage."""
+    flags = flags if flags is not None else load_feature_flags()
+    out: dict[str, Any] = {"emitted": False, "enabled": decision_payload_enabled(flags), "error": None}
+    if not out["enabled"]:
+        return out
+    try:
+        wid = str(wake_id or "").strip() or f"wake_opp_{uuid.uuid4().hex[:10]}"
+        pl = build_decision_payload(
+            decision_id=f"dec_opp_{symbol}_{status}",
+            wake_id=wid,
+            symbol=symbol,
+            surface="opportunity",
+            current_action=status,
+            act_now=str(status).upper() == "PROMOTED",
+            decision_origin=infer_decision_origin(trigger="TWO_WAY_CURATION"),
+            extra={"source": source},
+        )
+        res = emit_decision_payload(pl, flags=flags, path=path, role="opportunity")
+        out["emitted"] = bool(res.get("emitted"))
+        out["error"] = res.get("error")
+        return out
+    except Exception as exc:  # noqa: BLE001
+        out["error"] = type(exc).__name__
+        return out
 
 
 def emit_watch_alert_payload(

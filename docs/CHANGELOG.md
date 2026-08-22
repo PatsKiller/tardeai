@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-08-22 — Burn-in is four surfaces or it is not a burn-in
+
+MATURITY_IMPACT: `Reasoning payload-coverage → four-surface emit + change-gated reentry, proven by agent_run_traces.jsonl DecisionPayload@v1 by surface` (watch/holdings/advisory/opportunity no longer structurally zero). Freeze-safe: write-only traces, flag-gated, no decision semantics.
+
+- N1 traced, not inferred. holdings/opportunity: emit **absent**. advisory 09:15: emit present, **dry-run never calls it**. watch_alerts: emit present, crontab flag was 0 and 0 fires 8/21–22. Wired emit + `env AGENT_DECISION_PAYLOAD=1` on those producers. Keep 8/27.
+- N2: 8/22 reentry 3175 rows / 25 names = 127 each. **1 action change, 3149 unchanged re-emits (0.03%)**. Now change-or-4h-heartbeat.
+- N3: sweep `source_status=DEGRADED_STALE_SOURCE` when CURRENT pin ≠ origin/main. Targeted replace until D4 8/27.
+- Q1: rec-only 2 CURRENT / 15 THIN / 2 STUB (NOC, PFLT). No unlabeled 5.
+- Q2: post-mint CURRENT 2/22 not 5/22 (existing 3 stay THIN on read). Not 19/19.
+
 ## 2026-08-22 — M1 substantiveness gate (THIN ≠ CURRENT)
 
 MATURITY_IMPACT: `Portfolio mgmt coverage+fresh → coverage+fresh+substantive, proven by data/cio/held_thesis_coverage_latest.json substantive_pct` (target ≥70; THIN excluded). Freeze: no live mint, no CURRENT promote, production `max_output_tokens` still 1024.

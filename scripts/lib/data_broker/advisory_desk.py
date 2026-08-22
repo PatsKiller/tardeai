@@ -3807,6 +3807,13 @@ def enrich_advisory_with_opinions(
                 "memory_injected": bool(memory_block),
                 "lessons_injected": [L.get("id") for L in (mem.get("lessons") or [])],
             }
+            # Dry-run still produces operator-visible verdicts. Emit so advisory
+            # is not a silent surface while ADVISORY_DESK_V1 is off.
+            try:
+                from lib.advisory.advisory_opinion_engine import _emit_advisory_decision_payload
+                _emit_advisory_decision_payload(row, opinion)
+            except Exception:
+                pass
         else:
             opinion = generate_row_opinion(
                 row, evidence, det_verdict,

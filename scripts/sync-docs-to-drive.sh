@@ -51,6 +51,27 @@ try:
     prev = json.loads(open(path, encoding="utf-8").read())
 except Exception:
     prev = {}
+src = extra or ""
+pin = None
+try:
+    p = os.path.join(src, "SOURCE_COMMIT")
+    if os.path.isfile(p):
+        pin = open(p, encoding="utf-8").read().strip().split()[0]
+except Exception:
+    pin = None
+main_sha = None
+try:
+    import subprocess
+    main_sha = subprocess.check_output(
+        ["git", "-C", "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild",
+         "rev-parse", "origin/main"],
+        text=True, timeout=15,
+    ).strip()
+except Exception:
+    main_sha = None
+source_status = "ok"
+if pin and main_sha and pin != main_sha:
+    source_status = "DEGRADED_STALE_SOURCE"
 rec = {
     "status": status,
     "started_utc": prev.get("started_utc") if status != "running" else now,
@@ -61,7 +82,11 @@ rec = {
     "exit_code": 0 if status == "running" else (1 if status != "done" or int(failed or 0) else 0),
     "account": os.environ.get("GOG_ACCOUNT") or "john@jwwhiting.com",
     "canonical_docs_id": "1BMxbxU9c9rF3NBvXVQtVEewdvkifVkwP",
-    "src": extra or "",
+    "src": src,
+    "source_commit": pin,
+    "origin_main": main_sha,
+    "source_status": source_status,
+    "targeted_replace_until": "2026-08-27",
     "reads_raw": True,
 }
 if status == "running":

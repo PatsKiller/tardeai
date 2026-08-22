@@ -26,6 +26,8 @@ def test_drive_sweep_excludes_archive_and_does_not_fallback_root():
     assert "docs/*_20[0-9][0-9][0-9][0-9][0-9][0-9]_*" in src
     assert "docs/*20[0-9][0-9]*/*" in src
     assert "docs/_findings/*" in src
+    assert "DEGRADED_STALE_SOURCE" in src
+    assert "targeted_replace_until" in src
     assert "docs/ui_review/*" in src
     assert "do not fall back to root" in src
     assert 'current_parent="$DRIVE_FOLDER_ID"' in src
