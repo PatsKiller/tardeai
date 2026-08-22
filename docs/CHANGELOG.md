@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-08-22 — M1 substantiveness gate (THIN ≠ CURRENT)
+
+MATURITY_IMPACT: `Portfolio mgmt coverage+fresh → coverage+fresh+substantive, proven by data/cio/held_thesis_coverage_latest.json substantive_pct` (target ≥70; THIN excluded). Freeze: no live mint, no CURRENT promote, production `max_output_tokens` still 1024.
+
+- Living thesis `CURRENT` is PASS-grade (Q1 survivable). Grade B/C mint as `THIN`.
+- Three numbers: `coverage_pct` (THIN counts), `fresh_pct` (age; THIN can be fresh), `substantive_pct` (PASS only). Targets 100 / ≥90 / ≥70. `sla_met` requires all three.
+- Projected split of the 19: rec-only **2/19 CURRENT**, joined **12/19 CURRENT**. Existing DIV/DIVI/JEPI re-grade **THIN**. Live `substantive_pct=0.0`.
+- Coverage-stall fires on PASS < 70% of held, not row-exists.
+- M2 report: stored rec p50=230 because `recommendation[:500]`; tokens_out p50=824; 11.4% at 1024 cap. Sandbox 20 at 4096: raw PASS 100%, joined 90%, rec-only 40%. Propose parser/prompt/4096 — **not applied**.
+- M3 Drive sweep (CURRENT overlay): uploaded=26 failed=0 exit 0. Excludes `_archive`, dated dumps, `_findings`, `ui_review`.
+- M4: payload v1 8/21=268 (reentry 165, material_scan 102) → 8/22=3500 (reentry 3125, material_scan 375). No producer diff vs #453. Pin `5e91225a` not promoted.
+
 ## 2026-08-22 — Session closeout (findings + fixes index)
 
 MATURITY_IMPACT: NONE (docs). Pointer: `docs/ops/SESSION_CLOSEOUT_2026-08-22.md`.

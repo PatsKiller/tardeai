@@ -125,8 +125,42 @@ drop_folder_cache_line() {
   mv "${FOLDER_CACHE}.new" "$FOLDER_CACHE"
 }
 
+purge_dead_archive_cache() {
+  # Drop cache + manifest lines for archived trees. Those parent IDs 404;
+  # retrying them every hour is the 1230-fail lie.
+  python3 - "$FOLDER_CACHE" "$MANIFEST" <<'PY'
+import sys
+from pathlib import Path
+cache, manifest = Path(sys.argv[1]), Path(sys.argv[2])
+import re
+year_dir = re.compile(r"20\d{2}")
+def keep(line: str) -> bool:
+    low = line.replace("\\", "/")
+    if any(n in low for n in (
+        "/_archive/", "docs/_archive|", "/_trash/", "docs/_trash|",
+        "/_findings/", "docs/_findings|", "/ui_review/", "docs/ui_review|",
+    )):
+        return False
+    # Dated first-level docs dirs are session dumps with dead Drive parents.
+    # Keep docs/ops/SESSION_* (year is in the filename, not the folder).
+    parts = low.split("|", 1)[0].split("/")
+    if len(parts) >= 2 and parts[0] == "docs" and year_dir.search(parts[1] or ""):
+        return False
+    return True
+for path in (cache, manifest):
+    if not path.exists():
+        continue
+    lines = path.read_text(encoding="utf-8").splitlines()
+    out = [ln for ln in lines if keep(ln)]
+    if len(out) != len(lines):
+        path.write_text("\n".join(out) + ("\n" if out else ""), encoding="utf-8")
+        print(f"purged {len(lines)-len(out)} lines from {path}")
+PY
+}
+
 log "=== sync start ==="
 pin_canonical_folder_cache
+purge_dead_archive_cache
 write_result running 0 0 0 "$SRC"
 log "SRC=$SRC"
 
@@ -138,6 +172,11 @@ log "SRC=$SRC"
 is_runtime_dump_excluded() {
   local rel="$1"
   case "$rel" in
+    docs/_archive/*|docs/_trash/*|docs/_findings/*)            return 0 ;;  # dead Drive parents / scratch shots
+    docs/ui_review/*)                                          return 0 ;;  # UI screenshot dumps, dead parents
+    docs/*_20[0-9][0-9][0-9][0-9][0-9][0-9]_*)                 return 0 ;;  # compact dated dumps
+    docs/*20[0-9][0-9]*/*)                                     return 0 ;;  # first-level docs dir with a year
+    docs/*/*20[0-9][0-9]*/*)                                   return 0 ;;  # nested dated dump dirs
     docs/hermes/phase3b_dryrun/*)                              return 0 ;;  # drain payload dumps
     docs/hermes/backlog_health/*.json)                         return 0 ;;  # snapshot JSON (keep .md)
     docs/hermes/*hermes_auto_ticker_challenger_*_payload.json) return 0 ;;  # nested drain payloads
@@ -212,8 +251,8 @@ except: print('')
         current_parent="$new_id"
         log "Created folder: $built_path ($new_id)"
       else
-        log "WARN: could not create folder $built_path"
-        echo "$DRIVE_FOLDER_ID"
+        log "WARN: could not create folder $built_path — skip (do not fall back to root)"
+        echo ""
         return
       fi
     fi
@@ -231,6 +270,8 @@ find "$SRC/docs" -type f \
   ! -path "*/state/*" \
   ! -path "*/.git/*" \
   ! -path "*/__pycache__/*" \
+  ! -path "*/_archive/*" \
+  ! -path "*/_trash/*" \
   ! -path "*/hermes/phase3b_dryrun/*" \
   ! -path "*/artifacts/*" \
   ! -path "*redeploy_review*" \
@@ -281,6 +322,11 @@ while IFS= read -r filepath; do
     target_parent=$(resolve_folder "$dir_path")
   else
     target_parent="$DRIVE_FOLDER_ID"
+  fi
+  if [ -z "$target_parent" ]; then
+    log "FAILED (no live parent): $relpath"
+    FAILED=$((FAILED + 1))
+    continue
   fi
 
   # Upload — convert text files to Google Docs for Drive API readability.

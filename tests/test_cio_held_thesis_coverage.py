@@ -64,6 +64,80 @@ def test_coverage_report_structure(tmp_path, monkeypatch):
     assert data["schema"] == "HeldBookThesisCoverage@v1"
     assert data["sla_target_pct"] == 100.0
     assert "coverage_pct" in data and "fresh_pct" in data
+    assert "substantive_pct" in data
+    assert data["substantive_count"] == 1
+    assert data["sla_met"] is False
+
+
+def test_thin_counts_toward_coverage_not_substantive(tmp_path, monkeypatch):
+    from scripts.lib import cio_held_thesis_coverage as m
+
+    monkeypatch.setattr(m, "list_held_tickers", lambda root=None: ["AA", "BB", "CC", "DD"])
+
+    def fake_row(symbol, root=None):
+        if symbol == "AA":
+            return {
+                "symbol": "AA",
+                "thesis_state": "CURRENT",
+                "coverage_state": "CURRENT",
+                "has_current_symbol_thesis": True,
+                "needs_coverage": False,
+                "needs_substance": False,
+                "fresh": True,
+            }
+        if symbol in ("BB", "CC"):
+            return {
+                "symbol": symbol,
+                "thesis_state": "THIN",
+                "coverage_state": "THIN",
+                "has_current_symbol_thesis": True,
+                "needs_coverage": False,
+                "needs_substance": True,
+                "fresh": True,
+            }
+        return {
+            "symbol": symbol,
+            "thesis_state": "RESEARCH_REQUIRED",
+            "coverage_state": "RESEARCH_REQUIRED",
+            "has_current_symbol_thesis": False,
+            "needs_coverage": True,
+            "needs_substance": False,
+            "fresh": False,
+        }
+
+    monkeypatch.setattr(m, "coverage_row_for_symbol", fake_row)
+    rep = m.build_held_coverage_report(root=tmp_path)
+    assert abs(rep["coverage_pct"] - 75.0) < 0.1  # 3/4 have a row at the floor
+    assert abs(rep["fresh_pct"] - 75.0) < 0.1
+    assert abs(rep["substantive_pct"] - 25.0) < 0.1  # only AA is PASS
+    assert rep["thin_count"] == 2
+    assert "BB" in rep["needs_substance"]
+    assert "AA" not in rep["needs_coverage"]
+    assert rep["sla_met"] is False  # coverage 75 < 100, substantive 25 < 70
+
+
+def test_sla_met_requires_three_numbers(tmp_path, monkeypatch):
+    from scripts.lib import cio_held_thesis_coverage as m
+
+    monkeypatch.setattr(m, "list_held_tickers", lambda root=None: ["A", "B"])
+
+    def all_thin(symbol, root=None):
+        return {
+            "symbol": symbol,
+            "thesis_state": "THIN",
+            "coverage_state": "THIN",
+            "has_current_symbol_thesis": True,
+            "needs_coverage": False,
+            "needs_substance": True,
+            "fresh": True,
+        }
+
+    monkeypatch.setattr(m, "coverage_row_for_symbol", all_thin)
+    rep = m.build_held_coverage_report(root=tmp_path)
+    assert rep["coverage_pct"] == 100.0
+    assert rep["fresh_pct"] == 100.0
+    assert rep["substantive_pct"] == 0.0
+    assert rep["sla_met"] is False  # fake green blocked
 
 
 def test_held_sla_is_100_not_80():
@@ -71,6 +145,11 @@ def test_held_sla_is_100_not_80():
     from scripts.lib.cio_held_thesis_coverage import SLA_TARGET_PCT
 
     assert SLA_TARGET_PCT == 100.0
+    from scripts.lib.cio_held_thesis_coverage import (
+        SLA_TARGET_FRESH_PCT, SLA_TARGET_SUBSTANTIVE_PCT,
+    )
+    assert SLA_TARGET_FRESH_PCT == 90.0
+    assert SLA_TARGET_SUBSTANTIVE_PCT == 70.0
     src = (Path(__file__).resolve().parents[1] / "scripts/lib/cio_held_thesis_coverage.py").read_text()
     assert "80.0" not in src
     assert "sla_target_pct" in src

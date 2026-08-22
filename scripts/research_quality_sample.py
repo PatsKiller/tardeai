@@ -11,30 +11,17 @@ import hashlib
 import json
 import math
 import re
+import sys
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "scripts"))
 
-SPECIFIC_RE = re.compile(
-    r"\b(earnings|guidance|10-[qk]|8-k|s-1|13[df]|dividend|ex-div|buyback|"
-    r"fda|pdufa|phase\s*[123]|catalyst|filing|sec\b|aum|nav\b|yield|"
-    r"eps\b|revenue|margin|guidance|offering|lockup|split)\b",
-    re.I,
-)
-GENERIC_RE = re.compile(
-    r"\b(hold\s*/\s*watch|insufficient (fresh )?evidence|do not initiate|"
-    r"not a sound candidate|maintain (paper-trading )?watchlist|"
-    r"generic sector|wait for (more|clearer)|no new conviction)\b",
-    re.I,
-)
-SURVIVE_NEEDLES = re.compile(
-    r"\b(invalidat|what would change|why (own|held|watch)|role\b|"
-    r"trim\b|add\b|hold\b|avoid\b|catalyst|stop\b)\b",
-    re.I,
-)
-NUM_RE = re.compile(r"(?<![\w])(?:\$)?\d+\.\d{1,4}(?![\w])")
+from scripts.lib.thesis_substantiveness import score_text  # noqa: E402
+
 TICKER_STRIP = re.compile(r"\b[A-Z]{1,5}\b")
 
 
@@ -65,53 +52,7 @@ def _jaccard(a: set[str], b: set[str]) -> float:
 
 
 def _score_row(sym: str, rec: str, ctx: str) -> dict:
-    rec = rec or ""
-    ctx = ctx or ""
-    n = len(rec)
-    specific = bool(SPECIFIC_RE.search(rec))
-    generic = bool(GENERIC_RE.search(rec)) and not specific
-    mentions = bool(re.search(rf"\b{re.escape(sym)}\b", rec, re.I))
-    survive = (
-        n >= 400
-        and mentions
-        and bool(SURVIVE_NEEDLES.search(rec))
-        and specific
-        and not generic
-    )
-    ctx_nums = set(NUM_RE.findall(ctx[:4000]))
-    rec_nums = set(NUM_RE.findall(rec))
-    # numeric fidelity fail: rec cites a $ or x.xx that is close-but-not-equal to a context number
-    fidelity_fail = False
-    for rn in rec_nums:
-        try:
-            rv = float(rn.replace("$", ""))
-        except ValueError:
-            continue
-        for cn in ctx_nums:
-            try:
-                cv = float(cn.replace("$", ""))
-            except ValueError:
-                continue
-            if cv == 0:
-                continue
-            # same magnitude, off by 5–40% — likely a restatement error, not a different metric
-            ratio = abs(rv - cv) / abs(cv)
-            if 0.05 <= ratio <= 0.40 and abs(rv - cv) >= 0.5:
-                fidelity_fail = True
-                break
-        if fidelity_fail:
-            break
-    return {
-        "symbol": sym,
-        "n_chars": n,
-        "under_300": n < 300,
-        "specific_fact": specific,
-        "generic_prose": generic,
-        "mentions_symbol": mentions,
-        "numeric_fidelity_fail": fidelity_fail,
-        "thesis_survivable": survive,
-        "preview": rec.replace("\n", " ")[:180],
-    }
+    return score_text(sym, rec or "", ctx or "")
 
 
 def main() -> int:

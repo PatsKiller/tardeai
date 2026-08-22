@@ -179,18 +179,26 @@ def _deepseek_ok(lanes: list[dict[str, Any]]) -> int:
     return 0
 
 
+# Stall tracks PASS/CURRENT-quality, not mere presence. A THIN mint must not
+# quiet this alarm. Threshold matches substantive_pct target (70%).
+COVERAGE_STALL_SUBSTANTIVE_PCT = 0.70
+
+
 def collect_coverage_stall(
     *,
     now: Optional[datetime] = None,
     deepseek_ok_24h: int = 0,
     thesis_current: Optional[int] = None,
     thesis_held: Optional[int] = None,
+    thesis_substantive: Optional[int] = None,
+    thesis_coverage: Optional[int] = None,
     snap_path: Optional[Any] = None,
     persist: bool = True,
 ) -> dict[str, Any]:
-    """Fire when research rows arrive and living thesis CURRENT does not move.
+    """Fire when research rows arrive and PASS-grade living thesis does not move.
 
-    Today (2026-08-22): 545 DeepSeek ok, held CURRENT still 3/22. That fires.
+    thesis_current is the PASS/CURRENT count (not row-exists). A 22/22 THIN
+    mint with 5 PASS still fires. Target: substantive_pct >= 70.
     """
     now = now or datetime.now(timezone.utc)
     from pathlib import Path
@@ -198,22 +206,46 @@ def collect_coverage_stall(
     if snap_path is None:
         snap_path = root / "data" / "runtime" / "coverage_stall_snapshot.json"
     snap_path = Path(snap_path)
-    if thesis_current is None or thesis_held is None:
+    if thesis_substantive is None and thesis_current is not None:
+        thesis_substantive = thesis_current
+    if thesis_held is None or thesis_substantive is None:
         try:
             from scripts.lib.cio_held_thesis_coverage import build_held_coverage_report
             cov = build_held_coverage_report(root=root)
-            thesis_current = int(cov.get("current_count") or 0)
-            thesis_held = int(cov.get("held_count") or 0)
+            if thesis_held is None:
+                thesis_held = int(cov.get("held_count") or 0)
+            if thesis_substantive is None:
+                thesis_substantive = int(
+                    cov.get("substantive_count")
+                    if cov.get("substantive_count") is not None
+                    else (cov.get("current_count") or 0)
+                )
+            if thesis_coverage is None:
+                thesis_coverage = int(cov.get("coverage_count") or cov.get("current_count") or 0)
+            if thesis_current is None:
+                thesis_current = thesis_substantive
         except Exception:
             try:
                 p = Path("/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/data/cio/held_thesis_coverage_latest.json")
                 if p.is_file():
                     import json
                     d = json.loads(p.read_text())
-                    thesis_current = int(d.get("current_count") or 0)
-                    thesis_held = int(d.get("held_count") or 0)
+                    if thesis_held is None:
+                        thesis_held = int(d.get("held_count") or 0)
+                    if thesis_substantive is None:
+                        thesis_substantive = int(
+                            d.get("substantive_count")
+                            if d.get("substantive_count") is not None
+                            else (d.get("current_count") or 0)
+                        )
+                    if thesis_current is None:
+                        thesis_current = thesis_substantive
+                    if thesis_coverage is None:
+                        thesis_coverage = int(d.get("coverage_count") or d.get("current_count") or 0)
             except Exception:
                 pass
+    if thesis_substantive is None:
+        thesis_substantive = thesis_current
     prev = {}
     try:
         import json
@@ -222,19 +254,23 @@ def collect_coverage_stall(
     except Exception:
         prev = {}
     prev_research = int(prev.get("deepseek_ok_24h") or 0)
-    prev_thesis = prev.get("thesis_current")
+    prev_thesis = prev.get("thesis_substantive")
+    if prev_thesis is None:
+        prev_thesis = prev.get("thesis_current")
     firing: list[str] = []
+    threshold = max(1, int(COVERAGE_STALL_SUBSTANTIVE_PCT * (thesis_held or 0))) if thesis_held else 1
     if (
         deepseek_ok_24h >= 20
-        and thesis_current is not None
+        and thesis_substantive is not None
         and thesis_held
-        and thesis_current < max(1, int(0.8 * thesis_held))
-        and (prev_thesis is None or int(prev_thesis) <= thesis_current)
+        and thesis_substantive < threshold
+        and (prev_thesis is None or int(prev_thesis) <= int(thesis_substantive))
         and deepseek_ok_24h >= prev_research
     ):
         firing.append(
             f"research_up_thesis_flat:deepseek_ok_24h={deepseek_ok_24h}"
-            f",thesis_current={thesis_current}/{thesis_held}"
+            f",thesis_substantive={thesis_substantive}/{thesis_held}"
+            f",coverage={thesis_coverage if thesis_coverage is not None else thesis_current}"
         )
     rec = {
         "lane": COVERAGE_STALL_LANE,
@@ -243,8 +279,11 @@ def collect_coverage_stall(
         "error_streak": 0,
         "non_error_24h": deepseek_ok_24h,
         "attempts_24h": deepseek_ok_24h,
-        "thesis_current": thesis_current,
+        "thesis_current": thesis_substantive,  # PASS count — do not treat as row-exists
+        "thesis_substantive": thesis_substantive,
+        "thesis_coverage": thesis_coverage,
         "thesis_held": thesis_held,
+        "stall_threshold": threshold,
         "prev_deepseek_ok_24h": prev_research,
         "prev_thesis_current": prev_thesis,
         "authority": AUTHORITY,
@@ -257,7 +296,9 @@ def collect_coverage_stall(
             snap_path.write_text(json.dumps({
                 "as_of": rec["as_of"],
                 "deepseek_ok_24h": deepseek_ok_24h,
-                "thesis_current": thesis_current,
+                "thesis_current": thesis_substantive,
+                "thesis_substantive": thesis_substantive,
+                "thesis_coverage": thesis_coverage,
                 "thesis_held": thesis_held,
             }, indent=2) + "\n")
         except OSError:
