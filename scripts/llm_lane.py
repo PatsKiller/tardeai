@@ -19,6 +19,23 @@ _SCRIPTS = Path(__file__).resolve().parent
 if str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
 
+
+def _load_repo_env() -> None:
+    """Cron does not source .env. Without this, DeepSeek fail-closes
+    COST_CONFIGURATION_INVALID (global daily USD cap required). override=False
+    so systemd Environment= wins when set."""
+    path = _SCRIPTS.parent / ".env"
+    if not path.is_file():
+        return
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(path, override=False)
+    except Exception:
+        pass
+
+
+_load_repo_env()
+
 _GROK_URL = os.environ.get("HERMES_XAI_PROXY_URL", "http://127.0.0.1:8645/v1/chat/completions")
 _CHATGPT_URL = os.environ.get("CHATGPT_PROXY_URL", "http://127.0.0.1:8646").rstrip("/")
 
