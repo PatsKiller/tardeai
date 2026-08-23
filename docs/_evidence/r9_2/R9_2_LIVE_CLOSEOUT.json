@@ -1,0 +1,106 @@
+{
+  "schema": "R9_2LiveCloseout@v1",
+  "measured_at": "2026-08-23T16:27:30-04:00",
+  "authority": "READ_ONLY_ADVISORY",
+  "memory_behavior_influence": 0,
+  "source": {
+    "starting_main": "2a554304abdfa12ecb876b149ae2675e720fcfc4",
+    "application_main": "b935076fd400fb2041fd9a8927a69a987174e8c7",
+    "current": "b935076fd400fb2041fd9a8927a69a987174e8c7",
+    "release": "b935076f-main-exact-phase2-20260823-161632",
+    "pin_match": true
+  },
+  "portfolio": {
+    "total_value_usd": 1283600.72,
+    "observed_cash_usd": 578111.14,
+    "cash_pct": 45.0382,
+    "investable_cash_usd": null,
+    "truth_quality": "UNVERIFIED_INVESTABLE"
+  },
+  "policy": {
+    "schema": "OperatorInvestmentPolicy@v1",
+    "version": 0,
+    "confirmed_fields": 0,
+    "required_fields": 20,
+    "status": "POLICY_REQUIRED"
+  },
+  "brain": {
+    "schema": "CIOBrainSnapshot@v1",
+    "state": "BLOCKED",
+    "portfolio_posture": "HOLD_CASH_RESEARCH_FIRST",
+    "capital_plan": "RESEARCH_FIRST",
+    "notification_eligible": false,
+    "suppression_reason": "POLICY_REQUIRED",
+    "financial_action": false,
+    "executable_order": null
+  },
+  "market": {
+    "truth_quality": "PARTIAL",
+    "regime": "risk_on_trend",
+    "fed_funds_pct": 3.63,
+    "ten_two_spread_pct": 0.5,
+    "vix": 16.01,
+    "seasonality": "UNAVAILABLE_OR_THIN"
+  },
+  "symbols": {
+    "NOC": "CURRENT_symbol_noc@v5",
+    "SCHG": "THIN_symbol_schg@v3",
+    "CSCO": "CURRENT_symbol_csco@v3",
+    "ANET": "CURRENT_symbol_anet@v2"
+  },
+  "natural_loop": {
+    "post_deploy_completion": "NOT_OBSERVED",
+    "identical_evidence_replay": "UNMEASURED",
+    "natural_reactive_cycles_observed": 6,
+    "research_enqueued": 0,
+    "research_dispatched": 0,
+    "errors": 0,
+    "dedupe_skips_last_cycle": 34,
+    "hermes_cio_worker": "PREDEPLOY_COST_CAP_EXCEEDED_NO_POSTDEPLOY_COMPLETION",
+    "rebuild_offpeak_caller": "BROKEN_MISSING_SCRIPT"
+  },
+  "runtime": {
+    "systemd": {"current": 1, "rebuild": 40, "hybrid": 34, "other": 86, "drift": 74},
+    "cron": {"current": 15, "rebuild": 135, "hybrid": 10, "other": 330, "drift": 145},
+    "combined": {"current": 16, "rebuild": 175, "hybrid": 44, "other": 416, "drift": 219},
+    "shared_venv_only": 32,
+    "true_worktree_hybrid_roots": 9,
+    "portfolio_server_loaded_current": true,
+    "cio_telegram_restarted_at": "2026-08-23T16:27:11-04:00",
+    "cio_telegram_loaded_current": true
+  },
+  "gpu": {
+    "mode": "UNRESOLVED_HOLD",
+    "installed_generative": 6,
+    "installed_embedding": 2,
+    "active_generative": 1,
+    "source_callers": 171,
+    "cron_callers": 12,
+    "systemd_callers": 4,
+    "openclaw_callers": 24,
+    "seven_day_zero_call": false,
+    "embedding_acceptance": false,
+    "physical_removal_ready": false
+  },
+  "browser": {
+    "desktop": "PASS",
+    "mobile_390": "PASS",
+    "cio_brain_sections": "PASS",
+    "csco_aggregate_visibility": "LIMITED",
+    "csco_per_symbol_api": "PASS"
+  },
+  "maturity": {
+    "before": 42,
+    "after": 59,
+    "scale": 100
+  },
+  "mutations": {
+    "broker": 0,
+    "orders": 0,
+    "stops": 0,
+    "risk_policy": 0,
+    "two_factor_auth": 0,
+    "trading_authority": 0
+  },
+  "final_status": "R9_2_LIVE_PARTIAL"
+}

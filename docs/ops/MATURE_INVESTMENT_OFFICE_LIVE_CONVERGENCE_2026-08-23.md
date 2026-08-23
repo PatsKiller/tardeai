@@ -3,11 +3,84 @@
 Date: 2026-08-23  
 Closeout branch: `docs/r9-live-deploy-closeout`  
 Starting source: `origin/main@9dfe437f6e161cb2b6c9ed2c983e23b9fa9de1b7`  
-Deployed source: `09b5ec3d48fb1afd5c9db4a1f9f12b405cadb525`  
-Repository tip after documentation-only closeout: `2a554304abdfa12ecb876b149ae2675e720fcfc4`
+R9.1 deployed source: `09b5ec3d48fb1afd5c9db4a1f9f12b405cadb525`
+
+R9.2 deployed application source: `b935076fd400fb2041fd9a8927a69a987174e8c7`
+
+Repository tip before the R9.2 documentation closeout: `b935076fd400fb2041fd9a8927a69a987174e8c7`
 Authority: `READ_ONLY_ADVISORY`  
 `MEMORY_BEHAVIOR_INFLUENCE=0`  
-Final status: `STACK_LIVE_BRAIN_BUILD_CONTINUES`
+Current status: `R9_2_LIVE_PARTIAL`
+
+## R9.2 superseding live update
+
+This section is the current measured state. The R9.1 sections below remain as a
+historical deployment record and are superseded wherever this section differs.
+
+Protected main and live `CURRENT` now both resolve to
+`b935076fd400fb2041fd9a8927a69a987174e8c7`. PRs #476-#483 were reviewed,
+passed their required GitHub Actions workflows, merged sequentially, and were
+promoted as one immutable exact-main release. The live Portfolio Server reports
+`source_pin=loaded_pin=current_pin=b935076f...`, `pin_match=true`, and process
+start `2026-08-23T16:17:18-04:00`.
+
+R9.2 has landed the portfolio-brain and reliability contracts:
+
+- `OperatorInvestmentPolicy@v1` and a ratification surface;
+- deterministic `PortfolioState@v1`, `MarketContextState@v1`, and
+  `SeasonalityState@v1`;
+- `CIOPortfolioThesis@v1` and `PortfolioThesisDelta@v1`;
+- `CashDeploymentSituation@v1` and `CapitalDeploymentPlan@v1`;
+- `CanonSource@v1`, `CanonClaim@v1`, and `MethodologyPolicy@v1` foundations;
+- linked feedback, `PreferenceCandidate@v1`, and
+  `CIOWeeklyLearningReview@v1` foundations;
+- `RetryDisposition@v1`, `ProviderRequestJournal@v1`, and
+  `workflow_metrics@v1`;
+- one consolidated live Command Center CIO Brain.
+
+The live portfolio brain is intentionally blocked rather than guessing. It
+measures total portfolio value `$1,283,600.72`, observed cash `$578,111.14`
+(`45.0382%`), and `investable_cash_usd=null` with truth quality
+`UNVERIFIED_INVESTABLE`. All 20 required policy fields remain unconfirmed and
+legacy cash/concentration policies conflict. The derived portfolio posture is
+`HOLD_CASH_RESEARCH_FIRST`; the capital plan is `BLOCKED / RESEARCH_FIRST`, has
+no `DO NOW` allocations, and suppresses notification with `POLICY_REQUIRED`.
+No executable order exists.
+
+Market context is `PARTIAL`: risk-on-trend regime, broad breadth, 3.63% Fed
+funds, +0.50% 10Y-2Y spread, and 16.01 VIX are sourced; valuation, credit,
+earnings regime, leadership, and forward calendars remain incomplete. SPY
+seasonality is unavailable and the locally available XLB/XLI histories are
+`THIN`; the system exposes sample counts rather than turning thin seasonal data
+into authority.
+
+The canon remains 34 catalog entries, zero source texts, and zero governed
+claims. Feedback/outcome observation remains immature: zero linked feedback,
+zero frozen/matured/benchmarked R9.2 outcomes, and no weekly learning review is
+yet naturally due. These are observation/source gaps, not implementation
+claims.
+
+Live browser acceptance passed on desktop and 390px mobile for the CIO Brain,
+including portfolio thesis, capital deployment, market context, seasonality,
+methodology, learning, memory, policy, symbol-thesis, and source-health
+sections. NOC, SCHG, and ANET are visible in the bounded 80-row universe
+projection. CSCO is not in that projection but its live per-symbol API returns
+`CURRENT`, `symbol_csco@v3`, with the same exact serving pin. This is an
+operator-surface coverage limitation, not missing thesis state.
+
+The natural post-deploy research-to-thesis cycle and identical-evidence replay
+remain an acceptance gate unless the later evidence section records a measured
+natural completion. R10 remains blocked. Temporal stays
+`TEMPORAL_POC_ONLY`; LangGraph is not installed or activated in production.
+
+A fresh runtime audit still reports 219 broad rebuild/hybrid paths. Thirty-two
+hybrid paths are shared-venv-only and nine are true worktree application roots.
+The audit found CIO Telegram still loaded from the preceding `09b5ec3d...`
+release; the byte-identical exact-main unit was restarted at 16:27:11 EDT, and
+new PID 324123 now resolves to the immutable `b935076f...` release. The GPU
+audit remains `UNRESOLVED_HOLD`: six generative models are installed,
+`gemma3:12b` remains GPU-resident, source/cron/systemd/OpenClaw caller evidence
+is nonzero, and the seven-day zero-call gate has not passed.
 
 ## Executive decision
 
@@ -220,7 +293,11 @@ Specific correctness gaps:
 - direct callers bypass the canonical routing graph.
 - CIO live payload labels provider `deepseek-v4-pro`, while automatic routing policy is intended to be governed Flash; provenance and lane semantics are not singular.
 
-PR #472 is the intended source-closure stack head, but it is neither CI-validated nor deployed. No local model can be removed until callers, processes, tests, and seven-day zero-call evidence meet the physical decommission gate.
+Historical R9.1 note: before the R9.1 deployment, PR #472 was the intended
+source-closure stack head and had not yet been CI-validated or deployed. It was
+subsequently merged and deployed in R9.1. No local model can be removed until
+callers, processes, tests, and seven-day zero-call evidence meet the physical
+decommission gate.
 
 ### LangGraph recommendation
 
