@@ -435,6 +435,14 @@ def test_command_center_fallback_fail_closed(monkeypatch):
     assert act_now is False
     assert blocking == "DATA_CONFLICT"
     assert card.get("freshness") == "STALE"  # freshness preserved through fallback
+    assert card["sizing_suppressed"] is True
+    assert card["sizing_suppression_reason"] == "DATA_CONFLICT"
+    for field in (
+        "delta_usd", "recommended_delta_usd", "target_weight_pct",
+        "trim_to_clear_fire_usd", "trim_to_policy_usd", "scenario_trim_usd",
+        "sizing_method", "sizing_objective",
+    ):
+        assert card.get(field) is None, field
 
 
 def test_derived_actionability_owns_priority(monkeypatch):

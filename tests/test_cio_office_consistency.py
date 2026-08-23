@@ -127,7 +127,9 @@ def test_cio_now_cards_have_cio_speak_fields():
         assert d.get("counter_thesis")
         assert d.get("operator_actions")
         codes = {a["code"] for a in d["operator_actions"]}
-        assert {"ACK", "DEFER", "DONE", "REJECT", "RATE"} <= codes
+        assert {
+            "AGREE", "DISAGREE", "DEFER", "NEED_DATA", "NO_LONGER_RELEVANT",
+        } <= codes
         # No HOLD+TRIM contradiction
         assert d["action"] != "Hold" or "TRIM" not in str(d.get("why_now")).upper()
 

@@ -370,11 +370,11 @@ def what_changes_the_call(stance_code: str, risk: Any = None, counter_thesis: An
 def operator_action_affordances() -> list[dict[str, str]]:
     """Client-facing actions available on a CIO NOW card (no execution authority)."""
     return [
-        {"code": "ACK", "label": "Acknowledge"},
+        {"code": "AGREE", "label": "Agree"},
+        {"code": "DISAGREE", "label": "Disagree"},
         {"code": "DEFER", "label": "Defer"},
-        {"code": "DONE", "label": "Mark done"},
-        {"code": "REJECT", "label": "Reject"},
-        {"code": "RATE", "label": "Rate"},
+        {"code": "NEED_DATA", "label": "Need data"},
+        {"code": "NO_LONGER_RELEVANT", "label": "No longer relevant"},
     ]
 
 
