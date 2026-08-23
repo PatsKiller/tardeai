@@ -49,6 +49,45 @@ def _fmt_money(v: Any) -> str:
         return "DATA_UNAVAILABLE"
 
 
+def _f(v: Any) -> float | None:
+    try:
+        out = float(v)
+        return out if out > 0 else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _opportunity_row_from_product(product: dict[str, Any], symbol: str) -> dict[str, Any]:
+    names = ((product or {}).get("opportunity_book") or {}).get("top") or []
+    sym = symbol.upper()
+    for row in names:
+        if isinstance(row, dict) and str(row.get("symbol") or "").upper() == sym:
+            return row
+    return {}
+
+
+def _zone_distance_pct(price: Any, low: Any, high: Any) -> float | None:
+    p, lo, hi = _f(price), _f(low), _f(high)
+    if p is None or lo is None or hi is None or lo > hi:
+        return None
+    if p < lo:
+        return round((p - lo) / lo * 100.0, 3)
+    if p > hi:
+        return round((p - hi) / hi * 100.0, 3)
+    return 0.0
+
+
+def _price_conflicts(*values: Any, tolerance_pct: float = 0.5) -> list[dict[str, float]]:
+    nums = [x for x in (_f(v) for v in values) if x is not None]
+    if len(nums) < 2:
+        return []
+    lo, hi = min(nums), max(nums)
+    pct = (hi - lo) / lo * 100.0
+    if pct <= tolerance_pct:
+        return []
+    return [{"low": lo, "high": hi, "difference_pct": round(pct, 3)}]
+
+
 def _html_escape(s: Any) -> str:
     """Escape &, <, >, \" for Telegram HTML bodies."""
     t = "" if s is None else str(s)
@@ -185,34 +224,60 @@ def assemble_symbol_intelligence(
     kind = str(item.get("kind") or "update")
     to_state = item.get("to")
     from_state = item.get("from")
-    prod_row = _reentry_row_from_product(product, sym)
+    is_reentry = "reentry" in kind
+    is_opportunity = "opportunity" in kind
+    prod_row = _reentry_row_from_product(product, sym) if is_reentry else {}
+    opportunity_row = _opportunity_row_from_product(product, sym) if is_opportunity else {}
+    opportunity_thesis = opportunity_row.get("thesis") if isinstance(opportunity_row.get("thesis"), dict) else {}
     desk = _desk_row(sym, root=root_p)
     thesis = _thesis_fields(sym, root=root_p)
 
-    price = prod_row.get("current_price") or desk.get("price")
-    entry_low = desk.get("entry_low") or prod_row.get("entry_low")
-    entry_high = desk.get("entry_high") or prod_row.get("entry_high")
+    # Re-entry cards use one structured desk snapshot. Opportunity cards do not
+    # borrow re-entry mechanics or prose from another product surface.
+    price = (desk.get("price") or prod_row.get("current_price")) if is_reentry else None
+    entry_low = (desk.get("entry_low") or prod_row.get("entry_low")) if is_reentry else None
+    entry_high = (desk.get("entry_high") or prod_row.get("entry_high")) if is_reentry else None
     stop = (
-        prod_row.get("stop")
+        desk.get("stop")
+        or prod_row.get("stop")
         or prod_row.get("invalidation")
-        or desk.get("stop")
-    )
+    ) if is_reentry else None
     resistance = None
     if isinstance(desk.get("resistance"), dict):
         resistance = desk["resistance"].get("level")
-    target = desk.get("target")
+    target = desk.get("target") if is_reentry else None
+    distance_pct = _zone_distance_pct(price, entry_low, entry_high)
+    data_conflicts = _price_conflicts(
+        desk.get("price") if is_reentry else None,
+        prod_row.get("current_price") if is_reentry else None,
+    )
 
     why_bits: list[str] = []
-    if prod_row.get("what_happened_since"):
-        why_bits.append(str(prod_row["what_happened_since"])[:220])
-    if prod_row.get("setup"):
-        why_bits.append(str(prod_row["setup"])[:160])
-    if desk.get("why"):
-        w = desk["why"]
-        if isinstance(w, list):
-            why_bits.extend(str(x)[:120] for x in w[:2])
-        else:
-            why_bits.append(str(w)[:160])
+    if is_reentry:
+        if distance_pct == 0 and all(_f(v) is not None for v in (price, entry_low, entry_high)):
+            why_bits.append(
+                f"Price {_fmt_money(price)} is inside the validated entry zone "
+                f"{_fmt_money(entry_low)}–{_fmt_money(entry_high)}."
+            )
+        elif distance_pct is not None:
+            side = "below" if distance_pct < 0 else "above"
+            why_bits.append(
+                f"Price {_fmt_money(price)} is {abs(distance_pct):.1f}% {side} the validated entry zone "
+                f"{_fmt_money(entry_low)}–{_fmt_money(entry_high)}."
+            )
+        rsi = _f(desk.get("rsi"))
+        if rsi is not None:
+            why_bits.append(f"RSI {rsi:.1f} from the same desk snapshot.")
+    elif is_opportunity:
+        rank = opportunity_row.get("rank")
+        actionability = opportunity_row.get("actionability") or "RESEARCH_ONLY"
+        why_bits.append(
+            f"Opportunity membership changed; rank {rank if rank is not None else 'DATA_UNAVAILABLE'}; "
+            f"actionability {actionability}."
+        )
+        rationale = opportunity_row.get("why_outranks_cash_or_reentry")
+        if rationale:
+            why_bits.append(str(rationale)[:220])
     if not why_bits:
         why_bits.append(
             f"Status {from_state or '—'} → {to_state or '—'} on CIO product rebuild "
@@ -222,6 +287,7 @@ def assemble_symbol_intelligence(
     thesis_summary = (
         thesis.get("thesis_summary")
         or prod_row.get("why_previously_owned")
+        or opportunity_thesis.get("thesis_summary")
         or thesis.get("why_owned_or_watched")
         or "DATA_UNAVAILABLE — living thesis not CURRENT"
     )
@@ -244,10 +310,9 @@ def assemble_symbol_intelligence(
         "trigger_event": trigger,
         "effect": effect,
         "narrative": (
-            f"Research/product rebuild on {trigger_symbol or 'BOOK'} "
-            f"({trigger}) caused: {effect}."
-            if trigger_symbol
-            else f"Product rebuild ({trigger}) caused: {effect}."
+            f"{trigger_symbol} reassessment ({trigger}) recorded: {effect}."
+            if trigger_symbol == sym
+            else f"Product reassessment ({trigger}) recorded: {effect}."
         ),
     }
 
@@ -303,6 +368,12 @@ def assemble_symbol_intelligence(
             "resistance_or_zone_high": entry_high if entry_high is not None else resistance,
             "stop_invalidation": stop,
             "target": target,
+            "distance_pct": distance_pct,
+            "near_threshold_pct": 3.0,
+            "price_source": desk.get("price_source") if is_reentry else None,
+            "price_as_of": desk.get("price_as_of") if is_reentry else None,
+            "price_age_h": desk.get("price_age_h") if is_reentry else None,
+            "data_conflicts": data_conflicts,
             "status": (
                 to_state
                 or prod_row.get("status")
@@ -365,11 +436,11 @@ def render_telegram_card(obj: dict[str, Any]) -> str:
         if not g.get("send"):
             if log_suppression:
                 log_suppression(
-                    "invalidation_contradicts_price",
+                    "intelligence_card_quality_gate",
                     symbol=obj.get("symbol"),
                     decision_id=(obj.get("object_id") or obj.get("change", {}).get("kind")),
                     reason=g.get("reason") or "",
-                    extra=g.get("invalidation"),
+                    extra={"invalidation": g.get("invalidation"), "failures": g.get("failures")},
                 )
             return ""
     obj = obj if isinstance(obj, dict) else {}
@@ -418,6 +489,11 @@ def render_telegram_card(obj: dict[str, Any]) -> str:
         f"Price <code>{price_s}</code> · Zone <code>{zone_lo}–{zone_hi}</code> · "
         f"Invalidation <code>{stop_s}</code>"
     )
+    if tech.get("price_source") or tech.get("price_as_of"):
+        levels += (
+            f" · Source <code>{_html_escape(tech.get('price_source') or 'DATA_UNAVAILABLE')}</code>"
+            f" as of <code>{_html_escape(tech.get('price_as_of') or 'DATA_UNAVAILABLE')}</code>"
+        )
 
     th = obj.get("thesis") if isinstance(obj.get("thesis"), dict) else {}
     conf = th.get("confidence_0_10")
@@ -439,12 +515,12 @@ def render_telegram_card(obj: dict[str, Any]) -> str:
         "<b>Why now</b>",
         *why_lines,
         "",
-        "<b>Levels</b>",
-        levels,
-        "",
         "<b>Thesis</b>",
         thesis_line,
     ]
+    if obj.get("action_class") == "REENTRY_WATCH":
+        insert_at = lines.index("<b>Thesis</b>")
+        lines[insert_at:insert_at] = ["<b>Levels</b>", levels, ""]
 
     cont = ((obj.get("memory") or {}).get("continuity") or {})
     if isinstance(cont, dict) and cont.get("summary"):
@@ -494,8 +570,19 @@ def cards_for_product_change(
                 from lib.telegram_card_gate import intelligence_card_gate
             except Exception:
                 intelligence_card_gate = None  # type: ignore
-        if intelligence_card_gate and not intelligence_card_gate(card).get("send"):
-            continue
+        if intelligence_card_gate:
+            gate = intelligence_card_gate(card)
+            if not gate.get("send"):
+                try:
+                    from scripts.lib.telegram_card_gate import log_suppression
+                    log_suppression(
+                        "intelligence_card_quality_gate", symbol=sym,
+                        decision_id=card.get("object_id"), reason=gate.get("reason") or "",
+                        extra={"failures": gate.get("failures") or []},
+                    )
+                except Exception:
+                    pass
+                continue
         seen.add(sym)
         out.append(card)
         if len(out) >= max_cards:

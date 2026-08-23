@@ -24,6 +24,7 @@ AUTHORITY = "READ_ONLY_ADVISORY"
 RR_UNAVAILABLE = "R:R UNAVAILABLE"
 QUOTE_WITHHOLD = "PRICE_UNAVAILABLE — proposal withheld"
 INV_SUPPRESS = "invalidation_contradicts_price"
+MAX_ADVISORY_QUOTE_AGE_HOURS = 72.0
 
 _DEFAULT_LOG = Path(__file__).resolve().parents[2] / "data" / "cio" / "telegram_p0_suppress.jsonl"
 
@@ -176,16 +177,83 @@ def proposal_send_gate(proposal: dict[str, Any] | None) -> dict[str, Any]:
 
 
 def intelligence_card_gate(obj: dict[str, Any] | None) -> dict[str, Any]:
-    """T1 for CIO IIC / reentry cards. Inverted invalidation → suppress."""
+    """Fail closed on contradictory or incomplete financial-looking reentry cards."""
     o = obj or {}
     tech = o.get("technical") if isinstance(o.get("technical"), dict) else {}
+    change = o.get("change") if isinstance(o.get("change"), dict) else {}
+    is_reentry = o.get("action_class") == "REENTRY_WATCH" or "reentry" in str(change.get("kind") or "")
+    failures: list[str] = []
+    conflicts = tech.get("data_conflicts") if isinstance(tech.get("data_conflicts"), list) else []
+    if conflicts:
+        failures.append("DATA_CONFLICT")
+
+    zone: dict[str, Any] = {"ok": True, "reason": "not_reentry"}
+    freshness: dict[str, Any] = {"ok": True, "reason": "not_reentry"}
+    if is_reentry:
+        price = _f(tech.get("price"))
+        low = _f(tech.get("support_or_zone_low"))
+        high = _f(tech.get("resistance_or_zone_high"))
+        zone_ok = bool(price is not None and low is not None and high is not None and low <= high)
+        zone = {"ok": zone_ok, "price": price, "low": low, "high": high,
+                "reason": "ok" if zone_ok else "ZONE_DATA_UNAVAILABLE_OR_INVALID"}
+        if not zone_ok:
+            failures.append(zone["reason"])
+        source = str(tech.get("price_source") or "").strip()
+        as_of = tech.get("price_as_of")
+        age_h = None
+        try:
+            explicit_age = tech.get("price_age_h")
+            if explicit_age is not None:
+                age_h = float(explicit_age)
+        except (TypeError, ValueError):
+            age_h = None
+        try:
+            if age_h is None:
+                parsed = datetime.fromisoformat(str(as_of).replace("Z", "+00:00"))
+                if parsed.tzinfo is None:
+                    parsed = parsed.replace(tzinfo=timezone.utc)
+                age_h = (datetime.now(timezone.utc) - parsed.astimezone(timezone.utc)).total_seconds() / 3600.0
+        except Exception:
+            pass
+        fresh_ok = bool(source and age_h is not None and -0.25 <= age_h <= MAX_ADVISORY_QUOTE_AGE_HOURS)
+        freshness = {"ok": fresh_ok, "source": source or None, "as_of": as_of,
+                     "age_hours": round(age_h, 2) if age_h is not None else None,
+                     "reason": "ok" if fresh_ok else "QUOTE_SOURCE_STALE_OR_UNAVAILABLE"}
+        if not fresh_ok:
+            failures.append(freshness["reason"])
+        state = str(tech.get("status") or change.get("to") or "").upper()
+        if state == "NEAR" and zone_ok:
+            if price < low:
+                computed_distance = (price - low) / low * 100.0
+            elif price > high:
+                computed_distance = (price - high) / high * 100.0
+            else:
+                computed_distance = 0.0
+            threshold = _f(tech.get("near_threshold_pct")) or 3.0
+            if abs(computed_distance) > threshold:
+                failures.append("NEAR_THRESHOLD_EXCEEDED")
+            supplied = tech.get("distance_pct")
+            if supplied is not None:
+                try:
+                    if abs(float(supplied) - computed_distance) > 0.15:
+                        failures.append("ZONE_DISTANCE_CONFLICT")
+                except (TypeError, ValueError):
+                    failures.append("ZONE_DISTANCE_CONFLICT")
     side = infer_side({**o, **tech})
     inv = invalidation_ok(tech.get("price"), tech.get("stop_invalidation"), side=side)
-    send = not inv.get("suppress")
+    if is_reentry and not inv.get("ok"):
+        failures.append(str(inv.get("reason") or "INVALIDATION_UNAVAILABLE"))
+    elif inv.get("suppress"):
+        failures.append(str(inv.get("reason") or INV_SUPPRESS))
+    failures = list(dict.fromkeys(failures))
+    send = not failures
     return {
         "send": send,
         "invalidation": inv,
-        "reason": inv.get("reason") if not send else "ok",
+        "zone": zone,
+        "freshness": freshness,
+        "failures": failures,
+        "reason": ",".join(failures) if failures else "ok",
         "symbol": o.get("symbol"),
     }
 

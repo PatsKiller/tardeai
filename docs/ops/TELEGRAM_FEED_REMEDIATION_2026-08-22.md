@@ -7,6 +7,31 @@
 **Corpus:** 18,130 messages · 4 feeds · 2026-05-19 → 2026-08-22 (operator audit).  
 **Session index:** `docs/ops/SESSION_CLOSEOUT_2026-08-22.md`
 
+## 2026-08-23 correction — supplied CIO receipts
+
+Operator receipts showed repeated FCNTX opportunity add/remove and JTAI reentry add/remove cards after
+JEPI, ARKX, and SCHD research completions. They also showed four correctness defects in one card family:
+
+- opportunity cards borrowed reentry mechanics and prose
+- structured price and prose price disagreed (`$27.19` vs `$26.65`)
+- JTAI was labeled NEAR at 5.4% below a 3% threshold
+- the long invalidation was above price (`$1.60` vs `$1.59`)
+
+The stacked 2026-08-23 remediation now:
+
+- scopes research-completion product notifications to the researched symbol and suppresses top-20 boundary churn
+- derives reentry rationale only from the same structured desk snapshot rendered in Levels
+- never attaches reentry levels to an opportunity membership card
+- fails closed on price conflicts, invalid/missing zones, missing/stale quote source, NEAR beyond threshold,
+  zone-distance disagreement, and invalid/missing long/short invalidation geometry
+- renders quote source/as-of on accepted reentry cards and records suppressions as
+  `intelligence_card_quality_gate`
+- says a reassessment **recorded** a transition; it no longer claims an unrelated research event caused it
+
+This supersedes T3 below for the CIO intelligence-card producer. It is implemented and locally tested,
+but not live: GitHub jobs are failing before steps start because of repository billing, and CURRENT/cron/
+systemd have not been changed.
+
 ## What shipped (T1 + T2)
 
 Code: `scripts/lib/telegram_card_gate.py`, `scripts/lib/telegram_send_idempotency.py`, `scripts/telegram_transport.py` (`deliver_text`).
