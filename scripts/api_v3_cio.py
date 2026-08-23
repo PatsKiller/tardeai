@@ -32,6 +32,7 @@ Routes:
   GET /api/v3/cio/brain/market-context — deterministic MarketContextState@v1
   GET /api/v3/cio/brain/seasonality — Python-computed SeasonalityState@v1
   GET /api/v3/cio/brain/portfolio-thesis — current published thesis + read-only candidate delta
+  GET /api/v3/cio/brain/capital-plan — CashDeploymentSituation@v1 + CapitalDeploymentPlan@v1
 """
 from __future__ import annotations
 
@@ -68,6 +69,11 @@ def _portfolio_thesis_store() -> Path:
 def _symbol_thesis_projection_path() -> Path:
     configured = str(os.getenv("CIO_THESES_PROJECTION_JSON") or "").strip()
     return Path(configured) if configured else PROJECT_ROOT / "data" / "cio" / "cio_theses_projection.json"
+
+
+def _capital_plan_store() -> Path:
+    configured = str(os.getenv("CIO_CAPITAL_PLAN_JSONL") or "").strip()
+    return Path(configured) if configured else PROJECT_ROOT / "data" / "cio" / "cio_capital_plans.jsonl"
 
 
 # ── Operator-facing label normalization ───────────────────────────────────────
@@ -1743,6 +1749,43 @@ def get_portfolio_thesis_v1() -> dict[str, Any]:
         "published_thesis": published,
         "candidate": candidate,
         "candidate_delta": classify_portfolio_thesis_delta(published, candidate),
+        "publication": "MATERIALIZER_ONLY",
+        "authority": AUTHORITY_ADVISORY,
+    }
+
+
+def get_capital_plan_v1() -> dict[str, Any]:
+    """Return a read-only plan preview; publication remains an explicit materializer step."""
+    from scripts.lib.cio_cash_capital_v1 import (
+        build_capital_deployment_plan,
+        build_cash_deployment_situation,
+        load_latest_capital_record,
+    )
+
+    thesis_payload = get_portfolio_thesis_v1()
+    portfolio_thesis = thesis_payload.get("published_thesis") or thesis_payload.get("candidate")
+    policy = get_operator_investment_policy()["policy"]
+    portfolio = get_portfolio_state_v1()["portfolio_state"]
+    market = get_market_context_state_v1()["market_context"]
+    seasonality = get_seasonality_state_v1()["seasonality"]
+    situation = build_cash_deployment_situation(
+        policy=policy,
+        portfolio_state=portfolio,
+        market_context=market,
+        seasonality=seasonality,
+        portfolio_thesis=portfolio_thesis,
+    )
+    plan = build_capital_deployment_plan(
+        situation=situation,
+        portfolio_thesis=portfolio_thesis,
+        methodology_refs=list((portfolio_thesis or {}).get("methodology_refs") or []),
+    )
+    published = load_latest_capital_record(str(_capital_plan_store()))
+    return {
+        "ok": True,
+        "situation": situation,
+        "capital_plan": plan,
+        "published": published,
         "publication": "MATERIALIZER_ONLY",
         "authority": AUTHORITY_ADVISORY,
     }
