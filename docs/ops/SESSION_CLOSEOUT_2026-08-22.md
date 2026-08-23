@@ -4,7 +4,7 @@
 **CURRENT pin:** `5e91225a` — **not promoted**. Freeze **lifted 2026-08-22** (payload window invalid).  
 **Live research crontab:** `$PROJ=` rebuild. CIO delivery: CURRENT.  
 **Flags:** `RESEARCH_SKIP_GATE` **1 (crontab prefix; code default 0)** · `MEMORY_BEHAVIOR_INFLUENCE` 0 · `RESEARCH_ALLOW_LOCAL_LLM` 0.  
-**Dollar cap:** `LLM_GLOBAL_DAILY_USD_CAP=0.50` (not raised). Process `hermes_external_research` **600 calls / $0.30**.
+**Dollar cap:** `LLM_GLOBAL_DAILY_USD_CAP=0.50`. Process **600 / $0.30** (restored after tonight’s ignore-cap finish). **Lifecycle as-of:** `docs/ops/RESEARCH_LIFECYCLE_AS_OF_2026-08-22.md`.
 
 This is the **index of findings and fixes** from 2026-08-22. Detail lives in the linked docs. Do not treat the 10:24 coverage snapshot as current DeepSeek counts.
 
@@ -12,12 +12,12 @@ This is the **index of findings and fixes** from 2026-08-22. Detail lives in the
 
 ## The one number that matters
 
-| What ran | What the brain stored |
+| Morning (confirm-run / truncated rec) | Night (untruncated + mint) |
 |---|---|
-| DeepSeek **545 nonempty** / **$0.168934** (confirm-run) | Living thesis CURRENT **3/22 (13.6%)** — DIV, DIVI, JEPI — **unchanged** |
-| T0-HOLD 22/22 · T0-PROP 30/30 · T1 331/331 · reentry 25/25 · T2 141/141 forced · T3 20/20 slice | 19 holdings still `RESEARCH_REQUIRED` |
+| DeepSeek 545 nonempty / $0.169; living CURRENT **3/22**, substantive **0** | Holdings **17/22 CURRENT**, coverage 100, substantive **77.27%**, **sla_met true** |
+| 19 RESEARCH_REQUIRED | Reentry **24/25 CURRENT**; T1 **292/299 CURRENT**; 299/299 have `raw_response` |
 
-Research writes `hermes_external_research`. Mint now reads **joined rec+dissent+evidence**. Rec-only **2/19 CURRENT**, joined **12/19 CURRENT**, rest THIN. Live `substantive_pct` was 0.0 (DIV/DIVI/JEPI re-grade THIN). Storage did not lose the 3,513 chars — they sit in other columns. Join-recoverable **545/545**, gone **0**. Prompt is **amnesiac** (no standing thesis). Skip gate **on** crontab. Live mint writes CURRENT `cio_theses.jsonl`.
+The model was never thin. `recommendation[:500]` was. Agents **do not** auto-ingest: they pull on the next job; Telegram thesis notify is off; CURRENT pin drops `thesis.changed`; memory influence is 0. Canonical map: `docs/ops/RESEARCH_LIFECYCLE_AS_OF_2026-08-22.md`.
 
 Canonical: `docs/ops/RESEARCH_QUALITY_AND_THESIS_GAP_2026-08-22.md`
 

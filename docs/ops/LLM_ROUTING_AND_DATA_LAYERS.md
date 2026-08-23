@@ -1,11 +1,13 @@
 # How LLMs, Hermes, SearXNG, and ticker data actually work
 
-**Date:** 2026-08-22  
+**Date:** 2026-08-22 (routing map; book numbers superseded night of 22nd)  
 **Authority:** READ_ONLY_ADVISORY  
-**CURRENT:** do not promote for this (docs-only).  
-**Live crontab:** still `$PROJ=` rebuild.
+**CURRENT:** do not promote.  
+**Live crontab:** `$PROJ=` rebuild.
 
-This is the map of **who calls which LLM, on which symbols, and why Telegram still says DATA_UNAVAILABLE** even though quotes, RSI, zones, Hermes scores, SearXNG, and OAuth research exist.
+**As of 2026-08-22 night:** living theses exist. Held book **17/22 CURRENT**, coverage 100, substantive **77.27%**, `sla_met` true. Reentry 24/25 CURRENT. T1 292/299 CURRENT. Full lifecycle: `docs/ops/RESEARCH_LIFECYCLE_AS_OF_2026-08-22.md`.
+
+This file is still the map of **who calls which LLM**. Telegram `DATA_UNAVAILABLE` under Thesis was a **join to living `symbol_<ticker>`**, not missing quotes. That join now has rows for minted names — **the next card render** can use them. Nothing was paged tonight (`CIO_THESIS_TELEGRAM` off; CURRENT pin ignores `thesis.changed`).
 
 Related: `docs/RESEARCH_PRIORITIZATION.md` (policy) · `docs/ops/RESEARCH_LIFECYCLE_STANDARD.md` (skip/freshness) · `docs/ops/RESEARCH_COVERAGE_SNAPSHOT_2026-08-22.md` (measured 10:24 ET) · **`docs/ops/RESEARCH_TIER_LLM_CADENCE.md` (five universe tiers, watchlist is T1 only, cron + SLA)**.
 
@@ -22,7 +24,7 @@ Nothing is “the research.” Four independent stores. Telegram reads **one car
 | **Hermes** | Rank, composite score, RSI/trend on `watchlist_items` | scorer + top-N | Rank is in the *prompt* to OAuth, not the Telegram thesis |
 | **LLM** | Prose opinion | `hermes_external_research` (+ local gemma on `holdings_llm_refresh`) | **No** — Telegram thesis is the **living symbol thesis**, not this table |
 
-Living CIO thesis (`HeldBookThesisCoverage@v1`): **3/22 holdings CURRENT** (DIV, DIVI, JEPI). Watch/reentry names are almost all `RESEARCH_REQUIRED`. That is why the card says:
+Living CIO thesis (`HeldBookThesisCoverage@v1`) **as of tonight:** holdings **17/22 CURRENT** (5 THIN: JEPI QCOM SCHG XAR XLB), coverage 100, substantive 77.27%, SLA true. Reentry 24/25 CURRENT. T1 292/299 CURRENT. Morning snapshot below (3/22, RESEARCH_REQUIRED) is **pre-mint**. That is why cards **said**:
 
 ```
 *Thesis*
