@@ -32,6 +32,12 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "scripts" / "lib"))
 from watchlist_priority import WATCHLIST_TOP_N
+from lib.research_call_accounting import (
+    accounting_identity,
+    append_event as append_call_event,
+    call_id_for,
+    new_run_id,
+)
 PY = str(ROOT / ".venv" / "bin" / "python")
 RESEARCHER = str(ROOT / "scripts" / "hermes_external_researcher.py")
 
@@ -639,7 +645,19 @@ def result_is_budget_throttle(res: dict | None) -> bool:
     return "SKIPPED_BUDGET" in blob or "COST_CAP_EXCEEDED" in blob
 
 
-def dispatch(sym, lane, tier, apply, *, thesis_gap: dict | None = None) -> dict:
+def _account(event: str, **kwargs) -> None:
+    """Best-effort observability; accounting must never alter research policy."""
+    try:
+        append_call_event(event, **kwargs)
+    except Exception as exc:
+        print(f"[scheduler] accounting_error={type(exc).__name__}:{exc}")
+
+
+def dispatch(
+    sym, lane, tier, apply, *, thesis_gap: dict | None = None,
+    run_id: str | None = None, call_id: str | None = None,
+    producer: str = "research_scheduler", family: str = "A",
+) -> dict:
     """Route governed cloud research; reject every local or unknown lane."""
     meta = LANES.get(lane, {})
     if not meta or meta.get("dispatch") != "external":
@@ -658,6 +676,11 @@ def dispatch(sym, lane, tier, apply, *, thesis_gap: dict | None = None) -> dict:
     prio = "P0" if tier.startswith("T0") else ("P1" if tier == "T1-WATCH" else "P2")
     cmd = [PY, RESEARCHER, "--lane", lane, "--symbol", sym, "--question", q,
            "--priority", prio, "--trigger", "research_scheduler"]
+    if run_id:
+        cmd.extend(["--run-id", run_id])
+    if call_id:
+        cmd.extend(["--call-id", call_id])
+    cmd.extend(["--producer", producer, "--family", family])
     if apply:
         cmd.append("--apply")
     try:
@@ -674,8 +697,20 @@ def dispatch(sym, lane, tier, apply, *, thesis_gap: dict | None = None) -> dict:
             "rag_first": rag_first_enabled() if commission else False,
         }
     except subprocess.TimeoutExpired:
+        if run_id and call_id:
+            _account(
+                "ERROR", producer=producer, family=family, run_id=run_id,
+                call_id=call_id, symbol=sym, lane=lane, trigger="research_scheduler",
+                reason="subprocess_timeout", attempt_no=1, apply=apply,
+            )
         return {"ok": False, "tail": "timeout"}
     except Exception as e:
+        if run_id and call_id:
+            _account(
+                "ERROR", producer=producer, family=family, run_id=run_id,
+                call_id=call_id, symbol=sym, lane=lane, trigger="research_scheduler",
+                reason=f"subprocess_error:{type(e).__name__}", attempt_no=1, apply=apply,
+            )
         return {"ok": False, "tail": str(e)[:120]}
 
 
@@ -746,6 +781,10 @@ def maybe_dispatch_metered(
     index_path: Path | None = None,
     ledger_path: Path | None = None,
     reentry_ready_near: bool = False,
+    run_id: str | None = None,
+    call_id: str | None = None,
+    producer: str = "research_scheduler",
+    family: str = "A",
 ) -> dict:
     """Skip-before-call gate for a metered (DeepSeek) candidate.
 
@@ -773,6 +812,10 @@ def maybe_dispatch_metered(
     now_dt = now or datetime.now(timezone.utc)
     call = dispatch_fn or dispatch
     gate = skip_gate_enabled()
+    rid, cid = accounting_identity(
+        producer=producer, family=family, symbol=sym, lane=lane,
+        run_id=run_id, call_id=call_id,
+    )
 
     def _log(code: str, reason: str) -> None:
         if not gate:
@@ -794,6 +837,11 @@ def maybe_dispatch_metered(
     if hours_window_fresh and not catalyst:
         code = rsi.SKIP_FRESH
         _log(code, "RESEARCH_BACKFILL_SKIP_FRESH_HOURS")
+        _account(
+            "DEDUPED", producer=producer, family=family, run_id=rid, call_id=cid,
+            symbol=sym, lane=lane, trigger="research_scheduler",
+            reason="RESEARCH_BACKFILL_SKIP_FRESH_HOURS", apply=apply,
+        )
         return {
             "code": code,
             "dispatched": False,
@@ -805,7 +853,16 @@ def maybe_dispatch_metered(
     if not gate:
         result = None
         if apply:
-            result = call(sym, lane, tier, apply, thesis_gap=thesis_gap)
+            result = call(
+                sym, lane, tier, apply, thesis_gap=thesis_gap,
+                run_id=rid, call_id=cid, producer=producer, family=family,
+            )
+        else:
+            _account(
+                "DRY_RUN", producer=producer, family=family, run_id=rid, call_id=cid,
+                symbol=sym, lane=lane, trigger="research_scheduler",
+                reason="would_dispatch", apply=False,
+            )
         return {
             "code": rsi.RESEARCH_EXECUTED,
             "dispatched": True,
@@ -824,6 +881,11 @@ def maybe_dispatch_metered(
     if code in (rsi.SKIP_UNCHANGED, rsi.SKIP_FRESH):
         reason = "hash_match_in_window" if code == rsi.SKIP_UNCHANGED else "ttl_fresh"
         _log(code, reason)
+        _account(
+            "DEDUPED", producer=producer, family=family, run_id=rid, call_id=cid,
+            symbol=sym, lane=lane, trigger="research_scheduler",
+            reason=reason, apply=apply, metadata={"skip_code": code},
+        )
         return {
             "code": code,
             "dispatched": False,
@@ -834,7 +896,10 @@ def maybe_dispatch_metered(
 
     result = None
     if apply:
-        result = call(sym, lane, tier, apply, thesis_gap=thesis_gap)
+        result = call(
+            sym, lane, tier, apply, thesis_gap=thesis_gap,
+            run_id=rid, call_id=cid, producer=producer, family=family,
+        )
         ok = bool(result and result.get("ok"))
         if ok:
             rsi.upsert_row(
@@ -855,6 +920,11 @@ def maybe_dispatch_metered(
         _log(code, "metered_dispatch" if ok else "metered_dispatch_failed")
     else:
         _log(code, "dry_would_dispatch")
+        _account(
+            "DRY_RUN", producer=producer, family=family, run_id=rid, call_id=cid,
+            symbol=sym, lane=lane, trigger="research_scheduler",
+            reason="dry_would_dispatch", apply=False, metadata={"dispatch_code": code},
+        )
     return {
         "code": code,
         "dispatched": True,
@@ -864,7 +934,10 @@ def maybe_dispatch_metered(
     }
 
 
-def run(mode, apply, budget):
+def run(mode, apply, budget, *, run_id: str | None = None):
+    producer = "research_scheduler"
+    family = "A"
+    accounting_run_id = run_id or new_run_id(producer)
     uni = load_universe()
     counts = {}
     for v in uni.values():
@@ -944,14 +1017,38 @@ def run(mode, apply, budget):
             apply=apply,
         )
         catalyst = bool(cats.get(sym, False) or trigger_plan.get("triggered"))
+        all_call_ids = {
+            lane: call_id_for(accounting_run_id, sym, lane) for lane in all_lanes
+        }
+        for lane in all_lanes:
+            _account(
+                "SCHEDULED", producer=producer, family=family,
+                run_id=accounting_run_id, call_id=all_call_ids[lane], symbol=sym,
+                lane=lane, trigger="research_scheduler", apply=apply,
+                metadata={"mode": mode, "tier": tier, "catalyst": catalyst},
+            )
         # decide lanes for THIS symbol
         local_lanes = [l for l in all_lanes if LANES[l]["dispatch"] == "queue"]
         ext_lanes = [l for l in all_lanes if l in EXTERNAL_LANES and LANES[l]["auto"]]
         # T2/T3 externals only fire on a live catalyst
         if tier in ("T2-INCUB", "T3-COLD") and not catalyst:
             ext_lanes = []
+            for lane in [l for l in all_lanes if l in EXTERNAL_LANES]:
+                _account(
+                    "SKIP_GATED", producer=producer, family=family,
+                    run_id=accounting_run_id, call_id=all_call_ids[lane], symbol=sym,
+                    lane=lane, trigger="research_scheduler", reason="CATALYST_REQUIRED",
+                    apply=apply, metadata={"mode": mode, "tier": tier},
+                )
         if cap_hit:
             ext_lanes = []
+            for lane in [l for l in all_lanes if l in EXTERNAL_LANES]:
+                _account(
+                    "SKIP_GATED", producer=producer, family=family,
+                    run_id=accounting_run_id, call_id=all_call_ids[lane], symbol=sym,
+                    lane=lane, trigger="research_scheduler", reason="UPSTREAM_COST_CAP",
+                    apply=apply, metadata={"mode": mode, "tier": tier},
+                )
         # T1 rotates ONE external per refresh; T0 gets all (true cross-check).
         # Phase 3: rotation weighted by graded outcome hit-rate (hermes_lane_usefulness) once
         # enough external recs have verdicts; uniform below the gate. No lane ever starves
@@ -967,6 +1064,12 @@ def run(mode, apply, budget):
             if spent >= budget:
                 print(f"[scheduler] external budget {budget} spent at {done} symbols — externals roll to next run (local still queued)")
                 ext_lanes = []
+                _account(
+                    "SKIP_GATED", producer=producer, family=family,
+                    run_id=accounting_run_id, call_id=all_call_ids[lane], symbol=sym,
+                    lane=lane, trigger="research_scheduler", reason="RUN_BUDGET",
+                    apply=apply, metadata={"mode": mode, "tier": tier, "budget": budget},
+                )
                 break
             hours_fresh = sym in fresh_ext.get(lane, ())
             outcome = maybe_dispatch_metered(
@@ -980,6 +1083,10 @@ def run(mode, apply, budget):
                     if trigger_plan.get("trigger_reasons")
                     else None
                 ),
+                run_id=accounting_run_id,
+                call_id=all_call_ids[lane],
+                producer=producer,
+                family=family,
             )
             if not outcome.get("dispatched"):
                 print(f"  skip {sym:6s} {tier:9s} lane={lane:13s} {outcome.get('code')}")

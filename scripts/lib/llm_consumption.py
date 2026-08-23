@@ -964,6 +964,12 @@ def gate_and_generate(
                 "lane": lane, "policy": policy,
                 "effective_max_tokens": effective_out,
                 "effective_max_input_tokens": effective_in,
+                **{
+                    key: meta[key] for key in (
+                        "research_run_id", "research_call_id", "research_producer", "research_family",
+                        "symbol", "trigger",
+                    ) if meta.get(key)
+                },
             },
         )
     else:
@@ -999,6 +1005,21 @@ def gate_and_generate(
             source_lane=lane,
             reservation_id=str(reservation_id) if reservation_id is not None else None,
         ):
+            if meta.get("research_run_id") and meta.get("research_call_id"):
+                try:
+                    from lib.research_call_accounting import append_event as _append_research_call_event
+                    _append_research_call_event(
+                        "ATTEMPTED",
+                        producer=str(meta.get("research_producer") or process_id),
+                        family=str(meta.get("research_family") or "REGISTERED"),
+                        run_id=str(meta["research_run_id"]),
+                        call_id=str(meta["research_call_id"]),
+                        symbol=meta.get("symbol"), lane=lane,
+                        trigger=str(meta.get("trigger") or "governed_cloud"),
+                        reason="llm_lane.generate", attempt_no=1, apply=True,
+                    )
+                except Exception:
+                    pass
             result = llm_lane.generate(
                 prompt, lane=lane, timeout=timeout, model=model, _skip_consumption=True,
                 operator_confirmed=operator_confirmed or bool(meta.get("operator_cost_confirmed")),

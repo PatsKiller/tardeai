@@ -16,6 +16,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
 from cio_agent_contract import contract_header
+from lib.research_call_accounting import append_event as append_call_event, call_id_for, new_run_id
 FRESH_HOURS = 12
 
 
@@ -127,7 +128,21 @@ def _trigger_for(r, ctx):
     return "top20_curation", False
 
 
-def run(top=20, lanes=("chatgpt", "grok"), apply=False, symbols=None):
+def run(top=20, lanes=("chatgpt", "grok"), apply=False, symbols=None, *, run_id=None):
+    producer = "hermes_top20_external_intel"
+    family = "B"
+    accounting_run_id = run_id or new_run_id(producer)
+
+    def account(event, *, symbol, lane, call_id, reason=None, metadata=None):
+        try:
+            append_call_event(
+                event, producer=producer, family=family, run_id=accounting_run_id,
+                call_id=call_id, symbol=symbol, lane=lane, trigger="top20_external_intel",
+                reason=reason, apply=apply, metadata=metadata,
+            )
+        except Exception as exc:
+            print(f"[top20] accounting_error={type(exc).__name__}:{exc}")
+
     conn = _conn()
     rows = _named(conn, symbols) if symbols else _top(conn, top)
     report = {"top": len(rows), "lanes": list(lanes), "called": 0, "skipped": 0,
@@ -148,6 +163,11 @@ def run(top=20, lanes=("chatgpt", "grok"), apply=False, symbols=None):
         trig, has_trig = _trigger_for(r, ctx)
         tier = _tier_of.get(trig, "T3")
         for lane in lanes:
+            call_id = call_id_for(accounting_run_id, r["symbol"], lane)
+            account(
+                "SCHEDULED", symbol=r["symbol"], lane=lane, call_id=call_id,
+                metadata={"tier": tier, "trigger_source": trig},
+            )
             recent = _recent(conn, r["symbol"], lane)
             decision = "ALLOW"
             if _budget_decide is not None:
@@ -171,23 +191,38 @@ def run(top=20, lanes=("chatgpt", "grok"), apply=False, symbols=None):
                         "BLOCK": "blocked"}.get(decision, "skipped")] += 1
                 report["detail"].append({"symbol": r["symbol"], "lane": lane, "trigger_source": trig,
                                          "budget_decision": decision})
+                event = "DEDUPED" if recent else "SKIP_GATED"
+                account(
+                    event, symbol=r["symbol"], lane=lane, call_id=call_id,
+                    reason="FRESH_HOURS" if recent else f"BUDGET_GUARD_{decision}",
+                    metadata={"tier": tier, "trigger_source": trig},
+                )
                 continue
             if not apply:
                 report["detail"].append({"symbol": r["symbol"], "lane": lane,
                                          "trigger_source": trig, "budget_decision": "ALLOW",
                                          "action": "dry-run"})
+                account("DRY_RUN", symbol=r["symbol"], lane=lane, call_id=call_id,
+                        reason="provider_not_called", metadata={"trigger_source": trig})
                 continue
             try:
                 cp = subprocess.run(
                     [sys.executable, str(PROJECT_ROOT / "scripts" / "hermes_external_researcher.py"),
                      "--lane", lane, "--symbol", r["symbol"], "--question", q,
-                     "--trigger", trig, "--priority", "P2", "--apply"],
+                     "--trigger", trig, "--priority", "P2", "--apply",
+                     "--run-id", accounting_run_id, "--call-id", call_id,
+                     "--producer", producer, "--family", family],
                     cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=180)
                 ok = cp.returncode == 0
                 report["called"] += 1 if ok else 0
                 report["detail"].append({"symbol": r["symbol"], "lane": lane, "ok": ok})
+                if not ok:
+                    account("ERROR", symbol=r["symbol"], lane=lane, call_id=call_id,
+                            reason=f"subprocess_exit_{cp.returncode}")
             except Exception as e:
                 report["detail"].append({"symbol": r["symbol"], "lane": lane, "error": str(e)[:80]})
+                account("ERROR", symbol=r["symbol"], lane=lane, call_id=call_id,
+                        reason=f"subprocess_error:{type(e).__name__}")
     print(json.dumps({k: report[k] for k in ("top", "lanes", "called", "skipped",
                                               "metadata_only", "deferred", "blocked")}, indent=2))
     return report

@@ -72,6 +72,41 @@ Decomposition of extra vs 312:
 
 Not merged. Not promoted. CURRENT pin untouched.
 
+## Authoritative accounting contract (2026-08-23 implementation)
+
+Historical reconstruction above remains the source for 2026-08-22. New runs emit
+`ResearchCallAccountingEvent@v1` to one append-only ledger through
+`scripts/lib/research_call_accounting.py`.
+
+Identity is mandatory: `producer + family + run_id + call_id`. Family A is
+`research_scheduler` / governed DeepSeek. Family B is
+`hermes_top20_external_intel` / OAuth ChatGPT or Grok. Direct invocations are
+`MANUAL`; other named producers are `REGISTERED`, never unclassified.
+
+The daily formula is:
+
+- `calls_scheduled = count(distinct call_id where event=SCHEDULED)`
+- `calls_actually_attempted = count(distinct call_id where event=ATTEMPTED)`
+- retry and fallback are explicit events on the same `call_id`
+- freshness/source-hash suppression is `DEDUPED`
+- catalyst, data-quality, circuit, and per-run budget suppression is `SKIP_GATED`
+- pre-provider paid-cap rejection is `COST_CAP_EXCEEDED` and does **not** count as attempted
+- a cost reservation older than the recovery window with no consumption/terminal event is
+  `RESERVATION_ONLY`
+- a report is reconciled only when every call has a terminal event and the reservation DB was read
+
+Command: `python scripts/research_call_accounting_daily.py --hours 24`. `--no-db` is an
+explicit offline view and reports reservation reconciliation as skipped. The ledger is advisory
+observability only: `authority=READ_ONLY_ADVISORY`, `financial_writes=0`.
+
+Implementation is in the stacked call-accounting PR and is not live while GitHub CI remains blocked
+before job start by repository billing. CURRENT, cron, and systemd remain unchanged.
+
+Read-only acceptance against the live DB at 2026-08-23 09:35 ET found one 24-hour orphan:
+reservation `2177`, created 2026-08-22 12:00:10 ET, `settled`, DeepSeek V4 Flash,
+projected/actual `$0.001618`, with no matching `llm_consumption_log.metadata_json.reservation_id`.
+The reporter classifies it as Family A `RESERVATION_ONLY`; it does not count it as attempted.
+
 ## Item 4 — overnight (check after 22:35 ET)
 
 - Unit files rewritten **2026-08-22 13:20 ET**. `ExecStart=...hermes_deep_research_local.py --apply --max-rows 3 --model chatgpt`
