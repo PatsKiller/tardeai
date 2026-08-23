@@ -19,11 +19,11 @@
       "acquire_research",
       "classify_delta",
       "reconcile_thesis",
-      "build_decision_payload"
+      "build_decision_payload",
+      "evaluate_notification",
+      "enqueue_notification"
     ],
     "future_stages_not_exercised": [
-      "evaluate_notification",
-      "enqueue_notification",
       "collect_operator_feedback",
       "schedule_outcomes"
     ],
@@ -64,7 +64,7 @@
     {
       "workflow": "DecisionOutcomeWorkflow",
       "fit": "DUE_DILIGENCE_CANDIDATE",
-      "reason": "Governed 1d/5d/20d/quarter timers may benefit from durable timers; history sizing remains unmeasured."
+      "reason": "Governed 1d/5d/20d/quarter timers may benefit from durable timers; NOC history is measured but the outcome-workflow shape and long-timer history remain unmeasured."
     }
   ],
   "keep_simple": [
