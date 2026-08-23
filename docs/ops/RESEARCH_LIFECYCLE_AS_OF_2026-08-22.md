@@ -15,6 +15,18 @@ Related: `docs/ops/RESEARCH_LIFECYCLE_STANDARD.md` (intended methodology) · `do
 > `ThesisDecisionGate@v1`. CURRENT does not serve those changes until a separately
 > authorized merge and promotion. See the R8 correction section in
 > `docs/architecture/TRADEAI_SYSTEM_STATE_AND_AUTONOMY_2026-08-20.md`.
+>
+> **NOC source acceptance (not live):**
+> `scripts/run_noc_autonomous_advisory_golden.py` exercises the existing accepted-
+> research bridge twice against an isolated data root. The first pass publishes
+> `symbol_noc@v2`, preserves full `/v3/advisory` and CIO thesis lineage, emits one
+> decision trace, and links an operator disposition to the decision and thesis.
+> The next stateful prompt includes that disposition and the prior delta. The
+> second identical pass returns `NO_NEW_INFO` with no thesis, card, decision,
+> research-request, notification, or Telegram duplication. Evidence:
+> `docs/_evidence/autonomous_advisory_loop/noc_golden_loop_isolated.json`.
+> This is explicitly `live_proven=false`; localhost browser acceptance and a
+> natural production run require reviewed merge and separately authorized release.
 
 ---
 

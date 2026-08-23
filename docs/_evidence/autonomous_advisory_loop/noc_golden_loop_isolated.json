@@ -1,0 +1,965 @@
+{
+  "authority": "READ_ONLY_ADVISORY",
+  "financial_writes": 0,
+  "live_proven": false,
+  "memory_behavior_influence": 0,
+  "mode": "ISOLATED_SOURCE_ACCEPTANCE",
+  "replay": {
+    "decision_traces": 1,
+    "delta_classification": "NO_NEW_INFO",
+    "final_thesis_version": "symbol_noc@v2",
+    "notifications_sent": 0,
+    "research_requests_created": 0,
+    "second_decision_emit": {
+      "attempted": 0,
+      "emitted": 0,
+      "enabled": true,
+      "errors": [],
+      "skipped_unchanged": 1
+    },
+    "telegram_messages_sent": 0,
+    "thesis_change_cards": 1,
+    "version_published": false
+  },
+  "schema": "NocAutonomousAdvisoryGoldenLoop@v1",
+  "stages": {
+    "advisory": {
+      "authority": "READ_ONLY_ADVISORY",
+      "confidence": null,
+      "counter_evidence": [
+        "noc_cash_conversion"
+      ],
+      "evidence_for": [
+        "sec_noc_10q_2026q2",
+        "noc_guidance_2026"
+      ],
+      "financial_action": false,
+      "fresh": true,
+      "invalidation_conditions": [
+        "material program cancellation",
+        "guidance withdrawn"
+      ],
+      "last_reviewed": "2026-08-23T03:11:01.612395+00:00",
+      "research_delta": {
+        "classification": "STRENGTHENS",
+        "delta_id": "rtd_96b661450ff4f747a5fc",
+        "evidence_as_of": "2026-08-22T20:00:00+00:00",
+        "freshness": {
+          "as_of": "2026-08-22T20:00:00+00:00",
+          "state": "CURRENT"
+        },
+        "research_id": "research_noc_golden_1"
+      },
+      "research_gaps": [
+        "next-quarter cash conversion"
+      ],
+      "stance": "HOLD",
+      "state": "CURRENT",
+      "summary": "NOC remains a HOLD in the defensive-growth role after the latest evidence review. Revenue increased 6.7% as funded backlog supported visible multi-year demand. The B-21 program remains the most important named catalyst for future sales and margin mix. Management guidance supports continued growth but does not justify an independent ADD decision. Cash conversion is the strongest counterpoint and requires confirmation in the next filing. The standing thesis is strengthened because program funding and execution evidence improved. Material program cancellation or withdrawn guidance remains the explicit invalidation condition. NOC should therefore remain held while deterministic portfolio gates retain decision authority. This delta improves evidence completeness and grants no trading or broker authority.",
+      "thesis_id": "symbol_noc",
+      "thesis_version": "symbol_noc@v2"
+    },
+    "automatic_reconciliation": {
+      "authority": "READ_ONLY_ADVISORY",
+      "classification": "THESIS_STRENGTHENED",
+      "delta": {
+        "authority": "READ_ONLY_ADVISORY",
+        "classification": "STRENGTHENS",
+        "confidence": 0.82,
+        "contradictory_evidence_ids": [
+          "noc_cash_conversion"
+        ],
+        "cost": {},
+        "created_at": "2026-08-23T03:11:01+00:00",
+        "delta_id": "rtd_96b661450ff4f747a5fc",
+        "deterministic_changes": [
+          {
+            "after": 12.4,
+            "before": null,
+            "field": "atr"
+          },
+          {
+            "after": "Northrop Grumman",
+            "before": null,
+            "field": "company"
+          },
+          {
+            "after": "Aerospace & Defense",
+            "before": null,
+            "field": "industry"
+          },
+          {
+            "after": 590.0,
+            "before": null,
+            "field": "price"
+          },
+          {
+            "after": 1.1,
+            "before": null,
+            "field": "rvol"
+          },
+          {
+            "after": "Industrials",
+            "before": null,
+            "field": "sector"
+          },
+          {
+            "after": "UP",
+            "before": null,
+            "field": "trend"
+          }
+        ],
+        "deterministic_snapshot": {
+          "atr": 12.4,
+          "company": "Northrop Grumman",
+          "industry": "Aerospace & Defense",
+          "price": 590.0,
+          "rvol": 1.1,
+          "sector": "Industrials",
+          "trend": "UP"
+        },
+        "evidence_as_of": "2026-08-22T20:00:00+00:00",
+        "freshness": {
+          "as_of": "2026-08-22T20:00:00+00:00",
+          "state": "CURRENT"
+        },
+        "invalidation_triggered": false,
+        "model": "acceptance-model",
+        "new_evidence_ids": [
+          "sec_noc_10q_2026q2",
+          "noc_guidance_2026",
+          "noc_cash_conversion"
+        ],
+        "prompt_context_hash": "3d55986152fcde2b1be96bf90c1c35460362e8d6301b8125470a66542ec37fd7",
+        "provider": "governed_cloud",
+        "raw_chain_of_thought": false,
+        "reason_summary": "Fresh primary evidence strengthens completeness without promoting action.",
+        "research_gaps_remaining": [
+          "next-quarter cash conversion"
+        ],
+        "research_id": "research_noc_golden_1",
+        "result_fingerprint": "bae62e77a32ae984d0d4cf7359d4e38e",
+        "schema": "ResearchThesisDelta@v1",
+        "source_quality": {
+          "grade": "PRIMARY",
+          "verified": true
+        },
+        "source_refs": [
+          "sec:noc:10-q:2026q2",
+          "company:noc:guidance:2026q2"
+        ],
+        "standing_thesis_id": "symbol_noc",
+        "standing_thesis_version": "symbol_noc@v1",
+        "supporting_evidence_ids": [
+          "sec_noc_10q_2026q2",
+          "noc_guidance_2026"
+        ],
+        "symbol": "NOC",
+        "thesis_publish_eligible": true,
+        "thesis_quality_grade": {
+          "authority": "READ_ONLY_ADVISORY",
+          "bucket": "PASS",
+          "coverage_state": "CURRENT",
+          "generic_prose": false,
+          "grade": "A",
+          "mentions_symbol": true,
+          "n_chars": 950,
+          "numeric_fidelity_fail": false,
+          "preview": "NOC remains a HOLD in the defensive-growth role after the latest evidence review. Revenue increased 6.7% as funded backlog supported visible multi-year demand. The B-21 program rem",
+          "reasons": [],
+          "schema": "ThesisSubstantiveness@v1",
+          "specific_fact": true,
+          "survive_needles": true,
+          "symbol": "NOC",
+          "thesis_survivable": true,
+          "under_300": false,
+          "would_mint": true
+        },
+        "what_changed": [
+          "revenue evidence",
+          "backlog evidence"
+        ],
+        "what_did_not_change": [
+          "HOLD stance",
+          "invalidation conditions"
+        ]
+      },
+      "duplicate": false,
+      "new_version": "symbol_noc@v2",
+      "ok": true,
+      "old_version": "symbol_noc@v1",
+      "review": {
+        "as_of": "2026-08-23T03:11:01+00:00",
+        "authority": "READ_ONLY_ADVISORY",
+        "classification": "THESIS_STRENGTHENED",
+        "content_fingerprint": "e9110217269a420e",
+        "context_refs": {
+          "financial_truth_refs": [],
+          "fs_receipts": [],
+          "market_temperament": null,
+          "memory_refs": [],
+          "operator_input": null,
+          "ratified_lessons": [],
+          "research_result_id": "research_noc_golden_1",
+          "reviewed_at": "2026-08-23T03:11:01+00:00",
+          "sector_context": null,
+          "trigger": "research_completion"
+        },
+        "coverage_state_before": "CURRENT",
+        "financial_action": false,
+        "memberships": [
+          "HELD"
+        ],
+        "new_stance": "HOLD",
+        "new_version": "symbol_noc@v2",
+        "old_stance": "HOLD",
+        "old_version": "symbol_noc@v1",
+        "portfolio_role": "DEFENSIVE",
+        "prior_fingerprint": "0e4fd87892731c08",
+        "schema": "SymbolThesisReview@v1",
+        "symbol": "NOC",
+        "thesis_id": "symbol_noc",
+        "trigger": "research_completion",
+        "version_published": true
+      },
+      "symbol": "NOC",
+      "thesis_change_card": {
+        "authority": "READ_ONLY_ADVISORY",
+        "grade": "A",
+        "kind": "upgraded",
+        "mint_state": null,
+        "notify": {
+          "desk_card": true,
+          "telegram": "CIO_THESIS_TELEGRAM (default off)"
+        },
+        "schema": "ThesisChangeCard@v1",
+        "summary": "NOC remains a HOLD in the defensive-growth role after the latest evidence review. Revenue increased 6.7% as funded backlog supported visible multi-year demand. The B-21 program remains the most important named catalyst for future sales and margin mix. Management guidance supports continued growth but does not justify an independent ADD decision. Cash conversion is the strongest counterpoint and re",
+        "symbol": "NOC",
+        "thesis_id": "symbol_noc",
+        "ts": "2026-08-23T03:11:01+00:00",
+        "version": 2
+      },
+      "thesis_id": "symbol_noc",
+      "version_published": true
+    },
+    "cio": {
+      "as_of": "2026-08-23T03:11:01+00:00",
+      "authority": "READ_ONLY_ADVISORY",
+      "counter_thesis": [
+        "noc_cash_conversion"
+      ],
+      "current_symbol_thesis": {
+        "stance": "HOLD",
+        "state": "CURRENT",
+        "summary": "NOC remains a HOLD in the defensive-growth role after the latest evidence review. Revenue increased 6.7% as funded backlog supported visible multi-year demand. The B-21 program remains the most important named catalyst for future sales and margin mix. Management guidance supports continued growth but does not justify an independent ADD decision. Cash conversion is the strongest counterpoint and requires confirmation in the next filing. The standing thesis is strengthened because program funding and execution evidence improved. Material program cancellation or withdrawn guidance remains the explicit invalidation condition. NOC should therefore remain held while deterministic portfolio gates retain decision authority. This delta improves evidence completeness and grants no trading or broker authority.",
+        "version": "symbol_noc@v2"
+      },
+      "financial_action": false,
+      "opportunity_rank": null,
+      "portfolio_role": "DEFENSIVE",
+      "portfolio_role_provenance": "symbol_thesis",
+      "prior_holding_exit_context": {
+        "what_changed_since_exit": null,
+        "why_exited": null,
+        "why_owned": "Defense backlog and program visibility diversify cyclical exposure."
+      },
+      "proposed_specific_research": [
+        {
+          "acquisition_plane": "research_intelligence_multi_source",
+          "authority": "READ_ONLY_ADVISORY",
+          "budget_revisit_hours": 72,
+          "counter_thesis": [
+            "noc_cash_conversion"
+          ],
+          "current_stance": "HOLD",
+          "enqueue": false,
+          "financial_action": false,
+          "hermes_is_acquisition_source": false,
+          "hermes_role": "synthesis_and_challenge_only",
+          "materiality": "ACTIVE_MATERIAL",
+          "parent_product": null,
+          "parent_run": null,
+          "pipeline": [
+            "rag_retrieve_supporting_and_contradictory",
+            "structured_corpus_read",
+            "if_insufficient: budgeted_multi_source_acquire",
+            "catalog_provenance",
+            "curate_rag_status_research_sources",
+            "embed_existing_content_embeddings",
+            "hermes_or_flash_synthesize_challenge",
+            "reconcile_symbol_thesis"
+          ],
+          "priority": "P3",
+          "request_id": "str_82a3ee789d0d68ea",
+          "requested_at": "2026-08-23T03:11:01+00:00",
+          "required_evidence_domains": [
+            "rag_existing",
+            "searxng_metasearch",
+            "sec_filings",
+            "rss_news",
+            "deterministic_structured",
+            "financial_senses"
+          ],
+          "research_gap": "next-quarter cash conversion",
+          "research_need_decision": "DEEP_RESEARCH",
+          "schema": "SymbolThesisResearchRequest@v1",
+          "specific_question": "For NOC (state=CURRENT, role=DEFENSIVE): resolve gap \u2014 next-quarter cash conversion",
+          "symbol": "NOC",
+          "thesis_id": "symbol_noc",
+          "thesis_version": "symbol_noc@v2",
+          "why_needed": "thesis_state=CURRENT; memberships=['HELD']; role=DEFENSIVE; materiality=ACTIVE_MATERIAL"
+        }
+      ],
+      "reentry_state": null,
+      "research_gaps": [
+        "next-quarter cash conversion"
+      ],
+      "schema": "AskCioSymbolThesisContext@v1",
+      "symbol": "NOC",
+      "trading_execution_authority": false,
+      "transparent_if_missing": false,
+      "what_changes_call": [
+        "sustained program losses",
+        "appropriation reversal"
+      ]
+    },
+    "decision_emit": {
+      "attempted": 1,
+      "emitted": 1,
+      "enabled": true,
+      "errors": [],
+      "skipped_unchanged": 0
+    },
+    "decision_gate": {
+      "authority": "READ_ONLY_ADVISORY",
+      "delta_classification": "STRENGTHENS",
+      "delta_freshness": "CURRENT",
+      "delta_id": "rtd_96b661450ff4f747a5fc",
+      "effective_action": "READY",
+      "effective_governed_verdict": "HOLD",
+      "financial_action": false,
+      "operator_governed_verdict": "HOLD",
+      "positive_delta_created_promotion": false,
+      "reason_codes": [
+        "POSITIVE_DELTA_MAY_RAISE_COMPLETENESS_NOT_ACTION"
+      ],
+      "restricted": false,
+      "schema": "ThesisDecisionGate@v1",
+      "thesis_state": "CURRENT",
+      "upstream_action": "READY"
+    },
+    "feedback": {
+      "authority": "READ_ONLY_ADVISORY",
+      "behavior_authority": false,
+      "channel": "command_center_symbol_card",
+      "decision_id": "dec_noc_golden_v2",
+      "eligible_for_operator_rejection_recall": true,
+      "feedback_id": "otf_9df30af625ed40f5",
+      "free_text": "Cash conversion needs one more filing before confidence rises.",
+      "intent": "DISAGREE",
+      "linkage_complete": true,
+      "object_id": null,
+      "operator_identity_class": "ACCEPTANCE_OPERATOR",
+      "reason": "Cash conversion needs one more filing before confidence rises.",
+      "schema": "OperatorTickerFeedback@v1",
+      "source_surface": "command_center_symbol_card",
+      "stance": "bearish",
+      "status": "ACTIVE",
+      "symbol": "NOC",
+      "thesis_id": "symbol_noc",
+      "thesis_version": "symbol_noc@v2",
+      "timestamp": "2026-08-23T03:11:01+00:00",
+      "trust": "NORMAL",
+      "ts": "2026-08-23T03:11:01+00:00"
+    },
+    "next_prompt": {
+      "as_of": "2026-08-23T03:11:01+00:00",
+      "authority": "READ_ONLY_ADVISORY",
+      "counter_evidence": [
+        {
+          "evidence_id": "rag_noc_cash",
+          "text": "Cash conversion weakened."
+        }
+      ],
+      "deterministic_changes_since_prior_review": [],
+      "deterministic_current_data": {
+        "atr": 12.4,
+        "company": "Northrop Grumman",
+        "industry": "Aerospace & Defense",
+        "price": 590.0,
+        "rvol": 1.1,
+        "sector": "Industrials",
+        "trend": "UP"
+      },
+      "financial_senses_receipts": [
+        {
+          "evidence_refs": [
+            "market_regime_20260822"
+          ],
+          "provider": "financial_senses",
+          "receipt_id": "fs_noc_1",
+          "status": "CURRENT"
+        }
+      ],
+      "market_regime": null,
+      "memberships": [
+        "HELD"
+      ],
+      "memory_behavior_influence": 0,
+      "memory_context": {
+        "authority": "NON_AUTHORITATIVE_CONTEXT",
+        "conflicts": [],
+        "counter": [],
+        "memory_behavior_influence": "0",
+        "supporting": [
+          {
+            "memory_id": "mem_noc_1",
+            "subject": "Prefer primary filings"
+          }
+        ]
+      },
+      "operator_feedback": [
+        {
+          "decision_id": "dec_noc_golden_v2",
+          "feedback_id": "otf_9df30af625ed40f5",
+          "intent": "DISAGREE",
+          "operator_identity_class": "ACCEPTANCE_OPERATOR",
+          "reason": "Cash conversion needs one more filing before confidence rises.",
+          "source_surface": "command_center_symbol_card",
+          "stance": "bearish",
+          "status": "ACTIVE",
+          "thesis_id": "symbol_noc",
+          "thesis_version": "symbol_noc@v2",
+          "timestamp": "2026-08-23T03:11:01+00:00",
+          "trust": "NORMAL"
+        }
+      ],
+      "portfolio_role": "DEFENSIVE",
+      "previous_research_conclusion": {
+        "as_of": "2026-08-22T20:00:00+00:00",
+        "conclusion": "NOC remains a HOLD in the defensive-growth role after the latest evidence review. Revenue increased 6.7% as funded backlog supported visible multi-year demand. The B-21 program remains the most important named catalyst for future sales and margin mix. Management guidance supports continued growth but does not justify an independent ADD decision. Cash conversion is the strongest counterpoint and requires confirmation in the next filing. The standing thesis is strengthened because program funding and execution evidence improved. Material program cancellation or withdrawn guidance remains the explicit invalidation condition. NOC should therefore remain held while deterministic portfolio gates retain decision authority. This delta improves evidence completeness and grants no trading or broker authority.",
+        "research_id": "research_noc_golden_1"
+      },
+      "previous_research_delta": {
+        "authority": "READ_ONLY_ADVISORY",
+        "classification": "STRENGTHENS",
+        "confidence": 0.82,
+        "contradictory_evidence_ids": [
+          "noc_cash_conversion"
+        ],
+        "cost": {},
+        "created_at": "2026-08-23T03:11:01+00:00",
+        "delta_id": "rtd_96b661450ff4f747a5fc",
+        "deterministic_changes": [
+          {
+            "after": 12.4,
+            "before": null,
+            "field": "atr"
+          },
+          {
+            "after": "Northrop Grumman",
+            "before": null,
+            "field": "company"
+          },
+          {
+            "after": "Aerospace & Defense",
+            "before": null,
+            "field": "industry"
+          },
+          {
+            "after": 590.0,
+            "before": null,
+            "field": "price"
+          },
+          {
+            "after": 1.1,
+            "before": null,
+            "field": "rvol"
+          },
+          {
+            "after": "Industrials",
+            "before": null,
+            "field": "sector"
+          },
+          {
+            "after": "UP",
+            "before": null,
+            "field": "trend"
+          }
+        ],
+        "deterministic_snapshot": {
+          "atr": 12.4,
+          "company": "Northrop Grumman",
+          "industry": "Aerospace & Defense",
+          "price": 590.0,
+          "rvol": 1.1,
+          "sector": "Industrials",
+          "trend": "UP"
+        },
+        "evidence_as_of": "2026-08-22T20:00:00+00:00",
+        "freshness": {
+          "as_of": "2026-08-22T20:00:00+00:00",
+          "state": "CURRENT"
+        },
+        "invalidation_triggered": false,
+        "model": "acceptance-model",
+        "new_evidence_ids": [
+          "sec_noc_10q_2026q2",
+          "noc_guidance_2026",
+          "noc_cash_conversion"
+        ],
+        "prompt_context_hash": "3d55986152fcde2b1be96bf90c1c35460362e8d6301b8125470a66542ec37fd7",
+        "provider": "governed_cloud",
+        "raw_chain_of_thought": false,
+        "reason_summary": "Fresh primary evidence strengthens completeness without promoting action.",
+        "research_gaps_remaining": [
+          "next-quarter cash conversion"
+        ],
+        "research_id": "research_noc_golden_1",
+        "result_fingerprint": "bae62e77a32ae984d0d4cf7359d4e38e",
+        "schema": "ResearchThesisDelta@v1",
+        "source_quality": {
+          "grade": "PRIMARY",
+          "verified": true
+        },
+        "source_refs": [
+          "sec:noc:10-q:2026q2",
+          "company:noc:guidance:2026q2"
+        ],
+        "standing_thesis_id": "symbol_noc",
+        "standing_thesis_version": "symbol_noc@v1",
+        "supporting_evidence_ids": [
+          "sec_noc_10q_2026q2",
+          "noc_guidance_2026"
+        ],
+        "symbol": "NOC",
+        "thesis_publish_eligible": true,
+        "thesis_quality_grade": {
+          "authority": "READ_ONLY_ADVISORY",
+          "bucket": "PASS",
+          "coverage_state": "CURRENT",
+          "generic_prose": false,
+          "grade": "A",
+          "mentions_symbol": true,
+          "n_chars": 950,
+          "numeric_fidelity_fail": false,
+          "preview": "NOC remains a HOLD in the defensive-growth role after the latest evidence review. Revenue increased 6.7% as funded backlog supported visible multi-year demand. The B-21 program rem",
+          "reasons": [],
+          "schema": "ThesisSubstantiveness@v1",
+          "specific_fact": true,
+          "survive_needles": true,
+          "symbol": "NOC",
+          "thesis_survivable": true,
+          "under_300": false,
+          "would_mint": true
+        },
+        "what_changed": [
+          "revenue evidence",
+          "backlog evidence"
+        ],
+        "what_did_not_change": [
+          "HOLD stance",
+          "invalidation conditions"
+        ]
+      },
+      "prompt_context_hash": "51f7e2d971fe7c2ba89de20b11a7342f8c1ef0ed3eeb7f01620d9921a0c95f74",
+      "question": "What changed in the standing NOC thesis?",
+      "rag": {
+        "contradictory": [
+          {
+            "evidence_id": "rag_noc_cash",
+            "text": "Cash conversion weakened."
+          }
+        ],
+        "retrieval_order": "RAG_FIRST_SUPPORT_AND_CONTRADICTION",
+        "sufficiency": {
+          "fresh": true,
+          "sufficient_for_synthesis": true
+        },
+        "supporting": [
+          {
+            "evidence_id": "rag_noc_backlog",
+            "text": "Funded backlog expanded."
+          }
+        ]
+      },
+      "ratified_lessons": [
+        {
+          "lesson_id": "lesson_primary_sources",
+          "lifecycle": "RATIFIED_CONTEXT"
+        }
+      ],
+      "raw_chain_of_thought": false,
+      "schema": "ResearchPromptContext@v1",
+      "sector_industry_state": null,
+      "standing_thesis": {
+        "age_days": 2.9062500000000003e-08,
+        "counter_evidence": [
+          "noc_cash_conversion"
+        ],
+        "evidence_for": [
+          "sec_noc_10q_2026q2",
+          "noc_guidance_2026"
+        ],
+        "fresh": true,
+        "invalidation_conditions": [
+          "material program cancellation",
+          "guidance withdrawn"
+        ],
+        "last_reviewed": "2026-08-23T03:11:01.612395+00:00",
+        "stance": "HOLD",
+        "state": "CURRENT",
+        "summary": "NOC remains a HOLD in the defensive-growth role after the latest evidence review. Revenue increased 6.7% as funded backlog supported visible multi-year demand. The B-21 program remains the most important named catalyst for future sales and margin mix. Management guidance supports continued growth but does not justify an independent ADD decision. Cash conversion is the strongest counterpoint and requires confirmation in the next filing. The standing thesis is strengthened because program funding and execution evidence improved. Material program cancellation or withdrawn guidance remains the explicit invalidation condition. NOC should therefore remain held while deterministic portfolio gates retain decision authority. This delta improves evidence completeness and grants no trading or broker authority.",
+        "thesis_id": "symbol_noc",
+        "version": "symbol_noc@v2"
+      },
+      "symbol_identity": {
+        "company": "Northrop Grumman",
+        "industry": "Aerospace & Defense",
+        "sector": "Industrials",
+        "symbol": "NOC"
+      },
+      "unresolved_research_gaps": [
+        "next-quarter cash conversion"
+      ]
+    },
+    "published_thesis_version": "symbol_noc@v2",
+    "research": {
+      "authority": "READ_ONLY_ADVISORY",
+      "contradictory_evidence": [
+        {
+          "evidence_id": "noc_cash_conversion",
+          "provenance_class": "FACTUAL",
+          "text": "Cash conversion weakened."
+        }
+      ],
+      "dissent": "Free-cash-flow conversion could weaken while reported revenue and backlog rise.",
+      "evidence": [
+        {
+          "evidence_id": "sec_noc_10q_2026q2",
+          "provenance_class": "FACTUAL",
+          "text": "Revenue increased 6.7%."
+        },
+        {
+          "evidence_id": "noc_guidance_2026",
+          "provenance_class": "FACTUAL",
+          "text": "Guidance retained its growth range."
+        }
+      ],
+      "model": "acceptance-model",
+      "prompt_context_hash": "3d55986152fcde2b1be96bf90c1c35460362e8d6301b8125470a66542ec37fd7",
+      "provider": "governed_cloud",
+      "raw_response_provenance": {
+        "raw_chain_of_thought": false,
+        "sha256": "95589054047f5542b043c22a9bacc89aa7f5e0b983243a18fc176bc0945b15f9",
+        "stored_fields": [
+          "classification",
+          "confidence",
+          "contradictory_evidence",
+          "dissent",
+          "evidence",
+          "evidence_as_of",
+          "freshness",
+          "model",
+          "provider",
+          "reason_summary",
+          "recommendation",
+          "research_gaps_remaining",
+          "source_quality",
+          "source_refs",
+          "thesis_stance",
+          "what_changed",
+          "what_did_not_change"
+        ]
+      },
+      "recommendation": "NOC remains a HOLD in the defensive-growth role after the latest evidence review. Revenue increased 6.7% as funded backlog supported visible multi-year demand. The B-21 program remains the most important named catalyst for future sales and margin mix. Management guidance supports continued growth but does not justify an independent ADD decision. Cash conversion is the strongest counterpoint and requires confirmation in the next filing. The standing thesis is strengthened because program funding and execution evidence improved. Material program cancellation or withdrawn guidance remains the explicit invalidation condition. NOC should therefore remain held while deterministic portfolio gates retain decision authority. This delta improves evidence completeness and grants no trading or broker authority.",
+      "research_id": "research_noc_golden_1",
+      "schema": "GoldenResearchRecord@v1",
+      "source_refs": [
+        "sec:noc:10-q:2026q2",
+        "company:noc:guidance:2026q2"
+      ],
+      "status": "CURRENT",
+      "symbol": "NOC"
+    },
+    "symbol_card": {
+      "active_research": [],
+      "advisory_verdict": "READY",
+      "as_of": "2026-08-23T03:11:01+00:00",
+      "authority": "READ_ONLY_ADVISORY",
+      "cio_action": {
+        "action": "READY",
+        "authority": "READ_ONLY_ADVISORY",
+        "bucket": "WATCH_CLOSELY",
+        "decision_id": "dec_noc_golden_v2",
+        "financial_action": false,
+        "previous_action": "READY",
+        "reason_codes": [
+          "POSITIVE_DELTA_MAY_RAISE_COMPLETENESS_NOT_ACTION"
+        ],
+        "research_delta": {
+          "authority": "READ_ONLY_ADVISORY",
+          "classification": "STRENGTHENS",
+          "confidence": 0.82,
+          "contradictory_evidence_ids": [
+            "noc_cash_conversion"
+          ],
+          "cost": {},
+          "created_at": "2026-08-23T03:11:01+00:00",
+          "delta_id": "rtd_96b661450ff4f747a5fc",
+          "deterministic_changes": [
+            {
+              "after": 12.4,
+              "before": null,
+              "field": "atr"
+            },
+            {
+              "after": "Northrop Grumman",
+              "before": null,
+              "field": "company"
+            },
+            {
+              "after": "Aerospace & Defense",
+              "before": null,
+              "field": "industry"
+            },
+            {
+              "after": 590.0,
+              "before": null,
+              "field": "price"
+            },
+            {
+              "after": 1.1,
+              "before": null,
+              "field": "rvol"
+            },
+            {
+              "after": "Industrials",
+              "before": null,
+              "field": "sector"
+            },
+            {
+              "after": "UP",
+              "before": null,
+              "field": "trend"
+            }
+          ],
+          "deterministic_snapshot": {
+            "atr": 12.4,
+            "company": "Northrop Grumman",
+            "industry": "Aerospace & Defense",
+            "price": 590.0,
+            "rvol": 1.1,
+            "sector": "Industrials",
+            "trend": "UP"
+          },
+          "evidence_as_of": "2026-08-22T20:00:00+00:00",
+          "freshness": {
+            "as_of": "2026-08-22T20:00:00+00:00",
+            "state": "CURRENT"
+          },
+          "invalidation_triggered": false,
+          "model": "acceptance-model",
+          "new_evidence_ids": [
+            "sec_noc_10q_2026q2",
+            "noc_guidance_2026",
+            "noc_cash_conversion"
+          ],
+          "prompt_context_hash": "3d55986152fcde2b1be96bf90c1c35460362e8d6301b8125470a66542ec37fd7",
+          "provider": "governed_cloud",
+          "raw_chain_of_thought": false,
+          "reason_summary": "Fresh primary evidence strengthens completeness without promoting action.",
+          "research_gaps_remaining": [
+            "next-quarter cash conversion"
+          ],
+          "research_id": "research_noc_golden_1",
+          "result_fingerprint": "bae62e77a32ae984d0d4cf7359d4e38e",
+          "schema": "ResearchThesisDelta@v1",
+          "source_quality": {
+            "grade": "PRIMARY",
+            "verified": true
+          },
+          "source_refs": [
+            "sec:noc:10-q:2026q2",
+            "company:noc:guidance:2026q2"
+          ],
+          "standing_thesis_id": "symbol_noc",
+          "standing_thesis_version": "symbol_noc@v1",
+          "supporting_evidence_ids": [
+            "sec_noc_10q_2026q2",
+            "noc_guidance_2026"
+          ],
+          "symbol": "NOC",
+          "thesis_publish_eligible": true,
+          "thesis_quality_grade": {
+            "authority": "READ_ONLY_ADVISORY",
+            "bucket": "PASS",
+            "coverage_state": "CURRENT",
+            "generic_prose": false,
+            "grade": "A",
+            "mentions_symbol": true,
+            "n_chars": 950,
+            "numeric_fidelity_fail": false,
+            "preview": "NOC remains a HOLD in the defensive-growth role after the latest evidence review. Revenue increased 6.7% as funded backlog supported visible multi-year demand. The B-21 program rem",
+            "reasons": [],
+            "schema": "ThesisSubstantiveness@v1",
+            "specific_fact": true,
+            "survive_needles": true,
+            "symbol": "NOC",
+            "thesis_survivable": true,
+            "under_300": false,
+            "would_mint": true
+          },
+          "what_changed": [
+            "revenue evidence",
+            "backlog evidence"
+          ],
+          "what_did_not_change": [
+            "HOLD stance",
+            "invalidation conditions"
+          ]
+        },
+        "source_freshness": {
+          "as_of": "2026-08-22T20:00:00+00:00",
+          "state": "CURRENT"
+        },
+        "thesis_version": "symbol_noc@v2",
+        "why": null
+      },
+      "core_thesis": "NOC remains a HOLD in the defensive-growth role after the latest evidence review. Revenue increased 6.7% as funded backlog supported visible multi-year demand. The B-21 program remains the most important named catalyst for future sales and margin mix. Management guidance supports continued growth but does not justify an independent ADD decision. Cash conversion is the strongest counterpoint and requires confirmation in the next filing. The standing thesis is strengthened because program funding and execution evidence improved. Material program cancellation or withdrawn guidance remains the explicit invalidation condition. NOC should therefore remain held while deterministic portfolio gates retain decision authority. This delta improves evidence completeness and grants no trading or broker authority.",
+      "counter_thesis": [
+        "noc_cash_conversion"
+      ],
+      "financial_action": false,
+      "financial_senses_refs": [],
+      "invalidation": [
+        "material program cancellation",
+        "guidance withdrawn"
+      ],
+      "last_reviewed": "2026-08-23T03:11:01.612395+00:00",
+      "lesson_refs": [],
+      "market_sector_fit": "NOC remains a HOLD in the defensive-growth role after the latest evidence review. Revenue increased 6.7% as funded backlog supported visible multi-year demand. The B-21 program remains the most important named catalyst for future sales and margin mix. Management guidance supports continued growth but does not justify an independent ADD decision. Cash conversion is the strongest counterpoint and requires confirmation in the next filing. The standing thesis is strengthened because program funding and execution evidence improved. Material program cancellation or withdrawn guidance remains the explicit invalidation condition. NOC should therefore remain held while deterministic portfolio gates retain decision authority. This delta improves evidence completeness and grants no trading or broker authority.",
+      "memberships": [
+        "HELD"
+      ],
+      "memory_refs": [],
+      "next_review_at": null,
+      "note": "No hidden chain-of-thought. Supporting evidence IDs are drillable when present. Empty research lists mean the queue was unavailable or idle \u2014 not invented jobs.",
+      "notification": {
+        "available": true,
+        "notification_class": null,
+        "suppression_reason": "none_on_record"
+      },
+      "opportunity_rank": null,
+      "portfolio_role": "DEFENSIVE",
+      "portfolio_role_provenance": [
+        "role from symbol thesis metadata"
+      ],
+      "portfolio_role_source": "symbol_thesis",
+      "positive_evidence": [
+        "sec_noc_10q_2026q2",
+        "noc_guidance_2026"
+      ],
+      "proposed_research": [
+        {
+          "acquisition_plane": "research_intelligence_multi_source",
+          "authority": "READ_ONLY_ADVISORY",
+          "budget_revisit_hours": 72,
+          "counter_thesis": [
+            "noc_cash_conversion"
+          ],
+          "current_stance": "HOLD",
+          "enqueue": false,
+          "financial_action": false,
+          "hermes_is_acquisition_source": false,
+          "hermes_role": "synthesis_and_challenge_only",
+          "materiality": "ACTIVE_MATERIAL",
+          "parent_product": null,
+          "parent_run": null,
+          "pipeline": [
+            "rag_retrieve_supporting_and_contradictory",
+            "structured_corpus_read",
+            "if_insufficient: budgeted_multi_source_acquire",
+            "catalog_provenance",
+            "curate_rag_status_research_sources",
+            "embed_existing_content_embeddings",
+            "hermes_or_flash_synthesize_challenge",
+            "reconcile_symbol_thesis"
+          ],
+          "priority": "P3",
+          "request_id": "str_82a3ee789d0d68ea",
+          "requested_at": "2026-08-23T03:11:01+00:00",
+          "required_evidence_domains": [
+            "rag_existing",
+            "searxng_metasearch",
+            "sec_filings",
+            "rss_news",
+            "deterministic_structured",
+            "financial_senses"
+          ],
+          "research_gap": "next-quarter cash conversion",
+          "research_need_decision": "DEEP_RESEARCH",
+          "schema": "SymbolThesisResearchRequest@v1",
+          "specific_question": "For NOC (state=CURRENT, role=DEFENSIVE): resolve gap \u2014 next-quarter cash conversion",
+          "symbol": "NOC",
+          "thesis_id": "symbol_noc",
+          "thesis_version": "symbol_noc@v2",
+          "why_needed": "thesis_state=CURRENT; memberships=['HELD']; role=DEFENSIVE; materiality=ACTIVE_MATERIAL"
+        }
+      ],
+      "recent_completed_research": [],
+      "reentry_state": null,
+      "research_gaps": [
+        "next-quarter cash conversion"
+      ],
+      "research_queue_oldest_wait_human": null,
+      "research_queue_oldest_wait_seconds": null,
+      "research_queue_open_count": 0,
+      "research_queue_source": "watchlist_agent_jobs",
+      "schema": "SymbolThesisCard@v1",
+      "suppression_reason": "none_on_record",
+      "symbol": "NOC",
+      "symbol_thesis_id": "symbol_noc",
+      "symbol_thesis_version": "symbol_noc@v2",
+      "thesis_confidence": null,
+      "thesis_history": [
+        {
+          "evidence_refs": [],
+          "published_at": "2026-08-23T03:11:01.612395+00:00",
+          "reason_for_change": "THESIS_STRENGTHENED via research_completion; old_stance=HOLD \u2192 HOLD",
+          "stance": "HOLD",
+          "summary": "NOC remains a HOLD in the defensive-growth role after the latest evidence review. Revenue increased 6.7% as funded backlog supported visible multi-year demand. The B-21 program remains the most important named catalyst for future sales and margin mix. Management guidance supports continued growth but does not justify an independent ADD decision. Cash conversion is the strongest counterpoint and requires confirmation in the next filing. The standing thesis is strengthened because program funding and execution evidence improved. Material program cancellation or withdrawn guidance remains the explicit invalidation condition. NOC should therefore remain held while deterministic portfolio gates retain decision authority. This delta improves evidence completeness and grants no trading or broker authority.",
+          "thesis_version": "symbol_noc@v2"
+        },
+        {
+          "evidence_refs": [],
+          "published_at": "2026-08-23T03:11:01.594891+00:00",
+          "reason_for_change": "Acceptance seed standing thesis",
+          "stance": "HOLD",
+          "summary": "NOC is held as a defensive-growth aerospace and defense position. Its funded backlog provides multi-year demand visibility across named programs. Program execution and margin conversion remain the primary operating tests. Government budget durability supports the role but does not remove appropriation risk. B-21 execution is a material catalyst and concentration risk. Free-cash-flow conversion must corroborate reported revenue growth. The position remains a HOLD while valuation and portfolio gates remain unchanged. A material program cancellation or withdrawn guidance would invalidate the thesis. No part of this thesis grants trading or broker authority.",
+          "thesis_version": "symbol_noc@v1"
+        }
+      ],
+      "thesis_stance": "HOLD",
+      "thesis_state": "CURRENT",
+      "what_changed": "THESIS_STRENGTHENED via research_completion; old_stance=HOLD \u2192 HOLD",
+      "what_changed_since_exit": null,
+      "what_would_change": [
+        "sustained program losses",
+        "appropriation reversal"
+      ],
+      "why_exited": null,
+      "why_in_universe": {
+        "former": null,
+        "held": true,
+        "memberships": [
+          "HELD"
+        ],
+        "opportunity": null,
+        "reentry": null
+      },
+      "why_owned_or_watched": "Defense backlog and program visibility diversify cyclical exposure."
+    }
+  },
+  "symbol": "NOC"
+}

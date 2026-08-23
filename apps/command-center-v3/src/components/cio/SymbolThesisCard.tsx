@@ -20,10 +20,9 @@ const faint: CSSProperties = { fontSize: 12, color: 'var(--text3)', lineHeight: 
 const FEEDBACK_INTENTS = [
   { intent: 'AGREE', label: 'Agree' },
   { intent: 'DISAGREE', label: 'Disagree' },
-  { intent: 'INTERESTED', label: 'Interested' },
   { intent: 'DEFER', label: 'Defer' },
   { intent: 'NEED_DATA', label: 'Need data' },
-  { intent: 'DISMISS', label: 'Dismiss' },
+  { intent: 'NO_LONGER_RELEVANT', label: 'No longer relevant' },
 ] as const
 
 const feedbackBtn: CSSProperties = {
@@ -99,7 +98,7 @@ export type SymbolThesisCardPayload = {
   active_research?: unknown
   recent_completed_research?: unknown
   what_changed?: string | null
-  cio_action?: { bucket?: string; action?: string; why?: string } | null
+  cio_action?: { bucket?: string; action?: string; why?: string; decision_id?: string } | null
   next_review_at?: string | null
   notification?: {
     notification_class?: string | null
@@ -138,7 +137,15 @@ export function SymbolThesisCard({ card: c }: { card: SymbolThesisCardPayload | 
       const r = await fetch(`/api/v3/cio/intelligence/${encodeURIComponent(sym)}/feedback`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ intent, channel: 'command_center' }),
+        body: JSON.stringify({
+          intent,
+          channel: 'command_center',
+          source_surface: 'command_center_symbol_card',
+          operator_identity_class: 'COMMAND_CENTER_SESSION',
+          decision_id: c?.cio_action?.decision_id || null,
+          thesis_id: c?.symbol_thesis_id || null,
+          thesis_version: c?.symbol_thesis_version || null,
+        }),
       })
       if (!r.ok) return // fail soft
       let j: any = null
@@ -155,7 +162,7 @@ export function SymbolThesisCard({ card: c }: { card: SymbolThesisCardPayload | 
     } finally {
       setBusy(false)
     }
-  }, [busy, c?.symbol])
+  }, [busy, c?.symbol, c?.cio_action?.decision_id, c?.symbol_thesis_id, c?.symbol_thesis_version])
 
   if (!c) return <div style={faint}>Select a symbol to load its living thesis.</div>
   if (c.ok === false) {

@@ -218,6 +218,7 @@ def build_symbol_thesis_card(
     symbol: str,
     *,
     root: Path | str | None = None,
+    research_rows: Optional[list[dict[str, Any]]] = None,
 ) -> dict[str, Any]:
     """Per-symbol drill-down for Command Center / Ask CIO context."""
     root = _root(root)
@@ -242,7 +243,11 @@ def build_symbol_thesis_card(
     research = research_requests_for_symbol(sym, root=root)
     uni = reconcile_universe(root)
     urec = (uni.get("symbols") or {}).get(sym) or {}
-    queue = load_symbol_research_queue(sym)
+    queue = (
+        load_symbol_research_queue(sym, rows=research_rows)
+        if research_rows is not None
+        else load_symbol_research_queue(sym)
+    )
     cio_action = _cio_action_for_symbol(sym, root=root)
     ntf = None
     try:
@@ -329,6 +334,12 @@ def _cio_action_for_symbol(symbol: str, root: Path) -> Optional[dict[str, Any]]:
                     "bucket": bucket,
                     "action": r.get("action"),
                     "why": r.get("why"),
+                    "decision_id": r.get("decision_id"),
+                    "previous_action": r.get("previous_action"),
+                    "reason_codes": r.get("reason_codes") or [],
+                    "research_delta": r.get("research_delta"),
+                    "thesis_version": r.get("thesis_version"),
+                    "source_freshness": r.get("source_freshness"),
                     "authority": AUTHORITY,
                     "financial_action": False,
                 }

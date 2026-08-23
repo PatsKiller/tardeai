@@ -24,7 +24,10 @@ VALID_INTENTS = frozenset({
     "NEED_DATA",
     "DISMISS",
     "ACK",
+    "NO_LONGER_RELEVANT",
 })
+
+VALID_STATUSES = frozenset({"ACTIVE", "RETRO_LABELED"})
 
 # Intent → coarse operator stance for continuity summaries.
 _STANCE_BY_INTENT: dict[str, str] = {
@@ -35,6 +38,7 @@ _STANCE_BY_INTENT: dict[str, str] = {
     "DEFER": "monitoring",
     "ACK": "monitoring",
     "NEED_DATA": "cautious",
+    "NO_LONGER_RELEVANT": "monitoring",
 }
 
 VALID_STANCES = frozenset({"bullish", "cautious", "bearish", "monitoring"})
@@ -109,6 +113,21 @@ def _normalize_row(row: dict[str, Any]) -> dict[str, Any]:
     if free_text is None:
         free_text = row.get("note") or row.get("concerns")
     free_text_s = str(free_text).strip()[:500] if free_text is not None else ""
+    status = str(row.get("status") or "ACTIVE").strip().upper()
+    if status not in VALID_STATUSES:
+        raise ValueError(f"invalid_status:{status or ''}")
+    decision_id = str(row.get("decision_id") or "").strip()[:128] or None
+    thesis_id = str(row.get("thesis_id") or row.get("symbol_thesis_id") or "").strip()[:128] or None
+    thesis_version = str(
+        row.get("thesis_version") or row.get("symbol_thesis_version") or ""
+    ).strip()[:128] or None
+    operator_identity_class = str(
+        row.get("operator_identity_class") or "UNKNOWN_OPERATOR"
+    ).strip().upper()[:64] or "UNKNOWN_OPERATOR"
+    source_surface = str(
+        row.get("source_surface") or row.get("channel") or "api"
+    ).strip().lower()[:64] or "api"
+    trust = "LOW" if status == "RETRO_LABELED" else "NORMAL"
     out: dict[str, Any] = {
         "schema": SCHEMA,
         "feedback_id": str(row.get("feedback_id") or f"otf_{uuid.uuid4().hex[:16]}"),
@@ -117,10 +136,25 @@ def _normalize_row(row: dict[str, Any]) -> dict[str, Any]:
         "intent": intent,
         "stance": stance,
         "free_text": free_text_s or None,
+        "reason": free_text_s or None,
         "object_id": (str(row.get("object_id")).strip()[:96] if row.get("object_id") else None),
-        "channel": (str(row.get("channel") or "api").strip().lower()[:32] or "api"),
+        "channel": source_surface[:32],
+        "source_surface": source_surface,
+        "decision_id": decision_id,
+        "thesis_id": thesis_id,
+        "thesis_version": thesis_version,
+        "operator_identity_class": operator_identity_class,
+        "timestamp": str(row.get("timestamp") or row.get("ts") or _now()),
+        "status": status,
+        "trust": trust,
+        "linkage_complete": bool(decision_id and thesis_id and thesis_version),
+        "eligible_for_operator_rejection_recall": bool(
+            status == "ACTIVE" and intent == "DISAGREE"
+        ),
+        "behavior_authority": False,
         "authority": AUTHORITY,
     }
+    out["ts"] = out["timestamp"]
     # Preserve optional extras without inventing financial fields.
     for k in ("operator_actor_id", "source", "card_schema"):
         if row.get(k) is not None and k not in out:
@@ -190,6 +224,7 @@ def journal_for_symbol(
 def maybe_enqueue_need_data(
     symbol: str,
     *,
+    feedback: dict[str, Any] | None = None,
     root: Path | str | None = None,
     apply: bool = False,
 ) -> dict[str, Any]:
@@ -211,6 +246,7 @@ def maybe_enqueue_need_data(
         return out
 
     root_p = Path(root) if root else _project_root()
+    feedback = feedback if isinstance(feedback, dict) else {}
 
     try:
         from scripts.lib.cio_held_thesis_coverage import run_held_coverage_acquire
@@ -235,10 +271,23 @@ def maybe_enqueue_need_data(
         q = HermesChallengeQueue(event_store_path=store)
         evt = q.enqueue(
             challenge_type="research_gap",
-            description=f"Operator NEED_DATA on {sym} (IIC feedback)",
+            description=(
+                f"Operator NEED_DATA on {sym}: "
+                f"{str(feedback.get('reason') or 'additional evidence requested')[:240]}"
+            ),
             source="operator_ticker_feedback",
             priority="normal",
-            metadata={"symbol": sym, "intent": "NEED_DATA", "schema": SCHEMA},
+            metadata={
+                "symbol": sym,
+                "intent": "NEED_DATA",
+                "schema": SCHEMA,
+                "feedback_id": feedback.get("feedback_id"),
+                "decision_id": feedback.get("decision_id"),
+                "thesis_id": feedback.get("thesis_id"),
+                "thesis_version": feedback.get("thesis_version"),
+                "source_surface": feedback.get("source_surface"),
+                "authority": AUTHORITY,
+            },
             actor_id="operator",
         )
         out["hermes"] = {

@@ -208,6 +208,42 @@ def test_row_view_exposes_reentry_fields():
     assert '"durable_memory"' in src
 
 
+def test_row_view_preserves_full_thesis_and_decision_lineage(monkeypatch):
+    import scripts.api_v3_advisory as advisory
+
+    full_summary = "NOC substantive thesis. " + ("Evidence remains inspectable. " * 40)
+    monkeypatch.setattr(
+        advisory,
+        "build_symbol_thesis_context",
+        lambda symbol: {
+            "thesis_id": "symbol_noc",
+            "thesis_version": "symbol_noc@v7",
+            "state": "CURRENT",
+            "summary": full_summary,
+            "research_delta": {
+                "delta_id": "delta_noc_7",
+                "classification": "STRENGTHENS",
+            },
+            "authority": "READ_ONLY_ADVISORY",
+            "financial_action": False,
+        },
+    )
+
+    out = advisory._row_view({"symbol": "NOC", "decision_id": "dec_noc_7"})
+
+    assert out["symbol_thesis"]["summary"] == full_summary
+    assert len(out["symbol_thesis"]["summary"]) > 400
+    assert out["decision_context"] == {
+        "decision_id": "dec_noc_7",
+        "thesis_id": "symbol_noc",
+        "thesis_version": "symbol_noc@v7",
+        "research_delta_id": "delta_noc_7",
+        "research_delta_classification": "STRENGTHENS",
+        "authority": "READ_ONLY_ADVISORY",
+        "financial_action": False,
+    }
+
+
 def test_project_reentry_ready_panel():
     raw = {
         "symbol": "FATN",

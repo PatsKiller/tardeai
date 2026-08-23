@@ -692,8 +692,8 @@ def post_symbol_intelligence_feedback(
 ) -> dict[str, Any]:
     """POST /api/v3/cio/intelligence/{SYM}/feedback — append OperatorTickerFeedback@v1.
 
-    body.intent (required): AGREE|DISAGREE|INTERESTED|DEFER|NEED_DATA|DISMISS|ACK
-    body.free_text / object_id / channel optional.
+    body.intent (required): AGREE|DISAGREE|DEFER|NEED_DATA|NO_LONGER_RELEVANT
+    Decision/thesis identity and source-surface fields preserve durable lineage.
     NEED_DATA triggers best-effort held-coverage dry / Hermes enqueue (fail-soft).
     """
     body = body if isinstance(body, dict) else {}
@@ -739,6 +739,12 @@ def post_symbol_intelligence_feedback(
             "object_id": body.get("object_id"),
             "channel": body.get("channel") or "api",
             "operator_actor_id": body.get("operator_actor_id"),
+            "operator_identity_class": body.get("operator_identity_class"),
+            "source_surface": body.get("source_surface") or body.get("channel") or "api",
+            "decision_id": body.get("decision_id"),
+            "thesis_id": body.get("thesis_id") or body.get("symbol_thesis_id"),
+            "thesis_version": body.get("thesis_version") or body.get("symbol_thesis_version"),
+            "status": body.get("status") or "ACTIVE",
         })
     except ValueError as e:
         return {
@@ -760,7 +766,7 @@ def post_symbol_intelligence_feedback(
     need_data: dict[str, Any] | None = None
     if row.get("intent") == "NEED_DATA":
         try:
-            need_data = maybe_enqueue_need_data(sym, apply=False)
+            need_data = maybe_enqueue_need_data(sym, feedback=row, apply=False)
         except Exception as e:
             need_data = {"ok": False, "error": f"{type(e).__name__}:{e}"[:200]}
 
