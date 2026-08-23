@@ -78,6 +78,9 @@ test.describe('NOC golden browser acceptance', () => {
     await expect(card.getByText('Evidence provenance', { exact: true })).toBeVisible()
     await expect(card).toContainText('governed cloud')
     await expect(card).toContainText('acceptance-model')
+    // Standalone card evidence should not include the persistent shell strips
+    // that overlay the scroll viewport when Playwright auto-scrolls an element.
+    const standaloneStyle = await page.addStyleTag({ content: '.app-shell > :not(.app-body) { display: none !important; }' })
     await card.screenshot({ path: path.join(out, 'noc-symbol-card.png') })
 
     await panel.getByText('BND', { exact: true }).click()
@@ -85,6 +88,7 @@ test.describe('NOC golden browser acceptance', () => {
     await expect(card).not.toContainText('No living thesis')
     await expect(card).not.toContainText('DATA_UNAVAILABLE')
     await card.screenshot({ path: path.join(out, 'bnd-thin-symbol-card.png') })
+    await standaloneStyle.evaluate(node => node.remove())
 
     await page.getByRole('tab', { name: 'TELEGRAM RECEIPTS' }).click()
     await expect(page.getByRole('tabpanel', { name: 'TELEGRAM RECEIPTS' })).toBeVisible()

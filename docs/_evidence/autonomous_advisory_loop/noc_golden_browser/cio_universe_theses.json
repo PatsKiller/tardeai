@@ -1,0 +1,2057 @@
+{
+  "ok": true,
+  "schema": "UniverseThesesProjection@v1",
+  "section": "UNIVERSE_AND_THESES",
+  "as_of": "2026-08-23T03:31:39+00:00",
+  "authority": "READ_ONLY_ADVISORY",
+  "financial_action": false,
+  "metrics": {
+    "material_universe": 51,
+    "universe_union": 5243,
+    "current_thesis": 1,
+    "research_required": 49,
+    "stale": 0,
+    "conflicted": 0,
+    "insufficient_data": 5192,
+    "bonds_unresolved": 0,
+    "non_ticker_excluded": 1,
+    "unknown_role": 0,
+    "coverage_pct": 3.9,
+    "substantive_pct": 2,
+    "thin": 1,
+    "held": 2,
+    "held_current": 1,
+    "held_thin": 1,
+    "held_coverage_pct": 100,
+    "held_substantive_pct": 50,
+    "percentage_definitions": {
+      "material_coverage": {
+        "numerator": 2,
+        "denominator": 51,
+        "numerator_states": [
+          "CURRENT",
+          "THIN"
+        ],
+        "membership_scope": "material_union_excluding_non_material",
+        "formula": "100 * (CURRENT + THIN) / material",
+        "pct": 3.9
+      },
+      "material_substantive": {
+        "numerator": 1,
+        "denominator": 51,
+        "numerator_states": [
+          "CURRENT"
+        ],
+        "membership_scope": "material_union_excluding_non_material",
+        "formula": "100 * CURRENT / material",
+        "pct": 2
+      },
+      "held_coverage": {
+        "numerator": 2,
+        "denominator": 2,
+        "numerator_states": [
+          "CURRENT",
+          "THIN"
+        ],
+        "membership_scope": "HELD_equity_tickers_excluding_cash_and_unresolved_identifiers",
+        "formula": "100 * (CURRENT + THIN) / held",
+        "pct": 100
+      },
+      "held_substantive": {
+        "numerator": 1,
+        "denominator": 2,
+        "numerator_states": [
+          "CURRENT"
+        ],
+        "membership_scope": "HELD_equity_tickers_excluding_cash_and_unresolved_identifiers",
+        "formula": "100 * CURRENT / held",
+        "pct": 50
+      }
+    },
+    "open_thesis_research_proposed": 5,
+    "desk": null
+  },
+  "daily_thesis_changes": {
+    "schema": "DailyThesisChanges@v1",
+    "as_of": "2026-08-23T03:31:39+00:00",
+    "since_hours": 24,
+    "counts": {
+      "NEW": 1,
+      "STRENGTHENED": 1,
+      "WEAKENED": 0,
+      "BROKEN": 0,
+      "RESEARCH_REQUIRED": 0,
+      "CONFLICTED": 0,
+      "RETIRED": 0,
+      "OTHER": 0
+    },
+    "changes": {
+      "NEW": [
+        {
+          "symbol": "BND",
+          "thesis_id": "symbol_bnd",
+          "thesis_version": "symbol_bnd@v1",
+          "stance": "HOLD",
+          "change_note": "Acceptance THIN comparison fixture",
+          "published_ts": "2026-08-23T03:29:57.448138+00:00"
+        }
+      ],
+      "STRENGTHENED": [
+        {
+          "symbol": "NOC",
+          "thesis_id": "symbol_noc",
+          "thesis_version": "symbol_noc@v2",
+          "stance": "HOLD",
+          "change_note": "THESIS_STRENGTHENED via research_completion; old_stance=HOLD → HOLD",
+          "published_ts": "2026-08-23T03:29:57.541400+00:00"
+        }
+      ]
+    },
+    "authority": "READ_ONLY_ADVISORY",
+    "financial_action": false
+  },
+  "symbols": [
+    {
+      "symbol": "BND",
+      "memberships": [
+        "HELD",
+        "WATCHLIST"
+      ],
+      "bucket": "HELD",
+      "portfolio_role": "DEFENSIVE",
+      "portfolio_role_source": "ticker_hint",
+      "thesis_state": "THIN",
+      "mint_state": "THIN",
+      "stance": "HOLD",
+      "confidence": null,
+      "last_reviewed": null,
+      "next_review": null,
+      "thesis_version": "symbol_bnd@v1",
+      "research_gaps": [
+        "complete duration and income evidence",
+        "Thesis is THIN (cleared 40-char floor, failed PASS): need ticker-specific fact, invalidation, role, numeric fidelity"
+      ],
+      "reentry_state": null,
+      "opportunity_rank": null,
+      "materiality": "ACTIVE_MATERIAL"
+    },
+    {
+      "symbol": "NOC",
+      "memberships": [
+        "HELD",
+        "WATCHLIST"
+      ],
+      "bucket": "HELD",
+      "portfolio_role": "DEFENSIVE",
+      "portfolio_role_source": "symbol_thesis",
+      "thesis_state": "CURRENT",
+      "mint_state": "CURRENT",
+      "stance": "HOLD",
+      "confidence": null,
+      "last_reviewed": null,
+      "next_review": null,
+      "thesis_version": "symbol_noc@v2",
+      "research_gaps": [
+        "next-quarter cash conversion"
+      ],
+      "reentry_state": null,
+      "opportunity_rank": null,
+      "materiality": "ACTIVE_MATERIAL"
+    },
+    {
+      "symbol": "ACHV",
+      "memberships": [
+        "FORMER_HOLDING",
+        "WATCHLIST"
+      ],
+      "bucket": "REENTRY",
+      "portfolio_role": "SPECULATIVE",
+      "portfolio_role_source": "former_holding_category",
+      "thesis_state": "RESEARCH_REQUIRED",
+      "mint_state": "RESEARCH_REQUIRED",
+      "stance": null,
+      "confidence": null,
+      "last_reviewed": null,
+      "next_review": null,
+      "thesis_version": null,
+      "research_gaps": [
+        "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      ],
+      "reentry_state": null,
+      "opportunity_rank": null,
+      "materiality": "ACTIVE_MATERIAL"
+    },
+    {
+      "symbol": "AGMH",
+      "memberships": [
+        "FORMER_HOLDING",
+        "WATCHLIST"
+      ],
+      "bucket": "REENTRY",
+      "portfolio_role": "SPECULATIVE",
+      "portfolio_role_source": "former_holding_category",
+      "thesis_state": "RESEARCH_REQUIRED",
+      "mint_state": "RESEARCH_REQUIRED",
+      "stance": null,
+      "confidence": null,
+      "last_reviewed": null,
+      "next_review": null,
+      "thesis_version": null,
+      "research_gaps": [
+        "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      ],
+      "reentry_state": null,
+      "opportunity_rank": null,
+      "materiality": "ACTIVE_MATERIAL"
+    },
+    {
+      "symbol": "ALXO",
+      "memberships": [
+        "FORMER_HOLDING",
+        "WATCHLIST"
+      ],
+      "bucket": "REENTRY",
+      "portfolio_role": "SPECULATIVE",
+      "portfolio_role_source": "former_holding_category",
+      "thesis_state": "RESEARCH_REQUIRED",
+      "mint_state": "RESEARCH_REQUIRED",
+      "stance": null,
+      "confidence": null,
+      "last_reviewed": null,
+      "next_review": null,
+      "thesis_version": null,
+      "research_gaps": [
+        "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      ],
+      "reentry_state": null,
+      "opportunity_rank": null,
+      "materiality": "ACTIVE_MATERIAL"
+    },
+    {
+      "symbol": "AMC",
+      "memberships": [
+        "FORMER_HOLDING",
+        "WATCHLIST"
+      ],
+      "bucket": "REENTRY",
+      "portfolio_role": "SPECULATIVE",
+      "portfolio_role_source": "former_holding_category",
+      "thesis_state": "RESEARCH_REQUIRED",
+      "mint_state": "RESEARCH_REQUIRED",
+      "stance": null,
+      "confidence": null,
+      "last_reviewed": null,
+      "next_review": null,
+      "thesis_version": null,
+      "research_gaps": [
+        "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      ],
+      "reentry_state": null,
+      "opportunity_rank": null,
+      "materiality": "ACTIVE_MATERIAL"
+    },
+    {
+      "symbol": "AMD",
+      "memberships": [
+        "FORMER_HOLDING",
+        "WATCHLIST"
+      ],
+      "bucket": "REENTRY",
+      "portfolio_role": "SPECULATIVE",
+      "portfolio_role_source": "former_holding_category",
+      "thesis_state": "RESEARCH_REQUIRED",
+      "mint_state": "RESEARCH_REQUIRED",
+      "stance": null,
+      "confidence": null,
+      "last_reviewed": null,
+      "next_review": null,
+      "thesis_version": null,
+      "research_gaps": [
+        "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      ],
+      "reentry_state": null,
+      "opportunity_rank": null,
+      "materiality": "ACTIVE_MATERIAL"
+    },
+    {
+      "symbol": "ARKG",
+      "memberships": [
+        "FORMER_HOLDING",
+        "WATCHLIST"
+      ],
+      "bucket": "REENTRY",
+      "portfolio_role": "SATELLITE",
+      "portfolio_role_source": "former_holding_category",
+      "thesis_state": "RESEARCH_REQUIRED",
+      "mint_state": "RESEARCH_REQUIRED",
+      "stance": null,
+      "confidence": null,
+      "last_reviewed": null,
+      "next_review": null,
+      "thesis_version": null,
+      "research_gaps": [
+        "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      ],
+      "reentry_state": null,
+      "opportunity_rank": null,
+      "materiality": "ACTIVE_MATERIAL"
+    },
+    {
+      "symbol": "ATAI",
+      "memberships": [
+        "FORMER_HOLDING",
+        "WATCHLIST"
+      ],
+      "bucket": "REENTRY",
+      "portfolio_role": "SPECULATIVE",
+      "portfolio_role_source": "former_holding_category",
+      "thesis_state": "RESEARCH_REQUIRED",
+      "mint_state": "RESEARCH_REQUIRED",
+      "stance": null,
+      "confidence": null,
+      "last_reviewed": null,
+      "next_review": null,
+      "thesis_version": null,
+      "research_gaps": [
+        "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      ],
+      "reentry_state": null,
+      "opportunity_rank": null,
+      "materiality": "ACTIVE_MATERIAL"
+    },
+    {
+      "symbol": "AXTI",
+      "memberships": [
+        "FORMER_HOLDING",
+        "WATCHLIST"
+      ],
+      "bucket": "REENTRY",
+      "portfolio_role": "QUALITY_CORE",
+      "portfolio_role_source": "former_holding_category",
+      "thesis_state": "RESEARCH_REQUIRED",
+      "mint_state": "RESEARCH_REQUIRED",
+      "stance": null,
+      "confidence": null,
+      "last_reviewed": null,
+      "next_review": null,
+      "thesis_version": null,
+      "research_gaps": [
+        "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      ],
+      "reentry_state": null,
+      "opportunity_rank": null,
+      "materiality": "ACTIVE_MATERIAL"
+    },
+    {
+      "symbol": "BJDX",
+      "memberships": [
+        "FORMER_HOLDING",
+        "WATCHLIST"
+      ],
+      "bucket": "REENTRY",
+      "portfolio_role": "SPECULATIVE",
+      "portfolio_role_source": "former_holding_category",
+      "thesis_state": "RESEARCH_REQUIRED",
+      "mint_state": "RESEARCH_REQUIRED",
+      "stance": null,
+      "confidence": null,
+      "last_reviewed": null,
+      "next_review": null,
+      "thesis_version": null,
+      "research_gaps": [
+        "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      ],
+      "reentry_state": null,
+      "opportunity_rank": null,
+      "materiality": "ACTIVE_MATERIAL"
+    },
+    {
+      "symbol": "BOXL",
+      "memberships": [
+        "FORMER_HOLDING",
+        "WATCHLIST"
+      ],
+      "bucket": "REENTRY",
+      "portfolio_role": "SPECULATIVE",
+      "portfolio_role_source": "former_holding_category",
+      "thesis_state": "RESEARCH_REQUIRED",
+      "mint_state": "RESEARCH_REQUIRED",
+      "stance": null,
+      "confidence": null,
+      "last_reviewed": null,
+      "next_review": null,
+      "thesis_version": null,
+      "research_gaps": [
+        "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      ],
+      "reentry_state": null,
+      "opportunity_rank": null,
+      "materiality": "ACTIVE_MATERIAL"
+    },
+    {
+      "symbol": "CAST",
+      "memberships": [
+        "FORMER_HOLDING",
+        "WATCHLIST"
+      ],
+      "bucket": "REENTRY",
+      "portfolio_role": "SPECULATIVE",
+      "portfolio_role_source": "former_holding_category",
+      "thesis_state": "RESEARCH_REQUIRED",
+      "mint_state": "RESEARCH_REQUIRED",
+      "stance": null,
+      "confidence": null,
+      "last_reviewed": null,
+      "next_review": null,
+      "thesis_version": null,
+      "research_gaps": [
+        "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      ],
+      "reentry_state": null,
+      "opportunity_rank": null,
+      "materiality": "ACTIVE_MATERIAL"
+    },
+    {
+      "symbol": "CTXR",
+      "memberships": [
+        "FORMER_HOLDING",
+        "WATCHLIST"
+      ],
+      "bucket": "REENTRY",
+      "portfolio_role": "SPECULATIVE",
+      "portfolio_role_source": "former_holding_category",
+      "thesis_state": "RESEARCH_REQUIRED",
+      "mint_state": "RESEARCH_REQUIRED",
+      "stance": null,
+      "confidence": null,
+      "last_reviewed": null,
+      "next_review": null,
+      "thesis_version": null,
+      "research_gaps": [
+        "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      ],
+      "reentry_state": null,
+      "opportunity_rank": null,
+      "materiality": "ACTIVE_MATERIAL"
+    },
+    {
+      "symbol": "DFSC",
+      "memberships": [
+        "FORMER_HOLDING",
+        "WATCHLIST"
+      ],
+      "bucket": "REENTRY",
+      "portfolio_role": "SPECULATIVE",
+      "portfolio_role_source": "former_holding_category",
+      "thesis_state": "RESEARCH_REQUIRED",
+      "mint_state": "RESEARCH_REQUIRED",
+      "stance": null,
+      "confidence": null,
+      "last_reviewed": null,
+      "next_review": null,
+      "thesis_version": null,
+      "research_gaps": [
+        "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      ],
+      "reentry_state": null,
+      "opportunity_rank": null,
+      "materiality": "ACTIVE_MATERIAL"
+    },
+    {
+      "symbol": "EKSO",
+      "memberships": [
+        "FORMER_HOLDING",
+        "WATCHLIST"
+      ],
+      "bucket": "REENTRY",
+      "portfolio_role": "SPECULATIVE",
+      "portfolio_role_source": "former_holding_category",
+      "thesis_state": "RESEARCH_REQUIRED",
+      "mint_state": "RESEARCH_REQUIRED",
+      "stance": null,
+      "confidence": null,
+      "last_reviewed": null,
+      "next_review": null,
+      "thesis_version": null,
+      "research_gaps": [
+        "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      ],
+      "reentry_state": null,
+      "opportunity_rank": null,
+      "materiality": "ACTIVE_MATERIAL"
+    },
+    {
+      "symbol": "ELAB",
+      "memberships": [
+        "FORMER_HOLDING",
+        "WATCHLIST"
+      ],
+      "bucket": "REENTRY",
+      "portfolio_role": "SPECULATIVE",
+      "portfolio_role_source": "former_holding_category",
+      "thesis_state": "RESEARCH_REQUIRED",
+      "mint_state": "RESEARCH_REQUIRED",
+      "stance": null,
+      "confidence": null,
+      "last_reviewed": null,
+      "next_review": null,
+      "thesis_version": null,
+      "research_gaps": [
+        "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      ],
+      "reentry_state": null,
+      "opportunity_rank": null,
+      "materiality": "ACTIVE_MATERIAL"
+    },
+    {
+      "symbol": "ELBM",
+      "memberships": [
+        "FORMER_HOLDING",
+        "WATCHLIST"
+      ],
+      "bucket": "REENTRY",
+      "portfolio_role": "SPECULATIVE",
+      "portfolio_role_source": "former_holding_category",
+      "thesis_state": "RESEARCH_REQUIRED",
+      "mint_state": "RESEARCH_REQUIRED",
+      "stance": null,
+      "confidence": null,
+      "last_reviewed": null,
+      "next_review": null,
+      "thesis_version": null,
+      "research_gaps": [
+        "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      ],
+      "reentry_state": null,
+      "opportunity_rank": null,
+      "materiality": "ACTIVE_MATERIAL"
+    },
+    {
+      "symbol": "FATN",
+      "memberships": [
+        "FORMER_HOLDING",
+        "WATCHLIST"
+      ],
+      "bucket": "REENTRY",
+      "portfolio_role": "SPECULATIVE",
+      "portfolio_role_source": "former_holding_category",
+      "thesis_state": "RESEARCH_REQUIRED",
+      "mint_state": "RESEARCH_REQUIRED",
+      "stance": null,
+      "confidence": null,
+      "last_reviewed": null,
+      "next_review": null,
+      "thesis_version": null,
+      "research_gaps": [
+        "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      ],
+      "reentry_state": null,
+      "opportunity_rank": null,
+      "materiality": "ACTIVE_MATERIAL"
+    },
+    {
+      "symbol": "FCNTX",
+      "memberships": [
+        "FORMER_HOLDING",
+        "WATCHLIST"
+      ],
+      "bucket": "REENTRY",
+      "portfolio_role": "SATELLITE",
+      "portfolio_role_source": "former_holding_category",
+      "thesis_state": "RESEARCH_REQUIRED",
+      "mint_state": "RESEARCH_REQUIRED",
+      "stance": null,
+      "confidence": null,
+      "last_reviewed": null,
+      "next_review": null,
+      "thesis_version": null,
+      "research_gaps": [
+        "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      ],
+      "reentry_state": null,
+      "opportunity_rank": null,
+      "materiality": "ACTIVE_MATERIAL"
+    },
+    {
+      "symbol": "FJSCX",
+      "memberships": [
+        "FORMER_HOLDING",
+        "WATCHLIST"
+      ],
+      "bucket": "REENTRY",
+      "portfolio_role": "SATELLITE",
+      "portfolio_role_source": "former_holding_category",
+      "thesis_state": "RESEARCH_REQUIRED",
+      "mint_state": "RESEARCH_REQUIRED",
+      "stance": null,
+      "confidence": null,
+      "last_reviewed": null,
+      "next_review": null,
+      "thesis_version": null,
+      "research_gaps": [
+        "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      ],
+      "reentry_state": null,
+      "opportunity_rank": null,
+      "materiality": "ACTIVE_MATERIAL"
+    },
+    {
+      "symbol": "GCTS",
+      "memberships": [
+        "FORMER_HOLDING",
+        "WATCHLIST"
+      ],
+      "bucket": "REENTRY",
+      "portfolio_role": "SPECULATIVE",
+      "portfolio_role_source": "former_holding_category",
+      "thesis_state": "RESEARCH_REQUIRED",
+      "mint_state": "RESEARCH_REQUIRED",
+      "stance": null,
+      "confidence": null,
+      "last_reviewed": null,
+      "next_review": null,
+      "thesis_version": null,
+      "research_gaps": [
+        "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      ],
+      "reentry_state": null,
+      "opportunity_rank": null,
+      "materiality": "ACTIVE_MATERIAL"
+    },
+    {
+      "symbol": "GERN",
+      "memberships": [
+        "FORMER_HOLDING",
+        "WATCHLIST"
+      ],
+      "bucket": "REENTRY",
+      "portfolio_role": "SATELLITE",
+      "portfolio_role_source": "former_holding_category",
+      "thesis_state": "RESEARCH_REQUIRED",
+      "mint_state": "RESEARCH_REQUIRED",
+      "stance": null,
+      "confidence": null,
+      "last_reviewed": null,
+      "next_review": null,
+      "thesis_version": null,
+      "research_gaps": [
+        "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      ],
+      "reentry_state": null,
+      "opportunity_rank": null,
+      "materiality": "ACTIVE_MATERIAL"
+    },
+    {
+      "symbol": "GOVX",
+      "memberships": [
+        "FORMER_HOLDING"
+      ],
+      "bucket": "REENTRY",
+      "portfolio_role": "SPECULATIVE",
+      "portfolio_role_source": "former_holding_category",
+      "thesis_state": "RESEARCH_REQUIRED",
+      "mint_state": "RESEARCH_REQUIRED",
+      "stance": null,
+      "confidence": null,
+      "last_reviewed": null,
+      "next_review": null,
+      "thesis_version": null,
+      "research_gaps": [
+        "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      ],
+      "reentry_state": null,
+      "opportunity_rank": null,
+      "materiality": "ACTIVE_MATERIAL"
+    },
+    {
+      "symbol": "GSIT",
+      "memberships": [
+        "FORMER_HOLDING",
+        "WATCHLIST"
+      ],
+      "bucket": "REENTRY",
+      "portfolio_role": "SPECULATIVE",
+      "portfolio_role_source": "former_holding_category",
+      "thesis_state": "RESEARCH_REQUIRED",
+      "mint_state": "RESEARCH_REQUIRED",
+      "stance": null,
+      "confidence": null,
+      "last_reviewed": null,
+      "next_review": null,
+      "thesis_version": null,
+      "research_gaps": [
+        "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      ],
+      "reentry_state": null,
+      "opportunity_rank": null,
+      "materiality": "ACTIVE_MATERIAL"
+    },
+    {
+      "symbol": "GWH",
+      "memberships": [
+        "FORMER_HOLDING",
+        "WATCHLIST"
+      ],
+      "bucket": "REENTRY",
+      "portfolio_role": "SPECULATIVE",
+      "portfolio_role_source": "former_holding_category",
+      "thesis_state": "RESEARCH_REQUIRED",
+      "mint_state": "RESEARCH_REQUIRED",
+      "stance": null,
+      "confidence": null,
+      "last_reviewed": null,
+      "next_review": null,
+      "thesis_version": null,
+      "research_gaps": [
+        "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      ],
+      "reentry_state": null,
+      "opportunity_rank": null,
+      "materiality": "ACTIVE_MATERIAL"
+    },
+    {
+      "symbol": "GXAI",
+      "memberships": [
+        "FORMER_HOLDING",
+        "WATCHLIST"
+      ],
+      "bucket": "REENTRY",
+      "portfolio_role": "SPECULATIVE",
+      "portfolio_role_source": "former_holding_category",
+      "thesis_state": "RESEARCH_REQUIRED",
+      "mint_state": "RESEARCH_REQUIRED",
+      "stance": null,
+      "confidence": null,
+      "last_reviewed": null,
+      "next_review": null,
+      "thesis_version": null,
+      "research_gaps": [
+        "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      ],
+      "reentry_state": null,
+      "opportunity_rank": null,
+      "materiality": "ACTIVE_MATERIAL"
+    },
+    {
+      "symbol": "IRDM",
+      "memberships": [
+        "FORMER_HOLDING",
+        "WATCHLIST"
+      ],
+      "bucket": "REENTRY",
+      "portfolio_role": "QUALITY_CORE",
+      "portfolio_role_source": "former_holding_category",
+      "thesis_state": "RESEARCH_REQUIRED",
+      "mint_state": "RESEARCH_REQUIRED",
+      "stance": null,
+      "confidence": null,
+      "last_reviewed": null,
+      "next_review": null,
+      "thesis_version": null,
+      "research_gaps": [
+        "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      ],
+      "reentry_state": null,
+      "opportunity_rank": null,
+      "materiality": "ACTIVE_MATERIAL"
+    },
+    {
+      "symbol": "LAC",
+      "memberships": [
+        "FORMER_HOLDING",
+        "WATCHLIST"
+      ],
+      "bucket": "REENTRY",
+      "portfolio_role": "SPECULATIVE",
+      "portfolio_role_source": "former_holding_category",
+      "thesis_state": "RESEARCH_REQUIRED",
+      "mint_state": "RESEARCH_REQUIRED",
+      "stance": null,
+      "confidence": null,
+      "last_reviewed": null,
+      "next_review": null,
+      "thesis_version": null,
+      "research_gaps": [
+        "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      ],
+      "reentry_state": null,
+      "opportunity_rank": null,
+      "materiality": "ACTIVE_MATERIAL"
+    },
+    {
+      "symbol": "LASE",
+      "memberships": [
+        "FORMER_HOLDING",
+        "WATCHLIST"
+      ],
+      "bucket": "REENTRY",
+      "portfolio_role": "SPECULATIVE",
+      "portfolio_role_source": "former_holding_category",
+      "thesis_state": "RESEARCH_REQUIRED",
+      "mint_state": "RESEARCH_REQUIRED",
+      "stance": null,
+      "confidence": null,
+      "last_reviewed": null,
+      "next_review": null,
+      "thesis_version": null,
+      "research_gaps": [
+        "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      ],
+      "reentry_state": null,
+      "opportunity_rank": null,
+      "materiality": "ACTIVE_MATERIAL"
+    },
+    {
+      "symbol": "LGPS",
+      "memberships": [
+        "FORMER_HOLDING",
+        "WATCHLIST"
+      ],
+      "bucket": "REENTRY",
+      "portfolio_role": "SPECULATIVE",
+      "portfolio_role_source": "former_holding_category",
+      "thesis_state": "RESEARCH_REQUIRED",
+      "mint_state": "RESEARCH_REQUIRED",
+      "stance": null,
+      "confidence": null,
+      "last_reviewed": null,
+      "next_review": null,
+      "thesis_version": null,
+      "research_gaps": [
+        "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      ],
+      "reentry_state": null,
+      "opportunity_rank": null,
+      "materiality": "ACTIVE_MATERIAL"
+    },
+    {
+      "symbol": "MNTS",
+      "memberships": [
+        "FORMER_HOLDING",
+        "WATCHLIST"
+      ],
+      "bucket": "REENTRY",
+      "portfolio_role": "SPECULATIVE",
+      "portfolio_role_source": "former_holding_category",
+      "thesis_state": "RESEARCH_REQUIRED",
+      "mint_state": "RESEARCH_REQUIRED",
+      "stance": null,
+      "confidence": null,
+      "last_reviewed": null,
+      "next_review": null,
+      "thesis_version": null,
+      "research_gaps": [
+        "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      ],
+      "reentry_state": null,
+      "opportunity_rank": null,
+      "materiality": "ACTIVE_MATERIAL"
+    },
+    {
+      "symbol": "NERV",
+      "memberships": [
+        "FORMER_HOLDING",
+        "WATCHLIST"
+      ],
+      "bucket": "REENTRY",
+      "portfolio_role": "SPECULATIVE",
+      "portfolio_role_source": "former_holding_category",
+      "thesis_state": "RESEARCH_REQUIRED",
+      "mint_state": "RESEARCH_REQUIRED",
+      "stance": null,
+      "confidence": null,
+      "last_reviewed": null,
+      "next_review": null,
+      "thesis_version": null,
+      "research_gaps": [
+        "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      ],
+      "reentry_state": null,
+      "opportunity_rank": null,
+      "materiality": "ACTIVE_MATERIAL"
+    },
+    {
+      "symbol": "NUAI",
+      "memberships": [
+        "FORMER_HOLDING",
+        "WATCHLIST"
+      ],
+      "bucket": "REENTRY",
+      "portfolio_role": "SPECULATIVE",
+      "portfolio_role_source": "former_holding_category",
+      "thesis_state": "RESEARCH_REQUIRED",
+      "mint_state": "RESEARCH_REQUIRED",
+      "stance": null,
+      "confidence": null,
+      "last_reviewed": null,
+      "next_review": null,
+      "thesis_version": null,
+      "research_gaps": [
+        "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      ],
+      "reentry_state": null,
+      "opportunity_rank": null,
+      "materiality": "ACTIVE_MATERIAL"
+    },
+    {
+      "symbol": "NUWE",
+      "memberships": [
+        "FORMER_HOLDING",
+        "WATCHLIST"
+      ],
+      "bucket": "REENTRY",
+      "portfolio_role": "SPECULATIVE",
+      "portfolio_role_source": "former_holding_category",
+      "thesis_state": "RESEARCH_REQUIRED",
+      "mint_state": "RESEARCH_REQUIRED",
+      "stance": null,
+      "confidence": null,
+      "last_reviewed": null,
+      "next_review": null,
+      "thesis_version": null,
+      "research_gaps": [
+        "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      ],
+      "reentry_state": null,
+      "opportunity_rank": null,
+      "materiality": "ACTIVE_MATERIAL"
+    },
+    {
+      "symbol": "PFE",
+      "memberships": [
+        "FORMER_HOLDING",
+        "WATCHLIST"
+      ],
+      "bucket": "REENTRY",
+      "portfolio_role": "SATELLITE",
+      "portfolio_role_source": "former_holding_category",
+      "thesis_state": "RESEARCH_REQUIRED",
+      "mint_state": "RESEARCH_REQUIRED",
+      "stance": null,
+      "confidence": null,
+      "last_reviewed": null,
+      "next_review": null,
+      "thesis_version": null,
+      "research_gaps": [
+        "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      ],
+      "reentry_state": null,
+      "opportunity_rank": null,
+      "materiality": "ACTIVE_MATERIAL"
+    },
+    {
+      "symbol": "PHIO",
+      "memberships": [
+        "FORMER_HOLDING",
+        "WATCHLIST"
+      ],
+      "bucket": "REENTRY",
+      "portfolio_role": "SPECULATIVE",
+      "portfolio_role_source": "former_holding_category",
+      "thesis_state": "RESEARCH_REQUIRED",
+      "mint_state": "RESEARCH_REQUIRED",
+      "stance": null,
+      "confidence": null,
+      "last_reviewed": null,
+      "next_review": null,
+      "thesis_version": null,
+      "research_gaps": [
+        "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      ],
+      "reentry_state": null,
+      "opportunity_rank": null,
+      "materiality": "ACTIVE_MATERIAL"
+    },
+    {
+      "symbol": "RDHL",
+      "memberships": [
+        "FORMER_HOLDING",
+        "WATCHLIST"
+      ],
+      "bucket": "REENTRY",
+      "portfolio_role": "SPECULATIVE",
+      "portfolio_role_source": "former_holding_category",
+      "thesis_state": "RESEARCH_REQUIRED",
+      "mint_state": "RESEARCH_REQUIRED",
+      "stance": null,
+      "confidence": null,
+      "last_reviewed": null,
+      "next_review": null,
+      "thesis_version": null,
+      "research_gaps": [
+        "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      ],
+      "reentry_state": null,
+      "opportunity_rank": null,
+      "materiality": "ACTIVE_MATERIAL"
+    },
+    {
+      "symbol": "RGNT",
+      "memberships": [
+        "FORMER_HOLDING",
+        "WATCHLIST"
+      ],
+      "bucket": "REENTRY",
+      "portfolio_role": "SPECULATIVE",
+      "portfolio_role_source": "former_holding_category",
+      "thesis_state": "RESEARCH_REQUIRED",
+      "mint_state": "RESEARCH_REQUIRED",
+      "stance": null,
+      "confidence": null,
+      "last_reviewed": null,
+      "next_review": null,
+      "thesis_version": null,
+      "research_gaps": [
+        "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      ],
+      "reentry_state": null,
+      "opportunity_rank": null,
+      "materiality": "ACTIVE_MATERIAL"
+    },
+    {
+      "symbol": "RKLB",
+      "memberships": [
+        "FORMER_HOLDING",
+        "WATCHLIST"
+      ],
+      "bucket": "REENTRY",
+      "portfolio_role": "SATELLITE",
+      "portfolio_role_source": "former_holding_category",
+      "thesis_state": "RESEARCH_REQUIRED",
+      "mint_state": "RESEARCH_REQUIRED",
+      "stance": null,
+      "confidence": null,
+      "last_reviewed": null,
+      "next_review": null,
+      "thesis_version": null,
+      "research_gaps": [
+        "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      ],
+      "reentry_state": null,
+      "opportunity_rank": null,
+      "materiality": "ACTIVE_MATERIAL"
+    },
+    {
+      "symbol": "SHFS",
+      "memberships": [
+        "FORMER_HOLDING",
+        "WATCHLIST"
+      ],
+      "bucket": "REENTRY",
+      "portfolio_role": "SPECULATIVE",
+      "portfolio_role_source": "former_holding_category",
+      "thesis_state": "RESEARCH_REQUIRED",
+      "mint_state": "RESEARCH_REQUIRED",
+      "stance": null,
+      "confidence": null,
+      "last_reviewed": null,
+      "next_review": null,
+      "thesis_version": null,
+      "research_gaps": [
+        "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      ],
+      "reentry_state": null,
+      "opportunity_rank": null,
+      "materiality": "ACTIVE_MATERIAL"
+    },
+    {
+      "symbol": "SLDP",
+      "memberships": [
+        "FORMER_HOLDING",
+        "WATCHLIST"
+      ],
+      "bucket": "REENTRY",
+      "portfolio_role": "SPECULATIVE",
+      "portfolio_role_source": "former_holding_category",
+      "thesis_state": "RESEARCH_REQUIRED",
+      "mint_state": "RESEARCH_REQUIRED",
+      "stance": null,
+      "confidence": null,
+      "last_reviewed": null,
+      "next_review": null,
+      "thesis_version": null,
+      "research_gaps": [
+        "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      ],
+      "reentry_state": null,
+      "opportunity_rank": null,
+      "materiality": "ACTIVE_MATERIAL"
+    },
+    {
+      "symbol": "SLNH",
+      "memberships": [
+        "FORMER_HOLDING",
+        "WATCHLIST"
+      ],
+      "bucket": "REENTRY",
+      "portfolio_role": "SPECULATIVE",
+      "portfolio_role_source": "former_holding_category",
+      "thesis_state": "RESEARCH_REQUIRED",
+      "mint_state": "RESEARCH_REQUIRED",
+      "stance": null,
+      "confidence": null,
+      "last_reviewed": null,
+      "next_review": null,
+      "thesis_version": null,
+      "research_gaps": [
+        "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      ],
+      "reentry_state": null,
+      "opportunity_rank": null,
+      "materiality": "ACTIVE_MATERIAL"
+    },
+    {
+      "symbol": "TDG",
+      "memberships": [
+        "FORMER_HOLDING",
+        "WATCHLIST"
+      ],
+      "bucket": "REENTRY",
+      "portfolio_role": "SATELLITE",
+      "portfolio_role_source": "former_holding_category",
+      "thesis_state": "RESEARCH_REQUIRED",
+      "mint_state": "RESEARCH_REQUIRED",
+      "stance": null,
+      "confidence": null,
+      "last_reviewed": null,
+      "next_review": null,
+      "thesis_version": null,
+      "research_gaps": [
+        "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      ],
+      "reentry_state": null,
+      "opportunity_rank": null,
+      "materiality": "ACTIVE_MATERIAL"
+    },
+    {
+      "symbol": "TELO",
+      "memberships": [
+        "FORMER_HOLDING",
+        "WATCHLIST"
+      ],
+      "bucket": "REENTRY",
+      "portfolio_role": "SPECULATIVE",
+      "portfolio_role_source": "former_holding_category",
+      "thesis_state": "RESEARCH_REQUIRED",
+      "mint_state": "RESEARCH_REQUIRED",
+      "stance": null,
+      "confidence": null,
+      "last_reviewed": null,
+      "next_review": null,
+      "thesis_version": null,
+      "research_gaps": [
+        "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      ],
+      "reentry_state": null,
+      "opportunity_rank": null,
+      "materiality": "ACTIVE_MATERIAL"
+    },
+    {
+      "symbol": "TRX",
+      "memberships": [
+        "FORMER_HOLDING",
+        "WATCHLIST"
+      ],
+      "bucket": "REENTRY",
+      "portfolio_role": "SPECULATIVE",
+      "portfolio_role_source": "former_holding_category",
+      "thesis_state": "RESEARCH_REQUIRED",
+      "mint_state": "RESEARCH_REQUIRED",
+      "stance": null,
+      "confidence": null,
+      "last_reviewed": null,
+      "next_review": null,
+      "thesis_version": null,
+      "research_gaps": [
+        "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      ],
+      "reentry_state": null,
+      "opportunity_rank": null,
+      "materiality": "ACTIVE_MATERIAL"
+    },
+    {
+      "symbol": "VTAK",
+      "memberships": [
+        "FORMER_HOLDING",
+        "WATCHLIST"
+      ],
+      "bucket": "REENTRY",
+      "portfolio_role": "SPECULATIVE",
+      "portfolio_role_source": "former_holding_category",
+      "thesis_state": "RESEARCH_REQUIRED",
+      "mint_state": "RESEARCH_REQUIRED",
+      "stance": null,
+      "confidence": null,
+      "last_reviewed": null,
+      "next_review": null,
+      "thesis_version": null,
+      "research_gaps": [
+        "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      ],
+      "reentry_state": null,
+      "opportunity_rank": null,
+      "materiality": "ACTIVE_MATERIAL"
+    },
+    {
+      "symbol": "WLDS",
+      "memberships": [
+        "FORMER_HOLDING",
+        "WATCHLIST"
+      ],
+      "bucket": "REENTRY",
+      "portfolio_role": "SPECULATIVE",
+      "portfolio_role_source": "former_holding_category",
+      "thesis_state": "RESEARCH_REQUIRED",
+      "mint_state": "RESEARCH_REQUIRED",
+      "stance": null,
+      "confidence": null,
+      "last_reviewed": null,
+      "next_review": null,
+      "thesis_version": null,
+      "research_gaps": [
+        "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      ],
+      "reentry_state": null,
+      "opportunity_rank": null,
+      "materiality": "ACTIVE_MATERIAL"
+    },
+    {
+      "symbol": "XMTR",
+      "memberships": [
+        "FORMER_HOLDING",
+        "WATCHLIST"
+      ],
+      "bucket": "REENTRY",
+      "portfolio_role": "SATELLITE",
+      "portfolio_role_source": "former_holding_category",
+      "thesis_state": "RESEARCH_REQUIRED",
+      "mint_state": "RESEARCH_REQUIRED",
+      "stance": null,
+      "confidence": null,
+      "last_reviewed": null,
+      "next_review": null,
+      "thesis_version": null,
+      "research_gaps": [
+        "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      ],
+      "reentry_state": null,
+      "opportunity_rank": null,
+      "materiality": "ACTIVE_MATERIAL"
+    },
+    {
+      "symbol": "ZSL",
+      "memberships": [
+        "FORMER_HOLDING"
+      ],
+      "bucket": "REENTRY",
+      "portfolio_role": "SPECULATIVE",
+      "portfolio_role_source": "former_holding_category",
+      "thesis_state": "RESEARCH_REQUIRED",
+      "mint_state": "RESEARCH_REQUIRED",
+      "stance": null,
+      "confidence": null,
+      "last_reviewed": null,
+      "next_review": null,
+      "thesis_version": null,
+      "research_gaps": [
+        "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)"
+      ],
+      "reentry_state": null,
+      "opportunity_rank": null,
+      "materiality": "ACTIVE_MATERIAL"
+    }
+  ],
+  "proposed_research": {
+    "schema": "SymbolThesisResearchProposal@v1",
+    "as_of": "2026-08-23T03:31:39+00:00",
+    "authority": "READ_ONLY_ADVISORY",
+    "financial_action": false,
+    "enqueued": false,
+    "acquisition_plane": "research_intelligence_multi_source",
+    "hermes_is_acquisition_source": false,
+    "note": "DRY proposal. RAG-first then budgeted multi-source plan. Hermes/Flash = synthesis/challenge only after curated embed. Discovery-only INSUFFICIENT_DATA rows are not auto-queued.",
+    "counts": {
+      "proposed": 5,
+      "skipped_discovery_or_capped": 495,
+      "by_priority": {
+        "P0": 0,
+        "P1": 0,
+        "P2": 5,
+        "P3": 0
+      },
+      "universe_rows": 5243,
+      "research_required_material": 49,
+      "pipeline_previews": 3
+    },
+    "requests": [
+      {
+        "schema": "SymbolThesisResearchRequest@v1",
+        "request_id": "str_4ec284ee1d2301cb",
+        "symbol": "ACHV",
+        "thesis_id": "symbol_achv",
+        "thesis_version": null,
+        "research_gap": "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)",
+        "specific_question": "Build living exit/re-entry thesis for ACHV: why previously owned, why exited, what changed since exit, market/sector fit, and research gaps.",
+        "why_needed": "thesis_state=RESEARCH_REQUIRED; memberships=['FORMER_HOLDING', 'WATCHLIST']; role=SPECULATIVE; materiality=ACTIVE_MATERIAL",
+        "priority": "P2",
+        "required_evidence_domains": [
+          "rag_existing",
+          "searxng_metasearch",
+          "sec_filings",
+          "rss_news",
+          "deterministic_structured"
+        ],
+        "acquisition_plane": "research_intelligence_multi_source",
+        "hermes_role": "synthesis_and_challenge_only",
+        "hermes_is_acquisition_source": false,
+        "pipeline": [
+          "rag_retrieve_supporting_and_contradictory",
+          "structured_corpus_read",
+          "if_insufficient: budgeted_multi_source_acquire",
+          "catalog_provenance",
+          "curate_rag_status_research_sources",
+          "embed_existing_content_embeddings",
+          "hermes_or_flash_synthesize_challenge",
+          "reconcile_symbol_thesis"
+        ],
+        "current_stance": null,
+        "counter_thesis": [],
+        "requested_at": "2026-08-23T03:31:39+00:00",
+        "parent_run": null,
+        "parent_product": null,
+        "budget_revisit_hours": 72,
+        "research_need_decision": "TARGETED_RESEARCH",
+        "materiality": "ACTIVE_MATERIAL",
+        "enqueue": false,
+        "authority": "READ_ONLY_ADVISORY",
+        "financial_action": false
+      },
+      {
+        "schema": "SymbolThesisResearchRequest@v1",
+        "request_id": "str_a4fc6f275bbe19b3",
+        "symbol": "AGMH",
+        "thesis_id": "symbol_agmh",
+        "thesis_version": null,
+        "research_gap": "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)",
+        "specific_question": "Build living exit/re-entry thesis for AGMH: why previously owned, why exited, what changed since exit, market/sector fit, and research gaps.",
+        "why_needed": "thesis_state=RESEARCH_REQUIRED; memberships=['FORMER_HOLDING', 'WATCHLIST']; role=SPECULATIVE; materiality=ACTIVE_MATERIAL",
+        "priority": "P2",
+        "required_evidence_domains": [
+          "rag_existing",
+          "searxng_metasearch",
+          "sec_filings",
+          "rss_news",
+          "deterministic_structured"
+        ],
+        "acquisition_plane": "research_intelligence_multi_source",
+        "hermes_role": "synthesis_and_challenge_only",
+        "hermes_is_acquisition_source": false,
+        "pipeline": [
+          "rag_retrieve_supporting_and_contradictory",
+          "structured_corpus_read",
+          "if_insufficient: budgeted_multi_source_acquire",
+          "catalog_provenance",
+          "curate_rag_status_research_sources",
+          "embed_existing_content_embeddings",
+          "hermes_or_flash_synthesize_challenge",
+          "reconcile_symbol_thesis"
+        ],
+        "current_stance": null,
+        "counter_thesis": [],
+        "requested_at": "2026-08-23T03:31:39+00:00",
+        "parent_run": null,
+        "parent_product": null,
+        "budget_revisit_hours": 72,
+        "research_need_decision": "TARGETED_RESEARCH",
+        "materiality": "ACTIVE_MATERIAL",
+        "enqueue": false,
+        "authority": "READ_ONLY_ADVISORY",
+        "financial_action": false
+      },
+      {
+        "schema": "SymbolThesisResearchRequest@v1",
+        "request_id": "str_15cd6a5b4abb3fad",
+        "symbol": "ALXO",
+        "thesis_id": "symbol_alxo",
+        "thesis_version": null,
+        "research_gap": "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)",
+        "specific_question": "Build living exit/re-entry thesis for ALXO: why previously owned, why exited, what changed since exit, market/sector fit, and research gaps.",
+        "why_needed": "thesis_state=RESEARCH_REQUIRED; memberships=['FORMER_HOLDING', 'WATCHLIST']; role=SPECULATIVE; materiality=ACTIVE_MATERIAL",
+        "priority": "P2",
+        "required_evidence_domains": [
+          "rag_existing",
+          "searxng_metasearch",
+          "sec_filings",
+          "rss_news",
+          "deterministic_structured"
+        ],
+        "acquisition_plane": "research_intelligence_multi_source",
+        "hermes_role": "synthesis_and_challenge_only",
+        "hermes_is_acquisition_source": false,
+        "pipeline": [
+          "rag_retrieve_supporting_and_contradictory",
+          "structured_corpus_read",
+          "if_insufficient: budgeted_multi_source_acquire",
+          "catalog_provenance",
+          "curate_rag_status_research_sources",
+          "embed_existing_content_embeddings",
+          "hermes_or_flash_synthesize_challenge",
+          "reconcile_symbol_thesis"
+        ],
+        "current_stance": null,
+        "counter_thesis": [],
+        "requested_at": "2026-08-23T03:31:39+00:00",
+        "parent_run": null,
+        "parent_product": null,
+        "budget_revisit_hours": 72,
+        "research_need_decision": "TARGETED_RESEARCH",
+        "materiality": "ACTIVE_MATERIAL",
+        "enqueue": false,
+        "authority": "READ_ONLY_ADVISORY",
+        "financial_action": false
+      },
+      {
+        "schema": "SymbolThesisResearchRequest@v1",
+        "request_id": "str_ac756ebe81a37544",
+        "symbol": "AMC",
+        "thesis_id": "symbol_amc",
+        "thesis_version": null,
+        "research_gap": "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)",
+        "specific_question": "Build living exit/re-entry thesis for AMC: why previously owned, why exited, what changed since exit, market/sector fit, and research gaps.",
+        "why_needed": "thesis_state=RESEARCH_REQUIRED; memberships=['FORMER_HOLDING', 'WATCHLIST']; role=SPECULATIVE; materiality=ACTIVE_MATERIAL",
+        "priority": "P2",
+        "required_evidence_domains": [
+          "rag_existing",
+          "searxng_metasearch",
+          "sec_filings",
+          "rss_news",
+          "deterministic_structured"
+        ],
+        "acquisition_plane": "research_intelligence_multi_source",
+        "hermes_role": "synthesis_and_challenge_only",
+        "hermes_is_acquisition_source": false,
+        "pipeline": [
+          "rag_retrieve_supporting_and_contradictory",
+          "structured_corpus_read",
+          "if_insufficient: budgeted_multi_source_acquire",
+          "catalog_provenance",
+          "curate_rag_status_research_sources",
+          "embed_existing_content_embeddings",
+          "hermes_or_flash_synthesize_challenge",
+          "reconcile_symbol_thesis"
+        ],
+        "current_stance": null,
+        "counter_thesis": [],
+        "requested_at": "2026-08-23T03:31:39+00:00",
+        "parent_run": null,
+        "parent_product": null,
+        "budget_revisit_hours": 72,
+        "research_need_decision": "TARGETED_RESEARCH",
+        "materiality": "ACTIVE_MATERIAL",
+        "enqueue": false,
+        "authority": "READ_ONLY_ADVISORY",
+        "financial_action": false
+      },
+      {
+        "schema": "SymbolThesisResearchRequest@v1",
+        "request_id": "str_3f20dd1178f1b2cc",
+        "symbol": "AMD",
+        "thesis_id": "symbol_amd",
+        "thesis_version": null,
+        "research_gap": "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)",
+        "specific_question": "Build living exit/re-entry thesis for AMD: why previously owned, why exited, what changed since exit, market/sector fit, and research gaps.",
+        "why_needed": "thesis_state=RESEARCH_REQUIRED; memberships=['FORMER_HOLDING', 'WATCHLIST']; role=SPECULATIVE; materiality=ACTIVE_MATERIAL",
+        "priority": "P2",
+        "required_evidence_domains": [
+          "rag_existing",
+          "searxng_metasearch",
+          "sec_filings",
+          "rss_news",
+          "deterministic_structured"
+        ],
+        "acquisition_plane": "research_intelligence_multi_source",
+        "hermes_role": "synthesis_and_challenge_only",
+        "hermes_is_acquisition_source": false,
+        "pipeline": [
+          "rag_retrieve_supporting_and_contradictory",
+          "structured_corpus_read",
+          "if_insufficient: budgeted_multi_source_acquire",
+          "catalog_provenance",
+          "curate_rag_status_research_sources",
+          "embed_existing_content_embeddings",
+          "hermes_or_flash_synthesize_challenge",
+          "reconcile_symbol_thesis"
+        ],
+        "current_stance": null,
+        "counter_thesis": [],
+        "requested_at": "2026-08-23T03:31:39+00:00",
+        "parent_run": null,
+        "parent_product": null,
+        "budget_revisit_hours": 72,
+        "research_need_decision": "TARGETED_RESEARCH",
+        "materiality": "ACTIVE_MATERIAL",
+        "enqueue": false,
+        "authority": "READ_ONLY_ADVISORY",
+        "financial_action": false
+      }
+    ],
+    "pipeline_previews": [
+      {
+        "schema": "SymbolThesisRIPipeline@v1",
+        "as_of": "2026-08-23T03:31:39+00:00",
+        "symbol": "ACHV",
+        "gap": "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)",
+        "specific_question": "Build living exit/re-entry thesis for ACHV: why previously owned, why exited, what changed since exit, market/sector fit, and research gaps.",
+        "evidence_catalog": {
+          "sufficiency": {
+            "sufficient_for_synthesis": false,
+            "counts": {
+              "supporting": 0,
+              "contradictory": 0,
+              "structured": 1,
+              "primary_or_approved": 0
+            },
+            "remaining_evidence_gaps": [
+              "insufficient_supporting_rag",
+              "insufficient_contradictory_rag",
+              "no_approved_primary_or_news"
+            ],
+            "authority": "READ_ONLY_ADVISORY"
+          },
+          "supporting_n": 0,
+          "contradictory_n": 0,
+          "structured_n": 1,
+          "support_query": "ACHV Build living exit/re-entry thesis for ACHV: why previously owned, why exited, what changed since exit, market/sector fit, and research gaps. SPECULATIVE bull case positive catalysts growth drivers why own hold thesis intact",
+          "counter_query": "ACHV Build living exit/re-entry thesis for ACHV: why previously owned, why exited, what changed since exit, market/sector fit, and research gaps. SPECULATIVE bear case risks invalidation counter thesis why sell avoid competitive threat valuation stretch",
+          "supporting_sample": [],
+          "contradictory_sample": []
+        },
+        "acquisition_plan": {
+          "schema": "SymbolThesisAcquisitionPlan@v1",
+          "plan_id": "tap_312fef10ca34bc12",
+          "symbol": "ACHV",
+          "question": "Build living exit/re-entry thesis for ACHV: why previously owned, why exited, what changed since exit, market/sector fit, and research gaps.",
+          "priority": "P2",
+          "status": "ACQUISITION_PLANNED",
+          "reason": "rag_insufficient:insufficient_supporting_rag,insufficient_contradictory_rag,no_approved_primary_or_news",
+          "evidence_gaps": [
+            "insufficient_supporting_rag",
+            "insufficient_contradictory_rag",
+            "no_approved_primary_or_news"
+          ],
+          "steps": [
+            {
+              "family": "searxng_metasearch",
+              "action": "metasearch_query",
+              "targets": [
+                "ACHV investment thesis catalysts 2025 2026",
+                "ACHV risks bear case valuation competition",
+                "ACHV SEC 10-K 10-Q earnings filing"
+              ],
+              "cap": 3,
+              "module_hint": "think_tank_signal_miner.mine_web_searx / hermes_youtube_discovery.searx_youtube",
+              "status": "PLANNED"
+            },
+            {
+              "family": "sec_filings",
+              "action": "sec_edgar_read",
+              "targets": [
+                "submissions_recent",
+                "companyfacts_key_metrics"
+              ],
+              "cap": 2,
+              "module_hint": "financial_senses.sec_provider.SecEdgarProvider / sec_companyfacts_reader",
+              "status": "PLANNED"
+            },
+            {
+              "family": "rss_news",
+              "action": "news_refresh_symbol",
+              "targets": [
+                "refresh_symbol_rss"
+              ],
+              "cap": 1,
+              "module_hint": "existing news ingestion → news_articles (rag_status=pending until curated)",
+              "status": "PLANNED"
+            },
+            {
+              "family": "financial_senses",
+              "action": "fs_provider_read",
+              "targets": [
+                "sec_edgar",
+                "macro",
+                "factor_exposure"
+              ],
+              "cap": 3,
+              "module_hint": "financial_senses providers (sec_edgar, macro, factor_exposure) — receipts only",
+              "status": "PLANNED"
+            },
+            {
+              "family": "deterministic_structured",
+              "action": "structured_snapshot",
+              "targets": [
+                "finviz_snapshot",
+                "yfinance_fundamentals",
+                "alpaca_bars_or_quote"
+              ],
+              "cap": 4,
+              "module_hint": "finviz_snapshot / yfinance / alpaca quote / FRED series — deterministic only",
+              "status": "PLANNED"
+            }
+          ],
+          "budget": {
+            "max_searx_queries": 3,
+            "max_sec_pulls": 2,
+            "max_news_refresh": 1,
+            "max_youtube_discover": 2,
+            "max_fs_providers": 3,
+            "max_structured_reads": 4,
+            "max_new_embeds": 20
+          },
+          "curation_gate": {
+            "require_rag_status_approved_before_embed": true,
+            "require_research_sources_active_or_candidate": true,
+            "blocked_statuses": [
+              "blocked",
+              "low_quality"
+            ],
+            "indexer": "scripts/rag_indexer.py → content_embeddings",
+            "no_second_vector_store": true
+          },
+          "synthesis_gate": {
+            "hermes_flash_role": "synthesis_and_challenge_only",
+            "not_acquisition_source": true,
+            "requires_cataloged_evidence": true,
+            "requires_supporting_and_contradictory": true
+          },
+          "authority": "READ_ONLY_ADVISORY",
+          "financial_action": false,
+          "acquire": false,
+          "embed": false,
+          "hermes_is_acquisition_source": false,
+          "as_of": "2026-08-23T03:31:39+00:00",
+          "note": "Gap-driven and budgeted. Do not crawl the full universe. Returned evidence must be cataloged (source/freshness/quality/provenance), curated via rag_status + research_sources, embedded into existing content_embeddings, THEN Hermes/Flash may synthesize."
+        },
+        "acquired_items_n": 0,
+        "embed_plan": {
+          "schema": "SymbolThesisEmbedPlan@v1",
+          "target_table": "content_embeddings",
+          "indexer": "scripts/rag_indexer.py",
+          "second_vector_store": false,
+          "apply": false,
+          "admitted_count": 0,
+          "rejected_count": 0,
+          "admitted": [],
+          "rejected": [],
+          "authority": "READ_ONLY_ADVISORY",
+          "as_of": "2026-08-23T03:31:39+00:00"
+        },
+        "synthesis_packet": {
+          "packet_id": "tsp_434e08ceb1aaa459",
+          "gate": "BLOCKED_PENDING_ACQUISITION_AND_CURATION",
+          "llm_lanes": {
+            "allowed": [
+              "hermes_local",
+              "deepseek_flash"
+            ],
+            "role": "synthesis_and_challenge_only",
+            "acquisition_source": false
+          },
+          "call_llm": false,
+          "instructions_role": "thesis_synthesizer_and_challenger"
+        },
+        "full_synthesis_packet": null,
+        "hermes_is_acquisition_source": false,
+        "second_vector_store": false,
+        "universe_crawl": false,
+        "authority": "READ_ONLY_ADVISORY",
+        "financial_action": false,
+        "flags": {
+          "retrieve": true,
+          "apply_acquire": false,
+          "apply_embed": false,
+          "call_llm": false
+        }
+      },
+      {
+        "schema": "SymbolThesisRIPipeline@v1",
+        "as_of": "2026-08-23T03:31:39+00:00",
+        "symbol": "AGMH",
+        "gap": "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)",
+        "specific_question": "Build living exit/re-entry thesis for AGMH: why previously owned, why exited, what changed since exit, market/sector fit, and research gaps.",
+        "evidence_catalog": {
+          "sufficiency": {
+            "sufficient_for_synthesis": false,
+            "counts": {
+              "supporting": 0,
+              "contradictory": 0,
+              "structured": 1,
+              "primary_or_approved": 0
+            },
+            "remaining_evidence_gaps": [
+              "insufficient_supporting_rag",
+              "insufficient_contradictory_rag",
+              "no_approved_primary_or_news"
+            ],
+            "authority": "READ_ONLY_ADVISORY"
+          },
+          "supporting_n": 0,
+          "contradictory_n": 0,
+          "structured_n": 1,
+          "support_query": "AGMH Build living exit/re-entry thesis for AGMH: why previously owned, why exited, what changed since exit, market/sector fit, and research gaps. SPECULATIVE bull case positive catalysts growth drivers why own hold thesis intact",
+          "counter_query": "AGMH Build living exit/re-entry thesis for AGMH: why previously owned, why exited, what changed since exit, market/sector fit, and research gaps. SPECULATIVE bear case risks invalidation counter thesis why sell avoid competitive threat valuation stretch",
+          "supporting_sample": [],
+          "contradictory_sample": []
+        },
+        "acquisition_plan": {
+          "schema": "SymbolThesisAcquisitionPlan@v1",
+          "plan_id": "tap_820112113b76ae58",
+          "symbol": "AGMH",
+          "question": "Build living exit/re-entry thesis for AGMH: why previously owned, why exited, what changed since exit, market/sector fit, and research gaps.",
+          "priority": "P2",
+          "status": "ACQUISITION_PLANNED",
+          "reason": "rag_insufficient:insufficient_supporting_rag,insufficient_contradictory_rag,no_approved_primary_or_news",
+          "evidence_gaps": [
+            "insufficient_supporting_rag",
+            "insufficient_contradictory_rag",
+            "no_approved_primary_or_news"
+          ],
+          "steps": [
+            {
+              "family": "searxng_metasearch",
+              "action": "metasearch_query",
+              "targets": [
+                "AGMH investment thesis catalysts 2025 2026",
+                "AGMH risks bear case valuation competition",
+                "AGMH SEC 10-K 10-Q earnings filing"
+              ],
+              "cap": 3,
+              "module_hint": "think_tank_signal_miner.mine_web_searx / hermes_youtube_discovery.searx_youtube",
+              "status": "PLANNED"
+            },
+            {
+              "family": "sec_filings",
+              "action": "sec_edgar_read",
+              "targets": [
+                "submissions_recent",
+                "companyfacts_key_metrics"
+              ],
+              "cap": 2,
+              "module_hint": "financial_senses.sec_provider.SecEdgarProvider / sec_companyfacts_reader",
+              "status": "PLANNED"
+            },
+            {
+              "family": "rss_news",
+              "action": "news_refresh_symbol",
+              "targets": [
+                "refresh_symbol_rss"
+              ],
+              "cap": 1,
+              "module_hint": "existing news ingestion → news_articles (rag_status=pending until curated)",
+              "status": "PLANNED"
+            },
+            {
+              "family": "financial_senses",
+              "action": "fs_provider_read",
+              "targets": [
+                "sec_edgar",
+                "macro",
+                "factor_exposure"
+              ],
+              "cap": 3,
+              "module_hint": "financial_senses providers (sec_edgar, macro, factor_exposure) — receipts only",
+              "status": "PLANNED"
+            },
+            {
+              "family": "deterministic_structured",
+              "action": "structured_snapshot",
+              "targets": [
+                "finviz_snapshot",
+                "yfinance_fundamentals",
+                "alpaca_bars_or_quote"
+              ],
+              "cap": 4,
+              "module_hint": "finviz_snapshot / yfinance / alpaca quote / FRED series — deterministic only",
+              "status": "PLANNED"
+            }
+          ],
+          "budget": {
+            "max_searx_queries": 3,
+            "max_sec_pulls": 2,
+            "max_news_refresh": 1,
+            "max_youtube_discover": 2,
+            "max_fs_providers": 3,
+            "max_structured_reads": 4,
+            "max_new_embeds": 20
+          },
+          "curation_gate": {
+            "require_rag_status_approved_before_embed": true,
+            "require_research_sources_active_or_candidate": true,
+            "blocked_statuses": [
+              "blocked",
+              "low_quality"
+            ],
+            "indexer": "scripts/rag_indexer.py → content_embeddings",
+            "no_second_vector_store": true
+          },
+          "synthesis_gate": {
+            "hermes_flash_role": "synthesis_and_challenge_only",
+            "not_acquisition_source": true,
+            "requires_cataloged_evidence": true,
+            "requires_supporting_and_contradictory": true
+          },
+          "authority": "READ_ONLY_ADVISORY",
+          "financial_action": false,
+          "acquire": false,
+          "embed": false,
+          "hermes_is_acquisition_source": false,
+          "as_of": "2026-08-23T03:31:39+00:00",
+          "note": "Gap-driven and budgeted. Do not crawl the full universe. Returned evidence must be cataloged (source/freshness/quality/provenance), curated via rag_status + research_sources, embedded into existing content_embeddings, THEN Hermes/Flash may synthesize."
+        },
+        "acquired_items_n": 0,
+        "embed_plan": {
+          "schema": "SymbolThesisEmbedPlan@v1",
+          "target_table": "content_embeddings",
+          "indexer": "scripts/rag_indexer.py",
+          "second_vector_store": false,
+          "apply": false,
+          "admitted_count": 0,
+          "rejected_count": 0,
+          "admitted": [],
+          "rejected": [],
+          "authority": "READ_ONLY_ADVISORY",
+          "as_of": "2026-08-23T03:31:39+00:00"
+        },
+        "synthesis_packet": {
+          "packet_id": "tsp_3bab15c2f25d6218",
+          "gate": "BLOCKED_PENDING_ACQUISITION_AND_CURATION",
+          "llm_lanes": {
+            "allowed": [
+              "hermes_local",
+              "deepseek_flash"
+            ],
+            "role": "synthesis_and_challenge_only",
+            "acquisition_source": false
+          },
+          "call_llm": false,
+          "instructions_role": "thesis_synthesizer_and_challenger"
+        },
+        "full_synthesis_packet": null,
+        "hermes_is_acquisition_source": false,
+        "second_vector_store": false,
+        "universe_crawl": false,
+        "authority": "READ_ONLY_ADVISORY",
+        "financial_action": false,
+        "flags": {
+          "retrieve": true,
+          "apply_acquire": false,
+          "apply_embed": false,
+          "call_llm": false
+        }
+      },
+      {
+        "schema": "SymbolThesisRIPipeline@v1",
+        "as_of": "2026-08-23T03:31:39+00:00",
+        "symbol": "ALXO",
+        "gap": "Create living symbol thesis (role, why owned/exited, invalidation, research gaps)",
+        "specific_question": "Build living exit/re-entry thesis for ALXO: why previously owned, why exited, what changed since exit, market/sector fit, and research gaps.",
+        "evidence_catalog": {
+          "sufficiency": {
+            "sufficient_for_synthesis": false,
+            "counts": {
+              "supporting": 0,
+              "contradictory": 0,
+              "structured": 1,
+              "primary_or_approved": 0
+            },
+            "remaining_evidence_gaps": [
+              "insufficient_supporting_rag",
+              "insufficient_contradictory_rag",
+              "no_approved_primary_or_news"
+            ],
+            "authority": "READ_ONLY_ADVISORY"
+          },
+          "supporting_n": 0,
+          "contradictory_n": 0,
+          "structured_n": 1,
+          "support_query": "ALXO Build living exit/re-entry thesis for ALXO: why previously owned, why exited, what changed since exit, market/sector fit, and research gaps. SPECULATIVE bull case positive catalysts growth drivers why own hold thesis intact",
+          "counter_query": "ALXO Build living exit/re-entry thesis for ALXO: why previously owned, why exited, what changed since exit, market/sector fit, and research gaps. SPECULATIVE bear case risks invalidation counter thesis why sell avoid competitive threat valuation stretch",
+          "supporting_sample": [],
+          "contradictory_sample": []
+        },
+        "acquisition_plan": {
+          "schema": "SymbolThesisAcquisitionPlan@v1",
+          "plan_id": "tap_05ea0032b4688b35",
+          "symbol": "ALXO",
+          "question": "Build living exit/re-entry thesis for ALXO: why previously owned, why exited, what changed since exit, market/sector fit, and research gaps.",
+          "priority": "P2",
+          "status": "ACQUISITION_PLANNED",
+          "reason": "rag_insufficient:insufficient_supporting_rag,insufficient_contradictory_rag,no_approved_primary_or_news",
+          "evidence_gaps": [
+            "insufficient_supporting_rag",
+            "insufficient_contradictory_rag",
+            "no_approved_primary_or_news"
+          ],
+          "steps": [
+            {
+              "family": "searxng_metasearch",
+              "action": "metasearch_query",
+              "targets": [
+                "ALXO investment thesis catalysts 2025 2026",
+                "ALXO risks bear case valuation competition",
+                "ALXO SEC 10-K 10-Q earnings filing"
+              ],
+              "cap": 3,
+              "module_hint": "think_tank_signal_miner.mine_web_searx / hermes_youtube_discovery.searx_youtube",
+              "status": "PLANNED"
+            },
+            {
+              "family": "sec_filings",
+              "action": "sec_edgar_read",
+              "targets": [
+                "submissions_recent",
+                "companyfacts_key_metrics"
+              ],
+              "cap": 2,
+              "module_hint": "financial_senses.sec_provider.SecEdgarProvider / sec_companyfacts_reader",
+              "status": "PLANNED"
+            },
+            {
+              "family": "rss_news",
+              "action": "news_refresh_symbol",
+              "targets": [
+                "refresh_symbol_rss"
+              ],
+              "cap": 1,
+              "module_hint": "existing news ingestion → news_articles (rag_status=pending until curated)",
+              "status": "PLANNED"
+            },
+            {
+              "family": "financial_senses",
+              "action": "fs_provider_read",
+              "targets": [
+                "sec_edgar",
+                "macro",
+                "factor_exposure"
+              ],
+              "cap": 3,
+              "module_hint": "financial_senses providers (sec_edgar, macro, factor_exposure) — receipts only",
+              "status": "PLANNED"
+            },
+            {
+              "family": "deterministic_structured",
+              "action": "structured_snapshot",
+              "targets": [
+                "finviz_snapshot",
+                "yfinance_fundamentals",
+                "alpaca_bars_or_quote"
+              ],
+              "cap": 4,
+              "module_hint": "finviz_snapshot / yfinance / alpaca quote / FRED series — deterministic only",
+              "status": "PLANNED"
+            }
+          ],
+          "budget": {
+            "max_searx_queries": 3,
+            "max_sec_pulls": 2,
+            "max_news_refresh": 1,
+            "max_youtube_discover": 2,
+            "max_fs_providers": 3,
+            "max_structured_reads": 4,
+            "max_new_embeds": 20
+          },
+          "curation_gate": {
+            "require_rag_status_approved_before_embed": true,
+            "require_research_sources_active_or_candidate": true,
+            "blocked_statuses": [
+              "blocked",
+              "low_quality"
+            ],
+            "indexer": "scripts/rag_indexer.py → content_embeddings",
+            "no_second_vector_store": true
+          },
+          "synthesis_gate": {
+            "hermes_flash_role": "synthesis_and_challenge_only",
+            "not_acquisition_source": true,
+            "requires_cataloged_evidence": true,
+            "requires_supporting_and_contradictory": true
+          },
+          "authority": "READ_ONLY_ADVISORY",
+          "financial_action": false,
+          "acquire": false,
+          "embed": false,
+          "hermes_is_acquisition_source": false,
+          "as_of": "2026-08-23T03:31:39+00:00",
+          "note": "Gap-driven and budgeted. Do not crawl the full universe. Returned evidence must be cataloged (source/freshness/quality/provenance), curated via rag_status + research_sources, embedded into existing content_embeddings, THEN Hermes/Flash may synthesize."
+        },
+        "acquired_items_n": 0,
+        "embed_plan": {
+          "schema": "SymbolThesisEmbedPlan@v1",
+          "target_table": "content_embeddings",
+          "indexer": "scripts/rag_indexer.py",
+          "second_vector_store": false,
+          "apply": false,
+          "admitted_count": 0,
+          "rejected_count": 0,
+          "admitted": [],
+          "rejected": [],
+          "authority": "READ_ONLY_ADVISORY",
+          "as_of": "2026-08-23T03:31:39+00:00"
+        },
+        "synthesis_packet": {
+          "packet_id": "tsp_57b2d6946c7f056c",
+          "gate": "BLOCKED_PENDING_ACQUISITION_AND_CURATION",
+          "llm_lanes": {
+            "allowed": [
+              "hermes_local",
+              "deepseek_flash"
+            ],
+            "role": "synthesis_and_challenge_only",
+            "acquisition_source": false
+          },
+          "call_llm": false,
+          "instructions_role": "thesis_synthesizer_and_challenger"
+        },
+        "full_synthesis_packet": null,
+        "hermes_is_acquisition_source": false,
+        "second_vector_store": false,
+        "universe_crawl": false,
+        "authority": "READ_ONLY_ADVISORY",
+        "financial_action": false,
+        "flags": {
+          "retrieve": true,
+          "apply_acquire": false,
+          "apply_embed": false,
+          "call_llm": false
+        }
+      }
+    ],
+    "coverage_counts": {
+      "CURRENT": 1,
+      "THIN": 1,
+      "RESEARCH_REQUIRED": 49,
+      "STALE": 0,
+      "CONFLICTED": 0,
+      "RETIRED": 0,
+      "INSUFFICIENT_DATA": 5192,
+      "symbol_thesis": 2,
+      "desk_thesis_only": 0,
+      "missing_symbol_thesis": 5241,
+      "role_unknown": 5179,
+      "fresh": 2,
+      "rows": 5243
+    }
+  },
+  "note": "Read-only projection. Proposed research is DRY — not enqueued. No production thesis backfill.",
+  "_serving": {
+    "schema": "ServingFreshness@v1",
+    "authority": "READ_ONLY_ADVISORY",
+    "process_started_at": "2026-08-22T23:31:32-04:00",
+    "source_pin": "5e91225a1186659de3cfd65096e037e774506e7f",
+    "loaded_pin": "977d327cf8ba7977351a38f91fc31bb56b58d58d",
+    "loaded_pin_sha": "977d327cf8ba7977351a38f91fc31bb56b58d58d",
+    "current_pin_sha": "5e91225a1186659de3cfd65096e037e774506e7f",
+    "data_as_of": "2026-08-23T03:31:39+00:00",
+    "cache_age": 0.7,
+    "pin_match": false
+  }
+}

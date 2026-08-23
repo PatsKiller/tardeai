@@ -27,6 +27,17 @@ Related: `docs/ops/RESEARCH_LIFECYCLE_STANDARD.md` (intended methodology) · `do
 > `docs/_evidence/autonomous_advisory_loop/noc_golden_loop_isolated.json`.
 > This is explicitly `live_proven=false`; localhost browser acceptance and a
 > natural production run require reviewed merge and separately authorized release.
+>
+> **Local HTTP/browser acceptance:** Playwright Chromium passed the actual stacked
+> portfolio-server handler on a detached loopback preview. `/api/v3/advisory`,
+> `/api/v3/cio/home`, universe/theses, NOC, and BND THIN payloads returned HTTP 200.
+> The NOC decision retained its producing `STRENGTHENS` delta while the standing
+> thesis separately exposed the replay's latest `NO_NEW_INFO` delta. Full thesis,
+> support/counter evidence, provider/model, last review, feedback, CIO action, and
+> suppression state rendered without raw `DATA_UNAVAILABLE` or malformed pins.
+> Serving truth correctly reported preview loaded pin `977d327c`, production CURRENT
+> `5e91225a`, and `pin_match=false`. Manifest and screenshots:
+> `docs/_evidence/autonomous_advisory_loop/noc_golden_browser/manifest.json`.
 
 ---
 
