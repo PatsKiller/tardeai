@@ -72,21 +72,20 @@ def _rule_tags(text, cues, max_tags):
 
 
 def _llm_tags(text, vocab, timeout, max_tags):
-    """Local LLM, temp 0, constrained to registry slugs. Returns [] on any failure."""
+    """Governed cloud classifier constrained to registry slugs."""
     try:
-        from local_llm_config import get_local_llm_base_url, get_local_llm_model
+        from lib.governed_cloud_generation import generate_cloud
         prompt = ("You are a strict classifier for a trading research system. Pick up to "
                   f"{max_tags} strategy slugs that genuinely fit this research text, from ONLY "
                   "this list (empty list if none fit):\n" + ", ".join(vocab) +
                   "\n\nText:\n" + (text or "")[:1500] +
                   '\n\nRespond ONLY with JSON: {"tags": ["slug", ...]}')
-        body = json.dumps({"model": get_local_llm_model(), "prompt": prompt, "stream": False,
-                           "format": "json", "options": {"temperature": 0}}).encode()
-        req = urllib.request.Request(get_local_llm_base_url().rstrip("/") + "/api/generate",
-                                     data=body, headers={"Content-Type": "application/json"})
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            resp = json.loads(r.read())
-        tags = (json.loads(resp.get("response", "{}")).get("tags") or [])
+        raw, _lane = generate_cloud(
+            prompt, process_id="hermes_tag_engine",
+            task_summary="Hermes controlled-vocabulary tagging", timeout=timeout,
+            response_json=True, max_tokens=256,
+        )
+        tags = (json.loads(raw).get("tags") or [])
         return [t for t in tags if t in vocab][:max_tags]
     except Exception:
         return []

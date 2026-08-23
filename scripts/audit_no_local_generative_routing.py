@@ -29,6 +29,19 @@ PRODUCTION_FILES = (
     "scripts/auto_research.py",
     "scripts/hermes_health_inspector.py",
     "scripts/lib/health_learning_engine.py",
+    "scripts/watchlist_entry_planner.py",
+    "scripts/directive_keyword_enhancer.py",
+    "scripts/aegis_synthesis.py",
+    "scripts/hermes_cross_source_synthesizer.py",
+    "scripts/hermes_tag_engine.py",
+    "scripts/holding_protection_advisor.py",
+    "scripts/holdings_llm_refresh.py",
+    "scripts/iris_taxonomy_agent.py",
+    "scripts/llm_intelligence_enrichment.py",
+    "scripts/portfolio_orchestrator.py",
+    "scripts/topic_curator.py",
+    "scripts/topic_ingestion.py",
+    "scripts/trade_ai_orchestrator.py",
 )
 
 PRODUCTION_CONFIG_FILES = (
@@ -50,6 +63,47 @@ GEN_MODEL_RE = re.compile(
 REENABLE_RE = re.compile(
     r"(?:RESEARCH_ALLOW_LOCAL_LLM|LLM_ALLOW_LOCAL_JUDGMENT|HERMES_OLLAMA_FAILOVER)"
 )
+LOCAL_HELPER_RE = re.compile(
+    r"(?:\bimport\s+local_llm\b|\bfrom\s+(?:scripts\.)?(?:lib\.)?local_llm\s+import\b|"
+    r"\bget_local_llm_(?:model|base_url)\b)"
+)
+
+
+def source_callers(root: Path = ROOT) -> list[dict[str, object]]:
+    """Inventory every remaining executable local-generation caller in source.
+
+    This is broader than the automatic routing graph and intentionally does not
+    make CI red while dormant migration utilities remain. It is the hard gate
+    for physical model removal: decommission readiness requires this list empty.
+    """
+    callers: list[dict[str, object]] = []
+    excluded = {Path(__file__).resolve()}
+    for path in sorted((root / "scripts").rglob("*")):
+        if path in excluded or path.suffix not in {".py", ".sh"} or not path.is_file():
+            continue
+        try:
+            source = path.read_text(encoding="utf-8")
+        except Exception:
+            continue
+        rel = str(path.relative_to(root))
+        for number, line in enumerate(source.splitlines(), 1):
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                continue
+            checks = (
+                ("generative_endpoint", ENDPOINT_RE),
+                ("local_lane", LOCAL_LANE_RE),
+                ("local_helper", LOCAL_HELPER_RE),
+            )
+            for kind, pattern in checks:
+                if pattern.search(line):
+                    callers.append({
+                        "file": rel,
+                        "line": number,
+                        "kind": kind,
+                        "text": stripped[:180],
+                    })
+    return callers
 
 
 def audit() -> dict:
@@ -101,6 +155,7 @@ def audit() -> dict:
                     "text": line.strip()[:180],
                 })
 
+    callers = source_callers()
     return {
         "schema": "LocalGenerativeRoutingAudit@v1",
         "production_files": list(PRODUCTION_FILES),
@@ -108,6 +163,9 @@ def audit() -> dict:
         "violations": violations,
         "violation_count": len(violations),
         "compliant": not violations,
+        "source_callers": callers,
+        "source_caller_count": len(callers),
+        "physical_decommission_ready": not violations and not callers,
     }
 
 

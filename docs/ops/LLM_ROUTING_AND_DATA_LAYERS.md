@@ -118,11 +118,22 @@ Policy said OAuth is “retained, not auto” to stop duplicate Telegram noise. 
 | Grok OAuth | free, rate-limited | **no** | same top-20 / enhance | Working, 67/96 |
 | DeepSeek Flash | metered, intended auto | **yes** (only auto external) | `research_scheduler` only | **Broken** until Monday cap-bearing runs; alias `deepseek` is not `available()` |
 | Claude | paid | never | `--apply-paid` weekly / arbitration | manual |
-| Local generative | forbidden | **no** | no permitted production caller | source retirement proposed; live host removal pending authorization and zero-call proof |
+| Local generative | forbidden | **no** | directly scheduled files migrated on the pending branch; live rebuild still has 241 source references, 45 cron intersections, 5 systemd intersections, and 24 OpenClaw config references | physical removal blocked; zero-call proof has not started |
 | SearXNG | free search | not an LLM | discovery/think-tank | **up** (`:18888`) — not on the Telegram thesis path |
 | Overnight-deep | policy ChatGPT/DeepSeek | timer | governed cloud only after deployment | live host configuration still requires cutover |
 
 US overnight judgment uses a governed cloud lane. Local generation is not an allowed fallback.
+
+### 2026-08-23 correction
+
+“No permitted production caller” described policy, not live host truth. The live
+rebuild still exposes local generation. The pending source branch adds a single
+cloud-only helper and migrates Aegis synthesis, holdings health/protection,
+Hermes cross-source/tagging, Iris taxonomy, dashboard enrichment, portfolio
+summary, topic curation/ingestion, directive enhancement, and entry planning.
+It is not live until reviewed CI is green and CURRENT/cron/systemd cutover is
+separately authorized. A cloud outage is a hard failure; it never falls back to
+Ollama.
 
 ---
 

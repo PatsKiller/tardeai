@@ -2,7 +2,7 @@
 """holdings_llm_refresh.py — Dedicated LLM health check for portfolio holdings.
 
 Enriches each holding with latest news, social, technical, and agent data,
-then runs qwen3:14b for a consolidated health assessment.
+then uses a governed cloud lane for a consolidated health assessment.
 
 Usage:
     .venv/bin/python3 scripts/holdings_llm_refresh.py --dry-run
@@ -230,8 +230,11 @@ def refresh_one(conn, holding, dry_run=False):
     prompt = build_holdings_prompt(holding, news, social, agents, technical)
 
     try:
-        from local_llm import generate
-        raw = generate(prompt, timeout=300, fallback=True, fast=False)
+        from lib.governed_cloud_generation import generate_cloud
+        raw, lane = generate_cloud(
+            prompt, process_id="holdings_llm_refresh",
+            task_summary=f"holdings health {symbol}", timeout=300,
+        )
         if not raw:
             return {'symbol': symbol, 'status': 'empty'}
 
@@ -243,11 +246,7 @@ def refresh_one(conn, holding, dry_run=False):
         action = result.get('action', 'HOLD')
         confidence = min(100, max(0, int(result.get('confidence', 50))))
 
-        try:
-            from local_llm import model_used
-            model = model_used or 'local_llm'
-        except Exception:
-            model = 'local_llm'
+        model = "grok-3-mini" if lane == "grok" else "gpt-5.4"
 
         # Validate
         if health not in ('STRONG', 'STABLE', 'WATCH', 'CONCERN', 'EXIT'):
@@ -314,11 +313,6 @@ def main():
         candidates = fetch_holdings_needing_refresh(
             conn, holdings, limit=args.limit, symbol=args.symbol)
         log.info(f"{len(candidates)} need LLM refresh")
-
-        if candidates and args.run:
-            from local_llm import warmup_ollama
-            log.info("Warming up Ollama...")
-            warmup_ollama()
 
         results = []
         for h in candidates:

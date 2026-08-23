@@ -4,7 +4,7 @@
 spec.keywords against research + by spec.seed_symbols; a directive created with only a label (no keywords/
 seeds) therefore surfaces NOTHING. This auto-enhances the theme into usable keywords + seed tickers.
 
-FREE OAuth lanes only (grok :8645 → chatgpt :8646 → local gemma), via llm_lane — no metered API. Advisory:
+FREE OAuth lanes only (Grok + ChatGPT), via llm_lane — no metered API and no local generation. Advisory:
 output is keyword/seed metadata, never a trade. Falls back to a label-derived keyword if all lanes are down.
 
   python3 scripts/directive_keyword_enhancer.py --backfill [--apply]   # enhance active trend/sector dirs lacking keywords
@@ -45,17 +45,19 @@ def enhance(label: str, kind: str = "trend", existing_keywords=None) -> dict:
         '"seed_symbols": [4-8 well-known US-listed tickers that are leading or pure-play names for this theme]}.'
         ' Tickers uppercase only.'
     )
-    # ENSEMBLE local + OAuth (operator 2026-06-19 "use local and oauth llms"): query EVERY available free
-    # lane (grok :8645 + chatgpt :8646 OAuth, AND local gemma) and MERGE their keywords + seed symbols, so
-    # the theme gets the union of all models' coverage instead of just the first lane's.
+    # Merge the two governed OAuth lanes. Failure falls back to deterministic label metadata.
     kws, syms, used = [], [], []
     try:
         import llm_lane
-        for lane in ("grok", "chatgpt", "local"):
+        for lane in ("grok", "chatgpt"):
             try:
                 if not llm_lane.available(lane):
                     continue
-                parsed = _parse_json(llm_lane.generate(prompt, lane=lane, timeout=60))
+                parsed = _parse_json(llm_lane.generate(
+                    prompt, lane=lane, timeout=60,
+                    process_id="directive_keyword_enhancer",
+                    task_summary=f"directive keywords {label[:80]}",
+                ))
                 lk = [k.strip() for k in (parsed.get("keywords") or []) if isinstance(k, str) and k.strip()]
                 ls = [s.strip().upper() for s in (parsed.get("seed_symbols") or [])
                       if isinstance(s, str) and _TICK.match(s.strip().upper())]
