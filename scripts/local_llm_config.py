@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""
-Trade AI v12 local LLM configuration.
-
-Centralizes local model selection and Ollama / Intel Arc runtime settings.
-All scripts should import from here instead of hardcoding model names.
-"""
+"""Pinned local embedding configuration; local generation is retired."""
 
 from __future__ import annotations
 
@@ -23,10 +18,7 @@ except ImportError:
 
 log = logging.getLogger(__name__)
 
-DEFAULT_LOCAL_LLM_MODEL = "gemma3:4b"   # REVERTED 2026-06-14: gemma3:12b 500s on EVERY prompt (2s, even
-#   short) — broken at the ollama runtime (VRAM/model issue), not a context limit. 4b is the reliable
-#   local model. The CIO quality win comes from the free Grok synthesis lane, not 12b. Re-pull/fix 12b
-#   (ollama rm + pull gemma3:12b, check VRAM) before retrying the default switch.
+DEFAULT_LOCAL_LLM_MODEL = "nomic-embed-text"
 
 # ── LLM Fleet v4.1 — Process Type Constants ──────────────────────────────
 # Scripts declare intent via process type; model resolution uses .env.
@@ -41,10 +33,10 @@ CLOUD_FALLBACK = "CLOUD_FALLBACK"
 
 # Process-type → .env variable → default model
 _PROCESS_TYPE_ENV_MAP = {
-    STANDARD:        ("LLM_STANDARD",         DEFAULT_LOCAL_LLM_MODEL),
-    REALTIME:        ("LLM_REALTIME",          DEFAULT_LOCAL_LLM_MODEL),
-    BATCH_OVERNIGHT: ("LLM_BATCH_OVERNIGHT",   DEFAULT_LOCAL_LLM_MODEL),
-    MEDIA_CONTENT:   ("LLM_MEDIA_CONTENT",     DEFAULT_LOCAL_LLM_MODEL),
+    STANDARD:        ("", ""),
+    REALTIME:        ("", ""),
+    BATCH_OVERNIGHT: ("", ""),
+    MEDIA_CONTENT:   ("", ""),
     EMBEDDING:       ("LLM_EMBEDDING",         "nomic-embed-text"),
     CRITICAL_CLOUD:  ("LLM_CRITICAL_CLOUD",    ""),  # must be set explicitly
     CLOUD_FALLBACK:  ("LLM_CLOUD_FALLBACK",    ""),
@@ -53,12 +45,12 @@ _PROCESS_TYPE_ENV_MAP = {
 
 def get_model_for_process_type(process_type: str) -> str:
     """Resolve the model for a given process type from .env, with defaults."""
-    env_key, default = _PROCESS_TYPE_ENV_MAP.get(process_type, ("", DEFAULT_LOCAL_LLM_MODEL))
+    env_key, default = _PROCESS_TYPE_ENV_MAP.get(process_type, ("", ""))
     if env_key:
         val = os.getenv(env_key, "").strip()
         if val:
             return val
-    return default or DEFAULT_LOCAL_LLM_MODEL
+    return default
 
 
 def get_cloud_fallback_models() -> list[str]:
@@ -100,7 +92,7 @@ class LocalLLMConfig:
 def get_local_llm_config() -> LocalLLMConfig:
     return LocalLLMConfig(
         provider=os.getenv("LOCAL_LLM_PROVIDER", "ollama").strip().lower(),
-        model=os.getenv("LOCAL_LLM_MODEL", DEFAULT_LOCAL_LLM_MODEL).strip() or DEFAULT_LOCAL_LLM_MODEL,
+        model=DEFAULT_LOCAL_LLM_MODEL,
         base_url=os.getenv("LOCAL_LLM_BASE_URL", "http://localhost:11434").strip(),
         backend=os.getenv("LOCAL_LLM_BACKEND", "vulkan").strip().lower(),
         require_gpu=os.getenv("LOCAL_LLM_REQUIRE_GPU", "true").strip().lower() in {"1", "true", "yes", "on"},

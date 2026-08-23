@@ -11,9 +11,8 @@ Implements docs/RESEARCH_PRIORITIZATION.md + docs/ops/RESEARCH_LIFECYCLE_STANDAR
     (`_research_fingerprint` on recommendation+confidence) — that is NOT the skip-before-call hash.
   • Skip-before-call (flag RESEARCH_SKIP_GATE, default OFF): execute_set = due ∩ (changed ∪ stale ∪
     triggered). Unchanged in-window sources are SKIP_UNCHANGED; hours-window reuse is SKIP_FRESH.
-  • Local LLM is math-only. local-gemma / maria / full_chain are NOT auto-enqueued unless
-    RESEARCH_ALLOW_LOCAL_LLM=1. DeepSeek remains the auto judgment lane. ChatGPT OAuth overnight
-    stays on hermes_deep_research_local (overnight_llm_policy) — do not regress it here.
+  • Local generative LLM routing is forbidden. DeepSeek remains the automatic judgment lane.
+    ChatGPT OAuth overnight stays on the governed cloud path.
 
 Modes: holdings | priority | watchlist | incubator | cold-floor | backfill
 Dry by default; pass --apply to actually call the lanes. All numbers env-tunable (RESEARCH_*).
@@ -33,6 +32,12 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "scripts" / "lib"))
 from watchlist_priority import WATCHLIST_TOP_N
+from lib.research_call_accounting import (
+    accounting_identity,
+    append_event as append_call_event,
+    call_id_for,
+    new_run_id,
+)
 PY = str(ROOT / ".venv" / "bin" / "python")
 RESEARCHER = str(ROOT / "scripts" / "hermes_external_researcher.py")
 
@@ -44,14 +49,10 @@ CALL_TIMEOUT    = int(os.getenv("RESEARCH_CALL_TIMEOUT", "150"))
 
 # ── Hermes lane registry (the whole 24/7 fleet, cheapest→scarcest) ────────────
 # DeepSeek is the governed V4 Flash external challenge (paid, no fallback) — the primary automated
-# judgment lane. local-gemma / internal-deep remain in TIER_SLA for coverage accounting but are NOT
-# auto-enqueued unless RESEARCH_ALLOW_LOCAL_LLM=1 (local LLM is math-only; 852 maria queued + 441
-# failed in 2 days was the live failure mode). claude is METERED → arbitration only, never auto here.
+# judgment lane. Claude is metered arbitration only and is never automatic here.
 # grok/chatgpt OAuth are retained in LANES but not auto-dispatched by this scheduler. ChatGPT
 # overnight judgment stays on hermes_deep_research_local (overnight_llm_policy).
 LANES = {
-    "local-gemma":   {"cost": "free-fast",    "dispatch": "queue",    "auto": True},
-    "internal-deep": {"cost": "free-slow",    "dispatch": "queue",    "auto": True},
     "deepseek":      {"cost": "metered",      "dispatch": "external", "auto": True},
     "grok":          {"cost": "free-limited", "dispatch": "external", "auto": False},
     "chatgpt":       {"cost": "free-limited", "dispatch": "external", "auto": False},
@@ -61,11 +62,11 @@ LANES = {
 # tier → (sla_refreshes, sla_window_days, lanes[]). Local listed for SLA accounting; auto-enqueue
 # of queue lanes is gated by allow_local_research_llm(). Externals are tier-gated.
 TIER_SLA = {
-    "T0-HOLD":  (3, 1,  ["local-gemma", "internal-deep", "deepseek"]),
-    "T0-PROP":  (2, 1,  ["local-gemma", "deepseek"]),
-    "T1-WATCH": (4, 7,  ["local-gemma", "deepseek"]),       # externals rotated (one per refresh)
-    "T2-INCUB": (1, 7,  ["local-gemma", "deepseek"]),       # external only on catalyst
-    "T3-COLD":  (1, 14, ["local-gemma", "deepseek"]),       # DeepSeek ONLY on catalyst; no 14d sweep
+    "T0-HOLD":  (3, 1,  ["deepseek"]),
+    "T0-PROP":  (2, 1,  ["deepseek"]),
+    "T1-WATCH": (4, 7,  ["deepseek"]),
+    "T2-INCUB": (1, 7,  ["deepseek"]),  # external only on catalyst
+    "T3-COLD":  (1, 14, ["deepseek"]),  # DeepSeek only on catalyst; no 14d sweep
 }
 TIER_WEIGHT = {"T0-HOLD": 1.0, "T0-PROP": 0.9, "T1-WATCH": 0.6, "T2-INCUB": 0.3, "T3-COLD": 0.1}
 EXTERNAL_LANES = {"deepseek", "claude"}
@@ -103,19 +104,14 @@ def skip_gate_enabled() -> bool:
 
 
 def allow_local_research_llm() -> bool:
-    """Auto-enqueue maria/full_chain. Default OFF — local LLM is math-only."""
-    return os.getenv("RESEARCH_ALLOW_LOCAL_LLM", "0").strip().lower() in {
-        "1", "true", "yes", "on",
-    }
+    """Compatibility surface: local generative research cannot be re-enabled."""
+    return False
 
 
 def lanes_for(tier: str) -> list[str]:
-    """Lanes this run will consider. Queue lanes drop unless RESEARCH_ALLOW_LOCAL_LLM=1."""
+    """Cloud lanes this run will consider."""
     _, _, lanes = TIER_SLA[tier]
-    out = list(lanes)
-    if not allow_local_research_llm():
-        out = [l for l in out if LANES.get(l, {}).get("dispatch") != "queue"]
-    return out
+    return list(lanes)
 
 
 def build_thesis_gap_commission(
@@ -287,6 +283,9 @@ def load_universe(*, root: Path | None = None) -> dict:
                 uni[sym]["rank"] = rank
             if meta.get("reentry_ready_near"):
                 uni[sym]["reentry_ready_near"] = True
+            for key, value in meta.items():
+                if value is not None and uni[sym].get(key) is None:
+                    uni[sym][key] = value
 
     # T0-HOLD — unique held equity tickers (CASH / CUSIP out)
     try:
@@ -326,8 +325,9 @@ def load_universe(*, root: Path | None = None) -> dict:
                    WHERE status='active' AND symbol IS NOT NULL"""):
         add(dict(r)["symbol"], "T2-INCUB")
     # T3-COLD: the rest of the profiled universe
-    for r in _q("SELECT DISTINCT symbol FROM symbol_profiles"):
-        add(dict(r)["symbol"], "T3-COLD")
+    for r in _q("SELECT DISTINCT ON (symbol) symbol, sector, industry FROM symbol_profiles ORDER BY symbol"):
+        d = dict(r)
+        add(d["symbol"], "T3-COLD", sector=d.get("sector"), industry=d.get("industry"))
 
     # attach latest rank for everyone (for scoring) if missing
     ranks = {dict(r)["symbol"]: dict(r)["rank"] for r in _q(
@@ -500,6 +500,91 @@ def catalyst_signals() -> dict:
     return sig
 
 
+def catalyst_event_records() -> dict[str, list[dict]]:
+    """Material structured catalyst rows, kept separate from free-form news."""
+    out: dict[str, list[dict]] = {}
+    rows = _q("""SELECT id, UPPER(symbol) AS symbol, catalyst_type, severity, created_at
+                 FROM catalyst_events
+                 WHERE created_at > NOW() - INTERVAL '36 hours'
+                   AND symbol IS NOT NULL""")
+    aliases = {
+        "M&A": "M_AND_A",
+        "MA": "M_AND_A",
+        "FDA_REGULATORY": "FDA",
+        "ANALYST": "ANALYST_REVISION",
+        "TARGET": "TARGET_REVISION",
+    }
+    for raw in rows:
+        row = dict(raw)
+        sym = str(row.get("symbol") or "").upper()
+        event_type = str(row.get("catalyst_type") or "").upper().replace(" ", "_")
+        event_type = aliases.get(event_type, event_type)
+        out.setdefault(sym, []).append({
+            "event_id": row.get("id"),
+            "type": event_type,
+            "severity": str(row.get("severity") or "MEDIUM").upper(),
+            "as_of": row.get("created_at"),
+        })
+    return out
+
+
+def market_regime_shifted() -> bool:
+    rows = [dict(row) for row in _q(
+        "SELECT regime_label FROM market_regime_snapshots ORDER BY created_at DESC LIMIT 2"
+    )]
+    return len(rows) >= 2 and rows[0].get("regime_label") != rows[1].get("regime_label")
+
+
+def _cached_market(sym: str) -> dict:
+    try:
+        from scripts.lib.research_prompt_context import _market_snapshot
+        return _market_snapshot(sym, ROOT)
+    except Exception:
+        return {}
+
+
+def scheduler_trigger_plan(
+    sym: str,
+    item: dict,
+    *,
+    events: list[dict],
+    thesis_gap: dict | None,
+    apply: bool,
+    now: datetime | None = None,
+) -> dict:
+    """One trigger decision for a due scheduler row."""
+    try:
+        from scripts.lib.research_event_trigger import plan_research_trigger
+        from scripts.lib.research_prompt_context import latest_delta
+    except Exception:
+        from lib.research_event_trigger import plan_research_trigger  # type: ignore
+        from lib.research_prompt_context import latest_delta  # type: ignore
+    prior_delta = latest_delta(sym, root=ROOT) or {}
+    current = _cached_market(sym)
+    previous = prior_delta.get("deterministic_snapshot") or {}
+    changed = bool(thesis_gap) or current != previous
+    invalidated = bool(prior_delta.get("invalidation_triggered"))
+    need_data = str((thesis_gap or {}).get("trigger") or "").upper() == "OPERATOR_NEED_DATA"
+    transitions = ["REENTRY_TRANSITION"] if item.get("reentry_ready_near") else []
+    return plan_research_trigger(
+        symbol=sym,
+        memberships=[str(item.get("tier") or "")],
+        due=True,
+        changed=changed,
+        stale=float(item.get("age_days") or 0) >= 14,
+        current_market=current,
+        previous_market=previous,
+        events=events,
+        state_transitions=transitions,
+        operator_need_data=need_data,
+        thesis_review_due=bool(thesis_gap),
+        invalidation_triggered=invalidated,
+        now=now,
+        ledger_path=ROOT / "data/cio/research_trigger_ledger.jsonl",
+        persist=apply,
+    )
+
+
 # ── scoring ──────────────────────────────────────────────────────────────────
 def priority(sym, info, age_days, sla_days, catalyst) -> float:
     overdue = (age_days / sla_days) if sla_days else 0.0
@@ -547,114 +632,36 @@ QUESTION = ("Is {sym} a sound {kind} right now? Flag any NEW catalysts, risks, o
             "last few days. Give a clear recommendation and what would change your mind. Advisory only.")
 
 
-def _enqueue_local(sym, tier, deep=False, *, thesis_gap: dict | None = None) -> dict:
-    """Queue a Flash-first research job; watchlist_agent_jobs workers drain it.
-    Canonical governance: dedupe / reuse / backpressure (no duplicate paid work).
+def result_is_budget_throttle(res: dict | None) -> bool:
+    """True when the researcher hit COST_CAP — stop the rest of this run.
 
-    When thesis_gap is provided (thesis_driven path), payload carries thesis_id,
-    research_gap_id, specific_question, RAG_FIRST — never invents thesis text.
+    Today the scheduler kept walking 426 symbols after the cap bound, each
+    writing an [ERROR] row. Those are SKIPPED_BUDGET, and they must not retry
+    inside the same process.
     """
-    agent = "full_chain" if deep else "maria"
-    prio = 1 if tier.startswith("T0") else (3 if tier == "T1-WATCH" else 5)
-    uni = "T0" if str(tier).startswith("T0") else ("T1" if "T1" in str(tier) else ("T2" if "T2" in str(tier) else "T3"))
-    commission = thesis_gap or (
-        build_thesis_gap_commission(sym, tier=tier)
-        if thesis_driven_enabled() and (str(tier).startswith("T0") or tier == "T1-WATCH")
-        else None
-    )
-    request_type = "scheduled_research"
-    note = f"{tier} scheduled research ({'deep' if deep else 'standard'})"
-    payload: dict = {}
-    thesis_id = None
-    research_gap_id = None
-    material = str(tier).startswith("T0")
-    if commission:
-        request_type = str(commission.get("request_type") or "thesis_gap_research")
-        note = str(commission.get("note") or note)
-        thesis_id = commission.get("thesis_id")
-        research_gap_id = commission.get("research_gap_id")
-        material = True  # high-value thesis gaps are material (T1)
-        uni = "T1" if uni not in {"T0", "T1"} else uni
-        payload = {
-            "thesis_id": thesis_id,
-            "thesis_version": commission.get("thesis_version"),
-            "research_gap_id": research_gap_id,
-            "research_gap": commission.get("research_gap"),
-            "specific_question": commission.get("specific_question"),
-            "RAG_FIRST": True,
-            "rag_first": bool(commission.get("rag_first", True)),
-            "materiality": commission.get("materiality") or "T1",
-            "pipeline_order": commission.get("pipeline_order") or list(R71_PIPELINE_ORDER),
-            "thesis_driven": True,
-        }
+    blob = str((res or {}).get("tail") or "")
+    if (res or {}).get("budget_throttled"):
+        return True
+    return "SKIPPED_BUDGET" in blob or "COST_CAP_EXCEEDED" in blob
+
+
+def _account(event: str, **kwargs) -> None:
+    """Best-effort observability; accounting must never alter research policy."""
     try:
-        from db_adapter import _execute, _get_conn
-        conn = _get_conn()
-        cur = conn.cursor()
-        from agent_job_enqueue_governance import EnqueueRequest, governed_enqueue
-        job_id = f"sched-{sym}-{agent}-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
-        res = governed_enqueue(cur, EnqueueRequest(
-            symbol=sym,
-            requested_agent=agent,
-            request_type=request_type,
-            submitted_from="research_scheduler",
-            priority=prio,
-            note=note,
-            job_id=job_id,
-            universe_tier=uni,
-            material=material,
-            payload=payload,
-            thesis_id=thesis_id,
-            research_gap_id=research_gap_id,
-        ))
-        conn.commit()
-        conn.close()
-        if res.action == "INSERT":
-            return {"ok": True, "tail": f"enqueued {agent} p{prio}", "thesis_id": thesis_id,
-                    "request_type": request_type, "payload": payload}
-        return {"ok": True, "tail": f"{res.action.lower()} {agent} ({res.reason})",
-                "thesis_id": thesis_id, "request_type": request_type, "payload": payload}
-    except Exception as e:
-        try:
-            from db_adapter import _execute
-            dup = _execute("""SELECT 1 FROM watchlist_agent_jobs WHERE symbol=%s AND requested_agent=%s
-                              AND status IN ('queued','running') LIMIT 1""", (sym, agent), fetch="one")
-            if dup:
-                return {"ok": True, "tail": "already queued", "thesis_id": thesis_id}
-            job_id = f"sched-{sym}-{agent}-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
-            import json as _json
-            _execute("""INSERT INTO watchlist_agent_jobs
-                        (id, symbol, requested_agent, request_type, note, priority, status, submitted_from, payload, created_at)
-                        VALUES (%s,%s,%s,%s,%s,%s,'queued','research_scheduler',%s,NOW())
-                        ON CONFLICT (id) DO NOTHING""",
-                     (job_id, sym, agent, request_type, note, prio,
-                      _json.dumps(payload or {})), fetch=None)
-            return {"ok": True, "tail": f"enqueued {agent} p{prio}", "thesis_id": thesis_id,
-                    "request_type": request_type, "payload": payload}
-        except Exception as e2:
-            return {"ok": False, "tail": str(e2)[:100]}
+        append_call_event(event, **kwargs)
+    except Exception as exc:
+        print(f"[scheduler] accounting_error={type(exc).__name__}:{exc}")
 
 
-def dispatch(sym, lane, tier, apply, *, thesis_gap: dict | None = None) -> dict:
-    """Route by lane kind: queue lanes enqueue local work; external lanes call the researcher."""
+def dispatch(
+    sym, lane, tier, apply, *, thesis_gap: dict | None = None,
+    run_id: str | None = None, call_id: str | None = None,
+    producer: str = "research_scheduler", family: str = "A",
+) -> dict:
+    """Route governed cloud research; reject every local or unknown lane."""
     meta = LANES.get(lane, {})
-    if meta.get("dispatch") == "queue":
-        if not apply:
-            commission = thesis_gap or (
-                build_thesis_gap_commission(sym, tier=tier)
-                if thesis_driven_enabled() and (str(tier).startswith("T0") or tier == "T1-WATCH")
-                else None
-            )
-            if commission:
-                return {
-                    "ok": True,
-                    "tail": f"would enqueue {lane} thesis_gap thesis_id={commission.get('thesis_id')}",
-                    "thesis_id": commission.get("thesis_id"),
-                    "payload": commission,
-                    "request_type": commission.get("request_type"),
-                }
-            return {"ok": True, "tail": f"would enqueue {lane}"}
-        return _enqueue_local(sym, tier, deep=(lane == "internal-deep"), thesis_gap=thesis_gap)
+    if not meta or meta.get("dispatch") != "external":
+        return {"ok": False, "tail": "POLICY_LOCAL_GENERATIVE_FORBIDDEN"}
     # external (deepseek)
     kind = "position to hold" if tier == "T0-HOLD" else ("proposal to trade" if tier == "T0-PROP" else "candidate")
     commission = thesis_gap or (
@@ -669,21 +676,41 @@ def dispatch(sym, lane, tier, apply, *, thesis_gap: dict | None = None) -> dict:
     prio = "P0" if tier.startswith("T0") else ("P1" if tier == "T1-WATCH" else "P2")
     cmd = [PY, RESEARCHER, "--lane", lane, "--symbol", sym, "--question", q,
            "--priority", prio, "--trigger", "research_scheduler"]
+    if run_id:
+        cmd.extend(["--run-id", run_id])
+    if call_id:
+        cmd.extend(["--call-id", call_id])
+    cmd.extend(["--producer", producer, "--family", family])
     if apply:
         cmd.append("--apply")
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=CALL_TIMEOUT)
-        ok = "status=sent" in (r.stdout + r.stderr) or "recommendation:" in r.stdout
+        blob = (r.stdout or "") + (r.stderr or "")
+        throttled = result_is_budget_throttle({"tail": blob})
+        ok = (not throttled) and ("status=sent" in blob or "recommendation:" in (r.stdout or ""))
         return {
             "ok": ok,
-            "tail": (r.stdout or r.stderr or "")[-160:],
+            "tail": blob[-160:],
+            "budget_throttled": throttled,
             "thesis_id": (commission or {}).get("thesis_id"),
             "request_type": (commission or {}).get("request_type") or "scheduled_research",
             "rag_first": rag_first_enabled() if commission else False,
         }
     except subprocess.TimeoutExpired:
+        if run_id and call_id:
+            _account(
+                "ERROR", producer=producer, family=family, run_id=run_id,
+                call_id=call_id, symbol=sym, lane=lane, trigger="research_scheduler",
+                reason="subprocess_timeout", attempt_no=1, apply=apply,
+            )
         return {"ok": False, "tail": "timeout"}
     except Exception as e:
+        if run_id and call_id:
+            _account(
+                "ERROR", producer=producer, family=family, run_id=run_id,
+                call_id=call_id, symbol=sym, lane=lane, trigger="research_scheduler",
+                reason=f"subprocess_error:{type(e).__name__}", attempt_no=1, apply=apply,
+            )
         return {"ok": False, "tail": str(e)[:120]}
 
 
@@ -754,6 +781,10 @@ def maybe_dispatch_metered(
     index_path: Path | None = None,
     ledger_path: Path | None = None,
     reentry_ready_near: bool = False,
+    run_id: str | None = None,
+    call_id: str | None = None,
+    producer: str = "research_scheduler",
+    family: str = "A",
 ) -> dict:
     """Skip-before-call gate for a metered (DeepSeek) candidate.
 
@@ -781,6 +812,10 @@ def maybe_dispatch_metered(
     now_dt = now or datetime.now(timezone.utc)
     call = dispatch_fn or dispatch
     gate = skip_gate_enabled()
+    rid, cid = accounting_identity(
+        producer=producer, family=family, symbol=sym, lane=lane,
+        run_id=run_id, call_id=call_id,
+    )
 
     def _log(code: str, reason: str) -> None:
         if not gate:
@@ -802,6 +837,11 @@ def maybe_dispatch_metered(
     if hours_window_fresh and not catalyst:
         code = rsi.SKIP_FRESH
         _log(code, "RESEARCH_BACKFILL_SKIP_FRESH_HOURS")
+        _account(
+            "DEDUPED", producer=producer, family=family, run_id=rid, call_id=cid,
+            symbol=sym, lane=lane, trigger="research_scheduler",
+            reason="RESEARCH_BACKFILL_SKIP_FRESH_HOURS", apply=apply,
+        )
         return {
             "code": code,
             "dispatched": False,
@@ -813,7 +853,16 @@ def maybe_dispatch_metered(
     if not gate:
         result = None
         if apply:
-            result = call(sym, lane, tier, apply, thesis_gap=thesis_gap)
+            result = call(
+                sym, lane, tier, apply, thesis_gap=thesis_gap,
+                run_id=rid, call_id=cid, producer=producer, family=family,
+            )
+        else:
+            _account(
+                "DRY_RUN", producer=producer, family=family, run_id=rid, call_id=cid,
+                symbol=sym, lane=lane, trigger="research_scheduler",
+                reason="would_dispatch", apply=False,
+            )
         return {
             "code": rsi.RESEARCH_EXECUTED,
             "dispatched": True,
@@ -832,6 +881,11 @@ def maybe_dispatch_metered(
     if code in (rsi.SKIP_UNCHANGED, rsi.SKIP_FRESH):
         reason = "hash_match_in_window" if code == rsi.SKIP_UNCHANGED else "ttl_fresh"
         _log(code, reason)
+        _account(
+            "DEDUPED", producer=producer, family=family, run_id=rid, call_id=cid,
+            symbol=sym, lane=lane, trigger="research_scheduler",
+            reason=reason, apply=apply, metadata={"skip_code": code},
+        )
         return {
             "code": code,
             "dispatched": False,
@@ -842,7 +896,10 @@ def maybe_dispatch_metered(
 
     result = None
     if apply:
-        result = call(sym, lane, tier, apply, thesis_gap=thesis_gap)
+        result = call(
+            sym, lane, tier, apply, thesis_gap=thesis_gap,
+            run_id=rid, call_id=cid, producer=producer, family=family,
+        )
         ok = bool(result and result.get("ok"))
         if ok:
             rsi.upsert_row(
@@ -863,6 +920,11 @@ def maybe_dispatch_metered(
         _log(code, "metered_dispatch" if ok else "metered_dispatch_failed")
     else:
         _log(code, "dry_would_dispatch")
+        _account(
+            "DRY_RUN", producer=producer, family=family, run_id=rid, call_id=cid,
+            symbol=sym, lane=lane, trigger="research_scheduler",
+            reason="dry_would_dispatch", apply=False, metadata={"dispatch_code": code},
+        )
     return {
         "code": code,
         "dispatched": True,
@@ -872,7 +934,10 @@ def maybe_dispatch_metered(
     }
 
 
-def run(mode, apply, budget):
+def run(mode, apply, budget, *, run_id: str | None = None):
+    producer = "research_scheduler"
+    family = "A"
+    accounting_run_id = run_id or new_run_id(producer)
     uni = load_universe()
     counts = {}
     for v in uni.values():
@@ -884,7 +949,7 @@ def run(mode, apply, budget):
         ordered = [{"symbol": s, "tier": "T0-HOLD",
                     "reentry_ready_near": bool(uni[s].get("reentry_ready_near"))} for s in targets]
     else:
-        lane = "deepseek"  # primary ordering lane; gemma assumed broad/elsewhere
+        lane = "deepseek"
         due = build_due(uni, lane, force_all=(mode == "backfill"))
         if mode == "priority":
             due = [d for d in due if d["tier"].startswith("T0") or d["tier"] == "T1-WATCH" or d["catalyst"]]
@@ -907,6 +972,8 @@ def run(mode, apply, budget):
     if not allow_local_research_llm():
         print("[scheduler] local_llm_disabled")
     cats = catalyst_signals()
+    structured_events = catalyst_event_records()
+    regime_shift = market_regime_shifted()
     # Preload thesis gaps for high-value symbols (T0/T1) — convert commissioning
     # toward thesis-gap requests when gaps exist. Never invent thesis text.
     gap_by_sym: dict = {}
@@ -932,18 +999,56 @@ def run(mode, apply, budget):
     spent = 0      # external calls only
     done = 0
     ext_rot = 0
+    cap_hit = False
     for item in ordered:
         sym, tier = item["symbol"], item["tier"]
         all_lanes = lanes_for(tier)
-        catalyst = cats.get(sym, False)
         thesis_gap = gap_by_sym.get(sym)
         reentry_ready_near = bool(item.get("reentry_ready_near") or (uni.get(sym) or {}).get("reentry_ready_near"))
+        item["reentry_ready_near"] = reentry_ready_near
+        events = list(structured_events.get(sym) or [])
+        if regime_shift and tier in {"T0-HOLD", "T0-PROP", "T1-WATCH"}:
+            events.append({"type": "MARKET_REGIME_SHIFT", "severity": "MEDIUM"})
+        trigger_plan = scheduler_trigger_plan(
+            sym,
+            item,
+            events=events,
+            thesis_gap=thesis_gap,
+            apply=apply,
+        )
+        catalyst = bool(cats.get(sym, False) or trigger_plan.get("triggered"))
+        all_call_ids = {
+            lane: call_id_for(accounting_run_id, sym, lane) for lane in all_lanes
+        }
+        for lane in all_lanes:
+            _account(
+                "SCHEDULED", producer=producer, family=family,
+                run_id=accounting_run_id, call_id=all_call_ids[lane], symbol=sym,
+                lane=lane, trigger="research_scheduler", apply=apply,
+                metadata={"mode": mode, "tier": tier, "catalyst": catalyst},
+            )
         # decide lanes for THIS symbol
         local_lanes = [l for l in all_lanes if LANES[l]["dispatch"] == "queue"]
         ext_lanes = [l for l in all_lanes if l in EXTERNAL_LANES and LANES[l]["auto"]]
         # T2/T3 externals only fire on a live catalyst
         if tier in ("T2-INCUB", "T3-COLD") and not catalyst:
             ext_lanes = []
+            for lane in [l for l in all_lanes if l in EXTERNAL_LANES]:
+                _account(
+                    "SKIP_GATED", producer=producer, family=family,
+                    run_id=accounting_run_id, call_id=all_call_ids[lane], symbol=sym,
+                    lane=lane, trigger="research_scheduler", reason="CATALYST_REQUIRED",
+                    apply=apply, metadata={"mode": mode, "tier": tier},
+                )
+        if cap_hit:
+            ext_lanes = []
+            for lane in [l for l in all_lanes if l in EXTERNAL_LANES]:
+                _account(
+                    "SKIP_GATED", producer=producer, family=family,
+                    run_id=accounting_run_id, call_id=all_call_ids[lane], symbol=sym,
+                    lane=lane, trigger="research_scheduler", reason="UPSTREAM_COST_CAP",
+                    apply=apply, metadata={"mode": mode, "tier": tier},
+                )
         # T1 rotates ONE external per refresh; T0 gets all (true cross-check).
         # Phase 3: rotation weighted by graded outcome hit-rate (hermes_lane_usefulness) once
         # enough external recs have verdicts; uniform below the gate. No lane ever starves
@@ -952,25 +1057,19 @@ def run(mode, apply, budget):
             ext_lanes = [_lane_rotation(ext_lanes)[ext_rot % len(_lane_rotation(ext_lanes))]]; ext_rot += 1
         tag = f"{item.get('score',0):.0f}" if "score" in item else "-"
         gap_tag = f" thesis_id={thesis_gap.get('thesis_id')}" if thesis_gap else ""
-        # local queue lanes: only if RESEARCH_ALLOW_LOCAL_LLM=1 (maria/full_chain).
-        # local_llm_disabled is printed once per run above — not a skip-ledger research code
-        # unless the skip gate is also on (it still is not one of the four research codes).
-        if local_lanes and not allow_local_research_llm():
-            local_lanes = []
-        for lane in local_lanes:
-            print(f"  → {sym:6s} {tier:9s} lane={lane:13s} prio={tag}{gap_tag}")
-            if apply:
-                res = dispatch(sym, lane, tier, apply, thesis_gap=thesis_gap)
-                print(f"     {'ok' if res['ok'] else 'FAIL'}: {res['tail'][:80]}")
-            else:
-                res = dispatch(sym, lane, tier, False, thesis_gap=thesis_gap)
-                if thesis_gap and res.get("thesis_id"):
-                    print(f"     dry: {res['tail'][:100]}")
+        if local_lanes:
+            raise RuntimeError("POLICY_LOCAL_GENERATIVE_FORBIDDEN")
         # external lanes: budgeted; skip-gate decides execute vs SKIP_* when enabled.
         for lane in ext_lanes:
             if spent >= budget:
                 print(f"[scheduler] external budget {budget} spent at {done} symbols — externals roll to next run (local still queued)")
                 ext_lanes = []
+                _account(
+                    "SKIP_GATED", producer=producer, family=family,
+                    run_id=accounting_run_id, call_id=all_call_ids[lane], symbol=sym,
+                    lane=lane, trigger="research_scheduler", reason="RUN_BUDGET",
+                    apply=apply, metadata={"mode": mode, "tier": tier, "budget": budget},
+                )
                 break
             hours_fresh = sym in fresh_ext.get(lane, ())
             outcome = maybe_dispatch_metered(
@@ -979,6 +1078,15 @@ def run(mode, apply, budget):
                 thesis_gap=thesis_gap,
                 hours_window_fresh=hours_fresh,
                 reentry_ready_near=reentry_ready_near,
+                extra=(
+                    {"research_trigger": trigger_plan}
+                    if trigger_plan.get("trigger_reasons")
+                    else None
+                ),
+                run_id=accounting_run_id,
+                call_id=all_call_ids[lane],
+                producer=producer,
+                family=family,
             )
             if not outcome.get("dispatched"):
                 print(f"  skip {sym:6s} {tier:9s} lane={lane:13s} {outcome.get('code')}")
@@ -987,6 +1095,9 @@ def run(mode, apply, budget):
             if apply:
                 res = outcome.get("result") or {}
                 print(f"     {'ok' if res.get('ok') else 'FAIL'}: {str(res.get('tail') or '')[:80]}")
+                if result_is_budget_throttle(res):
+                    print(f"[scheduler] SKIPPED_BUDGET at {sym} — stopping remaining externals this run")
+                    cap_hit = True
                 time.sleep(1)
             spent += 1
         if apply and tier == "T0-HOLD":

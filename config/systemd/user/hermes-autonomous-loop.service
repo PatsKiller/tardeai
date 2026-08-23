@@ -9,7 +9,5 @@ Environment=PYTHONUNBUFFERED=1
 ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/hermes_autonomous_loop.py --loop ticker_challenger --apply --max-rows 2
 TimeoutStartSec=900
 Environment=HERMES_LOOP_BUDGET_SEC=860
-Environment=HERMES_LLM_PRIMARY=bridge_flash
-Environment=HERMES_OLLAMA_FAILOVER=1
 Environment=HERMES_BRIDGE_URL=http://127.0.0.1:8766
 Environment=HERMES_BRIDGE_MODEL=deepseek-v4-flash

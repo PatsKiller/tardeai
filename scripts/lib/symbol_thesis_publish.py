@@ -5,6 +5,7 @@ Production backfill must be explicitly enabled by operator after integration.
 """
 from __future__ import annotations
 
+import os
 from typing import Any, Optional
 
 from scripts.lib.cio_theses import CIOThesisStore
@@ -31,9 +32,23 @@ def publish_symbol_thesis(
     store: CIOThesisStore | None = None,
     notify: bool = False,
     actor_id: str = "symbol_thesis_publish",
+    provenance: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     store = store or CIOThesisStore()
     tid = symbol_thesis_id(symbol)
+    previous = store.get_current(tid)
+    supplied = dict(provenance or {})
+    write_provenance = {
+        "writer": supplied.get("writer") or actor_id,
+        "writer_version": supplied.get("writer_version") or "symbol_thesis_publish@v1",
+        "source_research_ids": list(supplied.get("source_research_ids") or []),
+        "delta_id": supplied.get("delta_id"),
+        "trigger": supplied.get("trigger") or "unspecified",
+        "run_id": supplied.get("run_id"),
+        "source_sha": supplied.get("source_sha") or os.getenv("TRADEAI_SOURCE_SHA") or os.getenv("SOURCE_SHA"),
+        "previous_version": (previous or {}).get("thesis_version"),
+        "reason_for_change": supplied.get("reason_for_change") or change_note or f"symbol thesis for {symbol.upper()}",
+    }
     bullets = []
     if why_owned_or_watched:
         bullets.append(f"Why owned/watched: {why_owned_or_watched}")
@@ -54,6 +69,7 @@ def publish_symbol_thesis(
         "invalidation_conditions": list(invalidation_conditions or []),
         "research_gaps": list(research_gaps or []),
         "what_changes_my_mind": list(what_changes_my_mind or []),
+        "write_provenance": write_provenance,
     }
     return store.publish(
         summary,

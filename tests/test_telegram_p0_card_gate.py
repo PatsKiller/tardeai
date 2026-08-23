@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -122,6 +123,53 @@ def test_valid_long_invalidation_sends():
         "technical": {"price": 72.5, "stop_invalidation": 68.0},
     })
     assert g["send"] is True
+
+
+def _strict_reentry(*, price=1.59, low=1.68, high=1.83, distance=-5.36, stop=1.50, as_of=None):
+    return {
+        "symbol": "JTAI",
+        "action_class": "REENTRY_WATCH",
+        "change": {"kind": "reentry_added", "to": "NEAR"},
+        "technical": {
+            "price": price,
+            "support_or_zone_low": low,
+            "resistance_or_zone_high": high,
+            "stop_invalidation": stop,
+            "distance_pct": distance,
+            "near_threshold_pct": 3.0,
+            "price_source": "finviz",
+            "price_as_of": as_of or datetime.now(timezone.utc).isoformat(),
+            "status": "NEAR",
+            "data_conflicts": [],
+        },
+    }
+
+
+def test_near_beyond_threshold_suppresses():
+    g = intelligence_card_gate(_strict_reentry())
+    assert g["send"] is False
+    assert "NEAR_THRESHOLD_EXCEEDED" in g["failures"]
+
+
+def test_stale_quote_suppresses_reentry_card():
+    old = (datetime.now(timezone.utc) - timedelta(hours=80)).isoformat()
+    g = intelligence_card_gate(_strict_reentry(price=1.70, distance=0, as_of=old))
+    assert g["send"] is False
+    assert "QUOTE_SOURCE_STALE_OR_UNAVAILABLE" in g["failures"]
+
+
+def test_conflicting_prices_suppress_reentry_card():
+    obj = _strict_reentry(price=1.70, distance=0)
+    obj["technical"]["data_conflicts"] = [{"low": 1.59, "high": 1.70}]
+    g = intelligence_card_gate(obj)
+    assert g["send"] is False
+    assert "DATA_CONFLICT" in g["failures"]
+
+
+def test_consistent_near_card_passes_strict_gate():
+    g = intelligence_card_gate(_strict_reentry(price=1.66, distance=-1.19, stop=1.50))
+    assert g["send"] is True
+    assert g["failures"] == []
 
 
 def test_render_inverted_returns_empty():

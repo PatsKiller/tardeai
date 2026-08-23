@@ -7,6 +7,7 @@ from scripts.lib.research_lane_health import (
     consecutive_error_streak,
     evaluate_lane,
     is_error_recommendation,
+    is_skipped_budget,
     non_error_count,
 )
 
@@ -17,6 +18,8 @@ def test_bracket_prefix_is_error():
     assert is_error_recommendation("")
     assert is_error_recommendation(None)
     assert not is_error_recommendation("Hold SCHD; thesis intact.")
+    assert is_skipped_budget("[SKIPPED_BUDGET] NXPI COST_CAP_EXCEEDED: daily request cap")
+    assert not is_error_recommendation("[SKIPPED_BUDGET] NXPI COST_CAP_EXCEEDED: daily request cap")
 
 
 def test_streak_counts_newest_errors_until_success():
@@ -66,6 +69,54 @@ def test_manual_claude_silence_does_not_fire():
         now=now,
     )
     assert row["ok"] is True
+
+
+def test_error_rate_fires_when_streak_is_zero():
+    """Legacy [ERROR] COST_CAP rows still count as lane-broken until rewritten."""
+    now = datetime(2026, 8, 22, tzinfo=timezone.utc)
+    newest = [{"recommendation": "Hold SCHD", "created_at": now}]  # streak resets
+    last_24h = (
+        [{"recommendation": "Hold"}] * 9
+        + [{"recommendation": "[ERROR] COST_CAP_EXCEEDED: daily request cap"}] * 5
+    )
+    row = evaluate_lane(
+        "deepseek",
+        newest_first=newest,
+        last_24h=last_24h,
+        silence=True,
+        streak_n=5,
+        now=now,
+    )
+    assert row["error_streak"] == 0
+    assert row["error_rate_24h"] == round(100.0 * 5 / 14, 1)
+    assert row["ok"] is False
+    assert any(x.startswith("error_rate_24h:") for x in row["firing"])
+
+
+def test_skipped_budget_is_throttle_not_lane_broken():
+    """441 COST_CAP rows must not look like a 33% broken lane once rewritten."""
+    now = datetime(2026, 8, 22, tzinfo=timezone.utc)
+    newest = [{"recommendation": "Hold SCHD", "created_at": now}]
+    last_24h = (
+        [{"recommendation": "Hold"}] * 9
+        + [{"recommendation": "[SKIPPED_BUDGET] NXPI COST_CAP_EXCEEDED: daily request cap"}] * 5
+    )
+    row = evaluate_lane(
+        "deepseek",
+        newest_first=newest,
+        last_24h=last_24h,
+        silence=True,
+        streak_n=5,
+        now=now,
+    )
+    assert row["error_streak"] == 0
+    assert row["error_24h"] == 0
+    assert row["skipped_budget_24h"] == 5
+    assert row["error_rate_24h"] == 0.0
+    assert row["ok"] is False
+    assert "budget_throttled:5/14" in row["firing"]
+    assert not any(x.startswith("error_rate_24h:") for x in row["firing"])
+    assert not any(x.startswith("zero_non_error_") for x in row["firing"])
 
 
 def test_chatgpt_24h_zero_ok_fires():

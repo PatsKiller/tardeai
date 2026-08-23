@@ -73,6 +73,10 @@ type Decision = {
   target_status?: string | null
   sizing_method?: string | null
   sizing_objective?: string | null
+  sizing_suppressed?: boolean
+  sizing_suppression_reason?: string | null
+  symbol_thesis_id?: string | null
+  symbol_thesis_version?: string | null
   freshness?: DecisionFreshness | string | null
 }
 
@@ -293,8 +297,9 @@ function proseCode(s: string | null | undefined): string {
 }
 
 function shortDecisionId(id: string): string {
-  if (id.startsWith('dec_') && id.length > 16) return `dec_${id.slice(4, 16)}`
-  return id.length > 16 ? `${id.slice(0, 16)}…` : id
+  // Operator chrome: no dec_ / prod_ / plan_ / trace_ prefixes.
+  const stripped = id.replace(/^(dec_|prod_|plan_|trace_)/, '')
+  return stripped.length > 12 ? `${stripped.slice(0, 12)}…` : stripped
 }
 
 function freshnessLine(f: Decision['freshness']): string | null {
@@ -397,8 +402,6 @@ function DecisionActions({ d, dispositions, legacyUnversioned, onAct }: {
   const key = decisionKey(d)
   const cur = key ? dispositions[key]?.disposition : undefined
   const legacy = legacyUnversioned[legacyDispositionKey(d)]
-  const [rating, setRating] = useState<number>(0)
-  const [showRate, setShowRate] = useState(false)
 
   const btn: CSSProperties = {
     padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)',
@@ -408,25 +411,14 @@ function DecisionActions({ d, dispositions, legacyUnversioned, onAct }: {
   const active: CSSProperties = { ...btn, background: 'var(--accent-dim)', borderColor: 'var(--accent)', color: 'var(--accent)' }
 
   const canAct = Boolean(key)
-  const act = (disp: string) => { if (canAct) onAct(d, disp, rating || undefined) }
-  const rate = (n: number) => { setRating(n); setShowRate(false); if (canAct) onAct(d, cur || 'ack', n) }
-
+  const act = (disp: string) => { if (canAct) onAct(d, disp) }
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', marginTop: 10 }}>
-      <button type="button" disabled={!canAct} style={cur === 'ack' ? active : btn} onClick={() => act('ack')} aria-label={`Acknowledge ${d.symbol || d.action_id}`}>ACK</button>
+      <button type="button" disabled={!canAct} style={cur === 'agree' ? active : btn} onClick={() => act('agree')} aria-label={`Agree ${d.symbol || d.action_id}`}>AGREE</button>
+      <button type="button" disabled={!canAct} style={cur === 'disagree' ? { ...active, borderColor: 'var(--red)', color: 'var(--red)', background: 'var(--red-dim)' } : btn} onClick={() => act('disagree')} aria-label={`Disagree ${d.symbol || d.action_id}`}>DISAGREE</button>
       <button type="button" disabled={!canAct} style={cur === 'defer' ? active : btn} onClick={() => act('defer')} aria-label={`Defer ${d.symbol || d.action_id}`}>DEFER</button>
-      <button type="button" disabled={!canAct} style={cur === 'done' ? active : btn} onClick={() => act('done')} aria-label={`Mark done ${d.symbol || d.action_id}`}>DONE</button>
-      <button type="button" disabled={!canAct} style={cur === 'reject' ? { ...active, borderColor: 'var(--red)', color: 'var(--red)', background: 'var(--red-dim)' } : btn} onClick={() => act('reject')} aria-label={`Reject ${d.symbol || d.action_id}`}>REJECT</button>
-      <button type="button" disabled={!canAct} style={showRate ? active : btn} onClick={() => setShowRate(v => !v)} aria-label={`Rate ${d.symbol || d.action_id}`}>RATE</button>
-      {showRate && (
-        <span style={{ display: 'inline-flex', gap: 4 }} role="radiogroup" aria-label="Usefulness rating">
-          {[1, 2, 3, 4, 5].map(n => (
-            <button key={n} type="button" style={n <= rating ? { ...btn, color: 'var(--amber)', borderColor: 'var(--amber)' } : btn}
-              onClick={() => rate(n)} aria-label={`Rate ${n}`}>{n}</button>
-          ))}
-        </span>
-      )}
-      {rating > 0 && <span style={{ ...faint, fontSize: 11 }}>rated {rating}/5</span>}
+      <button type="button" disabled={!canAct} style={cur === 'need_data' ? active : btn} onClick={() => act('need_data')} aria-label={`Request data for ${d.symbol || d.action_id}`}>NEED DATA</button>
+      <button type="button" disabled={!canAct} style={cur === 'no_longer_relevant' ? active : btn} onClick={() => act('no_longer_relevant')} aria-label={`No longer relevant ${d.symbol || d.action_id}`}>NO LONGER RELEVANT</button>
       {!canAct && <span style={{ ...faint, fontSize: 11 }}>No decision id — disposition not recorded</span>}
       {legacy && (
         <span style={{ ...faint, fontSize: 11 }} title="Legacy position:symbol:account record is not applied to this decision">
@@ -498,6 +490,12 @@ function DecisionCard({ d, dispositions, legacyUnversioned, onAct }: {
           </div>
         )}
       </div>
+
+      {d.sizing_suppressed && (
+        <div style={{ marginTop: 8, fontSize: 13, color: 'var(--amber)' }} data-testid="cio-sizing-suppressed">
+          Sizing withheld until current financial truth clears {proseCode(d.sizing_suppression_reason || 'quality gate')}.
+        </div>
+      )}
 
       {hasSizing && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 18, marginTop: 8 }}>
@@ -1030,6 +1028,10 @@ function UniverseThesesPanel() {
   const missingApi = Boolean(error && String(error).includes('HTTP 404'))
   const payloadError = data && data.ok === false
   const rows = Array.isArray(data?.symbols) ? data!.symbols! : []
+  const metricDefs = (data?.metrics?.percentage_definitions || {}) as Record<string, any>
+  const heldSub = metricDefs.held_substantive || {}
+  const materialCov = metricDefs.material_coverage || {}
+  const materialSub = metricDefs.material_substantive || {}
   return (
     <div data-testid="cio-universe-theses" style={{ display: 'grid', gap: 14 }}>
       <div style={{ fontSize: 12, color: 'var(--text3)' }}>
@@ -1045,13 +1047,28 @@ function UniverseThesesPanel() {
       )}
       {data?.metrics && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12 }}>
-          <Stat label="Material" value={String(data.metrics.material_universe ?? '—')} />
-          <Stat label="Current thesis" value={String(data.metrics.current_thesis ?? '—')} />
+          <Stat label="Held CURRENT / THIN" value={`${data.metrics.held_current ?? '—'} / ${data.metrics.held_thin ?? '—'} of ${data.metrics.held ?? '—'}`} help="Living theses on current holdings. CURRENT is PASS-grade. THIN cleared the 40-char floor but failed substantiveness." />
+          <Stat label="Held substantive" value={heldSub.denominator != null ? `${heldSub.pct}% (${heldSub.numerator}/${heldSub.denominator})` : '—'} help="CURRENT over held equity tickers; cash and unresolved identifiers excluded." />
+          <Stat label="Material coverage" value={materialCov.denominator != null ? `${materialCov.pct}% (${materialCov.numerator}/${materialCov.denominator})` : '—'} help="CURRENT + THIN over the declared material-union denominator." />
+          <Stat label="Material substantive" value={materialSub.denominator != null ? `${materialSub.pct}% (${materialSub.numerator}/${materialSub.denominator})` : '—'} help="CURRENT only over the declared material-union denominator." />
           <Stat label="Research required" value={String(data.metrics.research_required ?? '—')} />
-          <Stat label="Coverage" value={data.metrics.coverage_pct != null ? `${data.metrics.coverage_pct}` : '—'} />
           {data.metrics.bonds_unresolved != null && (
             <Stat label="Bonds & unresolved" value={String(data.metrics.bonds_unresolved)} help="CUSIP/unresolved identifiers sorted out of the main list." />
           )}
+        </div>
+      )}
+      {Boolean((data as any)?.daily_thesis_changes?.counts) && (
+        <div data-testid="cio-daily-thesis-changes" style={{ ...card, marginTop: 8 }}>
+          <SectionTitle>Thesis changes (24h)</SectionTitle>
+          <div style={{ fontSize: 12, color: 'var(--text2)' }}>
+            {Object.entries(((data as any).daily_thesis_changes.counts || {}) as Record<string, number>)
+              .filter(([, n]) => Number(n) > 0)
+              .map(([k, n]) => `${k.replace(/_/g, ' ')} ${n}`)
+              .join(' · ') || 'none'}
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>
+            Cards live in data/cio/thesis_change_cards.jsonl. This strip is the operator-visible 24h counts — not a second store.
+          </div>
         </div>
       )}
       {!loading && !error && !payloadError && rows.length === 0 && (
@@ -1083,7 +1100,15 @@ function UniverseThesesPanel() {
               {' · '}
               {r.portfolio_role || 'UNKNOWN'}
               {' · '}
-              {r.thesis_state || 'RESEARCH_REQUIRED'}
+              <span style={{
+                color: r.thesis_state === 'THIN' ? 'var(--amber)'
+                  : r.thesis_state === 'CURRENT' ? 'var(--green)'
+                  : r.thesis_state === 'RESEARCH_REQUIRED' ? 'var(--amber)'
+                  : 'inherit',
+                fontWeight: r.thesis_state === 'THIN' || r.thesis_state === 'CURRENT' ? 700 : 500,
+              }}>
+                {r.thesis_state || 'RESEARCH_REQUIRED'}
+              </span>
               {r.thesis_version != null ? ` · ${String(r.thesis_version)}` : ''}
             </button>
             )
@@ -1559,6 +1584,10 @@ export default function CioHub({ onDrill }: Props) {
       symbol: d.symbol ?? null,
       account: d.account ?? null,
       action: d.action || d.stance || null,
+      thesis_id: d.symbol_thesis_id || null,
+      thesis_version: d.symbol_thesis_version || null,
+      operator_identity_class: 'PRIMARY_OPERATOR',
+      source_surface: 'cio_decision_card',
     }
     if (d.decision_input_digest) body.decision_input_digest = d.decision_input_digest
     if (d.decision_evidence_digest) body.decision_evidence_digest = d.decision_evidence_digest

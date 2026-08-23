@@ -7,6 +7,38 @@
 
 Related: `docs/ops/RESEARCH_LIFECYCLE_STANDARD.md` (intended methodology) · `docs/ops/RESEARCH_TIER_LLM_CADENCE.md` (tiers/cron) · `docs/ops/LLM_ROUTING_AND_DATA_LAYERS.md` (two LLM families) · `docs/ops/RESEARCH_QUALITY_AND_THESIS_GAP_2026-08-22.md` (parser/join diagnosis) · `docs/ops/SESSION_CLOSEOUT_2026-08-22.md` (index).
 
+> **R8 branch addendum (not live):** The stale statement "research has never
+> minted live theses" is false; the table below records the operator-driven mint.
+> The remaining gap is automatic circulation. The review branch adds a canonical
+> stateful prompt, `ResearchThesisDelta@v1`, quality-gated automatic reconciliation,
+> provenance on every new write, replay suppression, and deterministic
+> `ThesisDecisionGate@v1`. CURRENT does not serve those changes until a separately
+> authorized merge and promotion. See the R8 correction section in
+> `docs/architecture/TRADEAI_SYSTEM_STATE_AND_AUTONOMY_2026-08-20.md`.
+>
+> **NOC source acceptance (not live):**
+> `scripts/run_noc_autonomous_advisory_golden.py` exercises the existing accepted-
+> research bridge twice against an isolated data root. The first pass publishes
+> `symbol_noc@v2`, preserves full `/v3/advisory` and CIO thesis lineage, emits one
+> decision trace, and links an operator disposition to the decision and thesis.
+> The next stateful prompt includes that disposition and the prior delta. The
+> second identical pass returns `NO_NEW_INFO` with no thesis, card, decision,
+> research-request, notification, or Telegram duplication. Evidence:
+> `docs/_evidence/autonomous_advisory_loop/noc_golden_loop_isolated.json`.
+> This is explicitly `live_proven=false`; localhost browser acceptance and a
+> natural production run require reviewed merge and separately authorized release.
+>
+> **Local HTTP/browser acceptance:** Playwright Chromium passed the actual stacked
+> portfolio-server handler on a detached loopback preview. `/api/v3/advisory`,
+> `/api/v3/cio/home`, universe/theses, NOC, and BND THIN payloads returned HTTP 200.
+> The NOC decision retained its producing `STRENGTHENS` delta while the standing
+> thesis separately exposed the replay's latest `NO_NEW_INFO` delta. Full thesis,
+> support/counter evidence, provider/model, last review, feedback, CIO action, and
+> suppression state rendered without raw `DATA_UNAVAILABLE` or malformed pins.
+> Serving truth correctly reported preview loaded pin `977d327c`, production CURRENT
+> `5e91225a`, and `pin_match=false`. Manifest and screenshots:
+> `docs/_evidence/autonomous_advisory_loop/noc_golden_browser/manifest.json`.
+
 ---
 
 ## The book, tonight

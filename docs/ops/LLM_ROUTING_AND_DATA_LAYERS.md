@@ -22,7 +22,7 @@ Nothing is “the research.” Four independent stores. Telegram reads **one car
 | **Deterministic ticker** | Price, zone, RSI, invalidation, desk WAIT/NEAR/WATCH | reentry/opportunity desks, Finviz, quotes | **Yes** — “Technical setup” / “Why now” |
 | **SearXNG** | Self-hosted metasearch `127.0.0.1:18888` (up) | think-tank, YouTube discovery, source dry-run, weak-evidence remediate | **No** |
 | **Hermes** | Rank, composite score, RSI/trend on `watchlist_items` | scorer + top-N | Rank is in the *prompt* to OAuth, not the Telegram thesis |
-| **LLM** | Prose opinion | `hermes_external_research` (+ local gemma on `holdings_llm_refresh`) | **No** — Telegram thesis is the **living symbol thesis**, not this table |
+| **LLM** | Prose opinion | `hermes_external_research` (governed cloud only in the proposed source graph) | **No** — Telegram thesis is the **living symbol thesis**, not this table |
 
 Living CIO thesis (`HeldBookThesisCoverage@v1`) **as of tonight:** holdings **17/22 CURRENT** (5 THIN: JEPI QCOM SCHG XAR XLB), coverage 100, substantive 77.27%, SLA true. Reentry 24/25 CURRENT. T1 292/299 CURRENT. Morning snapshot below (3/22, RESEARCH_REQUIRED) is **pre-mint**. That is why cards **said**:
 
@@ -118,11 +118,22 @@ Policy said OAuth is “retained, not auto” to stop duplicate Telegram noise. 
 | Grok OAuth | free, rate-limited | **no** | same top-20 / enhance | Working, 67/96 |
 | DeepSeek Flash | metered, intended auto | **yes** (only auto external) | `research_scheduler` only | **Broken** until Monday cap-bearing runs; alias `deepseek` is not `available()` |
 | Claude | paid | never | `--apply-paid` weekly / arbitration | manual |
-| Local gemma | free GPU/CPU | queued only if `RESEARCH_ALLOW_LOCAL_LLM=1` (default 0) | `holdings_llm_refresh` **still calls it** 07:15 M–F | judgment against standing policy; parse_error salvage shipped #446 |
+| Local generative | forbidden | **no** | directly scheduled files migrated on the pending branch; live rebuild still has 241 source references, 45 cron intersections, 5 systemd intersections, and 24 OpenClaw config references | physical removal blocked; zero-call proof has not started |
 | SearXNG | free search | not an LLM | discovery/think-tank | **up** (`:18888`) — not on the Telegram thesis path |
-| Overnight-deep | policy ChatGPT | timer | live China-night gemma3:27b | 0 rows in 24h |
+| Overnight-deep | policy ChatGPT/DeepSeek | timer | governed cloud only after deployment | live host configuration still requires cutover |
 
-US overnight judgment = ChatGPT OAuth **policy**. Live timer is still gemma. Do not retarget during the payload freeze.
+US overnight judgment uses a governed cloud lane. Local generation is not an allowed fallback.
+
+### 2026-08-23 correction
+
+“No permitted production caller” described policy, not live host truth. The live
+rebuild still exposes local generation. The pending source branch adds a single
+cloud-only helper and migrates Aegis synthesis, holdings health/protection,
+Hermes cross-source/tagging, Iris taxonomy, dashboard enrichment, portfolio
+summary, topic curation/ingestion, directive enhancement, and entry planning.
+It is not live until reviewed CI is green and CURRENT/cron/systemd cutover is
+separately authorized. A cloud outage is a hard failure; it never falls back to
+Ollama.
 
 ---
 
@@ -154,7 +165,7 @@ Fix after 8/27 (not this PR, freeze): bind those slots to existing stores (price
 
 ```
 every 2h     top-20  → ChatGPT + Grok   (holdings in that set get trigger=holdings)
-M–F 07:15    holdings_llm_refresh → local gemma3:4b  (health/action on watchlist_items)
+M–F 07:15    holdings_llm_refresh → governed cloud or hard failure (no local fallback)
 M–F 08/12:30/16:30  scheduler holdings → DeepSeek
 M–F 10–16 hourly    scheduler priority → DeepSeek T0/T1
 M–F 20:30    scheduler watchlist → DeepSeek T1 (reentry lives here)
@@ -166,4 +177,7 @@ Fri 18:15    weekly oversight → ChatGPT OAuth auto; Claude only --apply-paid
 
 ## MATURITY_IMPACT
 
-Docs-only. Explains the two-family LLM split and the Telegram DATA_UNAVAILABLE join. No lane table change, no flag flip, no CURRENT promote. Metric: this file + operator Telegram still showing `*Thesis* DATA_UNAVAILABLE` while Technical setup is populated.
+`GPU policy compliance`: `scripts/audit_no_local_generative_routing.py --json`,
+`scripts/check_local_model_fleet.py --json`, and `/api/v2/gpu-status`. This branch
+changes source routing but does not authorize CURRENT promotion, host service edits,
+or model removal.

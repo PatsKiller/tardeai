@@ -1,0 +1,190 @@
+{
+  "ok": true,
+  "schema": "SymbolThesisCard@v1",
+  "as_of": "2026-08-23T03:31:39+00:00",
+  "authority": "READ_ONLY_ADVISORY",
+  "financial_action": false,
+  "symbol": "BND",
+  "memberships": [
+    "HELD",
+    "WATCHLIST"
+  ],
+  "portfolio_role": "DEFENSIVE",
+  "portfolio_role_source": "ticker_hint",
+  "portfolio_role_provenance": [
+    "weak ticker hint → DEFENSIVE"
+  ],
+  "thesis_state": "THIN",
+  "thesis_stance": "HOLD",
+  "thesis_confidence": null,
+  "last_reviewed": "2026-08-23T03:29:57.448138+00:00",
+  "next_review_at": null,
+  "symbol_thesis_id": "symbol_bnd",
+  "symbol_thesis_version": "symbol_bnd@v1",
+  "why_in_universe": {
+    "memberships": [
+      "HELD",
+      "WATCHLIST"
+    ],
+    "held": true,
+    "reentry": null,
+    "opportunity": null,
+    "former": null
+  },
+  "core_thesis": "BND remains a held bond allocation pending a fuller duration, income, credit-quality, and rate-sensitivity thesis.",
+  "positive_evidence": [],
+  "counter_thesis": [],
+  "evidence_provenance": {
+    "research_id": null,
+    "delta_id": null,
+    "classification": null,
+    "provider": null,
+    "model": null,
+    "evidence_as_of": null,
+    "source_refs": [],
+    "source_quality": null,
+    "freshness": null,
+    "authority": "READ_ONLY_ADVISORY"
+  },
+  "invalidation": [],
+  "market_sector_fit": "BND remains a held bond allocation pending a fuller duration, income, credit-quality, and rate-sensitivity thesis.",
+  "why_owned_or_watched": null,
+  "why_exited": null,
+  "what_changed_since_exit": null,
+  "what_would_change": [],
+  "reentry_state": null,
+  "opportunity_rank": null,
+  "research_gaps": [
+    "complete duration and income evidence",
+    "Thesis is THIN (cleared 40-char floor, failed PASS): need ticker-specific fact, invalidation, role, numeric fidelity"
+  ],
+  "proposed_research": [
+    {
+      "schema": "SymbolThesisResearchRequest@v1",
+      "request_id": "str_1d2566ae036efa58",
+      "symbol": "BND",
+      "thesis_id": "symbol_bnd",
+      "thesis_version": "symbol_bnd@v1",
+      "research_gap": "complete duration and income evidence",
+      "specific_question": "For BND (state=THIN, role=DEFENSIVE): resolve gap — complete duration and income evidence",
+      "why_needed": "thesis_state=THIN; memberships=['HELD', 'WATCHLIST']; role=DEFENSIVE; materiality=ACTIVE_MATERIAL",
+      "priority": "P2",
+      "required_evidence_domains": [
+        "rag_existing",
+        "searxng_metasearch",
+        "sec_filings",
+        "rss_news",
+        "deterministic_structured",
+        "financial_senses"
+      ],
+      "acquisition_plane": "research_intelligence_multi_source",
+      "hermes_role": "synthesis_and_challenge_only",
+      "hermes_is_acquisition_source": false,
+      "pipeline": [
+        "rag_retrieve_supporting_and_contradictory",
+        "structured_corpus_read",
+        "if_insufficient: budgeted_multi_source_acquire",
+        "catalog_provenance",
+        "curate_rag_status_research_sources",
+        "embed_existing_content_embeddings",
+        "hermes_or_flash_synthesize_challenge",
+        "reconcile_symbol_thesis"
+      ],
+      "current_stance": "HOLD",
+      "counter_thesis": [],
+      "requested_at": "2026-08-23T03:31:39+00:00",
+      "parent_run": null,
+      "parent_product": null,
+      "budget_revisit_hours": 72,
+      "research_need_decision": "DEEP_RESEARCH",
+      "materiality": "ACTIVE_MATERIAL",
+      "enqueue": false,
+      "authority": "READ_ONLY_ADVISORY",
+      "financial_action": false
+    },
+    {
+      "schema": "SymbolThesisResearchRequest@v1",
+      "request_id": "str_cb84d5c197796bde",
+      "symbol": "BND",
+      "thesis_id": "symbol_bnd",
+      "thesis_version": "symbol_bnd@v1",
+      "research_gap": "Thesis is THIN (cleared 40-char floor, failed PASS): need ticker-specific fact, invalidation, role, numeric fidelity",
+      "specific_question": "What explicit invalidation conditions and 'what changes my mind' criteria should govern BND for role=DEFENSIVE?",
+      "why_needed": "thesis_state=THIN; memberships=['HELD', 'WATCHLIST']; role=DEFENSIVE; materiality=ACTIVE_MATERIAL",
+      "priority": "P2",
+      "required_evidence_domains": [
+        "rag_existing",
+        "searxng_metasearch",
+        "sec_filings",
+        "rss_news",
+        "deterministic_structured",
+        "financial_senses"
+      ],
+      "acquisition_plane": "research_intelligence_multi_source",
+      "hermes_role": "synthesis_and_challenge_only",
+      "hermes_is_acquisition_source": false,
+      "pipeline": [
+        "rag_retrieve_supporting_and_contradictory",
+        "structured_corpus_read",
+        "if_insufficient: budgeted_multi_source_acquire",
+        "catalog_provenance",
+        "curate_rag_status_research_sources",
+        "embed_existing_content_embeddings",
+        "hermes_or_flash_synthesize_challenge",
+        "reconcile_symbol_thesis"
+      ],
+      "current_stance": "HOLD",
+      "counter_thesis": [],
+      "requested_at": "2026-08-23T03:31:39+00:00",
+      "parent_run": null,
+      "parent_product": null,
+      "budget_revisit_hours": 72,
+      "research_need_decision": "DEEP_RESEARCH",
+      "materiality": "ACTIVE_MATERIAL",
+      "enqueue": false,
+      "authority": "READ_ONLY_ADVISORY",
+      "financial_action": false
+    }
+  ],
+  "active_research": [],
+  "recent_completed_research": [],
+  "research_queue_source": "unavailable",
+  "research_queue_open_count": 0,
+  "research_queue_oldest_wait_seconds": null,
+  "research_queue_oldest_wait_human": null,
+  "financial_senses_refs": [],
+  "lesson_refs": [],
+  "memory_refs": [],
+  "thesis_history": [
+    {
+      "thesis_version": "symbol_bnd@v1",
+      "published_at": "2026-08-23T03:29:57.448138+00:00",
+      "reason_for_change": "Acceptance THIN comparison fixture",
+      "stance": "HOLD",
+      "summary": "BND remains a held bond allocation pending a fuller duration, income, credit-quality, and rate-sensitivity thesis.",
+      "evidence_refs": []
+    }
+  ],
+  "what_changed": "Acceptance THIN comparison fixture",
+  "cio_action": null,
+  "advisory_verdict": null,
+  "notification": {
+    "available": true,
+    "suppression_reason": "none_on_record",
+    "notification_class": null
+  },
+  "suppression_reason": "none_on_record",
+  "note": "No hidden chain-of-thought. Supporting evidence IDs are drillable when present. Empty research lists mean the queue was unavailable or idle — not invented jobs.",
+  "_serving": {
+    "schema": "ServingFreshness@v1",
+    "authority": "READ_ONLY_ADVISORY",
+    "process_started_at": "2026-08-22T23:31:32-04:00",
+    "source_pin": "5e91225a1186659de3cfd65096e037e774506e7f",
+    "loaded_pin": "977d327cf8ba7977351a38f91fc31bb56b58d58d",
+    "loaded_pin_sha": "977d327cf8ba7977351a38f91fc31bb56b58d58d",
+    "current_pin_sha": "5e91225a1186659de3cfd65096e037e774506e7f",
+    "data_as_of": "2026-08-23T03:31:39+00:00",
+    "cache_age": 0.86,
+    "pin_match": false
+  }
+}

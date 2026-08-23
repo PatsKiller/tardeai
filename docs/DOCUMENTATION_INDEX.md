@@ -1,5 +1,5 @@
 # Trade AI v12 — Documentation Index
-**Updated:** 2026-08-22 night (research lifecycle as-of + held SLA true)
+**Updated:** 2026-08-23 (CIO/Advisory UI audit — every tab)
 **Protocol:** All doc changes follow `docs/A1A.md`. Do not add a doc without updating this index.
 **Scope:** Project root = `/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild`
 
@@ -17,8 +17,10 @@
 | `docs/architecture/TRADEAI_SYSTEM_STATE_AND_AUTONOMY_2026-08-20.md` | **Master record** — LIVE architecture, timers, notify gates, freeform/desk loop, thesis SLA, autonomy directive gap matrix, roadmap | Active |
 | `docs/_findings/ALEX_AUTONOMY_GROUND_TRUTH_2026-08-21.md` | Phase 0 closed snapshot (2414 wakes / 0 payloads at `b04f0016`) | Active (do not rewrite) |
 | `docs/ops/MATURATION_G1_I0_A1_B1_2026-08-21.md` | G.1 quarantine + I.0 tree-pin audit + A.1 off-peak retarget + B.1 producer payload flags | Active |
+| `docs/ops/CIO_UI_AUDIT_2026-08-22.md` | **Canonical per-tab UI audit** of `/v3/advisory` + CIO Office (A–E). Live `:7777` is pin `5e91225a`. Raw dump on Drive. | Active |
 | `docs/ops/RESEARCH_LIFECYCLE_AS_OF_2026-08-22.md` | **Current-state lifecycle** — trigger → DeepSeek → parser/raw → mint → who consumes; holdings 17/22 CURRENT, SLA true; agents pull, not push | Active |
 | `docs/ops/SESSION_CLOSEOUT_2026-08-22.md` | **Index of 2026-08-22 findings + fixes** (parser/join, mint, skip-gate, T3, ingest) | Active |
+| `docs/ops/COST_CAP_EXCEEDED_2026-08-22.md` | 441 COST_CAP rows: bind 11:31 ET, tiers, 895 vs ~312, skip-gate not live on crontab tree | Active |
 | `docs/ops/RESEARCH_LIFECYCLE_STANDARD.md` | Intended methodology (incremental / skip unchanged). Live measured state is the as-of file | Active |
 | `docs/RESEARCH_PRIORITIZATION.md` | Hermes lane/tier SLA (who/when). Execute set = due ∩ lifecycle gate | Active |
 | `docs/ops/RESEARCH_TIER_LLM_CADENCE.md` | **Canonical** five universe tiers, one watchlist research tier (T1-WATCH), S0–S3 vs hygiene 1–3, cron + confirm-run | Active |

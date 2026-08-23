@@ -200,6 +200,28 @@ def _actionability_urgency(d: dict[str, Any]) -> str:
     return "low"
 
 
+def suppress_untrusted_sizing(card: dict[str, Any]) -> dict[str, Any]:
+    """Remove financial-looking sizing whenever current action is blocked.
+
+    Standing views remain visible for review, but stale/conflicted truth may not
+    render a dollar change, target, trim amount, scenario, or sizing prose.
+    """
+    _, blocking = _canonical_action(card)
+    if not blocking:
+        card["sizing_suppressed"] = False
+        card["sizing_suppression_reason"] = None
+        return card
+    for field in (
+        "delta_usd", "recommended_delta_usd", "target_weight_pct",
+        "trim_to_clear_fire_usd", "trim_to_policy_usd", "scenario_trim_usd",
+        "sizing_method", "sizing_objective",
+    ):
+        card[field] = None
+    card["sizing_suppressed"] = True
+    card["sizing_suppression_reason"] = str(blocking)
+    return card
+
+
 def build_cio_now(
     *,
     position_decisions: Optional[list[dict[str, Any]]] = None,
@@ -293,8 +315,10 @@ def build_cio_now(
                 "target_status": d.get("target_status") if d.get("target_status") is not None else raw.get("target_status"),
                 "decision_input_digest": d.get("decision_input_digest") or raw.get("decision_input_digest") or "",
                 "decision_evidence_digest": d.get("decision_evidence_digest") or raw.get("decision_evidence_digest") or "",
+                "symbol_thesis_id": d.get("symbol_thesis_id") or raw.get("symbol_thesis_id"),
+                "symbol_thesis_version": d.get("symbol_thesis_version") or raw.get("symbol_thesis_version"),
             }
-            investment_pool.append(card)
+            investment_pool.append(suppress_untrusted_sizing(card))
     except Exception:
         for d in position_decisions or []:
             if not isinstance(d, dict):
@@ -311,7 +335,7 @@ def build_cio_now(
             stance = _action_hint(why, d.get("cio_stance") or d.get("stance_code"))
             value_usd = _num(d.get("current_value_usd"))
             weight_pct = _num(d.get("current_weight_pct"))
-            investment_pool.append({
+            card = {
                 "kind": "position",
                 "decision_id": d.get("decision_id") or f"dec_fallback_{d.get('symbol')}",
                 "symbol": d.get("symbol"),
@@ -335,11 +359,11 @@ def build_cio_now(
                 "next_review": d.get("next_review"),
                 "tax_note": d.get("tax_account_constraint"),
                 "operator_actions": [
-                    {"code": "ACK", "label": "Acknowledge"},
+                    {"code": "AGREE", "label": "Agree"},
+                    {"code": "DISAGREE", "label": "Disagree"},
                     {"code": "DEFER", "label": "Defer"},
-                    {"code": "DONE", "label": "Mark done"},
-                    {"code": "REJECT", "label": "Reject"},
-                    {"code": "RATE", "label": "Rate"},
+                    {"code": "NEED_DATA", "label": "Need data"},
+                    {"code": "NO_LONGER_RELEVANT", "label": "No longer relevant"},
                 ],
                 "action_label": d.get("action_label"),
                 "action_label_display": d.get("action_label_display"),
@@ -351,7 +375,10 @@ def build_cio_now(
                 "target_status": d.get("target_status"),
                 "decision_input_digest": d.get("decision_input_digest") or "",
                 "decision_evidence_digest": d.get("decision_evidence_digest") or "",
-            })
+                "symbol_thesis_id": d.get("symbol_thesis_id"),
+                "symbol_thesis_version": d.get("symbol_thesis_version"),
+            }
+            investment_pool.append(suppress_untrusted_sizing(card))
 
     # Phase 4: investment decisions needing attention (disjoint from actions/plans)
     needing = [c for c in investment_pool if _investment_needs_attention(c)]

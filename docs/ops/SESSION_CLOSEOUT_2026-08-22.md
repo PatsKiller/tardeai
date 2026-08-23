@@ -85,6 +85,19 @@ Never print `0.0:1`. Quote-ineligible → withhold. Long invalidation ≥ price 
 | Drive 404s | Heal dead parent IDs (`docs/_archive` mostly) |
 | Blind sheet | Operator scores `DO_NOT_OPEN_UNTIL_SCORED` |
 
+## 2026-08-23 local-model addendum
+
+The earlier “loop refuse gemma” fix did not close the host. Read-only measurement
+found 6 installed generative models, one active `gemma3:12b` GPU process, 241
+local-generative references in the live rebuild source, 45 active cron
+intersections, 5 systemd intersections, and 24 OpenClaw active-config
+references. No model was removed because every physical-decommission precondition
+failed. Pending source changes migrate the directly scheduled advisory/research
+set to governed Grok/ChatGPT lanes with hard failure and no local fallback.
+
+Authority remains `READ_ONLY_ADVISORY`; `MEMORY_BEHAVIOR_INFLUENCE=0`; broker,
+order, stop, risk, and 2FA mutations are zero.
+
 ---
 
 ## Where to read

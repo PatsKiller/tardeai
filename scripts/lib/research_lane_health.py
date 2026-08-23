@@ -28,6 +28,9 @@ COVERAGE_STALL_LANE = "coverage-stall"
 
 DEFAULT_STREAK = 5
 DEFAULT_SILENCE_HOURS = 24
+# Streak resets on one success. 441/1336 COST_CAP errors still look "ok".
+DEFAULT_ERROR_RATE_PCT = 15.0
+DEFAULT_ERROR_RATE_MIN_N = 10
 # DeepSeek must stay in the watched set even when ok. Silence on weekdays only
 # would false-fire Saturday after a Friday success — coverage-stall is the
 # "research happened, brain did not learn" alarm.
@@ -41,6 +44,22 @@ def error_streak_n() -> int:
     return max(1, n)
 
 
+def error_rate_threshold_pct() -> float:
+    try:
+        n = float(os.getenv("RESEARCH_LANE_ERROR_RATE_PCT", str(DEFAULT_ERROR_RATE_PCT)))
+    except ValueError:
+        n = DEFAULT_ERROR_RATE_PCT
+    return max(0.0, min(100.0, n))
+
+
+def error_rate_min_n() -> int:
+    try:
+        n = int(os.getenv("RESEARCH_LANE_ERROR_RATE_MIN_N", str(DEFAULT_ERROR_RATE_MIN_N)))
+    except ValueError:
+        n = DEFAULT_ERROR_RATE_MIN_N
+    return max(1, n)
+
+
 def silence_hours() -> int:
     try:
         n = int(os.getenv("RESEARCH_LANE_SILENCE_HOURS", str(DEFAULT_SILENCE_HOURS)))
@@ -49,12 +68,33 @@ def silence_hours() -> int:
     return max(1, n)
 
 
+SKIPPED_BUDGET_PREFIX = "[SKIPPED_BUDGET]"
+
+
+def is_skipped_budget(rec: Any) -> bool:
+    """COST_CAP / request-cap throttle. Not a lane crash."""
+    return str(rec or "").strip().startswith(SKIPPED_BUDGET_PREFIX)
+
+
 def is_error_recommendation(rec: Any) -> bool:
-    """RAW error: empty OR bracket-prefixed. Do not invert last_real."""
+    """RAW lane-broken: empty OR bracket-prefixed, excluding SKIPPED_BUDGET.
+
+    Do not invert last_real. Do not treat a budget throttle as a broken lane —
+    that is how 441 COST_CAP rows hid inside error_streak=0.
+    """
     s = str(rec or "").strip()
     if not s:
         return True
+    if is_skipped_budget(s):
+        return False
     return s.startswith("[")
+
+
+def is_success_recommendation(rec: Any) -> bool:
+    s = str(rec or "").strip()
+    if not s or is_skipped_budget(s):
+        return False
+    return not s.startswith("[")
 
 
 def consecutive_error_streak(rows_newest_first: Iterable[dict[str, Any]]) -> int:
@@ -70,13 +110,26 @@ def consecutive_error_streak(rows_newest_first: Iterable[dict[str, Any]]) -> int
     return n
 
 
+def _row_rec(row: dict[str, Any]) -> Any:
+    rec = row.get("recommendation")
+    if rec is None:
+        rec = row.get("summary")
+    return rec
+
+
 def non_error_count(rows: Iterable[dict[str, Any]]) -> int:
+    """Successful research rows — excludes errors AND SKIPPED_BUDGET."""
     n = 0
     for row in rows:
-        rec = row.get("recommendation")
-        if rec is None:
-            rec = row.get("summary")
-        if not is_error_recommendation(rec):
+        if is_success_recommendation(_row_rec(row)):
+            n += 1
+    return n
+
+
+def skipped_budget_count(rows: Iterable[dict[str, Any]]) -> int:
+    n = 0
+    for row in rows:
+        if is_skipped_budget(_row_rec(row)):
             n += 1
     return n
 
@@ -95,13 +148,24 @@ def evaluate_lane(
     k = streak_n if streak_n is not None else error_streak_n()
     streak = consecutive_error_streak(newest_first)
     ok_24h = non_error_count(last_24h)
+    skip_24h = skipped_budget_count(last_24h)
     attempts_24h = len(last_24h)
+    err_24h = max(0, attempts_24h - ok_24h - skip_24h)
+    judged = ok_24h + err_24h  # exclude throttle from lane-broken rate
+    rate = round(100.0 * err_24h / judged, 1) if judged else 0.0
     last_any = newest_first[0].get("created_at") if newest_first else None
     firing: list[str] = []
     if streak >= k and attempts_24h > 0:
         firing.append(f"error_streak:{streak}>={k}")
-    if silence and ok_24h == 0:
+    # Throttle is not silence. 441 SKIPPED_BUDGET with 0 sent is budget, not a dead lane.
+    if silence and ok_24h == 0 and skip_24h == 0:
         firing.append(f"zero_non_error_{silence_hours()}h")
+    thr = error_rate_threshold_pct()
+    min_n = error_rate_min_n()
+    if judged >= min_n and rate >= thr:
+        firing.append(f"error_rate_24h:{rate}>={thr:g}")
+    if skip_24h > 0:
+        firing.append(f"budget_throttled:{skip_24h}/{attempts_24h}")
     return {
         "lane": lane,
         "ok": not firing,
@@ -110,6 +174,9 @@ def evaluate_lane(
         "streak_threshold": k,
         "non_error_24h": ok_24h,
         "attempts_24h": attempts_24h,
+        "error_24h": err_24h,
+        "skipped_budget_24h": skip_24h,
+        "error_rate_24h": rate,
         "last_any": last_any,
         "authority": AUTHORITY,
         "as_of": now.replace(microsecond=0).isoformat(),
@@ -329,10 +396,11 @@ def collect_report(*, now: Optional[datetime] = None) -> dict[str, Any]:
         )
     if os.getenv("RESEARCH_LANE_HEALTH_PIN", "1").strip().lower() not in {"0", "false", "off", "no"}:
         try:
-            from scripts.lib.current_pin_integrity import collect_pin_report
+            from scripts.lib.current_pin_integrity import collect_pin_report, collect_process_freshness
         except Exception:
-            from current_pin_integrity import collect_pin_report  # type: ignore
+            from current_pin_integrity import collect_pin_report, collect_process_freshness  # type: ignore
         lanes.append(collect_pin_report(now=now))
+        lanes.append(collect_process_freshness(now=now))
     if os.getenv("RESEARCH_LANE_HEALTH_DRIVE", "1").strip().lower() not in {"0", "false", "off", "no"}:
         try:
             from scripts.lib.drive_sync_health import collect_drive_report

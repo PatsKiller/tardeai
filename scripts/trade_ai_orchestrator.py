@@ -119,21 +119,6 @@ def _inject_sector_scores(tickers, sectors):
             t["sector_momentum_score"] = 1   # unknown sector: small neutral credit, not zero
 
 
-def _warmup_ollama():
-    """Ping Ollama with a tiny prompt to warm up the model before pipeline starts."""
-    try:
-        import urllib.request, json
-        from local_llm_config import get_local_llm_model, get_local_llm_base_url
-        _warmup_model = get_local_llm_model()
-        _warmup_base = get_local_llm_base_url().rstrip("/")
-        payload = json.dumps({"model":_warmup_model,"stream":False,"messages":[{"role":"user","content":"hi"}],"think":False,"options":{"num_predict":1}}).encode()
-        req = urllib.request.Request(f"{_warmup_base}/api/chat",data=payload,headers={"Content-Type":"application/json"},method="POST")
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            json.loads(resp.read())
-            print("  [ollama] Model warmed up")
-    except Exception as e:
-        print(f"  [ollama] Warm-up skipped: {e}")
-
 def run_pipeline(root, run_label, date_str, use_llm=True, send_alerts=True, skip_market_check=False, institutional=False, min_symbols=40, allow_underfilled=False):
     print(f"\n{'='*66}")
     print(f"  \u26a1 Trade AI v12  |  Run {run_label}  |  {date_str}")
@@ -143,9 +128,6 @@ def run_pipeline(root, run_label, date_str, use_llm=True, send_alerts=True, skip
         _caller_args = args  # noqa: F821 \u2014 caller scope
     except NameError:
         _caller_args = None
-    if use_llm:
-        _warmup_ollama()
-
     if not skip_market_check and not _market_open(date_str):
         print(f"  \u23f8  NYSE closed {date_str}. Use --skip-market-check to force.\n")
         return 0
@@ -1079,4 +1061,3 @@ def main():
 if __name__ == "__main__":
     with PipelineRun("trade_ai_orchestrator") as _run:
         raise SystemExit(main())
-

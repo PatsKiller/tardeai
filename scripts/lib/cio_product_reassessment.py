@@ -178,6 +178,18 @@ def _opp_rank(book: dict[str, Any]) -> dict[str, int]:
     return out
 
 
+def _opportunity_transition_material(rank: int | None) -> bool:
+    """Only top-five opportunity membership is interruption-worthy.
+
+    A symbol crossing the bounded top-20 display edge is ordering churn, not a
+    financial thesis change and must remain visible only in the audit product.
+    """
+    try:
+        return 0 < int(rank or 0) <= 5
+    except (TypeError, ValueError):
+        return False
+
+
 def _action_pairs(actions: dict[str, Any]) -> set[tuple[str, str]]:
     pairs: set[tuple[str, str]] = set()
     for bucket, rows in (actions or {}).items():
@@ -226,13 +238,28 @@ def diff_products(prior: dict[str, Any], new: dict[str, Any]) -> dict[str, Any]:
         if sym in NON_TICKER_SYMBOLS:
             continue
         if sym not in p_op:
-            items.append({"kind": "opportunity_added", "symbol": sym, "to": n_op[sym], "material": True})
+            material = _opportunity_transition_material(n_op[sym])
+            items.append({
+                "kind": "opportunity_added", "symbol": sym, "to": n_op[sym],
+                "material": material,
+                **({"demoted_reason": "opportunity_display_cutoff_churn"} if not material else {}),
+            })
         elif sym not in n_op:
-            items.append({"kind": "opportunity_removed", "symbol": sym, "from": p_op[sym], "material": True})
+            material = _opportunity_transition_material(p_op[sym])
+            items.append({
+                "kind": "opportunity_removed", "symbol": sym, "from": p_op[sym],
+                "material": material,
+                **({"demoted_reason": "opportunity_display_cutoff_churn"} if not material else {}),
+            })
         elif p_op[sym] != n_op[sym]:
+            material = (
+                min(p_op[sym], n_op[sym]) <= 5
+                and abs(p_op[sym] - n_op[sym]) >= 3
+            )
             items.append({
                 "kind": "opportunity_rank_change", "symbol": sym,
-                "from": p_op[sym], "to": n_op[sym], "material": abs(p_op[sym] - n_op[sym]) >= 3,
+                "from": p_op[sym], "to": n_op[sym], "material": material,
+                **({"demoted_reason": "opportunity_rank_noise_outside_top5"} if not material else {}),
             })
 
     p_act, n_act = _action_pairs((prior or {}).get("action_book") or {}), _action_pairs((new or {}).get("action_book") or {})
@@ -277,6 +304,33 @@ def material_notification_items(changed: dict[str, Any] | None) -> list[dict[str
             continue
         items.append(i)
     return items
+
+
+def scope_research_change_to_symbol(
+    changed: dict[str, Any] | None,
+    trigger_symbol: str | None,
+) -> dict[str, Any]:
+    """Return the causal notification slice for a symbol research completion."""
+    source = dict(changed or {})
+    symbol = str(trigger_symbol or "").strip().upper()
+    if not symbol:
+        source.update({"material": False, "items": [], "item_count": 0,
+                       "suppressed_reason": "missing_research_trigger_symbol"})
+        return source
+    items = [
+        dict(item) for item in (source.get("items") or [])
+        if isinstance(item, dict) and str(item.get("symbol") or "").upper() == symbol
+    ]
+    source.update({
+        "items": items,
+        "item_count": len(items),
+        "material": any(bool(item.get("material")) for item in items),
+        "causal_scope": "TRIGGER_SYMBOL_ONLY",
+        "trigger_symbol": symbol,
+    })
+    if not source["material"]:
+        source["suppressed_reason"] = "unrelated_or_non_material_rebuild_churn"
+    return source
 
 
 def notification_attribution_symbol(
@@ -416,6 +470,19 @@ def _enqueue_material_product_outbox(
         pid = str(product.get("product_id") or product.get("decision_id") or "product")
         items = material_notification_items(changed)
         trigger_symbol = str(parent.get("symbol") or "").upper() or None
+        if str(product.get("trigger") or "").upper() == "RESEARCH_COMPLETED":
+            items = [
+                item for item in items
+                if str(item.get("symbol") or "").upper() == str(trigger_symbol or "").upper()
+            ]
+            if not items:
+                return {
+                    "outbox_enqueued": False,
+                    "live_delivery": False,
+                    "trigger_symbol": trigger_symbol,
+                    "cards_enqueued": 0,
+                    "outbox_skip_reason": "unrelated_rebuild_churn",
+                }
         cards = cards_for_product_change(
             product,
             changed,
@@ -476,6 +543,16 @@ def _enqueue_material_product_outbox(
         last_event = None
         for card in cards:
             sym = str(card.get("symbol") or "").upper()
+            card_change = card.get("change") if isinstance(card.get("change"), dict) else {}
+            thesis_version = ((card.get("thesis") or {}).get("version")
+                              if isinstance(card.get("thesis"), dict) else None)
+            transition_key = ":".join([
+                "product_transition", sym,
+                str(card_change.get("kind") or "update"),
+                str(card_change.get("from") if card_change.get("from") is not None else "absent"),
+                str(card_change.get("to") if card_change.get("to") is not None else "absent"),
+                f"thesis_v{thesis_version if thesis_version is not None else 'none'}",
+            ])
             body = render_telegram_card(card)
             if not (body or "").strip():
                 # T1: inverted invalidation / empty card — do not enqueue.
@@ -523,8 +600,8 @@ def _enqueue_material_product_outbox(
                 reply_markup = None
             note = {
                 "notification_id": "ntf_prod_" + _digest(pid, sym, changed.get("as_of") or _now()),
-                "idempotency_key": f"product_what_changed:{pid}:{sym}",
-                "dedupe_key": f"product_what_changed:{pid}:{sym}:{changed.get('as_of') or ''}",
+                "idempotency_key": transition_key,
+                "dedupe_key": transition_key,
                 "message_class": "advisory",
                 "channel_targets": ["telegram", "command_center"],
                 "subject": str(card.get("headline") or f"CIO · {sym}"),
@@ -685,45 +762,36 @@ def reassess_on_research_completed(
     }
     prior = load_brief(root)
     try:
-        # Closed-loop §K: research result → SYMBOL THESIS REASSESSMENT (before product rebuild).
-        # Idempotent via reassessment_id; publish only on material content change.
+        # Accepted research becomes a governed delta before thesis/product reassessment.
         thesis_review: dict[str, Any] = {"skipped": True}
         sym_for_thesis = str(parent.get("symbol") or result.get("symbol") or "").upper()
         if sym_for_thesis:
             try:
-                from scripts.lib.symbol_thesis_review import reconcile_symbol_thesis
                 critique_v = str((critique or {}).get("verdict") or "").upper()
-                summary = str(result.get("summary") or result.get("answer") or "").strip()
-                # Only feed research into thesis when critique is not INSUFFICIENT
-                evidence: dict[str, Any] = {
-                    "research_result_id": result_id,
-                    "result_id": result_id,
-                    "financial_truth_refs": list(result.get("evidence_refs") or [])[:12],
-                    "fs_receipts": list(result.get("fs_receipts") or [])[:8],
-                    "ratified_lessons": list(result.get("lessons") or [])[:8],
-                    "memory_refs": list(result.get("memory_refs") or [])[:8],
-                }
-                if summary and critique_v not in {"INSUFFICIENT", "REJECT", "REJECTED"}:
-                    # Append research as evidence_for; do not invent stance
-                    evidence["evidence_for"] = [f"research:{result_id}: {summary[:240]}"]
-                    # Optional explicit stance/summary only if research payload provides them
-                    if result.get("thesis_summary"):
-                        evidence["summary"] = str(result.get("thesis_summary"))[:2000]
-                    if result.get("thesis_stance"):
-                        evidence["stance"] = str(result.get("thesis_stance"))
-                    if result.get("research_gaps") is not None:
-                        evidence["research_gaps"] = list(result.get("research_gaps") or [])
-                    if result.get("counter_evidence") is not None:
-                        evidence["counter_evidence"] = list(result.get("counter_evidence") or [])
-                thesis_review = reconcile_symbol_thesis(
-                    sym_for_thesis,
-                    trigger="research_completion",
-                    evidence=evidence,
-                    root=root,
-                    publish=True,
-                    notify=False,  # notification governed by product what_changed below
-                    actor_id="cio_product_reassessment",
-                )
+                if critique_v in {"INSUFFICIENT", "REJECT", "REJECTED"}:
+                    thesis_review = {"skipped": True, "reason": f"critique_{critique_v.lower()}"}
+                else:
+                    from scripts.lib.research_prompt_context import build_research_prompt_context
+                    from scripts.lib.research_thesis_delta import accept_research_result
+                    prompt_context = result.get("prompt_context") or request.get("prompt_context")
+                    if not isinstance(prompt_context, dict):
+                        prompt_context = build_research_prompt_context(
+                            sym_for_thesis,
+                            question=str(request.get("question") or result.get("question") or "research completion"),
+                            root=root,
+                        )
+                    thesis_review = accept_research_result(
+                        sym_for_thesis,
+                        result,
+                        prompt_context=prompt_context,
+                        research_id=str(result_id),
+                        root=root,
+                        provider=str(result.get("provider") or result.get("lane") or "") or None,
+                        model=str(result.get("model") or "") or None,
+                        trigger="research_completion",
+                        run_id=rid,
+                        source_sha=(env or os.environ).get("TRADEAI_SOURCE_SHA"),
+                    )
             except Exception as thesis_exc:
                 thesis_review = {
                     "ok": False,
@@ -753,6 +821,9 @@ def reassess_on_research_completed(
             )
             if k in thesis_review or thesis_review.get(k) is not None
         }
+        if isinstance(thesis_review.get("delta"), dict):
+            product["symbol_thesis_review"]["delta_id"] = thesis_review["delta"].get("delta_id")
+            product["symbol_thesis_review"]["delta_classification"] = thesis_review["delta"].get("classification")
         _annotate_research(product, result, critique)
         try:
             from scripts.lib.cio_production_eligibility import prior_visible_for_what_changed
@@ -761,6 +832,9 @@ def reassess_on_research_completed(
             prior_cmp = prior
         changed = diff_products(prior_cmp, product)
         product["what_changed"] = changed
+        product["notification_change_scope"] = scope_research_change_to_symbol(
+            changed, parent.get("symbol")
+        )
         persist_product(product, root=root)
         impact = research_impact(
             symbol=str(parent.get("symbol") or ""),
@@ -771,8 +845,9 @@ def reassess_on_research_completed(
             critique=critique,
         )
         _append_jsonl(_paths(root)["impacts"], impact)
+        notification_changed = product["notification_change_scope"]
         nd = (
-            _notify(product, changed, parent, root=root)
+            _notify(product, notification_changed, parent, root=root)
             if notify
             else {"notification_class": "COMMAND_CENTER_ONLY", "skipped": True, "outbox_enqueued": False}
         )

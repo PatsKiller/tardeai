@@ -1,0 +1,662 @@
+{
+  "ok": true,
+  "as_of": "2026-08-23T03:29:57+00:00",
+  "authority": "READ_ONLY_ADVISORY",
+  "memory_behavior_influence": "0",
+  "broker_write_authority": "NONE",
+  "version": "noc-golden-browser-v1",
+  "operator_truth_version": "advisory.operator.v1",
+  "desk_computed_at": "2026-08-23T03:29:57+00:00",
+  "desk_cache_age_seconds": null,
+  "desk_cache_hit": true,
+  "desk_freshness_state": null,
+  "desk_health": {},
+  "timestamps": {},
+  "price_clock": {
+    "as_of": "2026-08-22T12:00:00+00:00",
+    "age_seconds": 55899,
+    "freshness": "STALE",
+    "clock_field": "as_of",
+    "reprice_source": null
+  },
+  "banners": [
+    {
+      "id": "VALIDATION_FAIL",
+      "severity": "critical",
+      "title": "Desk FAILED",
+      "detail": "validation_ok=false"
+    },
+    {
+      "id": "PLAUSIBILITY_OK",
+      "severity": "info",
+      "title": "Plausibility PASS",
+      "detail": "Verdict mix and weight sum within bounds"
+    },
+    {
+      "id": "LOTS_OK",
+      "severity": "info",
+      "title": "Lot data trusted",
+      "detail": "No UNTRUSTED lot_data_status on holdings"
+    },
+    {
+      "id": "LLM_DRY",
+      "severity": "warn",
+      "title": "No LLM opinions on snapshot",
+      "detail": "Run enrich_advisory_with_opinions with flag ON for Flash/Pro"
+    },
+    {
+      "id": "INVARIANTS_OK",
+      "severity": "info",
+      "title": "External invariants green",
+      "detail": "0 listing/price/basis reality failures"
+    }
+  ],
+  "metadata": {
+    "verdict_counts": {
+      "HOLD": 1
+    }
+  },
+  "portfolio_analytics": {},
+  "performance": {},
+  "by_class": {
+    "holding": 1
+  },
+  "desk_sources": {
+    "watchlist_personal_total": null,
+    "watchlist_personal_shown": 0,
+    "watch_hub_active": 370,
+    "watch_hub_universe": 5242,
+    "watch_hub_total": null,
+    "watch_hub_shown": 0,
+    "reentry_universe": null,
+    "reentry_shown": 0
+  },
+  "verdict_counts": {
+    "HOLD": 1
+  },
+  "synthesis": "",
+  "synthesis_label": null,
+  "rows": [
+    {
+      "symbol": "NOC",
+      "account": "acceptance",
+      "row_class": "holding",
+      "verdict": "HOLD",
+      "verdict_suppressed": false,
+      "verdict_suppressed_reason": null,
+      "trim_kind": null,
+      "housekeeping_flag": false,
+      "housekeeping_reason": null,
+      "confidence": 0.82,
+      "setup_state": null,
+      "setup_confidence": null,
+      "watch_filters": [],
+      "watch_rank": null,
+      "market_value": 7080,
+      "weight_pct": null,
+      "gain_loss_pct": null,
+      "days_held": null,
+      "holding_period": null,
+      "adjusted_cost": null,
+      "cost_basis_source": null,
+      "rationale": "Governed thesis strengthened; portfolio action unchanged.",
+      "rationale_signals": [
+        "Governed thesis strengthened; portfolio action unchanged."
+      ],
+      "risk_signals": [],
+      "why_call": null,
+      "advisory_row_hash": "",
+      "row_id": "NOC:acceptance|2026-08-23|",
+      "data_quality": {
+        "evidence_count": 3,
+        "evidence_gaps": [
+          "next-quarter cash conversion"
+        ],
+        "gap_count": 1,
+        "sufficient": true,
+        "lot_data_status": "",
+        "invariant_violations": [],
+        "basis_partial": false,
+        "conflicts": [],
+        "quality": "DATA_UNAVAILABLE",
+        "action_suppressed": false
+      },
+      "canonical_financial_facts": {
+        "current_mark": null,
+        "current_mark_display": "—",
+        "as_of": null,
+        "source": "holdings",
+        "shares": null,
+        "market_value": 7080,
+        "market_value_display": "$7,080.00",
+        "total_cost_basis": null,
+        "total_cost_basis_display": "—",
+        "avg_cost_per_share": null,
+        "avg_cost_per_share_display": "—",
+        "unrealized_pl": null,
+        "unrealized_pl_pct": null,
+        "unrealized_pl_display": "—",
+        "quality": "DATA_UNAVAILABLE",
+        "implied_market_value": null,
+        "implied_price_from_mv": null,
+        "price_fields": {},
+        "price_field_role": null,
+        "canonical_price_key": null,
+        "conflicts": [],
+        "stale_notes": [],
+        "external_quote_stale_vs_session": false,
+        "action_suppressed": false,
+        "banner": null,
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "advisory_provenance": {
+        "version": "advisory_provenance_1.2.0",
+        "symbol": "NOC",
+        "order": [
+          "decision",
+          "current_financial_facts",
+          "portfolio_role",
+          "price_trend",
+          "analyst_research",
+          "specialist_opinions",
+          "conflicts",
+          "evidence_provenance",
+          "operator_actions"
+        ],
+        "current_financial_facts": [
+          {
+            "label": "Current price",
+            "value": null,
+            "display": "—",
+            "as_of": null,
+            "source": "holdings"
+          },
+          {
+            "label": "Position value",
+            "value": 7080,
+            "display": "$7,080.00",
+            "as_of": null,
+            "source": "holdings.market_value"
+          },
+          {
+            "label": "Cost basis",
+            "value": null,
+            "display": "—",
+            "as_of": null,
+            "source": "broker/lots"
+          },
+          {
+            "label": "Unrealized gain",
+            "value": null,
+            "display": "—",
+            "source": "market_value − cost_basis"
+          },
+          {
+            "label": "Analyst target",
+            "value": null,
+            "display": "—",
+            "as_of": null,
+            "source": "analyst_consensus"
+          },
+          {
+            "label": "DATA_UNAVAILABLE",
+            "value": null,
+            "display": "—",
+            "source": "target vs None",
+            "quality": "DATA_UNAVAILABLE",
+            "note": null
+          }
+        ],
+        "canonical_financial_facts": {
+          "current_mark": null,
+          "current_mark_display": "—",
+          "as_of": null,
+          "source": "holdings",
+          "shares": null,
+          "market_value": 7080,
+          "market_value_display": "$7,080.00",
+          "total_cost_basis": null,
+          "total_cost_basis_display": "—",
+          "avg_cost_per_share": null,
+          "avg_cost_per_share_display": "—",
+          "unrealized_pl": null,
+          "unrealized_pl_pct": null,
+          "unrealized_pl_display": "—",
+          "quality": "DATA_UNAVAILABLE",
+          "implied_market_value": null,
+          "implied_price_from_mv": null,
+          "price_fields": {},
+          "price_field_role": null,
+          "canonical_price_key": null,
+          "conflicts": [],
+          "stale_notes": [],
+          "external_quote_stale_vs_session": false,
+          "action_suppressed": false,
+          "banner": null,
+          "authority": "READ_ONLY_ADVISORY"
+        },
+        "analyst": {
+          "target": null,
+          "target_as_of": null,
+          "target_upside_vs_current": null,
+          "target_upside_vs_provider_snapshot": null,
+          "denominator_price": null,
+          "denominator_as_of": null,
+          "denominator_is_canonical_current": false,
+          "upside_label": "DATA_UNAVAILABLE",
+          "quality": "DATA_UNAVAILABLE",
+          "note": null,
+          "target_vs_current_pct": null,
+          "price_target_mean": null,
+          "as_of": null,
+          "provider_snapshot_price": null,
+          "provider_snapshot_as_of": null
+        },
+        "conflicts": [],
+        "opinion_synthesis": null,
+        "specialist_opinions": {
+          "deterministic": null,
+          "maria_or_fundamental": null,
+          "guardian_or_risk": null,
+          "missing_is_not_hold": true
+        },
+        "price_fields": {},
+        "action_suppressed": false,
+        "banner": null,
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "field_states": null,
+      "watch_intelligence": null,
+      "reentry": null,
+      "reentry_state": null,
+      "reentry_entry_low": null,
+      "reentry_entry_high": null,
+      "reentry_price": null,
+      "reentry_rsi": null,
+      "reentry_distance_label": null,
+      "reentry_next_action": null,
+      "reentry_reason": null,
+      "reentry_wash_status": null,
+      "durable_memory": null,
+      "financial_senses": null,
+      "symbol_thesis": {
+        "thesis_id": "symbol_noc",
+        "thesis_version": "symbol_noc@v2",
+        "state": "CURRENT",
+        "stance": "HOLD",
+        "summary": "NOC remains a HOLD in the defensive-growth role after the latest evidence review. Revenue increased 6.7% as funded backlog supported visible multi-year demand. The B-21 program remains the most important named catalyst for future sales and margin mix. Management guidance supports continued growth but does not justify an independent ADD decision. Cash conversion is the strongest counterpoint and requires confirmation in the next filing. The standing thesis is strengthened because program funding and execution evidence improved. Material program cancellation or withdrawn guidance remains the explicit invalidation condition. NOC should therefore remain held while deterministic portfolio gates retain decision authority. This delta improves evidence completeness and grants no trading or broker authority.",
+        "confidence": null,
+        "evidence_for": [
+          "sec_noc_10q_2026q2",
+          "noc_guidance_2026"
+        ],
+        "counter_evidence": [
+          "noc_cash_conversion"
+        ],
+        "invalidation_conditions": [
+          "material program cancellation",
+          "guidance withdrawn"
+        ],
+        "research_gaps": [
+          "next-quarter cash conversion"
+        ],
+        "last_reviewed": "2026-08-23T03:29:57.541400+00:00",
+        "fresh": true,
+        "authority": "READ_ONLY_ADVISORY",
+        "financial_action": false,
+        "research_delta": {
+          "delta_id": "rtd_1e5799fcfcb8dc2a451f",
+          "research_id": "research_noc_golden_2",
+          "classification": "NO_NEW_INFO",
+          "evidence_as_of": "2026-08-22T20:00:00+00:00",
+          "freshness": {
+            "as_of": "2026-08-22T20:00:00+00:00",
+            "state": "CURRENT"
+          }
+        }
+      },
+      "decision_context": {
+        "decision_id": "dec_noc_golden_v2",
+        "thesis_id": "symbol_noc",
+        "thesis_version": "symbol_noc@v2",
+        "research_delta_id": "rtd_96b661450ff4f747a5fc",
+        "research_delta_classification": "STRENGTHENS",
+        "research_delta": {
+          "authority": "READ_ONLY_ADVISORY",
+          "classification": "STRENGTHENS",
+          "confidence": 0.82,
+          "contradictory_evidence_ids": [
+            "noc_cash_conversion"
+          ],
+          "cost": {},
+          "created_at": "2026-08-23T03:29:57+00:00",
+          "delta_id": "rtd_96b661450ff4f747a5fc",
+          "deterministic_changes": [
+            {
+              "after": 12.4,
+              "before": null,
+              "field": "atr"
+            },
+            {
+              "after": "Northrop Grumman",
+              "before": null,
+              "field": "company"
+            },
+            {
+              "after": "Aerospace & Defense",
+              "before": null,
+              "field": "industry"
+            },
+            {
+              "after": 590,
+              "before": null,
+              "field": "price"
+            },
+            {
+              "after": 1.1,
+              "before": null,
+              "field": "rvol"
+            },
+            {
+              "after": "Industrials",
+              "before": null,
+              "field": "sector"
+            },
+            {
+              "after": "UP",
+              "before": null,
+              "field": "trend"
+            }
+          ],
+          "deterministic_snapshot": {
+            "atr": 12.4,
+            "company": "Northrop Grumman",
+            "industry": "Aerospace & Defense",
+            "price": 590,
+            "rvol": 1.1,
+            "sector": "Industrials",
+            "trend": "UP"
+          },
+          "evidence_as_of": "2026-08-22T20:00:00+00:00",
+          "freshness": {
+            "as_of": "2026-08-22T20:00:00+00:00",
+            "state": "CURRENT"
+          },
+          "invalidation_triggered": false,
+          "model": "acceptance-model",
+          "new_evidence_ids": [
+            "sec_noc_10q_2026q2",
+            "noc_guidance_2026",
+            "noc_cash_conversion"
+          ],
+          "prompt_context_hash": "cb1b835a40357be5daa214b1427f3fc779dc16d826dc56d30e901b3c0ba2f1f3",
+          "provider": "governed_cloud",
+          "raw_chain_of_thought": false,
+          "reason_summary": "Fresh primary evidence strengthens completeness without promoting action.",
+          "research_gaps_remaining": [
+            "next-quarter cash conversion"
+          ],
+          "research_id": "research_noc_golden_1",
+          "result_fingerprint": "bae62e77a32ae984d0d4cf7359d4e38e",
+          "schema": "ResearchThesisDelta@v1",
+          "source_quality": {
+            "grade": "PRIMARY",
+            "verified": true
+          },
+          "source_refs": [
+            "sec:noc:10-q:2026q2",
+            "company:noc:guidance:2026q2"
+          ],
+          "standing_thesis_id": "symbol_noc",
+          "standing_thesis_version": "symbol_noc@v1",
+          "supporting_evidence_ids": [
+            "sec_noc_10q_2026q2",
+            "noc_guidance_2026"
+          ],
+          "symbol": "NOC",
+          "thesis_publish_eligible": true,
+          "thesis_quality_grade": {
+            "authority": "READ_ONLY_ADVISORY",
+            "bucket": "PASS",
+            "coverage_state": "CURRENT",
+            "generic_prose": false,
+            "grade": "A",
+            "mentions_symbol": true,
+            "n_chars": 950,
+            "numeric_fidelity_fail": false,
+            "preview": "NOC remains a HOLD in the defensive-growth role after the latest evidence review. Revenue increased 6.7% as funded backlog supported visible multi-year demand. The B-21 program rem",
+            "reasons": [],
+            "schema": "ThesisSubstantiveness@v1",
+            "specific_fact": true,
+            "survive_needles": true,
+            "symbol": "NOC",
+            "thesis_survivable": true,
+            "under_300": false,
+            "would_mint": true
+          },
+          "what_changed": [
+            "revenue evidence",
+            "backlog evidence"
+          ],
+          "what_did_not_change": [
+            "HOLD stance",
+            "invalidation conditions"
+          ]
+        },
+        "authority": "READ_ONLY_ADVISORY",
+        "financial_action": false
+      },
+      "operator": {},
+      "expand": {
+        "lots": {},
+        "canonical_financial_facts": {
+          "current_mark": null,
+          "current_mark_display": "—",
+          "as_of": null,
+          "source": "holdings",
+          "shares": null,
+          "market_value": 7080,
+          "market_value_display": "$7,080.00",
+          "total_cost_basis": null,
+          "total_cost_basis_display": "—",
+          "avg_cost_per_share": null,
+          "avg_cost_per_share_display": "—",
+          "unrealized_pl": null,
+          "unrealized_pl_pct": null,
+          "unrealized_pl_display": "—",
+          "quality": "DATA_UNAVAILABLE",
+          "implied_market_value": null,
+          "implied_price_from_mv": null,
+          "price_fields": {},
+          "price_field_role": null,
+          "canonical_price_key": null,
+          "conflicts": [],
+          "stale_notes": [],
+          "external_quote_stale_vs_session": false,
+          "action_suppressed": false,
+          "banner": null,
+          "authority": "READ_ONLY_ADVISORY"
+        },
+        "advisory_provenance": {
+          "version": "advisory_provenance_1.2.0",
+          "symbol": "NOC",
+          "order": [
+            "decision",
+            "current_financial_facts",
+            "portfolio_role",
+            "price_trend",
+            "analyst_research",
+            "specialist_opinions",
+            "conflicts",
+            "evidence_provenance",
+            "operator_actions"
+          ],
+          "current_financial_facts": [
+            {
+              "label": "Current price",
+              "value": null,
+              "display": "—",
+              "as_of": null,
+              "source": "holdings"
+            },
+            {
+              "label": "Position value",
+              "value": 7080,
+              "display": "$7,080.00",
+              "as_of": null,
+              "source": "holdings.market_value"
+            },
+            {
+              "label": "Cost basis",
+              "value": null,
+              "display": "—",
+              "as_of": null,
+              "source": "broker/lots"
+            },
+            {
+              "label": "Unrealized gain",
+              "value": null,
+              "display": "—",
+              "source": "market_value − cost_basis"
+            },
+            {
+              "label": "Analyst target",
+              "value": null,
+              "display": "—",
+              "as_of": null,
+              "source": "analyst_consensus"
+            },
+            {
+              "label": "DATA_UNAVAILABLE",
+              "value": null,
+              "display": "—",
+              "source": "target vs None",
+              "quality": "DATA_UNAVAILABLE",
+              "note": null
+            }
+          ],
+          "canonical_financial_facts": {
+            "current_mark": null,
+            "current_mark_display": "—",
+            "as_of": null,
+            "source": "holdings",
+            "shares": null,
+            "market_value": 7080,
+            "market_value_display": "$7,080.00",
+            "total_cost_basis": null,
+            "total_cost_basis_display": "—",
+            "avg_cost_per_share": null,
+            "avg_cost_per_share_display": "—",
+            "unrealized_pl": null,
+            "unrealized_pl_pct": null,
+            "unrealized_pl_display": "—",
+            "quality": "DATA_UNAVAILABLE",
+            "implied_market_value": null,
+            "implied_price_from_mv": null,
+            "price_fields": {},
+            "price_field_role": null,
+            "canonical_price_key": null,
+            "conflicts": [],
+            "stale_notes": [],
+            "external_quote_stale_vs_session": false,
+            "action_suppressed": false,
+            "banner": null,
+            "authority": "READ_ONLY_ADVISORY"
+          },
+          "analyst": {
+            "target": null,
+            "target_as_of": null,
+            "target_upside_vs_current": null,
+            "target_upside_vs_provider_snapshot": null,
+            "denominator_price": null,
+            "denominator_as_of": null,
+            "denominator_is_canonical_current": false,
+            "upside_label": "DATA_UNAVAILABLE",
+            "quality": "DATA_UNAVAILABLE",
+            "note": null,
+            "target_vs_current_pct": null,
+            "price_target_mean": null,
+            "as_of": null,
+            "provider_snapshot_price": null,
+            "provider_snapshot_as_of": null
+          },
+          "conflicts": [],
+          "opinion_synthesis": null,
+          "specialist_opinions": {
+            "deterministic": null,
+            "maria_or_fundamental": null,
+            "guardian_or_risk": null,
+            "missing_is_not_hold": true
+          },
+          "price_fields": {},
+          "action_suppressed": false,
+          "banner": null,
+          "authority": "READ_ONLY_ADVISORY"
+        },
+        "price_action": {},
+        "analyst": {
+          "target": null,
+          "target_as_of": null,
+          "target_upside_vs_current": null,
+          "target_upside_vs_provider_snapshot": null,
+          "denominator_price": null,
+          "denominator_as_of": null,
+          "denominator_is_canonical_current": false,
+          "upside_label": "DATA_UNAVAILABLE",
+          "quality": "DATA_UNAVAILABLE",
+          "note": null,
+          "target_vs_current_pct": null,
+          "price_target_mean": null,
+          "as_of": null,
+          "provider_snapshot_price": null,
+          "provider_snapshot_as_of": null
+        },
+        "memory": {},
+        "durable_memory": null,
+        "financial_senses": null,
+        "watch_intelligence": null,
+        "reentry": null,
+        "field_states": null,
+        "evidence_items": [],
+        "opinion": null,
+        "instrument": null
+      }
+    }
+  ],
+  "row_count": 1,
+  "content_hash": null,
+  "llm_in_path": false,
+  "deterministic": true,
+  "promotion": {
+    "status": "NOT_PROMOTED",
+    "promoted": false,
+    "morning_path_default": false
+  },
+  "schedule": {
+    "cadence": "weekdays 09:15 America/New_York",
+    "timer_unit": "tradeai-advisory-shadow-session.timer",
+    "source": "calendar",
+    "next_run_at": "2026-08-24T09:15:00-04:00",
+    "next_run_et": "Mon 2026-08-24 09:15 EDT",
+    "authority": "READ_ONLY_ADVISORY",
+    "financial_action": false
+  },
+  "run_now": {
+    "state": "idle",
+    "authority": "READ_ONLY_ADVISORY",
+    "financial_action": false,
+    "broker_write_authority": "NONE"
+  },
+  "_serving": {
+    "schema": "ServingFreshness@v1",
+    "authority": "READ_ONLY_ADVISORY",
+    "process_started_at": "2026-08-22T23:31:32-04:00",
+    "source_pin": "5e91225a1186659de3cfd65096e037e774506e7f",
+    "loaded_pin": "977d327cf8ba7977351a38f91fc31bb56b58d58d",
+    "loaded_pin_sha": "977d327cf8ba7977351a38f91fc31bb56b58d58d",
+    "current_pin_sha": "5e91225a1186659de3cfd65096e037e774506e7f",
+    "data_as_of": "2026-08-23T03:29:57+00:00",
+    "cache_age": 102.093,
+    "pin_match": false
+  }
+}

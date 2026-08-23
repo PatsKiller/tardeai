@@ -19,6 +19,7 @@ from scripts.lib.symbol_thesis_coverage import build_coverage_report, symbol_the
 from scripts.lib.symbol_thesis_queue import load_symbol_research_queue
 from scripts.lib.symbol_thesis_research import propose_prioritized_research, research_requests_for_symbol
 from scripts.lib.symbol_thesis_review import daily_thesis_changes
+from scripts.lib.research_prompt_context import latest_delta
 from scripts.lib.symbol_universe import reconcile_universe
 
 AUTHORITY = "READ_ONLY_ADVISORY"
@@ -123,6 +124,17 @@ def build_universe_theses_projection(
     metrics = universe_metrics(root=root)
     report = build_coverage_report(root=root, material_only=False)
     daily = daily_thesis_changes(root=root)
+    try:
+        from scripts.lib.universe_projection import build_universe_projection
+        canonical_universe = build_universe_projection(root=root)
+    except Exception as exc:
+        canonical_universe = {
+            "schema": "UniverseProjection@v1",
+            "ok": False,
+            "error": f"{type(exc).__name__}:{exc}",
+            "authority": AUTHORITY,
+            "financial_action": False,
+        }
 
     material_rows = [r for r in (report.get("rows") or []) if r.get("material")]
     non_ticker_excluded = sum(
@@ -151,6 +163,7 @@ def build_universe_theses_projection(
             "portfolio_role": (r.get("portfolio_role") or {}).get("portfolio_role"),
             "portfolio_role_source": (r.get("portfolio_role") or {}).get("source"),
             "thesis_state": r.get("coverage_state"),
+            "mint_state": r.get("coverage_state"),
             "stance": r.get("thesis_stance"),
             "confidence": None,
             "last_reviewed": None,
@@ -192,10 +205,19 @@ def build_universe_theses_projection(
             "non_ticker_excluded": non_ticker_excluded,
             "unknown_role": metrics.get("role_unknown"),
             "coverage_pct": metrics.get("coverage_pct_material"),
+            "substantive_pct": metrics.get("substantive_pct_material"),
+            "thin": metrics.get("thin"),
+            "held": metrics.get("held"),
+            "held_current": metrics.get("held_current"),
+            "held_thin": metrics.get("held_thin"),
+            "held_coverage_pct": metrics.get("held_coverage_pct"),
+            "held_substantive_pct": metrics.get("held_substantive_pct"),
+            "percentage_definitions": metrics.get("percentage_definitions") or {},
             "open_thesis_research_proposed": (proposed or {}).get("counts", {}).get("proposed") if proposed else 0,
             "desk": metrics.get("desk"),
         },
         "daily_thesis_changes": daily,
+        "universe_projection": canonical_universe,
         "symbols": cards,
         "proposed_research": proposed,
         "note": (
@@ -209,6 +231,7 @@ def build_symbol_thesis_card(
     symbol: str,
     *,
     root: Path | str | None = None,
+    research_rows: Optional[list[dict[str, Any]]] = None,
 ) -> dict[str, Any]:
     """Per-symbol drill-down for Command Center / Ask CIO context."""
     root = _root(root)
@@ -227,14 +250,19 @@ def build_symbol_thesis_card(
             "published_at": h.get("published_ts"),
             "reason_for_change": h.get("change_note"),
             "stance": h.get("stance"),
-            "summary": (h.get("summary") or "")[:300],
+            "summary": (h.get("summary") or ""),
             "evidence_refs": h.get("evidence_refs") or [],
         })
     research = research_requests_for_symbol(sym, root=root)
     uni = reconcile_universe(root)
     urec = (uni.get("symbols") or {}).get(sym) or {}
-    queue = load_symbol_research_queue(sym)
+    queue = (
+        load_symbol_research_queue(sym, rows=research_rows)
+        if research_rows is not None
+        else load_symbol_research_queue(sym)
+    )
     cio_action = _cio_action_for_symbol(sym, root=root)
+    research_delta = latest_delta(sym, root=root)
     ntf = None
     try:
         from scripts.lib.cio_command_center import _trust_notification
@@ -266,9 +294,21 @@ def build_symbol_thesis_card(
             "opportunity": urec.get("opportunity"),
             "former": urec.get("former"),
         },
-        "core_thesis": fields.get("thesis_summary") or "DATA_UNAVAILABLE — no living symbol thesis",
+        "core_thesis": fields.get("thesis_summary") or "No living thesis",
         "positive_evidence": fields.get("evidence_for") or [],
         "counter_thesis": fields.get("counter_evidence") or [],
+        "evidence_provenance": {
+            "research_id": (research_delta or {}).get("research_id"),
+            "delta_id": (research_delta or {}).get("delta_id"),
+            "classification": (research_delta or {}).get("classification"),
+            "provider": (research_delta or {}).get("provider"),
+            "model": (research_delta or {}).get("model"),
+            "evidence_as_of": (research_delta or {}).get("evidence_as_of"),
+            "source_refs": (research_delta or {}).get("source_refs") or [],
+            "source_quality": (research_delta or {}).get("source_quality"),
+            "freshness": (research_delta or {}).get("freshness"),
+            "authority": AUTHORITY,
+        },
         "invalidation": fields.get("invalidation_conditions") or [],
         "market_sector_fit": fields.get("thesis_summary"),
         "why_owned_or_watched": fields.get("why_owned_or_watched"),
@@ -320,6 +360,12 @@ def _cio_action_for_symbol(symbol: str, root: Path) -> Optional[dict[str, Any]]:
                     "bucket": bucket,
                     "action": r.get("action"),
                     "why": r.get("why"),
+                    "decision_id": r.get("decision_id"),
+                    "previous_action": r.get("previous_action"),
+                    "reason_codes": r.get("reason_codes") or [],
+                    "research_delta": r.get("research_delta"),
+                    "thesis_version": r.get("thesis_version"),
+                    "source_freshness": r.get("source_freshness"),
                     "authority": AUTHORITY,
                     "financial_action": False,
                 }

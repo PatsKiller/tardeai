@@ -161,3 +161,45 @@ def test_ciohub_posts_decision_id_not_position_primary():
     assert "encodeURIComponent(key)" not in src or "decisionId" in src
     assert "Legacy unversioned" in src
     assert "not applied" in src.lower()
+
+
+def test_governed_feedback_is_linked_and_not_an_outcome(iso, monkeypatch):
+    iso["catalog"][DID]["symbol_thesis_id"] = "symbol_schd"
+    iso["catalog"][DID]["symbol_thesis_version"] = "symbol_schd@v4"
+    captured = {}
+
+    def _append(row):
+        captured["feedback"] = dict(row)
+        return {"feedback_id": "otf_1", **row, "linkage_complete": True}
+
+    def _need(symbol, *, feedback, apply):
+        captured["need"] = {"symbol": symbol, "feedback": feedback, "apply": apply}
+        return {"ok": True, "challenge_id": "gap_1"}
+
+    monkeypatch.setattr("scripts.lib.cio_operator_ticker_feedback.append_feedback", _append)
+    monkeypatch.setattr("scripts.lib.cio_operator_ticker_feedback.maybe_enqueue_need_data", _need)
+    result = _post(
+        iso, DID,
+        disposition="need_data", decision_id=DID,
+        decision_input_digest=IN_DIGEST, decision_evidence_digest=EV_DIGEST,
+        symbol="SCHD", thesis_id="symbol_schd", thesis_version="symbol_schd@v4",
+        operator_identity_class="PRIMARY_OPERATOR", source_surface="cio_decision_card",
+    )
+    assert result["ok"] is True
+    assert result["feedback"]["linkage_complete"] is True
+    assert captured["feedback"]["intent"] == "NEED_DATA"
+    assert captured["feedback"]["decision_id"] == DID
+    assert captured["feedback"]["thesis_version"] == "symbol_schd@v4"
+    assert captured["need"]["apply"] is False
+    assert result["outcome"] == {
+        "ok": True, "created": False, "reason": "operator_feedback_is_not_outcome",
+    }
+
+
+def test_ciohub_uses_required_feedback_vocabulary():
+    src = (ROOT / "apps" / "command-center-v3" / "src" / "pages" / "CioHub.tsx").read_text(encoding="utf-8")
+    for label in ("AGREE", "DISAGREE", "DEFER", "NEED DATA", "NO LONGER RELEVANT"):
+        assert f">{label}</button>" in src
+    assert ">ACK</button>" not in src
+    assert ">DONE</button>" not in src
+    assert ">REJECT</button>" not in src

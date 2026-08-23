@@ -336,6 +336,18 @@ def stamp_result(
             or []
         )[:40],
     }
+    # Preserve the governed ResearchThesisDelta inputs produced by the backend.
+    # Identity/status/provenance remain worker-stamped; raw chain-of-thought is
+    # neither requested nor copied.
+    for key in (
+        "recommendation", "dissent", "confidence", "classification",
+        "evidence_as_of", "evidence", "contradictory_evidence",
+        "reason_summary", "what_changed", "what_did_not_change",
+        "research_gaps_remaining", "invalidation_triggered", "source_quality",
+        "freshness", "source_refs", "thesis_stance", "provider", "model",
+    ):
+        if body.get(key) is not None:
+            result[key] = body.get(key)
     return result
 
 
