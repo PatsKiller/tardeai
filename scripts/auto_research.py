@@ -227,23 +227,50 @@ def _queue_agent_reviews(symbol: str, note: str) -> int:
 
 
 def research_symbol(symbol: str, reason: str = "manual", trigger_kind: str = "manual") -> dict:
-    """Run deep research on a symbol using LLM + web search + available intel."""
+    """Run governed cloud research with canonical state and RAG-first acquisition."""
     from llm_router import get_llm_response
     from intel_query import get_intel_summary
     from agent_collab import get_agent_context
     from web_research import research_symbol_web
 
+    from lib.research_data_quality import assess_prompt_context, validate_research_output
+    from lib.research_prompt_context import build_research_prompt_context
+
+    stateful_context = build_research_prompt_context(
+        symbol,
+        question=reason,
+        root=PROJECT_ROOT,
+    )
+    admission = assess_prompt_context(stateful_context)
+    if not admission["provider_call_allowed"]:
+        return {
+            "error": "DATA_QUALITY_BLOCK",
+            "symbol": symbol,
+            "reason_codes": admission["reason_codes"],
+            "provider_call_attempted": False,
+        }
+
     intel = get_intel_summary(symbol=symbol, min_quality=30, max_chars=500, days=14)
     agent_ctx = get_agent_context(symbol, requesting_agent="auto_research")
 
-    web_ctx, web_sources = research_symbol_web(symbol, focus="analysis dividend risk",
-                                               return_sources=True)
+    rag_sufficient = bool(
+        ((stateful_context.get("rag") or {}).get("sufficiency") or {}).get("sufficient_for_synthesis")
+    )
+    if rag_sufficient:
+        web_ctx, web_sources = "", []
+    else:
+        web_ctx, web_sources = research_symbol_web(
+            symbol, focus="analysis dividend risk", return_sources=True
+        )
     if web_ctx:
         intel = f"{intel}\n\n{web_ctx}" if intel else web_ctx
 
     prompt = f"""/no_think You are a senior research analyst. Conduct a focused research brief on {symbol}.
 
-CONTEXT:
+STATEFUL CONTEXT (authoritative only as labeled; memory influence is zero):
+{json.dumps(stateful_context, default=str)}
+
+LEGACY INTEL CONTEXT:
 {intel}
 
 {agent_ctx}
@@ -257,9 +284,11 @@ Provide a concise research brief covering:
 4. RECOMMENDATION: Based on available information, what's the highest-conviction next action
 5. CONFIDENCE: How certain are you (0-100%) and why
 
-Keep under 300 words. Be specific with numbers and dates. Flag anything not present in CONTEXT as [unverified]."""
+Return a delta from the standing thesis, not a first-impression essay. Keep under 300 words.
+Use DATA_UNAVAILABLE for missing values; never represent unavailable P/E or 52-week data as zero.
+Be specific with numbers and dates. Flag anything not present in CONTEXT as [unverified]."""
 
-    # Screener discoveries: prefer local gemma; conflicts/decisions may use cloud.
+    # All automatic judgment routes through the governed cloud-only router.
     high_impact = trigger_kind in ("agent_conflict", "high_impact_decision")
     result = get_llm_response("cio_synthesis", prompt, max_tokens=600, high_impact=high_impact)
 
@@ -267,6 +296,14 @@ Keep under 300 words. Be specific with numbers and dates. Flag anything not pres
         return {"error": "LLM failed", "symbol": symbol}
 
     research = result["response"]
+    output_quality = validate_research_output(research)
+    if not output_quality["accepted"]:
+        return {
+            "error": "OUTPUT_DATA_QUALITY_REJECTED",
+            "symbol": symbol,
+            "reason_codes": output_quality["reason_codes"],
+            "provider_call_attempted": True,
+        }
     provider = result.get("provider")
     model_used = result.get("model_used")
 
@@ -300,6 +337,9 @@ Keep under 300 words. Be specific with numbers and dates. Flag anything not pres
         "pipeline": "trade_ai_auto_research",
         "hermes": False,
         "web_search_ok": bool(web_ctx),
+        "rag_first": True,
+        "rag_reused_without_web": rag_sufficient,
+        "prompt_context_hash": stateful_context.get("prompt_context_hash"),
     }
 
     conn = _get_conn()

@@ -77,7 +77,7 @@ def test_enqueue_per_ticker_intelligence_body(tmp_path: Path):
     outbox = NotificationOutbox(event_store_path=tmp_path / "outbox.jsonl")
     product = {
         "product_id": "prod_iic_1",
-        "trigger": "RESEARCH_COMPLETED",
+        "trigger": "MARKET_DATA_CHANGED",
         "reentry_book": {
             "names": [{
                 "symbol": "UBER",
@@ -108,6 +108,29 @@ def test_enqueue_per_ticker_intelligence_body(tmp_path: Path):
     assert "symbol=BOOK" not in text
     # Soft: IIC outbox notes opt into HTML parse_mode for Telegram bold/code.
     assert '"parse_mode": "HTML"' in text or '"parse_mode":"HTML"' in text
+
+
+def test_research_completion_does_not_enqueue_unrelated_book_churn(tmp_path: Path):
+    outbox = NotificationOutbox(event_store_path=tmp_path / "outbox.jsonl")
+    res = _enqueue_material_product_outbox(
+        {
+            "product_id": "prod_cross_symbol",
+            "trigger": "RESEARCH_COMPLETED",
+            "reentry_book": {"names": []},
+        },
+        {
+            "material": True,
+            "items": [
+                {"kind": "opportunity_added", "symbol": "FCNTX", "to": 20, "material": True},
+                {"kind": "reentry_removed", "symbol": "JTAI", "from": "NEAR", "material": True},
+            ],
+        },
+        {"symbol": "SCHD"},
+        root=tmp_path,
+        outbox=outbox,
+    )
+    assert res["outbox_enqueued"] is False
+    assert res["outbox_skip_reason"] == "unrelated_rebuild_churn"
 
 
 def test_notify_still_enqueues(tmp_path: Path):

@@ -55,7 +55,7 @@ def main():
     # Parse evidence_json for metadata
     for r in rows:
         ej = json.loads(r["evidence_json"]) if r["evidence_json"] else []
-        meta = ej[0] if ej else {}
+        meta = ej[0] if isinstance(ej, list) and ej else (ej if isinstance(ej, dict) else {})
         r["priority"] = meta.get("priority", "unknown")
         r["owner_agent"] = meta.get("owner_agent", "unknown")
         r["backlog_type"] = meta.get("backlog_type", "unknown")
@@ -72,9 +72,13 @@ def main():
     open_rows = [r for r in rows if r["status"] == "staged"]
     checks["open_count"] = len(open_rows)
 
-    # 3. High priority
-    high = [r for r in rows if r["priority"] == "high"]
+    # 3. High priority. Terminal history is evidence, not an open operator queue.
+    high = [r for r in open_rows if r["priority"] == "high"]
     checks["high_priority_count"] = len(high)
+    checks["historical_high_priority_count"] = sum(
+        1 for r in rows if r["priority"] == "high"
+    )
+    checks["terminal_count"] = len(rows) - len(open_rows)
 
     # 4. Stale (>7 days)
     stale = [r for r in open_rows if r["age_days"] > STALE_DAYS]
@@ -84,7 +88,7 @@ def main():
     # 5. Duplicate-like (same symbol + backlog_type)
     seen_keys = {}
     dupes = []
-    for r in rows:
+    for r in open_rows:
         key = f"{r['symbol'] or 'NULL'}:{r['backlog_type']}"
         if key in seen_keys:
             dupes.append({"id": r["id"], "duplicate_of": seen_keys[key], "key": key})
@@ -94,10 +98,14 @@ def main():
     checks["duplicate_risks"] = dupes
 
     # 6-9. Missing fields
-    checks["missing_owner_agent"] = sum(1 for r in rows if r["owner_agent"] == "unknown")
-    checks["missing_research_questions"] = sum(1 for r in rows if not r["has_research_questions"])
-    checks["missing_evidence"] = sum(1 for r in rows if not r["evidence_json"] or r["evidence_json"] == "[]")
-    checks["missing_symbol"] = sum(1 for r in rows if not r["symbol"])
+    checks["missing_owner_agent"] = sum(1 for r in open_rows if r["owner_agent"] == "unknown")
+    checks["missing_backlog_type"] = sum(1 for r in open_rows if r["backlog_type"] == "unknown")
+    checks["missing_research_questions"] = sum(1 for r in open_rows if not r["has_research_questions"])
+    checks["missing_evidence"] = sum(1 for r in open_rows if not r["evidence_json"] or r["evidence_json"] == "[]")
+    checks["missing_symbol"] = sum(1 for r in open_rows if not r["symbol"])
+    checks["historical_missing_owner_agent"] = sum(
+        1 for r in rows if r["owner_agent"] == "unknown"
+    )
 
     # 10. Source surface distribution
     surfaces = Counter(r["source_surface"] for r in rows)
@@ -151,6 +159,7 @@ def main():
         f"**Generated:** {now.strftime('%Y-%m-%d %H:%M UTC')}",
         f"**Total backlog:** {checks['total_backlog']}",
         f"**Open (staged):** {checks['open_count']}",
+        f"**Terminal history:** {checks['terminal_count']}",
         f"**High priority:** {checks['high_priority_count']}",
         f"**Stale (>{STALE_DAYS}d):** {checks['stale_count']}",
         f"**Warnings:** {len(warnings)}",

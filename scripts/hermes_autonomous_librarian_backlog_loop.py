@@ -33,6 +33,24 @@ SURFACE_BY_FINDING = {
     "screener_underfilled": "screener_registry",
     "stale_source_discovery": "source_discovery",
 }
+OWNER_BY_FINDING = {
+    "backtest_weak_strategy": "strategy_research_agent",
+    "catalyst_quality_gap": "catalyst_research_agent",
+    "screener_underfilled": "screener_quality_agent",
+    "stale_source_discovery": "source_discovery_agent",
+}
+BACKLOG_TYPE_BY_FINDING = {
+    "backtest_weak_strategy": "strategy_validation",
+    "catalyst_quality_gap": "catalyst_quality",
+    "screener_underfilled": "screener_coverage",
+    "stale_source_discovery": "source_freshness",
+}
+QUESTION_BY_FINDING = {
+    "backtest_weak_strategy": "Does the strategy retain evidence after governed out-of-sample validation?",
+    "catalyst_quality_gap": "Which primary source can classify this catalyst without inference?",
+    "screener_underfilled": "Which deterministic eligibility or feed constraint caused the underfill?",
+    "stale_source_discovery": "Is there a current approved source that resolves this freshness gap?",
+}
 
 def get_db():
     import psycopg2
@@ -180,6 +198,11 @@ def main():
             (f"{f['type']}:{f['strategy']}: {f['detail']}" if f.get("strategy") else f"{f['type']}: {f['detail']}")[:200],
             f"Autonomous Librarian detected: {f['detail']}. Requires operator review.",
             json.dumps([{"type":"autonomous_librarian_finding","finding_type":f["type"],"priority":f["priority"],
+                        "owner_agent":OWNER_BY_FINDING.get(f["type"], "research_triage_agent"),
+                        "backlog_type":BACKLOG_TYPE_BY_FINDING.get(f["type"], "research_triage"),
+                        "research_questions":[QUESTION_BY_FINDING.get(
+                            f["type"], "What evidence is required to resolve this research backlog item?"
+                        )],
                         "source_surface":SURFACE_BY_FINDING.get(f["type"], "librarian_loop"),
                         "advisory_only":True,"not_execution":True,"operator_review_required":True,
                         "source_phase":"49","detail":f["detail"]}]),

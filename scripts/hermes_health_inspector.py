@@ -2,8 +2,8 @@
 """hermes_health_inspector.py — Hermes Health Inspector Agent (Layer 2)
 
 Reads health surfaces from health_agent.py, system_health_agent.py, pipeline_freshness_monitor,
-and hermes_pipeline_health.py. Fuses signals using local LLM (Ollama gemma3:4b) to identify
-root cause. Stages findings in hermes_research_intelligence DB table. For P0/P1: writes to
+and hermes_pipeline_health.py. Deterministically summarizes degraded producers and stages
+findings in hermes_research_intelligence DB table. For P0/P1: writes to
 claude_escalation_queue.json and staleness_escalation_queue.json.
 
 Safety controls:
@@ -22,7 +22,6 @@ from __future__ import annotations
 import argparse
 import fcntl
 import json
-import os
 import signal
 import sys
 import time
@@ -188,8 +187,7 @@ def _fuse_signals(
     hermes_health: dict | None,
     dry_run: bool = False,
 ) -> list[dict]:
-    """Fuse health signals using local LLM (Ollama gemma3:4b) to identify root cause.
-    Returns list of findings with severity, evidence, remediation."""
+    """Deterministically fuse health signals into one bounded finding."""
     findings = []
 
     # Phase 1: Deterministic aggregation — collect all stale/degraded items
@@ -222,72 +220,21 @@ def _fuse_signals(
 
     _log(f"Found {len(stale_items)} stale/degraded items to analyze")
 
-    # Phase 2: LLM fusion for root cause (gemma3:4b via Ollama)
+    # Keep the payload bounded and deterministic. Health inspection is an operations
+    # path and must never gain a hidden local-generative fallback.
     if len(stale_items) > 20:
         stale_items = sorted(stale_items, key=lambda x: (0 if x.get("severity") == "critical" else 1))[:20]
 
     critical_count = sum(1 for s in stale_items if s.get("severity") == "critical")
     warning_count = sum(1 for s in stale_items if s.get("severity") == "warning")
 
-    # Build prompt for LLM
-    items_text = "\n".join(
-        f"- [{s['severity'].upper()}] {s['source']}:{s.get('type')} — {s.get('message', '')[:150]}"
-        for s in stale_items
+    priority = "P1" if critical_count > 0 else "P2"
+    root_cause = "pipeline_health_inputs_degraded"
+    recommendation = (
+        f"Inspect the named producers: {critical_count} critical and "
+        f"{warning_count} warning signals are outside policy."
     )
-
-    prompt = (
-        f"/no_think You are a Trade AI system health analyst. Analyze these stale indicators:\n\n"
-        f"Total: {len(stale_items)} ({critical_count} critical, {warning_count} warning)\n\n"
-        f"{items_text}\n\n"
-        f"Determine:\n"
-        f"1. ROOT CAUSE: What is the common underlying cause (if any)?\n"
-        f"2. PRIORITY: Rank by P0/P1/P2/P3 severity\n"
-        f"3. RECOMMENDATION: What should be done?\n\n"
-        f"Respond in JSON format: {{\"root_cause\": \"...\", \"priority\": \"P0|P1|P2|P3\", "
-        f"\"recommendation\": \"...\", \"evidence\": \"...\", \"linked_producers\": [...]}}"
-    )
-
-    if dry_run:
-        root_cause = "DRY_RUN: Deterministic aggregation only"
-        priority = "P1" if critical_count > 0 else "P2"
-        recommendation = f"{len(stale_items)} items need attention: {critical_count} critical, {warning_count} warning"
-        evidence = json.dumps(stale_items[:5], default=str)[:500]
-    else:
-        try:
-            import requests
-            resp = requests.post(
-                "http://localhost:11434/api/generate",
-                json={
-                    "model": os.getenv("LOCAL_LLM_MODEL", "gemma3:4b"),
-                    "prompt": prompt,
-                    "stream": False,
-                    "options": {"num_predict": 400, "temperature": 0.2},
-                },
-                timeout=90,
-            )
-            if resp.ok:
-                llm_out = resp.json().get("response", "")
-                try:
-                    parsed = json.loads(llm_out)
-                    root_cause = parsed.get("root_cause", llm_out[:200])
-                    priority = parsed.get("priority", "P2")
-                    recommendation = parsed.get("recommendation", llm_out[:200])
-                    evidence = parsed.get("evidence", llm_out[:300])
-                except json.JSONDecodeError:
-                    root_cause = llm_out[:300]
-                    priority = "P2"
-                    recommendation = "See LLM analysis"
-                    evidence = llm_out[:400]
-            else:
-                root_cause = f"LLM unreachable (HTTP {resp.status_code})"
-                priority = "P1" if critical_count > 0 else "P2"
-                recommendation = f"Manual inspection needed: {critical_count} critical, {warning_count} warning items"
-                evidence = json.dumps(stale_items[:5], default=str)[:500]
-        except Exception as e:
-            root_cause = f"LLM analysis failed: {e}"
-            priority = "P1" if critical_count > 0 else "P2"
-            recommendation = f"Manual inspection needed — LLM unavailable"
-            evidence = json.dumps(stale_items[:5], default=str)[:500]
+    evidence = json.dumps(stale_items[:5], default=str)[:500]
 
     # Map priority to severity
     sev_map = {"P0": "critical", "P1": "critical", "P2": "warning", "P3": "info"}
@@ -393,7 +340,7 @@ def _stage_findings(conn, findings: list[dict]) -> tuple[int, list[dict]]:
                     "{" + ",".join(['"health_inspection"', f'"{sev}"', f'"{pri}"'] + 
                                    [f'"{p}"' for p in linked[:5]]) + "}",
                     pattern_sig,
-                    "local_llm",
+                    "deterministic_health_rules_v1",
                 ),
             )
             row_id = cur.fetchone()[0]
@@ -520,14 +467,15 @@ def _run(dry_run: bool = False):
             hung_agents = cur.fetchall()
             cur.close()
 
-            for agent in hung_agents:
-                _stage_finding(
-                    source='hermes',
-                    summary=f"Agent {agent[0]} is {agent[2]} — last seen {agent[3]:.0f}min ago",
-                    severity='P0' if agent[3] > 30 else 'P1',
-                    confidence_score=0.9,
-                    metadata={"agent_id": agent[0], "status": agent[2], "mins_since_seen": agent[3]},
-                )
+            if not dry_run:
+                for agent in hung_agents:
+                    _stage_finding(
+                        source='hermes',
+                        summary=f"Agent {agent[0]} is {agent[2]} — last seen {agent[3]:.0f}min ago",
+                        severity='P0' if agent[3] > 30 else 'P1',
+                        confidence_score=0.9,
+                        metadata={"agent_id": agent[0], "status": agent[2], "mins_since_seen": agent[3]},
+                    )
         except Exception:
             pass  # graceful if table doesn't exist yet
 
@@ -551,11 +499,11 @@ def _run(dry_run: bool = False):
         # Cap to remaining daily budget
         fused_findings = fused_findings[:remaining]
 
-        # Stage in DB
-        staged, staged_records = _stage_findings(conn, fused_findings)
-
-        # Escalate P0/P1
-        _escalate(fused_findings)
+        if dry_run:
+            staged, staged_records = 0, []
+        else:
+            staged, staged_records = _stage_findings(conn, fused_findings)
+            _escalate(fused_findings)
 
         elapsed = time.time() - start_time
         _log(f"Complete: {staged} finding(s) staged in {elapsed:.1f}s")
