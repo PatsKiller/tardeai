@@ -201,6 +201,54 @@ def ingest_hermes_result(
     return {"ok": True, "symbol": symbol, "artifacts": len(records), "artifact_ids": records}
 
 
+def ingest_existing_hermes_context(root: Path | str, symbol: str) -> dict[str, Any]:
+    """Project already-produced Hermes DB intelligence without re-researching."""
+    sym = normalize_symbol(symbol)
+    if not sym:
+        return {"ok": False, "error": "symbol_required", "artifacts": 0}
+    try:
+        try:
+            from scripts.hermes_data_access import get_hermes_context
+        except Exception:
+            from hermes_data_access import get_hermes_context  # type: ignore
+        context = get_hermes_context(sym, research_limit=12, external_limit=6)
+    except Exception as exc:
+        return {"ok": False, "error": f"context:{type(exc).__name__}:{exc}", "artifacts": 0}
+    records: list[str] = []
+    for row in context.get("research") or []:
+        urls = row.get("source_urls") or []
+        sources = urls or [None]
+        for url in sources:
+            stype = str(row.get("type") or "hermes_research").lower()
+            if "youtube" in stype or "youtube.com" in str(url).lower() or "youtu.be" in str(url).lower():
+                stype = "hermes_youtube_transcript"
+            elif any(x in stype for x in ("social", "reddit", "twitter", "x_")):
+                stype = "hermes_social"
+            artifact = classify_artifact(sym, {
+                "source_id": f"{row.get('type')}:{url or row.get('topic')}",
+                "source_type": stype,
+                "source_url": url,
+                "title": row.get("topic") or f"Hermes {sym}",
+                "summary": row.get("thesis") or row.get("summary"),
+                "as_of": row.get("as_of"),
+                "relationship": "LINEAR",
+                "provenance": {"producer": "hermes_research_intelligence", "status": row.get("status")},
+            })
+            records.append(append_record(root, artifact))
+    for row in context.get("external_lanes") or []:
+        artifact = classify_artifact(sym, {
+            "source_id": f"external:{row.get('lane')}:{row.get('as_of')}",
+            "source_type": f"hermes_external_{str(row.get('lane') or 'lane').lower()}",
+            "title": f"Hermes external {row.get('lane') or 'lane'}",
+            "summary": row.get("recommendation") or "",
+            "as_of": row.get("as_of"),
+            "relationship": "LATERAL",
+            "provenance": {"producer": "hermes_external_research", "dissent": row.get("dissent")},
+        })
+        records.append(append_record(root, artifact))
+    return {"ok": True, "symbol": sym, "artifacts": len(records), "source": "existing_hermes_intelligence"}
+
+
 def retrieve_context(root: Path | str, symbol: str, *, limit: int = 50) -> dict[str, Any]:
     sym = normalize_symbol(symbol)
     rows = []

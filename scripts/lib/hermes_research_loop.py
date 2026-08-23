@@ -480,10 +480,15 @@ def on_hermes_completed(
     # Keep this fail-soft so a projection issue never changes research authority.
     try:
         try:
-            from lib.ticker_knowledge_graph import ingest_hermes_result
+            from lib.ticker_knowledge_graph import ingest_hermes_result, ingest_existing_hermes_context
         except Exception:
-            from scripts.lib.ticker_knowledge_graph import ingest_hermes_result  # type: ignore
+            from scripts.lib.ticker_knowledge_graph import (  # type: ignore
+                ingest_hermes_result, ingest_existing_hermes_context,
+            )
         out["ticker_graph"] = ingest_hermes_result(Path.cwd(), request, result)
+        sym = result.get("symbol") or request.get("symbol") or (request.get("metadata") or {}).get("symbol")
+        if sym:
+            out["ticker_graph_existing"] = ingest_existing_hermes_context(Path.cwd(), str(sym))
     except Exception as e:
         out["ticker_graph_error"] = f"{type(e).__name__}:{e}"
     try:
