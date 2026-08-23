@@ -40327,6 +40327,12 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     return 200, _cio.get_cio_dashboard()
                 if p == "home":
                     return 200, _cio.get_cio_home()
+                if p in ("brain/maturity-contract", "brain/maturity_contract"):
+                    return 200, _cio.get_brain_maturity_contract()
+                if p == "brain/policy":
+                    return 200, _cio.get_operator_investment_policy()
+                if p in ("brain/portfolio-state", "brain/portfolio_state"):
+                    return 200, _cio.get_portfolio_state_v1()
                 if p in ("investment-product", "investment-books", "books"):
                     return 200, _cio.get_investment_product()
                 if p == "dispositions":
@@ -40410,6 +40416,9 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     return (200 if res.get("ok") else 404), res
                 return 404, {"ok": False, "error": f"unknown_cio_path: {p}"}
             if method == "POST":
+                if p == "brain/policy/ratify":
+                    res = _cio.post_operator_investment_policy_ratification(body or {})
+                    return (200 if res.get("ok") else 400), res
                 # POST /api/v3/cio/decision/{key}/disposition — operator ACK/DEFER/DONE/REJECT/RATE
                 if p.startswith("decision/") and p.endswith("/disposition"):
                     mid = p[len("decision/"):]

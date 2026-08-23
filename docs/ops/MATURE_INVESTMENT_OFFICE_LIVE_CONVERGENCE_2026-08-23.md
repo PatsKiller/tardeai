@@ -4,6 +4,7 @@ Date: 2026-08-23
 Closeout branch: `docs/r9-live-deploy-closeout`  
 Starting source: `origin/main@9dfe437f6e161cb2b6c9ed2c983e23b9fa9de1b7`  
 Deployed source: `09b5ec3d48fb1afd5c9db4a1f9f12b405cadb525`  
+Repository tip after documentation-only closeout: `2a554304abdfa12ecb876b149ae2675e720fcfc4`
 Authority: `READ_ONLY_ADVISORY`  
 `MEMORY_BEHAVIOR_INFLUENCE=0`  
 Final status: `STACK_LIVE_BRAIN_BUILD_CONTINUES`
@@ -14,7 +15,7 @@ Trade AI is not yet a live 75-80% autonomous investment office. The GitHub Actio
 
 Measured live maturity is now **42/100**. This is meaningful deployment progress, not 75-80% maturity: portfolio-brain contracts M1-M7 are not implemented; a natural research-to-thesis execution under the new scheduler has not yet occurred; feedback/outcome observation remains immature; 219 broad runtime-root references remain rebuild/hybrid; and physical GPU decommission is blocked by installed models, callers, and the seven-day zero-call requirement. Temporal T1 was not started and production remains `NO_TEMPORAL`.
 
-The live system has useful portfolio, CIO, research, trace, and shadow-memory surfaces. It does not yet have the required canonical portfolio-brain state objects, automatic live research-to-thesis circulation, verified investable cash, governed canon claims, complete feedback/outcome observation, or converged runtime roots. Live NOC, SCHG, CSCO, and ANET cards all return `RESEARCH_REQUIRED` without a thesis version.
+The live system has useful portfolio, CIO, research, trace, and shadow-memory surfaces. It does not yet have the required canonical portfolio-brain state objects, automatic live research-to-thesis circulation, verified investable cash, governed canon claims, complete feedback/outcome observation, or converged runtime roots. NOC (`CURRENT`, `symbol_noc@v5`), SCHG (`THIN`, `symbol_schg@v3`), CSCO (`CURRENT`, `symbol_csco@v3`), and ANET (`CURRENT`, `symbol_anet@v2`) expose versioned live thesis state; a natural post-deploy research-to-thesis cycle and identical-evidence replay remain unobserved.
 
 LangGraph is **not production-ready for Trade AI**. Main contains a feature flag and a deterministic complexity gate, but no LangGraph dependency, graph, checkpointer, or live pilot. Worse, the gate computed `NOT_REQUIRED` from 7,059 live traces only because the trace schema emits none of the gate's complexity fields. That verdict is reclassified as `UNMEASURED`. A bounded shadow pilot can be reconsidered only after instrumentation and Python compatibility are proven.
 
@@ -37,7 +38,8 @@ Claims use this order: live measurement, current source, newest dated closeout, 
 | Item | Measured state |
 |---|---|
 | starting `origin/main` | `9dfe437f6e161cb2b6c9ed2c983e23b9fa9de1b7` |
-| deployed protected main | `09b5ec3d48fb1afd5c9db4a1f9f12b405cadb525` |
+| repository tip after docs-only #475 | `2a554304abdfa12ecb876b149ae2675e720fcfc4` |
+| deployed application source | `09b5ec3d48fb1afd5c9db4a1f9f12b405cadb525` |
 | live CURRENT | `09b5ec3d48fb1afd5c9db4a1f9f12b405cadb525` |
 | CURRENT release | `09b5ec3d-r9-autonomous-advisory-20260823-132303` |
 | worktrees | 166 total; 67 dirty |
