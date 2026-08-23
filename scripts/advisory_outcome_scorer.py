@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -16,6 +17,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 from lib.advisory.advisory_memory import score_pending_outcomes  # noqa: E402
+from lib.advisory_outcome_record import run_outcome_cycle  # noqa: E402
 
 
 def main() -> int:
@@ -25,6 +27,8 @@ def main() -> int:
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
     result = score_pending_outcomes(max_new=args.max)
+    root = Path(os.environ.get("TRADEAI_ROOT") or PROJECT_ROOT)
+    result["outcome_record_v1"] = run_outcome_cycle(root=root)
     closed_loop: dict = {}
     try:
         from lib.intelligence_lineage import observe_overdue_cases, rebuild_lineages
