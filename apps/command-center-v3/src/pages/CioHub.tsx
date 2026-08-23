@@ -293,8 +293,9 @@ function proseCode(s: string | null | undefined): string {
 }
 
 function shortDecisionId(id: string): string {
-  if (id.startsWith('dec_') && id.length > 16) return `dec_${id.slice(4, 16)}`
-  return id.length > 16 ? `${id.slice(0, 16)}…` : id
+  // Operator chrome: no dec_ / prod_ / plan_ / trace_ prefixes.
+  const stripped = id.replace(/^(dec_|prod_|plan_|trace_)/, '')
+  return stripped.length > 12 ? `${stripped.slice(0, 12)}…` : stripped
 }
 
 function freshnessLine(f: Decision['freshness']): string | null {
@@ -1030,6 +1031,10 @@ function UniverseThesesPanel() {
   const missingApi = Boolean(error && String(error).includes('HTTP 404'))
   const payloadError = data && data.ok === false
   const rows = Array.isArray(data?.symbols) ? data!.symbols! : []
+  const metricDefs = (data?.metrics?.percentage_definitions || {}) as Record<string, any>
+  const heldSub = metricDefs.held_substantive || {}
+  const materialCov = metricDefs.material_coverage || {}
+  const materialSub = metricDefs.material_substantive || {}
   return (
     <div data-testid="cio-universe-theses" style={{ display: 'grid', gap: 14 }}>
       <div style={{ fontSize: 12, color: 'var(--text3)' }}>
@@ -1045,13 +1050,28 @@ function UniverseThesesPanel() {
       )}
       {data?.metrics && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12 }}>
-          <Stat label="Material" value={String(data.metrics.material_universe ?? '—')} />
-          <Stat label="Current thesis" value={String(data.metrics.current_thesis ?? '—')} />
+          <Stat label="Held CURRENT / THIN" value={`${data.metrics.held_current ?? '—'} / ${data.metrics.held_thin ?? '—'} of ${data.metrics.held ?? '—'}`} help="Living theses on current holdings. CURRENT is PASS-grade. THIN cleared the 40-char floor but failed substantiveness." />
+          <Stat label="Held substantive" value={heldSub.denominator != null ? `${heldSub.pct}% (${heldSub.numerator}/${heldSub.denominator})` : '—'} help="CURRENT over held equity tickers; cash and unresolved identifiers excluded." />
+          <Stat label="Material coverage" value={materialCov.denominator != null ? `${materialCov.pct}% (${materialCov.numerator}/${materialCov.denominator})` : '—'} help="CURRENT + THIN over the declared material-union denominator." />
+          <Stat label="Material substantive" value={materialSub.denominator != null ? `${materialSub.pct}% (${materialSub.numerator}/${materialSub.denominator})` : '—'} help="CURRENT only over the declared material-union denominator." />
           <Stat label="Research required" value={String(data.metrics.research_required ?? '—')} />
-          <Stat label="Coverage" value={data.metrics.coverage_pct != null ? `${data.metrics.coverage_pct}` : '—'} />
           {data.metrics.bonds_unresolved != null && (
             <Stat label="Bonds & unresolved" value={String(data.metrics.bonds_unresolved)} help="CUSIP/unresolved identifiers sorted out of the main list." />
           )}
+        </div>
+      )}
+      {Boolean((data as any)?.daily_thesis_changes?.counts) && (
+        <div data-testid="cio-daily-thesis-changes" style={{ ...card, marginTop: 8 }}>
+          <SectionTitle>Thesis changes (24h)</SectionTitle>
+          <div style={{ fontSize: 12, color: 'var(--text2)' }}>
+            {Object.entries(((data as any).daily_thesis_changes.counts || {}) as Record<string, number>)
+              .filter(([, n]) => Number(n) > 0)
+              .map(([k, n]) => `${k.replace(/_/g, ' ')} ${n}`)
+              .join(' · ') || 'none'}
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>
+            Cards live in data/cio/thesis_change_cards.jsonl. This strip is the operator-visible 24h counts — not a second store.
+          </div>
         </div>
       )}
       {!loading && !error && !payloadError && rows.length === 0 && (
@@ -1083,7 +1103,15 @@ function UniverseThesesPanel() {
               {' · '}
               {r.portfolio_role || 'UNKNOWN'}
               {' · '}
-              {r.thesis_state || 'RESEARCH_REQUIRED'}
+              <span style={{
+                color: r.thesis_state === 'THIN' ? 'var(--amber)'
+                  : r.thesis_state === 'CURRENT' ? 'var(--green)'
+                  : r.thesis_state === 'RESEARCH_REQUIRED' ? 'var(--amber)'
+                  : 'inherit',
+                fontWeight: r.thesis_state === 'THIN' || r.thesis_state === 'CURRENT' ? 700 : 500,
+              }}>
+                {r.thesis_state || 'RESEARCH_REQUIRED'}
+              </span>
               {r.thesis_version != null ? ` · ${String(r.thesis_version)}` : ''}
             </button>
             )

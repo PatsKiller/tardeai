@@ -32,6 +32,7 @@ from scripts.research_scheduler import (
     load_reentry_ready_near_symbols,
     load_universe,
     maybe_dispatch_metered,
+    result_is_budget_throttle,
     skip_gate_enabled,
 )
 
@@ -323,6 +324,13 @@ def test_skip_gate_default_off(monkeypatch):
     assert skip_gate_enabled() is False
     monkeypatch.setenv("RESEARCH_SKIP_GATE", "1")
     assert skip_gate_enabled() is True
+
+
+def test_result_is_budget_throttle():
+    assert result_is_budget_throttle({"tail": "SKIPPED_BUDGET NXPI COST_CAP_EXCEEDED: daily request cap"})
+    assert result_is_budget_throttle({"budget_throttled": True, "tail": "x"})
+    assert result_is_budget_throttle({"tail": "[ERROR] COST_CAP_EXCEEDED: daily request cap"})
+    assert not result_is_budget_throttle({"tail": "stored hermes_external_research id=1 status=sent\nrecommendation: Hold"})
 
 
 def test_freshness_class_defaults():

@@ -65,7 +65,46 @@ def _is_tradeai_unit(name: str) -> bool:
     return any(n.startswith(p) for p in TRADEAI_NAME_PREFIXES)
 
 
-def scan_units(unit_dir: Path) -> list[dict[str, Any]]:
+EFFECTIVE_PROPERTIES = (
+    "LoadState",
+    "ActiveState",
+    "FragmentPath",
+    "DropInPaths",
+    "WorkingDirectory",
+    "ExecStart",
+    "Environment",
+)
+
+
+def parse_systemctl_show(text: str) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for line in (text or "").splitlines():
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        if key in EFFECTIVE_PROPERTIES:
+            out[key] = value
+    return out
+
+
+def effective_unit_properties(name: str) -> dict[str, Any]:
+    cmd = ["systemctl", "--user", "show", name]
+    for prop in EFFECTIVE_PROPERTIES:
+        cmd.extend(("--property", prop))
+    try:
+        proc = subprocess.run(cmd, check=False, capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return {"queried": False, "error": str(exc)[:160]}
+    props = parse_systemctl_show(proc.stdout)
+    return {
+        "queried": proc.returncode == 0 and bool(props),
+        "returncode": proc.returncode,
+        "error": (proc.stderr or "").strip()[:160] or None,
+        "properties": props,
+    }
+
+
+def scan_units(unit_dir: Path, *, include_effective: bool = False) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     if not unit_dir.is_dir():
         return rows
@@ -77,13 +116,29 @@ def scan_units(unit_dir: Path) -> list[dict[str, Any]]:
             for conf in sorted(drop.glob("*.conf")):
                 extra += "\n" + _read(conf)
         blob = text + extra
-        rows.append({
+        row = {
             "kind": "unit",
             "name": path.name,
             "path": str(path),
             "tradeai": _is_tradeai_unit(path.name),
             "class": classify_text(blob),
-        })
+            "static_class": classify_text(blob),
+        }
+        if include_effective and row["tradeai"] and path.suffix == ".service":
+            effective = effective_unit_properties(path.name)
+            row["effective"] = effective
+            props = effective.get("properties") if isinstance(effective, dict) else None
+            if effective.get("queried") and isinstance(props, dict):
+                effective_blob = "\n".join(
+                    str(props.get(k) or "")
+                    for k in ("WorkingDirectory", "ExecStart", "Environment", "FragmentPath", "DropInPaths")
+                )
+                row["class"] = classify_text(effective_blob)
+                row["working_directory"] = props.get("WorkingDirectory") or None
+                row["exec_start"] = props.get("ExecStart") or None
+                row["active_state"] = props.get("ActiveState") or None
+                row["load_state"] = props.get("LoadState") or None
+        rows.append(row)
     return rows
 
 
@@ -147,8 +202,10 @@ def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def build_report(*, unit_dir: Path, crontab_text: str, current: Path) -> dict[str, Any]:
-    units = scan_units(unit_dir)
+def build_report(
+    *, unit_dir: Path, crontab_text: str, current: Path, include_effective: bool = False,
+) -> dict[str, Any]:
+    units = scan_units(unit_dir, include_effective=include_effective)
     crons = scan_crontab(crontab_text)
     rows = units + crons
     return {
@@ -157,9 +214,14 @@ def build_report(*, unit_dir: Path, crontab_text: str, current: Path) -> dict[st
         "financial_action": False,
         "current": current_stamp(current),
         "unit_dir": str(unit_dir),
+        "effective_systemd_queried": include_effective,
         "units": summarize(units),
         "crontab": summarize(crons),
         "combined": summarize(rows),
+        "inventory": {
+            "units": [r for r in units if r.get("tradeai")],
+            "crontab": crons,
+        },
         "policy": (
             "Pin TradeAI units/cron to ~/trade-ai-releases/portfolio-server/CURRENT "
             "(or the exact SHA it resolves to). Hybrids (CURRENT script + rebuild venv) "
@@ -175,11 +237,13 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--current", type=Path, default=CURRENT_HOME)
     p.add_argument("--json", action="store_true")
     p.add_argument("--strict", action="store_true", help="exit 1 if TradeAI rebuild/hybrid/worktree drift")
+    p.add_argument("--static", action="store_true", help="do not query effective systemd properties")
     args = p.parse_args(argv)
     report = build_report(
         unit_dir=args.unit_dir,
         crontab_text=load_crontab(args.crontab),
         current=args.current,
+        include_effective=not args.static,
     )
     if args.json:
         print(json.dumps(report, indent=2, default=str))

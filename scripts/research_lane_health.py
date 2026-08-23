@@ -75,6 +75,18 @@ def fix_hint(row: dict) -> str:
     lane = str(row.get("lane") or "")
     firing = " ".join(str(x) for x in (row.get("firing") or []))
     if lane == "deepseek":
+        if "budget_throttled" in firing:
+            return (
+                "DeepSeek budget_throttled (SKIPPED_BUDGET), not a broken lane. "
+                "Named symbols were not researched. Do not raise the cap until "
+                "skip-gate + retry-on-cap + extra producers are explained."
+            )
+        if "error_rate_24h" in firing:
+            return (
+                "DeepSeek error_rate_24h (not streak). Lane-broken rows only — "
+                "COST_CAP is SKIPPED_BUDGET / budget_throttled. "
+                "streak=0 after one success still hides a 30%+ true-error rate."
+            )
         return (
             "DeepSeek: import is already `llm_lane` (scripts/llm_lane.py). "
             "Live RAW errors are COST_CONFIGURATION_INVALID — cron .env must "
@@ -84,8 +96,10 @@ def fix_hint(row: dict) -> str:
         )
     if lane == "overnight-deep":
         return (
-            "Overnight: policy is ChatGPT OAuth 22:00–06:00 ET. Live timer is "
-            "still China-night gemma3:27b. Last deep_research_local ok 2026-08-20 Flash."
+            "Overnight: OnCalendar 22–05:35 ET, ExecStart --model chatgpt --apply "
+            "since 2026-08-22 13:20. First US window 22:35 ET 2026-08-22. "
+            "Last deep_research_local row 2026-08-20 Flash (two days, not three months). "
+            "If 22:35 writes zero non-error rows or still gemma, retarget failed."
         )
     if lane == "drive-sync":
         return (
@@ -95,6 +109,11 @@ def fix_hint(row: dict) -> str:
         )
     if lane == "current-pin":
         return "CURRENT scripts/+docs/ must match SOURCE_COMMIT (git archive hashes). No docs overlay."
+    if lane == "process-freshness":
+        return (
+            "portfolio_server loaded pin or start time disagrees with CURRENT. "
+            "Restart after exact-main promote. Do not serve a 2-day in-memory overlay as now."
+        )
     if lane == "coverage-stall":
         return (
             "Coverage stall: research flowed, PASS-grade (CURRENT) thesis did not. "
