@@ -1,13 +1,12 @@
 [Unit]
-Description=Hermes Autonomous Ticker Challenger Loop (Apply Mode)
+Description=Hermes external-research feedback loop (governed cloud, advisory)
 After=network-online.target cio-governed-bridge.service
 
 [Service]
 Type=oneshot
 WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/hermes_external_feedback_loop.py --apply --model deepseek-v4-flash
+TimeoutStartSec=600
 Environment=PYTHONUNBUFFERED=1
-ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/hermes_autonomous_loop.py --loop ticker_challenger --apply --max-rows 2
-TimeoutStartSec=900
-Environment=HERMES_LOOP_BUDGET_SEC=860
 Environment=HERMES_BRIDGE_URL=http://127.0.0.1:8766
 Environment=HERMES_BRIDGE_MODEL=deepseek-v4-flash

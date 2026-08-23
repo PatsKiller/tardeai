@@ -2,8 +2,7 @@
 """Inference Layers — Hermes / LLM query interface.
 
 The reasoning substrate shared by every inference layer. Wraps:
-  * local_llm.generate            -> primary local gemma3 reasoning (toll-gated)
-  * hermes_external_researcher    -> free OAuth escalation lanes (grok / chatgpt)
+  * hermes_external_researcher    -> governed cloud lanes
   * rag_retrieval                 -> prior-intelligence context injection
 
 and adds the engine's "mind of its own" primitive: proactive_query(), which lets
@@ -66,14 +65,13 @@ def extract_json(text: str) -> Optional[dict]:
     return None
 
 
-# ── local LLM ─────────────────────────────────────────────────────────────────
 def llm_text(prompt: str, caller: str = "inference_engine", timeout: int = 180) -> str:
+    """Governed cloud default. Failure remains a hard empty result."""
     try:
-        from local_llm import generate
-        return generate(prompt, timeout=timeout, fallback=True, fast=False,
-                        caller=caller, process_type="INFERENCE") or ""
+        from hermes_external_researcher import call_external
+        return call_external("deepseek", "deepseek-v4-flash", prompt, max_tokens=1500) or ""
     except Exception as e:
-        log.warning("local llm error: %s", e)
+        log.warning("governed cloud llm error: %s", e)
         return ""
 
 
@@ -96,8 +94,8 @@ def llm_json(prompt: str, *, caller: str = "inference_engine", timeout: int = 18
         step should always run on a free OAuth lane regardless of the global flag.
       * else escalate to cfg.llm.external_lane when cfg.llm.use_external_lane is set
         AND salience clears proactive.salience_threshold.
-      * else local gemma3.
-    Any external miss falls back to local. The returned dict always carries `_lane`
+      * else governed DeepSeek Flash.
+    Provider failure stays a failure. The returned dict always carries `_lane`
     and a best-effort `confidence`.
     """
     cfg = cfg or {}
@@ -116,21 +114,21 @@ def llm_json(prompt: str, *, caller: str = "inference_engine", timeout: int = 18
                       "and \"data_i_doubt\" string. No prose outside JSON.")
 
     chosen = None
-    if force_lane and force_lane != "local":
+    if force_lane == "local":
+        return {
+            "confidence": 0.0,
+            "_lane": "none",
+            "_raw_len": 0,
+            "error": "POLICY_LOCAL_GENERATIVE_FORBIDDEN",
+        }
+    if force_lane:
         chosen = force_lane
     elif llm_cfg.get("use_external_lane") and salience >= threshold:
         chosen = llm_cfg.get("external_lane", "grok")
 
-    lane = "local"
-    raw = ""
-    if chosen:
-        lane = chosen
-        model = llm_cfg.get("external_model", "grok-3-mini")
-        raw = _external(lane, model, instruction)
-        if not raw:  # fall back to local on lane miss
-            lane = "local"
-    if not raw:
-        raw = llm_text(instruction, caller=caller, timeout=llm_cfg.get("timeout", timeout))
+    lane = chosen or "deepseek"
+    model = llm_cfg.get("external_model", "grok-3-mini") if chosen else "deepseek-v4-flash"
+    raw = _external(lane, model, instruction)
 
     parsed = extract_json_object(raw) or extract_json(raw) or {}
     parsed = merge_structured_into_result(parsed)
@@ -161,7 +159,7 @@ def proactive_query(ctx, subject: str, question: str, trigger: str,
     Persists the exchange to inference_proactive_queries and updates
     inference_memory so salient gaps accumulate across cycles. Respects the
     per-run proactive budget enforced by the caller. `force_lane` (e.g. "grok")
-    runs the call on a specific free OAuth lane instead of the local model.
+    runs the call on a specific governed cloud lane.
     """
     cfg = ctx.cfg
     # count against the per-cycle proactive budget shared by all layers
@@ -174,7 +172,7 @@ def proactive_query(ctx, subject: str, question: str, trigger: str,
     answer = llm_json(prompt, caller="inference_proactive", salience=salience,
                       cfg=cfg, want_keys=want_keys or ["answer", "confidence", "reasoning"],
                       force_lane=force_lane)
-    lane = answer.get("_lane", "local")
+    lane = answer.get("_lane", "none")
     conf = float(answer.get("confidence", 0.5) or 0.5)
     text = answer.get("answer") or answer.get("summary") or json.dumps(
         {k: v for k, v in answer.items() if not k.startswith("_")}, default=str)[:1500]

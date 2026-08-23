@@ -1,18 +1,17 @@
 """
-Hermes Browse Proxy — two-step chat with optional web research.
+Hermes Browse Proxy — two-step governed-cloud chat with optional web research.
 
-Step 1: Ask gemma3:12b if the question needs web browsing.
+Step 1: Ask the governed DeepSeek lane if the question needs web browsing.
 Step 2: If yes, use Playwright headless Chromium to fetch real data.
-Step 3: Pass fetched context + original question to gemma3:12b for final answer.
+Step 3: Pass fetched context + original question to the governed DeepSeek lane.
 """
 
 import json
-import urllib.request
+import urllib.parse
 import re
 import os
 from pathlib import Path
 
-OLLAMA_URL = "http://localhost:11434/api/chat"
 CHROME_PATH = None
 
 # Find Chromium
@@ -26,20 +25,20 @@ for candidate in [
         break
 
 
-def _ollama_chat(messages, num_predict=200, temperature=0.3, format_json=False):
-    """Send a chat to local Ollama gemma3:12b."""
-    payload = json.dumps({
-        "model": "gemma3:12b",
-        "messages": messages,
-        "stream": False,
-        "options": {"num_ctx": 8192, "num_predict": num_predict, "temperature": temperature},
-        **({"format": "json"} if format_json else {}),
-    }).encode()
-    req = urllib.request.Request(OLLAMA_URL, data=payload,
-                                 headers={"Content-Type": "application/json"})
-    resp = urllib.request.urlopen(req, timeout=120)
-    result = json.loads(resp.read())
-    return result.get("message", {}).get("content", "")
+def _governed_chat(messages, num_predict=200, temperature=0.3, format_json=False):
+    """Send a bounded request through the governed DeepSeek lane."""
+    del num_predict, temperature, format_json
+    from llm_lane import generate
+    prompt = "\n\n".join(
+        f"{str(message.get('role') or 'user').upper()}: {message.get('content') or ''}"
+        for message in messages
+    )
+    return generate(
+        prompt,
+        lane="deepseek-flash",
+        timeout=120,
+        process_id="hermes_browse_proxy",
+    )
 
 
 def _classify_question(user_message):
@@ -55,7 +54,7 @@ If the question is about general knowledge you're confident about, set needs_bro
 If the question involves current events, live data, recent news, or anything after your training cutoff, set needs_browse to true."""
 
     try:
-        raw = _ollama_chat([{"role": "user", "content": prompt}],
+        raw = _governed_chat([{"role": "user", "content": prompt}],
                            num_predict=150, temperature=0.1, format_json=True)
         result = json.loads(raw)
         return result
@@ -141,8 +140,6 @@ def _browse_search(query, max_results=5):
 
 def chat_with_browsing(messages, system_prompt=""):
     """Main entry point: two-step chat with optional browsing."""
-    import urllib.parse
-
     # Get the latest user message
     user_msg = ""
     for m in reversed(messages):
@@ -192,7 +189,7 @@ def chat_with_browsing(messages, system_prompt=""):
     # System prompt
     sys_content = system_prompt or (
         "You are Hermes, Trade AI's research desk and independent challenger. "
-        f"Today's date is 2026-05-30. "
+        "Use the current system date supplied by the runtime. "
         "You are advisory only — you do not execute trades or mutate production data. "
         "Be direct and evidence-backed."
     )
@@ -223,7 +220,7 @@ def chat_with_browsing(messages, system_prompt=""):
         final_messages.append({"role": m["role"], "content": m["content"]})
 
     # Get final response
-    content = _ollama_chat(final_messages, num_predict=1500, temperature=0.4)
+    content = _governed_chat(final_messages, num_predict=1500, temperature=0.4)
 
     # Add source attribution if browsed
     if browsed:

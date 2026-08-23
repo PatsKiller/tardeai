@@ -1,34 +1,26 @@
-"""Governed DeepSeek Flash / Ollama JSON chat for overnight Hermes units.
+"""Governed cloud JSON chat for Hermes advisory research.
 
-Overnight default: Flash primary, Ollama backup.
-READ_ONLY_ADVISORY. No broker, Telegram, or order language.
-
-Provider is always labeled. It is not a silent model swap.
+The historical module name is retained for import compatibility. Local generative
+fallback was retired: bridge failure is now a hard, labeled failure.
 """
 from __future__ import annotations
 
 import json
 import os
 import re
-import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 from typing import Any
 
-# Official DeepSeek peak windows (half-open, UTC) — kept for label/compat.
-# Bulk Flash/Pro is operator-gated to 10:00–21:00 America/New_York (see lib.deepseek_offpeak).
-# https://api-docs.deepseek.com/quick_start/pricing/
 DEEPSEEK_PEAK_UTC = ((1, 4), (6, 10))
-
 AUTHORITY = "READ_ONLY_ADVISORY"
-DEFAULT_OLLAMA = os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
 DEFAULT_BRIDGE = (
     os.getenv("HERMES_BRIDGE_URL")
     or os.getenv("CIO_GOVERNED_BRIDGE_URL")
     or "http://127.0.0.1:8766"
 ).rstrip("/")
 DEFAULT_FLASH = os.getenv("HERMES_BRIDGE_MODEL", "deepseek-v4-flash")
-DEFAULT_FLASH_TIMEOUT = float(os.getenv("HERMES_FAILOVER_TIMEOUT_S", "90"))
+DEFAULT_FLASH_TIMEOUT = float(os.getenv("HERMES_CLOUD_TIMEOUT_S", "90"))
 
 
 class HermesLlmError(Exception):
@@ -36,24 +28,17 @@ class HermesLlmError(Exception):
 
 
 def failover_enabled() -> bool:
-    return os.getenv("HERMES_OLLAMA_FAILOVER", "1").strip().lower() not in {
-        "0", "false", "no", "off",
-    }
+    """Compatibility signal: local generative failover is permanently disabled."""
+    return False
 
 
 def allow_deepseek_peak() -> bool:
-    """Manual override for now-tests. Default is refuse Flash apply during official peak."""
     return os.getenv("HERMES_ALLOW_DEEPSEEK_PEAK", "").strip().lower() in {
         "1", "true", "yes", "on",
     }
 
 
 def is_deepseek_offpeak(when: datetime | None = None) -> bool:
-    """True when bulk DeepSeek Flash/Pro is allowed.
-
-    Operator bulk window: 10:00–21:00 America/New_York, and not official UTC peak.
-    Outside that, Flash/Pro is as-needed only (HERMES_ALLOW_DEEPSEEK_PEAK / --allow-peak).
-    """
     try:
         from lib.deepseek_offpeak import is_bulk_deepseek_window
         return is_bulk_deepseek_window(when)
@@ -64,10 +49,7 @@ def is_deepseek_offpeak(when: datetime | None = None) -> bool:
         else:
             dt = dt.astimezone(timezone.utc)
         hour = dt.hour + dt.minute / 60.0 + dt.second / 3600.0
-        for start, end in DEEPSEEK_PEAK_UTC:
-            if start <= hour < end:
-                return False
-        return True
+        return not any(start <= hour < end for start, end in DEEPSEEK_PEAK_UTC)
 
 
 def deepseek_window_label(when: datetime | None = None) -> str:
@@ -75,20 +57,8 @@ def deepseek_window_label(when: datetime | None = None) -> str:
 
 
 def primary_provider() -> str:
-    """bridge_flash (overnight default) or ollama."""
-    raw = os.getenv("HERMES_LLM_PRIMARY", "bridge_flash").strip().lower()
-    if raw in {"flash", "deepseek", "deepseek-flash", "bridge", "bridge_flash"}:
-        return "bridge_flash"
-    return "ollama"
-
-
-def ollama_probe(timeout_s: float = 2.0) -> str | None:
-    """Return None if /api/tags answers; else a short reason."""
-    try:
-        urllib.request.urlopen(f"{DEFAULT_OLLAMA}/api/tags", timeout=timeout_s)
-        return None
-    except Exception as exc:
-        return f"ollama_unhealthy:{type(exc).__name__}"
+    """The only permitted generative provider for this module."""
+    return "bridge_flash"
 
 
 def _extract_json_text(content: str) -> str:
@@ -96,41 +66,11 @@ def _extract_json_text(content: str) -> str:
     if text.startswith("```"):
         text = re.sub(r"^```(?:json)?\s*", "", text)
         text = re.sub(r"\s*```$", "", text)
-    if not text.startswith("{") and not text.startswith("["):
-        m = re.search(r"[\{\[].*[\}\]]", text, re.S)
-        if m:
-            text = m.group(0)
+    if not text.startswith(("{", "[")):
+        match = re.search(r"[\{\[].*[\}\]]", text, re.S)
+        if match:
+            text = match.group(0)
     return text
-
-
-def _ollama_chat(
-    prompt: str,
-    *,
-    model: str,
-    timeout_s: float,
-    num_ctx: int,
-    num_predict: int,
-    temperature: float,
-) -> str:
-    payload = json.dumps({
-        "model": model,
-        "messages": [{"role": "user", "content": prompt}],
-        "stream": False,
-        "options": {
-            "num_ctx": num_ctx,
-            "num_predict": num_predict,
-            "temperature": temperature,
-        },
-        "format": "json",
-    }).encode("utf-8")
-    req = urllib.request.Request(
-        f"{DEFAULT_OLLAMA}/api/chat",
-        data=payload,
-        headers={"Content-Type": "application/json"},
-    )
-    with urllib.request.urlopen(req, timeout=timeout_s) as resp:
-        raw = json.loads(resp.read().decode("utf-8", errors="replace"))
-    return str((raw.get("message") or {}).get("content") or "")
 
 
 def _bridge_flash_chat(prompt: str, *, timeout_s: float | None = None) -> str:
@@ -146,10 +86,10 @@ def _bridge_flash_chat(prompt: str, *, timeout_s: float | None = None) -> str:
             },
             {"role": "user", "content": prompt},
         ],
-        "max_tokens": int(os.getenv("HERMES_FAILOVER_MAX_TOKENS", "4096")),
+        "max_tokens": int(os.getenv("HERMES_CLOUD_MAX_TOKENS", "4096")),
         "temperature": 0.2,
     }).encode("utf-8")
-    req = urllib.request.Request(
+    request = urllib.request.Request(
         f"{DEFAULT_BRIDGE}/v1/chat/completions",
         data=payload,
         method="POST",
@@ -158,98 +98,45 @@ def _bridge_flash_chat(prompt: str, *, timeout_s: float | None = None) -> str:
             "X-TradeAI-Agent": os.getenv("HERMES_BRIDGE_AGENT", "advisory_desk"),
             "X-TradeAI-Task-Type": os.getenv("HERMES_BRIDGE_TASK", "advisory_opinion"),
             "X-TradeAI-Process-Id": os.getenv(
-                "HERMES_BRIDGE_PROCESS", "hermes_ollama_failover",
+                "HERMES_BRIDGE_PROCESS", "hermes_cloud_json",
             ),
         },
     )
-    with urllib.request.urlopen(req, timeout=timeout_s or DEFAULT_FLASH_TIMEOUT) as resp:
-        raw = json.loads(resp.read().decode("utf-8", errors="replace"))
-    msg = ((raw.get("choices") or [{}])[0].get("message") or {})
-    content = msg.get("content") or msg.get("reasoning_content") or ""
-    return str(content)
-
-
-def _pack(*, content: str, provider: str, model: str, failover: bool, reason: str | None) -> dict[str, Any]:
-    text = _extract_json_text(content)
-    if not text.strip():
-        raise HermesLlmError(f"{provider}_empty_content")
-    return {
-        "content": text,
-        "provider": provider,
-        "model": model,
-        "failover": failover,
-        "reason": reason,
-        "authority": AUTHORITY,
-        "primary": primary_provider(),
-    }
+    with urllib.request.urlopen(request, timeout=timeout_s or DEFAULT_FLASH_TIMEOUT) as response:
+        raw = json.loads(response.read().decode("utf-8", errors="replace"))
+    message = ((raw.get("choices") or [{}])[0].get("message") or {})
+    return str(message.get("content") or message.get("reasoning_content") or "")
 
 
 def chat_json(
     prompt: str,
     *,
-    ollama_model: str,
-    ollama_timeout_s: float,
-    num_ctx: int = 8192,
-    num_predict: int = 2000,
-    temperature: float = 0.3,
-    probe_first: bool = True,
+    cloud_timeout_s: float | None = None,
+    **legacy_local_options: Any,
 ) -> dict[str, Any]:
-    """Primary provider first; labeled backup on error.
+    """Call the governed cloud bridge; never invoke a local generative runtime.
 
-    Overnight default primary is governed DeepSeek Flash (:8766).
-    Ollama is backup. Set HERMES_LLM_PRIMARY=ollama to invert.
+    Legacy local arguments are rejected so stale service configuration cannot
+    silently preserve the retired capability.
     """
-    primary = primary_provider()
-    allow_backup = failover_enabled()
-
-    def _try_flash() -> str:
-        return _bridge_flash_chat(prompt)
-
-    def _try_ollama() -> str:
-        if probe_first:
-            bad = ollama_probe()
-            if bad:
-                raise HermesLlmError(bad)
-        return _ollama_chat(
-            prompt,
-            model=ollama_model,
-            timeout_s=ollama_timeout_s,
-            num_ctx=num_ctx,
-            num_predict=num_predict,
-            temperature=temperature,
-        )
-
-    first, second = (
-        ("bridge_flash", _try_flash, DEFAULT_FLASH),
-        ("ollama", _try_ollama, ollama_model),
-    ) if primary == "bridge_flash" else (
-        ("ollama", _try_ollama, ollama_model),
-        ("bridge_flash", _try_flash, DEFAULT_FLASH),
-    )
-
-    first_name, first_fn, first_model = first
-    second_name, second_fn, second_model = second
+    if legacy_local_options:
+        names = ",".join(sorted(legacy_local_options))
+        raise HermesLlmError(f"local_generative_options_forbidden:{names}")
     try:
-        return _pack(
-            content=first_fn(),
-            provider=first_name,
-            model=first_model,
-            failover=False,
-            reason=None,
-        )
-    except Exception as exc:
-        reason = f"{first_name}_error:{type(exc).__name__}:{exc}"[:220]
-        if not allow_backup:
-            raise HermesLlmError(reason) from exc
-    try:
-        return _pack(
-            content=second_fn(),
-            provider=second_name,
-            model=second_model,
-            failover=True,
-            reason=reason,
-        )
+        content = _bridge_flash_chat(prompt, timeout_s=cloud_timeout_s)
     except Exception as exc:
         raise HermesLlmError(
-            f"backup_failed:{reason}|{second_name}:{type(exc).__name__}:{exc}"[:300]
+            f"bridge_flash_error:{type(exc).__name__}:{exc}"[:300]
         ) from exc
+    text = _extract_json_text(content)
+    if not text:
+        raise HermesLlmError("bridge_flash_empty_content")
+    return {
+        "content": text,
+        "provider": "bridge_flash",
+        "model": DEFAULT_FLASH,
+        "failover": False,
+        "reason": None,
+        "authority": AUTHORITY,
+        "primary": primary_provider(),
+    }

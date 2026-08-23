@@ -64,9 +64,14 @@ def kill_switch_active():
 def run_script(label, args, timeout=600):
     """Invoke an agent script as a subprocess; isolate failures."""
     try:
-        # Route autonomous-loop LLM calls to gemma3:4b (~3x faster) so continuous ticks stay under the 15-min cron.
-        env = {**os.environ, "HERMES_LOOP_MODEL": os.environ.get("HERMES_LOOP_MODEL", "gemma3:4b")}
-        r = subprocess.run([PY] + args, cwd=str(ROOT), capture_output=True, text=True, timeout=timeout, env=env)
+        r = subprocess.run(
+            [PY] + args,
+            cwd=str(ROOT),
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            env=os.environ.copy(),
+        )
         ok = r.returncode == 0
         tail = (r.stdout or r.stderr or "").strip().splitlines()[-1:] or [""]
         log.info("  %s: %s — %s", label, "ok" if ok else f"exit {r.returncode}", tail[0][:120])

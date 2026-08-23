@@ -16,13 +16,12 @@ default_research_ttl_hours: 24
 external_cloud_tiers: ["T0", "T1"]
 max_external_symbols_per_run: 50
 
-# Market-hours local-GPU policy MUST match docs/diligence/current/LOCAL_LLM_RUNTIME_POLICY.md.
+# Local GPU policy MUST match docs/diligence/current/LOCAL_LLM_RUNTIME_POLICY.md.
 market_hours:
   timezone: America/New_York
   window: "06:00-12:00"
-  # Heavy local models are blocked locally during market hours (Arc B50 VRAM/contention protection).
-  blocked_local_models: ["gemma3:27b", "gemma4-31b"]
-  allowed_local_models: ["gemma3:4b", "gemma3:12b", "qwen3:8b", "nomic-embed-text"]
+  blocked_local_models: []
+  allowed_local_models: ["nomic-embed-text"]
 
 # Free-OAuth cloud lanes (no paid key). Paid models may only run when explicitly cost-gated, never
 # as an automatic fallback.
@@ -30,8 +29,8 @@ lanes:
   free_oauth: ["grok", "chatgpt"]          # xAI :8645 + openai-codex :8646
   free_oauth_models: ["grok-3-mini", "gpt-5.4", "gpt-5-codex"]
   paid_models: ["claude-sonnet-4-6", "claude-opus-4-8", "gpt-4o"]
-  local_models: ["gemma3:4b", "gemma3:12b", "qwen3:8b"]
-  local_heavy_models: ["gemma3:27b", "gemma4-31b"]
+  local_models: []
+  local_heavy_models: []
 
 # Tiers — strongest trigger first. trigger_source values map to a tier in `trigger_source_tier`.
 tiers:
@@ -40,7 +39,7 @@ tiers:
     description: "Capital is actually exposed. Always research-eligible."
     llm_allowed: true
     cloud_allowed: true                     # free-OAuth deep synthesis allowed
-    local_allowed: true
+    local_allowed: false
     max_symbols_per_run: 200
     max_llm_calls_per_day: 600
     research_ttl_hours: 12
@@ -50,7 +49,7 @@ tiers:
     description: "Near-term decision pending. Capped to keep the lane fast."
     llm_allowed: true
     cloud_allowed: true
-    local_allowed: true
+    local_allowed: false
     max_symbols_per_run: 50                  # the GO/high-rank cap
     max_llm_calls_per_day: 300
     research_ttl_hours: 12
@@ -61,7 +60,7 @@ tiers:
     description: "Requires an explicit active trigger (directive/theme/wait). No trigger -> drop a tier."
     llm_allowed: true
     cloud_allowed: true                      # free-OAuth deep synthesis allowed
-    local_allowed: true
+    local_allowed: false
     requires_active_trigger: true
     max_symbols_per_run: 80
     max_llm_calls_per_day: 200
@@ -140,7 +139,7 @@ dedup:
 #   1) Prefer DEFER for bulk/non-escalation work (retry later).
 #   2) Allow an EXPLICIT paid rollover to DeepSeek V4 Flash only (never Pro/PRO_*)
 #      when the caller opts in and cost gates allow (reservation + global USD cap).
-#   3) Never silent-fall back to local heavy models (gemma3:27b / gemma4-31b).
+#   3) Never fall back to any local generative model.
 #   4) Never use DeepSeek as a silent substitute for a *local* lane failure
 #      (local still uses fallback=False). This is free-OAuth bottleneck only.
 cloud_unavailable:

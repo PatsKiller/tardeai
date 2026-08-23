@@ -26,7 +26,7 @@
 #                                  evidence ref with a url/source_domain
 #   requires_operator_review       candidates stay operator-gated (always true)
 #   cloud_allowed                  cloud LLM lanes permitted for this lane
-#   local_llm_allowed              local (GPU) LLM lanes permitted
+#   local_llm_allowed              must remain false; local generation is retired
 #   promotion_allowed              MUST be false (hard rule, validated)
 #   promotion_requires_operator    MUST be true  (hard rule, validated)
 #   do_no_harm_policy              MUST be respect (scorecard pause/tighten honored)
@@ -45,7 +45,7 @@ defaults:
   requires_citations: false
   requires_operator_review: true
   cloud_allowed: false
-  local_llm_allowed: true
+  local_llm_allowed: false
   promotion_allowed: false
   promotion_requires_operator: true
   do_no_harm_policy: respect

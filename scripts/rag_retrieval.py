@@ -7,14 +7,12 @@ import logging
 import os
 import json
 import numpy as np
-import requests
 from datetime import datetime, timezone
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 logger = logging.getLogger(__name__)
-OLLAMA_URL = "http://localhost:11434/api/embeddings"
 EMBED_MODEL = "nomic-embed-text"
 
 SOURCE_LABELS = {
@@ -43,19 +41,13 @@ def _get_conn():
 
 def embed_text(text):
     # 2026-06-29: 30s was too short under GPU contention; 2026-07-03: 90s still produced 1,874
-    # timeouts in one evening because embeds queue BEHIND gemma generations on the same GPU
-    # (each failure also killed the caller's DB connection). 180s default + one retry rides out
-    # a full generation ahead in the queue; keep_alive pins nomic-embed-text resident so the
-    # embed itself is milliseconds once scheduled. Override with EMBED_TIMEOUT_S.
+    # Use a bounded timeout and retry for transient embedding-runtime contention.
     import time as _time
+    from lib.ollama_embedding_policy import embed
     _t = float(os.getenv("EMBED_TIMEOUT_S", "180"))
-    _ka = os.getenv("OLLAMA_KEEP_ALIVE", "30m")
     for attempt in (1, 2):
         try:
-            r = requests.post(OLLAMA_URL, json={"model": EMBED_MODEL, "prompt": text[:2000], "keep_alive": _ka},
-                              timeout=_t)
-            r.raise_for_status()
-            return r.json().get("embedding")
+            return embed(text[:2000], timeout_s=_t)
         except Exception as e:
             logger.warning(f"Embed failed (attempt {attempt}/2): {e}")
             if attempt == 2:

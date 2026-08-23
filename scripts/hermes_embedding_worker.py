@@ -13,13 +13,11 @@ import json
 import os
 import sys
 import time
-import urllib.request
 from pathlib import Path
 from datetime import datetime, timezone
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
-OLLAMA_EMBED_URL = "http://localhost:11434/api/embed"
 EMBEDDING_MODEL = "nomic-embed-text"
 EMBEDDING_DIM = 768
 EMBED_TIMEOUT = 120  # increased from 30s to handle slow Ollama embed calls
@@ -40,19 +38,12 @@ def get_db_connection():
 
 
 def get_embedding(text):
-    """Get embedding vector from Ollama nomic-embed-text. Retries on transient errors."""
-    payload = json.dumps({"model": EMBEDDING_MODEL, "input": text}).encode()
-    req = urllib.request.Request(OLLAMA_EMBED_URL, data=payload,
-                                 headers={"Content-Type": "application/json"})
+    """Get a policy-validated nomic embedding. Retries transient failures."""
+    from lib.ollama_embedding_policy import embed
     last_err = None
     for attempt in range(3):
         try:
-            resp = urllib.request.urlopen(req, timeout=EMBED_TIMEOUT)
-            result = json.loads(resp.read())
-            embeddings = result.get("embeddings", [])
-            if embeddings and len(embeddings) > 0:
-                return embeddings[0]
-            return None
+            return embed(text, timeout_s=EMBED_TIMEOUT)
         except Exception as e:
             last_err = e
             if attempt < 2:

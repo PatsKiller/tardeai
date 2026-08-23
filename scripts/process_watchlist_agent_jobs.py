@@ -42,7 +42,6 @@ _last_rag_sources = []  # Set by _build_prompt(), read by result saver
 _last_peer_agents = []  # Set by _get_peer_agent_notes(), read by result saver
 _batch_results_cache = {}  # {symbol: [{agent, recommendation, confidence, summary}]}
 STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
-from local_llm_config import get_local_llm_model, get_local_llm_base_url
 
 # Pipeline telemetry
 try:
@@ -53,8 +52,7 @@ except ImportError:
         def __enter__(self): return self
         def __exit__(self, *a): pass
         def rows(self, n): pass
-OLLAMA_URL = get_local_llm_base_url().rstrip("/") + "/api/chat"
-OLLAMA_MODEL = get_local_llm_model()
+NO_MODEL = "none"
 
 # Agent name normalization (risk_agent/tax_agent → risk/tax for maturity tracking)
 AGENT_TO_MATURITY = {
@@ -90,7 +88,7 @@ def _get_conn():
         for line in (PROJECT_ROOT / ".env").read_text().splitlines():
             if line.startswith("DB_PASSWORD="):
                 pw = line.split("=", 1)[1].strip()
-    # keepalives + sslmode=disable: long Ollama calls were idling the connection and
+    # Keepalives protect long cloud calls from idling the connection and
     # causing "SSL connection has been closed unexpectedly" on the post-LLM INSERT.
     return psycopg2.connect(
         host="localhost", dbname="trade_ai", user="trade_ai", password=pw,
@@ -190,7 +188,7 @@ def _attempt_symbol_enrichment(symbol: str, missing: list) -> bool:
 
 # Maria-only OAuth priority tier (operator 2026-07-09). Free OAuth lanes (grok :8645 → chatgpt :8646)
 # for Maria agent_narrative on: portfolio holdings, top-N WAIT setups, manual refresh jobs.
-# Steph/Risk/tail research stay on local gemma. Daily cap via llm_consumption_log (~80/day);
+# Steph/Risk/tail research use governed cloud routing. Daily cap via llm_consumption_log (~80/day);
 # per-run cap prevents a single cron burst from draining the budget.
 from maria_oauth_priority import (
     MARIA_OAUTH_DAILY_CAP,
@@ -208,9 +206,7 @@ _CURRENT_JOB_SUBMITTED_FROM: str | None = None
 _CURRENT_JOB_REQUEST_TYPE: str | None = None
 _PORTFOLIO_SYMS_RUN: frozenset[str] = frozenset()
 _WAIT_SETUP_SYMS_RUN: frozenset[str] = frozenset()
-_LOCAL_SLOW = False          # telemetry only — no longer widens OAuth routing
 _MARIA_OAUTH_RUN_CALLS = 0
-_LOCAL_SLOW_S = float(os.environ.get("LOCAL_SLOW_S", "45"))
 
 
 def _wait_setup_symbol_set(conn) -> frozenset[str]:
@@ -299,11 +295,9 @@ def _llm(prompt: str, max_tokens: int = 800, task_type: str = "agent_narrative",
     Agent identity in metadata is "legacy_watch_research", NOT any of the six
     governed professional identities (alex/maria/steph/guardian/ledger/morgan).
 
-    The router path and Ollama fallback are also legacy research facilities.
-    Provider provenance is recorded in _llm._fallback_chain so callers can
-    distinguish declared multi-lane research from silent fallback.
+    Provider provenance is recorded in _llm._fallback_chain.
     """
-    global _MARIA_OAUTH_RUN_CALLS, _LOCAL_SLOW
+    global _MARIA_OAUTH_RUN_CALLS
     _llm._fallback_chain = []  # Gate-B.2: explicit provider provenance
     try:
         from agent_job_provider_policy import (
@@ -386,8 +380,6 @@ def _llm(prompt: str, max_tokens: int = 800, task_type: str = "agent_narrative",
         _llm._fallback_chain = [{"attempted": "grok-oauth", "failed": True},
                                  {"attempted": "chatgpt-oauth", "failed": True}]
     try:
-        import time as _tt
-        _t0 = _tt.time()
         from llm_router import get_llm_response
         result = get_llm_response(
             task_type=task_type,
@@ -403,12 +395,9 @@ def _llm(prompt: str, max_tokens: int = 800, task_type: str = "agent_narrative",
             job_key=f"{task_type}:{_CURRENT_JOB_SYMBOL or ''}:{_CURRENT_JOB_SUBMITTED_FROM or ''}",
         )
         if result.get("success"):
-            # Saturation valve: one slow local call widens cloud routing to priority-3 jobs.
-            if result.get("provider") == "local" and (_tt.time() - _t0) > _LOCAL_SLOW_S:
-                _LOCAL_SLOW = True
             # Track which model was used
-            _llm._last_model = result.get("model_used", OLLAMA_MODEL)
-            _llm._last_provider = result.get("provider", "local")
+            _llm._last_model = result.get("model_used", NO_MODEL)
+            _llm._last_provider = result.get("provider", "none")
             _llm._last_cost = result.get("cost_estimate", 0)
             # Gate-B.2: append router step to fallback chain
             if not hasattr(_llm, '_fallback_chain') or not _llm._fallback_chain:
@@ -428,45 +417,26 @@ def _llm(prompt: str, max_tokens: int = 800, task_type: str = "agent_narrative",
                     return oauth_out
             return f"LLM error: {err}"
     except ImportError:
-        # Fallback to direct Ollama if router not available
-        try:
-            payload = json.dumps({"model": OLLAMA_MODEL, "stream": False, "think": False,
-                                  "messages": [{"role": "user", "content": prompt}],
-                                  "options": {"temperature": 0.3, "num_predict": max_tokens}}).encode()
-            req = urllib.request.Request(OLLAMA_URL, data=payload,
-                                         headers={"Content-Type": "application/json"}, method="POST")
-            with urllib.request.urlopen(req, timeout=120) as resp:
-                # Gate-B.2: record raw Ollama as explicit fallback (not silent)
-                if not hasattr(_llm, '_fallback_chain') or not _llm._fallback_chain:
-                    _llm._fallback_chain = []
-                _llm._fallback_chain.append({"used": f"raw_ollama:{OLLAMA_MODEL}", "fallback": True})
-                _llm._last_model = OLLAMA_MODEL
-                _llm._last_provider = "local"
-                _llm._last_cost = 0
-                return json.loads(resp.read()).get("message", {}).get("content", "").strip()
-        except Exception as e:
-            return f"LLM error: {e}"
+        _llm._fallback_reason = "ROUTER_IMPORT_FAILED"
+        _llm._fallback_chain.append({"hard_failure": "llm_router_import_failed"})
+        return "LLM error: llm_router_import_failed"
 
 # Track last model used for logging
-_llm._last_model = OLLAMA_MODEL
-_llm._last_provider = "local"
+_llm._last_model = NO_MODEL
+_llm._last_provider = "none"
 _llm._last_cost = 0
 _llm._requested_policy = None
 _llm._first_attempt = None
 _llm._fallback_reason = None
 _llm._manual_vs_automatic = None
 
-# ── CIO final-synthesis: free Grok OAuth primary, local gemma fallback (operator 2026-06-14) ──
-# The specialist agents (Maria/Steph/Risk) stay on local gemma3:4b; only the FINAL synthesis — the
-# one decision per symbol that becomes the CIO View — runs on the stronger free Grok lane, falling
-# back to local when the proxy isn't authenticated. Both lanes are free (no metered API).
+# CIO synthesis uses governed cloud lanes only. Provider failure stays a failure.
 SYNTHESIS_PROMPT_VERSION = "cio_synth_v7_synthesis_evidence_2026-07-02"   # prompt stamp / audit
 SYNTHESIS_VERSION_NUM = 7                                    # integer for the synthesis_version column (bump on prompt/method change)
 # F2 (Stage 2b): committee agents emit tagged evidence + data_i_doubt (CIO audit 2026-07-01).
 # Contract constants/helpers live in scripts/lib/cio_agent_contract.py (fleet parity).
 
-# Local-lane control tokens (gemma/qwen '/no_think') are meaningless noise on cloud lanes — strip
-# before any Grok/ChatGPT call; the local fallback keeps the original prompt (F3, CIO audit 2026-07-01).
+# Strip obsolete local-lane control tokens before cloud calls.
 _LOCAL_CONTROL_TOKENS = ("/no_think",)
 
 
@@ -480,8 +450,7 @@ def _strip_local_tokens(prompt: str) -> str:
 def _synthesis_llm(prompt: str, max_tokens: int = 2000) -> str:
     """Declared multi-lane CIO synthesis (Gate-B.2): initial synthesis is Flash-first
     via llm_router task_type=cio_synthesis. Grok OAuth is an optional high-impact /
-    soft-failure challenge lane (declared, not silent). Local gemma remains a
-    declared fallback. CIO authority is gated by cio_legacy_watch_gate.py — this
+    soft-failure challenge lane (declared, not silent). CIO authority is gated by cio_legacy_watch_gate.py — this
     function produces LEGACY_CIO_REVIEW, never AUTHORITATIVE_CIO_ACTION.
 
     Provider provenance recorded on _llm._fallback_chain."""
@@ -490,7 +459,7 @@ def _synthesis_llm(prompt: str, max_tokens: int = 2000) -> str:
     if out and not str(out).startswith("LLM error") and not _is_refusal(out):
         _llm._fallback_chain = list(getattr(_llm, "_fallback_chain", []) or []) + [
             {"policy": "FLASH_FIRST_INITIAL_SYNTHESIS",
-             "declared_lanes": ["grok-oauth", "local-gemma"]},
+             "declared_lanes": ["grok-oauth"]},
         ]
         return out
     try:
@@ -502,14 +471,12 @@ def _synthesis_llm(prompt: str, max_tokens: int = 2000) -> str:
                 _llm._fallback_reason = "FLASH_SOFT_FAILURE_OR_EMPTY"
                 _llm._fallback_chain = [{"attempted": "llm_router:cio_synthesis", "failed": True},
                                          {"used": "grok-oauth", "model": "grok-3-mini",
-                                          "declared_lanes": ["grok-oauth", "local-gemma"]}]
+                                          "declared_lanes": ["grok-oauth"]}]
                 return gout
-        # Gate-B.2: declared fallback lane (not silent)
-        _llm._fallback_chain = [{"attempted": "grok-oauth", "failed": True},
-                                 {"used": "local-gemma", "declared_lanes": ["grok-oauth", "local-gemma"]}]
+        _llm._fallback_chain = [{"attempted": "grok-oauth", "failed": True}]
     except Exception:
         pass
-    _llm._last_model = getattr(_llm, "_last_model", OLLAMA_MODEL) or OLLAMA_MODEL
+    _llm._last_model = getattr(_llm, "_last_model", NO_MODEL) or NO_MODEL
     return out if out else "LLM error: synthesis_failed"
 
 
@@ -540,8 +507,8 @@ def _rec_from(raw):
 
 def _synthesis_lanes(prompt: str, lanes=None, max_tokens: int = 2000, manual_trigger: bool = False):
     """Declared multi-lane CIO synthesis (Gate-B.2): Grok + ChatGPT OAuth cross-check
-    with explicit reconciliation. On dual-lane failure, local gemma is a declared fallback
-    lane (not silent). CIO authority gated by cio_legacy_watch_gate.py — output is
+    with explicit reconciliation. On dual-lane failure, governed Flash is the only fallback.
+    CIO authority gated by cio_legacy_watch_gate.py — output is
     LEGACY_CIO_REVIEW, never AUTHORITATIVE_CIO_ACTION.
 
     lanes: None → grok+chatgpt (cron default), ('grok',), ('chatgpt',), or both.
@@ -612,17 +579,17 @@ def _synthesis_lanes(prompt: str, lanes=None, max_tokens: int = 2000, manual_tri
     if manual_trigger:
         meta.update(agree=None, consensus=None, consensus_confidence=None, error="oauth_lane_unavailable")
         return "LLM error: requested OAuth lane(s) unavailable or blocked", meta
-    # Gate-B.2: declared fallback to local gemma (not silent)
+    # Explicit governed cloud fallback. No local generative route.
     out = _llm(prompt, max_tokens=max_tokens, task_type="cio_synthesis", high_impact=False)
-    _llm._last_model = getattr(_llm, "_last_model", OLLAMA_MODEL) or OLLAMA_MODEL
+    _llm._last_model = getattr(_llm, "_last_model", NO_MODEL) or NO_MODEL
     meta.update(agree=None, consensus=None, consensus_confidence=None,
-                fallback_lane="local-gemma", declared_fallback=True)
+                fallback_lane="governed-deepseek-flash", declared_fallback=True)
     return out, meta
 
 
 def _synthesis_dual(prompt: str, max_tokens: int = 2000):
     """Gate-B.2: Declared multi-lane CIO research — grok+chatgpt OAuth dual consensus,
-    local gemma as declared fallback. Output classifies LEGACY_CIO_REVIEW."""
+    governed Flash as declared fallback. Output classifies LEGACY_CIO_REVIEW."""
     return _synthesis_lanes(prompt, lanes=None, max_tokens=max_tokens, manual_trigger=False)
 
 
@@ -2121,12 +2088,11 @@ CRITICAL INSTRUCTIONS:
 """
 
     prompt = f"[prompt_version: {SYNTHESIS_PROMPT_VERSION}]\n" + prompt   # version-stamp (tracked in synthesis_version)
-    # max_tokens applies to the LOCAL gemma fallback only (cloud lanes send no cap); 1000 truncated the
-    # ~11-field JSON contract mid-narrative on the fallback lane (measured: 1/1 local rows truncated).
+    # 2000 tokens avoids truncating the multi-field JSON contract.
     if manual_trigger or lanes:
         raw, dual_meta = _synthesis_lanes(prompt, lanes=lanes, max_tokens=2000, manual_trigger=manual_trigger)
     else:
-        raw, dual_meta = _synthesis_dual(prompt, max_tokens=2000)   # Grok + ChatGPT dual-consensus, gemma fallback
+        raw, dual_meta = _synthesis_dual(prompt, max_tokens=2000)
     # All lanes failed → do NOT upsert: the parser fallback would store the error string as the
     # narrative, clobbering the last good synthesis (404 such rows accumulated Apr 29–May 8 2026,
     # e.g. ANET rendered "LLM error: All providers failed" as its CIO note for 65 days).
@@ -2255,7 +2221,7 @@ CRITICAL INSTRUCTIONS:
     rec = parsed["recommendation"].upper()
 
     # Store synthesis — record the ACTUAL model that ran + the prompt version (not the hardcoded local)
-    actual_model = getattr(_llm, "_last_model", OLLAMA_MODEL) or OLLAMA_MODEL
+    actual_model = getattr(_llm, "_last_model", NO_MODEL) or NO_MODEL
 
     if dry_run:
         specialist_inputs = [
@@ -2515,7 +2481,7 @@ def process_jobs(limit: int = 10):
     jobs = cur.fetchall()
 
     if not jobs:
-        print(f"[watchlist-agent] No queued jobs")
+        print("[watchlist-agent] No queued jobs")
         # Still check for symbols ready for synthesis
         _check_pending_synthesis(conn)
         conn.close()
@@ -2670,7 +2636,7 @@ def process_jobs(limit: int = 10):
               parsed.get("next_action", ""),
               json.dumps({
                   "raw": raw,
-                  "model": getattr(_llm, "_last_model", OLLAMA_MODEL),
+                  "model": getattr(_llm, "_last_model", NO_MODEL),
                   "provider": getattr(_llm, "_last_provider", "unknown"),
                   "requested_provider_policy": getattr(_llm, "_requested_policy", None),
                   "first_provider_attempted": getattr(_llm, "_first_attempt", None),
@@ -2686,7 +2652,7 @@ def process_jobs(limit: int = 10):
                   "evidence": parsed.get("evidence", []),
                   "data_i_doubt": parsed.get("data_i_doubt", "none"),
               }),
-              getattr(_llm, "_last_model", OLLAMA_MODEL), prompt_hash,
+              getattr(_llm, "_last_model", NO_MODEL), prompt_hash,
               json.dumps(context["snapshot"], default=str),
               raw,
               job.get("started_at")))
@@ -3170,4 +3136,3 @@ if __name__ == "__main__":
             print(f"[scheduled-canary] FAILED: {type(e).__name__}: {e}")
             _sys.exit(1)
         raise
-
