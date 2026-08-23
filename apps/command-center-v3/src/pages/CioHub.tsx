@@ -3,6 +3,7 @@ import { useSearchParams, Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { hubTitle, hubSubtitle } from '../lib/terminalHubChrome'
 import { SymbolThesisCard, type SymbolThesisCardPayload } from '../components/cio/SymbolThesisCard'
+import CioBrainPanel from '../components/cio/CioBrainPanel'
 import { NotificationGatePanel, SensesEvidencePanel, TelegramReceiptsPanel } from './MaturityPanels'
 import { cioLabel, formatAsOfET } from '../lib/cioLabels'
 
@@ -236,10 +237,11 @@ type DispositionRec = {
 }
 type DispositionMap = Record<string, DispositionRec>
 
-const TABS = ['cio-now', 'operator-policy', 'universe-theses', 'investment-books', 'capital-plan', 'posture', 'opportunities', 'report', 'evidence', 'notification-gate', 'telegram-receipts', 'senses-evidence'] as const
+const TABS = ['cio-brain', 'cio-now', 'operator-policy', 'universe-theses', 'investment-books', 'capital-plan', 'posture', 'opportunities', 'report', 'evidence', 'notification-gate', 'telegram-receipts', 'senses-evidence'] as const
 type Tab = typeof TABS[number]
 
 const TAB_LABEL: Record<Tab, string> = {
+  'cio-brain': 'CIO BRAIN',
   'cio-now': 'CIO NOW',
   'operator-policy': 'OPERATOR POLICY',
   'universe-theses': 'UNIVERSE & THESES',
@@ -1697,7 +1699,7 @@ export default function CioHub({ onDrill }: Props) {
   const [sp, setSp] = useSearchParams()
   const planId = (sp.get('plan') || '').trim()
   const tabParam = (sp.get('tab') || '').trim() as Tab
-  const initialTab: Tab = TABS.includes(tabParam) ? tabParam : 'cio-now'
+  const initialTab: Tab = TABS.includes(tabParam) ? tabParam : 'cio-brain'
   const [tab, setTab] = useState<Tab>(initialTab)
   const [dispositions, setDispositions] = useState<DispositionMap>({})
   const [legacyUnversioned, setLegacyUnversioned] = useState<DispositionMap>({})
@@ -1808,6 +1810,8 @@ export default function CioHub({ onDrill }: Props) {
 
       {tab === 'investment-books' && <InvestmentBooksPanel />}
 
+      {tab === 'cio-brain' && <CioBrainPanel />}
+
       {tab === 'operator-policy' && <OperatorPolicyPanel />}
 
       {(tab === 'notification-gate' || tab === 'telegram-receipts' || tab === 'senses-evidence') && (
@@ -1818,7 +1822,7 @@ export default function CioHub({ onDrill }: Props) {
         </div>
       )}
 
-      {home && tab !== 'notification-gate' && tab !== 'telegram-receipts' && tab !== 'senses-evidence' && tab !== 'investment-books' && tab !== 'operator-policy' && tab !== 'universe-theses' && (
+      {home && tab !== 'cio-brain' && tab !== 'notification-gate' && tab !== 'telegram-receipts' && tab !== 'senses-evidence' && tab !== 'investment-books' && tab !== 'operator-policy' && tab !== 'universe-theses' && (
         <div role="tabpanel" aria-label={TAB_LABEL[tab]}>
           {tab === 'cio-now' && <CioNowSection home={home} dispositions={dispositions} legacyUnversioned={legacyUnversioned} onAct={onAct} />}
           {tab === 'capital-plan' && <CapitalPlanSection cp={home.capital_plan} />}

@@ -26,6 +26,7 @@ Routes:
   GET  /api/v3/cio/dispositions — latest operator dispositions (decision_id key)
   POST /api/v3/cio/decision/{decision_id}/disposition — governed operator feedback
   GET /api/v3/cio/brain/maturity-contract — canonical L0-L7 contract
+  GET /api/v3/cio/brain — consolidated CIOBrainSnapshot@v1 projection
   GET /api/v3/cio/brain/policy — OperatorInvestmentPolicy@v1
   POST /api/v3/cio/brain/policy/ratify — explicit operator policy ratification
   GET /api/v3/cio/brain/portfolio-state — deterministic PortfolioState@v1
@@ -1876,6 +1877,123 @@ def get_learning_review_v1() -> dict[str, Any]:
         },
         "memory_behavior_influence": 0,
         "authority": AUTHORITY_ADVISORY,
+    }
+
+
+def get_memory_summary_v1() -> dict[str, Any]:
+    """Read-only durable memory health; memory remains non-authoritative context."""
+    try:
+        from scripts.lib.agent_durable_memory import get_durable_provider
+
+        provider = get_durable_provider(PROJECT_ROOT)
+        health = provider.health()
+        counts = provider.counts()
+        retrieval_count = sum(1 for line in provider.retrievals_path.read_text(
+            encoding="utf-8", errors="replace"
+        ).splitlines() if line.strip()) if provider.retrievals_path.exists() else 0
+        return {
+            "schema": "CIOMemorySummary@v1",
+            "status": health.get("status"),
+            "provider": health.get("provider"),
+            "backend": health.get("backend"),
+            "retrieval": health.get("vector_backend"),
+            "total": health.get("memory_count", 0),
+            "counts": counts,
+            "retrieval_receipts": retrieval_count,
+            "authority": "NON_AUTHORITATIVE_CONTEXT",
+            "memory_behavior_influence": 0,
+        }
+    except Exception as exc:
+        return {
+            "schema": "CIOMemorySummary@v1",
+            "status": "UNAVAILABLE",
+            "error": type(exc).__name__,
+            "authority": "NON_AUTHORITATIVE_CONTEXT",
+            "memory_behavior_influence": 0,
+        }
+
+
+def get_cio_brain_v1() -> dict[str, Any]:
+    """Build one derived operator projection from canonical versioned planes."""
+    policy = get_operator_investment_policy()
+    portfolio = get_portfolio_state_v1()
+    market = get_market_context_state_v1()
+    seasonality = get_seasonality_state_v1()
+    thesis = get_portfolio_thesis_v1()
+    capital = get_capital_plan_v1()
+    methodology = get_methodology_policy_v1()
+    learning = get_learning_review_v1()
+    memory = get_memory_summary_v1()
+    home = get_cio_home()
+
+    situation = capital.get("situation") or {}
+    notification = situation.get("notification") or {}
+    policy_doc = policy.get("policy") or {}
+    portfolio_doc = portfolio.get("portfolio_state") or {}
+    market_doc = market.get("market_context") or {}
+    seasonality_doc = seasonality.get("seasonality") or {}
+    published_thesis = thesis.get("published_thesis")
+    thesis_doc = published_thesis or thesis.get("candidate") or {}
+    published_plan = capital.get("published") or {}
+    plan_doc = (published_plan.get("plan") if isinstance(published_plan, dict) else None) or capital.get("capital_plan") or {}
+
+    conflict_fields = [
+        str(item.get("field") or "POLICY_CONFLICT")
+        for item in (policy_doc.get("legacy_conflicts") or [])
+        if isinstance(item, dict)
+    ]
+    unresolved = sorted(set(
+        [str(item) for item in (policy_doc.get("missing_fields") or [])]
+        + conflict_fields
+        + [str(item) for item in (situation.get("blockers") or [])]
+    ))
+    versions = {
+        "operator_policy_version": policy_doc.get("version"),
+        "portfolio_state_version": portfolio_doc.get("version"),
+        "market_context_version": market_doc.get("version"),
+        "seasonality_version": seasonality_doc.get("version"),
+        "portfolio_thesis_version": thesis_doc.get("thesis_version") or thesis_doc.get("version"),
+        "capital_plan_version": plan_doc.get("plan_version") or plan_doc.get("version"),
+        "methodology_policy_version": (methodology.get("methodology_policy") or {}).get("version"),
+        "weekly_learning_version": (learning.get("latest_review") or {}).get("version"),
+    }
+    state = "CURRENT" if not unresolved else "BLOCKED"
+    return {
+        "ok": True,
+        "schema": "CIOBrainSnapshot@v1",
+        "as_of": _now_iso(),
+        "state": state,
+        "authority": AUTHORITY_ADVISORY,
+        "memory_behavior_influence": 0,
+        "versions": versions,
+        "unresolved_conflicts": unresolved,
+        "operator_policy": policy_doc,
+        "portfolio_state": portfolio_doc,
+        "market_context": market_doc,
+        "seasonality": seasonality_doc,
+        "portfolio_thesis": thesis_doc,
+        "portfolio_thesis_delta": thesis.get("candidate_delta"),
+        "capital_situation": situation,
+        "capital_plan": plan_doc,
+        "methodology": methodology,
+        "learning": learning,
+        "memory": memory,
+        "symbol_theses": {
+            "decisions": ((home.get("cio_now") or {}).get("decisions") or []),
+            "count": ((home.get("cio_now") or {}).get("decision_count") or 0),
+        },
+        "research": {
+            "gaps": ((home.get("opportunities") or {}).get("research_gaps") or []),
+            "open_plans": ((home.get("cio_now") or {}).get("open_plans_count") or 0),
+        },
+        "proactive_cio": {
+            "material": bool(situation.get("material")),
+            "notification_eligible": bool(notification.get("eligible")),
+            "suppression_reason": notification.get("suppression_reason"),
+            "next_review": plan_doc.get("next_review"),
+        },
+        "financial_action": False,
+        "executable_order": None,
     }
 
 
