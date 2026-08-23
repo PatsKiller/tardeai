@@ -1,0 +1,121 @@
+{
+  "schema": "LangGraphStateMemoryRetryRoutingAudit@v1",
+  "as_of": "2026-08-23T16:16:00-04:00",
+  "authority": "READ_ONLY_ADVISORY",
+  "financial_action": false,
+  "reviewed_runtime": {
+    "langgraph_version": "1.2.10",
+    "python_requirement": ">=3.10",
+    "advertised_python_classifiers": ["3.10", "3.11", "3.12", "3.13"],
+    "tradeai_python": "3.14.4",
+    "langgraph_installed": false,
+    "langchain_installed": false,
+    "compatibility": "UNPROVEN_PYTHON_3_14"
+  },
+  "live_trace_measurement": {
+    "path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/data/cio/agent_run_traces.jsonl",
+    "trace_rows": 7059,
+    "wakes": 525,
+    "avg_steps_per_wake": 0.0,
+    "branch_count": 0,
+    "parallel_fan_out": 0,
+    "retry_count": 0,
+    "durable_wait_count": 0,
+    "resume_count": 0,
+    "operator_interrupts": 0,
+    "cross_process_continuation": 0,
+    "partial_failure_recovery": 0,
+    "manual_recovery_incidents": 0,
+    "state_loss_incidents": 0,
+    "computed_gate": "NOT_REQUIRED",
+    "audited_gate": "UNMEASURED",
+    "reason": "AgentRunTrace@v1 does not emit any complexity-gate input fields; zero is schema absence, not measured absence."
+  },
+  "state": {
+    "source_maturity": 3,
+    "live_maturity": 1,
+    "strengths": [
+      "append-only redacted AgentRunTrace JSONL",
+      "LAB/SHADOW RunPersistence with hash-chained events",
+      "idempotent artifact and tool lifecycle records",
+      "explicit run budgets and deadlines"
+    ],
+    "gaps": [
+      "no live graph/checkpointer runtime",
+      "flat traces cannot reconstruct node state or retry attempts",
+      "failed and cancelled MvlRuntime runs require a new envelope",
+      "provider success before model-completed commit is an ambiguous side-effect boundary",
+      "source-only LAB/SHADOW persistence does not prove live advisory recovery"
+    ]
+  },
+  "memory": {
+    "source_maturity": 4,
+    "live_maturity": 2,
+    "records": 284,
+    "active": 2,
+    "candidate": 280,
+    "expired": 1,
+    "retracted": 1,
+    "retrieval_receipts": 6062,
+    "memory_behavior_influence": 0,
+    "truth_override_attempts": 0,
+    "operator_rejection_recall": "UNAVAILABLE",
+    "promotion": "NOT_PROMOTED",
+    "gaps": [
+      "retrieval is lexical/confidence/recency, not semantic",
+      "the same top memories are repeatedly retrieved across unrelated wakes",
+      "operator rejection recall is not measured",
+      "real decision-linked feedback and outcome observation window is incomplete",
+      "memory remains context and must not become policy or financial truth"
+    ]
+  },
+  "retry": {
+    "source_maturity": 2,
+    "live_maturity": 1,
+    "strengths": [
+      "llm_net retries 429/5xx/network/timeouts with bounded attempts",
+      "some provider hard failures fail closed",
+      "Hermes has an authentication circuit breaker"
+    ],
+    "gaps": [
+      "no canonical typed RetryPolicy registry",
+      "retry layers are split across HTTP helpers, providers, queue jobs, cron and systemd",
+      "no jitter or shared retry budget in llm_net",
+      "retry_count is absent from AgentRunTrace",
+      "ambiguous paid-provider timeout has no universal reservation/request journal",
+      "synthesis retries use timestamp job IDs and can create repeated work",
+      "hard failure vocabulary differs between routers"
+    ]
+  },
+  "routing": {
+    "source_maturity": 2,
+    "live_maturity": 1,
+    "strengths": [
+      "governed Flash path recognizes cost/policy failures",
+      "queued-job provider policy distinguishes automatic, manual and challenge lanes",
+      "local judgment filter fails closed when imported"
+    ],
+    "gaps": [
+      "routing is fragmented across multiple routers, lane policies and direct callers",
+      "six local generative models remain installed and one is active",
+      "171 source references, 15 cron callers, 3 systemd callers and 24 OpenClaw references remain",
+      "local judgment rollback flags retain hidden capability",
+      "llm_router uses mutable function attributes for request context and is unsafe under concurrency",
+      "llm_router daily-spend log parsing fails open to zero",
+      "router documentation and GPU-mode log claim local-primary while live task tables are Flash-only"
+    ]
+  },
+  "recommendation": {
+    "decision": "NO_LANGGRAPH_PRODUCTION_ADOPTION",
+    "next_gate": "LANGGRAPH_MEASUREMENT_REPAIR_THEN_BOUNDED_PILOT",
+    "conditions": [
+      "restore CI and land/deploy the existing autonomous stack",
+      "extend AgentRunTrace with actual node, wait, resume, retry and recovery metrics",
+      "prove LangGraph 1.2.x under an isolated supported Python runtime",
+      "use a Postgres checkpointer in shadow only; InMemorySaver is test-only",
+      "keep canonical investment state in Trade AI stores",
+      "make every provider/notification side effect idempotent before graph retries",
+      "pilot one advisory worker with MEMORY_BEHAVIOR_INFLUENCE=0 and no financial imports"
+    ]
+  }
+}
