@@ -24,7 +24,7 @@ Routes:
   GET /api/v3/cio/ask-thesis/{SYM} — Ask CIO symbol-thesis context
   POST /api/v3/cio/plans/{id}/disposition — ack/defer/done/reject (status only)
   GET  /api/v3/cio/dispositions — latest operator dispositions (decision_id key)
-  POST /api/v3/cio/decision/{decision_id}/disposition — ACK/DEFER/DONE/REJECT
+  POST /api/v3/cio/decision/{decision_id}/disposition — governed operator feedback
 """
 from __future__ import annotations
 
@@ -1103,7 +1103,11 @@ def get_cio_home() -> dict[str, Any]:
 # must never auto-apply to a newer decision.
 
 _DISPOSITION_PATH = PROJECT_ROOT / "data" / "cio" / "decision_dispositions.jsonl"
-_VALID_DISPOSITIONS = {"ack", "defer", "done", "reject", "rate"}
+_VALID_DISPOSITIONS = {
+    "agree", "disagree", "defer", "need_data", "no_longer_relevant",
+    # Read-compatible legacy API values. Command Center no longer emits these.
+    "ack", "done", "reject", "rate",
+}
 AUTHORITY_ADVISORY = "READ_ONLY_ADVISORY"
 IDENTITY_DECISION_ID = "DECISION_ID"
 IDENTITY_LEGACY = "LEGACY_UNVERSIONED"
@@ -1193,6 +1197,8 @@ def catalog_from_position_decisions(rows: Any) -> dict[str, dict[str, Any]]:
             "symbol": d.get("symbol"),
             "account": acct,
             "action": d.get("action") or d.get("stance") or d.get("stance_code"),
+            "symbol_thesis_id": d.get("symbol_thesis_id"),
+            "symbol_thesis_version": d.get("symbol_thesis_version"),
         }
         rec["decision_identity"] = classify_decision_identity(rec)
         out[did] = rec
@@ -1228,7 +1234,10 @@ def stamp_decision_identity(
             continue
         did = str(card.get("decision_id") or "").strip()
         known = catalog.get(did) or {}
-        for fld in ("decision_input_digest", "decision_evidence_digest"):
+        for fld in (
+            "decision_input_digest", "decision_evidence_digest",
+            "symbol_thesis_id", "symbol_thesis_version",
+        ):
             if not card.get(fld) and known.get(fld):
                 card[fld] = known[fld]
     return home
@@ -1330,7 +1339,7 @@ def post_decision_disposition(decision_key: str, body: dict[str, Any] | None = N
     stale/unknown IDs (unless archived-feedback), and legacy position keys.
     No broker/order/stop authority.
 
-    body.disposition: ack | defer | done | reject (required)
+    body.disposition: agree | disagree | defer | need_data | no_longer_relevant (required)
     body.rating:       1..5 usefulness rating (optional)
     body.note:         free-text advisory note (optional)
     body.decision_id / decision_input_digest / decision_evidence_digest
@@ -1481,24 +1490,57 @@ def post_decision_disposition(decision_key: str, body: dict[str, Any] | None = N
         return {"ok": False, "error": type(e).__name__, "detail": str(e)[:200],
                 "as_of": _now_iso(), "authority": AUTHORITY_ADVISORY}
 
-    outcome = None
-    try:
-        from scripts.lib.cio_outcome_observer import record_disposition_outcome
-        outcome = record_disposition_outcome(
-            decision_or_plan_id=did,
-            disposition=disp,
-            lineage_id=str(body.get("lineage_id") or "") or None,
-            rating=rating,
-            note=note,
-            symbol=str(symbol or "") or None,
-        )
-    except Exception as e:
-        outcome = {"ok": False, "error": f"{type(e).__name__}:{e}"}
+    feedback = None
+    research_request = None
+    if disp in {"agree", "disagree", "defer", "need_data", "no_longer_relevant"}:
+        try:
+            from scripts.lib.cio_operator_ticker_feedback import append_feedback, maybe_enqueue_need_data
+            thesis_id = body.get("thesis_id") or body.get("symbol_thesis_id")
+            thesis_version = body.get("thesis_version") or body.get("symbol_thesis_version")
+            if symbol and (not thesis_id or not thesis_version):
+                from scripts.lib.symbol_thesis_attach import thesis_fields_for_symbol
+                thesis = thesis_fields_for_symbol(str(symbol))
+                thesis_id = thesis_id or thesis.get("symbol_thesis_id")
+                thesis_version = thesis_version or thesis.get("symbol_thesis_version")
+            feedback = append_feedback({
+                "symbol": symbol,
+                "intent": disp.upper(),
+                "free_text": note,
+                "decision_id": did,
+                "thesis_id": thesis_id,
+                "thesis_version": thesis_version,
+                "operator_identity_class": body.get("operator_identity_class") or "PRIMARY_OPERATOR",
+                "source_surface": body.get("source_surface") or "cio_decision_card",
+                "status": "ACTIVE",
+            })
+            if disp == "need_data":
+                research_request = maybe_enqueue_need_data(str(symbol), feedback=feedback, apply=False)
+        except Exception as e:
+            feedback = {"ok": False, "error": f"{type(e).__name__}:{e}"}
+
+    # Operator feedback is not an OutcomeRecord. Preserve the legacy observer
+    # only for old clients while they migrate to the governed vocabulary.
+    outcome = {"ok": True, "created": False, "reason": "operator_feedback_is_not_outcome"}
+    if disp in {"ack", "done", "reject", "rate"}:
+        try:
+            from scripts.lib.cio_outcome_observer import record_disposition_outcome
+            outcome = record_disposition_outcome(
+                decision_or_plan_id=did,
+                disposition=disp,
+                lineage_id=str(body.get("lineage_id") or "") or None,
+                rating=rating,
+                note=note,
+                symbol=str(symbol or "") or None,
+            )
+        except Exception as e:
+            outcome = {"ok": False, "error": f"{type(e).__name__}:{e}"}
 
     return {
         "ok": True,
         "as_of": entry["occurred_at"],
         "disposition": entry,
+        "feedback": feedback,
+        "research_request": research_request,
         "outcome": outcome,
         "authority": AUTHORITY_ADVISORY,
     }
