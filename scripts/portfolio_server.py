@@ -44,6 +44,22 @@ from urllib.parse import urlparse, parse_qs
 
 PORT = 7777
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
+PROCESS_STARTED_AT = datetime.now().astimezone().isoformat(timespec="seconds")
+
+
+def _read_pin_sha(root: Path) -> str:
+    for name in ("SOURCE_COMMIT", "BUILD_SHA", "GIT_SHA"):
+        p = root / name
+        try:
+            sha = p.read_text(encoding="utf-8").strip().split()[0]
+        except OSError:
+            continue
+        if sha:
+            return sha
+    return ""
+
+
+LOADED_PIN_SHA = _read_pin_sha(PROJECT_ROOT)
 
 # Make the repo ROOT importable so `from scripts.lib.X` resolves alongside the
 # existing `from lib.X` convention (scripts/ and scripts/lib are also on sys.path).
@@ -651,6 +667,32 @@ _JSON_BODY_CACHE_LOCK = threading.Lock()
 _JSON_BODY_CACHE_MAX = 8
 
 
+def _stamp_serving(handler, data):
+    """Class guard: every /api/v3 JSON names the process, the loaded pin, and disk pin.
+
+    Stops a 2-day in-memory overlay being served as current with no indicator.
+    """
+    if not isinstance(data, dict):
+        return data
+    path = str(getattr(handler, "path", "") or "")
+    if "?" in path:
+        path = path.split("?", 1)[0]
+    if not path.startswith("/api/v3/"):
+        return data
+    if isinstance(data.get("_serving"), dict):
+        return data
+    disk = _read_pin_sha(Path.home() / "trade-ai-releases" / "portfolio-server" / "CURRENT")
+    data["_serving"] = {
+        "schema": "ServingFreshness@v1",
+        "authority": "READ_ONLY_ADVISORY",
+        "process_started_at": PROCESS_STARTED_AT,
+        "loaded_pin_sha": LOADED_PIN_SHA or None,
+        "current_pin_sha": disk or None,
+        "pin_match": bool(LOADED_PIN_SHA) and LOADED_PIN_SHA == disk,
+    }
+    return data
+
+
 def json_response(handler, status: int, data: dict) -> None:
     # Phase 203 fix: never emit bare NaN/Infinity — Python json allows them by default but they are
     # INVALID JSON and browser JSON.parse() rejects the whole payload (was blanking the v3 scanner).
@@ -658,6 +700,7 @@ def json_response(handler, status: int, data: dict) -> None:
     # RI v3.1 (WS-A): routes may attach "__etag__" (top level or inside data["data"]). If the client
     # sent a matching If-None-Match we answer 304 BEFORE any json.dumps/gzip — that serialize+compress
     # of MB-scale payloads on every poll was the real CPU cost behind the server_busy storms.
+    data = _stamp_serving(handler, data)
     etag = None
     if isinstance(data, dict):
         if "__etag__" in data:
@@ -2703,6 +2746,21 @@ if __name__ == "__main__":
         print(f"[fatal] Cannot bind port {PORT}: {e}")
         print("Another portfolio_server may already be listening. Check: ss -tlnp | grep 7777")
         sys.exit(1)
+    try:
+        _boot = PROJECT_ROOT / "data" / "runtime" / "portfolio_server_boot.json"
+        _boot.parent.mkdir(parents=True, exist_ok=True)
+        _disk = _read_pin_sha(Path.home() / "trade-ai-releases" / "portfolio-server" / "CURRENT")
+        _boot.write_text(json.dumps({
+            "schema": "PortfolioServerBoot@v1",
+            "authority": "READ_ONLY_ADVISORY",
+            "process_started_at": PROCESS_STARTED_AT,
+            "loaded_pin_sha": LOADED_PIN_SHA,
+            "current_pin_sha": _disk,
+            "pid": os.getpid(),
+            "port": PORT,
+        }, indent=2) + "\n", encoding="utf-8")
+    except OSError as _be:
+        print(f"[warn] could not write boot stamp: {_be}")
     threading.Thread(target=_compute_watchdog, daemon=True,
                      name="engine-room-compute-watchdog").start()
     # ── Startup data freshness check ──────────────────────────────────────

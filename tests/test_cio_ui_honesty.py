@@ -67,6 +67,16 @@ def test_universe_metrics_exposes_substantive_and_thin():
     assert '"held_current": metrics.get("held_current")' in cc
 
 
+def test_serving_stamp_and_boot_stamp_exist_in_server():
+    src = (ROOT / "scripts/portfolio_server.py").read_text(encoding="utf-8")
+    assert "ServingFreshness@v1" in src
+    assert "PROCESS_STARTED_AT" in src
+    assert "portfolio_server_boot.json" in src
+    pin = (ROOT / "scripts/lib/current_pin_integrity.py").read_text(encoding="utf-8")
+    assert "collect_process_freshness" in pin
+    assert "loaded_pin_ne_current_pin" in pin
+
+
 def test_ciohub_renders_substantive_and_thin_not_coverage_only():
     src = (ROOT / "apps/command-center-v3/src/pages/CioHub.tsx").read_text(encoding="utf-8")
     assert "Held substantive" in src

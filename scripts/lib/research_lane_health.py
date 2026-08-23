@@ -28,6 +28,9 @@ COVERAGE_STALL_LANE = "coverage-stall"
 
 DEFAULT_STREAK = 5
 DEFAULT_SILENCE_HOURS = 24
+# Streak resets on one success. 441/1336 COST_CAP errors still look "ok".
+DEFAULT_ERROR_RATE_PCT = 15.0
+DEFAULT_ERROR_RATE_MIN_N = 10
 # DeepSeek must stay in the watched set even when ok. Silence on weekdays only
 # would false-fire Saturday after a Friday success — coverage-stall is the
 # "research happened, brain did not learn" alarm.
@@ -38,6 +41,22 @@ def error_streak_n() -> int:
         n = int(os.getenv("RESEARCH_LANE_ERROR_STREAK", str(DEFAULT_STREAK)))
     except ValueError:
         n = DEFAULT_STREAK
+    return max(1, n)
+
+
+def error_rate_threshold_pct() -> float:
+    try:
+        n = float(os.getenv("RESEARCH_LANE_ERROR_RATE_PCT", str(DEFAULT_ERROR_RATE_PCT)))
+    except ValueError:
+        n = DEFAULT_ERROR_RATE_PCT
+    return max(0.0, min(100.0, n))
+
+
+def error_rate_min_n() -> int:
+    try:
+        n = int(os.getenv("RESEARCH_LANE_ERROR_RATE_MIN_N", str(DEFAULT_ERROR_RATE_MIN_N)))
+    except ValueError:
+        n = DEFAULT_ERROR_RATE_MIN_N
     return max(1, n)
 
 
@@ -96,12 +115,18 @@ def evaluate_lane(
     streak = consecutive_error_streak(newest_first)
     ok_24h = non_error_count(last_24h)
     attempts_24h = len(last_24h)
+    err_24h = max(0, attempts_24h - ok_24h)
+    rate = round(100.0 * err_24h / attempts_24h, 1) if attempts_24h else 0.0
     last_any = newest_first[0].get("created_at") if newest_first else None
     firing: list[str] = []
     if streak >= k and attempts_24h > 0:
         firing.append(f"error_streak:{streak}>={k}")
     if silence and ok_24h == 0:
         firing.append(f"zero_non_error_{silence_hours()}h")
+    thr = error_rate_threshold_pct()
+    min_n = error_rate_min_n()
+    if attempts_24h >= min_n and rate >= thr:
+        firing.append(f"error_rate_24h:{rate}>={thr:g}")
     return {
         "lane": lane,
         "ok": not firing,
@@ -110,6 +135,8 @@ def evaluate_lane(
         "streak_threshold": k,
         "non_error_24h": ok_24h,
         "attempts_24h": attempts_24h,
+        "error_24h": err_24h,
+        "error_rate_24h": rate,
         "last_any": last_any,
         "authority": AUTHORITY,
         "as_of": now.replace(microsecond=0).isoformat(),
@@ -329,10 +356,11 @@ def collect_report(*, now: Optional[datetime] = None) -> dict[str, Any]:
         )
     if os.getenv("RESEARCH_LANE_HEALTH_PIN", "1").strip().lower() not in {"0", "false", "off", "no"}:
         try:
-            from scripts.lib.current_pin_integrity import collect_pin_report
+            from scripts.lib.current_pin_integrity import collect_pin_report, collect_process_freshness
         except Exception:
-            from current_pin_integrity import collect_pin_report  # type: ignore
+            from current_pin_integrity import collect_pin_report, collect_process_freshness  # type: ignore
         lanes.append(collect_pin_report(now=now))
+        lanes.append(collect_process_freshness(now=now))
     if os.getenv("RESEARCH_LANE_HEALTH_DRIVE", "1").strip().lower() not in {"0", "false", "off", "no"}:
         try:
             from scripts.lib.drive_sync_health import collect_drive_report

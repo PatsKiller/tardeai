@@ -8,6 +8,22 @@
 
 **CURRENT pin constraint:** `scripts/`+`docs/` must match `5e91225a`. Aug 22 Telegram T1/T2 overlay (13 files + 2 extras) was restored 2026-08-23; backup `~/archives/current-pin-overlay-2026-08-22/`. Honesty **code** lands on `origin/main` (`fix/cio-ui-honesty-2026-08-22`). Live `:7777` stays the audited pin until an exact-main re-promote.
 
+## L2 — What live `coverage_pct 2.4` was counting
+
+Not `/v3/advisory`. That page reads `GET /api/v3/advisory` → `advisory_desk_latest.json` and **does not emit coverage_pct**.
+
+`2.4` is `GET /api/v3/cio/universe-theses` (CIO tab UNIVERSE & THESES), pin formula:
+
+```
+coverage_pct = 100 * CURRENT / material_universe = 100 * 3 / 124 = 2.4
+```
+
+`material_universe=124` is held+reentry+material watch in the **process `_CACHE`**, frozen since `portfolio_server` started 2026-08-21 19:36 EDT. It is **not** 22 holdings. `current_thesis=3` is the same stale cache. The 80-row list on the same payload is a different function (`build_coverage_report`, uncached) and shows 22/22 HELD CURRENT. Fifth denominator, not a rounding of 13.6 / 54.55 / 77.3.
+
+Worktree #460 against live jsonl: held **17 CURRENT / 5 THIN / 77.3% substantive**.
+
+---
+
 **Fix status (origin/main, not the pin):**
 | P0 | Status |
 |---|---|

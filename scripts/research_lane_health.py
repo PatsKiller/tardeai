@@ -95,6 +95,16 @@ def fix_hint(row: dict) -> str:
         )
     if lane == "current-pin":
         return "CURRENT scripts/+docs/ must match SOURCE_COMMIT (git archive hashes). No docs overlay."
+    if lane == "process-freshness":
+        return (
+            "portfolio_server loaded pin or start time disagrees with CURRENT. "
+            "Restart after exact-main promote. Do not serve a 2-day in-memory overlay as now."
+        )
+    if lane == "deepseek" and "error_rate_24h" in firing:
+        return (
+            "DeepSeek error_rate_24h (not streak). Today: COST_CAP_EXCEEDED request cap. "
+            "streak=0 after one success still hides a 30%+ error rate."
+        )
     if lane == "coverage-stall":
         return (
             "Coverage stall: research flowed, PASS-grade (CURRENT) thesis did not. "
