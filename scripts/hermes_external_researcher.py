@@ -445,9 +445,16 @@ def main():
         status = "error"; parsed = {"recommendation": f"[ERROR HTTP {he.code}] {detail}"[:300], "error": detail[:300]}
     except Exception as e:
         msg = str(e)[:240]
-        status = ("auth_pending" if "AUTH_PENDING" in msg else
-                  "unavailable" if "UNAVAILABLE" in msg else "error")
-        parsed = {"recommendation": f"[{status.upper()}] {msg}", "error": msg}
+        # Budget throttle is not a lane failure. A third of the desk was
+        # buried in error_streak=0 because COST_CAP_EXCEEDED wrote [ERROR].
+        if "COST_CAP_EXCEEDED" in msg:
+            status = "skipped"
+            rec = f"[SKIPPED_BUDGET] {args.symbol or '_'} {msg}"
+            parsed = {"recommendation": rec, "error": msg, "skip_code": "SKIPPED_BUDGET"}
+        else:
+            status = ("auth_pending" if "AUTH_PENDING" in msg else
+                      "unavailable" if "UNAVAILABLE" in msg else "error")
+            parsed = {"recommendation": f"[{status.upper()}] {msg}", "error": msg}
     if getattr(args, "no_store", False):
         print(json.dumps({
             "stored": False,
@@ -478,7 +485,9 @@ def main():
          str(raw)[:16000]))
     rid = cur.fetchone()[0]; c.commit(); c.close()
     print(f"\nstored hermes_external_research id={rid} status={status}")
-    if status == "sent":
+    if status == "skipped":
+        print("SKIPPED_BUDGET", args.symbol or "_", parsed.get("error") or "")
+    elif status == "sent":
         print("recommendation:", (parsed.get("recommendation") or "")[:200])
 
 

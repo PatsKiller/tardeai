@@ -11,6 +11,7 @@ MATURITY_IMPACT: `Command Center universe-theses shows coverage+substantive+THIN
 - L4: `/api/v3` `_serving` stamp (process start, loaded pin, disk pin) + `process-freshness` alarm.
 - L5: lane health fires `error_rate_24h` even when streak is 0 (DeepSeek 441/1336 COST_CAP).
 - L1: #460 CI 0-step / no runner — same on main since 2026-08-21 18:21Z. Not a #460 test regression. No merge while red.
+- Cap 2026-08-22: bind **11:31 ET after 120 sends** (soft cap still 120). 441 rejections = T1 250 + **all 141 T2** + T3 42 + T0-PROP 8. Extra vs ~312 is skip-gate not live on rebuild crontab tree + retry-on-cap (427 doubles) + Saturday 544-symbol walk + evening `high_rank_watchlist` 349. Do not raise the cap. `COST_CAP` now `SKIPPED_BUDGET` (this branch). `docs/ops/COST_CAP_EXCEEDED_2026-08-22.md`.
 
 ## 2026-08-22 — Lifecycle as-of (ingest, mint, what agents actually do)
 
