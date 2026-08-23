@@ -635,6 +635,19 @@ def _enqueue_local(sym, tier, deep=False, *, thesis_gap: dict | None = None) -> 
             return {"ok": False, "tail": str(e2)[:100]}
 
 
+def result_is_budget_throttle(res: dict | None) -> bool:
+    """True when the researcher hit COST_CAP — stop the rest of this run.
+
+    Today the scheduler kept walking 426 symbols after the cap bound, each
+    writing an [ERROR] row. Those are SKIPPED_BUDGET, and they must not retry
+    inside the same process.
+    """
+    blob = str((res or {}).get("tail") or "")
+    if (res or {}).get("budget_throttled"):
+        return True
+    return "SKIPPED_BUDGET" in blob or "COST_CAP_EXCEEDED" in blob
+
+
 def dispatch(sym, lane, tier, apply, *, thesis_gap: dict | None = None) -> dict:
     """Route by lane kind: queue lanes enqueue local work; external lanes call the researcher."""
     meta = LANES.get(lane, {})
@@ -673,10 +686,13 @@ def dispatch(sym, lane, tier, apply, *, thesis_gap: dict | None = None) -> dict:
         cmd.append("--apply")
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=CALL_TIMEOUT)
-        ok = "status=sent" in (r.stdout + r.stderr) or "recommendation:" in r.stdout
+        blob = (r.stdout or "") + (r.stderr or "")
+        throttled = result_is_budget_throttle({"tail": blob})
+        ok = (not throttled) and ("status=sent" in blob or "recommendation:" in (r.stdout or ""))
         return {
             "ok": ok,
-            "tail": (r.stdout or r.stderr or "")[-160:],
+            "tail": blob[-160:],
+            "budget_throttled": throttled,
             "thesis_id": (commission or {}).get("thesis_id"),
             "request_type": (commission or {}).get("request_type") or "scheduled_research",
             "rag_first": rag_first_enabled() if commission else False,
@@ -932,6 +948,7 @@ def run(mode, apply, budget):
     spent = 0      # external calls only
     done = 0
     ext_rot = 0
+    cap_hit = False
     for item in ordered:
         sym, tier = item["symbol"], item["tier"]
         all_lanes = lanes_for(tier)
@@ -943,6 +960,8 @@ def run(mode, apply, budget):
         ext_lanes = [l for l in all_lanes if l in EXTERNAL_LANES and LANES[l]["auto"]]
         # T2/T3 externals only fire on a live catalyst
         if tier in ("T2-INCUB", "T3-COLD") and not catalyst:
+            ext_lanes = []
+        if cap_hit:
             ext_lanes = []
         # T1 rotates ONE external per refresh; T0 gets all (true cross-check).
         # Phase 3: rotation weighted by graded outcome hit-rate (hermes_lane_usefulness) once
@@ -987,6 +1006,9 @@ def run(mode, apply, budget):
             if apply:
                 res = outcome.get("result") or {}
                 print(f"     {'ok' if res.get('ok') else 'FAIL'}: {str(res.get('tail') or '')[:80]}")
+                if result_is_budget_throttle(res):
+                    print(f"[scheduler] SKIPPED_BUDGET at {sym} — stopping remaining externals this run")
+                    cap_hit = True
                 time.sleep(1)
             spent += 1
         if apply and tier == "T0-HOLD":
