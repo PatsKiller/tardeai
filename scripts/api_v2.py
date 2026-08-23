@@ -40343,6 +40343,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     return 200, _cio.get_capital_plan_v1()
                 if p == "brain/methodology":
                     return 200, _cio.get_methodology_policy_v1()
+                if p in ("brain/learning-review", "brain/learning_review"):
+                    return 200, _cio.get_learning_review_v1()
                 if p in ("investment-product", "investment-books", "books"):
                     return 200, _cio.get_investment_product()
                 if p == "dispositions":
@@ -40426,6 +40428,13 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     return (200 if res.get("ok") else 404), res
                 return 404, {"ok": False, "error": f"unknown_cio_path: {p}"}
             if method == "POST":
+                if p == "brain/feedback":
+                    result = _cio.post_linked_operator_feedback(body if isinstance(body, dict) else {})
+                    return (200 if result.get("ok") else 400), result
+                if p.startswith("brain/preferences/") and p.endswith("/confirm"):
+                    candidate_id = p[len("brain/preferences/"): -len("/confirm")].strip("/")
+                    result = _cio.post_confirm_preference_candidate(candidate_id, body if isinstance(body, dict) else {})
+                    return (200 if result.get("ok") else 400), result
                 if p == "brain/policy/ratify":
                     res = _cio.post_operator_investment_policy_ratification(body or {})
                     return (200 if res.get("ok") else 400), res
