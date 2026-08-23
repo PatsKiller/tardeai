@@ -124,6 +124,17 @@ def build_universe_theses_projection(
     metrics = universe_metrics(root=root)
     report = build_coverage_report(root=root, material_only=False)
     daily = daily_thesis_changes(root=root)
+    try:
+        from scripts.lib.universe_projection import build_universe_projection
+        canonical_universe = build_universe_projection(root=root)
+    except Exception as exc:
+        canonical_universe = {
+            "schema": "UniverseProjection@v1",
+            "ok": False,
+            "error": f"{type(exc).__name__}:{exc}",
+            "authority": AUTHORITY,
+            "financial_action": False,
+        }
 
     material_rows = [r for r in (report.get("rows") or []) if r.get("material")]
     non_ticker_excluded = sum(
@@ -206,6 +217,7 @@ def build_universe_theses_projection(
             "desk": metrics.get("desk"),
         },
         "daily_thesis_changes": daily,
+        "universe_projection": canonical_universe,
         "symbols": cards,
         "proposed_research": proposed,
         "note": (
