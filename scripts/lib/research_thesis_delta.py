@@ -134,6 +134,18 @@ def build_research_thesis_delta(
         "classification": classification,
     }
     delta_id = "rtd_" + _digest(delta_core, 20)
+    from scripts.lib.research_metadata import build_research_metadata
+    metadata_inputs = prompt_context.get("metadata_inputs") or {}
+    metadata = build_research_metadata(
+        symbol=sym,
+        symbol_profile=metadata_inputs.get("symbol_profile") or {},
+        market_data=metadata_inputs.get("market_data") or {},
+        analyst_data=metadata_inputs.get("analyst_data") or {},
+        judgment=result.get("judgment_tags") or result.get("tags") or {},
+        provider=str(provider or result.get("provider") or result.get("lane") or "UNKNOWN"),
+        model=str(model or result.get("model") or "UNKNOWN"),
+        research_id=research_id,
+    )
     return {
         "schema": SCHEMA,
         "delta_id": delta_id,
@@ -160,6 +172,7 @@ def build_research_thesis_delta(
         "cost": cost or result.get("cost") or {},
         "prompt_context_hash": prompt_context.get("prompt_context_hash"),
         "source_refs": _as_list(result.get("source_refs"))[:20],
+        "metadata": metadata,
         "research_id": research_id,
         "result_fingerprint": result_fp,
         "thesis_publish_eligible": bool(grade.get("grade") == "A" and classification in MATERIAL_CLASSIFICATIONS),
@@ -227,6 +240,17 @@ def accept_research_result(
     if not appended:
         return {"ok": True, "duplicate": True, "delta": delta, "version_published": False, "authority": AUTHORITY}
 
+    contradiction_result = None
+    try:
+        from scripts.lib.research_contradiction import persist_candidates
+        root_path = Path(root) if root is not None else Path(__file__).resolve().parents[2]
+        contradiction_result = persist_candidates(
+            _read_rows(delta_path(root)),
+            path=root_path / "data/cio/research_contradiction_candidates.jsonl",
+        )
+    except Exception as exc:
+        contradiction_result = {"ok": False, "error": f"{type(exc).__name__}:{exc}"}
+
     if not delta["thesis_publish_eligible"]:
         return {
             "ok": True,
@@ -237,6 +261,7 @@ def accept_research_result(
                 "no_material_change" if delta["classification"] in {"CONFIRMS", "NO_NEW_INFO"}
                 else "evidence_quality_gate"
             ),
+            "contradiction_candidates": contradiction_result,
             "authority": AUTHORITY,
         }
 
@@ -296,6 +321,7 @@ def accept_research_result(
         "review": review,
         "version_published": bool(review.get("version_published")),
         "thesis_change_card": card,
+        "contradiction_candidates": contradiction_result,
         "authority": AUTHORITY,
     }
     for key in (

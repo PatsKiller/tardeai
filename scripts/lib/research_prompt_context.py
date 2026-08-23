@@ -108,7 +108,13 @@ def _market_snapshot(symbol: str, root: Path) -> dict[str, Any]:
             continue
         row = blob.get(symbol) or (blob.get("tickers") or {}).get(symbol)
         if isinstance(row, dict):
-            return {k: row.get(k) for k in SAFE_MARKET_FIELDS if row.get(k) is not None}
+            snapshot = {k: row.get(k) for k in SAFE_MARKET_FIELDS if row.get(k) is not None}
+            snapshot["_provenance"] = {
+                "source": "ticker_enrichment_cache",
+                "source_record_id": f"{symbol}:{row.get('cached_at') or row.get('as_of') or 'UNKNOWN'}",
+                "as_of": row.get("cached_at") or row.get("as_of"),
+            }
+            return snapshot
     return {}
 
 
@@ -312,6 +318,7 @@ def build_research_prompt_context(
     prior_delta = latest_delta(sym, root=root_p)
     current = deterministic_current if deterministic_current is not None else _market_snapshot(sym, root_p)
     prior_snapshot = (prior_delta or {}).get("deterministic_snapshot") or {}
+    current_public = {k: v for k, v in current.items() if not str(k).startswith("_")}
 
     if rag_catalog is None:
         try:
@@ -327,14 +334,15 @@ def build_research_prompt_context(
 
     support = list((rag_catalog or {}).get("supporting") or [])[:8]
     contradiction = list((rag_catalog or {}).get("contradictory") or [])[:8]
-    sector = current.get("sector") if isinstance(current, dict) else None
+    sector = current_public.get("sector")
+    deterministic_provenance = dict(current.get("_provenance") or {})
     body: dict[str, Any] = {
         "schema": SCHEMA,
         "symbol_identity": {
             "symbol": sym,
-            "company": current.get("company") if isinstance(current, dict) else None,
+            "company": current_public.get("company"),
             "sector": sector,
-            "industry": current.get("industry") if isinstance(current, dict) else None,
+            "industry": current_public.get("industry"),
         },
         "memberships": list(fields.get("memberships") or []),
         "portfolio_role": fields.get("portfolio_role"),
@@ -354,8 +362,29 @@ def build_research_prompt_context(
         "previous_research_delta": prior_delta,
         "previous_research_conclusion": previous_research if previous_research is not None else _previous_research(sym),
         "unresolved_research_gaps": list(fields.get("research_gaps") or []),
-        "deterministic_current_data": current,
-        "deterministic_changes_since_prior_review": deterministic_changes(current, prior_snapshot),
+        "deterministic_current_data": current_public,
+        "deterministic_changes_since_prior_review": deterministic_changes(current_public, prior_snapshot),
+        "metadata_inputs": {
+            "symbol_profile": {
+                "sector": current_public.get("sector"),
+                "industry": current_public.get("industry"),
+                "market_cap_b": current_public.get("market_cap_b"),
+                "index_memberships": fields.get("memberships") or [],
+                "provenance": deterministic_provenance,
+            },
+            "market_data": {
+                "price": current_public.get("price"),
+                "avg_dollar_volume": current_public.get("avg_dollar_volume"),
+                "provenance": deterministic_provenance,
+            },
+            "analyst_data": {
+                "analyst_rating": current_public.get("analyst_rating"),
+                "revision_direction": current_public.get("revision_direction"),
+                "street_mean_target": current_public.get("street_mean_target"),
+                "verified_producer": current_public.get("street_mean_target_verified") is True,
+                "provenance": deterministic_provenance,
+            },
+        },
         "market_regime": _market_regime(),
         "sector_industry_state": _sector_state(str(sector) if sector else None),
         "rag": {

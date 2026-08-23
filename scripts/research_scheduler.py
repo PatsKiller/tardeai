@@ -277,6 +277,9 @@ def load_universe(*, root: Path | None = None) -> dict:
                 uni[sym]["rank"] = rank
             if meta.get("reentry_ready_near"):
                 uni[sym]["reentry_ready_near"] = True
+            for key, value in meta.items():
+                if value is not None and uni[sym].get(key) is None:
+                    uni[sym][key] = value
 
     # T0-HOLD — unique held equity tickers (CASH / CUSIP out)
     try:
@@ -316,8 +319,9 @@ def load_universe(*, root: Path | None = None) -> dict:
                    WHERE status='active' AND symbol IS NOT NULL"""):
         add(dict(r)["symbol"], "T2-INCUB")
     # T3-COLD: the rest of the profiled universe
-    for r in _q("SELECT DISTINCT symbol FROM symbol_profiles"):
-        add(dict(r)["symbol"], "T3-COLD")
+    for r in _q("SELECT DISTINCT ON (symbol) symbol, sector, industry FROM symbol_profiles ORDER BY symbol"):
+        d = dict(r)
+        add(d["symbol"], "T3-COLD", sector=d.get("sector"), industry=d.get("industry"))
 
     # attach latest rank for everyone (for scoring) if missing
     ranks = {dict(r)["symbol"]: dict(r)["rank"] for r in _q(
@@ -488,6 +492,91 @@ def catalyst_signals() -> dict:
                    WHERE research_type='momentum_catalyst' AND created_at > NOW() - INTERVAL '36 hours'"""):
         sig[dict(r)["symbol"]] = True
     return sig
+
+
+def catalyst_event_records() -> dict[str, list[dict]]:
+    """Material structured catalyst rows, kept separate from free-form news."""
+    out: dict[str, list[dict]] = {}
+    rows = _q("""SELECT id, UPPER(symbol) AS symbol, catalyst_type, severity, created_at
+                 FROM catalyst_events
+                 WHERE created_at > NOW() - INTERVAL '36 hours'
+                   AND symbol IS NOT NULL""")
+    aliases = {
+        "M&A": "M_AND_A",
+        "MA": "M_AND_A",
+        "FDA_REGULATORY": "FDA",
+        "ANALYST": "ANALYST_REVISION",
+        "TARGET": "TARGET_REVISION",
+    }
+    for raw in rows:
+        row = dict(raw)
+        sym = str(row.get("symbol") or "").upper()
+        event_type = str(row.get("catalyst_type") or "").upper().replace(" ", "_")
+        event_type = aliases.get(event_type, event_type)
+        out.setdefault(sym, []).append({
+            "event_id": row.get("id"),
+            "type": event_type,
+            "severity": str(row.get("severity") or "MEDIUM").upper(),
+            "as_of": row.get("created_at"),
+        })
+    return out
+
+
+def market_regime_shifted() -> bool:
+    rows = [dict(row) for row in _q(
+        "SELECT regime_label FROM market_regime_snapshots ORDER BY created_at DESC LIMIT 2"
+    )]
+    return len(rows) >= 2 and rows[0].get("regime_label") != rows[1].get("regime_label")
+
+
+def _cached_market(sym: str) -> dict:
+    try:
+        from scripts.lib.research_prompt_context import _market_snapshot
+        return _market_snapshot(sym, ROOT)
+    except Exception:
+        return {}
+
+
+def scheduler_trigger_plan(
+    sym: str,
+    item: dict,
+    *,
+    events: list[dict],
+    thesis_gap: dict | None,
+    apply: bool,
+    now: datetime | None = None,
+) -> dict:
+    """One trigger decision for a due scheduler row."""
+    try:
+        from scripts.lib.research_event_trigger import plan_research_trigger
+        from scripts.lib.research_prompt_context import latest_delta
+    except Exception:
+        from lib.research_event_trigger import plan_research_trigger  # type: ignore
+        from lib.research_prompt_context import latest_delta  # type: ignore
+    prior_delta = latest_delta(sym, root=ROOT) or {}
+    current = _cached_market(sym)
+    previous = prior_delta.get("deterministic_snapshot") or {}
+    changed = bool(thesis_gap) or current != previous
+    invalidated = bool(prior_delta.get("invalidation_triggered"))
+    need_data = str((thesis_gap or {}).get("trigger") or "").upper() == "OPERATOR_NEED_DATA"
+    transitions = ["REENTRY_TRANSITION"] if item.get("reentry_ready_near") else []
+    return plan_research_trigger(
+        symbol=sym,
+        memberships=[str(item.get("tier") or "")],
+        due=True,
+        changed=changed,
+        stale=float(item.get("age_days") or 0) >= 14,
+        current_market=current,
+        previous_market=previous,
+        events=events,
+        state_transitions=transitions,
+        operator_need_data=need_data,
+        thesis_review_due=bool(thesis_gap),
+        invalidation_triggered=invalidated,
+        now=now,
+        ledger_path=ROOT / "data/cio/research_trigger_ledger.jsonl",
+        persist=apply,
+    )
 
 
 # ── scoring ──────────────────────────────────────────────────────────────────
@@ -810,6 +899,8 @@ def run(mode, apply, budget):
     if not allow_local_research_llm():
         print("[scheduler] local_llm_disabled")
     cats = catalyst_signals()
+    structured_events = catalyst_event_records()
+    regime_shift = market_regime_shifted()
     # Preload thesis gaps for high-value symbols (T0/T1) — convert commissioning
     # toward thesis-gap requests when gaps exist. Never invent thesis text.
     gap_by_sym: dict = {}
@@ -839,9 +930,20 @@ def run(mode, apply, budget):
     for item in ordered:
         sym, tier = item["symbol"], item["tier"]
         all_lanes = lanes_for(tier)
-        catalyst = cats.get(sym, False)
         thesis_gap = gap_by_sym.get(sym)
         reentry_ready_near = bool(item.get("reentry_ready_near") or (uni.get(sym) or {}).get("reentry_ready_near"))
+        item["reentry_ready_near"] = reentry_ready_near
+        events = list(structured_events.get(sym) or [])
+        if regime_shift and tier in {"T0-HOLD", "T0-PROP", "T1-WATCH"}:
+            events.append({"type": "MARKET_REGIME_SHIFT", "severity": "MEDIUM"})
+        trigger_plan = scheduler_trigger_plan(
+            sym,
+            item,
+            events=events,
+            thesis_gap=thesis_gap,
+            apply=apply,
+        )
+        catalyst = bool(cats.get(sym, False) or trigger_plan.get("triggered"))
         # decide lanes for THIS symbol
         local_lanes = [l for l in all_lanes if LANES[l]["dispatch"] == "queue"]
         ext_lanes = [l for l in all_lanes if l in EXTERNAL_LANES and LANES[l]["auto"]]
@@ -873,6 +975,11 @@ def run(mode, apply, budget):
                 thesis_gap=thesis_gap,
                 hours_window_fresh=hours_fresh,
                 reentry_ready_near=reentry_ready_near,
+                extra=(
+                    {"research_trigger": trigger_plan}
+                    if trigger_plan.get("trigger_reasons")
+                    else None
+                ),
             )
             if not outcome.get("dispatched"):
                 print(f"  skip {sym:6s} {tier:9s} lane={lane:13s} {outcome.get('code')}")
