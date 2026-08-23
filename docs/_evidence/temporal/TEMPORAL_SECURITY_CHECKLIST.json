@@ -408,14 +408,14 @@
   ],
   "production_gate_summary": {
     "controls_total": 40,
-    "implemented_by_this_exercise": 0,
+    "implemented_by_this_exercise": 4,
     "production_ready": false,
     "blockers": [
-      "no Temporal POC or production service is authorized by this checklist",
-      "Worker static authority guards are not yet implemented/proven",
-      "ambiguous provider-call idempotency is not yet failure-injection proven",
+      "no Temporal production service is authorized by this checklist",
+      "Worker static authority guards passed for the isolated POC but are not a production release control",
+      "real paid-provider ambiguous-timeout recovery remains unmeasured although deterministic provider-journal failure injection passed",
       "Cloud identity, payload encryption, audit export, retention, and cost are not configured or accepted",
-      "Worker Versioning and exact-release source pin are not yet proven",
+      "same-code PINNED Worker Versioning passed in T0; incompatible-code evolution and immutable production release launch remain unproven",
       "single-writer migration and rollback are not yet proven"
     ]
   },

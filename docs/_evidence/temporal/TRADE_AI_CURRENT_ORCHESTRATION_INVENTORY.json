@@ -1,6 +1,6 @@
 {
   "schema": "TradeAIOrchestrationInventory@v1",
-  "measured_at": "2026-08-23T14:47:37Z",
+  "measured_at": "2026-08-23T14:59:21Z",
   "authority": "READ_ONLY_ADVISORY",
   "memory_behavior_influence": 0,
   "source": {
@@ -11,27 +11,72 @@
     "autonomous_stack_head": "16616604635e8177930fc5bfbc7793247dba923a",
     "autonomous_stack_status": "OPEN_UNMERGED_NOT_DEPLOYED_HOLD",
     "prs_461_472": {
-      "461": "OPEN", "462": "OPEN", "463": "OPEN", "464": "OPEN",
-      "465": "OPEN", "466": "OPEN", "467": "OPEN", "468": "OPEN",
-      "469": "OPEN", "470": "OPEN", "471": "OPEN", "472": "OPEN"
+      "461": "OPEN",
+      "462": "OPEN",
+      "463": "OPEN",
+      "464": "OPEN",
+      "465": "OPEN",
+      "466": "OPEN",
+      "467": "OPEN",
+      "468": "OPEN",
+      "469": "OPEN",
+      "470": "OPEN",
+      "471": "OPEN",
+      "472": "OPEN"
     }
   },
   "worktrees": {
     "total": 164,
     "branch_attached": 140,
     "detached": 24,
-    "dirty_state": "PER_WORKTREE_DETAILS_NOT_NORMALIZED; EXISTING DIRTY TREES WERE NOT MODIFIED",
+    "dirty": 68,
+    "clean": 96,
+    "dirty_state": "68 OF 164 WORKTREES DIRTY; EXISTING DIRTY TREES WERE NOT MODIFIED",
     "source": "git worktree list --porcelain"
   },
   "tree_inventory": {
-    "cron_entries": {"total": 493, "rebuild": 137, "hybrid": 5, "current": 14, "other": 337},
-    "user_units": {"total": 161, "rebuild": 47, "hybrid": 28, "current": 1, "other": 85},
+    "cron_entries": {
+      "total": 493,
+      "rebuild": 137,
+      "hybrid": 5,
+      "current": 14,
+      "other": 337
+    },
+    "user_units": {
+      "total": 161,
+      "rebuild": 47,
+      "hybrid": 28,
+      "current": 1,
+      "other": 85
+    },
     "combined_drift_findings": 217,
     "system_units": "READABLE_UNITS_INCLUDED_BY_SOURCE_AUDIT; EXACT TRADEAI COUNT UNMEASURED",
     "source": "scripts/ops_tree_pin_audit.py plus effective crontab/systemd reads"
   },
+  "live_processes": {
+    "portfolio_server": {
+      "pid": 813795,
+      "started_at": "2026-08-21T19:36:00-04:00",
+      "working_directory_sha": "5e91225a1186659de3cfd65096e037e774506e7f",
+      "loaded_pin_matches_current": true,
+      "pin_integrity_diff_count": 0,
+      "pin_integrity_extra_count": 0
+    },
+    "tradeai_cio_telegram": {
+      "pid": 141558,
+      "started_at": "2026-08-21T14:06:00-04:00",
+      "process_working_directory_sha": "fe34482b9a547bd2ba24764154d41d7533da1deb",
+      "unit_configured_root": "CURRENT",
+      "loaded_pin_matches_current": false,
+      "finding": "process predates CURRENT promotion and retains old immutable release code"
+    },
+    "temporal_production_processes": 0
+  },
   "postgres": {
-    "listeners": ["127.0.0.1:5432", "127.0.0.1:5433"],
+    "listeners": [
+      "127.0.0.1:5432",
+      "127.0.0.1:5433"
+    ],
     "databases": "NAMES REDACTED FROM PUBLIC EVIDENCE; LIVE INSTANCES VERIFIED",
     "queue_or_domain_counts": {
       "watchlist_agent_jobs": 74590,
@@ -44,38 +89,857 @@
     "peak_connections": "UNMEASURED"
   },
   "orchestration_primitives": [
-    {"name": "CIOEventBus", "source": "scripts/lib/cio_event_bus.py:338", "role": "canonical CIO event meaning", "temporal_disposition": "KEEP_CANONICAL_WITH_ONE_WAY_ADAPTER"},
-    {"name": "CIOWakeJobStore", "source": "scripts/lib/cio_wake_jobs.py:195", "role": "wake state/idempotency", "temporal_disposition": "REPLACE_ONLY_FOR_MIGRATED_WORKFLOWS"},
-    {"name": "CIOAgentHandoffQueue", "source": "scripts/lib/cio_agent_handoff_queue.py", "role": "leases/retries/handoffs", "temporal_disposition": "MIGRATE_LATER_OR_KEEP_BUSINESS_QUEUE"},
-    {"name": "NotificationOutbox", "source": "scripts/lib/cio_notification_outbox.py:302", "role": "final delivery/audit", "temporal_disposition": "KEEP_AS_OUTBOX"},
-    {"name": "CIOActionLedger", "source": "scripts/lib/cio_action_ledger.py:146", "role": "operator workflow actions", "temporal_disposition": "KEEP_AS_DOMAIN_STORE"},
-    {"name": "file locks/flock", "source": "effective cron plus scripts", "role": "single-run exclusion", "temporal_disposition": "RETAIN_FOR_NON_MIGRATED_JOBS"}
+    {
+      "name": "CIOEventBus",
+      "source": "scripts/lib/cio_event_bus.py:338",
+      "role": "canonical CIO event meaning",
+      "temporal_disposition": "KEEP_CANONICAL_WITH_ONE_WAY_ADAPTER"
+    },
+    {
+      "name": "CIOWakeJobStore",
+      "source": "scripts/lib/cio_wake_jobs.py:195",
+      "role": "wake state/idempotency",
+      "temporal_disposition": "REPLACE_ONLY_FOR_MIGRATED_WORKFLOWS"
+    },
+    {
+      "name": "CIOAgentHandoffQueue",
+      "source": "scripts/lib/cio_agent_handoff_queue.py",
+      "role": "leases/retries/handoffs",
+      "temporal_disposition": "MIGRATE_LATER_OR_KEEP_BUSINESS_QUEUE"
+    },
+    {
+      "name": "NotificationOutbox",
+      "source": "scripts/lib/cio_notification_outbox.py:302",
+      "role": "final delivery/audit",
+      "temporal_disposition": "KEEP_AS_OUTBOX"
+    },
+    {
+      "name": "CIOActionLedger",
+      "source": "scripts/lib/cio_action_ledger.py:146",
+      "role": "operator workflow actions",
+      "temporal_disposition": "KEEP_AS_DOMAIN_STORE"
+    },
+    {
+      "name": "file locks/flock",
+      "source": "effective cron plus scripts",
+      "role": "single-run exclusion",
+      "temporal_disposition": "RETAIN_FOR_NON_MIGRATED_JOBS"
+    }
   ],
   "workflows": [
-    {"name": "research_scheduler", "purpose": "select due/changed/stale/triggered research", "trigger": "cron", "source_tree": "rebuild", "worker": "scripts/research_scheduler.py", "stores": ["hermes_external_research", "llm_cost_reservations"], "retry": "provider and caller specific", "dedupe": "skip gate/content identity", "resume_after_crash": "partial", "temporal_fit": "PRIMARY_CHILD_STAGE"},
-    {"name": "Hermes external research", "purpose": "provider research acquisition", "trigger": "scheduler/queue", "source_tree": "rebuild", "worker": "scripts/hermes_external_researcher.py", "stores": ["hermes_external_research", "llm_consumption_log"], "cost_gate": "reservation ledger", "resume_after_crash": "ambiguous provider boundary", "temporal_fit": "ACTIVITY"},
-    {"name": "research skip gate", "purpose": "suppress unchanged calls", "trigger": "research dispatch", "worker": "research skip gate modules", "stores": ["research skip ledger"], "temporal_fit": "KEEP_DOMAIN_GATE"},
-    {"name": "RAG indexing", "purpose": "index approved content", "trigger": "cron/queue", "worker": "RAG/indexing scripts", "stores": ["content_embeddings"], "temporal_fit": "KEEP_SIMPLE_QUEUE_UNLESS_MULTI_STAGE_FAILURES_PROVE_NEED"},
-    {"name": "embedding queue", "purpose": "non-generative embeddings", "trigger": "queue worker", "worker": "scripts/hermes_embedding_worker.py", "stores": ["content_embeddings"], "temporal_fit": "KEEP_BUSINESS_QUEUE"},
-    {"name": "symbol thesis acquisition", "purpose": "close thesis research gaps", "trigger": "coverage/event/manual", "worker": "symbol thesis research modules", "stores": ["research/thesis stores"], "temporal_fit": "PRIMARY_WORKFLOW"},
-    {"name": "thesis mint/reconciliation", "purpose": "publish material thesis versions", "trigger": "manual in CURRENT; automatic in post-472", "worker": "scripts/lib/symbol_thesis_review.py", "stores": ["cio thesis store", "thesis change cards"], "temporal_fit": "ACTIVITY_WITH_DOMAIN_IDEMPOTENCY"},
-    {"name": "research to thesis delta", "purpose": "classify material evidence change", "trigger": "post-472 research completion", "worker": "scripts/lib/research_thesis_delta.py", "stores": ["research delta records"], "temporal_fit": "WORKFLOW_STAGE"},
-    {"name": "CIO reassessment", "purpose": "re-evaluate product/decision after thesis change", "trigger": "event/wake", "worker": "scripts/lib/cio_product_reassessment.py", "stores": ["DecisionPayload traces", "CIO ledgers"], "temporal_fit": "WORKFLOW_STAGE"},
-    {"name": "thesis.changed", "purpose": "canonical thesis-change event", "trigger": "material thesis publish", "worker": "CIOEventBus consumer", "stores": ["CIO event bus"], "temporal_fit": "CANONICAL_EVENT_WITH_ONE_WAY_ADAPTER"},
-    {"name": "CIO event bus", "purpose": "canonical event meaning and wakes", "trigger": "domain events", "worker": "scripts/lib/cio_event_bus.py", "stores": ["event journal"], "temporal_fit": "REMAIN_CANONICAL_NO_CYCLES"},
-    {"name": "material situation detector", "purpose": "detect material advisory situations", "trigger": "systemd timer", "worker": "scripts/lib/cio_situation_detector.py", "stores": ["CIO actions/wakes"], "temporal_fit": "KEEP_DETECTOR; START_WORKFLOW_FOR_SELECTED_CASES"},
-    {"name": "watchlist agent jobs", "purpose": "watch research/advisory jobs", "trigger": "queue worker", "worker": "scripts/process_watchlist_agent_jobs.py", "stores": ["watchlist_agent_jobs"], "row_count": 74590, "temporal_fit": "PARTIAL_MIGRATION_ONLY"},
-    {"name": "Financial Senses", "purpose": "deterministic scenario receipts", "trigger": "CIO/research composition", "worker": "scripts/lib/financial_senses", "stores": ["Financial Senses receipts"], "temporal_fit": "ACTIVITY_OR_DOMAIN_LIBRARY"},
-    {"name": "DecisionPayload emitters", "purpose": "six producer decision traces", "trigger": "change/heartbeat", "worker": "scripts/lib/agent_decision_payload.py", "stores": ["agent_run_traces"], "temporal_fit": "KEEP_DOMAIN_RECORD; EMIT_ACTIVITY"},
-    {"name": "operator feedback", "purpose": "durable disposition", "trigger": "Telegram/Command Center", "worker": "CIO feedback modules", "stores": ["feedback journal"], "temporal_fit": "SIGNAL_PLUS_DOMAIN_WRITE"},
-    {"name": "NEED_DATA research loop", "purpose": "fulfill operator evidence request", "trigger": "operator feedback", "worker": "CIO/Hermes bridge", "stores": ["feedback", "research queue", "theses"], "temporal_fit": "PRIMARY_WORKFLOW"},
-    {"name": "outcome maturation", "purpose": "freeze and measure outcomes", "trigger": "decision plus horizons", "worker": "post-472 outcome scorer", "stores": ["outcome records", "lesson candidates"], "temporal_fit": "PRIMARY_DURABLE_TIMER_WORKFLOW"},
-    {"name": "CIO weekly review", "purpose": "portfolio review", "trigger": "weekly schedule", "worker": "CIO review scripts", "stores": ["CIO reports/plans"], "temporal_fit": "TEMPORAL_SCHEDULE_CANDIDATE"},
-    {"name": "Telegram notification decision", "purpose": "materiality/correctness/suppression", "trigger": "decision/change", "worker": "notification gate modules", "stores": ["notification receipts"], "temporal_fit": "WORKFLOW_STAGE"},
-    {"name": "Telegram delivery", "purpose": "final delivery", "trigger": "outbox worker", "worker": "CIO delivery service", "stores": ["operator_notification_outbox"], "temporal_fit": "KEEP_OUTBOX"},
-    {"name": "document sync", "purpose": "repo docs to Drive", "trigger": "hourly cron/operator", "worker": "scripts/sync-docs-to-drive.sh", "stores": ["Drive", "sync logs"], "temporal_fit": "KEEP_CRON"},
-    {"name": "maturity scorecard", "purpose": "compute live maturity evidence", "trigger": "scheduled", "worker": "maturity scorecard scripts", "stores": ["maturity evidence"], "temporal_fit": "KEEP_SIMPLE_SCHEDULE"},
-    {"name": "runtime health", "purpose": "health/alerting", "trigger": "cron/systemd", "worker": "health scripts", "stores": ["health evidence"], "temporal_fit": "KEEP_SIMPLE_TIMER"}
+    {
+      "cron_systemd_event_manual": "cron",
+      "source_tree": "rebuild",
+      "source_sha": "UNMEASURED_PER_WORKFLOW",
+      "worker_script": "scripts/research_scheduler.py",
+      "database_tables": [
+        "hermes_external_research",
+        "llm_cost_reservations"
+      ],
+      "input_state": "UNMEASURED_PER_WORKFLOW",
+      "output_state": "UNMEASURED_PER_WORKFLOW",
+      "lock": "UNMEASURED_PER_WORKFLOW",
+      "retry_behavior": "provider and caller specific",
+      "timeout": "UNMEASURED_PER_WORKFLOW",
+      "dedupe_behavior": "skip gate/content identity",
+      "idempotency_behavior": "UNMEASURED_PER_WORKFLOW",
+      "resume_after_crash_behavior": "partial",
+      "partial_failure_behavior": "UNMEASURED_PER_WORKFLOW",
+      "cost_gate": "UNMEASURED_PER_WORKFLOW",
+      "provider_gate": "UNMEASURED_PER_WORKFLOW",
+      "alerting": "UNMEASURED_PER_WORKFLOW",
+      "operator_visibility": "UNMEASURED_PER_WORKFLOW",
+      "last_natural_run": "UNMEASURED_PER_WORKFLOW",
+      "known_incidents": [],
+      "current_owner": "UNMEASURED_PER_WORKFLOW",
+      "name": "research_scheduler",
+      "purpose": "select due/changed/stale/triggered research",
+      "trigger": "cron",
+      "worker": "scripts/research_scheduler.py",
+      "stores": [
+        "hermes_external_research",
+        "llm_cost_reservations"
+      ],
+      "retry": "provider and caller specific",
+      "dedupe": "skip gate/content identity",
+      "resume_after_crash": "partial",
+      "temporal_fit": "PRIMARY_CHILD_STAGE"
+    },
+    {
+      "cron_systemd_event_manual": "scheduler/queue",
+      "source_tree": "rebuild",
+      "source_sha": "UNMEASURED_PER_WORKFLOW",
+      "worker_script": "scripts/hermes_external_researcher.py",
+      "database_tables": [
+        "hermes_external_research",
+        "llm_consumption_log"
+      ],
+      "input_state": "UNMEASURED_PER_WORKFLOW",
+      "output_state": "UNMEASURED_PER_WORKFLOW",
+      "lock": "UNMEASURED_PER_WORKFLOW",
+      "retry_behavior": "UNMEASURED_PER_WORKFLOW",
+      "timeout": "UNMEASURED_PER_WORKFLOW",
+      "dedupe_behavior": "UNMEASURED_PER_WORKFLOW",
+      "idempotency_behavior": "UNMEASURED_PER_WORKFLOW",
+      "resume_after_crash_behavior": "ambiguous provider boundary",
+      "partial_failure_behavior": "UNMEASURED_PER_WORKFLOW",
+      "cost_gate": "reservation ledger",
+      "provider_gate": "UNMEASURED_PER_WORKFLOW",
+      "alerting": "UNMEASURED_PER_WORKFLOW",
+      "operator_visibility": "UNMEASURED_PER_WORKFLOW",
+      "last_natural_run": "UNMEASURED_PER_WORKFLOW",
+      "known_incidents": [],
+      "current_owner": "UNMEASURED_PER_WORKFLOW",
+      "name": "Hermes external research",
+      "purpose": "provider research acquisition",
+      "trigger": "scheduler/queue",
+      "worker": "scripts/hermes_external_researcher.py",
+      "stores": [
+        "hermes_external_research",
+        "llm_consumption_log"
+      ],
+      "resume_after_crash": "ambiguous provider boundary",
+      "temporal_fit": "ACTIVITY"
+    },
+    {
+      "cron_systemd_event_manual": "research dispatch",
+      "source_tree": "UNMEASURED_PER_WORKFLOW",
+      "source_sha": "UNMEASURED_PER_WORKFLOW",
+      "worker_script": "research skip gate modules",
+      "database_tables": [
+        "research skip ledger"
+      ],
+      "input_state": "UNMEASURED_PER_WORKFLOW",
+      "output_state": "UNMEASURED_PER_WORKFLOW",
+      "lock": "UNMEASURED_PER_WORKFLOW",
+      "retry_behavior": "UNMEASURED_PER_WORKFLOW",
+      "timeout": "UNMEASURED_PER_WORKFLOW",
+      "dedupe_behavior": "UNMEASURED_PER_WORKFLOW",
+      "idempotency_behavior": "UNMEASURED_PER_WORKFLOW",
+      "resume_after_crash_behavior": "UNMEASURED_PER_WORKFLOW",
+      "partial_failure_behavior": "UNMEASURED_PER_WORKFLOW",
+      "cost_gate": "UNMEASURED_PER_WORKFLOW",
+      "provider_gate": "UNMEASURED_PER_WORKFLOW",
+      "alerting": "UNMEASURED_PER_WORKFLOW",
+      "operator_visibility": "UNMEASURED_PER_WORKFLOW",
+      "last_natural_run": "UNMEASURED_PER_WORKFLOW",
+      "known_incidents": [],
+      "current_owner": "UNMEASURED_PER_WORKFLOW",
+      "name": "research skip gate",
+      "purpose": "suppress unchanged calls",
+      "trigger": "research dispatch",
+      "worker": "research skip gate modules",
+      "stores": [
+        "research skip ledger"
+      ],
+      "temporal_fit": "KEEP_DOMAIN_GATE"
+    },
+    {
+      "cron_systemd_event_manual": "cron/queue",
+      "source_tree": "UNMEASURED_PER_WORKFLOW",
+      "source_sha": "UNMEASURED_PER_WORKFLOW",
+      "worker_script": "RAG/indexing scripts",
+      "database_tables": [
+        "content_embeddings"
+      ],
+      "input_state": "UNMEASURED_PER_WORKFLOW",
+      "output_state": "UNMEASURED_PER_WORKFLOW",
+      "lock": "UNMEASURED_PER_WORKFLOW",
+      "retry_behavior": "UNMEASURED_PER_WORKFLOW",
+      "timeout": "UNMEASURED_PER_WORKFLOW",
+      "dedupe_behavior": "UNMEASURED_PER_WORKFLOW",
+      "idempotency_behavior": "UNMEASURED_PER_WORKFLOW",
+      "resume_after_crash_behavior": "UNMEASURED_PER_WORKFLOW",
+      "partial_failure_behavior": "UNMEASURED_PER_WORKFLOW",
+      "cost_gate": "UNMEASURED_PER_WORKFLOW",
+      "provider_gate": "UNMEASURED_PER_WORKFLOW",
+      "alerting": "UNMEASURED_PER_WORKFLOW",
+      "operator_visibility": "UNMEASURED_PER_WORKFLOW",
+      "last_natural_run": "UNMEASURED_PER_WORKFLOW",
+      "known_incidents": [],
+      "current_owner": "UNMEASURED_PER_WORKFLOW",
+      "name": "RAG indexing",
+      "purpose": "index approved content",
+      "trigger": "cron/queue",
+      "worker": "RAG/indexing scripts",
+      "stores": [
+        "content_embeddings"
+      ],
+      "temporal_fit": "KEEP_SIMPLE_QUEUE_UNLESS_MULTI_STAGE_FAILURES_PROVE_NEED"
+    },
+    {
+      "cron_systemd_event_manual": "queue worker",
+      "source_tree": "UNMEASURED_PER_WORKFLOW",
+      "source_sha": "UNMEASURED_PER_WORKFLOW",
+      "worker_script": "scripts/hermes_embedding_worker.py",
+      "database_tables": [
+        "content_embeddings"
+      ],
+      "input_state": "UNMEASURED_PER_WORKFLOW",
+      "output_state": "UNMEASURED_PER_WORKFLOW",
+      "lock": "UNMEASURED_PER_WORKFLOW",
+      "retry_behavior": "UNMEASURED_PER_WORKFLOW",
+      "timeout": "UNMEASURED_PER_WORKFLOW",
+      "dedupe_behavior": "UNMEASURED_PER_WORKFLOW",
+      "idempotency_behavior": "UNMEASURED_PER_WORKFLOW",
+      "resume_after_crash_behavior": "UNMEASURED_PER_WORKFLOW",
+      "partial_failure_behavior": "UNMEASURED_PER_WORKFLOW",
+      "cost_gate": "UNMEASURED_PER_WORKFLOW",
+      "provider_gate": "UNMEASURED_PER_WORKFLOW",
+      "alerting": "UNMEASURED_PER_WORKFLOW",
+      "operator_visibility": "UNMEASURED_PER_WORKFLOW",
+      "last_natural_run": "UNMEASURED_PER_WORKFLOW",
+      "known_incidents": [],
+      "current_owner": "UNMEASURED_PER_WORKFLOW",
+      "name": "embedding queue",
+      "purpose": "non-generative embeddings",
+      "trigger": "queue worker",
+      "worker": "scripts/hermes_embedding_worker.py",
+      "stores": [
+        "content_embeddings"
+      ],
+      "temporal_fit": "KEEP_BUSINESS_QUEUE"
+    },
+    {
+      "cron_systemd_event_manual": "coverage/event/manual",
+      "source_tree": "UNMEASURED_PER_WORKFLOW",
+      "source_sha": "UNMEASURED_PER_WORKFLOW",
+      "worker_script": "symbol thesis research modules",
+      "database_tables": [
+        "research/thesis stores"
+      ],
+      "input_state": "UNMEASURED_PER_WORKFLOW",
+      "output_state": "UNMEASURED_PER_WORKFLOW",
+      "lock": "UNMEASURED_PER_WORKFLOW",
+      "retry_behavior": "UNMEASURED_PER_WORKFLOW",
+      "timeout": "UNMEASURED_PER_WORKFLOW",
+      "dedupe_behavior": "UNMEASURED_PER_WORKFLOW",
+      "idempotency_behavior": "UNMEASURED_PER_WORKFLOW",
+      "resume_after_crash_behavior": "UNMEASURED_PER_WORKFLOW",
+      "partial_failure_behavior": "UNMEASURED_PER_WORKFLOW",
+      "cost_gate": "UNMEASURED_PER_WORKFLOW",
+      "provider_gate": "UNMEASURED_PER_WORKFLOW",
+      "alerting": "UNMEASURED_PER_WORKFLOW",
+      "operator_visibility": "UNMEASURED_PER_WORKFLOW",
+      "last_natural_run": "UNMEASURED_PER_WORKFLOW",
+      "known_incidents": [],
+      "current_owner": "UNMEASURED_PER_WORKFLOW",
+      "name": "symbol thesis acquisition",
+      "purpose": "close thesis research gaps",
+      "trigger": "coverage/event/manual",
+      "worker": "symbol thesis research modules",
+      "stores": [
+        "research/thesis stores"
+      ],
+      "temporal_fit": "PRIMARY_WORKFLOW"
+    },
+    {
+      "cron_systemd_event_manual": "manual in CURRENT; automatic in post-472",
+      "source_tree": "UNMEASURED_PER_WORKFLOW",
+      "source_sha": "UNMEASURED_PER_WORKFLOW",
+      "worker_script": "scripts/lib/symbol_thesis_review.py",
+      "database_tables": [
+        "cio thesis store",
+        "thesis change cards"
+      ],
+      "input_state": "UNMEASURED_PER_WORKFLOW",
+      "output_state": "UNMEASURED_PER_WORKFLOW",
+      "lock": "UNMEASURED_PER_WORKFLOW",
+      "retry_behavior": "UNMEASURED_PER_WORKFLOW",
+      "timeout": "UNMEASURED_PER_WORKFLOW",
+      "dedupe_behavior": "UNMEASURED_PER_WORKFLOW",
+      "idempotency_behavior": "UNMEASURED_PER_WORKFLOW",
+      "resume_after_crash_behavior": "UNMEASURED_PER_WORKFLOW",
+      "partial_failure_behavior": "UNMEASURED_PER_WORKFLOW",
+      "cost_gate": "UNMEASURED_PER_WORKFLOW",
+      "provider_gate": "UNMEASURED_PER_WORKFLOW",
+      "alerting": "UNMEASURED_PER_WORKFLOW",
+      "operator_visibility": "UNMEASURED_PER_WORKFLOW",
+      "last_natural_run": "UNMEASURED_PER_WORKFLOW",
+      "known_incidents": [],
+      "current_owner": "UNMEASURED_PER_WORKFLOW",
+      "name": "thesis mint/reconciliation",
+      "purpose": "publish material thesis versions",
+      "trigger": "manual in CURRENT; automatic in post-472",
+      "worker": "scripts/lib/symbol_thesis_review.py",
+      "stores": [
+        "cio thesis store",
+        "thesis change cards"
+      ],
+      "temporal_fit": "ACTIVITY_WITH_DOMAIN_IDEMPOTENCY"
+    },
+    {
+      "cron_systemd_event_manual": "post-472 research completion",
+      "source_tree": "UNMEASURED_PER_WORKFLOW",
+      "source_sha": "UNMEASURED_PER_WORKFLOW",
+      "worker_script": "scripts/lib/research_thesis_delta.py",
+      "database_tables": [
+        "research delta records"
+      ],
+      "input_state": "UNMEASURED_PER_WORKFLOW",
+      "output_state": "UNMEASURED_PER_WORKFLOW",
+      "lock": "UNMEASURED_PER_WORKFLOW",
+      "retry_behavior": "UNMEASURED_PER_WORKFLOW",
+      "timeout": "UNMEASURED_PER_WORKFLOW",
+      "dedupe_behavior": "UNMEASURED_PER_WORKFLOW",
+      "idempotency_behavior": "UNMEASURED_PER_WORKFLOW",
+      "resume_after_crash_behavior": "UNMEASURED_PER_WORKFLOW",
+      "partial_failure_behavior": "UNMEASURED_PER_WORKFLOW",
+      "cost_gate": "UNMEASURED_PER_WORKFLOW",
+      "provider_gate": "UNMEASURED_PER_WORKFLOW",
+      "alerting": "UNMEASURED_PER_WORKFLOW",
+      "operator_visibility": "UNMEASURED_PER_WORKFLOW",
+      "last_natural_run": "UNMEASURED_PER_WORKFLOW",
+      "known_incidents": [],
+      "current_owner": "UNMEASURED_PER_WORKFLOW",
+      "name": "research to thesis delta",
+      "purpose": "classify material evidence change",
+      "trigger": "post-472 research completion",
+      "worker": "scripts/lib/research_thesis_delta.py",
+      "stores": [
+        "research delta records"
+      ],
+      "temporal_fit": "WORKFLOW_STAGE"
+    },
+    {
+      "cron_systemd_event_manual": "event/wake",
+      "source_tree": "UNMEASURED_PER_WORKFLOW",
+      "source_sha": "UNMEASURED_PER_WORKFLOW",
+      "worker_script": "scripts/lib/cio_product_reassessment.py",
+      "database_tables": [
+        "DecisionPayload traces",
+        "CIO ledgers"
+      ],
+      "input_state": "UNMEASURED_PER_WORKFLOW",
+      "output_state": "UNMEASURED_PER_WORKFLOW",
+      "lock": "UNMEASURED_PER_WORKFLOW",
+      "retry_behavior": "UNMEASURED_PER_WORKFLOW",
+      "timeout": "UNMEASURED_PER_WORKFLOW",
+      "dedupe_behavior": "UNMEASURED_PER_WORKFLOW",
+      "idempotency_behavior": "UNMEASURED_PER_WORKFLOW",
+      "resume_after_crash_behavior": "UNMEASURED_PER_WORKFLOW",
+      "partial_failure_behavior": "UNMEASURED_PER_WORKFLOW",
+      "cost_gate": "UNMEASURED_PER_WORKFLOW",
+      "provider_gate": "UNMEASURED_PER_WORKFLOW",
+      "alerting": "UNMEASURED_PER_WORKFLOW",
+      "operator_visibility": "UNMEASURED_PER_WORKFLOW",
+      "last_natural_run": "UNMEASURED_PER_WORKFLOW",
+      "known_incidents": [],
+      "current_owner": "UNMEASURED_PER_WORKFLOW",
+      "name": "CIO reassessment",
+      "purpose": "re-evaluate product/decision after thesis change",
+      "trigger": "event/wake",
+      "worker": "scripts/lib/cio_product_reassessment.py",
+      "stores": [
+        "DecisionPayload traces",
+        "CIO ledgers"
+      ],
+      "temporal_fit": "WORKFLOW_STAGE"
+    },
+    {
+      "cron_systemd_event_manual": "material thesis publish",
+      "source_tree": "UNMEASURED_PER_WORKFLOW",
+      "source_sha": "UNMEASURED_PER_WORKFLOW",
+      "worker_script": "CIOEventBus consumer",
+      "database_tables": [
+        "CIO event bus"
+      ],
+      "input_state": "UNMEASURED_PER_WORKFLOW",
+      "output_state": "UNMEASURED_PER_WORKFLOW",
+      "lock": "UNMEASURED_PER_WORKFLOW",
+      "retry_behavior": "UNMEASURED_PER_WORKFLOW",
+      "timeout": "UNMEASURED_PER_WORKFLOW",
+      "dedupe_behavior": "UNMEASURED_PER_WORKFLOW",
+      "idempotency_behavior": "UNMEASURED_PER_WORKFLOW",
+      "resume_after_crash_behavior": "UNMEASURED_PER_WORKFLOW",
+      "partial_failure_behavior": "UNMEASURED_PER_WORKFLOW",
+      "cost_gate": "UNMEASURED_PER_WORKFLOW",
+      "provider_gate": "UNMEASURED_PER_WORKFLOW",
+      "alerting": "UNMEASURED_PER_WORKFLOW",
+      "operator_visibility": "UNMEASURED_PER_WORKFLOW",
+      "last_natural_run": "UNMEASURED_PER_WORKFLOW",
+      "known_incidents": [],
+      "current_owner": "UNMEASURED_PER_WORKFLOW",
+      "name": "thesis.changed",
+      "purpose": "canonical thesis-change event",
+      "trigger": "material thesis publish",
+      "worker": "CIOEventBus consumer",
+      "stores": [
+        "CIO event bus"
+      ],
+      "temporal_fit": "CANONICAL_EVENT_WITH_ONE_WAY_ADAPTER"
+    },
+    {
+      "cron_systemd_event_manual": "domain events",
+      "source_tree": "UNMEASURED_PER_WORKFLOW",
+      "source_sha": "UNMEASURED_PER_WORKFLOW",
+      "worker_script": "scripts/lib/cio_event_bus.py",
+      "database_tables": [
+        "event journal"
+      ],
+      "input_state": "UNMEASURED_PER_WORKFLOW",
+      "output_state": "UNMEASURED_PER_WORKFLOW",
+      "lock": "UNMEASURED_PER_WORKFLOW",
+      "retry_behavior": "UNMEASURED_PER_WORKFLOW",
+      "timeout": "UNMEASURED_PER_WORKFLOW",
+      "dedupe_behavior": "UNMEASURED_PER_WORKFLOW",
+      "idempotency_behavior": "UNMEASURED_PER_WORKFLOW",
+      "resume_after_crash_behavior": "UNMEASURED_PER_WORKFLOW",
+      "partial_failure_behavior": "UNMEASURED_PER_WORKFLOW",
+      "cost_gate": "UNMEASURED_PER_WORKFLOW",
+      "provider_gate": "UNMEASURED_PER_WORKFLOW",
+      "alerting": "UNMEASURED_PER_WORKFLOW",
+      "operator_visibility": "UNMEASURED_PER_WORKFLOW",
+      "last_natural_run": "UNMEASURED_PER_WORKFLOW",
+      "known_incidents": [],
+      "current_owner": "UNMEASURED_PER_WORKFLOW",
+      "name": "CIO event bus",
+      "purpose": "canonical event meaning and wakes",
+      "trigger": "domain events",
+      "worker": "scripts/lib/cio_event_bus.py",
+      "stores": [
+        "event journal"
+      ],
+      "temporal_fit": "REMAIN_CANONICAL_NO_CYCLES"
+    },
+    {
+      "cron_systemd_event_manual": "systemd timer",
+      "source_tree": "UNMEASURED_PER_WORKFLOW",
+      "source_sha": "UNMEASURED_PER_WORKFLOW",
+      "worker_script": "scripts/lib/cio_situation_detector.py",
+      "database_tables": [
+        "CIO actions/wakes"
+      ],
+      "input_state": "UNMEASURED_PER_WORKFLOW",
+      "output_state": "UNMEASURED_PER_WORKFLOW",
+      "lock": "UNMEASURED_PER_WORKFLOW",
+      "retry_behavior": "UNMEASURED_PER_WORKFLOW",
+      "timeout": "UNMEASURED_PER_WORKFLOW",
+      "dedupe_behavior": "UNMEASURED_PER_WORKFLOW",
+      "idempotency_behavior": "UNMEASURED_PER_WORKFLOW",
+      "resume_after_crash_behavior": "UNMEASURED_PER_WORKFLOW",
+      "partial_failure_behavior": "UNMEASURED_PER_WORKFLOW",
+      "cost_gate": "UNMEASURED_PER_WORKFLOW",
+      "provider_gate": "UNMEASURED_PER_WORKFLOW",
+      "alerting": "UNMEASURED_PER_WORKFLOW",
+      "operator_visibility": "UNMEASURED_PER_WORKFLOW",
+      "last_natural_run": "UNMEASURED_PER_WORKFLOW",
+      "known_incidents": [],
+      "current_owner": "UNMEASURED_PER_WORKFLOW",
+      "name": "material situation detector",
+      "purpose": "detect material advisory situations",
+      "trigger": "systemd timer",
+      "worker": "scripts/lib/cio_situation_detector.py",
+      "stores": [
+        "CIO actions/wakes"
+      ],
+      "temporal_fit": "KEEP_DETECTOR; START_WORKFLOW_FOR_SELECTED_CASES"
+    },
+    {
+      "cron_systemd_event_manual": "queue worker",
+      "source_tree": "UNMEASURED_PER_WORKFLOW",
+      "source_sha": "UNMEASURED_PER_WORKFLOW",
+      "worker_script": "scripts/process_watchlist_agent_jobs.py",
+      "database_tables": [
+        "watchlist_agent_jobs"
+      ],
+      "input_state": "UNMEASURED_PER_WORKFLOW",
+      "output_state": "UNMEASURED_PER_WORKFLOW",
+      "lock": "UNMEASURED_PER_WORKFLOW",
+      "retry_behavior": "UNMEASURED_PER_WORKFLOW",
+      "timeout": "UNMEASURED_PER_WORKFLOW",
+      "dedupe_behavior": "UNMEASURED_PER_WORKFLOW",
+      "idempotency_behavior": "UNMEASURED_PER_WORKFLOW",
+      "resume_after_crash_behavior": "UNMEASURED_PER_WORKFLOW",
+      "partial_failure_behavior": "UNMEASURED_PER_WORKFLOW",
+      "cost_gate": "UNMEASURED_PER_WORKFLOW",
+      "provider_gate": "UNMEASURED_PER_WORKFLOW",
+      "alerting": "UNMEASURED_PER_WORKFLOW",
+      "operator_visibility": "UNMEASURED_PER_WORKFLOW",
+      "last_natural_run": "UNMEASURED_PER_WORKFLOW",
+      "known_incidents": [],
+      "current_owner": "UNMEASURED_PER_WORKFLOW",
+      "name": "watchlist agent jobs",
+      "purpose": "watch research/advisory jobs",
+      "trigger": "queue worker",
+      "worker": "scripts/process_watchlist_agent_jobs.py",
+      "stores": [
+        "watchlist_agent_jobs"
+      ],
+      "row_count": 74590,
+      "temporal_fit": "PARTIAL_MIGRATION_ONLY"
+    },
+    {
+      "cron_systemd_event_manual": "CIO/research composition",
+      "source_tree": "UNMEASURED_PER_WORKFLOW",
+      "source_sha": "UNMEASURED_PER_WORKFLOW",
+      "worker_script": "scripts/lib/financial_senses",
+      "database_tables": [
+        "Financial Senses receipts"
+      ],
+      "input_state": "UNMEASURED_PER_WORKFLOW",
+      "output_state": "UNMEASURED_PER_WORKFLOW",
+      "lock": "UNMEASURED_PER_WORKFLOW",
+      "retry_behavior": "UNMEASURED_PER_WORKFLOW",
+      "timeout": "UNMEASURED_PER_WORKFLOW",
+      "dedupe_behavior": "UNMEASURED_PER_WORKFLOW",
+      "idempotency_behavior": "UNMEASURED_PER_WORKFLOW",
+      "resume_after_crash_behavior": "UNMEASURED_PER_WORKFLOW",
+      "partial_failure_behavior": "UNMEASURED_PER_WORKFLOW",
+      "cost_gate": "UNMEASURED_PER_WORKFLOW",
+      "provider_gate": "UNMEASURED_PER_WORKFLOW",
+      "alerting": "UNMEASURED_PER_WORKFLOW",
+      "operator_visibility": "UNMEASURED_PER_WORKFLOW",
+      "last_natural_run": "UNMEASURED_PER_WORKFLOW",
+      "known_incidents": [],
+      "current_owner": "UNMEASURED_PER_WORKFLOW",
+      "name": "Financial Senses",
+      "purpose": "deterministic scenario receipts",
+      "trigger": "CIO/research composition",
+      "worker": "scripts/lib/financial_senses",
+      "stores": [
+        "Financial Senses receipts"
+      ],
+      "temporal_fit": "ACTIVITY_OR_DOMAIN_LIBRARY"
+    },
+    {
+      "cron_systemd_event_manual": "change/heartbeat",
+      "source_tree": "UNMEASURED_PER_WORKFLOW",
+      "source_sha": "UNMEASURED_PER_WORKFLOW",
+      "worker_script": "scripts/lib/agent_decision_payload.py",
+      "database_tables": [
+        "agent_run_traces"
+      ],
+      "input_state": "UNMEASURED_PER_WORKFLOW",
+      "output_state": "UNMEASURED_PER_WORKFLOW",
+      "lock": "UNMEASURED_PER_WORKFLOW",
+      "retry_behavior": "UNMEASURED_PER_WORKFLOW",
+      "timeout": "UNMEASURED_PER_WORKFLOW",
+      "dedupe_behavior": "UNMEASURED_PER_WORKFLOW",
+      "idempotency_behavior": "UNMEASURED_PER_WORKFLOW",
+      "resume_after_crash_behavior": "UNMEASURED_PER_WORKFLOW",
+      "partial_failure_behavior": "UNMEASURED_PER_WORKFLOW",
+      "cost_gate": "UNMEASURED_PER_WORKFLOW",
+      "provider_gate": "UNMEASURED_PER_WORKFLOW",
+      "alerting": "UNMEASURED_PER_WORKFLOW",
+      "operator_visibility": "UNMEASURED_PER_WORKFLOW",
+      "last_natural_run": "UNMEASURED_PER_WORKFLOW",
+      "known_incidents": [],
+      "current_owner": "UNMEASURED_PER_WORKFLOW",
+      "name": "DecisionPayload emitters",
+      "purpose": "six producer decision traces",
+      "trigger": "change/heartbeat",
+      "worker": "scripts/lib/agent_decision_payload.py",
+      "stores": [
+        "agent_run_traces"
+      ],
+      "temporal_fit": "KEEP_DOMAIN_RECORD; EMIT_ACTIVITY"
+    },
+    {
+      "cron_systemd_event_manual": "Telegram/Command Center",
+      "source_tree": "UNMEASURED_PER_WORKFLOW",
+      "source_sha": "UNMEASURED_PER_WORKFLOW",
+      "worker_script": "CIO feedback modules",
+      "database_tables": [
+        "feedback journal"
+      ],
+      "input_state": "UNMEASURED_PER_WORKFLOW",
+      "output_state": "UNMEASURED_PER_WORKFLOW",
+      "lock": "UNMEASURED_PER_WORKFLOW",
+      "retry_behavior": "UNMEASURED_PER_WORKFLOW",
+      "timeout": "UNMEASURED_PER_WORKFLOW",
+      "dedupe_behavior": "UNMEASURED_PER_WORKFLOW",
+      "idempotency_behavior": "UNMEASURED_PER_WORKFLOW",
+      "resume_after_crash_behavior": "UNMEASURED_PER_WORKFLOW",
+      "partial_failure_behavior": "UNMEASURED_PER_WORKFLOW",
+      "cost_gate": "UNMEASURED_PER_WORKFLOW",
+      "provider_gate": "UNMEASURED_PER_WORKFLOW",
+      "alerting": "UNMEASURED_PER_WORKFLOW",
+      "operator_visibility": "UNMEASURED_PER_WORKFLOW",
+      "last_natural_run": "UNMEASURED_PER_WORKFLOW",
+      "known_incidents": [],
+      "current_owner": "UNMEASURED_PER_WORKFLOW",
+      "name": "operator feedback",
+      "purpose": "durable disposition",
+      "trigger": "Telegram/Command Center",
+      "worker": "CIO feedback modules",
+      "stores": [
+        "feedback journal"
+      ],
+      "temporal_fit": "SIGNAL_PLUS_DOMAIN_WRITE"
+    },
+    {
+      "cron_systemd_event_manual": "operator feedback",
+      "source_tree": "UNMEASURED_PER_WORKFLOW",
+      "source_sha": "UNMEASURED_PER_WORKFLOW",
+      "worker_script": "CIO/Hermes bridge",
+      "database_tables": [
+        "feedback",
+        "research queue",
+        "theses"
+      ],
+      "input_state": "UNMEASURED_PER_WORKFLOW",
+      "output_state": "UNMEASURED_PER_WORKFLOW",
+      "lock": "UNMEASURED_PER_WORKFLOW",
+      "retry_behavior": "UNMEASURED_PER_WORKFLOW",
+      "timeout": "UNMEASURED_PER_WORKFLOW",
+      "dedupe_behavior": "UNMEASURED_PER_WORKFLOW",
+      "idempotency_behavior": "UNMEASURED_PER_WORKFLOW",
+      "resume_after_crash_behavior": "UNMEASURED_PER_WORKFLOW",
+      "partial_failure_behavior": "UNMEASURED_PER_WORKFLOW",
+      "cost_gate": "UNMEASURED_PER_WORKFLOW",
+      "provider_gate": "UNMEASURED_PER_WORKFLOW",
+      "alerting": "UNMEASURED_PER_WORKFLOW",
+      "operator_visibility": "UNMEASURED_PER_WORKFLOW",
+      "last_natural_run": "UNMEASURED_PER_WORKFLOW",
+      "known_incidents": [],
+      "current_owner": "UNMEASURED_PER_WORKFLOW",
+      "name": "NEED_DATA research loop",
+      "purpose": "fulfill operator evidence request",
+      "trigger": "operator feedback",
+      "worker": "CIO/Hermes bridge",
+      "stores": [
+        "feedback",
+        "research queue",
+        "theses"
+      ],
+      "temporal_fit": "PRIMARY_WORKFLOW"
+    },
+    {
+      "cron_systemd_event_manual": "decision plus horizons",
+      "source_tree": "UNMEASURED_PER_WORKFLOW",
+      "source_sha": "UNMEASURED_PER_WORKFLOW",
+      "worker_script": "post-472 outcome scorer",
+      "database_tables": [
+        "outcome records",
+        "lesson candidates"
+      ],
+      "input_state": "UNMEASURED_PER_WORKFLOW",
+      "output_state": "UNMEASURED_PER_WORKFLOW",
+      "lock": "UNMEASURED_PER_WORKFLOW",
+      "retry_behavior": "UNMEASURED_PER_WORKFLOW",
+      "timeout": "UNMEASURED_PER_WORKFLOW",
+      "dedupe_behavior": "UNMEASURED_PER_WORKFLOW",
+      "idempotency_behavior": "UNMEASURED_PER_WORKFLOW",
+      "resume_after_crash_behavior": "UNMEASURED_PER_WORKFLOW",
+      "partial_failure_behavior": "UNMEASURED_PER_WORKFLOW",
+      "cost_gate": "UNMEASURED_PER_WORKFLOW",
+      "provider_gate": "UNMEASURED_PER_WORKFLOW",
+      "alerting": "UNMEASURED_PER_WORKFLOW",
+      "operator_visibility": "UNMEASURED_PER_WORKFLOW",
+      "last_natural_run": "UNMEASURED_PER_WORKFLOW",
+      "known_incidents": [],
+      "current_owner": "UNMEASURED_PER_WORKFLOW",
+      "name": "outcome maturation",
+      "purpose": "freeze and measure outcomes",
+      "trigger": "decision plus horizons",
+      "worker": "post-472 outcome scorer",
+      "stores": [
+        "outcome records",
+        "lesson candidates"
+      ],
+      "temporal_fit": "PRIMARY_DURABLE_TIMER_WORKFLOW"
+    },
+    {
+      "cron_systemd_event_manual": "weekly schedule",
+      "source_tree": "UNMEASURED_PER_WORKFLOW",
+      "source_sha": "UNMEASURED_PER_WORKFLOW",
+      "worker_script": "CIO review scripts",
+      "database_tables": [
+        "CIO reports/plans"
+      ],
+      "input_state": "UNMEASURED_PER_WORKFLOW",
+      "output_state": "UNMEASURED_PER_WORKFLOW",
+      "lock": "UNMEASURED_PER_WORKFLOW",
+      "retry_behavior": "UNMEASURED_PER_WORKFLOW",
+      "timeout": "UNMEASURED_PER_WORKFLOW",
+      "dedupe_behavior": "UNMEASURED_PER_WORKFLOW",
+      "idempotency_behavior": "UNMEASURED_PER_WORKFLOW",
+      "resume_after_crash_behavior": "UNMEASURED_PER_WORKFLOW",
+      "partial_failure_behavior": "UNMEASURED_PER_WORKFLOW",
+      "cost_gate": "UNMEASURED_PER_WORKFLOW",
+      "provider_gate": "UNMEASURED_PER_WORKFLOW",
+      "alerting": "UNMEASURED_PER_WORKFLOW",
+      "operator_visibility": "UNMEASURED_PER_WORKFLOW",
+      "last_natural_run": "UNMEASURED_PER_WORKFLOW",
+      "known_incidents": [],
+      "current_owner": "UNMEASURED_PER_WORKFLOW",
+      "name": "CIO weekly review",
+      "purpose": "portfolio review",
+      "trigger": "weekly schedule",
+      "worker": "CIO review scripts",
+      "stores": [
+        "CIO reports/plans"
+      ],
+      "temporal_fit": "TEMPORAL_SCHEDULE_CANDIDATE"
+    },
+    {
+      "cron_systemd_event_manual": "decision/change",
+      "source_tree": "UNMEASURED_PER_WORKFLOW",
+      "source_sha": "UNMEASURED_PER_WORKFLOW",
+      "worker_script": "notification gate modules",
+      "database_tables": [
+        "notification receipts"
+      ],
+      "input_state": "UNMEASURED_PER_WORKFLOW",
+      "output_state": "UNMEASURED_PER_WORKFLOW",
+      "lock": "UNMEASURED_PER_WORKFLOW",
+      "retry_behavior": "UNMEASURED_PER_WORKFLOW",
+      "timeout": "UNMEASURED_PER_WORKFLOW",
+      "dedupe_behavior": "UNMEASURED_PER_WORKFLOW",
+      "idempotency_behavior": "UNMEASURED_PER_WORKFLOW",
+      "resume_after_crash_behavior": "UNMEASURED_PER_WORKFLOW",
+      "partial_failure_behavior": "UNMEASURED_PER_WORKFLOW",
+      "cost_gate": "UNMEASURED_PER_WORKFLOW",
+      "provider_gate": "UNMEASURED_PER_WORKFLOW",
+      "alerting": "UNMEASURED_PER_WORKFLOW",
+      "operator_visibility": "UNMEASURED_PER_WORKFLOW",
+      "last_natural_run": "UNMEASURED_PER_WORKFLOW",
+      "known_incidents": [],
+      "current_owner": "UNMEASURED_PER_WORKFLOW",
+      "name": "Telegram notification decision",
+      "purpose": "materiality/correctness/suppression",
+      "trigger": "decision/change",
+      "worker": "notification gate modules",
+      "stores": [
+        "notification receipts"
+      ],
+      "temporal_fit": "WORKFLOW_STAGE"
+    },
+    {
+      "cron_systemd_event_manual": "outbox worker",
+      "source_tree": "UNMEASURED_PER_WORKFLOW",
+      "source_sha": "UNMEASURED_PER_WORKFLOW",
+      "worker_script": "CIO delivery service",
+      "database_tables": [
+        "operator_notification_outbox"
+      ],
+      "input_state": "UNMEASURED_PER_WORKFLOW",
+      "output_state": "UNMEASURED_PER_WORKFLOW",
+      "lock": "UNMEASURED_PER_WORKFLOW",
+      "retry_behavior": "UNMEASURED_PER_WORKFLOW",
+      "timeout": "UNMEASURED_PER_WORKFLOW",
+      "dedupe_behavior": "UNMEASURED_PER_WORKFLOW",
+      "idempotency_behavior": "UNMEASURED_PER_WORKFLOW",
+      "resume_after_crash_behavior": "UNMEASURED_PER_WORKFLOW",
+      "partial_failure_behavior": "UNMEASURED_PER_WORKFLOW",
+      "cost_gate": "UNMEASURED_PER_WORKFLOW",
+      "provider_gate": "UNMEASURED_PER_WORKFLOW",
+      "alerting": "UNMEASURED_PER_WORKFLOW",
+      "operator_visibility": "UNMEASURED_PER_WORKFLOW",
+      "last_natural_run": "UNMEASURED_PER_WORKFLOW",
+      "known_incidents": [],
+      "current_owner": "UNMEASURED_PER_WORKFLOW",
+      "name": "Telegram delivery",
+      "purpose": "final delivery",
+      "trigger": "outbox worker",
+      "worker": "CIO delivery service",
+      "stores": [
+        "operator_notification_outbox"
+      ],
+      "temporal_fit": "KEEP_OUTBOX"
+    },
+    {
+      "cron_systemd_event_manual": "hourly cron/operator",
+      "source_tree": "UNMEASURED_PER_WORKFLOW",
+      "source_sha": "UNMEASURED_PER_WORKFLOW",
+      "worker_script": "scripts/sync-docs-to-drive.sh",
+      "database_tables": [
+        "Drive",
+        "sync logs"
+      ],
+      "input_state": "UNMEASURED_PER_WORKFLOW",
+      "output_state": "UNMEASURED_PER_WORKFLOW",
+      "lock": "UNMEASURED_PER_WORKFLOW",
+      "retry_behavior": "UNMEASURED_PER_WORKFLOW",
+      "timeout": "UNMEASURED_PER_WORKFLOW",
+      "dedupe_behavior": "UNMEASURED_PER_WORKFLOW",
+      "idempotency_behavior": "UNMEASURED_PER_WORKFLOW",
+      "resume_after_crash_behavior": "UNMEASURED_PER_WORKFLOW",
+      "partial_failure_behavior": "UNMEASURED_PER_WORKFLOW",
+      "cost_gate": "UNMEASURED_PER_WORKFLOW",
+      "provider_gate": "UNMEASURED_PER_WORKFLOW",
+      "alerting": "UNMEASURED_PER_WORKFLOW",
+      "operator_visibility": "UNMEASURED_PER_WORKFLOW",
+      "last_natural_run": "UNMEASURED_PER_WORKFLOW",
+      "known_incidents": [],
+      "current_owner": "UNMEASURED_PER_WORKFLOW",
+      "name": "document sync",
+      "purpose": "repo docs to Drive",
+      "trigger": "hourly cron/operator",
+      "worker": "scripts/sync-docs-to-drive.sh",
+      "stores": [
+        "Drive",
+        "sync logs"
+      ],
+      "temporal_fit": "KEEP_CRON"
+    },
+    {
+      "cron_systemd_event_manual": "scheduled",
+      "source_tree": "UNMEASURED_PER_WORKFLOW",
+      "source_sha": "UNMEASURED_PER_WORKFLOW",
+      "worker_script": "maturity scorecard scripts",
+      "database_tables": [
+        "maturity evidence"
+      ],
+      "input_state": "UNMEASURED_PER_WORKFLOW",
+      "output_state": "UNMEASURED_PER_WORKFLOW",
+      "lock": "UNMEASURED_PER_WORKFLOW",
+      "retry_behavior": "UNMEASURED_PER_WORKFLOW",
+      "timeout": "UNMEASURED_PER_WORKFLOW",
+      "dedupe_behavior": "UNMEASURED_PER_WORKFLOW",
+      "idempotency_behavior": "UNMEASURED_PER_WORKFLOW",
+      "resume_after_crash_behavior": "UNMEASURED_PER_WORKFLOW",
+      "partial_failure_behavior": "UNMEASURED_PER_WORKFLOW",
+      "cost_gate": "UNMEASURED_PER_WORKFLOW",
+      "provider_gate": "UNMEASURED_PER_WORKFLOW",
+      "alerting": "UNMEASURED_PER_WORKFLOW",
+      "operator_visibility": "UNMEASURED_PER_WORKFLOW",
+      "last_natural_run": "UNMEASURED_PER_WORKFLOW",
+      "known_incidents": [],
+      "current_owner": "UNMEASURED_PER_WORKFLOW",
+      "name": "maturity scorecard",
+      "purpose": "compute live maturity evidence",
+      "trigger": "scheduled",
+      "worker": "maturity scorecard scripts",
+      "stores": [
+        "maturity evidence"
+      ],
+      "temporal_fit": "KEEP_SIMPLE_SCHEDULE"
+    },
+    {
+      "cron_systemd_event_manual": "cron/systemd",
+      "source_tree": "UNMEASURED_PER_WORKFLOW",
+      "source_sha": "UNMEASURED_PER_WORKFLOW",
+      "worker_script": "health scripts",
+      "database_tables": [
+        "health evidence"
+      ],
+      "input_state": "UNMEASURED_PER_WORKFLOW",
+      "output_state": "UNMEASURED_PER_WORKFLOW",
+      "lock": "UNMEASURED_PER_WORKFLOW",
+      "retry_behavior": "UNMEASURED_PER_WORKFLOW",
+      "timeout": "UNMEASURED_PER_WORKFLOW",
+      "dedupe_behavior": "UNMEASURED_PER_WORKFLOW",
+      "idempotency_behavior": "UNMEASURED_PER_WORKFLOW",
+      "resume_after_crash_behavior": "UNMEASURED_PER_WORKFLOW",
+      "partial_failure_behavior": "UNMEASURED_PER_WORKFLOW",
+      "cost_gate": "UNMEASURED_PER_WORKFLOW",
+      "provider_gate": "UNMEASURED_PER_WORKFLOW",
+      "alerting": "UNMEASURED_PER_WORKFLOW",
+      "operator_visibility": "UNMEASURED_PER_WORKFLOW",
+      "last_natural_run": "UNMEASURED_PER_WORKFLOW",
+      "known_incidents": [],
+      "current_owner": "UNMEASURED_PER_WORKFLOW",
+      "name": "runtime health",
+      "purpose": "health/alerting",
+      "trigger": "cron/systemd",
+      "worker": "health scripts",
+      "stores": [
+        "health evidence"
+      ],
+      "temporal_fit": "KEEP_SIMPLE_TIMER"
+    }
   ],
   "known_incidents_source": [
     "docs/ops/RESEARCH_LIFECYCLE_AS_OF_2026-08-22.md",
@@ -90,5 +954,10 @@
     "per-workflow timeout/retry/dedupe behavior for every legacy script",
     "complete system-systemd Trade AI unit count",
     "PostgreSQL connection high-water mark"
-  ]
+  ],
+  "inventory_completeness": {
+    "required_workflows": 24,
+    "required_fields_present": true,
+    "unmeasured_values_are_explicit": true
+  }
 }

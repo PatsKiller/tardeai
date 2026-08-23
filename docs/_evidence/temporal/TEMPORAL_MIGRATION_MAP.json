@@ -5,8 +5,8 @@
   "current_decision": "TEMPORAL_POC_ONLY",
   "conditional_target": "ADOPT_TEMPORAL_SELECTED_WORKFLOWS_ON_CLOUD_IF_ALL_GATES_PASS",
   "phases": [
-    {"phase": "T0", "mode": "LOCAL_RUNTIME_POC", "writer": "ISOLATED_FIXTURE_ONLY", "entry": "architecture approval", "success": "actual SDK/Service restart, replay, Worker version, history, latency and idempotency gates", "rollback": "stop disposable localhost server"},
-    {"phase": "T1", "mode": "NOC_SHADOW", "writer": "OLD_WRITE_TEMPORAL_SHADOW", "entry": "T0 passes", "success": "matching lineage and no duplicate effects", "rollback": "disable new shadow starts"},
+    {"phase": "T0", "status": "COMPLETE", "mode": "LOCAL_RUNTIME_POC", "writer": "ISOLATED_FIXTURE_ONLY", "entry": "architecture approval", "success": "18 executed runtime scenarios passed; SDK/Service restart, replay, same-code Worker version routing, bounded history, latency and idempotency measured", "rollback": "disposable localhost Service and Workers stopped; production unchanged"},
+    {"phase": "T1", "status": "NOT_STARTED_NOT_AUTHORIZED", "mode": "NOC_SHADOW", "writer": "OLD_WRITE_TEMPORAL_SHADOW", "entry": "separate operator approval after review of T0", "success": "matching lineage and no duplicate effects", "rollback": "disable new shadow starts"},
     {"phase": "T2", "mode": "ONE_ADVISORY_DUAL_RUN", "writer": "OLD_WRITE_TEMPORAL_SHADOW", "entry": "T1 natural runs pass", "success": "measured reliability, cost and operator diagnostics improve", "rollback": "disable Temporal starter"},
     {"phase": "T3", "mode": "RESEARCH_TO_THESIS", "writer": "TEMPORAL_WRITE_OLD_DISABLED", "entry": "reviewed exact-release Worker and production authorization", "success": "natural runs and rollback drill", "rollback": "disable starts and restore immutable old scheduler"},
     {"phase": "T4", "mode": "PORTFOLIO_CIO_PILOT", "writer": "SINGLE_AUTHORITATIVE_PATH", "entry": "bounded child/history proof", "success": "portfolio review causal trace without history growth", "rollback": "return review scheduler"},

@@ -105,11 +105,15 @@
     "provider_retry_multiplication": "FORBIDDEN; one bounded orchestration policy must replace nested retry multiplication"
   },
   "runtime_status": {
-    "temporal_python_sdk": "NOT_INSTALLED",
-    "temporal_cli": "NOT_INSTALLED",
-    "temporal_service": "NOT_STARTED",
-    "actual_temporal_replay": "BLOCKED",
+    "temporal_python_sdk": "1.31.0_ISOLATED_POC_ONLY",
+    "temporal_cli": "1.8.2_WORKTREE_LOCAL",
+    "temporal_service": "LOCALHOST_DEV_SERVER_EXECUTED_AND_STOPPED",
+    "actual_temporal_replay": "POC_PASS",
+    "actual_service_restart": "POC_PASS",
+    "actual_worker_sigkill": "POC_PASS",
+    "actual_worker_versioning": "POC_PASS_SAME_WORKFLOW_CODE",
     "source_only_blueprint": "IMPLEMENTED",
-    "fixture_activity_harness": "PASSED"
+    "fixture_activity_harness": "PASSED",
+    "production_status": "NOT_INSTALLED_NOT_AUTHORIZED"
   }
 }

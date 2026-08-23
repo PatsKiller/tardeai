@@ -1,0 +1,3046 @@
+{
+  "all_executed_scenarios_passed": true,
+  "authority": "READ_ONLY_ADVISORY",
+  "deployment": {
+    "address": "127.0.0.1:17233",
+    "deployment_name": "tradeai-temporal-poc",
+    "description": {
+      "createTime": "2026-08-23T15:19:25.482614546Z",
+      "lastModifierIdentity": "temporal-cli:johnclaw@ms01-openclaw",
+      "managerIdentity": "",
+      "name": "tradeai-temporal-poc",
+      "routingConfig": {
+        "currentVersionBuildID": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v2",
+        "currentVersionChangedTime": "2026-08-23T15:21:35.29215033Z",
+        "currentVersionDeploymentName": "tradeai-temporal-poc",
+        "rampingVersionBuildID": "",
+        "rampingVersionChangedTime": "0001-01-01T00:00:00Z",
+        "rampingVersionDeploymentName": "",
+        "rampingVersionPercentage": 0,
+        "rampingVersionPercentageChangedTime": "0001-01-01T00:00:00Z"
+      },
+      "versionSummaries": [
+        {
+          "BuildID": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v2",
+          "createTime": "2026-08-23T15:21:35.22860391Z",
+          "deploymentName": "tradeai-temporal-poc",
+          "drainageStatus": "unspecified"
+        },
+        {
+          "BuildID": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+          "createTime": "2026-08-23T15:19:25.482614546Z",
+          "deploymentName": "tradeai-temporal-poc",
+          "drainageStatus": "draining"
+        }
+      ]
+    },
+    "mode": "LOCALHOST_TEMPORAL_CLI_DEVELOPMENT_SERVER",
+    "namespace": "tradeai-temporal-poc",
+    "server_starts": [
+      {
+        "pid": 3971647,
+        "ready_seconds": 0.101167,
+        "started_monotonic_seconds": 0.101679
+      },
+      {
+        "pid": 3976049,
+        "ready_seconds": 0.100357,
+        "started_monotonic_seconds": 0.100778
+      },
+      {
+        "pid": 3976295,
+        "ready_seconds": 0.100346,
+        "started_monotonic_seconds": 0.10073
+      }
+    ],
+    "task_queue": "tradeai-temporal-poc",
+    "worker_starts": [
+      {
+        "build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+        "deployment_visible_seconds": 0.273349,
+        "pid": 3971698
+      },
+      {
+        "build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+        "deployment_visible_seconds": 0.380774,
+        "pid": 3971837
+      },
+      {
+        "build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+        "deployment_visible_seconds": 0.028692,
+        "pid": 3972372
+      },
+      {
+        "build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+        "deployment_visible_seconds": 0.026795,
+        "pid": 3973017
+      },
+      {
+        "build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+        "deployment_visible_seconds": 0.022086,
+        "pid": 3973846
+      },
+      {
+        "build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+        "deployment_visible_seconds": 0.041559,
+        "pid": 3974509
+      },
+      {
+        "build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+        "deployment_visible_seconds": 0.192577,
+        "pid": 3976074
+      },
+      {
+        "build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+        "deployment_visible_seconds": 0.204401,
+        "pid": 3976320
+      },
+      {
+        "build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v2",
+        "deployment_visible_seconds": 0.269453,
+        "pid": 3976751
+      }
+    ]
+  },
+  "financial_writes": 0,
+  "history_replay": "POC_PASS",
+  "live_database_writes": 0,
+  "measured_at": "2026-08-23T15:22:00Z",
+  "memory_behavior_influence": 0,
+  "paid_provider_calls": 0,
+  "performance": {
+    "benchmark": {
+      "activity_execution_ms": {
+        "max": 9.854,
+        "p50": 4.259,
+        "p95": 6.574
+      },
+      "activity_schedule_to_start_ms": {
+        "max": 48.052,
+        "p50": 45.784,
+        "p95": 47.125
+      },
+      "end_to_end_ms": {
+        "max": 947.179,
+        "p50": 943.933,
+        "p95": 947.162
+      },
+      "history_bytes": {
+        "max": 49841,
+        "p50": 49838
+      },
+      "history_events": {
+        "max": 59,
+        "p50": 59
+      },
+      "measured_workflows": 20,
+      "warmups": 3
+    },
+    "isolated_sqlite": {
+      "max_ms": 0.1439,
+      "p50_ms": 0.0046,
+      "p95_ms": 0.0053,
+      "samples": 100
+    },
+    "temporal_command": {
+      "max_ms": 36.604,
+      "p50_ms": 22.003,
+      "p95_ms": 36.604,
+      "samples": 10
+    }
+  },
+  "real_telegram_sends": 0,
+  "scenarios": [
+    {
+      "history": {
+        "activity_execution_ms": [
+          6.038,
+          4.921,
+          3.3,
+          3.822,
+          3.578,
+          5.139,
+          4.203,
+          3.982,
+          4.5409999999999995
+        ],
+        "activity_schedule_to_start_ms": [
+          1.9040000000000001,
+          1.641,
+          1.477,
+          1.247,
+          1.711,
+          1.227,
+          47.958,
+          46.236,
+          46.029
+        ],
+        "event_count": 59,
+        "history_bytes": 49673,
+        "history_sha256": "267130d1d900a2c9758c1b263513fe430ebbb40fe436952dfc2f08e27ee95fb6"
+      },
+      "name": "baseline",
+      "result": {
+        "authority": "READ_ONLY_ADVISORY",
+        "classification": "STRENGTHENS",
+        "decision_emitted": true,
+        "decision_id": "dec_4f0fac754b1b",
+        "financial_writes": 0,
+        "lineage": {
+          "acquire_research": {
+            "research_id": "research_noc_temporal_poc_v1",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "build_decision_payload": {
+            "decision_id": "dec_4f0fac754b1b",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "classify_delta": {
+            "classification": "STRENGTHENS",
+            "delta_id": "delta_e8861d114e5f2cb8424b",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "enqueue_notification": {
+            "notification_identity": "notify_a4eb1a3f4ab34c64",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "evaluate_notification": {
+            "notification_identity": "notify_a4eb1a3f4ab34c64",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "load_standing_thesis": {
+            "thesis_version": "symbol_noc@v1",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "reconcile_thesis": {
+            "classification": "STRENGTHENS",
+            "delta_id": "delta_e8861d114e5f2cb8424b",
+            "thesis_version": "symbol_noc@v2",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "retrieve_contradictory_rag": {
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "retrieve_supporting_rag": {
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          }
+        },
+        "notification_enqueued": true,
+        "notification_identity": "notify_a4eb1a3f4ab34c64",
+        "operator_feedback": null,
+        "run_id": "baseline",
+        "symbol": "NOC",
+        "thesis_version": "symbol_noc@v2",
+        "workflow": "AutonomousResearchToCIOWorkflow",
+        "workflow_id": "tradeai-temporal-poc-baseline"
+      },
+      "result_wait_ms": 471.354,
+      "status": "POC_PASS",
+      "store": {
+        "counters": {
+          "decision_writes": 1,
+          "notification_writes": 1,
+          "provider_calls": 1
+        },
+        "tables": {
+          "activity_attempts": [
+            {
+              "attempt": 1,
+              "stage": "acquire_research",
+              "started_at": "2026-08-23 15:19:26",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-baseline"
+            },
+            {
+              "attempt": 1,
+              "stage": "build_decision_payload",
+              "started_at": "2026-08-23 15:19:26",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-baseline"
+            },
+            {
+              "attempt": 1,
+              "stage": "classify_delta",
+              "started_at": "2026-08-23 15:19:26",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-baseline"
+            },
+            {
+              "attempt": 1,
+              "stage": "enqueue_notification",
+              "started_at": "2026-08-23 15:19:26",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-baseline"
+            },
+            {
+              "attempt": 1,
+              "stage": "evaluate_notification",
+              "started_at": "2026-08-23 15:19:26",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-baseline"
+            },
+            {
+              "attempt": 1,
+              "stage": "load_standing_thesis",
+              "started_at": "2026-08-23 15:19:26",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-baseline"
+            },
+            {
+              "attempt": 1,
+              "stage": "reconcile_thesis",
+              "started_at": "2026-08-23 15:19:26",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-baseline"
+            },
+            {
+              "attempt": 1,
+              "stage": "retrieve_contradictory_rag",
+              "started_at": "2026-08-23 15:19:26",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-baseline"
+            },
+            {
+              "attempt": 1,
+              "stage": "retrieve_supporting_rag",
+              "started_at": "2026-08-23 15:19:26",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-baseline"
+            }
+          ],
+          "decisions": [
+            {
+              "decision_id": "dec_4f0fac754b1b",
+              "payload_json": "{\"act_now\": false, \"as_of\": \"2026-08-23T15:19:26.779607+00:00\", \"authority\": \"READ_ONLY_ADVISORY\", \"confidence\": 0.68, \"current_action\": \"HOLD\", \"decision_id\": \"dec_4f0fac754b1b\", \"decision_origin\": \"FRESH_RESEARCH\", \"evidence_refs\": [\"ev_noc_backlog\", \"ev_noc_budget\", \"ev_noc_execution\"], \"financial_action\": false, \"gates_evaluated\": [{\"gate\": \"THESIS_DECISION\", \"result\": \"NO_INDEPENDENT_PROMOTION\"}], \"inputs_digest\": \"ctx_02b486c92d97b1c1\", \"next_review\": null, \"research_delta\": \"STRENGTHENS\", \"schema\": \"DecisionPayload@v1\", \"surface\": \"advisory\", \"symbol\": \"NOC\", \"thesis_version\": \"symbol_noc@v2\", \"trace_id\": \"tradeai-temporal-poc-baseline\", \"wake_id\": \"wake_noc_temporal_runtime_poc\"}"
+            }
+          ],
+          "markers": [],
+          "notification_outbox": [
+            {
+              "notification_identity": "notify_a4eb1a3f4ab34c64",
+              "payload_json": "{\"authority\": \"READ_ONLY_ADVISORY\", \"decision_id\": \"dec_4f0fac754b1b\", \"delivery\": \"SHADOW_ONLY_NO_TELEGRAM_SEND\"}"
+            }
+          ],
+          "provider_requests": [
+            {
+              "provider_request_id": "provider_7f8e49eda69b5c51161a",
+              "response_json": "{\"counter_evidence\": [\"ev_noc_execution\"], \"evidence_for\": [\"ev_noc_backlog\", \"ev_noc_budget\"], \"invalidation_conditions\": [\"Material funded-backlog contraction or repeated program losses.\"], \"paid_provider\": false, \"portfolio_role\": \"DEFENSIVE_GROWTH\", \"provider\": \"DETERMINISTIC_FIXTURE\", \"research_gaps\": [\"Validate margin durability at the next reported quarter.\"], \"research_id\": \"research_noc_temporal_poc_v1\", \"source_refs\": [\"fixture:sec_backlog\", \"fixture:program_execution\"], \"stance\": \"hold\", \"summary\": \"NOC remains a durable defense holding supported by funded backlog, while program execution and valuation remain explicit counterweights requiring continued review.\", \"symbol\": \"NOC\", \"what_changes_my_mind\": [\"A sustained deterioration in funded backlog and program margins.\"], \"why_owned_or_watched\": \"Funded defense backlog and strategic mission exposure.\"}"
+            }
+          ]
+        }
+      },
+      "submission_ms": 3.468,
+      "workflow_id": "tradeai-temporal-poc-baseline"
+    },
+    {
+      "history": {
+        "activity_execution_ms": [
+          6.853,
+          4.393,
+          3.558,
+          3.8049999999999997,
+          3.617,
+          3.9880000000000004,
+          3.041,
+          2.66,
+          3.185
+        ],
+        "activity_schedule_to_start_ms": [
+          43.491,
+          5452.376,
+          1.4189999999999998,
+          1.2080000000000002,
+          1.011,
+          1.459,
+          1.399,
+          1.2830000000000001,
+          1.2349999999999999
+        ],
+        "event_count": 61,
+        "history_bytes": 51915,
+        "history_sha256": "4da59a0836045b0da95637ba3000036bddc55e20d019ba0a811139b434d63c01"
+      },
+      "name": "rag-worker-sigkill",
+      "recovery_ms": 15470.644,
+      "result": {
+        "authority": "READ_ONLY_ADVISORY",
+        "classification": "STRENGTHENS",
+        "decision_emitted": true,
+        "decision_id": "dec_4f0fac754b1b",
+        "financial_writes": 0,
+        "lineage": {
+          "acquire_research": {
+            "research_id": "research_noc_temporal_poc_v1",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "build_decision_payload": {
+            "decision_id": "dec_4f0fac754b1b",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "classify_delta": {
+            "classification": "STRENGTHENS",
+            "delta_id": "delta_e8861d114e5f2cb8424b",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "enqueue_notification": {
+            "notification_identity": "notify_a4eb1a3f4ab34c64",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "evaluate_notification": {
+            "notification_identity": "notify_a4eb1a3f4ab34c64",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "load_standing_thesis": {
+            "thesis_version": "symbol_noc@v1",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "reconcile_thesis": {
+            "classification": "STRENGTHENS",
+            "delta_id": "delta_e8861d114e5f2cb8424b",
+            "thesis_version": "symbol_noc@v2",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "retrieve_contradictory_rag": {
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "retrieve_supporting_rag": {
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          }
+        },
+        "notification_enqueued": true,
+        "notification_identity": "notify_a4eb1a3f4ab34c64",
+        "operator_feedback": null,
+        "run_id": "rag-worker-sigkill",
+        "symbol": "NOC",
+        "thesis_version": "symbol_noc@v2",
+        "workflow": "AutonomousResearchToCIOWorkflow",
+        "workflow_id": "tradeai-temporal-poc-rag-worker-sigkill"
+      },
+      "status": "POC_PASS",
+      "store": {
+        "counters": {
+          "decision_writes": 1,
+          "notification_writes": 1,
+          "provider_calls": 1
+        },
+        "tables": {
+          "activity_attempts": [
+            {
+              "attempt": 1,
+              "stage": "acquire_research",
+              "started_at": "2026-08-23 15:19:42",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-rag-worker-sigkill"
+            },
+            {
+              "attempt": 1,
+              "stage": "build_decision_payload",
+              "started_at": "2026-08-23 15:19:42",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-rag-worker-sigkill"
+            },
+            {
+              "attempt": 1,
+              "stage": "classify_delta",
+              "started_at": "2026-08-23 15:19:42",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-rag-worker-sigkill"
+            },
+            {
+              "attempt": 1,
+              "stage": "enqueue_notification",
+              "started_at": "2026-08-23 15:19:42",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-rag-worker-sigkill"
+            },
+            {
+              "attempt": 1,
+              "stage": "evaluate_notification",
+              "started_at": "2026-08-23 15:19:42",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-rag-worker-sigkill"
+            },
+            {
+              "attempt": 1,
+              "stage": "load_standing_thesis",
+              "started_at": "2026-08-23 15:19:27",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-rag-worker-sigkill"
+            },
+            {
+              "attempt": 1,
+              "stage": "reconcile_thesis",
+              "started_at": "2026-08-23 15:19:42",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-rag-worker-sigkill"
+            },
+            {
+              "attempt": 1,
+              "stage": "retrieve_contradictory_rag",
+              "started_at": "2026-08-23 15:19:42",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-rag-worker-sigkill"
+            },
+            {
+              "attempt": 1,
+              "stage": "retrieve_supporting_rag",
+              "started_at": "2026-08-23 15:19:27",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-rag-worker-sigkill"
+            },
+            {
+              "attempt": 2,
+              "stage": "retrieve_supporting_rag",
+              "started_at": "2026-08-23 15:19:32",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-rag-worker-sigkill"
+            }
+          ],
+          "decisions": [
+            {
+              "decision_id": "dec_4f0fac754b1b",
+              "payload_json": "{\"act_now\": false, \"as_of\": \"2026-08-23T15:19:42.742388+00:00\", \"authority\": \"READ_ONLY_ADVISORY\", \"confidence\": 0.68, \"current_action\": \"HOLD\", \"decision_id\": \"dec_4f0fac754b1b\", \"decision_origin\": \"FRESH_RESEARCH\", \"evidence_refs\": [\"ev_noc_backlog\", \"ev_noc_budget\", \"ev_noc_execution\"], \"financial_action\": false, \"gates_evaluated\": [{\"gate\": \"THESIS_DECISION\", \"result\": \"NO_INDEPENDENT_PROMOTION\"}], \"inputs_digest\": \"ctx_02b486c92d97b1c1\", \"next_review\": null, \"research_delta\": \"STRENGTHENS\", \"schema\": \"DecisionPayload@v1\", \"surface\": \"advisory\", \"symbol\": \"NOC\", \"thesis_version\": \"symbol_noc@v2\", \"trace_id\": \"tradeai-temporal-poc-rag-worker-sigkill\", \"wake_id\": \"wake_noc_temporal_runtime_poc\"}"
+            }
+          ],
+          "markers": [
+            {
+              "boundary": "retrieve_supporting_rag:during",
+              "marked_at": "2026-08-23 15:19:27",
+              "marker_json": "{\"attempt\": 1, \"worker_build_id\": \"6126eaaec344cb600591589b1330244b4c42bd97-poc-v1\"}",
+              "workflow_id": "tradeai-temporal-poc-rag-worker-sigkill"
+            }
+          ],
+          "notification_outbox": [
+            {
+              "notification_identity": "notify_a4eb1a3f4ab34c64",
+              "payload_json": "{\"authority\": \"READ_ONLY_ADVISORY\", \"decision_id\": \"dec_4f0fac754b1b\", \"delivery\": \"SHADOW_ONLY_NO_TELEGRAM_SEND\"}"
+            }
+          ],
+          "provider_requests": [
+            {
+              "provider_request_id": "provider_7f8e49eda69b5c51161a",
+              "response_json": "{\"counter_evidence\": [\"ev_noc_execution\"], \"evidence_for\": [\"ev_noc_backlog\", \"ev_noc_budget\"], \"invalidation_conditions\": [\"Material funded-backlog contraction or repeated program losses.\"], \"paid_provider\": false, \"portfolio_role\": \"DEFENSIVE_GROWTH\", \"provider\": \"DETERMINISTIC_FIXTURE\", \"research_gaps\": [\"Validate margin durability at the next reported quarter.\"], \"research_id\": \"research_noc_temporal_poc_v1\", \"source_refs\": [\"fixture:sec_backlog\", \"fixture:program_execution\"], \"stance\": \"hold\", \"summary\": \"NOC remains a durable defense holding supported by funded backlog, while program execution and valuation remain explicit counterweights requiring continued review.\", \"symbol\": \"NOC\", \"what_changes_my_mind\": [\"A sustained deterioration in funded backlog and program margins.\"], \"why_owned_or_watched\": \"Funded defense backlog and strategic mission exposure.\"}"
+            }
+          ]
+        }
+      },
+      "submission_ms": 2.148,
+      "workflow_id": "tradeai-temporal-poc-rag-worker-sigkill"
+    },
+    {
+      "history": {
+        "activity_execution_ms": [
+          4.898,
+          3.2030000000000003,
+          2.541,
+          4.688999999999999,
+          3.133,
+          4.008,
+          3.17,
+          2.552,
+          2.8960000000000004
+        ],
+        "activity_schedule_to_start_ms": [
+          1.598,
+          0.898,
+          1.371,
+          8052.762,
+          1.527,
+          1.3190000000000002,
+          1.484,
+          1.502,
+          1.441
+        ],
+        "event_count": 61,
+        "history_bytes": 52069,
+        "history_sha256": "36ef7ae5ae640b802402ac05ec5489d10de1f2d19323e8c33f542e987b88b05e"
+      },
+      "name": "provider-before-response",
+      "recovery_ms": 17987.972,
+      "result": {
+        "authority": "READ_ONLY_ADVISORY",
+        "classification": "STRENGTHENS",
+        "decision_emitted": true,
+        "decision_id": "dec_4f0fac754b1b",
+        "financial_writes": 0,
+        "lineage": {
+          "acquire_research": {
+            "research_id": "research_noc_temporal_poc_v1",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "build_decision_payload": {
+            "decision_id": "dec_4f0fac754b1b",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "classify_delta": {
+            "classification": "STRENGTHENS",
+            "delta_id": "delta_e8861d114e5f2cb8424b",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "enqueue_notification": {
+            "notification_identity": "notify_a4eb1a3f4ab34c64",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "evaluate_notification": {
+            "notification_identity": "notify_a4eb1a3f4ab34c64",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "load_standing_thesis": {
+            "thesis_version": "symbol_noc@v1",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "reconcile_thesis": {
+            "classification": "STRENGTHENS",
+            "delta_id": "delta_e8861d114e5f2cb8424b",
+            "thesis_version": "symbol_noc@v2",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "retrieve_contradictory_rag": {
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "retrieve_supporting_rag": {
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          }
+        },
+        "notification_enqueued": true,
+        "notification_identity": "notify_a4eb1a3f4ab34c64",
+        "operator_feedback": null,
+        "run_id": "provider-before-response",
+        "symbol": "NOC",
+        "thesis_version": "symbol_noc@v2",
+        "workflow": "AutonomousResearchToCIOWorkflow",
+        "workflow_id": "tradeai-temporal-poc-provider-before-response"
+      },
+      "status": "POC_PASS",
+      "store": {
+        "counters": {
+          "decision_writes": 1,
+          "notification_writes": 1,
+          "provider_calls": 1
+        },
+        "tables": {
+          "activity_attempts": [
+            {
+              "attempt": 1,
+              "stage": "acquire_research",
+              "started_at": "2026-08-23 15:19:42",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-provider-before-response"
+            },
+            {
+              "attempt": 2,
+              "stage": "acquire_research",
+              "started_at": "2026-08-23 15:19:50",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-provider-before-response"
+            },
+            {
+              "attempt": 1,
+              "stage": "build_decision_payload",
+              "started_at": "2026-08-23 15:20:00",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-provider-before-response"
+            },
+            {
+              "attempt": 1,
+              "stage": "classify_delta",
+              "started_at": "2026-08-23 15:20:00",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-provider-before-response"
+            },
+            {
+              "attempt": 1,
+              "stage": "enqueue_notification",
+              "started_at": "2026-08-23 15:20:00",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-provider-before-response"
+            },
+            {
+              "attempt": 1,
+              "stage": "evaluate_notification",
+              "started_at": "2026-08-23 15:20:00",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-provider-before-response"
+            },
+            {
+              "attempt": 1,
+              "stage": "load_standing_thesis",
+              "started_at": "2026-08-23 15:19:42",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-provider-before-response"
+            },
+            {
+              "attempt": 1,
+              "stage": "reconcile_thesis",
+              "started_at": "2026-08-23 15:20:00",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-provider-before-response"
+            },
+            {
+              "attempt": 1,
+              "stage": "retrieve_contradictory_rag",
+              "started_at": "2026-08-23 15:19:42",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-provider-before-response"
+            },
+            {
+              "attempt": 1,
+              "stage": "retrieve_supporting_rag",
+              "started_at": "2026-08-23 15:19:42",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-provider-before-response"
+            }
+          ],
+          "decisions": [
+            {
+              "decision_id": "dec_4f0fac754b1b",
+              "payload_json": "{\"act_now\": false, \"as_of\": \"2026-08-23T15:20:00.942081+00:00\", \"authority\": \"READ_ONLY_ADVISORY\", \"confidence\": 0.68, \"current_action\": \"HOLD\", \"decision_id\": \"dec_4f0fac754b1b\", \"decision_origin\": \"FRESH_RESEARCH\", \"evidence_refs\": [\"ev_noc_backlog\", \"ev_noc_budget\", \"ev_noc_execution\"], \"financial_action\": false, \"gates_evaluated\": [{\"gate\": \"THESIS_DECISION\", \"result\": \"NO_INDEPENDENT_PROMOTION\"}], \"inputs_digest\": \"ctx_02b486c92d97b1c1\", \"next_review\": null, \"research_delta\": \"STRENGTHENS\", \"schema\": \"DecisionPayload@v1\", \"surface\": \"advisory\", \"symbol\": \"NOC\", \"thesis_version\": \"symbol_noc@v2\", \"trace_id\": \"tradeai-temporal-poc-provider-before-response\", \"wake_id\": \"wake_noc_temporal_runtime_poc\"}"
+            }
+          ],
+          "markers": [
+            {
+              "boundary": "acquire_research:before",
+              "marked_at": "2026-08-23 15:19:42",
+              "marker_json": "{\"attempt\": 1, \"worker_build_id\": \"6126eaaec344cb600591589b1330244b4c42bd97-poc-v1\"}",
+              "workflow_id": "tradeai-temporal-poc-provider-before-response"
+            }
+          ],
+          "notification_outbox": [
+            {
+              "notification_identity": "notify_a4eb1a3f4ab34c64",
+              "payload_json": "{\"authority\": \"READ_ONLY_ADVISORY\", \"decision_id\": \"dec_4f0fac754b1b\", \"delivery\": \"SHADOW_ONLY_NO_TELEGRAM_SEND\"}"
+            }
+          ],
+          "provider_requests": [
+            {
+              "provider_request_id": "provider_7f8e49eda69b5c51161a",
+              "response_json": "{\"counter_evidence\": [\"ev_noc_execution\"], \"evidence_for\": [\"ev_noc_backlog\", \"ev_noc_budget\"], \"invalidation_conditions\": [\"Material funded-backlog contraction or repeated program losses.\"], \"paid_provider\": false, \"portfolio_role\": \"DEFENSIVE_GROWTH\", \"provider\": \"DETERMINISTIC_FIXTURE\", \"research_gaps\": [\"Validate margin durability at the next reported quarter.\"], \"research_id\": \"research_noc_temporal_poc_v1\", \"source_refs\": [\"fixture:sec_backlog\", \"fixture:program_execution\"], \"stance\": \"hold\", \"summary\": \"NOC remains a durable defense holding supported by funded backlog, while program execution and valuation remain explicit counterweights requiring continued review.\", \"symbol\": \"NOC\", \"what_changes_my_mind\": [\"A sustained deterioration in funded backlog and program margins.\"], \"why_owned_or_watched\": \"Funded defense backlog and strategic mission exposure.\"}"
+            }
+          ]
+        }
+      },
+      "submission_ms": 1.685,
+      "workflow_id": "tradeai-temporal-poc-provider-before-response"
+    },
+    {
+      "history": {
+        "activity_execution_ms": [
+          5.335,
+          2.722,
+          2.552,
+          5.035,
+          5.0200000000000005,
+          6.225,
+          4.015000000000001,
+          3.769,
+          4.178
+        ],
+        "activity_schedule_to_start_ms": [
+          1.832,
+          1.314,
+          1.271,
+          8929.454,
+          1.572,
+          1.595,
+          1.17,
+          1.9829999999999999,
+          1.382
+        ],
+        "event_count": 61,
+        "history_bytes": 52312,
+        "history_sha256": "2d6a168c60895f86d0a81dc154bafac8221d89cb9228c2e31cb6e075b1e5b9e0"
+      },
+      "name": "provider-ambiguous-response",
+      "recovery_ms": 18948.985,
+      "result": {
+        "authority": "READ_ONLY_ADVISORY",
+        "classification": "STRENGTHENS",
+        "decision_emitted": true,
+        "decision_id": "dec_4f0fac754b1b",
+        "financial_writes": 0,
+        "lineage": {
+          "acquire_research": {
+            "research_id": "research_noc_temporal_poc_v1",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "build_decision_payload": {
+            "decision_id": "dec_4f0fac754b1b",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "classify_delta": {
+            "classification": "STRENGTHENS",
+            "delta_id": "delta_e8861d114e5f2cb8424b",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "enqueue_notification": {
+            "notification_identity": "notify_a4eb1a3f4ab34c64",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "evaluate_notification": {
+            "notification_identity": "notify_a4eb1a3f4ab34c64",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "load_standing_thesis": {
+            "thesis_version": "symbol_noc@v1",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "reconcile_thesis": {
+            "classification": "STRENGTHENS",
+            "delta_id": "delta_e8861d114e5f2cb8424b",
+            "thesis_version": "symbol_noc@v2",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "retrieve_contradictory_rag": {
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "retrieve_supporting_rag": {
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          }
+        },
+        "notification_enqueued": true,
+        "notification_identity": "notify_a4eb1a3f4ab34c64",
+        "operator_feedback": null,
+        "run_id": "provider-ambiguous-response",
+        "symbol": "NOC",
+        "thesis_version": "symbol_noc@v2",
+        "workflow": "AutonomousResearchToCIOWorkflow",
+        "workflow_id": "tradeai-temporal-poc-provider-ambiguous-response"
+      },
+      "status": "POC_PASS",
+      "store": {
+        "counters": {
+          "decision_writes": 1,
+          "notification_writes": 1,
+          "provider_calls": 1
+        },
+        "tables": {
+          "activity_attempts": [
+            {
+              "attempt": 1,
+              "stage": "acquire_research",
+              "started_at": "2026-08-23 15:20:01",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-provider-ambiguous-response"
+            },
+            {
+              "attempt": 2,
+              "stage": "acquire_research",
+              "started_at": "2026-08-23 15:20:09",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-provider-ambiguous-response"
+            },
+            {
+              "attempt": 1,
+              "stage": "build_decision_payload",
+              "started_at": "2026-08-23 15:20:19",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-provider-ambiguous-response"
+            },
+            {
+              "attempt": 1,
+              "stage": "classify_delta",
+              "started_at": "2026-08-23 15:20:19",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-provider-ambiguous-response"
+            },
+            {
+              "attempt": 1,
+              "stage": "enqueue_notification",
+              "started_at": "2026-08-23 15:20:20",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-provider-ambiguous-response"
+            },
+            {
+              "attempt": 1,
+              "stage": "evaluate_notification",
+              "started_at": "2026-08-23 15:20:20",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-provider-ambiguous-response"
+            },
+            {
+              "attempt": 1,
+              "stage": "load_standing_thesis",
+              "started_at": "2026-08-23 15:20:00",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-provider-ambiguous-response"
+            },
+            {
+              "attempt": 1,
+              "stage": "reconcile_thesis",
+              "started_at": "2026-08-23 15:20:19",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-provider-ambiguous-response"
+            },
+            {
+              "attempt": 1,
+              "stage": "retrieve_contradictory_rag",
+              "started_at": "2026-08-23 15:20:01",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-provider-ambiguous-response"
+            },
+            {
+              "attempt": 1,
+              "stage": "retrieve_supporting_rag",
+              "started_at": "2026-08-23 15:20:00",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-provider-ambiguous-response"
+            }
+          ],
+          "decisions": [
+            {
+              "decision_id": "dec_4f0fac754b1b",
+              "payload_json": "{\"act_now\": false, \"as_of\": \"2026-08-23T15:20:19.990572+00:00\", \"authority\": \"READ_ONLY_ADVISORY\", \"confidence\": 0.68, \"current_action\": \"HOLD\", \"decision_id\": \"dec_4f0fac754b1b\", \"decision_origin\": \"FRESH_RESEARCH\", \"evidence_refs\": [\"ev_noc_backlog\", \"ev_noc_budget\", \"ev_noc_execution\"], \"financial_action\": false, \"gates_evaluated\": [{\"gate\": \"THESIS_DECISION\", \"result\": \"NO_INDEPENDENT_PROMOTION\"}], \"inputs_digest\": \"ctx_02b486c92d97b1c1\", \"next_review\": null, \"research_delta\": \"STRENGTHENS\", \"schema\": \"DecisionPayload@v1\", \"surface\": \"advisory\", \"symbol\": \"NOC\", \"thesis_version\": \"symbol_noc@v2\", \"trace_id\": \"tradeai-temporal-poc-provider-ambiguous-response\", \"wake_id\": \"wake_noc_temporal_runtime_poc\"}"
+            }
+          ],
+          "markers": [
+            {
+              "boundary": "acquire_research:after_provider",
+              "marked_at": "2026-08-23 15:20:01",
+              "marker_json": "{\"attempt\": 1, \"worker_build_id\": \"6126eaaec344cb600591589b1330244b4c42bd97-poc-v1\"}",
+              "workflow_id": "tradeai-temporal-poc-provider-ambiguous-response"
+            }
+          ],
+          "notification_outbox": [
+            {
+              "notification_identity": "notify_a4eb1a3f4ab34c64",
+              "payload_json": "{\"authority\": \"READ_ONLY_ADVISORY\", \"decision_id\": \"dec_4f0fac754b1b\", \"delivery\": \"SHADOW_ONLY_NO_TELEGRAM_SEND\"}"
+            }
+          ],
+          "provider_requests": [
+            {
+              "provider_request_id": "provider_7f8e49eda69b5c51161a",
+              "response_json": "{\"counter_evidence\": [\"ev_noc_execution\"], \"evidence_for\": [\"ev_noc_backlog\", \"ev_noc_budget\"], \"invalidation_conditions\": [\"Material funded-backlog contraction or repeated program losses.\"], \"paid_provider\": false, \"portfolio_role\": \"DEFENSIVE_GROWTH\", \"provider\": \"DETERMINISTIC_FIXTURE\", \"research_gaps\": [\"Validate margin durability at the next reported quarter.\"], \"research_id\": \"research_noc_temporal_poc_v1\", \"source_refs\": [\"fixture:sec_backlog\", \"fixture:program_execution\"], \"stance\": \"hold\", \"summary\": \"NOC remains a durable defense holding supported by funded backlog, while program execution and valuation remain explicit counterweights requiring continued review.\", \"symbol\": \"NOC\", \"what_changes_my_mind\": [\"A sustained deterioration in funded backlog and program margins.\"], \"why_owned_or_watched\": \"Funded defense backlog and strategic mission exposure.\"}"
+            }
+          ]
+        }
+      },
+      "submission_ms": 1.749,
+      "workflow_id": "tradeai-temporal-poc-provider-ambiguous-response"
+    },
+    {
+      "history": {
+        "activity_execution_ms": [
+          4.095,
+          4.274,
+          2.94,
+          3.175,
+          2.7950000000000004,
+          5.9750000000000005,
+          7.213,
+          4.53,
+          5.497
+        ],
+        "activity_schedule_to_start_ms": [
+          1.416,
+          1.279,
+          1.027,
+          0.933,
+          0.905,
+          4882.427,
+          3.967,
+          2.126,
+          2.041
+        ],
+        "event_count": 61,
+        "history_bytes": 52143,
+        "history_sha256": "86ac6c26cc6b798d7eb043435e592917c06859b3b8dce442937eac842e5fc802"
+      },
+      "name": "thesis-ambiguous-write",
+      "recovery_ms": 14828.952,
+      "result": {
+        "authority": "READ_ONLY_ADVISORY",
+        "classification": "STRENGTHENS",
+        "decision_emitted": true,
+        "decision_id": "dec_4f0fac754b1b",
+        "financial_writes": 0,
+        "lineage": {
+          "acquire_research": {
+            "research_id": "research_noc_temporal_poc_v1",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "build_decision_payload": {
+            "decision_id": "dec_4f0fac754b1b",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "classify_delta": {
+            "classification": "STRENGTHENS",
+            "delta_id": "delta_e8861d114e5f2cb8424b",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "enqueue_notification": {
+            "notification_identity": "notify_a4eb1a3f4ab34c64",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "evaluate_notification": {
+            "notification_identity": "notify_a4eb1a3f4ab34c64",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "load_standing_thesis": {
+            "thesis_version": "symbol_noc@v1",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "reconcile_thesis": {
+            "classification": "STRENGTHENS",
+            "delta_id": "delta_e8861d114e5f2cb8424b",
+            "thesis_version": "symbol_noc@v2",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "retrieve_contradictory_rag": {
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "retrieve_supporting_rag": {
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          }
+        },
+        "notification_enqueued": true,
+        "notification_identity": "notify_a4eb1a3f4ab34c64",
+        "operator_feedback": null,
+        "run_id": "thesis-ambiguous-write",
+        "symbol": "NOC",
+        "thesis_version": "symbol_noc@v2",
+        "workflow": "AutonomousResearchToCIOWorkflow",
+        "workflow_id": "tradeai-temporal-poc-thesis-ambiguous-write"
+      },
+      "status": "POC_PASS",
+      "store": {
+        "counters": {
+          "decision_writes": 1,
+          "notification_writes": 1,
+          "provider_calls": 1
+        },
+        "tables": {
+          "activity_attempts": [
+            {
+              "attempt": 1,
+              "stage": "acquire_research",
+              "started_at": "2026-08-23 15:20:20",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-thesis-ambiguous-write"
+            },
+            {
+              "attempt": 1,
+              "stage": "build_decision_payload",
+              "started_at": "2026-08-23 15:20:35",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-thesis-ambiguous-write"
+            },
+            {
+              "attempt": 1,
+              "stage": "classify_delta",
+              "started_at": "2026-08-23 15:20:20",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-thesis-ambiguous-write"
+            },
+            {
+              "attempt": 1,
+              "stage": "enqueue_notification",
+              "started_at": "2026-08-23 15:20:35",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-thesis-ambiguous-write"
+            },
+            {
+              "attempt": 1,
+              "stage": "evaluate_notification",
+              "started_at": "2026-08-23 15:20:35",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-thesis-ambiguous-write"
+            },
+            {
+              "attempt": 1,
+              "stage": "load_standing_thesis",
+              "started_at": "2026-08-23 15:20:20",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-thesis-ambiguous-write"
+            },
+            {
+              "attempt": 1,
+              "stage": "reconcile_thesis",
+              "started_at": "2026-08-23 15:20:20",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-thesis-ambiguous-write"
+            },
+            {
+              "attempt": 2,
+              "stage": "reconcile_thesis",
+              "started_at": "2026-08-23 15:20:24",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-thesis-ambiguous-write"
+            },
+            {
+              "attempt": 1,
+              "stage": "retrieve_contradictory_rag",
+              "started_at": "2026-08-23 15:20:20",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-thesis-ambiguous-write"
+            },
+            {
+              "attempt": 1,
+              "stage": "retrieve_supporting_rag",
+              "started_at": "2026-08-23 15:20:20",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-thesis-ambiguous-write"
+            }
+          ],
+          "decisions": [
+            {
+              "decision_id": "dec_4f0fac754b1b",
+              "payload_json": "{\"act_now\": false, \"as_of\": \"2026-08-23T15:20:35.022272+00:00\", \"authority\": \"READ_ONLY_ADVISORY\", \"confidence\": 0.68, \"current_action\": \"HOLD\", \"decision_id\": \"dec_4f0fac754b1b\", \"decision_origin\": \"FRESH_RESEARCH\", \"evidence_refs\": [\"ev_noc_backlog\", \"ev_noc_budget\", \"ev_noc_execution\"], \"financial_action\": false, \"gates_evaluated\": [{\"gate\": \"THESIS_DECISION\", \"result\": \"NO_INDEPENDENT_PROMOTION\"}], \"inputs_digest\": \"ctx_02b486c92d97b1c1\", \"next_review\": null, \"research_delta\": \"STRENGTHENS\", \"schema\": \"DecisionPayload@v1\", \"surface\": \"advisory\", \"symbol\": \"NOC\", \"thesis_version\": \"symbol_noc@v2\", \"trace_id\": \"tradeai-temporal-poc-thesis-ambiguous-write\", \"wake_id\": \"wake_noc_temporal_runtime_poc\"}"
+            }
+          ],
+          "markers": [
+            {
+              "boundary": "reconcile_thesis:after_domain_write",
+              "marked_at": "2026-08-23 15:20:20",
+              "marker_json": "{\"attempt\": 1, \"worker_build_id\": \"6126eaaec344cb600591589b1330244b4c42bd97-poc-v1\"}",
+              "workflow_id": "tradeai-temporal-poc-thesis-ambiguous-write"
+            }
+          ],
+          "notification_outbox": [
+            {
+              "notification_identity": "notify_a4eb1a3f4ab34c64",
+              "payload_json": "{\"authority\": \"READ_ONLY_ADVISORY\", \"decision_id\": \"dec_4f0fac754b1b\", \"delivery\": \"SHADOW_ONLY_NO_TELEGRAM_SEND\"}"
+            }
+          ],
+          "provider_requests": [
+            {
+              "provider_request_id": "provider_7f8e49eda69b5c51161a",
+              "response_json": "{\"counter_evidence\": [\"ev_noc_execution\"], \"evidence_for\": [\"ev_noc_backlog\", \"ev_noc_budget\"], \"invalidation_conditions\": [\"Material funded-backlog contraction or repeated program losses.\"], \"paid_provider\": false, \"portfolio_role\": \"DEFENSIVE_GROWTH\", \"provider\": \"DETERMINISTIC_FIXTURE\", \"research_gaps\": [\"Validate margin durability at the next reported quarter.\"], \"research_id\": \"research_noc_temporal_poc_v1\", \"source_refs\": [\"fixture:sec_backlog\", \"fixture:program_execution\"], \"stance\": \"hold\", \"summary\": \"NOC remains a durable defense holding supported by funded backlog, while program execution and valuation remain explicit counterweights requiring continued review.\", \"symbol\": \"NOC\", \"what_changes_my_mind\": [\"A sustained deterioration in funded backlog and program margins.\"], \"why_owned_or_watched\": \"Funded defense backlog and strategic mission exposure.\"}"
+            }
+          ]
+        }
+      },
+      "submission_ms": 1.811,
+      "workflow_id": "tradeai-temporal-poc-thesis-ambiguous-write"
+    },
+    {
+      "history": {
+        "activity_execution_ms": [
+          7.143,
+          5.551,
+          5.26,
+          4.8260000000000005,
+          4.442,
+          5.537,
+          4.231000000000001,
+          3.075,
+          3.401
+        ],
+        "activity_schedule_to_start_ms": [
+          2.26,
+          6006.826,
+          2.115,
+          1.322,
+          1.333,
+          1.565,
+          1.706,
+          1.113,
+          1.312
+        ],
+        "event_count": 61,
+        "history_bytes": 52128,
+        "history_sha256": "51be0070edec6cfc8c52443e0dff2a860f6c89e788aa649a69fe99323874f3ca"
+      },
+      "name": "worker-graceful-restart",
+      "recovery_ms": 16038.784,
+      "result": {
+        "authority": "READ_ONLY_ADVISORY",
+        "classification": "STRENGTHENS",
+        "decision_emitted": true,
+        "decision_id": "dec_4f0fac754b1b",
+        "financial_writes": 0,
+        "lineage": {
+          "acquire_research": {
+            "research_id": "research_noc_temporal_poc_v1",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "build_decision_payload": {
+            "decision_id": "dec_4f0fac754b1b",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "classify_delta": {
+            "classification": "STRENGTHENS",
+            "delta_id": "delta_e8861d114e5f2cb8424b",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "enqueue_notification": {
+            "notification_identity": "notify_a4eb1a3f4ab34c64",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "evaluate_notification": {
+            "notification_identity": "notify_a4eb1a3f4ab34c64",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "load_standing_thesis": {
+            "thesis_version": "symbol_noc@v1",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "reconcile_thesis": {
+            "classification": "STRENGTHENS",
+            "delta_id": "delta_e8861d114e5f2cb8424b",
+            "thesis_version": "symbol_noc@v2",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "retrieve_contradictory_rag": {
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "retrieve_supporting_rag": {
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          }
+        },
+        "notification_enqueued": true,
+        "notification_identity": "notify_a4eb1a3f4ab34c64",
+        "operator_feedback": null,
+        "run_id": "worker-graceful-restart",
+        "symbol": "NOC",
+        "thesis_version": "symbol_noc@v2",
+        "workflow": "AutonomousResearchToCIOWorkflow",
+        "workflow_id": "tradeai-temporal-poc-worker-graceful-restart"
+      },
+      "status": "POC_PASS",
+      "store": {
+        "counters": {
+          "decision_writes": 1,
+          "notification_writes": 1,
+          "provider_calls": 1
+        },
+        "tables": {
+          "activity_attempts": [
+            {
+              "attempt": 1,
+              "stage": "acquire_research",
+              "started_at": "2026-08-23 15:20:51",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-worker-graceful-restart"
+            },
+            {
+              "attempt": 1,
+              "stage": "build_decision_payload",
+              "started_at": "2026-08-23 15:20:51",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-worker-graceful-restart"
+            },
+            {
+              "attempt": 1,
+              "stage": "classify_delta",
+              "started_at": "2026-08-23 15:20:51",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-worker-graceful-restart"
+            },
+            {
+              "attempt": 1,
+              "stage": "enqueue_notification",
+              "started_at": "2026-08-23 15:20:51",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-worker-graceful-restart"
+            },
+            {
+              "attempt": 1,
+              "stage": "evaluate_notification",
+              "started_at": "2026-08-23 15:20:51",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-worker-graceful-restart"
+            },
+            {
+              "attempt": 1,
+              "stage": "load_standing_thesis",
+              "started_at": "2026-08-23 15:20:35",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-worker-graceful-restart"
+            },
+            {
+              "attempt": 1,
+              "stage": "reconcile_thesis",
+              "started_at": "2026-08-23 15:20:51",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-worker-graceful-restart"
+            },
+            {
+              "attempt": 1,
+              "stage": "retrieve_contradictory_rag",
+              "started_at": "2026-08-23 15:20:51",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-worker-graceful-restart"
+            },
+            {
+              "attempt": 1,
+              "stage": "retrieve_supporting_rag",
+              "started_at": "2026-08-23 15:20:35",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-worker-graceful-restart"
+            },
+            {
+              "attempt": 2,
+              "stage": "retrieve_supporting_rag",
+              "started_at": "2026-08-23 15:20:41",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-worker-graceful-restart"
+            }
+          ],
+          "decisions": [
+            {
+              "decision_id": "dec_4f0fac754b1b",
+              "payload_json": "{\"act_now\": false, \"as_of\": \"2026-08-23T15:20:51.191510+00:00\", \"authority\": \"READ_ONLY_ADVISORY\", \"confidence\": 0.68, \"current_action\": \"HOLD\", \"decision_id\": \"dec_4f0fac754b1b\", \"decision_origin\": \"FRESH_RESEARCH\", \"evidence_refs\": [\"ev_noc_backlog\", \"ev_noc_budget\", \"ev_noc_execution\"], \"financial_action\": false, \"gates_evaluated\": [{\"gate\": \"THESIS_DECISION\", \"result\": \"NO_INDEPENDENT_PROMOTION\"}], \"inputs_digest\": \"ctx_02b486c92d97b1c1\", \"next_review\": null, \"research_delta\": \"STRENGTHENS\", \"schema\": \"DecisionPayload@v1\", \"surface\": \"advisory\", \"symbol\": \"NOC\", \"thesis_version\": \"symbol_noc@v2\", \"trace_id\": \"tradeai-temporal-poc-worker-graceful-restart\", \"wake_id\": \"wake_noc_temporal_runtime_poc\"}"
+            }
+          ],
+          "markers": [
+            {
+              "boundary": "retrieve_supporting_rag:during",
+              "marked_at": "2026-08-23 15:20:35",
+              "marker_json": "{\"attempt\": 1, \"worker_build_id\": \"6126eaaec344cb600591589b1330244b4c42bd97-poc-v1\"}",
+              "workflow_id": "tradeai-temporal-poc-worker-graceful-restart"
+            }
+          ],
+          "notification_outbox": [
+            {
+              "notification_identity": "notify_a4eb1a3f4ab34c64",
+              "payload_json": "{\"authority\": \"READ_ONLY_ADVISORY\", \"decision_id\": \"dec_4f0fac754b1b\", \"delivery\": \"SHADOW_ONLY_NO_TELEGRAM_SEND\"}"
+            }
+          ],
+          "provider_requests": [
+            {
+              "provider_request_id": "provider_7f8e49eda69b5c51161a",
+              "response_json": "{\"counter_evidence\": [\"ev_noc_execution\"], \"evidence_for\": [\"ev_noc_backlog\", \"ev_noc_budget\"], \"invalidation_conditions\": [\"Material funded-backlog contraction or repeated program losses.\"], \"paid_provider\": false, \"portfolio_role\": \"DEFENSIVE_GROWTH\", \"provider\": \"DETERMINISTIC_FIXTURE\", \"research_gaps\": [\"Validate margin durability at the next reported quarter.\"], \"research_id\": \"research_noc_temporal_poc_v1\", \"source_refs\": [\"fixture:sec_backlog\", \"fixture:program_execution\"], \"stance\": \"hold\", \"summary\": \"NOC remains a durable defense holding supported by funded backlog, while program execution and valuation remain explicit counterweights requiring continued review.\", \"symbol\": \"NOC\", \"what_changes_my_mind\": [\"A sustained deterioration in funded backlog and program margins.\"], \"why_owned_or_watched\": \"Funded defense backlog and strategic mission exposure.\"}"
+            }
+          ]
+        }
+      },
+      "submission_ms": 2.85,
+      "workflow_id": "tradeai-temporal-poc-worker-graceful-restart"
+    },
+    {
+      "history": {
+        "activity_execution_ms": [
+          3.9179999999999997,
+          2.89,
+          3.42,
+          4.141,
+          3.177,
+          7.394,
+          5.005,
+          4.068,
+          4.51
+        ],
+        "activity_schedule_to_start_ms": [
+          1.776,
+          1.055,
+          1.414,
+          46.135000000000005,
+          46.678,
+          3058.3109999999997,
+          1.435,
+          1.787,
+          1.6720000000000002
+        ],
+        "event_count": 59,
+        "history_bytes": 52826,
+        "history_sha256": "e1752eb87355121eebf1736b1d8e37a55f240762ceb1641b81a2f60a54390ad7"
+      },
+      "name": "transient-db",
+      "result": {
+        "authority": "READ_ONLY_ADVISORY",
+        "classification": "STRENGTHENS",
+        "decision_emitted": true,
+        "decision_id": "dec_4f0fac754b1b",
+        "financial_writes": 0,
+        "lineage": {
+          "acquire_research": {
+            "research_id": "research_noc_temporal_poc_v1",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "build_decision_payload": {
+            "decision_id": "dec_4f0fac754b1b",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "classify_delta": {
+            "classification": "STRENGTHENS",
+            "delta_id": "delta_e8861d114e5f2cb8424b",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "enqueue_notification": {
+            "notification_identity": "notify_a4eb1a3f4ab34c64",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "evaluate_notification": {
+            "notification_identity": "notify_a4eb1a3f4ab34c64",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "load_standing_thesis": {
+            "thesis_version": "symbol_noc@v1",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "reconcile_thesis": {
+            "classification": "STRENGTHENS",
+            "delta_id": "delta_e8861d114e5f2cb8424b",
+            "thesis_version": "symbol_noc@v2",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "retrieve_contradictory_rag": {
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "retrieve_supporting_rag": {
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          }
+        },
+        "notification_enqueued": true,
+        "notification_identity": "notify_a4eb1a3f4ab34c64",
+        "operator_feedback": null,
+        "run_id": "transient-db",
+        "symbol": "NOC",
+        "thesis_version": "symbol_noc@v2",
+        "workflow": "AutonomousResearchToCIOWorkflow",
+        "workflow_id": "tradeai-temporal-poc-transient-db"
+      },
+      "result_wait_ms": 3364.347,
+      "status": "POC_PASS",
+      "store": {
+        "counters": {
+          "decision_writes": 1,
+          "notification_writes": 1,
+          "provider_calls": 1
+        },
+        "tables": {
+          "activity_attempts": [
+            {
+              "attempt": 1,
+              "stage": "acquire_research",
+              "started_at": "2026-08-23 15:20:51",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-transient-db"
+            },
+            {
+              "attempt": 1,
+              "stage": "build_decision_payload",
+              "started_at": "2026-08-23 15:20:54",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-transient-db"
+            },
+            {
+              "attempt": 1,
+              "stage": "classify_delta",
+              "started_at": "2026-08-23 15:20:51",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-transient-db"
+            },
+            {
+              "attempt": 1,
+              "stage": "enqueue_notification",
+              "started_at": "2026-08-23 15:20:54",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-transient-db"
+            },
+            {
+              "attempt": 1,
+              "stage": "evaluate_notification",
+              "started_at": "2026-08-23 15:20:54",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-transient-db"
+            },
+            {
+              "attempt": 1,
+              "stage": "load_standing_thesis",
+              "started_at": "2026-08-23 15:20:51",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-transient-db"
+            },
+            {
+              "attempt": 1,
+              "stage": "reconcile_thesis",
+              "started_at": "2026-08-23 15:20:51",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-transient-db"
+            },
+            {
+              "attempt": 2,
+              "stage": "reconcile_thesis",
+              "started_at": "2026-08-23 15:20:52",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-transient-db"
+            },
+            {
+              "attempt": 3,
+              "stage": "reconcile_thesis",
+              "started_at": "2026-08-23 15:20:54",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-transient-db"
+            },
+            {
+              "attempt": 1,
+              "stage": "retrieve_contradictory_rag",
+              "started_at": "2026-08-23 15:20:51",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-transient-db"
+            },
+            {
+              "attempt": 1,
+              "stage": "retrieve_supporting_rag",
+              "started_at": "2026-08-23 15:20:51",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-transient-db"
+            }
+          ],
+          "decisions": [
+            {
+              "decision_id": "dec_4f0fac754b1b",
+              "payload_json": "{\"act_now\": false, \"as_of\": \"2026-08-23T15:20:54.555734+00:00\", \"authority\": \"READ_ONLY_ADVISORY\", \"confidence\": 0.68, \"current_action\": \"HOLD\", \"decision_id\": \"dec_4f0fac754b1b\", \"decision_origin\": \"FRESH_RESEARCH\", \"evidence_refs\": [\"ev_noc_backlog\", \"ev_noc_budget\", \"ev_noc_execution\"], \"financial_action\": false, \"gates_evaluated\": [{\"gate\": \"THESIS_DECISION\", \"result\": \"NO_INDEPENDENT_PROMOTION\"}], \"inputs_digest\": \"ctx_02b486c92d97b1c1\", \"next_review\": null, \"research_delta\": \"STRENGTHENS\", \"schema\": \"DecisionPayload@v1\", \"surface\": \"advisory\", \"symbol\": \"NOC\", \"thesis_version\": \"symbol_noc@v2\", \"trace_id\": \"tradeai-temporal-poc-transient-db\", \"wake_id\": \"wake_noc_temporal_runtime_poc\"}"
+            }
+          ],
+          "markers": [],
+          "notification_outbox": [
+            {
+              "notification_identity": "notify_a4eb1a3f4ab34c64",
+              "payload_json": "{\"authority\": \"READ_ONLY_ADVISORY\", \"decision_id\": \"dec_4f0fac754b1b\", \"delivery\": \"SHADOW_ONLY_NO_TELEGRAM_SEND\"}"
+            }
+          ],
+          "provider_requests": [
+            {
+              "provider_request_id": "provider_7f8e49eda69b5c51161a",
+              "response_json": "{\"counter_evidence\": [\"ev_noc_execution\"], \"evidence_for\": [\"ev_noc_backlog\", \"ev_noc_budget\"], \"invalidation_conditions\": [\"Material funded-backlog contraction or repeated program losses.\"], \"paid_provider\": false, \"portfolio_role\": \"DEFENSIVE_GROWTH\", \"provider\": \"DETERMINISTIC_FIXTURE\", \"research_gaps\": [\"Validate margin durability at the next reported quarter.\"], \"research_id\": \"research_noc_temporal_poc_v1\", \"source_refs\": [\"fixture:sec_backlog\", \"fixture:program_execution\"], \"stance\": \"hold\", \"summary\": \"NOC remains a durable defense holding supported by funded backlog, while program execution and valuation remain explicit counterweights requiring continued review.\", \"symbol\": \"NOC\", \"what_changes_my_mind\": [\"A sustained deterioration in funded backlog and program margins.\"], \"why_owned_or_watched\": \"Funded defense backlog and strategic mission exposure.\"}"
+            }
+          ]
+        }
+      },
+      "submission_ms": 1.921,
+      "workflow_id": "tradeai-temporal-poc-transient-db"
+    },
+    {
+      "history": {
+        "activity_execution_ms": [
+          5.1850000000000005,
+          3.448,
+          2.973,
+          4.469,
+          3.742,
+          4.5040000000000004,
+          3.813,
+          3.039,
+          3.713
+        ],
+        "activity_schedule_to_start_ms": [
+          1.8010000000000002,
+          1.377,
+          1.246,
+          15014.228,
+          1.572,
+          1.127,
+          1.28,
+          1.5150000000000001,
+          1.4829999999999999
+        ],
+        "event_count": 59,
+        "history_bytes": 52948,
+        "history_sha256": "072be51295973944272ab8eb011a72fc7ba2de7b83b57d9a1c263c487853d195"
+      },
+      "name": "deepseek-http-500",
+      "result": {
+        "authority": "READ_ONLY_ADVISORY",
+        "classification": "STRENGTHENS",
+        "decision_emitted": true,
+        "decision_id": "dec_4f0fac754b1b",
+        "financial_writes": 0,
+        "lineage": {
+          "acquire_research": {
+            "research_id": "research_noc_temporal_poc_v1",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "build_decision_payload": {
+            "decision_id": "dec_4f0fac754b1b",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "classify_delta": {
+            "classification": "STRENGTHENS",
+            "delta_id": "delta_e8861d114e5f2cb8424b",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "enqueue_notification": {
+            "notification_identity": "notify_a4eb1a3f4ab34c64",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "evaluate_notification": {
+            "notification_identity": "notify_a4eb1a3f4ab34c64",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "load_standing_thesis": {
+            "thesis_version": "symbol_noc@v1",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "reconcile_thesis": {
+            "classification": "STRENGTHENS",
+            "delta_id": "delta_e8861d114e5f2cb8424b",
+            "thesis_version": "symbol_noc@v2",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "retrieve_contradictory_rag": {
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "retrieve_supporting_rag": {
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          }
+        },
+        "notification_enqueued": true,
+        "notification_identity": "notify_a4eb1a3f4ab34c64",
+        "operator_feedback": null,
+        "run_id": "deepseek-http-500",
+        "symbol": "NOC",
+        "thesis_version": "symbol_noc@v2",
+        "workflow": "AutonomousResearchToCIOWorkflow",
+        "workflow_id": "tradeai-temporal-poc-deepseek-http-500"
+      },
+      "result_wait_ms": 15116.377,
+      "status": "POC_PASS",
+      "store": {
+        "counters": {
+          "decision_writes": 1,
+          "notification_writes": 1,
+          "provider_calls": 1
+        },
+        "tables": {
+          "activity_attempts": [
+            {
+              "attempt": 1,
+              "stage": "acquire_research",
+              "started_at": "2026-08-23 15:20:54",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-deepseek-http-500"
+            },
+            {
+              "attempt": 2,
+              "stage": "acquire_research",
+              "started_at": "2026-08-23 15:20:59",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-deepseek-http-500"
+            },
+            {
+              "attempt": 3,
+              "stage": "acquire_research",
+              "started_at": "2026-08-23 15:21:09",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-deepseek-http-500"
+            },
+            {
+              "attempt": 1,
+              "stage": "build_decision_payload",
+              "started_at": "2026-08-23 15:21:09",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-deepseek-http-500"
+            },
+            {
+              "attempt": 1,
+              "stage": "classify_delta",
+              "started_at": "2026-08-23 15:21:09",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-deepseek-http-500"
+            },
+            {
+              "attempt": 1,
+              "stage": "enqueue_notification",
+              "started_at": "2026-08-23 15:21:09",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-deepseek-http-500"
+            },
+            {
+              "attempt": 1,
+              "stage": "evaluate_notification",
+              "started_at": "2026-08-23 15:21:09",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-deepseek-http-500"
+            },
+            {
+              "attempt": 1,
+              "stage": "load_standing_thesis",
+              "started_at": "2026-08-23 15:20:54",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-deepseek-http-500"
+            },
+            {
+              "attempt": 1,
+              "stage": "reconcile_thesis",
+              "started_at": "2026-08-23 15:21:09",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-deepseek-http-500"
+            },
+            {
+              "attempt": 1,
+              "stage": "retrieve_contradictory_rag",
+              "started_at": "2026-08-23 15:20:54",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-deepseek-http-500"
+            },
+            {
+              "attempt": 1,
+              "stage": "retrieve_supporting_rag",
+              "started_at": "2026-08-23 15:20:54",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-deepseek-http-500"
+            }
+          ],
+          "decisions": [
+            {
+              "decision_id": "dec_4f0fac754b1b",
+              "payload_json": "{\"act_now\": false, \"as_of\": \"2026-08-23T15:21:09.686316+00:00\", \"authority\": \"READ_ONLY_ADVISORY\", \"confidence\": 0.68, \"current_action\": \"HOLD\", \"decision_id\": \"dec_4f0fac754b1b\", \"decision_origin\": \"FRESH_RESEARCH\", \"evidence_refs\": [\"ev_noc_backlog\", \"ev_noc_budget\", \"ev_noc_execution\"], \"financial_action\": false, \"gates_evaluated\": [{\"gate\": \"THESIS_DECISION\", \"result\": \"NO_INDEPENDENT_PROMOTION\"}], \"inputs_digest\": \"ctx_02b486c92d97b1c1\", \"next_review\": null, \"research_delta\": \"STRENGTHENS\", \"schema\": \"DecisionPayload@v1\", \"surface\": \"advisory\", \"symbol\": \"NOC\", \"thesis_version\": \"symbol_noc@v2\", \"trace_id\": \"tradeai-temporal-poc-deepseek-http-500\", \"wake_id\": \"wake_noc_temporal_runtime_poc\"}"
+            }
+          ],
+          "markers": [],
+          "notification_outbox": [
+            {
+              "notification_identity": "notify_a4eb1a3f4ab34c64",
+              "payload_json": "{\"authority\": \"READ_ONLY_ADVISORY\", \"decision_id\": \"dec_4f0fac754b1b\", \"delivery\": \"SHADOW_ONLY_NO_TELEGRAM_SEND\"}"
+            }
+          ],
+          "provider_requests": [
+            {
+              "provider_request_id": "provider_7f8e49eda69b5c51161a",
+              "response_json": "{\"counter_evidence\": [\"ev_noc_execution\"], \"evidence_for\": [\"ev_noc_backlog\", \"ev_noc_budget\"], \"invalidation_conditions\": [\"Material funded-backlog contraction or repeated program losses.\"], \"paid_provider\": false, \"portfolio_role\": \"DEFENSIVE_GROWTH\", \"provider\": \"DETERMINISTIC_FIXTURE\", \"research_gaps\": [\"Validate margin durability at the next reported quarter.\"], \"research_id\": \"research_noc_temporal_poc_v1\", \"source_refs\": [\"fixture:sec_backlog\", \"fixture:program_execution\"], \"stance\": \"hold\", \"summary\": \"NOC remains a durable defense holding supported by funded backlog, while program execution and valuation remain explicit counterweights requiring continued review.\", \"symbol\": \"NOC\", \"what_changes_my_mind\": [\"A sustained deterioration in funded backlog and program margins.\"], \"why_owned_or_watched\": \"Funded defense backlog and strategic mission exposure.\"}"
+            }
+          ]
+        }
+      },
+      "submission_ms": 2.559,
+      "workflow_id": "tradeai-temporal-poc-deepseek-http-500"
+    },
+    {
+      "history": {
+        "activity_execution_ms": [
+          5.428999999999999,
+          3.5100000000000002,
+          3.535,
+          3.0860000000000003,
+          3.731,
+          4.615,
+          3.811,
+          2.9050000000000002,
+          3.455
+        ],
+        "activity_schedule_to_start_ms": [
+          1.603,
+          1.312,
+          1.2979999999999998,
+          1.464,
+          1.528,
+          1045.204,
+          1.574,
+          1.103,
+          1.351
+        ],
+        "event_count": 59,
+        "history_bytes": 53490,
+        "history_sha256": "c30205196df11ab969ed4d0bb051b8ba2f90ff7d80688bdd582e3238616505a9"
+      },
+      "name": "reconciliation-exception",
+      "result": {
+        "authority": "READ_ONLY_ADVISORY",
+        "classification": "STRENGTHENS",
+        "decision_emitted": true,
+        "decision_id": "dec_4f0fac754b1b",
+        "financial_writes": 0,
+        "lineage": {
+          "acquire_research": {
+            "research_id": "research_noc_temporal_poc_v1",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "build_decision_payload": {
+            "decision_id": "dec_4f0fac754b1b",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "classify_delta": {
+            "classification": "STRENGTHENS",
+            "delta_id": "delta_e8861d114e5f2cb8424b",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "enqueue_notification": {
+            "notification_identity": "notify_a4eb1a3f4ab34c64",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "evaluate_notification": {
+            "notification_identity": "notify_a4eb1a3f4ab34c64",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "load_standing_thesis": {
+            "thesis_version": "symbol_noc@v1",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "reconcile_thesis": {
+            "classification": "STRENGTHENS",
+            "delta_id": "delta_e8861d114e5f2cb8424b",
+            "thesis_version": "symbol_noc@v2",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "retrieve_contradictory_rag": {
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "retrieve_supporting_rag": {
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          }
+        },
+        "notification_enqueued": true,
+        "notification_identity": "notify_a4eb1a3f4ab34c64",
+        "operator_feedback": null,
+        "run_id": "reconciliation-exception",
+        "symbol": "NOC",
+        "thesis_version": "symbol_noc@v2",
+        "workflow": "AutonomousResearchToCIOWorkflow",
+        "workflow_id": "tradeai-temporal-poc-reconciliation-exception"
+      },
+      "result_wait_ms": 1184.023,
+      "status": "POC_PASS",
+      "store": {
+        "counters": {
+          "decision_writes": 1,
+          "notification_writes": 1,
+          "provider_calls": 1
+        },
+        "tables": {
+          "activity_attempts": [
+            {
+              "attempt": 1,
+              "stage": "acquire_research",
+              "started_at": "2026-08-23 15:21:09",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-reconciliation-exception"
+            },
+            {
+              "attempt": 1,
+              "stage": "build_decision_payload",
+              "started_at": "2026-08-23 15:21:10",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-reconciliation-exception"
+            },
+            {
+              "attempt": 1,
+              "stage": "classify_delta",
+              "started_at": "2026-08-23 15:21:09",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-reconciliation-exception"
+            },
+            {
+              "attempt": 1,
+              "stage": "enqueue_notification",
+              "started_at": "2026-08-23 15:21:10",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-reconciliation-exception"
+            },
+            {
+              "attempt": 1,
+              "stage": "evaluate_notification",
+              "started_at": "2026-08-23 15:21:10",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-reconciliation-exception"
+            },
+            {
+              "attempt": 1,
+              "stage": "load_standing_thesis",
+              "started_at": "2026-08-23 15:21:09",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-reconciliation-exception"
+            },
+            {
+              "attempt": 1,
+              "stage": "reconcile_thesis",
+              "started_at": "2026-08-23 15:21:09",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-reconciliation-exception"
+            },
+            {
+              "attempt": 2,
+              "stage": "reconcile_thesis",
+              "started_at": "2026-08-23 15:21:10",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-reconciliation-exception"
+            },
+            {
+              "attempt": 1,
+              "stage": "retrieve_contradictory_rag",
+              "started_at": "2026-08-23 15:21:09",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-reconciliation-exception"
+            },
+            {
+              "attempt": 1,
+              "stage": "retrieve_supporting_rag",
+              "started_at": "2026-08-23 15:21:09",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-reconciliation-exception"
+            }
+          ],
+          "decisions": [
+            {
+              "decision_id": "dec_4f0fac754b1b",
+              "payload_json": "{\"act_now\": false, \"as_of\": \"2026-08-23T15:21:10.877870+00:00\", \"authority\": \"READ_ONLY_ADVISORY\", \"confidence\": 0.68, \"current_action\": \"HOLD\", \"decision_id\": \"dec_4f0fac754b1b\", \"decision_origin\": \"FRESH_RESEARCH\", \"evidence_refs\": [\"ev_noc_backlog\", \"ev_noc_budget\", \"ev_noc_execution\"], \"financial_action\": false, \"gates_evaluated\": [{\"gate\": \"THESIS_DECISION\", \"result\": \"NO_INDEPENDENT_PROMOTION\"}], \"inputs_digest\": \"ctx_02b486c92d97b1c1\", \"next_review\": null, \"research_delta\": \"STRENGTHENS\", \"schema\": \"DecisionPayload@v1\", \"surface\": \"advisory\", \"symbol\": \"NOC\", \"thesis_version\": \"symbol_noc@v2\", \"trace_id\": \"tradeai-temporal-poc-reconciliation-exception\", \"wake_id\": \"wake_noc_temporal_runtime_poc\"}"
+            }
+          ],
+          "markers": [],
+          "notification_outbox": [
+            {
+              "notification_identity": "notify_a4eb1a3f4ab34c64",
+              "payload_json": "{\"authority\": \"READ_ONLY_ADVISORY\", \"decision_id\": \"dec_4f0fac754b1b\", \"delivery\": \"SHADOW_ONLY_NO_TELEGRAM_SEND\"}"
+            }
+          ],
+          "provider_requests": [
+            {
+              "provider_request_id": "provider_7f8e49eda69b5c51161a",
+              "response_json": "{\"counter_evidence\": [\"ev_noc_execution\"], \"evidence_for\": [\"ev_noc_backlog\", \"ev_noc_budget\"], \"invalidation_conditions\": [\"Material funded-backlog contraction or repeated program losses.\"], \"paid_provider\": false, \"portfolio_role\": \"DEFENSIVE_GROWTH\", \"provider\": \"DETERMINISTIC_FIXTURE\", \"research_gaps\": [\"Validate margin durability at the next reported quarter.\"], \"research_id\": \"research_noc_temporal_poc_v1\", \"source_refs\": [\"fixture:sec_backlog\", \"fixture:program_execution\"], \"stance\": \"hold\", \"summary\": \"NOC remains a durable defense holding supported by funded backlog, while program execution and valuation remain explicit counterweights requiring continued review.\", \"symbol\": \"NOC\", \"what_changes_my_mind\": [\"A sustained deterioration in funded backlog and program margins.\"], \"why_owned_or_watched\": \"Funded defense backlog and strategic mission exposure.\"}"
+            }
+          ]
+        }
+      },
+      "submission_ms": 1.986,
+      "workflow_id": "tradeai-temporal-poc-reconciliation-exception"
+    },
+    {
+      "history": {
+        "activity_execution_ms": [
+          5.3759999999999994,
+          3.1350000000000002,
+          3.467,
+          2.864,
+          3.686,
+          4.441,
+          4.566,
+          2.7009999999999996,
+          3.593
+        ],
+        "activity_schedule_to_start_ms": [
+          1.371,
+          0.9510000000000001,
+          1.36,
+          1.065,
+          0.941,
+          1.427,
+          1.772,
+          45.561,
+          3059.989
+        ],
+        "event_count": 59,
+        "history_bytes": 53334,
+        "history_sha256": "0fdb8df077f1011523678f7ce052adf826dc7eb081fec1d768e8fe2dcaab59ba"
+      },
+      "name": "telegram-unavailable",
+      "result": {
+        "authority": "READ_ONLY_ADVISORY",
+        "classification": "STRENGTHENS",
+        "decision_emitted": true,
+        "decision_id": "dec_4f0fac754b1b",
+        "financial_writes": 0,
+        "lineage": {
+          "acquire_research": {
+            "research_id": "research_noc_temporal_poc_v1",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "build_decision_payload": {
+            "decision_id": "dec_4f0fac754b1b",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "classify_delta": {
+            "classification": "STRENGTHENS",
+            "delta_id": "delta_e8861d114e5f2cb8424b",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "enqueue_notification": {
+            "notification_identity": "notify_a4eb1a3f4ab34c64",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "evaluate_notification": {
+            "notification_identity": "notify_a4eb1a3f4ab34c64",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "load_standing_thesis": {
+            "thesis_version": "symbol_noc@v1",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "reconcile_thesis": {
+            "classification": "STRENGTHENS",
+            "delta_id": "delta_e8861d114e5f2cb8424b",
+            "thesis_version": "symbol_noc@v2",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "retrieve_contradictory_rag": {
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "retrieve_supporting_rag": {
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          }
+        },
+        "notification_enqueued": true,
+        "notification_identity": "notify_a4eb1a3f4ab34c64",
+        "operator_feedback": null,
+        "run_id": "telegram-unavailable",
+        "symbol": "NOC",
+        "thesis_version": "symbol_noc@v2",
+        "workflow": "AutonomousResearchToCIOWorkflow",
+        "workflow_id": "tradeai-temporal-poc-telegram-unavailable"
+      },
+      "result_wait_ms": 3283.225,
+      "status": "POC_PASS",
+      "store": {
+        "counters": {
+          "decision_writes": 1,
+          "notification_writes": 1,
+          "provider_calls": 1
+        },
+        "tables": {
+          "activity_attempts": [
+            {
+              "attempt": 1,
+              "stage": "acquire_research",
+              "started_at": "2026-08-23 15:21:10",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-telegram-unavailable"
+            },
+            {
+              "attempt": 1,
+              "stage": "build_decision_payload",
+              "started_at": "2026-08-23 15:21:10",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-telegram-unavailable"
+            },
+            {
+              "attempt": 1,
+              "stage": "classify_delta",
+              "started_at": "2026-08-23 15:21:10",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-telegram-unavailable"
+            },
+            {
+              "attempt": 1,
+              "stage": "enqueue_notification",
+              "started_at": "2026-08-23 15:21:11",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-telegram-unavailable"
+            },
+            {
+              "attempt": 2,
+              "stage": "enqueue_notification",
+              "started_at": "2026-08-23 15:21:12",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-telegram-unavailable"
+            },
+            {
+              "attempt": 3,
+              "stage": "enqueue_notification",
+              "started_at": "2026-08-23 15:21:14",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-telegram-unavailable"
+            },
+            {
+              "attempt": 1,
+              "stage": "evaluate_notification",
+              "started_at": "2026-08-23 15:21:11",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-telegram-unavailable"
+            },
+            {
+              "attempt": 1,
+              "stage": "load_standing_thesis",
+              "started_at": "2026-08-23 15:21:10",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-telegram-unavailable"
+            },
+            {
+              "attempt": 1,
+              "stage": "reconcile_thesis",
+              "started_at": "2026-08-23 15:21:10",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-telegram-unavailable"
+            },
+            {
+              "attempt": 1,
+              "stage": "retrieve_contradictory_rag",
+              "started_at": "2026-08-23 15:21:10",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-telegram-unavailable"
+            },
+            {
+              "attempt": 1,
+              "stage": "retrieve_supporting_rag",
+              "started_at": "2026-08-23 15:21:10",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-telegram-unavailable"
+            }
+          ],
+          "decisions": [
+            {
+              "decision_id": "dec_4f0fac754b1b",
+              "payload_json": "{\"act_now\": false, \"as_of\": \"2026-08-23T15:21:10.981899+00:00\", \"authority\": \"READ_ONLY_ADVISORY\", \"confidence\": 0.68, \"current_action\": \"HOLD\", \"decision_id\": \"dec_4f0fac754b1b\", \"decision_origin\": \"FRESH_RESEARCH\", \"evidence_refs\": [\"ev_noc_backlog\", \"ev_noc_budget\", \"ev_noc_execution\"], \"financial_action\": false, \"gates_evaluated\": [{\"gate\": \"THESIS_DECISION\", \"result\": \"NO_INDEPENDENT_PROMOTION\"}], \"inputs_digest\": \"ctx_02b486c92d97b1c1\", \"next_review\": null, \"research_delta\": \"STRENGTHENS\", \"schema\": \"DecisionPayload@v1\", \"surface\": \"advisory\", \"symbol\": \"NOC\", \"thesis_version\": \"symbol_noc@v2\", \"trace_id\": \"tradeai-temporal-poc-telegram-unavailable\", \"wake_id\": \"wake_noc_temporal_runtime_poc\"}"
+            }
+          ],
+          "markers": [],
+          "notification_outbox": [
+            {
+              "notification_identity": "notify_a4eb1a3f4ab34c64",
+              "payload_json": "{\"authority\": \"READ_ONLY_ADVISORY\", \"decision_id\": \"dec_4f0fac754b1b\", \"delivery\": \"SHADOW_ONLY_NO_TELEGRAM_SEND\"}"
+            }
+          ],
+          "provider_requests": [
+            {
+              "provider_request_id": "provider_7f8e49eda69b5c51161a",
+              "response_json": "{\"counter_evidence\": [\"ev_noc_execution\"], \"evidence_for\": [\"ev_noc_backlog\", \"ev_noc_budget\"], \"invalidation_conditions\": [\"Material funded-backlog contraction or repeated program losses.\"], \"paid_provider\": false, \"portfolio_role\": \"DEFENSIVE_GROWTH\", \"provider\": \"DETERMINISTIC_FIXTURE\", \"research_gaps\": [\"Validate margin durability at the next reported quarter.\"], \"research_id\": \"research_noc_temporal_poc_v1\", \"source_refs\": [\"fixture:sec_backlog\", \"fixture:program_execution\"], \"stance\": \"hold\", \"summary\": \"NOC remains a durable defense holding supported by funded backlog, while program execution and valuation remain explicit counterweights requiring continued review.\", \"symbol\": \"NOC\", \"what_changes_my_mind\": [\"A sustained deterioration in funded backlog and program margins.\"], \"why_owned_or_watched\": \"Funded defense backlog and strategic mission exposure.\"}"
+            }
+          ]
+        }
+      },
+      "submission_ms": 1.512,
+      "workflow_id": "tradeai-temporal-poc-telegram-unavailable"
+    },
+    {
+      "expected_failure_type": "COST_CAP_EXCEEDED",
+      "history": {
+        "activity_execution_ms": [
+          4.2509999999999994,
+          2.352,
+          2.869
+        ],
+        "activity_schedule_to_start_ms": [
+          1.262,
+          0.902,
+          1.315,
+          1.1039999999999999
+        ],
+        "event_count": 29,
+        "history_bytes": 26860,
+        "history_sha256": "129453a7f7a78ace6028a40003eb4c910460ffa03f623c6e0e8d961c08678981"
+      },
+      "name": "cost-cap",
+      "observed_error": "ActivityError:Activity task failed",
+      "status": "POC_PASS",
+      "store": {
+        "counters": {},
+        "tables": {
+          "activity_attempts": [
+            {
+              "attempt": 1,
+              "stage": "acquire_research",
+              "started_at": "2026-08-23 15:21:14",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-cost-cap"
+            },
+            {
+              "attempt": 1,
+              "stage": "load_standing_thesis",
+              "started_at": "2026-08-23 15:21:14",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-cost-cap"
+            },
+            {
+              "attempt": 1,
+              "stage": "retrieve_contradictory_rag",
+              "started_at": "2026-08-23 15:21:14",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-cost-cap"
+            },
+            {
+              "attempt": 1,
+              "stage": "retrieve_supporting_rag",
+              "started_at": "2026-08-23 15:21:14",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-cost-cap"
+            }
+          ],
+          "decisions": [],
+          "markers": [],
+          "notification_outbox": [],
+          "provider_requests": []
+        }
+      },
+      "submission_ms": 1.979,
+      "workflow_id": "tradeai-temporal-poc-cost-cap"
+    },
+    {
+      "expected_failure_type": "POLICY_NOT_ALLOWED",
+      "history": {
+        "activity_execution_ms": [
+          4.3020000000000005,
+          2.56,
+          2.719
+        ],
+        "activity_schedule_to_start_ms": [
+          1.177,
+          1.382,
+          1.4469999999999998,
+          1.3860000000000001
+        ],
+        "event_count": 29,
+        "history_bytes": 27028,
+        "history_sha256": "4602f3b312a95f08cb6849a7c93e35e2cd39a942e5092fffca69156f27016721"
+      },
+      "name": "policy-rejection",
+      "observed_error": "ActivityError:Activity task failed",
+      "status": "POC_PASS",
+      "store": {
+        "counters": {},
+        "tables": {
+          "activity_attempts": [
+            {
+              "attempt": 1,
+              "stage": "acquire_research",
+              "started_at": "2026-08-23 15:21:14",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-policy-rejection"
+            },
+            {
+              "attempt": 1,
+              "stage": "load_standing_thesis",
+              "started_at": "2026-08-23 15:21:14",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-policy-rejection"
+            },
+            {
+              "attempt": 1,
+              "stage": "retrieve_contradictory_rag",
+              "started_at": "2026-08-23 15:21:14",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-policy-rejection"
+            },
+            {
+              "attempt": 1,
+              "stage": "retrieve_supporting_rag",
+              "started_at": "2026-08-23 15:21:14",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-policy-rejection"
+            }
+          ],
+          "decisions": [],
+          "markers": [],
+          "notification_outbox": [],
+          "provider_requests": []
+        }
+      },
+      "submission_ms": 1.775,
+      "workflow_id": "tradeai-temporal-poc-policy-rejection"
+    },
+    {
+      "expected_failure_type": "MALFORMED_RESEARCH",
+      "history": {
+        "activity_execution_ms": [
+          3.9,
+          3.0469999999999997,
+          3.595
+        ],
+        "activity_schedule_to_start_ms": [
+          42.232,
+          47.07,
+          46.131,
+          45.668
+        ],
+        "event_count": 29,
+        "history_bytes": 27066,
+        "history_sha256": "aa01a945a155a7ac06a2ece3cd67240185fb2284c50e7bbbca1c870dfddeebee"
+      },
+      "name": "malformed-response",
+      "observed_error": "ActivityError:Activity task failed",
+      "status": "POC_PASS",
+      "store": {
+        "counters": {},
+        "tables": {
+          "activity_attempts": [
+            {
+              "attempt": 1,
+              "stage": "acquire_research",
+              "started_at": "2026-08-23 15:21:14",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-malformed-response"
+            },
+            {
+              "attempt": 1,
+              "stage": "load_standing_thesis",
+              "started_at": "2026-08-23 15:21:14",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-malformed-response"
+            },
+            {
+              "attempt": 1,
+              "stage": "retrieve_contradictory_rag",
+              "started_at": "2026-08-23 15:21:14",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-malformed-response"
+            },
+            {
+              "attempt": 1,
+              "stage": "retrieve_supporting_rag",
+              "started_at": "2026-08-23 15:21:14",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-malformed-response"
+            }
+          ],
+          "decisions": [],
+          "markers": [],
+          "notification_outbox": [],
+          "provider_requests": []
+        }
+      },
+      "submission_ms": 1.471,
+      "workflow_id": "tradeai-temporal-poc-malformed-response"
+    },
+    {
+      "expected_failure_type": "DB_UNAVAILABLE",
+      "history": {
+        "activity_execution_ms": [
+          4.073,
+          4.3340000000000005,
+          4.859999999999999,
+          4.307,
+          4.078
+        ],
+        "activity_schedule_to_start_ms": [
+          43.283,
+          45.519,
+          46.437,
+          45.131,
+          45.663000000000004,
+          3061.5860000000002
+        ],
+        "event_count": 41,
+        "history_bytes": 38772,
+        "history_sha256": "249a8eb3a5daa0429f5c53c74f7f9f78e2fad0227438686d38e917cb8370b681"
+      },
+      "name": "permanent-db",
+      "observed_error": "ActivityError:Activity task failed",
+      "status": "POC_PASS",
+      "store": {
+        "counters": {
+          "provider_calls": 1
+        },
+        "tables": {
+          "activity_attempts": [
+            {
+              "attempt": 1,
+              "stage": "acquire_research",
+              "started_at": "2026-08-23 15:21:15",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-permanent-db"
+            },
+            {
+              "attempt": 1,
+              "stage": "classify_delta",
+              "started_at": "2026-08-23 15:21:15",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-permanent-db"
+            },
+            {
+              "attempt": 1,
+              "stage": "load_standing_thesis",
+              "started_at": "2026-08-23 15:21:14",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-permanent-db"
+            },
+            {
+              "attempt": 1,
+              "stage": "reconcile_thesis",
+              "started_at": "2026-08-23 15:21:15",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-permanent-db"
+            },
+            {
+              "attempt": 2,
+              "stage": "reconcile_thesis",
+              "started_at": "2026-08-23 15:21:16",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-permanent-db"
+            },
+            {
+              "attempt": 3,
+              "stage": "reconcile_thesis",
+              "started_at": "2026-08-23 15:21:18",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-permanent-db"
+            },
+            {
+              "attempt": 1,
+              "stage": "retrieve_contradictory_rag",
+              "started_at": "2026-08-23 15:21:15",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-permanent-db"
+            },
+            {
+              "attempt": 1,
+              "stage": "retrieve_supporting_rag",
+              "started_at": "2026-08-23 15:21:14",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-permanent-db"
+            }
+          ],
+          "decisions": [],
+          "markers": [],
+          "notification_outbox": [],
+          "provider_requests": [
+            {
+              "provider_request_id": "provider_7f8e49eda69b5c51161a",
+              "response_json": "{\"counter_evidence\": [\"ev_noc_execution\"], \"evidence_for\": [\"ev_noc_backlog\", \"ev_noc_budget\"], \"invalidation_conditions\": [\"Material funded-backlog contraction or repeated program losses.\"], \"paid_provider\": false, \"portfolio_role\": \"DEFENSIVE_GROWTH\", \"provider\": \"DETERMINISTIC_FIXTURE\", \"research_gaps\": [\"Validate margin durability at the next reported quarter.\"], \"research_id\": \"research_noc_temporal_poc_v1\", \"source_refs\": [\"fixture:sec_backlog\", \"fixture:program_execution\"], \"stance\": \"hold\", \"summary\": \"NOC remains a durable defense holding supported by funded backlog, while program execution and valuation remain explicit counterweights requiring continued review.\", \"symbol\": \"NOC\", \"what_changes_my_mind\": [\"A sustained deterioration in funded backlog and program margins.\"], \"why_owned_or_watched\": \"Funded defense backlog and strategic mission exposure.\"}"
+            }
+          ]
+        }
+      },
+      "submission_ms": 2.252,
+      "workflow_id": "tradeai-temporal-poc-permanent-db"
+    },
+    {
+      "first": {
+        "authority": "READ_ONLY_ADVISORY",
+        "classification": "STRENGTHENS",
+        "decision_emitted": true,
+        "decision_id": "dec_4f0fac754b1b",
+        "financial_writes": 0,
+        "lineage": {
+          "acquire_research": {
+            "research_id": "research_noc_temporal_poc_v1",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "build_decision_payload": {
+            "decision_id": "dec_4f0fac754b1b",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "classify_delta": {
+            "classification": "STRENGTHENS",
+            "delta_id": "delta_e8861d114e5f2cb8424b",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "enqueue_notification": {
+            "notification_identity": "notify_a4eb1a3f4ab34c64",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "evaluate_notification": {
+            "notification_identity": "notify_a4eb1a3f4ab34c64",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "load_standing_thesis": {
+            "thesis_version": "symbol_noc@v1",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "reconcile_thesis": {
+            "classification": "STRENGTHENS",
+            "delta_id": "delta_e8861d114e5f2cb8424b",
+            "thesis_version": "symbol_noc@v2",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "retrieve_contradictory_rag": {
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "retrieve_supporting_rag": {
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          }
+        },
+        "notification_enqueued": true,
+        "notification_identity": "notify_a4eb1a3f4ab34c64",
+        "operator_feedback": null,
+        "run_id": "identical-replay-first",
+        "symbol": "NOC",
+        "thesis_version": "symbol_noc@v2",
+        "workflow": "AutonomousResearchToCIOWorkflow",
+        "workflow_id": "tradeai-temporal-poc-identical-replay-first"
+      },
+      "name": "identical-replay",
+      "second": {
+        "authority": "READ_ONLY_ADVISORY",
+        "classification": "NO_NEW_INFO",
+        "decision_emitted": false,
+        "decision_id": null,
+        "financial_writes": 0,
+        "lineage": {
+          "acquire_research": {
+            "research_id": "research_noc_temporal_poc_v1",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "build_decision_payload": {
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "classify_delta": {
+            "classification": "NO_NEW_INFO",
+            "delta_id": "delta_733018db0022d026a5d7",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "enqueue_notification": {
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "evaluate_notification": {
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "load_standing_thesis": {
+            "thesis_version": "symbol_noc@v2",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "reconcile_thesis": {
+            "classification": "NO_NEW_INFO",
+            "delta_id": "delta_733018db0022d026a5d7",
+            "thesis_version": "symbol_noc@v2",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "retrieve_contradictory_rag": {
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "retrieve_supporting_rag": {
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          }
+        },
+        "notification_enqueued": false,
+        "notification_identity": null,
+        "operator_feedback": null,
+        "run_id": "identical-replay-second",
+        "symbol": "NOC",
+        "thesis_version": "symbol_noc@v2",
+        "workflow": "AutonomousResearchToCIOWorkflow",
+        "workflow_id": "tradeai-temporal-poc-identical-replay-second"
+      },
+      "status": "POC_PASS",
+      "store": {
+        "counters": {
+          "decision_writes": 1,
+          "notification_writes": 1,
+          "provider_calls": 1
+        },
+        "tables": {
+          "activity_attempts": [
+            {
+              "attempt": 1,
+              "stage": "acquire_research",
+              "started_at": "2026-08-23 15:21:18",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-identical-replay-first"
+            },
+            {
+              "attempt": 1,
+              "stage": "build_decision_payload",
+              "started_at": "2026-08-23 15:21:18",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-identical-replay-first"
+            },
+            {
+              "attempt": 1,
+              "stage": "classify_delta",
+              "started_at": "2026-08-23 15:21:18",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-identical-replay-first"
+            },
+            {
+              "attempt": 1,
+              "stage": "enqueue_notification",
+              "started_at": "2026-08-23 15:21:18",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-identical-replay-first"
+            },
+            {
+              "attempt": 1,
+              "stage": "evaluate_notification",
+              "started_at": "2026-08-23 15:21:18",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-identical-replay-first"
+            },
+            {
+              "attempt": 1,
+              "stage": "load_standing_thesis",
+              "started_at": "2026-08-23 15:21:18",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-identical-replay-first"
+            },
+            {
+              "attempt": 1,
+              "stage": "reconcile_thesis",
+              "started_at": "2026-08-23 15:21:18",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-identical-replay-first"
+            },
+            {
+              "attempt": 1,
+              "stage": "retrieve_contradictory_rag",
+              "started_at": "2026-08-23 15:21:18",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-identical-replay-first"
+            },
+            {
+              "attempt": 1,
+              "stage": "retrieve_supporting_rag",
+              "started_at": "2026-08-23 15:21:18",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-identical-replay-first"
+            },
+            {
+              "attempt": 1,
+              "stage": "acquire_research",
+              "started_at": "2026-08-23 15:21:18",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-identical-replay-second"
+            },
+            {
+              "attempt": 1,
+              "stage": "build_decision_payload",
+              "started_at": "2026-08-23 15:21:19",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-identical-replay-second"
+            },
+            {
+              "attempt": 1,
+              "stage": "classify_delta",
+              "started_at": "2026-08-23 15:21:18",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-identical-replay-second"
+            },
+            {
+              "attempt": 1,
+              "stage": "enqueue_notification",
+              "started_at": "2026-08-23 15:21:19",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-identical-replay-second"
+            },
+            {
+              "attempt": 1,
+              "stage": "evaluate_notification",
+              "started_at": "2026-08-23 15:21:19",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-identical-replay-second"
+            },
+            {
+              "attempt": 1,
+              "stage": "load_standing_thesis",
+              "started_at": "2026-08-23 15:21:18",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-identical-replay-second"
+            },
+            {
+              "attempt": 1,
+              "stage": "reconcile_thesis",
+              "started_at": "2026-08-23 15:21:19",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-identical-replay-second"
+            },
+            {
+              "attempt": 1,
+              "stage": "retrieve_contradictory_rag",
+              "started_at": "2026-08-23 15:21:18",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-identical-replay-second"
+            },
+            {
+              "attempt": 1,
+              "stage": "retrieve_supporting_rag",
+              "started_at": "2026-08-23 15:21:18",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-identical-replay-second"
+            }
+          ],
+          "decisions": [
+            {
+              "decision_id": "dec_4f0fac754b1b",
+              "payload_json": "{\"act_now\": false, \"as_of\": \"2026-08-23T15:21:18.482779+00:00\", \"authority\": \"READ_ONLY_ADVISORY\", \"confidence\": 0.68, \"current_action\": \"HOLD\", \"decision_id\": \"dec_4f0fac754b1b\", \"decision_origin\": \"FRESH_RESEARCH\", \"evidence_refs\": [\"ev_noc_backlog\", \"ev_noc_budget\", \"ev_noc_execution\"], \"financial_action\": false, \"gates_evaluated\": [{\"gate\": \"THESIS_DECISION\", \"result\": \"NO_INDEPENDENT_PROMOTION\"}], \"inputs_digest\": \"ctx_02b486c92d97b1c1\", \"next_review\": null, \"research_delta\": \"STRENGTHENS\", \"schema\": \"DecisionPayload@v1\", \"surface\": \"advisory\", \"symbol\": \"NOC\", \"thesis_version\": \"symbol_noc@v2\", \"trace_id\": \"tradeai-temporal-poc-identical-replay-first\", \"wake_id\": \"wake_noc_temporal_runtime_poc\"}"
+            }
+          ],
+          "markers": [],
+          "notification_outbox": [
+            {
+              "notification_identity": "notify_a4eb1a3f4ab34c64",
+              "payload_json": "{\"authority\": \"READ_ONLY_ADVISORY\", \"decision_id\": \"dec_4f0fac754b1b\", \"delivery\": \"SHADOW_ONLY_NO_TELEGRAM_SEND\"}"
+            }
+          ],
+          "provider_requests": [
+            {
+              "provider_request_id": "provider_7f8e49eda69b5c51161a",
+              "response_json": "{\"counter_evidence\": [\"ev_noc_execution\"], \"evidence_for\": [\"ev_noc_backlog\", \"ev_noc_budget\"], \"invalidation_conditions\": [\"Material funded-backlog contraction or repeated program losses.\"], \"paid_provider\": false, \"portfolio_role\": \"DEFENSIVE_GROWTH\", \"provider\": \"DETERMINISTIC_FIXTURE\", \"research_gaps\": [\"Validate margin durability at the next reported quarter.\"], \"research_id\": \"research_noc_temporal_poc_v1\", \"source_refs\": [\"fixture:sec_backlog\", \"fixture:program_execution\"], \"stance\": \"hold\", \"summary\": \"NOC remains a durable defense holding supported by funded backlog, while program execution and valuation remain explicit counterweights requiring continued review.\", \"symbol\": \"NOC\", \"what_changes_my_mind\": [\"A sustained deterioration in funded backlog and program margins.\"], \"why_owned_or_watched\": \"Funded defense backlog and strategic mission exposure.\"}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "history": {
+        "activity_execution_ms": [
+          4.801,
+          6.047000000000001,
+          5.234,
+          4.7749999999999995,
+          5.1419999999999995,
+          5.25,
+          3.821,
+          3.644,
+          4.537
+        ],
+        "activity_schedule_to_start_ms": [
+          42.408,
+          5500.959,
+          2.157,
+          1.875,
+          1.7799999999999998,
+          1.658,
+          1.817,
+          1.74,
+          1.7429999999999999
+        ],
+        "event_count": 59,
+        "history_bytes": 51063,
+        "history_sha256": "0dc29587580c897994b45665a5c042c5335dc1a03f80ebe3b009bda41e4dd7d7"
+      },
+      "name": "service-restart",
+      "recovery_ms": 5550.076,
+      "result": {
+        "authority": "READ_ONLY_ADVISORY",
+        "classification": "STRENGTHENS",
+        "decision_emitted": true,
+        "decision_id": "dec_4f0fac754b1b",
+        "financial_writes": 0,
+        "lineage": {
+          "acquire_research": {
+            "research_id": "research_noc_temporal_poc_v1",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "build_decision_payload": {
+            "decision_id": "dec_4f0fac754b1b",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "classify_delta": {
+            "classification": "STRENGTHENS",
+            "delta_id": "delta_e8861d114e5f2cb8424b",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "enqueue_notification": {
+            "notification_identity": "notify_a4eb1a3f4ab34c64",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "evaluate_notification": {
+            "notification_identity": "notify_a4eb1a3f4ab34c64",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "load_standing_thesis": {
+            "thesis_version": "symbol_noc@v1",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "reconcile_thesis": {
+            "classification": "STRENGTHENS",
+            "delta_id": "delta_e8861d114e5f2cb8424b",
+            "thesis_version": "symbol_noc@v2",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "retrieve_contradictory_rag": {
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "retrieve_supporting_rag": {
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          }
+        },
+        "notification_enqueued": true,
+        "notification_identity": "notify_a4eb1a3f4ab34c64",
+        "operator_feedback": null,
+        "run_id": "service-restart",
+        "symbol": "NOC",
+        "thesis_version": "symbol_noc@v2",
+        "workflow": "AutonomousResearchToCIOWorkflow",
+        "workflow_id": "tradeai-temporal-poc-service-restart"
+      },
+      "status": "POC_PASS",
+      "store": {
+        "counters": {
+          "decision_writes": 1,
+          "notification_writes": 1,
+          "provider_calls": 1
+        },
+        "tables": {
+          "activity_attempts": [
+            {
+              "attempt": 1,
+              "stage": "acquire_research",
+              "started_at": "2026-08-23 15:21:25",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-service-restart"
+            },
+            {
+              "attempt": 1,
+              "stage": "build_decision_payload",
+              "started_at": "2026-08-23 15:21:25",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-service-restart"
+            },
+            {
+              "attempt": 1,
+              "stage": "classify_delta",
+              "started_at": "2026-08-23 15:21:25",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-service-restart"
+            },
+            {
+              "attempt": 1,
+              "stage": "enqueue_notification",
+              "started_at": "2026-08-23 15:21:25",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-service-restart"
+            },
+            {
+              "attempt": 1,
+              "stage": "evaluate_notification",
+              "started_at": "2026-08-23 15:21:25",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-service-restart"
+            },
+            {
+              "attempt": 1,
+              "stage": "load_standing_thesis",
+              "started_at": "2026-08-23 15:21:19",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-service-restart"
+            },
+            {
+              "attempt": 1,
+              "stage": "reconcile_thesis",
+              "started_at": "2026-08-23 15:21:25",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-service-restart"
+            },
+            {
+              "attempt": 1,
+              "stage": "retrieve_contradictory_rag",
+              "started_at": "2026-08-23 15:21:25",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-service-restart"
+            },
+            {
+              "attempt": 1,
+              "stage": "retrieve_supporting_rag",
+              "started_at": "2026-08-23 15:21:19",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-service-restart"
+            },
+            {
+              "attempt": 2,
+              "stage": "retrieve_supporting_rag",
+              "started_at": "2026-08-23 15:21:25",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-service-restart"
+            }
+          ],
+          "decisions": [
+            {
+              "decision_id": "dec_4f0fac754b1b",
+              "payload_json": "{\"act_now\": false, \"as_of\": \"2026-08-23T15:21:25.149788+00:00\", \"authority\": \"READ_ONLY_ADVISORY\", \"confidence\": 0.68, \"current_action\": \"HOLD\", \"decision_id\": \"dec_4f0fac754b1b\", \"decision_origin\": \"FRESH_RESEARCH\", \"evidence_refs\": [\"ev_noc_backlog\", \"ev_noc_budget\", \"ev_noc_execution\"], \"financial_action\": false, \"gates_evaluated\": [{\"gate\": \"THESIS_DECISION\", \"result\": \"NO_INDEPENDENT_PROMOTION\"}], \"inputs_digest\": \"ctx_02b486c92d97b1c1\", \"next_review\": null, \"research_delta\": \"STRENGTHENS\", \"schema\": \"DecisionPayload@v1\", \"surface\": \"advisory\", \"symbol\": \"NOC\", \"thesis_version\": \"symbol_noc@v2\", \"trace_id\": \"tradeai-temporal-poc-service-restart\", \"wake_id\": \"wake_noc_temporal_runtime_poc\"}"
+            }
+          ],
+          "markers": [
+            {
+              "boundary": "retrieve_supporting_rag:during",
+              "marked_at": "2026-08-23 15:21:19",
+              "marker_json": "{\"attempt\": 1, \"worker_build_id\": \"6126eaaec344cb600591589b1330244b4c42bd97-poc-v1\"}",
+              "workflow_id": "tradeai-temporal-poc-service-restart"
+            }
+          ],
+          "notification_outbox": [
+            {
+              "notification_identity": "notify_a4eb1a3f4ab34c64",
+              "payload_json": "{\"authority\": \"READ_ONLY_ADVISORY\", \"decision_id\": \"dec_4f0fac754b1b\", \"delivery\": \"SHADOW_ONLY_NO_TELEGRAM_SEND\"}"
+            }
+          ],
+          "provider_requests": [
+            {
+              "provider_request_id": "provider_7f8e49eda69b5c51161a",
+              "response_json": "{\"counter_evidence\": [\"ev_noc_execution\"], \"evidence_for\": [\"ev_noc_backlog\", \"ev_noc_budget\"], \"invalidation_conditions\": [\"Material funded-backlog contraction or repeated program losses.\"], \"paid_provider\": false, \"portfolio_role\": \"DEFENSIVE_GROWTH\", \"provider\": \"DETERMINISTIC_FIXTURE\", \"research_gaps\": [\"Validate margin durability at the next reported quarter.\"], \"research_id\": \"research_noc_temporal_poc_v1\", \"source_refs\": [\"fixture:sec_backlog\", \"fixture:program_execution\"], \"stance\": \"hold\", \"summary\": \"NOC remains a durable defense holding supported by funded backlog, while program execution and valuation remain explicit counterweights requiring continued review.\", \"symbol\": \"NOC\", \"what_changes_my_mind\": [\"A sustained deterioration in funded backlog and program margins.\"], \"why_owned_or_watched\": \"Funded defense backlog and strategic mission exposure.\"}"
+            }
+          ]
+        }
+      },
+      "submission_ms": 2.666,
+      "workflow_id": "tradeai-temporal-poc-service-restart"
+    },
+    {
+      "history": {
+        "activity_execution_ms": [
+          5.409,
+          4.33,
+          4.36,
+          7.274,
+          4.872,
+          6.689,
+          5.509,
+          3.213,
+          3.796
+        ],
+        "activity_schedule_to_start_ms": [
+          1.9040000000000001,
+          1.845,
+          1.8760000000000001,
+          8834.816,
+          2.1189999999999998,
+          1.709,
+          1.4469999999999998,
+          1.97,
+          1.931
+        ],
+        "event_count": 59,
+        "history_bytes": 51378,
+        "history_sha256": "8abee53d035e7d9cf66187c34c38d4406efc179710195f1fb62048db56445abc"
+      },
+      "name": "host-reboot-simulation",
+      "recovery_ms": 8873.771,
+      "result": {
+        "authority": "READ_ONLY_ADVISORY",
+        "classification": "STRENGTHENS",
+        "decision_emitted": true,
+        "decision_id": "dec_4f0fac754b1b",
+        "financial_writes": 0,
+        "lineage": {
+          "acquire_research": {
+            "research_id": "research_noc_temporal_poc_v1",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "build_decision_payload": {
+            "decision_id": "dec_4f0fac754b1b",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "classify_delta": {
+            "classification": "STRENGTHENS",
+            "delta_id": "delta_e8861d114e5f2cb8424b",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "enqueue_notification": {
+            "notification_identity": "notify_a4eb1a3f4ab34c64",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "evaluate_notification": {
+            "notification_identity": "notify_a4eb1a3f4ab34c64",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "load_standing_thesis": {
+            "thesis_version": "symbol_noc@v1",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "reconcile_thesis": {
+            "classification": "STRENGTHENS",
+            "delta_id": "delta_e8861d114e5f2cb8424b",
+            "thesis_version": "symbol_noc@v2",
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "retrieve_contradictory_rag": {
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          },
+          "retrieve_supporting_rag": {
+            "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+          }
+        },
+        "notification_enqueued": true,
+        "notification_identity": "notify_a4eb1a3f4ab34c64",
+        "operator_feedback": null,
+        "run_id": "host-reboot-simulation",
+        "symbol": "NOC",
+        "thesis_version": "symbol_noc@v2",
+        "workflow": "AutonomousResearchToCIOWorkflow",
+        "workflow_id": "tradeai-temporal-poc-host-reboot-simulation"
+      },
+      "scope": "isolated server+Worker process restart; no physical host reboot",
+      "status": "POC_PASS",
+      "store": {
+        "counters": {
+          "decision_writes": 1,
+          "notification_writes": 1,
+          "provider_calls": 1
+        },
+        "tables": {
+          "activity_attempts": [
+            {
+              "attempt": 1,
+              "stage": "acquire_research",
+              "started_at": "2026-08-23 15:21:25",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-host-reboot-simulation"
+            },
+            {
+              "attempt": 2,
+              "stage": "acquire_research",
+              "started_at": "2026-08-23 15:21:34",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-host-reboot-simulation"
+            },
+            {
+              "attempt": 1,
+              "stage": "build_decision_payload",
+              "started_at": "2026-08-23 15:21:34",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-host-reboot-simulation"
+            },
+            {
+              "attempt": 1,
+              "stage": "classify_delta",
+              "started_at": "2026-08-23 15:21:34",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-host-reboot-simulation"
+            },
+            {
+              "attempt": 1,
+              "stage": "enqueue_notification",
+              "started_at": "2026-08-23 15:21:34",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-host-reboot-simulation"
+            },
+            {
+              "attempt": 1,
+              "stage": "evaluate_notification",
+              "started_at": "2026-08-23 15:21:34",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-host-reboot-simulation"
+            },
+            {
+              "attempt": 1,
+              "stage": "load_standing_thesis",
+              "started_at": "2026-08-23 15:21:25",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-host-reboot-simulation"
+            },
+            {
+              "attempt": 1,
+              "stage": "reconcile_thesis",
+              "started_at": "2026-08-23 15:21:34",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-host-reboot-simulation"
+            },
+            {
+              "attempt": 1,
+              "stage": "retrieve_contradictory_rag",
+              "started_at": "2026-08-23 15:21:25",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-host-reboot-simulation"
+            },
+            {
+              "attempt": 1,
+              "stage": "retrieve_supporting_rag",
+              "started_at": "2026-08-23 15:21:25",
+              "worker_build_id": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+              "workflow_id": "tradeai-temporal-poc-host-reboot-simulation"
+            }
+          ],
+          "decisions": [
+            {
+              "decision_id": "dec_4f0fac754b1b",
+              "payload_json": "{\"act_now\": false, \"as_of\": \"2026-08-23T15:21:34.137191+00:00\", \"authority\": \"READ_ONLY_ADVISORY\", \"confidence\": 0.68, \"current_action\": \"HOLD\", \"decision_id\": \"dec_4f0fac754b1b\", \"decision_origin\": \"FRESH_RESEARCH\", \"evidence_refs\": [\"ev_noc_backlog\", \"ev_noc_budget\", \"ev_noc_execution\"], \"financial_action\": false, \"gates_evaluated\": [{\"gate\": \"THESIS_DECISION\", \"result\": \"NO_INDEPENDENT_PROMOTION\"}], \"inputs_digest\": \"ctx_02b486c92d97b1c1\", \"next_review\": null, \"research_delta\": \"STRENGTHENS\", \"schema\": \"DecisionPayload@v1\", \"surface\": \"advisory\", \"symbol\": \"NOC\", \"thesis_version\": \"symbol_noc@v2\", \"trace_id\": \"tradeai-temporal-poc-host-reboot-simulation\", \"wake_id\": \"wake_noc_temporal_runtime_poc\"}"
+            }
+          ],
+          "markers": [
+            {
+              "boundary": "acquire_research:after_provider",
+              "marked_at": "2026-08-23 15:21:25",
+              "marker_json": "{\"attempt\": 1, \"worker_build_id\": \"6126eaaec344cb600591589b1330244b4c42bd97-poc-v1\"}",
+              "workflow_id": "tradeai-temporal-poc-host-reboot-simulation"
+            }
+          ],
+          "notification_outbox": [
+            {
+              "notification_identity": "notify_a4eb1a3f4ab34c64",
+              "payload_json": "{\"authority\": \"READ_ONLY_ADVISORY\", \"decision_id\": \"dec_4f0fac754b1b\", \"delivery\": \"SHADOW_ONLY_NO_TELEGRAM_SEND\"}"
+            }
+          ],
+          "provider_requests": [
+            {
+              "provider_request_id": "provider_7f8e49eda69b5c51161a",
+              "response_json": "{\"counter_evidence\": [\"ev_noc_execution\"], \"evidence_for\": [\"ev_noc_backlog\", \"ev_noc_budget\"], \"invalidation_conditions\": [\"Material funded-backlog contraction or repeated program losses.\"], \"paid_provider\": false, \"portfolio_role\": \"DEFENSIVE_GROWTH\", \"provider\": \"DETERMINISTIC_FIXTURE\", \"research_gaps\": [\"Validate margin durability at the next reported quarter.\"], \"research_id\": \"research_noc_temporal_poc_v1\", \"source_refs\": [\"fixture:sec_backlog\", \"fixture:program_execution\"], \"stance\": \"hold\", \"summary\": \"NOC remains a durable defense holding supported by funded backlog, while program execution and valuation remain explicit counterweights requiring continued review.\", \"symbol\": \"NOC\", \"what_changes_my_mind\": [\"A sustained deterioration in funded backlog and program margins.\"], \"why_owned_or_watched\": \"Funded defense backlog and strategic mission exposure.\"}"
+            }
+          ]
+        }
+      },
+      "submission_ms": 2.953,
+      "workflow_id": "tradeai-temporal-poc-host-reboot-simulation"
+    },
+    {
+      "name": "worker_versioning",
+      "scope": "same Workflow code; deployment routing and PINNED continuity only",
+      "status": "POC_PASS",
+      "v1_activity_builds": [
+        "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+      ],
+      "v1_workflow_id": "tradeai-temporal-poc-version-pinned-v1",
+      "v2_activity_builds": [
+        "6126eaaec344cb600591589b1330244b4c42bd97-poc-v2"
+      ],
+      "v2_workflow_id": "tradeai-temporal-poc-version-current-v2"
+    }
+  ],
+  "schema": "TemporalRuntimeAcceptance@v1",
+  "source_sha": "6126eaaec344cb600591589b1330244b4c42bd97"
+}

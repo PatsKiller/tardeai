@@ -258,7 +258,7 @@
     "conditional_target_if_all_poc_gates_pass": "ADOPT_TEMPORAL_SELECTED_WORKFLOWS",
     "current_go_no_go_status": "TEMPORAL_POC_ONLY",
     "production_status": "HOLD",
-    "current_go_no_go_reason": "No successful isolated Temporal runtime POC, failure-injection evidence, Cloud security configuration, or authorized production migration exists yet.",
+    "current_go_no_go_reason": "The localhost NOC runtime, idempotency, restart, replay, bounded-history and same-code Worker Versioning gates passed. Cloud security configuration, real workload cost, T1 shadow comparison, incompatible-code evolution and authorized production migration remain unproven.",
     "production_service_preference": "TEMPORAL_CLOUD",
     "present_authorization": "POC_AND_ARCHITECTURE_ONLY",
     "scope": [
@@ -278,7 +278,7 @@
       "high-frequency or low-latency processing",
       "simple stateless cron and database maintenance"
     ],
-    "why": "The architecture score shows enough potential durability, timer, causality, crash-continuation, and Worker-version benefit to justify an isolated POC for selected long-running workflows. It does not justify adoption yet: no Temporal runtime or failure-injection result exists, and the separate production-option score narrowly favors no Temporal over Cloud once privacy, cost, and offline behavior are included. If every POC and migration gate passes, selected-workflow adoption with Temporal Cloud is the conditional target; broad adoption and self-hosting are not.",
+    "why": "The completed T0 localhost POC demonstrated durability, causality, crash continuation, idempotency and PINNED Worker-version routing for the deterministic NOC lifecycle. It does not justify production adoption: the separate production-option score still narrowly favors no Temporal over Cloud once privacy, cost and offline behavior are included, and no T1 shadow, Cloud security acceptance or real workload cost exists. Selected-workflow adoption with Temporal Cloud remains the conditional target; broad adoption and self-hosting are rejected.",
     "go_gates": [
       "isolated NOC POC proves crash continuation and identical-evidence replay without duplicate provider calls, database writes, theses, decisions, or notifications",
       "ambiguous external-call journal is proven under kill-after-provider-success",

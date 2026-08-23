@@ -1,87 +1,172 @@
 {
-  "schema": "TemporalNOCPocResult@v1",
-  "measured_at": "2026-08-23T14:36:15Z",
-  "source_sha": "9dfe437f6e161cb2b6c9ed2c983e23b9fa9de1b7",
+  "schema": "TemporalNOCPocResult@v2",
+  "measured_at": "2026-08-23T15:22:00Z",
+  "implementation_source_sha": "6126eaaec344cb600591589b1330244b4c42bd97",
   "branch": "feat/temporal-due-diligence-poc",
-  "mode": "MAINLINE_POC_SOURCE_AND_FIXTURE_HARNESS",
+  "mode": "MAINLINE_LOCALHOST_TEMPORAL_RUNTIME_POC",
   "authority": "READ_ONLY_ADVISORY",
   "memory_behavior_influence": 0,
   "environment": {
-    "python_system": "3.14.4",
-    "python_shared_tradeai_venv": "3.14.4",
-    "temporalio_system": "NOT_INSTALLED",
-    "temporalio_shared_tradeai_venv": "NOT_INSTALLED",
-    "temporal_cli": "NOT_INSTALLED",
-    "temporal_service_started": false,
-    "dependency_install_performed": false,
-    "production_install_performed": false
+    "python": "3.14.4",
+    "temporal_python_sdk": "1.31.0",
+    "temporal_cli": "1.8.2",
+    "cli_embedded_server": "1.31.2",
+    "cli_artifact_sha256": "d8421bda989e6514b4bdb4d63a9012a8a05a806892e881a5aad8510496349a94",
+    "address": "127.0.0.1:17233",
+    "namespace": "tradeai-temporal-poc",
+    "persistence": "isolated SQLite under /tmp",
+    "production_install_performed": false,
+    "production_listener_opened": false,
+    "production_namespace_created": false,
+    "production_cron_or_systemd_changed": false,
+    "poc_processes_stopped_after_test": true
   },
   "implementation": {
     "workflow": "AutonomousResearchToCIOWorkflow",
     "symbol": "NOC",
-    "provider": "DETERMINISTIC_FIXTURE",
-    "paid_provider_calls": 0,
-    "live_database_writes": 0,
-    "broker_writes": 0,
-    "order_writes": 0,
-    "stop_writes": 0,
-    "risk_writes": 0,
-    "two_factor_writes": 0,
-    "files": [
-      "scripts/temporal_poc/contracts.py",
-      "scripts/temporal_poc/noc_shadow.py",
-      "scripts/temporal_poc/temporal_workflow.py",
-      "tests/test_temporal_noc_poc.py"
+    "activities": [
+      "load_standing_thesis",
+      "retrieve_supporting_rag",
+      "retrieve_contradictory_rag",
+      "acquire_research",
+      "classify_delta",
+      "reconcile_thesis",
+      "build_decision_payload",
+      "evaluate_notification",
+      "enqueue_notification"
     ],
+    "provider": "DETERMINISTIC_FIXTURE",
+    "canonical_truth": "isolated Trade AI domain files plus SQLite WAL idempotency journal",
+    "temporal_truth": "Workflow history, retries, continuation, version routing and causality",
+    "raw_research_or_rag_in_workflow_history": false,
+    "max_decoded_payload_bytes_measured": 1639,
     "reused_domain_code": [
       "scripts.lib.symbol_thesis_review.reconcile_symbol_thesis",
       "scripts.lib.agent_decision_payload.build_decision_payload",
       "scripts.lib.cio_theses.CIOThesisStore"
     ]
   },
-  "measured_fixture_results": {
+  "baseline": {
+    "workflow_id": "tradeai-temporal-poc-baseline",
     "standing_thesis": "symbol_noc@v1",
-    "material_delta": "STRENGTHENS",
+    "delta": "STRENGTHENS",
     "published_thesis": "symbol_noc@v2",
-    "decision_schema": "DecisionPayload@v1",
     "decision_action": "HOLD",
-    "decision_financial_action": false,
-    "provider_crash_resume": "PASSED",
-    "provider_calls_after_resume": 1,
-    "domain_write_crash_resume": "PASSED",
-    "reconcile_activity_attempts_after_injected_crash": 2,
-    "thesis_versions_after_resume": 2,
-    "duplicate_thesis_versions": 0,
-    "decision_writes_after_resume": 1,
-    "duplicate_decision_writes": 0,
+    "decision_writes": 1,
+    "notification_outbox_writes": 1,
+    "provider_calls": 1,
+    "history_events": 59,
+    "history_bytes": 49673,
+    "history_sha256": "267130d1d900a2c9758c1b263513fe430ebbb40fe436952dfc2f08e27ee95fb6",
+    "business_ledger_sha256": "3e7a392f823b7e6564525f4a2af8721831e3756d00a8edc6670e096c3dcba5be"
+  },
+  "failure_injection": {
+    "executed_scenarios": 18,
+    "all_executed_scenarios_passed": true,
+    "worker_sigkill_during_rag": "POC_PASS; supporting RAG Activity attempt 2 completed",
+    "worker_sigkill_before_provider_response": "POC_PASS; one completed provider call",
+    "worker_sigkill_after_provider_response": "POC_PASS; Activity attempt 2 reused one provider receipt",
+    "worker_sigkill_after_thesis_write": "POC_PASS; Activity attempt 2 retained exactly symbol_noc@v1 and @v2",
+    "graceful_worker_restart": "POC_PASS",
+    "temporary_db_unavailable": "POC_PASS; third bounded attempt succeeded",
+    "permanent_db_unavailable": "POC_PASS; third attempt exhausted and no decision was written",
+    "provider_http_500": "POC_PASS; simulated typed failure, third bounded attempt succeeded",
+    "cost_cap_exceeded": "POC_PASS; one attempt and terminal non-retryable failure",
+    "policy_not_allowed": "POC_PASS; one attempt and terminal non-retryable failure",
+    "malformed_research": "POC_PASS; one attempt, no thesis/decision",
+    "reconciliation_exception": "POC_PASS; second attempt succeeded without version churn",
+    "telegram_unavailable": "POC_PASS; shadow outbox third attempt produced one stable notification row; no Telegram call",
+    "service_restart": "POC_PASS; persistent execution recovered in 5550.076 ms",
+    "host_reboot_simulation": "POC_PASS; disposable Service and Worker processes both stopped and recovered in 8873.771 ms",
+    "physical_host_reboot": "UNMEASURED_NOT_REQUIRED_FOR_ISOLATED_POC",
+    "real_postgres_outage": "UNMEASURED_NO_PRODUCTION_DB_USED",
+    "real_deepseek_timeout": "UNMEASURED_NO_PAID_PROVIDER_CALL",
+    "real_telegram_outage": "UNMEASURED_NO_TELEGRAM_SEND"
+  },
+  "idempotency": {
+    "provider_ambiguous_boundary_duplicate_calls": 0,
+    "thesis_ambiguous_boundary_duplicate_versions": 0,
+    "decision_duplicate_writes": 0,
+    "notification_duplicate_writes": 0,
     "identical_replay_delta": "NO_NEW_INFO",
-    "identical_replay_thesis_version": "symbol_noc@v2",
-    "identical_replay_decision": "SUPPRESSED",
+    "identical_replay_thesis_versions": 2,
     "identical_replay_provider_calls_total": 1,
-    "financial_writes": 0
+    "identical_replay_decision_writes_total": 1,
+    "identical_replay_notification_writes_total": 1
+  },
+  "worker_versioning": {
+    "status": "POC_PASS",
+    "deployment": "tradeai-temporal-poc",
+    "v1": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
+    "v2": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v2",
+    "v1_in_progress_activity_builds": [
+      "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+    ],
+    "new_v2_activity_builds": [
+      "6126eaaec344cb600591589b1330244b4c42bd97-poc-v2"
+    ],
+    "scope": "PINNED routing and continuity with identical Workflow code; incompatible code evolution remains a future shadow gate"
+  },
+  "history_replay": {
+    "status": "POC_PASS",
+    "sdk_replayer": "compatible baseline history replayed successfully"
+  },
+  "performance": {
+    "warmups": 3,
+    "measured_workflows": 20,
+    "end_to_end_ms": {
+      "p50": 943.933,
+      "p95": 947.162,
+      "max": 947.179
+    },
+    "activity_schedule_to_start_ms": {
+      "p50": 45.784,
+      "p95": 47.125,
+      "max": 48.052
+    },
+    "activity_execution_ms": {
+      "p50": 4.259,
+      "p95": 6.574,
+      "max": 9.854
+    },
+    "temporal_command_ms": {
+      "p50": 22.003,
+      "p95": 36.604,
+      "max": 36.604
+    },
+    "isolated_sqlite_query_ms": {
+      "p50": 0.0046,
+      "p95": 0.0053,
+      "max": 0.1439
+    },
+    "history_events_per_workflow": 59,
+    "history_bytes_p50": 49838,
+    "history_bytes_max": 49841,
+    "projected_history_if_same_shape": {
+      "30d_one_workflow_per_day_bytes": 1495140,
+      "90d_one_workflow_per_day_bytes": 4485420,
+      "1y_one_workflow_per_day_bytes": 18190870,
+      "important": "Production uses one bounded Workflow per lifecycle; these totals are aggregate retained storage, not one unbounded Workflow history."
+    }
   },
   "tests": {
-    "command": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m pytest -q tests/test_temporal_noc_poc.py",
-    "result": "7 passed in 0.17s",
-    "coverage": [
-      "hard cost/policy errors are non-retryable",
-      "domain truth remains outside Temporal",
-      "provider ambiguous-boundary idempotency",
-      "domain-write ambiguous-boundary thesis no-churn",
-      "NO_NEW_INFO replay suppression",
-      "static no financial-mutation imports",
-      "honest SDK availability gate"
-    ]
+    "source_and_domain_command": ".venv-temporal/bin/python -m pytest -q tests/test_temporal_noc_poc.py tests/test_agent_decision_payload.py",
+    "source_and_domain_result": "19 passed in 0.32s",
+    "runtime_command": ".venv-temporal/bin/python -m scripts.temporal_poc.runtime_acceptance ... --source-sha 6126eaaec344cb600591589b1330244b4c42bd97",
+    "raw_runtime_evidence": "docs/_evidence/temporal/TEMPORAL_RUNTIME_ACCEPTANCE_RAW.json",
+    "raw_runtime_evidence_sha256": "5ff9c1c6b96b98b25c4a6adb61253ada9e89031caceff64482f3830a8f411ef0"
   },
-  "runtime_gates": {
-    "actual_temporal_workflow_execution": "BLOCKED_TEMPORALIO_NOT_INSTALLED",
-    "actual_temporal_service_restart": "UNMEASURED",
-    "actual_temporal_history_replay": "UNMEASURED",
-    "actual_worker_sigkill": "UNMEASURED",
-    "actual_worker_versioning": "UNMEASURED",
-    "actual_temporal_latency": "UNMEASURED",
-    "actual_temporal_persistence_recovery": "UNMEASURED"
+  "authority_results": {
+    "financial_writes": 0,
+    "broker_writes": 0,
+    "order_writes": 0,
+    "stop_writes": 0,
+    "risk_writes": 0,
+    "two_factor_writes": 0,
+    "paid_provider_calls": 0,
+    "live_database_writes": 0,
+    "real_telegram_sends": 0
   },
-  "interpretation": "The fixture harness validates Trade AI domain idempotency contracts and retry-boundary design. It is not evidence that Temporal Service or SDK replay works in this environment.",
-  "status": "SOURCE_POC_PASSED_TEMPORAL_RUNTIME_BLOCKED"
+  "interpretation": "T0 localhost runtime due diligence passed for the deterministic shadow NOC lifecycle. This is not production proof, does not authorize T1 shadow operation, and does not change the service-choice score or READ_ONLY_ADVISORY authority.",
+  "status": "RUNTIME_POC_PASSED_PRODUCTION_HOLD"
 }

@@ -10,31 +10,35 @@
 
 **Current decision:** **`TEMPORAL_POC_ONLY`**
 
-**Conditional target if all POC gates pass:** selected durable advisory workflows on Temporal Cloud
+**Conditional target if later shadow and production gates pass:** selected durable advisory workflows on Temporal Cloud
 **Production installation authorized:** **NO**
 
 ## Executive Decision
 
-[RECOMMENDATION] Do not install or adopt Temporal in production yet. Continue to
-an actual localhost SDK/Service POC, then a shadow NOC dual-run. Temporal is a
-credible fit for three long-running processes: research-to-thesis-to-CIO,
+[RECOMMENDATION] Do not install or adopt Temporal in production yet. The actual
+localhost SDK/Service T0 POC passed; the next eligible step is a separately
+authorized shadow NOC dual-run. Temporal is a credible fit for three long-running
+processes: research-to-thesis-to-CIO,
 operator `NEED_DATA`, and outcome maturation. Portfolio CIO review is a later
 candidate. Simple cron, canonical business state, notification outbox audit,
 and every execution/safety path remain outside Temporal.
 
 The weighted architecture comparison is `45.76/100` for CURRENT,
 `71.50/100` for the post-#472 design without Temporal, and `85.46/100` for that
-design with selected Temporal workflows. This shows architectural potential,
-not production proof. The service-choice score is `62.32` self-hosted,
+design with selected Temporal workflows. This shows architectural potential and
+T0 runtime feasibility, not production proof. The service-choice score is `62.32` self-hosted,
 `81.86` Cloud, and `82.20` no Temporal. No Temporal narrowly wins today because
-the runtime POC, workload cost, history growth, and operational benefits remain
-unmeasured. If those gates pass, Cloud is preferred to self-hosting.
+workload-specific Cloud cost, production operations, and shadow-run benefits
+remain unmeasured. If those gates pass, Cloud is preferred to self-hosting.
 
 [VERIFIED-LIVE] `origin/main` is `9dfe437f`; live CURRENT is
 `5e91225a1186659de3cfd65096e037e774506e7f`. PRs #461-#472 are open and the
-autonomous-loop closeout status is `HOLD`. No Temporal package, CLI, Service,
-production Worker, cron migration, systemd migration, database migration, or
-network listener was installed or changed.
+autonomous-loop closeout status is `HOLD`. Temporal CLI `1.8.2`, its embedded
+Server `1.31.2`, and Python SDK `1.31.0` were provisioned only inside this
+isolated worktree and used for a disposable localhost POC. The listener and all
+POC processes were stopped. No production Temporal package, Service, Worker,
+cron migration, systemd migration, database migration, or network listener was
+installed or changed.
 
 ## Current Trade AI Orchestration
 
@@ -348,7 +352,9 @@ persistence, replication, upgrades, availability, and Visibility.
 | No Temporal | 82.20 | Current production choice |
 
 The 0.34-point no-Temporal lead is within model sensitivity, but it is enough to
-block adoption while actual runtime value and Cloud cost are unmeasured.
+block adoption while Cloud cost and production shadow value are unmeasured. T0
+runtime correctness improved confidence in feasibility but did not alter the
+pre-registered service-choice scoring model.
 
 ## Server Resource Assessment
 
@@ -368,6 +374,14 @@ Sizing placeholder for a non-HA POC is not a production recommendation. A true
 production self-host design would require separately budgeted Frontend, History,
 Matching, Worker, persistence, Visibility, UI, and monitoring capacity plus
 headroom during upgrades and recovery.
+
+[POC] The disposable localhost run completed 20 measured NOC Workflows at
+`943.933 ms` p50 and `947.162 ms` p95 end-to-end. Activity schedule-to-start p95
+was `47.125 ms`; a bounded Workflow produced 59 history events and at most
+49,841 serialized bytes. Service recovery was `5.550 s`, and a full disposable
+Service-plus-Worker restart simulation recovered in `8.874 s`. Peak CPU and RAM
+were not sampled, so they remain `UNMEASURED`; these latency/history observations
+are not production capacity evidence.
 
 ## Postgres Topology
 
@@ -414,8 +428,11 @@ flowchart LR
 Map Trade AI release SHA, Worker Deployment Version, Workflow schema, Activity
 contract version, and domain schema version. A Workflow started under A must
 remain assigned to compatible Workers until a deliberate migration. No Worker
-may launch from dirty rebuild or mutable overlay. Actual v1-to-v2 behavior is a
-required runtime POC gate and is currently `UNMEASURED`.
+may launch from dirty rebuild or mutable overlay. [POC] Pinned routing passed:
+an in-progress v1 Workflow executed only on build
+`6126eaae...-poc-v1`, while a new v2 Workflow executed only on
+`6126eaae...-poc-v2`. Both used identical Workflow code. Incompatible Workflow
+code evolution remains a T1 shadow gate.
 
 ## Current/Rebuild Impact
 
@@ -426,20 +443,31 @@ CURRENT. Temporal does not authorize the previously withheld cutover. Worker
 services must use immutable exact-main releases, stamp `source_sha`, and refuse
 dirty/rebuild paths.
 
+[VERIFIED-LIVE] The portfolio server was loaded from CURRENT `5e91225a` with pin
+integrity passing, but the CIO Telegram process was still running modules from
+old release `fe34482b` while its unit configuration referenced CURRENT. This is
+direct evidence of the stale-process/source-root class that Worker Versioning
+can reduce only after immutable Worker launch governance is enforced.
+
 ## Failure-Injection Results
 
-[POC] The fixture-backed Activity harness injected failure after a deterministic
-provider response and after thesis domain write. Resume produced one provider
-call, two total thesis versions (`v1 -> v2`), one decision write, and zero
-financial writes. Identical replay yielded `NO_NEW_INFO`, no thesis version,
-and no decision. Seven POC tests and ten existing DecisionPayload regression
-tests passed together (`17 passed in 0.28s`).
+[POC] The actual Temporal SDK/Service matrix executed 18 scenarios against a
+disposable Service bound to `127.0.0.1:17233` in namespace
+`tradeai-temporal-poc`. All passed: Worker SIGKILL during RAG, before and after
+provider response, and after thesis write; graceful Worker restart; transient
+and exhausted database failures; typed HTTP 500; reconciliation exception;
+typed non-retryable cost, policy, and malformed-output failures; shadow Telegram
+outage; identical replay; persistent Service restart; Service-plus-Worker
+restart simulation; compatible history replay; and pinned v1/v2 routing.
 
-This proves the Trade AI idempotency design can support at-least-once Activity
-retries. It does **not** prove Temporal Service restart, actual Workflow replay,
-Worker SIGKILL, Temporal persistence recovery, Worker Versioning, or latency.
-The SDK and CLI are not installed, no Service started, and those fields remain
-`BLOCKED`/`UNMEASURED` in `TEMPORAL_NOC_POC_RESULT.json`.
+The ambiguous provider boundary produced one provider receipt and zero duplicate
+calls. The thesis-write boundary retained exactly `symbol_noc@v1` and `@v2`.
+Identical replay yielded `NO_NEW_INFO` with no duplicate thesis, decision, or
+notification. Focused source/domain tests passed (`19 passed in 0.32s`). The run
+made zero financial writes, zero paid provider calls, zero live database writes,
+and zero real Telegram sends. Physical host reboot, real Postgres/provider/
+Telegram failures, Cloud operation, and incompatible Workflow code evolution
+remain explicitly unmeasured.
 
 ## NOC POC Results
 
@@ -452,10 +480,12 @@ The SDK and CLI are not installed, no Service started, and those fields remain
 | Identical replay | `NO_NEW_INFO`; no write |
 | Paid provider calls | 0 |
 | Financial writes | 0 |
-| Actual Temporal SDK Workflow | BLOCKED: SDK absent |
-| Service restart/history replay | UNMEASURED |
-| Worker v1 -> v2 | UNMEASURED |
-| Temporal latency/history growth | UNMEASURED |
+| Actual Temporal SDK Workflow | PASS: SDK `1.31.0` |
+| Worker SIGKILL continuation | PASS |
+| Service restart/history replay | PASS in disposable persistent-SQLite POC |
+| Worker v1 -> v2 | PASS for pinned routing with identical Workflow code |
+| Temporal latency/history growth | PASS for bounded NOC fixture; production cadence unmeasured |
+| Real provider/Postgres/Telegram | UNMEASURED by design |
 
 ## Payload and History Growth
 
@@ -465,8 +495,12 @@ limits. Continue-As-New is required for long-lived feedback/outcome coordinators
 before history approaches service warnings. Temporal documents a maximum of
 51,200 events and 50 MB Event History; see
 [Workflow execution limits](https://docs.temporal.io/workflow-execution/limits).
-Actual events/workflow/day and 30d/90d/1y history bytes remain `UNMEASURED` until
-the runtime POC.
+[POC] The bounded NOC Workflow measured 59 events, 49,673 baseline bytes,
+49,841 maximum bytes across the performance sample, and a 1,639-byte maximum
+decoded payload. At one same-shape Workflow per day, aggregate retained history
+would be about 1.50 MB/30d, 4.49 MB/90d, and 18.19 MB/year. Those are fixture
+projections, not a production workload forecast; actual events and bytes at
+material-symbol cadence remain `UNMEASURED`.
 
 Use one Workflow per research gap/decision lifecycle and one outcome child
 Workflow per decision when bounded. A permanent symbol Workflow risks unbounded
@@ -485,9 +519,10 @@ flowchart LR
   T5 --> T6[T6 retire replaced schedulers]
 ```
 
-- **T0:** install nothing in production; run official CLI dev server localhost,
-  actual SDK tests, restart/replay, history/latency, v1/v2, and provider-journal
-  tests. Entry: architecture approval. Rollback: stop disposable server.
+- **T0 — COMPLETE:** installed nothing in production; ran the official CLI dev
+  server on localhost with actual SDK tests, restart/replay, history/latency,
+  pinned v1/v2 routing, and provider-journal tests. Rollback completed by stopping
+  the disposable Service and Workers.
 - **T1:** NOC `OLD_WRITE / TEMPORAL_SHADOW`. Compare stage receipts; Temporal
   cannot write authoritative state.
 - **T2:** one selected advisory workflow shadow dual-run. Stable comparison
@@ -551,24 +586,28 @@ are mandatory.
 
 ## Open Questions
 
-1. What are actual Actions and history bytes per research, NEED_DATA, outcome,
-   and portfolio review Workflow?
+1. What are actual Actions and history bytes per production-shaped research,
+   NEED_DATA, outcome, and portfolio review Workflow? The bounded NOC fixture is
+   now measured but does not answer the other shapes or production cadence.
 2. Can provider status be resolved after an ambiguous timeout, or must the case
    fail to operator review?
-3. Does Python 3.14.4 pass the selected SDK's full compatibility matrix on this
-   host?
+3. Does the selected SDK pass the repository's full test matrix on Python 3.14.4?
+   The isolated NOC runtime and focused tests passed on this host.
 4. What is the measured Cloud monthly cost at material-symbol cadence?
 5. What retention period, likely 30 or 90 days, is enough for incident review?
-6. Can Worker Versioning integrate cleanly with exact-main releases and rollback?
+6. Can Worker Versioning integrate cleanly with exact-main production release
+   automation and incompatible Workflow code changes? Same-code pinned routing passed.
 7. Does the post-#472 architecture close enough durability gaps to keep no
    Temporal as the lower-complexity choice?
 
 ## Go / No-Go Gates
 
-GO to shadow only after an actual Temporal runtime proves crash continuation,
-server restart, history replay, Worker v1/v2 compatibility, no duplicate provider
-calls or DB writes, bounded history/payloads, acceptable latency/cost, Cloud
-encryption/security, immutable Worker releases, and no financial-path imports.
+The T0 runtime gates for crash continuation, disposable Service restart,
+compatible history replay, same-code pinned v1/v2 routing, duplicate suppression,
+bounded NOC history/payloads, latency, and static financial-path exclusion passed.
+GO to T1 shadow still requires separate authorization plus Cloud
+encryption/security, immutable Worker releases, workload cost bounds, comparison
+metrics, incompatible-code versioning tests, and a no-authoritative-write design.
 
 NO-GO if duplicate paid calls remain possible, canonical truth moves into Event
 History, Temporal becomes necessary for protection/execution, Workers can launch
@@ -579,12 +618,12 @@ operational effort exceed incident savings.
 
 **`TEMPORAL_POC_ONLY`**.
 
-Proceed with T0 actual localhost runtime due diligence on a separate isolated
-environment. Do not install production Temporal, migrate cron/systemd, change
-CURRENT, or alter domain authority. If and only if all T0-T2 gates pass, the
-preferred target is Temporal Cloud for selected advisory/research/learning
-workflows. Self-hosted Temporal and broad advisory control-plane adoption are
-rejected at this stage.
+T0 actual localhost runtime due diligence is complete and passed. Do not install
+production Temporal, begin T1 shadow operation, migrate cron/systemd, change
+CURRENT, or alter domain authority under this prompt. If and only if T1-T2 are
+separately authorized and their gates pass, the preferred target is Temporal
+Cloud for selected advisory/research/learning workflows. Self-hosted Temporal
+and broad advisory control-plane adoption are rejected at this stage.
 
 ## Evidence Index
 
@@ -597,8 +636,11 @@ rejected at this stage.
 - `docs/_evidence/temporal/TEMPORAL_MIGRATION_MAP.json`
 - `docs/_evidence/temporal/TEMPORAL_SECURITY_CHECKLIST.json`
 - `docs/_evidence/temporal/TEMPORAL_DUE_DILIGENCE_SCORECARD.json`
+- `docs/_evidence/temporal/TEMPORAL_RUNTIME_ACCEPTANCE_RAW.json`
 
-Official versions reviewed on 2026-08-23: Temporal Server `v1.31.2` and Python
-SDK `1.31.0`, from their official GitHub release records. Documentation pages
-were accessed on 2026-08-23. This review does not claim those versions are
-installed locally.
+Official versions reviewed and tested in the isolated POC on 2026-08-23:
+Temporal CLI `1.8.2`, embedded Temporal Server `v1.31.2`, and Python SDK
+`1.31.0`. The downloaded CLI artifact SHA256 was
+`d8421bda989e6514b4bdb4d63a9012a8a05a806892e881a5aad8510496349a94`.
+Documentation pages were accessed on 2026-08-23. These tools were isolated to
+the due-diligence worktree; no production or global installation was performed.

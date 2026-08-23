@@ -1,12 +1,172 @@
 {
-  "schema": "TemporalFailureModeMatrix@v1",
+  "schema": "TemporalFailureModeMatrix@v2",
   "as_of": "2026-08-23",
   "authority": "READ_ONLY_ADVISORY",
-  "classifications": {"SOLVE": 3, "REDUCE": 16, "NOT_HELP": 2, "MAKE_WORSE": 3},
+  "classifications": {
+    "SOLVE": 3,
+    "REDUCE": 16,
+    "NOT_HELP": 2,
+    "MAKE_WORSE": 3
+  },
+  "live_evidence": {
+    "measured_at": "2026-08-23T14:59:21Z",
+    "current": "5e91225a1186659de3cfd65096e037e774506e7f",
+    "portfolio_server_pin_integrity": "PASS",
+    "stale_process": "tradeai-cio-telegram PID 141558 remained loaded from fe34482b after CURRENT moved to 5e91225a",
+    "tree_root_drift": 217,
+    "worktrees": 164,
+    "dirty_worktrees": 68
+  },
+  "poc_failure_injection": [
+    {
+      "case": "worker SIGKILL during RAG",
+      "expected": "heartbeat timeout and replacement Worker continue at Activity attempt 2",
+      "actual": "POC_PASS",
+      "retry_count": 1,
+      "duplicate_external_calls": 0,
+      "duplicate_db_writes": 0,
+      "final_state": "COMPLETED symbol_noc@v2 with one decision and one shadow notification"
+    },
+    {
+      "case": "worker SIGKILL before provider response",
+      "expected": "replacement Worker performs one bounded provider operation",
+      "actual": "POC_PASS",
+      "retry_count": 1,
+      "duplicate_external_calls": 0,
+      "duplicate_db_writes": 0,
+      "final_state": "COMPLETED; provider_calls=1"
+    },
+    {
+      "case": "worker SIGKILL after provider response before acknowledgement",
+      "expected": "retry loads request journal and does not repeat provider operation",
+      "actual": "POC_PASS",
+      "retry_count": 1,
+      "duplicate_external_calls": 0,
+      "duplicate_db_writes": 0,
+      "final_state": "COMPLETED; provider_calls=1"
+    },
+    {
+      "case": "worker SIGKILL after thesis write",
+      "expected": "retry reconciles idempotently with no v3",
+      "actual": "POC_PASS",
+      "retry_count": 1,
+      "duplicate_external_calls": 0,
+      "duplicate_db_writes": 0,
+      "final_state": "COMPLETED with exactly symbol_noc@v1 and symbol_noc@v2"
+    },
+    {
+      "case": "temporary DB unavailable",
+      "expected": "bounded third attempt succeeds",
+      "actual": "POC_PASS",
+      "retry_count": 2,
+      "duplicate_external_calls": 0,
+      "duplicate_db_writes": 0,
+      "final_state": "COMPLETED with one decision"
+    },
+    {
+      "case": "permanent DB unavailable",
+      "expected": "maximum three attempts then visible terminal failure",
+      "actual": "POC_PASS",
+      "retry_count": 2,
+      "duplicate_external_calls": 0,
+      "duplicate_db_writes": 0,
+      "final_state": "FAILED after attempt 3; no decision or notification"
+    },
+    {
+      "case": "DeepSeek HTTP 500",
+      "expected": "bounded exponential retry succeeds on attempt 3",
+      "actual": "POC_PASS_SIMULATED_TYPED_FAILURE",
+      "retry_count": 2,
+      "duplicate_external_calls": 0,
+      "duplicate_db_writes": 0,
+      "final_state": "COMPLETED; no paid or network provider call"
+    },
+    {
+      "case": "DeepSeek ambiguous timeout",
+      "expected": "persisted provider receipt prevents duplicate call",
+      "actual": "POC_PASS_DETERMINISTIC_PROVIDER_BOUNDARY",
+      "retry_count": 1,
+      "duplicate_external_calls": 0,
+      "duplicate_db_writes": 0,
+      "final_state": "COMPLETED; real provider remains UNMEASURED"
+    },
+    {
+      "case": "cost cap exhausted",
+      "expected": "non-retryable terminal failure",
+      "actual": "POC_PASS",
+      "retry_count": 0,
+      "duplicate_external_calls": 0,
+      "duplicate_db_writes": 0,
+      "final_state": "FAILED after one acquire_research attempt"
+    },
+    {
+      "case": "hard policy rejection",
+      "expected": "non-retryable terminal failure",
+      "actual": "POC_PASS",
+      "retry_count": 0,
+      "duplicate_external_calls": 0,
+      "duplicate_db_writes": 0,
+      "final_state": "FAILED after one acquire_research attempt"
+    },
+    {
+      "case": "malformed research response",
+      "expected": "non-retryable admission failure and no thesis/decision",
+      "actual": "POC_PASS",
+      "retry_count": 0,
+      "duplicate_external_calls": 0,
+      "duplicate_db_writes": 0,
+      "final_state": "FAILED; no thesis reconciliation or decision"
+    },
+    {
+      "case": "thesis reconciliation exception",
+      "expected": "one retry then exactly one thesis publication",
+      "actual": "POC_PASS",
+      "retry_count": 1,
+      "duplicate_external_calls": 0,
+      "duplicate_db_writes": 0,
+      "final_state": "COMPLETED symbol_noc@v2"
+    },
+    {
+      "case": "Telegram unavailable",
+      "expected": "bounded shadow outbox retry and stable identity",
+      "actual": "POC_PASS_SHADOW_ONLY",
+      "retry_count": 2,
+      "duplicate_external_calls": 0,
+      "duplicate_db_writes": 0,
+      "final_state": "one shadow outbox row; real Telegram sends=0"
+    },
+    {
+      "case": "Temporal Service restart",
+      "expected": "persistent SQLite history resumes existing execution",
+      "actual": "POC_PASS",
+      "retry_count": 1,
+      "duplicate_external_calls": 0,
+      "duplicate_db_writes": 0,
+      "final_state": "COMPLETED after 5550.076 ms recovery"
+    },
+    {
+      "case": "Temporal Worker upgrade",
+      "expected": "in-progress PINNED v1 remains on v1 and new execution routes to current v2",
+      "actual": "POC_PASS_SAME_WORKFLOW_CODE",
+      "retry_count": 0,
+      "duplicate_external_calls": 0,
+      "duplicate_db_writes": 0,
+      "final_state": "v1 Activities used only v1; new v2 Activities used only v2"
+    },
+    {
+      "case": "host reboot where practical",
+      "expected": "stop disposable Service and Worker, restart both, recover execution",
+      "actual": "POC_PASS_PROCESS_LEVEL_SIMULATION",
+      "retry_count": 1,
+      "duplicate_external_calls": 0,
+      "duplicate_db_writes": 0,
+      "final_state": "COMPLETED after 8873.771 ms; physical host reboot UNMEASURED"
+    }
+  ],
   "items": [
     {"failure": "cron executes wrong source tree", "classification": "REDUCE", "mechanism": "immutable versioned Workers clarify code compatibility", "residual": "Worker launch governance still required"},
     {"failure": "CURRENT differs from rebuild", "classification": "NOT_HELP", "mechanism": "Temporal cannot choose the correct release", "residual": "exact-main launch gate required"},
-    {"failure": "live process retains stale modules/cache", "classification": "REDUCE", "mechanism": "versioned Worker deployments drain old code", "residual": "non-Worker servers still need pin/cache truth"},
+    {"failure": "live process retains stale modules/cache", "classification": "REDUCE", "mechanism": "versioned Worker deployments drain old code", "residual": "non-Worker servers still need pin/cache truth", "verified_live_example": "tradeai-cio-telegram PID 141558 loaded fe34482b while CURRENT was 5e91225a"},
     {"failure": "duplicate cron/worker", "classification": "REDUCE", "mechanism": "stable Workflow ID rejects duplicate start", "residual": "at-least-once Activities remain"},
     {"failure": "malformed flock/lost environment", "classification": "REDUCE", "mechanism": "Workers replace shell exclusion for migrated work", "residual": "Worker service environment must be governed"},
     {"failure": "cost cap missing on one path", "classification": "REDUCE", "mechanism": "single cost-gated Activity boundary", "residual": "existing ledger remains authority"},
