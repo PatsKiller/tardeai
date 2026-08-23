@@ -333,6 +333,8 @@ def payload_from_reentry_row(
     gates = r.get("gates") if isinstance(r.get("gates"), list) else []
     gates_eval = [g for g in gates if isinstance(g, dict)][:20]
     sym = r.get("symbol") or r.get("ticker")
+    thesis_gate = r.get("thesis_gate") if isinstance(r.get("thesis_gate"), dict) else {}
+    delta = r.get("research_delta") if isinstance(r.get("research_delta"), dict) else {}
     return build_decision_payload(
         decision_id=r.get("decision_id") or f"dec_reentry_{sym}_{state.replace(' ', '_')}",
         wake_id=wake_id,
@@ -345,7 +347,23 @@ def payload_from_reentry_row(
         decision_origin=infer_decision_origin(trigger="REENTRY_DESK"),
         evidence_refs=[r.get("plan_as_of")] if r.get("plan_as_of") else [],
         gates_evaluated=gates_eval,
-        extra={"intel_state": state or None},
+        extra={
+            "producer": "reentry",
+            "previous_action": r.get("previous_action"),
+            "reason_codes": list(
+                thesis_gate.get("reason_codes") or r.get("reason_codes") or []
+            )[:20],
+            "thesis_id": r.get("symbol_thesis_id") or r.get("thesis_id"),
+            "thesis_version": r.get("symbol_thesis_version") or r.get("thesis_version"),
+            "research_delta_id": delta.get("delta_id") or r.get("research_delta_id"),
+            "research_delta_classification": (
+                delta.get("classification") or r.get("research_delta_classification")
+            ),
+            "truth_inputs": r.get("truth_inputs"),
+            "source_freshness": r.get("source_freshness"),
+            "notification_outcome": r.get("notification_outcome"),
+            "intel_state": state or None,
+        },
     )
 
 

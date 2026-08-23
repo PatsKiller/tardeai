@@ -43,6 +43,10 @@ def test_append_latest_journal(tmp_path: Path):
     assert r1["intent"] == "AGREE"
     assert r1["stance"] == "bullish"
     assert r1["feedback_id"]
+    assert r1["status"] == "ACTIVE"
+    assert r1["trust"] == "NORMAL"
+    assert r1["behavior_authority"] is False
+    assert r1["linkage_complete"] is False
 
     append_feedback(
         {"symbol": "UBER", "intent": "DEFER", "channel": "telegram"},
@@ -74,6 +78,46 @@ def test_invalid_intent_rejected(tmp_path: Path):
 
     with pytest.raises(ValueError):
         append_feedback({"symbol": "UBER", "intent": "BUY_NOW"}, root=tmp_path)
+
+
+def test_linked_feedback_and_retro_exclusion(tmp_path: Path):
+    from scripts.lib.cio_operator_ticker_feedback import append_feedback
+    from scripts.lib.research_prompt_context import _eligible_feedback
+
+    active = append_feedback(
+        {
+            "symbol": "NOC",
+            "intent": "DISAGREE",
+            "free_text": "Cash conversion evidence is incomplete",
+            "decision_id": "dec_noc_wait_1",
+            "thesis_id": "symbol_noc",
+            "thesis_version": "symbol_noc@v8",
+            "operator_identity_class": "COMMAND_CENTER_SESSION",
+            "source_surface": "command_center_symbol_card",
+        },
+        root=tmp_path,
+    )
+    assert active["linkage_complete"] is True
+    assert active["eligible_for_operator_rejection_recall"] is True
+    assert active["reason"] == "Cash conversion evidence is incomplete"
+
+    retro = append_feedback(
+        {
+            "symbol": "NOC",
+            "intent": "DISAGREE",
+            "decision_id": "dec_old",
+            "thesis_id": "symbol_noc",
+            "thesis_version": "symbol_noc@v2",
+            "status": "RETRO_LABELED",
+        },
+        root=tmp_path,
+    )
+    assert retro["trust"] == "LOW"
+    assert retro["eligible_for_operator_rejection_recall"] is False
+    eligible = _eligible_feedback("NOC", tmp_path)
+    assert len(eligible) == 1
+    assert eligible[0]["decision_id"] == "dec_noc_wait_1"
+    assert eligible[0]["thesis_version"] == "symbol_noc@v8"
 
 
 def test_continuity_loads_from_store(tmp_path: Path):
@@ -144,7 +188,15 @@ def test_maybe_enqueue_need_data_fail_soft(tmp_path: Path, monkeypatch):
     monkeypatch.setitem(sys.modules, "scripts.lib.cio_held_thesis_coverage", held_mod)
     monkeypatch.setitem(sys.modules, "scripts.lib.cio_hermes_challenge_queue", hermes_mod)
 
-    out = fb.maybe_enqueue_need_data("UBER", root=tmp_path, apply=False)
+    feedback = {
+        "feedback_id": "otf_need_1",
+        "decision_id": "dec_uber_1",
+        "thesis_id": "symbol_uber",
+        "thesis_version": "symbol_uber@v3",
+        "reason": "Need primary filing",
+        "source_surface": "telegram_inline",
+    }
+    out = fb.maybe_enqueue_need_data("UBER", feedback=feedback, root=tmp_path, apply=False)
     assert out["symbol"] == "UBER"
     assert out["held_coverage"]["ok"] is True
     assert out["hermes"]["ok"] is True
@@ -161,7 +213,7 @@ def test_api_get_and_post_feedback(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(
         fb,
         "maybe_enqueue_need_data",
-        lambda symbol, root=None, apply=False: {
+        lambda symbol, feedback=None, root=None, apply=False: {
             "ok": True,
             "symbol": symbol,
             "held_coverage": {"ok": True, "mode": "dry"},
@@ -186,11 +238,22 @@ def test_api_get_and_post_feedback(tmp_path: Path, monkeypatch):
 
     post = api.post_symbol_intelligence_feedback(
         "uber",
-        {"intent": "NEED_DATA", "free_text": "want catalyst detail", "channel": "cc"},
+        {
+            "intent": "NEED_DATA",
+            "free_text": "want catalyst detail",
+            "channel": "cc",
+            "source_surface": "command_center_symbol_card",
+            "operator_identity_class": "COMMAND_CENTER_SESSION",
+            "decision_id": "dec_uber_1",
+            "thesis_id": "symbol_uber",
+            "thesis_version": "symbol_uber@v4",
+        },
     )
     assert post["ok"] is True
     assert post["feedback"]["intent"] == "NEED_DATA"
     assert post["feedback"]["stance"] == "cautious"
+    assert post["feedback"]["linkage_complete"] is True
+    assert post["feedback"]["decision_id"] == "dec_uber_1"
     assert post["financial_action"] is False
     assert post.get("need_data", {}).get("ok") is True
 

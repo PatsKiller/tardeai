@@ -305,10 +305,22 @@ def test_synthesized_origin_allowed_but_marked(tmp_path):
 
 
 def test_payload_mappers_surfaces():
-    re_pl = payload_from_reentry_row(_ready_row(), wake_id="w1")
+    linked = _ready_row()
+    linked.update({
+        "decision_id": "dec_noc_1",
+        "symbol_thesis_id": "symbol_noc",
+        "symbol_thesis_version": "symbol_noc@v8",
+        "research_delta": {"delta_id": "rtd_noc_1", "classification": "STRENGTHENS"},
+        "thesis_gate": {"reason_codes": ["POSITIVE_DELTA_MAY_RAISE_COMPLETENESS_NOT_ACTION"]},
+    })
+    re_pl = payload_from_reentry_row(linked, wake_id="w1")
     assert re_pl["surface"] == "reentry"
     assert re_pl["symbol"] == "UBER"
     assert re_pl["current_action"] == "READY"
+    assert re_pl["decision_id"] == "dec_noc_1"
+    assert re_pl["thesis_id"] == "symbol_noc"
+    assert re_pl["thesis_version"] == "symbol_noc@v8"
+    assert re_pl["research_delta_id"] == "rtd_noc_1"
     w_pl = payload_from_watch_alert(
         {"id": 1, "symbol": "AMD", "condition_type": "rsi_below"},
         wake_id="w2",

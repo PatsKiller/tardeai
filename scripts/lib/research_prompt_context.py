@@ -9,7 +9,7 @@ import hashlib
 import json
 import os
 import re
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -55,6 +55,8 @@ def _redact(value: Any) -> Any:
         return [_redact(item) for item in value]
     if isinstance(value, tuple):
         return [_redact(item) for item in value]
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
     if isinstance(value, str):
         return _SECRET_VALUE.sub("[REDACTED]", value)
     return value
@@ -253,9 +255,15 @@ def _eligible_feedback(symbol: str, root: Path) -> list[dict[str, Any]]:
             "feedback_id": row.get("feedback_id"),
             "intent": row.get("intent"),
             "stance": row.get("stance"),
-            "reason": row.get("free_text"),
-            "source_surface": row.get("channel"),
-            "timestamp": row.get("ts"),
+            "reason": row.get("reason") or row.get("free_text"),
+            "decision_id": row.get("decision_id"),
+            "thesis_id": row.get("thesis_id"),
+            "thesis_version": row.get("thesis_version"),
+            "operator_identity_class": row.get("operator_identity_class"),
+            "source_surface": row.get("source_surface") or row.get("channel"),
+            "timestamp": row.get("timestamp") or row.get("ts"),
+            "status": row.get("status") or "ACTIVE",
+            "trust": row.get("trust") or "NORMAL",
         })
     return out[:5]
 

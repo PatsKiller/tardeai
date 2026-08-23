@@ -67,6 +67,50 @@ def _verdict_str(v: Any) -> str:
     return str(v or "")
 
 
+def build_symbol_thesis_context(
+    symbol: str,
+    *,
+    root: Path | str | None = None,
+) -> dict[str, Any]:
+    """Return the governed thesis and latest research delta used by advisory."""
+    from scripts.lib.research_prompt_context import latest_delta
+    from scripts.lib.symbol_thesis_attach import thesis_fields_for_symbol
+
+    base = Path(root) if root is not None else PROJECT_ROOT
+    sym = str(symbol or "").upper().strip()
+    fields = thesis_fields_for_symbol(sym, root=base) if sym else {}
+    delta = latest_delta(sym, root=base) if sym else None
+    thesis = {
+        "thesis_id": fields.get("symbol_thesis_id"),
+        "thesis_version": fields.get("symbol_thesis_version"),
+        "state": fields.get("thesis_state"),
+        "stance": fields.get("thesis_stance"),
+        "summary": fields.get("thesis_summary"),
+        "confidence": fields.get("thesis_confidence"),
+        "evidence_for": fields.get("evidence_for") or [],
+        "counter_evidence": fields.get("counter_evidence") or [],
+        "invalidation_conditions": fields.get("invalidation_conditions") or [],
+        "research_gaps": fields.get("research_gaps") or [],
+        "last_reviewed": fields.get("last_reviewed"),
+        "fresh": bool(fields.get("fresh")),
+        "authority": "READ_ONLY_ADVISORY",
+        "financial_action": False,
+    }
+    delta_context = None
+    if isinstance(delta, dict):
+        delta_context = {
+            "delta_id": delta.get("delta_id"),
+            "research_id": delta.get("research_id"),
+            "classification": delta.get("classification"),
+            "evidence_as_of": delta.get("evidence_as_of"),
+            "freshness": delta.get("freshness"),
+        }
+    return {
+        **thesis,
+        "research_delta": delta_context,
+    }
+
+
 def compute_banners(meta: dict[str, Any], data: dict[str, Any]) -> list[dict[str, str]]:
     """Banner states for the desk surface (5 health + optional DATA CONFLICT)."""
     banners: list[dict[str, str]] = []
@@ -327,6 +371,13 @@ def _row_view(row: dict[str, Any], opinions: dict[str, Any] | None = None) -> di
     durable = row.get("durable_memory") or operator.get("durable_memory")
     senses = row.get("financial_senses") or operator.get("financial_senses")
     field_states = row.get("field_states") or operator.get("field_states")
+    thesis = build_symbol_thesis_context(str(row.get("symbol") or ""))
+    latest_research_delta = thesis.get("research_delta") or {}
+    decision_delta = (
+        row.get("research_delta")
+        if isinstance(row.get("research_delta"), dict)
+        else latest_research_delta
+    )
     return {
         "symbol": row.get("symbol"),
         "account": row.get("account"),
@@ -372,6 +423,17 @@ def _row_view(row: dict[str, Any], opinions: dict[str, Any] | None = None) -> di
         "reentry_wash_status": row.get("reentry_wash_status"),
         "durable_memory": durable,
         "financial_senses": senses,
+        "symbol_thesis": thesis,
+        "decision_context": {
+            "decision_id": row.get("decision_id"),
+            "thesis_id": thesis.get("thesis_id"),
+            "thesis_version": thesis.get("thesis_version"),
+            "research_delta_id": decision_delta.get("delta_id"),
+            "research_delta_classification": decision_delta.get("classification"),
+            "research_delta": decision_delta or None,
+            "authority": "READ_ONLY_ADVISORY",
+            "financial_action": False,
+        },
         "operator": operator,
         "expand": {
             "lots": lot,

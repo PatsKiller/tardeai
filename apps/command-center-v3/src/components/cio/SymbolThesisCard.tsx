@@ -20,10 +20,9 @@ const faint: CSSProperties = { fontSize: 12, color: 'var(--text3)', lineHeight: 
 const FEEDBACK_INTENTS = [
   { intent: 'AGREE', label: 'Agree' },
   { intent: 'DISAGREE', label: 'Disagree' },
-  { intent: 'INTERESTED', label: 'Interested' },
   { intent: 'DEFER', label: 'Defer' },
   { intent: 'NEED_DATA', label: 'Need data' },
-  { intent: 'DISMISS', label: 'Dismiss' },
+  { intent: 'NO_LONGER_RELEVANT', label: 'No longer relevant' },
 ] as const
 
 const feedbackBtn: CSSProperties = {
@@ -51,7 +50,16 @@ function humanThesisText(v: unknown): string {
   if (s.toUpperCase() === 'DATA_UNAVAILABLE' || s.toUpperCase().startsWith('DATA_UNAVAILABLE')) {
     return 'No living thesis'
   }
+  return humanOperatorText(s)
+}
+
+function humanOperatorText(v: unknown): string {
+  if (v == null) return '—'
+  const s = String(v).trim()
+  if (!s) return '—'
   return s
+    .replace(/DATA_UNAVAILABLE/gi, 'not recorded')
+    .replace(/\b[A-Za-z][A-Za-z0-9]*_[A-Za-z0-9_]+\b/g, token => token.replace(/_/g, ' '))
 }
 
 function listText(v: unknown): string {
@@ -59,17 +67,17 @@ function listText(v: unknown): string {
   if (Array.isArray(v)) {
     const parts = v.map(x => {
       if (x == null) return ''
-      if (typeof x === 'string') return x
+      if (typeof x === 'string') return humanOperatorText(x)
       if (typeof x === 'object') {
         const o = x as Record<string, unknown>
-        return String(o.summary || o.request_type || o.status || o.id || JSON.stringify(x))
+        return humanOperatorText(o.summary || o.request_type || o.status || o.id || JSON.stringify(x))
       }
-      return String(x)
+      return humanOperatorText(x)
     }).filter(Boolean)
     return parts.length ? parts.join(' · ') : '—'
   }
-  if (typeof v === 'object') return JSON.stringify(v)
-  return String(v)
+  if (typeof v === 'object') return humanOperatorText(JSON.stringify(v))
+  return humanOperatorText(v)
 }
 
 function formatHistoryRow(row: unknown): string {
@@ -77,10 +85,11 @@ function formatHistoryRow(row: unknown): string {
   if (typeof row === 'string') return row
   if (typeof row !== 'object') return String(row)
   const o = row as Record<string, unknown>
-  const ver = o.thesis_version != null ? `v${o.thesis_version}` : null
+  const rawVersion = o.thesis_version != null ? String(o.thesis_version) : ''
+  const ver = rawVersion ? (rawVersion.includes('@v') ? rawVersion : `v${rawVersion}`) : null
   const when = o.published_at != null ? String(o.published_at).slice(0, 10) : null
   const reason = o.reason_for_change || o.summary || o.stance
-  return [ver, when, reason != null ? String(reason) : null].filter(Boolean).join(' · ')
+  return [ver, when, reason != null ? humanOperatorText(reason) : null].filter(Boolean).join(' · ')
 }
 
 export type SymbolThesisCardPayload = {
@@ -94,12 +103,14 @@ export type SymbolThesisCardPayload = {
   symbol_thesis_version?: string | number
   why_owned_or_watched?: string
   core_thesis?: string
+  positive_evidence?: unknown
   counter_thesis?: unknown
   research_gaps?: unknown
   active_research?: unknown
   recent_completed_research?: unknown
   what_changed?: string | null
-  cio_action?: { bucket?: string; action?: string; why?: string } | null
+  cio_action?: { bucket?: string; action?: string; why?: string; decision_id?: string } | null
+  last_reviewed?: string | null
   next_review_at?: string | null
   notification?: {
     notification_class?: string | null
@@ -113,6 +124,13 @@ export type SymbolThesisCardPayload = {
     intent?: string
     ts?: string
     free_text?: string
+  } | null
+  evidence_provenance?: {
+    classification?: string | null
+    provider?: string | null
+    model?: string | null
+    evidence_as_of?: string | null
+    source_refs?: unknown[]
   } | null
   provenance?: {
     decision_origin?: string
@@ -138,7 +156,15 @@ export function SymbolThesisCard({ card: c }: { card: SymbolThesisCardPayload | 
       const r = await fetch(`/api/v3/cio/intelligence/${encodeURIComponent(sym)}/feedback`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ intent, channel: 'command_center' }),
+        body: JSON.stringify({
+          intent,
+          channel: 'command_center',
+          source_surface: 'command_center_symbol_card',
+          operator_identity_class: 'COMMAND_CENTER_SESSION',
+          decision_id: c?.cio_action?.decision_id || null,
+          thesis_id: c?.symbol_thesis_id || null,
+          thesis_version: c?.symbol_thesis_version || null,
+        }),
       })
       if (!r.ok) return // fail soft
       let j: any = null
@@ -155,7 +181,7 @@ export function SymbolThesisCard({ card: c }: { card: SymbolThesisCardPayload | 
     } finally {
       setBusy(false)
     }
-  }, [busy, c?.symbol])
+  }, [busy, c?.symbol, c?.cio_action?.decision_id, c?.symbol_thesis_id, c?.symbol_thesis_version])
 
   if (!c) return <div style={faint}>Select a symbol to load its living thesis.</div>
   if (c.ok === false) {
@@ -170,6 +196,7 @@ export function SymbolThesisCard({ card: c }: { card: SymbolThesisCardPayload | 
   const action = c.cio_action
   const history = Array.isArray(c.thesis_history) ? c.thesis_history.slice(0, 3) : []
   const feedback = localFeedback || c.latest_feedback
+  const evidenceProvenance = c.evidence_provenance
   const hasStanceOrFeedback = Boolean(c.operator_stance || feedback?.intent)
   const hasProvenance = Boolean(c.provenance?.decision_origin)
   const hasTech = Boolean(c.technical_summary)
@@ -221,13 +248,14 @@ export function SymbolThesisCard({ card: c }: { card: SymbolThesisCardPayload | 
       </div>
       <Field label="Why own / watch">{humanThesisText(c.why_owned_or_watched)}</Field>
       <Field label="Case">{humanThesisText(c.core_thesis)}</Field>
+      <Field label="Supporting evidence">{listText(c.positive_evidence)}</Field>
       <Field label="Counter">{listText(c.counter_thesis)}</Field>
       <Field label="Gaps">{listText(c.research_gaps)}</Field>
       <Field label="Active research">{listText(c.active_research)}</Field>
       <Field label="Completed research">{listText(c.recent_completed_research)}</Field>
-      <Field label="What changed">{c.what_changed || '—'}</Field>
+      <Field label="What changed">{humanOperatorText(c.what_changed)}</Field>
       {hasDetail && (
-        <Field label="What changed (detail)">{c.what_changed_detail}</Field>
+        <Field label="What changed (detail)">{humanOperatorText(c.what_changed_detail)}</Field>
       )}
       {history.length > 0 && (
         <Field label="Thesis history">
@@ -236,6 +264,20 @@ export function SymbolThesisCard({ card: c }: { card: SymbolThesisCardPayload | 
               <li key={i} style={{ marginBottom: 2 }}>{formatHistoryRow(row) || '—'}</li>
             ))}
           </ul>
+        </Field>
+      )}
+      <Field label="Last reviewed">{humanOperatorText(c.last_reviewed)}</Field>
+      {evidenceProvenance && (
+        <Field label="Evidence provenance">
+          {humanOperatorText([
+            evidenceProvenance.provider,
+            evidenceProvenance.model,
+            evidenceProvenance.classification,
+            evidenceProvenance.evidence_as_of,
+          ].filter(Boolean).join(' · '))}
+          {Array.isArray(evidenceProvenance.source_refs) && evidenceProvenance.source_refs.length > 0
+            ? ` · ${listText(evidenceProvenance.source_refs)}`
+            : ''}
         </Field>
       )}
       {hasStanceOrFeedback && (
@@ -247,24 +289,24 @@ export function SymbolThesisCard({ card: c }: { card: SymbolThesisCardPayload | 
         </Field>
       )}
       {hasProvenance && (
-        <Field label="Provenance">{c.provenance?.decision_origin}</Field>
+        <Field label="Provenance">{humanOperatorText(c.provenance?.decision_origin)}</Field>
       )}
       {hasTech && (
-        <Field label="Technical summary">{c.technical_summary}</Field>
+        <Field label="Technical summary">{humanOperatorText(c.technical_summary)}</Field>
       )}
       {hasCausality && (
-        <Field label="Causality">{c.causality}</Field>
+        <Field label="Causality">{humanOperatorText(c.causality)}</Field>
       )}
       <Field label="CIO action">
         {action
-          ? `${action.bucket || '—'}${action.action ? ` · ${action.action}` : ''}${action.why ? ` — ${action.why}` : ''}`
+          ? humanOperatorText(`${action.bucket || '—'}${action.action ? ` · ${action.action}` : ''}${action.why ? ` — ${action.why}` : ''}`)
           : '—'}
       </Field>
-      <Field label="Next review">{c.next_review_at || '—'}</Field>
+      <Field label="Next review">{humanOperatorText(c.next_review_at)}</Field>
       {(ntf || suppress) && (
         <Field label="Notification / suppression">
-          {ntf?.notification_class || '—'}
-          {suppress ? ` · ${suppress}` : ''}
+          {humanOperatorText(ntf?.notification_class)}
+          {suppress ? ` · ${humanOperatorText(suppress)}` : ''}
         </Field>
       )}
 

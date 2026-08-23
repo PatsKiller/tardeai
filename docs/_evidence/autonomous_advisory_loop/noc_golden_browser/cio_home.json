@@ -1,0 +1,1591 @@
+{
+  "version": "office_home_1.3.0",
+  "authority": "READ_ONLY_ADVISORY",
+  "as_of": "2026-08-23T03:31:40.652782+00:00",
+  "cio_now": {
+    "decisions": [],
+    "decision_ids": [],
+    "attention": {
+      "investment_decisions": 0,
+      "workflow_actions": 0,
+      "open_plans": 0,
+      "material_today": 0,
+      "material_today_ids": [],
+      "labels": {
+        "investment_decisions": "Investment decisions",
+        "workflow_actions": "Workflow actions",
+        "open_plans": "Open plans",
+        "material_today": "Material today"
+      },
+      "note": "KPIs are disjoint: investment decisions are InvestmentDecision objects; workflow actions are action-ledger items; open plans are durable plans. Material today is a deduped priority set — not the sum of the three."
+    },
+    "decision_count": 0,
+    "open_actions_count": 0,
+    "open_plans_count": 0,
+    "material_today_count": 0
+  },
+  "capital_plan": {
+    "cash_total_usd": 0,
+    "cash_reserved_usd": 0,
+    "cash_earmarked_redeploy_usd": 0,
+    "cash_free_unearmarked_usd": 0,
+    "cash_investable_usd": 0,
+    "deployable_usd": 0,
+    "cash_band": {
+      "min_pct": 20,
+      "max_pct": 25
+    },
+    "recommended_deploy_usd": 0,
+    "recommended_raise_usd": 0,
+    "sources": [
+      {
+        "label": "Trims (prospective)",
+        "usd": 0,
+        "key": "trims_usd"
+      },
+      {
+        "label": "Exits (prospective)",
+        "usd": 0,
+        "key": "exits_usd"
+      },
+      {
+        "label": "Earmarked redeploy (already in cash)",
+        "usd": 0,
+        "key": "earmarked_redeploy_usd"
+      },
+      {
+        "label": "Prospective raise",
+        "usd": 0,
+        "key": "total_prospective_raise_usd"
+      }
+    ],
+    "uses": [
+      {
+        "label": "Add to holdings",
+        "usd": 0,
+        "key": "adds_usd"
+      },
+      {
+        "label": "New positions",
+        "usd": 0,
+        "key": "new_positions_usd"
+      },
+      {
+        "label": "Re-entry",
+        "usd": 0,
+        "key": "reentry_usd"
+      },
+      {
+        "label": "Sector rotation (notional gap)",
+        "usd": 0,
+        "key": "sector_rotation_usd"
+      },
+      {
+        "label": "Reserve (held, not deployed)",
+        "usd": 0,
+        "key": "reserve"
+      },
+      {
+        "label": "Fundable deploy request",
+        "usd": 0,
+        "key": "fundable_deploy_request_usd"
+      },
+      {
+        "label": "Total deploy request (fundable + notional sector gaps)",
+        "usd": 0,
+        "key": "total_deploy_request_usd"
+      }
+    ],
+    "deploy_funding": {
+      "recommended_deploy_usd": 0,
+      "investable_cash_usd": 0,
+      "prospective_raise_usd": 0,
+      "deployable_usd": 0,
+      "total_deploy_request_usd": 0,
+      "fundable_deploy_request_usd": 0,
+      "notional_sector_rotation_usd": 0,
+      "deploy_exceeds_investable_cash": false,
+      "gap_vs_investable_cash_usd": 0,
+      "gap_covered_by_prospective_raise": false,
+      "note": "Recommended deploy is within investable cash above the policy reserve."
+    },
+    "deploy_request_notes": [
+      "Total deploy request = adds + new positions + re-entry + sector rotation.",
+      "Sector rotation is a notional underweight gap, not a committed cash ticket.",
+      "Reserve is the cash-policy floor retained — excluded from Total deploy request."
+    ],
+    "post_plan_cash_usd": 0,
+    "post_plan_cash_pct": 0,
+    "account_cash": [],
+    "plan_version": "capital_plan_1.3.0",
+    "plan_digest": "6e499cd37e250b82fb0a62651089e940d23fe9299313b68554902763bd5973ef",
+    "double_count_guard": "earmarked_redeploy_excluded_from_raise",
+    "cash_posture": "NO_PORTFOLIO"
+  },
+  "posture": {
+    "thesis": {
+      "stance": "—",
+      "summary": null,
+      "principles": []
+    },
+    "concentration": {
+      "top_position": null,
+      "top_weight_pct": null,
+      "fire_pct": 16.5
+    },
+    "risk_heat": {
+      "max_drawdown_pct": null,
+      "sharpe": null,
+      "sortino": null
+    },
+    "sector_tilts": [
+      {
+        "sector": "Energy",
+        "state": "Leading",
+        "exposure_pct": 3.9,
+        "target_pct": 5,
+        "target_source": "model_portfolio",
+        "target_label": "model portfolio target",
+        "target_is_placeholder": false,
+        "recommendation": "Staged deployment"
+      },
+      {
+        "sector": "Consumer Discretionary",
+        "state": "Leading",
+        "exposure_pct": 3.7,
+        "target_pct": 8,
+        "target_source": "model_portfolio",
+        "target_label": "model portfolio target",
+        "target_is_placeholder": false,
+        "recommendation": "Staged deployment"
+      },
+      {
+        "sector": "Healthcare",
+        "state": "Leading",
+        "exposure_pct": 9.8,
+        "target_pct": 10,
+        "target_source": "model_portfolio",
+        "target_label": "model portfolio target",
+        "target_is_placeholder": false,
+        "recommendation": "Staged deployment"
+      },
+      {
+        "sector": "Materials",
+        "state": "Leading",
+        "exposure_pct": 5.8,
+        "target_pct": 3,
+        "target_source": "model_portfolio",
+        "target_label": "model portfolio target",
+        "target_is_placeholder": false,
+        "recommendation": "No deployment"
+      },
+      {
+        "sector": "Communications",
+        "state": "Leading",
+        "exposure_pct": 3,
+        "target_pct": 6,
+        "target_source": "model_portfolio",
+        "target_label": "model portfolio target",
+        "target_is_placeholder": false,
+        "recommendation": "Staged deployment"
+      },
+      {
+        "sector": "Consumer Staples",
+        "state": "Improving",
+        "exposure_pct": 5.8,
+        "target_pct": 5,
+        "target_source": "model_portfolio",
+        "target_label": "model portfolio target",
+        "target_is_placeholder": false,
+        "recommendation": "No deployment"
+      },
+      {
+        "sector": "Utilities",
+        "state": "Improving",
+        "exposure_pct": 1.6,
+        "target_pct": 3,
+        "target_source": "model_portfolio",
+        "target_label": "model portfolio target",
+        "target_is_placeholder": false,
+        "recommendation": "Staged deployment"
+      }
+    ],
+    "sector_target_honesty": {
+      "all_targets_identical": false,
+      "all_targets_placeholder": false,
+      "identical_target_pct": null,
+      "note": "Sector targets include configured model-portfolio and/or rotation comfort values."
+    },
+    "performance": {
+      "portfolio_cagr": null,
+      "benchmark_cagr": null,
+      "alpha_annualized": null,
+      "benchmark_label": null,
+      "benchmark_source": null
+    },
+    "income": {
+      "total_usd": null
+    },
+    "tax_issues": [],
+    "constraints": [
+      "cash_band_min_pct: 20.0",
+      "max_single_name_weight_pct: 12.0",
+      "concentration_fire_pct: 16.5",
+      "tax_class: TAXABLE/TAX_ADVANTAGED",
+      "earmarked_redeploy_not_double_counted: 1"
+    ]
+  },
+  "opportunities": {
+    "watch": [
+      {
+        "symbol": "AMANX",
+        "source": "advisory",
+        "signal": "Trim",
+        "label": "Advisory TRIM — AMANX"
+      },
+      {
+        "symbol": "DXCM",
+        "source": "advisory",
+        "signal": "Trim",
+        "label": "Advisory TRIM — DXCM"
+      },
+      {
+        "symbol": "SCHD",
+        "source": "advisory",
+        "signal": "Trim",
+        "label": "Advisory TRIM — SCHD"
+      },
+      {
+        "symbol": "SPCX",
+        "source": "advisory",
+        "signal": "Trim",
+        "label": "Advisory TRIM — SPCX"
+      },
+      {
+        "symbol": "V",
+        "source": "advisory",
+        "signal": "Trim",
+        "label": "Advisory TRIM — V"
+      },
+      {
+        "symbol": "AEIS",
+        "source": "defense",
+        "signal": "Hold",
+        "label": "Defense short_side — AEIS"
+      },
+      {
+        "symbol": "BEPC",
+        "source": "defense",
+        "signal": "Hold",
+        "label": "Defense short_side — BEPC"
+      },
+      {
+        "symbol": "CWEN",
+        "source": "defense",
+        "signal": "Hold",
+        "label": "Defense short_side — CWEN"
+      }
+    ],
+    "watch_total": 16,
+    "reentry": [
+      {
+        "symbol": "ALXO",
+        "source": "reentry",
+        "signal": "Hold",
+        "label": "Re-entry NEAR ENTRY — ALXO"
+      },
+      {
+        "symbol": "AMC",
+        "source": "reentry",
+        "signal": "Hold",
+        "label": "Re-entry NEAR ENTRY — AMC"
+      },
+      {
+        "symbol": "ANET",
+        "source": "reentry",
+        "signal": "Hold",
+        "label": "Re-entry NEAR ENTRY — ANET"
+      },
+      {
+        "symbol": "AVAV",
+        "source": "reentry",
+        "signal": "Hold",
+        "label": "Re-entry READY TO REVIEW — AVAV"
+      },
+      {
+        "symbol": "AXTI",
+        "source": "reentry",
+        "signal": "Hold",
+        "label": "Re-entry NEAR ENTRY — AXTI"
+      },
+      {
+        "symbol": "BJDX",
+        "source": "reentry",
+        "signal": "Hold",
+        "label": "Re-entry NEAR ENTRY — BJDX"
+      }
+    ],
+    "reentry_total": 31,
+    "rotation": [
+      {
+        "sector": "Energy",
+        "state": "Leading",
+        "recommendation": "Staged deployment"
+      },
+      {
+        "sector": "Consumer Discretionary",
+        "state": "Leading",
+        "recommendation": "Staged deployment"
+      },
+      {
+        "sector": "Healthcare",
+        "state": "Leading",
+        "recommendation": "Staged deployment"
+      },
+      {
+        "sector": "Materials",
+        "state": "Leading",
+        "recommendation": "No deployment"
+      },
+      {
+        "sector": "Communications",
+        "state": "Leading",
+        "recommendation": "Staged deployment"
+      },
+      {
+        "sector": "Consumer Staples",
+        "state": "Improving",
+        "recommendation": "No deployment"
+      },
+      {
+        "sector": "Utilities",
+        "state": "Improving",
+        "recommendation": "Staged deployment"
+      }
+    ],
+    "research_gaps": [
+      {
+        "symbol": "PBF",
+        "sector": "Energy"
+      },
+      {
+        "symbol": "IQV",
+        "sector": "Healthcare"
+      },
+      {
+        "symbol": "NTRA",
+        "sector": "Healthcare"
+      }
+    ]
+  },
+  "report": {
+    "as_of": "2026-08-23T03:31:40.650004+00:00",
+    "report_version": "report_v2_1.5.0",
+    "source_sha": "5e91225a1186659de3cfd65096e037e774506e7f",
+    "manifest_hash": "07b971d5c8d85a4274ff0607a6cbd96b9da811a36bcc98b29fd698fadf28aaa4",
+    "source_traceability_pct": 100,
+    "field_count": 65,
+    "fields_present": 32,
+    "fields_unavailable": [
+      "perf_QTD",
+      "perf_3Y",
+      "perf_true_TWR",
+      "style_value_blend_growth"
+    ],
+    "quality_flag_count": 30,
+    "pdf_pages": null,
+    "render_errors": [
+      "pdf renderer unavailable in this environment"
+    ]
+  },
+  "evidence": {
+    "as_of": "2026-08-23T03:31:40.650004+00:00",
+    "report_version": "report_v2_1.5.0",
+    "authority": "READ_ONLY_ADVISORY",
+    "source_sha": "5e91225a1186659de3cfd65096e037e774506e7f",
+    "manifest_hash": "07b971d5c8d85a4274ff0607a6cbd96b9da811a36bcc98b29fd698fadf28aaa4",
+    "facts_fingerprint": "9daa47a0c35b4e05c97b4fec274f6ddb2803316121346bd5a4ca37df089fc4d1",
+    "capital_plan_digest": "6e499cd37e250b82fb0a62651089e940d23fe9299313b68554902763bd5973ef",
+    "plan_version": "capital_plan_1.3.0",
+    "report_id": null,
+    "source_refs": [
+      {
+        "name": "cio_theses_projection.json",
+        "sha256": "873d7453c319bb4f79cc8fa0c9475dae2f5dcefad7b8137ca1902d1799e2a50f"
+      },
+      {
+        "name": "fund_lookthrough.json",
+        "sha256": "ba691ba042bcedd9a61a36f5969026bc95859dccdc7e47f24e6bce35673baf2f"
+      },
+      {
+        "name": "holdings.json",
+        "sha256": "05d808518b3b5711202c2e2228beec192a902f1fbc475250c3d73056233a4f64"
+      },
+      {
+        "name": "performance_attribution.json",
+        "sha256": "ba691ba042bcedd9a61a36f5969026bc95859dccdc7e47f24e6bce35673baf2f"
+      },
+      {
+        "name": "performance_history.json",
+        "sha256": "ba691ba042bcedd9a61a36f5969026bc95859dccdc7e47f24e6bce35673baf2f"
+      },
+      {
+        "name": "tax_lots.json",
+        "sha256": "ba691ba042bcedd9a61a36f5969026bc95859dccdc7e47f24e6bce35673baf2f"
+      }
+    ],
+    "validator_states": [],
+    "run_ids": [],
+    "internal_codes": [
+      "perf_QTD",
+      "perf_3Y",
+      "perf_true_TWR",
+      "style_value_blend_growth",
+      "cash_band_min_pct",
+      "max_single_name_weight_pct",
+      "concentration_fire_pct",
+      "tax_class",
+      "earmarked_redeploy_not_double_counted"
+    ],
+    "note": "Internal digests, run ids, and raw field codes live here — not in CIO NOW narrative."
+  },
+  "consistency": {
+    "decision_ids": [],
+    "capital_plan_digest": "6e499cd37e250b82fb0a62651089e940d23fe9299313b68554902763bd5973ef",
+    "plan_version": "capital_plan_1.3.0",
+    "office_home_version": "office_home_1.3.0",
+    "decision_field_parity": {
+      "version": "decision_field_parity_1.0.0",
+      "ok": true,
+      "decision_count": 0,
+      "surfaces_checked": 2,
+      "missing_required": [],
+      "field_mismatches": [],
+      "missing_sizing_on_actionable": [],
+      "required_fields": [
+        "decision_id",
+        "symbol",
+        "stance_code",
+        "recommended_delta_usd",
+        "why_now",
+        "current_value_usd",
+        "current_weight_pct"
+      ],
+      "authority": "READ_ONLY_ADVISORY"
+    }
+  },
+  "strategy_context": {
+    "version": "strategy_knowledge_1.1.0",
+    "as_of": "2026-08-23T03:31:40.324354+00:00",
+    "influence_policy": {
+      "version": "strategy_influence_1.0.0",
+      "max_role": "risk_modifier_or_context",
+      "forbidden": [
+        "autonomous_execution",
+        "hard_coded_partisan_presidency_conclusions",
+        "collapse_claim_reproduction_application",
+        "overfit_promotion_without_oos"
+      ],
+      "allowed_uses": [
+        "risk_modifier",
+        "timing_context",
+        "challenge_prompt",
+        "report_methodology_note",
+        "telegram_context_line"
+      ],
+      "min_internal_validation_for_weight": "reproduced_or_partial",
+      "license": "internal_analysis_only_no_fulltext_republication",
+      "max_conviction_sizing_modifier_pct": 10
+    },
+    "seasonality": {
+      "version": "seasonality_engine_1.1.0",
+      "as_of": "2026-08-23T03:31:39.989868+00:00",
+      "month": {
+        "month": 8,
+        "month_name": "August",
+        "hypothesis_bucket": "historically_weaker_in_almanac_literature",
+        "weak_months_reproduced": [
+          6,
+          8,
+          9
+        ],
+        "strong_months_reproduced": [
+          1,
+          3,
+          4,
+          10,
+          11,
+          12
+        ],
+        "best_six_months_window": false,
+        "worst_six_months_window": true
+      },
+      "presidential_cycle": {
+        "year": 2026,
+        "cycle_label": "midterm_year",
+        "cycle_order": 2,
+        "partisan_conclusion": null,
+        "method": "year_mod_4_election_year_when_0"
+      },
+      "calendar_effects": [],
+      "narrative_lines": [
+        "Calendar: August 2026 · cycle=midterm_year (mechanical, non-partisan).",
+        "Month hypothesis bucket: historically_weaker_in_almanac_literature (source-claim context only until Trade AI reproduces).",
+        "Six-month window: worst_six_months_hypothesis.",
+        "Use as risk modifier / challenge context only — never a standalone trade rule."
+      ],
+      "authority": "READ_ONLY_ADVISORY",
+      "execution_engine": false
+    },
+    "research_context": {
+      "version": "research_retriever_1.0.0",
+      "as_of": "2026-08-23T03:31:40.284058+00:00",
+      "authority": "READ_ONLY_ADVISORY",
+      "role": "risk_modifier_or_context",
+      "execution_engine": false,
+      "modifier_note": "August (midterm_year) appears in the *reproduced* weak-month set. Treat as a ≤10% conviction/sizing language modifier (grades B,C). Never a standalone sell. Do not create TRIM.",
+      "influence": {
+        "max_conviction_sizing_modifier_pct": 10,
+        "standalone_sell": false,
+        "creates_trim": false,
+        "role": "risk_modifier_or_context"
+      },
+      "presidential_cycle": {
+        "year": 2026,
+        "cycle_label": "midterm_year",
+        "cycle_order": 2,
+        "partisan_conclusion": null,
+        "method": "year_mod_4_election_year_when_0"
+      },
+      "seasonality": {
+        "month": 8,
+        "month_name": "August",
+        "weak_months_reproduced": [
+          6,
+          8,
+          9
+        ],
+        "in_reproduced_weak_set": true,
+        "narrative_lines": [
+          "Calendar: August 2026 · cycle=midterm_year (mechanical, non-partisan).",
+          "Month hypothesis bucket: historically_weaker_in_almanac_literature (source-claim context only until Trade AI reproduces).",
+          "Six-month window: worst_six_months_hypothesis.",
+          "Use as risk modifier / challenge context only — never a standalone trade rule."
+        ]
+      },
+      "almanac_headlines": [
+        "August all_years: n=75 mean=-0.07% win_rate=45.3% grade=B",
+        "August midterm_year: n=19 mean=-0.69% win_rate=31.6% grade=C"
+      ],
+      "relevant_facts": [
+        {
+          "source_id": "sta_august_general_public_alert",
+          "family": "seasonality",
+          "title": "August Almanac & Vital Stats: Stronger in Election Years",
+          "evidence_grade": "B",
+          "n": 75,
+          "mean": -0.06866799999999998,
+          "win_rate": 0.4533333333333333,
+          "layers": {
+            "source_claim": "Operator-structured summary of a public STA investor alert (citation only): August is described as among the weaker modern-sample months for broad US indexes (post-1987/1988), contrasting a stronger early-20th-century profile. Not a book extract.",
+            "trade_ai_reproduction": "Trade AI independent reproduction from monthly index returns (n=75, mean=-0.0687, median=-0.3626, win_rate=0.4533, std=3.0694).",
+            "current_application": "Context / risk modifier only. Maximum 10% conviction or sizing language adjustment. Never a standalone sell. Does not create TRIM."
+          },
+          "citation": {
+            "title": "August Almanac & Vital Stats: Stronger in Election Years",
+            "url": "https://www.stocktradersalmanac.com/Alert/20240718_2.aspx",
+            "date": "2024-07-18"
+          },
+          "current_applicability": "Context / risk modifier only. Maximum 10% conviction or sizing language adjustment. Never a standalone sell. Does not create TRIM."
+        },
+        {
+          "source_id": "sta_august_midterm_public_alert",
+          "family": "seasonality",
+          "title": "August Almanac & Vital Stats: No Reprieve in Midterm Years",
+          "evidence_grade": "C",
+          "n": 19,
+          "mean": -0.688321052631579,
+          "win_rate": 0.3157894736842105,
+          "layers": {
+            "source_claim": "Operator-structured summary of a public STA investor alert (citation only): midterm-year Augusts are described as offering no seasonal reprieve — still a weak-month window inside the midterm weak spot. Not a book extract.",
+            "trade_ai_reproduction": "Trade AI independent reproduction from monthly index returns (n=19, mean=-0.6883, median=-1.2198, win_rate=0.3158, std=2.3285, cycle=midterm_year).",
+            "current_application": "Context / risk modifier only. Maximum 10% conviction or sizing language adjustment. Never a standalone sell. Does not create TRIM."
+          },
+          "citation": {
+            "title": "August Almanac & Vital Stats: No Reprieve in Midterm Years",
+            "url": "https://www.stocktradersalmanac.com/Alert/20260716_1.aspx",
+            "date": "2026-07-16"
+          },
+          "current_applicability": "Context / risk modifier only. Maximum 10% conviction or sizing language adjustment. Never a standalone sell. Does not create TRIM."
+        },
+        {
+          "source_id": "sta_september_general_public_alert",
+          "family": "seasonality",
+          "title": "September Almanac & Vital Stats: Worst Month of the Year 1950-2023",
+          "evidence_grade": "B",
+          "n": 75,
+          "mean": -0.19474399999999997,
+          "win_rate": 0.4666666666666667,
+          "layers": {
+            "source_claim": "Operator-structured summary of a public STA investor alert (citation only): September is described as the worst-performing calendar month for major US indexes in long samples since 1950. Not a book extract.",
+            "trade_ai_reproduction": "Trade AI independent reproduction from monthly index returns (n=75, mean=-0.1947, median=-0.3027, win_rate=0.4667, std=2.6739).",
+            "current_application": "Context / risk modifier only. Maximum 10% conviction or sizing language adjustment. Never a standalone sell. Does not create TRIM."
+          },
+          "citation": {
+            "title": "September Almanac & Vital Stats: Worst Month of the Year 1950-2023",
+            "url": "https://www.stocktradersalmanac.com/Alert/20240815_1.aspx",
+            "date": "2024-08-15"
+          },
+          "current_applicability": "Context / risk modifier only. Maximum 10% conviction or sizing language adjustment. Never a standalone sell. Does not create TRIM."
+        },
+        {
+          "source_id": "sta_september_midterm_public_alert",
+          "family": "seasonality",
+          "title": "September Almanac: Worst Month Modestly Better in Midterm Years",
+          "evidence_grade": "C",
+          "n": 19,
+          "mean": -0.5838894736842105,
+          "win_rate": 0.3157894736842105,
+          "layers": {
+            "source_claim": "Operator-structured summary of a public STA investor alert (citation only): midterm-year Septembers are described as modestly better in rank than September overall, while average results can remain weak. Not a book extract.",
+            "trade_ai_reproduction": "Trade AI independent reproduction from monthly index returns (n=19, mean=-0.5839, median=-1.5019, win_rate=0.3158, std=2.8655, cycle=midterm_year).",
+            "current_application": "Context / risk modifier only. Maximum 10% conviction or sizing language adjustment. Never a standalone sell. Does not create TRIM."
+          },
+          "citation": {
+            "title": "September Almanac: Worst Month Modestly Better in Midterm Years",
+            "url": "https://www.stocktradersalmanac.com/Alert/20220818_1.aspx",
+            "date": "2022-08-18"
+          },
+          "current_applicability": "Context / risk modifier only. Maximum 10% conviction or sizing language adjustment. Never a standalone sell. Does not create TRIM."
+        },
+        {
+          "source_id": "sta_best_six_months_summary",
+          "family": "seasonality",
+          "title": "Best six months hypothesis (almanac tradition — structured summary)",
+          "evidence_grade": "B",
+          "n": 450,
+          "mean": 1.1226424444444445,
+          "win_rate": 0.6666666666666666,
+          "layers": {
+            "source_claim": "Almanac-tradition hypothesis (operator summary, not a book extract): November–April has often been stronger than May–October for broad US equities.",
+            "trade_ai_reproduction": "Trade AI independent six-month window reproduction: Nov–Apr n=450 mean=1.1226424444444445 win_rate=0.6666666666666666; May–Oct n=450 mean=0.20662755555555556 win_rate=0.5088888888888888; spread=0.9160148888888889.",
+            "current_application": "Context / risk modifier only. Maximum 10% conviction or sizing language adjustment. Never a standalone sell. Does not create TRIM."
+          },
+          "citation": null,
+          "current_applicability": "Context / risk modifier only. Maximum 10% conviction or sizing language adjustment. Never a standalone sell. Does not create TRIM."
+        }
+      ],
+      "calendar": {
+        "version": "market_calendar_1.0.0",
+        "authority": "READ_ONLY_ADVISORY",
+        "date": "2026-08-23",
+        "backend": "exchange_calendars",
+        "weekday": false,
+        "weekend": true,
+        "us_trading_day": false,
+        "options_expiration": false,
+        "options_expiration_week": false,
+        "third_friday": "2026-08-21",
+        "options_expiration_date": "2026-08-21",
+        "tags": [
+          "weekend",
+          "us_market_closed"
+        ],
+        "note": "Does not treat day 15–21 as options expiration."
+      },
+      "forbidden": [
+        "standalone_sell",
+        "create_trim_from_seasonality",
+        "hard_coded_partisan_presidency_conclusions",
+        "fulltext_book_republication"
+      ],
+      "disclaimer": "Research context is retrieved before synthesis and does not instruct trades. SOURCE CLAIM ≠ TRADE AI REPRODUCTION ≠ CURRENT APPLICATION.",
+      "symbols": [],
+      "governed_audit": {
+        "status": "OK",
+        "decision_id": "6e499cd37e250b82fb0a62651089e940d23fe9299313b68554902763bd5973ef",
+        "record_digest": "1923c3c1188258006438baa24a6c846866375054806e70621666f94c5bee5018",
+        "signature_ok": true,
+        "influence_cap_pct": 10,
+        "forbidden_actions": [
+          "broker_order",
+          "create_trim_from_seasonality",
+          "standalone_sell",
+          "stop_change",
+          "telegram_send"
+        ],
+        "fact_ids": [
+          "almanac:august_general",
+          "almanac:august_midterm",
+          "almanac:september_general",
+          "almanac:september_midterm"
+        ],
+        "degradation": {
+          "action": "keep",
+          "reason": "no degradation trigger"
+        },
+        "authority": "READ_ONLY_ADVISORY",
+        "creates_trim": false,
+        "standalone_sell": false,
+        "partisan_conclusion": null,
+        "august_hardcoded_bearish": false
+      },
+      "governed_almanac": {
+        "version": "r3_almanac_1.0.0",
+        "cycle_label": "midterm_year",
+        "weak_months": [
+          6,
+          8,
+          9
+        ],
+        "max_influence_pct": 10,
+        "standalone_sell": false,
+        "creates_trim": false,
+        "slices": {
+          "august_general": {
+            "n": 75,
+            "mean": -0.06866799999999998,
+            "evidence_grade": "B",
+            "layers": {
+              "source_claim": {
+                "source_id": "stock_traders_almanac",
+                "alert_id": "august_general",
+                "title": "August Almanac & Vital Stats: Stronger in Election Years",
+                "url": "https://www.stocktradersalmanac.com/Alert/20240718_2.aspx",
+                "date": "2024-07-18",
+                "summary": "Operator-structured summary of a public STA investor alert (citation only): August is described as among the weaker modern-sample months. Not a book extract.",
+                "citation_only": true,
+                "fulltext": false,
+                "claim_status": "SOURCE_CLAIM_INCOMPLETE"
+              },
+              "trade_ai_reproduction": {
+                "n": 75,
+                "mean": -0.06866799999999998,
+                "median": -0.3626,
+                "win_rate": 0.4533333333333333,
+                "std": 3.069410643110932,
+                "in_sample": {
+                  "n": 50,
+                  "mean": 0.06667200000000002,
+                  "median": -0.36469999999999997,
+                  "win_rate": 0.48,
+                  "std": 3.299688121931526
+                },
+                "oos": {
+                  "n": 25,
+                  "mean": -0.33934800000000004,
+                  "median": -0.3626,
+                  "win_rate": 0.4,
+                  "std": 2.525482169902611
+                },
+                "fixture": "us_equity_monthly_sample.csv",
+                "not_vendor_print": true
+              },
+              "current_application": {
+                "role": "risk_modifier_or_context",
+                "max_influence_pct": 10,
+                "standalone_sell": false,
+                "creates_trim": false,
+                "partisan_conclusion": null,
+                "as_of_year": 2026,
+                "cycle_label": "midterm_year",
+                "note": "Context only. ≤10% conviction/sizing language. Never a standalone sell. Does not create TRIM."
+              }
+            }
+          },
+          "august_midterm": {
+            "n": 19,
+            "mean": -0.688321052631579,
+            "evidence_grade": "C",
+            "layers": {
+              "source_claim": {
+                "source_id": "stock_traders_almanac",
+                "alert_id": "august_midterm",
+                "title": "August Almanac & Vital Stats: No Reprieve in Midterm Years",
+                "url": "https://www.stocktradersalmanac.com/Alert/20260716_1.aspx",
+                "date": "2026-07-16",
+                "summary": "Operator-structured summary of a public STA investor alert (citation only): midterm-year Augusts are described as offering no seasonal reprieve. Not a book extract.",
+                "citation_only": true,
+                "fulltext": false,
+                "claim_status": "SOURCE_CLAIM_INCOMPLETE"
+              },
+              "trade_ai_reproduction": {
+                "n": 19,
+                "mean": -0.688321052631579,
+                "median": -1.2198,
+                "win_rate": 0.3157894736842105,
+                "std": 2.3284786489259797,
+                "in_sample": {
+                  "n": 13,
+                  "mean": -0.7949615384615384,
+                  "median": -1.2198,
+                  "win_rate": 0.23076923076923078,
+                  "std": 2.1647158241418065
+                },
+                "oos": {
+                  "n": 6,
+                  "mean": -0.45726666666666665,
+                  "median": -0.61845,
+                  "win_rate": 0.5,
+                  "std": 2.6340196934638804
+                },
+                "fixture": "us_equity_monthly_sample.csv",
+                "not_vendor_print": true
+              },
+              "current_application": {
+                "role": "risk_modifier_or_context",
+                "max_influence_pct": 10,
+                "standalone_sell": false,
+                "creates_trim": false,
+                "partisan_conclusion": null,
+                "as_of_year": 2026,
+                "cycle_label": "midterm_year",
+                "note": "Context only. ≤10% conviction/sizing language. Never a standalone sell. Does not create TRIM."
+              }
+            }
+          },
+          "september_general": {
+            "n": 75,
+            "mean": -0.19474399999999997,
+            "evidence_grade": "B",
+            "layers": {
+              "source_claim": {
+                "source_id": "stock_traders_almanac",
+                "alert_id": "september_general",
+                "title": "September Almanac & Vital Stats: Worst Month of the Year 1950-2023",
+                "url": "https://www.stocktradersalmanac.com/Alert/20240815_1.aspx",
+                "date": "2024-08-15",
+                "summary": "Operator-structured summary of a public STA investor alert (citation only): September is described as the worst-performing calendar month in long samples since 1950. Not a book extract.",
+                "citation_only": true,
+                "fulltext": false,
+                "claim_status": "SOURCE_CLAIM_INCOMPLETE"
+              },
+              "trade_ai_reproduction": {
+                "n": 75,
+                "mean": -0.19474399999999997,
+                "median": -0.3027,
+                "win_rate": 0.4666666666666667,
+                "std": 2.673935203016458,
+                "in_sample": {
+                  "n": 50,
+                  "mean": -0.27559,
+                  "median": -0.33315,
+                  "win_rate": 0.44,
+                  "std": 2.601615872895151
+                },
+                "oos": {
+                  "n": 25,
+                  "mean": -0.03305199999999999,
+                  "median": 0.3772,
+                  "win_rate": 0.52,
+                  "std": 2.8060223903768122
+                },
+                "fixture": "us_equity_monthly_sample.csv",
+                "not_vendor_print": true
+              },
+              "current_application": {
+                "role": "risk_modifier_or_context",
+                "max_influence_pct": 10,
+                "standalone_sell": false,
+                "creates_trim": false,
+                "partisan_conclusion": null,
+                "as_of_year": 2026,
+                "cycle_label": "midterm_year",
+                "note": "Context only. ≤10% conviction/sizing language. Never a standalone sell. Does not create TRIM."
+              }
+            }
+          },
+          "september_midterm": {
+            "n": 19,
+            "mean": -0.5838894736842105,
+            "evidence_grade": "C",
+            "layers": {
+              "source_claim": {
+                "source_id": "stock_traders_almanac",
+                "alert_id": "september_midterm",
+                "title": "September Almanac: Worst Month Modestly Better in Midterm Years",
+                "url": "https://www.stocktradersalmanac.com/Alert/20220818_1.aspx",
+                "date": "2022-08-18",
+                "summary": "Operator-structured summary of a public STA investor alert (citation only): midterm-year Septembers are described as modestly better in rank than September overall. Not a book extract.",
+                "citation_only": true,
+                "fulltext": false,
+                "claim_status": "SOURCE_CLAIM_INCOMPLETE"
+              },
+              "trade_ai_reproduction": {
+                "n": 19,
+                "mean": -0.5838894736842105,
+                "median": -1.5019,
+                "win_rate": 0.3157894736842105,
+                "std": 2.865538723281547,
+                "in_sample": {
+                  "n": 13,
+                  "mean": -0.8231615384615385,
+                  "median": -1.7133,
+                  "win_rate": 0.3076923076923077,
+                  "std": 3.012061572191803
+                },
+                "oos": {
+                  "n": 6,
+                  "mean": -0.06546666666666659,
+                  "median": -0.63895,
+                  "win_rate": 0.3333333333333333,
+                  "std": 2.4397882289703388
+                },
+                "fixture": "us_equity_monthly_sample.csv",
+                "not_vendor_print": true
+              },
+              "current_application": {
+                "role": "risk_modifier_or_context",
+                "max_influence_pct": 10,
+                "standalone_sell": false,
+                "creates_trim": false,
+                "partisan_conclusion": null,
+                "as_of_year": 2026,
+                "cycle_label": "midterm_year",
+                "note": "Context only. ≤10% conviction/sizing language. Never a standalone sell. Does not create TRIM."
+              }
+            }
+          }
+        }
+      }
+    },
+    "relevant_facts": [
+      {
+        "source_id": "sta_september_seasonality_summary",
+        "source_type": "book",
+        "title": "Stock Trader's Almanac (seasonality summary — operator structured note)",
+        "author": "Hirsch / Stock Trader's Almanac tradition",
+        "edition": "",
+        "publication_date": "",
+        "page_or_section": "monthly performance tables (summary)",
+        "license_class": "operator_structured_summary_no_fulltext",
+        "market": "US_equity",
+        "asset_scope": "broad_index",
+        "claim": "September has historically been among the weaker calendar months for broad US equity indexes in long multi-decade samples cited in almanac literature.",
+        "claim_type": "seasonality_month",
+        "time_horizon": "month_of_year",
+        "start_year": null,
+        "end_year": null,
+        "sample_n": 75,
+        "average_return": -0.19474399999999997,
+        "win_rate": 0.4666666666666667,
+        "cycle_context": "none",
+        "conditions": [
+          "broad_us_equity_index",
+          "long_sample_historical"
+        ],
+        "exceptions": [
+          "trend_and_breadth_can_dominate",
+          "sample_dependent"
+        ],
+        "source_confidence": 0.55,
+        "reproduction_status": "partially_reproduced",
+        "internal_validation_status": "partially_reproduced",
+        "internal_result": "Trade AI independent reproduction from monthly index returns (n=75, mean=-0.1947, median=-0.3027, win_rate=0.4667, std=2.6739).",
+        "out_of_sample_result": "Reproduction source: synthetic fixture CSV (deterministic; not a vendor print). in-sample through 1999 n=50 mean=-0.276%. OOS 2000–end n=25 mean=-0.033% win_rate=0.52. Seasonality is sample-dependent and is not an execution rule.",
+        "current_applicability": "Context / risk modifier only (≤10% conviction/sizing language). Never a standalone sell signal.",
+        "citation": "Operator-structured summary of public STA September alerts (title/URL/date only). Not a verbatim book extract.",
+        "last_verified": "2026-08-23",
+        "layers": {
+          "source_claim": "September has historically been among the weaker calendar months for broad US equity indexes in long multi-decade samples cited in almanac literature.",
+          "trade_ai_reproduction": "Trade AI independent reproduction from monthly index returns (n=75, mean=-0.1947, median=-0.3027, win_rate=0.4667, std=2.6739).",
+          "current_application": "Context / risk modifier only (≤10% conviction/sizing language). Never a standalone sell signal."
+        },
+        "source_hash": "7c1d7af05192097adc29c098",
+        "research_fact_id": "rf_7c1d7af05192097adc29c098",
+        "knowledge_version": "strategy_knowledge_1.1.0"
+      },
+      {
+        "source_id": "sta_august_seasonality_summary",
+        "source_type": "book",
+        "title": "Stock Trader's Almanac August (operator structured note)",
+        "author": "Hirsch / Stock Trader's Almanac tradition",
+        "edition": "",
+        "publication_date": "",
+        "page_or_section": "",
+        "license_class": "operator_structured_summary_no_fulltext",
+        "market": "US_equity",
+        "asset_scope": "broad_index",
+        "claim": "August is described in public STA alerts as among the weaker modern-sample months for broad US indexes — a source claim until independently reproduced.",
+        "claim_type": "seasonality_month",
+        "time_horizon": "month_of_year",
+        "start_year": null,
+        "end_year": null,
+        "sample_n": 75,
+        "average_return": -0.06866799999999998,
+        "win_rate": 0.4533333333333333,
+        "cycle_context": "none",
+        "conditions": [
+          "broad_us_equity_index",
+          "long_sample_historical"
+        ],
+        "exceptions": [
+          "trend_and_breadth_can_dominate",
+          "sample_dependent"
+        ],
+        "source_confidence": 0.5,
+        "reproduction_status": "partially_reproduced",
+        "internal_validation_status": "partially_reproduced",
+        "internal_result": "Trade AI independent reproduction from monthly index returns (n=75, mean=-0.0687, median=-0.3626, win_rate=0.4533, std=3.0694).",
+        "out_of_sample_result": "Reproduction source: synthetic fixture CSV (deterministic; not a vendor print). in-sample through 1999 n=50 mean=0.067%. OOS 2000–end n=25 mean=-0.339% win_rate=0.4. Seasonality is sample-dependent and is not an execution rule.",
+        "current_applicability": "Context / risk modifier only (≤10% conviction/sizing language). Never a standalone sell. Does not create TRIM.",
+        "citation": "Operator-structured summary of public STA August alerts (title/URL/date only). Not a verbatim book extract.",
+        "last_verified": "2026-08-23",
+        "layers": {
+          "source_claim": "August is described in public STA alerts as among the weaker modern-sample months for broad US indexes — a source claim until independently reproduced.",
+          "trade_ai_reproduction": "Trade AI independent reproduction from monthly index returns (n=75, mean=-0.0687, median=-0.3626, win_rate=0.4533, std=3.0694).",
+          "current_application": "Context / risk modifier only (≤10% conviction/sizing language). Never a standalone sell. Does not create TRIM."
+        },
+        "source_hash": "b387df80171dd336864e63d7",
+        "research_fact_id": "rf_b387df80171dd336864e63d7",
+        "knowledge_version": "strategy_knowledge_1.1.0"
+      },
+      {
+        "source_id": "sta_best_six_months_summary",
+        "source_type": "book",
+        "title": "Best six months hypothesis (almanac tradition — structured summary)",
+        "author": "Hirsch / Stock Trader's Almanac tradition",
+        "edition": "",
+        "publication_date": "",
+        "page_or_section": "",
+        "license_class": "operator_structured_summary_no_fulltext",
+        "market": "US_equity",
+        "asset_scope": "broad_index",
+        "claim": "November–April has often been stronger than May–October for broad US equities in long samples popularized as the 'best six months' hypothesis.",
+        "claim_type": "seasonality_six_month",
+        "time_horizon": "six_month_window",
+        "start_year": null,
+        "end_year": null,
+        "sample_n": 450,
+        "average_return": 1.1226424444444445,
+        "win_rate": 0.6666666666666666,
+        "cycle_context": "",
+        "conditions": [
+          "broad_us_equity_index"
+        ],
+        "exceptions": [
+          "regime_breaks",
+          "crisis_years"
+        ],
+        "source_confidence": 0.5,
+        "reproduction_status": "partially_reproduced",
+        "internal_validation_status": "partially_reproduced",
+        "internal_result": "Trade AI independent six-month window reproduction: Nov–Apr n=450 mean=1.1226424444444445 win_rate=0.6666666666666666; May–Oct n=450 mean=0.20662755555555556 win_rate=0.5088888888888888; spread=0.9160148888888889.",
+        "out_of_sample_result": "Window comparison on the same monthly series used for month stats.",
+        "current_applicability": "Context only; not an automatic portfolio rule.",
+        "citation": "Operator-structured summary; not a verbatim book extract.",
+        "last_verified": "2026-08-23",
+        "layers": {
+          "source_claim": "November–April has often been stronger than May–October for broad US equities in long samples popularized as the 'best six months' hypothesis.",
+          "trade_ai_reproduction": "Trade AI independent six-month window reproduction: Nov–Apr n=450 mean=1.1226424444444445 win_rate=0.6666666666666666; May–Oct n=450 mean=0.20662755555555556 win_rate=0.5088888888888888; spread=0.9160148888888889.",
+          "current_application": "Context only; not an automatic portfolio rule."
+        },
+        "source_hash": "2f7c81badb27eeaa822c714b",
+        "research_fact_id": "rf_2f7c81badb27eeaa822c714b",
+        "knowledge_version": "strategy_knowledge_1.1.0"
+      }
+    ],
+    "context_lines": [
+      "Calendar: August 2026 · cycle=midterm_year (mechanical, non-partisan).",
+      "Month hypothesis bucket: historically_weaker_in_almanac_literature (source-claim context only until Trade AI reproduces).",
+      "Six-month window: worst_six_months_hypothesis.",
+      "Use as risk modifier / challenge context only — never a standalone trade rule.",
+      "August (midterm_year) appears in the *reproduced* weak-month set. Treat as a ≤10% conviction/sizing language modifier (grades B,C). Never a standalone sell. Do not create TRIM.",
+      "Source claim (sta_september_seasonality_summary): September has historically been among the weaker calendar months for broad US equity indexes in long multi-decade samples cited in almanac literature. | Reproduction: Trade AI independent reproduction from monthly index returns (n=75, mean=-0.1947, median=-0.3027, win_rate=0.4667, std=2.6739). | Application: Context / risk modifier only (≤10% conviction/sizing language). Never a standalone sell signal.",
+      "Source claim (sta_august_seasonality_summary): August is described in public STA alerts as among the weaker modern-sample months for broad US indexes — a source claim until independently reproduced. | Reproduction: Trade AI independent reproduction from monthly index returns (n=75, mean=-0.0687, median=-0.3626, win_rate=0.4533, std=3.0694). | Application: Context / risk modifier only (≤10% conviction/sizing language). Never a standalone sell. Does not create TRIM.",
+      "Source claim (sta_best_six_months_summary): November–April has often been stronger than May–October for broad US equities in long samples popularized as the 'best six months' hypothesis. | Reproduction: Trade AI independent six-month window reproduction: Nov–Apr n=450 mean=1.1226424444444445 win_rate=0.6666666666666666; May–Oct n=450 mean=0.20662755555555556 win_rate=0.5088888888888888; spread=0.9160148888888889. | Application: Context only; not an automatic portfolio rule."
+    ],
+    "role": "risk_modifier_or_context",
+    "authority": "READ_ONLY_ADVISORY",
+    "execution_engine": false,
+    "creates_trim": false,
+    "standalone_sell": false,
+    "disclaimer": "Strategy context is not a trade instruction. Do not collapse source claims into Trade AI facts without validation. August/September seasonality is a ≤10% language modifier, never a standalone sell."
+  },
+  "seasonality": {
+    "version": "seasonality_engine_1.1.0",
+    "as_of": "2026-08-23T03:31:39.989868+00:00",
+    "month": {
+      "month": 8,
+      "month_name": "August",
+      "hypothesis_bucket": "historically_weaker_in_almanac_literature",
+      "weak_months_reproduced": [
+        6,
+        8,
+        9
+      ],
+      "strong_months_reproduced": [
+        1,
+        3,
+        4,
+        10,
+        11,
+        12
+      ],
+      "best_six_months_window": false,
+      "worst_six_months_window": true
+    },
+    "presidential_cycle": {
+      "year": 2026,
+      "cycle_label": "midterm_year",
+      "cycle_order": 2,
+      "partisan_conclusion": null,
+      "method": "year_mod_4_election_year_when_0"
+    },
+    "calendar_effects": [],
+    "narrative_lines": [
+      "Calendar: August 2026 · cycle=midterm_year (mechanical, non-partisan).",
+      "Month hypothesis bucket: historically_weaker_in_almanac_literature (source-claim context only until Trade AI reproduces).",
+      "Six-month window: worst_six_months_hypothesis.",
+      "Use as risk modifier / challenge context only — never a standalone trade rule."
+    ],
+    "authority": "READ_ONLY_ADVISORY",
+    "execution_engine": false
+  },
+  "research_context": {
+    "version": "research_retriever_1.0.0",
+    "as_of": "2026-08-23T03:31:40.284058+00:00",
+    "authority": "READ_ONLY_ADVISORY",
+    "role": "risk_modifier_or_context",
+    "execution_engine": false,
+    "modifier_note": "August (midterm_year) appears in the *reproduced* weak-month set. Treat as a ≤10% conviction/sizing language modifier (grades B,C). Never a standalone sell. Do not create TRIM.",
+    "influence": {
+      "max_conviction_sizing_modifier_pct": 10,
+      "standalone_sell": false,
+      "creates_trim": false,
+      "role": "risk_modifier_or_context"
+    },
+    "presidential_cycle": {
+      "year": 2026,
+      "cycle_label": "midterm_year",
+      "cycle_order": 2,
+      "partisan_conclusion": null,
+      "method": "year_mod_4_election_year_when_0"
+    },
+    "seasonality": {
+      "month": 8,
+      "month_name": "August",
+      "weak_months_reproduced": [
+        6,
+        8,
+        9
+      ],
+      "in_reproduced_weak_set": true,
+      "narrative_lines": [
+        "Calendar: August 2026 · cycle=midterm_year (mechanical, non-partisan).",
+        "Month hypothesis bucket: historically_weaker_in_almanac_literature (source-claim context only until Trade AI reproduces).",
+        "Six-month window: worst_six_months_hypothesis.",
+        "Use as risk modifier / challenge context only — never a standalone trade rule."
+      ]
+    },
+    "almanac_headlines": [
+      "August all_years: n=75 mean=-0.07% win_rate=45.3% grade=B",
+      "August midterm_year: n=19 mean=-0.69% win_rate=31.6% grade=C"
+    ],
+    "relevant_facts": [
+      {
+        "source_id": "sta_august_general_public_alert",
+        "family": "seasonality",
+        "title": "August Almanac & Vital Stats: Stronger in Election Years",
+        "evidence_grade": "B",
+        "n": 75,
+        "mean": -0.06866799999999998,
+        "win_rate": 0.4533333333333333,
+        "layers": {
+          "source_claim": "Operator-structured summary of a public STA investor alert (citation only): August is described as among the weaker modern-sample months for broad US indexes (post-1987/1988), contrasting a stronger early-20th-century profile. Not a book extract.",
+          "trade_ai_reproduction": "Trade AI independent reproduction from monthly index returns (n=75, mean=-0.0687, median=-0.3626, win_rate=0.4533, std=3.0694).",
+          "current_application": "Context / risk modifier only. Maximum 10% conviction or sizing language adjustment. Never a standalone sell. Does not create TRIM."
+        },
+        "citation": {
+          "title": "August Almanac & Vital Stats: Stronger in Election Years",
+          "url": "https://www.stocktradersalmanac.com/Alert/20240718_2.aspx",
+          "date": "2024-07-18"
+        },
+        "current_applicability": "Context / risk modifier only. Maximum 10% conviction or sizing language adjustment. Never a standalone sell. Does not create TRIM."
+      },
+      {
+        "source_id": "sta_august_midterm_public_alert",
+        "family": "seasonality",
+        "title": "August Almanac & Vital Stats: No Reprieve in Midterm Years",
+        "evidence_grade": "C",
+        "n": 19,
+        "mean": -0.688321052631579,
+        "win_rate": 0.3157894736842105,
+        "layers": {
+          "source_claim": "Operator-structured summary of a public STA investor alert (citation only): midterm-year Augusts are described as offering no seasonal reprieve — still a weak-month window inside the midterm weak spot. Not a book extract.",
+          "trade_ai_reproduction": "Trade AI independent reproduction from monthly index returns (n=19, mean=-0.6883, median=-1.2198, win_rate=0.3158, std=2.3285, cycle=midterm_year).",
+          "current_application": "Context / risk modifier only. Maximum 10% conviction or sizing language adjustment. Never a standalone sell. Does not create TRIM."
+        },
+        "citation": {
+          "title": "August Almanac & Vital Stats: No Reprieve in Midterm Years",
+          "url": "https://www.stocktradersalmanac.com/Alert/20260716_1.aspx",
+          "date": "2026-07-16"
+        },
+        "current_applicability": "Context / risk modifier only. Maximum 10% conviction or sizing language adjustment. Never a standalone sell. Does not create TRIM."
+      },
+      {
+        "source_id": "sta_september_general_public_alert",
+        "family": "seasonality",
+        "title": "September Almanac & Vital Stats: Worst Month of the Year 1950-2023",
+        "evidence_grade": "B",
+        "n": 75,
+        "mean": -0.19474399999999997,
+        "win_rate": 0.4666666666666667,
+        "layers": {
+          "source_claim": "Operator-structured summary of a public STA investor alert (citation only): September is described as the worst-performing calendar month for major US indexes in long samples since 1950. Not a book extract.",
+          "trade_ai_reproduction": "Trade AI independent reproduction from monthly index returns (n=75, mean=-0.1947, median=-0.3027, win_rate=0.4667, std=2.6739).",
+          "current_application": "Context / risk modifier only. Maximum 10% conviction or sizing language adjustment. Never a standalone sell. Does not create TRIM."
+        },
+        "citation": {
+          "title": "September Almanac & Vital Stats: Worst Month of the Year 1950-2023",
+          "url": "https://www.stocktradersalmanac.com/Alert/20240815_1.aspx",
+          "date": "2024-08-15"
+        },
+        "current_applicability": "Context / risk modifier only. Maximum 10% conviction or sizing language adjustment. Never a standalone sell. Does not create TRIM."
+      },
+      {
+        "source_id": "sta_september_midterm_public_alert",
+        "family": "seasonality",
+        "title": "September Almanac: Worst Month Modestly Better in Midterm Years",
+        "evidence_grade": "C",
+        "n": 19,
+        "mean": -0.5838894736842105,
+        "win_rate": 0.3157894736842105,
+        "layers": {
+          "source_claim": "Operator-structured summary of a public STA investor alert (citation only): midterm-year Septembers are described as modestly better in rank than September overall, while average results can remain weak. Not a book extract.",
+          "trade_ai_reproduction": "Trade AI independent reproduction from monthly index returns (n=19, mean=-0.5839, median=-1.5019, win_rate=0.3158, std=2.8655, cycle=midterm_year).",
+          "current_application": "Context / risk modifier only. Maximum 10% conviction or sizing language adjustment. Never a standalone sell. Does not create TRIM."
+        },
+        "citation": {
+          "title": "September Almanac: Worst Month Modestly Better in Midterm Years",
+          "url": "https://www.stocktradersalmanac.com/Alert/20220818_1.aspx",
+          "date": "2022-08-18"
+        },
+        "current_applicability": "Context / risk modifier only. Maximum 10% conviction or sizing language adjustment. Never a standalone sell. Does not create TRIM."
+      },
+      {
+        "source_id": "sta_best_six_months_summary",
+        "family": "seasonality",
+        "title": "Best six months hypothesis (almanac tradition — structured summary)",
+        "evidence_grade": "B",
+        "n": 450,
+        "mean": 1.1226424444444445,
+        "win_rate": 0.6666666666666666,
+        "layers": {
+          "source_claim": "Almanac-tradition hypothesis (operator summary, not a book extract): November–April has often been stronger than May–October for broad US equities.",
+          "trade_ai_reproduction": "Trade AI independent six-month window reproduction: Nov–Apr n=450 mean=1.1226424444444445 win_rate=0.6666666666666666; May–Oct n=450 mean=0.20662755555555556 win_rate=0.5088888888888888; spread=0.9160148888888889.",
+          "current_application": "Context / risk modifier only. Maximum 10% conviction or sizing language adjustment. Never a standalone sell. Does not create TRIM."
+        },
+        "citation": null,
+        "current_applicability": "Context / risk modifier only. Maximum 10% conviction or sizing language adjustment. Never a standalone sell. Does not create TRIM."
+      }
+    ],
+    "calendar": {
+      "version": "market_calendar_1.0.0",
+      "authority": "READ_ONLY_ADVISORY",
+      "date": "2026-08-23",
+      "backend": "exchange_calendars",
+      "weekday": false,
+      "weekend": true,
+      "us_trading_day": false,
+      "options_expiration": false,
+      "options_expiration_week": false,
+      "third_friday": "2026-08-21",
+      "options_expiration_date": "2026-08-21",
+      "tags": [
+        "weekend",
+        "us_market_closed"
+      ],
+      "note": "Does not treat day 15–21 as options expiration."
+    },
+    "forbidden": [
+      "standalone_sell",
+      "create_trim_from_seasonality",
+      "hard_coded_partisan_presidency_conclusions",
+      "fulltext_book_republication"
+    ],
+    "disclaimer": "Research context is retrieved before synthesis and does not instruct trades. SOURCE CLAIM ≠ TRADE AI REPRODUCTION ≠ CURRENT APPLICATION.",
+    "symbols": [],
+    "governed_audit": {
+      "status": "OK",
+      "decision_id": "6e499cd37e250b82fb0a62651089e940d23fe9299313b68554902763bd5973ef",
+      "record_digest": "1923c3c1188258006438baa24a6c846866375054806e70621666f94c5bee5018",
+      "signature_ok": true,
+      "influence_cap_pct": 10,
+      "forbidden_actions": [
+        "broker_order",
+        "create_trim_from_seasonality",
+        "standalone_sell",
+        "stop_change",
+        "telegram_send"
+      ],
+      "fact_ids": [
+        "almanac:august_general",
+        "almanac:august_midterm",
+        "almanac:september_general",
+        "almanac:september_midterm"
+      ],
+      "degradation": {
+        "action": "keep",
+        "reason": "no degradation trigger"
+      },
+      "authority": "READ_ONLY_ADVISORY",
+      "creates_trim": false,
+      "standalone_sell": false,
+      "partisan_conclusion": null,
+      "august_hardcoded_bearish": false
+    },
+    "governed_almanac": {
+      "version": "r3_almanac_1.0.0",
+      "cycle_label": "midterm_year",
+      "weak_months": [
+        6,
+        8,
+        9
+      ],
+      "max_influence_pct": 10,
+      "standalone_sell": false,
+      "creates_trim": false,
+      "slices": {
+        "august_general": {
+          "n": 75,
+          "mean": -0.06866799999999998,
+          "evidence_grade": "B",
+          "layers": {
+            "source_claim": {
+              "source_id": "stock_traders_almanac",
+              "alert_id": "august_general",
+              "title": "August Almanac & Vital Stats: Stronger in Election Years",
+              "url": "https://www.stocktradersalmanac.com/Alert/20240718_2.aspx",
+              "date": "2024-07-18",
+              "summary": "Operator-structured summary of a public STA investor alert (citation only): August is described as among the weaker modern-sample months. Not a book extract.",
+              "citation_only": true,
+              "fulltext": false,
+              "claim_status": "SOURCE_CLAIM_INCOMPLETE"
+            },
+            "trade_ai_reproduction": {
+              "n": 75,
+              "mean": -0.06866799999999998,
+              "median": -0.3626,
+              "win_rate": 0.4533333333333333,
+              "std": 3.069410643110932,
+              "in_sample": {
+                "n": 50,
+                "mean": 0.06667200000000002,
+                "median": -0.36469999999999997,
+                "win_rate": 0.48,
+                "std": 3.299688121931526
+              },
+              "oos": {
+                "n": 25,
+                "mean": -0.33934800000000004,
+                "median": -0.3626,
+                "win_rate": 0.4,
+                "std": 2.525482169902611
+              },
+              "fixture": "us_equity_monthly_sample.csv",
+              "not_vendor_print": true
+            },
+            "current_application": {
+              "role": "risk_modifier_or_context",
+              "max_influence_pct": 10,
+              "standalone_sell": false,
+              "creates_trim": false,
+              "partisan_conclusion": null,
+              "as_of_year": 2026,
+              "cycle_label": "midterm_year",
+              "note": "Context only. ≤10% conviction/sizing language. Never a standalone sell. Does not create TRIM."
+            }
+          }
+        },
+        "august_midterm": {
+          "n": 19,
+          "mean": -0.688321052631579,
+          "evidence_grade": "C",
+          "layers": {
+            "source_claim": {
+              "source_id": "stock_traders_almanac",
+              "alert_id": "august_midterm",
+              "title": "August Almanac & Vital Stats: No Reprieve in Midterm Years",
+              "url": "https://www.stocktradersalmanac.com/Alert/20260716_1.aspx",
+              "date": "2026-07-16",
+              "summary": "Operator-structured summary of a public STA investor alert (citation only): midterm-year Augusts are described as offering no seasonal reprieve. Not a book extract.",
+              "citation_only": true,
+              "fulltext": false,
+              "claim_status": "SOURCE_CLAIM_INCOMPLETE"
+            },
+            "trade_ai_reproduction": {
+              "n": 19,
+              "mean": -0.688321052631579,
+              "median": -1.2198,
+              "win_rate": 0.3157894736842105,
+              "std": 2.3284786489259797,
+              "in_sample": {
+                "n": 13,
+                "mean": -0.7949615384615384,
+                "median": -1.2198,
+                "win_rate": 0.23076923076923078,
+                "std": 2.1647158241418065
+              },
+              "oos": {
+                "n": 6,
+                "mean": -0.45726666666666665,
+                "median": -0.61845,
+                "win_rate": 0.5,
+                "std": 2.6340196934638804
+              },
+              "fixture": "us_equity_monthly_sample.csv",
+              "not_vendor_print": true
+            },
+            "current_application": {
+              "role": "risk_modifier_or_context",
+              "max_influence_pct": 10,
+              "standalone_sell": false,
+              "creates_trim": false,
+              "partisan_conclusion": null,
+              "as_of_year": 2026,
+              "cycle_label": "midterm_year",
+              "note": "Context only. ≤10% conviction/sizing language. Never a standalone sell. Does not create TRIM."
+            }
+          }
+        },
+        "september_general": {
+          "n": 75,
+          "mean": -0.19474399999999997,
+          "evidence_grade": "B",
+          "layers": {
+            "source_claim": {
+              "source_id": "stock_traders_almanac",
+              "alert_id": "september_general",
+              "title": "September Almanac & Vital Stats: Worst Month of the Year 1950-2023",
+              "url": "https://www.stocktradersalmanac.com/Alert/20240815_1.aspx",
+              "date": "2024-08-15",
+              "summary": "Operator-structured summary of a public STA investor alert (citation only): September is described as the worst-performing calendar month in long samples since 1950. Not a book extract.",
+              "citation_only": true,
+              "fulltext": false,
+              "claim_status": "SOURCE_CLAIM_INCOMPLETE"
+            },
+            "trade_ai_reproduction": {
+              "n": 75,
+              "mean": -0.19474399999999997,
+              "median": -0.3027,
+              "win_rate": 0.4666666666666667,
+              "std": 2.673935203016458,
+              "in_sample": {
+                "n": 50,
+                "mean": -0.27559,
+                "median": -0.33315,
+                "win_rate": 0.44,
+                "std": 2.601615872895151
+              },
+              "oos": {
+                "n": 25,
+                "mean": -0.03305199999999999,
+                "median": 0.3772,
+                "win_rate": 0.52,
+                "std": 2.8060223903768122
+              },
+              "fixture": "us_equity_monthly_sample.csv",
+              "not_vendor_print": true
+            },
+            "current_application": {
+              "role": "risk_modifier_or_context",
+              "max_influence_pct": 10,
+              "standalone_sell": false,
+              "creates_trim": false,
+              "partisan_conclusion": null,
+              "as_of_year": 2026,
+              "cycle_label": "midterm_year",
+              "note": "Context only. ≤10% conviction/sizing language. Never a standalone sell. Does not create TRIM."
+            }
+          }
+        },
+        "september_midterm": {
+          "n": 19,
+          "mean": -0.5838894736842105,
+          "evidence_grade": "C",
+          "layers": {
+            "source_claim": {
+              "source_id": "stock_traders_almanac",
+              "alert_id": "september_midterm",
+              "title": "September Almanac: Worst Month Modestly Better in Midterm Years",
+              "url": "https://www.stocktradersalmanac.com/Alert/20220818_1.aspx",
+              "date": "2022-08-18",
+              "summary": "Operator-structured summary of a public STA investor alert (citation only): midterm-year Septembers are described as modestly better in rank than September overall. Not a book extract.",
+              "citation_only": true,
+              "fulltext": false,
+              "claim_status": "SOURCE_CLAIM_INCOMPLETE"
+            },
+            "trade_ai_reproduction": {
+              "n": 19,
+              "mean": -0.5838894736842105,
+              "median": -1.5019,
+              "win_rate": 0.3157894736842105,
+              "std": 2.865538723281547,
+              "in_sample": {
+                "n": 13,
+                "mean": -0.8231615384615385,
+                "median": -1.7133,
+                "win_rate": 0.3076923076923077,
+                "std": 3.012061572191803
+              },
+              "oos": {
+                "n": 6,
+                "mean": -0.06546666666666659,
+                "median": -0.63895,
+                "win_rate": 0.3333333333333333,
+                "std": 2.4397882289703388
+              },
+              "fixture": "us_equity_monthly_sample.csv",
+              "not_vendor_print": true
+            },
+            "current_application": {
+              "role": "risk_modifier_or_context",
+              "max_influence_pct": 10,
+              "standalone_sell": false,
+              "creates_trim": false,
+              "partisan_conclusion": null,
+              "as_of_year": 2026,
+              "cycle_label": "midterm_year",
+              "note": "Context only. ≤10% conviction/sizing language. Never a standalone sell. Does not create TRIM."
+            }
+          }
+        }
+      }
+    }
+  },
+  "earmark_narrative": "$0 of current cash is earmarked from prior exits/redeploy; it is not new capital. Prospective raise is $0 from trims/exits not yet cash. Recommended deploy $0 is bounded by investable free cash plus prospective raise only.",
+  "operator_trust": {
+    "aegis_last_run": {
+      "available": false,
+      "session_target": "isolated",
+      "note": "No Aegis evening packet on disk yet"
+    },
+    "holdings": {
+      "available": true,
+      "ok": false,
+      "reason_code": "INCOMPLETE_ACCOUNTS",
+      "reason": "missing/empty governed accounts: schwab_rollover_ira, schwab_roth, schwab_taxable",
+      "total": 0
+    },
+    "notification": {
+      "available": true,
+      "suppression_reason": "none_on_record",
+      "notification_class": null
+    },
+    "authority": "READ_ONLY_ADVISORY"
+  },
+  "ok": true,
+  "_serving": {
+    "schema": "ServingFreshness@v1",
+    "authority": "READ_ONLY_ADVISORY",
+    "process_started_at": "2026-08-22T23:31:32-04:00",
+    "source_pin": "5e91225a1186659de3cfd65096e037e774506e7f",
+    "loaded_pin": "977d327cf8ba7977351a38f91fc31bb56b58d58d",
+    "loaded_pin_sha": "977d327cf8ba7977351a38f91fc31bb56b58d58d",
+    "current_pin_sha": "5e91225a1186659de3cfd65096e037e774506e7f",
+    "data_as_of": "2026-08-23T03:31:40.652782+00:00",
+    "cache_age": 0.001,
+    "pin_match": false
+  }
+}
