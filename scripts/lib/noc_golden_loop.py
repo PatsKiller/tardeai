@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -45,7 +46,8 @@ def _seed(root: Path) -> CIOThesisStore:
     _write_json(
         root / "data/portfolios/state/holdings.json",
         {"as_of": "2026-08-22T12:00:00+00:00", "holdings": [
-            {"symbol": "NOC", "quantity": 12, "is_cash": False, "account": "acceptance"}
+            {"symbol": "NOC", "quantity": 12, "is_cash": False, "account": "acceptance"},
+            {"symbol": "BND", "quantity": 10, "is_cash": False, "account": "acceptance"},
         ]},
     )
     _write_json(root / "data/runtime/reentry_decision_desk_latest.json", {"rows": []})
@@ -89,6 +91,67 @@ def _seed(root: Path) -> CIOThesisStore:
             "reason_for_change": "Establish governed standing thesis before delta review",
         },
     )
+    publish_symbol_thesis(
+        "BND",
+        summary=(
+            "BND remains a held bond allocation pending a fuller duration, income, "
+            "credit-quality, and rate-sensitivity thesis."
+        ),
+        stance="HOLD",
+        portfolio_role="FIXED_INCOME",
+        universe_memberships=["HELD"],
+        research_gaps=["complete duration and income evidence"],
+        change_note="Acceptance THIN comparison fixture",
+        store=store,
+        notify=False,
+        actor_id="noc_golden_fixture",
+        provenance={
+            "writer": "noc_golden_fixture",
+            "writer_version": "NocGoldenLoop@v1",
+            "trigger": "ISOLATED_ACCEPTANCE_SEED",
+            "run_id": "run_bnd_thin_seed",
+            "source_sha": "acceptance-fixture",
+            "reason_for_change": "Provide an honest THIN operator-surface comparison",
+        },
+    )
+    computed_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    _write_json(root / "data/runtime/advisory_desk_latest.json", {
+        "ok": True,
+        "cache_hit": False,
+        "operator_truth": {
+            "version": "advisory.operator.v1",
+            "memory_behavior_influence": "0",
+        },
+        "data": {
+            "version": "noc-golden-browser-v1",
+            "computed_at": computed_at,
+            "deterministic": True,
+            "llm_in_path": False,
+            "operator_truth": {
+                "version": "advisory.operator.v1",
+                "memory_behavior_influence": "0",
+            },
+            "metadata": {"verdict_counts": {"HOLD": 1}},
+            "rows": [{
+                "symbol": "NOC",
+                "account": "acceptance",
+                "row_class": "holding",
+                "verdict": "HOLD",
+                "confidence": 0.82,
+                "market_value": 7080.0,
+                "rationale": "Governed thesis strengthened; portfolio action unchanged.",
+                "decision_id": "dec_noc_golden_v2",
+                "computed_at": computed_at,
+                "evidence_bundle": {
+                    "evidence_count": 3,
+                    "sufficient": True,
+                    "evidence_items": [],
+                    "evidence_gaps": ["next-quarter cash conversion"],
+                },
+            }],
+        },
+        "authority": AUTHORITY,
+    })
     clear_cache()
     return store
 
