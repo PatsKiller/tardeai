@@ -229,7 +229,14 @@ def test_row_view_preserves_full_thesis_and_decision_lineage(monkeypatch):
         },
     )
 
-    out = advisory._row_view({"symbol": "NOC", "decision_id": "dec_noc_7"})
+    out = advisory._row_view({
+        "symbol": "NOC",
+        "decision_id": "dec_noc_7",
+        "research_delta": {
+            "delta_id": "delta_noc_decision_7",
+            "classification": "STRENGTHENS",
+        },
+    })
 
     assert out["symbol_thesis"]["summary"] == full_summary
     assert len(out["symbol_thesis"]["summary"]) > 400
@@ -237,8 +244,12 @@ def test_row_view_preserves_full_thesis_and_decision_lineage(monkeypatch):
         "decision_id": "dec_noc_7",
         "thesis_id": "symbol_noc",
         "thesis_version": "symbol_noc@v7",
-        "research_delta_id": "delta_noc_7",
+        "research_delta_id": "delta_noc_decision_7",
         "research_delta_classification": "STRENGTHENS",
+        "research_delta": {
+            "delta_id": "delta_noc_decision_7",
+            "classification": "STRENGTHENS",
+        },
         "authority": "READ_ONLY_ADVISORY",
         "financial_action": False,
     }

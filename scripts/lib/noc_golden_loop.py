@@ -308,6 +308,11 @@ def run_noc_golden_loop(root: Path | str) -> dict[str, Any]:
         "source_freshness": {"state": "CURRENT", "as_of": result["evidence_as_of"]},
         "notification_outcome": {"sent": False, "reason": "acceptance_no_transport"},
     }
+    advisory_cache_path = root_p / "data/runtime/advisory_desk_latest.json"
+    advisory_cache = json.loads(advisory_cache_path.read_text(encoding="utf-8"))
+    advisory_cache["data"]["rows"][0]["research_delta"] = first["delta"]
+    advisory_cache["data"]["rows"][0]["thesis_gate"] = gate
+    _write_json(advisory_cache_path, advisory_cache)
     emitted1 = emit_reentry_operator_payloads(
         [decision_row],
         flags={"AGENT_DECISION_PAYLOAD": 1},

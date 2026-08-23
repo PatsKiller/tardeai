@@ -372,7 +372,12 @@ def _row_view(row: dict[str, Any], opinions: dict[str, Any] | None = None) -> di
     senses = row.get("financial_senses") or operator.get("financial_senses")
     field_states = row.get("field_states") or operator.get("field_states")
     thesis = build_symbol_thesis_context(str(row.get("symbol") or ""))
-    delta = thesis.get("research_delta") or {}
+    latest_research_delta = thesis.get("research_delta") or {}
+    decision_delta = (
+        row.get("research_delta")
+        if isinstance(row.get("research_delta"), dict)
+        else latest_research_delta
+    )
     return {
         "symbol": row.get("symbol"),
         "account": row.get("account"),
@@ -423,8 +428,9 @@ def _row_view(row: dict[str, Any], opinions: dict[str, Any] | None = None) -> di
             "decision_id": row.get("decision_id"),
             "thesis_id": thesis.get("thesis_id"),
             "thesis_version": thesis.get("thesis_version"),
-            "research_delta_id": delta.get("delta_id"),
-            "research_delta_classification": delta.get("classification"),
+            "research_delta_id": decision_delta.get("delta_id"),
+            "research_delta_classification": decision_delta.get("classification"),
+            "research_delta": decision_delta or None,
             "authority": "READ_ONLY_ADVISORY",
             "financial_action": False,
         },

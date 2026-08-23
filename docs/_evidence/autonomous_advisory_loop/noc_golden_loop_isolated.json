@@ -39,7 +39,7 @@
         "material program cancellation",
         "guidance withdrawn"
       ],
-      "last_reviewed": "2026-08-23T03:17:53.633893+00:00",
+      "last_reviewed": "2026-08-23T03:20:16.853078+00:00",
       "research_delta": {
         "classification": "STRENGTHENS",
         "delta_id": "rtd_96b661450ff4f747a5fc",
@@ -70,7 +70,7 @@
           "noc_cash_conversion"
         ],
         "cost": {},
-        "created_at": "2026-08-23T03:17:53+00:00",
+        "created_at": "2026-08-23T03:20:16+00:00",
         "delta_id": "rtd_96b661450ff4f747a5fc",
         "deterministic_changes": [
           {
@@ -130,7 +130,7 @@
           "noc_guidance_2026",
           "noc_cash_conversion"
         ],
-        "prompt_context_hash": "efa8b4fca0c4d727d8b3dac26d1653018dee3316cb9fe25d466d3bac90f55f58",
+        "prompt_context_hash": "2f33474f18bd748ac97db1928f1014e3d43db176e665e0a52b4b020fa7380796",
         "provider": "governed_cloud",
         "raw_chain_of_thought": false,
         "reason_summary": "Fresh primary evidence strengthens completeness without promoting action.",
@@ -189,7 +189,7 @@
       "ok": true,
       "old_version": "symbol_noc@v1",
       "review": {
-        "as_of": "2026-08-23T03:17:53+00:00",
+        "as_of": "2026-08-23T03:20:16+00:00",
         "authority": "READ_ONLY_ADVISORY",
         "classification": "THESIS_STRENGTHENED",
         "content_fingerprint": "e9110217269a420e",
@@ -201,7 +201,7 @@
           "operator_input": null,
           "ratified_lessons": [],
           "research_result_id": "research_noc_golden_1",
-          "reviewed_at": "2026-08-23T03:17:53+00:00",
+          "reviewed_at": "2026-08-23T03:20:16+00:00",
           "sector_context": null,
           "trigger": "research_completion"
         },
@@ -236,14 +236,14 @@
         "summary": "NOC remains a HOLD in the defensive-growth role after the latest evidence review. Revenue increased 6.7% as funded backlog supported visible multi-year demand. The B-21 program remains the most important named catalyst for future sales and margin mix. Management guidance supports continued growth but does not justify an independent ADD decision. Cash conversion is the strongest counterpoint and re",
         "symbol": "NOC",
         "thesis_id": "symbol_noc",
-        "ts": "2026-08-23T03:17:53+00:00",
+        "ts": "2026-08-23T03:20:16+00:00",
         "version": 2
       },
       "thesis_id": "symbol_noc",
       "version_published": true
     },
     "cio": {
-      "as_of": "2026-08-23T03:17:53+00:00",
+      "as_of": "2026-08-23T03:20:17+00:00",
       "authority": "READ_ONLY_ADVISORY",
       "counter_thesis": [
         "noc_cash_conversion"
@@ -291,7 +291,7 @@
           ],
           "priority": "P3",
           "request_id": "str_82a3ee789d0d68ea",
-          "requested_at": "2026-08-23T03:17:53+00:00",
+          "requested_at": "2026-08-23T03:20:16+00:00",
           "required_evidence_domains": [
             "rag_existing",
             "searxng_metasearch",
@@ -354,7 +354,7 @@
       "channel": "command_center_symbol_card",
       "decision_id": "dec_noc_golden_v2",
       "eligible_for_operator_rejection_recall": true,
-      "feedback_id": "otf_dbc6d4bffcaa4949",
+      "feedback_id": "otf_1de868ffaa674fb6",
       "free_text": "Cash conversion needs one more filing before confidence rises.",
       "intent": "DISAGREE",
       "linkage_complete": true,
@@ -368,12 +368,12 @@
       "symbol": "NOC",
       "thesis_id": "symbol_noc",
       "thesis_version": "symbol_noc@v2",
-      "timestamp": "2026-08-23T03:17:53+00:00",
+      "timestamp": "2026-08-23T03:20:17+00:00",
       "trust": "NORMAL",
-      "ts": "2026-08-23T03:17:53+00:00"
+      "ts": "2026-08-23T03:20:17+00:00"
     },
     "next_prompt": {
-      "as_of": "2026-08-23T03:17:53+00:00",
+      "as_of": "2026-08-23T03:20:17+00:00",
       "authority": "READ_ONLY_ADVISORY",
       "counter_evidence": [
         {
@@ -421,7 +421,7 @@
       "operator_feedback": [
         {
           "decision_id": "dec_noc_golden_v2",
-          "feedback_id": "otf_dbc6d4bffcaa4949",
+          "feedback_id": "otf_1de868ffaa674fb6",
           "intent": "DISAGREE",
           "operator_identity_class": "ACCEPTANCE_OPERATOR",
           "reason": "Cash conversion needs one more filing before confidence rises.",
@@ -430,7 +430,7 @@
           "status": "ACTIVE",
           "thesis_id": "symbol_noc",
           "thesis_version": "symbol_noc@v2",
-          "timestamp": "2026-08-23T03:17:53+00:00",
+          "timestamp": "2026-08-23T03:20:17+00:00",
           "trust": "NORMAL"
         }
       ],
@@ -448,7 +448,7 @@
           "noc_cash_conversion"
         ],
         "cost": {},
-        "created_at": "2026-08-23T03:17:53+00:00",
+        "created_at": "2026-08-23T03:20:16+00:00",
         "delta_id": "rtd_96b661450ff4f747a5fc",
         "deterministic_changes": [
           {
@@ -508,7 +508,7 @@
           "noc_guidance_2026",
           "noc_cash_conversion"
         ],
-        "prompt_context_hash": "efa8b4fca0c4d727d8b3dac26d1653018dee3316cb9fe25d466d3bac90f55f58",
+        "prompt_context_hash": "2f33474f18bd748ac97db1928f1014e3d43db176e665e0a52b4b020fa7380796",
         "provider": "governed_cloud",
         "raw_chain_of_thought": false,
         "reason_summary": "Fresh primary evidence strengthens completeness without promoting action.",
@@ -562,7 +562,7 @@
           "invalidation conditions"
         ]
       },
-      "prompt_context_hash": "98fa59c374d9364f7b2dfd4709afeb317a26d84516e2b2e7accc531c04ea16f7",
+      "prompt_context_hash": "2a10914d008179f1fa0be4471c02db96cb6bf7b6f5739c785da87959b939cf2a",
       "question": "What changed in the standing NOC thesis?",
       "rag": {
         "contradictory": [
@@ -593,7 +593,7 @@
       "schema": "ResearchPromptContext@v1",
       "sector_industry_state": null,
       "standing_thesis": {
-        "age_days": 2.951388888888889e-08,
+        "age_days": 3.133101851851852e-08,
         "counter_evidence": [
           "noc_cash_conversion"
         ],
@@ -606,7 +606,7 @@
           "material program cancellation",
           "guidance withdrawn"
         ],
-        "last_reviewed": "2026-08-23T03:17:53.633893+00:00",
+        "last_reviewed": "2026-08-23T03:20:16.853078+00:00",
         "stance": "HOLD",
         "state": "CURRENT",
         "summary": "NOC remains a HOLD in the defensive-growth role after the latest evidence review. Revenue increased 6.7% as funded backlog supported visible multi-year demand. The B-21 program remains the most important named catalyst for future sales and margin mix. Management guidance supports continued growth but does not justify an independent ADD decision. Cash conversion is the strongest counterpoint and requires confirmation in the next filing. The standing thesis is strengthened because program funding and execution evidence improved. Material program cancellation or withdrawn guidance remains the explicit invalidation condition. NOC should therefore remain held while deterministic portfolio gates retain decision authority. This delta improves evidence completeness and grants no trading or broker authority.",
@@ -647,7 +647,7 @@
         }
       ],
       "model": "acceptance-model",
-      "prompt_context_hash": "efa8b4fca0c4d727d8b3dac26d1653018dee3316cb9fe25d466d3bac90f55f58",
+      "prompt_context_hash": "2f33474f18bd748ac97db1928f1014e3d43db176e665e0a52b4b020fa7380796",
       "provider": "governed_cloud",
       "raw_response_provenance": {
         "raw_chain_of_thought": false,
@@ -685,7 +685,7 @@
     "symbol_card": {
       "active_research": [],
       "advisory_verdict": "READY",
-      "as_of": "2026-08-23T03:17:53+00:00",
+      "as_of": "2026-08-23T03:20:16+00:00",
       "authority": "READ_ONLY_ADVISORY",
       "cio_action": {
         "action": "READY",
@@ -705,7 +705,7 @@
             "noc_cash_conversion"
           ],
           "cost": {},
-          "created_at": "2026-08-23T03:17:53+00:00",
+          "created_at": "2026-08-23T03:20:16+00:00",
           "delta_id": "rtd_96b661450ff4f747a5fc",
           "deterministic_changes": [
             {
@@ -765,7 +765,7 @@
             "noc_guidance_2026",
             "noc_cash_conversion"
           ],
-          "prompt_context_hash": "efa8b4fca0c4d727d8b3dac26d1653018dee3316cb9fe25d466d3bac90f55f58",
+          "prompt_context_hash": "2f33474f18bd748ac97db1928f1014e3d43db176e665e0a52b4b020fa7380796",
           "provider": "governed_cloud",
           "raw_chain_of_thought": false,
           "reason_summary": "Fresh primary evidence strengthens completeness without promoting action.",
@@ -836,7 +836,7 @@
         "material program cancellation",
         "guidance withdrawn"
       ],
-      "last_reviewed": "2026-08-23T03:17:53.633893+00:00",
+      "last_reviewed": "2026-08-23T03:20:16.853078+00:00",
       "lesson_refs": [],
       "market_sector_fit": "NOC remains a HOLD in the defensive-growth role after the latest evidence review. Revenue increased 6.7% as funded backlog supported visible multi-year demand. The B-21 program remains the most important named catalyst for future sales and margin mix. Management guidance supports continued growth but does not justify an independent ADD decision. Cash conversion is the strongest counterpoint and requires confirmation in the next filing. The standing thesis is strengthened because program funding and execution evidence improved. Material program cancellation or withdrawn guidance remains the explicit invalidation condition. NOC should therefore remain held while deterministic portfolio gates retain decision authority. This delta improves evidence completeness and grants no trading or broker authority.",
       "memberships": [
@@ -888,7 +888,7 @@
           ],
           "priority": "P3",
           "request_id": "str_82a3ee789d0d68ea",
-          "requested_at": "2026-08-23T03:17:53+00:00",
+          "requested_at": "2026-08-23T03:20:16+00:00",
           "required_evidence_domains": [
             "rag_existing",
             "searxng_metasearch",
@@ -925,7 +925,7 @@
       "thesis_history": [
         {
           "evidence_refs": [],
-          "published_at": "2026-08-23T03:17:53.633893+00:00",
+          "published_at": "2026-08-23T03:20:16.853078+00:00",
           "reason_for_change": "THESIS_STRENGTHENED via research_completion; old_stance=HOLD \u2192 HOLD",
           "stance": "HOLD",
           "summary": "NOC remains a HOLD in the defensive-growth role after the latest evidence review. Revenue increased 6.7% as funded backlog supported visible multi-year demand. The B-21 program remains the most important named catalyst for future sales and margin mix. Management guidance supports continued growth but does not justify an independent ADD decision. Cash conversion is the strongest counterpoint and requires confirmation in the next filing. The standing thesis is strengthened because program funding and execution evidence improved. Material program cancellation or withdrawn guidance remains the explicit invalidation condition. NOC should therefore remain held while deterministic portfolio gates retain decision authority. This delta improves evidence completeness and grants no trading or broker authority.",
@@ -933,7 +933,7 @@
         },
         {
           "evidence_refs": [],
-          "published_at": "2026-08-23T03:17:53.615703+00:00",
+          "published_at": "2026-08-23T03:20:16.834402+00:00",
           "reason_for_change": "Acceptance seed standing thesis",
           "stance": "HOLD",
           "summary": "NOC is held as a defensive-growth aerospace and defense position. Its funded backlog provides multi-year demand visibility across named programs. Program execution and margin conversion remain the primary operating tests. Government budget durability supports the role but does not remove appropriation risk. B-21 execution is a material catalyst and concentration risk. Free-cash-flow conversion must corroborate reported revenue growth. The position remains a HOLD while valuation and portfolio gates remain unchanged. A material program cancellation or withdrawn guidance would invalidate the thesis. No part of this thesis grants trading or broker authority.",
