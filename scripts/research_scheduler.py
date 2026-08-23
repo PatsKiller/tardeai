@@ -537,11 +537,6 @@ QUESTION = ("Is {sym} a sound {kind} right now? Flag any NEW catalysts, risks, o
             "last few days. Give a clear recommendation and what would change your mind. Advisory only.")
 
 
-def _enqueue_local(sym, tier, deep=False, *, thesis_gap: dict | None = None) -> dict:
-    """Retained for callers that must receive an explicit policy refusal."""
-    return {"ok": False, "tail": "POLICY_LOCAL_GENERATIVE_FORBIDDEN"}
-
-
 def result_is_budget_throttle(res: dict | None) -> bool:
     """True when the researcher hit COST_CAP — stop the rest of this run.
 
