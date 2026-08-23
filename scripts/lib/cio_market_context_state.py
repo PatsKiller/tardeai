@@ -91,8 +91,16 @@ def build_market_context_state(
     }
     macro_events = list(macro_calendar or [])
     earnings_events = list(portfolio_earnings_calendar or [])
-    fields["macro_calendar"] = _field(macro_events if macro_events else None, source="economic_calendar", as_of=now)
-    fields["portfolio_earnings_calendar"] = _field(earnings_events if earnings_events else None, source="portfolio_earnings_calendar", as_of=now)
+    fields["macro_calendar"] = _field(
+        macro_events if macro_events else None,
+        source="economic_calendar",
+        as_of=now if macro_events else None,
+    )
+    fields["portfolio_earnings_calendar"] = _field(
+        earnings_events if earnings_events else None,
+        source="portfolio_earnings_calendar",
+        as_of=now if earnings_events else None,
+    )
 
     unavailable = sorted(name for name, field in fields.items() if field["state"] == "UNAVAILABLE")
     stale = sorted(name for name, field in fields.items() if field["state"] == "STALE")

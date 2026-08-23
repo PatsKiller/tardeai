@@ -121,3 +121,27 @@ def test_market_context_and_seasonality_sources_have_no_financial_mutation_impor
         source = (root / rel).read_text(encoding="utf-8").lower()
         for forbidden in ("place_order", "cancel_order", "modify_stop", "broker_client", "2fa"):
             assert forbidden not in source
+
+
+def test_unavailable_calendars_do_not_change_version_with_wall_clock():
+    first = build_market_context_state(
+        regime_snapshot=_regime(),
+        fred_rows=[
+            _fred("DFF", 3.63, "2026-08-20"),
+            _fred("T10Y2Y", 0.5, "2026-08-21"),
+            _fred("VIXCLS", 16.01, "2026-08-20"),
+        ],
+        evaluated_at=NOW,
+    )
+    second = build_market_context_state(
+        regime_snapshot=_regime(),
+        fred_rows=[
+            _fred("DFF", 3.63, "2026-08-20"),
+            _fred("T10Y2Y", 0.5, "2026-08-21"),
+            _fred("VIXCLS", 16.01, "2026-08-20"),
+        ],
+        evaluated_at=NOW.replace(minute=NOW.minute + 1),
+    )
+    assert first["version"] == second["version"]
+    assert first["fields"]["macro_calendar"]["as_of"] is None
+    assert first["fields"]["portfolio_earnings_calendar"]["as_of"] is None

@@ -40337,6 +40337,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     return 200, _cio.get_market_context_state_v1()
                 if p == "brain/seasonality":
                     return 200, _cio.get_seasonality_state_v1()
+                if p in ("brain/portfolio-thesis", "brain/portfolio_thesis"):
+                    return 200, _cio.get_portfolio_thesis_v1()
                 if p in ("investment-product", "investment-books", "books"):
                     return 200, _cio.get_investment_product()
                 if p == "dispositions":
