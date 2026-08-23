@@ -7,6 +7,10 @@ MATURITY_IMPACT: `Command Center universe-theses shows coverage+substantive+THIN
 - Canonical results: `docs/ops/CIO_UI_AUDIT_2026-08-22.md`. Raw JSON dump Drive `1pPqmKAfV9da93Q69i_ieERYdu27wlKoo`.
 - Pin integrity: restored 13 overlaid scripts + removed 2 unpinned extras (Telegram T1/T2). Backup `~/archives/current-pin-overlay-2026-08-22/`.
 - origin/main: invalidate attach `_CACHE` on jsonl mtime; stop `[:400]`/`[:300]` stubs; emit `substantive_pct` + THIN; never render `DATA_UNAVAILABLE` as a thesis body; render `daily_thesis_changes`.
+- L2: live `coverage_pct 2.4` = **3 CURRENT / 124 material** (stale process cache), not 22 held. `/v3/advisory` does not produce that number.
+- L4: `/api/v3` `_serving` stamp (process start, loaded pin, disk pin) + `process-freshness` alarm.
+- L5: lane health fires `error_rate_24h` even when streak is 0 (DeepSeek 441/1336 COST_CAP).
+- L1: #460 CI 0-step / no runner — same on main since 2026-08-21 18:21Z. Not a #460 test regression. No merge while red.
 
 ## 2026-08-22 — Lifecycle as-of (ingest, mint, what agents actually do)
 

@@ -8,6 +8,7 @@ READ_ONLY_ADVISORY. No broker mutation. No LLM calls.
 """
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 from datetime import datetime, timezone
@@ -207,3 +208,54 @@ def collect_pin_report(*, now: Optional[datetime] = None) -> dict[str, Any]:
     row["current_dir"] = str(cur.resolve())
     row["repo"] = str(repo)
     return row
+
+
+BOOT_STAMP = "data/runtime/portfolio_server_boot.json"
+
+
+def collect_process_freshness(*, now: Optional[datetime] = None) -> dict[str, Any]:
+    """Alarm when the running :7777 process predates the pin or loaded a different SHA.
+
+    Same class as last_real / [:500] / stale attach cache: a lagged view served as now.
+    """
+    now = now or datetime.now(timezone.utc)
+    cur = current_dir()
+    disk_sha = read_source_commit(cur) if cur.is_dir() else ""
+    stamp_path = (cur / BOOT_STAMP) if cur.is_dir() else Path("/nonexistent")
+    firing: list[str] = []
+    loaded = ""
+    started = ""
+    try:
+        stamp = json.loads(stamp_path.read_text(encoding="utf-8")) if stamp_path.is_file() else {}
+    except (OSError, json.JSONDecodeError):
+        stamp = {}
+    if not stamp:
+        firing.append("boot_stamp_missing")
+    else:
+        loaded = str(stamp.get("loaded_pin_sha") or "")
+        started = str(stamp.get("process_started_at") or "")
+        if disk_sha and loaded and loaded != disk_sha:
+            firing.append("loaded_pin_ne_current_pin")
+        pin_file = cur / "SOURCE_COMMIT"
+        try:
+            pin_mtime = datetime.fromtimestamp(pin_file.stat().st_mtime, tz=timezone.utc)
+            if started:
+                st = datetime.fromisoformat(started.replace("Z", "+00:00"))
+                if st.tzinfo is None:
+                    st = st.replace(tzinfo=timezone.utc)
+                if st < pin_mtime:
+                    firing.append("process_predates_pin")
+        except (OSError, ValueError):
+            pass
+    return {
+        "lane": "process-freshness",
+        "ok": not firing,
+        "firing": firing,
+        "loaded_pin_sha": loaded or None,
+        "current_pin_sha": disk_sha or None,
+        "process_started_at": started or None,
+        "boot_stamp": str(stamp_path) if stamp_path.is_file() else None,
+        "authority": AUTHORITY,
+        "schema": "ProcessFreshness@v1",
+        "as_of": now.replace(microsecond=0).isoformat(),
+    }

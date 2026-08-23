@@ -68,6 +68,28 @@ def test_manual_claude_silence_does_not_fire():
     assert row["ok"] is True
 
 
+def test_error_rate_fires_when_streak_is_zero():
+    """895 sent then 441 cap errors: streak 0, rate 33% — must still fire."""
+    now = datetime(2026, 8, 22, tzinfo=timezone.utc)
+    newest = [{"recommendation": "Hold SCHD", "created_at": now}]  # streak resets
+    last_24h = (
+        [{"recommendation": "Hold"}] * 9
+        + [{"recommendation": "[ERROR] COST_CAP_EXCEEDED: daily request cap"}] * 5
+    )
+    row = evaluate_lane(
+        "deepseek",
+        newest_first=newest,
+        last_24h=last_24h,
+        silence=True,
+        streak_n=5,
+        now=now,
+    )
+    assert row["error_streak"] == 0
+    assert row["error_rate_24h"] == round(100.0 * 5 / 14, 1)
+    assert row["ok"] is False
+    assert any(x.startswith("error_rate_24h:") for x in row["firing"])
+
+
 def test_chatgpt_24h_zero_ok_fires():
     now = datetime(2026, 8, 21, tzinfo=timezone.utc)
     rows = [{"recommendation": "[AUTH_PENDING] x", "created_at": now}] * 3
