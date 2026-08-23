@@ -22,9 +22,21 @@ from scripts.lib.maturity_scorecard import (  # noqa: E402
 NOW = datetime(2026, 8, 21, 18, 0, tzinfo=timezone.utc)
 FILE_DIMS = (
     "research_skip",
+    "research_acquisition",
+    "research_utilization",
     "holdings_universe",
     "held_thesis_coverage",
+    "thesis_freshness",
     "decision_payload",
+    "decision_payload_coverage",
+    "feedback_coverage",
+    "outcome_coverage",
+    "rag_freshness",
+    "source_provenance",
+    "notification_signal_noise",
+    "pin_integrity",
+    "gpu_policy_compliance",
+    "tree_root_integrity",
 )
 
 
@@ -134,6 +146,48 @@ def test_holdings_and_coverage_and_payloads(tmp_path, monkeypatch):
     assert dp["status"] == STATUS_MEASURED
     assert dp["score"] == 1
     assert dp["inputs"]["decision_payload_n"] == 1
+    assert card["dimensions"]["decision_payload_coverage"]["score"] == 0.0
+
+
+def test_required_live_dimensions_use_fresh_evidence(tmp_path, monkeypatch):
+    monkeypatch.setenv("TRADEAI_ROOT", str(tmp_path))
+    cio = _cio(tmp_path)
+    delta = {
+        "schema": "ResearchThesisDelta@v1", "as_of": "2026-08-21T15:00:00+00:00",
+        "classification": "STRENGTHENS", "research_id": "r1", "provider": "cloud",
+        "model": "m1", "prompt_context_hash": "p1", "source_refs": ["sec:1"],
+        "evidence_as_of": "2026-08-21T14:00:00+00:00", "thesis_publish_eligible": True,
+    }
+    (cio / "research_thesis_deltas.jsonl").write_text(json.dumps(delta) + "\n", encoding="utf-8")
+    feedback = {
+        "ts": "2026-08-21T15:10:00+00:00", "status": "ACTIVE", "linkage_complete": True,
+    }
+    (cio / "operator_ticker_feedback.jsonl").write_text(json.dumps(feedback) + "\n", encoding="utf-8")
+    outcomes = [
+        {"record_id": "o1", "status": "FROZEN", "prediction_timestamp": "2026-08-21T12:00:00+00:00"},
+        {"record_id": "o1", "status": "EVALUATED", "outcome_timestamp": "2026-08-21T16:00:00+00:00", "benchmark_relative_return": 0.02},
+    ]
+    (cio / "advisory_outcomes_v1.jsonl").write_text(
+        "".join(json.dumps(row) + "\n" for row in outcomes), encoding="utf-8"
+    )
+    metrics = {"ts": "2026-08-21T16:30:00+00:00", "immediate_notifications": 1, "suppressed_unchanged": 3}
+    (cio / "cio_notification_metrics.jsonl").write_text(json.dumps(metrics) + "\n", encoding="utf-8")
+    artifacts = {
+        "rag_freshness_latest.json": {"as_of": "2026-08-21T17:00:00+00:00", "freshness_score": 1, "total_embeddings": 100},
+        "pin_integrity_latest.json": {"as_of": "2026-08-21T17:00:00+00:00", "integrity_score": 1, "pin_match": True, "process_fresh": True},
+        "gpu_policy_latest.json": {"as_of": "2026-08-21T17:00:00+00:00", "compliance_score": 1, "gpu_mode": "DISABLED", "source_violation_count": 0, "installed_generative_count": 0},
+        "ops_tree_pin_audit_latest.json": {"as_of": "2026-08-21T17:00:00+00:00", "integrity_score": 1, "tradeai_n": 10, "drift_n": 0},
+    }
+    for name, row in artifacts.items():
+        (cio / name).write_text(json.dumps(row), encoding="utf-8")
+    card = compute_scorecard(root=tmp_path, now=NOW)
+    for name in (
+        "research_utilization", "feedback_coverage", "outcome_coverage", "rag_freshness",
+        "source_provenance", "notification_signal_noise", "pin_integrity",
+        "gpu_policy_compliance", "tree_root_integrity",
+    ):
+        assert card["dimensions"][name]["status"] == STATUS_MEASURED, name
+        assert card["dimensions"][name]["score"] == 1.0, name
 
 
 def test_handle_get_scorecard_200(tmp_path, monkeypatch):
