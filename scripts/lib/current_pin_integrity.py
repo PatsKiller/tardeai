@@ -210,7 +210,22 @@ def collect_pin_report(*, now: Optional[datetime] = None) -> dict[str, Any]:
     return row
 
 
-BOOT_STAMP = "data/runtime/portfolio_server_boot.json"
+def boot_stamp_path() -> Path:
+    override = os.getenv("PORTFOLIO_SERVER_BOOT_STAMP_PATH")
+    if override:
+        return Path(override).expanduser()
+    return Path.home() / ".local" / "state" / "tradeai" / "portfolio_server_boot.json"
+
+
+def _pin_changed_at(cur: Path) -> Optional[datetime]:
+    candidates: list[datetime] = []
+    for path, follow in ((cur, False), (cur / "SOURCE_COMMIT", True)):
+        try:
+            stat = path.stat() if follow else path.lstat()
+            candidates.append(datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc))
+        except OSError:
+            continue
+    return max(candidates) if candidates else None
 
 
 def collect_process_freshness(*, now: Optional[datetime] = None) -> dict[str, Any]:
@@ -221,7 +236,7 @@ def collect_process_freshness(*, now: Optional[datetime] = None) -> dict[str, An
     now = now or datetime.now(timezone.utc)
     cur = current_dir()
     disk_sha = read_source_commit(cur) if cur.is_dir() else ""
-    stamp_path = (cur / BOOT_STAMP) if cur.is_dir() else Path("/nonexistent")
+    stamp_path = boot_stamp_path()
     firing: list[str] = []
     loaded = ""
     started = ""
@@ -236,14 +251,13 @@ def collect_process_freshness(*, now: Optional[datetime] = None) -> dict[str, An
         started = str(stamp.get("process_started_at") or "")
         if disk_sha and loaded and loaded != disk_sha:
             firing.append("loaded_pin_ne_current_pin")
-        pin_file = cur / "SOURCE_COMMIT"
         try:
-            pin_mtime = datetime.fromtimestamp(pin_file.stat().st_mtime, tz=timezone.utc)
+            pin_mtime = _pin_changed_at(cur)
             if started:
                 st = datetime.fromisoformat(started.replace("Z", "+00:00"))
                 if st.tzinfo is None:
                     st = st.replace(tzinfo=timezone.utc)
-                if st < pin_mtime:
+                if pin_mtime and st < pin_mtime:
                     firing.append("process_predates_pin")
         except (OSError, ValueError):
             pass
@@ -254,6 +268,8 @@ def collect_process_freshness(*, now: Optional[datetime] = None) -> dict[str, An
         "loaded_pin_sha": loaded or None,
         "current_pin_sha": disk_sha or None,
         "process_started_at": started or None,
+        "current_pin_changed_at": _pin_changed_at(cur).replace(microsecond=0).isoformat()
+            if _pin_changed_at(cur) else None,
         "boot_stamp": str(stamp_path) if stamp_path.is_file() else None,
         "authority": AUTHORITY,
         "schema": "ProcessFreshness@v1",

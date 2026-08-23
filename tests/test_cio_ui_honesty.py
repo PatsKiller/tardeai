@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -67,6 +68,31 @@ def test_universe_metrics_exposes_substantive_and_thin():
     assert '"held_current": metrics.get("held_current")' in cc
 
 
+def test_percentage_definitions_declare_numerator_denominator_and_scope(monkeypatch, tmp_path):
+    import scripts.lib.symbol_thesis_attach as attach
+
+    rows = {
+        "NOC": {"symbol": "NOC", "material": True, "memberships": ["HELD"], "coverage_state": "CURRENT"},
+        "PFLT": {"symbol": "PFLT", "material": True, "memberships": ["HELD"], "coverage_state": "THIN"},
+        "AVAV": {"symbol": "AVAV", "material": True, "memberships": ["REENTRY"], "coverage_state": "RESEARCH_REQUIRED"},
+    }
+    monkeypatch.setattr(attach, "_load", lambda root: ({}, _Store({"desk": {"thesis_version": "desk@v1"}}), rows))
+    out = attach.universe_metrics(root=tmp_path)
+    held = out["percentage_definitions"]["held_substantive"]
+    material = out["percentage_definitions"]["material_coverage"]
+    assert held == {
+        "numerator": 1,
+        "denominator": 2,
+        "numerator_states": ["CURRENT"],
+        "membership_scope": "HELD_equity_tickers_excluding_cash_and_unresolved_identifiers",
+        "formula": "100 * CURRENT / held",
+        "pct": 50.0,
+    }
+    assert material["numerator"] == 2
+    assert material["denominator"] == 3
+    assert material["pct"] == 66.7
+
+
 def test_serving_stamp_and_boot_stamp_exist_in_server():
     src = (ROOT / "scripts/portfolio_server.py").read_text(encoding="utf-8")
     assert "ServingFreshness@v1" in src
@@ -77,9 +103,29 @@ def test_serving_stamp_and_boot_stamp_exist_in_server():
     assert "loaded_pin_ne_current_pin" in pin
 
 
+def test_serving_stamp_has_complete_freshness_contract(monkeypatch):
+    import scripts.portfolio_server as server
+
+    class Handler:
+        path = "/api/v3/cio/universe-theses"
+
+    monkeypatch.setattr(server, "LOADED_PIN_SHA", "abc")
+    monkeypatch.setattr(server, "_read_pin_sha", lambda root: "abc")
+    stamped = server._stamp_serving(Handler(), {"as_of": datetime.now(timezone.utc).isoformat()})
+    freshness = stamped["_serving"]
+    assert freshness["source_pin"] == "abc"
+    assert freshness["loaded_pin"] == "abc"
+    assert freshness["process_started_at"]
+    assert freshness["data_as_of"]
+    assert freshness["cache_age"] is not None
+    assert freshness["pin_match"] is True
+
+
 def test_ciohub_renders_substantive_and_thin_not_coverage_only():
     src = (ROOT / "apps/command-center-v3/src/pages/CioHub.tsx").read_text(encoding="utf-8")
     assert "Held substantive" in src
     assert "thesis_state === 'THIN'" in src
     assert "cio-daily-thesis-changes" in src
     assert "dec_${id.slice" not in src
+    assert "heldSub.numerator" in src
+    assert "materialCov.denominator" in src

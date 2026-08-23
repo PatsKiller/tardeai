@@ -4,6 +4,8 @@ READ_ONLY_ADVISORY. Never invents why_owned/why_exited. Never grants RE_ENTER.
 """
 from __future__ import annotations
 
+import os
+import time
 from pathlib import Path
 from typing import Any, Optional
 
@@ -19,6 +21,7 @@ from scripts.lib.symbol_universe import reconcile_universe
 _CACHE: dict[str, Any] = {
     "root": None,
     "token": None,
+    "loaded_monotonic": None,
     "universe": None,
     "store": None,
     "by_sym": None,
@@ -36,7 +39,9 @@ def _store_token(root: Path) -> tuple:
     for rel in (
         "data/cio/cio_theses.jsonl",
         "data/cio/cio_theses_projection.json",
-        "data/holdings.json",
+        "data/portfolios/state/holdings.json",
+        "data/runtime/reentry_decision_desk_latest.json",
+        "data/cio/cio_investment_brief.json",
     ):
         p = root / rel
         try:
@@ -55,7 +60,14 @@ def _root(root: Path | str | None) -> Path:
 
 def _load(root: Path) -> tuple[dict[str, Any], CIOThesisStore, dict[str, dict[str, Any]]]:
     token = _store_token(root)
-    if _CACHE.get("token") == token and _CACHE.get("by_sym") is not None:
+    now = time.monotonic()
+    try:
+        max_age = max(0.0, float(os.getenv("SYMBOL_THESIS_CACHE_MAX_AGE_SECONDS", "30")))
+    except ValueError:
+        max_age = 30.0
+    loaded = _CACHE.get("loaded_monotonic")
+    cache_fresh = isinstance(loaded, (int, float)) and now - float(loaded) <= max_age
+    if _CACHE.get("token") == token and _CACHE.get("by_sym") is not None and cache_fresh:
         return _CACHE["universe"], _CACHE["store"], _CACHE["by_sym"]
     universe = reconcile_universe(root)
     store = CIOThesisStore(
@@ -68,6 +80,7 @@ def _load(root: Path) -> tuple[dict[str, Any], CIOThesisStore, dict[str, dict[st
     _CACHE.update({
         "root": str(root),
         "token": token,
+        "loaded_monotonic": now,
         "universe": universe,
         "store": store,
         "by_sym": by_sym,
@@ -76,7 +89,14 @@ def _load(root: Path) -> tuple[dict[str, Any], CIOThesisStore, dict[str, dict[st
 
 
 def clear_cache() -> None:
-    _CACHE.update({"root": None, "token": None, "universe": None, "store": None, "by_sym": None})
+    _CACHE.update({
+        "root": None,
+        "token": None,
+        "loaded_monotonic": None,
+        "universe": None,
+        "store": None,
+        "by_sym": None,
+    })
 
 
 def _operator_text(raw: Any) -> str | None:
@@ -277,6 +297,40 @@ def universe_metrics(*, root: Path | str | None = None) -> dict[str, Any]:
     n_h = len(held)
     current_h = _c("CURRENT", held)
     thin_h = _c("THIN", held)
+    percentage_definitions = {
+        "material_coverage": {
+            "numerator": current_m + thin_m,
+            "denominator": n_m,
+            "numerator_states": ["CURRENT", "THIN"],
+            "membership_scope": "material_union_excluding_non_material",
+            "formula": "100 * (CURRENT + THIN) / material",
+            "pct": round((100.0 * (current_m + thin_m) / n_m) if n_m else 0.0, 1),
+        },
+        "material_substantive": {
+            "numerator": current_m,
+            "denominator": n_m,
+            "numerator_states": ["CURRENT"],
+            "membership_scope": "material_union_excluding_non_material",
+            "formula": "100 * CURRENT / material",
+            "pct": round((100.0 * current_m / n_m) if n_m else 0.0, 1),
+        },
+        "held_coverage": {
+            "numerator": current_h + thin_h,
+            "denominator": n_h,
+            "numerator_states": ["CURRENT", "THIN"],
+            "membership_scope": "HELD_equity_tickers_excluding_cash_and_unresolved_identifiers",
+            "formula": "100 * (CURRENT + THIN) / held",
+            "pct": round((100.0 * (current_h + thin_h) / n_h) if n_h else 0.0, 1),
+        },
+        "held_substantive": {
+            "numerator": current_h,
+            "denominator": n_h,
+            "numerator_states": ["CURRENT"],
+            "membership_scope": "HELD_equity_tickers_excluding_cash_and_unresolved_identifiers",
+            "formula": "100 * CURRENT / held",
+            "pct": round((100.0 * current_h / n_h) if n_h else 0.0, 1),
+        },
+    }
     return {
         "universe_union": len(rows),
         "material": n_m,
@@ -302,6 +356,7 @@ def universe_metrics(*, root: Path | str | None = None) -> dict[str, Any]:
         "held_substantive_pct": round(
             (100.0 * current_h / n_h) if n_h else 0.0, 1
         ),
+        "percentage_definitions": percentage_definitions,
         "desk": (store.get_current("desk") or {}).get("thesis_version"),
         "authority": "READ_ONLY_ADVISORY",
     }

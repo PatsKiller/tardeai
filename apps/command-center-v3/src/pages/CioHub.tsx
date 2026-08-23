@@ -1031,6 +1031,10 @@ function UniverseThesesPanel() {
   const missingApi = Boolean(error && String(error).includes('HTTP 404'))
   const payloadError = data && data.ok === false
   const rows = Array.isArray(data?.symbols) ? data!.symbols! : []
+  const metricDefs = (data?.metrics?.percentage_definitions || {}) as Record<string, any>
+  const heldSub = metricDefs.held_substantive || {}
+  const materialCov = metricDefs.material_coverage || {}
+  const materialSub = metricDefs.material_substantive || {}
   return (
     <div data-testid="cio-universe-theses" style={{ display: 'grid', gap: 14 }}>
       <div style={{ fontSize: 12, color: 'var(--text3)' }}>
@@ -1047,9 +1051,9 @@ function UniverseThesesPanel() {
       {data?.metrics && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12 }}>
           <Stat label="Held CURRENT / THIN" value={`${data.metrics.held_current ?? '—'} / ${data.metrics.held_thin ?? '—'} of ${data.metrics.held ?? '—'}`} help="Living theses on current holdings. CURRENT is PASS-grade. THIN cleared the 40-char floor but failed substantiveness." />
-          <Stat label="Held substantive" value={data.metrics.held_substantive_pct != null ? `${data.metrics.held_substantive_pct}%` : '—'} help="PASS-grade CURRENT / held. This is the real number. Coverage alone is the fake-green." />
-          <Stat label="Material coverage" value={data.metrics.coverage_pct != null ? `${data.metrics.coverage_pct}%` : '—'} help="CURRENT+THIN over material universe. THIN counts here." />
-          <Stat label="Material substantive" value={data.metrics.substantive_pct != null ? `${data.metrics.substantive_pct}%` : '—'} help="CURRENT (PASS) over material universe. THIN excluded." />
+          <Stat label="Held substantive" value={heldSub.denominator != null ? `${heldSub.pct}% (${heldSub.numerator}/${heldSub.denominator})` : '—'} help="CURRENT over held equity tickers; cash and unresolved identifiers excluded." />
+          <Stat label="Material coverage" value={materialCov.denominator != null ? `${materialCov.pct}% (${materialCov.numerator}/${materialCov.denominator})` : '—'} help="CURRENT + THIN over the declared material-union denominator." />
+          <Stat label="Material substantive" value={materialSub.denominator != null ? `${materialSub.pct}% (${materialSub.numerator}/${materialSub.denominator})` : '—'} help="CURRENT only over the declared material-union denominator." />
           <Stat label="Research required" value={String(data.metrics.research_required ?? '—')} />
           {data.metrics.bonds_unresolved != null && (
             <Stat label="Bonds & unresolved" value={String(data.metrics.bonds_unresolved)} help="CUSIP/unresolved identifiers sorted out of the main list." />

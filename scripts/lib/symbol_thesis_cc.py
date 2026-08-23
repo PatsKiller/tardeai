@@ -200,6 +200,7 @@ def build_universe_theses_projection(
             "held_thin": metrics.get("held_thin"),
             "held_coverage_pct": metrics.get("held_coverage_pct"),
             "held_substantive_pct": metrics.get("held_substantive_pct"),
+            "percentage_definitions": metrics.get("percentage_definitions") or {},
             "open_thesis_research_proposed": (proposed or {}).get("counts", {}).get("proposed") if proposed else 0,
             "desk": metrics.get("desk"),
         },

@@ -38,7 +38,7 @@ import os
 import subprocess
 import sys
 import threading
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
@@ -60,6 +60,38 @@ def _read_pin_sha(root: Path) -> str:
 
 
 LOADED_PIN_SHA = _read_pin_sha(PROJECT_ROOT)
+
+
+def _boot_stamp_path() -> Path:
+    override = os.getenv("PORTFOLIO_SERVER_BOOT_STAMP_PATH")
+    if override:
+        return Path(override).expanduser()
+    return Path.home() / ".local" / "state" / "tradeai" / "portfolio_server_boot.json"
+
+
+def _data_as_of(data: dict) -> str | None:
+    for candidate in (
+        data.get("data_as_of"),
+        data.get("source_as_of"),
+        data.get("as_of"),
+        (data.get("data") or {}).get("data_as_of") if isinstance(data.get("data"), dict) else None,
+        (data.get("data") or {}).get("as_of") if isinstance(data.get("data"), dict) else None,
+    ):
+        if candidate:
+            return str(candidate)
+    return None
+
+
+def _age_seconds(as_of: str | None) -> float | None:
+    if not as_of:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(as_of).replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return round(max(0.0, (datetime.now(timezone.utc) - parsed).total_seconds()), 3)
+    except (TypeError, ValueError):
+        return None
 
 # Make the repo ROOT importable so `from scripts.lib.X` resolves alongside the
 # existing `from lib.X` convention (scripts/ and scripts/lib are also on sys.path).
@@ -682,12 +714,17 @@ def _stamp_serving(handler, data):
     if isinstance(data.get("_serving"), dict):
         return data
     disk = _read_pin_sha(Path.home() / "trade-ai-releases" / "portfolio-server" / "CURRENT")
+    data_as_of = _data_as_of(data)
     data["_serving"] = {
         "schema": "ServingFreshness@v1",
         "authority": "READ_ONLY_ADVISORY",
         "process_started_at": PROCESS_STARTED_AT,
+        "source_pin": disk or None,
+        "loaded_pin": LOADED_PIN_SHA or None,
         "loaded_pin_sha": LOADED_PIN_SHA or None,
         "current_pin_sha": disk or None,
+        "data_as_of": data_as_of,
+        "cache_age": _age_seconds(data_as_of),
         "pin_match": bool(LOADED_PIN_SHA) and LOADED_PIN_SHA == disk,
     }
     return data
@@ -707,6 +744,13 @@ def json_response(handler, status: int, data: dict) -> None:
             etag = data.pop("__etag__")
         elif isinstance(data.get("data"), dict) and "__etag__" in data["data"]:
             etag = data["data"].pop("__etag__")
+    serving = data.get("_serving") if isinstance(data, dict) else None
+    cache_key = etag
+    if etag and isinstance(serving, dict):
+        # A pin change must never reuse a body serialized under the old pin.
+        # Age is intentionally bucketed so the large-body cache remains useful.
+        age_bucket = int(float(serving.get("cache_age") or 0) // 60)
+        cache_key = f"{etag}|{serving.get('source_pin')}|{age_bucket}"
     if etag and status == 200:
         try:
             inm = (handler.headers.get("If-None-Match") or "") if getattr(handler, "headers", None) else ""
@@ -731,7 +775,7 @@ def json_response(handler, status: int, data: dict) -> None:
     # Reuse pre-serialized body when ETag is known (trade-ai multi-MB path).
     if etag and status == 200:
         with _JSON_BODY_CACHE_LOCK:
-            cached = _JSON_BODY_CACHE.get(etag)
+            cached = _JSON_BODY_CACHE.get(cache_key)
         if cached:
             if want_gzip and cached.get("gz") is not None:
                 body, use_gzip = cached["gz"], True
@@ -756,13 +800,13 @@ def json_response(handler, status: int, data: dict) -> None:
                 gz_body = None
         if etag and status == 200:
             with _JSON_BODY_CACHE_LOCK:
-                if etag not in _JSON_BODY_CACHE and len(_JSON_BODY_CACHE) >= _JSON_BODY_CACHE_MAX:
+                if cache_key not in _JSON_BODY_CACHE and len(_JSON_BODY_CACHE) >= _JSON_BODY_CACHE_MAX:
                     # drop an arbitrary oldest-ish entry
                     try:
                         _JSON_BODY_CACHE.pop(next(iter(_JSON_BODY_CACHE)))
                     except Exception:
                         _JSON_BODY_CACHE.clear()
-                _JSON_BODY_CACHE[etag] = {"raw": raw_body, "gz": gz_body}
+                _JSON_BODY_CACHE[cache_key] = {"raw": raw_body, "gz": gz_body}
         if want_gzip and gz_body is not None:
             body, use_gzip = gz_body, True
         else:
@@ -2747,7 +2791,7 @@ if __name__ == "__main__":
         print("Another portfolio_server may already be listening. Check: ss -tlnp | grep 7777")
         sys.exit(1)
     try:
-        _boot = PROJECT_ROOT / "data" / "runtime" / "portfolio_server_boot.json"
+        _boot = _boot_stamp_path()
         _boot.parent.mkdir(parents=True, exist_ok=True)
         _disk = _read_pin_sha(Path.home() / "trade-ai-releases" / "portfolio-server" / "CURRENT")
         _boot.write_text(json.dumps({
