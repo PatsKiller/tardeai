@@ -31,6 +31,7 @@ Routes:
   GET /api/v3/cio/brain/portfolio-state — deterministic PortfolioState@v1
   GET /api/v3/cio/brain/market-context — deterministic MarketContextState@v1
   GET /api/v3/cio/brain/seasonality — Python-computed SeasonalityState@v1
+  GET /api/v3/cio/brain/portfolio-thesis — current published thesis + read-only candidate delta
 """
 from __future__ import annotations
 
@@ -57,6 +58,16 @@ def _portfolio_holdings_path() -> Path:
 def _portfolio_cash_evidence_path() -> Path:
     configured = str(os.getenv("CIO_CASH_EVIDENCE_JSON") or "").strip()
     return Path(configured) if configured else PROJECT_ROOT / "data" / "cio" / "portfolio_cash_evidence.json"
+
+
+def _portfolio_thesis_store() -> Path:
+    configured = str(os.getenv("CIO_PORTFOLIO_THESIS_JSONL") or "").strip()
+    return Path(configured) if configured else PROJECT_ROOT / "data" / "cio" / "cio_portfolio_theses.jsonl"
+
+
+def _symbol_thesis_projection_path() -> Path:
+    configured = str(os.getenv("CIO_THESES_PROJECTION_JSON") or "").strip()
+    return Path(configured) if configured else PROJECT_ROOT / "data" / "cio" / "cio_theses_projection.json"
 
 
 # ── Operator-facing label normalization ───────────────────────────────────────
@@ -1698,6 +1709,43 @@ def get_seasonality_state_v1() -> dict[str, Any]:
         state = build_seasonality_state({}, benchmark="SPY")
         state["load_error"] = type(exc).__name__
         return {"ok": False, "seasonality": state, "authority": AUTHORITY_ADVISORY}
+
+
+def get_portfolio_thesis_v1() -> dict[str, Any]:
+    """Preview the current semantic delta. GET is read-only and never publishes a version."""
+    from scripts.lib.cio_portfolio_thesis_v1 import (
+        build_portfolio_thesis_candidate,
+        classify_portfolio_thesis_delta,
+        load_latest_portfolio_thesis,
+        load_symbol_thesis_refs,
+    )
+
+    policy = get_operator_investment_policy()["policy"]
+    portfolio = get_portfolio_state_v1()["portfolio_state"]
+    market = get_market_context_state_v1()["market_context"]
+    seasonality = get_seasonality_state_v1()["seasonality"]
+    held = {
+        str(row.get("symbol") or "").upper()
+        for row in portfolio.get("positions") or []
+        if row.get("asset_class") != "CASH"
+    }
+    symbol_refs = load_symbol_thesis_refs(_symbol_thesis_projection_path(), held)
+    candidate = build_portfolio_thesis_candidate(
+        policy=policy,
+        portfolio_state=portfolio,
+        market_context=market,
+        seasonality=seasonality,
+        symbol_theses=symbol_refs,
+    )
+    published = load_latest_portfolio_thesis(str(_portfolio_thesis_store()))
+    return {
+        "ok": True,
+        "published_thesis": published,
+        "candidate": candidate,
+        "candidate_delta": classify_portfolio_thesis_delta(published, candidate),
+        "publication": "MATERIALIZER_ONLY",
+        "authority": AUTHORITY_ADVISORY,
+    }
 
 
 def get_cio_dashboard() -> dict[str, Any]:
