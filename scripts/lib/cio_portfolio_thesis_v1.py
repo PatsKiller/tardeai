@@ -139,6 +139,14 @@ def build_portfolio_thesis_candidate(
         })
     refs.sort(key=lambda row: str(row.get("symbol") or ""))
 
+    sleeve_postures = {
+        "equity": _allocation_posture(policy, portfolio_state, "equity_range_pct", "equity"),
+        "fixed_income": _allocation_posture(policy, portfolio_state, "fixed_income_range_pct", "fixed_income"),
+        "alternatives": _allocation_posture(policy, portfolio_state, "alternatives_range_pct", "other"),
+    }
+    underweight_sleeves = sorted(name for name, row in sleeve_postures.items() if row["state"] == "UNDERWEIGHT")
+    overweight_sleeves = sorted(name for name, row in sleeve_postures.items() if row["state"] == "OVERWEIGHT")
+
     candidate = {
         "schema": SCHEMA,
         "authority": AUTHORITY,
@@ -153,8 +161,8 @@ def build_portfolio_thesis_candidate(
             "policy_range_pct": ((policy.get("fields") or {}).get("cash_target_range_pct") or {}).get("value"),
             "state": "UNVERIFIED_INVESTABLE" if portfolio_state.get("investable_cash_usd") is None else "VERIFIED",
         },
-        "equity_posture": _allocation_posture(policy, portfolio_state, "equity_range_pct", "equity"),
-        "fixed_income_posture": _allocation_posture(policy, portfolio_state, "fixed_income_range_pct", "fixed_income"),
+        "equity_posture": sleeve_postures["equity"],
+        "fixed_income_posture": sleeve_postures["fixed_income"],
         "growth_posture": {"state": "POLICY_REQUIRED" if policy_status != "CONFIRMED" else "REVIEW"},
         "income_posture": {"state": "POLICY_REQUIRED" if policy_status != "CONFIRMED" else "REVIEW"},
         "defensive_posture": {"state": "REVIEW", "market_regime": market_regime},
@@ -173,8 +181,8 @@ def build_portfolio_thesis_candidate(
         "counter_thesis": "If verified investable cash is material and risk-on participation broadens, delaying deployment may create opportunity cost; policy confirmation and complete evidence are still required.",
         "risks": sorted(set(risks)),
         "opportunities": [],
-        "underweight_sleeves": [],
-        "overweight_sleeves": [],
+        "underweight_sleeves": underweight_sleeves,
+        "overweight_sleeves": overweight_sleeves,
         "cash_deployment_thesis": "POLICY_REQUIRED" if policy_status != "CONFIRMED" else "VERIFY_INVESTABLE_CASH",
         "deploy_more_conditions": ["CONFIRMED_POLICY", "VERIFIED_INVESTABLE_CASH", "CURRENT_MARKET_CONTEXT", "VALID_LIVING_THESES"],
         "deploy_less_conditions": ["MARKET_CONTEXT_DEGRADES", "VALUATION_HURDLE_NOT_MET", "FORWARD_EVENT_RISK"],
