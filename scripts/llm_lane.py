@@ -1,11 +1,10 @@
-"""llm_lane.py — unified LLM lanes: Grok OAuth (xAI proxy :8645), ChatGPT OAuth (codex proxy :8646),
-DeepSeek V4 (paid API: exact models deepseek-v4-flash / deepseek-v4-pro), or local gemma.
+"""Unified governed cloud LLM lanes for advisory work.
 
 DeepSeek:
   - Exact provider model IDs only (verified via /v1/models).
   - Logical policies: FAST, FAST_THINK, PRO, PRO_THINK, PRO_MAX (see config/llm_model_registry.json).
   - Legacy IDs deepseek-chat / deepseek-reasoner are REJECTED (provider silently remaps them to Flash).
-  - No silent fallback to Gemma when DeepSeek is requested.
+  - No local generative lane or silent local fallback.
 
 Grok/ChatGPT remain free OAuth via local proxies. Pass process_id for consumption gating.
 """
@@ -105,11 +104,7 @@ def available(lane):
     if not lane:
         return False
     if lane == "local":
-        try:
-            import requests
-            return bool(requests.get("http://127.0.0.1:11434/api/tags", timeout=4).ok)
-        except Exception:
-            return False
+        return False
     if lane in ("grok", "chatgpt"):
         try:
             from lib.oauth_lane_status import lane_available
@@ -368,11 +363,10 @@ def generate(
         return body["choices"][0]["message"]["content"]
 
     if lane_l == "local":
-        import local_llm
-        return local_llm.generate(prompt, timeout=timeout)
+        raise RuntimeError("POLICY_LOCAL_GENERATIVE_FORBIDDEN")
 
     # Unknown lane — fail closed (do NOT fall through to Gemma while claiming another provider)
     raise RuntimeError(
         f"UNKNOWN_LANE: lane={lane!r} is not registered; "
-        "refusing silent local-Gemma fallback"
+        "refusing an unregistered provider fallback"
     )

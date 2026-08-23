@@ -1,7 +1,7 @@
 """Advisory Desk L4-D — durable lessons (Iris-curated).
 
 Storage: data/runtime/advisory_kb_lessons.jsonl (+ optional Postgres later).
-Embeddings: prefer ollama qwen3-embedding:8b; fallback deterministic hash embed.
+Embeddings: approved pinned nomic model; fallback deterministic hash embed.
 
 Rules (design §5.4):
   - Lessons are advisory context, never rules
@@ -16,7 +16,6 @@ import hashlib
 import json
 import math
 import re
-import urllib.request
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
@@ -29,12 +28,11 @@ CANDIDATES_PATH = RUNTIME / "advisory_kb_lesson_candidates.jsonl"
 APPLICATIONS_PATH = RUNTIME / "advisory_kb_lesson_applications.jsonl"
 LESSONS_INDEX = RUNTIME / "advisory_kb_lessons_index.json"
 
-EMBED_MODEL = "qwen3-embedding:8b"
+EMBED_MODEL = "nomic-embed-text"
 EMBED_DIM = 64  # hash fallback dim
 MAX_INJECT = 5
 RETIRE_HIT_RATE = 0.40
 RETIRE_MIN_APPS = 20
-OLLAMA_URL = "http://127.0.0.1:11434/api/embeddings"
 
 
 def _now_iso() -> str:
@@ -99,15 +97,8 @@ def hash_embed(text: str, dim: int = EMBED_DIM) -> list[float]:
 
 def ollama_embed(text: str, model: str = EMBED_MODEL) -> list[float] | None:
     try:
-        req = urllib.request.Request(
-            OLLAMA_URL,
-            data=json.dumps({"model": model, "prompt": (text or "")[:4000]}).encode(),
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            body = json.loads(resp.read().decode())
-        emb = body.get("embedding")
+        from lib.ollama_embedding_policy import embed
+        emb = embed((text or "")[:4000], model=model, timeout_s=30)
         if isinstance(emb, list) and emb:
             n = math.sqrt(sum(float(x) * float(x) for x in emb)) or 1.0
             return [float(x) / n for x in emb]

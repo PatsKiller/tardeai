@@ -29,11 +29,8 @@ KILL_FILE = PROJECT_ROOT / "data" / "runtime" / "HERMES_DISABLED"
 MAX_RUNTIME = 600  # seconds
 DAILY_ROW_CAP = 10
 DAILY_MODEL_CAP = 15
-# Default gemma3:12b — gemma3:4b is fast but routinely fails the summary/evidence quality gate
-# (MISSING summary, evidence_json < 2 keys). Override: HERMES_LOOP_MODEL=gemma3:4b for speed tests.
-LOOP_MODEL = os.environ.get("HERMES_LOOP_MODEL", "gemma3:12b")
-# Host 2026-07-26: gemma3:12b thesis-challenge ~198s warm; 180s was too tight. Allow 300s default.
-OLLAMA_TIMEOUT = int(os.environ.get("HERMES_LOOP_OLLAMA_TIMEOUT", "300"))
+CLOUD_TIMEOUT = int(os.environ.get("HERMES_LOOP_CLOUD_TIMEOUT", "90"))
+LOOP_MODEL = "deepseek-v4-flash"
 
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
@@ -64,13 +61,9 @@ def _cio_wake_after_flash(symbol, row_id, output=None):
 
 
 def _llm_json(prompt: str) -> tuple[dict, dict]:
-    """Ollama first, governed DeepSeek Flash on timeout/unhealthy."""
+    """Use the governed cloud bridge; provider failure remains a hard failure."""
     from hermes_llm_failover import chat_json
-    pack = chat_json(
-        prompt,
-        ollama_model=LOOP_MODEL,
-        ollama_timeout_s=float(OLLAMA_TIMEOUT),
-    )
+    pack = chat_json(prompt, cloud_timeout_s=float(CLOUD_TIMEOUT))
     parsed = json.loads(pack["content"])
     if not isinstance(parsed, dict):
         raise ValueError("llm_json_root_not_object")
@@ -298,8 +291,7 @@ def run_ticker_challenger(args):
     run_id = f"auto_ticker_challenger_{datetime.now().strftime('%Y%m%d_%H%M')}"
     print(f"Run ID: {run_id}")
     print(f"Targets: {[t['symbol'] for t in targets]}")
-    print(f"Ollama timeout: {OLLAMA_TIMEOUT}s · ollama_model: {LOOP_MODEL}")
-    print(f"LLM primary: {os.getenv('HERMES_LLM_PRIMARY', 'bridge_flash')} · failover={os.getenv('HERMES_OLLAMA_FAILOVER', '1')}")
+    print(f"Governed cloud timeout: {CLOUD_TIMEOUT}s · provider: bridge_flash")
 
     results = []
     outdir = PROJECT_ROOT / "docs" / "hermes" / "phase3b_dryrun"
@@ -310,9 +302,9 @@ def run_ticker_challenger(args):
 
     for i, target in enumerate(targets):
         remaining = budget_s - (time.time() - run_started)
-        if remaining < min(float(OLLAMA_TIMEOUT), 90.0):
+        if remaining < min(float(CLOUD_TIMEOUT), 90.0):
             left = [t["symbol"] for t in targets[i:]]
-            print(f"    BUDGET: skip remaining {left} (remain={remaining:.0f}s < ollama_timeout)")
+            print(f"    BUDGET: skip remaining {left} (remain={remaining:.0f}s < cloud_timeout)")
             for t in targets[i:]:
                 results.append({
                     "symbol": t["symbol"], "status": "deferred_budget",
@@ -385,8 +377,7 @@ def run_ticker_challenger(args):
             if not ok and any("MISSING required column: summary" in e for e in errors) and not output.get("summary"):
                 try:
                     from hermes_output_recovery import recover_summary_from_output
-                    rec = recover_summary_from_output(output if isinstance(output, dict) else content,
-                                                      symbol=sym)
+                    rec = recover_summary_from_output(output, symbol=sym)
                 except Exception as _re:
                     rec = {"recovered": False, "rejection_reason": f"recover error: {_re}"}
                 if rec.get("recovered"):
@@ -867,18 +858,6 @@ def main():
     args = parser.parse_args()
 
     check_kill_switch()
-    # Policy: local LLM is math-only unless RESEARCH_ALLOW_LOCAL_LLM=1.
-    # Override.conf still sets HERMES_LOOP_MODEL=gemma3:12b — refuse apply.
-    _allow_local = os.getenv("RESEARCH_ALLOW_LOCAL_LLM", "0").strip().lower() in {
-        "1", "true", "yes", "on",
-    }
-    _model = (os.getenv("HERMES_LOOP_MODEL") or LOOP_MODEL or "").lower()
-    if args.apply and (not _allow_local) and ("gemma" in _model or "ollama" in _model):
-        print(
-            f"REFUSED_LOCAL_LLM: model={_model} RESEARCH_ALLOW_LOCAL_LLM=0. "
-            "Disable hermes-autonomous-loop.timer or set a non-gemma model."
-        )
-        return 0
     try:
         from hermes_llm_failover import (
             allow_deepseek_peak,

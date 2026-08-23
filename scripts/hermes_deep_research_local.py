@@ -1,21 +1,22 @@
 #!/usr/bin/env python3
-"""hermes_deep_research_local.py — Hermes Deep Research — BATCH_OVERNIGHT lane.
+"""hermes_deep_research_local.py — governed Hermes deep research lane.
 
 Advisory + staging only: writes hermes_research_intelligence rows
-(research_type='deep_research_local') via the validated build_insert path.
+(research_type='deep_research_local') via the validated build_insert path. The
+historical filename and research type remain for lineage; local generation does not.
 NEVER touches broker/order/stop/proposal/holdings/trading.
 
-US overnight (22:00–06:00 ET): ChatGPT OAuth (:8646), not gemma.
-Rollback: US_OVERNIGHT_LLM=gemma|off. Daytime default remains gemma3:27b.
+US overnight (22:00–06:00 ET): ChatGPT OAuth (:8646). Otherwise the governed
+DeepSeek bridge is used subject to its bulk window.
 
   python3 scripts/hermes_deep_research_local.py                 # dry-run
   python3 scripts/hermes_deep_research_local.py --apply --max-rows 3
 Safety:
   - singleton lockfile; honors live kill-switch data/runtime/HERMES_DISABLED
-  - Ollama health gate skipped for chatgpt lane
+  - no local generative provider or fallback
   - deterministic fields stamped from code; bounded summary recovery; never fabricates content
 """
-import os, sys, json, time, hashlib, argparse, urllib.request
+import os, sys, json, argparse
 from datetime import date, datetime
 from pathlib import Path
 
@@ -28,7 +29,6 @@ LOCK = Path("/tmp/hermes_deep_research_local.lock")
 KILL = ROOT / "data" / "runtime" / "HERMES_DISABLED"   # live kill-switch (NOT the retired sidecar path)
 AGENT = "deep_research_local"
 RTYPE = "deep_research_local"
-OLLAMA = "http://localhost:11434/api/chat"
 
 
 def db():
@@ -70,7 +70,7 @@ def gather_context(conn, sym):
     return ctx
 
 
-PROMPT = """You are Hermes Deep Research (Local), an advisory research analyst for a paper-trading system.
+PROMPT = """You are Hermes Deep Research, an advisory research analyst for a paper-trading system.
 Produce a DEEP research report on the ticker below for the operator. You do not trade; this is advisory only.
 
 Ticker: {sym}
@@ -104,15 +104,10 @@ def run_one(conn, sym, model, apply):
             model = "chatgpt-oauth"
             out["llm_provider"] = "chatgpt_oauth"
             print(f"  {sym}: LLM chatgpt_oauth")
-        else:
+        elif model == "deepseek-v4-flash":
             from hermes_llm_failover import chat_json
-            pack = chat_json(
-                prompt,
-                ollama_model=model,
-                ollama_timeout_s=600,
-                num_ctx=16384,
-                num_predict=3000,
-            )
+            pack = chat_json(prompt, cloud_timeout_s=180)
+            content = pack["content"]
             out = merge_structured_into_result(json.loads(pack["content"]))
             model = pack.get("model") or model
             out["llm_provider"] = pack.get("provider")
@@ -121,6 +116,9 @@ def run_one(conn, sym, model, apply):
                 out["llm_failover_reason"] = pack.get("reason")
             else:
                 print(f"  {sym}: LLM {pack.get('provider')} {pack.get('model')}")
+        else:
+            print(f"  {sym}: FAILED forbidden_model={model}")
+            return "failed"
     except Exception as e:
         print(f"  {sym}: FAILED ({str(e)[:80]})"); return "failed"
     # deterministic fields stamped from code (never rely on LLM to echo)
@@ -136,14 +134,15 @@ def run_one(conn, sym, model, apply):
     except Exception:
         out["confidence_score"] = 0.5
     ej = {k: out.pop(k) for k in ("thesis", "risks") if k in out}
-    ej["context_recent_trades"] = ctx["recent_trades"]; ej["lane"] = "internal_deep_research_local"
+    ej["context_recent_trades"] = ctx["recent_trades"]
+    ej["lane"] = "governed_deep_research"
     ej["cio_evidence"] = out.pop("evidence", [])
     ej["data_i_doubt"] = out.pop("data_i_doubt", "none")
     ej["agent_contract"] = out.pop("agent_contract", AGENT_JSON_CONTRACT_VERSION)
     # required by validate_payload: non-empty limitations + source_views
     lims = out.pop("limitations", None)
     ej["limitations"] = lims if (isinstance(lims, list) and lims) else \
-        ["Local-model synthesis (advisory only); not independently verified; based on staged data above."]
+        ["Advisory synthesis; not independently verified; based on staged data above."]
     ej["source_views"] = ["trade_instances", "hermes_research_intelligence"]
     out["evidence_json"] = ej
     ok, errors = validate_payload(out, "hermes_research_intelligence")
@@ -199,7 +198,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true")
     ap.add_argument("--max-rows", type=int, default=3)
-    ap.add_argument("--model", default="gemma3:27b")
+    ap.add_argument("--model", default="deepseek-v4-flash")
     ap.add_argument("--allow-daytime", action="store_true", help="run outside the overnight window (manual)")
     ap.add_argument(
         "--allow-peak",
@@ -240,11 +239,7 @@ def main():
         )
     if is_us_overnight():
         lane = overnight_llm_lane()
-        if lane == LANE_CHATGPT and str(args.model).startswith("gemma"):
-            print(
-                "US_OVERNIGHT: refusing gemma overnight LLM "
-                "(operator: overnight is deterministic; judgment lane=chatgpt oauth)"
-            )
+        if lane == LANE_CHATGPT:
             args.model = "chatgpt"
         elif lane == LANE_NONE:
             print("US_OVERNIGHT: skipping judgmental LLM (US_OVERNIGHT_LLM=off)")
@@ -266,28 +261,12 @@ def main():
         args.apply = False
     LOCK.write_text(str(os.getpid()))
     try:
-        # health gate
-        try:
-            from llm_health_gate import check_ollama_health
-            if str(args.model).startswith("chatgpt"):
-                h = {"healthy": True}
-            else:
-                # deep model (27b) is slow to cold-load; check reachability+availability only.
-                h = check_ollama_health(model=args.model, generate_probe=False, timeout_sec=20)
-            if not h.get("healthy"):
-                from hermes_llm_failover import failover_enabled
-                if failover_enabled():
-                    print(
-                        f"OLLAMA_UNHEALTHY ({h.get('failure_class')}); "
-                        "continuing with DeepSeek Flash failover"
-                    )
-                else:
-                    print(f"SKIPPED_LLM_UNHEALTHY: {h.get('failure_class')}"); return
-        except Exception as e:
-            print(f"health gate unavailable ({e}); continuing cautiously")
+        if not (str(args.model).startswith("chatgpt") or args.model == "deepseek-v4-flash"):
+            print(f"REFUSED_LOCAL_GENERATIVE_MODEL: {args.model}")
+            return
         conn = db()
         targets = pick_targets(conn, args.max_rows)
-        print(f"Hermes Deep Research (Local) — model={args.model} apply={args.apply} targets={targets}")
+        print(f"Hermes Deep Research — model={args.model} apply={args.apply} targets={targets}")
         counts = {}
         for sym in targets:
             try:

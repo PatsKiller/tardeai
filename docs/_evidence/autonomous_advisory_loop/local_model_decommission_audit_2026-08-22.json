@@ -1,0 +1,68 @@
+{
+  "schema": "LocalModelDecommissionAudit@v1",
+  "observed_at": "2026-08-22",
+  "authority": "READ_ONLY_ADVISORY",
+  "source_branch_base": "767653eceef33a7896949bd6c7a10640cf3face9",
+  "origin_main": "9dfe437f6e161cb2b6c9ed2c983e23b9fa9de1b7",
+  "current_pin": "5e91225a1186659de3cfd65096e037e774506e7f",
+  "installed_models": [
+    {"name": "gemma3:4b", "id": "6d0ee830bb54", "class": "GENERATIVE"},
+    {"name": "gemma3:27b", "id": "1dcfe4e5d67c", "class": "GENERATIVE"},
+    {"name": "gemma3-overnight:latest", "id": "e2c134128354", "class": "GENERATIVE"},
+    {"name": "gemma3:12b", "id": "7a42254767c1", "class": "GENERATIVE"},
+    {"name": "qwen3:8b", "id": "500a1f067a9f", "class": "GENERATIVE"},
+    {"name": "gemma3:12b-ctx4k", "id": "36c01589bb98", "class": "GENERATIVE"},
+    {"name": "qwen3-embedding:8b", "id": "64b933495768", "class": "UNKNOWN_UNUSED_EMBEDDING"},
+    {
+      "name": "nomic-embed-text:latest",
+      "id": "0a109f422b47",
+      "digest": "0a109f422b47e3a30ba2b10eca18548e944e8a23073ee3f3e947efcf3c45e59f",
+      "class": "EMBEDDING_CANDIDATE"
+    }
+  ],
+  "active_processes": [
+    {"name": "gemma3:12b", "processor": "100% GPU", "state": "Stopping"}
+  ],
+  "effective_systemd_blockers": [
+    "hermes-autonomous-loop.service: HERMES_OLLAMA_FAILOVER=1",
+    "hermes-autonomous-loop.service.d/override.conf: HERMES_LOOP_MODEL and local timeout",
+    "hermes-deep-research-local.service: HERMES_OLLAMA_FAILOVER=1",
+    "hermes-external-feedback.service: --model gemma3:4b"
+  ],
+  "effective_cron_blockers": [
+    "gemma3_calibration_scorer.py historical lane still scheduled",
+    "check_local_model_fleet.py live schedule still carries generative skip-model configuration",
+    "watchlist_entry_planner.py live weekend schedule passes --lane local",
+    "additional scheduled import paths require post-deploy zero-call verification"
+  ],
+  "openclaw_blockers": [
+    "~/.openclaw/openclaw.json contains Ollama provider, generative models, and fallbacks",
+    "~/.openclaw/agents/steph/agent/models.json contains local generative models"
+  ],
+  "source_production_graph": {
+    "audit": "scripts/audit_no_local_generative_routing.py --json",
+    "declared_graph_violations": 0,
+    "repo_wide_legacy_files_with_direct_chat_or_generate": 66,
+    "scope_note": "The zero result applies to the declared automatic/API graph, not every dormant historical utility."
+  },
+  "deletion_preconditions": {
+    "callers_in_source": "NOT_ZERO_REPO_WIDE",
+    "callers_in_cron": "NOT_ZERO",
+    "callers_in_systemd": "NOT_ZERO",
+    "callers_in_openclaw_config": "NOT_ZERO",
+    "active_processes": "NOT_ZERO",
+    "required_by_tests": "NOT_PROVEN_NO",
+    "required_by_embeddings": "GENERATIVE_NO; QWEN_EMBEDDING_NOT_APPROVED"
+  },
+  "physical_removal_performed": false,
+  "reason_not_removed": "The user-defined safety preconditions are not satisfied; host mutation also lacks cutover authorization.",
+  "embedding_acceptance": "NOT_RUN_PRECONDITIONS_FAILED",
+  "gpu_mode": "POLICY_VIOLATION",
+  "acceptance": {
+    "LOCAL_GENERATIVE_MODELS_INSTALLED": 6,
+    "LOCAL_GENERATIVE_RUNTIME_CALLERS": "NOT_ZERO_REPO_WIDE",
+    "LOCAL_GENERATIVE_CRON_CALLERS": "NOT_ZERO",
+    "LOCAL_GENERATIVE_SYSTEMD_CALLERS": "NOT_ZERO",
+    "LOCAL_GENERATIVE_FALLBACKS": "ZERO_IN_DECLARED_SOURCE_GRAPH_ONLY"
+  }
+}

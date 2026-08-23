@@ -29,12 +29,12 @@ inference_layers:
       journal_days: 180
 
   llm:
-    caller: inference_engine        # audit tag passed to local_llm.generate
+    caller: inference_engine
     timeout: 180
     # Route the WHOLE cycle's reasoning to a free OAuth lane (grok) instead of the
-    # local GPU. With use_external_lane=true every llm_json call whose salience clears
+    # governed cloud. With use_external_lane=true every llm_json call whose salience clears
     # proactive.salience_threshold escalates; threshold is set to 0.0 below so that is
-    # effectively all of them. Any lane miss falls back to local automatically.
+    # effectively all of them. A lane miss fails closed.
     use_external_lane: true
     external_lane: grok             # grok | chatgpt
     external_model: grok-3-mini
@@ -90,7 +90,7 @@ inference_layers:
     max_queries_per_run: 3
     # Min salience an llm_json call needs to escalate to the external lane (when
     # llm.use_external_lane is true). 0.0 = escalate EVERYTHING → whole cycle on grok.
-    # Raise it (e.g. 0.65) to keep low-salience calls on the local model.
+    # Raise it (e.g. 0.65) to reduce low-salience calls.
     salience_threshold: 0.0
 
   autonomy:
@@ -102,8 +102,7 @@ inference_layers:
     max_actions_per_run: 3
     min_priority: 6              # 1-10; only act on items at/above this priority
     # Lane for the gap-detection LLM call. Set to a free OAuth lane (grok|chatgpt)
-    # so detection doesn't compete with the local model under GPU load; null/local
-    # keeps it on gemma3. Falls back to local automatically if the lane is unreachable.
+    # so detection uses a governed provider. Local is forbidden and provider failures fail closed.
     detection_lane: grok
     # Lane for the ACTIONS the autonomy pass takes (Hermes follow-up queries + NAV
     # premium/discount reads). grok keeps the whole pass off the contended local GPU.
@@ -123,7 +122,7 @@ inference_layers:
   # Multi-LLM ensemble validator (scripts/inference_ensemble.py) — FREE lanes only.
   # Used as an opt-in second opinion for curation grading + inference quality checks. No metered keys.
   ensemble:
-    lanes: [grok, chatgpt, local]   # free OAuth proxies + local gemma (llm_lane.py)
+    lanes: [grok, chatgpt]
     consensus_threshold: 0.66        # fraction of approve votes that grants consensus
     min_score: 6.0                   # avg score (0-10) that also grants consensus
     timeout: 60

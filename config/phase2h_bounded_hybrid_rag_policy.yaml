@@ -1,60 +1,24 @@
-# Phase 2H: Bounded Offline Hybrid RAG Approval Policy
-#
-# This is NOT global production embedding promotion.
-# nomic-embed-text remains the global production/default embedding model.
-# qwen3-embedding:8b is a shadow/hybrid retrieval source for approved offline workflows only.
-
-phase: phase2h_bounded_offline_hybrid_approval
-enabled: true
-global_promotion_approved: true
+# Retired bounded hybrid policy. Existing shadow data is historical, not a runtime lane.
+phase: retired_bounded_hybrid
+enabled: false
+global_promotion_approved: false
 production_default_embedding: nomic-embed-text
-shadow_embedding: qwen3-embedding:8b
+shadow_embedding: null
 production_table: content_embeddings
-shadow_table: content_embeddings_qwen3_shadow
+shadow_table: null
 global_rag_default: nomic_only
-
-approved_workflows:
-  - risk_synthesis
-  - recovery_watch_review
-  - closed_trade_review
-  - auto_journal_review
-  - manual_journal_review
-  - journal_pattern_review
-  - proposal_review
-  - rag_content_curation
-  - post_market_report_context
-  - weekly_summary_context
-  - offline_dashboard_context
-  - strategy_classification_deep_only
-  - daily_deep_overnight_queue
-  - friday_extended_deep_queue
-
-blocked_workflows:
-  - market_hours_watchlist_agent
-  - telegram_realtime
-  - openclaw_interactive
-  - broker_execution
-  - risk_gate
-  - paper_trade_monitor
-  - order_placement
-  - active_stop_target_execution
-  - global_rag_api_default
-
+approved_workflows: []
+blocked_workflows: [all]
 retrieval_policy:
-  offline_readonly_hybrid: approved
+  offline_readonly_hybrid: blocked
   global_default_hybrid: blocked
   realtime_hybrid: blocked
   execution_hybrid: blocked
-  fallback_to_nomic: true
+  fallback_to_nomic: false
   final_k: 10
   top_k_nomic: 10
-  top_k_qwen3: 10
-
+  top_k_shadow: 0
 lifecycle:
-  prevent_qwen3_gemma_coresidency: true
-  unload_qwen3_after_prefetch: true
-  restore_qwen3_14b_after_run: true
-  restore_nomic_after_run: true
-
+  restore_nomic_after_run: false
 rollback:
-  command: ./scripts/rollback_phase2g_canary.sh --disable
+  command: none
