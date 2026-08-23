@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-08-23 — CIO/Advisory UI audit (every tab) + thesis-honesty code
+
+MATURITY_IMPACT: `Command Center universe-theses shows coverage+substantive+THIN, proven by GET /api/v3/cio/universe-theses metrics.substantive_pct and thesis_state=THIN`. CURRENT pin `5e91225a` **not promoted** (scripts/+docs/ must match SOURCE_COMMIT). Live `:7777` remains the audited pin.
+
+- Canonical results: `docs/ops/CIO_UI_AUDIT_2026-08-22.md`. Raw JSON dump Drive `1pPqmKAfV9da93Q69i_ieERYdu27wlKoo`.
+- Pin integrity: restored 13 overlaid scripts + removed 2 unpinned extras (Telegram T1/T2). Backup `~/archives/current-pin-overlay-2026-08-22/`.
+- origin/main: invalidate attach `_CACHE` on jsonl mtime; stop `[:400]`/`[:300]` stubs; emit `substantive_pct` + THIN; never render `DATA_UNAVAILABLE` as a thesis body; render `daily_thesis_changes`.
+
 ## 2026-08-22 — Lifecycle as-of (ingest, mint, what agents actually do)
 
 MATURITY_IMPACT: `Portfolio mgmt held SLA true — coverage 100 / fresh 100 / substantive 77.27 (17/22 CURRENT), proven by data/cio/held_thesis_coverage_latest.json`. CURRENT pin `5e91225a` not promoted.
