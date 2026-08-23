@@ -1,6 +1,6 @@
 # Research tiers, watchlist, and when each gets an LLM
 
-**Date:** 2026-08-22 (confirm-run closed 12:43 ET; DB proof 12:50 ET)  
+**Date:** 2026-08-22 (confirm-run closed 12:43 ET; night as-of in `RESEARCH_LIFECYCLE_AS_OF_2026-08-22.md`)  
 **Authority:** READ_ONLY_ADVISORY  
 **Code:** `scripts/research_scheduler.py` (`TIER_SLA`, `load_universe`, `--mode`)  
 **Live crontab:** `$PROJ=` rebuild, weekday unless noted.  
@@ -27,7 +27,7 @@ Live universe 2026-08-22: T0-HOLD **22** · T0-PROP **30** · T1-WATCH **331** (
 
 ## The five universe tiers — how / when / how often
 
-Highest membership wins (`load_universe`). SLA “due” ≠ execute. `RESEARCH_SKIP_GATE` default **0**, so due symbols are called. Local gemma is listed on SLAs but **off** (`RESEARCH_ALLOW_LOCAL_LLM=0`).
+Highest membership wins (`load_universe`). SLA “due” ≠ execute. Code default `RESEARCH_SKIP_GATE=0`; **live crontab prefixes `env RESEARCH_SKIP_GATE=1`**. Local gemma is listed on SLAs but **off** (`RESEARCH_ALLOW_LOCAL_LLM=0`).
 
 | Tier | Who | How you get in | Scheduler LLM (auto) | SLA | Cron `--mode` | When | Confirm-run 2026-08-22 |
 |---|---|---|---|---|---|---|---|
@@ -35,9 +35,9 @@ Highest membership wins (`load_universe`). SLA “due” ≠ execute. `RESEARCH_
 | **T0-PROP** | Active paper proposals | `paper_trade_proposals` PENDING/APPROVED | **DeepSeek** when due in `priority` (T0 always candidate) | **2× / 1 day** | `priority` budget **40** | **M–F hourly 10:00–16:00 ET** | **30/30** |
 | **T1-WATCH** | **The watchlist hot set** | Hermes rank ≤ 200 **or** active ticker directive **or** reentry READY/NEAR | **DeepSeek**, **one** external per refresh | **4× / 7 days** | `watchlist` budget **50**; also `priority` if due/catalyst | **M–F 20:30 ET** sweep; **M–F 10–16** if due | **331/331** (incl. reentry **25/25** ids 46035–46059) |
 | **T2-INCUB** | Incubator / proposed last 21d | `incubator_universe` + recent proposals | **DeepSeek only if catalyst** | **1× / 7 days** | `incubator` budget **30** | **Sunday 19:00 ET** | **141/141** confirm-run (production remains catalyst-only) |
-| **T3-COLD** | Rest of `symbol_profiles` | leftover after higher tiers | **No DeepSeek** unless catalyst. Local listed, **off** | **Was published 1×/14d; that needed ~181/day. Production was 20/day = ~127d cycle (fiction).** After 2026-08-22: process call cap **600**/day, cold-floor budget **180**/day, dollar cap **$0.50**. 180×14≈2520 ≈ universe. Cost ~$0.056/day at $0.000313/call. | `cold-floor` budget **180** rotating | **Daily 10:00 ET** | confirm-run **20/20 slice** (not 2537) |
+| **T3-COLD** | Rest of `symbol_profiles` | leftover after higher tiers | **DeepSeek only on catalyst** (`TIER_SLA` lists deepseek; gate clears `ext_lanes` unless catalyst). 14d sweep **dropped** 2026-08-22 (operator). | Published 1×/14d was ~181/day fiction. Cold-floor crontab **commented out**. | `cold-floor` exists in code, **not scheduled** | — | confirm-run **20/20 slice** (not 2537) |
 
-Process cap: `hermes_external_research` **120 calls / $0.30**/day in `config/llm_process_registry.json`. Cron budgets are per-run. Standing global cap **$0.50** (not a raise). Bitwarden SM render at `/run/user/1000/tradeai/env` **omits** the cap and wipes appends on re-render. Live crontab now prefixes `env LLM_GLOBAL_DAILY_USD_CAP=0.50` on all six `research_scheduler` jobs so Monday cron does not fail-close `COST_CONFIGURATION_INVALID`. Sidecar `~/.config/tradeai/llm_global_daily_usd_cap.env` is the same 0.50.
+Process cap: `hermes_external_research` **600 calls / $0.30**/day (`max_output_tokens` **4096**). Cron budgets are per-run. Standing global cap **$0.50**. Tonight’s operator ignore-cap finish was restored to 600/$0.30 before Monday. Bitwarden SM render at `/run/user/1000/tradeai/env` **omits** the cap and wipes appends on re-render. Live crontab now prefixes `env LLM_GLOBAL_DAILY_USD_CAP=0.50` on all six `research_scheduler` jobs so Monday cron does not fail-close `COST_CONFIGURATION_INVALID`. Sidecar `~/.config/tradeai/llm_global_daily_usd_cap.env` is the same 0.50.
 
 ---
 

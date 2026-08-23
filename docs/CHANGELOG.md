@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-08-22 — Lifecycle as-of (ingest, mint, what agents actually do)
+
+MATURITY_IMPACT: `Portfolio mgmt held SLA true — coverage 100 / fresh 100 / substantive 77.27 (17/22 CURRENT), proven by data/cio/held_thesis_coverage_latest.json`. CURRENT pin `5e91225a` not promoted.
+
+- Canonical current-state: `docs/ops/RESEARCH_LIFECYCLE_AS_OF_2026-08-22.md`.
+- Holdings reminted from untruncated DeepSeek: 17 CURRENT / 5 THIN / SLA true. Reentry 24/25 CURRENT. T1 292/299 CURRENT (299/299 have raw tonight).
+- Agents **pull**. Telegram thesis notify off. Live reactive cycle on CURRENT pin **ignores `thesis.changed`** (type not on `5e91225a`). Memory CANDIDATE only; `MEMORY_BEHAVIOR_INFLUENCE=0`.
+- Caps restored 600 / $0.30 after operator ignore-cap finish (process $0.340 / 916 calls today).
+
 ## 2026-08-22 — T3 catalyst-only + S7 retention snapshot
 
 MATURITY_IMPACT: `Research cadence T3 14d sweep → catalyst-only, proven by crontab cold-floor commented and TIER_SLA T3 includes deepseek gated by catalyst`. CURRENT pin not promoted.

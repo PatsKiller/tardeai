@@ -3,6 +3,7 @@
 **Status:** Canonical standard for research lifecycle management  
 **Authority:** READ_ONLY_ADVISORY  
 **Date:** 2026-08-21  
+**As-of-now (measured 2026-08-22 night):** `docs/ops/RESEARCH_LIFECYCLE_AS_OF_2026-08-22.md` — skip-gate **on** crontab, T3 14d sweep **off**, parser 4000 / raw always / 4096, holdings SLA **true** (17/22 CURRENT). This file is the intended methodology; that file is what is live.  
 **Owner (policy):** operator  
 **Owner (code):** `scripts/research_scheduler.py` · `scripts/lib/research_source_index.py` · `scripts/lib/research_skip_ledger.py` · `scripts/lib/hermes_research_queue.py` · `scripts/lib/hermes_research_policy.py` · `scripts/lib/hermes_research_fingerprint.py` · `scripts/lib/symbol_thesis_coverage.py` · `scripts/lib/hermes_librarian/freshness.py`
 
@@ -10,7 +11,7 @@ Research is **incremental, change-driven, and freshness-based**. It is not a ful
 
 Related: `docs/RESEARCH_PRIORITIZATION.md` (who/when/which lane). This file is **whether to execute** a research pass. SLA “due” does not mean “re-analyze identical content.”
 
-US overnight (22:00–06:00 ET): **policy** is deterministic jobs + **ChatGPT OAuth** if an LLM is required. **Live timer** is still China-night gemma3:27b (empty US-day `RESULT: {}`). 27b is 100% CPU on the B50 — not a GPU deep lane. RAW-store alarm: `scripts/research_lane_health.py` (`chatgpt` + `overnight-deep`).
+US overnight (22:00–06:00 ET): **policy** is deterministic jobs + **ChatGPT OAuth** if an LLM is required. Overnight timer retargeted **America/New_York 22:00–06:00**, `--model chatgpt` (#453). `hermes-autonomous-loop.timer` **disabled**. RAW-store alarm: `scripts/research_lane_health.py`.
 
 **Holdings denominator:** `scripts/lib/holdings_universe.py` (`held_equity_tickers`). Coverage and T0-HOLD call this function. CASH and unresolved CUSIPs are not thesis tickers. Snapshot: `data/cio/holdings_universe_latest.json`.
 

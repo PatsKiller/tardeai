@@ -192,6 +192,12 @@ def main() -> int:
         ),
     )
     ap.add_argument("--out", default=str(ROOT / "data/cio/thesis_mint_dryrun_2026-08-22.json"))
+    ap.add_argument(
+        "--only",
+        choices=("holdings", "reentry", "watchlist", "all"),
+        default="all",
+        help="Which books to mint. holdings=T0-HOLD, reentry=READY/NEAR, watchlist=T1-WATCH.",
+    )
     args = ap.parse_args()
 
     if args.apply_live:
@@ -212,11 +218,23 @@ def main() -> int:
     uni = load_universe(root=CURRENT)
     reentry = sorted(load_reentry_ready_near_symbols(root=CURRENT) or [])
     holdings = sorted(s for s, v in uni.items() if v.get("tier") == "T0-HOLD")
+    watchlist = sorted(
+        s for s, v in uni.items()
+        if v.get("tier") == "T1-WATCH" and s not in holdings and s not in reentry
+    )
     live = build_held_coverage_report(root=CURRENT)
     live_state = {r["symbol"]: r for r in live.get("rows") or []}
     needs = set(live.get("needs_coverage") or [])
 
-    symbols = sorted(set(holdings) | set(reentry))
+    want = args.only
+    symbols = []
+    if want in ("holdings", "all"):
+        symbols.extend(holdings)
+    if want in ("reentry", "all"):
+        symbols.extend(reentry)
+    if want in ("watchlist", "all"):
+        symbols.extend(watchlist)
+    symbols = sorted(set(symbols))
     conn = _get_conn()
     research = _latest_research(conn, symbols)
     ranks = _hermes_rank(conn, symbols)
@@ -245,7 +263,9 @@ def main() -> int:
         live_grade = grade_text(sym, live_summary) if live_summary else None
         card = {
             "symbol": sym,
-            "bucket": "T0-HOLD" if sym in holdings else "reentry",
+            "bucket": (
+                "T0-HOLD" if sym in holdings else ("reentry" if sym in reentry else "T1-WATCH")
+            ),
             "live_state": live_row.get("thesis_state") or ("reentry" if sym in reentry else "UNKNOWN"),
             "live_current": bool(live_row.get("has_current_symbol_thesis")),
             "live_regrade": (live_grade or {}).get("coverage_state") if live_grade else None,
@@ -338,8 +358,17 @@ def main() -> int:
             f"{live.get('current_count')}/{live.get('held_count')} "
             f"coverage={live.get('coverage_pct')}% substantive={live.get('substantive_pct')}%"
         ),
+        "only": args.only,
         "holdings_n": len(holdings),
         "reentry_n": len(reentry),
+        "watchlist_n": len(watchlist),
+        "would_mint_watchlist": sum(1 for c in cards if c["bucket"] == "T1-WATCH" and c["would_mint"]),
+        "would_mint_watchlist_current": sum(
+            1 for c in cards if c["bucket"] == "T1-WATCH" and c["would_mint_state"] == "CURRENT"
+        ),
+        "would_mint_watchlist_thin": sum(
+            1 for c in cards if c["bucket"] == "T1-WATCH" and c["would_mint_state"] == "THIN"
+        ),
         "needs_coverage_n": len(needs),
         "mintable_of_19_required": len(mintable_holdings),
         "mintable_holdings": mintable_holdings,

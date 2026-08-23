@@ -1,5 +1,5 @@
 # Trade AI v12 — Documentation Index
-**Updated:** 2026-08-22 (session closeout — findings + fixes index)
+**Updated:** 2026-08-22 night (research lifecycle as-of + held SLA true)
 **Protocol:** All doc changes follow `docs/A1A.md`. Do not add a doc without updating this index.
 **Scope:** Project root = `/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild`
 
@@ -17,12 +17,13 @@
 | `docs/architecture/TRADEAI_SYSTEM_STATE_AND_AUTONOMY_2026-08-20.md` | **Master record** — LIVE architecture, timers, notify gates, freeform/desk loop, thesis SLA, autonomy directive gap matrix, roadmap | Active |
 | `docs/_findings/ALEX_AUTONOMY_GROUND_TRUTH_2026-08-21.md` | Phase 0 closed snapshot (2414 wakes / 0 payloads at `b04f0016`) | Active (do not rewrite) |
 | `docs/ops/MATURATION_G1_I0_A1_B1_2026-08-21.md` | G.1 quarantine + I.0 tree-pin audit + A.1 off-peak retarget + B.1 producer payload flags | Active |
-| `docs/ops/SESSION_CLOSEOUT_2026-08-22.md` | **Index of 2026-08-22 findings + fixes** (thesis join gap, Telegram P0, alarms, T3 SLA, after-8/27 queue) | Active |
-| `docs/ops/RESEARCH_LIFECYCLE_STANDARD.md` | **Canonical** research re-research methodology — incremental, change-driven, freshness-based; skip unchanged | Active |
+| `docs/ops/RESEARCH_LIFECYCLE_AS_OF_2026-08-22.md` | **Current-state lifecycle** — trigger → DeepSeek → parser/raw → mint → who consumes; holdings 17/22 CURRENT, SLA true; agents pull, not push | Active |
+| `docs/ops/SESSION_CLOSEOUT_2026-08-22.md` | **Index of 2026-08-22 findings + fixes** (parser/join, mint, skip-gate, T3, ingest) | Active |
+| `docs/ops/RESEARCH_LIFECYCLE_STANDARD.md` | Intended methodology (incremental / skip unchanged). Live measured state is the as-of file | Active |
 | `docs/RESEARCH_PRIORITIZATION.md` | Hermes lane/tier SLA (who/when). Execute set = due ∩ lifecycle gate | Active |
 | `docs/ops/RESEARCH_TIER_LLM_CADENCE.md` | **Canonical** five universe tiers, one watchlist research tier (T1-WATCH), S0–S3 vs hygiene 1–3, cron + confirm-run | Active |
 | `docs/ops/TELEGRAM_FEED_REMEDIATION_2026-08-22.md` | Telegram audit 18,130 msgs — P0 T1/T2 shipped; T3–T7 after 8/27 | Active |
-| `docs/ops/RESEARCH_QUALITY_AND_THESIS_GAP_2026-08-22.md` | 539 calls / $0.169 / thesis still 13.6%; Q1 sample; Q2 mint dry-run 19/19; alarm+SLA holes | Active |
+| `docs/ops/RESEARCH_QUALITY_AND_THESIS_GAP_2026-08-22.md` | Parser `[:500]` diagnosis, S1–S7, sandbox, mint; night numbers in the as-of file | Active |
 | `docs/ops/LLM_ROUTING_AND_DATA_LAYERS.md` | Two LLM families (scheduler DeepSeek vs 2h OAuth); Telegram DATA_UNAVAILABLE is thesis-slot join | Active |
 | `docs/ops/CIO_PHASE1_2_MEASURE_CLOSEOUT_2026-08-21.md` | Phase 1–2 measure closeout; evening note: 5-day window false start | Active |
 | `docs/ops/AUTONOMOUS_ADVISOR_SESSION_CLOSEOUT_2026-08-20.md` | Session closeout — PR #414–#420 deploys, host proofs, commands, Drive sync notes | Active |

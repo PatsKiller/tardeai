@@ -3,7 +3,8 @@
 **Authority:** READ_ONLY_ADVISORY  
 **Freeze:** **lifted 2026-08-22** (payload window invalid: 89% reentry, 4 surfaces at zero, 0.03% change rate). CURRENT pin `5e91225a` **still not promoted**.  
 **Proof artifacts:** `data/cio/research_store_audit_2026-08-22.json`, `data/cio/research_full_dump_2026-08-22.md`, `data/cio/thesis_mint_dryrun_2026-08-22.json`  
-**Session index:** `docs/ops/SESSION_CLOSEOUT_2026-08-22.md`
+**Session index:** `docs/ops/SESSION_CLOSEOUT_2026-08-22.md`  
+**Lifecycle as-of (night numbers, ingest):** `docs/ops/RESEARCH_LIFECYCLE_AS_OF_2026-08-22.md`
 
 ## The number
 
