@@ -40323,6 +40323,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             import api_v3_cio as _cio
             p = base_path[len("/api/v3/cio"):].strip("/")
             if method == "GET":
+                if p == "brain":
+                    return 200, _cio.get_cio_brain_v1()
                 if p in ("", "dashboard"):
                     return 200, _cio.get_cio_dashboard()
                 if p == "home":

@@ -1,0 +1,25 @@
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_cio_brain_is_default_integrated_operator_surface() -> None:
+    hub = (ROOT / "apps/command-center-v3/src/pages/CioHub.tsx").read_text(encoding="utf-8")
+    brain = (ROOT / "apps/command-center-v3/src/components/cio/CioBrainPanel.tsx").read_text(encoding="utf-8")
+    assert "'cio-brain': 'CIO BRAIN'" in hub
+    assert "const initialTab: Tab = TABS.includes(tabParam) ? tabParam : 'cio-brain'" in hub
+    for testid in (
+        "cio-brain-portfolio-thesis",
+        "cio-brain-capital-deployment",
+        "cio-brain-market-context",
+        "cio-brain-seasonality",
+        "cio-brain-methodology",
+        "cio-brain-learning",
+        "cio-brain-memory",
+        "cio-brain-operator-policy",
+        "cio-brain-system-health",
+    ):
+        assert testid in brain
+    assert "Executable order: NONE" in brain
+    assert "behavior influence 0" in brain
