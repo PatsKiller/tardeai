@@ -6,9 +6,13 @@
 
 **Memory influence:** `MEMORY_BEHAVIOR_INFLUENCE=0`
 
-**Branch:** `feat/temporal-due-diligence-poc` from `origin/main@9dfe437f6e161cb2b6c9ed2c983e23b9fa9de1b7`
+**Branch:** `feat/temporal-due-diligence-poc`, reconciled with `origin/main@2a554304abdfa12ecb876b149ae2675e720fcfc4`
+
+**POC implementation SHA tested:** `b2e07907d84b3be5ac3751bab28316546efcae0b`
 
 **Current decision:** **`TEMPORAL_POC_ONLY`**
+
+**Current production choice:** **`NO_TEMPORAL`**
 
 **Conditional target if later shadow and production gates pass:** selected durable advisory workflows on Temporal Cloud
 **Production installation authorized:** **NO**
@@ -31,9 +35,13 @@ T0 runtime feasibility, not production proof. The service-choice score is `62.32
 workload-specific Cloud cost, production operations, and shadow-run benefits
 remain unmeasured. If those gates pass, Cloud is preferred to self-hosting.
 
-[VERIFIED-LIVE] `origin/main` is `9dfe437f`; live CURRENT is
-`5e91225a1186659de3cfd65096e037e774506e7f`. PRs #461-#472 are open and the
-autonomous-loop closeout status is `HOLD`. Temporal CLI `1.8.2`, its embedded
+[VERIFIED-LIVE] At the post-stack redo, protected `origin/main` is
+`2a554304abdfa12ecb876b149ae2675e720fcfc4`. The deployed application release is
+`09b5ec3d48fb1afd5c9db4a1f9f12b405cadb525`; the newer protected-main commit is
+documentation-only. PRs #461-#472 and the exact-main overlay fix #474 are merged,
+and the autonomous advisory application is deployed. This changes the comparison
+baseline, but it does not make Temporal adopted or production-proven. Temporal CLI
+`1.8.2`, its embedded
 Server `1.31.2`, and Python SDK `1.31.0` were provisioned only inside this
 isolated worktree and used for a disposable localhost POC. The listener and all
 POC processes were stopped. No production Temporal package, Service, Worker,
@@ -61,12 +69,12 @@ queues, append-only/file-backed ledgers, and the CIO event/wake path:
   state.
 - `scripts/lib/cio_capital_plan.py:1324` composes the advisory capital plan.
 
-[VERIFIED-SOURCE] The post-#472 stack adds `ResearchThesisDelta@v1`, stateful
+[VERIFIED-SOURCE] The merged #461-#472 stack adds `ResearchThesisDelta@v1`, stateful
 prompt context, automatic thesis reconciliation, event research, DecisionPayload
 coverage, feedback, outcomes, call accounting, notification identity, and
 source-pin truth. These are domain capabilities Temporal must reuse, not replace.
 Evidence: `docs/ops/AUTONOMOUS_ADVISORY_LOOP_CLOSURE_RESULT_2026-08-23.md`
-at PR #472 head `16616604635e8177930fc5bfbc7793247dba923a`.
+and exact reviewed PR #472 head `16616604635e8177930fc5bfbc7793247dba923a`.
 
 ```mermaid
 flowchart LR
@@ -375,11 +383,11 @@ production self-host design would require separately budgeted Frontend, History,
 Matching, Worker, persistence, Visibility, UI, and monitoring capacity plus
 headroom during upgrades and recovery.
 
-[POC] The disposable localhost run completed 20 measured NOC Workflows at
-`943.933 ms` p50 and `947.162 ms` p95 end-to-end. Activity schedule-to-start p95
-was `47.125 ms`; a bounded Workflow produced 59 history events and at most
-49,841 serialized bytes. Service recovery was `5.550 s`, and a full disposable
-Service-plus-Worker restart simulation recovered in `8.874 s`. Peak CPU and RAM
+[POC] The post-stack disposable localhost redo completed 20 measured NOC
+Workflows at `944.307 ms` p50 and `946.581 ms` p95 end-to-end. Activity
+schedule-to-start p95 was `47.034 ms`; a bounded Workflow produced 59 history
+events and 49,769 serialized bytes. Service recovery was `5.082 s`, and a full
+disposable Service-plus-Worker restart simulation recovered in `8.785 s`. Peak CPU and RAM
 were not sampled, so they remain `UNMEASURED`; these latency/history observations
 are not production capacity evidence.
 
@@ -430,8 +438,8 @@ contract version, and domain schema version. A Workflow started under A must
 remain assigned to compatible Workers until a deliberate migration. No Worker
 may launch from dirty rebuild or mutable overlay. [POC] Pinned routing passed:
 an in-progress v1 Workflow executed only on build
-`6126eaae...-poc-v1`, while a new v2 Workflow executed only on
-`6126eaae...-poc-v2`. Both used identical Workflow code. Incompatible Workflow
+`b2e07907...-poc-v1`, while a new v2 Workflow executed only on
+`b2e07907...-poc-v2`. Both used identical Workflow code. Incompatible Workflow
 code evolution remains a T1 shadow gate.
 
 ## Current/Rebuild Impact
@@ -443,11 +451,13 @@ CURRENT. Temporal does not authorize the previously withheld cutover. Worker
 services must use immutable exact-main releases, stamp `source_sha`, and refuse
 dirty/rebuild paths.
 
-[VERIFIED-LIVE] The portfolio server was loaded from CURRENT `5e91225a` with pin
-integrity passing, but the CIO Telegram process was still running modules from
-old release `fe34482b` while its unit configuration referenced CURRENT. This is
-direct evidence of the stale-process/source-root class that Worker Versioning
-can reduce only after immutable Worker launch governance is enforced.
+[VERIFIED-LIVE] The post-stack deployment corrected the previously observed CIO
+Telegram stale-module mismatch. Portfolio Server, CIO Telegram, and the advisory
+delivery worker were restarted from immutable application release `09b5ec3d...`,
+and source/loaded/CURRENT pin checks passed at deployment. The broader host audit
+still finds advisory/research references to rebuild, hybrid, and other-worktree
+roots. Worker Versioning can reduce in-flight compatibility ambiguity only after
+those remaining workers are governed by immutable launch roots.
 
 ## Failure-Injection Results
 
@@ -463,11 +473,30 @@ restart simulation; compatible history replay; and pinned v1/v2 routing.
 The ambiguous provider boundary produced one provider receipt and zero duplicate
 calls. The thesis-write boundary retained exactly `symbol_noc@v1` and `@v2`.
 Identical replay yielded `NO_NEW_INFO` with no duplicate thesis, decision, or
-notification. Focused source/domain tests passed (`19 passed in 0.32s`). The run
+notification. The initial focused source/domain suite passed. The run
 made zero financial writes, zero paid provider calls, zero live database writes,
 and zero real Telegram sends. Physical host reboot, real Postgres/provider/
 Telegram failures, Cloud operation, and incompatible Workflow code evolution
 remain explicitly unmeasured.
+
+### Post-Stack Redo Validation
+
+[POC] After #461-#472 and #474 were merged and the advisory application was
+deployed, the POC branch was reconciled with protected main and the complete
+runtime matrix was executed again at branch SHA `b2e07907...`. All 18 scenarios
+passed. Five focused domain suites passed (`28 passed in 0.54s`), covering the
+Temporal POC, DecisionPayload, the NOC golden loop, research deltas, and the
+deterministic thesis decision gate. The redo retained one provider receipt, one
+decision, one notification, and exactly two thesis versions across identical
+evidence replay; the second delta was `NO_NEW_INFO`.
+
+The redo measured 59 events and 49,769 bytes per bounded fixture Workflow at the
+benchmark median, with end-to-end p50 `944.307 ms` and p95 `946.581 ms`.
+Service restart recovered in `5082.370 ms`; the Service-plus-Worker restart
+simulation recovered in `8784.678 ms`. The run again made zero paid provider
+calls, production database writes, Telegram sends, or financial writes. Raw
+evidence is `TEMPORAL_RUNTIME_ACCEPTANCE_RAW.json`, SHA256
+`6773e63aa231588b3ec78985637e1ca455f246c15daa8b463a20183898fc95c7`.
 
 ## NOC POC Results
 
@@ -495,10 +524,10 @@ limits. Continue-As-New is required for long-lived feedback/outcome coordinators
 before history approaches service warnings. Temporal documents a maximum of
 51,200 events and 50 MB Event History; see
 [Workflow execution limits](https://docs.temporal.io/workflow-execution/limits).
-[POC] The bounded NOC Workflow measured 59 events, 49,673 baseline bytes,
-49,841 maximum bytes across the performance sample, and a 1,639-byte maximum
-decoded payload. At one same-shape Workflow per day, aggregate retained history
-would be about 1.50 MB/30d, 4.49 MB/90d, and 18.19 MB/year. Those are fixture
+[POC] The post-stack redo bounded NOC Workflow measured 59 events and 49,769
+bytes at the benchmark median/maximum, with a 1,639-byte maximum decoded payload.
+At one same-shape Workflow per day, aggregate retained history would be about
+1.49 MB/30d, 4.48 MB/90d, and 18.17 MB/year. Those are fixture
 projections, not a production workload forecast; actual events and bytes at
 material-symbol cadence remain `UNMEASURED`.
 
@@ -605,9 +634,12 @@ are mandatory.
 The T0 runtime gates for crash continuation, disposable Service restart,
 compatible history replay, same-code pinned v1/v2 routing, duplicate suppression,
 bounded NOC history/payloads, latency, and static financial-path exclusion passed.
-GO to T1 shadow still requires separate authorization plus Cloud
-encryption/security, immutable Worker releases, workload cost bounds, comparison
-metrics, incompatible-code versioning tests, and a no-authoritative-write design.
+T1 remains `HOLD`: the deployed stack still needs natural research-to-thesis
+continuation and `NO_NEW_INFO` replay evidence, broader advisory/research runtime
+root stability, and the outstanding local-generative retirement gates. GO to T1
+shadow also requires separate authorization plus Cloud encryption/security,
+immutable Worker releases, workload cost bounds, comparison metrics,
+incompatible-code versioning tests, and a no-authoritative-write design.
 
 NO-GO if duplicate paid calls remain possible, canonical truth moves into Event
 History, Temporal becomes necessary for protection/execution, Workers can launch
@@ -618,8 +650,8 @@ operational effort exceed incident savings.
 
 **`TEMPORAL_POC_ONLY`**.
 
-T0 actual localhost runtime due diligence is complete and passed. Do not install
-production Temporal, begin T1 shadow operation, migrate cron/systemd, change
+T0 actual localhost runtime due diligence is complete and passed twice, including
+the post-stack redo. Do not install production Temporal, begin T1 shadow operation, migrate cron/systemd, change
 CURRENT, or alter domain authority under this prompt. If and only if T1-T2 are
 separately authorized and their gates pass, the preferred target is Temporal
 Cloud for selected advisory/research/learning workflows. Self-hosted Temporal
@@ -637,6 +669,7 @@ and broad advisory control-plane adoption are rejected at this stage.
 - `docs/_evidence/temporal/TEMPORAL_SECURITY_CHECKLIST.json`
 - `docs/_evidence/temporal/TEMPORAL_DUE_DILIGENCE_SCORECARD.json`
 - `docs/_evidence/temporal/TEMPORAL_RUNTIME_ACCEPTANCE_RAW.json`
+- `docs/_evidence/temporal/TEMPORAL_POST_STACK_REDO_RESULT.json`
 
 Official versions reviewed and tested in the isolated POC on 2026-08-23:
 Temporal CLI `1.8.2`, embedded Temporal Server `v1.31.2`, and Python SDK

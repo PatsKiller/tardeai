@@ -1,7 +1,9 @@
 {
-  "schema": "TemporalNOCPocResult@v2",
-  "measured_at": "2026-08-23T15:22:00Z",
-  "implementation_source_sha": "6126eaaec344cb600591589b1330244b4c42bd97",
+  "schema": "TemporalNOCPocResult@v3",
+  "measured_at": "2026-08-23T18:12:41Z",
+  "implementation_source_sha": "b2e07907d84b3be5ac3751bab28316546efcae0b",
+  "protected_main_sha_at_redo": "2a554304abdfa12ecb876b149ae2675e720fcfc4",
+  "deployed_application_sha_at_redo": "09b5ec3d48fb1afd5c9db4a1f9f12b405cadb525",
   "branch": "feat/temporal-due-diligence-poc",
   "mode": "MAINLINE_LOCALHOST_TEMPORAL_RUNTIME_POC",
   "authority": "READ_ONLY_ADVISORY",
@@ -56,8 +58,8 @@
     "notification_outbox_writes": 1,
     "provider_calls": 1,
     "history_events": 59,
-    "history_bytes": 49673,
-    "history_sha256": "267130d1d900a2c9758c1b263513fe430ebbb40fe436952dfc2f08e27ee95fb6",
+    "history_bytes": 49605,
+    "history_sha256": "edc31929a59ef5b3a7105d143c2989977d9024c27dddbfcfecb188f54f70d487",
     "business_ledger_sha256": "3e7a392f823b7e6564525f4a2af8721831e3756d00a8edc6670e096c3dcba5be"
   },
   "failure_injection": {
@@ -76,8 +78,8 @@
     "malformed_research": "POC_PASS; one attempt, no thesis/decision",
     "reconciliation_exception": "POC_PASS; second attempt succeeded without version churn",
     "telegram_unavailable": "POC_PASS; shadow outbox third attempt produced one stable notification row; no Telegram call",
-    "service_restart": "POC_PASS; persistent execution recovered in 5550.076 ms",
-    "host_reboot_simulation": "POC_PASS; disposable Service and Worker processes both stopped and recovered in 8873.771 ms",
+    "service_restart": "POC_PASS; persistent execution recovered in 5082.370 ms",
+    "host_reboot_simulation": "POC_PASS; disposable Service and Worker processes both stopped and recovered in 8784.678 ms",
     "physical_host_reboot": "UNMEASURED_NOT_REQUIRED_FOR_ISOLATED_POC",
     "real_postgres_outage": "UNMEASURED_NO_PRODUCTION_DB_USED",
     "real_deepseek_timeout": "UNMEASURED_NO_PAID_PROVIDER_CALL",
@@ -97,13 +99,13 @@
   "worker_versioning": {
     "status": "POC_PASS",
     "deployment": "tradeai-temporal-poc",
-    "v1": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1",
-    "v2": "6126eaaec344cb600591589b1330244b4c42bd97-poc-v2",
+    "v1": "b2e07907d84b3be5ac3751bab28316546efcae0b-poc-v1",
+    "v2": "b2e07907d84b3be5ac3751bab28316546efcae0b-poc-v2",
     "v1_in_progress_activity_builds": [
-      "6126eaaec344cb600591589b1330244b4c42bd97-poc-v1"
+      "b2e07907d84b3be5ac3751bab28316546efcae0b-poc-v1"
     ],
     "new_v2_activity_builds": [
-      "6126eaaec344cb600591589b1330244b4c42bd97-poc-v2"
+      "b2e07907d84b3be5ac3751bab28316546efcae0b-poc-v2"
     ],
     "scope": "PINNED routing and continuity with identical Workflow code; incompatible code evolution remains a future shadow gate"
   },
@@ -115,46 +117,46 @@
     "warmups": 3,
     "measured_workflows": 20,
     "end_to_end_ms": {
-      "p50": 943.933,
-      "p95": 947.162,
-      "max": 947.179
+      "p50": 944.307,
+      "p95": 946.581,
+      "max": 946.714
     },
     "activity_schedule_to_start_ms": {
-      "p50": 45.784,
-      "p95": 47.125,
-      "max": 48.052
+      "p50": 45.636,
+      "p95": 47.034,
+      "max": 47.751
     },
     "activity_execution_ms": {
-      "p50": 4.259,
-      "p95": 6.574,
-      "max": 9.854
+      "p50": 4.143,
+      "p95": 5.812,
+      "max": 7.179
     },
     "temporal_command_ms": {
-      "p50": 22.003,
-      "p95": 36.604,
-      "max": 36.604
+      "p50": 27.505,
+      "p95": 32.267,
+      "max": 32.267
     },
     "isolated_sqlite_query_ms": {
-      "p50": 0.0046,
-      "p95": 0.0053,
-      "max": 0.1439
+      "p50": 0.0023,
+      "p95": 0.007,
+      "max": 0.1809
     },
     "history_events_per_workflow": 59,
-    "history_bytes_p50": 49838,
-    "history_bytes_max": 49841,
+    "history_bytes_p50": 49769,
+    "history_bytes_max": 49769,
     "projected_history_if_same_shape": {
-      "30d_one_workflow_per_day_bytes": 1495140,
-      "90d_one_workflow_per_day_bytes": 4485420,
-      "1y_one_workflow_per_day_bytes": 18190870,
+      "30d_one_workflow_per_day_bytes": 1493070,
+      "90d_one_workflow_per_day_bytes": 4479210,
+      "1y_one_workflow_per_day_bytes": 18165685,
       "important": "Production uses one bounded Workflow per lifecycle; these totals are aggregate retained storage, not one unbounded Workflow history."
     }
   },
   "tests": {
-    "source_and_domain_command": ".venv-temporal/bin/python -m pytest -q tests/test_temporal_noc_poc.py tests/test_agent_decision_payload.py",
-    "source_and_domain_result": "19 passed in 0.32s",
-    "runtime_command": ".venv-temporal/bin/python -m scripts.temporal_poc.runtime_acceptance ... --source-sha 6126eaaec344cb600591589b1330244b4c42bd97",
+    "source_and_domain_command": ".venv-temporal/bin/python -m pytest -q tests/test_temporal_noc_poc.py tests/test_agent_decision_payload.py tests/test_noc_golden_loop.py tests/test_research_thesis_delta.py tests/test_thesis_decision_gate.py",
+    "source_and_domain_result": "28 passed in 0.54s",
+    "runtime_command": ".venv-temporal/bin/python -m scripts.temporal_poc.runtime_acceptance ... --source-sha b2e07907d84b3be5ac3751bab28316546efcae0b",
     "raw_runtime_evidence": "docs/_evidence/temporal/TEMPORAL_RUNTIME_ACCEPTANCE_RAW.json",
-    "raw_runtime_evidence_sha256": "5ff9c1c6b96b98b25c4a6adb61253ada9e89031caceff64482f3830a8f411ef0"
+    "raw_runtime_evidence_sha256": "6773e63aa231588b3ec78985637e1ca455f246c15daa8b463a20183898fc95c7"
   },
   "authority_results": {
     "financial_writes": 0,
@@ -167,6 +169,13 @@
     "live_database_writes": 0,
     "real_telegram_sends": 0
   },
-  "interpretation": "T0 localhost runtime due diligence passed for the deterministic shadow NOC lifecycle. This is not production proof, does not authorize T1 shadow operation, and does not change the service-choice score or READ_ONLY_ADVISORY authority.",
+  "post_stack_redo": {
+    "autonomous_stack_merged": true,
+    "application_deployed": true,
+    "temporal_production_installed": false,
+    "t1_shadow_started": false,
+    "t1_gate": "HOLD_PENDING_NATURAL_RESEARCH_LOOP_AND_RUNTIME_ROOT_STABILITY"
+  },
+  "interpretation": "T0 localhost runtime due diligence passed again after reconciling the POC with the merged autonomous-advisory stack. This is not production proof, does not authorize T1 shadow operation, and does not change the service-choice score or READ_ONLY_ADVISORY authority.",
   "status": "RUNTIME_POC_PASSED_PRODUCTION_HOLD"
 }

@@ -1,0 +1,65 @@
+{
+  "schema": "TemporalPostStackRedoResult@v1",
+  "measured_at": "2026-08-23T18:12:41Z",
+  "protected_main_sha": "2a554304abdfa12ecb876b149ae2675e720fcfc4",
+  "deployed_application_sha": "09b5ec3d48fb1afd5c9db4a1f9f12b405cadb525",
+  "poc_branch": "feat/temporal-due-diligence-poc",
+  "poc_tested_sha": "b2e07907d84b3be5ac3751bab28316546efcae0b",
+  "reconciliation": {
+    "autonomous_prs_461_through_472_merged": true,
+    "exact_main_overlay_pr_474_merged": true,
+    "poc_branch_contains_protected_main": true
+  },
+  "source_tests": {
+    "command": ".venv-temporal/bin/python -m pytest -q tests/test_temporal_noc_poc.py tests/test_agent_decision_payload.py tests/test_noc_golden_loop.py tests/test_research_thesis_delta.py tests/test_thesis_decision_gate.py",
+    "result": "28 passed in 0.54s"
+  },
+  "runtime_acceptance": {
+    "mode": "LOCALHOST_TEMPORAL_CLI_DEVELOPMENT_SERVER",
+    "address": "127.0.0.1:17233",
+    "namespace": "tradeai-temporal-poc",
+    "scenarios": 18,
+    "passed": 18,
+    "failed": 0,
+    "history_replay": "POC_PASS",
+    "worker_versioning": "POC_PASS_PINNED_SAME_CODE",
+    "identical_replay": "NO_NEW_INFO",
+    "duplicate_provider_calls": 0,
+    "duplicate_thesis_versions": 0,
+    "duplicate_decisions": 0,
+    "duplicate_notifications": 0,
+    "paid_provider_calls": 0,
+    "live_database_writes": 0,
+    "real_telegram_sends": 0,
+    "financial_writes": 0,
+    "end_to_end_p50_ms": 944.307,
+    "end_to_end_p95_ms": 946.581,
+    "history_events": 59,
+    "history_bytes": 49769,
+    "raw_evidence": "docs/_evidence/temporal/TEMPORAL_RUNTIME_ACCEPTANCE_RAW.json",
+    "raw_evidence_sha256": "6773e63aa231588b3ec78985637e1ca455f246c15daa8b463a20183898fc95c7"
+  },
+  "production": {
+    "temporal_installed": false,
+    "temporal_listener": false,
+    "temporal_workers": false,
+    "cron_migrated": false,
+    "systemd_migrated": false,
+    "canonical_writes_migrated": false,
+    "cloud_provisioned": false
+  },
+  "decision": {
+    "architecture": "TEMPORAL_POC_ONLY",
+    "production_choice": "NO_TEMPORAL",
+    "t1": "HOLD_PENDING_NATURAL_RESEARCH_LOOP_AND_RUNTIME_ROOT_STABILITY"
+  },
+  "authority": {
+    "mode": "READ_ONLY_ADVISORY",
+    "memory_behavior_influence": 0,
+    "broker_mutations": 0,
+    "order_mutations": 0,
+    "stop_mutations": 0,
+    "risk_mutations": 0,
+    "two_factor_mutations": 0
+  }
+}
