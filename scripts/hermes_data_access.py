@@ -50,7 +50,8 @@ def get_hermes_context(symbol: str, *, research_limit: int = 3, external_limit: 
                         "components": comp, "as_of": str(r.get("scored_at") or "")[:19]}
 
     # graded research intelligence (web-grounded)
-    ri = _q("""SELECT topic, summary, thesis, confidence_score, quality_score, freshness_date, research_type
+    ri = _q("""SELECT topic, summary, thesis, confidence_score, quality_score, freshness_date, research_type,
+                      source_urls_json, status, created_at
                FROM hermes_research_intelligence WHERE symbol=%s AND status NOT IN ('rejected','superseded')
                AND summary IS NOT NULL ORDER BY COALESCE(quality_score,0) DESC, created_at DESC LIMIT %s""",
             (sym, research_limit))
@@ -58,7 +59,9 @@ def get_hermes_context(symbol: str, *, research_limit: int = 3, external_limit: 
         "topic": dict(x).get("topic"), "thesis": (str(dict(x).get("thesis") or "")[:240]),
         "summary": (str(dict(x).get("summary") or "")[:280]),
         "confidence": dict(x).get("confidence_score"), "quality": dict(x).get("quality_score"),
-        "as_of": str(dict(x).get("freshness_date") or "")[:10], "type": dict(x).get("research_type"),
+        "as_of": str(dict(x).get("freshness_date") or dict(x).get("created_at") or "")[:19],
+        "type": dict(x).get("research_type"), "status": dict(x).get("status"),
+        "source_urls": _parse_urls(dict(x).get("source_urls_json")),
     } for x in ri]
 
     # external-lane opinions (Grok / ChatGPT)
@@ -71,6 +74,18 @@ def get_hermes_context(symbol: str, *, research_limit: int = 3, external_limit: 
         "risk_flags": dict(x).get("risk_flags"), "as_of": str(dict(x).get("created_at") or "")[:10],
     } for x in ex]
     return out
+
+
+def _parse_urls(value):
+    if isinstance(value, list):
+        return [str(x) for x in value if x]
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+            return _parse_urls(parsed)
+        except Exception:
+            return [value] if value.startswith(("http://", "https://")) else []
+    return []
 
 
 def hermes_prompt_block(symbol: str) -> str:

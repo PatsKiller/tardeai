@@ -431,6 +431,7 @@ def enqueue_research_request(
             "symbols": syms[:4],
             "situation_type": st,
             "thesis_version": thesis,
+            "trace_id": str(plan.get("trace_id") or "") or None,
             "priority": pri,
             "reason": (reason or f"Material {st} on {symbol}")[:400],
             "questions": q_norm,
@@ -488,6 +489,19 @@ def enqueue_research_request(
             replace_open=bool(replace_open and operator_forced),
             list_open_by_plan=_list_open_by_plan if replace_open else None,
         )
+        # Backfill the stable trace on older in-flight requests created before
+        # trace propagation existed. This updates the projection and appends an
+        # audit event without creating a duplicate research job.
+        if result.existing is not None and request.get("trace_id") and not result.existing.get("trace_id"):
+            _patch_request(result.research_id, {"trace_id": request["trace_id"]})
+            _append_jsonl(REQUEST_PATH, {
+                "event": "HERMES_RESEARCH_TRACE_ATTACHED",
+                "research_id": result.research_id,
+                "plan_id": pid,
+                "trace_id": request["trace_id"],
+                "symbol": symbol,
+                "authority": AUTHORITY,
+            })
         _log_enqueue(result, pid, pri)
 
         out: dict[str, Any] = {

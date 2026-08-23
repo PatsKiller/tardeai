@@ -476,6 +476,21 @@ def on_hermes_completed(
         from scripts.lib.research_quality import critique as _critique  # type: ignore
         from scripts.lib.research_memory_bridge import admit_from_research  # type: ignore
         from scripts.lib.research_circuit import record_success  # type: ignore
+    # Hermes is the producer; the ticker graph is a durable consumer projection.
+    # Keep this fail-soft so a projection issue never changes research authority.
+    try:
+        try:
+            from lib.ticker_knowledge_graph import ingest_hermes_result, ingest_existing_hermes_context
+        except Exception:
+            from scripts.lib.ticker_knowledge_graph import (  # type: ignore
+                ingest_hermes_result, ingest_existing_hermes_context,
+            )
+        out["ticker_graph"] = ingest_hermes_result(Path.cwd(), request, result)
+        sym = result.get("symbol") or request.get("symbol") or (request.get("metadata") or {}).get("symbol")
+        if sym:
+            out["ticker_graph_existing"] = ingest_existing_hermes_context(Path.cwd(), str(sym))
+    except Exception as e:
+        out["ticker_graph_error"] = f"{type(e).__name__}:{e}"
     try:
         merged = dict(result)
         if not merged.get("symbol"):
