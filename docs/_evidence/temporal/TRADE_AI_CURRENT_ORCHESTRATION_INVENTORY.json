@@ -1,0 +1,94 @@
+{
+  "schema": "TradeAIOrchestrationInventory@v1",
+  "measured_at": "2026-08-23T14:47:37Z",
+  "authority": "READ_ONLY_ADVISORY",
+  "memory_behavior_influence": 0,
+  "source": {
+    "origin_main": "9dfe437f6e161cb2b6c9ed2c983e23b9fa9de1b7",
+    "current": "5e91225a1186659de3cfd65096e037e774506e7f",
+    "current_path": "/home/johnclaw/trade-ai-releases/portfolio-server/5e91225a-main-exact-phase2-20260821-193607",
+    "poc_branch": "feat/temporal-due-diligence-poc",
+    "autonomous_stack_head": "16616604635e8177930fc5bfbc7793247dba923a",
+    "autonomous_stack_status": "OPEN_UNMERGED_NOT_DEPLOYED_HOLD",
+    "prs_461_472": {
+      "461": "OPEN", "462": "OPEN", "463": "OPEN", "464": "OPEN",
+      "465": "OPEN", "466": "OPEN", "467": "OPEN", "468": "OPEN",
+      "469": "OPEN", "470": "OPEN", "471": "OPEN", "472": "OPEN"
+    }
+  },
+  "worktrees": {
+    "total": 164,
+    "branch_attached": 140,
+    "detached": 24,
+    "dirty_state": "PER_WORKTREE_DETAILS_NOT_NORMALIZED; EXISTING DIRTY TREES WERE NOT MODIFIED",
+    "source": "git worktree list --porcelain"
+  },
+  "tree_inventory": {
+    "cron_entries": {"total": 493, "rebuild": 137, "hybrid": 5, "current": 14, "other": 337},
+    "user_units": {"total": 161, "rebuild": 47, "hybrid": 28, "current": 1, "other": 85},
+    "combined_drift_findings": 217,
+    "system_units": "READABLE_UNITS_INCLUDED_BY_SOURCE_AUDIT; EXACT TRADEAI COUNT UNMEASURED",
+    "source": "scripts/ops_tree_pin_audit.py plus effective crontab/systemd reads"
+  },
+  "postgres": {
+    "listeners": ["127.0.0.1:5432", "127.0.0.1:5433"],
+    "databases": "NAMES REDACTED FROM PUBLIC EVIDENCE; LIVE INSTANCES VERIFIED",
+    "queue_or_domain_counts": {
+      "watchlist_agent_jobs": 74590,
+      "ri_research_queue": 416,
+      "watch_decision_refresh_jobs": 36548,
+      "hermes_external_research": 47392,
+      "content_embeddings": 849955
+    },
+    "current_connections": "UNMEASURED",
+    "peak_connections": "UNMEASURED"
+  },
+  "orchestration_primitives": [
+    {"name": "CIOEventBus", "source": "scripts/lib/cio_event_bus.py:338", "role": "canonical CIO event meaning", "temporal_disposition": "KEEP_CANONICAL_WITH_ONE_WAY_ADAPTER"},
+    {"name": "CIOWakeJobStore", "source": "scripts/lib/cio_wake_jobs.py:195", "role": "wake state/idempotency", "temporal_disposition": "REPLACE_ONLY_FOR_MIGRATED_WORKFLOWS"},
+    {"name": "CIOAgentHandoffQueue", "source": "scripts/lib/cio_agent_handoff_queue.py", "role": "leases/retries/handoffs", "temporal_disposition": "MIGRATE_LATER_OR_KEEP_BUSINESS_QUEUE"},
+    {"name": "NotificationOutbox", "source": "scripts/lib/cio_notification_outbox.py:302", "role": "final delivery/audit", "temporal_disposition": "KEEP_AS_OUTBOX"},
+    {"name": "CIOActionLedger", "source": "scripts/lib/cio_action_ledger.py:146", "role": "operator workflow actions", "temporal_disposition": "KEEP_AS_DOMAIN_STORE"},
+    {"name": "file locks/flock", "source": "effective cron plus scripts", "role": "single-run exclusion", "temporal_disposition": "RETAIN_FOR_NON_MIGRATED_JOBS"}
+  ],
+  "workflows": [
+    {"name": "research_scheduler", "purpose": "select due/changed/stale/triggered research", "trigger": "cron", "source_tree": "rebuild", "worker": "scripts/research_scheduler.py", "stores": ["hermes_external_research", "llm_cost_reservations"], "retry": "provider and caller specific", "dedupe": "skip gate/content identity", "resume_after_crash": "partial", "temporal_fit": "PRIMARY_CHILD_STAGE"},
+    {"name": "Hermes external research", "purpose": "provider research acquisition", "trigger": "scheduler/queue", "source_tree": "rebuild", "worker": "scripts/hermes_external_researcher.py", "stores": ["hermes_external_research", "llm_consumption_log"], "cost_gate": "reservation ledger", "resume_after_crash": "ambiguous provider boundary", "temporal_fit": "ACTIVITY"},
+    {"name": "research skip gate", "purpose": "suppress unchanged calls", "trigger": "research dispatch", "worker": "research skip gate modules", "stores": ["research skip ledger"], "temporal_fit": "KEEP_DOMAIN_GATE"},
+    {"name": "RAG indexing", "purpose": "index approved content", "trigger": "cron/queue", "worker": "RAG/indexing scripts", "stores": ["content_embeddings"], "temporal_fit": "KEEP_SIMPLE_QUEUE_UNLESS_MULTI_STAGE_FAILURES_PROVE_NEED"},
+    {"name": "embedding queue", "purpose": "non-generative embeddings", "trigger": "queue worker", "worker": "scripts/hermes_embedding_worker.py", "stores": ["content_embeddings"], "temporal_fit": "KEEP_BUSINESS_QUEUE"},
+    {"name": "symbol thesis acquisition", "purpose": "close thesis research gaps", "trigger": "coverage/event/manual", "worker": "symbol thesis research modules", "stores": ["research/thesis stores"], "temporal_fit": "PRIMARY_WORKFLOW"},
+    {"name": "thesis mint/reconciliation", "purpose": "publish material thesis versions", "trigger": "manual in CURRENT; automatic in post-472", "worker": "scripts/lib/symbol_thesis_review.py", "stores": ["cio thesis store", "thesis change cards"], "temporal_fit": "ACTIVITY_WITH_DOMAIN_IDEMPOTENCY"},
+    {"name": "research to thesis delta", "purpose": "classify material evidence change", "trigger": "post-472 research completion", "worker": "scripts/lib/research_thesis_delta.py", "stores": ["research delta records"], "temporal_fit": "WORKFLOW_STAGE"},
+    {"name": "CIO reassessment", "purpose": "re-evaluate product/decision after thesis change", "trigger": "event/wake", "worker": "scripts/lib/cio_product_reassessment.py", "stores": ["DecisionPayload traces", "CIO ledgers"], "temporal_fit": "WORKFLOW_STAGE"},
+    {"name": "thesis.changed", "purpose": "canonical thesis-change event", "trigger": "material thesis publish", "worker": "CIOEventBus consumer", "stores": ["CIO event bus"], "temporal_fit": "CANONICAL_EVENT_WITH_ONE_WAY_ADAPTER"},
+    {"name": "CIO event bus", "purpose": "canonical event meaning and wakes", "trigger": "domain events", "worker": "scripts/lib/cio_event_bus.py", "stores": ["event journal"], "temporal_fit": "REMAIN_CANONICAL_NO_CYCLES"},
+    {"name": "material situation detector", "purpose": "detect material advisory situations", "trigger": "systemd timer", "worker": "scripts/lib/cio_situation_detector.py", "stores": ["CIO actions/wakes"], "temporal_fit": "KEEP_DETECTOR; START_WORKFLOW_FOR_SELECTED_CASES"},
+    {"name": "watchlist agent jobs", "purpose": "watch research/advisory jobs", "trigger": "queue worker", "worker": "scripts/process_watchlist_agent_jobs.py", "stores": ["watchlist_agent_jobs"], "row_count": 74590, "temporal_fit": "PARTIAL_MIGRATION_ONLY"},
+    {"name": "Financial Senses", "purpose": "deterministic scenario receipts", "trigger": "CIO/research composition", "worker": "scripts/lib/financial_senses", "stores": ["Financial Senses receipts"], "temporal_fit": "ACTIVITY_OR_DOMAIN_LIBRARY"},
+    {"name": "DecisionPayload emitters", "purpose": "six producer decision traces", "trigger": "change/heartbeat", "worker": "scripts/lib/agent_decision_payload.py", "stores": ["agent_run_traces"], "temporal_fit": "KEEP_DOMAIN_RECORD; EMIT_ACTIVITY"},
+    {"name": "operator feedback", "purpose": "durable disposition", "trigger": "Telegram/Command Center", "worker": "CIO feedback modules", "stores": ["feedback journal"], "temporal_fit": "SIGNAL_PLUS_DOMAIN_WRITE"},
+    {"name": "NEED_DATA research loop", "purpose": "fulfill operator evidence request", "trigger": "operator feedback", "worker": "CIO/Hermes bridge", "stores": ["feedback", "research queue", "theses"], "temporal_fit": "PRIMARY_WORKFLOW"},
+    {"name": "outcome maturation", "purpose": "freeze and measure outcomes", "trigger": "decision plus horizons", "worker": "post-472 outcome scorer", "stores": ["outcome records", "lesson candidates"], "temporal_fit": "PRIMARY_DURABLE_TIMER_WORKFLOW"},
+    {"name": "CIO weekly review", "purpose": "portfolio review", "trigger": "weekly schedule", "worker": "CIO review scripts", "stores": ["CIO reports/plans"], "temporal_fit": "TEMPORAL_SCHEDULE_CANDIDATE"},
+    {"name": "Telegram notification decision", "purpose": "materiality/correctness/suppression", "trigger": "decision/change", "worker": "notification gate modules", "stores": ["notification receipts"], "temporal_fit": "WORKFLOW_STAGE"},
+    {"name": "Telegram delivery", "purpose": "final delivery", "trigger": "outbox worker", "worker": "CIO delivery service", "stores": ["operator_notification_outbox"], "temporal_fit": "KEEP_OUTBOX"},
+    {"name": "document sync", "purpose": "repo docs to Drive", "trigger": "hourly cron/operator", "worker": "scripts/sync-docs-to-drive.sh", "stores": ["Drive", "sync logs"], "temporal_fit": "KEEP_CRON"},
+    {"name": "maturity scorecard", "purpose": "compute live maturity evidence", "trigger": "scheduled", "worker": "maturity scorecard scripts", "stores": ["maturity evidence"], "temporal_fit": "KEEP_SIMPLE_SCHEDULE"},
+    {"name": "runtime health", "purpose": "health/alerting", "trigger": "cron/systemd", "worker": "health scripts", "stores": ["health evidence"], "temporal_fit": "KEEP_SIMPLE_TIMER"}
+  ],
+  "known_incidents_source": [
+    "docs/ops/RESEARCH_LIFECYCLE_AS_OF_2026-08-22.md",
+    "docs/ops/SESSION_CLOSEOUT_2026-08-22.md",
+    "docs/ops/CURRENT_CUTOVER_AFTER_2026-08-27.md",
+    "docs/ops/AUTONOMOUS_ADVISORY_LOOP_CLOSURE_RESULT_2026-08-23.md at PR #472"
+  ],
+  "unmeasured": [
+    "normalized last-natural-run timestamp for every workflow",
+    "one authoritative owner for every legacy job",
+    "per-workflow peak CPU/RAM",
+    "per-workflow timeout/retry/dedupe behavior for every legacy script",
+    "complete system-systemd Trade AI unit count",
+    "PostgreSQL connection high-water mark"
+  ]
+}

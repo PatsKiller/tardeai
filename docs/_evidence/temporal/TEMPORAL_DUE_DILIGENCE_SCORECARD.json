@@ -1,0 +1,346 @@
+{
+  "schema": "TradeAITemporalDueDiligenceScorecard@v1",
+  "as_of": "2026-08-23",
+  "access_date": "2026-08-23",
+  "authority": "READ_ONLY_ADVISORY",
+  "memory_behavior_influence": 0,
+  "evidence_status": "ARCHITECTURE_DUE_DILIGENCE_NOT_PRODUCTION_PROOF",
+  "versions_reviewed": {
+    "temporal_server": {
+      "version": "v1.31.2",
+      "published_at": "2026-07-08T17:10:11Z",
+      "source": "https://github.com/temporalio/temporal/releases/tag/v1.31.2"
+    },
+    "temporal_python_sdk": {
+      "version": "1.31.0",
+      "published_at": "2026-07-29T17:58:27Z",
+      "source": "https://github.com/temporalio/sdk-python/releases/tag/1.31.0"
+    },
+    "deployment_mode_for_poc": "Temporal CLI development server on localhost only",
+    "deployment_mode_source": "https://docs.temporal.io/production-deployment"
+  },
+  "scoring_method": {
+    "scale": "0.0-5.0",
+    "direction": "higher_is_better_for_every_dimension",
+    "formula": "sum(weight_percent * score / 5)",
+    "maximum": 100,
+    "weight_total_percent": 100,
+    "important_interpretation": [
+      "Scores describe orchestration architecture, not investment quality or financial authority.",
+      "The post-472 baseline credits contracts already implemented in the unmerged PR stack so Temporal is not credited for solving those domain gaps.",
+      "The with-Temporal case assumes selected workflows, Temporal Cloud, client-side payload encryption, immutable exact-release Workers, and Worker Versioning. It is not a score for broad migration or self-hosting.",
+      "Temporal Activities are at-least-once. A high idempotency score assumes Trade AI reservation journals, stable business keys, and unique database constraints; Temporal alone does not provide exactly-once side effects."
+    ]
+  },
+  "baselines": {
+    "current_architecture": {
+      "label": "LIVE CURRENT PostgreSQL + cron + systemd + event/job tables",
+      "status": "VERIFIED_LIVE_WITH_KNOWN_DUAL_ROOT_AND_CAUSALITY_GAPS",
+      "source": "docs/ops/AUTONOMOUS_ADVISORY_LOOP_CLOSURE_RESULT_2026-08-23.md",
+      "source_note": "The dated closeout is on the unmerged advisory stack; live CURRENT remains older."
+    },
+    "post_472_without_temporal": {
+      "label": "CURRENT + reviewed #461-#472 domain architecture without Temporal",
+      "status": "IMPLEMENTED_IN_SEQUENTIAL_UNMERGED_PR_STACK_NOT_DEPLOYED",
+      "source": "docs/ops/AUTONOMOUS_ADVISORY_LOOP_CLOSURE_RESULT_2026-08-23.md",
+      "credited_features": [
+        "stateful RAG-first research and ResearchThesisDelta",
+        "automatic material thesis reconciliation",
+        "deterministic ThesisDecisionGate",
+        "DecisionPayload dedupe",
+        "feedback and outcome contracts",
+        "event research and authoritative call accounting",
+        "notification outbox/correctness controls",
+        "pin and source provenance"
+      ]
+    },
+    "post_472_with_temporal": {
+      "label": "Post-#472 domain architecture plus Temporal for selected long-running advisory workflows",
+      "status": "RECOMMENDED_TARGET_CONDITIONAL_ON_POC_AND_MIGRATION_GATES",
+      "assumptions": [
+        "Temporal Cloud is used for the production Temporal Service.",
+        "Canonical portfolio, research, thesis, feedback, outcome, and notification truth remains in Trade AI PostgreSQL/domain stores.",
+        "Payloads carry IDs and bounded metadata rather than raw research blobs or full RAG context.",
+        "A Payload Codec encrypts sensitive workflow payloads before they leave Trade AI Workers.",
+        "Workers run from immutable exact-main releases and use Worker Deployment Versions.",
+        "Broker, orders, stops, risk enforcement, 2FA, price truth, position truth, and low-latency execution remain outside Temporal."
+      ]
+    }
+  },
+  "dimensions": [
+    {
+      "dimension": "durability",
+      "weight_percent": 8,
+      "current_architecture": 1.5,
+      "post_472_without_temporal": 3.0,
+      "post_472_with_temporal": 4.7,
+      "rationale": "Temporal persists Workflow progress and coordinates replay after Worker or infrastructure failure; post-#472 improves domain durability but still depends on scheduler/job handoffs."
+    },
+    {
+      "dimension": "idempotency",
+      "weight_percent": 5,
+      "current_architecture": 2.2,
+      "post_472_without_temporal": 4.0,
+      "post_472_with_temporal": 4.5,
+      "rationale": "The PR stack adds stable IDs and dedupe. Temporal improves structured retry boundaries but its Activities are at-least-once, so external-call journals and database uniqueness remain mandatory."
+    },
+    {
+      "dimension": "causal_traceability",
+      "weight_percent": 7,
+      "current_architecture": 1.5,
+      "post_472_without_temporal": 4.0,
+      "post_472_with_temporal": 4.8,
+      "rationale": "Workflow Event History provides a durable stage-by-stage orchestration record while canonical domain records retain investment provenance."
+    },
+    {
+      "dimension": "retry_correctness",
+      "weight_percent": 6,
+      "current_architecture": 1.8,
+      "post_472_without_temporal": 3.5,
+      "post_472_with_temporal": 4.7,
+      "rationale": "Per-Activity policies, timeouts, non-retryable business failures, and visible attempt state replace multiplicative cron, provider, and queue retries when designed as one retry layer."
+    },
+    {
+      "dimension": "resume_after_crash",
+      "weight_percent": 7,
+      "current_architecture": 1.3,
+      "post_472_without_temporal": 2.7,
+      "post_472_with_temporal": 4.8,
+      "rationale": "This is Temporal's strongest fit for multi-stage research-to-CIO and NEED_DATA workflows that currently require explicit repair or restart logic."
+    },
+    {
+      "dimension": "timer_durability",
+      "weight_percent": 5,
+      "current_architecture": 2.2,
+      "post_472_without_temporal": 2.8,
+      "post_472_with_temporal": 5.0,
+      "rationale": "Durable timers materially fit 1d, 5d, 20d, and quarterly outcome maturation and long feedback waits."
+    },
+    {
+      "dimension": "event_handling",
+      "weight_percent": 4,
+      "current_architecture": 2.3,
+      "post_472_without_temporal": 3.8,
+      "post_472_with_temporal": 4.5,
+      "rationale": "Signals and Updates can durably advance a known Workflow, but the CIO event meaning must remain singular and cycle-free."
+    },
+    {
+      "dimension": "state_machine_clarity",
+      "weight_percent": 5,
+      "current_architecture": 1.8,
+      "post_472_without_temporal": 4.0,
+      "post_472_with_temporal": 4.5,
+      "rationale": "Explicit Workflows and Activities make orchestration state reviewable without relocating business truth into Temporal."
+    },
+    {
+      "dimension": "workflow_versioning",
+      "weight_percent": 6,
+      "current_architecture": 0.8,
+      "post_472_without_temporal": 2.5,
+      "post_472_with_temporal": 4.8,
+      "rationale": "Worker Versioning is the official recommended default for new production Workflow deployments and pins Workflows to Worker Deployment Versions."
+    },
+    {
+      "dimension": "deployment_safety",
+      "weight_percent": 5,
+      "current_architecture": 1.0,
+      "post_472_without_temporal": 2.7,
+      "post_472_with_temporal": 4.5,
+      "rationale": "Versioned immutable Workers reduce in-flight code ambiguity, but Temporal cannot fix dirty-tree or incorrect Worker launch paths by itself."
+    },
+    {
+      "dimension": "observability",
+      "weight_percent": 5,
+      "current_architecture": 2.2,
+      "post_472_without_temporal": 4.0,
+      "post_472_with_temporal": 4.5,
+      "rationale": "Visibility, bounded Search Attributes, Event History, and metrics add orchestration diagnostics; domain maturity metrics still come from Trade AI stores."
+    },
+    {
+      "dimension": "operator_debuggability",
+      "weight_percent": 4,
+      "current_architecture": 1.7,
+      "post_472_without_temporal": 3.8,
+      "post_472_with_temporal": 4.5,
+      "rationale": "A Command Center diagnostic link to a Workflow Execution can show last stage, retries, and source SHA without making Temporal UI the investment interface."
+    },
+    {
+      "dimension": "cost_governance_integration",
+      "weight_percent": 5,
+      "current_architecture": 2.7,
+      "post_472_without_temporal": 4.5,
+      "post_472_with_temporal": 4.5,
+      "rationale": "Post-#472 already has authoritative accounting. Temporal preserves the score only if cost-cap and policy failures are non-retryable and provider calls use pre-call reservations."
+    },
+    {
+      "dimension": "security",
+      "weight_percent": 5,
+      "current_architecture": 3.2,
+      "post_472_without_temporal": 4.0,
+      "post_472_with_temporal": 3.8,
+      "rationale": "Temporal adds a control plane and metadata exposure. Cloud with client-side encryption and least privilege is defensible, but increases the security surface relative to no Temporal."
+    },
+    {
+      "dimension": "latency",
+      "weight_percent": 2,
+      "current_architecture": 4.5,
+      "post_472_without_temporal": 4.1,
+      "post_472_with_temporal": 3.5,
+      "rationale": "Remote orchestration adds scheduling and network latency; this is acceptable only for advisory/research workflows, never low-latency execution or hard protection."
+    },
+    {
+      "dimension": "resource_efficiency",
+      "weight_percent": 3,
+      "current_architecture": 4.2,
+      "post_472_without_temporal": 4.0,
+      "post_472_with_temporal": 3.4,
+      "rationale": "Cloud avoids a local Temporal Service but adds always-on Workers, action/storage usage, and network overhead."
+    },
+    {
+      "dimension": "developer_simplicity",
+      "weight_percent": 3,
+      "current_architecture": 3.0,
+      "post_472_without_temporal": 3.2,
+      "post_472_with_temporal": 2.7,
+      "rationale": "Deterministic Workflow constraints, Activity boundaries, SDK testing, versioning, and idempotency design add a meaningful learning and code burden."
+    },
+    {
+      "dimension": "operational_simplicity",
+      "weight_percent": 4,
+      "current_architecture": 2.0,
+      "post_472_without_temporal": 3.3,
+      "post_472_with_temporal": 3.4,
+      "rationale": "Cloud removes server operations but not Worker releases, stuck Workflow response, codec/key management, or incident handling. Selected adoption narrowly improves net operations; self-hosting would score materially lower."
+    },
+    {
+      "dimension": "low_migration_risk",
+      "weight_percent": 3,
+      "current_architecture": 5.0,
+      "post_472_without_temporal": 4.2,
+      "post_472_with_temporal": 2.5,
+      "rationale": "Adding Temporal requires shadow dual-run, single-writer transitions, stable workflow IDs, and rollback; broad adoption would be riskier."
+    },
+    {
+      "dimension": "low_vendor_dependency",
+      "weight_percent": 2,
+      "current_architecture": 5.0,
+      "post_472_without_temporal": 5.0,
+      "post_472_with_temporal": 2.8,
+      "rationale": "SDK and Workflow semantics introduce Temporal dependency even though the open-source server and Cloud use portable APIs."
+    },
+    {
+      "dimension": "low_server_maintenance_burden",
+      "weight_percent": 3,
+      "current_architecture": 4.3,
+      "post_472_without_temporal": 4.2,
+      "post_472_with_temporal": 4.0,
+      "rationale": "Temporal Cloud owns persistence and server upgrades, but Trade AI still owns Workers, encryption codec/key lifecycle, connectivity, and release compatibility."
+    },
+    {
+      "dimension": "limited_failure_domain_expansion",
+      "weight_percent": 3,
+      "current_architecture": 4.2,
+      "post_472_without_temporal": 4.0,
+      "post_472_with_temporal": 3.0,
+      "rationale": "Temporal adds an external orchestration dependency. Canonical state and all financial protection must continue operating independently."
+    }
+  ],
+  "weighted_results": {
+    "current_architecture_score": 45.76,
+    "post_472_without_temporal_score": 71.5,
+    "post_472_with_temporal_score": 85.46,
+    "calculation_status": "VERIFIED_WEIGHT_TOTAL_100",
+    "delta_post_472_with_temporal_vs_without": 13.96
+  },
+  "recommendation": {
+    "chosen": "TEMPORAL_POC_ONLY",
+    "recommendation_kind": "CURRENT_DECISION",
+    "conditional_target_if_all_poc_gates_pass": "ADOPT_TEMPORAL_SELECTED_WORKFLOWS",
+    "current_go_no_go_status": "TEMPORAL_POC_ONLY",
+    "production_status": "HOLD",
+    "current_go_no_go_reason": "No successful isolated Temporal runtime POC, failure-injection evidence, Cloud security configuration, or authorized production migration exists yet.",
+    "production_service_preference": "TEMPORAL_CLOUD",
+    "present_authorization": "POC_AND_ARCHITECTURE_ONLY",
+    "scope": [
+      "AutonomousResearchToCIOWorkflow",
+      "OperatorNeedDataWorkflow",
+      "DecisionOutcomeWorkflow",
+      "PortfolioCIOReviewWorkflow only after the first three prove value"
+    ],
+    "keep_out": [
+      "broker execution",
+      "order lifecycle",
+      "stop lifecycle",
+      "live risk enforcement",
+      "2FA",
+      "broker and account truth",
+      "price and position truth",
+      "high-frequency or low-latency processing",
+      "simple stateless cron and database maintenance"
+    ],
+    "why": "The architecture score shows enough potential durability, timer, causality, crash-continuation, and Worker-version benefit to justify an isolated POC for selected long-running workflows. It does not justify adoption yet: no Temporal runtime or failure-injection result exists, and the separate production-option score narrowly favors no Temporal over Cloud once privacy, cost, and offline behavior are included. If every POC and migration gate passes, selected-workflow adoption with Temporal Cloud is the conditional target; broad adoption and self-hosting are not.",
+    "go_gates": [
+      "isolated NOC POC proves crash continuation and identical-evidence replay without duplicate provider calls, database writes, theses, decisions, or notifications",
+      "ambiguous external-call journal is proven under kill-after-provider-success",
+      "Worker v1 to v2 deployment test preserves an in-progress v1 Workflow",
+      "payload and Event History sizing stays bounded with IDs rather than research blobs",
+      "static import guards prove no broker/order/stop/risk/2FA capability in Workers",
+      "Cloud payload encryption, namespace authentication, key rotation, audit export, and cost estimate are accepted",
+      "old-write/Temporal-shadow then Temporal-write/old-disabled migration has explicit rollback"
+    ],
+    "no_go_conditions": [
+      "duplicate paid provider call remains possible after an ambiguous timeout",
+      "canonical investment truth is moved into Workflow history",
+      "Temporal availability becomes a dependency for stops, execution controls, broker reconciliation, or financial truth",
+      "Worker releases can start from dirty rebuild or mutable CURRENT paths",
+      "monthly platform and operational cost exceeds measured maintenance saved for selected workflows",
+      "post-#472 architecture achieves equivalent durability and causality with materially lower complexity"
+    ]
+  },
+  "official_sources": [
+    {
+      "topic": "production components and local development server",
+      "url": "https://docs.temporal.io/production-deployment"
+    },
+    {
+      "topic": "Worker Versioning recommended default",
+      "url": "https://docs.temporal.io/production-deployment/worker-deployments"
+    },
+    {
+      "topic": "Python retries, at-least-once Activities, idempotency, and non-retryable errors",
+      "url": "https://docs.temporal.io/develop/python/best-practices/error-handling"
+    },
+    {
+      "topic": "Signals, Updates, and Queries",
+      "url": "https://docs.temporal.io/develop/python/workflows/message-passing"
+    },
+    {
+      "topic": "Schedules",
+      "url": "https://docs.temporal.io/develop/python/workflows/schedules"
+    },
+    {
+      "topic": "Continue-As-New",
+      "url": "https://docs.temporal.io/develop/python/workflows/continue-as-new"
+    },
+    {
+      "topic": "51,200-event and 50-MB Event History limits",
+      "url": "https://docs.temporal.io/workflow-execution/limits"
+    },
+    {
+      "topic": "Visibility and Search Attributes",
+      "url": "https://docs.temporal.io/visibility"
+    },
+    {
+      "topic": "self-host production burden",
+      "url": "https://docs.temporal.io/self-hosted-guide/production-checklist"
+    },
+    {
+      "topic": "Temporal Cloud architecture, availability, and pricing summary",
+      "url": "https://docs.temporal.io/cloud/overview"
+    },
+    {
+      "topic": "client-side Payload Codec encryption",
+      "url": "https://docs.temporal.io/production-deployment/data-encryption"
+    }
+  ]
+}

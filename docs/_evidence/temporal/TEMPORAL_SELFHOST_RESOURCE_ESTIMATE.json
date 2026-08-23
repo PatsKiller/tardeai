@@ -1,0 +1,53 @@
+{
+  "schema": "TemporalSelfHostResourceEstimate@v1",
+  "measured_at": "2026-08-23T14:47:37Z",
+  "authority": "READ_ONLY_ADVISORY",
+  "host": {
+    "cpu": "Intel Core i9-12900H",
+    "logical_cpus": 20,
+    "cores": 14,
+    "ram_total_gib": 61,
+    "ram_available_gib": 53,
+    "swap_total_gib": 8,
+    "swap_used_mib_approx": 8.2,
+    "disk_total_gib": 468,
+    "disk_used_gib": 327,
+    "disk_available_gib": 118,
+    "disk_use_percent": 74,
+    "load_average": [2.00, 2.20, 2.29],
+    "uptime": "1 day 21:56",
+    "docker": "29.6.1",
+    "postgres_listeners": ["127.0.0.1:5432", "127.0.0.1:5433"],
+    "ollama_listener": "*:11434",
+    "ollama_active": "gemma3:12b 9.9GB 100% GPU stopping",
+    "tradeai_tree_drift_findings": 217
+  },
+  "safe_conclusions": [
+    "CPU and memory appear sufficient for a disposable non-HA localhost POC.",
+    "Disk is already 74% used; production retention, Visibility, backup and restore headroom are not proven.",
+    "Existing PostgreSQL, Ollama and many Python/systemd workloads share the host.",
+    "Resource availability is not production capacity or availability proof."
+  ],
+  "poc_estimate_not_reservation": {
+    "temporal_dev_server": {"cpu_cores": "1-2", "ram_gib": "1-3", "disk_gib": "5-10 ephemeral"},
+    "one_tradeai_worker": {"cpu_cores": "1-2 bounded by Activity concurrency", "ram_gib": "1-2 plus domain libraries"},
+    "binding": "localhost only",
+    "status": "ESTIMATE_NOT_MEASURED"
+  },
+  "production_selfhost_components": [
+    "Temporal Frontend", "History", "Matching", "Worker service",
+    "dedicated persistence database", "dedicated Visibility database",
+    "authenticated UI", "metrics/logging", "backup/restore capacity"
+  ],
+  "production_topology_recommendation": "REJECT_SELF_HOST_FOR_INITIAL_ADOPTION; IF REOPENED, USE DEDICATED POSTGRES INSTANCE AND INTERNAL_ONLY MTLS",
+  "unmeasured": [
+    "disk IOPS and p95/p99 latency under Trade AI peak",
+    "PostgreSQL current and peak connections",
+    "per-worker peak CPU/RAM",
+    "Temporal shard and history throughput",
+    "Visibility storage growth",
+    "backup throughput and restore duration",
+    "RPO/RTO",
+    "host behavior during Temporal and Trade AI simultaneous recovery"
+  ]
+}

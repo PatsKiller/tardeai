@@ -1,0 +1,41 @@
+{
+  "schema": "TemporalMigrationMap@v1",
+  "as_of": "2026-08-23",
+  "authority": "READ_ONLY_ADVISORY",
+  "current_decision": "TEMPORAL_POC_ONLY",
+  "conditional_target": "ADOPT_TEMPORAL_SELECTED_WORKFLOWS_ON_CLOUD_IF_ALL_GATES_PASS",
+  "phases": [
+    {"phase": "T0", "mode": "LOCAL_RUNTIME_POC", "writer": "ISOLATED_FIXTURE_ONLY", "entry": "architecture approval", "success": "actual SDK/Service restart, replay, Worker version, history, latency and idempotency gates", "rollback": "stop disposable localhost server"},
+    {"phase": "T1", "mode": "NOC_SHADOW", "writer": "OLD_WRITE_TEMPORAL_SHADOW", "entry": "T0 passes", "success": "matching lineage and no duplicate effects", "rollback": "disable new shadow starts"},
+    {"phase": "T2", "mode": "ONE_ADVISORY_DUAL_RUN", "writer": "OLD_WRITE_TEMPORAL_SHADOW", "entry": "T1 natural runs pass", "success": "measured reliability, cost and operator diagnostics improve", "rollback": "disable Temporal starter"},
+    {"phase": "T3", "mode": "RESEARCH_TO_THESIS", "writer": "TEMPORAL_WRITE_OLD_DISABLED", "entry": "reviewed exact-release Worker and production authorization", "success": "natural runs and rollback drill", "rollback": "disable starts and restore immutable old scheduler"},
+    {"phase": "T4", "mode": "PORTFOLIO_CIO_PILOT", "writer": "SINGLE_AUTHORITATIVE_PATH", "entry": "bounded child/history proof", "success": "portfolio review causal trace without history growth", "rollback": "return review scheduler"},
+    {"phase": "T5", "mode": "NEED_DATA_AND_OUTCOMES", "writer": "TEMPORAL_ORCHESTRATION_DOMAIN_STORES_CANONICAL", "entry": "durable timer/retention proof", "success": "1d/5d/20d/quarter maturation and feedback completion", "rollback": "restore external schedules; preserve domain records"},
+    {"phase": "T6", "mode": "RETIRE_REPLACED_STARTERS", "writer": "TEMPORAL_FOR_SELECTED_ONLY", "entry": "sustained natural-run evidence", "success": "no duplicate starts and lower incident burden", "rollback": "re-enable documented immutable scheduler"}
+  ],
+  "queue_dispositions": {
+    "watchlist_agent_jobs": "PARTIAL_MIGRATION_LATER",
+    "research_queues": "REPLACE_OR_ADAPT_ONLY_FOR_SELECTED_WORKFLOW",
+    "embedding_queue": "KEEP_AS_BUSINESS_QUEUE",
+    "notification_outbox": "KEEP_AS_OUTBOX",
+    "CIOEventBus": "KEEP_CANONICAL_WITH_ONE_WAY_TEMPORAL_ADAPTER",
+    "simple_cron": "KEEP",
+    "domain_databases": "KEEP_CANONICAL"
+  },
+  "duplicate_prevention": [
+    "OLD_WRITE/TEMPORAL_SHADOW before cutover",
+    "TEMPORAL_WRITE/OLD_DISABLED after cutover",
+    "stable comparison identity and provider request journal",
+    "one-way event topology; no EventBus-Temporal-EventBus cycles"
+  ],
+  "global_gates": [
+    "exact reviewed SHA and green CI",
+    "immutable exact-release Workers with source_sha",
+    "MEMORY_BEHAVIOR_INFLUENCE=0",
+    "static broker/order/stop/risk/2FA import denial",
+    "bounded payload/history and accepted retention",
+    "provider ambiguous-timeout no-duplicate proof",
+    "Cloud encryption, authentication, audit and cost acceptance",
+    "operator authorization before production host changes"
+  ]
+}

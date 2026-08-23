@@ -1,0 +1,87 @@
+{
+  "schema": "TemporalNOCPocResult@v1",
+  "measured_at": "2026-08-23T14:36:15Z",
+  "source_sha": "9dfe437f6e161cb2b6c9ed2c983e23b9fa9de1b7",
+  "branch": "feat/temporal-due-diligence-poc",
+  "mode": "MAINLINE_POC_SOURCE_AND_FIXTURE_HARNESS",
+  "authority": "READ_ONLY_ADVISORY",
+  "memory_behavior_influence": 0,
+  "environment": {
+    "python_system": "3.14.4",
+    "python_shared_tradeai_venv": "3.14.4",
+    "temporalio_system": "NOT_INSTALLED",
+    "temporalio_shared_tradeai_venv": "NOT_INSTALLED",
+    "temporal_cli": "NOT_INSTALLED",
+    "temporal_service_started": false,
+    "dependency_install_performed": false,
+    "production_install_performed": false
+  },
+  "implementation": {
+    "workflow": "AutonomousResearchToCIOWorkflow",
+    "symbol": "NOC",
+    "provider": "DETERMINISTIC_FIXTURE",
+    "paid_provider_calls": 0,
+    "live_database_writes": 0,
+    "broker_writes": 0,
+    "order_writes": 0,
+    "stop_writes": 0,
+    "risk_writes": 0,
+    "two_factor_writes": 0,
+    "files": [
+      "scripts/temporal_poc/contracts.py",
+      "scripts/temporal_poc/noc_shadow.py",
+      "scripts/temporal_poc/temporal_workflow.py",
+      "tests/test_temporal_noc_poc.py"
+    ],
+    "reused_domain_code": [
+      "scripts.lib.symbol_thesis_review.reconcile_symbol_thesis",
+      "scripts.lib.agent_decision_payload.build_decision_payload",
+      "scripts.lib.cio_theses.CIOThesisStore"
+    ]
+  },
+  "measured_fixture_results": {
+    "standing_thesis": "symbol_noc@v1",
+    "material_delta": "STRENGTHENS",
+    "published_thesis": "symbol_noc@v2",
+    "decision_schema": "DecisionPayload@v1",
+    "decision_action": "HOLD",
+    "decision_financial_action": false,
+    "provider_crash_resume": "PASSED",
+    "provider_calls_after_resume": 1,
+    "domain_write_crash_resume": "PASSED",
+    "reconcile_activity_attempts_after_injected_crash": 2,
+    "thesis_versions_after_resume": 2,
+    "duplicate_thesis_versions": 0,
+    "decision_writes_after_resume": 1,
+    "duplicate_decision_writes": 0,
+    "identical_replay_delta": "NO_NEW_INFO",
+    "identical_replay_thesis_version": "symbol_noc@v2",
+    "identical_replay_decision": "SUPPRESSED",
+    "identical_replay_provider_calls_total": 1,
+    "financial_writes": 0
+  },
+  "tests": {
+    "command": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m pytest -q tests/test_temporal_noc_poc.py",
+    "result": "7 passed in 0.17s",
+    "coverage": [
+      "hard cost/policy errors are non-retryable",
+      "domain truth remains outside Temporal",
+      "provider ambiguous-boundary idempotency",
+      "domain-write ambiguous-boundary thesis no-churn",
+      "NO_NEW_INFO replay suppression",
+      "static no financial-mutation imports",
+      "honest SDK availability gate"
+    ]
+  },
+  "runtime_gates": {
+    "actual_temporal_workflow_execution": "BLOCKED_TEMPORALIO_NOT_INSTALLED",
+    "actual_temporal_service_restart": "UNMEASURED",
+    "actual_temporal_history_replay": "UNMEASURED",
+    "actual_worker_sigkill": "UNMEASURED",
+    "actual_worker_versioning": "UNMEASURED",
+    "actual_temporal_latency": "UNMEASURED",
+    "actual_temporal_persistence_recovery": "UNMEASURED"
+  },
+  "interpretation": "The fixture harness validates Trade AI domain idempotency contracts and retry-boundary design. It is not evidence that Temporal Service or SDK replay works in this environment.",
+  "status": "SOURCE_POC_PASSED_TEMPORAL_RUNTIME_BLOCKED"
+}

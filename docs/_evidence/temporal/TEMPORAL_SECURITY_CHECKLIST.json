@@ -1,0 +1,480 @@
+{
+  "schema": "TradeAITemporalSecurityChecklist@v1",
+  "as_of": "2026-08-23",
+  "access_date": "2026-08-23",
+  "authority": "READ_ONLY_ADVISORY",
+  "memory_behavior_influence": 0,
+  "production_install_authorized": false,
+  "preferred_production_service_if_adopted": "TEMPORAL_CLOUD",
+  "status_legend": {
+    "INHERITED_POLICY": "Existing Trade AI policy that the Temporal design must preserve; not proof of a Temporal implementation.",
+    "REQUIRED_NOT_IMPLEMENTED": "Mandatory before production adoption and not implemented by this due-diligence exercise.",
+    "POC_REQUIRED": "Must be proved in an isolated localhost POC or later controlled shadow test.",
+    "NOT_APPLICABLE_TO_SELECTED_CLOUD_OPTION": "A self-host-only control retained for comparison and possible future review."
+  },
+  "threat_model": {
+    "protected_assets": [
+      "canonical portfolio and account truth",
+      "research and thesis provenance",
+      "DecisionPayload, feedback, and outcome records",
+      "provider and database credentials",
+      "Telegram credentials",
+      "operator identity and disposition",
+      "source SHA and worker release integrity",
+      "financial safety boundaries"
+    ],
+    "principal_risks": [
+      "a Temporal Worker importing or invoking broker, order, stop, risk, or 2FA capabilities",
+      "secrets or sensitive research entering persisted Workflow history, Memo, Search Attributes, logs, or failure messages",
+      "at-least-once Activity retry duplicating a paid provider call or domain write",
+      "unauthenticated access to a self-hosted Temporal Frontend or UI",
+      "Cloud metadata or plaintext payload exposure",
+      "Worker code/source drift across CURRENT, rebuild, or mutable worktrees",
+      "retry multiplication across Temporal, provider SDK, and existing queue layers",
+      "Temporal outage blocking financial protection, truth, or execution controls",
+      "over-broad namespace credentials or administration roles",
+      "codec or encryption-key compromise"
+    ],
+    "trust_boundaries": [
+      "Trade AI Client and Workers",
+      "Temporal Cloud Namespace or self-hosted Temporal Frontend",
+      "Temporal persistence and Visibility stores",
+      "canonical Trade AI PostgreSQL/domain stores",
+      "external research/provider APIs",
+      "notification outbox and Telegram delivery"
+    ]
+  },
+  "controls": [
+    {
+      "id": "AUTH-001",
+      "category": "financial_authority",
+      "control": "Temporal is orchestration only and grants no financial authority.",
+      "requirement": "All Temporal workflows and task queues are stamped READ_ONLY_ADVISORY and MEMORY_BEHAVIOR_INFLUENCE=0.",
+      "applies_to": ["TEMPORAL_CLOUD", "SELF_HOSTED", "POC"],
+      "status": "INHERITED_POLICY",
+      "acceptance": "Static configuration and runtime receipts show the authority fields on every start."
+    },
+    {
+      "id": "AUTH-002",
+      "category": "financial_authority",
+      "control": "Workers cannot access financial mutation code.",
+      "requirement": "Static import/call graph tests deny broker mutation, orders, stops, live risk-policy mutation, 2FA, paper trading, and execution routing modules.",
+      "applies_to": ["TEMPORAL_CLOUD", "SELF_HOSTED", "POC"],
+      "status": "REQUIRED_NOT_IMPLEMENTED",
+      "acceptance": "CI guard passes on every Worker release; runtime financial writes remain zero."
+    },
+    {
+      "id": "AUTH-003",
+      "category": "financial_authority",
+      "control": "Financial controls are independent of Temporal availability.",
+      "requirement": "Stops, execution controls, broker reconciliation, price truth, position truth, risk enforcement, and 2FA remain outside Temporal and continue when Temporal is unavailable.",
+      "applies_to": ["TEMPORAL_CLOUD", "SELF_HOSTED"],
+      "status": "REQUIRED_NOT_IMPLEMENTED",
+      "acceptance": "Dependency graph and outage test prove no financial-safety dependency on the Temporal endpoint."
+    },
+    {
+      "id": "DATA-001",
+      "category": "data_ownership",
+      "control": "Temporal does not become the business database.",
+      "requirement": "Canonical portfolio, market, research, thesis, feedback, outcome, policy, and notification records remain in existing governed Trade AI stores; Workflow state carries stable IDs and versions.",
+      "applies_to": ["TEMPORAL_CLOUD", "SELF_HOSTED", "POC"],
+      "status": "REQUIRED_NOT_IMPLEMENTED",
+      "acceptance": "Schema and code review find no canonical investment record stored only in Workflow history."
+    },
+    {
+      "id": "DATA-002",
+      "category": "data_minimization",
+      "control": "Workflow payloads are bounded and reference-based.",
+      "requirement": "Do not place raw research responses, full RAG corpora, credentials, private keys, tokens, 2FA values, broker data dumps, or raw chain-of-thought in Workflow payloads or history.",
+      "applies_to": ["TEMPORAL_CLOUD", "SELF_HOSTED", "POC"],
+      "status": "REQUIRED_NOT_IMPLEMENTED",
+      "acceptance": "Fixture scan and Event History export contain only approved identifiers, versions, hashes, bounded structured deltas, and non-secret diagnostics."
+    },
+    {
+      "id": "DATA-003",
+      "category": "data_minimization",
+      "control": "Search Attributes contain non-sensitive bounded identifiers only.",
+      "requirement": "Allowlisted attributes may include symbol, situation_type, research_gap_id, thesis_id/version, decision_id, materiality, workflow_schema, source_sha, and authority; prohibit free text, theses, operator reasons, secrets, and provider prompts.",
+      "applies_to": ["TEMPORAL_CLOUD", "SELF_HOSTED"],
+      "status": "REQUIRED_NOT_IMPLEMENTED",
+      "acceptance": "Search Attribute registry and sampled executions match the allowlist."
+    },
+    {
+      "id": "DATA-004",
+      "category": "data_minimization",
+      "control": "Memo is omitted unless necessary and is encrypted when used.",
+      "requirement": "Memo must not duplicate domain records; any non-public Memo content uses the configured Payload Codec.",
+      "applies_to": ["TEMPORAL_CLOUD", "SELF_HOSTED"],
+      "status": "REQUIRED_NOT_IMPLEMENTED",
+      "acceptance": "Execution samples show empty Memo or ciphertext only."
+    },
+    {
+      "id": "ENC-001",
+      "category": "encryption",
+      "control": "Client-side payload encryption is mandatory for Cloud.",
+      "requirement": "Use a reviewed Python Data Converter/Payload Codec so Workflow, Activity, Child Workflow, Signal, Query, Memo, and configured failure payloads are encrypted before leaving Trade AI Clients or Workers.",
+      "applies_to": ["TEMPORAL_CLOUD"],
+      "status": "REQUIRED_NOT_IMPLEMENTED",
+      "acceptance": "Captured traffic and Cloud Event History show ciphertext; local Worker round trip and key rotation tests pass."
+    },
+    {
+      "id": "ENC-002",
+      "category": "encryption",
+      "control": "Encryption keys stay outside Temporal.",
+      "requirement": "Codec keys are injected through existing secret management, never payloads or environment dumps, are least-privilege, versioned, rotatable, and recoverable under a documented escrow/backup policy.",
+      "applies_to": ["TEMPORAL_CLOUD", "SELF_HOSTED"],
+      "status": "REQUIRED_NOT_IMPLEMENTED",
+      "acceptance": "Key inventory, access review, rotation rehearsal, and loss-recovery test pass."
+    },
+    {
+      "id": "ENC-003",
+      "category": "encryption",
+      "control": "Failure messages and stack traces do not leak secrets.",
+      "requirement": "Sanitize ApplicationError messages and configure a Failure Converter if sensitive exception details could be persisted; structured error types carry no credentials or prompts.",
+      "applies_to": ["TEMPORAL_CLOUD", "SELF_HOSTED", "POC"],
+      "status": "REQUIRED_NOT_IMPLEMENTED",
+      "acceptance": "Injected failures produce redacted history, logs, UI, and notifications."
+    },
+    {
+      "id": "ENC-004",
+      "category": "encryption",
+      "control": "Codec Server is not an unauthenticated decryption oracle.",
+      "requirement": "If a Codec Server is deployed, keep it private/internal, require authentication and authorization, restrict CORS, log access without plaintext, rate limit, and never expose keys to Temporal Cloud.",
+      "applies_to": ["TEMPORAL_CLOUD", "SELF_HOSTED"],
+      "status": "REQUIRED_NOT_IMPLEMENTED",
+      "acceptance": "Unauthorized decode requests fail; authorized UI/CLI decode works; endpoint is absent from public scans."
+    },
+    {
+      "id": "IDENT-001",
+      "category": "identity",
+      "control": "Cloud Namespace authentication is least privilege.",
+      "requirement": "Use a dedicated Worker identity with Namespace-scoped API key or mTLS certificate; separate operator read/admin identities; no shared all-admin credential.",
+      "applies_to": ["TEMPORAL_CLOUD"],
+      "status": "REQUIRED_NOT_IMPLEMENTED",
+      "acceptance": "Role matrix, credential inventory, negative permission tests, and rotation test pass."
+    },
+    {
+      "id": "IDENT-002",
+      "category": "identity",
+      "control": "Cloud credentials rotate and revoke cleanly.",
+      "requirement": "Document issuance, overlap rotation, expiration, emergency revocation, secret reload, and audit ownership for API keys or certificates.",
+      "applies_to": ["TEMPORAL_CLOUD"],
+      "status": "REQUIRED_NOT_IMPLEMENTED",
+      "acceptance": "A Worker reconnects under a rotated credential and the old credential is rejected."
+    },
+    {
+      "id": "IDENT-003",
+      "category": "identity",
+      "control": "Cloud audit logs are exported and reviewed.",
+      "requirement": "Export Temporal Cloud API audit logs to existing security/operations monitoring with bounded retention and alert on admin, namespace, credential, and retention changes.",
+      "applies_to": ["TEMPORAL_CLOUD"],
+      "status": "REQUIRED_NOT_IMPLEMENTED",
+      "acceptance": "A controlled administrative change appears in the external audit sink and alert path."
+    },
+    {
+      "id": "NET-001",
+      "category": "network",
+      "control": "Cloud connection is outbound-only and allowlisted.",
+      "requirement": "Workers initiate TLS connections to the exact Namespace endpoint; deny unsolicited inbound access and arbitrary Temporal endpoints.",
+      "applies_to": ["TEMPORAL_CLOUD"],
+      "status": "REQUIRED_NOT_IMPLEMENTED",
+      "acceptance": "Firewall/egress policy and socket inventory show only approved endpoint access."
+    },
+    {
+      "id": "NET-002",
+      "category": "network",
+      "control": "Private Cloud connectivity is evaluated before production.",
+      "requirement": "Assess AWS PrivateLink or GCP Private Service Connect against host location, plan availability, cost, and one-user threat model; document an explicit accept/reject decision.",
+      "applies_to": ["TEMPORAL_CLOUD"],
+      "status": "REQUIRED_NOT_IMPLEMENTED",
+      "acceptance": "Architecture record states selected connectivity and residual risk."
+    },
+    {
+      "id": "RETRY-001",
+      "category": "side_effect_safety",
+      "control": "Every side-effecting Activity is idempotent.",
+      "requirement": "Use stable domain keys and database unique constraints for research, delta, thesis, decision, notification, feedback, and outcome writes; never rely only on Workflow Run ID for business dedupe across restarts or migration.",
+      "applies_to": ["TEMPORAL_CLOUD", "SELF_HOSTED", "POC"],
+      "status": "POC_REQUIRED",
+      "acceptance": "Forced Activity replay creates zero duplicate paid calls and zero duplicate canonical rows."
+    },
+    {
+      "id": "RETRY-002",
+      "category": "side_effect_safety",
+      "control": "Ambiguous provider calls use a pre-call reservation journal.",
+      "requirement": "Persist provider_call_id, request hash, producer/run, reservation status, provider request ID when available, terminal status, and cost before/after the network boundary; reconcile UNKNOWN outcomes rather than automatically issuing a second paid call.",
+      "applies_to": ["TEMPORAL_CLOUD", "SELF_HOSTED", "POC"],
+      "status": "POC_REQUIRED",
+      "acceptance": "Kill after provider success/before DB commit yields at most one provider charge and a reconcilable terminal record."
+    },
+    {
+      "id": "RETRY-003",
+      "category": "cost_governance",
+      "control": "Hard policy and budget failures never retry automatically.",
+      "requirement": "COST_CONFIGURATION_INVALID, COST_CAP_EXCEEDED, POLICY_NOT_ALLOWED, validation rejection, and authorization failure are non-retryable ApplicationError types unless an explicit operator/configuration signal changes the prerequisite.",
+      "applies_to": ["TEMPORAL_CLOUD", "SELF_HOSTED", "POC"],
+      "status": "REQUIRED_NOT_IMPLEMENTED",
+      "acceptance": "Failure injection records one attempt and a deterministic terminal/wait state."
+    },
+    {
+      "id": "RETRY-004",
+      "category": "cost_governance",
+      "control": "There is one bounded retry layer.",
+      "requirement": "Inventory and disable multiplicative provider SDK, existing queue, shell, and Temporal retries; set per-Activity initial interval, coefficient, maximum interval, maximum attempts, timeout, and non-retryable types.",
+      "applies_to": ["TEMPORAL_CLOUD", "SELF_HOSTED"],
+      "status": "REQUIRED_NOT_IMPLEMENTED",
+      "acceptance": "Retry matrix proves actual attempt counts under HTTP 500, timeout, circuit-open, cost-cap, and malformed-response cases."
+    },
+    {
+      "id": "RETRY-005",
+      "category": "side_effect_safety",
+      "control": "Long Activities heartbeat and cancel safely.",
+      "requirement": "External research and long RAG/index operations heartbeat bounded progress without embedding secrets or large content; cancellation stops future side effects and leaves a resumable journal state.",
+      "applies_to": ["TEMPORAL_CLOUD", "SELF_HOSTED", "POC"],
+      "status": "POC_REQUIRED",
+      "acceptance": "SIGKILL/cancel tests expose last heartbeat and resume or reconcile without duplication."
+    },
+    {
+      "id": "CODE-001",
+      "category": "workflow_integrity",
+      "control": "Workflow code is deterministic.",
+      "requirement": "No direct HTTP, database, filesystem mutation, shell, LLM call, unseeded randomness, environment inspection, or non-Temporal wall-clock read occurs in Workflow code; side effects live in Activities.",
+      "applies_to": ["TEMPORAL_CLOUD", "SELF_HOSTED", "POC"],
+      "status": "REQUIRED_NOT_IMPLEMENTED",
+      "acceptance": "Static review and replay tests pass under the Python Workflow sandbox."
+    },
+    {
+      "id": "CODE-002",
+      "category": "release_integrity",
+      "control": "Workers run from immutable exact-main releases.",
+      "requirement": "Each Worker Deployment Version is stamped with source SHA, dependency lock hash, workflow/activity contract versions, build time, and authority; dirty rebuild and mutable CURRENT/worktree launches are denied.",
+      "applies_to": ["TEMPORAL_CLOUD", "SELF_HOSTED"],
+      "status": "REQUIRED_NOT_IMPLEMENTED",
+      "acceptance": "Runtime health, Temporal metadata, and release manifest agree on exact SHA; pin_match is true."
+    },
+    {
+      "id": "CODE-003",
+      "category": "release_integrity",
+      "control": "Worker Versioning protects in-flight workflows.",
+      "requirement": "Use Worker Deployment Versions as the default production deployment method, with explicit current/ramping versions and rollback; patch Workflow code only as a documented fallback.",
+      "applies_to": ["TEMPORAL_CLOUD", "SELF_HOSTED"],
+      "status": "POC_REQUIRED",
+      "acceptance": "An in-progress v1 Workflow remains compatible and correctly routed while v2 starts new Workflows, and rollback preserves both."
+    },
+    {
+      "id": "CODE-004",
+      "category": "release_integrity",
+      "control": "Workflow and Activity contracts are versioned independently of release SHA.",
+      "requirement": "Persist workflow_schema and activity contract versions; migrations are additive/backward-compatible or use explicit version routing.",
+      "applies_to": ["TEMPORAL_CLOUD", "SELF_HOSTED"],
+      "status": "REQUIRED_NOT_IMPLEMENTED",
+      "acceptance": "Compatibility matrix covers every active retained Workflow version."
+    },
+    {
+      "id": "HIST-001",
+      "category": "history_management",
+      "control": "Event History stays below warning thresholds.",
+      "requirement": "Measure events and bytes; design Continue-As-New before the official 10,240-event/10-MB warnings and far below the 51,200-event/50-MB hard limits; finish message handlers before Continue-As-New.",
+      "applies_to": ["TEMPORAL_CLOUD", "SELF_HOSTED"],
+      "status": "POC_REQUIRED",
+      "acceptance": "30d/90d/1y projections and accelerated tests prove bounded histories."
+    },
+    {
+      "id": "HIST-002",
+      "category": "retention",
+      "control": "Retention is bounded because canonical evidence lives elsewhere.",
+      "requirement": "Select 30 or 90 days from measured diagnostic need; do not retain Workflow history as permanent research or thesis storage; document deletion and legal/privacy implications.",
+      "applies_to": ["TEMPORAL_CLOUD", "SELF_HOSTED"],
+      "status": "REQUIRED_NOT_IMPLEMENTED",
+      "acceptance": "Namespace retention matches policy and canonical domain records remain queryable after history expiry."
+    },
+    {
+      "id": "OBS-001",
+      "category": "observability",
+      "control": "Temporal observability complements domain observability.",
+      "requirement": "Collect Worker and Service/Cloud metrics, Workflow terminal states, task latency, retries, timeout, cancellation, cost-gate results, source SHA, and history growth; preserve existing DecisionPayload and call accounting as canonical domain evidence.",
+      "applies_to": ["TEMPORAL_CLOUD", "SELF_HOSTED"],
+      "status": "REQUIRED_NOT_IMPLEMENTED",
+      "acceptance": "Dashboards and alerts distinguish orchestration failure from business rejection and provider failure."
+    },
+    {
+      "id": "OBS-002",
+      "category": "observability",
+      "control": "Command Center diagnostics expose bounded workflow status.",
+      "requirement": "Expose execution ID/link, last successful stage, failure type, retry state, source SHA, and as-of time only; do not expose secrets, raw payloads, or Temporal internals on investment cards.",
+      "applies_to": ["TEMPORAL_CLOUD", "SELF_HOSTED"],
+      "status": "REQUIRED_NOT_IMPLEMENTED",
+      "acceptance": "Operator can diagnose a failed advisory workflow without SSH and without seeing confidential payload content."
+    },
+    {
+      "id": "MIG-001",
+      "category": "migration",
+      "control": "Shadow migration has one authoritative writer.",
+      "requirement": "Start OLD_WRITE/TEMPORAL_SHADOW with comparison receipts, then switch atomically to TEMPORAL_WRITE/OLD_DISABLED; prohibit uncontrolled dual writes and cycles between CIOEventBus and Temporal.",
+      "applies_to": ["TEMPORAL_CLOUD", "SELF_HOSTED"],
+      "status": "REQUIRED_NOT_IMPLEMENTED",
+      "acceptance": "Dual-run evidence has one authoritative row per business identity and a documented cutover receipt."
+    },
+    {
+      "id": "MIG-002",
+      "category": "migration",
+      "control": "Rollback preserves canonical records.",
+      "requirement": "Disable new Workflow starts, pause/terminate in-flight Workflows under a preregistered policy, restore the old scheduler, and preserve research/theses/decisions without deleting domain data.",
+      "applies_to": ["TEMPORAL_CLOUD", "SELF_HOSTED"],
+      "status": "REQUIRED_NOT_IMPLEMENTED",
+      "acceptance": "Isolated rollback drill restores the old path without duplicate or missing canonical records."
+    },
+    {
+      "id": "SH-NET-001",
+      "category": "self_host_network",
+      "control": "Self-hosted Temporal is never exposed to the public Internet.",
+      "requirement": "Bind to localhost or a trusted internal network, firewall the gRPC Frontend and UI, and permit only explicit Worker/operator sources.",
+      "applies_to": ["SELF_HOSTED"],
+      "status": "NOT_APPLICABLE_TO_SELECTED_CLOUD_OPTION",
+      "acceptance": "External port scan is closed and internal allowlist tests pass."
+    },
+    {
+      "id": "SH-TLS-001",
+      "category": "self_host_encryption",
+      "control": "Self-hosted internode and Frontend traffic uses mTLS.",
+      "requirement": "Configure separate internode/frontend trust, require client authentication, validate server names, rotate certificates, and alert before expiry.",
+      "applies_to": ["SELF_HOSTED"],
+      "status": "NOT_APPLICABLE_TO_SELECTED_CLOUD_OPTION",
+      "acceptance": "Untrusted certificates fail and approved clients connect after rotation."
+    },
+    {
+      "id": "SH-AUTH-001",
+      "category": "self_host_identity",
+      "control": "The unsafe noop Authorizer is prohibited.",
+      "requirement": "Configure a ClaimMapper and Authorizer that fail closed, separates read/worker/admin roles, and denies unauthorized namespace and administrative APIs.",
+      "applies_to": ["SELF_HOSTED"],
+      "status": "NOT_APPLICABLE_TO_SELECTED_CLOUD_OPTION",
+      "acceptance": "Startup fails if authorization is absent; negative API tests are denied."
+    },
+    {
+      "id": "SH-AUTH-002",
+      "category": "self_host_identity",
+      "control": "UI authentication and authorization are mandatory.",
+      "requirement": "Enable SSO/OAuth or an equivalent authenticated internal gateway; no anonymous UI; admin APIs remain separately restricted.",
+      "applies_to": ["SELF_HOSTED"],
+      "status": "NOT_APPLICABLE_TO_SELECTED_CLOUD_OPTION",
+      "acceptance": "Unauthenticated UI access fails and role tests pass."
+    },
+    {
+      "id": "SH-AUDIT-001",
+      "category": "self_host_audit",
+      "control": "Build the audit capability absent from self-host defaults.",
+      "requirement": "Record authenticated principal, namespace, operation, target, timestamp, decision, and source address for administrative and data-plane APIs; protect and export logs.",
+      "applies_to": ["SELF_HOSTED"],
+      "status": "NOT_APPLICABLE_TO_SELECTED_CLOUD_OPTION",
+      "acceptance": "Audit coverage test captures permitted and denied calls."
+    },
+    {
+      "id": "SH-DB-001",
+      "category": "self_host_persistence",
+      "control": "Temporal persistence is isolated from canonical Trade AI truth.",
+      "requirement": "Use dedicated Temporal and Temporal Visibility databases or a dedicated PostgreSQL instance with separate roles, credentials, connection limits, backups, and blast-radius analysis; never reuse trade_ai domain tables.",
+      "applies_to": ["SELF_HOSTED"],
+      "status": "NOT_APPLICABLE_TO_SELECTED_CLOUD_OPTION",
+      "acceptance": "Role tests deny cross-database domain access and resource-failure tests quantify shared-server impact."
+    },
+    {
+      "id": "SH-DB-002",
+      "category": "self_host_persistence",
+      "control": "Persistence and Visibility backups are restorable.",
+      "requirement": "Define encrypted database-native backups, RPO/RTO, retention, off-host copy, restore procedure, schema-version compatibility, and periodic restore testing. Treat Archival as history retention, not database disaster recovery.",
+      "applies_to": ["SELF_HOSTED"],
+      "status": "NOT_APPLICABLE_TO_SELECTED_CLOUD_OPTION",
+      "acceptance": "A clean-environment restore resumes a persisted test Workflow at the documented compatible version."
+    },
+    {
+      "id": "SH-UPG-001",
+      "category": "self_host_maintenance",
+      "control": "Server and schemas upgrade sequentially under test.",
+      "requirement": "Pin image digests; upgrade to the highest patch then one minor at a time; update persistence and Visibility schemas with matching tools; load-test staging; keep rollback and backups.",
+      "applies_to": ["SELF_HOSTED"],
+      "status": "NOT_APPLICABLE_TO_SELECTED_CLOUD_OPTION",
+      "acceptance": "Staging upgrade preserves active Workflow availability and restores from pre-upgrade backup."
+    },
+    {
+      "id": "SH-MON-001",
+      "category": "self_host_monitoring",
+      "control": "Service, persistence, and Workflow terminal metrics are monitored.",
+      "requirement": "Collect request/error/latency, persistence request/error/latency, Workflow completion/failure/timeout/cancel, queue backlog, poller, shard/capacity, disk, connection, and certificate metrics with actionable alerts.",
+      "applies_to": ["SELF_HOSTED"],
+      "status": "NOT_APPLICABLE_TO_SELECTED_CLOUD_OPTION",
+      "acceptance": "Fault injection causes the expected alert and runbook action."
+    }
+  ],
+  "production_gate_summary": {
+    "controls_total": 40,
+    "implemented_by_this_exercise": 0,
+    "production_ready": false,
+    "blockers": [
+      "no Temporal POC or production service is authorized by this checklist",
+      "Worker static authority guards are not yet implemented/proven",
+      "ambiguous provider-call idempotency is not yet failure-injection proven",
+      "Cloud identity, payload encryption, audit export, retention, and cost are not configured or accepted",
+      "Worker Versioning and exact-release source pin are not yet proven",
+      "single-writer migration and rollback are not yet proven"
+    ]
+  },
+  "official_sources": [
+    {
+      "topic": "self-host internal-only network requirement",
+      "url": "https://docs.temporal.io/self-hosted-guide/deployment"
+    },
+    {
+      "topic": "self-host mTLS, ClaimMapper, Authorizer, UI authentication, and unsafe noop Authorizer",
+      "url": "https://docs.temporal.io/self-hosted-guide/security"
+    },
+    {
+      "topic": "self-host lack of out-of-box RBAC/audit and ongoing operations burden",
+      "url": "https://docs.temporal.io/self-hosted-guide/production-checklist"
+    },
+    {
+      "topic": "Cloud authentication, TLS, encryption at rest, roles, isolation, private connectivity, and audit logs",
+      "url": "https://docs.temporal.io/cloud/security"
+    },
+    {
+      "topic": "Payload Codec, encryptable payload classes, Codec Server, and Failure Converter",
+      "url": "https://docs.temporal.io/production-deployment/data-encryption"
+    },
+    {
+      "topic": "at-least-once Activities, idempotency keys, retry policies, and non-retryable errors",
+      "url": "https://docs.temporal.io/develop/python/best-practices/error-handling"
+    },
+    {
+      "topic": "Worker Versioning recommended default",
+      "url": "https://docs.temporal.io/production-deployment/worker-deployments"
+    },
+    {
+      "topic": "Event History limits",
+      "url": "https://docs.temporal.io/workflow-execution/limits"
+    },
+    {
+      "topic": "Continue-As-New",
+      "url": "https://docs.temporal.io/develop/python/workflows/continue-as-new"
+    },
+    {
+      "topic": "Visibility and Search Attributes",
+      "url": "https://docs.temporal.io/visibility"
+    },
+    {
+      "topic": "self-host metrics",
+      "url": "https://docs.temporal.io/self-hosted-guide/monitoring"
+    },
+    {
+      "topic": "PostgreSQL Visibility support",
+      "url": "https://docs.temporal.io/self-hosted-guide/visibility"
+    },
+    {
+      "topic": "sequential server and schema upgrades",
+      "url": "https://docs.temporal.io/self-hosted-guide/upgrade-server"
+    },
+    {
+      "topic": "Archival",
+      "url": "https://docs.temporal.io/self-hosted-guide/archival"
+    }
+  ]
+}

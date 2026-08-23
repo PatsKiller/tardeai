@@ -1,0 +1,32 @@
+{
+  "schema": "TemporalFailureModeMatrix@v1",
+  "as_of": "2026-08-23",
+  "authority": "READ_ONLY_ADVISORY",
+  "classifications": {"SOLVE": 3, "REDUCE": 16, "NOT_HELP": 2, "MAKE_WORSE": 3},
+  "items": [
+    {"failure": "cron executes wrong source tree", "classification": "REDUCE", "mechanism": "immutable versioned Workers clarify code compatibility", "residual": "Worker launch governance still required"},
+    {"failure": "CURRENT differs from rebuild", "classification": "NOT_HELP", "mechanism": "Temporal cannot choose the correct release", "residual": "exact-main launch gate required"},
+    {"failure": "live process retains stale modules/cache", "classification": "REDUCE", "mechanism": "versioned Worker deployments drain old code", "residual": "non-Worker servers still need pin/cache truth"},
+    {"failure": "duplicate cron/worker", "classification": "REDUCE", "mechanism": "stable Workflow ID rejects duplicate start", "residual": "at-least-once Activities remain"},
+    {"failure": "malformed flock/lost environment", "classification": "REDUCE", "mechanism": "Workers replace shell exclusion for migrated work", "residual": "Worker service environment must be governed"},
+    {"failure": "cost cap missing on one path", "classification": "REDUCE", "mechanism": "single cost-gated Activity boundary", "residual": "existing ledger remains authority"},
+    {"failure": "job marked stale when expected idle", "classification": "REDUCE", "mechanism": "Workflow state and durable timers distinguish waiting from stuck", "residual": "domain SLA still required"},
+    {"failure": "partial research completion", "classification": "SOLVE", "mechanism": "Workflow resumes at next incomplete stage", "residual": "Activity write must be idempotent"},
+    {"failure": "research stored but mint absent", "classification": "SOLVE", "mechanism": "mint is the next durable Activity", "residual": "hard policy failure can still terminate visibly"},
+    {"failure": "thesis changed but Alex did not wake", "classification": "REDUCE", "mechanism": "same Workflow continues into reassessment or consumes one Signal", "residual": "canonical event adapter must not form cycles"},
+    {"failure": "notification prepared but not delivered", "classification": "REDUCE", "mechanism": "durable retry plus retained outbox", "residual": "Telegram outage and budget still apply"},
+    {"failure": "manual mint required", "classification": "REDUCE", "mechanism": "orchestration automatically invokes governed reconciliation", "residual": "post-472 already implements domain lifecycle"},
+    {"failure": "workflow restarts from beginning", "classification": "SOLVE", "mechanism": "Event History replay resumes orchestration", "residual": "only for migrated workflows"},
+    {"failure": "duplicate research enqueue/repeated dispatch", "classification": "REDUCE", "mechanism": "Workflow ID and Activity identity", "residual": "external domain queue dedupe still needed during migration"},
+    {"failure": "cap rejection counted ambiguously", "classification": "REDUCE", "mechanism": "attempt and terminal Activity state are causally visible", "residual": "domain call accounting remains canonical"},
+    {"failure": "event produced with no consumer", "classification": "REDUCE", "mechanism": "Workflow/Signal topology makes consumption explicit", "residual": "external event adapter monitoring needed"},
+    {"failure": "worker crash after provider call", "classification": "REDUCE", "mechanism": "Activity retry plus provider request journal", "residual": "Temporal does not guarantee exactly-once external calls"},
+    {"failure": "DB disconnect after LLM call", "classification": "REDUCE", "mechanism": "journaled provider response reused by retry", "residual": "requires pre-call reservation and durable response record"},
+    {"failure": "unexplained retries", "classification": "REDUCE", "mechanism": "Activity attempt history", "residual": "nested client retries must be removed"},
+    {"failure": "manual state repair", "classification": "REDUCE", "mechanism": "durable stage history and retry controls", "residual": "bad business state still needs operator repair"},
+    {"failure": "broker/order/stop/2FA mutation safety", "classification": "MAKE_WORSE", "mechanism": "adding Temporal expands the control-plane failure domain", "residual": "permanently exclude"},
+    {"failure": "low-latency market processing", "classification": "MAKE_WORSE", "mechanism": "remote durable orchestration adds latency/dependency", "residual": "keep out"},
+    {"failure": "canonical portfolio/price truth", "classification": "NOT_HELP", "mechanism": "Temporal is not the business database", "residual": "existing truth stores remain"},
+    {"failure": "self-host platform outage", "classification": "MAKE_WORSE", "mechanism": "new Service/database/cert/upgrade failure domain", "residual": "prefer no Temporal now; Cloud if later adopted"}
+  ]
+}
