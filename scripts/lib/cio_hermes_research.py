@@ -15,6 +15,7 @@ Storage:
 from __future__ import annotations
 
 import json
+import os
 import re
 import uuid
 from datetime import datetime, timezone
@@ -449,6 +450,18 @@ def enqueue_research_request(
             },
             "provenance": {"operator_forced": bool(operator_forced), "actor_id": actor_id},
         }
+        if symbol and symbol != "BOOK":
+            try:
+                from scripts.lib.research_prompt_context import build_research_prompt_context
+                prompt_context = build_research_prompt_context(
+                    symbol,
+                    question="\n".join(q["text"] for q in q_norm),
+                    root=Path(os.getenv("TRADEAI_ROOT") or Path(__file__).resolve().parents[2]),
+                )
+                request["prompt_context"] = prompt_context
+                request["prompt_context_hash"] = prompt_context.get("prompt_context_hash")
+            except Exception as context_exc:
+                request["prompt_context_status"] = f"UNAVAILABLE:{type(context_exc).__name__}"
         if isinstance(cat_pack, dict):
             request["catalyst"] = cat_pack
             request["catalyst_pack"] = cat_pack

@@ -1,0 +1,346 @@
+{
+  "authority": "READ_ONLY_ADVISORY",
+  "exact_prompt": "You are an external high-stakes research analyst (governed DeepSeek lane) advising a PAPER-trading\nresearch system. This is ADVISORY ONLY \u2014 you do not execute or recommend executing any live trade. You are\ngiven a REDACTED packet (no dollar amounts, account ids, or secrets). Provide a careful external challenge.\n\nQuestion: What changed in the standing NOC investment thesis?\nRedacted context (JSON): {\"as_of\": \"2026-08-23T02:21:12+00:00\", \"authority\": \"READ_ONLY_ADVISORY\", \"counter_evidence\": [], \"deterministic_changes_since_prior_review\": [{\"after\": \"Strong Sell\", \"before\": null, \"field\": \"analyst_rating\"}, {\"after\": 14.31, \"before\": null, \"field\": \"atr\"}, {\"after\": 939.98, \"before\": null, \"field\": \"avg_vol_m\"}, {\"after\": \"2026-08-20T06:44:07.862059\", \"before\": null, \"field\": \"cached_at\"}, {\"after\": \"Northrop Grumman Corp\", \"before\": null, \"field\": \"company\"}, {\"after\": \"USA\", \"before\": null, \"field\": \"country\"}, {\"after\": \"Aerospace & Defense\", \"before\": null, \"field\": \"industry\"}, {\"after\": 84027.44, \"before\": null, \"field\": \"market_cap_b\"}, {\"after\": 12.6, \"before\": null, \"field\": \"perf_month_pct\"}, {\"after\": 7.12, \"before\": null, \"field\": \"perf_quarter_pct\"}, {\"after\": 2.91, \"before\": null, \"field\": \"perf_week_pct\"}, {\"after\": -0.18, \"before\": null, \"field\": \"perf_year_pct\"}, {\"after\": 3.73, \"before\": null, \"field\": \"perf_ytd_pct\"}, {\"after\": 64.88, \"before\": null, \"field\": \"rsi\"}, {\"after\": 2.4, \"before\": null, \"field\": \"rvol\"}, {\"after\": \"Industrials\", \"before\": null, \"field\": \"sector\"}, {\"after\": -2.17, \"before\": null, \"field\": \"sma200_pct\"}, {\"after\": 4.93, \"before\": null, \"field\": \"sma20_pct\"}, {\"after\": 9.02, \"before\": null, \"field\": \"sma50_pct\"}, {\"after\": \"below_200\", \"before\": null, \"field\": \"trend\"}, {\"after\": -23.58, \"before\": null, \"field\": \"week52_high_pct\"}, {\"after\": 23.48, \"before\": null, \"field\": \"week52_low_pct\"}], \"deterministic_current_data\": {\"analyst_rating\": \"Strong Sell\", \"atr\": 14.31, \"avg_vol_m\": 939.98, \"cached_at\": \"2026-08-20T06:44:07.862059\", \"company\": \"Northrop Grumman Corp\", \"country\": \"USA\", \"industry\": \"Aerospace & Defense\", \"market_cap_b\": 84027.44, \"perf_month_pct\": 12.6, \"perf_quarter_pct\": 7.12, \"perf_week_pct\": 2.91, \"perf_year_pct\": -0.18, \"perf_ytd_pct\": 3.73, \"rsi\": 64.88, \"rvol\": 2.4, \"sector\": \"Industrials\", \"sma200_pct\": -2.17, \"sma20_pct\": 4.93, \"sma50_pct\": 9.02, \"trend\": \"below_200\", \"week52_high_pct\": -23.58, \"week52_low_pct\": 23.48}, \"financial_senses_receipts\": [{\"as_of\": null, \"capability\": \"daily_shadow_seed\", \"evidence_refs\": [], \"provider\": \"shadow_seed\", \"receipt_id\": \"fs-shadow-seed-2026-08-23\", \"status\": \"ok\", \"symbol\": null}, {\"as_of\": null, \"capability\": \"daily_shadow_seed\", \"evidence_refs\": [], \"provider\": \"shadow_seed\", \"receipt_id\": \"fs-shadow-seed-2026-08-22\", \"status\": \"ok\", \"symbol\": null}, {\"as_of\": null, \"capability\": \"daily_shadow_seed\", \"evidence_refs\": [], \"provider\": \"shadow_seed\", \"receipt_id\": \"fs-shadow-seed-2026-08-21\", \"status\": \"ok\", \"symbol\": null}, {\"as_of\": null, \"capability\": \"daily_shadow_seed\", \"evidence_refs\": [], \"provider\": \"shadow_seed\", \"receipt_id\": \"fs-shadow-seed-2026-08-20\", \"status\": \"ok\", \"symbol\": null}, {\"as_of\": null, \"capability\": \"identity.resolve\", \"evidence_refs\": [], \"provider\": \"identity\", \"receipt_id\": \"tr_idres\", \"status\": \"NOT_CONFIGURED\", \"symbol\": null}, {\"as_of\": null, \"capability\": \"sec.get_company_facts\", \"evidence_refs\": [], \"provider\": \"sec_edgar\", \"receipt_id\": \"tr_live_maturity_closure_ok\", \"status\": \"OK\", \"symbol\": null}, {\"as_of\": null, \"capability\": \"sec.resolve_cik\", \"evidence_refs\": [], \"provider\": \"sec_edgar\", \"receipt_id\": \"tr_live_maturity_closure_ok\", \"status\": \"OK\", \"symbol\": null}, {\"as_of\": null, \"capability\": \"macro.get_latest_observation\", \"evidence_refs\": [], \"provider\": \"macro\", \"receipt_id\": \"tr_live_maturity_closure\", \"status\": \"NOT_CONFIGURED\", \"symbol\": null}], \"market_regime\": {\"created_at\": \"2026-08-21 16:05:02.103800-04:00\", \"regime_label\": \"risk_on_trend\"}, \"memberships\": [\"HELD\", \"REENTRY\", \"WATCHLIST\"], \"memory_behavior_influence\": 0, \"memory_context\": {\"authority\": \"NON_AUTHORITATIVE_CONTEXT\", \"conflicts\": [], \"counter\": [], \"memory_behavior_influence\": \"0\", \"retrieval_status\": \"EMPTY\", \"supporting\": []}, \"operator_feedback\": [], \"portfolio_role\": \"DEFENSIVE\", \"previous_research_conclusion\": {\"as_of\": \"2026-08-22 18:39:35.687732-04:00\", \"conclusion\": \"NOC is a HOLD with immediate corrective action on stop discipline, not a position to add to. The core defense-durability thesis remains intact \\u2014 NOC's backlog and strategic position in next-gen programs (B-21, Sentinel ICBM, and integrated air/missile defense) provide multi-year revenue visibility that is rare in large-cap industrials. However, the current paper-trade setup is objectively poor: the stated 0.3:1 risk-reward is unacceptable for a non-momentum name, and the repeated 'Grok stop R:R review' flags (five times in recent research) indicate the position has been mismanaged at the execution level. The composite score of 56.2 (rank #64) suggests NOC is neither a top-quartile opportunity nor a distressed situation \\u2014 it is a mediocre setup in a fundamentally sound company. My role here is to challenge the thesis, not to defend it: the fact that three independent AI lanes (Grok, ChatGPT, DeepSeek) all converge on 'HOLD / DO NOT ADD' with confidence 0.62-0.72 is a strong signal that the market has already priced in the known positives. The numbered fact that matters most: NOC's trailing-stop discipline has been flagged for correction five times in the last two weeks, which means the position is not being managed according to its own stated risk parameters \\u2014 this is a process failure, not a market failure. Invalidation: if NOC breaks below its 200-day moving average on above-average volume (a level that has held since early 2025), the durability thesis is compromised and the position should be exited entirely, not just re-stopped. Conversely, if a major contract award (e.g., a new hypersonics or space-based missile warning program) is announced, the thesis changes to ADD because the fundamental repricing would overwhelm technical noise. The current 0.3:1 R:R is only acceptable if you believe a 10-15% gap higher is imminent on news flow \\u2014 but that is speculation, not investing, and it is not a sound basis for holding an open position. The correct action is to fix the stop immediately (convert to a 5-6% trailing stop as recommended), hold the existing position, and do not add until either the technical setup improves (R:R > 1.5:1) or a fundamental catalyst emerges. The position is not a 'sell' because the underlying business is durable and the downside is likely limited to single digits if the stop is properly placed, but it is also not a 'buy' because the risk-reward is asymmetric against you at current levels. My recommendation is conditional: fix the stop today, hold the position, and re-evaluate on any 3% move in either direction.\", \"confidence\": 0.62, \"dissent\": \"The strongest counter-view is that NOC's defense-durability thesis is significantly underappreciated by the market. With supportive analyst positioning, bullish sentiment, and options-edge, a geopolitical escalation (e.g., a new conflict or missile-defense emergency) or a major contract award could trigger a violent repricing higher \\u2014 a 10-15% gap move that would make the current 0.3:1 R:R irrelevant. In that scenario, the position should have been held regardless of technical discipline, and the trailing-stop correction would have caused an unnecessary exit. The market may be pricing NOC as a slow-growth industrial when it is actually a strategic asset with pricing power and non-cyclical demand.\", \"model\": \"deepseek-v4-flash\", \"provider\": \"deepseek\", \"research_id\": 47047}, \"previous_research_delta\": null, \"prompt_context_hash\": \"95fee577168be0455a4bae8a3110d3f7b0303f7285d59d2af6cf2d60edc284f0\", \"question\": \"What changed in the standing NOC investment thesis?\", \"rag\": {\"contradictory\": [], \"retrieval_order\": \"RAG_FIRST_SUPPORT_AND_CONTRADICTION\", \"sufficiency\": {\"authority\": \"READ_ONLY_ADVISORY\", \"counts\": {\"contradictory\": 0, \"primary_or_approved\": 0, \"structured\": 1, \"supporting\": 0}, \"remaining_evidence_gaps\": [\"insufficient_supporting_rag\", \"insufficient_contradictory_rag\", \"no_approved_primary_or_news\"], \"sufficient_for_synthesis\": false}, \"supporting\": []}, \"ratified_lessons\": [{\"evidence_refs\": [], \"lesson_id\": \"c8afcf81cfa5\", \"lifecycle\": \"RATIFIED_CONTEXT\", \"not_production_policy\": true, \"title\": \"Idle cash vs IPS target is structural, not a ticker trade\"}, {\"evidence_refs\": [], \"lesson_id\": \"f8753fd01e47\", \"lifecycle\": \"RATIFIED_CONTEXT\", \"not_production_policy\": true, \"title\": \"Conviction is not size\"}, {\"evidence_refs\": [], \"lesson_id\": \"3cef17963961\", \"lifecycle\": \"RATIFIED_CONTEXT\", \"not_production_policy\": true, \"title\": \"Momentum is a counter-argument\"}, {\"evidence_refs\": [], \"lesson_id\": \"38fc8ac5c34c\", \"lifecycle\": \"RATIFIED_CONTEXT\", \"not_production_policy\": true, \"title\": \"CUSIP is not a trade\"}, {\"evidence_refs\": [], \"lesson_id\": \"4945251aff91\", \"lifecycle\": \"RATIFIED_CONTEXT\", \"not_production_policy\": true, \"title\": \"Memory never overrides evidence\"}], \"raw_chain_of_thought\": false, \"schema\": \"ResearchPromptContext@v1\", \"sector_industry_state\": {\"as_of\": \"2026-08-22\", \"etf\": \"XLI\", \"rs20\": \"-4.92\", \"rs5\": \"-1.04\", \"rs60\": \"3.16\", \"sector\": \"Industrials\", \"slope\": \"-3.46\", \"state\": \"LAGGING\"}, \"standing_thesis\": {\"age_days\": 0.14849039641203704, \"counter_evidence\": [], \"evidence_for\": [], \"fresh\": true, \"invalidation_conditions\": [], \"last_reviewed\": \"2026-08-22T22:47:21.631125+00:00\", \"stance\": \"hold\", \"state\": \"CURRENT\", \"summary\": \"NOC is a HOLD with immediate corrective action on stop discipline, not a position to add to. The core defense-durability thesis remains intact \\u2014 NOC's backlog and strategic position in next-gen programs (B-21, Sentinel ICBM, and integrated air/missile defense) provide multi-year revenue visibility that is rare in large-cap industrials. However, the current paper-trade setup is objectively poor: the stated 0.3:1 risk-reward is unacceptable for a non-momentum name, and the repeated 'Grok stop R:R review' flags (five times in recent research) indicate the position has been mismanaged at the execution level. The composite score of 56.2 (rank #64) suggests NOC is neither a top-quartile opportunity nor a distressed situation \\u2014 it is a mediocre setup in a fundamentally sound company. My role here is to challenge the thesis, not to defend it: the fact that three independent AI lanes (Grok, ChatGPT, DeepSeek) all converge on 'HOLD / DO NOT ADD' with confidence 0.62-0.72 is a strong signal that the market has already priced in the known positives. The numbered fact that matters most: NOC's trailing-stop discipline has been flagged for correction five times in the last two weeks, which means the position is not being managed according to its own stated risk parameters \\u2014 this is a process failure, not a market failure. Invalidation: if NOC breaks below its 200-day moving average on above-average volume (a level that has held since early 2025), the durability thesis is compromised and the position should be exited entirely, not just re-stopped. Conversely, if a major contract award (e.g., a new hypersonics or space-based missile warning program) is announced, the thesis changes to ADD because the fundamental repricing would overwhelm technical noise. The current 0.3:1 R:R is only acceptable if you believe a 10-15% gap higher is imminent on news flow \\u2014 but that is speculation, not investing, and it is not a sound basis for holding an open position. The correct action is to fix t\\u2026\", \"thesis_id\": \"symbol_noc\", \"version\": \"symbol_noc@v3\"}, \"symbol_identity\": {\"company\": \"Northrop Grumman Corp\", \"industry\": \"Aerospace & Defense\", \"sector\": \"Industrials\", \"symbol\": \"NOC\"}, \"unresolved_research_gaps\": []}\n\nThe recommendation field IS the living thesis (not a one-line call). It must include the ticker, one numbered/symbol-specific fact, invalidation, role, and at least 8 sentences. Do not hide the thesis in evidence[]. JSON contract still required.\nCompare new evidence with the standing thesis and return a ResearchThesisDelta@v1, not a first-impression essay. Never return chain-of-thought.\n\n[agent_contract: cio_agent_v2_structured_evidence_2026-07-02]\nThe recommendation field IS the living thesis: must include ticker, one numbered/symbol-specific fact, invalidation, role, and at least 8 sentences. Do not hide the thesis in evidence[].\nReturn ONLY valid JSON:\n{\"recommendation\":\"<living thesis: ticker, numbered/symbol-specific fact, invalidation, role, >=8 sentences>\", \"evidence\":[{\"tag\":\"fact|technical|risk\",\"text\":\"...\"}], \"dissent\":\"the strongest counter-view\", \"confidence\":0.0-1.0, \"risk_flags\":[\"...\"], \"learning_candidate\":\"what the system should learn\", \"operator_action\":\"what the human operator should consider\", \"data_i_doubt\":\"none or specific stale/missing inputs\", \"classification\":\"CONFIRMS|STRENGTHENS|WEAKENS|INVALIDATES|NO_NEW_INFO|CONFLICTED|INSUFFICIENT_DATA\", \"evidence_as_of\":\"ISO-8601 timestamp\", \"new_evidence_ids\":[\"...\"], \"supporting_evidence_ids\":[\"...\"], \"contradictory_evidence_ids\":[\"...\"], \"deterministic_changes\":[{\"field\":\"...\",\"before\":\"...\",\"after\":\"...\"}], \"reason_summary\":\"concise rationale\", \"what_changed\":[\"...\"], \"what_did_not_change\":[\"...\"], \"research_gaps_remaining\":[\"...\"], \"invalidation_triggered\":false, \"source_quality\":{\"grade\":\"...\"}, \"freshness\":{\"state\":\"CURRENT|STALE|UNKNOWN\"}, \"source_refs\":[\"...\"]}",
+  "memory_behavior_influence": 0,
+  "prompt_context": {
+    "as_of": "2026-08-23T02:21:12+00:00",
+    "authority": "READ_ONLY_ADVISORY",
+    "counter_evidence": [],
+    "deterministic_changes_since_prior_review": [
+      {
+        "after": "Strong Sell",
+        "before": null,
+        "field": "analyst_rating"
+      },
+      {
+        "after": 14.31,
+        "before": null,
+        "field": "atr"
+      },
+      {
+        "after": 939.98,
+        "before": null,
+        "field": "avg_vol_m"
+      },
+      {
+        "after": "2026-08-20T06:44:07.862059",
+        "before": null,
+        "field": "cached_at"
+      },
+      {
+        "after": "Northrop Grumman Corp",
+        "before": null,
+        "field": "company"
+      },
+      {
+        "after": "USA",
+        "before": null,
+        "field": "country"
+      },
+      {
+        "after": "Aerospace & Defense",
+        "before": null,
+        "field": "industry"
+      },
+      {
+        "after": 84027.44,
+        "before": null,
+        "field": "market_cap_b"
+      },
+      {
+        "after": 12.6,
+        "before": null,
+        "field": "perf_month_pct"
+      },
+      {
+        "after": 7.12,
+        "before": null,
+        "field": "perf_quarter_pct"
+      },
+      {
+        "after": 2.91,
+        "before": null,
+        "field": "perf_week_pct"
+      },
+      {
+        "after": -0.18,
+        "before": null,
+        "field": "perf_year_pct"
+      },
+      {
+        "after": 3.73,
+        "before": null,
+        "field": "perf_ytd_pct"
+      },
+      {
+        "after": 64.88,
+        "before": null,
+        "field": "rsi"
+      },
+      {
+        "after": 2.4,
+        "before": null,
+        "field": "rvol"
+      },
+      {
+        "after": "Industrials",
+        "before": null,
+        "field": "sector"
+      },
+      {
+        "after": -2.17,
+        "before": null,
+        "field": "sma200_pct"
+      },
+      {
+        "after": 4.93,
+        "before": null,
+        "field": "sma20_pct"
+      },
+      {
+        "after": 9.02,
+        "before": null,
+        "field": "sma50_pct"
+      },
+      {
+        "after": "below_200",
+        "before": null,
+        "field": "trend"
+      },
+      {
+        "after": -23.58,
+        "before": null,
+        "field": "week52_high_pct"
+      },
+      {
+        "after": 23.48,
+        "before": null,
+        "field": "week52_low_pct"
+      }
+    ],
+    "deterministic_current_data": {
+      "analyst_rating": "Strong Sell",
+      "atr": 14.31,
+      "avg_vol_m": 939.98,
+      "cached_at": "2026-08-20T06:44:07.862059",
+      "company": "Northrop Grumman Corp",
+      "country": "USA",
+      "industry": "Aerospace & Defense",
+      "market_cap_b": 84027.44,
+      "perf_month_pct": 12.6,
+      "perf_quarter_pct": 7.12,
+      "perf_week_pct": 2.91,
+      "perf_year_pct": -0.18,
+      "perf_ytd_pct": 3.73,
+      "rsi": 64.88,
+      "rvol": 2.4,
+      "sector": "Industrials",
+      "sma200_pct": -2.17,
+      "sma20_pct": 4.93,
+      "sma50_pct": 9.02,
+      "trend": "below_200",
+      "week52_high_pct": -23.58,
+      "week52_low_pct": 23.48
+    },
+    "financial_senses_receipts": [
+      {
+        "as_of": null,
+        "capability": "daily_shadow_seed",
+        "evidence_refs": [],
+        "provider": "shadow_seed",
+        "receipt_id": "fs-shadow-seed-2026-08-23",
+        "status": "ok",
+        "symbol": null
+      },
+      {
+        "as_of": null,
+        "capability": "daily_shadow_seed",
+        "evidence_refs": [],
+        "provider": "shadow_seed",
+        "receipt_id": "fs-shadow-seed-2026-08-22",
+        "status": "ok",
+        "symbol": null
+      },
+      {
+        "as_of": null,
+        "capability": "daily_shadow_seed",
+        "evidence_refs": [],
+        "provider": "shadow_seed",
+        "receipt_id": "fs-shadow-seed-2026-08-21",
+        "status": "ok",
+        "symbol": null
+      },
+      {
+        "as_of": null,
+        "capability": "daily_shadow_seed",
+        "evidence_refs": [],
+        "provider": "shadow_seed",
+        "receipt_id": "fs-shadow-seed-2026-08-20",
+        "status": "ok",
+        "symbol": null
+      },
+      {
+        "as_of": null,
+        "capability": "identity.resolve",
+        "evidence_refs": [],
+        "provider": "identity",
+        "receipt_id": "tr_idres",
+        "status": "NOT_CONFIGURED",
+        "symbol": null
+      },
+      {
+        "as_of": null,
+        "capability": "sec.get_company_facts",
+        "evidence_refs": [],
+        "provider": "sec_edgar",
+        "receipt_id": "tr_live_maturity_closure_ok",
+        "status": "OK",
+        "symbol": null
+      },
+      {
+        "as_of": null,
+        "capability": "sec.resolve_cik",
+        "evidence_refs": [],
+        "provider": "sec_edgar",
+        "receipt_id": "tr_live_maturity_closure_ok",
+        "status": "OK",
+        "symbol": null
+      },
+      {
+        "as_of": null,
+        "capability": "macro.get_latest_observation",
+        "evidence_refs": [],
+        "provider": "macro",
+        "receipt_id": "tr_live_maturity_closure",
+        "status": "NOT_CONFIGURED",
+        "symbol": null
+      }
+    ],
+    "market_regime": {
+      "created_at": "2026-08-21 16:05:02.103800-04:00",
+      "regime_label": "risk_on_trend"
+    },
+    "memberships": [
+      "HELD",
+      "REENTRY",
+      "WATCHLIST"
+    ],
+    "memory_behavior_influence": 0,
+    "memory_context": {
+      "authority": "NON_AUTHORITATIVE_CONTEXT",
+      "conflicts": [],
+      "counter": [],
+      "memory_behavior_influence": "0",
+      "retrieval_status": "EMPTY",
+      "supporting": []
+    },
+    "operator_feedback": [],
+    "portfolio_role": "DEFENSIVE",
+    "previous_research_conclusion": {
+      "as_of": "2026-08-22 18:39:35.687732-04:00",
+      "conclusion": "NOC is a HOLD with immediate corrective action on stop discipline, not a position to add to. The core defense-durability thesis remains intact \u2014 NOC's backlog and strategic position in next-gen programs (B-21, Sentinel ICBM, and integrated air/missile defense) provide multi-year revenue visibility that is rare in large-cap industrials. However, the current paper-trade setup is objectively poor: the stated 0.3:1 risk-reward is unacceptable for a non-momentum name, and the repeated 'Grok stop R:R review' flags (five times in recent research) indicate the position has been mismanaged at the execution level. The composite score of 56.2 (rank #64) suggests NOC is neither a top-quartile opportunity nor a distressed situation \u2014 it is a mediocre setup in a fundamentally sound company. My role here is to challenge the thesis, not to defend it: the fact that three independent AI lanes (Grok, ChatGPT, DeepSeek) all converge on 'HOLD / DO NOT ADD' with confidence 0.62-0.72 is a strong signal that the market has already priced in the known positives. The numbered fact that matters most: NOC's trailing-stop discipline has been flagged for correction five times in the last two weeks, which means the position is not being managed according to its own stated risk parameters \u2014 this is a process failure, not a market failure. Invalidation: if NOC breaks below its 200-day moving average on above-average volume (a level that has held since early 2025), the durability thesis is compromised and the position should be exited entirely, not just re-stopped. Conversely, if a major contract award (e.g., a new hypersonics or space-based missile warning program) is announced, the thesis changes to ADD because the fundamental repricing would overwhelm technical noise. The current 0.3:1 R:R is only acceptable if you believe a 10-15% gap higher is imminent on news flow \u2014 but that is speculation, not investing, and it is not a sound basis for holding an open position. The correct action is to fix the stop immediately (convert to a 5-6% trailing stop as recommended), hold the existing position, and do not add until either the technical setup improves (R:R > 1.5:1) or a fundamental catalyst emerges. The position is not a 'sell' because the underlying business is durable and the downside is likely limited to single digits if the stop is properly placed, but it is also not a 'buy' because the risk-reward is asymmetric against you at current levels. My recommendation is conditional: fix the stop today, hold the position, and re-evaluate on any 3% move in either direction.",
+      "confidence": 0.62,
+      "dissent": "The strongest counter-view is that NOC's defense-durability thesis is significantly underappreciated by the market. With supportive analyst positioning, bullish sentiment, and options-edge, a geopolitical escalation (e.g., a new conflict or missile-defense emergency) or a major contract award could trigger a violent repricing higher \u2014 a 10-15% gap move that would make the current 0.3:1 R:R irrelevant. In that scenario, the position should have been held regardless of technical discipline, and the trailing-stop correction would have caused an unnecessary exit. The market may be pricing NOC as a slow-growth industrial when it is actually a strategic asset with pricing power and non-cyclical demand.",
+      "model": "deepseek-v4-flash",
+      "provider": "deepseek",
+      "research_id": 47047
+    },
+    "previous_research_delta": null,
+    "prompt_context_hash": "95fee577168be0455a4bae8a3110d3f7b0303f7285d59d2af6cf2d60edc284f0",
+    "question": "What changed in the standing NOC investment thesis?",
+    "rag": {
+      "contradictory": [],
+      "retrieval_order": "RAG_FIRST_SUPPORT_AND_CONTRADICTION",
+      "sufficiency": {
+        "authority": "READ_ONLY_ADVISORY",
+        "counts": {
+          "contradictory": 0,
+          "primary_or_approved": 0,
+          "structured": 1,
+          "supporting": 0
+        },
+        "remaining_evidence_gaps": [
+          "insufficient_supporting_rag",
+          "insufficient_contradictory_rag",
+          "no_approved_primary_or_news"
+        ],
+        "sufficient_for_synthesis": false
+      },
+      "supporting": []
+    },
+    "ratified_lessons": [
+      {
+        "evidence_refs": [],
+        "lesson_id": "c8afcf81cfa5",
+        "lifecycle": "RATIFIED_CONTEXT",
+        "not_production_policy": true,
+        "title": "Idle cash vs IPS target is structural, not a ticker trade"
+      },
+      {
+        "evidence_refs": [],
+        "lesson_id": "f8753fd01e47",
+        "lifecycle": "RATIFIED_CONTEXT",
+        "not_production_policy": true,
+        "title": "Conviction is not size"
+      },
+      {
+        "evidence_refs": [],
+        "lesson_id": "3cef17963961",
+        "lifecycle": "RATIFIED_CONTEXT",
+        "not_production_policy": true,
+        "title": "Momentum is a counter-argument"
+      },
+      {
+        "evidence_refs": [],
+        "lesson_id": "38fc8ac5c34c",
+        "lifecycle": "RATIFIED_CONTEXT",
+        "not_production_policy": true,
+        "title": "CUSIP is not a trade"
+      },
+      {
+        "evidence_refs": [],
+        "lesson_id": "4945251aff91",
+        "lifecycle": "RATIFIED_CONTEXT",
+        "not_production_policy": true,
+        "title": "Memory never overrides evidence"
+      }
+    ],
+    "raw_chain_of_thought": false,
+    "schema": "ResearchPromptContext@v1",
+    "sector_industry_state": {
+      "as_of": "2026-08-22",
+      "etf": "XLI",
+      "rs20": "-4.92",
+      "rs5": "-1.04",
+      "rs60": "3.16",
+      "sector": "Industrials",
+      "slope": "-3.46",
+      "state": "LAGGING"
+    },
+    "standing_thesis": {
+      "age_days": 0.14849039641203704,
+      "counter_evidence": [],
+      "evidence_for": [],
+      "fresh": true,
+      "invalidation_conditions": [],
+      "last_reviewed": "2026-08-22T22:47:21.631125+00:00",
+      "stance": "hold",
+      "state": "CURRENT",
+      "summary": "NOC is a HOLD with immediate corrective action on stop discipline, not a position to add to. The core defense-durability thesis remains intact \u2014 NOC's backlog and strategic position in next-gen programs (B-21, Sentinel ICBM, and integrated air/missile defense) provide multi-year revenue visibility that is rare in large-cap industrials. However, the current paper-trade setup is objectively poor: the stated 0.3:1 risk-reward is unacceptable for a non-momentum name, and the repeated 'Grok stop R:R review' flags (five times in recent research) indicate the position has been mismanaged at the execution level. The composite score of 56.2 (rank #64) suggests NOC is neither a top-quartile opportunity nor a distressed situation \u2014 it is a mediocre setup in a fundamentally sound company. My role here is to challenge the thesis, not to defend it: the fact that three independent AI lanes (Grok, ChatGPT, DeepSeek) all converge on 'HOLD / DO NOT ADD' with confidence 0.62-0.72 is a strong signal that the market has already priced in the known positives. The numbered fact that matters most: NOC's trailing-stop discipline has been flagged for correction five times in the last two weeks, which means the position is not being managed according to its own stated risk parameters \u2014 this is a process failure, not a market failure. Invalidation: if NOC breaks below its 200-day moving average on above-average volume (a level that has held since early 2025), the durability thesis is compromised and the position should be exited entirely, not just re-stopped. Conversely, if a major contract award (e.g., a new hypersonics or space-based missile warning program) is announced, the thesis changes to ADD because the fundamental repricing would overwhelm technical noise. The current 0.3:1 R:R is only acceptable if you believe a 10-15% gap higher is imminent on news flow \u2014 but that is speculation, not investing, and it is not a sound basis for holding an open position. The correct action is to fix t\u2026",
+      "thesis_id": "symbol_noc",
+      "version": "symbol_noc@v3"
+    },
+    "symbol_identity": {
+      "company": "Northrop Grumman Corp",
+      "industry": "Aerospace & Defense",
+      "sector": "Industrials",
+      "symbol": "NOC"
+    },
+    "unresolved_research_gaps": []
+  },
+  "prompt_context_hash": "95fee577168be0455a4bae8a3110d3f7b0303f7285d59d2af6cf2d60edc284f0",
+  "redacted": true,
+  "schema": "ResearchPromptAcceptanceFixture@v1",
+  "source_root": "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT",
+  "symbol": "NOC"
+}

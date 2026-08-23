@@ -138,8 +138,14 @@ class BridgeHermesResearchBackend:
             '"text":"","confidence":0.0}],'
             '"desk_implications":{"suggestion_bias":"hold_with_thesis|hold_cash|review|observe",'
             '"changes_materiality":false,"recommended_revisit":null,"watch_triggers":[],"notes":""},'
-            '"limitations":[]}\n'
-            "Answer every question_id. Keep each summary under 40 words. JSON only."
+            '"limitations":[],"recommendation":"living thesis >=8 sentences",'
+            '"classification":"CONFIRMS|STRENGTHENS|WEAKENS|INVALIDATES|NO_NEW_INFO|CONFLICTED|INSUFFICIENT_DATA",'
+            '"confidence":0.0,"evidence_as_of":"ISO","evidence":[],"contradictory_evidence":[],'
+            '"reason_summary":"","what_changed":[],"what_did_not_change":[],'
+            '"research_gaps_remaining":[],"invalidation_triggered":false,'
+            '"source_quality":{},"freshness":{},"source_refs":[],"thesis_stance":"HOLD|WATCH|TRIM|AVOID|"}\n'
+            "Answer every question_id. Recommendation must compare the standing thesis with new evidence, "
+            "not write a first-impression essay. Never reveal chain-of-thought. JSON only."
         )
 
     def _build_messages(self, request: dict, qs: list[dict]) -> list[dict]:
@@ -155,6 +161,7 @@ class BridgeHermesResearchBackend:
             "criteria": (request.get("success_criteria") or "")[:200]
             if isinstance(request.get("success_criteria"), str)
             else (request.get("success_criteria") or [])[:4],
+            "prompt_context": request.get("prompt_context") or {},
         }
         return [
             {"role": "system", "content": self._system_prompt()},
@@ -303,6 +310,24 @@ class BridgeHermesResearchBackend:
             "summary": str(raw.get("summary") or "")[:800],
             "evidence_links": raw.get("evidence_links") or [],
             "sources": raw.get("sources") or raw.get("source_urls") or [],
+            "recommendation": str(raw.get("recommendation") or "")[:4000],
+            "dissent": str(raw.get("dissent") or "")[:4000],
+            "confidence": raw.get("confidence"),
+            "classification": str(raw.get("classification") or "").upper(),
+            "evidence_as_of": raw.get("evidence_as_of") or raw.get("as_of"),
+            "evidence": list(raw.get("evidence") or [])[:20],
+            "contradictory_evidence": list(raw.get("contradictory_evidence") or [])[:20],
+            "reason_summary": str(raw.get("reason_summary") or "")[:800],
+            "what_changed": list(raw.get("what_changed") or [])[:12],
+            "what_did_not_change": list(raw.get("what_did_not_change") or [])[:12],
+            "research_gaps_remaining": list(raw.get("research_gaps_remaining") or [])[:12],
+            "invalidation_triggered": bool(raw.get("invalidation_triggered")),
+            "source_quality": raw.get("source_quality") if isinstance(raw.get("source_quality"), dict) else {},
+            "freshness": raw.get("freshness") if isinstance(raw.get("freshness"), dict) else {},
+            "source_refs": list(raw.get("source_refs") or [])[:20],
+            "thesis_stance": str(raw.get("thesis_stance") or "")[:40],
+            "provider": "governed_bridge",
+            "model": self.model,
         }
         draft["summary"] = synthesize_summary(draft, request)
         draft["sources"] = collect_sources(draft, request)

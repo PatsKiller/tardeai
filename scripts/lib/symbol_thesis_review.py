@@ -103,6 +103,18 @@ def _classify(
     coverage_state: str,
     evidence: dict[str, Any],
 ) -> str:
+    delta_classification = str(evidence.get("delta_classification") or "").upper()
+    governed_delta = {
+        "CONFIRMS": "NO_MATERIAL_CHANGE",
+        "STRENGTHENS": "THESIS_STRENGTHENED",
+        "WEAKENS": "THESIS_WEAKENED",
+        "INVALIDATES": "THESIS_BROKEN",
+        "NO_NEW_INFO": "NO_MATERIAL_CHANGE",
+        "CONFLICTED": "CONFLICTED",
+        "INSUFFICIENT_DATA": "INSUFFICIENT_DATA",
+    }
+    if delta_classification in governed_delta:
+        return governed_delta[delta_classification]
     if coverage_state == "CONFLICTED":
         return "CONFLICTED"
     if not old:
@@ -284,6 +296,17 @@ def reconcile_symbol_thesis(
             store=store,
             notify=notify,
             actor_id=actor_id,
+            provenance={
+                "writer": evidence.get("writer") or actor_id,
+                "writer_version": evidence.get("writer_version") or SCHEMA,
+                "source_research_ids": list(evidence.get("source_research_ids") or []),
+                "delta_id": evidence.get("delta_id"),
+                "trigger": trigger,
+                "run_id": evidence.get("run_id"),
+                "source_sha": evidence.get("source_sha"),
+                "previous_version": (old or {}).get("thesis_version"),
+                "reason_for_change": change_note,
+            },
         )
         # stash context on published extra via a follow-up is not needed —
         # publish_symbol_thesis already stores structured extra. Append refs into learning?

@@ -350,7 +350,7 @@ def adjudicate_reentry(
             status = "NEAR" if signal in {"IN_ZONE", "READY TO REVIEW", "READY", "NEAR ENTRY", "NEAR"} else "WAIT"
             change = "Independent research/queue confluence plus valid Financial Senses."
 
-    # Thesis gaps cannot invent RE_ENTER; they can block weak promotion to actionable
+    # Thesis gaps cannot invent RE_ENTER; they can block weak promotion to actionable.
     thesis_state = str(thesis.get("thesis_state") or "")
     if governed == "RE_ENTER" and thesis_state in {"RESEARCH_REQUIRED", "STALE", "CONFLICTED"}:
         # Keep governed RE_ENTER if explicit queue verdict, but surface that thesis is incomplete
@@ -366,6 +366,30 @@ def adjudicate_reentry(
             f"Thesis {thesis_state}: specific research gaps must close before high-conviction RE_ENTER. "
             f"{change}"
         )
+
+    try:
+        from scripts.lib.research_prompt_context import latest_delta
+        from scripts.lib.thesis_decision_gate import apply_thesis_decision_gate
+        delta = latest_delta(symbol, root=row.get("_product_root"))
+        thesis_gate = apply_thesis_decision_gate(
+            current_action=status,
+            governed_verdict=governed,
+            thesis_state=thesis_state,
+            thesis_stance=thesis.get("thesis_stance"),
+            delta=delta,
+        )
+        status = thesis_gate["effective_action"]
+        governed = thesis_gate["effective_governed_verdict"]
+        if thesis_gate["restricted"]:
+            change = f"{'/'.join(thesis_gate['reason_codes'])}. {change}"
+    except Exception as gate_exc:
+        thesis_gate = {
+            "schema": "ThesisDecisionGate@v1",
+            "restricted": False,
+            "reason_codes": [f"GATE_UNAVAILABLE:{type(gate_exc).__name__}"],
+            "authority": AUTHORITY,
+            "financial_action": False,
+        }
 
     what_changes = thesis.get("what_would_change") or []
     if isinstance(what_changes, list) and what_changes:
@@ -415,6 +439,7 @@ def adjudicate_reentry(
         "research_gap_count": thesis.get("research_gap_count") or 0,
         "research_gaps": thesis.get("research_gaps") or [],
         "counter_thesis_state": thesis.get("counter_thesis_state"),
+        "thesis_decision_gate": thesis_gate,
         "authority": AUTHORITY,
         "financial_action": False,
     }
