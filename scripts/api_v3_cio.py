@@ -29,6 +29,8 @@ Routes:
   GET /api/v3/cio/brain/policy — OperatorInvestmentPolicy@v1
   POST /api/v3/cio/brain/policy/ratify — explicit operator policy ratification
   GET /api/v3/cio/brain/portfolio-state — deterministic PortfolioState@v1
+  GET /api/v3/cio/brain/market-context — deterministic MarketContextState@v1
+  GET /api/v3/cio/brain/seasonality — Python-computed SeasonalityState@v1
 """
 from __future__ import annotations
 
@@ -1653,6 +1655,49 @@ def get_portfolio_state_v1() -> dict[str, Any]:
     )
     state["cash_evidence_available"] = evidence_path.exists()
     return {"ok": bool(holdings.get("holdings")), "portfolio_state": state, "authority": AUTHORITY_ADVISORY}
+
+
+def get_market_context_state_v1() -> dict[str, Any]:
+    from scripts.lib.cio_market_context_state import (
+        build_market_context_state,
+        connect_trade_ai_readonly,
+        load_market_context_inputs,
+    )
+
+    try:
+        conn = connect_trade_ai_readonly()
+        try:
+            regime, fred = load_market_context_inputs(conn)
+        finally:
+            conn.close()
+        state = build_market_context_state(regime_snapshot=regime, fred_rows=fred)
+        return {"ok": True, "market_context": state, "authority": AUTHORITY_ADVISORY}
+    except Exception as exc:
+        state = build_market_context_state(regime_snapshot=None, fred_rows=[])
+        state["load_error"] = type(exc).__name__
+        return {"ok": False, "market_context": state, "authority": AUTHORITY_ADVISORY}
+
+
+def get_seasonality_state_v1() -> dict[str, Any]:
+    from scripts.lib.cio_market_context_state import connect_trade_ai_readonly
+    from scripts.lib.cio_seasonality_state import build_seasonality_state, load_daily_bars
+
+    symbols = [
+        "SPY", "XLB", "XLC", "XLE", "XLF", "XLI",
+        "XLK", "XLP", "XLRE", "XLU", "XLV", "XLY",
+    ]
+    try:
+        conn = connect_trade_ai_readonly()
+        try:
+            bars = load_daily_bars(conn, symbols)
+        finally:
+            conn.close()
+        state = build_seasonality_state(bars, benchmark="SPY")
+        return {"ok": True, "seasonality": state, "authority": AUTHORITY_ADVISORY}
+    except Exception as exc:
+        state = build_seasonality_state({}, benchmark="SPY")
+        state["load_error"] = type(exc).__name__
+        return {"ok": False, "seasonality": state, "authority": AUTHORITY_ADVISORY}
 
 
 def get_cio_dashboard() -> dict[str, Any]:
