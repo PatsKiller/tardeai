@@ -732,6 +732,10 @@ def execute_governed_call(
 
     def _error(code: str, message: str, status: int = 400,
                **extra: Any) -> dict[str, Any]:
+        if "retry" not in extra:
+            from scripts.lib.cio_provider_retry_v1 import classify_failure
+
+            extra["retry"] = classify_failure(code, http_status=status)
         return {
             "error": {
                 "code": code,
@@ -847,10 +851,47 @@ def execute_governed_call(
         return _error("RESERVATION_FAILED", f"Unexpected reservation error: {type(e).__name__}",
                       status=500)
 
+    # Real provider calls get a durable side-effect identity before dispatch.
+    # Mock calls intentionally remain isolated from the production journal.
+    provider_journal = None
+    provider_semantic_key: str | None = None
+    if BIND_MODE == "canary":
+        from scripts.lib.cio_provider_retry_v1 import (
+            ProviderRequestJournal,
+            semantic_request_key,
+        )
+
+        provider_journal = ProviderRequestJournal()
+        provider_semantic_key = semantic_request_key(
+            request_id=rid,
+            process_id=process_id,
+            model_id=model_id,
+        )
+        journal_reservation = provider_journal.reserve(
+            semantic_key=provider_semantic_key,
+            request_id=rid,
+            process_id=process_id,
+            provider=str(policy["provider"]),
+            model_id=model_id,
+            task=str(requested_policy),
+            projected_cost_usd=projected,
+        )
+        if not journal_reservation.get("allowed"):
+            lc.settle_reservation(reservation_id, None, ok=False, billable_attempt=False)
+            current = journal_reservation.get("current") or {}
+            return _error(
+                "PROVIDER_REQUEST_REPLAY_BLOCKED",
+                "Provider request identity is already dispatched, ambiguous, completed, or exhausted",
+                status=409,
+                provider_request_state=current.get("state") or journal_reservation.get("reason"),
+            )
+
     # ── Step 7: Provider (mock or real based on BIND_MODE) ──────────────
     if BIND_MODE == "canary":
         provider = RealProvider.instance()
         log.info("RealProvider selected for canary: model=%s policy=%s", model_id, requested_policy)
+        assert provider_journal is not None and provider_semantic_key is not None
+        provider_journal.record(provider_semantic_key, state="DISPATCHED")
     else:
         provider = MockProvider.instance()
     try:
@@ -884,13 +925,43 @@ def execute_governed_call(
         _trip_circuit(f"provider_failure:{type(e).__name__}:{provider_name}")
         sent = bool(getattr(e, "possibly_billable", False) or getattr(e, "request_sent", False))
         lc.settle_reservation(reservation_id, None, ok=False, billable_attempt=sent)
-        return _error("PROVIDER_ERROR", f"{provider_name} failure: {type(e).__name__}", status=500)
+        retry = None
+        if provider_journal is not None and provider_semantic_key is not None:
+            from scripts.lib.cio_provider_retry_v1 import classify_failure
+
+            retry = classify_failure(type(e).__name__, request_sent=sent)
+            journal_state = "AMBIGUOUS" if sent else (
+                "RETRYABLE" if retry["retryable"] else "NON_RETRYABLE"
+            )
+            provider_journal.record(
+                provider_semantic_key,
+                state=journal_state,
+                retry_disposition=retry["disposition"],
+                error_class=type(e).__name__,
+                request_sent=sent,
+            )
+        return _error(
+            "PROVIDER_ERROR",
+            f"{provider_name} failure: {type(e).__name__}",
+            status=500,
+            **({"retry": retry} if retry else {}),
+        )
 
     # ── Step 8: Model mismatch check ───────────────────────────────────
     returned_model = response.get("model")
     if returned_model and returned_model != model_id:
         _trip_circuit(f"model_mismatch: expected {model_id}, got {returned_model}")
         lc.settle_reservation(reservation_id, None, ok=False, billable_attempt=False)
+        if provider_journal is not None and provider_semantic_key is not None:
+            from scripts.lib.cio_provider_retry_v1 import classify_failure
+
+            retry = classify_failure("MODEL_MISMATCH")
+            provider_journal.record(
+                provider_semantic_key,
+                state="NON_RETRYABLE",
+                retry_disposition=retry["disposition"],
+                error_class="MODEL_MISMATCH",
+            )
         return _error(
             "MODEL_MISMATCH",
             f"Provider returned wrong model: expected {model_id}, got {returned_model}",
@@ -919,8 +990,41 @@ def execute_governed_call(
         )
     except Exception as e:
         _trip_circuit(f"settlement_failure:{type(e).__name__}")
-        return _error("SETTLEMENT_FAILED", f"Settlement persistence failed: {type(e).__name__}",
-                      status=500)
+        retry = None
+        if provider_journal is not None and provider_semantic_key is not None:
+            from scripts.lib.cio_provider_retry_v1 import classify_failure
+
+            retry = classify_failure("SETTLEMENT_FAILED", request_sent=True)
+            provider_journal.record(
+                provider_semantic_key,
+                state="AMBIGUOUS",
+                retry_disposition=retry["disposition"],
+                error_class=type(e).__name__,
+                provider_succeeded=True,
+            )
+        return _error(
+            "SETTLEMENT_FAILED",
+            f"Settlement persistence failed: {type(e).__name__}",
+            status=500,
+            **({"retry": retry} if retry else {}),
+        )
+
+    if provider_journal is not None and provider_semantic_key is not None:
+        provider_meta = response.get("_tradeai") or {}
+        provider_journal.record(
+            provider_semantic_key,
+            state="COMPLETED",
+            provider_request_id=provider_meta.get("provider_request_id"),
+            usage={
+                "prompt_tokens": usage.get("prompt_tokens"),
+                "completion_tokens": usage.get("completion_tokens"),
+                "total_tokens": usage.get("total_tokens"),
+            },
+            actual_cost_usd=actual_cost,
+            result_hash=hashlib.sha256(
+                json.dumps(response, sort_keys=True, default=str).encode("utf-8")
+            ).hexdigest(),
+        )
 
     _reset_circuit()
 
@@ -946,6 +1050,14 @@ def execute_governed_call(
         "legacy_model_ids_rejected": True,
         "client_model_ignored": True,
         "mock": is_mock,
+        "provider_request_journal": (
+            {
+                "schema": "ProviderRequestJournal@v1",
+                "semantic_key": provider_semantic_key,
+                "state": "COMPLETED",
+            }
+            if provider_semantic_key else None
+        ),
     }
 
     # ── Step 11: Log (sanitized) — must run before return ──────────────

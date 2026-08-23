@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import tempfile
 import time
 import unittest
 from pathlib import Path
@@ -217,6 +218,8 @@ class TestCIOGovernedModelBridge(unittest.TestCase):
         )
         self.assertIn("error", result)
         self.assertEqual(result["error"]["code"], "COST_CAP_EXCEEDED")
+        self.assertEqual(result["error"]["retry"]["disposition"], "NON_RETRYABLE_COST")
+        self.assertFalse(result["error"]["retry"]["retryable"])
         self.assertEqual(result["cost_estimate"], 0.0)
 
     # ── Test 6: Reservation failure returns error $0 cost ────────────────
@@ -521,6 +524,38 @@ class TestCIOGovernedModelBridge(unittest.TestCase):
         # Should contain valid JSON in data chunks
         json_chunk = json.loads(chunks[0].replace("data: ", "").strip())
         self.assertIn("choices", json_chunk)
+
+    def test_canary_request_journal_blocks_duplicate_provider_call(self) -> None:
+        import scripts.lib.cio_governed_model_bridge as bridge
+
+        provider = MagicMock()
+        provider.generate.return_value = {
+            "model": "deepseek-v4-pro",
+            "choices": [{"message": {"role": "assistant", "content": "bounded"}}],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+            "_tradeai": {"provider_request_id": "provider-1"},
+        }
+        with tempfile.TemporaryDirectory() as directory, patch.object(
+            bridge, "BIND_MODE", "canary"
+        ), patch.object(bridge.RealProvider, "instance", return_value=provider), patch.dict(
+            os.environ,
+            {"CIO_PROVIDER_REQUEST_JOURNAL_JSONL": str(Path(directory) / "journal.jsonl")},
+        ):
+            first = bridge.execute_governed_call(
+                [{"role": "user", "content": "portfolio review"}],
+                process_id="alex_cio_synthesis",
+                request_id="stable-request-1",
+            )
+            second = bridge.execute_governed_call(
+                [{"role": "user", "content": "portfolio review"}],
+                process_id="alex_cio_synthesis",
+                request_id="stable-request-1",
+            )
+
+        self.assertNotIn("error", first)
+        self.assertEqual(first["_tradeai"]["provider_request_journal"]["state"], "COMPLETED")
+        self.assertEqual(second["error"]["code"], "PROVIDER_REQUEST_REPLAY_BLOCKED")
+        provider.generate.assert_called_once()
 
 
 # ══════════════════════════════════════════════════════════════════════════

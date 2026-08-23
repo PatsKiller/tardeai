@@ -34,7 +34,8 @@ AUTHORITY_READ_ONLY_ADVISORY = "READ_ONLY_ADVISORY"
 
 GATE_NOT_REQUIRED = "NOT_REQUIRED"
 GATE_PILOTED = "PILOTED"
-GATE_VALID = frozenset({GATE_NOT_REQUIRED, GATE_PILOTED})
+GATE_UNMEASURED = "UNMEASURED"
+GATE_VALID = frozenset({GATE_NOT_REQUIRED, GATE_PILOTED, GATE_UNMEASURED})
 
 # ── Default conservative thresholds ────────────────────────────────────────
 GATE_THRESHOLDS: dict[str, int] = {
@@ -72,12 +73,12 @@ _ALIASES: dict[str, tuple[str, ...]] = {
     "resume_count": ("resumes", "resume_count"),
     "operator_interrupts": ("operator_interrupt_count", "interrupts", "operator_interrupts"),
     "cross_process_continuation": ("cross_process_continuations", "cross_process_continuation"),
-    "partial_failure_recovery": ("partial_failure_recoveries", "partial_failure_recovery"),
-    "manual_recovery_incidents": ("manual_recoveries", "manual_recovery_incidents"),
-    "state_loss_incidents": ("state_losses", "state_loss_incidents"),
+    "partial_failure_recovery": ("partial_failure_recoveries", "partial_failure_recovery", "partial_failure_recovery_count"),
+    "manual_recovery_incidents": ("manual_recoveries", "manual_recovery_incidents", "manual_recovery_count"),
+    "state_loss_incidents": ("state_losses", "state_loss_incidents", "state_loss_incident_count"),
 }
 
-_NESTED_CONTAINERS = ("workflow", "complexity", "reasoning_runtime", "runtime", "metrics")
+_NESTED_CONTAINERS = ("workflow_metrics", "workflow", "complexity", "reasoning_runtime", "runtime", "metrics")
 
 
 def _as_int(value: Any) -> int:
@@ -117,6 +118,21 @@ def _trace_count(trace: dict[str, Any], key: str) -> int:
     return 0
 
 
+def _trace_measurement(trace: dict[str, Any], key: str) -> tuple[bool, int]:
+    names = (key, *_ALIASES.get(key, ()))
+    for name in names:
+        if name in trace and trace.get(name) != "UNMEASURED":
+            return True, _as_int(trace.get(name))
+    for container in _NESTED_CONTAINERS:
+        sub = trace.get(container)
+        if not isinstance(sub, dict):
+            continue
+        for name in names:
+            if name in sub and sub.get(name) != "UNMEASURED":
+                return True, _as_int(sub.get(name))
+    return False, 0
+
+
 def _steps_of(trace: dict[str, Any]) -> int:
     for key in ("step_count", "steps_count"):
         if key in trace:
@@ -150,21 +166,35 @@ def compute_complexity_metrics(traces: list[dict]) -> dict[str, Any]:
 
     # Steps are summed per wake so resumable/continued wakes count once.
     wake_steps: dict[str, int] = {}
+    measured_step_wakes: set[str] = set()
     for t in rows:
         wid = str(t.get("wake_id") or t.get("trace_id") or "")
-        wake_steps[wid] = wake_steps.get(wid, 0) + _steps_of(t)
+        measured, count = _trace_measurement(t, "step_count")
+        if not measured and isinstance(t.get("steps"), list):
+            measured, count = True, len(t["steps"])
+        if measured:
+            wake_steps[wid] = wake_steps.get(wid, 0) + count
+            measured_step_wakes.add(wid)
     wake_totals = list(wake_steps.values())
-    avg_steps = round(sum(wake_totals) / len(wake_totals), 2) if wake_totals else 0.0
+    avg_steps: float | str = round(sum(wake_totals) / len(wake_totals), 2) if wake_totals else "UNMEASURED"
 
     metrics: dict[str, Any] = {
         "traces": len(rows),
         "wakes": len(wake_totals),
         "avg_steps_per_wake": avg_steps,
     }
+    metric_coverage: dict[str, dict[str, int]] = {}
     for key in _METRIC_KEYS:
         if key == "avg_steps_per_wake":
             continue
-        metrics[key] = sum(_trace_count(t, key) for t in rows)
+        values = [_trace_measurement(t, key) for t in rows]
+        measured_values = [count for measured, count in values if measured]
+        metrics[key] = sum(measured_values) if measured_values else "UNMEASURED"
+        metric_coverage[key] = {"measured_traces": len(measured_values), "total_traces": len(rows)}
+
+    metric_coverage["avg_steps_per_wake"] = {"measured_wakes": len(measured_step_wakes), "total_wakes": len({str(t.get('wake_id') or t.get('trace_id') or '') for t in rows})}
+    metrics["metric_coverage"] = metric_coverage
+    metrics["unmeasured_fields"] = sorted(key for key in _METRIC_KEYS if metrics.get(key) == "UNMEASURED")
 
     metrics["authority"] = AUTHORITY_READ_ONLY_ADVISORY
     metrics["gate_decision"] = gate_decision(metrics)
@@ -190,6 +220,14 @@ def gate_decision(metrics: dict[str, Any]) -> str:
     m = metrics if isinstance(metrics, dict) else {}
     t = dict(GATE_THRESHOLDS)
     t.update(m.get("thresholds") or {})
+
+    required = (
+        "durable_wait_count", "resume_count", "branch_count", "retry_count",
+        "partial_failure_recovery", "manual_recovery_incidents",
+        "operator_interrupts", "state_loss_incidents",
+    )
+    if any(m.get(key) in {None, "UNMEASURED"} for key in required):
+        return GATE_UNMEASURED
 
     durable_waits = _as_int(m.get("durable_wait_count"))
     resumes = _as_int(m.get("resume_count"))

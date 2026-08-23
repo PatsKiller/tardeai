@@ -23,6 +23,19 @@ from typing import Any, Optional
 from scripts.lib.agent_context_envelope import redact_secrets, sha256_hex
 
 TRACE_VERSION = "1.0"
+WORKFLOW_METRICS_SCHEMA = "workflow_metrics@v1"
+WORKFLOW_METRIC_FIELDS = (
+    "step_count",
+    "branch_count",
+    "parallel_fanout",
+    "retry_count",
+    "durable_wait_count",
+    "resume_count",
+    "operator_interrupt_count",
+    "partial_failure_recovery_count",
+    "manual_recovery_count",
+    "state_loss_incident_count",
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_TRACE_PATH = PROJECT_ROOT / "data" / "cio" / "agent_run_traces.jsonl"
@@ -77,6 +90,25 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def normalize_workflow_metrics(metrics: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+    """Return an explicit metrics contract; absent measurements stay UNMEASURED."""
+    supplied = metrics if isinstance(metrics, dict) else {}
+    out: dict[str, Any] = {"schema": WORKFLOW_METRICS_SCHEMA}
+    measured: list[str] = []
+    for field in WORKFLOW_METRIC_FIELDS:
+        value = supplied.get(field)
+        if isinstance(value, bool):
+            value = int(value)
+        if isinstance(value, (int, float)) and value >= 0:
+            out[field] = int(value)
+            measured.append(field)
+        else:
+            out[field] = "UNMEASURED"
+    out["measured_fields"] = measured
+    out["coverage_complete"] = len(measured) == len(WORKFLOW_METRIC_FIELDS)
+    return out
+
+
 def new_trace_id(wake_id: str = "") -> str:
     if wake_id:
         return f"tr_{wake_id}"[:96]
@@ -115,6 +147,7 @@ def build_trace(
     trigger_digest: Optional[str] = None,
     context_digest: Optional[str] = None,
     status: str = STATUS_STARTED,
+    workflow_metrics: Optional[dict[str, Any]] = None,
     **extra: Any,
 ) -> dict[str, Any]:
     """Build a minimal AgentRunTrace@v1 record."""
@@ -129,6 +162,7 @@ def build_trace(
         "role": role,
         "started_at": _now_iso(),
         "status": status,
+        "workflow_metrics": normalize_workflow_metrics(workflow_metrics),
     }
     if context_digest:
         trace["context"] = {"context_digest": context_digest}

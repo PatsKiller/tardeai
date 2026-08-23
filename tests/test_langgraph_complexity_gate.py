@@ -17,6 +17,7 @@ import pytest  # noqa: E402
 from scripts.lib.langgraph_complexity_gate import (  # noqa: E402
     GATE_NOT_REQUIRED,
     GATE_PILOTED,
+    GATE_UNMEASURED,
     GATE_VALID,
     compute_complexity_metrics,
     gate_decision,
@@ -51,15 +52,15 @@ def _complex_trace():
 # ── NOT_REQUIRED default (a SUCCESS, not a failure) ────────────────────────
 
 
-def test_linear_trace_set_is_not_required():
+def test_linear_trace_set_is_unmeasured_without_workflow_metrics():
     metrics = compute_complexity_metrics(_linear_traces())
-    assert gate_decision(metrics) == GATE_NOT_REQUIRED
-    # Recorded decision inside the metrics matches the standalone call.
-    assert metrics["gate_decision"] == GATE_NOT_REQUIRED
+    assert gate_decision(metrics) == GATE_UNMEASURED
+    assert metrics["gate_decision"] == GATE_UNMEASURED
+    assert "retry_count" in metrics["unmeasured_fields"]
 
 
-def test_empty_trace_set_is_not_required():
-    assert gate_decision(compute_complexity_metrics([])) == GATE_NOT_REQUIRED
+def test_empty_trace_set_is_unmeasured():
+    assert gate_decision(compute_complexity_metrics([])) == GATE_UNMEASURED
 
 
 def test_not_required_is_a_success_not_a_failure():
@@ -103,7 +104,7 @@ def test_complex_trace_set_recorded_and_valid():
     decision = gate_decision(metrics)
     # The decision is a valid, recorded verdict — either PILOTED or the
     # NOT_REQUIRED default (never a crash, never an out-of-contract string).
-    assert decision in {GATE_PILOTED, GATE_NOT_REQUIRED}
+    assert decision in {GATE_PILOTED, GATE_NOT_REQUIRED, GATE_UNMEASURED}
     assert decision in GATE_VALID
     # Recorded inside the metrics.
     assert metrics["gate_decision"] in GATE_VALID
