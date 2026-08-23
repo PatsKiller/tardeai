@@ -1,0 +1,80 @@
+{
+  "schema": "R9.1SourceCIRuntimeInventory@v1",
+  "measured_at": "2026-08-23T16:16:00-04:00",
+  "authority": "READ_ONLY_ADVISORY",
+  "financial_action": false,
+  "source": {
+    "origin_main": "9dfe437f6e161cb2b6c9ed2c983e23b9fa9de1b7",
+    "current": "5e91225a1186659de3cfd65096e037e774506e7f",
+    "current_path": "/home/johnclaw/trade-ai-releases/portfolio-server/5e91225a-main-exact-phase2-20260821-193607",
+    "worktrees": 166,
+    "dirty_worktrees": 67
+  },
+  "ci": {
+    "status": "CI_INFRASTRUCTURE_BLOCKED",
+    "representative_check_run": 97219526148,
+    "annotation": "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings",
+    "code_failure_proven": false,
+    "merge_authorized": false,
+    "deploy_authorized": false
+  },
+  "runtime_roots": {
+    "units": {
+      "total": 161,
+      "current": 1,
+      "rebuild": 47,
+      "hybrid": 28,
+      "other": 85,
+      "drift": 75
+    },
+    "cron": {
+      "total": 493,
+      "current": 14,
+      "rebuild": 137,
+      "hybrid": 5,
+      "other": 337,
+      "drift": 142
+    },
+    "combined_drift": 217
+  },
+  "live_portfolio": {
+    "as_of": "2026-08-21",
+    "total_value": 1283600.72,
+    "cash": 578111.14,
+    "cash_pct": 45.0,
+    "cash_quality": "PARTIAL",
+    "cash_gap": "holdings_derived_cash_not_verified_broker_buying_power",
+    "holdings_count": 34,
+    "conflicted_rows": 13,
+    "desk_health": "DEGRADED",
+    "watch_freshness": "EXPIRED",
+    "opinion_freshness": "EXPIRED"
+  },
+  "gpu": {
+    "mode": "UNRESOLVED_HOLD",
+    "installed_generative_models": 6,
+    "active_generative_models": 1,
+    "active_model": "gemma3:12b",
+    "active_processor": "100% GPU",
+    "source_callers": 171,
+    "cron_callers": 15,
+    "systemd_callers": 3,
+    "openclaw_callers": 24,
+    "zero_call_gate_passed": false,
+    "embedding_acceptance_passed": false,
+    "physical_removal_ready": false
+  },
+  "mutations": {
+    "git_merge": 0,
+    "deployment": 0,
+    "current": 0,
+    "cron": 0,
+    "systemd": 0,
+    "ollama_models": 0,
+    "broker": 0,
+    "orders": 0,
+    "stops": 0,
+    "risk": 0,
+    "two_fa": 0
+  }
+}

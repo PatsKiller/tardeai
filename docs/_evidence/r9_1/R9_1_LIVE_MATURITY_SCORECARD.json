@@ -1,0 +1,21 @@
+{
+  "schema": "R9.1LiveInvestmentOfficeMaturity@v1",
+  "as_of": "2026-08-23T16:16:00-04:00",
+  "authority": "READ_ONLY_ADVISORY",
+  "scoring_rule": "Credit only live, deployed, source-proven, naturally executed, operator-visible and persistent evidence.",
+  "score": 35.0,
+  "maximum": 100.0,
+  "dimensions": [
+    {"name": "DATA_FINANCIAL_TRUTH", "score": 6.0, "maximum": 10.0, "state": "PARTIAL", "reason": "Portfolio and cash exist, but cash is holdings-derived, 13 rows conflict, source-pin fields are absent."},
+    {"name": "RESEARCH_EVIDENCE", "score": 5.0, "maximum": 10.0, "state": "PARTIAL", "reason": "Research runs live, but watch/opinion data is expired and stateful delta circulation is not live."},
+    {"name": "STATEFUL_THESIS_CIRCULATION", "score": 5.0, "maximum": 15.0, "state": "PARTIAL", "reason": "Desk thesis exists; NOC, SCHG, CSCO and ANET all render RESEARCH_REQUIRED with no version."},
+    {"name": "PORTFOLIO_CIO_BRAIN", "score": 3.5, "maximum": 15.0, "state": "PARTIAL", "reason": "CIO cards and a desk thesis exist; required versioned portfolio-brain contracts and verified capital plan do not."},
+    {"name": "METHODOLOGY_CANON", "score": 1.0, "maximum": 10.0, "state": "SOURCE_REQUIRED", "reason": "34 sources are cataloged; 34/34 lack full text and usable claims."},
+    {"name": "FEEDBACK_OUTCOMES", "score": 2.0, "maximum": 10.0, "state": "UNMEASURED_OBSERVATION_WINDOW", "reason": "Some disposition/memory evidence exists; linked OutcomeRecord maturity and rejection recall are not live-proven."},
+    {"name": "PROACTIVE_CIO", "score": 3.5, "maximum": 10.0, "state": "PARTIAL", "reason": "Situation and notification surfaces exist; autonomous capital review from verified policy/state is not live."},
+    {"name": "OPERATOR_EXPERIENCE", "score": 6.0, "maximum": 10.0, "state": "PARTIAL", "reason": "CIO/Advisory UI is usable, but lacks CIO Brain consolidation, current-source fields and complete symbol theses."},
+    {"name": "OPERATIONAL_INTEGRITY", "score": 2.0, "maximum": 5.0, "state": "DEGRADED", "reason": "CURRENT server is exact-pinned but 217 cron/unit roots drift and CIO Telegram stale-load evidence remains unresolved."},
+    {"name": "GPU_PROVIDER_GOVERNANCE", "score": 1.0, "maximum": 5.0, "state": "HOLD", "reason": "Generative runtime callers and models remain; embedding acceptance and seven-day zero-call gate have not passed."}
+  ],
+  "final_status": "HOLD_CI_INFRA"
+}

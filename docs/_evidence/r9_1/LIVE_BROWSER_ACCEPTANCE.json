@@ -1,0 +1,25 @@
+{
+  "schema": "R9.1LiveBrowserAcceptance@v1",
+  "as_of": "2026-08-23T16:16:00-04:00",
+  "browser": "Playwright Chromium headless",
+  "viewport": "1440x1200",
+  "pages": [
+    {
+      "name": "CIO Desk",
+      "url": "http://127.0.0.1:7777/v3/cio",
+      "http_status": 200,
+      "screenshot": "docs/_evidence/r9_1/cio-live.png",
+      "result": "PARTIAL_FAIL",
+      "findings": ["CIO cards render", "data-conflict decisions are visible", "source pin/process-start truth is not visible", "CIO Brain consolidated sections are not implemented"]
+    },
+    {
+      "name": "Advisory Desk",
+      "url": "http://127.0.0.1:7777/v3/advisory",
+      "http_status": 200,
+      "screenshot": "docs/_evidence/r9_1/advisory-live.png",
+      "result": "PARTIAL_FAIL",
+      "findings": ["page renders", "desk is DEGRADED", "watch/opinion inputs are expired", "13 rows are data-conflicted", "source pin/process-start truth is absent"]
+    }
+  ],
+  "browser_pass": false
+}
