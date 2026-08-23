@@ -40341,6 +40341,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     return 200, _cio.get_portfolio_thesis_v1()
                 if p in ("brain/capital-plan", "brain/capital_plan"):
                     return 200, _cio.get_capital_plan_v1()
+                if p == "brain/methodology":
+                    return 200, _cio.get_methodology_policy_v1()
                 if p in ("investment-product", "investment-books", "books"):
                     return 200, _cio.get_investment_product()
                 if p == "dispositions":

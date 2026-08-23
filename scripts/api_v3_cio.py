@@ -33,6 +33,7 @@ Routes:
   GET /api/v3/cio/brain/seasonality — Python-computed SeasonalityState@v1
   GET /api/v3/cio/brain/portfolio-thesis — current published thesis + read-only candidate delta
   GET /api/v3/cio/brain/capital-plan — CashDeploymentSituation@v1 + CapitalDeploymentPlan@v1
+  GET /api/v3/cio/brain/methodology — canon maturity + ratified-only methodology policy
 """
 from __future__ import annotations
 
@@ -74,6 +75,11 @@ def _symbol_thesis_projection_path() -> Path:
 def _capital_plan_store() -> Path:
     configured = str(os.getenv("CIO_CAPITAL_PLAN_JSONL") or "").strip()
     return Path(configured) if configured else PROJECT_ROOT / "data" / "cio" / "cio_capital_plans.jsonl"
+
+
+def _canon_claims_store() -> Path:
+    configured = str(os.getenv("CIO_CANON_CLAIMS_JSONL") or "").strip()
+    return Path(configured) if configured else PROJECT_ROOT / "data" / "cio" / "canon_claims.jsonl"
 
 
 # ── Operator-facing label normalization ───────────────────────────────────────
@@ -1787,6 +1793,20 @@ def get_capital_plan_v1() -> dict[str, Any]:
         "capital_plan": plan,
         "published": published,
         "publication": "MATERIALIZER_ONLY",
+        "authority": AUTHORITY_ADVISORY,
+    }
+
+
+def get_methodology_policy_v1() -> dict[str, Any]:
+    from scripts.lib.cio_canon_v1 import build_methodology_policy, catalog_maturity, load_canon_claims
+
+    catalog_path = PROJECT_ROOT / "config" / "cio_research_source_catalog.json"
+    claims = load_canon_claims(_canon_claims_store())
+    return {
+        "ok": True,
+        "canon": catalog_maturity(catalog_path, claims),
+        "methodology_policy": build_methodology_policy(claims),
+        "claims": claims,
         "authority": AUTHORITY_ADVISORY,
     }
 

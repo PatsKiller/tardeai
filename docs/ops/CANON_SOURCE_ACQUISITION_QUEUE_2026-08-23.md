@@ -5,6 +5,20 @@ Authority: `READ_ONLY_ADVISORY`
 Catalog: `config/cio_research_source_catalog.json` (`schema_version=1.2`)  
 Measured result: 34 sources total; 34 `NOT_FOUND_IN_FILE_LIBRARY`; 34 `SOURCE_CLAIM_INCOMPLETE`.
 
+## Ingestion foundation
+
+The source gate remains unchanged. `scripts/ingest_canon_source.py` can stage an
+operator-authorized lawful file with its edition, SHA-256, extraction method, and
+exact locators. `scripts/create_canon_claim_candidate.py` can then append an
+`EXTRACTED` `CanonClaim@v1` from one of those located chunks. The read-only
+`/api/v3/cio/brain/methodology` projection separates catalog status, candidates,
+reviewed/shadow claims, and ratified advisory claims. Only `RATIFIED_ADVISORY`
+claims enter `MethodologyPolicy@v1`; no automatic promotion is permitted.
+
+The existing `content_embeddings` corpus is the only RAG target. Staging creates
+no additional vector database. At this update, no source file has been supplied,
+no chunk has been indexed, and no methodology claim has been created.
+
 ## Operator action
 
 Supply an operator-owned/licensed digital source, a lawful institutional-library export, or a lawful public/author-hosted source URL for each item below. Do not supply credentials. Trade AI must hash and register the exact edition before extraction. A catalog entry does not authorize acquisition, and no claim may become active without source text and an exact locator.
