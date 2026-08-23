@@ -593,8 +593,6 @@ from pathlib import Path as _Path_emb
 
 _EMBED_MODEL = "nomic-embed-text"
 _EMBED_DIM = 768
-from local_llm_config import get_local_llm_base_url as _get_llm_base
-_OLLAMA_URL = _get_llm_base().rstrip("/") + "/api/embed"
 
 _STOP_WORDS = frozenset("the a an is are was were be been being have has had do does did will would shall should "
     "may might can could of in to for on with at by from as into through during before after above below between "
@@ -610,16 +608,9 @@ def _tokenize(text: str) -> list:
 
 def _get_embedding(text: str) -> list:
     """Get 768-dim embedding from Ollama nomic-embed-text. Returns [] on failure."""
-    import urllib.request
     try:
-        payload = _json_emb.dumps({"model": _EMBED_MODEL, "input": text[:2000]}).encode()
-        req = urllib.request.Request(_OLLAMA_URL, data=payload,
-                                     headers={"Content-Type": "application/json"}, method="POST")
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = _json_emb.loads(resp.read())
-        embeddings = data.get("embeddings", [])
-        if embeddings and len(embeddings[0]) == _EMBED_DIM:
-            return embeddings[0]
+        from lib.ollama_embedding_policy import embed
+        return embed(text[:2000], timeout_s=10)
     except Exception:
         pass
     return []

@@ -6469,8 +6469,7 @@ def _build_tlh_summary():
 
 
 def ai_ask(body: dict):
-    """POST /api/v2/ai-ask — live AI query via local Ollama."""
-    _local_model = get_local_llm_model()
+    """POST /api/v2/ai-ask — live query via the governed advisory lane."""
     question = (body.get("question") or "").strip()
     if not question:
         return 400, {"ok": False, "error": "question required"}
@@ -6481,16 +6480,12 @@ def ai_ask(body: dict):
     portfolio_ctx = f"Portfolio: ${totals.get('total_value',0):,.0f}. Heat: {totals.get('day_change_pct',0):.2f}%. "
     prompt = f"You are a portfolio analyst. Answer concisely based on this context:\n{portfolio_ctx}{context}\n\nQuestion: {question}"
     try:
-        import urllib.request
-        payload = json.dumps({"model": _local_model, "stream": False,
-                              "messages": [{"role": "user", "content": prompt}], "think": False,
-                              "options": {"temperature": 0.2, "num_predict": 500}}).encode()
-        _base = get_local_llm_base_url().rstrip("/")
-        req = urllib.request.Request(f"{_base}/api/chat",
-                                     data=payload, headers={"Content-Type": "application/json"}, method="POST")
-        with urllib.request.urlopen(req, timeout=90) as resp:
-            raw = json.loads(resp.read()).get("message", {}).get("content", "").strip()
-            return 200, {"ok": True, "answer": raw, "model": _local_model, "question": question}
+        import llm_lane
+        raw = llm_lane.generate(
+            prompt, lane="deepseek-flash", timeout=90, process_id="api_v2_ai_ask"
+        )
+        return 200, {"ok": True, "answer": str(raw or "").strip(),
+                     "model": "deepseek-v4-flash", "question": question}
     except Exception as e:
         return 500, {"ok": False, "error": f"LLM unavailable: {e}"}
 
@@ -24668,20 +24663,20 @@ def _queue_control_tower():
 
     # ── Metadata for known jobs ──
     JOB_META = {
-        "hermes-autonomous-loop": {"cat": "hermes_advisory", "llm": True, "model": "gemma3:12b", "writes": "hermes_research_intelligence", "telegram": False, "why": "Autonomous ticker challenger — stages research rows"},
-        "hermes-advisory-cache-worker": {"cat": "hermes_advisory", "llm": True, "model": "gemma3:12b", "writes": "llm_intelligence_cache", "telegram": False, "why": "Promotes advisory cache from staged research"},
+        "hermes-autonomous-loop": {"cat": "hermes_advisory", "llm": True, "model": "deepseek-v4-flash", "writes": "hermes_research_intelligence", "telegram": False, "why": "Autonomous ticker challenger — stages research rows"},
+        "hermes-advisory-cache-worker": {"cat": "hermes_advisory", "llm": True, "model": "deepseek-v4-flash", "writes": "llm_intelligence_cache", "telegram": False, "why": "Promotes advisory cache from staged research"},
         "hermes-observation-check": {"cat": "hermes_advisory", "llm": False, "model": None, "writes": "observation report", "telegram": False, "why": "Checks Hermes research quality/drift"},
         "hermes-backlog-health-check": {"cat": "hermes_advisory", "llm": False, "model": None, "writes": "backlog health report", "telegram": False, "why": "Monitors research backlog staleness"},
         "hermes-embedding-promotion-review": {"cat": "hermes_advisory", "llm": False, "model": None, "writes": "promotion audit", "telegram": False, "why": "Reviews embeddings for promotion eligibility"},
-        "hermes-librarian-backlog-loop": {"cat": "hermes_advisory", "llm": True, "model": "gemma3:12b", "writes": "hermes_research_intelligence", "telegram": False, "why": "Librarian researches backlog items"},
-        "hermes-source-discovery-dryrun": {"cat": "hermes_research", "llm": True, "model": "gemma3:12b", "writes": "hermes_research_intelligence (dry-run)", "telegram": False, "why": "Discovers new research sources"},
+        "hermes-librarian-backlog-loop": {"cat": "hermes_advisory", "llm": True, "model": "deepseek-v4-flash", "writes": "hermes_research_intelligence", "telegram": False, "why": "Librarian researches backlog items"},
+        "hermes-source-discovery-dryrun": {"cat": "hermes_research", "llm": True, "model": "deepseek-v4-flash", "writes": "hermes_research_intelligence (dry-run)", "telegram": False, "why": "Discovers new research sources"},
         "hermes-momentum-catalyst-morning": {"cat": "market_morning", "llm": False, "model": None, "writes": "momentum catalyst JSONL", "telegram": False, "why": "SearXNG catalyst research for momentum candidates"},
         "hermes-shadow-scorer": {"cat": "hermes_research", "llm": False, "model": None, "writes": "shadow scores JSONL", "telegram": False, "why": "Shadow scoring — learning vs live comparison"},
-        "high-llm-execution-worker": {"cat": "llm_queue", "llm": True, "model": "gemma3:12b/Gemma4 31B", "writes": "escalation results", "telegram": False, "why": "Executes high-priority LLM review jobs"},
+        "high-llm-execution-worker": {"cat": "llm_queue", "llm": True, "model": "governed cloud", "writes": "escalation results", "telegram": False, "why": "Executes high-priority LLM review jobs"},
         "tradeai-continuous": {"cat": "market_morning", "llm": False, "model": None, "writes": "trade_ai_scans", "telegram": False, "why": "Daily pipeline launcher — screener + enrichment + scoring"},
         "tradeai-reprice": {"cat": "market_hours", "llm": False, "model": None, "writes": "portfolio prices", "telegram": False, "why": "Market-hours portfolio repricing every 15 min"},
         "aegis-surveillance": {"cat": "portfolio", "llm": False, "model": None, "writes": "agent results", "telegram": True, "why": "Morning surveillance sweep"},
-        "aegis-overnight": {"cat": "overnight", "llm": True, "model": "gemma3:12b", "writes": "agent results", "telegram": False, "why": "Overnight intelligence synthesis"},
+        "aegis-overnight": {"cat": "overnight", "llm": True, "model": "deepseek-v4-flash", "writes": "agent results", "telegram": False, "why": "Overnight intelligence synthesis"},
         "portfolio-daily": {"cat": "portfolio", "llm": False, "model": None, "writes": "portfolio snapshots", "telegram": False, "why": "Daily portfolio pipeline"},
         "portfolio-backup": {"cat": "overnight", "llm": False, "model": None, "writes": "backup files", "telegram": False, "why": "Nightly portfolio backup"},
         "recovery-watch": {"cat": "portfolio", "llm": False, "model": None, "writes": "stopped_out_watch", "telegram": False, "why": "Check stopped-out positions for re-entry"},
@@ -25570,7 +25565,7 @@ def _high_llm_queue():
         "by_status": by_status,
         "results_count": rc,
         "kill_switch": ks.exists(),
-        "default_model": "gemma3:12b",
+        "default_model": "deepseek-v4-flash",
     }
 
 
@@ -26705,8 +26700,8 @@ def _hermes_legacy_agents(query=None):
     }
 
 
-HERMES_LOCAL_ONLY = ("default", "tradeai", "tradeai12b")  # must stay on local Ollama
-HERMES_PROVIDERS = ["custom", "openai-codex", "xai-oauth", "nous"]  # custom = local Ollama
+HERMES_LOCAL_ONLY = ()
+HERMES_PROVIDERS = ["openai-codex", "xai-oauth", "nous"]
 
 
 def _hermes_identity_meta_path(profile):
@@ -26723,13 +26718,7 @@ def _hermes_identity_meta(profile):
 
 
 def _hermes_available_models():
-    out = _hermes_run(["ollama", "list"], timeout=8) or ""
-    models = []
-    for ln in out.splitlines()[1:]:
-        nm = ln.split()[0] if ln.split() else ""
-        if nm and "embed" not in nm.lower():
-            models.append(nm)
-    return models
+    return []
 
 
 # Curated model menus per provider (free/OAuth lanes). Exact cloud IDs resolve via `hermes model` after
@@ -26769,15 +26758,9 @@ def _hermes_identity_detail(query=None):
                 "tools": _hermes_profile_tools(name), "soul_hash": _hermes_soul_hash(name),
                 "local_only": local,
                 "available_models": avail_models,
-                "available_providers": (["custom"] if local else HERMES_PROVIDERS),
-                # provider -> selectable models (custom=live ollama; cloud/OAuth=curated free-lane menus).
-                # local-only profiles only get custom (cloud is guard-blocked there).
-                "model_options": ({"custom": avail_models} if local else
-                                  {"custom": avail_models, **HERMES_PROVIDER_MODELS}),
-                "policy_note": ("This profile must stay on local Ollama (provider=custom). Cloud providers, "
-                                "gemma3:12b (unconstrained), and qwen3:14b are blocked." if local
-                                else "dev/serverops may use free OAuth lanes: openai-codex (ChatGPT), "
-                                     "xai-oauth (Grok), nous. Complete the OAuth login before use.")}
+                "available_providers": HERMES_PROVIDERS,
+                "model_options": HERMES_PROVIDER_MODELS,
+                "policy_note": "Local generative providers are retired. Complete OAuth login before use."}
 
     if profile == "__all__":
         return {"ok": True, "identities": [one(n) for n in HERMES_PROFILES]}
@@ -26793,13 +26776,10 @@ def _hermes_validate_identity(profile, model, provider):
     errs = []
     m = (model or "").strip().lower()
     p = (provider or "").strip().lower()
-    if m:
-        if "qwen3:14b" in m or m == "qwen3":
-            errs.append("qwen3:14b must not be reintroduced as a Hermes model")
-        if m == "gemma3:12b" and profile in ("default", "tradeai"):
-            errs.append("gemma3:12b (unconstrained) is not approved for default/tradeai — use gemma3:12b-ctx4k on tradeai12b")
-    if p and profile in HERMES_LOCAL_ONLY and p not in ("custom",):
-        errs.append(f"{profile} must stay on local Ollama (provider=custom); cloud providers are blocked here")
+    if m and any(token in m for token in ("gemma", "qwen", "ollama")):
+        errs.append("local generative models are retired")
+    if p == "custom":
+        errs.append("local custom provider is retired")
     return errs
 
 
@@ -26946,11 +26926,11 @@ def _tradeai_fleet(query=None):
     for name, role in TRADEAI_ROLES.items():
         soul_agent = TRADEAI_SOUL_AGENT.get(name)
         editable = bool(soul_agent and soul_agent in oc_ids and _openclaw_agent_soul_path(soul_agent).exists())
-        rows.append({"agent": name, "role": role, "runtime_model": "gemma3:12b",
+        rows.append({"agent": name, "role": role, "runtime_model": "deepseek-v4-flash",
                      "type": "advisory" if soul_agent else "algorithmic",
                      "soul_agent": soul_agent if editable else None, "soul_editable": editable,
                      "calibration": (cal.get(name) or {}).get("status") or (cal.get(name) or {}).get("recommendation")})
-    return {"ok": True, "read_only_fleet": True, "runtime_model": "gemma3:12b",
+    return {"ok": True, "read_only_fleet": True, "runtime_model": "deepseek-v4-flash",
             "agents": rows,
             "note": "Advisory personas (alex/aegis/steph/maria/iris) have editable SOULs (shared with "
                     "OpenClaw). Algorithmic agents (risk/tax/scalp/social) are config-driven; their "
@@ -27009,15 +26989,15 @@ def _hermes_workflow_matrix(query=None):
         "safe_views_count": len(lineage.get("safe_views", [])),
         "chat_usage": {
             "default": "general non-trading help (tools off)",
-            "tradeai": "Trade AI advisory/review — stable (gemma3:4b, tool-less)",
-            "tradeai12b": "deeper/experimental Trade AI analysis (gemma3:12b-ctx4k, tool-less, manual-only)",
+            "tradeai": "Trade AI advisory/review — governed cloud, tool-less",
+            "tradeai12b": "retired local profile",
             "dev": "engineering/Codex (future, human-invoked)",
             "serverops": "future server-ops (advisory until hardened)",
         },
         "quick_answers": {
             "who_owns_librarian": "hermes_autonomous_librarian_backlog_loop.py via hermes-librarian-backlog-loop.timer",
-            "tradeai_vs_tradeai12b": "Same advisory role; tradeai=stable 4b default, tradeai12b=experimental 12B for deeper analysis (not used by automation).",
-            "tradeai12b_automated": "No — no automated job uses any chat profile; fleet scripts call Ollama directly.",
+            "tradeai_vs_tradeai12b": "tradeai is governed cloud; the local tradeai12b profile is retired.",
+            "tradeai12b_automated": "No. Local generative automation is forbidden.",
         },
         "note": "Regenerate the underlying JSON with scripts/audit_hermes_workflow_owners.py + audit_hermes_db_lineage.py.",
     }
@@ -30520,8 +30500,7 @@ def _broker_orders_explain(body=None):
     """POST /api/v2/broker-orders/explain — ADVISORY-ONLY AI helper for the ToS-style order panel.
     Explains order-type/field MECHANICS and how the canonical intent translates to Schwab. It can
     never submit/approve (pure text; no DB writes) and never gives security-selection advice.
-    Routing (operator-confirmed 2026-06-12): local model by default; Claude ONLY on explicit
-    escalate=true — never auto-cloud."""
+    Routing: governed DeepSeek by default; Claude only on explicit operator escalation."""
     b = body or {}
     topic = str(b.get("topic") or "order basics")[:120]
     question = str(b.get("question") or "")[:600]
@@ -30545,9 +30524,11 @@ def _broker_orders_explain(body=None):
             text = _try_anthropic(prompt)
             provider = "anthropic (explicit operator escalation)"
         else:
-            from local_llm import generate as _gen
-            text = _gen(prompt, timeout=60, fallback=False, caller="broker_orders_explain")
-            provider = "local model"
+            import llm_lane
+            text = llm_lane.generate(
+                prompt, lane="deepseek-flash", timeout=60,
+                process_id="broker_orders_explain")
+            provider = "deepseek-v4-flash"
     except Exception as e:
         text, provider = None, f"unavailable ({str(e)[:60]})"
     return {"answer": (text or "").strip() or "(model unavailable — static tooltips still apply)",
@@ -33397,11 +33378,11 @@ def _hermes_researcher_matrix(query=None):
                    if dr.get("timer_enabled") else "designed (runner built)")
     return {
         "generated_note": "read-only researcher matrix; lane statuses from canonical snapshot (Phase 217)",
-        "internal_deep_research_lane": {"name": "Hermes Deep Research — Local",
-            "model": dr.get("model", "gemma3:27b / gemma3-overnight"), "process": "BATCH_OVERNIGHT",
+        "internal_deep_research_lane": {"name": "Hermes Deep Research — Governed Cloud",
+            "model": dr.get("model", "deepseek-v4-flash"), "process": "BATCH_OVERNIGHT",
             "design_status": "designed", "runner_built": dr.get("runner_built", True),
             "timer_enabled": dr.get("timer_enabled"), "next_run": dr.get("next_run"),
-            "status": deep_status, "gemma4": "deferred — not installed"},
+            "status": deep_status, "local_generation": "retired"},
         "external_lanes": [
             {"lane": "Claude (Anthropic)", "role": "high-stakes: retirement/tax/SSDI/IRMAA, risk synthesis, final challenge", "status": lane_status("anthropic"), "advisory_only": True},
             {"lane": "ChatGPT (Codex)", "role": "second opinion, code/design review, synthesis", "status": lane_status("openai-codex"), "advisory_only": True},
@@ -33409,8 +33390,8 @@ def _hermes_researcher_matrix(query=None):
             {"lane": "Consensus Panel", "role": "run when internal vs TradeAI disagree sharply + high importance", "status": "designed", "advisory_only": True},
         ],
         "chat_profiles": {
-            "tradeai": "stable Trade AI advisory (gemma3:4b, tool-less)",
-            "tradeai12b": "experimental deep advisory (gemma3:12b-ctx4k, tool-less, manual-only)",
+            "tradeai": "Trade AI advisory (governed cloud, tool-less)",
+            "tradeai12b": "retired local profile",
             "default": "general (tool-less)", "dev": "engineering/Codex (interactive)",
             "serverops": "server-ops (HOLD — P1: 18 tools enabled, hardening required)"},
         "canonical_docs": canon.get("canonical_docs"),
@@ -36495,7 +36476,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 content = result.get("content", "")
                 return 200, {"ok": True, "data": {
                     "choices": [{"message": {"role": "assistant", "content": content}}],
-                    "model": "gemma3:12b",
+                    "model": "deepseek-v4-flash",
                     "browsed": result.get("browsed", False),
                     "search_query": result.get("search_query"),
                 }}
@@ -37336,8 +37317,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
         if base_path == "/api/v2/agents/intelligence-feedback":
             # Operator → agents/LM critique on Central Intelligence signals.
-            # Runs the LOCAL LLM (free gemma) by default and returns the review synchronously;
-            # operator may opt into the GROK lane too (use_grok=true). Everything is persisted AND
+            # Runs governed DeepSeek and optionally Grok (use_grok=true). Everything is persisted AND
             # recorded as a learning observation so it feeds back into the self-learning loop.
             try:
                 import json as _json, time as _t
@@ -37368,11 +37348,13 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 import llm_lane
 
                 reviews, t0 = {}, _t.time()
-                # Local lane (always — primary, free)
+                # Governed advisory lane (always primary).
                 try:
-                    reviews["local"] = {"provider": "local-gemma", "text": llm_lane.generate(prompt, lane="local", timeout=120)}
+                    reviews["deepseek"] = {"provider": "deepseek-v4-flash", "text": llm_lane.generate(
+                        prompt, lane="deepseek-flash", timeout=120,
+                        process_id="api_v2_intelligence_feedback")}
                 except Exception as le:
-                    reviews["local"] = {"provider": "local-gemma", "error": str(le)[:160]}
+                    reviews["deepseek"] = {"provider": "deepseek-v4-flash", "error": str(le)[:160]}
                 # Grok lane (operator option; only if proxy authenticated)
                 if use_grok:
                     try:
@@ -38722,12 +38704,14 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                            "research": "Expand this into a research question. Under 60 words.",
                            "retirement": "Expand this retirement question. Under 60 words."}
                 prompt_text = PROMPTS.get(page_type, PROMPTS["approval"])
-                provider = "local"
-                # Try local LLM first
+                provider = "deepseek-v4-flash"
                 rewritten = ""
                 try:
-                    from local_llm import generate
-                    rewritten = (generate(f"{prompt_text}\n\nOriginal: {text}\n\nRewritten (concise, clear):", timeout=30, fast=True) or "").strip()
+                    import llm_lane
+                    rewritten = (llm_lane.generate(
+                        f"{prompt_text}\n\nOriginal: {text}\n\nRewritten (concise, clear):",
+                        lane="deepseek-flash", timeout=30,
+                        process_id="api_v2_rewrite_note") or "").strip()
                 except Exception:
                     pass
                 # Fallback to Claude Haiku if local failed
@@ -38743,7 +38727,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                         rewritten = msg.content[0].text.strip()
                         provider = "claude-haiku"
                     except Exception as e2:
-                        return 200, {"ok": False, "error": f"Both local LLM and Claude failed: {e2}"}
+                        return 200, {"ok": False, "error": f"Governed providers failed: {e2}"}
                 return 200, {"ok": True, "rewritten": rewritten, "provider": provider}
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
@@ -46331,7 +46315,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return 400, {"ok": False, "error": "agent parameter required"}
 
             # Agent identity
-            _llm_model = os.getenv("LOCAL_LLM_MODEL", "gemma3:4b")
+            _llm_model = "deepseek-v4-flash"
             AGENT_IDENTITIES = {
                 "steph": {"display": "Steph", "emoji": "📊", "role": "Income guardian / allocation strategist", "model": _llm_model},
                 "maria": {"display": "Maria", "emoji": "🔬", "role": "Research analyst / catalyst verification", "model": _llm_model},
@@ -49756,7 +49740,12 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             import json as _json
             result = {
                 "ok": True,
+                "gpu_mode": "POLICY_VIOLATION",
                 "ollama_alive": False,
+                "embedding_model": "nomic-embed-text",
+                "embedding_expected_dimension": 768,
+                "embedding_digest_match": False,
+                "forbidden_installed_models": [],
                 "resident_models": [],
                 "vram_used_gb": 0,
                 "vram_free_gb": 16.0,
@@ -49778,6 +49767,31 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 result["resident_models"] = models
                 result["vram_used_gb"] = round(total_vram, 2)
                 result["vram_free_gb"] = round(16.0 - total_vram, 2)
+                tags_resp = _ur.urlopen("http://localhost:11434/api/tags", timeout=3)
+                tags_data = _json.loads(tags_resp.read())
+                allowed = {"nomic-embed-text", "nomic-embed-text:latest"}
+                installed = tags_data.get("models", []) or []
+                result["forbidden_installed_models"] = sorted(
+                    str(item.get("name") or "") for item in installed
+                    if str(item.get("name") or "") not in allowed
+                )
+                expected_digest = (
+                    "0a109f422b47e3a30ba2b10eca18548e944e8a23073ee3f3e947efcf3c45e59f"
+                )
+                approved = next(
+                    (item for item in installed if str(item.get("name") or "") in allowed),
+                    None,
+                )
+                result["embedding_digest_match"] = bool(
+                    approved and str(approved.get("digest") or "") == expected_digest
+                )
+                resident_names = {item["name"] for item in models}
+                if (
+                    result["embedding_digest_match"]
+                    and not result["forbidden_installed_models"]
+                    and resident_names.issubset(allowed)
+                ):
+                    result["gpu_mode"] = "EMBEDDINGS_ONLY"
             except Exception:
                 result["ollama_alive"] = False
 

@@ -1,4 +1,4 @@
-"""Ollama → governed DeepSeek Flash failover (no live network)."""
+"""Governed cloud-only Hermes JSON client (no live network)."""
 from __future__ import annotations
 
 import json
@@ -35,7 +35,7 @@ class _Resp:
 def test_failover_enabled_default(monkeypatch):
     monkeypatch.delenv("HERMES_OLLAMA_FAILOVER", raising=False)
     monkeypatch.delenv("HERMES_LLM_PRIMARY", raising=False)
-    assert failover_enabled() is True
+    assert failover_enabled() is False
     assert primary_provider() == "bridge_flash"
     monkeypatch.setenv("HERMES_OLLAMA_FAILOVER", "0")
     assert failover_enabled() is False
@@ -53,61 +53,18 @@ def test_flash_primary_success(monkeypatch):
         raise AssertionError(f"ollama should not be called: {url}")
 
     monkeypatch.setattr("urllib.request.urlopen", _urlopen)
-    pack = chat_json("hi", ollama_model="gemma3:12b", ollama_timeout_s=5)
+    pack = chat_json("hi")
     assert pack["failover"] is False
     assert pack["provider"] == "bridge_flash"
     assert pack["model"] == "deepseek-v4-flash"
     assert json.loads(pack["content"])["src"] == "flash"
 
 
-def test_flash_primary_falls_to_ollama(monkeypatch):
-    monkeypatch.setenv("HERMES_LLM_PRIMARY", "bridge_flash")
-    ollama_body = json.dumps({"message": {"content": '{"ok":true,"src":"ollama"}'}}).encode()
-
-    def _urlopen(req, timeout=None):
-        url = getattr(req, "full_url", None) or str(req)
-        if "8766" in url:
-            raise TimeoutError("bridge busy")
-        if "11434/api/tags" in url:
-            return _Resp(b'{"models":[]}')
-        if "11434/api/chat" in url:
-            return _Resp(ollama_body)
-        raise AssertionError(url)
-
-    monkeypatch.setattr("urllib.request.urlopen", _urlopen)
-    pack = chat_json("hi", ollama_model="gemma3:12b", ollama_timeout_s=5)
-    assert pack["failover"] is True
-    assert pack["provider"] == "ollama"
-    assert "bridge_flash_error" in (pack["reason"] or "")
-    assert json.loads(pack["content"])["src"] == "ollama"
-
-
-def test_ollama_primary_success(monkeypatch):
-    monkeypatch.setenv("HERMES_LLM_PRIMARY", "ollama")
-    ollama_body = json.dumps({"message": {"content": '{"summary":"ok","ok":true}'}}).encode()
-
-    def _urlopen(req, timeout=None):
-        url = getattr(req, "full_url", None) or str(req)
-        if "11434/api/tags" in url:
-            return _Resp(b'{"models":[]}')
-        if "11434/api/chat" in url:
-            return _Resp(ollama_body)
-        raise AssertionError(url)
-
-    monkeypatch.setattr("urllib.request.urlopen", _urlopen)
-    pack = chat_json("hi", ollama_model="gemma3:12b", ollama_timeout_s=5)
-    assert pack["failover"] is False
-    assert pack["provider"] == "ollama"
-    assert json.loads(pack["content"])["ok"] is True
-
-
-def test_ollama_primary_unhealthy_uses_flash(monkeypatch):
+def test_environment_cannot_select_local_provider(monkeypatch):
     monkeypatch.setenv("HERMES_LLM_PRIMARY", "ollama")
 
     def _urlopen(req, timeout=None):
         url = getattr(req, "full_url", None) or str(req)
-        if "11434" in url:
-            raise TimeoutError("ollama down")
         if "8766/v1/chat/completions" in url:
             return _Resp(json.dumps({
                 "choices": [{"message": {"content": '{"summary":"flash","ok":true}'}}],
@@ -115,11 +72,15 @@ def test_ollama_primary_unhealthy_uses_flash(monkeypatch):
         raise AssertionError(url)
 
     monkeypatch.setattr("urllib.request.urlopen", _urlopen)
-    pack = chat_json("hi", ollama_model="gemma3:12b", ollama_timeout_s=5)
-    assert pack["failover"] is True
+    pack = chat_json("hi")
+    assert pack["failover"] is False
     assert pack["provider"] == "bridge_flash"
-    assert "ollama" in (pack["reason"] or "")
     assert json.loads(pack["content"])["ok"] is True
+
+
+def test_legacy_local_arguments_are_rejected():
+    with pytest.raises(HermesLlmError, match="local_generative_options_forbidden"):
+        chat_json("hi", ollama_model="retired", ollama_timeout_s=5)
 
 
 def test_deepseek_official_offpeak_windows():
@@ -155,4 +116,4 @@ def test_failover_off_raises(monkeypatch):
 
     monkeypatch.setattr("urllib.request.urlopen", _urlopen)
     with pytest.raises(HermesLlmError):
-        chat_json("hi", ollama_model="gemma3:12b", ollama_timeout_s=1, probe_first=False)
+        chat_json("hi")

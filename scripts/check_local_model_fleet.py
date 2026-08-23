@@ -1,281 +1,121 @@
 #!/usr/bin/env python3
-"""check_local_model_fleet.py — ping EVERY installed local model, report health.
-
-Why this exists: the older check_local_llm_health.py only exercises the single SAFE
-model (gemma3:4b). That meant gemma3:12b could 500 on every prompt for days without
-anything noticing (it did — 2026-06-14). This walks the WHOLE Ollama fleet from
-/api/tags, pings each model with a tiny prompt (generation) or a short input
-(embedding), and records ok / latency / failure-reason per model.
-
-Severity model (no hardcoded model names — all derived from config/.env):
-  • CRITICAL models = the ones the system actually defaults to:
-      DEFAULT_LOCAL_LLM_MODEL (local_llm_config) ∪ LOCAL_LLM_MODEL ∪ LOCAL_LLM_SAFE_MODEL
-      ∪ CRITICAL_LOCAL_MODELS (comma-list, optional).
-    If ANY critical model fails → exit 1 (and a `critical` alert when --alert).
-  • Every other installed model is informational: a failure is a WARN (alert
-    severity `warning`), exit stays 0 — so a broken-but-unused 12b is surfaced,
-    not silently ignored, without blocking the gate that protects live paths.
-
-Models can be excluded from the ping (e.g. the 17GB overnight model on a tight box)
-via LLM_HEALTH_SKIP_MODELS (comma-list, substring match). Each ping uses keep_alive=0
-so heavy models don't stay resident after the probe.
-
-Usage:
-  python3 scripts/check_local_model_fleet.py            # human table, exit 0/1
-  python3 scripts/check_local_model_fleet.py --json      # machine JSON to stdout
-  python3 scripts/check_local_model_fleet.py --alert      # write alert_events row on any failure
-Exit 0 = all CRITICAL models healthy, Exit 1 = a critical model failed (or Ollama down).
-"""
+"""Audit the embedding-only Ollama runtime; never invoke local generation."""
 from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 import time
-import urllib.error
 import urllib.request
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "scripts"))
 
-try:
-    from dotenv import load_dotenv
-    load_dotenv(PROJECT_ROOT / ".env")
-except ImportError:
-    pass
+from lib.ollama_embedding_policy import (  # noqa: E402
+    ALLOWED_MODEL,
+    ALLOWED_MODEL_DIGEST,
+    EXPECTED_DIMENSION,
+    embed,
+)
 
-try:
-    from local_llm_config import DEFAULT_LOCAL_LLM_MODEL
-except Exception:
-    DEFAULT_LOCAL_LLM_MODEL = "gemma3:4b"
-
-OLLAMA_BASE = os.getenv("LOCAL_LLM_BASE_URL", "http://127.0.0.1:11434").rstrip("/")
-PING_TIMEOUT = int(os.getenv("LLM_HEALTH_PING_TIMEOUT", "60"))
-FORCE_CPU = os.getenv("FORCE_LOCAL_LLM_CPU", "false").strip().lower() in {"1", "true", "yes", "on"}
+BASE = "http://127.0.0.1:11434"
 
 
-def _csv_env(key: str) -> set[str]:
-    return {m.strip() for m in os.getenv(key, "").split(",") if m.strip()}
-
-
-def _critical_models() -> set[str]:
-    """Models the system relies on by default — a failure here is exit-1."""
-    crit = {DEFAULT_LOCAL_LLM_MODEL}
-    for key in ("LOCAL_LLM_MODEL", "LOCAL_LLM_SAFE_MODEL"):
-        v = os.getenv(key, "").strip()
-        if v:
-            crit.add(v)
-    crit |= _csv_env("CRITICAL_LOCAL_MODELS")
-    return {m for m in crit if m}
-
-
-def _skip_models() -> set[str]:
-    return _csv_env("LLM_HEALTH_SKIP_MODELS")
-
-
-def _http_post(path: str, payload: dict, timeout: int):
-    req = urllib.request.Request(
-        f"{OLLAMA_BASE}{path}",
-        data=json.dumps(payload).encode(),
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return json.loads(resp.read())
-
-
-def _list_models() -> list[dict]:
-    req = urllib.request.Request(f"{OLLAMA_BASE}/api/tags", method="GET")
-    with urllib.request.urlopen(req, timeout=10) as resp:
-        data = json.loads(resp.read())
-    return data.get("models", [])
-
-
-def _is_embedding(name: str) -> bool:
-    n = name.lower()
-    return "embed" in n
-
-
-def _ping_generation(model: str) -> tuple[bool, str, float]:
-    """Tiny deterministic prompt. Returns (ok, detail, latency_s)."""
-    options = {"temperature": 0.0, "num_predict": 8}
-    if FORCE_CPU:
-        options["num_gpu"] = 0
-    payload = {
-        "model": model,
-        "stream": False,
-        "messages": [{"role": "user", "content": "Reply with the single word: ok"}],
-        "think": False,
-        "keep_alive": 0,          # don't leave it resident after the probe
-        "options": options,
-    }
-    t0 = time.monotonic()
-    try:
-        data = _http_post("/api/chat", payload, PING_TIMEOUT)
-        dt = time.monotonic() - t0
-        content = (data.get("message", {}) or {}).get("content", "").strip()
-        if not content:
-            return (False, "empty response", dt)
-        # Degenerate-output detection: a broken model load (e.g. gemma3:12b on
-        # 2026-06-14) returns ONLY special tokens like <pad>/<unk>/<eos>. Strip
-        # them — if nothing real is left, the model ran but produced garbage.
-        import re as _re
-        real = _re.sub(r"<\s*(pad|unk|eos|bos|s|/s)\s*>", "", content,
-                       flags=_re.IGNORECASE).strip()
-        if not real:
-            return (False, f"degenerate output (special-tokens only): {content[:32]!r}", dt)
-        return (True, f"resp={real[:40]!r}", dt)
-    except urllib.error.HTTPError as e:
-        return (False, f"HTTP {e.code} {e.reason}", time.monotonic() - t0)
-    except Exception as e:
-        return (False, f"{type(e).__name__}: {str(e)[:60]}", time.monotonic() - t0)
-
-
-def _ping_embedding(model: str) -> tuple[bool, str, float]:
-    payload = {"model": model, "input": "health probe", "keep_alive": 0}
-    t0 = time.monotonic()
-    try:
-        data = _http_post("/api/embed", payload, PING_TIMEOUT)
-        dt = time.monotonic() - t0
-        embs = data.get("embeddings") or data.get("embedding")
-        dim = len(embs[0]) if embs and isinstance(embs[0], list) else (len(embs) if embs else 0)
-        if not dim:
-            return (False, "no embedding returned", dt)
-        return (True, f"dim={dim}", dt)
-    except urllib.error.HTTPError as e:
-        return (False, f"HTTP {e.code} {e.reason}", time.monotonic() - t0)
-    except Exception as e:
-        return (False, f"{type(e).__name__}: {str(e)[:60]}", time.monotonic() - t0)
+def _get(path: str) -> dict:
+    with urllib.request.urlopen(f"{BASE}{path}", timeout=10) as response:
+        return json.loads(response.read())
 
 
 def run() -> dict:
-    critical = _critical_models()
-    skip = _skip_models()
-
     try:
-        installed = _list_models()
-    except Exception as e:
-        return {"ollama_reachable": False, "error": str(e), "base_url": OLLAMA_BASE,
-                "results": [], "critical_failed": list(critical), "all_critical_ok": False}
+        installed = _get("/api/tags").get("models") or []
+        resident = _get("/api/ps").get("models") or []
+    except Exception as exc:
+        return {
+            "gpu_mode": "UNMEASURED",
+            "ollama_reachable": False,
+            "error": f"{type(exc).__name__}:{exc}",
+            "compliant": False,
+        }
 
-    results = []
-    for m in sorted(installed, key=lambda x: x.get("name", "")):
-        name = m.get("name", "")
-        if not name:
-            continue
-        is_crit = name in critical
-        if any(s in name for s in skip):
-            results.append({"model": name, "kind": "skipped", "ok": None,
-                            "critical": is_crit, "detail": "skipped via LLM_HEALTH_SKIP_MODELS",
-                            "latency_s": None})
-            continue
-        kind = "embedding" if _is_embedding(name) else "generation"
-        ok, detail, latency = (_ping_embedding(name) if kind == "embedding"
-                               else _ping_generation(name))
-        results.append({"model": name, "kind": kind, "ok": ok, "critical": is_crit,
-                        "detail": detail, "latency_s": round(latency, 2)})
+    allowed_names = {ALLOWED_MODEL, f"{ALLOWED_MODEL}:latest"}
+    forbidden_installed = sorted(
+        str(item.get("name") or "") for item in installed
+        if str(item.get("name") or "") not in allowed_names
+    )
+    forbidden_resident = sorted(
+        str(item.get("name") or "") for item in resident
+        if str(item.get("name") or "") not in allowed_names
+    )
+    approved = next(
+        (item for item in installed if str(item.get("name") or "") in allowed_names),
+        None,
+    )
+    digest = str((approved or {}).get("digest") or "")
+    digest_match = digest == ALLOWED_MODEL_DIGEST
+    latency_s = None
+    dimension = None
+    embed_error = None
+    if approved and digest_match and not forbidden_resident:
+        started = time.monotonic()
+        try:
+            dimension = len(embed("Trade AI embedding health probe", timeout_s=30))
+            latency_s = round(time.monotonic() - started, 4)
+        except Exception as exc:
+            embed_error = f"{type(exc).__name__}:{exc}"
 
-    critical_failed = [r["model"] for r in results if r["critical"] and r["ok"] is False]
-    noncrit_failed = [r["model"] for r in results if not r["critical"] and r["ok"] is False]
+    compliant = bool(
+        approved
+        and digest_match
+        and dimension == EXPECTED_DIMENSION
+        and not forbidden_installed
+        and not forbidden_resident
+    )
     return {
+        "gpu_mode": "EMBEDDINGS_ONLY" if compliant else "UNMEASURED",
         "ollama_reachable": True,
-        "base_url": OLLAMA_BASE,
-        "default_model": DEFAULT_LOCAL_LLM_MODEL,
-        "critical_models": sorted(critical),
-        "results": results,
-        "critical_failed": critical_failed,
-        "noncritical_failed": noncrit_failed,
-        "all_critical_ok": not critical_failed,
+        "approved_model": ALLOWED_MODEL,
+        "expected_digest": ALLOWED_MODEL_DIGEST,
+        "installed_digest": digest or None,
+        "digest_match": digest_match,
+        "dimension": dimension,
+        "expected_dimension": EXPECTED_DIMENSION,
+        "latency_s": latency_s,
+        "embedding_error": embed_error,
+        "forbidden_installed": forbidden_installed,
+        "forbidden_resident": forbidden_resident,
+        "compliant": compliant,
     }
 
 
 def _emit_alert(report: dict) -> None:
-    crit = report.get("critical_failed", [])
-    noncrit = report.get("noncritical_failed", [])
-    if report.get("ollama_reachable") and not crit and not noncrit:
+    if report.get("compliant"):
         return
-    if not report.get("ollama_reachable"):
-        severity, headline = "critical", f"Ollama unreachable at {report.get('base_url')}"
-    elif crit:
-        severity = "critical"
-        headline = f"CRITICAL local model(s) failing: {', '.join(crit)}"
-    else:
-        severity = "warning"
-        headline = f"Local model(s) failing (non-critical): {', '.join(noncrit)}"
-    lines = [headline]
-    for r in report.get("results", []):
-        if r.get("ok") is False:
-            tag = "CRIT" if r["critical"] else "warn"
-            lines.append(f"  [{tag}] {r['model']} — {r['detail']}")
     try:
-        # alert_events.alert_type is a curated CHECK set — reuse 'system_health'
-        # (same convention as protection_alerts.py / log_error_scraper.py); the
-        # precise class rides in raw_text + parsed_payload.kind.
         from alert_event_writer import save_alert_event
         save_alert_event(
             alert_type="system_health",
-            raw_text="[local_model_health] " + "\n".join(lines),
-            severity=severity,
+            raw_text="[gpu_embedding_policy] " + json.dumps(report, default=str),
+            severity="critical",
             source_script="check_local_model_fleet.py",
-            parsed_payload={"kind": "local_model_health",
-                            "critical_failed": crit, "noncritical_failed": noncrit,
-                            "results": report.get("results", [])},
+            parsed_payload={"kind": "gpu_embedding_policy", **report},
         )
-        print(f"[alert] wrote system_health/local_model_health alert (severity={severity})")
-    except Exception as e:
-        print(f"[alert] could not write alert event: {e}")
+    except Exception as exc:
+        print(f"[alert] could not write GPU policy alert: {exc}", file=sys.stderr)
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Ping every installed local model and report health.")
-    ap.add_argument("--json", action="store_true", help="emit machine JSON to stdout")
-    ap.add_argument("--alert", action="store_true", help="write an alert_events row on any failure")
-    args = ap.parse_args()
-
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--json", action="store_true")
+    parser.add_argument("--alert", action="store_true")
+    args = parser.parse_args()
     report = run()
-
-    if args.json:
-        print(json.dumps(report, indent=2))
-    else:
-        print("=" * 68)
-        print("Local Model Fleet Health")
-        print("=" * 68)
-        if not report["ollama_reachable"]:
-            print(f"  [FAIL] Ollama unreachable at {report['base_url']} — {report.get('error')}")
-        else:
-            print(f"  base={report['base_url']}  default={report['default_model']}")
-            print(f"  critical={', '.join(report['critical_models'])}")
-            print("-" * 68)
-            for r in report["results"]:
-                if r["ok"] is None:
-                    badge = "SKIP"
-                elif r["ok"]:
-                    badge = "OK  "
-                else:
-                    badge = "FAIL"
-                crit = "*" if r["critical"] else " "
-                lat = f"{r['latency_s']:>6.2f}s" if r["latency_s"] is not None else "   -  "
-                print(f"  [{badge}]{crit} {r['model']:<26} {r['kind']:<10} {lat}  {r['detail']}")
-            print("-" * 68)
-            print("  (* = critical model — a failure here exits non-zero)")
-        print("=" * 68)
-        if report["ollama_reachable"]:
-            if report["all_critical_ok"]:
-                nc = report.get("noncritical_failed") or []
-                print("PASS" + (f"  (non-critical failing: {', '.join(nc)})" if nc else ""))
-            else:
-                print(f"FAIL — critical models failing: {', '.join(report['critical_failed'])}")
-        else:
-            print("FAIL — Ollama unreachable")
-        print("=" * 68)
-
+    print(json.dumps(report, indent=2, sort_keys=True))
     if args.alert:
         _emit_alert(report)
-
-    return 0 if (report["ollama_reachable"] and report["all_critical_ok"]) else 1
+    return 0 if report.get("compliant") else 1
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())

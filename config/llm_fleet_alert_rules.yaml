@@ -1,23 +1,12 @@
-# LLM Fleet Alert Rules — Phase 4 Observability
-# Read-only monitoring. Does NOT change routing or behavior.
-
-phase: phase4_observability
+# Embedding-only GPU observability. Local generation is forbidden.
+phase: embedding_only_transition
 enabled: true
-
 expected_resident_models:
   outside_deep_window:
-    - qwen3:14b
-    - gemma3:4b
     - nomic-embed-text
-  transient_allowed:
-    - qwen3-embedding:8b
-    - gemma3-overnight
-
+  transient_allowed: []
 thresholds:
   min_free_vram_gb_warn: 1.0
-  qwen3_latency_ms_warn: 30000
-  gemma3_4b_latency_ms_warn: 10000
   nomic_latency_ms_warn: 1000
-  fallback_rate_warn_pct: 10
   failure_rate_warn_pct: 5
-  deep_restore_required: true
+  forbidden_model_count_critical: 1

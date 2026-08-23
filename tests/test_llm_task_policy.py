@@ -1,4 +1,4 @@
-"""Local LLM is math-only unless an operator rollback flag is set."""
+"""Local runtime is pinned embeddings-only and flags cannot widen policy."""
 from __future__ import annotations
 
 import sys
@@ -32,11 +32,11 @@ def test_classify_math_judgment_embed():
     assert classify_task("default") == KIND_JUDGMENT
 
 
-def test_allow_local_math_always(monkeypatch):
+def test_local_math_is_forbidden(monkeypatch):
     monkeypatch.delenv("RESEARCH_ALLOW_LOCAL_LLM", raising=False)
     monkeypatch.delenv("LLM_ALLOW_LOCAL_JUDGMENT", raising=False)
-    assert allow_local_llm("math") is True
-    assert allow_local_llm("numeric") is True
+    assert allow_local_llm("math") is False
+    assert allow_local_llm("numeric") is False
 
 
 def test_allow_local_embed_only_nomic(monkeypatch):
@@ -55,20 +55,20 @@ def test_judgment_local_forbidden_by_default(monkeypatch):
     assert allow_local_llm("research") is False
     chain, reason = filter_local_providers("agent_narrative", ["local", "deepseek-flash"])
     assert chain == ["deepseek-flash"]
-    assert reason and "POLICY_LOCAL_JUDGMENT_FORBIDDEN" in reason
+    assert reason and "POLICY_LOCAL_GENERATIVE_FORBIDDEN" in reason
     assert POLICY_LOCAL_JUDGMENT_FORBIDDEN.split()[0] in reason
 
 
-def test_judgment_rollback_flags(monkeypatch):
+def test_judgment_flags_cannot_restore_local_generation(monkeypatch):
     monkeypatch.setenv("LLM_ALLOW_LOCAL_JUDGMENT", "1")
     monkeypatch.delenv("RESEARCH_ALLOW_LOCAL_LLM", raising=False)
-    assert allow_local_llm("agent_narrative") is True
+    assert allow_local_llm("agent_narrative") is False
     chain, reason = filter_local_providers("agent_narrative", ["local", "deepseek-flash"])
-    assert chain == ["local", "deepseek-flash"]
-    assert reason is None
+    assert chain == ["deepseek-flash"]
+    assert reason
     monkeypatch.delenv("LLM_ALLOW_LOCAL_JUDGMENT", raising=False)
     monkeypatch.setenv("RESEARCH_ALLOW_LOCAL_LLM", "1")
-    assert allow_local_llm("cio_synthesis") is True
+    assert allow_local_llm("cio_synthesis") is False
 
 
 def test_filter_does_not_drop_deepseek():
@@ -101,19 +101,10 @@ def test_router_live_tables_never_include_local_for_agent_tasks():
 def test_router_skips_local_for_judgment_if_table_changes(monkeypatch):
     import llm_router
 
-    called = []
     monkeypatch.setattr(
         llm_router,
         "_TASK_ROUTING",
         {"agent_narrative": ["local", "deepseek-flash"], "default": ["deepseek-flash"]},
-    )
-    monkeypatch.setattr(
-        llm_router,
-        "_call_local",
-        lambda *a, **k: called.append("local") or {
-            "success": True, "provider": "local", "model_used": "gemma3:4b",
-            "response": "x" * 40, "cost_estimate": 0.0, "latency": 0.01,
-        },
     )
     monkeypatch.setattr(
         llm_router,
@@ -127,32 +118,22 @@ def test_router_skips_local_for_judgment_if_table_changes(monkeypatch):
     monkeypatch.delenv("LLM_ALLOW_LOCAL_JUDGMENT", raising=False)
     monkeypatch.delenv("RESEARCH_ALLOW_LOCAL_LLM", raising=False)
     r = llm_router.get_llm_response("agent_narrative", "Should we trim SCHD?")
-    assert "local" not in called
     assert r.get("provider") == "deepseek"
     assert r.get("success") is True
     reasons = " ".join(r.get("fallback_reasons") or [])
-    assert "POLICY_LOCAL_JUDGMENT_FORBIDDEN" in reasons
+    assert "POLICY_LOCAL_GENERATIVE_FORBIDDEN" in reasons
 
 
-def test_router_allows_local_for_math(monkeypatch):
+def test_router_cannot_use_local_for_math(monkeypatch):
     import llm_router
-
-    def _fake_local(*a, **k):
-        return {
-            "success": True, "provider": "local", "model_used": "gemma3:4b",
-            "response": "42 " * 20, "cost_estimate": 0.0, "latency": 0.01,
-        }
 
     monkeypatch.setattr(
         llm_router,
         "_TASK_ROUTING",
         {"math": ["local"], "default": ["deepseek-flash"]},
     )
-    providers = dict(llm_router._PROVIDERS)
-    providers["local"] = _fake_local
-    monkeypatch.setattr(llm_router, "_PROVIDERS", providers)
     monkeypatch.setattr(llm_router, "_log_call", lambda *a, **k: None)
     monkeypatch.delenv("LLM_ALLOW_LOCAL_JUDGMENT", raising=False)
     r = llm_router.get_llm_response("math", "What is 6*7?")
-    assert r.get("provider") == "local"
-    assert r.get("success") is True
+    assert r.get("success") is False
+    assert "POLICY_LOCAL_GENERATIVE_FORBIDDEN" in " ".join(r.get("fallback_reasons") or [])

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """incubator_llm_screener.py — Lightweight LLM screen for top incubator candidates.
 
-Runs qwen3:14b on incubator symbols (score >= 40) enriched with catalyst, news,
+Runs governed DeepSeek Flash on incubator symbols (score >= 40) enriched with catalyst, news,
 social, and technical data. Sets llm_screen_grade (A-F) and llm_screen_verdict
 (PROMOTE/HOLD/DROP) before the promoter runs.
 
@@ -415,8 +415,13 @@ def screen_one(conn, candidate, dry_run=False):
         prompt = build_screen_prompt(candidate, news, social, technical, web_news_line)
 
     try:
-        from local_llm import generate, model_used as _mu
-        raw = generate(prompt, timeout=300, fallback=True, fast=False)
+        from llm_lane import generate
+        raw = generate(
+            prompt,
+            lane="deepseek-flash",
+            timeout=120,
+            process_id="incubator_llm_screener",
+        )
         if not raw:
             log.warning(f"  {symbol}: LLM returned empty")
             return {'symbol': symbol, 'status': 'empty'}
@@ -433,12 +438,7 @@ def screen_one(conn, candidate, dry_run=False):
         verdict = result.get('verdict', 'HOLD')
         confidence = min(100, max(0, int(result.get('confidence', 50))))
 
-        # Get model used
-        try:
-            from local_llm import model_used
-            model = model_used or 'local_llm'
-        except Exception:
-            model = 'local_llm'
+        model = "deepseek-v4-flash"
 
         # Validate
         if grade not in ('A', 'B', 'C', 'D', 'F'):
@@ -463,7 +463,7 @@ def screen_one(conn, candidate, dry_run=False):
 
         log.info(f"  {symbol}: grade={grade} verdict={verdict} conf={confidence} model={model}")
 
-        # ── ADVISORY: free-OAuth cloud models review the LOCAL LLM's pick ──
+        # ── ADVISORY: free-OAuth cloud models review the primary model's pick ──
         # Additive + advisory only — never changes grade/verdict/selection.
         # Gated behind CLOUD_REVIEW=1; only PROMOTE/HOLD picks; capped per run.
         cloud_verdict = None
@@ -477,7 +477,7 @@ def screen_one(conn, candidate, dry_run=False):
                     cr = cloud_review.review(
                         "incubator_pick_review",
                         local_output=(result.get("reasoning") or "")
-                            + f" [local: grade={grade} verdict={verdict} conf={confidence}]",
+                            + f" [primary: grade={grade} verdict={verdict} conf={confidence}]",
                         context={
                             "symbol": symbol,
                             "sector": candidate.get("sector"),
@@ -531,17 +531,11 @@ def main():
 
     conn = get_db()
     try:
-        from local_llm import warmup_ollama
-
         candidates = fetch_candidates(conn, limit=args.limit)
         if args.symbol:
             candidates = [c for c in candidates if c['symbol'] == args.symbol.upper()]
 
         log.info(f"Found {len(candidates)} candidates for LLM screening")
-
-        if candidates and args.run:
-            log.info("Warming up Ollama...")
-            warmup_ollama()
 
         results = []
         for c in candidates:
@@ -555,7 +549,7 @@ def main():
         holds = sum(1 for r in results if r.get('verdict') == 'HOLD')
         drops = sum(1 for r in results if r.get('verdict') == 'DROP')
 
-        print(f"\nIncubator LLM Screener")
+        print("\nIncubator LLM Screener")
         print(f"{'=' * 40}")
         print(f"  Candidates: {len(candidates)}")
         print(f"  Screened:   {screened}")
