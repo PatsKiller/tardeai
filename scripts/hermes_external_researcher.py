@@ -107,8 +107,63 @@ Question: {question}
 Redacted context (JSON): {context}
 
 The recommendation field IS the living thesis (not a one-line call). It must include the ticker, one numbered/symbol-specific fact, invalidation, role, and at least 8 sentences. Do not hide the thesis in evidence[]. JSON contract still required.
+Compare new evidence with the standing thesis and return a ResearchThesisDelta@v1, not a first-impression essay. Never return chain-of-thought.
 
 """ + build_external_research_json_schema()
+
+
+def canonical_prompt_context(symbol, question):
+    """Return the redacted stateful contract, retaining safe legacy context."""
+    if not symbol:
+        return {"symbol": None, "question": question, "authority": "READ_ONLY_ADVISORY"}
+    try:
+        from lib.research_prompt_context import build_research_prompt_context
+    except ImportError:
+        from scripts.lib.research_prompt_context import build_research_prompt_context
+    context = build_research_prompt_context(symbol, question=question, root=ROOT)
+    legacy = safe_context(symbol)
+    if legacy:
+        context["legacy_safe_context"] = legacy
+    return json.loads(redact(json.dumps(context)))
+
+
+def reconcile_accepted_research(symbol, rid, parsed, prompt_context, args):
+    """Bridge a stored, accepted external result into delta/thesis/product review."""
+    if str(parsed.get("classification") or "").upper() not in {
+        "CONFIRMS", "STRENGTHENS", "WEAKENS", "INVALIDATES", "NO_NEW_INFO",
+        "CONFLICTED", "INSUFFICIENT_DATA",
+    }:
+        return {"skipped": True, "reason": "structured_delta_classification_required"}
+    memberships = {str(x).upper() for x in (prompt_context.get("memberships") or [])}
+    material = bool(memberships & {"HELD", "REENTRY", "WATCH", "WATCHLIST", "PROPOSAL", "T0", "T1"})
+    if not symbol or not material:
+        return {"skipped": True, "reason": "non_material_symbol"}
+    try:
+        from lib.cio_product_reassessment import reassess_on_research_completed
+    except ImportError:
+        from scripts.lib.cio_product_reassessment import reassess_on_research_completed
+    result = dict(parsed)
+    result.update({
+        "result_id": f"hermes_external_research:{rid}",
+        "research_id": str(rid),
+        "symbol": symbol,
+        "status": "completed",
+        "provider": args.lane,
+        "model": args.model,
+        "prompt_context": prompt_context,
+    })
+    return reassess_on_research_completed(
+        {
+            "plan_id": f"external_research_{rid}",
+            "symbol": symbol,
+            "question": args.question,
+            "prompt_context": prompt_context,
+        },
+        result,
+        critique={"verdict": "VALID"},
+        root=ROOT,
+        notify=True,
+    )
 
 
 def _get_key(env_name):
@@ -368,9 +423,9 @@ def main():
     except Exception as _be:
         print(f"[budget-guard] advisory check skipped: {_be}")
 
+    _load_env()
     question = redact(args.question)
-    ctx = safe_context(args.symbol)
-    ctx = json.loads(redact(json.dumps(ctx)))  # defense-in-depth redaction pass over whole context
+    ctx = canonical_prompt_context(args.symbol, question)
     # .format() breaks on the appended JSON schema's literal {braces} — every call
     # since ~2026-07-02 died with KeyError before reaching any API (lanes "stalled").
     # Placeholder substitution must not interpret the schema as format fields.
@@ -489,6 +544,11 @@ def main():
         print("SKIPPED_BUDGET", args.symbol or "_", parsed.get("error") or "")
     elif status == "sent":
         print("recommendation:", (parsed.get("recommendation") or "")[:200])
+        try:
+            reconciliation = reconcile_accepted_research(args.symbol, rid, parsed, ctx, args)
+            print("research_thesis_reconciliation:", json.dumps(reconciliation, default=str)[:1200])
+        except Exception as exc:
+            print(f"research_thesis_reconciliation: ERROR {type(exc).__name__}:{exc}")
 
 
 if __name__ == "__main__":

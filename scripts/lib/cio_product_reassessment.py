@@ -685,45 +685,36 @@ def reassess_on_research_completed(
     }
     prior = load_brief(root)
     try:
-        # Closed-loop §K: research result → SYMBOL THESIS REASSESSMENT (before product rebuild).
-        # Idempotent via reassessment_id; publish only on material content change.
+        # Accepted research becomes a governed delta before thesis/product reassessment.
         thesis_review: dict[str, Any] = {"skipped": True}
         sym_for_thesis = str(parent.get("symbol") or result.get("symbol") or "").upper()
         if sym_for_thesis:
             try:
-                from scripts.lib.symbol_thesis_review import reconcile_symbol_thesis
                 critique_v = str((critique or {}).get("verdict") or "").upper()
-                summary = str(result.get("summary") or result.get("answer") or "").strip()
-                # Only feed research into thesis when critique is not INSUFFICIENT
-                evidence: dict[str, Any] = {
-                    "research_result_id": result_id,
-                    "result_id": result_id,
-                    "financial_truth_refs": list(result.get("evidence_refs") or [])[:12],
-                    "fs_receipts": list(result.get("fs_receipts") or [])[:8],
-                    "ratified_lessons": list(result.get("lessons") or [])[:8],
-                    "memory_refs": list(result.get("memory_refs") or [])[:8],
-                }
-                if summary and critique_v not in {"INSUFFICIENT", "REJECT", "REJECTED"}:
-                    # Append research as evidence_for; do not invent stance
-                    evidence["evidence_for"] = [f"research:{result_id}: {summary[:240]}"]
-                    # Optional explicit stance/summary only if research payload provides them
-                    if result.get("thesis_summary"):
-                        evidence["summary"] = str(result.get("thesis_summary"))[:2000]
-                    if result.get("thesis_stance"):
-                        evidence["stance"] = str(result.get("thesis_stance"))
-                    if result.get("research_gaps") is not None:
-                        evidence["research_gaps"] = list(result.get("research_gaps") or [])
-                    if result.get("counter_evidence") is not None:
-                        evidence["counter_evidence"] = list(result.get("counter_evidence") or [])
-                thesis_review = reconcile_symbol_thesis(
-                    sym_for_thesis,
-                    trigger="research_completion",
-                    evidence=evidence,
-                    root=root,
-                    publish=True,
-                    notify=False,  # notification governed by product what_changed below
-                    actor_id="cio_product_reassessment",
-                )
+                if critique_v in {"INSUFFICIENT", "REJECT", "REJECTED"}:
+                    thesis_review = {"skipped": True, "reason": f"critique_{critique_v.lower()}"}
+                else:
+                    from scripts.lib.research_prompt_context import build_research_prompt_context
+                    from scripts.lib.research_thesis_delta import accept_research_result
+                    prompt_context = result.get("prompt_context") or request.get("prompt_context")
+                    if not isinstance(prompt_context, dict):
+                        prompt_context = build_research_prompt_context(
+                            sym_for_thesis,
+                            question=str(request.get("question") or result.get("question") or "research completion"),
+                            root=root,
+                        )
+                    thesis_review = accept_research_result(
+                        sym_for_thesis,
+                        result,
+                        prompt_context=prompt_context,
+                        research_id=str(result_id),
+                        root=root,
+                        provider=str(result.get("provider") or result.get("lane") or "") or None,
+                        model=str(result.get("model") or "") or None,
+                        trigger="research_completion",
+                        run_id=rid,
+                        source_sha=(env or os.environ).get("TRADEAI_SOURCE_SHA"),
+                    )
             except Exception as thesis_exc:
                 thesis_review = {
                     "ok": False,
@@ -753,6 +744,9 @@ def reassess_on_research_completed(
             )
             if k in thesis_review or thesis_review.get(k) is not None
         }
+        if isinstance(thesis_review.get("delta"), dict):
+            product["symbol_thesis_review"]["delta_id"] = thesis_review["delta"].get("delta_id")
+            product["symbol_thesis_review"]["delta_classification"] = thesis_review["delta"].get("classification")
         _annotate_research(product, result, critique)
         try:
             from scripts.lib.cio_production_eligibility import prior_visible_for_what_changed

@@ -31,6 +31,50 @@
 
 **Bottleneck:** first real DecisionPayload@v1 row (then restart 5-day clock) → tree-pin → spend attribution → coverage.
 
+### R8 correction and implementation record (2026-08-22)
+
+This section corrects the stale architecture premise used before the R8 audit. It
+does not claim deployment. The implementation is on a review branch based on
+exact `origin/main` `9dfe437f6e161cb2b6c9ed2c983e23b9fa9de1b7`; live CURRENT remains
+`5e91225a` until a separately authorized promotion.
+
+- Research had already minted live symbol theses through an operator-run backfill:
+  T0-HOLD 22 minted (17 CURRENT, 5 THIN), reentry 24/25 CURRENT, and T1
+  292/299 CURRENT. The missing capability was automatic, quality-gated
+  research-to-thesis circulation, not the first existence of live theses.
+- Thesis already affected decisions. `cio_investment_product.adjudicate_reentry()`
+  loaded the symbol thesis and restricted weak/non-governed readiness. The missing
+  controls were first-class research deltas, deterministic change precedence, and
+  prevention of fresh invalidation being hidden by an older governed RE_ENTER.
+- `ResearchPromptContext@v1` is the canonical redacted stateful input. It contains
+  standing thesis/version, prior delta/conclusion, unresolved gaps, deterministic
+  current/change data, regime/sector state, RAG support and contradiction,
+  eligible operator feedback, non-authoritative memory, ratified lessons, and
+  Financial Senses receipts. It retains `MEMORY_BEHAVIOR_INFLUENCE=0`.
+- `ResearchThesisDelta@v1` is accepted before reconciliation. Only A-grade material
+  `STRENGTHENS`, `WEAKENS`, `INVALIDATES`, or `CONFLICTED` deltas can publish.
+  `CONFIRMS` and `NO_NEW_INFO` do not create a thesis version.
+- Every new automatic thesis write carries writer/version, source research ids,
+  delta id, trigger, run id, source SHA, previous version, and reason for change.
+- `ThesisDecisionGate@v1` is deterministic and restriction-only. Fresh
+  invalidation blocks effective RE_ENTER while preserving the operator verdict as
+  provenance; conflict fails closed to WAIT; weakening can demote; strengthening
+  cannot independently promote.
+- Exact redacted NOC prompt evidence is
+  `docs/_evidence/autonomous_advisory_loop/noc_research_prompt_redacted.json`.
+  The read-only host run includes the current `symbol_noc@v3`, prior DeepSeek
+  conclusion and dissent, deterministic changes, ratified lessons, and Financial
+  Senses receipts. RAG support/contradiction are honestly empty and the packet
+  records three acquisition gaps. A prior `ResearchThesisDelta@v1` is also empty
+  because that ledger is not deployed. Populated prior-delta behavior is covered
+  by fixture tests and must still be proven in a deployed natural replay before
+  the loop is called autonomous.
+
+**MATURITY_IMPACT:** research utilization ->
+`data/cio/research_thesis_deltas.jsonl`; reasoning -> thesis projection
+`write_provenance` + `data/cio/thesis_change_cards.jsonl`. Live metric remains
+UNMEASURED until reviewed code is promoted and a natural NOC run completes.
+
 ---
 
 ## 2. As-is architecture

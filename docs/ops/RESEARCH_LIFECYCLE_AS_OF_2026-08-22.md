@@ -7,6 +7,15 @@
 
 Related: `docs/ops/RESEARCH_LIFECYCLE_STANDARD.md` (intended methodology) · `docs/ops/RESEARCH_TIER_LLM_CADENCE.md` (tiers/cron) · `docs/ops/LLM_ROUTING_AND_DATA_LAYERS.md` (two LLM families) · `docs/ops/RESEARCH_QUALITY_AND_THESIS_GAP_2026-08-22.md` (parser/join diagnosis) · `docs/ops/SESSION_CLOSEOUT_2026-08-22.md` (index).
 
+> **R8 branch addendum (not live):** The stale statement "research has never
+> minted live theses" is false; the table below records the operator-driven mint.
+> The remaining gap is automatic circulation. The review branch adds a canonical
+> stateful prompt, `ResearchThesisDelta@v1`, quality-gated automatic reconciliation,
+> provenance on every new write, replay suppression, and deterministic
+> `ThesisDecisionGate@v1`. CURRENT does not serve those changes until a separately
+> authorized merge and promotion. See the R8 correction section in
+> `docs/architecture/TRADEAI_SYSTEM_STATE_AND_AUTONOMY_2026-08-20.md`.
+
 ---
 
 ## The book, tonight
