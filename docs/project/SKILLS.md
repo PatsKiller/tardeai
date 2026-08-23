@@ -19,6 +19,9 @@
 > **Policy:** OpenClaw and Trade AI production may not use local generation. Host
 > OpenClaw references discovered on 2026-08-22 are removal prerequisites, not
 > available capabilities. Do not install or substitute another local chat model.
+> The 2026-08-23 active-config audit found 24 local-generative references in
+> `~/.openclaw/openclaw.json`; therefore OpenClaw is not yet physically clean.
+> Pending source migrations do not change that live fact.
 
 ### Backend Automation Agents
 
@@ -90,10 +93,10 @@ Located in `~/.openclaw/skills/`
 ### Intelligence & Enrichment
 | Skill | Script | Schedule |
 |-------|--------|----------|
-| LLM intelligence (5 sections) | `llm_intelligence_enrichment.py` | 7:20 AM daily |
+| LLM intelligence (5 sections) | `llm_intelligence_enrichment.py` | 7:20 AM daily; governed cloud only after pending cutover |
 | News ingestion (7 sources) | `news_ingestion.py` | 6:30 AM + 12:30 PM |
 | Social ingestion | `social_ingest.py` | 6:30 AM + 12:35 PM |
-| Topic curation (LLM-powered) | `topic_curator.py` | 7:00 AM daily |
+| Topic curation (LLM-powered) | `topic_curator.py` | governed cloud only after pending cutover |
 | RAG indexing (11 sources incl. research) | `rag_indexer.py` | 4x daily |
 | Research topic iteration | `iterate_research_topics.py` | Daily (overnight batch) |
 | Sentiment processing | `sentiment_processor.py` | 7:00 AM + 12:00 PM |

@@ -326,13 +326,16 @@ def protection_rec_for_symbol(symbol: str) -> dict | None:
 
 
 def run(lane="grok", symbols=None, limit=12, manual_trigger=False, batch=False):
-    # operator 2026-06-13: prefer the FREE Grok OAuth lane (tighter adherence to the bounded prompt
-    # than gemma3:4b); auto-fall back to local gemma when the proxy isn't authenticated. Both free.
     import llm_lane
     from db_adapter import _get_conn
     conn = _get_conn(); cur = conn.cursor()
-    if not llm_lane.available(lane):
-        lane = "local"
+    if lane not in ("grok", "chatgpt"):
+        raise RuntimeError("POLICY_LOCAL_GENERATIVE_FORBIDDEN: use grok or chatgpt")
+    available_lanes = [name for name in (lane, "chatgpt" if lane == "grok" else "grok")
+                       if llm_lane.available(name)]
+    if not available_lanes:
+        raise RuntimeError("CLOUD_LANES_UNAVAILABLE: protection advisory failed closed")
+    lane = available_lanes[0]
     cands = _candidates(limit)
     if symbols:
         want = {s.strip().upper() for s in symbols}
@@ -404,15 +407,18 @@ def run(lane="grok", symbols=None, limit=12, manual_trigger=False, batch=False):
             if "manual approval required" in str(e).lower():
                 print(f"  {sym}: Grok blocked (Manual mode) — enable Automated in Consumption or run manual")
                 continue
-            # Free-lane resilience: on a Grok/ChatGPT OAuth failure (e.g. 403 token-rotation blip) retry on
-            # the LOCAL gemma lane — free, never a paid fallback (honours the no-paid-fallback policy).
-            if lane != "local":
+            fallback_lane = next((name for name in available_lanes if name != lane), None)
+            if fallback_lane:
                 try:
-                    out = llm_lane.generate(prompt, lane="local", timeout=120)
-                    used_lane = "local"; fellback += 1
-                    print(f"  {sym}: {lane} lane failed ({str(e)[:40]}) -> local gemma fallback (free, no paid)")
+                    out = llm_lane.generate(
+                        prompt, lane=fallback_lane, timeout=120, process_id=pid,
+                        task_summary=f"stop advisory {sym} cloud fallback",
+                        manual_trigger=bool(manual_trigger or batch),
+                    )
+                    used_lane = fallback_lane; fellback += 1
+                    print(f"  {sym}: {lane} failed ({str(e)[:40]}) -> {fallback_lane} fallback")
                 except Exception as e2:
-                    print(f"  {sym}: lane error {lane}:{str(e)[:25]} / local:{str(e2)[:25]}"); failed += 1; continue
+                    print(f"  {sym}: lane error {lane}:{str(e)[:25]} / {fallback_lane}:{str(e2)[:25]}"); failed += 1; continue
             else:
                 print(f"  {sym}: lane error {str(e)[:60]}"); failed += 1; continue
         rec = _parse(out)
@@ -464,7 +470,7 @@ def run(lane="grok", symbols=None, limit=12, manual_trigger=False, batch=False):
         except Exception:
             pass
         sanity = _sanity_check(rec, t, fb)   # validate vs real structure + family bounds
-        model = "grok-3-mini" if used_lane == "grok" else getattr(__import__("local_llm"), "model_used", None) or "gemma3:12b"
+        model = "grok-3-mini" if used_lane == "grok" else "gpt-5.4"
         cur.execute("""INSERT INTO hermes_research_intelligence
                          (source, hermes_agent_name, research_type, symbol, topic, summary, thesis,
                           thesis_type, evidence_json, confidence_score, model_used, prompt_hash,

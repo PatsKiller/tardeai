@@ -20,7 +20,16 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
-from local_llm import generate as llm_generate
+from lib.governed_cloud_generation import generate_cloud
+
+
+def llm_generate(prompt, timeout=30, **_kwargs):
+    text, _lane = generate_cloud(
+        prompt, process_id="iris_taxonomy_agent",
+        task_summary="Iris taxonomy classification", timeout=timeout,
+        response_json=True,
+    )
+    return text
 
 # ═══════════════════════════════════════════════════════
 # IRIS IDENTITY — Taxonomy Intelligence Agent
@@ -1615,9 +1624,8 @@ def run_library_audit(dry_run=False):
             for gap in report.get("content_gaps", []):
                 cat = gap["category"]
                 try:
-                    from local_llm import generate
                     prompt = f"/no_think Suggest 2 real YouTube channels covering {cat.replace('_',' ')} for a disability retirement investor. Just channel names, one per line."
-                    result = generate(prompt, timeout=20, fast=True)
+                    result = llm_generate(prompt, timeout=20)
                     if result:
                         recs.append(f"  {cat.replace('_',' ')}: {result.strip()[:100]}")
                 except Exception:

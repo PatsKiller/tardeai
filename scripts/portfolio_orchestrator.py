@@ -1680,19 +1680,12 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
                 "- Maximum 3 sentences\n\n"
                 "SUMMARY:"
             )
-            # Call Ollama (think=False disables qwen3 thinking mode)
-            from local_llm_config import get_local_llm_model, get_local_llm_base_url
-            _orch_model = get_local_llm_model()
-            _orch_base = get_local_llm_base_url().rstrip("/")
-            _payload = json.dumps({"model": _orch_model, "stream": False,
-                                   "messages": [{"role": "user", "content": _prompt}],
-                                   "think": False,
-                                   "options": {"temperature": 0.3, "num_predict": 200}}).encode()
-            _req = _ur.Request(f"{_orch_base}/api/chat", data=_payload,
-                               headers={"Content-Type": "application/json"})
-            _resp = _ur.urlopen(_req, timeout=30)
-            _result = json.loads(_resp.read().decode())
-            _summary = _result.get("message", {}).get("content", "").strip()
+            from lib.governed_cloud_generation import generate_cloud
+            _summary, _orch_lane = generate_cloud(
+                _prompt, process_id="portfolio_orchestrator",
+                task_summary="daily factual surveillance summary", timeout=30,
+                max_tokens=200,
+            )
             # Strip think tags
             _summary = _re.sub(r"<think>.*?</think>", "", _summary, flags=_re.DOTALL).strip()
             # Validate: reject if advisory language found (as imperatives, not signal labels)
@@ -1706,10 +1699,10 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
                     "category": "daily_summary",
                     "observation": _summary[:500],
                     "evidence": {"observation_count": len(_obs_today), "escalation_count": len(_esc_today),
-                                 "model": _orch_model, "prompt_tokens": len(_prompt.split())},
-                    "source": "ollama:enrichment",
+                                 "model": _orch_lane, "prompt_tokens": len(_prompt.split())},
+                    "source": f"cloud:{_orch_lane}:enrichment",
                     "confidence": 0.85,
-                    "model": f"ollama:{_orch_model}",
+                    "model": f"cloud:{_orch_lane}",
                     "freshness_hash": _freshness.get("holdings_hash", "") if '_freshness' in dir() else "",
                 }])
                 print(f"  [enrichment] ✅ Daily summary written ({len(_summary)} chars)")

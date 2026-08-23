@@ -181,24 +181,14 @@ def rate_pending_content(conn, topic_id=None, limit=200):
 # STEP 2: EXTRACT ENTITIES (tickers, topics, sectors, etc.)
 # ════════════════════════════════════════════════════════════
 def _free_lane_gen(prompt, timeout=40):
-    """LLM via the FREE OAuth lanes first (grok :8645 → chatgpt :8646), local gemma as fallback.
-    Replaces local-only `local_llm.generate` so research entity extraction uses the better free models."""
+    """Generate research metadata through governed cloud lanes only."""
     try:
-        import llm_lane
-        for lane in ("grok", "chatgpt", "local"):
-            try:
-                if not llm_lane.available(lane):
-                    continue
-                out = llm_lane.generate(prompt, lane=lane, timeout=timeout)
-                if out and out.strip():
-                    return out
-            except Exception:
-                continue
-    except Exception:
-        pass
-    try:
-        from local_llm import generate
-        return generate(prompt, timeout=timeout, fallback=False, fast=True) or ""
+        from lib.governed_cloud_generation import generate_cloud
+        out, _lane = generate_cloud(
+            prompt, process_id="topic_curator",
+            task_summary="topic entity extraction", timeout=timeout,
+        )
+        return out
     except Exception:
         return ""
 
@@ -351,12 +341,6 @@ def improve_queries(conn, topic_id=None):
     better, more targeted queries for the next run.
     Stores in topic_monitor.llm_generated_queries and topic_curation_feedback.
     """
-    try:
-        from local_llm import generate
-    except ImportError:
-        print("  [curator] No LLM, skipping query improvement")
-        return
-
     cur = conn.cursor(cursor_factory=__import__('psycopg2.extras', fromlist=['RealDictCursor']).RealDictCursor)
 
     sql = "SELECT * FROM topic_monitor WHERE enabled=true"
@@ -408,7 +392,7 @@ def improve_queries(conn, topic_id=None):
             f'"quality_note": "1 sentence about content quality"}}'
         )
 
-        raw = generate(prompt, timeout=30, fallback=False, fast=True)
+        raw = _free_lane_gen(prompt, timeout=30)
         if raw:
             try:
                 match = re.search(r'\{[^}]+\}', raw, re.DOTALL)

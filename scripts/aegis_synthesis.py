@@ -38,9 +38,6 @@ if _env_path.exists():
 
 AGENT = "aegis"
 RUN_ID = f"aegis-synthesis-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
-from local_llm_config import get_local_llm_model, get_local_llm_base_url
-OLLAMA_MODEL = get_local_llm_model()
-_BASE = get_local_llm_base_url().rstrip("/")
 
 
 def _load_json(p: Path):
@@ -82,20 +79,15 @@ def _db_query(sql, params=None, fetch="all"):
 
 
 def _llm(prompt: str, max_tokens: int = 400) -> str:
-    """Call local ollama for synthesis. Returns raw text."""
+    """Call governed cloud lanes for synthesis. Returns raw text."""
     try:
-        payload = json.dumps({
-            "model": OLLAMA_MODEL, "stream": False,
-            "messages": [{"role": "user", "content": prompt}],
-            "think": False,
-            "options": {"temperature": 0.2, "num_predict": max_tokens}
-        }).encode()
-        req = urllib.request.Request(
-            f"{_BASE}/api/chat",
-            data=payload, headers={"Content-Type": "application/json"}, method="POST"
+        from lib.governed_cloud_generation import generate_cloud
+        text, _lane = generate_cloud(
+            prompt, process_id="aegis_synthesis",
+            task_summary="Aegis advisory synthesis", timeout=60,
+            max_tokens=max_tokens,
         )
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            return json.loads(resp.read()).get("message", {}).get("content", "").strip()
+        return text
     except Exception as e:
         print(f"  [llm] Failed: {e}")
         return ""
@@ -228,7 +220,7 @@ Be concise. No disclaimers."""
              news_titles[:200] if news_titles else None,
              f"{mentions} mentions, score {sent_score}" if mentions else None,
              confidence, needs_steph, escalation,
-             json.dumps({"run_id": RUN_ID, "agent": AGENT, "source": "aegis:synthesis", "model": OLLAMA_MODEL}))
+             json.dumps({"run_id": RUN_ID, "agent": AGENT, "source": "aegis:synthesis", "model": "governed-cloud"}))
         )
         if ok:
             written += 1
@@ -568,24 +560,15 @@ def generate_steph_escalations() -> int:
 MAX_RETRIES = 5
 
 def _steph_llm(prompt: str, attempt: int = 1, max_tokens: int = 250) -> str:
-    """Call local LLM for Steph review. Uses higher temperature on retries."""
+    """Call governed cloud lanes for Steph review."""
     try:
-        temp = 0.15 + (attempt - 1) * 0.15  # 0.15 → 0.30 → 0.45
-        payload = json.dumps({
-            "model": OLLAMA_MODEL, "stream": False,
-            "messages": [{"role": "user", "content": prompt}],
-            "think": False,
-            "options": {"temperature": temp, "num_predict": max_tokens}
-        }).encode()
-        req = urllib.request.Request(
-            f"{_BASE}/api/chat",
-            data=payload, headers={"Content-Type": "application/json"}, method="POST"
+        from lib.governed_cloud_generation import generate_cloud
+        raw, _lane = generate_cloud(
+            prompt, process_id="aegis_steph_review",
+            task_summary=f"Steph evidence review attempt {attempt}", timeout=90,
+            max_tokens=max_tokens,
         )
-        with urllib.request.urlopen(req, timeout=90) as resp:
-            raw = json.loads(resp.read()).get("message", {}).get("content", "").strip()
-            if not raw:
-                return ""
-            return raw
+        return raw
     except Exception as e:
         print(f"  [steph-llm] Attempt {attempt} failed: {e}")
         return ""

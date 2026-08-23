@@ -25,6 +25,11 @@ used rebuild. Advisory cache worker has no `AGENT_DECISION_PAYLOAD` and no
 
 ## Plan (after 8/27 close)
 
+The older date is not authorization. As of 2026-08-23, CI is blocked before
+runner start by repository billing and the live rebuild still has local-model
+callers. No batch may move until exact reviewed heads are green and the operator
+authorizes host mutation.
+
 1. **Inventory.** `systemctl --user list-units --type=service --all` +
    `crontab -l`: classify each ExecStart / `cd $PROJ` as
    CURRENT-already / rebuild / other-worktree / dead.
@@ -44,6 +49,23 @@ used rebuild. Advisory cache worker has no `AGENT_DECISION_PAYLOAD` and no
    out of this cutover unless a later explicit order.
 7. **Rollback.** Each batch is a crontab/systemd drop-in diff; restore
    `PROJ=` rebuild if a unit fails health.
+
+### Batch 0 — local-generation containment
+
+Before Batch A, deploy the reviewed cloud-only routing source, then update only
+advisory/research cron and units. Remove the explicit weekend
+`watchlist_entry_planner.py --lane local`, retire the calibration/preload/model
+fleet jobs, and remove OpenClaw generative aliases. The 2026-08-23 audit found
+45 active cron intersections and these five unit intersections:
+`hermes-autonomous-loop`, `hermes-deep-research-local`,
+`hermes-external-feedback`, `high-llm-execution-worker`, and
+`tradeai-iris-taxonomy`. Natural-run proof and rollback are required per unit.
+Broker/order/stop/risk/2FA services remain outside this batch.
+
+After Batch 0, run `audit_local_model_decommission.py` for seven days. Only a
+zero result across source, cron, systemd, OpenClaw, processes, and test
+dependencies permits physical model removal. Embedding acceptance separately
+decides `GPU_MODE=EMBEDDINGS_ONLY` versus `GPU_MODE=DISABLED`.
 
 ## Capture wiring to land with Batch A (not now)
 

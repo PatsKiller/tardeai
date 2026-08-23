@@ -198,12 +198,6 @@ def llm_generate_queries(conn, topic: dict) -> dict:
     Returns: {"video_queries": [...], "news_queries": [...]}
     Tight prompt: ~200 input tokens, ~100 output tokens.
     """
-    try:
-        from local_llm import generate
-    except ImportError:
-        return {"video_queries": topic.get("video_queries", []),
-                "news_queries": topic.get("search_queries", [])}
-
     personal = topic.get("personal_context", "") or _load_personal_context(conn)
     existing = _load_existing_titles(conn, topic["topic_id"])
     existing_str = "; ".join(existing[:10]) if existing else "none yet"
@@ -220,7 +214,15 @@ def llm_generate_queries(conn, topic: dict) -> dict:
         f'Reply ONLY with JSON: {{"video_queries": ["q1","q2","q3","q4"], "news_queries": ["q1","q2","q3","q4"]}}'
     )
 
-    raw = generate(prompt, timeout=30, fallback=False, fast=True)
+    try:
+        from lib.governed_cloud_generation import generate_cloud
+        raw, _lane = generate_cloud(
+            prompt, process_id="topic_ingestion",
+            task_summary=f"topic queries {topic['topic_id']}", timeout=30,
+            response_json=True, max_tokens=512,
+        )
+    except Exception:
+        raw = ""
     if not raw:
         return {"video_queries": topic.get("video_queries", []),
                 "news_queries": topic.get("search_queries", [])}
@@ -348,11 +350,6 @@ def _llm_rate_quality(title: str, content_preview: str,
     Returns: {"rag_status": "approved"|"low_quality"|"blocked",
               "rag_reason": "...", "summary": "..."}
     """
-    try:
-        from local_llm import generate
-    except ImportError:
-        return {"rag_status": "pending", "rag_reason": "", "summary": content_preview[:300]}
-
     prompt = (
         f"/no_think Rate this content for RAG indexing.\n"
         f"Topic: {topic_display}\n"
@@ -365,7 +362,15 @@ def _llm_rate_quality(title: str, content_preview: str,
         f'"summary": "1-2 sentence summary relevant to the person"}}'
     )
 
-    raw = generate(prompt, timeout=25, fallback=False, fast=True)
+    try:
+        from lib.governed_cloud_generation import generate_cloud
+        raw, _lane = generate_cloud(
+            prompt, process_id="topic_ingestion",
+            task_summary=f"RAG quality {topic_display[:80]}", timeout=25,
+            response_json=True, max_tokens=384,
+        )
+    except Exception:
+        raw = ""
     if not raw:
         return {"rag_status": "pending", "rag_reason": "", "summary": content_preview[:300]}
 
@@ -901,12 +906,6 @@ def _llm_normalize(title: str, description: str, topic_display: str,
     Tight focused prompt — ~100 input tokens, ~80 output tokens.
     Returns dict with normalized fields or None if irrelevant.
     """
-    try:
-        from local_llm import generate
-    except ImportError:
-        # No LLM available — pass through raw data
-        return {"summary": description[:500], "relevant": True, "quality": "medium"}
-
     # Build tight prompt — no wasted tokens
     content_preview = transcript[:800] if transcript else description[:300]
     prompt = (
@@ -919,7 +918,15 @@ def _llm_normalize(title: str, description: str, topic_display: str,
         "If not relevant to the topic, set relevant=false."
     )
 
-    raw = generate(prompt, timeout=30, fallback=False, fast=True)
+    try:
+        from lib.governed_cloud_generation import generate_cloud
+        raw, _lane = generate_cloud(
+            prompt, process_id="topic_ingestion",
+            task_summary=f"content normalization {topic_display[:80]}", timeout=30,
+            response_json=True, max_tokens=384,
+        )
+    except Exception:
+        raw = ""
     if not raw:
         return {"summary": description[:500], "relevant": True, "quality": "medium"}
 
