@@ -27,6 +27,9 @@ def test_noc_golden_loop_eight_stages_and_no_new_info_replay(tmp_path):
     assert stages["cio"]["current_symbol_thesis"]["summary"] == full_summary
     assert stages["symbol_card"]["core_thesis"] == full_summary
     assert stages["symbol_card"]["cio_action"]["decision_id"] == "dec_noc_golden_v2"
+    assert stages["symbol_card"]["positive_evidence"]
+    assert stages["symbol_card"]["evidence_provenance"]["provider"] == "governed_cloud"
+    assert stages["symbol_card"]["evidence_provenance"]["model"] == "acceptance-model"
 
     gate = stages["decision_gate"]
     assert gate["delta_id"] == first["delta"]["delta_id"]

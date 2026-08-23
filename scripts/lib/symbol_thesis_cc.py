@@ -19,6 +19,7 @@ from scripts.lib.symbol_thesis_coverage import build_coverage_report, symbol_the
 from scripts.lib.symbol_thesis_queue import load_symbol_research_queue
 from scripts.lib.symbol_thesis_research import propose_prioritized_research, research_requests_for_symbol
 from scripts.lib.symbol_thesis_review import daily_thesis_changes
+from scripts.lib.research_prompt_context import latest_delta
 from scripts.lib.symbol_universe import reconcile_universe
 
 AUTHORITY = "READ_ONLY_ADVISORY"
@@ -249,6 +250,7 @@ def build_symbol_thesis_card(
         else load_symbol_research_queue(sym)
     )
     cio_action = _cio_action_for_symbol(sym, root=root)
+    research_delta = latest_delta(sym, root=root)
     ntf = None
     try:
         from scripts.lib.cio_command_center import _trust_notification
@@ -283,6 +285,18 @@ def build_symbol_thesis_card(
         "core_thesis": fields.get("thesis_summary") or "No living thesis",
         "positive_evidence": fields.get("evidence_for") or [],
         "counter_thesis": fields.get("counter_evidence") or [],
+        "evidence_provenance": {
+            "research_id": (research_delta or {}).get("research_id"),
+            "delta_id": (research_delta or {}).get("delta_id"),
+            "classification": (research_delta or {}).get("classification"),
+            "provider": (research_delta or {}).get("provider"),
+            "model": (research_delta or {}).get("model"),
+            "evidence_as_of": (research_delta or {}).get("evidence_as_of"),
+            "source_refs": (research_delta or {}).get("source_refs") or [],
+            "source_quality": (research_delta or {}).get("source_quality"),
+            "freshness": (research_delta or {}).get("freshness"),
+            "authority": AUTHORITY,
+        },
         "invalidation": fields.get("invalidation_conditions") or [],
         "market_sector_fit": fields.get("thesis_summary"),
         "why_owned_or_watched": fields.get("why_owned_or_watched"),
