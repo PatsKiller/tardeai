@@ -44,6 +44,16 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   )
 }
 
+function humanThesisText(v: unknown): string {
+  if (v == null) return '—'
+  const s = String(v).trim()
+  if (!s) return '—'
+  if (s.toUpperCase() === 'DATA_UNAVAILABLE' || s.toUpperCase().startsWith('DATA_UNAVAILABLE')) {
+    return 'No living thesis'
+  }
+  return s
+}
+
 function listText(v: unknown): string {
   if (v == null) return '—'
   if (Array.isArray(v)) {
@@ -201,14 +211,16 @@ export function SymbolThesisCard({ card: c }: { card: SymbolThesisCardPayload | 
           <div style={{
             fontSize: 11, fontWeight: 800, letterSpacing: '.4px',
             padding: '4px 8px', borderRadius: 6, border: '1px solid var(--border)',
-            color: c.thesis_state === 'RESEARCH_REQUIRED' ? 'var(--amber)' : 'var(--text2)',
+            color: c.thesis_state === 'THIN' || c.thesis_state === 'RESEARCH_REQUIRED'
+              ? 'var(--amber)'
+              : c.thesis_state === 'CURRENT' ? 'var(--green)' : 'var(--text2)',
           }}>
             {c.thesis_state || 'RESEARCH_REQUIRED'}
           </div>
         </div>
       </div>
-      <Field label="Why own / watch">{c.why_owned_or_watched || '—'}</Field>
-      <Field label="Case">{c.core_thesis || '—'}</Field>
+      <Field label="Why own / watch">{humanThesisText(c.why_owned_or_watched)}</Field>
+      <Field label="Case">{humanThesisText(c.core_thesis)}</Field>
       <Field label="Counter">{listText(c.counter_thesis)}</Field>
       <Field label="Gaps">{listText(c.research_gaps)}</Field>
       <Field label="Active research">{listText(c.active_research)}</Field>

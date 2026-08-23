@@ -599,7 +599,7 @@ def classify_symbol(
         "thesis_pin": (cur or {}).get("thesis_version"),
         "thesis_age_days": age_out,
         "thesis_status": (cur or {}).get("status"),
-        "thesis_summary": ((cur or {}).get("summary") or "")[:400] or None,
+        "thesis_summary": ((cur or {}).get("summary") or "").strip() or None,
         "thesis_stance": (cur or {}).get("stance") or None,
         "desk_pin": (desk or {}).get("thesis_version"),
         "desk_stance": (desk or {}).get("stance"),

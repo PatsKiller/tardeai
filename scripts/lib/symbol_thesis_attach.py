@@ -16,7 +16,35 @@ from scripts.lib.symbol_thesis_coverage import (
 )
 from scripts.lib.symbol_universe import reconcile_universe
 
-_CACHE: dict[str, Any] = {"root": None, "universe": None, "store": None, "by_sym": None}
+_CACHE: dict[str, Any] = {
+    "root": None,
+    "token": None,
+    "universe": None,
+    "store": None,
+    "by_sym": None,
+}
+
+
+def _store_token(root: Path) -> tuple:
+    """Invalidate the process cache when the living store or projection changes.
+
+    A long-lived portfolio_server that keys only on root path served
+    current_thesis=3 while the uncached list showed 22/22 CURRENT
+    (UI audit 2026-08-22).
+    """
+    parts: list[Any] = [str(root)]
+    for rel in (
+        "data/cio/cio_theses.jsonl",
+        "data/cio/cio_theses_projection.json",
+        "data/holdings.json",
+    ):
+        p = root / rel
+        try:
+            st = p.stat()
+            parts.extend((st.st_mtime_ns, st.st_size, st.st_ino))
+        except OSError:
+            parts.extend((0, 0, 0))
+    return tuple(parts)
 
 
 def _root(root: Path | str | None) -> Path:
@@ -26,8 +54,8 @@ def _root(root: Path | str | None) -> Path:
 
 
 def _load(root: Path) -> tuple[dict[str, Any], CIOThesisStore, dict[str, dict[str, Any]]]:
-    key = str(root)
-    if _CACHE.get("root") == key and _CACHE.get("by_sym") is not None:
+    token = _store_token(root)
+    if _CACHE.get("token") == token and _CACHE.get("by_sym") is not None:
         return _CACHE["universe"], _CACHE["store"], _CACHE["by_sym"]
     universe = reconcile_universe(root)
     store = CIOThesisStore(
@@ -37,12 +65,31 @@ def _load(root: Path) -> tuple[dict[str, Any], CIOThesisStore, dict[str, dict[st
     by_sym: dict[str, dict[str, Any]] = {}
     for sym, rec in (universe.get("symbols") or {}).items():
         by_sym[sym] = classify_symbol(sym, universe_rec=rec, store=store, root=root)
-    _CACHE.update({"root": key, "universe": universe, "store": store, "by_sym": by_sym})
+    _CACHE.update({
+        "root": str(root),
+        "token": token,
+        "universe": universe,
+        "store": store,
+        "by_sym": by_sym,
+    })
     return universe, store, by_sym
 
 
 def clear_cache() -> None:
-    _CACHE.update({"root": None, "universe": None, "store": None, "by_sym": None})
+    _CACHE.update({"root": None, "token": None, "universe": None, "store": None, "by_sym": None})
+
+
+def _operator_text(raw: Any) -> str | None:
+    """Never emit DATA_UNAVAILABLE as operator-facing copy."""
+    if raw is None:
+        return None
+    s = str(raw).strip()
+    if not s:
+        return None
+    u = s.upper()
+    if u == "DATA_UNAVAILABLE" or u.startswith("DATA_UNAVAILABLE"):
+        return None
+    return s
 
 
 def thesis_fields_for_symbol(symbol: str, *, root: Path | str | None = None) -> dict[str, Any]:
@@ -91,7 +138,10 @@ def thesis_fields_for_symbol(symbol: str, *, root: Path | str | None = None) -> 
         "thesis_state": cov.get("coverage_state") or "INSUFFICIENT_DATA",
         "thesis_reason": cov.get("coverage_reason"),
         "thesis_stance": cov.get("thesis_stance") or (thesis or {}).get("stance"),
-        "thesis_summary": cov.get("thesis_summary") or ((thesis or {}).get("summary") or None),
+        "thesis_summary": (
+            ((thesis or {}).get("summary") or "").strip()
+            or _operator_text(cov.get("thesis_summary"))
+        ),
         "thesis_confidence": (thesis or {}).get("confidence"),
         "last_reviewed": (thesis or {}).get("published_ts") or (thesis or {}).get("updated_ts"),
         "next_review_at": (thesis or {}).get("next_review_at"),
@@ -107,8 +157,8 @@ def thesis_fields_for_symbol(symbol: str, *, root: Path | str | None = None) -> 
             ) else "ABSENT")
         ),
         "what_would_change": extra.get("what_changes_my_mind") or [],
-        "why_owned_or_watched": extra.get("why_owned_or_watched") or "DATA_UNAVAILABLE",
-        "why_exited": extra.get("why_exited") or ("DATA_UNAVAILABLE" if "FORMER_HOLDING" in (cov.get("memberships") or []) or "REENTRY" in (cov.get("memberships") or []) else None),
+        "why_owned_or_watched": _operator_text(extra.get("why_owned_or_watched")),
+        "why_exited": _operator_text(extra.get("why_exited")),
         "what_changed_since_exit": extra.get("what_changed_since_exit") or None,
         "evidence_for": extra.get("evidence_for") or [],
         "counter_evidence": extra.get("counter_evidence") or [],
@@ -211,17 +261,46 @@ def universe_metrics(*, root: Path | str | None = None) -> dict[str, Any]:
     def _c(state: str, pool=None) -> int:
         pool = pool if pool is not None else rows
         return sum(1 for r in pool if r.get("coverage_state") == state)
+    def _held(pool):
+        import re
+        def _cusip(sym: Any) -> bool:
+            return bool(re.fullmatch(r"[0-9][0-9A-Za-z]{5,8}", str(sym or "").strip()))
+        return [
+            r for r in pool
+            if "HELD" in set(r.get("memberships") or [])
+            and not _cusip(r.get("symbol"))
+        ]
+    held = _held(material)
+    current_m = _c("CURRENT", material)
+    thin_m = _c("THIN", material)
+    n_m = len(material)
+    n_h = len(held)
+    current_h = _c("CURRENT", held)
+    thin_h = _c("THIN", held)
     return {
         "universe_union": len(rows),
-        "material": len(material),
-        "current": _c("CURRENT", material),
+        "material": n_m,
+        "current": current_m,
+        "thin": thin_m,
         "research_required": _c("RESEARCH_REQUIRED", material),
         "stale": _c("STALE", material),
         "conflicted": _c("CONFLICTED", material),
         "insufficient_data": _c("INSUFFICIENT_DATA"),
         "role_unknown": sum(1 for r in material if (r.get("portfolio_role") or {}).get("portfolio_role") == "UNKNOWN"),
         "coverage_pct_material": round(
-            (100.0 * _c("CURRENT", material) / len(material)) if material else 0.0, 1
+            (100.0 * (current_m + thin_m) / n_m) if n_m else 0.0, 1
+        ),
+        "substantive_pct_material": round(
+            (100.0 * current_m / n_m) if n_m else 0.0, 1
+        ),
+        "held": n_h,
+        "held_current": current_h,
+        "held_thin": thin_h,
+        "held_coverage_pct": round(
+            (100.0 * (current_h + thin_h) / n_h) if n_h else 0.0, 1
+        ),
+        "held_substantive_pct": round(
+            (100.0 * current_h / n_h) if n_h else 0.0, 1
         ),
         "desk": (store.get_current("desk") or {}).get("thesis_version"),
         "authority": "READ_ONLY_ADVISORY",
