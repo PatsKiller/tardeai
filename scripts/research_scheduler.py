@@ -11,9 +11,8 @@ Implements docs/RESEARCH_PRIORITIZATION.md + docs/ops/RESEARCH_LIFECYCLE_STANDAR
     (`_research_fingerprint` on recommendation+confidence) — that is NOT the skip-before-call hash.
   • Skip-before-call (flag RESEARCH_SKIP_GATE, default OFF): execute_set = due ∩ (changed ∪ stale ∪
     triggered). Unchanged in-window sources are SKIP_UNCHANGED; hours-window reuse is SKIP_FRESH.
-  • Local LLM is math-only. local-gemma / maria / full_chain are NOT auto-enqueued unless
-    RESEARCH_ALLOW_LOCAL_LLM=1. DeepSeek remains the auto judgment lane. ChatGPT OAuth overnight
-    stays on hermes_deep_research_local (overnight_llm_policy) — do not regress it here.
+  • Local generative LLM routing is forbidden. DeepSeek remains the automatic judgment lane.
+    ChatGPT OAuth overnight stays on the governed cloud path.
 
 Modes: holdings | priority | watchlist | incubator | cold-floor | backfill
 Dry by default; pass --apply to actually call the lanes. All numbers env-tunable (RESEARCH_*).
@@ -44,14 +43,10 @@ CALL_TIMEOUT    = int(os.getenv("RESEARCH_CALL_TIMEOUT", "150"))
 
 # ── Hermes lane registry (the whole 24/7 fleet, cheapest→scarcest) ────────────
 # DeepSeek is the governed V4 Flash external challenge (paid, no fallback) — the primary automated
-# judgment lane. local-gemma / internal-deep remain in TIER_SLA for coverage accounting but are NOT
-# auto-enqueued unless RESEARCH_ALLOW_LOCAL_LLM=1 (local LLM is math-only; 852 maria queued + 441
-# failed in 2 days was the live failure mode). claude is METERED → arbitration only, never auto here.
+# judgment lane. Claude is metered arbitration only and is never automatic here.
 # grok/chatgpt OAuth are retained in LANES but not auto-dispatched by this scheduler. ChatGPT
 # overnight judgment stays on hermes_deep_research_local (overnight_llm_policy).
 LANES = {
-    "local-gemma":   {"cost": "free-fast",    "dispatch": "queue",    "auto": True},
-    "internal-deep": {"cost": "free-slow",    "dispatch": "queue",    "auto": True},
     "deepseek":      {"cost": "metered",      "dispatch": "external", "auto": True},
     "grok":          {"cost": "free-limited", "dispatch": "external", "auto": False},
     "chatgpt":       {"cost": "free-limited", "dispatch": "external", "auto": False},
@@ -61,11 +56,11 @@ LANES = {
 # tier → (sla_refreshes, sla_window_days, lanes[]). Local listed for SLA accounting; auto-enqueue
 # of queue lanes is gated by allow_local_research_llm(). Externals are tier-gated.
 TIER_SLA = {
-    "T0-HOLD":  (3, 1,  ["local-gemma", "internal-deep", "deepseek"]),
-    "T0-PROP":  (2, 1,  ["local-gemma", "deepseek"]),
-    "T1-WATCH": (4, 7,  ["local-gemma", "deepseek"]),       # externals rotated (one per refresh)
-    "T2-INCUB": (1, 7,  ["local-gemma", "deepseek"]),       # external only on catalyst
-    "T3-COLD":  (1, 14, ["local-gemma", "deepseek"]),       # DeepSeek ONLY on catalyst; no 14d sweep
+    "T0-HOLD":  (3, 1,  ["deepseek"]),
+    "T0-PROP":  (2, 1,  ["deepseek"]),
+    "T1-WATCH": (4, 7,  ["deepseek"]),
+    "T2-INCUB": (1, 7,  ["deepseek"]),  # external only on catalyst
+    "T3-COLD":  (1, 14, ["deepseek"]),  # DeepSeek only on catalyst; no 14d sweep
 }
 TIER_WEIGHT = {"T0-HOLD": 1.0, "T0-PROP": 0.9, "T1-WATCH": 0.6, "T2-INCUB": 0.3, "T3-COLD": 0.1}
 EXTERNAL_LANES = {"deepseek", "claude"}
@@ -103,19 +98,14 @@ def skip_gate_enabled() -> bool:
 
 
 def allow_local_research_llm() -> bool:
-    """Auto-enqueue maria/full_chain. Default OFF — local LLM is math-only."""
-    return os.getenv("RESEARCH_ALLOW_LOCAL_LLM", "0").strip().lower() in {
-        "1", "true", "yes", "on",
-    }
+    """Compatibility surface: local generative research cannot be re-enabled."""
+    return False
 
 
 def lanes_for(tier: str) -> list[str]:
-    """Lanes this run will consider. Queue lanes drop unless RESEARCH_ALLOW_LOCAL_LLM=1."""
+    """Cloud lanes this run will consider."""
     _, _, lanes = TIER_SLA[tier]
-    out = list(lanes)
-    if not allow_local_research_llm():
-        out = [l for l in out if LANES.get(l, {}).get("dispatch") != "queue"]
-    return out
+    return list(lanes)
 
 
 def build_thesis_gap_commission(
@@ -548,91 +538,8 @@ QUESTION = ("Is {sym} a sound {kind} right now? Flag any NEW catalysts, risks, o
 
 
 def _enqueue_local(sym, tier, deep=False, *, thesis_gap: dict | None = None) -> dict:
-    """Queue a Flash-first research job; watchlist_agent_jobs workers drain it.
-    Canonical governance: dedupe / reuse / backpressure (no duplicate paid work).
-
-    When thesis_gap is provided (thesis_driven path), payload carries thesis_id,
-    research_gap_id, specific_question, RAG_FIRST — never invents thesis text.
-    """
-    agent = "full_chain" if deep else "maria"
-    prio = 1 if tier.startswith("T0") else (3 if tier == "T1-WATCH" else 5)
-    uni = "T0" if str(tier).startswith("T0") else ("T1" if "T1" in str(tier) else ("T2" if "T2" in str(tier) else "T3"))
-    commission = thesis_gap or (
-        build_thesis_gap_commission(sym, tier=tier)
-        if thesis_driven_enabled() and (str(tier).startswith("T0") or tier == "T1-WATCH")
-        else None
-    )
-    request_type = "scheduled_research"
-    note = f"{tier} scheduled research ({'deep' if deep else 'standard'})"
-    payload: dict = {}
-    thesis_id = None
-    research_gap_id = None
-    material = str(tier).startswith("T0")
-    if commission:
-        request_type = str(commission.get("request_type") or "thesis_gap_research")
-        note = str(commission.get("note") or note)
-        thesis_id = commission.get("thesis_id")
-        research_gap_id = commission.get("research_gap_id")
-        material = True  # high-value thesis gaps are material (T1)
-        uni = "T1" if uni not in {"T0", "T1"} else uni
-        payload = {
-            "thesis_id": thesis_id,
-            "thesis_version": commission.get("thesis_version"),
-            "research_gap_id": research_gap_id,
-            "research_gap": commission.get("research_gap"),
-            "specific_question": commission.get("specific_question"),
-            "RAG_FIRST": True,
-            "rag_first": bool(commission.get("rag_first", True)),
-            "materiality": commission.get("materiality") or "T1",
-            "pipeline_order": commission.get("pipeline_order") or list(R71_PIPELINE_ORDER),
-            "thesis_driven": True,
-        }
-    try:
-        from db_adapter import _execute, _get_conn
-        conn = _get_conn()
-        cur = conn.cursor()
-        from agent_job_enqueue_governance import EnqueueRequest, governed_enqueue
-        job_id = f"sched-{sym}-{agent}-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
-        res = governed_enqueue(cur, EnqueueRequest(
-            symbol=sym,
-            requested_agent=agent,
-            request_type=request_type,
-            submitted_from="research_scheduler",
-            priority=prio,
-            note=note,
-            job_id=job_id,
-            universe_tier=uni,
-            material=material,
-            payload=payload,
-            thesis_id=thesis_id,
-            research_gap_id=research_gap_id,
-        ))
-        conn.commit()
-        conn.close()
-        if res.action == "INSERT":
-            return {"ok": True, "tail": f"enqueued {agent} p{prio}", "thesis_id": thesis_id,
-                    "request_type": request_type, "payload": payload}
-        return {"ok": True, "tail": f"{res.action.lower()} {agent} ({res.reason})",
-                "thesis_id": thesis_id, "request_type": request_type, "payload": payload}
-    except Exception as e:
-        try:
-            from db_adapter import _execute
-            dup = _execute("""SELECT 1 FROM watchlist_agent_jobs WHERE symbol=%s AND requested_agent=%s
-                              AND status IN ('queued','running') LIMIT 1""", (sym, agent), fetch="one")
-            if dup:
-                return {"ok": True, "tail": "already queued", "thesis_id": thesis_id}
-            job_id = f"sched-{sym}-{agent}-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
-            import json as _json
-            _execute("""INSERT INTO watchlist_agent_jobs
-                        (id, symbol, requested_agent, request_type, note, priority, status, submitted_from, payload, created_at)
-                        VALUES (%s,%s,%s,%s,%s,%s,'queued','research_scheduler',%s,NOW())
-                        ON CONFLICT (id) DO NOTHING""",
-                     (job_id, sym, agent, request_type, note, prio,
-                      _json.dumps(payload or {})), fetch=None)
-            return {"ok": True, "tail": f"enqueued {agent} p{prio}", "thesis_id": thesis_id,
-                    "request_type": request_type, "payload": payload}
-        except Exception as e2:
-            return {"ok": False, "tail": str(e2)[:100]}
+    """Retained for callers that must receive an explicit policy refusal."""
+    return {"ok": False, "tail": "POLICY_LOCAL_GENERATIVE_FORBIDDEN"}
 
 
 def result_is_budget_throttle(res: dict | None) -> bool:
@@ -649,25 +556,10 @@ def result_is_budget_throttle(res: dict | None) -> bool:
 
 
 def dispatch(sym, lane, tier, apply, *, thesis_gap: dict | None = None) -> dict:
-    """Route by lane kind: queue lanes enqueue local work; external lanes call the researcher."""
+    """Route governed cloud research; reject every local or unknown lane."""
     meta = LANES.get(lane, {})
-    if meta.get("dispatch") == "queue":
-        if not apply:
-            commission = thesis_gap or (
-                build_thesis_gap_commission(sym, tier=tier)
-                if thesis_driven_enabled() and (str(tier).startswith("T0") or tier == "T1-WATCH")
-                else None
-            )
-            if commission:
-                return {
-                    "ok": True,
-                    "tail": f"would enqueue {lane} thesis_gap thesis_id={commission.get('thesis_id')}",
-                    "thesis_id": commission.get("thesis_id"),
-                    "payload": commission,
-                    "request_type": commission.get("request_type"),
-                }
-            return {"ok": True, "tail": f"would enqueue {lane}"}
-        return _enqueue_local(sym, tier, deep=(lane == "internal-deep"), thesis_gap=thesis_gap)
+    if not meta or meta.get("dispatch") != "external":
+        return {"ok": False, "tail": "POLICY_LOCAL_GENERATIVE_FORBIDDEN"}
     # external (deepseek)
     kind = "position to hold" if tier == "T0-HOLD" else ("proposal to trade" if tier == "T0-PROP" else "candidate")
     commission = thesis_gap or (
@@ -900,7 +792,7 @@ def run(mode, apply, budget):
         ordered = [{"symbol": s, "tier": "T0-HOLD",
                     "reentry_ready_near": bool(uni[s].get("reentry_ready_near"))} for s in targets]
     else:
-        lane = "deepseek"  # primary ordering lane; gemma assumed broad/elsewhere
+        lane = "deepseek"
         due = build_due(uni, lane, force_all=(mode == "backfill"))
         if mode == "priority":
             due = [d for d in due if d["tier"].startswith("T0") or d["tier"] == "T1-WATCH" or d["catalyst"]]
@@ -971,20 +863,8 @@ def run(mode, apply, budget):
             ext_lanes = [_lane_rotation(ext_lanes)[ext_rot % len(_lane_rotation(ext_lanes))]]; ext_rot += 1
         tag = f"{item.get('score',0):.0f}" if "score" in item else "-"
         gap_tag = f" thesis_id={thesis_gap.get('thesis_id')}" if thesis_gap else ""
-        # local queue lanes: only if RESEARCH_ALLOW_LOCAL_LLM=1 (maria/full_chain).
-        # local_llm_disabled is printed once per run above — not a skip-ledger research code
-        # unless the skip gate is also on (it still is not one of the four research codes).
-        if local_lanes and not allow_local_research_llm():
-            local_lanes = []
-        for lane in local_lanes:
-            print(f"  → {sym:6s} {tier:9s} lane={lane:13s} prio={tag}{gap_tag}")
-            if apply:
-                res = dispatch(sym, lane, tier, apply, thesis_gap=thesis_gap)
-                print(f"     {'ok' if res['ok'] else 'FAIL'}: {res['tail'][:80]}")
-            else:
-                res = dispatch(sym, lane, tier, False, thesis_gap=thesis_gap)
-                if thesis_gap and res.get("thesis_id"):
-                    print(f"     dry: {res['tail'][:100]}")
+        if local_lanes:
+            raise RuntimeError("POLICY_LOCAL_GENERATIVE_FORBIDDEN")
         # external lanes: budgeted; skip-gate decides execute vs SKIP_* when enabled.
         for lane in ext_lanes:
             if spent >= budget:

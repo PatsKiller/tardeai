@@ -64,7 +64,7 @@ def test_build_thesis_gap_commission_none_without_gap(monkeypatch):
     ) is None
 
 
-def test_dispatch_dry_run_attaches_thesis_id_when_gap_exists():
+def test_dispatch_rejects_retired_local_lane():
     import scripts.research_scheduler as rs
 
     gap = rs.build_thesis_gap_commission(
@@ -78,10 +78,15 @@ def test_dispatch_dry_run_attaches_thesis_id_when_gap_exists():
         },
     )
     res = rs.dispatch("CSCO", "local-gemma", "T1-WATCH", apply=False, thesis_gap=gap)
-    assert res["ok"] is True
-    assert res["thesis_id"] == "symbol_csco"
-    assert "thesis_gap" in res["tail"]
-    assert res["payload"]["RAG_FIRST"] is True
+    assert res == {"ok": False, "tail": "POLICY_LOCAL_GENERATIVE_FORBIDDEN"}
+
+
+def test_local_research_flag_cannot_restore_lanes(monkeypatch):
+    import scripts.research_scheduler as rs
+
+    monkeypatch.setenv("RESEARCH_ALLOW_LOCAL_LLM", "1")
+    assert rs.allow_local_research_llm() is False
+    assert rs.lanes_for("T0-HOLD") == ["deepseek"]
 
 
 def test_canary_dry_plan_safe_without_db(monkeypatch, tmp_path):
