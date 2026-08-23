@@ -49745,6 +49745,10 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 "embedding_model": "nomic-embed-text",
                 "embedding_expected_dimension": 768,
                 "embedding_digest_match": False,
+                "embedding_acceptance": {
+                    "status": "UNMEASURED",
+                    "source": None,
+                },
                 "forbidden_installed_models": [],
                 "resident_models": [],
                 "vram_used_gb": 0,
@@ -49791,7 +49795,33 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     and not result["forbidden_installed_models"]
                     and resident_names.issubset(allowed)
                 ):
-                    result["gpu_mode"] = "EMBEDDINGS_ONLY"
+                    result["gpu_mode"] = "UNMEASURED"
+                    acceptance_path = __import__("pathlib").Path(
+                        __import__("os").environ.get(
+                            "TRADEAI_EMBEDDING_ACCEPTANCE_PATH",
+                            str(STATE_DIR / "embedding_gpu_acceptance_latest.json"),
+                        )
+                    )
+                    acceptance = _load_json(acceptance_path) or {}
+                    required_gates = (
+                        "digest_match",
+                        "dimension_match",
+                        "reproducibility_pass",
+                        "gpu_utilization_observed",
+                        "no_generative_resident",
+                        "rag_search_pass",
+                    )
+                    acceptance_passed = (
+                        acceptance.get("status") == "PASS"
+                        and all(acceptance.get(gate) is True for gate in required_gates)
+                    )
+                    result["embedding_acceptance"] = {
+                        "status": "PASS" if acceptance_passed else "UNMEASURED",
+                        "source": str(acceptance_path),
+                        "measured_at": acceptance.get("measured_at"),
+                    }
+                    if acceptance_passed:
+                        result["gpu_mode"] = "EMBEDDINGS_ONLY"
             except Exception:
                 result["ollama_alive"] = False
 
