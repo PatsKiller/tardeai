@@ -42,7 +42,8 @@
   "source_production_graph": {
     "audit": "scripts/audit_no_local_generative_routing.py --json",
     "declared_graph_violations": 0,
-    "repo_wide_legacy_files_with_direct_chat_or_generate": 66,
+    "script_files_with_direct_chat_or_generate_outside_declared_graph": 46,
+    "research_scheduler_local_lane_references": 0,
     "scope_note": "The zero result applies to the declared automatic/API graph, not every dormant historical utility."
   },
   "deletion_preconditions": {
