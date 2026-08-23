@@ -14,6 +14,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
+from scripts.lib.hybrid_evidence import build_refresh_request, normalize_hermes_row
+
 AUTHORITY = "READ_ONLY_ADVISORY"
 SCHEMA = "SymbolThesisEvidenceCatalog@v1"
 
@@ -327,6 +329,30 @@ def retrieve_structured_sources(
             if conn:
                 conn.rollback()
 
+        # Hermes contributes only promoted, fresh, source-linked rows. It is
+        # evidence polarity, not primary authority; the sufficiency gate still
+        # requires an independent approved/primary item.
+        try:
+            cur.execute(
+                """
+                SELECT id, symbol, topic, summary, thesis, thesis_type,
+                       confidence_score, freshness_date, source_urls_json,
+                       status, created_at
+                FROM hermes_research_intelligence
+                WHERE upper(symbol)=upper(%s) AND status='promoted'
+                ORDER BY COALESCE(freshness_date, created_at::date) DESC, id DESC
+                LIMIT %s
+                """,
+                (sym, limit),
+            )
+            for row in cur.fetchall() or []:
+                item = normalize_hermes_row(dict(row))
+                if item:
+                    items.append(item)
+        except Exception:
+            if conn:
+                conn.rollback()
+
     except Exception as exc:
         items.append(evidence_item(
             fact=f"structured_retrieve_error:{exc}"[:200],
@@ -429,5 +455,21 @@ def build_evidence_catalog(
             "Hermes/Flash are NOT acquisition sources."
         ),
     }
+    # Curated Hermes polarity contributes to support/counter floors, while its
+    # independent source family remains distinct from primary evidence.
+    seen = {str(x.get("source_id")) for x in catalog["supporting"] + catalog["contradictory"]}
+    for item in structured:
+        if item.get("source_type") != "hermes_research" or item.get("source_id") in seen:
+            continue
+        if item.get("polarity") == POLARITY_SUPPORT:
+            catalog["supporting"].append(item)
+        elif item.get("polarity") == POLARITY_COUNTER:
+            catalog["contradictory"].append(item)
+        seen.add(str(item.get("source_id")))
     catalog["sufficiency"] = catalog_sufficiency(catalog)
+    if catalog["sufficiency"].get("remaining_evidence_gaps"):
+        catalog["refresh_request"] = build_refresh_request(
+            symbol,
+            gaps=catalog["sufficiency"]["remaining_evidence_gaps"],
+        )
     return catalog
