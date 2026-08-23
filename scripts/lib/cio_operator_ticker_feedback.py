@@ -148,12 +148,22 @@ def _normalize_row(row: dict[str, Any]) -> dict[str, Any]:
         "status": status,
         "trust": trust,
         "linkage_complete": bool(decision_id and thesis_id and thesis_version),
+        "portfolio_thesis_id": (str(row.get("portfolio_thesis_id") or "").strip()[:128] or None),
+        "portfolio_thesis_version": (str(row.get("portfolio_thesis_version") or "").strip()[:128] or None),
+        "capital_plan_id": (str(row.get("capital_plan_id") or "").strip()[:128] or None),
+        "capital_plan_version": (str(row.get("capital_plan_version") or "").strip()[:128] or None),
+        "reason_class": (str(row.get("reason_class") or "OTHER").strip().upper()[:64] or "OTHER"),
         "eligible_for_operator_rejection_recall": bool(
             status == "ACTIVE" and intent == "DISAGREE"
         ),
         "behavior_authority": False,
         "authority": AUTHORITY,
     }
+    out["portfolio_linkage_complete"] = bool(out["portfolio_thesis_id"] and out["portfolio_thesis_version"])
+    out["capital_plan_linkage_complete"] = bool(out["capital_plan_id"] and out["capital_plan_version"])
+    out["context_linkage_complete"] = bool(
+        out["linkage_complete"] or out["portfolio_linkage_complete"] or out["capital_plan_linkage_complete"]
+    )
     out["ts"] = out["timestamp"]
     # Preserve optional extras without inventing financial fields.
     for k in ("operator_actor_id", "source", "card_schema"):

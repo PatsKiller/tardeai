@@ -34,6 +34,8 @@ Routes:
   GET /api/v3/cio/brain/portfolio-thesis — current published thesis + read-only candidate delta
   GET /api/v3/cio/brain/capital-plan — CashDeploymentSituation@v1 + CapitalDeploymentPlan@v1
   GET /api/v3/cio/brain/methodology — canon maturity + ratified-only methodology policy
+  GET /api/v3/cio/brain/learning-review — feedback patterns, outcomes, weekly review
+  POST /api/v3/cio/brain/feedback — linked operator feedback; no policy promotion
 """
 from __future__ import annotations
 
@@ -80,6 +82,16 @@ def _capital_plan_store() -> Path:
 def _canon_claims_store() -> Path:
     configured = str(os.getenv("CIO_CANON_CLAIMS_JSONL") or "").strip()
     return Path(configured) if configured else PROJECT_ROOT / "data" / "cio" / "canon_claims.jsonl"
+
+
+def _linked_feedback_store() -> Path:
+    configured = str(os.getenv("CIO_LINKED_FEEDBACK_JSONL") or "").strip()
+    return Path(configured) if configured else PROJECT_ROOT / "data" / "cio" / "cio_linked_feedback.jsonl"
+
+
+def _weekly_learning_store() -> Path:
+    configured = str(os.getenv("CIO_WEEKLY_LEARNING_JSONL") or "").strip()
+    return Path(configured) if configured else PROJECT_ROOT / "data" / "cio" / "cio_weekly_learning_reviews.jsonl"
 
 
 # ── Operator-facing label normalization ───────────────────────────────────────
@@ -788,6 +800,11 @@ def post_symbol_intelligence_feedback(
             "decision_id": body.get("decision_id"),
             "thesis_id": body.get("thesis_id") or body.get("symbol_thesis_id"),
             "thesis_version": body.get("thesis_version") or body.get("symbol_thesis_version"),
+            "portfolio_thesis_id": body.get("portfolio_thesis_id"),
+            "portfolio_thesis_version": body.get("portfolio_thesis_version"),
+            "capital_plan_id": body.get("capital_plan_id"),
+            "capital_plan_version": body.get("capital_plan_version"),
+            "reason_class": body.get("reason_class") or "OTHER",
             "status": body.get("status") or "ACTIVE",
         })
     except ValueError as e:
@@ -1553,6 +1570,11 @@ def post_decision_disposition(decision_key: str, body: dict[str, Any] | None = N
                 "decision_id": did,
                 "thesis_id": thesis_id,
                 "thesis_version": thesis_version,
+                "portfolio_thesis_id": body.get("portfolio_thesis_id"),
+                "portfolio_thesis_version": body.get("portfolio_thesis_version"),
+                "capital_plan_id": body.get("capital_plan_id"),
+                "capital_plan_version": body.get("capital_plan_version"),
+                "reason_class": body.get("reason_class") or "OTHER",
                 "operator_identity_class": body.get("operator_identity_class") or "PRIMARY_OPERATOR",
                 "source_surface": body.get("source_surface") or "cio_decision_card",
                 "status": "ACTIVE",
@@ -1807,6 +1829,88 @@ def get_methodology_policy_v1() -> dict[str, Any]:
         "canon": catalog_maturity(catalog_path, claims),
         "methodology_policy": build_methodology_policy(claims),
         "claims": claims,
+        "authority": AUTHORITY_ADVISORY,
+    }
+
+
+def post_linked_operator_feedback(body: dict[str, Any] | None = None) -> dict[str, Any]:
+    from scripts.lib.cio_feedback_learning_v1 import append_linked_feedback
+
+    try:
+        feedback = append_linked_feedback(body if isinstance(body, dict) else {}, store_path=_linked_feedback_store())
+    except (ValueError, PermissionError) as exc:
+        return {"ok": False, "error": type(exc).__name__, "detail": str(exc), "authority": AUTHORITY_ADVISORY}
+    return {
+        "ok": True,
+        "feedback": feedback,
+        "preference_promotion": "NOT_PERFORMED",
+        "policy_update": "NOT_PERFORMED",
+        "authority": AUTHORITY_ADVISORY,
+    }
+
+
+def get_learning_review_v1() -> dict[str, Any]:
+    from scripts.lib.cio_feedback_learning_v1 import (
+        build_preference_candidates,
+        load_latest_weekly_review,
+        read_jsonl,
+    )
+
+    linked = read_jsonl(_linked_feedback_store())
+    ticker = read_jsonl(PROJECT_ROOT / "data" / "cio" / "operator_ticker_feedback.jsonl")
+    outcomes = read_jsonl(PROJECT_ROOT / "data" / "cio" / "advisory_outcomes_v1.jsonl")
+    evaluated = [row for row in outcomes if row.get("status") == "OUTCOME_EVALUATED"]
+    return {
+        "ok": True,
+        "latest_review": load_latest_weekly_review(_weekly_learning_store()),
+        "feedback": {
+            "linked_rows": len(linked),
+            "ticker_rows": len(ticker),
+            "preference_candidates": build_preference_candidates(linked + ticker),
+        },
+        "outcomes": {
+            "frozen": sum(1 for row in outcomes if row.get("status") == "PREDICTION_FROZEN"),
+            "matured": len(evaluated),
+            "benchmarked": sum(1 for row in evaluated if row.get("benchmark_relative_return_pct") is not None),
+            "observation_window": "MEASURED" if len(evaluated) >= 5 else "UNMEASURED_OBSERVATION_WINDOW",
+        },
+        "memory_behavior_influence": 0,
+        "authority": AUTHORITY_ADVISORY,
+    }
+
+
+def post_confirm_preference_candidate(candidate_id: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Explicitly ratify a candidate into one named advisory policy field."""
+    from scripts.lib.cio_feedback_learning_v1 import build_preference_candidates, read_jsonl
+    from scripts.lib.cio_operator_investment_policy import ratify_policy_field
+
+    payload = body if isinstance(body, dict) else {}
+    identity = str(payload.get("operator_identity_class") or "").strip().upper()
+    if identity not in {"OPERATOR", "OWNER", "PRIMARY_OPERATOR"}:
+        return {"ok": False, "error": "operator_confirmation_required", "authority": AUTHORITY_ADVISORY}
+    rows = read_jsonl(_linked_feedback_store()) + read_jsonl(PROJECT_ROOT / "data/cio/operator_ticker_feedback.jsonl")
+    candidate = next((row for row in build_preference_candidates(rows) if row.get("candidate_id") == candidate_id), None)
+    if candidate is None:
+        return {"ok": False, "error": "preference_candidate_not_found", "authority": AUTHORITY_ADVISORY}
+    field_name = str(payload.get("field_name") or "").strip()
+    if not field_name or "value" not in payload:
+        return {"ok": False, "error": "field_name_and_value_required", "authority": AUTHORITY_ADVISORY}
+    try:
+        receipt = ratify_policy_field(
+            field_name,
+            payload["value"],
+            store_path=str(_operator_policy_store()),
+            actor="operator",
+            source=f"confirmed_preference:{candidate_id}",
+        )
+    except ValueError as exc:
+        return {"ok": False, "error": "invalid_policy_value", "detail": str(exc), "authority": AUTHORITY_ADVISORY}
+    return {
+        "ok": True,
+        "candidate": dict(candidate, confirmed=True),
+        "policy_receipt": receipt,
+        "policy": get_operator_investment_policy()["policy"],
+        "memory_behavior_influence": 0,
         "authority": AUTHORITY_ADVISORY,
     }
 
