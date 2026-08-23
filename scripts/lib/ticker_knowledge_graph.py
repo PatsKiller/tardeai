@@ -47,6 +47,10 @@ def entity_guid(kind: str, value: Any) -> str | None:
     normalized = str(value or "").strip().casefold()
     if k not in ENTITY_KINDS or not normalized:
         return None
+    if k == "ticker":
+        # Ticker IDs predate the richer graph schema. Preserve that namespace
+        # so migration and profile seeding remain idempotent across releases.
+        return _uuid(normalized.upper())
     return str(uuid.uuid5(uuid.NAMESPACE_URL, f"tradeai:entity:{k}:{normalized}"))
 
 
@@ -249,7 +253,8 @@ def upgrade_record_guids(record: dict[str, Any]) -> dict[str, Any]:
         fresh = build_profile(symbol, metadata=row)
         for key, value in fresh.items():
             row.setdefault(key, value)
-        row["ticker_id"] = row.get("ticker_id") or row["ticker_guid"]
+        row["ticker_guid"] = row.get("ticker_id") or row["ticker_guid"]
+        row["ticker_id"] = row["ticker_guid"]
         return row
     profile = build_profile(symbol, metadata=row)
     upgraded = classify_artifact(symbol, {
@@ -264,7 +269,8 @@ def upgrade_record_guids(record: dict[str, Any]) -> dict[str, Any]:
     for key, value in upgraded.items():
         row.setdefault(key, value)
     row["artifact_id"] = row.get("artifact_id") or row.get("research_artifact_guid")
-    row["ticker_id"] = row.get("ticker_id") or row.get("ticker_guid")
+    row["ticker_guid"] = row.get("ticker_guid") or row.get("ticker_id")
+    row["ticker_id"] = row["ticker_guid"]
     return row
 
 
