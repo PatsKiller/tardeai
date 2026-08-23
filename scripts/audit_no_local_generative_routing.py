@@ -15,6 +15,7 @@ PRODUCTION_FILES = (
     "scripts/llm_router.py",
     "scripts/local_llm.py",
     "scripts/process_watchlist_agent_jobs.py",
+    "scripts/research_scheduler.py",
     "scripts/hermes_llm_failover.py",
     "scripts/hermes_autonomous_loop.py",
     "scripts/hermes_deep_research_local.py",

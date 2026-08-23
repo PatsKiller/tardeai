@@ -260,7 +260,7 @@ def test_t3_deepseek_listed_but_catalyst_gated():
     assert "DEPRECATED 2026-08-22: 14d T3 sweep" in src
 
 
-def test_allow_local_research_llm_default_off(monkeypatch):
+def test_local_research_llm_cannot_be_enabled(monkeypatch):
     monkeypatch.delenv("RESEARCH_ALLOW_LOCAL_LLM", raising=False)
     assert allow_local_research_llm() is False
     t0 = lanes_for("T0-HOLD")
@@ -269,9 +269,8 @@ def test_allow_local_research_llm_default_off(monkeypatch):
     assert "deepseek" in t0
     assert "local-gemma" not in lanes_for("T1-WATCH")
     monkeypatch.setenv("RESEARCH_ALLOW_LOCAL_LLM", "1")
-    assert allow_local_research_llm() is True
-    assert "local-gemma" in lanes_for("T0-HOLD")
-    assert "internal-deep" in lanes_for("T0-HOLD")
+    assert allow_local_research_llm() is False
+    assert lanes_for("T0-HOLD") == ["deepseek"]
 
 
 def test_run_dry_does_not_use_local_lanes(monkeypatch):
