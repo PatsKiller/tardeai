@@ -15,6 +15,7 @@ from scripts.temporal_poc.contracts import (
     workflow_blueprint,
 )
 from scripts.temporal_poc.noc_shadow import InjectedCrash, NOCShadowWorkflow
+from scripts.temporal_poc.runtime_store import RuntimeStore
 from scripts.temporal_poc.temporal_workflow import TEMPORAL_SDK_AVAILABLE
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -24,7 +25,7 @@ def test_retry_policies_fail_closed_on_cost_and_policy_errors():
     for policy in ACTIVITY_POLICIES.values():
         assert set(HARD_POLICY_ERRORS).issubset(policy.non_retryable_error_types)
         assert policy.maximum_attempts <= 3
-    assert ACTIVITY_POLICIES["acquire_research"].heartbeat_timeout_seconds == 20
+    assert ACTIVITY_POLICIES["acquire_research"].heartbeat_timeout_seconds == 3
 
 
 def test_blueprint_preserves_domain_truth_and_advisory_authority():
@@ -104,3 +105,44 @@ def test_poc_modules_do_not_import_financial_mutation_paths():
 
 def test_temporal_runtime_gate_is_honest():
     assert TEMPORAL_SDK_AVAILABLE is (importlib.util.find_spec("temporalio") is not None)
+
+
+def test_runtime_store_provider_and_domain_uniqueness(tmp_path):
+    store = RuntimeStore(tmp_path)
+    response = {"research_id": "research_noc_test"}
+    first, first_created = store.provider_response("provider_request_1", response)
+    second, second_created = store.provider_response("provider_request_1", {"bad": "duplicate"})
+
+    assert first_created is True
+    assert second_created is False
+    assert first == second == response
+    assert store.counter("provider_calls") == 1
+
+    assert store.insert_unique("decisions", "decision_id", "dec_1", {"action": "HOLD"})
+    assert not store.insert_unique("decisions", "decision_id", "dec_1", {"action": "ADD"})
+    assert store.insert_unique(
+        "notification_outbox",
+        "notification_identity",
+        "notify_1",
+        {"delivery": "SHADOW_ONLY_NO_TELEGRAM_SEND"},
+    )
+    assert not store.insert_unique(
+        "notification_outbox",
+        "notification_identity",
+        "notify_1",
+        {"delivery": "SHADOW_ONLY_NO_TELEGRAM_SEND"},
+    )
+
+
+def test_runtime_workflow_source_contains_no_direct_side_effect_apis():
+    path = ROOT / "scripts/temporal_poc/temporal_workflow.py"
+    source = path.read_text(encoding="utf-8")
+    tree = ast.parse(source, filename=str(path))
+    forbidden_imports = {"os", "pathlib", "sqlite3", "subprocess", "requests", "urllib", "socket"}
+    imported_roots = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported_roots.update(alias.name.split(".")[0] for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            imported_roots.add(node.module.split(".")[0])
+    assert not (imported_roots & forbidden_imports)

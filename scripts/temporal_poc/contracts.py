@@ -32,12 +32,14 @@ HARD_POLICY_ERRORS = (
 
 ACTIVITY_POLICIES: dict[str, ActivityPolicy] = {
     "load_standing_thesis": ActivityPolicy(10, 1, 2.0, 5, 3, HARD_POLICY_ERRORS),
-    "retrieve_supporting_rag": ActivityPolicy(30, 2, 2.0, 10, 3, HARD_POLICY_ERRORS),
-    "retrieve_contradictory_rag": ActivityPolicy(30, 2, 2.0, 10, 3, HARD_POLICY_ERRORS),
-    "acquire_research": ActivityPolicy(120, 5, 2.0, 30, 3, HARD_POLICY_ERRORS, 20),
+    "retrieve_supporting_rag": ActivityPolicy(30, 2, 2.0, 10, 3, HARD_POLICY_ERRORS, 3),
+    "retrieve_contradictory_rag": ActivityPolicy(30, 2, 2.0, 10, 3, HARD_POLICY_ERRORS, 3),
+    "acquire_research": ActivityPolicy(120, 5, 2.0, 30, 3, HARD_POLICY_ERRORS, 3),
     "classify_delta": ActivityPolicy(10, 1, 2.0, 5, 2, HARD_POLICY_ERRORS),
-    "reconcile_thesis": ActivityPolicy(20, 1, 2.0, 5, 3, HARD_POLICY_ERRORS),
+    "reconcile_thesis": ActivityPolicy(20, 1, 2.0, 5, 3, HARD_POLICY_ERRORS, 3),
     "build_decision_payload": ActivityPolicy(10, 1, 2.0, 5, 3, HARD_POLICY_ERRORS),
+    "evaluate_notification": ActivityPolicy(10, 1, 2.0, 5, 2, HARD_POLICY_ERRORS),
+    "enqueue_notification": ActivityPolicy(20, 1, 2.0, 5, 3, HARD_POLICY_ERRORS),
 }
 
 WORKFLOW_STAGES = tuple(ACTIVITY_POLICIES)
