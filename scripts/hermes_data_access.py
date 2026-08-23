@@ -34,6 +34,13 @@ def get_hermes_context(symbol: str, *, research_limit: int = 3, external_limit: 
     if not sym:
         return {}
     out: dict = {"symbol": sym}
+    try:
+        from scripts.lib.ticker_knowledge_graph import build_profile, classify_artifact
+    except Exception:
+        build_profile = classify_artifact = None
+    profile = build_profile(sym) if build_profile else None
+    if profile:
+        out["ticker_guid"] = profile["ticker_guid"]
 
     # composite score + rank (latest)
     sc = _q("""SELECT composite_score, rank, components, scored_at FROM hermes_score_history
@@ -55,14 +62,28 @@ def get_hermes_context(symbol: str, *, research_limit: int = 3, external_limit: 
                FROM hermes_research_intelligence WHERE symbol=%s AND status NOT IN ('rejected','superseded')
                AND summary IS NOT NULL ORDER BY COALESCE(quality_score,0) DESC, created_at DESC LIMIT %s""",
             (sym, research_limit))
-    out["research"] = [{
-        "topic": dict(x).get("topic"), "thesis": (str(dict(x).get("thesis") or "")[:240]),
+    research_rows = []
+    for x in ri:
+        row = dict(x)
+        artifact = classify_artifact(sym, {
+            "source_id": f"{row.get('research_type')}:{row.get('topic')}",
+            "source_type": row.get("research_type"),
+            "source_url": (_parse_urls(row.get("source_urls_json")) or [None])[0],
+            "title": row.get("topic"), "summary": row.get("summary"),
+            "as_of": row.get("freshness_date") or row.get("created_at"),
+            "relationship": "LINEAR",
+        }, profile=profile) if classify_artifact else {}
+        research_rows.append({
+        "topic": row.get("topic"), "thesis": (str(row.get("thesis") or "")[:240]),
         "summary": (str(dict(x).get("summary") or "")[:280]),
-        "confidence": dict(x).get("confidence_score"), "quality": dict(x).get("quality_score"),
-        "as_of": str(dict(x).get("freshness_date") or dict(x).get("created_at") or "")[:19],
-        "type": dict(x).get("research_type"), "status": dict(x).get("status"),
-        "source_urls": _parse_urls(dict(x).get("source_urls_json")),
-    } for x in ri]
+        "confidence": row.get("confidence_score"), "quality": row.get("quality_score"),
+        "as_of": str(row.get("freshness_date") or row.get("created_at") or "")[:19],
+        "type": row.get("research_type"), "status": row.get("status"),
+        "source_urls": _parse_urls(row.get("source_urls_json")),
+        "research_artifact_guid": artifact.get("research_artifact_guid"),
+        "relationship_guids": artifact.get("relationship_guids") or [],
+        })
+    out["research"] = research_rows
 
     # external-lane opinions (Grok / ChatGPT)
     ex = _q("""SELECT lane, recommendation, confidence, dissent, risk_flags, created_at
@@ -72,6 +93,12 @@ def get_hermes_context(symbol: str, *, research_limit: int = 3, external_limit: 
         "lane": dict(x).get("lane"), "recommendation": dict(x).get("recommendation"),
         "confidence": dict(x).get("confidence"), "dissent": dict(x).get("dissent"),
         "risk_flags": dict(x).get("risk_flags"), "as_of": str(dict(x).get("created_at") or "")[:10],
+        "research_artifact_guid": (classify_artifact(sym, {
+            "source_id": f"external:{dict(x).get('lane')}:{dict(x).get('created_at')}",
+            "source_type": f"hermes_external_{dict(x).get('lane') or 'lane'}",
+            "summary": dict(x).get("recommendation"), "as_of": dict(x).get("created_at"),
+            "relationship": "LATERAL",
+        }, profile=profile).get("research_artifact_guid") if classify_artifact else None),
     } for x in ex]
     return out
 
