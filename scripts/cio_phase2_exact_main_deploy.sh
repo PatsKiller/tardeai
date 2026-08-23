@@ -258,52 +258,22 @@ build_frontend() {
 
 overlay_main() {
   local dest="$1"
-  log "Overlay origin/main tree from $ROOT → $dest (full scripts/ + docs/ — no slice overlay)"
+  log "Overlay complete origin/main tree from $ROOT → $dest (runtime and secrets preserved)"
+  # Synchronize every reviewed source/config surface so deleted files cannot
+  # survive from the previous release under a new exact-main stamp. Runtime
+  # state, secrets, installed dependencies, and the separately rebuilt dist
+  # are deliberately protected from --delete.
   rsync -a --delete \
-    --exclude='__pycache__/' --exclude='*.pyc' --exclude='.pytest_cache/' \
-    "${ROOT}/scripts/" "${dest}/scripts/"
-  rsync -a --delete \
-    --exclude='__pycache__/' \
-    "${ROOT}/docs/" "${dest}/docs/"
-  rsync -a "${ROOT}/docs/investment-office/" "${dest}/docs/investment-office/"
-  mkdir -p "${dest}/tests" "${dest}/.github/workflows"
-  rsync -a --include='test_cio_*.py' --include='conftest.py' --exclude='*' \
-    "${ROOT}/tests/" "${dest}/tests/" || true
-  for f in "${ROOT}"/tests/test_cio_*.py "${ROOT}/tests/conftest.py"; do
-    [[ -f "$f" ]] && cp -a "$f" "${dest}/tests/" || true
-  done
-  # Governed Almanac fixture + source catalog (R3/R4 live attach; fail-soft if absent).
-  mkdir -p "${dest}/tests/fixtures" "${dest}/config"
-  if [[ -f "${ROOT}/tests/fixtures/us_equity_monthly_sample.csv" ]]; then
-    cp -a "${ROOT}/tests/fixtures/us_equity_monthly_sample.csv" \
-      "${dest}/tests/fixtures/"
-    log "  overlay almanac fixture"
-  fi
-  if [[ -f "${ROOT}/config/cio_research_source_catalog.json" ]]; then
-    cp -a "${ROOT}/config/cio_research_source_catalog.json" "${dest}/config/"
-    log "  overlay research source catalog"
-  fi
-  mkdir -p "${dest}/linux_launchers" "${dest}/config" "${dest}/logs"
-  if [[ -f "${ROOT}/linux_launchers/run_provider_cost_daily.sh" ]]; then
-    cp -a "${ROOT}/linux_launchers/run_provider_cost_daily.sh" \
-      "${dest}/linux_launchers/"
-    chmod 0755 "${dest}/linux_launchers/run_provider_cost_daily.sh"
-    log "  overlay provider-cost daily launcher"
-  fi
-  for cfg in provider_pricing_schedules.json provider_cost_call_sites.json; do
-    if [[ -f "${ROOT}/config/${cfg}" ]]; then
-      cp -a "${ROOT}/config/${cfg}" "${dest}/config/"
-      log "  overlay config/${cfg}"
-    fi
-  done
-  if [[ -f "${ROOT}/.github/workflows/cio-production-hardening-ci.yml" ]]; then
-    cp -a "${ROOT}/.github/workflows/cio-production-hardening-ci.yml" \
-      "${dest}/.github/workflows/"
-  fi
-  rsync -a \
-    --exclude='node_modules/' --exclude='dist/' --exclude='.vite/' \
-    "${ROOT}/apps/command-center-v3/src/" \
-    "${dest}/apps/command-center-v3/src/"
+    --exclude='.git/' \
+    --exclude='.venv/' --exclude='venv/' \
+    --exclude='node_modules/' \
+    --exclude='apps/command-center-v3/dist/' \
+    --exclude='data/' --exclude='state/' \
+    --exclude='logs/' --exclude='exports/' \
+    --exclude='.env' --exclude='config/broker_credentials.env' \
+    --exclude='__pycache__/' --exclude='*.pyc' \
+    --exclude='.pytest_cache/' --exclude='.mypy_cache/' --exclude='.ruff_cache/' \
+    "${ROOT}/" "${dest}/"
 }
 
 write_systemd() {

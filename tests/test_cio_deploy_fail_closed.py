@@ -22,6 +22,21 @@ def test_phase2_integrity_hook_is_hard_fail():
     assert "not claiming promote OK" in src
 
 
+def test_phase2_overlays_complete_reviewed_tree_without_runtime_or_secrets():
+    src = PHASE2.read_text(encoding="utf-8")
+    overlay = src.split("overlay_main() {", 1)[1].split("write_systemd() {", 1)[0]
+
+    assert '"${ROOT}/" "${dest}/"' in overlay
+    assert "rsync -a --delete" in overlay
+    assert '"${ROOT}/scripts/" "${dest}/scripts/"' not in overlay
+    assert "--exclude='data/'" in overlay
+    assert "--exclude='state/'" in overlay
+    assert "--exclude='logs/'" in overlay
+    assert "--exclude='apps/command-center-v3/dist/'" in overlay
+    assert "--exclude='.env'" in overlay
+    assert "--exclude='config/broker_credentials.env'" in overlay
+
+
 def test_portfolio_deploy_integrity_and_health_fail_closed():
     src = PORT.read_text(encoding="utf-8")
     assert "generate_integrity_manifest.py" in src
