@@ -42,5 +42,13 @@ def test_refresh_request_is_stable_and_non_authoritative():
     first = build_refresh_request("schd", gaps=["insufficient_supporting_rag", "no_approved_primary_or_news"], now=NOW)
     second = build_refresh_request("SCHD", gaps=["no_approved_primary_or_news", "insufficient_supporting_rag"], now=NOW)
     assert first["request_id"] == second["request_id"]
+    assert first["trace_id"] == second["trace_id"]
+    assert len(first["trace_id"].split("-")) == 5
     assert first["enqueue"] is False
     assert first["financial_action"] is False
+
+
+def test_refresh_request_contains_independent_source_families():
+    request = build_refresh_request("SCHG", gaps=["insufficient_contradictory_rag"])
+    assert request["status"] == "PLANNED"
+    assert set(("hermes", "primary", "structured", "independent_news")) <= set(request["source_families"])

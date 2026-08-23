@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import uuid
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
@@ -109,10 +110,14 @@ def build_refresh_request(
     current = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
     normalized = sorted(set(str(g) for g in gaps if g))
     key = {"symbol": symbol.upper(), "gaps": normalized, "reason": reason}
+    request_id = "refresh_" + _digest(key)
+    trace_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"tradeai:{request_id}"))
     return {
         "schema": SCHEMA,
-        "request_id": "refresh_" + _digest(key),
+        "request_id": request_id,
+        "trace_id": trace_id,
         "symbol": symbol.upper(),
+        "subject_key": f"ticker:{symbol.upper()}",
         "reason": reason,
         "gaps": normalized,
         "source_families": ["hermes", "primary", "structured", "independent_news"],
@@ -122,4 +127,69 @@ def build_refresh_request(
         "enqueue": False,
         "authority": AUTHORITY,
         "financial_action": False,
+    }
+
+
+def enqueue_refresh_request(request: dict[str, Any], *, root: str | None = None) -> dict[str, Any]:
+    """Persist a refresh request through the existing Hermes queue.
+
+    This is deliberately an explicit side effect. Callers must opt in with an
+    enqueue flag; the request remains research-only and cannot publish a thesis.
+    """
+    symbol = str(request.get("symbol") or "").upper()
+    if not symbol:
+        return {"ok": False, "error": "symbol_required"}
+    try:
+        from scripts.lib.cio_hermes_research import enqueue_research_request
+    except ImportError:  # pragma: no cover
+        from lib.cio_hermes_research import enqueue_research_request  # type: ignore
+    plan = {
+        "plan_id": str(request.get("request_id") or ""),
+        "trace_id": str(request.get("trace_id") or ""),
+        "symbols": [symbol],
+        "situation_type": "SYMBOL_EVIDENCE_REFRESH",
+        "reason": f"Evidence refresh required: {', '.join(request.get('gaps') or [])}",
+        "thesis_version": "",
+    }
+    questions = [
+        {"question_id": "q_support", "intent": "support", "text": f"Find fresh supporting evidence for {symbol}."},
+        {"question_id": "q_counter", "intent": "counter", "text": f"Find fresh contradictory/risk evidence for {symbol}."},
+        {"question_id": "q_primary", "intent": "primary", "text": f"Find an approved primary or independent source for {symbol}."},
+    ]
+    result = enqueue_research_request(
+        plan,
+        reason=plan["reason"],
+        priority="high",
+        questions=questions,
+        force_refresh=True,
+        actor_id="symbol_thesis_freshness",
+    )
+    memory_id = None
+    if result.get("ok") and result.get("research_id"):
+        try:
+            from scripts.lib.agent_durable_memory import get_durable_provider
+            provider = get_durable_provider(root)
+            memory_id = provider.add_candidate({
+                "memory_type": "RESEARCH_REFERENCE",
+                "subject": f"Research refresh requested for {symbol}",
+                "content": plan["reason"],
+                "symbols": [symbol],
+                "source_event_ids": [str(request.get("trace_id")), str(result.get("research_id"))],
+                "source_refs": [f"hermes_request:{result.get('research_id')}", f"trace:{request.get('trace_id')}"],
+                "plan_ids": [str(request.get("request_id"))],
+                "trace_id": request.get("trace_id"),
+                "subject_key": f"ticker:{symbol}",
+                "status": "CANDIDATE",
+                "confidence": 0.5,
+                "authority_class": "NON_AUTHORITATIVE_CONTEXT",
+            })
+        except Exception:
+            memory_id = None
+    return {
+        "ok": bool(result.get("ok")),
+        "request_id": request.get("request_id"),
+        "trace_id": request.get("trace_id"),
+        "research_id": result.get("research_id"),
+        "memory_id": memory_id,
+        "result": result,
     }

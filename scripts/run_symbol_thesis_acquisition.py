@@ -48,6 +48,7 @@ from scripts.lib.symbol_thesis_synthesis import (
 )
 from scripts.lib.symbol_thesis_research import _priority_band, _specific_question
 from scripts.lib.symbol_thesis_materiality import classify_materiality, TIERS
+from scripts.lib.hybrid_evidence import enqueue_refresh_request
 
 AUTHORITY = "READ_ONLY_ADVISORY"
 LEDGER_REL = Path("data/cio/symbol_thesis_acquisition_ledger.jsonl")
@@ -215,6 +216,7 @@ def run_one(
     skip_embed: bool,
     skip_synthesize: bool,
     skip_publish: bool,
+    enqueue_refresh: bool,
     llm_budget_left: list[int],
 ) -> dict[str, Any]:
     conn = _thesis_conn(root)
@@ -227,6 +229,7 @@ def run_one(
             skip_embed=skip_embed,
             skip_synthesize=skip_synthesize,
             skip_publish=skip_publish,
+            enqueue_refresh=enqueue_refresh,
             llm_budget_left=llm_budget_left,
             conn=conn,
         )
@@ -244,6 +247,7 @@ def _run_one_impl(
     skip_embed: bool,
     skip_synthesize: bool,
     skip_publish: bool,
+    enqueue_refresh: bool,
     llm_budget_left: list[int],
     conn=None,
 ) -> dict[str, Any]:
@@ -324,6 +328,11 @@ def _run_one_impl(
             1 for a in acquired
             if (a.get("rag_status") or "pending") == "pending" and not a.get("error")
         )
+        refresh_request = final_catalog.get("refresh_request")
+        if refresh_request:
+            out["refresh_request"] = refresh_request
+            if enqueue_refresh:
+                out["refresh_enqueue"] = enqueue_refresh_request(refresh_request, root=str(root))
         return out
 
     if skip_synthesize or (apply and llm_budget_left[0] <= 0):
@@ -382,6 +391,7 @@ def run(
     skip_embed: bool = False,
     skip_synthesize: bool = False,
     skip_publish: bool = False,
+    enqueue_refresh: bool = False,
 ) -> dict[str, Any]:
     if symbols:
         queue = [{"symbol": s.upper(), "_priority": "MANUAL"} for s in symbols]
@@ -400,6 +410,7 @@ def run(
             skip_embed=skip_embed,
             skip_synthesize=skip_synthesize,
             skip_publish=skip_publish,
+            enqueue_refresh=enqueue_refresh,
             llm_budget_left=llm_budget,
         )
         if apply:
@@ -433,6 +444,11 @@ def main() -> int:
     ap.add_argument("--skip-embed", action="store_true")
     ap.add_argument("--skip-synthesize", action="store_true")
     ap.add_argument("--skip-publish", action="store_true")
+    ap.add_argument(
+        "--enqueue-refresh",
+        action="store_true",
+        help="Persist blocked evidence refreshes to the existing Hermes queue; no LLM call or thesis publish",
+    )
     ap.add_argument("--root", default=str(ROOT), help="Repo root")
     a = ap.parse_args()
 
@@ -448,6 +464,7 @@ def main() -> int:
         skip_embed=a.skip_embed,
         skip_synthesize=a.skip_synthesize,
         skip_publish=a.skip_publish,
+        enqueue_refresh=a.enqueue_refresh,
     )
 
     print(json.dumps({"mode": batch["mode"], "queued": batch["queued"],
