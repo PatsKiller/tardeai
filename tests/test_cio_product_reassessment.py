@@ -13,6 +13,7 @@ from scripts.lib.cio_product_reassessment import (
     recover_parent,
     research_impact,
     retry_pending_reassessments,
+    scope_research_change_to_symbol,
 )
 from scripts.lib.hermes_research_loop import on_hermes_completed
 
@@ -228,6 +229,39 @@ def test_what_changed_reentry_upgrade_and_opp_downgrade():
     assert "opportunity_rank_change" in kinds
     assert "temperament_changed" in kinds
     assert wc["material"] is True
+
+
+def test_opportunity_display_cutoff_churn_is_not_material():
+    prior = {"reentry_book": {"names": []}, "opportunity_book": {"top": []}, "action_book": {}}
+    at_cutoff = {
+        "reentry_book": {"names": []},
+        "opportunity_book": {"top": [{"symbol": "FCNTX", "rank": 20}]},
+        "action_book": {},
+    }
+    wc = diff_products(prior, at_cutoff)
+    assert wc["material"] is False
+    assert wc["items"][0]["demoted_reason"] == "opportunity_display_cutoff_churn"
+
+    top_five = {
+        "reentry_book": {"names": []},
+        "opportunity_book": {"top": [{"symbol": "FCNTX", "rank": 3}]},
+        "action_book": {},
+    }
+    assert diff_products(prior, top_five)["material"] is True
+
+
+def test_research_change_notification_is_trigger_symbol_scoped():
+    changed = {
+        "material": True,
+        "items": [
+            {"kind": "opportunity_added", "symbol": "FCNTX", "to": 20, "material": True},
+            {"kind": "reentry_removed", "symbol": "JTAI", "from": "NEAR", "material": True},
+        ],
+    }
+    scoped = scope_research_change_to_symbol(changed, "SCHD")
+    assert scoped["material"] is False
+    assert scoped["items"] == []
+    assert scoped["suppressed_reason"] == "unrelated_or_non_material_rebuild_churn"
 
 
 def test_hook_calls_reassessment(root: Path):

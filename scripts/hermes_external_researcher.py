@@ -426,6 +426,13 @@ def main():
     _load_env()
     question = redact(args.question)
     ctx = canonical_prompt_context(args.symbol, question)
+    from lib.research_data_quality import assess_prompt_context
+    input_quality = assess_prompt_context(ctx)
+    ctx["research_data_quality"] = input_quality
+    if not input_quality["provider_call_allowed"]:
+        print("\n[DATA_QUALITY_BLOCK] no provider call: " + ",".join(input_quality["reason_codes"]))
+        print("Create/refresh the deterministic market-data acquisition gap before retrying.")
+        return
     # .format() breaks on the appended JSON schema's literal {braces} — every call
     # since ~2026-07-02 died with KeyError before reaching any API (lanes "stalled").
     # Placeholder substitution must not interpret the schema as format fields.
@@ -487,9 +494,20 @@ def main():
     try:
         raw = call_external(args.lane, args.model, prompt, max_tokens=max_out or 4096)
         parsed = parse_external_research_result(raw) or {}
+        from lib.research_data_quality import validate_research_output
+        output_quality = validate_research_output(
+            "\n".join([str(raw or ""), str(parsed.get("recommendation") or "")])
+        )
+        if not output_quality["accepted"]:
+            status = "rejected_data_quality"
+            parsed = {
+                "recommendation": "[REJECTED_DATA_QUALITY] " + ",".join(output_quality["reason_codes"]),
+                "risk_flags": output_quality["reason_codes"],
+                "operator_action": "REFRESH_DETERMINISTIC_DATA",
+            }
         # Truncated JSON stored status=sent with recommendation=NULL.
         # RAW-store health treats empty as an error streak. Keep the prose.
-        if not str(parsed.get("recommendation") or "").strip() and str(raw or "").strip():
+        if status == "sent" and not str(parsed.get("recommendation") or "").strip() and str(raw or "").strip():
             parsed["recommendation"] = str(raw).strip()[:4000]
     except urllib.error.HTTPError as he:
         detail = ""

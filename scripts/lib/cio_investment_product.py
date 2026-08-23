@@ -184,7 +184,7 @@ def collect_previously_traded() -> list[dict[str, Any]]:
         "reentry_signal, pct_above_exit, best_pnl_pct, is_currently_held "
         "FROM previously_traded_watchlist WHERE is_currently_held=false "
         "ORDER BY CASE reentry_signal WHEN 'IN_ZONE' THEN 0 WHEN 'WATCH' THEN 1 "
-        "WHEN 'BELOW_ZONE' THEN 2 ELSE 3 END, best_pnl_pct DESC NULLS LAST LIMIT 250"
+        "WHEN 'BELOW_ZONE' THEN 2 ELSE 3 END, best_pnl_pct DESC NULLS LAST, symbol ASC LIMIT 250"
     )
     try:
         import scripts.api_v2 as v2

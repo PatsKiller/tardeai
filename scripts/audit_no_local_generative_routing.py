@@ -26,6 +26,9 @@ PRODUCTION_FILES = (
     "scripts/strategy_planner.py",
     "scripts/hermes_browse_proxy.py",
     "scripts/check_local_model_fleet.py",
+    "scripts/auto_research.py",
+    "scripts/hermes_health_inspector.py",
+    "scripts/lib/health_learning_engine.py",
 )
 
 PRODUCTION_CONFIG_FILES = (
