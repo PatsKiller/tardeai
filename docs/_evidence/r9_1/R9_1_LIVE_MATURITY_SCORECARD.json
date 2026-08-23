@@ -1,0 +1,21 @@
+{
+  "schema": "R9.1LiveInvestmentOfficeMaturity@v1",
+  "as_of": "2026-08-23T13:40:00-04:00",
+  "authority": "READ_ONLY_ADVISORY",
+  "scoring_rule": "Credit only live, deployed, source-proven, naturally executed, operator-visible and persistent evidence.",
+  "score": 42.0,
+  "maximum": 100.0,
+  "dimensions": [
+    {"name": "DATA_FINANCIAL_TRUTH", "score": 7.0, "maximum": 10.0, "state": "PARTIAL", "reason": "Serving SHA truth is live and pinned; 13 financial rows remain conflicted and investable cash is not verified."},
+    {"name": "RESEARCH_EVIDENCE", "score": 5.5, "maximum": 10.0, "state": "PARTIAL", "reason": "Research stack is deployed, but watch/opinion inputs are expired and no natural post-deploy research cycle has been observed."},
+    {"name": "STATEFUL_THESIS_CIRCULATION", "score": 7.0, "maximum": 15.0, "state": "PARTIAL_LIVE", "reason": "NOC, SCHG, CSCO and ANET return versioned living theses from exact deployed source; automatic natural circulation and replay remain unobserved."},
+    {"name": "PORTFOLIO_CIO_BRAIN", "score": 4.0, "maximum": 15.0, "state": "PARTIAL", "reason": "CIO cards and desk thesis are live; required versioned portfolio-brain and capital-plan contracts do not exist."},
+    {"name": "METHODOLOGY_CANON", "score": 1.0, "maximum": 10.0, "state": "SOURCE_REQUIRED", "reason": "34 sources are cataloged; 34/34 lack usable source text and claims."},
+    {"name": "FEEDBACK_OUTCOMES", "score": 2.5, "maximum": 10.0, "state": "UNMEASURED_OBSERVATION_WINDOW", "reason": "Feedback controls and contracts are deployed; real linked outcome and rejection-recall history remains insufficient."},
+    {"name": "PROACTIVE_CIO", "score": 4.0, "maximum": 10.0, "state": "PARTIAL", "reason": "CIO delivery and material-scan timers ran naturally; verified-policy capital review is not live."},
+    {"name": "OPERATOR_EXPERIENCE", "score": 7.0, "maximum": 10.0, "state": "PARTIAL", "reason": "CIO and Advisory render with feedback and source-truth APIs; consolidated CIO Brain and clean browser console remain incomplete."},
+    {"name": "OPERATIONAL_INTEGRITY", "score": 3.0, "maximum": 5.0, "state": "DEGRADED", "reason": "Exact-main serving and CIO Telegram source mismatch are closed; 219 broad cron/unit rebuild or hybrid references remain."},
+    {"name": "GPU_PROVIDER_GOVERNANCE", "score": 1.0, "maximum": 5.0, "state": "HOLD", "reason": "Six generative models, an unloading process, and runtime callers remain; zero-call and embedding gates have not passed."}
+  ],
+  "final_status": "STACK_LIVE_BRAIN_BUILD_CONTINUES"
+}
