@@ -25,6 +25,10 @@ Routes:
   POST /api/v3/cio/plans/{id}/disposition — ack/defer/done/reject (status only)
   GET  /api/v3/cio/dispositions — latest operator dispositions (decision_id key)
   POST /api/v3/cio/decision/{decision_id}/disposition — governed operator feedback
+  GET /api/v3/cio/brain/maturity-contract — canonical L0-L7 contract
+  GET /api/v3/cio/brain/policy — OperatorInvestmentPolicy@v1
+  POST /api/v3/cio/brain/policy/ratify — explicit operator policy ratification
+  GET /api/v3/cio/brain/portfolio-state — deterministic PortfolioState@v1
 """
 from __future__ import annotations
 
@@ -36,6 +40,21 @@ from pathlib import Path
 from typing import Any, Optional
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _operator_policy_store() -> Path:
+    configured = str(os.getenv("CIO_OPERATOR_PROFILE_JSONL") or "").strip()
+    return Path(configured) if configured else PROJECT_ROOT / "data" / "cio" / "operator_profile.jsonl"
+
+
+def _portfolio_holdings_path() -> Path:
+    configured = str(os.getenv("TRADEAI_HOLDINGS_JSON") or "").strip()
+    return Path(configured) if configured else PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json"
+
+
+def _portfolio_cash_evidence_path() -> Path:
+    configured = str(os.getenv("CIO_CASH_EVIDENCE_JSON") or "").strip()
+    return Path(configured) if configured else PROJECT_ROOT / "data" / "cio" / "portfolio_cash_evidence.json"
 
 
 # ── Operator-facing label normalization ───────────────────────────────────────
@@ -1562,6 +1581,78 @@ def get_maturity_learning() -> dict[str, Any]:
             "authority": AUTHORITY_ADVISORY,
             "as_of": _now_iso(),
         }
+
+
+def get_brain_maturity_contract() -> dict[str, Any]:
+    from scripts.lib.cio_maturity_levels import maturity_contract
+
+    return {"ok": True, "authority": AUTHORITY_ADVISORY, **maturity_contract()}
+
+
+def get_operator_investment_policy() -> dict[str, Any]:
+    from scripts.lib.cio_operator_investment_policy import build_operator_investment_policy
+
+    policy = build_operator_investment_policy(
+        store_path=str(_operator_policy_store()),
+        repo_root=PROJECT_ROOT,
+    )
+    return {"ok": True, "policy": policy, "authority": AUTHORITY_ADVISORY}
+
+
+def post_operator_investment_policy_ratification(body: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Append one explicit policy confirmation; never infer a value from legacy behavior."""
+    from scripts.lib.cio_operator_investment_policy import ratify_policy_field
+
+    payload = body if isinstance(body, dict) else {}
+    identity = str(payload.get("operator_identity_class") or "").strip().upper()
+    if identity not in {"OPERATOR", "OWNER"}:
+        return {
+            "ok": False,
+            "error": "operator_confirmation_required",
+            "authority": AUTHORITY_ADVISORY,
+        }
+    field_name = str(payload.get("field_name") or "").strip()
+    if not field_name:
+        return {"ok": False, "error": "field_name_required", "authority": AUTHORITY_ADVISORY}
+    try:
+        receipt = ratify_policy_field(
+            field_name,
+            payload.get("value"),
+            store_path=str(_operator_policy_store()),
+            actor="operator",
+            source="command_center_policy_ratification",
+        )
+    except ValueError as exc:
+        return {"ok": False, "error": "invalid_policy_value", "detail": str(exc), "authority": AUTHORITY_ADVISORY}
+    return {
+        "ok": True,
+        "receipt": receipt,
+        "policy": get_operator_investment_policy()["policy"],
+        "authority": AUTHORITY_ADVISORY,
+    }
+
+
+def get_portfolio_state_v1() -> dict[str, Any]:
+    from scripts.lib.cio_portfolio_state_v1 import build_portfolio_state, load_holdings_document
+
+    holdings_path = _portfolio_holdings_path()
+    holdings = load_holdings_document(holdings_path)
+    evidence_path = _portfolio_cash_evidence_path()
+    evidence_doc: dict[str, Any] = {}
+    if evidence_path.exists():
+        try:
+            raw = json.loads(evidence_path.read_text(encoding="utf-8"))
+            evidence_doc = raw if isinstance(raw, dict) else {}
+        except (OSError, json.JSONDecodeError):
+            evidence_doc = {}
+    accounts = evidence_doc.get("accounts") if isinstance(evidence_doc.get("accounts"), dict) else {}
+    state = build_portfolio_state(
+        holdings,
+        broker_cash_evidence=accounts,
+        source_path="canonical_holdings_json",
+    )
+    state["cash_evidence_available"] = evidence_path.exists()
+    return {"ok": bool(holdings.get("holdings")), "portfolio_state": state, "authority": AUTHORITY_ADVISORY}
 
 
 def get_cio_dashboard() -> dict[str, Any]:

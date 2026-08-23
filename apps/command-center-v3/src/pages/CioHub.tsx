@@ -236,11 +236,12 @@ type DispositionRec = {
 }
 type DispositionMap = Record<string, DispositionRec>
 
-const TABS = ['cio-now', 'universe-theses', 'investment-books', 'capital-plan', 'posture', 'opportunities', 'report', 'evidence', 'notification-gate', 'telegram-receipts', 'senses-evidence'] as const
+const TABS = ['cio-now', 'operator-policy', 'universe-theses', 'investment-books', 'capital-plan', 'posture', 'opportunities', 'report', 'evidence', 'notification-gate', 'telegram-receipts', 'senses-evidence'] as const
 type Tab = typeof TABS[number]
 
 const TAB_LABEL: Record<Tab, string> = {
   'cio-now': 'CIO NOW',
+  'operator-policy': 'OPERATOR POLICY',
   'universe-theses': 'UNIVERSE & THESES',
   'investment-books': 'INVESTMENT BOOKS',
   'capital-plan': 'CAPITAL PLAN',
@@ -1548,6 +1549,150 @@ function EvidenceSection({ evidence }: { evidence: Evidence }) {
 
 // ── Main hub ──────────────────────────────────────────────────────────────────
 
+type PolicyField = {
+  value: unknown
+  status: string
+  kind: 'range_pct' | 'money' | 'text' | 'list' | 'object'
+  operator_confirmed: boolean
+  version: number
+}
+
+type OperatorPolicyPayload = {
+  schema: string
+  status: string
+  confirmed_field_count: number
+  required_field_count: number
+  missing_fields: string[]
+  fields: Record<string, PolicyField>
+  legacy_conflicts: { field: string; claims: { value: unknown; source: string }[] }[]
+}
+
+function policyLabel(value: string): string {
+  return value.replace(/_pct$/, ' (%)').replace(/_usd$/, ' ($)').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+}
+
+function OperatorPolicyPanel() {
+  const [policy, setPolicy] = useState<OperatorPolicyPayload | null>(null)
+  const [fieldName, setFieldName] = useState('')
+  const [textValue, setTextValue] = useState('')
+  const [rangeMin, setRangeMin] = useState('')
+  const [rangeMax, setRangeMax] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState<string | null>(null)
+
+  const load = useCallback(() => {
+    fetch('/api/v3/cio/brain/policy', { cache: 'no-store' })
+      .then(r => r.json())
+      .then(j => {
+        if (j?.ok && j.policy) {
+          setPolicy(j.policy)
+          setFieldName((current) => current || j.policy.missing_fields?.[0] || Object.keys(j.policy.fields || {})[0] || '')
+        }
+      })
+      .catch(() => setMessage('Policy state unavailable'))
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  const selected = fieldName ? policy?.fields?.[fieldName] : undefined
+  const submit = async () => {
+    if (!selected || !fieldName) return
+    let value: unknown = textValue
+    try {
+      if (selected.kind === 'range_pct') value = { min: Number(rangeMin), max: Number(rangeMax) }
+      if (selected.kind === 'money') value = Number(textValue)
+      if (selected.kind === 'list') value = textValue.split(',').map(v => v.trim()).filter(Boolean)
+      if (selected.kind === 'object') value = JSON.parse(textValue)
+      setBusy(true); setMessage(null)
+      const response = await fetch('/api/v3/cio/brain/policy/ratify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ field_name: fieldName, value, operator_identity_class: 'OPERATOR' }),
+      })
+      const result = await response.json()
+      if (!response.ok || !result?.ok) throw new Error(result?.detail || result?.error || `HTTP ${response.status}`)
+      setPolicy(result.policy)
+      setFieldName(result.policy.missing_fields?.[0] || fieldName)
+      setTextValue(''); setRangeMin(''); setRangeMax('')
+      setMessage(`${policyLabel(fieldName)} confirmed`)
+    } catch (error: any) {
+      setMessage(String(error?.message || error))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (!policy) return <div style={{ ...card, color: 'var(--text2)' }}>Loading operator policy…</div>
+  const confirmed = policy.confirmed_field_count || 0
+  const required = policy.required_field_count || 0
+
+  return (
+    <div data-testid="cio-operator-policy">
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 10, marginBottom: 16 }}>
+        <div style={card}>
+          <div style={{ ...muted, textTransform: 'uppercase' }}>Policy state</div>
+          <div style={{ fontSize: 18, fontWeight: 750, color: policy.status === 'CONFIRMED' ? 'var(--green)' : 'var(--amber)', marginTop: 4 }}>{policy.status}</div>
+        </div>
+        <div style={card}>
+          <div style={{ ...muted, textTransform: 'uppercase' }}>Confirmed</div>
+          <div style={{ fontSize: 18, fontWeight: 750, color: 'var(--text0)', marginTop: 4 }}>{confirmed} / {required}</div>
+        </div>
+        <div style={card}>
+          <div style={{ ...muted, textTransform: 'uppercase' }}>Legacy conflicts</div>
+          <div style={{ fontSize: 18, fontWeight: 750, color: policy.legacy_conflicts.length ? 'var(--amber)' : 'var(--green)', marginTop: 4 }}>{policy.legacy_conflicts.length}</div>
+        </div>
+      </div>
+
+      {policy.legacy_conflicts.length > 0 && (
+        <section style={{ marginBottom: 18 }}>
+          <SectionTitle>Policy conflicts</SectionTitle>
+          {policy.legacy_conflicts.map(conflict => (
+            <div key={conflict.field} style={{ borderBottom: '1px solid var(--border)', padding: '9px 0', fontSize: 12 }}>
+              <strong style={{ color: 'var(--text0)' }}>{policyLabel(conflict.field)}</strong>
+              <span style={{ color: 'var(--text2)', marginLeft: 10 }}>{conflict.claims.map(c => JSON.stringify(c.value)).join(' · ')}</span>
+            </div>
+          ))}
+        </section>
+      )}
+
+      <section style={{ marginBottom: 18 }}>
+        <SectionTitle>Ratification</SectionTitle>
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 1fr) minmax(260px, 2fr) auto', gap: 8, alignItems: 'end' }}>
+          <label style={{ ...muted }}>
+            Policy field
+            <select value={fieldName} onChange={e => { setFieldName(e.target.value); setTextValue(''); setRangeMin(''); setRangeMax('') }} style={{ display: 'block', width: '100%', marginTop: 5, padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg1)', color: 'var(--text0)' }}>
+              {Object.keys(policy.fields).map(name => <option key={name} value={name}>{policyLabel(name)}</option>)}
+            </select>
+          </label>
+          {selected?.kind === 'range_pct' ? (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <label style={muted}>Minimum<input type="number" min="0" max="100" value={rangeMin} onChange={e => setRangeMin(e.target.value)} style={{ display: 'block', width: '100%', marginTop: 5, padding: 8, boxSizing: 'border-box' }} /></label>
+              <label style={muted}>Maximum<input type="number" min="0" max="100" value={rangeMax} onChange={e => setRangeMax(e.target.value)} style={{ display: 'block', width: '100%', marginTop: 5, padding: 8, boxSizing: 'border-box' }} /></label>
+            </div>
+          ) : (
+            <label style={muted}>{selected?.kind === 'object' ? 'JSON value' : selected?.kind === 'list' ? 'Comma-separated values' : 'Value'}
+              <input type={selected?.kind === 'money' ? 'number' : 'text'} value={textValue} onChange={e => setTextValue(e.target.value)} style={{ display: 'block', width: '100%', marginTop: 5, padding: 8, boxSizing: 'border-box' }} />
+            </label>
+          )}
+          <button type="button" onClick={submit} disabled={busy} style={{ padding: '9px 14px', borderRadius: 6, border: '1px solid var(--accent)', background: 'var(--accent-dim)', color: 'var(--accent)', fontWeight: 700, cursor: busy ? 'wait' : 'pointer' }}>{busy ? 'Confirming…' : 'Confirm'}</button>
+        </div>
+        {message && <div role="status" style={{ ...muted, marginTop: 8 }}>{message}</div>}
+      </section>
+
+      <section>
+        <SectionTitle>Mandate</SectionTitle>
+        {Object.entries(policy.fields).map(([name, field]) => (
+          <div key={name} style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 1fr) 2fr auto', gap: 10, borderBottom: '1px solid var(--border)', padding: '8px 0', fontSize: 12 }}>
+            <span style={{ color: 'var(--text1)' }}>{policyLabel(name)}</span>
+            <span style={{ color: field.operator_confirmed ? 'var(--text0)' : 'var(--text3)' }}>{field.value == null ? 'POLICY REQUIRED' : typeof field.value === 'string' ? field.value : JSON.stringify(field.value)}</span>
+            <span style={{ color: field.operator_confirmed ? 'var(--green)' : 'var(--amber)' }}>{field.status}</span>
+          </div>
+        ))}
+      </section>
+    </div>
+  )
+}
+
 export default function CioHub({ onDrill }: Props) {
   const [sp, setSp] = useSearchParams()
   const planId = (sp.get('plan') || '').trim()
@@ -1663,6 +1808,8 @@ export default function CioHub({ onDrill }: Props) {
 
       {tab === 'investment-books' && <InvestmentBooksPanel />}
 
+      {tab === 'operator-policy' && <OperatorPolicyPanel />}
+
       {(tab === 'notification-gate' || tab === 'telegram-receipts' || tab === 'senses-evidence') && (
         <div role="tabpanel" aria-label={TAB_LABEL[tab]}>
           {tab === 'notification-gate' && <NotificationGatePanel />}
@@ -1671,7 +1818,7 @@ export default function CioHub({ onDrill }: Props) {
         </div>
       )}
 
-      {home && tab !== 'notification-gate' && tab !== 'telegram-receipts' && tab !== 'senses-evidence' && tab !== 'investment-books' && tab !== 'universe-theses' && (
+      {home && tab !== 'notification-gate' && tab !== 'telegram-receipts' && tab !== 'senses-evidence' && tab !== 'investment-books' && tab !== 'operator-policy' && tab !== 'universe-theses' && (
         <div role="tabpanel" aria-label={TAB_LABEL[tab]}>
           {tab === 'cio-now' && <CioNowSection home={home} dispositions={dispositions} legacyUnversioned={legacyUnversioned} onAct={onAct} />}
           {tab === 'capital-plan' && <CapitalPlanSection cp={home.capital_plan} />}
