@@ -129,6 +129,78 @@ def append_record(root: Path | str, record: dict[str, Any]) -> str:
     return artifact_id
 
 
+def ingest_hermes_result(
+    root: Path | str,
+    request: dict[str, Any],
+    result: dict[str, Any],
+) -> dict[str, Any]:
+    """Consume a completed Hermes result into the ticker graph.
+
+    This is deliberately a projection only: Hermes remains the intelligence
+    producer and canonical research store.  The projection preserves ticker,
+    relationship, source type and trace identity so downstream agents can
+    retrieve prior intelligence without re-running research.
+    """
+    symbol = normalize_symbol(
+        result.get("symbol")
+        or request.get("symbol")
+        or (request.get("metadata") or {}).get("symbol")
+    )
+    if not symbol:
+        return {"ok": False, "error": "symbol_required", "artifacts": 0}
+    profile = build_profile(symbol, metadata=request.get("ticker_metadata") or {})
+    records: list[str] = []
+    base = {
+        "research_id": result.get("research_id") or request.get("research_id"),
+        "trace_id": request.get("trace_id") or result.get("trace_id"),
+        "as_of": result.get("as_of") or result.get("completed_ts"),
+        "provenance": {
+            "producer": "hermes",
+            "request_id": request.get("request_id") or request.get("plan_id"),
+            "research_id": result.get("research_id") or request.get("research_id"),
+            "source_event_ids": request.get("source_event_ids") or [],
+        },
+    }
+    sources = result.get("sources") or result.get("source_refs") or []
+    if isinstance(sources, dict):
+        sources = [sources]
+    for idx, source in enumerate(sources[:24]):
+        if isinstance(source, str):
+            source = {"url": source}
+        if not isinstance(source, dict):
+            continue
+        url = source.get("url") or source.get("source_url")
+        stype = str(source.get("source_type") or source.get("type") or "hermes_web").lower()
+        if "youtube" in stype or "youtu.be" in str(url).lower() or "youtube.com" in str(url).lower():
+            stype = "hermes_youtube_transcript"
+        elif any(x in stype for x in ("social", "reddit", "x.com", "twitter")):
+            stype = "hermes_social"
+        artifact = {
+            **base,
+            "source_id": source.get("source_id") or source.get("id") or url or f"source-{idx}",
+            "source_type": stype,
+            "source_url": url,
+            "title": source.get("title") or result.get("summary") or f"Hermes {symbol} source",
+            "summary": source.get("summary") or source.get("snippet") or result.get("summary") or "",
+            "tags": source.get("tags") or source.get("content_tags") or [],
+            "relationship": source.get("relationship") or "LINEAR",
+            "related_tickers": source.get("related_tickers") or [],
+        }
+        records.append(append_record(root, classify_artifact(symbol, artifact, profile=profile)))
+    if not records:
+        artifact = {
+            **base,
+            "source_id": result.get("result_id") or result.get("research_id") or request.get("research_id"),
+            "source_type": "hermes_research",
+            "title": f"Hermes research {symbol}",
+            "summary": result.get("summary") or result.get("reason_summary") or "",
+            "tags": result.get("tags") or [],
+            "relationship": "LINEAR",
+        }
+        records.append(append_record(root, classify_artifact(symbol, artifact, profile=profile)))
+    return {"ok": True, "symbol": symbol, "artifacts": len(records), "artifact_ids": records}
+
+
 def retrieve_context(root: Path | str, symbol: str, *, limit: int = 50) -> dict[str, Any]:
     sym = normalize_symbol(symbol)
     rows = []
