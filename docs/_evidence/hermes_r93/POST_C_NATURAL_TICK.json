@@ -1,0 +1,79 @@
+{
+  "schema": "PostCNaturalTickProof@v1",
+  "authority": "READ_ONLY_ADVISORY",
+  "memory_behavior_influence": 0,
+  "financial_action": false,
+  "as_of": "2026-08-24T04:26:51+00:00",
+  "R93_TWO_NATURAL_TICKS_PROVEN": true,
+  "R93_POST_C_NATURAL_PROVEN": true,
+  "CURRENT": "bc6ff5c6-main-exact-phase2-20260823-232816",
+  "SOURCE_COMMIT": "bc6ff5c62ef1e1265195301a9659c26508ba26ed",
+  "pin_match": true,
+  "ticks": {
+    "tick1": {
+      "run_id": "433f8a56-3964-4812-80b0-b1d506ea96d2",
+      "source_sha": "3dd6f8d5bc1d0403a55487cf51f5ec2a58b7853b",
+      "triggered_at_et": "2026-08-23 22:24:15 EDT",
+      "finished_at_et": "2026-08-23 22:27:05 EDT",
+      "exit": 0,
+      "shape": "117/2/1/0/120/0"
+    },
+    "tick2": {
+      "run_id": "6458ea63-7dc9-4396-a6c3-b12f008f2ed6",
+      "source_sha": "3dd6f8d5bc1d0403a55487cf51f5ec2a58b7853b",
+      "triggered_at_et": "2026-08-23 23:23:11 EDT",
+      "finished_at_et": "2026-08-23 23:25:57 EDT",
+      "pid": 671581,
+      "exit": 0,
+      "shape": "117/2/1/0/120/0",
+      "artifact_delta": "+1 unique SCHG news rag:166105 a29f01eb (not GUID fork)"
+    },
+    "post_c_natural": {
+      "run_id": "62652d0c-7097-42c4-a1c6-8fc49315b2cf",
+      "source_sha": "bc6ff5c62ef1e1265195301a9659c26508ba26ed",
+      "triggered_at_et": "2026-08-24 00:23:52 EDT",
+      "finished_at_et": "2026-08-24 00:26:51 EDT",
+      "pid": 711753,
+      "exit": 0,
+      "shape": "117/2/1/0/120/0",
+      "manual": false,
+      "systemd_unit": "tradeai-free-first-circulation.timer"
+    }
+  },
+  "post_c": {
+    "profiles": 120,
+    "artifacts": 1639,
+    "states": 120,
+    "state_decisions": {"NO_NEW_INFO": 120},
+    "hermes_curation_summary_versions": 0,
+    "research_gaps": 33,
+    "contradictions": 0,
+    "memory_rows": 328,
+    "thesis_change_cards": 735,
+    "sha_unchanged_vs_pre_tick": {
+      "ticker_research_graph.jsonl": true,
+      "ticker_research_state.jsonl": true,
+      "research_gaps.jsonl": true,
+      "aif_memory.jsonl": true
+    },
+    "loaded_prior_TickerResearchState": true,
+    "loaded_prior_HermesCurationSummary": false,
+    "context_question": "WHAT_CHANGED",
+    "forbidden_default": "tell_me_about_symbol",
+    "new_curation_versions": 0,
+    "new_thesis_versions": 0,
+    "new_memory": 0,
+    "notifications_from_this_service": 0,
+    "paid_dispatch_entered": 0,
+    "Flash": 0,
+    "Grok": 0,
+    "ChatGPT": 0,
+    "Pro": 0,
+    "COST_CAP_EXCEEDED_this_service": 0,
+    "spend_delta": 0
+  },
+  "curation_summary_residual": "upsert_summary does not persist an initial snapshot on NO_NEW_INFO / FRESH_NO_CHANGE. Durable last-material-review JSONL remains empty until a material watermark change.",
+  "official_live_maturity": 65,
+  "maturity_note": "62 after first natural tick; +3 for two independent scheduler cycles plus post-#492 natural WHAT_CHANGED/TickerResearchState reuse. Residual: HermesCurationSummary JSONL not yet populated; PR D/E not started.",
+  "do_not": ["PR D producer retirement", "PR E CIO Ticker Intelligence UI", "paid activation", "cap increase"]
+}

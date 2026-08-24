@@ -163,3 +163,44 @@ Live CURRENT graph re-measured at this inspection: **120 profiles, 1608 artifact
 ## FIRST-NATURAL-TICK (supersedes NATURAL_PROOF_PENDING)
 
 `R93_FREE_FIRST_NATURAL_PROVEN=true`. systemd `tradeai-free-first-circulation.timer` LastTrigger **2026-08-23 22:24:15 ET**, finished 22:27:05, exit 0, CURRENT `3dd6f8d5`, run_id `433f8a56-3964-4812-80b0-b1d506ea96d2`. Result: 117 Hermes / 2 RAG / 1 structured / 0 SearXNG / 120 FRESH_NO_CHANGE / 0 paid.
+
+## TWO-NATURAL-TICKS (2026-08-23 23:23 ET)
+
+`R93_TWO_NATURAL_TICKS_PROVEN=true`. Second genuine systemd fire, not `systemctl start`.
+
+| | tick #1 | tick #2 |
+|---|---|---|
+| LastTrigger | 22:24:15 ET | **23:23:11 ET** |
+| finished | 22:27:05 | **23:25:57** |
+| PID | — | 671581 |
+| run_id | `433f8a56-3964-4812-80b0-b1d506ea96d2` | `6458ea63-7dc9-4396-a6c3-b12f008f2ed6` |
+| CURRENT / source | `3dd6f8d5` | `3dd6f8d5` |
+| exit | 0 | **0** |
+| Hermes / RAG / structured / SearXNG | 117 / 2 / 1 / 0 | **117 / 2 / 1 / 0** |
+| FRESH_NO_CHANGE | 120 | **120** |
+| paid_dispatch | 0 | **0** |
+
+Idempotency: duplicate profiles 0, GUID forks 0. Graph 1638 → 1639: one unique SCHG news artifact `a29f01eb` (`rag:166105`), not a fork. Memory 328 unchanged. Thesis ledgers unchanged. Notifications from this service 0. Legacy `hermes-cio-worker` 429 `COST_CAP_EXCEEDED` is out of scope.
+
+## POST-C NATURAL TICK (2026-08-24 00:23 ET)
+
+#492 exact head `6a3f4e0f` merged as `bc6ff5c6`. CURRENT `bc6ff5c6-main-exact-phase2-20260823-232816`, pin_match true.
+
+First **natural** fire on that pin: LastTrigger **2026-08-24 00:23:52 ET**, finished 00:26:51, PID 711753, run_id `62652d0c-7097-42c4-a1c6-8fc49315b2cf`, source_sha `bc6ff5c6…`, exit 0. Shape again **117 / 2 / 1 / 0 / 120 / 0 paid**.
+
+Pre-tick SHA256 of graph, `TickerResearchState`, gaps, and `aif_memory.jsonl` **unchanged** after the run.
+
+| Proof | Result |
+|---|---|
+| loads prior `TickerResearchState` | **yes** — 120 rows, all `NO_NEW_INFO`, file SHA unchanged |
+| loads prior `HermesCurationSummary` | **no file** — version rule does not persist an initial `NO_NEW_INFO` snapshot |
+| next question | **WHAT_CHANGED** (forbidden default `tell_me_about_symbol`) |
+| new curation versions | **0** |
+| new thesis versions | **0** |
+| new memory | **0** |
+| notifications from this service | **0** |
+| paid / Flash / Grok / ChatGPT / Pro / COST_CAP this service | **0** |
+
+`R93_POST_C_NATURAL_PROVEN=true` for persistent state + WHAT_CHANGED reuse. Durable last-material-review JSONL remains the residual until a material watermark change.
+
+Official live maturity **65/100** (was 62 after tick #1). PR D producer retirement and PR E CIO UI remain gated. Evidence: `docs/_evidence/hermes_r93/POST_C_NATURAL_TICK.json`.
