@@ -158,3 +158,7 @@ This prompt forbids: running the classifier manually and calling it natural; edi
 PR C (Librarian epistemic + HermesCurationSummary + TickerResearchState maturity) is **not started**. Gate is section-11 PASS of a genuine scheduled FREE_FIRST_ONLY cycle on `0b63d209`.
 
 Live CURRENT graph re-measured at this inspection: **120 profiles, 1608 artifacts** (not a persistence regression).
+
+## FIRST-NATURAL-TICK (supersedes NATURAL_PROOF_PENDING)
+
+`R93_FREE_FIRST_NATURAL_PROVEN=true`. systemd `tradeai-free-first-circulation.timer` LastTrigger **2026-08-23 22:24:15 ET**, finished 22:27:05, exit 0, CURRENT `3dd6f8d5`, run_id `433f8a56-3964-4812-80b0-b1d506ea96d2`. Result: 117 Hermes / 2 RAG / 1 structured / 0 SearXNG / 120 FRESH_NO_CHANGE / 0 paid.

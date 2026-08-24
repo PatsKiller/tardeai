@@ -154,6 +154,26 @@ PR C is not opened. Official maturity remains **59/100**. `R93_FREE_FIRST_NATURA
 
 Operator next (not done here): after an explicit grant, add a CURRENT-pin systemd timer that runs `free_first_refresh.py --circulate` with FREE_FIRST_ONLY / zero paid, then observe **that** timer. Do not use Family A live drain or Family B OAuth crons as the proof vehicle.
 
+## FIRST-NATURAL-TICK (2026-08-23 22:24–22:27 ET) — supersedes NATURAL_PROOF_PENDING
+
+`R93_FREE_FIRST_NATURAL_PROVEN=true`
+
+| | |
+|---|---|
+| timer | `tradeai-free-first-circulation.timer` |
+| service | `tradeai-free-first-circulation.service` |
+| trigger | systemd LastTrigger **22:24:15 ET** (not `systemctl start`, not CLI) |
+| finished | **22:27:05 ET** Result=`success` exit 0 |
+| run_id | `433f8a56-3964-4812-80b0-b1d506ea96d2` |
+| CURRENT / source_sha | `3dd6f8d5bc1d0403a55487cf51f5ec2a58b7853b` (PR #491 merge) |
+| WorkingDirectory | CURRENT exact-main pin |
+| Hermes / RAG / structured / SearXNG | **117 / 2 / 1 / 0** |
+| FRESH_NO_CHANGE | **120** |
+| paid / Flash / COST_CAP this run | **0 / 0 / 0** |
+| next timer | 23:23 ET |
+
+NATURAL_PROOF_PENDING_REASON above is **historical**. The scheduler now exists and has fired once.
+
 ## Maturity
 
-Official overall **59/100 unchanged** until a natural free-first/Librarian cycle is observed. Measured (not awarded): identity L5 live GUIDs, free-first L6 CURRENT function, Librarian L4 production assessments, persistence L5 CURRENT artifacts, autonomy L3 (manual CURRENT proof only).
+Official live score after first natural tick: **62/100** (+3 autonomy for systemd-triggered FREE_FIRST_ONLY on CURRENT, $0). PR C source-only work does not add live points until merged/deployed/observed.

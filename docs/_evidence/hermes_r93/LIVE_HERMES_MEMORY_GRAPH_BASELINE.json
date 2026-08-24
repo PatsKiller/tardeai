@@ -163,6 +163,36 @@
       "crontab_PROJ": "rebuild feat/two-way-watchlist-curation"
     },
     "PR_C_started": false,
-    "maturity_official": 59
+    "maturity_official": 59,
+    "superseded_by": "FIRST_NATURAL_TICK"
+  },
+  "FIRST_NATURAL_TICK": {
+    "as_of": "2026-08-24T02:27:05+00:00",
+    "R93_FREE_FIRST_NATURAL_PROVEN": true,
+    "timer": "tradeai-free-first-circulation.timer",
+    "service": "tradeai-free-first-circulation.service",
+    "trigger": "systemd",
+    "LastTriggerUSec": "Sun 2026-08-23 22:24:15 EDT",
+    "finished": "Sun 2026-08-23 22:27:05 EDT",
+    "exit": 0,
+    "Result": "success",
+    "run_id": "433f8a56-3964-4812-80b0-b1d506ea96d2",
+    "source_sha": "3dd6f8d5bc1d0403a55487cf51f5ec2a58b7853b",
+    "CURRENT": "3dd6f8d5-main-exact-phase2-20260823-214427",
+    "Hermes_resolved": 117,
+    "RAG_resolved": 2,
+    "structured_resolved": 1,
+    "SearXNG_queries": 0,
+    "fresh_no_change": 120,
+    "paid_dispatch_entered": 0,
+    "Flash_eligible_count": 0,
+    "COST_CAP_EXCEEDED_this_run": 0,
+    "spend_delta": 0,
+    "artifacts_after": 1638,
+    "profiles": 120,
+    "TickerResearchState": 120,
+    "memory": 328,
+    "maturity_official": 62,
+    "next_timer": "2026-08-23T23:23:11-04:00"
   }
 }
