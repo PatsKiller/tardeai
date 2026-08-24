@@ -63,3 +63,15 @@ Overlap: second invocation exits 75 / `FreeFirstOverlap@v1` without killing the 
 ## Health
 
 `NO_NEW_INFO` is a healthy last run. Timer freshness does **not** mean “must call an LLM.” See `scripts/lib/free_first_scheduler_health.py`.
+
+Host `ExecStart` is the bash wrapper **without** systemd `flock` (python `fcntl` only). Do not re-run the installer from CURRENT after promote — the repo unit file still mentions flock.
+
+## Observed natural fires
+
+| tick | LastTrigger ET | finished | run_id | source | exit | shape |
+|---|---|---|---|---|---|---|
+| 1 | 2026-08-23 22:24:15 | 22:27:05 | `433f8a56-…` | `3dd6f8d5` | 0 | 117/2/1/0/120/0 |
+| 2 | 2026-08-23 23:23:11 | 23:25:57 | `6458ea63-…` | `3dd6f8d5` | 0 | 117/2/1/0/120/0 |
+| post-#492 | 2026-08-24 00:23:52 | 00:26:51 | `62652d0c-…` | `bc6ff5c6` | 0 | 117/2/1/0/120/0 |
+
+NextElapse after post-C: **2026-08-24 01:24:27 EDT**. Do not `systemctl start` the service for proof.

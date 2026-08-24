@@ -4,13 +4,13 @@
 **Authority:** `READ_ONLY_ADVISORY`  
 **MEMORY_BEHAVIOR_INFLUENCE:** 0  
 **Paid calls:** 0  
-**Status:** source on `feat/r93-librarian-curation-maturity` — **not live** until merged, exact-main promoted, and naturally observed.
+**Status:** **LIVE on CURRENT `bc6ff5c6`**. Merged as PR #492 (`6a3f4e0f` → `bc6ff5c6`). First natural post-merge tick **2026-08-24 00:23:52 ET**, run_id `62652d0c`, 117/2/1/0/120/0 paid. `TickerResearchState` reused; `HermesResearchContext@v2` asks WHAT_CHANGED. `hermes_curation_summary.jsonl` still empty (no material watermark change).
 
 ## Natural #489/#491 proof this PR starts from
 
 systemd `tradeai-free-first-circulation.timer` LastTrigger **2026-08-23 22:24:15 ET**, CURRENT `3dd6f8d5`, run_id `433f8a56-3964-4812-80b0-b1d506ea96d2`, 117 Hermes / 2 RAG / 1 structured / 0 SearXNG / 120 FRESH_NO_CHANGE / 0 paid.
 
-Second hourly tick (23:23 ET) is observed separately; PR C source does not wait on it to be authored.
+Second hourly tick **observed** 23:23:11–23:25:57 ET, run_id `6458ea63`, same 117/2/1/0/120/0 on `3dd6f8d5` (`R93_TWO_NATURAL_TICKS_PROVEN=true`). #492 merged after that PASS.
 
 ## What PR C adds
 
@@ -50,3 +50,15 @@ PR D producer retirement. PR E CIO Ticker Intelligence UI. Paid provider activat
 | DeepSeek Pro bulk | exceptional only | never bulk |
 
 Target hierarchy: L0 no LLM → L1 Flash material delta → L2 one OAuth challenger → L3 Pro exceptional. None activated here.
+
+## POST-C natural proof (2026-08-24 00:23 ET)
+
+systemd `tradeai-free-first-circulation.timer` LastTrigger **00:23:52 ET**, finished 00:26:51, PID 711753, CURRENT `bc6ff5c6`, run_id `62652d0c-7097-42c4-a1c6-8fc49315b2cf`.
+
+- Graph / state / gaps / memory SHA256 unchanged vs 23:39 ET pre-tick snapshot.
+- 120 `TickerResearchState` loaded; sample NOC/SCHG/PRSO/SOPAQ `context.question=WHAT_CHANGED`.
+- `load_latest` curation = None (file absent). New curation versions = 0 by design of the NO_NEW_INFO write rule.
+- 33 `ResearchGap@v1` rows (from post-merge baseline; 31 `all_stale`, 2 `unresolved_after_free` PRSO/VIVS) were **not** duplicated.
+- Paid boundary: `paid_dispatch_entered=0`. Do not count legacy worker 429.
+
+`R93_POST_C_NATURAL_PROVEN=true` for state reuse. Residual: persist an initial `HermesCurationSummary` on first review (even `NO_NEW_INFO`) is **not** in this PR and must not be silently patched on CURRENT. That is a future source change, not PR D.

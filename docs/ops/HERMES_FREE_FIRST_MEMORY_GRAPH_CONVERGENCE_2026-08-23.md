@@ -4,9 +4,9 @@
 **Authority:** `READ_ONLY_ADVISORY`  
 **MEMORY_BEHAVIOR_INFLUENCE:** 0  
 **Paid calls this program:** 0  
-**Status:** `LIVE_FUNCTIONAL_NATURAL_PENDING` — #489 merged and promoted to CURRENT. Persistent artifacts and FREE_FIRST_ONLY proven on CURRENT. Natural free-first/Librarian timer not yet observed.
+**Status:** `LIVE_FUNCTIONAL_NATURAL_PROVEN` — two systemd ticks on `3dd6f8d5`, then #492 promoted as CURRENT `bc6ff5c6`, then first post-C natural tick 00:23 ET (`62652d0c`) reused `TickerResearchState` with WHAT_CHANGED / 0 paid / 0 new graph bytes.
 
-Official live maturity stays **59/100**.
+Official live maturity **65/100** (59 at handoff → 62 after first natural tick → 65 after two ticks + post-#492 natural WHAT_CHANGED). Residual: `hermes_curation_summary.jsonl` empty until a material watermark change; PR D/E not started.
 
 ## Why the first 105/120 result was provisional
 
