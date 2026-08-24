@@ -102,6 +102,10 @@ This M1 document and the six-spec correction (`TRADE_AI_BITEMPORAL_MEMORY_DATA_M
 - Durable writes store `DecisionRationale`, never private chain-of-thought.
 - Yeda's Eye is authorized **after** M1 natural PASS (2026-08-24 11:23 ET run_id `5e9028fb`). First mission is M2 due diligence, not feature spray.
 
+### CIO consumption (source — this PR)
+
+`scripts/lib/cio_persistent_cognition.py` is the shared read-only loader. `get_context_for_agent` attaches it. Telegram uses the same function. Persistence without this loader is not CIO cognition.
+
 ### M1 natural acceptance (LIVE)
 
 CURRENT `5c0a993a`. Baseline 120 v0; replay 0 new; natural tick loaded those baselines, asked WHAT_CHANGED, wrote 0 material versions, 0 paid. Graph RAG persist may add artifacts without minting a curation version.

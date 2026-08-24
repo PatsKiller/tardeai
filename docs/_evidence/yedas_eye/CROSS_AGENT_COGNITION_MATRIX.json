@@ -1,0 +1,9 @@
+{
+  "schema": "CrossAgentCognitionMatrix@v1",
+  "as_of": "2026-08-24T15:50:00+00:00",
+  "loader": "scripts.lib.cio_persistent_cognition.cognition_for_symbol",
+  "note": "Hermes, CIO envelope, Advisory, Telegram all call the same loader. Fixture-proven for NOC; live CURRENT uses same module after deploy.",
+  "shared_fields": ["security_guid", "curation_id", "curation_version", "evidence_watermark", "question"],
+  "telegram_fork": false,
+  "symbols_fixture": ["NOC"]
+}

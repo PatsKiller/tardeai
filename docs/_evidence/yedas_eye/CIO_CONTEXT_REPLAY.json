@@ -1,0 +1,11 @@
+{
+  "schema": "CIOContextReplay@v1",
+  "identical_context": true,
+  "new_research": 0,
+  "new_curation": 0,
+  "new_thesis": 0,
+  "new_memory": 0,
+  "notification": 0,
+  "provider_calls": 0,
+  "test": "tests/test_cio_persistent_cognition.py::test_cio_replay_identical"
+}

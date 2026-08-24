@@ -1,0 +1,17 @@
+{
+  "schema": "CIOContextInputBaseline@v1",
+  "as_of": "2026-08-24T15:50:00+00:00",
+  "authority": "READ_ONLY_ADVISORY",
+  "sources": [
+    {"name": "office_truth / PortfolioState", "consumed_by_cio": true, "authority": "AUTHORITATIVE_FINANCIAL_TRUTH"},
+    {"name": "OperatorInvestmentPolicy", "consumed_by_cio": "partial (store often missing)", "authority": "DETERMINISTIC_POLICY"},
+    {"name": "CIOPortfolioThesis", "consumed_by_cio": true, "canonical": "cio_portfolio_thesis_v1"},
+    {"name": "ContextEnvelope@v1", "consumed_by_cio": true, "note": "wake chokepoint; research_memory previously NOT_CONFIGURED for ticker JSONL"},
+    {"name": "TickerResearchState", "consumed_by_cio_before": false, "consumed_by_this_pr": true, "authority": "RESEARCH_CONTEXT"},
+    {"name": "HermesCurationSummary / BASELINE_PROJECTION", "consumed_by_cio_before": false, "consumed_by_this_pr": true, "authority": "RESEARCH_CONTEXT"},
+    {"name": "ResearchGap", "consumed_by_cio_before": false, "consumed_by_this_pr": "reference + NEED_DATA upsert", "authority": "RESEARCH_CONTEXT"},
+    {"name": "EvidenceContradiction", "consumed_by_cio_before": false, "consumed_by_this_pr": "via state counter_evidence", "authority": "RESEARCH_CONTEXT"}
+  ],
+  "persisted_but_not_consumed_before": ["TickerResearchState", "BASELINE_PROJECTION"],
+  "duplicate_inputs": "none created; no cio_ticker_memory.jsonl"
+}
