@@ -32,6 +32,7 @@ AS_KNOWN_NOW = "AS_KNOWN_NOW"
 AS_KNOWN_AT = "AS_KNOWN_AT"
 VALID_AT = "VALID_AT"
 VALID_AT_AND_KNOWN_AT = "VALID_AT_AND_KNOWN_AT"
+WHAT_CHANGED_BETWEEN = "WHAT_CHANGED_BETWEEN"
 
 
 def _now() -> str:
@@ -181,6 +182,8 @@ class MemoryFactStore:
         elif mode == VALID_AT_AND_KNOWN_AT:
             if not valid_at or not tx_at:
                 raise RuntimeError("VALID_AND_TX_REQUIRED")
+        elif mode == WHAT_CHANGED_BETWEEN:
+            raise RuntimeError("USE_changed_between")
         else:
             raise RuntimeError("UNKNOWN_QUERY_MODE")
         out = []
@@ -197,3 +200,18 @@ class MemoryFactStore:
                 continue
             out.append(row)
         return out
+
+    def changed_between(
+        self,
+        *,
+        tenant_id: str,
+        start_tx: str,
+        end_tx: str,
+        subject_guid: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Facts whose transaction interval intersects (start_tx, end_tx]."""
+        require_tenant(tenant_id)
+        a = self.query(tenant_id=tenant_id, mode=AS_KNOWN_AT, tx_at=start_tx, subject_guid=subject_guid)
+        b = self.query(tenant_id=tenant_id, mode=AS_KNOWN_AT, tx_at=end_tx, subject_guid=subject_guid)
+        a_ids = {(r["memory_id"], r["memory_version_id"]) for r in a}
+        return [r for r in b if (r["memory_id"], r["memory_version_id"]) not in a_ids]

@@ -1,0 +1,40 @@
+{
+  "schema": "YedasEyeMaturity@v1",
+  "as_of": "2026-08-24T15:30:00+00:00",
+  "authority": "READ_ONLY_ADVISORY",
+  "memory_behavior_influence": 0,
+  "YEDAS_EYE_AUTHORIZED_TO_BEGIN": true,
+  "R10_M1_LIVE_NATURALLY_PROVEN": true,
+  "m1_natural": {
+    "LastTrigger": "Mon 2026-08-24 11:23:44 EDT",
+    "finished": "Mon 2026-08-24 11:27:13 EDT",
+    "pid": 1126326,
+    "run_id": "5e9028fb-00e1-4176-867e-fea55019ee90",
+    "source_sha": "5c0a993a044a1c25db7db27002504b3824d2a73c",
+    "shape": "117/2/1/0/120/0",
+    "baselines": 120,
+    "baseline_kind": "BASELINE_PROJECTION",
+    "versions": 0,
+    "new_baselines": 0,
+    "new_material": 0,
+    "paid": 0,
+    "watcher_false_negative": "paid_dispatch_entered=0 treated as missing"
+  },
+  "singleton": "SINGLETON_PROVEN",
+  "aif_classes": {"RESEARCH_POINTER": 345},
+  "cio_consumes_ticker_research_state": false,
+  "postgres_shadow_applied": false,
+  "neo4j_decision": "INSUFFICIENT_DATA",
+  "vector_recommendation": "INSUFFICIENT_DATA",
+  "golden_cases_tested": 200,
+  "next_pr": "CIO consume TickerResearchState + BASELINE_PROJECTION (read-only)",
+  "maturity": {
+    "before": 65,
+    "after_M1": 68,
+    "baseline_L": "L5",
+    "bitemporal_L": "L3",
+    "semantic_memory_L": "L1",
+    "cross_agent_L": "L1",
+    "CIO_L": "L3_other_L1_ticker_intel"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "schema": "M2CurrentMemoryBaseline@v1",
+  "as_of": "2026-08-24T15:30:00+00:00",
+  "CURRENT": "5c0a993a044a1c25db7db27002504b3824d2a73c",
+  "stores": {
+    "hermes_curation_summary.jsonl": {"rows": 120, "kind": "BASELINE_PROJECTION", "version": 0, "flag": "LIVE"},
+    "ticker_research_state.jsonl": {"rows": 120, "flag": "LIVE"},
+    "ticker_research_graph.jsonl": {"profiles": 120, "artifacts": 1996, "guid_dups": 0, "flag": "LIVE"},
+    "research_gaps.jsonl": {"rows": 64, "flag": "LIVE"},
+    "aif_memory.jsonl": {"rows": 345, "class": "RESEARCH_POINTER", "flag": "WRITE_HEAVY_WRONG_PLANE"},
+    "cio_portfolio_theses.jsonl": {"rows": 0, "flag": "ABSENT"},
+    "operator_profile.jsonl": {"rows": 0, "flag": "ABSENT"},
+    "advisory_outcomes_v1.jsonl": {"rows": 0, "flag": "ABSENT"},
+    "evidence_contradictions.jsonl": {"rows": 0, "flag": "ABSENT"}
+  },
+  "cio_reads_ticker_research_state": false,
+  "flag": "PERSISTED_BUT_NOT_COGNITIVE"
+}
