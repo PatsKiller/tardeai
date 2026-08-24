@@ -36,6 +36,7 @@
 | `docs/ops/CIO_HELD_THESIS_COVERAGE_2026-08-20.md` | Held-book thesis coverage SLA (#420) | Active |
 | `docs/architecture/HERMES_PERSISTENT_TICKER_INTELLIGENCE_ARCHITECTURE_2026-08-23.md` | **Canonical** identity v2 (issuer/security/listing), free-first, Librarian critique, LLM escalation | Active |
 | `docs/ops/HERMES_FREE_FIRST_MEMORY_GRAPH_CONVERGENCE_2026-08-23.md` | R9.3 operational closeout — measured 120/0 artifacts, FREE_FIRST_ONLY | Active |
+| `docs/ops/HERMES_FREE_FIRST_NATURAL_SCHEDULER_2026-08-23.md` | CURRENT-pinned FREE_FIRST_ONLY systemd timer (hourly :23 ET, zero paid) | Active |
 | `docs/architecture/TICKER_KNOWLEDGE_GRAPH_GUID_LINEAGE.md` | v1 ticker GUID lineage (#487/#488). Ticker is alias, not security identity | Active (partially superseded) |
 
 Drive mirror: **Trade_AI_Docs_v2** (`1Zxc20B5Xo24RGZ1Pow1-uW6ldASQJHiR`) via `scripts/sync-docs-to-drive.sh`.
