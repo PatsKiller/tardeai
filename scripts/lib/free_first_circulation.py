@@ -324,6 +324,14 @@ def circulate_symbol(
         catalyst_guids=profile.get("catalyst_guids") or [],
     )
     upsert = upsert_state(root, st)
+    from scripts.lib.curation_cycle import curate_security
+    curation = curate_security(root, profile, {
+        "symbol": sym,
+        "decision": st["decision"],
+        "hermes_resolved": hermes_resolved,
+        "searx_accepted": len(searx_accepted),
+        "path": [st["decision"]],
+    })
 
     return {
         "symbol": sym,
@@ -345,6 +353,8 @@ def circulate_symbol(
         "llm_eligible": llm_flag,
         "paid_dispatch_entered": paid_dispatch_entered() - paid_attempts_before,
         "state_wrote": upsert.get("wrote"),
+        "curation_wrote": curation.get("curation_wrote"),
+        "curation_reason": curation.get("curation_reason"),
         "watermark": watermark,
         "path": [
             "HERMES" if hermes_resolved else None,

@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-08-23 — R9.3 Librarian epistemic + durable curation (source)
+
+MATURITY_IMPACT: NONE live until merged + exact-main + natural. Official live score is the natural-tick 62/100; this PR is source-only.
+
+- HermesCurationSummary@v1 versioned only on material watermark change.
+- LibrarianAssessment epistemic fields; ResearchGap; contradiction lineage; event-specific GUIDs.
+- HermesResearchContext@v2 starts from WHAT_CHANGED. Zero paid.
+
 ## 2026-08-23 — R9.3 CURRENT-pinned FREE_FIRST_ONLY systemd timer
 
 MATURITY_IMPACT: NONE until the timer fires naturally on CURRENT. Official score stays 59/100 until that proof.
