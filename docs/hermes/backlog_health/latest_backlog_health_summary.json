@@ -1,6 +1,6 @@
 {
-  "date": "2026-08-22",
-  "timestamp": "2026-08-22T06:45:14.198683+00:00",
+  "date": "2026-08-23",
+  "timestamp": "2026-08-23T06:45:21.218703+00:00",
   "checks": {
     "total_backlog": 30,
     "open_count": 0,
@@ -10,17 +10,17 @@
     "duplicate_risk_count": 20,
     "duplicate_risks": [
       {
-        "id": 27,
-        "duplicate_of": 25,
+        "id": 25,
+        "duplicate_of": 27,
         "key": "NULL:backtest_contradiction"
       },
       {
-        "id": 32,
+        "id": 34,
         "duplicate_of": 33,
         "key": "NULL:unknown"
       },
       {
-        "id": 34,
+        "id": 32,
         "duplicate_of": 33,
         "key": "NULL:unknown"
       },
@@ -35,12 +35,12 @@
         "key": "NULL:unknown"
       },
       {
-        "id": 3727,
+        "id": 3726,
         "duplicate_of": 33,
         "key": "NULL:unknown"
       },
       {
-        "id": 3726,
+        "id": 3727,
         "duplicate_of": 33,
         "key": "NULL:unknown"
       },
@@ -50,12 +50,12 @@
         "key": "NULL:unknown"
       },
       {
-        "id": 5330,
+        "id": 5329,
         "duplicate_of": 33,
         "key": "NULL:unknown"
       },
       {
-        "id": 5329,
+        "id": 5330,
         "duplicate_of": 33,
         "key": "NULL:unknown"
       },
@@ -80,7 +80,12 @@
         "key": "NULL:unknown"
       },
       {
-        "id": 9059,
+        "id": 9058,
+        "duplicate_of": 33,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 9061,
         "duplicate_of": 33,
         "key": "NULL:unknown"
       },
@@ -90,17 +95,12 @@
         "key": "NULL:unknown"
       },
       {
-        "id": 9058,
-        "duplicate_of": 33,
-        "key": "NULL:unknown"
-      },
-      {
         "id": 9060,
         "duplicate_of": 33,
         "key": "NULL:unknown"
       },
       {
-        "id": 9061,
+        "id": 9059,
         "duplicate_of": 33,
         "key": "NULL:unknown"
       },
@@ -124,14 +124,14 @@
       "catalyst_quality": 1
     },
     "oldest_item": {
-      "id": 19,
+      "id": 23,
       "created": "2026-05-31 21:36:31",
-      "age_days": 82
+      "age_days": 83
     },
     "newest_item": {
       "id": 9666,
       "created": "2026-07-14 12:03:57",
-      "age_days": 38
+      "age_days": 39
     },
     "ready_for_discovery": 0,
     "not_ready_for_discovery": 0,

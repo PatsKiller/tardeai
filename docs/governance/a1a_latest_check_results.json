@@ -1,13 +1,18 @@
 {
-  "generated_at": "2026-08-21T11:40:01.256855+00:00",
+  "generated_at": "2026-08-23T22:00:16.344134+00:00",
   "git_head": "e683e90f",
   "files_checked": 18,
-  "findings_count": 1,
+  "findings_count": 2,
   "by_severity": {
-    "P2": 1
+    "P2": 2
   },
   "status": "warning",
   "findings": [
+    {
+      "severity": "P2",
+      "check": "stale_facts",
+      "message": "System facts 58h old (>48h)"
+    },
     {
       "severity": "P2",
       "check": "deployment_log_stale",
