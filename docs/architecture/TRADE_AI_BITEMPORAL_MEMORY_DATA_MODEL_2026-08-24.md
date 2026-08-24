@@ -36,6 +36,6 @@ LLMs must not author authoritative dates.
 
 ## SHADOW
 
-`sql/r10_memory_shadow.sql` — do not apply to production in this PR. In-memory `MemoryFactStore` is the test double.
+`sql/r10_memory_shadow.sql` — do not apply to production. Isolated M2 DDL is `sql/r10_m2_isolated_benchmark.sql` (Docker `:55432` only). In-memory `MemoryFactStore` remains the unit-test double. M2 decision: POSTGRES_PGVECTOR (pgmnemo v0.20.0 UNMEASURED_INSTALL).
 
 M1 baseline curation remains a separate MERGE_CANDIDATE (#494). This PR does not rewrite it.

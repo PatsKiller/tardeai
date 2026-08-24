@@ -40,20 +40,21 @@ Python `fcntl` `LOCK_EX|LOCK_NB` in `free_first_refresh.py` is the cross-path si
 
 | question | answer |
 |---|---|
-| Postgres canonical now? | No. Isolated tests + DDL only. `production_applied=false` |
-| Vector index | `INSUFFICIENT_DATA` (HNSW/IVFFlat unmeasured) |
-| Neo4j | `INSUFFICIENT_DATA` |
+| Postgres canonical now? | No. Isolated Docker `:55432` only. `production_applied=false` |
+| Vector index | HNSW/IVFFlat **INDEX_CREATED** isolated; not architectural mandate |
+| Neo4j | `POSTGRES_SUFFICIENT` |
 | 200 golden cases | TESTED in-process (not live retrieval quality) |
+| Storage decision | **POSTGRES_PGVECTOR** (pgmnemo v0.20.0 UNMEASURED_INSTALL) |
 
-Do **not** apply `sql/r10_memory_shadow.sql` to production while CIO consumption is still source-only. Dual authoritative memory writers are forbidden.
+Do **not** apply `sql/r10_memory_shadow.sql` to production. Dual authoritative memory writers are forbidden.
 
-### M2 benchmark plan (due diligence only — no winner before measurement)
+### M2 isolated lanes (measured 2026-08-24)
 
 | lane | substrate | status |
 |---|---|---|
-| A | native Trade AI Postgres bitemporal shadow (`MemoryFact@v2`) | UNMEASURED |
-| B | native + pgvector | UNMEASURED |
-| C | pgmnemo current stable shadow | UNMEASURED |
+| A | native tstzrange bitemporal + DB-owned tx_time | MEASURED |
+| B | native + pgvector 0.8.6 | MEASURED |
+| C | pgmnemo current stable **v0.20.0** | MEASURED (lesson corpus; not MemoryFact@v2) |
 
 Evaluate all three on: bitemporal correctness, point-in-time queries, RLS, concurrency, retrieval quality, HNSW, IVFFlat, exact retrieval, hybrid retrieval, backup/restore, operational complexity.
 
