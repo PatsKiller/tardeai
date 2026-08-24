@@ -1,6 +1,8 @@
 # How LLMs, Hermes, SearXNG, and ticker data actually work
 
-**Date:** 2026-08-22 (routing map; book numbers superseded night of 22nd)  
+**Date:** 2026-08-22 (routing map; book numbers superseded night of 22nd)
+
+**SUPERSEDED AS OF 2026-08-23** for “two LLM families must both run.” Family A (scheduler DeepSeek) and Family B (paired grok,chatgpt crons) are historical duplication. Target hierarchy: no-LLM → Flash on material delta → one OAuth challenger → Pro exceptional. See `docs/architecture/HERMES_PERSISTENT_TICKER_INTELLIGENCE_ARCHITECTURE_2026-08-23.md`. This file remains the 8/22 store-join map.  
 **Authority:** READ_ONLY_ADVISORY  
 **CURRENT:** do not promote.  
 **Live crontab:** `$PROJ=` rebuild.

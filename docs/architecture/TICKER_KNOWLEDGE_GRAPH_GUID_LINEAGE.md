@@ -1,7 +1,9 @@
 # Ticker Knowledge Graph GUID Lineage
 
-Status: implemented on `feat/ticker-guid-lineage`  
+Status: implemented on `feat/ticker-guid-lineage` (`#487`/`#488`)  
 Authority: `READ_ONLY_ADVISORY`
+
+**SUPERSEDED AS OF 2026-08-23 (`feat/r93-hermes-persistent-intel`)** for the claim that `ticker_guid` is the permanent security identity. `ticker_guid` remains the **symbol alias** for idempotency. Issuer / security / listing GUIDs are defined in `docs/architecture/HERMES_PERSISTENT_TICKER_INTELLIGENCE_ARCHITECTURE_2026-08-23.md`. Do not erase this document; it is the v1 GUID lineage evidence.
 
 ## Purpose
 

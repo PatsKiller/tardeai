@@ -14,6 +14,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
+from scripts.lib.security_identity import attach_identity_v2
+
 AUTHORITY = "READ_ONLY_ADVISORY"
 PROFILE_SCHEMA = "TickerKnowledgeProfile@v1"
 ARTIFACT_SCHEMA = "TickerResearchArtifact@v1"
@@ -80,8 +82,28 @@ def _entity_refs(kind: str, values: Any) -> list[dict[str, str]]:
     return refs
 
 
+def _edge(source: str, target: str, rel: str, kind: str, *, confirmed: bool) -> dict[str, Any]:
+    now = _now()
+    return {
+        "relationship_guid": relationship_guid(source, target, rel),
+        "source_guid": source,
+        "target_guid": target,
+        "relationship": rel,
+        "target_kind": kind,
+        "valid_from": None,
+        "valid_to": None,
+        "observed_at": now,
+        "recorded_at": now,
+        "last_confirmed_at": now if confirmed else None,
+        "status": "CONFIRMED" if confirmed else "CANDIDATE",
+        "confidence": 0.8 if confirmed else 0.3,
+        "source_refs": [],
+    }
+
+
 def _profile_edges(profile: dict[str, Any]) -> list[dict[str, Any]]:
     source = profile["ticker_guid"]
+    confirmed = bool(profile.get("company"))
     edges: list[dict[str, Any]] = []
     for kind, field, rel in (
         ("issuer", "issuer_guid", "LINEAR"),
@@ -91,29 +113,15 @@ def _profile_edges(profile: dict[str, Any]) -> list[dict[str, Any]]:
     ):
         target = profile.get(field)
         if target:
-            edges.append({
-                "relationship_guid": relationship_guid(source, target, rel),
-                "source_guid": source,
-                "target_guid": target,
-                "relationship": rel,
-                "target_kind": kind,
-            })
+            edges.append(_edge(source, target, rel, kind, confirmed=confirmed))
     for ref in profile.get("theme_refs") or []:
-        edges.append({"relationship_guid": relationship_guid(source, ref["guid"], "MACRO"),
-                      "source_guid": source, "target_guid": ref["guid"],
-                      "relationship": "MACRO", "target_kind": "theme"})
+        edges.append(_edge(source, ref["guid"], "MACRO", "theme", confirmed=confirmed))
     for ref in profile.get("peer_refs") or []:
-        edges.append({"relationship_guid": relationship_guid(source, ref["guid"], "LATERAL"),
-                      "source_guid": source, "target_guid": ref["guid"],
-                      "relationship": "LATERAL", "target_kind": "ticker"})
+        edges.append(_edge(source, ref["guid"], "LATERAL", "ticker", confirmed=confirmed))
     for ref in profile.get("catalyst_refs") or []:
-        edges.append({"relationship_guid": relationship_guid(source, ref["guid"], "MACRO"),
-                      "source_guid": source, "target_guid": ref["guid"],
-                      "relationship": "MACRO", "target_kind": "catalyst"})
+        edges.append(_edge(source, ref["guid"], "MACRO", "catalyst", confirmed=confirmed))
     for ref in profile.get("calendar_event_refs") or []:
-        edges.append({"relationship_guid": relationship_guid(source, ref["guid"], "CALENDAR"),
-                      "source_guid": source, "target_guid": ref["guid"],
-                      "relationship": "CALENDAR", "target_kind": "calendar"})
+        edges.append(_edge(source, ref["guid"], "CALENDAR", "calendar", confirmed=confirmed))
     return edges
 
 
@@ -172,7 +180,7 @@ def build_profile(symbol: str, *, metadata: dict[str, Any] | None = None) -> dic
     }
     profile["relationships"] = _profile_edges(profile)
     profile["relationship_guids"] = [x["relationship_guid"] for x in profile["relationships"]]
-    return profile
+    return attach_identity_v2(profile)
 
 
 def classify_artifact(symbol: str, artifact: dict[str, Any], *, profile: dict[str, Any] | None = None) -> dict[str, Any]:
