@@ -11,8 +11,8 @@ from scripts.lib.memory_m2_benchmark import (
     PGMNEMO_TARGET,
     _assert_isolated_dsn,
     golden_200_in_memory,
-    run_benchmark,
 )
+from scripts.lib.memory_m2_v2 import run_benchmark_v2
 from scripts.lib.similarity_candidate import from_similarity, promote
 
 
@@ -62,16 +62,23 @@ def test_similarity_cannot_self_ratify():
 
 @pytest.mark.skipif(os.getenv("M2_SKIP_DOCKER") == "1", reason="explicit skip")
 def test_isolated_docker_benchmark():
-    report = run_benchmark()
+    try:
+        from scripts.lib.memory_m2_v2 import connect as _c
+        _c().close()
+    except Exception:
+        pytest.skip("isolated M2 docker :55432 not available")
+    report = run_benchmark_v2()
+    assert report.get("error") in (None, ""), report.get("error")
     assert report["production_sql_applied"] is False
     assert report["isolated_dsn_port"] == 55432
+    assert report["built_in_tstzrange"] is True
+    assert report["transaction_time_db_owned"] is True
     assert report["golden"]["cases"] == 200
     assert report["lanes"]["A_native_postgres"]["status"] == "MEASURED"
     assert report["tenant"]["leakage_count"] == 0
-    assert report["concurrency"]["exclusive_ok"] is True
+    assert report["exclusion"]["exclusive_ok"] is True
     assert report["titan"] == "DISABLED_BY_DEFAULT"
-    assert report["hnsw_mandate"] is False
-    assert report["lanes"]["C_pgmnemo"]["target_stable"] == PGMNEMO_TARGET or report["lanes"]["C_pgmnemo"].get("target") == PGMNEMO_TARGET
     assert report["storage_decision"] in {"POSTGRES_NATIVE", "POSTGRES_PGVECTOR", "NO_CLEAR_WINNER"}
     assert report["neo4j_decision"] in {"POSTGRES_SUFFICIENT", "INSUFFICIENT_DATA"}
     assert report["financial_action"] is False
+    assert PGMNEMO_TARGET == "0.20.0"

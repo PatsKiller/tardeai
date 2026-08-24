@@ -7,6 +7,8 @@
 
 Isolated Docker only: `127.0.0.1:55432` container `tradeai-m2-shadow` (`pgvector/pgvector:pg16`). Production `:5432` is refused by the harness.
 
+v2 schema (Google Notes harmonized): built-in `tstzrange` periods, DB-owned `tx_period` via `write_fact_version()`, `CURRENT = upper_inf(tx_period)`, `PredicateTemporalPolicy`, GiST exclusion **only** for `SINGLE_VALUED_CURRENT`, FORCE RLS, non-owner `m2_agent`, normalized `provenance_edge`.
+
 ## Lanes
 
 | lane | substrate | result |

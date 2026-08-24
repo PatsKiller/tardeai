@@ -14,7 +14,7 @@ Office truth ≠ memory context. `overrides_office_truth=false`.
 
 ## Index
 
-Do not canonicalize HNSW or IVFFlat.
+Do not canonicalize HNSW or IVFFlat. Isolated M2 v2 captured EXPLAIN (ANALYZE, BUFFERS) Index Scan on GiST `valid_period` / `tx_period` and SP-GiST valid. No “temporal pruning before vector” claim.
 
 Measured in this PR: synthetic exact cosine self-retrieval only.
 

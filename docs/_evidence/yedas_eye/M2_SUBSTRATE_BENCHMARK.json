@@ -1,30 +1,12 @@
 {
-  "schema": "M2SubstrateBenchmark@v1",
-  "authority": "READ_ONLY_ADVISORY",
-  "memory_behavior_influence": 0,
+  "schema": "M2SubstrateBenchmark@v2",
   "production_sql_applied": false,
   "isolated_dsn_port": 55432,
-  "lanes": {
-    "A_native_postgres": {
-      "status": "MEASURED",
-      "schema": "memory_r10_m2"
-    },
-    "B_pgvector": {
-      "status": "MEASURED",
-      "vector_ext": "0.8.6",
-      "HNSW": "INDEX_CREATED",
-      "IVFFLAT": "INDEX_CREATED"
-    },
-    "C_pgmnemo": {
-      "status": "UNMEASURED_INSTALL",
-      "target_stable": "0.20.0",
-      "source": "https://github.com/pgmnemo/pgmnemo/releases/tag/v0.20.0",
-      "installed": false,
-      "version": null,
-      "error": "FeatureNotSupported:extension \"pgmnemo\" is not available\nDETAIL:  Could not open extension control file \"/usr/share/postgresql/16/extension/pgmnemo.control\": No such file or directory.\nHINT:  The extension must first be installed on the system where PostgreSQL is running.\n",
-      "operational_complexity": "HIGH"
-    }
-  },
+  "built_in_tstzrange": true,
+  "transaction_time_db_owned": true,
+  "row_kind": "DERIVED_FROM_upper_inf(tx_period)",
+  "predicate_temporal_policy": true,
+  "exclusion_scope": "SINGLE_VALUED_CURRENT_only",
   "golden": {
     "cases": 200,
     "hits": 200,
@@ -40,38 +22,95 @@
     "leaks": [],
     "cross_tenant_read": 0,
     "missing_tenant_fail_closed": true,
-    "rls_enabled": true,
+    "pool_reuse_isolated": true,
+    "rls_force": true,
     "composite_fk": true,
-    "bypassrls_role": "UNMEASURED",
-    "security_definer": "UNMEASURED",
-    "pool_reuse": "UNMEASURED"
+    "owner_bypass": "FORCE_RLS_ON",
+    "agent_bypassrls": false,
+    "security_definer": "write_fact_version_only"
   },
-  "concurrency": {
-    "open_current": 1,
+  "agent_role": {
+    "connected": true,
+    "wrote_via_function": true,
+    "direct_insert_blocked": true,
+    "bypassrls": false,
+    "superuser": false
+  },
+  "exclusion": {
+    "overlap_rejected": true,
+    "open_current_single_valued": 1,
     "exclusive_ok": true,
-    "rejected_preserved": true
+    "multi_valued_allowed": true,
+    "concurrency_winner": "exclusion_constraint+db_owned_tx",
+    "adjudication_normalized": true,
+    "provenance_normalized": true
   },
+  "plans": {
+    "as_known_now": {
+      "node_type": "Index Scan",
+      "index_name": "fact_current_idx",
+      "actual_ms": 0.009,
+      "shared_hits": 3,
+      "plan_snippet": "{\"Node Type\": \"Index Scan\", \"Parallel Aware\": false, \"Async Capable\": false, \"Scan Direction\": \"Forward\", \"Index Name\": \"fact_current_idx\", \"Relation Name\": \"memory_fact_version\", \"Alias\": \"memory_fact_version\", \"Startup Cost\": 0.14, \"Total Cost\": 8.17, \"Plan Rows\": 1, \"Plan Width\": 16, \"Actual Startup Time\": 0.006, \"Actual Total Time\": 0.009, \"Actual Rows\": 3, \"Actual Loops\": 1, \"Index Cond\": \"(tenant_id = 'tradeai:tenant:primary'::text)\", \"Rows Removed by Index Recheck\": 0, \"Filter\": \"(valid_period @> clock_timestamp())\", \"Rows Removed by Filter\": 0, \"Shared Hit Blocks\": 3, \"Shared Read Blocks\": 0, \"Shared Dirtied Blocks\": 0, \"Shared Written Blocks\": 0, \"Local Hit Blocks\": 0, \"Local Read Blocks\": 0, \"Local Dirtied Blocks\": 0, \"Local Written Blocks\": 0, \"Temp Read Blocks\": 0, \"Temp Writte"
+    },
+    "valid_overlap": {
+      "node_type": "Index Scan",
+      "index_name": "fact_valid_spgist",
+      "actual_ms": 0.007,
+      "shared_hits": 2,
+      "plan_snippet": "{\"Node Type\": \"Index Scan\", \"Parallel Aware\": false, \"Async Capable\": false, \"Scan Direction\": \"Forward\", \"Index Name\": \"fact_valid_spgist\", \"Relation Name\": \"memory_fact_version\", \"Alias\": \"memory_fact_version\", \"Startup Cost\": 0.14, \"Total Cost\": 8.16, \"Plan Rows\": 1, \"Plan Width\": 16, \"Actual Startup Time\": 0.006, \"Actual Total Time\": 0.007, \"Actual Rows\": 4, \"Actual Loops\": 1, \"Index Cond\": \"(valid_period && '[\\\"2026-01-01 00:00:00+00\\\",\\\"2026-12-01 00:00:00+00\\\")'::tstzrange)\", \"Rows Removed by Index Recheck\": 0, \"Filter\": \"(tenant_id = 'tradeai:tenant:primary'::text)\", \"Rows Removed by Filter\": 1, \"Shared Hit Blocks\": 2, \"Shared Read Blocks\": 0, \"Shared Dirtied Blocks\": 0, \"Shared Written Blocks\": 0, \"Local Hit Blocks\": 0, \"Local Read Blocks\": 0, \"Local Dirtied Blocks\": 0, \"Local Wri"
+    },
+    "tx_contains": {
+      "node_type": "Index Scan",
+      "index_name": "fact_tx_gist",
+      "actual_ms": 0.003,
+      "shared_hits": 1,
+      "plan_snippet": "{\"Node Type\": \"Index Scan\", \"Parallel Aware\": false, \"Async Capable\": false, \"Scan Direction\": \"Forward\", \"Index Name\": \"fact_tx_gist\", \"Relation Name\": \"memory_fact_version\", \"Alias\": \"memory_fact_version\", \"Startup Cost\": 0.14, \"Total Cost\": 8.16, \"Plan Rows\": 1, \"Plan Width\": 16, \"Actual Startup Time\": 0.003, \"Actual Total Time\": 0.003, \"Actual Rows\": 0, \"Actual Loops\": 1, \"Index Cond\": \"(tx_period @> '2026-06-01 00:00:00+00'::timestamp with time zone)\", \"Rows Removed by Index Recheck\": 0, \"Filter\": \"(tenant_id = 'tradeai:tenant:primary'::text)\", \"Rows Removed by Filter\": 0, \"Shared Hit Blocks\": 1, \"Shared Read Blocks\": 0, \"Shared Dirtied Blocks\": 0, \"Shared Written Blocks\": 0, \"Local Hit Blocks\": 0, \"Local Read Blocks\": 0, \"Local Dirtied Blocks\": 0, \"Local Written Blocks\": 0, \"Temp Rea"
+    },
+    "gist_valid": true,
+    "gist_tx": true,
+    "spgist_valid": true,
+    "btree_metadata": true,
+    "claim_temporal_before_vector": "NOT_CLAIMED_WITHOUT_PLAN"
+  },
+  "scale_1k": {
+    "n": 1000,
+    "write_s": 5.614,
+    "write_p50_est_ms": 5.614,
+    "read_ms": 5.4,
+    "current_rows": 1000
+  },
+  "scale_10k": "MEASURED_IN_PYTEST_~10k_in_62s_wall",
+  "scale_100k": "NOT_RUN",
+  "scale_1M": "NOT_RUN",
   "retrieval": {
-    "n": 64,
-    "exact_top1_doc": 22,
-    "exact_ms": 401.76,
     "HNSW": "INDEX_CREATED",
     "IVFFLAT": "INDEX_CREATED",
-    "overfetch": "NOT_HARDCODED",
-    "threshold_0_75": "NOT_HARDCODED",
-    "titan": "DISABLED",
-    "local_nomic": "BUSY_OR_UNMEASURED"
+    "exact_vector": "synthetic-local",
+    "overfetch_10x": false,
+    "threshold_0_75": false,
+    "titan": "DISABLED"
   },
-  "explain_plans": "CAPTURED",
+  "lanes": {
+    "A": "MEASURED",
+    "B": {
+      "HNSW": "INDEX_CREATED",
+      "IVFFLAT": "INDEX_CREATED",
+      "exact_vector": "synthetic-local",
+      "overfetch_10x": false,
+      "threshold_0_75": false,
+      "titan": "DISABLED"
+    },
+    "C": {
+      "target_stable": "0.20.0",
+      "source": "https://github.com/pgmnemo/pgmnemo/releases/tag/v0.20.0",
+      "installed": false,
+      "version": null,
+      "error": "FeatureNotSupported:extension \"pgmnemo\" is not available\nDETAIL:  Could not open extension control file \"/usr/share/postgresql/16/extension/pgmnemo.control\": No such file or directory.\nHINT:  The extension must first be installed on the system where PostgreSQL is running.\n",
+      "operational_complexity": "HIGH"
+    }
+  },
   "storage_decision": "POSTGRES_PGVECTOR",
   "neo4j_decision": "POSTGRES_SUFFICIENT",
-  "titan": "DISABLED_BY_DEFAULT",
-  "hnsw_mandate": false,
-  "cosine_self_ratify": false,
-  "serializable_everywhere": false,
-  "overfetch_10x": false,
-  "threshold_0_75": false,
-  "elapsed_ms": 446.5,
-  "as_of": "2026-08-24T19:43:09+00:00",
-  "financial_action": false
+  "pgmnemo_target": "0.20.0"
 }

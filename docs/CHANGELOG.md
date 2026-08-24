@@ -4,6 +4,8 @@
 
 MATURITY_IMPACT: NONE live. Isolated Docker `:55432` only. Production SQL not applied.
 
+v2: `tstzrange`, DB-owned transaction time, exclusion limited to SINGLE_VALUED_CURRENT, FORCE RLS + `m2_agent`, normalized provenance/adjudication. Google Notes reconciliation documented.
+
 - Lanes A (native bitemporal) and B (pgvector 0.8.6) MEASURED. Lane C pgmnemo v0.20.0 UNMEASURED_INSTALL.
 - Tenant leakage 0 with FORCE RLS + composite FK. Exclusive CURRENT + AdjudicationReceipt@v1.
 - Storage decision: **POSTGRES_PGVECTOR**. Neo4j: POSTGRES_SUFFICIENT.
