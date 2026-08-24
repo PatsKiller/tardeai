@@ -14,7 +14,7 @@ from typing import Any
 
 AUTHORITY = "READ_ONLY_ADVISORY"
 SCHEMA = "HybridEvidenceRefreshRequest@v1"
-HERMES_TTL_DAYS = 7
+HERMES_TTL_DAYS = 7  # SUPERSEDED as default-for-all; see EvidenceFreshnessPolicy@v1. Kept as news/promoted default.
 
 
 def _utc(value: Any) -> datetime | None:

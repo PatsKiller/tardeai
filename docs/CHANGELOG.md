@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-08-23 — R9.3 free-first + identity v2 (source, not live)
+
+MATURITY_IMPACT: NONE live. Official score stays 59/100. FREE_FIRST_ONLY: 105/120 no_new_info from graph cards, 15 Flash-eligible, **0 paid calls**. ticker artifacts still **0**.
+
+- Ticker GUID remains symbol alias (#488). Issuer/security/listing GUIDs additive.
+- Evidence-class freshness vs 365d retention. LibrarianAssessment@v1.
+- Canonical: `docs/architecture/HERMES_PERSISTENT_TICKER_INTELLIGENCE_ARCHITECTURE_2026-08-23.md`. Closeout: `docs/ops/HERMES_FREE_FIRST_MEMORY_GRAPH_CONVERGENCE_2026-08-23.md`.
+- Do not merge/promote without operator grant.
+
 ## 2026-08-23 — CIO/Advisory UI audit (every tab) + thesis-honesty code
 
 MATURITY_IMPACT: `Command Center universe-theses shows coverage+substantive+THIN, proven by GET /api/v3/cio/universe-theses metrics.substantive_pct and thesis_state=THIN`. CURRENT pin `5e91225a` **not promoted** (scripts/+docs/ must match SOURCE_COMMIT). Live `:7777` remains the audited pin.
