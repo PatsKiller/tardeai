@@ -4,7 +4,7 @@
 **Authority:** `READ_ONLY_ADVISORY`  
 **MEMORY_BEHAVIOR_INFLUENCE:** 0  
 **Paid calls this program:** 0  
-**Status:** `IMPLEMENTED_NOT_LIVE` — P0 circulation added on this branch; **not merged, CURRENT still 0 artifacts**.
+**Status:** `LIVE_FUNCTIONAL_NATURAL_PENDING` — #489 merged and promoted to CURRENT. Persistent artifacts and FREE_FIRST_ONLY proven on CURRENT. Natural free-first/Librarian timer not yet observed.
 
 Official live maturity stays **59/100**.
 
@@ -42,7 +42,7 @@ Full 120 FREE_FIRST_ONLY:
 | RAG retrieval attempts | **120** (sql_title fallback; embed path returned 0) |
 | librarian assessments | **1052** |
 
-CURRENT pin graph is **unchanged** (still 0 artifacts) until merge+promote.
+CURRENT pin graph was **unchanged** (0 artifacts) until merge+promote. See POST_MERGE_CURRENT_PROOF below.
 
 Replay: second identical canary created 0 new artifacts, 0 provider calls, 0 thesis versions.
 
@@ -56,7 +56,7 @@ Replay: second identical canary created 0 new artifacts, 0 provider calls, 0 the
 | pin_match | true |
 | process | portfolio_server PID started 2026-08-23 18:59 ET |
 | this branch | `feat/r93-hermes-persistent-intel` |
-| merge/promote | **not done** (no operator grant) |
+| merge/promote (at writing of this table) | later completed — see POST_MERGE_CURRENT_PROOF |
 
 ## Host claims verified
 
@@ -100,20 +100,80 @@ ARKX/DIVI/XAR are held names whose graph cards lack company/sector — enrichmen
 - FREE_FIRST_ONLY classifier; paid transition from PLANNED raises
 - Architecture + drift banners on superseded routing docs
 
-## What is not proven live
+## What is not proven live *(historical, pre-merge)*
 
-- Hermes → artifact → graph (artifacts still 0)
-- SearXNG job-level hard gate
-- Embedding 503 decoupling
-- Duplicate OAuth producer retirement
-- CIO consuming TickerResearchState
-- Natural NO_NEW_INFO replay with Hermes evidence loaded
+See POST_MERGE_CURRENT_PROOF for the CURRENT update. Still outstanding after merge:
+
+- Natural scheduled FREE_FIRST_ONLY / Librarian cycle (`NATURAL_PROOF_PENDING`)
+- Duplicate OAuth producer retirement (PR D)
+- CIO consuming TickerResearchState (PR E)
 - Postgres knowledge_* tables
+- Embedding 503 in a live Ollama outage (implemented + unit-tested; this CURRENT pass used `embed_deferred`)
+- Evidence-class TTL completeness (Librarian marks most projected Hermes rows `STALE` under the default `news_catalyst` 36h window — PR C)
 
 ## Runtime still split
 
 Hermes CIO worker WorkingDirectory=CURRENT. Crontab `$PROJ` is still rebuild. Overnight 22:35 ET 2026-08-22 fired `SKIPPED_LLM_UNHEALTHY: model_missing` every hour.
 
-## Maturity (no live credit for source-only)
+## POST_MERGE_CURRENT_PROOF (2026-08-23 21:09–21:16 ET)
 
-identity L4→**L5 source** (not L6 live). free-first **L4 source**. Librarian epistemic **L3**. artifacts **L2**. overall **59/100 unchanged**.
+| | |
+|---|---|
+| merge_sha / main_after | `0b63d209d88f9bdfd4afd96c4fa7a4e9c6b230bf` |
+| PR489_head | `318240d61d94c08127d2b5a61e5a6f28ac090169` |
+| deployed release | `0b63d209-main-exact-phase2-20260823-210821` |
+| CURRENT_before | `0b7bc9eb-main-exact-phase2-20260823-185856` |
+| pin_match | true |
+| rollback | pre-#489 release above |
+| health / cio / advisory | 200 / 200 / 200 |
+| artifacts_before → Hermes projection | 0 → **1137** (1026 rows, 117 symbols) |
+| projection replay | **+0** artifacts, **+0** GUID forks, 120 profiles unchanged |
+| FREE_FIRST_ONLY | Hermes **117**, RAG **2** (PRSO, VIVS), structured **1** (SOPAQ), SearXNG **0**, FRESH_NO_CHANGE **120**, Flash **0** |
+| RAG | attempts **120**, items **471** (all SUPPORTING stored polarity), sufficient-alone **2** |
+| Librarian | **1608** assessments: CURRENT 75, AGING 142, STALE 1391, duplicate 0 |
+| NOC replay | `NO_NEW_INFO`, new artifacts 0, state_wrote false, paid 0 |
+| memory | 327 unchanged (CANDIDATE 323 / ACTIVE 2 / EXPIRED 1 / RETRACTED 1) |
+| paid_dispatch / COST_CAP / spend_delta this pass | **0 / 0 / 0** |
+| natural | `NATURAL_PROOF_PENDING`. Pre-existing `tradeai-hermes-cio-worker` 21:17 ET on the new pin claimed 1 live-bridge job and received HTTP 429 `COST_CAP_EXCEEDED` — old drain, not FREE_FIRST_ONLY. |
+
+Do not treat PRE-P0 105/15 as current truth.
+
+## NATURAL_PROOF_PENDING_REASON (2026-08-23 21:30 ET)
+
+Re-measured CURRENT before any further work: **120 profiles, 1608 artifacts, 120 TickerResearchState=NO_NEW_INFO, memory 327**. Persistence did not regress.
+
+Natural proof **cannot pass** under this prompt because the production scheduler for `FREE_FIRST_ONLY` **does not exist**.
+
+- `scripts/free_first_refresh.py --circulate` is CLI-only. No crontab line. No systemd timer. No `hermes_coordinator` call.
+- Editing a timer or kicking the CLI would violate “do not create a fake natural run.”
+- `tradeai-hermes-cio-worker` (CURRENT, every 15m, `--backend live`) is the old paid drain. Treating its COST_CAP 429 as the free-first cycle would be `HOLD_PAID_BOUNDARY_LEAK`.
+- `hermes-librarian-backlog-loop` next 03:45 ET runs in **rebuild** (`WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild`), not `0b63d209`. Recent ticks: `NO FINDINGS: 0 findings`.
+- Crontab `$PROJ` is still rebuild.
+
+PR C is not opened. Official maturity remains **59/100**. `R93_FREE_FIRST_NATURAL_PROVEN=false`.
+
+Operator next (not done here): after an explicit grant, add a CURRENT-pin systemd timer that runs `free_first_refresh.py --circulate` with FREE_FIRST_ONLY / zero paid, then observe **that** timer. Do not use Family A live drain or Family B OAuth crons as the proof vehicle.
+
+## FIRST-NATURAL-TICK (2026-08-23 22:24–22:27 ET) — supersedes NATURAL_PROOF_PENDING
+
+`R93_FREE_FIRST_NATURAL_PROVEN=true`
+
+| | |
+|---|---|
+| timer | `tradeai-free-first-circulation.timer` |
+| service | `tradeai-free-first-circulation.service` |
+| trigger | systemd LastTrigger **22:24:15 ET** (not `systemctl start`, not CLI) |
+| finished | **22:27:05 ET** Result=`success` exit 0 |
+| run_id | `433f8a56-3964-4812-80b0-b1d506ea96d2` |
+| CURRENT / source_sha | `3dd6f8d5bc1d0403a55487cf51f5ec2a58b7853b` (PR #491 merge) |
+| WorkingDirectory | CURRENT exact-main pin |
+| Hermes / RAG / structured / SearXNG | **117 / 2 / 1 / 0** |
+| FRESH_NO_CHANGE | **120** |
+| paid / Flash / COST_CAP this run | **0 / 0 / 0** |
+| next timer | 23:23 ET |
+
+NATURAL_PROOF_PENDING_REASON above is **historical**. The scheduler now exists and has fired once.
+
+## Maturity
+
+Official live score after first natural tick: **62/100** (+3 autonomy for systemd-triggered FREE_FIRST_ONLY on CURRENT, $0). PR C source-only work does not add live points until merged/deployed/observed.
