@@ -83,6 +83,7 @@ Expiration marks CURRENT|AGING|STALE|SUPERSEDED|RETRACTED. It does not delete hi
 | EvidenceArtifact | what sources said |
 | HermesCurationSummary | last material review (not an article dump) |
 | TickerResearchState | what we currently know |
+| HermesCurationSummary | last material review; version only on watermark/material change |
 | SymbolThesis | investment belief |
 | RESEARCH_REFERENCE memory | GUIDs + purpose, not prose |
 | OperatorInvestmentPolicy | explicit mandate |

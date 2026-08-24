@@ -57,7 +57,7 @@ def embed_artifact(
     guid = str(artifact.get("research_artifact_guid") or artifact.get("artifact_id") or "")
     text = " ".join(str(artifact.get(k) or "") for k in ("title", "summary", "symbol"))[:2000]
     if embed_fn is None:
-        return {"status": ACQUIRED, "artifact_guid": guid, "note": "embed_deferred"}
+        return {"status": ACQUIRED, "artifact_guid": guid, "note": "embed_deferred", "rag_semantic": "RAG_SEMANTIC_PENDING"}
     try:
         embed_fn(text)
         return {"status": EMBEDDED, "artifact_guid": guid}
