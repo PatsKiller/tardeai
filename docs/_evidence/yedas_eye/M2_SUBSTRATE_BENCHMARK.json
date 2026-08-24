@@ -1,0 +1,77 @@
+{
+  "schema": "M2SubstrateBenchmark@v1",
+  "authority": "READ_ONLY_ADVISORY",
+  "memory_behavior_influence": 0,
+  "production_sql_applied": false,
+  "isolated_dsn_port": 55432,
+  "lanes": {
+    "A_native_postgres": {
+      "status": "MEASURED",
+      "schema": "memory_r10_m2"
+    },
+    "B_pgvector": {
+      "status": "MEASURED",
+      "vector_ext": "0.8.6",
+      "HNSW": "INDEX_CREATED",
+      "IVFFLAT": "INDEX_CREATED"
+    },
+    "C_pgmnemo": {
+      "status": "UNMEASURED_INSTALL",
+      "target_stable": "0.20.0",
+      "source": "https://github.com/pgmnemo/pgmnemo/releases/tag/v0.20.0",
+      "installed": false,
+      "version": null,
+      "error": "FeatureNotSupported:extension \"pgmnemo\" is not available\nDETAIL:  Could not open extension control file \"/usr/share/postgresql/16/extension/pgmnemo.control\": No such file or directory.\nHINT:  The extension must first be installed on the system where PostgreSQL is running.\n",
+      "operational_complexity": "HIGH"
+    }
+  },
+  "golden": {
+    "cases": 200,
+    "hits": 200,
+    "Recall@1": 1.0,
+    "Recall@5": 1.0,
+    "Recall@10": 1.0,
+    "MRR": 1.0,
+    "nDCG": 1.0,
+    "note": "in-process oracle; not LongMemEval live retrieval quality"
+  },
+  "tenant": {
+    "leakage_count": 0,
+    "leaks": [],
+    "cross_tenant_read": 0,
+    "missing_tenant_fail_closed": true,
+    "rls_enabled": true,
+    "composite_fk": true,
+    "bypassrls_role": "UNMEASURED",
+    "security_definer": "UNMEASURED",
+    "pool_reuse": "UNMEASURED"
+  },
+  "concurrency": {
+    "open_current": 1,
+    "exclusive_ok": true,
+    "rejected_preserved": true
+  },
+  "retrieval": {
+    "n": 64,
+    "exact_top1_doc": 22,
+    "exact_ms": 401.76,
+    "HNSW": "INDEX_CREATED",
+    "IVFFLAT": "INDEX_CREATED",
+    "overfetch": "NOT_HARDCODED",
+    "threshold_0_75": "NOT_HARDCODED",
+    "titan": "DISABLED",
+    "local_nomic": "BUSY_OR_UNMEASURED"
+  },
+  "explain_plans": "CAPTURED",
+  "storage_decision": "POSTGRES_PGVECTOR",
+  "neo4j_decision": "POSTGRES_SUFFICIENT",
+  "titan": "DISABLED_BY_DEFAULT",
+  "hnsw_mandate": false,
+  "cosine_self_ratify": false,
+  "serializable_everywhere": false,
+  "overfetch_10x": false,
+  "threshold_0_75": false,
+  "elapsed_ms": 446.5,
+  "as_of": "2026-08-24T19:43:09+00:00",
+  "financial_action": false
+}

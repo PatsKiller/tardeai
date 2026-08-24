@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-08-24 — M2 isolated memory substrate benchmark (source)
+
+MATURITY_IMPACT: NONE live. Isolated Docker `:55432` only. Production SQL not applied.
+
+- Lanes A (native bitemporal) and B (pgvector 0.8.6) MEASURED. Lane C pgmnemo v0.20.0 UNMEASURED_INSTALL.
+- Tenant leakage 0 with FORCE RLS + composite FK. Exclusive CURRENT + AdjudicationReceipt@v1.
+- Storage decision: **POSTGRES_PGVECTOR**. Neo4j: POSTGRES_SUFFICIENT.
+- 200 in-process golden cases TESTED (not live retrieval quality). Titan/HNSW/0.75 not mandated.
+
 ## 2026-08-24 — CIO persistent ticker cognition consumption (source)
 
 MATURITY_IMPACT: NONE live until merge + exact-main + natural CIO cycle. Official live remains **68/100**. CURRENT stays `5c0a993a` until an explicit promote.
