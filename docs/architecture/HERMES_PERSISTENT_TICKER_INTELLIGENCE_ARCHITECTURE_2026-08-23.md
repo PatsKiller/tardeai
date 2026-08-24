@@ -108,7 +108,7 @@ CIO/Advisory must consume `TickerResearchState` rather than rebuilding research.
 
 `FRESH_NO_CHANGE` `FREE_REFRESH_PENDING` `EMBED_PENDING` `LLM_ELIGIBLE_NOT_AUTHORIZED` `COST_CAP_BLOCKED` `SOURCE_UNRESOLVED`
 
-Embedding 503 must not drop acquired evidence (`ACQUIRED_EMBED_PENDING`). Not fully wired this PR.
+Embedding 503 must not drop acquired evidence (`ACQUIRED_EMBED_PENDING`). **#489 implements** `scripts/lib/artifact_embed.py`: persist first, 503 → `ACQUIRED_EMBED_PENDING`, retry queue idempotent. Live CURRENT default is `embed_deferred` (no embed_fn / no 503 observed this pass).
 
 ## Cost / authority
 
@@ -118,4 +118,23 @@ No paid call in this program. `MEMORY_BEHAVIOR_INFLUENCE=0`. No broker/order/sto
 
 120 ticker profiles, 0 research artifacts on CURRENT, 17 unresolved identities, memory mostly CANDIDATE research pointers.
 
-P0 circulation on PR #489 worktree (not CURRENT): **1137 artifacts** projected from existing Hermes; 117/120 Hermes_resolved; 0 paid dispatch. Official maturity remains **59/100** until merge + exact-main + natural cycle.
+P0 circulation on PR #489 worktree (not CURRENT): **1137 artifacts** projected from existing Hermes; 117/120 Hermes_resolved; 0 paid dispatch.
+
+## POST_MERGE_CURRENT_PROOF (2026-08-23 21:16 ET)
+
+| | |
+|---|---|
+| PR | #489 merged |
+| PR head | `318240d61d94c08127d2b5a61e5a6f28ac090169` |
+| merge / new main | `0b63d209d88f9bdfd4afd96c4fa7a4e9c6b230bf` |
+| release | `0b63d209-main-exact-phase2-20260823-210821` |
+| rollback | `0b7bc9eb-main-exact-phase2-20260823-185856` |
+| CURRENT SOURCE_COMMIT | `0b63d209…` pin_match true |
+| artifacts on CURRENT after Hermes projection | **1137** (was 0); replay **+0** |
+| after FREE_FIRST_ONLY + RAG persist | **1608** (1137 Hermes + 471 RAG `content_embeddings`) |
+| Hermes_resolved / RAG_resolved / structured | **117 / 2 (PRSO, VIVS) / 1 (SOPAQ)** |
+| SearXNG | **0** (no residual) |
+| FRESH_NO_CHANGE | **120** |
+| Flash / paid_dispatch / COST_CAP this pass | **0 / 0 / 0** |
+| natural free-first/Librarian timer | **NATURAL_PROOF_PENDING** (librarian next ~03:45 ET). Pre-existing `tradeai-hermes-cio-worker` ticked on the new pin and hit live-bridge `COST_CAP_EXCEEDED` — that is the old drain, not FREE_FIRST_ONLY. |
+| official maturity | **59/100** until a natural free-first/Librarian cycle is observed |
