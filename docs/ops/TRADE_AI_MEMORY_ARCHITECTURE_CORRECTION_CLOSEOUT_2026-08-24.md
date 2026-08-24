@@ -10,7 +10,7 @@
 |---|---|
 | protected_main | `631800ad` (#493) |
 | application CURRENT | `bc6ff5c6` pin_match true |
-| PR #494 | OPEN MERGE_CANDIDATE `a14bebad` CI 4/4 green — **not merged** (no operator merge grant) |
+| PR #494 | MERGED exact head `a14bebad` → `e390c574` — **not deployed**; CURRENT still `bc6ff5c6` |
 | free-first | LastTrigger 09:23:16 ET run_id `b9b00556` 117/2/1/0/120/0 paid 0 |
 
 ## Defects

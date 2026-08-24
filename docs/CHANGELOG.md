@@ -2,7 +2,7 @@
 
 ## 2026-08-24 — R10 memory architecture: six spec-defect corrections (source)
 
-MATURITY_IMPACT: NONE live. Official live score stays **65/100**. Does not merge or rewrite PR #494 (M1 MERGE_CANDIDATE).
+MATURITY_IMPACT: NONE live until this PR is merged + one exact-main CURRENT with #494. Official live score stays **65/100**. Reconciled onto post-#494 main `e390c574`. Preserves BASELINE_PROJECTION.
 
 - LOCAL_ONLY embedding policy; Amazon Titan/cloud embeddings DISABLED_BY_DEFAULT; generative models forbidden on the memory path.
 - Neo4j not installed. Postgres SHADOW DDL only. `NEO4J_SHADOW_POC_DECISION=INSUFFICIENT_DATA`.
@@ -13,6 +13,17 @@ MATURITY_IMPACT: NONE live. Official live score stays **65/100**. Does not merge
 - MemoryFact@v2 bitemporal closed-open queries (in-memory SHADOW).
 
 Canonical: `docs/architecture/TRADE_AI_BITEMPORAL_MEMORY_DATA_MODEL_2026-08-24.md`. Closeout: `docs/ops/TRADE_AI_MEMORY_ARCHITECTURE_CORRECTION_CLOSEOUT_2026-08-24.md`.
+
+## 2026-08-24 — R10 M1 baseline curation snapshot (source)
+
+MATURITY_IMPACT: NONE live until merge + exact-main CURRENT + `--project-baseline` replay + natural tick. Official live score stays **65/100**. Merged as PR #494 → `e390c574`. Application CURRENT remains `bc6ff5c6` until the combined exact-main promote.
+
+- `HermesCurationSummary.kind=BASELINE_PROJECTION` version 0: first durable cognitive state. Not a material version.
+- Subsequent `NO_NEW_INFO` still writes 0 versions.
+- `TradeAIMemoryTaxonomy@v2` seven planes. AIF research rows classify as `RESEARCH_POINTER`.
+- CLI: `scripts/free_first_refresh.py --project-baseline` (no research, no paid). Receipt `data/cio/baseline_curation_last_run.json` (does not clobber timer receipt).
+- Canonical: `docs/architecture/TRADE_AI_INSTITUTIONAL_MEMORY_AND_AUTONOMOUS_AGENT_ARCHITECTURE_2026-08-24.md`.
+- PR D/E, Postgres, pgvector, Mem0, Redis, paid Flash: not in this PR.
 
 ## 2026-08-24 — R9.3 post-#492 natural tick (WHAT_CHANGED)
 

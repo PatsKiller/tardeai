@@ -1,0 +1,36 @@
+{
+  "schema": "ProviderConvergenceInventory@v1",
+  "as_of": "2026-08-24T13:40:00+00:00",
+  "authority": "READ_ONLY_ADVISORY",
+  "paid_dispatch_authorized": false,
+  "retired": [],
+  "canonical_research_path": {
+    "name": "tradeai-free-first-circulation.timer",
+    "wd": "CURRENT",
+    "pin": "bc6ff5c62ef1e1265195301a9659c26508ba26ed",
+    "exec": "free_first_refresh.py --circulate --json --max-searx 1",
+    "safe_to_retire": false
+  },
+  "backend_live_runtime_callers": ["tradeai-hermes-cio-worker.service"],
+  "producers": [
+    {"name": "free-first circulation", "overlap": "canonical", "safe_to_retire": "no", "wd": "CURRENT"},
+    {"name": "hermes-cio-worker --backend live", "overlap": "yes-product CIO queue", "safe_to_retire": "no", "wd": "CURRENT", "note": "COST_CAP_EXCEEDED; different queue"},
+    {"name": "hermes_coordinator ticker_challenger cron", "overlap": "yes", "safe_to_retire": "no", "wd": "$PROJ", "note": "also embed/promote"},
+    {"name": "hermes-autonomous-loop.timer", "overlap": "yes", "safe_to_retire": "unknown", "wd": "CURRENT drop-in", "note": "timer not enabled"},
+    {"name": "hermes-librarian-backlog-loop", "overlap": "unknown", "safe_to_retire": "no", "wd": "$PROJ"},
+    {"name": "hermes-deep-research-local chatgpt", "overlap": "yes", "safe_to_retire": "unknown", "wd": "CURRENT drop-in"},
+    {"name": "hermes_top20_external_intel grok+chatgpt", "overlap": "yes", "safe_to_retire": "unknown", "wd": "$PROJ"},
+    {"name": "hermes_subject_enhance grok+chatgpt fleet", "overlap": "yes", "safe_to_retire": "unknown", "wd": "$PROJ"},
+    {"name": "research_scheduler", "overlap": "yes", "safe_to_retire": "no", "wd": "$PROJ", "note": "holdings SLA"},
+    {"name": "claude_challenger_curator", "overlap": "yes", "safe_to_retire": "unknown", "wd": "$PROJ"},
+    {"name": "momentum catalyst", "overlap": "partial", "safe_to_retire": "no", "wd": "$PROJ"},
+    {"name": "cio-governed-bridge :8766", "overlap": "infra-paid", "safe_to_retire": "no", "wd": "CURRENT"},
+    {"name": "grok-oauth-proxy :8645", "overlap": "infra", "safe_to_retire": "no", "wd": "$PROJ"},
+    {"name": "chatgpt-oauth-proxy :8646", "overlap": "infra", "safe_to_retire": "no", "wd": "$PROJ"}
+  ],
+  "duplicate_semantic_paths_after": "unchanged — inventory only, nothing disabled",
+  "Flash_policy": "ELIGIBLE_STOP_BEFORE_DISPATCH",
+  "OAuth_policy": "ELIGIBLE_STOP_BEFORE_DISPATCH",
+  "Pro_policy": "ELIGIBLE_STOP_BEFORE_DISPATCH",
+  "actual_paid_calls_this_program": 0
+}

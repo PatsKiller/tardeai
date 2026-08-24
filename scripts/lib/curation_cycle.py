@@ -32,7 +32,10 @@ def curate_security(root: Path | str, profile: dict[str, Any], circulate_row: di
     watermark = str(sorted(a.get("research_artifact_guid") for a in arts))
     prev = load_latest(root, security_guid=profile.get("security_guid"), symbol=sym)
     material = circulate_row.get("decision") not in ("NO_NEW_INFO",) or bool(circulate_row.get("searx_accepted"))
-    if prev and prev.get("evidence_watermark") == watermark:
+    if prev is None:
+        material = False
+        what = "BASELINE_PROJECTION"
+    elif prev.get("evidence_watermark") == watermark:
         material = False
         what = "NO_NEW_INFO"
     else:
