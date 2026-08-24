@@ -78,7 +78,15 @@ def test_isolated_docker_benchmark():
     assert report["tenant"]["leakage_count"] == 0
     assert report["exclusion"]["exclusive_ok"] is True
     assert report["titan"] == "DISABLED_BY_DEFAULT"
-    assert report["storage_decision"] in {"POSTGRES_NATIVE", "POSTGRES_PGVECTOR", "NO_CLEAR_WINNER"}
+    assert report["lanes"]["C_pgmnemo"]["status"] in {"MEASURED", "FORMALLY_DISQUALIFIED"}
+    assert report["storage_decision"] in {
+        "POSTGRES_NATIVE", "POSTGRES_PGVECTOR", "POSTGRES_PGMNEMO",
+        "PROVISIONAL_POSTGRES_PGVECTOR", "NO_CLEAR_WINNER",
+    }
+    if report["lanes"]["C_pgmnemo"]["status"] in {"MEASURED", "FORMALLY_DISQUALIFIED"}:
+        assert report["storage_decision"] != "PROVISIONAL_POSTGRES_PGVECTOR"
+        assert report.get("provisional") is False
     assert report["neo4j_decision"] in {"POSTGRES_SUFFICIENT", "INSUFFICIENT_DATA"}
     assert report["financial_action"] is False
+    assert report["tx_time_semantics"]["selected"].startswith("statement_timestamp")
     assert PGMNEMO_TARGET == "0.20.0"

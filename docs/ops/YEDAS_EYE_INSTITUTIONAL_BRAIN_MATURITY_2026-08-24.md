@@ -54,7 +54,7 @@ Do **not** apply `sql/r10_memory_shadow.sql` to production. Dual authoritative m
 |---|---|---|
 | A | native tstzrange bitemporal + DB-owned tx_time | MEASURED |
 | B | native + pgvector 0.8.6 | MEASURED |
-| C | pgmnemo current stable **v0.20.0** | UNMEASURED_INSTALL |
+| C | pgmnemo current stable **v0.20.0** | MEASURED (lesson corpus; not MemoryFact@v2) |
 
 Evaluate all three on: bitemporal correctness, point-in-time queries, RLS, concurrency, retrieval quality, HNSW, IVFFlat, exact retrieval, hybrid retrieval, backup/restore, operational complexity.
 

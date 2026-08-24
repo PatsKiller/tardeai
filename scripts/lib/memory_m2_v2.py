@@ -394,6 +394,80 @@ def retrieval_indexes(conn) -> dict[str, Any]:
     }
 
 
+def measure_pgmnemo(conn) -> dict[str, Any]:
+    """Lane C: measure current-stable pgmnemo if present; never fake scores."""
+    out = {
+        "target_stable": "0.20.0",
+        "source": "https://github.com/pgmnemo/pgmnemo/releases/tag/v0.20.0",
+        "official_ci": "PostgreSQL 17 blocking; 14-16 aspirational",
+        "isolated_pg": "16.15",
+        "installed": False,
+        "status": "FORMALLY_DISQUALIFIED",
+        "reason": None,
+        "ingest_recall": None,
+        "embedding_dim": None,
+        "implements_memory_fact_v2": False,
+        "security_guid_spine": False,
+        "composite_tenant_fk": False,
+        "tstzrange": False,
+    }
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT extversion FROM pg_extension WHERE extname='pgmnemo'")
+            row = cur.fetchone()
+            if not row:
+                out["reason"] = "extension_not_installed"
+                return out
+            out["installed"] = True
+            out["version"] = row[0]
+            cur.execute(
+                """
+                SELECT format_type(atttypid, atttypmod)
+                  FROM pg_attribute
+                 WHERE attrelid='pgmnemo.agent_lesson'::regclass AND attname='embedding'
+                """
+            )
+            dim = cur.fetchone()
+            out["embedding_dim"] = dim[0] if dim else None
+            cur.execute(
+                """
+                SELECT pgmnemo.ingest(
+                  'cio'::text, 1, 'SCHD'::text,
+                  'SCHD baseline v0 is legitimate prior cognition for the portfolio'::text,
+                  3::smallint, NULL::vector,
+                  'bench'::text, 'artifact-schd'::text, '{}'::jsonb, 'fact'::text
+                )
+                """
+            )
+            lid = cur.fetchone()[0]
+            cur.execute(
+                """
+                SELECT count(*) FROM pgmnemo.recall_lessons(
+                  query_embedding := NULL::vector, k := 3,
+                  role_filter := 'cio', query_text := 'SCHD baseline cognition'
+                )
+                """
+            )
+            nrec = cur.fetchone()[0]
+            out["ingest_recall"] = {"lesson_id": lid, "recall_rows": int(nrec)}
+            out["status"] = "MEASURED"
+            out["reason"] = (
+                "Installs and BM25-recalls as a lesson corpus. Not Trade AI MemoryFact@v2: "
+                "vector(1024) vs LOCAL_ONLY nomic 768; project_id int / topic text vs "
+                "issuer/security/listing GUIDs; t_valid_from/to vs tstzrange; no composite tenant FK."
+            )
+            out["viable_as_canonical_fact_store"] = False
+    except Exception as exc:
+        out["status"] = "FORMALLY_DISQUALIFIED"
+        out["reason"] = f"{type(exc).__name__}:{exc}"[:400]
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        conn.autocommit = True
+    return out
+
+
 def run_benchmark_v2() -> dict[str, Any]:
     golden = golden_200_in_memory()
     out: dict[str, Any] = {
@@ -434,15 +508,27 @@ def run_benchmark_v2() -> dict[str, Any]:
             "status": "MEASURED" if "INDEX_CREATED" in str(retr.get("HNSW")) else "PARTIAL",
             **retr,
         }
-        pgm = probe_pgmnemo(conn)
-        out["lanes"]["C_pgmnemo"] = {"status": "MEASURED" if pgm.get("installed") else "UNMEASURED_INSTALL", **pgm}
+        pgm = measure_pgmnemo(conn)
+        out["lanes"]["C_pgmnemo"] = pgm
+        out["tx_time_semantics"] = {
+            "selected": "statement_timestamp()+version_seq",
+            "rejected": ["caller_tx_from", "transaction_timestamp_for_multi_write_tx", "clock_timestamp_as_sole_order"],
+            "reason": "one client statement = one version event; version_seq is collision-safe",
+        }
         conn.close()
         leak = (out.get("tenant") or {}).get("leakage_count")
-        if leak == 0 and out["lanes"]["A_native_postgres"]["status"] == "MEASURED":
+        cstat = (pgm or {}).get("status")
+        if leak == 0 and out["lanes"]["A_native_postgres"]["status"] == "MEASURED" and cstat in {"MEASURED", "FORMALLY_DISQUALIFIED"}:
             out["storage_decision"] = "POSTGRES_PGVECTOR"
+            out["provisional"] = False
+            out["neo4j_decision"] = "POSTGRES_SUFFICIENT"
+        elif leak == 0 and out["lanes"]["A_native_postgres"]["status"] == "MEASURED":
+            out["storage_decision"] = "PROVISIONAL_POSTGRES_PGVECTOR"
+            out["provisional"] = True
             out["neo4j_decision"] = "POSTGRES_SUFFICIENT"
         else:
             out["storage_decision"] = "NO_CLEAR_WINNER"
+            out["provisional"] = True
             out["neo4j_decision"] = "INSUFFICIENT_DATA"
     except Exception as exc:
         out["error"] = f"{type(exc).__name__}:{exc}"[:400]

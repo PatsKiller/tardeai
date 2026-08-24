@@ -1,11 +1,11 @@
 # CIO persistent cognition consumption
 
 **Date:** 2026-08-24  
-**Status:** SOURCE + TESTED. Not MERGED as live. Not NATURALLY_PROVEN.  
+**Status:** MERGED (#497) + DEPLOYED (`0a0e19bf`). Hermes free-first NATURALLY_PROVEN on that SHA. CIO pack-in-trace **not** yet.  
 **Authority:** `READ_ONLY_ADVISORY`  
 **MEMORY_BEHAVIOR_INFLUENCE:** 0  
 
-M1 is LIVE on CURRENT `5c0a993a` (natural timer 11:23:44–11:27:13 ET, run_id `5e9028fb`). This PR makes CIO / Advisory / Telegram **read** that brain.
+M1 natural (11:23 ET, `5e9028fb`) remains historical. Consumer #497 merged 19:37Z; CURRENT `0a0e19bf`. Natural free-first 19:23:55–19:27:23 ET run_id `b1623bcb` SOURCE `0a0e19bf`, 120 FRESH_NO_CHANGE, 0 paid.
 
 ## What
 

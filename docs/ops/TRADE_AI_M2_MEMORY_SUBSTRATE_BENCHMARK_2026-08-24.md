@@ -15,7 +15,7 @@ v2 schema (Google Notes harmonized): built-in `tstzrange` periods, DB-owned `tx_
 |---|---|---|
 | A | native Trade AI Postgres bitemporal (`memory_r10_m2`) | MEASURED |
 | B | native + pgvector 0.8.6 (HNSW + IVFFlat indexes created) | MEASURED |
-| C | pgmnemo **v0.20.0** (current stable, GitHub/PGXN 2026-08-20) | UNMEASURED_INSTALL — extension not on image; operational complexity HIGH |
+| C | pgmnemo **v0.20.0** (current stable) | **MEASURED** isolated: CREATE EXTENSION + ingest/BM25 recall. Not a MemoryFact@v2 store (`vector(1024)`, `project_id` int, `t_valid_from/to`). |
 
 No Neo4j installed. Multi-hop graph requirements were not failed by Postgres; `NEO4J_SHADOW_POC_JUSTIFIED` is **not** met.
 
@@ -37,9 +37,11 @@ In-process oracle `Recall@1 = 1.0` (200/200). This is **not** LongMemEval live r
 
 ## Storage decision
 
-**POSTGRES_PGVECTOR**
+**POSTGRES_PGVECTOR** (non-provisional: Lane C is MEASURED, not UNMEASURED_INSTALL)
 
-Reasons: Lane A bitemporal + tenant invariants hold; Lane B adds optional vectors without Titan/HNSW mandate; Lane C current-stable pgmnemo is not installable without compiling into the image (complexity HIGH, no quality number).
+Reasons: Lane A/B satisfy Trade AI MemoryIdentity/MemoryFactVersion (tstzrange, composite tenant FK, DB-owned `statement_timestamp()+version_seq`, FORCE RLS). Lane C pgmnemo v0.20.0 **is installed and BM25-recalls** on isolated PG16.15, but it is a lesson corpus (`agent_lesson`, `vector(1024)`, integer `project_id`) and does **not** implement the issuer/security/listing GUID spine or SINGLE_VALUED_CURRENT exclusion. Therefore it is not the canonical fact store.
+
+Tx-time contract: `statement_timestamp()` plus `version_seq`. Callers cannot backdate `tx_period`.
 
 `BYPASSRLS` / `SECURITY DEFINER` / pool reuse: **UNMEASURED** (called out, not faked).
 

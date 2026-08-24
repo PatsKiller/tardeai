@@ -31,7 +31,7 @@ Google Notes DDL is **design input only**. Isolated schema: `sql/r10_m2_isolated
 | Titan / 1024-d cloud embed | **REJECTED** | LOCAL_ONLY, model-agnostic `vector(768)` optional |
 | HNSW / 10× overfetch as architecture | **REJECTED** | Indexes created for measurement only |
 | Neo4j required | **REJECTED** unless Postgres fails graph queries | `POSTGRES_SUFFICIENT` this round |
-| pgmnemo as default | **BENCHMARK_REQUIRED** | v0.20.0 current stable; UNMEASURED_INSTALL on image |
+| pgmnemo as default | **MODIFIED** | v0.20.0 **MEASURED** isolated (ingest/BM25). Disqualified as *canonical fact store* (1024-d lessons, no security_guid spine). Winner remains POSTGRES_PGVECTOR. |
 
 ## Isolated measurements (this host)
 

@@ -75,7 +75,8 @@ CREATE TABLE memory_r10_m2.memory_fact_version (
     embedding_dimension int,
     embedding_version text,
     temporal_policy   text NOT NULL DEFAULT 'GAPS_ALLOWED',
-    created_at        timestamptz NOT NULL DEFAULT clock_timestamp(),
+    version_seq       bigserial NOT NULL,
+    created_at        timestamptz NOT NULL DEFAULT statement_timestamp(),
     CHECK (temporal_policy IN (
         'SINGLE_VALUED_CURRENT','MULTI_VALUED','CONTINUITY_REQUIRED','GAPS_ALLOWED','UNKNOWN_EXPLICIT'
     )),
@@ -170,6 +171,11 @@ CREATE TABLE memory_r10_m2.relationship_candidate (
 );
 
 -- Trusted write: callers may supply valid_period, NEVER authoritative tx_from.
+-- tx time contract: statement_timestamp() + version_seq.
+--   transaction_timestamp() collapses every write in one BEGIN/COMMIT to one instant.
+--   clock_timestamp() can jitter/NTP-skew inside a statement.
+--   statement_timestamp() is statement-stable and database-owned.
+--   version_seq is the collision-safe order key.
 CREATE OR REPLACE FUNCTION memory_r10_m2.write_fact_version(
     p_tenant_id text,
     p_identity_guid uuid,
@@ -189,7 +195,7 @@ SECURITY DEFINER
 SET search_path = memory_r10_m2, pg_temp
 AS $$
 DECLARE
-    v_now timestamptz := clock_timestamp();
+    v_now timestamptz := statement_timestamp();
     v_id uuid;
     v_prev uuid;
 BEGIN

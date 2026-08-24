@@ -1,0 +1,41 @@
+{
+  "schema": "NaturalCIOPersistentCognitionAcceptance@v1",
+  "authority": "READ_ONLY_ADVISORY",
+  "as_of": "2026-08-24T23:51:00+00:00",
+  "CURRENT": "0a0e19bf-main-exact-phase2-20260824-153802",
+  "source_sha": "0a0e19bf76e8566e6bf1741f121081d1b4ff3dd4",
+  "pr497_merged_head": "069d11c48b8e29a5a72174c218bf932061e6c7d4",
+  "hermes_free_first": {
+    "scheduler": "tradeai-free-first-circulation.timer",
+    "OnCalendar": "*-*-* *:23:00 America/New_York",
+    "LastTrigger": "2026-08-24 19:23:55 EDT",
+    "finished": "2026-08-24 19:27:23 EDT",
+    "run_id": "b1623bcb-1af1-4523-9458-ecb2838322bd",
+    "source_sha": "0a0e19bf76e8566e6bf1741f121081d1b4ff3dd4",
+    "WorkingDirectory": "CURRENT",
+    "exit": 0,
+    "fresh_no_change": 120,
+    "paid_dispatch_entered": 0,
+    "new_material_curation": 0,
+    "kinds": {"BASELINE_PROJECTION": 120},
+    "versions": {"0": 120},
+    "manual_trigger": false
+  },
+  "alex_material_scan": {
+    "scheduler": "tradeai-agent-runtime@alex.timer",
+    "observed_after_deploy": true,
+    "symbol_example": "SCHD",
+    "notification_sent": false,
+    "financial_action": false,
+    "cognition_pack_in_trace": false,
+    "note": "Natural wakes exist; DecisionPayload has SCHD but does not embed TickerResearchState pack (envelope flag not on that path)."
+  },
+  "same_brain_diagnostic": {
+    "loader": "cio_persistent_cognition.cognition_for_symbol",
+    "consistent": true,
+    "paid_dispatch": 0,
+    "portfolio_call": "NO_PORTFOLIO_CHANGE"
+  },
+  "CIO_PERSISTENT_COGNITION_NATURALLY_PROVEN": false,
+  "HERMES_FREE_FIRST_NATURALLY_PROVEN_ON_497_SHA": true
+}
