@@ -89,3 +89,15 @@ This prompt **does not authorize new paid spend**. Flash/OAuth/Pro may be marked
 ## Target
 
 Memory subsystem L6 LIVE after M1–M5 natural proof, with a path to L7 only after real longitudinal feedback/outcomes. Overall office **78–82** is a **program** target, not an M1 claim.
+
+## Convergence with six spec corrections
+
+This M1 document and the six-spec correction (`TRADE_AI_BITEMPORAL_MEMORY_DATA_MODEL_2026-08-24.md`) are both canonical:
+
+- `BASELINE_PROJECTION` is the M1 current design (version 0, not material).
+- Local-first embeddings; Titan/cloud disabled by default; no generative GPU on the memory path.
+- M2 is Postgres bitemporal SHADOW. Neo4j and HNSW remain `INSUFFICIENT_DATA` until measured.
+- Similarity is a candidate, never a self-ratified edge.
+- Tenant isolation is logical, not hardware.
+- Durable writes store `DecisionRationale`, never private chain-of-thought.
+- Yeda's Eye has not started.

@@ -1,5 +1,5 @@
 # Trade AI v12 — Documentation Index
-**Updated:** 2026-08-24 (R10 M1 baseline curation + institutional memory architecture)
+**Updated:** 2026-08-24 (R10 M1 BASELINE_PROJECTION + six spec-defect corrections converged)
 **Protocol:** All doc changes follow `docs/A1A.md`. Do not add a doc without updating this index.
 **Scope:** Project root = `/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild`
 
@@ -34,8 +34,11 @@
 | `docs/ops/CIO_OPERATOR_DESK_LOOP_P0_2026-08-20.md` | Desk loop P0 meta_system (#418) | Active |
 | `docs/ops/CIO_OPERATOR_FREEFORM_AGENT_2026-08-20.md` | Freeform Flash agent (#419) | Active |
 | `docs/ops/CIO_HELD_THESIS_COVERAGE_2026-08-20.md` | Held-book thesis coverage SLA (#420) | Active |
-| `docs/architecture/TRADE_AI_INSTITUTIONAL_MEMORY_AND_AUTONOMOUS_AGENT_ARCHITECTURE_2026-08-24.md` | **Canonical R10** — taxonomy, baseline vs material curation, PR sequence, constitution | Active |
-| `docs/ops/TRADE_AI_R10_MEMORY_AUTONOMOUS_AGENT_CLOSEOUT_2026-08-24.md` | R10.2 operational closeout (M1 source; CURRENT still `bc6ff5c6`) | Active |
+| `docs/architecture/TRADE_AI_INSTITUTIONAL_MEMORY_AND_AUTONOMOUS_AGENT_ARCHITECTURE_2026-08-24.md` | **Canonical R10** — taxonomy, BASELINE_PROJECTION vs material, PR sequence, constitution | Active |
+| `docs/ops/TRADE_AI_R10_MEMORY_AUTONOMOUS_AGENT_CLOSEOUT_2026-08-24.md` | R10.2 operational closeout (M1 merged #494; CURRENT still `bc6ff5c6` until combined promote) | Active |
+| `docs/architecture/TRADE_AI_BITEMPORAL_MEMORY_DATA_MODEL_2026-08-24.md` | R10 MemoryFact@v2 + six architectural corrections (source/tested, not live) | Active |
+| `docs/architecture/TRADE_AI_MEMORY_RETRIEVAL_AND_INDEX_STRATEGY_2026-08-24.md` | MemoryRetrievalUnit + index strategy; HNSW/Neo4j UNMEASURED | Active |
+| `docs/ops/TRADE_AI_MEMORY_ARCHITECTURE_CORRECTION_CLOSEOUT_2026-08-24.md` | Six-defect closeout; reconciled onto post-#494 main | Active |
 | `docs/architecture/HERMES_PERSISTENT_TICKER_INTELLIGENCE_ARCHITECTURE_2026-08-23.md` | **Canonical** identity v2 (issuer/security/listing), free-first, Librarian critique, LLM escalation | Active |
 | `docs/ops/HERMES_FREE_FIRST_MEMORY_GRAPH_CONVERGENCE_2026-08-23.md` | R9.3 operational closeout — measured 120/0 artifacts, FREE_FIRST_ONLY | Active |
 | `docs/ops/HERMES_FREE_FIRST_NATURAL_SCHEDULER_2026-08-23.md` | CURRENT-pinned FREE_FIRST_ONLY systemd timer (hourly :23 ET, zero paid) | Active |

@@ -1,8 +1,22 @@
 # Changelog
 
+## 2026-08-24 — R10 memory architecture: six spec-defect corrections (source)
+
+MATURITY_IMPACT: NONE live until this PR is merged + one exact-main CURRENT with #494. Official live score stays **65/100**. Reconciled onto post-#494 main `e390c574`. Preserves BASELINE_PROJECTION.
+
+- LOCAL_ONLY embedding policy; Amazon Titan/cloud embeddings DISABLED_BY_DEFAULT; generative models forbidden on the memory path.
+- Neo4j not installed. Postgres SHADOW DDL only. `NEO4J_SHADOW_POC_DECISION=INSUFFICIENT_DATA`.
+- Vector index recommendation INSUFFICIENT_DATA (no HNSW mandate). LongMemEval numbers tagged REFERENCE_TARGET_NOT_MEASURED.
+- SimilarityCandidate cannot self-ratify.
+- Logical tenant isolation (not hardware isolation); unscoped queries fail closed.
+- DecisionRationale@v1; chain-of-thought rejected from durable writes.
+- MemoryFact@v2 bitemporal closed-open queries (in-memory SHADOW).
+
+Canonical: `docs/architecture/TRADE_AI_BITEMPORAL_MEMORY_DATA_MODEL_2026-08-24.md`. Closeout: `docs/ops/TRADE_AI_MEMORY_ARCHITECTURE_CORRECTION_CLOSEOUT_2026-08-24.md`.
+
 ## 2026-08-24 — R10 M1 baseline curation snapshot (source)
 
-MATURITY_IMPACT: NONE live until merge + exact-main CURRENT + `--project-baseline` replay + natural tick. Official live score stays **65/100**. Application CURRENT remains `bc6ff5c6` after docs #493 (`631800ad`).
+MATURITY_IMPACT: NONE live until merge + exact-main CURRENT + `--project-baseline` replay + natural tick. Official live score stays **65/100**. Merged as PR #494 → `e390c574`. Application CURRENT remains `bc6ff5c6` until the combined exact-main promote.
 
 - `HermesCurationSummary.kind=BASELINE_PROJECTION` version 0: first durable cognitive state. Not a material version.
 - Subsequent `NO_NEW_INFO` still writes 0 versions.

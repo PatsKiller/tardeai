@@ -1,0 +1,12 @@
+{
+  "schema": "MemoryVectorIndexBenchmark@v1",
+  "recommendation": "INSUFFICIENT_DATA",
+  "measured": {
+    "EXACT": {"note": "synthetic self-retrieval only; see test harness"},
+    "HNSW": "UNMEASURED",
+    "IVFFLAT": "UNMEASURED",
+    "HYBRID": "UNMEASURED"
+  },
+  "longmemeval_style_numbers": "REFERENCE_TARGET_NOT_MEASURED",
+  "neo4j_shadow_poc_decision": "INSUFFICIENT_DATA"
+}
