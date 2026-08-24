@@ -16,10 +16,8 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import re
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any, Optional
 
 CONTEXT_ENVELOPE_VERSION = "1.0"
@@ -435,11 +433,18 @@ def get_context_for_agent(
 
     episodic_memory = _retrieve_episodic(memory_provider, symbols=symbols, plan_id=plan_id)
     research_merged = dict(research_memory or {})
+    if not symbols:
+        try:
+            from scripts.lib.cio_persistent_cognition import extract_symbols
+
+            symbols = extract_symbols(wake) or None
+        except Exception:
+            symbols = symbols
     if symbols:
         try:
-            from scripts.lib.cio_persistent_cognition import build_cio_cognition
+            from scripts.lib.cio_persistent_cognition import build_cio_cognition, resolve_cognition_root
 
-            root = cognition_root or os.getenv("TRADEAI_CURRENT") or str(Path(__file__).resolve().parents[1])
+            root = resolve_cognition_root(cognition_root)
             pack = build_cio_cognition(
                 root,
                 list(symbols),
@@ -451,6 +456,7 @@ def get_context_for_agent(
                 task="context_envelope",
             )
             research_merged["persistent_ticker_cognition"] = pack
+            research_merged["cio_context_v2"] = pack.get("cio_context_v2")
         except Exception as exc:  # fail-soft: envelope must still validate
             research_merged["persistent_ticker_cognition"] = {
                 "retrieval_status": RETRIEVAL_UNAVAILABLE,

@@ -923,6 +923,27 @@ def assemble_context(
     except Exception as exc:
         ctx["data_notes"].append(f"holdings:DATA_UNAVAILABLE:{type(exc).__name__}")
 
+    # Same-brain ticker cognition as CIO worker / envelope (read-only).
+    if symbols:
+        try:
+            from scripts.lib.cio_persistent_cognition import (
+                cognition_for_symbol,
+                resolve_cognition_root,
+                telegram_fields,
+            )
+
+            root = resolve_cognition_root()
+            rows = [cognition_for_symbol(root, s) for s in symbols[:8]]
+            ctx["ticker_cognition"] = [telegram_fields(r) for r in rows]
+            ctx["security_guids"] = [r.get("security_guid") for r in rows]
+            ctx["evidence_refs"].append({
+                "domain": "persistent_ticker_cognition",
+                "as_of": rows[0].get("freshness") if rows else "DATA_UNAVAILABLE",
+                "fields_used": ["security_guid", "curation_id", "curation_version", "symbol_thesis_id"],
+            })
+        except Exception as exc:
+            ctx["data_notes"].append(f"cognition:DATA_UNAVAILABLE:{type(exc).__name__}")
+
     if action_id:
         ctx["action_id"] = action_id
     return ctx

@@ -1,5 +1,5 @@
 # Trade AI v12 — Documentation Index
-**Updated:** 2026-08-24 (R10 M1 naturally proven; Yeda's Eye first audit)
+**Updated:** 2026-08-24 (R10.3 CIO persistent-cognition consumption source PR)
 **Protocol:** All doc changes follow `docs/A1A.md`. Do not add a doc without updating this index.
 **Scope:** Project root = `/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild`
 

@@ -762,6 +762,33 @@ def reassess_on_research_completed(
     }
     prior = load_brief(root)
     try:
+        # Begin from persistent ticker cognition (read-only). Not a second research lane.
+        cognition_pack: dict[str, Any] | None = None
+        try:
+            from scripts.lib.cio_persistent_cognition import (
+                build_cio_cognition,
+                resolve_cognition_root,
+            )
+
+            sym0 = str(parent.get("symbol") or result.get("symbol") or "").upper()
+            if sym0:
+                cognition_pack = build_cio_cognition(
+                    root or resolve_cognition_root(),
+                    [sym0],
+                    task="cio_product_reassessment",
+                )
+                out["persistent_ticker_cognition"] = {
+                    "portfolio_call": cognition_pack.get("portfolio_call"),
+                    "security_guid": (cognition_pack.get("items") or [{}])[0].get("security_guid"),
+                    "curation_id": (cognition_pack.get("items") or [{}])[0].get("curation_id"),
+                    "curation_version": (cognition_pack.get("items") or [{}])[0].get("curation_version"),
+                    "receipts": cognition_pack.get("receipts"),
+                }
+                if cognition_pack.get("portfolio_call") == "NO_PORTFOLIO_CHANGE":
+                    out["what_changed_question"] = "WHAT_MATERIAL_THING_CHANGED_FOR_THE_PORTFOLIO"
+        except Exception as cog_exc:
+            out["cognition_error"] = type(cog_exc).__name__
+
         # Accepted research becomes a governed delta before thesis/product reassessment.
         thesis_review: dict[str, Any] = {"skipped": True}
         sym_for_thesis = str(parent.get("symbol") or result.get("symbol") or "").upper()

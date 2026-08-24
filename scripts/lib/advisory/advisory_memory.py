@@ -425,6 +425,20 @@ def build_memory_for_row(row: dict[str, Any], *, calibration: dict[str, Any] | N
     block = format_memory_block(
         prior=prior, feedback=fb, calibration=cal, lessons=lessons_fmt,
     )
+    cognition_refs: dict[str, Any] = {
+        "security_guid": None,
+        "research_state_version": None,
+        "curation_version": None,
+        "producer": False,
+        "authority": "READ_ONLY_ADVISORY",
+    }
+    try:
+        from scripts.lib.cio_persistent_cognition import advisory_fields, cognition_for_symbol
+
+        if sym:
+            cognition_refs = advisory_fields(cognition_for_symbol(PROJECT_ROOT, sym))
+    except Exception:
+        pass
     return {
         "prior": prior,
         "feedback": fb,
@@ -433,6 +447,9 @@ def build_memory_for_row(row: dict[str, Any], *, calibration: dict[str, Any] | N
         "memory_block": block,
         "thrash_penalty": prior.get("thrash_penalty") or 0,
         "disagree_thesis": latest_disagree_thesis(sym, acct),
+        "security_guid": cognition_refs.get("security_guid"),
+        "research_state_version": cognition_refs.get("research_state_version"),
+        "curation_version": cognition_refs.get("curation_version"),
     }
 
 

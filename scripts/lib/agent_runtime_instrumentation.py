@@ -95,10 +95,18 @@ def instrument_material_wake(
                 ):
                     from scripts.lib.agent_memory_provider import get_memory_provider
                     attached = get_memory_provider(flags)
+            wake_d = wake if isinstance(wake, dict) else {"wake_id": wake_id}
+            try:
+                from scripts.lib.cio_persistent_cognition import extract_symbols
+
+                wake_symbols = extract_symbols(wake_d)
+            except Exception:
+                wake_symbols = []
             envelope = get_context_for_agent(
                 agent="alex",
-                wake=(wake if isinstance(wake, dict) else {"wake_id": wake_id}),
+                wake=wake_d,
                 memory_provider=attached,
+                symbols=wake_symbols or None,
             )
         except Exception as exc:  # noqa: BLE001 — fail-soft observability boundary
             errors.append(f"envelope:{type(exc).__name__}")

@@ -31,7 +31,7 @@ Python `fcntl` `LOCK_EX|LOCK_NB` in `free_first_refresh.py` is the cross-path si
 | ticker_research_state | 120 | LIVE |
 | ticker_research_graph | 120 profiles + 1996 arts | LIVE |
 | aif_memory.jsonl | 345 | all RESEARCH_POINTER |
-| CIO TickerResearchState readers | 0 | **PERSISTED_BUT_NOT_COGNITIVE** |
+| CIO TickerResearchState readers | 0 live / **source PR #497** | SOURCE consumer (`cio_persistent_cognition`); live CURRENT still `5c0a993a` until merge+promote |
 | cio_portfolio_theses.jsonl | 0 | ABSENT |
 | operator_profile.jsonl | 0 | ABSENT |
 | advisory_outcomes_v1.jsonl | 0 | ABSENT |
@@ -45,18 +45,44 @@ Python `fcntl` `LOCK_EX|LOCK_NB` in `free_first_refresh.py` is the cross-path si
 | Neo4j | `INSUFFICIENT_DATA` |
 | 200 golden cases | TESTED in-process (not live retrieval quality) |
 
+Do **not** apply `sql/r10_memory_shadow.sql` to production while CIO consumption is still source-only. Dual authoritative memory writers are forbidden.
+
+### M2 benchmark plan (due diligence only — no winner before measurement)
+
+| lane | substrate | status |
+|---|---|---|
+| A | native Trade AI Postgres bitemporal shadow (`MemoryFact@v2`) | UNMEASURED |
+| B | native + pgvector | UNMEASURED |
+| C | pgmnemo current stable shadow | UNMEASURED |
+
+Evaluate all three on: bitemporal correctness, point-in-time queries, RLS, concurrency, retrieval quality, HNSW, IVFFlat, exact retrieval, hybrid retrieval, backup/restore, operational complexity.
+
+Corrected rules that remain in force (do not regress):
+
+- NO mandatory Titan embedding
+- NO mandatory HNSW
+- NO automatic cosine→fact relationship
+- NO universal timeline-continuity trigger
+- NO SERIALIZABLE-everywhere
+- NO fake hardware-isolation claim
+- NO private chain-of-thought persistence
+- NO fixed 10× over-fetch
+- NO fixed 0.75 threshold without benchmark
+- NO agent-only ratification of financial relationships
+
 ## Ranked debt
 
 **P0** none from this natural tick (authority/paid/baseline intact).
 
-**P1** CIO/Advisory do not read `TickerResearchState` or `BASELINE_PROJECTION` (`PERSISTED_BUT_NOT_COGNITIVE`). Host vs repo flock unit file.
+**P1** Host vs repo flock unit file. CIO/Advisory consumption of `TickerResearchState` is **source PR #497** (not live until merge + exact-main + natural CIO cycle).
 
-**P2** isolated Postgres shadow benchmark; AIF RESEARCH_POINTER cleanup; ContextEnvelope@v2.
+**P2** isolated Postgres / pgvector / pgmnemo shadow benchmark (after CIO consumption is naturally proven). AIF RESEARCH_POINTER cleanup.
 
 **P3** Command Center Memory Brain.
 
 ## Next single PR
 
-**Title:** CIO/Hermes ContextEnvelope consume `TickerResearchState` + `BASELINE_PROJECTION` (read-only).  
+**Title:** feat(cio): consume persistent ticker cognition read-only (#497).  
 **Reason:** persistence without consumption is not cognition.  
-**Risk:** low if read-only, no producer retirement, no SQL apply.
+**Risk:** low if read-only, no producer retirement, no SQL apply.  
+**Do not merge** under the authoring prompt. Operator review after exact-head CI.

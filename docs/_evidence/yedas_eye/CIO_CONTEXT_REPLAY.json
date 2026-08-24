@@ -1,11 +1,38 @@
 {
   "schema": "CIOContextReplay@v1",
   "identical_context": true,
+  "portfolio_call": "NO_PORTFOLIO_CHANGE",
+  "llm_eligible": null,
+  "llm_dispatch": false,
   "new_research": 0,
   "new_curation": 0,
   "new_thesis": 0,
   "new_memory": 0,
   "notification": 0,
   "provider_calls": 0,
-  "test": "tests/test_cio_persistent_cognition.py::test_cio_replay_identical"
+  "selected": [
+    "NOC",
+    "SCHD"
+  ],
+  "token_estimate": 820,
+  "counterevidence_count": 8,
+  "open_gap_count": 0,
+  "test": "tests/test_cio_persistent_cognition.py::test_cio_replay_identical",
+  "source_sha_current": "5c0a993a044a1c25db7db27002504b3824d2a73c",
+  "items": [
+    {
+      "symbol": "NOC",
+      "security_guid": "b359a240-b8f4-54c5-bd70-0dfdb0c17c55",
+      "curation_kind": "BASELINE_PROJECTION",
+      "curation_version": 0,
+      "portfolio_delta": "NO_PORTFOLIO_CHANGE"
+    },
+    {
+      "symbol": "SCHD",
+      "security_guid": "a29dd6b6-9f88-5f8c-a372-f88786851a76",
+      "curation_kind": "BASELINE_PROJECTION",
+      "curation_version": 0,
+      "portfolio_delta": "NO_PORTFOLIO_CHANGE"
+    }
+  ]
 }
