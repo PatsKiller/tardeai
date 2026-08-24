@@ -23,6 +23,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from scripts.lib.baseline_curation import project_baseline_universe  # noqa: E402
 from scripts.lib.free_first_circulation import circulate_universe  # noqa: E402
 from scripts.lib.free_first_refresh import run_free_first  # noqa: E402
 
@@ -30,6 +31,7 @@ AUTHORITY = "READ_ONLY_ADVISORY"
 LOCK_PATH = "/tmp/tradeai_free_first_circulation.lock"
 OVERLAP_EXIT = 75
 RECEIPT = "data/cio/free_first_last_run.json"
+BASELINE_RECEIPT = "data/cio/baseline_curation_last_run.json"
 PAID_PROVIDER_DISPATCH_ALLOWED = False
 
 
@@ -57,10 +59,10 @@ def _stamp(report: dict, *, root: Path, started: str) -> dict:
     return out
 
 
-def _write_receipt(root: Path, report: dict) -> None:
-    path = root / RECEIPT
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(report, indent=2, default=str) + "\n", encoding="utf-8")
+def _write_receipt(root: Path, report: dict, *, path: str = RECEIPT) -> None:
+    dest = root / path
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(json.dumps(report, indent=2, default=str) + "\n", encoding="utf-8")
 
 
 def acquire_lock(path: str = LOCK_PATH):
@@ -97,6 +99,11 @@ def main() -> int:
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--max-searx", type=int, default=0, help="0 = do not hit SearXNG; 1+ = residual only")
     ap.add_argument("--circulate", action="store_true", help="real Hermes/RAG/structured path")
+    ap.add_argument(
+        "--project-baseline",
+        action="store_true",
+        help="write BASELINE_PROJECTION curation snapshots from existing graph/state; no research, no paid",
+    )
     ap.add_argument("--symbols", default="", help="comma-separated canary list")
     args = ap.parse_args()
     root = Path(args.root)
@@ -109,7 +116,14 @@ def main() -> int:
             print("FREE_FIRST_ONLY overlap: lock held; not killing the first worker")
         return OVERLAP_EXIT
     try:
-        if args.circulate:
+        os.environ["FREE_FIRST_SOURCE_SHA"] = _source_sha(root)
+        if args.project_baseline:
+            if args.circulate:
+                print("refusing --circulate with --project-baseline", file=sys.stderr)
+                return 2
+            syms = [s.strip() for s in args.symbols.split(",") if s.strip()] or None
+            report = project_baseline_universe(str(root), symbols=syms)
+        elif args.circulate:
             syms = [s.strip() for s in args.symbols.split(",") if s.strip()] or None
             report = circulate_universe(str(root), symbols=syms, allow_searx=int(args.max_searx) > 0)
             report.pop("rows", None)
@@ -117,9 +131,9 @@ def main() -> int:
             report = run_free_first(str(root), max_searx=int(args.max_searx))
             report.pop("rows", None)
         report = _stamp(report, root=root, started=started)
-        _write_receipt(root, report)
+        _write_receipt(root, report, path=BASELINE_RECEIPT if args.project_baseline else RECEIPT)
         if args.json:
-            print(json.dumps(report, indent=2, default=str))
+            print(json.dumps({k: v for k, v in report.items() if k != "rows"}, indent=2, default=str) if args.project_baseline else json.dumps(report, indent=2, default=str))
             return 0
         print(f"FREE_FIRST_ONLY authority={AUTHORITY} paid_attempted={report.get('paid_calls_attempted', report.get('paid_dispatch_entered', 0))}")
         print(f"total={report.get('total_symbols')} no_new_info={report.get('no_new_info', report.get('fresh_no_change'))}")

@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-08-24 — R10 M1 baseline curation snapshot (source)
+
+MATURITY_IMPACT: NONE live until merge + exact-main CURRENT + `--project-baseline` replay + natural tick. Official live score stays **65/100**. Application CURRENT remains `bc6ff5c6` after docs #493 (`631800ad`).
+
+- `HermesCurationSummary.kind=BASELINE_PROJECTION` version 0: first durable cognitive state. Not a material version.
+- Subsequent `NO_NEW_INFO` still writes 0 versions.
+- `TradeAIMemoryTaxonomy@v2` seven planes. AIF research rows classify as `RESEARCH_POINTER`.
+- CLI: `scripts/free_first_refresh.py --project-baseline` (no research, no paid). Receipt `data/cio/baseline_curation_last_run.json` (does not clobber timer receipt).
+- Canonical: `docs/architecture/TRADE_AI_INSTITUTIONAL_MEMORY_AND_AUTONOMOUS_AGENT_ARCHITECTURE_2026-08-24.md`.
+- PR D/E, Postgres, pgvector, Mem0, Redis, paid Flash: not in this PR.
+
 ## 2026-08-24 — R9.3 post-#492 natural tick (WHAT_CHANGED)
 
 MATURITY_IMPACT: official live score **65/100**. Two independent systemd FREE_FIRST_ONLY cycles on `3dd6f8d5`, then #492 exact-main `bc6ff5c6` CURRENT, then first natural post-C tick `62652d0c` 00:23:52–00:26:51 ET: 117/2/1/0 SearXNG / 120 FRESH_NO_CHANGE / 0 paid. Graph+state+gaps+memory SHA unchanged. `TickerResearchState` loaded; context question WHAT_CHANGED; new curation/thesis/memory/notifications 0. `hermes_curation_summary.jsonl` still empty (NO_NEW_INFO does not version). PR D/E not started.
