@@ -138,6 +138,22 @@ Hermes CIO worker WorkingDirectory=CURRENT. Crontab `$PROJ` is still rebuild. Ov
 
 Do not treat PRE-P0 105/15 as current truth.
 
+## NATURAL_PROOF_PENDING_REASON (2026-08-23 21:30 ET)
+
+Re-measured CURRENT before any further work: **120 profiles, 1608 artifacts, 120 TickerResearchState=NO_NEW_INFO, memory 327**. Persistence did not regress.
+
+Natural proof **cannot pass** under this prompt because the production scheduler for `FREE_FIRST_ONLY` **does not exist**.
+
+- `scripts/free_first_refresh.py --circulate` is CLI-only. No crontab line. No systemd timer. No `hermes_coordinator` call.
+- Editing a timer or kicking the CLI would violate “do not create a fake natural run.”
+- `tradeai-hermes-cio-worker` (CURRENT, every 15m, `--backend live`) is the old paid drain. Treating its COST_CAP 429 as the free-first cycle would be `HOLD_PAID_BOUNDARY_LEAK`.
+- `hermes-librarian-backlog-loop` next 03:45 ET runs in **rebuild** (`WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild`), not `0b63d209`. Recent ticks: `NO FINDINGS: 0 findings`.
+- Crontab `$PROJ` is still rebuild.
+
+PR C is not opened. Official maturity remains **59/100**. `R93_FREE_FIRST_NATURAL_PROVEN=false`.
+
+Operator next (not done here): after an explicit grant, add a CURRENT-pin systemd timer that runs `free_first_refresh.py --circulate` with FREE_FIRST_ONLY / zero paid, then observe **that** timer. Do not use Family A live drain or Family B OAuth crons as the proof vehicle.
+
 ## Maturity
 
 Official overall **59/100 unchanged** until a natural free-first/Librarian cycle is observed. Measured (not awarded): identity L5 live GUIDs, free-first L6 CURRENT function, Librarian L4 production assessments, persistence L5 CURRENT artifacts, autonomy L3 (manual CURRENT proof only).

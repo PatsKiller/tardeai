@@ -138,3 +138,23 @@ P0 circulation on PR #489 worktree (not CURRENT): **1137 artifacts** projected f
 | Flash / paid_dispatch / COST_CAP this pass | **0 / 0 / 0** |
 | natural free-first/Librarian timer | **NATURAL_PROOF_PENDING** (librarian next ~03:45 ET). Pre-existing `tradeai-hermes-cio-worker` ticked on the new pin and hit live-bridge `COST_CAP_EXCEEDED` — that is the old drain, not FREE_FIRST_ONLY. |
 | official maturity | **59/100** until a natural free-first/Librarian cycle is observed |
+
+## NATURAL_PROOF_PENDING_REASON (2026-08-23 21:30 ET)
+
+`R93_FREE_FIRST_NATURAL_PROVEN` remains **false**. Not because a due timer was missed. Because **no production scheduler invokes `FREE_FIRST_ONLY`.**
+
+Measured 2026-08-23 21:29 ET:
+
+| Job | Unit / line | WD | SHA lineage | Next | What it actually is |
+|---|---|---|---|---|---|
+| FREE_FIRST_ONLY `scripts/free_first_refresh.py --circulate` | **none** | — | code is on CURRENT `0b63d209` | never | CLI + tests only. Zero cron. Zero systemd timer. `hermes_coordinator.py` does not call it. |
+| `tradeai-hermes-cio-worker` | `OnCalendar=*:0/15` | CURRENT | `0b63d209` | ~15m | `hermes_cio_worker.py --drain --max 2 --backend live`. Paid live-bridge drain. 21:17 ET claimed 1, HTTP 429 `COST_CAP_EXCEEDED`. **Not free-first.** Observing it as the natural cycle would be `HOLD_PAID_BOUNDARY_LEAK`. |
+| `hermes-librarian-backlog-loop` | `07:45 UTC` / 03:45 ET | **rebuild** `$PROJ` | not CURRENT | ~03:45 ET 2026-08-24 | `hermes_autonomous_librarian_backlog_loop.py --apply --max-rows 5`. Last four days: `NO FINDINGS: 0 findings in 0.1s`. Dual-root. Does not load `TickerResearchState` / graph artifacts. |
+| `hermes-autonomous-loop` | China-night DeepSeek | CURRENT | `0b63d209` | failed | `ticker_challenger --apply --max-rows 2`. Paid. Must not be started for this proof. |
+| crontab Hermes fleet | `$PROJ=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild` | rebuild dirty `feat/two-way-watchlist-curation` | not `0b63d209` | continuous | Historical producers. Not this classifier. |
+
+This prompt forbids: running the classifier manually and calling it natural; editing the schedule; touching timestamps; enqueueing fake research.
+
+PR C (Librarian epistemic + HermesCurationSummary + TickerResearchState maturity) is **not started**. Gate is section-11 PASS of a genuine scheduled FREE_FIRST_ONLY cycle on `0b63d209`.
+
+Live CURRENT graph re-measured at this inspection: **120 profiles, 1608 artifacts** (not a persistence regression).
