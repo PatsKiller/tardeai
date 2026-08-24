@@ -56,6 +56,8 @@ Modes: `FREE_FIRST_ONLY` | `LLM_ELIGIBLE` | `PAID_AUTHORIZED`.
 
 This prompt authorizes **FREE_FIRST_ONLY only**. Cap is not raised. `COST_CAP_EXCEEDED` is not bypassed.
 
+Production timer (source-controlled): `tradeai-free-first-circulation.timer` hourly :23 ET on CURRENT. See `docs/ops/HERMES_FREE_FIRST_NATURAL_SCHEDULER_2026-08-23.md`. Not a substitute: `tradeai-hermes-cio-worker` (paid drain) or rebuild librarian loop.
+
 ## Librarian contract
 
 Keep: taxonomy, graph, freshness, retention, RAG health, backlog.

@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-08-23 — R9.3 CURRENT-pinned FREE_FIRST_ONLY systemd timer
+
+MATURITY_IMPACT: NONE until the timer fires naturally on CURRENT. Official score stays 59/100 until that proof.
+
+- Source-controlled `tradeai-free-first-circulation.{service,timer}`: hourly :23 ET, WorkingDirectory=CURRENT, `free_first_refresh.py --circulate --json --max-searx 1`.
+- `flock -n -E 75` singleton. Paid dispatch forbidden. Does not replace `tradeai-hermes-cio-worker`.
+- Canonical: `docs/ops/HERMES_FREE_FIRST_NATURAL_SCHEDULER_2026-08-23.md`.
+
 ## 2026-08-23 — R9.3 free-first + identity v2 (source, not live)
 
 MATURITY_IMPACT: NONE live. Official score stays 59/100. FREE_FIRST_ONLY: 105/120 no_new_info from graph cards, 15 Flash-eligible, **0 paid calls**. ticker artifacts still **0**.
