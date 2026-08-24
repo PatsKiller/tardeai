@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-08-24 — CIO persistent ticker cognition consumption (source)
+
+MATURITY_IMPACT: NONE live until merge + exact-main + natural CIO cycle. Official live remains **68/100**. CURRENT stays `5c0a993a` until an explicit promote.
+
+- Shared `cio_persistent_cognition.cognition_for_symbol` for CIO worker, envelope, Advisory, Telegram (security_guid, not ticker lane).
+- Nested `CIOContextEnvelope@v2` inside ContextEnvelope@v1. Research is `RESEARCH_CONTEXT` and cannot override office truth.
+- Baseline v0 is legitimate prior cognition. Live `NO_NEW_INFO` ≠ material delta even if RAG watermarks grow. `NO_PORTFOLIO_CHANGE` needs no model.
+- NEED_DATA writes a ResearchGap; CONFLICTED suppresses recommendations.
+- M2 benchmark plan adds Lane C pgmnemo; SQL shadow still unapplied.
+- No `cio_ticker_memory.jsonl`. No paid dispatch. No producer retirement.
+
 ## 2026-08-24 — R10 M1 naturally proven + Yeda's Eye first audit
 
 MATURITY_IMPACT: official live **68/100** (was 65). Baseline cognition L5 on CURRENT `5c0a993a`. Natural timer 11:23:44 ET run_id `5e9028fb`: 117/2/1/0/120/0 paid; 120×`BASELINE_PROJECTION` v0 SHA unchanged; WHAT_CHANGED. SQL shadow not applied. Yeda first audit: CIO does not consume TickerResearchState (PERSISTED_BUT_NOT_COGNITIVE). Next PR: read-only CIO consumption. 200 in-process golden cases TESTED (not live retrieval quality).

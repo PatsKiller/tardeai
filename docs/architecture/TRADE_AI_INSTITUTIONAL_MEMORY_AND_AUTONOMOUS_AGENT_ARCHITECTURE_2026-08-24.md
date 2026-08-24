@@ -96,11 +96,15 @@ This M1 document and the six-spec correction (`TRADE_AI_BITEMPORAL_MEMORY_DATA_M
 
 - `BASELINE_PROJECTION` is the M1 current design (version 0, not material).
 - Local-first embeddings; Titan/cloud disabled by default; no generative GPU on the memory path.
-- M2 is Postgres bitemporal SHADOW. Neo4j and HNSW remain `INSUFFICIENT_DATA` until measured.
+- M2 is Postgres bitemporal SHADOW, not production cutover. Benchmark lanes (after CIO consumption is naturally proven): (A) native Postgres bitemporal, (B) native+pgvector, (C) pgmnemo current stable. Neo4j and HNSW remain `INSUFFICIENT_DATA` until measured. No Titan/HNSW/cosine-edge/SERIALIZABLE-everywhere mandate.
 - Similarity is a candidate, never a self-ratified edge.
 - Tenant isolation is logical, not hardware.
 - Durable writes store `DecisionRationale`, never private chain-of-thought.
 - Yeda's Eye is authorized **after** M1 natural PASS (2026-08-24 11:23 ET run_id `5e9028fb`). First mission is M2 due diligence, not feature spray.
+
+### CIO consumption (source — this PR)
+
+`scripts/lib/cio_persistent_cognition.py` is the shared read-only loader. Identity: ticker/alias → `security_guid` → `TickerResearchState` → `BASELINE_PROJECTION` or material curation. `get_context_for_agent` attaches a bounded pack plus nested `CIOContextEnvelope@v2` (not a competing envelope). `CIORunWorker` skips the model on `NO_PORTFOLIO_CHANGE`. Telegram `assemble_context` and Advisory `build_memory_for_row` use the same loader. Persistence without this loader is not CIO cognition.
 
 ### M1 natural acceptance (LIVE)
 

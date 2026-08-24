@@ -406,6 +406,10 @@ def get_context_for_agent(
     external_read_context: Optional[dict[str, Any]] = None,
     specialist_context: Optional[dict[str, Any]] = None,
     source_refs: Optional[list[str]] = None,
+    cognition_root: Optional[str] = None,
+    held: Optional[list[str]] = None,
+    watch: Optional[list[str]] = None,
+    reentry: Optional[list[str]] = None,
 ) -> dict[str, Any]:
     """Build a ContextEnvelope for a given agent + wake.
 
@@ -429,6 +433,36 @@ def get_context_for_agent(
 
     episodic_memory = _retrieve_episodic(memory_provider, symbols=symbols, plan_id=plan_id)
     research_merged = dict(research_memory or {})
+    if not symbols:
+        try:
+            from scripts.lib.cio_persistent_cognition import extract_symbols
+
+            symbols = extract_symbols(wake) or None
+        except Exception:
+            symbols = symbols
+    if symbols:
+        try:
+            from scripts.lib.cio_persistent_cognition import build_cio_cognition, resolve_cognition_root
+
+            root = resolve_cognition_root(cognition_root)
+            pack = build_cio_cognition(
+                root,
+                list(symbols),
+                held=held,
+                watch=watch,
+                reentry=reentry,
+                office_truth=office_truth,
+                agent=agent,
+                task="context_envelope",
+            )
+            research_merged["persistent_ticker_cognition"] = pack
+            research_merged["cio_context_v2"] = pack.get("cio_context_v2")
+        except Exception as exc:  # fail-soft: envelope must still validate
+            research_merged["persistent_ticker_cognition"] = {
+                "retrieval_status": RETRIEVAL_UNAVAILABLE,
+                "error": type(exc).__name__,
+                "authority": AUTHORITY_READ_ONLY_ADVISORY,
+            }
     research_merged.setdefault(
         "retrieval_status",
         RETRIEVAL_OK if research_merged else RETRIEVAL_NOT_CONFIGURED,

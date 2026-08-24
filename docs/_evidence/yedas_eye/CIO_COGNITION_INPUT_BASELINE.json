@@ -1,0 +1,125 @@
+{
+  "schema": "CIOContextInputBaseline@v1",
+  "as_of": "2026-08-24T16:20:00+00:00",
+  "authority": "READ_ONLY_ADVISORY",
+  "memory_behavior_influence": 0,
+  "sources": [
+    {
+      "name": "office_truth / PortfolioState",
+      "writer": "broker snapshot / cio_financial_snapshot",
+      "reader": "CIORunWorker, ContextEnvelope, CIO product",
+      "canonical_store": "office_truth / holdings.json",
+      "freshness": "as_of snapshot",
+      "authority": "AUTHORITATIVE_FINANCIAL_TRUTH",
+      "consumed_by_cio": true
+    },
+    {
+      "name": "OperatorInvestmentPolicy",
+      "writer": "operator policy store",
+      "reader": "CIOContextEnvelope@v2 OPERATOR_POLICY (fail-soft NOT_CONFIGURED)",
+      "canonical_store": "operator_profile / cio_operator_investment_policy",
+      "freshness": "often missing",
+      "authority": "DETERMINISTIC_POLICY",
+      "consumed_by_cio": "partial"
+    },
+    {
+      "name": "CIOPortfolioThesis",
+      "writer": "CIO thesis store",
+      "reader": "CIO product / envelope PORTFOLIO_THESIS",
+      "canonical_store": "cio_portfolio_thesis_v1",
+      "freshness": "store often empty",
+      "authority": "DURABLE_INVESTMENT_BELIEF",
+      "consumed_by_cio": true
+    },
+    {
+      "name": "ContextEnvelope@v1",
+      "writer": "get_context_for_agent",
+      "reader": "agent_runtime_instrumentation, replay harness",
+      "canonical_store": "in-memory envelope; nested CIOContextEnvelope@v2",
+      "freshness": "wake-time",
+      "authority": "READ_ONLY_ADVISORY",
+      "consumed_by_cio": true
+    },
+    {
+      "name": "TickerResearchState",
+      "writer": "free_first_circulation / Librarian",
+      "reader": "cio_persistent_cognition.cognition_for_symbol (CIO, envelope, Advisory, Telegram)",
+      "canonical_store": "data/cio/ticker_research_state.jsonl",
+      "freshness": "CURRENT (119) / STALE (1) as of M1 natural",
+      "authority": "RESEARCH_CONTEXT",
+      "consumed_by_cio_before": false,
+      "consumed_by_this_pr": true
+    },
+    {
+      "name": "HermesCurationSummary / BASELINE_PROJECTION",
+      "writer": "hermes_curation_summary / --project-baseline",
+      "reader": "cio_persistent_cognition.load_curation",
+      "canonical_store": "data/cio/hermes_curation_summary.jsonl",
+      "freshness": "120 x BASELINE_PROJECTION v0",
+      "authority": "RESEARCH_CONTEXT",
+      "consumed_by_cio_before": false,
+      "consumed_by_this_pr": true
+    },
+    {
+      "name": "SymbolThesis",
+      "writer": "CIOThesisStore",
+      "reader": "symbol_thesis_attach + cognition canonical_refs",
+      "canonical_store": "data/cio/cio_theses.jsonl",
+      "freshness": "per-symbol SLA",
+      "authority": "DURABLE_INVESTMENT_BELIEF",
+      "consumed_by_cio": true
+    },
+    {
+      "name": "ResearchGap",
+      "writer": "Hermes + CIO need_data_gap (governed upsert)",
+      "reader": "cognition open_gaps",
+      "canonical_store": "data/cio/research_gaps.jsonl",
+      "freshness": "gap status",
+      "authority": "RESEARCH_CONTEXT",
+      "consumed_by_cio_before": false,
+      "consumed_by_this_pr": "reference + NEED_DATA upsert"
+    },
+    {
+      "name": "EvidenceContradiction",
+      "writer": "Librarian / TickerResearchState.counter_evidence",
+      "reader": "cognition CONTRADICTIONS section",
+      "canonical_store": "TickerResearchState + curation.unresolved_contradictions",
+      "freshness": "state updated_at",
+      "authority": "RESEARCH_CONTEXT",
+      "consumed_by_cio_before": false,
+      "consumed_by_this_pr": true
+    },
+    {
+      "name": "MarketContextState",
+      "writer": "cio_market_context_state",
+      "reader": "CIOContextEnvelope@v2 MARKET_CONTEXT",
+      "canonical_store": "cio_market_context_state",
+      "freshness": "NOT_CONFIGURED fail-soft",
+      "authority": "RESEARCH_CONTEXT",
+      "consumed_by_cio": "section present, store often missing"
+    },
+    {
+      "name": "SeasonalityState",
+      "writer": "cio_seasonality_state",
+      "reader": "CIOContextEnvelope@v2 SEASONALITY",
+      "canonical_store": "cio_seasonality_state",
+      "freshness": "NOT_CONFIGURED fail-soft",
+      "authority": "RESEARCH_CONTEXT",
+      "consumed_by_cio": "section present, store often missing"
+    },
+    {
+      "name": "feedback / outcomes / lessons",
+      "writer": "advisory_memory / cio_outcome_store",
+      "reader": "CIOContextEnvelope@v2 RELEVANT_FEEDBACK MATURE_OUTCOMES LESSONS",
+      "canonical_store": "advisory_*.jsonl",
+      "freshness": "often empty",
+      "authority": "OPERATOR_CONTEXT / HISTORICAL_CONTEXT",
+      "consumed_by_cio": "section present, fail-soft"
+    }
+  ],
+  "persisted_but_not_consumed_before": ["TickerResearchState", "BASELINE_PROJECTION"],
+  "duplicate_inputs": "none created; no cio_ticker_memory.jsonl",
+  "identity_rule": "ticker/alias/CUSIP -> security_guid -> state -> curation -> thesis",
+  "materiality_roles": ["HELD", "REENTRY", "WATCH", "OPPORTUNITY", "LARGE_EXPOSURE", "CASH_DEPLOYMENT", "PORTFOLIO_THESIS", "CURRENT_DECISION"],
+  "context_budget": "limit=12; do not inject all 120 names"
+}

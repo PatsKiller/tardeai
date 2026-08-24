@@ -438,6 +438,14 @@ class CIORunWorker:
             out["open_goals"] = ctx.get("open_goals") or []
             out["thesis_snippets"] = ctx.get("thesis_snippets") or []
             out["open_actions"] = ctx.get("open_actions") or []
+            cognition = self._load_persistent_cognition(run, {})
+            if cognition:
+                out["persistent_ticker_cognition"] = {
+                    "portfolio_call": cognition.get("portfolio_call"),
+                    "selected": cognition.get("selected"),
+                    "receipts": cognition.get("receipts"),
+                    "paid_dispatch": 0,
+                }
         except Exception as exc:
             out["error"] = f"{type(exc).__name__}: {exc}"
         return out
@@ -701,6 +709,42 @@ class CIORunWorker:
 
     # ── Step: CIO Synthesis ─────────────────────────────────────────────────
 
+    def _load_persistent_cognition(
+        self,
+        run: dict[str, Any],
+        snapshot: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        """Read-only TickerResearchState + baseline/current curation. Fail-soft."""
+        try:
+            from scripts.lib.cio_persistent_cognition import (
+                build_cio_cognition,
+                extract_symbols,
+                resolve_cognition_root,
+            )
+
+            symbols = extract_symbols(run, snapshot)
+            if not symbols:
+                return None
+            held = extract_symbols(snapshot.get("holdings") if isinstance(snapshot, dict) else None)
+            return build_cio_cognition(
+                resolve_cognition_root(),
+                symbols,
+                held=held or None,
+                office_truth=snapshot if isinstance(snapshot, dict) else None,
+                agent="alex",
+                task="cio_synthesis",
+            )
+        except Exception as exc:
+            log.warning("persistent cognition load failed: %s", type(exc).__name__)
+            return {
+                "schema": "CIOCognitionPack@v1",
+                "error": type(exc).__name__,
+                "authority": "READ_ONLY_ADVISORY",
+                "financial_action": False,
+                "paid_dispatch": 0,
+                "llm_dispatch": False,
+            }
+
     def _cio_synthesis(
         self,
         run: dict[str, Any],
@@ -709,6 +753,38 @@ class CIORunWorker:
         hermes_result: dict[str, Any],
     ) -> dict[str, Any]:
         artifact_id = f"cio-synth-{uuid.uuid4().hex[:16]}"
+        cognition = self._load_persistent_cognition(run, snapshot)
+
+        # Timer-fired no-change: do not invoke a model.
+        if (
+            isinstance(cognition, dict)
+            and cognition.get("portfolio_call") == "NO_PORTFOLIO_CHANGE"
+            and cognition.get("items")
+            and not cognition.get("llm_eligible")
+        ):
+            synthesis = {
+                "artifact_id": artifact_id,
+                "mode": self.mode,
+                "summary": "NO_PORTFOLIO_CHANGE — persistent ticker cognition unchanged",
+                "recommendations": [],
+                "confidence": 1.0,
+                "requires_operator_review": False,
+                "snapshot_ref": snapshot.get("snapshot_id") if isinstance(snapshot, dict) else None,
+                "health_state": "UNKNOWN",
+                "portfolio_call": "NO_PORTFOLIO_CHANGE",
+                "persistent_ticker_cognition": cognition,
+                "llm_dispatch": False,
+                "paid_dispatch": 0,
+                "recommendation_suppressed": any(
+                    bool(i.get("recommendation_suppressed")) for i in (cognition.get("items") or [])
+                ),
+            }
+            return {
+                "artifact_id": artifact_id,
+                "result": synthesis,
+                "mode": self.mode,
+                "llm_dispatch": False,
+            }
 
         if self._synthesis_fn:
             result = self._synthesis_fn(
@@ -717,6 +793,12 @@ class CIORunWorker:
                 specialist_result=specialist_result,
                 hermes_result=hermes_result,
             )
+            if isinstance(result, dict) and cognition:
+                result = dict(result)
+                result["persistent_ticker_cognition"] = cognition
+                if any(bool(i.get("recommendation_suppressed")) for i in (cognition.get("items") or [])):
+                    result["recommendation_suppressed"] = True
+                    result["recommendations"] = []
             self._call_count += 1
             self._cost_accrued += 0.001
             if self.run_store and self._run_id:
@@ -736,6 +818,11 @@ class CIORunWorker:
             "snapshot_ref": snapshot.get("snapshot_id"),
             "health_state": "UNKNOWN",
         }
+        if cognition:
+            synthesis["persistent_ticker_cognition"] = cognition
+            synthesis["portfolio_call"] = cognition.get("portfolio_call")
+            if any(bool(i.get("recommendation_suppressed")) for i in (cognition.get("items") or [])):
+                synthesis["recommendation_suppressed"] = True
 
         # Surface the desk-suggestion opportunity queue to Alex when present so the
         # CIO can act on staged/undrained curation rather than an empty brief.
