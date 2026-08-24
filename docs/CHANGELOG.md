@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-08-24 — R10 M1 naturally proven + Yeda's Eye first audit
+
+MATURITY_IMPACT: official live **68/100** (was 65). Baseline cognition L5 on CURRENT `5c0a993a`. Natural timer 11:23:44 ET run_id `5e9028fb`: 117/2/1/0/120/0 paid; 120×`BASELINE_PROJECTION` v0 SHA unchanged; WHAT_CHANGED. SQL shadow not applied. Yeda first audit: CIO does not consume TickerResearchState (PERSISTED_BUT_NOT_COGNITIVE). Next PR: read-only CIO consumption. 200 in-process golden cases TESTED (not live retrieval quality).
+
 ## 2026-08-24 — R10 memory architecture: six spec-defect corrections (source)
 
 MATURITY_IMPACT: NONE live until this PR is merged + one exact-main CURRENT with #494. Official live score stays **65/100**. Reconciled onto post-#494 main `e390c574`. Preserves BASELINE_PROJECTION.

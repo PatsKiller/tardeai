@@ -1,0 +1,62 @@
+# Yeda's Eye — first institutional-brain audit
+
+**Date:** 2026-08-24  
+**Authorized only after M1 natural PASS.**  
+**Authority:** `READ_ONLY_ADVISORY` · `MEMORY_BEHAVIOR_INFLUENCE=0`
+
+This cycle is an examiner report, not a feature dump. Production SQL `r10_memory_shadow.sql` was **not** applied. Neo4j was **not** installed.
+
+## M1 natural evidence (LIVE)
+
+systemd `tradeai-free-first-circulation.timer` LastTrigger **2026-08-24 11:23:44 EDT**, finished 11:27:13, PID 1126326, run_id `5e9028fb-00e1-4176-867e-fea55019ee90`, SOURCE `5c0a993a`, exit 0.
+
+- 120 `BASELINE_PROJECTION` v0 loaded (JSONL SHA unchanged vs pre-tick)
+- NOC/SCHD/SCHG/PRSO/CSCO/ANET: `WHAT_CHANGED`, not research-from-scratch
+- Shape 117/2/1/0 SearXNG / 120 FRESH_NO_CHANGE / 0 paid
+- New baseline rows 0, new MATERIAL versions 0, GUID forks 0
+- Graph artifact count rose via RAG persist on circulate (1996 unique GUIDs) — not a curation version
+- Watcher script HOLD was a **false negative** (`paid_dispatch_entered=0` treated as missing)
+
+`R10_M1_LIVE_NATURALLY_PROVEN=true`
+
+## Singleton
+
+Python `fcntl` `LOCK_EX|LOCK_NB` in `free_first_refresh.py` is the cross-path singleton (CLI `--circulate`, `--project-baseline`, wrapper). systemd `Type=oneshot` serializes the unit. Host ExecStart has **no** systemd flock (double-flock caused exit 75). Repo unit file still wraps flock — **do not re-run installer**. Classify: **SINGLETON_PROVEN** for live host; **repo/host unit divergence** is P1 source hygiene, not a timer mutation.
+
+## Memory topology (selected)
+
+| store | rows | flag |
+|---|---|---|
+| hermes_curation_summary | 120 v0 BASELINE | LIVE |
+| ticker_research_state | 120 | LIVE |
+| ticker_research_graph | 120 profiles + 1996 arts | LIVE |
+| aif_memory.jsonl | 345 | all RESEARCH_POINTER |
+| CIO TickerResearchState readers | 0 | **PERSISTED_BUT_NOT_COGNITIVE** |
+| cio_portfolio_theses.jsonl | 0 | ABSENT |
+| operator_profile.jsonl | 0 | ABSENT |
+| advisory_outcomes_v1.jsonl | 0 | ABSENT |
+
+## M2 decisions
+
+| question | answer |
+|---|---|
+| Postgres canonical now? | No. Isolated tests + DDL only. `production_applied=false` |
+| Vector index | `INSUFFICIENT_DATA` (HNSW/IVFFlat unmeasured) |
+| Neo4j | `INSUFFICIENT_DATA` |
+| 200 golden cases | TESTED in-process (not live retrieval quality) |
+
+## Ranked debt
+
+**P0** none from this natural tick (authority/paid/baseline intact).
+
+**P1** CIO/Advisory do not read `TickerResearchState` or `BASELINE_PROJECTION` (`PERSISTED_BUT_NOT_COGNITIVE`). Host vs repo flock unit file.
+
+**P2** isolated Postgres shadow benchmark; AIF RESEARCH_POINTER cleanup; ContextEnvelope@v2.
+
+**P3** Command Center Memory Brain.
+
+## Next single PR
+
+**Title:** CIO/Hermes ContextEnvelope consume `TickerResearchState` + `BASELINE_PROJECTION` (read-only).  
+**Reason:** persistence without consumption is not cognition.  
+**Risk:** low if read-only, no producer retirement, no SQL apply.

@@ -20,7 +20,13 @@
 
 ## M1 status
 
-Source on `feat/r10-m1-baseline-curation`. **Not live** until merge + exact-main CURRENT promote + `--project-baseline` + replay + a natural timer tick that loads `kind=BASELINE_PROJECTION` and still writes 0 material versions.
+**LIVE + NATURALLY_PROVEN.** #494 merged `e390c574`. #495 reconciled `4d0d6bae` merged `5c0a993a`. CURRENT `5c0a993a-main-exact-phase2-20260824-110748` pin_match true.
+
+Baseline projection: 120 created, all `BASELINE_PROJECTION` v0, paid 0. Replay: created 0.
+
+Natural timer 11:23:44–11:27:13 ET run_id `5e9028fb` source `5c0a993a` exit 0: 117/2/1/0/120/0 paid, curation JSONL still 120×v0 (SHA unchanged), WHAT_CHANGED loaded for NOC/SCHD/SCHG/PRSO/CSCO/ANET.
+
+SQL shadow **not** applied. Yeda's Eye authorized after this PASS.
 
 ## PR D
 
