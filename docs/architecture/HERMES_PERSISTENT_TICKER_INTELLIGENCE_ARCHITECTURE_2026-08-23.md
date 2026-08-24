@@ -204,3 +204,7 @@ Pre-tick SHA256 of graph, `TickerResearchState`, gaps, and `aif_memory.jsonl` **
 `R93_POST_C_NATURAL_PROVEN=true` for persistent state + WHAT_CHANGED reuse. Durable last-material-review JSONL remains the residual until a material watermark change.
 
 Official live maturity **65/100** (was 62 after tick #1). PR D producer retirement and PR E CIO UI remain gated. Evidence: `docs/_evidence/hermes_r93/POST_C_NATURAL_TICK.json`.
+
+## R10 follow-on (baseline cognition)
+
+The empty JSONL is **not** a failed NO_NEW_INFO rule. It is a missing **baseline cognitive snapshot**. R10 M1 (`docs/architecture/TRADE_AI_INSTITUTIONAL_MEMORY_AND_AUTONOMOUS_AGENT_ARCHITECTURE_2026-08-24.md`) adds `kind=BASELINE_PROJECTION` version 0 without counting it as a material version. Not live until that PR is merged, exact-main promoted, projected, and naturally observed.

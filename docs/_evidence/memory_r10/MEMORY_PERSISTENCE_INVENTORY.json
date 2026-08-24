@@ -1,0 +1,26 @@
+{
+  "schema": "MemoryPersistenceInventory@v1",
+  "as_of": "2026-08-24T13:40:00+00:00",
+  "authority": "READ_ONLY_ADVISORY",
+  "source_sha_application": "bc6ff5c62ef1e1265195301a9659c26508ba26ed",
+  "data_root": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/data/cio",
+  "stores": [
+    {"id": "ticker_research_graph", "path": "data/cio/ticker_research_graph.jsonl", "exists": true, "rows": 1759, "schema_hint": "TickerKnowledgeProfile@v1+TickerResearchArtifact@v1", "plane": "DOCUMENT_EVIDENCE_RAG", "note": "120 profiles + 1639 artifacts"},
+    {"id": "ticker_research_state", "path": "data/cio/ticker_research_state.jsonl", "exists": true, "rows": 120, "schema_hint": "TickerResearchState@v1", "plane": "CANONICAL_POLICY_BELIEF"},
+    {"id": "hermes_curation_summary", "path": "data/cio/hermes_curation_summary.jsonl", "exists": false, "rows": 0, "schema_hint": "HermesCurationSummary@v1", "plane": "CANONICAL_POLICY_BELIEF", "note": "empty until M1 baseline live"},
+    {"id": "research_gaps", "path": "data/cio/research_gaps.jsonl", "exists": true, "rows": 33, "schema_hint": "ResearchGap@v1", "plane": "EPISODIC"},
+    {"id": "evidence_contradictions", "path": "data/cio/evidence_contradictions.jsonl", "exists": false, "rows": 0, "schema_hint": "EvidenceContradiction@v1", "plane": "EPISODIC"},
+    {"id": "aif_memory", "path": "data/cio/aif_memory.jsonl", "exists": true, "rows": 328, "schema_hint": "AIF", "plane": "SEMANTIC_OPERATOR", "note": "dominated by RESEARCH_REFERENCE candidates"},
+    {"id": "aif_memory_admissions", "path": "data/cio/aif_memory_admissions.jsonl", "exists": true, "rows": 290, "plane": "ORCHESTRATION_HISTORY"},
+    {"id": "free_first_last_run", "path": "data/cio/free_first_last_run.json", "exists": true, "rows": 1, "schema_hint": "FreeFirstCirculationReport@v1", "plane": "ORCHESTRATION_HISTORY"},
+    {"id": "cio_notification_audit", "path": "data/cio/cio_notification_audit.jsonl", "exists": true, "plane": "EPISODIC"},
+    {"id": "operator_notification_outbox", "path": "data/cio/operator_notification_outbox.jsonl", "exists": true, "rows": 265, "plane": "EPISODIC"},
+    {"id": "cio_action_ledger", "path": "data/cio/cio_action_ledger.jsonl", "exists": true, "plane": "EPISODIC"},
+    {"id": "thesis_change_cards", "path": "data/cio/thesis_change_cards.jsonl", "exists": true, "rows": 735, "plane": "CANONICAL_POLICY_BELIEF"},
+    {"id": "thesis_revision_ledger", "path": "data/cio/thesis_revision_ledger.jsonl", "exists": true, "rows": 10, "plane": "CANONICAL_POLICY_BELIEF"},
+    {"id": "agent_run_traces", "path": "data/cio/agent_run_traces.jsonl", "exists": true, "plane": "EPISODIC"},
+    {"id": "context_envelope_v1", "path": "scripts/lib/agent_context_envelope.py", "exists": true, "schema_hint": "ContextEnvelope@v1", "plane": "WORKING_SESSION", "note": "code contract; not v2"},
+    {"id": "operator_investment_policy", "path": "scripts/lib/cio_operator_investment_policy.py", "exists": true, "schema_hint": "OperatorInvestmentPolicy@v1", "plane": "CANONICAL_POLICY_BELIEF"}
+  ],
+  "incomplete": "SQLite session DBs, Postgres research tables, content_embeddings, OpenClaw state — continue in M2. Explorer still running at write time."
+}

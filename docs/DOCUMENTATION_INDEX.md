@@ -1,5 +1,5 @@
 # Trade AI v12 — Documentation Index
-**Updated:** 2026-08-24 (R9.3 post-#492 natural tick + two systemd FREE_FIRST cycles)
+**Updated:** 2026-08-24 (R10 M1 baseline curation + institutional memory architecture)
 **Protocol:** All doc changes follow `docs/A1A.md`. Do not add a doc without updating this index.
 **Scope:** Project root = `/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild`
 
@@ -34,11 +34,14 @@
 | `docs/ops/CIO_OPERATOR_DESK_LOOP_P0_2026-08-20.md` | Desk loop P0 meta_system (#418) | Active |
 | `docs/ops/CIO_OPERATOR_FREEFORM_AGENT_2026-08-20.md` | Freeform Flash agent (#419) | Active |
 | `docs/ops/CIO_HELD_THESIS_COVERAGE_2026-08-20.md` | Held-book thesis coverage SLA (#420) | Active |
+| `docs/architecture/TRADE_AI_INSTITUTIONAL_MEMORY_AND_AUTONOMOUS_AGENT_ARCHITECTURE_2026-08-24.md` | **Canonical R10** — taxonomy, baseline vs material curation, PR sequence, constitution | Active |
+| `docs/ops/TRADE_AI_R10_MEMORY_AUTONOMOUS_AGENT_CLOSEOUT_2026-08-24.md` | R10.2 operational closeout (M1 source; CURRENT still `bc6ff5c6`) | Active |
 | `docs/architecture/HERMES_PERSISTENT_TICKER_INTELLIGENCE_ARCHITECTURE_2026-08-23.md` | **Canonical** identity v2 (issuer/security/listing), free-first, Librarian critique, LLM escalation | Active |
 | `docs/ops/HERMES_FREE_FIRST_MEMORY_GRAPH_CONVERGENCE_2026-08-23.md` | R9.3 operational closeout — measured 120/0 artifacts, FREE_FIRST_ONLY | Active |
 | `docs/ops/HERMES_FREE_FIRST_NATURAL_SCHEDULER_2026-08-23.md` | CURRENT-pinned FREE_FIRST_ONLY systemd timer (hourly :23 ET, zero paid) | Active |
 | `docs/ops/HERMES_LIBRARIAN_CURATION_MATURITY_2026-08-23.md` | PR C Librarian epistemic + HermesCurationSummary — **live on `bc6ff5c6`**, first natural post-C tick 00:23 ET | Active |
 | `docs/_evidence/hermes_r93/POST_C_NATURAL_TICK.json` | Two natural ticks + post-#492 00:23 ET receipt (117/2/1/0/120/0, SHA-unchanged graph/state) | Active |
+| `docs/_evidence/memory_r10/` | R10 inventory, taxonomy, provider-convergence (M1) | Active |
 | `docs/architecture/TICKER_KNOWLEDGE_GRAPH_GUID_LINEAGE.md` | v1 ticker GUID lineage (#487/#488). Ticker is alias, not security identity | Active (partially superseded) |
 
 Drive mirror: **Trade_AI_Docs_v2** (`1Zxc20B5Xo24RGZ1Pow1-uW6ldASQJHiR`) via `scripts/sync-docs-to-drive.sh`.

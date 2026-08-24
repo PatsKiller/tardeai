@@ -51,6 +51,8 @@ def test_no_new_info_does_not_version_curation(tmp_path):
     r1 = circulate_symbol(tmp_path, _profile(), hermes_rows=_hermes(), rag_fn=_empty_rag, allow_searx=False)
     r2 = circulate_symbol(tmp_path, _profile(), hermes_rows=_hermes(), rag_fn=_empty_rag, allow_searx=False)
     assert r1["decision"] == "NO_NEW_INFO"
+    assert r1["curation_wrote"] is True
+    assert r1["curation_reason"] == "BASELINE_PROJECTION"
     assert r2["state_wrote"] is False
     assert r2["curation_wrote"] is False
     assert r2["paid_dispatch_entered"] == 0
