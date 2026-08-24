@@ -1,0 +1,10 @@
+{
+  "schema": "MemoryTenantIsolationTest@v1",
+  "hardware_isolation": false,
+  "isolation_class": "LOGICAL_TENANT_FILTER",
+  "unscoped_query": "FAIL_CLOSED",
+  "cross_tenant": "DENIED",
+  "shared_entity_cannot_read_operator_private": true,
+  "rls_production": "NOT_ACTIVATED",
+  "rls_shadow": "DESIGNED"
+}

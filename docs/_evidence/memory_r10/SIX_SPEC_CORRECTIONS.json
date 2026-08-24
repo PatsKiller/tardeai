@@ -1,0 +1,35 @@
+{
+  "schema": "SixSpecCorrections@v1",
+  "as_of": "2026-08-24T14:15:00+00:00",
+  "authority": "READ_ONLY_ADVISORY",
+  "corrections": {
+    "1_LOCAL_FIRST_VS_TITAN": {
+      "status": "TESTED",
+      "decision": "LOCAL_ONLY default; amazon.titan DISABLED_BY_DEFAULT; generative forbidden on memory path",
+      "evidence": "scripts/lib/embedding_policy.py tests/test_r10_memory_architecture_correction.py::test_cloud_embedding_disabled_by_default"
+    },
+    "2_NEO4J_PREMATURE_MANDATE": {
+      "status": "DESIGNED",
+      "decision": "INSUFFICIENT_DATA",
+      "evidence": "sql/r10_memory_shadow.sql; Neo4j not installed"
+    },
+    "3_HNSW_PREMATURE_MANDATE": {
+      "status": "TESTED_HARNESS",
+      "benchmark": "INSUFFICIENT_DATA",
+      "evidence": "scripts/lib/memory_vector_index_benchmark.py"
+    },
+    "4_SIMILARITY_EDGE_SAFETY": {
+      "status": "TESTED",
+      "tests": ["test_similarity_cannot_self_ratify"]
+    },
+    "5_TENANT_ISOLATION": {
+      "status": "TESTED",
+      "tests": ["test_tenant_isolation_fail_closed"],
+      "hardware_isolation_claimed": false
+    },
+    "6_PRIVATE_REASONING_PERSISTENCE": {
+      "status": "TESTED",
+      "tests": ["test_chain_of_thought_rejected"]
+    }
+  }
+}

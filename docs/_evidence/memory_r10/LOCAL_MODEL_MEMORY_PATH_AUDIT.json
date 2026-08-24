@@ -1,0 +1,22 @@
+{
+  "schema": "LocalModelMemoryPathAudit@v1",
+  "as_of_et": "2026-08-24T10:13:00-04:00",
+  "uninstall_authorized": false,
+  "memory_path_allowed": ["nomic-embed-text"],
+  "policy_digest": "0a109f422b47e3a30ba2b10eca18548e944e8a23073ee3f3e947efcf3c45e59f",
+  "dimension": 768,
+  "loopback_only": true,
+  "data_transmitted_externally_local_only": 0,
+  "installed": [
+    {"name": "nomic-embed-text:latest", "class": "DETERMINISTIC_EMBEDDING"},
+    {"name": "qwen3-embedding:8b", "class": "DETERMINISTIC_EMBEDDING", "memory_path": "not allowlisted"},
+    {"name": "gemma3:4b", "class": "GENERATIVE_UNUSED_OR_CRON"},
+    {"name": "gemma3:12b", "class": "GENERATIVE_ACTIVE", "note": "ollama ps 100% GPU Stopping at snapshot"},
+    {"name": "gemma3:12b-ctx4k", "class": "GENERATIVE_UNUSED"},
+    {"name": "gemma3:27b", "class": "GENERATIVE_UNUSED"},
+    {"name": "gemma3-overnight:latest", "class": "GENERATIVE_UNUSED"},
+    {"name": "qwen3:8b", "class": "GENERATIVE_UNUSED"}
+  ],
+  "generative_on_memory_path": "FORBIDDEN",
+  "zero_call_observation_period": "PRESERVED_DO_NOT_UNINSTALL"
+}

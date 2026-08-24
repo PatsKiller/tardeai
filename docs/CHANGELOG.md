@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-08-24 — R10 memory architecture: six spec-defect corrections (source)
+
+MATURITY_IMPACT: NONE live. Official live score stays **65/100**. Does not merge or rewrite PR #494 (M1 MERGE_CANDIDATE).
+
+- LOCAL_ONLY embedding policy; Amazon Titan/cloud embeddings DISABLED_BY_DEFAULT; generative models forbidden on the memory path.
+- Neo4j not installed. Postgres SHADOW DDL only. `NEO4J_SHADOW_POC_DECISION=INSUFFICIENT_DATA`.
+- Vector index recommendation INSUFFICIENT_DATA (no HNSW mandate). LongMemEval numbers tagged REFERENCE_TARGET_NOT_MEASURED.
+- SimilarityCandidate cannot self-ratify.
+- Logical tenant isolation (not hardware isolation); unscoped queries fail closed.
+- DecisionRationale@v1; chain-of-thought rejected from durable writes.
+- MemoryFact@v2 bitemporal closed-open queries (in-memory SHADOW).
+
+Canonical: `docs/architecture/TRADE_AI_BITEMPORAL_MEMORY_DATA_MODEL_2026-08-24.md`. Closeout: `docs/ops/TRADE_AI_MEMORY_ARCHITECTURE_CORRECTION_CLOSEOUT_2026-08-24.md`.
+
 ## 2026-08-24 — R9.3 post-#492 natural tick (WHAT_CHANGED)
 
 MATURITY_IMPACT: official live score **65/100**. Two independent systemd FREE_FIRST_ONLY cycles on `3dd6f8d5`, then #492 exact-main `bc6ff5c6` CURRENT, then first natural post-C tick `62652d0c` 00:23:52–00:26:51 ET: 117/2/1/0 SearXNG / 120 FRESH_NO_CHANGE / 0 paid. Graph+state+gaps+memory SHA unchanged. `TickerResearchState` loaded; context question WHAT_CHANGED; new curation/thesis/memory/notifications 0. `hermes_curation_summary.jsonl` still empty (NO_NEW_INFO does not version). PR D/E not started.
