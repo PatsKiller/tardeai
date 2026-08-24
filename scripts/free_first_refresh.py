@@ -14,6 +14,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from scripts.lib.free_first_circulation import circulate_universe  # noqa: E402
 from scripts.lib.free_first_refresh import run_free_first  # noqa: E402
 
 AUTHORITY = "READ_ONLY_ADVISORY"
@@ -24,9 +25,16 @@ def main() -> int:
     ap.add_argument("--root", default=str(ROOT))
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--max-searx", type=int, default=0, help="0 = do not hit SearXNG")
+    ap.add_argument("--circulate", action="store_true", help="real Hermes/RAG/structured path")
+    ap.add_argument("--symbols", default="", help="comma-separated canary list")
     args = ap.parse_args()
-    report = run_free_first(args.root, max_searx=int(args.max_searx))
-    report.pop("rows", None)  # keep stdout small; full rows optional via --dump
+    if args.circulate:
+        syms = [s.strip() for s in args.symbols.split(",") if s.strip()] or None
+        report = circulate_universe(args.root, symbols=syms, allow_searx=int(args.max_searx) > 0)
+        report.pop("rows", None)
+    else:
+        report = run_free_first(args.root, max_searx=int(args.max_searx))
+        report.pop("rows", None)
     if args.json:
         print(json.dumps(report, indent=2, default=str))
         return 0

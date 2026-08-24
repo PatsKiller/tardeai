@@ -81,5 +81,19 @@
     "free_searches": 0,
     "as_of": "2026-08-24T00:35:14+00:00"
   },
-  "note": "Hermes rows were not injected into this classifier run; 105 structured_resolved is canonical-card presence, not Hermes artifact projection. Artifacts remain 0. No paid calls."
+  "note": "PRE-P0: Hermes rows were not injected; 105 structured_resolved is canonical-card presence, not Hermes artifact projection. Artifacts were 0.",
+  "post_p0": {
+    "as_of": "2026-08-24T00:54:00+00:00",
+    "worktree_graph_artifacts": 1137,
+    "CURRENT_graph_artifacts": 0,
+    "Hermes_resolved": 117,
+    "structured_resolved": 3,
+    "RAG_attempts": 120,
+    "SearXNG_queries": 0,
+    "fresh_no_change": 120,
+    "Flash_eligible": 0,
+    "paid_dispatch_entered": 0,
+    "canary_replay_new_artifacts": 0,
+    "hermes_rows_examined": 1026
+  }
 }

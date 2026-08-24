@@ -4,9 +4,47 @@
 **Authority:** `READ_ONLY_ADVISORY`  
 **MEMORY_BEHAVIOR_INFLUENCE:** 0  
 **Paid calls this program:** 0  
-**Status:** `IMPLEMENTED_NOT_LIVE`
+**Status:** `IMPLEMENTED_NOT_LIVE` — P0 circulation added on this branch; **not merged, CURRENT still 0 artifacts**.
 
-This is not `HERMES_PERSISTENT_INTELLIGENCE_L6`. Identity skeleton exists; circulation is not closed. Official R9.2 score stays **59/100**.
+Official live maturity stays **59/100**.
+
+## Why the first 105/120 result was provisional
+
+The classifier-only pass reported `structured_resolved=105` while also recording:
+
+- `existing_Hermes_reuse=0`
+- `RAG_sufficient=0`
+- `SearXNG_resolved=0`
+- `free_searches=0`
+- **ticker research artifacts=0**
+
+That 105 was **canonical-card presence**, not Hermes/RAG circulation. A symbol card can fill an identity/metadata gap. It cannot stand in for thesis evidence, catalysts, or counter-evidence.
+
+## POST-P0 circulation (worktree graph copy, 2026-08-23 20:54 ET)
+
+Canaries NOC SCHD SCHG CSCO ANET: **5/5 HERMES_REUSE**, 60 artifacts, replay **0 new artifacts**, paid 0.
+
+Full 120 FREE_FIRST_ONLY:
+
+| route | n |
+|---|---|
+| Hermes_resolved | **117** |
+| structured_resolved (gap-specific ingested news/primary, not card-only) | **3** |
+| RAG_resolved (bucket; Hermes won first) | 0 |
+| SearXNG | **0** (no residual after Hermes) |
+| unresolved / Flash-eligible | **0** |
+| fresh_no_change / NO_NEW_INFO | **120** |
+| paid_dispatch_entered | **0** |
+| llm_consumption / reservations (15m window) | **0 / 0** |
+| COST_CAP this pass | **0** (paid boundary never reached) |
+| artifacts on worktree graph | **1137** (was 0) |
+| hermes rows examined | **1026** |
+| RAG retrieval attempts | **120** (sql_title fallback; embed path returned 0) |
+| librarian assessments | **1052** |
+
+CURRENT pin graph is **unchanged** (still 0 artifacts) until merge+promote.
+
+Replay: second identical canary created 0 new artifacts, 0 provider calls, 0 thesis versions.
 
 ## Source
 

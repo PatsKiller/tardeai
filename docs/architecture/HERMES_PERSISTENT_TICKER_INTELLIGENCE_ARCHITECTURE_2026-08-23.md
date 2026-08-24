@@ -114,4 +114,6 @@ No paid call in this program. `MEMORY_BEHAVIOR_INFLUENCE=0`. No broker/order/sto
 
 ## Measured live at handoff (`0b7bc9eb`)
 
-120 ticker profiles, 0 research artifacts, 17 unresolved identities, memory mostly CANDIDATE research pointers. Official maturity remains **59/100** until a natural cycle is observed.
+120 ticker profiles, 0 research artifacts on CURRENT, 17 unresolved identities, memory mostly CANDIDATE research pointers.
+
+P0 circulation on PR #489 worktree (not CURRENT): **1137 artifacts** projected from existing Hermes; 117/120 Hermes_resolved; 0 paid dispatch. Official maturity remains **59/100** until merge + exact-main + natural cycle.
