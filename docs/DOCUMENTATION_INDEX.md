@@ -40,6 +40,7 @@
 | `docs/ops/CIO_PERSISTENT_COGNITION_CONSUMPTION_2026-08-24.md` | CIO read-only consumption of TickerResearchState + baseline | Active |
 | `docs/ops/TRADE_AI_M2_MEMORY_SUBSTRATE_BENCHMARK_2026-08-24.md` | Isolated A/B/C substrate benchmark; POSTGRES_PGVECTOR decision | Active |
 | `docs/architecture/GOOGLE_NOTES_BITEMPORAL_DDL_ARCHITECT_RECONCILIATION_2026-08-24.md` | Google Notes DDL: accepted / modified / rejected / benchmark-required | Active |
+| `docs/ops/TRADE_AI_M3_MEMORY_CONSOLIDATION_2026-08-24.md` | M3 consolidator / episodes / preference candidates (source) | Active |
 | `docs/architecture/TRADE_AI_BITEMPORAL_MEMORY_DATA_MODEL_2026-08-24.md` | R10 MemoryFact@v2 + six architectural corrections (source/tested, not live) | Active |
 | `docs/architecture/TRADE_AI_MEMORY_RETRIEVAL_AND_INDEX_STRATEGY_2026-08-24.md` | MemoryRetrievalUnit + index strategy; HNSW/Neo4j UNMEASURED | Active |
 | `docs/ops/TRADE_AI_MEMORY_ARCHITECTURE_CORRECTION_CLOSEOUT_2026-08-24.md` | Six-defect closeout; reconciled onto post-#494 main | Active |

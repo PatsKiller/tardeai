@@ -1,12 +1,19 @@
 # Changelog
 
+## 2026-08-24 — M3 memory consolidator (source)
+
+MATURITY_IMPACT: NONE live. SOURCE + TESTED only until this PR merges.
+
+- AgentEpisode@v1, MemoryConsolidator@v1, PreferenceCandidate@v1, SemanticOperatorMemory@v1.
+- Injection quarantined. Dedupe. Preferences/lessons have no policy effect. MEMORY_BEHAVIOR_INFLUENCE=0.
+
 ## 2026-08-24 — M2 isolated memory substrate benchmark (source)
 
 MATURITY_IMPACT: NONE live. Isolated Docker `:55432` only. Production SQL not applied.
 
 v2: `tstzrange`, DB-owned transaction time, exclusion limited to SINGLE_VALUED_CURRENT, FORCE RLS + `m2_agent`, normalized provenance/adjudication. Google Notes reconciliation documented.
 
-- Lanes A (native bitemporal) and B (pgvector 0.8.6) MEASURED. Lane C pgmnemo v0.20.0 UNMEASURED_INSTALL.
+- Lanes A (native bitemporal) and B (pgvector 0.8.6) MEASURED. Lane C pgmnemo v0.20.0 MEASURED as lesson corpus (not MemoryFact@v2).
 - Tenant leakage 0 with FORCE RLS + composite FK. Exclusive CURRENT + AdjudicationReceipt@v1.
 - Storage decision: **POSTGRES_PGVECTOR**. Neo4j: POSTGRES_SUFFICIENT.
 - 200 in-process golden cases TESTED (not live retrieval quality). Titan/HNSW/0.75 not mandated.
