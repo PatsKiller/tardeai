@@ -77,15 +77,24 @@
       "id": "R19-engine",
       "needs_live_r17": false,
       "implement_now": true,
-      "status": "SOURCE_ONLY+UNIT_TEST+GOLDEN_SHADOW",
-      "path": "scripts/lib/r19_learning_engine.py"
+      "status": "IMPLEMENTED_NOT_COMPLETE",
+      "path": "scripts/lib/r19_learning_engine.py",
+      "note": "Evidence spine and HypothesisRegistration@v1 are executable. Live jsonl still has zero chain_complete_for_scored_learning rows, so historical replay emits NO_HYPOTHESIS_EARNED_REVIEW_READY."
+    },
+    {
+      "id": "R19-decision-outcome-lineage",
+      "needs_live_r17": true,
+      "implement_now": false,
+      "status": "BLOCKED_ON_NATURAL_LINEAGE",
+      "note": "Observations do not share decision_id with checkpoints; subject_guid is usually null. Do not invent holdout lineage."
     },
     {
       "id": "R20-propagation",
       "needs_live_r17": false,
       "implement_now": true,
-      "status": "SOURCE_ONLY+UNIT_TEST",
-      "path": "scripts/lib/r20_universe_propagation.py"
+      "status": "IMPLEMENTED_NOT_COMPLETE",
+      "path": "scripts/lib/r20_universe_propagation.py",
+      "note": "Classification-peer edges from symbol_profiles can be provenance-complete. Legacy graph catalyst/mention edges lack evidence_artifact_guid and are excluded from score or marked PROVENANCE_INCOMPLETE."
     },
     {
       "id": "R21-portfolio",

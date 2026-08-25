@@ -44,6 +44,7 @@ def register_hypothesis(
     source_sha: str,
     registered_at: str | None = None,
     mode: str = "CONTEMPORANEOUS",
+    persist: bool = True,
 ) -> dict[str, Any]:
     cls = require_evidence_class(evidence_class)
     ts = registered_at or _now()
@@ -62,6 +63,10 @@ def register_hypothesis(
         if cls == "LIVE":
             return {"ok": False, "reason": "LIVE_FORBIDS_RECONSTRUCTED_REGISTRATION", "authority": AUTHORITY}
         ts = train_cut or ts
+    cut_ts = _parse_ts(train_cut)
+    hs_ts = _parse_ts(holdout_start)
+    if cut_ts and hs_ts and hs_ts < cut_ts:
+        return {"ok": False, "reason": "TRAIN_HOLDOUT_OVERLAP", "authority": AUTHORITY}
     frozen = _spec_payload(spec)
     hid = _sha({"spec": frozen, "registered_at": ts, "source_sha": source_sha})[:24]
     row = {
@@ -83,14 +88,17 @@ def register_hypothesis(
         "mode": mode,
         "evidence_class": cls,
         "criteria_locked": True,
+        "persisted": False,
         "authority": AUTHORITY,
         "memory_behavior_influence": MBI,
         "financial_action": False,
     }
-    path = Path(root) / PATH
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as fh:
-        fh.write(json.dumps(row, sort_keys=True, default=str) + "\n")
+    if persist:
+        path = Path(root) / PATH
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(row, sort_keys=True, default=str) + "\n")
+        row["persisted"] = True
     return {"ok": True, "registration": row}
 
 
@@ -109,6 +117,21 @@ def evaluate_registration(
     he = _parse_ts(registration.get("holdout_end"))
     if cut and hs and hs < cut:
         return {"ok": False, "status": "TRAIN_HOLDOUT_OVERLAP", "authority": AUTHORITY}
+
+    def _row_ts(row: dict[str, Any]):
+        return _parse_ts(row.get("decision_timestamp") or row.get("observed_at") or row.get("recorded_at"))
+
+    for row in train_rows:
+        ts = _row_ts(row)
+        if hs and ts and ts >= hs:
+            return {"ok": False, "status": "TRAIN_HOLDOUT_OVERLAP", "authority": AUTHORITY}
+    for row in holdout_rows:
+        ts = _row_ts(row)
+        if cut and ts and ts < cut:
+            return {"ok": False, "status": "TRAIN_HOLDOUT_OVERLAP", "authority": AUTHORITY}
+        if he and ts and ts > he:
+            return {"ok": False, "status": "HOLDOUT_OUTSIDE_REGISTERED_WINDOW", "authority": AUTHORITY}
+
     min_n = int(registration.get("minimum_sample_size") or 8)
     if len(holdout_rows) < min_n or len(train_rows) < min_n:
         return {
@@ -131,10 +154,15 @@ def evaluate_registration(
     threshold = float(crit.get("min_delta") or 0.0)
     direction = str(registration.get("expected_direction") or "improve")
     earned = (delta >= threshold) if direction == "improve" else (delta <= -threshold)
+    train_ids = [str(r.get("decision_id")) for r in train_rows if r.get("decision_id")]
+    hold_ids = [str(r.get("decision_id")) for r in holdout_rows if r.get("decision_id")]
+    contra = [str(r.get("decision_id") or r.get("outcome_id")) for r in holdout_rows if r.get("counterexample")]
+    status = "REVIEW_READY" if earned else "NO_HYPOTHESIS_EARNED_REVIEW_READY"
     return {
         "ok": True,
-        "status": "REVIEW_READY" if earned else "NO_HYPOTHESIS_EARNED_REVIEW_READY",
+        "status": status,
         "hypothesis_id": registration.get("hypothesis_id"),
+        "statement": registration.get("statement"),
         "metric": metric,
         "train_n": len(train_rows),
         "holdout_n": len(holdout_rows),
@@ -142,7 +170,25 @@ def evaluate_registration(
         "holdout_mean": round(hold_m, 4),
         "delta": delta,
         "acceptance_threshold": threshold,
+        "actual_result": {
+            "train_mean": round(train_m, 4),
+            "holdout_mean": round(hold_m, 4),
+            "delta": delta,
+            "earned": earned,
+        },
         "uncertainty": "BOUNDED" if len(holdout_rows) >= min_n else "INSUFFICIENT_SAMPLE",
+        "underlying_decision_ids": sorted(set(train_ids + hold_ids)),
+        "cohort_definition": registration.get("eligible_cohort_definition"),
+        "training_sample": {"n": len(train_rows), "decision_ids": train_ids},
+        "holdout_sample": {"n": len(holdout_rows), "decision_ids": hold_ids},
+        "contradictions": contra,
+        "provenance": {
+            "spec_hash": registration.get("spec_hash"),
+            "registered_at": registration.get("registered_at"),
+            "mode": registration.get("mode"),
+            "source_sha": registration.get("source_sha"),
+            "criteria_locked": registration.get("criteria_locked"),
+        },
         "source_sha": registration.get("source_sha"),
         "evidence_class": registration.get("evidence_class"),
         "authority": AUTHORITY,

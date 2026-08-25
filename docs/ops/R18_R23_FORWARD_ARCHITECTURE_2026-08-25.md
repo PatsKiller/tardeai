@@ -1,7 +1,7 @@
 # R18–R23+ forward architecture (source/shadow)
 
 **Authority:** `READ_ONLY_ADVISORY` · `MEMORY_BEHAVIOR_INFLUENCE=0`  
-**Branch:** `chore/r18-r22-institutional-intelligence` (off CURRENT)  
+**Branch:** `feat/r18-r23-institutional-intelligence-shadow` (off CURRENT, not merged)  
 **Base:** merged main `2d988c76` (PR #515)  
 **Activation:** all OFF  
 **R17 live wiring:** not in this branch
@@ -65,8 +65,8 @@ Can be built **immediately** (this branch):
 |---|---|---|
 | control | `EvidenceClassGuard@v1` | `cio_forward_program.py` |
 | R18 | `CalibrationObservation@v1`, `CalibrationCohort@v1`, `DecisionQualityProfile@v1` | `r18_calibration_fabric.py` |
-| R19 | `InstitutionalLearningRecord@v1` | `r19_learning_engine.py` |
-| R20 | `ImpactCandidateSet@v1` | `r20_universe_propagation.py` |
+| R19 | `InstitutionalLearningRecord@v1`, `DecisionJoinProjection@v1`, `HypothesisRegistration@v1` | `r19_learning_engine.py`, `r19_evidence_spine.py`, `r19_experiment_registry.py` |
+| R20 | `ImpactCandidateSet@v1`, `UniverseProvenanceCoverage@v1`, `PropagationTrace@v1` | `r20_universe_propagation.py` |
 | R21 | `PortfolioCognition@v1` | `r21_portfolio_cognition.py` |
 | R22 | `InstitutionalCioLoop@v1` | `r22_cio_loop.py` |
 
@@ -108,4 +108,11 @@ Do not wire these modules into CURRENT crontab, material scan, or R17 persist_ch
 
 ## Tests
 
-`tests/test_r18_r22_forward.py` — UNIT_TEST / GOLDEN_SHADOW only. No LIVE outcomes fabricated.
+`tests/test_r18_r22_forward.py`, `tests/test_r18_r22_depth.py`, `tests/test_r19_r20_hardening.py` — UNIT_TEST / GOLDEN_SHADOW / HISTORICAL_REPLAY only. No LIVE outcomes fabricated.
+
+Target state for this shadow branch (activation still OFF):
+
+- **R19:** capable of producing a defensible REVIEW_READY candidate from genuine historical replay. If none qualify, emit `NO_HYPOTHESIS_EARNED_REVIEW_READY` rather than relaxing the threshold.
+- **R20:** capable of propagating across the canonical universe with queryable lineage on every *used* edge. Incomplete edges are excluded from score or marked `PROVENANCE_INCOMPLETE`.
+
+Do not design R24/R25 on this pass.

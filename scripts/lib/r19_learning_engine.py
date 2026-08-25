@@ -294,34 +294,50 @@ def attempt_historical_review_ready(
 
     cls = require_evidence_class(evidence_class)
     spine = project_joins(root)
+    candidate_used = False
     eligible = [
         r for r in spine.get("rows") or []
         if r.get("join_class") == "DETERMINISTICALLY_JOINABLE"
-        and r.get("join_reason") == "self_identified_performance_event"
+        and r.get("chain_complete_for_scored_learning")
     ]
-    # Temporal split of self-identified performance events.
+    # CANDIDATE_JOIN rows are counted but never scored.
+    candidate_n = int((spine.get("counts") or {}).get("CANDIDATE_JOIN") or 0)
     times = sorted({r.get("decision_timestamp") for r in eligible if r.get("decision_timestamp")})
+    base = {
+        "schema": SCHEMA,
+        "status": "NO_HYPOTHESIS_EARNED_REVIEW_READY",
+        "spine_counts": spine.get("counts"),
+        "unresolved_reasons": spine.get("unresolved_reasons"),
+        "eligible_n": len(eligible),
+        "candidate_join_n": candidate_n,
+        "candidate_joins_used_for_scored_learning": candidate_used,
+        "unique_timestamps": len(times),
+        "registry_unchanged": True,
+        "authority": AUTHORITY,
+        "evidence_class": cls,
+        "financial_action": False,
+        "auto_policy": False,
+    }
+    if not eligible:
+        return {
+            **base,
+            "reason": "no_deterministically_joinable_decision_outcome_holdout",
+        }
     if len(times) < 2:
         return {
-            "schema": SCHEMA,
-            "status": "NO_HYPOTHESIS_EARNED_REVIEW_READY",
+            **base,
             "reason": "no_temporal_holdout_in_deterministically_joinable_set",
-            "spine_counts": spine.get("counts"),
-            "unresolved_reasons": spine.get("unresolved_reasons"),
-            "eligible_n": len(eligible),
-            "unique_timestamps": len(times),
-            "registry_unchanged": True,
-            "authority": AUTHORITY,
-            "evidence_class": cls,
-            "financial_action": False,
         }
     cut = times[len(times) // 2]
     train = [r for r in eligible if str(r.get("decision_timestamp")) < str(cut)]
     hold = [r for r in eligible if str(r.get("decision_timestamp")) >= str(cut)]
     spec = {
-        "statement": "FAST policy objective_score holds out of sample on joinable performance events",
+        "statement": "Joinable decision/outcome quality holds out of sample",
         "source_lesson_ids": [],
-        "cohort_definition": {"join_reason": "self_identified_performance_event"},
+        "cohort_definition": {
+            "join_class": "DETERMINISTICALLY_JOINABLE",
+            "chain_complete_for_scored_learning": True,
+        },
         "metric": "objective_score",
         "expected_direction": "improve",
         "minimum_sample_size": 8,
@@ -330,34 +346,20 @@ def attempt_historical_review_ready(
         "holdout_end": times[-1],
         "acceptance_criteria": {"min_delta": 0.03},
     }
-    # Attach objective_score from performance store via decision_id key — caller must load scores.
-    # Without scores on the projection rows, evaluation is insufficient.
     if not any(r.get("objective_score") is not None for r in hold):
         return {
-            "schema": SCHEMA,
-            "status": "NO_HYPOTHESIS_EARNED_REVIEW_READY",
+            **base,
             "reason": "joinable_events_lack_scored_metric_on_projection",
-            "spine_counts": spine.get("counts"),
             "train_n": len(train),
             "holdout_n": len(hold),
-            "authority": AUTHORITY,
-            "evidence_class": cls,
-            "financial_action": False,
         }
     before = registry_fingerprint(root)
     reg = register_hypothesis(
         root, spec, evidence_class=cls, source_sha=source_sha,
-        registered_at=cut, mode="RECONSTRUCTED_AS_OF",
+        registered_at=cut, mode="RECONSTRUCTED_AS_OF", persist=False,
     )
     if not reg.get("ok"):
-        return {
-            "schema": SCHEMA,
-            "status": "NO_HYPOTHESIS_EARNED_REVIEW_READY",
-            "reason": reg.get("reason"),
-            "spine_counts": spine.get("counts"),
-            "authority": AUTHORITY,
-            "evidence_class": cls,
-        }
+        return {**base, "reason": reg.get("reason")}
     ev = evaluate_registration(reg["registration"], train_rows=train, holdout_rows=hold, spec=spec)
     after = registry_fingerprint(root)
     ev["spine_counts"] = spine.get("counts")
@@ -365,6 +367,8 @@ def attempt_historical_review_ready(
     ev["registry_hash_before"] = before
     ev["registry_hash_after"] = after
     ev["registry_unchanged"] = before == after
+    ev["candidate_joins_used_for_scored_learning"] = False
+    ev["eligible_n"] = len(eligible)
     if ev.get("status") != "REVIEW_READY":
         ev["status"] = "NO_HYPOTHESIS_EARNED_REVIEW_READY"
     return ev

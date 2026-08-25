@@ -1,6 +1,6 @@
 {
   "schema": "ForwardImplementationDepth@v1",
-  "branch": "chore/r18-r22-institutional-intelligence",
+  "branch": "feat/r18-r23-institutional-intelligence-shadow",
   "authority": "READ_ONLY_ADVISORY",
   "activation_all_off": true,
   "rounds": {
@@ -14,21 +14,21 @@
       "activation": "OFF"
     },
     "R19": {
-      "capability": "Learning pipeline with preregistration, holdout, registry hash, REVIEW_READY ceiling",
-      "depth": "IMPLEMENTED_EXECUTABLE",
-      "replay": "25 historical observations all before cutoff → INSUFFICIENT_EVIDENCE/NO_HOLDOUT_WINDOW; lesson candidate retained at SHADOW; registries unchanged; zero-support cannot mint a lesson",
-      "wired": "callable replay_learning_pipeline; not attached to persist_checkpoint/scan",
+      "capability": "Join spine + HypothesisRegistration@v1 + REVIEW_READY only from deterministically joinable decision/outcome holdout",
+      "depth": "IMPLEMENTED_NOT_COMPLETE",
+      "replay": "scored_learning_eligible=0; CANDIDATE_JOIN never scored; historical attempt status NO_HYPOTHESIS_EARNED_REVIEW_READY reason no_deterministically_joinable_decision_outcome_holdout; UNIT_TEST holdout can earn REVIEW_READY",
+      "wired": "callable project_joins / register_hypothesis(persist=False) / attempt_historical_review_ready; not attached to persist_checkpoint/scan",
       "evidence_class": "HISTORICAL_REPLAY + UNIT_TEST + GOLDEN_SHADOW",
-      "blocker_to_LIVE": "elapsed holdout outcomes with identity; R17 due processor",
+      "blocker_to_LIVE": "natural decision_id overlap between checkpoints and observations with security_guid and temporal holdout; R17 due processor",
       "activation": "OFF"
     },
     "R20": {
-      "capability": "Canonical-universe impact candidate set",
-      "depth": "IMPLEMENTED_EXECUTABLE",
-      "replay": "propagate_from_canonical_root(CURRENT, NOC) related_n=384 kept=8 on 5409-member union; starting TickerKnowledgeProfile; CURRENT graph edges lack producer/observed_at (provenance_complete=0/15)",
+      "capability": "Canonical-universe impact candidates with queryable lineage on every used edge",
+      "depth": "IMPLEMENTED_NOT_COMPLETE",
+      "replay": "NOC origin used-edge ratio complete/used; incomplete catalyst graph edges marked PROVENANCE_INCOMPLETE; explicit thesis mention SCHD→SPCX; universe fact-edge coverage computed; no bulk research",
       "wired": "IMPLEMENTED_NOT_WIRED to research dispatch (by design)",
       "evidence_class": "HISTORICAL_REPLAY",
-      "blocker_to_LIVE": "graph re-seed with provenance; bounded commission still OFF",
+      "blocker_to_LIVE": "legacy graph catalyst/peer edges still lack evidence_artifact_guid; bounded commission still OFF",
       "activation": "OFF"
     },
     "R21": {

@@ -1,34 +1,67 @@
 {
   "schema": "R19R20HardeningReceipt@v1",
   "evidence_class": "HISTORICAL_REPLAY",
+  "authority": "READ_ONLY_ADVISORY",
+  "memory_behavior_influence": 0,
+  "financial_action": false,
+  "activation_off": true,
+  "originals_rewritten": false,
   "spine_counts": {
     "DETERMINISTICALLY_JOINABLE": 90,
-    "CANDIDATE_JOIN": 911,
-    "UNRESOLVED_WITH_REASON": 43,
-    "scored_learning_eligible": 90
+    "CANDIDATE_JOIN": 1851,
+    "UNRESOLVED": 119,
+    "UNRESOLVED_WITH_REASON": 119,
+    "scored_learning_eligible": 0,
+    "decision_outcome_pairs": 0
   },
   "unresolved_reasons": {
     "observation_decision_id_not_in_checkpoints": 25,
-    "checkpoint_without_matching_observation": 18
+    "checkpoint_without_matching_observation": 18,
+    "prompt_eval_plan_id_not_in_plan_store": 76
   },
+  "candidate_join_reasons": {
+    "ticker_alias_only_no_security_guid": 916,
+    "disposition_ticker_alias_only_no_outcome": 3,
+    "plan_without_prompt_eval_or_outcome": 34,
+    "exact_plan_id_prompt_eval_not_outcome_observation": 548,
+    "thesis_version_without_linked_decision": 350
+  },
+  "candidate_joins_forbidden_for_scored_learning": true,
   "r19_attempt": {
     "status": "NO_HYPOTHESIS_EARNED_REVIEW_READY",
-    "reason": "no_temporal_holdout_in_deterministically_joinable_set",
-    "eligible_n": 90,
-    "unique_timestamps": 1,
+    "reason": "no_deterministically_joinable_decision_outcome_holdout",
+    "eligible_n": 0,
+    "unique_timestamps": 0,
+    "candidate_joins_used_for_scored_learning": false,
     "train_n": null,
     "holdout_n": null
   },
-  "r20_coverage": {
+  "r20_origin_coverage": {
     "securities_in_universe": 5409,
     "graph_profiled_securities": 120,
     "identity_resolved_securities": 2774,
-    "edges_total": 491,
+    "edges_total": 449,
     "fully_provenance_complete_edges": 407,
-    "candidate_incomplete_edges": 84,
+    "candidate_incomplete_edges": 42,
     "disputed_edges": 0,
     "expired_superseded_edges": 0,
-    "provenance_complete_ratio": 0.8289
+    "provenance_complete_ratio": 0.9065,
+    "edges_used_for_propagation": 407
+  },
+  "r20_universe_coverage": {
+    "schema": "UniverseProvenanceCoverage@v1",
+    "securities_in_universe": 5409,
+    "graph_profiled_securities": 120,
+    "identity_resolved_securities": 2774,
+    "edges_total": 5571,
+    "fully_provenance_complete_edges": 5485,
+    "candidate_incomplete_edges": 86,
+    "disputed_edges": 0,
+    "expired_superseded_edges": 0,
+    "provenance_complete_ratio": 0.9846,
+    "edges_used_for_propagation": 5485,
+    "silent_incomplete_edges_used_for_score": false,
+    "authority": "READ_ONLY_ADVISORY"
   },
   "r20_candidates": [
     {
@@ -38,7 +71,8 @@
         "sector"
       ],
       "status": "PROVENANCE_COMPLETE",
-      "score": 0.594
+      "score": 0.594,
+      "why_ranked": "score=0.594;paths=industry,sector;tier=T0-HOLD;held=True;identity=resolved"
     },
     {
       "symbol": "SPCX",
@@ -47,7 +81,8 @@
         "sector"
       ],
       "status": "PROVENANCE_COMPLETE",
-      "score": 0.594
+      "score": 0.594,
+      "why_ranked": "score=0.594;paths=industry,sector;tier=T0-HOLD;held=True;identity=resolved"
     },
     {
       "symbol": "ACHR",
@@ -56,7 +91,8 @@
         "sector"
       ],
       "status": "PROVENANCE_COMPLETE",
-      "score": 0.297
+      "score": 0.297,
+      "why_ranked": "score=0.297;paths=industry,sector;tier=T1-WATCH;held=False;identity=resolved"
     },
     {
       "symbol": "AVAV",
@@ -65,7 +101,8 @@
         "sector"
       ],
       "status": "PROVENANCE_COMPLETE",
-      "score": 0.297
+      "score": 0.297,
+      "why_ranked": "score=0.297;paths=industry,sector;tier=T1-WATCH;held=False;identity=resolved"
     },
     {
       "symbol": "AVEX",
@@ -74,7 +111,8 @@
         "sector"
       ],
       "status": "PROVENANCE_COMPLETE",
-      "score": 0.297
+      "score": 0.297,
+      "why_ranked": "score=0.297;paths=industry,sector;tier=T1-WATCH;held=False;identity=resolved"
     },
     {
       "symbol": "AXON",
@@ -83,7 +121,8 @@
         "sector"
       ],
       "status": "PROVENANCE_COMPLETE",
-      "score": 0.297
+      "score": 0.297,
+      "why_ranked": "score=0.297;paths=industry,sector;tier=T1-WATCH;held=False;identity=resolved"
     },
     {
       "symbol": "BWXT",
@@ -92,7 +131,8 @@
         "sector"
       ],
       "status": "PROVENANCE_COMPLETE",
-      "score": 0.297
+      "score": 0.297,
+      "why_ranked": "score=0.297;paths=industry,sector;tier=T1-WATCH;held=False;identity=resolved"
     },
     {
       "symbol": "BYRN",
@@ -101,10 +141,69 @@
         "sector"
       ],
       "status": "PROVENANCE_COMPLETE",
-      "score": 0.297
+      "score": 0.297,
+      "why_ranked": "score=0.297;paths=industry,sector;tier=T1-WATCH;held=False;identity=resolved"
     }
   ],
   "r20_incomplete_n": 20,
   "silent_incomplete": false,
-  "authority": "READ_ONLY_ADVISORY"
+  "r20_traces": {
+    "security": {
+      "origin": "NOC",
+      "path": "security",
+      "complete_hits": null,
+      "incomplete_hits": null,
+      "sample_symbol": null,
+      "sample_status": null,
+      "why": "originating_security",
+      "target": "NOC",
+      "reason": null
+    },
+    "industry": {
+      "origin": "NOC",
+      "path": "industry",
+      "complete_hits": 8,
+      "incomplete_hits": 0,
+      "sample_symbol": "RTX",
+      "sample_status": "PROVENANCE_COMPLETE",
+      "why": "score=0.594;paths=industry,sector;tier=T0-HOLD;held=True;identity=resolved",
+      "target": null,
+      "reason": null
+    },
+    "sector": {
+      "origin": "NOC",
+      "path": "sector",
+      "complete_hits": 8,
+      "incomplete_hits": 0,
+      "sample_symbol": "RTX",
+      "sample_status": "PROVENANCE_COMPLETE",
+      "why": "score=0.594;paths=industry,sector;tier=T0-HOLD;held=True;identity=resolved",
+      "target": null,
+      "reason": null
+    },
+    "catalyst": {
+      "origin": "ACHV",
+      "path": "catalyst",
+      "complete_hits": 0,
+      "incomplete_hits": 20,
+      "sample_symbol": "ADBE",
+      "sample_status": "PROVENANCE_INCOMPLETE",
+      "why": "PROVENANCE_INCOMPLETE",
+      "target": null,
+      "reason": null
+    },
+    "mention": {
+      "origin": "SCHD",
+      "path": "mention",
+      "complete_hits": 1,
+      "incomplete_hits": 0,
+      "sample_symbol": "SPCX",
+      "sample_status": "PROVENANCE_COMPLETE",
+      "why": "score=0.429;paths=mention;tier=T0-HOLD;held=True;identity=resolved",
+      "target": null,
+      "reason": null
+    }
+  },
+  "mention_edges_n": 1,
+  "hypothesis_registrations_written_to_current": false
 }
