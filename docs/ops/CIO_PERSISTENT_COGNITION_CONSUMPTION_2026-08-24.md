@@ -1,7 +1,7 @@
 # CIO persistent cognition consumption
 
 **Date:** 2026-08-24  
-**Status:** MERGED (#497) + DEPLOYED (`15ab2362`). Hermes free-first NATURALLY_PROVEN. CIO pack-in-trace **source-fixed in R10.8** (`fix/cio-natural-cognition-pack`); L5 natural award waits for scheduled material_scan on that exact-main.  
+**Status:** MERGED (#497, #502) + DEPLOYED (`1afb1479`). Hermes free-first NATURALLY_PROVEN. CIO pack-in-trace **NATURALLY_PROVEN** 23:17 ET SCHD on exact-main `1afb1479`.  
 **Authority:** `READ_ONLY_ADVISORY`  
 **MEMORY_BEHAVIOR_INFLUENCE:** 0  
 

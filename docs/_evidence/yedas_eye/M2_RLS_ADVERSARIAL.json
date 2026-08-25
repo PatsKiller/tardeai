@@ -1,0 +1,12 @@
+{
+  "pool_reuse": "PASS",
+  "owner": "FORCE_RLS_ON",
+  "bypassrls": "PASS",
+  "security_definer": "write_fact_version_only",
+  "malicious_provenance": "BLOCKED",
+  "cross_tenant_fk": "COMPOSITE_FK_PRESENT",
+  "tenant_leakage": 0,
+  "agent_facing_leakage": 0,
+  "owner_count_other_tenant": 1,
+  "note": "m2_agent COUNT other-tenant = 0. Owner/definer COUNT is not agent-facing."
+}

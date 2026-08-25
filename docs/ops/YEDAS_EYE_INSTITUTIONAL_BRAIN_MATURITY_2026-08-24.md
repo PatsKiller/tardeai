@@ -82,7 +82,7 @@ Separate: SOURCE · TESTED · MERGED · DEPLOYED · NATURALLY_PROVEN · BENCHMAR
 
 **P0** none from this cycle (authority/paid/baseline intact; production SQL unapplied).
 
-**P1** Host vs repo flock unit file. CIO pack-in-trace on natural material_scan / CIO worker still false. PRSO `security_guid` identity gap.
+**P1** PRSO `security_guid` identity gap (`UNRESOLVED_WITH_REASON` / no_canonical_symbol_card). Host vs repo flock **source-fixed** in #502 (do not reinstall live unit).
 
 **P2** 100k/1M scale; M2 production shadow-write/parity/rollback program; AIF RESEARCH_REFERENCE classification (no premature delete).
 
