@@ -97,6 +97,13 @@ def _edge(source: str, target: str, rel: str, kind: str, *, confirmed: bool) -> 
         "last_confirmed_at": now if confirmed else None,
         "status": "CONFIRMED" if confirmed else "CANDIDATE",
         "confidence": 0.8 if confirmed else 0.3,
+        "source_entity_guid": source,
+        "target_entity_guid": target,
+        "relationship_type": rel,
+        "relationship_class": kind,
+        "source_id": None,
+        "source_type": "ticker_knowledge_profile",
+        "producer": "ticker_knowledge_graph",
         "source_refs": [],
     }
 

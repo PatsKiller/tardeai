@@ -1,14 +1,19 @@
 """Canonical Transferson universe: membership ≠ graph-profile count, ≠ 120/126."""
 from __future__ import annotations
 
+from scripts.lib.security_identity import attach_identity_v2, resolve_identity_spine
 from scripts.lib.transferson_universe import (
     build_universe,
+    get_identity_lineage,
     get_membership_lineage,
     get_related_by_catalyst,
     get_related_by_industry,
     get_related_by_sector,
     get_symbol,
+    graph_coverage_report,
+    metrics,
     research_tier_index,
+    seed_graph_from_universe,
     universe_diff,
 )
 
@@ -207,3 +212,55 @@ def test_no_126_hardcoded_as_universe() -> None:
     m = build_universe(sources=_sources())
     assert m["canonical_universe_count"] != 126
     assert "126" not in str(m["graph_coverage"])
+
+
+def test_ticker_text_does_not_mint_security_guid() -> None:
+    spine = resolve_identity_spine({"symbol": "NVDA"})
+    assert spine["security_guid"] is None
+    assert spine["identity_status"] == "UNRESOLVED_WITH_REASON"
+    assert spine["ticker_guid_is_not_security"] is True
+    attached = attach_identity_v2({"symbol": "NVDA"})
+    assert attached.get("security_guid") is None
+
+
+def test_company_or_cusip_yields_security_not_from_ticker() -> None:
+    with_co = resolve_identity_spine({"symbol": "NOC", "company": "Northrop"})
+    assert with_co["security_guid"]
+    assert with_co["issuer_guid"]
+    assert with_co["listing_guid"]
+    assert with_co["security_guid"] != with_co.get("ticker_guid")
+    with_cusip = resolve_identity_spine({"symbol": "X", "identifiers": {"cusip": "808524201"}})
+    assert with_cusip["security_guid"]
+    assert with_cusip["identity_status"] == "CONFIRMED"
+
+
+def test_metrics_never_alias_graph_as_universe() -> None:
+    m = build_universe(sources=_sources())
+    met = metrics(m)
+    assert met["canonical_universe_count"] == m["canonical_universe_count"]
+    assert met["persistent_graph_profiled"] == m["graph_profiled_count"]
+    assert met["free_first_circulated_count"] == m["graph_profiled_count"]
+    assert met["ticker_guid_is_not_security"] is True
+    assert met["canonical_universe_count"] != met["graph_profiled_count"] or m["graph_profiled_count"] < m["canonical_universe_count"]
+
+
+def test_seed_graph_from_canonical_universe(tmp_path) -> None:
+    m = build_universe(sources=_sources())
+    cov = graph_coverage_report(m)
+    assert cov["missing_n"] > 0
+    assert cov["direction"].startswith("canonical_universe")
+    seeded = seed_graph_from_universe(tmp_path, m)
+    assert seeded["profiles_created"] == cov["missing_n"]
+    again = seed_graph_from_universe(tmp_path, m)
+    assert again["profiles_created"] == 0
+
+
+def test_identity_lineage_four_paths() -> None:
+    m = build_universe(sources=_sources())
+    ident = get_identity_lineage(m, "SCHD")
+    assert ident["ticker_guid_is_not_security"] is True
+    assert ident["security_guid"] == "sec-schd"
+    assert get_related_by_industry(m, "SCHD")["not_supply_chain"] is True
+    assert get_related_by_sector(m, "SCHD")["not_supply_chain"] is True
+    cat = get_related_by_catalyst(m, "SCHD")
+    assert "catalyst_guids" in cat

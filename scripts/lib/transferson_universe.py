@@ -20,7 +20,12 @@ from scripts.lib.holdings_universe import (
     held_unresolved_cusips,
     is_held_equity_ticker,
 )
-from scripts.lib.security_identity import classify_unresolved_symbol, normalize_symbol
+from scripts.lib.security_identity import (
+    classify_unresolved_symbol,
+    normalize_symbol,
+    resolve_identity_spine,
+)
+from scripts.lib.ticker_knowledge_graph import seed_profiles
 
 AUTHORITY = "READ_ONLY_ADVISORY"
 SCHEMA = "TransfersonUniverseManifest@v1"
@@ -295,8 +300,18 @@ def build_universe(*, sources: dict[str, Any], as_of: str | None = None, pin: st
             rec["listing_guid"] = ident.get("listing_guid")
         if ident.get("ticker_guid") and not rec.get("ticker_guid"):
             rec["ticker_guid"] = ident.get("ticker_guid")
-        if not rec.get("security_guid") and not rec.get("unresolved_identity"):
-            rec["unresolved_identity"] = classify_unresolved_symbol(sym)
+        spine = resolve_identity_spine(rec)
+        rec["ticker_guid_is_not_security"] = True
+        rec["identity_status"] = spine.get("identity_status")
+        if spine.get("issuer_guid") and not rec.get("issuer_guid"):
+            rec["issuer_guid"] = spine["issuer_guid"]
+        if spine.get("listing_guid") and not rec.get("listing_guid"):
+            rec["listing_guid"] = spine["listing_guid"]
+        if spine.get("security_guid") and not rec.get("security_guid"):
+            rec["security_guid"] = spine["security_guid"]
+        if not rec.get("security_guid"):
+            rec["unresolved_identity"] = rec.get("unresolved_identity") or classify_unresolved_symbol(sym)
+            rec["identity_status"] = "UNRESOLVED_WITH_REASON"
 
     s3 = {normalize_symbol(x) for x in (sources.get("scope_s3") or [])}
     for sym, rec in uni.items():
@@ -329,13 +344,18 @@ def build_universe(*, sources: dict[str, Any], as_of: str | None = None, pin: st
         "source_pin": pin,
         "canonical_universe_count": len(securities),
         "graph_profiled_count": graph_n,
+        "persistent_graph_profiled": graph_n,
+        "free_first_circulated_count": graph_n,
+        "research_due_count": 0,
+        "research_executed_count": 0,
         "graph_coverage": f"{graph_n} graph-profiled / {len(securities)} universe",
         "tier_counts": tiers,
         "membership_reason_counts": reasons,
         "holdings_in_universe": held_n,
-        "unresolved_identity_n": sum(1 for r in securities if r.get("unresolved_identity") and not r.get("security_guid")),
+        "unresolved_identity_n": sum(1 for r in securities if r.get("identity_status") == "UNRESOLVED_WITH_REASON" or (r.get("unresolved_identity") and not r.get("security_guid"))),
+        "ticker_guid_is_not_security": True,
         "securities": securities,
-        "note": "Counts are observations. Graph-profiled is coverage, not the universe.",
+        "note": "Counts are observations. persistent_graph_profiled is not Universe.",
     }
 
 
@@ -524,6 +544,95 @@ def persist_manifest(root: Path | str | None, manifest: dict[str, Any]) -> Path:
     path = _root(root) / "data/cio/transferson_universe_latest.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     slim = dict(manifest)
-    # Keep securities; this is the auditable manifest.
     path.write_text(json.dumps(slim, indent=2, default=str) + "\n", encoding="utf-8")
     return path
+
+
+def metrics(manifest: dict[str, Any]) -> dict[str, Any]:
+    """Permanent metric names. Never alias graph-profiled as Universe."""
+    tiers = manifest.get("tier_counts") or {}
+    return {
+        "schema": "TransfersonUniverseMetrics@v1",
+        "canonical_universe_count": manifest.get("canonical_universe_count"),
+        "graph_profiled_count": manifest.get("graph_profiled_count"),
+        "persistent_graph_profiled": manifest.get("persistent_graph_profiled"),
+        "free_first_circulated_count": manifest.get("free_first_circulated_count"),
+        "research_due_count": manifest.get("research_due_count") or 0,
+        "research_executed_count": manifest.get("research_executed_count") or 0,
+        "t0_hold": tiers.get("T0-HOLD", 0),
+        "t0_prop": tiers.get("T0-PROP", 0),
+        "t1_watch": tiers.get("T1-WATCH", 0),
+        "t2_incub": tiers.get("T2-INCUB", 0),
+        "t3_cold": tiers.get("T3-COLD", 0),
+        "graph_coverage": manifest.get("graph_coverage"),
+        "ticker_guid_is_not_security": True,
+        "authority": AUTHORITY,
+    }
+
+
+def graph_coverage_report(manifest: dict[str, Any]) -> dict[str, Any]:
+    missing = []
+    for rec in manifest.get("securities") or []:
+        if "GRAPH_PROFILE" not in (rec.get("membership_reasons") or []):
+            missing.append({
+                "symbol": rec.get("symbol"),
+                "reasons": rec.get("membership_reasons") or [],
+                "tier": rec.get("current_research_tier"),
+                "identity_status": rec.get("identity_status"),
+                "missing_reason": "NO_GRAPH_PROFILE",
+            })
+    n = manifest.get("canonical_universe_count") or 0
+    g = manifest.get("graph_profiled_count") or 0
+    return {
+        "schema": "GraphCoverageReport@v1",
+        "canonical_universe_count": n,
+        "graph_profiled_count": g,
+        "persistent_graph_profiled": g,
+        "graph_coverage": f"{g} / {n}",
+        "missing": missing,
+        "missing_n": len(missing),
+        "direction": "canonical_universe → identity → graph/profile → research/free-first",
+        "authority": AUTHORITY,
+    }
+
+
+def seed_graph_from_universe(root: Path | str | None, manifest: dict[str, Any]) -> dict[str, Any]:
+    """Seed ticker profiles FROM the canonical universe. Does not define the universe."""
+    missing = graph_coverage_report(manifest)["missing"]
+    rows = []
+    for item in missing:
+        rec = get_symbol(manifest, item["symbol"]) or {}
+        rows.append({
+            "symbol": rec.get("symbol"),
+            "sector": rec.get("sector"),
+            "industry": rec.get("industry"),
+            "memberships": rec.get("membership_reasons") or [],
+            "security_guid": rec.get("security_guid"),
+            "issuer_guid": rec.get("issuer_guid"),
+            "listing_guid": rec.get("listing_guid"),
+        })
+    result = seed_profiles(_root(root), rows) if rows else {"profiles_created": 0}
+    result["seeded_from"] = "canonical_universe"
+    result["missing_before"] = len(missing)
+    result["authority"] = AUTHORITY
+    return result
+
+
+def get_identity_lineage(manifest: dict[str, Any], symbol: str) -> dict[str, Any]:
+    rec = get_symbol(manifest, symbol) or {}
+    return {
+        "schema": "IdentityLineage@v1",
+        "symbol": normalize_symbol(symbol),
+        "issuer_guid": rec.get("issuer_guid"),
+        "security_guid": rec.get("security_guid"),
+        "listing_guid": rec.get("listing_guid"),
+        "ticker_guid": rec.get("ticker_guid"),
+        "ticker_alias": rec.get("symbol"),
+        "ticker_guid_is_not_security": True,
+        "identity_status": rec.get("identity_status"),
+        "unresolved_identity": rec.get("unresolved_identity"),
+        "industry": rec.get("industry"),
+        "sector": rec.get("sector"),
+        "catalyst_guids": rec.get("catalyst_guids") or [],
+        "authority": AUTHORITY,
+    }

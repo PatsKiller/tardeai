@@ -35,9 +35,25 @@ Scheduler index: 41 (holdings 19 + READY/NEAR 22). WAIT names in universe, not s
 
 `tests/test_transferson_universe.py` + `tests/test_research_skip_gate.py` — 39 passed.
 
+## Identity is a prerequisite (not later)
+
+`ticker_guid` remains a compatibility alias. Durable spine is:
+
+`issuer_guid → security_guid → listing_guid → ticker alias`
+
+Ticker-only rows are `UNRESOLVED_WITH_REASON` and do **not** mint `security_guid` from ticker text.
+Automatic longitudinal checkpoints stay blocked until this identity contract is accepted.
+
+Permanent metrics:
+
+`canonical_universe_count`, `persistent_graph_profiled`, `free_first_circulated_count`,
+`research_due_count`, `research_executed_count`, plus T0–T3 counts.
+
+Graph seeding direction: **canonical universe → identity → graph/profile**.
+
 ## Not in this tranche
 
 - No LLM bulk research of cold names
-- No R17 scan→checkpoint
+- No R17 automatic checkpoint registration
 - No deploy
-- No remote push (new tranche; await operator sync)
+- No remote push (await operator sync)
