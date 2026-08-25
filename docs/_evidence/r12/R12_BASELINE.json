@@ -1,0 +1,83 @@
+{
+  "schema": "R12Baseline@v1",
+  "as_of": "2026-08-25T12:48:21Z",
+  "authority": "READ_ONLY_ADVISORY",
+  "memory_behavior_influence": 0,
+  "iteration": 1,
+  "hypothesis": "Handoff pins match live repo; ABOVE_BAND is not operator-confirmed policy; live notify is SUPPRESSED+canary-off not missing infrastructure.",
+  "main_sha": "9a1e2da51c2a37b4cc6a45d5f96c15207158203f",
+  "current_sha": "1afb1479676aeb67b64791e58e946753a2854ddf",
+  "current_path": "/home/johnclaw/trade-ai-releases/portfolio-server/1afb1479-main-exact-phase2-20260824-230917",
+  "r11_head_expected": "dac3bc92fcd518d54d7360cc0edfd2b7e678ec66",
+  "r11_head_actual": "dac3bc92fcd518d54d7360cc0edfd2b7e678ec66",
+  "worktree": "/home/johnclaw/trade-ai-v12-rebuild/wt-r11-operator-value",
+  "branch": "feat/r11-autonomous-office-operator-value",
+  "working_tree_dirty": false,
+  "pr506": {
+    "url": "https://github.com/PatsKiller/tardeai/pull/506",
+    "state": "OPEN",
+    "isDraft": false,
+    "mergeable": "MERGEABLE",
+    "mergeStateStatus": "CLEAN",
+    "head": "dac3bc92fcd518d54d7360cc0edfd2b7e678ec66",
+    "commits": 1,
+    "ci": {
+      "provider-cost": "SUCCESS",
+      "cio-hardening": "SUCCESS",
+      "release-readiness": "SUCCESS",
+      "aif-financial-senses-integration": "SUCCESS"
+    },
+    "contains_cio_situation_state": true,
+    "deployed_to_CURRENT": false
+  },
+  "pr505": {
+    "url": "https://github.com/PatsKiller/tardeai/pull/505",
+    "state": "OPEN",
+    "head": "cc0dd4f14c6b3eef03a3ab095ee6ba1f59fc69ca",
+    "mergeable": "MERGEABLE",
+    "merged": false,
+    "production_sql_applied": false
+  },
+  "live_material_scan": {
+    "unit": "tradeai-cio-material-scan.timer",
+    "last_at": "2026-08-25T12:45:27.748014+00:00",
+    "last_trigger_local": "2026-08-25 08:45:24 EDT",
+    "next_elapse_local": "2026-08-25 08:55:24 EDT",
+    "exec": "scripts/cio_material_scan.py --live",
+    "wd": "CURRENT 1afb1479",
+    "dry_run": true,
+    "delivery_mode": "CIO_ONLY_LIVE",
+    "financial_lane": "OFF_BY_POLICY",
+    "material_financial_notify_canary": false,
+    "notification_counts": {"SUPPRESSED": 3},
+    "suppressed_by_reason": {"unchanged_replay": 3},
+    "cash_posture_status": "ABOVE_BAND",
+    "cash_policy_band": {"min_pct": 20.0, "max_pct": 25.0},
+    "delivery_reason": "dry_run_or_interdicted",
+    "note": "Two independent non-sends: signal SUPPRESSED/unchanged_replay AND transport dry because CIO_MATERIAL_FINANCIAL_NOTIFY_CANARY unset."
+  },
+  "notify_authorization": {
+    "AUTHORIZE_P2_LIVE_OPERATOR_DELIVERY": "1",
+    "CIO_TELEGRAM_INTERDICT": "0",
+    "ENABLE_TELEGRAM": "1",
+    "CIO_SITUATION_NOTIFY": "0",
+    "CIO_MATERIAL_FINANCIAL_NOTIFY_CANARY": "UNSET_DEFAULT_OFF"
+  },
+  "policy_sources": {
+    "operator_profile.jsonl": "ABSENT",
+    "cash_band_live": "CASH_BAND_DEFAULT_MIN_PCT=20 / MAX=25 in cio_capital_plan.py (DEFAULT, not operator-confirmed)",
+    "cio_situations.yaml_cash_pct_band_min": 20.0,
+    "kind": "ADVISORY_INTERPRETATION_NOT_OPERATOR_POLICY"
+  },
+  "gpu": {
+    "safe_to_remove": [],
+    "uninstalled": false
+  },
+  "handoff_drift": {
+    "pr506_ci": "NOW_GREEN_not_pending",
+    "current_still_pre_r11": true,
+    "cash_posture_still_ABOVE_BAND": true
+  },
+  "chokepoint": "cio_material_scan.scan_office → decide_notification",
+  "status": "PASS"
+}

@@ -1,0 +1,189 @@
+{
+  "schema": "CIOGoldenScenarios@v1",
+  "as_of": "2026-08-25",
+  "authority": "READ_ONLY_ADVISORY",
+  "memory_behavior_influence": 0,
+  "count": 20,
+  "scenarios": [
+    {
+      "id": "large_cash_deploy_gradually",
+      "fixture": "excess_cash_risk_on",
+      "expected_situation": "EXCESS_CASH",
+      "cio_conclusion": "DEPLOY_STAGED",
+      "notification": "NOTIFY",
+      "memory": "episode:notification",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    {
+      "id": "large_cash_hold_bad_regime",
+      "fixture": "excess_cash_risk_off",
+      "expected_situation": "EXCESS_CASH",
+      "cio_conclusion": "HOLD_CASH",
+      "notification": "NOTIFY",
+      "memory": "episode:notification",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    {
+      "id": "concentration",
+      "fixture": "concentration",
+      "expected_situation": "CONCENTRATION",
+      "cio_conclusion": "REVIEW_CONCENTRATION",
+      "notification": "NOTIFY",
+      "memory": "episode:notification",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    {
+      "id": "thesis_deterioration",
+      "fixture": "thesis_down",
+      "expected_situation": "THESIS_DETERIORATION",
+      "cio_conclusion": "REVIEW_HOLDING",
+      "notification": "NOTIFY",
+      "memory": "episode:notification",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    {
+      "id": "thesis_improvement",
+      "fixture": "thesis_up",
+      "expected_situation": "THESIS_IMPROVEMENT",
+      "cio_conclusion": "REVIEW_OPPORTUNITY",
+      "notification": "NOTIFY",
+      "memory": "episode:notification",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    {
+      "id": "reentry",
+      "fixture": "reentry",
+      "expected_situation": "REENTRY_READY",
+      "cio_conclusion": "REVIEW_REENTRY",
+      "notification": "NOTIFY",
+      "memory": "episode:notification",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    {
+      "id": "research_unresolved",
+      "fixture": "need_data",
+      "expected_situation": "NEED_DATA",
+      "cio_conclusion": "NEED_DATA",
+      "notification": "DEFER",
+      "memory": "episode:suppression",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    {
+      "id": "conflicting_evidence",
+      "fixture": "contradiction",
+      "expected_situation": "CONTRADICTION",
+      "cio_conclusion": "DO_NOT_ACT_WHILE_CONFLICTED",
+      "notification": "NOTIFY",
+      "memory": "episode:notification",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    {
+      "id": "catalyst_soon",
+      "fixture": "catalyst",
+      "expected_situation": "CATALYST_APPROACHING",
+      "cio_conclusion": "PREPARE_FOR_CATALYST",
+      "notification": "NOTIFY",
+      "memory": "episode:notification",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    {
+      "id": "allocation_drift",
+      "fixture": "allocation_drift",
+      "expected_situation": "ALLOCATION_DRIFT",
+      "cio_conclusion": "REVIEW_ALLOCATION",
+      "notification": "NOTIFY",
+      "memory": "episode:notification",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    {
+      "id": "missing_policy",
+      "fixture": "policy_gap",
+      "expected_situation": "POLICY_GAP",
+      "cio_conclusion": "RESEARCH_FIRST",
+      "notification": "NOTIFY",
+      "memory": "episode:notification",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    {
+      "id": "operator_feedback_change",
+      "fixture": "feedback",
+      "expected_situation": "PREFERENCE_CANDIDATE",
+      "cio_conclusion": "NO_POLICY_MUTATION",
+      "notification": "SUPPRESS",
+      "memory": "preference_candidate",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    {
+      "id": "stale_financial_truth",
+      "fixture": "stale",
+      "expected_situation": "STALE",
+      "cio_conclusion": "DEFER",
+      "notification": "DEFER",
+      "memory": "episode:suppression",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    {
+      "id": "no_material_change",
+      "fixture": "quiet",
+      "expected_situation": "NO_MATERIAL_CHANGE",
+      "cio_conclusion": "NO_ACTION",
+      "notification": "SUPPRESS",
+      "memory": "episode:suppression",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    {
+      "id": "notification_dedupe",
+      "fixture": "dedupe",
+      "expected_situation": "SEMANTIC_DEDUPE",
+      "cio_conclusion": "NO_ACTION",
+      "notification": "SUPPRESS",
+      "memory": "episode:suppression",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    {
+      "id": "notification_delivery_failure",
+      "fixture": "delivery_fail",
+      "expected_situation": "DELIVERY_FAILURE",
+      "cio_conclusion": "RETRY_OR_SURFACE",
+      "notification": "NOTIFY",
+      "memory": "episode:notification",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    {
+      "id": "outcome_lesson",
+      "fixture": "outcome",
+      "expected_situation": "OUTCOME_MATURITY",
+      "cio_conclusion": "RECORD_LESSON_CANDIDATE",
+      "notification": "SUPPRESS",
+      "memory": "lesson_candidate",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    {
+      "id": "identity_unresolved",
+      "fixture": "unresolved_id",
+      "expected_situation": "UNRESOLVED_IDENTITY",
+      "cio_conclusion": "REVIEW_CONCENTRATION",
+      "notification": "NOTIFY",
+      "memory": "episode:notification",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    {
+      "id": "cross_agent_consistency",
+      "fixture": "same_brain",
+      "expected_situation": "SAME_BRAIN",
+      "cio_conclusion": "CONSISTENT",
+      "notification": "SUPPRESS",
+      "memory": "context_envelope",
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    {
+      "id": "prompt_injection",
+      "fixture": "injection",
+      "expected_situation": "QUARANTINED",
+      "cio_conclusion": "NO_POLICY_MUTATION",
+      "notification": "SUPPRESS",
+      "memory": "quarantined",
+      "authority": "READ_ONLY_ADVISORY"
+    }
+  ]
+}

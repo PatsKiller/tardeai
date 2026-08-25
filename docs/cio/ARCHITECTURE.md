@@ -2,6 +2,11 @@
 
 Two related but distinct CIO paths run on the same authority contract (`READ_ONLY_ADVISORY`). Architects should not assume thesis injection is universal.
 
+**R11 (2026-08-25):** Portfolio-level attention is `CIOSituationState@v1`
+(`scripts/lib/cio_situation_state.py`) sitting *above* S1–S8 draft plans.
+Detection is deterministic (no LLM). Narrative synthesis is optional and
+governed. See `docs/ops/R11_AUTONOMOUS_INVESTMENT_OFFICE_OPERATOR_VALUE_CLOSEOUT_2026-08-25.md`.
+
 ```
                     ┌─────────────────────────────┐
                     │  desk thesis store (desk@vN)  │

@@ -1,0 +1,11 @@
+{
+  "schema": "R13DeploymentReadiness@v1",
+  "PRE_DEPLOY_SHA": "1afb1479676aeb67b64791e58e946753a2854ddf",
+  "EXPECTED_POST_DEPLOY_SHA": "NOT_APPLICABLE_UNTIL_MAIN_CONTAINS_5947d801",
+  "canonical_procedure": "scripts/cio_phase2_exact_main_deploy.sh prepare && promote",
+  "requires": "HEAD == origin/main",
+  "pr506_on_main": false,
+  "operator_merge_authority": false,
+  "operator_non_main_deploy_authority": false,
+  "status": "OPERATOR_DEPLOYMENT_REQUIRED"
+}

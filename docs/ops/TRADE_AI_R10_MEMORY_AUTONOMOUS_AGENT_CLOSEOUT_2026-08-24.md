@@ -1,5 +1,7 @@
 # R10.2 closeout (in progress)
 
+**R11 memory note (2026-08-25):** M3 consolidator is now runnable as SHADOW-ONLY JSONL (`scripts/memory_consolidator_shadow.py`, influence=0). Canonical writer remains off. #505 production shadow SQL is still unmerged/unapplied. See `docs/ops/R11_AUTONOMOUS_INVESTMENT_OFFICE_OPERATOR_VALUE_CLOSEOUT_2026-08-25.md`.
+
 **Date:** 2026-08-24  
 **Authority:** `READ_ONLY_ADVISORY`  
 **MEMORY_BEHAVIOR_INFLUENCE:** 0  

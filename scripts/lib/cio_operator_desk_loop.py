@@ -189,6 +189,28 @@ def analyze_operator_intent(text: str) -> dict[str, Any]:
 
     needs: list[str] = []
 
+    # P0: attention / why-nothing is deterministic office state, not Flash.
+    if re.search(
+        r"(?is)\bwhy\s+(haven'?t|have\s+not|didn'?t)\s+you\s+(?:tell|told)|"
+        r"\bwhat\s+should\s+i\s+be\s+paying\s+attention\s+to\b|"
+        r"\banything\s+today\b|"
+        r"\bnothing\s+today\b",
+        t,
+    ):
+        out["intent"] = "attention"
+        out["needs"] = ["portfolio", "cash"]
+        out["ok"] = True
+        out["source"] = "heuristic"
+        syms = sorted(set(re.findall(r"\b([A-Z]{1,5})\b", t)))
+        stop = {
+            "I", "A", "THE", "AND", "OR", "TO", "FOR", "ON", "IN", "OF", "IS", "IT",
+            "WHAT", "CAN", "NOW", "ETC", "DAY", "SMA", "RSI", "CIO", "READ", "ONLY",
+            "USD", "READY", "NEAR", "ZONE", "STOP", "ALEX", "LLM", "YOU", "HOW",
+            "WHICH", "USING", "MODEL", "FLASH", "PRO", "AI", "WHY",
+        }
+        out["symbols"] = [s for s in syms if s not in stop][:12]
+        return out
+
     # P0: meta_system BEFORE desk defaults — never fall through to re-entry dump
     if _looks_like_meta_system(t):
         out["intent"] = "meta_system"
@@ -1130,6 +1152,23 @@ def handle_operator_desk_question(
 ) -> dict[str, Any]:
     """Full loop: analyze → Trade-AI pull → answer or defer with pending reply."""
     intent = analyze_operator_intent(text)
+    if str(intent.get("intent") or "") == "attention":
+        from scripts.lib.cio_operator_attention import answer_attention_query
+        ans = answer_attention_query(text)
+        return {
+            "authority": AUTHORITY,
+            "intent": intent,
+            "evidence_complete": True,
+            "gaps": [],
+            "blocking_gaps": [],
+            "sources": ["cio_operator_attention"],
+            "pending_id": None,
+            "kind": "attention",
+            "text": ans.get("text") or "",
+            "reply_source": "attention_state",
+            "model": None,
+            "same_brain": True,
+        }
     evidence = gather_tradeai_evidence(intent)
     pending_id = f"opr_{uuid.uuid4().hex[:12]}"
 

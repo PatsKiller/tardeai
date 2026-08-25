@@ -25,6 +25,11 @@ sys.path.insert(0, str(ROOT / "scripts"))
 # script and the wrong thing to have pytest trigger on collection. Run them
 # directly: `.venv/bin/python tests/test_canary_gate.py`.
 # (found 2026-07-20 while wiring the decision-packet suite)
+def pytest_configure(config) -> None:
+    config.addinivalue_line("markers", "tier0: R11 fast unit + contracts (<5 min)")
+    config.addinivalue_line("markers", "tier1: R11 integration fixtures (<15 min)")
+
+
 collect_ignore = [
     "test_broker_scaffold.py",
     "test_canary_exclusion.py",

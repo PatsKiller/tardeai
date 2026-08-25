@@ -56,6 +56,13 @@ def main(argv: list[str] | None = None) -> int:
         "holdings_event_count": len(receipt.get("holdings_events") or []),
         "published": receipt.get("published"),
         "cash_posture_status": (receipt.get("cash") or {}).get("cash_posture_status"),
+        "policy_status": receipt.get("policy_status"),
+        "auditable_result": receipt.get("auditable_result"),
+        "suppressed_by_reason": receipt.get("suppressed_by_reason"),
+        "notification_counts": receipt.get("notification_counts"),
+        "material_financial_notify_canary": receipt.get("material_financial_notify_canary"),
+        "financial_lane": receipt.get("financial_lane"),
+        "masquerades_as_operator_policy": receipt.get("masquerades_as_operator_policy"),
         "reentry_call": (receipt.get("reentry") or {}).get("call"),
         "due_defers": receipt.get("due_defers"),
         "results": [

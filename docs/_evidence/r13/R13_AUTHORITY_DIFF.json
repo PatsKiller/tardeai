@@ -1,0 +1,13 @@
+{
+  "schema": "R13AuthorityDiff@v1",
+  "base": "origin/main 9a1e2da5",
+  "head": "feat/r11-autonomous-office-operator-value",
+  "broker_authority": "UNCHANGED",
+  "risk_authority": "UNCHANGED",
+  "two_factor_authority": "UNCHANGED",
+  "execution": "UNCHANGED",
+  "memory_behavior_influence": 0,
+  "production_sql": "UNCHANGED_NOT_APPLIED",
+  "fallback_policy": "UNCHANGED_NO_LOCAL_GENERATIVE_ROUTE",
+  "status": "PASS"
+}

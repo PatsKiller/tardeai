@@ -555,6 +555,9 @@ def scan_office(
     reclass = classify_reentry_rows(desk if isinstance(desk, dict) else {})
 
     candidates: list[dict[str, Any]] = []
+    situation_rows: list[dict[str, Any]] = []
+    policy_gap = False
+    policy_prov: dict[str, Any] | None = None
     candidates.extend(_holdings_decisions(events, baseline=baseline))
     if plan.get("ok") is not False:
         candidates.append(_cash_decision(plan, reclass))
@@ -563,6 +566,66 @@ def scan_office(
         fresh = _freshness_decision(plan, prev_state)
         if fresh:
             candidates.append(fresh)
+
+    # R12: CIOSituationState@v1 feeds this same candidate list → decide_notification.
+    try:
+        from scripts.lib.cio_policy_provenance import audit_cash_posture_policy
+        from scripts.lib.cio_situation_notify_bridge import situation_decisions_from_office
+        cash_blob = plan if isinstance(plan, dict) else {}
+        policy_doc = (office.get("operator_policy") or {}) if isinstance(office, dict) else {}
+        policy_prov = audit_cash_posture_policy(
+            cash_total_usd=cash_blob.get("cash_total_usd"),
+            portfolio_value_usd=cash_blob.get("portfolio_value_usd"),
+            live_band=cash_blob.get("cash_policy_band") if isinstance(cash_blob.get("cash_policy_band"), dict) else None,
+            live_status=str(cash_blob.get("cash_posture_status") or ""),
+            policy=policy_doc.get("policy") if isinstance(policy_doc.get("policy"), dict) else policy_doc,
+            capital_plan_version=str(cash_blob.get("version") or ""),
+        )
+        policy_gap = policy_prov.get("policy_status") == "POLICY_GAP"
+        sit_office = office.get("situation_office") if isinstance(office.get("situation_office"), dict) else None
+        if sit_office is None:
+            sit_office = {
+                "portfolio_id": "primary",
+                "policy": policy_doc.get("policy") if isinstance(policy_doc.get("policy"), dict) else {"status": "POLICY_REQUIRED"},
+                "portfolio_state": {
+                    "truth_quality": "VERIFIED" if cash_blob.get("cash_total_usd") is not None else "UNVERIFIED_INVESTABLE",
+                    "total_portfolio_value_usd": cash_blob.get("portfolio_value_usd"),
+                    "observed_cash_usd": cash_blob.get("cash_total_usd"),
+                    "investable_cash_usd": cash_blob.get("cash_investable_usd"),
+                    "allocation": {"cash": {"pct": None}},
+                    "holdings": [],
+                },
+                "market_context": {"truth_quality": "PARTIAL", "fields": {}},
+                "seasonality": {"truth_quality": "UNAVAILABLE"},
+                "portfolio_thesis": {"state": "INSUFFICIENT_DATA"},
+            }
+            try:
+                pv = float(cash_blob.get("portfolio_value_usd") or 0)
+                ct = float(cash_blob.get("cash_total_usd") or 0)
+                if pv > 0:
+                    sit_office["portfolio_state"]["allocation"]["cash"]["pct"] = round(ct / pv * 100.0, 4)
+            except (TypeError, ValueError, ZeroDivisionError):
+                pass
+        situation_rows = situation_decisions_from_office(sit_office)
+        existing_ids = {str(c.get("decision_id") or "") for c in candidates}
+        for row in situation_rows:
+            if str(row.get("decision_id") or "") in existing_ids:
+                continue
+            # Cash lineage already emitted by _cash_decision; attach provenance instead of dual-page.
+            if str(row.get("symbol") or "").upper() == "CASH":
+                for cand in candidates:
+                    if str(cand.get("symbol") or "").upper() == "CASH":
+                        cand["policy_provenance"] = policy_prov
+                        cand["situation_id"] = row.get("situation_id")
+                        cand["situation_class"] = row.get("situation_class")
+                        if policy_gap:
+                            cand["policy_status"] = "POLICY_GAP"
+                            cand["may_recommend_deployment"] = False
+                        break
+                continue
+            candidates.append(row)
+    except Exception:
+        situation_rows = []
 
     due = []
     try:
@@ -665,6 +728,26 @@ def scan_office(
         except Exception:
             pass
 
+    delivered = any(bool((r.get("delivery") or {}).get("delivered")) for r in results)
+    delivery_failed = any(
+        str((r.get("delivery") or {}).get("reason") or "").startswith("fail")
+        or str((r.get("delivery") or {}).get("status") or "") in {"failed", "error"}
+        for r in results
+    )
+    try:
+        from scripts.lib.cio_situation_notify_bridge import classify_auditable_result
+        auditable = classify_auditable_result(
+            notification_counts=notification_counts,
+            suppressed_by_reason=suppressed_by_reason,
+            dry_run=dry_run,
+            canary=canary,
+            policy_gap=policy_gap,
+            delivered=delivered,
+            delivery_failed=delivery_failed,
+        )
+    except Exception:
+        auditable = "NOTIFICATION_SUPPRESSED" if suppressed_by_reason else "NO_MATERIAL_CHANGE"
+
     receipt = {
         "ok": True,
         "dry_run": dry_run,
@@ -672,6 +755,7 @@ def scan_office(
         "material_financial_notify_canary": canary,
         "financial_lane": "CANARY" if (canary and mode == "CIO_ONLY_LIVE" and not dry_run) else "OFF_BY_POLICY",
         "authority": AUTHORITY,
+        "memory_behavior_influence": 0,
         "at": _now(),
         "baseline_captured": baseline,
         "holdings_events": events,
@@ -686,6 +770,11 @@ def scan_office(
         "notification_counts": notification_counts,
         "suppressed_by_reason": suppressed_by_reason,
         "immediate_decision_ids": immediate_ids,
+        "auditable_result": auditable,
+        "policy_provenance": policy_prov,
+        "policy_status": (policy_prov or {}).get("policy_status"),
+        "situation_classes": sorted({str(r.get("situation_class")) for r in situation_rows if r.get("situation_class")}),
+        "masquerades_as_operator_policy": bool((policy_prov or {}).get("masquerades_as_operator_policy")),
         "note": (
             "Baseline captured — no POSITION_OPENED invented from first snapshot."
             if baseline else
