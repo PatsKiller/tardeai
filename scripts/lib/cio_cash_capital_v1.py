@@ -132,6 +132,8 @@ def build_cash_deployment_situation(
     elif portfolio_thesis.get("state") != "CURRENT":
         blockers.append(f"PORTFOLIO_THESIS_{portfolio_thesis.get('state') or 'UNAVAILABLE'}")
 
+    if not isinstance(policy_range, dict) or policy_range.get("min") is None or policy_range.get("max") is None:
+        policy_range = None
     deviation_pct = None
     deviation_state = "POLICY_REQUIRED" if policy_range is None else "UNAVAILABLE"
     if policy_range is not None and cash_pct is not None:

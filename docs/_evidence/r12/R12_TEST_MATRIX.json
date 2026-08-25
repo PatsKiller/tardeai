@@ -1,0 +1,10 @@
+{
+  "schema": "R12TestMatrix@v1",
+  "r12_collected": 83,
+  "r11_plus_r12_collected": 147,
+  "r12_pytest_pass": 83,
+  "golden_r11": 20,
+  "acceptance_scenarios_A_O": true,
+  "fault_cases": 3,
+  "status": "PASS"
+}

@@ -1,0 +1,8 @@
+{
+  "schema": "R12RestartRecovery@v1",
+  "iteration": 21,
+  "host_reboot": false,
+  "proven": "second office cycle loads prior JSONL situation states; semantic dedupe survives process restart of the test harness",
+  "outbox": "file-backed JSONL survives process end",
+  "status": "PASS"
+}

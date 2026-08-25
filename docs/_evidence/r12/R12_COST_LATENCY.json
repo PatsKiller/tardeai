@@ -1,0 +1,12 @@
+{
+  "schema": "R12CostLatency@v1",
+  "iteration": 23,
+  "unchanged_cycle_llm_calls": 0,
+  "unchanged_cycle_paid_cost": 0,
+  "natural_free_first": {
+    "at": "2026-08-25T12:27:23+00:00",
+    "fresh_no_change": 120,
+    "paid_dispatch_entered": 0
+  },
+  "status": "PASS"
+}

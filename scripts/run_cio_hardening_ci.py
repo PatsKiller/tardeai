@@ -101,6 +101,14 @@ GATES = [
         "tests/test_cio_brain_snapshot.py",
         "tests/test_cio_brain_frontend.py",
     ]),
+    ("r12_operator_intelligence", [
+        "tests/test_r12_policy_provenance.py",
+        "tests/test_r12_situation_matrix.py",
+        "tests/test_r12_dedupe_message_samebrain.py",
+        "tests/test_r12_chokepoint_outbox.py",
+        "tests/test_r12_acceptance_scenarios.py",
+        "tests/test_r12_properties.py",
+    ]),
 ]
 
 

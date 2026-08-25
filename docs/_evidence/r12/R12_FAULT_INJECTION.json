@@ -1,0 +1,11 @@
+{
+  "schema": "R12FaultInjection@v1",
+  "iteration": 20,
+  "cases": {
+    "timeout": "PASS (Fake adapter error=timeout, decision retained)",
+    "live_flag_without_auth": "PASS (RuntimeError LIVE_DELIVERY_REQUIRES_EXPLICIT_OPERATOR_AUTHORIZATION)",
+    "outbox_idempotency": "PASS"
+  },
+  "silent_loss": false,
+  "status": "PASS"
+}
