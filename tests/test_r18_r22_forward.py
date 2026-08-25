@@ -168,6 +168,10 @@ def test_forward_modules_have_no_hardcoded_universe_denominators() -> None:
         "r20_universe_propagation.py",
         "r21_portfolio_cognition.py",
         "r22_cio_loop.py",
+        "cio_office_synthesizer.py",
+        "institutional_knowledge_fabric.py",
+        "investment_theory_engine.py",
+        "reference_brain_audit.py",
     ):
         text = (root / name).read_text()
         for token in banned:

@@ -49,6 +49,15 @@
       "blocker_to_LIVE": "must not be a crontab until R17/universe post-deploy PASS and separate activation",
       "activation": "OFF"
     },
+    "OFFICE": {
+      "capability": "Investment Advisory Office: fabric + canon questions + competing theories + CIO synthesis + Advisory brief",
+      "depth": "IMPLEMENTED_NOT_COMPLETE",
+      "replay": "34 catalog sources identified, 0 lawful full text; operator-derived questions retrievable; competing theories persist under a root; CURRENT cycle persist=False recommendation RESEARCH_MORE; unattended week = NO",
+      "wired": "callable run_office_cycle persist=False; not on crontab; OFFICE activation false",
+      "evidence_class": "HISTORICAL_REPLAY + UNIT_TEST",
+      "blocker_to_LIVE": "lawful canon ingest; R17 outcomes; OFFICE timer authorization; advisory influence shadow acceptance",
+      "activation": "OFF"
+    },
     "R23+": {
       "capability": "Only real later boundaries: causal tests, cross-regime, decay rates, source reliability, counterfactuals, opportunity-cost, operator-authorized policy recs",
       "depth": "DESIGN_ONLY",

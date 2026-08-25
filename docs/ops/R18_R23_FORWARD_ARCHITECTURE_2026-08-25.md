@@ -98,7 +98,7 @@ No other R-numbers in this tranche.
 
 ## Activation
 
-`scripts/lib/cio_forward_program.py` `ACTIVATION` is `{R18–R22: false}`.
+`scripts/lib/cio_forward_program.py` `ACTIVATION` is `{R18–R22, OFFICE: false}`.
 
 `gated_live_run(..., evidence_class="LIVE")` returns `LIVE_ACTIVATION_OFF`.
 
@@ -116,3 +116,16 @@ Target state for this shadow branch (activation still OFF):
 - **R20:** capable of propagating across the canonical universe with queryable lineage on every *used* edge. Incomplete edges are excluded from score or marked `PROVENANCE_INCOMPLETE`.
 
 Do not design R24/R25 on this pass.
+
+## Institutional office (first-class in R19++++, not a new R-number)
+
+TradeAI is not to mature into a deterministic incubator. The incubator is a **sensor and OFFICE_TRUTH engine**. The CIO is a synthesizer.
+
+Two lanes:
+
+- `OFFICE_TRUTH` — holdings, prices, cash, broker, orders, risk limits. Memory may not override these.
+- `INSTITUTIONAL_COGNITION` — theses, theories, canon questions, operator feedback, outcomes, sector desks. Retrievable for advisory reasoning. `MEMORY_BEHAVIOR_INFLUENCE` remains 0 until separate shadow acceptance.
+
+Canon full text is still `NOT_AVAILABLE`. Operator-derived questions and implemented research-governance mechanics are registered separately as derived knowledge. Catalog membership is not a corpus.
+
+Unattended-week acceptance is currently **NO**. The shadow office can audit, retrieve, theorize, and brief. It is not scheduled, not LIVE, and cannot honestly claim a week of compounding learning.

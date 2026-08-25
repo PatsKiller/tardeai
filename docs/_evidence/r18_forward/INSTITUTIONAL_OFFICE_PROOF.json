@@ -1,0 +1,531 @@
+{
+  "schema": "InstitutionalOfficeProof@v1",
+  "authority": "READ_ONLY_ADVISORY",
+  "memory_behavior_influence": 0,
+  "activation_off": true,
+  "mutated_current": false,
+  "theories_file_on_current": false,
+  "audit": {
+    "catalog_n": 34,
+    "SOURCE_IDENTIFIED_n": 34,
+    "SOURCE_AVAILABLE_n": 0,
+    "DERIVED_KNOWLEDGE_AVAILABLE_n": 17,
+    "NOT_AVAILABLE_n": 34,
+    "extracted_claims_n": 0,
+    "catalog_is_not_a_corpus": true,
+    "embeddings_note": "production SQL not queried; acquisition queue states no catalog source is indexed",
+    "drive_titles_searched": [
+      "book knowledge inventory",
+      "canon implementation audit",
+      "canon source acquisition queue",
+      "research governance"
+    ],
+    "sources": {
+      "malkiel_random_walk": {
+        "SOURCE_IDENTIFIED": true,
+        "SOURCE_AVAILABLE": false,
+        "DERIVED_KNOWLEDGE_AVAILABLE": true,
+        "EMBEDDED": false,
+        "RETRIEVABLE": true,
+        "CITABLE": true,
+        "USED_BY_AGENT": true,
+        "NOT_AVAILABLE": true
+      },
+      "graham_zweig_intelligent_investor": {
+        "SOURCE_IDENTIFIED": true,
+        "SOURCE_AVAILABLE": false,
+        "DERIVED_KNOWLEDGE_AVAILABLE": true,
+        "EMBEDDED": false,
+        "RETRIEVABLE": true,
+        "CITABLE": true,
+        "USED_BY_AGENT": true,
+        "NOT_AVAILABLE": true
+      },
+      "housel_psychology_of_money": {
+        "SOURCE_IDENTIFIED": true,
+        "SOURCE_AVAILABLE": false,
+        "DERIVED_KNOWLEDGE_AVAILABLE": true,
+        "EMBEDDED": false,
+        "RETRIEVABLE": true,
+        "CITABLE": true,
+        "USED_BY_AGENT": true,
+        "NOT_AVAILABLE": true
+      },
+      "bogle_common_sense": {
+        "SOURCE_IDENTIFIED": true,
+        "SOURCE_AVAILABLE": false,
+        "DERIVED_KNOWLEDGE_AVAILABLE": true,
+        "EMBEDDED": false,
+        "RETRIEVABLE": true,
+        "CITABLE": true,
+        "USED_BY_AGENT": true,
+        "NOT_AVAILABLE": true
+      },
+      "ferri_etf_book": {
+        "SOURCE_IDENTIFIED": true,
+        "SOURCE_AVAILABLE": false,
+        "DERIVED_KNOWLEDGE_AVAILABLE": true,
+        "EMBEDDED": false,
+        "RETRIEVABLE": true,
+        "CITABLE": true,
+        "USED_BY_AGENT": true,
+        "NOT_AVAILABLE": true
+      },
+      "thau_bond_book": {
+        "SOURCE_IDENTIFIED": true,
+        "SOURCE_AVAILABLE": false,
+        "DERIVED_KNOWLEDGE_AVAILABLE": true,
+        "EMBEDDED": false,
+        "RETRIEVABLE": true,
+        "CITABLE": true,
+        "USED_BY_AGENT": true,
+        "NOT_AVAILABLE": true
+      },
+      "harris_trading_exchanges": {
+        "SOURCE_IDENTIFIED": true,
+        "SOURCE_AVAILABLE": false,
+        "DERIVED_KNOWLEDGE_AVAILABLE": true,
+        "EMBEDDED": false,
+        "RETRIEVABLE": true,
+        "CITABLE": true,
+        "USED_BY_AGENT": true,
+        "NOT_AVAILABLE": true
+      },
+      "mcmillan_options": {
+        "SOURCE_IDENTIFIED": true,
+        "SOURCE_AVAILABLE": false,
+        "DERIVED_KNOWLEDGE_AVAILABLE": false,
+        "EMBEDDED": false,
+        "RETRIEVABLE": false,
+        "CITABLE": true,
+        "USED_BY_AGENT": false,
+        "NOT_AVAILABLE": true
+      },
+      "natenberg_option_volatility": {
+        "SOURCE_IDENTIFIED": true,
+        "SOURCE_AVAILABLE": false,
+        "DERIVED_KNOWLEDGE_AVAILABLE": false,
+        "EMBEDDED": false,
+        "RETRIEVABLE": false,
+        "CITABLE": true,
+        "USED_BY_AGENT": false,
+        "NOT_AVAILABLE": true
+      },
+      "aronson_evidence_based_ta": {
+        "SOURCE_IDENTIFIED": true,
+        "SOURCE_AVAILABLE": false,
+        "DERIVED_KNOWLEDGE_AVAILABLE": true,
+        "EMBEDDED": false,
+        "RETRIEVABLE": true,
+        "CITABLE": true,
+        "USED_BY_AGENT": true,
+        "NOT_AVAILABLE": true
+      },
+      "lopez_de_prado_afml": {
+        "SOURCE_IDENTIFIED": true,
+        "SOURCE_AVAILABLE": false,
+        "DERIVED_KNOWLEDGE_AVAILABLE": true,
+        "EMBEDDED": false,
+        "RETRIEVABLE": true,
+        "CITABLE": true,
+        "USED_BY_AGENT": true,
+        "NOT_AVAILABLE": true
+      },
+      "ilmanen_expected_returns": {
+        "SOURCE_IDENTIFIED": true,
+        "SOURCE_AVAILABLE": false,
+        "DERIVED_KNOWLEDGE_AVAILABLE": true,
+        "EMBEDDED": false,
+        "RETRIEVABLE": true,
+        "CITABLE": true,
+        "USED_BY_AGENT": true,
+        "NOT_AVAILABLE": true
+      },
+      "grinold_kahn_active_pm": {
+        "SOURCE_IDENTIFIED": true,
+        "SOURCE_AVAILABLE": false,
+        "DERIVED_KNOWLEDGE_AVAILABLE": false,
+        "EMBEDDED": false,
+        "RETRIEVABLE": false,
+        "CITABLE": true,
+        "USED_BY_AGENT": false,
+        "NOT_AVAILABLE": true
+      },
+      "damodaran_on_valuation": {
+        "SOURCE_IDENTIFIED": true,
+        "SOURCE_AVAILABLE": false,
+        "DERIVED_KNOWLEDGE_AVAILABLE": true,
+        "EMBEDDED": false,
+        "RETRIEVABLE": true,
+        "CITABLE": true,
+        "USED_BY_AGENT": true,
+        "NOT_AVAILABLE": true
+      },
+      "marks_most_important_thing": {
+        "SOURCE_IDENTIFIED": true,
+        "SOURCE_AVAILABLE": false,
+        "DERIVED_KNOWLEDGE_AVAILABLE": true,
+        "EMBEDDED": false,
+        "RETRIEVABLE": true,
+        "CITABLE": true,
+        "USED_BY_AGENT": true,
+        "NOT_AVAILABLE": true
+      },
+      "hull_options_futures_derivatives": {
+        "SOURCE_IDENTIFIED": true,
+        "SOURCE_AVAILABLE": false,
+        "DERIVED_KNOWLEDGE_AVAILABLE": true,
+        "EMBEDDED": false,
+        "RETRIEVABLE": true,
+        "CITABLE": true,
+        "USED_BY_AGENT": true,
+        "NOT_AVAILABLE": true
+      },
+      "tuckman_serrat_fixed_income": {
+        "SOURCE_IDENTIFIED": true,
+        "SOURCE_AVAILABLE": false,
+        "DERIVED_KNOWLEDGE_AVAILABLE": true,
+        "EMBEDDED": false,
+        "RETRIEVABLE": true,
+        "CITABLE": true,
+        "USED_BY_AGENT": true,
+        "NOT_AVAILABLE": true
+      },
+      "lo_adaptive_markets": {
+        "SOURCE_IDENTIFIED": true,
+        "SOURCE_AVAILABLE": false,
+        "DERIVED_KNOWLEDGE_AVAILABLE": true,
+        "EMBEDDED": false,
+        "RETRIEVABLE": true,
+        "CITABLE": true,
+        "USED_BY_AGENT": true,
+        "NOT_AVAILABLE": true
+      },
+      "schilit_perler_financial_shenanigans": {
+        "SOURCE_IDENTIFIED": true,
+        "SOURCE_AVAILABLE": false,
+        "DERIVED_KNOWLEDGE_AVAILABLE": false,
+        "EMBEDDED": false,
+        "RETRIEVABLE": false,
+        "CITABLE": true,
+        "USED_BY_AGENT": false,
+        "NOT_AVAILABLE": true
+      },
+      "expectations_investing_rappaport_mauboussin": {
+        "SOURCE_IDENTIFIED": true,
+        "SOURCE_AVAILABLE": false,
+        "DERIVED_KNOWLEDGE_AVAILABLE": true,
+        "EMBEDDED": false,
+        "RETRIEVABLE": true,
+        "CITABLE": true,
+        "USED_BY_AGENT": true,
+        "NOT_AVAILABLE": true
+      },
+      "stock_traders_almanac": {
+        "SOURCE_IDENTIFIED": true,
+        "SOURCE_AVAILABLE": false,
+        "DERIVED_KNOWLEDGE_AVAILABLE": false,
+        "EMBEDDED": false,
+        "RETRIEVABLE": false,
+        "CITABLE": true,
+        "USED_BY_AGENT": false,
+        "NOT_AVAILABLE": true
+      },
+      "white_reality_check_2000": {
+        "SOURCE_IDENTIFIED": true,
+        "SOURCE_AVAILABLE": false,
+        "DERIVED_KNOWLEDGE_AVAILABLE": true,
+        "EMBEDDED": false,
+        "RETRIEVABLE": true,
+        "CITABLE": true,
+        "USED_BY_AGENT": true,
+        "NOT_AVAILABLE": true
+      },
+      "sullivan_timmermann_white_1999": {
+        "SOURCE_IDENTIFIED": true,
+        "SOURCE_AVAILABLE": false,
+        "DERIVED_KNOWLEDGE_AVAILABLE": false,
+        "EMBEDDED": false,
+        "RETRIEVABLE": false,
+        "CITABLE": true,
+        "USED_BY_AGENT": false,
+        "NOT_AVAILABLE": true
+      },
+      "sullivan_timmermann_white_calendar_effects_2001": {
+        "SOURCE_IDENTIFIED": true,
+        "SOURCE_AVAILABLE": false,
+        "DERIVED_KNOWLEDGE_AVAILABLE": false,
+        "EMBEDDED": false,
+        "RETRIEVABLE": false,
+        "CITABLE": true,
+        "USED_BY_AGENT": false,
+        "NOT_AVAILABLE": true
+      },
+      "bailey_lopez_de_prado_2014": {
+        "SOURCE_IDENTIFIED": true,
+        "SOURCE_AVAILABLE": false,
+        "DERIVED_KNOWLEDGE_AVAILABLE": false,
+        "EMBEDDED": false,
+        "RETRIEVABLE": false,
+        "CITABLE": true,
+        "USED_BY_AGENT": false,
+        "NOT_AVAILABLE": true
+      },
+      "bailey_borwein_lopez_de_prado_zhu_2017": {
+        "SOURCE_IDENTIFIED": true,
+        "SOURCE_AVAILABLE": false,
+        "DERIVED_KNOWLEDGE_AVAILABLE": false,
+        "EMBEDDED": false,
+        "RETRIEVABLE": false,
+        "CITABLE": true,
+        "USED_BY_AGENT": false,
+        "NOT_AVAILABLE": true
+      },
+      "harvey_liu_zhu_2016": {
+        "SOURCE_IDENTIFIED": true,
+        "SOURCE_AVAILABLE": false,
+        "DERIVED_KNOWLEDGE_AVAILABLE": false,
+        "EMBEDDED": false,
+        "RETRIEVABLE": false,
+        "CITABLE": true,
+        "USED_BY_AGENT": false,
+        "NOT_AVAILABLE": true
+      },
+      "lopez_de_prado_cpcv_2017": {
+        "SOURCE_IDENTIFIED": true,
+        "SOURCE_AVAILABLE": false,
+        "DERIVED_KNOWLEDGE_AVAILABLE": false,
+        "EMBEDDED": false,
+        "RETRIEVABLE": false,
+        "CITABLE": true,
+        "USED_BY_AGENT": false,
+        "NOT_AVAILABLE": true
+      },
+      "kyle_1985": {
+        "SOURCE_IDENTIFIED": true,
+        "SOURCE_AVAILABLE": false,
+        "DERIVED_KNOWLEDGE_AVAILABLE": false,
+        "EMBEDDED": false,
+        "RETRIEVABLE": false,
+        "CITABLE": true,
+        "USED_BY_AGENT": false,
+        "NOT_AVAILABLE": true
+      },
+      "amihud_2002": {
+        "SOURCE_IDENTIFIED": true,
+        "SOURCE_AVAILABLE": false,
+        "DERIVED_KNOWLEDGE_AVAILABLE": false,
+        "EMBEDDED": false,
+        "RETRIEVABLE": false,
+        "CITABLE": true,
+        "USED_BY_AGENT": false,
+        "NOT_AVAILABLE": true
+      },
+      "lee_ready_1991": {
+        "SOURCE_IDENTIFIED": true,
+        "SOURCE_AVAILABLE": false,
+        "DERIVED_KNOWLEDGE_AVAILABLE": false,
+        "EMBEDDED": false,
+        "RETRIEVABLE": false,
+        "CITABLE": true,
+        "USED_BY_AGENT": false,
+        "NOT_AVAILABLE": true
+      },
+      "almgren_chriss_2001": {
+        "SOURCE_IDENTIFIED": true,
+        "SOURCE_AVAILABLE": false,
+        "DERIVED_KNOWLEDGE_AVAILABLE": false,
+        "EMBEDDED": false,
+        "RETRIEVABLE": false,
+        "CITABLE": true,
+        "USED_BY_AGENT": false,
+        "NOT_AVAILABLE": true
+      },
+      "corwin_schultz_2012": {
+        "SOURCE_IDENTIFIED": true,
+        "SOURCE_AVAILABLE": false,
+        "DERIVED_KNOWLEDGE_AVAILABLE": false,
+        "EMBEDDED": false,
+        "RETRIEVABLE": false,
+        "CITABLE": true,
+        "USED_BY_AGENT": false,
+        "NOT_AVAILABLE": true
+      },
+      "harvey_2017_p_hacking": {
+        "SOURCE_IDENTIFIED": true,
+        "SOURCE_AVAILABLE": false,
+        "DERIVED_KNOWLEDGE_AVAILABLE": false,
+        "EMBEDDED": false,
+        "RETRIEVABLE": false,
+        "CITABLE": true,
+        "USED_BY_AGENT": false,
+        "NOT_AVAILABLE": true
+      }
+    },
+    "derived_n": 25
+  },
+  "retrieval_used": [
+    "q_graham_margin_of_safety",
+    "q_bogle_index_hurdle",
+    "q_malkiel_no_edge_humility",
+    "desk@v5",
+    "symbol_noc@v5",
+    "997d70653953fa5443ef12f5",
+    "fc1c9516370660e7ec1e14f2",
+    "2ca620c904ae9d83ef6eeab0",
+    "mem_d00f5067563bf5e77d95b3849ce0d426",
+    "mem_5989433c2194182282b6e49bedb19cde",
+    "mem_a6129d741261bc91b3088b811858998b",
+    "mem_cf65b19a7b4f4d0a37e6cb3afc1066e8",
+    "mem_f3b72edc82f112060796abeb24a99901",
+    "q_ilmanen_return_drivers",
+    "q_marks_cycle_risk",
+    "q_harris_liquidity"
+  ],
+  "retrieval_classes": [
+    "investment_thesis",
+    "measured_outcome",
+    "operator_derived_doctrine",
+    "operator_feedback",
+    "security_research"
+  ],
+  "cycle": {
+    "trace_id": "b4da7eb5-f532-46f3-903b-e7b8152257ed",
+    "lineage": [
+      "office_truth",
+      "retrieve_cognition",
+      "canon",
+      "competing_theories",
+      "historical_regimes",
+      "sector_desk",
+      "universe_discovery",
+      "cio_synthesis"
+    ],
+    "recommendation": "RESEARCH_MORE",
+    "scanner_is_not_the_cio": true,
+    "theories_ok": true,
+    "canon_disagreement": true,
+    "canon_stances": [
+      "SOURCE_UNAVAILABLE"
+    ],
+    "impact_n": 6,
+    "influence_trace": {
+      "office_truth": {
+        "symbol": "NOC",
+        "currently_held": true,
+        "current_research_tier": "T0-HOLD",
+        "unconfirmed": [
+          "prices",
+          "cash",
+          "broker_state",
+          "orders",
+          "risk_limits"
+        ]
+      },
+      "memory_used": [
+        "q_graham_margin_of_safety",
+        "q_bogle_index_hurdle",
+        "q_malkiel_no_edge_humility",
+        "q_ilmanen_return_drivers",
+        "desk@v5",
+        "symbol_noc@v5",
+        "997d70653953fa5443ef12f5",
+        "fc1c9516370660e7ec1e14f2",
+        "2ca620c904ae9d83ef6eeab0",
+        "53b288fe170ab266d5a235e3",
+        "mem_d00f5067563bf5e77d95b3849ce0d426",
+        "mem_5989433c2194182282b6e49bedb19cde",
+        "mem_a6129d741261bc91b3088b811858998b",
+        "mem_cf65b19a7b4f4d0a37e6cb3afc1066e8",
+        "mem_f3b72edc82f112060796abeb24a99901",
+        "mem_5d39ab9053d20af2f8cc4fed20e95b33",
+        "q_marks_cycle_risk",
+        "q_harris_liquidity",
+        "q_deprado_statistical_validity",
+        "q_aronson_evidence_ta",
+        "q_housel_behavior",
+        "q_damodaran_valuation_integrity",
+        "q_lo_adaptive",
+        "q_white_reality_check"
+      ],
+      "canon_used": [
+        "q_graham_margin_of_safety",
+        "q_bogle_index_hurdle",
+        "q_malkiel_no_edge_humility",
+        "q_ilmanen_return_drivers",
+        "q_marks_cycle_risk",
+        "q_harris_liquidity",
+        "q_deprado_statistical_validity",
+        "q_aronson_evidence_ta",
+        "q_housel_behavior",
+        "q_damodaran_valuation_integrity",
+        "q_lo_adaptive",
+        "q_white_reality_check"
+      ],
+      "theories": {
+        "base": "thy_7469252d04abfbd3ff3b",
+        "bull": "thy_7a7062ea3d1f75cc2f6d",
+        "bear": "thy_dcaeb7bbd507aab64a32",
+        "alternative": "thy_f0f999fc6fa00844d576"
+      },
+      "analogues": [],
+      "sector": [
+        "sector:Industrials",
+        "industry:Aerospace & Defense"
+      ],
+      "impact_symbols": [
+        "RTX",
+        "SPCX",
+        "ACHR",
+        "AVAV",
+        "AVEX",
+        "AXON"
+      ]
+    },
+    "mutated_office_truth": false
+  },
+  "brief": {
+    "recommendation": "RESEARCH_MORE",
+    "deserves_attention_now": true,
+    "operator_memory_used": [
+      "mem_d00f5067563bf5e77d95b3849ce0d426",
+      "mem_5989433c2194182282b6e49bedb19cde"
+    ],
+    "new_opportunities": [
+      "RTX",
+      "SPCX",
+      "ACHR",
+      "AVAV",
+      "AVEX",
+      "AXON"
+    ]
+  },
+  "unattended_week": {
+    "schema": "UnattendedWeekCapability@v1",
+    "question": "If the operator disappeared for a week, would this office continue studying, updating beliefs, discovering, challenging itself, remembering, and return with a coherent briefing?",
+    "answer": "NO",
+    "reasons": [
+      "OFFICE activation is OFF; no unattended timer is authorized",
+      "R17 natural checkpoint/outcome loop remains blocked",
+      "R19 has zero deterministically joinable decision-outcome holdout rows",
+      "lawful canon full text is NOT_AVAILABLE; doctrine is operator-derived questions only",
+      "MEMORY_BEHAVIOR_INFLUENCE remains 0; cognition is retrieved but not promoted",
+      "Hermes remains a bounded challenger, not a continuously theorizing department on this branch"
+    ],
+    "what_is_now_executable_in_shadow": [
+      "reference-brain audit with honest SOURCE_* flags",
+      "shared knowledge fabric retrieval receipts",
+      "canon questions without deterministic gates",
+      "InvestmentTheory@v1 competing set with falsification",
+      "sector thesis inheritance",
+      "regime analogue comparison requiring differences",
+      "CIO synthesis that can disagree with a scanner",
+      "restart-stable theory/sector jsonl under a given root"
+    ],
+    "deterministic_incubator_role": "sensor and OFFICE_TRUTH engine under the CIO, not the CIO",
+    "authority": "READ_ONLY_ADVISORY",
+    "memory_behavior_influence": 0,
+    "financial_action": false,
+    "activated": false
+  }
+}

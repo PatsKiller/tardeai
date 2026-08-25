@@ -16,7 +16,7 @@ EVIDENCE_CLASSES = (
     "GOLDEN_SHADOW",
     "LIVE",
 )
-ROUNDS = ("R18", "R19", "R20", "R21", "R22")
+ROUNDS = ("R18", "R19", "R20", "R21", "R22", "OFFICE")
 
 # Production activation. Keep every round false until a later, separate authorization.
 ACTIVATION: dict[str, bool] = {r: False for r in ROUNDS}
@@ -24,6 +24,14 @@ ACTIVATION: dict[str, bool] = {r: False for r in ROUNDS}
 CANONICAL_CONTRACT = "TransfersonUniverseManifest@v1"
 IDENTITY_SPINE = "issuer_guid → security_guid → listing_guid → ticker alias"
 PROMOTION_CEILING = "REVIEW_READY"
+
+# Two lanes. Cognition may be retrieved for advisory reasoning.
+# It may never become holdings/prices/cash/broker/risk truth.
+OFFICE_TRUTH = "OFFICE_TRUTH"
+INSTITUTIONAL_COGNITION = "INSTITUTIONAL_COGNITION"
+COGNITION_MAY_MUTATE_OFFICE_TRUTH = False
+# Production remains 0. Architecture records retrieval use; promotion of influence is separate.
+ADVISORY_INFLUENCE_PROMOTION = "SHADOW_ACCEPTANCE_REQUIRED"
 
 
 def require_evidence_class(value: str) -> str:

@@ -1,0 +1,93 @@
+{
+  "schema": "OperatorDerivedDoctrine@v1",
+  "authority": "READ_ONLY_ADVISORY",
+  "note": "Operator-authored questions and blind-spot prompts associated with catalog identities. These are NOT lawful full text, NOT excerpts, and NOT deterministic gates. SOURCE_UNAVAILABLE remains true for every mapped book/paper until ingest_canon_source admits exact bytes.",
+  "not_full_text": true,
+  "not_deterministic_gates": true,
+  "items": [
+    {
+      "doctrine_id": "q_graham_margin_of_safety",
+      "source_id": "graham_zweig_intelligent_investor",
+      "role": "question",
+      "prompt": "What is the margin of safety between price and a conservative estimate of value, and is this speculation dressed as investment?",
+      "use": ["valuation", "attractiveness"]
+    },
+    {
+      "doctrine_id": "q_bogle_index_hurdle",
+      "source_id": "bogle_common_sense",
+      "role": "question",
+      "prompt": "After costs, does this active idea clear a low-cost index hurdle, and why is the operator the one who captures the edge?",
+      "use": ["attractiveness", "portfolio"]
+    },
+    {
+      "doctrine_id": "q_malkiel_no_edge_humility",
+      "source_id": "malkiel_random_walk",
+      "role": "challenge",
+      "prompt": "What is the claimed edge, and what would make this indistinguishable from luck or already-priced information?",
+      "use": ["attractiveness", "challenge"]
+    },
+    {
+      "doctrine_id": "q_ilmanen_return_drivers",
+      "source_id": "ilmanen_expected_returns",
+      "role": "question",
+      "prompt": "Which expected-return drivers (yield, growth, multiple, carry, credit, illiquidity) are actually in this price?",
+      "use": ["valuation", "macro"]
+    },
+    {
+      "doctrine_id": "q_marks_cycle_risk",
+      "source_id": "marks_most_important_thing",
+      "role": "question",
+      "prompt": "Where are we in the cycle, and what risk is currently being underpriced versus overpaid-for safety?",
+      "use": ["regime", "risk"]
+    },
+    {
+      "doctrine_id": "q_harris_liquidity",
+      "source_id": "harris_trading_exchanges",
+      "role": "question",
+      "prompt": "Is liquidity deep enough to express this view without becoming the market?",
+      "use": ["microstructure", "attractiveness"]
+    },
+    {
+      "doctrine_id": "q_deprado_statistical_validity",
+      "source_id": "lopez_de_prado_afml",
+      "role": "challenge",
+      "prompt": "Has this pattern been tested with leakage-aware validation, or is it a backtest story?",
+      "use": ["challenge", "learning"]
+    },
+    {
+      "doctrine_id": "q_aronson_evidence_ta",
+      "source_id": "aronson_evidence_based_ta",
+      "role": "challenge",
+      "prompt": "If a technical rule is in play, what is the out-of-sample test and the data-mining penalty?",
+      "use": ["challenge"]
+    },
+    {
+      "doctrine_id": "q_housel_behavior",
+      "source_id": "housel_psychology_of_money",
+      "role": "question",
+      "prompt": "What story is being sold, and which operator behavior (FOMO, recency, loss aversion) is this exploiting?",
+      "use": ["behavior", "attractiveness"]
+    },
+    {
+      "doctrine_id": "q_damodaran_valuation_integrity",
+      "source_id": "damodaran_on_valuation",
+      "role": "question",
+      "prompt": "Which cash flows, growth, and risk inputs are explicit, and which are being smuggled in via a multiple?",
+      "use": ["valuation"]
+    },
+    {
+      "doctrine_id": "q_lo_adaptive",
+      "source_id": "lo_adaptive_markets",
+      "role": "question",
+      "prompt": "Is this relationship regime-dependent, and has the ecology of market participants changed?",
+      "use": ["regime"]
+    },
+    {
+      "doctrine_id": "q_white_reality_check",
+      "source_id": "white_reality_check_2000",
+      "role": "challenge",
+      "prompt": "If many variants were tried, what is the reality-check / multiple-testing burden on the winner?",
+      "use": ["learning", "challenge"]
+    }
+  ]
+}

@@ -111,6 +111,21 @@
       "path": "scripts/lib/r22_cio_loop.py"
     },
     {
+      "id": "OFFICE-reference-brain",
+      "needs_live_r17": false,
+      "implement_now": true,
+      "status": "IMPLEMENTED_NOT_COMPLETE",
+      "path": "scripts/lib/reference_brain_audit.py",
+      "note": "34/34 catalog sources SOURCE_IDENTIFIED and NOT_AVAILABLE. Derived doctrine and implemented mechanics are registered separately. Lawful full text still absent."
+    },
+    {
+      "id": "OFFICE-autonomous-week",
+      "needs_live_r17": true,
+      "implement_now": false,
+      "status": "NO",
+      "note": "Unattended-week acceptance is NO: OFFICE timer off, R17 blocked, R19 no holdout lineage, MEMORY_BEHAVIOR_INFLUENCE=0, canon full text unavailable."
+    },
+    {
       "id": "R18-live-outcomes",
       "needs_live_r17": true,
       "implement_now": false,
