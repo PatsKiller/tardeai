@@ -1,11 +1,11 @@
 # CIO persistent cognition consumption
 
 **Date:** 2026-08-24  
-**Status:** MERGED (#497) + DEPLOYED (`0a0e19bf`). Hermes free-first NATURALLY_PROVEN on that SHA. CIO pack-in-trace **not** yet.  
+**Status:** MERGED (#497) + DEPLOYED (`0a0e19bf` then exact-main `15ab2362` after #498–#500). Hermes free-first NATURALLY_PROVEN on the #497 SHA. CIO pack-in-trace **not** yet (DecisionPayload material-scan path does not embed the TickerResearchState pack).  
 **Authority:** `READ_ONLY_ADVISORY`  
 **MEMORY_BEHAVIOR_INFLUENCE:** 0  
 
-M1 natural (11:23 ET, `5e9028fb`) remains historical. Consumer #497 merged 19:37Z; CURRENT `0a0e19bf`. Natural free-first 19:23:55–19:27:23 ET run_id `b1623bcb` SOURCE `0a0e19bf`, 120 FRESH_NO_CHANGE, 0 paid.
+M1 natural (11:23 ET, `5e9028fb`) remains historical. Consumer #497 merged 19:37Z; first CURRENT `0a0e19bf`. Natural free-first 19:23:55–19:27:23 ET run_id `b1623bcb` SOURCE `0a0e19bf`, 120 FRESH_NO_CHANGE, 0 paid. Exact-main promote after #500: CURRENT `15ab2362-main-exact-phase2-20260824-200105` at 20:01:58 ET (SOURCE=BUILD=GIT=`15ab2362361cbd8e0ded3d0c2ce2b83f7e8bacc7`). Telegram CIO was still on `b935076f` until a read-only restart at 20:08:24 ET onto `15ab2362`. Natural free-first on that SHA: 20:23:47–20:27:24 ET run_id `019117db`, 120 FRESH_NO_CHANGE, 0 paid.
 
 ## What
 
@@ -32,6 +32,8 @@ TickerResearchState and curation are `RESEARCH_CONTEXT`. They cannot override ca
 | Telegram CIO | `cio_telegram_converse.assemble_context` |
 
 No `cio_ticker_memory.jsonl`. Canonical JSONL remains canonical.
+
+Natural **material_scan** (systemd `tradeai-cio-material-scan.timer`) on CURRENT `15ab2362` at 20:06:16–20:06:20 ET: `READ_ONLY_ADVISORY`, `dry_run=true`, SCHD DecisionPayload `DATA_CONFLICT` / `financial_action=false` / `notification.sent=false`. Trace does **not** embed `persistent_ticker_cognition`. That path is still a DecisionPayload surface, not a pack-in-trace proof.
 
 ## WHAT_CHANGED
 
@@ -61,12 +63,11 @@ Materiality roles: HELD, REENTRY, WATCH, OPPORTUNITY, LARGE_EXPOSURE, CASH_DEPLO
 
 Every consumption emits `ContextUseReceipt@v1` (run_id, agent, task, security_guid, state/curation/thesis versions, gap IDs, why selected, source SHA). No chain-of-thought.
 
-## Not in this PR
+## Not in this program
 
 - SQL `r10_memory_shadow.sql` apply
 - Neo4j / Mem0 / Redis
 - Producer retirement
 - UI overhaul
 - Paid Flash activation
-- CURRENT promote
-- Merge without operator review after exact-head CI
+- Dual writer
