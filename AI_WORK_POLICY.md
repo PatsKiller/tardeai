@@ -428,9 +428,21 @@ After Push 2:
 
 STOP before another push and request operator approval.
 
-Exception:
+A local, gitignored counter lives under `.git/tradeai-push-budget.json`
+(per worktree git-dir). It is NOT source-controlled.
 
-an explicit operator instruction overrides this limit.
+The pre-push hook:
+
+- increments only after an authorized push is allowed to proceed;
+- allows pushes 1 and 2 for the current branch tranche;
+- blocks push 3+ unless a separate override is set.
+
+Override (not the normal path; requires explicit operator approval):
+
+    TRADEAI_REMOTE_PUSH_OVERRIDE=1 TRADEAI_REMOTE_PUSH_AUTHORIZED=1 git push ...
+
+This is not cryptographic security. An agent with shell access can edit local
+files. It exists to make accidental push loops fail closed.
 
 ---
 
@@ -535,3 +547,45 @@ LOCAL COMPUTE IS THE DEVELOPMENT LOOP.
 GITHUB COMPUTE IS THE FINAL INDEPENDENT VERIFICATION LOOP.
 
 Never push merely to ask GitHub whether unfinished code works.
+
+---
+
+# 25. ENFORCEMENT HIERARCHY
+
+No single instruction-file name is guaranteed across every AI coding product.
+
+Therefore enforcement is layered:
+
+1. `AI_WORK_POLICY.md` — canonical human-readable policy
+2. tool adapter instruction files (`AGENTS.md`, `CLAUDE.md`, Cursor rules, Copilot)
+3. Git pre-push hook — tool-independent enforcement
+4. `scripts/ai_local_acceptance.sh` — one local command before requesting sync
+5. `scripts/ai_work_status.sh` — read-only local status; never contacts GitHub
+6. GitHub CI — final independent validation only
+
+If an assistant ignores its adapter, Git still blocks casual `git push`.
+
+---
+
+# 26. LOCAL STATUS
+
+Before requesting sync, agents should run:
+
+    bash scripts/ai_work_status.sh
+    bash scripts/ai_local_acceptance.sh
+
+Do not push merely to produce this report.
+
+---
+
+# 27. DEPLOYMENT REMAINS SEPARATE
+
+`TRADEAI_REMOTE_PUSH_AUTHORIZED=1` authorizes one git push.
+
+It does **not** authorize:
+
+- merge
+- deploy
+- broker/risk/2FA/cash/canary/registry changes
+- `MEMORY_BEHAVIOR_INFLUENCE` other than 0
+
