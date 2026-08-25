@@ -1,32 +1,50 @@
 #!/usr/bin/env bash
 # Install the tracked AI work-policy hooks for this clone/worktree.
-# Does not push. Does not deploy. Does not weaken secrets or hygiene checks.
+# Idempotent. Does not push, deploy, or write global git config.
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
 
-chmod +x "$ROOT/.githooks/pre-commit" "$ROOT/.githooks/pre-push"
-chmod +x "$ROOT/scripts/install_ai_work_policy.sh" "$ROOT/scripts/ai_local_acceptance.sh"
+if [[ ! -f "$ROOT/AI_WORK_POLICY.md" ]]; then
+  echo "ERROR: policy file not found: $ROOT/AI_WORK_POLICY.md" >&2
+  exit 1
+fi
 
-# Worktree-scoped when possible so a shared .git with many worktrees is not
-# globally switched until this checkout actually contains .githooks.
+chmod +x "$ROOT/.githooks/pre-commit" "$ROOT/.githooks/pre-push"
+chmod +x "$ROOT/scripts/install_ai_work_policy.sh" \
+  "$ROOT/scripts/ai_local_acceptance.sh" \
+  "$ROOT/scripts/ai_work_status.sh" 2>/dev/null || true
+
+before_global="$(git config --global --get core.hooksPath || true)"
+
 git_dir="$(git rev-parse --absolute-git-dir)"
 common="$(cd "$(git rev-parse --git-common-dir)" && pwd)"
 if [[ "$git_dir" != "$common" ]]; then
   git config extensions.worktreeConfig true
   git config --worktree core.hooksPath .githooks
-  echo "core.hooksPath=.githooks (worktree-local)"
+  scope="worktree-local"
 else
   git config core.hooksPath .githooks
-  echo "core.hooksPath=.githooks (clone-local)"
+  scope="clone-local"
 fi
 
+after_global="$(git config --global --get core.hooksPath || true)"
+if [[ "$before_global" != "$after_global" ]]; then
+  echo "ERROR: installer mutated global git config" >&2
+  exit 1
+fi
+
+branch="$(git rev-parse --abbrev-ref HEAD)"
+hook_ok=false
+[[ -x "$ROOT/.githooks/pre-push" ]] && hook_ok=true
+
+echo "policy file found: $ROOT/AI_WORK_POLICY.md"
+echo "hook path configured: .githooks ($scope)"
+echo "pre-push executable: $hook_ok"
+echo "current branch: $branch"
+echo "remote push default=BLOCKED"
+echo "budget file: $git_dir/tradeai-push-budget.json (git-dir, not committed)"
 echo
-echo "AI work policy hooks installed."
-echo "  canonical policy: $ROOT/AI_WORK_POLICY.md"
-echo "  pre-commit: secrets + scripts/githooks/pre-commit if present"
-echo "  pre-push:   TRADEAI_REMOTE_PUSH_AUTHORIZED=1 then secrets --tree"
-echo
-echo "Remote push remains separately authorized."
-echo "Test the gate:  git push   (must block without the env flag)"
+echo "Remote push remains separately authorized:"
+echo "  TRADEAI_REMOTE_PUSH_AUTHORIZED=1 git push ..."

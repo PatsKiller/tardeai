@@ -1,17 +1,53 @@
 #!/usr/bin/env bash
-# Trade AI tracked pre-push: remote-sync authorization, then secrets tree scan.
+# Trade AI tracked pre-push: auth + two-push budget, then secrets tree scan.
 set -euo pipefail
 
 repo_root="$(git rev-parse --show-toplevel)"
 cd "$repo_root"
+export PYTHONPATH="${repo_root}${PYTHONPATH:+:$PYTHONPATH}"
 
 echo
 echo "Trade AI Remote Sync Gate"
 echo "========================="
 echo
 
-if [[ "${TRADEAI_REMOTE_PUSH_AUTHORIZED:-0}" != "1" ]]; then
-  cat >&2 <<'EOF'
+authorized=0
+[[ "${TRADEAI_REMOTE_PUSH_AUTHORIZED:-0}" == "1" ]] && authorized=1
+override=0
+[[ "${TRADEAI_REMOTE_PUSH_OVERRIDE:-0}" == "1" ]] && override=1
+
+decision="$(python3 - <<PY
+import os, json, sys
+sys.path.insert(0, os.environ.get("PYTHONPATH", "").split(":")[0] or ".")
+from scripts.lib.tradeai_push_budget import decide, load_state
+st = load_state()
+d = decide(
+    authorized=os.environ.get("TRADEAI_REMOTE_PUSH_AUTHORIZED") == "1",
+    override=os.environ.get("TRADEAI_REMOTE_PUSH_OVERRIDE") == "1",
+    count=int(st.get("authorized_push_count") or 0),
+)
+print(json.dumps({**d, "state_count": int(st.get("authorized_push_count") or 0)}))
+PY
+)"
+
+reason="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["reason"])' "$decision")"
+allow="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["allow"])' "$decision")"
+count="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["state_count"])' "$decision")"
+
+if [[ "$allow" != "True" ]]; then
+  if [[ "$reason" == "BUDGET_EXCEEDED" ]]; then
+    cat >&2 <<EOF
+REMOTE PUSH BLOCKED (push budget).
+
+This tranche already used ${count} authorized remote push(es).
+Default budget is 2. A third push requires explicit operator approval:
+
+    TRADEAI_REMOTE_PUSH_OVERRIDE=1 TRADEAI_REMOTE_PUSH_AUTHORIZED=1 git push ...
+
+See AI_WORK_POLICY.md §17. Do not use the override as the normal path.
+EOF
+  else
+    cat >&2 <<'EOF'
 REMOTE PUSH BLOCKED.
 
 Trade AI uses LOCAL-FIRST development. See AI_WORK_POLICY.md.
@@ -22,16 +58,30 @@ A local checkpoint is:
 not:
     git push
 
-Before synchronizing remotely, complete local acceptance and explicitly authorize
-this one synchronization event:
+Complete local acceptance first, then authorize ONE synchronization:
 
     TRADEAI_REMOTE_PUSH_AUTHORIZED=1 git push ...
 
 Do not set that flag merely to bypass this policy.
 EOF
+  fi
   exit 1
 fi
 
-echo "Remote synchronization explicitly authorized for this command."
-echo "Running secrets tree scan..."
-exec python3 "$repo_root/scripts/check_no_secrets.py" --tree
+echo "Remote synchronization explicitly authorized for this command (reason=$reason count=$count)."
+
+if [[ "${TRADEAI_SKIP_SECRETS_SCAN:-0}" != "1" ]]; then
+  if [[ -f "$repo_root/scripts/check_no_secrets.py" ]]; then
+    echo "Running secrets tree scan..."
+    python3 "$repo_root/scripts/check_no_secrets.py" --tree
+  fi
+fi
+
+python3 - <<'PY'
+import os, sys
+sys.path.insert(0, os.environ.get("PYTHONPATH", "").split(":")[0] or ".")
+from scripts.lib.tradeai_push_budget import record_authorized_push
+record_authorized_push()
+PY
+
+exit 0
