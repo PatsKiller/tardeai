@@ -1,0 +1,132 @@
+{
+  "schema": "ForwardProgramGapRegister@v1",
+  "authority": "READ_ONLY_ADVISORY",
+  "memory_behavior_influence": 0,
+  "activation": {
+    "R17_live": false,
+    "R18": false,
+    "R19": false,
+    "R20": false,
+    "R21": false,
+    "R22": false
+  },
+  "canonical_contract": "TransfersonUniverseManifest@v1",
+  "identity_spine": "issuer_guid → security_guid → listing_guid → ticker alias",
+  "promotion_ceiling": "REVIEW_READY",
+  "evidence_classes": ["SOURCE_ONLY", "UNIT_TEST", "HISTORICAL_REPLAY", "GOLDEN_SHADOW", "LIVE"],
+  "reuse": [
+    {
+      "id": "R16-learning",
+      "path": "scripts/lib/cio_institutional_learning.py",
+      "provides": ["OutcomeObservation@v1", "LessonCandidate@v2", "HypothesisCandidate@v1", "ShadowExperiment@v1", "lookahead", "bitemporal", "promotion_advance", "identity_safe_subject", "persist_checkpoint"]
+    },
+    {
+      "id": "R16-learning-store",
+      "path": "scripts/lib/cio_learning_candidate.py",
+      "provides": ["append-only learning candidates", "forbidden effects including broker/risk/execution"]
+    },
+    {
+      "id": "universe",
+      "path": "scripts/lib/transferson_universe.py",
+      "provides": ["canonical membership", "industry/sector/catalyst reverse lookup", "identity lineage"]
+    },
+    {
+      "id": "graph",
+      "path": "scripts/lib/ticker_knowledge_graph.py",
+      "provides": ["provenance-bearing edges", "seed_graph_from_universe"]
+    },
+    {
+      "id": "free-first",
+      "path": "scripts/lib/free_first_circulation.py",
+      "provides": ["labeled graph-profile cohort, not universe"]
+    }
+  ],
+  "gaps": [
+    {
+      "id": "R17-G1",
+      "needs_live_r17": true,
+      "implement_now": false,
+      "note": "material decision → persist_checkpoint. Production wiring stays blocked."
+    },
+    {
+      "id": "R17-G2",
+      "needs_live_r17": true,
+      "implement_now": false,
+      "note": "cockpit bound to live jsonl. Do not fake LIVE counts."
+    },
+    {
+      "id": "R17-G3",
+      "needs_live_r17": true,
+      "implement_now": false,
+      "note": "due processor timer. process_due_checkpoint already exists; do not enable unattended on CURRENT here."
+    },
+    {
+      "id": "R17-G4",
+      "needs_live_r17": true,
+      "implement_now": false,
+      "note": "idempotent key on lineage+generation."
+    },
+    {
+      "id": "R18-contracts",
+      "needs_live_r17": false,
+      "implement_now": true,
+      "status": "SOURCE_ONLY+UNIT_TEST+GOLDEN_SHADOW",
+      "path": "scripts/lib/r18_calibration_fabric.py"
+    },
+    {
+      "id": "R19-engine",
+      "needs_live_r17": false,
+      "implement_now": true,
+      "status": "SOURCE_ONLY+UNIT_TEST+GOLDEN_SHADOW",
+      "path": "scripts/lib/r19_learning_engine.py"
+    },
+    {
+      "id": "R20-propagation",
+      "needs_live_r17": false,
+      "implement_now": true,
+      "status": "SOURCE_ONLY+UNIT_TEST",
+      "path": "scripts/lib/r20_universe_propagation.py"
+    },
+    {
+      "id": "R21-portfolio",
+      "needs_live_r17": false,
+      "implement_now": true,
+      "status": "SOURCE_ONLY+UNIT_TEST",
+      "path": "scripts/lib/r21_portfolio_cognition.py"
+    },
+    {
+      "id": "R22-loop",
+      "needs_live_r17": false,
+      "implement_now": true,
+      "status": "SOURCE_ONLY+UNIT_TEST",
+      "path": "scripts/lib/r22_cio_loop.py"
+    },
+    {
+      "id": "R18-live-outcomes",
+      "needs_live_r17": true,
+      "implement_now": false,
+      "note": "CalibrationObservation LIVE requires natural OutcomeObservation after R17 due processor."
+    },
+    {
+      "id": "R19-live-lessons",
+      "needs_live_r17": true,
+      "implement_now": false,
+      "note": "Lesson candidates may be proposed from replay now; LIVE pattern detection waits for a natural outcome stream."
+    },
+    {
+      "id": "R20-live-commission",
+      "needs_live_r17": false,
+      "implement_now": false,
+      "note": "Bounded research commission from impact set is a later activation, not a missing contract."
+    }
+  ],
+  "r23_plus_real_boundaries": [
+    "causal-hypothesis testing (needs preregistered experiments + LIVE outcomes)",
+    "cross-regime learning (needs regime-tagged LIVE outcomes across regimes)",
+    "temporal knowledge decay (can be specified now; LIVE decay rates need elapsed outcomes)",
+    "evidence-source reliability learning (needs outcome-linked source_refs at scale)",
+    "counterfactual decision evaluation (replay possible now; LIVE counterfactuals need R17)",
+    "opportunity-cost learning (needs portfolio cognition + LIVE substitution outcomes)",
+    "institutional policy recommendation (REVIEW_READY only; operator-authorized later)"
+  ]
+}
