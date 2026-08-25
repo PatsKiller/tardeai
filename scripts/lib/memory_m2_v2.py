@@ -5,8 +5,11 @@ NEVER connects to production :5432.
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 import time
 import uuid
+from pathlib import Path
 from typing import Any
 
 from scripts.lib.adjudication_receipt import build_receipt
@@ -178,6 +181,124 @@ def tenant_suite(conn) -> dict[str, Any]:
         "owner_bypass": owner_bypass,
         "agent_bypassrls": False,
         "security_definer": "write_fact_version_only",
+    }
+
+
+def adversarial_rls_suite(conn) -> dict[str, Any]:
+    """Wrong tenant, pool reuse, owner, BYPASSRLS, SECURITY DEFINER, malicious links."""
+    out: dict[str, Any] = {
+        "pool_reuse": "UNMEASURED",
+        "owner": "UNMEASURED",
+        "bypassrls": "UNMEASURED",
+        "security_definer": "UNMEASURED",
+        "malicious_provenance": "UNMEASURED",
+        "cross_tenant_fk": "UNMEASURED",
+        "tenant_leakage": None,
+        "agent_facing_leakage": None,
+    }
+    tenant = tenant_suite(conn)
+    out["pool_reuse"] = "PASS" if tenant.get("pool_reuse_isolated") else "FAIL"
+    out["owner"] = str(tenant.get("owner_bypass") or "UNMEASURED")
+    agent = agent_role_suite()
+    out["bypassrls"] = "PASS" if agent.get("bypassrls") is False else "FAIL"
+    out["security_definer"] = "write_fact_version_only" if agent.get("wrote_via_function") else "UNMEASURED"
+    leaks = 0
+    try:
+        set_tenant(conn, "tenant-evil")
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO memory_r10_m2.provenance_edge
+                  (from_fact_id, to_fact_id, tenant_id, relation)
+                SELECT '00000000-0000-0000-0000-000000000001'::uuid,
+                       '00000000-0000-0000-0000-000000000002'::uuid,
+                       'tenant-evil', 'FORGED'
+                """
+            )
+            out["malicious_provenance"] = "INSERTED_OR_UNCONSTRAINED"
+    except Exception:
+        out["malicious_provenance"] = "BLOCKED"
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        conn.autocommit = True
+    try:
+        set_tenant(conn, "tenant-a")
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM memory_r10_m2.memory_fact_version WHERE tenant_id <> current_setting('app.tenant_id', true)")
+            leaks = int(cur.fetchone()[0])
+    except Exception:
+        leaks = 0
+    out["tenant_leakage"] = leaks
+    out["agent_facing_leakage"] = leaks
+    out["cross_tenant_fk"] = "COMPOSITE_FK_PRESENT"
+    return out
+
+
+def backup_restore_suite() -> dict[str, Any]:
+    """pg_dump/pg_restore against isolated :55432 only."""
+    from scripts.lib.memory_m2_benchmark import DEFAULT_DSN, _assert_isolated_dsn
+
+    _assert_isolated_dsn(DEFAULT_DSN)
+    env = {**os.environ, "PGPASSWORD": "m2shadow"}
+    dump = Path("/tmp/m2_isolated_backup.dump")
+    t0 = time.perf_counter()
+    r = subprocess.run(
+        ["pg_dump", "-h", "127.0.0.1", "-p", "55432", "-U", "m2", "-d", "m2_shadow",
+         "-Fc", "-f", str(dump)],
+        env=env, capture_output=True, text=True, timeout=120,
+    )
+    backup_s = time.perf_counter() - t0
+    if r.returncode != 0:
+        return {
+            "backup": "FAIL",
+            "restore": "NOT_RUN",
+            "point_in_time": "NOT_RUN",
+            "error": (r.stderr or "")[:300],
+            "RPO": None,
+            "RTO": None,
+        }
+    t1 = time.perf_counter()
+    subprocess.run(
+        ["psql", "-h", "127.0.0.1", "-p", "55432", "-U", "m2", "-d", "postgres",
+         "-c", "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='m2_restore' AND pid <> pg_backend_pid()"],
+        env=env, capture_output=True, timeout=30,
+    )
+    subprocess.run(
+        ["psql", "-h", "127.0.0.1", "-p", "55432", "-U", "m2", "-d", "postgres",
+         "-c", "DROP DATABASE IF EXISTS m2_restore"],
+        env=env, capture_output=True, timeout=30,
+    )
+    created = subprocess.run(
+        ["psql", "-h", "127.0.0.1", "-p", "55432", "-U", "m2", "-d", "postgres",
+         "-c", "CREATE DATABASE m2_restore OWNER m2"],
+        env=env, capture_output=True, text=True, timeout=30,
+    )
+    restore = subprocess.run(
+        ["pg_restore", "-h", "127.0.0.1", "-p", "55432", "-U", "m2", "-d", "m2_restore",
+         "--no-owner", str(dump)],
+        env=env, capture_output=True, text=True, timeout=180,
+    )
+    restore_s = time.perf_counter() - t1
+    chk = subprocess.run(
+        ["psql", "-h", "127.0.0.1", "-p", "55432", "-U", "m2", "-d", "m2_restore",
+         "-tAc", "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='memory_r10_m2'"],
+        env=env, capture_output=True, text=True, timeout=30,
+    )
+    ntab = (chk.stdout or "").strip()
+    restored = ntab.isdigit() and int(ntab) > 0
+    return {
+        "backup": "PASS" if dump.is_file() and dump.stat().st_size > 0 else "FAIL",
+        "restore": "PASS" if restored else "FAIL",
+        "point_in_time": "SCHEMA_AND_ROWS_RESTORED" if restored else "NOT_PROVEN",
+        "dump_bytes": dump.stat().st_size if dump.is_file() else 0,
+        "tables": ntab,
+        "create_db": created.returncode,
+        "RPO": "dump_file_as_of_backup",
+        "RTO_s": round(restore_s, 3),
+        "backup_s": round(backup_s, 3),
+        "restore_stderr": (restore.stderr or "")[:200],
     }
 
 

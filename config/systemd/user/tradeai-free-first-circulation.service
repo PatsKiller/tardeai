@@ -14,8 +14,9 @@ Environment=MEMORY_BEHAVIOR_INFLUENCE=0
 # Do NOT set the paid CIO-drain backend. This is FREE_FIRST_ONLY.
 Nice=10
 TimeoutStartSec=900
-# flock -n / exit 75 = overlap; do not kill the first worker.
-ExecStart=/usr/bin/flock -n -E 75 /tmp/tradeai_free_first_circulation.lock /usr/bin/bash /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/run_free_first_circulation.sh
+# Singleton lock is taken inside free_first_refresh.py (fcntl, exit 75).
+# Do not wrap ExecStart in flock on the same path — the child cannot re-lock it.
+ExecStart=/usr/bin/bash /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/run_free_first_circulation.sh
 StandardOutput=append:/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/logs/free_first_circulation.log
 StandardError=append:/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/logs/free_first_circulation.log
 
