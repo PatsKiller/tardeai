@@ -1,0 +1,11 @@
+{
+  "schema": "LearningCost@v1",
+  "evaluations": 1939,
+  "experiments": 3,
+  "cost_per_evaluation": 0.0,
+  "cost_per_experiment": 0.0,
+  "total": 0.0,
+  "paid_models_used_to_inflate_n": false,
+  "authority": "READ_ONLY_ADVISORY",
+  "evidence_class": "LIVE+GOLDEN_SHADOW"
+}

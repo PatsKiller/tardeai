@@ -1,0 +1,61 @@
+{
+  "schema": "R16_1Lessons@v1",
+  "lessons": [
+    {
+      "schema": "LessonCandidate@v2",
+      "lesson_id": "0ce9ac7f9f4c5e5e8aec",
+      "scope": "office",
+      "task_class": "research_curation",
+      "statement": "FRESH_NO_CHANGE must not spend paid dispatch",
+      "supporting_outcome_ids": [
+        "ff-2026-08-25T16:28:08Z"
+      ],
+      "counterexamples": [],
+      "sample_size": 1,
+      "confidence": 0.5,
+      "limitations": "one outcome is not methodology",
+      "review_at": null,
+      "status": "PROVISIONAL",
+      "counterexample_search": true,
+      "methodology_effect": false,
+      "policy_effect": false,
+      "authority": "READ_ONLY_ADVISORY",
+      "memory_behavior_influence": 0,
+      "financial_action": false
+    },
+    {
+      "schema": "LessonCandidate@v2",
+      "lesson_id": "cdd235057454f24d7b52",
+      "scope": "office",
+      "task_class": "notification_rendering",
+      "statement": "Operator-accepted advisory outcomes are not a methodology license to auto-promote",
+      "supporting_outcome_ids": [
+        "e81cb746d77b1fbb650dd05e",
+        "4f57d06b27b9fa906df9d09a",
+        "502c5cab9f1866ebd0e75ed3",
+        "34265fbd0f24f586bac25595",
+        "d1f4d99d835b6ca6eece70dc",
+        "3557d21265173e6d62d03e59"
+      ],
+      "counterexamples": [],
+      "sample_size": 6,
+      "confidence": 0.5,
+      "limitations": "bounded",
+      "review_at": null,
+      "status": "SUPPORTED",
+      "counterexample_search": true,
+      "methodology_effect": false,
+      "policy_effect": false,
+      "authority": "READ_ONLY_ADVISORY",
+      "memory_behavior_influence": 0,
+      "financial_action": false
+    }
+  ],
+  "supported": 1,
+  "provisional": 1,
+  "contradicted": 0,
+  "counterexample_search_performed": true,
+  "one_cycle_not_methodology": true,
+  "policy_effect": false,
+  "authority": "READ_ONLY_ADVISORY"
+}

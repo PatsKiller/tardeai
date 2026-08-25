@@ -1,0 +1,56 @@
+{
+  "schema": "R16_1ThesisEvolution@v1",
+  "evidence_class": "HISTORICAL_VALIDATED",
+  "timelines": 10,
+  "stale_thesis_cases": 10,
+  "average_revision_latency": 0.0,
+  "sample": [
+    {
+      "symbol": "ARKX",
+      "event_time": "2026-08-21T01:01:02+00:00",
+      "source_available_time": "2026-08-21T01:01:02+00:00",
+      "delta_time": 0,
+      "thesis_version_before": null,
+      "thesis_version_after": null,
+      "recommendation": "REASSESS_THESIS"
+    },
+    {
+      "symbol": "BAH",
+      "event_time": "2026-08-21T01:01:02+00:00",
+      "source_available_time": "2026-08-21T01:01:02+00:00",
+      "delta_time": 0,
+      "thesis_version_before": null,
+      "thesis_version_after": null,
+      "recommendation": "REASSESS_THESIS"
+    },
+    {
+      "symbol": "CSWC",
+      "event_time": "2026-08-21T01:01:02+00:00",
+      "source_available_time": "2026-08-21T01:01:02+00:00",
+      "delta_time": 0,
+      "thesis_version_before": null,
+      "thesis_version_after": null,
+      "recommendation": "REASSESS_THESIS"
+    },
+    {
+      "symbol": "DIV",
+      "event_time": "2026-08-21T01:01:02+00:00",
+      "source_available_time": "2026-08-21T01:01:02+00:00",
+      "delta_time": 0,
+      "thesis_version_before": "symbol_div@v1",
+      "thesis_version_after": null,
+      "recommendation": "MONITOR_THESIS"
+    },
+    {
+      "symbol": "DIVI",
+      "event_time": "2026-08-21T01:01:02+00:00",
+      "source_available_time": "2026-08-21T01:01:02+00:00",
+      "delta_time": 0,
+      "thesis_version_before": "symbol_divi@v1",
+      "thesis_version_after": null,
+      "recommendation": "MONITOR_THESIS"
+    }
+  ],
+  "note": "ledger records catalyst-driven REASSESS_THESIS; version_after often null (stale). Latencies not fabricated.",
+  "authority": "READ_ONLY_ADVISORY"
+}

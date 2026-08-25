@@ -1,0 +1,24 @@
+{
+  "schema": "R16_1FinalAcceptance@v1",
+  "result": "PASS_WITH_HONEST_CEILING",
+  "before": 86,
+  "after": 88,
+  "87": "AWARDED — PR #511 merged, exact-main CURRENT=55520666, runtime smoke green, historical decision→outcome linkage proven without fabricated joins, lookahead 0 dated-future leaks",
+  "88": "AWARDED — calibration/research/specialist/model evaluation, lesson→hypothesis→preregistered shadow (positive/negative/inconclusive), promotion firewall REVIEW_READY deployed and integrated",
+  "89": "NOT_AWARDED — checkpoint jsonl is live and restart-durable, cockpit is live, but scan does not auto-schedule checkpoints, cockpit does not bind jsonl counts, due horizons have not naturally elapsed",
+  "90": "NOT_AWARDED — no NATURAL_LONGITUDINAL proof that later decisions improved",
+  "highest_evidence_class": "LIVE+HISTORICAL_VALIDATED",
+  "do_not_mix_classes": true,
+  "MEMORY_BEHAVIOR_INFLUENCE": 0,
+  "auto_promoted": false,
+  "canary_enabled": false,
+  "pr505_merged": false,
+  "cash_target_range_pct_invented": false,
+  "broker_changed": false,
+  "registry_changes": 0,
+  "lookahead_named_key_gap": [
+    "future_research",
+    "future_specialist_artifact"
+  ],
+  "limiting_dimension": "observational scheduler not auto-wired; no elapsed natural outcomes; 0 FULLY_TRACEABLE; live model n=0"
+}

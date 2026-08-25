@@ -1,0 +1,406 @@
+{
+  "schema": "DecisionCoverage@v1",
+  "known_classes": [
+    "HOLD",
+    "WATCH",
+    "REVIEW",
+    "TRIM",
+    "EXIT",
+    "ADD",
+    "HOLD_CASH",
+    "WAIT",
+    "RE_ENTER",
+    "THESIS_REVIEW",
+    "PORTFOLIO_REASSESSMENT",
+    "RISK_CRITIQUE",
+    "RESEARCH_NEEDED",
+    "NOTIFICATION_DECISION"
+  ],
+  "observed_classes": [
+    "HOLD",
+    "HOLD_CASH",
+    "THESIS_REVIEW",
+    "TRIM",
+    "WAIT"
+  ],
+  "total": 38,
+  "counts": {
+    "FULLY_TRACEABLE": 0,
+    "PARTIAL": 38,
+    "UNRESOLVED": 0
+  },
+  "coverage_fully_pct": 0.0,
+  "details": [
+    {
+      "decision_id": "dec_cash_a7b0352ebbae0cc2",
+      "class": "HOLD_CASH",
+      "traceability": "PARTIAL"
+    },
+    {
+      "decision_id": "dec_reentry_9815cb00f0238ccd",
+      "class": "WAIT",
+      "traceability": "PARTIAL"
+    },
+    {
+      "decision_id": "dec_babcd8d893e1adcb",
+      "class": "TRIM",
+      "traceability": "PARTIAL"
+    },
+    {
+      "decision_id": "act-830c7ee8",
+      "class": "HOLD",
+      "traceability": "PARTIAL"
+    },
+    {
+      "decision_id": "act-79d2307d",
+      "class": "HOLD",
+      "traceability": "PARTIAL"
+    },
+    {
+      "decision_id": "act-66b1d4d1",
+      "class": "HOLD",
+      "traceability": "PARTIAL"
+    },
+    {
+      "decision_id": "act-c6e37a0f",
+      "class": "HOLD",
+      "traceability": "PARTIAL"
+    },
+    {
+      "decision_id": "act-38b9c322",
+      "class": "HOLD",
+      "traceability": "PARTIAL"
+    },
+    {
+      "decision_id": "act-060ed023",
+      "class": "HOLD",
+      "traceability": "PARTIAL"
+    },
+    {
+      "decision_id": "act-a507f3d0",
+      "class": "HOLD",
+      "traceability": "PARTIAL"
+    },
+    {
+      "decision_id": "act-0af71f37",
+      "class": "HOLD",
+      "traceability": "PARTIAL"
+    },
+    {
+      "decision_id": "act-3a88a182",
+      "class": "HOLD",
+      "traceability": "PARTIAL"
+    },
+    {
+      "decision_id": "act-eee1d2f8",
+      "class": "HOLD",
+      "traceability": "PARTIAL"
+    },
+    {
+      "decision_id": "act-b2e5ce34",
+      "class": "HOLD",
+      "traceability": "PARTIAL"
+    },
+    {
+      "decision_id": "act-74be9545",
+      "class": "HOLD",
+      "traceability": "PARTIAL"
+    },
+    {
+      "decision_id": "act-9815e648",
+      "class": "HOLD",
+      "traceability": "PARTIAL"
+    },
+    {
+      "decision_id": "act-ac94bc93",
+      "class": "HOLD",
+      "traceability": "PARTIAL"
+    },
+    {
+      "decision_id": "act-8621f0b8",
+      "class": "HOLD",
+      "traceability": "PARTIAL"
+    },
+    {
+      "decision_id": "plan_f7805a20e762",
+      "class": "HOLD",
+      "traceability": "PARTIAL"
+    },
+    {
+      "decision_id": "act-f823f347",
+      "class": "HOLD",
+      "traceability": "PARTIAL"
+    },
+    {
+      "decision_id": "act-a6c30601",
+      "class": "HOLD",
+      "traceability": "PARTIAL"
+    },
+    {
+      "decision_id": "act-c660054c",
+      "class": "HOLD",
+      "traceability": "PARTIAL"
+    },
+    {
+      "decision_id": "act-219a029b",
+      "class": "HOLD",
+      "traceability": "PARTIAL"
+    },
+    {
+      "decision_id": "act-0fca1fbd",
+      "class": "HOLD",
+      "traceability": "PARTIAL"
+    },
+    {
+      "decision_id": "act-5f187d00",
+      "class": "HOLD",
+      "traceability": "PARTIAL"
+    },
+    {
+      "decision_id": "plan_43043a4ccdbe",
+      "class": "HOLD",
+      "traceability": "PARTIAL"
+    },
+    {
+      "decision_id": "plan_3d8d79ca5ec8",
+      "class": "HOLD",
+      "traceability": "PARTIAL"
+    },
+    {
+      "decision_id": "plan_defer_schd_buffer",
+      "class": "HOLD",
+      "traceability": "PARTIAL"
+    },
+    {
+      "decision_id": "thesis:ARKX:2026-08-21T01:01:02+00:00",
+      "class": "THESIS_REVIEW",
+      "traceability": "PARTIAL"
+    },
+    {
+      "decision_id": "thesis:BAH:2026-08-21T01:01:02+00:00",
+      "class": "THESIS_REVIEW",
+      "traceability": "PARTIAL"
+    },
+    {
+      "decision_id": "thesis:CSWC:2026-08-21T01:01:02+00:00",
+      "class": "THESIS_REVIEW",
+      "traceability": "PARTIAL"
+    },
+    {
+      "decision_id": "thesis:DIV:2026-08-21T01:01:02+00:00",
+      "class": "THESIS_REVIEW",
+      "traceability": "PARTIAL"
+    },
+    {
+      "decision_id": "thesis:DIVI:2026-08-21T01:01:02+00:00",
+      "class": "THESIS_REVIEW",
+      "traceability": "PARTIAL"
+    },
+    {
+      "decision_id": "thesis:DXCM:2026-08-21T01:01:02+00:00",
+      "class": "THESIS_REVIEW",
+      "traceability": "PARTIAL"
+    },
+    {
+      "decision_id": "thesis:JEPI:2026-08-21T01:01:02+00:00",
+      "class": "THESIS_REVIEW",
+      "traceability": "PARTIAL"
+    },
+    {
+      "decision_id": "thesis:LDOS:2026-08-21T01:01:02+00:00",
+      "class": "THESIS_REVIEW",
+      "traceability": "PARTIAL"
+    },
+    {
+      "decision_id": "thesis:NOC:2026-08-21T01:01:02+00:00",
+      "class": "THESIS_REVIEW",
+      "traceability": "PARTIAL"
+    },
+    {
+      "decision_id": "thesis:PFLT:2026-08-21T01:01:02+00:00",
+      "class": "THESIS_REVIEW",
+      "traceability": "PARTIAL"
+    }
+  ],
+  "fabricated_joins": false,
+  "authority": "READ_ONLY_ADVISORY",
+  "memory_behavior_influence": 0,
+  "evidence_class": "LIVE+HISTORICAL_VALIDATED",
+  "live_scan_n": 3,
+  "historical_outcome_n": 25,
+  "thesis_ledger_n": 10,
+  "identity_canonical_joins": 11,
+  "unresolved_identity_n": 17,
+  "never_minted_guid_from_ticker": true,
+  "unresolved_identities": [
+    {
+      "symbol": "12507E201",
+      "security_guid": null,
+      "reason": "NO_CANONICAL_SECURITY_GUID",
+      "ticker_guid": "120be879-9bb5-55a2-bef8-3e7e6c440dda",
+      "issuer_guid": null,
+      "minted_from_ticker": false
+    },
+    {
+      "symbol": "543354104",
+      "security_guid": null,
+      "reason": "NO_CANONICAL_SECURITY_GUID",
+      "ticker_guid": "75bd60b9-9c97-562b-935e-9d3649dab9c4",
+      "issuer_guid": null,
+      "minted_from_ticker": false
+    },
+    {
+      "symbol": "628518102",
+      "security_guid": null,
+      "reason": "NO_CANONICAL_SECURITY_GUID",
+      "ticker_guid": "5a08f960-2cc4-5d5d-9cf9-1454381c70df",
+      "issuer_guid": null,
+      "minted_from_ticker": false
+    },
+    {
+      "symbol": "AMAGX",
+      "security_guid": null,
+      "reason": "NO_CANONICAL_SECURITY_GUID",
+      "ticker_guid": "3b4a3bec-9f5c-57fe-8a8e-c4eb131a7f50",
+      "issuer_guid": null,
+      "minted_from_ticker": false
+    },
+    {
+      "symbol": "CTXR",
+      "security_guid": null,
+      "reason": "NO_CANONICAL_SECURITY_GUID",
+      "ticker_guid": "8552faf5-5f99-5d08-86cd-fab6152c169c",
+      "issuer_guid": null,
+      "minted_from_ticker": false
+    },
+    {
+      "symbol": "EKSO",
+      "security_guid": null,
+      "reason": "NO_CANONICAL_SECURITY_GUID",
+      "ticker_guid": "82162ae5-7da5-5e36-80a2-12dd81d6441c",
+      "issuer_guid": null,
+      "minted_from_ticker": false
+    },
+    {
+      "symbol": "FSELX",
+      "security_guid": null,
+      "reason": "NO_CANONICAL_SECURITY_GUID",
+      "ticker_guid": "9cd4755d-693d-59ae-b64d-39fc42769fba",
+      "issuer_guid": null,
+      "minted_from_ticker": false
+    },
+    {
+      "symbol": "GOVX",
+      "security_guid": null,
+      "reason": "NO_CANONICAL_SECURITY_GUID",
+      "ticker_guid": "86f78d2b-5de9-512b-9fbb-50558636c8ae",
+      "issuer_guid": null,
+      "minted_from_ticker": false
+    },
+    {
+      "symbol": "LAC",
+      "security_guid": null,
+      "reason": "NO_CANONICAL_SECURITY_GUID",
+      "ticker_guid": "00cd999b-fa5f-526a-9fb6-36ef8691e288",
+      "issuer_guid": null,
+      "minted_from_ticker": false
+    },
+    {
+      "symbol": "MSGM",
+      "security_guid": null,
+      "reason": "NO_CANONICAL_SECURITY_GUID",
+      "ticker_guid": "8bb5c71e-2035-57c3-8c59-403934948a15",
+      "issuer_guid": null,
+      "minted_from_ticker": false
+    },
+    {
+      "symbol": "PRSO",
+      "security_guid": null,
+      "reason": "NO_CANONICAL_SECURITY_GUID",
+      "ticker_guid": "a3b37413-8555-5822-9259-a8d9effe9608",
+      "issuer_guid": null,
+      "minted_from_ticker": false
+    },
+    {
+      "symbol": "RANI",
+      "security_guid": null,
+      "reason": "NO_CANONICAL_SECURITY_GUID",
+      "ticker_guid": "71ca25b4-2f68-5d43-8ad3-2f25f1e6dc8d",
+      "issuer_guid": null,
+      "minted_from_ticker": false
+    },
+    {
+      "symbol": "RDHL",
+      "security_guid": null,
+      "reason": "NO_CANONICAL_SECURITY_GUID",
+      "ticker_guid": "28b1cdf2-b622-5c41-89e3-072e69ba5ff4",
+      "issuer_guid": null,
+      "minted_from_ticker": false
+    },
+    {
+      "symbol": "SIBN",
+      "security_guid": null,
+      "reason": "NO_CANONICAL_SECURITY_GUID",
+      "ticker_guid": "db3b8982-5b02-5d68-8a24-db3f8688728b",
+      "issuer_guid": null,
+      "minted_from_ticker": false
+    },
+    {
+      "symbol": "SOPAQ",
+      "security_guid": null,
+      "reason": "NO_CANONICAL_SECURITY_GUID",
+      "ticker_guid": "3e7aec2f-7b70-508e-be37-99452e74fdda",
+      "issuer_guid": null,
+      "minted_from_ticker": false
+    },
+    {
+      "symbol": "WRD",
+      "security_guid": null,
+      "reason": "NO_CANONICAL_SECURITY_GUID",
+      "ticker_guid": "267e5ee9-173a-53b2-a8be-cc7f7f418483",
+      "issuer_guid": null,
+      "minted_from_ticker": false
+    },
+    {
+      "symbol": "ZSL",
+      "security_guid": null,
+      "reason": "NO_CANONICAL_SECURITY_GUID",
+      "ticker_guid": "d4b0b925-b3a9-5c52-a1dc-221269736618",
+      "issuer_guid": null,
+      "minted_from_ticker": false
+    }
+  ],
+  "live_details": [
+    {
+      "decision_id": "dec_cash_a7b0352ebbae0cc2",
+      "class": "HOLD_CASH",
+      "traceability": "PARTIAL",
+      "subject_guid": null,
+      "symbol": null,
+      "identity_join": "UNRESOLVED",
+      "notification_disposition": "SUPPRESSED",
+      "evidence_class": "LIVE"
+    },
+    {
+      "decision_id": "dec_reentry_9815cb00f0238ccd",
+      "class": "WAIT",
+      "traceability": "PARTIAL",
+      "subject_guid": null,
+      "symbol": null,
+      "identity_join": "UNRESOLVED",
+      "notification_disposition": "SUPPRESSED",
+      "evidence_class": "LIVE"
+    },
+    {
+      "decision_id": "dec_babcd8d893e1adcb",
+      "class": "TRIM",
+      "traceability": "PARTIAL",
+      "subject_guid": "a29dd6b6-9f88-5f8c-a372-f88786851a76",
+      "symbol": "SCHD",
+      "identity_join": "CANONICAL_TRS",
+      "notification_disposition": "DIGEST",
+      "evidence_class": "LIVE"
+    }
+  ],
+  "note": "FULLY_TRACEABLE requires optional thesis/curation/specialist fields. Live scan rows are PARTIAL even with canonical SCHD guid. Joins never fabricated."
+}

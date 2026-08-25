@@ -1,0 +1,40 @@
+{
+  "schema": "R16_1Hypotheses@v1",
+  "hypotheses": [
+    {
+      "schema": "HypothesisCandidate@v1",
+      "hypothesis_id": "ae771812796dc53ddef8",
+      "claim": "Keeping REVIEW_READY ceiling does not reduce operator-accepted outcome rate vs silent promotion",
+      "baseline": "REVIEW_READY_CEILING",
+      "candidate_behavior": "AUTO_PROMOTE",
+      "metric": "quality",
+      "population": "cio_outcomes",
+      "minimum_samples": 5,
+      "expected_effect": "improvement_or_null",
+      "failure_condition": "quality_delta < 0 or cost_delta excessive",
+      "cost_ceiling": 0.0,
+      "rollback": "keep baseline",
+      "expiry": null,
+      "evidence_refs": [
+        "cdd235057454f24d7b52"
+      ],
+      "preregistered": true,
+      "promoted": false,
+      "authority": "READ_ONLY_ADVISORY",
+      "memory_behavior_influence": 0,
+      "financial_action": false,
+      "frozen": {
+        "primary_metric": "quality",
+        "success_threshold": 0.03,
+        "sample_count": 30,
+        "cost_ceiling": 0.0
+      },
+      "post_hoc_metric_switch_forbidden": true
+    }
+  ],
+  "preregistered": 1,
+  "frozen_hash_before": "5e06cfe5a298b96f8943ae5dcc7905489522843c80487b7bae7e4f4bbfd2e0c7",
+  "primary_metric_immutable": true,
+  "promoted": false,
+  "authority": "READ_ONLY_ADVISORY"
+}
