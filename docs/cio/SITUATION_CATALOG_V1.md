@@ -9,6 +9,11 @@
 
 Also see freeze note: `docs/advisory/desk-v1/SITUATION_CATALOG_V1_FREEZE.md`
 
+**R11 operator-value layer:** `CIOSituationState@v1` does not replace S1–S8.
+It answers “what material situation deserves attention now?” (EXCESS_CASH,
+CONCENTRATION, POLICY_GAP, …). S1–S8 remain draft-plan identities. Mapping is
+in `scripts/lib/cio_situation_state.py` `LEGACY_PLAN_TYPE`.
+
 **Related CIO desk tracks:** [P2B_PLAN_ENRICHMENT.md](P2B_PLAN_ENRICHMENT.md) ·
 [THESIS_STORE_P3.md](THESIS_STORE_P3.md) · [WAKE_TRACES_P5.md](WAKE_TRACES_P5.md) ·
 [CIO_TELEGRAM_CONVERSE_RUNBOOK.md](CIO_TELEGRAM_CONVERSE_RUNBOOK.md)

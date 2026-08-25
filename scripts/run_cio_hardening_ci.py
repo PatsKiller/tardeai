@@ -90,6 +90,17 @@ GATES = [
     ("maturity_closure_v2", [
         "tests/test_cio_maturity_closure_v2.py",
     ]),
+    ("r11_operator_value_tier0", [
+        "tests/test_r11_situation_engine.py",
+        "tests/test_r11_office_integration.py",
+        "tests/test_r11_golden_scenarios.py",
+        "tests/test_r11_feedback_learning.py",
+        "tests/test_r11_telegram_attention.py",
+        "tests/test_r11_gpu_and_authority.py",
+        "tests/test_cio_r9_2_cash_capital.py",
+        "tests/test_cio_brain_snapshot.py",
+        "tests/test_cio_brain_frontend.py",
+    ]),
 ]
 
 

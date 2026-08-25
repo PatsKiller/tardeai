@@ -1,0 +1,29 @@
+{
+  "schema": "MemoryLearningAcceptance@v1",
+  "as_of": "2026-08-25T12:40:00+00:00",
+  "authority": "READ_ONLY_ADVISORY",
+  "memory_behavior_influence": 0,
+  "production_authority": false,
+  "episodes": true,
+  "feedback_candidates": true,
+  "semantic_candidates": true,
+  "lesson_candidates": true,
+  "natural_shadow_consolidator": "ISOLATED",
+  "isolated_run": {
+    "admitted_candidates": 2,
+    "preference_candidates": 1,
+    "lesson_candidates": 0,
+    "quarantined": 0,
+    "canonical_writer_live": false,
+    "production_sql": false
+  },
+  "tests": {
+    "single": "PASS",
+    "repeated": "PASS",
+    "contradictory": "PASS",
+    "correction": "PASS",
+    "retraction": "PASS",
+    "ambiguous": "PASS",
+    "prompt_injection": "PASS"
+  }
+}

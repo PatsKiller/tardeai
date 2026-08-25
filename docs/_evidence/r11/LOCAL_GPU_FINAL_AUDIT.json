@@ -1,0 +1,62 @@
+{
+  "schema": "LocalGpuFinalAudit@v1",
+  "as_of": "2026-08-25T12:35:00+00:00",
+  "authority": "READ_ONLY_ADVISORY",
+  "nothing_uninstalled": true,
+  "LOCAL_GENERATIVE_CALLERS_SOURCE_R11": 0,
+  "installed_models": [
+    "gemma3:4b",
+    "gemma3:27b",
+    "gemma3-overnight:latest",
+    "gemma3:12b",
+    "gemma3:12b-ctx4k",
+    "qwen3:8b",
+    "qwen3-embedding:8b",
+    "nomic-embed-text:latest"
+  ],
+  "approved_embedding": {
+    "model": "nomic-embed-text",
+    "digest": "0a109f422b47e3a30ba2b10eca18548e944e8a23073ee3f3e947efcf3c45e59f",
+    "dimension": 768
+  },
+  "loaded_at_audit": ["gemma3:12b (Stopping)"],
+  "systemd": {
+    "ollama.service": "active running"
+  },
+  "cron": {
+    "local_generative_jobs": "COMMENTED_R9_DISABLED_LOCAL_GENERATIVE"
+  },
+  "openclaw": {
+    "steph_models_json_has_ollama": true,
+    "maria_aegis_main": "openai-codex only"
+  },
+  "code_callers_production_path": {
+    "research": "FORBIDDEN",
+    "cio": "FORBIDDEN",
+    "advisory": "FORBIDDEN",
+    "telegram": "FORBIDDEN",
+    "provider_fallback": "FORBIDDEN"
+  },
+  "last_generative_call": "UNMEASURED_EXACT_TIMESTAMP; ollama history file contains 'hi'; gemma3:12b was resident at audit",
+  "embedding_only": false,
+  "gpu_mode": "UNMEASURED",
+  "fleet_compliant": false,
+  "removal_gate": "NOT_MET",
+  "removal_gate_blockers": [
+    "ollama.service running",
+    "gemma3:12b recently resident",
+    "OpenClaw steph models.json still lists ollama qwen3 generative models",
+    "7-day zero-call window not closed"
+  ],
+  "SAFE_TO_REMOVE_CANDIDATES": [
+    "gemma3:4b",
+    "gemma3:27b",
+    "gemma3-overnight:latest",
+    "gemma3:12b",
+    "gemma3:12b-ctx4k",
+    "qwen3:8b",
+    "qwen3-embedding:8b"
+  ],
+  "KEEP": ["nomic-embed-text:latest"],
+  "do_not_uninstall_without_authorization": true
+}

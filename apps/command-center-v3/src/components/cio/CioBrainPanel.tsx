@@ -22,6 +22,7 @@ type Brain = {
   symbol_theses?: any
   research?: any
   proactive_cio?: any
+  operator_value?: any
   versions?: Record<string, string | number | null>
   _serving?: {
     loaded_pin_sha?: string | null
@@ -103,6 +104,10 @@ export default function CioBrainPanel() {
   const policy = brain.operator_policy || {}
   const serving = brain._serving || {}
   const cashPct = allocation.cash?.pct
+  const ov = brain.operator_value || {}
+  const situations = Array.isArray(ov.current_material_situations) ? ov.current_material_situations : []
+  const notif = ov.notifications || brain.proactive_cio || {}
+  const shadow = ov.memory_shadow || {}
 
   return (
     <div className="cio-brain" data-testid="cio-brain">
@@ -112,6 +117,52 @@ export default function CioBrainPanel() {
         <Metric label="Investable cash" value={money(portfolio.investable_cash_usd)} state={portfolio.investable_cash_status} />
         <Metric label="CIO posture" value={thesis.current_posture || 'INSUFFICIENT DATA'} state={thesis.state} />
       </div>
+
+      <Band title="What changed" state={ov.what_changed || brain.portfolio_thesis_delta?.classification} testId="cio-brain-what-changed">
+        <div className="cio-brain__lead">{ov.what_changed || thesis.core_thesis || 'NO_NEW_INFO'}</div>
+      </Band>
+
+      <div className="cio-brain__pair">
+        <Band title="What the CIO knows" testId="cio-brain-what-it-knows">
+          <List rows={ov.what_cio_knows} empty="No current versioned planes" />
+        </Band>
+        <Band title="What it does not know" testId="cio-brain-what-it-does-not-know">
+          <List rows={ov.what_cio_does_not_know} empty="No unresolved gaps" />
+        </Band>
+      </div>
+
+      <Band title="Current material situations" testId="cio-brain-material-situations">
+        <List
+          rows={situations.map((row: any) => `${row.class || 'NONE'} · ${row.what_changed || row.conclusion || 'n/a'}`)}
+          empty="No material situations"
+        />
+      </Band>
+
+      <Band title="Current recommendation" testId="cio-brain-current-recommendation">
+        <div className="cio-brain__lead">{ov.current_recommendation || capital.stance || situation.conclusion || 'NONE'}</div>
+        <div className="cio-brain__split">
+          <div><h3>Why</h3><p>{typeof ov.why === 'string' ? ov.why : (thesis.core_thesis || 'UNAVAILABLE')}</p></div>
+          <div><h3>What would change the view</h3><List rows={ov.what_would_change_the_view} /></div>
+        </div>
+      </Band>
+
+      <Band title="Notifications" testId="cio-brain-notifications">
+        <div className="cio-brain__facts">
+          <span>Sent<strong>{notif.sent ? 'YES' : 'NO'}</strong></span>
+          <span>Suppressed<strong>{notif.suppressed ? 'YES' : 'NO'}</strong></span>
+          <span>Why<strong>{String(notif.why || brain.proactive_cio?.suppression_reason || 'n/a')}</strong></span>
+        </div>
+      </Band>
+
+      <Band title="Memory shadow" state={shadow.status} testId="cio-brain-memory-shadow">
+        <div className="cio-brain__facts">
+          <span>Status<strong>{shadow.status || 'ISOLATED_ONLY'}</strong></span>
+          <span>Parity<strong>{String(shadow.parity ?? 'n/a')}</strong></span>
+          <span>Lag<strong>{String(shadow.lag ?? 'n/a')}</strong></span>
+          <span>Production authority<strong>false</strong></span>
+        </div>
+        <p className="cio-brain__muted">Shadow is non-authoritative. Behavior influence 0.</p>
+      </Band>
 
       <Band title="Portfolio Thesis" state={brain.portfolio_thesis_delta?.classification} testId="cio-brain-portfolio-thesis">
         <div className="cio-brain__lead">{thesis.core_thesis || 'No current portfolio thesis.'}</div>

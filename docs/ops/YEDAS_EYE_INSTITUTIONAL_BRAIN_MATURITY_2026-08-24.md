@@ -91,3 +91,23 @@ Separate: SOURCE · TESTED · MERGED · DEPLOYED · NATURALLY_PROVEN · BENCHMAR
 ## Next
 
 `M2_PRODUCTION_SHADOW_MIGRATION_DESIGN` is separately gated. Natural same-brain on CURRENT `15ab2362` is the remaining live proof, not another source PR.
+
+---
+
+## R11 examiner addendum — 2026-08-25
+
+Do not rewrite historical timestamps above.
+
+Operator-value situation engine, POLICY_GAP questions, cash intelligence, interactive same-brain answers, and M3 shadow consolidator are **SOURCE + TESTED** on `feat/r11-autonomous-office-operator-value`. #505 remains OPEN unmerged. Production SQL unapplied. Live material_scan still `dry_run_or_interdicted` (cash ABOVE_BAND observed, not delivered). Free-first 2026-08-25T12:27:23Z still 120 FRESH_NO_CHANGE / $0.
+
+| plane | R11 |
+|---|---|
+| architecture | SOURCE+TESTED ~82 |
+| live_cognition | L5 accepted; unchanged natural PASS |
+| learning | isolated shadow; influence 0 |
+| proactive_CIO | SOURCE+TESTED; **not live notify** |
+| notification | fixture prepare/sent/receipt; live pending |
+| operator_experience | Brain operator-value view + interactive attention |
+| GPU_governance | source routing 0; host models remain; **do not uninstall** |
+| overall live | **~74 — cannot be 80** while proactive notification is not live |
+

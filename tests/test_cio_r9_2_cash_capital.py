@@ -86,7 +86,13 @@ def test_actual_shape_blocks_amounts_when_investable_cash_and_policy_are_unverif
     assert situation["deployable_excess_usd"] is None
     assert situation["conclusion"] == "RESEARCH_FIRST"
     assert set(situation["blockers"]) >= {"POLICY_REQUIRED", "INVESTABLE_CASH_UNVERIFIED"}
-    assert situation["notification"]["eligible"] is False
+    # R11: independently material cash with missing policy is a POLICY_GAP operator
+    # question — not a deployment recommendation and not silent suppression.
+    assert situation["notification"]["class"] == "POLICY_GAP"
+    assert situation["notification"]["eligible"] is True
+    assert situation["notification"]["operator_question"] is True
+    assert situation["deployable_excess_usd"] is None
+    assert situation["financial_action"] is False
     assert plan["available_capital_usd"] is None
     assert plan["do_now"] == []
     assert plan["state"] == "BLOCKED"

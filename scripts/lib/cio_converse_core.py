@@ -297,6 +297,40 @@ def process_operator_message(
             })
             return out
 
+    # Deterministic attention / "why nothing today" — same CIO brain, no hallucination.
+    try:
+        from scripts.lib.cio_operator_attention import answer_attention_query, looks_like_attention_query
+        from scripts.lib.cio_operator_feedback_loop import ingest_operator_feedback, looks_like_feedback
+    except Exception:
+        looks_like_attention_query = None  # type: ignore[assignment]
+        looks_like_feedback = None  # type: ignore[assignment]
+        answer_attention_query = None  # type: ignore[assignment]
+        ingest_operator_feedback = None  # type: ignore[assignment]
+
+    if looks_like_feedback and looks_like_feedback(text) and ingest_operator_feedback:
+        try:
+            from pathlib import Path as _Path
+            ingest_operator_feedback(text, root=_Path(__file__).resolve().parents[2], source=channel)
+        except Exception:
+            pass
+
+    if looks_like_attention_query and looks_like_attention_query(text) and answer_attention_query:
+        ans = answer_attention_query(text)
+        reply = ans.get("text") or "No material page. READ_ONLY_ADVISORY."
+        if channel == "whatsapp":
+            reply = re.sub(r"\*([^*]+)\*", r"\1", reply).replace("`", "")
+        sent = _send(reply, reply_to=reply_to_message_id)
+        out.update({
+            "handled": True,
+            "kind": "attention",
+            "attention_reason": ans.get("reason"),
+            "same_brain": True,
+            "reply_preview": reply[:500],
+            "outbound_message_id": sent.get("message_id"),
+            "telegram_out_message_id": sent.get("message_id") if channel == "telegram" else None,
+        })
+        return out
+
     # Desk facts + optional DeepSeek Flash polish (skip S0 template wall)
     if looks_like_reentry_purchase_query(text):
         ans = answer_reentry_purchase_query(text, use_flash=True)

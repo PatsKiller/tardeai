@@ -4,6 +4,12 @@ Authority: `READ_ONLY_ADVISORY`. This policy governs **delivery**, not
 financial truth. It never gains execution authority and never mutates broker /
 order / stop / 2FA / risk policy.
 
+**R11:** Missing policy is no longer a forever-silent `POLICY_REQUIRED` suppress
+when the book is independently material. That becomes a bounded `POLICY_GAP`
+operator question (semantic-deduped). Operator messages must include HEADLINE /
+WHY NOW / verified situation / CIO view — never raw JSON. Interactive
+“why haven’t you told me anything today?” reads the same notification state.
+
 ## Problem statement
 
 The ten-minute material scanner (`tradeai-cio-material-scan.timer`) was acting

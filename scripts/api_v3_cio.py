@@ -1958,6 +1958,60 @@ def get_cio_brain_v1() -> dict[str, Any]:
         "weekly_learning_version": (learning.get("latest_review") or {}).get("version"),
     }
     state = "CURRENT" if not unresolved else "BLOCKED"
+    operator_value: dict[str, Any] = {
+        "what_changed": (thesis.get("candidate_delta") or {}).get("classification") or "NO_NEW_INFO",
+        "what_cio_knows": [
+            k for k, v in versions.items() if v
+        ],
+        "what_cio_does_not_know": unresolved[:12],
+        "current_material_situations": [],
+        "current_recommendation": plan_doc.get("stance") or situation.get("conclusion") or "NONE",
+        "why": situation.get("counter_case") or thesis_doc.get("core_thesis") or "UNAVAILABLE",
+        "what_would_change_the_view": (thesis_doc.get("what_changes_the_cio_mind") or situation.get("what_changes_the_plan") or [])[:8],
+        "research_in_progress": ((home.get("opportunities") or {}).get("research_gaps") or [])[:8],
+        "memory_learned": {
+            "candidates": (memory.get("counts") or {}).get("CANDIDATE") or 0,
+            "behavior_influence": 0,
+        },
+        "notifications": {
+            "sent": False,
+            "suppressed": not bool(notification.get("eligible")),
+            "why": notification.get("suppression_reason") or notification.get("class"),
+        },
+        "memory_shadow": {
+            "status": "ISOLATED_ONLY" if not memory.get("production_applied") else "LIVE",
+            "parity": memory.get("parity"),
+            "lag": memory.get("lag"),
+            "production_authority": False,
+        },
+    }
+    try:
+        from scripts.lib.cio_situation_state import detect_office_situations
+        scan = detect_office_situations({
+            "portfolio_id": "primary",
+            "policy": policy_doc,
+            "portfolio_state": portfolio_doc,
+            "market_context": market_doc,
+            "seasonality": seasonality_doc,
+            "portfolio_thesis": thesis_doc,
+        })
+        operator_value["current_material_situations"] = [
+            {
+                "class": s.get("situation_class"),
+                "what_changed": s.get("what_changed"),
+                "eligibility": s.get("notification_eligibility"),
+                "suppression_reason": s.get("suppression_reason"),
+                "conclusion": s.get("cio_conclusion"),
+            }
+            for s in (scan.get("situations") or [])[:8]
+        ]
+        operator_value["notifications"] = {
+            "sent": scan.get("notification_decision") == "NOTIFY",
+            "suppressed": scan.get("notification_decision") == "SUPPRESS",
+            "why": (scan.get("suppress") or [{}])[0].get("suppression_reason") if scan.get("suppress") else scan.get("notification_decision"),
+        }
+    except Exception:
+        pass
     return {
         "ok": True,
         "schema": "CIOBrainSnapshot@v1",
@@ -1967,6 +2021,7 @@ def get_cio_brain_v1() -> dict[str, Any]:
         "memory_behavior_influence": 0,
         "versions": versions,
         "unresolved_conflicts": unresolved,
+        "operator_value": operator_value,
         "operator_policy": policy_doc,
         "portfolio_state": portfolio_doc,
         "market_context": market_doc,

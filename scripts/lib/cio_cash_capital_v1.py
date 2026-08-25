@@ -20,6 +20,15 @@ CASH_SCHEMA = "CashDeploymentSituation@v1"
 PLAN_SCHEMA = "CapitalDeploymentPlan@v1"
 DEFAULT_STORE = "data/cio/cio_capital_plans.jsonl"
 
+# Engine attention threshold — NOT operator policy. Used only to decide whether
+# missing cash policy is worth a bounded POLICY_GAP operator question.
+ATTENTION_CASH_PCT = 20.0
+RISK_OFF_REGIMES = frozenset({
+    "risk_off", "defensive", "bear", "crisis", "high_vol", "risk_off_defensive",
+    "risk-off", "defensive_regime",
+})
+POLICY_CASH_FIELDS = ("cash_target_range_pct", "minimum_liquidity_reserve_usd")
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -37,6 +46,51 @@ def _semantic(value: dict[str, Any]) -> dict[str, Any]:
 def _confirmed_field(policy: dict[str, Any], name: str) -> Any:
     field = (policy.get("fields") or {}).get(name) or {}
     return field.get("value") if field.get("operator_confirmed") else None
+
+
+def independently_material_cash(
+    cash_pct: Any,
+    observed_cash: Any = None,
+    total_value: Any = None,
+    *,
+    attention_pct: float = ATTENTION_CASH_PCT,
+) -> bool:
+    """True when cash is large enough to ask about missing policy.
+
+    This is not a deployment recommendation and is not operator policy.
+    """
+    try:
+        if cash_pct is not None and float(cash_pct) >= float(attention_pct):
+            return True
+    except (TypeError, ValueError):
+        pass
+    try:
+        if observed_cash is not None and total_value not in (None, 0, 0.0):
+            if (float(observed_cash) / float(total_value)) * 100.0 >= float(attention_pct):
+                return True
+    except (TypeError, ValueError, ZeroDivisionError):
+        pass
+    return False
+
+
+def _regime_is_risk_off(market_context: dict[str, Any]) -> bool:
+    fields = market_context.get("fields") or {}
+    raw = (fields.get("regime") or {}).get("value") if isinstance(fields, dict) else None
+    if raw is None:
+        raw = market_context.get("regime")
+    return str(raw or "").strip().lower() in RISK_OFF_REGIMES
+
+
+def _missing_cash_policy_fields(policy: dict[str, Any]) -> list[str]:
+    missing: list[str] = []
+    if policy.get("status") != "CONFIRMED":
+        missing.extend(list(POLICY_CASH_FIELDS))
+        extra = [str(item) for item in (policy.get("missing_fields") or []) if item]
+        return sorted(set(missing + extra))
+    for name in POLICY_CASH_FIELDS:
+        if _confirmed_field(policy, name) is None:
+            missing.append(name)
+    return missing
 
 
 def _reserved_cash(portfolio_state: dict[str, Any]) -> float | None:
@@ -97,16 +151,50 @@ def build_cash_deployment_situation(
         cash_ceiling = float(total_value) * float(policy_range["max"]) / 100.0
         deployable_excess = round(max(0.0, float(investable_cash) - cash_ceiling), 2)
 
+    missing_policy = _missing_cash_policy_fields(policy)
+    cash_attention = independently_material_cash(cash_pct, observed_cash, total_value)
+    regime_risk_off = _regime_is_risk_off(market_context)
+
     if blockers:
         conclusion = "RESEARCH_FIRST"
     elif deviation_state == "ABOVE_RANGE" and (deployable_excess or 0) > 0:
-        conclusion = "DEPLOY_STAGED"
+        conclusion = "HOLD_CASH" if regime_risk_off else "DEPLOY_STAGED"
     elif deviation_state == "BELOW_RANGE":
         conclusion = "REBALANCE"
     elif deviation_state == "IN_RANGE":
         conclusion = "HOLD_CASH"
     else:
         conclusion = "WAIT"
+
+    # POLICY_GAP: material cash without confirmed policy is an operator question,
+    # not a silent suppress and not a deployment recommendation.
+    policy_gap = bool(missing_policy) and cash_attention
+    excess_material = (not blockers) and deviation_state in {"ABOVE_RANGE", "BELOW_RANGE"}
+    if policy_gap:
+        notify_class = "POLICY_GAP"
+        notify_eligible = True
+        suppression = None
+        material = True
+    elif excess_material:
+        notify_class = "EXCESS_CASH" if deviation_state == "ABOVE_RANGE" else "ALLOCATION_DRIFT"
+        notify_eligible = True
+        suppression = None
+        material = True
+    elif deviation_state == "IN_RANGE" and not blockers:
+        notify_class = "NO_MATERIAL_CHANGE"
+        notify_eligible = False
+        suppression = "CASH_WITHIN_POLICY"
+        material = False
+    elif "POLICY_REQUIRED" in blockers and not cash_attention:
+        notify_class = "POLICY_GAP"
+        notify_eligible = False
+        suppression = "POLICY_REQUIRED_IMMATERIAL"
+        material = False
+    else:
+        notify_class = "NO_MATERIAL_CHANGE"
+        notify_eligible = False
+        suppression = blockers[0] if blockers else "CASH_WITHIN_POLICY"
+        material = False
 
     fields = market_context.get("fields") or {}
     payload = {
@@ -152,12 +240,19 @@ def build_cash_deployment_situation(
         "counter_case": "Holding cash can remain rational when policy, deployability, valuation, event risk, or living-thesis evidence is incomplete.",
         "what_changes_the_plan": sorted(set(blockers + ["MATERIAL_MARKET_CONTEXT_CHANGE", "PORTFOLIO_THESIS_DELTA"])),
         "blockers": sorted(set(blockers)),
-        "material": not blockers and deviation_state in {"ABOVE_RANGE", "BELOW_RANGE"},
+        "missing_policy_fields": missing_policy,
+        "policy_gap": policy_gap,
+        "regime_risk_off": regime_risk_off,
+        "material": material,
+        "situation_class": notify_class,
         "notification": {
-            "eligible": not blockers and deviation_state in {"ABOVE_RANGE", "BELOW_RANGE"},
-            "suppression_reason": blockers[0] if blockers else (None if deviation_state in {"ABOVE_RANGE", "BELOW_RANGE"} else "CASH_WITHIN_POLICY"),
+            "eligible": notify_eligible,
+            "class": notify_class,
+            "operator_question": policy_gap,
+            "suppression_reason": suppression,
         },
         "financial_action": False,
+        "executable_order": None,
     }
     payload["content_hash"] = _hash(_semantic(payload))
     payload["version"] = "cash_situation_" + payload["content_hash"][:16]
@@ -203,7 +298,18 @@ def build_capital_deployment_plan(
     elif conclusion in {"RESEARCH_FIRST", "WAIT"}:
         keep_cash.append({"role": "OPTIONALITY", "amount_usd": situation.get("investable_cash_usd"), "reason": "Blocking evidence remains unresolved."})
     elif conclusion == "HOLD_CASH":
-        keep_cash.append({"role": "POLICY_ALIGNED_LIQUIDITY", "amount_usd": situation.get("investable_cash_usd"), "reason": "Cash is inside the confirmed policy range."})
+        if situation.get("regime_risk_off") and situation.get("deviation_state") == "ABOVE_RANGE":
+            keep_cash.append({
+                "role": "REGIME_DEFENSIVE_LIQUIDITY",
+                "amount_usd": situation.get("investable_cash_usd"),
+                "reason": "Verified cash exceeds policy, but the current market regime does not support staged deployment.",
+            })
+        else:
+            keep_cash.append({
+                "role": "POLICY_ALIGNED_LIQUIDITY",
+                "amount_usd": situation.get("investable_cash_usd"),
+                "reason": "Cash is inside the confirmed policy range.",
+            })
     elif conclusion == "REBALANCE":
         wait.append({"condition": "CONFIRMED_REBALANCING_SOURCE", "reason": "Cash is below the confirmed range; this advisory contract does not create sale instructions."})
 
