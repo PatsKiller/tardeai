@@ -1,0 +1,26 @@
+{
+  "schema": "R14ANaturalCurrentProof@v1",
+  "manual_start": false,
+  "timer": "tradeai-cio-material-scan.timer",
+  "at": "2026-08-25T13:26:07.378119+00:00",
+  "CURRENT_SHA": "4d0859a5a18e5e64f9ebacae19f53c82e290a9d2",
+  "receipt_path": "/home/johnclaw/trade-ai-releases/portfolio-server/4d0859a5-main-exact-phase2-20260825-091745/data/audit/cio_material_scan_last.json",
+  "auditable_result": "NOTIFICATION_SUPPRESSED",
+  "policy_status": "POLICY_GAP",
+  "masquerades_as_operator_policy": true,
+  "situation_classes": [
+    "POLICY_GAP"
+  ],
+  "notification_counts": {
+    "SUPPRESSED": 3
+  },
+  "suppressed_by_reason": {
+    "unchanged_replay": 3
+  },
+  "canary": false,
+  "financial_lane": "OFF_BY_POLICY",
+  "cash_posture_status": "ABOVE_BAND",
+  "R13_SOURCE_NATURALLY_RUNNING_ON_CURRENT": true,
+  "llm_calls": 0,
+  "paid_cost": 0
+}
