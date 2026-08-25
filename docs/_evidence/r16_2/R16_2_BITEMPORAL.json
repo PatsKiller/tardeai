@@ -1,0 +1,29 @@
+{
+  "schema": "R16_2Bitemporal@v1",
+  "completed_natural_checkpoints": 0,
+  "historical_view": {
+    "schema": "BitemporalEvaluation@v1",
+    "what_we_believed_then": "TRIM SCHD / HOLD_CASH / WAIT",
+    "what_we_knew_then": "POLICY_GAP; DATA_CONFLICT on SCHD; canary unset; R16 deployed 55520666",
+    "outcome_then": null,
+    "available_later": "11 later natural scans still SUPPRESSED unchanged_replay; no elapsed checkpoint",
+    "what_we_know_now": "still same standing recommendations; future scans not leaked into 16:58Z decision artifacts",
+    "future_not_leaked_into_then": true,
+    "authority": "READ_ONLY_ADVISORY",
+    "memory_behavior_influence": 0
+  },
+  "lookahead_replay_of_later_scan_into_first_post_deploy_decision": {
+    "schema": "LookaheadAudit@v1",
+    "as_of": "2026-08-25T16:58:08+00:00",
+    "leaks": [
+      "later-scan"
+    ],
+    "allowed": false,
+    "zero_tolerated": true,
+    "authority": "READ_ONLY_ADVISORY",
+    "memory_behavior_influence": 0
+  },
+  "lookahead_leaks": 0,
+  "future_not_leaked_into_then": true,
+  "authority": "READ_ONLY_ADVISORY"
+}

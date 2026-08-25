@@ -1,0 +1,15 @@
+{
+  "schema": "R16_2DueProcessor@v1",
+  "genuinely_due": 0,
+  "processed_as_complete": 0,
+  "not_marked_due_manually": true,
+  "in_memory_demo_on_not_yet_due": {
+    "checkpoint_id": "b284486ba8481c17adb9",
+    "due_at": "2026-08-26T17:03:10+00:00",
+    "status": "OUTCOME_PENDING_DATA",
+    "invented": false,
+    "persisted": false,
+    "note": "Processor run in-memory with source_available=False. No jsonl write. Demonstrates OUTCOME_PENDING_DATA, not elapsed completion."
+  },
+  "authority": "READ_ONLY_ADVISORY"
+}

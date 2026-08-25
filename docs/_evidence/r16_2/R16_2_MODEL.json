@@ -1,0 +1,11 @@
+{
+  "schema": "R16_2ModelPerformance@v1",
+  "LIVE": 0,
+  "HISTORICAL_VALIDATED": 0,
+  "HISTORICAL_REPLAY": 300,
+  "GOLDEN_SHADOW": 240,
+  "collapsed": false,
+  "natural_close_associated": false,
+  "auto_promoted": false,
+  "authority": "READ_ONLY_ADVISORY"
+}

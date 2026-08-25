@@ -1,0 +1,55 @@
+{
+  "schema": "R17GapRegister@v1",
+  "do_not_implement_in_r16_2": true,
+  "gaps": [
+    {
+      "gap_id": "R17-G1",
+      "producer": "scripts/cio_material_scan.py",
+      "consumer": "data/cio/outcome_checkpoints.jsonl via persist_checkpoint",
+      "expected_relationship": "new material decision_id \u2192 idempotent durable OutcomeCheckpoint@v1",
+      "actual_relationship": "scan writes last.json + fabric overlay; does not call persist_checkpoint",
+      "evidence": "11 natural cycles, 25 unique IDs, checkpoint jsonl still 5 decision_ids from R16.1 operator persist",
+      "operator_impact": "cockpit cannot show outcomes-due for live decisions; 89 blocked",
+      "safety_impact": "none (no trading). Wiring must remain observational, identity-safe, no GUID minting",
+      "suggested_r17_repair": "natural material decision \u2192 idempotent durable outcome checkpoint \u2192 due processor \u2192 OutcomeObservation \u2192 calibration/learning cockpit",
+      "implemented": false
+    },
+    {
+      "gap_id": "R17-G2",
+      "producer": "outcome_checkpoints.jsonl / outcome_observations.jsonl",
+      "consumer": "get_learning_cockpit_v1 / CioBrainPanel",
+      "expected_relationship": "GUI lists live due/complete/pending with evidence-class labels",
+      "actual_relationship": "cockpit is a static governance projection (outcomes_due=ON_HORIZON)",
+      "evidence": "API smoke 2026-08-25T18:39Z",
+      "operator_impact": "cannot see natural outcome stream filling",
+      "safety_impact": "none if counts remain non-authoritative projection",
+      "suggested_r17_repair": "bind jsonl into cockpit without mixing evidence classes or enabling self-promote",
+      "implemented": false
+    },
+    {
+      "gap_id": "R17-G3",
+      "producer": "due_at clock / observational scheduler",
+      "consumer": "process_due_checkpoint",
+      "expected_relationship": "when due_at elapses, a timer/oneshot processes checkpoints without inventing data",
+      "actual_relationship": "no due processor timer; earliest due_at=2026-08-26T17:03:10Z",
+      "evidence": "R16_2_CHECKPOINT_INVENTORY.json counts.DUE=0",
+      "operator_impact": "even after wiring G1, completions will not happen unattended",
+      "safety_impact": "must fail to OUTCOME_PENDING_DATA, never guess prices",
+      "suggested_r17_repair": "observational oneshot on CURRENT, not a trading scheduler",
+      "implemented": false
+    },
+    {
+      "gap_id": "R17-G4",
+      "producer": "cio_material_scan evaluate.decision_id",
+      "consumer": "checkpoint identity key",
+      "expected_relationship": "identical generation (unchanged_replay) reuses decision_id so checkpoints do not fan out",
+      "actual_relationship": "HOLD_CASH decision_id churns almost every 10-minute scan; WAIT sometimes stable; TRIM often new",
+      "evidence": "journal 11 cycles; cash IDs unique per cycle",
+      "operator_impact": "naive auto-register would create checkpoint spam",
+      "safety_impact": "idempotency must key decision+horizon AND generation/material_generation_id",
+      "suggested_r17_repair": "idempotent key on lineage+generation, not raw churning decision_id alone",
+      "implemented": false
+    }
+  ],
+  "authority": "READ_ONLY_ADVISORY"
+}

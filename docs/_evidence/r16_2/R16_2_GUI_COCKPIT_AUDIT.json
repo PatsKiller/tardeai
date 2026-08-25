@@ -1,0 +1,25 @@
+{
+  "schema": "R16_2GuiCockpitAudit@v1",
+  "learning_cockpit_live": true,
+  "pin_match": true,
+  "shows": {
+    "decisions": "schema/governance projection, not jsonl counts",
+    "outcomes_due": "ON_HORIZON (static)",
+    "completed_outcomes": "not bound to outcome_observations.jsonl",
+    "calibration": "not bound to natural cohorts",
+    "lessons": "sample PROVISIONAL only",
+    "hypotheses": false,
+    "experiments": false,
+    "promotion_candidates": "max_unattended=REVIEW_READY; why_not_promoted visible"
+  },
+  "missing_natural_bindings": [
+    "checkpoint jsonl counts",
+    "due vs complete vs pending_data",
+    "new scan decision IDs",
+    "natural_longitudinal_n",
+    "historical vs live mix-prevention in counts (labels exist, live counts do not)"
+  ],
+  "repaired_in_r16_2": false,
+  "those_are_r17_inputs": true,
+  "authority": "READ_ONLY_ADVISORY"
+}

@@ -1,0 +1,22 @@
+{
+  "schema": "R16_2SpecialistPerformance@v1",
+  "maria": {
+    "natural_closed_n": 0,
+    "not_scored_on_agreement": true
+  },
+  "steph": {
+    "natural_closed_n": 0,
+    "not_scored_on_agreement": true
+  },
+  "guardian": {
+    "natural_closed_n": 0,
+    "not_scored_on_agreement": true,
+    "risk_authority": false
+  },
+  "ledger": {
+    "natural_closed_n": 0,
+    "not_scored_on_agreement": true,
+    "execution_authority": false
+  },
+  "authority": "READ_ONLY_ADVISORY"
+}
