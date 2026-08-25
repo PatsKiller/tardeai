@@ -1,0 +1,10 @@
+{
+  "backup": "PASS",
+  "restore": "PASS",
+  "dump_bytes": 163577,
+  "backup_s": 0.102,
+  "RPO": "dump_file_as_of_backup",
+  "RTO_s": null,
+  "parity_after_restore": 100.0,
+  "rebuild_projected": 428
+}

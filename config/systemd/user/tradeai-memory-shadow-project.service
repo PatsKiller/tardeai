@@ -1,0 +1,15 @@
+# SOURCE ONLY. Do not install until production-sql-write grant AND isolated parity remain green.
+# SHADOW_ONLY. MEMORY_BEHAVIOR_INFLUENCE=0. Does not mutate JSONL.
+
+[Unit]
+Description=Trade AI memory shadow projector (NON-AUTHORITATIVE, isolated/granted DSN only)
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT
+Environment=MEMORY_BEHAVIOR_INFLUENCE=0
+# Projector refuses :5432 unless a future grant changes the DSN and the forbid list.
+ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/memory_shadow_project.py --root /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT --replay
+Nice=15
+TimeoutStartSec=300

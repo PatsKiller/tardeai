@@ -1,0 +1,5 @@
+{
+  "scheduler": "NOT_INSTALLED",
+  "observed": false,
+  "reason": "production_sql_apply_not_authorized"
+}

@@ -1,0 +1,48 @@
+{
+  "schema": "ShadowDarkRead@v1",
+  "enabled": true,
+  "CIO_influence": 0,
+  "samples": [
+    {
+      "symbol": "SCHD",
+      "canonical_guid": "a29dd6b6-9f88-5f8c-a372-f88786851a76",
+      "shadow_guid": "a29dd6b6-9f88-5f8c-a372-f88786851a76",
+      "match": true
+    },
+    {
+      "symbol": "SCHG",
+      "canonical_guid": "33891f18-2159-5631-943f-11e80252c888",
+      "shadow_guid": "33891f18-2159-5631-943f-11e80252c888",
+      "match": true
+    },
+    {
+      "symbol": "CSCO",
+      "canonical_guid": "bf227236-414b-5159-8809-5a96eb2a5a60",
+      "shadow_guid": "bf227236-414b-5159-8809-5a96eb2a5a60",
+      "match": true
+    },
+    {
+      "symbol": "ANET",
+      "canonical_guid": "fc83568a-8bfa-55dd-998c-43010730b247",
+      "shadow_guid": "fc83568a-8bfa-55dd-998c-43010730b247",
+      "match": true
+    },
+    {
+      "symbol": "NOC",
+      "canonical_guid": "b359a240-b8f4-54c5-bd70-0dfdb0c17c55",
+      "shadow_guid": "b359a240-b8f4-54c5-bd70-0dfdb0c17c55",
+      "match": true
+    },
+    {
+      "symbol": "PRSO",
+      "canonical_guid": null,
+      "shadow_guid": null,
+      "match": true
+    }
+  ],
+  "exact_parity": true,
+  "divergences": [],
+  "p95_canonical_ms": 3.045,
+  "p95_shadow_ms": 1.042,
+  "authority": "READ_ONLY_ADVISORY"
+}

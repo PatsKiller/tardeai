@@ -1,0 +1,103 @@
+{
+  "schema": "ShadowProjectionReceipt@v1",
+  "authority": "READ_ONLY_ADVISORY",
+  "memory_behavior_influence": 0,
+  "run_id": "6143d88f-33b5-4376-b050-50a468d2ca1a",
+  "source_sha": "1afb1479676aeb67b64791e58e946753a2854ddf",
+  "canonical_eligible": 428,
+  "projected": 428,
+  "created": 428,
+  "unchanged": 0,
+  "versioned": 0,
+  "unresolved": 34,
+  "excluded": 0,
+  "failed": 0,
+  "duplicates": 0,
+  "versions_before": 0,
+  "versions_after": 428,
+  "canonical_untouched": true,
+  "write_s": 2.584,
+  "isolated_port": 55432,
+  "production_sql_applied": false,
+  "replay_new_rows": 0,
+  "replay": {
+    "schema": "ShadowProjectionReceipt@v1",
+    "authority": "READ_ONLY_ADVISORY",
+    "memory_behavior_influence": 0,
+    "run_id": "8bead593-f78f-40a2-a763-8c561dccecaa",
+    "source_sha": "1afb1479676aeb67b64791e58e946753a2854ddf",
+    "canonical_eligible": 428,
+    "projected": 0,
+    "created": 0,
+    "unchanged": 428,
+    "versioned": 0,
+    "unresolved": 34,
+    "excluded": 0,
+    "failed": 0,
+    "duplicates": 0,
+    "versions_before": 428,
+    "versions_after": 428,
+    "canonical_untouched": true,
+    "write_s": 1.236,
+    "isolated_port": 55432,
+    "production_sql_applied": false
+  },
+  "parity": {
+    "schema": "ShadowParity@v1",
+    "compared": 6,
+    "matches": 6,
+    "parity_pct": 100.0,
+    "divergences": [],
+    "authority": "READ_ONLY_ADVISORY",
+    "CIO_influence": 0
+  },
+  "dark_read": {
+    "schema": "ShadowDarkRead@v1",
+    "enabled": true,
+    "CIO_influence": 0,
+    "samples": [
+      {
+        "symbol": "SCHD",
+        "canonical_guid": "a29dd6b6-9f88-5f8c-a372-f88786851a76",
+        "shadow_guid": "a29dd6b6-9f88-5f8c-a372-f88786851a76",
+        "match": true
+      },
+      {
+        "symbol": "SCHG",
+        "canonical_guid": "33891f18-2159-5631-943f-11e80252c888",
+        "shadow_guid": "33891f18-2159-5631-943f-11e80252c888",
+        "match": true
+      },
+      {
+        "symbol": "CSCO",
+        "canonical_guid": "bf227236-414b-5159-8809-5a96eb2a5a60",
+        "shadow_guid": "bf227236-414b-5159-8809-5a96eb2a5a60",
+        "match": true
+      },
+      {
+        "symbol": "ANET",
+        "canonical_guid": "fc83568a-8bfa-55dd-998c-43010730b247",
+        "shadow_guid": "fc83568a-8bfa-55dd-998c-43010730b247",
+        "match": true
+      },
+      {
+        "symbol": "NOC",
+        "canonical_guid": "b359a240-b8f4-54c5-bd70-0dfdb0c17c55",
+        "shadow_guid": "b359a240-b8f4-54c5-bd70-0dfdb0c17c55",
+        "match": true
+      },
+      {
+        "symbol": "PRSO",
+        "canonical_guid": null,
+        "shadow_guid": null,
+        "match": true
+      }
+    ],
+    "exact_parity": true,
+    "divergences": [],
+    "p95_canonical_ms": 3.045,
+    "p95_shadow_ms": 1.042,
+    "authority": "READ_ONLY_ADVISORY"
+  },
+  "health": "SHADOW_OK"
+}

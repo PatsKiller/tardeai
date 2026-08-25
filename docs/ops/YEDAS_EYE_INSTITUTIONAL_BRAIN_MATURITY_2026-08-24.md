@@ -82,7 +82,9 @@ Separate: SOURCE · TESTED · MERGED · DEPLOYED · NATURALLY_PROVEN · BENCHMAR
 
 **P0** none from this cycle (authority/paid/baseline intact; production SQL unapplied).
 
-**P1** 17 unresolved identities remain (3 CUSIP-like `NON_SECURITY_IDENTIFIER`, 14 `UNRESOLVED_WITH_REASON` including PRSO/REENTRY). Do not fabricate. Enrichment receipt is VALID_CURRENT_DATA on live JSONL; recorded path SHA `0b7bc9eb` is historical. Host vs repo flock source-fixed in #502 (do not reinstall live unit).
+**P1** 17 unresolved identities remain (3 CUSIP-like `NON_SECURITY_IDENTIFIER`, 14 `UNRESOLVED_WITH_REASON` including PRSO/REENTRY). Do not fabricate.
+
+**P1** M2 production shadow schema is isolated-proven; production `:5432` apply waits on `production-sql-write` grant. Canonical JSONL remains authority.
 
 **P2** 100k/1M scale; M2 production shadow-write/parity/rollback program; AIF RESEARCH_REFERENCE classification (no premature delete).
 

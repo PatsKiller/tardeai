@@ -1,0 +1,12 @@
+{
+  "wrong_tenant": 1,
+  "missing_tenant_fail_closed": true,
+  "pool_reuse": "PASS",
+  "owner": "FORCE_RLS_ON",
+  "bypassrls": false,
+  "tenant_leakage": 0,
+  "agent_facing_leakage": 0,
+  "composite_fk": true,
+  "RLS": true,
+  "FORCE_RLS": true
+}
