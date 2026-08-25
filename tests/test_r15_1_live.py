@@ -5,6 +5,7 @@ Evidence classes are labeled. These do not count as NATURAL_CURRENT.
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 
 import pytest
@@ -47,6 +48,29 @@ from tests.r15_goldens import UNIVERSE, SYMBOLS
 
 pytestmark = pytest.mark.tier0
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_natural_scan_cli_persists_fabric_overlay(tmp_path, monkeypatch) -> None:
+    """Durable last.json must include intelligence_fabric, not stdout only."""
+    receipt_path = tmp_path / "cio_material_scan_last.json"
+    receipt_path.write_text(json.dumps({"ok": True, "holdings_events": [], "cash": {}}, indent=2) + "\n")
+    monkeypatch.setattr("scripts.lib.cio_material_scan.scan_office", lambda **kwargs: {
+        "ok": True,
+        "dry_run": True,
+        "holdings_events": [],
+        "cash": {"cash_posture_status": "POLICY_GAP"},
+        "receipt_path": str(receipt_path),
+        "authority": "READ_ONLY_ADVISORY",
+        "results": [],
+    })
+    import scripts.cio_material_scan as cli
+    monkeypatch.setattr(cli, "ROOT", tmp_path)
+    rc = cli.main(["--dry-run"])
+    assert rc == 0
+    durable = json.loads(receipt_path.read_text())
+    assert "intelligence_fabric" in durable
+    assert durable["intelligence_fabric"].get("paid_dispatch") == 0
+    assert durable["intelligence_fabric"].get("llm_calls") == 0
 
 
 def test_d8_api_partial_provider_does_not_crash() -> None:

@@ -60,6 +60,18 @@ def main(argv: list[str] | None = None) -> int:
             "llm_calls": 0,
             "memory_behavior_influence": 0,
         }
+    receipt_path = receipt.get("receipt_path")
+    if receipt_path:
+        from pathlib import Path as _Path
+        _p = _Path(receipt_path)
+        try:
+            existing = json.loads(_p.read_text(encoding="utf-8")) if _p.is_file() else {}
+        except json.JSONDecodeError:
+            existing = {}
+        if isinstance(existing, dict):
+            existing["intelligence_fabric"] = receipt.get("intelligence_fabric")
+            _p.parent.mkdir(parents=True, exist_ok=True)
+            _p.write_text(json.dumps(existing, indent=2, default=str) + "\n", encoding="utf-8")
     print(json.dumps({
         "ok": receipt.get("ok"),
         "dry_run": receipt.get("dry_run"),
