@@ -109,6 +109,12 @@ GATES = [
         "tests/test_r12_acceptance_scenarios.py",
         "tests/test_r12_properties.py",
     ]),
+    ("r13_institutional", [
+        "tests/test_r13_institution.py",
+        "tests/test_r13_goldens_properties_faults.py",
+        "tests/test_cio_brain_frontend.py",
+        "tests/test_cio_brain_snapshot.py",
+    ]),
 ]
 
 

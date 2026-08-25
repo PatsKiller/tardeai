@@ -1,0 +1,20 @@
+{
+  "schema": "R13FinalAcceptance@v1",
+  "as_of": "2026-08-25T13:15:00Z",
+  "start_maturity": 76,
+  "end_maturity": 76,
+  "highest_proven_maturity_level": 76,
+  "ceiling_notes": "78 requires CURRENT SHA match R13 source. Not earned.",
+  "current_matches_r13_source": false,
+  "tests_r13_passed": 280,
+  "tests_r11_r12_passed": 169,
+  "goldens": 150,
+  "property": 34,
+  "fault": 20,
+  "natural_live_delivery": false,
+  "canary": false,
+  "deployed": false,
+  "cash_target_confirmed": false,
+  "memory_behavior_influence": 0,
+  "pr505_merged": false
+}

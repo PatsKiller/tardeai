@@ -146,6 +146,21 @@ export default function CioBrainPanel() {
         </div>
       </Band>
 
+      <Band title="What needs my attention" testId="cio-brain-attention">
+        <List rows={(ov.attention || situations).map((row: any) => typeof row === 'string' ? row : `${row.class || ''} · ${row.what_changed || row.conclusion || ''}`)} empty="Nothing material now" />
+      </Band>
+      <Band title="Uncertainty" testId="cio-brain-uncertainty">
+        <List rows={ov.uncertainty} empty="No named uncertainty" />
+      </Band>
+      <Band title="Missing policy" testId="cio-brain-missing-policy">
+        <List rows={ov.missing_policy} empty="No missing confirmed policy fields in this snapshot" />
+      </Band>
+      <Band title="What was suppressed" testId="cio-brain-suppressed">
+        <div className="cio-brain__lead">{String(ov.what_was_suppressed || notif.why || 'n/a')}</div>
+      </Band>
+      <Band title="What happens next" testId="cio-brain-next">
+        <div className="cio-brain__lead">{String(ov.what_happens_next || capital.next_review || 'UNSCHEDULED')}</div>
+      </Band>
       <Band title="Notifications" testId="cio-brain-notifications">
         <div className="cio-brain__facts">
           <span>Sent<strong>{notif.sent ? 'YES' : 'NO'}</strong></span>

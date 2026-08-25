@@ -26,6 +26,11 @@ def test_cio_brain_is_default_integrated_operator_surface() -> None:
         "cio-brain-current-recommendation",
         "cio-brain-notifications",
         "cio-brain-memory-shadow",
+        "cio-brain-attention",
+        "cio-brain-uncertainty",
+        "cio-brain-missing-policy",
+        "cio-brain-suppressed",
+        "cio-brain-next",
     ):
         assert testid in brain
     assert "Executable order: NONE" in brain

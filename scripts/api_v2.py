@@ -40333,6 +40333,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     return 200, _cio.get_brain_maturity_contract()
                 if p == "brain/policy":
                     return 200, _cio.get_operator_investment_policy()
+                if p in ("brain/policy-provenance", "brain/policy_provenance"):
+                    return 200, _cio.get_policy_provenance_v1()
                 if p in ("brain/portfolio-state", "brain/portfolio_state"):
                     return 200, _cio.get_portfolio_state_v1()
                 if p in ("brain/market-context", "brain/market_context"):

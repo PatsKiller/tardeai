@@ -1913,6 +1913,26 @@ def get_memory_summary_v1() -> dict[str, Any]:
         }
 
 
+def get_policy_provenance_v1() -> dict[str, Any]:
+    """Safe policy provenance for Command Center. No secrets."""
+    from scripts.lib.cio_r13_institution import build_policy_registry, policy_provenance_view
+
+    policy = get_operator_investment_policy()
+    policy_doc = policy.get("policy") or {}
+    registry = build_policy_registry(policy_doc, default_cash_band=not bool(
+        ((policy_doc.get("fields") or {}).get("cash_target_range_pct") or {}).get("operator_confirmed")
+    ))
+    return {
+        "ok": True,
+        "schema": "PolicyProvenanceView@v1",
+        "authority": AUTHORITY_ADVISORY,
+        "memory_behavior_influence": 0,
+        "fields": policy_provenance_view(registry),
+        "cash_target_confirmed": registry["cash_target_confirmed"],
+        "financial_action": False,
+    }
+
+
 def get_cio_brain_v1() -> dict[str, Any]:
     """Build one derived operator projection from canonical versioned planes."""
     policy = get_operator_investment_policy()
@@ -1984,6 +2004,13 @@ def get_cio_brain_v1() -> dict[str, Any]:
             "lag": memory.get("lag"),
             "production_authority": False,
         },
+        "missing_policy": [str(x) for x in (policy_doc.get("missing_fields") or [])][:12],
+        "uncertainty": situation.get("blockers") or unresolved[:8],
+        "agent_disagreement": [],
+        "what_was_suppressed": notification.get("suppression_reason"),
+        "what_was_learned": (learning.get("feedback") or {}).get("preference_candidates") or [],
+        "what_happens_next": plan_doc.get("next_review") or "ON_MATERIAL_CHANGE_OR_POLICY_CONFIRMATION",
+        "attention": [],
     }
     try:
         from scripts.lib.cio_situation_state import detect_office_situations
@@ -2005,6 +2032,7 @@ def get_cio_brain_v1() -> dict[str, Any]:
             }
             for s in (scan.get("situations") or [])[:8]
         ]
+        operator_value["attention"] = operator_value["current_material_situations"]
         operator_value["notifications"] = {
             "sent": scan.get("notification_decision") == "NOTIFY",
             "suppressed": scan.get("notification_decision") == "SUPPRESS",
