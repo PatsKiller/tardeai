@@ -268,6 +268,41 @@ export default function CioBrainPanel() {
         </Band>
       </div>
 
+      <Band title="Intelligence lifecycle" testId="cio-brain-intelligence-lifecycle">
+        <div className="cio-brain__facts">
+          <span>Why awake<strong>{String(brain.intelligence_lifecycle?.projection?.WHY_AWAKE || 'SCHEDULED_OR_IDLE')}</strong></span>
+          <span>Free-first<strong>{String(brain.intelligence_lifecycle?.projection?.FREE_FIRST_STATUS || 'HOURLY_BASELINE')}</strong></span>
+          <span>LLM<strong>{String(brain.intelligence_lifecycle?.projection?.LLM_STATUS || 'DETERMINISTIC')}</strong></span>
+          <span>Ingestion bus<strong>false</strong></span>
+        </div>
+        <p className="cio-brain__muted">GUI is a projection. It does not ingest office events.</p>
+      </Band>
+      <Band title="Graph context" testId="cio-brain-graph-context">
+        <div className="cio-brain__facts">
+          <span>Wake<strong>{String((brain.intelligence_lifecycle?.projection?.ENTITY_RELATIONSHIPS?.wake || []).length || 0)}</strong></span>
+          <span>Context only<strong>{String((brain.intelligence_lifecycle?.projection?.ENTITY_RELATIONSHIPS?.context_only || []).length || 0)}</strong></span>
+        </div>
+        <p className="cio-brain__muted">No decorative relationships. Membership + exposure + freshness required.</p>
+      </Band>
+      <Band title="Curation history" testId="cio-brain-curation-history">
+        <div className="cio-brain__facts">
+          <span>Version<strong>{String(brain.intelligence_lifecycle?.projection?.CURATION_VERSION ?? 'BASELINE_OR_NONE')}</strong></span>
+          <span>Thesis<strong>{String(brain.intelligence_lifecycle?.projection?.THESIS_VERSION ?? 'NONE')}</strong></span>
+        </div>
+      </Band>
+      <Band title="Model selection" testId="cio-brain-model-performance">
+        <div className="cio-brain__facts">
+          <span>Policy<strong>{String(brain.intelligence_lifecycle?.model_reason?.executed_policy || 'DETERMINISTIC')}</strong></span>
+          <span>Why Flash<strong>{String(brain.intelligence_lifecycle?.model_reason?.why_flash || 'not used')}</strong></span>
+          <span>Why not Pro<strong>{String(brain.intelligence_lifecycle?.model_reason?.why_pro_not_needed || 'n/a')}</strong></span>
+          <span>Self-promote<strong>false</strong></span>
+        </div>
+        <p className="cio-brain__muted">Routing candidates never edit model registries from this panel.</p>
+      </Band>
+      <Band title="What is not wired" testId="cio-brain-unwired">
+        <List rows={brain.intelligence_lifecycle?.unwired_providers} empty="No declared gaps in this snapshot" />
+      </Band>
+
       <Band title="System Health" state={serving.pin_match ? 'PIN MATCH' : 'PIN MISMATCH'} testId="cio-brain-system-health">
         <div className="cio-brain__source">
           <span>Loaded <strong>{serving.loaded_pin_sha || 'UNAVAILABLE'}</strong></span>

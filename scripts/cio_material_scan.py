@@ -48,6 +48,18 @@ def main(argv: list[str] | None = None) -> int:
             office["baseline_needed"] = True
 
     receipt = scan_office(dry_run=dry, office=office, max_publish=max(1, int(args.max_publish)))
+    try:
+        from scripts.lib.cio_intelligence_fabric import observe_from_scan
+        overlay = observe_from_scan(ROOT, receipt)
+        receipt["intelligence_fabric"] = overlay
+    except Exception as exc:
+        receipt["intelligence_fabric"] = {
+            "ok": False,
+            "error": type(exc).__name__,
+            "paid_dispatch": 0,
+            "llm_calls": 0,
+            "memory_behavior_influence": 0,
+        }
     print(json.dumps({
         "ok": receipt.get("ok"),
         "dry_run": receipt.get("dry_run"),
@@ -79,6 +91,11 @@ def main(argv: list[str] | None = None) -> int:
         ],
         "receipt_path": receipt.get("receipt_path"),
         "authority": receipt.get("authority"),
+        "intelligence_fabric": {
+            "observations": (receipt.get("intelligence_fabric") or {}).get("observations"),
+            "paid_dispatch": (receipt.get("intelligence_fabric") or {}).get("paid_dispatch"),
+            "llm_calls": (receipt.get("intelligence_fabric") or {}).get("llm_calls"),
+        },
     }, indent=2, default=str))
     return 0 if receipt.get("ok") else 1
 

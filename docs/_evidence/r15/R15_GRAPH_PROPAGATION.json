@@ -1,0 +1,20 @@
+{
+  "schema": "R15GraphPropagation@v1",
+  "entities": [
+    "ticker",
+    "issuer",
+    "sector",
+    "industry",
+    "subindustry",
+    "theme",
+    "peer",
+    "catalyst",
+    "calendar"
+  ],
+  "goldens": 100,
+  "shared_industry_text_does_not_wake": true,
+  "peer_is_context_not_thesis": true,
+  "stale_and_disputed_blocked": true,
+  "proven": "UNIT",
+  "live_natural": false
+}

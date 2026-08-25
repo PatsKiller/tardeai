@@ -1,0 +1,16 @@
+{
+  "schema": "R15FreeFirstResearch@v1",
+  "hourly_live_on_current": true,
+  "hourly_last": "2026-08-25T14:28:29+00:00",
+  "order": [
+    "TICKER_RESEARCH_STATE",
+    "HERMES",
+    "RAG",
+    "STRUCTURED",
+    "SEARXNG"
+  ],
+  "event_driven": "SOURCE_WIRED_VIA_MATERIAL_SCAN_HOOK",
+  "generic_query_rejected": true,
+  "paid_on_no_change": 0,
+  "proven_event_driven_natural": false
+}

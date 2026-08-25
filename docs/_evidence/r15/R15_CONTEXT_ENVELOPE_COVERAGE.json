@@ -1,0 +1,62 @@
+{
+  "schema": "R15ContextEnvelopeCoverage@v1",
+  "sections": [
+    "OFFICE_TRUTH",
+    "PORTFOLIO_STATE",
+    "OPERATOR_POLICY",
+    "PORTFOLIO_THESIS",
+    "MARKET_CONTEXT",
+    "SEASONALITY",
+    "TICKER_RESEARCH_STATE",
+    "BASELINE_OR_CURRENT_CURATION",
+    "SYMBOL_THESIS",
+    "RESEARCH_GAPS",
+    "CONTRADICTIONS",
+    "EVENTS_CATALYSTS",
+    "RELEVANT_FEEDBACK",
+    "MATURE_OUTCOMES",
+    "LESSONS",
+    "MEMORY_RETRIEVAL_UNITS"
+  ],
+  "provider_status_contract": {
+    "schema": "EnvelopeProviderStatus@v1",
+    "sections": {
+      "OFFICE_TRUTH": "NOT_CONFIGURED",
+      "PORTFOLIO_STATE": "NOT_CONFIGURED",
+      "OPERATOR_POLICY": "NOT_CONFIGURED",
+      "PORTFOLIO_THESIS": "NOT_CONFIGURED",
+      "MARKET_CONTEXT": "NOT_CONFIGURED",
+      "SEASONALITY": "NOT_CONFIGURED",
+      "TICKER_RESEARCH_STATE": "NOT_CONFIGURED",
+      "BASELINE_OR_CURRENT_CURATION": "NOT_CONFIGURED",
+      "SYMBOL_THESIS": "NOT_CONFIGURED",
+      "RESEARCH_GAPS": "NOT_CONFIGURED",
+      "CONTRADICTIONS": "NOT_CONFIGURED",
+      "EVENTS_CATALYSTS": "NOT_CONFIGURED",
+      "RELEVANT_FEEDBACK": "NOT_CONFIGURED",
+      "MATURE_OUTCOMES": "NOT_CONFIGURED",
+      "LESSONS": "NOT_CONFIGURED",
+      "MEMORY_RETRIEVAL_UNITS": "NOT_CONFIGURED"
+    },
+    "sections_total": 16,
+    "sections_live": 0,
+    "sections_not_configured": 16,
+    "never_silently_omitted": true,
+    "authority": "READ_ONLY_ADVISORY",
+    "memory_behavior_influence": 0
+  },
+  "same_brain_agents": [
+    "alex",
+    "hermes",
+    "advisory",
+    "telegram",
+    "maria",
+    "steph",
+    "guardian",
+    "ledger",
+    "command_center"
+  ],
+  "never_silently_omitted": true,
+  "proven": "UNIT_AND_API_SOURCE",
+  "live_on_current": false
+}

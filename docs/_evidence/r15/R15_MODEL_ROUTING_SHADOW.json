@@ -1,0 +1,13 @@
+{
+  "schema": "R15ModelRoutingShadow@v1",
+  "shadow_evaluation_proven": "UNIT",
+  "live_notification": false,
+  "paid_calls": 0,
+  "registry_auto_edit": false,
+  "promotion_requires": [
+    "tests",
+    "shadow evaluation",
+    "review",
+    "governed config change"
+  ]
+}

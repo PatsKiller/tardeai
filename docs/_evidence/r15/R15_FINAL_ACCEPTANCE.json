@@ -1,0 +1,18 @@
+{
+  "schema": "R15FinalAcceptance@v1",
+  "start_maturity": 80,
+  "end_maturity": 80,
+  "intelligence_start": 70,
+  "intelligence_unit_proven": 78,
+  "highest_proven_maturity": 80,
+  "tests_passed": 728,
+  "prior_suite_still_passing": 440,
+  "combined_passed": 1190,
+  "failed": 0,
+  "canary_enabled": false,
+  "pr_505_merged": false,
+  "MEMORY_BEHAVIOR_INFLUENCE": 0,
+  "model_policy_auto_changed": false,
+  "broker_changed": false,
+  "statement": "Lifecycle contracts are closed in source: delta\u2192impact\u2192prior cognition\u2192free-first\u2192eligibility\u2192versioned curation\u2192routing candidate. Live CURRENT remains R14A 4d0859a5 until exact-main deploy."
+}
