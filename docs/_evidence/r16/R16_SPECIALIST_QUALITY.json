@@ -1,0 +1,9 @@
+{
+  "schema": "R16SpecialistQuality@v1",
+  "evidence_class": "GOLDEN_SHADOW",
+  "maria": "UNIT",
+  "steph": "UNIT",
+  "guardian": "UNIT",
+  "ledger": "UNIT",
+  "not_scored_on_cio_agreement": true
+}

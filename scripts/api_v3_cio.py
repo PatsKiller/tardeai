@@ -2009,6 +2009,36 @@ def get_model_performance_v1() -> dict[str, Any]:
         return {"ok": False, "error": type(exc).__name__, "authority": AUTHORITY_ADVISORY}
 
 
+def get_learning_cockpit_v1() -> dict[str, Any]:
+    """GUI projection of institutional learning. Cannot self-promote."""
+    try:
+        from scripts.lib.cio_institutional_learning import (
+            PROMOTION_STAGES,
+            QUALITY_AXES,
+            lesson_candidate_v2,
+        )
+        return {
+            "ok": True,
+            "schema": "LearningCockpit@v1",
+            "outcomes_due": "ON_HORIZON",
+            "quality_axes": list(QUALITY_AXES),
+            "lesson_status_allowed": ["PROVISIONAL", "SUPPORTED", "CONTRADICTED", "EXPIRED"],
+            "promotion_stages": list(PROMOTION_STAGES),
+            "max_unattended_stage": "REVIEW_READY",
+            "gui_cannot_self_promote": True,
+            "provisional_not_displayed_as_rule": True,
+            "sample_lesson": lesson_candidate_v2(
+                scope="office", task_class="research_curation", statement="insufficient sample",
+                supporting_outcome_ids=["o1"], counterexamples=[], searched_counterexamples=False,
+            ),
+            "authority": AUTHORITY_ADVISORY,
+            "memory_behavior_influence": 0,
+            "financial_action": False,
+        }
+    except Exception as exc:
+        return {"ok": False, "error": type(exc).__name__, "authority": AUTHORITY_ADVISORY}
+
+
 def get_cio_brain_v1() -> dict[str, Any]:
     """Build one derived operator projection from canonical versioned planes."""
     policy = get_operator_investment_policy()
@@ -2155,6 +2185,7 @@ def get_cio_brain_v1() -> dict[str, Any]:
         "executable_order": None,
         "intelligence_lifecycle": get_intelligence_lifecycle_v1(),
         "model_performance": get_model_performance_v1(),
+        "learning_cockpit": get_learning_cockpit_v1(),
     }
 
 

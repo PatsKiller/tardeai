@@ -1,0 +1,14 @@
+{
+  "schema": "R16StartingState@v1",
+  "as_of": "2026-08-25T16:43:18+00:00",
+  "repository_head_sha": "ce105e65cbaca23f839f95a7540f93f8033745ae",
+  "runtime_source_sha": "d72ecdd13d4fad1e7551597634f326aeb6a03353",
+  "exact_runtime_release": true,
+  "docs_only_main_vs_runtime": true,
+  "r15_2_maturity": 86,
+  "pr510_merged": true,
+  "redeployed_for_510": false,
+  "MEMORY_BEHAVIOR_INFLUENCE": 0,
+  "canary": "unset",
+  "cash_target_range_pct": "unconfirmed"
+}

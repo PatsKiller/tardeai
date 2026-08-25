@@ -1,0 +1,70 @@
+{
+  "schema": "R16ModelPerformance@v1",
+  "live_n": 0,
+  "historical_replay_n": 300,
+  "golden_shadow_n": 240,
+  "cohorts": {
+    "extraction": {
+      "n_live": 0,
+      "n_replay": 0,
+      "n_shadow": 30,
+      "sufficient_for_routing": false
+    },
+    "classification": {
+      "n_live": 0,
+      "n_replay": 0,
+      "n_shadow": 30,
+      "sufficient_for_routing": false
+    },
+    "research_curation": {
+      "n_live": 0,
+      "n_replay": 100,
+      "n_shadow": 0,
+      "sufficient_for_routing": true
+    },
+    "contradiction_reconciliation": {
+      "n_live": 0,
+      "n_replay": 0,
+      "n_shadow": 30,
+      "sufficient_for_routing": false
+    },
+    "risk_critique": {
+      "n_live": 0,
+      "n_replay": 0,
+      "n_shadow": 30,
+      "sufficient_for_routing": false
+    },
+    "tax_critique": {
+      "n_live": 0,
+      "n_replay": 0,
+      "n_shadow": 30,
+      "sufficient_for_routing": false
+    },
+    "portfolio_synthesis": {
+      "n_live": 0,
+      "n_replay": 0,
+      "n_shadow": 30,
+      "sufficient_for_routing": false
+    },
+    "operator_explanation": {
+      "n_live": 0,
+      "n_replay": 200,
+      "n_shadow": 0,
+      "sufficient_for_routing": true
+    },
+    "notification_rendering": {
+      "n_live": 0,
+      "n_replay": 0,
+      "n_shadow": 30,
+      "sufficient_for_routing": false
+    },
+    "deep_invalidation_review": {
+      "n_live": 0,
+      "n_replay": 0,
+      "n_shadow": 30,
+      "sufficient_for_routing": false
+    }
+  },
+  "auto_promoted": false,
+  "evidence_classes_separated": true
+}

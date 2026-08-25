@@ -25,6 +25,7 @@ type Brain = {
   operator_value?: any
   intelligence_lifecycle?: any
   model_performance?: any
+  learning_cockpit?: any
   versions?: Record<string, string | number | null>
   _serving?: {
     loaded_pin_sha?: string | null
@@ -303,6 +304,15 @@ export default function CioBrainPanel() {
       </Band>
       <Band title="What is not wired" testId="cio-brain-unwired">
         <List rows={brain.intelligence_lifecycle?.unwired_providers} empty="No declared gaps in this snapshot" />
+      </Band>
+      <Band title="Learning cockpit" testId="cio-brain-learning-cockpit">
+        <div className="cio-brain__facts">
+          <span>Outcomes due<strong>{String(brain.learning_cockpit?.outcomes_due || 'ON_HORIZON')}</strong></span>
+          <span>Max unattended<strong>{String(brain.learning_cockpit?.max_unattended_stage || 'REVIEW_READY')}</strong></span>
+          <span>Self-promote<strong>false</strong></span>
+          <span>Provisional as rule<strong>false</strong></span>
+        </div>
+        <p className="cio-brain__muted">Lessons stay candidates. Promotion requires separate authority. Behavior influence 0.</p>
       </Band>
       <Band title="Knowledge gaps" testId="cio-brain-knowledge-gaps">
         <List

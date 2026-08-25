@@ -37,6 +37,7 @@ def test_cio_brain_is_default_integrated_operator_surface() -> None:
         "cio-brain-model-performance",
         "cio-brain-unwired",
         "cio-brain-knowledge-gaps",
+        "cio-brain-learning-cockpit",
     ):
         assert testid in brain
     assert "Executable order: NONE" in brain

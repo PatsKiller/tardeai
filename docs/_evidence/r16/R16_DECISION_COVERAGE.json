@@ -1,0 +1,63 @@
+{
+  "schema": "DecisionCoverage@v1",
+  "known_classes": [
+    "HOLD",
+    "WATCH",
+    "REVIEW",
+    "TRIM",
+    "EXIT",
+    "ADD",
+    "HOLD_CASH",
+    "WAIT",
+    "RE_ENTER",
+    "THESIS_REVIEW",
+    "PORTFOLIO_REASSESSMENT",
+    "RISK_CRITIQUE",
+    "RESEARCH_NEEDED",
+    "NOTIFICATION_DECISION"
+  ],
+  "observed_classes": [
+    "HOLD_CASH",
+    "TRIM",
+    "WAIT"
+  ],
+  "total": 5,
+  "counts": {
+    "FULLY_TRACEABLE": 0,
+    "PARTIAL": 5,
+    "UNRESOLVED": 0
+  },
+  "coverage_fully_pct": 0.0,
+  "details": [
+    {
+      "decision_id": "dec_cash_ff51c1f104e7ab38",
+      "class": "HOLD_CASH",
+      "traceability": "PARTIAL"
+    },
+    {
+      "decision_id": "dec_reentry_9815cb00f0238ccd",
+      "class": "WAIT",
+      "traceability": "PARTIAL"
+    },
+    {
+      "decision_id": "dec_5866156741de9046",
+      "class": "TRIM",
+      "traceability": "PARTIAL"
+    },
+    {
+      "decision_id": "dec_5866156741de9046",
+      "class": "TRIM",
+      "traceability": "PARTIAL"
+    },
+    {
+      "decision_id": "dec_5866156741de9046",
+      "class": "TRIM",
+      "traceability": "PARTIAL"
+    }
+  ],
+  "fabricated_joins": false,
+  "authority": "READ_ONLY_ADVISORY",
+  "memory_behavior_influence": 0,
+  "evidence_class": "HISTORICAL_VALIDATED",
+  "note": "Live scan+disposition rows lack security_guid; classified PARTIAL not fabricated FULL"
+}
