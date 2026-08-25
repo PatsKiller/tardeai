@@ -1,0 +1,14 @@
+{
+  "schema": "R15_2GraphPropagation@v1",
+  "evidence_class": "CURRENT_SMOKE",
+  "ticker": true,
+  "issuer": true,
+  "sector": true,
+  "industry": true,
+  "theme": true,
+  "peer_context_only": true,
+  "catalyst": true,
+  "calendar": true,
+  "shared_industry_does_not_wake_NOC": true,
+  "unresolved_identities": 17
+}

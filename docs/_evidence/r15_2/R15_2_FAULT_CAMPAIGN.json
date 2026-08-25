@@ -1,0 +1,10 @@
+{
+  "schema": "R15_2FaultCampaign@v1",
+  "evidence_class": "UNIT",
+  "silent_loss": false,
+  "fabricated_certainty": false,
+  "specialist_unavailable_no_invented_opinion": true,
+  "llm_bridge_outage": "UNAVAILABLE",
+  "duplicate_delta_idempotent": true,
+  "host_reboot": "NOT_AUTHORIZED"
+}

@@ -1,0 +1,25 @@
+{
+  "schema": "R15_2ModelPerformance@v1",
+  "evidence_classes_separated": true,
+  "live_n": 0,
+  "historical_replay_n": 300,
+  "golden_shadow_n": 240,
+  "routing_changed": false,
+  "auto_promotions": 0,
+  "registries_changed": false,
+  "registry_hashes": {
+    "llm_model_registry.json": "3f76b56466b29c3f0514dbbce3f2dd14ec9ed0908cb3debb191c83d8bbd191ca",
+    "llm_process_registry.json": "1a699bbc238cb964199c891d54ac476dcff7871c3d06c8cbafaaf6d40a2f73d3"
+  },
+  "insufficient_sample_cohorts_for_live_routing": [
+    "extraction",
+    "classification",
+    "contradiction_reconciliation",
+    "risk_critique",
+    "tax_critique",
+    "portfolio_synthesis",
+    "notification_rendering",
+    "deep_invalidation_review"
+  ],
+  "routing_candidates": 0
+}

@@ -1,0 +1,6 @@
+{
+  "schema": "R15_2ModelRoutingCandidates@v1",
+  "candidates": 0,
+  "auto_promotions": 0,
+  "reason": "LIVE n=0; HISTORICAL_REPLAY sufficient only for operator_explanation/research_curation and still not auto-applied"
+}
