@@ -13,9 +13,12 @@ Evidence: `docs/_evidence/transferson_universe/LIVE_ACCEPTANCE.json`
 
 ## Verdict
 
-**LIVE_ACCEPTANCE_BLOCKED**
+**LIVE_ACCEPTANCE_BLOCKED** *(superseded as a merge gate)*
 
-The skeleton is still the right skeleton. The live body now runs through it. Acceptance is **not** complete because operator-facing denominators, the live identity spine, graph provenance, 126, and screener membership remain open. Do not authorize push/merge. Do not start R17.
+This single-gate result was correct as a measurement, but circular as a merge gate (B6). It is replaced by two-stage acceptance in `TRANSFERSON_UNIVERSE_PRE_MERGE_ACCEPTANCE_2026-08-25.md`.
+
+**PRE_MERGE_SOURCE_ACCEPTANCE_PASS** is the merge/deploy authorization input.  
+**POST_DEPLOY_LIVE_ACCEPTANCE_PASS** is the only R17 unblocking gate.
 
 ---
 

@@ -804,7 +804,7 @@ export default function AdvisoryDeskHub({ onDrill }: Props) {
           const shown = c !== 'all' ? data?.by_class?.[c] ?? 0 : 0
           const label =
             c === 'watchlist'
-              ? `${c} (${shown} of ${deskSources.watchlist_personal_total ?? '—'} personal · Hub ${deskSources.watch_hub_active ?? '—'}/${deskSources.watch_hub_universe ?? '—'})`
+              ? `${c} (${shown} of ${deskSources.watchlist_personal_total ?? '—'} personal · Hub watchlist ${deskSources.watch_hub_active ?? '—'}/${deskSources.watch_hub_universe ?? '—'} — not Transferson universe)`
               : c === 'watchlist_hub'
                 ? `hub opportunity (${shown}${deskSources.watch_hub_total != null ? ` of ${deskSources.watch_hub_total}` : ''})`
                 : c === 'closed_journal'

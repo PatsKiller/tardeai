@@ -11,7 +11,9 @@ from scripts.lib.transferson_universe import (
     get_related_by_sector,
     get_symbol,
     graph_coverage_report,
+    identity_coverage,
     metrics,
+    operator_denominators,
     research_tier_index,
     seed_graph_from_universe,
     universe_diff,
@@ -264,3 +266,92 @@ def test_identity_lineage_four_paths() -> None:
     assert get_related_by_sector(m, "SCHD")["not_supply_chain"] is True
     cat = get_related_by_catalyst(m, "SCHD")
     assert "catalyst_guids" in cat
+
+
+def test_validated_screener_joins_universe_not_scheduler() -> None:
+    m = build_universe(sources=_sources(
+        screener_active=[{"symbol": "SCRN1", "screener_ids": ["core_growth_compounders"]}],
+    ))
+    rec = get_symbol(m, "SCRN1")
+    assert rec is not None
+    assert "SCREENER_ACTIVE" in rec["membership_reasons"]
+    assert rec["current_research_tier"] == "T3-COLD"
+    idx = research_tier_index(m)
+    assert "SCRN1" not in idx
+
+
+def test_screener_overlap_does_not_double_count() -> None:
+    before = build_universe(sources=_sources())
+    after = build_universe(sources=_sources(
+        screener_active=[{"symbol": "SCHD", "screener_ids": ["covered_call_candidates"]}],
+    ))
+    assert after["canonical_universe_count"] == before["canonical_universe_count"]
+    assert "SCREENER_ACTIVE" in get_symbol(after, "SCHD")["membership_reasons"]
+
+
+def test_discovery_validated_is_member() -> None:
+    m = build_universe(sources=_sources(
+        discovery_validated=[{"symbol": "DISC1", "statuses": ["READY_FOR_REVIEW"]}],
+    ))
+    rec = get_symbol(m, "DISC1")
+    assert rec is not None
+    assert "DISCOVERY_VALIDATED" in rec["membership_reasons"]
+    assert rec["current_research_tier"] == "T2-INCUB"
+    assert "DISC1" in research_tier_index(m)
+
+
+def test_company_description_is_candidate_not_confirmed() -> None:
+    m = build_universe(sources=_sources(
+        holdings=[],
+        graph_profiles=[],
+        trs=[],
+        symbol_profiles=[{"symbol": "NVDA", "company": "NVIDIA Corporation", "sector": "Technology"}],
+    ))
+    rec = get_symbol(m, "NVDA")
+    assert rec["issuer_guid"]
+    assert rec["security_guid"]
+    assert rec["identity_status"] == "CANDIDATE"
+    assert rec["security_guid"] != rec.get("ticker_guid")
+
+
+def test_share_class_collision_does_not_collapse_securities() -> None:
+    m = build_universe(sources=_sources(
+        holdings=[],
+        graph_profiles=[],
+        trs=[],
+        symbol_profiles=[
+            {"symbol": "GOOG", "company": "Alphabet Inc"},
+            {"symbol": "GOOGL", "company": "Alphabet Inc"},
+        ],
+    ))
+    a, b = get_symbol(m, "GOOG"), get_symbol(m, "GOOGL")
+    assert a["issuer_guid"] == b["issuer_guid"]
+    assert not a.get("security_guid")
+    assert not b.get("security_guid")
+    assert a["unresolved_reason"] == "share_class_unspecified_collision"
+
+
+def test_operator_denominators_never_alias_graph_as_universe() -> None:
+    m = build_universe(sources=_sources())
+    pack = operator_denominators(m)
+    assert pack["canonical_universe_count"] == m["canonical_universe_count"]
+    assert "graph-profiled /" in pack["graph_coverage"]
+    assert "free-first circulated /" in pack["free_first_coverage"]
+    assert pack["pre_merge_gate"] == "PRE_MERGE_SOURCE_ACCEPTANCE"
+    assert pack["r17_requires"] == "POST_DEPLOY_LIVE_ACCEPTANCE_PASS"
+    cov = identity_coverage(m)
+    assert cov["r17_must_not_attach_to_ticker"] if False else cov["unresolved_ceiling_policy"]["r17_must_not_attach_to_ticker"] is True
+
+
+def test_seeded_edges_carry_provenance(tmp_path) -> None:
+    m = build_universe(sources=_sources(graph_profiles=[]))
+    seeded = seed_graph_from_universe(tmp_path, m)
+    assert seeded["profiles_created"] > 0
+    path = tmp_path / "data/cio/ticker_research_graph.jsonl"
+    import json
+    rows = [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+    edges = [e for r in rows for e in (r.get("relationships") or [])]
+    assert edges
+    assert all(e.get("producer") == "seed_graph_from_universe" for e in edges)
+    assert all(e.get("source_type") == "canonical_universe" for e in edges)
+    assert all("observed_at" in e and "recorded_at" in e for e in edges)

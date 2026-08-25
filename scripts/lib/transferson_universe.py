@@ -159,6 +159,108 @@ def _touch(uni: dict[str, dict[str, Any]], symbol: str, *, reason: str, source: 
     return row
 
 
+def _validate_member_symbol(symbol: Any) -> tuple[str, str | None]:
+    """Return (normalized, reject_reason). reject_reason is None when the symbol may join."""
+    sym = normalize_symbol(symbol)
+    if not sym:
+        return "", "empty"
+    if sym in CASH_SYMBOLS:
+        return sym, "cash"
+    if not is_held_equity_ticker(sym):
+        kind = (classify_unresolved_symbol(sym) or {}).get("kind") or "invalid"
+        return sym, kind
+    return sym, None
+
+
+def _flatten_symbols(value: Any) -> list[str]:
+    out: list[str] = []
+    if value is None:
+        return out
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return out
+        if text[:1] in "[{":
+            try:
+                return _flatten_symbols(json.loads(text))
+            except json.JSONDecodeError:
+                pass
+        s = normalize_symbol(text)
+        return [s] if s else []
+    if isinstance(value, dict):
+        for key in ("symbol", "symbols", "ticker", "tickers"):
+            if key in value:
+                out.extend(_flatten_symbols(value[key]))
+        return out
+    if isinstance(value, (list, tuple, set)):
+        for item in value:
+            out.extend(_flatten_symbols(item))
+        return out
+    s = normalize_symbol(value)
+    return [s] if s else []
+
+
+def _collect_screener_membership(q) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Active/present membership on an enabled or active Finviz screener.
+
+    Generic dump ids that are not in screener_config/finviz_screeners are rejected.
+    Expired/dropped/stale rows are not members. Qualification ≠ research tier.
+    """
+    rows = q(
+        """SELECT m.symbol, m.screener_id, m.membership_status
+           FROM screener_symbol_membership m
+           WHERE m.present_this_run = true
+             AND m.membership_status IN ('active','present')
+             AND m.symbol IS NOT NULL
+             AND (
+               EXISTS (
+                 SELECT 1 FROM screener_config c
+                 WHERE c.id = m.screener_id AND COALESCE(c.enabled, false) = true
+               )
+               OR EXISTS (
+                 SELECT 1 FROM finviz_screeners f
+                 WHERE f.screener_id = m.screener_id AND COALESCE(f.active, false) = true
+               )
+             )"""
+    )
+    accepted: dict[str, dict[str, Any]] = {}
+    rejected: list[dict[str, Any]] = []
+    for raw in rows:
+        rec = dict(raw)
+        sym, reason = _validate_member_symbol(rec.get("symbol"))
+        if reason:
+            rejected.append({"symbol": rec.get("symbol"), "reason": reason, "screener_id": rec.get("screener_id")})
+            continue
+        row = accepted.setdefault(sym, {"symbol": sym, "screener_ids": [], "membership_status": rec.get("membership_status")})
+        sid = rec.get("screener_id")
+        if sid and sid not in row["screener_ids"]:
+            row["screener_ids"].append(sid)
+    return list(accepted.values()), rejected
+
+
+def _collect_discovery_membership(q) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """READY_FOR_REVIEW / APPROVED_RESEARCH_ONLY Hermes discovery tickers only."""
+    rows = q(
+        """SELECT status, seed_symbols, extracted_symbols
+           FROM hermes_discovery_candidates
+           WHERE status IN ('READY_FOR_REVIEW','APPROVED_RESEARCH_ONLY')"""
+    )
+    accepted: dict[str, dict[str, Any]] = {}
+    rejected: list[dict[str, Any]] = []
+    for raw in rows:
+        rec = dict(raw)
+        status = rec.get("status")
+        for sym0 in _flatten_symbols(rec.get("seed_symbols")) + _flatten_symbols(rec.get("extracted_symbols")):
+            sym, reason = _validate_member_symbol(sym0)
+            if reason:
+                rejected.append({"symbol": sym0, "reason": reason, "status": status})
+                continue
+            row = accepted.setdefault(sym, {"symbol": sym, "statuses": []})
+            if status and status not in row["statuses"]:
+                row["statuses"].append(status)
+    return list(accepted.values()), rejected
+
+
 def collect_live_sources(*, root: Path | str | None = None, top_rank_n: int = 200) -> dict[str, Any]:
     """Fail-soft live collectors. Missing files/DB yield empty lists, never invented names."""
     root_p = _root(root)
@@ -199,10 +301,14 @@ def collect_live_sources(*, root: Path | str | None = None, top_rank_n: int = 20
         """SELECT DISTINCT symbol FROM incubator_universe
            WHERE status='active' AND symbol IS NOT NULL""")]
     symbol_profiles = [dict(r) for r in q(
-        "SELECT DISTINCT ON (symbol) symbol, sector, industry FROM symbol_profiles ORDER BY symbol")]
+        """SELECT DISTINCT ON (symbol) symbol, sector, industry, description_1s,
+                  instrument_type, quote_type, source
+           FROM symbol_profiles ORDER BY symbol""")]
     scope_s3 = {str(dict(r).get("symbol") or "").upper() for r in q(
         """SELECT DISTINCT UPPER(symbol) AS symbol FROM watchlist_items
            WHERE scope_tier='S3' AND status IN ('active','researched')""")}
+    screener_active, screener_rejected = _collect_screener_membership(q)
+    discovery_validated, discovery_rejected = _collect_discovery_membership(q)
     return {
         "holdings": holdings,
         "cusips": cusips,
@@ -216,9 +322,83 @@ def collect_live_sources(*, root: Path | str | None = None, top_rank_n: int = 20
         "incubator": [s for s in incubator if s],
         "symbol_profiles": symbol_profiles,
         "scope_s3": scope_s3,
+        "screener_active": screener_active,
+        "screener_rejected": screener_rejected,
+        "discovery_validated": discovery_validated,
+        "discovery_rejected": discovery_rejected,
         "top_rank_n": top_rank_n,
         "root": str(root_p),
     }
+
+
+def _apply_identity(uni: dict[str, dict[str, Any]], sources: dict[str, Any]) -> None:
+    """Populate issuer → security → listing from sourced identifiers only.
+
+    Ticker text never mints security_guid. Company/CIK chains are CANDIDATE.
+    Duplicate security_guid across symbols with no share-class identifier is
+    stripped so listings/share classes do not collapse.
+    """
+    trs_by_sym: dict[str, dict[str, Any]] = {}
+    for row in sources.get("trs") or []:
+        if isinstance(row, dict) and row.get("symbol"):
+            trs_by_sym[normalize_symbol(row["symbol"])] = row
+    for sym, rec in uni.items():
+        ident = trs_by_sym.get(sym) or {}
+        if ident.get("security_guid") and ident.get("security_guid") != ident.get("ticker_guid"):
+            rec["security_guid"] = ident.get("security_guid")
+        if ident.get("issuer_guid") and not rec.get("issuer_guid"):
+            rec["issuer_guid"] = ident.get("issuer_guid")
+        if ident.get("listing_guid") and not rec.get("listing_guid"):
+            rec["listing_guid"] = ident.get("listing_guid")
+        if ident.get("ticker_guid") and not rec.get("ticker_guid"):
+            rec["ticker_guid"] = ident.get("ticker_guid")
+        if ident.get("company") and not rec.get("company"):
+            rec["company"] = ident.get("company")
+        if ident.get("cik") and not rec.get("cik"):
+            rec["cik"] = ident.get("cik")
+        spine = resolve_identity_spine(rec)
+        rec["ticker_guid_is_not_security"] = True
+        rec["identity_status"] = spine.get("identity_status")
+        rec["unresolved_reason"] = spine.get("unresolved_reason")
+        if spine.get("issuer_guid") and not rec.get("issuer_guid"):
+            rec["issuer_guid"] = spine["issuer_guid"]
+        if spine.get("listing_guid") and not rec.get("listing_guid"):
+            rec["listing_guid"] = spine["listing_guid"]
+        if spine.get("security_guid") and not rec.get("security_guid"):
+            rec["security_guid"] = spine["security_guid"]
+        if rec.get("security_guid") and rec.get("security_guid") == rec.get("ticker_guid"):
+            rec["security_guid"] = None
+            rec["listing_guid"] = None
+            rec["identity_status"] = "UNRESOLVED_WITH_REASON"
+            rec["unresolved_reason"] = "security_guid_was_ticker_guid"
+        if not rec.get("security_guid"):
+            rec["unresolved_identity"] = rec.get("unresolved_identity") or classify_unresolved_symbol(sym)
+            if rec.get("identity_status") != "CANDIDATE":
+                rec["identity_status"] = "UNRESOLVED_WITH_REASON"
+
+    by_sg: dict[str, list[str]] = {}
+    for sym, rec in uni.items():
+        sg = rec.get("security_guid")
+        if sg:
+            by_sg.setdefault(str(sg), []).append(sym)
+    for sg, symbols in by_sg.items():
+        if len(set(symbols)) < 2:
+            continue
+        sourced = []
+        for sym in symbols:
+            rec = uni[sym]
+            ids = rec.get("identifiers") if isinstance(rec.get("identifiers"), dict) else {}
+            if rec.get("cik") or ids.get("cusip") or ids.get("isin") or ids.get("figi") or rec.get("share_class"):
+                sourced.append(sym)
+        if sourced:
+            continue
+        for sym in symbols:
+            rec = uni[sym]
+            rec["security_guid"] = None
+            rec["listing_guid"] = None
+            rec["identity_status"] = "UNRESOLVED_WITH_REASON"
+            rec["unresolved_reason"] = "share_class_unspecified_collision"
+            rec["unresolved_identity"] = rec.get("unresolved_identity") or classify_unresolved_symbol(sym)
 
 
 def build_universe(*, sources: dict[str, Any], as_of: str | None = None, pin: str | None = None) -> dict[str, Any]:
@@ -279,11 +459,38 @@ def build_universe(*, sources: dict[str, Any], as_of: str | None = None, pin: st
         _touch(uni, sym, reason="INCUBATOR", source="incubator_universe",
                incubator_status="active", current_research_tier="T2-INCUB")
 
+    for row in sources.get("screener_active") or []:
+        if not isinstance(row, dict):
+            continue
+        rec = _touch(uni, row.get("symbol"), reason="SCREENER_ACTIVE",
+                     source="screener_symbol_membership", current_research_tier="T3-COLD")
+        if rec:
+            rec["screener_ids"] = list(row.get("screener_ids") or [])
+
+    for row in sources.get("discovery_validated") or []:
+        if not isinstance(row, dict):
+            continue
+        _touch(uni, row.get("symbol"), reason="DISCOVERY_VALIDATED",
+               source="hermes_discovery_candidates", current_research_tier="T2-INCUB")
+
     for row in sources.get("symbol_profiles") or []:
         if not isinstance(row, dict):
             continue
-        _touch(uni, row.get("symbol"), reason="SYMBOL_PROFILE", source="symbol_profiles",
-               current_research_tier="T3-COLD", sector=row.get("sector"), industry=row.get("industry"))
+        rec = _touch(uni, row.get("symbol"), reason="SYMBOL_PROFILE", source="symbol_profiles",
+                     current_research_tier="T3-COLD", sector=row.get("sector"), industry=row.get("industry"))
+        if rec:
+            if not rec.get("company"):
+                rec["company"] = row.get("company") or row.get("description_1s")
+            if not rec.get("classification"):
+                rec["classification"] = row.get("instrument_type") or row.get("quote_type")
+            if row.get("cik"):
+                rec["cik"] = row.get("cik")
+            ids = rec.get("identifiers") if isinstance(rec.get("identifiers"), dict) else {}
+            for key in ("cusip", "isin", "figi"):
+                if row.get(key) and not ids.get(key):
+                    ids[key] = row.get(key)
+            if ids:
+                rec["identifiers"] = ids
 
     for row in sources.get("graph_profiles") or []:
         if not isinstance(row, dict):
@@ -293,35 +500,24 @@ def build_universe(*, sources: dict[str, Any], as_of: str | None = None, pin: st
                      sector=row.get("sector"), industry=row.get("industry"),
                      subindustry=row.get("subindustry"),
                      catalyst_guids=row.get("catalyst_guids") or [])
-        if rec and not rec.get("security_guid"):
+        if not rec:
+            continue
+        if row.get("security_guid") and not rec.get("security_guid"):
             rec["security_guid"] = row.get("security_guid")  # only if already present; never mint
+        if row.get("issuer_guid") and not rec.get("issuer_guid"):
+            rec["issuer_guid"] = row.get("issuer_guid")
+        if row.get("listing_guid") and not rec.get("listing_guid"):
+            rec["listing_guid"] = row.get("listing_guid")
+        if row.get("company") and not rec.get("company"):
+            rec["company"] = row.get("company")
+        if row.get("cik") and not rec.get("cik"):
+            rec["cik"] = row.get("cik")
+        if isinstance(row.get("identifiers"), dict):
+            ids = rec.get("identifiers") if isinstance(rec.get("identifiers"), dict) else {}
+            ids.update({k: v for k, v in row["identifiers"].items() if v})
+            rec["identifiers"] = ids
 
-    trs_by_sym = {}
-    for row in sources.get("trs") or []:
-        if isinstance(row, dict) and row.get("symbol"):
-            trs_by_sym[normalize_symbol(row["symbol"])] = row
-    for sym, rec in uni.items():
-        ident = trs_by_sym.get(sym) or {}
-        if ident.get("security_guid"):
-            rec["security_guid"] = ident.get("security_guid")
-        if ident.get("issuer_guid"):
-            rec["issuer_guid"] = ident.get("issuer_guid")
-        if ident.get("listing_guid"):
-            rec["listing_guid"] = ident.get("listing_guid")
-        if ident.get("ticker_guid") and not rec.get("ticker_guid"):
-            rec["ticker_guid"] = ident.get("ticker_guid")
-        spine = resolve_identity_spine(rec)
-        rec["ticker_guid_is_not_security"] = True
-        rec["identity_status"] = spine.get("identity_status")
-        if spine.get("issuer_guid") and not rec.get("issuer_guid"):
-            rec["issuer_guid"] = spine["issuer_guid"]
-        if spine.get("listing_guid") and not rec.get("listing_guid"):
-            rec["listing_guid"] = spine["listing_guid"]
-        if spine.get("security_guid") and not rec.get("security_guid"):
-            rec["security_guid"] = spine["security_guid"]
-        if not rec.get("security_guid"):
-            rec["unresolved_identity"] = rec.get("unresolved_identity") or classify_unresolved_symbol(sym)
-            rec["identity_status"] = "UNRESOLVED_WITH_REASON"
+    _apply_identity(uni, sources)
 
     s3 = {normalize_symbol(x) for x in (sources.get("scope_s3") or [])}
     for sym, rec in uni.items():
@@ -390,6 +586,7 @@ SCHEDULER_REASONS = frozenset({
     "WATCH_DIRECTIVE",
     "INCUBATOR",
     "SYMBOL_PROFILE",
+    "DISCOVERY_VALIDATED",
 })
 
 
@@ -607,25 +804,121 @@ def graph_coverage_report(manifest: dict[str, Any]) -> dict[str, Any]:
 
 
 def seed_graph_from_universe(root: Path | str | None, manifest: dict[str, Any]) -> dict[str, Any]:
-    """Seed ticker profiles FROM the canonical universe. Does not define the universe."""
+    """Seed ticker profiles FROM the canonical universe. Does not define the universe.
+
+    Does not infer supplier/customer/competitor from shared sector/industry.
+    Callers must not point `root` at a live CURRENT pin unless separately authorized.
+    """
     missing = graph_coverage_report(manifest)["missing"]
     rows = []
     for item in missing:
         rec = get_symbol(manifest, item["symbol"]) or {}
         rows.append({
             "symbol": rec.get("symbol"),
+            "company": rec.get("company"),
             "sector": rec.get("sector"),
             "industry": rec.get("industry"),
             "memberships": rec.get("membership_reasons") or [],
             "security_guid": rec.get("security_guid"),
             "issuer_guid": rec.get("issuer_guid"),
             "listing_guid": rec.get("listing_guid"),
+            "cik": rec.get("cik"),
+            "identifiers": rec.get("identifiers"),
+            "edge_provenance": {
+                "producer": "seed_graph_from_universe",
+                "source_type": "canonical_universe",
+                "source_id": rec.get("symbol"),
+                "source_refs": list(rec.get("membership_sources") or []),
+                "evidence_artifact_guid": None,
+            },
         })
     result = seed_profiles(_root(root), rows) if rows else {"profiles_created": 0}
     result["seeded_from"] = "canonical_universe"
+    result["direction"] = "canonical_universe → identity → graph/profile → research/free-first"
     result["missing_before"] = len(missing)
+    result["not_supply_chain"] = True
     result["authority"] = AUTHORITY
     return result
+
+
+def identity_coverage(manifest: dict[str, Any]) -> dict[str, Any]:
+    secs = manifest.get("securities") or []
+    by_status: dict[str, int] = {}
+    issuer = security = listing = ticker_only = candidate = unresolved = 0
+    sg_eq_tg = 0
+    by_sg: dict[str, list[str]] = {}
+    for rec in secs:
+        st = rec.get("identity_status") or "NONE"
+        by_status[st] = by_status.get(st, 0) + 1
+        if rec.get("issuer_guid"):
+            issuer += 1
+        if rec.get("security_guid"):
+            security += 1
+            by_sg.setdefault(str(rec["security_guid"]), []).append(rec.get("symbol"))
+        if rec.get("listing_guid"):
+            listing += 1
+        if rec.get("ticker_guid") and not rec.get("security_guid") and not rec.get("issuer_guid"):
+            ticker_only += 1
+        if st == "CANDIDATE":
+            candidate += 1
+        if st == "UNRESOLVED_WITH_REASON":
+            unresolved += 1
+        if rec.get("security_guid") and rec.get("security_guid") == rec.get("ticker_guid"):
+            sg_eq_tg += 1
+    duplicates = {k: v for k, v in by_sg.items() if len(set(v)) > 1}
+    n = len(secs) or 1
+    return {
+        "schema": "TransfersonIdentityCoverage@v1",
+        "issuer_guid_resolved": issuer,
+        "security_guid_resolved": security,
+        "listing_guid_resolved": listing,
+        "ticker_alias_only": ticker_only,
+        "candidate_chain": candidate,
+        "unresolved": unresolved,
+        "by_status": by_status,
+        "security_guid_equals_ticker_guid": sg_eq_tg,
+        "duplicate_security_identities": duplicates,
+        "unresolved_ceiling_policy": {
+            "rule": "ticker-only remainder after exhausting sourced CIK/CUSIP/ISIN/FIGI/company/description",
+            "unresolved_are_non_authoritative": True,
+            "r17_must_not_attach_to_ticker": True,
+            "do_not_require_full_resolution": True,
+            "justification": "Identity is sourced, not inferred from ticker text. Remaining unresolved names stay lookup/display aliases.",
+        },
+        "unresolved_pct": round(100.0 * unresolved / n, 4),
+        "authority": AUTHORITY,
+    }
+
+
+def operator_denominators(manifest: dict[str, Any] | None = None, **kwargs: Any) -> dict[str, Any]:
+    """Canonical vs cohort labels for every operator-facing surface."""
+    if manifest is None:
+        manifest = load_universe(**kwargs)
+    met = metrics(manifest)
+    n = met.get("canonical_universe_count") or 0
+    g = met.get("graph_profiled_count") or 0
+    return {
+        "schema": "TransfersonOperatorDenominators@v1",
+        "canonical_universe_count": n,
+        "graph_profiled_count": g,
+        "graph_coverage": f"{g} graph-profiled / {n} universe",
+        "free_first_circulated_count": met.get("free_first_circulated_count"),
+        "free_first_coverage": f"{met.get('free_first_circulated_count') or 0} free-first circulated / {n} universe",
+        "not_the_canonical_universe": [
+            "persistent_graph_profiled",
+            "free_first_circulated_count",
+            "watch_hub_watchlist_items",
+            "hermes_scope_scored_s0_s2",
+            "thesis_material_subset",
+            "research_scheduler_index",
+        ],
+        "pre_merge_gate": "PRE_MERGE_SOURCE_ACCEPTANCE",
+        "post_deploy_gate": "POST_DEPLOY_LIVE_ACCEPTANCE",
+        "r17_requires": "POST_DEPLOY_LIVE_ACCEPTANCE_PASS",
+        "unexplained_view_count_status": "UNRESOLVED_WITH_REASON",
+        "ticker_guid_is_not_security": True,
+        "authority": AUTHORITY,
+    }
 
 
 def get_identity_lineage(manifest: dict[str, Any], symbol: str) -> dict[str, Any]:

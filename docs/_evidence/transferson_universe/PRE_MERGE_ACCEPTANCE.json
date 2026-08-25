@@ -1,0 +1,937 @@
+{
+  "schema": "TransfersonPreMergeAcceptance@v1",
+  "authority": "READ_ONLY_ADVISORY",
+  "as_of": "2026-08-25T20:27:54+00:00",
+  "source_pin_of_data": "55520666b4a742b9ed893c3231b414d089312363",
+  "loader_is_not_on_CURRENT": true,
+  "r17_auto_checkpoint": "blocked until POST_DEPLOY_LIVE_ACCEPTANCE_PASS",
+  "verdict": "PRE_MERGE_SOURCE_ACCEPTANCE_PASS",
+  "blockers": [],
+  "section_a_screener": {
+    "old_canonical_count": 4154,
+    "screener_source_count": 2899,
+    "overlap_with_prior_canonical": 1644,
+    "genuinely_new_members": 1255,
+    "new_sample": [
+      "AAME",
+      "AMDD",
+      "APLE",
+      "ARE",
+      "ARQT",
+      "ATI",
+      "AUDC",
+      "AURA",
+      "AVK",
+      "AVLV",
+      "AYI",
+      "BAB",
+      "BAK",
+      "BANC",
+      "BBW",
+      "BCML",
+      "BEAM",
+      "BFH",
+      "BFLX",
+      "BHF"
+    ],
+    "rejected_invalid": 0,
+    "rejected_sample": [],
+    "discovery_validated_n": 97,
+    "discovery_rejected_n": 0,
+    "new_canonical_unique_count": 5409,
+    "screener_missing_from_canonical": []
+  },
+  "section_counts": {
+    "canonical_universe_count": 5409,
+    "graph_profiled_on_CURRENT": 120,
+    "graph_coverage_CURRENT": "120 graph-profiled / 5409 universe",
+    "tier_counts": {
+      "T0-HOLD": 19,
+      "T0-PROP": 31,
+      "T1-WATCH": 323,
+      "T2-INCUB": 161,
+      "T3-COLD": 4875
+    },
+    "membership_reason_counts": {
+      "GRAPH_PROFILE": 120,
+      "UNRESOLVED_IDENTITY": 3,
+      "HERMES_RANK": 2927,
+      "SCREENER_ACTIVE": 2899,
+      "SYMBOL_PROFILE": 2822,
+      "HERMES_RANK_T1": 688,
+      "SCOPE_S3": 589,
+      "DISCOVERY_VALIDATED": 97,
+      "INCUBATOR": 405,
+      "WATCH_DIRECTIVE": 119,
+      "REENTRY_HISTORY": 107,
+      "ACTIVE_PROPOSAL": 31,
+      "RECENT_PROPOSAL": 99,
+      "REENTRY_READY_NEAR": 21,
+      "CURRENTLY_HELD": 19
+    }
+  },
+  "holdings": {
+    "n": 19,
+    "missing": [],
+    "cusips": [
+      "12507E201",
+      "543354104",
+      "628518102"
+    ],
+    "rows": [
+      {
+        "symbol": "AMANX",
+        "tier": "T0-HOLD",
+        "reasons": [
+          "CURRENTLY_HELD",
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": true,
+        "security_guid": true,
+        "currently_held": true,
+        "sold_history_present": false,
+        "reentry_status": null,
+        "unresolved_reason": null
+      },
+      {
+        "symbol": "ARKX",
+        "tier": "T0-HOLD",
+        "reasons": [
+          "CURRENTLY_HELD",
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "SYMBOL_PROFILE"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": true,
+        "security_guid": true,
+        "currently_held": true,
+        "sold_history_present": false,
+        "reentry_status": null,
+        "unresolved_reason": null
+      },
+      {
+        "symbol": "BAH",
+        "tier": "T0-HOLD",
+        "reasons": [
+          "CURRENTLY_HELD",
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "SCREENER_ACTIVE",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": true,
+        "security_guid": true,
+        "currently_held": true,
+        "sold_history_present": false,
+        "reentry_status": null,
+        "unresolved_reason": null
+      },
+      {
+        "symbol": "BND",
+        "tier": "T0-HOLD",
+        "reasons": [
+          "CURRENTLY_HELD",
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "REENTRY_HISTORY",
+          "SCREENER_ACTIVE",
+          "SYMBOL_PROFILE"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": true,
+        "security_guid": true,
+        "currently_held": true,
+        "sold_history_present": false,
+        "reentry_status": "CURRENTLY HELD",
+        "unresolved_reason": null
+      },
+      {
+        "symbol": "CSWC",
+        "tier": "T0-HOLD",
+        "reasons": [
+          "CURRENTLY_HELD",
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "REENTRY_HISTORY",
+          "SCREENER_ACTIVE",
+          "SYMBOL_PROFILE"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": true,
+        "security_guid": true,
+        "currently_held": true,
+        "sold_history_present": false,
+        "reentry_status": "CURRENTLY HELD",
+        "unresolved_reason": null
+      },
+      {
+        "symbol": "DIV",
+        "tier": "T0-HOLD",
+        "reasons": [
+          "CURRENTLY_HELD",
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "SYMBOL_PROFILE"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": true,
+        "security_guid": true,
+        "currently_held": true,
+        "sold_history_present": false,
+        "reentry_status": null,
+        "unresolved_reason": null
+      },
+      {
+        "symbol": "JEPI",
+        "tier": "T0-HOLD",
+        "reasons": [
+          "CURRENTLY_HELD",
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "REENTRY_HISTORY",
+          "SCREENER_ACTIVE",
+          "SYMBOL_PROFILE"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": true,
+        "security_guid": true,
+        "currently_held": true,
+        "sold_history_present": false,
+        "reentry_status": "CURRENTLY HELD",
+        "unresolved_reason": null
+      },
+      {
+        "symbol": "LDOS",
+        "tier": "T0-HOLD",
+        "reasons": [
+          "CURRENTLY_HELD",
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "INCUBATOR",
+          "REENTRY_HISTORY",
+          "SCREENER_ACTIVE",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": true,
+        "security_guid": true,
+        "currently_held": true,
+        "sold_history_present": false,
+        "reentry_status": "CURRENTLY HELD",
+        "unresolved_reason": null
+      },
+      {
+        "symbol": "NOC",
+        "tier": "T0-HOLD",
+        "reasons": [
+          "CURRENTLY_HELD",
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "REENTRY_HISTORY",
+          "SCREENER_ACTIVE",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": true,
+        "security_guid": true,
+        "currently_held": true,
+        "sold_history_present": false,
+        "reentry_status": "CURRENTLY HELD",
+        "unresolved_reason": null
+      },
+      {
+        "symbol": "PFLT",
+        "tier": "T0-HOLD",
+        "reasons": [
+          "CURRENTLY_HELD",
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "REENTRY_HISTORY",
+          "SCREENER_ACTIVE",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": true,
+        "security_guid": true,
+        "currently_held": true,
+        "sold_history_present": false,
+        "reentry_status": "CURRENTLY HELD",
+        "unresolved_reason": null
+      },
+      {
+        "symbol": "RTX",
+        "tier": "T0-HOLD",
+        "reasons": [
+          "CURRENTLY_HELD",
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "REENTRY_HISTORY",
+          "SCREENER_ACTIVE",
+          "SYMBOL_PROFILE"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": true,
+        "security_guid": true,
+        "currently_held": true,
+        "sold_history_present": false,
+        "reentry_status": "CURRENTLY HELD",
+        "unresolved_reason": null
+      },
+      {
+        "symbol": "SCHD",
+        "tier": "T0-HOLD",
+        "reasons": [
+          "CURRENTLY_HELD",
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "REENTRY_HISTORY",
+          "SCREENER_ACTIVE",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": true,
+        "security_guid": true,
+        "currently_held": true,
+        "sold_history_present": false,
+        "reentry_status": "CURRENTLY HELD",
+        "unresolved_reason": null
+      },
+      {
+        "symbol": "SCHG",
+        "tier": "T0-HOLD",
+        "reasons": [
+          "CURRENTLY_HELD",
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "REENTRY_HISTORY",
+          "SCREENER_ACTIVE",
+          "SYMBOL_PROFILE"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": true,
+        "security_guid": true,
+        "currently_held": true,
+        "sold_history_present": false,
+        "reentry_status": "CURRENTLY HELD",
+        "unresolved_reason": null
+      },
+      {
+        "symbol": "SPCX",
+        "tier": "T0-HOLD",
+        "reasons": [
+          "CURRENTLY_HELD",
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "SCREENER_ACTIVE",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": true,
+        "security_guid": true,
+        "currently_held": true,
+        "sold_history_present": false,
+        "reentry_status": null,
+        "unresolved_reason": null
+      },
+      {
+        "symbol": "SRNE",
+        "tier": "T0-HOLD",
+        "reasons": [
+          "CURRENTLY_HELD",
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "SYMBOL_PROFILE"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": true,
+        "security_guid": true,
+        "currently_held": true,
+        "sold_history_present": false,
+        "reentry_status": null,
+        "unresolved_reason": null
+      },
+      {
+        "symbol": "V",
+        "tier": "T0-HOLD",
+        "reasons": [
+          "CURRENTLY_HELD",
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "REENTRY_HISTORY",
+          "SCREENER_ACTIVE",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": true,
+        "security_guid": true,
+        "currently_held": true,
+        "sold_history_present": false,
+        "reentry_status": "CURRENTLY HELD",
+        "unresolved_reason": null
+      },
+      {
+        "symbol": "XAR",
+        "tier": "T0-HOLD",
+        "reasons": [
+          "CURRENTLY_HELD",
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": true,
+        "security_guid": true,
+        "currently_held": true,
+        "sold_history_present": false,
+        "reentry_status": null,
+        "unresolved_reason": null
+      },
+      {
+        "symbol": "XLB",
+        "tier": "T0-HOLD",
+        "reasons": [
+          "CURRENTLY_HELD",
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "SCREENER_ACTIVE",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "identity_status": "UNRESOLVED_WITH_REASON",
+        "issuer_guid": true,
+        "security_guid": false,
+        "currently_held": true,
+        "sold_history_present": false,
+        "reentry_status": null,
+        "unresolved_reason": "share_class_unspecified_collision"
+      },
+      {
+        "symbol": "XLI",
+        "tier": "T0-HOLD",
+        "reasons": [
+          "CURRENTLY_HELD",
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "SCREENER_ACTIVE",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": true,
+        "security_guid": true,
+        "currently_held": true,
+        "sold_history_present": false,
+        "reentry_status": null,
+        "unresolved_reason": null
+      }
+    ]
+  },
+  "sold_reentry": {
+    "reentry_n": 107,
+    "missing": [],
+    "sold_examples": [
+      {
+        "symbol": "ACHV",
+        "tier": "T1-WATCH",
+        "reasons": [
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "REENTRY_HISTORY",
+          "SYMBOL_PROFILE"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": true,
+        "security_guid": true,
+        "currently_held": false,
+        "sold_history_present": true,
+        "reentry_status": "WAIT",
+        "unresolved_reason": null
+      },
+      {
+        "symbol": "ADBE",
+        "tier": "T3-COLD",
+        "reasons": [
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "INCUBATOR",
+          "REENTRY_HISTORY",
+          "SCOPE_S3",
+          "SCREENER_ACTIVE",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": true,
+        "security_guid": true,
+        "currently_held": false,
+        "sold_history_present": true,
+        "reentry_status": "WAIT",
+        "unresolved_reason": null
+      },
+      {
+        "symbol": "AGMH",
+        "tier": "T1-WATCH",
+        "reasons": [
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "REENTRY_HISTORY",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": true,
+        "security_guid": true,
+        "currently_held": false,
+        "sold_history_present": true,
+        "reentry_status": "WAIT",
+        "unresolved_reason": null
+      },
+      {
+        "symbol": "AIRE",
+        "tier": "T3-COLD",
+        "reasons": [
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "REENTRY_HISTORY",
+          "SYMBOL_PROFILE"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": true,
+        "security_guid": true,
+        "currently_held": false,
+        "sold_history_present": true,
+        "reentry_status": "WAIT",
+        "unresolved_reason": null
+      },
+      {
+        "symbol": "AMAGX",
+        "tier": "T3-COLD",
+        "reasons": [
+          "GRAPH_PROFILE",
+          "REENTRY_HISTORY"
+        ],
+        "identity_status": "UNRESOLVED_WITH_REASON",
+        "issuer_guid": false,
+        "security_guid": false,
+        "currently_held": false,
+        "sold_history_present": true,
+        "reentry_status": "MISSING MARKET",
+        "unresolved_reason": "five_letter_x_fund_convention"
+      },
+      {
+        "symbol": "AMC",
+        "tier": "T1-WATCH",
+        "reasons": [
+          "DISCOVERY_VALIDATED",
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "REENTRY_HISTORY",
+          "SCREENER_ACTIVE",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": true,
+        "security_guid": true,
+        "currently_held": false,
+        "sold_history_present": true,
+        "reentry_status": "WAIT",
+        "unresolved_reason": null
+      },
+      {
+        "symbol": "AMD",
+        "tier": "T1-WATCH",
+        "reasons": [
+          "DISCOVERY_VALIDATED",
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "RECENT_PROPOSAL",
+          "REENTRY_HISTORY",
+          "SCREENER_ACTIVE",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": true,
+        "security_guid": true,
+        "currently_held": false,
+        "sold_history_present": true,
+        "reentry_status": "WAIT",
+        "unresolved_reason": null
+      },
+      {
+        "symbol": "ANET",
+        "tier": "T1-WATCH",
+        "reasons": [
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "INCUBATOR",
+          "REENTRY_HISTORY",
+          "SCREENER_ACTIVE",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": true,
+        "security_guid": true,
+        "currently_held": false,
+        "sold_history_present": true,
+        "reentry_status": "WAIT",
+        "unresolved_reason": null
+      }
+    ],
+    "ready_examples": [
+      {
+        "symbol": "ALXO",
+        "tier": "T1-WATCH",
+        "reasons": [
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "REENTRY_HISTORY",
+          "REENTRY_READY_NEAR",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": true,
+        "security_guid": true,
+        "currently_held": false,
+        "sold_history_present": false,
+        "reentry_status": "NEAR ENTRY",
+        "unresolved_reason": null
+      },
+      {
+        "symbol": "AUUD",
+        "tier": "T1-WATCH",
+        "reasons": [
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "REENTRY_HISTORY",
+          "REENTRY_READY_NEAR",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": true,
+        "security_guid": true,
+        "currently_held": false,
+        "sold_history_present": false,
+        "reentry_status": "NEAR ENTRY",
+        "unresolved_reason": null
+      },
+      {
+        "symbol": "AXTI",
+        "tier": "T1-WATCH",
+        "reasons": [
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "REENTRY_HISTORY",
+          "REENTRY_READY_NEAR",
+          "SCREENER_ACTIVE",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": true,
+        "security_guid": true,
+        "currently_held": false,
+        "sold_history_present": false,
+        "reentry_status": "NEAR ENTRY",
+        "unresolved_reason": null
+      },
+      {
+        "symbol": "CAST",
+        "tier": "T1-WATCH",
+        "reasons": [
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "REENTRY_HISTORY",
+          "REENTRY_READY_NEAR",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": true,
+        "security_guid": true,
+        "currently_held": false,
+        "sold_history_present": false,
+        "reentry_status": "NEAR ENTRY",
+        "unresolved_reason": null
+      },
+      {
+        "symbol": "CSCO",
+        "tier": "T0-PROP",
+        "reasons": [
+          "ACTIVE_PROPOSAL",
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "REENTRY_HISTORY",
+          "REENTRY_READY_NEAR",
+          "SCREENER_ACTIVE",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": true,
+        "security_guid": true,
+        "currently_held": false,
+        "sold_history_present": false,
+        "reentry_status": "NEAR ENTRY",
+        "unresolved_reason": null
+      },
+      {
+        "symbol": "DIVI",
+        "tier": "T1-WATCH",
+        "reasons": [
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "REENTRY_HISTORY",
+          "REENTRY_READY_NEAR",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": true,
+        "security_guid": true,
+        "currently_held": false,
+        "sold_history_present": false,
+        "reentry_status": "NEAR ENTRY",
+        "unresolved_reason": null
+      },
+      {
+        "symbol": "FATN",
+        "tier": "T1-WATCH",
+        "reasons": [
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "HERMES_RANK_T1",
+          "REENTRY_HISTORY",
+          "REENTRY_READY_NEAR",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": true,
+        "security_guid": true,
+        "currently_held": false,
+        "sold_history_present": false,
+        "reentry_status": "NEAR ENTRY",
+        "unresolved_reason": null
+      },
+      {
+        "symbol": "FCNTX",
+        "tier": "T1-WATCH",
+        "reasons": [
+          "GRAPH_PROFILE",
+          "HERMES_RANK",
+          "REENTRY_HISTORY",
+          "REENTRY_READY_NEAR",
+          "SYMBOL_PROFILE",
+          "WATCH_DIRECTIVE"
+        ],
+        "identity_status": "CONFIRMED",
+        "issuer_guid": true,
+        "security_guid": true,
+        "currently_held": false,
+        "sold_history_present": false,
+        "reentry_status": "NEAR ENTRY",
+        "unresolved_reason": null
+      }
+    ]
+  },
+  "coverage_sets": {
+    "proposals_active_missing": [],
+    "watch_missing": [],
+    "incubator_missing": [],
+    "screener_missing": [],
+    "discovery_missing": []
+  },
+  "scheduler": {
+    "canonical_n": 5409,
+    "scheduler_n": 3105,
+    "only_in_canonical_n": 2304,
+    "only_in_scheduler_n": 0,
+    "only_in_scheduler": []
+  },
+  "identity": {
+    "schema": "TransfersonIdentityCoverage@v1",
+    "issuer_guid_resolved": 2819,
+    "security_guid_resolved": 2774,
+    "listing_guid_resolved": 2774,
+    "ticker_alias_only": 15,
+    "candidate_chain": 2672,
+    "unresolved": 2635,
+    "by_status": {
+      "UNRESOLVED_WITH_REASON": 2635,
+      "CANDIDATE": 2672,
+      "CONFIRMED": 102
+    },
+    "security_guid_equals_ticker_guid": 0,
+    "duplicate_security_identities": {},
+    "unresolved_ceiling_policy": {
+      "rule": "ticker-only remainder after exhausting sourced CIK/CUSIP/ISIN/FIGI/company/description",
+      "unresolved_are_non_authoritative": true,
+      "r17_must_not_attach_to_ticker": true,
+      "do_not_require_full_resolution": true,
+      "justification": "Identity is sourced, not inferred from ticker text. Remaining unresolved names stay lookup/display aliases."
+    },
+    "unresolved_pct": 48.7151,
+    "authority": "READ_ONLY_ADVISORY"
+  },
+  "denominators": {
+    "schema": "TransfersonOperatorDenominators@v1",
+    "canonical_universe_count": 5409,
+    "graph_profiled_count": 120,
+    "graph_coverage": "120 graph-profiled / 5409 universe",
+    "free_first_circulated_count": 120,
+    "free_first_coverage": "120 free-first circulated / 5409 universe",
+    "not_the_canonical_universe": [
+      "persistent_graph_profiled",
+      "free_first_circulated_count",
+      "watch_hub_watchlist_items",
+      "hermes_scope_scored_s0_s2",
+      "thesis_material_subset",
+      "research_scheduler_index"
+    ],
+    "pre_merge_gate": "PRE_MERGE_SOURCE_ACCEPTANCE",
+    "post_deploy_gate": "POST_DEPLOY_LIVE_ACCEPTANCE",
+    "r17_requires": "POST_DEPLOY_LIVE_ACCEPTANCE_PASS",
+    "unexplained_view_count_status": "UNRESOLVED_WITH_REASON",
+    "ticker_guid_is_not_security": true,
+    "authority": "READ_ONLY_ADVISORY"
+  },
+  "graph_seed_evidence_only": {
+    "profiles_created": 5289,
+    "seeded_profiles": 5289,
+    "provenance_ok": 7598,
+    "provenance_n": 7598,
+    "CURRENT_not_mutated": true,
+    "coverage_if_seed_applied": "5289 / 5409",
+    "current_graph_profiled": 120,
+    "missing_seeded": 5289,
+    "coverage_if_seed_applied_onto_CURRENT": "5409 / 5409",
+    "note": "Evidence seed wrote only previously missing profiles onto an empty root. CURRENT was not mutated. Applying that seed onto CURRENT's existing graph cohort would cover the full canonical set."
+  },
+  "lineage": [
+    {
+      "symbol": "NOC",
+      "identity": "CONFIRMED",
+      "issuer": true,
+      "security": true,
+      "industry_n": 52,
+      "sector_n": 355,
+      "catalyst_n": 42,
+      "not_supply_chain": true
+    },
+    {
+      "symbol": "SCHD",
+      "identity": "CONFIRMED",
+      "issuer": true,
+      "security": true,
+      "industry_n": 183,
+      "sector_n": 1,
+      "catalyst_n": 0,
+      "not_supply_chain": true
+    },
+    {
+      "symbol": "ADBE",
+      "identity": "CONFIRMED",
+      "issuer": true,
+      "security": true,
+      "industry_n": 88,
+      "sector_n": 379,
+      "catalyst_n": 42,
+      "not_supply_chain": true
+    },
+    {
+      "symbol": "NVDA",
+      "identity": "CANDIDATE",
+      "issuer": true,
+      "security": true,
+      "industry_n": 43,
+      "sector_n": 379,
+      "catalyst_n": 0,
+      "not_supply_chain": true
+    },
+    {
+      "symbol": "AAPL",
+      "identity": "CANDIDATE",
+      "issuer": true,
+      "security": true,
+      "industry_n": 7,
+      "sector_n": 379,
+      "catalyst_n": 0,
+      "not_supply_chain": true
+    }
+  ],
+  "schd_sell_sim": {
+    "added": [],
+    "removed": [],
+    "tier_changed_schd": [
+      {
+        "symbol": "SCHD",
+        "from": "T0-HOLD",
+        "to": "T1-WATCH",
+        "event": "TIER_CHANGED"
+      }
+    ],
+    "false_remove_add": false
+  },
+  "consumers": {
+    "research_scheduler": "CANONICAL-ADAPTER",
+    "free_first": "ADAPTER",
+    "ticker_graph_profile_seeding": "ADAPTER",
+    "cio_intelligence_fabric": "ADAPTER",
+    "advisory": "ADAPTER",
+    "hermes_scope": "ADAPTER",
+    "reentry_watch": "SOURCE",
+    "proposal_research": "CANONICAL-ADAPTER",
+    "command_center": "ADAPTER",
+    "thesis_coverage_metrics": "ADAPTER"
+  },
+  "count_126": "UNRESOLVED_WITH_REASON",
+  "gates": {
+    "pre_merge": "PRE_MERGE_SOURCE_ACCEPTANCE_PASS",
+    "post_deploy": "not_run",
+    "r17": "blocked"
+  }
+}
