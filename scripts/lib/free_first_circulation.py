@@ -391,6 +391,8 @@ def circulate_universe(
         "mode": "FREE_FIRST_ONLY",
         "as_of": _now(),
         "total_symbols": len(rows),
+        "graph_profiled_count": len(rows),
+        "not_the_canonical_universe": True,
         "Hermes_resolved": len(buckets.get("Hermes_resolved") or []),
         "RAG_resolved": len(buckets.get("RAG_resolved") or []),
         "structured_resolved": len(buckets.get("structured_resolved") or []),
